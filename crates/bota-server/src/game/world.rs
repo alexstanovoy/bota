@@ -6,11 +6,11 @@ use bota_proto::{HeroId, SlotId, Team, UnitKind};
 
 use crate::game::{
     AbilityBook, AttackCx, Attacking, AuraCx, Auras, Bounty, CampHome, Def, Dismembering, Entity,
-    EntityAllocator, Errand, Expiry, Forest, Health, Hit, Hook, Hull, Inventory, Landed, Lane,
-    LaneAi, Level, Mana, March, NeutralAi, Orders, PendingCast, Projectile, Rotting, Route, Seat,
-    SightCx, Stacks, Stats, StatsCx, Statuses, Table, Target, Teleport, Tier, Transform, UnitOrder,
-    Upgrades, Visibility, attacking_system, aura_system, derive_stats, hitting_system,
-    missile_system, regenerate, visibility_system,
+    EntityAllocator, Errand, Expiry, Forest, Handling, Health, Hit, Hook, Hull, Inventory, Landed,
+    Lane, LaneAi, Level, Loot, Mana, March, NeutralAi, Orders, PendingCast, Projectile, Rotting,
+    Route, Seat, SightCx, Stacks, Stats, StatsCx, Statuses, Table, Target, Teleport, Tier,
+    Transform, UnitOrder, Upgrades, Visibility, attacking_system, aura_system, derive_stats,
+    hitting_system, missile_system, regenerate, visibility_system,
 };
 use crate::game::{HitCx, MissileCx};
 
@@ -127,6 +127,10 @@ pub struct World {
     pub inventory: Table<Inventory>,
     /// What each entity can cast.
     pub abilities: Table<AbilityBook>,
+    /// The stack each entity that is a ground item holds.
+    pub loot: Table<Loot>,
+    /// The item errand each entity is walking to carry out.
+    pub handling: Table<Handling>,
 
     /// Which sides see each entity, worked out afresh every tick.
     pub visibility: Table<Visibility>,
@@ -194,6 +198,8 @@ impl World {
             hero: Table::new(),
             inventory: Table::new(),
             abilities: Table::new(),
+            loot: Table::new(),
+            handling: Table::new(),
             visibility: Table::new(),
             projectile: Table::new(),
         }
@@ -377,6 +383,8 @@ impl World {
         self.passive_gold();
         self.tick_respawns();
         self.tick_couriers();
+        self.tick_handling();
+        self.settle_sales();
         self.tick_teleports();
         self.tick_expiries();
         self.tick_burning();

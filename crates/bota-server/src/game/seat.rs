@@ -52,6 +52,8 @@ pub struct Seat {
     pub courier: Option<Entity>,
     /// Ticks before the courier comes back. Zero while one stands.
     pub courier_left: u32,
+    /// What the courier carried when it fell, until the next one stands.
+    pub courier_kept: Option<Inventory>,
     /// Waits owed on kinds of item rather than on one stack of one: a scroll
     /// read is a scroll read, whichever one is held next.
     pub item_clocks: Vec<(ItemId, u32)>,
@@ -84,6 +86,7 @@ impl Seat {
             kept: None,
             courier: None,
             courier_left: 0,
+            courier_kept: None,
             item_clocks: Vec::new(),
             kills: 0,
             deaths: 0,

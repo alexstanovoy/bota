@@ -104,6 +104,21 @@ pub struct ItemView {
     pub range: i32,
     /// How a use of it is aimed. Absent for one that cannot be used at all.
     pub aim: Option<Aim>,
+    /// Whether it is marked to be sold when it next reaches the shop.
+    pub for_sale: bool,
+}
+
+/// An item lying on the ground that the viewing team can see.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct LootView {
+    /// Stable handle for this ground item.
+    pub id: EntityId,
+    /// Where it lies.
+    pub pos: Vec2,
+    /// Which item it is.
+    pub item: ItemId,
+    /// Charges left. Absent for an item that has no charges at all.
+    pub charges: Option<u8>,
 }
 
 /// A unit the viewing team can currently see.
@@ -268,4 +283,7 @@ pub struct WorldView {
     pub felled_trees: Vec<u32>,
     /// Where every tree put up during the match stands.
     pub planted_trees: Vec<Vec2>,
+    /// Every item lying on the ground currently visible, sorted by
+    /// [`EntityId`].
+    pub loot: Vec<LootView>,
 }

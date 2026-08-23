@@ -1,6 +1,6 @@
 //! What an entity carries.
 
-use bota_proto::{Attribute, ItemId};
+use bota_proto::{Attribute, ItemId, SlotId};
 
 /// One item in a slot.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -20,6 +20,10 @@ pub struct ItemStack {
     pub bought_tick: u32,
     /// Whether it has been used or moved since it was bought.
     pub touched: bool,
+    /// The seat that bought it. Only this seat may sell or mark it.
+    pub owner: SlotId,
+    /// Whether it is to be sold when it next reaches the shop.
+    pub for_sale: bool,
 }
 
 /// The slots an entity carries items in.

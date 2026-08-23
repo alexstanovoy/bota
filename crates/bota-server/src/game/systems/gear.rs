@@ -154,16 +154,16 @@ impl World {
     /// Run every tick, so a build follows however the last part arrived: a
     /// purchase, a slot moved, or a courier setting one down.
     pub fn assemble_bags(&mut self) {
-        for unit in self
+        for (slot, unit) in self
             .seats
             .iter()
-            .filter_map(|seat| seat.unit)
+            .filter_map(|seat| seat.unit.map(|unit| (seat.slot, unit)))
             .collect::<Vec<_>>()
         {
             // One build may hand the next its last part, and each one leaves
             // fewer stacks than it took, so the run ends.
             for _ in 0..BAG_SLOTS {
-                if !self.assemble_once(unit) {
+                if !self.assemble_once(slot, unit) {
                     break;
                 }
             }
@@ -173,9 +173,11 @@ impl World {
     /// Builds the first item in the catalog whose parts an entity all holds.
     ///
     /// Only what a unit carries itself takes part: the stash is at the shop
-    /// and builds nothing. The build lands in the lowest slot any of its
-    /// parts came out of, so it stays in the inventory when a part was there.
-    fn assemble_once(&mut self, unit: Entity) -> bool {
+    /// and builds nothing. A part somebody else bought and a part marked for
+    /// sale take no part either. The build lands in the lowest slot any of
+    /// its parts came out of, so it stays in the inventory when a part was
+    /// there.
+    fn assemble_once(&mut self, slot: SlotId, unit: Entity) -> bool {
         let Some(bag) = self.inventory.get(unit) else {
             return false;
         };
@@ -184,7 +186,8 @@ impl World {
             .iter()
             .enumerate()
             .take(BAG_SLOTS)
-            .filter_map(|(at, slot)| slot.map(|stack| (at, stack)))
+            .filter_map(|(at, held)| held.map(|stack| (at, stack)))
+            .filter(|(_, stack)| stack.owner == slot && !stack.for_sale)
             .collect();
         for (index, def) in crate::game::ITEMS.iter().enumerate() {
             if def.components.is_empty() {
@@ -214,6 +217,8 @@ impl World {
                 mode: def.mode,
                 bought_tick: self.tick,
                 touched: true,
+                owner: slot,
+                for_sale: false,
             };
             let Some(bag) = self.inventory.get_mut(unit) else {
                 return false;
@@ -263,6 +268,8 @@ impl World {
                 mode: def.mode,
                 bought_tick: self.tick,
                 touched: false,
+                owner: slot,
+                for_sale: false,
             };
             let in_hand = self.at_shop(unit)
                 && self
@@ -666,10 +673,13 @@ impl World {
         true
     }
 
-    /// Sells what sits in one slot.
+    /// Sells what sits in one slot, or marks it to be sold.
     ///
     /// The stash sells from wherever its owner is: it is already at the shop.
-    /// A unit's own bag sells only while that unit stands there.
+    /// A unit's own bag sells only while that unit stands there; anywhere
+    /// else the order marks the stack for sale, and a second order on the
+    /// slot unmarks it. Only the seat that bought a stack may sell or mark
+    /// it.
     ///
     /// An untouched stack sold soon after it was bought pays back what it
     /// cost; anything else pays back a part of it.
@@ -677,27 +687,112 @@ impl World {
         let Some(seat) = self.seats.iter().position(|s| s.slot == slot) else {
             return false;
         };
+        let held = if in_stash(at) {
+            self.seats[seat]
+                .stash
+                .slots
+                .get(at - BAG_SLOTS)
+                .copied()
+                .flatten()
+        } else {
+            self.inventory
+                .get(unit)
+                .and_then(|bag| bag.slots.get(at).copied().flatten())
+        };
+        let Some(held) = held else {
+            return false;
+        };
+        if held.owner != slot {
+            return false;
+        }
         // What waits in the stash waits at the shop, so it sells from
         // anywhere; what a unit carries sells only where that unit stands.
+        // Anywhere else the order is a mark, and marks toggle.
         if !in_stash(at) && !self.at_shop(unit) {
+            if let Some(stack) = self.slot_mut(unit, seat, at) {
+                stack.for_sale = !stack.for_sale;
+                return true;
+            }
             return false;
         }
         let Some(stack) = self.take_slot(unit, seat, at) else {
             return false;
         };
-        let Some(def) = item_def(stack.id) else {
+        if item_def(stack.id).is_none() {
             self.put_slot(unit, seat, at, Some(stack));
             return false;
+        }
+        let back = self.sale_price(&stack);
+        self.seats[seat].gold += back;
+        true
+    }
+
+    /// What selling a stack pays right now.
+    fn sale_price(&self, stack: &ItemStack) -> i32 {
+        let Some(def) = item_def(stack.id) else {
+            return 0;
         };
         let fresh = !stack.touched
             && self.tick.saturating_sub(stack.bought_tick) <= rules::SELL_REFUND_TICKS;
-        let back = if fresh {
+        if fresh {
             def.cost
         } else {
             def.cost * rules::SELL_PCT / 100
-        };
-        self.seats[seat].gold += back;
-        true
+        }
+    }
+
+    /// Sells every stack marked for sale that has reached the shop.
+    ///
+    /// A marked stack sells wherever it sits — its owner's stash, or any bag
+    /// standing within the owner's home shop area — and the gold goes to the
+    /// owner. One pass owns every way a stack can arrive: carried there,
+    /// delivered by courier, or put back into the stash.
+    pub fn settle_sales(&mut self) {
+        for seat in 0..self.seats.len() {
+            for at in 0..self.seats[seat].stash.slots.len() {
+                let Some(stack) = self.seats[seat].stash.slots[at] else {
+                    continue;
+                };
+                if !stack.for_sale {
+                    continue;
+                }
+                let back = self.sale_price(&stack);
+                self.seats[seat].stash.slots[at] = None;
+                if let Some(owner) = self.seats.iter().position(|s| s.slot == stack.owner) {
+                    self.seats[owner].gold += back;
+                }
+            }
+        }
+        for holder in self.entities.iter().collect::<Vec<_>>() {
+            let Some(at_pos) = self.transform.get(holder).map(|t| t.pos) else {
+                continue;
+            };
+            let Some(bag) = self.inventory.get(holder) else {
+                continue;
+            };
+            let marked: Vec<(usize, ItemStack)> = bag
+                .slots
+                .iter()
+                .enumerate()
+                .filter_map(|(at, held)| held.filter(|stack| stack.for_sale).map(|s| (at, s)))
+                .collect();
+            for (at, stack) in marked {
+                let Some(owner) = self.seats.iter().position(|s| s.slot == stack.owner) else {
+                    continue;
+                };
+                let shop = crate::game::fountain_pos(self.map, self.seats[owner].team);
+                if !at_pos.within(shop, rules::units(rules::SHOP_RANGE)) {
+                    continue;
+                }
+                let back = self.sale_price(&stack);
+                if let Some(bag) = self.inventory.get_mut(holder)
+                    && let Some(held) = bag.slots.get_mut(at)
+                {
+                    *held = None;
+                }
+                self.seats[owner].gold += back;
+            }
+        }
     }
 
     /// Takes whatever sits in one slot of a seat's slots out of it.

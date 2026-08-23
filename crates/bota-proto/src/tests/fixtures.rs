@@ -38,6 +38,19 @@ pub fn item_view(slot: u16) -> ItemView {
         mana_cost: 25,
         range: 400,
         aim: Some(Aim::Point),
+        for_sale: false,
+    }
+}
+
+pub fn loot_view() -> LootView {
+    LootView {
+        id: entity(21),
+        pos: Vec2 {
+            x: fixed(6000),
+            y: fixed(6200),
+        },
+        item: ItemId(3),
+        charges: Some(2),
     }
 }
 
@@ -180,6 +193,7 @@ pub fn world_view(creeps: u32) -> WorldView {
         players: (0..2).map(player_view).collect(),
         felled_trees: Vec::new(),
         planted_trees: Vec::new(),
+        loot: vec![loot_view()],
     }
 }
 
@@ -302,6 +316,24 @@ pub fn all_orders() -> Vec<Order> {
         },
         Order::BuyItem { item: ItemId(4) },
         Order::SellItem { slot: ItemSlot(5) },
+        Order::PutItem {
+            slot: ItemSlot(1),
+            target: OrderTarget::None,
+        },
+        Order::PutItem {
+            slot: ItemSlot(0),
+            target: OrderTarget::Point {
+                pos: Vec2 {
+                    x: fixed(700),
+                    y: fixed(900),
+                },
+            },
+        },
+        Order::PutItem {
+            slot: ItemSlot(6),
+            target: OrderTarget::Unit { target: entity(10) },
+        },
+        Order::TakeItem { target: entity(21) },
     ]
 }
 

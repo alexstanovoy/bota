@@ -142,6 +142,7 @@ fn what_waits_in_the_stash_or_rides_the_courier_counts_as_owned() {
         range: 0,
         aim: None,
         mode: None,
+        for_sale: false,
     });
     for player in &mut view.players {
         if player.slot == SlotId(0) {
@@ -158,6 +159,7 @@ fn what_waits_in_the_stash_or_rides_the_courier_counts_as_owned() {
                 range: 0,
                 aim: None,
                 mode: None,
+                for_sale: false,
             });
         }
     }

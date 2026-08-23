@@ -100,11 +100,6 @@ pub fn play_on(
     // it. A tick is scored once, when the next snapshot shows what it came to.
     let mut held: Option<bota_proto::WorldView> = None;
     let mut during: Vec<bota_proto::EventKind> = Vec::new();
-    // What the tick being gathered spent on nothing: a deed named against the
-    // flags, and orders the server sent back. Both belong to the tick whose
-    // order caused them, so both are held until that tick is scored.
-    let mut refused_now: u16 = 0;
-    let mut rejected_now: u16 = 0;
     // Every lesson is marked at once, whichever one is being taught: one match
     // run to the longest clock is a reading of the whole ladder.
     let mut marker = match chair.until {
@@ -148,13 +143,10 @@ pub fn play_on(
                             now.1.saturating_sub(was.1),
                             now.2.saturating_sub(was.2),
                         ),
-                        (refused_now, rejected_now),
                     );
                     mind.paid(before.tick, paid.of(lesson));
                 }
                 during.clear();
-                refused_now = 0;
-                rejected_now = 0;
                 out.ticks = view.tick;
                 out.mine = mine;
                 if let Some(field) = Field::of(&view, slot, role) {
@@ -173,10 +165,7 @@ pub fn play_on(
                                     link.order(ask)?;
                                 }
                             }
-                            _ => {
-                                out.refused += 1;
-                                refused_now = refused_now.saturating_add(1);
-                            }
+                            _ => out.refused += 1,
                         }
                     }
                 }
@@ -185,14 +174,7 @@ pub fn play_on(
                     link.done_thinking(held.as_ref().expect("just held").tick)?;
                 }
                 if limit.is_some_and(|limit| held.as_ref().is_some_and(|view| view.tick >= limit)) {
-                    out.card = last_tick(
-                        &mut marker,
-                        held.as_ref(),
-                        slot,
-                        role,
-                        &during,
-                        (refused_now, rejected_now),
-                    );
+                    out.card = last_tick(&mut marker, held.as_ref(), slot, role, &during);
                     return Ok(out);
                 }
             }
@@ -204,7 +186,6 @@ pub fn play_on(
             }
             ServerMsg::OrderRejected { reason, .. } => {
                 out.rejected += 1;
-                rejected_now = rejected_now.saturating_add(1);
                 match out.refusals.iter_mut().find(|(had, _)| *had == reason) {
                     Some((_, many)) => *many += 1,
                     None => out.refusals.push((reason, 1)),
@@ -213,14 +194,7 @@ pub fn play_on(
             ServerMsg::MatchOver { winner, stats } => {
                 out.winner = Some(winner);
                 out.stats = Some(stats);
-                out.card = last_tick(
-                    &mut marker,
-                    held.as_ref(),
-                    slot,
-                    role,
-                    &during,
-                    (refused_now, rejected_now),
-                );
+                out.card = last_tick(&mut marker, held.as_ref(), slot, role, &during);
                 return Ok(out);
             }
             ServerMsg::Welcome { .. }
@@ -228,14 +202,7 @@ pub fn play_on(
             | ServerMsg::ParticipantLeft { .. } => {}
         }
     }
-    out.card = last_tick(
-        &mut marker,
-        held.as_ref(),
-        slot,
-        role,
-        &during,
-        (refused_now, rejected_now),
-    );
+    out.card = last_tick(&mut marker, held.as_ref(), slot, role, &during);
     Ok(out)
 }
 
@@ -247,7 +214,6 @@ fn close_a_tick(
     role: Role,
     during: &[bota_proto::EventKind],
     scored: (u16, u16, u16),
-    spent_on_nothing: (u16, u16),
 ) -> Card {
     let Some(field) = Field::of(view, slot, role) else {
         return Card::new();
@@ -260,8 +226,6 @@ fn close_a_tick(
         took: scored.0,
         killed: scored.1,
         died: scored.2,
-        refused: spent_on_nothing.0,
-        rejected: spent_on_nothing.1,
     })
 }
 
@@ -276,18 +240,9 @@ fn last_tick(
     slot: SlotId,
     role: Role,
     during: &[bota_proto::EventKind],
-    spent_on_nothing: (u16, u16),
 ) -> Card {
     if let Some(view) = held {
-        close_a_tick(
-            marker,
-            view,
-            slot,
-            role,
-            during,
-            (0, 0, 0),
-            spent_on_nothing,
-        );
+        close_a_tick(marker, view, slot, role, during, (0, 0, 0));
     }
     marker.card()
 }

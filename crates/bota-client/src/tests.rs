@@ -519,6 +519,7 @@ fn an_item(charges: Option<u8>, cooldown: u32, mana_cost: i32, aim: Option<Aim>)
         mana_cost,
         range: 0,
         aim,
+        for_sale: false,
     }
 }
 
@@ -694,6 +695,34 @@ pub fn a_player() -> PlayerView {
     }
 }
 
+#[test]
+fn a_click_takes_the_ground_item_nearest_the_cursor_and_only_within_reach() {
+    let handle = |idx: u32| EntityId { idx, generation: 1 };
+    let lying_at = |idx: u32, x: i32, y: i32| bota_proto::LootView {
+        id: handle(idx),
+        pos: Vec2::from_ints(x, y),
+        item: ItemId(0),
+        charges: None,
+    };
+    let mut view = a_tick(0, Vec::new(), Vec::new());
+    view.loot = vec![lying_at(21, 1000, 1000), lying_at(22, 1040, 1000)];
+    assert_eq!(
+        crate::input::loot_under_cursor(&view, 1010.0, 1000.0),
+        Some(handle(21)),
+        "the nearer of the two"
+    );
+    assert_eq!(
+        crate::input::loot_under_cursor(&view, 1044.0, 1000.0),
+        Some(handle(22)),
+        "and the nearer from the other side"
+    );
+    assert_eq!(
+        crate::input::loot_under_cursor(&view, 5000.0, 5000.0),
+        None,
+        "far from both, the click is for the ground"
+    );
+}
+
 /// A tick holding these units and these seats.
 fn a_tick(tick: u32, units: Vec<UnitView>, players: Vec<PlayerView>) -> WorldView {
     WorldView {
@@ -704,6 +733,7 @@ fn a_tick(tick: u32, units: Vec<UnitView>, players: Vec<PlayerView>) -> WorldVie
         players,
         felled_trees: Vec::new(),
         planted_trees: Vec::new(),
+        loot: Vec::new(),
     }
 }
 

@@ -166,6 +166,9 @@ pub fn refusal(reason: bota_proto::RejectReason) -> &'static str {
         Why::InventoryFull => "no room for it",
         Why::Disabled => "you cannot act right now",
         Why::NotPlaying => "the match is not running",
+        Why::NotYourItem => "not yours to sell",
+        Why::ClosedGround => "nothing can lie there",
+        Why::NotInBag => "not carried in the bag",
     }
 }
 
@@ -497,30 +500,9 @@ impl App {
         dx * dx + dy * dy <= 1000.0 * 1000.0
     }
 
-    /// Whether one of our fifteen item slots holds an item right now.
+    /// Whether one of the panel's fifteen item slots holds an item right now.
     pub fn item_at(&self, slot: u8) -> bool {
-        let Some(view) = &self.view else {
-            return false;
-        };
-        let Some(my) = self.my_slot else {
-            return false;
-        };
-        let Some(p) = view.players.iter().find(|p| p.slot == my) else {
-            return false;
-        };
-        if slot < 9 {
-            let Some(unit) = p.unit.and_then(|id| view.units.iter().find(|u| u.id == id)) else {
-                return false;
-            };
-            unit.items
-                .get(usize::from(slot))
-                .is_some_and(|s| s.is_some())
-        } else {
-            p.stash
-                .as_ref()
-                .and_then(|s| s.get(usize::from(slot - 9)))
-                .is_some_and(|s| s.is_some())
-        }
+        self.item_in(slot).is_some()
     }
 
     /// The seat the bottom panel falls back to: our own, else the first one.

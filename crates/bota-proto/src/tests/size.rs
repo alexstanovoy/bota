@@ -70,6 +70,7 @@ fn an_empty_view_costs_almost_nothing() {
             players: Vec::new(),
             felled_trees: Vec::new(),
             planted_trees: Vec::new(),
+            loot: Vec::new(),
         },
     };
     let len = encoded_len(&msg);

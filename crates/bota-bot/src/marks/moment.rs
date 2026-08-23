@@ -24,10 +24,6 @@ pub struct Moment<'a> {
     pub killed: u16,
     /// Times it died during the tick.
     pub died: u16,
-    /// Deeds it named during the tick that it had been told it could not do.
-    pub refused: u16,
-    /// Orders of the tick the server would not take.
-    pub rejected: u16,
 }
 
 impl Moment<'_> {

@@ -68,17 +68,19 @@ impl App {
         self.view.as_ref()?.units.iter().find(|u| u.id == commanded)
     }
 
-    /// What sits in one item slot of this seat.
+    /// What sits in one item slot of the panel.
+    ///
+    /// The bag slots are the commanded unit's — the same bag the panel
+    /// draws, a courier's as readily as the hero's. The stash is the seat's
+    /// own whatever is commanded.
     pub fn item_in(&self, slot: u8) -> Option<ItemView> {
-        let view = self.view.as_ref()?;
-        let mine = self.my_slot?;
-        let player = view.players.iter().find(|p| p.slot == mine)?;
         if slot < BAG_SLOTS {
-            let unit = player
-                .unit
-                .and_then(|id| view.units.iter().find(|u| u.id == id))?;
+            let unit = self.slot_unit()?;
             unit.items.get(usize::from(slot)).copied().flatten()
         } else {
+            let view = self.view.as_ref()?;
+            let mine = self.my_slot?;
+            let player = view.players.iter().find(|p| p.slot == mine)?;
             player
                 .stash
                 .as_ref()?

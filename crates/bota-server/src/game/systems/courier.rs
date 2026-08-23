@@ -15,8 +15,12 @@ impl World {
             return;
         };
         let courier = self.spawn_unit(&COURIER, side, at);
-        self.inventory
-            .insert(courier, Inventory::empty(rules::INVENTORY_SLOTS));
+        // What the last courier carried when it fell comes back aboard.
+        let load = self.seats[seat]
+            .courier_kept
+            .take()
+            .unwrap_or_else(|| Inventory::empty(rules::INVENTORY_SLOTS));
+        self.inventory.insert(courier, load);
         self.owner.insert(courier, self.seats[seat].slot);
         self.abilities.insert(
             courier,
@@ -269,23 +273,33 @@ impl World {
         false
     }
 
-    /// Carries what it holds to its owner and hands it over.
+    /// Carries what it holds to its owner, hands it over, and takes aboard
+    /// whatever the owner has marked for sale.
     ///
-    /// Holding nothing, it goes home. With its owner fallen, it turns round
-    /// and puts what it holds back in the stash.
+    /// Holding nothing and with nothing marked, it goes home. With its owner
+    /// fallen, it turns round and puts what it holds back in the stash.
     fn deliver(&mut self, seat: usize, courier: Entity) -> bool {
-        if self
+        let empty = self
             .inventory
             .get(courier)
-            .is_none_or(|bag| bag.held().count() == 0)
-        {
+            .is_none_or(|bag| bag.held().count() == 0);
+        let Some(owner) = self.seats[seat].unit.filter(|hero| self.alive(*hero)) else {
+            self.errand.insert(
+                courier,
+                if empty {
+                    Errand::GoingHome
+                } else {
+                    Errand::PutBack
+                },
+            );
+            return false;
+        };
+        // A courier called with an empty bag still flies out while something
+        // is marked: the call is the ask.
+        if empty && !self.holds_marked(owner) {
             self.errand.insert(courier, Errand::GoingHome);
             return false;
         }
-        let Some(owner) = self.seats[seat].unit.filter(|hero| self.alive(*hero)) else {
-            self.errand.insert(courier, Errand::PutBack);
-            return false;
-        };
         let Some(to) = self.transform.get(owner).map(|at| at.pos) else {
             return false;
         };
@@ -298,8 +312,9 @@ impl World {
             return false;
         }
         self.hand_over(courier, owner);
+        self.collect_marked(courier, owner);
         // What its owner had no room for is carried back to the stash rather
-        // than flown home and sat on.
+        // than flown home and sat on, and what was marked rides the same leg.
         let left = self
             .inventory
             .get(courier)
@@ -313,6 +328,43 @@ impl World {
             },
         );
         false
+    }
+
+    /// Whether a unit's bag holds anything marked for sale.
+    fn holds_marked(&self, unit: Entity) -> bool {
+        self.inventory
+            .get(unit)
+            .is_some_and(|bag| bag.held().any(|stack| stack.for_sale))
+    }
+
+    /// Takes every stack a unit has marked for sale into a courier's free
+    /// slots.
+    fn collect_marked(&mut self, courier: Entity, owner: Entity) {
+        let slots = self.inventory.get(owner).map_or(0, |bag| bag.slots.len());
+        for at in 0..slots {
+            let Some(stack) = self
+                .inventory
+                .get(owner)
+                .and_then(|bag| bag.slots.get(at).copied().flatten())
+            else {
+                continue;
+            };
+            if !stack.for_sale {
+                continue;
+            }
+            let Some(bag) = self.inventory.get_mut(courier) else {
+                return;
+            };
+            let Some(free) = bag.slots.iter_mut().find(|held| held.is_none()) else {
+                return;
+            };
+            *free = Some(stack);
+            if let Some(bag) = self.inventory.get_mut(owner)
+                && let Some(held) = bag.slots.get_mut(at)
+            {
+                *held = None;
+            }
+        }
     }
 
     /// Walks home and stands there.

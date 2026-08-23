@@ -154,6 +154,12 @@ pub enum RejectReason {
     Disabled,
     /// The match has not started or has already finished.
     NotPlaying,
+    /// Only the seat that bought an item may sell it or mark it for sale.
+    NotYourItem,
+    /// The spot aimed at is ground nothing may stand on.
+    ClosedGround,
+    /// The slot named is not one the unit carries on itself.
+    NotInBag,
 }
 
 /// Final numbers for one seat.

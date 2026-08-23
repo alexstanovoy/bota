@@ -806,6 +806,7 @@ pub fn item_views(bag: &Inventory) -> Vec<Option<ItemView>> {
                     mana_cost: def.map_or(0, |def| def.mana_cost),
                     range: def.and_then(|def| def.active).map_or(0, item_range),
                     aim: def.and_then(|def| def.active).map(item_aim),
+                    for_sale: stack.for_sale,
                 }
             })
         })

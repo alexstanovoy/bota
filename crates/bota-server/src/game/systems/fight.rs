@@ -105,6 +105,11 @@ impl World {
                     self.seats[index].deaths += 1;
                     self.seats[index].respawn_left = World::respawn_wait(level);
                 }
+                // A courier's load waits on the seat the way a hero's bag
+                // does, and comes back aboard the next one.
+                if self.seats[index].courier == Some(entity) {
+                    self.seats[index].courier_kept = self.inventory.remove(entity);
+                }
             }
             if let Some(index) =
                 killer.and_then(|k| self.seats.iter().position(|s| s.unit == Some(k)))

@@ -41,7 +41,7 @@ pub const ERRANDS: usize = 4;
 /// The order is the numbering. Adding to the end never moves what is already
 /// there, which matters once a set of weights has been trained: the model has
 /// learned what each number means.
-pub const BLOCKS: [(&str, usize); 11] = [
+pub const BLOCKS: [(&str, usize); 12] = [
     ("stand", 1),
     ("swing at a creep", CREEPS),
     ("put out a creep of its own", OWN_CREEPS),
@@ -53,6 +53,7 @@ pub const BLOCKS: [(&str, usize); 11] = [
     ("buy", 1),
     ("spend a skill point", ABILITIES),
     ("send the courier", ERRANDS),
+    ("sell an item", ITEMS),
 ];
 
 /// How many deeds there are altogether.
@@ -102,6 +103,10 @@ pub enum Deed {
     Learn(usize),
     /// Send the courier on an errand.
     Errand(Errand),
+    /// Sell what is in an inventory slot. At the shop it sells at once;
+    /// anywhere else it marks the stack to be sold, and asked again unmarks
+    /// it.
+    Sell(usize),
 }
 
 /// Somewhere a deed may send the bot.
@@ -204,6 +209,7 @@ impl Deed {
                         Errand::GoHome => 3,
                     }
             }
+            Deed::Sell(at) => start_of(11) + at,
         }
     }
 
@@ -232,12 +238,13 @@ impl Deed {
             7 => Deed::Use(at),
             8 => Deed::Buy,
             9 => Deed::Learn(at),
-            _ => Deed::Errand(match at {
+            10 => Deed::Errand(match at {
                 0 => Errand::TakeStash,
                 1 => Errand::Deliver,
                 2 => Errand::Burst,
                 _ => Errand::GoHome,
             }),
+            _ => Deed::Sell(at),
         }
     }
 }

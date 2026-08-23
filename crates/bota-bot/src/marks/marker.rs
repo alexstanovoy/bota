@@ -15,8 +15,8 @@
 //! farms nothing.
 
 use super::{
-    find_the_lane, grow_rich, grow_strong, hold_the_lane, keep_it_legal, meet_the_wave, stock_up,
-    take_the_towers, work_the_lane,
+    find_the_lane, grow_rich, grow_strong, hold_the_lane, meet_the_wave, stock_up, take_the_towers,
+    work_the_lane,
 };
 use crate::{Card, Carried, LADDER, LESSONS, Lesson, Moment};
 
@@ -34,7 +34,6 @@ pub fn score(lesson: Lesson, now: &Moment, carried: &mut Carried) -> f32 {
         Lesson::TakeTheTowers => take_the_towers::score(now, carried),
         Lesson::GrowRich => grow_rich::score(now, carried),
         Lesson::GrowStrong => grow_strong::score(now, carried),
-        Lesson::KeepItLegal => keep_it_legal::score(now, carried),
     }
 }
 

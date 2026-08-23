@@ -80,6 +80,7 @@ pub fn hero(idx: u32, team: Team, at: (i32, i32), slot: SlotId) -> UnitView {
         range: 0,
         aim: None,
         mode: None,
+        for_sale: false,
     });
     body
 }
@@ -160,6 +161,7 @@ pub fn a_tick_holding(items: &[u16], gold: i32) -> WorldView {
             range: 0,
             aim: None,
             mode: None,
+            for_sale: false,
         })
     };
     let (bag, spilled) = items.split_at(items.len().min(crate::BAG_SLOTS));
@@ -213,6 +215,7 @@ pub fn a_tick_at(me: (i32, i32), mut units: Vec<UnitView>, gold: i32) -> WorldVi
         ],
         felled_trees: Vec::new(),
         planted_trees: Vec::new(),
+        loot: Vec::new(),
     }
 }
 

@@ -170,8 +170,11 @@ fn item_box_under(mx: f32, my: f32, sw: f32, sh: f32) -> Option<u8> {
     None
 }
 
-/// Ends an item drag: dropped on itself a consumable is used, on another
-/// box it moves, on the sell strip it is sold, anywhere else nothing.
+/// Ends an item drag: dropped on itself a consumable is used, on another box
+/// it moves, on the sell strip it is sold or marked for sale, on an ally's
+/// portrait it is handed over, and over the open world it is put out of the
+/// bag — into an allied bag under the cursor, or onto the ground. The rest
+/// of the HUD swallows the drop.
 fn finish_item_drag(app: &mut App, mx: f32, my: f32, sw: f32, sh: f32) {
     let Some(from) = app.held_item.take() else {
         return;
@@ -195,8 +198,78 @@ fn finish_item_drag(app: &mut App, mx: f32, my: f32, sw: f32, sh: f32) {
             app.send_order(Order::SellItem {
                 slot: ItemSlot(from),
             });
+            return;
+        }
+        if shop.contains(mx, my) {
+            return;
         }
     }
+    // A drop on an ally's portrait hands the item to that seat's body,
+    // wherever it stands: the walk is the server's business.
+    let portraits = app
+        .view
+        .as_ref()
+        .map(|view| crate::hud::top_portraits(&view.players, sw))
+        .unwrap_or_default();
+    for (seat, rect) in portraits {
+        if !rect.contains(mx, my) {
+            continue;
+        }
+        let ally = app
+            .view
+            .as_ref()
+            .and_then(|view| view.players.iter().find(|p| p.slot == seat))
+            .is_some_and(|p| Some(p.team) == app.my_team());
+        if from < crate::slots::BAG_SLOTS
+            && ally
+            && let Some(body) = app.body_of(seat)
+        {
+            app.send_order(Order::PutItem {
+                slot: ItemSlot(from),
+                target: OrderTarget::Unit { target: body },
+            });
+        }
+        return;
+    }
+    if crate::hud::bottom_panel(sw, sh).contains(mx, my)
+        || crate::hud::minimap(sh).contains(mx, my)
+        || crate::hud::shop_button(sw, sh).contains(mx, my)
+    {
+        return;
+    }
+    // Over the open world. What the stash holds stays put: it is a shelf at
+    // the shop, not a pair of hands.
+    if from >= crate::slots::BAG_SLOTS {
+        return;
+    }
+    let (wx, wy) = app.camera.screen_to_world(mx, my, sw, sh);
+    // Whoever the panel is about is the one that puts: the courier lays its
+    // own load out the same way the hero does. Its own body under the cursor
+    // reads as the ground at its feet.
+    let carrier = app.commanded();
+    let target = app
+        .view
+        .as_ref()
+        .and_then(|view| unit_under_cursor(view, wx, wy, carrier, true))
+        .filter(|id| takes_a_handover(app, *id))
+        .map(|target| OrderTarget::Unit { target })
+        .unwrap_or(OrderTarget::Point {
+            pos: world_vec(wx, wy),
+        });
+    app.send_order(Order::PutItem {
+        slot: ItemSlot(from),
+        target,
+    });
+}
+
+/// Whether a unit is one an item can be handed to: an allied hero or courier.
+fn takes_a_handover(app: &App, id: EntityId) -> bool {
+    let Some(view) = &app.view else {
+        return false;
+    };
+    view.units.iter().find(|u| u.id == id).is_some_and(|u| {
+        Some(u.team) == app.my_team() && matches!(u.kind, UnitKind::Hero | UnitKind::Courier)
+    })
 }
 
 /// A free left click picks what it lands on, whatever that is; the ground
@@ -468,11 +541,36 @@ fn order_controls(app: &mut App) {
             .view
             .as_ref()
             .and_then(|view| unit_under_cursor(view, wx, wy, me, true));
-        match target {
-            Some(target) => app.send_order(Order::AttackUnit { target }),
-            None => app.send_order(Order::Move { pos: ground }),
+        // A right click reads the ground the way Dota does: a unit is
+        // attacked, an item lying there is picked up, open ground is walked
+        // to.
+        let lying = match target {
+            Some(_) => None,
+            None => app
+                .view
+                .as_ref()
+                .and_then(|view| loot_under_cursor(view, wx, wy)),
+        };
+        match (target, lying) {
+            (Some(target), _) => app.send_order(Order::AttackUnit { target }),
+            (None, Some(item)) => app.send_order(Order::TakeItem { target: item }),
+            (None, None) => app.send_order(Order::Move { pos: ground }),
         }
     }
+}
+
+/// The ground item nearest the cursor, if the cursor is close enough.
+pub fn loot_under_cursor(view: &WorldView, wx: f32, wy: f32) -> Option<EntityId> {
+    let mut best: Option<(f32, EntityId)> = None;
+    for lying in &view.loot {
+        let dx = lying.pos.x.to_f32() - wx;
+        let dy = lying.pos.y.to_f32() - wy;
+        let dist = (dx * dx + dy * dy).sqrt();
+        if dist <= 35.0 && best.is_none_or(|(b, _)| dist < b) {
+            best = Some((dist, lying.id));
+        }
+    }
+    best.map(|(_, id)| id)
 }
 
 /// The number keys use the six inventory slots.

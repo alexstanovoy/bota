@@ -103,6 +103,7 @@ fn empty_collections_survive() {
         players: Vec::new(),
         felled_trees: Vec::new(),
         planted_trees: Vec::new(),
+        loot: Vec::new(),
     };
     assert_eq!(roundtrip(&view), view);
 }
@@ -124,6 +125,9 @@ fn every_reject_reason_survives() {
         RejectReason::InventoryFull,
         RejectReason::Disabled,
         RejectReason::NotPlaying,
+        RejectReason::NotYourItem,
+        RejectReason::ClosedGround,
+        RejectReason::NotInBag,
     ];
     for reason in reasons {
         assert_eq!(roundtrip(&reason), reason, "{reason:?}");

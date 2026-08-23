@@ -109,6 +109,7 @@ New external dependencies only after discussion. Allowed:
 | `resvg` | `bota-client` | rasterising the item art |
 | `rand_chacha` 0.10 | `bota-server` | PRNG |
 | `clap` (derive) | every binary | command line arguments |
+| `serde_yaml` 0.9 | `bota-bot` | reading a training plan |
 | `candle-core` 0.11 | both bots | the networks they decide with |
 
 Every binary parses its arguments with `clap` and its derive. There is no bar low enough

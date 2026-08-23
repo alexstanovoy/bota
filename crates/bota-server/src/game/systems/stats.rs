@@ -43,9 +43,10 @@ pub struct StatsCx<'a> {
 /// Rewrites every entity's [`Stats`] from the kind of unit it is, how far it
 /// has been raised, and what is on it.
 ///
-/// A pool follows its maximum: gaining maximum health gains the same health,
-/// and losing it never leaves a pool above the new maximum. An entity with no
-/// stats behind it yet has just been stood up, and stands up full.
+/// A pool follows its maximum: when the maximum moves, the pool keeps its
+/// filled fraction, and a pool that held anything is never left empty by the
+/// move alone. An entity with no stats behind it yet has just been stood up,
+/// and stands up full.
 pub fn derive_stats(cx: StatsCx<'_>) {
     let StatsCx {
         entities,
@@ -217,9 +218,22 @@ fn raised(kind: &UnitDef, levels: i32, steps: i32) -> Stats {
 }
 
 /// What a pool holds once its maximum has moved.
+///
+/// The filled fraction is kept, worked out wide in raw units: a pool times a
+/// pool is past what a [`Fixed`] holds. The result stays within
+/// `Fixed::EPSILON..=now` when anything was held, and within `0..=now`
+/// otherwise.
 fn follow(held: Fixed, was: Fixed, now: Fixed) -> Fixed {
-    let grown = if now > was { held + (now - was) } else { held };
-    grown.min(now)
+    if now <= Fixed::ZERO {
+        return Fixed::ZERO;
+    }
+    if held <= Fixed::ZERO || was <= Fixed::ZERO {
+        return held.clamp(Fixed::ZERO, now);
+    }
+    let kept = i64::from(held.raw) * i64::from(now.raw) / i64::from(was.raw);
+    Fixed {
+        raw: kept.clamp(i64::from(Fixed::EPSILON.raw), i64::from(now.raw)) as i32,
+    }
 }
 
 /// A speed taken to a percent of itself.

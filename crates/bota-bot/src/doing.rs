@@ -121,6 +121,13 @@ pub fn allowed(field: &Field) -> Vec<bool> {
             }
         }
     }
+    for slot in 0..ITEMS {
+        // Anything held may be sold — or marked to be sold and unmarked
+        // again; which one an ask is, is settled by where the body stands.
+        if me.items.get(slot).is_some_and(|held| held.is_some()) {
+            allow(Deed::Sell(slot));
+        }
+    }
     out
 }
 
@@ -250,6 +257,12 @@ impl Deed {
                         slot: AbilitySlot(at as u8),
                         target: OrderTarget::None,
                     },
+                })
+            }
+            Deed::Sell(slot) => {
+                me.items.get(slot)?.as_ref()?;
+                hero(Order::SellItem {
+                    slot: ItemSlot(slot as u8),
                 })
             }
         }

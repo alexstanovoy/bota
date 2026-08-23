@@ -30,6 +30,7 @@ pub fn draw(app: &App) {
             if let Some(view) = &app.view {
                 draw_world(app, view);
                 draw_hud(app, view);
+                draw_held_item(app);
             } else {
                 center_text("waiting for the first snapshot...", 24.0, WHITE);
             }
@@ -379,6 +380,15 @@ fn draw_world(app: &App, view: &WorldView) {
     draw_landing_spots(app, view, to_screen);
     draw_tree_pick(app, view, to_screen);
 
+    // What lies on the ground, under whatever stands over it.
+    for lying in &view.loot {
+        let (x, y) = to_screen(lying.pos.x.to_f32(), lying.pos.y.to_f32());
+        let h = (24.0 * app.camera.zoom).clamp(12.0, 24.0);
+        let w = h * 1.25;
+        if !crate::icons::draw_item_icon(lying.item.0, x - w / 2.0, y - h / 2.0, w, h) {
+            draw_rectangle(x - 4.0, y - 4.0, 8.0, 8.0, GOLD);
+        }
+    }
     let me = app.my_hero();
     for u in &view.units {
         draw_unit(app, u, me == Some(u.id), to_screen);
@@ -1409,7 +1419,40 @@ fn draw_item_box(
             attribute_color(mode),
         );
     }
+    if item.for_sale {
+        draw_text("$", r.x + r.w - 9.0, r.y + 11.0, 13.0, GOLD);
+    }
+    // The box an item is being dragged out of keeps a dimmed picture of it;
+    // the bright one rides under the cursor.
+    if held {
+        draw_rectangle(
+            r.x + 1.0,
+            r.y + 1.0,
+            r.w - 2.0,
+            r.h - 2.0,
+            Color::new(0.0, 0.0, 0.0, 0.55),
+        );
+    }
     shade_slot(&look, r.x, r.y, r.w, r.h, rate);
+}
+
+/// The item being dragged, riding under the cursor.
+///
+/// Drawn over the whole of the HUD, so the hand is never hidden by what it
+/// is carried across.
+fn draw_held_item(app: &App) {
+    let Some(slot) = app.held_item else {
+        return;
+    };
+    let Some(item) = app.item_in(slot) else {
+        return;
+    };
+    let (mx, my) = mouse_position();
+    let (w, h) = (32.0, 26.0);
+    if !crate::icons::draw_item_icon(item.id.0, mx - w / 2.0, my - h / 2.0, w, h) {
+        let name = crate::catalog::item(item.id.0).map_or("?", |face| face.name);
+        draw_text(name, mx - w / 2.0, my + 4.0, 12.0, WHITE);
+    }
 }
 
 /// The stash strip above the bottom panel, dimmed away from home.

@@ -72,6 +72,7 @@ impl World {
         // whatever the order itself does gets a chance to start another.
         self.teleport.remove(unit);
         self.dismember.remove(unit);
+        self.handling.remove(unit);
         if self.errand.get(unit).is_some() {
             self.errand.insert(unit, crate::game::Errand::None);
         }
@@ -125,6 +126,14 @@ impl World {
             Order::BuyItem { item } => {
                 let mut events = Vec::new();
                 self.buy(cmd.slot, item, &mut events);
+                return;
+            }
+            Order::PutItem { slot, target } => {
+                self.put_item(unit, usize::from(slot.0), target);
+                return;
+            }
+            Order::TakeItem { target } => {
+                self.take_item(unit, target);
                 return;
             }
         };
@@ -246,13 +255,72 @@ impl World {
                 }
                 Ok(())
             }
-            Order::SellItem { slot } => {
-                let at = usize::from(slot.0);
+            Order::SellItem { slot: named } => {
+                let at = usize::from(named.0);
+                let held = if in_stash(at) {
+                    seat.stash.slots.get(at - BAG_SLOTS).copied().flatten()
+                } else {
+                    self.inventory
+                        .get(unit)
+                        .and_then(|bag| bag.slots.get(at).copied().flatten())
+                };
+                let Some(held) = held else {
+                    return Err(RejectReason::EmptySlot);
+                };
+                // Away from the shop the order marks rather than sells, so
+                // there is no place it is refused for — only a stack that is
+                // not this seat's to sell.
+                if held.owner != slot {
+                    return Err(RejectReason::NotYourItem);
+                }
+                Ok(())
+            }
+            Order::PutItem {
+                slot: named,
+                target,
+            } => {
+                let at = usize::from(named.0);
+                if at >= BAG_SLOTS {
+                    return Err(RejectReason::NotInBag);
+                }
                 if !self.holds(unit, seat, at) {
                     return Err(RejectReason::EmptySlot);
                 }
-                if !in_stash(at) && !self.at_shop(unit) {
-                    return Err(RejectReason::NotAtShop);
+                match target {
+                    OrderTarget::None => Ok(()),
+                    OrderTarget::Point { pos } => {
+                        if self.grid.walkable(*pos) {
+                            Ok(())
+                        } else {
+                            Err(RejectReason::ClosedGround)
+                        }
+                    }
+                    OrderTarget::Unit { target } => {
+                        let Some(to) = self.of_wire(*target) else {
+                            return Err(RejectReason::UnknownTarget);
+                        };
+                        if !self.can_see(seat.team, to) {
+                            return Err(RejectReason::UnknownTarget);
+                        }
+                        if to == unit
+                            || self.team.get(to) != Some(&seat.team)
+                            || self.inventory.get(to).is_none()
+                        {
+                            return Err(RejectReason::WrongTargetKind);
+                        }
+                        Ok(())
+                    }
+                }
+            }
+            Order::TakeItem { target } => {
+                let Some(mark) = self.of_wire(*target) else {
+                    return Err(RejectReason::UnknownTarget);
+                };
+                if !self.can_see(seat.team, mark) {
+                    return Err(RejectReason::UnknownTarget);
+                }
+                if self.loot.get(mark).is_none() || self.inventory.get(unit).is_none() {
+                    return Err(RejectReason::WrongTargetKind);
                 }
                 Ok(())
             }

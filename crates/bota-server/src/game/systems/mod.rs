@@ -8,6 +8,7 @@ mod fiend;
 mod fight;
 mod gear;
 mod ground;
+mod handling;
 mod hitting;
 mod hook;
 mod jungle;

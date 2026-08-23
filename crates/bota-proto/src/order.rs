@@ -94,8 +94,32 @@ pub enum Order {
         item: ItemId,
     },
     /// Sell an item from the inventory for part of its cost.
+    ///
+    /// Away from the shop this marks the stack for sale instead, and a second
+    /// order on the same slot unmarks it. A marked stack is sold the moment it
+    /// reaches the shop — carried there, delivered by courier, or put in the
+    /// stash.
     SellItem {
         /// Which inventory slot to empty.
         slot: ItemSlot,
+    },
+    /// Lay an item out of the bag: on the ground, or into an ally's hands.
+    ///
+    /// Aimed at a point it lands there, aimed at nothing it lands underfoot,
+    /// and aimed at an allied unit with a bag it goes into that bag's first
+    /// free slot. The unit walks into reach first when it has to.
+    PutItem {
+        /// Which bag slot gives the item up. Stash slots take no part.
+        slot: ItemSlot,
+        /// Where the item goes.
+        target: OrderTarget,
+    },
+    /// Take an item lying on the ground into the first free bag slot.
+    ///
+    /// The unit walks over to it first when it has to. Any unit with a bag may
+    /// take any ground item, whoever dropped it.
+    TakeItem {
+        /// The ground item to take. Must be visible to the issuing team.
+        target: EntityId,
     },
 }

@@ -452,7 +452,7 @@ struct Playing {
     #[arg(long, default_value = "127.0.0.1:4455")]
     addr: String,
     /// What the lobby shows.
-    #[arg(long, default_value = "bot-v2")]
+    #[arg(long, default_value = "bot")]
     name: String,
     /// Which hero to ask for.
     #[arg(long, default_value_t = 0)]
@@ -494,7 +494,7 @@ fn main() {
     let cli = Cli::parse();
     let doing = cli.doing.unwrap_or(Doing::Play(cli.playing));
     if let Err(err) = carry_out(doing) {
-        eprintln!("bot-v2: {err}");
+        eprintln!("bot: {err}");
         std::process::exit(1);
     }
 }
@@ -653,8 +653,14 @@ fn thin(frames: &mut Vec<bota_bot::Frame>, most: usize, dice: &mut Dice) {
 /// Says what a model is shown and what it may choose.
 fn say_the_shape() {
     println!(
-        "shown: {NUMBERS} numbers a tick, {} in all",
+        "shown: {NUMBERS} numbers a tick, {} frames of them, {} in all",
+        bota_bot::HISTORY,
         bota_bot::INPUT
+    );
+    println!(
+        "  frames from {} ticks back, in ticks: {:?}",
+        bota_bot::REMEMBERED,
+        bota_bot::AGES
     );
     for (name, size) in bota_bot::LAYOUT {
         println!("  {size:4}  {name}");
@@ -693,7 +699,7 @@ fn join_a_match(asked: Playing) -> std::io::Result<()> {
         let path = asked.weights.unwrap_or_else(Model::path);
         if !path.exists() {
             return Err(std::io::Error::other(format!(
-                "no weights at {}: write some with `bota-bot-v2 fresh` first",
+                "no weights at {}: write some with `bota-bot fresh` first",
                 path.display()
             )));
         }

@@ -777,6 +777,11 @@ pub const SHOP_RANGE: i32 = 1000;
 pub const SELL_PCT: i32 = 50;
 /// Ticks after purchase in which an unused item refunds in full.
 pub const SELL_REFUND_TICKS: u32 = 300;
+/// How far an item may be laid on the ground or handed to another bag, in
+/// world units.
+pub const PUT_ITEM_RANGE: i32 = 400;
+/// How close a unit must be to take an item off the ground, in world units.
+pub const TAKE_ITEM_RANGE: i32 = 150;
 /// How far from an enemy cast an item gains a charge from it.
 pub const MAGIC_CHARGE_RANGE: i32 = 1200;
 /// How far back along its line a blink steps looking for open ground.

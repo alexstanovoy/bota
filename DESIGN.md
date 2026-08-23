@@ -423,8 +423,15 @@ exploit any leak a human reviewer shrugs off:
   remotely it waits in the stash, and the stash itself opens only at that shop.
   Selling also happens at the shop: half price back, the full price for an
   untouched item within ten seconds of purchase. `MoveItem` swaps any two slots.
-  Carried bonuses are flat and apply only from unmuted inventory slots; growing a
-  pool keeps its filled fraction. Consumables (Healing Salve, Clarity) drip over
+  Carried bonuses are flat and apply only from unmuted inventory slots; a pool
+  keeps its filled fraction whichever way its maximum moves. The earlier rule —
+  grow by the whole delta, shrink by clamping alone — was a mint: a Power
+  Treads wheel (strength → agility → intelligence → strength) re-gained on
+  every switch back what the switch away never took, and a few dozen switches
+  refilled both pools from next to nothing. The scaling floors, so a full
+  wheel can only lose a sliver, never gain one; and a pool that held anything
+  is kept off zero, so the wheel cannot kill its owner either. Consumables
+  (Healing Salve, Clarity) drip over
   thirty seconds and spill on any hit from a hero. Items survive the hero's
   death on the seat.
 - An item set to an attribute — Power Treads — keeps which one on the stack
@@ -446,6 +453,48 @@ exploit any leak a human reviewer shrugs off:
   are already filtered by what it may see, and charges do not answer to
   vision. A stack that may gain charges is kept when its last one is spent;
   every other stack is gone with it.
+- An item on the ground is an entity: a transform and the whole stack, charges,
+  attribute mode and the rest riding along untouched. An entity rather than a
+  world-level list because everything wanted comes with it — a stable
+  `EntityId` for an order to name, and the same visibility rows units use, so
+  the fog covers ground items without a line of new code. It has no team, no
+  health and no hull: it is walked through, cannot be struck, and lies there
+  until somebody takes it. Anybody with a bag may — enemies included, which is
+  the whole drama of a courier shot down over the river or a Gem dropped in
+  Dota. What keeps theft from being a bank raid is ownership, below.
+- Two orders cover the ground: `PutItem` lays what sits in a bag slot out —
+  at a point, underfoot when aimed at nothing, or into the first free slot of
+  an allied bag when aimed at a unit — and `TakeItem` picks a ground item up.
+  Dropping and handing over are one order, not two, because they are one
+  motion — out of the bag, differing only in where it lands — and
+  `OrderTarget` already spells the difference. Both orders walk their unit
+  into reach first, the way Dota reads a drop aimed across the map; an aimed
+  unit may be moving, so following is needed anyway, and one walk serves both.
+  The walking lives in one `Handling` component and one tick pass shaped like
+  the courier's errands, cancelled where an errand is: any later order calls
+  it off. Item actives refuse beyond their reach instead of walking, and stay
+  that way: a use is aimed where the fight is, a put is aimed where the feet
+  will be.
+- The stash does not `PutItem`: it is a shelf at the shop, not a pair of
+  hands. Move the item into the bag first.
+- Selling away from the shop marks the stack for sale instead of refusing; a
+  second sell order on the slot unmarks it, so no new order kind is spent on
+  cancelling. A marked stack still carries its bonuses — it is owned until it
+  is sold — but takes no part in builds, or the boots marked for sale would
+  vanish into Power Treads mid-flight. The sale itself is a per-tick pass over
+  what stands at the shop, the same shape and the same argument as builds:
+  the marked stack may arrive by courier, in its owner's bag, or already sit
+  in the stash, and a pass owns all three where hooks would multiply. The
+  courier folds in with one change: delivery hands over its load, then takes
+  every marked stack from the owner's bag, and the existing put-back leg
+  carries them to the stash where the pass sells them. A courier called with
+  an empty bag still flies out when something is marked: the call is the ask.
+- Every stack knows the seat that bought it, and only that seat may sell or
+  mark it. Without this, sell-by-ally is a wire for pumping gold between
+  seats, and an enemy who picks a dropped item up cashes it at the shop.
+  Wearing, using and handing back are all allowed on anybody's stack — the
+  rule guards the till, not the hands. Ownership stays server-side; the wire
+  does not carry it.
 - Fog of war is mandatory: without it a bot learns to play with full information.
 - Victory: the Ancient falls.
 
@@ -530,6 +579,46 @@ slot 3 an ultimate volley launching an attack projectile at every enemy unit in
 its radius. A crit rolls once at windup completion and rides the projectile,
 reported only in the `Damaged` event.
 
+Shadow Fiend carries three razes and the requiem, and gathers souls without spending
+a slot on them. Dota gives him six entries — three razes, Necromastery, Presence of the
+Dark Lord and Requiem of Souls — and a hero here has four slots. The three razes are
+what the hero is played by, so they keep their slots; Necromastery becomes an innate of
+the body, a `souls` flag on `HeroDef` that stands the `Souls` component up at spawn and
+grows its cap with the hero level rather than with a skill point. Presence is dropped
+rather than merged into something else: an armor aura is the one part of the kit that
+changes nothing about how he is played.
+
+A soul is taken only from what he brings down himself, which is the killer `bury`
+already carries, and a hero is worth three where anything else is worth one. Souls
+outlive his own death — they wait on the seat in `Kept` with the abilities and the
+items — which Dota does not do. Dota's version spends the accumulation twice, once on
+death and once on the requiem, and a hero whose only scaling is a resource that two
+different events take away is a hero the bots learn to stop gathering with. The requiem
+therefore reads the souls and keeps them; its cooldown is what limits it.
+
+Souls are not a component of their own. Necromastery and Flesh Heap are the same shape -
+a count that grows on a death, never runs out, and survives the body - so both are one
+`Stacks` component keyed by `StackKind`, and a third of them costs a variant rather than
+a table, a field in `StatsCx`, a line in the hash and a line in the projection. The wire
+follows: an effect carries an `EffectAmount`, either `Ticks` for one that runs out or
+`Stacks` for one that is counted, and a gathered count travels as an ordinary effect with
+its own `EffectId`. A `souls: u32` on `UnitView` was written first and thrown away: it
+puts one hero's vocabulary into the shared one, it says nothing about the flesh heap,
+which has the same shape and was not on the wire at all, and every counter after it would
+have to buy its own field. The two counts are separate optional fields rather than one
+enum of `Ticks` or `Stacks`: an effect that stacks and also runs out is an ordinary thing
+to want - Dota's Fury Swipes is one - and a sum type forecloses it in the shared
+vocabulary, which is the expensive place to be wrong. The byte an effect pays for the
+second `Option` buys that.
+
+A raze is aimed at a point rather than fired along the facing. The engine has no
+angle-to-vector table — `facing_towards` is an octant approximation and facing is
+cosmetic, nothing compares it — so the only exact direction available is the one from
+the caster to a point, and `point_along` walks that line out to the raze's own distance.
+The consequence is that the aim names the line and not the landing spot: a raze aimed
+short still lands at its reach, and one aimed long walks the caster in first, on the
+same rule every other ability with a cast range uses.
+
 Hero roadmap (added as data + ability implementations; the engine does not change):
 
 | Hero | Type | Abilities |
@@ -539,6 +628,9 @@ Hero roadmap (added as data + ability implementations; the engine does not chang
 | Vex | ranged nuker | nuke / slowing AoE / mana passive / ult: AoE burst |
 | Grum | melee initiator | hook / DoT aura / slow / ult: AoE stun |
 | Lira | support | heal / shield / wards / ult: team heal aura |
+
+Built since: Pudge (hook / rot / flesh heap / ult: dismember) and Shadow Fiend
+(three razes / ult: requiem, with souls innate).
 
 ## Protocol
 
@@ -663,6 +755,127 @@ already gets. Snapshots are whole, so rendering can resume from any point of the
 file. In 1v1 the stream runs at about 2.5 MB per minute; archiving is an external
 compressor's job, not the protocol's.
 
+### What a slot is worth, and who works it out
+
+Everything a slot of the panel shows about the thing in it rides in that unit's
+own view, already worked out by the server: the range of the next cast, its
+mana, whether a toggle is on, whether a skill point could go into it. None of
+it is a number the client looks up. The reason is that none of these are
+properties of a catalog entry: a range moves with the level, and once an item
+or a talent moves it, two units holding the same ability hold two different
+ranges. `AbilityView.mana_cost` already worked this way, and everything else
+followed it.
+
+The one thing that belongs to no unit is what the shop asks for a thing nobody
+holds yet, so `MatchInfo` carries the price and the parts of every item once
+per match, and the client prices a purchase against what the seat holds by the
+same rule the server charges by. The client's own catalog is what is left over
+after that: names, blurbs and art, and not one number.
+
+`can_level` is a bit rather than a rule. The client used to hold its own copy
+of "a basic ability's level k waits for hero level 2k-1, an ultimate for 6, 8
+and 10" and its own subtraction of points spent from the hero level; the
+server already answers all of that in `level_floor`, and answering it once is
+cheaper than keeping two copies honest.
+
+`Aim` names a fourth and fifth kind of target beyond nothing, a point and a
+unit: a tree, and a spot within reach of an allied building. Both cross the
+wire as a point — which one was meant is settled where the use is carried out —
+but the client has to know which it is to draw the right thing under the
+cursor, and saying so is one field where the alternative was a second boolean
+beside the aim and a hardcoded item id in the renderer.
+
+### Pressing a slot
+
+A press is sent whatever state the slot is in. A passive, an ability with no
+points in it, one on cooldown, an item with no charges — all of them reach the
+server, and the server answers with the reason. The client gates nothing,
+because every gate it could hold is a copy of a rule that already lives in
+`validate_order`, and a copy that drifts turns into a press that vanishes with
+no answer at all.
+
+That puts one requirement on the server: everything `use_item` and the cast
+system can refuse silently has to be named in `validate_order` first.
+Otherwise the order is accepted, quietly does nothing, and the client — which
+no longer holds an opinion — has nothing to show.
+
+Both a key and a click on the box go through one function, and what a press
+means is decided by a pure one that takes only the facts that settle it: which
+slot, whether control is down, what is in the slot and how it is aimed, what
+is already taken up, and who is commanded. Two entry points that each grew
+their own rules is what the client had before — a click on an ability box did
+nothing at all, and a click on an item box worked only for consumables while
+its key worked for everything.
+
+How a slot is drawn is a set of independent answers rather than one state,
+because the states genuinely combine: what has no points in it is unlearned
+and unusable at once, and a passive may still sit on a cooldown. Unlearned is
+drawn darker than merely unusable, so the two never read as one another, and a
+toggle that is on is framed in a colour the aiming frame does not use, since
+that one is already the colour of a selection.
+
+### Picking, and what carries the camera
+
+One rule for everything that stands. A hero of one's own, an enemy hero, a
+courier, a creep, a building — a click picks it, a shortcut picks it, and what
+is picked is what the panel shows. There is no separate notion of picking a
+seat: a seat is reached through the hero standing in it, and the panel finds
+the seat behind whatever hero is picked. What is picked and what a player may
+order are two questions, not one: anything at all may be looked at, and only
+what this seat drives answers to the keys.
+
+Picking never moves the camera. Reaching for the same thing twice does, and
+that is the only thing a pair means: F1 twice pins the camera to one's own
+hero, F2 twice to the courier, two clicks on a unit to that unit. A pair is
+spent when it is made, so three presses are one pair and one single rather
+than two pairs.
+
+The camera is free otherwise. Driving it by hand — the arrows, the edge of the
+screen, a click on the minimap — lets go of whatever it was pinned to, because
+asking to look elsewhere is asking to stop being carried. The one exception is
+the start of a match: the first hero to stand is pinned once, so a match does
+not open on an empty middle of the map.
+
+A pin holds a seat rather than a body when what it holds is a hero. A hero
+that dies comes back as a new entity, and a camera pinned to the body would be
+left behind by the first death and never find its way back without being told
+to again.
+
+W, A, S and D pan only for a seat with no hero to give orders to. Once there
+is one, those letters are orders — A is attack-move, S is stop — and the
+arrows are what is left to drive the camera by hand.
+
+### Looking at what is not there
+
+Two different things are not there, and they are answered in two different
+places.
+
+A hero that has fallen leaves its abilities and its items on the seat: both
+outlive the body, and both are gone from the wire the moment the body is,
+since they only ever rode in a `UnitView`. `PlayerView` carries them while no
+body stands, under the same rule the stash goes by — told to its own side and
+to nobody else. That side is the one that can act on it, and telling the other
+side what a dead enemy bought while dead would be telling it more than it saw.
+
+An enemy in the fog is the other case, and the server cannot help with it at
+all: what a side may not see is what a side is not told, and that is the one
+rule the whole projection is built on. So the client keeps the last state it
+saw of every unit a seat owns — a handful of entries, since a seat stands in
+one body at a time and a body left behind is dropped when the next one
+appears. What is shown of a unit out of sight is that memory, marked with how
+long ago it was true.
+
+That memory is also the handle a fallen seat is picked by. A seat with no hero
+standing has no unit on the wire, so there is nothing to name it with; the
+body it left is the name. This is why picking stayed a unit and did not grow a
+second form for seats: the body outlives the hero in the client's memory just
+as the kit outlives it on the seat.
+
+The panel and the popups over it read one answer, worked out once: which body
+is being shown, what a fallen one left behind, and how stale it is. Two
+readings of that question would drift, and the popup over a slot would end up
+describing a different item from the one drawn in it.
+
 ### Tick modes
 
 - `Realtime` — 30 Hz on the wall clock, a late command applies on the next tick.
@@ -785,6 +998,42 @@ A trip is not made for one item: it waits until `courier_batch` of them have pil
 the first has waited `courier_patience` ticks. And it is held back entirely while the bot
 is being shot at — a courier walks to where its owner stands, and where its owner stands
 is what is shooting.
+
+An errand answers to what the courier is carrying, not only to what waits in the
+stash. Sent for a stash that is empty while already holding something, it takes what it
+holds on to its owner rather than flying home with it: a courier that comes to be
+carrying goods it could not hand over would otherwise be sent home by the very key
+meant to bring them, and the goods would ride back and forth for ever. And what an
+owner has no room for is carried back to the stash rather than kept aboard, so a full
+bag leaves the goods somewhere its owner can reach them rather than orbiting the lane.
+
+Delivery also collects: having handed its load over, the courier takes every stack the
+owner has marked for sale, and the put-back leg it already flies carries them to the
+stash, where the sale pass cashes them. A courier with nothing to deliver still answers
+the call while something is marked — the call is the ask, and refusing it would leave
+marked goods stranded on a hero who cannot reach the shop.
+
+A courier brought down keeps its load. The stacks wait on the seat while the courier is
+gone and come back aboard the next one, the same way a fallen hero's bag waits on the
+seat. Spilling the load on the ground was considered and turned down: the wait already
+prices the death, the goods staying out of reach until the courier stands again is
+punishment enough, and a bot that loses items outright learns to fear the courier
+rather than to use it.
+
+A way found round something is walked to the spot it was found for, and the spot it
+was found for is what is kept beside it. Keeping the last spot asked for instead is what
+made a courier fly the whole of a stale way to where its owner used to stand: a quarry
+that moves a little every tick never moves far enough in one tick to look like a new
+goal, so the way was never found again until its last corner had been reached. And a way
+round anything is found only for what walks. What flies is over all of it, so it is
+pointed straight at where it is going and keeps no route at all.
+
+Walking at something that cannot be struck — an ally, most often, since an order aimed
+at one is how creeps are shaken off — closes until the bodies touch and stops there,
+following it for as long as the order stands. Aiming at the middle of a body instead is
+aiming at a spot inside it, which cannot be reached: the walk presses in, the pass that
+eases overlapping bodies apart pushes back out, and the two together read on the screen
+as circling. Stopping a hair outside the hulls keeps that pass out of it entirely.
 
 ### The numbers held apart from the decisions
 
@@ -1065,7 +1314,7 @@ The whole contract is four pieces.
 |---|---|
 | `field.rs` | one tick read into a settled shape: who is who, in what order, seen from where |
 | `sight.rs` | **156 numbers** built from that |
-| `deed.rs` | **56 deeds**, flat and numbered |
+| `deed.rs` | **62 deeds**, flat and numbered |
 | `doing.rs` | which of them may be done now, and what a chosen number turns into |
 | `marks.rs` | what a tick is worth, lesson by lesson |
 
@@ -1104,6 +1353,17 @@ casts of passives and bolts aimed at the ground. With that written down in `spel
 refusals went to nought. A bot that had only counted its own mask would have called itself
 correct and quietly thrown away one tick in eight.
 
+### What of the ground made it into the list
+
+Of the item orders the wire grew later, the list took only selling: one deed per
+inventory slot, marking far out and cashing at the shop, so the whole trip is the sell
+deed plus the deliver errand it already had. Laying an item down and taking one up are
+not deeds. In selfplay nothing ever lies on the ground — a courier keeps its load
+through death and no deed drops anything — so a take-deed would be a logit that is
+masked on every tick of every match, and a put-deed a way to burn a tick and half an
+item's price. The list is append-only exactly so that either can be added the day
+something puts loot on the ground in front of a bot.
+
 ### The model
 
 Two heads over one trunk of two layers: a number per deed, and one number for what the
@@ -1115,12 +1375,39 @@ and the first bot's home-made baselines — the match's own score, then the aver
 decisions at the same point on the clock — were measured against each other and came out a
 tie. A learned value is the answer the tie was pointing at.
 
-It is shown the last four ticks laid end to end rather than only the newest, because a
-swing that has begun, a creep about to die and a creep just dead look alike in one frame.
-Frames rather than a memory of its own: what history is worth here is mostly the last
-second, and a memory carried through twelve thousand ticks and reset on every death costs
-more to train than that is worth. If a measured gap ever asks for recurrence, the seam is
-the place to put it and nothing above or below would notice.
+It is shown seven ticks laid end to end rather than only the newest, because a swing that
+has begun, a creep about to die and a creep just dead look alike in one frame. Frames
+rather than a memory of its own: a memory carried through twelve thousand ticks and reset
+on every death costs more to train than that is worth. If a measured gap ever asks for
+recurrence, the seam is the place to put it and nothing above or below would notice.
+
+**The frames are spaced by doubling ages, not taken consecutively.** Half a second back,
+then one, two, four, eight and sixteen seconds, and the tick being decided on. Four
+consecutive ticks reached an eighth of a second, which is enough to see a swing land and
+nothing else: whether a wave is being pushed, whether the other hero has been closing for
+the last ten seconds, whether the bot has been standing in the same place since it walked
+there — all of it happens on a scale the old window could not reach. Doubling buys a
+quarter of a minute for three more frames, at the price of resolution the far end does not
+need.
+
+**Ages are the match's own ticks, not how many times the model was asked.** The seat
+chooses nothing while there is nothing to choose, which is mostly being dead, so counting
+calls would let a death quietly stretch a sixteen-second window into a minute. Each frame
+is the newest tick seen at or before its age, so a gap reads as the last thing the seat
+actually saw rather than sliding the other frames along. One frame from beyond the window
+is kept for exactly that reason — after a long gap the oldest age asks for a tick older
+than the window itself.
+
+The price is three more frames on the first layer: `INPUT` goes from `NUMBERS x 4` to
+`NUMBERS x 7`, 624 numbers to 1092, and the model from 240441 weights to 360249. It bought
+them for nothing. A forward pass measured 23.5 us before and 22.5 us after — half again as
+many weights and no more time, because at a batch of one the pass is bound by the ten
+candle operations it is made of and not by the arithmetic inside them. The same reason a
+GPU would lose here is the reason this was free.
+
+Weights trained against the old input cannot be loaded against the new one, and are not
+silently reshaped: `shape mismatch in set, lhs: [1092, 256], rhs: [624, 256]`, and the
+load fails.
 
 ### Lessons
 
@@ -1209,6 +1496,41 @@ Spending is read off what the seat owns — the bag, the stash and the courier's
 item at its price — rather than off the gold falling, which also falls on death and rises
 on its own. Only increases count; selling gold back is not spending it.
 
+### Grow strong
+
+The eighth rung is net worth again, with the purse counted at half its face value. A gold
+is paid for twice over, half each time: half when it is earned, and the other half when it
+is turned into something. Gold that is never spent is never paid its second half.
+
+It exists because **`grow rich` cannot tell hoarding from wearing.** Net worth counts the
+purse at face value, so buying a five-hundred item moves five hundred from one side of the
+sum to the other and the number does not move. Two hands that end a match on the same net
+worth score identically, whether one of them is wearing it and the other sitting on it —
+and one of those two is a hero and the other is a wallet. A test asserts exactly that gap:
+the same five hundred, `grow rich` paying both hands alike and `grow strong` paying the one
+that spent it twice as much.
+
+That `grow rich` will *eventually* reward spending is true and useless. Items win fights,
+fights win farm, farm is net worth — but that is four causal steps, and a breeding search
+that gets one number per match will not find it. The half is a direct signal for what the
+long chain only implies.
+
+**A half rather than nothing.** Counting only the goods would be `stock up` without a
+ceiling: earning gold would pay nothing at all until it was spent, and dying with a full
+purse would cost nothing, which is not true of a hero. A half keeps both ends — income is
+worth something the moment it arrives, and a death still costs.
+
+**It is the longest rung, not `grow rich`'s equal.** Two rungs of the same clock break
+three things the ladder promises at once: that each runs longer than the last, that exactly
+one lesson is still counting when a match ends, and that `Lesson::longest()` names one
+lesson rather than whichever of two ties `max_by_key` happens to return. Five minutes more
+is what it costs to avoid weakening all three, and in release that is about six minutes
+across a whole ladder.
+
+**`grow rich` stays.** A card scores every lesson off one match, so keeping both means every
+report says what the same game was worth on each counting, and the gap between the two
+numbers is exactly how much gold the bot is sitting on.
+
 ### Breeding
 
 Lessons are taught by breeding rather than by gradient. A crowd of models plays the
@@ -1251,6 +1573,61 @@ The cost is known and was measured before building: breeding gets one number per
 where gradient gets one per decision, so it needs roughly a hundred times the matches. At
 thirteen matches a second that is fine for the short rungs and marginal for the last,
 where a match is twelve thousand ticks.
+
+### The plan
+
+`bota-bot train <FILE>` follows a plan: a YAML file naming a sequence of stages, each a
+lesson and the crowd bred at it. `train.yaml` beside the crates is the ladder as it
+stands, so the built-in run is a file rather than a branch.
+
+It replaces a subcommand that took nine flags and applied all nine to all seven rungs.
+Every real run wanted otherwise — a bigger crowd on the late rungs, more matches where
+the variance is worst, a short clock while a lesson's marks are being read — and getting
+it meant seven invocations chained by a shell loop, which is a ladder nobody else can
+walk and one nothing records. A plan is the run, and it is a file that can be committed
+beside the weights it produced.
+
+**Field names are the ordinary ones**, not the crate's: `population`, `generations`,
+`survivors`, `mutation`, `matches`. Inside, those are `folk`, `lives`, `keep`, `spread`,
+`trials`, and the translation lives in `plan.rs` alone. The crate's vocabulary is worth
+having where the code reasons about a crowd; a file somebody writes by hand at two in the
+morning is not that place.
+
+**A stage may say nothing but `score`.** What it leaves out comes from the plan's
+`defaults`, and what those leave out comes from the lesson's own rung and a plain crowd.
+Seven stages differing in one number each is the common case, and repeating nine fields
+seven times is how a plan comes to disagree with itself.
+
+**A stage's `ticks` moves the scoring window, not only the match limit.** A lesson used to
+stop paying at its rung's tick count wherever the match ended, so a stage asking for a
+longer clock than its rung would have run the extra ticks for nothing and reported the
+same mark — a knob that silently does half of what it says. `Marker` now carries a window
+per lesson instead of reading `LADDER`, and the taught lesson's is the stage's.
+
+**The whole plan is checked before the first match.** Every stage is settled up front and
+anything nonsense — a population of one, no survivors, a lesson nobody has heard of, a
+field spelled wrong — is an error naming the stage. A run of several hours that stops on
+its sixth stage over a typo has thrown away the five before it.
+
+**Unknown fields are refused.** `serde(deny_unknown_fields)` on both, so `populaton: 40`
+is an error rather than a setting silently ignored and a run that reads as though it did
+what was asked.
+
+**Where the weights live is the command's business, not the plan's.** A plan says what to
+teach; `--weights` says which model is being taught, defaulting to the standing file. Kept
+in the file, the same teaching run against a fresh model and against last week's would be
+two plans differing in one line that has nothing to do with teaching.
+
+**A run continues.** When the weights file already exists the crowd starts from it — the
+kept body itself and children moved off it, exactly as a generation refills — rather than
+from noise. Before this `train` always drew a fresh crowd and the file was only ever
+written, so a ladder taught in the morning could not be taught further in the evening; the
+gradient trainer already continued from what was there, and the two now agree.
+
+`serde_yaml` is the eighth dependency. It is deprecated upstream and pinned at 0.9.34
+knowing that: YAML here is a shallow map of scalars read once at startup, the crate is
+frozen rather than abandoned, and nothing in the simulation touches it. Replacing it is
+`plan.rs` and nothing else.
 
 ### What is not built yet
 

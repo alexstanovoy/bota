@@ -113,6 +113,28 @@ impl World {
                 .collect(),
             felled_trees: self.trees.felled().collect(),
             planted_trees: self.trees.planted().iter().map(|tree| tree.at).collect(),
+            loot: self
+                .entities
+                .iter()
+                .filter(|entity| self.loot.get(*entity).is_some())
+                .filter(|entity| match viewer {
+                    None => true,
+                    Some(team) => self.visibility.get(*entity).is_some_and(|s| s.by(team)),
+                })
+                .filter_map(|entity| {
+                    let crate::game::Loot(stack) = self.loot.get(entity)?;
+                    let at = self.transform.get(entity)?;
+                    let def = crate::game::item_def(stack.id);
+                    Some(bota_proto::LootView {
+                        id: wire_id(entity),
+                        pos: at.pos,
+                        item: stack.id,
+                        charges: def
+                            .filter(|def| def.charges > 0 || def.cast_charges > 0)
+                            .map(|_| stack.charges),
+                    })
+                })
+                .collect(),
         }
     }
 

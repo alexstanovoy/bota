@@ -6,12 +6,13 @@
 //! decision has to be judged against a made-up baseline, which was tried in
 //! the first bot and came out a tie.
 //!
-//! The trunk is fed the last few ticks rather than only the newest, because a
-//! swing that has begun, a creep that is about to die and a creep that has
-//! just died look the same in one frame. Frames rather than a memory of its
-//! own: what history is worth here is mostly the last second, and a memory
-//! that has to be carried through twelve thousand ticks and reset on every
-//! death costs more to train than that is worth.
+//! The trunk is fed several ticks at once rather than only the newest, because
+//! a swing that has begun, a creep that is about to die and a creep that has
+//! just died look the same in one frame. The frames are spaced by doubling
+//! ages — half a second back, then one, two, four, eight and sixteen — so the
+//! window reaches a quarter of a minute on seven frames. Frames rather than a
+//! memory of its own: a memory that has to be carried through twelve thousand
+//! ticks and reset on every death costs more to train than that is worth.
 //!
 //! **The mask is applied to the numbers, not to the choice afterwards.** A
 //! deed that cannot be done has its number sent to nothing before anything is
@@ -19,15 +20,34 @@
 //! freely and taking the points off later was considered and dropped: there is
 //! one order a tick, so a wasted pick is a lost creep.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::path::{Path, PathBuf};
 
 use candle_core::{DType, Device, Result as Chance, Tensor, Var};
 
 use crate::{DEEDS, Mind, NUMBERS, Shown};
 
-/// Ticks of history the model is shown at once.
-pub const HISTORY: usize = 4;
+/// Ticks in a second, which is what the ages are reckoned in.
+pub const A_SECOND: u32 = 30;
+
+/// How many frames the model is shown at once.
+pub const HISTORY: usize = 7;
+
+/// How long before the tick being decided each frame was seen, in ticks,
+/// oldest first. The last is nought: the tick itself.
+pub const AGES: [u32; HISTORY] = [
+    16 * A_SECOND,
+    8 * A_SECOND,
+    4 * A_SECOND,
+    2 * A_SECOND,
+    A_SECOND,
+    A_SECOND / 2,
+    0,
+];
+
+/// How far back the oldest frame reaches, in ticks.
+pub const REMEMBERED: u32 = AGES[0];
+
 /// How wide the trunk is.
 pub const WIDTH: usize = 256;
 /// How many numbers go in altogether.
@@ -74,7 +94,7 @@ impl Model {
         here.parent()
             .and_then(Path::parent)
             .unwrap_or(here)
-            .join("weights-v2.safetensors")
+            .join("weights.safetensors")
     }
 
     /// A model with weights drawn small and random, from a seed of our own.
@@ -204,8 +224,9 @@ pub struct Learned {
     pub model: Model,
     /// How loosely it chooses. Nought always takes what it likes best.
     pub heat: f32,
-    /// The last few ticks of numbers, oldest first.
-    seen: Vec<Vec<f32>>,
+    /// Every tick it has seen inside the window, oldest first, each with the
+    /// tick it was seen on.
+    seen: VecDeque<(u32, Vec<f32>)>,
     /// What went into the model for the last choice it made.
     fed: Vec<f32>,
     /// Where a loose choice is drawn from.
@@ -218,7 +239,7 @@ impl Learned {
         Learned {
             model,
             heat: 0.0,
-            seen: Vec::new(),
+            seen: VecDeque::new(),
             fed: Vec::new(),
             dice: Dice::from_seed(1),
         }
@@ -233,24 +254,31 @@ impl Learned {
         }
     }
 
-    /// The last few ticks laid end to end, oldest first.
+    /// The frames [`AGES`] asks for, laid end to end, oldest first.
     ///
-    /// Before there have been a few, the newest stands in for the ones that
-    /// have not happened: a match should not begin by being shown noughts it
-    /// will never see again.
-    fn history(&mut self, numbers: &[f32]) -> Vec<f32> {
-        self.seen.push(numbers.to_vec());
-        if self.seen.len() > HISTORY {
-            self.seen.remove(0);
+    /// Each is the newest tick seen at or before that many ticks ago, so a
+    /// gap — a stretch where the seat chose nothing because there was nothing
+    /// to choose — shows as the last thing it did see rather than moving the
+    /// other frames along. Ages are counted in the match's own ticks, not in
+    /// how many times this has been called.
+    ///
+    /// Before the window has filled, the oldest tick it has stands in for the
+    /// ones that have not happened: a match should not begin by being shown
+    /// noughts it will never see again.
+    fn history(&mut self, at: u32, numbers: &[f32]) -> Vec<f32> {
+        self.seen.push_back((at, numbers.to_vec()));
+        // One frame is kept from beyond the window, because the oldest age
+        // asks for the newest tick at or before it and that may be older than
+        // the window itself when the seat has not chosen for a while.
+        let oldest = at.saturating_sub(REMEMBERED);
+        while self.seen.len() > 1 && self.seen[1].0 <= oldest {
+            self.seen.pop_front();
         }
         let mut out = Vec::with_capacity(INPUT);
-        for at in 0..HISTORY {
-            let from = self
-                .seen
-                .len()
-                .saturating_sub(HISTORY - at)
-                .min(self.seen.len().saturating_sub(1));
-            out.extend_from_slice(&self.seen[from]);
+        for age in AGES {
+            let wanted = at.saturating_sub(age);
+            let after = self.seen.partition_point(|(was, _)| *was <= wanted);
+            out.extend_from_slice(&self.seen[after.saturating_sub(1)].1);
         }
         out
     }
@@ -261,7 +289,7 @@ impl Mind for Learned {
         if !shown.anything_to_do() {
             return None;
         }
-        let numbers = self.history(&shown.numbers);
+        let numbers = self.history(shown.at, &shown.numbers);
         let (liking, _worth) = self.model.weigh(&numbers).ok()?;
         self.fed = numbers;
         Some(pick(&liking, &shown.allowed, self.heat, &mut self.dice))
