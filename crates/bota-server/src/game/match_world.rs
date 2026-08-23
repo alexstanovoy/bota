@@ -1,10 +1,21 @@
 //! The surface a match runs a world through: what the game loop asks of it.
 
-use bota_proto::{MatchStats, Order, OrderTarget, RejectReason, SlotId, SlotStats, Team};
+use bota_proto::{Aim, MatchStats, Order, OrderTarget, RejectReason, SlotId, SlotStats, Team};
 
 use crate::game::{BAG_SLOTS, Command, Event, MatchConfig, MatchRng, hero_spawn_pos, in_backpack};
 use crate::game::{Entity, PendingCast, Seat, UnitOrder, World};
 use crate::game::{in_stash, item_def, map_of, rules};
+
+/// Whether an order aims at the kind of thing something takes.
+pub fn aimed_right(aim: Aim, target: &OrderTarget) -> bool {
+    match aim {
+        Aim::Own => matches!(target, OrderTarget::None),
+        // A tree and a landing spot are both named by the ground they stand
+        // on; which one was meant is settled where the use is carried out.
+        Aim::Point | Aim::Tree | Aim::Building => matches!(target, OrderTarget::Point { .. }),
+        Aim::Unit => matches!(target, OrderTarget::Unit { .. }),
+    }
+}
 
 impl World {
     /// A world at tick zero for a match: the map standing, a seat per player,
@@ -198,12 +209,10 @@ impl World {
                 if held.cooldown > 0 {
                     return Err(RejectReason::OnCooldown);
                 }
-                let aimed_right = match def.aim {
-                    crate::game::Aim::Own => matches!(target, OrderTarget::None),
-                    crate::game::Aim::Point => matches!(target, OrderTarget::Point { .. }),
-                    crate::game::Aim::Unit => matches!(target, OrderTarget::Unit { .. }),
-                };
-                if !aimed_right {
+                if self.held(unit) || self.is_channelling(unit) {
+                    return Err(RejectReason::Disabled);
+                }
+                if !aimed_right(def.aim, target) {
                     return Err(RejectReason::WrongTargetKind);
                 }
                 if let OrderTarget::Unit { target } = target {
@@ -257,13 +266,50 @@ impl World {
                 }
                 Ok(())
             }
-            Order::UseItem { slot, .. } => {
+            Order::UseItem { slot, target } => {
                 let at = usize::from(slot.0);
-                if !self.holds(unit, seat, at) {
-                    return Err(RejectReason::EmptySlot);
-                }
                 if in_stash(at) || in_backpack(at) {
                     return Err(RejectReason::WrongTargetKind);
+                }
+                let stack = self
+                    .inventory
+                    .get(unit)
+                    .and_then(|bag| bag.slots.get(at))
+                    .copied()
+                    .flatten();
+                let Some(stack) = stack else {
+                    return Err(RejectReason::EmptySlot);
+                };
+                let Some(def) = item_def(stack.id) else {
+                    return Err(RejectReason::EmptySlot);
+                };
+                // A stack just out of the backpack carries nothing and does
+                // nothing until it has woken up.
+                if stack.mute > 0 {
+                    return Err(RejectReason::NotReady);
+                }
+                let Some(active) = def.active else {
+                    return Err(RejectReason::NotCastable);
+                };
+                if stack.cooldown > 0 || (def.shared_wait && self.owes_wait(unit, stack.id)) {
+                    return Err(RejectReason::OnCooldown);
+                }
+                if (def.charges > 0 || def.cast_charges > 0) && stack.charges == 0 {
+                    return Err(RejectReason::NoCharges);
+                }
+                if !aimed_right(crate::game::item_aim(active), target) {
+                    return Err(RejectReason::WrongTargetKind);
+                }
+                if let OrderTarget::Unit { target } = target
+                    && self.of_wire(*target).is_none()
+                {
+                    return Err(RejectReason::UnknownTarget);
+                }
+                if self.mana.get(unit).map_or(0, |pool| pool.mana.to_int()) < def.mana_cost {
+                    return Err(RejectReason::NotEnoughMana);
+                }
+                if self.held(unit) || self.is_channelling(unit) {
+                    return Err(RejectReason::Disabled);
                 }
                 Ok(())
             }

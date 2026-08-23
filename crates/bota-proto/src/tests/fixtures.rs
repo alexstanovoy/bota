@@ -18,17 +18,26 @@ pub fn ability_view(slot: u16) -> AbilityView {
     AbilityView {
         id: AbilityId(slot),
         level: 2,
+        max_level: 4,
         cooldown_left: 40,
         mana_cost: 90,
+        range: 600,
+        aim: Aim::Unit,
+        passive: false,
+        on: false,
+        can_level: true,
     }
 }
 
 pub fn item_view(slot: u16) -> ItemView {
     ItemView {
         id: ItemId(slot),
-        charges: 3,
+        charges: Some(3),
         cooldown_left: 0,
         mode: None,
+        mana_cost: 25,
+        range: 400,
+        aim: Some(Aim::Point),
     }
 }
 
@@ -68,10 +77,18 @@ pub fn hero_unit() -> UnitView {
         items: (0..9)
             .map(|i| if i < 3 { Some(item_view(i)) } else { None })
             .collect(),
-        effects: vec![EffectView {
-            id: EffectId(0),
-            ticks_left: 120,
-        }],
+        effects: vec![
+            EffectView {
+                id: EffectId(0),
+                ticks_left: Some(120),
+                stacks: None,
+            },
+            EffectView {
+                id: EffectId(11),
+                ticks_left: None,
+                stacks: Some(21),
+            },
+        ],
     }
 }
 
@@ -138,6 +155,10 @@ pub fn player_view(slot: u8) -> PlayerView {
                 .map(|i| if i == 0 { Some(item_view(9)) } else { None })
                 .collect(),
         ),
+        kit: Some(Kit {
+            abilities: vec![ability_view(0)],
+            items: vec![Some(item_view(3)), None],
+        }),
         kills: 3,
         deaths: 1,
         assists: 0,
@@ -182,6 +203,18 @@ pub fn match_info() -> MatchInfo {
         terrain_rle: vec![(12, 0x81), (4, 0xc0)],
         opaque_cells: vec![(1, 1), (2, 1)],
         mode: TickMode::Lockstep,
+        shop: vec![
+            ShopEntry {
+                id: ItemId(0),
+                cost: 500,
+                components: Vec::new(),
+            },
+            ShopEntry {
+                id: ItemId(29),
+                cost: 1400,
+                components: vec![ItemId(0), ItemId(19), ItemId(13)],
+            },
+        ],
         picks: vec![
             Pick {
                 slot: SlotId(0),

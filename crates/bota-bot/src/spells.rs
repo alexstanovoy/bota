@@ -44,6 +44,10 @@ pub fn aiming_of(id: AbilityId) -> Option<Aiming> {
         7 => Aiming::Foe,
         // A courier's errands all work on the courier.
         8..=11 => Aiming::Own,
+        // Shadow Fiend: three razes laid along a line to a spot, and a requiem
+        // about himself.
+        13..=15 => Aiming::Spot,
+        16 => Aiming::Own,
         _ => return None,
     })
 }

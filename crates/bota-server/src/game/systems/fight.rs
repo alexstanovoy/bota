@@ -59,6 +59,7 @@ impl World {
                 continue;
             }
             self.feed_flesh_heaps(entity);
+            self.feed_souls(entity, killer);
             let kind = self.kind.get(entity).copied();
             let side = self.team.get(entity).copied();
             let denied = killer
@@ -97,7 +98,7 @@ impl World {
                     let kept = crate::game::Kept {
                         book: self.abilities.remove(entity).unwrap_or_default(),
                         bag: self.inventory.remove(entity).unwrap_or_default(),
-                        heap: self.flesh_heap.remove(entity).unwrap_or_default(),
+                        stacks: self.stacks.remove(entity).unwrap_or_default(),
                     };
                     self.seats[index].unit = None;
                     self.seats[index].kept = Some(kept);

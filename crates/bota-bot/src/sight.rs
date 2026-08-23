@@ -306,7 +306,7 @@ fn items(field: &Field, out: &mut Vec<f32>) {
             None => out.extend(std::iter::repeat_n(0.0, ITEM_NUMBERS)),
             Some(held) => {
                 out.push(1.0);
-                out.push(f32::from(held.charges) / 3.0);
+                out.push(f32::from(held.charges.unwrap_or(0)) / 3.0);
                 out.push(f32::from(held.cooldown_left == 0));
             }
         }

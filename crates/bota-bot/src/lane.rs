@@ -43,6 +43,29 @@ impl Role {
         })
     }
 
+    /// The role a name spells.
+    pub fn named(name: &str) -> Option<Role> {
+        Some(match name {
+            "carry" => Role::Carry,
+            "mid" => Role::Mid,
+            "offlane" => Role::Offlane,
+            "roamer" => Role::Roamer,
+            "support" => Role::Support,
+            _ => return None,
+        })
+    }
+
+    /// How a plan spells it.
+    pub fn spelling(self) -> &'static str {
+        match self {
+            Role::Carry => "carry",
+            Role::Mid => "mid",
+            Role::Offlane => "offlane",
+            Role::Roamer => "roamer",
+            Role::Support => "support",
+        }
+    }
+
     /// Its number, counting from one.
     pub fn number(self) -> u8 {
         match self {

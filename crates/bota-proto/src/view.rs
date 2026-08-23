@@ -5,8 +5,8 @@
 //! type is delivered to humans and to bots.
 
 use crate::{
-    AbilityId, Angle, Attribute, Attributes, EffectId, EntityId, Fixed, HeroId, ItemId, SlotId,
-    Team, UnitKind, Vec2,
+    AbilityId, Aim, Angle, Attribute, Attributes, EffectId, EntityId, Fixed, HeroId, ItemId,
+    SlotId, Team, UnitKind, Vec2,
 };
 use serde::{Deserialize, Serialize};
 
@@ -52,19 +52,37 @@ pub struct AbilityView {
     pub id: AbilityId,
     /// Current level. Zero means it has not been learned yet.
     pub level: u8,
+    /// How far it may be levelled.
+    pub max_level: u8,
     /// Ticks remaining before it can be cast again. Zero means ready.
     pub cooldown_left: u32,
     /// Mana the next cast would cost at the current level.
     pub mana_cost: i32,
+    /// How far the next cast would reach, in whole world units. Zero for one
+    /// that reaches nowhere.
+    pub range: i32,
+    /// How a cast of it is aimed.
+    pub aim: Aim,
+    /// Whether it works on its own and is never cast.
+    pub passive: bool,
+    /// Whether it is a toggle that is currently on.
+    pub on: bool,
+    /// Whether a skill point could be spent on it right now.
+    pub can_level: bool,
 }
 
-/// A timed effect currently on a visible unit.
+/// An effect currently on a visible unit.
+///
+/// The two counts are independent: an effect may run out, may be counted, may
+/// do both, and one that does neither carries only its id.
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct EffectView {
     /// Which effect it is.
     pub id: EffectId,
-    /// Ticks until it wears off.
-    pub ticks_left: u32,
+    /// Ticks until it wears off. Absent for one that does not run out.
+    pub ticks_left: Option<u32>,
+    /// How many are held. Absent for one that is not counted.
+    pub stacks: Option<u32>,
 }
 
 /// One inventory slot of a visible hero.
@@ -72,12 +90,20 @@ pub struct EffectView {
 pub struct ItemView {
     /// Which item sits in this slot.
     pub id: ItemId,
-    /// Charges left, for items that have them. Zero otherwise.
-    pub charges: u8,
+    /// Charges left. Absent for an item that has no charges at all, so an
+    /// empty stack and one that never held any are told apart.
+    pub charges: Option<u8>,
     /// Ticks remaining before the item can be used again. Zero means ready.
     pub cooldown_left: u32,
     /// Which attribute it is set to. Absent for an item that is not set to one.
     pub mode: Option<Attribute>,
+    /// Mana one use would cost.
+    pub mana_cost: i32,
+    /// How far one use would reach, in whole world units. Zero for one that
+    /// reaches nowhere of its own.
+    pub range: i32,
+    /// How a use of it is aimed. Absent for one that cannot be used at all.
+    pub aim: Option<Aim>,
 }
 
 /// A unit the viewing team can currently see.
@@ -147,7 +173,7 @@ pub struct UnitView {
     /// The six inventory and three backpack slots, in slot order. Empty for
     /// anything that is not a hero.
     pub items: Vec<Option<ItemView>>,
-    /// Timed effects currently on the unit.
+    /// Effects currently on the unit, timed and counted alike.
     pub effects: Vec<EffectView>,
 }
 
@@ -164,6 +190,19 @@ pub struct ProjectileView {
     pub team: Team,
     /// Which ability launched it. Absent for a plain attack.
     pub ability: Option<AbilityId>,
+}
+
+/// What a hero's body left behind while it is gone.
+///
+/// Abilities and items outlive the body they were carried on, so a seat with
+/// no hero standing still has both. While one stands they ride in its
+/// [`UnitView`] instead, and this is absent.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct Kit {
+    /// The ability slots, in the order they are shown.
+    pub abilities: Vec<AbilityView>,
+    /// The inventory and backpack slots, in slot order.
+    pub items: Vec<Option<ItemView>>,
 }
 
 /// The scoreboard entry for one seat.
@@ -189,6 +228,10 @@ pub struct PlayerView {
     /// The six stash slots at the home shop, in slot order. Absent for the
     /// opposing team.
     pub stash: Option<Vec<Option<ItemView>>>,
+    /// What the body left behind while it is gone. Absent while a hero
+    /// stands, and absent for the opposing team, which is left with whatever
+    /// it saw last.
+    pub kit: Option<Kit>,
     /// Kills scored.
     pub kills: u16,
     /// Times died.

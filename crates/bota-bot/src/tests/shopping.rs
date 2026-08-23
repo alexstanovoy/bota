@@ -136,8 +136,11 @@ fn what_waits_in_the_stash_or_rides_the_courier_counts_as_owned() {
     let mut view = holding(&[], 5000);
     let carried = Some(ItemView {
         id: ItemId(crate::TANGO),
-        charges: 3,
+        charges: Some(3),
         cooldown_left: 0,
+        mana_cost: 0,
+        range: 0,
+        aim: None,
         mode: None,
     });
     for player in &mut view.players {
@@ -149,8 +152,11 @@ fn what_waits_in_the_stash_or_rides_the_courier_counts_as_owned() {
         if body.kind == UnitKind::Courier {
             body.items[0] = Some(ItemView {
                 id: ItemId(crate::QUELLING),
-                charges: 0,
+                charges: Some(0),
                 cooldown_left: 0,
+                mana_cost: 0,
+                range: 0,
+                aim: None,
                 mode: None,
             });
         }

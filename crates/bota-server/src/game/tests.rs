@@ -5,8 +5,8 @@ use bota_proto::{Attributes, Fixed, Team};
 use crate::game::rules;
 use crate::game::{
     AbilityBook, AbilityState, Def, Entity, EntityAllocator, FLAGBEARER_CREEP, HERO, Health,
-    Inventory, ItemStack, Level, MELEE_CREEP, Mana, NEUTRALS, NeutralKind, RANGED_CREEP, Stats,
-    Status, StatusKind, Statuses, Table, Upgrades, Visibility, World,
+    Inventory, ItemStack, Level, MELEE_CREEP, Mana, NEUTRALS, NeutralKind, RANGED_CREEP, StackKind,
+    Stats, Status, StatusKind, Statuses, Table, Upgrades, Visibility, World,
 };
 
 #[test]
@@ -4707,7 +4707,10 @@ fn a_flesh_heap_keeps_what_dies_near_it_and_the_keeping_outlives_a_death() {
     world.bury(vec![(mark, None)], &mut events);
     world.step();
     assert_eq!(
-        world.flesh_heap.get(pudge).map(|heap| heap.stacks),
+        world
+            .stacks
+            .get(pudge)
+            .map(|kept| kept.of(StackKind::FleshHeap)),
         Some(1),
         "a death beside it feeds it"
     );
@@ -6292,4 +6295,656 @@ fn buying_a_built_item_a_second_time_buys_its_parts_again() {
         2,
         "and both pairs are in hand"
     );
+}
+
+#[test]
+fn walking_at_an_ally_stops_where_the_bodies_meet() {
+    let mut world = World::for_match(&config(), config().rng());
+    let hero = world.seats[0].unit.expect("stood up");
+    let at = world.transform.get(hero).expect("standing").pos;
+    let ally = world.spawn_unit(
+        &crate::game::MELEE_CREEP,
+        bota_proto::Team::Radiant,
+        at + bota_proto::Vec2::from_ints(600, 0),
+    );
+    world.settle();
+    world.advance(&[crate::game::Command {
+        slot: bota_proto::SlotId(0),
+        unit: None,
+        order: bota_proto::Order::AttackUnit {
+            target: crate::game::wire_id(ally),
+        },
+    }]);
+    let mut seen: Vec<bota_proto::Vec2> = Vec::new();
+    for _ in 0..240 {
+        world.advance(&[]);
+        seen.push(world.transform.get(hero).expect("standing").pos);
+    }
+    let theirs = world.transform.get(ally).expect("standing").pos;
+    let hulls = world.hull.get(hero).expect("has one").radius
+        + world.hull.get(ally).expect("has one").radius;
+    let last = *seen.last().expect("walked");
+    assert!(
+        last.within(theirs, hulls + rules::units(rules::STEER_MARGIN * 2)),
+        "it comes right up to what it was pointed at"
+    );
+    // Once it has arrived it stays arrived: what used to happen is that it
+    // pressed into the body, was eased out, and walked in again for ever.
+    let settled = &seen[seen.len() - 60..];
+    let drift = settled
+        .iter()
+        .map(|spot| {
+            let (dx, dy) = (spot.x - last.x, spot.y - last.y);
+            dx.raw.abs().max(dy.raw.abs())
+        })
+        .max()
+        .expect("some ticks");
+    assert!(
+        drift < rules::units(24).raw,
+        "and it stands there rather than circling"
+    );
+}
+
+#[test]
+fn a_courier_sent_for_the_stash_carries_on_what_it_already_holds() {
+    let mut world = World::for_match(&config(), config().rng());
+    let hero = world.seats[0].unit.expect("stood up");
+    let courier = the_courier(&world);
+    let boots = bota_proto::ItemId(crate::game::ITEM_BOOTS);
+    if let Some(bag) = world.inventory.get_mut(courier) {
+        bag.slots[0] = Some(crate::game::ItemStack {
+            id: boots,
+            charges: 0,
+            cooldown: 0,
+            mute: 0,
+            mode: None,
+            bought_tick: 0,
+            touched: false,
+        });
+    }
+    let home = crate::game::fountain_pos(world.map, bota_proto::Team::Radiant);
+    world.transform.get_mut(hero).expect("standing").pos =
+        home + bota_proto::Vec2::from_ints(2500, 0);
+    // The stash is empty, so the old answer was to fly home with the goods.
+    assert!(world.courier_take_stash(courier));
+    for _ in 0..600 {
+        world.step();
+        if world
+            .inventory
+            .get(hero)
+            .is_some_and(|bag| bag.held().count() > 0)
+        {
+            break;
+        }
+    }
+    assert_eq!(
+        world.inventory.get(hero).expect("has a bag").slots[0].map(|held| held.id),
+        Some(boots),
+        "what it was already carrying reaches its owner"
+    );
+}
+
+#[test]
+fn what_an_owner_has_no_room_for_goes_back_to_the_stash() {
+    let mut world = World::for_match(&config(), config().rng());
+    let hero = world.seats[0].unit.expect("stood up");
+    let courier = the_courier(&world);
+    let branch = bota_proto::ItemId(crate::game::ITEM_IRON_BRANCH);
+    let stack = crate::game::ItemStack {
+        id: branch,
+        charges: 1,
+        cooldown: 0,
+        mute: 0,
+        mode: None,
+        bought_tick: 0,
+        touched: true,
+    };
+    // Every slot the hero has is taken, so there is nowhere to hand it.
+    if let Some(bag) = world.inventory.get_mut(hero) {
+        for slot in bag.slots.iter_mut() {
+            *slot = Some(stack);
+        }
+    }
+    if let Some(bag) = world.inventory.get_mut(courier) {
+        bag.slots[0] = Some(stack);
+    }
+    let home = crate::game::fountain_pos(world.map, bota_proto::Team::Radiant);
+    world.transform.get_mut(hero).expect("standing").pos =
+        home + bota_proto::Vec2::from_ints(1500, 0);
+    assert!(world.courier_deliver(courier));
+    for _ in 0..900 {
+        world.step();
+        if world.seats[0].stash.held().count() > 0 {
+            break;
+        }
+    }
+    assert_eq!(
+        world.seats[0].stash.held().count(),
+        1,
+        "with nowhere to put it, it is carried back to the stash"
+    );
+    assert_eq!(
+        world
+            .inventory
+            .get(courier)
+            .expect("carries")
+            .held()
+            .count(),
+        0,
+        "and the courier is empty again"
+    );
+}
+
+/// A world with a wall of closed ground between two spots, so the way from
+/// one to the other has to be found rather than walked straight.
+fn a_world_with_a_wall(from: bota_proto::Vec2, to: bota_proto::Vec2) -> World {
+    let mut world = World::for_match(&config(), config().rng());
+    world.settle();
+    let middle = bota_proto::Vec2 {
+        x: bota_proto::Fixed {
+            raw: (from.x.raw / 2).saturating_add(to.x.raw / 2),
+        },
+        y: bota_proto::Fixed {
+            raw: (from.y.raw / 2).saturating_add(to.y.raw / 2),
+        },
+    };
+    world.grid.block_circle(middle, rules::units(600));
+    assert!(
+        !crate::game::grid_los(&world.grid, from, to),
+        "the wall stands in the way"
+    );
+    world
+}
+
+#[test]
+fn what_flies_goes_straight_over_what_a_walker_goes_round() {
+    let hero_at = bota_proto::Vec2::from_ints(6000, 9216);
+    let far = bota_proto::Vec2::from_ints(9000, 9216);
+    let mut world = a_world_with_a_wall(hero_at, far);
+    let hero = world.seats[0].unit.expect("stood up");
+    let courier = the_courier(&world);
+    world.transform.get_mut(hero).expect("standing").pos = far;
+    world.transform.get_mut(courier).expect("flies").pos = hero_at;
+    let boots = bota_proto::ItemId(crate::game::ITEM_BOOTS);
+    if let Some(bag) = world.inventory.get_mut(courier) {
+        bag.slots[0] = Some(crate::game::ItemStack {
+            id: boots,
+            charges: 0,
+            cooldown: 0,
+            mute: 0,
+            mode: None,
+            bought_tick: 0,
+            touched: false,
+        });
+    }
+    assert!(world.courier_deliver(courier));
+    // Straight there means the line it walks never wanders off the line it
+    // was on: a flier routed like a walker swings wide round the wall.
+    let mut widest = 0;
+    for _ in 0..400 {
+        world.step();
+        let now = world.transform.get(courier).expect("flies").pos;
+        widest = widest.max((now.y.raw - hero_at.y.raw).abs());
+        if world
+            .inventory
+            .get(hero)
+            .is_some_and(|bag| bag.held().count() > 0)
+        {
+            break;
+        }
+    }
+    assert!(
+        world
+            .inventory
+            .get(hero)
+            .is_some_and(|bag| bag.held().count() > 0),
+        "it got there"
+    );
+    assert!(
+        widest < rules::units(200).raw,
+        "and it went over the wall rather than round it"
+    );
+}
+
+#[test]
+fn a_way_found_to_a_spot_that_walks_away_is_found_again() {
+    let hero_at = bota_proto::Vec2::from_ints(6000, 9216);
+    let goal_at = bota_proto::Vec2::from_ints(9000, 9216);
+    let mut world = a_world_with_a_wall(hero_at, goal_at);
+    let hero = world.seats[0].unit.expect("stood up");
+    world.transform.get_mut(hero).expect("standing").pos = hero_at;
+    let mut goal = goal_at;
+    world.set_order(hero, crate::game::UnitOrder::Move { pos: goal });
+    world.step();
+    assert!(
+        world
+            .route
+            .get(hero)
+            .is_some_and(|route| !route.path.is_empty()),
+        "a way round the wall was found"
+    );
+    // The spot creeps away, a little every tick, exactly as a walking hero
+    // does to a courier chasing it. Never enough in one tick to look like a
+    // new goal, and after a while far beyond where the way was laid to.
+    for _ in 0..60 {
+        goal += bota_proto::Vec2::from_ints(0, 20);
+        world.set_order(hero, crate::game::UnitOrder::Move { pos: goal });
+        world.step();
+    }
+    let end = world
+        .route
+        .get(hero)
+        .and_then(|route| route.path.last().copied())
+        .expect("still walking a way round");
+    assert!(
+        end.within(goal, rules::units(600)),
+        "the way it walks leads where the spot is now, not where it was"
+    );
+}
+
+#[test]
+fn a_flesh_heap_outlives_the_death_of_the_one_carrying_it() {
+    let (mut world, pudge, mark) = pudge_and_a_mark(200);
+    if let Some(book) = world.abilities.get_mut(pudge) {
+        book.slots[2].level = 1;
+    }
+    world.step();
+    let bare = world.stats.get(pudge).expect("settled").max_hp;
+    let mut events = Vec::new();
+    world.bury(vec![(mark, None)], &mut events);
+    world.step();
+    assert_eq!(
+        world
+            .stacks
+            .get(pudge)
+            .map(|kept| kept.of(StackKind::FleshHeap)),
+        Some(1),
+        "one death has fed it"
+    );
+    world.bury(vec![(pudge, None)], &mut events);
+    assert_eq!(world.seats[0].unit, None, "the body is gone");
+    for _ in 0..world.seats[0].respawn_left {
+        world.step();
+    }
+    let back = world.seats[0].unit.expect("stands again");
+    assert_eq!(
+        world
+            .stacks
+            .get(back)
+            .map(|kept| kept.of(StackKind::FleshHeap)),
+        Some(1),
+        "and what it kept comes back with it"
+    );
+    assert_eq!(
+        world.stats.get(back).map(|s| s.max_hp),
+        Some(bare + Fixed::from_int(rules::FLESH_HEAP_HP)),
+        "worth as much health as it was before"
+    );
+}
+
+/// Shadow Fiend at the middle of the map, with a creep `apart` to the east of
+/// him, every raze and the requiem learned to their first level.
+fn fiend_and_a_mark(apart: i32) -> (World, Entity, Entity) {
+    let mut world = World::new();
+    let fiend = world.spawn_hero(
+        bota_proto::Team::Radiant,
+        bota_proto::Vec2::from_ints(5000, 5000),
+        bota_proto::SlotId(0),
+        bota_proto::HeroId(2),
+    );
+    let mark = world.spawn_unit(
+        &MELEE_CREEP,
+        bota_proto::Team::Dire,
+        bota_proto::Vec2::from_ints(5000 + apart, 5000),
+    );
+    if let Some(book) = world.abilities.get_mut(fiend) {
+        for held in book.slots.iter_mut() {
+            held.level = 1;
+        }
+    }
+    world.seats.push(crate::game::Seat::new(
+        bota_proto::SlotId(0),
+        bota_proto::Team::Radiant,
+        bota_proto::HeroId(2),
+        0,
+        rules::STASH_SLOTS,
+    ));
+    world.seats[0].unit = Some(fiend);
+    world.settle();
+    world.step();
+    (world, fiend, mark)
+}
+
+/// Aims one of the slots at a spot the way a player does.
+fn aim_at(world: &mut World, slot: u8, at: bota_proto::Vec2) {
+    world.advance(&[crate::game::Command {
+        slot: bota_proto::SlotId(0),
+        unit: None,
+        order: bota_proto::Order::CastAbility {
+            slot: bota_proto::AbilitySlot(slot),
+            target: bota_proto::OrderTarget::Point { pos: at },
+        },
+    }]);
+}
+
+/// Stands a creep of one side up at a spot.
+fn a_creep_at(world: &mut World, team: bota_proto::Team, at: bota_proto::Vec2) -> Entity {
+    let creep = world.spawn_unit(&MELEE_CREEP, team, at);
+    world.settle();
+    creep
+}
+
+#[test]
+fn a_raze_burns_what_stands_where_it_lands_and_nothing_else() {
+    let (mut world, _fiend, near) = fiend_and_a_mark(rules::RAZE_DISTANCE[1]);
+    let far = a_creep_at(
+        &mut world,
+        bota_proto::Team::Dire,
+        bota_proto::Vec2::from_ints(5000 + 900, 5000),
+    );
+    let (was_near, was_far) = (
+        world.health.get(near).expect("standing").hp,
+        world.health.get(far).expect("standing").hp,
+    );
+    aim_at(
+        &mut world,
+        1,
+        bota_proto::Vec2::from_ints(5000 + rules::RAZE_DISTANCE[1], 5000),
+    );
+    world.step();
+    assert!(
+        world.health.get(near).expect("standing").hp < was_near,
+        "what stands where the raze lands feels it"
+    );
+    assert_eq!(
+        world.health.get(far).expect("standing").hp,
+        was_far,
+        "and what stands past it does not"
+    );
+}
+
+#[test]
+fn a_raze_lands_at_its_own_reach_however_near_it_is_aimed() {
+    let (mut world, _fiend, under) = fiend_and_a_mark(50);
+    let out = a_creep_at(
+        &mut world,
+        bota_proto::Team::Dire,
+        bota_proto::Vec2::from_ints(5000 + rules::RAZE_DISTANCE[2], 5000),
+    );
+    let (was_under, was_out) = (
+        world.health.get(under).expect("standing").hp,
+        world.health.get(out).expect("standing").hp,
+    );
+    // Aimed at a spot right under his feet, the farthest raze still lands at
+    // its own reach along that line.
+    aim_at(&mut world, 2, bota_proto::Vec2::from_ints(5050, 5000));
+    world.step();
+    assert!(
+        world.health.get(out).expect("standing").hp < was_out,
+        "the raze lands at its own reach"
+    );
+    assert_eq!(
+        world.health.get(under).expect("standing").hp,
+        was_under,
+        "and not where it was aimed"
+    );
+}
+
+#[test]
+fn a_raze_aimed_at_the_spot_it_is_cast_from_is_no_cast_at_all() {
+    let (mut world, fiend, _mark) = fiend_and_a_mark(400);
+    let at = world.transform.get(fiend).expect("standing").pos;
+    let full = world.mana.get(fiend).expect("standing").mana;
+    aim_at(&mut world, 0, at);
+    world.step();
+    assert_eq!(
+        world.mana.get(fiend).expect("standing").mana,
+        full,
+        "a raze with no line to lay itself along costs nothing"
+    );
+}
+
+#[test]
+fn souls_come_only_from_what_the_gatherer_brings_down() {
+    let (mut world, fiend, mark) = fiend_and_a_mark(400);
+    let mut events = Vec::new();
+    let other = a_creep_at(
+        &mut world,
+        bota_proto::Team::Dire,
+        bota_proto::Vec2::from_ints(5400, 5000),
+    );
+    world.bury(vec![(other, None)], &mut events);
+    assert_eq!(
+        world
+            .stacks
+            .get(fiend)
+            .map_or(0, |kept| kept.of(StackKind::Souls)),
+        0,
+        "a death nobody is answerable for is worth nothing"
+    );
+    world.bury(vec![(mark, Some(fiend))], &mut events);
+    assert_eq!(
+        world
+            .stacks
+            .get(fiend)
+            .map(|kept| kept.of(StackKind::Souls)),
+        Some(rules::SOULS_PER_UNIT),
+        "and one he brought down is worth its soul"
+    );
+}
+
+#[test]
+fn a_hero_brought_down_is_worth_more_souls_than_a_creep() {
+    let (mut world, fiend, _mark) = fiend_and_a_mark(400);
+    let victim = world.spawn_hero(
+        bota_proto::Team::Dire,
+        bota_proto::Vec2::from_ints(5400, 5000),
+        bota_proto::SlotId(1),
+        bota_proto::HeroId(0),
+    );
+    world.settle();
+    let mut events = Vec::new();
+    world.bury(vec![(victim, Some(fiend))], &mut events);
+    assert_eq!(
+        world
+            .stacks
+            .get(fiend)
+            .map(|kept| kept.of(StackKind::Souls)),
+        Some(rules::SOULS_PER_HERO),
+    );
+}
+
+#[test]
+fn souls_stop_at_what_the_level_holds() {
+    let (mut world, fiend, mark) = fiend_and_a_mark(400);
+    let cap = world.soul_cap(fiend);
+    assert_eq!(cap, rules::SOUL_CAP_BASE, "a hero of the first level");
+    hand_souls(&mut world, fiend, cap);
+    let mut events = Vec::new();
+    world.bury(vec![(mark, Some(fiend))], &mut events);
+    assert_eq!(
+        world
+            .stacks
+            .get(fiend)
+            .map(|kept| kept.of(StackKind::Souls)),
+        Some(cap),
+        "no more are held than the level allows"
+    );
+}
+
+#[test]
+fn every_soul_held_is_worth_attack_damage() {
+    let (mut world, fiend, _mark) = fiend_and_a_mark(400);
+    world.step();
+    let bare = world.stats.get(fiend).expect("settled").damage;
+    hand_souls(&mut world, fiend, 5);
+    world.step();
+    assert_eq!(
+        world.stats.get(fiend).map(|s| s.damage),
+        Some(bare + rules::DAMAGE_PER_SOUL * 5),
+    );
+}
+
+#[test]
+fn a_raze_aimed_past_its_reach_walks_the_caster_in_first() {
+    let (mut world, fiend, _mark) = fiend_and_a_mark(50);
+    let out = a_creep_at(
+        &mut world,
+        bota_proto::Team::Dire,
+        bota_proto::Vec2::from_ints(6000, 5000),
+    );
+    let full = world.health.get(out).expect("standing").hp;
+    aim_at(&mut world, 1, bota_proto::Vec2::from_ints(6000, 5000));
+    for _ in 0..120 {
+        world.step();
+        if world.casting.get(fiend).is_none() {
+            break;
+        }
+    }
+    world.step();
+    assert!(
+        world.health.get(out).expect("standing").hp < full,
+        "the caster walks up until the aim is within reach, then razes it"
+    );
+}
+
+#[test]
+fn souls_outlive_the_death_of_the_one_who_gathered_them() {
+    let (mut world, fiend, mark) = fiend_and_a_mark(400);
+    let mut events = Vec::new();
+    world.bury(vec![(mark, Some(fiend))], &mut events);
+    world.bury(vec![(fiend, None)], &mut events);
+    assert_eq!(world.seats[0].unit, None, "the body is gone");
+    for _ in 0..world.seats[0].respawn_left {
+        world.step();
+    }
+    let back = world.seats[0].unit.expect("stands again");
+    assert_eq!(
+        world.stacks.get(back).map(|kept| kept.of(StackKind::Souls)),
+        Some(rules::SOULS_PER_UNIT),
+        "what was gathered comes back with him"
+    );
+}
+
+#[test]
+fn a_requiem_grows_with_the_souls_held_and_spends_none_of_them() {
+    let (mut world, fiend, mark) = fiend_and_a_mark(400);
+    hand_souls(&mut world, fiend, 5);
+    world.step();
+    let full = world.health.get(mark).expect("standing").hp;
+    aim_at(&mut world, 3, bota_proto::Vec2::from_ints(5400, 5000));
+    world.step();
+    world.step();
+    let taken = full - world.health.get(mark).expect("standing").hp;
+    assert!(taken > Fixed::ZERO, "everything near feels it: {taken:?}");
+    assert_eq!(
+        world
+            .stacks
+            .get(fiend)
+            .map(|kept| kept.of(StackKind::Souls)),
+        Some(5),
+        "and the souls are kept"
+    );
+    assert!(
+        world.statuses.get(mark).is_some_and(|on_it| on_it
+            .active()
+            .any(|status| matches!(status.kind, StatusKind::Slowed { .. }))),
+        "what it caught walks slower"
+    );
+}
+
+#[test]
+fn a_requiem_with_no_souls_gathered_touches_nobody() {
+    let (mut world, fiend, mark) = fiend_and_a_mark(400);
+    let full = world.health.get(mark).expect("standing").hp;
+    aim_at(&mut world, 3, bota_proto::Vec2::from_ints(5400, 5000));
+    world.step();
+    world.step();
+    assert_eq!(
+        world.health.get(mark).expect("standing").hp,
+        full,
+        "nothing gathered is nothing let go"
+    );
+    assert!(
+        world.statuses.get(mark).is_none_or(|on_it| on_it
+            .active()
+            .all(|status| !matches!(status.kind, StatusKind::Slowed { .. }))),
+        "not even the slow"
+    );
+    let spent = world
+        .abilities
+        .get(fiend)
+        .map_or(0, |book| book.slots[3].cooldown);
+    assert!(spent > 0, "though the cast itself happened");
+}
+
+#[test]
+fn a_structure_falling_beside_a_flesh_heap_feeds_it_nothing() {
+    let (mut world, pudge, _mark) = pudge_and_a_mark(200);
+    if let Some(book) = world.abilities.get_mut(pudge) {
+        book.slots[2].level = 1;
+    }
+    let tower = world.spawn_unit(
+        crate::game::tower_def(1),
+        bota_proto::Team::Dire,
+        bota_proto::Vec2::from_ints(5200, 5000),
+    );
+    world.settle();
+    let mut events = Vec::new();
+    world.bury(vec![(tower, None)], &mut events);
+    assert_eq!(
+        world
+            .stacks
+            .get(pudge)
+            .map_or(0, |kept| kept.of(StackKind::FleshHeap)),
+        0,
+    );
+}
+
+#[test]
+fn a_structure_brought_down_is_worth_no_soul() {
+    let (mut world, fiend, _mark) = fiend_and_a_mark(400);
+    let tower = world.spawn_unit(
+        crate::game::tower_def(1),
+        bota_proto::Team::Dire,
+        bota_proto::Vec2::from_ints(5600, 5000),
+    );
+    world.settle();
+    let mut events = Vec::new();
+    world.bury(vec![(tower, Some(fiend))], &mut events);
+    assert_eq!(
+        world
+            .stacks
+            .get(fiend)
+            .map_or(0, |kept| kept.of(StackKind::Souls)),
+        0,
+    );
+}
+
+#[test]
+fn the_view_carries_what_has_been_gathered_as_a_counted_effect() {
+    let (mut world, fiend, mark) = fiend_and_a_mark(400);
+    let mut events = Vec::new();
+    world.bury(vec![(mark, Some(fiend))], &mut events);
+    world.step();
+    let view = world.view(bota_proto::Team::Radiant);
+    let shown = view
+        .units
+        .iter()
+        .find(|u| u.hero == Some(bota_proto::HeroId(2)))
+        .expect("he is in the view");
+    let souls = shown
+        .effects
+        .iter()
+        .find(|e| e.stacks.is_some())
+        .expect("what is gathered is on him");
+    assert_eq!(souls.stacks, Some(rules::SOULS_PER_UNIT));
+    assert_eq!(souls.ticks_left, None, "and nothing counts it down");
+}
+
+/// Lays a count of souls on a hero the way killing for them would.
+fn hand_souls(world: &mut World, hero: Entity, many: u32) {
+    let mut kept = world.stacks.get(hero).copied().unwrap_or_default();
+    kept.set(crate::game::StackKind::Souls, many);
+    world.stacks.insert(hero, kept);
 }

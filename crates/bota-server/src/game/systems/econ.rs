@@ -126,7 +126,7 @@ impl World {
             if let Some(kept) = self.seats[index].kept.take() {
                 self.abilities.insert(unit, kept.book);
                 self.inventory.insert(unit, kept.bag);
-                self.flesh_heap.insert(unit, kept.heap);
+                self.stacks.insert(unit, kept.stacks);
             }
             self.seats[index].unit = Some(unit);
             self.settle();

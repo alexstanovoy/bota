@@ -5,7 +5,7 @@ use bota_proto::{
     UnitView, WorldView,
 };
 
-use crate::game::{Entity, StatusKind, World, ability_mana_cost, item_views};
+use crate::game::{Entity, StackKind, StatusKind, World, ability_mana_cost, item_views};
 
 /// The handle as it travels on the wire.
 pub fn wire_id(entity: Entity) -> bota_proto::EntityId {
@@ -93,6 +93,16 @@ impl World {
                         Some(team) if team != seat.team => None,
                         _ => Some(item_views(&seat.stash)),
                     },
+                    // What a fallen body left is told to its own side alone.
+                    // The other side is left with whatever it saw last, which
+                    // is its own business to remember.
+                    kit: match viewer {
+                        Some(team) if team != seat.team => None,
+                        _ => seat.kept.as_ref().map(|kept| bota_proto::Kit {
+                            abilities: ability_views(&kept.book),
+                            items: item_views(&kept.bag),
+                        }),
+                    },
                     kills: seat.kills,
                     deaths: seat.deaths,
                     assists: seat.assists,
@@ -149,24 +159,17 @@ impl World {
             abilities: self.abilities.get(entity).map_or_else(Vec::new, |book| {
                 book.slots
                     .iter()
-                    .map(|ability| AbilityView {
-                        id: ability.id,
-                        level: ability.level,
-                        cooldown_left: ability.cooldown,
-                        mana_cost: ability_mana_cost(ability.id, ability.level),
+                    .map(|ability| {
+                        ability_view(
+                            ability,
+                            self.ability_on(entity, ability.id),
+                            self.can_level(entity, ability.id, ability.level),
+                        )
                     })
                     .collect()
             }),
             items: self.inventory.get(entity).map_or_else(Vec::new, item_views),
-            effects: self.statuses.get(entity).map_or_else(Vec::new, |on_it| {
-                on_it
-                    .active()
-                    .map(|status| EffectView {
-                        id: EffectId(effect_id(status.kind)),
-                        ticks_left: status.ticks_left,
-                    })
-                    .collect()
-            }),
+            effects: self.effects_on(entity),
         })
     }
 }
@@ -183,7 +186,47 @@ fn shown(held: Fixed) -> i32 {
     }
 }
 
+/// One ability slot on the wire.
+///
+/// What is worked out from the body it sits on — whether a toggle is running
+/// and whether a point could go into it — is asked of the caller, since a
+/// book that outlived its body has neither.
+fn ability_view(held: &crate::game::AbilityState, on: bool, can_level: bool) -> AbilityView {
+    let def = crate::game::ability_def(held.id);
+    AbilityView {
+        id: held.id,
+        level: held.level,
+        max_level: def.map_or(0, |def| def.max_level),
+        cooldown_left: held.cooldown,
+        mana_cost: ability_mana_cost(held.id, held.level),
+        range: def.map_or(0, |def| def.range),
+        aim: def.map_or(bota_proto::Aim::Own, |def| def.aim),
+        passive: def.is_some_and(|def| def.passive),
+        on,
+        can_level,
+    }
+}
+
+/// A whole book on the wire, as it stands with no body under it.
+///
+/// Nothing is toggled on and no point may be spent: both want a body, and a
+/// kept book has none.
+fn ability_views(book: &crate::game::AbilityBook) -> Vec<AbilityView> {
+    book.slots
+        .iter()
+        .map(|held| ability_view(held, false, false))
+        .collect()
+}
+
 /// Which effect one kind is on the wire.
+fn stack_effect_id(kind: StackKind) -> u16 {
+    match kind {
+        StackKind::FleshHeap => 10,
+        StackKind::Souls => 11,
+    }
+}
+
+/// The number the wire names a timed effect with.
 fn effect_id(kind: StatusKind) -> u16 {
     match kind {
         StatusKind::Haste { .. } => 0,
@@ -200,6 +243,56 @@ fn effect_id(kind: StatusKind) -> u16 {
 }
 
 impl World {
+    /// Everything showing on one entity: what runs out, then what is
+    /// gathered.
+    fn effects_on(&self, entity: Entity) -> Vec<EffectView> {
+        let mut on_it: Vec<EffectView> =
+            self.statuses.get(entity).map_or_else(Vec::new, |statuses| {
+                statuses
+                    .active()
+                    .map(|status| EffectView {
+                        id: EffectId(effect_id(status.kind)),
+                        ticks_left: Some(status.ticks_left),
+                        stacks: None,
+                    })
+                    .collect()
+            });
+        if let Some(gathered) = self.stacks.get(entity) {
+            on_it.extend(gathered.held().map(|(kind, many)| EffectView {
+                id: EffectId(stack_effect_id(kind)),
+                ticks_left: None,
+                stacks: Some(many),
+            }));
+        }
+        on_it
+    }
+
+    /// Whether an entity has a toggle switched on right now.
+    fn ability_on(&self, entity: Entity, id: bota_proto::AbilityId) -> bool {
+        match id {
+            crate::game::ability::ROT => self.rotting.get(entity).is_some(),
+            _ => false,
+        }
+    }
+
+    /// Whether a skill point could go into one ability right now.
+    ///
+    /// The same three conditions [`World::learn`] asks: a point unspent, room
+    /// left in the ability, and a hero level high enough for the next one.
+    fn can_level(&self, entity: Entity, id: bota_proto::AbilityId, level: u8) -> bool {
+        let Some(def) = crate::game::ability_def(id) else {
+            return false;
+        };
+        let hero_level = self.level.get(entity).map_or(0, |held| held.0);
+        let spent: u8 = self
+            .abilities
+            .get(entity)
+            .map_or(0, |book| book.slots.iter().map(|slot| slot.level).sum());
+        level < def.max_level
+            && spent < hero_level
+            && hero_level >= crate::game::level_floor(def, level)
+    }
+
     /// The state a unit is in, as the wire names it.
     fn state_of(&self, entity: Entity) -> u16 {
         let Some(on_it) = self.statuses.get(entity) else {

@@ -12,6 +12,7 @@ mod input;
 mod net;
 mod render;
 mod replay_play;
+mod slots;
 mod state;
 
 #[cfg(test)]

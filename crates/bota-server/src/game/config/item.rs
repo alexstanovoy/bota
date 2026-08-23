@@ -2,7 +2,7 @@
 //!
 //! Every entry answers to an [`ItemId`], which is its place in [`ITEMS`].
 
-use bota_proto::{Attribute, Attributes, Fixed, ItemId, ItemView};
+use bota_proto::{Aim, Attribute, Attributes, Fixed, ItemId, ItemView};
 
 use crate::game::Inventory;
 
@@ -727,6 +727,41 @@ pub const ITEMS: [ItemDef; 42] = [
     ItemDef { cost: 150, ..PLAIN },
 ];
 
+/// How one use of an item is aimed.
+pub fn item_aim(use_of: ItemUse) -> Aim {
+    match use_of {
+        // What eats a tree is aimed at one; what is drunk is aimed at whoever
+        // drinks it.
+        ItemUse::Mend { eats_a_tree, .. } => {
+            if eats_a_tree {
+                Aim::Tree
+            } else {
+                Aim::Unit
+            }
+        }
+        ItemUse::Fell { .. } => Aim::Tree,
+        ItemUse::Ward { .. } | ItemUse::Plant { .. } | ItemUse::Blink { .. } => Aim::Point,
+        ItemUse::Teleport { .. } => Aim::Building,
+        ItemUse::Restore { .. } | ItemUse::Phase { .. } | ItemUse::Switch => Aim::Own,
+    }
+}
+
+/// How far one use of an item reaches, in world units.
+///
+/// For one aimed at a building this is how far from that building it may
+/// land, not how far its user may stand from it.
+pub fn item_range(use_of: ItemUse) -> i32 {
+    match use_of {
+        ItemUse::Mend { range, .. }
+        | ItemUse::Ward { range, .. }
+        | ItemUse::Fell { range }
+        | ItemUse::Plant { range, .. }
+        | ItemUse::Teleport { range, .. }
+        | ItemUse::Blink { range } => range,
+        ItemUse::Restore { .. } | ItemUse::Phase { .. } | ItemUse::Switch => 0,
+    }
+}
+
 /// What one item is, or nothing if no such item exists.
 pub fn item_def(id: ItemId) -> Option<&'static ItemDef> {
     ITEMS.get(usize::from(id.0))
@@ -741,16 +776,37 @@ pub fn built_from(part: ItemId) -> impl Iterator<Item = ItemId> {
         .map(|(index, _)| ItemId(index as u16))
 }
 
+/// The whole shop as the wire states it, in item id order.
+pub fn shop_entries() -> Vec<bota_proto::ShopEntry> {
+    ITEMS
+        .iter()
+        .enumerate()
+        .map(|(index, def)| bota_proto::ShopEntry {
+            id: ItemId(index as u16),
+            cost: def.cost,
+            components: def.components.to_vec(),
+        })
+        .collect()
+}
+
 /// What a bag looks like on the wire, an empty slot keeping its place.
 pub fn item_views(bag: &Inventory) -> Vec<Option<ItemView>> {
     bag.slots
         .iter()
         .map(|slot| {
-            slot.map(|stack| ItemView {
-                id: stack.id,
-                charges: stack.charges,
-                cooldown_left: stack.cooldown,
-                mode: stack.mode,
+            slot.map(|stack| {
+                let def = item_def(stack.id);
+                ItemView {
+                    id: stack.id,
+                    charges: def
+                        .filter(|def| def.charges > 0 || def.cast_charges > 0)
+                        .map(|_| stack.charges),
+                    cooldown_left: stack.cooldown,
+                    mode: stack.mode,
+                    mana_cost: def.map_or(0, |def| def.mana_cost),
+                    range: def.and_then(|def| def.active).map_or(0, item_range),
+                    aim: def.and_then(|def| def.active).map(item_aim),
+                }
             })
         })
         .collect()

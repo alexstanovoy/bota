@@ -130,11 +130,15 @@ fn a_lane_runs_from_its_own_end() {
 
 #[test]
 fn the_lessons_are_a_ladder_of_lengths_and_each_names_its_own_file() {
-    let ladder: Vec<Lesson> = (1..=7)
-        .map(|at| Lesson::of(at).expect("seven of them"))
+    let ladder: Vec<Lesson> = (1..=crate::LESSONS as u8)
+        .map(|at| Lesson::of(at).expect("one of them"))
         .collect();
     assert_eq!(Lesson::of(0), None, "they count from one");
-    assert_eq!(Lesson::of(8), None, "and there are seven");
+    assert_eq!(
+        Lesson::of(crate::LESSONS as u8 + 1),
+        None,
+        "and the ladder ends where it says it does"
+    );
     assert_eq!(
         ladder.iter().map(|one| one.ticks()).collect::<Vec<_>>(),
         vec![
@@ -144,7 +148,8 @@ fn the_lessons_are_a_ladder_of_lengths_and_each_names_its_own_file() {
             3000,
             7 * crate::MINUTE,
             20 * crate::MINUTE,
-            30 * crate::MINUTE
+            30 * crate::MINUTE,
+            35 * crate::MINUTE
         ]
     );
     for pair in ladder.windows(2) {
@@ -157,7 +162,7 @@ fn the_lessons_are_a_ladder_of_lengths_and_each_names_its_own_file() {
     }
     assert_eq!(
         Lesson::longest(),
-        Lesson::GrowRich,
+        Lesson::GrowStrong,
         "and a match run to its clock has scored them all"
     );
     for rung in &crate::LADDER {
@@ -193,6 +198,48 @@ fn every_lesson_counts_only_the_ticks_inside_its_own_window() {
         1,
         "and only the longest is still counting at the end of a match"
     );
+}
+
+/// What every lesson paid for one tick, through a marker rather than through
+/// one lesson's own function.
+fn marked(marker: &mut crate::Marker, view: &bota_proto::WorldView) -> Card {
+    let field = field_of(view, Role::Mid);
+    let lane = lane_of(&field, Role::Mid);
+    marker.tick(&Moment {
+        field: &field,
+        lane: lane.as_ref(),
+        events: &[],
+        took: 0,
+        killed: 0,
+        died: 0,
+    })
+}
+
+#[test]
+fn a_lesson_is_paid_over_the_clock_it_is_given_rather_than_its_rungs() {
+    // A stage of a plan names its own clock, and that has to move what the
+    // lesson is paid for and not only when the match stops. Otherwise a stage
+    // asking for a longer clock runs the extra ticks for nothing and reports
+    // the very same mark.
+    let bare = crate::tests::a_tick_holding(&[], 600);
+    let carrying = crate::tests::a_tick_holding(&[crate::QUELLING, crate::TANGO], 285);
+    assert!(
+        bare.tick > Lesson::StockUp.ticks(),
+        "the tick these are scored on is past the rung's own clock"
+    );
+
+    let mut shut = crate::Marker::new();
+    marked(&mut shut, &bare);
+    assert_eq!(
+        marked(&mut shut, &carrying).of(Lesson::StockUp),
+        0.0,
+        "the rung's clock ran out long before this tick"
+    );
+
+    let mut open = crate::Marker::paid_until(Lesson::StockUp, bare.tick + 1);
+    marked(&mut open, &bare);
+    let bought = marked(&mut open, &carrying).of(Lesson::StockUp);
+    assert!(bought > 0.0, "a longer clock is paid over: {bought}");
 }
 
 #[test]
@@ -567,7 +614,7 @@ fn a_lesson_pays_for_its_own_and_for_nothing_else() {
         let none = paid_on(&bare, rung.lesson, &[], (0, 0, 0), &mut Carried::default());
         assert_eq!(
             after > none,
-            rung.lesson == Lesson::StockUp,
+            matches!(rung.lesson, Lesson::StockUp | Lesson::GrowStrong),
             "{} pays for shopping only if that is what it is for",
             rung.name
         );
@@ -621,4 +668,61 @@ fn growing_rich_counts_the_purse_and_the_goods_and_falls_as_well_as_rises() {
     let poorer = crate::tests::a_tick_holding(&[], 400);
     let lost = paid_on(&poorer, Lesson::GrowRich, &[], (0, 0, 0), &mut carried);
     assert_eq!(lost, -500.0, "losing the boots costs what they were worth");
+}
+
+#[test]
+fn growing_strong_pays_a_gold_half_on_earning_it_and_half_on_spending_it() {
+    let mut carried = Carried::default();
+    let purse = crate::tests::a_tick_holding(&[], 600);
+    assert_eq!(
+        paid_on(&purse, Lesson::GrowStrong, &[], (0, 0, 0), &mut carried),
+        0.0,
+        "the first tick has nothing to compare against"
+    );
+
+    let spent = crate::tests::a_tick_holding(&[crate::BOOTS], 100);
+    assert_eq!(
+        paid_on(&spent, Lesson::GrowStrong, &[], (0, 0, 0), &mut carried),
+        250.0,
+        "boots pay the half the gold was not paid when it was earned"
+    );
+
+    let richer = crate::tests::a_tick_holding(&[crate::BOOTS], 400);
+    assert_eq!(
+        paid_on(&richer, Lesson::GrowStrong, &[], (0, 0, 0), &mut carried),
+        150.0,
+        "three hundred earned and not yet spent is worth half of it"
+    );
+
+    let poorer = crate::tests::a_tick_holding(&[], 400);
+    assert_eq!(
+        paid_on(&poorer, Lesson::GrowStrong, &[], (0, 0, 0), &mut carried),
+        -500.0,
+        "losing the boots costs the whole of what they were worth"
+    );
+}
+
+#[test]
+fn hoarding_is_worth_half_of_wearing_and_growing_rich_cannot_tell_them_apart() {
+    // The whole of what this lesson is for. Two hands end on the same net
+    // worth off the same five hundred; one of them is wearing it.
+    let start = crate::tests::a_tick_holding(&[], 100);
+    let hoarded = crate::tests::a_tick_holding(&[], 600);
+    let worn = crate::tests::a_tick_holding(&[crate::BOOTS], 100);
+    let over = |lesson: Lesson, ended: &bota_proto::WorldView| {
+        let mut carried = Carried::default();
+        paid_on(&start, lesson, &[], (0, 0, 0), &mut carried);
+        paid_on(ended, lesson, &[], (0, 0, 0), &mut carried)
+    };
+    assert_eq!(
+        over(Lesson::GrowRich, &hoarded),
+        over(Lesson::GrowRich, &worn),
+        "growing rich is paid the same either way"
+    );
+    assert_eq!(over(Lesson::GrowStrong, &hoarded), 250.0);
+    assert_eq!(
+        over(Lesson::GrowStrong, &worn),
+        500.0,
+        "and growing strong pays the one that spent it twice as much"
+    );
 }

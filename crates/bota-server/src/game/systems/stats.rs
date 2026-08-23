@@ -4,8 +4,8 @@ use bota_proto::Fixed;
 
 use crate::game::rules;
 use crate::game::{
-    AbilityBook, Def, EntityAllocator, FleshHeap, Growth, Health, Inventory, Level, Mana, Stats,
-    StatusKind, Statuses, Table, UnitDef, Upgrades,
+    AbilityBook, Def, EntityAllocator, Growth, Health, Inventory, Level, Mana, StackKind, Stacks,
+    Stats, StatusKind, Statuses, Table, UnitDef, Upgrades,
 };
 
 /// What working out stats reads and writes.
@@ -31,7 +31,7 @@ pub struct StatsCx<'a> {
     /// What each entity has learned, for what its passives are worth.
     pub abilities: &'a Table<AbilityBook>,
     /// What each entity has kept of the deaths around it.
-    pub flesh_heap: &'a Table<FleshHeap>,
+    pub stacks: &'a Table<Stacks>,
     /// Where the answer goes.
     pub stats: &'a mut Table<Stats>,
     /// Health, which follows its maximum.
@@ -55,7 +55,7 @@ pub fn derive_stats(cx: StatsCx<'_>) {
         inventory,
         statuses,
         abilities,
-        flesh_heap,
+        stacks,
         stats,
         health,
         mana,
@@ -89,11 +89,15 @@ pub fn derive_stats(cx: StatsCx<'_>) {
                 .find(|slot| slot.id == crate::game::ability::FLESH_HEAP)
                 .map_or(0, |slot| slot.level)
         });
+        let gathered = stacks.get(entity).copied().unwrap_or_default();
         if heap > 0 {
-            let stacks = flesh_heap.get(entity).map_or(0, |heap| heap.stacks);
-            now.max_hp += Fixed::from_int(rules::FLESH_HEAP_HP * stacks as i32);
+            let kept = gathered.of(StackKind::FleshHeap);
+            now.max_hp += Fixed::from_int(rules::FLESH_HEAP_HP * kept as i32);
             now.magic_resist_pct += rules::FLESH_HEAP_RESIST_PCT[usize::from(heap - 1)];
         }
+        // Every soul gathered is worth attack damage for as long as it is
+        // held.
+        now.damage += rules::DAMAGE_PER_SOUL * gathered.of(StackKind::Souls) as i32;
         if let Some(on_it) = statuses.get(entity) {
             for status in on_it.active() {
                 match status.kind {

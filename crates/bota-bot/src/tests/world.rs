@@ -5,7 +5,7 @@
 //! rather than quietly arriving as a nought.
 
 use bota_proto::{
-    AbilityId, AbilityView, Angle, Attributes, EntityId, Fixed, HeroId, ItemId, ItemView,
+    AbilityId, AbilityView, Aim, Angle, Attributes, EntityId, Fixed, HeroId, ItemId, ItemView,
     PlayerView, SlotId, StatusFlags, Team, UnitKind, UnitView, Vec2, WorldView,
 };
 
@@ -62,14 +62,23 @@ pub fn hero(idx: u32, team: Team, at: (i32, i32), slot: SlotId) -> UnitView {
         .map(|which| AbilityView {
             id: AbilityId(which),
             level: 1,
+            max_level: 4,
+            range: 0,
+            aim: Aim::Own,
+            passive: false,
+            on: false,
+            can_level: false,
             cooldown_left: 0,
             mana_cost: 50,
         })
         .collect();
     body.items[0] = Some(ItemView {
         id: ItemId(7),
-        charges: 3,
+        charges: Some(3),
         cooldown_left: 0,
+        mana_cost: 0,
+        range: 0,
+        aim: None,
         mode: None,
     });
     body
@@ -86,6 +95,12 @@ pub fn courier(idx: u32, team: Team, at: (i32, i32), slot: SlotId) -> UnitView {
         .map(|which| AbilityView {
             id: AbilityId(which),
             level: 1,
+            max_level: 4,
+            range: 0,
+            aim: Aim::Own,
+            passive: false,
+            on: false,
+            can_level: false,
             cooldown_left: 0,
             mana_cost: 0,
         })
@@ -115,6 +130,7 @@ pub fn player(slot: SlotId, team: Team, unit: Option<EntityId>, gold: i32) -> Pl
         xp: 0,
         gold: Some(gold),
         stash: Some(vec![None; 6]),
+        kit: None,
         kills: 0,
         deaths: 0,
         assists: 0,
@@ -138,8 +154,11 @@ pub fn a_tick_holding(items: &[u16], gold: i32) -> WorldView {
     let held = |item: &u16| {
         Some(ItemView {
             id: ItemId(*item),
-            charges: 1,
+            charges: Some(1),
             cooldown_left: 0,
+            mana_cost: 0,
+            range: 0,
+            aim: None,
             mode: None,
         })
     };

@@ -2,10 +2,10 @@
 
 use std::path::PathBuf;
 
-use bota_bot_v2::{
-    Adam, Chair, DEEDS, Dice, FirstAllowed, Learned, Lesson, Mind, Model, NUMBERS, Nothing, Role,
-    School, Tribe, Yard, first_crowd, gather, learn_from, measure, play, report_card,
-    teach_a_lesson,
+use bota_bot::{
+    Adam, Chair, DEEDS, Dice, FirstAllowed, LESSONS, Learned, Lesson, Mind, Model, NUMBERS,
+    Nothing, Plan, Role, School, Tribe, Yard, crowd_from, first_crowd, gather, learn_from, measure,
+    play, report_card, teach_a_lesson,
 };
 use bota_proto::HeroId;
 use clap::{Parser, Subcommand};
@@ -31,8 +31,8 @@ enum Doing {
     Shape,
     /// Write out a model with weights drawn at random.
     Fresh(Fresh),
-    /// Breed a crowd of models through every lesson in turn.
-    Train(Breeding),
+    /// Breed a crowd of models through the stages a plan names.
+    Train(Training),
     /// Teach one lesson by gradient, for comparing against.
     Descend(Descending),
     /// Say what a model is worth at a lesson, on the matches nothing trains on.
@@ -88,7 +88,7 @@ struct Tally {
 
 impl Tally {
     /// Adds one seat's match to the tally.
-    fn add(&mut self, out: &bota_bot_v2::Outcome) {
+    fn add(&mut self, out: &bota_bot::Outcome) {
         self.played += 1;
         if out.winner.is_some() {
             self.ended += 1;
@@ -165,7 +165,7 @@ fn duel(asked: Duelling) -> std::io::Result<()> {
 
     let mut tally = [Tally::default(), Tally::default()];
     for batch in jobs.chunks(asked.lanes.max(1)) {
-        let played: Vec<std::io::Result<(bool, bota_bot_v2::Outcome, bota_bot_v2::Outcome)>> =
+        let played: Vec<std::io::Result<(bool, bota_bot::Outcome, bota_bot::Outcome)>> =
             std::thread::scope(|scope| {
                 let running: Vec<_> = batch
                     .iter()
@@ -189,6 +189,7 @@ fn duel(asked: Duelling) -> std::io::Result<()> {
                                 limit: Some(asked.limit),
                                 role,
                                 lesson: Lesson::GrowRich,
+                                until: None,
                             };
                             let (mine, theirs) = yard.play_a_match(
                                 seed,
@@ -232,8 +233,8 @@ struct Judging {
     /// Play matches over a socket instead of in this process.
     #[arg(long)]
     on_the_wire: bool,
-    /// Which lesson, one to seven.
-    #[arg(long, default_value_t = 7)]
+    /// Which lesson, one to eight.
+    #[arg(long, default_value_t = 8)]
     lesson: u8,
     /// What the seats are there to do, one to five.
     #[arg(long, default_value_t = 2)]
@@ -255,7 +256,10 @@ struct Judging {
 /// ways of teaching can be held against each other.
 fn judge(asked: Judging) -> std::io::Result<()> {
     let Some(lesson) = Lesson::of(asked.lesson) else {
-        return Err(std::io::Error::other("lessons are numbered one to seven"));
+        return Err(std::io::Error::other(format!(
+            "lessons are numbered one to {}",
+            bota_bot::LESSONS
+        )));
     };
     let Some(role) = Role::of(asked.role) else {
         return Err(std::io::Error::other("roles are numbered one to five"));
@@ -279,7 +283,7 @@ fn judge(asked: Judging) -> std::io::Result<()> {
     println!(
         "{}, over {} matches it never trained on",
         weights.display(),
-        bota_bot_v2::REPORTED_ON
+        bota_bot::REPORTED_ON
     );
     for line in card.lines() {
         println!("  {line}");
@@ -288,91 +292,57 @@ fn judge(asked: Judging) -> std::io::Result<()> {
     Ok(())
 }
 
-/// Breeding a crowd through the lessons.
+/// Following a plan.
 #[derive(clap::Args, Debug)]
-struct Breeding {
-    /// Play matches over a socket instead of in this process.
-    #[arg(long)]
-    on_the_wire: bool,
-    /// How many models there are. Below ten the ladder often fails to start:
-    /// nothing is paid until one of them stumbles into buying.
-    #[arg(long, default_value_t = 10)]
-    folk: usize,
-    /// Matches each model plays a generation.
-    #[arg(long, default_value_t = 1)]
-    trials: usize,
-    /// Generations a lesson runs for.
-    #[arg(long, default_value_t = 30)]
-    lives: u32,
-    /// How many of the crowd survive a generation. A quarter of it by default.
-    #[arg(long)]
-    keep: Option<usize>,
-    /// How far a child is moved from its parent.
-    #[arg(long, default_value_t = 0.02)]
-    spread: f32,
-    /// How many matches run at once.
-    #[arg(long, default_value_t = 12)]
-    lanes: usize,
-    /// What the seats are there to do, one to five.
-    #[arg(long, default_value_t = 2)]
-    role: u8,
-    /// Where the whole run is seeded from.
-    #[arg(long, default_value_t = 1)]
-    seed: u64,
-    /// Where the best model is written.
+struct Training {
+    /// The plan to follow.
+    #[arg(value_name = "FILE")]
+    plan: PathBuf,
+    /// Where the best of the crowd is kept. A file already there is what the
+    /// run continues from; the standing weights file, when nothing is said.
     #[arg(long, value_name = "FILE")]
     weights: Option<PathBuf>,
-    /// The server to run. The one built beside this, when nothing is said.
-    #[arg(long, value_name = "PATH")]
-    server: Option<PathBuf>,
 }
 
-/// Breeds a crowd through every lesson in turn, best first.
-fn breed(asked: Breeding) -> std::io::Result<()> {
-    let Some(role) = Role::of(asked.role) else {
-        return Err(std::io::Error::other("roles are numbered one to five"));
-    };
-    // Refused rather than quietly rounded up: a crowd of one is a crowd that
-    // cannot be sorted, and being handed two when two were not asked for is
-    // worse than being told.
-    if asked.folk < 2 {
-        return Err(std::io::Error::other(
-            "a crowd is two models or more; one has nothing to be chosen over",
-        ));
-    }
+/// Breeds a crowd through the stages of a plan, best first.
+fn train(asked: Training) -> std::io::Result<()> {
+    let plan = Plan::read(&asked.plan).map_err(std::io::Error::other)?;
+    let terms = plan.terms().map_err(std::io::Error::other)?;
     let weights = asked.weights.unwrap_or_else(Model::path);
-    let standing = Yard::default();
-    let plain = Tribe::new(asked.folk, asked.trials);
-    let tribe = Tribe {
-        yard: Yard {
-            server: asked.server.unwrap_or(standing.server),
-            builtin: !asked.on_the_wire,
-            ..standing
-        },
-        role,
-        lives: asked.lives,
-        keep: asked.keep.unwrap_or(plain.keep),
-        spread: asked.spread,
-        lanes: asked.lanes,
-        seed: asked.seed,
-        ..plain
-    };
+    let first = terms.first().expect("a plan with a stage");
     println!(
-        "breeding {} models on {} matches each, {} generations a lesson, keeping {}, played by {}",
-        tribe.folk,
-        tribe.trials,
-        tribe.lives,
-        tribe.keep,
-        tribe.yard.server.display()
+        "following {}: {} stages, played by {}, kept in {}",
+        asked.plan.display(),
+        terms.len(),
+        first.tribe.yard.server.display(),
+        weights.display()
     );
-    let mut crowd = first_crowd(&tribe).map_err(std::io::Error::other)?;
-    for rung in &bota_bot_v2::LADDER {
+    let mut crowd = if weights.exists() {
+        let body = Model::from_file(&weights, 1)
+            .and_then(|model| model.pour())
+            .map_err(std::io::Error::other)?;
+        println!("continuing from {}", weights.display());
+        crowd_from(&first.tribe, body)
+    } else {
+        println!("no weights at {}, starting fresh", weights.display());
+        first_crowd(&first.tribe).map_err(std::io::Error::other)?
+    };
+    for (at, term) in terms.iter().enumerate() {
+        let tribe = &term.tribe;
         println!(
             "
-{} — {} ticks a match, scored in {}",
-            rung.name, rung.ticks, rung.scored_in
+stage {} of {} — {}, {} ticks a match, scored in {}",
+            at + 1,
+            terms.len(),
+            term.rung.name,
+            term.rung.ticks,
+            term.rung.scored_in
         );
-        crowd = teach_a_lesson(&tribe, crowd, rung.lesson, |life| {
+        println!(
+            "  {} models, {} matches each, {} generations, keeping {}, {} matches at once",
+            tribe.folk, tribe.trials, tribe.lives, tribe.keep, tribe.lanes
+        );
+        crowd = teach_a_lesson(tribe, crowd, &term.rung, |life| {
             // Matches that never finished are said out loud. A generation
             // quietly judged on half its matches is a generation judged on
             // luck, and a run that says nothing about it looks like one that
@@ -387,9 +357,9 @@ fn breed(asked: Breeding) -> std::io::Result<()> {
                 life.number, life.best, life.middling
             );
         })?;
-        // Written now rather than at the end of the ladder: a lesson of the
-        // last rung is hours, and losing five learned rungs to whatever goes
-        // wrong on the sixth is losing them for nothing.
+        // Written now rather than at the end of the plan: a stage of the last
+        // rung is hours, and losing five learned stages to whatever goes wrong
+        // on the sixth is losing them for nothing.
         keep_the_best(&crowd, &weights)?;
         println!(
             "  learned, and the best of the crowd kept in {}",
@@ -398,12 +368,13 @@ fn breed(asked: Breeding) -> std::io::Result<()> {
     }
     // One match, run to the longest lesson's clock, scored by every lesson at
     // once: one card about one game rather than a number from each of seven.
+    let last = terms.last().expect("a plan with a stage");
     println!(
         "
 the best of them, over {} matches it never trained on:",
-        bota_bot_v2::REPORTED_ON
+        bota_bot::REPORTED_ON
     );
-    for line in report_card(&tribe, &crowd[0])?.lines() {
+    for line in report_card(&last.tribe, &crowd[0])?.lines() {
         println!("  {line}");
     }
     println!(
@@ -430,9 +401,9 @@ struct Descending {
     /// Play matches over a socket instead of in this process.
     #[arg(long)]
     on_the_wire: bool,
-    /// Which lesson, one to seven: stock up, find the lane, hold it, meet the
-    /// wave, work the lane, take the towers, grow rich. Every one in turn, when
-    /// nothing is said.
+    /// Which lesson, one to eight: stock up, find the lane, hold it, meet the
+    /// wave, work the lane, take the towers, grow rich, grow strong. Every one
+    /// in turn, when nothing is said.
     #[arg(long)]
     lesson: Option<u8>,
     /// What the seats are there to do, one to five.
@@ -547,7 +518,7 @@ fn carry_out(doing: Doing) -> std::io::Result<()> {
             Ok(())
         }
         Doing::Play(asked) => join_a_match(asked),
-        Doing::Train(asked) => breed(asked),
+        Doing::Train(asked) => train(asked),
         Doing::Descend(asked) => descend(asked),
         Doing::Judge(asked) => judge(asked),
         Doing::Duel(asked) => duel(asked),
@@ -559,9 +530,13 @@ fn descend(asked: Descending) -> std::io::Result<()> {
     // Named or the whole ladder, as breeding does. A ladder held together by a
     // loop outside the program is a ladder nobody else can walk.
     let ladder: Vec<Lesson> = match asked.lesson {
-        None => (1..=7).filter_map(Lesson::of).collect(),
+        None => (1..=LESSONS as u8).filter_map(Lesson::of).collect(),
         Some(number) => match Lesson::of(number) {
-            None => return Err(std::io::Error::other("lessons are numbered one to five")),
+            None => {
+                return Err(std::io::Error::other(format!(
+                    "lessons are numbered one to {LESSONS}"
+                )));
+            }
             Some(lesson) => vec![lesson],
         },
     };
@@ -631,7 +606,7 @@ fn descend_one(asked: &Descending, lesson: Lesson) -> std::io::Result<()> {
         } else {
             rolls.iter().map(|roll| roll.paid_in_all()).sum::<f32>() / rolls.len() as f32
         };
-        let mut frames: Vec<bota_bot_v2::Frame> =
+        let mut frames: Vec<bota_bot::Frame> =
             rolls.into_iter().flat_map(|roll| roll.frames).collect();
         let played = frames.len();
         thin(&mut frames, how.most_frames, &mut dice);
@@ -662,7 +637,7 @@ fn descend_one(asked: &Descending, lesson: Lesson) -> std::io::Result<()> {
 
 /// Keeps a heap of frames down to the most the weights are moved by, taking
 /// those it keeps at random.
-fn thin(frames: &mut Vec<bota_bot_v2::Frame>, most: usize, dice: &mut Dice) {
+fn thin(frames: &mut Vec<bota_bot::Frame>, most: usize, dice: &mut Dice) {
     if frames.len() <= most || most == 0 {
         return;
     }
@@ -679,13 +654,13 @@ fn thin(frames: &mut Vec<bota_bot_v2::Frame>, most: usize, dice: &mut Dice) {
 fn say_the_shape() {
     println!(
         "shown: {NUMBERS} numbers a tick, {} in all",
-        bota_bot_v2::INPUT
+        bota_bot::INPUT
     );
-    for (name, size) in bota_bot_v2::LAYOUT {
+    for (name, size) in bota_bot::LAYOUT {
         println!("  {size:4}  {name}");
     }
     println!("deeds: {DEEDS}");
-    for (name, size) in bota_bot_v2::BLOCKS {
+    for (name, size) in bota_bot::BLOCKS {
         println!("  {size:4}  {name}");
     }
 }
@@ -705,6 +680,7 @@ fn join_a_match(asked: Playing) -> std::io::Result<()> {
         limit: asked.limit,
         role,
         lesson: Lesson::GrowRich,
+        until: None,
     };
     let mut idle = Nothing;
     let mut floor = FirstAllowed;

@@ -1,6 +1,6 @@
 //! The crowd, and what breeding it does to it.
 
-use crate::{Card, Lesson, Model, Tribe, next_crowd, placings};
+use crate::{Card, Lesson, Model, Tribe, crowd_from, next_crowd, placings};
 
 /// Cards worth the marks given at the lesson the placings are read at.
 fn cards(marks: &[f32]) -> Vec<Card> {
@@ -122,4 +122,21 @@ fn numbers_poured_out_of_a_model_go_back_in_where_they_came_from() {
         model.soak(&was[..was.len() - 1]).is_err(),
         "and too few numbers is refused rather than half applied"
     );
+}
+
+#[test]
+fn a_crowd_from_kept_weights_keeps_them_first_and_moves_the_rest_off() {
+    // What continuing a run means: the kept body plays as it is, and the
+    // search resumes around it rather than from noise.
+    let tribe = Tribe {
+        spread: 0.1,
+        ..Tribe::new(5, 1)
+    };
+    let body = vec![1.0, 2.0, 3.0];
+    let crowd = crowd_from(&tribe, body.clone());
+    assert_eq!(crowd.len(), tribe.folk, "the crowd is the size asked for");
+    assert_eq!(crowd[0], body, "what was kept carries over unchanged");
+    for child in &crowd[1..] {
+        assert!(*child != body, "every child is moved off it");
+    }
 }

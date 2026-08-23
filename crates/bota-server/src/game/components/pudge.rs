@@ -21,10 +21,3 @@ pub struct Dismembering {
     /// Which level of it is running, counted from zero.
     pub level: usize,
 }
-
-/// What has died near a hero and been kept.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct FleshHeap {
-    /// How many deaths have fed it.
-    pub stacks: u32,
-}

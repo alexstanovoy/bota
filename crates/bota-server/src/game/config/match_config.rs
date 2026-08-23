@@ -46,6 +46,7 @@ impl MatchConfig {
             opaque_cells: crate::game::sight_block_cells(crate::game::map_of(self.map)),
             mode: self.mode,
             picks: self.picks.clone(),
+            shop: crate::game::shop_entries(),
         }
     }
 }

@@ -93,8 +93,11 @@ impl World {
                 fnv.u32(eating.ticks_left);
                 fnv.u32(eating.level as u32);
             }
-            if let Some(heap) = self.flesh_heap.get(entity) {
-                fnv.u32(heap.stacks);
+            if let Some(gathered) = self.stacks.get(entity) {
+                for (kind, many) in gathered.held() {
+                    fnv.u32(kind.at() as u32);
+                    fnv.u32(many);
+                }
             }
             if let Some(going) = self.teleport.get(entity) {
                 fnv.u32(going.ticks_left);
@@ -137,7 +140,10 @@ impl World {
                     fnv.u32(slot.cooldown);
                 }
                 hash_bag(&mut fnv, &kept.bag);
-                fnv.u32(kept.heap.stacks);
+                for (kind, many) in kept.stacks.held() {
+                    fnv.u32(kind.at() as u32);
+                    fnv.u32(many);
+                }
             }
         }
         fnv.done()

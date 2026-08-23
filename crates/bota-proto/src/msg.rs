@@ -1,6 +1,8 @@
 //! The messages themselves, and the lobby types they carry.
 
-use crate::{EntityId, EventKind, HeroId, MapId, Order, PlayerId, SlotId, Team, Vec2, WorldView};
+use crate::{
+    EntityId, EventKind, HeroId, ItemId, MapId, Order, PlayerId, SlotId, Team, Vec2, WorldView,
+};
 use serde::{Deserialize, Serialize};
 
 /// Why a participant connected.
@@ -56,6 +58,24 @@ pub struct LobbySlot {
     pub ready: bool,
 }
 
+/// What the shop asks for one item.
+///
+/// The price of a thing nobody holds yet, so it belongs to no unit and is
+/// stated once for the whole match. Everything an item is worth to whoever
+/// carries it rides in [`ItemView`] instead, where it can differ between two
+/// units holding the same item.
+///
+/// [`ItemView`]: crate::ItemView
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+pub struct ShopEntry {
+    /// Which item.
+    pub id: ItemId,
+    /// What it costs whole, in gold.
+    pub cost: i32,
+    /// What it is built from. Empty for one bought whole.
+    pub components: Vec<ItemId>,
+}
+
 /// The public description of a match.
 ///
 /// Sent when the match begins and to anyone joining later.
@@ -86,6 +106,8 @@ pub struct MatchInfo {
     pub mode: TickMode,
     /// Every seat and its hero, sorted by [`SlotId`].
     pub picks: Vec<Pick>,
+    /// Everything the shop sells, in item id order.
+    pub shop: Vec<ShopEntry>,
 }
 
 /// Why the server refused an order.
@@ -114,6 +136,10 @@ pub enum RejectReason {
     NotCastable,
     /// The ability has no points in it yet.
     NotLearned,
+    /// The item has no charges left to spend.
+    NoCharges,
+    /// The item has come out of the backpack and is not working yet.
+    NotReady,
     /// The order named a unit this seat does not drive.
     NotYourUnit,
     /// No item with this id is sold.

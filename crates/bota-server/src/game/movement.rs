@@ -48,6 +48,28 @@ pub fn move_towards(pos: Vec2, target: Vec2, step: Fixed) -> Vec2 {
     }
 }
 
+/// The point `distance` away from `from` along the line towards `towards`.
+///
+/// `from` itself when the two stand on the same spot.
+pub fn point_along(from: Vec2, towards: Vec2, distance: Fixed) -> Vec2 {
+    let dx = i64::from(towards.x.raw) - i64::from(from.x.raw);
+    let dy = i64::from(towards.y.raw) - i64::from(from.y.raw);
+    let span = isqrt64(dx * dx + dy * dy);
+    if span == 0 {
+        return from;
+    }
+    let sx = dx * i64::from(distance.raw) / span;
+    let sy = dy * i64::from(distance.raw) / span;
+    Vec2 {
+        x: Fixed {
+            raw: from.x.raw.saturating_add(sx as i32),
+        },
+        y: Fixed {
+            raw: from.y.raw.saturating_add(sy as i32),
+        },
+    }
+}
+
 /// The facing from one position towards another, in brads.
 ///
 /// A piecewise-linear octant approximation: exact on the axes and diagonals,

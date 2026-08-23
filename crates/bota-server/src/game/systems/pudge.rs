@@ -3,7 +3,7 @@
 use bota_proto::{DamageKind, Fixed, OrderTarget};
 
 use crate::engine::Entity;
-use crate::game::{Dismembering, Rotting, Status, StatusKind, World, ability, rules};
+use crate::game::{Dismembering, Rotting, StackKind, Status, StatusKind, World, ability, rules};
 
 impl World {
     /// Switches the rot on, or off if it already burns.
@@ -159,7 +159,17 @@ impl World {
     }
 
     /// Feeds the flesh heap of every hero near a death.
+    ///
+    /// A structure or a ward going down feeds nothing.
     pub fn feed_flesh_heaps(&mut self, fallen: Entity) {
+        if self
+            .kind
+            .get(fallen)
+            .copied()
+            .is_none_or(|kind| !crate::game::leaves_a_death(kind))
+        {
+            return;
+        }
         let Some(at) = self.transform.get(fallen).map(|t| t.pos) else {
             return;
         };
@@ -175,9 +185,9 @@ impl World {
             {
                 continue;
             }
-            let mut heap = self.flesh_heap.get(hero).copied().unwrap_or_default();
-            heap.stacks += 1;
-            self.flesh_heap.insert(hero, heap);
+            let mut kept = self.stacks.get(hero).copied().unwrap_or_default();
+            kept.gather(StackKind::FleshHeap, 1);
+            self.stacks.insert(hero, kept);
         }
     }
 

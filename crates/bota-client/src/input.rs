@@ -1,24 +1,20 @@
 //! Keys and mouse into orders and camera motion.
 
 use bota_proto::{
-    AbilitySlot, ClientMsg, EntityId, ItemId, ItemSlot, Order, OrderTarget, UnitKind, Vec2,
+    AbilitySlot, Aim, ClientMsg, EntityId, ItemId, ItemSlot, Order, OrderTarget, UnitKind, Vec2,
     WorldView,
 };
 use macroquad::prelude::*;
 
-use crate::state::{App, Phase, Selection, Source};
+use crate::slots::{Press, Slot, order_for, press};
+use crate::state::{App, Phase, Source, Tap};
 
 /// Handles one frame of input.
 pub fn handle(app: &mut App) {
     if is_key_pressed(KeyCode::Escape) {
-        if app.attack_move_armed
-            || app.pending_ability.is_some()
-            || app.pending_item.is_some()
-            || app.held_item.is_some()
-        {
+        if app.attack_move_armed || app.aiming.is_some() || app.held_item.is_some() {
             app.attack_move_armed = false;
-            app.pending_ability = None;
-            app.pending_item = None;
+            app.aiming = None;
             app.held_item = None;
         } else if app.shop_open {
             app.shop_open = false;
@@ -39,9 +35,7 @@ pub fn handle(app: &mut App) {
             if !ui_click {
                 // A click that confirms an armed order never doubles as a
                 // selection of whatever it landed on.
-                let armed = app.attack_move_armed
-                    || app.pending_ability.is_some()
-                    || app.pending_item.is_some();
+                let armed = app.attack_move_armed || app.aiming.is_some();
                 if app.over.is_none() {
                     order_controls(app);
                 }
@@ -78,11 +72,11 @@ fn ui_clicks(app: &mut App) -> bool {
     for (slot, rect) in crate::hud::top_portraits(&view.players, sw) {
         if rect.contains(mx, my) {
             if left {
-                app.selection = if app.selection == Selection::Seat(slot) {
-                    Selection::Own
-                } else {
-                    Selection::Seat(slot)
-                };
+                // The body a seat last stood in, so a hero in the fog or one
+                // that has fallen is still something to pick.
+                let body = app.body_of(slot);
+                let again = app.tapped_twice(Tap::Seat(slot));
+                app.choose(body, again);
             }
             return true;
         }
@@ -101,6 +95,9 @@ fn ui_clicks(app: &mut App) -> bool {
             app.attack_move_armed = false;
             app.send_order(Order::AttackMove { pos: ground });
         } else if left {
+            // Sending the camera somewhere lets go of what carried it, or it
+            // would be pulled straight back.
+            app.pinned = None;
             app.camera.x = wx;
             app.camera.y = wy;
         }
@@ -114,11 +111,27 @@ fn ui_clicks(app: &mut App) -> bool {
     }
     let panel = crate::hud::bottom_panel(sw, sh);
     if app.controls_selection() {
+        // Only the boxes this unit actually carries: the rest are not drawn,
+        // and a box that is not drawn must not swallow a click either.
+        let carried = app.slot_unit().map_or(0, |unit| unit.abilities.len());
+        for (slot, rect) in crate::hud::ability_boxes(&panel) {
+            if usize::from(slot) < carried && rect.contains(mx, my) {
+                if left {
+                    let ctrl =
+                        is_key_down(KeyCode::LeftControl) || is_key_down(KeyCode::RightControl);
+                    do_press(app, Slot::Ability(slot), ctrl);
+                } else if right {
+                    app.aiming = None;
+                }
+                return true;
+            }
+        }
         if let Some(slot) = item_box_under(mx, my, sw, sh) {
             if left && app.item_at(slot) {
                 app.held_item = Some(slot);
             } else if right {
                 app.held_item = None;
+                app.aiming = None;
             }
             return true;
         }
@@ -165,11 +178,9 @@ fn finish_item_drag(app: &mut App, mx: f32, my: f32, sw: f32, sh: f32) {
     };
     if let Some(to) = item_box_under(mx, my, sw, sh) {
         if to == from {
-            // A click in place uses what is in the inventory, or takes it up
-            // to be aimed if it needs aiming.
-            if from < 6 && app.consumable_at(from) {
-                use_or_aim(app, from);
-            }
+            // Taken up and set down where it came from, a click is a press of
+            // that slot and nothing more.
+            do_press(app, Slot::Item(from), false);
         } else {
             app.send_order(Order::MoveItem {
                 from: ItemSlot(from),
@@ -188,8 +199,8 @@ fn finish_item_drag(app: &mut App, mx: f32, my: f32, sw: f32, sh: f32) {
     }
 }
 
-/// A free left click selects what it lands on: a hero picks its seat, a creep
-/// or building picks the unit, the ground picks nothing.
+/// A free left click picks what it lands on, whatever that is; the ground
+/// picks nothing. A second click on the same one pins the camera to it.
 fn selection_clicks(app: &mut App) {
     if !is_mouse_button_pressed(MouseButton::Left) {
         return;
@@ -201,42 +212,34 @@ fn selection_clicks(app: &mut App) {
     let Some(view) = &app.view else {
         return;
     };
+    // One rule for everything that stands: a hero, a courier, a creep, a
+    // building, one's own side or the other. A click picks it; a second click
+    // on the same one pins the camera to it.
     let hit = unit_under_cursor(view, wx, wy, None, false);
-    app.selection = match hit {
-        None => Selection::Own,
-        Some(id) => {
-            // A seat is picked by clicking the hero that holds it. Anything
-            // else a seat owns — a courier, and whatever comes after it — is
-            // picked as itself.
-            let unit = view.units.iter().find(|unit| unit.id == id);
-            match unit.and_then(|unit| {
-                unit.owner
-                    .filter(|_| unit.kind == bota_proto::UnitKind::Hero)
-            }) {
-                Some(slot) => Selection::Seat(slot),
-                None => Selection::Unit(id),
-            }
-        }
-    };
+    let again = hit.is_some_and(|id| app.tapped_twice(Tap::Unit(id)));
+    app.choose(hit, again);
 }
+
+/// How near an edge the cursor drives the camera that way, in pixels.
+const EDGE_MARGIN: f32 = 6.0;
 
 /// Which ability of a courier fetches the stash.
 const TAKE_STASH: u16 = 10;
 
-/// F1 picks one's own hero, F2 one's own courier, F3 sends that courier for
-/// the stash without looking away from the fight.
+/// F1 picks one's own hero and F2 one's own courier; pressed twice, either
+/// one pins the camera to what it picked. F3 sends the courier for the stash
+/// without looking away from the fight, and picks nothing.
 fn pick_controls(app: &mut App) {
     if is_key_pressed(KeyCode::F1) {
-        app.selection = crate::state::Selection::Own;
-        app.pending_ability = None;
-        app.pending_item = None;
+        let hero = app.my_hero();
+        let again = app.tapped_twice(Tap::Hero);
+        app.choose(hero, again);
     }
     if is_key_pressed(KeyCode::F2)
         && let Some(courier) = app.my_courier()
     {
-        app.selection = crate::state::Selection::Unit(courier);
-        app.pending_ability = None;
-        app.pending_item = None;
+        let again = app.tapped_twice(Tap::Courier);
+        app.choose(Some(courier), again);
     }
     if is_key_pressed(KeyCode::F3)
         && let Some(courier) = app.my_courier()
@@ -300,27 +303,75 @@ fn camera_controls(app: &mut App) {
     }
     let dt = get_frame_time();
     let pan = 900.0 * dt;
-    let free = app.my_hero().is_none();
-    if free {
-        if is_key_down(KeyCode::W) || is_key_down(KeyCode::Up) {
-            app.camera.pan(0.0, -pan);
-        }
-        if is_key_down(KeyCode::S) || is_key_down(KeyCode::Down) {
-            app.camera.pan(0.0, pan);
-        }
-        if is_key_down(KeyCode::A) || is_key_down(KeyCode::Left) {
-            app.camera.pan(-pan, 0.0);
-        }
-        if is_key_down(KeyCode::D) || is_key_down(KeyCode::Right) {
-            app.camera.pan(pan, 0.0);
-        }
-    } else if let Some(hero) = app.my_hero() {
-        let view = app.view.as_ref().expect("my_hero implies a view");
-        if let Some(u) = view.units.iter().find(|u| u.id == hero) {
-            let (x, y) = (u.pos.x.to_f32(), u.pos.y.to_f32());
-            app.camera.follow(x, y, dt);
-        }
+    // The arrows always drive the camera. W, A, S and D are orders once there
+    // is a hero to give them to, and only a seat with none may pan by them.
+    let letters = app.my_hero().is_none();
+    let mut steer = (0.0, 0.0);
+    if is_key_down(KeyCode::Up) || (letters && is_key_down(KeyCode::W)) {
+        steer.1 -= pan;
     }
+    if is_key_down(KeyCode::Down) || (letters && is_key_down(KeyCode::S)) {
+        steer.1 += pan;
+    }
+    if is_key_down(KeyCode::Left) || (letters && is_key_down(KeyCode::A)) {
+        steer.0 -= pan;
+    }
+    if is_key_down(KeyCode::Right) || (letters && is_key_down(KeyCode::D)) {
+        steer.0 += pan;
+    }
+    let (edge_x, edge_y) = edge_push(pan);
+    steer = (steer.0 + edge_x, steer.1 + edge_y);
+    if steer != (0.0, 0.0) {
+        // Driving the camera by hand lets go of whatever it was pinned to:
+        // asking to look elsewhere is asking to stop being carried.
+        app.pinned = None;
+        app.camera.pan(steer.0, steer.1);
+        return;
+    }
+    // The first hero to stand is looked at once, so a match does not open on
+    // an empty middle of the map.
+    if !app.found_my_hero
+        && app.my_hero().is_some()
+        && let Some(slot) = app.my_slot
+    {
+        app.found_my_hero = true;
+        app.pinned = Some(crate::state::Pin::Hero(slot));
+    }
+    if let Some(pinned) = app.pinned_unit()
+        && let Some(view) = app.view.as_ref()
+        && let Some(unit) = view.units.iter().find(|u| u.id == pinned)
+    {
+        let (x, y) = (unit.pos.x.to_f32(), unit.pos.y.to_f32());
+        app.camera.follow(x, y, dt);
+    }
+}
+
+/// How hard the cursor at the edge of the screen pushes the camera.
+///
+/// Nothing at all while the cursor is outside the window, so a click on
+/// another window does not drag the map with it.
+fn edge_push(pan: f32) -> (f32, f32) {
+    let (mx, my) = mouse_position();
+    edge_of(mx, my, screen_width(), screen_height(), pan)
+}
+
+/// How hard a cursor at one spot on a screen of that size pushes the camera.
+pub fn edge_of(mx: f32, my: f32, sw: f32, sh: f32, pan: f32) -> (f32, f32) {
+    if mx < 0.0 || my < 0.0 || mx > sw || my > sh {
+        return (0.0, 0.0);
+    }
+    let mut push = (0.0, 0.0);
+    if mx <= EDGE_MARGIN {
+        push.0 = -pan;
+    } else if mx >= sw - EDGE_MARGIN {
+        push.0 = pan;
+    }
+    if my <= EDGE_MARGIN {
+        push.1 = -pan;
+    } else if my >= sh - EDGE_MARGIN {
+        push.1 = pan;
+    }
+    push
 }
 
 fn replay_controls(app: &mut App) {
@@ -354,7 +405,7 @@ fn order_controls(app: &mut App) {
     }
     if is_key_pressed(KeyCode::S) {
         app.attack_move_armed = false;
-        app.pending_ability = None;
+        app.aiming = None;
         app.send_order(Order::Stop);
     }
     if is_key_pressed(KeyCode::H) {
@@ -368,51 +419,29 @@ fn order_controls(app: &mut App) {
         .camera
         .screen_to_world(sx, sy, screen_width(), screen_height());
     let ground = world_vec(wx, wy);
-    // An armed item spends the next left click, on the ground or on a unit.
-    if let Some(slot) = app.pending_item
+    // A slot taken up spends the next left click, on the ground or on a unit.
+    if let Some(slot) = app.aiming
         && is_mouse_button_pressed(MouseButton::Left)
     {
-        app.pending_item = None;
-        let target = match app.aim_of(slot) {
-            crate::catalog::Aim::Point => Some(OrderTarget::Point { pos: ground }),
+        app.aiming = None;
+        let target = match app.aim_in(slot) {
+            // A tree and a landing spot are both named by the ground under
+            // the cursor; which one was meant is the server's to settle.
+            Some(Aim::Point | Aim::Tree | Aim::Building) => {
+                Some(OrderTarget::Point { pos: ground })
+            }
             // One's own hero is a target like any other here: a salve is
             // drunk by clicking the one drinking it.
-            crate::catalog::Aim::Unit => app
+            Some(Aim::Unit) => app
                 .view
                 .as_ref()
                 .and_then(|view| unit_under_cursor(view, wx, wy, None, true))
                 .map(|target| OrderTarget::Unit { target }),
-            crate::catalog::Aim::Own => Some(OrderTarget::None),
+            Some(Aim::Own) | None => Some(OrderTarget::None),
         };
         if let Some(target) = target {
-            app.send_order(Order::UseItem {
-                slot: ItemSlot(slot),
-                target,
-            });
-        }
-        return;
-    }
-    // An armed ability spends the next left click, on the ground or on a unit.
-    if let Some(slot) = app.pending_ability
-        && is_mouse_button_pressed(MouseButton::Left)
-    {
-        app.pending_ability = None;
-        let target = match app.ability_aim_of(slot) {
-            crate::catalog::Aim::Point => Some(OrderTarget::Point { pos: ground }),
-            crate::catalog::Aim::Unit => {
-                let me = app.my_hero();
-                app.view
-                    .as_ref()
-                    .and_then(|view| unit_under_cursor(view, wx, wy, me, true))
-                    .map(|target| OrderTarget::Unit { target })
-            }
-            crate::catalog::Aim::Own => Some(OrderTarget::None),
-        };
-        if let Some(target) = target {
-            app.send_order(Order::CastAbility {
-                slot: AbilitySlot(slot),
-                target,
-            });
+            app.aimed_from = Some((app.seq + 1, slot));
+            app.send_order(order_for(slot, target));
         }
         return;
     }
@@ -433,8 +462,7 @@ fn order_controls(app: &mut App) {
     }
     if is_mouse_button_pressed(MouseButton::Right) {
         app.attack_move_armed = false;
-        app.pending_ability = None;
-        app.pending_item = None;
+        app.aiming = None;
         let me = app.my_hero();
         let target = app
             .view
@@ -459,37 +487,28 @@ fn item_keys(app: &mut App) {
     ];
     for (i, key) in keys.into_iter().enumerate() {
         if is_key_pressed(key) {
-            use_or_aim(app, i as u8);
+            do_press(app, Slot::Item(i as u8), false);
         }
     }
 }
 
-/// Uses an item that needs no aiming, or takes it up to be aimed.
+/// Answers a press of one slot, however it was pressed.
 ///
-/// Reaching for one already in hand aims it at oneself, so a salve takes two
-/// presses of its own key and no click at all.
-fn use_or_aim(app: &mut App, slot: u8) {
-    let aim = app.aim_of(slot);
-    if aim == crate::catalog::Aim::Unit && app.pending_item == Some(slot) {
-        app.pending_item = None;
-        if let Some(target) = app.my_hero() {
-            app.send_order(Order::UseItem {
-                slot: ItemSlot(slot),
-                target: OrderTarget::Unit { target },
-            });
+/// The one door a key and a click both go through, so neither can grow a rule
+/// the other does not have. What a press means is [`press`]; nothing is asked
+/// here about whether the order would be carried out.
+pub fn do_press(app: &mut App, slot: Slot, ctrl: bool) {
+    match press(app, slot, ctrl) {
+        Press::Send(order) => {
+            app.aiming = None;
+            app.aimed_from = Some((app.seq + 1, slot));
+            app.send_order(order);
         }
-        return;
-    }
-    match aim {
-        crate::catalog::Aim::Own => app.send_order(Order::UseItem {
-            slot: ItemSlot(slot),
-            target: OrderTarget::None,
-        }),
-        crate::catalog::Aim::Point | crate::catalog::Aim::Unit => {
+        Press::Aim(slot) => {
             app.attack_move_armed = false;
-            app.pending_ability = None;
-            app.pending_item = Some(slot);
+            app.aiming = Some(slot);
         }
+        Press::Nothing => {}
     }
 }
 
@@ -512,27 +531,8 @@ fn ability_keys(app: &mut App) {
     }
     let ctrl = is_key_down(KeyCode::LeftControl) || is_key_down(KeyCode::RightControl);
     for (key, slot) in keys {
-        if !is_key_pressed(key) {
-            continue;
-        }
-        if ctrl {
-            app.send_order(Order::LevelUpAbility {
-                slot: AbilitySlot(slot),
-            });
-        } else if app.ability_is_passive(slot) {
-            // A passive works on its own; there is nothing to send.
-        } else {
-            match app.ability_aim_of(slot) {
-                crate::catalog::Aim::Own => app.send_order(Order::CastAbility {
-                    slot: AbilitySlot(slot),
-                    target: OrderTarget::None,
-                }),
-                crate::catalog::Aim::Point | crate::catalog::Aim::Unit => {
-                    app.attack_move_armed = false;
-                    app.pending_item = None;
-                    app.pending_ability = Some(slot);
-                }
-            }
+        if is_key_pressed(key) {
+            do_press(app, Slot::Ability(slot), ctrl);
         }
     }
 }

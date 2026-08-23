@@ -19,6 +19,7 @@ fn chair(name: &str, lesson: Lesson) -> crate::Chair {
         limit: Some(lesson.ticks()),
         role: Role::Mid,
         lesson,
+        until: None,
     }
 }
 

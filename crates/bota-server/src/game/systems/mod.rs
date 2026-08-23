@@ -4,6 +4,7 @@ mod cast;
 mod control;
 mod courier;
 mod econ;
+mod fiend;
 mod fight;
 mod gear;
 mod ground;

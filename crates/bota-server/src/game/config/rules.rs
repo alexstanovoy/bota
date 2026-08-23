@@ -721,6 +721,46 @@ pub const DISMEMBER_TICKS: u32 = 90;
 /// Damage the dismember deals a second, by level.
 pub const DISMEMBER_DAMAGE_PER_SECOND: [i32; 3] = [75, 125, 175];
 
+// Shadow Fiend.
+
+/// How far in front of the caster a raze lands, in world units, from the
+/// nearest reach to the farthest.
+pub const RAZE_DISTANCE: [i32; 3] = [200, 450, 700];
+/// How wide a raze burns, in world units.
+pub const RAZE_RADIUS: i32 = 250;
+/// Damage a raze deals, by level.
+pub const RAZE_DAMAGE: [i32; 4] = [90, 160, 230, 300];
+/// Mana a raze costs, by level.
+pub const RAZE_MANA: [i32; 4] = [75, 80, 85, 90];
+/// Ticks between two razes of the same reach, by level.
+pub const RAZE_COOLDOWN: [u32; 4] = [10 * TICKS_PER_SECOND; 4];
+/// Souls one unit brought down is worth to whoever gathers them.
+pub const SOULS_PER_UNIT: u32 = 1;
+/// Souls one hero brought down is worth to whoever gathers them.
+pub const SOULS_PER_HERO: u32 = 3;
+/// Souls that may be held at hero level one.
+pub const SOUL_CAP_BASE: u32 = 6;
+/// Souls the cap gains with every hero level past the first.
+pub const SOUL_CAP_PER_LEVEL: u32 = 3;
+/// Attack damage one soul is worth.
+pub const DAMAGE_PER_SOUL: i32 = 2;
+/// How far the requiem reaches, in world units.
+pub const REQUIEM_RADIUS: i32 = 900;
+/// Damage the requiem deals for each soul held, by level.
+pub const REQUIEM_DAMAGE_PER_SOUL: [i32; 3] = [8, 11, 14];
+/// Percent of speed the requiem takes from what it catches, by level.
+pub const REQUIEM_SLOW_PCT: [i32; 3] = [30, 40, 50];
+/// Ticks the requiem's slow holds.
+pub const REQUIEM_SLOW_TICKS: u32 = 2 * TICKS_PER_SECOND;
+/// Mana the requiem costs, by level.
+pub const REQUIEM_MANA: [i32; 3] = [150, 175, 200];
+/// Ticks between requiems, by level.
+pub const REQUIEM_COOLDOWN: [u32; 3] = [
+    120 * TICKS_PER_SECOND,
+    110 * TICKS_PER_SECOND,
+    100 * TICKS_PER_SECOND,
+];
+
 /// Ticks between the beats of anything that burns over time.
 pub const BURN_PERIOD_TICKS: u32 = 3;
 /// Inventory slots, where items work.

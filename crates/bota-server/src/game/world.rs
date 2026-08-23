@@ -6,9 +6,9 @@ use bota_proto::{HeroId, SlotId, Team, UnitKind};
 
 use crate::game::{
     AbilityBook, AttackCx, Attacking, AuraCx, Auras, Bounty, CampHome, Def, Dismembering, Entity,
-    EntityAllocator, Errand, Expiry, FleshHeap, Forest, Health, Hit, Hook, Hull, Inventory, Landed,
-    Lane, LaneAi, Level, Mana, March, NeutralAi, Orders, PendingCast, Projectile, Rotting, Route,
-    Seat, SightCx, Stats, StatsCx, Statuses, Table, Target, Teleport, Tier, Transform, UnitOrder,
+    EntityAllocator, Errand, Expiry, Forest, Health, Hit, Hook, Hull, Inventory, Landed, Lane,
+    LaneAi, Level, Mana, March, NeutralAi, Orders, PendingCast, Projectile, Rotting, Route, Seat,
+    SightCx, Stacks, Stats, StatsCx, Statuses, Table, Target, Teleport, Tier, Transform, UnitOrder,
     Upgrades, Visibility, attacking_system, aura_system, derive_stats, hitting_system,
     missile_system, regenerate, visibility_system,
 };
@@ -83,8 +83,8 @@ pub struct World {
     pub rotting: Table<Rotting>,
     /// The dismember each entity is channelling.
     pub dismember: Table<Dismembering>,
-    /// What each entity has kept of the deaths around it.
-    pub flesh_heap: Table<FleshHeap>,
+    /// What each entity has gathered and keeps.
+    pub stacks: Table<Stacks>,
     /// The errand each courier is on.
     pub errand: Table<Errand>,
     /// How long each entity that stands for a time has left.
@@ -174,7 +174,7 @@ impl World {
             hook: Table::new(),
             rotting: Table::new(),
             dismember: Table::new(),
-            flesh_heap: Table::new(),
+            stacks: Table::new(),
             errand: Table::new(),
             expiry: Table::new(),
             teleport: Table::new(),
@@ -349,7 +349,7 @@ impl World {
             inventory: &self.inventory,
             statuses: &self.statuses,
             abilities: &self.abilities,
-            flesh_heap: &self.flesh_heap,
+            stacks: &self.stacks,
             stats: &mut self.stats,
             health: &mut self.health,
             mana: &mut self.mana,
@@ -401,7 +401,7 @@ impl World {
             inventory: &self.inventory,
             statuses: &self.statuses,
             abilities: &self.abilities,
-            flesh_heap: &self.flesh_heap,
+            stacks: &self.stacks,
             stats: &mut self.stats,
             health: &mut self.health,
             mana: &mut self.mana,

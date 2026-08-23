@@ -291,6 +291,38 @@ pub const PUDGE: UnitDef = UnitDef {
     ..HERO
 };
 
+/// Shadow Fiend: fragile, long-ranged, and everything it grows into is in
+/// its attack.
+pub const SHADOW_FIEND: UnitDef = UnitDef {
+    attributes: Attributes {
+        strength: Fixed::from_int(18),
+        agility: Fixed::from_int(20),
+        intelligence: Fixed::from_int(18),
+    },
+    primary: Some(Attribute::Agility),
+    max_hp: 120,
+    max_mana: 75,
+    damage: 25,
+    attack_range: 500,
+    attack_interval: 51,
+    attack_point: 15,
+    projectile_speed: Some(1200),
+    armor: 0,
+    move_speed: 305,
+    per_level: Growth {
+        attributes: Attributes {
+            strength: Fixed::from_ratio(20, 10),
+            agility: Fixed::from_ratio(33, 10),
+            intelligence: Fixed::from_ratio(21, 10),
+        },
+        hp: 38,
+        mana: 6,
+        damage: 1,
+        ..NO_GROWTH
+    },
+    ..HERO
+};
+
 /// Roshan.
 pub const ROSHAN: UnitDef = UnitDef {
     kind: UnitKind::Roshan,
@@ -417,6 +449,12 @@ pub fn is_structure(kind: UnitKind) -> bool {
         kind,
         UnitKind::Tower | UnitKind::Ancient | UnitKind::Fountain
     )
+}
+
+/// Whether a kind of unit leaves anything to what is gathered from deaths:
+/// the flesh heap and the souls. A structure or a ward leaves nothing.
+pub fn leaves_a_death(kind: UnitKind) -> bool {
+    !is_structure(kind) && kind != UnitKind::Ward
 }
 
 /// Whether a kind of unit is a lane creep: one of what a wave is made of.

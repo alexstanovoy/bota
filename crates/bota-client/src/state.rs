@@ -43,15 +43,130 @@ pub enum Phase {
     Playing,
 }
 
-/// What the bottom panel is focused on.
+/// What the camera is carried by.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Selection {
-    /// Nothing picked: one's own seat.
-    Own,
-    /// A seat, picked from the top bar or by clicking its hero.
-    Seat(SlotId),
-    /// A unit that answers to no seat: a creep or a building.
+pub enum Pin {
+    /// A seat's hero, whichever body it is standing in.
+    ///
+    /// A hero that dies comes back as a new entity, and a camera pinned to
+    /// the body rather than the seat would be left behind by that.
+    Hero(SlotId),
+    /// One unit, for as long as it stands.
     Unit(EntityId),
+}
+
+/// Keeps the last state of every unit a seat owns.
+///
+/// Only what a seat owns is kept, which bounds this to a handful of entries:
+/// an enemy hero out of sight is worth remembering, the creep wave it walked
+/// past is not. A seat stands in one body at a time, so a body it has left
+/// for a new one is dropped rather than piling up.
+pub fn remember(seen: &mut Vec<(u32, bota_proto::UnitView)>, view: &WorldView) {
+    for unit in view.units.iter().filter(|unit| unit.owner.is_some()) {
+        match seen.iter_mut().find(|(_, held)| held.id == unit.id) {
+            Some(held) => *held = (view.tick, unit.clone()),
+            None => seen.push((view.tick, unit.clone())),
+        }
+    }
+    seen.retain(|(_, held)| {
+        view.units.iter().any(|unit| unit.id == held.id)
+            || !view.units.iter().any(|unit| {
+                unit.owner == held.owner && unit.kind == held.kind && unit.id != held.id
+            })
+    });
+}
+
+/// What is known of a unit, and how many ticks ago that was true.
+pub fn known_in<'a>(
+    seen: &'a [(u32, bota_proto::UnitView)],
+    view: &'a WorldView,
+    id: EntityId,
+) -> Option<(&'a bota_proto::UnitView, u32)> {
+    if let Some(live) = view.units.iter().find(|unit| unit.id == id) {
+        return Some((live, 0));
+    }
+    seen.iter()
+        .find(|(_, held)| held.id == id)
+        .map(|(tick, held)| (held, view.tick.saturating_sub(*tick)))
+}
+
+/// The body a seat last stood in, whether or not it still stands.
+///
+/// A seat with its hero down has no unit on the wire at all, so the body it
+/// left behind is the only handle there is to pick it by.
+pub fn body_in(
+    seen: &[(u32, bota_proto::UnitView)],
+    view: &WorldView,
+    slot: SlotId,
+) -> Option<EntityId> {
+    if let Some(unit) = view
+        .players
+        .iter()
+        .find(|p| p.slot == slot)
+        .and_then(|p| p.unit)
+    {
+        return Some(unit);
+    }
+    seen.iter()
+        .find(|(_, held)| held.owner == Some(slot) && held.kind == UnitKind::Hero)
+        .map(|(_, held)| held.id)
+}
+
+/// What was last reached for, so a second reach for the same thing counts as
+/// a pair.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Tap {
+    /// The key for one's own hero.
+    Hero,
+    /// The key for one's own courier.
+    Courier,
+    /// A unit, clicked in the world.
+    Unit(EntityId),
+    /// A seat, clicked in the top bar.
+    Seat(SlotId),
+}
+
+/// How long after one press a second counts as a double.
+pub const DOUBLE_TAP: f32 = 0.35;
+
+/// Whether reaching for something makes a pair with what was reached for
+/// last, and what is worth remembering afterwards.
+///
+/// A pair is spent when it is made: three presses are one pair and one
+/// single, not two pairs.
+pub fn tap_again(last: Option<(Tap, f32)>, what: Tap) -> (bool, Option<(Tap, f32)>) {
+    if last.map(|(seen, _)| seen) == Some(what) {
+        (true, None)
+    } else {
+        (false, Some((what, DOUBLE_TAP)))
+    }
+}
+
+/// What a refusal is called in plain words.
+pub fn refusal(reason: bota_proto::RejectReason) -> &'static str {
+    use bota_proto::RejectReason as Why;
+    match reason {
+        Why::NotYourSlot => "that seat is not yours",
+        Why::HeroDead => "your hero is not standing",
+        Why::UnknownTarget => "no such target",
+        Why::WrongTargetKind => "not aimed at what it takes",
+        Why::OnCooldown => "still on cooldown",
+        Why::OutOfRange => "out of range",
+        Why::NotEnoughMana => "not enough mana",
+        Why::NotEnoughGold => "not enough gold",
+        Why::EmptySlot => "that slot is empty",
+        Why::NotCastable => "it works on its own",
+        Why::NotLearned => "no points in it yet",
+        Why::NoCharges => "no charges left",
+        Why::NotReady => "it is not working yet",
+        Why::NotYourUnit => "you do not drive that unit",
+        Why::UnknownItem => "the shop does not sell that",
+        Why::CannotLevelUp => "no skill point for it",
+        Why::NotAtShop => "only at the shop",
+        Why::InventoryFull => "no room for it",
+        Why::Disabled => "you cannot act right now",
+        Why::NotPlaying => "the match is not running",
+    }
 }
 
 /// A damage number floating off a unit.
@@ -88,10 +203,8 @@ pub struct App {
     pub tick_rate: u16,
     /// Ticks before the game clock reaches zero, from MatchStart.
     pub pregame_ticks: u32,
-    /// A unit-target ability armed and waiting for a click.
-    pub pending_ability: Option<u8>,
-    /// The item slot waiting for a click to aim it, if one is.
-    pub pending_item: Option<u8>,
+    /// The slot taken up and waiting for a click to aim it, if one is.
+    pub aiming: Option<crate::slots::Slot>,
     /// An item slot picked up and waiting for the destination click.
     pub held_item: Option<u8>,
     /// Whether the shop panel is open. Toggled by key or button; buying
@@ -99,6 +212,8 @@ pub struct App {
     pub shop_open: bool,
     /// The catalog row the shop panel starts at.
     pub shop_scroll: usize,
+    /// What the shop sells and asks for it, from MatchStart.
+    pub shop: Vec<bota_proto::ShopEntry>,
     /// Every tree on the map, from MatchStart.
     pub trees: Vec<(f32, f32)>,
     /// Cells per terrain axis, from MatchStart.
@@ -119,14 +234,28 @@ pub struct App {
     pub view: Option<WorldView>,
     /// The state one snapshot ago, for naming what died.
     pub prev_view: Option<WorldView>,
+    /// The last state seen of every unit a seat owns, and the tick it was
+    /// seen on.
+    ///
+    /// Only what a seat owns is kept, which bounds this to a handful of
+    /// entries: an enemy hero out of sight is worth remembering, the creep
+    /// wave it walked past is not.
+    pub seen: Vec<(u32, bota_proto::UnitView)>,
     /// The eye.
     pub camera: Camera,
     /// Sequence number of the next order.
     pub seq: u32,
     /// Whether the next left click is an attack-move.
     pub attack_move_armed: bool,
-    /// What the bottom panel shows.
-    pub selection: Selection,
+    /// The unit picked, if one is. Nothing picked falls back to one's own
+    /// hero, so orders always have somewhere to go.
+    pub selected: Option<EntityId>,
+    /// What the camera is pinned to. Nothing means a free camera.
+    pub pinned: Option<Pin>,
+    /// What was last reached for, and how long is left to make it a pair.
+    pub tapped: Option<(Tap, f32)>,
+    /// Whether the camera has been put on one's own hero once, at the start.
+    pub found_my_hero: bool,
     /// Whether readiness has been declared.
     pub ready: bool,
     /// Whether a hero pick has been sent.
@@ -135,6 +264,11 @@ pub struct App {
     pub floaters: Vec<Floater>,
     /// Kill feed lines.
     pub feed: Vec<FeedLine>,
+    /// Which slot the order of a sequence number came from, so a refusal
+    /// can be shown on the slot that earned it.
+    pub aimed_from: Option<(u32, crate::slots::Slot)>,
+    /// The slot whose order was last refused, and the seconds left on it.
+    pub refused: Option<(crate::slots::Slot, f32)>,
     /// The last rejected order, shown briefly: text and seconds left.
     pub reject: Option<(String, f32)>,
     /// The end of the match, once it came.
@@ -154,11 +288,11 @@ impl App {
             my_slot: None,
             tick_rate: 30,
             pregame_ticks: 0,
-            pending_ability: None,
-            pending_item: None,
+            aiming: None,
             held_item: None,
             shop_open: false,
             shop_scroll: 0,
+            shop: Vec::new(),
             trees: Vec::new(),
             terrain_cells: 0,
             terrain: Vec::new(),
@@ -168,14 +302,20 @@ impl App {
             names: Vec::new(),
             view: None,
             prev_view: None,
+            seen: Vec::new(),
             camera: Camera::over(9216.0, 9216.0),
             seq: 0,
             attack_move_armed: false,
-            selection: Selection::Own,
+            selected: None,
+            pinned: None,
+            tapped: None,
+            found_my_hero: false,
             ready: false,
             picked: false,
             floaters: Vec::new(),
             feed: Vec::new(),
+            aimed_from: None,
+            refused: None,
             reject: None,
             over: None,
             quit: false,
@@ -191,6 +331,17 @@ impl App {
             .unwrap_or_else(|| format!("seat {}", slot.0))
     }
 
+    /// What is known of a unit: its live state, or the last one seen of it
+    /// and how many ticks ago that was.
+    pub fn known(&self, id: EntityId) -> Option<(&bota_proto::UnitView, u32)> {
+        known_in(&self.seen, self.view.as_ref()?, id)
+    }
+
+    /// The body a seat last stood in, whether or not it still stands.
+    pub fn body_of(&self, slot: SlotId) -> Option<EntityId> {
+        body_in(&self.seen, self.view.as_ref()?, slot)
+    }
+
     /// Our hero's unit id, while it is alive and known.
     pub fn my_hero(&self) -> Option<bota_proto::EntityId> {
         let slot = self.my_slot?;
@@ -200,12 +351,64 @@ impl App {
 
     /// Which unit the slot panel and the keys are about.
     ///
-    /// Whatever is selected, if anything is; our own hero otherwise.
+    /// Whatever is picked, if anything is; one's own hero otherwise.
     pub fn commanded(&self) -> Option<bota_proto::EntityId> {
-        match self.selection {
-            crate::state::Selection::Unit(id) => Some(id),
-            _ => self.my_hero(),
+        match self.selected {
+            Some(id) => Some(id),
+            None => self.my_hero(),
         }
+    }
+
+    /// Picks a unit, and pins the camera to it when the same thing is
+    /// reached for twice.
+    ///
+    /// Picking alone never moves the camera: what a player is looking at and
+    /// what a player is commanding are two different questions.
+    pub fn choose(&mut self, unit: Option<EntityId>, again: bool) {
+        self.selected = unit;
+        self.aiming = None;
+        if again {
+            self.pinned = unit.map(|id| match self.hero_seat(id) {
+                Some(slot) => Pin::Hero(slot),
+                None => Pin::Unit(id),
+            });
+        }
+    }
+
+    /// Which seat a unit is the standing hero of, if it is one.
+    fn hero_seat(&self, id: EntityId) -> Option<SlotId> {
+        let (unit, _) = self.known(id)?;
+        (unit.kind == UnitKind::Hero)
+            .then_some(unit.owner)
+            .flatten()
+    }
+
+    /// Which unit the camera is carried by right now, if any still stands.
+    pub fn pinned_unit(&self) -> Option<EntityId> {
+        let view = self.view.as_ref()?;
+        match self.pinned? {
+            Pin::Hero(slot) => view.players.iter().find(|p| p.slot == slot)?.unit,
+            Pin::Unit(id) => view.units.iter().find(|u| u.id == id).map(|u| u.id),
+        }
+    }
+
+    /// Whether this reach for something is the second of a pair.
+    pub fn tapped_twice(&mut self, what: Tap) -> bool {
+        let (again, kept) = tap_again(self.tapped, what);
+        self.tapped = kept;
+        again
+    }
+
+    /// The seat whose gold, stash and score the panel is about.
+    ///
+    /// Whoever owns what is picked, and one's own seat when what is picked
+    /// answers to nobody.
+    pub fn panel_slot(&self) -> Option<SlotId> {
+        let owner = self
+            .selected
+            .and_then(|id| self.known(id))
+            .and_then(|(unit, _)| unit.owner);
+        owner.or_else(|| self.default_slot())
     }
 
     /// Our own courier, while one stands.
@@ -235,9 +438,7 @@ impl App {
     /// nothing of ours at all, the order names nobody and the server sends it
     /// to the hero.
     pub fn ordering_unit(&self) -> Option<bota_proto::EntityId> {
-        let crate::state::Selection::Unit(id) = self.selection else {
-            return None;
-        };
+        let id = self.selected?;
         let view = self.view.as_ref()?;
         let mine = self.my_slot?;
         let unit = view.units.iter().find(|unit| unit.id == id)?;
@@ -258,10 +459,9 @@ impl App {
     /// ours answers wherever it came from: a hero, a courier, or anything
     /// else this seat is given to drive.
     pub fn controls_selection(&self) -> bool {
-        match self.selection {
-            Selection::Own => true,
-            Selection::Seat(slot) => self.my_slot == Some(slot),
-            Selection::Unit(id) => self.drives(id),
+        match self.selected {
+            None => true,
+            Some(id) => self.drives(id),
         }
     }
 
@@ -295,79 +495,6 @@ impl App {
         let dx = unit.pos.x.to_f32() - fx;
         let dy = unit.pos.y.to_f32() - fy;
         dx * dx + dy * dy <= 1000.0 * 1000.0
-    }
-
-    /// Whether the item in one of our slots is a consumable with charges.
-    pub fn consumable_at(&self, slot: u8) -> bool {
-        let Some(view) = &self.view else {
-            return false;
-        };
-        let Some(my) = self.my_slot else {
-            return false;
-        };
-        let Some(p) = view.players.iter().find(|p| p.slot == my) else {
-            return false;
-        };
-        let item = if slot < 9 {
-            p.unit
-                .and_then(|id| view.units.iter().find(|u| u.id == id))
-                .and_then(|u| u.items.get(usize::from(slot)).copied().flatten())
-        } else {
-            p.stash
-                .as_ref()
-                .and_then(|s| s.get(usize::from(slot - 9)).copied().flatten())
-        };
-        item.is_some_and(|i| i.charges > 0)
-    }
-
-    /// Which item sits in one of our slots, if one does.
-    pub fn item_id_at(&self, slot: u8) -> Option<bota_proto::ItemId> {
-        let view = self.view.as_ref()?;
-        let my = self.my_slot?;
-        let player = view.players.iter().find(|p| p.slot == my)?;
-        let held = if slot < 9 {
-            player
-                .unit
-                .and_then(|id| view.units.iter().find(|u| u.id == id))
-                .and_then(|u| u.items.get(usize::from(slot)).copied().flatten())
-        } else {
-            player
-                .stash
-                .as_ref()
-                .and_then(|s| s.get(usize::from(slot - 9)).copied().flatten())
-        };
-        held.map(|item| item.id)
-    }
-
-    /// Which ability sits in one of our four slots.
-    pub fn ability_id_at(&self, slot: u8) -> Option<bota_proto::AbilityId> {
-        let view = self.view.as_ref()?;
-        let commanded = self.commanded()?;
-        let unit = view.units.iter().find(|u| u.id == commanded)?;
-        unit.abilities.get(usize::from(slot)).map(|a| a.id)
-    }
-
-    /// How the ability in one of our slots is aimed.
-    pub fn ability_aim_of(&self, slot: u8) -> crate::catalog::Aim {
-        self.ability_id_at(slot)
-            .map_or(crate::catalog::Aim::Own, |id| {
-                crate::catalog::ability_aim(id.0)
-            })
-    }
-
-    /// Whether the ability in one of our slots works on its own.
-    pub fn ability_is_passive(&self, slot: u8) -> bool {
-        self.ability_id_at(slot)
-            .and_then(|id| crate::catalog::ability(id.0))
-            .is_some_and(|face| face.passive)
-    }
-
-    /// How the item in one of our slots is aimed.
-    pub fn aim_of(&self, slot: u8) -> crate::catalog::Aim {
-        self.item_id_at(slot)
-            .map_or(crate::catalog::Aim::Own, |id| {
-                crate::catalog::item_aim(id.0)
-            })
     }
 
     /// Whether one of our fifteen item slots holds an item right now.
@@ -459,6 +586,7 @@ impl App {
             ServerMsg::MatchStart { info } => {
                 self.tick_rate = info.tick_rate;
                 self.pregame_ticks = info.pregame_ticks;
+                self.shop = info.shop.clone();
                 self.trees = info
                     .trees
                     .iter()
@@ -482,6 +610,7 @@ impl App {
                 if self.mode == Some(TickMode::Lockstep) && self.my_slot.is_some() {
                     self.source.send(&ClientMsg::Ack { tick: view.tick });
                 }
+                remember(&mut self.seen, &view);
                 self.prev_view = self.view.replace(view);
             }
             ServerMsg::Events { events, .. } => {
@@ -489,8 +618,14 @@ impl App {
                     self.absorb_event(event);
                 }
             }
-            ServerMsg::OrderRejected { reason, .. } => {
-                self.reject = Some((format!("{reason:?}"), 2.5));
+            ServerMsg::OrderRejected { seq, reason } => {
+                self.reject = Some((refusal(reason).to_string(), 2.5));
+                // The slot that earned it lights up, so the answer is where
+                // the press was rather than only in a line of text.
+                self.refused = self
+                    .aimed_from
+                    .filter(|(sent, _)| *sent == seq)
+                    .map(|(_, slot)| (slot, 1.2));
             }
             ServerMsg::MatchOver { winner, stats } => {
                 self.over = Some((winner, stats));
@@ -620,6 +755,18 @@ impl App {
             *left -= dt;
             if *left <= 0.0 {
                 self.reject = None;
+            }
+        }
+        if let Some((_, left)) = &mut self.refused {
+            *left -= dt;
+            if *left <= 0.0 {
+                self.refused = None;
+            }
+        }
+        if let Some((_, left)) = &mut self.tapped {
+            *left -= dt;
+            if *left <= 0.0 {
+                self.tapped = None;
             }
         }
     }

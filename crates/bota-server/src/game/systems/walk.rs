@@ -1,6 +1,6 @@
 //! Walking: turning towards where an entity is going, then taking its step.
 
-use bota_proto::Vec2;
+use bota_proto::{Fixed, Vec2};
 
 use crate::game::{Entity, Route, UnitOrder, World};
 use crate::game::{facing_gap, facing_towards, find_path, grid_los, per_tick, rules, turn_towards};
@@ -75,9 +75,13 @@ impl World {
                     .transform
                     .get(on)
                     .map(|at| (at.pos, self.in_reach(entity, on))),
-                // Something it may not: reach means nothing, so it walks right
-                // up until the bodies touch.
-                (None, Some(on)) => self.transform.get(on).map(|at| (at.pos, false)),
+                // Something it may not: reach means nothing, so it closes
+                // until the bodies touch and stands there, following it for
+                // as long as the order stands.
+                (None, Some(on)) => self
+                    .transform
+                    .get(on)
+                    .map(|at| (at.pos, self.bodies_touch(entity, on))),
                 (None, None) => None,
             };
             let holding = matches!(
@@ -151,6 +155,25 @@ impl World {
         }
     }
 
+    /// Whether two bodies stand near enough to be touching.
+    ///
+    /// A hair further apart than the hulls themselves, so what stops here is
+    /// not overlapping and is not eased away again by [`World::push_apart`],
+    /// which would leave it walking in and being pushed out for ever.
+    ///
+    /// [`World::push_apart`]: crate::game::World::push_apart
+    fn bodies_touch(&self, one: Entity, other: Entity) -> bool {
+        let (Some(here), Some(there)) = (
+            self.transform.get(one).map(|at| at.pos),
+            self.transform.get(other).map(|at| at.pos),
+        ) else {
+            return false;
+        };
+        let hulls = self.hull.get(one).map_or(Fixed::ZERO, |hull| hull.radius)
+            + self.hull.get(other).map_or(Fixed::ZERO, |hull| hull.radius);
+        here.within(there, hulls + rules::units(rules::STEER_MARGIN))
+    }
+
     /// Comes round towards a spot without leaving the one it stands on.
     fn turn_to(&mut self, entity: Entity, dest: Vec2) {
         let (Some(from), Some(rate)) = (
@@ -177,14 +200,24 @@ impl World {
         if self.march.get(entity).is_some() {
             return dest;
         }
+        // What flies is over all of it: closed ground is nothing to it, and a
+        // way round it is a way round nothing.
+        if self.stats.get(entity).is_some_and(|stats| stats.flies) {
+            self.route.remove(entity);
+            return dest;
+        }
         let mut route = self.route.remove(entity).unwrap_or(Route {
             path: Vec::new(),
             goal: dest,
         });
+        // A path is worth walking only to the spot it was found for. What is
+        // kept here is that spot and not the last one asked for: chasing
+        // something that moves a little every tick would otherwise never
+        // drift far enough in one tick to be noticed, and the whole stale
+        // path would be walked to where the quarry used to be.
         if !route.goal.within(dest, rules::units(rules::REPATH_DRIFT)) {
             route.path.clear();
         }
-        route.goal = dest;
         while route
             .path
             .first()
@@ -194,6 +227,7 @@ impl World {
         }
         if route.path.is_empty() && !grid_los(&self.grid, from, dest) {
             route.path = find_path(&self.grid, from, dest);
+            route.goal = dest;
         }
         let next = route.path.first().copied().unwrap_or(dest);
         self.route.insert(entity, route);

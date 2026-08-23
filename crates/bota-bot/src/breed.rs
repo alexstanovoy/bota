@@ -26,7 +26,7 @@
 
 use std::thread;
 
-use crate::{Card, Chair, Dice, Learned, Lesson, Model, Role, Yard};
+use crate::{Card, Chair, Dice, Learned, Lesson, Model, Role, Rung, Yard};
 
 /// A crowd being taught.
 #[derive(Clone, Debug)]
@@ -58,7 +58,7 @@ pub struct Tribe {
 /// whole ladder for the price of its longest rung, and a card that describes
 /// one game rather than seven different ones.
 pub fn report_card(tribe: &Tribe, body: &Body) -> std::io::Result<Card> {
-    let longest = Lesson::longest();
+    let longest = Lesson::longest().rung();
     let (cards, _) = worth_of_all(
         tribe,
         std::slice::from_ref(body),
@@ -112,6 +112,16 @@ impl Tribe {
 /// One model's numbers.
 pub type Body = Vec<f32>;
 
+/// A crowd started from one kept body: the body itself first, and the rest
+/// children moved off it, exactly as a generation refills.
+///
+/// How a run continues from weights it kept: the crowd starts where the last
+/// run ended rather than from noise. The children are drawn as generation
+/// nought, which no generation of the run itself uses.
+pub fn crowd_from(tribe: &Tribe, body: Body) -> Vec<Body> {
+    next_crowd(tribe, std::slice::from_ref(&body), &[0], 0)
+}
+
 /// A crowd drawn at random.
 pub fn first_crowd(tribe: &Tribe) -> Result<Vec<Body>, String> {
     (0..tribe.folk)
@@ -128,7 +138,7 @@ pub fn first_crowd(tribe: &Tribe) -> Result<Vec<Body>, String> {
 /// Both seats are the model itself, choosing what it likes best. A lesson pays
 /// for what a seat does rather than for beating anybody, so the two seats are
 /// two readings of the same model rather than a contest.
-fn worth_of(tribe: &Tribe, body: &Body, lesson: Lesson, seed: u64) -> std::io::Result<Card> {
+fn worth_of(tribe: &Tribe, body: &Body, rung: &Rung, seed: u64) -> std::io::Result<Card> {
     let hatch = || -> std::io::Result<Learned> {
         let model = Model::fresh(1).map_err(std::io::Error::other)?;
         model.soak(body).map_err(std::io::Error::other)?;
@@ -140,9 +150,10 @@ fn worth_of(tribe: &Tribe, body: &Body, lesson: Lesson, seed: u64) -> std::io::R
         addr: String::new(),
         name: name.to_string(),
         hero: tribe.yard.hero,
-        limit: Some(lesson.ticks()),
+        limit: Some(rung.ticks),
         role: tribe.role,
-        lesson,
+        lesson: rung.lesson,
+        until: Some(rung.ticks),
     };
     let (mine, theirs) =
         tribe
@@ -167,7 +178,7 @@ fn worth_of(tribe: &Tribe, body: &Body, lesson: Lesson, seed: u64) -> std::io::R
 pub fn worth_of_all(
     tribe: &Tribe,
     crowd: &[Body],
-    lesson: Lesson,
+    rung: &Rung,
     seeds: &[u64],
 ) -> std::io::Result<(Vec<Card>, usize)> {
     let jobs: Vec<(usize, u64)> = crowd
@@ -185,7 +196,7 @@ pub fn worth_of_all(
                 .map(|(at, seed)| {
                     let (at, seed) = (*at, *seed);
                     scope.spawn(move || {
-                        worth_of(tribe, &crowd[at], lesson, seed).map(|worth| (at, worth))
+                        worth_of(tribe, &crowd[at], rung, seed).map(|worth| (at, worth))
                     })
                 })
                 .collect();
@@ -279,12 +290,13 @@ pub struct Life {
 pub fn teach_a_lesson(
     tribe: &Tribe,
     crowd: Vec<Body>,
-    lesson: Lesson,
+    rung: &Rung,
     mut told: impl FnMut(Life),
 ) -> std::io::Result<Vec<Body>> {
+    let lesson = rung.lesson;
     let mut crowd = crowd;
     for life in 1..=tribe.lives {
-        let (cards, failed) = worth_of_all(tribe, &crowd, lesson, &tribe.trials_of(life))?;
+        let (cards, failed) = worth_of_all(tribe, &crowd, rung, &tribe.trials_of(life))?;
         let placed = placings(&cards, lesson);
         told(Life {
             number: life,
@@ -297,7 +309,7 @@ pub fn teach_a_lesson(
     }
     // Placed once more on the last children, so that what is handed on is in
     // order and nothing untried is called the best.
-    let (cards, _) = worth_of_all(tribe, &crowd, lesson, &tribe.trials_of(tribe.lives + 1))?;
+    let (cards, _) = worth_of_all(tribe, &crowd, rung, &tribe.trials_of(tribe.lives + 1))?;
     let placed = placings(&cards, lesson);
     Ok(placed.into_iter().map(|at| crowd[at].clone()).collect())
 }

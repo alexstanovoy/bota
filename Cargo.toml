@@ -2,7 +2,6 @@
 resolver = "3"
 members = [
     "crates/bota-bot",
-    "crates/bota-bot-v2",
     "crates/bota-client",
     "crates/bota-proto",
     "crates/bota-server",

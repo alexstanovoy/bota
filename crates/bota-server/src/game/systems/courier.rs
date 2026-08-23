@@ -168,11 +168,24 @@ impl World {
 
     /// Takes what waits in a seat stash, from the spot by the shop.
     ///
-    /// Nothing to take is not a failure: the courier goes home and stays.
-    /// What is taken is carried on at once, without being asked twice.
+    /// Nothing to take is not a failure. Carrying something already, it takes
+    /// that on to its owner rather than fetching nothing; carrying nothing
+    /// either, it goes home and stays. What is taken is carried on at once,
+    /// without being asked twice.
     fn take_the_stash(&mut self, seat: usize, courier: Entity) -> bool {
         if self.seats[seat].stash.held().count() == 0 {
-            self.errand.insert(courier, Errand::GoingHome);
+            let carrying = self
+                .inventory
+                .get(courier)
+                .is_some_and(|bag| bag.held().count() > 0);
+            self.errand.insert(
+                courier,
+                if carrying {
+                    Errand::ToOwner
+                } else {
+                    Errand::GoingHome
+                },
+            );
             return false;
         }
         if !self.at_the_stash(seat, courier) {
@@ -285,8 +298,20 @@ impl World {
             return false;
         }
         self.hand_over(courier, owner);
-        // Having handed over, it turns for home on its own.
-        self.errand.insert(courier, Errand::GoingHome);
+        // What its owner had no room for is carried back to the stash rather
+        // than flown home and sat on.
+        let left = self
+            .inventory
+            .get(courier)
+            .is_some_and(|bag| bag.held().count() > 0);
+        self.errand.insert(
+            courier,
+            if left {
+                Errand::PutBack
+            } else {
+                Errand::GoingHome
+            },
+        );
         false
     }
 

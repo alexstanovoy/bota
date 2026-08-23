@@ -31,6 +31,11 @@ pub enum Lesson {
     TakeTheTowers,
     /// Be worth as much as possible.
     GrowRich,
+    /// The same, with what is worn counted above what is hoarded.
+    GrowStrong,
+    /// Name nothing that cannot be done, and send nothing that will not be
+    /// taken.
+    KeepItLegal,
 }
 
 /// One rung: how long a lesson runs, and what it is called.
@@ -47,7 +52,7 @@ pub struct Rung {
 }
 
 /// How many lessons there are.
-pub const LESSONS: usize = 7;
+pub const LESSONS: usize = 9;
 
 /// The lessons in order.
 ///
@@ -98,6 +103,18 @@ pub const LADDER: [Rung; LESSONS] = [
         name: "grow rich",
         scored_in: "marks/grow_rich.rs",
     },
+    Rung {
+        lesson: Lesson::GrowStrong,
+        ticks: 35 * MINUTE,
+        name: "grow strong",
+        scored_in: "marks/grow_strong.rs",
+    },
+    Rung {
+        lesson: Lesson::KeepItLegal,
+        ticks: 40 * MINUTE,
+        name: "keep it legal",
+        scored_in: "marks/keep_it_legal.rs",
+    },
 ];
 
 impl Lesson {
@@ -111,6 +128,8 @@ impl Lesson {
             Lesson::WorkTheLane => 4,
             Lesson::TakeTheTowers => 5,
             Lesson::GrowRich => 6,
+            Lesson::GrowStrong => 7,
+            Lesson::KeepItLegal => 8,
         }
     }
 
@@ -135,6 +154,19 @@ impl Lesson {
         LADDER.get(at).map(|rung| rung.lesson)
     }
 
+    /// How a plan spells it: its name with the spaces written as underscores.
+    pub fn spelling(self) -> String {
+        self.name().replace(' ', "_")
+    }
+
+    /// The lesson a spelling names.
+    pub fn named(name: &str) -> Option<Lesson> {
+        LADDER
+            .iter()
+            .map(|rung| rung.lesson)
+            .find(|lesson| lesson.spelling() == name)
+    }
+
     /// Whether a tick of this number still falls inside the lesson.
     pub fn covers(self, tick: u32) -> bool {
         tick < self.ticks()
@@ -147,6 +179,6 @@ impl Lesson {
             .iter()
             .map(|rung| rung.lesson)
             .max_by_key(|lesson| lesson.ticks())
-            .unwrap_or(Lesson::GrowRich)
+            .unwrap_or(Lesson::KeepItLegal)
     }
 }

@@ -3,20 +3,9 @@
 //! What an ability does is the cast system's business; what it is called, how
 //! it is aimed and what it asks for is here.
 
-use bota_proto::AbilityId;
+use bota_proto::{AbilityId, Aim};
 
 use crate::game::rules;
-
-/// How an ability is aimed when it is cast.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Aim {
-    /// At nothing: it works on whoever cast it.
-    Own,
-    /// At a spot on the ground.
-    Point,
-    /// At a unit.
-    Unit,
-}
 
 /// One entry of the ability list.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -67,9 +56,18 @@ pub const TAKE_STASH: AbilityId = AbilityId(10);
 pub const DELIVER: AbilityId = AbilityId(11);
 /// A courier's shield, which nothing gets through.
 pub const SHIELD: AbilityId = AbilityId(12);
+/// Shadow Fiend's nearest raze.
+pub const RAZE_NEAR: AbilityId = AbilityId(13);
+/// Shadow Fiend's middle raze.
+pub const RAZE_MID: AbilityId = AbilityId(14);
+/// Shadow Fiend's farthest raze.
+pub const RAZE_FAR: AbilityId = AbilityId(15);
+/// Shadow Fiend's requiem, which spends nothing and grows with the souls it
+/// has gathered.
+pub const REQUIEM: AbilityId = AbilityId(16);
 
 /// Every ability, indexed by [`AbilityId`].
-pub const ABILITIES: [AbilityDef; 13] = [
+pub const ABILITIES: [AbilityDef; 17] = [
     AbilityDef {
         name: "Crit",
         aim: Aim::Own,
@@ -212,6 +210,50 @@ pub const ABILITIES: [AbilityDef; 13] = [
         mana: &[0],
         cooldown: &[rules::COURIER_SHIELD_COOLDOWN],
         range: 0,
+    },
+    AbilityDef {
+        name: "Shadowraze (Near)",
+        aim: Aim::Point,
+        max_level: rules::ABILITY_MAX_LEVEL,
+        passive: false,
+        ultimate: false,
+        at_an_enemy: false,
+        mana: &rules::RAZE_MANA,
+        cooldown: &rules::RAZE_COOLDOWN,
+        range: rules::RAZE_DISTANCE[0],
+    },
+    AbilityDef {
+        name: "Shadowraze (Mid)",
+        aim: Aim::Point,
+        max_level: rules::ABILITY_MAX_LEVEL,
+        passive: false,
+        ultimate: false,
+        at_an_enemy: false,
+        mana: &rules::RAZE_MANA,
+        cooldown: &rules::RAZE_COOLDOWN,
+        range: rules::RAZE_DISTANCE[1],
+    },
+    AbilityDef {
+        name: "Shadowraze (Far)",
+        aim: Aim::Point,
+        max_level: rules::ABILITY_MAX_LEVEL,
+        passive: false,
+        ultimate: false,
+        at_an_enemy: false,
+        mana: &rules::RAZE_MANA,
+        cooldown: &rules::RAZE_COOLDOWN,
+        range: rules::RAZE_DISTANCE[2],
+    },
+    AbilityDef {
+        name: "Requiem of Souls",
+        aim: Aim::Own,
+        max_level: rules::ULT_MAX_LEVEL,
+        passive: false,
+        ultimate: true,
+        at_an_enemy: false,
+        mana: &rules::REQUIEM_MANA,
+        cooldown: &rules::REQUIEM_COOLDOWN,
+        range: rules::REQUIEM_RADIUS,
     },
 ];
 

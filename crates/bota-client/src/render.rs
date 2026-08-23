@@ -3,7 +3,7 @@
 use bota_proto::{Team, UnitKind, UnitView, WorldView};
 use macroquad::prelude::*;
 
-use crate::state::{App, Phase, Selection, Source};
+use crate::state::{App, Phase, Source};
 
 const BACKGROUND: Color = Color::new(0.07, 0.08, 0.10, 1.0);
 const GROUND: Color = Color::new(0.12, 0.14, 0.13, 1.0);
@@ -375,7 +375,8 @@ fn draw_world(app: &App, view: &WorldView) {
 
     draw_world_fog(app, view, sw, sh);
 
-    draw_teleport_spots(app, view, to_screen);
+    draw_aim(app, view, to_screen);
+    draw_landing_spots(app, view, to_screen);
     draw_tree_pick(app, view, to_screen);
 
     let me = app.my_hero();
@@ -400,19 +401,117 @@ fn draw_world(app: &App, view: &WorldView) {
     }
 }
 
-/// The ground a held scroll may be aimed at: a ring round every building of
-/// one's own side that still stands.
-fn draw_teleport_spots(app: &App, view: &WorldView, to_screen: impl Fn(f32, f32) -> (f32, f32)) {
-    let Some(slot) = app.pending_item else {
+/// What a slot taken up is being aimed at: how far it reaches, and what the
+/// cursor is over.
+///
+/// A target it would be turned down for is drawn in the colour of a refusal
+/// rather than hidden, so the reason is on the screen before the click.
+fn draw_aim(app: &App, view: &WorldView, to_screen: impl Fn(f32, f32) -> (f32, f32)) {
+    let Some(slot) = app.aiming else {
         return;
     };
-    if app.item_id_at(slot).map(|id| id.0) != Some(crate::catalog::TOWN_PORTAL_SCROLL) {
+    let Some(aim) = app.aim_in(slot) else {
+        return;
+    };
+    let Some(caster) = app
+        .commanded()
+        .and_then(|id| view.units.iter().find(|u| u.id == id))
+    else {
+        return;
+    };
+    let reach = app.reach_of(slot) as f32;
+    let (fx, fy) = (caster.pos.x.to_f32(), caster.pos.y.to_f32());
+    // What is aimed at a building reaches from that building, not from here,
+    // so no ring is drawn round the one holding it.
+    if reach > 0.0 && aim != bota_proto::Aim::Building {
+        let (x, y) = to_screen(fx, fy);
+        draw_circle_lines(
+            x,
+            y,
+            reach * app.camera.zoom,
+            2.0,
+            Color::new(0.45, 0.85, 1.0, 0.55),
+        );
+    }
+    let (mx, my) = mouse_position();
+    let (wx, wy) = app
+        .camera
+        .screen_to_world(mx, my, screen_width(), screen_height());
+    let within =
+        |x: f32, y: f32| reach <= 0.0 || (x - fx) * (x - fx) + (y - fy) * (y - fy) <= reach * reach;
+    let good = Color::new(0.45, 0.95, 0.55, 0.95);
+    let bad = Color::new(0.95, 0.35, 0.30, 0.95);
+    match aim {
+        bota_proto::Aim::Unit => {
+            let Some(mark) = crate::input::unit_under_cursor(view, wx, wy, None, true)
+                .and_then(|id| view.units.iter().find(|u| u.id == id))
+            else {
+                return;
+            };
+            let (x, y) = to_screen(mark.pos.x.to_f32(), mark.pos.y.to_f32());
+            let r = (mark.radius.to_f32() * app.camera.zoom).max(8.0) + 6.0;
+            let colour = if within(mark.pos.x.to_f32(), mark.pos.y.to_f32()) {
+                if Some(mark.team) == app.my_team() {
+                    good
+                } else {
+                    Color::new(1.0, 0.75, 0.25, 0.95)
+                }
+            } else {
+                bad
+            };
+            draw_circle_lines(x, y, r, 2.5, colour);
+        }
+        bota_proto::Aim::Point | bota_proto::Aim::Tree | bota_proto::Aim::Building => {
+            // What lands by a building is in reach of that building, not of
+            // the one holding it, so the ground is measured against them.
+            let ok = if aim == bota_proto::Aim::Building {
+                near_a_building(app, view, wx, wy, reach)
+            } else {
+                within(wx, wy)
+            };
+            let colour = if ok { good } else { bad };
+            let (x, y) = to_screen(wx, wy);
+            draw_circle_lines(x, y, 10.0, 2.0, colour);
+            draw_line(x - 14.0, y, x - 6.0, y, 2.0, colour);
+            draw_line(x + 6.0, y, x + 14.0, y, 2.0, colour);
+            draw_line(x, y - 14.0, x, y - 6.0, 2.0, colour);
+            draw_line(x, y + 6.0, x, y + 14.0, 2.0, colour);
+        }
+        bota_proto::Aim::Own => {}
+    }
+}
+
+/// Whether a spot is within `reach` of a standing building of one's own side.
+fn near_a_building(app: &App, view: &WorldView, wx: f32, wy: f32, reach: f32) -> bool {
+    let Some(side) = app.my_team() else {
+        return false;
+    };
+    view.units.iter().any(|u| {
+        u.team == side
+            && matches!(
+                u.kind,
+                UnitKind::Tower | UnitKind::Ancient | UnitKind::Fountain
+            )
+            && {
+                let (dx, dy) = (u.pos.x.to_f32() - wx, u.pos.y.to_f32() - wy);
+                dx * dx + dy * dy <= reach * reach
+            }
+    })
+}
+
+/// The ground a slot aimed at a building may be landed on: a ring round every
+/// building of one's own side that still stands.
+fn draw_landing_spots(app: &App, view: &WorldView, to_screen: impl Fn(f32, f32) -> (f32, f32)) {
+    let Some(slot) = app.aiming else {
+        return;
+    };
+    if app.aim_in(slot) != Some(bota_proto::Aim::Building) {
         return;
     }
     let Some(side) = app.my_team() else {
         return;
     };
-    let radius = TELEPORT_RANGE * app.camera.zoom;
+    let radius = app.reach_of(slot) as f32 * app.camera.zoom;
     for u in &view.units {
         if u.team != side
             || !matches!(
@@ -431,13 +530,10 @@ fn draw_teleport_spots(app: &App, view: &WorldView, to_screen: impl Fn(f32, f32)
 /// The tree a held item is pointed at right now, ringed so it is plain which
 /// one would go.
 fn draw_tree_pick(app: &App, view: &WorldView, to_screen: impl Fn(f32, f32) -> (f32, f32)) {
-    let Some(slot) = app.pending_item else {
+    let Some(slot) = app.aiming else {
         return;
     };
-    let Some(id) = app.item_id_at(slot) else {
-        return;
-    };
-    if !crate::catalog::item(id.0).is_some_and(|face| face.at_a_tree) {
+    if app.aim_in(slot) != Some(bota_proto::Aim::Tree) {
         return;
     }
     let (mx, my) = mouse_position();
@@ -528,13 +624,13 @@ fn draw_unit(app: &App, u: &UnitView, mine: bool, to_screen: impl Fn(f32, f32) -
             draw_circle_lines(x, y, range, 1.0, Color::new(1.0, 0.6, 0.2, 0.5));
         }
     }
-    let picked = match app.selection {
-        Selection::Unit(id) => id == u.id,
-        Selection::Seat(slot) => u.owner == Some(slot),
-        Selection::Own => false,
-    };
-    if picked && !mine {
+    // What is picked is ringed, and what the camera is pinned to is ringed
+    // wider, so being carried by a unit is told from merely watching it.
+    if app.selected == Some(u.id) && !mine {
         draw_circle_lines(x, y, r + 4.0, 2.0, GOLD);
+    }
+    if app.pinned_unit() == Some(u.id) {
+        draw_circle_lines(x, y, r + 9.0, 1.5, Color::new(0.45, 0.85, 1.0, 0.8));
     }
     if u.kind == UnitKind::Hero {
         draw_text(format!("{}", u.level), x - 4.0, y + 5.0, 16.0, BLACK);
@@ -597,12 +693,10 @@ fn draw_hud(app: &App, view: &WorldView) {
     }
 
     if let Some((reason, _)) = &app.reject {
-        center_text_at(
-            &format!("order rejected: {reason}"),
-            screen_height() - 90.0,
-            22.0,
-            ORANGE,
-        );
+        // Beside the panel, where the press was, rather than in the middle of
+        // the fight.
+        let panel = crate::hud::bottom_panel(screen_width(), screen_height());
+        draw_text(reason, panel.x + 8.0, panel.y - 8.0, 20.0, ORANGE);
     }
     if app.attack_move_armed {
         center_text_at(
@@ -659,7 +753,7 @@ fn draw_top_panel(app: &App, view: &WorldView) {
         let base = team_color(p.team);
         let bg = Color::new(base.r * 0.45, base.g * 0.45, base.b * 0.45, 0.95);
         draw_rectangle(rect.x, rect.y, rect.w, rect.h, bg);
-        let border = if app.selection == Selection::Seat(slot) {
+        let border = if p.unit.is_some() && p.unit == app.selected {
             WHITE
         } else {
             BLACK
@@ -744,8 +838,11 @@ fn draw_bottom_panel(app: &App, view: &WorldView) {
     );
     let rate = u32::from(app.tick_rate.max(1));
     // A picked creep or building shows its own status.
-    if let Selection::Unit(id) = app.selection
-        && let Some(u) = view.units.iter().find(|u| u.id == id)
+    // A hero, whoever owns it, is shown through its seat: the gold, the
+    // stash and the score belong there. Everything else — a courier, a creep,
+    // a building — is shown as itself.
+    if let Some((u, stale)) = app.selected.and_then(|id| app.known(id))
+        && u.kind != UnitKind::Hero
     {
         let title = format!("{:?} {}", u.team, kind_name(u.kind));
         draw_text(
@@ -758,27 +855,25 @@ fn draw_bottom_panel(app: &App, view: &WorldView) {
         if u.kind == UnitKind::Fountain {
             draw_text("invulnerable", rect.x + 14.0, rect.y + 48.0, 14.0, GRAY);
         }
+        draw_stale(stale, rect.x + 14.0, rect.y + 48.0, rate);
         draw_vitals(u, &rect, rate);
         // Anything may be looked at; only what this seat drives answers to
         // the keys.
         let own = app.drives(u.id);
         let level = if own { u.level } else { 0 };
-        let pending = if own { app.pending_ability } else { None };
-        draw_slot_boxes(Some(u), &rect, rate, level, own, pending, None);
+        draw_slot_boxes(app, Some(u), None, &rect, rate, level, own);
         draw_effects(u, &rect, rate);
         return;
     }
-    let slot = match app.selection {
-        Selection::Seat(slot) => Some(slot),
-        _ => app.default_slot(),
-    };
-    let Some(slot) = slot else {
+    let Some(slot) = app.panel_slot() else {
         return;
     };
     let Some(p) = view.players.iter().find(|pl| pl.slot == slot) else {
         return;
     };
-    let unit = p.unit.and_then(|id| view.units.iter().find(|u| u.id == id));
+    // The body if one stands, and the last one seen of it otherwise, so a
+    // hero in the fog or one that has fallen is still something to look at.
+    let (unit, kit, stale) = panel_subject(app, view);
 
     // The seat itself.
     let x0 = rect.x + 14.0;
@@ -803,34 +898,68 @@ fn draw_bottom_panel(app: &App, view: &WorldView) {
         draw_text(format!("{gold} g"), x0, y0 + 80.0, 18.0, GOLD);
     }
 
-    // Health, mana and stats of the living hero; its fate otherwise.
+    // Health, mana and stats as they were last known; the fate of a seat
+    // with nothing standing is written over them.
     if let Some(u) = unit {
         draw_vitals(u, &rect, rate);
-    } else if p.unit.is_some() {
-        draw_text(
-            "somewhere in the fog",
-            rect.x + 175.0,
-            rect.y + 44.0,
-            18.0,
-            GRAY,
-        );
-    } else {
+    }
+    if p.unit.is_none() {
         let secs = p.respawn_left / rate + 1;
         draw_text(
             format!("dead - respawns in {secs}s"),
-            rect.x + 175.0,
-            rect.y + 44.0,
-            18.0,
+            x0,
+            y0 + 98.0,
+            16.0,
             GRAY,
         );
+    } else {
+        draw_stale(stale, x0, y0 + 98.0, rate);
     }
     let own = app.my_slot == Some(slot);
-    let pending = if own { app.pending_ability } else { None };
-    let held = if own { app.held_item } else { None };
-    draw_slot_boxes(unit, &rect, rate, p.level, own, pending, held);
-    if let Some(u) = unit {
+    draw_slot_boxes(app, unit, kit, &rect, rate, p.level, own);
+    if let Some(u) = unit.filter(|_| stale == 0) {
         draw_effects(u, &rect, rate);
     }
+}
+
+/// What the bottom panel is about.
+///
+/// The body it shows, what a fallen body left behind, and how long ago the
+/// body was last true. Read by the panel and by the popups over it, so the
+/// two never show different things about one slot.
+fn panel_subject<'a>(
+    app: &'a App,
+    view: &'a WorldView,
+) -> (Option<&'a UnitView>, Option<&'a bota_proto::Kit>, u32) {
+    if let Some((unit, stale)) = app.selected.and_then(|id| app.known(id))
+        && unit.kind != UnitKind::Hero
+    {
+        return (Some(unit), None, stale);
+    }
+    let Some(slot) = app.panel_slot() else {
+        return (None, None, 0);
+    };
+    let known = app.body_of(slot).and_then(|id| app.known(id));
+    let kit = view
+        .players
+        .iter()
+        .find(|p| p.slot == slot)
+        .and_then(|p| p.kit.as_ref());
+    (known.map(|(u, _)| u), kit, known.map_or(0, |(_, s)| s))
+}
+
+/// How long ago what is shown was true, when it is not true now.
+fn draw_stale(stale: u32, x: f32, y: f32, rate: u32) {
+    if stale == 0 {
+        return;
+    }
+    draw_text(
+        format!("last seen {}s ago", stale / rate.max(1)),
+        x,
+        y,
+        16.0,
+        Color::new(0.75, 0.65, 0.4, 1.0),
+    );
 }
 
 /// The minimap: terrain, lanes, every visible unit, the camera frame.
@@ -918,9 +1047,19 @@ fn draw_effects(unit: &UnitView, rect: &crate::hud::UiRect, rate: u32) {
         draw_rectangle(r.x, r.y, r.w, r.h, Color::new(0.08, 0.10, 0.14, 0.95));
         draw_rectangle_lines(r.x, r.y, r.w, r.h, 1.0, Color::new(0.7, 0.6, 0.2, 1.0));
         let name = crate::catalog::effect(e.id.0).map_or("?", |face| face.name);
-        let secs = e.ticks_left / rate + 1;
         draw_text(name, r.x + 4.0, r.y + 15.0, 13.0, WHITE);
-        let label = format!("{secs}s");
+        // What is counted shows how many, what runs out shows how long, and
+        // one that does both shows both.
+        let mut label = String::new();
+        if let Some(many) = e.stacks {
+            label.push_str(&format!("{many}x"));
+        }
+        if let Some(ticks) = e.ticks_left {
+            if !label.is_empty() {
+                label.push(' ');
+            }
+            label.push_str(&format!("{}s", ticks / rate + 1));
+        }
         let w = measure_text(&label, None, 12, 1.0).width;
         draw_text(&label, r.x + r.w - w - 4.0, r.y + 15.0, 12.0, GOLD);
     }
@@ -1044,51 +1183,100 @@ const ABILITY_KEYS: [&str; 6] = ["Q", "W", "E", "R", "T", "G"];
 pub fn ability_key(slot: usize) -> Option<&'static str> {
     ABILITY_KEYS.get(slot).copied()
 }
-/// Whether an ability could take a skill point at this hero level.
-fn learnable(id: u16, level: u8, hero_level: u8) -> bool {
-    let Some(face) = crate::catalog::ability(id) else {
-        return false;
-    };
-    if level >= face.max_level {
-        return false;
+/// The frame round a slot, by what state it is in.
+///
+/// A slot taken up to be aimed is gold, the same gold a selection is drawn
+/// with, and a toggle that is on is not: they have to be told apart at a
+/// glance. What works on its own is given no frame at all.
+fn slot_frame(look: &crate::slots::Look, aiming: bool, refused: bool) -> Option<Color> {
+    if refused {
+        return Some(Color::new(0.95, 0.35, 0.30, 1.0));
     }
-    let floor = if face.ultimate {
-        [6, 8, 10]
-            .get(usize::from(level))
-            .copied()
-            .unwrap_or(u8::MAX)
-    } else {
-        2 * (level + 1) - 1
-    };
-    hero_level >= floor
+    if aiming {
+        return Some(GOLD);
+    }
+    if look.toggled {
+        return Some(Color::new(0.35, 0.95, 0.85, 1.0));
+    }
+    if look.passive {
+        return None;
+    }
+    Some(GRAY)
 }
 
-/// The right of the bottom panel: four ability slots and six item slots.
+/// Lays the shade of whatever keeps a slot from working over it.
+///
+/// Nothing learned yet is darker than something learned and merely not ready,
+/// so the two never read as one another.
+fn shade_slot(look: &crate::slots::Look, x: f32, y: f32, w: f32, h: f32, rate: u32) {
+    if !look.filled {
+        return;
+    }
+    if !look.learned {
+        draw_rectangle(x, y, w, h, Color::new(0.0, 0.0, 0.0, 0.72));
+        draw_rectangle_lines(x, y, w, h, 1.0, Color::new(0.5, 0.45, 0.2, 0.7));
+    } else if !look.usable && !look.passive {
+        // What works on its own is working: it is not held back by anything,
+        // it is simply never pressed.
+        draw_rectangle(x, y, w, h, Color::new(0.0, 0.0, 0.0, 0.5));
+    }
+    if look.cooldown_left > 0 {
+        let secs = look.cooldown_left / rate + 1;
+        let text = format!("{secs}");
+        let width = measure_text(&text, None, 18, 1.0).width;
+        draw_text(&text, x + (w - width) / 2.0, y + h / 2.0 + 7.0, 18.0, WHITE);
+    }
+}
+
+/// The right of the bottom panel: the ability slots and the item slots.
+///
+/// What is drawn comes from the body when one stands and from what the body
+/// left behind when none does, so a hero that has fallen still shows what it
+/// learned and what it carries.
 fn draw_slot_boxes(
+    app: &App,
     unit: Option<&UnitView>,
+    kit: Option<&bota_proto::Kit>,
     rect: &crate::hud::UiRect,
     rate: u32,
     hero_level: u8,
     own: bool,
-    pending: Option<u8>,
-    held: Option<u8>,
 ) {
+    let aiming = if own { app.aiming } else { None };
+    let held = if own { app.held_item } else { None };
+    let refused = app.refused.map(|(slot, _)| slot);
     let ax = rect.x + 435.0;
-    let points = unit.map_or(0, |u| {
-        let spent: u8 = u.abilities.iter().map(|a| a.level).sum();
+    let abilities: &[bota_proto::AbilityView] = match kit {
+        Some(kit) => &kit.abilities,
+        None => unit.map_or(&[][..], |unit| &unit.abilities),
+    };
+    let carried_items: &[Option<bota_proto::ItemView>] = match kit {
+        Some(kit) => &kit.items,
+        None => unit.map_or(&[][..], |unit| &unit.items),
+    };
+    // A body that is gone spends nothing, so nothing it holds reads as ready.
+    let mana = if kit.is_some() {
+        0
+    } else {
+        unit.map_or(0, |unit| unit.mana)
+    };
+    let points = {
+        let spent: u8 = abilities.iter().map(|a| a.level).sum();
         hero_level.saturating_sub(spent)
-    });
-    let carried = unit.map_or(0, |unit| unit.abilities.len());
+    };
     for (slot, r) in crate::hud::ability_boxes(rect) {
         let i = usize::from(slot);
-        if i >= carried {
+        if i >= abilities.len() {
             continue;
         }
         let (cx, cy, cw, ch) = (r.x, r.y, r.w, r.h);
         draw_rectangle(cx, cy, cw, ch, Color::new(0.12, 0.12, 0.16, 1.0));
-        let outline = if pending == Some(slot) { GOLD } else { GRAY };
-        draw_rectangle_lines(cx, cy, cw, ch, 1.0, outline);
-        match unit.and_then(|u| u.abilities.get(i)) {
+        let this = crate::slots::Slot::Ability(slot);
+        let look = crate::slots::ability_look(abilities.get(i), mana);
+        if let Some(frame) = slot_frame(&look, aiming == Some(this), refused == Some(this)) {
+            draw_rectangle_lines(cx, cy, cw, ch, 1.0, frame);
+        }
+        match abilities.get(i) {
             Some(a) => {
                 draw_text(
                     ability_key(i).unwrap_or(""),
@@ -1108,20 +1296,13 @@ fn draw_slot_boxes(
                         SKYBLUE,
                     );
                 }
-                for pip in 0..usize::from(crate::catalog::ability_cap(a.id.0)) {
+                for pip in 0..usize::from(a.max_level) {
                     let lit = pip < usize::from(a.level);
                     let color = if lit { GOLD } else { DARKGRAY };
                     draw_rectangle(cx + 4.0 + pip as f32 * 8.0, cy + ch - 7.0, 6.0, 4.0, color);
                 }
-                if a.level == 0 {
-                    draw_rectangle(cx, cy, cw, ch, Color::new(0.0, 0.0, 0.0, 0.55));
-                }
-                if a.cooldown_left > 0 {
-                    draw_rectangle(cx, cy, cw, ch, Color::new(0.0, 0.0, 0.0, 0.6));
-                    let secs = a.cooldown_left / rate + 1;
-                    draw_text(format!("{secs}"), cx + 13.0, cy + 25.0, 18.0, WHITE);
-                }
-                if own && points > 0 && learnable(a.id.0, a.level, hero_level) {
+                shade_slot(&look, cx, cy, cw, ch, rate);
+                if own && a.can_level {
                     draw_text("+", cx + cw - 12.0, cy + ch - 4.0, 16.0, GOLD);
                 }
             }
@@ -1139,37 +1320,69 @@ fn draw_slot_boxes(
             GOLD,
         );
     }
-    let held = if own { held } else { None };
     // Only the slots this unit has: a courier carries, but has no pocket to
     // carry inert things in.
-    let slots = unit.map_or(0, |unit| unit.items.len());
     for (slot, r) in crate::hud::item_boxes(rect) {
-        if usize::from(slot) >= slots {
+        if usize::from(slot) >= carried_items.len() {
             continue;
         }
-        let item = unit
-            .and_then(|u| u.items.get(usize::from(slot)))
+        let item = carried_items
+            .get(usize::from(slot))
             .and_then(|s| s.as_ref());
-        draw_item_box(&r, item, slot >= 6, held == Some(slot), rate);
+        let this = crate::slots::Slot::Item(slot);
+        draw_item_box(
+            &r,
+            item,
+            crate::slots::item_look(item, slot, mana),
+            ItemBoxState {
+                backpack: slot >= crate::slots::INVENTORY_SLOTS,
+                held: held == Some(slot),
+                aiming: aiming == Some(this),
+                refused: refused == Some(this),
+            },
+            rate,
+        );
     }
+}
+
+/// What a box is doing beyond what sits in it.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+struct ItemBoxState {
+    /// Whether it is one of the pockets, where things ride inert.
+    backpack: bool,
+    /// Whether it has been picked up and is following the cursor.
+    held: bool,
+    /// Whether it has been taken up and is waiting to be aimed.
+    aiming: bool,
+    /// Whether its last order was turned down.
+    refused: bool,
 }
 
 /// One item box: the icon, charges, the cooldown shade, the held outline.
 fn draw_item_box(
     r: &crate::hud::UiRect,
     item: Option<&bota_proto::ItemView>,
-    backpack: bool,
-    held: bool,
+    look: crate::slots::Look,
+    state: ItemBoxState,
     rate: u32,
 ) {
+    let ItemBoxState {
+        backpack,
+        held,
+        aiming,
+        refused,
+    } = state;
     let bg = if backpack {
         Color::new(0.08, 0.08, 0.10, 1.0)
     } else {
         Color::new(0.10, 0.10, 0.13, 1.0)
     };
     draw_rectangle(r.x, r.y, r.w, r.h, bg);
-    let outline = if held { GOLD } else { DARKGRAY };
-    draw_rectangle_lines(r.x, r.y, r.w, r.h, 1.0, outline);
+    if held {
+        draw_rectangle_lines(r.x, r.y, r.w, r.h, 1.0, GOLD);
+    } else if let Some(frame) = slot_frame(&look, aiming, refused) {
+        draw_rectangle_lines(r.x, r.y, r.w, r.h, 1.0, frame);
+    }
     let Some(item) = item else {
         draw_text("-", r.x + 12.0, r.y + 17.0, 14.0, DARKGRAY);
         return;
@@ -1178,9 +1391,9 @@ fn draw_item_box(
         let name = crate::catalog::item(item.id.0).map_or("?", |face| face.name);
         draw_text(name, r.x + 2.0, r.y + 16.0, 12.0, WHITE);
     }
-    if item.charges > 0 {
+    if let Some(charges) = item.charges.filter(|left| *left > 0) {
         draw_text(
-            format!("{}", item.charges),
+            format!("{charges}"),
             r.x + r.w - 9.0,
             r.y + r.h - 3.0,
             11.0,
@@ -1196,14 +1409,7 @@ fn draw_item_box(
             attribute_color(mode),
         );
     }
-    if backpack {
-        draw_rectangle(r.x, r.y, r.w, r.h, Color::new(0.0, 0.0, 0.0, 0.45));
-    }
-    if item.cooldown_left > 0 {
-        draw_rectangle(r.x, r.y, r.w, r.h, Color::new(0.0, 0.0, 0.0, 0.55));
-        let secs = item.cooldown_left / rate + 1;
-        draw_text(format!("{secs}"), r.x + 10.0, r.y + 18.0, 14.0, WHITE);
-    }
+    shade_slot(&look, r.x, r.y, r.w, r.h, rate);
 }
 
 /// The stash strip above the bottom panel, dimmed away from home.
@@ -1227,7 +1433,17 @@ fn draw_stash(app: &App, view: &WorldView) {
             .as_ref()
             .and_then(|s| s.get(usize::from(slot - 9)))
             .and_then(|s| s.as_ref());
-        draw_item_box(r, item, false, app.held_item == Some(*slot), rate);
+        let mana = app.slot_unit().map_or(0, |unit| unit.mana);
+        draw_item_box(
+            r,
+            item,
+            crate::slots::item_look(item, *slot, mana),
+            ItemBoxState {
+                held: app.held_item == Some(*slot),
+                ..Default::default()
+            },
+            rate,
+        );
         if !home {
             draw_rectangle(r.x, r.y, r.w, r.h, Color::new(0.0, 0.0, 0.0, 0.45));
         }
@@ -1289,7 +1505,7 @@ fn draw_shop(app: &App, view: &WorldView) {
         let Some(face) = crate::catalog::item(id) else {
             continue;
         };
-        let price = crate::catalog::price_for(id, &held);
+        let price = crate::catalog::price_for(&app.shop, bota_proto::ItemId(id), &held);
         let affordable = gold >= price;
         let color = if affordable { WHITE } else { GRAY };
         let icon = r.h - 4.0;
@@ -1303,8 +1519,9 @@ fn draw_shop(app: &App, view: &WorldView) {
         draw_text(face.stats, text + 62.0, r.y + 16.0, 13.0, DARKGRAY);
         // What the parts already in hand save is worth showing beside what
         // the whole would have cost.
-        let shown = if price < face.cost {
-            format!("{} / {}", price, face.cost)
+        let whole = crate::catalog::whole_price(&app.shop, bota_proto::ItemId(id));
+        let shown = if price < whole {
+            format!("{price} / {whole}")
         } else {
             format!("{price}")
         };
@@ -1321,9 +1538,6 @@ fn draw_shop(app: &App, view: &WorldView) {
     draw_text(hint, sell.x + 6.0, sell.y + 18.0, 13.0, GRAY);
 }
 
-/// How far from an allied building a scroll may land, in world units.
-pub const TELEPORT_RANGE: f32 = 600.0;
-
 /// The circle a tree stands in, in world units.
 pub const TREE_RADIUS: f32 = 48.0;
 
@@ -1331,7 +1545,7 @@ pub const TREE_RADIUS: f32 = 48.0;
 ///
 /// What the shop charges is worked out against this, so a part already in hand
 /// is not asked for twice.
-fn held_items(view: &WorldView, p: &bota_proto::PlayerView) -> Vec<u16> {
+fn held_items(view: &WorldView, p: &bota_proto::PlayerView) -> Vec<bota_proto::ItemId> {
     let bag = p
         .unit
         .and_then(|id| view.units.iter().find(|u| u.id == id))
@@ -1340,7 +1554,7 @@ fn held_items(view: &WorldView, p: &bota_proto::PlayerView) -> Vec<u16> {
     bag.iter()
         .chain(p.stash.iter().flatten())
         .flatten()
-        .map(|item| item.id.0)
+        .map(|item| item.id)
         .collect()
 }
 
@@ -1353,23 +1567,20 @@ fn draw_tooltips(app: &App, view: &WorldView) {
     let (sw, sh) = (screen_width(), screen_height());
     let panel = crate::hud::bottom_panel(sw, sh);
     let rate = u32::from(app.tick_rate.max(1));
-    let shown = match app.selection {
-        Selection::Unit(id) => view.units.iter().find(|u| u.id == id),
-        _ => {
-            let slot = match app.selection {
-                Selection::Seat(slot) => Some(slot),
-                _ => app.default_slot(),
-            };
-            slot.and_then(|s| view.players.iter().find(|p| p.slot == s))
-                .and_then(|p| p.unit)
-                .and_then(|id| view.units.iter().find(|u| u.id == id))
-        }
+    let (shown, kit, _) = panel_subject(app, view);
+    let abilities: &[bota_proto::AbilityView] = match kit {
+        Some(kit) => &kit.abilities,
+        None => shown.map_or(&[][..], |unit| &unit.abilities),
+    };
+    let carried: &[Option<bota_proto::ItemView>] = match kit {
+        Some(kit) => &kit.items,
+        None => shown.map_or(&[][..], |unit| &unit.items),
     };
     let mut tip: Option<(String, Vec<String>)> = None;
-    if let Some(u) = shown {
+    {
         for (slot, r) in crate::hud::ability_boxes(&panel) {
             if r.contains(mx, my)
-                && let Some(a) = u.abilities.get(usize::from(slot))
+                && let Some(a) = abilities.get(usize::from(slot))
             {
                 let face = crate::catalog::ability(a.id.0);
                 let name = face.map_or("?", |face| face.name);
@@ -1392,7 +1603,7 @@ fn draw_tooltips(app: &App, view: &WorldView) {
         }
         for (slot, r) in crate::hud::item_boxes(&panel) {
             if r.contains(mx, my)
-                && let Some(item) = u.items.get(usize::from(slot)).copied().flatten()
+                && let Some(item) = carried.get(usize::from(slot)).copied().flatten()
             {
                 tip = Some(item_tip(&item, slot >= 6, rate));
             }
@@ -1434,13 +1645,13 @@ fn draw_tooltips(app: &App, view: &WorldView) {
                     } else {
                         "Click to buy into the stash."
                     };
-                    let price = crate::catalog::price_for(id, &held);
+                    let price = crate::catalog::price_for(&app.shop, bota_proto::ItemId(id), &held);
+                    let whole = crate::catalog::whole_price(&app.shop, bota_proto::ItemId(id));
                     let mut lines = vec![face.blurb.to_string()];
-                    if price < face.cost {
+                    if price < whole {
                         lines.push(format!(
-                            "{} g of it is already in hand; {} g to pay.",
-                            face.cost - price,
-                            price
+                            "{} g of it is already in hand; {price} g to pay.",
+                            whole - price
                         ));
                     }
                     lines.push(where_to.to_string());
@@ -1458,7 +1669,15 @@ fn draw_tooltips(app: &App, view: &WorldView) {
                     face.map_or("?", |face| face.name).to_string(),
                     vec![
                         face.map_or("", |face| face.blurb).to_string(),
-                        format!("{}s left.", e.ticks_left / rate + 1),
+                        [
+                            e.stacks.map(|many| format!("{many} held.")),
+                            e.ticks_left
+                                .map(|ticks| format!("{}s left.", ticks / rate + 1)),
+                        ]
+                        .into_iter()
+                        .flatten()
+                        .collect::<Vec<_>>()
+                        .join(" "),
                     ],
                 ));
             }
@@ -1474,10 +1693,9 @@ fn item_tip(item: &bota_proto::ItemView, backpack: bool, rate: u32) -> (String, 
     let face = crate::catalog::item(item.id.0);
     let name = face.map_or("?", |face| face.name);
     let mut lines = vec![face.map_or("", |face| face.blurb).to_string()];
-    if item.charges > 0 {
+    if let Some(charges) = item.charges {
         lines.push(format!(
-            "{} charge(s). Click it or press its number key to use.",
-            item.charges
+            "{charges} charge(s). Click it or press its number key to use."
         ));
     }
     if backpack {

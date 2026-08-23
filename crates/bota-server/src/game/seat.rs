@@ -4,7 +4,7 @@ use bota_proto::{HeroId, SlotId, Team};
 
 use bota_proto::ItemId;
 
-use crate::game::{AbilityBook, Entity, FleshHeap, Inventory};
+use crate::game::{AbilityBook, Entity, Inventory, Stacks};
 
 /// What a body leaves behind while it is gone.
 ///
@@ -16,8 +16,8 @@ pub struct Kept {
     pub book: AbilityBook,
     /// What it was carrying.
     pub bag: Inventory,
-    /// What it had kept of the deaths around it.
-    pub heap: FleshHeap,
+    /// What it had gathered.
+    pub stacks: Stacks,
 }
 
 /// One player's place at the match.

@@ -114,16 +114,8 @@ impl Yard {
         let (link, seated) = Link::join(&running.addr, &first.name, first.hero)?;
         let (theirs, their_seat) = Link::join(&running.addr, &second.name, second.hero)?;
         let played = thread::scope(|scope| {
-            let ours =
-                scope.spawn(|| play_on(one, link, seated, first.limit, first.role, first.lesson));
-            let mine = play_on(
-                other,
-                theirs,
-                their_seat,
-                second.limit,
-                second.role,
-                second.lesson,
-            );
+            let ours = scope.spawn(|| play_on(one, link, seated, first));
+            let mine = play_on(other, theirs, their_seat, second);
             let yours = ours
                 .join()
                 .unwrap_or_else(|_| Err(std::io::Error::other("a seat gave up")));
@@ -157,16 +149,8 @@ impl Yard {
         let mine = benches.pop().expect("a bench a seat");
         let ours = benches.pop().expect("a bench a seat");
         let played = thread::scope(|scope| {
-            let theirs = scope
-                .spawn(|| play_on(one, ours, seated[0], first.limit, first.role, first.lesson));
-            let here = play_on(
-                other,
-                mine,
-                seated[1],
-                second.limit,
-                second.role,
-                second.lesson,
-            );
+            let theirs = scope.spawn(|| play_on(one, ours, seated[0], first));
+            let here = play_on(other, mine, seated[1], second);
             let there = theirs
                 .join()
                 .unwrap_or_else(|_| Err(std::io::Error::other("a seat gave up")));

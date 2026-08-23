@@ -55,6 +55,21 @@ pub struct AbilityId(pub u16);
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ItemId(pub u16);
 
+/// How something in a slot is aimed when it is used.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum Aim {
+    /// At nothing: it works on whoever used it.
+    Own,
+    /// At a spot on the ground.
+    Point,
+    /// At a unit.
+    Unit,
+    /// At the tree standing on the spot it is pointed at.
+    Tree,
+    /// At a spot within reach of an allied building.
+    Building,
+}
+
 /// Names one kind of timed effect a unit can be under.
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct EffectId(pub u16);

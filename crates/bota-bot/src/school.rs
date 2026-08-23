@@ -142,6 +142,7 @@ fn one_match(how: &School, weights: &[u8], seed: u64, heat: f32) -> std::io::Res
         limit: Some(how.lesson.ticks()),
         role: how.role,
         lesson: how.lesson,
+        until: None,
     };
     how.yard
         .play_a_match(seed, &mut one, &mut other, &chair("one"), &chair("other"))?;

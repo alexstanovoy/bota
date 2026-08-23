@@ -2,7 +2,7 @@
 
 use bota_proto::{AbilityId, HeroId};
 
-use crate::game::{HERO, PUDGE, UnitDef, ability};
+use crate::game::{HERO, PUDGE, SHADOW_FIEND, UnitDef, ability};
 
 /// One hero: what it is made of and what it can do.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -13,10 +13,13 @@ pub struct HeroDef {
     pub unit: &'static UnitDef,
     /// The four slots it carries, in the order they are shown.
     pub abilities: [AbilityId; 4],
+    /// Whether it keeps a soul of everything it brings down. What souls are
+    /// worth is the stats system's business.
+    pub souls: bool,
 }
 
 /// Every hero, indexed by [`HeroId`].
-pub const HEROES: [HeroDef; 2] = [
+pub const HEROES: [HeroDef; 3] = [
     HeroDef {
         name: "Sylla",
         unit: &HERO,
@@ -26,6 +29,7 @@ pub const HEROES: [HeroDef; 2] = [
             ability::BOUNCE,
             ability::VOLLEY,
         ],
+        souls: false,
     },
     HeroDef {
         name: "Pudge",
@@ -36,6 +40,18 @@ pub const HEROES: [HeroDef; 2] = [
             ability::FLESH_HEAP,
             ability::DISMEMBER,
         ],
+        souls: false,
+    },
+    HeroDef {
+        name: "Shadow Fiend",
+        unit: &SHADOW_FIEND,
+        abilities: [
+            ability::RAZE_NEAR,
+            ability::RAZE_MID,
+            ability::RAZE_FAR,
+            ability::REQUIEM,
+        ],
+        souls: true,
     },
 ];
 

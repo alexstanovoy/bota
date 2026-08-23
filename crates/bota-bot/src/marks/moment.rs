@@ -24,6 +24,10 @@ pub struct Moment<'a> {
     pub killed: u16,
     /// Times it died during the tick.
     pub died: u16,
+    /// Deeds it named during the tick that it had been told it could not do.
+    pub refused: u16,
+    /// Orders of the tick the server would not take.
+    pub rejected: u16,
 }
 
 impl Moment<'_> {
@@ -54,6 +58,9 @@ pub struct Carried {
     pub was_off: Option<f32>,
     /// What the seat's goods were worth last tick.
     pub was_owned: Option<i32>,
+    /// What the seat was worth last tick, counting the purse at less than its
+    /// face value.
+    pub was_worth: Option<f32>,
     /// How many of their towers have come down.
     pub towers_down: u16,
 }

@@ -15,8 +15,8 @@
 //! farms nothing.
 
 use super::{
-    find_the_lane, grow_rich, hold_the_lane, meet_the_wave, stock_up, take_the_towers,
-    work_the_lane,
+    find_the_lane, grow_rich, grow_strong, hold_the_lane, keep_it_legal, meet_the_wave, stock_up,
+    take_the_towers, work_the_lane,
 };
 use crate::{Card, Carried, LADDER, LESSONS, Lesson, Moment};
 
@@ -33,20 +33,47 @@ pub fn score(lesson: Lesson, now: &Moment, carried: &mut Carried) -> f32 {
         Lesson::WorkTheLane => work_the_lane::score(now, carried),
         Lesson::TakeTheTowers => take_the_towers::score(now, carried),
         Lesson::GrowRich => grow_rich::score(now, carried),
+        Lesson::GrowStrong => grow_strong::score(now, carried),
+        Lesson::KeepItLegal => keep_it_legal::score(now, carried),
     }
 }
 
 /// The running marks of every lesson over one match.
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug)]
 pub struct Marker {
     card: Card,
     carried: [Carried; LESSONS],
+    /// The tick each lesson stops being paid on, indexed as the ladder is.
+    until: [u32; LESSONS],
+}
+
+impl Default for Marker {
+    fn default() -> Marker {
+        Marker::new()
+    }
 }
 
 impl Marker {
-    /// A marker with nothing counted yet.
+    /// A marker with nothing counted yet, every lesson paid for as long as its
+    /// rung of the ladder says.
     pub fn new() -> Marker {
-        Marker::default()
+        let mut until = [0; LESSONS];
+        for rung in &LADDER {
+            until[rung.lesson.at()] = rung.ticks;
+        }
+        Marker {
+            card: Card::new(),
+            carried: [Carried::default(); LESSONS],
+            until,
+        }
+    }
+
+    /// The same, with one lesson paid for a clock of its own rather than its
+    /// rung's.
+    pub fn paid_until(lesson: Lesson, ticks: u32) -> Marker {
+        let mut marker = Marker::new();
+        marker.until[lesson.at()] = ticks;
+        marker
     }
 
     /// What every lesson has paid so far.
@@ -63,7 +90,7 @@ impl Marker {
         let mut paid = Card::new();
         for rung in &LADDER {
             let at = rung.lesson.at();
-            if rung.lesson.covers(now.tick()) {
+            if now.tick() < self.until[at] {
                 paid.marks[at] = score(rung.lesson, now, &mut self.carried[at]);
             }
         }
