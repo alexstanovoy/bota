@@ -63,7 +63,7 @@ pub struct HeroFace {
 }
 
 /// Every ability, in id order.
-pub const ABILITIES: [AbilityFace; 17] = [
+pub const ABILITIES: [AbilityFace; 19] = [
     AbilityFace {
         id: 0,
         name: "Crit",
@@ -145,25 +145,37 @@ pub const ABILITIES: [AbilityFace; 17] = [
     AbilityFace {
         id: 13,
         name: "Raze 1",
-        blurb: "Point target. Burns everything within 250 of a spot 200 ahead for 90/160/230/300 magic damage. 10 s wait.",
+        blurb: "No target. Burns everything within 250 of a spot 200 ahead of where you face for 90/160/230/300 magic damage. One point levels all three razes. 10 s wait.",
         icon: None,
     },
     AbilityFace {
         id: 14,
         name: "Raze 2",
-        blurb: "Point target. Burns everything within 250 of a spot 450 ahead for 90/160/230/300 magic damage. 10 s wait.",
+        blurb: "No target. Burns everything within 250 of a spot 450 ahead of where you face for 90/160/230/300 magic damage. One point levels all three razes. 10 s wait.",
         icon: None,
     },
     AbilityFace {
         id: 15,
         name: "Raze 3",
-        blurb: "Point target. Burns everything within 250 of a spot 700 ahead for 90/160/230/300 magic damage. 10 s wait.",
+        blurb: "No target. Burns everything within 250 of a spot 700 ahead of where you face for 90/160/230/300 magic damage. One point levels all three razes. 10 s wait.",
         icon: None,
     },
     AbilityFace {
         id: 16,
         name: "Requiem",
         blurb: "Ultimate, no target. Every enemy within 900 takes 8/11/14 magic damage per soul held and is slowed for 2 s. The souls are kept.",
+        icon: None,
+    },
+    AbilityFace {
+        id: 17,
+        name: "Necro",
+        blurb: "Passive. A soul is kept of everything you bring down, three for a hero, each worth +2 attack damage. Holds up to 12/16/20/24, and they survive your death.",
+        icon: None,
+    },
+    AbilityFace {
+        id: 18,
+        name: "Presence",
+        blurb: "Passive. Enemies within 900 wear 2/3/4/5 less armor.",
         icon: None,
     },
 ];
@@ -467,7 +479,7 @@ pub const ITEMS: [ItemFace; 42] = [
 ];
 
 /// Every timed effect, in id order.
-pub const EFFECTS: [EffectFace; 12] = [
+pub const EFFECTS: [EffectFace; 13] = [
     EffectFace {
         id: 0,
         name: "Frenzy",
@@ -538,6 +550,12 @@ pub const EFFECTS: [EffectFace; 12] = [
         id: 11,
         name: "Souls",
         blurb: "Attack damage from every unit brought down.",
+        icon: None,
+    },
+    EffectFace {
+        id: 12,
+        name: "Presence",
+        blurb: "Armor worn down by a dark presence nearby.",
         icon: None,
     },
 ];

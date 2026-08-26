@@ -122,6 +122,9 @@ pub fn derive_stats(cx: StatsCx<'_>) {
                     StatusKind::Hastened { pct } => {
                         now.move_speed = scaled(now.move_speed, 100 + pct.max(0));
                     }
+                    StatusKind::ArmorBroken { armor } => {
+                        now.armor -= Fixed::from_int(armor);
+                    }
                     StatusKind::Shielded => now.invulnerable = true,
                     StatusKind::Phased => now.phased = true,
                     // What holds a unit still and what burns it are read

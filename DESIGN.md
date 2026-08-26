@@ -566,11 +566,14 @@ them — and every swing ends in a backswing the unit stands through, which is t
 pause a creep makes over its kill before marching on. A hero's order cancels its
 backswing.
 
-Abilities run on a shared engine in `sim/abilities.rs`: four slots per hero, each
-with a level and a cooldown, held on the seat like items, so both survive the
+Abilities run on a shared engine in `sim/abilities.rs`: a row of slots per hero —
+four for most, six for Shadow Fiend, the row is per-hero data — each slot with a
+level and a cooldown, held on the seat like items, so both survive the
 hero's death — and cooldowns keep running while it is dead. A skill point arrives
 with every hero level; basic ability level k needs hero level 2k-1, ultimate
-levels open at 6, 8 and 10. A cast
+levels open at 6, 8 and 10. Slots may share a level: `learn_group` folds a family
+of ids into one, a point into any of them levels the whole family, and the point
+accounting counts the family once. The razes are the one family so far. A cast
 order is validated (learned, off cooldown, mana, target kind, cast range) and
 executes in the ability phase of the same tick, instantly — cast points and
 channeling come later. Casts of the same tick run after cooldown ticking, so a
@@ -583,14 +586,19 @@ slot 3 an ultimate volley launching an attack projectile at every enemy unit in
 its radius. A crit rolls once at windup completion and rides the projectile,
 reported only in the `Damaged` event.
 
-Shadow Fiend carries three razes and the requiem, and gathers souls without spending
-a slot on them. Dota gives him six entries — three razes, Necromastery, Presence of the
-Dark Lord and Requiem of Souls — and a hero here has four slots. The three razes are
-what the hero is played by, so they keep their slots; Necromastery becomes an innate of
-the body, a `souls` flag on `HeroDef` that stands the `Souls` component up at spawn and
-grows its cap with the hero level rather than with a skill point. Presence is dropped
-rather than merged into something else: an armor aura is the one part of the kit that
-changes nothing about how he is played.
+Shadow Fiend carries Dota's six entries in six slots: three razes, Necromastery,
+Presence of the Dark Lord and Requiem of Souls. An earlier cut squeezed him into four —
+Necromastery as an innate `souls` flag on `HeroDef` with a cap that grew with the hero
+level, Presence dropped outright — and was thrown away once the slot row became per-hero
+data: the panel already draws six boxes for the courier, so the squeeze was buying
+nothing. The three razes share one level, which is Dota's rule and what keeps the trio
+from costing twelve points: a point into any of them levels all three, and the spent-point
+sum counts the trio once. Necromastery is an ordinary leveled passive again — the soul
+cap reads its level, and nothing is gathered while it is unlearned. Presence is a leveled
+aura on the enemy: each tick it lays an armor-break status with a short linger on
+everything hostile in reach, and the stats pass reads that status like any other. It does
+not go through the `Auras` component, which is static body data handed out to its own
+side; a presence is as strong as its learned level, which a `&'static [Aura]` cannot say.
 
 A soul is taken only from what he brings down himself, which is the killer `bury`
 already carries, and a hero is worth three where anything else is worth one. Souls
@@ -615,13 +623,17 @@ to want - Dota's Fury Swipes is one - and a sum type forecloses it in the shared
 vocabulary, which is the expensive place to be wrong. The byte an effect pays for the
 second `Option` buys that.
 
-A raze is aimed at a point rather than fired along the facing. The engine has no
-angle-to-vector table — `facing_towards` is an octant approximation and facing is
-cosmetic, nothing compares it — so the only exact direction available is the one from
-the caster to a point, and `point_along` walks that line out to the raze's own distance.
-The consequence is that the aim names the line and not the landing spot: a raze aimed
-short still lands at its reach, and one aimed long walks the caster in first, on the
-same rule every other ability with a cast range uses.
+A raze takes no aim: it is fired along the caster's facing and lands at its own
+distance, as in Dota. The first version aimed it at a point instead, because the engine
+had no way back from an angle to a direction — `facing_towards` is a piecewise-linear
+octant map — and the only exact line was caster-to-point. The way back turned out to be
+ten lines of the same integer arithmetic: `heading_of` inverts the octant map exactly,
+so a facing round-trips through it without drift, and the aim vocabulary for a raze
+shrinks to `Own`. The consequences: the cast goes off on the tick it is asked for and
+never walks the caster in, an order is not interrupted by it — he razes mid-walk and
+mid-attack — and pointing it is done with the body, by turning. Facing was cosmetic
+once; it has been load-bearing since attacks began waiting on it, and the razes now
+lean on it too.
 
 Hero roadmap (added as data + ability implementations; the engine does not change):
 
@@ -634,7 +646,7 @@ Hero roadmap (added as data + ability implementations; the engine does not chang
 | Lira | support | heal / shield / wards / ult: team heal aura |
 
 Built since: Pudge (hook / rot / flesh heap / ult: dismember) and Shadow Fiend
-(three razes / ult: requiem, with souls innate).
+(three razes sharing a level / necromastery / presence / ult: requiem).
 
 ## Protocol
 

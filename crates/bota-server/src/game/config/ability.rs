@@ -65,9 +65,13 @@ pub const RAZE_FAR: AbilityId = AbilityId(15);
 /// Shadow Fiend's requiem, which spends nothing and grows with the souls it
 /// has gathered.
 pub const REQUIEM: AbilityId = AbilityId(16);
+/// Shadow Fiend's necromastery: a soul kept of everything he brings down.
+pub const NECROMASTERY: AbilityId = AbilityId(17);
+/// Shadow Fiend's presence: enemies standing near him wear less armor.
+pub const PRESENCE: AbilityId = AbilityId(18);
 
 /// Every ability, indexed by [`AbilityId`].
-pub const ABILITIES: [AbilityDef; 17] = [
+pub const ABILITIES: [AbilityDef; 19] = [
     AbilityDef {
         name: "Crit",
         aim: Aim::Own,
@@ -213,7 +217,7 @@ pub const ABILITIES: [AbilityDef; 17] = [
     },
     AbilityDef {
         name: "Shadowraze (Near)",
-        aim: Aim::Point,
+        aim: Aim::Own,
         max_level: rules::ABILITY_MAX_LEVEL,
         passive: false,
         ultimate: false,
@@ -224,7 +228,7 @@ pub const ABILITIES: [AbilityDef; 17] = [
     },
     AbilityDef {
         name: "Shadowraze (Mid)",
-        aim: Aim::Point,
+        aim: Aim::Own,
         max_level: rules::ABILITY_MAX_LEVEL,
         passive: false,
         ultimate: false,
@@ -235,7 +239,7 @@ pub const ABILITIES: [AbilityDef; 17] = [
     },
     AbilityDef {
         name: "Shadowraze (Far)",
-        aim: Aim::Point,
+        aim: Aim::Own,
         max_level: rules::ABILITY_MAX_LEVEL,
         passive: false,
         ultimate: false,
@@ -254,6 +258,28 @@ pub const ABILITIES: [AbilityDef; 17] = [
         mana: &rules::REQUIEM_MANA,
         cooldown: &rules::REQUIEM_COOLDOWN,
         range: rules::REQUIEM_RADIUS,
+    },
+    AbilityDef {
+        name: "Necromastery",
+        aim: Aim::Own,
+        max_level: rules::ABILITY_MAX_LEVEL,
+        passive: true,
+        ultimate: false,
+        at_an_enemy: false,
+        mana: &[],
+        cooldown: &[],
+        range: 0,
+    },
+    AbilityDef {
+        name: "Presence of the Dark Lord",
+        aim: Aim::Own,
+        max_level: rules::ABILITY_MAX_LEVEL,
+        passive: true,
+        ultimate: false,
+        at_an_enemy: false,
+        mana: &[],
+        cooldown: &[],
+        range: rules::PRESENCE_RADIUS,
     },
 ];
 
@@ -288,6 +314,18 @@ fn pick<T: Copy + Default>(table: &[T], level: u8) -> T {
         .get(level)
         .copied()
         .unwrap_or_else(|| table.last().copied().unwrap_or_default())
+}
+
+/// The ability whose level a whole group of slots stands at.
+///
+/// The three razes are one skill worn as three slots: a point into any of
+/// them levels all three, and the group costs points as one ability. Every
+/// other ability is a group of itself.
+pub fn learn_group(id: AbilityId) -> AbilityId {
+    match id {
+        RAZE_MID | RAZE_FAR => RAZE_NEAR,
+        _ => id,
+    }
 }
 
 /// The hero level one more level of an ability waits for.

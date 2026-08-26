@@ -49,6 +49,11 @@ pub enum StatusKind {
         /// Percent added to its speed.
         pct: i32,
     },
+    /// Wears less armor for standing near a dark presence.
+    ArmorBroken {
+        /// Armor taken off, in whole points.
+        armor: i32,
+    },
     /// Losing health over time to whoever put it on.
     Burning {
         /// Damage each beat of [`rules::BURN_PERIOD_TICKS`].

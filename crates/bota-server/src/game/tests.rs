@@ -7508,8 +7508,8 @@ fn a_flesh_heap_outlives_the_death_of_the_one_carrying_it() {
     );
 }
 
-/// Shadow Fiend at the middle of the map, with a creep `apart` to the east of
-/// him, every raze and the requiem learned to their first level.
+/// Shadow Fiend at the middle of the map, facing east, with a creep `apart`
+/// to the east of him and his whole kit learned to its first level.
 fn fiend_and_a_mark(apart: i32) -> (World, Entity, Entity) {
     let mut world = World::new();
     let fiend = world.spawn_hero(
@@ -7541,14 +7541,14 @@ fn fiend_and_a_mark(apart: i32) -> (World, Entity, Entity) {
     (world, fiend, mark)
 }
 
-/// Aims one of the slots at a spot the way a player does.
-fn aim_at(world: &mut World, slot: u8, at: bota_proto::Vec2) {
+/// Casts one of the slots at nothing, the way a player does.
+fn let_go(world: &mut World, slot: u8) {
     world.advance(&[crate::game::Command {
         slot: bota_proto::SlotId(0),
         unit: None,
         order: bota_proto::Order::Cast {
             slot: bota_proto::AbilitySlot(slot),
-            target: bota_proto::Target::Pos(at),
+            target: bota_proto::Target::None,
         },
     }]);
 }
@@ -7572,11 +7572,7 @@ fn a_raze_burns_what_stands_where_it_lands_and_nothing_else() {
         world.health.get(near).expect("standing").hp,
         world.health.get(far).expect("standing").hp,
     );
-    aim_at(
-        &mut world,
-        1,
-        bota_proto::Vec2::from_ints(5000 + rules::RAZE_DISTANCE[1], 5000),
-    );
+    let_go(&mut world, 1);
     world.step();
     assert!(
         world.health.get(near).expect("standing").hp < was_near,
@@ -7590,7 +7586,7 @@ fn a_raze_burns_what_stands_where_it_lands_and_nothing_else() {
 }
 
 #[test]
-fn a_raze_lands_at_its_own_reach_however_near_it_is_aimed() {
+fn a_raze_lands_at_its_own_reach_however_near_the_enemy_stands() {
     let (mut world, _fiend, under) = fiend_and_a_mark(50);
     let out = a_creep_at(
         &mut world,
@@ -7601,9 +7597,9 @@ fn a_raze_lands_at_its_own_reach_however_near_it_is_aimed() {
         world.health.get(under).expect("standing").hp,
         world.health.get(out).expect("standing").hp,
     );
-    // Aimed at a spot right under his feet, the farthest raze still lands at
-    // its own reach along that line.
-    aim_at(&mut world, 2, bota_proto::Vec2::from_ints(5050, 5000));
+    // The farthest raze lands at its own reach, over the head of what stands
+    // right under his feet.
+    let_go(&mut world, 2);
     world.step();
     assert!(
         world.health.get(out).expect("standing").hp < was_out,
@@ -7612,21 +7608,32 @@ fn a_raze_lands_at_its_own_reach_however_near_it_is_aimed() {
     assert_eq!(
         world.health.get(under).expect("standing").hp,
         was_under,
-        "and not where it was aimed"
+        "and nowhere nearer"
     );
 }
 
 #[test]
-fn a_raze_aimed_at_the_spot_it_is_cast_from_is_no_cast_at_all() {
-    let (mut world, fiend, _mark) = fiend_and_a_mark(400);
-    let at = world.transform.get(fiend).expect("standing").pos;
-    let full = world.mana.get(fiend).expect("standing").mana;
-    aim_at(&mut world, 0, at);
+fn a_raze_lays_itself_along_the_facing() {
+    let (mut world, _fiend, ahead) = fiend_and_a_mark(rules::RAZE_DISTANCE[1]);
+    let behind = a_creep_at(
+        &mut world,
+        bota_proto::Team::Dire,
+        bota_proto::Vec2::from_ints(5000 - rules::RAZE_DISTANCE[1], 5000),
+    );
+    let (was_ahead, was_behind) = (
+        world.health.get(ahead).expect("standing").hp,
+        world.health.get(behind).expect("standing").hp,
+    );
+    let_go(&mut world, 1);
     world.step();
+    assert!(
+        world.health.get(ahead).expect("standing").hp < was_ahead,
+        "what stands where he faces feels it"
+    );
     assert_eq!(
-        world.mana.get(fiend).expect("standing").mana,
-        full,
-        "a raze with no line to lay itself along costs nothing"
+        world.health.get(behind).expect("standing").hp,
+        was_behind,
+        "and what stands behind him does not"
     );
 }
 
@@ -7681,10 +7688,14 @@ fn a_hero_brought_down_is_worth_more_souls_than_a_creep() {
 }
 
 #[test]
-fn souls_stop_at_what_the_level_holds() {
+fn souls_stop_at_what_the_necromastery_holds() {
     let (mut world, fiend, mark) = fiend_and_a_mark(400);
     let cap = world.soul_cap(fiend);
-    assert_eq!(cap, rules::SOUL_CAP_BASE, "a hero of the first level");
+    assert_eq!(
+        cap,
+        rules::NECRO_SOUL_CAP[0],
+        "the necromastery at its first level"
+    );
     hand_souls(&mut world, fiend, cap);
     let mut events = Vec::new();
     world.bury(vec![(mark, Some(fiend))], &mut events);
@@ -7712,25 +7723,99 @@ fn every_soul_held_is_worth_attack_damage() {
 }
 
 #[test]
-fn a_raze_aimed_past_its_reach_walks_the_caster_in_first() {
+fn a_raze_goes_off_where_it_is_asked_for_and_walks_the_caster_nowhere() {
     let (mut world, fiend, _mark) = fiend_and_a_mark(50);
     let out = a_creep_at(
         &mut world,
         bota_proto::Team::Dire,
         bota_proto::Vec2::from_ints(6000, 5000),
     );
+    let stood = world.transform.get(fiend).expect("standing").pos;
     let full = world.health.get(out).expect("standing").hp;
-    aim_at(&mut world, 1, bota_proto::Vec2::from_ints(6000, 5000));
-    for _ in 0..120 {
-        world.step();
-        if world.casting.get(fiend).is_none() {
-            break;
-        }
-    }
+    let_go(&mut world, 1);
     world.step();
+    assert_eq!(
+        world.transform.get(fiend).expect("standing").pos,
+        stood,
+        "a raze takes no aim, so there is nothing to walk into"
+    );
+    assert_eq!(
+        world.health.get(out).expect("standing").hp,
+        full,
+        "and what stands past its reach is missed, not chased"
+    );
     assert!(
-        world.health.get(out).expect("standing").hp < full,
-        "the caster walks up until the aim is within reach, then razes it"
+        world
+            .abilities
+            .get(fiend)
+            .is_some_and(|book| book.slots[1].cooldown > 0),
+        "the cast itself went off"
+    );
+}
+
+#[test]
+fn one_point_levels_every_raze_at_once_and_costs_one() {
+    let mut world = World::new();
+    let fiend = world.spawn_hero(
+        bota_proto::Team::Radiant,
+        bota_proto::Vec2::from_ints(5000, 5000),
+        bota_proto::SlotId(0),
+        bota_proto::HeroId(2),
+    );
+    world.settle();
+    let mut events = Vec::new();
+    assert!(world.learn(fiend, 2, &mut events), "the point goes in");
+    let levels: Vec<u8> = world
+        .abilities
+        .get(fiend)
+        .expect("casts")
+        .slots
+        .iter()
+        .map(|held| held.level)
+        .collect();
+    assert_eq!(
+        levels,
+        vec![1, 1, 1, 0, 0, 0],
+        "every raze stands at one, and nothing else moved"
+    );
+    assert_eq!(
+        world.points_spent(fiend),
+        1,
+        "the three cost one point together"
+    );
+    assert!(
+        !world.learn(fiend, 3, &mut events),
+        "and there is nothing left to spend"
+    );
+    // The trio waits for hero levels the same as any one ability would.
+    world.level.insert(fiend, crate::game::Level(2));
+    assert!(
+        !world.learn(fiend, 0, &mut events),
+        "the second raze level waits for hero level three"
+    );
+    assert!(
+        world.learn(fiend, 3, &mut events),
+        "while the necromastery is open to the spare point"
+    );
+}
+
+#[test]
+fn the_presence_wears_down_the_armor_of_enemies_near_its_carrier() {
+    let (mut world, _fiend, near) = fiend_and_a_mark(400);
+    let out = a_creep_at(
+        &mut world,
+        bota_proto::Team::Dire,
+        bota_proto::Vec2::from_ints(5000 + rules::PRESENCE_RADIUS + 500, 5000),
+    );
+    world.step();
+    let (worn, whole) = (
+        world.stats.get(near).expect("standing").armor,
+        world.stats.get(out).expect("standing").armor,
+    );
+    assert_eq!(
+        worn,
+        whole - Fixed::from_int(rules::PRESENCE_ARMOR[0]),
+        "standing in the presence costs its armor"
     );
 }
 
@@ -7758,7 +7843,7 @@ fn a_requiem_grows_with_the_souls_held_and_spends_none_of_them() {
     hand_souls(&mut world, fiend, 5);
     world.step();
     let full = world.health.get(mark).expect("standing").hp;
-    aim_at(&mut world, 3, bota_proto::Vec2::from_ints(5400, 5000));
+    let_go(&mut world, 5);
     world.step();
     world.step();
     let taken = full - world.health.get(mark).expect("standing").hp;
@@ -7783,7 +7868,7 @@ fn a_requiem_grows_with_the_souls_held_and_spends_none_of_them() {
 fn a_requiem_with_no_souls_gathered_touches_nobody() {
     let (mut world, fiend, mark) = fiend_and_a_mark(400);
     let full = world.health.get(mark).expect("standing").hp;
-    aim_at(&mut world, 3, bota_proto::Vec2::from_ints(5400, 5000));
+    let_go(&mut world, 5);
     world.step();
     world.step();
     assert_eq!(
@@ -7800,7 +7885,7 @@ fn a_requiem_with_no_souls_gathered_touches_nobody() {
     let spent = world
         .abilities
         .get(fiend)
-        .map_or(0, |book| book.slots[3].cooldown);
+        .map_or(0, |book| book.slots[5].cooldown);
     assert!(spent > 0, "though the cast itself happened");
 }
 

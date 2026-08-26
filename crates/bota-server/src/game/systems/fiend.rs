@@ -1,32 +1,28 @@
-//! The razes, the souls gathered from what falls, and the requiem they feed.
+//! The razes, the souls gathered from what falls, the presence worn by the
+//! enemies near him, and the requiem the souls feed.
 
-use bota_proto::{DamageKind, Fixed, Target};
+use bota_proto::{AbilityId, DamageKind, Fixed};
 
 use crate::engine::Entity;
-use crate::game::{StackKind, Status, StatusKind, World, hero_def, point_along, rules};
+use crate::game::{
+    StackKind, Status, StatusKind, World, ability, heading_of, leaves_a_death, point_along, rules,
+};
 
 impl World {
     /// Burns everything hostile standing where a raze lands.
     ///
-    /// A raze lands at its own reach from the caster, along the line towards
-    /// where it was aimed. `reach` indexes [`rules::RAZE_DISTANCE`].
-    pub fn cast_raze(
-        &mut self,
-        caster: Entity,
-        level: usize,
-        reach: usize,
-        target: Target,
-    ) -> bool {
-        let Target::Pos(pos) = target else {
+    /// A raze takes no aim: it lands at its own reach from the caster, along
+    /// the line the caster faces. `reach` indexes [`rules::RAZE_DISTANCE`].
+    pub fn cast_raze(&mut self, caster: Entity, level: usize, reach: usize) -> bool {
+        let Some(from) = self.transform.get(caster).copied() else {
             return false;
         };
-        let Some(from) = self.transform.get(caster).map(|t| t.pos) else {
-            return false;
-        };
-        let at = point_along(from, pos, Fixed::from_int(rules::RAZE_DISTANCE[reach]));
-        if at == from {
-            return false;
-        }
+        let ahead = from.pos + heading_of(from.facing);
+        let at = point_along(
+            from.pos,
+            ahead,
+            Fixed::from_int(rules::RAZE_DISTANCE[reach]),
+        );
         let radius = rules::units(rules::RAZE_RADIUS);
         let struck: Vec<Entity> = self
             .entities
@@ -92,10 +88,56 @@ impl World {
         true
     }
 
+    /// Lays the presence on everything hostile standing near its carriers.
+    ///
+    /// Standing in it puts the armor break on afresh every tick; walking out
+    /// leaves it to run out on its own. A structure or a ward wears none.
+    pub fn spread_presence(&mut self) {
+        let carriers: Vec<(Entity, u8)> = self
+            .entities
+            .iter()
+            .filter_map(|entity| {
+                let level = self.carried_level(entity, ability::PRESENCE);
+                (level > 0).then_some((entity, level))
+            })
+            .collect();
+        for (carrier, level) in carriers {
+            let Some(from) = self.transform.get(carrier).map(|t| t.pos) else {
+                continue;
+            };
+            let reach = rules::units(rules::PRESENCE_RADIUS);
+            let struck: Vec<Entity> = self
+                .entities
+                .iter()
+                .filter(|other| {
+                    self.hostile(carrier, *other)
+                        && self
+                            .kind
+                            .get(*other)
+                            .is_some_and(|kind| leaves_a_death(*kind))
+                        && self
+                            .transform
+                            .get(*other)
+                            .is_some_and(|t| t.pos.within(from, reach))
+                })
+                .collect();
+            for mark in struck {
+                let mut on_it = self.statuses.remove(mark).unwrap_or_default();
+                on_it.put(Status {
+                    kind: StatusKind::ArmorBroken {
+                        armor: rules::PRESENCE_ARMOR[usize::from(level - 1)],
+                    },
+                    ticks_left: rules::PRESENCE_LINGER_TICKS,
+                });
+                self.statuses.insert(mark, on_it);
+            }
+        }
+    }
+
     /// Hands the soul of what has fallen to whoever brought it down.
     ///
-    /// Only a hero that gathers souls at all takes one, and only up to what
-    /// its level lets it hold. A hero is worth more than anything else;
+    /// Only a hero with the necromastery learned takes one, and only up to
+    /// what its level lets it hold. A hero is worth more than anything else;
     /// a structure or a ward is worth nothing.
     pub fn feed_souls(&mut self, fallen: Entity, killer: Option<Entity>) {
         let Some(killer) = killer.filter(|killer| *killer != fallen) else {
@@ -105,7 +147,7 @@ impl World {
             .kind
             .get(fallen)
             .copied()
-            .is_none_or(|kind| !crate::game::leaves_a_death(kind))
+            .is_none_or(|kind| !leaves_a_death(kind))
         {
             return;
         }
@@ -123,17 +165,28 @@ impl World {
         self.stacks.insert(killer, held);
     }
 
-    /// Whether an entity is a hero that gathers souls at all.
+    /// Whether an entity gathers souls at all: the necromastery is learned.
     pub fn gathers_souls(&self, entity: Entity) -> bool {
-        self.hero
-            .get(entity)
-            .and_then(|id| hero_def(*id))
-            .is_some_and(|def| def.souls)
+        self.carried_level(entity, ability::NECROMASTERY) > 0
     }
 
-    /// How many souls an entity may hold at the level it has reached.
+    /// How many souls an entity may hold at the necromastery level it has
+    /// learned. Zero while it is unlearned.
     pub fn soul_cap(&self, entity: Entity) -> u32 {
-        let level = self.level.get(entity).map_or(1, |level| u32::from(level.0));
-        rules::SOUL_CAP_BASE + rules::SOUL_CAP_PER_LEVEL * level.saturating_sub(1)
+        match self.carried_level(entity, ability::NECROMASTERY) {
+            0 => 0,
+            level => rules::NECRO_SOUL_CAP[usize::from(level - 1)],
+        }
+    }
+
+    /// Which level of an ability an entity has learned. Zero for one that
+    /// does not carry it at all.
+    pub fn carried_level(&self, entity: Entity, id: AbilityId) -> u8 {
+        self.abilities.get(entity).map_or(0, |book| {
+            book.slots
+                .iter()
+                .find(|slot| slot.id == id)
+                .map_or(0, |slot| slot.level)
+        })
     }
 }

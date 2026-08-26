@@ -394,6 +394,7 @@ impl World {
         if self.trees.tick(self.tick) {
             self.lay_sight_block();
         }
+        self.spread_presence();
         aura_system(AuraCx {
             entities: &self.entities,
             transform: &self.transform,

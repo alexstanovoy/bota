@@ -1259,7 +1259,7 @@ fn attribute_color(which: bota_proto::Attribute) -> Color {
     }
 }
 
-/// Hotkey letters of the four ability slots.
+/// Hotkey letters of the ability slots.
 const ABILITY_KEYS: [&str; 6] = ["Q", "W", "E", "R", "T", "G"];
 
 /// The key that casts one slot, if the panel has one for it.

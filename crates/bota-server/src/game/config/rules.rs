@@ -738,12 +738,16 @@ pub const RAZE_COOLDOWN: [u32; 4] = [10 * TICKS_PER_SECOND; 4];
 pub const SOULS_PER_UNIT: u32 = 1;
 /// Souls one hero brought down is worth to whoever gathers them.
 pub const SOULS_PER_HERO: u32 = 3;
-/// Souls that may be held at hero level one.
-pub const SOUL_CAP_BASE: u32 = 6;
-/// Souls the cap gains with every hero level past the first.
-pub const SOUL_CAP_PER_LEVEL: u32 = 3;
+/// Souls that may be held, by necromastery level.
+pub const NECRO_SOUL_CAP: [u32; 4] = [12, 16, 20, 24];
 /// Attack damage one soul is worth.
 pub const DAMAGE_PER_SOUL: i32 = 2;
+/// How far the presence reaches, in world units.
+pub const PRESENCE_RADIUS: i32 = 900;
+/// Armor the presence takes from an enemy standing in it, by level.
+pub const PRESENCE_ARMOR: [i32; 4] = [2, 3, 4, 5];
+/// Ticks the presence lingers on an enemy that walks out of it.
+pub const PRESENCE_LINGER_TICKS: u32 = TICKS_PER_SECOND / 2;
 /// How far the requiem reaches, in world units.
 pub const REQUIEM_RADIUS: i32 = 900;
 /// Damage the requiem deals for each soul held, by level.

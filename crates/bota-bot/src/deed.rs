@@ -22,7 +22,7 @@
 use crate::{CREEPS, HEROES, OWN_CREEPS};
 
 /// Ability slots a hero carries.
-pub const ABILITIES: usize = 4;
+pub const ABILITIES: usize = 6;
 /// Inventory slots an item may be used from.
 pub const ITEMS: usize = 6;
 /// Directions a step may be taken in.

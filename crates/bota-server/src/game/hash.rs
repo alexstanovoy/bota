@@ -186,6 +186,10 @@ fn hash_status_kind(fnv: &mut Fnv, kind: StatusKind) {
             fnv.u8(7);
             fnv.i32(pct);
         }
+        StatusKind::ArmorBroken { armor } => {
+            fnv.u8(10);
+            fnv.i32(armor);
+        }
         StatusKind::Burning {
             amount,
             kind,

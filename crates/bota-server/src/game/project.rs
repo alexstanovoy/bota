@@ -261,6 +261,7 @@ fn effect_id(kind: StatusKind) -> u16 {
         StatusKind::Hastened { .. } => 7,
         StatusKind::Burning { .. } => 6,
         StatusKind::Phased => 9,
+        StatusKind::ArmorBroken { .. } => 12,
     }
 }
 
@@ -306,12 +307,8 @@ impl World {
             return false;
         };
         let hero_level = self.level.get(entity).map_or(0, |held| held.0);
-        let spent: u8 = self
-            .abilities
-            .get(entity)
-            .map_or(0, |book| book.slots.iter().map(|slot| slot.level).sum());
         level < def.max_level
-            && spent < hero_level
+            && self.points_spent(entity) < hero_level
             && hero_level >= crate::game::level_floor(def, level)
     }
 

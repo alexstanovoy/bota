@@ -75,9 +75,9 @@ impl World {
                 ability::SHIELD => self.courier_shield(entity),
                 ability::TAKE_STASH => self.courier_take_stash(entity),
                 ability::DELIVER => self.courier_deliver(entity),
-                ability::RAZE_NEAR => self.cast_raze(entity, level, 0, cast.target),
-                ability::RAZE_MID => self.cast_raze(entity, level, 1, cast.target),
-                ability::RAZE_FAR => self.cast_raze(entity, level, 2, cast.target),
+                ability::RAZE_NEAR => self.cast_raze(entity, level, 0),
+                ability::RAZE_MID => self.cast_raze(entity, level, 1),
+                ability::RAZE_FAR => self.cast_raze(entity, level, 2),
                 ability::REQUIEM => self.cast_requiem(entity, level.min(2)),
                 _ => false,
             };

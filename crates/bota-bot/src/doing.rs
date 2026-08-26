@@ -103,9 +103,11 @@ pub fn allowed(field: &Field) -> Vec<bool> {
     if wants_to_buy(field) {
         allow(Deed::Buy);
     }
-    let spent: u8 = me.abilities.iter().map(|ability| ability.level).sum();
-    if spent < me.level {
-        for slot in 0..ABILITIES.min(me.abilities.len()) {
+    // Whether a point could go in is the server's sum to do — the razes
+    // share a level and cost one point together — and the snapshot carries
+    // its answer per slot.
+    for slot in 0..ABILITIES.min(me.abilities.len()) {
+        if me.abilities[slot].can_level {
             allow(Deed::Learn(slot));
         }
     }

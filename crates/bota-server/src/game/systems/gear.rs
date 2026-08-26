@@ -51,14 +51,14 @@ fn parts_in(held: &[(usize, ItemStack)], parts: &[ItemId]) -> Option<Vec<usize>>
     Some(spent)
 }
 
-/// The four slots a hero of this kind carries, all unlearned.
+/// The slots a hero of this kind carries, all unlearned.
 pub fn hero_kit(hero: bota_proto::HeroId) -> AbilityBook {
-    let carried = hero_def(hero).map_or([AbilityId(0); 4], |def| def.abilities);
+    let carried = hero_def(hero).map_or(&[] as &[AbilityId], |def| def.abilities);
     AbilityBook {
         slots: carried
-            .into_iter()
+            .iter()
             .map(|id| AbilityState {
-                id,
+                id: *id,
                 level: 0,
                 cooldown: 0,
             })
@@ -937,7 +937,8 @@ impl World {
     ///
     /// A point has to be there to spend: a hero has one per level and no more.
     /// Each level of an ability waits for a hero level of its own, and none
-    /// goes past its own cap.
+    /// goes past its own cap. A point into a slot that shares its level with
+    /// others — a raze — levels every slot of the group at once.
     pub fn learn(&mut self, entity: Entity, slot: usize, events: &mut Vec<Event>) -> bool {
         let Some(book) = self.abilities.get(entity) else {
             return false;
@@ -952,25 +953,48 @@ impl World {
             return false;
         }
         let hero_level = self.level.get(entity).map_or(1, |level| level.0);
-        let spent: u8 = book.slots.iter().map(|slot| slot.level).sum();
-        if spent >= hero_level || hero_level < crate::game::level_floor(def, ability.level) {
+        if self.points_spent(entity) >= hero_level
+            || hero_level < crate::game::level_floor(def, ability.level)
+        {
             return false;
         }
+        let group = crate::game::learn_group(ability.id);
         let Some(book) = self.abilities.get_mut(entity) else {
             return false;
         };
-        let Some(ability) = book.slots.get_mut(slot) else {
-            return false;
-        };
-        ability.level += 1;
-        let id = ability.id;
+        for held in &mut book.slots {
+            if crate::game::learn_group(held.id) == group {
+                held.level += 1;
+            }
+        }
         events.push(Event {
             kind: EventKind::AbilityCast {
                 caster: wire_id(entity),
-                ability: id,
+                ability: ability.id,
             },
             visible_to: EventVisibility::Everyone,
         });
         true
+    }
+
+    /// Skill points an entity has spent.
+    ///
+    /// Slots sharing a learn group were paid for together, so the group
+    /// counts once.
+    pub fn points_spent(&self, entity: Entity) -> u8 {
+        let Some(book) = self.abilities.get(entity) else {
+            return 0;
+        };
+        book.slots
+            .iter()
+            .enumerate()
+            .filter(|(at, held)| {
+                let group = crate::game::learn_group(held.id);
+                !book.slots[..*at]
+                    .iter()
+                    .any(|other| crate::game::learn_group(other.id) == group)
+            })
+            .map(|(_, held)| held.level)
+            .sum()
     }
 }

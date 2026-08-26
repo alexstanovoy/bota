@@ -73,7 +73,7 @@ pub fn point_along(from: Vec2, towards: Vec2, distance: Fixed) -> Vec2 {
 /// The facing from one position towards another, in brads.
 ///
 /// A piecewise-linear octant approximation: exact on the axes and diagonals,
-/// within a few degrees elsewhere. Facing is cosmetic, nothing compares it.
+/// within a few degrees elsewhere. [`heading_of`] is its inverse.
 pub fn facing_towards(from: Vec2, to: Vec2) -> Angle {
     let dx = i64::from(to.x.raw) - i64::from(from.x.raw);
     let dy = i64::from(to.y.raw) - i64::from(from.y.raw);
@@ -100,6 +100,28 @@ pub fn facing_towards(from: Vec2, to: Vec2) -> Angle {
     Angle {
         brads: (octant & 0xFFFF) as u16,
     }
+}
+
+/// An offset pointing where a facing looks, in the octant mapping of
+/// [`facing_towards`].
+///
+/// The inverse of [`facing_towards`]: the facing from any point towards that
+/// point plus this offset is the angle handed in. The offset is direction
+/// only; its length is one octant span of world units, and never zero.
+pub fn heading_of(facing: Angle) -> Vec2 {
+    let brads = i32::from(facing.brads);
+    let slope = brads % 8192;
+    let (dx, dy) = match brads / 8192 {
+        0 => (8192, slope),
+        1 => (8192 - slope, 8192),
+        2 => (-slope, 8192),
+        3 => (-8192, 8192 - slope),
+        4 => (-8192, -slope),
+        5 => (-(8192 - slope), -8192),
+        6 => (slope, -8192),
+        _ => (8192, -(8192 - slope)),
+    };
+    Vec2::from_ints(dx, dy)
 }
 
 /// Keeps a position on the map.

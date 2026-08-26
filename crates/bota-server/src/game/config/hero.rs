@@ -11,11 +11,9 @@ pub struct HeroDef {
     pub name: &'static str,
     /// The plain form of its body.
     pub unit: &'static UnitDef,
-    /// The four slots it carries, in the order they are shown.
-    pub abilities: [AbilityId; 4],
-    /// Whether it keeps a soul of everything it brings down. What souls are
-    /// worth is the stats system's business.
-    pub souls: bool,
+    /// The slots it carries, in the order they are shown. The ultimate sits
+    /// last.
+    pub abilities: &'static [AbilityId],
 }
 
 /// Every hero, indexed by [`HeroId`].
@@ -23,35 +21,34 @@ pub const HEROES: [HeroDef; 3] = [
     HeroDef {
         name: "Sylla",
         unit: &HERO,
-        abilities: [
+        abilities: &[
             ability::CRIT,
             ability::FRENZY,
             ability::BOUNCE,
             ability::VOLLEY,
         ],
-        souls: false,
     },
     HeroDef {
         name: "Pudge",
         unit: &PUDGE,
-        abilities: [
+        abilities: &[
             ability::MEAT_HOOK,
             ability::ROT,
             ability::FLESH_HEAP,
             ability::DISMEMBER,
         ],
-        souls: false,
     },
     HeroDef {
         name: "Shadow Fiend",
         unit: &SHADOW_FIEND,
-        abilities: [
+        abilities: &[
             ability::RAZE_NEAR,
             ability::RAZE_MID,
             ability::RAZE_FAR,
+            ability::NECROMASTERY,
+            ability::PRESENCE,
             ability::REQUIEM,
         ],
-        souls: true,
     },
 ];
 

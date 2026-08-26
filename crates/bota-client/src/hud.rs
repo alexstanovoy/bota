@@ -85,11 +85,11 @@ pub fn bottom_panel(screen_w: f32, screen_h: f32) -> UiRect {
 
 /// The ability boxes of the bottom panel, four to a row.
 ///
-/// Four across is what fits before the item boxes begin; a courier carries
-/// more than four, and the rest wrap onto a second row rather than running
-/// under the items.
-/// How many ability boxes the panel has room for. A hero carries four; a
-/// courier carries more.
+/// Four across is what fits before the item boxes begin; whatever carries
+/// more than four wraps onto a second row rather than running under the
+/// items.
+/// How many ability boxes the panel has room for: as many as the widest
+/// carrier holds.
 pub const ABILITY_BOXES: u8 = 6;
 
 pub fn ability_boxes(panel: &UiRect) -> Vec<(u8, UiRect)> {

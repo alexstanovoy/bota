@@ -138,8 +138,12 @@ fn itself(field: &Field, out: &mut Vec<f32>) {
     out.push(flagged(bota_proto::StatusFlags::SILENCED));
     out.push(flagged(bota_proto::StatusFlags::SLOWED));
     out.push(flagged(bota_proto::StatusFlags::DOT));
-    let spent: u8 = me.abilities.iter().map(|ability| ability.level).sum();
-    out.push(f32::from(spent < me.level));
+    // Whether a point could go somewhere right now: the razes share a level
+    // and cost one point together, so levels are not summed here; the
+    // snapshot's own answer per slot is.
+    out.push(f32::from(
+        me.abilities.iter().any(|ability| ability.can_level),
+    ));
     out.push(under_fire(field) / 5.0);
 }
 

@@ -80,6 +80,7 @@ pub struct EffectId(pub u16);
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct AbilitySlot(pub u8);
 
+
 /// One of a hero's fifteen item slots.
 ///
 /// Slots 0-5 are the inventory, where items work; 6-8 the backpack, where
