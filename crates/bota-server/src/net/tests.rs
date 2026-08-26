@@ -6,8 +6,8 @@ use std::thread;
 use std::time::Duration;
 
 use bota_proto::{
-    ClientMsg, FrameReader, HeroId, Order, RejectReason, ReplayRecord, Role, ServerMsg, Team, Vec2,
-    encode_frame_to_vec,
+    ClientMsg, FrameReader, HeroId, Order, RejectReason, ReplayRecord, Role, ServerMsg, Target,
+    Team, Vec2, encode_frame_to_vec,
 };
 
 use crate::game_loop::{ServerOpts, run};
@@ -119,13 +119,13 @@ fn a_realtime_match_reaches_two_clients() {
         seq: 1,
         unit: None,
         order: Order::Move {
-            pos: Vec2::from_ints(1000, 1000),
+            target: Target::Pos(Vec2::from_ints(1000, 1000)),
         },
     });
     c1.send(&ClientMsg::Order {
         seq: 2,
         unit: None,
-        order: Order::BuyItem {
+        order: Order::Buy {
             item: bota_proto::ItemId(999),
         },
     });
@@ -158,6 +158,91 @@ fn a_realtime_match_reaches_two_clients() {
         }
     }
     panic!("the replay never became readable");
+}
+
+#[test]
+fn a_spectator_borrows_eyes_and_is_told_the_orders_they_see() {
+    let addr = start_server(ServerOpts {
+        mode: bota_proto::TickMode::Realtime,
+        tick_rate: 60,
+        players: 2,
+        replay: None,
+        seed: 9,
+        map: bota_proto::MapId(0),
+        ack_timeout_ticks: 150,
+    });
+    let (mut c1, _) = join_as_bot(addr, "alpha");
+    let (mut c2, _) = join_as_bot(addr, "beta");
+    let mut watcher = TestClient::connect(addr);
+    watcher.send(&ClientMsg::Hello {
+        role: Role::Spectator,
+        name: "eye".to_string(),
+    });
+    let slot = watcher.recv_until(|msg| match msg {
+        ServerMsg::Welcome { slot, .. } => Some(slot),
+        _ => None,
+    });
+    assert_eq!(slot, None, "a spectator takes no seat");
+    let first = watcher.recv_until(|msg| match msg {
+        ServerMsg::Snapshot { view } => Some(view),
+        _ => None,
+    });
+    assert_eq!(
+        first.viewer, None,
+        "everything, before any eyes are asked for"
+    );
+
+    // A free view is a clean one: an order given while nobody's eyes are
+    // borrowed is told to no spectator.
+    c1.send(&ClientMsg::Order {
+        seq: 1,
+        unit: None,
+        order: Order::Move {
+            target: Target::Pos(Vec2::from_ints(1000, 1000)),
+        },
+    });
+    let mut told_freely = 0u32;
+    for _ in 0..3 {
+        watcher.recv_until(|msg| match msg {
+            ServerMsg::Orders { .. } => {
+                told_freely += 1;
+                None
+            }
+            ServerMsg::Snapshot { .. } => Some(()),
+            _ => None,
+        });
+    }
+    assert_eq!(told_freely, 0, "watching everything is told no orders");
+
+    watcher.send(&ClientMsg::ViewAs {
+        seat: Some(bota_proto::SlotId(1)),
+    });
+    let fogged = watcher.recv_until(|msg| match msg {
+        ServerMsg::Snapshot { view } if view.viewer.is_some() => Some(view),
+        _ => None,
+    });
+    assert_eq!(
+        fogged.viewer,
+        Some(Team::Dire),
+        "the snapshots come through the chosen eyes"
+    );
+
+    // Through one side's eyes, only that side's orders are told.
+    c2.send(&ClientMsg::Order {
+        seq: 1,
+        unit: None,
+        order: Order::Move {
+            target: Target::Pos(Vec2::from_ints(15000, 15000)),
+        },
+    });
+    let told = watcher.recv_until(|msg| match msg {
+        ServerMsg::Orders { orders, .. } => Some(orders),
+        _ => None,
+    });
+    assert!(
+        told.iter().all(|given| given.slot == bota_proto::SlotId(1)),
+        "an order of the side watched: {told:?}"
+    );
 }
 
 #[test]

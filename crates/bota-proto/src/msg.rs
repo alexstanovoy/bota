@@ -194,6 +194,17 @@ pub struct MatchStats {
     pub slots: Vec<SlotStats>,
 }
 
+/// One accepted order, as it is told to whoever may know of it.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct SlotOrder {
+    /// Which seat gave it.
+    pub slot: SlotId,
+    /// Which unit it was for. Absent means the seat's own hero.
+    pub unit: Option<EntityId>,
+    /// The order itself.
+    pub order: Order,
+}
+
 /// Anything a participant can say to the server.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub enum ClientMsg {
@@ -232,6 +243,15 @@ pub enum ClientMsg {
     Ack {
         /// The tick being acknowledged.
         tick: u32,
+    },
+    /// Choose whose eyes a spectator watches through.
+    ///
+    /// A seat sets the fog of the snapshots to its side's and brings that
+    /// seat's own orders; absent watches everything and is told none.
+    /// Ignored for a seated participant, whose eyes are its own.
+    ViewAs {
+        /// Which seat to watch as. Absent for the whole map.
+        seat: Option<SlotId>,
     },
 }
 
@@ -282,6 +302,18 @@ pub enum ServerMsg {
         /// Why.
         reason: RejectReason,
     },
+    /// The orders accepted on one tick, as far as the receiver may know
+    /// them.
+    ///
+    /// Sent to a spectator watching through one seat's eyes, and carries
+    /// that seat's orders alone. Watching everything brings none, and a
+    /// seated participant knows its own.
+    Orders {
+        /// Which tick they were applied on.
+        tick: u32,
+        /// The orders, sorted by [`SlotId`].
+        orders: Vec<SlotOrder>,
+    },
     /// The match is over.
     MatchOver {
         /// Which side won.
@@ -312,6 +344,6 @@ pub enum ReplayRecord {
         /// Which tick they were applied on.
         tick: u32,
         /// At most one order per seat, sorted by [`SlotId`].
-        orders: Vec<(SlotId, Order)>,
+        orders: Vec<SlotOrder>,
     },
 }

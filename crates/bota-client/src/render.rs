@@ -1,6 +1,6 @@
 //! Drawing the lobby, the world and the HUD.
 
-use bota_proto::{Team, UnitKind, UnitView, WorldView};
+use bota_proto::{Order, Target, Team, UnitKind, UnitView, WorldView};
 use macroquad::prelude::*;
 
 use crate::state::{App, Phase, Source};
@@ -379,6 +379,7 @@ fn draw_world(app: &App, view: &WorldView) {
     draw_aim(app, view, to_screen);
     draw_landing_spots(app, view, to_screen);
     draw_tree_pick(app, view, to_screen);
+    draw_orders(app, view, to_screen);
 
     // What lies on the ground, under whatever stands over it.
     for lying in &view.loot {
@@ -408,6 +409,63 @@ fn draw_world(app: &App, view: &WorldView) {
             18.0,
             Color::new(1.0, 0.9, 0.6, alpha),
         );
+    }
+}
+
+/// Ticks an order marker lasts: a short flash, half a second.
+const ORDER_SHOWN_TICKS: u32 = 15;
+/// The marker colour of a move or follow order.
+const MOVE_ORDER: Color = Color::new(0.35, 0.85, 0.45, 1.0);
+/// The marker colour of an attack order.
+const ATTACK_ORDER: Color = Color::new(0.95, 0.35, 0.30, 1.0);
+
+/// A short flash where each seat's latest order was aimed: a shrinking ring
+/// on the ground for a spot, a ring around the body for a unit or for an
+/// order aimed at nothing.
+///
+/// A live seat knows only its own orders; a replay carries every seat's.
+fn draw_orders(app: &App, view: &WorldView, to_screen: impl Fn(f32, f32) -> (f32, f32)) {
+    for shown in &app.shown_orders {
+        let age = view.tick.saturating_sub(shown.tick);
+        if age > ORDER_SHOWN_TICKS {
+            continue;
+        }
+        let (target, colour) = match shown.order {
+            Order::Move { target } => (target, MOVE_ORDER),
+            Order::Attack { target } => (target, ATTACK_ORDER),
+            _ => continue,
+        };
+        let fade = 1.0 - age as f32 / ORDER_SHOWN_TICKS as f32;
+        let colour = Color::new(colour.r, colour.g, colour.b, 0.9 * fade);
+        match target {
+            Target::Pos(pos) => {
+                let (x, y) = to_screen(pos.x.to_f32(), pos.y.to_f32());
+                draw_circle_lines(x, y, 4.0 + 10.0 * fade, 2.0, colour);
+            }
+            Target::Unit(id) => {
+                let Some(mark) = view.units.iter().find(|unit| unit.id == id) else {
+                    continue;
+                };
+                let (x, y) = to_screen(mark.pos.x.to_f32(), mark.pos.y.to_f32());
+                let body = (mark.radius.to_f32() * app.camera.zoom).max(6.0);
+                draw_circle_lines(x, y, body + 3.0 + 6.0 * fade, 2.0, colour);
+            }
+            Target::None => {
+                let ordered = shown.unit.or_else(|| {
+                    view.players
+                        .iter()
+                        .find(|player| player.slot == shown.slot)
+                        .and_then(|player| player.unit)
+                });
+                let from = ordered.and_then(|id| view.units.iter().find(|unit| unit.id == id));
+                let Some(from) = from else {
+                    continue;
+                };
+                let (x, y) = to_screen(from.pos.x.to_f32(), from.pos.y.to_f32());
+                let body = (from.radius.to_f32() * app.camera.zoom).max(6.0);
+                draw_circle_lines(x, y, body + 3.0 + 6.0 * fade, 2.0, colour);
+            }
+        }
     }
 }
 
@@ -665,6 +723,21 @@ fn draw_unit(app: &App, u: &UnitView, mine: bool, to_screen: impl Fn(f32, f32) -
 }
 
 fn draw_hud(app: &App, view: &WorldView) {
+    // A live spectator is told whose eyes it is watching through.
+    if app.my_slot.is_none() && matches!(app.source, Source::Live(_)) {
+        let eyes = match app.eyes {
+            Some(slot) => {
+                let side = view
+                    .players
+                    .iter()
+                    .find(|player| player.slot == slot)
+                    .map_or(String::new(), |player| format!(" - {:?}", player.team));
+                format!("seat {}{side}", slot.0)
+            }
+            None => "everything".to_string(),
+        };
+        draw_text(format!("eyes: {eyes} (Tab)"), 12.0, 24.0, 20.0, GRAY);
+    }
     let ticks = i64::from(view.tick) - i64::from(app.pregame_ticks);
     let seconds = ticks.div_euclid(i64::from(app.tick_rate.max(1)));
     let clock = format!(

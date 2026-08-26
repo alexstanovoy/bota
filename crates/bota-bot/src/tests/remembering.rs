@@ -1,30 +1,27 @@
 //! The window of frames the model is shown.
 
-use crate::{A_SECOND, AGES, DEEDS, Fed, HISTORY, INPUT, Learned, Mind, Model, NUMBERS, Shown};
+use crate::{A_SECOND, AGES, HISTORY, INPUT, Learned, Mind, Model, NUMBERS};
 
-/// A tick whose numbers all read the same, so a frame can be named by sight.
-fn a_tick(at: u32) -> Shown {
-    Shown {
-        at,
-        numbers: vec![at as f32; NUMBERS],
-        allowed: vec![true; DEEDS],
-    }
+/// A tick's numbers, all reading the same, so a frame can be named by sight.
+fn numbers_of(at: u32) -> Vec<f32> {
+    vec![at as f32; NUMBERS]
 }
 
-/// Which tick each of the frames it was last fed came from.
-fn window(mind: &Learned) -> Vec<u32> {
-    let fed = mind.what_was_fed();
+/// Which tick each frame of what was fed came from.
+fn window(fed: &[f32]) -> Vec<u32> {
     (0..HISTORY).map(|at| fed[at * NUMBERS] as u32).collect()
 }
 
-/// A mind that has been shown every tick from one up to the one given.
-fn shown_every_tick_to(last: u32) -> Learned {
+/// A mind shown every tick from one up to the one given, and what the last of
+/// those fed the model.
+fn shown_every_tick_to(last: u32) -> (Learned, Vec<f32>) {
     let mut mind = Learned::new(Model::fresh(1).expect("a model"));
     mind.starting();
+    let mut fed = Vec::new();
     for at in 1..=last {
-        mind.choose(&a_tick(at));
+        fed = mind.history(at, &numbers_of(at));
     }
-    mind
+    (mind, fed)
 }
 
 #[test]
@@ -56,9 +53,9 @@ fn the_ages_double_and_end_on_the_tick_being_decided() {
 #[test]
 fn a_filled_window_holds_exactly_the_ages_asked_for() {
     let now = 1000;
-    let mind = shown_every_tick_to(now);
+    let (_, fed) = shown_every_tick_to(now);
     assert_eq!(
-        window(&mind),
+        window(&fed),
         AGES.iter().map(|age| now - age).collect::<Vec<u32>>(),
         "every frame is the tick that many ticks back"
     );
@@ -68,11 +65,11 @@ fn a_filled_window_holds_exactly_the_ages_asked_for() {
 fn an_unfilled_window_leans_on_the_oldest_tick_seen_and_never_on_noughts() {
     // Three ticks in, everything older than the third is the first tick it
     // ever saw. Noughts would be numbers it will never be shown again.
-    let mind = shown_every_tick_to(3);
-    assert_eq!(window(&mind), vec![1, 1, 1, 1, 1, 1, 3]);
+    let (_, fed) = shown_every_tick_to(3);
+    assert_eq!(window(&fed), vec![1, 1, 1, 1, 1, 1, 3]);
 
-    let mind = shown_every_tick_to(A_SECOND + 1);
-    let held = window(&mind);
+    let (_, fed) = shown_every_tick_to(A_SECOND + 1);
+    let held = window(&fed);
     assert_eq!(
         held.last().copied(),
         Some(A_SECOND + 1),
@@ -94,11 +91,12 @@ fn a_gap_shows_the_last_tick_seen_rather_than_sliding_the_window() {
     // The seat chooses nothing while there is nothing to choose — being dead,
     // most often. Ages are the match's ticks, so a gap must leave the other
     // frames where they are.
-    let mut mind = shown_every_tick_to(600);
+    let (mut mind, _) = shown_every_tick_to(600);
+    let mut fed = Vec::new();
     for at in 900..=901 {
-        mind.choose(&a_tick(at));
+        fed = mind.history(at, &numbers_of(at));
     }
-    let held = window(&mind);
+    let held = window(&fed);
     assert_eq!(
         held.last().copied(),
         Some(901),
@@ -118,19 +116,19 @@ fn a_gap_shows_the_last_tick_seen_rather_than_sliding_the_window() {
 #[test]
 fn what_is_remembered_is_dropped_once_it_ages_out() {
     // The window is bounded, or a long match would carry every tick of it.
-    let mind = shown_every_tick_to(5000);
-    let held = window(&mind);
+    let (_, fed) = shown_every_tick_to(5000);
+    let held = window(&fed);
     assert_eq!(held[0], 5000 - 16 * A_SECOND);
     assert_eq!(held.last().copied(), Some(5000));
 }
 
 #[test]
 fn starting_a_match_forgets_the_one_before() {
-    let mut mind = shown_every_tick_to(1000);
+    let (mut mind, _) = shown_every_tick_to(1000);
     mind.starting();
-    mind.choose(&a_tick(1));
+    let fed = mind.history(1, &numbers_of(1));
     assert_eq!(
-        window(&mind),
+        window(&fed),
         vec![1; HISTORY],
         "nothing of the last match is left to lean on"
     );

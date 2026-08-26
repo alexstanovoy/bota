@@ -3,7 +3,7 @@
 use bota_proto::{SlotId, Team};
 
 use crate::tests::{a_busy_tick, a_tick, unit};
-use crate::{BLOCKS, DEEDS, Deed, Field, LAYOUT, NUMBERS, Role, allowed, shown, sight};
+use crate::{Aim, BLOCKS, DEEDS, Deed, Field, LAYOUT, NUMBERS, Role, allowed, shown, sight};
 
 /// The field of the busy tick, for the seat this crate plays.
 fn busy() -> bota_proto::WorldView {
@@ -72,6 +72,32 @@ fn a_deed_that_is_allowed_can_be_carried_out() {
 }
 
 #[test]
+fn a_cast_at_a_body_is_offered_only_within_its_reach() {
+    // A cast in reach goes off on the tick it is asked for; one aimed past
+    // its reach would be walked in by the server, and the next tick's deed
+    // would call the walk off.
+    let mut view = busy();
+    for body in &mut view.units {
+        if body.kind == bota_proto::UnitKind::Hero && body.owner == Some(SlotId(0)) {
+            for held in &mut body.abilities {
+                held.range = 550;
+            }
+        }
+    }
+    let field = Field::of(&view, SlotId(0), Role::Mid).expect("the seat is in the tick");
+    let may = allowed(&field);
+    // The other hero stands past 550 away, the nearest creep inside it.
+    assert!(
+        !may[Deed::Cast(2, Aim::Hero).index()],
+        "a cast at a hero out of reach is withheld"
+    );
+    assert!(
+        may[Deed::Cast(2, Aim::Creep).index()],
+        "and one at a creep in reach is offered"
+    );
+}
+
+#[test]
 fn a_tick_with_a_body_standing_always_has_something_to_do() {
     let view = busy();
     let field = Field::of(&view, SlotId(0), Role::Mid).expect("the seat is in the tick");
@@ -116,7 +142,9 @@ fn the_bodies_named_are_the_bodies_shown() {
             .expect("a creep in the list can be swung at");
         assert_eq!(
             ask.order,
-            bota_proto::Order::AttackUnit { target: named },
+            bota_proto::Order::Attack {
+                target: bota_proto::Target::Unit(named)
+            },
             "swinging at the {at}th creep did not name the {at}th creep"
         );
     }

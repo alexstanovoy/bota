@@ -1,10 +1,6 @@
 //! The model, and the only place that knows what it is built with.
 //!
-//! Two heads over one trunk. The policy head gives a number per deed and the
-//! value head gives one number for the tick — what this position is worth,
-//! whatever is chosen. The value head is not decoration: without it every
-//! decision has to be judged against a made-up baseline, which was tried in
-//! the first bot and came out a tie.
+//! One head over one trunk: a number per deed.
 //!
 //! The trunk is fed several ticks at once rather than only the newest, because
 //! a swing that has begun, a creep that is about to die and a creep that has
@@ -55,10 +51,9 @@ pub const INPUT: usize = NUMBERS * HISTORY;
 
 /// The weights, and the machinery to run them.
 pub struct Model {
-    /// The trunk, then the two heads.
+    /// The trunk, then the head.
     trunk: Vec<Layer>,
     policy: Layer,
-    value: Layer,
     /// Where the numbers live.
     device: Device,
 }
@@ -107,7 +102,6 @@ impl Model {
                 Layer::fresh(WIDTH, WIDTH, &mut dice, &device)?,
             ],
             policy: Layer::fresh(WIDTH, DEEDS, &mut dice, &device)?,
-            value: Layer::fresh(WIDTH, 1, &mut dice, &device)?,
             device,
         })
     }
@@ -120,30 +114,25 @@ impl Model {
             .sum()
     }
 
-    /// A number per deed and one for the position, as tensors that remember
-    /// how they were made.
-    pub fn run(&self, rows: &Tensor) -> Chance<(Tensor, Tensor)> {
+    /// A number per deed, for every row given.
+    pub fn run(&self, rows: &Tensor) -> Chance<Tensor> {
         let mut out = rows.clone();
         for layer in &self.trunk {
             out = layer.run(&out)?.tanh()?;
         }
-        Ok((self.policy.run(&out)?, self.value.run(&out)?))
+        self.policy.run(&out)
     }
 
     /// The same for one tick's worth of numbers.
-    pub fn weigh(&self, numbers: &[f32]) -> Chance<(Vec<f32>, f32)> {
+    pub fn weigh(&self, numbers: &[f32]) -> Chance<Vec<f32>> {
         let rows = Tensor::from_vec(numbers.to_vec(), (1, INPUT), &self.device)?;
-        let (liking, worth) = self.run(&rows)?;
-        Ok((
-            liking.flatten_all()?.to_vec1()?,
-            worth.flatten_all()?.to_vec1::<f32>()?[0],
-        ))
+        self.run(&rows)?.flatten_all()?.to_vec1()
     }
 
-    /// Every number the model is made of, for an optimiser to move.
+    /// Every number the model is made of, layer by layer.
     pub fn weights(&self) -> Vec<&Var> {
         let mut out: Vec<&Var> = Vec::new();
-        for layer in self.trunk.iter().chain([&self.policy, &self.value]) {
+        for layer in self.trunk.iter().chain([&self.policy]) {
             out.push(&layer.weight);
             out.push(&layer.bias);
         }
@@ -227,8 +216,6 @@ pub struct Learned {
     /// Every tick it has seen inside the window, oldest first, each with the
     /// tick it was seen on.
     seen: VecDeque<(u32, Vec<f32>)>,
-    /// What went into the model for the last choice it made.
-    fed: Vec<f32>,
     /// Where a loose choice is drawn from.
     dice: Dice,
 }
@@ -240,7 +227,6 @@ impl Learned {
             model,
             heat: 0.0,
             seen: VecDeque::new(),
-            fed: Vec::new(),
             dice: Dice::from_seed(1),
         }
     }
@@ -265,7 +251,7 @@ impl Learned {
     /// Before the window has filled, the oldest tick it has stands in for the
     /// ones that have not happened: a match should not begin by being shown
     /// noughts it will never see again.
-    fn history(&mut self, at: u32, numbers: &[f32]) -> Vec<f32> {
+    pub(crate) fn history(&mut self, at: u32, numbers: &[f32]) -> Vec<f32> {
         self.seen.push_back((at, numbers.to_vec()));
         // One frame is kept from beyond the window, because the oldest age
         // asks for the newest tick at or before it and that may be older than
@@ -290,20 +276,12 @@ impl Mind for Learned {
             return None;
         }
         let numbers = self.history(shown.at, &shown.numbers);
-        let (liking, _worth) = self.model.weigh(&numbers).ok()?;
-        self.fed = numbers;
+        let liking = self.model.weigh(&numbers).ok()?;
         Some(pick(&liking, &shown.allowed, self.heat, &mut self.dice))
     }
 
     fn starting(&mut self) {
         self.seen.clear();
-        self.fed.clear();
-    }
-}
-
-impl crate::Fed for Learned {
-    fn what_was_fed(&self) -> Vec<f32> {
-        self.fed.clone()
     }
 }
 

@@ -1,6 +1,6 @@
 //! Channelling a scroll, and what happens when it runs out.
 
-use bota_proto::{OrderTarget, UnitKind, Vec2};
+use bota_proto::{Target, UnitKind, Vec2};
 
 use crate::game::rules;
 use crate::game::{Entity, Teleport, World};
@@ -62,12 +62,12 @@ impl World {
     pub fn begin_teleport(
         &mut self,
         entity: Entity,
-        target: OrderTarget,
+        target: Target,
         channel: u32,
         range: i32,
         slot: usize,
     ) -> bool {
-        let OrderTarget::Point { pos } = target else {
+        let Target::Pos(pos) = target else {
             return false;
         };
         let Some(side) = self.team.get(entity).copied() else {

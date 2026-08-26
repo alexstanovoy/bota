@@ -6,7 +6,7 @@
 //! made-up tick to check that it is so. A legal deed that decodes to nothing
 //! would be a tick thrown away, and there is one order a tick.
 
-use bota_proto::{AbilitySlot, ItemSlot, Order, OrderTarget};
+use bota_proto::{AbilitySlot, ItemSlot, Order, Target};
 
 use crate::{ABILITIES, Aim, Ask, DEEDS, Deed, Errand, Field, ITEMS, Place, STEP, STEPS};
 
@@ -62,15 +62,24 @@ pub fn allowed(field: &Field) -> Vec<bool> {
         if !ready {
             continue;
         }
-        // Only the way this ability is actually aimed. Offering the other
-        // three would be offering three refused orders.
+        // Only the way this ability is actually aimed, and only with its
+        // target in reach: a cast in reach goes off on the tick it is asked
+        // for, where one aimed past it has the server walking the body in —
+        // a walk the next tick's deed calls off.
         for aim in [Aim::Own, Aim::Ahead, Aim::Hero, Aim::Creep] {
             if !crate::suits(ability.id, aim) {
                 continue;
             }
+            let reach = ability.range as f32;
             let has_a_target = match aim {
-                Aim::Hero => !field.heroes.is_empty(),
-                Aim::Creep => !field.creeps.is_empty(),
+                Aim::Hero => field
+                    .heroes
+                    .first()
+                    .is_some_and(|hero| crate::span(me.pos, hero.pos) <= reach),
+                Aim::Creep => field
+                    .creeps
+                    .first()
+                    .is_some_and(|creep| crate::span(me.pos, creep.pos) <= reach),
                 Aim::Own | Aim::Ahead => true,
             };
             if has_a_target {
@@ -177,20 +186,22 @@ impl Deed {
         let me = field.me?;
         let hero = |order: Order| Some(Ask { unit: None, order });
         match self {
-            Deed::Stand => hero(Order::Stop),
-            Deed::Swing(at) => hero(Order::AttackUnit {
-                target: field.creeps.get(at)?.id,
+            Deed::Stand => hero(Order::Move {
+                target: Target::None,
             }),
-            Deed::PutOut(at) => hero(Order::AttackUnit {
-                target: field.own_creeps.get(at)?.id,
+            Deed::Swing(at) => hero(Order::Attack {
+                target: Target::Unit(field.creeps.get(at)?.id),
             }),
-            Deed::Fight(at) => hero(Order::AttackUnit {
-                target: field.heroes.get(at)?.id,
+            Deed::PutOut(at) => hero(Order::Attack {
+                target: Target::Unit(field.own_creeps.get(at)?.id),
+            }),
+            Deed::Fight(at) => hero(Order::Attack {
+                target: Target::Unit(field.heroes.get(at)?.id),
             }),
             Deed::Step(at) => {
                 let turn = std::f32::consts::TAU * at as f32 / STEPS as f32;
                 hero(Order::Move {
-                    pos: field.spot_towards(STEP * turn.cos(), STEP * turn.sin()),
+                    target: Target::Pos(field.spot_towards(STEP * turn.cos(), STEP * turn.sin())),
                 })
             }
             Deed::GoTo(place) => {
@@ -199,7 +210,9 @@ impl Deed {
                     Place::OwnTower => field.towers.0?.pos,
                     Place::TheirTower => field.towers.1?.pos,
                 };
-                hero(Order::Move { pos: spot })
+                hero(Order::Move {
+                    target: Target::Pos(spot),
+                })
             }
             Deed::Cast(slot, aim) => {
                 let ability = me.abilities.get(slot)?;
@@ -210,35 +223,33 @@ impl Deed {
                     return None;
                 }
                 let target = match aim {
-                    Aim::Own => OrderTarget::None,
-                    Aim::Hero => OrderTarget::Unit {
-                        target: field.heroes.first()?.id,
-                    },
-                    Aim::Creep => OrderTarget::Unit {
-                        target: field.creeps.first()?.id,
-                    },
-                    Aim::Ahead => OrderTarget::Point {
-                        pos: field.spot_towards(AHEAD, 0.0),
-                    },
+                    Aim::Own => Target::None,
+                    Aim::Hero => Target::Unit(field.heroes.first()?.id),
+                    Aim::Creep => Target::Unit(field.creeps.first()?.id),
+                    // No further ahead than the cast reaches, so it goes off
+                    // where the body stands.
+                    Aim::Ahead => {
+                        Target::Pos(field.spot_towards(AHEAD.min(ability.range as f32), 0.0))
+                    }
                 };
-                hero(Order::CastAbility {
+                hero(Order::Cast {
                     slot: AbilitySlot(slot as u8),
                     target,
                 })
             }
             Deed::Use(slot) => {
                 me.items.get(slot)?.as_ref()?;
-                hero(Order::UseItem {
+                hero(Order::Use {
                     slot: ItemSlot(slot as u8),
-                    target: OrderTarget::None,
+                    target: Target::None,
                 })
             }
-            Deed::Buy => hero(Order::BuyItem {
+            Deed::Buy => hero(Order::Buy {
                 item: crate::next_to_buy(field)?,
             }),
             Deed::Learn(slot) => {
                 me.abilities.get(slot)?;
-                hero(Order::LevelUpAbility {
+                hero(Order::Learn {
                     slot: AbilitySlot(slot as u8),
                 })
             }
@@ -253,15 +264,15 @@ impl Deed {
                     .position(|ability| ability.id.0 == wanted)?;
                 Some(Ask {
                     unit: Some(courier.id),
-                    order: Order::CastAbility {
+                    order: Order::Cast {
                         slot: AbilitySlot(at as u8),
-                        target: OrderTarget::None,
+                        target: Target::None,
                     },
                 })
             }
             Deed::Sell(slot) => {
                 me.items.get(slot)?.as_ref()?;
-                hero(Order::SellItem {
+                hero(Order::Sell {
                     slot: ItemSlot(slot as u8),
                 })
             }

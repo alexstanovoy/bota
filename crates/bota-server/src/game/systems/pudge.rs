@@ -1,6 +1,6 @@
 //! The rot, the dismember and what the flesh heap keeps.
 
-use bota_proto::{DamageKind, Fixed, OrderTarget};
+use bota_proto::{DamageKind, Fixed, Target};
 
 use crate::engine::Entity;
 use crate::game::{Dismembering, Rotting, StackKind, Status, StatusKind, World, ability, rules};
@@ -89,8 +89,8 @@ impl World {
     }
 
     /// Takes hold of one unit within reach and starts eating it.
-    pub fn cast_dismember(&mut self, caster: Entity, level: usize, target: OrderTarget) -> bool {
-        let OrderTarget::Unit { target } = target else {
+    pub fn cast_dismember(&mut self, caster: Entity, level: usize, target: Target) -> bool {
+        let Target::Unit(target) = target else {
             return false;
         };
         let Some(on) = self.of_wire(target) else {

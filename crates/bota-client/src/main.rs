@@ -71,6 +71,11 @@ async fn main() {
         for msg in msgs {
             app.handle(msg);
         }
+        for (tick, orders) in app.source.take_orders() {
+            for given in orders {
+                app.note_order(given.slot, given.unit, tick, given.order);
+            }
+        }
         input::handle(&mut app);
         app.check_connection();
         app.tick_effects(dt);

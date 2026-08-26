@@ -32,6 +32,30 @@ impl Source {
             net.send(msg);
         }
     }
+
+    /// The orders recorded with the ticks played since the last call.
+    ///
+    /// Empty on a live source, where orders arrive as
+    /// [`ServerMsg::Orders`] instead.
+    pub fn take_orders(&mut self) -> Vec<(u32, Vec<bota_proto::SlotOrder>)> {
+        match self {
+            Source::Live(_) => Vec::new(),
+            Source::Replay(player) => player.take_orders(),
+        }
+    }
+}
+
+/// One seat's latest order, kept to be drawn over the world.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ShownOrder {
+    /// Which seat gave it.
+    pub slot: SlotId,
+    /// Which unit it was for. Absent means the seat's own hero.
+    pub unit: Option<EntityId>,
+    /// The tick it was given on, which decides how faded it is drawn.
+    pub tick: u32,
+    /// The order itself.
+    pub order: Order,
 }
 
 /// Which screen the client is on.
@@ -263,6 +287,12 @@ pub struct App {
     pub ready: bool,
     /// Whether a hero pick has been sent.
     pub picked: bool,
+    /// The latest order of every seat it is known for: this seat's own in a
+    /// live match, whatever the server tells a spectator, everybody's in a
+    /// replay.
+    pub shown_orders: Vec<ShownOrder>,
+    /// The seat whose eyes a spectator has asked to watch through.
+    pub eyes: Option<SlotId>,
     /// Damage numbers in flight.
     pub floaters: Vec<Floater>,
     /// Kill feed lines.
@@ -315,6 +345,8 @@ impl App {
             found_my_hero: false,
             ready: false,
             picked: false,
+            shown_orders: Vec::new(),
+            eyes: None,
             floaters: Vec::new(),
             feed: Vec::new(),
             aimed_from: None,
@@ -471,9 +503,12 @@ impl App {
     /// The team whose fog this client lives under. Absent for spectators,
     /// who see everything.
     pub fn fog_team(&self) -> Option<bota_proto::Team> {
-        let slot = self.my_slot?;
         let view = self.view.as_ref()?;
-        view.players.iter().find(|p| p.slot == slot).map(|p| p.team)
+        if let Some(slot) = self.my_slot {
+            return view.players.iter().find(|p| p.slot == slot).map(|p| p.team);
+        }
+        // A spectator's fog is whatever eyes the snapshot came through.
+        view.viewer
     }
 
     /// Whether our hero stands in its home shop area.
@@ -525,7 +560,21 @@ impl App {
     pub fn send_order_to(&mut self, unit: Option<bota_proto::EntityId>, order: Order) {
         self.seq += 1;
         let seq = self.seq;
+        if let (Some(slot), Some(view)) = (self.my_slot, self.view.as_ref()) {
+            self.note_order(slot, unit, view.tick, order);
+        }
         self.source.send(&ClientMsg::Order { seq, unit, order });
+    }
+
+    /// Remembers one seat's order for the overlay, replacing its last one.
+    pub fn note_order(&mut self, slot: SlotId, unit: Option<EntityId>, tick: u32, order: Order) {
+        self.shown_orders.retain(|shown| shown.slot != slot);
+        self.shown_orders.push(ShownOrder {
+            slot,
+            unit,
+            tick,
+            order,
+        });
     }
 
     /// Which slot of our courier holds one ability.
@@ -565,7 +614,13 @@ impl App {
                     .collect();
                 self.lobby = slots;
             }
+            ServerMsg::Orders { tick, orders } => {
+                for given in orders {
+                    self.note_order(given.slot, given.unit, tick, given.order);
+                }
+            }
             ServerMsg::MatchStart { info } => {
+                self.shown_orders.clear();
                 self.tick_rate = info.tick_rate;
                 self.pregame_ticks = info.pregame_ticks;
                 self.shop = info.shop.clone();

@@ -3,15 +3,17 @@
 use std::collections::VecDeque;
 use std::path::Path;
 
-use bota_proto::{FrameReader, ReplayRecord, ServerMsg};
+use bota_proto::{FrameReader, ReplayRecord, ServerMsg, SlotOrder};
 
 /// Feeds recorded frames out on the recorded clock.
 ///
 /// A snapshot is released once the playback clock reaches its tick; everything
-/// between snapshots is released along with it. Order records are for future
-/// overlays and are skipped for now.
+/// between snapshots is released along with it. Order records are released on
+/// the same clock and wait in their own box for the overlay to take.
 pub struct ReplayPlayer {
     records: VecDeque<ReplayRecord>,
+    /// Order records now played and not yet taken.
+    orders: Vec<(u32, Vec<SlotOrder>)>,
     /// Whether the clock is running.
     pub paused: bool,
     /// Clock multiplier: 1.0 is the recorded pace.
@@ -38,11 +40,18 @@ impl ReplayPlayer {
         }
         Ok(ReplayPlayer {
             records,
+            orders: Vec::new(),
             paused: false,
             speed: 1.0,
             clock_ticks: 0.0,
             tick_rate: 30.0,
         })
+    }
+
+    /// The orders played since the last call, with the ticks they were
+    /// applied on.
+    pub fn take_orders(&mut self) -> Vec<(u32, Vec<SlotOrder>)> {
+        std::mem::take(&mut self.orders)
     }
 
     /// Advances the clock and returns every message now due.
@@ -68,8 +77,15 @@ impl ReplayPlayer {
         let mut due = Vec::new();
         while let Some(record) = self.records.front() {
             match record {
+                ReplayRecord::Orders { tick, .. } if f64::from(*tick) > self.clock_ticks => {
+                    break;
+                }
                 ReplayRecord::Orders { .. } => {
-                    self.records.pop_front();
+                    let Some(ReplayRecord::Orders { tick, orders }) = self.records.pop_front()
+                    else {
+                        unreachable!("the front was just matched as Orders");
+                    };
+                    self.orders.push((tick, orders));
                 }
                 ReplayRecord::Msg(ServerMsg::Snapshot { view })
                     if f64::from(view.tick) > self.clock_ticks =>

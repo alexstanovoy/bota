@@ -7,7 +7,7 @@
 //! look like.
 
 use bota_proto::{
-    AbilitySlot, AbilityView, Aim, EntityId, ItemSlot, ItemView, Order, OrderTarget, UnitView,
+    AbilitySlot, AbilityView, Aim, EntityId, ItemSlot, ItemView, Order, Target, UnitView,
 };
 
 use crate::state::App;
@@ -141,7 +141,7 @@ pub fn decide(
     if let Slot::Ability(at) = slot
         && ctrl
     {
-        return Press::Send(Order::LevelUpAbility {
+        return Press::Send(Order::Learn {
             slot: AbilitySlot(at),
         });
     }
@@ -160,14 +160,14 @@ pub fn decide(
     // holding it.
     if aiming == Some(slot) && aim == Some(Aim::Unit) {
         return match commanded {
-            Some(target) => Press::Send(order_for(slot, OrderTarget::Unit { target })),
+            Some(target) => Press::Send(order_for(slot, Target::Unit(target))),
             None => Press::Nothing,
         };
     }
     match aim {
         // What works on its own, and what cannot be used at all, is still
         // sent: the server is the one that says so.
-        None | Some(Aim::Own) => Press::Send(order_for(slot, OrderTarget::None)),
+        None | Some(Aim::Own) => Press::Send(order_for(slot, Target::None)),
         Some(Aim::Point | Aim::Unit | Aim::Tree | Aim::Building) => Press::Aim(slot),
     }
 }
@@ -188,13 +188,13 @@ fn filled(app: &App, slot: Slot) -> Option<Option<Aim>> {
 }
 
 /// The order one slot sends at a target.
-pub fn order_for(slot: Slot, target: OrderTarget) -> Order {
+pub fn order_for(slot: Slot, target: Target) -> Order {
     match slot {
-        Slot::Ability(at) => Order::CastAbility {
+        Slot::Ability(at) => Order::Cast {
             slot: AbilitySlot(at),
             target,
         },
-        Slot::Item(at) => Order::UseItem {
+        Slot::Item(at) => Order::Use {
             slot: ItemSlot(at),
             target,
         },

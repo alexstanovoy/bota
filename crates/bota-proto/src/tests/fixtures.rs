@@ -275,65 +275,76 @@ pub fn match_stats() -> MatchStats {
 /// Every [`Order`] variant.
 pub fn all_orders() -> Vec<Order> {
     vec![
-        Order::Stop,
-        Order::HoldPosition,
         Order::Move {
-            pos: Vec2 {
+            target: Target::None,
+        },
+        Order::Attack {
+            target: Target::None,
+        },
+        Order::Move {
+            target: Target::Pos(Vec2 {
                 x: fixed(100),
                 y: fixed(-100),
-            },
+            }),
         },
-        Order::AttackMove {
-            pos: Vec2 {
+        Order::Attack {
+            target: Target::Pos(Vec2 {
                 x: fixed(0),
                 y: fixed(0),
-            },
+            }),
         },
-        Order::AttackUnit { target: entity(7) },
-        Order::CastAbility {
+        Order::Attack {
+            target: Target::Unit(entity(7)),
+        },
+        Order::Move {
+            target: Target::Unit(entity(6)),
+        },
+        Order::Cast {
             slot: AbilitySlot(3),
-            target: OrderTarget::None,
+            target: Target::None,
         },
-        Order::CastAbility {
+        Order::Cast {
             slot: AbilitySlot(0),
-            target: OrderTarget::Point {
-                pos: Vec2 {
-                    x: fixed(512),
-                    y: fixed(512),
-                },
-            },
+            target: Target::Pos(Vec2 {
+                x: fixed(512),
+                y: fixed(512),
+            }),
         },
-        Order::CastAbility {
+        Order::Cast {
             slot: AbilitySlot(1),
-            target: OrderTarget::Unit { target: entity(8) },
+            target: Target::Unit(entity(8)),
         },
-        Order::UseItem {
+        Order::Use {
             slot: ItemSlot(2),
-            target: OrderTarget::Unit { target: entity(9) },
+            target: Target::Unit(entity(9)),
         },
-        Order::LevelUpAbility {
+        Order::Learn {
             slot: AbilitySlot(2),
         },
-        Order::BuyItem { item: ItemId(4) },
-        Order::SellItem { slot: ItemSlot(5) },
-        Order::PutItem {
+        Order::Buy { item: ItemId(4) },
+        Order::Sell { slot: ItemSlot(5) },
+        Order::Swap {
+            from: ItemSlot(0),
+            to: ItemSlot(7),
+        },
+        Order::Put {
             slot: ItemSlot(1),
-            target: OrderTarget::None,
+            target: Target::None,
         },
-        Order::PutItem {
+        Order::Put {
             slot: ItemSlot(0),
-            target: OrderTarget::Point {
-                pos: Vec2 {
-                    x: fixed(700),
-                    y: fixed(900),
-                },
-            },
+            target: Target::Pos(Vec2 {
+                x: fixed(700),
+                y: fixed(900),
+            }),
         },
-        Order::PutItem {
+        Order::Put {
             slot: ItemSlot(6),
-            target: OrderTarget::Unit { target: entity(10) },
+            target: Target::Unit(entity(10)),
         },
-        Order::TakeItem { target: entity(21) },
+        Order::Take {
+            target: Target::Unit(entity(21)),
+        },
     ]
 }
 
@@ -395,10 +406,26 @@ pub fn all_client_msgs() -> Vec<ClientMsg> {
         ClientMsg::Order {
             unit: None,
             seq: 12345,
-            order: Order::AttackUnit { target: entity(7) },
+            order: Order::Attack {
+                target: Target::Unit(entity(7)),
+            },
         },
         ClientMsg::Ack { tick: 5400 },
+        ClientMsg::ViewAs {
+            seat: Some(SlotId(1)),
+        },
     ]
+}
+
+/// One accepted order as the wire carries it.
+pub fn slot_order(slot: u8) -> SlotOrder {
+    SlotOrder {
+        slot: SlotId(slot),
+        unit: Some(entity(30 + u32::from(slot))),
+        order: Order::Attack {
+            target: Target::Unit(entity(7)),
+        },
+    }
 }
 
 /// Every [`ServerMsg`] variant.
@@ -433,6 +460,10 @@ pub fn all_server_msgs() -> Vec<ServerMsg> {
             player_id: PlayerId(3),
             slot: Some(SlotId(0)),
         },
+        ServerMsg::Orders {
+            tick: 5400,
+            orders: vec![slot_order(0), slot_order(1)],
+        },
     ]
 }
 
@@ -446,8 +477,14 @@ pub fn all_replay_records() -> Vec<ReplayRecord> {
         ReplayRecord::Orders {
             tick: 5400,
             orders: vec![
-                (SlotId(0), Order::Stop),
-                (SlotId(1), Order::AttackUnit { target: entity(7) }),
+                SlotOrder {
+                    slot: SlotId(0),
+                    unit: None,
+                    order: Order::Move {
+                        target: Target::None,
+                    },
+                },
+                slot_order(1),
             ],
         },
     ]
@@ -462,6 +499,7 @@ pub fn client_msg_name(msg: &ClientMsg) -> &'static str {
         ClientMsg::SetReady(_) => "SetReady",
         ClientMsg::Order { .. } => "Order",
         ClientMsg::Ack { .. } => "Ack",
+        ClientMsg::ViewAs { .. } => "ViewAs",
     }
 }
 
@@ -477,5 +515,6 @@ pub fn server_msg_name(msg: &ServerMsg) -> &'static str {
         ServerMsg::OrderRejected { .. } => "OrderRejected",
         ServerMsg::MatchOver { .. } => "MatchOver",
         ServerMsg::ParticipantLeft { .. } => "ParticipantLeft",
+        ServerMsg::Orders { .. } => "Orders",
     }
 }

@@ -1,19 +1,19 @@
 //! The surface a match runs a world through: what the game loop asks of it.
 
-use bota_proto::{Aim, MatchStats, Order, OrderTarget, RejectReason, SlotId, SlotStats, Team};
+use bota_proto::{Aim, MatchStats, Order, RejectReason, SlotId, SlotStats, Target, Team};
 
 use crate::game::{BAG_SLOTS, Command, Event, MatchConfig, MatchRng, hero_spawn_pos, in_backpack};
 use crate::game::{Entity, PendingCast, Seat, UnitOrder, World};
 use crate::game::{in_stash, item_def, map_of, rules};
 
 /// Whether an order aims at the kind of thing something takes.
-pub fn aimed_right(aim: Aim, target: &OrderTarget) -> bool {
+pub fn aimed_right(aim: Aim, target: &Target) -> bool {
     match aim {
-        Aim::Own => matches!(target, OrderTarget::None),
+        Aim::Own => matches!(target, Target::None),
         // A tree and a landing spot are both named by the ground they stand
         // on; which one was meant is settled where the use is carried out.
-        Aim::Point | Aim::Tree | Aim::Building => matches!(target, OrderTarget::Point { .. }),
-        Aim::Unit => matches!(target, OrderTarget::Unit { .. }),
+        Aim::Point | Aim::Tree | Aim::Building => matches!(target, Target::Pos(_)),
+        Aim::Unit => matches!(target, Target::Unit(_)),
     }
 }
 
@@ -62,26 +62,76 @@ impl World {
         let Some(unit) = self.driven_by(cmd.slot, cmd.unit) else {
             return;
         };
+        // Business with the bag and the shop asks nothing of the body, so it
+        // interrupts nothing the body is doing.
+        match cmd.order {
+            Order::Learn { slot } => {
+                let mut events = Vec::new();
+                self.learn(unit, usize::from(slot.0), &mut events);
+                return;
+            }
+            Order::Swap { from, to } => {
+                self.move_item(cmd.slot, unit, usize::from(from.0), usize::from(to.0));
+                return;
+            }
+            Order::Sell { slot: at } => {
+                self.sell_item(cmd.slot, unit, usize::from(at.0));
+                return;
+            }
+            Order::Buy { item } => {
+                let mut events = Vec::new();
+                self.buy(cmd.slot, item, &mut events);
+                return;
+            }
+            _ => {}
+        }
         // An order is an animation cancel: the recovery after a swing ends
         // with it. Giving up a swing that has not landed is the attack
         // cycle's own business.
         if let Some(state) = self.attacking.get_mut(unit) {
             state.recovering = 0;
         }
-        // An order also takes a channel away, and an errand with it, before
-        // whatever the order itself does gets a chance to start another.
+        // An order also takes a channel away, a held cast and an errand with
+        // it, before whatever the order itself does gets a chance to start
+        // another.
         self.teleport.remove(unit);
         self.dismember.remove(unit);
         self.handling.remove(unit);
+        self.casting.remove(unit);
         if self.errand.get(unit).is_some() {
             self.errand.insert(unit, crate::game::Errand::None);
         }
         let wanted = match cmd.order {
-            Order::Move { pos } => UnitOrder::Move { pos },
-            Order::AttackMove { pos } => UnitOrder::AttackMove { pos },
-            Order::Stop => UnitOrder::Stand,
-            Order::HoldPosition => UnitOrder::Hold,
-            Order::AttackUnit { target } => {
+            Order::Move {
+                target: Target::Pos(pos),
+            } => UnitOrder::Move { pos },
+            Order::Attack {
+                target: Target::Pos(pos),
+            } => UnitOrder::AttackMove { pos },
+            Order::Move {
+                target: Target::None,
+            } => UnitOrder::Stand,
+            Order::Attack {
+                target: Target::None,
+            } => UnitOrder::Hold,
+            Order::Move {
+                target: Target::Unit(target),
+            } => {
+                let Some(mark) = self.of_wire(target) else {
+                    return;
+                };
+                let at = self
+                    .transform
+                    .get(mark)
+                    .map_or(bota_proto::Vec2::ZERO, |t| t.pos);
+                UnitOrder::Follow {
+                    target: mark,
+                    last_seen: at,
+                }
+            }
+            Order::Attack {
+                target: Target::Unit(target),
+            } => {
                 let Some(mark) = self.of_wire(target) else {
                     return;
                 };
@@ -95,47 +145,45 @@ impl World {
                     last_seen: at,
                 }
             }
-            Order::CastAbility { slot, target } => {
+            Order::Cast { slot, target } => {
                 // A spell aimed at somebody is as plain to the creeps as a
                 // swing at them.
-                if let OrderTarget::Unit { target } = target
+                if let Target::Unit(target) = target
                     && let Some(mark) = self.of_wire(target)
                 {
                     self.rouse_by_cast(unit, mark);
                 }
+                // An aimed cast takes the body over: what it was doing
+                // before is not returned to once the cast has gone off. A
+                // cast at oneself asks nothing of the body and leaves its
+                // order be.
+                let aimed = crate::game::ability_def(self.ability_in(unit, slot))
+                    .is_some_and(|def| def.aim != Aim::Own);
+                if aimed {
+                    self.set_order(unit, UnitOrder::Idle);
+                }
                 self.order_cast(unit, PendingCast { slot, target });
                 return;
             }
-            Order::UseItem { slot, target } => {
+            Order::Use { slot, target } => {
                 self.use_item(unit, usize::from(slot.0), target);
                 return;
             }
-            Order::LevelUpAbility { slot } => {
-                let mut events = Vec::new();
-                self.learn(unit, usize::from(slot.0), &mut events);
+            // Taken before the body was interrupted.
+            Order::Learn { .. } | Order::Swap { .. } | Order::Sell { .. } | Order::Buy { .. } => {
                 return;
             }
-            Order::MoveItem { from, to } => {
-                self.move_item(cmd.slot, unit, usize::from(from.0), usize::from(to.0));
-                return;
-            }
-            Order::SellItem { slot: at } => {
-                self.sell_item(cmd.slot, unit, usize::from(at.0));
-                return;
-            }
-            Order::BuyItem { item } => {
-                let mut events = Vec::new();
-                self.buy(cmd.slot, item, &mut events);
-                return;
-            }
-            Order::PutItem { slot, target } => {
+            Order::Put { slot, target } => {
                 self.put_item(unit, usize::from(slot.0), target);
                 return;
             }
-            Order::TakeItem { target } => {
+            Order::Take {
+                target: Target::Unit(target),
+            } => {
                 self.take_item(unit, target);
                 return;
             }
+            Order::Take { .. } => return,
         };
         self.set_order(unit, wanted);
     }
@@ -184,20 +232,22 @@ impl World {
             return Err(RejectReason::HeroDead);
         }
         match order {
-            Order::AttackUnit { target } => {
-                let Some(entity) = self.of_wire(*target) else {
-                    return Err(RejectReason::UnknownTarget);
-                };
-                if !self.can_see(seat.team, entity) {
-                    return Err(RejectReason::UnknownTarget);
+            Order::Move { target } | Order::Attack { target } => {
+                if let Target::Unit(named) = target {
+                    let Some(entity) = self.of_wire(*named) else {
+                        return Err(RejectReason::UnknownTarget);
+                    };
+                    if !self.can_see(seat.team, entity) {
+                        return Err(RejectReason::UnknownTarget);
+                    }
+                    // Pointing an attack at one of your own is an order like
+                    // any other: what it cannot do is land, and that is
+                    // settled when targets are chosen. Turning it down here
+                    // would take the creeps' answer to it with it.
                 }
-                // Pointing an attack at one of your own is an order like any
-                // other: what it cannot do is land, and that is settled when
-                // targets are chosen. Turning it down here would take the
-                // creeps' answer to it with it.
                 Ok(())
             }
-            Order::CastAbility { slot, target } => {
+            Order::Cast { slot, target } => {
                 let held = self
                     .abilities
                     .get(unit)
@@ -224,7 +274,7 @@ impl World {
                 if !aimed_right(def.aim, target) {
                     return Err(RejectReason::WrongTargetKind);
                 }
-                if let OrderTarget::Unit { target } = target {
+                if let Target::Unit(target) = target {
                     let Some(mark) = self.of_wire(*target) else {
                         return Err(RejectReason::UnknownTarget);
                     };
@@ -238,7 +288,7 @@ impl World {
                 }
                 Ok(())
             }
-            Order::BuyItem { item } => {
+            Order::Buy { item } => {
                 let Some(def) = item_def(*item) else {
                     return Err(RejectReason::UnknownItem);
                 };
@@ -255,7 +305,7 @@ impl World {
                 }
                 Ok(())
             }
-            Order::SellItem { slot: named } => {
+            Order::Sell { slot: named } => {
                 let at = usize::from(named.0);
                 let held = if in_stash(at) {
                     seat.stash.slots.get(at - BAG_SLOTS).copied().flatten()
@@ -275,7 +325,7 @@ impl World {
                 }
                 Ok(())
             }
-            Order::PutItem {
+            Order::Put {
                 slot: named,
                 target,
             } => {
@@ -287,15 +337,15 @@ impl World {
                     return Err(RejectReason::EmptySlot);
                 }
                 match target {
-                    OrderTarget::None => Ok(()),
-                    OrderTarget::Point { pos } => {
+                    Target::None => Ok(()),
+                    Target::Pos(pos) => {
                         if self.grid.walkable(*pos) {
                             Ok(())
                         } else {
                             Err(RejectReason::ClosedGround)
                         }
                     }
-                    OrderTarget::Unit { target } => {
+                    Target::Unit(target) => {
                         let Some(to) = self.of_wire(*target) else {
                             return Err(RejectReason::UnknownTarget);
                         };
@@ -312,8 +362,11 @@ impl World {
                     }
                 }
             }
-            Order::TakeItem { target } => {
-                let Some(mark) = self.of_wire(*target) else {
+            Order::Take { target } => {
+                let Target::Unit(named) = target else {
+                    return Err(RejectReason::WrongTargetKind);
+                };
+                let Some(mark) = self.of_wire(*named) else {
                     return Err(RejectReason::UnknownTarget);
                 };
                 if !self.can_see(seat.team, mark) {
@@ -324,7 +377,7 @@ impl World {
                 }
                 Ok(())
             }
-            Order::MoveItem { from, to } => {
+            Order::Swap { from, to } => {
                 let (from, to) = (usize::from(from.0), usize::from(to.0));
                 if from == to || !self.holds(unit, seat, from) {
                     return Err(RejectReason::EmptySlot);
@@ -334,7 +387,7 @@ impl World {
                 }
                 Ok(())
             }
-            Order::UseItem { slot, target } => {
+            Order::Use { slot, target } => {
                 let at = usize::from(slot.0);
                 if in_stash(at) || in_backpack(at) {
                     return Err(RejectReason::WrongTargetKind);
@@ -368,7 +421,7 @@ impl World {
                 if !aimed_right(crate::game::item_aim(active), target) {
                     return Err(RejectReason::WrongTargetKind);
                 }
-                if let OrderTarget::Unit { target } = target
+                if let Target::Unit(target) = target
                     && self.of_wire(*target).is_none()
                 {
                     return Err(RejectReason::UnknownTarget);

@@ -33,6 +33,13 @@ pub enum UnitOrder {
         /// Where the target was last seen by this entity's side.
         last_seen: Vec2,
     },
+    /// Walk after one entity, taking on nobody.
+    Follow {
+        /// The entity being followed.
+        target: Entity,
+        /// Where it was last seen by this entity's side.
+        last_seen: Vec2,
+    },
 }
 
 /// The order in hand, and when the next one may re-aim it.

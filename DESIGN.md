@@ -521,8 +521,12 @@ emergent, because creeps arrive first. On top of that sit the aggro calls:
   again, and a kited chase loses to whatever got closer on the way, a tower included.
   Last-hitting creeps calls nobody.
 - A hero fights only when told to, but a fight it was told to have carries itself:
-  when an attack order's target dies, the attack rolls onto the closest enemy in
-  acquisition range. Rest never starts one — standing idle, arriving off a move
+  when an attack order's target dies, the order degrades to an attack-move at the
+  spot it fell, and the fight carries on with whatever acquisition finds there.
+  An aimed cast takes the body over: the order it was given over is not returned
+  to, the body swings at nothing while the cast waits, and once the cast has
+  gone off the hero takes on whatever acquisition finds. A cast at oneself asks
+  nothing of the body and leaves its order be. Arriving off a move
   order or stopping leaves the wave alone. A move order ignores enemies for its
   whole length, Hold attacks whatever is in range without moving, attack-move
   acquires along the way.
@@ -655,19 +659,18 @@ enum ClientMsg {
 }
 
 enum Order {
-    Stop, HoldPosition,
-    Move { pos: Vec2 }, AttackMove { pos: Vec2 }, AttackUnit { target: EntityId },
-    CastAbility { slot: AbilitySlot, target: OrderTarget },
-    UseItem { slot: ItemSlot, target: OrderTarget },
-    LevelUpAbility { slot: AbilitySlot },
-    BuyItem { item: ItemId }, SellItem { slot: ItemSlot },
+    Move { target: Target }, Attack { target: Target },
+    Cast { slot: AbilitySlot, target: Target },
+    Use { slot: ItemSlot, target: Target },
+    Learn { slot: AbilitySlot },
+    Buy { item: ItemId }, Sell { slot: ItemSlot },
 }
 
-enum OrderTarget { None, Point { pos: Vec2 }, Unit { target: EntityId } }
+enum Target { None, Pos(Vec2), Unit(EntityId) }
 ```
 
-Casting is one variant, `CastAbility`, with the target kind expressed by
-`OrderTarget`; whether the variant fits the ability is validated by the server
+Casting is one variant, `Cast`, with the target kind expressed by
+`Target`; whether the variant fits the ability is validated by the server
 (`RejectReason::WrongTargetKind`).
 
 There is no chat in the protocol. The server exists for local bot testing; a message
@@ -1366,14 +1369,17 @@ something puts loot on the ground in front of a bot.
 
 ### The model
 
-Two heads over one trunk of two layers: a number per deed, and one number for what the
-position is worth whatever is chosen. Some **232 thousand weights** against the first
-bot's twenty-four.
+One head over one trunk of two layers: a number per deed. Some **361 thousand weights**
+against the first bot's twenty-four.
 
-The value head is not decoration. Judging a decision needs something to judge it against,
-and the first bot's home-made baselines — the match's own score, then the average of
-decisions at the same point on the clock — were measured against each other and came out a
-tie. A learned value is the answer the tie was pointing at.
+A value head — one number for what the position is worth, whatever is chosen — sat
+beside the policy while lessons were taught by gradient. Judging a single decision needs
+something to judge it against, and the first bot's home-made baselines — the match's own
+score, then the average of decisions at the same point on the clock — were measured
+against each other and came out a tie; a learned value was the answer the tie was
+pointing at. Breeding judges whole matches and expects nothing of a position, so the
+head went with the trainer that needed it. Old weight files still load: weights are
+looked up by name, and a value head in the file is simply never asked for.
 
 It is shown seven ticks laid end to end rather than only the newest, because a swing that
 has begun, a creep about to die and a creep just dead look alike in one frame. Frames
@@ -1548,9 +1554,10 @@ credited over, the value head's share of the loss, the entropy bonus, the heat, 
 size and the batch. One of them was already known to be wrong — at the wave lesson the
 loss ran to 2.6 because a creep pays ten and the value head's error swamped the policy's.
 What replaces them is four with plain meanings: how many models, how many matches each,
-how many survive, how far a child moves. `step.rs`, `roll.rs`, `adam.rs` and the value
-head all go once breeding is shown to be better, and the gradient trainer stays under
-`descend` until then.
+how many survive, how far a child moves. The gradient trainer stayed under `descend`
+while the two were compared, and went once breeding had held: `school.rs`, `step.rs`,
+`roll.rs`, `adam.rs`, the value head, and the per-tick payment channel from the seat to
+the mind, which only the trainer ever listened to.
 
 Three decisions inside it.
 
@@ -1573,6 +1580,50 @@ The cost is known and was measured before building: breeding gets one number per
 where gradient gets one per decision, so it needs roughly a hundred times the matches. At
 thirteen matches a second that is fine for the short rungs and marginal for the last,
 where a match is twelve thousand ticks.
+
+### The tournament
+
+`selection: swiss` judges a generation by tournament instead of by mirror play. The
+mirror stays, and stays the default: the early rungs are solo skills where the opponent
+hardly matters, and one mirror match is the cheapest reading there is.
+
+What pushed the tournament into existence is an arithmetic fact about the mirror score.
+`worth_of` averages the two seats of one model, and a fight inside that average is a
+wash: the gold a kill takes is gold the other seat lost, a deny is a last hit the other
+seat never got, so the average moves only by the costs — consumables, time spent dead,
+waves missed. The number being bred for was the pair's joint welfare, whose optimum is
+two seats that stay out of each other's way. A crowd taught by mirror was selected for
+pacifism, and any progress in aggression was invisible by construction.
+
+The tournament scores margins instead: a model's card less its opponent's, summed over
+its matches. A margin pays for farming and for suppression alike. It is also exact —
+the simulation and greedy play are both deterministic, so a pairing's two matches, one
+from either side to cancel the map's asymmetry, are a measurement rather than a sample.
+What stays sampled is everything a single seed cannot show, which is why every round is
+a fresh seed, common to all pairs of the round so that the comparison stays paired.
+
+Three swiss rounds pair neighbours in the standing — first against second and so on —
+which spends the matches where the order is still undecided. The first two run on a
+quarter of the stage's clock: a coarse split is cheap, and the full clock is kept for
+the round that settles the top. Rematches are allowed; a rematch lands on a new round's
+new seed, so it is new evidence rather than a repeat. Then one anchor match, everybody
+against the crowd's incoming best, from the same side on the same seed: it ties the
+standings to something outside the round-robin of siblings, and the shared side and
+seed make whatever bias they carry common to all. Only the challenger's margin moves on
+it — the anchor stood its own rounds, and absorbing the whole crowd's challenges would
+score it twice.
+
+The bill, counted in full matches: two quarter rounds, one full round and the anchor
+come to about two and a half times what the mirror pays for the same crowd. The number
+printed each generation changes meaning too — a margin, not a mark, and margins do not
+climb as the crowd does, because the opposition climbs with it. Progress under swiss is
+read from `judge`, whose mirror card never moves with the crowd.
+
+A full pairwise sort and a quickselect over head-to-head matches were considered and
+dropped. Choosing needs a top-k, not an order; comparisons between two mutants of the
+same elite are noisy and not transitive, and a recursive pivot compounds its early
+mistakes where the swiss keeps adding evidence. A round-robin buys quadratic matches of
+rank information the standings never use.
 
 ### The plan
 

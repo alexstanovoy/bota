@@ -2,8 +2,8 @@
 
 use bota_proto::{
     AbilityId, AbilitySlot, AbilityView, Aim, Angle, Attributes, EntityId, Fixed, HeroId, ItemId,
-    ItemSlot, ItemView, Order, OrderTarget, PlayerView, ShopEntry, SlotId, StatusFlags, Team,
-    UnitKind, UnitView, Vec2, WorldView,
+    ItemSlot, ItemView, Order, PlayerView, ShopEntry, SlotId, StatusFlags, Target, Team, UnitKind,
+    UnitView, Vec2, WorldView,
 };
 use clap::Parser;
 
@@ -370,17 +370,17 @@ fn a_press_is_sent_whatever_state_the_slot_is_in() {
     let slot = Slot::Ability(0);
     assert_eq!(
         decide(slot, false, holding(Some(Aim::Own)), None, me()),
-        Press::Send(Order::CastAbility {
+        Press::Send(Order::Cast {
             slot: AbilitySlot(0),
-            target: OrderTarget::None,
+            target: Target::None,
         }),
         "one that needs no aiming goes at once"
     );
     assert_eq!(
         decide(slot, false, holding(None), None, me()),
-        Press::Send(Order::CastAbility {
+        Press::Send(Order::Cast {
             slot: AbilitySlot(0),
-            target: OrderTarget::None,
+            target: Target::None,
         }),
         "and so does a passive, which the server answers for"
     );
@@ -401,16 +401,16 @@ fn control_spends_a_point_instead_of_casting() {
             None,
             me()
         ),
-        Press::Send(Order::LevelUpAbility {
+        Press::Send(Order::Learn {
             slot: AbilitySlot(2),
         }),
         "held down, control levels whatever the slot is"
     );
     assert_eq!(
         decide(Slot::Item(1), true, holding(Some(Aim::Own)), None, me()),
-        Press::Send(Order::UseItem {
+        Press::Send(Order::Use {
             slot: ItemSlot(1),
-            target: OrderTarget::None,
+            target: Target::None,
         }),
         "an item has no points to spend, so control is nothing to it"
     );
@@ -445,11 +445,9 @@ fn reaching_twice_for_what_is_aimed_at_a_unit_aims_it_at_oneself() {
     );
     assert_eq!(
         decide(slot, false, holding(Some(Aim::Unit)), Some(slot), me()),
-        Press::Send(Order::UseItem {
+        Press::Send(Order::Use {
             slot: ItemSlot(0),
-            target: OrderTarget::Unit {
-                target: me().expect("a commander"),
-            },
+            target: Target::Unit(me().expect("a commander")),
         }),
         "the second drinks it"
     );
@@ -720,6 +718,40 @@ fn a_click_takes_the_ground_item_nearest_the_cursor_and_only_within_reach() {
         crate::input::loot_under_cursor(&view, 5000.0, 5000.0),
         None,
         "far from both, the click is for the ground"
+    );
+}
+
+#[test]
+fn an_attack_click_sticks_only_to_an_enemy_and_only_near() {
+    let handle = |idx: u32| EntityId { idx, generation: 1 };
+    let mut enemy = a_unit();
+    enemy.id = handle(8);
+    enemy.team = Team::Dire;
+    enemy.pos = Vec2::from_ints(7000, 7000);
+    let mut own = a_unit();
+    own.id = handle(9);
+    own.pos = Vec2::from_ints(7400, 7000);
+    let view = a_tick(100, vec![enemy, own], Vec::new());
+    let mine = Some(Team::Radiant);
+    assert_eq!(
+        crate::input::enemy_near_cursor(&view, 7040.0, 7000.0, mine),
+        Some(handle(8)),
+        "a click just off the enemy's edge sticks to it"
+    );
+    assert_eq!(
+        crate::input::enemy_near_cursor(&view, 7060.0, 7000.0, mine),
+        None,
+        "one further off is for the ground"
+    );
+    assert_eq!(
+        crate::input::enemy_near_cursor(&view, 7390.0, 7010.0, mine),
+        None,
+        "one of this side's own never sticks"
+    );
+    assert_eq!(
+        crate::input::enemy_near_cursor(&view, 9000.0, 9000.0, mine),
+        None,
+        "far from everybody the click is for the ground"
     );
 }
 

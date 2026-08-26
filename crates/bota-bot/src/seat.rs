@@ -132,7 +132,7 @@ pub fn play_on(
                     .as_ref()
                     .map_or((0, 0, 0), |row| (row.last_hits, row.kills, row.deaths));
                 if let Some(before) = held.as_ref() {
-                    let paid = close_a_tick(
+                    close_a_tick(
                         &mut marker,
                         before,
                         slot,
@@ -144,7 +144,6 @@ pub fn play_on(
                             now.2.saturating_sub(was.2),
                         ),
                     );
-                    mind.paid(before.tick, paid.of(lesson));
                 }
                 during.clear();
                 out.ticks = view.tick;
@@ -199,14 +198,15 @@ pub fn play_on(
             }
             ServerMsg::Welcome { .. }
             | ServerMsg::LobbyState { .. }
-            | ServerMsg::ParticipantLeft { .. } => {}
+            | ServerMsg::ParticipantLeft { .. }
+            | ServerMsg::Orders { .. } => {}
         }
     }
     out.card = last_tick(&mut marker, held.as_ref(), slot, role, &during);
     Ok(out)
 }
 
-/// Scores one finished tick, and says what it paid lesson by lesson.
+/// Scores one finished tick.
 fn close_a_tick(
     marker: &mut Marker,
     view: &bota_proto::WorldView,
@@ -214,9 +214,9 @@ fn close_a_tick(
     role: Role,
     during: &[bota_proto::EventKind],
     scored: (u16, u16, u16),
-) -> Card {
+) {
     let Some(field) = Field::of(view, slot, role) else {
-        return Card::new();
+        return;
     };
     let lane = lane_of(&field, role);
     marker.tick(&Moment {
@@ -226,7 +226,7 @@ fn close_a_tick(
         took: scored.0,
         killed: scored.1,
         died: scored.2,
-    })
+    });
 }
 
 /// Scores the tick the match ended on, and hands back the whole card.

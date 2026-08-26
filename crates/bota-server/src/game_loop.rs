@@ -7,8 +7,8 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use bota_proto::{
-    ClientMsg, MapId, Order, PlayerId, ReplayRecord, Role, ServerMsg, SlotId, Team, TickMode,
-    encode_frame_to_vec,
+    ClientMsg, MapId, Order, PlayerId, ReplayRecord, Role, ServerMsg, SlotId, SlotOrder, Team,
+    TickMode, encode_frame_to_vec,
 };
 
 use crate::game::{Command, EventVisibility, MatchConfig};
@@ -63,8 +63,9 @@ struct Server {
     /// Keeps the channel open across reader-thread turnover.
     _tx: Sender<NetEvent>,
     conns: Vec<Connection>,
-    /// Connections that said Hello as spectators.
-    spectators: Vec<PlayerId>,
+    /// Connections that said Hello as spectators, and the seat whose eyes
+    /// each one watches through. Absent eyes watch everything.
+    spectators: Vec<(PlayerId, Option<SlotId>)>,
     roster: Roster,
     next_player: u32,
 }
@@ -91,7 +92,16 @@ impl Server {
             conn.close();
         }
         self.conns.retain(|c| c.id != id);
-        self.spectators.retain(|&p| p != id);
+        self.spectators.retain(|&(p, _)| p != id);
+    }
+
+    /// The seat a spectator watches through. Absent for anybody seated, and
+    /// for a spectator watching everything.
+    fn eyes_of(&self, id: PlayerId) -> Option<SlotId> {
+        self.spectators
+            .iter()
+            .find(|&&(p, _)| p == id)
+            .and_then(|&(_, eyes)| eyes)
     }
 
     /// Accepts a fresh stream and hands out a `PlayerId`.
@@ -114,12 +124,12 @@ impl Server {
         name: String,
         info: Option<&MatchConfig>,
     ) -> bool {
-        if self.roster.seat_of(id).is_some() || self.spectators.contains(&id) {
+        if self.roster.seat_of(id).is_some() || self.spectators.iter().any(|&(p, _)| p == id) {
             return true; // a second Hello changes nothing
         }
         let (slot, accepted) = match role {
             Role::Spectator => {
-                self.spectators.push(id);
+                self.spectators.push((id, None));
                 (None, true)
             }
             Role::Player | Role::Bot => {
@@ -197,7 +207,7 @@ impl Server {
                             }
                         }
                     }
-                    ClientMsg::Order { .. } | ClientMsg::Ack { .. } => {}
+                    ClientMsg::Order { .. } | ClientMsg::Ack { .. } | ClientMsg::ViewAs { .. } => {}
                 },
             }
         }
@@ -270,9 +280,17 @@ impl Server {
                     })
                 })
                 .collect();
+            let taken: Vec<SlotOrder> = cmds
+                .iter()
+                .map(|c| SlotOrder {
+                    slot: c.slot,
+                    unit: c.unit,
+                    order: c.order,
+                })
+                .collect();
             replay.record(&ReplayRecord::Orders {
                 tick: world.tick + 1,
-                orders: cmds.iter().map(|c| (c.slot, c.order)).collect(),
+                orders: taken.clone(),
             });
             pending.fill(None);
             let events = advance(&mut world, &cmds);
@@ -292,7 +310,23 @@ impl Server {
 
             for conn in &self.conns {
                 let seat_team = self.roster.seat_of(conn.id).map(|s| s.team);
-                let frame = match seat_team {
+                // The eyes a connection watches through: its own seat's, or
+                // the seat a spectator chose. Absent eyes see everything.
+                let eyes = if seat_team.is_none() {
+                    self.eyes_of(conn.id)
+                } else {
+                    None
+                };
+                let viewing = seat_team.or_else(|| {
+                    eyes.and_then(|slot| {
+                        self.roster
+                            .seats
+                            .iter()
+                            .find(|s| s.slot == slot)
+                            .map(|s| s.team)
+                    })
+                });
+                let frame = match viewing {
                     Some(Team::Radiant) => radiant_frame.clone(),
                     Some(Team::Dire) => dire_frame.clone(),
                     // Seats never sit on the jungle's side.
@@ -301,7 +335,7 @@ impl Server {
                 conn.send_snapshot(frame);
                 let visible: Vec<bota_proto::EventKind> = events
                     .iter()
-                    .filter(|e| match (e.visible_to, seat_team) {
+                    .filter(|e| match (e.visible_to, viewing) {
                         (_, None) => true,
                         (EventVisibility::Everyone, _) => true,
                         (EventVisibility::OneTeam(team), Some(mine)) => team == mine,
@@ -313,6 +347,23 @@ impl Server {
                         tick: world.tick,
                         events: visible,
                     });
+                }
+                // A spectator watching through one seat's eyes is told that
+                // seat's own orders. Watching everything is watching the
+                // game, not the hands, and brings none; a seat knows its
+                // own.
+                if let Some(eyes) = eyes {
+                    let told: Vec<SlotOrder> = taken
+                        .iter()
+                        .filter(|given| given.slot == eyes)
+                        .copied()
+                        .collect();
+                    if !told.is_empty() {
+                        conn.send(&ServerMsg::Orders {
+                            tick: world.tick,
+                            orders: told,
+                        });
+                    }
                 }
             }
             if !events.is_empty() {
@@ -398,6 +449,15 @@ impl Server {
                         if let Some(seat) = self.roster.seat_of(id) {
                             let i = usize::from(seat.slot.0);
                             acked[i] = acked[i].max(tick);
+                        }
+                    }
+                    ClientMsg::ViewAs { seat } => {
+                        // Only a seat that is in the match has eyes to lend.
+                        let eyes =
+                            seat.filter(|seat| self.roster.seats.iter().any(|s| s.slot == *seat));
+                        if let Some(spectator) = self.spectators.iter_mut().find(|(p, _)| *p == id)
+                        {
+                            spectator.1 = eyes;
                         }
                     }
                     ClientMsg::PickHero { .. } | ClientMsg::SetReady(_) => {}

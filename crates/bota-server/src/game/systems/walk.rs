@@ -63,7 +63,9 @@ impl World {
                 }
             }
             let ordered_at = match self.orders.get(entity).map(|o| o.current) {
-                Some(UnitOrder::Attack { target, .. }) => Some(target),
+                Some(UnitOrder::Attack { target, .. } | UnitOrder::Follow { target, .. }) => {
+                    Some(target)
+                }
                 _ => None,
             };
             let chosen = self.target_of(entity).filter(|on| self.alive(*on));
@@ -244,7 +246,11 @@ impl World {
 fn destination(order: &UnitOrder) -> Option<Vec2> {
     match order {
         UnitOrder::Move { pos } | UnitOrder::AttackMove { pos } => Some(*pos),
-        UnitOrder::Idle | UnitOrder::Stand | UnitOrder::Hold | UnitOrder::Attack { .. } => None,
+        UnitOrder::Idle
+        | UnitOrder::Stand
+        | UnitOrder::Hold
+        | UnitOrder::Attack { .. }
+        | UnitOrder::Follow { .. } => None,
     }
 }
 

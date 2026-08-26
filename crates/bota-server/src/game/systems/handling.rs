@@ -1,7 +1,7 @@
 //! Item errands: walking an item out of a bag, into another, or off the
 //! ground.
 
-use bota_proto::{OrderTarget, Vec2};
+use bota_proto::{Target, Vec2};
 
 use crate::game::{
     BAG_SLOTS, Entity, Handling, ItemStack, Loot, Transform, UnitOrder, Visibility, World, rules,
@@ -13,19 +13,19 @@ impl World {
     /// Aimed at a point the item will be laid there; aimed at nothing, at the
     /// unit's own feet; aimed at an allied unit with a bag, handed into it.
     /// The walking and the doing live with [`World::tick_handling`].
-    pub fn put_item(&mut self, unit: Entity, slot: usize, target: OrderTarget) -> bool {
+    pub fn put_item(&mut self, unit: Entity, slot: usize, target: Target) -> bool {
         if slot >= BAG_SLOTS || self.held_in_bag(unit, slot).is_none() {
             return false;
         }
         let errand = match target {
-            OrderTarget::None => {
+            Target::None => {
                 let Some(pos) = self.transform.get(unit).map(|t| t.pos) else {
                     return false;
                 };
                 Handling::PutAt { slot, pos }
             }
-            OrderTarget::Point { pos } => Handling::PutAt { slot, pos },
-            OrderTarget::Unit { target } => {
+            Target::Pos(pos) => Handling::PutAt { slot, pos },
+            Target::Unit(target) => {
                 let Some(to) = self.of_wire(target) else {
                     return false;
                 };

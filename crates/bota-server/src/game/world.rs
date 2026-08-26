@@ -429,6 +429,7 @@ impl World {
             sight_block: &self.sight_block,
             visibility: &mut self.visibility,
         });
+        self.tend_attack_orders();
         regenerate(
             &self.entities,
             &self.stats,

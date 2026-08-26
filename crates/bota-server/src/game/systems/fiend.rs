@@ -1,6 +1,6 @@
 //! The razes, the souls gathered from what falls, and the requiem they feed.
 
-use bota_proto::{DamageKind, Fixed, OrderTarget};
+use bota_proto::{DamageKind, Fixed, Target};
 
 use crate::engine::Entity;
 use crate::game::{StackKind, Status, StatusKind, World, hero_def, point_along, rules};
@@ -15,9 +15,9 @@ impl World {
         caster: Entity,
         level: usize,
         reach: usize,
-        target: OrderTarget,
+        target: Target,
     ) -> bool {
-        let OrderTarget::Point { pos } = target else {
+        let Target::Pos(pos) = target else {
             return false;
         };
         let Some(from) = self.transform.get(caster).map(|t| t.pos) else {

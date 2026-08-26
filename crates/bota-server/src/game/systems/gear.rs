@@ -1,6 +1,6 @@
 //! Items carried and abilities held: what they add, and what they cost.
 
-use bota_proto::{AbilityId, Attribute, EventKind, Fixed, ItemId, OrderTarget, SlotId, Vec2};
+use bota_proto::{AbilityId, Attribute, EventKind, Fixed, ItemId, SlotId, Target, Vec2};
 
 use crate::game::{
     AbilityBook, AbilityState, BAG_SLOTS, Carried, Entity, Inventory, ItemStack, ItemUse, Pool,
@@ -373,7 +373,7 @@ impl World {
     ///
     /// A use that does nothing spends nothing: the charge, the cooldown and
     /// the slot are only touched once whatever the item does has been done.
-    pub fn use_item(&mut self, entity: Entity, slot: usize, target: OrderTarget) -> bool {
+    pub fn use_item(&mut self, entity: Entity, slot: usize, target: Target) -> bool {
         let Some(bag) = self.inventory.get(entity) else {
             return false;
         };
@@ -559,7 +559,7 @@ impl World {
     ///
     /// It reaches one of its user's own side, standing within `range`. Aimed
     /// at nothing at all, it lands on the one who used it.
-    fn mend_with(&mut self, user: Entity, target: OrderTarget, drink: Mend) -> bool {
+    fn mend_with(&mut self, user: Entity, target: Target, drink: Mend) -> bool {
         let Mend {
             pool,
             total,
@@ -569,11 +569,11 @@ impl World {
             breaks,
         } = drink;
         let on = match target {
-            OrderTarget::Unit { target } => match self.of_wire(target) {
+            Target::Unit(target) => match self.of_wire(target) {
                 Some(on) => on,
                 None => return false,
             },
-            OrderTarget::None | OrderTarget::Point { .. } => user,
+            Target::None | Target::Pos(..) => user,
         };
         if !self.alive(on) || self.team.get(on) != self.team.get(user) {
             return false;
@@ -840,8 +840,8 @@ impl World {
     /// the same line. A landing spot on closed ground steps back along that
     /// line until it finds open ground, and the blink fails when it finds
     /// none.
-    fn blink_to(&mut self, user: Entity, target: OrderTarget, range: i32) -> bool {
-        let OrderTarget::Point { pos } = target else {
+    fn blink_to(&mut self, user: Entity, target: Target, range: i32) -> bool {
+        let Target::Pos(pos) = target else {
             return false;
         };
         let Some(from) = self.transform.get(user).map(|t| t.pos) else {
@@ -884,17 +884,12 @@ impl World {
     /// is the tree that was pointed at, not whatever tree happened to be
     /// nearest. That tree then has to be within reach of the one using the
     /// item.
-    fn reach_a_tree(
-        &self,
-        user: Entity,
-        target: OrderTarget,
-        range: i32,
-    ) -> Option<crate::game::Tree> {
+    fn reach_a_tree(&self, user: Entity, target: Target, range: i32) -> Option<crate::game::Tree> {
         let from = self.transform.get(user).map(|t| t.pos)?;
         let at = match target {
-            OrderTarget::Point { pos } => pos,
-            OrderTarget::Unit { target } => self.transform.get(self.of_wire(target)?)?.pos,
-            OrderTarget::None => from,
+            Target::Pos(pos) => pos,
+            Target::Unit(target) => self.transform.get(self.of_wire(target)?)?.pos,
+            Target::None => from,
         };
         let tree = self
             .trees
@@ -904,7 +899,7 @@ impl World {
     }
 
     /// Takes down the tree an item was aimed at.
-    fn fell_a_tree(&mut self, user: Entity, target: OrderTarget, range: i32) -> bool {
+    fn fell_a_tree(&mut self, user: Entity, target: Target, range: i32) -> bool {
         let Some(tree) = self.reach_a_tree(user, target, range) else {
             return false;
         };
@@ -914,8 +909,8 @@ impl World {
     }
 
     /// Puts a tree up where an item was aimed, on ground that has none.
-    fn plant_a_tree(&mut self, user: Entity, target: OrderTarget, ticks: u32, range: i32) -> bool {
-        let OrderTarget::Point { pos } = target else {
+    fn plant_a_tree(&mut self, user: Entity, target: Target, ticks: u32, range: i32) -> bool {
+        let Target::Pos(pos) = target else {
             return false;
         };
         let Some(from) = self.transform.get(user).map(|t| t.pos) else {

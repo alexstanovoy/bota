@@ -1,6 +1,6 @@
 //! Casting: what each ability does, and what stops a cast happening.
 
-use bota_proto::{DamageKind, EventKind, Fixed, OrderTarget, Team, Vec2};
+use bota_proto::{DamageKind, EventKind, Fixed, Target, Team, Vec2};
 
 use crate::game::{
     Entity, PendingCast, Projectile, Status, StatusKind, World, ability, ability_cooldown,
@@ -161,8 +161,8 @@ impl World {
     }
 
     /// Throws a missile that goes on to the next enemy after each hit.
-    fn cast_bounce(&mut self, caster: Entity, level: usize, target: OrderTarget) -> bool {
-        let OrderTarget::Unit { target } = target else {
+    fn cast_bounce(&mut self, caster: Entity, level: usize, target: Target) -> bool {
+        let Target::Unit(target) = target else {
             return false;
         };
         let Some(mark) = self.of_wire(target) else {
@@ -258,14 +258,14 @@ impl World {
     /// Where a cast is aimed, if it is aimed anywhere at all.
     pub fn cast_spot(&self, entity: Entity, cast: PendingCast) -> Option<Vec2> {
         match cast.target {
-            OrderTarget::Point { pos } => Some(pos),
-            OrderTarget::Unit { target } => {
+            Target::Pos(pos) => Some(pos),
+            Target::Unit(target) => {
                 let on = self.of_wire(target)?;
                 self.alive(on)
                     .then(|| self.transform.get(on).map(|t| t.pos))
                     .flatten()
             }
-            OrderTarget::None => {
+            Target::None => {
                 let _ = entity;
                 None
             }

@@ -12,7 +12,6 @@
 //! reached back. [`Learned`] is the mind that is a network; the rest of the
 //! crate would not notice another.
 
-mod adam;
 mod ask;
 #[cfg(feature = "builtin")]
 mod bench;
@@ -26,17 +25,14 @@ mod marks;
 mod mind;
 mod model;
 mod plan;
-mod roll;
-mod school;
 mod seat;
 mod shop;
 mod sight;
 mod spells;
-mod step;
+mod swiss;
 mod wire;
 mod yard;
 
-pub use adam::*;
 pub use ask::*;
 #[cfg(feature = "builtin")]
 pub use bench::*;
@@ -50,13 +46,11 @@ pub use marks::*;
 pub use mind::*;
 pub use model::*;
 pub use plan::*;
-pub use roll::*;
-pub use school::*;
 pub use seat::*;
 pub use shop::*;
 pub use sight::*;
 pub use spells::*;
-pub use step::*;
+pub use swiss::*;
 pub use wire::*;
 pub use yard::*;
 

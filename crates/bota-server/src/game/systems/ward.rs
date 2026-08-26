@@ -1,6 +1,6 @@
 //! Wards: standing them, and taking them away when their time is up.
 
-use bota_proto::OrderTarget;
+use bota_proto::Target;
 
 use crate::game::rules;
 use crate::game::{Entity, Expiry, UnitDef, World};
@@ -30,12 +30,12 @@ impl World {
     pub fn stand_ward(
         &mut self,
         user: Entity,
-        target: OrderTarget,
+        target: Target,
         def: &'static UnitDef,
         ticks: u32,
         range: i32,
     ) -> bool {
-        let OrderTarget::Point { pos } = target else {
+        let Target::Pos(pos) = target else {
             return false;
         };
         let (Some(side), Some(from)) = (

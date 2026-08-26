@@ -1258,7 +1258,7 @@ fn a_salve_puts_mending_on_whoever_drinks_it_and_runs_out() {
         });
     }
     assert!(
-        world.use_item(hero, 0, bota_proto::OrderTarget::None),
+        world.use_item(hero, 0, bota_proto::Target::None),
         "it drinks"
     );
     assert!(
@@ -1345,8 +1345,8 @@ fn an_order_at_something_a_side_cannot_see_is_refused() {
         sight_block: &world.sight_block,
         visibility: &mut world.visibility,
     });
-    let order = bota_proto::Order::AttackUnit {
-        target: crate::game::wire_id(hidden),
+    let order = bota_proto::Order::Attack {
+        target: bota_proto::Target::Unit(crate::game::wire_id(hidden)),
     };
     assert_eq!(
         world.validate_order(bota_proto::SlotId(0), None, &order),
@@ -1359,8 +1359,8 @@ fn an_order_at_something_a_side_cannot_see_is_refused() {
         bota_proto::Vec2::from_ints(6900, 9216),
     );
     world.settle();
-    let order = bota_proto::Order::AttackUnit {
-        target: crate::game::wire_id(near),
+    let order = bota_proto::Order::Attack {
+        target: bota_proto::Target::Unit(crate::game::wire_id(near)),
     };
     assert_eq!(
         world.validate_order(bota_proto::SlotId(0), None, &order),
@@ -1379,7 +1379,7 @@ fn a_seat_with_no_body_standing_may_order_nothing() {
         rules::STASH_SLOTS,
     ));
     let order = bota_proto::Order::Move {
-        pos: bota_proto::Vec2::ZERO,
+        target: bota_proto::Target::Pos(bota_proto::Vec2::ZERO),
     };
     assert_eq!(
         world.validate_order(bota_proto::SlotId(0), None, &order),
@@ -1622,7 +1622,7 @@ fn frenzy_puts_haste_on_its_caster_and_spends_the_mana() {
         hero,
         crate::game::PendingCast {
             slot: bota_proto::AbilitySlot(1),
-            target: bota_proto::OrderTarget::None,
+            target: bota_proto::Target::None,
         },
     );
     world.step();
@@ -1654,7 +1654,7 @@ fn a_cast_with_no_mana_behind_it_does_nothing() {
         hero,
         crate::game::PendingCast {
             slot: bota_proto::AbilitySlot(1),
-            target: bota_proto::OrderTarget::None,
+            target: bota_proto::Target::None,
         },
     );
     world.step();
@@ -1698,7 +1698,7 @@ fn a_multishot_strikes_everything_around_and_leaves_allies_be() {
         hero,
         crate::game::PendingCast {
             slot: bota_proto::AbilitySlot(3),
-            target: bota_proto::OrderTarget::None,
+            target: bota_proto::Target::None,
         },
     );
     world.step();
@@ -2170,6 +2170,208 @@ fn a_swing_is_given_up_when_the_target_is_lost_from_sight() {
     );
 }
 
+/// A seated hero ordered at an enemy standing in plain sight `apart` away.
+fn hero_ordered_at_an_enemy(apart: i32) -> (World, Entity, Entity) {
+    let mut world = World::new();
+    let hero = world.spawn_hero(
+        Team::Radiant,
+        bota_proto::Vec2::from_ints(5000, 5000),
+        bota_proto::SlotId(0),
+        bota_proto::HeroId(0),
+    );
+    let mark = world.spawn_unit(
+        &MELEE_CREEP,
+        Team::Dire,
+        bota_proto::Vec2::from_ints(5000 + apart, 5000),
+    );
+    world.seats.push(crate::game::Seat::new(
+        bota_proto::SlotId(0),
+        Team::Radiant,
+        bota_proto::HeroId(0),
+        0,
+        rules::STASH_SLOTS,
+    ));
+    world.seats[0].unit = Some(hero);
+    world.settle();
+    world.advance(&[crate::game::Command {
+        slot: bota_proto::SlotId(0),
+        unit: None,
+        order: bota_proto::Order::Attack {
+            target: bota_proto::Target::Unit(crate::game::wire_id(mark)),
+        },
+    }]);
+    (world, hero, mark)
+}
+
+#[test]
+fn an_attack_order_at_what_slipped_into_fog_walks_to_where_it_was_last_seen() {
+    let (mut world, hero, mark) = hero_ordered_at_an_enemy(1000);
+    let seen_at = world.transform.get(mark).expect("standing").pos;
+    // It slips away through the fog, far past the hero's sight.
+    if let Some(at) = world.transform.get_mut(mark) {
+        at.pos = bota_proto::Vec2::from_ints(6000, 12000);
+    }
+    for _ in 0..240 {
+        world.step();
+        let now = world.transform.get(hero).expect("standing").pos;
+        assert!(
+            now.y.to_int() < 5400,
+            "its path never bends after what its side cannot see: {now:?}"
+        );
+    }
+    let stood = world.transform.get(hero).expect("standing").pos;
+    assert!(
+        stood.within(seen_at, Fixed::from_int(400)),
+        "it walked to where the enemy was last seen: {stood:?}"
+    );
+}
+
+#[test]
+fn the_fight_rolls_onto_the_closest_when_the_ordered_target_falls() {
+    let (mut world, hero, first) = hero_ordered_at_an_enemy(300);
+    let second = world.spawn_unit(
+        &MELEE_CREEP,
+        Team::Dire,
+        bota_proto::Vec2::from_ints(5570, 5150),
+    );
+    world.settle();
+    for _ in 0..5 {
+        world.step();
+    }
+    // The one it was set on falls to a blow.
+    world.push_hit(Some(hero), first, 10_000, bota_proto::DamageKind::Pure);
+    world.step();
+    assert!(!world.alive(first), "the blow was fatal");
+    assert!(
+        matches!(
+            world.orders.get(hero).map(|o| o.current),
+            Some(crate::game::UnitOrder::AttackMove { .. })
+        ),
+        "the order degrades to fighting from where it fell"
+    );
+    world.step();
+    assert_eq!(
+        world.target_of(hero),
+        Some(second),
+        "and the fight carries itself onto the closest"
+    );
+}
+
+#[test]
+fn an_attack_order_whose_target_fell_keeps_the_hero_fighting_from_the_spot() {
+    let (mut world, hero, mark) = hero_ordered_at_an_enemy(300);
+    for _ in 0..5 {
+        world.step();
+    }
+    world.push_hit(Some(hero), mark, 10_000, bota_proto::DamageKind::Pure);
+    world.step();
+    assert!(!world.alive(mark), "the blow was fatal");
+    assert!(
+        matches!(
+            world.orders.get(hero).map(|o| o.current),
+            Some(crate::game::UnitOrder::AttackMove { .. })
+        ),
+        "the order degrades to fighting from where it fell"
+    );
+    for _ in 0..60 {
+        world.step();
+    }
+    assert_eq!(world.target_of(hero), None, "with nobody around it waits");
+    // The next one to come into acquisition is taken on unasked.
+    let next = world.spawn_unit(
+        &MELEE_CREEP,
+        Team::Dire,
+        bota_proto::Vec2::from_ints(5500, 5100),
+    );
+    world.settle();
+    world.step();
+    assert_eq!(
+        world.target_of(hero),
+        Some(next),
+        "the auto attack carries on"
+    );
+}
+
+/// The same seat and enemy, with a follow order in place of the attack.
+fn hero_following_an_enemy(apart: i32) -> (World, Entity, Entity) {
+    let (mut world, hero, mark) = hero_ordered_at_an_enemy(apart);
+    world.advance(&[crate::game::Command {
+        slot: bota_proto::SlotId(0),
+        unit: None,
+        order: bota_proto::Order::Move {
+            target: bota_proto::Target::Unit(crate::game::wire_id(mark)),
+        },
+    }]);
+    (world, hero, mark)
+}
+
+#[test]
+fn a_follow_at_an_enemy_closes_and_never_swings() {
+    let (mut world, hero, mark) = hero_following_an_enemy(1000);
+    let full = world.health.get(mark).expect("standing").hp;
+    for _ in 0..240 {
+        world.step();
+        assert_eq!(world.target_of(hero), None, "a follow takes nothing on");
+    }
+    assert_eq!(
+        world.health.get(mark).expect("standing").hp,
+        full,
+        "the one followed was never struck"
+    );
+    let stood = world.transform.get(hero).expect("standing").pos;
+    let theirs = world.transform.get(mark).expect("standing").pos;
+    assert!(
+        stood.within(theirs, Fixed::from_int(200)),
+        "the follower closed until the bodies met: {stood:?}"
+    );
+}
+
+#[test]
+fn a_follow_at_what_slipped_into_fog_walks_to_where_it_was_last_seen() {
+    let (mut world, hero, mark) = hero_following_an_enemy(1000);
+    let seen_at = world.transform.get(mark).expect("standing").pos;
+    if let Some(at) = world.transform.get_mut(mark) {
+        at.pos = bota_proto::Vec2::from_ints(6000, 12000);
+    }
+    for _ in 0..240 {
+        world.step();
+        let now = world.transform.get(hero).expect("standing").pos;
+        assert!(
+            now.y.to_int() < 5400,
+            "its path never bends after what its side cannot see: {now:?}"
+        );
+    }
+    let stood = world.transform.get(hero).expect("standing").pos;
+    assert!(
+        stood.within(seen_at, Fixed::from_int(400)),
+        "it walked to where the one followed was last seen: {stood:?}"
+    );
+}
+
+#[test]
+fn a_follow_ends_where_the_one_followed_fell() {
+    let (mut world, hero, mark) = hero_following_an_enemy(1000);
+    let theirs = world.transform.get(mark).expect("standing").pos;
+    world.push_hit(None, mark, 10_000, bota_proto::DamageKind::Pure);
+    world.step();
+    assert!(!world.alive(mark), "the blow was fatal");
+    assert!(
+        matches!(
+            world.orders.get(hero).map(|o| o.current),
+            Some(crate::game::UnitOrder::Move { .. })
+        ),
+        "the follow became a walk to where it fell"
+    );
+    for _ in 0..180 {
+        world.step();
+    }
+    let stood = world.transform.get(hero).expect("standing").pos;
+    assert!(
+        stood.within(theirs, Fixed::from_int(400)),
+        "and the walk ends there: {stood:?}"
+    );
+}
+
 /// A hero, an enemy standing in its way, and the order it was given.
 fn hero_past_an_enemy(order: crate::game::UnitOrder) -> (World, Entity, Entity) {
     let mut world = World::new();
@@ -2283,7 +2485,9 @@ fn a_hero_told_to_stop_stands_and_takes_on_nothing() {
     world.advance(&[crate::game::Command {
         slot: bota_proto::SlotId(0),
         unit: None,
-        order: bota_proto::Order::Stop,
+        order: bota_proto::Order::Move {
+            target: bota_proto::Target::None,
+        },
     }]);
     assert_eq!(
         world.target_of(hero),
@@ -2343,8 +2547,8 @@ fn one_of_your_own_at_full_health_cannot_be_struck() {
         !world.may_attack_on_order(hero, own),
         "a creep at full health is nobody to strike"
     );
-    let order = bota_proto::Order::AttackUnit {
-        target: crate::game::wire_id(own),
+    let order = bota_proto::Order::Attack {
+        target: bota_proto::Target::Unit(crate::game::wire_id(own)),
     };
     assert_eq!(
         world.validate_order(bota_proto::SlotId(0), None, &order),
@@ -2389,8 +2593,8 @@ fn one_of_your_own_worn_down_far_enough_may_be_put_out() {
         world.may_attack_on_order(hero, own),
         "worn down, it may be put out"
     );
-    let order = bota_proto::Order::AttackUnit {
-        target: crate::game::wire_id(own),
+    let order = bota_proto::Order::Attack {
+        target: bota_proto::Target::Unit(crate::game::wire_id(own)),
     };
     assert_eq!(
         world.validate_order(bota_proto::SlotId(0), None, &order),
@@ -2428,8 +2632,8 @@ fn a_deny_is_given_up_when_the_creep_is_no_longer_worn_down() {
     world.advance(&[crate::game::Command {
         slot: bota_proto::SlotId(0),
         unit: None,
-        order: bota_proto::Order::AttackUnit {
-            target: crate::game::wire_id(own),
+        order: bota_proto::Order::Attack {
+            target: bota_proto::Target::Unit(crate::game::wire_id(own)),
         },
     }]);
     assert_eq!(world.target_of(hero), Some(own));
@@ -2496,8 +2700,8 @@ fn your_own_building_goes_only_at_a_tenth() {
         world.may_attack_on_order(hero, tower),
         "worn past it, it may be put out"
     );
-    let order = bota_proto::Order::AttackUnit {
-        target: crate::game::wire_id(tower),
+    let order = bota_proto::Order::Attack {
+        target: bota_proto::Target::Unit(crate::game::wire_id(tower)),
     };
     assert_eq!(
         world.validate_order(bota_proto::SlotId(0), None, &order),
@@ -2762,8 +2966,8 @@ fn attack_click(world: &mut World, on: Entity) {
     world.advance(&[crate::game::Command {
         slot: bota_proto::SlotId(0),
         unit: None,
-        order: bota_proto::Order::AttackUnit {
-            target: crate::game::wire_id(on),
+        order: bota_proto::Order::Attack {
+            target: bota_proto::Target::Unit(crate::game::wire_id(on)),
         },
     }]);
 }
@@ -2819,7 +3023,9 @@ fn the_hold_lets_go_after_two_and_a_third_seconds() {
     world.advance(&[crate::game::Command {
         slot: bota_proto::SlotId(0),
         unit: None,
-        order: bota_proto::Order::Stop,
+        order: bota_proto::Order::Move {
+            target: bota_proto::Target::None,
+        },
     }]);
     for _ in 0..rules::ORDER_AGGRO_HOLD_TICKS - 4 {
         world.step();
@@ -2855,7 +3061,9 @@ fn a_second_click_inside_the_wait_pulls_nothing() {
     world.advance(&[crate::game::Command {
         slot: bota_proto::SlotId(0),
         unit: None,
-        order: bota_proto::Order::Stop,
+        order: bota_proto::Order::Move {
+            target: bota_proto::Target::None,
+        },
     }]);
     for _ in 0..rules::ORDER_AGGRO_HOLD_TICKS + 2 {
         world.step();
@@ -2927,7 +3135,9 @@ fn a_hold_is_not_broken_by_clicking_your_own() {
     world.advance(&[crate::game::Command {
         slot: bota_proto::SlotId(0),
         unit: None,
-        order: bota_proto::Order::Stop,
+        order: bota_proto::Order::Move {
+            target: bota_proto::Target::None,
+        },
     }]);
     for _ in 0..rules::ORDER_AGGRO_HOLD_TICKS + 2 {
         world.step();
@@ -3055,7 +3265,7 @@ fn a_swing_costs_the_swinger_the_ground_it_stands_on() {
             slot: bota_proto::SlotId(0),
             unit: None,
             order: bota_proto::Order::Move {
-                pos: bota_proto::Vec2::from_ints(3000, 5000),
+                target: bota_proto::Target::Pos(bota_proto::Vec2::from_ints(3000, 5000)),
             },
         }]);
     }
@@ -3092,7 +3302,9 @@ fn an_order_to_break_off_gives_up_a_swing_that_has_not_landed() {
     world.advance(&[crate::game::Command {
         slot: bota_proto::SlotId(0),
         unit: None,
-        order: bota_proto::Order::Stop,
+        order: bota_proto::Order::Move {
+            target: bota_proto::Target::None,
+        },
     }]);
     let state = world.attacking.get(hero).copied().expect("attacking");
     assert!(state.windup.is_none(), "the swing is given up");
@@ -3126,7 +3338,9 @@ fn an_order_after_a_swing_lands_does_not_hurry_the_next_one() {
     world.advance(&[crate::game::Command {
         slot: bota_proto::SlotId(0),
         unit: None,
-        order: bota_proto::Order::Stop,
+        order: bota_proto::Order::Move {
+            target: bota_proto::Target::None,
+        },
     }]);
     let state = world.attacking.get(hero).copied().expect("attacking");
     assert_eq!(state.recovering, 0, "the recovery is cancelled");
@@ -3456,7 +3670,7 @@ fn a_scroll_carries_its_user_once_the_channel_runs_out() {
         },
     );
     assert!(
-        world.use_item(hero, 0, bota_proto::OrderTarget::Point { pos: to }),
+        world.use_item(hero, 0, bota_proto::Target::Pos(to)),
         "beside a building of its own it may go"
     );
     assert!(world.is_channelling(hero), "and stands through the channel");
@@ -3497,7 +3711,7 @@ fn a_scroll_aimed_where_nothing_of_its_own_stands_does_nothing() {
     let (mut world, hero) = a_hero_with_a_scroll();
     let nowhere = bota_proto::Vec2::from_ints(14000, 9216);
     assert!(
-        !world.use_item(hero, 0, bota_proto::OrderTarget::Point { pos: nowhere }),
+        !world.use_item(hero, 0, bota_proto::Target::Pos(nowhere)),
         "the middle of the map is nothing to go to"
     );
     assert!(!world.is_channelling(hero));
@@ -3511,17 +3725,49 @@ fn a_scroll_aimed_where_nothing_of_its_own_stands_does_nothing() {
 fn an_order_takes_a_channel_away_and_leaves_the_scroll() {
     let (mut world, hero) = a_hero_with_a_scroll();
     let to = beside_own_tower(&world);
-    assert!(world.use_item(hero, 0, bota_proto::OrderTarget::Point { pos: to }));
+    assert!(world.use_item(hero, 0, bota_proto::Target::Pos(to)));
     world.advance(&[crate::game::Command {
         slot: bota_proto::SlotId(0),
         unit: None,
-        order: bota_proto::Order::Stop,
+        order: bota_proto::Order::Move {
+            target: bota_proto::Target::None,
+        },
     }]);
     assert!(!world.is_channelling(hero), "the order took it away");
     assert!(
         world.inventory.get(hero).expect("has a bag").slots[0].is_some(),
         "and the scroll is still there to use again"
     );
+}
+
+#[test]
+fn business_with_the_bag_and_the_shop_takes_no_channel_away() {
+    let (mut world, hero) = a_hero_with_a_scroll();
+    world.seats[0].gold = 5000;
+    let to = beside_own_tower(&world);
+    assert!(world.use_item(hero, 0, bota_proto::Target::Pos(to)));
+    let asks = [
+        bota_proto::Order::Buy {
+            item: bota_proto::ItemId(crate::game::ITEM_BOOTS),
+        },
+        bota_proto::Order::Learn {
+            slot: bota_proto::AbilitySlot(0),
+        },
+        bota_proto::Order::Sell {
+            slot: bota_proto::ItemSlot(9),
+        },
+    ];
+    for order in asks {
+        world.advance(&[crate::game::Command {
+            slot: bota_proto::SlotId(0),
+            unit: None,
+            order,
+        }]);
+        assert!(
+            world.is_channelling(hero),
+            "the channel stands through {order:?}"
+        );
+    }
 }
 
 /// A hero out in the open with one ward of a kind in its first slot.
@@ -3561,7 +3807,7 @@ fn a_ward_stands_where_it_was_put_and_goes_when_its_time_is_up() {
     let (mut world, hero, spot) = a_hero_with_a_ward(crate::game::ITEM_OBSERVER_WARD);
     let at = spot + bota_proto::Vec2::from_ints(200, 0);
     assert!(
-        world.use_item(hero, 0, bota_proto::OrderTarget::Point { pos: at }),
+        world.use_item(hero, 0, bota_proto::Target::Pos(at)),
         "within reach it may be put down"
     );
     let ward = the_ward(&world);
@@ -3594,7 +3840,7 @@ fn a_ward_stands_where_it_was_put_and_goes_when_its_time_is_up() {
 fn an_observer_is_hidden_from_the_other_side_until_a_sentry_finds_it() {
     let (mut world, hero, spot) = a_hero_with_a_ward(crate::game::ITEM_OBSERVER_WARD);
     let at = spot + bota_proto::Vec2::from_ints(200, 0);
-    assert!(world.use_item(hero, 0, bota_proto::OrderTarget::Point { pos: at }));
+    assert!(world.use_item(hero, 0, bota_proto::Target::Pos(at)));
     world.step();
     let ward = the_ward(&world);
     assert!(
@@ -3639,7 +3885,7 @@ fn a_ward_aimed_out_of_reach_is_not_put_down() {
     let (mut world, hero, spot) = a_hero_with_a_ward(crate::game::ITEM_SENTRY_WARD);
     let far = spot + bota_proto::Vec2::from_ints(2000, 0);
     assert!(
-        !world.use_item(hero, 0, bota_proto::OrderTarget::Point { pos: far }),
+        !world.use_item(hero, 0, bota_proto::Target::Pos(far)),
         "further than it reaches, nothing is put down"
     );
     assert!(
@@ -3747,7 +3993,7 @@ fn a_tower_reveals_what_hides_as_far_as_it_shoots() {
 fn a_ward_takes_no_room_and_is_walked_straight_through() {
     let (mut world, hero, spot) = a_hero_with_a_ward(crate::game::ITEM_OBSERVER_WARD);
     let ahead = spot + bota_proto::Vec2::from_ints(300, 0);
-    assert!(world.use_item(hero, 0, bota_proto::OrderTarget::Point { pos: ahead }));
+    assert!(world.use_item(hero, 0, bota_proto::Target::Pos(ahead)));
     let ward = the_ward(&world);
     assert!(world.hull.get(ward).is_none(), "it has no hull to run into");
     // Told to walk to the far side of it, the hero passes over the spot.
@@ -3787,7 +4033,7 @@ fn a_ward_cannot_be_put_where_nothing_may_walk() {
         .expect("the map has walls with room beside them");
     world.transform.get_mut(hero).expect("hero").pos = stand;
     assert!(
-        !world.use_item(hero, 0, bota_proto::OrderTarget::Point { pos: wall }),
+        !world.use_item(hero, 0, bota_proto::Target::Pos(wall)),
         "closed ground takes no ward"
     );
     assert!(
@@ -3804,7 +4050,7 @@ fn each_ward_stands_up_what_its_own_item_names() {
     ] {
         let (mut world, hero, spot) = a_hero_with_a_ward(item);
         let at = spot + bota_proto::Vec2::from_ints(200, 0);
-        assert!(world.use_item(hero, 0, bota_proto::OrderTarget::Point { pos: at }));
+        assert!(world.use_item(hero, 0, bota_proto::Target::Pos(at)));
         world.step();
         let ward = the_ward(&world);
         let stats = world.stats.get(ward).expect("settled");
@@ -3905,9 +4151,7 @@ fn a_drink_may_be_aimed_at_the_one_drinking_it() {
             world.use_item(
                 hero,
                 0,
-                bota_proto::OrderTarget::Unit {
-                    target: crate::game::wire_id(hero)
-                }
+                bota_proto::Target::Unit(crate::game::wire_id(hero))
             ),
             "item {item} may be drunk by whoever holds it"
         );
@@ -3978,7 +4222,7 @@ fn a_quelling_blade_takes_a_tree_down_and_the_tree_comes_back() {
     let (mut world, hero, tree) = a_hero_by_the_trees(crate::game::ITEM_QUELLING_BLADE, 0);
     assert!(sight_stopped_at(&world, tree), "the tree stops a look");
     assert!(
-        world.use_item(hero, 0, bota_proto::OrderTarget::Point { pos: tree }),
+        world.use_item(hero, 0, bota_proto::Target::Pos(tree)),
         "the blade reaches it"
     );
     assert_eq!(world.trees.felled().count(), 1, "one tree is down");
@@ -4002,7 +4246,7 @@ fn a_tango_eats_a_tree_and_without_one_eats_nothing() {
     let (mut world, hero, tree) = a_hero_by_the_trees(crate::game::ITEM_TANGO, 3);
     let far = tree + bota_proto::Vec2::from_ints(4000, 0);
     assert!(
-        !world.use_item(hero, 0, bota_proto::OrderTarget::Point { pos: far }),
+        !world.use_item(hero, 0, bota_proto::Target::Pos(far)),
         "aimed where no tree stands it does nothing"
     );
     assert_eq!(
@@ -4010,7 +4254,7 @@ fn a_tango_eats_a_tree_and_without_one_eats_nothing() {
         Some(3),
         "and spends no charge on it"
     );
-    assert!(world.use_item(hero, 0, bota_proto::OrderTarget::Point { pos: tree }));
+    assert!(world.use_item(hero, 0, bota_proto::Target::Pos(tree)));
     assert_eq!(world.trees.felled().count(), 1, "the tree it ate is gone");
     assert_eq!(
         world.inventory.get(hero).expect("has a bag").slots[0].map(|s| s.charges),
@@ -4035,7 +4279,7 @@ fn a_branch_puts_a_tree_up_and_eating_that_one_feeds_twice_as_long() {
     let (mut world, hero, tree) = a_hero_by_the_trees(crate::game::ITEM_IRON_BRANCH, 1);
     let spot = tree + bota_proto::Vec2::from_ints(240, 0);
     assert!(
-        world.use_item(hero, 0, bota_proto::OrderTarget::Point { pos: spot }),
+        world.use_item(hero, 0, bota_proto::Target::Pos(spot)),
         "the branch goes into open ground"
     );
     assert_eq!(world.trees.planted().len(), 1, "and a tree stands there");
@@ -4054,7 +4298,7 @@ fn a_branch_puts_a_tree_up_and_eating_that_one_feeds_twice_as_long() {
     // What is left of it goes on its own.
     let (mut world, hero, tree) = a_hero_by_the_trees(crate::game::ITEM_IRON_BRANCH, 1);
     let spot = tree + bota_proto::Vec2::from_ints(240, 0);
-    assert!(world.use_item(hero, 0, bota_proto::OrderTarget::Point { pos: spot }));
+    assert!(world.use_item(hero, 0, bota_proto::Target::Pos(spot)));
     for _ in 0..rules::PLANTED_TREE_TICKS + 1 {
         world.step();
     }
@@ -4078,7 +4322,7 @@ fn tango_ticks(world: &mut World, hero: Entity, at: bota_proto::Vec2) -> u32 {
             for_sale: false,
         });
     }
-    assert!(world.use_item(hero, 1, bota_proto::OrderTarget::Point { pos: at }));
+    assert!(world.use_item(hero, 1, bota_proto::Target::Pos(at)));
     world
         .statuses
         .get(hero)
@@ -4095,13 +4339,13 @@ fn a_blade_takes_the_tree_it_was_pointed_at_and_no_other() {
     // Open ground a step off the trunk, still well inside the blade's reach.
     let beside = tree + bota_proto::Vec2::from_ints(rules::TREE_RADIUS + 20, 0);
     assert!(
-        !world.use_item(hero, 0, bota_proto::OrderTarget::Point { pos: beside }),
+        !world.use_item(hero, 0, bota_proto::Target::Pos(beside)),
         "pointed at ground beside a tree it takes nothing"
     );
     assert_eq!(world.trees.felled().count(), 0);
     let on_it = tree + bota_proto::Vec2::from_ints(rules::TREE_RADIUS - 10, 0);
     assert!(
-        world.use_item(hero, 0, bota_proto::OrderTarget::Point { pos: on_it }),
+        world.use_item(hero, 0, bota_proto::Target::Pos(on_it)),
         "pointed at the trunk it takes that tree"
     );
     assert_eq!(world.trees.felled().count(), 1);
@@ -4112,7 +4356,7 @@ fn a_blade_cannot_reach_a_tree_it_was_pointed_at_from_far_off() {
     let (mut world, hero, tree) = a_hero_by_the_trees(crate::game::ITEM_QUELLING_BLADE, 0);
     world.transform.get_mut(hero).expect("hero").pos = tree + bota_proto::Vec2::from_ints(2000, 0);
     assert!(
-        !world.use_item(hero, 0, bota_proto::OrderTarget::Point { pos: tree }),
+        !world.use_item(hero, 0, bota_proto::Target::Pos(tree)),
         "the tree is the one pointed at, but it is out of reach"
     );
     assert_eq!(world.trees.felled().count(), 0);
@@ -4448,9 +4692,9 @@ fn throw_hook(world: &mut World, at: bota_proto::Vec2) {
     world.advance(&[crate::game::Command {
         slot: bota_proto::SlotId(0),
         unit: None,
-        order: bota_proto::Order::CastAbility {
+        order: bota_proto::Order::Cast {
             slot: bota_proto::AbilitySlot(0),
-            target: bota_proto::OrderTarget::Point { pos: at },
+            target: bota_proto::Target::Pos(at),
         },
     }]);
 }
@@ -4589,11 +4833,11 @@ fn a_hero_keeps_what_it_learned_and_carried_through_a_death() {
 }
 
 /// Sends one of Pudge's abilities the way a player does.
-fn pudge_casts(world: &mut World, slot: u8, target: bota_proto::OrderTarget) {
+fn pudge_casts(world: &mut World, slot: u8, target: bota_proto::Target) {
     world.advance(&[crate::game::Command {
         slot: bota_proto::SlotId(0),
         unit: None,
-        order: bota_proto::Order::CastAbility {
+        order: bota_proto::Order::Cast {
             slot: bota_proto::AbilitySlot(slot),
             target,
         },
@@ -4607,7 +4851,7 @@ fn the_rot_burns_and_slows_what_stands_in_it_and_lifts_when_switched_off() {
         book.slots[1].level = 1;
     }
     let full = world.health.get(mark).expect("standing").hp;
-    pudge_casts(&mut world, 1, bota_proto::OrderTarget::None);
+    pudge_casts(&mut world, 1, bota_proto::Target::None);
     assert!(world.rotting.get(pudge).is_some(), "it is switched on");
     for _ in 0..rules::BURN_PERIOD_TICKS * 4 {
         world.step();
@@ -4620,7 +4864,7 @@ fn the_rot_burns_and_slows_what_stands_in_it_and_lifts_when_switched_off() {
         carries(&world, mark, crate::game::StatusKind::Slowed { pct: 0 }),
         "and is slowed while it stands there"
     );
-    pudge_casts(&mut world, 1, bota_proto::OrderTarget::None);
+    pudge_casts(&mut world, 1, bota_proto::Target::None);
     assert!(world.rotting.get(pudge).is_none(), "it is switched off");
     for _ in 0..3 {
         world.step();
@@ -4686,9 +4930,7 @@ fn a_dismember_holds_what_it_eats_and_feeds_the_one_eating() {
     pudge_casts(
         &mut world,
         3,
-        bota_proto::OrderTarget::Unit {
-            target: crate::game::wire_id(mark),
-        },
+        bota_proto::Target::Unit(crate::game::wire_id(mark)),
     );
     assert!(world.dismember.get(pudge).is_some(), "it takes hold");
     for _ in 0..30 {
@@ -4710,7 +4952,9 @@ fn a_dismember_holds_what_it_eats_and_feeds_the_one_eating() {
     world.advance(&[crate::game::Command {
         slot: bota_proto::SlotId(0),
         unit: None,
-        order: bota_proto::Order::Stop,
+        order: bota_proto::Order::Move {
+            target: bota_proto::Target::None,
+        },
     }]);
     assert!(world.dismember.get(pudge).is_none(), "an order lets go");
 }
@@ -4767,7 +5011,7 @@ fn hand_item(world: &mut World, hero: Entity, item: u16, charges: u8) {
 fn a_scroll_read_is_owed_by_the_hero_and_not_by_the_scroll() {
     let (mut world, hero) = a_hero_with_a_scroll();
     let to = beside_own_tower(&world);
-    assert!(world.use_item(hero, 0, bota_proto::OrderTarget::Point { pos: to }));
+    assert!(world.use_item(hero, 0, bota_proto::Target::Pos(to)));
     for _ in 0..91 {
         world.step();
     }
@@ -4779,7 +5023,7 @@ fn a_scroll_read_is_owed_by_the_hero_and_not_by_the_scroll() {
     hand_item(&mut world, hero, crate::game::ITEM_TOWN_PORTAL_SCROLL, 1);
     let there = beside_own_tower(&world);
     assert!(
-        !world.use_item(hero, 0, bota_proto::OrderTarget::Point { pos: there }),
+        !world.use_item(hero, 0, bota_proto::Target::Pos(there)),
         "a new scroll does not buy a new wait"
     );
     assert!(
@@ -4790,7 +5034,7 @@ fn a_scroll_read_is_owed_by_the_hero_and_not_by_the_scroll() {
         world.step();
     }
     assert!(
-        world.use_item(hero, 0, bota_proto::OrderTarget::Point { pos: there }),
+        world.use_item(hero, 0, bota_proto::Target::Pos(there)),
         "once the wait is out it reads again"
     );
 }
@@ -4860,7 +5104,7 @@ fn a_hero_hit_loses_its_drink_but_never_what_a_tree_bought() {
     };
     // A creep may hit all day and the drink holds.
     hand_item(&mut world, hero, crate::game::ITEM_HEALING_SALVE, 1);
-    assert!(world.use_item(hero, 0, bota_proto::OrderTarget::None));
+    assert!(world.use_item(hero, 0, bota_proto::Target::None));
     world.push_hit(Some(creep), hero, 10, bota_proto::DamageKind::Physical);
     world.step();
     assert!(carries(&world, hero, salve), "a creep does not break it");
@@ -4880,7 +5124,7 @@ fn a_hero_hit_loses_its_drink_but_never_what_a_tree_bought() {
         .expect("the forest reaches here");
     world.transform.get_mut(hero).expect("hero").pos = tree + bota_proto::Vec2::from_ints(120, 0);
     hand_item(&mut world, hero, crate::game::ITEM_TANGO, 1);
-    assert!(world.use_item(hero, 0, bota_proto::OrderTarget::Point { pos: tree }));
+    assert!(world.use_item(hero, 0, bota_proto::Target::Pos(tree)));
     world.push_hit(Some(theirs), hero, 10, bota_proto::DamageKind::Physical);
     world.step();
     assert!(
@@ -5143,13 +5387,144 @@ fn a_cast_aimed_out_of_reach_walks_the_caster_in_and_then_goes_off() {
 }
 
 #[test]
+fn a_later_order_calls_a_held_cast_off() {
+    let (mut world, pudge, _mark) = pudge_and_a_mark(4000);
+    let from = world.transform.get(pudge).expect("standing").pos;
+    let far = from + bota_proto::Vec2::from_ints(rules::HOOK_RANGE + 900, 0);
+    throw_hook(&mut world, far);
+    assert!(
+        world.casting.get(pudge).is_some(),
+        "out of reach the cast is held rather than dropped"
+    );
+    world.advance(&[crate::game::Command {
+        slot: bota_proto::SlotId(0),
+        unit: None,
+        order: bota_proto::Order::Move {
+            target: bota_proto::Target::Pos(bota_proto::Vec2::from_ints(4200, 5000)),
+        },
+    }]);
+    assert_eq!(
+        world.casting.get(pudge),
+        None,
+        "the later order took the held cast away"
+    );
+    for _ in 0..120 {
+        world.step();
+        assert!(
+            !world.entities.iter().any(|e| world.hook.get(e).is_some()),
+            "and it never goes off"
+        );
+    }
+    let stood = world.transform.get(pudge).expect("standing").pos;
+    assert!(
+        stood.x < from.x,
+        "the body answers the order it was given instead: {stood:?}"
+    );
+}
+
+#[test]
+fn a_cast_walked_towards_a_target_that_fell_is_given_up_and_costs_nothing() {
+    let (mut world, pudge, mark) = pudge_and_a_mark(4000);
+    if let Some(book) = world.abilities.get_mut(pudge) {
+        book.slots[3].level = 1;
+    }
+    world.mana.insert(
+        pudge,
+        crate::game::Mana {
+            mana: Fixed::from_int(110),
+        },
+    );
+    world.advance(&[crate::game::Command {
+        slot: bota_proto::SlotId(0),
+        unit: None,
+        order: bota_proto::Order::Cast {
+            slot: bota_proto::AbilitySlot(3),
+            target: bota_proto::Target::Unit(crate::game::wire_id(mark)),
+        },
+    }]);
+    assert!(
+        world.casting.get(pudge).is_some(),
+        "out of reach the cast is held while the caster walks in"
+    );
+    world.push_hit(None, mark, 10_000, bota_proto::DamageKind::Pure);
+    for _ in 0..3 {
+        world.step();
+        assert!(
+            world.dismember.get(pudge).is_none(),
+            "a cast at what has fallen never goes off"
+        );
+    }
+    assert_eq!(
+        world.casting.get(pudge),
+        None,
+        "the held cast is given up with its target"
+    );
+    assert_eq!(
+        world
+            .abilities
+            .get(pudge)
+            .map(|book| book.slots[3].cooldown),
+        Some(0),
+        "and nothing was spent on it"
+    );
+}
+
+#[test]
+fn an_aimed_cast_takes_the_bodys_order_over() {
+    let (mut world, pudge, mark) = pudge_and_a_mark(600);
+    world.advance(&[crate::game::Command {
+        slot: bota_proto::SlotId(0),
+        unit: None,
+        order: bota_proto::Order::Attack {
+            target: bota_proto::Target::Unit(crate::game::wire_id(mark)),
+        },
+    }]);
+    assert!(
+        matches!(
+            world.orders.get(pudge).map(|o| o.current),
+            Some(crate::game::UnitOrder::Attack { .. })
+        ),
+        "the attack order stands"
+    );
+    let from = world.transform.get(pudge).expect("standing").pos;
+    throw_hook(&mut world, from + bota_proto::Vec2::from_ints(400, 0));
+    assert!(
+        matches!(
+            world.orders.get(pudge).map(|o| o.current),
+            Some(crate::game::UnitOrder::Idle)
+        ),
+        "the cast took the order's place and the attack is not returned to"
+    );
+}
+
+#[test]
+fn a_body_walking_into_a_cast_swings_at_nothing_on_the_way() {
+    let (mut world, pudge, mark) = pudge_and_a_mark(300);
+    let full = world.health.get(mark).expect("standing").hp;
+    let from = world.transform.get(pudge).expect("standing").pos;
+    let far = from + bota_proto::Vec2::from_ints(0, rules::HOOK_RANGE + 900);
+    throw_hook(&mut world, far);
+    for _ in 0..30 {
+        world.step();
+        assert_eq!(
+            world.target_of(pudge),
+            None,
+            "the body is the cast's until it goes off"
+        );
+    }
+    assert_eq!(
+        world.health.get(mark).expect("standing").hp,
+        full,
+        "nothing was swung at on the way"
+    );
+}
+
+#[test]
 fn a_cast_with_no_mana_is_named_and_refused() {
     let (mut world, pudge, _mark) = pudge_and_a_mark(600);
-    let aim = bota_proto::Order::CastAbility {
+    let aim = bota_proto::Order::Cast {
         slot: bota_proto::AbilitySlot(0),
-        target: bota_proto::OrderTarget::Point {
-            pos: bota_proto::Vec2::from_ints(5600, 5000),
-        },
+        target: bota_proto::Target::Pos(bota_proto::Vec2::from_ints(5600, 5000)),
     };
     assert_eq!(
         world.validate_order(bota_proto::SlotId(0), None, &aim),
@@ -5165,11 +5540,9 @@ fn a_cast_with_no_mana_is_named_and_refused() {
         "and without it the seat is told why"
     );
     // An unlearned slot and a wrongly aimed one are named too.
-    let unlearned = bota_proto::Order::CastAbility {
+    let unlearned = bota_proto::Order::Cast {
         slot: bota_proto::AbilitySlot(3),
-        target: bota_proto::OrderTarget::Unit {
-            target: crate::game::wire_id(pudge),
-        },
+        target: bota_proto::Target::Unit(crate::game::wire_id(pudge)),
     };
     assert_eq!(
         world.validate_order(bota_proto::SlotId(0), None, &unlearned),
@@ -5178,18 +5551,18 @@ fn a_cast_with_no_mana_is_named_and_refused() {
     );
     // A passive is not a slot with nothing in it: it is one that is never
     // cast at all.
-    let passive = bota_proto::Order::CastAbility {
+    let passive = bota_proto::Order::Cast {
         slot: bota_proto::AbilitySlot(2),
-        target: bota_proto::OrderTarget::None,
+        target: bota_proto::Target::None,
     };
     assert_eq!(
         world.validate_order(bota_proto::SlotId(0), None, &passive),
         Err(bota_proto::RejectReason::NotCastable),
         "and a passive says that instead"
     );
-    let wrongly_aimed = bota_proto::Order::CastAbility {
+    let wrongly_aimed = bota_proto::Order::Cast {
         slot: bota_proto::AbilitySlot(0),
-        target: bota_proto::OrderTarget::None,
+        target: bota_proto::Target::None,
     };
     assert_eq!(
         world.validate_order(bota_proto::SlotId(0), None, &wrongly_aimed),
@@ -5237,11 +5610,9 @@ fn cast_at(world: &mut World, mark: Entity) {
     world.advance(&[crate::game::Command {
         slot: bota_proto::SlotId(0),
         unit: None,
-        order: bota_proto::Order::CastAbility {
+        order: bota_proto::Order::Cast {
             slot: bota_proto::AbilitySlot(2),
-            target: bota_proto::OrderTarget::Unit {
-                target: crate::game::wire_id(mark),
-            },
+            target: bota_proto::Target::Unit(crate::game::wire_id(mark)),
         },
     }]);
 }
@@ -5271,9 +5642,7 @@ fn a_bolt_goes_on_to_the_next_and_never_back_to_the_same_one() {
         hero,
         crate::game::PendingCast {
             slot: bota_proto::AbilitySlot(2),
-            target: bota_proto::OrderTarget::Unit {
-                target: crate::game::wire_id(marks[0]),
-            },
+            target: bota_proto::Target::Unit(crate::game::wire_id(marks[0])),
         },
     );
     for _ in 0..120 {
@@ -5310,11 +5679,9 @@ fn a_spell_aimed_at_what_it_cannot_take_is_named_and_refused() {
     );
     world.settle();
     world.step();
-    let at_an_ally = bota_proto::Order::CastAbility {
+    let at_an_ally = bota_proto::Order::Cast {
         slot: bota_proto::AbilitySlot(2),
-        target: bota_proto::OrderTarget::Unit {
-            target: crate::game::wire_id(ally),
-        },
+        target: bota_proto::Target::Unit(crate::game::wire_id(ally)),
     };
     assert_eq!(
         world.validate_order(bota_proto::SlotId(0), None, &at_an_ally),
@@ -5458,7 +5825,9 @@ fn an_order_goes_to_the_unit_it_names_and_only_to_ones_this_seat_drives() {
     let hero = world.seats[0].unit.expect("stood up");
     let courier = the_courier(&world);
     let to = world.courier_home(bota_proto::Team::Radiant) + bota_proto::Vec2::from_ints(600, 0);
-    let walk = bota_proto::Order::Move { pos: to };
+    let walk = bota_proto::Order::Move {
+        target: bota_proto::Target::Pos(to),
+    };
     // Naming nobody is the hero.
     assert_eq!(
         world.validate_order(bota_proto::SlotId(0), None, &walk),
@@ -5532,9 +5901,9 @@ fn a_courier_carries_its_errands_as_abilities() {
     // Sent through the wire the way a player sends it.
     let named = Some(crate::game::wire_id(courier));
     // The burst sits third, after the two that fetch and put back.
-    let burst = bota_proto::Order::CastAbility {
+    let burst = bota_proto::Order::Cast {
         slot: bota_proto::AbilitySlot(2),
-        target: bota_proto::OrderTarget::None,
+        target: bota_proto::Target::None,
     };
     assert_eq!(
         world.validate_order(bota_proto::SlotId(0), named, &burst),
@@ -5569,8 +5938,8 @@ fn a_courier_told_to_go_at_a_unit_follows_it() {
     world.advance(&[crate::game::Command {
         slot: bota_proto::SlotId(0),
         unit: Some(crate::game::wire_id(courier)),
-        order: bota_proto::Order::AttackUnit {
-            target: crate::game::wire_id(mark),
+        order: bota_proto::Order::Attack {
+            target: bota_proto::Target::Unit(crate::game::wire_id(mark)),
         },
     }]);
     for _ in 0..120 {
@@ -5677,7 +6046,9 @@ fn an_order_takes_a_courier_off_its_errand() {
     world.advance(&[crate::game::Command {
         slot: bota_proto::SlotId(0),
         unit: Some(crate::game::wire_id(courier)),
-        order: bota_proto::Order::Move { pos: aside },
+        order: bota_proto::Order::Move {
+            target: bota_proto::Target::Pos(aside),
+        },
     }]);
     assert_eq!(
         world.errand.get(courier),
@@ -5906,7 +6277,7 @@ fn the_stash_sells_from_anywhere_and_a_bag_far_out_only_marks() {
         "and gone from the stash"
     );
     // Out in the lane the order is allowed now: it marks.
-    let sell_bag = bota_proto::Order::SellItem {
+    let sell_bag = bota_proto::Order::Sell {
         slot: bota_proto::ItemSlot(0),
     };
     assert_eq!(
@@ -6130,7 +6501,7 @@ fn what_an_item_is_set_to_is_worth_points_of_that_attribute() {
         "they come set to strength"
     );
     assert!(
-        world.use_item(hero, 0, bota_proto::OrderTarget::None),
+        world.use_item(hero, 0, bota_proto::Target::None),
         "and using them sets them over"
     );
     world.step();
@@ -6199,7 +6570,7 @@ fn treads_switched_round_the_wheel_mend_nothing() {
     let switches = 12;
     for _ in 0..switches {
         assert!(
-            world.use_item(hero, 0, bota_proto::OrderTarget::None),
+            world.use_item(hero, 0, bota_proto::Target::None),
             "switched"
         );
         world.step();
@@ -6263,7 +6634,7 @@ fn an_item_laid_down_lies_where_it_was_aimed() {
         x: from.x + rules::units(100),
         y: from.y,
     };
-    assert!(world.put_item(hero, 0, bota_proto::OrderTarget::Point { pos: spot }));
+    assert!(world.put_item(hero, 0, bota_proto::Target::Pos(spot)));
     world.step();
     assert!(
         slot_of(&world, hero, 0).is_none(),
@@ -6287,7 +6658,7 @@ fn an_item_aimed_past_reach_walks_its_carrier_in_first() {
         x: from.x + rules::units(1000),
         y: from.y + rules::units(1000),
     };
-    assert!(world.put_item(hero, 0, bota_proto::OrderTarget::Point { pos: spot }));
+    assert!(world.put_item(hero, 0, bota_proto::Target::Pos(spot)));
     world.step();
     assert!(on_the_ground(&world).is_empty(), "too far to lay at once");
     for _ in 0..300 {
@@ -6311,9 +6682,7 @@ fn what_is_handed_over_lands_in_the_first_free_slot() {
     assert!(world.put_item(
         hero,
         0,
-        bota_proto::OrderTarget::Unit {
-            target: crate::game::wire_id(courier)
-        }
+        bota_proto::Target::Unit(crate::game::wire_id(courier))
     ));
     world.step();
     assert!(
@@ -6333,9 +6702,7 @@ fn what_is_handed_over_lands_in_the_first_free_slot() {
     assert!(world.put_item(
         courier,
         0,
-        bota_proto::OrderTarget::Unit {
-            target: crate::game::wire_id(hero)
-        }
+        bota_proto::Target::Unit(crate::game::wire_id(hero))
     ));
     world.step();
     assert_eq!(
@@ -6365,9 +6732,7 @@ fn a_bag_with_no_room_is_handed_nothing() {
     assert!(world.put_item(
         hero,
         0,
-        bota_proto::OrderTarget::Unit {
-            target: crate::game::wire_id(courier)
-        }
+        bota_proto::Target::Unit(crate::game::wire_id(courier))
     ));
     world.step();
     assert!(slot_of(&world, hero, 0).is_some(), "kept where it was");
@@ -6430,7 +6795,7 @@ fn what_was_muted_stays_muted_across_the_ground() {
             ..a_stack_of(crate::game::ITEM_BOOTS, 0)
         });
     }
-    assert!(world.put_item(hero, 0, bota_proto::OrderTarget::None));
+    assert!(world.put_item(hero, 0, bota_proto::Target::None));
     world.step();
     let lying = on_the_ground(&world);
     assert_eq!(lying.len(), 1);
@@ -6628,11 +6993,13 @@ fn a_later_order_calls_an_item_errand_off() {
         x: from.x + rules::units(1000),
         y: from.y + rules::units(1000),
     };
-    assert!(world.put_item(hero, 0, bota_proto::OrderTarget::Point { pos: spot }));
+    assert!(world.put_item(hero, 0, bota_proto::Target::Pos(spot)));
     world.advance(&[crate::game::Command {
         slot: bota_proto::SlotId(0),
         unit: None,
-        order: bota_proto::Order::Stop,
+        order: bota_proto::Order::Move {
+            target: bota_proto::Target::None,
+        },
     }]);
     for _ in 0..200 {
         world.step();
@@ -6676,7 +7043,7 @@ fn a_blink_carries_no_further_than_it_reaches() {
         y: from.y,
     };
     assert!(
-        world.use_item(hero, 0, bota_proto::OrderTarget::Point { pos: far }),
+        world.use_item(hero, 0, bota_proto::Target::Pos(far)),
         "it goes"
     );
     let landed = world.transform.get(hero).expect("stands somewhere").pos;
@@ -6701,7 +7068,7 @@ fn a_blink_aimed_at_closed_ground_steps_back_to_open() {
         .grid
         .block_circle(aim, rules::units(rules::BLINK_STEP_BACK * 2));
     assert!(
-        world.use_item(hero, 0, bota_proto::OrderTarget::Point { pos: aim }),
+        world.use_item(hero, 0, bota_proto::Target::Pos(aim)),
         "it goes"
     );
     let landed = world.transform.get(hero).expect("stands somewhere").pos;
@@ -6738,7 +7105,7 @@ fn a_magic_stick_gains_charges_and_is_kept_when_it_spends_them() {
     hand_item(&mut world, hero, crate::game::ITEM_MAGIC_STICK, 0);
     world.step();
     assert!(
-        !world.use_item(hero, 0, bota_proto::OrderTarget::None),
+        !world.use_item(hero, 0, bota_proto::Target::None),
         "with no charge there is nothing to spend"
     );
     if let Some(bag) = world.inventory.get_mut(hero)
@@ -6752,7 +7119,7 @@ fn a_magic_stick_gains_charges_and_is_kept_when_it_spends_them() {
     world.step();
     let before = world.health.get(hero).expect("has health").hp;
     assert!(
-        world.use_item(hero, 0, bota_proto::OrderTarget::None),
+        world.use_item(hero, 0, bota_proto::Target::None),
         "with charges it mends"
     );
     assert!(
@@ -6774,10 +7141,7 @@ fn phase_walks_a_body_through_another() {
         !world.stats.get(hero).expect("settled").phased,
         "it walks round what is in the way until the boots are used"
     );
-    assert!(
-        world.use_item(hero, 0, bota_proto::OrderTarget::None),
-        "it goes"
-    );
+    assert!(world.use_item(hero, 0, bota_proto::Target::None), "it goes");
     world.step();
     assert!(
         world.stats.get(hero).expect("settled").phased,
@@ -6867,8 +7231,8 @@ fn walking_at_an_ally_stops_where_the_bodies_meet() {
     world.advance(&[crate::game::Command {
         slot: bota_proto::SlotId(0),
         unit: None,
-        order: bota_proto::Order::AttackUnit {
-            target: crate::game::wire_id(ally),
+        order: bota_proto::Order::Attack {
+            target: bota_proto::Target::Unit(crate::game::wire_id(ally)),
         },
     }]);
     let mut seen: Vec<bota_proto::Vec2> = Vec::new();
@@ -7182,9 +7546,9 @@ fn aim_at(world: &mut World, slot: u8, at: bota_proto::Vec2) {
     world.advance(&[crate::game::Command {
         slot: bota_proto::SlotId(0),
         unit: None,
-        order: bota_proto::Order::CastAbility {
+        order: bota_proto::Order::Cast {
             slot: bota_proto::AbilitySlot(slot),
-            target: bota_proto::OrderTarget::Point { pos: at },
+            target: bota_proto::Target::Pos(at),
         },
     }]);
 }

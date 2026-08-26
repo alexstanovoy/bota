@@ -32,7 +32,7 @@ impl World {
             .casting
             .get(candidate)
             .and_then(|cast| match cast.target {
-                bota_proto::OrderTarget::Unit { target } => self.of_wire(target),
+                bota_proto::Target::Unit(target) => self.of_wire(target),
                 _ => None,
             });
         let struck = match self.orders.get(candidate).map(|o| o.current) {
@@ -139,8 +139,9 @@ impl World {
             if self.attacking.get(entity).is_none() {
                 continue;
             }
-            // Channelling, it takes on nothing at all.
-            if self.is_channelling(entity) {
+            // Channelling, it takes on nothing at all; neither does a body
+            // with a cast still waiting to be made.
+            if self.is_channelling(entity) || self.casting.get(entity).is_some() {
                 self.target.remove(entity);
                 continue;
             }
@@ -153,7 +154,7 @@ impl World {
                     }
                     continue;
                 }
-                Some(UnitOrder::Move { .. } | UnitOrder::Stand) => {
+                Some(UnitOrder::Move { .. } | UnitOrder::Stand | UnitOrder::Follow { .. }) => {
                     self.target.remove(entity);
                     continue;
                 }
@@ -166,6 +167,51 @@ impl World {
                 }
             }
             self.mark_chase(entity);
+        }
+    }
+
+    /// Keeps every order aimed at a unit honest about what its side sees.
+    ///
+    /// For a target still seen, the last seen spot moves with it. For one
+    /// its side has lost, the order degrades toward that spot — an attack
+    /// into an attack-move, a follow into a walk — so the hidden body is
+    /// not tracked. Runs on sight freshly laid out, which is what catches
+    /// a body the tick it slips away.
+    pub fn tend_attack_orders(&mut self) {
+        for entity in self.entities.iter().collect::<Vec<_>>() {
+            let (target, last_seen, fighting) = match self.orders.get(entity).map(|o| o.current) {
+                Some(UnitOrder::Attack { target, last_seen }) => (target, last_seen, true),
+                Some(UnitOrder::Follow { target, last_seen }) => (target, last_seen, false),
+                _ => continue,
+            };
+            // What has fallen is settled where the burying is.
+            if !self.alive(target) {
+                continue;
+            }
+            if self.can_see_of(entity, target) {
+                if let Some(at) = self.transform.get(target).map(|t| t.pos) {
+                    let kept = if fighting {
+                        UnitOrder::Attack {
+                            target,
+                            last_seen: at,
+                        }
+                    } else {
+                        UnitOrder::Follow {
+                            target,
+                            last_seen: at,
+                        }
+                    };
+                    self.set_order(entity, kept);
+                }
+            } else {
+                let degraded = if fighting {
+                    UnitOrder::AttackMove { pos: last_seen }
+                } else {
+                    UnitOrder::Move { pos: last_seen }
+                };
+                self.set_order(entity, degraded);
+                self.target.remove(entity);
+            }
         }
     }
 

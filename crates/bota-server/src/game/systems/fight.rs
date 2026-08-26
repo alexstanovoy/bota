@@ -2,7 +2,7 @@
 
 use bota_proto::{EventKind, Fixed, Team, UnitKind};
 
-use crate::game::{Entity, World, is_structure, wire_id};
+use crate::game::{Entity, UnitOrder, World, is_structure, wire_id};
 use crate::game::{Event, EventVisibility};
 
 impl World {
@@ -52,12 +52,32 @@ impl World {
         }
     }
 
+    /// Hands on the fights and follows aimed at a fallen entity.
+    ///
+    /// An attack order degrades to attack-moving at the spot the target was
+    /// last seen, so the fight carries on with whatever acquisition finds
+    /// there. A follow ends where the one followed fell.
+    fn carry_fights_on(&mut self, fallen: Entity) {
+        for follower in self.entities.iter().collect::<Vec<_>>() {
+            match self.orders.get(follower).map(|o| o.current) {
+                Some(UnitOrder::Follow { target, last_seen }) if target == fallen => {
+                    self.set_order(follower, UnitOrder::Move { pos: last_seen });
+                }
+                Some(UnitOrder::Attack { target, last_seen }) if target == fallen => {
+                    self.set_order(follower, UnitOrder::AttackMove { pos: last_seen });
+                }
+                _ => {}
+            }
+        }
+    }
+
     /// Clears away what has fallen and tells who may know.
     pub fn bury(&mut self, fallen: Vec<(Entity, Option<Entity>)>, events: &mut Vec<Event>) {
         for (entity, killer) in fallen {
             if !self.entities.contains(entity) {
                 continue;
             }
+            self.carry_fights_on(entity);
             self.feed_flesh_heaps(entity);
             self.feed_souls(entity, killer);
             let kind = self.kind.get(entity).copied();

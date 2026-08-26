@@ -13,7 +13,7 @@ use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 
-use crate::{LADDER, Lesson, Role, Rung, Tribe, Yard};
+use crate::{LADDER, Lesson, Role, Rung, Selection, Tribe, Yard};
 
 /// A whole training run, as a file spells it.
 #[derive(Clone, Debug, Deserialize)]
@@ -64,6 +64,9 @@ pub struct Stage {
     /// What the seats are there to do.
     #[serde(default)]
     pub role: Option<String>,
+    /// How a generation is judged: mirror or swiss. Absent is mirror.
+    #[serde(default)]
+    pub selection: Option<String>,
     /// Where the stage is seeded from.
     #[serde(default)]
     pub seed: Option<u64>,
@@ -177,6 +180,19 @@ impl Plan {
             Some(named) => Role::named(named)
                 .ok_or_else(|| format!("no role is called {named}. It is one of: {}", roles()))?,
         };
+        let selection = match stage.selection.as_ref().or(fall_back.selection.as_ref()) {
+            None => plain.selection,
+            Some(named) => Selection::named(named)
+                .ok_or_else(|| format!("no selection is called {named}. It is mirror or swiss"))?,
+        };
+        if selection == Selection::Swiss && !population.is_multiple_of(2) {
+            return Err(format!(
+                "a swiss crowd of {population} cannot be paired off; it is even"
+            ));
+        }
+        if selection == Selection::Swiss && stage.matches.is_some() {
+            return Err("a swiss stage does not take matches; its rounds are fixed".to_string());
+        }
         let seed = stage.seed.or(fall_back.seed).unwrap_or(plain.seed);
 
         let standing = Yard::default();
@@ -198,6 +214,7 @@ impl Plan {
                 keep: survivors,
                 spread: mutation,
                 lanes,
+                selection,
                 seed,
             },
         })

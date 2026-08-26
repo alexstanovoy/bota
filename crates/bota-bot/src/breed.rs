@@ -26,7 +26,10 @@
 
 use std::thread;
 
-use crate::{Card, Chair, Dice, Learned, Lesson, Model, Role, Rung, Yard};
+use crate::{
+    Card, Chair, Dice, Learned, Lesson, Model, Role, Rung, SWISS_ROUNDS, Selection, Yard,
+    standings, swiss_margins,
+};
 
 /// A crowd being taught.
 #[derive(Clone, Debug)]
@@ -47,6 +50,8 @@ pub struct Tribe {
     pub spread: f32,
     /// How many matches run at once.
     pub lanes: usize,
+    /// How a generation is chosen over.
+    pub selection: Selection,
     /// Where the whole run is seeded from.
     pub seed: u64,
 }
@@ -85,6 +90,7 @@ impl Tribe {
             keep: (folk / 4).max(1),
             spread: 0.02,
             lanes: 12,
+            selection: Selection::Mirror,
             seed: 1,
         }
     }
@@ -106,6 +112,20 @@ impl Tribe {
     pub fn reported_on(&self) -> Vec<u64> {
         let mut dice = Dice::from_seed(REPORTING_SEED);
         (0..REPORTED_ON).map(|_| dice.next_u64()).collect()
+    }
+
+    /// The seeds of a tournament generation's rounds, the anchor match's
+    /// last.
+    ///
+    /// One a round, common to every pair of it, and a function of which
+    /// generation it is, exactly as the trials are.
+    pub fn round_seeds(&self, life: u32) -> Vec<u64> {
+        let mut dice = Dice::from_seed(
+            self.seed
+                .wrapping_mul(0x0b0f_a577)
+                .wrapping_add(u64::from(life).wrapping_mul(0x4000_0005)),
+        );
+        (0..=SWISS_ROUNDS).map(|_| dice.next_u64()).collect()
     }
 }
 
@@ -133,19 +153,24 @@ pub fn first_crowd(tribe: &Tribe) -> Result<Vec<Body>, String> {
         .collect()
 }
 
-/// What one model is worth over the matches given.
+/// What two bodies came to against each other, each seat's card its own.
 ///
-/// Both seats are the model itself, choosing what it likes best. A lesson pays
-/// for what a seat does rather than for beating anybody, so the two seats are
-/// two readings of the same model rather than a contest.
-fn worth_of(tribe: &Tribe, body: &Body, rung: &Rung, seed: u64) -> std::io::Result<Card> {
-    let hatch = || -> std::io::Result<Learned> {
+/// Both choose what they like best, so a bout between two bodies on one seed
+/// always comes out the same.
+pub fn pitted(
+    tribe: &Tribe,
+    one: &Body,
+    other: &Body,
+    rung: &Rung,
+    seed: u64,
+) -> std::io::Result<(Card, Card)> {
+    let hatch = |body: &Body| -> std::io::Result<Learned> {
         let model = Model::fresh(1).map_err(std::io::Error::other)?;
         model.soak(body).map_err(std::io::Error::other)?;
         Ok(Learned::new(model))
     };
-    let mut one = hatch()?;
-    let mut other = hatch()?;
+    let mut mine = hatch(one)?;
+    let mut theirs = hatch(other)?;
     let chair = |name: &str| Chair {
         addr: String::new(),
         name: name.to_string(),
@@ -155,12 +180,22 @@ fn worth_of(tribe: &Tribe, body: &Body, rung: &Rung, seed: u64) -> std::io::Resu
         lesson: rung.lesson,
         until: Some(rung.ticks),
     };
-    let (mine, theirs) =
+    let (played, they_played) =
         tribe
             .yard
-            .play_a_match(seed, &mut one, &mut other, &chair("one"), &chair("other"))?;
-    let mut both = mine.card;
-    both.add(&theirs.card);
+            .play_a_match(seed, &mut mine, &mut theirs, &chair("one"), &chair("other"))?;
+    Ok((played.card, they_played.card))
+}
+
+/// What one model is worth over one match.
+///
+/// Both seats are the model itself, choosing what it likes best. A lesson pays
+/// for what a seat does rather than for beating anybody, so the two seats are
+/// two readings of the same model rather than a contest.
+fn worth_of(tribe: &Tribe, body: &Body, rung: &Rung, seed: u64) -> std::io::Result<Card> {
+    let (mine, theirs) = pitted(tribe, body, body, rung, seed)?;
+    let mut both = mine;
+    both.add(&theirs);
     Ok(both.over(2))
 }
 
@@ -275,12 +310,36 @@ pub fn next_crowd(tribe: &Tribe, crowd: &[Body], placed: &[usize], life: u32) ->
 pub struct Life {
     /// Which generation.
     pub number: u32,
-    /// What the best of the crowd was worth on the generation's own matches.
+    /// What the best of the crowd was worth on the generation's own matches:
+    /// the lesson's marks under mirror, the margin under swiss.
     pub best: f32,
-    /// What the crowd was worth on average.
+    /// The same, over the whole crowd.
     pub middling: f32,
     /// Matches of it that never finished.
     pub failed: usize,
+}
+
+/// What every model of a generation came to, and the order that puts them
+/// in, best first.
+fn judged(
+    tribe: &Tribe,
+    crowd: &[Body],
+    rung: &Rung,
+    life: u32,
+) -> std::io::Result<(Vec<f32>, Vec<usize>, usize)> {
+    match tribe.selection {
+        Selection::Mirror => {
+            let (cards, failed) = worth_of_all(tribe, crowd, rung, &tribe.trials_of(life))?;
+            let worths = cards.iter().map(|card| card.of(rung.lesson)).collect();
+            let placed = placings(&cards, rung.lesson);
+            Ok((worths, placed, failed))
+        }
+        Selection::Swiss => {
+            let (margins, failed) = swiss_margins(tribe, crowd, rung, life)?;
+            let placed = standings(&margins);
+            Ok((margins, placed, failed))
+        }
+    }
 }
 
 /// Teaches a crowd one lesson, and hands back what is left of it.
@@ -293,23 +352,19 @@ pub fn teach_a_lesson(
     rung: &Rung,
     mut told: impl FnMut(Life),
 ) -> std::io::Result<Vec<Body>> {
-    let lesson = rung.lesson;
     let mut crowd = crowd;
     for life in 1..=tribe.lives {
-        let (cards, failed) = worth_of_all(tribe, &crowd, rung, &tribe.trials_of(life))?;
-        let placed = placings(&cards, lesson);
+        let (worths, placed, failed) = judged(tribe, &crowd, rung, life)?;
         told(Life {
             number: life,
-            best: placed.first().map_or(0.0, |at| cards[*at].of(lesson)),
-            middling: cards.iter().map(|card| card.of(lesson)).sum::<f32>()
-                / cards.len().max(1) as f32,
+            best: placed.first().map_or(0.0, |at| worths[*at]),
+            middling: worths.iter().sum::<f32>() / worths.len().max(1) as f32,
             failed,
         });
         crowd = next_crowd(tribe, &crowd, &placed, life);
     }
     // Placed once more on the last children, so that what is handed on is in
     // order and nothing untried is called the best.
-    let (cards, _) = worth_of_all(tribe, &crowd, rung, &tribe.trials_of(tribe.lives + 1))?;
-    let placed = placings(&cards, lesson);
+    let (_, placed, _) = judged(tribe, &crowd, rung, tribe.lives + 1)?;
     Ok(placed.into_iter().map(|at| crowd[at].clone()).collect())
 }

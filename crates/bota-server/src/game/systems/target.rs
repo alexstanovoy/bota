@@ -270,7 +270,7 @@ impl World {
     }
 
     /// Whether the attacker's side sees the other one.
-    fn can_see_of(&self, attacker: Entity, on: Entity) -> bool {
+    pub fn can_see_of(&self, attacker: Entity, on: Entity) -> bool {
         self.team
             .get(attacker)
             .copied()

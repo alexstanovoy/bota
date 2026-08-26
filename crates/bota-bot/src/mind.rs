@@ -23,13 +23,6 @@ pub trait Mind {
 
     /// Told when a match begins, for anything that keeps a memory.
     fn starting(&mut self) {}
-
-    /// Told what a tick paid, whether it decided anything on that tick or not.
-    ///
-    /// Every tick, because what a decision led to happens over the ticks after
-    /// it and most of those decide nothing new. A mind that is only playing
-    /// has no use for this and ignores it.
-    fn paid(&mut self, _at: u32, _marks: f32) {}
 }
 
 /// A mind that does nothing at all.

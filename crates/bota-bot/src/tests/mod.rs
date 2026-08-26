@@ -1,5 +1,6 @@
 mod benching;
 mod breeding;
+mod contesting;
 mod contract;
 mod lessons;
 mod planning;

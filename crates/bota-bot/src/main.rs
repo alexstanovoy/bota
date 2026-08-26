@@ -3,9 +3,8 @@
 use std::path::PathBuf;
 
 use bota_bot::{
-    Adam, Chair, DEEDS, Dice, FirstAllowed, LESSONS, Learned, Lesson, Mind, Model, NUMBERS,
-    Nothing, Plan, Role, School, Tribe, Yard, crowd_from, first_crowd, gather, learn_from, measure,
-    play, report_card, teach_a_lesson,
+    Chair, DEEDS, Dice, FirstAllowed, Learned, Lesson, Mind, Model, NUMBERS, Nothing, Plan, Role,
+    Tribe, Yard, crowd_from, first_crowd, play, report_card, teach_a_lesson,
 };
 use bota_proto::HeroId;
 use clap::{Parser, Subcommand};
@@ -33,8 +32,6 @@ enum Doing {
     Fresh(Fresh),
     /// Breed a crowd of models through the stages a plan names.
     Train(Training),
-    /// Teach one lesson by gradient, for comparing against.
-    Descend(Descending),
     /// Say what a model is worth at a lesson, on the matches nothing trains on.
     Judge(Judging),
     /// Put two models against each other in whole matches.
@@ -395,56 +392,6 @@ fn keep_the_best(crowd: &[Vec<f32>], weights: &std::path::Path) -> std::io::Resu
     best.save(weights).map_err(std::io::Error::other)
 }
 
-/// Teaching one lesson by gradient.
-#[derive(clap::Args, Debug)]
-struct Descending {
-    /// Play matches over a socket instead of in this process.
-    #[arg(long)]
-    on_the_wire: bool,
-    /// Which lesson, one to eight: stock up, find the lane, hold it, meet the
-    /// wave, work the lane, take the towers, grow rich, grow strong. Every one
-    /// in turn, when nothing is said.
-    #[arg(long)]
-    lesson: Option<u8>,
-    /// What the seats are there to do, one to five.
-    #[arg(long, default_value_t = 2)]
-    role: u8,
-    /// Rounds to run.
-    #[arg(long, default_value_t = 20)]
-    rounds: u32,
-    /// Matches a round.
-    #[arg(long, default_value_t = 8)]
-    matches: usize,
-    /// Matches played at once.
-    #[arg(long, default_value_t = 8)]
-    lanes: usize,
-    /// How loosely it chooses while learning.
-    #[arg(long, default_value_t = 1.0)]
-    heat: f32,
-    /// How far a step goes.
-    #[arg(long, default_value_t = 3e-4)]
-    rate: f32,
-    /// Decisions added up before the weights move.
-    #[arg(long, default_value_t = 64)]
-    batch: usize,
-    /// The most decisions of one round the weights are moved by. A round
-    /// usually plays more than this; the rest are thrown away.
-    #[arg(long, default_value_t = 8000)]
-    frames: usize,
-    /// Rounds between measuring.
-    #[arg(long, default_value_t = 5)]
-    measure_every: u32,
-    /// Where the run is seeded from.
-    #[arg(long, default_value_t = 1)]
-    seed: u64,
-    /// Where the model is kept.
-    #[arg(long, value_name = "FILE")]
-    weights: Option<PathBuf>,
-    /// The server to run. The one built beside this, when nothing is said.
-    #[arg(long, value_name = "PATH")]
-    server: Option<PathBuf>,
-}
-
 /// Joining a server and playing.
 #[derive(clap::Args, Debug)]
 struct Playing {
@@ -519,135 +466,9 @@ fn carry_out(doing: Doing) -> std::io::Result<()> {
         }
         Doing::Play(asked) => join_a_match(asked),
         Doing::Train(asked) => train(asked),
-        Doing::Descend(asked) => descend(asked),
         Doing::Judge(asked) => judge(asked),
         Doing::Duel(asked) => duel(asked),
     }
-}
-
-/// Teaches the model a lesson, and keeps only what measures better.
-fn descend(asked: Descending) -> std::io::Result<()> {
-    // Named or the whole ladder, as breeding does. A ladder held together by a
-    // loop outside the program is a ladder nobody else can walk.
-    let ladder: Vec<Lesson> = match asked.lesson {
-        None => (1..=LESSONS as u8).filter_map(Lesson::of).collect(),
-        Some(number) => match Lesson::of(number) {
-            None => {
-                return Err(std::io::Error::other(format!(
-                    "lessons are numbered one to {LESSONS}"
-                )));
-            }
-            Some(lesson) => vec![lesson],
-        },
-    };
-    for lesson in ladder {
-        descend_one(&asked, lesson)?;
-    }
-    Ok(())
-}
-
-/// Teaches one lesson by gradient, keeping only what measures better.
-fn descend_one(asked: &Descending, lesson: Lesson) -> std::io::Result<()> {
-    let Some(role) = Role::of(asked.role) else {
-        return Err(std::io::Error::other("roles are numbered one to five"));
-    };
-    let weights = asked.weights.clone().unwrap_or_else(Model::path);
-    let standing = Yard::default();
-    let how = School {
-        yard: Yard {
-            server: asked.server.clone().unwrap_or(standing.server),
-            builtin: !asked.on_the_wire,
-            ..standing
-        },
-        lesson,
-        role,
-        rounds: asked.rounds,
-        matches: asked.matches,
-        lanes: asked.lanes,
-        heat: asked.heat,
-        rate: asked.rate,
-        batch: asked.batch,
-        most_frames: asked.frames,
-        seed: asked.seed,
-        weights: weights.clone(),
-        ..School::for_lesson(lesson)
-    };
-    let model = if weights.exists() {
-        Model::from_file(&weights, asked.seed).map_err(std::io::Error::other)?
-    } else {
-        println!("no weights at {}, starting fresh", weights.display());
-        Model::fresh(asked.seed).map_err(std::io::Error::other)?
-    };
-    let mut adam = Adam::new(&model, how.rate).map_err(std::io::Error::other)?;
-    let mut dice = Dice::from_seed(how.seed ^ 0x51ed_2701);
-    // Which server, because it is found beside this binary rather than named,
-    // and a stale one next to a fresh bot trains against a different game.
-    println!(
-        "teaching {} to a model of {} weights, matches of {} ticks, played by {}",
-        lesson.name(),
-        model.weight_count(),
-        lesson.ticks(),
-        how.yard.server.display()
-    );
-
-    // What it is worth before any of this, so that a run which never improves
-    // leaves the file exactly as it found it.
-    let working = weights.with_extension("learning");
-    model.save(&working).map_err(std::io::Error::other)?;
-    let mut best = measure(&how, &std::fs::read(&working)?)?;
-    println!("starting out at {best:.1}");
-
-    for round in 1..=how.rounds {
-        model.save(&working).map_err(std::io::Error::other)?;
-        let bytes = std::fs::read(&working)?;
-        let rolls = gather(&how, &bytes, u64::from(round))?;
-        let paid = if rolls.is_empty() {
-            0.0
-        } else {
-            rolls.iter().map(|roll| roll.paid_in_all()).sum::<f32>() / rolls.len() as f32
-        };
-        let mut frames: Vec<bota_bot::Frame> =
-            rolls.into_iter().flat_map(|roll| roll.frames).collect();
-        let played = frames.len();
-        thin(&mut frames, how.most_frames, &mut dice);
-        let loss = learn_from(&model, &mut adam, &frames, &how, &mut dice);
-        model.save(&working).map_err(std::io::Error::other)?;
-        let mut kept = String::new();
-        if round.is_multiple_of(how.measure_every) || round == how.rounds {
-            let now = measure(&how, &std::fs::read(&working)?)?;
-            kept = if now > best {
-                best = now;
-                model.save(&weights).map_err(std::io::Error::other)?;
-                format!(", measured {now:.1}, kept")
-            } else {
-                format!(", measured {now:.1}, best still {best:.1}")
-            };
-        }
-        // Both numbers, because the second is a cap and a cap that reported
-        // only what it let through would read as everything there was.
-        println!(
-            "round {round}: learned from {} of {played}, matches paid {paid:.1}, loss {loss:.3}{kept}",
-            frames.len()
-        );
-    }
-    let _ = std::fs::remove_file(&working);
-    println!("the best it managed was {best:.1}");
-    Ok(())
-}
-
-/// Keeps a heap of frames down to the most the weights are moved by, taking
-/// those it keeps at random.
-fn thin(frames: &mut Vec<bota_bot::Frame>, most: usize, dice: &mut Dice) {
-    if frames.len() <= most || most == 0 {
-        return;
-    }
-    let mut order: Vec<usize> = (0..frames.len()).collect();
-    for at in (1..order.len()).rev() {
-        order.swap(at, (dice.next_u64() % (at as u64 + 1)) as usize);
-    }
-    order.truncate(most);
-    order.sort_unstable();
-    *frames = order.into_iter().map(|at| frames[at].clone()).collect();
 }
 
 /// Says what a model is shown and what it may choose.

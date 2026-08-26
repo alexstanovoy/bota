@@ -1,6 +1,6 @@
 //! Throwing a hook, and what it drags back.
 
-use bota_proto::{DamageKind, Fixed, OrderTarget, UnitKind, Vec2};
+use bota_proto::{DamageKind, Fixed, Target, UnitKind, Vec2};
 
 use crate::engine::Entity;
 use crate::game::{Hook, Status, StatusKind, Transform, World, is_structure, rules};
@@ -8,8 +8,8 @@ use crate::game::{facing_towards, move_towards, per_tick};
 
 impl World {
     /// Throws a hook at a spot, no further out than it reaches.
-    pub fn cast_hook(&mut self, caster: Entity, level: usize, target: OrderTarget) -> bool {
-        let OrderTarget::Point { pos } = target else {
+    pub fn cast_hook(&mut self, caster: Entity, level: usize, target: Target) -> bool {
+        let Target::Pos(pos) = target else {
             return false;
         };
         let (Some(from), Some(side)) = (

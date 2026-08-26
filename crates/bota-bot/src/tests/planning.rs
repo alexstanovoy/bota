@@ -1,6 +1,6 @@
 //! Reading a plan, and what it settles on.
 
-use crate::{Lesson, Plan, Role};
+use crate::{Lesson, Plan, Role, Selection};
 
 /// A plan that says one thing and leaves the rest out.
 const BARE: &str = "
@@ -24,6 +24,74 @@ fn a_stage_that_says_nothing_takes_the_lesson_clock_and_a_plain_crowd() {
     assert_eq!(term.tribe.lives, 30);
     assert_eq!(term.tribe.keep, 2, "a quarter of the crowd");
     assert_eq!(term.tribe.role, Role::Mid);
+    assert_eq!(
+        term.tribe.selection,
+        Selection::Mirror,
+        "mirror, unless asked"
+    );
+}
+
+#[test]
+fn a_swiss_stage_is_read_and_a_crowd_that_cannot_be_paired_is_refused() {
+    let plan = Plan::of(
+        "
+sequence:
+  - score: grow_rich
+    selection: swiss
+    population: 4
+",
+    )
+    .expect("a plan");
+    let terms = plan.terms().expect("stages");
+    assert_eq!(terms[0].tribe.selection, Selection::Swiss);
+
+    let odd = Plan::of(
+        "
+sequence:
+  - score: grow_rich
+    selection: swiss
+    population: 5
+",
+    )
+    .expect("a plan");
+    let wrong = odd.terms().expect_err("an odd swiss crowd");
+    assert!(wrong.contains("paired"), "{wrong}");
+
+    let unheard = Plan::of(
+        "
+sequence:
+  - score: grow_rich
+    selection: ladder
+",
+    )
+    .expect("a plan");
+    let wrong = unheard.terms().expect_err("no such selection");
+    assert!(wrong.contains("mirror or swiss"), "{wrong}");
+}
+
+#[test]
+fn a_swiss_stage_that_names_matches_is_refused() {
+    let plan = Plan::of(
+        "
+defaults:
+  matches: 1
+sequence:
+  - score: grow_rich
+    selection: swiss
+    population: 4
+  - score: grow_rich
+    selection: swiss
+    population: 4
+    matches: 2
+",
+    )
+    .expect("a plan");
+    let wrong = plan.terms().expect_err("matches on a swiss stage");
+    assert!(wrong.contains("stage 2"), "{wrong}");
+    assert!(
+        wrong.contains("does not take matches"),
+        "and the defaults' matches are no offence: {wrong}"
+    );
 }
 
 #[test]
@@ -147,17 +215,9 @@ fn a_stage_that_goes_wrong_says_which_one_it_was() {
 
 /// The plan shipped beside the crates, which is the ladder as it stands.
 #[test]
-fn the_plan_in_the_repository_is_the_ladder() {
+fn the_plan_in_the_repository_settles() {
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../train.yaml");
     let plan = Plan::read(&path).expect("train.yaml");
     let terms = plan.terms().expect("stages");
-    assert_eq!(terms.len(), crate::LESSONS, "a stage a lesson");
-    for (term, rung) in terms.iter().zip(&crate::LADDER) {
-        assert_eq!(term.rung.lesson, rung.lesson, "in ladder order");
-        assert_eq!(
-            term.rung.ticks, rung.ticks,
-            "{} runs as long as its rung says",
-            rung.name
-        );
-    }
+    assert!(!terms.is_empty(), "a plan teaches something");
 }
