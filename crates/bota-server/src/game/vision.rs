@@ -32,11 +32,7 @@ pub fn build_sight_block(map: &crate::game::MapDef) -> PassGrid {
 /// so they are laid once and the standing trees closed over them.
 pub fn build_fow_walls(map: &crate::game::MapDef) -> PassGrid {
     let mut grid = PassGrid::open();
-    for wall in if map.trees {
-        crate::game::FOW_BLOCKERS
-    } else {
-        &[] as &[&[(i16, i16)]]
-    } {
+    for wall in map.fow_blockers {
         for seg in wall.windows(2) {
             let a = Vec2::from_ints(i32::from(seg[0].0), i32::from(seg[0].1));
             let b = Vec2::from_ints(i32::from(seg[1].0), i32::from(seg[1].1));

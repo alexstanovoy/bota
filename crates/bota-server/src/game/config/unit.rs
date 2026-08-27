@@ -209,6 +209,34 @@ pub const RANGED_CREEP: UnitDef = UnitDef {
     ..MELEE_CREEP
 };
 
+/// A super melee creep: what spawns once the enemy melee barracks of the
+/// lane has fallen.
+pub const SUPER_MELEE_CREEP: UnitDef = UnitDef {
+    max_hp: rules::SUPER_MELEE_HP,
+    damage: rules::SUPER_MELEE_ATTACK_DAMAGE,
+    armor: rules::SUPER_MELEE_ARMOR,
+    bounty_gold: rules::SUPER_MELEE_BOUNTY,
+    bounty_xp: rules::SUPER_MELEE_XP,
+    ..MELEE_CREEP
+};
+
+/// A mega melee creep: a super one swinging faster, once every enemy
+/// barracks has fallen.
+pub const MEGA_MELEE_CREEP: UnitDef = UnitDef {
+    attack_interval: rules::MEGA_MELEE_ATTACK_INTERVAL,
+    ..SUPER_MELEE_CREEP
+};
+
+/// A super ranged creep.
+pub const SUPER_RANGED_CREEP: UnitDef = UnitDef {
+    max_hp: rules::SUPER_RANGED_HP,
+    damage: rules::SUPER_RANGED_ATTACK_DAMAGE,
+    armor: rules::SUPER_RANGED_ARMOR,
+    bounty_gold: rules::SUPER_RANGED_BOUNTY,
+    bounty_xp: rules::SUPER_RANGED_XP,
+    ..RANGED_CREEP
+};
+
 /// A siege creep. Takes no upgrades.
 pub const SIEGE_CREEP: UnitDef = UnitDef {
     kind: UnitKind::CreepSiege,
@@ -343,6 +371,35 @@ pub const ROSHAN: UnitDef = UnitDef {
     ..NOTHING
 };
 
+/// A super siege creep: the same wagon hitting harder.
+pub const SUPER_SIEGE_CREEP: UnitDef = UnitDef {
+    damage: rules::SUPER_SIEGE_ATTACK_DAMAGE,
+    ..SIEGE_CREEP
+};
+
+/// A melee barracks.
+pub const BARRACKS_MELEE: UnitDef = UnitDef {
+    kind: UnitKind::Barracks,
+    max_hp: rules::RAX_MELEE_HP,
+    hp_regen: rules::RAX_MELEE_HP_REGEN,
+    armor: rules::RAX_MELEE_ARMOR,
+    vision: rules::RAX_VISION,
+    radius: rules::RAX_RADIUS,
+    bounty_gold: rules::RAX_MELEE_BOUNTY,
+    ..NOTHING
+};
+
+/// A ranged barracks.
+pub const BARRACKS_RANGED: UnitDef = UnitDef {
+    kind: UnitKind::Barracks,
+    max_hp: rules::RAX_RANGED_HP,
+    armor: rules::RAX_RANGED_ARMOR,
+    vision: rules::RAX_VISION,
+    radius: rules::RAX_RADIUS,
+    bounty_gold: rules::RAX_RANGED_BOUNTY,
+    ..NOTHING
+};
+
 /// An Ancient.
 pub const ANCIENT: UnitDef = UnitDef {
     kind: UnitKind::Ancient,
@@ -447,7 +504,7 @@ pub fn tower_def(tier: u8) -> &'static UnitDef {
 pub fn is_structure(kind: UnitKind) -> bool {
     matches!(
         kind,
-        UnitKind::Tower | UnitKind::Ancient | UnitKind::Fountain
+        UnitKind::Tower | UnitKind::Ancient | UnitKind::Barracks | UnitKind::Fountain
     )
 }
 

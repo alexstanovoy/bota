@@ -575,32 +575,50 @@ fn what_an_entity_carries_and_casts_keeps_its_slots() {
     assert_eq!(book.slot(1).map(|a| a.level), Some(3));
 }
 
+/// Buildings a map stands up: its towers, its barracks, both fountains, and
+/// whatever Ancients it has.
+fn map_buildings(map: &crate::game::MapDef) -> usize {
+    map.radiant_towers.len()
+        + map.dire_towers.len()
+        + map.barracks[0].len()
+        + map.barracks[1].len()
+        + 2
+        + map.ancients.iter().flatten().count()
+}
+
 #[test]
 fn a_world_built_on_a_map_stands_its_buildings_full() {
     let map = crate::game::map_of(bota_proto::MapId(1));
     let world = World::on_map(map);
-    let towers = map.radiant_towers.len() + map.dire_towers.len();
     assert_eq!(
         world.entities.len(),
-        towers + 4,
-        "two fountains, two ancients"
+        map_buildings(map),
+        "every building and nothing else"
     );
     let view = world.view_full();
     assert_eq!(view.units.len(), world.entities.len());
-    let ancient = view
+    let tower = view
         .units
         .iter()
-        .find(|u| u.kind == bota_proto::UnitKind::Ancient)
-        .expect("an ancient stands");
-    assert_eq!(ancient.hp, rules::ANCIENT_HP, "built and full");
-    assert_eq!(ancient.max_hp, rules::ANCIENT_HP);
+        .find(|u| u.kind == bota_proto::UnitKind::Tower)
+        .expect("a tower stands");
+    assert_eq!(tower.hp, rules::TOWER_TIER_HP[0], "built and full");
+    assert_eq!(tower.max_hp, rules::TOWER_TIER_HP[0]);
+    // The demo map raises no Ancients at all.
+    assert!(
+        !view
+            .units
+            .iter()
+            .any(|u| u.kind == bota_proto::UnitKind::Ancient),
+        "no Ancient stands on the demo map"
+    );
 }
 
 #[test]
 fn both_sides_are_always_told_of_every_building() {
     let map = crate::game::map_of(bota_proto::MapId(1));
     let world = World::on_map(map);
-    let standing = map.radiant_towers.len() + map.dire_towers.len() + 4;
+    let standing = map_buildings(map);
     let view = world.view(bota_proto::Team::Radiant);
     assert_eq!(
         view.units.len(),
@@ -3598,18 +3616,28 @@ fn selling_soon_after_buying_pays_the_whole_price_back() {
     assert_eq!(world.seats[0].gold, purse, "nothing was lost on it");
 }
 
-/// Walkable ground out in the open, with nothing standing near it.
+/// Walkable ground out in the open: nothing standing near it, and the
+/// ground clear for a short walk in every direction it is put to.
 fn an_empty_spot(world: &World) -> bota_proto::Vec2 {
-    for step in 0..40 {
-        let at = bota_proto::Vec2::from_ints(8000 + step * 100, 10600);
-        let clear = world.entities.iter().all(|entity| {
-            !world
-                .transform
-                .get(entity)
-                .is_some_and(|t| t.pos.within(at, bota_proto::Fixed::from_int(800)))
-        });
-        if clear && world.grid.walkable(at) {
-            return at;
+    for row in 0..16 {
+        for step in 0..60 {
+            let at = bota_proto::Vec2::from_ints(5600 + step * 100, 6000 + row * 200);
+            let clear = world.entities.iter().all(|entity| {
+                !world
+                    .transform
+                    .get(entity)
+                    .is_some_and(|t| t.pos.within(at, bota_proto::Fixed::from_int(800)))
+            });
+            let open = (-2..=14).all(|dx: i32| {
+                (-2..=2).all(|dy: i32| {
+                    world
+                        .grid
+                        .walkable(at + bota_proto::Vec2::from_ints(dx * 50, dy * 100))
+                })
+            });
+            if clear && open {
+                return at;
+            }
         }
     }
     panic!("the map has room somewhere")
@@ -7958,4 +7986,296 @@ fn hand_souls(world: &mut World, hero: Entity, many: u32) {
     let mut kept = world.stacks.get(hero).copied().unwrap_or_default();
     kept.set(crate::game::StackKind::Souls, many);
     world.stacks.insert(hero, kept);
+}
+
+/// The bug this guards against: a waypoint that routes a wave around its own
+/// tower was cleared straight through the tower, and one Radiant mid creep of
+/// every wave spent fifteen seconds wrestling its own tier three.
+#[test]
+fn no_creep_of_the_first_waves_is_left_wrestling_its_own_base() {
+    let cfg = crate::game::MatchConfig {
+        match_id: 7,
+        master_key: [0; 32],
+        picks: vec![],
+        map: bota_proto::MapId(0),
+        tick_rate: 30,
+        mode: bota_proto::TickMode::Realtime,
+        ack_timeout_ticks: 0,
+    };
+    let mut world = World::for_match(&cfg, cfg.rng());
+    for _ in 0..=rules::FIRST_WAVE_TICK {
+        world.advance(&[]);
+    }
+    let first: Vec<(Entity, bota_proto::Vec2)> = world
+        .entities
+        .iter()
+        .filter(|e| world.march.get(*e).is_some())
+        .map(|e| {
+            let team = world.team.get(e).copied().expect("has a side");
+            let lane = world.lane.get(e).copied().expect("has a lane");
+            let spawn = crate::game::creep_spawn_pos(world.map, team, lane.0);
+            (e, spawn)
+        })
+        .collect();
+    assert_eq!(
+        first.len(),
+        24,
+        "four creeps a lane, three lanes, two sides"
+    );
+    for _ in 0..(30 * rules::TICKS_PER_SECOND) {
+        world.advance(&[]);
+    }
+    // Half a minute in, everything still standing has long left its base;
+    // what died, died out on the lane.
+    for (creep, spawn) in &first {
+        if !world.entities.iter().any(|e| e == *creep) {
+            continue;
+        }
+        let at = world.transform.get(*creep).expect("standing").pos;
+        assert!(
+            !at.within(*spawn, rules::units(1500)),
+            "a creep is still beside its spawner at ({},{})",
+            at.x.to_int(),
+            at.y.to_int()
+        );
+    }
+    // And the mid waves in particular met in the middle of no-man's land,
+    // four against four.
+    let meet = bota_proto::Vec2::from_ints(8706, 8838);
+    for (creep, _) in &first {
+        if !world.entities.iter().any(|e| e == *creep)
+            || world.lane.get(*creep).copied() != Some(crate::game::Lane(rules::LANE_MID))
+        {
+            continue;
+        }
+        let at = world.transform.get(*creep).expect("standing").pos;
+        assert!(
+            at.within(meet, rules::units(900)),
+            "a mid creep never reached the river: ({},{})",
+            at.x.to_int(),
+            at.y.to_int()
+        );
+    }
+}
+
+/// The standing structure at a spot, however it is guarded.
+fn structure_at(world: &World, pos: bota_proto::Vec2) -> Entity {
+    world
+        .entities
+        .iter()
+        .find(|e| {
+            world.transform.get(*e).is_some_and(|t| t.pos == pos)
+                && world
+                    .kind
+                    .get(*e)
+                    .copied()
+                    .is_some_and(crate::game::is_structure)
+        })
+        .expect("a structure stands there")
+}
+
+/// Whether the structure at a spot may be struck.
+fn open_at(world: &World, pos: bota_proto::Vec2) -> bool {
+    let it = structure_at(world, pos);
+    !world.stats.get(it).expect("settled").invulnerable
+}
+
+/// Takes a structure at a spot down the way a fight would.
+fn fell_at(world: &mut World, pos: bota_proto::Vec2) {
+    let it = structure_at(world, pos);
+    let mut events = Vec::new();
+    world.bury(vec![(it, None)], &mut events);
+    world.step();
+}
+
+#[test]
+fn a_lane_opens_tower_by_tower_into_its_barracks() {
+    let mut world = World::on_map(crate::game::map_of(bota_proto::MapId(0)));
+    let t1 = rules::RADIANT_TOWERS[0].2;
+    let t2 = rules::RADIANT_TOWERS[1].2;
+    let t3 = rules::RADIANT_TOWERS[2].2;
+    let melee_rax = rules::RADIANT_BARRACKS[0].2;
+    let ranged_rax = rules::RADIANT_BARRACKS[1].2;
+    assert!(open_at(&world, t1), "the first tower is open from the horn");
+    assert!(!open_at(&world, t2), "the second waits on the first");
+    assert!(!open_at(&world, t3), "the third waits on the second");
+    assert!(
+        !open_at(&world, melee_rax),
+        "the barracks wait on the third"
+    );
+    fell_at(&mut world, t1);
+    assert!(open_at(&world, t2), "the first fallen opens the second");
+    assert!(!open_at(&world, t3), "and only the second");
+    fell_at(&mut world, t2);
+    assert!(open_at(&world, t3));
+    assert!(!open_at(&world, melee_rax), "the barracks still wait");
+    fell_at(&mut world, t3);
+    assert!(open_at(&world, melee_rax), "the third fallen opens both");
+    assert!(open_at(&world, ranged_rax));
+}
+
+#[test]
+fn the_ancient_waits_for_both_tier_fours() {
+    let mut world = World::on_map(crate::game::map_of(bota_proto::MapId(0)));
+    let t4_near = rules::RADIANT_TOWERS[9].2;
+    let t4_far = rules::RADIANT_TOWERS[10].2;
+    let ancient = rules::RADIANT_ANCIENT_POS;
+    assert!(
+        !open_at(&world, t4_near),
+        "the tier fours wait on a broken lane"
+    );
+    fell_at(&mut world, rules::RADIANT_TOWERS[3].2);
+    fell_at(&mut world, rules::RADIANT_TOWERS[4].2);
+    fell_at(&mut world, rules::RADIANT_TOWERS[5].2);
+    assert!(open_at(&world, t4_near), "any tier three fallen opens them");
+    assert!(open_at(&world, t4_far));
+    assert!(!open_at(&world, ancient), "the Ancient stands guarded");
+    fell_at(&mut world, t4_near);
+    assert!(
+        !open_at(&world, ancient),
+        "one tier four fallen is not enough"
+    );
+    fell_at(&mut world, t4_far);
+    assert!(open_at(&world, ancient), "both fallen open the Ancient");
+}
+
+/// Steps the world to the next wave spawn and hands back that wave's mid
+/// creeps of one side.
+fn next_mid_wave(world: &mut World, team: bota_proto::Team) -> Vec<Entity> {
+    let before: Vec<Entity> = world.entities.iter().collect();
+    loop {
+        world.advance(&[]);
+        let fresh: Vec<Entity> = world
+            .entities
+            .iter()
+            .filter(|e| {
+                !before.contains(e)
+                    && world.march.get(*e).is_some()
+                    && world.lane.get(*e).copied() == Some(crate::game::Lane(rules::LANE_MID))
+                    && world.team.get(*e).copied() == Some(team)
+            })
+            .collect();
+        if !fresh.is_empty() {
+            return fresh;
+        }
+    }
+}
+
+#[test]
+fn a_fallen_barracks_turns_the_waves_against_it_super_and_all_of_them_mega() {
+    let cfg = crate::game::MatchConfig {
+        match_id: 9,
+        master_key: [0; 32],
+        picks: vec![],
+        map: bota_proto::MapId(0),
+        tick_rate: 30,
+        mode: bota_proto::TickMode::Realtime,
+        ack_timeout_ticks: 0,
+    };
+    let mut world = World::for_match(&cfg, cfg.rng());
+    // Whole barracks: plain waves.
+    let plain = next_mid_wave(&mut world, bota_proto::Team::Dire);
+    assert!(
+        plain
+            .iter()
+            .all(|e| world.stats.get(*e).expect("settled").max_hp
+                <= Fixed::from_int(rules::MELEE_CREEP_HP)),
+        "no barracks down, nothing spawns super"
+    );
+    // The Radiant mid melee barracks falls: Dire mid melee go super, the
+    // ranged stay plain, and Radiant's own creeps are untouched.
+    fell_at(&mut world, rules::RADIANT_BARRACKS[0].2);
+    let dire = next_mid_wave(&mut world, bota_proto::Team::Dire);
+    let hp_of = |world: &World, e: Entity| world.stats.get(e).expect("settled").max_hp;
+    assert!(
+        dire.iter().any(
+            |e| hp_of(&world, *e) >= Fixed::from_int(rules::SUPER_MELEE_HP)
+                && world.kind.get(*e) == Some(&bota_proto::UnitKind::CreepMelee)
+        ),
+        "the melee spawn super"
+    );
+    assert!(
+        dire.iter()
+            .filter(|e| world.kind.get(**e) == Some(&bota_proto::UnitKind::CreepRanged))
+            .all(|e| hp_of(&world, *e) < Fixed::from_int(rules::SUPER_RANGED_HP)),
+        "the ranged do not"
+    );
+    let radiant = next_mid_wave(&mut world, bota_proto::Team::Radiant);
+    assert!(
+        radiant
+            .iter()
+            .all(|e| hp_of(&world, *e) <= Fixed::from_int(rules::MELEE_CREEP_HP)),
+        "losing a barracks strengthens nobody's own creeps"
+    );
+    // Every Radiant barracks falls: Dire's waves go mega everywhere.
+    for (_, _, at) in rules::RADIANT_BARRACKS.iter().skip(1) {
+        fell_at(&mut world, *at);
+    }
+    let mega = next_mid_wave(&mut world, bota_proto::Team::Dire);
+    let mega_melee = mega
+        .iter()
+        .find(|e| world.kind.get(**e) == Some(&bota_proto::UnitKind::CreepMelee))
+        .expect("a melee creep spawned");
+    assert_eq!(
+        world
+            .stats
+            .get(*mega_melee)
+            .expect("settled")
+            .attack_interval,
+        rules::MEGA_MELEE_ATTACK_INTERVAL,
+        "a mega melee swings faster than a super one"
+    );
+}
+
+#[test]
+fn the_demo_waves_march_out_and_meet_between_the_towers() {
+    let cfg = crate::game::MatchConfig {
+        match_id: 11,
+        master_key: [0; 32],
+        picks: vec![],
+        map: bota_proto::MapId(1),
+        tick_rate: 30,
+        mode: bota_proto::TickMode::Realtime,
+        ack_timeout_ticks: 0,
+    };
+    let mut world = World::for_match(&cfg, cfg.rng());
+    for _ in 0..=rules::FIRST_WAVE_TICK {
+        world.advance(&[]);
+    }
+    let first: Vec<(Entity, bota_proto::Vec2)> = world
+        .entities
+        .iter()
+        .filter(|e| world.march.get(*e).is_some())
+        .map(|e| {
+            let team = world.team.get(e).copied().expect("has a side");
+            (e, crate::game::creep_spawn_pos(world.map, team, 0))
+        })
+        .collect();
+    assert_eq!(first.len(), 8, "one wave a side on the one lane");
+    for _ in 0..(30 * rules::TICKS_PER_SECOND) {
+        world.advance(&[]);
+    }
+    // Half a minute in the survivors are grinding in the middle of the
+    // lane, nobody is left wrestling its own base, and with no Ancient
+    // standing there is nothing to win by.
+    let meet = bota_proto::Vec2::from_ints(8850, 9020);
+    for (creep, spawn) in &first {
+        if !world.entities.iter().any(|e| e == *creep) {
+            continue;
+        }
+        let at = world.transform.get(*creep).expect("standing").pos;
+        assert!(
+            !at.within(*spawn, rules::units(600)),
+            "a creep is still beside its spawner at ({},{})",
+            at.x.to_int(),
+            at.y.to_int()
+        );
+        assert!(
+            at.within(meet, rules::units(900)),
+            "a creep never reached the meet: ({},{})",
+            at.x.to_int(),
+            at.y.to_int()
+        );
+    }
+    assert_eq!(world.victor(), None, "the demo map has nothing to win by");
 }

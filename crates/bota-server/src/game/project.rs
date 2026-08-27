@@ -171,6 +171,11 @@ impl World {
                         StatusFlags::INVISIBLE
                     } else {
                         0
+                    }
+                    | if stats.invulnerable {
+                        StatusFlags::INVULNERABLE
+                    } else {
+                        0
                     },
             },
             attributes: stats.attributes,

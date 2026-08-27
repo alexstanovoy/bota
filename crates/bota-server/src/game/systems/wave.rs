@@ -2,7 +2,9 @@
 
 use bota_proto::{Team, Vec2};
 
-use crate::game::{Lane, LaneAi, March, UnitDef, UnitOrder, Upgrades, World};
+use crate::game::{
+    CreepRank, Lane, LaneAi, March, StructureId, UnitDef, UnitOrder, Upgrades, World,
+};
 use crate::game::{
     Purpose, WavePlan, advance_waypoint, creep_spawn_pos, lane_routes, rules, spawn_offsets,
     team_index, wave_at, wave_plan,
@@ -26,7 +28,8 @@ impl World {
                     .map_or(Vec2::ZERO, |w| *w - at);
                 let offsets = spawn_offsets(&plan, forward);
                 let flag_slot = self.flag_slot(plan.melee);
-                for (index, def) in wave_ranks(&plan, flag_slot).into_iter().enumerate() {
+                let ranks = self.wave_creep_ranks(team, lane);
+                for (index, def) in wave_ranks(&plan, flag_slot, ranks).into_iter().enumerate() {
                     let pos = at + offsets.get(index).copied().unwrap_or(Vec2::ZERO);
                     let creep = self.spawn_unit(def, team, pos);
                     self.lane.insert(creep, Lane(lane));
@@ -64,6 +67,45 @@ impl World {
         self.rng.global(Purpose::Wave).below(melee)
     }
 
+    /// How strong a team's wave in a lane spawns, one rank per creep kind:
+    /// melee, ranged, siege.
+    ///
+    /// Losing a barracks strengthens the creeps marching against it: a
+    /// wave's melee go super once the enemy melee barracks of its lane is
+    /// down, its ranged likewise, its siege once the lane holds no barracks
+    /// at all — and everything goes mega once every enemy barracks has
+    /// fallen. A map with no barracks spawns plain waves for ever.
+    fn wave_creep_ranks(&self, team: Team, lane: u8) -> [CreepRank; 3] {
+        let their = match team {
+            Team::Radiant => Team::Dire,
+            Team::Dire => Team::Radiant,
+            Team::Neutral => return [CreepRank::Normal; 3],
+        };
+        let listed = self.map.barracks[team_index(their)];
+        if listed.is_empty() {
+            return [CreepRank::Normal; 3];
+        }
+        if listed
+            .iter()
+            .all(|&(lane, ranged, _)| self.all_down(their, StructureId::Barracks { lane, ranged }))
+        {
+            return [CreepRank::Mega; 3];
+        }
+        let down = |ranged: bool| self.all_down(their, StructureId::Barracks { lane, ranged });
+        let rank_of = |fallen: bool| {
+            if fallen {
+                CreepRank::Super
+            } else {
+                CreepRank::Normal
+            }
+        };
+        [
+            rank_of(down(false)),
+            rank_of(down(true)),
+            rank_of(down(false) && down(true)),
+        ]
+    }
+
     /// Sends every creep where it should be walking.
     ///
     /// This is the one place a creep's order is written. What it is set on
@@ -95,7 +137,8 @@ impl World {
                     if route.is_empty() {
                         return None;
                     }
-                    let step = advance_waypoint(route, usize::from(march.route_step), at);
+                    let step =
+                        advance_waypoint(&self.grid, route, usize::from(march.route_step), at);
                     march.route_step = step as u16;
                     self.march.insert(entity, march);
                     Some(route[step])
@@ -109,14 +152,30 @@ impl World {
 }
 
 /// The kinds a wave is made of, in the order they are placed.
-fn wave_ranks(plan: &WavePlan, flag_slot: u32) -> Vec<&'static UnitDef> {
+///
+/// `ranks` is how strong each kind spawns: melee, ranged, siege. The
+/// flagbearer stays its plain self whatever has fallen.
+fn wave_ranks(plan: &WavePlan, flag_slot: u32, ranks: [CreepRank; 3]) -> Vec<&'static UnitDef> {
+    let melee_def = match ranks[0] {
+        CreepRank::Normal => &crate::game::MELEE_CREEP,
+        CreepRank::Super => &crate::game::SUPER_MELEE_CREEP,
+        CreepRank::Mega => &crate::game::MEGA_MELEE_CREEP,
+    };
+    let ranged_def = match ranks[1] {
+        CreepRank::Normal => &crate::game::RANGED_CREEP,
+        CreepRank::Super | CreepRank::Mega => &crate::game::SUPER_RANGED_CREEP,
+    };
+    let siege_def = match ranks[2] {
+        CreepRank::Normal => &crate::game::SIEGE_CREEP,
+        CreepRank::Super | CreepRank::Mega => &crate::game::SUPER_SIEGE_CREEP,
+    };
     let mut out = Vec::new();
     let front = plan.melee + plan.siege;
     let siege_at = front / 2;
     let mut melee_seen = 0;
     for index in 0..front {
         if index >= siege_at && index < siege_at + plan.siege {
-            out.push(&crate::game::SIEGE_CREEP);
+            out.push(siege_def);
             continue;
         }
         let flagged = plan.flagbearer && melee_seen == flag_slot;
@@ -124,11 +183,11 @@ fn wave_ranks(plan: &WavePlan, flag_slot: u32) -> Vec<&'static UnitDef> {
         out.push(if flagged {
             &crate::game::FLAGBEARER_CREEP
         } else {
-            &crate::game::MELEE_CREEP
+            melee_def
         });
     }
     for _ in 0..plan.ranged {
-        out.push(&crate::game::RANGED_CREEP);
+        out.push(ranged_def);
     }
     out
 }

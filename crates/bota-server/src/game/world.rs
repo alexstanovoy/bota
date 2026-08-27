@@ -7,8 +7,8 @@ use bota_proto::{HeroId, SlotId, Team, UnitKind};
 use crate::game::{
     AbilityBook, AttackCx, Attacking, AuraCx, Auras, Bounty, CampHome, Def, Dismembering, Entity,
     EntityAllocator, Errand, Expiry, Forest, Handling, Health, Hit, Hook, Hull, Inventory, Landed,
-    Lane, LaneAi, Level, Loot, Mana, March, NeutralAi, Orders, PendingCast, Projectile, Rotting,
-    Route, Seat, SightCx, Stacks, Stats, StatsCx, Statuses, Table, Target, Teleport, Tier,
+    Lane, LaneAi, Level, Loot, Mana, March, NeutralAi, Orders, PendingCast, Projectile, Rax,
+    Rotting, Route, Seat, SightCx, Stacks, Stats, StatsCx, Statuses, Table, Target, Teleport, Tier,
     Transform, UnitOrder, Upgrades, Visibility, attacking_system, aura_system, derive_stats,
     hitting_system, missile_system, regenerate, visibility_system,
 };
@@ -117,6 +117,8 @@ pub struct World {
 
     /// Which lane an entity belongs to.
     pub lane: Table<Lane>,
+    /// Which of its lane's two barracks a building is.
+    pub rax: Table<Rax>,
     /// What killing an entity pays.
     pub bounty: Table<Bounty>,
     /// Which seat owns an entity.
@@ -193,6 +195,7 @@ impl World {
             neutral_ai: Table::new(),
             camp_home: Table::new(),
             lane: Table::new(),
+            rax: Table::new(),
             bounty: Table::new(),
             owner: Table::new(),
             hero: Table::new(),
@@ -300,7 +303,9 @@ impl World {
         world.sight_block = crate::game::build_sight_block(map);
         for (index, team) in [Team::Radiant, Team::Dire].into_iter().enumerate() {
             world.spawn_unit(&crate::game::FOUNTAIN, team, map.fountains[index]);
-            world.spawn_unit(&crate::game::ANCIENT, team, map.ancients[index]);
+            if let Some(at) = map.ancients[index] {
+                world.spawn_unit(&crate::game::ANCIENT, team, at);
+            }
             let towers = if index == 0 {
                 map.radiant_towers
             } else {
@@ -310,6 +315,16 @@ impl World {
                 let entity = world.spawn_unit(crate::game::tower_def(*tier), team, *pos);
                 world.lane.insert(entity, Lane(*lane));
                 world.tier.insert(entity, Tier(*tier));
+            }
+            for (lane, ranged, pos) in map.barracks[index] {
+                let def = if *ranged {
+                    &crate::game::BARRACKS_RANGED
+                } else {
+                    &crate::game::BARRACKS_MELEE
+                };
+                let entity = world.spawn_unit(def, team, *pos);
+                world.lane.insert(entity, Lane(*lane));
+                world.rax.insert(entity, Rax { ranged: *ranged });
             }
         }
         world.settle();
@@ -360,6 +375,7 @@ impl World {
             health: &mut self.health,
             mana: &mut self.mana,
         });
+        self.guard_structures();
         visibility_system(SightCx {
             entities: &self.entities,
             transform: &self.transform,
@@ -415,6 +431,7 @@ impl World {
             health: &mut self.health,
             mana: &mut self.mana,
         });
+        self.guard_structures();
         self.tick_targeting();
         self.tick_jungle();
         self.march_lanes();

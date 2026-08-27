@@ -6,16 +6,7 @@
 
 use bota_proto::{MapId, Vec2};
 
-use crate::game::{CampDef, CampKind, rules};
-
-/// Where a map's ground comes from.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Terrain {
-    /// The baked Dota terrain: cliffs, ramps, the river.
-    Dota,
-    /// Open field at one elevation, walkable everywhere.
-    Flat,
-}
+use crate::game::{CampDef, CampKind, Protection, rules};
 
 /// One playable map.
 #[derive(Clone, Copy, Debug)]
@@ -24,12 +15,18 @@ pub struct MapDef {
     pub id: MapId,
     /// Fountain centres, Radiant first.
     pub fountains: [Vec2; 2],
-    /// Ancient positions, Radiant first.
-    pub ancients: [Vec2; 2],
+    /// Ancient positions, Radiant first. Absent for a side that has none;
+    /// a match with no Ancients runs until its clock says otherwise.
+    pub ancients: [Option<Vec2>; 2],
     /// Radiant towers as lane, tier and position.
     pub radiant_towers: &'static [(u8, u8, Vec2)],
     /// Dire towers as lane, tier and position.
     pub dire_towers: &'static [(u8, u8, Vec2)],
+    /// Barracks as lane, whether ranged, and position; Radiant first. Empty
+    /// for a map that runs none.
+    pub barracks: [&'static [(u8, bool, Vec2)]; 2],
+    /// Which structures wait on which, and how.
+    pub protection: &'static [Protection],
     /// Where waves appear, by team then lane.
     pub creep_spawns: [[Vec2; 3]; 2],
     /// How many lanes the map runs, from lane zero up.
@@ -39,18 +36,24 @@ pub struct MapDef {
     pub lane_corners: &'static [&'static [Vec2]],
     /// The jungle camps.
     pub camps: &'static [CampDef],
-    /// Whether the map carries the Dota forest.
-    pub trees: bool,
-    /// Which ground it stands on.
-    pub terrain: Terrain,
+    /// The forest, tree by tree. Empty for a map with none.
+    pub trees: &'static [(i16, i16)],
+    /// Trees this close to a lane centerline are dropped, in world units.
+    /// Zero keeps every tree: a map whose corners follow the real roads has
+    /// nothing standing on them.
+    pub lane_clear: i32,
+    /// The map's own vision blocker walls. Empty for a map with none.
+    pub fow_blockers: &'static [&'static [(i16, i16)]],
+    /// The baked ground, run-length encoded: walkability, elevation tiers
+    /// and water, cell by cell.
+    pub terrain_rle: &'static [(u16, u8)],
 }
 
 /// The Dota lanes bend once each on the way round the map; mid runs straight.
 const DOTA_CORNERS: &[&[Vec2]] = &[&[], &[rules::TOP_CORNER], &[rules::BOT_CORNER]];
 
-/// The mini map runs one straight lane, the two sides mirrored about the
-/// point halfway between the tier ones.
-const MINI_CORNERS: &[&[Vec2]] = &[&[]];
+/// The demo lane bends through its own path corners, straight from the map.
+const DEMO_CORNERS: &[&[Vec2]] = &[&rules::DEMO_LANE_CORNERS];
 
 const fn camp(pos: Vec2, kind: CampKind, pullable: bool, flooded: bool) -> CampDef {
     CampDef {
@@ -61,22 +64,14 @@ const fn camp(pos: Vec2, kind: CampKind, pullable: bool, flooded: bool) -> CampD
     }
 }
 
-/// The mini map's two camps, one a side, both beside the lane and pullable.
-const MINI_CAMPS: [CampDef; 2] = [
-    camp(Vec2::from_ints(7200, 8600), CampKind::Small, true, false),
-    camp(Vec2::from_ints(11200, 9800), CampKind::Small, true, false),
-];
-
-const MINI_RADIANT_TOWERS: &[(u8, u8, Vec2)] = &[
-    (rules::LANE_MID, 1, Vec2::from_ints(9600, 9216)),
-    (rules::LANE_MID, 2, Vec2::from_ints(8400, 9216)),
-    (rules::LANE_MID, 3, Vec2::from_ints(7200, 9216)),
-];
-
-const MINI_DIRE_TOWERS: &[(u8, u8, Vec2)] = &[
-    (rules::LANE_MID, 1, Vec2::from_ints(10800, 9216)),
-    (rules::LANE_MID, 2, Vec2::from_ints(12000, 9216)),
-    (rules::LANE_MID, 3, Vec2::from_ints(13200, 9216)),
+/// The demo map's two camps, in the wooded pockets either side of the
+/// lane, both pullable.
+///
+/// The real demo map runs no jungle; these stand in so everything the
+/// jungle does can be read off the small map too.
+const DEMO_CAMPS: [CampDef; 2] = [
+    camp(Vec2::from_ints(8992, 7968), CampKind::Small, true, false),
+    camp(Vec2::from_ints(8864, 9952), CampKind::Small, true, false),
 ];
 
 /// Every map, indexed by [`MapId`].
@@ -85,32 +80,48 @@ pub const MAPS: [MapDef; 2] = [
     MapDef {
         id: MapId(0),
         fountains: [rules::RADIANT_FOUNTAIN_POS, rules::DIRE_FOUNTAIN_POS],
-        ancients: [rules::RADIANT_ANCIENT_POS, rules::DIRE_ANCIENT_POS],
+        ancients: [
+            Some(rules::RADIANT_ANCIENT_POS),
+            Some(rules::DIRE_ANCIENT_POS),
+        ],
         radiant_towers: &rules::RADIANT_TOWERS,
         dire_towers: &rules::DIRE_TOWERS,
+        barracks: [&rules::RADIANT_BARRACKS, &rules::DIRE_BARRACKS],
+        protection: &crate::game::DOTA_PROTECTION,
         creep_spawns: [rules::RADIANT_CREEP_SPAWNS, rules::DIRE_CREEP_SPAWNS],
         lanes: 3,
         lane_corners: DOTA_CORNERS,
         camps: &crate::game::CAMPS,
-        trees: true,
-        terrain: Terrain::Dota,
+        trees: crate::game::DOTA_TREES,
+        lane_clear: rules::TREE_LANE_CLEAR,
+        fow_blockers: crate::game::FOW_BLOCKERS,
+        terrain_rle: crate::game::TERRAIN_RLE,
     },
-    // A straight lane on open ground, for reading behaviour off quickly.
+    // The hero demo map: one short lane with a single tower a side, two
+    // fountains, no Ancients, and the real forest and ground. Everything
+    // comes from the game's own `hero_demo_main`, shifted like the big map.
     MapDef {
         id: MapId(1),
-        fountains: [Vec2::from_ints(5600, 9216), Vec2::from_ints(14800, 9216)],
-        ancients: [Vec2::from_ints(6400, 9216), Vec2::from_ints(14000, 9216)],
-        radiant_towers: MINI_RADIANT_TOWERS,
-        dire_towers: MINI_DIRE_TOWERS,
+        fountains: [
+            rules::DEMO_RADIANT_FOUNTAIN_POS,
+            rules::DEMO_DIRE_FOUNTAIN_POS,
+        ],
+        ancients: [None, None],
+        radiant_towers: &rules::DEMO_RADIANT_TOWERS,
+        dire_towers: &rules::DEMO_DIRE_TOWERS,
+        barracks: [&[], &[]],
+        protection: &[],
         creep_spawns: [
-            [Vec2::from_ints(6800, 9216); 3],
-            [Vec2::from_ints(13600, 9216); 3],
+            [rules::DEMO_RADIANT_CREEP_SPAWN; 3],
+            [rules::DEMO_DIRE_CREEP_SPAWN; 3],
         ],
         lanes: 1,
-        lane_corners: MINI_CORNERS,
-        camps: &MINI_CAMPS,
-        trees: false,
-        terrain: Terrain::Flat,
+        lane_corners: DEMO_CORNERS,
+        camps: &DEMO_CAMPS,
+        trees: crate::game::DEMO_TREES,
+        lane_clear: 0,
+        fow_blockers: crate::game::DEMO_FOW_BLOCKERS,
+        terrain_rle: crate::game::DEMO_TERRAIN_RLE,
     },
 ];
 

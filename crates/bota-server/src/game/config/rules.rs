@@ -97,6 +97,50 @@ pub const DIRE_CREEP_SPAWNS: [Vec2; 3] = [
     Vec2::from_ints(15488, 12864),
 ];
 
+/// Radiant barracks: lane, whether it feeds the ranged creeps, and position,
+/// straight from the map.
+pub const RADIANT_BARRACKS: [(u8, bool, Vec2); 6] = [
+    (LANE_MID, false, Vec2::from_ints(4544, 4664)),
+    (LANE_MID, true, Vec2::from_ints(4156, 5017)),
+    (LANE_TOP, false, Vec2::from_ints(2880, 5458)),
+    (LANE_TOP, true, Vec2::from_ints(2372, 5457)),
+    (LANE_BOT, false, Vec2::from_ints(4936, 2856)),
+    (LANE_BOT, true, Vec2::from_ints(4937, 3363)),
+];
+
+/// Dire barracks: lane, whether it feeds the ranged creeps, and position.
+pub const DIRE_BARRACKS: [(u8, bool, Vec2); 6] = [
+    (LANE_MID, false, Vec2::from_ints(13918, 13040)),
+    (LANE_MID, true, Vec2::from_ints(13552, 13399)),
+    (LANE_TOP, false, Vec2::from_ints(13114, 14712)),
+    (LANE_TOP, true, Vec2::from_ints(13110, 15241)),
+    (LANE_BOT, false, Vec2::from_ints(15808, 12608)),
+    (LANE_BOT, true, Vec2::from_ints(15280, 12592)),
+];
+
+// The hero demo map, `hero_demo_main`: the same frame as the big map, every
+// landmark the game's own, shifted by half the map.
+
+/// The demo map's Radiant fountain.
+pub const DEMO_RADIANT_FOUNTAIN_POS: Vec2 = Vec2::from_ints(6528, 7040);
+/// The demo map's Dire fountain.
+pub const DEMO_DIRE_FOUNTAIN_POS: Vec2 = Vec2::from_ints(11470, 10484);
+/// The demo map's one Radiant tower.
+pub const DEMO_RADIANT_TOWERS: [(u8, u8, Vec2); 1] = [(LANE_MID, 1, Vec2::from_ints(7744, 7872))];
+/// The demo map's one Dire tower.
+pub const DEMO_DIRE_TOWERS: [(u8, u8, Vec2); 1] = [(LANE_MID, 1, Vec2::from_ints(10240, 9536))];
+/// Where the demo map's Radiant wave appears.
+pub const DEMO_RADIANT_CREEP_SPAWN: Vec2 = Vec2::from_ints(7360, 7712);
+/// Where the demo map's Dire wave appears.
+pub const DEMO_DIRE_CREEP_SPAWN: Vec2 = Vec2::from_ints(10432, 9984);
+/// The corners the demo lane bends through between the two towers, the
+/// map's own path corners.
+pub const DEMO_LANE_CORNERS: [Vec2; 3] = [
+    Vec2::from_ints(8128, 8512),
+    Vec2::from_ints(8768, 9024),
+    Vec2::from_ints(9312, 9376),
+];
+
 // Trees and the jungle.
 
 /// Tree trunk collision radius. Also what a click has to land inside to be a
@@ -404,6 +448,35 @@ pub const CREEP_ATTACK_INTERVAL: u32 = 30;
 /// Creep fog light radius.
 pub const CREEP_VISION: i32 = 750;
 
+// Super and mega creeps: what a wave grows into once the enemy barracks that
+// held it back have fallen.
+
+/// Super melee creep health.
+pub const SUPER_MELEE_HP: i32 = 700;
+/// Super melee creep attack damage, the midpoint of 41 to 49.
+pub const SUPER_MELEE_ATTACK_DAMAGE: i32 = 45;
+/// Super melee creep armor.
+pub const SUPER_MELEE_ARMOR: i32 = 3;
+/// Super melee creep gold bounty, the midpoint of 20 to 26.
+pub const SUPER_MELEE_BOUNTY: i32 = 23;
+/// Super melee creep experience.
+pub const SUPER_MELEE_XP: i32 = 25;
+/// Super ranged creep health.
+pub const SUPER_RANGED_HP: i32 = 475;
+/// Super ranged creep attack damage, the midpoint of 46 to 51.
+pub const SUPER_RANGED_ATTACK_DAMAGE: i32 = 48;
+/// Super ranged creep armor.
+pub const SUPER_RANGED_ARMOR: i32 = 1;
+/// Super ranged creep gold bounty, the midpoint of 19 to 25.
+pub const SUPER_RANGED_BOUNTY: i32 = 22;
+/// Super ranged creep experience.
+pub const SUPER_RANGED_XP: i32 = 22;
+/// Super siege creep attack damage, the midpoint of 51 to 62.
+pub const SUPER_SIEGE_ATTACK_DAMAGE: i32 = 56;
+/// Ticks between mega melee creep attack starts: the same swing a tenth
+/// faster.
+pub const MEGA_MELEE_ATTACK_INTERVAL: u32 = 27;
+
 // Buildings.
 
 /// Tower health, indexed by tier minus one.
@@ -426,6 +499,25 @@ pub const TOWER_PROJECTILE_SPEED: i32 = 750;
 pub const TOWER_RADIUS: i32 = 40;
 /// Tower fog light radius.
 pub const TOWER_VISION: i32 = 1900;
+
+/// Melee barracks health.
+pub const RAX_MELEE_HP: i32 = 2200;
+/// Melee barracks armor.
+pub const RAX_MELEE_ARMOR: i32 = 15;
+/// Health per tick a melee barracks mends; five a second.
+pub const RAX_MELEE_HP_REGEN: Fixed = Fixed::from_ratio(5, TICKS_PER_SECOND as i32);
+/// Ranged barracks health.
+pub const RAX_RANGED_HP: i32 = 1300;
+/// Ranged barracks armor.
+pub const RAX_RANGED_ARMOR: i32 = 9;
+/// Gold paid to the killer of a melee barracks.
+pub const RAX_MELEE_BOUNTY: i32 = 225;
+/// Gold paid to the killer of a ranged barracks.
+pub const RAX_RANGED_BOUNTY: i32 = 150;
+/// Barracks collision radius.
+pub const RAX_RADIUS: i32 = 60;
+/// Barracks fog light radius.
+pub const RAX_VISION: i32 = 900;
 
 /// Ancient health.
 pub const ANCIENT_HP: i32 = 4500;

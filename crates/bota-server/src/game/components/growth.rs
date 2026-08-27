@@ -17,6 +17,13 @@ pub struct Tier(pub u8);
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Lane(pub u8);
 
+/// Which of a lane's two barracks a building is.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Rax {
+    /// Whether it is the one feeding the ranged creeps.
+    pub ranged: bool,
+}
+
 /// What killing an entity pays.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Bounty {

@@ -308,16 +308,40 @@ exploit any leak a human reviewer shrugs off:
 
 ## Game model v0.1
 
-- Map 16384×16384 — Dota's scale, so speeds, ranges and vision keep their Dota
+- Map 18432×18432 — Dota's scale, so speeds, ranges and vision keep their Dota
   absolute values. Symmetric along the diagonal. Three lanes: mid along the diagonal,
   top up the west edge and along the north edge, bottom its mirror; the diagonal
-  mirror that swaps the sides also swaps top and bottom. Passability is a 256×256 bit
+  mirror that swaps the sides also swaps top and bottom. Passability is a 288×288 bit
   grid.
+- A second map, `MapId(1)`, is the game's own hero demo map (`hero_demo_main`),
+  imported the same way: one short lane bending through its real path corners,
+  a single tier-one tower a side, two fountains, its own 187 trees, its own
+  ground — and no Ancients at all, so nothing ends a match there but the
+  clock. The slot used to hold an invented three-tower training lane; the real
+  demo map costs the same tables and is ground the bots' habits can carry to
+  the big map. Its terrain is baked exactly like the big map's: walkability
+  from the map's own gridnav, elevation tiers rasterised off its physics mesh
+  in 128-unit steps — river bed 0, ground 1, the high spots 2, the cliffs
+  above — the river as the water mask, and its one fog blocker wall sealing
+  the Roshan pit. It keeps two invented pullable camps in the wooded pockets
+  either side of the lane, because the jungle's behaviours are tested against
+  this map and the real one runs no jungle. Anything a map may lack is data
+  now: `ancients` are per-side options, a side with none anchoring its lane
+  at its wave spawner; the forest, the fog walls, the lane tree-clearing band
+  and the baked ground are per-map tables.
 - Teams Radiant / Dire, 1v1 (the architecture is sized for 5v5).
 - Buildings: three towers per lane per side — tier one by the river, tier three by
-  the base — plus a pair of tier fours by each Ancient. The Ancient is invulnerable
-  until its last tier four falls. A fountain that heals and burns. Barracks and the
-  rest come later.
+  the base — plus a pair of tier fours by each Ancient, two barracks per lane
+  behind its tier three (all at their real map positions), and a fountain that
+  heals and burns. What may be struck when is map data: `MapDef.protection` is a
+  list of rules, each guarding a structure with an and/or condition over the same
+  side's already-fallen structures, and the guard is worn as invulnerability,
+  recomputed after stats each tick. The Dota table opens each lane tower by tower
+  into its barracks, opens the tier fours on any fallen tier three, and opens the
+  Ancient only once both tier fours are down. A condition tree rather than a flat
+  prerequisite list because "any tier three" and "both tier fours" are one Or and
+  one all-matching name away from each other, and a flat list can say only one of
+  them. A structure no rule names is open from the horn.
 - A lane's centerline runs through every tower of the lane, so a wave marches from
   tower to tower and can never wander past one outside its own acquisition range.
 - The match opens with a 30 s pregame: the game clock counts up from -0:30 and the
@@ -378,7 +402,13 @@ exploit any leak a human reviewer shrugs off:
   killer's team nearby.
 - Creeps: 3 melee + 1 ranged every 900 ticks (30 s) on every lane, a siege creep
   every 5th wave. A wave marches its own lane's waypoints and is leashed to its own
-  lane.
+  lane. A lane whose enemy melee or ranged barracks has fallen spawns that kind
+  super, its siege once both are down, and every enemy barracks fallen makes the
+  whole side's waves mega, at the game's own numbers; the flagbearer stays plain.
+  A waypoint counts as reached from anywhere inside its radius, but only while
+  the grid line to the waypoint after it is clear: the radius spans a tower, and
+  clearing a corner waypoint through the tower it was routing around left one
+  Radiant mid creep of every wave wrestling its own tier three.
 - Hero: Sylla (ranged carry). 3 abilities + an ultimate, levels 1–10.
 - Economy: passive gold 1/sec, last hits, kill bounty with streaks.
 - Attributes are Dota's three: strength buys health and health regeneration,

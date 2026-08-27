@@ -636,9 +636,19 @@ fn draw_tree_pick(app: &App, view: &WorldView, to_screen: impl Fn(f32, f32) -> (
 fn draw_unit(app: &App, u: &UnitView, mine: bool, to_screen: impl Fn(f32, f32) -> (f32, f32)) {
     let (x, y) = to_screen(u.pos.x.to_f32(), u.pos.y.to_f32());
     let r = (u.radius.to_f32() * app.camera.zoom).max(4.0);
-    let color = team_color(u.team);
+    let mut color = team_color(u.team);
+    // What cannot be struck yet is drawn washed out.
+    if u.statuses.bits & bota_proto::StatusFlags::INVULNERABLE != 0 {
+        color = Color::new(
+            color.r * 0.55 + 0.25,
+            color.g * 0.55 + 0.25,
+            color.b * 0.55 + 0.25,
+            color.a,
+        );
+    }
     match u.kind {
         UnitKind::Tower => draw_rectangle(x - r, y - r, r * 2.0, r * 2.0, color),
+        UnitKind::Barracks => draw_poly(x, y, 4, r * 1.2, 0.0, color),
         UnitKind::Ancient => {
             draw_poly(x, y, 4, r * 1.3, 45.0, color);
         }
@@ -672,7 +682,7 @@ fn draw_unit(app: &App, u: &UnitView, mine: bool, to_screen: impl Fn(f32, f32) -
     }
     if !matches!(
         u.kind,
-        UnitKind::Tower | UnitKind::Ancient | UnitKind::Fountain
+        UnitKind::Tower | UnitKind::Ancient | UnitKind::Barracks | UnitKind::Fountain
     ) {
         let theta = f32::from(u.facing.brads) / 65536.0 * std::f32::consts::TAU;
         let (fx, fy) = (theta.cos(), -theta.sin());
@@ -1087,6 +1097,7 @@ fn draw_minimap(app: &App, view: &WorldView) {
         let color = team_color(u.team);
         match u.kind {
             UnitKind::Tower => draw_rectangle(x - 2.0, y - 2.0, 4.0, 4.0, color),
+            UnitKind::Barracks => draw_poly(x, y, 4, 2.5, 0.0, color),
             UnitKind::Ancient => draw_rectangle(x - 3.0, y - 3.0, 6.0, 6.0, color),
             UnitKind::Fountain => draw_circle_lines(x, y, 3.0, 1.0, color),
             UnitKind::Courier => draw_poly(x, y, 3, 2.0, 30.0, color),
@@ -1160,6 +1171,7 @@ fn kind_name(kind: UnitKind) -> &'static str {
         UnitKind::Courier => "Courier",
         UnitKind::Tower => "Tower",
         UnitKind::Ancient => "Ancient",
+        UnitKind::Barracks => "Barracks",
         UnitKind::Fountain => "Fountain",
         UnitKind::Ward => "Ward",
     }

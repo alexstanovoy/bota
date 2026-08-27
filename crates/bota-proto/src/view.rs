@@ -41,6 +41,8 @@ impl StatusFlags {
     pub const MAGIC_IMMUNE: u16 = 1 << 7;
     /// Dead and waiting to respawn.
     pub const DEAD: u16 = 1 << 8;
+    /// Cannot be attacked or damaged at all.
+    pub const INVULNERABLE: u16 = 1 << 9;
 }
 
 /// One ability slot of a visible hero.

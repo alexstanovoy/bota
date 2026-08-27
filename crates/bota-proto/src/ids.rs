@@ -80,7 +80,6 @@ pub struct EffectId(pub u16);
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct AbilitySlot(pub u8);
 
-
 /// One of a hero's fifteen item slots.
 ///
 /// Slots 0-5 are the inventory, where items work; 6-8 the backpack, where
@@ -114,6 +113,8 @@ pub enum UnitKind {
     Tower,
     /// The structure that ends the match when destroyed.
     Ancient,
+    /// A barracks; while it stands, the enemy lane creeps stay plain.
+    Barracks,
     /// The fountain, which heals its own team and burns intruders.
     Fountain,
     /// An observer ward placed by a hero.

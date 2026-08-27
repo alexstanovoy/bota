@@ -32,28 +32,26 @@ pub fn mirror(pos: Vec2) -> Vec2 {
     Vec2::from_ints(rules::MAP_SIZE, rules::MAP_SIZE) - pos
 }
 
-/// Every tree on the map: the real Dota forest, with this map's own lane
-/// corridors and bases kept clear so the straightened lanes stay walkable.
+/// Every tree on the map: its own forest, with the lane corridors the map
+/// asks for and both spawn pads kept clear.
 pub fn tree_positions(map: &crate::game::MapDef) -> Vec<Vec2> {
-    if !map.trees {
-        return Vec::new();
-    }
     let lane_clear = {
-        let r = i64::from(rules::units(rules::TREE_LANE_CLEAR).raw);
+        let r = i64::from(rules::units(map.lane_clear).raw);
         r * r
     };
     let base_clear = rules::units(rules::TREE_BASE_CLEAR);
-    crate::game::DOTA_TREES
+    map.trees
         .iter()
         .map(|&(x, y)| Vec2::from_ints(i32::from(x), i32::from(y)))
         .filter(|&pos| {
-            for lane in map.lanes() {
-                if lane_offset_squared(map, lane, pos) < lane_clear {
-                    return false;
+            if lane_clear > 0 {
+                for lane in map.lanes() {
+                    if lane_offset_squared(map, lane, pos) < lane_clear {
+                        return false;
+                    }
                 }
             }
-            !pos.within(map.fountains[0], base_clear)
-                && !pos.within(rules::DIRE_FOUNTAIN_POS, base_clear)
+            !pos.within(map.fountains[0], base_clear) && !pos.within(map.fountains[1], base_clear)
         })
         .collect()
 }
@@ -61,7 +59,9 @@ pub fn tree_positions(map: &crate::game::MapDef) -> Vec<Vec2> {
 /// The physical centerline of a lane, Radiant base first.
 ///
 /// The line runs through every tower of the lane, so a wave walks from tower
-/// to tower and cannot wander past one out of its own acquisition range.
+/// to tower and cannot wander past one out of its own acquisition range. A
+/// side with no Ancient anchors its end at its own wave spawner instead, so
+/// a winning wave still marches into the enemy base.
 pub fn lane_polyline(map: &crate::game::MapDef, lane: u8) -> Vec<Vec2> {
     let tower_of = |table: &[(u8, u8, Vec2)], tier: u8| {
         table
@@ -69,7 +69,9 @@ pub fn lane_polyline(map: &crate::game::MapDef, lane: u8) -> Vec<Vec2> {
             .find(|&&(tl, tt, _)| tl == lane && tt == tier)
             .map(|&(_, _, pos)| pos)
     };
-    let mut line = vec![map.ancients[0]];
+    let anchor =
+        |side: usize| map.ancients[side].unwrap_or(map.creep_spawns[side][usize::from(lane)]);
+    let mut line = vec![anchor(0)];
     for tier in [3u8, 2, 1] {
         if let Some(pos) = tower_of(map.radiant_towers, tier) {
             line.push(pos);
@@ -83,7 +85,7 @@ pub fn lane_polyline(map: &crate::game::MapDef, lane: u8) -> Vec<Vec2> {
             line.push(pos);
         }
     }
-    line.push(map.ancients[1]);
+    line.push(anchor(1));
     line
 }
 
@@ -117,11 +119,14 @@ pub fn build_grid(map: &crate::game::MapDef) -> PassGrid {
     for at in map.fountains {
         block(at, rules::units(rules::FOUNTAIN_RADIUS));
     }
-    for at in map.ancients {
+    for at in map.ancients.into_iter().flatten() {
         block(at, rules::units(rules::ANCIENT_RADIUS));
     }
     for &(_, _, at) in map.radiant_towers.iter().chain(map.dire_towers) {
         block(at, rules::units(rules::TOWER_RADIUS));
+    }
+    for &(_, _, at) in map.barracks[0].iter().chain(map.barracks[1]) {
+        block(at, rules::units(rules::RAX_RADIUS));
     }
     for at in tree_positions(map) {
         block(at, rules::units(rules::TREE_RADIUS));
@@ -204,12 +209,18 @@ pub fn team_index(team: Team) -> usize {
 ///
 /// A creep aims at its next waypoint and nothing else: it is never pulled
 /// sideways towards the centreline, and a waypoint counts as reached from
-/// anywhere inside [`rules::LANE_WAYPOINT_RADIUS`]. Several waypoints may
-/// fall inside that radius at once, and all of them are cleared together.
-pub fn advance_waypoint(route: &[Vec2], from: usize, at: Vec2) -> usize {
+/// anywhere inside [`rules::LANE_WAYPOINT_RADIUS`] — but only while the
+/// ground to the waypoint after it is clear. The radius spans a tower, and a
+/// waypoint that exists to route around one must not be cleared from its far
+/// side. Several waypoints may fall inside the radius at once, and all of
+/// them are cleared together.
+pub fn advance_waypoint(grid: &PassGrid, route: &[Vec2], from: usize, at: Vec2) -> usize {
     let radius = rules::units(rules::LANE_WAYPOINT_RADIUS);
     let mut step = from.min(route.len().saturating_sub(1));
-    while step + 1 < route.len() && at.within(route[step], radius) {
+    while step + 1 < route.len()
+        && at.within(route[step], radius)
+        && crate::game::grid_los(grid, at, route[step + 1])
+    {
         step += 1;
     }
     step
