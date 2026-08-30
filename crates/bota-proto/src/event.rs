@@ -57,6 +57,9 @@ pub enum EventKind {
         killer: Option<EntityId>,
         /// Whether the killer was on the same team, making this a deny.
         denied: bool,
+        /// Gold the killing side was paid for it. Nought for a deny, or when
+        /// nothing with a seat struck last.
+        gold: i32,
     },
     /// A hero finished a cast and the ability took effect.
     ///

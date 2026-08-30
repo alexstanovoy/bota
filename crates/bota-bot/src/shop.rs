@@ -106,6 +106,10 @@ pub const ITEMS_SOLD: usize = 42;
 /// Slots a hero carries on itself, the backpack counted in.
 pub const BAG_SLOTS: usize = 9;
 
+/// Slots of the bag where an item works: the inventory proper, before the
+/// backpack begins.
+pub const WORN_SLOTS: usize = 6;
+
 /// What each item costs, by its number.
 ///
 /// Every item the shop sells, so that what the seat owns can be added up
@@ -243,6 +247,14 @@ pub fn cost_of(item: u16) -> i32 {
 /// spent the moment an item is bought and where it sits afterwards is the
 /// courier's business.
 pub fn worth_of_goods(field: &Field) -> i32 {
+    let (worn, riding) = worth_worn_and_riding(field);
+    worn + riding
+}
+
+/// What the seat's goods cost, in two piles: what is worn — the working
+/// slots of the bag — and what only rides along in the backpack, the stash
+/// or the courier's load.
+pub fn worth_worn_and_riding(field: &Field) -> (i32, i32) {
     let worth = |slots: &[Option<bota_proto::ItemView>]| {
         slots
             .iter()
@@ -250,10 +262,13 @@ pub fn worth_of_goods(field: &Field) -> i32 {
             .map(|had| cost_of(had.id.0))
             .sum::<i32>()
     };
-    let bag = field.me.map_or(0, |me| worth(&me.items));
-    let stash = field.seat.stash.as_ref().map_or(0, |slots| worth(slots));
-    let carried = field.courier.map_or(0, |bird| worth(&bird.items));
-    bag + stash + carried
+    let bag = field.me.map_or(&[][..], |me| &me.items[..]);
+    let split = bag.len().min(WORN_SLOTS);
+    let worn = worth(&bag[..split]);
+    let riding = worth(&bag[split..])
+        + field.seat.stash.as_ref().map_or(0, |slots| worth(slots))
+        + field.courier.map_or(0, |bird| worth(&bird.items));
+    (worn, riding)
 }
 
 /// How many of an item the seat holds, counting the ones inside builds.

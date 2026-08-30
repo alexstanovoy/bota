@@ -189,6 +189,48 @@ pub fn a_tick_holding(items: &[u16], gold: i32) -> WorldView {
     view
 }
 
+/// The same, with the goods placed by hand: some worn in the working slots,
+/// some riding in the backpack, some waiting in the stash.
+pub fn a_tick_wearing(worn: &[u16], backpack: &[u16], stash: &[u16], gold: i32) -> WorldView {
+    let held = |item: &u16| {
+        Some(ItemView {
+            id: ItemId(*item),
+            charges: Some(1),
+            cooldown_left: 0,
+            mana_cost: 0,
+            range: 0,
+            aim: None,
+            mode: None,
+            for_sale: false,
+        })
+    };
+    let mut view = a_tick(Vec::new(), gold);
+    for body in &mut view.units {
+        if body.kind != UnitKind::Hero || body.owner != Some(SlotId(0)) {
+            continue;
+        }
+        for slot in &mut body.items {
+            *slot = None;
+        }
+        for (at, item) in worn.iter().enumerate().take(crate::WORN_SLOTS) {
+            body.items[at] = held(item);
+        }
+        for (at, item) in backpack.iter().enumerate() {
+            body.items[crate::WORN_SLOTS + at] = held(item);
+        }
+    }
+    for player in &mut view.players {
+        if player.slot == SlotId(0) {
+            let mut waiting = vec![None; 6];
+            for (at, item) in stash.iter().enumerate() {
+                waiting[at] = held(item);
+            }
+            player.stash = Some(waiting);
+        }
+    }
+    view
+}
+
 /// The same, with the hero standing where it is told to.
 pub fn a_tick_at(me: (i32, i32), mut units: Vec<UnitView>, gold: i32) -> WorldView {
     let me = hero(0, Team::Radiant, me, SlotId(0));

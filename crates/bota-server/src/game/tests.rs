@@ -1157,6 +1157,107 @@ fn bringing_down_your_own_is_a_deny_and_pays_the_other_side_nothing() {
 }
 
 #[test]
+fn a_hero_kill_pays_by_the_streak_and_a_death_costs_gold_by_the_level() {
+    let mut world = World::new();
+    let hunter = world.spawn_hero(
+        bota_proto::Team::Radiant,
+        bota_proto::Vec2::from_ints(5000, 5000),
+        bota_proto::SlotId(0),
+        bota_proto::HeroId(0),
+    );
+    let prey = world.spawn_hero(
+        bota_proto::Team::Dire,
+        bota_proto::Vec2::from_ints(5050, 5000),
+        bota_proto::SlotId(1),
+        bota_proto::HeroId(0),
+    );
+    for (slot, team) in [
+        (bota_proto::SlotId(0), bota_proto::Team::Radiant),
+        (bota_proto::SlotId(1), bota_proto::Team::Dire),
+    ] {
+        world.seats.push(crate::game::Seat::new(
+            slot,
+            team,
+            bota_proto::HeroId(0),
+            0,
+            rules::STASH_SLOTS,
+        ));
+    }
+    world.seats[0].unit = Some(hunter);
+    world.seats[1].unit = Some(prey);
+    world.seats[1].gold = 500;
+    world.seats[1].net_worth = 500;
+    world.seats[1].level = 4;
+    world.seats[1].streak = 3;
+    world.settle();
+    let mut events = Vec::new();
+    world.bury(vec![(prey, Some(hunter))], &mut events);
+
+    let head = rules::HERO_KILL_BOUNTY_BASE + 3 * rules::HERO_KILL_BOUNTY_PER_STREAK;
+    assert_eq!(
+        world.seats[0].gold, head,
+        "the head is priced by the streak it wore"
+    );
+    assert_eq!(world.seats[0].kills, 1);
+    assert_eq!(
+        world.seats[0].streak, 1,
+        "and the kill starts a streak of the killer's own"
+    );
+    assert_eq!(world.seats[0].last_hits, 0, "a hero is not a last hit");
+    assert_eq!(
+        world.seats[0].xp,
+        rules::HERO_KILL_XP_BASE + 4 * rules::HERO_KILL_XP_PER_LEVEL,
+        "experience pays by the fallen hero's level"
+    );
+    assert_eq!(
+        world.seats[1].gold,
+        500 - 4 * rules::DEATH_GOLD_LOSS_PER_LEVEL,
+        "dying costs gold by the level"
+    );
+    assert_eq!(
+        world.seats[1].streak, 0,
+        "and the streak ends with the body"
+    );
+    let told = events.iter().find_map(|event| match event.kind {
+        bota_proto::EventKind::Died { gold, .. } => Some(gold),
+        _ => None,
+    });
+    assert_eq!(told, Some(head), "the event says what the kill paid");
+}
+
+#[test]
+fn a_death_never_takes_more_gold_than_the_purse_holds() {
+    let mut world = World::new();
+    let prey = world.spawn_hero(
+        bota_proto::Team::Dire,
+        bota_proto::Vec2::from_ints(5000, 5000),
+        bota_proto::SlotId(0),
+        bota_proto::HeroId(0),
+    );
+    world.seats.push(crate::game::Seat::new(
+        bota_proto::SlotId(0),
+        bota_proto::Team::Dire,
+        bota_proto::HeroId(0),
+        0,
+        rules::STASH_SLOTS,
+    ));
+    world.seats[0].unit = Some(prey);
+    world.seats[0].gold = 50;
+    world.seats[0].net_worth = 50;
+    world.seats[0].level = 10;
+    world.settle();
+    let mut events = Vec::new();
+    world.bury(vec![(prey, None)], &mut events);
+    assert_eq!(world.seats[0].gold, 0, "the purse is emptied, not owed");
+    assert_eq!(world.seats[0].net_worth, 0);
+    let told = events.iter().find_map(|event| match event.kind {
+        bota_proto::EventKind::Died { gold, .. } => Some(gold),
+        _ => None,
+    });
+    assert_eq!(told, Some(0), "and nobody was paid for the fall");
+}
+
+#[test]
 fn a_fallen_hero_comes_back_at_its_fountain() {
     let map = crate::game::map_of(bota_proto::MapId(1));
     let mut world = World::on_map(map);
@@ -8278,4 +8379,230 @@ fn the_demo_waves_march_out_and_meet_between_the_towers() {
         );
     }
     assert_eq!(world.victor(), None, "the demo map has nothing to win by");
+}
+
+#[test]
+fn the_fountain_melts_whoever_steps_into_its_reach_and_spares_who_stays_out() {
+    let cfg = crate::game::MatchConfig {
+        match_id: 13,
+        master_key: [0; 32],
+        picks: vec![bota_proto::Pick {
+            slot: bota_proto::SlotId(0),
+            team: bota_proto::Team::Dire,
+            hero: bota_proto::HeroId(1),
+        }],
+        map: bota_proto::MapId(0),
+        tick_rate: 30,
+        mode: bota_proto::TickMode::Realtime,
+        ack_timeout_ticks: 0,
+    };
+    let mut world = World::for_match(&cfg, cfg.rng());
+    let hero = world.seats[0].unit.expect("stood up");
+    world.level.insert(hero, crate::game::Level(10));
+    world.settle();
+    world.fill_pools(hero);
+    let fountain = rules::RADIANT_FOUNTAIN_POS;
+    let hold = |world: &mut World, hero, at, ticks| {
+        for _ in 0..ticks {
+            world.advance(&[]);
+            if let Some(t) = world.transform.get_mut(hero) {
+                t.pos = at;
+            }
+        }
+    };
+    // Past its reach, nothing comes out.
+    let outside = fountain + bota_proto::Vec2::from_ints(1400, 0);
+    if let Some(t) = world.transform.get_mut(hero) {
+        t.pos = outside;
+    }
+    let full = world.health.get(hero).expect("standing").hp;
+    hold(&mut world, hero, outside, 45);
+    assert_eq!(
+        world.health.get(hero).expect("standing").hp,
+        full,
+        "out of reach the fountain leaves it be"
+    );
+    // Inside, a hero of the tenth level is torn apart within seconds.
+    let inside = fountain + bota_proto::Vec2::from_ints(1000, 0);
+    if let Some(t) = world.transform.get_mut(hero) {
+        t.pos = inside;
+    }
+    // The first shots are still in the air: the reading starts once the
+    // missiles have begun to land.
+    hold(&mut world, hero, inside, 30);
+    let before = world.health.get(hero).expect("standing").hp.to_int();
+    hold(&mut world, hero, inside, 30);
+    let after = world.health.get(hero).map_or(0, |h| h.hp.to_int());
+    assert!(
+        before - after > 1200,
+        "a second under the fountain costs over 1200 health, not {}",
+        before - after
+    );
+}
+
+/// The bug this guards against: the demo map's shore rocks were read as
+/// walkable ground, and the central water could be crossed anywhere rather
+/// than through its two openings.
+#[test]
+fn the_demo_lake_is_walled_by_its_shore_and_crossed_at_its_ford() {
+    let map = crate::game::map_of(bota_proto::MapId(1));
+    let ground = crate::game::Ground::of(map);
+    let cell = |x: i32, y: i32| {
+        (
+            (x / rules::GRID_CELL_SIZE) as usize,
+            (y / rules::GRID_CELL_SIZE) as usize,
+        )
+    };
+    // The lane's ford: shallow water, walked through.
+    let (fx, fy) = cell(8768, 9024);
+    assert!(ground.cell_walkable(fx, fy), "the ford is walked");
+    assert!(
+        ground.water(bota_proto::Vec2::from_ints(8768, 9024)),
+        "and it is water underfoot"
+    );
+    // The rocks ringing the lake bar the way outside the openings.
+    for (x, y) in [(7968, 8864), (8032, 8928)] {
+        let (cx, cy) = cell(x, y);
+        assert!(
+            !ground.cell_walkable(cx, cy),
+            "the shore at ({x},{y}) is not walked over"
+        );
+    }
+    // The fountain structures close their own ground too.
+    for at in map.fountains {
+        let (cx, cy) = cell(at.x.to_int(), at.y.to_int());
+        assert!(
+            !ground.cell_walkable(cx, cy),
+            "a fountain is stood beside, not inside"
+        );
+    }
+}
+
+/// The bug this guards against: the demo lane was drawn through the towers
+/// the way the big map's lanes are, and every wave hooked around its own
+/// tower instead of walking the road past it.
+#[test]
+fn the_demo_waves_walk_the_road_and_not_through_their_towers() {
+    let map = crate::game::map_of(bota_proto::MapId(1));
+    let towers = [
+        rules::DEMO_RADIANT_TOWERS[0].2,
+        rules::DEMO_DIRE_TOWERS[0].2,
+    ];
+    for team_at in 0..2 {
+        let route = &crate::game::lane_routes(map)[team_at][0];
+        assert!(!route.is_empty(), "the lane is walked");
+        for waypoint in route {
+            for tower in towers {
+                assert!(
+                    !waypoint.within(tower, rules::units(250)),
+                    "a waypoint at ({},{}) aims into the tower at ({},{})",
+                    waypoint.x.to_int(),
+                    waypoint.y.to_int(),
+                    tower.x.to_int(),
+                    tower.y.to_int()
+                );
+            }
+        }
+    }
+}
+
+/// The bug this guards against: on lanes whose spawner stands ahead of its
+/// own rearmost tower, the route began behind the wave, and every fresh
+/// wave walked back to its own tower before turning around.
+#[test]
+fn no_route_on_any_map_walks_a_wave_backwards() {
+    for map_id in [bota_proto::MapId(0), bota_proto::MapId(1)] {
+        let map = crate::game::map_of(map_id);
+        for (ti, team) in [bota_proto::Team::Radiant, bota_proto::Team::Dire]
+            .into_iter()
+            .enumerate()
+        {
+            for lane in map.lanes() {
+                let route = &crate::game::lane_routes(map)[ti][usize::from(lane)];
+                assert!(!route.is_empty(), "the lane is walked");
+                let mut at = crate::game::creep_spawn_pos(map, team, lane);
+                let mut last: Option<(i64, i64)> = None;
+                for (i, w) in route.iter().enumerate() {
+                    let d = (
+                        i64::from(w.x.raw) - i64::from(at.x.raw),
+                        i64::from(w.y.raw) - i64::from(at.y.raw),
+                    );
+                    if d == (0, 0) {
+                        continue;
+                    }
+                    if let Some(p) = last {
+                        assert!(
+                            p.0 * d.0 + p.1 * d.1 >= 0,
+                            "{team:?} lane {lane} on map {map_id:?} turns                              right around at waypoint {i} ({},{})",
+                            w.x.to_int(),
+                            w.y.to_int()
+                        );
+                    }
+                    last = Some(d);
+                    at = *w;
+                }
+            }
+        }
+    }
+}
+
+/// The bugs this guards against: a walker pressed into a knot of creeps and
+/// crawled along it at slide speed, and a marcher wiggled at a wall of
+/// bodies for ever, flipping sides every tick and never working round.
+#[test]
+fn walkers_and_marchers_both_work_round_a_wall_of_bodies() {
+    let wall = |world: &mut World, x: i32, y: i32| {
+        for i in -2..=2i32 {
+            world.spawn_unit(
+                &MELEE_CREEP,
+                bota_proto::Team::Radiant,
+                bota_proto::Vec2::from_ints(x, y + i * 40),
+            );
+        }
+    };
+    let arrives_by = |world: &mut World, mover: Entity, goal: bota_proto::Vec2, within: u32| {
+        for t in 0..within {
+            world.step();
+            let at = world.transform.get(mover).expect("standing").pos;
+            if at.within(goal, rules::units(50)) {
+                return Some(t + 1);
+            }
+        }
+        None
+    };
+    // A hero ordered through the knot gets round it briskly.
+    let mut world = World::new();
+    let hero = world.spawn_hero(
+        bota_proto::Team::Radiant,
+        bota_proto::Vec2::from_ints(5000, 5000),
+        bota_proto::SlotId(0),
+        bota_proto::HeroId(0),
+    );
+    wall(&mut world, 5400, 5000);
+    world.settle();
+    let goal = bota_proto::Vec2::from_ints(5900, 5000);
+    world.set_order(hero, crate::game::UnitOrder::Move { pos: goal });
+    let took = arrives_by(&mut world, hero, goal, 130);
+    assert!(took.is_some(), "the hero works round the wall");
+    // A marching creep held off any lane does the same.
+    let mut world = World::new();
+    let creep = world.spawn_unit(
+        &MELEE_CREEP,
+        bota_proto::Team::Radiant,
+        bota_proto::Vec2::from_ints(5000, 6000),
+    );
+    world.march.insert(
+        creep,
+        crate::game::March {
+            route_step: 0,
+            trace: None,
+            shove: 0,
+        },
+    );
+    wall(&mut world, 5400, 6000);
+    world.settle();
+    let goal = bota_proto::Vec2::from_ints(5900, 6000);
+    world.set_order(creep, crate::game::UnitOrder::AttackMove { pos: goal });
+    let took = arrives_by(&mut world, creep, goal, 130);
+    assert!(took.is_some(), "the creep works round the wall");
 }

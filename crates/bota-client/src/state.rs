@@ -689,7 +689,9 @@ impl App {
                     });
                 }
             }
-            EventKind::Died { unit, killer, .. } => {
+            EventKind::Died {
+                unit, killer, gold, ..
+            } => {
                 let Some((kind, team, owner)) = self.unit_identity(unit) else {
                     return;
                 };
@@ -710,6 +712,7 @@ impl App {
                             (kind, _) => format!("a {team:?} {kind:?}"),
                         });
                 let text = match by {
+                    Some(by) if gold > 0 => format!("{victim} was slain by {by} for {gold} gold"),
                     Some(by) => format!("{victim} was slain by {by}"),
                     None => format!("{victim} died"),
                 };

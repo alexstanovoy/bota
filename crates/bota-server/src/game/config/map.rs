@@ -34,6 +34,9 @@ pub struct MapDef {
     /// Corners a lane bends through between the two tier-one towers, by lane
     /// index. Empty for a lane that runs straight.
     pub lane_corners: &'static [&'static [Vec2]],
+    /// Whether the lane centerline is drawn through the lane's towers. A map
+    /// whose corners trace the real road keeps its towers beside it.
+    pub lane_through_towers: bool,
     /// The jungle camps.
     pub camps: &'static [CampDef],
     /// The forest, tree by tree. Empty for a map with none.
@@ -91,6 +94,7 @@ pub const MAPS: [MapDef; 2] = [
         creep_spawns: [rules::RADIANT_CREEP_SPAWNS, rules::DIRE_CREEP_SPAWNS],
         lanes: 3,
         lane_corners: DOTA_CORNERS,
+        lane_through_towers: true,
         camps: &crate::game::CAMPS,
         trees: crate::game::DOTA_TREES,
         lane_clear: rules::TREE_LANE_CLEAR,
@@ -117,6 +121,7 @@ pub const MAPS: [MapDef; 2] = [
         ],
         lanes: 1,
         lane_corners: DEMO_CORNERS,
+        lane_through_towers: false,
         camps: &DEMO_CAMPS,
         trees: crate::game::DEMO_TREES,
         lane_clear: 0,

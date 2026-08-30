@@ -67,7 +67,7 @@ pub struct Stage {
     /// How a generation is judged: mirror or swiss. Absent is mirror.
     #[serde(default)]
     pub selection: Option<String>,
-    /// Where the stage is seeded from.
+    /// Where the stage is seeded from. Stages of one seed still draw apart.
     #[serde(default)]
     pub seed: Option<u64>,
 }
@@ -107,14 +107,15 @@ impl Plan {
             .iter()
             .enumerate()
             .map(|(at, stage)| {
-                self.term_of(stage)
+                self.term_of(stage, at as u64)
                     .map_err(|wrong| format!("stage {}: {wrong}", at + 1))
             })
             .collect()
     }
 
-    /// One stage settled against the defaults.
-    fn term_of(&self, stage: &Stage) -> Result<Term, String> {
+    /// One stage settled against the defaults, `at` its place in the
+    /// sequence, counting from nought.
+    fn term_of(&self, stage: &Stage, at: u64) -> Result<Term, String> {
         let fall_back = &self.defaults;
         let named = stage
             .score
@@ -193,7 +194,15 @@ impl Plan {
         if selection == Selection::Swiss && stage.matches.is_some() {
             return Err("a swiss stage does not take matches; its rounds are fixed".to_string());
         }
-        let seed = stage.seed.or(fall_back.seed).unwrap_or(plain.seed);
+        // The stage's place is folded in, so stages of one written seed still
+        // draw apart: neither the matches judged on nor the children's noise
+        // repeat from one stage to the next.
+        let seed = stage
+            .seed
+            .or(fall_back.seed)
+            .unwrap_or(plain.seed)
+            .wrapping_mul(0x9e37_79b9_7f4a_7c15)
+            .wrapping_add(at.wrapping_mul(0x0100_0000_01b3));
 
         let standing = Yard::default();
         Ok(Term {

@@ -528,16 +528,21 @@ pub const ANCIENT_RADIUS: i32 = 72;
 /// Ancient fog light radius.
 pub const ANCIENT_VISION: i32 = 1200;
 
-/// Fountain attack damage.
-pub const FOUNTAIN_ATTACK_DAMAGE: i32 = 60;
+/// Fountain health. It is never lost: the fountain cannot be struck.
+pub const FOUNTAIN_HP: i32 = 500;
+/// Fountain attack damage, the midpoint of 290 to 310.
+pub const FOUNTAIN_ATTACK_DAMAGE: i32 = 300;
 /// Fountain attack range.
-pub const FOUNTAIN_ATTACK_RANGE: i32 = 550;
-/// Ticks between fountain attack starts.
-pub const FOUNTAIN_ATTACK_INTERVAL: u32 = 6;
-/// Ticks from fountain attack start to the hit.
-pub const FOUNTAIN_ATTACK_POINT: u32 = 2;
-/// Fountain collision radius.
-pub const FOUNTAIN_RADIUS: i32 = 60;
+pub const FOUNTAIN_ATTACK_RANGE: i32 = 1200;
+/// Ticks between fountain attack starts; 0.15 s, rounded up to the tick.
+pub const FOUNTAIN_ATTACK_INTERVAL: u32 = 5;
+/// Ticks from fountain attack start to the shot; the shortest wait a tick
+/// clock has.
+pub const FOUNTAIN_ATTACK_POINT: u32 = 1;
+/// Fountain attack projectile speed, world units per second.
+pub const FOUNTAIN_PROJECTILE_SPEED: i32 = 1400;
+/// Fountain collision radius, the Dota tower hull.
+pub const FOUNTAIN_RADIUS: i32 = 144;
 /// Fountain fog light radius.
 pub const FOUNTAIN_VISION: i32 = 1800;
 /// Health restored per tick to allies inside the fountain area.
@@ -545,7 +550,7 @@ pub const FOUNTAIN_HEAL_HP_PER_TICK: i32 = 25;
 /// Mana restored per tick to allies inside the fountain area.
 pub const FOUNTAIN_HEAL_MANA_PER_TICK: i32 = 15;
 /// Radius of the fountain heal area.
-pub const FOUNTAIN_HEAL_RADIUS: i32 = 1000;
+pub const FOUNTAIN_HEAL_RADIUS: i32 = 1200;
 
 // Combat.
 
@@ -894,6 +899,8 @@ pub const ARMOR_SCALE: i32 = 6;
 pub const STARTING_GOLD: i32 = 600;
 /// One gold arrives every this many ticks.
 pub const PASSIVE_GOLD_PERIOD_TICKS: u32 = 30;
+/// Gold a dying hero loses, per level of it, never more than it holds.
+pub const DEATH_GOLD_LOSS_PER_LEVEL: i32 = 30;
 /// Gold for killing a hero, before the streak bonus.
 pub const HERO_KILL_BOUNTY_BASE: i32 = 200;
 /// Extra gold per kill in the victim's streak.

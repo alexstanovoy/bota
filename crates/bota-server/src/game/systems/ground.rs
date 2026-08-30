@@ -80,8 +80,10 @@ impl World {
     ///
     /// The side is settled on first touch and kept while the way ahead is
     /// still shut. Within that side the aim swings an eighth of a turn off the
-    /// line, then a quarter, then three eighths, and the last resort is
-    /// straight back.
+    /// line, then a quarter, then three eighths; only with the whole side
+    /// exhausted is the other side tried, and the last resort is straight
+    /// back. A side is worked all the way through before the other is
+    /// touched: alternating between them wiggles at a wall for ever.
     pub fn march_aim(
         &self,
         mover: Entity,
@@ -107,8 +109,8 @@ impl World {
         ) * 2;
         let dx = i64::from(waypoint.x.raw) - i64::from(from.x.raw);
         let dy = i64::from(waypoint.y.raw) - i64::from(from.y.raw);
-        for turn in [Turn::Eighth, Turn::Quarter, Turn::ThreeEighths] {
-            for side in [first, other_side(first)] {
+        for side in [first, other_side(first)] {
+            for turn in [Turn::Eighth, Turn::Quarter, Turn::ThreeEighths] {
                 let (tx, ty) = turn.apply(dx, dy, sign(side));
                 let aim = aim_at(from, tx, ty, reach);
                 let ahead = clamp_to_map(move_towards(from, aim, step));

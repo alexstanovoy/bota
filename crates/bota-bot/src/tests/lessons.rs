@@ -72,6 +72,7 @@ fn tower_falls(view: &bota_proto::WorldView) -> bota_proto::EventKind {
         unit: crate::tests::id(80),
         killer: field_of(view, Role::Mid).me.map(|me| me.id),
         denied: false,
+        gold: 0,
     }
 }
 
@@ -671,7 +672,7 @@ fn growing_rich_counts_the_purse_and_the_goods_and_falls_as_well_as_rises() {
 }
 
 #[test]
-fn growing_strong_pays_a_gold_half_on_earning_it_and_half_on_spending_it() {
+fn growing_strong_pays_for_buying_and_again_for_wearing() {
     let mut carried = Carried::default();
     let purse = crate::tests::a_tick_holding(&[], 600);
     assert_eq!(
@@ -680,25 +681,32 @@ fn growing_strong_pays_a_gold_half_on_earning_it_and_half_on_spending_it() {
         "the first tick has nothing to compare against"
     );
 
-    let spent = crate::tests::a_tick_holding(&[crate::BOOTS], 100);
+    let bought = crate::tests::a_tick_wearing(&[], &[], &[crate::BOOTS], 100);
     assert_eq!(
-        paid_on(&spent, Lesson::GrowStrong, &[], (0, 0, 0), &mut carried),
+        paid_on(&bought, Lesson::GrowStrong, &[], (0, 0, 0), &mut carried),
         250.0,
-        "boots pay the half the gold was not paid when it was earned"
+        "boots bought into the stash pay half their price over the gold"
     );
 
-    let richer = crate::tests::a_tick_holding(&[crate::BOOTS], 400);
+    let worn = crate::tests::a_tick_wearing(&[crate::BOOTS], &[], &[], 100);
+    assert_eq!(
+        paid_on(&worn, Lesson::GrowStrong, &[], (0, 0, 0), &mut carried),
+        250.0,
+        "and the same boots pay the other half when they are worn"
+    );
+
+    let richer = crate::tests::a_tick_wearing(&[crate::BOOTS], &[], &[], 400);
     assert_eq!(
         paid_on(&richer, Lesson::GrowStrong, &[], (0, 0, 0), &mut carried),
-        150.0,
-        "three hundred earned and not yet spent is worth half of it"
+        300.0,
+        "three hundred earned is three hundred, at its face"
     );
 
     let poorer = crate::tests::a_tick_holding(&[], 400);
     assert_eq!(
         paid_on(&poorer, Lesson::GrowStrong, &[], (0, 0, 0), &mut carried),
-        -500.0,
-        "losing the boots costs the whole of what they were worth"
+        -1000.0,
+        "losing worn boots costs twice what they cost"
     );
 }
 
@@ -708,6 +716,7 @@ fn hoarding_is_worth_half_of_wearing_and_growing_rich_cannot_tell_them_apart() {
     // worth off the same five hundred; one of them is wearing it.
     let start = crate::tests::a_tick_holding(&[], 100);
     let hoarded = crate::tests::a_tick_holding(&[], 600);
+    let bagged = crate::tests::a_tick_wearing(&[], &[crate::BOOTS], &[], 100);
     let worn = crate::tests::a_tick_holding(&[crate::BOOTS], 100);
     let over = |lesson: Lesson, ended: &bota_proto::WorldView| {
         let mut carried = Carried::default();
@@ -719,10 +728,15 @@ fn hoarding_is_worth_half_of_wearing_and_growing_rich_cannot_tell_them_apart() {
         over(Lesson::GrowRich, &worn),
         "growing rich is paid the same either way"
     );
-    assert_eq!(over(Lesson::GrowStrong, &hoarded), 250.0);
+    assert_eq!(over(Lesson::GrowStrong, &hoarded), 500.0);
+    assert_eq!(
+        over(Lesson::GrowStrong, &bagged),
+        750.0,
+        "the backpack sits halfway between the purse and the body"
+    );
     assert_eq!(
         over(Lesson::GrowStrong, &worn),
-        500.0,
-        "and growing strong pays the one that spent it twice as much"
+        1000.0,
+        "and growing strong pays the one that wears it twice as much"
     );
 }

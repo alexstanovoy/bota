@@ -374,6 +374,7 @@ pub fn all_events() -> Vec<EventKind> {
             unit: entity(100),
             killer: Some(entity(7)),
             denied: false,
+            gold: 43,
         },
         EventKind::AbilityCast {
             caster: entity(7),

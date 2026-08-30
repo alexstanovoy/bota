@@ -54,8 +54,7 @@ pub struct Carried {
     pub was_off: Option<f32>,
     /// What the seat's goods were worth last tick.
     pub was_owned: Option<i32>,
-    /// What the seat was worth last tick, counting the purse at less than its
-    /// face value.
+    /// What the seat was worth last tick, on the lesson's own counting.
     pub was_worth: Option<f32>,
     /// How many of their towers have come down.
     pub towers_down: u16,

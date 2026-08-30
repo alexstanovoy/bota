@@ -121,11 +121,16 @@ impl World {
             let waypoint = self.next_corner(entity, from, dest);
             let step = per_tick(stats.move_speed);
             let marching = self.march.get(entity).is_some();
+            // A walker works round the bodies in its way with the same held
+            // side a marcher does; only what flies is over them.
             let (aim, trace) = if marching {
                 let held = self.march.get(entity).and_then(|m| m.trace);
                 self.march_aim(entity, waypoint, step, held)
-            } else {
+            } else if stats.flies {
                 (waypoint, None)
+            } else {
+                let held = self.route.get(entity).and_then(|r| r.trace);
+                self.march_aim(entity, waypoint, step, held)
             };
             let wanted = facing_towards(from, aim);
             let facing = turn_towards(
@@ -149,6 +154,8 @@ impl World {
                 };
                 march.trace = trace;
                 self.march.insert(entity, march);
+            } else if let Some(route) = self.route.get_mut(entity) {
+                route.trace = trace;
             }
             if let Some(transform) = self.transform.get_mut(entity) {
                 transform.facing = facing;
@@ -211,6 +218,7 @@ impl World {
         let mut route = self.route.remove(entity).unwrap_or(Route {
             path: Vec::new(),
             goal: dest,
+            trace: None,
         });
         // A path is worth walking only to the spot it was found for. What is
         // kept here is that spot and not the last one asked for: chasing

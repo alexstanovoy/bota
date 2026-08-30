@@ -85,7 +85,7 @@ impl World {
             let denied = killer
                 .and_then(|k| self.team.get(k).copied())
                 .is_some_and(|theirs| Some(theirs) == side);
-            self.pay_for(entity, killer, events);
+            let paid = self.pay_for(entity, killer, events);
             let at = self
                 .transform
                 .get(entity)
@@ -95,6 +95,7 @@ impl World {
                     unit: wire_id(entity),
                     killer: killer.map(wire_id),
                     denied,
+                    gold: paid,
                 },
                 visible_to: self.who_may_know(at, side.unwrap_or(Team::Neutral)),
             });

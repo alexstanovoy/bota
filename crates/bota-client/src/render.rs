@@ -7,7 +7,6 @@ use crate::state::{App, Phase, Source};
 
 const BACKGROUND: Color = Color::new(0.07, 0.08, 0.10, 1.0);
 const GROUND: Color = Color::new(0.12, 0.14, 0.13, 1.0);
-const LANE: Color = Color::new(0.20, 0.22, 0.18, 1.0);
 const RADIANT: Color = Color::new(0.30, 0.80, 0.35, 1.0);
 const DIRE: Color = Color::new(0.90, 0.30, 0.25, 1.0);
 const HP_BACK: Color = Color::new(0.0, 0.0, 0.0, 0.7);
@@ -92,42 +91,6 @@ const TREE: Color = Color::new(0.16, 0.30, 0.16, 1.0);
 
 /// The world spans this many units per axis; the server's `MAP_SIZE`.
 const MAP_SIZE: f32 = 18432.0;
-
-/// The lane polylines the waves march, through every tower of each lane.
-const MAP_LANES: [&[(f32, f32)]; 3] = [
-    &[
-        (3296.0, 3864.0),
-        (4576.0, 5072.0),
-        (6026.0, 6290.0),
-        (7672.0, 7808.0),
-        (9740.0, 9868.0),
-        (11712.0, 11328.0),
-        (13488.0, 12975.0),
-        (14744.0, 14216.0),
-    ],
-    &[
-        (3296.0, 3864.0),
-        (2624.0, 5808.0),
-        (2715.0, 8344.0),
-        (2880.0, 11072.0),
-        (3050.0, 15150.0),
-        (3941.0, 15252.0),
-        (9088.0, 15232.0),
-        (12768.0, 14992.0),
-        (14744.0, 14216.0),
-    ],
-    &[
-        (3296.0, 3864.0),
-        (5264.0, 3104.0),
-        (8856.0, 2960.0),
-        (14076.0, 2837.0),
-        (15400.0, 2900.0),
-        (15485.0, 6976.0),
-        (15616.0, 9600.0),
-        (15552.0, 12248.0),
-        (14744.0, 14216.0),
-    ],
-];
 
 /// The terrain texture, baked from the MatchStart cells on first use.
 fn terrain_texture(app: &App) -> Option<Texture2D> {
@@ -336,7 +299,7 @@ fn draw_world(app: &App, view: &WorldView) {
     let (sw, sh) = (screen_width(), screen_height());
     let to_screen = |wx: f32, wy: f32| app.camera.world_to_screen(wx, wy, sw, sh);
 
-    // The ground and the lanes.
+    // The ground.
     let (x0, y0) = to_screen(0.0, MAP_SIZE);
     let (x1, y1) = to_screen(MAP_SIZE, 0.0);
     match terrain_texture(app) {
@@ -351,13 +314,6 @@ fn draw_world(app: &App, view: &WorldView) {
             },
         ),
         None => draw_rectangle(x0, y0, x1 - x0, y1 - y0, GROUND),
-    }
-    for lane in MAP_LANES {
-        for seg in lane.windows(2) {
-            let (ax, ay) = to_screen(seg[0].0, seg[0].1);
-            let (bx, by) = to_screen(seg[1].0, seg[1].1);
-            draw_line(ax, ay, bx, by, 24.0 * app.camera.zoom.max(0.2), LANE);
-        }
     }
     draw_rectangle_lines(x0, y0, x1 - x0, y1 - y0, 2.0, GRAY);
     for (index, &(wx, wy)) in app.trees.iter().enumerate() {
@@ -1055,7 +1011,7 @@ fn draw_stale(stale: u32, x: f32, y: f32, rate: u32) {
     );
 }
 
-/// The minimap: terrain, lanes, every visible unit, the camera frame.
+/// The minimap: terrain, every visible unit, the camera frame.
 fn draw_minimap(app: &App, view: &WorldView) {
     let r = crate::hud::minimap(screen_height());
     let at = |wx: f32, wy: f32| (r.x + wx / MAP_SIZE * r.w, r.y + (1.0 - wy / MAP_SIZE) * r.h);
@@ -1071,13 +1027,6 @@ fn draw_minimap(app: &App, view: &WorldView) {
             },
         ),
         None => draw_rectangle(r.x, r.y, r.w, r.h, Color::new(0.09, 0.11, 0.10, 0.95)),
-    }
-    for lane in MAP_LANES {
-        for seg in lane.windows(2) {
-            let (ax, ay) = at(seg[0].0, seg[0].1);
-            let (bx, by) = at(seg[1].0, seg[1].1);
-            draw_line(ax, ay, bx, by, 2.0, LANE);
-        }
     }
     for (index, &(wx, wy)) in app.trees.iter().enumerate() {
         if view.felled_trees.contains(&(index as u32)) {

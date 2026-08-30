@@ -350,8 +350,8 @@ stage {} of {} — {}, {} ticks a match, scored in {}",
                 format!(", {} matches lost", life.failed)
             };
             println!(
-                "  generation {}: best {:.1}, middling {:.1}{lost}",
-                life.number, life.best, life.middling
+                "  generation {}: best {:.1}, middling {:.1}, spread {:.4}{lost}",
+                life.number, life.best, life.middling, life.spread
             );
         })?;
         // Written now rather than at the end of the plan: a stage of the last

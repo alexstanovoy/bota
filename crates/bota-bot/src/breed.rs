@@ -19,6 +19,11 @@
 //! wave, so choosing by the marks themselves would mean a different pressure
 //! on every rung. Rank has no units.
 //!
+//! **The spread moves.** More than a fifth of the children beating their
+//! parents widens it, fewer narrows it: a search that keeps failing is
+//! reaching too far, and one that nearly always succeeds is not reaching far
+//! enough. What a plan writes is where it starts.
+//!
 //! **The crowd carries over.** A lesson ends with the same number of models it
 //! started with, and the next lesson starts from those. What is inherited is a
 //! crowd rather than a champion: a lesson's best is often narrow, and the one
@@ -315,8 +320,38 @@ pub struct Life {
     pub best: f32,
     /// The same, over the whole crowd.
     pub middling: f32,
+    /// How far this generation's children are moved off their parents.
+    pub spread: f32,
     /// Matches of it that never finished.
     pub failed: usize,
+}
+
+/// How much the spread widens or narrows on the fifth rule's verdict.
+pub const WIDENED_BY: f32 = 1.2;
+
+/// The spread after one generation's verdict, by the fifth rule.
+///
+/// A child sits at `keep` or beyond and its parent is the survivor at
+/// `(at - keep) % keep`, which is how [`next_crowd`] lays a crowd out. Over
+/// a fifth of the children beating their parents widens the spread by
+/// [`WIDENED_BY`], under a fifth narrows it by the same, exactly a fifth —
+/// or a crowd with no children — leaves it alone.
+pub fn adapted_spread(spread: f32, worths: &[f32], keep: usize) -> f32 {
+    let children = worths.len().saturating_sub(keep);
+    if children == 0 {
+        return spread;
+    }
+    let won = (keep..worths.len())
+        .filter(|at| worths[*at] > worths[(at - keep) % keep])
+        .count();
+    let fifth = children as f32 / 5.0;
+    if won as f32 > fifth {
+        spread * WIDENED_BY
+    } else if (won as f32) < fifth {
+        spread / WIDENED_BY
+    } else {
+        spread
+    }
 }
 
 /// What every model of a generation came to, and the order that puts them
@@ -353,15 +388,26 @@ pub fn teach_a_lesson(
     mut told: impl FnMut(Life),
 ) -> std::io::Result<Vec<Body>> {
     let mut crowd = crowd;
+    let mut spread = tribe.spread;
     for life in 1..=tribe.lives {
         let (worths, placed, failed) = judged(tribe, &crowd, rung, life)?;
+        // The first crowd arrived from outside, already reordered, so it
+        // carries no parentage to read the fifth rule off.
+        if life > 1 {
+            spread = adapted_spread(spread, &worths, tribe.keep.clamp(1, crowd.len()));
+        }
         told(Life {
             number: life,
             best: placed.first().map_or(0.0, |at| worths[*at]),
             middling: worths.iter().sum::<f32>() / worths.len().max(1) as f32,
+            spread,
             failed,
         });
-        crowd = next_crowd(tribe, &crowd, &placed, life);
+        let sway = Tribe {
+            spread,
+            ..tribe.clone()
+        };
+        crowd = next_crowd(&sway, &crowd, &placed, life);
     }
     // Placed once more on the last children, so that what is handed on is in
     // order and nothing untried is called the best.

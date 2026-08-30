@@ -423,7 +423,7 @@ const FOUNTAIN_AURAS: [Aura; 1] = [Aura {
 
 pub const FOUNTAIN: UnitDef = UnitDef {
     kind: UnitKind::Fountain,
-    max_hp: 1,
+    max_hp: rules::FOUNTAIN_HP,
     auras: &FOUNTAIN_AURAS,
     damage: rules::FOUNTAIN_ATTACK_DAMAGE,
     attack_range: rules::FOUNTAIN_ATTACK_RANGE,
@@ -431,6 +431,7 @@ pub const FOUNTAIN: UnitDef = UnitDef {
     attack_interval: rules::FOUNTAIN_ATTACK_INTERVAL,
     attack_point: rules::FOUNTAIN_ATTACK_POINT,
     attack_backswing: rules::FOUNTAIN_ATTACK_BACKSWING,
+    projectile_speed: Some(rules::FOUNTAIN_PROJECTILE_SPEED),
     vision: rules::FOUNTAIN_VISION,
     radius: rules::FOUNTAIN_RADIUS,
     invulnerable: true,

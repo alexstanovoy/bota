@@ -59,6 +59,9 @@ pub struct Seat {
     pub item_clocks: Vec<(ItemId, u32)>,
     /// Enemy heroes brought down.
     pub kills: u16,
+    /// Enemy heroes brought down since its own body last fell. Prices its
+    /// head: the streak bonus goes to whoever ends it.
+    pub streak: u16,
     /// Times its own body was brought down.
     pub deaths: u16,
     /// Kills it helped with.
@@ -89,6 +92,7 @@ impl Seat {
             courier_kept: None,
             item_clocks: Vec::new(),
             kills: 0,
+            streak: 0,
             deaths: 0,
             assists: 0,
             last_hits: 0,

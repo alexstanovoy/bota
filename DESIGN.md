@@ -328,7 +328,11 @@ exploit any leak a human reviewer shrugs off:
   this map and the real one runs no jungle. Anything a map may lack is data
   now: `ancients` are per-side options, a side with none anchoring its lane
   at its wave spawner; the forest, the fog walls, the lane tree-clearing band
-  and the baked ground are per-map tables.
+  and the baked ground are per-map tables. Whether the lane centerline is
+  drawn through the towers is a map switch too: the big map's straightened
+  lanes are defined by their towers, while the demo map's corners trace the
+  real road and its towers stand beside it — drawn through them, every wave
+  hooked around its own tower on the way out.
 - Teams Radiant / Dire, 1v1 (the architecture is sized for 5v5).
 - Buildings: three towers per lane per side — tier one by the river, tier three by
   the base — plus a pair of tier fours by each Ancient, two barracks per lane
@@ -410,7 +414,16 @@ exploit any leak a human reviewer shrugs off:
   clearing a corner waypoint through the tower it was routing around left one
   Radiant mid creep of every wave wrestling its own tier three.
 - Hero: Sylla (ranged carry). 3 abilities + an ultimate, levels 1–10.
-- Economy: passive gold 1/sec, last hits, kill bounty with streaks.
+- Economy: passive gold 1/sec, last hits, a hero kill bounty priced by the
+  victim's streak, and a death that costs the fallen thirty gold a level,
+  capped by the purse. The `Died` event carries the gold the killing side was
+  paid, so a seat reads off the wire what a fight moved. The kill constants
+  sat in `rules.rs` unwired for a while — heroes spawned with no bounty
+  component, so bringing one down paid nothing and dying cost nothing but the
+  respawn wait, which a breeding search reads as a licence to feed. The dying
+  hero's gold is not handed to the killer but vanishes, as in Dota: the
+  penalty prices the death, the bounty prices the kill, and a broke victim
+  still pays its killer in full.
 - Attributes are Dota's three: strength buys health and health regeneration,
   agility buys armor and attack speed, intelligence buys mana and mana
   regeneration, and whichever one a hero is primary in buys its attack damage.
@@ -591,8 +604,15 @@ Movement routes around structures with A* over the passability grid: structures 
 cells when the world is built and reopen them when they fall. A unit walks straight
 whenever the grid says the line is clear, and otherwise follows the corner waypoints
 of a route; each leg is walked only after turning onto it, so corners cost time.
-Standing units are hugged around at contact, walking units stop whoever runs into
-them — and every swing ends in a backswing the unit stands through, which is the
+Bodies in the way are worked round the same way by everything on the ground:
+the mover settles a side on first touch and holds it, swinging its aim an
+eighth of a turn off the line, then a quarter, then three eighths, and only
+with that side exhausted trying the other — a side worked through in full
+before the other is touched, because alternating between them wiggles at a
+wall of creeps for ever. Walkers used to slide along the nearest body
+instead, which pressed a hero into a crowd and crawled him along it; the
+slide survives inside the walker's step as the smoothing over a graze.
+Every swing ends in a backswing the unit stands through, which is the
 pause a creep makes over its kill before marching on. A hero's order cancels its
 backswing.
 
@@ -1546,9 +1566,11 @@ on its own. Only increases count; selling gold back is not spending it.
 
 ### Grow strong
 
-The eighth rung is net worth again, with the purse counted at half its face value. A gold
-is paid for twice over, half each time: half when it is earned, and the other half when it
-is turned into something. Gold that is never spent is never paid its second half.
+The eighth rung is worth on a sliding count: gold at its face value, goods at half as
+much again while they ride in the backpack, the stash or the courier's load, and at
+twice their cost once they sit in the working slots. Every step a gold takes towards
+being worn pays: one for earning it, half an item's price over the gold for buying it,
+and the other half when it is worn rather than carried.
 
 It exists because **`grow rich` cannot tell hoarding from wearing.** Net worth counts the
 purse at face value, so buying a five-hundred item moves five hundred from one side of the
@@ -1556,17 +1578,25 @@ sum to the other and the number does not move. Two hands that end a match on the
 worth score identically, whether one of them is wearing it and the other sitting on it —
 and one of those two is a hero and the other is a wallet. A test asserts exactly that gap:
 the same five hundred, `grow rich` paying both hands alike and `grow strong` paying the one
-that spent it twice as much.
+that wears it twice as much.
 
 That `grow rich` will *eventually* reward spending is true and useless. Items win fights,
 fights win farm, farm is net worth — but that is four causal steps, and a breeding search
 that gets one number per match will not find it. The half is a direct signal for what the
 long chain only implies.
 
-**A half rather than nothing.** Counting only the goods would be `stock up` without a
-ceiling: earning gold would pay nothing at all until it was spent, and dying with a full
-purse would cost nothing, which is not true of a hero. A half keeps both ends — income is
-worth something the moment it arrives, and a death still costs.
+**Carried is not worn.** The first cut counted the purse at half and every item at its
+face wherever it sat, which told buying from hoarding and nothing else: boots asleep in
+the stash scored the same as boots working on the hero, and the whole trip that turns
+gold into stats — buy, send, fetch, wear — was paid in full at its first step and never
+again. The count now steps one, one and a half, two, so buying and wearing each pay
+half the price, and the delivery in between is what the wearing half is paid for.
+
+**Gold at its face, not at a half.** The half-purse made a last hit worth half of what
+`grow rich` says it is and a death cost half of what it costs, and earning is not the
+habit being taught out — hoarding is, and hoarding is already what the multipliers
+above the purse pay against. At face value the two lessons agree about income and
+death, and differ exactly where this one exists to differ: what became of the gold.
 
 **It is the longest rung, not `grow rich`'s equal.** Two rungs of the same clock break
 three things the ladder promises at once: that each runs longer than the last, that exactly
@@ -1577,7 +1607,7 @@ across a whole ladder.
 
 **`grow rich` stays.** A card scores every lesson off one match, so keeping both means every
 report says what the same game was worth on each counting, and the gap between the two
-numbers is exactly how much gold the bot is sitting on.
+numbers is what the bot has worn plus half of what it bought and left riding.
 
 ### Breeding
 
@@ -1601,7 +1631,7 @@ while the two were compared, and went once breeding had held: `school.rs`, `step
 `roll.rs`, `adam.rs`, the value head, and the per-tick payment channel from the seat to
 the mind, which only the trainer ever listened to.
 
-Three decisions inside it.
+Five decisions inside it.
 
 **The trial seeds move with the generation.** A crowd judged on the same matches every
 generation is a crowd selected for those matches, and with two hundred thousand numbers to
@@ -1617,6 +1647,25 @@ of it.
 
 **Ties never swap.** Two models worth the same keep the order they had, and a match that
 came to nothing does not shuffle the crowd. Without that a run is not repeatable.
+
+**The spread adapts by the fifth rule.** The (1+λ) search over the first bot's numbers
+already learned this — it widened its nudge while more than a fifth of challengers won
+and narrowed it while fewer did — and the crowd dropped it for a fixed `mutation` per
+stage, which was a knob guessed per rung. It is back: a generation whose children beat
+their parents more than a fifth of the time widens the spread by a fifth of itself, one
+whose children lose narrows it by the same, and what the plan writes is only where it
+starts. Parentage is read straight off the crowd's layout — child `at` was bred off
+survivor `(at − keep) % keep` — so the first generation of a stage, whose crowd arrived
+already reordered, is the one generation the rule sits out.
+
+**A stage draws apart from every other.** The trial seeds and the children's noise are
+functions of the tribe's seed and the generation number alone — and every stage of
+`train.yaml` fell back to the same default seed, so stage after stage retried the very
+same few hundred mutation directions out of a 360-thousand-dimensional space, and was
+judged on the very matches the stage before it had been selected for, which is the
+overfit the moving trials exist to prevent. The stage's place in the sequence is now
+folded into the seed in `plan.rs`, so a plan still repeats to the number while no stage
+repeats another's draws.
 
 The cost is known and was measured before building: breeding gets one number per match
 where gradient gets one per decision, so it needs roughly a hundred times the matches. At

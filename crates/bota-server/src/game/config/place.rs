@@ -58,10 +58,12 @@ pub fn tree_positions(map: &crate::game::MapDef) -> Vec<Vec2> {
 
 /// The physical centerline of a lane, Radiant base first.
 ///
-/// The line runs through every tower of the lane, so a wave walks from tower
-/// to tower and cannot wander past one out of its own acquisition range. A
-/// side with no Ancient anchors its end at its own wave spawner instead, so
-/// a winning wave still marches into the enemy base.
+/// On a map that says so, the line runs through every tower of the lane, so
+/// a wave walks from tower to tower and cannot wander past one out of its
+/// own acquisition range; on one whose corners trace the real road, the
+/// towers stand beside the line rather than on it. A side with no Ancient
+/// anchors its end at its own wave spawner instead, so a winning wave still
+/// marches into the enemy base.
 pub fn lane_polyline(map: &crate::game::MapDef, lane: u8) -> Vec<Vec2> {
     let tower_of = |table: &[(u8, u8, Vec2)], tier: u8| {
         table
@@ -72,31 +74,47 @@ pub fn lane_polyline(map: &crate::game::MapDef, lane: u8) -> Vec<Vec2> {
     let anchor =
         |side: usize| map.ancients[side].unwrap_or(map.creep_spawns[side][usize::from(lane)]);
     let mut line = vec![anchor(0)];
-    for tier in [3u8, 2, 1] {
-        if let Some(pos) = tower_of(map.radiant_towers, tier) {
-            line.push(pos);
+    if map.lane_through_towers {
+        for tier in [3u8, 2, 1] {
+            if let Some(pos) = tower_of(map.radiant_towers, tier) {
+                line.push(pos);
+            }
         }
     }
     if let Some(corners) = map.lane_corners.get(usize::from(lane)) {
         line.extend_from_slice(corners);
     }
-    for tier in [1u8, 2, 3] {
-        if let Some(pos) = tower_of(map.dire_towers, tier) {
-            line.push(pos);
+    if map.lane_through_towers {
+        for tier in [1u8, 2, 3] {
+            if let Some(pos) = tower_of(map.dire_towers, tier) {
+                line.push(pos);
+            }
         }
     }
     line.push(anchor(1));
     line
 }
 
-/// The waypoints a team's creeps push through on a lane, enemy Ancient last.
+/// The waypoints a team's creeps push through on a lane, enemy base last.
+///
+/// The wave begins at its spawner, which stands somewhere along the lane —
+/// on three lanes ahead of its own rearmost tower — so the route takes only
+/// what lies past the spawner's own place on the line, and a fresh wave
+/// never walks back towards its base first.
 pub fn lane_route(map: &crate::game::MapDef, team: Team, lane: u8) -> Vec<Vec2> {
     let mut line = lane_polyline(map, lane);
     if team == Team::Dire {
         line.reverse();
     }
-    line.remove(0);
-    line
+    let spawn = creep_spawn_pos(map, team, lane);
+    let mut nearest = (0usize, i64::MAX);
+    for (at, seg) in line.windows(2).enumerate() {
+        let d = crate::game::segment_distance_squared(spawn, seg[0], seg[1]);
+        if d < nearest.1 {
+            nearest = (at, d);
+        }
+    }
+    line.split_off(nearest.0 + 1)
 }
 
 /// The passability grid of a map: its terrain, its buildings and its forest.

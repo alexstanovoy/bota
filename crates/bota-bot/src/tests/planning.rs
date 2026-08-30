@@ -142,8 +142,57 @@ sequence:
     assert_eq!(second.tribe.spread, 0.5);
     assert_eq!(second.tribe.trials, 3);
     assert_eq!(second.tribe.lanes, 4);
-    assert_eq!(second.tribe.seed, 77);
     assert_eq!(second.tribe.role, Role::Support);
+
+    // The seed the stage wrote is what it draws from: the same plan with the
+    // seed left out settles the same stage somewhere else.
+    let unsaid = Plan::of(
+        "
+defaults:
+  population: 24
+  generations: 5
+  role: offlane
+sequence:
+  - score: stock_up
+    ticks: 600
+  - score: grow_rich
+    generations: 2
+    survivors: 1
+    mutation: 0.5
+    matches: 3
+    lanes: 4
+    role: support
+",
+    )
+    .expect("a plan")
+    .terms()
+    .expect("stages");
+    assert_ne!(
+        second.tribe.seed, unsaid[1].tribe.seed,
+        "the seed written counts"
+    );
+}
+
+#[test]
+fn stages_of_one_seed_still_draw_apart() {
+    let spelled = "
+defaults:
+  seed: 9
+sequence:
+  - score: grow_rich
+  - score: grow_rich
+";
+    let terms = Plan::of(spelled).expect("a plan").terms().expect("stages");
+    assert_ne!(
+        terms[0].tribe.seed, terms[1].tribe.seed,
+        "a stage that repeated another's seed would repeat its matches and its noise"
+    );
+    let again = Plan::of(spelled).expect("a plan").terms().expect("stages");
+    assert_eq!(
+        terms[0].tribe.seed, again[0].tribe.seed,
+        "and a run still repeats to the number"
+    );
+    assert_eq!(terms[1].tribe.seed, again[1].tribe.seed);
 }
 
 #[test]

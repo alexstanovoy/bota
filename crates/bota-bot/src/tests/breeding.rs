@@ -1,6 +1,6 @@
 //! The crowd, and what breeding it does to it.
 
-use crate::{Card, Lesson, Model, Tribe, crowd_from, next_crowd, placings};
+use crate::{Card, Lesson, Model, Tribe, adapted_spread, crowd_from, next_crowd, placings};
 
 /// Cards worth the marks given at the lesson the placings are read at.
 fn cards(marks: &[f32]) -> Vec<Card> {
@@ -104,6 +104,36 @@ fn the_matches_judged_on_move_and_the_ones_reported_on_do_not() {
             );
         }
     }
+}
+
+#[test]
+fn the_spread_widens_over_a_fifth_and_narrows_under_it() {
+    // Two survivors and ten children, laid out as next_crowd lays them: the
+    // child at `at` was bred off the survivor at `(at - 2) % 2`.
+    let keep = 2;
+    let worths = |wins: usize| -> Vec<f32> {
+        let mut all = vec![1.0, 1.0];
+        all.extend((0..10).map(|at| if at < wins { 2.0 } else { 0.0 }));
+        all
+    };
+    assert!(
+        adapted_spread(0.01, &worths(3), keep) > 0.01,
+        "over a fifth winning reaches further"
+    );
+    assert!(
+        adapted_spread(0.01, &worths(1), keep) < 0.01,
+        "under a fifth winning reaches shorter"
+    );
+    assert_eq!(
+        adapted_spread(0.01, &worths(2), keep),
+        0.01,
+        "at exactly a fifth it stands"
+    );
+    assert_eq!(
+        adapted_spread(0.01, &[1.0, 1.0], keep),
+        0.01,
+        "a crowd with no children leaves it alone"
+    );
 }
 
 #[test]
