@@ -114,7 +114,14 @@ impl World {
                 if kind == UnitKind::Ancient {
                     self.winner = Some(other_side(side));
                 }
+                if self.map.id == bota_proto::MapId(1)
+                    && kind == UnitKind::Tower
+                    && self.winner.is_none()
+                {
+                    self.winner = Some(other_side(side));
+                }
             }
+            let mut fallen_hero_team = None;
             for index in 0..self.seats.len() {
                 if self.seats[index].unit == Some(entity) {
                     let level = self.seats[index].level;
@@ -127,11 +134,26 @@ impl World {
                     self.seats[index].kept = Some(kept);
                     self.seats[index].deaths += 1;
                     self.seats[index].respawn_left = World::respawn_wait(level);
+                    fallen_hero_team = Some(self.seats[index].team);
                 }
                 // A courier's load waits on the seat the way a hero's bag
                 // does, and comes back aboard the next one.
                 if self.seats[index].courier == Some(entity) {
                     self.seats[index].courier_kept = self.inventory.remove(entity);
+                }
+            }
+            if let Some(team) = fallen_hero_team
+                && self.map.id == bota_proto::MapId(1)
+                && self.winner.is_none()
+            {
+                let deaths = self
+                    .seats
+                    .iter()
+                    .filter(|seat| seat.team == team)
+                    .map(|seat| u32::from(seat.deaths))
+                    .sum::<u32>();
+                if deaths >= u32::from(crate::game::rules::DEMO_DEATH_LIMIT) {
+                    self.winner = Some(other_side(team));
                 }
             }
             if let Some(index) =

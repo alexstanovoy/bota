@@ -810,6 +810,87 @@ fn a_fallen_ancient_ends_the_match() {
 }
 
 #[test]
+fn a_fallen_demo_tower_ends_the_one_lane_match_only() {
+    let mut demo = World::on_map(crate::game::map_of(bota_proto::MapId(1)));
+    let tower = demo.spawn_unit(
+        crate::game::tower_def(1),
+        bota_proto::Team::Dire,
+        bota_proto::Vec2::from_ints(1000, 1000),
+    );
+    demo.settle();
+    let mut events = Vec::new();
+
+    demo.bury(vec![(tower, None)], &mut events);
+
+    assert_eq!(demo.victor(), Some(bota_proto::Team::Radiant));
+
+    let mut simultaneous = World::on_map(crate::game::map_of(bota_proto::MapId(1)));
+    let radiant = simultaneous.spawn_unit(
+        crate::game::tower_def(1),
+        bota_proto::Team::Radiant,
+        bota_proto::Vec2::from_ints(1000, 1000),
+    );
+    let dire = simultaneous.spawn_unit(
+        crate::game::tower_def(1),
+        bota_proto::Team::Dire,
+        bota_proto::Vec2::from_ints(2000, 2000),
+    );
+    simultaneous.settle();
+    simultaneous.bury(vec![(radiant, None), (dire, None)], &mut events);
+    assert_eq!(
+        simultaneous.victor(),
+        Some(bota_proto::Team::Dire),
+        "the first terminal event stands"
+    );
+
+    let mut dota = World::new();
+    let tower = dota.spawn_unit(
+        crate::game::tower_def(1),
+        bota_proto::Team::Dire,
+        bota_proto::Vec2::from_ints(1000, 1000),
+    );
+    dota.settle();
+    dota.bury(vec![(tower, None)], &mut events);
+    assert_eq!(dota.victor(), None, "a Dota tier-one is not the Ancient");
+}
+
+#[test]
+fn a_second_demo_hero_death_loses_the_one_lane_match() {
+    let map = crate::game::map_of(bota_proto::MapId(1));
+    let mut world = World::on_map(map);
+    let hero = world.spawn_hero(
+        bota_proto::Team::Dire,
+        bota_proto::Vec2::from_ints(1000, 1000),
+        bota_proto::SlotId(0),
+        bota_proto::HeroId(0),
+    );
+    world.seats.push(crate::game::Seat::new(
+        bota_proto::SlotId(0),
+        bota_proto::Team::Dire,
+        bota_proto::HeroId(0),
+        0,
+        rules::STASH_SLOTS,
+    ));
+    world.seats[0].unit = Some(hero);
+    world.seats.push(crate::game::Seat::new(
+        bota_proto::SlotId(1),
+        bota_proto::Team::Dire,
+        bota_proto::HeroId(0),
+        0,
+        rules::STASH_SLOTS,
+    ));
+    world.seats[1].deaths = rules::DEMO_DEATH_LIMIT - 1;
+    world.settle();
+    let mut events = Vec::new();
+
+    world.bury(vec![(hero, None)], &mut events);
+
+    assert_eq!(world.seats[0].deaths, 1);
+    assert_eq!(world.seats[1].deaths, 1);
+    assert_eq!(world.victor(), Some(bota_proto::Team::Radiant));
+}
+
+#[test]
 fn a_missile_carries_the_hit_rather_than_landing_it_at_once() {
     let mut world = World::new();
     let archer = world.spawn_unit(
@@ -8672,7 +8753,7 @@ fn the_demo_waves_march_out_and_meet_between_the_towers() {
             at.y.to_int()
         );
     }
-    assert_eq!(world.victor(), None, "the demo map has nothing to win by");
+    assert_eq!(world.victor(), None, "no tower or hero has fallen enough");
 }
 
 #[test]
