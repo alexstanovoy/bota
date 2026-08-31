@@ -128,7 +128,8 @@ impl World {
                 stack.mute = stack.mute.saturating_sub(1);
             }
         }
-        for entity in self.entities.iter().collect::<Vec<_>>() {
+        let entities = self.take_entity_snapshot();
+        for entity in entities.iter().copied() {
             if let Some(book) = self.abilities.get_mut(entity) {
                 for slot in book.slots.iter_mut() {
                     slot.cooldown = slot.cooldown.saturating_sub(1);
@@ -147,6 +148,7 @@ impl World {
                 on_it.0.retain(|status| status.ticks_left > 0);
             }
         }
+        self.recycle_entity_snapshot(entities);
     }
 
     /// Builds whatever each hero now holds the parts of.
@@ -764,7 +766,8 @@ impl World {
                 }
             }
         }
-        for holder in self.entities.iter().collect::<Vec<_>>() {
+        let entities = self.take_entity_snapshot();
+        for holder in entities.iter().copied() {
             let Some(at_pos) = self.transform.get(holder).map(|t| t.pos) else {
                 continue;
             };
@@ -794,6 +797,7 @@ impl World {
                 self.seats[owner].gold += back;
             }
         }
+        self.recycle_entity_snapshot(entities);
     }
 
     /// Takes whatever sits in one slot of a seat's slots out of it.

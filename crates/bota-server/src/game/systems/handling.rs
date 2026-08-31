@@ -60,7 +60,8 @@ impl World {
     /// that comes to nothing — the slot emptied, the target fallen or full,
     /// the item taken by somebody quicker — is put down where it is found.
     pub fn tick_handling(&mut self) {
-        for unit in self.entities.iter().collect::<Vec<_>>() {
+        let entities = self.take_entity_snapshot();
+        for unit in entities.iter().copied() {
             let Some(errand) = self.handling.get(unit).copied() else {
                 continue;
             };
@@ -78,6 +79,7 @@ impl World {
                 self.set_order(unit, UnitOrder::Stand);
             }
         }
+        self.recycle_entity_snapshot(entities);
     }
 
     /// Walks a unit within reach of a spot and lays the stack there.

@@ -113,7 +113,8 @@ impl World {
     /// left its route, and only then the route itself.
     pub fn march_lanes(&mut self) {
         let map = self.map;
-        for entity in self.entities.iter().collect::<Vec<_>>() {
+        let entities = self.take_entity_snapshot();
+        for entity in entities.iter().copied() {
             let Some(mut march) = self.march.get(entity).copied() else {
                 continue;
             };
@@ -148,6 +149,7 @@ impl World {
             };
             self.set_order(entity, UnitOrder::AttackMove { pos: going });
         }
+        self.recycle_entity_snapshot(entities);
     }
 }
 

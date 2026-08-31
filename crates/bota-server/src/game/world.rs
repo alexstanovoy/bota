@@ -52,6 +52,8 @@ pub struct World {
     pub bounced: VecDeque<(Entity, Entity)>,
     /// Which entities exist.
     pub entities: EntityAllocator,
+    /// Reused stable entity snapshot for systems that mutate other world tables.
+    pub(crate) entity_scratch: Vec<Entity>,
 
     /// Where each entity stands.
     pub transform: Table<Transform>,
@@ -168,6 +170,7 @@ impl World {
             landed: VecDeque::new(),
             bounced: VecDeque::new(),
             entities: EntityAllocator::new(),
+            entity_scratch: Vec::new(),
             transform: Table::new(),
             hull: Table::new(),
             kind: Table::new(),
@@ -209,6 +212,21 @@ impl World {
             visibility: Table::new(),
             projectile: Table::new(),
         }
+    }
+
+    /// Takes a reusable stable snapshot of all entities currently standing.
+    pub(crate) fn take_entity_snapshot(&mut self) -> Vec<Entity> {
+        let mut entities = std::mem::take(&mut self.entity_scratch);
+        assert!(entities.is_empty());
+        entities.extend(self.entities.iter());
+        entities
+    }
+
+    /// Returns a consumed entity snapshot for reuse by the next system.
+    pub(crate) fn recycle_entity_snapshot(&mut self, mut entities: Vec<Entity>) {
+        entities.clear();
+        assert!(self.entity_scratch.is_empty());
+        self.entity_scratch = entities;
     }
 
     /// Adds an entity carrying no components.
