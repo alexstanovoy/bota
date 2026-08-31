@@ -602,6 +602,7 @@ impl World {
             }
             self.trees.fell(tree, self.tick);
             self.lay_sight_block();
+            self.lay_passability();
         }
         let per_tick = total * 100 / ticks.max(1) as i32;
         let put = Status {
@@ -905,6 +906,7 @@ impl World {
         };
         self.trees.fell(tree, self.tick);
         self.lay_sight_block();
+        self.lay_passability();
         true
     }
 
@@ -930,6 +932,7 @@ impl World {
         let until = self.tick + ticks;
         self.trees.plant(pos, until);
         self.lay_sight_block();
+        self.lay_passability();
         true
     }
 

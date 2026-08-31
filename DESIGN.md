@@ -323,7 +323,7 @@ exploit any leak a human reviewer shrugs off:
   from the map's own gridnav, elevation tiers rasterised off its physics mesh
   in 128-unit steps — river bed 0, ground 1, the high spots 2, the cliffs
   above — the river as the water mask, and its one fog blocker wall sealing
-  the Roshan pit. It keeps two invented pullable camps in the wooded pockets
+  the river pit. It keeps two invented pullable camps in the wooded pockets
   either side of the lane, because the jungle's behaviours are tested against
   this map and the real one runs no jungle. Anything a map may lack is data
   now: `ancients` are per-side options, a side with none anchoring its lane
@@ -362,15 +362,16 @@ exploit any leak a human reviewer shrugs off:
   before trees and buildings do) and, from the physics mesh, an elevation tier
   per cell in 128-unit steps — river bed 0, lane ground 1, highground 2, bases
   3 — plus the water mask of the river and pools. A ranged attack landing on
-  ground higher than it was fired from misses one time in four, from a
-  match-global exact-ratio chance stream; abilities never miss. The terrain
+  ground higher than its attacker at impact uses Dota's 25% pseudo-random
+  miss distribution for that attacker; buildings, flying attacks and
+  abilities never miss this way. The terrain
   rides in `MatchStart` run-length encoded, and the client bakes it into the
   ground texture for the world and the minimap.
 - Vision is a radius with sight lines walked over the terrain cells. A cell is
   opaque to a viewer when its ground is higher than the viewer's, when a tree
   stands on it, or when one of the map's own fog blocker walls crosses it —
   eleven named walls of `ent_fow_blocker_node` points, imported like
-  everything else, which is what seals the Roshan pit even through its
+  everything else, which is what seals the river pit even through its
   entrance. A named group holds several separate walls: only nodes within
   the blocker span of each other bridge a segment, so the far-apart jumps
   inside a group — the two pits share one name — are breaks, not walls. Buildings, water and units block nothing. The viewer's own cell
@@ -389,14 +390,6 @@ exploit any leak a human reviewer shrugs off:
   full tree list rides in `MatchStart`, so the client draws without knowing the
   layout rules. Trees are closed into the passability grid at world build; they
   do not block vision yet and are indestructible until an axe exists.
-- Roshan stands on the map's own spawner point in the south-east river pit —
-  both pit enclosures came in with the terrain, and the north-west one stays
-  empty until day and night exist. He behaves like a neutral: answers whoever
-  comes close or hits him, leashes back to the pit and heals in full. His
-  death pays the killing seat the bounty, every seat of the killing team the
-  team gold, and experience around the pit; the grave lasts eight minutes plus
-  up to three more on a hidden draw, then he returns. No Aegis until items can
-  resurrect.
 - The jungle belongs to `Team::Neutral`, hostile to both sides; seats never sit
   there. The twenty-eight camps stand where Dota's own neutral spawners stand. They
   fill with neutral creeps one minute past the horn and every minute after, but only while the camp box is empty — any body inside
@@ -488,7 +481,7 @@ exploit any leak a human reviewer shrugs off:
   landing spot on closed ground steps back along that line a grid cell at a
   time until it finds open ground: refusing outright would have been simpler,
   but it makes the item unusable at exactly the cliffs it exists to cross.
-  A blow from a hero, a tower or Roshan sets it back, and that lives in the
+  A blow from a hero or a tower sets it back, and that lives in the
   same place a blow already puts a Salve out, so there is one pass over what a
   blow breaks rather than two.
 - Charges gained from enemy casts — Magic Stick and Wand — are counted where

@@ -107,8 +107,6 @@ pub enum UnitKind {
     CreepSiege,
     /// A neutral camp creep.
     CreepNeutral,
-    /// Roshan, the boss of the river pit.
-    Roshan,
     /// A lane tower.
     Tower,
     /// The structure that ends the match when destroyed.

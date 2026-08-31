@@ -45,7 +45,7 @@ impl World {
                     target: wire_id(blow.target),
                     amount: blow.amount,
                     kind: blow.kind,
-                    crit: false,
+                    crit: blow.crit,
                 },
                 visible_to: self.who_may_know(blow.at, blow.side),
             });
@@ -73,6 +73,7 @@ impl World {
 
     /// Clears away what has fallen and tells who may know.
     pub fn bury(&mut self, fallen: Vec<(Entity, Option<Entity>)>, events: &mut Vec<Event>) {
+        let mut structure_fell = false;
         for (entity, killer) in fallen {
             if !self.entities.contains(entity) {
                 continue;
@@ -102,6 +103,7 @@ impl World {
             if let (Some(kind), Some(side)) = (kind, side)
                 && is_structure(kind)
             {
+                structure_fell = true;
                 events.push(Event {
                     kind: EventKind::StructureDestroyed {
                         unit: wire_id(entity),
@@ -140,6 +142,9 @@ impl World {
                 self.seats[index].kills += 1;
             }
             self.despawn(entity);
+        }
+        if structure_fell {
+            self.lay_passability();
         }
     }
 }

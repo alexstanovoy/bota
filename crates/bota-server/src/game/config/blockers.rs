@@ -267,7 +267,7 @@ pub const FOW_BLOCKERS: &[&[(i16, i16)]] = &[
         (64, 6368),
         (128, 6304),
     ],
-    // fow_blocker_roshan
+    // river_pit_blocker
     &[
         (6345, 11200),
         (6325, 11139),
@@ -431,9 +431,9 @@ pub const FOW_BLOCKERS: &[&[(i16, i16)]] = &[
     ],
 ];
 
-/// The hero demo map's one blocker wall, sealing its Roshan pit.
+/// The hero demo map's one blocker wall, sealing its river pit.
 pub const DEMO_FOW_BLOCKERS: &[&[(i16, i16)]] = &[
-    // fow_blocker_roshan
+    // river_pit_blocker
     &[
         (6170, 9771),
         (6233, 9759),

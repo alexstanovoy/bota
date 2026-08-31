@@ -1116,7 +1116,6 @@ fn kind_name(kind: UnitKind) -> &'static str {
         UnitKind::CreepRanged => "Ranged Creep",
         UnitKind::CreepSiege => "Siege Creep",
         UnitKind::CreepNeutral => "Neutral Creep",
-        UnitKind::Roshan => "Roshan",
         UnitKind::Courier => "Courier",
         UnitKind::Tower => "Tower",
         UnitKind::Ancient => "Ancient",
