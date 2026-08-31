@@ -24,11 +24,11 @@ pub enum Purpose {
     Rune = 3,
     /// Scatter of neutral camp spawns.
     NeutralSpawn = 4,
-    /// Roshan's respawn wait.
-    Roshan = 5,
     /// Which melee creep of a wave carries the flag.
-    Wave = 6,
+    Wave = 5,
 }
+
+const PURPOSE_COUNT: usize = Purpose::Wave as usize + 1;
 
 /// The root of all hidden randomness in one match.
 ///
@@ -37,6 +37,7 @@ pub enum Purpose {
 #[derive(Clone, Debug)]
 pub struct MatchRng {
     seed: [u8; 32],
+    global: [Stream; PURPOSE_COUNT],
 }
 
 impl MatchRng {
@@ -46,12 +47,15 @@ impl MatchRng {
         root.set_stream(match_id);
         let mut seed = [0u8; 32];
         root.fill_bytes(&mut seed);
-        MatchRng { seed }
+        let global = std::array::from_fn(|purpose| {
+            open_stream(seed, GLOBAL_BIT | ((purpose as u64) << PURPOSE_SHIFT))
+        });
+        MatchRng { seed, global }
     }
 
     /// A stream that belongs to the match as a whole.
-    pub fn global(&self, purpose: Purpose) -> Stream {
-        self.open(GLOBAL_BIT | ((purpose as u64) << PURPOSE_SHIFT))
+    pub fn global(&mut self, purpose: Purpose) -> &mut Stream {
+        &mut self.global[purpose as usize]
     }
 
     /// A stream that belongs to one unit and one of its sources of chance.
@@ -67,10 +71,24 @@ impl MatchRng {
     }
 
     fn open(&self, stream_id: u64) -> Stream {
-        let mut inner = ChaCha8Rng::from_seed(self.seed);
-        inner.set_stream(stream_id);
-        Stream { inner }
+        open_stream(self.seed, stream_id)
     }
+
+    /// Root seed used to derive every stream.
+    pub fn seed(&self) -> &[u8; 32] {
+        &self.seed
+    }
+
+    /// Draw counts of match-global streams in purpose order.
+    pub fn global_draws(&self) -> impl Iterator<Item = u64> + '_ {
+        self.global.iter().map(|stream| stream.draws)
+    }
+}
+
+fn open_stream(seed: [u8; 32], stream_id: u64) -> Stream {
+    let mut inner = ChaCha8Rng::from_seed(seed);
+    inner.set_stream(stream_id);
+    Stream { inner, draws: 0 }
 }
 
 const GLOBAL_BIT: u64 = 1 << 63;
@@ -81,11 +99,16 @@ const UNIT_SHIFT: u32 = 8;
 #[derive(Clone, Debug)]
 pub struct Stream {
     inner: ChaCha8Rng,
+    draws: u64,
 }
 
 impl Stream {
     /// The next value.
     pub fn next_u32(&mut self) -> u32 {
+        self.draws = self
+            .draws
+            .checked_add(1)
+            .expect("random draw counter overflow");
         self.inner.next_u32()
     }
 
@@ -98,11 +121,50 @@ impl Stream {
         // consumes from the stream, so it stays reproducible.
         let zone = ((1u64 << 32) / n as u64) * n as u64;
         loop {
-            let v = self.inner.next_u32() as u64;
+            let v = self.next_u32() as u64;
             if v < zone {
                 return (v % n as u64) as u32;
             }
         }
+    }
+}
+
+/// Dota's pseudo-random distribution for one 25% event source.
+#[derive(Clone, Debug)]
+pub struct PseudoRandom25 {
+    stream: Stream,
+    failures: u8,
+}
+
+impl PseudoRandom25 {
+    /// Starts a sequence with its lowest per-attempt chance.
+    pub fn new(stream: Stream) -> Self {
+        Self {
+            stream,
+            failures: 0,
+        }
+    }
+
+    /// Whether the event occurs on this eligible attempt.
+    pub fn roll(&mut self) -> bool {
+        const BASE_THRESHOLD: u64 = 363_973_103;
+        const DRAW_SPACE: u64 = 1u64 << 32;
+
+        let attempt = u64::from(self.failures) + 1;
+        let threshold = BASE_THRESHOLD * attempt;
+        let occurs = threshold >= DRAW_SPACE || u64::from(self.stream.next_u32()) < threshold;
+        if occurs {
+            self.failures = 0;
+        } else {
+            self.failures = self.failures.saturating_add(1);
+        }
+        debug_assert!(self.failures < 12);
+        occurs
+    }
+
+    /// Draw count and failure streak determining the next outcome.
+    pub fn state(&self) -> (u64, u8) {
+        (self.stream.draws, self.failures)
     }
 }
 

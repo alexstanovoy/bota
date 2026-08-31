@@ -351,26 +351,6 @@ pub const SHADOW_FIEND: UnitDef = UnitDef {
     ..HERO
 };
 
-/// Roshan.
-pub const ROSHAN: UnitDef = UnitDef {
-    kind: UnitKind::Roshan,
-    max_hp: rules::ROSHAN_HP,
-    damage: rules::ROSHAN_ATTACK_DAMAGE,
-    attack_range: rules::ROSHAN_ATTACK_RANGE,
-    acquisition: rules::ROSHAN_ATTACK_RANGE,
-    attack_interval: rules::ROSHAN_ATTACK_INTERVAL,
-    attack_point: rules::ROSHAN_ATTACK_POINT,
-    armor: rules::ROSHAN_ARMOR,
-    magic_resist_pct: rules::ROSHAN_MAGIC_RESIST_PCT,
-    move_speed: rules::ROSHAN_MOVE_SPEED,
-    turn_rate: rules::TURN_RATE_BRADS,
-    vision: rules::ROSHAN_VISION,
-    radius: rules::ROSHAN_RADIUS,
-    bounty_gold: rules::ROSHAN_BOUNTY,
-    bounty_xp: rules::ROSHAN_XP,
-    ..NOTHING
-};
-
 /// A super siege creep: the same wagon hitting harder.
 pub const SUPER_SIEGE_CREEP: UnitDef = UnitDef {
     damage: rules::SUPER_SIEGE_ATTACK_DAMAGE,

@@ -61,7 +61,7 @@ impl World {
     /// Puts out every drink a blow is enough to break, and sets back every
     /// item that answers to one.
     ///
-    /// Only a hero, a tower or Roshan breaks anything; a creep may hit all day
+    /// Only a hero or a tower breaks anything; a creep may hit all day
     /// without it. What was drunk with nothing to break it is left alone, and
     /// so is an item that answers to no blow.
     pub fn break_on_blows(&mut self, felt: &[crate::game::Landed]) {
@@ -69,9 +69,12 @@ impl World {
             let Some(from) = blow.source else {
                 continue;
             };
-            if !self.kind.get(from).copied().is_some_and(|kind| {
-                matches!(kind, UnitKind::Hero | UnitKind::Tower | UnitKind::Roshan)
-            }) {
+            if !self
+                .kind
+                .get(from)
+                .copied()
+                .is_some_and(|kind| matches!(kind, UnitKind::Hero | UnitKind::Tower))
+            {
                 continue;
             }
             if let Some(on_it) = self.statuses.get_mut(blow.target) {

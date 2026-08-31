@@ -40,6 +40,13 @@ impl Fnv {
         }
     }
 
+    /// Eats eight bytes, low first.
+    pub fn u64(&mut self, value: u64) {
+        for byte in value.to_le_bytes() {
+            self.u8(byte);
+        }
+    }
+
     /// Eats a signed four bytes.
     pub fn i32(&mut self, value: i32) {
         self.u32(value as u32);

@@ -18,6 +18,21 @@ impl World {
         if let Some(winner) = self.winner {
             fnv.team(winner);
         }
+        for byte in self.rng.seed() {
+            fnv.u8(*byte);
+        }
+        for draws in self.rng.global_draws() {
+            fnv.u64(draws);
+        }
+        fnv.u32(self.uphill_miss.len() as u32);
+        for chance in &self.uphill_miss {
+            fnv.some(chance.is_some());
+            if let Some(chance) = chance {
+                let (draws, failures) = chance.state();
+                fnv.u64(draws);
+                fnv.u8(failures);
+            }
+        }
         for entity in self.entities.iter() {
             fnv.entity(entity);
             if let Some(kind) = self.kind.get(entity) {
@@ -53,8 +68,27 @@ impl World {
                 fnv.u32(march.shove);
             }
             if let Some(shot) = self.projectile.get(entity) {
+                fnv.fixed(shot.speed);
+                fnv.some(shot.source.is_some());
+                if let Some(source) = shot.source {
+                    fnv.entity(source);
+                }
                 fnv.entity(shot.target);
                 fnv.i32(shot.damage);
+                fnv.u8(shot.kind as u8);
+                fnv.some(shot.ability.is_some());
+                if let Some(ability) = shot.ability {
+                    fnv.u32(u32::from(ability.0));
+                }
+                fnv.u8(shot.launch_tier);
+                fnv.some(shot.can_miss_uphill);
+                fnv.some(shot.crit);
+                fnv.u8(shot.bounces_left);
+                fnv.i32(shot.bounce_range);
+                fnv.u32(shot.bounced.len() as u32);
+                for target in &shot.bounced {
+                    fnv.entity(*target);
+                }
             }
             if let Some(seen) = self.visibility.get(entity) {
                 fnv.u8(seen.bits());

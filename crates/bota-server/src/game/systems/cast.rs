@@ -194,6 +194,7 @@ impl World {
                 kind: DamageKind::Magical,
                 ability: Some(bota_proto::AbilityId(2)),
                 launch_tier: 0,
+                can_miss_uphill: false,
                 crit: false,
                 bounces_left: rules::SYLLA_BOUNCE_COUNT[level],
                 bounce_range: rules::SYLLA_BOUNCE_RANGE,

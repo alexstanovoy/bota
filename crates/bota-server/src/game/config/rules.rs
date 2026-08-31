@@ -202,42 +202,6 @@ pub const NEUTRAL_VISION: i32 = 800;
 /// How far a neutral creep looks for something to attack once awake.
 pub const NEUTRAL_ACQUISITION: i32 = 500;
 
-// Roshan. The map's own spawner point, in the south-east river pit; the
-// north-west pit stands empty until day and night exist.
-
-/// Where Roshan stands.
-pub const ROSHAN_PIT: Vec2 = Vec2::from_ints(12047, 6476);
-/// Roshan's health.
-pub const ROSHAN_HP: i32 = 6500;
-/// Roshan's attack damage.
-pub const ROSHAN_ATTACK_DAMAGE: i32 = 90;
-/// Roshan's attack range.
-pub const ROSHAN_ATTACK_RANGE: i32 = 150;
-/// Ticks between Roshan's attack starts.
-pub const ROSHAN_ATTACK_INTERVAL: u32 = 57;
-/// Ticks from Roshan's attack start to the hit.
-pub const ROSHAN_ATTACK_POINT: u32 = 14;
-/// Roshan's armor.
-pub const ROSHAN_ARMOR: i32 = 30;
-/// Roshan's magic resistance, percent.
-pub const ROSHAN_MAGIC_RESIST_PCT: i32 = 55;
-/// Roshan's movement speed, world units per second.
-pub const ROSHAN_MOVE_SPEED: i32 = 270;
-/// Roshan's collision radius, the Dota hero hull.
-pub const ROSHAN_RADIUS: i32 = 24;
-/// Roshan's fog light radius.
-pub const ROSHAN_VISION: i32 = 1200;
-/// Gold to the killing seat.
-pub const ROSHAN_BOUNTY: i32 = 300;
-/// Gold to every seat of the killing team, the killer included.
-pub const ROSHAN_TEAM_GOLD: i32 = 200;
-/// Experience granted around Roshan's death.
-pub const ROSHAN_XP: i32 = 1400;
-/// Shortest wait before Roshan returns, ticks.
-pub const ROSHAN_RESPAWN_MIN_TICKS: u32 = 8 * 60 * TICKS_PER_SECOND;
-/// The respawn wait stretches up to this much further, hidden-random.
-pub const ROSHAN_RESPAWN_SPREAD_TICKS: u32 = 3 * 60 * TICKS_PER_SECOND;
-
 // Creep waves.
 
 /// Ticks of pregame: the game clock counts up from minus this, thirty

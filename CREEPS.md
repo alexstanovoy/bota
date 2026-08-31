@@ -167,7 +167,7 @@ not restricted — the rule is about being called on.
   units. That one rule is both camp blocking and camp stacking.
 - A camp never spawns the same roster twice in a row.
 - **Aggro** is drawn two ways only:
-  - a hostile unit comes within **240** of the neutral (Roshan: 140)
+  - a hostile unit comes within **240** of the neutral
   - damage or a single-target spell from within **1800**
 - Aggroed neutrals then follow §1.5 — closest target, same class order. One
   extra rule: a hero inside the aggro range issuing an attack order on a hero
@@ -391,7 +391,7 @@ state at all. Out of scope; see section 7.
 | `SMALL` | 8 | ranged creep |
 | `REGULAR` | 16 | melee creep, flagbearer, most neutrals |
 | `SIEGE` | 16 | siege creep |
-| `HERO` | 24 | heroes, every neutral, Roshan |
+| `HERO` | 24 | heroes, every neutral |
 | `HUGE` | 80 | nothing on the Dota map |
 | `BUILDING` | 81.28 | ancient, fountain |
 | `BARRACKS` | 144 | barracks |

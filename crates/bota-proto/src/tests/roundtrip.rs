@@ -139,13 +139,16 @@ fn every_unit_kind_survives() {
     let kinds = [
         UnitKind::Hero,
         UnitKind::CreepMelee,
+        UnitKind::CreepFlagbearer,
         UnitKind::CreepRanged,
         UnitKind::CreepSiege,
         UnitKind::CreepNeutral,
         UnitKind::Tower,
         UnitKind::Ancient,
+        UnitKind::Barracks,
         UnitKind::Fountain,
         UnitKind::Ward,
+        UnitKind::Courier,
     ];
     for kind in kinds {
         assert_eq!(roundtrip(&kind), kind, "{kind:?}");

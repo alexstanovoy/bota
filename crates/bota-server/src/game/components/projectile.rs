@@ -24,8 +24,10 @@ pub struct Projectile {
     pub kind: DamageKind,
     /// The ability behind it, if it was not a plain attack.
     pub ability: Option<AbilityId>,
-    /// Tier of the building that threw it, zero for anything else.
+    /// Elevation under its source when it was thrown.
     pub launch_tier: u8,
+    /// Whether higher ground may evade it.
+    pub can_miss_uphill: bool,
     /// Whether the hit is a critical strike.
     pub crit: bool,
     /// Bounces it has left.

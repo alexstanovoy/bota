@@ -6,8 +6,20 @@ use crate::game::rules;
 use crate::game::{
     AbilityBook, AbilityState, Def, Entity, EntityAllocator, FLAGBEARER_CREEP, HERO, Health,
     Inventory, ItemStack, Level, MELEE_CREEP, Mana, NEUTRALS, NeutralKind, RANGED_CREEP, StackKind,
-    Stats, Status, StatusKind, Statuses, Table, Upgrades, Visibility, World,
+    Stats, Status, StatusKind, Statuses, Table, UnitDef, Upgrades, Visibility, World,
 };
+
+#[test]
+fn global_random_streams_advance_between_draws() {
+    let mut rng = crate::game::MatchRng::new(&[7; 32], 11);
+    let first = rng.global(crate::game::Purpose::Wave).next_u32();
+    let second = rng.global(crate::game::Purpose::Wave).next_u32();
+
+    assert_ne!(
+        first, second,
+        "a global stream must not restart for every draw"
+    );
+}
 
 #[test]
 fn an_allocator_counts_what_is_live() {
@@ -1127,6 +1139,83 @@ fn a_kill_pays_the_one_who_struck_last_and_feeds_the_side() {
 }
 
 #[test]
+fn nearby_allied_heroes_split_a_units_experience_evenly() {
+    let mut world = World::new();
+    for (slot, x) in [
+        (bota_proto::SlotId(0), 5_000),
+        (bota_proto::SlotId(1), 5_100),
+    ] {
+        let hero = world.spawn_hero(
+            Team::Radiant,
+            bota_proto::Vec2::from_ints(x, 5_000),
+            slot,
+            bota_proto::HeroId(0),
+        );
+        let mut seat = crate::game::Seat::new(
+            slot,
+            Team::Radiant,
+            bota_proto::HeroId(0),
+            0,
+            rules::STASH_SLOTS,
+        );
+        seat.unit = Some(hero);
+        world.seats.push(seat);
+    }
+    let prey = world.spawn_unit(
+        &MELEE_CREEP,
+        Team::Dire,
+        bota_proto::Vec2::from_ints(5_050, 5_000),
+    );
+    world.settle();
+    let mut events = Vec::new();
+
+    world.bury(vec![(prey, world.seats[0].unit)], &mut events);
+
+    let share = rules::MELEE_CREEP_XP / 2;
+    assert_eq!(world.seats[0].xp, share);
+    assert_eq!(world.seats[1].xp, share);
+}
+
+#[test]
+fn dead_allied_heroes_do_not_take_an_experience_share() {
+    let mut world = World::new();
+    for (slot, x) in [
+        (bota_proto::SlotId(0), 5_000),
+        (bota_proto::SlotId(1), 5_100),
+    ] {
+        let hero = world.spawn_hero(
+            Team::Radiant,
+            bota_proto::Vec2::from_ints(x, 5_000),
+            slot,
+            bota_proto::HeroId(0),
+        );
+        let mut seat = crate::game::Seat::new(
+            slot,
+            Team::Radiant,
+            bota_proto::HeroId(0),
+            0,
+            rules::STASH_SLOTS,
+        );
+        seat.unit = Some(hero);
+        world.seats.push(seat);
+    }
+    let prey = world.spawn_unit(
+        &MELEE_CREEP,
+        Team::Dire,
+        bota_proto::Vec2::from_ints(5_050, 5_000),
+    );
+    world.settle();
+    let dead = world.seats[1].unit.expect("second hero");
+    world.health.get_mut(dead).expect("hero health").hp = Fixed::ZERO;
+    let mut events = Vec::new();
+
+    world.bury(vec![(prey, world.seats[0].unit)], &mut events);
+
+    assert_eq!(world.seats[0].xp, rules::MELEE_CREEP_XP);
+    assert_eq!(world.seats[1].xp, 0);
+}
+
+#[test]
 fn bringing_down_your_own_is_a_deny_and_pays_the_other_side_nothing() {
     let mut world = World::new();
     let hero = world.spawn_hero(
@@ -1154,6 +1243,41 @@ fn bringing_down_your_own_is_a_deny_and_pays_the_other_side_nothing() {
     assert_eq!(world.seats[0].denies, 1);
     assert_eq!(world.seats[0].gold, 0, "a deny pays no gold");
     assert_eq!(world.seats[0].xp, 0, "and no experience");
+}
+
+#[test]
+fn denied_lane_creeps_give_reduced_experience_to_nearby_enemies() {
+    let mut world = World::new();
+    for (slot, team, x) in [
+        (bota_proto::SlotId(0), Team::Radiant, 5_000),
+        (bota_proto::SlotId(1), Team::Dire, 5_100),
+    ] {
+        let hero = world.spawn_hero(
+            team,
+            bota_proto::Vec2::from_ints(x, 5_000),
+            slot,
+            bota_proto::HeroId(0),
+        );
+        let mut seat =
+            crate::game::Seat::new(slot, team, bota_proto::HeroId(0), 0, rules::STASH_SLOTS);
+        seat.unit = Some(hero);
+        world.seats.push(seat);
+    }
+    let denied = world.spawn_unit(
+        &MELEE_CREEP,
+        Team::Radiant,
+        bota_proto::Vec2::from_ints(5_050, 5_000),
+    );
+    world.settle();
+    let mut events = Vec::new();
+
+    world.bury(vec![(denied, world.seats[0].unit)], &mut events);
+
+    assert_eq!(world.seats[0].xp, 0, "the denying side gains no experience");
+    assert_eq!(
+        world.seats[1].xp,
+        rules::MELEE_CREEP_XP * rules::DENIED_XP_PCT / 100
+    );
 }
 
 #[test]
@@ -1538,6 +1662,71 @@ fn two_runs_of_one_script_agree_at_every_checkpoint() {
 }
 
 #[test]
+fn world_hash_changes_when_hidden_random_state_advances() {
+    let mut world = World::new();
+    let before = world.hash();
+
+    world.rng.global(crate::game::Purpose::Wave).next_u32();
+
+    assert_ne!(world.hash(), before);
+}
+
+#[test]
+fn world_hash_changes_when_uphill_prd_state_advances() {
+    let mut world = World::new();
+    let stream = world.rng.for_unit(
+        crate::game::Purpose::Evasion,
+        bota_proto::EntityId {
+            idx: 0,
+            generation: 1,
+        },
+        0,
+    );
+    world
+        .uphill_miss
+        .push(Some(crate::game::PseudoRandom25::new(stream)));
+    let before = world.hash();
+
+    world.uphill_miss[0].as_mut().expect("chance").roll();
+
+    assert_ne!(world.hash(), before);
+}
+
+fn world_with_projectile_uphill_state(launch_tier: u8, can_miss_uphill: bool) -> World {
+    let mut world = World::new();
+    let target = world.spawn();
+    let missile = world.spawn();
+    world.projectile.insert(
+        missile,
+        crate::game::Projectile {
+            speed: Fixed::ONE,
+            source: None,
+            target,
+            damage: 1,
+            kind: bota_proto::DamageKind::Physical,
+            ability: None,
+            launch_tier,
+            can_miss_uphill,
+            crit: false,
+            bounces_left: 0,
+            bounce_range: 0,
+            bounced: Vec::new(),
+        },
+    );
+    world
+}
+
+#[test]
+fn world_hash_includes_projectile_uphill_state() {
+    let level = world_with_projectile_uphill_state(1, true);
+    let higher_launch = world_with_projectile_uphill_state(2, true);
+    let cannot_miss = world_with_projectile_uphill_state(1, false);
+
+    assert_ne!(level.hash(), higher_launch.hash());
+    assert_ne!(level.hash(), cannot_miss.hash());
+}
+
+#[test]
 fn the_fingerprint_moves_when_the_world_does() {
     let mut world = World::for_match(&config(), config().rng());
     let before = world.hash();
@@ -1884,6 +2073,64 @@ fn buying_needs_the_shop() {
 }
 
 #[test]
+fn buying_through_a_command_returns_the_purchase_event() {
+    let mut world = World::for_match(&config(), config().rng());
+    let item = bota_proto::ItemId(crate::game::ITEM_HEALING_SALVE);
+
+    let events = world.advance(&[crate::game::Command {
+        slot: bota_proto::SlotId(0),
+        unit: None,
+        order: bota_proto::Order::Buy { item },
+    }]);
+
+    assert!(events.iter().any(|event| {
+        event.kind
+            == bota_proto::EventKind::ItemBought {
+                slot: bota_proto::SlotId(0),
+                item,
+            }
+    }));
+}
+
+#[test]
+fn critical_hits_keep_their_flag_in_damage_events() {
+    let mut world = World::new();
+    let source = world.spawn_unit(
+        &MELEE_CREEP,
+        Team::Radiant,
+        bota_proto::Vec2::from_ints(5_000, 5_000),
+    );
+    let target = world.spawn_unit(
+        &MELEE_CREEP,
+        Team::Dire,
+        bota_proto::Vec2::from_ints(5_100, 5_000),
+    );
+    world.settle();
+    world.hits.push_back(crate::game::Hit {
+        source: Some(source),
+        target,
+        amount: 10,
+        kind: bota_proto::DamageKind::Physical,
+        crit: true,
+    });
+
+    let events = world.step();
+
+    assert!(events.iter().any(|event| {
+        matches!(
+            event.kind,
+            bota_proto::EventKind::Damaged {
+                source: Some(_),
+                target: _,
+                amount: _,
+                kind: bota_proto::DamageKind::Physical,
+                crit: true,
+            }
+        )
+    }));
+}
+
+#[test]
 fn a_ranged_attack_puts_a_missile_where_a_side_can_see_it() {
     let mut world = World::new();
     let archer = world.spawn_hero(
@@ -2032,6 +2279,7 @@ fn swing_once(world: &mut World) {
         entities: &mut world.entities,
         transform: &mut world.transform,
         hull: &world.hull,
+        ground: &world.ground,
         kind: &world.kind,
         team: &mut world.team,
         health: &world.health,
@@ -8216,6 +8464,52 @@ fn a_lane_opens_tower_by_tower_into_its_barracks() {
 }
 
 #[test]
+fn a_destroyed_structure_reopens_the_ground_it_blocked() {
+    let mut world = World::on_map(crate::game::map_of(bota_proto::MapId(0)));
+    let tower = rules::RADIANT_TOWERS[0].2;
+    assert!(
+        !world.grid.walkable(tower),
+        "a standing tower blocks its cell"
+    );
+
+    fell_at(&mut world, tower);
+
+    assert!(
+        world.grid.walkable(tower),
+        "the tower's walkable terrain reopens after its destruction"
+    );
+}
+
+#[test]
+fn passability_changes_invalidate_cached_routes() {
+    let mut world = World::new();
+    let entity = world.spawn();
+    world.route.insert(
+        entity,
+        crate::game::Route {
+            path: vec![bota_proto::Vec2::from_ints(5_000, 5_000)],
+            goal: bota_proto::Vec2::from_ints(6_000, 5_000),
+            trace: Some(crate::game::TraceSide::Left),
+        },
+    );
+    world.march.insert(
+        entity,
+        crate::game::March {
+            route_step: 0,
+            trace: Some(crate::game::TraceSide::Right),
+            shove: 0,
+        },
+    );
+
+    world.lay_passability();
+
+    let route = world.route.get(entity).expect("route remains");
+    assert!(route.path.is_empty());
+    assert_eq!(route.trace, None);
+    assert_eq!(world.march.get(entity).expect("march remains").trace, None);
+}
+
+#[test]
 fn the_ancient_waits_for_both_tier_fours() {
     let mut world = World::on_map(crate::game::map_of(bota_proto::MapId(0)));
     let t4_near = rules::RADIANT_TOWERS[9].2;
@@ -8605,4 +8899,217 @@ fn walkers_and_marchers_both_work_round_a_wall_of_bodies() {
     world.set_order(creep, crate::game::UnitOrder::AttackMove { pos: goal });
     let took = arrives_by(&mut world, creep, goal, 130);
     assert!(took.is_some(), "the creep works round the wall");
+}
+
+fn nearby_elevations(
+    ground: &crate::game::Ground,
+) -> (bota_proto::Vec2, bota_proto::Vec2, bota_proto::Vec2) {
+    const RADIUS: usize = 6;
+    for sy in RADIUS..crate::game::TERRAIN_CELLS - RADIUS {
+        for sx in RADIUS..crate::game::TERRAIN_CELLS - RADIUS {
+            if !ground.cell_walkable(sx, sy) {
+                continue;
+            }
+            let source = bota_proto::Vec2::from_ints(
+                sx as i32 * rules::GRID_CELL_SIZE + rules::GRID_CELL_SIZE / 2,
+                sy as i32 * rules::GRID_CELL_SIZE + rules::GRID_CELL_SIZE / 2,
+            );
+            let source_tier = ground.tier(source);
+            let mut level = None;
+            let mut uphill = None;
+            for ty in sy - RADIUS..=sy + RADIUS {
+                for tx in sx - RADIUS..=sx + RADIUS {
+                    if (tx == sx && ty == sy) || !ground.cell_walkable(tx, ty) {
+                        continue;
+                    }
+                    let target = bota_proto::Vec2::from_ints(
+                        tx as i32 * rules::GRID_CELL_SIZE + rules::GRID_CELL_SIZE / 2,
+                        ty as i32 * rules::GRID_CELL_SIZE + rules::GRID_CELL_SIZE / 2,
+                    );
+                    match ground.tier(target).cmp(&source_tier) {
+                        std::cmp::Ordering::Equal => level = Some(target),
+                        std::cmp::Ordering::Greater => uphill = Some(target),
+                        std::cmp::Ordering::Less => {}
+                    }
+                    if let (Some(level), Some(uphill)) = (level, uphill) {
+                        return (source, level, uphill);
+                    }
+                }
+            }
+        }
+    }
+    panic!("the Dota terrain needs a walkable elevation boundary");
+}
+
+const UPHILL_TEST_ATTACKER: UnitDef = UnitDef {
+    max_hp: 8_000,
+    damage: 1,
+    attack_interval: 1,
+    attack_point: 1,
+    projectile_speed: Some(6_000),
+    move_speed: 0,
+    ..RANGED_CREEP
+};
+const UPHILL_TEST_FLYING_ATTACKER: UnitDef = UnitDef {
+    flies: true,
+    ..UPHILL_TEST_ATTACKER
+};
+const UPHILL_TEST_TARGET: UnitDef = UnitDef {
+    max_hp: 8_000,
+    damage: 0,
+    move_speed: 0,
+    armor: 0,
+    ..MELEE_CREEP
+};
+const UPHILL_TEST_BUILDING: UnitDef = UnitDef {
+    kind: bota_proto::UnitKind::Tower,
+    move_speed: 0,
+    ..UPHILL_TEST_TARGET
+};
+
+fn ranged_damage_after_ticks(
+    source: bota_proto::Vec2,
+    target: bota_proto::Vec2,
+    attacker_def: &'static UnitDef,
+    target_def: &'static UnitDef,
+) -> i32 {
+    const OBSERVER: UnitDef = UnitDef {
+        max_hp: 8_000,
+        damage: 0,
+        move_speed: 0,
+        vision: 2_000,
+        ..MELEE_CREEP
+    };
+    const TICKS: u32 = 512;
+
+    let mut world = World::new();
+    let attacker = world.spawn_unit(attacker_def, Team::Radiant, source);
+    let mark = world.spawn_unit(target_def, Team::Dire, target);
+    world.spawn_unit(&OBSERVER, Team::Radiant, target);
+    world.settle();
+    world.set_target(attacker, mark);
+    if let Some(at) = world.transform.get_mut(attacker) {
+        at.facing = crate::game::facing_towards(source, target);
+    }
+    let before = world.health.get(mark).expect("target health").hp;
+    for _ in 0..TICKS {
+        world.step();
+    }
+    let after = world.health.get(mark).expect("target survives").hp;
+    (before - after).to_int()
+}
+
+#[test]
+fn ranged_attacks_can_miss_uphill_but_not_on_level_ground() {
+    let ground = crate::game::Ground::of(crate::game::map_of(bota_proto::MapId(0)));
+    let (source, level, uphill) = nearby_elevations(&ground);
+
+    let level_damage =
+        ranged_damage_after_ticks(source, level, &UPHILL_TEST_ATTACKER, &UPHILL_TEST_TARGET);
+    let uphill_damage =
+        ranged_damage_after_ticks(source, uphill, &UPHILL_TEST_ATTACKER, &UPHILL_TEST_TARGET);
+
+    assert!(level_damage > 0, "the level-ground control must attack");
+    assert!(uphill_damage < level_damage, "uphill attacks must miss");
+    assert!(
+        uphill_damage > level_damage / 2,
+        "the uphill miss rate must stay near one quarter"
+    );
+}
+
+#[test]
+fn buildings_and_flying_attackers_are_exempt_from_uphill_misses() {
+    let ground = crate::game::Ground::of(crate::game::map_of(bota_proto::MapId(0)));
+    let (source, level, uphill) = nearby_elevations(&ground);
+
+    let building_level =
+        ranged_damage_after_ticks(source, level, &UPHILL_TEST_ATTACKER, &UPHILL_TEST_BUILDING);
+    let building_uphill =
+        ranged_damage_after_ticks(source, uphill, &UPHILL_TEST_ATTACKER, &UPHILL_TEST_BUILDING);
+    let flying_level = ranged_damage_after_ticks(
+        source,
+        level,
+        &UPHILL_TEST_FLYING_ATTACKER,
+        &UPHILL_TEST_TARGET,
+    );
+    let flying_uphill = ranged_damage_after_ticks(
+        source,
+        uphill,
+        &UPHILL_TEST_FLYING_ATTACKER,
+        &UPHILL_TEST_TARGET,
+    );
+
+    assert_eq!(building_uphill, building_level, "buildings do not evade");
+    assert_eq!(flying_uphill, flying_level, "flying attacks do not miss");
+}
+
+fn manual_projectile_damage(
+    source_pos: bota_proto::Vec2,
+    target_pos: bota_proto::Vec2,
+    launch_tier: u8,
+) -> i32 {
+    const SHOTS: usize = 512;
+    let mut world = World::new();
+    let source = world.spawn_unit(&UPHILL_TEST_TARGET, Team::Radiant, source_pos);
+    let target = world.spawn_unit(&UPHILL_TEST_TARGET, Team::Dire, target_pos);
+    world.settle();
+    world.hull.remove(source);
+    let before = world.health.get(target).expect("target health").hp;
+    for _ in 0..SHOTS {
+        let missile = world.spawn();
+        world.transform.insert(
+            missile,
+            crate::game::Transform {
+                pos: target_pos,
+                facing: bota_proto::Angle::default(),
+            },
+        );
+        world.set_team(missile, Team::Radiant);
+        world.projectile.insert(
+            missile,
+            crate::game::Projectile {
+                speed: Fixed::ONE,
+                source: Some(source),
+                target,
+                damage: 1,
+                kind: bota_proto::DamageKind::Physical,
+                ability: None,
+                launch_tier,
+                can_miss_uphill: true,
+                crit: false,
+                bounces_left: 0,
+                bounce_range: 0,
+                bounced: Vec::new(),
+            },
+        );
+    }
+
+    world.step();
+
+    let after = world.health.get(target).expect("target survives").hp;
+    (before - after).to_int()
+}
+
+#[test]
+fn uphill_eligibility_uses_attacker_and_target_elevation_at_impact() {
+    let ground = crate::game::Ground::of(crate::game::map_of(bota_proto::MapId(0)));
+    let (low, _, high) = nearby_elevations(&ground);
+    let low_tier = ground.tier(low);
+    let high_tier = ground.tier(high);
+
+    let moved_up = manual_projectile_damage(high, high, low_tier);
+    let moved_down = manual_projectile_damage(low, high, high_tier);
+
+    assert_eq!(
+        moved_up, 512,
+        "an attacker now level with its target does not miss"
+    );
+    assert!(
+        moved_down < moved_up,
+        "an attacker now below its target can miss"
+    );
+    assert!(
+        moved_down > moved_up / 2,
+        "the miss rate stays near one quarter"
+    );
 }

@@ -33,6 +33,8 @@ pub struct World {
     pub rng: crate::game::MatchRng,
     /// Which cells anything may stand on.
     pub grid: crate::game::PassGrid,
+    /// Uphill miss sequences, indexed by attacker's entity slot.
+    pub uphill_miss: Vec<Option<crate::game::PseudoRandom25>>,
     /// Which roster each camp put out last, so it never draws twice running.
     pub camp_last: Vec<u8>,
     /// The height of the ground everywhere.
@@ -157,6 +159,7 @@ impl World {
             map: crate::game::map_of(bota_proto::MapId(0)),
             rng: crate::game::MatchRng::new(&[0; 32], 0),
             grid: crate::game::PassGrid::open(),
+            uphill_miss: Vec::new(),
             camp_last: Vec::new(),
             ground: crate::game::Ground::of(crate::game::map_of(bota_proto::MapId(0))),
             sight_block: crate::game::PassGrid::open(),
@@ -297,7 +300,7 @@ impl World {
     pub fn on_map(map: &'static crate::game::MapDef) -> World {
         let mut world = World::new();
         world.map = map;
-        world.grid = crate::game::build_grid(map);
+        world.grid = crate::game::build_terrain_grid(map);
         world.ground = crate::game::Ground::of(map);
         world.trees = Forest::of(map);
         world.sight_block = crate::game::build_sight_block(map);
@@ -328,7 +331,49 @@ impl World {
             }
         }
         world.settle();
+        world.lay_passability();
         world
+    }
+
+    /// Rebuilds walkability from terrain and what still stands on it.
+    pub fn lay_passability(&mut self) {
+        let mut grid = crate::game::build_terrain_grid(self.map);
+        for entity in self.entities.iter() {
+            let Some(kind) = self.kind.get(entity).copied() else {
+                continue;
+            };
+            if !crate::game::is_structure(kind) || !self.alive(entity) {
+                continue;
+            }
+            let (Some(at), Some(hull)) = (self.transform.get(entity), self.hull.get(entity)) else {
+                continue;
+            };
+            grid.block_circle(at.pos, crate::game::structure_clearance(hull.radius));
+        }
+        let tree_radius = crate::game::structure_clearance(crate::game::rules::units(
+            crate::game::rules::TREE_RADIUS,
+        ));
+        for (index, at) in crate::game::tree_positions(self.map)
+            .into_iter()
+            .enumerate()
+        {
+            if self.trees.rooted_stands(index) {
+                grid.block_circle(at, tree_radius);
+            }
+        }
+        for tree in self.trees.planted() {
+            grid.block_circle(tree.at, tree_radius);
+        }
+        self.grid = grid;
+        for entity in self.entities.iter() {
+            if let Some(route) = self.route.get_mut(entity) {
+                route.path.clear();
+                route.trace = None;
+            }
+            if let Some(march) = self.march.get_mut(entity) {
+                march.trace = None;
+            }
+        }
     }
 
     /// Lays out afresh which cells stop a sight line, from the forest as it
@@ -409,6 +454,7 @@ impl World {
         self.tick_dismembers();
         if self.trees.tick(self.tick) {
             self.lay_sight_block();
+            self.lay_passability();
         }
         self.spread_presence();
         aura_system(AuraCx {
@@ -458,6 +504,7 @@ impl World {
             entities: &mut self.entities,
             transform: &mut self.transform,
             hull: &self.hull,
+            ground: &self.ground,
             kind: &self.kind,
             team: &mut self.team,
             health: &self.health,
@@ -476,6 +523,10 @@ impl World {
             team: &mut self.team,
             visibility: &mut self.visibility,
             health: &self.health,
+            kind: &self.kind,
+            ground: &self.ground,
+            rng: &self.rng,
+            uphill_miss: &mut self.uphill_miss,
             hits: &mut self.hits,
             bounced: &mut self.bounced,
         });

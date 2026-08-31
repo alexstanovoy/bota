@@ -11,8 +11,8 @@ use std::collections::VecDeque;
 use bota_proto::{DamageKind, Fixed, Team, UnitKind};
 
 use crate::game::{
-    Attacking, Entity, EntityAllocator, Health, Hit, Hull, Projectile, Stats, StatusKind, Statuses,
-    Table, Target, Transform, Visibility, Windup, is_creep,
+    Attacking, Entity, EntityAllocator, Ground, Health, Hit, Hull, Projectile, Stats, StatusKind,
+    Statuses, Table, Target, Transform, Visibility, Windup, is_creep,
 };
 use crate::game::{facing_gap, facing_towards, rules};
 
@@ -25,6 +25,8 @@ pub struct AttackCx<'a> {
     pub transform: &'a mut Table<Transform>,
     /// The room each entity takes.
     pub hull: &'a Table<Hull>,
+    /// Elevation under a ranged attacker when its missile leaves.
+    pub ground: &'a Ground,
     /// What kind of thing each entity is, for what a blow is worth against it.
     pub kind: &'a Table<UnitKind>,
     /// Which side each entity is on.
@@ -57,6 +59,7 @@ pub fn attacking_system(cx: AttackCx<'_>) {
         entities,
         transform,
         hull,
+        ground,
         kind,
         team,
         health,
@@ -121,6 +124,7 @@ pub fn attacking_system(cx: AttackCx<'_>) {
                         against,
                         entities,
                         transform,
+                        ground,
                         team,
                         visibility,
                         hits,
@@ -157,6 +161,7 @@ fn strike(
     against: Option<UnitKind>,
     entities: &mut EntityAllocator,
     transform: &mut Table<Transform>,
+    ground: &Ground,
     team: &mut Table<Team>,
     visibility: &mut Table<Visibility>,
     hits: &mut VecDeque<Hit>,
@@ -197,7 +202,8 @@ fn strike(
                     damage,
                     kind: DamageKind::Physical,
                     ability: None,
-                    launch_tier: 0,
+                    launch_tier: ground.tier(at.pos),
+                    can_miss_uphill: !stats.flies,
                     crit: false,
                     bounces_left: 0,
                     bounce_range: 0,

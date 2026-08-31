@@ -2,10 +2,11 @@
 
 use std::collections::VecDeque;
 
-use bota_proto::{Fixed, Team};
+use bota_proto::{Fixed, Team, UnitKind};
 
 use crate::game::{
-    Entity, EntityAllocator, Health, Hit, Projectile, Table, Transform, Visibility, World, rules,
+    Entity, EntityAllocator, Ground, Health, Hit, MatchRng, Projectile, PseudoRandom25, Purpose,
+    Table, Transform, Visibility, World, is_structure, rules, wire_id,
 };
 use crate::game::{facing_towards, move_towards, per_tick};
 
@@ -23,6 +24,14 @@ pub struct MissileCx<'a> {
     pub visibility: &'a mut Table<Visibility>,
     /// Health, for telling whether a missile still has anybody to reach.
     pub health: &'a Table<Health>,
+    /// What each target is, so buildings never evade uphill attacks.
+    pub kind: &'a Table<UnitKind>,
+    /// Elevation under a missile's target when it arrives.
+    pub ground: &'a Ground,
+    /// Hidden streams used when an attacker first needs an uphill sequence.
+    pub rng: &'a MatchRng,
+    /// Uphill miss sequence per attacker slot.
+    pub uphill_miss: &'a mut Vec<Option<PseudoRandom25>>,
     /// Where an arriving missile leaves its blow.
     pub hits: &'a mut VecDeque<Hit>,
     /// Where one that still has a bounce in it is left to be sent on.
@@ -42,6 +51,10 @@ pub fn missile_system(cx: MissileCx<'_>) {
         team,
         visibility,
         health,
+        kind,
+        ground,
+        rng,
+        uphill_miss,
         hits,
         bounced,
     } = cx;
@@ -66,6 +79,10 @@ pub fn missile_system(cx: MissileCx<'_>) {
         if next != to {
             continue;
         }
+        if misses_uphill(&shot, to, transform, kind, ground, rng, uphill_miss) {
+            give_up(missile, entities, projectile, transform, team, visibility);
+            continue;
+        }
         hits.push_back(Hit {
             source: shot.source,
             target: shot.target,
@@ -81,6 +98,38 @@ pub fn missile_system(cx: MissileCx<'_>) {
         }
         give_up(missile, entities, projectile, transform, team, visibility);
     }
+}
+
+fn misses_uphill(
+    shot: &Projectile,
+    target_pos: bota_proto::Vec2,
+    transform: &Table<Transform>,
+    kind: &Table<UnitKind>,
+    ground: &Ground,
+    rng: &MatchRng,
+    uphill_miss: &mut Vec<Option<PseudoRandom25>>,
+) -> bool {
+    let source_tier = shot
+        .source
+        .and_then(|source| transform.get(source))
+        .map_or(shot.launch_tier, |source| ground.tier(source.pos));
+    if !shot.can_miss_uphill
+        || kind.get(shot.target).copied().is_some_and(is_structure)
+        || ground.tier(target_pos) <= source_tier
+    {
+        return false;
+    }
+    let Some(source) = shot.source else {
+        return false;
+    };
+    let index = source.index().0 as usize;
+    if uphill_miss.len() <= index {
+        uphill_miss.resize_with(index + 1, || None);
+    }
+    let chance = uphill_miss[index].get_or_insert_with(|| {
+        PseudoRandom25::new(rng.for_unit(Purpose::Evasion, wire_id(source), 0))
+    });
+    chance.roll()
 }
 
 /// Takes a missile out of the air and out of the world.

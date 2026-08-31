@@ -51,14 +51,16 @@ impl World {
     /// Only orders that send a body somewhere are carried over; anything else
     /// is dropped.
     pub fn advance(&mut self, cmds: &[Command]) -> Vec<Event> {
+        let mut events = Vec::new();
         for cmd in cmds {
-            self.take_order(cmd);
+            self.take_order(cmd, &mut events);
         }
-        self.step()
+        events.extend(self.step());
+        events
     }
 
     /// Hands one order to the body of the seat that gave it.
-    fn take_order(&mut self, cmd: &Command) {
+    fn take_order(&mut self, cmd: &Command, events: &mut Vec<Event>) {
         let Some(unit) = self.driven_by(cmd.slot, cmd.unit) else {
             return;
         };
@@ -66,8 +68,7 @@ impl World {
         // interrupts nothing the body is doing.
         match cmd.order {
             Order::Learn { slot } => {
-                let mut events = Vec::new();
-                self.learn(unit, usize::from(slot.0), &mut events);
+                self.learn(unit, usize::from(slot.0), events);
                 return;
             }
             Order::Swap { from, to } => {
@@ -79,8 +80,7 @@ impl World {
                 return;
             }
             Order::Buy { item } => {
-                let mut events = Vec::new();
-                self.buy(cmd.slot, item, &mut events);
+                self.buy(cmd.slot, item, events);
                 return;
             }
             _ => {}

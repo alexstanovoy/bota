@@ -122,15 +122,7 @@ pub fn lane_route(map: &crate::game::MapDef, team: Team, lane: u8) -> Vec<Vec2> 
 /// Built from the map alone, so the routes found on it never depend on which
 /// world asked first.
 pub fn build_grid(map: &crate::game::MapDef) -> PassGrid {
-    let ground = Ground::of(map);
-    let mut grid = PassGrid::open();
-    for cy in 0..rules::GRID_CELLS {
-        for cx in 0..rules::GRID_CELLS {
-            if !ground.cell_walkable(cx, cy) {
-                grid.close_cell(cx, cy);
-            }
-        }
-    }
+    let mut grid = build_terrain_grid(map);
     let mut block = |pos: Vec2, radius: bota_proto::Fixed| {
         grid.block_circle(pos, crate::game::structure_clearance(radius));
     };
@@ -148,6 +140,20 @@ pub fn build_grid(map: &crate::game::MapDef) -> PassGrid {
     }
     for at in tree_positions(map) {
         block(at, rules::units(rules::TREE_RADIUS));
+    }
+    grid
+}
+
+/// The passability grid before dynamic structures and trees are laid on it.
+pub fn build_terrain_grid(map: &crate::game::MapDef) -> PassGrid {
+    let ground = Ground::of(map);
+    let mut grid = PassGrid::open();
+    for cy in 0..rules::GRID_CELLS {
+        for cx in 0..rules::GRID_CELLS {
+            if !ground.cell_walkable(cx, cy) {
+                grid.close_cell(cx, cy);
+            }
+        }
     }
     grid
 }

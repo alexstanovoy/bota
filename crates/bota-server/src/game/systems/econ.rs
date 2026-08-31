@@ -2,7 +2,7 @@
 
 use bota_proto::{EventKind, Team, UnitKind, Vec2};
 
-use crate::game::{Bounty, Entity, Level, World, wire_id};
+use crate::game::{Bounty, Entity, Level, World, is_lane_creep, wire_id};
 use crate::game::{Event, EventVisibility, hero_spawn_pos, rules};
 
 impl World {
@@ -79,12 +79,22 @@ impl World {
             }
         }
         if denied {
+            if self.kind.get(fallen).copied().is_some_and(is_lane_creep) {
+                let enemy = match side {
+                    Team::Radiant => Team::Dire,
+                    Team::Dire => Team::Radiant,
+                    Team::Neutral => Team::Neutral,
+                };
+                let xp = bounty.xp * rules::DENIED_XP_PCT / 100;
+                self.grant_xp_around(at, enemy, xp, None, events);
+            }
             return 0;
         }
         let Some(earners) = killer_side else {
             return paid;
         };
-        self.grant_xp_around(at, earners, bounty.xp, events);
+        let killer_seat = fallen_seat.and_then(|_| killer.and_then(|entity| self.seat_of(entity)));
+        self.grant_xp_around(at, earners, bounty.xp, killer_seat, events);
         paid
     }
 
@@ -94,7 +104,14 @@ impl World {
     }
 
     /// Shares experience among a side's heroes standing near a spot.
-    fn grant_xp_around(&mut self, at: Vec2, team: Team, amount: i32, events: &mut Vec<Event>) {
+    fn grant_xp_around(
+        &mut self,
+        at: Vec2,
+        team: Team,
+        amount: i32,
+        always: Option<usize>,
+        events: &mut Vec<Event>,
+    ) {
         if amount <= 0 {
             return;
         }
@@ -103,14 +120,22 @@ impl World {
             .filter(|&index| {
                 let seat = &self.seats[index];
                 seat.team == team
-                    && seat
-                        .unit
-                        .and_then(|unit| self.transform.get(unit))
-                        .is_some_and(|t| t.pos.within(at, radius))
+                    && seat.unit.is_some_and(|unit| {
+                        self.alive(unit)
+                            && (always == Some(index)
+                                || self
+                                    .transform
+                                    .get(unit)
+                                    .is_some_and(|t| t.pos.within(at, radius)))
+                    })
             })
             .collect();
+        if earners.is_empty() {
+            return;
+        }
+        let share = amount / earners.len() as i32;
         for index in earners {
-            self.grant_xp(index, amount, events);
+            self.grant_xp(index, share, events);
         }
     }
 

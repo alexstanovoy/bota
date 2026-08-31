@@ -104,7 +104,7 @@ pub enum ItemUse {
         range: i32,
         /// Whether it takes a tree down to work, and needs one in reach.
         eats_a_tree: bool,
-        /// Whether a blow from a hero, a tower or Roshan puts it out.
+        /// Whether a blow from a hero or a tower puts it out.
         breaks: bool,
     },
     /// Mends whoever used it at once, spending every charge it holds.
@@ -178,7 +178,7 @@ pub struct ItemDef {
     pub shared_wait: bool,
     /// Mana using it costs.
     pub mana_cost: i32,
-    /// Ticks of waiting a blow from a hero, a tower or Roshan puts on it.
+    /// Ticks of waiting a blow from a hero or a tower puts on it.
     /// Zero for one that answers to no blow.
     pub breaks_on_damage: u32,
     /// Which attribute it is set to when bought. Absent for one that is set
