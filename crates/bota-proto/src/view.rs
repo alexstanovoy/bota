@@ -99,6 +99,8 @@ pub struct ItemView {
     pub charges: Option<u8>,
     /// Ticks remaining before the item can be used again. Zero means ready.
     pub cooldown_left: u32,
+    /// Backpack mute ticks remaining. Zero means ready.
+    pub mute_left: u32,
     /// Which attribute it is set to. Absent for an item that is not set to one.
     pub mode: Option<Attribute>,
     /// Mana one use would cost.

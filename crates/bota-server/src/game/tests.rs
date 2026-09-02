@@ -4043,6 +4043,46 @@ fn the_backpack_takes_from_the_stash_too() {
 }
 
 #[test]
+fn a_backpack_swap_projects_mute_until_the_exact_boundary() {
+    let (mut world, hero, boots) = a_hero_at_the_shop();
+    let pocket = rules::INVENTORY_SLOTS;
+    assert!(
+        world.move_item(bota_proto::SlotId(0), hero, crate::game::BAG_SLOTS, pocket),
+        "the stash item moves into the backpack"
+    );
+    world.inventory.get_mut(hero).expect("has a bag").slots[0] =
+        Some(a_stack_of(crate::game::ITEM_IRON_BRANCH, 0));
+    assert!(
+        world.move_item(bota_proto::SlotId(0), hero, pocket, 0),
+        "the backpack item swaps into the inventory"
+    );
+
+    let projected = |world: &World| {
+        let view = world.view(bota_proto::Team::Radiant);
+        view.units
+            .iter()
+            .find(|unit| unit.id == crate::game::wire_id(hero))
+            .and_then(|unit| unit.items.first().copied().flatten())
+            .expect("the item is visible to its seat")
+    };
+    let item = projected(&world);
+    assert_eq!(item.id, boots, "the backpack item landed in front");
+    assert!(item.mute_left > 0, "the projected mute starts positive");
+    assert_eq!(
+        item.mute_left,
+        slot_of(&world, hero, 0).expect("held in front").mute,
+        "the view carries the exact stack mute"
+    );
+
+    for _ in 1..rules::BACKPACK_MUTE_TICKS {
+        world.step();
+    }
+    assert_eq!(projected(&world).mute_left, 1, "one tick remains");
+    world.step();
+    assert_eq!(projected(&world).mute_left, 0, "the boundary is ready");
+}
+
+#[test]
 fn the_stash_is_out_of_reach_away_from_the_shop() {
     let (mut world, hero, _boots) = a_hero_at_the_shop();
     world.transform.get_mut(hero).expect("hero").pos = bota_proto::Vec2::from_ints(9600, 9216);
