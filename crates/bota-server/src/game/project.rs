@@ -176,6 +176,11 @@ impl World {
                         StatusFlags::INVULNERABLE
                     } else {
                         0
+                    }
+                    | if self.is_channelling(entity) {
+                        StatusFlags::CHANNELLING
+                    } else {
+                        0
                     },
             },
             attributes: stats.attributes,

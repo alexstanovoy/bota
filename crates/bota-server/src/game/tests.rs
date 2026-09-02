@@ -810,6 +810,27 @@ fn a_fallen_ancient_ends_the_match() {
 }
 
 #[test]
+fn simultaneous_ancient_deaths_preserve_the_first_terminal_result() {
+    let mut world = World::new();
+    let radiant = world.spawn_unit(
+        &crate::game::ANCIENT,
+        bota_proto::Team::Radiant,
+        bota_proto::Vec2::from_ints(1000, 1000),
+    );
+    let dire = world.spawn_unit(
+        &crate::game::ANCIENT,
+        bota_proto::Team::Dire,
+        bota_proto::Vec2::from_ints(2000, 2000),
+    );
+    world.settle();
+    let mut events = Vec::new();
+
+    world.bury(vec![(radiant, None), (dire, None)], &mut events);
+
+    assert_eq!(world.victor(), Some(bota_proto::Team::Dire));
+}
+
+#[test]
 fn a_fallen_demo_tower_ends_the_one_lane_match_only() {
     let mut demo = World::on_map(crate::game::map_of(bota_proto::MapId(1)));
     let tower = demo.spawn_unit(
@@ -4132,6 +4153,17 @@ fn a_scroll_carries_its_user_once_the_channel_runs_out() {
         "beside a building of its own it may go"
     );
     assert!(world.is_channelling(hero), "and stands through the channel");
+    let projected = world
+        .view(bota_proto::Team::Radiant)
+        .units
+        .into_iter()
+        .find(|unit| unit.id == crate::game::wire_id(hero))
+        .expect("channelled hero is projected");
+    assert_ne!(
+        projected.statuses.bits & bota_proto::StatusFlags::CHANNELLING,
+        0,
+        "channel state crosses the seat-visible protocol"
+    );
     world.step();
     assert_eq!(
         world.transform.get(hero).map(|t| t.pos),

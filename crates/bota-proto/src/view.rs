@@ -43,6 +43,8 @@ impl StatusFlags {
     pub const DEAD: u16 = 1 << 8;
     /// Cannot be attacked or damaged at all.
     pub const INVULNERABLE: u16 = 1 << 9;
+    /// Performing a channelled ability or item action.
+    pub const CHANNELLING: u16 = 1 << 10;
 }
 
 /// One ability slot of a visible hero.

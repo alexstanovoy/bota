@@ -111,7 +111,7 @@ impl World {
                     },
                     visible_to: EventVisibility::Everyone,
                 });
-                if kind == UnitKind::Ancient {
+                if kind == UnitKind::Ancient && self.winner.is_none() {
                     self.winner = Some(other_side(side));
                 }
                 if self.map.id == bota_proto::MapId(1)
