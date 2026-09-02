@@ -289,6 +289,7 @@ pub enum ServerMsg {
         view: WorldView,
     },
     /// What happened during a tick, filtered to what this team may know.
+    /// Sent after every snapshot, including an empty batch, to complete that tick.
     Events {
         /// Which tick these belong to.
         tick: u32,
