@@ -16,6 +16,8 @@ mod slots;
 mod state;
 
 #[cfg(test)]
+mod replay_tests;
+#[cfg(test)]
 mod tests;
 
 use std::path::PathBuf;
@@ -58,10 +60,17 @@ fn conf() -> Conf {
 #[macroquad::main(conf)]
 async fn main() {
     let args = Args::parse();
+    if args.replay.is_some() {
+        render::draw_replay_loading(0);
+        next_frame().await;
+    }
     let mut app = match build_app(&args) {
         Ok(app) => app,
         Err(err) => {
             eprintln!("bota-client: {err}");
+            if args.replay.is_some() {
+                replay_open_error(&err.to_string()).await;
+            }
             return;
         }
     };
@@ -70,11 +79,6 @@ async fn main() {
         let msgs = app.source.poll(dt);
         for msg in msgs {
             app.handle(msg);
-        }
-        for (tick, orders) in app.source.take_orders() {
-            for given in orders {
-                app.note_order(given.slot, given.unit, tick, given.order);
-            }
         }
         input::handle(&mut app);
         app.check_connection();
@@ -87,10 +91,21 @@ async fn main() {
     }
 }
 
+async fn replay_open_error(error: &str) {
+    loop {
+        render::draw_replay_loading(0);
+        render::draw_replay_error(error);
+        if macroquad::prelude::is_key_pressed(macroquad::prelude::KeyCode::Escape) {
+            return;
+        }
+        next_frame().await;
+    }
+}
+
 fn build_app(args: &Args) -> std::io::Result<App> {
     if let Some(path) = &args.replay {
         let player = ReplayPlayer::load(path)?;
-        return Ok(App::new(Source::Replay(player)));
+        return Ok(App::new(Source::Replay(Box::new(player))));
     }
     let mut net = Net::connect(&args.addr)?;
     let role = if args.spectate {

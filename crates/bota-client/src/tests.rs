@@ -513,6 +513,7 @@ fn an_item(charges: Option<u8>, cooldown: u32, mana_cost: i32, aim: Option<Aim>)
         id: ItemId(0),
         charges,
         cooldown_left: cooldown,
+        mute_left: 0,
         mode: None,
         mana_cost,
         range: 0,

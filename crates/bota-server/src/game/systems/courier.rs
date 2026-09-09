@@ -147,7 +147,8 @@ impl World {
 
     /// Carries every errand one tick on.
     fn run_errands(&mut self) {
-        for courier in self.entities.iter().collect::<Vec<_>>() {
+        let entities = self.take_entity_snapshot();
+        for courier in entities.iter().copied() {
             let Some(errand) = self.errand.get(courier).copied() else {
                 continue;
             };
@@ -168,6 +169,7 @@ impl World {
                 self.errand.insert(courier, Errand::None);
             }
         }
+        self.recycle_entity_snapshot(entities);
     }
 
     /// Takes what waits in a seat stash, from the spot by the shop.

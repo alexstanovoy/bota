@@ -34,6 +34,7 @@ pub fn item_view(slot: u16) -> ItemView {
         id: ItemId(slot),
         charges: Some(3),
         cooldown_left: 0,
+        mute_left: 15,
         mode: None,
         mana_cost: 25,
         range: 400,

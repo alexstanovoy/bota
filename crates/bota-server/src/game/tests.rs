@@ -810,6 +810,108 @@ fn a_fallen_ancient_ends_the_match() {
 }
 
 #[test]
+fn simultaneous_ancient_deaths_preserve_the_first_terminal_result() {
+    let mut world = World::new();
+    let radiant = world.spawn_unit(
+        &crate::game::ANCIENT,
+        bota_proto::Team::Radiant,
+        bota_proto::Vec2::from_ints(1000, 1000),
+    );
+    let dire = world.spawn_unit(
+        &crate::game::ANCIENT,
+        bota_proto::Team::Dire,
+        bota_proto::Vec2::from_ints(2000, 2000),
+    );
+    world.settle();
+    let mut events = Vec::new();
+
+    world.bury(vec![(radiant, None), (dire, None)], &mut events);
+
+    assert_eq!(world.victor(), Some(bota_proto::Team::Dire));
+}
+
+#[test]
+fn a_fallen_demo_tower_ends_the_one_lane_match_only() {
+    let mut demo = World::on_map(crate::game::map_of(bota_proto::MapId(1)));
+    let tower = demo.spawn_unit(
+        crate::game::tower_def(1),
+        bota_proto::Team::Dire,
+        bota_proto::Vec2::from_ints(1000, 1000),
+    );
+    demo.settle();
+    let mut events = Vec::new();
+
+    demo.bury(vec![(tower, None)], &mut events);
+
+    assert_eq!(demo.victor(), Some(bota_proto::Team::Radiant));
+
+    let mut simultaneous = World::on_map(crate::game::map_of(bota_proto::MapId(1)));
+    let radiant = simultaneous.spawn_unit(
+        crate::game::tower_def(1),
+        bota_proto::Team::Radiant,
+        bota_proto::Vec2::from_ints(1000, 1000),
+    );
+    let dire = simultaneous.spawn_unit(
+        crate::game::tower_def(1),
+        bota_proto::Team::Dire,
+        bota_proto::Vec2::from_ints(2000, 2000),
+    );
+    simultaneous.settle();
+    simultaneous.bury(vec![(radiant, None), (dire, None)], &mut events);
+    assert_eq!(
+        simultaneous.victor(),
+        Some(bota_proto::Team::Dire),
+        "the first terminal event stands"
+    );
+
+    let mut dota = World::new();
+    let tower = dota.spawn_unit(
+        crate::game::tower_def(1),
+        bota_proto::Team::Dire,
+        bota_proto::Vec2::from_ints(1000, 1000),
+    );
+    dota.settle();
+    dota.bury(vec![(tower, None)], &mut events);
+    assert_eq!(dota.victor(), None, "a Dota tier-one is not the Ancient");
+}
+
+#[test]
+fn a_second_demo_hero_death_loses_the_one_lane_match() {
+    let map = crate::game::map_of(bota_proto::MapId(1));
+    let mut world = World::on_map(map);
+    let hero = world.spawn_hero(
+        bota_proto::Team::Dire,
+        bota_proto::Vec2::from_ints(1000, 1000),
+        bota_proto::SlotId(0),
+        bota_proto::HeroId(0),
+    );
+    world.seats.push(crate::game::Seat::new(
+        bota_proto::SlotId(0),
+        bota_proto::Team::Dire,
+        bota_proto::HeroId(0),
+        0,
+        rules::STASH_SLOTS,
+    ));
+    world.seats[0].unit = Some(hero);
+    world.seats.push(crate::game::Seat::new(
+        bota_proto::SlotId(1),
+        bota_proto::Team::Dire,
+        bota_proto::HeroId(0),
+        0,
+        rules::STASH_SLOTS,
+    ));
+    world.seats[1].deaths = rules::DEMO_DEATH_LIMIT - 1;
+    world.settle();
+    let mut events = Vec::new();
+
+    world.bury(vec![(hero, None)], &mut events);
+
+    assert_eq!(world.seats[0].deaths, 1);
+    assert_eq!(world.seats[1].deaths, 1);
+    assert_eq!(world.victor(), Some(bota_proto::Team::Radiant));
+}
+
+#[test]
 fn a_missile_carries_the_hit_rather_than_landing_it_at_once() {
     let mut world = World::new();
     let archer = world.spawn_unit(
@@ -3941,6 +4043,46 @@ fn the_backpack_takes_from_the_stash_too() {
 }
 
 #[test]
+fn a_backpack_swap_projects_mute_until_the_exact_boundary() {
+    let (mut world, hero, boots) = a_hero_at_the_shop();
+    let pocket = rules::INVENTORY_SLOTS;
+    assert!(
+        world.move_item(bota_proto::SlotId(0), hero, crate::game::BAG_SLOTS, pocket),
+        "the stash item moves into the backpack"
+    );
+    world.inventory.get_mut(hero).expect("has a bag").slots[0] =
+        Some(a_stack_of(crate::game::ITEM_IRON_BRANCH, 0));
+    assert!(
+        world.move_item(bota_proto::SlotId(0), hero, pocket, 0),
+        "the backpack item swaps into the inventory"
+    );
+
+    let projected = |world: &World| {
+        let view = world.view(bota_proto::Team::Radiant);
+        view.units
+            .iter()
+            .find(|unit| unit.id == crate::game::wire_id(hero))
+            .and_then(|unit| unit.items.first().copied().flatten())
+            .expect("the item is visible to its seat")
+    };
+    let item = projected(&world);
+    assert_eq!(item.id, boots, "the backpack item landed in front");
+    assert!(item.mute_left > 0, "the projected mute starts positive");
+    assert_eq!(
+        item.mute_left,
+        slot_of(&world, hero, 0).expect("held in front").mute,
+        "the view carries the exact stack mute"
+    );
+
+    for _ in 1..rules::BACKPACK_MUTE_TICKS {
+        world.step();
+    }
+    assert_eq!(projected(&world).mute_left, 1, "one tick remains");
+    world.step();
+    assert_eq!(projected(&world).mute_left, 0, "the boundary is ready");
+}
+
+#[test]
 fn the_stash_is_out_of_reach_away_from_the_shop() {
     let (mut world, hero, _boots) = a_hero_at_the_shop();
     world.transform.get_mut(hero).expect("hero").pos = bota_proto::Vec2::from_ints(9600, 9216);
@@ -4051,6 +4193,17 @@ fn a_scroll_carries_its_user_once_the_channel_runs_out() {
         "beside a building of its own it may go"
     );
     assert!(world.is_channelling(hero), "and stands through the channel");
+    let projected = world
+        .view(bota_proto::Team::Radiant)
+        .units
+        .into_iter()
+        .find(|unit| unit.id == crate::game::wire_id(hero))
+        .expect("channelled hero is projected");
+    assert_ne!(
+        projected.statuses.bits & bota_proto::StatusFlags::CHANNELLING,
+        0,
+        "channel state crosses the seat-visible protocol"
+    );
     world.step();
     assert_eq!(
         world.transform.get(hero).map(|t| t.pos),
@@ -8672,7 +8825,7 @@ fn the_demo_waves_march_out_and_meet_between_the_towers() {
             at.y.to_int()
         );
     }
-    assert_eq!(world.victor(), None, "the demo map has nothing to win by");
+    assert_eq!(world.victor(), None, "no tower or hero has fallen enough");
 }
 
 #[test]

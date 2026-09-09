@@ -31,7 +31,8 @@ impl World {
     /// instead: movement walks the caster in, and the cast goes off when it
     /// arrives.
     pub fn run_casts(&mut self, events: &mut Vec<Event>) {
-        for entity in self.entities.iter().collect::<Vec<_>>() {
+        let entities = self.take_entity_snapshot();
+        for entity in entities.iter().copied() {
             let Some(cast) = self.casting.get(entity).copied() else {
                 continue;
             };
@@ -106,6 +107,7 @@ impl World {
                 visible_to: self.who_may_know(at, side),
             });
         }
+        self.recycle_entity_snapshot(entities);
     }
 
     /// Gives every enemy item near a cast one charge of what it may hold.

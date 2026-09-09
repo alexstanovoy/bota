@@ -62,7 +62,8 @@ impl World {
     /// invulnerability, so targeting, orders and blows all refuse it the
     /// same way they refuse anything invulnerable.
     pub fn guard_structures(&mut self) {
-        for entity in self.entities.iter().collect::<Vec<_>>() {
+        let entities = self.take_entity_snapshot();
+        for entity in entities.iter().copied() {
             let Some(kind) = self.kind.get(entity).copied() else {
                 continue;
             };
@@ -73,5 +74,6 @@ impl World {
                 stats.invulnerable = true;
             }
         }
+        self.recycle_entity_snapshot(entities);
     }
 }

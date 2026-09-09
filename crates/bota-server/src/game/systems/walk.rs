@@ -23,7 +23,8 @@ impl World {
     /// still until it has come round. A creep marches round what is in its
     /// way; anything a player drives slides along it.
     pub fn walk_bodies(&mut self) {
-        for entity in self.entities.iter().collect::<Vec<_>>() {
+        let entities = self.take_entity_snapshot();
+        for entity in entities.iter().copied() {
             // Held or channelling roots outright: there is nothing to come
             // round to.
             if self.held(entity) || self.is_channelling(entity) {
@@ -162,6 +163,7 @@ impl World {
                 transform.pos = next;
             }
         }
+        self.recycle_entity_snapshot(entities);
     }
 
     /// Whether two bodies stand near enough to be touching.

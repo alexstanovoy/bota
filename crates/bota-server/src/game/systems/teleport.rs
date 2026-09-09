@@ -13,7 +13,8 @@ impl World {
     /// whose channeller has fallen or been held is dropped, and the scroll
     /// stays unspent.
     pub fn tick_teleports(&mut self) {
-        for entity in self.entities.iter().collect::<Vec<_>>() {
+        let entities = self.take_entity_snapshot();
+        for entity in entities.iter().copied() {
             let Some(mut going) = self.teleport.get(entity).copied() else {
                 continue;
             };
@@ -36,6 +37,7 @@ impl World {
             self.set_order(entity, crate::game::UnitOrder::Idle);
             self.spend_charge(entity, going.slot);
         }
+        self.recycle_entity_snapshot(entities);
     }
 
     /// Whether a spot may be teleported to: walkable ground within reach of a

@@ -100,7 +100,8 @@ impl World {
     pub fn tick_jungle(&mut self) {
         let guard = rules::units(rules::NEUTRAL_GUARD_DISTANCE);
         let back = rules::units(rules::NEUTRAL_RETURN);
-        for entity in self.entities.iter().collect::<Vec<_>>() {
+        let entities = self.take_entity_snapshot();
+        for entity in entities.iter().copied() {
             let (Some(mut ai), Some(home), Some(at)) = (
                 self.neutral_ai.get(entity).copied(),
                 self.camp_home.get(entity).copied(),
@@ -147,6 +148,7 @@ impl World {
             }
             self.neutral_ai.insert(entity, ai);
         }
+        self.recycle_entity_snapshot(entities);
     }
 }
 

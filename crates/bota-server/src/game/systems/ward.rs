@@ -8,7 +8,8 @@ use crate::game::{Entity, Expiry, UnitDef, World};
 impl World {
     /// Runs down what stands for a time, and takes away whatever has run out.
     pub fn tick_expiries(&mut self) {
-        for entity in self.entities.iter().collect::<Vec<_>>() {
+        let entities = self.take_entity_snapshot();
+        for entity in entities.iter().copied() {
             let Some(mut left) = self.expiry.get(entity).copied() else {
                 continue;
             };
@@ -20,6 +21,7 @@ impl World {
             self.expiry.remove(entity);
             self.despawn(entity);
         }
+        self.recycle_entity_snapshot(entities);
     }
 
     /// Stands a ward at the spot an item was aimed at.
