@@ -813,6 +813,74 @@ already gets. Snapshots are whole, so rendering can resume from any point of the
 file. In 1v1 the stream runs at about 2.5 MB per minute; archiving is an external
 compressor's job, not the protocol's.
 
+### Bounded replay playback in the client
+
+Opening a replay must not depend on its duration. The client previously read the
+whole file, fed it to the socket `FrameReader`, and decoded every record before
+the first render. Removing each decoded prefix from that reader moved the entire
+remaining tail. A roughly 500 MB, 127,000-record replay therefore incurred
+quadratic copying as well as retaining all decoded snapshots. A window already
+created by macroquad stayed black during that work. Small counted-reader and
+clock tests reproduced the failure without running the large files through the
+old loader.
+
+The replay player now opens the file without reading records. A client-local
+`BufReader<Read>` reads the existing little-endian length prefix and calls the
+existing `decode_payload` on one record at a time. The shared codec, replay
+format, server and live networking are unchanged. A file-sized byte buffer, a
+decoded frame queue, a background producer and a replay index are unnecessary
+for forward playback; omitting them also removes producer backpressure and
+thread shutdown protocols. One future record is retained as lookahead.
+
+Each GUI-frame poll has three independent limits: 64 records inspected or
+released, 256 KiB of framing/payload bytes consumed, and 128 reader calls,
+including interruptions. Read-ahead is another 8 KiB at most. The existing
+4 MiB payload limit is checked before allocation. A payload can span polls;
+prefix and payload progress survive the yield, and the reusable byte buffer
+never exceeds that payload limit. An already partly read or waiting record can
+complete in a later batch, so a batch's decoded contents are bounded by one
+maximum payload plus that poll's byte budget, not just by the byte budget.
+Decoded Rust values can occupy more than their encoded bytes. Neither their
+retention nor the parser's storage grows with replay length. These are work and
+storage bounds, not a wall-clock timeout on a synchronous filesystem call or
+a new validator of game data inside decodable records.
+
+The first snapshot is a render boundary: startup stops there without decoding
+the rest of the replay, and the clock anchors to that snapshot's tick. Loading
+polls and the interval spent drawing the first snapshot do not advance playback.
+Otherwise macroquad's previous frame time could count loading or first-use
+rendering as game time and silently skip the start. Later elapsed time uses the
+recorded tick rate and selected speed. Budget exhaustion leaves the target clock
+fixed while subsequent frames finish the queued work, rather than accumulating
+an ever-growing catch-up debt. Pause stops elapsed-time advancement; previously
+queued work still completes. A step or forward jump only moves the target clock,
+clamped to the largest wire tick, and performs no I/O; the next ordinary poll
+does the work. There is no second decoding pass from input handling and no
+backward seek or replay-sized index.
+
+Records keep file order across all yields. `ReplayRecord::Orders` is converted
+in place to the already supported `ServerMsg::Orders`, instead of waiting in an
+independent order queue. This both bounds retention without a separate consumer
+and makes step-delivered orders reach the overlay with their snapshots/events,
+not on a later GUI frame. Snapshots and order records gate on their ticks;
+intervening messages retain the recorded sequence, including the final events
+and `MatchOver` before EOF.
+
+Clean EOF is distinct from an empty recording, a partial prefix, a partial
+payload, an invalid length, a decoding failure and a reader failure. A failure
+keeps the record number and byte offset, stops further reads, and leaves already
+decoded messages available for that frame. The client shows a loading screen
+before opening and before the first snapshot, and a persistent error over the
+last view on failure. EOF alone does not invent a match result.
+
+Headless release tests use counted, fragmented and virtual gigabyte readers to
+verify the limits without timing assertions or sleeps. The explicitly ignored
+`both_real_replays_stream_correctly_with_bounded_prefix` test takes
+`BOTA_REPLAY_NEURAL` and `BOTA_REPLAY_TEACHER` paths. It compares every streamed
+message against an independent sequential record reader, checks complete EOF and
+match results for both artifacts, and reports first-snapshot read counts and
+full-scan measurements. GUI validation remains separate from that parser probe.
+
 ### What a slot is worth, and who works it out
 
 Everything a slot of the panel shows about the thing in it rides in that unit's

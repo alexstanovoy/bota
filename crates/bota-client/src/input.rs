@@ -18,7 +18,11 @@ pub fn handle(app: &mut App) {
             app.held_item = None;
         } else if app.shop_open {
             app.shop_open = false;
-        } else if app.over.is_some() || app.phase == Phase::Lobby {
+        } else if app.over.is_some()
+            || app.phase == Phase::Lobby
+            || matches!(&app.source, Source::Replay(player)
+                if app.view.is_none() || player.error().is_some() || player.finished())
+        {
             app.quit = true;
         }
     }
@@ -486,10 +490,7 @@ fn replay_controls(app: &mut App) {
         player.speed = (player.speed / 2.0).max(0.25);
     }
     if player.paused && is_key_pressed(KeyCode::Period) {
-        let due = player.advance_ticks(1.0);
-        for msg in due {
-            app.handle(msg);
-        }
+        player.advance_ticks(1.0);
     }
 }
 
