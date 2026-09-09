@@ -802,6 +802,7 @@ pub fn item_views(bag: &Inventory) -> Vec<Option<ItemView>> {
                         .filter(|def| def.charges > 0 || def.cast_charges > 0)
                         .map(|_| stack.charges),
                     cooldown_left: stack.cooldown,
+                    mute_left: stack.mute,
                     mode: stack.mode,
                     mana_cost: def.map_or(0, |def| def.mana_cost),
                     range: def.and_then(|def| def.active).map_or(0, item_range),

@@ -342,12 +342,10 @@ impl Server {
                     })
                     .map(|e| e.kind.clone())
                     .collect();
-                if !visible.is_empty() {
-                    conn.send(&ServerMsg::Events {
-                        tick: world.tick,
-                        events: visible,
-                    });
-                }
+                conn.send(&ServerMsg::Events {
+                    tick: world.tick,
+                    events: visible,
+                });
                 // A spectator watching through one seat's eyes is told that
                 // seat's own orders. Watching everything is watching the
                 // game, not the hands, and brings none; a seat knows its

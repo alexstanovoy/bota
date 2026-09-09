@@ -22,6 +22,17 @@ fn team_color(team: Team) -> Color {
 
 /// Draws one frame.
 pub fn draw(app: &App) {
+    if let Source::Replay(player) = &app.source
+        && app.view.is_none()
+    {
+        draw_replay_loading(player.bytes_read());
+        if let Some(error) = player.error() {
+            draw_replay_error(&error.to_string());
+        } else if player.finished() {
+            draw_replay_error("the replay ended without a snapshot");
+        }
+        return;
+    }
     clear_background(BACKGROUND);
     match app.phase {
         Phase::Lobby => draw_lobby(app),
@@ -38,6 +49,34 @@ pub fn draw(app: &App) {
             }
         }
     }
+    if let Source::Replay(player) = &app.source
+        && let Some(error) = player.error()
+    {
+        draw_replay_error(&error.to_string());
+    }
+}
+
+/// Draws replay startup progress before the first snapshot is available.
+pub fn draw_replay_loading(bytes: u64) {
+    clear_background(BACKGROUND);
+    center_text("loading replay...", 28.0, WHITE);
+    center_text_at(
+        &format!("{bytes} bytes read   [Esc] close"),
+        screen_height() / 2.0 + 36.0,
+        20.0,
+        GRAY,
+    );
+}
+
+/// Draws a persistent replay error above the last available view.
+pub fn draw_replay_error(error: &str) {
+    let middle = screen_height() / 2.0;
+    draw_rectangle(0.0, middle - 64.0, screen_width(), 144.0, BACKGROUND);
+    center_text_at("replay stopped", middle - 24.0, 28.0, ORANGE);
+    let width = measure_text(error, None, 20, 1.0).width.max(1.0);
+    let size = 20.0 * ((screen_width() - 32.0).max(1.0) / width).min(1.0);
+    center_text_at(error, middle + 12.0, size, WHITE);
+    center_text_at("[Esc] close", middle + 48.0, 20.0, GRAY);
 }
 
 fn draw_lobby(app: &App) {
@@ -773,13 +812,7 @@ fn draw_hud(app: &App, view: &WorldView) {
     }
     let controls = match &app.source {
         Source::Replay(player) => {
-            let state = if player.finished() {
-                "finished"
-            } else if player.paused {
-                "paused"
-            } else {
-                "playing"
-            };
+            let state = player.status();
             format!(
                 "replay {state}  x{}  [space] pause  [.] step  [+/-] speed  [wheel] zoom",
                 player.speed

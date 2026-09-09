@@ -50,7 +50,8 @@ impl World {
     /// A hook whose thrower has fallen is given up where it is, and lets go of
     /// whatever it was dragging.
     pub fn tick_hooks(&mut self) {
-        for entity in self.entities.iter().collect::<Vec<_>>() {
+        let entities = self.take_entity_snapshot();
+        for entity in entities.iter().copied() {
             let Some(mut hook) = self.hook.get(entity).copied() else {
                 continue;
             };
@@ -93,6 +94,7 @@ impl World {
             }
             self.hook.insert(entity, hook);
         }
+        self.recycle_entity_snapshot(entities);
     }
 
     /// What a hook catches where it now flies.

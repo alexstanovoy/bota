@@ -113,6 +113,11 @@ fn a_realtime_match_reaches_two_clients() {
     assert_eq!(first.viewer, Some(Team::Radiant));
     assert_eq!(first.players.len(), 2);
     assert!(first.units.iter().any(|u| u.team == Team::Radiant));
+    let first_events = c1.recv_until(|msg| match msg {
+        ServerMsg::Events { tick, events } if tick == first.tick => Some(events),
+        _ => None,
+    });
+    assert!(first_events.is_empty());
 
     // A legal order passes silently; an impossible one is named and refused.
     c1.send(&ClientMsg::Order {

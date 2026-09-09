@@ -132,7 +132,8 @@ impl World {
     /// somewhere or to stand takes on nothing, one told to attack takes on that
     /// and nothing else, and one left to itself chooses.
     pub fn tick_targeting(&mut self) {
-        for entity in self.entities.iter().collect::<Vec<_>>() {
+        let entities = self.take_entity_snapshot();
+        for entity in entities.iter().copied() {
             if let Some(orders) = self.orders.get_mut(entity) {
                 orders.cooldown = orders.cooldown.saturating_sub(1);
             }
@@ -168,6 +169,7 @@ impl World {
             }
             self.mark_chase(entity);
         }
+        self.recycle_entity_snapshot(entities);
     }
 
     /// Keeps every order aimed at a unit honest about what its side sees.
@@ -178,7 +180,8 @@ impl World {
     /// not tracked. Runs on sight freshly laid out, which is what catches
     /// a body the tick it slips away.
     pub fn tend_attack_orders(&mut self) {
-        for entity in self.entities.iter().collect::<Vec<_>>() {
+        let entities = self.take_entity_snapshot();
+        for entity in entities.iter().copied() {
             let (target, last_seen, fighting) = match self.orders.get(entity).map(|o| o.current) {
                 Some(UnitOrder::Attack { target, last_seen }) => (target, last_seen, true),
                 Some(UnitOrder::Follow { target, last_seen }) => (target, last_seen, false),
@@ -213,6 +216,7 @@ impl World {
                 self.target.remove(entity);
             }
         }
+        self.recycle_entity_snapshot(entities);
     }
 
     /// What this entity should be set on, everything else it carries taken

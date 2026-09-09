@@ -14,7 +14,7 @@ pub enum Source {
     /// A live match.
     Live(Net),
     /// A recorded one.
-    Replay(ReplayPlayer),
+    Replay(Box<ReplayPlayer>),
 }
 
 impl Source {
@@ -30,17 +30,6 @@ impl Source {
     pub fn send(&mut self, msg: &ClientMsg) {
         if let Source::Live(net) = self {
             net.send(msg);
-        }
-    }
-
-    /// The orders recorded with the ticks played since the last call.
-    ///
-    /// Empty on a live source, where orders arrive as
-    /// [`ServerMsg::Orders`] instead.
-    pub fn take_orders(&mut self) -> Vec<(u32, Vec<bota_proto::SlotOrder>)> {
-        match self {
-            Source::Live(_) => Vec::new(),
-            Source::Replay(player) => player.take_orders(),
         }
     }
 }

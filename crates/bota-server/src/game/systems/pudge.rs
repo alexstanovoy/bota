@@ -25,7 +25,8 @@ impl World {
     /// lifts it, and switching it off lifts it everywhere at once. Its owner
     /// burns by the same amount but never to death.
     pub fn tick_rot(&mut self) {
-        for owner in self.entities.iter().collect::<Vec<_>>() {
+        let entities = self.take_entity_snapshot();
+        for owner in entities.iter().copied() {
             let Some(rot) = self.rotting.get(owner).copied() else {
                 continue;
             };
@@ -86,6 +87,7 @@ impl World {
                 );
             }
         }
+        self.recycle_entity_snapshot(entities);
     }
 
     /// Takes hold of one unit within reach and starts eating it.
@@ -115,7 +117,8 @@ impl World {
     /// It ends when its time runs out, when what it holds is gone or walks
     /// out of reach, or when whoever is channelling it can no longer act.
     pub fn tick_dismembers(&mut self) {
-        for caster in self.entities.iter().collect::<Vec<_>>() {
+        let entities = self.take_entity_snapshot();
+        for caster in entities.iter().copied() {
             let Some(mut eating) = self.dismember.get(caster).copied() else {
                 continue;
             };
@@ -156,6 +159,7 @@ impl World {
                 },
             );
         }
+        self.recycle_entity_snapshot(entities);
     }
 
     /// Feeds the flesh heap of every hero near a death.
