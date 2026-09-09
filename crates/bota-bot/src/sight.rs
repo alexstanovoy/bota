@@ -39,10 +39,12 @@ pub const ERRAND_NUMBERS: usize = 6;
 /// Numbers describing one ability slot.
 pub const ABILITY_NUMBERS: usize = 4;
 /// Numbers describing one inventory slot.
-pub const ITEM_NUMBERS: usize = 3;
+pub const ITEM_NUMBERS: usize = 4;
+/// Numbers describing one spare slot: the backpack, then the stash.
+pub const SPARE_NUMBERS: usize = 2;
 
 /// What the vector is made of, in order.
-pub const LAYOUT: [(&str, usize); 10] = [
+pub const LAYOUT: [(&str, usize); 11] = [
     ("itself", SELF_NUMBERS),
     ("the match", MATCH_NUMBERS),
     ("its role and lane", ROLE_NUMBERS),
@@ -53,6 +55,7 @@ pub const LAYOUT: [(&str, usize); 10] = [
     ("the courier", ERRAND_NUMBERS),
     ("abilities", crate::ABILITIES * ABILITY_NUMBERS),
     ("items", crate::ITEMS * ITEM_NUMBERS),
+    ("spare items", crate::SPARES * SPARE_NUMBERS),
 ];
 
 /// How many numbers a model is shown.
@@ -111,6 +114,7 @@ pub fn sight(field: &Field) -> Vec<f32> {
     the_courier(field, &mut out);
     abilities(field, &mut out);
     items(field, &mut out);
+    spare_items(field, &mut out);
     debug_assert_eq!(out.len(), NUMBERS, "the layout and the filling disagree");
     out.resize(NUMBERS, 0.0);
     out
@@ -299,7 +303,7 @@ fn abilities(field: &Field, out: &mut Vec<f32>) {
     }
 }
 
-/// What it carries.
+/// What it wears.
 fn items(field: &Field, out: &mut Vec<f32>) {
     for at in 0..crate::ITEMS {
         match field
@@ -312,6 +316,35 @@ fn items(field: &Field, out: &mut Vec<f32>) {
                 out.push(1.0);
                 out.push(f32::from(held.charges.unwrap_or(0)) / 3.0);
                 out.push(f32::from(held.cooldown_left == 0));
+                out.push(crate::cost_of(held.id.0) as f32 / 1000.0);
+            }
+        }
+    }
+}
+
+/// What it carries but does not wear: the backpack, then the stash, in the
+/// order the swap deeds count them.
+fn spare_items(field: &Field, out: &mut Vec<f32>) {
+    for spare in 0..crate::SPARES {
+        let outside = crate::WORN_SLOTS + spare;
+        let held = if outside < crate::BAG_SLOTS {
+            field
+                .me
+                .and_then(|me| me.items.get(outside))
+                .and_then(|slot| slot.as_ref())
+        } else {
+            field
+                .seat
+                .stash
+                .as_ref()
+                .and_then(|slots| slots.get(outside - crate::BAG_SLOTS))
+                .and_then(|slot| slot.as_ref())
+        };
+        match held {
+            None => out.extend(std::iter::repeat_n(0.0, SPARE_NUMBERS)),
+            Some(held) => {
+                out.push(1.0);
+                out.push(crate::cost_of(held.id.0) as f32 / 1000.0);
             }
         }
     }

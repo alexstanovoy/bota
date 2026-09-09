@@ -19,7 +19,7 @@
 //! rules of what is legal are known to us for nothing. What the flags do earn
 //! is a model that never has to spend its capacity learning them.
 
-use crate::{CREEPS, HEROES, OWN_CREEPS};
+use crate::{BAG_SLOTS, CREEPS, HEROES, OWN_CREEPS, STASH_SLOTS, WORN_SLOTS};
 
 /// Ability slots a hero carries.
 pub const ABILITIES: usize = 6;
@@ -35,13 +35,15 @@ pub const PLACES: usize = 3;
 pub const AIMS: usize = 4;
 /// Errands a courier may be sent on.
 pub const ERRANDS: usize = 4;
+/// Slots an item may be swapped in from: the backpack, then the stash.
+pub const SPARES: usize = BAG_SLOTS - WORN_SLOTS + STASH_SLOTS;
 
 /// The blocks the list is made of, in order.
 ///
 /// The order is the numbering. Adding to the end never moves what is already
 /// there, which matters once a set of weights has been trained: the model has
 /// learned what each number means.
-pub const BLOCKS: [(&str, usize); 12] = [
+pub const BLOCKS: [(&str, usize); 13] = [
     ("stand", 1),
     ("swing at a creep", CREEPS),
     ("put out a creep of its own", OWN_CREEPS),
@@ -54,6 +56,7 @@ pub const BLOCKS: [(&str, usize); 12] = [
     ("spend a skill point", ABILITIES),
     ("send the courier", ERRANDS),
     ("sell an item", ITEMS),
+    ("swap an item", SPARES * WORN_SLOTS),
 ];
 
 /// How many deeds there are altogether.
@@ -103,10 +106,13 @@ pub enum Deed {
     Learn(usize),
     /// Send the courier on an errand.
     Errand(Errand),
-    /// Sell what is in an inventory slot. At the shop it sells at once;
-    /// anywhere else it marks the stack to be sold, and asked again unmarks
-    /// it.
+    /// Sell what is in an inventory slot, at the shop, where it sells at
+    /// once.
     Sell(usize),
+    /// Swap a spare slot against a worn one. The spare's number runs the
+    /// backpack first and then the stash, which takes part only at the shop.
+    /// Whichever of the two holds something moves; both holding is a swap.
+    Swap(usize, usize),
 }
 
 /// Somewhere a deed may send the bot.
@@ -210,6 +216,7 @@ impl Deed {
                     }
             }
             Deed::Sell(at) => start_of(11) + at,
+            Deed::Swap(spare, worn) => start_of(12) + spare * WORN_SLOTS + worn,
         }
     }
 
@@ -244,7 +251,8 @@ impl Deed {
                 2 => Errand::Burst,
                 _ => Errand::GoHome,
             }),
-            _ => Deed::Sell(at),
+            11 => Deed::Sell(at),
+            _ => Deed::Swap(at / WORN_SLOTS, at % WORN_SLOTS),
         }
     }
 }

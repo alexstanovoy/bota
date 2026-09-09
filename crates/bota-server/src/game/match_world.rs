@@ -166,7 +166,7 @@ impl World {
                 return;
             }
             Order::Use { slot, target } => {
-                self.use_item(unit, usize::from(slot.0), target);
+                self.use_item(unit, usize::from(slot.0), target, events);
                 return;
             }
             // Taken before the body was interrupted.

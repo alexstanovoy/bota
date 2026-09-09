@@ -19,10 +19,11 @@
 //! wave, so choosing by the marks themselves would mean a different pressure
 //! on every rung. Rank has no units.
 //!
-//! **The spread moves.** More than a fifth of the children beating their
-//! parents widens it, fewer narrows it: a search that keeps failing is
-//! reaching too far, and one that nearly always succeeds is not reaching far
-//! enough. What a plan writes is where it starts.
+//! **The spread moves, on a leash.** More than a fifth of the children
+//! beating their parents widens it, fewer narrows it: a search that keeps
+//! failing is reaching too far, and one that nearly always succeeds is not
+//! reaching far enough. What a plan writes is where it starts, and the rule
+//! never takes it more than eightfold from there either way.
 //!
 //! **The crowd carries over.** A lesson ends with the same number of models it
 //! started with, and the next lesson starts from those. What is inherited is a
@@ -329,14 +330,25 @@ pub struct Life {
 /// How much the spread widens or narrows on the fifth rule's verdict.
 pub const WIDENED_BY: f32 = 1.2;
 
+/// How far the spread may wander from where the plan set it, either way.
+///
+/// The rule's verdict is a coin flip whenever children and parents are worth
+/// about the same — which is true both when the spread is tiny and when it
+/// is huge — and a coin-flipped multiplicative step is a drifting walk with
+/// nowhere it settles. The band is what keeps a long stage inside the range
+/// the plan's own number names.
+pub const SPREAD_BAND: f32 = 8.0;
+
 /// The spread after one generation's verdict, by the fifth rule.
 ///
 /// A child sits at `keep` or beyond and its parent is the survivor at
 /// `(at - keep) % keep`, which is how [`next_crowd`] lays a crowd out. Over
 /// a fifth of the children beating their parents widens the spread by
 /// [`WIDENED_BY`], under a fifth narrows it by the same, exactly a fifth —
-/// or a crowd with no children — leaves it alone.
-pub fn adapted_spread(spread: f32, worths: &[f32], keep: usize) -> f32 {
+/// or a crowd with no children — leaves it alone. Whatever the verdicts add
+/// up to, the spread stays within [`SPREAD_BAND`] of `written`, the number
+/// the plan gave.
+pub fn adapted_spread(spread: f32, written: f32, worths: &[f32], keep: usize) -> f32 {
     let children = worths.len().saturating_sub(keep);
     if children == 0 {
         return spread;
@@ -345,13 +357,14 @@ pub fn adapted_spread(spread: f32, worths: &[f32], keep: usize) -> f32 {
         .filter(|at| worths[*at] > worths[(at - keep) % keep])
         .count();
     let fifth = children as f32 / 5.0;
-    if won as f32 > fifth {
+    let moved = if won as f32 > fifth {
         spread * WIDENED_BY
     } else if (won as f32) < fifth {
         spread / WIDENED_BY
     } else {
         spread
-    }
+    };
+    moved.clamp(written / SPREAD_BAND, written * SPREAD_BAND)
 }
 
 /// What every model of a generation came to, and the order that puts them
@@ -394,7 +407,12 @@ pub fn teach_a_lesson(
         // The first crowd arrived from outside, already reordered, so it
         // carries no parentage to read the fifth rule off.
         if life > 1 {
-            spread = adapted_spread(spread, &worths, tribe.keep.clamp(1, crowd.len()));
+            spread = adapted_spread(
+                spread,
+                tribe.spread,
+                &worths,
+                tribe.keep.clamp(1, crowd.len()),
+            );
         }
         told(Life {
             number: life,

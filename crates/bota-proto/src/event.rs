@@ -40,14 +40,19 @@ pub enum EventKind {
         /// else.
         crit: bool,
     },
-    /// A unit was healed.
+    /// A unit was mended by somebody's hand: an item drunk or a charge
+    /// spent. Passive regeneration and the fountain are not told of.
     Healed {
-        /// Who healed it. Absent for passive regeneration.
+        /// Who mended it.
         source: Option<EntityId>,
-        /// Who was healed.
+        /// Who was mended.
         target: EntityId,
-        /// Health actually restored, after any healing cap.
+        /// Health the mending is good for: no more than it holds, no more
+        /// than was missing when it began. A mend paid out over time may
+        /// still be cut short by a blow.
         amount: i32,
+        /// Mana it restores alongside, on the same counting.
+        mana: i32,
     },
     /// A unit died.
     Died {

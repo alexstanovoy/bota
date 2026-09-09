@@ -132,14 +132,48 @@ pub fn allowed(field: &Field) -> Vec<bool> {
             }
         }
     }
+    // Only where the body stands at the shop, so a sale is a sale: an order
+    // given away from it is a mark the shop settles hundreds of ticks later.
+    let at_shop = field
+        .home
+        .is_some_and(|home| crate::span(me.pos, home) <= SHOP_REACH);
     for slot in 0..ITEMS {
-        // Anything held may be sold — or marked to be sold and unmarked
-        // again; which one an ask is, is settled by where the body stands.
-        if me.items.get(slot).is_some_and(|held| held.is_some()) {
+        if at_shop && me.items.get(slot).is_some_and(|held| held.is_some()) {
             allow(Deed::Sell(slot));
         }
     }
+    // A spare slot against a worn one, while either holds something to move.
+    // The stash takes part only at the shop, which is the server's rule.
+    for spare in 0..crate::SPARES {
+        if !at_shop && crate::WORN_SLOTS + spare >= crate::BAG_SLOTS {
+            continue;
+        }
+        let spare_holds = holds(field, spare);
+        for worn in 0..crate::WORN_SLOTS {
+            let worn_holds = me.items.get(worn).is_some_and(|held| held.is_some());
+            if spare_holds || worn_holds {
+                allow(Deed::Swap(spare, worn));
+            }
+        }
+    }
     out
+}
+
+/// Whether a spare slot — the backpack, then the stash — holds an item.
+fn holds(field: &Field, spare: usize) -> bool {
+    let Some(me) = field.me else {
+        return false;
+    };
+    let outside = crate::WORN_SLOTS + spare;
+    if outside < crate::BAG_SLOTS {
+        me.items.get(outside).is_some_and(|held| held.is_some())
+    } else {
+        field.seat.stash.as_ref().is_some_and(|slots| {
+            slots
+                .get(outside - crate::BAG_SLOTS)
+                .is_some_and(|held| held.is_some())
+        })
+    }
 }
 
 /// Part of its whole health at which one of its own may be put out.
@@ -276,6 +310,24 @@ impl Deed {
                 me.items.get(slot)?.as_ref()?;
                 hero(Order::Sell {
                     slot: ItemSlot(slot as u8),
+                })
+            }
+            Deed::Swap(spare, worn) => {
+                // The full side moves onto the empty one; two full sides are
+                // a swap and go as one order either way. An empty pair is
+                // nothing to move.
+                let outside = crate::WORN_SLOTS + spare;
+                let worn_holds = me.items.get(worn).is_some_and(|held| held.is_some());
+                let (from, to) = if holds(field, spare) {
+                    (outside, worn)
+                } else if worn_holds {
+                    (worn, outside)
+                } else {
+                    return None;
+                };
+                hero(Order::Swap {
+                    from: ItemSlot(from as u8),
+                    to: ItemSlot(to as u8),
                 })
             }
         }

@@ -1,6 +1,6 @@
 //! Items carried and abilities held: what they add, and what they cost.
 
-use bota_proto::{AbilityId, Attribute, EventKind, Fixed, ItemId, SlotId, Target, Vec2};
+use bota_proto::{AbilityId, Attribute, EventKind, Fixed, ItemId, SlotId, Target, Team, Vec2};
 
 use crate::game::{
     AbilityBook, AbilityState, BAG_SLOTS, Carried, Entity, Inventory, ItemStack, ItemUse, Pool,
@@ -373,7 +373,13 @@ impl World {
     ///
     /// A use that does nothing spends nothing: the charge, the cooldown and
     /// the slot are only touched once whatever the item does has been done.
-    pub fn use_item(&mut self, entity: Entity, slot: usize, target: Target) -> bool {
+    pub fn use_item(
+        &mut self,
+        entity: Entity,
+        slot: usize,
+        target: Target,
+        events: &mut Vec<Event>,
+    ) -> bool {
         let Some(bag) = self.inventory.get(entity) else {
             return false;
         };
@@ -422,6 +428,7 @@ impl World {
                     eats_a_tree,
                     breaks,
                 },
+                events,
             ),
             ItemUse::Teleport { channel, range } => {
                 self.begin_teleport(entity, target, channel, range, slot)
@@ -438,6 +445,7 @@ impl World {
                 entity,
                 i32::from(stack.charges) * hp_per_charge,
                 i32::from(stack.charges) * mana_per_charge,
+                events,
             ),
             ItemUse::Blink { range } => self.blink_to(entity, target, range),
             ItemUse::Phase { pct, ticks } => self.walk_through(entity, pct, ticks),
@@ -484,20 +492,39 @@ impl World {
     }
 
     /// Mends whoever used an item, at once.
-    fn restore_with(&mut self, on: Entity, hp: i32, mana: i32) -> bool {
+    fn restore_with(&mut self, on: Entity, hp: i32, mana: i32, events: &mut Vec<Event>) -> bool {
         if hp <= 0 && mana <= 0 {
             return false;
         }
         let ceiling = self.stats.get(on).copied();
+        let mut restored = 0;
         if let Some(pool) = self.health.get_mut(on)
             && let Some(most) = ceiling.map(|stats| stats.max_hp)
         {
+            let before = pool.hp;
             pool.hp = (pool.hp + Fixed::from_int(hp)).min(most);
+            restored = (pool.hp - before).to_int();
         }
+        let mut refilled = 0;
         if let Some(pool) = self.mana.get_mut(on)
             && let Some(most) = ceiling.map(|stats| stats.max_mana)
         {
+            let before = pool.mana;
             pool.mana = (pool.mana + Fixed::from_int(mana)).min(most);
+            refilled = (pool.mana - before).to_int();
+        }
+        if restored > 0 || refilled > 0 {
+            let at = self.transform.get(on).map_or(Vec2::ZERO, |t| t.pos);
+            let side = self.team.get(on).copied().unwrap_or(Team::Neutral);
+            events.push(Event {
+                kind: EventKind::Healed {
+                    source: Some(wire_id(on)),
+                    target: wire_id(on),
+                    amount: restored,
+                    mana: refilled,
+                },
+                visible_to: self.who_may_know(at, side),
+            });
         }
         true
     }
@@ -559,7 +586,13 @@ impl World {
     ///
     /// It reaches one of its user's own side, standing within `range`. Aimed
     /// at nothing at all, it lands on the one who used it.
-    fn mend_with(&mut self, user: Entity, target: Target, drink: Mend) -> bool {
+    fn mend_with(
+        &mut self,
+        user: Entity,
+        target: Target,
+        drink: Mend,
+        events: &mut Vec<Event>,
+    ) -> bool {
         let Mend {
             pool,
             total,
@@ -619,6 +652,41 @@ impl World {
                 on_it.put(put);
                 self.statuses.insert(on, on_it);
             }
+        }
+        // The mending is told of as it begins, worth what was missing and no
+        // more than it holds. A mend broken early has still been told in
+        // full.
+        let (amount, mana) = match pool {
+            Pool::Health => {
+                let missing = self
+                    .stats
+                    .get(on)
+                    .zip(self.health.get(on))
+                    .map_or(0, |(stats, health)| (stats.max_hp - health.hp).to_int())
+                    .max(0);
+                (total.min(missing), 0)
+            }
+            Pool::Mana => {
+                let missing = self
+                    .stats
+                    .get(on)
+                    .zip(self.mana.get(on))
+                    .map_or(0, |(stats, pool)| (stats.max_mana - pool.mana).to_int())
+                    .max(0);
+                (0, total.min(missing))
+            }
+        };
+        if amount > 0 || mana > 0 {
+            let side = self.team.get(on).copied().unwrap_or(Team::Neutral);
+            events.push(Event {
+                kind: EventKind::Healed {
+                    source: Some(wire_id(user)),
+                    target: wire_id(on),
+                    amount,
+                    mana,
+                },
+                visible_to: self.who_may_know(at, side),
+            });
         }
         true
     }
