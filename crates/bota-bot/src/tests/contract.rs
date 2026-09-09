@@ -98,6 +98,77 @@ fn a_cast_at_a_body_is_offered_only_within_its_reach() {
 }
 
 #[test]
+fn a_swap_moves_the_full_side_and_reaches_the_stash_only_at_the_shop() {
+    // A stick worn, boots in the first backpack slot, a wraith band in the
+    // stash, and the hero far from its shop.
+    let view = crate::tests::a_tick_wearing(
+        &[crate::MAGIC_STICK],
+        &[crate::BOOTS],
+        &[crate::WRAITH_BAND],
+        100,
+    );
+    let field = Field::of(&view, SlotId(0), Role::Mid).expect("the seat is in the tick");
+    let may = allowed(&field);
+    let ask_of = |deed: Deed| match deed.into_ask(&field) {
+        Some(crate::Ask {
+            order: bota_proto::Order::Swap { from, to },
+            ..
+        }) => (from.0, to.0),
+        other => panic!("{deed:?} turned into {other:?} rather than a swap"),
+    };
+    assert!(
+        may[Deed::Swap(0, 0).index()],
+        "the backpack swaps in from anywhere"
+    );
+    assert_eq!(ask_of(Deed::Swap(0, 0)), (6, 0), "the spare side moves in");
+    assert!(
+        may[Deed::Swap(1, 0).index()],
+        "a worn item may be put away into an empty backpack slot"
+    );
+    assert_eq!(
+        ask_of(Deed::Swap(1, 0)),
+        (0, 7),
+        "and then it is the worn side that moves"
+    );
+    assert!(
+        !may[Deed::Swap(1, 1).index()],
+        "two empty slots are nothing to move"
+    );
+    assert!(
+        !may[Deed::Swap(3, 0).index()],
+        "the stash is out of reach away from the shop"
+    );
+
+    let mut home = view.clone();
+    for body in &mut home.units {
+        if body.kind == bota_proto::UnitKind::Hero && body.owner == Some(SlotId(0)) {
+            body.pos = bota_proto::Vec2::from_ints(
+                crate::tests::RADIANT_HOME.0,
+                crate::tests::RADIANT_HOME.1,
+            );
+        }
+    }
+    let field = Field::of(&home, SlotId(0), Role::Mid).expect("the seat is in the tick");
+    let may = allowed(&field);
+    assert!(
+        may[Deed::Swap(3, 0).index()],
+        "at the shop the stash takes part"
+    );
+    let ask_of = |deed: Deed| match deed.into_ask(&field) {
+        Some(crate::Ask {
+            order: bota_proto::Order::Swap { from, to },
+            ..
+        }) => (from.0, to.0),
+        other => panic!("{deed:?} turned into {other:?} rather than a swap"),
+    };
+    assert_eq!(
+        ask_of(Deed::Swap(3, 0)),
+        (9, 0),
+        "the wire counts the bag first and the stash after it"
+    );
+}
+
+#[test]
 fn a_tick_with_a_body_standing_always_has_something_to_do() {
     let view = busy();
     let field = Field::of(&view, SlotId(0), Role::Mid).expect("the seat is in the tick");

@@ -711,6 +711,102 @@ fn growing_strong_pays_for_buying_and_again_for_wearing() {
 }
 
 #[test]
+fn growing_strong_pays_for_health_mended_on_its_own_hero() {
+    let view = crate::tests::a_tick_holding(&[], 600);
+    let me = field_of(&view, Role::Mid).me.expect("a hero").id;
+    let mended = |target: bota_proto::EntityId| bota_proto::EventKind::Healed {
+        source: Some(target),
+        target,
+        amount: 150,
+        mana: 0,
+    };
+    let mut carried = Carried::default();
+    paid_on(&view, Lesson::GrowStrong, &[], (0, 0, 0), &mut carried);
+    assert_eq!(
+        paid_on(
+            &view,
+            Lesson::GrowStrong,
+            &[mended(me)],
+            (0, 0, 0),
+            &mut carried
+        ),
+        150.0,
+        "a hit point mended is a mark"
+    );
+    assert_eq!(
+        paid_on(
+            &view,
+            Lesson::GrowStrong,
+            &[mended(crate::tests::id(80))],
+            (0, 0, 0),
+            &mut carried
+        ),
+        0.0,
+        "somebody else's mending pays nothing"
+    );
+    let refilled = bota_proto::EventKind::Healed {
+        source: Some(me),
+        target: me,
+        amount: 0,
+        mana: 100,
+    };
+    assert_eq!(
+        paid_on(
+            &view,
+            Lesson::GrowStrong,
+            &[refilled],
+            (0, 0, 0),
+            &mut carried
+        ),
+        50.0,
+        "mana mended counts at half a mark a point"
+    );
+
+    let mut fresh = Carried::default();
+    paid_on(&view, Lesson::GrowRich, &[], (0, 0, 0), &mut fresh);
+    assert_eq!(
+        paid_on(
+            &view,
+            Lesson::GrowRich,
+            &[mended(me)],
+            (0, 0, 0),
+            &mut fresh
+        ),
+        0.0,
+        "growing rich counts wealth alone"
+    );
+}
+
+#[test]
+fn a_consumable_counts_at_its_face_wherever_it_sits() {
+    // A consumable is a prepaid drink, not gear: buying one is a wash on
+    // every counting, worn or stashed, so nothing pays for hoarding it.
+    let start = crate::tests::a_tick_holding(&[], 200);
+    let worn = crate::tests::a_tick_wearing(&[crate::SALVE], &[], &[], 90);
+    let stashed = crate::tests::a_tick_wearing(&[], &[], &[crate::SALVE], 90);
+    let over = |lesson: Lesson, ended: &bota_proto::WorldView| {
+        let mut carried = Carried::default();
+        paid_on(&start, lesson, &[], (0, 0, 0), &mut carried);
+        paid_on(ended, lesson, &[], (0, 0, 0), &mut carried)
+    };
+    assert_eq!(
+        over(Lesson::GrowStrong, &worn),
+        0.0,
+        "a salve worn is the gold it cost, nothing over"
+    );
+    assert_eq!(
+        over(Lesson::GrowStrong, &stashed),
+        0.0,
+        "and one in the stash is worth exactly the same"
+    );
+    assert_eq!(
+        over(Lesson::GrowRich, &worn),
+        0.0,
+        "growing rich already counted it so"
+    );
+}
+
+#[test]
 fn hoarding_is_worth_half_of_wearing_and_growing_rich_cannot_tell_them_apart() {
     // The whole of what this lesson is for. Two hands end on the same net
     // worth off the same five hundred; one of them is wearing it.

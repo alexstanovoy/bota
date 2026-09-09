@@ -107,7 +107,7 @@ fn the_matches_judged_on_move_and_the_ones_reported_on_do_not() {
 }
 
 #[test]
-fn the_spread_widens_over_a_fifth_and_narrows_under_it() {
+fn the_spread_widens_over_a_fifth_and_narrows_under_it_within_the_band() {
     // Two survivors and ten children, laid out as next_crowd lays them: the
     // child at `at` was bred off the survivor at `(at - 2) % 2`.
     let keep = 2;
@@ -117,22 +117,42 @@ fn the_spread_widens_over_a_fifth_and_narrows_under_it() {
         all
     };
     assert!(
-        adapted_spread(0.01, &worths(3), keep) > 0.01,
+        adapted_spread(0.01, 0.01, &worths(3), keep) > 0.01,
         "over a fifth winning reaches further"
     );
     assert!(
-        adapted_spread(0.01, &worths(1), keep) < 0.01,
+        adapted_spread(0.01, 0.01, &worths(1), keep) < 0.01,
         "under a fifth winning reaches shorter"
     );
     assert_eq!(
-        adapted_spread(0.01, &worths(2), keep),
+        adapted_spread(0.01, 0.01, &worths(2), keep),
         0.01,
         "at exactly a fifth it stands"
     );
     assert_eq!(
-        adapted_spread(0.01, &[1.0, 1.0], keep),
+        adapted_spread(0.01, 0.01, &[1.0, 1.0], keep),
         0.01,
         "a crowd with no children leaves it alone"
+    );
+    // A run of verdicts one way is a walk that would leave any sane range;
+    // the band around the plan's number is where it stops.
+    let mut wandering = 0.01;
+    for _ in 0..200 {
+        wandering = adapted_spread(wandering, 0.01, &worths(10), keep);
+    }
+    assert_eq!(
+        wandering,
+        0.01 * crate::SPREAD_BAND,
+        "two hundred widenings go no further than the band"
+    );
+    let mut shrinking = 0.01;
+    for _ in 0..200 {
+        shrinking = adapted_spread(shrinking, 0.01, &worths(0), keep);
+    }
+    assert_eq!(
+        shrinking,
+        0.01 / crate::SPREAD_BAND,
+        "and two hundred narrowings no nearer than it"
     );
 }
 

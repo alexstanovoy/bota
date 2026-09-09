@@ -370,6 +370,7 @@ pub fn all_events() -> Vec<EventKind> {
             source: None,
             target: entity(7),
             amount: 12,
+            mana: 40,
         },
         EventKind::Died {
             unit: entity(100),

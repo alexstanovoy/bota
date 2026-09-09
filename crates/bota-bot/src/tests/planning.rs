@@ -174,6 +174,46 @@ sequence:
 }
 
 #[test]
+fn a_stage_names_its_hero_and_one_unheard_of_is_refused() {
+    let plan = Plan::of(
+        "
+defaults:
+  hero: shadow_fiend
+sequence:
+  - score: grow_rich
+  - score: grow_rich
+    hero: pudge
+",
+    )
+    .expect("a plan");
+    let terms = plan.terms().expect("stages");
+    assert_eq!(
+        terms[0].tribe.yard.hero,
+        bota_proto::HeroId(2),
+        "the defaults' hero, spelled with underscores"
+    );
+    assert_eq!(
+        terms[1].tribe.yard.hero,
+        bota_proto::HeroId(1),
+        "the stage wins over the defaults"
+    );
+
+    let bare = Plan::of(BARE).expect("a plan").terms().expect("stages");
+    assert_eq!(
+        bare[0].tribe.yard.hero,
+        bota_proto::HeroId(0),
+        "sylla, when nothing is said"
+    );
+
+    let unheard = Plan::of("sequence:\n  - score: grow_rich\n    hero: axe\n")
+        .expect("a plan")
+        .terms()
+        .expect_err("no such hero");
+    assert!(unheard.contains("no hero is called axe"), "{unheard}");
+    assert!(unheard.contains("shadow_fiend"), "{unheard}");
+}
+
+#[test]
 fn stages_of_one_seed_still_draw_apart() {
     let spelled = "
 defaults:

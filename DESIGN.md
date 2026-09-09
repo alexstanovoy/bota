@@ -1439,8 +1439,8 @@ The whole contract is four pieces.
 | | |
 |---|---|
 | `field.rs` | one tick read into a settled shape: who is who, in what order, seen from where |
-| `sight.rs` | **156 numbers** built from that |
-| `deed.rs` | **62 deeds**, flat and numbered |
+| `sight.rs` | **188 numbers** built from that |
+| `deed.rs` | **126 deeds**, flat and numbered |
 | `doing.rs` | which of them may be done now, and what a chosen number turns into |
 | `marks.rs` | what a tick is worth, lesson by lesson |
 
@@ -1490,9 +1490,35 @@ masked on every tick of every match, and a put-deed a way to burn a tick and hal
 item's price. The list is append-only exactly so that either can be added the day
 something puts loot on the ground in front of a bot.
 
+**Selling is legal only at the shop.** The wire sells from anywhere: away from the
+shop the order lays a mark, and the shop settles the mark whenever the stack reaches
+it — walked home, or collected by the courier's next delivery leg. For a model that is
+nine deeds, always legal, free to toggle, and paid for hundreds of ticks after the
+choice at half price by a route it never asked for; the bred crowds duly chose them as
+noise and bled by them. Masked to the shop's reach, a sale moves gold and goods on the
+tick it is chosen, which is a price a selection can see. The mask is the bot's own:
+the wire and the mark are unchanged, and a human still sells from anywhere.
+
+**A swap is the model's own choice.** The list long held no way to move an item: `Use`
+and `Sell` reach the working slots alone, so a stack the courier set down in the
+backpack, or one waiting in the stash while its owner stood at the shop, was out of
+the game for good — whole matches were played with a wraith band asleep in the stash
+and a magic stick working in its place. One deed per pair now: every spare slot — the
+backpack, then the stash — against every worn one, fifty-four in all, legal while
+either side holds something, the stash taking part only at the shop, which is the
+server's own rule. Whichever side is full moves onto the other; both full is the swap
+it says. A single "wear the best" deed with the valuation ours, the way `Buy`'s is,
+was considered and passed over: which item earns a working slot turns on charges,
+waits and the fight at hand, which is exactly the judgement being bred. What was added
+to the choice had to be added to the eye: the worn slots now show what each item cost,
+and the backpack and the stash show themselves at all — a spare slot is a presence and
+a price, where before the model saw only how many things were waiting. Sight grows 164
+numbers to 188 and the list 72 deeds to 126; weights trained before either do not
+load, which is the standing rule for both.
+
 ### The model
 
-One head over one trunk of two layers: a number per deed. Some **361 thousand weights**
+One head over one trunk of two layers: a number per deed. Some **435 thousand weights**
 against the first bot's twenty-four.
 
 A value head — one number for what the position is worth, whatever is chosen — sat
@@ -1659,6 +1685,28 @@ habit being taught out — hoarding is, and hoarding is already what the multipl
 above the purse pay against. At face value the two lessons agree about income and
 death, and differ exactly where this one exists to differ: what became of the gold.
 
+**A consumable is worth what it does.** Counted like a durable it is a dead loss to
+use: a salve in the working slots counts two hundred and twenty, and drinking it wipes
+that out. The crowds bred on that counting did the arithmetic — they bought salves,
+marked them for sale and never drank one. So health mended on the seat's own hero pays
+a mark a point and mana half a mark, read off the `Healed` events the server now emits
+when something is drunk: what was missing when the drink began, no more than the drink
+holds. That turns the sign over — a salve drunk four hundred down pays four hundred
+against what it wipes, and one drunk at full health pays nothing and wipes the same. A
+mend broken by a blow has still been paid in full: the choice was right when it was
+made, and what the opponent broke should not unmake the mark that chose it. Mana at a
+half because it is bought at three a gold, and what the spells it feeds do is paid for
+by the margins already.
+
+**And it is worth that wherever it sits.** The first cut still counted a consumable as
+gear — twice its price worn, half over riding — and the crowds obliged: they wore
+their salves, hoarded them unspent, and filled all nine slots of the bag with prepaid
+drinks until the courier had nowhere to set an upgrade down and carried it back to the
+stash for the rest of the match. A consumable now counts at its face value in any
+slot: buying one moves nothing, wearing one grows nothing, and the only mark it will
+ever pay is the drinking. The working slots stay for gear, the bag drains itself, and
+the deliveries land.
+
 **It is the longest rung, not `grow rich`'s equal.** Two rungs of the same clock break
 three things the ladder promises at once: that each runs longer than the last, that exactly
 one lesson is still counting when a match ends, and that `Lesson::longest()` names one
@@ -1718,6 +1766,19 @@ whose children lose narrows it by the same, and what the plan writes is only whe
 starts. Parentage is read straight off the crowd's layout — child `at` was bred off
 survivor `(at − keep) % keep` — so the first generation of a stage, whose crowd arrived
 already reordered, is the one generation the rule sits out.
+
+**And it is kept on a leash, eightfold either way of the plan's number.** Unleashed, a
+five-hundred-generation stage walked the spread from a hundredth to twenty-six
+thousand. The rule the (1+λ) search ran measured success against a frozen champion, so
+success genuinely fell as the nudge grew; the crowd's verdict — children against
+parents on the generation's own matches — is a coin flip whenever the two are worth
+about the same, which is true at a tiny spread and at a huge one alike. A coin-flipped
+multiplicative step is a driftless walk in the logarithm, and over enough generations
+a driftless walk leaves any range: the spread wandered up, the children turned to
+noise, the noise washed the elites out of the top eight two matches at a time, and the
+crowd's middling fell by half while the printed best held — the best of thirty-two
+noisy readings is a statement about tails, not about learning. The band cannot fix the
+coin, but it fixes what the coin can cost.
 
 **A stage draws apart from every other.** The trial seeds and the children's noise are
 functions of the tribe's seed and the generation number alone — and every stage of

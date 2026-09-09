@@ -50,6 +50,9 @@ struct Duelling {
     /// The other.
     #[arg(long, value_name = "FILE")]
     other: PathBuf,
+    /// Which hero both seats play.
+    #[arg(long, default_value_t = 0)]
+    hero: u16,
     /// Matches to play. Each is played twice, once from either side.
     #[arg(long, default_value_t = 4)]
     matches: usize,
@@ -131,6 +134,7 @@ fn duel(asked: Duelling) -> std::io::Result<()> {
     let yard = Yard {
         server: asked.server.unwrap_or(standing.server),
         builtin: !asked.on_the_wire,
+        hero: HeroId(asked.hero),
         ..standing
     };
     let load = |path: &PathBuf| -> std::io::Result<Vec<f32>> {
@@ -233,6 +237,9 @@ struct Judging {
     /// Which lesson, one to eight.
     #[arg(long, default_value_t = 8)]
     lesson: u8,
+    /// Which hero both seats play.
+    #[arg(long, default_value_t = 0)]
+    hero: u16,
     /// What the seats are there to do, one to five.
     #[arg(long, default_value_t = 2)]
     role: u8,
@@ -266,6 +273,7 @@ fn judge(asked: Judging) -> std::io::Result<()> {
         yard: Yard {
             server: asked.server.unwrap_or(standing.server),
             builtin: !asked.on_the_wire,
+            hero: HeroId(asked.hero),
             ..standing
         },
         role,

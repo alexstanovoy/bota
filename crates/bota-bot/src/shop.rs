@@ -110,6 +110,9 @@ pub const BAG_SLOTS: usize = 9;
 /// backpack begins.
 pub const WORN_SLOTS: usize = 6;
 
+/// Slots the stash at the home shop holds.
+pub const STASH_SLOTS: usize = 6;
+
 /// What each item costs, by its number.
 ///
 /// Every item the shop sells, so that what the seat owns can be added up
@@ -185,7 +188,7 @@ const BUILDS: [(u16, &[u16]); 6] = [
 /// parts are held: boots, gloves and a belt become Power Treads without anybody
 /// asking. The order is the build order, so what is wanted first is bought
 /// first and nothing waits on gold for something further down.
-pub const SHOPPING: [u16; 13] = [
+pub const SHOPPING: [u16; 14] = [
     TANGO,
     BRANCH,
     BRANCH,
@@ -198,6 +201,7 @@ pub const SHOPPING: [u16; 13] = [
     CIRCLET,
     SLIPPERS,
     RECIPE_WRAITH_BAND,
+    RECIPE_MAGIC_WAND,
     CLARITY,
 ];
 
@@ -236,6 +240,14 @@ pub fn can_be_used(item: u16) -> bool {
     USABLE.contains(&item)
 }
 
+/// The items that are spent by using them.
+pub const CONSUMED: [u16; 6] = [CLARITY, SALVE, OBSERVER, SENTRY, TANGO, SCROLL];
+
+/// Whether an item is spent by using it.
+pub fn is_consumed(item: u16) -> bool {
+    CONSUMED.contains(&item)
+}
+
 /// What one item costs. Nothing at all for a number the shop does not sell.
 pub fn cost_of(item: u16) -> i32 {
     PRICES.get(usize::from(item)).copied().unwrap_or(0)
@@ -248,17 +260,19 @@ pub fn cost_of(item: u16) -> i32 {
 /// courier's business.
 pub fn worth_of_goods(field: &Field) -> i32 {
     let (worn, riding) = worth_worn_and_riding(field);
-    worn + riding
+    worn + riding + worth_of_consumables(field)
 }
 
-/// What the seat's goods cost, in two piles: what is worn — the working
-/// slots of the bag — and what only rides along in the backpack, the stash
-/// or the courier's load.
+/// What the seat's durable goods cost, in two piles: what is worn — the
+/// working slots of the bag — and what only rides along in the backpack, the
+/// stash or the courier's load. Consumables sit in neither pile;
+/// [`worth_of_consumables`] carries them.
 pub fn worth_worn_and_riding(field: &Field) -> (i32, i32) {
     let worth = |slots: &[Option<bota_proto::ItemView>]| {
         slots
             .iter()
             .flatten()
+            .filter(|had| !is_consumed(had.id.0))
             .map(|had| cost_of(had.id.0))
             .sum::<i32>()
     };
@@ -269,6 +283,21 @@ pub fn worth_worn_and_riding(field: &Field) -> (i32, i32) {
         + field.seat.stash.as_ref().map_or(0, |slots| worth(slots))
         + field.courier.map_or(0, |bird| worth(&bird.items));
     (worn, riding)
+}
+
+/// What the seat's consumables cost, wherever they sit.
+pub fn worth_of_consumables(field: &Field) -> i32 {
+    let worth = |slots: &[Option<bota_proto::ItemView>]| {
+        slots
+            .iter()
+            .flatten()
+            .filter(|had| is_consumed(had.id.0))
+            .map(|had| cost_of(had.id.0))
+            .sum::<i32>()
+    };
+    field.me.map_or(0, |me| worth(&me.items))
+        + field.seat.stash.as_ref().map_or(0, |slots| worth(slots))
+        + field.courier.map_or(0, |bird| worth(&bird.items))
 }
 
 /// How many of an item the seat holds, counting the ones inside builds.

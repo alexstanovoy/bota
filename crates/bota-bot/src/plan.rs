@@ -64,6 +64,10 @@ pub struct Stage {
     /// What the seats are there to do.
     #[serde(default)]
     pub role: Option<String>,
+    /// Which hero both seats play, spelled with underscores. Absent is
+    /// sylla.
+    #[serde(default)]
+    pub hero: Option<String>,
     /// How a generation is judged: mirror or swiss. Absent is mirror.
     #[serde(default)]
     pub selection: Option<String>,
@@ -205,6 +209,14 @@ impl Plan {
             .wrapping_add(at.wrapping_mul(0x0100_0000_01b3));
 
         let standing = Yard::default();
+        let hero = match stage.hero.as_ref().or(fall_back.hero.as_ref()) {
+            None => standing.hero,
+            Some(named) => HEROES_SPELLED
+                .iter()
+                .find(|(name, _)| name == named)
+                .map(|(_, number)| bota_proto::HeroId(*number))
+                .ok_or_else(|| format!("no hero is called {named}. It is one of: {}", heroes()))?,
+        };
         Ok(Term {
             rung: Rung {
                 ticks,
@@ -214,6 +226,7 @@ impl Plan {
                 yard: Yard {
                     server: self.server.clone().unwrap_or(standing.server),
                     builtin: !self.on_the_wire,
+                    hero,
                     ..standing
                 },
                 role,
@@ -241,6 +254,19 @@ fn spellings() -> String {
         .iter()
         .map(|rung| rung.lesson.spelling())
         .collect::<Vec<String>>()
+        .join(", ")
+}
+
+/// The heroes a plan may name: the spelling, and the number the wire asks
+/// for the hero with.
+const HEROES_SPELLED: [(&str, u16); 3] = [("sylla", 0), ("pudge", 1), ("shadow_fiend", 2)];
+
+/// How the heroes are spelled in a plan, side by side.
+fn heroes() -> String {
+    HEROES_SPELLED
+        .iter()
+        .map(|(name, _)| *name)
+        .collect::<Vec<&str>>()
         .join(", ")
 }
 
