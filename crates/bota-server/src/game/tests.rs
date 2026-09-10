@@ -831,7 +831,20 @@ fn simultaneous_ancient_deaths_preserve_the_first_terminal_result() {
 }
 
 #[test]
-fn a_fallen_demo_tower_ends_the_one_lane_match_only() {
+fn a_fallen_tower_ends_a_skirmish_and_nothing_else() {
+    let mut skirmish = World::on_map(crate::game::map_of(bota_proto::MapId(2)));
+    let tower = skirmish.spawn_unit(
+        crate::game::tower_def(1),
+        bota_proto::Team::Dire,
+        bota_proto::Vec2::from_ints(1000, 1000),
+    );
+    skirmish.settle();
+    let mut events = Vec::new();
+
+    skirmish.bury(vec![(tower, None)], &mut events);
+
+    assert_eq!(skirmish.victor(), Some(bota_proto::Team::Radiant));
+
     let mut demo = World::on_map(crate::game::map_of(bota_proto::MapId(1)));
     let tower = demo.spawn_unit(
         crate::game::tower_def(1),
@@ -839,13 +852,14 @@ fn a_fallen_demo_tower_ends_the_one_lane_match_only() {
         bota_proto::Vec2::from_ints(1000, 1000),
     );
     demo.settle();
-    let mut events = Vec::new();
-
     demo.bury(vec![(tower, None)], &mut events);
+    assert_eq!(
+        demo.victor(),
+        None,
+        "the one-lane map ends the way the Dota map does"
+    );
 
-    assert_eq!(demo.victor(), Some(bota_proto::Team::Radiant));
-
-    let mut simultaneous = World::on_map(crate::game::map_of(bota_proto::MapId(1)));
+    let mut simultaneous = World::on_map(crate::game::map_of(bota_proto::MapId(2)));
     let radiant = simultaneous.spawn_unit(
         crate::game::tower_def(1),
         bota_proto::Team::Radiant,
@@ -876,8 +890,8 @@ fn a_fallen_demo_tower_ends_the_one_lane_match_only() {
 }
 
 #[test]
-fn a_second_demo_hero_death_loses_the_one_lane_match() {
-    let map = crate::game::map_of(bota_proto::MapId(1));
+fn a_second_hero_death_loses_a_skirmish() {
+    let map = crate::game::map_of(bota_proto::MapId(2));
     let mut world = World::on_map(map);
     let hero = world.spawn_hero(
         bota_proto::Team::Dire,
@@ -900,7 +914,7 @@ fn a_second_demo_hero_death_loses_the_one_lane_match() {
         0,
         rules::STASH_SLOTS,
     ));
-    world.seats[1].deaths = rules::DEMO_DEATH_LIMIT - 1;
+    world.seats[1].deaths = rules::SKIRMISH_DEATH_LIMIT - 1;
     world.settle();
     let mut events = Vec::new();
 
@@ -909,6 +923,68 @@ fn a_second_demo_hero_death_loses_the_one_lane_match() {
     assert_eq!(world.seats[0].deaths, 1);
     assert_eq!(world.seats[1].deaths, 1);
     assert_eq!(world.victor(), Some(bota_proto::Team::Radiant));
+}
+
+#[test]
+fn hero_deaths_end_nothing_on_the_maps_that_are_played_to_an_ancient() {
+    for id in [bota_proto::MapId(0), bota_proto::MapId(1)] {
+        let map = crate::game::map_of(id);
+        let mut world = World::on_map(map);
+        let hero = world.spawn_hero(
+            bota_proto::Team::Dire,
+            bota_proto::Vec2::from_ints(1000, 1000),
+            bota_proto::SlotId(0),
+            bota_proto::HeroId(0),
+        );
+        world.seats.push(crate::game::Seat::new(
+            bota_proto::SlotId(0),
+            bota_proto::Team::Dire,
+            bota_proto::HeroId(0),
+            0,
+            rules::STASH_SLOTS,
+        ));
+        world.seats[0].unit = Some(hero);
+        world.seats[0].deaths = rules::SKIRMISH_DEATH_LIMIT * 3;
+        world.settle();
+        let mut events = Vec::new();
+        world.bury(vec![(hero, None)], &mut events);
+        assert_eq!(world.victor(), None, "map {}", id.0);
+    }
+}
+
+#[test]
+fn a_skirmish_is_the_dota_map_with_a_shorter_ending() {
+    let dota = crate::game::map_of(bota_proto::MapId(0));
+    let skirmish = crate::game::map_of(bota_proto::MapId(2));
+    assert_eq!(skirmish.fountains, dota.fountains, "the same ground");
+    assert_eq!(skirmish.lanes, dota.lanes);
+    assert_eq!(skirmish.radiant_towers, dota.radiant_towers);
+    assert_eq!(skirmish.dire_towers, dota.dire_towers);
+    assert_eq!(skirmish.terrain_rle.len(), dota.terrain_rle.len());
+    assert_eq!(
+        (dota.death_limit, dota.tower_ends_it),
+        (0, false),
+        "and only the ending differs"
+    );
+    assert_eq!(
+        (skirmish.death_limit, skirmish.tower_ends_it),
+        (rules::SKIRMISH_DEATH_LIMIT, true)
+    );
+}
+
+#[test]
+fn every_map_sits_at_the_place_its_id_names() {
+    // The per-map route cache is indexed by the id, not by the position, so
+    // the two have to agree.
+    for (at, map) in crate::game::MAPS.iter().enumerate() {
+        assert_eq!(
+            usize::from(map.id.0),
+            at,
+            "map {} is out of place",
+            map.id.0
+        );
+        assert_eq!(map.index(), at);
+    }
 }
 
 #[test]

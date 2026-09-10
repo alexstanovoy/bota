@@ -114,10 +114,7 @@ impl World {
                 if kind == UnitKind::Ancient && self.winner.is_none() {
                     self.winner = Some(other_side(side));
                 }
-                if self.map.id == bota_proto::MapId(1)
-                    && kind == UnitKind::Tower
-                    && self.winner.is_none()
-                {
+                if self.map.tower_ends_it && kind == UnitKind::Tower && self.winner.is_none() {
                     self.winner = Some(other_side(side));
                 }
             }
@@ -143,7 +140,7 @@ impl World {
                 }
             }
             if let Some(team) = fallen_hero_team
-                && self.map.id == bota_proto::MapId(1)
+                && self.map.death_limit > 0
                 && self.winner.is_none()
             {
                 let deaths = self
@@ -152,7 +149,7 @@ impl World {
                     .filter(|seat| seat.team == team)
                     .map(|seat| u32::from(seat.deaths))
                     .sum::<u32>();
-                if deaths >= u32::from(crate::game::rules::DEMO_DEATH_LIMIT) {
+                if deaths >= u32::from(self.map.death_limit) {
                     self.winner = Some(other_side(team));
                 }
             }

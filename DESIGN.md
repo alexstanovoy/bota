@@ -332,6 +332,18 @@ exploit any leak a human reviewer shrugs off:
   lanes are defined by their towers, while the demo map's corners trace the
   real road and its towers stand beside it — drawn through them, every wave
   hooked around its own tower on the way out.
+- A third, `MapId(2)`, is the Dota map to a short finish: the first side to lose
+  a tower or to lose `SKIRMISH_DEATH_LIMIT` heroes loses. The same ground, the
+  same buildings, the same routes — `SKIRMISH` is written as `..DOTA` with two
+  fields changed, so it cannot drift from the map it is meant to be. What ends a
+  match is map data now (`death_limit` and `tower_ends_it`) rather than a
+  `map.id == MapId(1)` written into `fight.rs` twice: a rule keyed on which map
+  it is cannot be given to a second map without being written a third time. The
+  demo map used to carry both endings and now carries neither, which leaves it
+  what its name says — a lane to try things in, ending the way the big map does.
+- The per-map route cache is indexed by `MapId`, not by the position in `MAPS`,
+  so the two have to agree; a test says so, since nothing else would notice a map
+  added out of order.
 - Teams Radiant / Dire, 1v1 (the architecture is sized for 5v5).
 - Buildings: three towers per lane per side — tier one by the river, tier three by
   the base — plus a pair of tier fours by each Ancient, two barracks per lane

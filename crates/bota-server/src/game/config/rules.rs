@@ -41,8 +41,8 @@ pub const HERO_SPAWN_OFFSET: i32 = 280;
 
 /// The mid lane.
 pub const LANE_MID: u8 = 0;
-/// Hero deaths that lose a one-lane demo match.
-pub const DEMO_DEATH_LIMIT: u16 = 2;
+/// Hero deaths on one side that lose a skirmish match.
+pub const SKIRMISH_DEATH_LIMIT: u16 = 2;
 /// The top lane.
 pub const LANE_TOP: u8 = 1;
 /// The bottom lane.

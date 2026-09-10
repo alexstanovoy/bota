@@ -50,6 +50,11 @@ pub struct MapDef {
     /// The baked ground, run-length encoded: walkability, elevation tiers
     /// and water, cell by cell.
     pub terrain_rle: &'static [(u16, u8)],
+    /// Hero deaths on one side that lose it the match. Nought for a map lost
+    /// only with a building.
+    pub death_limit: u16,
+    /// Whether losing any tower loses the match.
+    pub tower_ends_it: bool,
 }
 
 /// The Dota lanes bend once each on the way round the map; mid runs straight.
@@ -78,57 +83,75 @@ const DEMO_CAMPS: [CampDef; 2] = [
 ];
 
 /// Every map, indexed by [`MapId`].
-pub const MAPS: [MapDef; 2] = [
-    // The real Dota map.
-    MapDef {
-        id: MapId(0),
-        fountains: [rules::RADIANT_FOUNTAIN_POS, rules::DIRE_FOUNTAIN_POS],
-        ancients: [
-            Some(rules::RADIANT_ANCIENT_POS),
-            Some(rules::DIRE_ANCIENT_POS),
-        ],
-        radiant_towers: &rules::RADIANT_TOWERS,
-        dire_towers: &rules::DIRE_TOWERS,
-        barracks: [&rules::RADIANT_BARRACKS, &rules::DIRE_BARRACKS],
-        protection: &crate::game::DOTA_PROTECTION,
-        creep_spawns: [rules::RADIANT_CREEP_SPAWNS, rules::DIRE_CREEP_SPAWNS],
-        lanes: 3,
-        lane_corners: DOTA_CORNERS,
-        lane_through_towers: true,
-        camps: &crate::game::CAMPS,
-        trees: crate::game::DOTA_TREES,
-        lane_clear: rules::TREE_LANE_CLEAR,
-        fow_blockers: crate::game::FOW_BLOCKERS,
-        terrain_rle: crate::game::TERRAIN_RLE,
-    },
-    // The hero demo map: one short lane with a single tower a side, two
-    // fountains, no Ancients, and the real forest and ground. Everything
-    // comes from the game's own `hero_demo_main`, shifted like the big map.
-    MapDef {
-        id: MapId(1),
-        fountains: [
-            rules::DEMO_RADIANT_FOUNTAIN_POS,
-            rules::DEMO_DIRE_FOUNTAIN_POS,
-        ],
-        ancients: [None, None],
-        radiant_towers: &rules::DEMO_RADIANT_TOWERS,
-        dire_towers: &rules::DEMO_DIRE_TOWERS,
-        barracks: [&[], &[]],
-        protection: &[],
-        creep_spawns: [
-            [rules::DEMO_RADIANT_CREEP_SPAWN; 3],
-            [rules::DEMO_DIRE_CREEP_SPAWN; 3],
-        ],
-        lanes: 1,
-        lane_corners: DEMO_CORNERS,
-        lane_through_towers: false,
-        camps: &DEMO_CAMPS,
-        trees: crate::game::DEMO_TREES,
-        lane_clear: 0,
-        fow_blockers: crate::game::DEMO_FOW_BLOCKERS,
-        terrain_rle: crate::game::DEMO_TERRAIN_RLE,
-    },
-];
+pub const MAPS: [MapDef; 3] = [DOTA, DEMO, SKIRMISH];
+
+/// The Dota map, played to its Ancient.
+const DOTA: MapDef = MapDef {
+    id: MapId(0),
+    fountains: [rules::RADIANT_FOUNTAIN_POS, rules::DIRE_FOUNTAIN_POS],
+    ancients: [
+        Some(rules::RADIANT_ANCIENT_POS),
+        Some(rules::DIRE_ANCIENT_POS),
+    ],
+    radiant_towers: &rules::RADIANT_TOWERS,
+    dire_towers: &rules::DIRE_TOWERS,
+    barracks: [&rules::RADIANT_BARRACKS, &rules::DIRE_BARRACKS],
+    protection: &crate::game::DOTA_PROTECTION,
+    creep_spawns: [rules::RADIANT_CREEP_SPAWNS, rules::DIRE_CREEP_SPAWNS],
+    lanes: 3,
+    lane_corners: DOTA_CORNERS,
+    lane_through_towers: true,
+    camps: &crate::game::CAMPS,
+    trees: crate::game::DOTA_TREES,
+    lane_clear: rules::TREE_LANE_CLEAR,
+    fow_blockers: crate::game::FOW_BLOCKERS,
+    terrain_rle: crate::game::TERRAIN_RLE,
+    death_limit: 0,
+    tower_ends_it: false,
+};
+
+/// The hero demo map: one short lane with a single tower a side, two
+/// fountains, no Ancients, and the real forest and ground. Everything
+/// comes from the game's own `hero_demo_main`, shifted like the big map.
+const DEMO: MapDef = MapDef {
+    id: MapId(1),
+    fountains: [
+        rules::DEMO_RADIANT_FOUNTAIN_POS,
+        rules::DEMO_DIRE_FOUNTAIN_POS,
+    ],
+    ancients: [None, None],
+    radiant_towers: &rules::DEMO_RADIANT_TOWERS,
+    dire_towers: &rules::DEMO_DIRE_TOWERS,
+    barracks: [&[], &[]],
+    protection: &[],
+    creep_spawns: [
+        [rules::DEMO_RADIANT_CREEP_SPAWN; 3],
+        [rules::DEMO_DIRE_CREEP_SPAWN; 3],
+    ],
+    lanes: 1,
+    lane_corners: DEMO_CORNERS,
+    lane_through_towers: false,
+    camps: &DEMO_CAMPS,
+    trees: crate::game::DEMO_TREES,
+    lane_clear: 0,
+    fow_blockers: crate::game::DEMO_FOW_BLOCKERS,
+    terrain_rle: crate::game::DEMO_TERRAIN_RLE,
+    death_limit: 0,
+    tower_ends_it: false,
+};
+
+/// The Dota map played to a short finish: the first side to lose a tower or
+/// to lose [`rules::SKIRMISH_DEATH_LIMIT`] heroes loses the match.
+///
+/// The same ground and the same buildings as the Dota map; only what ends it
+/// differs, which is what makes a match on it worth reading against one on
+/// map nought.
+const SKIRMISH: MapDef = MapDef {
+    id: MapId(2),
+    death_limit: rules::SKIRMISH_DEATH_LIMIT,
+    tower_ends_it: true,
+    ..DOTA
+};
 
 /// The map a match is played on. An unknown id falls back on the Dota map.
 pub fn map_of(id: MapId) -> &'static MapDef {
