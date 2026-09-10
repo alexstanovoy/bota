@@ -91,7 +91,13 @@ pub fn carried_bonus(inventory: &Inventory) -> Carried {
         total.armor += def.carried.armor;
         total.hp += def.carried.hp;
         total.mana += def.carried.mana;
-        total.hp_regen += def.carried.hp_regen;
+        let regen_charges = if def.stack_limit > 0 {
+            assert!(stack.charges <= def.stack_limit);
+            i32::from(stack.charges)
+        } else {
+            1
+        };
+        total.hp_regen += def.carried.hp_regen * Fixed::from_int(regen_charges);
         total.mana_regen += def.carried.mana_regen;
         total.damage_to_creeps += def.carried.damage_to_creeps;
         // What an item is set to is worth points of that attribute alone.
@@ -236,7 +242,8 @@ impl World {
 
     /// Buys an item for a seat that can afford it.
     ///
-    /// At its own shop it goes to the first free slot of the hero's bag, and
+    /// Mergeable charges fill a compatible stack before taking an empty slot.
+    /// At its own shop it goes to the hero's bag, and
     /// to the stash when that bag is full. Anywhere else it goes to the stash
     /// and waits there.
     pub fn buy(&mut self, slot: SlotId, item: ItemId, events: &mut Vec<Event>) -> bool {
@@ -248,6 +255,9 @@ impl World {
         };
         if item_def(item).is_none() {
             return false;
+        }
+        if item_def(item).is_some_and(|def| def.stack_limit > 0) {
+            return self.buy_stackable(index, unit, item, events);
         }
         let parts = self.missing_parts(index, unit, item);
         let price: i32 = parts
@@ -284,12 +294,75 @@ impl World {
                 self.put_in_stash(index, bought);
             }
         }
-        self.seats[index].gold -= price;
-        events.push(Event {
-            kind: EventKind::ItemBought { slot, item },
-            visible_to: EventVisibility::OneTeam(self.seats[index].team),
-        });
+        self.finish_purchase(index, item, price, events);
         true
+    }
+
+    /// Whether a purchase fits at its current destination, independent of affordability.
+    pub fn purchase_fits(&self, slot: SlotId, item: ItemId) -> bool {
+        let Some(seat) = self.seats.iter().position(|seat| seat.slot == slot) else {
+            return false;
+        };
+        let Some(unit) = self.seats[seat].unit else {
+            return false;
+        };
+        let Some(def) = item_def(item) else {
+            return false;
+        };
+        if def.stack_limit == 0 {
+            return self.free_slots(seat, unit) >= self.missing_parts(seat, unit, item).len();
+        }
+        assert!(def.components.is_empty());
+        let bought = ItemStack::bought(item, slot, self.tick).expect("known catalog item");
+        assert!(bought.charges <= def.stack_limit);
+        (self.at_shop(unit)
+            && self
+                .inventory
+                .get(unit)
+                .is_some_and(|bag| bag.receiving_slot(&bought).is_some()))
+            || self.seats[seat].stash.receiving_slot(&bought).is_some()
+    }
+
+    /// Buys one mergeable charge, with capacity and price checked before mutation.
+    fn buy_stackable(
+        &mut self,
+        seat: usize,
+        unit: Entity,
+        item: ItemId,
+        events: &mut Vec<Event>,
+    ) -> bool {
+        let def = item_def(item).expect("known catalog item");
+        assert!(def.stack_limit > 0);
+        assert_eq!(def.charges, 1);
+        let owner = self.seats[seat].slot;
+        if self.seats[seat].gold < def.cost || !self.purchase_fits(owner, item) {
+            return false;
+        }
+        let bought = ItemStack::bought(item, owner, self.tick).expect("known catalog item");
+        let in_hand = self.at_shop(unit)
+            && self
+                .inventory
+                .get_mut(unit)
+                .is_some_and(|bag| bag.receive(bought));
+        if !in_hand {
+            assert!(self.seats[seat].stash.receive(bought));
+        }
+        self.finish_purchase(seat, item, def.cost, events);
+        true
+    }
+
+    /// Pays for a completed purchase and emits its team-visible event.
+    fn finish_purchase(&mut self, seat: usize, item: ItemId, price: i32, events: &mut Vec<Event>) {
+        assert!(price >= 0);
+        assert!(self.seats[seat].gold >= price);
+        self.seats[seat].gold -= price;
+        events.push(Event {
+            kind: EventKind::ItemBought {
+                slot: self.seats[seat].slot,
+                item,
+            },
+            visible_to: EventVisibility::OneTeam(self.seats[seat].team),
+        });
     }
 
     /// What a seat still has to buy for one item to be had.
@@ -449,6 +522,9 @@ impl World {
                 i32::from(stack.charges) * mana_per_charge,
                 events,
             ),
+            ItemUse::ReplenishMana { amount } => {
+                self.replenish_mana(entity, target, amount, events)
+            }
             ItemUse::Blink { range } => self.blink_to(entity, target, range),
             ItemUse::Phase { pct, ticks } => self.walk_through(entity, pct, ticks),
             ItemUse::Switch => self.switch_mode(entity, slot),
@@ -489,6 +565,58 @@ impl World {
             if stack.charges == 0 && def.cast_charges == 0 && spends != Spends::Nothing {
                 *held = None;
             }
+        }
+        true
+    }
+
+    /// Whether self-targeted instant mana restoration has a live user and a positive deficit.
+    pub fn can_replenish_mana(&self, user: Entity, target: Target) -> bool {
+        if !self.alive(user)
+            || !matches!(target, Target::None) && target != Target::Unit(wire_id(user))
+        {
+            return false;
+        }
+        let (Some(stats), Some(pool)) = (self.stats.get(user), self.mana.get(user)) else {
+            return false;
+        };
+        stats.max_mana > Fixed::ZERO && pool.mana >= Fixed::ZERO && pool.mana < stats.max_mana
+    }
+
+    /// Restores up to `amount` mana immediately; an ineffective use changes nothing.
+    fn replenish_mana(
+        &mut self,
+        user: Entity,
+        target: Target,
+        amount: i32,
+        events: &mut Vec<Event>,
+    ) -> bool {
+        assert!(amount > 0);
+        if !self.can_replenish_mana(user, target) {
+            return false;
+        }
+        let maximum = self
+            .stats
+            .get(user)
+            .expect("validated mana capacity")
+            .max_mana;
+        let pool = self.mana.get_mut(user).expect("validated mana pool");
+        let before = pool.mana;
+        pool.mana += (maximum - before).min(Fixed::from_int(amount));
+        assert!(pool.mana > before);
+        assert!(pool.mana <= maximum);
+        let restored = (pool.mana - before).to_int();
+        if restored > 0 {
+            let at = self.transform.get(user).map_or(Vec2::ZERO, |t| t.pos);
+            let side = self.team.get(user).copied().unwrap_or(Team::Neutral);
+            events.push(Event {
+                kind: EventKind::Healed {
+                    source: Some(wire_id(user)),
+                    target: wire_id(user),
+                    amount: 0,
+                    mana: restored,
+                },
+                visible_to: self.who_may_know(at, side),
+            });
         }
         true
     }
@@ -708,8 +836,8 @@ impl World {
         }
     }
 
-    /// Moves what sits in one slot of a unit to another, swapping whatever is
-    /// in the way.
+    /// Moves a stack to another slot, merging compatible charges up to the cap
+    /// or swapping whatever is in the way. A partial merge leaves its remainder in place.
     ///
     /// Slots run the unit's own bag first, then the seat's stash. The stash
     /// takes part only while that unit stands in its own shop, so a courier
@@ -726,10 +854,25 @@ impl World {
         if (in_stash(from) || in_stash(to)) && !self.at_shop(unit) {
             return false;
         }
-        let Some(moved) = self.take_slot(unit, seat, from) else {
+        if self.slot_of(unit, seat, from).is_none() || self.slot_of(unit, seat, to).is_none() {
+            return false;
+        }
+        let Some(mut moved) = self.take_slot(unit, seat, from) else {
             return false;
         };
         let displaced = self.take_slot(unit, seat, to);
+        if let Some(mut target) = displaced
+            && target.merge_from(&mut moved)
+        {
+            target.touched = true;
+            moved.touched = true;
+            if in_backpack(from) && in_inventory(to) {
+                target.mute = target.mute.max(rules::BACKPACK_MUTE_TICKS);
+            }
+            self.put_slot(unit, seat, to, Some(target));
+            self.put_slot(unit, seat, from, (moved.charges > 0).then_some(moved));
+            return true;
+        }
         self.put_slot(unit, seat, to, Some(moved));
         self.put_slot(unit, seat, from, displaced);
         for (origin, landed) in [(from, to), (to, from)] {
@@ -805,10 +948,16 @@ impl World {
         };
         let fresh = !stack.touched
             && self.tick.saturating_sub(stack.bought_tick) <= rules::SELL_REFUND_TICKS;
-        if fresh {
-            def.cost
+        let cost = if def.stack_limit > 0 {
+            assert!(stack.charges <= def.stack_limit);
+            def.cost * i32::from(stack.charges)
         } else {
-            def.cost * rules::SELL_PCT / 100
+            def.cost
+        };
+        if fresh {
+            cost
+        } else {
+            cost * rules::SELL_PCT / 100
         }
     }
 

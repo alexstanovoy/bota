@@ -2,7 +2,7 @@
 
 use bota_proto::{EventKind, Fixed, Team, UnitKind};
 
-use crate::game::{Entity, UnitOrder, World, is_structure, wire_id};
+use crate::game::{Entity, MAP2_ID, MAP2_TICK_CAP, UnitOrder, World, is_structure, wire_id};
 use crate::game::{Event, EventVisibility};
 
 impl World {
@@ -74,97 +74,153 @@ impl World {
     /// Clears away what has fallen and tells who may know.
     pub fn bury(&mut self, fallen: Vec<(Entity, Option<Entity>)>, events: &mut Vec<Event>) {
         let mut structure_fell = false;
+        let mut tower_losses = [false; 2];
         for (entity, killer) in fallen {
             if !self.entities.contains(entity) {
                 continue;
             }
-            self.carry_fights_on(entity);
-            self.feed_flesh_heaps(entity);
-            self.feed_souls(entity, killer);
-            let kind = self.kind.get(entity).copied();
-            let side = self.team.get(entity).copied();
-            let denied = killer
-                .and_then(|k| self.team.get(k).copied())
-                .is_some_and(|theirs| Some(theirs) == side);
-            let paid = self.pay_for(entity, killer, events);
-            let at = self
-                .transform
-                .get(entity)
-                .map_or(bota_proto::Vec2::ZERO, |t| t.pos);
-            events.push(Event {
-                kind: EventKind::Died {
-                    unit: wire_id(entity),
-                    killer: killer.map(wire_id),
-                    denied,
-                    gold: paid,
-                },
-                visible_to: self.who_may_know(at, side.unwrap_or(Team::Neutral)),
-            });
-            if let (Some(kind), Some(side)) = (kind, side)
-                && is_structure(kind)
-            {
+            if let Some((kind, side)) = self.bury_entity(entity, killer, events) {
                 structure_fell = true;
-                events.push(Event {
-                    kind: EventKind::StructureDestroyed {
-                        unit: wire_id(entity),
-                        team: side,
-                    },
-                    visible_to: EventVisibility::Everyone,
-                });
-                if kind == UnitKind::Ancient && self.winner.is_none() {
-                    self.winner = Some(other_side(side));
-                }
-                if self.map.tower_ends_it && kind == UnitKind::Tower && self.winner.is_none() {
-                    self.winner = Some(other_side(side));
+                match (kind, side) {
+                    (UnitKind::Tower, Team::Radiant) => tower_losses[0] = true,
+                    (UnitKind::Tower, Team::Dire) => tower_losses[1] = true,
+                    _ => {}
                 }
             }
-            let mut fallen_hero_team = None;
-            for index in 0..self.seats.len() {
-                if self.seats[index].unit == Some(entity) {
-                    let level = self.seats[index].level;
-                    let kept = crate::game::Kept {
-                        book: self.abilities.remove(entity).unwrap_or_default(),
-                        bag: self.inventory.remove(entity).unwrap_or_default(),
-                        stacks: self.stacks.remove(entity).unwrap_or_default(),
-                    };
-                    self.seats[index].unit = None;
-                    self.seats[index].kept = Some(kept);
-                    self.seats[index].deaths += 1;
-                    self.seats[index].respawn_left = World::respawn_wait(level);
-                    fallen_hero_team = Some(self.seats[index].team);
-                }
-                // A courier's load waits on the seat the way a hero's bag
-                // does, and comes back aboard the next one.
-                if self.seats[index].courier == Some(entity) {
-                    self.seats[index].courier_kept = self.inventory.remove(entity);
-                }
-            }
-            if let Some(team) = fallen_hero_team
-                && self.map.death_limit > 0
-                && self.winner.is_none()
-            {
-                let deaths = self
-                    .seats
-                    .iter()
-                    .filter(|seat| seat.team == team)
-                    .map(|seat| u32::from(seat.deaths))
-                    .sum::<u32>();
-                if deaths >= u32::from(self.map.death_limit) {
-                    self.winner = Some(other_side(team));
-                }
-            }
-            if let Some(index) =
-                killer.and_then(|k| self.seats.iter().position(|s| s.unit == Some(k)))
-                && kind == Some(UnitKind::Hero)
-                && !denied
-            {
-                self.seats[index].kills += 1;
-            }
-            self.despawn(entity);
         }
         if structure_fell {
             self.lay_passability();
         }
+        self.finish_map2_tick(tower_losses);
+    }
+
+    fn bury_entity(
+        &mut self,
+        entity: Entity,
+        killer: Option<Entity>,
+        events: &mut Vec<Event>,
+    ) -> Option<(UnitKind, Team)> {
+        assert!(self.entities.contains(entity));
+        self.carry_fights_on(entity);
+        self.feed_flesh_heaps(entity);
+        self.feed_souls(entity, killer);
+        let kind = self.kind.get(entity).copied();
+        let side = self.team.get(entity).copied();
+        let denied = killer
+            .and_then(|k| self.team.get(k).copied())
+            .is_some_and(|theirs| Some(theirs) == side);
+        let paid = self.pay_for(entity, killer, events);
+        let at = self
+            .transform
+            .get(entity)
+            .map_or(bota_proto::Vec2::ZERO, |t| t.pos);
+        events.push(Event {
+            kind: EventKind::Died {
+                unit: wire_id(entity),
+                killer: killer.map(wire_id),
+                denied,
+                gold: paid,
+            },
+            visible_to: self.who_may_know(at, side.unwrap_or(Team::Neutral)),
+        });
+        let structure = kind.zip(side).filter(|(kind, _)| is_structure(*kind));
+        if let Some((kind, side)) = structure {
+            events.push(Event {
+                kind: EventKind::StructureDestroyed {
+                    unit: wire_id(entity),
+                    team: side,
+                },
+                visible_to: EventVisibility::Everyone,
+            });
+            if self.map.id != MAP2_ID
+                && self.winner.is_none()
+                && (kind == UnitKind::Ancient
+                    || (self.map.tower_ends_it && kind == UnitKind::Tower))
+            {
+                self.winner = Some(other_side(side));
+            }
+        }
+        self.bury_seat(entity);
+        if let Some(index) = killer.and_then(|k| self.seats.iter().position(|s| s.unit == Some(k)))
+            && kind == Some(UnitKind::Hero)
+            && !denied
+        {
+            self.seats[index].kills += 1;
+        }
+        self.despawn(entity);
+        assert!(!self.entities.contains(entity));
+        structure
+    }
+
+    fn bury_seat(&mut self, entity: Entity) {
+        let mut fallen_hero_team = None;
+        for index in 0..self.seats.len() {
+            if self.seats[index].unit == Some(entity) {
+                let level = self.seats[index].level;
+                let kept = crate::game::Kept {
+                    book: self.abilities.remove(entity).unwrap_or_default(),
+                    bag: self.inventory.remove(entity).unwrap_or_default(),
+                    stacks: self.stacks.remove(entity).unwrap_or_default(),
+                };
+                self.seats[index].unit = None;
+                self.seats[index].kept = Some(kept);
+                self.seats[index].deaths += 1;
+                self.seats[index].respawn_left = World::respawn_wait(level);
+                fallen_hero_team = Some(self.seats[index].team);
+            }
+            if self.seats[index].courier == Some(entity) {
+                self.seats[index].courier_kept = self.inventory.remove(entity);
+            }
+        }
+        if let Some(team) = fallen_hero_team
+            && self.map.id != MAP2_ID
+            && self.map.death_limit > 0
+            && self.winner.is_none()
+        {
+            let deaths = self
+                .seats
+                .iter()
+                .filter(|seat| seat.team == team)
+                .map(|seat| u32::from(seat.deaths))
+                .sum::<u32>();
+            if deaths >= u32::from(self.map.death_limit) {
+                self.winner = Some(other_side(team));
+            }
+        }
+    }
+
+    fn finish_map2_tick(&mut self, tower_losses: [bool; 2]) {
+        if self.map.id != MAP2_ID || self.winner.is_some() {
+            return;
+        }
+        let deaths = |team| {
+            self.seats
+                .iter()
+                .filter(|seat| seat.team == team)
+                .fold(0u16, |total, seat| total.saturating_add(seat.deaths))
+        };
+        let lost = [
+            (self.map.tower_ends_it && tower_losses[0])
+                || (self.map.death_limit > 0 && deaths(Team::Radiant) >= self.map.death_limit),
+            (self.map.tower_ends_it && tower_losses[1])
+                || (self.map.death_limit > 0 && deaths(Team::Dire) >= self.map.death_limit),
+        ];
+        self.winner = match (self.tick >= MAP2_TICK_CAP, lost) {
+            (true, _) | (false, [true, true]) => Some(Team::Neutral),
+            (false, [true, false]) => Some(Team::Dire),
+            (false, [false, true]) => Some(Team::Radiant),
+            (false, [false, false]) => None,
+        };
+    }
+
+    pub(crate) fn map2_finished(&mut self) -> bool {
+        if self.map.id != MAP2_ID {
+            return false;
+        }
+        if self.tick >= MAP2_TICK_CAP {
+            self.winner.get_or_insert(Team::Neutral);
+        }
+        self.winner.is_some()
     }
 }
 

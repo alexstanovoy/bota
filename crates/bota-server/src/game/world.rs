@@ -25,7 +25,7 @@ pub struct World {
     pub tick: u32,
     /// A place per player.
     pub seats: Vec<Seat>,
-    /// The side that has won, once one has.
+    /// The completed result; `Team::Neutral` denotes a Map2 draw.
     pub winner: Option<Team>,
     /// The map it is played on.
     pub map: &'static crate::game::MapDef,
@@ -263,6 +263,7 @@ impl World {
             amount,
             kind,
             crit: false,
+            effect: crate::game::HitEffect::None,
         });
     }
 
@@ -451,8 +452,11 @@ impl World {
         });
     }
 
-    /// One tick. Systems run in the order they are written here.
+    /// One tick, or no change after Map2 completes. Systems run in written order.
     pub fn step(&mut self) -> Vec<crate::game::Event> {
+        if self.map2_finished() {
+            return Vec::new();
+        }
         let mut events = Vec::new();
         self.tick += 1;
         self.spawn_waves();
@@ -497,6 +501,11 @@ impl World {
             mana: &mut self.mana,
         });
         self.guard_structures();
+        self.step_combat(&mut events);
+        events
+    }
+
+    fn step_combat(&mut self, events: &mut Vec<crate::game::Event>) {
         self.tick_targeting();
         self.tick_jungle();
         self.march_lanes();
@@ -550,7 +559,11 @@ impl World {
             bounced: &mut self.bounced,
         });
         self.bounce_missiles();
-        self.run_casts(&mut events);
+        self.run_casts(events);
+        self.step_damage(events);
+    }
+
+    fn step_damage(&mut self, events: &mut Vec<crate::game::Event>) {
         hitting_system(HitCx {
             hits: &mut self.hits,
             landed: &mut self.landed,
@@ -558,17 +571,17 @@ impl World {
             team: &self.team,
             stats: &self.stats,
             health: &mut self.health,
+            statuses: &mut self.statuses,
         });
         let felt: Vec<Landed> = self.landed.drain(..).collect();
         self.break_on_blows(&felt);
         self.rouse_camps(&felt);
-        self.tell_of(&felt, &mut events);
+        self.tell_of(&felt, events);
         let fallen = felt
             .iter()
             .filter(|blow| blow.fatal)
             .map(|blow| (blow.target, blow.source))
             .collect();
-        self.bury(fallen, &mut events);
-        events
+        self.bury(fallen, events);
     }
 }

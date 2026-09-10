@@ -2,6 +2,8 @@
 
 use bota_proto::{Attribute, ItemId, SlotId};
 
+use crate::game::item_def;
+
 /// One item in a slot.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ItemStack {
@@ -26,6 +28,67 @@ pub struct ItemStack {
     pub for_sale: bool,
 }
 
+impl ItemStack {
+    /// An untouched purchase with the catalog's initial charges and mode.
+    pub fn bought(id: ItemId, owner: SlotId, tick: u32) -> Option<Self> {
+        let def = item_def(id)?;
+        if def.stack_limit > 0 {
+            assert_eq!(def.charges, 1);
+            assert!(def.charges <= def.stack_limit);
+        }
+        Some(Self {
+            id,
+            charges: def.charges,
+            cooldown: 0,
+            mute: 0,
+            mode: def.mode,
+            bought_tick: tick,
+            touched: false,
+            owner,
+            for_sale: false,
+        })
+    }
+
+    /// Charges another stack may add; ownership, mode, and sale marks must match.
+    pub fn merge_room(&self, source: &Self) -> u8 {
+        if self.id != source.id
+            || self.owner != source.owner
+            || self.mode != source.mode
+            || self.for_sale != source.for_sale
+            || self.charges == 0
+            || source.charges == 0
+        {
+            return 0;
+        }
+        let limit = item_def(self.id).map_or(0, |def| def.stack_limit);
+        if limit == 0 {
+            return 0;
+        }
+        assert!(self.charges <= limit);
+        assert!(source.charges <= limit);
+        limit - self.charges
+    }
+
+    /// Merges up to the cap, retaining the oldest purchase and strongest restrictions.
+    /// A source reduced to zero must be removed from its slot by the caller.
+    pub fn merge_from(&mut self, source: &mut Self) -> bool {
+        let moved = self.merge_room(source).min(source.charges);
+        if moved == 0 {
+            return false;
+        }
+        let before = u16::from(self.charges) + u16::from(source.charges);
+        self.charges += moved;
+        source.charges -= moved;
+        self.bought_tick = self.bought_tick.min(source.bought_tick);
+        self.cooldown = self.cooldown.max(source.cooldown);
+        self.mute = self.mute.max(source.mute);
+        self.touched |= source.touched;
+        assert_eq!(self.owner, source.owner);
+        assert_eq!(u16::from(self.charges) + u16::from(source.charges), before);
+        true
+    }
+}
+
 /// The slots an entity carries items in.
 ///
 /// A slot holding nothing is `None`, so slots keep their numbers as items come
@@ -47,6 +110,31 @@ impl Inventory {
     /// Every item held, in slot order.
     pub fn held(&self) -> impl Iterator<Item = &ItemStack> {
         self.slots.iter().flatten()
+    }
+
+    /// First compatible stack fitting the whole arrival, then the first empty slot.
+    pub fn receiving_slot(&self, incoming: &ItemStack) -> Option<usize> {
+        let merge = self.slots.iter().position(|held| {
+            held.is_some_and(|held| {
+                incoming.charges > 0 && held.merge_room(incoming) >= incoming.charges
+            })
+        });
+        merge.or_else(|| self.slots.iter().position(Option::is_none))
+    }
+
+    /// Receives one whole stack or changes nothing; merges only when the entire stack fits.
+    pub fn receive(&mut self, mut incoming: ItemStack) -> bool {
+        let Some(at) = self.receiving_slot(&incoming) else {
+            return false;
+        };
+        assert!(at < self.slots.len());
+        if let Some(held) = self.slots[at].as_mut() {
+            assert!(held.merge_from(&mut incoming));
+            assert_eq!(incoming.charges, 0);
+        } else {
+            self.slots[at] = Some(incoming);
+        }
+        true
     }
 }
 

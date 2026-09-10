@@ -5,7 +5,7 @@ use bota_proto::{DamageKind, Fixed, Team, Vec2};
 use crate::game::rules;
 use std::collections::VecDeque;
 
-use crate::game::{Entity, Health, Hit, Stats, Table, Transform};
+use crate::game::{Entity, Health, Hit, HitEffect, Stats, StatusKind, Statuses, Table, Transform};
 
 /// One blow once it has been felt.
 ///
@@ -45,6 +45,8 @@ pub struct HitCx<'a> {
     pub stats: &'a Table<Stats>,
     /// What the blow comes off.
     pub health: &'a mut Table<Health>,
+    /// Timed statuses read and applied by successful blows.
+    pub statuses: &'a mut Table<Statuses>,
 }
 
 /// Takes every waiting blow off the health it landed on.
@@ -60,6 +62,7 @@ pub fn hitting_system(cx: HitCx<'_>) {
         team,
         stats,
         health,
+        statuses,
     } = cx;
     while let Some(blow) = hits.pop_front() {
         let standing = health
@@ -68,16 +71,26 @@ pub fn hitting_system(cx: HitCx<'_>) {
         let Some(stat) = stats.get(blow.target).copied() else {
             continue;
         };
-        if !standing || stat.invulnerable {
+        let on_it = statuses.get(blow.target);
+        let shielded = on_it.is_some_and(|statuses| {
+            statuses
+                .active()
+                .any(|status| status.kind == StatusKind::Shielded)
+        });
+        if !standing || stat.invulnerable || shielded {
             continue;
         }
-        let taken = mitigate(blow.amount, blow.kind, stat.armor, stat.magic_resist_pct);
+        let amount = amplified_damage(blow, on_it);
+        let taken = mitigate(amount, blow.kind, stat.armor, stat.magic_resist_pct);
         let Some(pool) = health.get_mut(blow.target) else {
             continue;
         };
         let applied = taken.min(pool.hp.to_int().max(0) + 1);
         pool.hp -= Fixed::from_int(applied);
         let fatal = pool.hp <= Fixed::ZERO;
+        if applied > 0 && !fatal {
+            apply_hit_effect(blow, statuses);
+        }
         landed.push_back(Landed {
             source: blow.source,
             target: blow.target,
@@ -88,6 +101,34 @@ pub fn hitting_system(cx: HitCx<'_>) {
             side: team.get(blow.target).copied().unwrap_or(Team::Neutral),
             fatal,
         });
+    }
+}
+
+/// Pre-mitigation damage including the current valid same-caster stack count.
+fn amplified_damage(blow: Hit, statuses: Option<&Statuses>) -> i32 {
+    let HitEffect::Shadowraze { level } = blow.effect else {
+        return blow.amount;
+    };
+    assert_eq!(blow.kind, DamageKind::Magical);
+    assert!(usize::from(level) < rules::RAZE_STACK_DAMAGE.len());
+    let caster = blow.source.expect("a Shadowraze hit has a caster");
+    let stacks = statuses.map_or(0, |statuses| statuses.raze_stacks(caster));
+    blow.amount + i32::from(stacks) * rules::RAZE_STACK_DAMAGE[usize::from(level)]
+}
+
+/// Applies a damaging hit's status to a surviving target.
+fn apply_hit_effect(blow: Hit, statuses: &mut Table<Statuses>) {
+    if let HitEffect::Shadowraze { .. } = blow.effect {
+        assert_eq!(blow.kind, DamageKind::Magical);
+        assert!(blow.amount > 0);
+        let caster = blow.source.expect("a Shadowraze hit has a caster");
+        if let Some(on_it) = statuses.get_mut(blow.target) {
+            on_it.stack_raze(caster);
+        } else {
+            let mut on_it = Statuses::default();
+            on_it.stack_raze(caster);
+            statuses.insert(blow.target, on_it);
+        }
     }
 }
 

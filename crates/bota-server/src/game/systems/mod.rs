@@ -36,3 +36,6 @@ pub use regen::*;
 pub use stats::*;
 pub use target::*;
 pub use visibility::*;
+
+#[cfg(test)]
+mod raze_tests;

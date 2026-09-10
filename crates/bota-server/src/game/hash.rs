@@ -4,7 +4,7 @@
 //! through a hash map, so the same run always gives the same number.
 
 use crate::engine::Fnv;
-use crate::game::{Inventory, StatusKind, Target, World};
+use crate::game::{Hit, HitEffect, Inventory, ItemStack, StatusKind, Target, World};
 
 impl World {
     /// A fingerprint of everything a tick acts on.
@@ -32,6 +32,10 @@ impl World {
                 fnv.u64(draws);
                 fnv.u8(failures);
             }
+        }
+        fnv.u32(self.hits.len() as u32);
+        for hit in &self.hits {
+            hash_hit(&mut fnv, hit);
         }
         for entity in self.entities.iter() {
             fnv.entity(entity);
@@ -102,6 +106,10 @@ impl World {
             if let Some(bag) = self.inventory.get(entity) {
                 hash_bag(&mut fnv, bag);
             }
+            fnv.some(self.loot.get(entity).is_some());
+            if let Some(loot) = self.loot.get(entity) {
+                hash_stack(&mut fnv, &loot.0);
+            }
             if let Some(hook) = self.hook.get(entity) {
                 fnv.entity(hook.owner);
                 fnv.vec2(hook.aim);
@@ -166,6 +174,10 @@ impl World {
                 fnv.entity(courier);
             }
             fnv.u32(seat.courier_left);
+            fnv.some(seat.courier_kept.is_some());
+            if let Some(bag) = &seat.courier_kept {
+                hash_bag(&mut fnv, bag);
+            }
             fnv.some(seat.kept.is_some());
             if let Some(kept) = &seat.kept {
                 for slot in kept.book.slots.iter() {
@@ -181,6 +193,25 @@ impl World {
             }
         }
         fnv.done()
+    }
+}
+
+/// A queued blow and its pending modifier before resolution.
+fn hash_hit(fnv: &mut Fnv, hit: &Hit) {
+    fnv.some(hit.source.is_some());
+    if let Some(source) = hit.source {
+        fnv.entity(source);
+    }
+    fnv.entity(hit.target);
+    fnv.i32(hit.amount);
+    fnv.u8(hit.kind as u8);
+    fnv.some(hit.crit);
+    match hit.effect {
+        HitEffect::None => fnv.u8(0),
+        HitEffect::Shadowraze { level } => {
+            fnv.u8(1);
+            fnv.u8(level);
+        }
     }
 }
 
@@ -251,6 +282,11 @@ fn hash_status_kind(fnv: &mut Fnv, kind: StatusKind) {
             }
             fnv.some(lethal);
         }
+        StatusKind::Shadowraze { from, stacks } => {
+            fnv.u8(11);
+            fnv.entity(from);
+            fnv.u8(stacks);
+        }
     }
 }
 
@@ -261,13 +297,24 @@ fn hash_bag(fnv: &mut Fnv, bag: &Inventory) {
             None => fnv.u8(0),
             Some(stack) => {
                 fnv.u8(1);
-                fnv.u32(u32::from(stack.id.0));
-                fnv.u8(stack.charges);
-                fnv.u32(stack.cooldown);
-                fnv.u32(stack.mute);
-                fnv.u32(stack.bought_tick);
-                fnv.u8(u8::from(stack.touched));
+                hash_stack(fnv, stack);
             }
         }
+    }
+}
+
+/// Complete charge, ownership, sale, attribute and timer state of one stack.
+fn hash_stack(fnv: &mut Fnv, stack: &ItemStack) {
+    fnv.u32(u32::from(stack.id.0));
+    fnv.u8(stack.charges);
+    fnv.u32(stack.cooldown);
+    fnv.u32(stack.mute);
+    fnv.u32(stack.bought_tick);
+    fnv.u8(u8::from(stack.touched));
+    fnv.u8(stack.owner.0);
+    fnv.some(stack.for_sale);
+    fnv.some(stack.mode.is_some());
+    if let Some(mode) = stack.mode {
+        fnv.u8(mode as u8);
     }
 }

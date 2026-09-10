@@ -139,7 +139,9 @@ pub fn derive_stats(cx: StatsCx<'_>) {
                     StatusKind::Phased => now.phased = true,
                     // What holds a unit still and what burns it are read
                     // where they are acted on, not here.
-                    StatusKind::Stunned | StatusKind::Burning { .. } => {}
+                    StatusKind::Stunned
+                    | StatusKind::Burning { .. }
+                    | StatusKind::Shadowraze { .. } => {}
                 }
             }
         }

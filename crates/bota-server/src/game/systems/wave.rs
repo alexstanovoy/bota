@@ -11,7 +11,7 @@ use crate::game::{
 };
 
 impl World {
-    /// Puts a wave in every lane when the clock calls for one.
+    /// Puts a wave in each enabled lane when the clock calls for one.
     pub fn spawn_waves(&mut self) {
         let Some(wave) = wave_at(self.tick) else {
             return;
@@ -19,7 +19,7 @@ impl World {
         let plan = wave_plan(wave);
         let map = self.map;
         for team in [Team::Radiant, Team::Dire] {
-            for lane in map.lanes() {
+            for &lane in map.wave_lanes {
                 let at = creep_spawn_pos(map, team, lane);
                 let route = &lane_routes(map)[team_index(team)][usize::from(lane)];
                 let forward = route

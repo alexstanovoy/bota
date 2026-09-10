@@ -11,6 +11,8 @@ mod hit;
 mod hook;
 mod items;
 mod loot;
+#[cfg(test)]
+mod mango_tests;
 mod movement;
 mod orders;
 mod projectile;

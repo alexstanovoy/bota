@@ -1,0 +1,9 @@
+<svg width="100%" viewBox="0 0 680 260" role="img" xmlns="http://www.w3.org/2000/svg">
+  <title>Mango</title>
+  <rect x="220" y="50" width="240" height="160" fill="#1c2923"/>
+  <path d="M346 104 Q347 90 354 80" fill="none" stroke="#80613c" stroke-width="6" stroke-linecap="round"/>
+  <path d="M350 95 Q358 69 394 76 Q384 103 350 95Z" fill="#66ad4e"/>
+  <path d="M358 100 C387 100 402 120 394 145 C386 173 361 190 330 191 C304 192 286 179 285 157 C283 135 301 113 321 105 C334 100 345 98 358 100Z" fill="#e9a52d"/>
+  <path d="M286 158 C308 180 359 180 391 146 C377 178 356 190 330 191 C306 192 288 180 286 158Z" fill="#d97b25"/>
+  <ellipse cx="319" cy="133" rx="14" ry="23" transform="rotate(32 319 133)" fill="#ffd76a"/>
+</svg>

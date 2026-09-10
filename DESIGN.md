@@ -333,9 +333,10 @@ exploit any leak a human reviewer shrugs off:
   real road and its towers stand beside it — drawn through them, every wave
   hooked around its own tower on the way out.
 - A third, `MapId(2)`, is the Dota map to a short finish: the first side to lose
-  a tower or to lose `SKIRMISH_DEATH_LIMIT` heroes loses. The same ground, the
-  same buildings, the same routes — `SKIRMISH` is written as `..DOTA` with two
-  fields changed, so it cannot drift from the map it is meant to be. What ends a
+  a tower or to lose `SKIRMISH_DEATH_LIMIT` heroes loses; opposing losses in one
+  tick draw. It spawns only mid waves and draws after fifteen gameplay minutes.
+  The same ground, buildings and routes come from `SKIRMISH` using `..DOTA`,
+  overriding only its id, wave selection and completion fields. What ends a
   match is map data now (`death_limit` and `tower_ends_it`) rather than a
   `map.id == MapId(1)` written into `fight.rs` twice: a rule keyed on which map
   it is cannot be given to a second map without being written a third time. The
@@ -2172,3 +2173,226 @@ starting a search at our budget of one match a second, which is where months go.
 | 7 | ✅ server networking | lobby, both tick modes, snapshot broadcast, replay recording |
 | 8 | 🔄 `bota-bot` and `bota-client` | SDK + bot, bot-vs-bot match. Done: the client — macroquad: map, units, HP bars, orders, lobby, spectating, replay playback; the bot — the `Bot` seam and `play`, a deterministic playbook for Shadow Fiend and Sylla, lockstep acks, two of it playing a match through to an Ancient |
 | 9 | hero Sylla complete and determinism test | abilities, levels, items, shop; 20 000-tick hash baseline, run on musl/wasm32; mirror test: a diagonally mirrored match ends in the mirrored outcome |
+
+## Map2: mid-only play on the full Dota map
+
+`MapId(2)` copies the single `DOTA` definition in `game/config/map.rs`, overriding
+the wire id, creep-wave lane selection and upstream completion fields. No landmark, tree,
+camp, terrain, or blocker tables are duplicated. `MapDef.lanes` and `lanes()`
+remain geometric: Map0 and Map2 both have three lane centerlines, and tree
+clearance and route construction still see all three. The separate
+`wave_lanes` slice selects mid alone on Map2. Setting `lanes` to one instead
+would leave extra trees on the side roads and change passability and vision,
+so it would not preserve the full map. Static side-lane structures and the
+jungle remain active. Map0 and the hero demo Map1 keep the upstream data, wave
+order and completion rules: neither loses on a tower or hero death. The prior
+local Map1 short-ending rules are not restored during the upstream merge.
+
+Map2 ends when a side loses its second hero life, counted across that side's
+seats, or its first tower on any lane. All deaths of a tick are processed
+before adjudication; if both sides lose on that tick, the result is a draw.
+This includes a tower lost on one side and a second hero death on the other.
+Choosing a winner inside the burial loop would make that draw depend on hit
+iteration order. Couriers do not consume hero lives. An Ancient is not a
+separate Map2 win condition: its normal protection cannot open before a tower
+has already ended the match.
+
+The limit is fifteen gameplay minutes at the fixed simulation rate, 27,000 ticks,
+plus the unchanged 900 pregame ticks. Tick 27,900 runs completely, including
+orders, scheduled waves, economy, combat, and death accounting, then draws
+even if one side loses on that tick. A loss at 27,899 still wins immediately.
+Wall-clock `tick_rate` and realtime/lockstep mode do not alter this limit.
+`World::advance` and `World::step` stop mutating a completed Map2, including
+orders with immediate shop side effects. A world already at the cap seals
+the draw without running a late tick. Map0/Map1 do not gain either this cap
+or this post-completion freeze.
+
+`World::victor()` and the existing native `ServerMsg::MatchOver.winner` use
+`Team::Neutral` to mean a Map2 draw, not a jungle victory. This avoids a new
+wire outcome schema: TCP and in-process runners read the same World result
+and `match_stats().duration` after the final tick. The existing globally
+visible `StructureDestroyed` event identifies the fallen tower and side;
+final seat death counts and duration identify life-limit and cap endings.
+There is no new reason field in MatchOver. Consumers must classify Neutral
+as Draw rather than as a loss for both seats. The existing bota client banner
+for this value reads `NOBODY WINS`; this change does not modify the viewer.
+
+## Mango and stacking Shadowraze: the 2026-09-10 balance choice
+
+These are authorized bota mechanics, not a claim of parity with the latest Dota
+patch. The conventional Mango price and restoration and raze stack bonuses were
+chosen explicitly; the existing bota raze base damage and cast rules are retained.
+No Teacher strategy, neural tensor schema, training data, or saved model is changed
+here. Action candidates and feature migrations remain the consumer's work.
+
+### Exact Mango rules
+
+`game::ITEM_MANGO` is appended as `42`; `game::ITEMS` and the client item catalog
+now contain 43 entries. Ids 0 through 41 keep their meanings. The shop still sends
+an ordinary `ShopEntry`, and carried Mangoes use existing `ItemView.charges`.
+Public constants in `game/config/item.rs`, re-exported through `game`, are:
+
+| Constant | Exact value |
+|---|---|
+| `MANGO_COST` | 65 gold for one charge |
+| `MANGO_STACK_MAX` | 3 charges per slot |
+| `MANGO_MANA` | 100 mana per use |
+| `MANGO_HP_REGEN` | `Fixed::from_ratio(2, 5 * TICKS_PER_SECOND)` per charge per tick |
+
+At 30 ticks/s the passive is 873 raw Q16.16 HP per tick per charge, or exactly
+0.399627685546875 HP/s. Each charge is quantized before multiplication: stacks
+of one, two and three add 873, 1746 and 2619 raw HP/tick. Splitting or merging
+stacks cannot change their combined regeneration. A float, a coarse hundredth-HP
+timed effect and an extra fractional accumulator were rejected: the existing
+fixed-point regeneration path supplies a deterministic, sufficiently close
+representation of the nominal 0.4 HP/s without more state.
+
+Mango has zero mana cost, zero cooldown, zero range and `Aim::Own`. Both
+`Target::None` and an explicit self handle are legal. One successful use consumes
+exactly one charge and restores `min(100, max_mana - mana)` immediately. Any
+strictly positive deficit, including one raw Q16.16 unit, qualifies. Full or
+overfull mana, a missing pool or nonpositive capacity cannot consume a charge.
+The order validator reports `NotReady` for an ineffective restoration and
+`WrongTargetKind` for any non-self target. This is a legal-action rule, not a
+strategy requiring a 100-mana deficit. Wasting a charge at full mana and reusing
+Stick/Wand's all-charges restoration were rejected. `ItemUse::ReplenishMana` is a
+server-only appended variant; no order or wire field is added.
+
+The merged upstream protocol already carries `Healed.mana`. Mango uses that
+contract: one consumption emits a mana-only `Healed` event with the actual
+clamped restoration in whole points and the usual healing visibility. Restoring
+less than one whole point consumes the charge but emits no zero-valued event,
+matching upstream's positive whole-point reporting. Rejected use and subsequent
+passive regeneration emit no consumption event. Mango adds no further wire fields.
+
+Only unmuted inventory slots 0 through 5 grant the per-charge passive or permit
+use. Backpack slots 6 through 8 and stash slots 9 through 14 remain inert. Moving
+out of the backpack into inventory imposes the existing 180-tick mute. Consumption
+reduces the passive at the next normal stats derivation; the last charge removes
+the slot. Couriers transport charges intact and receive no item stat bonuses.
+The hero's bag and a dead courier's load keep their charges through the existing
+seat-owned death/respawn path.
+
+`ItemDef::stack_limit` opts into merging; zero preserves every older item's bundled
+charge behavior. A purchase fills a compatible Mango stack before taking an empty
+slot in its destination. At the home shop (the existing 1000-unit fountain circle)
+the bag is preferred to the stash; elsewhere only the stash receives purchases.
+Affordability and capacity are checked before mutation, including stack space when
+no slot is empty. Explicit slot moves merge up to three, leaving excess charges in
+the source; a full or incompatible destination uses the existing swap behavior.
+Courier and ground-item transfers keep whole stacks rather than adding a global
+automatic merge pass. This preserves their existing slot-capacity behavior and
+avoids another per-tick scan. Invalid courier backpack destinations are checked
+before taking the source, closing the charge-loss case reproduced by the tests.
+
+Merge compatibility requires the same id, owner, attribute mode and sale mark.
+The resulting stack takes the oldest purchase tick, the OR of touched flags and
+the maximum cooldown and mute. An explicit move touches both remaining stacks.
+Per-charge purchase histories were rejected: conservative stack metadata can
+reduce a fresh charge's refund eligibility, but cannot renew an old charge's
+refund window, remove its mute, or launder ownership. Only the purchaser may sell.
+Sale returns 65 times the remaining charges for an untouched stack aged at most
+300 ticks. Otherwise the entire remaining value is halved with integer floor:
+one, two and three charges return 32, 65 and 97 gold. Consumed charges are never
+refunded. Remote sale marks and courier return sales retain the existing paths.
+
+`World::purchase_fits` exposes the capacity check independently of gold;
+`World::can_replenish_mana` exposes the self-target, live-user and positive-deficit
+check. Slot, charge, cooldown, mute and disable validation remain separate.
+
+### Exact Shadowraze rules
+
+| Constant in `game::rules` | Exact value |
+|---|---|
+| `RAZE_DAMAGE` | 90, 160, 230, 300 magical damage at levels 1 through 4, unchanged |
+| `RAZE_STACK_DAMAGE` | 50, 60, 70, 80 per prior valid same-caster stack |
+| `RAZE_DEBUFF_TICKS` | 240 ticks, exactly 8 seconds at 30 ticks/s |
+| `RAZE_MAX_STACKS` | 255 per victim and full caster generation |
+| `RAZE_MAX_SOURCES` | 16 independent caster records per victim |
+| `RAZE_DISTANCE` | 200, 450, 700 world units, unchanged |
+| `RAZE_RADIUS` | 250 world units, unchanged |
+| `RAZE_MANA` | 75, 80, 85, 90 mana by level, unchanged |
+| `RAZE_COOLDOWN` | 300 ticks independently for each reach, unchanged |
+
+A hit first reads the current valid count for its exact caster and adds that count
+times the bonus at the current cast level to the base damage. The total then passes
+through the existing magical resistance and integer truncation. For example,
+level-one hits at zero resistance deal 90, 140, 190, 240; at 25% resistance they
+deal 67, 105, 142, 180. At level four and the maximum count, raw damage is 20,700,
+inside the fixed-point pool range. The count is a saturating `u8`; a compile-time
+assertion ties its maximum to the declared cap. A hard cap of three was rejected:
+the three reach slots are casts, not the lifetime limit of a debuff.
+
+Every positive-damage hit on a surviving victim adds one stack and refreshes that
+caster's entire count to 240 ticks, including hits at the count cap. No separate
+timer is stored per hit. A hit applied in tick H is valid through H+239; gear
+ticking removes it before casts resolve at H+240. A refreshing hit at H+239 gets
+the bonus and starts a new 240-tick interval. A hit at H+240 gets base damage and
+starts at one. Different casters, including allied casters hitting the same enemy
+or opposing casters hitting a neutral, neither borrow nor refresh each other's
+counts. At the 16-source storage limit, a new source evicts the record with the
+least time left, with current record order breaking ties. Refreshing an existing
+source evicts nothing. Expired records are discarded before capacity selection.
+
+The source key and count are an appended `StatusKind::Shadowraze` on the victim's
+existing timed `Statuses`, not a permanent `Stacks` entry kept on its seat. Target
+death and respawn therefore cannot carry the debuff into a new body. A source's
+record can finish its timer after that source dies, but its respawned or reused
+arena index has a different generation and cannot use the old bonus. This avoids
+a lifecycle hook in `fight.rs`, another world table, and a cleanup pass scanning
+all victims on every death.
+
+An appended server-only `HitEffect::Shadowraze` tags the queued damage with the
+zero-based cast level. Stack lookup and application happen in the existing hit
+resolution phase, in damage queue order. Two queued razes from one caster thus
+observe each other's successful hits. Applying a status when merely queuing a
+cast was rejected: an earlier queued lethal hit or invulnerability at resolution
+could leave a debuff for damage that never happened. Misses, allies, failed casts
+(including casts initiated by an already-dead caster), invulnerability, and damage
+reduced or rounded to zero add no stack
+and do not refresh one. Resolution also reads an active Shielded status directly:
+a shield cast in that phase must protect before the next stats derivation. The
+old stat-only check failed a regression test of this boundary. Fatal hits need
+no new status on the dying body. Ordinary
+magical hits are not razes and cannot receive or build this bonus. Existing
+facing, no-target casting, shared learning, and hostile/visible target selection
+are unchanged; no movement slow or additional disable is introduced.
+
+A valid cast already queued while its source was alive keeps its damage and
+stacking behavior if an earlier blow in the same resolution batch kills that
+source. Cancelling it or suppressing only its effect would make the accepted
+cast depend on unrelated queue position; it follows the existing queued-damage
+model instead. The resulting record still belongs to the dead generation, never
+to its respawn. A separate regression test pins this posthumous-hit boundary.
+
+### Public effects, hashes and integration
+
+`game::EFFECT_SHADOWRAZE` is `15`. Upstream's Guarded tower aura keeps id 13 and
+Inspired flagbearer aura keeps id 14; the pre-rebase Shadowraze id 13 is retired
+to avoid aliasing unrelated effects. Each active
+source appears on a visible victim as the existing three-field `EffectView`:
+`id = EffectId(15)`, `ticks_left = Some(1..=240)`, `stacks = Some(1..=255)`.
+Multiple sources yield multiple anonymous rows, each preserving its own count
+and timer pair. No source field or new status bit is added to the protocol. The
+caster's internal handle is never projected in these rows, including when the
+caster is fogged. Consumers can use public counts/timers without raw hidden
+caster ids in tensors; identifying an anonymous row's caster is not promised.
+Hidden victims remain absent under ordinary fog rules. The client shows `Razed`
+and Mango text without a new icon dependency.
+
+The world hash includes raze source index and generation, count and timer, and
+queued hit effect/level before resolution. The item hash now also covers merge
+ownership, mode, sale marks, the dead courier's kept bag and complete ground item
+stacks; carried charges and other stack timers were already hashed. Tests reproduced the missing hash distinctions
+before the additions. No hash baseline or older snapshot artifact is rewritten.
+
+Tests were written against numeric ids and the old behavior first. Original
+pre-rebase release red/green evidence and the integration report live under
+`drysua/artifacts/temp/map2-mid-20260910/mechanics/` in the containing workspace.
+Verification covers exact damage, queue order, all four levels, tick boundaries,
+source separation, source bounds, generations, death/respawn, fog and codec
+projection, plus Mango purchase, legal use, passive, storage, transfer, sale and
+metadata conservation. It does not claim neural learning or latest-patch parity.
+Rebase integration tests additionally pin simultaneous aura/raze projection and
+stat bonuses, the mana-healing wire event, Mango's embedded drawing, and the
+fifteen-minute cap including continuation through the old ten-minute boundary.

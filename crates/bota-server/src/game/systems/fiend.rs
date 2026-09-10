@@ -5,7 +5,8 @@ use bota_proto::{AbilityId, DamageKind, Fixed};
 
 use crate::engine::Entity;
 use crate::game::{
-    StackKind, Status, StatusKind, World, ability, heading_of, leaves_a_death, point_along, rules,
+    Hit, HitEffect, StackKind, Status, StatusKind, World, ability, heading_of, leaves_a_death,
+    point_along, rules,
 };
 
 impl World {
@@ -14,6 +15,11 @@ impl World {
     /// A raze takes no aim: it lands at its own reach from the caster, along
     /// the line the caster faces. `reach` indexes [`rules::RAZE_DISTANCE`].
     pub fn cast_raze(&mut self, caster: Entity, level: usize, reach: usize) -> bool {
+        assert!(level < rules::RAZE_DAMAGE.len());
+        assert!(reach < rules::RAZE_DISTANCE.len());
+        if !self.alive(caster) {
+            return false;
+        }
         let Some(from) = self.transform.get(caster).copied() else {
             return false;
         };
@@ -36,12 +42,14 @@ impl World {
             })
             .collect();
         for mark in struck {
-            self.push_hit(
-                Some(caster),
-                mark,
-                rules::RAZE_DAMAGE[level],
-                DamageKind::Magical,
-            );
+            self.hits.push_back(Hit {
+                source: Some(caster),
+                target: mark,
+                amount: rules::RAZE_DAMAGE[level],
+                kind: DamageKind::Magical,
+                crit: false,
+                effect: HitEffect::Shadowraze { level: level as u8 },
+            });
         }
         true
     }

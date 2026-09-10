@@ -89,6 +89,7 @@ pub fn missile_system(cx: MissileCx<'_>) {
             amount: shot.damage,
             kind: shot.kind,
             crit: shot.crit,
+            effect: crate::game::HitEffect::None,
         });
         // One with bounces left is kept where it landed: where it goes next
         // is settled once it is known what stands there.

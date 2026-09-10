@@ -21,4 +21,15 @@ pub struct Hit {
     pub kind: DamageKind,
     /// Whether it was a critical strike.
     pub crit: bool,
+    /// A damage modifier and status applied only when this blow deals damage.
+    pub effect: HitEffect,
+}
+
+/// Additional behavior resolved with a queued blow.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum HitEffect {
+    /// No additional behavior.
+    None,
+    /// Same-caster amplification; `level` is zero-based in `0..4`.
+    Shadowraze { level: u8 },
 }

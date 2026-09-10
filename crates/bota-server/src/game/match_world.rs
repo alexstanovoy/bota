@@ -49,8 +49,11 @@ impl World {
     /// One tick of the match.
     ///
     /// Only orders that send a body somewhere are carried over; anything else
-    /// is dropped.
+    /// is dropped. A completed Map2 ignores commands and advances no further.
     pub fn advance(&mut self, cmds: &[Command]) -> Vec<Event> {
+        if self.map2_finished() {
+            return Vec::new();
+        }
         let mut events = Vec::new();
         for cmd in cmds {
             self.take_order(cmd, &mut events);
@@ -295,6 +298,12 @@ impl World {
                 if seat.gold < def.cost {
                     return Err(RejectReason::NotEnoughGold);
                 }
+                if def.stack_limit > 0 {
+                    if !self.purchase_fits(slot, *item) {
+                        return Err(RejectReason::InventoryFull);
+                    }
+                    return Ok(());
+                }
                 let in_hand = self.at_shop(unit)
                     && self
                         .inventory
@@ -418,7 +427,14 @@ impl World {
                 if (def.charges > 0 || def.cast_charges > 0) && stack.charges == 0 {
                     return Err(RejectReason::NoCharges);
                 }
-                if !aimed_right(crate::game::item_aim(active), target) {
+                let replenishes_mana = matches!(active, crate::game::ItemUse::ReplenishMana { .. });
+                let aimed = if replenishes_mana {
+                    matches!(target, Target::None)
+                        || *target == Target::Unit(crate::game::wire_id(unit))
+                } else {
+                    aimed_right(crate::game::item_aim(active), target)
+                };
+                if !aimed {
                     return Err(RejectReason::WrongTargetKind);
                 }
                 if let Target::Unit(target) = target
@@ -431,6 +447,9 @@ impl World {
                 }
                 if self.held(unit) || self.is_channelling(unit) {
                     return Err(RejectReason::Disabled);
+                }
+                if replenishes_mana && !self.can_replenish_mana(unit, *target) {
+                    return Err(RejectReason::NotReady);
                 }
                 Ok(())
             }
@@ -460,7 +479,7 @@ impl World {
             .find(|entity| crate::game::wire_id(*entity) == id)
     }
 
-    /// The side that has won, if either has.
+    /// The match result, when complete. `Team::Neutral` denotes a Map2 draw.
     pub fn victor(&self) -> Option<Team> {
         self.winner
     }
