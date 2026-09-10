@@ -125,6 +125,16 @@ pub fn derive_stats(cx: StatsCx<'_>) {
                     StatusKind::ArmorBroken { armor } => {
                         now.armor -= Fixed::from_int(armor);
                     }
+                    StatusKind::Guarded {
+                        armor,
+                        hp_per_second,
+                    } => {
+                        now.armor += Fixed::from_int(armor);
+                        now.hp_regen += per_second(hp_per_second);
+                    }
+                    StatusKind::Inspired { hp_per_second } => {
+                        now.hp_regen += per_second(hp_per_second);
+                    }
                     StatusKind::Shielded => now.invulnerable = true,
                     StatusKind::Phased => now.phased = true,
                     // What holds a unit still and what burns it are read
@@ -237,6 +247,11 @@ fn follow(held: Fixed, was: Fixed, now: Fixed) -> Fixed {
     Fixed {
         raw: kept.clamp(i64::from(Fixed::EPSILON.raw), i64::from(now.raw)) as i32,
     }
+}
+
+/// Mending per tick, from hundredths of a point a second.
+fn per_second(hundredths: i32) -> Fixed {
+    Fixed::from_ratio(hundredths, 100 * rules::TICKS_PER_SECOND as i32)
 }
 
 /// A speed taken to a percent of itself.

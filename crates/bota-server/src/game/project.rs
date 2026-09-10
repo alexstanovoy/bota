@@ -272,6 +272,8 @@ fn effect_id(kind: StatusKind) -> u16 {
         StatusKind::Burning { .. } => 6,
         StatusKind::Phased => 9,
         StatusKind::ArmorBroken { .. } => 12,
+        StatusKind::Guarded { .. } => 13,
+        StatusKind::Inspired { .. } => 14,
     }
 }
 

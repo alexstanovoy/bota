@@ -54,6 +54,18 @@ pub enum StatusKind {
         /// Armor taken off, in whole points.
         armor: i32,
     },
+    /// Wears more armor and mends faster for standing by a tower of its own.
+    Guarded {
+        /// Armor added, in whole points.
+        armor: i32,
+        /// Health mended, in hundredths of a point a second.
+        hp_per_second: i32,
+    },
+    /// Mends faster for marching beside the one carrying the flag.
+    Inspired {
+        /// Health mended, in hundredths of a point a second.
+        hp_per_second: i32,
+    },
     /// Losing health over time to whoever put it on.
     Burning {
         /// Damage each beat of [`rules::BURN_PERIOD_TICKS`].

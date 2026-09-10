@@ -479,6 +479,7 @@ impl World {
             entities: &self.entities,
             transform: &self.transform,
             team: &self.team,
+            kind: &self.kind,
             auras: &self.auras,
             statuses: &mut self.statuses,
         });

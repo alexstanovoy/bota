@@ -1,30 +1,19 @@
-//! One tick, read into a fixed shape.
+//! One tick, read into a settled shape.
 //!
-//! Everything a snapshot holds that the model is allowed to care about, put in
-//! a settled order and turned about so that it reads the same from either end
-//! of the map. Both halves of the contract are built from this and from
-//! nothing else: the numbers the model is shown, and what a chosen deed means.
-//! That is the point of it being one place — the third creep in the vector and
-//! the third creep in "swing at the third creep" have to be the same creep, or
-//! everything above is learning noise.
-//!
-//! Turned about, because the two sides of the map are mirrors. In world
-//! coordinates a bot would have to learn the game twice, once from each corner.
-//! Here forward is always towards the other side's fountain and left is always
-//! left of that, so one set of weights serves both.
+//! Everything the policy is allowed to weigh comes from here, in one order
+//! that does not shift from tick to tick. Bodies are ranked by nearness with
+//! the handle breaking ties, so the third creep of one tick is the third
+//! creep of the next.
 
-use bota_proto::{EntityId, PlayerView, SlotId, Team, UnitKind, UnitView, Vec2, WorldView};
+use bota_proto::{
+    AbilityId, AbilitySlot, AbilityView, Fixed, HeroId, ItemId, ItemSlot, ItemView, PlayerView,
+    SlotId, Team, UnitKind, UnitView, Vec2, WorldView,
+};
 
-use crate::{Lane, Role, lane_of};
+use crate::{Lane, Role, SHOP_RANGE, SOULS, fountain, gap_between, order_by, other_side, span};
 
-/// Creeps of the other side the model is shown and may name.
-pub const CREEPS: usize = 5;
-/// Creeps of its own, for putting out.
-pub const OWN_CREEPS: usize = 3;
-/// Heroes of the other side.
-pub const HEROES: usize = 5;
-
-/// One tick as the model sees it.
+/// One tick as the policy sees it.
+#[derive(Clone, Debug)]
 pub struct Field<'a> {
     /// The snapshot it was read from.
     pub view: &'a WorldView,
@@ -34,109 +23,105 @@ pub struct Field<'a> {
     pub me: Option<&'a UnitView>,
     /// The side it plays for.
     pub team: Team,
-    /// Which way is forward, as a unit vector in world coordinates.
-    pub forward: (f32, f32),
-    /// Creeps of the other side, nearest first.
+    /// The hero it picked.
+    pub hero: HeroId,
+    /// What the seat is there to do.
+    pub role: Role,
+    /// The lane that role holds. Absent before the buildings are up.
+    pub lane: Option<Lane>,
+    /// Wave creeps of the other side, nearest first.
     pub creeps: Vec<&'a UnitView>,
-    /// Creeps of its own, nearest first.
+    /// Wave creeps of its own, nearest first.
     pub own_creeps: Vec<&'a UnitView>,
-    /// Heroes of the other side, by seat so that the order never shifts.
-    pub heroes: Vec<&'a UnitView>,
+    /// Heroes of the other side, nearest first.
+    pub enemies: Vec<&'a UnitView>,
+    /// Heroes of its own besides itself, nearest first.
+    pub allies: Vec<&'a UnitView>,
+    /// Standing towers of its own, nearest first.
+    pub own_towers: Vec<&'a UnitView>,
+    /// Standing towers of the other side, nearest first.
+    pub enemy_towers: Vec<&'a UnitView>,
+    /// Everything of the other side's that can be knocked down, nearest
+    /// first: towers, barracks and the ancient.
+    pub enemy_works: Vec<&'a UnitView>,
     /// Its own courier, while one is standing.
     pub courier: Option<&'a UnitView>,
-    /// The nearest tower of each side: its own, then the other's.
-    pub towers: (Option<&'a UnitView>, Option<&'a UnitView>),
-    /// Where its own side's fountain stands.
+    /// Where its own fountain stands.
     pub home: Option<Vec2>,
     /// Where the other side's stands.
     pub away: Option<Vec2>,
-    /// What this seat is there to do.
-    pub role: Role,
 }
 
 impl<'a> Field<'a> {
-    /// Reads one tick for one seat, playing the role given.
+    /// Reads one tick for one seat playing one role.
+    ///
+    /// `None` when the snapshot has no row for that seat.
     pub fn of(view: &'a WorldView, slot: SlotId, role: Role) -> Option<Field<'a>> {
         let seat = view.players.iter().find(|player| player.slot == slot)?;
         let team = seat.team;
+        let foe = other_side(team);
         let me = seat
             .unit
             .and_then(|id| view.units.iter().find(|unit| unit.id == id));
         let home = fountain(view, team);
-        let away = fountain(view, other_side(team));
-        let forward = match (home, away) {
-            (Some(home), Some(away)) => unit_vector(home, away),
-            _ => (1.0, 0.0),
-        };
+        let away = fountain(view, foe);
         let at = me.map_or(home.unwrap_or(Vec2::ZERO), |unit| unit.pos);
         let standing = |unit: &&UnitView| unit.hp > 0;
 
-        let mut creeps: Vec<&UnitView> = view
-            .units
-            .iter()
-            .filter(standing)
-            .filter(|unit| unit.team != team && unit.team != Team::Neutral)
-            .filter(|unit| is_wave_creep(unit.kind))
-            .collect();
-        rank_by_nearness(&mut creeps, at);
-        creeps.truncate(CREEPS);
-
-        let mut own_creeps: Vec<&UnitView> = view
-            .units
-            .iter()
-            .filter(standing)
-            .filter(|unit| unit.team == team && is_wave_creep(unit.kind))
-            .collect();
-        rank_by_nearness(&mut own_creeps, at);
-        own_creeps.truncate(OWN_CREEPS);
-
-        // Heroes are ordered by the seat they belong to rather than by where
-        // they stand: a hero that walks past another must not swap places in
-        // the list, or the deed that named one would name the other.
-        let mut heroes: Vec<&UnitView> = view
-            .units
-            .iter()
-            .filter(standing)
-            .filter(|unit| unit.team != team && unit.kind == UnitKind::Hero)
-            .collect();
-        heroes.sort_by_key(|unit| unit.owner.map_or(u8::MAX, |slot| slot.0));
-        heroes.truncate(HEROES);
-
-        let courier = view
-            .units
-            .iter()
-            .filter(standing)
-            .find(|unit| unit.kind == UnitKind::Courier && unit.owner == Some(slot));
-
-        let nearest_tower = |side: Team| {
-            let mut towers: Vec<&UnitView> = view
+        let nearest = |take: &dyn Fn(&UnitView) -> bool| -> Vec<&'a UnitView> {
+            let mut found: Vec<&UnitView> = view
                 .units
                 .iter()
                 .filter(standing)
-                .filter(|unit| unit.team == side && unit.kind == UnitKind::Tower)
+                .filter(|unit| take(unit))
                 .collect();
-            rank_by_nearness(&mut towers, at);
-            towers.first().copied()
+            rank_by_nearness(&mut found, at);
+            found
         };
+
+        let about = |unit: &UnitView| span(unit.pos, at) <= NEARBY as f32;
+        let creeps = nearest(&|unit| unit.team == foe && is_wave_creep(unit.kind) && about(unit));
+        let own_creeps =
+            nearest(&|unit| unit.team == team && is_wave_creep(unit.kind) && about(unit));
+        let enemies = nearest(&|unit| unit.team == foe && unit.kind == UnitKind::Hero);
+        let allies = nearest(&|unit| {
+            unit.team == team && unit.kind == UnitKind::Hero && Some(unit.id) != seat.unit
+        });
+        let own_towers = nearest(&|unit| unit.team == team && unit.kind == UnitKind::Tower);
+        let enemy_towers = nearest(&|unit| unit.team == foe && unit.kind == UnitKind::Tower);
+        let enemy_works = nearest(&|unit| {
+            unit.team == foe
+                && matches!(
+                    unit.kind,
+                    UnitKind::Tower | UnitKind::Barracks | UnitKind::Ancient
+                )
+        });
+        let courier = nearest(&|unit| unit.kind == UnitKind::Courier && unit.owner == Some(slot))
+            .first()
+            .copied();
 
         Some(Field {
             view,
             seat,
             me,
             team,
-            forward,
+            hero: seat.hero,
+            role,
+            lane: Lane::read(view, role.lane(team), team),
             creeps,
             own_creeps,
-            heroes,
+            enemies,
+            allies,
+            own_towers,
+            enemy_towers,
+            enemy_works,
             courier,
-            towers: (nearest_tower(team), nearest_tower(other_side(team))),
             home,
             away,
-            role,
         })
     }
 
-    /// Where the bot stands, or its own fountain while it stands nowhere.
+    /// Where the hero stands, or its own fountain while it stands nowhere.
     pub fn at(&self) -> Vec2 {
         self.me
             .map(|unit| unit.pos)
@@ -144,40 +129,19 @@ impl<'a> Field<'a> {
             .unwrap_or(Vec2::ZERO)
     }
 
-    /// A spot as the model sees it: forward and left of the bot, in thousands
-    /// of world units.
-    ///
-    /// Thousands because a lane is some fifteen of them across and a swing
-    /// reaches half of one, so everything the model weighs lands within a few
-    /// either way.
-    pub fn seen_from_here(&self, spot: Vec2) -> (f32, f32) {
-        let at = self.at();
-        let (dx, dy) = (
-            spot.x.to_f32() - at.x.to_f32(),
-            spot.y.to_f32() - at.y.to_f32(),
-        );
-        let (fx, fy) = self.forward;
-        ((dx * fx + dy * fy) / 1000.0, (-dx * fy + dy * fx) / 1000.0)
+    /// Whether the hero is standing at all.
+    pub fn alive(&self) -> bool {
+        self.me.is_some()
     }
 
-    /// A spot that many world units forward and left of where the bot stands.
-    pub fn spot_towards(&self, forward: f32, left: f32) -> Vec2 {
-        let at = self.at();
-        let (fx, fy) = self.forward;
-        let x = at.x.to_f32() + forward * fx - left * fy;
-        let y = at.y.to_f32() + forward * fy + left * fx;
-        Vec2::from_ints(
-            x.clamp(0.0, MAP_SIZE).round() as i32,
-            y.clamp(0.0, MAP_SIZE).round() as i32,
-        )
+    /// The side that is not its own.
+    pub fn foe(&self) -> Team {
+        other_side(self.team)
     }
 
-    /// The ground between the bot and a body, edge to edge.
+    /// The ground between the hero and a body, edge to edge.
     pub fn gap_to(&self, other: &UnitView) -> f32 {
-        let Some(me) = self.me else {
-            return f32::MAX;
-        };
-        span(me.pos, other.pos) - me.radius.to_f32() - other.radius.to_f32()
+        self.me.map_or(f32::MAX, |me| gap_between(me, other))
     }
 
     /// Whether a body stands within a swing.
@@ -186,28 +150,113 @@ impl<'a> Field<'a> {
             .is_some_and(|me| self.gap_to(other) <= me.attack_range.to_f32())
     }
 
-    /// Whether the bot has a body standing at all.
-    pub fn alive(&self) -> bool {
-        self.me.is_some()
+    /// Health the hero has left, as a part of the whole.
+    pub fn health(&self) -> f32 {
+        self.me.map_or(0.0, |me| part(me.hp, me.max_hp))
     }
 
-    /// The side that is not its own.
-    pub fn other_side(&self) -> Team {
-        other_side(self.team)
+    /// Mana the hero has left, as a part of the whole.
+    pub fn mana(&self) -> f32 {
+        self.me.map_or(0.0, |me| part(me.mana, me.max_mana))
+    }
+
+    /// Gold the seat has in hand.
+    pub fn gold(&self) -> i32 {
+        self.seat.gold.unwrap_or(0)
+    }
+
+    /// Whether the hero stands where buying and selling are taken.
+    pub fn at_shop(&self) -> bool {
+        match (self.me, self.home) {
+            (Some(me), Some(home)) => me.pos.within(home, Fixed::from_int(SHOP_RANGE)),
+            _ => false,
+        }
+    }
+
+    /// One of the hero's ability slots, by the ability that sits in it.
+    pub fn ability(&self, id: AbilityId) -> Option<(AbilitySlot, &'a AbilityView)> {
+        let book =
+            self.me
+                .map(|me| &me.abilities)
+                .or(self.seat.kit.as_ref().map(|kit| &kit.abilities))?;
+        book.iter()
+            .position(|slot| slot.id == id)
+            .map(|at| (AbilitySlot(at as u8), &book[at]))
+    }
+
+    /// Every ability slot the hero carries, in the order they are shown.
+    pub fn abilities(&self) -> &'a [AbilityView] {
+        self.me.map_or(&[][..], |me| &me.abilities)
+    }
+
+    /// One of the hero's working inventory slots, by the item in it.
+    ///
+    /// The backpack takes no part: an item there does nothing until it is
+    /// moved forward.
+    pub fn item(&self, id: ItemId) -> Option<(ItemSlot, &'a ItemView)> {
+        let bag = self.me.map(|me| &me.items)?;
+        bag.iter()
+            .take(WORN_SLOTS)
+            .enumerate()
+            .find_map(|(at, slot)| match slot {
+                Some(held) if held.id == id => Some((ItemSlot(at as u8), held)),
+                _ => None,
+            })
+    }
+
+    /// How many of the bag's working slots hold nothing.
+    pub fn free_slots(&self) -> usize {
+        self.me.map_or(0, |me| {
+            me.items
+                .iter()
+                .take(WORN_SLOTS)
+                .filter(|s| s.is_none())
+                .count()
+        })
+    }
+
+    /// How many souls the hero has gathered.
+    pub fn souls(&self) -> u32 {
+        self.me.map_or(0, |me| {
+            me.effects
+                .iter()
+                .find(|effect| effect.id == SOULS)
+                .and_then(|effect| effect.stacks)
+                .unwrap_or(0)
+        })
+    }
+
+    /// Enemy heroes standing within a reach of the hero.
+    pub fn foes_within(&self, reach: i32) -> impl Iterator<Item = &'a UnitView> + use<'_, 'a> {
+        let at = self.at();
+        let reach = reach as f32;
+        self.enemies
+            .iter()
+            .copied()
+            .filter(move |unit| span(unit.pos, at) <= reach)
+    }
+
+    /// The frontmost spot along the lane its own side holds: the standing
+    /// tower nearest the other side's end.
+    pub fn own_front(&self) -> Option<Vec2> {
+        let lane = self.lane.as_ref()?;
+        self.own_towers
+            .iter()
+            .map(|tower| tower.pos)
+            .max_by(|one, other| order_by(lane.how_far_along(*one), lane.how_far_along(*other)))
+            .or(self.home)
     }
 }
 
-/// The world spans this many units on each axis.
-pub const MAP_SIZE: f32 = 18432.0;
+/// Slots of the bag where an item works, before the backpack begins.
+pub const WORN_SLOTS: usize = 6;
 
-/// The side that is not this one.
-pub fn other_side(team: Team) -> Team {
-    match team {
-        Team::Radiant => Team::Dire,
-        Team::Dire => Team::Radiant,
-        Team::Neutral => Team::Neutral,
-    }
-}
+/// How far from the hero a creep is still one of the creeps it is dealing
+/// with.
+///
+/// Waves on the other lanes are visible and have nothing to do with where
+/// this hero stands or what it swings at.
+pub const NEARBY: i32 = 2400;
 
 /// Whether a kind is one of the creeps a lane wave is made of.
 pub fn is_wave_creep(kind: UnitKind) -> bool {
@@ -220,52 +269,7 @@ pub fn is_wave_creep(kind: UnitKind) -> bool {
     )
 }
 
-/// Where a side's fountain stands. Both sides always see every building.
-fn fountain(view: &WorldView, team: Team) -> Option<Vec2> {
-    view.units
-        .iter()
-        .find(|unit| unit.team == team && unit.kind == UnitKind::Fountain)
-        .map(|unit| unit.pos)
-}
-
-/// Puts bodies in order of nearness, with the handle breaking ties.
-///
-/// The tie-break matters more than it looks: two creeps the same distance off
-/// would otherwise swap places from tick to tick, and the deed that named one
-/// would name the other.
-fn rank_by_nearness(bodies: &mut [&UnitView], at: Vec2) {
-    bodies.sort_by(|one, other| {
-        span(at, one.pos)
-            .partial_cmp(&span(at, other.pos))
-            .unwrap_or(std::cmp::Ordering::Equal)
-            .then(one.id.idx.cmp(&other.id.idx))
-    });
-}
-
-/// The direction from one spot to another, as a unit vector.
-fn unit_vector(from: Vec2, to: Vec2) -> (f32, f32) {
-    let (dx, dy) = (
-        to.x.to_f32() - from.x.to_f32(),
-        to.y.to_f32() - from.y.to_f32(),
-    );
-    let length = (dx * dx + dy * dy).sqrt();
-    if length <= f32::EPSILON {
-        (1.0, 0.0)
-    } else {
-        (dx / length, dy / length)
-    }
-}
-
-/// How far apart two spots are.
-pub fn span(one: Vec2, other: Vec2) -> f32 {
-    let (dx, dy) = (
-        one.x.to_f32() - other.x.to_f32(),
-        one.y.to_f32() - other.y.to_f32(),
-    );
-    (dx * dx + dy * dy).sqrt()
-}
-
-/// One number as a part of another, and zero when there is no whole.
+/// One number as a part of another, and nought where there is no whole.
 pub fn part(some: i32, whole: i32) -> f32 {
     if whole <= 0 {
         return 0.0;
@@ -273,14 +277,9 @@ pub fn part(some: i32, whole: i32) -> f32 {
     some.max(0) as f32 / whole as f32
 }
 
-/// The handle of a body, for naming it in an order.
-pub fn handle(unit: &UnitView) -> EntityId {
-    unit.id
-}
-
-impl Field<'_> {
-    /// The lane this seat is there to hold.
-    pub fn lane(&self) -> Option<Lane> {
-        lane_of(self, self.role)
-    }
+/// Puts bodies in order of nearness, with the handle breaking ties.
+fn rank_by_nearness(bodies: &mut [&UnitView], at: Vec2) {
+    bodies.sort_by(|one, other| {
+        order_by(span(at, one.pos), span(at, other.pos)).then(one.id.idx.cmp(&other.id.idx))
+    });
 }

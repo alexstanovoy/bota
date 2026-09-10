@@ -220,6 +220,18 @@ fn hash_status_kind(fnv: &mut Fnv, kind: StatusKind) {
             fnv.u8(7);
             fnv.i32(pct);
         }
+        StatusKind::Guarded {
+            armor,
+            hp_per_second,
+        } => {
+            fnv.u8(12);
+            fnv.i32(armor);
+            fnv.i32(hp_per_second);
+        }
+        StatusKind::Inspired { hp_per_second } => {
+            fnv.u8(13);
+            fnv.i32(hp_per_second);
+        }
         StatusKind::ArmorBroken { armor } => {
             fnv.u8(10);
             fnv.i32(armor);

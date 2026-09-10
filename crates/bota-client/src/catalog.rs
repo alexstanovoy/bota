@@ -479,7 +479,7 @@ pub const ITEMS: [ItemFace; 42] = [
 ];
 
 /// Every timed effect, in id order.
-pub const EFFECTS: [EffectFace; 13] = [
+pub const EFFECTS: [EffectFace; 15] = [
     EffectFace {
         id: 0,
         name: "Frenzy",
@@ -556,6 +556,18 @@ pub const EFFECTS: [EffectFace; 13] = [
         id: 12,
         name: "Presence",
         blurb: "Armor worn down by a dark presence nearby.",
+        icon: None,
+    },
+    EffectFace {
+        id: 13,
+        name: "Guarded",
+        blurb: "Armor and health mended, for standing by a tower of your own.",
+        icon: None,
+    },
+    EffectFace {
+        id: 14,
+        name: "Inspired",
+        blurb: "Health mended, for marching beside the one carrying the flag.",
         icon: None,
     },
 ];

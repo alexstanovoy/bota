@@ -3,16 +3,6 @@ name = "bota-bot"
 version.workspace = true
 edition.workspace = true
 
-[features]
-default = ["builtin"]
-# Play matches in this process instead of over a socket. Sixty per cent of a
-# match is postcard and TCP, and none of it is the game.
-builtin = ["dep:bota-server"]
-
 [dependencies]
 bota-proto = { workspace = true }
-bota-server = { workspace = true, optional = true }
-candle-core = { version = "0.11.0", default-features = false }
 clap = { version = "4.6.6", features = ["derive"] }
-serde = { version = "1", features = ["derive"] }
-serde_yaml = "0.9"

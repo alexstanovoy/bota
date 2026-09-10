@@ -9,7 +9,7 @@
 use bota_proto::{Attribute, Attributes, Fixed, UnitKind};
 
 use crate::game::rules;
-use crate::game::{Aura, StatusKind};
+use crate::game::{Aura, Reach, StatusKind};
 
 /// What an entity gains for each step of whatever raises it: a level past the
 /// first, or an upgrade interval.
@@ -179,10 +179,23 @@ pub const MELEE_CREEP: UnitDef = UnitDef {
     ..NOTHING
 };
 
+/// What a flagbearer mends in everyone marching with it.
+///
+/// Everyone of its own side, heroes counted in.
+const FLAGBEARER_AURAS: [Aura; 1] = [Aura {
+    kind: StatusKind::Inspired {
+        hp_per_second: rules::FLAGBEARER_AURA_REGEN,
+    },
+    radius: rules::FLAGBEARER_AURA_RADIUS,
+    reaches: Reach::All,
+    ticks: rules::AURA_LINGER_TICKS,
+}];
+
 /// A melee lane creep carrying the flag. Takes no upgrades.
 pub const FLAGBEARER_CREEP: UnitDef = UnitDef {
     kind: UnitKind::CreepFlagbearer,
     magic_resist_pct: rules::FLAGBEARER_MAGIC_RESIST_PCT,
+    auras: &FLAGBEARER_AURAS,
     per_upgrade: NO_GROWTH,
     ..MELEE_CREEP
 };
@@ -398,6 +411,7 @@ const FOUNTAIN_AURAS: [Aura; 1] = [Aura {
         mana_per_tick: rules::FOUNTAIN_HEAL_MANA_PER_TICK * 100,
     },
     radius: rules::FOUNTAIN_HEAL_RADIUS,
+    reaches: Reach::All,
     ticks: rules::TICKS_PER_SECOND,
 }];
 
@@ -451,9 +465,30 @@ pub const SENTRY_WARD: UnitDef = UnitDef {
 };
 
 /// A lane tower of one tier.
+/// What a tower of each tier keeps its own heroes in, indexed by tier less
+/// one.
+///
+/// Heroes and nothing else: a wave standing under its own tower is not what
+/// the protection is for.
+const TOWER_AURAS: [[Aura; 1]; 4] = [tower_aura(0), tower_aura(1), tower_aura(2), tower_aura(3)];
+
+/// One tier's protection.
+const fn tower_aura(index: usize) -> [Aura; 1] {
+    [Aura {
+        kind: StatusKind::Guarded {
+            armor: rules::TOWER_AURA_ARMOR[index],
+            hp_per_second: rules::TOWER_AURA_REGEN[index],
+        },
+        radius: rules::TOWER_AURA_RADIUS,
+        reaches: Reach::Heroes,
+        ticks: rules::AURA_LINGER_TICKS,
+    }]
+}
+
 const fn tower_of(index: usize) -> UnitDef {
     UnitDef {
         kind: UnitKind::Tower,
+        auras: &TOWER_AURAS[index],
         true_sight: rules::TOWER_ATTACK_RANGE,
         max_hp: rules::TOWER_TIER_HP[index],
         damage: rules::TOWER_TIER_DAMAGE[index],

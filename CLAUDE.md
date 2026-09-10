@@ -66,11 +66,11 @@ compilation and demands a conscious decision about what to put in it.
 
 ### Crate boundaries
 
-Five crates: `bota-proto` (shared vocabulary + codec), `bota-server` (simulation +
-networking), `bota-client`, and two bots — `bota-bot` and `bota-bot-v2`. All depend only
-on `proto`, and in particular no bot depends on another: a second bot that leaned on the
-first would mean every future one carrying every past one about with it. The wire and the
-match loop are short enough to be worth writing twice.
+Four crates: `bota-proto` (shared vocabulary + codec), `bota-server` (simulation +
+networking), `bota-client`, and `bota-bot`. All depend only on `proto`, and in particular
+no bot depends on another: a second bot that leaned on the first would mean every future
+one carrying every past one about with it. The wire and the match loop are short enough
+to be worth writing twice.
 
 The membership criterion for `bota-proto` is the single rule deciding where code lives:
 
@@ -109,17 +109,10 @@ New external dependencies only after discussion. Allowed:
 | `resvg` | `bota-client` | rasterising the item art |
 | `rand_chacha` 0.10 | `bota-server` | PRNG |
 | `clap` (derive) | every binary | command line arguments |
-| `serde_yaml` 0.9 | `bota-bot` | reading a training plan |
-| `candle-core` 0.11 | both bots | the networks they decide with |
 
 Every binary parses its arguments with `clap` and its derive. There is no bar low enough
 for a hand-rolled parser to be worth clearing: it costs a hundred lines, generates no
 `--help`, validates nothing, and quietly lets a flag apply to the wrong subcommand.
-
-`candle-core` is one dependency and a hundred and twenty-five transitive ones, in a crate
-that had one. It is worth it only while there is a network; every call to it lives in
-`bot/src/net/model.rs`, so dropping it back to a hand-written matrix multiply costs that
-file and nothing else.
 
 The requirement for any primitive that affects the simulation: **value-stability**,
 i.e. a guarantee of identical values across versions and platforms. Hence

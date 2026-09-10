@@ -2038,6 +2038,50 @@ fn an_attack_order_at_an_ally_never_hands_the_creep_the_one_who_gave_it() {
 }
 
 #[test]
+fn an_attack_order_a_hero_aims_at_itself_moves_nobody() {
+    let mut world = World::new();
+    let at = bota_proto::Vec2::from_ints(5000, 5000);
+    let creep = thinking_creep(&mut world, at);
+    let hero = world.spawn_hero(
+        Team::Dire,
+        bota_proto::Vec2::from_ints(5040, 5000),
+        bota_proto::SlotId(0),
+        bota_proto::HeroId(0),
+    );
+    // Somebody else for the creep to fall back on, so that a hero put last
+    // would show.
+    world.spawn_unit(
+        &MELEE_CREEP,
+        Team::Dire,
+        bota_proto::Vec2::from_ints(5300, 5000),
+    );
+    world.settle();
+    // Swinging at the creep's own is what makes the creep look at a hero at
+    // all; left alone it would take the creep and there would be nothing to
+    // let go of.
+    world.set_order(
+        hero,
+        crate::game::UnitOrder::Attack {
+            target: creep,
+            last_seen: at,
+        },
+    );
+    world.step();
+    assert_eq!(
+        world.target_of(creep),
+        Some(hero),
+        "the creep answers the hero swinging at its own"
+    );
+    world.rouse_bystanders(hero, hero);
+    world.step();
+    assert_eq!(
+        world.target_of(creep),
+        Some(hero),
+        "pointing at itself is not the way a hero lets creeps go"
+    );
+}
+
+#[test]
 fn an_attack_order_at_an_enemy_hands_the_creep_over_and_holds_it() {
     let mut world = World::new();
     let creep = thinking_creep(&mut world, bota_proto::Vec2::from_ints(5000, 5000));
@@ -3997,6 +4041,133 @@ fn a_fountain_hands_out_mending_to_whoever_stands_in_it() {
     assert!(
         !carries(&world, hero, FOUNTAIN_EFFECT),
         "a second later it is gone"
+    );
+}
+
+/// A tower's protection, whatever tier hands it out.
+const GUARDED_EFFECT: crate::game::StatusKind = crate::game::StatusKind::Guarded {
+    armor: rules::TOWER_AURA_ARMOR[0],
+    hp_per_second: rules::TOWER_AURA_REGEN[0],
+};
+
+/// A flagbearer's inspiration.
+const INSPIRED_EFFECT: crate::game::StatusKind = crate::game::StatusKind::Inspired {
+    hp_per_second: rules::FLAGBEARER_AURA_REGEN,
+};
+
+#[test]
+fn a_tower_guards_the_heroes_of_its_own_side_that_stand_by_it() {
+    // Every tier, since what a tower adds is not the same at each of them.
+    for tier in 1..=4u8 {
+        let mut world = World::new();
+        let at = bota_proto::Vec2::from_ints(5000, 5000);
+        world.spawn_unit(crate::game::tower_def(tier), Team::Radiant, at);
+        let hero = world.spawn_hero(
+            Team::Radiant,
+            bota_proto::Vec2::from_ints(5400, 5000),
+            bota_proto::SlotId(0),
+            bota_proto::HeroId(0),
+        );
+        let bare = world.spawn_hero(
+            Team::Radiant,
+            bota_proto::Vec2::from_ints(5000 + rules::TOWER_AURA_RADIUS + 200, 5000),
+            bota_proto::SlotId(1),
+            bota_proto::HeroId(0),
+        );
+        world.settle();
+        world.step();
+        assert!(
+            carries(&world, hero, GUARDED_EFFECT),
+            "tier {tier}: inside the reach"
+        );
+        assert!(
+            !carries(&world, bare, GUARDED_EFFECT),
+            "tier {tier}: outside it"
+        );
+        let added = rules::TOWER_AURA_ARMOR[usize::from(tier) - 1];
+        assert_eq!(
+            world.stats.get(hero).map(|s| s.armor),
+            world
+                .stats
+                .get(bare)
+                .map(|s| s.armor + Fixed::from_int(added)),
+            "tier {tier}: the armor it hands out is on the stat"
+        );
+    }
+}
+
+#[test]
+fn what_a_tower_adds_grows_past_the_first_tier() {
+    assert_eq!(rules::TOWER_AURA_ARMOR, [3, 5, 5, 5]);
+    assert_eq!(rules::TOWER_AURA_REGEN, [100, 300, 300, 300]);
+}
+
+#[test]
+fn a_tower_guards_nobody_but_heroes() {
+    let mut world = World::new();
+    let at = bota_proto::Vec2::from_ints(5000, 5000);
+    world.spawn_unit(crate::game::tower_def(1), Team::Radiant, at);
+    let creep = world.spawn_unit(
+        &MELEE_CREEP,
+        Team::Radiant,
+        bota_proto::Vec2::from_ints(5400, 5000),
+    );
+    let theirs = world.spawn_hero(
+        Team::Dire,
+        bota_proto::Vec2::from_ints(5400, 5100),
+        bota_proto::SlotId(0),
+        bota_proto::HeroId(0),
+    );
+    world.settle();
+    world.step();
+    assert!(
+        !carries(&world, creep, GUARDED_EFFECT),
+        "a wave under its own tower is not what the protection is for"
+    );
+    assert!(
+        !carries(&world, theirs, GUARDED_EFFECT),
+        "and it reaches its own side only"
+    );
+}
+
+#[test]
+fn a_flagbearer_inspires_everyone_of_its_own_side_around_it() {
+    let mut world = World::new();
+    let at = bota_proto::Vec2::from_ints(5000, 5000);
+    world.spawn_unit(&FLAGBEARER_CREEP, Team::Radiant, at);
+    let creep = world.spawn_unit(
+        &MELEE_CREEP,
+        Team::Radiant,
+        bota_proto::Vec2::from_ints(5300, 5000),
+    );
+    let far = world.spawn_unit(
+        &MELEE_CREEP,
+        Team::Radiant,
+        bota_proto::Vec2::from_ints(5000 + rules::FLAGBEARER_AURA_RADIUS + 200, 5000),
+    );
+    let hero = world.spawn_hero(
+        Team::Radiant,
+        bota_proto::Vec2::from_ints(5300, 5100),
+        bota_proto::SlotId(0),
+        bota_proto::HeroId(0),
+    );
+    let theirs = world.spawn_hero(
+        Team::Dire,
+        bota_proto::Vec2::from_ints(5300, 4900),
+        bota_proto::SlotId(1),
+        bota_proto::HeroId(0),
+    );
+    world.settle();
+    world.step();
+    assert!(carries(&world, creep, INSPIRED_EFFECT), "inside the reach");
+    assert!(!carries(&world, far, INSPIRED_EFFECT), "outside it");
+    assert!(
+        carries(&world, hero, INSPIRED_EFFECT),
+        "it inspires its own heroes as readily as its own creeps"
+    );
+    assert!(
+        !carries(&world, theirs, INSPIRED_EFFECT),
+        "and its own side only"
     );
 }
 

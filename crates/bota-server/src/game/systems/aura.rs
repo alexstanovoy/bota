@@ -1,9 +1,9 @@
 //! Effects handed out for standing near something.
 
-use bota_proto::Team;
+use bota_proto::{Team, UnitKind};
 
 use crate::game::rules;
-use crate::game::{Auras, EntityAllocator, Status, Statuses, Table, Transform};
+use crate::game::{Auras, EntityAllocator, Reach, Status, Statuses, Table, Transform};
 
 /// What handing out effects reads and writes.
 pub struct AuraCx<'a> {
@@ -13,6 +13,9 @@ pub struct AuraCx<'a> {
     pub transform: &'a Table<Transform>,
     /// Which side each entity is on.
     pub team: &'a Table<Team>,
+    /// What kind of thing each entity is, for the auras that reach only some
+    /// of them.
+    pub kind: &'a Table<UnitKind>,
     /// What each entity hands out.
     pub auras: &'a Table<Auras>,
     /// Where a handed-out effect lands.
@@ -29,6 +32,7 @@ pub fn aura_system(cx: AuraCx<'_>) {
         entities,
         transform,
         team,
+        kind,
         auras,
         statuses,
     } = cx;
@@ -46,6 +50,13 @@ pub fn aura_system(cx: AuraCx<'_>) {
             let reach = rules::units(aura.radius);
             for entity in entities.iter() {
                 if team.get(entity).copied() != Some(side) {
+                    continue;
+                }
+                let wanted = match aura.reaches {
+                    Reach::All => true,
+                    Reach::Heroes => kind.get(entity).copied() == Some(UnitKind::Hero),
+                };
+                if !wanted {
                     continue;
                 }
                 if !transform

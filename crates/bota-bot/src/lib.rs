@@ -1,58 +1,47 @@
-//! A bot that decides by naming one of a fixed list of deeds.
+//! A bot that plays by rules rather than by weights.
 //!
-//! The contract is three pieces and nothing else. [`Field`] reads a tick into
-//! a settled shape; [`sight`] turns that into the numbers a model is shown;
-//! [`Deed`] is the numbered list of what may be chosen, with a flag per deed
-//! saying whether it could be done and one way of turning a choice into an
-//! order.
+//! Two pieces sit here. [`Bot`] and [`play`] are the seam: whatever holds a
+//! seat is handed one tick at a time and answers with at most one [`Ask`],
+//! and the loop between that and a socket is written once. [`Playbook`] is
+//! the bot this crate ships — a ladder of wants walked top to bottom, with
+//! spellwork for Shadow Fiend and for Sylla.
 //!
-//! Between them sits a [`Mind`], which is handed numbers and flags and answers
-//! with one number. That is the whole of the seam: a mind that knows what a
-//! creep is has reached across it, and a game that knows what a weight is has
-//! reached back. [`Learned`] is the mind that is a network; the rest of the
-//! crate would not notice another.
+//! Nothing in it is drawn at random, so a match played twice against the same
+//! opponent goes the same way both times.
+//!
+//! See `DESIGN.md` for the architecture this follows from.
 
+mod aim;
 mod ask;
-#[cfg(feature = "builtin")]
-mod bench;
-mod breed;
-mod deed;
-mod doing;
+mod beat;
+mod bot;
 mod field;
+mod fiend;
+mod forest;
 mod lane;
 mod link;
-mod marks;
-mod mind;
-mod model;
-mod plan;
-mod seat;
+mod numbers;
+mod policy;
 mod shop;
-mod sight;
-mod spells;
-mod swiss;
-mod wire;
-mod yard;
+mod study;
+mod sylla;
+mod want;
 
+pub use aim::*;
 pub use ask::*;
-#[cfg(feature = "builtin")]
-pub use bench::*;
-pub use breed::*;
-pub use deed::*;
-pub use doing::*;
+pub use beat::*;
+pub use bot::*;
 pub use field::*;
+pub use fiend::*;
+pub use forest::*;
 pub use lane::*;
 pub use link::*;
-pub use marks::*;
-pub use mind::*;
-pub use model::*;
-pub use plan::*;
-pub use seat::*;
+pub use numbers::*;
+pub use policy::*;
 pub use shop::*;
-pub use sight::*;
-pub use spells::*;
-pub use swiss::*;
-pub use wire::*;
-pub use yard::*;
+pub use study::*;
+pub use sylla::*;
+pub use want::*;
 
 #[cfg(test)]
 mod tests;

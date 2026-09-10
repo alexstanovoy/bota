@@ -1,11 +1,12 @@
-mod benching;
-mod breeding;
-mod contesting;
-mod contract;
-mod lessons;
-mod planning;
-mod remembering;
-mod shopping;
-mod world;
+//! Tests of the bot.
 
-pub use world::*;
+mod aiming;
+mod deciding;
+mod fielding;
+mod fixtures;
+mod foresting;
+mod laning;
+mod razing;
+mod shopping;
+mod studying;
+mod wanting;

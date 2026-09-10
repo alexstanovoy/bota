@@ -1,8 +1,9 @@
 //! What an attack order does to everybody who is not the one giving it.
 //!
 //! The order alone does it, whether the attack ever happens or not. Only an
-//! order at an enemy hero calls creeps on, and only an order at one of your own
-//! calls them off; an order at an enemy creep is a last hit and moves nobody.
+//! order at an enemy hero calls creeps on, and only an order at *another* of
+//! your own calls them off; an order at an enemy creep is a last hit and moves
+//! nobody, and one a hero aims at itself is nobody's business but its own.
 
 use bota_proto::{Team, UnitKind, Vec2};
 
@@ -22,6 +23,11 @@ impl World {
     /// Wakes whatever an attack order reaches onto, or off, the one who gave
     /// it.
     pub fn rouse_bystanders(&mut self, orderer: Entity, mark: Entity) {
+        // Letting go is done by pointing at somebody else of your own. A hero
+        // pointing at itself has told the creeps nothing.
+        if orderer == mark {
+            return;
+        }
         let Some(side) = self.team.get(orderer).copied() else {
             return;
         };
@@ -72,6 +78,11 @@ impl World {
     }
 
     /// Which way an order at this mark calls, if it calls at all.
+    ///
+    /// The mark is never the one who gave the order; [`rouse_bystanders`]
+    /// turns that away before it gets here.
+    ///
+    /// [`rouse_bystanders`]: World::rouse_bystanders
     fn call_of(&self, side: Team, mark: Entity) -> Option<Call> {
         let their_side = self.team.get(mark).copied()?;
         if their_side == side {

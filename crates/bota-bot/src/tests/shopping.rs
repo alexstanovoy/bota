@@ -1,179 +1,172 @@
-//! What the bot buys, and what it reckons its goods are worth.
+//! Buying, and knowing what is already owned.
 
-use bota_proto::{ItemId, ItemView, SlotId, UnitKind};
+use bota_proto::{HeroId, ItemId, SlotId, Team, Vec2};
 
-use crate::{Field, ITEMS_SOLD, Role, SHOPPING, cost_of, how_many_held, next_to_buy};
+use crate::tests::fixtures;
+use crate::{
+    BRANCH, CIRCLET, CLARITY, FIEND_GOODS, Field, MAGIC_STICK, MAGIC_WAND, MANTLE, NULL_TALISMAN,
+    RECIPE_MAGIC_WAND, RECIPE_NULL_TALISMAN, Role, SCROLL, SHADOW_FIEND, SYLLA_GOODS, Stall, TANGO,
+    shopping_list,
+};
 
-/// A tick where this seat's hero carries the items named, with the gold given.
-fn holding(items: &[u16], gold: i32) -> bota_proto::WorldView {
-    crate::tests::a_tick_holding(items, gold)
-}
-
-/// The field of a tick, for a seat in the middle.
-fn field_of(view: &bota_proto::WorldView) -> Field<'_> {
-    Field::of(view, SlotId(0), Role::Mid).expect("the seat is in the tick")
-}
-
-#[test]
-fn every_item_the_shop_sells_has_a_price() {
-    // Left short, an item missing from the table is worth nothing at all to
-    // the reckoning, and the whole of the last lesson is net worth.
-    for item in 0..ITEMS_SOLD as u16 {
-        assert!(
-            cost_of(item) > 0,
-            "item {item} is sold and must have a price"
-        );
+/// A shop holding everything the lists name, with the builds it puts together.
+fn stall() -> Stall {
+    Stall {
+        entries: vec![
+            fixtures::sold(TANGO, 90, vec![]),
+            fixtures::sold(CLARITY, 50, vec![]),
+            fixtures::sold(BRANCH, 50, vec![]),
+            fixtures::sold(SCROLL, 100, vec![]),
+            fixtures::sold(CIRCLET, 155, vec![]),
+            fixtures::sold(MANTLE, 140, vec![]),
+            fixtures::sold(RECIPE_NULL_TALISMAN, 210, vec![]),
+            fixtures::sold(MAGIC_STICK, 200, vec![]),
+            fixtures::sold(RECIPE_MAGIC_WAND, 150, vec![]),
+            fixtures::sold(
+                NULL_TALISMAN,
+                505,
+                vec![CIRCLET, MANTLE, RECIPE_NULL_TALISMAN],
+            ),
+            fixtures::sold(
+                MAGIC_WAND,
+                450,
+                vec![MAGIC_STICK, BRANCH, BRANCH, RECIPE_MAGIC_WAND],
+            ),
+        ],
     }
-    assert_eq!(
-        cost_of(ITEMS_SOLD as u16),
-        0,
-        "and a number the shop does not sell costs nothing"
-    );
 }
 
-#[test]
-fn a_few_prices_are_what_the_shop_charges() {
-    // Spot checks across the table, so that a row inserted in the middle shows
-    // up here rather than as a net worth quietly counted wrong.
-    assert_eq!(cost_of(crate::TANGO), 90);
-    assert_eq!(cost_of(crate::BOOTS), 500);
-    assert_eq!(cost_of(crate::CIRCLET), 155);
-    assert_eq!(cost_of(crate::TREADS), 1400);
-    assert_eq!(cost_of(crate::BLINK), 2250);
-    assert_eq!(cost_of(crate::RECIPE_MAGIC_WAND), 150);
-}
-
-#[test]
-fn what_the_goods_are_worth_counts_the_costly_ones() {
-    let bare = holding(&[], 600);
-    assert_eq!(crate::worth_of_goods(&field_of(&bare)), 0);
-    let rich = holding(&[crate::BLINK, crate::TREADS], 0);
-    assert_eq!(
-        crate::worth_of_goods(&field_of(&rich)),
-        2250 + 1400,
-        "a dagger and a pair of treads are not an empty bag"
-    );
-}
-
-#[test]
-fn a_part_that_went_into_a_build_still_counts_as_bought() {
-    // The trap the whole build order rests on. Counted only where it can be
-    // seen, the boots that became Power Treads look unbought, and the bot buys
-    // another pair every time it can afford one.
-    let treads = holding(&[crate::TREADS], 5000);
-    let field = field_of(&treads);
-    for part in [crate::BOOTS, crate::GLOVES, crate::BELT] {
-        assert_eq!(
-            how_many_held(&field, part),
-            1,
-            "a part of the treads is a part it paid for"
-        );
+fn field_holding(bag: Vec<ItemId>, gold: i32) -> bota_proto::WorldView {
+    let mut me = fixtures::hero(1, Team::Radiant, Vec2::from_ints(1900, 2400));
+    for (at, id) in bag.iter().enumerate() {
+        me.items[at] = Some(fixtures::item(*id));
     }
-    assert_ne!(
-        next_to_buy(&field),
-        Some(ItemId(crate::BOOTS)),
-        "so it does not buy boots it is already wearing"
+    let mut units = fixtures::fountains();
+    units.push(me);
+    let mut seat = fixtures::seat(
+        SlotId(0),
+        Team::Radiant,
+        SHADOW_FIEND,
+        Some(fixtures::id(1)),
     );
+    seat.gold = Some(gold);
+    fixtures::tick(1000, units, vec![seat])
 }
 
 #[test]
-fn a_build_of_two_of_a_part_counts_both() {
-    let wand = holding(&[crate::MAGIC_WAND], 0);
-    assert_eq!(
-        how_many_held(&field_of(&wand), crate::BRANCH),
-        2,
-        "a wand ate two branches"
-    );
+fn a_part_inside_a_build_is_still_a_part_that_was_paid_for() {
+    let stall = stall();
+    assert_eq!(stall.how_many_within(NULL_TALISMAN, CIRCLET), 1);
+    assert_eq!(stall.how_many_within(MAGIC_WAND, BRANCH), 2);
+    assert_eq!(stall.how_many_within(MAGIC_WAND, MAGIC_STICK), 1);
+    assert_eq!(stall.how_many_within(MAGIC_WAND, CIRCLET), 0);
+    assert_eq!(stall.how_many_within(BRANCH, BRANCH), 1);
 }
 
 #[test]
-fn the_list_is_bought_in_order_and_only_once() {
-    // Nothing on the list is bought twice, and nothing further down is reached
-    // before what is above it.
-    let mut bag: Vec<u16> = Vec::new();
-    let mut bought: Vec<u16> = Vec::new();
-    for _ in 0..SHOPPING.len() {
-        let view = holding(&bag, 9000);
-        let Some(next) = next_to_buy(&field_of(&view)) else {
-            break;
-        };
-        bought.push(next.0);
-        bag.push(next.0);
-    }
-    assert_eq!(
-        bought,
-        SHOPPING.to_vec(),
-        "with gold enough it buys the list, in order, once each"
-    );
-    let full = holding(&bag, 9000);
-    assert_eq!(
-        next_to_buy(&field_of(&full)),
+fn the_first_thing_on_the_list_is_the_first_thing_bought() {
+    let view = field_holding(vec![], 600);
+    let field = Field::of(&view, SlotId(0), Role::Mid).expect("a seat in the view");
+    assert_eq!(stall().next_buy(&field), Some(TANGO));
+}
+
+#[test]
+fn the_list_is_not_skipped_over_to_reach_what_is_affordable() {
+    // Everything up to the talisman recipe is held, and there is not enough
+    // for the recipe. Nothing further down is bought with the gold the recipe
+    // is waiting for.
+    let held = vec![TANGO, BRANCH, BRANCH, SCROLL, CIRCLET, MANTLE];
+    let view = field_holding(held, 150);
+    let field = Field::of(&view, SlotId(0), Role::Mid).expect("a seat in the view");
+    assert_eq!(stall().next_buy(&field), None);
+
+    let view = field_holding(vec![TANGO, BRANCH, BRANCH, SCROLL, CIRCLET, MANTLE], 250);
+    let field = Field::of(&view, SlotId(0), Role::Mid).expect("a seat in the view");
+    assert_eq!(stall().next_buy(&field), Some(RECIPE_NULL_TALISMAN));
+}
+
+#[test]
+fn a_build_already_held_is_not_bought_over_again() {
+    // The talisman swallowed the circlet, the mantle and the recipe; the list
+    // moves on rather than buying a second circlet.
+    let held = vec![TANGO, CLARITY, BRANCH, BRANCH, SCROLL, NULL_TALISMAN];
+    let view = field_holding(held, 600);
+    let field = Field::of(&view, SlotId(0), Role::Mid).expect("a seat in the view");
+    assert_eq!(stall().next_buy(&field), Some(crate::SAGES_MASK));
+}
+
+#[test]
+fn what_waits_in_the_stash_counts_as_owned() {
+    let mut view = field_holding(vec![], 600);
+    view.players[0].stash = Some(vec![
+        Some(fixtures::item(TANGO)),
         None,
-        "and then it wants nothing"
-    );
-}
-
-#[test]
-fn nothing_is_bought_that_cannot_be_paid_for() {
-    let view = holding(&[], 60);
-    let field = field_of(&view);
-    let next = next_to_buy(&field).expect("sixty buys a branch");
-    assert!(
-        cost_of(next.0) <= 60,
-        "it does not ask for what it cannot pay for"
-    );
-    let broke = holding(&[], 0);
-    assert_eq!(
-        next_to_buy(&field_of(&broke)),
         None,
-        "and nothing with none"
-    );
+        None,
+        None,
+        None,
+    ]);
+    let field = Field::of(&view, SlotId(0), Role::Mid).expect("a seat in the view");
+    assert_eq!(stall().next_buy(&field), Some(CLARITY));
 }
 
 #[test]
-fn what_waits_in_the_stash_or_rides_the_courier_counts_as_owned() {
-    // Buying a second of something already on its way is how gold gets wasted.
-    let mut view = holding(&[], 5000);
-    let carried = Some(ItemView {
-        id: ItemId(crate::TANGO),
-        charges: Some(3),
-        cooldown_left: 0,
-        mute_left: 0,
-        mana_cost: 0,
-        range: 0,
-        aim: None,
-        mode: None,
-        for_sale: false,
-    });
-    for player in &mut view.players {
-        if player.slot == SlotId(0) {
-            player.stash = Some(vec![carried, None, None, None, None, None]);
-        }
-    }
-    for body in &mut view.units {
-        if body.kind == UnitKind::Courier {
-            body.items[0] = Some(ItemView {
-                id: ItemId(crate::QUELLING),
-                charges: Some(0),
-                cooldown_left: 0,
-                mute_left: 0,
-                mana_cost: 0,
-                range: 0,
-                aim: None,
-                mode: None,
-                for_sale: false,
-            });
-        }
-    }
-    let field = field_of(&view);
-    assert_eq!(
-        how_many_held(&field, crate::TANGO),
-        1,
-        "the stash holds one"
+fn a_consumable_with_nowhere_to_go_is_stepped_over() {
+    // Every working slot is full, so the clarity the list wants next has no
+    // room. What holds it up is room and not gold, so the walk goes on to
+    // what the gold is actually being saved for.
+    let full = vec![TANGO, BRANCH, BRANCH, SCROLL, CIRCLET, MANTLE];
+    let view = field_holding(full, 250);
+    let field = Field::of(&view, SlotId(0), Role::Mid).expect("a seat in the view");
+    assert_eq!(field.free_slots(), 0);
+    assert_eq!(stall().next_buy(&field), Some(RECIPE_NULL_TALISMAN));
+}
+
+#[test]
+fn a_drink_is_bought_again_once_it_has_been_drunk() {
+    let view = field_holding(vec![TANGO, BRANCH, BRANCH, SCROLL], 600);
+    let field = Field::of(&view, SlotId(0), Role::Mid).expect("a seat in the view");
+    assert_eq!(stall().next_buy(&field), Some(CLARITY));
+}
+
+#[test]
+fn a_hero_with_no_list_of_its_own_still_has_one() {
+    assert_eq!(shopping_list(SHADOW_FIEND), &FIEND_GOODS);
+    assert_eq!(shopping_list(crate::SYLLA), &SYLLA_GOODS);
+    assert!(!shopping_list(HeroId(99)).is_empty());
+}
+
+#[test]
+fn a_list_starts_with_what_the_starting_gold_pays_for() {
+    let stall = stall();
+    let start: i32 = FIEND_GOODS
+        .iter()
+        .take(6)
+        .map(|item| stall.cost_of(*item))
+        .sum();
+    assert!(start <= 600, "the opening costs {start}");
+}
+
+#[test]
+fn a_price_the_shop_does_not_name_is_nothing_at_all() {
+    assert_eq!(stall().cost_of(ItemId(999)), 0);
+    assert!(stall().parts_of(ItemId(999)).is_empty());
+}
+
+#[test]
+fn the_shop_is_read_off_the_terms_of_the_match() {
+    let info = fixtures::started(
+        vec![
+            fixtures::sold(TANGO, 90, vec![]),
+            fixtures::sold(
+                MAGIC_WAND,
+                450,
+                vec![MAGIC_STICK, BRANCH, BRANCH, RECIPE_MAGIC_WAND],
+            ),
+        ],
+        Vec::new(),
     );
-    assert_eq!(
-        how_many_held(&field, crate::QUELLING),
-        1,
-        "and the courier is bringing the other"
-    );
+    let stall = Stall::of(&info);
+    assert_eq!(stall.cost_of(TANGO), 90);
+    assert_eq!(stall.parts_of(MAGIC_WAND).len(), 4);
 }

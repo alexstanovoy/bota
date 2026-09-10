@@ -461,6 +461,22 @@ pub const TOWER_ATTACK_INTERVAL: u32 = 29;
 pub const TOWER_ATTACK_POINT: u32 = 6;
 /// Tower attack projectile speed, world units per second.
 pub const TOWER_PROJECTILE_SPEED: i32 = 750;
+/// How far a tower's protection reaches.
+pub const TOWER_AURA_RADIUS: i32 = 900;
+/// Armor a tower's protection adds, in whole points, indexed by tier less
+/// one.
+pub const TOWER_AURA_ARMOR: [i32; 4] = [3, 5, 5, 5];
+/// Health a tower's protection mends, in hundredths of a point a second,
+/// indexed by tier less one.
+pub const TOWER_AURA_REGEN: [i32; 4] = [100, 300, 300, 300];
+/// Ticks an aura's effect holds once handed out, which is how long it lingers
+/// after walking out of one.
+pub const AURA_LINGER_TICKS: u32 = TICKS_PER_SECOND / 2;
+/// How far a flagbearer's inspiration reaches.
+pub const FLAGBEARER_AURA_RADIUS: i32 = 700;
+/// Health a flagbearer's inspiration mends, in hundredths of a point a
+/// second.
+pub const FLAGBEARER_AURA_REGEN: i32 = 300;
 /// Tower collision radius.
 pub const TOWER_RADIUS: i32 = 40;
 /// Tower fog light radius.
