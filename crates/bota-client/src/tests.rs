@@ -14,6 +14,70 @@ use crate::Args;
 use crate::camera::Camera;
 
 #[test]
+fn mechanics_catalog_mango_has_an_append_only_id_and_describes_consumption() {
+    let mango = crate::catalog::item(42).expect("Mango catalog entry");
+    assert_eq!(mango.id, 42);
+    assert_eq!(mango.name, "Mango");
+    assert!(mango.blurb.contains("100 mana"));
+    assert_eq!(crate::catalog::ITEMS.len(), 43);
+}
+
+#[test]
+fn mechanics_catalog_mango_icon_rasterises_visible_fruit_inside_the_item_frame() {
+    let mango = crate::catalog::item(42).expect("Mango catalog entry");
+    let art = mango.icon.expect("Mango must have embedded item art");
+
+    let (width, height, bytes) = crate::icons::pixels(art).expect("Mango SVG must rasterise");
+
+    assert_eq!((width, height), (192, 128));
+    assert_eq!(bytes.len(), (width * height * 4) as usize);
+    let pixels = bytes.as_chunks::<4>().0;
+    let background = pixels[0];
+    let fruit = pixels
+        .iter()
+        .filter(|pixel| pixel[3] > 0 && **pixel != background)
+        .count();
+    assert!(
+        fruit > (width * height / 10) as usize,
+        "Mango fruit must be visible against its frame: {fruit} pixels"
+    );
+}
+
+#[test]
+fn mechanics_catalog_shadowraze_effect_describes_the_counted_timer() {
+    let effect = crate::catalog::effect(15).expect("Shadowraze debuff catalog entry");
+    assert_eq!(effect.id, 15);
+    assert_eq!(effect.name, "Razed");
+    assert!(effect.blurb.contains("8 s"));
+    assert!(effect.blurb.contains("same caster"));
+    assert_eq!(crate::catalog::EFFECTS.len(), 16);
+}
+
+#[test]
+fn mechanics_catalog_auras_and_shadowraze_keep_distinct_contiguous_effect_ids() {
+    for (id, name) in [(13, "Guarded"), (14, "Inspired"), (15, "Razed")] {
+        let effect = crate::catalog::effect(id).expect("merged effect catalog entry");
+        assert_eq!(effect.id, id);
+        assert_eq!(effect.name, name);
+    }
+    for (id, effect) in crate::catalog::EFFECTS.iter().enumerate() {
+        assert_eq!(usize::from(effect.id), id);
+    }
+    assert!(crate::catalog::effect(16).is_none());
+    assert!(crate::catalog::effect(u16::MAX).is_none());
+}
+
+#[test]
+fn mechanics_catalog_all_razes_describe_exact_base_and_stacking_damage() {
+    for id in 13..=15 {
+        let raze = crate::catalog::ability(id).unwrap();
+        assert!(raze.blurb.contains("90/160/230/300"));
+        assert!(raze.blurb.contains("50/60/70/80"));
+        assert!(raze.blurb.contains("8 s"));
+    }
+}
+
+#[test]
 fn camera_transforms_round_trip() {
     let cam = Camera {
         x: 4096.0,

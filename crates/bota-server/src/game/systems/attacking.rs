@@ -182,6 +182,7 @@ fn strike(
             amount: damage,
             kind: DamageKind::Physical,
             crit: false,
+            effect: crate::game::HitEffect::None,
         }),
         Some(speed) => {
             let Some(at) = transform.get(attacker).copied() else {

@@ -874,8 +874,8 @@ fn a_fallen_tower_ends_a_skirmish_and_nothing_else() {
     simultaneous.bury(vec![(radiant, None), (dire, None)], &mut events);
     assert_eq!(
         simultaneous.victor(),
-        Some(bota_proto::Team::Dire),
-        "the first terminal event stands"
+        Some(bota_proto::Team::Neutral),
+        "opposing tower losses in the same tick draw"
     );
 
     let mut dota = World::new();
@@ -964,12 +964,14 @@ fn a_skirmish_is_the_dota_map_with_a_shorter_ending() {
     assert_eq!(
         (dota.death_limit, dota.tower_ends_it),
         (0, false),
-        "and only the ending differs"
+        "the full Dota map still ends at its Ancient"
     );
     assert_eq!(
         (skirmish.death_limit, skirmish.tower_ends_it),
         (rules::SKIRMISH_DEATH_LIMIT, true)
     );
+    assert_eq!(skirmish.wave_lanes, &[rules::LANE_MID]);
+    assert_eq!(dota.wave_lanes.len(), 3);
 }
 
 #[test]
@@ -2431,6 +2433,7 @@ fn critical_hits_keep_their_flag_in_damage_events() {
         amount: 10,
         kind: bota_proto::DamageKind::Physical,
         crit: true,
+        effect: crate::game::HitEffect::None,
     });
 
     let events = world.step();

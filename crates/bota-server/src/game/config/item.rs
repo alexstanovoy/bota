@@ -156,6 +156,11 @@ pub enum ItemUse {
     },
     /// Sets the item to the next attribute.
     Switch,
+    /// Restores the user's mana at once, spending one charge for a positive deficit.
+    ReplenishMana {
+        /// Maximum mana restored by one use.
+        amount: i32,
+    },
 }
 
 /// One entry of the catalog.
@@ -168,6 +173,8 @@ pub struct ItemDef {
     /// A stack left holding none is gone, unless it may gain them again
     /// through [`ItemDef::cast_charges`].
     pub charges: u8,
+    /// Maximum merged charges; zero disables merging and per-charge value and regeneration.
+    pub stack_limit: u8,
     /// Charges it may hold, each one gained from an enemy cast within
     /// [`rules::MAGIC_CHARGE_RANGE`]. Zero for one that gains none.
     pub cast_charges: u8,
@@ -188,7 +195,7 @@ pub struct ItemDef {
     pub mode_bonus: i32,
     /// What it is built from. Empty for one that is bought whole.
     pub components: &'static [ItemId],
-    /// What it adds to whoever carries it.
+    /// What it adds to whoever carries it; health regeneration is per charge when mergeable.
     pub carried: Carried,
     /// What using it does. Absent for one that cannot be used.
     pub active: Option<ItemUse>,
@@ -199,6 +206,7 @@ pub struct ItemDef {
 const PLAIN: ItemDef = ItemDef {
     cost: 0,
     charges: 0,
+    stack_limit: 0,
     cast_charges: 0,
     cooldown: 0,
     shared_wait: false,
@@ -295,6 +303,25 @@ pub const ITEM_RECIPE_WRAITH_BAND: u16 = 39;
 pub const ITEM_RECIPE_NULL_TALISMAN: u16 = 40;
 /// The recipe a Magic Wand is built with.
 pub const ITEM_RECIPE_MAGIC_WAND: u16 = 41;
+/// Enchanted Mango.
+pub const ITEM_MANGO: u16 = 42;
+
+/// Gold per Mango charge, bought one at a time.
+pub const MANGO_COST: i32 = 65;
+/// Maximum Mango charges in one slot.
+pub const MANGO_STACK_MAX: u8 = 3;
+/// Mana restored by one Mango charge, capped at the user's maximum.
+pub const MANGO_MANA: i32 = 100;
+/// Health per tick per charge: `2 / (5 * TICKS_PER_SECOND)`, truncated to Q16.16.
+/// At 30 ticks/s this is 873 raw/tick, exactly 0.399627685546875 HP/s.
+pub const MANGO_HP_REGEN: Fixed = Fixed::from_ratio(2, 5 * rules::TICKS_PER_SECOND as i32);
+
+const _: () = {
+    assert!(MANGO_COST > 0);
+    assert!(MANGO_STACK_MAX > 1);
+    assert!(MANGO_MANA > 0);
+    assert!(MANGO_HP_REGEN.raw > 0);
+};
 
 /// What Power Treads are built from.
 const TREADS_PARTS: [ItemId; 3] = [ItemId(ITEM_BOOTS), ItemId(ITEM_GLOVES), ItemId(ITEM_BELT)];
@@ -332,7 +359,7 @@ const WAND_PARTS: [ItemId; 4] = [
 ];
 
 /// The catalog, indexed by [`ItemId`].
-pub const ITEMS: [ItemDef; 42] = [
+pub const ITEMS: [ItemDef; 43] = [
     // Boots of Speed.
     ItemDef {
         cost: 500,
@@ -725,6 +752,18 @@ pub const ITEMS: [ItemDef; 42] = [
     ItemDef { cost: 210, ..PLAIN },
     // The recipe a Magic Wand is built with.
     ItemDef { cost: 150, ..PLAIN },
+    // Enchanted Mango.
+    ItemDef {
+        cost: MANGO_COST,
+        charges: 1,
+        stack_limit: MANGO_STACK_MAX,
+        carried: Carried {
+            hp_regen: MANGO_HP_REGEN,
+            ..NOTHING
+        },
+        active: Some(ItemUse::ReplenishMana { amount: MANGO_MANA }),
+        ..PLAIN
+    },
 ];
 
 /// How one use of an item is aimed.
@@ -742,7 +781,10 @@ pub fn item_aim(use_of: ItemUse) -> Aim {
         ItemUse::Fell { .. } => Aim::Tree,
         ItemUse::Ward { .. } | ItemUse::Plant { .. } | ItemUse::Blink { .. } => Aim::Point,
         ItemUse::Teleport { .. } => Aim::Building,
-        ItemUse::Restore { .. } | ItemUse::Phase { .. } | ItemUse::Switch => Aim::Own,
+        ItemUse::Restore { .. }
+        | ItemUse::ReplenishMana { .. }
+        | ItemUse::Phase { .. }
+        | ItemUse::Switch => Aim::Own,
     }
 }
 
@@ -758,7 +800,10 @@ pub fn item_range(use_of: ItemUse) -> i32 {
         | ItemUse::Plant { range, .. }
         | ItemUse::Teleport { range, .. }
         | ItemUse::Blink { range } => range,
-        ItemUse::Restore { .. } | ItemUse::Phase { .. } | ItemUse::Switch => 0,
+        ItemUse::Restore { .. }
+        | ItemUse::ReplenishMana { .. }
+        | ItemUse::Phase { .. }
+        | ItemUse::Switch => 0,
     }
 }
 

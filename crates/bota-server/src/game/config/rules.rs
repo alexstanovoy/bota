@@ -809,6 +809,24 @@ pub const RAZE_DISTANCE: [i32; 3] = [200, 450, 700];
 pub const RAZE_RADIUS: i32 = 250;
 /// Damage a raze deals, by level.
 pub const RAZE_DAMAGE: [i32; 4] = [90, 160, 230, 300];
+/// Additional magical damage per prior same-caster stack, by cast level.
+pub const RAZE_STACK_DAMAGE: [i32; 4] = [50, 60, 70, 80];
+/// Ticks until all of one caster's stacks expire after its latest damaging hit.
+pub const RAZE_DEBUFF_TICKS: u32 = 8 * TICKS_PER_SECOND;
+/// Maximum stacks held per target and caster.
+pub const RAZE_MAX_STACKS: u8 = 255;
+/// Maximum independent caster records on one target; earliest expiry is evicted first.
+pub const RAZE_MAX_SOURCES: usize = 16;
+
+const _: () = {
+    assert!(RAZE_STACK_DAMAGE.len() == RAZE_DAMAGE.len());
+    assert!(RAZE_DEBUFF_TICKS == 240);
+    assert!(RAZE_MAX_SOURCES > 0);
+    assert!(RAZE_MAX_STACKS > 3);
+    assert!(RAZE_MAX_STACKS == u8::MAX);
+    assert!(RAZE_DAMAGE[3] + RAZE_STACK_DAMAGE[3] * (RAZE_MAX_STACKS as i32) < 32768);
+};
+
 /// Mana a raze costs, by level.
 pub const RAZE_MANA: [i32; 4] = [75, 80, 85, 90];
 /// Ticks between two razes of the same reach, by level.

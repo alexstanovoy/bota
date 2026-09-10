@@ -8,6 +8,9 @@ use clap::{Parser, ValueEnum};
 
 use bota_server::game_loop::{ServerOpts, run};
 
+#[cfg(test)]
+mod map_cli_tests;
+
 /// How the server advances ticks.
 #[derive(Clone, Copy, Debug, ValueEnum)]
 enum Mode {
@@ -35,9 +38,8 @@ struct Args {
     /// Write a replay to this file.
     #[arg(long)]
     replay: Option<PathBuf>,
-    /// Which map to play: 0 is the Dota map, 1 the small test lane, 2 the
-    /// Dota map to a short finish — a tower or two deaths ends it.
-    #[arg(long, default_value_t = 0)]
+    /// Which map to play: 0 Dota, 1 hero demo, 2 mid-only Dota (two lives or first tower, fifteen game minutes).
+    #[arg(long, default_value_t = 0, value_parser = parse_map)]
     map: u16,
     /// Seed of the match randomness. A fresh one is drawn when absent.
     #[arg(long)]
@@ -72,4 +74,14 @@ fn main() -> std::io::Result<()> {
             ack_timeout_ticks: args.ack_timeout_ticks,
         },
     )
+}
+
+fn parse_map(value: &str) -> Result<u16, String> {
+    value
+        .parse::<u16>()
+        .ok()
+        .filter(|id| bota_server::game::MAPS.iter().any(|map| map.id.0 == *id))
+        .ok_or_else(|| {
+            format!("unsupported map '{value}'; expected 0 (Dota), 1 (demo), or 2 (mid-only Dota)")
+        })
 }

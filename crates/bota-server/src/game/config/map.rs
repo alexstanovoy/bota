@@ -8,6 +8,18 @@ use bota_proto::{MapId, Vec2};
 
 use crate::game::{CampDef, CampKind, Protection, rules};
 
+/// Full Dota geometry with mid-only waves and bounded hero/tower play.
+pub const MAP2_ID: MapId = MapId(2);
+/// Hero lives lost across a side's seats before that side loses Map2.
+pub const MAP2_DEATH_LIMIT: u16 = rules::SKIRMISH_DEATH_LIMIT;
+/// Map2 gameplay duration in simulation ticks, excluding pregame.
+pub const MAP2_GAME_TICKS: u32 = 15 * 60 * rules::TICKS_PER_SECOND;
+/// Map2's final simulation tick, including the unchanged pregame.
+pub const MAP2_TICK_CAP: u32 = rules::PREGAME_TICKS + MAP2_GAME_TICKS;
+
+const _: () = assert!(MAP2_DEATH_LIMIT > 0);
+const _: () = assert!(MAP2_TICK_CAP > rules::PREGAME_TICKS);
+
 /// One playable map.
 #[derive(Clone, Copy, Debug)]
 pub struct MapDef {
@@ -29,8 +41,10 @@ pub struct MapDef {
     pub protection: &'static [Protection],
     /// Where waves appear, by team then lane.
     pub creep_spawns: [[Vec2; 3]; 2],
-    /// How many lanes the map runs, from lane zero up.
+    /// Geometric lanes, from lane zero up, including lanes without waves.
     pub lanes: u8,
+    /// Lanes that spawn creep waves, in spawn order; each index is below `lanes`.
+    pub wave_lanes: &'static [u8],
     /// Corners a lane bends through between the two tier-one towers, by lane
     /// index. Empty for a lane that runs straight.
     pub lane_corners: &'static [&'static [Vec2]],
@@ -99,6 +113,7 @@ const DOTA: MapDef = MapDef {
     protection: &crate::game::DOTA_PROTECTION,
     creep_spawns: [rules::RADIANT_CREEP_SPAWNS, rules::DIRE_CREEP_SPAWNS],
     lanes: 3,
+    wave_lanes: &[rules::LANE_MID, rules::LANE_TOP, rules::LANE_BOT],
     lane_corners: DOTA_CORNERS,
     lane_through_towers: true,
     camps: &crate::game::CAMPS,
@@ -129,6 +144,7 @@ const DEMO: MapDef = MapDef {
         [rules::DEMO_DIRE_CREEP_SPAWN; 3],
     ],
     lanes: 1,
+    wave_lanes: &[rules::LANE_MID],
     lane_corners: DEMO_CORNERS,
     lane_through_towers: false,
     camps: &DEMO_CAMPS,
@@ -140,15 +156,11 @@ const DEMO: MapDef = MapDef {
     tower_ends_it: false,
 };
 
-/// The Dota map played to a short finish: the first side to lose a tower or
-/// to lose [`rules::SKIRMISH_DEATH_LIMIT`] heroes loses the match.
-///
-/// The same ground and the same buildings as the Dota map; only what ends it
-/// differs, which is what makes a match on it worth reading against one on
-/// map nought.
+/// Full Dota geometry with mid-only waves and a hero/tower finish bounded by [`MAP2_TICK_CAP`].
 const SKIRMISH: MapDef = MapDef {
-    id: MapId(2),
-    death_limit: rules::SKIRMISH_DEATH_LIMIT,
+    id: MAP2_ID,
+    wave_lanes: &[rules::LANE_MID],
+    death_limit: MAP2_DEATH_LIMIT,
     tower_ends_it: true,
     ..DOTA
 };
@@ -159,7 +171,7 @@ pub fn map_of(id: MapId) -> &'static MapDef {
 }
 
 impl MapDef {
-    /// Every lane the map runs.
+    /// Every geometric lane, including lanes without creep waves.
     pub fn lanes(&self) -> impl Iterator<Item = u8> {
         0..self.lanes
     }

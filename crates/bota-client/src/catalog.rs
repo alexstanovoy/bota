@@ -145,19 +145,19 @@ pub const ABILITIES: [AbilityFace; 19] = [
     AbilityFace {
         id: 13,
         name: "Raze 1",
-        blurb: "No target. Burns everything within 250 of a spot 200 ahead of where you face for 90/160/230/300 magic damage. One point levels all three razes. 10 s wait.",
+        blurb: "No target. Burns everything within 250 of a spot 200 ahead of where you face for 90/160/230/300 magic damage, plus 50/60/70/80 per prior same-caster stack. Each damaging hit refreshes all stacks for 8 s. One point levels all three razes. 10 s wait.",
         icon: None,
     },
     AbilityFace {
         id: 14,
         name: "Raze 2",
-        blurb: "No target. Burns everything within 250 of a spot 450 ahead of where you face for 90/160/230/300 magic damage. One point levels all three razes. 10 s wait.",
+        blurb: "No target. Burns everything within 250 of a spot 450 ahead of where you face for 90/160/230/300 magic damage, plus 50/60/70/80 per prior same-caster stack. Each damaging hit refreshes all stacks for 8 s. One point levels all three razes. 10 s wait.",
         icon: None,
     },
     AbilityFace {
         id: 15,
         name: "Raze 3",
-        blurb: "No target. Burns everything within 250 of a spot 700 ahead of where you face for 90/160/230/300 magic damage. One point levels all three razes. 10 s wait.",
+        blurb: "No target. Burns everything within 250 of a spot 700 ahead of where you face for 90/160/230/300 magic damage, plus 50/60/70/80 per prior same-caster stack. Each damaging hit refreshes all stacks for 8 s. One point levels all three razes. 10 s wait.",
         icon: None,
     },
     AbilityFace {
@@ -181,7 +181,7 @@ pub const ABILITIES: [AbilityFace; 19] = [
 ];
 
 /// Every item the shop sells, in id order.
-pub const ITEMS: [ItemFace; 42] = [
+pub const ITEMS: [ItemFace; 43] = [
     ItemFace {
         id: 0,
         name: "Boots",
@@ -476,10 +476,17 @@ pub const ITEMS: [ItemFace; 42] = [
         blurb: "Builds a Magic Wand out of a Magic Stick and two Iron Branches.",
         icon: Some(include_bytes!("../assets/items/recipe.svg")),
     },
+    ItemFace {
+        id: 42,
+        name: "Mango",
+        stats: "+0.4 HP/s each",
+        blurb: "One charge per purchase, stacks up to three. Each charge adds 0.4 health regeneration per second. Self-use consumes one charge to restore up to 100 mana instantly. Requires missing mana.",
+        icon: Some(include_bytes!("../assets/items/mango.svg")),
+    },
 ];
 
 /// Every timed effect, in id order.
-pub const EFFECTS: [EffectFace; 15] = [
+pub const EFFECTS: [EffectFace; 16] = [
     EffectFace {
         id: 0,
         name: "Frenzy",
@@ -568,6 +575,12 @@ pub const EFFECTS: [EffectFace; 15] = [
         id: 14,
         name: "Inspired",
         blurb: "Health mended, for marching beside the one carrying the flag.",
+        icon: None,
+    },
+    EffectFace {
+        id: 15,
+        name: "Razed",
+        blurb: "Shadowrazes from the same caster deal 50/60/70/80 more magic damage per stack. Each damaging hit refreshes all stacks for 8 s; up to 255 stacks.",
         icon: None,
     },
 ];

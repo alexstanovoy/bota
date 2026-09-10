@@ -3,6 +3,7 @@
 use bota_proto::DamageKind;
 
 use crate::engine::Entity;
+use crate::game::rules;
 
 /// One kind of effect, with what there is of it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -79,6 +80,13 @@ pub enum StatusKind {
         /// Whether it may take the last point of health.
         lethal: bool,
     },
+    /// Additional damage from subsequent Shadowrazes by the same caster.
+    Shadowraze {
+        /// The applying caster's full generational handle; server-only.
+        from: Entity,
+        /// Successful hits held, in `1..=rules::RAZE_MAX_STACKS`.
+        stacks: u8,
+    },
 }
 
 /// One effect on an entity.
@@ -100,11 +108,66 @@ impl Statuses {
         self.0.iter().filter(|s| s.ticks_left > 0)
     }
 
-    /// Puts one on, in place of whatever of the same kind was already there.
+    /// Replaces the same kind; Shadowraze replaces only the same caster's record.
     pub fn put(&mut self, status: Status) {
         let same = std::mem::discriminant(&status.kind);
-        self.0
-            .retain(|held| std::mem::discriminant(&held.kind) != same);
+        self.0.retain(|held| match (held.kind, status.kind) {
+            (
+                StatusKind::Shadowraze {
+                    from: held_from, ..
+                },
+                StatusKind::Shadowraze {
+                    from: next_from, ..
+                },
+            ) => held.ticks_left > 0 && held_from != next_from,
+            _ => std::mem::discriminant(&held.kind) != same,
+        });
+        if let StatusKind::Shadowraze { stacks, .. } = status.kind {
+            assert!(stacks > 0);
+            assert!(status.ticks_left > 0);
+            assert!(status.ticks_left <= rules::RAZE_DEBUFF_TICKS);
+            let count = self
+                .0
+                .iter()
+                .filter(|held| matches!(held.kind, StatusKind::Shadowraze { .. }))
+                .count();
+            assert!(count <= rules::RAZE_MAX_SOURCES);
+            if count == rules::RAZE_MAX_SOURCES {
+                let at = self
+                    .0
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, held)| matches!(held.kind, StatusKind::Shadowraze { .. }))
+                    .min_by_key(|(_, held)| held.ticks_left)
+                    .map(|(at, _)| at)
+                    .expect("a full Shadowraze source set has an expiry");
+                self.0.remove(at);
+            }
+        }
         self.0.push(status);
+    }
+
+    /// Active Shadowraze hits held for this exact caster generation; zero when absent.
+    pub fn raze_stacks(&self, caster: Entity) -> u8 {
+        self.active()
+            .find_map(|status| match status.kind {
+                StatusKind::Shadowraze { from, stacks } if from == caster => Some(stacks),
+                _ => None,
+            })
+            .unwrap_or(0)
+    }
+
+    /// Adds one successful hit and refreshes its caster's complete stack to 240 ticks.
+    pub fn stack_raze(&mut self, caster: Entity) {
+        let stacks = self.raze_stacks(caster).saturating_add(1);
+        self.put(Status {
+            kind: StatusKind::Shadowraze {
+                from: caster,
+                stacks,
+            },
+            ticks_left: rules::RAZE_DEBUFF_TICKS,
+        });
+        assert!(self.raze_stacks(caster) > 0);
+        assert_eq!(self.raze_stacks(caster), stacks);
     }
 }

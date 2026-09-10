@@ -7,6 +7,9 @@ use bota_proto::{
 
 use crate::game::{Entity, StackKind, StatusKind, World, ability_mana_cost, item_views};
 
+/// Shadowraze amplification; each anonymous source row carries both ticks and stacks.
+pub const EFFECT_SHADOWRAZE: u16 = 15;
+
 /// The handle as it travels on the wire.
 pub fn wire_id(entity: Entity) -> bota_proto::EntityId {
     bota_proto::EntityId {
@@ -274,6 +277,7 @@ fn effect_id(kind: StatusKind) -> u16 {
         StatusKind::ArmorBroken { .. } => 12,
         StatusKind::Guarded { .. } => 13,
         StatusKind::Inspired { .. } => 14,
+        StatusKind::Shadowraze { .. } => EFFECT_SHADOWRAZE,
     }
 }
 
@@ -288,7 +292,10 @@ impl World {
                     .map(|status| EffectView {
                         id: EffectId(effect_id(status.kind)),
                         ticks_left: Some(status.ticks_left),
-                        stacks: None,
+                        stacks: match status.kind {
+                            StatusKind::Shadowraze { stacks, .. } => Some(u32::from(stacks)),
+                            _ => None,
+                        },
                     })
                     .collect()
             });
