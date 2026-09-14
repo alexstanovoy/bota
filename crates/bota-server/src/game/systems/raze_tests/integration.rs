@@ -1,27 +1,29 @@
 use bota_proto::{EffectId, EffectView, Fixed, HeroId, ItemId, SlotId, Team, WorldView};
 
-use crate::game::{ItemStack, Status, StatusKind, Statuses, World, rules, wire_id};
+use crate::game::{ItemStack, Modifier, ModifierKind, Modifiers, World, rules, wire_id};
 
 use super::fixtures::*;
 
 #[test]
 fn auras_and_shadowraze_project_distinct_ids_and_round_trip_together() {
     let (mut world, caster, target) = fixture();
-    world.statuses.insert(target, Statuses::default());
-    let statuses = world.statuses.get_mut(target).unwrap();
-    statuses.put(Status {
-        kind: StatusKind::Guarded {
+    world.modifiers.insert(target, Modifiers::default());
+    let modifiers = world.modifiers.get_mut(target).unwrap();
+    modifiers.put(Modifier {
+        kind: ModifierKind::Guarded {
             armor: 3,
             hp_per_second: 100,
         },
-        ticks_left: 15,
+        source: None,
+        ticks_left: Some(15),
     });
-    statuses.put(Status {
-        kind: StatusKind::Inspired { hp_per_second: 300 },
-        ticks_left: 14,
+    modifiers.put(Modifier {
+        kind: ModifierKind::Inspired { hp_per_second: 300 },
+        source: None,
+        ticks_left: Some(14),
     });
-    statuses.stack_raze(caster);
-    statuses.stack_raze(caster);
+    modifiers.stack_raze(caster);
+    modifiers.stack_raze(caster);
     let expected = vec![
         EffectView {
             id: EffectId(13),
@@ -62,23 +64,25 @@ fn auras_and_shadowraze_project_distinct_ids_and_round_trip_together() {
 #[test]
 fn expired_auras_are_not_projected_or_counted_as_shadowraze() {
     let (mut world, caster, target) = fixture();
-    world.statuses.insert(
+    world.modifiers.insert(
         target,
-        Statuses(vec![
-            Status {
-                kind: StatusKind::Guarded {
+        Modifiers(vec![
+            Modifier {
+                kind: ModifierKind::Guarded {
                     armor: 3,
                     hp_per_second: 100,
                 },
-                ticks_left: 1,
+                source: None,
+                ticks_left: Some(1),
             },
-            Status {
-                kind: StatusKind::Inspired { hp_per_second: 300 },
-                ticks_left: 1,
+            Modifier {
+                kind: ModifierKind::Inspired { hp_per_second: 300 },
+                source: None,
+                ticks_left: Some(1),
             },
         ]),
     );
-    world.statuses.get_mut(target).unwrap().stack_raze(caster);
+    world.modifiers.get_mut(target).unwrap().stack_raze(caster);
 
     world.tick_gear();
 
@@ -89,7 +93,7 @@ fn expired_auras_are_not_projected_or_counted_as_shadowraze() {
         .find(|unit| unit.id == wire_id(target))
         .unwrap();
     assert_eq!(unit.effects, vec![effect(1, 239)]);
-    assert_eq!(world.statuses.get(target).unwrap().raze_stacks(caster), 1);
+    assert_eq!(world.modifiers.get(target).unwrap().raze_stacks(caster), 1);
 }
 
 #[test]
@@ -103,8 +107,8 @@ fn tower_flagbearer_and_mango_bonuses_survive_shadowraze_refresh() {
     world.spawn_unit(&crate::game::FLAGBEARER_CREEP, Team::Dire, TARGET);
     world.inventory.get_mut(target).unwrap().slots[0] = ItemStack::bought(ItemId(42), SlotId(1), 0);
     world.step();
-    world.statuses.get_mut(target).unwrap().stack_raze(caster);
-    world.statuses.get_mut(target).unwrap().stack_raze(caster);
+    world.modifiers.get_mut(target).unwrap().stack_raze(caster);
+    world.modifiers.get_mut(target).unwrap().stack_raze(caster);
 
     world.settle();
 

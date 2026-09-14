@@ -1,10 +1,9 @@
-//! Casting: what each ability does, and what stops a cast happening.
+//! Casting abilities: what starts one, what it costs, and what each one does.
 
-use bota_proto::{DamageKind, EventKind, Fixed, Target, Team, Vec2};
+use bota_proto::{AbilitySlot, DamageKind, EventKind, Fixed, Target, Team};
 
 use crate::game::{
-    Entity, PendingCast, Projectile, Status, StatusKind, World, ability, ability_cooldown,
-    ability_mana_cost, wire_id,
+    Entity, Modifier, ModifierKind, Projectile, World, ability_cooldown, ability_mana_cost, wire_id,
 };
 use crate::game::{Event, rules};
 
@@ -23,91 +22,59 @@ impl World {
         )
     }
 
-    /// Starts whatever cast each entity is waiting to make.
+    /// Casts one of an entity's abilities to the moment it has gone off:
+    /// the checks, the ability's own work, and the cost.
     ///
-    /// A cast waits on its own cost: the level must be learned, the cooldown
-    /// run out, and the mana be there. What it cannot pay for is dropped
-    /// rather than held. What is aimed further off than it reaches is held
-    /// instead: movement walks the caster in, and the cast goes off when it
-    /// arrives.
-    pub fn run_casts(&mut self, events: &mut Vec<Event>) {
-        let entities = self.take_entity_snapshot();
-        for entity in entities.iter().copied() {
-            let Some(cast) = self.casting.get(entity).copied() else {
-                continue;
-            };
-            if self.held(entity) {
-                continue;
-            }
-            if self.walking_into_cast(entity, cast) {
-                continue;
-            }
-            self.casting.remove(entity);
-            let slot = usize::from(cast.slot.0);
-            let Some(ability) = self
-                .abilities
-                .get(entity)
-                .and_then(|book| book.slots.get(slot))
-                .copied()
-            else {
-                continue;
-            };
-            let Some(def) = crate::game::ability_def(ability.id) else {
-                continue;
-            };
-            if def.passive || ability.level == 0 || ability.cooldown > 0 {
-                continue;
-            }
-            let level = usize::from(ability.level - 1);
-            let cost = ability_mana_cost(ability.id, ability.level);
-            if self.mana.get(entity).map_or(0, |m| m.mana.to_int()) < cost {
-                continue;
-            }
-            let cooldown = ability_cooldown(ability.id, ability.level);
-            let went = match ability.id {
-                ability::FRENZY => self.cast_frenzy(entity, level),
-                ability::BOUNCE => self.cast_bounce(entity, level, cast.target),
-                ability::VOLLEY => self.cast_multishot(entity, level.min(2)),
-                ability::MEAT_HOOK => self.cast_hook(entity, level, cast.target),
-                ability::ROT => self.toggle_rot(entity, level),
-                ability::DISMEMBER => self.cast_dismember(entity, level, cast.target),
-                ability::BURST => self.courier_burst(entity),
-                ability::RETURN_ITEMS => self.courier_return_items(entity),
-                ability::SHIELD => self.courier_shield(entity),
-                ability::TAKE_STASH => self.courier_take_stash(entity),
-                ability::DELIVER => self.courier_deliver(entity),
-                ability::RAZE_NEAR => self.cast_raze(entity, level, 0),
-                ability::RAZE_MID => self.cast_raze(entity, level, 1),
-                ability::RAZE_FAR => self.cast_raze(entity, level, 2),
-                ability::REQUIEM => self.cast_requiem(entity, level.min(2)),
-                _ => false,
-            };
-            if !went {
-                continue;
-            }
-            self.charge_nearby_items(entity);
-            if let Some(mana) = self.mana.get_mut(entity) {
-                mana.mana -= Fixed::from_int(cost);
-            }
-            if let Some(book) = self.abilities.get_mut(entity)
-                && let Some(ability) = book.slots.get_mut(slot)
-            {
-                ability.cooldown = cooldown;
-            }
-            let at = self
-                .transform
-                .get(entity)
-                .map_or(bota_proto::Vec2::ZERO, |t| t.pos);
-            let side = self.team.get(entity).copied().unwrap_or(Team::Neutral);
-            events.push(Event {
-                kind: EventKind::AbilityCast {
-                    caster: wire_id(entity),
-                    ability: ability.id,
-                },
-                visible_to: self.who_may_know(at, side),
-            });
+    /// False when it did not go off, and then nothing was spent: the level
+    /// must be learned, the cooldown run out, the mana be there, and the
+    /// ability itself must have found something to do.
+    pub fn begin_ability(&mut self, entity: Entity, slot: AbilitySlot, target: Target) -> bool {
+        let at = usize::from(slot.0);
+        let Some(ability) = self
+            .abilities
+            .get(entity)
+            .and_then(|book| book.slots.get(at))
+            .copied()
+        else {
+            return false;
+        };
+        let Some(def) = crate::game::ability_def(ability.id) else {
+            return false;
+        };
+        if def.passive || ability.level == 0 || ability.cooldown > 0 {
+            return false;
         }
-        self.recycle_entity_snapshot(entities);
+        let cost = ability_mana_cost(ability.id, ability.level);
+        if self.mana.get(entity).map_or(0, |m| m.mana.to_int()) < cost {
+            return false;
+        }
+        let cooldown = ability_cooldown(ability.id, ability.level);
+        if !(def.on_cast)(self, entity, target) {
+            return false;
+        }
+        self.charge_nearby_items(entity);
+        if let Some(mana) = self.mana.get_mut(entity) {
+            mana.mana -= Fixed::from_int(cost);
+        }
+        if let Some(book) = self.abilities.get_mut(entity)
+            && let Some(ability) = book.slots.get_mut(at)
+        {
+            ability.cooldown = cooldown;
+        }
+        let at = self
+            .transform
+            .get(entity)
+            .map_or(bota_proto::Vec2::ZERO, |t| t.pos);
+        let side = self.team.get(entity).copied().unwrap_or(Team::Neutral);
+        let visible_to = self.who_may_know(at, side);
+        self.events.push(Event {
+            kind: EventKind::AbilityCast {
+                caster: wire_id(entity),
+                ability: ability.id,
+            },
+            visible_to,
+        });
+        true
     }
 
     /// Gives every enemy item near a cast one charge of what it may hold.
@@ -150,20 +117,22 @@ impl World {
     }
 
     /// Puts haste on the caster for a while.
-    fn cast_frenzy(&mut self, caster: Entity, level: usize) -> bool {
-        let mut on_it = self.statuses.remove(caster).unwrap_or_default();
-        on_it.put(Status {
-            kind: StatusKind::Haste {
-                speed: rules::SYLLA_FRENZY_ATTACK_SPEED[level],
+    pub fn cast_frenzy(&mut self, caster: Entity, level: usize) -> bool {
+        self.put_modifier(
+            caster,
+            Modifier {
+                kind: ModifierKind::Haste {
+                    speed: rules::SYLLA_FRENZY_ATTACK_SPEED[level],
+                },
+                source: Some(caster),
+                ticks_left: Some(rules::SYLLA_FRENZY_TICKS),
             },
-            ticks_left: rules::SYLLA_FRENZY_TICKS,
-        });
-        self.statuses.insert(caster, on_it);
+        );
         true
     }
 
     /// Throws a missile that goes on to the next enemy after each hit.
-    fn cast_bounce(&mut self, caster: Entity, level: usize, target: Target) -> bool {
+    pub fn cast_bounce(&mut self, caster: Entity, level: usize, target: Target) -> bool {
         let Target::Unit(target) = target else {
             return false;
         };
@@ -207,7 +176,7 @@ impl World {
     }
 
     /// Strikes every enemy standing near the caster at once.
-    fn cast_multishot(&mut self, caster: Entity, level: usize) -> bool {
+    pub fn cast_multishot(&mut self, caster: Entity, level: usize) -> bool {
         let Some(at) = self.transform.get(caster).map(|t| t.pos) else {
             return false;
         };
@@ -230,49 +199,6 @@ impl World {
             self.push_hit(Some(caster), mark, damage, DamageKind::Physical);
         }
         true
-    }
-
-    /// Points an entity at the cast it was ordered to make.
-    pub fn order_cast(&mut self, entity: Entity, cast: PendingCast) {
-        self.casting.insert(entity, cast);
-    }
-}
-
-impl World {
-    /// Whether a cast is still being walked into rather than made.
-    ///
-    /// A cast aimed at something out of reach is kept and the caster sent at
-    /// it; one aimed at nothing in particular is never walked into.
-    pub fn walking_into_cast(&mut self, entity: Entity, cast: PendingCast) -> bool {
-        let Some(at) = self.cast_spot(entity, cast) else {
-            return false;
-        };
-        let Some(from) = self.transform.get(entity).map(|t| t.pos) else {
-            return false;
-        };
-        let reach =
-            crate::game::ability_def(self.ability_in(entity, cast.slot)).map_or(0, |def| def.range);
-        if reach == 0 || from.within(at, rules::units(reach)) {
-            return false;
-        }
-        true
-    }
-
-    /// Where a cast is aimed, if it is aimed anywhere at all.
-    pub fn cast_spot(&self, entity: Entity, cast: PendingCast) -> Option<Vec2> {
-        match cast.target {
-            Target::Pos(pos) => Some(pos),
-            Target::Unit(target) => {
-                let on = self.of_wire(target)?;
-                self.alive(on)
-                    .then(|| self.transform.get(on).map(|t| t.pos))
-                    .flatten()
-            }
-            Target::None => {
-                let _ = entity;
-                None
-            }
-        }
     }
 
     /// Which ability sits in one of an entity's slots.

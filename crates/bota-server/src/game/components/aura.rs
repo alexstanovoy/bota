@@ -1,6 +1,6 @@
 //! An effect a unit hands out to everyone standing near it.
 
-use crate::game::StatusKind;
+use crate::game::ModifierKind;
 
 /// Whom an aura reaches, among those of its own side.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -18,7 +18,7 @@ pub enum Reach {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Aura {
     /// Which effect it hands out, and how much of it.
-    pub kind: StatusKind,
+    pub kind: ModifierKind,
     /// How far it reaches, in world units.
     pub radius: i32,
     /// Which of its own side it reaches.

@@ -1,6 +1,6 @@
 use bota_proto::{AbilitySlot, DamageKind, Fixed, Target, Team, Vec2};
 
-use crate::game::{PendingCast, Status, StatusKind};
+use crate::game::{Modifier, ModifierKind, Modifiers, PendingCast};
 
 use super::fixtures::*;
 
@@ -45,11 +45,12 @@ fn raze_invulnerability_at_impact_prevents_a_previously_queued_debuff() {
 fn raze_shield_applied_before_impact_blocks_damage_without_waiting_for_stats() {
     let (mut world, caster, target) = fixture();
     assert!(world.cast_raze(caster, 0, 1));
-    world.statuses.insert(
+    world.modifiers.insert(
         target,
-        crate::game::Statuses(vec![Status {
-            kind: StatusKind::Shielded,
-            ticks_left: 30,
+        Modifiers(vec![Modifier {
+            kind: ModifierKind::Shielded,
+            source: None,
+            ticks_left: Some(30),
         }]),
     );
     assert!(!world.stats.get(target).unwrap().invulnerable);
@@ -60,11 +61,12 @@ fn raze_shield_applied_before_impact_blocks_damage_without_waiting_for_stats() {
 #[test]
 fn raze_expired_shield_does_not_block_damage_or_debuff() {
     let (mut world, caster, target) = fixture();
-    world.statuses.insert(
+    world.modifiers.insert(
         target,
-        crate::game::Statuses(vec![Status {
-            kind: StatusKind::Shielded,
-            ticks_left: 1,
+        Modifiers(vec![Modifier {
+            kind: ModifierKind::Shielded,
+            source: None,
+            ticks_left: Some(1),
         }]),
     );
     assert_eq!(land(&mut world, caster, target, 0), 90);
@@ -118,7 +120,12 @@ fn raze_queued_after_a_lethal_blow_applies_no_debuff() {
     world.push_hit(Some(caster), target, 30000, DamageKind::Pure);
     assert!(world.cast_raze(caster, 0, 1));
     assert!(damage(&world.step(), target).is_empty());
-    assert!(world.statuses.get(target).is_none());
+    assert!(
+        world
+            .modifiers
+            .get(target)
+            .is_none_or(|on_it| on_it.0.is_empty())
+    );
     assert!(!world.alive(target));
 }
 
@@ -132,11 +139,12 @@ fn raze_failed_casts_leave_existing_stacks_unmodified() {
             1 => world.abilities.get_mut(caster).unwrap().slots[1].cooldown = 30,
             2 => world.mana.get_mut(caster).unwrap().mana = Fixed::ZERO,
             3 => {
-                world.statuses.insert(
+                world.modifiers.insert(
                     caster,
-                    crate::game::Statuses(vec![Status {
-                        kind: StatusKind::Stunned,
-                        ticks_left: 30,
+                    Modifiers(vec![Modifier {
+                        kind: ModifierKind::Stunned,
+                        source: None,
+                        ticks_left: Some(30),
                     }]),
                 );
             }
@@ -144,7 +152,7 @@ fn raze_failed_casts_leave_existing_stacks_unmodified() {
         }
         world.order_cast(
             caster,
-            PendingCast {
+            PendingCast::Ability {
                 slot: AbilitySlot(1),
                 target: Target::None,
             },

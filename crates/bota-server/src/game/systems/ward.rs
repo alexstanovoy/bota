@@ -3,7 +3,7 @@
 use bota_proto::Target;
 
 use crate::game::rules;
-use crate::game::{Entity, Expiry, UnitDef, World};
+use crate::game::{Entity, UnitDef, World};
 
 impl World {
     /// Runs down what stands for a time, and takes away whatever has run out.
@@ -49,8 +49,7 @@ impl World {
         if !from.within(pos, rules::units(range)) || !self.grid.walkable(pos) {
             return false;
         }
-        let ward = self.spawn_unit(def, side, pos);
-        self.expiry.insert(ward, Expiry { ticks_left: ticks });
+        self.spawn_ward(def, side, pos, ticks);
         self.settle();
         true
     }

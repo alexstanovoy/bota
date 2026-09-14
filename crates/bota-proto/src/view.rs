@@ -158,8 +158,12 @@ pub struct UnitView {
     pub attack_damage: i32,
     /// Attack range.
     pub attack_range: Fixed,
-    /// Ticks between the start of one attack and the next.
-    pub attack_interval: u32,
+    /// Milliseconds between the start of one attack and the next, after
+    /// attack speed.
+    pub attack_time: u32,
+    /// Milliseconds from the start of an attack to the hit, after attack
+    /// speed.
+    pub attack_point: u32,
     /// Attack speed, where 100 is the unit's own pace and 200 is twice it.
     pub attack_speed: i32,
     /// Armor.

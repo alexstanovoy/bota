@@ -51,8 +51,6 @@ pub const SHADOW_FIEND: HeroId = HeroId(2);
 /// What a hero's swing takes to leave and to arrive.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Swing {
-    /// Ticks between a swing starting and the blow leaving.
-    pub point: u32,
     /// World units a missile covers in a second. Zero for a hero that
     /// strikes by hand.
     pub missile_speed: i32,
@@ -62,17 +60,10 @@ pub struct Swing {
 pub fn swing_of(hero: HeroId) -> Swing {
     match hero {
         SHADOW_FIEND => Swing {
-            point: 15,
             missile_speed: 1200,
         },
-        PUDGE => Swing {
-            point: 17,
-            missile_speed: 0,
-        },
-        _ => Swing {
-            point: 9,
-            missile_speed: 900,
-        },
+        PUDGE => Swing { missile_speed: 0 },
+        _ => Swing { missile_speed: 900 },
     }
 }
 

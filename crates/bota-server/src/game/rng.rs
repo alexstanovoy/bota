@@ -261,6 +261,12 @@ impl Chance {
         self.current
     }
 
+    /// Draw count and position within the block determining the next
+    /// outcome.
+    pub fn state(&self) -> (u64, u8) {
+        (self.stream.draws, self.idx)
+    }
+
     /// How many attempts of the current block have been spent.
     ///
     /// Zero means the next [`roll`](Chance::roll) opens a fresh block.

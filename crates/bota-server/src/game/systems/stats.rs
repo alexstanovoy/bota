@@ -4,8 +4,8 @@ use bota_proto::Fixed;
 
 use crate::game::rules;
 use crate::game::{
-    AbilityBook, Def, EntityAllocator, Growth, Health, Inventory, Level, Mana, StackKind, Stacks,
-    Stats, StatusKind, Statuses, Table, UnitDef, Upgrades,
+    AbilityBook, Def, EntityAllocator, Growth, Health, Inventory, Level, Mana, ModifierKind,
+    Modifiers, StackKind, Stacks, Stats, Table, UnitDef, Upgrades,
 };
 
 /// What working out stats reads and writes.
@@ -27,7 +27,7 @@ pub struct StatsCx<'a> {
     /// What each entity carries.
     pub inventory: &'a Table<Inventory>,
     /// What is on each entity.
-    pub statuses: &'a Table<Statuses>,
+    pub modifiers: &'a Table<Modifiers>,
     /// What each entity has learned, for what its passives are worth.
     pub abilities: &'a Table<AbilityBook>,
     /// What each entity has kept of the deaths around it.
@@ -54,7 +54,7 @@ pub fn derive_stats(cx: StatsCx<'_>) {
         level,
         upgrades,
         inventory,
-        statuses,
+        modifiers,
         abilities,
         stacks,
         stats,
@@ -99,53 +99,53 @@ pub fn derive_stats(cx: StatsCx<'_>) {
         // Every soul gathered is worth attack damage for as long as it is
         // held.
         now.damage += rules::DAMAGE_PER_SOUL * gathered.of(StackKind::Souls) as i32;
-        if let Some(on_it) = statuses.get(entity) {
-            for status in on_it.active() {
-                match status.kind {
-                    StatusKind::Haste { speed } => now.attack_speed += speed,
-                    StatusKind::Mending { per_tick, .. } => {
+        if let Some(on_it) = modifiers.get(entity) {
+            for held in on_it.active() {
+                match held.kind {
+                    ModifierKind::Haste { speed } => now.attack_speed += speed,
+                    ModifierKind::Mending { per_tick, .. } => {
                         now.hp_regen += Fixed::from_ratio(per_tick, 100);
                     }
-                    StatusKind::Clarity { per_tick, .. } => {
+                    ModifierKind::Clarity { per_tick, .. } => {
                         now.mana_regen += Fixed::from_ratio(per_tick, 100);
                     }
-                    StatusKind::Fountain {
+                    ModifierKind::Fountain {
                         hp_per_tick,
                         mana_per_tick,
                     } => {
                         now.hp_regen += Fixed::from_ratio(hp_per_tick, 100);
                         now.mana_regen += Fixed::from_ratio(mana_per_tick, 100);
                     }
-                    StatusKind::Slowed { pct } => {
+                    ModifierKind::Slowed { pct } => {
                         now.move_speed = scaled(now.move_speed, (100 - pct).clamp(0, 100));
                     }
-                    StatusKind::Hastened { pct } => {
+                    ModifierKind::Hastened { pct } => {
                         now.move_speed = scaled(now.move_speed, 100 + pct.max(0));
                     }
-                    StatusKind::ArmorBroken { armor } => {
+                    ModifierKind::ArmorBroken { armor } => {
                         now.armor -= Fixed::from_int(armor);
                     }
-                    StatusKind::Guarded {
+                    ModifierKind::Guarded {
                         armor,
                         hp_per_second,
                     } => {
                         now.armor += Fixed::from_int(armor);
                         now.hp_regen += per_second(hp_per_second);
                     }
-                    StatusKind::Inspired { hp_per_second } => {
+                    ModifierKind::Inspired { hp_per_second } => {
                         now.hp_regen += per_second(hp_per_second);
                     }
-                    StatusKind::Shielded => now.invulnerable = true,
-                    StatusKind::Phased => now.phased = true,
-                    // What holds a unit still and what burns it are read
-                    // where they are acted on, not here.
-                    StatusKind::Stunned
-                    | StatusKind::Burning { .. }
-                    | StatusKind::Shadowraze { .. } => {}
+                    ModifierKind::Shielded => now.invulnerable = true,
+                    ModifierKind::Phased => now.phased = true,
+                    // What holds a unit still, what burns it and what it
+                    // hands out are read where they are acted on, not here.
+                    ModifierKind::Stunned
+                    | ModifierKind::Burning { .. }
+                    | ModifierKind::Shadowraze { .. }
+                    | ModifierKind::Rot { .. } => {}
                 }
             }
         }
-        now.attack_interval = swing_interval(now.attack_interval, now.attack_speed);
         let before = stats.get(entity).copied();
         if let Some(hp) = health.get_mut(entity) {
             hp.hp = match before {
@@ -180,16 +180,6 @@ fn from_attributes(now: &mut Stats) {
     }
 }
 
-/// The wait between two attacks at a given attack speed.
-///
-/// Never shorter than a tick: two attacks in one tick is a swing that never
-/// happened.
-fn swing_interval(interval: u32, speed: i32) -> u32 {
-    let speed = speed.clamp(rules::MIN_ATTACK_SPEED, rules::MAX_ATTACK_SPEED);
-    let scaled = i64::from(interval) * i64::from(rules::BASE_ATTACK_SPEED) / i64::from(speed);
-    scaled.max(1) as u32
-}
-
 /// The plain form of a kind raised by `levels` levels and `steps` upgrades.
 fn raised(kind: &UnitDef, levels: i32, steps: i32) -> Stats {
     let gained = |g: &Growth, per: &Growth| Growth {
@@ -214,7 +204,7 @@ fn raised(kind: &UnitDef, levels: i32, steps: i32) -> Stats {
         damage_to_creeps: 0,
         attack_range: Fixed::from_int(kind.attack_range),
         acquisition: Fixed::from_int(kind.acquisition),
-        attack_interval: kind.attack_interval,
+        attack_time: kind.attack_time,
         attack_speed: rules::BASE_ATTACK_SPEED,
         attack_point: kind.attack_point,
         attack_backswing: kind.attack_backswing,

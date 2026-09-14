@@ -1,6 +1,6 @@
 use bota_proto::{Attribute, HeroId, ItemId, SlotId, Team, WorldView};
 
-use crate::game::{HitEffect, Inventory, ItemStack, Seat, StatusKind, rules};
+use crate::game::{HitEffect, Inventory, ItemStack, ModifierKind, Seat, rules};
 
 use super::fixtures::*;
 
@@ -29,10 +29,9 @@ fn mechanics_hash_distinguishes_stack_sources_but_public_effects_do_not() {
     land(&mut world, caster, target, 0);
     let before = world.hash();
     let public = effects(&world, target);
-    world.statuses.get_mut(target).unwrap().0[0].kind = StatusKind::Shadowraze {
-        from: other,
-        stacks: 1,
-    };
+    let held = &mut world.modifiers.get_mut(target).unwrap().0[0];
+    held.kind = ModifierKind::Shadowraze { stacks: 1 };
+    held.source = Some(other);
     assert_ne!(world.hash(), before);
     assert_eq!(effects(&world, target), public);
 }
@@ -46,9 +45,10 @@ fn mechanics_hash_includes_caster_generation_stack_count_and_ticks() {
     assert_eq!(returned.index(), caster.index());
     let mut before = world.hash();
     for (from, stacks, ticks) in [(returned, 1, 240), (returned, 2, 240), (returned, 2, 239)] {
-        let status = &mut world.statuses.get_mut(target).unwrap().0[0];
-        status.kind = StatusKind::Shadowraze { from, stacks };
-        status.ticks_left = ticks;
+        let held = &mut world.modifiers.get_mut(target).unwrap().0[0];
+        held.kind = ModifierKind::Shadowraze { stacks };
+        held.source = Some(from);
+        held.ticks_left = Some(ticks);
         let after = world.hash();
         assert_ne!(after, before);
         before = after;

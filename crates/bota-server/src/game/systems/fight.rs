@@ -29,13 +29,6 @@ impl World {
         at.pos.within(their_at.pos, stats.attack_range + hulls)
     }
 
-    /// Turns every swing that came due into a hit or a missile in the air.
-    ///
-    /// The cycle itself is worked out before this, by [`attacking_system`];
-    /// putting a missile in the world is a change of who exists, so it lives
-    /// here.
-    ///
-    /// [`attacking_system`]: crate::game::attacking_system
     /// Tells each side what it was near enough to feel.
     pub fn tell_of(&self, felt: &[crate::game::Landed], events: &mut Vec<Event>) {
         for blow in felt {
@@ -101,6 +94,7 @@ impl World {
         events: &mut Vec<Event>,
     ) -> Option<(UnitKind, Team)> {
         assert!(self.entities.contains(entity));
+        self.cancel_action(entity);
         self.carry_fights_on(entity);
         self.feed_flesh_heaps(entity);
         self.feed_souls(entity, killer);

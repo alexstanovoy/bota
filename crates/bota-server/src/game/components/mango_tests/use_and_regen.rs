@@ -41,7 +41,12 @@ fn use_restores_exactly_one_hundred_mana_and_spends_only_one_charge() {
     }
     assert_eq!(world.tick, tick);
     assert_eq!(world.health.get(hero).unwrap().hp, health);
-    assert!(world.statuses.get(hero).is_none());
+    assert!(
+        world
+            .modifiers
+            .get(hero)
+            .is_none_or(|on_it| on_it.0.is_empty())
+    );
     assert!(world.seats[0].item_clocks.is_empty());
     reject_use(&mut world, hero, 0, Target::None);
 }

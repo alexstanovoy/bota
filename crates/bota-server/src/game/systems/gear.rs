@@ -3,37 +3,27 @@
 use bota_proto::{AbilityId, Attribute, EventKind, Fixed, ItemId, SlotId, Target, Team, Vec2};
 
 use crate::game::{
-    AbilityBook, AbilityState, BAG_SLOTS, Carried, Entity, Inventory, ItemStack, ItemUse, Pool,
-    Status, StatusKind, World, hero_def, in_backpack, in_inventory, in_stash, item_def, wire_id,
+    AbilityBook, AbilityState, BAG_SLOTS, Carried, Entity, Inventory, ItemDef, ItemStack, Modifier,
+    ModifierKind, Pool, Spends, World, hero_def, in_backpack, in_inventory, in_stash, item_def,
+    wire_id,
 };
 use crate::game::{Event, EventVisibility, rules};
 use crate::game::{clamp_to_map, move_towards};
 
 /// What one drink of an item does, gathered so it travels as one thing.
-struct Mend {
+pub struct Mend {
     /// Which pool it mends.
-    pool: Pool,
+    pub pool: Pool,
     /// How much it mends over the whole of it.
-    total: i32,
+    pub total: i32,
     /// How long it runs.
-    ticks: u32,
+    pub ticks: u32,
     /// How far it reaches, in world units.
-    range: i32,
+    pub range: i32,
     /// Whether it takes a tree down to work.
-    eats_a_tree: bool,
+    pub eats_a_tree: bool,
     /// Whether a blow puts it out.
-    breaks: bool,
-}
-
-/// How many charges one use costs.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Spends {
-    /// None at all.
-    Nothing,
-    /// One of them.
-    One,
-    /// Every one it holds.
-    Everything,
+    pub breaks: bool,
 }
 
 /// Which of the slots held cover a list of parts, one slot to each part.
@@ -147,11 +137,13 @@ impl World {
                     stack.mute = stack.mute.saturating_sub(1);
                 }
             }
-            if let Some(on_it) = self.statuses.get_mut(entity) {
-                for status in on_it.0.iter_mut() {
-                    status.ticks_left = status.ticks_left.saturating_sub(1);
+            if let Some(on_it) = self.modifiers.get_mut(entity) {
+                for held in on_it.0.iter_mut() {
+                    if let Some(left) = held.ticks_left.as_mut() {
+                        *left = left.saturating_sub(1);
+                    }
                 }
-                on_it.0.retain(|status| status.ticks_left > 0);
+                on_it.0.retain(|held| held.ticks_left != Some(0));
             }
         }
         self.recycle_entity_snapshot(entities);
@@ -444,17 +436,26 @@ impl World {
         true
     }
 
-    /// Uses what sits in one of an entity's item slots.
+    /// What sits in one of an entity's item slots.
+    pub fn item_def_in(&self, entity: Entity, slot: usize) -> Option<&'static ItemDef> {
+        let stack = self.inventory.get(entity)?.slots.get(slot).copied()??;
+        item_def(stack.id)
+    }
+
+    /// Charges the stack in one of an entity's item slots holds.
+    pub fn charges_in(&self, entity: Entity, slot: usize) -> u8 {
+        self.inventory
+            .get(entity)
+            .and_then(|bag| bag.slots.get(slot).copied().flatten())
+            .map_or(0, |stack| stack.charges)
+    }
+
+    /// Runs one use of an item to the moment it has gone off: the checks,
+    /// the item's own work, and the cost.
     ///
     /// A use that does nothing spends nothing: the charge, the cooldown and
     /// the slot are only touched once whatever the item does has been done.
-    pub fn use_item(
-        &mut self,
-        entity: Entity,
-        slot: usize,
-        target: Target,
-        events: &mut Vec<Event>,
-    ) -> bool {
+    pub fn begin_item(&mut self, entity: Entity, slot: usize, target: Target) -> bool {
         let Some(bag) = self.inventory.get(entity) else {
             return false;
         };
@@ -467,15 +468,15 @@ impl World {
         let Some(def) = item_def(stack.id) else {
             return false;
         };
+        if def.aim.is_none() {
+            return false;
+        }
         if def.shared_wait && self.owes_wait(entity, stack.id) {
             return false;
         }
         if (def.charges > 0 || def.cast_charges > 0) && stack.charges == 0 {
             return false;
         }
-        let Some(active) = def.active else {
-            return false;
-        };
         if def.mana_cost > 0
             && self
                 .mana
@@ -484,52 +485,7 @@ impl World {
         {
             return false;
         }
-        let done = match active {
-            ItemUse::Mend {
-                pool,
-                total,
-                ticks,
-                range,
-                eats_a_tree,
-                breaks,
-            } => self.mend_with(
-                entity,
-                target,
-                Mend {
-                    pool,
-                    total,
-                    ticks,
-                    range,
-                    eats_a_tree,
-                    breaks,
-                },
-                events,
-            ),
-            ItemUse::Teleport { channel, range } => {
-                self.begin_teleport(entity, target, channel, range, slot)
-            }
-            ItemUse::Ward { def, ticks, range } => {
-                self.stand_ward(entity, target, def, ticks, range)
-            }
-            ItemUse::Fell { range } => self.fell_a_tree(entity, target, range),
-            ItemUse::Plant { ticks, range } => self.plant_a_tree(entity, target, ticks, range),
-            ItemUse::Restore {
-                hp_per_charge,
-                mana_per_charge,
-            } => self.restore_with(
-                entity,
-                i32::from(stack.charges) * hp_per_charge,
-                i32::from(stack.charges) * mana_per_charge,
-                events,
-            ),
-            ItemUse::ReplenishMana { amount } => {
-                self.replenish_mana(entity, target, amount, events)
-            }
-            ItemUse::Blink { range } => self.blink_to(entity, target, range),
-            ItemUse::Phase { pct, ticks } => self.walk_through(entity, pct, ticks),
-            ItemUse::Switch => self.switch_mode(entity, slot),
-        };
-        if !done {
+        if !(def.on_use)(self, entity, slot, target) {
             return false;
         }
         if def.mana_cost > 0
@@ -538,14 +494,6 @@ impl World {
             pool.mana -= Fixed::from_int(def.mana_cost);
         }
         let cooldown = if def.shared_wait { 0 } else { def.cooldown };
-        // A scroll is spent when it carries, which is the teleport's own
-        // business; everything else is spent the moment it is used.
-        let spends = match active {
-            ItemUse::Teleport { .. } | ItemUse::Switch => Spends::Nothing,
-            ItemUse::Restore { .. } => Spends::Everything,
-            _ if def.charges > 0 => Spends::One,
-            _ => Spends::Nothing,
-        };
         if def.shared_wait {
             self.owe_wait(entity, stack.id, def.cooldown);
         }
@@ -555,14 +503,14 @@ impl World {
         {
             stack.cooldown = cooldown;
             stack.touched = true;
-            stack.charges = match spends {
+            stack.charges = match def.spends {
                 Spends::Nothing => stack.charges,
                 Spends::One => stack.charges.saturating_sub(1),
-                Spends::Everything => 0,
+                Spends::All => 0,
             };
             // What gains charges again is kept when the last one goes;
             // what does not is gone with it.
-            if stack.charges == 0 && def.cast_charges == 0 && spends != Spends::Nothing {
+            if stack.charges == 0 && def.cast_charges == 0 && def.spends != Spends::Nothing {
                 *held = None;
             }
         }
@@ -583,13 +531,7 @@ impl World {
     }
 
     /// Restores up to `amount` mana immediately; an ineffective use changes nothing.
-    fn replenish_mana(
-        &mut self,
-        user: Entity,
-        target: Target,
-        amount: i32,
-        events: &mut Vec<Event>,
-    ) -> bool {
+    pub fn replenish_mana(&mut self, user: Entity, target: Target, amount: i32) -> bool {
         assert!(amount > 0);
         if !self.can_replenish_mana(user, target) {
             return false;
@@ -608,7 +550,7 @@ impl World {
         if restored > 0 {
             let at = self.transform.get(user).map_or(Vec2::ZERO, |t| t.pos);
             let side = self.team.get(user).copied().unwrap_or(Team::Neutral);
-            events.push(Event {
+            self.events.push(Event {
                 kind: EventKind::Healed {
                     source: Some(wire_id(user)),
                     target: wire_id(user),
@@ -622,7 +564,7 @@ impl World {
     }
 
     /// Mends whoever used an item, at once.
-    fn restore_with(&mut self, on: Entity, hp: i32, mana: i32, events: &mut Vec<Event>) -> bool {
+    pub fn restore_with(&mut self, on: Entity, hp: i32, mana: i32) -> bool {
         if hp <= 0 && mana <= 0 {
             return false;
         }
@@ -646,7 +588,7 @@ impl World {
         if restored > 0 || refilled > 0 {
             let at = self.transform.get(on).map_or(Vec2::ZERO, |t| t.pos);
             let side = self.team.get(on).copied().unwrap_or(Team::Neutral);
-            events.push(Event {
+            self.events.push(Event {
                 kind: EventKind::Healed {
                     source: Some(wire_id(on)),
                     target: wire_id(on),
@@ -660,22 +602,28 @@ impl World {
     }
 
     /// Walks whoever used an item faster, and through whatever is in the way.
-    fn walk_through(&mut self, user: Entity, pct: i32, ticks: u32) -> bool {
-        let mut on_it = self.statuses.remove(user).unwrap_or_default();
-        on_it.put(Status {
-            kind: StatusKind::Hastened { pct },
-            ticks_left: ticks,
-        });
-        on_it.put(Status {
-            kind: StatusKind::Phased,
-            ticks_left: ticks,
-        });
-        self.statuses.insert(user, on_it);
+    pub fn walk_through(&mut self, user: Entity, pct: i32, ticks: u32) -> bool {
+        self.put_modifier(
+            user,
+            Modifier {
+                kind: ModifierKind::Hastened { pct },
+                source: Some(user),
+                ticks_left: Some(ticks),
+            },
+        );
+        self.put_modifier(
+            user,
+            Modifier {
+                kind: ModifierKind::Phased,
+                source: Some(user),
+                ticks_left: Some(ticks),
+            },
+        );
         true
     }
 
     /// Sets what sits in a slot to the attribute after the one it is on.
-    fn switch_mode(&mut self, user: Entity, slot: usize) -> bool {
+    pub fn switch_mode(&mut self, user: Entity, slot: usize) -> bool {
         let Some(bag) = self.inventory.get_mut(user) else {
             return false;
         };
@@ -716,13 +664,7 @@ impl World {
     ///
     /// It reaches one of its user's own side, standing within `range`. Aimed
     /// at nothing at all, it lands on the one who used it.
-    fn mend_with(
-        &mut self,
-        user: Entity,
-        target: Target,
-        drink: Mend,
-        events: &mut Vec<Event>,
-    ) -> bool {
+    pub fn mend_with(&mut self, user: Entity, target: Target, drink: Mend) -> bool {
         let Mend {
             pool,
             total,
@@ -768,21 +710,17 @@ impl World {
             self.lay_passability();
         }
         let per_tick = total * 100 / ticks.max(1) as i32;
-        let put = Status {
-            kind: match pool {
-                Pool::Health => StatusKind::Mending { per_tick, breaks },
-                Pool::Mana => StatusKind::Clarity { per_tick, breaks },
+        self.put_modifier(
+            on,
+            Modifier {
+                kind: match pool {
+                    Pool::Health => ModifierKind::Mending { per_tick, breaks },
+                    Pool::Mana => ModifierKind::Clarity { per_tick, breaks },
+                },
+                source: Some(user),
+                ticks_left: Some(ticks),
             },
-            ticks_left: ticks,
-        };
-        match self.statuses.get_mut(on) {
-            Some(on_it) => on_it.put(put),
-            None => {
-                let mut on_it = crate::game::Statuses::default();
-                on_it.put(put);
-                self.statuses.insert(on, on_it);
-            }
-        }
+        );
         // The mending is told of as it begins, worth what was missing and no
         // more than it holds. A mend broken early has still been told in
         // full.
@@ -808,7 +746,7 @@ impl World {
         };
         if amount > 0 || mana > 0 {
             let side = self.team.get(on).copied().unwrap_or(Team::Neutral);
-            events.push(Event {
+            self.events.push(Event {
                 kind: EventKind::Healed {
                     source: Some(wire_id(user)),
                     target: wire_id(on),
@@ -1062,7 +1000,7 @@ impl World {
     /// the same line. A landing spot on closed ground steps back along that
     /// line until it finds open ground, and the blink fails when it finds
     /// none.
-    fn blink_to(&mut self, user: Entity, target: Target, range: i32) -> bool {
+    pub fn blink_to(&mut self, user: Entity, target: Target, range: i32) -> bool {
         let Target::Pos(pos) = target else {
             return false;
         };
@@ -1121,7 +1059,7 @@ impl World {
     }
 
     /// Takes down the tree an item was aimed at.
-    fn fell_a_tree(&mut self, user: Entity, target: Target, range: i32) -> bool {
+    pub fn fell_a_tree(&mut self, user: Entity, target: Target, range: i32) -> bool {
         let Some(tree) = self.reach_a_tree(user, target, range) else {
             return false;
         };
@@ -1132,7 +1070,7 @@ impl World {
     }
 
     /// Puts a tree up where an item was aimed, on ground that has none.
-    fn plant_a_tree(&mut self, user: Entity, target: Target, ticks: u32, range: i32) -> bool {
+    pub fn plant_a_tree(&mut self, user: Entity, target: Target, ticks: u32, range: i32) -> bool {
         let Target::Pos(pos) = target else {
             return false;
         };

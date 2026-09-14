@@ -5,7 +5,7 @@ use bota_proto::{AbilityId, DamageKind, Fixed};
 
 use crate::engine::Entity;
 use crate::game::{
-    Hit, HitEffect, StackKind, Status, StatusKind, World, ability, heading_of, leaves_a_death,
+    Hit, HitEffect, Modifier, ModifierKind, StackKind, World, ability, heading_of, leaves_a_death,
     point_along, rules,
 };
 
@@ -84,14 +84,16 @@ impl World {
             .collect();
         for mark in struck {
             self.push_hit(Some(caster), mark, damage, DamageKind::Magical);
-            let mut on_it = self.statuses.remove(mark).unwrap_or_default();
-            on_it.put(Status {
-                kind: StatusKind::Slowed {
-                    pct: rules::REQUIEM_SLOW_PCT[level],
+            self.put_modifier(
+                mark,
+                Modifier {
+                    kind: ModifierKind::Slowed {
+                        pct: rules::REQUIEM_SLOW_PCT[level],
+                    },
+                    source: Some(caster),
+                    ticks_left: Some(rules::REQUIEM_SLOW_TICKS),
                 },
-                ticks_left: rules::REQUIEM_SLOW_TICKS,
-            });
-            self.statuses.insert(mark, on_it);
+            );
         }
         true
     }
@@ -130,14 +132,16 @@ impl World {
                 })
                 .collect();
             for mark in struck {
-                let mut on_it = self.statuses.remove(mark).unwrap_or_default();
-                on_it.put(Status {
-                    kind: StatusKind::ArmorBroken {
-                        armor: rules::PRESENCE_ARMOR[usize::from(level - 1)],
+                self.put_modifier(
+                    mark,
+                    Modifier {
+                        kind: ModifierKind::ArmorBroken {
+                            armor: rules::PRESENCE_ARMOR[usize::from(level - 1)],
+                        },
+                        source: Some(carrier),
+                        ticks_left: Some(rules::PRESENCE_LINGER_TICKS),
                     },
-                    ticks_left: rules::PRESENCE_LINGER_TICKS,
-                });
-                self.statuses.insert(mark, on_it);
+                );
             }
         }
     }

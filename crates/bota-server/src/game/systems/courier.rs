@@ -3,7 +3,7 @@
 use bota_proto::{Team, Vec2};
 
 use crate::engine::Entity;
-use crate::game::{COURIER, Errand, Inventory, Status, StatusKind, UnitOrder, World, rules};
+use crate::game::{Errand, Inventory, Modifier, ModifierKind, UnitOrder, World, rules};
 
 impl World {
     /// Stands a courier up for one seat at its own fountain.
@@ -14,34 +14,12 @@ impl World {
         ) else {
             return;
         };
-        let courier = self.spawn_unit(&COURIER, side, at);
         // What the last courier carried when it fell comes back aboard.
         let load = self.seats[seat]
             .courier_kept
             .take()
             .unwrap_or_else(|| Inventory::empty(rules::INVENTORY_SLOTS));
-        self.inventory.insert(courier, load);
-        self.owner.insert(courier, self.seats[seat].slot);
-        self.abilities.insert(
-            courier,
-            crate::game::AbilityBook {
-                slots: [
-                    crate::game::ability::TAKE_STASH,
-                    crate::game::ability::RETURN_ITEMS,
-                    crate::game::ability::BURST,
-                    crate::game::ability::DELIVER,
-                    crate::game::ability::SHIELD,
-                ]
-                .into_iter()
-                .map(|id| crate::game::AbilityState {
-                    id,
-                    level: 1,
-                    cooldown: 0,
-                })
-                .collect(),
-            },
-        );
-        self.errand.insert(courier, Errand::None);
+        let courier = self.spawn_courier(side, at, self.seats[seat].slot, load);
         self.seats[seat].courier = Some(courier);
         self.seats[seat].courier_left = 0;
     }
@@ -77,21 +55,23 @@ impl World {
 
     /// Makes a courier fly faster for a while.
     pub fn courier_burst(&mut self, courier: Entity) -> bool {
-        if self.statuses.get(courier).is_some_and(|on_it| {
+        if self.modifiers.get(courier).is_some_and(|on_it| {
             on_it
                 .active()
-                .any(|status| matches!(status.kind, StatusKind::Hastened { .. }))
+                .any(|held| matches!(held.kind, ModifierKind::Hastened { .. }))
         }) {
             return false;
         }
-        let mut on_it = self.statuses.remove(courier).unwrap_or_default();
-        on_it.put(Status {
-            kind: StatusKind::Hastened {
-                pct: rules::COURIER_BURST_PCT,
+        self.put_modifier(
+            courier,
+            Modifier {
+                kind: ModifierKind::Hastened {
+                    pct: rules::COURIER_BURST_PCT,
+                },
+                source: Some(courier),
+                ticks_left: Some(rules::COURIER_BURST_TICKS),
             },
-            ticks_left: rules::COURIER_BURST_TICKS,
-        });
-        self.statuses.insert(courier, on_it);
+        );
         true
     }
 
@@ -127,12 +107,14 @@ impl World {
         if self.seat_of_courier(courier).is_none() {
             return false;
         }
-        let mut on_it = self.statuses.remove(courier).unwrap_or_default();
-        on_it.put(Status {
-            kind: StatusKind::Shielded,
-            ticks_left: rules::COURIER_SHIELD_TICKS,
-        });
-        self.statuses.insert(courier, on_it);
+        self.put_modifier(
+            courier,
+            Modifier {
+                kind: ModifierKind::Shielded,
+                source: Some(courier),
+                ticks_left: Some(rules::COURIER_SHIELD_TICKS),
+            },
+        );
         true
     }
 

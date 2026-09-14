@@ -5,8 +5,8 @@ use bota_proto::{Attributes, Fixed, Team};
 use crate::game::rules;
 use crate::game::{
     AbilityBook, AbilityState, Def, Entity, EntityAllocator, FLAGBEARER_CREEP, HERO, Health,
-    Inventory, ItemStack, Level, MELEE_CREEP, Mana, NEUTRALS, NeutralKind, RANGED_CREEP, StackKind,
-    Stats, Status, StatusKind, Statuses, Table, UnitDef, Upgrades, Visibility, World,
+    Inventory, ItemStack, Level, MELEE_CREEP, Mana, Modifier, ModifierKind, Modifiers, NEUTRALS,
+    NeutralKind, RANGED_CREEP, StackKind, Stats, Table, UnitDef, Upgrades, Visibility, World,
 };
 
 #[test]
@@ -131,7 +131,7 @@ fn stats() -> Stats {
         damage: 0,
         attack_range: Fixed::ZERO,
         acquisition: Fixed::ZERO,
-        attack_interval: 30,
+        attack_time: 1000,
         attack_speed: 100,
         attributes: Attributes::ZERO,
         primary: None,
@@ -321,6 +321,7 @@ fn plain_creep(world: &mut World) -> Entity {
     let creep = world.spawn();
     world.def.insert(creep, Def(&MELEE_CREEP));
     world.health.insert(creep, Health { hp: Fixed::ZERO });
+    world.modifiers.insert(creep, Modifiers(Vec::new()));
     creep
 }
 
@@ -333,7 +334,7 @@ fn a_plain_creep_gets_the_numbers_of_its_kind() {
     assert_eq!(stats.max_hp, Fixed::from_int(rules::MELEE_CREEP_HP));
     assert_eq!(stats.damage, rules::MELEE_CREEP_ATTACK_DAMAGE);
     assert_eq!(stats.armor, Fixed::from_int(rules::MELEE_CREEP_ARMOR));
-    assert_eq!(stats.attack_interval, rules::CREEP_ATTACK_INTERVAL);
+    assert_eq!(stats.attack_time, rules::CREEP_ATTACK_TIME);
     assert_eq!(stats.projectile_speed, None, "a melee creep throws nothing");
 }
 
@@ -485,23 +486,24 @@ fn levels_raise_a_hero() {
 fn haste_shortens_the_wait_between_attacks_while_it_lasts() {
     let mut world = World::new();
     let creep = plain_creep(&mut world);
-    world.statuses.insert(
+    world.modifiers.insert(
         creep,
-        Statuses(vec![Status {
-            kind: StatusKind::Haste { speed: 40 },
-            ticks_left: 5,
+        Modifiers(vec![Modifier {
+            kind: ModifierKind::Haste { speed: 40 },
+            source: None,
+            ticks_left: Some(5),
         }]),
     );
     world.step();
     assert_eq!(
-        world.stats.get(creep).map(|s| s.attack_interval),
-        Some(rules::CREEP_ATTACK_INTERVAL * 100 / 140)
+        world.stats.get(creep).map(|s| s.attack_speed),
+        Some(rules::BASE_ATTACK_SPEED + 40)
     );
-    world.statuses.insert(creep, Statuses(Vec::new()));
+    world.modifiers.insert(creep, Modifiers(Vec::new()));
     world.step();
     assert_eq!(
-        world.stats.get(creep).map(|s| s.attack_interval),
-        Some(rules::CREEP_ATTACK_INTERVAL),
+        world.stats.get(creep).map(|s| s.attack_speed),
+        Some(rules::BASE_ATTACK_SPEED),
         "what is worked out afresh forgets what has lifted"
     );
 }
@@ -510,14 +512,15 @@ fn haste_shortens_the_wait_between_attacks_while_it_lasts() {
 fn mending_adds_to_what_a_kind_regenerates() {
     let mut world = World::new();
     let creep = plain_creep(&mut world);
-    world.statuses.insert(
+    world.modifiers.insert(
         creep,
-        Statuses(vec![Status {
-            kind: StatusKind::Mending {
+        Modifiers(vec![Modifier {
+            kind: ModifierKind::Mending {
                 per_tick: 25,
                 breaks: false,
             },
-            ticks_left: 5,
+            source: None,
+            ticks_left: Some(5),
         }]),
     );
     world.step();
@@ -698,6 +701,7 @@ fn an_order_to_walk_moves_a_body_and_turns_it_first() {
                 pos: bota_proto::Vec2::from_ints(0, 1000),
             },
             cooldown: 0,
+            pending: None,
         },
     );
     // Facing east and sent west: it turns before it takes a step.
@@ -1174,6 +1178,7 @@ fn a_body_does_not_walk_through_a_building() {
                 pos: tower + bota_proto::Vec2::from_ints(400, 0),
             },
             cooldown: 0,
+            pending: None,
         },
     );
     let mut nearest = i64::MAX;
@@ -1651,10 +1656,7 @@ fn what_a_hero_carries_shows_up_in_its_stats() {
 
 /// How long the salve mends for.
 fn salve_ticks() -> u32 {
-    match crate::game::ITEMS[usize::from(crate::game::ITEM_HEALING_SALVE)].active {
-        Some(crate::game::ItemUse::Mend { ticks, .. }) => ticks,
-        _ => panic!("the salve mends"),
-    }
+    crate::game::SALVE_TICKS
 }
 
 #[test]
@@ -2246,10 +2248,10 @@ fn frenzy_puts_haste_on_its_caster_and_spends_the_mana() {
     let mut world = World::new();
     let hero = caster(&mut world, bota_proto::Vec2::from_ints(5000, 5000), 1);
     let full = world.mana.get(hero).expect("has mana").mana;
-    let plain = world.stats.get(hero).expect("settled").attack_interval;
+    let plain = world.stats.get(hero).expect("settled").attack_speed;
     world.order_cast(
         hero,
-        crate::game::PendingCast {
+        crate::game::PendingCast::Ability {
             slot: bota_proto::AbilitySlot(1),
             target: bota_proto::Target::None,
         },
@@ -2263,7 +2265,7 @@ fn frenzy_puts_haste_on_its_caster_and_spends_the_mana() {
     // from the tick after.
     world.step();
     assert!(
-        world.stats.get(hero).expect("settled").attack_interval < plain,
+        world.stats.get(hero).expect("settled").attack_speed > plain,
         "and it swings faster while the haste holds"
     );
     assert!(
@@ -2281,7 +2283,7 @@ fn a_cast_with_no_mana_behind_it_does_nothing() {
     }
     world.order_cast(
         hero,
-        crate::game::PendingCast {
+        crate::game::PendingCast::Ability {
             slot: bota_proto::AbilitySlot(1),
             target: bota_proto::Target::None,
         },
@@ -2325,7 +2327,7 @@ fn a_multishot_strikes_everything_around_and_leaves_allies_be() {
     );
     world.order_cast(
         hero,
-        crate::game::PendingCast {
+        crate::game::PendingCast::Ability {
             slot: bota_proto::AbilitySlot(3),
             target: bota_proto::Target::None,
         },
@@ -2597,22 +2599,34 @@ fn a_missile_is_seen_from_the_tick_it_is_thrown() {
 
 /// Runs one tick of the attack cycle and nothing else.
 fn swing_once(world: &mut World) {
-    crate::game::attacking_system(crate::game::AttackCx {
-        entities: &mut world.entities,
-        transform: &mut world.transform,
-        hull: &world.hull,
-        ground: &world.ground,
-        kind: &world.kind,
-        team: &mut world.team,
-        health: &world.health,
-        stats: &world.stats,
-        visibility: &mut world.visibility,
-        target: &world.target,
-        statuses: &world.statuses,
-        attacking: &mut world.attacking,
-        hits: &mut world.hits,
-        projectile: &mut world.projectile,
-    });
+    world.run_actions();
+}
+
+/// Who an entity is mid-swing at, if it is mid-swing at all.
+fn swinging(world: &World, entity: Entity) -> Option<Entity> {
+    match world.action.get(entity).map(|action| action.state) {
+        Some(crate::game::ActionState::Attack {
+            target,
+            phase: crate::game::ActionPhase::Before { .. },
+        }) => Some(target),
+        _ => None,
+    }
+}
+
+/// Whether an entity is recovering from a swing that landed.
+fn recovering(world: &World, entity: Entity) -> bool {
+    matches!(
+        world.action.get(entity).map(|action| action.state),
+        Some(crate::game::ActionState::Attack {
+            phase: crate::game::ActionPhase::After { .. },
+            ..
+        })
+    )
+}
+
+/// The tick a span of milliseconds is crossed on at the base attack speed.
+fn ticks_of(ms: u32) -> u32 {
+    (ms * rules::TICKS_PER_SECOND).div_ceil(1000)
 }
 
 /// An attacker and its mark, standing where they are put and nothing else.
@@ -2639,7 +2653,7 @@ fn a_swing_waits_on_the_angle_it_is_looking_at() {
     }
     swing_once(&mut world);
     assert_eq!(
-        world.attacking.get(attacker).and_then(|a| a.windup),
+        swinging(&world, attacker),
         None,
         "nothing begins while it is looking the other way"
     );
@@ -2649,11 +2663,7 @@ fn a_swing_waits_on_the_angle_it_is_looking_at() {
     }
     swing_once(&mut world);
     assert!(
-        world
-            .attacking
-            .get(attacker)
-            .and_then(|a| a.windup)
-            .is_some(),
+        swinging(&world, attacker).is_some(),
         "and begins once it is"
     );
 }
@@ -2667,7 +2677,7 @@ fn a_swing_waits_on_being_able_to_see_at_all() {
     }
     swing_once(&mut world);
     assert_eq!(
-        world.attacking.get(attacker).and_then(|a| a.windup),
+        swinging(&world, attacker),
         None,
         "what a side has no eyes on it does not swing at"
     );
@@ -2678,11 +2688,7 @@ fn a_swing_waits_on_reach() {
     let (mut world, attacker, mark) = duel(600);
     world.set_target(attacker, mark);
     swing_once(&mut world);
-    assert_eq!(
-        world.attacking.get(attacker).and_then(|a| a.windup),
-        None,
-        "too far to touch"
-    );
+    assert_eq!(swinging(&world, attacker), None, "too far to touch");
 }
 
 #[test]
@@ -2696,18 +2702,11 @@ fn a_swing_lands_on_whoever_it_began_against() {
     world.settle();
     world.set_target(attacker, mark);
     world.step();
-    assert!(
-        world
-            .attacking
-            .get(attacker)
-            .and_then(|a| a.windup)
-            .is_some(),
-        "the swing began"
-    );
+    assert!(swinging(&world, attacker).is_some(), "the swing began");
     // Set on somebody else halfway through.
     world.set_target(attacker, other);
     let was = world.health.get(mark).expect("standing").hp;
-    for _ in 0..rules::MELEE_CREEP_ATTACK_POINT + 1 {
+    for _ in 0..ticks_of(rules::MELEE_CREEP_ATTACK_POINT) + 1 {
         world.step();
     }
     assert!(
@@ -2740,6 +2739,7 @@ fn a_hero_told_to_attack_comes_round_and_closes() {
                 last_seen: bota_proto::Vec2::from_ints(4000, 5000),
             },
             cooldown: 0,
+            pending: None,
         },
     );
     let start = world.transform.get(hero).expect("standing").pos;
@@ -2756,17 +2756,13 @@ fn a_swing_that_began_still_connects_a_little_past_reach() {
     world.set_target(attacker, mark);
     world.step();
     assert!(
-        world
-            .attacking
-            .get(attacker)
-            .and_then(|a| a.windup)
-            .is_some(),
+        swinging(&world, attacker).is_some(),
         "the swing began in reach"
     );
     // Backs off by less than the leeway while the swing is under way.
     let just_out = rules::MELEE_CREEP_ATTACK_RANGE + 60;
     let was = world.health.get(mark).expect("standing").hp;
-    for _ in 0..rules::MELEE_CREEP_ATTACK_POINT + 1 {
+    for _ in 0..ticks_of(rules::MELEE_CREEP_ATTACK_POINT) + 1 {
         if let Some(at) = world.transform.get_mut(mark) {
             at.pos = bota_proto::Vec2::from_ints(5000 + just_out, 5000);
         }
@@ -2784,11 +2780,7 @@ fn a_swing_is_given_up_when_the_target_gets_away() {
     world.set_target(attacker, mark);
     world.step();
     assert!(
-        world
-            .attacking
-            .get(attacker)
-            .and_then(|a| a.windup)
-            .is_some(),
+        swinging(&world, attacker).is_some(),
         "the swing began in reach"
     );
     let far = rules::MELEE_CREEP_ATTACK_RANGE + rules::ATTACK_RANGE_LEEWAY + 200;
@@ -2798,12 +2790,12 @@ fn a_swing_is_given_up_when_the_target_gets_away() {
     }
     world.step();
     assert_eq!(
-        world.attacking.get(attacker).and_then(|a| a.windup),
+        swinging(&world, attacker),
         None,
         "the swing is given up the moment it gets away"
     );
     assert_eq!(
-        world.attacking.get(attacker).map(|a| a.cooldown),
+        world.action.get(attacker).map(|a| a.attack_cooldown),
         Some(0),
         "and costs nothing, so the next one may start at once"
     );
@@ -2819,17 +2811,11 @@ fn a_swing_is_given_up_when_the_target_falls() {
     let (mut world, attacker, mark) = duel(100);
     world.set_target(attacker, mark);
     world.step();
-    assert!(
-        world
-            .attacking
-            .get(attacker)
-            .and_then(|a| a.windup)
-            .is_some()
-    );
+    assert!(swinging(&world, attacker).is_some());
     world.health.insert(mark, Health { hp: Fixed::ZERO });
     world.step();
     assert_eq!(
-        world.attacking.get(attacker).and_then(|a| a.windup),
+        swinging(&world, attacker),
         None,
         "there is nothing left to strike"
     );
@@ -2840,20 +2826,14 @@ fn a_swing_is_given_up_when_the_target_is_lost_from_sight() {
     let (mut world, attacker, mark) = duel(100);
     world.set_target(attacker, mark);
     world.step();
-    assert!(
-        world
-            .attacking
-            .get(attacker)
-            .and_then(|a| a.windup)
-            .is_some()
-    );
+    assert!(swinging(&world, attacker).is_some());
     // Blinded to it, the way stepping into fog would.
     if let Some(seen) = world.visibility.get_mut(mark) {
         seen.clear();
     }
     swing_once(&mut world);
     assert_eq!(
-        world.attacking.get(attacker).and_then(|a| a.windup),
+        swinging(&world, attacker),
         None,
         "it does not finish a swing at what it can no longer see"
     );
@@ -3089,6 +3069,7 @@ fn hero_past_an_enemy(order: crate::game::UnitOrder) -> (World, Entity, Entity) 
         crate::game::Orders {
             current: order,
             cooldown: 0,
+            pending: None,
         },
     );
     (world, hero, enemy)
@@ -3532,6 +3513,7 @@ fn a_hero_putting_out_its_own_is_taken_on_last() {
                 last_seen: bota_proto::Vec2::from_ints(5400, 5000),
             },
             cooldown: 0,
+            pending: None,
         },
     );
     assert_eq!(
@@ -3972,20 +3954,13 @@ fn an_order_to_break_off_gives_up_a_swing_that_has_not_landed() {
     let (mut world, hero, theirs, _ours, _foe) = a_lane_with_a_hero(150);
     attack_click(&mut world, theirs);
     for _ in 0..60 {
-        if world
-            .attacking
-            .get(hero)
-            .is_some_and(|state| state.windup.is_some())
-        {
+        if swinging(&world, hero).is_some() {
             break;
         }
         world.advance(&[]);
     }
     assert!(
-        world
-            .attacking
-            .get(hero)
-            .is_some_and(|state| state.windup.is_some()),
+        swinging(&world, hero).is_some(),
         "the hero should be mid-swing by now"
     );
     world.advance(&[crate::game::Command {
@@ -3995,9 +3970,13 @@ fn an_order_to_break_off_gives_up_a_swing_that_has_not_landed() {
             target: bota_proto::Target::None,
         },
     }]);
-    let state = world.attacking.get(hero).copied().expect("attacking");
-    assert!(state.windup.is_none(), "the swing is given up");
-    assert_eq!(state.cooldown, 0, "and nothing was spent on it");
+    let action = world.action.get(hero).copied().expect("acting");
+    assert_eq!(
+        action.state,
+        crate::game::ActionState::Ready,
+        "the swing is given up"
+    );
+    assert_eq!(action.attack_cooldown, 0, "and nothing was spent on it");
 }
 
 #[test]
@@ -4005,21 +3984,17 @@ fn an_order_after_a_swing_lands_does_not_hurry_the_next_one() {
     let (mut world, hero, theirs, _ours, _foe) = a_lane_with_a_hero(150);
     attack_click(&mut world, theirs);
     for _ in 0..120 {
-        if world
-            .attacking
-            .get(hero)
-            .is_some_and(|state| state.recovering > 0)
-        {
+        if recovering(&world, hero) {
             break;
         }
         world.advance(&[]);
     }
     let before = world
-        .attacking
+        .action
         .get(hero)
         .copied()
-        .expect("attacking")
-        .cooldown;
+        .expect("acting")
+        .attack_cooldown;
     assert!(
         before > 0,
         "the swing that landed spent the wait for the next"
@@ -4031,11 +4006,11 @@ fn an_order_after_a_swing_lands_does_not_hurry_the_next_one() {
             target: bota_proto::Target::None,
         },
     }]);
-    let state = world.attacking.get(hero).copied().expect("attacking");
-    assert_eq!(state.recovering, 0, "the recovery is cancelled");
+    assert!(!recovering(&world, hero), "the recovery is cancelled");
+    let gain = crate::game::attack_gain(world.stats.get(hero).expect("settled").attack_speed);
     assert_eq!(
-        state.cooldown,
-        before - 1,
+        world.action.get(hero).expect("acting").attack_cooldown,
+        before - gain,
         "but the wait for the next swing runs on"
     );
 }
@@ -4070,20 +4045,25 @@ fn a_hero_stands_up_beside_its_fountain_at_the_start_of_a_match() {
 }
 
 /// The effect a fountain hands out.
-const FOUNTAIN_EFFECT: crate::game::StatusKind = crate::game::StatusKind::Fountain {
+const FOUNTAIN_EFFECT: crate::game::ModifierKind = crate::game::ModifierKind::Fountain {
     hp_per_tick: rules::FOUNTAIN_HEAL_HP_PER_TICK * 100,
     mana_per_tick: rules::FOUNTAIN_HEAL_MANA_PER_TICK * 100,
 };
 
 /// Whether a unit carries an effect of one kind right now, whatever there is
 /// of it.
-fn carries(world: &World, entity: Entity, kind: crate::game::StatusKind) -> bool {
+fn carries(world: &World, entity: Entity, kind: crate::game::ModifierKind) -> bool {
     let same = std::mem::discriminant(&kind);
-    world.statuses.get(entity).is_some_and(|on_it| {
+    world.modifiers.get(entity).is_some_and(|on_it| {
         on_it
             .active()
-            .any(|status| std::mem::discriminant(&status.kind) == same)
+            .any(|held| std::mem::discriminant(&held.kind) == same)
     })
+}
+
+/// Whether a unit has its rot switched on.
+fn rotting(world: &World, entity: Entity) -> bool {
+    carries(world, entity, crate::game::ModifierKind::Rot { level: 0 })
 }
 
 #[test]
@@ -4124,13 +4104,13 @@ fn a_fountain_hands_out_mending_to_whoever_stands_in_it() {
 }
 
 /// A tower's protection, whatever tier hands it out.
-const GUARDED_EFFECT: crate::game::StatusKind = crate::game::StatusKind::Guarded {
+const GUARDED_EFFECT: crate::game::ModifierKind = crate::game::ModifierKind::Guarded {
     armor: rules::TOWER_AURA_ARMOR[0],
     hp_per_second: rules::TOWER_AURA_REGEN[0],
 };
 
 /// A flagbearer's inspiration.
-const INSPIRED_EFFECT: crate::game::StatusKind = crate::game::StatusKind::Inspired {
+const INSPIRED_EFFECT: crate::game::ModifierKind = crate::game::ModifierKind::Inspired {
     hp_per_second: rules::FLAGBEARER_AURA_REGEN,
 };
 
@@ -4561,9 +4541,15 @@ fn a_scroll_carries_its_user_once_the_channel_runs_out() {
         world.inventory.get(hero).expect("has a bag").slots[0].is_some(),
         "and the scroll is not spent yet"
     );
-    for _ in 0..90 {
+    for _ in 0..88 {
         world.step();
     }
+    assert_eq!(
+        world.transform.get(hero).map(|t| t.pos),
+        Some(from),
+        "and one tick short of the channel it has not moved"
+    );
+    world.step();
     assert_eq!(
         world.transform.get(hero).map(|t| t.pos),
         Some(to),
@@ -5034,9 +5020,9 @@ fn a_drink_may_be_aimed_at_the_one_drinking_it() {
             "item {item} may be drunk by whoever holds it"
         );
         assert!(
-            world.statuses.get(hero).is_some_and(|on_it| on_it
+            world.modifiers.get(hero).is_some_and(|on_it| on_it
                 .active()
-                .any(|status| !matches!(status.kind, crate::game::StatusKind::Fountain { .. }))),
+                .any(|held| !matches!(held.kind, crate::game::ModifierKind::Fountain { .. }))),
             "item {item} leaves its effect on the one who drank it"
         );
     }
@@ -5143,7 +5129,7 @@ fn a_tango_eats_a_tree_and_without_one_eats_nothing() {
         carries(
             &world,
             hero,
-            crate::game::StatusKind::Mending {
+            crate::game::ModifierKind::Mending {
                 per_tick: 0,
                 breaks: false
             }
@@ -5186,7 +5172,9 @@ fn a_branch_puts_a_tree_up_and_eating_that_one_feeds_twice_as_long() {
 
 /// How long a tango eaten off the tree at a spot mends for.
 fn tango_ticks(world: &mut World, hero: Entity, at: bota_proto::Vec2) -> u32 {
-    world.statuses.remove(hero);
+    world
+        .modifiers
+        .insert(hero, crate::game::Modifiers(Vec::new()));
     if let Some(bag) = world.inventory.get_mut(hero) {
         bag.slots[1] = Some(crate::game::ItemStack {
             id: bota_proto::ItemId(crate::game::ITEM_TANGO),
@@ -5202,13 +5190,14 @@ fn tango_ticks(world: &mut World, hero: Entity, at: bota_proto::Vec2) -> u32 {
     }
     assert!(world.use_item(hero, 1, bota_proto::Target::Pos(at), &mut Vec::new()));
     world
-        .statuses
+        .modifiers
         .get(hero)
         .expect("it mends")
         .active()
-        .find(|status| matches!(status.kind, crate::game::StatusKind::Mending { .. }))
+        .find(|held| matches!(held.kind, crate::game::ModifierKind::Mending { .. }))
         .expect("of health")
         .ticks_left
+        .expect("for a while")
 }
 
 #[test]
@@ -5243,10 +5232,9 @@ fn a_blade_cannot_reach_a_tree_it_was_pointed_at_from_far_off() {
 /// What one swing of an entity takes off another, run to the blow itself.
 fn one_swing_takes(world: &mut World, from: Entity, on: Entity) -> i32 {
     world.set_target(from, on);
-    if let Some(state) = world.attacking.get_mut(from) {
-        state.cooldown = 0;
-        state.windup = None;
-        state.recovering = 0;
+    if let Some(action) = world.action.get_mut(from) {
+        action.state = crate::game::ActionState::Ready;
+        action.attack_cooldown = 0;
     }
     let before = world.health.get(on).expect("standing").hp;
     for _ in 0..120 {
@@ -5323,13 +5311,15 @@ fn a_quelling_blade_is_worth_something_against_a_creep_and_nothing_against_a_her
 }
 
 /// Puts an effect on a unit for a while.
-fn put_on(world: &mut World, entity: Entity, kind: crate::game::StatusKind, ticks: u32) {
-    let mut on_it = world.statuses.remove(entity).unwrap_or_default();
-    on_it.put(crate::game::Status {
-        kind,
-        ticks_left: ticks,
-    });
-    world.statuses.insert(entity, on_it);
+fn put_on(world: &mut World, entity: Entity, kind: crate::game::ModifierKind, ticks: u32) {
+    world.put_modifier(
+        entity,
+        crate::game::Modifier {
+            kind,
+            source: None,
+            ticks_left: Some(ticks),
+        },
+    );
 }
 
 #[test]
@@ -5346,7 +5336,7 @@ fn a_held_unit_neither_walks_nor_swings_nor_casts() {
     world.settle();
     world.step();
     let full = world.health.get(creep).expect("standing").hp;
-    put_on(&mut world, hero, crate::game::StatusKind::Stunned, 60);
+    put_on(&mut world, hero, crate::game::ModifierKind::Stunned, 60);
     let stood = world.transform.get(hero).expect("standing").pos;
     world.set_order(
         hero,
@@ -5386,7 +5376,7 @@ fn a_slow_takes_its_share_of_the_speed() {
     put_on(
         &mut world,
         creep,
-        crate::game::StatusKind::Slowed { pct: 25 },
+        crate::game::ModifierKind::Slowed { pct: 25 },
         60,
     );
     world.step();
@@ -5408,10 +5398,9 @@ fn a_burn_takes_health_on_the_beat_and_may_be_told_to_leave_one() {
     put_on(
         &mut world,
         creep,
-        crate::game::StatusKind::Burning {
+        crate::game::ModifierKind::Burning {
             amount: 5,
             kind: bota_proto::DamageKind::Pure,
-            from: None,
             lethal: true,
         },
         rules::BURN_PERIOD_TICKS * 4,
@@ -5434,10 +5423,9 @@ fn a_burn_takes_health_on_the_beat_and_may_be_told_to_leave_one() {
     put_on(
         &mut world,
         creep,
-        crate::game::StatusKind::Burning {
+        crate::game::ModifierKind::Burning {
             amount: 100,
             kind: bota_proto::DamageKind::Pure,
-            from: None,
             lethal: false,
         },
         rules::BURN_PERIOD_TICKS * 10,
@@ -5730,7 +5718,7 @@ fn the_rot_burns_and_slows_what_stands_in_it_and_lifts_when_switched_off() {
     }
     let full = world.health.get(mark).expect("standing").hp;
     pudge_casts(&mut world, 1, bota_proto::Target::None);
-    assert!(world.rotting.get(pudge).is_some(), "it is switched on");
+    assert!(rotting(&world, pudge), "it is switched on");
     for _ in 0..rules::BURN_PERIOD_TICKS * 4 {
         world.step();
     }
@@ -5739,16 +5727,16 @@ fn the_rot_burns_and_slows_what_stands_in_it_and_lifts_when_switched_off() {
         "what stands in it burns"
     );
     assert!(
-        carries(&world, mark, crate::game::StatusKind::Slowed { pct: 0 }),
+        carries(&world, mark, crate::game::ModifierKind::Slowed { pct: 0 }),
         "and is slowed while it stands there"
     );
     pudge_casts(&mut world, 1, bota_proto::Target::None);
-    assert!(world.rotting.get(pudge).is_none(), "it is switched off");
+    assert!(!rotting(&world, pudge), "it is switched off");
     for _ in 0..3 {
         world.step();
     }
     assert!(
-        !carries(&world, mark, crate::game::StatusKind::Slowed { pct: 0 }),
+        !carries(&world, mark, crate::game::ModifierKind::Slowed { pct: 0 }),
         "and nothing is left slowed"
     );
 }
@@ -5767,9 +5755,14 @@ fn the_rot_never_kills_the_one_carrying_it() {
     }
     world.settle();
     world.step();
-    world
-        .rotting
-        .insert(pudge, crate::game::Rotting { level: 3 });
+    world.put_modifier(
+        pudge,
+        crate::game::Modifier {
+            kind: crate::game::ModifierKind::Rot { level: 3 },
+            source: Some(pudge),
+            ticks_left: None,
+        },
+    );
     world.health.insert(
         pudge,
         Health {
@@ -5810,12 +5803,12 @@ fn a_dismember_holds_what_it_eats_and_feeds_the_one_eating() {
         3,
         bota_proto::Target::Unit(crate::game::wire_id(mark)),
     );
-    assert!(world.dismember.get(pudge).is_some(), "it takes hold");
+    assert!(world.is_channelling(pudge), "it takes hold");
     for _ in 0..30 {
         world.step();
     }
     assert!(
-        carries(&world, mark, crate::game::StatusKind::Stunned),
+        carries(&world, mark, crate::game::ModifierKind::Stunned),
         "what it holds cannot act"
     );
     assert!(
@@ -5834,7 +5827,7 @@ fn a_dismember_holds_what_it_eats_and_feeds_the_one_eating() {
             target: bota_proto::Target::None,
         },
     }]);
-    assert!(world.dismember.get(pudge).is_none(), "an order lets go");
+    assert!(!world.is_channelling(pudge), "an order lets go");
 }
 
 #[test]
@@ -5976,7 +5969,7 @@ fn a_hero_hit_loses_its_drink_but_never_what_a_tree_bought() {
     );
     world.settle();
     world.step();
-    let salve = crate::game::StatusKind::Mending {
+    let salve = crate::game::ModifierKind::Mending {
         per_tick: 0,
         breaks: false,
     };
@@ -6239,7 +6232,7 @@ fn a_cast_aimed_out_of_reach_walks_the_caster_in_and_then_goes_off() {
     let far = from + bota_proto::Vec2::from_ints(rules::HOOK_RANGE + 900, 0);
     throw_hook(&mut world, far);
     assert!(
-        world.casting.get(pudge).is_some(),
+        world.pending_cast(pudge).is_some(),
         "out of reach the cast is held rather than dropped"
     );
     let mut thrown = false;
@@ -6271,7 +6264,7 @@ fn a_later_order_calls_a_held_cast_off() {
     let far = from + bota_proto::Vec2::from_ints(rules::HOOK_RANGE + 900, 0);
     throw_hook(&mut world, far);
     assert!(
-        world.casting.get(pudge).is_some(),
+        world.pending_cast(pudge).is_some(),
         "out of reach the cast is held rather than dropped"
     );
     world.advance(&[crate::game::Command {
@@ -6282,7 +6275,7 @@ fn a_later_order_calls_a_held_cast_off() {
         },
     }]);
     assert_eq!(
-        world.casting.get(pudge),
+        world.pending_cast(pudge),
         None,
         "the later order took the held cast away"
     );
@@ -6321,19 +6314,19 @@ fn a_cast_walked_towards_a_target_that_fell_is_given_up_and_costs_nothing() {
         },
     }]);
     assert!(
-        world.casting.get(pudge).is_some(),
+        world.pending_cast(pudge).is_some(),
         "out of reach the cast is held while the caster walks in"
     );
     world.push_hit(None, mark, 10_000, bota_proto::DamageKind::Pure);
     for _ in 0..3 {
         world.step();
         assert!(
-            world.dismember.get(pudge).is_none(),
+            !world.is_channelling(pudge),
             "a cast at what has fallen never goes off"
         );
     }
     assert_eq!(
-        world.casting.get(pudge),
+        world.pending_cast(pudge),
         None,
         "the held cast is given up with its target"
     );
@@ -6518,7 +6511,7 @@ fn a_bolt_goes_on_to_the_next_and_never_back_to_the_same_one() {
         .collect();
     world.order_cast(
         hero,
-        crate::game::PendingCast {
+        crate::game::PendingCast::Ability {
             slot: bota_proto::AbilitySlot(2),
             target: bota_proto::Target::Unit(crate::game::wire_id(marks[0])),
         },
@@ -7313,15 +7306,14 @@ fn attack_speed_shortens_the_wait_between_attacks() {
         plain.attack_speed + 20,
         "the gloves are worth twenty"
     );
-    assert!(
-        hasted.attack_interval < plain.attack_interval,
-        "and the wait is shorter for it"
-    );
     assert_eq!(
-        hasted.attack_interval,
-        crate::game::HERO.attack_interval * rules::BASE_ATTACK_SPEED as u32
-            / hasted.attack_speed as u32,
-        "by exactly what the speed says"
+        hasted.attack_time, plain.attack_time,
+        "the cycle itself is the kind's own"
+    );
+    assert!(
+        crate::game::attack_gain(hasted.attack_speed)
+            > crate::game::attack_gain(plain.attack_speed),
+        "and it runs faster for the speed"
     );
 }
 
@@ -7912,10 +7904,7 @@ fn a_blink_carries_no_further_than_it_reaches() {
     let from = world.transform.get(hero).expect("stands somewhere").pos;
     hand_item(&mut world, hero, crate::game::ITEM_BLINK_DAGGER, 0);
     world.step();
-    let range = match crate::game::ITEMS[usize::from(crate::game::ITEM_BLINK_DAGGER)].active {
-        Some(crate::game::ItemUse::Blink { range }) => range,
-        _ => panic!("the dagger blinks"),
-    };
+    let range = crate::game::BLINK_RANGE;
     let far = bota_proto::Vec2 {
         x: from.x + rules::units(range * 4),
         y: from.y,
@@ -8738,9 +8727,9 @@ fn a_requiem_grows_with_the_souls_held_and_spends_none_of_them() {
         "and the souls are kept"
     );
     assert!(
-        world.statuses.get(mark).is_some_and(|on_it| on_it
+        world.modifiers.get(mark).is_some_and(|on_it| on_it
             .active()
-            .any(|status| matches!(status.kind, StatusKind::Slowed { .. }))),
+            .any(|held| matches!(held.kind, ModifierKind::Slowed { .. }))),
         "what it caught walks slower"
     );
 }
@@ -8758,9 +8747,9 @@ fn a_requiem_with_no_souls_gathered_touches_nobody() {
         "nothing gathered is nothing let go"
     );
     assert!(
-        world.statuses.get(mark).is_none_or(|on_it| on_it
+        world.modifiers.get(mark).is_none_or(|on_it| on_it
             .active()
-            .all(|status| !matches!(status.kind, StatusKind::Slowed { .. }))),
+            .all(|held| !matches!(held.kind, ModifierKind::Slowed { .. }))),
         "not even the slow"
     );
     let spent = world
@@ -9116,12 +9105,8 @@ fn a_fallen_barracks_turns_the_waves_against_it_super_and_all_of_them_mega() {
         .find(|e| world.kind.get(**e) == Some(&bota_proto::UnitKind::CreepMelee))
         .expect("a melee creep spawned");
     assert_eq!(
-        world
-            .stats
-            .get(*mega_melee)
-            .expect("settled")
-            .attack_interval,
-        rules::MEGA_MELEE_ATTACK_INTERVAL,
+        world.stats.get(*mega_melee).expect("settled").attack_time,
+        rules::MEGA_MELEE_ATTACK_TIME,
         "a mega melee swings faster than a super one"
     );
 }
@@ -9448,8 +9433,9 @@ fn nearby_elevations(
 const UPHILL_TEST_ATTACKER: UnitDef = UnitDef {
     max_hp: 8_000,
     damage: 1,
-    attack_interval: 1,
-    attack_point: 1,
+    attack_time: 33,
+    attack_point: 33,
+    attack_backswing: 0,
     projectile_speed: Some(6_000),
     move_speed: 0,
     ..RANGED_CREEP

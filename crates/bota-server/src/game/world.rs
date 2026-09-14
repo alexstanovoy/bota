@@ -5,12 +5,11 @@ use std::collections::VecDeque;
 use bota_proto::{HeroId, SlotId, Team, UnitKind};
 
 use crate::game::{
-    AbilityBook, AttackCx, Attacking, AuraCx, Auras, Bounty, CampHome, Def, Dismembering, Entity,
-    EntityAllocator, Errand, Expiry, Forest, Handling, Health, Hit, Hook, Hull, Inventory, Landed,
-    Lane, LaneAi, Level, Loot, Mana, March, NeutralAi, Orders, PendingCast, Projectile, Rax,
-    Rotting, Route, Seat, SightCx, Stacks, Stats, StatsCx, Statuses, Table, Target, Teleport, Tier,
-    Transform, UnitOrder, Upgrades, Visibility, attacking_system, aura_system, derive_stats,
-    hitting_system, missile_system, regenerate, visibility_system,
+    AbilityBook, Action, AuraCx, Auras, Bounty, CampHome, Def, Entity, EntityAllocator, Errand,
+    Expiry, Forest, Handling, Health, Hit, Hook, Hull, Inventory, Landed, Lane, LaneAi, Level,
+    Loot, Mana, March, Modifiers, NeutralAi, Orders, Place, Projectile, Rax, Route, Seat, SightCx,
+    Stacks, Stats, StatsCx, Table, Target, Tier, Transform, UnitOrder, Upgrades, Visibility,
+    aura_system, derive_stats, hitting_system, missile_system, regenerate, visibility_system,
 };
 use crate::game::{HitCx, MissileCx};
 
@@ -35,6 +34,8 @@ pub struct World {
     pub grid: crate::game::PassGrid,
     /// Uphill miss sequences, indexed by attacker's entity slot.
     pub uphill_miss: Vec<Option<crate::game::PseudoRandom25>>,
+    /// Critical strike sequences, indexed by attacker's entity slot.
+    pub crit: Vec<Option<crate::game::Chance>>,
     /// Which roster each camp put out last, so it never draws twice running.
     pub camp_last: Vec<u8>,
     /// The height of the ground everywhere.
@@ -50,6 +51,8 @@ pub struct World {
     /// Missiles that arrived with a bounce still in them, beside what they
     /// arrived on.
     pub bounced: VecDeque<(Entity, Entity)>,
+    /// What abilities and items told of this tick. Drained by the tick.
+    pub events: Vec<crate::game::Event>,
     /// Which entities exist.
     pub entities: EntityAllocator,
     /// Reused stable entity snapshot for systems that mutate other world tables.
@@ -79,22 +82,16 @@ pub struct World {
     pub tier: Table<Tier>,
     /// The numbers each entity fights by, worked out afresh every tick.
     pub stats: Table<Stats>,
-    /// What is on each entity and runs out on its own.
-    pub statuses: Table<Statuses>,
+    /// What is on each entity.
+    pub modifiers: Table<Modifiers>,
     /// The hook each entity that is one is flying.
     pub hook: Table<Hook>,
-    /// The rot each entity has switched on.
-    pub rotting: Table<Rotting>,
-    /// The dismember each entity is channelling.
-    pub dismember: Table<Dismembering>,
     /// What each entity has gathered and keeps.
     pub stacks: Table<Stacks>,
     /// The errand each courier is on.
     pub errand: Table<Errand>,
     /// How long each entity that stands for a time has left.
     pub expiry: Table<Expiry>,
-    /// The teleport each entity is channelling.
-    pub teleport: Table<Teleport>,
     /// What each entity hands out to those standing near it.
     pub auras: Table<Auras>,
 
@@ -107,10 +104,8 @@ pub struct World {
     pub orders: Table<Orders>,
     /// Who each entity is set on. Absent when it is set on nobody.
     pub target: Table<Target>,
-    /// Where each entity is in its attack cycle.
-    pub attacking: Table<Attacking>,
-    /// Casts ordered and not yet started.
-    pub casting: Table<PendingCast>,
+    /// What each entity is doing.
+    pub action: Table<Action>,
 
     /// What a lane creep keeps about the fight it is in.
     pub lane_ai: Table<LaneAi>,
@@ -162,6 +157,7 @@ impl World {
             rng: crate::game::MatchRng::new(&[0; 32], 0),
             grid: crate::game::PassGrid::open(),
             uphill_miss: Vec::new(),
+            crit: Vec::new(),
             camp_last: Vec::new(),
             ground: crate::game::Ground::of(crate::game::map_of(bota_proto::MapId(0))),
             sight_block: crate::game::PassGrid::open(),
@@ -169,6 +165,7 @@ impl World {
             hits: VecDeque::new(),
             landed: VecDeque::new(),
             bounced: VecDeque::new(),
+            events: Vec::new(),
             entities: EntityAllocator::new(),
             entity_scratch: Vec::new(),
             transform: Table::new(),
@@ -182,21 +179,17 @@ impl World {
             upgrades: Table::new(),
             tier: Table::new(),
             stats: Table::new(),
-            statuses: Table::new(),
+            modifiers: Table::new(),
             hook: Table::new(),
-            rotting: Table::new(),
-            dismember: Table::new(),
             stacks: Table::new(),
             errand: Table::new(),
             expiry: Table::new(),
-            teleport: Table::new(),
             auras: Table::new(),
             route: Table::new(),
             march: Table::new(),
             orders: Table::new(),
             target: Table::new(),
-            attacking: Table::new(),
-            casting: Table::new(),
+            action: Table::new(),
             lane_ai: Table::new(),
             neutral_ai: Table::new(),
             camp_home: Table::new(),
@@ -280,6 +273,7 @@ impl World {
                     Orders {
                         current: order,
                         cooldown: 0,
+                        pending: None,
                     },
                 );
             }
@@ -324,9 +318,14 @@ impl World {
         world.trees = Forest::of(map);
         world.sight_block = crate::game::build_sight_block(map);
         for (index, team) in [Team::Radiant, Team::Dire].into_iter().enumerate() {
-            world.spawn_unit(&crate::game::FOUNTAIN, team, map.fountains[index]);
+            world.spawn_building(
+                &crate::game::FOUNTAIN,
+                team,
+                map.fountains[index],
+                Place::Fountain,
+            );
             if let Some(at) = map.ancients[index] {
-                world.spawn_unit(&crate::game::ANCIENT, team, at);
+                world.spawn_building(&crate::game::ANCIENT, team, at, Place::Ancient);
             }
             let towers = if index == 0 {
                 map.radiant_towers
@@ -334,9 +333,15 @@ impl World {
                 map.dire_towers
             };
             for (lane, tier, pos) in towers {
-                let entity = world.spawn_unit(crate::game::tower_def(*tier), team, *pos);
-                world.lane.insert(entity, Lane(*lane));
-                world.tier.insert(entity, Tier(*tier));
+                world.spawn_building(
+                    crate::game::tower_def(*tier),
+                    team,
+                    *pos,
+                    Place::Tower {
+                        lane: *lane,
+                        tier: *tier,
+                    },
+                );
             }
             for (lane, ranged, pos) in map.barracks[index] {
                 let def = if *ranged {
@@ -344,9 +349,15 @@ impl World {
                 } else {
                     &crate::game::BARRACKS_MELEE
                 };
-                let entity = world.spawn_unit(def, team, *pos);
-                world.lane.insert(entity, Lane(*lane));
-                world.rax.insert(entity, Rax { ranged: *ranged });
+                world.spawn_building(
+                    def,
+                    team,
+                    *pos,
+                    Place::Barracks {
+                        lane: *lane,
+                        ranged: *ranged,
+                    },
+                );
             }
         }
         world.settle();
@@ -432,7 +443,7 @@ impl World {
             level: &self.level,
             upgrades: &self.upgrades,
             inventory: &self.inventory,
-            statuses: &self.statuses,
+            modifiers: &self.modifiers,
             abilities: &self.abilities,
             stacks: &self.stacks,
             stats: &mut self.stats,
@@ -468,12 +479,9 @@ impl World {
         self.tick_couriers();
         self.tick_handling();
         self.settle_sales();
-        self.tick_teleports();
         self.tick_expiries();
-        self.tick_burning();
+        self.tick_modifiers();
         self.tick_hooks();
-        self.tick_rot();
-        self.tick_dismembers();
         if self.trees.tick(self.tick) {
             self.lay_sight_block();
             self.lay_passability();
@@ -485,7 +493,7 @@ impl World {
             team: &self.team,
             kind: &self.kind,
             auras: &self.auras,
-            statuses: &mut self.statuses,
+            modifiers: &mut self.modifiers,
         });
         derive_stats(StatsCx {
             entities: &self.entities,
@@ -493,7 +501,7 @@ impl World {
             level: &self.level,
             upgrades: &self.upgrades,
             inventory: &self.inventory,
-            statuses: &self.statuses,
+            modifiers: &self.modifiers,
             abilities: &self.abilities,
             stacks: &self.stacks,
             stats: &mut self.stats,
@@ -528,22 +536,7 @@ impl World {
             &mut self.health,
             &mut self.mana,
         );
-        attacking_system(AttackCx {
-            entities: &mut self.entities,
-            transform: &mut self.transform,
-            hull: &self.hull,
-            ground: &self.ground,
-            kind: &self.kind,
-            team: &mut self.team,
-            health: &self.health,
-            stats: &self.stats,
-            visibility: &mut self.visibility,
-            target: &self.target,
-            statuses: &self.statuses,
-            attacking: &mut self.attacking,
-            hits: &mut self.hits,
-            projectile: &mut self.projectile,
-        });
+        self.run_actions();
         missile_system(MissileCx {
             entities: &mut self.entities,
             projectile: &mut self.projectile,
@@ -559,7 +552,7 @@ impl World {
             bounced: &mut self.bounced,
         });
         self.bounce_missiles();
-        self.run_casts(events);
+        events.append(&mut self.events);
         self.step_damage(events);
     }
 
@@ -571,7 +564,7 @@ impl World {
             team: &self.team,
             stats: &self.stats,
             health: &mut self.health,
-            statuses: &mut self.statuses,
+            modifiers: &mut self.modifiers,
         });
         let felt: Vec<Landed> = self.landed.drain(..).collect();
         self.break_on_blows(&felt);

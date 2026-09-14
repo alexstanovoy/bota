@@ -296,10 +296,10 @@ pub const HERO_MOVE_SPEED: i32 = 300;
 pub const HERO_ATTACK_DAMAGE: i32 = 31;
 /// Hero attack range.
 pub const HERO_ATTACK_RANGE: i32 = 600;
-/// Ticks between hero attack starts at [`BASE_ATTACK_SPEED`].
-pub const HERO_ATTACK_INTERVAL: u32 = 63;
-/// Ticks from attack start to the projectile leaving.
-pub const HERO_ATTACK_POINT: u32 = 9;
+/// Milliseconds between hero attack starts at [`BASE_ATTACK_SPEED`].
+pub const HERO_ATTACK_TIME: u32 = 2100;
+/// Milliseconds from attack start to the projectile leaving.
+pub const HERO_ATTACK_POINT: u32 = 300;
 /// Hero attack projectile speed, world units per second.
 pub const HERO_PROJECTILE_SPEED: i32 = 900;
 /// Hero armor, before agility.
@@ -356,8 +356,8 @@ pub const MELEE_CREEP_ACQUISITION: i32 = 500;
 pub const MELEE_CREEP_ARMOR: i32 = 2;
 /// Melee creep collision radius, the Dota regular hull.
 pub const MELEE_CREEP_RADIUS: i32 = 16;
-/// Ticks from a melee creep's attack start to the hit; 0.467 s.
-pub const MELEE_CREEP_ATTACK_POINT: u32 = 14;
+/// Milliseconds from a melee creep's attack start to the hit.
+pub const MELEE_CREEP_ATTACK_POINT: u32 = 466;
 /// Melee creep gold bounty, the midpoint of 34 to 39.
 pub const MELEE_CREEP_BOUNTY: i32 = 36;
 /// Melee creep experience.
@@ -373,8 +373,9 @@ pub const RANGED_CREEP_ATTACK_RANGE: i32 = 500;
 pub const RANGED_CREEP_ACQUISITION: i32 = 600;
 /// Ranged creep collision radius, the Dota small hull.
 pub const RANGED_CREEP_RADIUS: i32 = 8;
-/// Ticks from a ranged creep's attack start to the projectile leaving; 0.5 s.
-pub const RANGED_CREEP_ATTACK_POINT: u32 = 15;
+/// Milliseconds from a ranged creep's attack start to the projectile
+/// leaving.
+pub const RANGED_CREEP_ATTACK_POINT: u32 = 500;
 /// Ranged creep attack projectile speed, world units per second.
 pub const RANGED_CREEP_PROJECTILE_SPEED: i32 = 900;
 /// Ranged creep gold bounty, the midpoint of 43 to 52.
@@ -396,10 +397,11 @@ pub const SIEGE_CREEP_ARMOR: i32 = 0;
 pub const SIEGE_CREEP_MAGIC_RESIST_PCT: i32 = 80;
 /// Siege creep collision radius, the Dota siege hull.
 pub const SIEGE_CREEP_RADIUS: i32 = 16;
-/// Ticks between siege creep attack starts; a base attack time of 3 s.
-pub const SIEGE_CREEP_ATTACK_INTERVAL: u32 = 90;
-/// Ticks from a siege creep's attack start to the projectile leaving; 0.7 s.
-pub const SIEGE_CREEP_ATTACK_POINT: u32 = 21;
+/// Milliseconds between siege creep attack starts.
+pub const SIEGE_CREEP_ATTACK_TIME: u32 = 3000;
+/// Milliseconds from a siege creep's attack start to the projectile
+/// leaving.
+pub const SIEGE_CREEP_ATTACK_POINT: u32 = 700;
 /// Siege creep attack projectile speed, world units per second.
 pub const SIEGE_CREEP_PROJECTILE_SPEED: i32 = 1100;
 /// Siege creep gold bounty, the midpoint of 59 to 72.
@@ -409,8 +411,8 @@ pub const SIEGE_CREEP_XP: i32 = 88;
 
 /// Creep movement speed, world units per second.
 pub const CREEP_MOVE_SPEED: i32 = 325;
-/// Ticks between creep attack starts; a base attack time of 1 s.
-pub const CREEP_ATTACK_INTERVAL: u32 = 30;
+/// Milliseconds between creep attack starts.
+pub const CREEP_ATTACK_TIME: u32 = 1000;
 /// Creep fog light radius.
 pub const CREEP_VISION: i32 = 750;
 
@@ -439,9 +441,8 @@ pub const SUPER_RANGED_BOUNTY: i32 = 22;
 pub const SUPER_RANGED_XP: i32 = 22;
 /// Super siege creep attack damage, the midpoint of 51 to 62.
 pub const SUPER_SIEGE_ATTACK_DAMAGE: i32 = 56;
-/// Ticks between mega melee creep attack starts: the same swing a tenth
-/// faster.
-pub const MEGA_MELEE_ATTACK_INTERVAL: u32 = 27;
+/// Milliseconds between mega melee creep attack starts.
+pub const MEGA_MELEE_ATTACK_TIME: u32 = 900;
 
 // Buildings.
 
@@ -455,10 +456,10 @@ pub const TOWER_TIER_ARMOR: [i32; 4] = [12, 14, 15, 21];
 pub const TOWER_TIER_BOUNTY: [i32; 4] = [200, 250, 300, 350];
 /// Tower attack range.
 pub const TOWER_ATTACK_RANGE: i32 = 700;
-/// Ticks between tower attack starts.
-pub const TOWER_ATTACK_INTERVAL: u32 = 29;
-/// Ticks from tower attack start to the projectile leaving.
-pub const TOWER_ATTACK_POINT: u32 = 6;
+/// Milliseconds between tower attack starts.
+pub const TOWER_ATTACK_TIME: u32 = 966;
+/// Milliseconds from tower attack start to the projectile leaving.
+pub const TOWER_ATTACK_POINT: u32 = 200;
 /// Tower attack projectile speed, world units per second.
 pub const TOWER_PROJECTILE_SPEED: i32 = 750;
 /// How far a tower's protection reaches.
@@ -516,11 +517,10 @@ pub const FOUNTAIN_HP: i32 = 500;
 pub const FOUNTAIN_ATTACK_DAMAGE: i32 = 300;
 /// Fountain attack range.
 pub const FOUNTAIN_ATTACK_RANGE: i32 = 1200;
-/// Ticks between fountain attack starts; 0.15 s, rounded up to the tick.
-pub const FOUNTAIN_ATTACK_INTERVAL: u32 = 5;
-/// Ticks from fountain attack start to the shot; the shortest wait a tick
-/// clock has.
-pub const FOUNTAIN_ATTACK_POINT: u32 = 1;
+/// Milliseconds between fountain attack starts.
+pub const FOUNTAIN_ATTACK_TIME: u32 = 166;
+/// Milliseconds from fountain attack start to the shot.
+pub const FOUNTAIN_ATTACK_POINT: u32 = 33;
 /// Fountain attack projectile speed, world units per second.
 pub const FOUNTAIN_PROJECTILE_SPEED: i32 = 1400;
 /// Fountain collision radius, the Dota tower hull.
@@ -577,14 +577,14 @@ pub const SEPARATION_STEP: i32 = 4;
 pub const TRACE_CLEARANCE: i32 = 24;
 /// How many times a blocked step is halved looking for one that fits.
 pub const STEP_FIT_TRIES: u32 = 3;
-/// Ticks a hero recovers after a swing. Cancelled by any order.
-pub const HERO_ATTACK_BACKSWING: u32 = 12;
-/// Ticks a creep recovers after a swing.
-pub const CREEP_ATTACK_BACKSWING: u32 = 15;
-/// Ticks a tower recovers after a shot.
-pub const TOWER_ATTACK_BACKSWING: u32 = 4;
-/// Ticks the fountain recovers after a shot.
-pub const FOUNTAIN_ATTACK_BACKSWING: u32 = 2;
+/// Milliseconds a hero recovers after a swing. Cancelled by any order.
+pub const HERO_ATTACK_BACKSWING: u32 = 400;
+/// Milliseconds a creep recovers after a swing.
+pub const CREEP_ATTACK_BACKSWING: u32 = 500;
+/// Milliseconds a tower recovers after a shot.
+pub const TOWER_ATTACK_BACKSWING: u32 = 133;
+/// Milliseconds the fountain recovers after a shot.
+pub const FOUNTAIN_ATTACK_BACKSWING: u32 = 66;
 /// How fast a unit turns, in brads per tick.
 ///
 /// The shipped `MovementTurnRate` is radians per 0.03 seconds; a half, which

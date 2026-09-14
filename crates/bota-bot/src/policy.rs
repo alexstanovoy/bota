@@ -496,9 +496,11 @@ impl Playbook {
         if field.foes_within(FIGHT_RANGE).next().is_some() {
             return None;
         }
+        // The scroll is read inside the tick it was aimed on, so the wait
+        // runs from the tick after.
         if self
             .portalled_at
-            .is_some_and(|at| self.tick.saturating_sub(at) < SCROLL_WAIT)
+            .is_some_and(|at| self.tick.saturating_sub(at) <= SCROLL_WAIT)
         {
             return None;
         }

@@ -4,7 +4,9 @@
 //! through a hash map, so the same run always gives the same number.
 
 use crate::engine::Fnv;
-use crate::game::{Hit, HitEffect, Inventory, ItemStack, StatusKind, Target, World};
+use crate::game::{
+    ActionPhase, ActionState, Hit, HitEffect, Inventory, ItemStack, ModifierKind, Target, World,
+};
 
 impl World {
     /// A fingerprint of everything a tick acts on.
@@ -33,6 +35,17 @@ impl World {
                 fnv.u8(failures);
             }
         }
+        fnv.u32(self.crit.len() as u32);
+        for chance in &self.crit {
+            fnv.some(chance.is_some());
+            if let Some(chance) = chance {
+                let (draws, at) = chance.state();
+                fnv.u64(draws);
+                fnv.u8(at);
+                fnv.u8(chance.current().num());
+                fnv.u8(chance.current().den());
+            }
+        }
         fnv.u32(self.hits.len() as u32);
         for hit in &self.hits {
             hash_hit(&mut fnv, hit);
@@ -58,13 +71,35 @@ impl World {
             if let Some(Target(on)) = self.target.get(entity) {
                 fnv.entity(*on);
             }
-            if let Some(attacking) = self.attacking.get(entity) {
-                fnv.u32(attacking.cooldown);
-                fnv.u32(attacking.recovering);
-                fnv.some(attacking.windup.is_some());
-                if let Some(windup) = attacking.windup {
-                    fnv.entity(windup.target);
-                    fnv.u32(windup.ticks_left);
+            if let Some(action) = self.action.get(entity) {
+                fnv.u32(action.attack_cooldown);
+                match action.state {
+                    ActionState::Ready => fnv.u8(0),
+                    ActionState::Attack { target, phase } => {
+                        fnv.u8(1);
+                        fnv.entity(target);
+                        hash_phase(&mut fnv, phase);
+                    }
+                    ActionState::CastAbility {
+                        target,
+                        slot,
+                        phase,
+                    } => {
+                        fnv.u8(2);
+                        hash_aim(&mut fnv, target);
+                        fnv.u8(slot.0);
+                        hash_phase(&mut fnv, phase);
+                    }
+                    ActionState::UseItem {
+                        target,
+                        slot,
+                        phase,
+                    } => {
+                        fnv.u8(3);
+                        hash_aim(&mut fnv, target);
+                        fnv.u8(slot.0);
+                        hash_phase(&mut fnv, phase);
+                    }
                 }
             }
             if let Some(march) = self.march.get(entity) {
@@ -97,10 +132,16 @@ impl World {
             if let Some(seen) = self.visibility.get(entity) {
                 fnv.u8(seen.bits());
             }
-            if let Some(statuses) = self.statuses.get(entity) {
-                for status in statuses.0.iter() {
-                    hash_status_kind(&mut fnv, status.kind);
-                    fnv.u32(status.ticks_left);
+            if let Some(on_it) = self.modifiers.get(entity) {
+                fnv.u32(on_it.0.len() as u32);
+                for held in on_it.0.iter() {
+                    hash_modifier_kind(&mut fnv, held.kind);
+                    fnv.some(held.source.is_some());
+                    if let Some(source) = held.source {
+                        fnv.entity(source);
+                    }
+                    fnv.some(held.ticks_left.is_some());
+                    fnv.u32(held.ticks_left.unwrap_or(0));
                 }
             }
             if let Some(bag) = self.inventory.get(entity) {
@@ -127,24 +168,11 @@ impl World {
                     fnv.entity(by);
                 }
             }
-            if let Some(rot) = self.rotting.get(entity) {
-                fnv.u32(rot.level as u32);
-            }
-            if let Some(eating) = self.dismember.get(entity) {
-                fnv.entity(eating.target);
-                fnv.u32(eating.ticks_left);
-                fnv.u32(eating.level as u32);
-            }
             if let Some(gathered) = self.stacks.get(entity) {
                 for (kind, many) in gathered.held() {
                     fnv.u32(kind.at() as u32);
                     fnv.u32(many);
                 }
-            }
-            if let Some(going) = self.teleport.get(entity) {
-                fnv.u32(going.ticks_left);
-                fnv.vec2(going.to);
-                fnv.u32(going.slot as u32);
             }
         }
         for index in self.trees.felled() {
@@ -196,6 +224,40 @@ impl World {
     }
 }
 
+/// What a cast was aimed at.
+fn hash_aim(fnv: &mut Fnv, target: bota_proto::Target) {
+    match target {
+        bota_proto::Target::None => fnv.u8(0),
+        bota_proto::Target::Pos(pos) => {
+            fnv.u8(1);
+            fnv.vec2(pos);
+        }
+        bota_proto::Target::Unit(id) => {
+            fnv.u8(2);
+            fnv.u32(id.idx);
+            fnv.u32(id.generation);
+        }
+    }
+}
+
+/// Which phase an action stands in and how far into it.
+fn hash_phase(fnv: &mut Fnv, phase: ActionPhase) {
+    match phase {
+        ActionPhase::Before { progress } => {
+            fnv.u8(0);
+            fnv.u32(progress);
+        }
+        ActionPhase::During { progress } => {
+            fnv.u8(1);
+            fnv.u32(progress);
+        }
+        ActionPhase::After { progress } => {
+            fnv.u8(2);
+            fnv.u32(progress);
+        }
+    }
+}
+
 /// A queued blow and its pending modifier before resolution.
 fn hash_hit(fnv: &mut Fnv, hit: &Hit) {
     fnv.some(hit.source.is_some());
@@ -215,25 +277,25 @@ fn hash_hit(fnv: &mut Fnv, hit: &Hit) {
     }
 }
 
-/// One effect kind and everything it carries.
-fn hash_status_kind(fnv: &mut Fnv, kind: StatusKind) {
+/// One modifier kind and everything it carries.
+fn hash_modifier_kind(fnv: &mut Fnv, kind: ModifierKind) {
     match kind {
-        StatusKind::Haste { speed } => {
+        ModifierKind::Haste { speed } => {
             fnv.u8(0);
             fnv.i32(speed);
         }
-        StatusKind::Phased => fnv.u8(9),
-        StatusKind::Mending { per_tick, breaks } => {
+        ModifierKind::Phased => fnv.u8(9),
+        ModifierKind::Mending { per_tick, breaks } => {
             fnv.u8(1);
             fnv.i32(per_tick);
             fnv.some(breaks);
         }
-        StatusKind::Clarity { per_tick, breaks } => {
+        ModifierKind::Clarity { per_tick, breaks } => {
             fnv.u8(2);
             fnv.i32(per_tick);
             fnv.some(breaks);
         }
-        StatusKind::Fountain {
+        ModifierKind::Fountain {
             hp_per_tick,
             mana_per_tick,
         } => {
@@ -241,17 +303,17 @@ fn hash_status_kind(fnv: &mut Fnv, kind: StatusKind) {
             fnv.i32(hp_per_tick);
             fnv.i32(mana_per_tick);
         }
-        StatusKind::Stunned => fnv.u8(4),
-        StatusKind::Shielded => fnv.u8(8),
-        StatusKind::Slowed { pct } => {
+        ModifierKind::Stunned => fnv.u8(4),
+        ModifierKind::Shielded => fnv.u8(8),
+        ModifierKind::Slowed { pct } => {
             fnv.u8(5);
             fnv.i32(pct);
         }
-        StatusKind::Hastened { pct } => {
+        ModifierKind::Hastened { pct } => {
             fnv.u8(7);
             fnv.i32(pct);
         }
-        StatusKind::Guarded {
+        ModifierKind::Guarded {
             armor,
             hp_per_second,
         } => {
@@ -259,33 +321,31 @@ fn hash_status_kind(fnv: &mut Fnv, kind: StatusKind) {
             fnv.i32(armor);
             fnv.i32(hp_per_second);
         }
-        StatusKind::Inspired { hp_per_second } => {
+        ModifierKind::Inspired { hp_per_second } => {
             fnv.u8(13);
             fnv.i32(hp_per_second);
         }
-        StatusKind::ArmorBroken { armor } => {
+        ModifierKind::ArmorBroken { armor } => {
             fnv.u8(10);
             fnv.i32(armor);
         }
-        StatusKind::Burning {
+        ModifierKind::Burning {
             amount,
             kind,
-            from,
             lethal,
         } => {
             fnv.u8(6);
             fnv.i32(amount);
             fnv.u8(kind as u8);
-            fnv.some(from.is_some());
-            if let Some(from) = from {
-                fnv.entity(from);
-            }
             fnv.some(lethal);
         }
-        StatusKind::Shadowraze { from, stacks } => {
+        ModifierKind::Shadowraze { stacks } => {
             fnv.u8(11);
-            fnv.entity(from);
             fnv.u8(stacks);
+        }
+        ModifierKind::Rot { level } => {
+            fnv.u8(14);
+            fnv.u8(level);
         }
     }
 }

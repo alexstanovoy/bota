@@ -1,13 +1,14 @@
-//! What has been put on an entity and runs out on its own.
+//! What has been put on an entity: what it does, who put it, how long it
+//! holds.
 
 use bota_proto::DamageKind;
 
 use crate::engine::Entity;
 use crate::game::rules;
 
-/// One kind of effect, with what there is of it.
+/// One kind of modifier, with what there is of it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum StatusKind {
+pub enum ModifierKind {
     /// Attacks come faster.
     Haste {
         /// Attack speed added.
@@ -75,61 +76,62 @@ pub enum StatusKind {
         amount: i32,
         /// Which reduction the damage answers to.
         kind: DamageKind,
-        /// Who is dealing it, while that one still stands.
-        from: Option<Entity>,
         /// Whether it may take the last point of health.
         lethal: bool,
     },
-    /// Additional damage from subsequent Shadowrazes by the same caster.
+    /// Additional damage from subsequent Shadowrazes by whoever put it on.
     Shadowraze {
-        /// The applying caster's full generational handle; server-only.
-        from: Entity,
         /// Successful hits held, in `1..=rules::RAZE_MAX_STACKS`.
         stacks: u8,
     },
+    /// The rot, switched on.
+    Rot {
+        /// Which level of it is running, counted from zero.
+        level: u8,
+    },
 }
 
-/// One effect on an entity.
+/// One modifier on an entity.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Status {
+pub struct Modifier {
     /// What it does, and how much of it there is.
-    pub kind: StatusKind,
-    /// Ticks before it lifts.
-    pub ticks_left: u32,
+    pub kind: ModifierKind,
+    /// Who put it on. Absent for the world's own.
+    pub source: Option<Entity>,
+    /// Ticks before it lifts. Absent for one that does not lift on its own.
+    pub ticks_left: Option<u32>,
 }
 
-/// Everything on an entity right now. Absent when nothing is.
+/// Everything on an entity right now. Present on every unit; empty when
+/// nothing is on.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct Statuses(pub Vec<Status>);
+pub struct Modifiers(pub Vec<Modifier>);
 
-impl Statuses {
-    /// Every effect that has not run out.
-    pub fn active(&self) -> impl Iterator<Item = &Status> {
-        self.0.iter().filter(|s| s.ticks_left > 0)
+impl Modifiers {
+    /// Every modifier that has not run out.
+    pub fn active(&self) -> impl Iterator<Item = &Modifier> {
+        self.0.iter().filter(|held| held.ticks_left != Some(0))
     }
 
-    /// Replaces the same kind; Shadowraze replaces only the same caster's record.
-    pub fn put(&mut self, status: Status) {
-        let same = std::mem::discriminant(&status.kind);
-        self.0.retain(|held| match (held.kind, status.kind) {
-            (
-                StatusKind::Shadowraze {
-                    from: held_from, ..
-                },
-                StatusKind::Shadowraze {
-                    from: next_from, ..
-                },
-            ) => held.ticks_left > 0 && held_from != next_from,
+    /// Replaces the same kind; Shadowraze replaces only the same source's
+    /// record.
+    pub fn put(&mut self, modifier: Modifier) {
+        let same = std::mem::discriminant(&modifier.kind);
+        self.0.retain(|held| match (held.kind, modifier.kind) {
+            (ModifierKind::Shadowraze { .. }, ModifierKind::Shadowraze { .. }) => {
+                held.ticks_left != Some(0) && held.source != modifier.source
+            }
             _ => std::mem::discriminant(&held.kind) != same,
         });
-        if let StatusKind::Shadowraze { stacks, .. } = status.kind {
+        if let ModifierKind::Shadowraze { stacks } = modifier.kind {
             assert!(stacks > 0);
-            assert!(status.ticks_left > 0);
-            assert!(status.ticks_left <= rules::RAZE_DEBUFF_TICKS);
+            let left = modifier.ticks_left.expect("a Shadowraze record runs out");
+            assert!(left > 0);
+            assert!(left <= rules::RAZE_DEBUFF_TICKS);
             let count = self
                 .0
                 .iter()
-                .filter(|held| matches!(held.kind, StatusKind::Shadowraze { .. }))
+                .filter(|held| matches!(held.kind, ModifierKind::Shadowraze { .. }))
                 .count();
             assert!(count <= rules::RAZE_MAX_SOURCES);
             if count == rules::RAZE_MAX_SOURCES {
@@ -137,35 +139,43 @@ impl Statuses {
                     .0
                     .iter()
                     .enumerate()
-                    .filter(|(_, held)| matches!(held.kind, StatusKind::Shadowraze { .. }))
-                    .min_by_key(|(_, held)| held.ticks_left)
+                    .filter(|(_, held)| matches!(held.kind, ModifierKind::Shadowraze { .. }))
+                    .min_by_key(|(_, held)| held.ticks_left.unwrap_or(u32::MAX))
                     .map(|(at, _)| at)
                     .expect("a full Shadowraze source set has an expiry");
                 self.0.remove(at);
             }
         }
-        self.0.push(status);
+        self.0.push(modifier);
     }
 
-    /// Active Shadowraze hits held for this exact caster generation; zero when absent.
+    /// Takes off every modifier of one kind from one source, whatever there
+    /// is of it.
+    pub fn take(&mut self, like: ModifierKind, source: Option<Entity>) {
+        let same = std::mem::discriminant(&like);
+        self.0
+            .retain(|held| std::mem::discriminant(&held.kind) != same || held.source != source);
+    }
+
+    /// Active Shadowraze hits held for this exact caster generation; zero
+    /// when absent.
     pub fn raze_stacks(&self, caster: Entity) -> u8 {
         self.active()
-            .find_map(|status| match status.kind {
-                StatusKind::Shadowraze { from, stacks } if from == caster => Some(stacks),
+            .find_map(|held| match held.kind {
+                ModifierKind::Shadowraze { stacks } if held.source == Some(caster) => Some(stacks),
                 _ => None,
             })
             .unwrap_or(0)
     }
 
-    /// Adds one successful hit and refreshes its caster's complete stack to 240 ticks.
+    /// Adds one successful hit and refreshes its caster's complete stack to
+    /// [`rules::RAZE_DEBUFF_TICKS`].
     pub fn stack_raze(&mut self, caster: Entity) {
         let stacks = self.raze_stacks(caster).saturating_add(1);
-        self.put(Status {
-            kind: StatusKind::Shadowraze {
-                from: caster,
-                stacks,
-            },
-            ticks_left: rules::RAZE_DEBUFF_TICKS,
+        self.put(Modifier {
+            kind: ModifierKind::Shadowraze { stacks },
+            source: Some(caster),
+            ticks_left: Some(rules::RAZE_DEBUFF_TICKS),
         });
         assert!(self.raze_stacks(caster) > 0);
         assert_eq!(self.raze_stacks(caster), stacks);

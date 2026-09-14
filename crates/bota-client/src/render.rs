@@ -938,7 +938,7 @@ fn draw_bottom_panel(app: &App, view: &WorldView) {
             draw_text("invulnerable", rect.x + 14.0, rect.y + 48.0, 14.0, GRAY);
         }
         draw_stale(stale, rect.x + 14.0, rect.y + 48.0, rate);
-        draw_vitals(u, &rect, rate);
+        draw_vitals(u, &rect);
         // Anything may be looked at; only what this seat drives answers to
         // the keys.
         let own = app.drives(u.id);
@@ -983,7 +983,7 @@ fn draw_bottom_panel(app: &App, view: &WorldView) {
     // Health, mana and stats as they were last known; the fate of a seat
     // with nothing standing is written over them.
     if let Some(u) = unit {
-        draw_vitals(u, &rect, rate);
+        draw_vitals(u, &rect);
     }
     if p.unit.is_none() {
         let secs = p.respawn_left / rate + 1;
@@ -1159,7 +1159,7 @@ fn kind_name(kind: UnitKind) -> &'static str {
 }
 
 /// The middle of the bottom panel: bars with numbers and the stat lines.
-fn draw_vitals(u: &UnitView, rect: &crate::hud::UiRect, rate: u32) {
+fn draw_vitals(u: &UnitView, rect: &crate::hud::UiRect) {
     let bx = rect.x + 175.0;
     let bw = 225.0;
     let frac = (u.hp.max(0) as f32 / u.max_hp.max(1) as f32).clamp(0.0, 1.0);
@@ -1193,7 +1193,7 @@ fn draw_vitals(u: &UnitView, rect: &crate::hud::UiRect, rate: u32) {
         format!(
             "Range {}   Attacks {:.1}/s   AS {}",
             u.attack_range.to_f32().round() as i32,
-            f64::from(rate) / f64::from(u.attack_interval.max(1)),
+            1000.0 / f64::from(u.attack_time.max(1)),
             u.attack_speed,
         ),
         bx,

@@ -9,7 +9,7 @@
 use bota_proto::{Attribute, Attributes, Fixed, UnitKind};
 
 use crate::game::rules;
-use crate::game::{Aura, Reach, StatusKind};
+use crate::game::{Aura, ModifierKind, Reach};
 
 /// What an entity gains for each step of whatever raises it: a level past the
 /// first, or an upgrade interval.
@@ -56,11 +56,12 @@ pub struct UnitDef {
     pub attack_range: i32,
     /// How far it looks for something to attack, in world units.
     pub acquisition: i32,
-    /// Ticks between the starts of two attacks at [`rules::BASE_ATTACK_SPEED`].
-    pub attack_interval: u32,
-    /// Ticks from the start of an attack to the hit.
+    /// Milliseconds between the starts of two attacks at
+    /// [`rules::BASE_ATTACK_SPEED`].
+    pub attack_time: u32,
+    /// Milliseconds from the start of an attack to the hit.
     pub attack_point: u32,
-    /// Ticks after the hit before it may move again.
+    /// Milliseconds after the hit before it may move again.
     pub attack_backswing: u32,
     /// Speed of the missile it throws, in world units per second. Absent for a
     /// melee attack.
@@ -126,7 +127,7 @@ const NOTHING: UnitDef = UnitDef {
     damage: 0,
     attack_range: 0,
     acquisition: 0,
-    attack_interval: 0,
+    attack_time: 0,
     attack_point: 0,
     attack_backswing: 0,
     projectile_speed: None,
@@ -160,7 +161,7 @@ pub const MELEE_CREEP: UnitDef = UnitDef {
     damage: rules::MELEE_CREEP_ATTACK_DAMAGE,
     attack_range: rules::MELEE_CREEP_ATTACK_RANGE,
     acquisition: rules::MELEE_CREEP_ACQUISITION,
-    attack_interval: rules::CREEP_ATTACK_INTERVAL,
+    attack_time: rules::CREEP_ATTACK_TIME,
     attack_point: rules::MELEE_CREEP_ATTACK_POINT,
     attack_backswing: rules::CREEP_ATTACK_BACKSWING,
     armor: rules::MELEE_CREEP_ARMOR,
@@ -183,7 +184,7 @@ pub const MELEE_CREEP: UnitDef = UnitDef {
 ///
 /// Everyone of its own side, heroes counted in.
 const FLAGBEARER_AURAS: [Aura; 1] = [Aura {
-    kind: StatusKind::Inspired {
+    kind: ModifierKind::Inspired {
         hp_per_second: rules::FLAGBEARER_AURA_REGEN,
     },
     radius: rules::FLAGBEARER_AURA_RADIUS,
@@ -236,7 +237,7 @@ pub const SUPER_MELEE_CREEP: UnitDef = UnitDef {
 /// A mega melee creep: a super one swinging faster, once every enemy
 /// barracks has fallen.
 pub const MEGA_MELEE_CREEP: UnitDef = UnitDef {
-    attack_interval: rules::MEGA_MELEE_ATTACK_INTERVAL,
+    attack_time: rules::MEGA_MELEE_ATTACK_TIME,
     ..SUPER_MELEE_CREEP
 };
 
@@ -257,7 +258,7 @@ pub const SIEGE_CREEP: UnitDef = UnitDef {
     damage: rules::SIEGE_CREEP_ATTACK_DAMAGE,
     attack_range: rules::SIEGE_CREEP_ATTACK_RANGE,
     acquisition: rules::SIEGE_CREEP_ACQUISITION,
-    attack_interval: rules::SIEGE_CREEP_ATTACK_INTERVAL,
+    attack_time: rules::SIEGE_CREEP_ATTACK_TIME,
     attack_point: rules::SIEGE_CREEP_ATTACK_POINT,
     projectile_speed: Some(rules::SIEGE_CREEP_PROJECTILE_SPEED),
     armor: rules::SIEGE_CREEP_ARMOR,
@@ -281,7 +282,7 @@ pub const HERO: UnitDef = UnitDef {
     damage: rules::HERO_ATTACK_DAMAGE,
     attack_range: rules::HERO_ATTACK_RANGE,
     acquisition: rules::ACQUISITION_RANGE,
-    attack_interval: rules::HERO_ATTACK_INTERVAL,
+    attack_time: rules::HERO_ATTACK_TIME,
     attack_point: rules::HERO_ATTACK_POINT,
     attack_backswing: rules::HERO_ATTACK_BACKSWING,
     projectile_speed: Some(rules::HERO_PROJECTILE_SPEED),
@@ -313,8 +314,8 @@ pub const PUDGE: UnitDef = UnitDef {
     max_mana: 82,
     damage: 21,
     attack_range: 150,
-    attack_interval: 58,
-    attack_point: 15,
+    attack_time: 1933,
+    attack_point: 500,
     projectile_speed: None,
     armor: -1,
     move_speed: 280,
@@ -345,8 +346,8 @@ pub const SHADOW_FIEND: UnitDef = UnitDef {
     max_mana: 75,
     damage: 25,
     attack_range: 500,
-    attack_interval: 51,
-    attack_point: 15,
+    attack_time: 1700,
+    attack_point: 500,
     projectile_speed: Some(1200),
     armor: 0,
     move_speed: 305,
@@ -406,7 +407,7 @@ pub const ANCIENT: UnitDef = UnitDef {
 /// A fountain.
 /// What a fountain mends on its own side standing in it.
 const FOUNTAIN_AURAS: [Aura; 1] = [Aura {
-    kind: StatusKind::Fountain {
+    kind: ModifierKind::Fountain {
         hp_per_tick: rules::FOUNTAIN_HEAL_HP_PER_TICK * 100,
         mana_per_tick: rules::FOUNTAIN_HEAL_MANA_PER_TICK * 100,
     },
@@ -422,7 +423,7 @@ pub const FOUNTAIN: UnitDef = UnitDef {
     damage: rules::FOUNTAIN_ATTACK_DAMAGE,
     attack_range: rules::FOUNTAIN_ATTACK_RANGE,
     acquisition: rules::FOUNTAIN_ATTACK_RANGE,
-    attack_interval: rules::FOUNTAIN_ATTACK_INTERVAL,
+    attack_time: rules::FOUNTAIN_ATTACK_TIME,
     attack_point: rules::FOUNTAIN_ATTACK_POINT,
     attack_backswing: rules::FOUNTAIN_ATTACK_BACKSWING,
     projectile_speed: Some(rules::FOUNTAIN_PROJECTILE_SPEED),
@@ -475,7 +476,7 @@ const TOWER_AURAS: [[Aura; 1]; 4] = [tower_aura(0), tower_aura(1), tower_aura(2)
 /// One tier's protection.
 const fn tower_aura(index: usize) -> [Aura; 1] {
     [Aura {
-        kind: StatusKind::Guarded {
+        kind: ModifierKind::Guarded {
             armor: rules::TOWER_AURA_ARMOR[index],
             hp_per_second: rules::TOWER_AURA_REGEN[index],
         },
@@ -494,7 +495,7 @@ const fn tower_of(index: usize) -> UnitDef {
         damage: rules::TOWER_TIER_DAMAGE[index],
         attack_range: rules::TOWER_ATTACK_RANGE,
         acquisition: rules::TOWER_ATTACK_RANGE,
-        attack_interval: rules::TOWER_ATTACK_INTERVAL,
+        attack_time: rules::TOWER_ATTACK_TIME,
         attack_point: rules::TOWER_ATTACK_POINT,
         attack_backswing: rules::TOWER_ATTACK_BACKSWING,
         projectile_speed: Some(rules::TOWER_PROJECTILE_SPEED),

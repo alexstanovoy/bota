@@ -5,7 +5,7 @@ use bota_proto::{
     UnitView, WorldView,
 };
 
-use crate::game::{Entity, StackKind, StatusKind, World, ability_mana_cost, item_views};
+use crate::game::{Entity, ModifierKind, StackKind, World, ability_mana_cost, item_views};
 
 /// Shadowraze amplification; each anonymous source row carries both ticks and stacks.
 pub const EFFECT_SHADOWRAZE: u16 = 15;
@@ -161,7 +161,8 @@ impl World {
             move_speed: stats.move_speed,
             attack_damage: stats.damage,
             attack_range: stats.attack_range,
-            attack_interval: stats.attack_interval,
+            attack_time: after_speed(stats.attack_time, stats.attack_speed),
+            attack_point: after_speed(stats.attack_point, stats.attack_speed),
             attack_speed: stats.attack_speed,
             armor: stats.armor,
             magic_resist: Fixed::from_ratio(stats.magic_resist_pct, 100),
@@ -207,6 +208,16 @@ impl World {
             effects: self.effects_on(entity),
         })
     }
+}
+
+/// Milliseconds of animation at an attack speed, clamped as the cycle
+/// clamps it.
+fn after_speed(ms: u32, attack_speed: i32) -> u32 {
+    let speed = attack_speed.clamp(
+        crate::game::rules::MIN_ATTACK_SPEED,
+        crate::game::rules::MAX_ATTACK_SPEED,
+    );
+    ms * crate::game::rules::BASE_ATTACK_SPEED as u32 / speed as u32
 }
 
 /// A pool as a number to show.
@@ -261,23 +272,24 @@ fn stack_effect_id(kind: StackKind) -> u16 {
     }
 }
 
-/// The number the wire names a timed effect with.
-fn effect_id(kind: StatusKind) -> u16 {
+/// The number the wire names a modifier with.
+fn effect_id(kind: ModifierKind) -> u16 {
     match kind {
-        StatusKind::Haste { .. } => 0,
-        StatusKind::Mending { .. } => 1,
-        StatusKind::Clarity { .. } => 2,
-        StatusKind::Fountain { .. } => 3,
-        StatusKind::Stunned => 4,
-        StatusKind::Shielded => 8,
-        StatusKind::Slowed { .. } => 5,
-        StatusKind::Hastened { .. } => 7,
-        StatusKind::Burning { .. } => 6,
-        StatusKind::Phased => 9,
-        StatusKind::ArmorBroken { .. } => 12,
-        StatusKind::Guarded { .. } => 13,
-        StatusKind::Inspired { .. } => 14,
-        StatusKind::Shadowraze { .. } => EFFECT_SHADOWRAZE,
+        ModifierKind::Haste { .. } => 0,
+        ModifierKind::Mending { .. } => 1,
+        ModifierKind::Clarity { .. } => 2,
+        ModifierKind::Fountain { .. } => 3,
+        ModifierKind::Stunned => 4,
+        ModifierKind::Shielded => 8,
+        ModifierKind::Slowed { .. } => 5,
+        ModifierKind::Hastened { .. } => 7,
+        ModifierKind::Burning { .. } => 6,
+        ModifierKind::Phased => 9,
+        ModifierKind::ArmorBroken { .. } => 12,
+        ModifierKind::Guarded { .. } => 13,
+        ModifierKind::Inspired { .. } => 14,
+        ModifierKind::Shadowraze { .. } => EFFECT_SHADOWRAZE,
+        ModifierKind::Rot { .. } => 16,
     }
 }
 
@@ -286,19 +298,22 @@ impl World {
     /// gathered.
     fn effects_on(&self, entity: Entity) -> Vec<EffectView> {
         let mut on_it: Vec<EffectView> =
-            self.statuses.get(entity).map_or_else(Vec::new, |statuses| {
-                statuses
-                    .active()
-                    .map(|status| EffectView {
-                        id: EffectId(effect_id(status.kind)),
-                        ticks_left: Some(status.ticks_left),
-                        stacks: match status.kind {
-                            StatusKind::Shadowraze { stacks, .. } => Some(u32::from(stacks)),
-                            _ => None,
-                        },
-                    })
-                    .collect()
-            });
+            self.modifiers
+                .get(entity)
+                .map_or_else(Vec::new, |modifiers| {
+                    modifiers
+                        .active()
+                        .filter(|held| !matches!(held.kind, ModifierKind::Rot { .. }))
+                        .map(|held| EffectView {
+                            id: EffectId(effect_id(held.kind)),
+                            ticks_left: held.ticks_left,
+                            stacks: match held.kind {
+                                ModifierKind::Shadowraze { stacks } => Some(u32::from(stacks)),
+                                _ => None,
+                            },
+                        })
+                        .collect()
+                });
         if let Some(gathered) = self.stacks.get(entity) {
             on_it.extend(gathered.held().map(|(kind, many)| EffectView {
                 id: EffectId(stack_effect_id(kind)),
@@ -312,7 +327,11 @@ impl World {
     /// Whether an entity has a toggle switched on right now.
     fn ability_on(&self, entity: Entity, id: bota_proto::AbilityId) -> bool {
         match id {
-            crate::game::ability::ROT => self.rotting.get(entity).is_some(),
+            crate::game::ability::ROT => self.modifiers.get(entity).is_some_and(|on_it| {
+                on_it
+                    .active()
+                    .any(|held| matches!(held.kind, ModifierKind::Rot { .. }))
+            }),
             _ => false,
         }
     }
@@ -333,16 +352,16 @@ impl World {
 
     /// The state a unit is in, as the wire names it.
     fn state_of(&self, entity: Entity) -> u16 {
-        let Some(on_it) = self.statuses.get(entity) else {
+        let Some(on_it) = self.modifiers.get(entity) else {
             return 0;
         };
         let mut bits = 0;
-        for status in on_it.active() {
-            bits |= match status.kind {
-                StatusKind::Stunned => StatusFlags::STUNNED,
-                StatusKind::Shielded => StatusFlags::MAGIC_IMMUNE,
-                StatusKind::Slowed { .. } => StatusFlags::SLOWED,
-                StatusKind::Burning { .. } => StatusFlags::DOT,
+        for held in on_it.active() {
+            bits |= match held.kind {
+                ModifierKind::Stunned => StatusFlags::STUNNED,
+                ModifierKind::Shielded => StatusFlags::MAGIC_IMMUNE,
+                ModifierKind::Slowed { .. } => StatusFlags::SLOWED,
+                ModifierKind::Burning { .. } => StatusFlags::DOT,
                 _ => 0,
             };
         }

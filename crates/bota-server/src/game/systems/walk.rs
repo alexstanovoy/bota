@@ -2,7 +2,7 @@
 
 use bota_proto::{Fixed, Vec2};
 
-use crate::game::{Entity, Route, UnitOrder, World};
+use crate::game::{ActionPhase, ActionState, Entity, Route, UnitOrder, World};
 use crate::game::{facing_gap, facing_towards, find_path, grid_los, per_tick, rules, turn_towards};
 
 impl World {
@@ -32,12 +32,22 @@ impl World {
             }
             // Mid-swing it comes round to what the swing was begun against;
             // recovering from one, to whatever it is set on now.
-            let (rooted, face) = match self.attacking.get(entity).copied() {
-                Some(state) if state.windup.is_some() => {
-                    (true, state.windup.map(|windup| windup.target))
-                }
-                Some(state) if state.recovering > 0 => (true, self.target_of(entity)),
-                _ => (false, None),
+            let (rooted, face) = match self.action.get(entity).map(|action| action.state) {
+                Some(ActionState::Attack {
+                    target,
+                    phase: ActionPhase::Before { .. },
+                }) => (true, Some(target)),
+                Some(ActionState::Attack { .. }) => (true, self.target_of(entity)),
+                Some(
+                    ActionState::CastAbility { target, .. } | ActionState::UseItem { target, .. },
+                ) => (
+                    true,
+                    match target {
+                        bota_proto::Target::Unit(target) => self.of_wire(target),
+                        _ => None,
+                    },
+                ),
+                Some(ActionState::Ready) | None => (false, None),
             };
             if rooted {
                 if let Some(at) = face.and_then(|on| self.transform.get(on)).map(|t| t.pos) {
@@ -53,11 +63,10 @@ impl World {
             // there is something to do from reach.
             // A cast aimed further off than it reaches walks the caster in,
             // and answers before anything else it was told to do.
-            if let Some(cast) = self.casting.get(entity).copied()
-                && let Some(aim) = self.cast_spot(entity, cast)
+            if let Some(pending) = self.pending_cast(entity)
+                && let Some(aim) = self.cast_spot(pending)
             {
-                let reach = crate::game::ability_def(self.ability_in(entity, cast.slot))
-                    .map_or(0, |def| def.range);
+                let reach = self.cast_reach(entity, pending);
                 if reach > 0 {
                     self.walk_at(entity, aim, rules::units(reach));
                     continue;

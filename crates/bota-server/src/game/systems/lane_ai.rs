@@ -29,9 +29,8 @@ impl World {
         // spell it is in the middle of: a spell at this side is as plain as a
         // swing at it.
         let casting_at = self
-            .casting
-            .get(candidate)
-            .and_then(|cast| match cast.target {
+            .pending_cast(candidate)
+            .and_then(|pending| match pending.target() {
                 bota_proto::Target::Unit(target) => self.of_wire(target),
                 _ => None,
             });
@@ -137,12 +136,12 @@ impl World {
             if let Some(orders) = self.orders.get_mut(entity) {
                 orders.cooldown = orders.cooldown.saturating_sub(1);
             }
-            if self.attacking.get(entity).is_none() {
+            if !self.can_attack(entity) {
                 continue;
             }
             // Channelling, it takes on nothing at all; neither does a body
-            // with a cast still waiting to be made.
-            if self.is_channelling(entity) || self.casting.get(entity).is_some() {
+            // still walking in to make a cast.
+            if self.is_channelling(entity) || self.cast_out_of_reach(entity) {
                 self.target.remove(entity);
                 continue;
             }

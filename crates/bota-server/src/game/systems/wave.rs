@@ -2,9 +2,7 @@
 
 use bota_proto::{Team, Vec2};
 
-use crate::game::{
-    CreepRank, Lane, LaneAi, March, StructureId, UnitDef, UnitOrder, Upgrades, World,
-};
+use crate::game::{CreepRank, StructureId, UnitDef, UnitOrder, World};
 use crate::game::{
     Purpose, WavePlan, advance_waypoint, creep_spawn_pos, lane_routes, rules, spawn_offsets,
     team_index, wave_at, wave_plan,
@@ -31,28 +29,7 @@ impl World {
                 let ranks = self.wave_creep_ranks(team, lane);
                 for (index, def) in wave_ranks(&plan, flag_slot, ranks).into_iter().enumerate() {
                     let pos = at + offsets.get(index).copied().unwrap_or(Vec2::ZERO);
-                    let creep = self.spawn_unit(def, team, pos);
-                    self.lane.insert(creep, Lane(lane));
-                    self.upgrades.insert(creep, Upgrades(plan.upgrades));
-                    self.march.insert(
-                        creep,
-                        March {
-                            route_step: 0,
-                            trace: None,
-                            shove: 0,
-                        },
-                    );
-                    self.lane_ai.insert(
-                        creep,
-                        LaneAi {
-                            anchor: None,
-                            last_seen: None,
-                            keep_until: 0,
-                            roused_by: None,
-                            roused_at_own: false,
-                            chase_until: 0,
-                        },
-                    );
+                    self.spawn_creep(def, team, pos, lane, plan.upgrades);
                 }
             }
         }

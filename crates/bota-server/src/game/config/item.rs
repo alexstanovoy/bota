@@ -2,11 +2,9 @@
 //!
 //! Every entry answers to an [`ItemId`], which is its place in [`ITEMS`].
 
-use bota_proto::{Aim, Attribute, Attributes, Fixed, ItemId, ItemView};
+use bota_proto::{Aim, Attribute, Attributes, Fixed, ItemId, ItemView, Target};
 
 use crate::game::Inventory;
-
-use crate::game::UnitDef;
 use crate::game::rules;
 
 /// Which pool an item mends.
@@ -89,82 +87,191 @@ const fn per_second(points: i32) -> Fixed {
     Fixed::from_ratio(points, rules::TICKS_PER_SECOND as i32)
 }
 
-/// What using an item does.
+/// How many charges one use costs.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum ItemUse {
-    /// Mends a unit over time.
-    Mend {
-        /// Which pool it mends.
-        pool: Pool,
-        /// How much it mends over the whole of it.
-        total: i32,
-        /// How long it runs.
-        ticks: u32,
-        /// How far it reaches, in world units.
-        range: i32,
-        /// Whether it takes a tree down to work, and needs one in reach.
-        eats_a_tree: bool,
-        /// Whether a blow from a hero or a tower puts it out.
-        breaks: bool,
-    },
-    /// Mends whoever used it at once, spending every charge it holds.
-    Restore {
-        /// Health one charge mends.
-        hp_per_charge: i32,
-        /// Mana one charge mends.
-        mana_per_charge: i32,
-    },
-    /// Stands a ward at a point.
-    Ward {
-        /// What kind of ward it stands.
-        def: &'static UnitDef,
-        /// How long the ward stands.
-        ticks: u32,
-        /// How far it reaches, in world units.
-        range: i32,
-    },
-    /// Takes a tree down.
-    Fell {
-        /// How far it reaches, in world units.
-        range: i32,
-    },
-    /// Puts a tree up, to stand for a while.
-    Plant {
-        /// Ticks it stands before it goes on its own.
-        ticks: u32,
-        /// How far it reaches, in world units.
-        range: i32,
-    },
-    /// Carries whoever used it to an allied building.
-    Teleport {
-        /// Ticks of channelling before it carries.
-        channel: u32,
-        /// How far from an allied building it may land, in world units.
-        range: i32,
-    },
-    /// Carries whoever used it to a point on open ground.
-    Blink {
-        /// How far it carries, in world units.
-        range: i32,
-    },
-    /// Walks its user faster, and through the bodies in the way.
-    Phase {
-        /// Percent added to movement speed.
-        pct: i32,
-        /// How long it holds.
-        ticks: u32,
-    },
-    /// Sets the item to the next attribute.
-    Switch,
-    /// Restores the user's mana at once, spending one charge for a positive deficit.
-    ReplenishMana {
-        /// Maximum mana restored by one use.
-        amount: i32,
-    },
+pub enum Spends {
+    /// None at all.
+    Nothing,
+    /// One of them.
+    One,
+    /// Every one it holds.
+    All,
+}
+
+/// What an item does at a moment of its use, given its user and the slot
+/// it sits in. `false`: it did not happen.
+pub type UseHook = fn(&mut crate::game::World, crate::game::Entity, usize, Target) -> bool;
+
+/// What an item does when its use ends.
+pub type ItemEndHook = fn(&mut crate::game::World, crate::game::Entity, usize, Target);
+
+fn unused(_: &mut crate::game::World, _: crate::game::Entity, _: usize, _: Target) -> bool {
+    false
+}
+
+fn goes_on(_: &mut crate::game::World, _: crate::game::Entity, _: usize, _: Target) -> bool {
+    true
+}
+
+fn nothing(_: &mut crate::game::World, _: crate::game::Entity, _: usize, _: Target) {}
+
+fn clarity(
+    world: &mut crate::game::World,
+    user: crate::game::Entity,
+    _: usize,
+    target: Target,
+) -> bool {
+    world.mend_with(
+        user,
+        target,
+        crate::game::Mend {
+            pool: Pool::Mana,
+            total: 150,
+            ticks: 750,
+            range: 250,
+            eats_a_tree: false,
+            breaks: true,
+        },
+    )
+}
+
+fn salve(
+    world: &mut crate::game::World,
+    user: crate::game::Entity,
+    _: usize,
+    target: Target,
+) -> bool {
+    world.mend_with(
+        user,
+        target,
+        crate::game::Mend {
+            pool: Pool::Health,
+            total: 400,
+            ticks: SALVE_TICKS,
+            range: 250,
+            eats_a_tree: false,
+            breaks: true,
+        },
+    )
+}
+
+fn branch(
+    world: &mut crate::game::World,
+    user: crate::game::Entity,
+    _: usize,
+    target: Target,
+) -> bool {
+    world.plant_a_tree(user, target, rules::PLANTED_TREE_TICKS, 350)
+}
+
+fn observer(
+    world: &mut crate::game::World,
+    user: crate::game::Entity,
+    _: usize,
+    target: Target,
+) -> bool {
+    world.stand_ward(user, target, &crate::game::OBSERVER_WARD, 10800, 500)
+}
+
+fn quelling(
+    world: &mut crate::game::World,
+    user: crate::game::Entity,
+    _: usize,
+    target: Target,
+) -> bool {
+    world.fell_a_tree(user, target, 350)
+}
+
+fn sentry(
+    world: &mut crate::game::World,
+    user: crate::game::Entity,
+    _: usize,
+    target: Target,
+) -> bool {
+    world.stand_ward(user, target, &crate::game::SENTRY_WARD, 12600, 500)
+}
+
+fn tango(
+    world: &mut crate::game::World,
+    user: crate::game::Entity,
+    _: usize,
+    target: Target,
+) -> bool {
+    world.mend_with(
+        user,
+        target,
+        crate::game::Mend {
+            pool: Pool::Health,
+            total: 115,
+            ticks: 480,
+            range: 165,
+            eats_a_tree: true,
+            breaks: false,
+        },
+    )
+}
+
+fn scroll_reads(
+    world: &mut crate::game::World,
+    user: crate::game::Entity,
+    _: usize,
+    target: Target,
+) -> bool {
+    world.may_teleport(user, target, 600)
+}
+
+fn scroll_carries(
+    world: &mut crate::game::World,
+    user: crate::game::Entity,
+    slot: usize,
+    target: Target,
+) {
+    world.teleport_to(user, slot, target);
+}
+
+fn treads(
+    world: &mut crate::game::World,
+    user: crate::game::Entity,
+    slot: usize,
+    _: Target,
+) -> bool {
+    world.switch_mode(user, slot)
+}
+
+fn phase(world: &mut crate::game::World, user: crate::game::Entity, _: usize, _: Target) -> bool {
+    world.walk_through(user, 20, 93)
+}
+
+fn blink(
+    world: &mut crate::game::World,
+    user: crate::game::Entity,
+    _: usize,
+    target: Target,
+) -> bool {
+    world.blink_to(user, target, BLINK_RANGE)
+}
+
+fn stick(
+    world: &mut crate::game::World,
+    user: crate::game::Entity,
+    slot: usize,
+    _: Target,
+) -> bool {
+    let charges = i32::from(world.charges_in(user, slot));
+    world.restore_with(user, charges * 15, charges * 15)
+}
+
+fn mango(
+    world: &mut crate::game::World,
+    user: crate::game::Entity,
+    _: usize,
+    target: Target,
+) -> bool {
+    world.replenish_mana(user, target, MANGO_MANA)
 }
 
 /// One entry of the catalog.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug)]
 pub struct ItemDef {
     /// Price in gold.
     pub cost: i32,
@@ -197,8 +304,29 @@ pub struct ItemDef {
     pub components: &'static [ItemId],
     /// What it adds to whoever carries it; health regeneration is per charge when mergeable.
     pub carried: Carried,
-    /// What using it does. Absent for one that cannot be used.
-    pub active: Option<ItemUse>,
+    /// How a use of it is aimed. Absent for one that cannot be used.
+    pub aim: Option<Aim>,
+    /// How far one use reaches, in world units. Zero for one that reaches
+    /// nowhere of its own.
+    pub range: i32,
+    /// Charges one use costs.
+    pub spends: Spends,
+    /// Milliseconds of cast point. Zero: the effect lands in the same tick.
+    pub point: u32,
+    /// Milliseconds of animation after. Zero: the body is not held.
+    pub backswing: u32,
+    /// Ticks it runs on after the use. Zero: over at once.
+    pub duration: u32,
+    /// Whether a use wants mana missing, and takes its user as the target.
+    pub mana_deficit: bool,
+    /// At the moment of use. `false`: nothing happened and nothing is spent.
+    pub on_use: UseHook,
+    /// Every tick it runs on. `false`: it breaks off.
+    pub on_during: UseHook,
+    /// Broken off by an order, a stun, the user falling, or its own `false`.
+    pub on_cancel: ItemEndHook,
+    /// Run to the end of `duration`.
+    pub on_complete: ItemEndHook,
 }
 
 /// An item that costs nothing, carries nothing and does nothing, so an entry
@@ -216,7 +344,17 @@ const PLAIN: ItemDef = ItemDef {
     mode_bonus: 0,
     components: &[],
     carried: NOTHING,
-    active: None,
+    aim: None,
+    range: 0,
+    spends: Spends::Nothing,
+    point: 0,
+    backswing: 0,
+    duration: 0,
+    mana_deficit: false,
+    on_use: unused,
+    on_during: goes_on,
+    on_cancel: nothing,
+    on_complete: nothing,
 };
 
 /// Boots of Speed.
@@ -312,6 +450,10 @@ pub const MANGO_COST: i32 = 65;
 pub const MANGO_STACK_MAX: u8 = 3;
 /// Mana restored by one Mango charge, capped at the user's maximum.
 pub const MANGO_MANA: i32 = 100;
+/// Ticks a Healing Salve mends over.
+pub const SALVE_TICKS: u32 = 300;
+/// How far a Blink Dagger carries, in units.
+pub const BLINK_RANGE: i32 = 1200;
 /// Health per tick per charge: `2 / (5 * TICKS_PER_SECOND)`, truncated to Q16.16.
 /// At 30 ticks/s this is 873 raw/tick, exactly 0.399627685546875 HP/s.
 pub const MANGO_HP_REGEN: Fixed = Fixed::from_ratio(2, 5 * rules::TICKS_PER_SECOND as i32);
@@ -373,28 +515,20 @@ pub const ITEMS: [ItemDef; 43] = [
     ItemDef {
         cost: 50,
         charges: 1,
-        active: Some(ItemUse::Mend {
-            pool: Pool::Mana,
-            total: 150,
-            ticks: 750,
-            range: 250,
-            eats_a_tree: false,
-            breaks: true,
-        }),
+        aim: Some(Aim::Unit),
+        range: 250,
+        spends: Spends::One,
+        on_use: clarity,
         ..PLAIN
     },
     // Healing Salve.
     ItemDef {
         cost: 110,
         charges: 1,
-        active: Some(ItemUse::Mend {
-            pool: Pool::Health,
-            total: 400,
-            ticks: 300,
-            range: 250,
-            eats_a_tree: false,
-            breaks: true,
-        }),
+        aim: Some(Aim::Unit),
+        range: 250,
+        spends: Spends::One,
+        on_use: salve,
         ..PLAIN
     },
     // Iron Branch.
@@ -407,21 +541,20 @@ pub const ITEMS: [ItemDef; 43] = [
             mana: 15,
             ..NOTHING
         },
-        active: Some(ItemUse::Plant {
-            ticks: rules::PLANTED_TREE_TICKS,
-            range: 350,
-        }),
+        aim: Some(Aim::Point),
+        range: 350,
+        spends: Spends::One,
+        on_use: branch,
         ..PLAIN
     },
     // Observer Ward.
     ItemDef {
         cost: 100,
         charges: 1,
-        active: Some(ItemUse::Ward {
-            def: &crate::game::OBSERVER_WARD,
-            ticks: 10800,
-            range: 500,
-        }),
+        aim: Some(Aim::Point),
+        range: 500,
+        spends: Spends::One,
+        on_use: observer,
         ..PLAIN
     },
     // Quelling Blade.
@@ -432,32 +565,29 @@ pub const ITEMS: [ItemDef; 43] = [
             damage_to_creeps: 18,
             ..NOTHING
         },
-        active: Some(ItemUse::Fell { range: 350 }),
+        aim: Some(Aim::Tree),
+        range: 350,
+        on_use: quelling,
         ..PLAIN
     },
     // Sentry Ward.
     ItemDef {
         cost: 50,
         charges: 1,
-        active: Some(ItemUse::Ward {
-            def: &crate::game::SENTRY_WARD,
-            ticks: 12600,
-            range: 500,
-        }),
+        aim: Some(Aim::Point),
+        range: 500,
+        spends: Spends::One,
+        on_use: sentry,
         ..PLAIN
     },
     // Tango.
     ItemDef {
         cost: 90,
         charges: 3,
-        active: Some(ItemUse::Mend {
-            pool: Pool::Health,
-            total: 115,
-            ticks: 480,
-            range: 165,
-            eats_a_tree: true,
-            breaks: false,
-        }),
+        aim: Some(Aim::Tree),
+        range: 165,
+        spends: Spends::One,
+        on_use: tango,
         ..PLAIN
     },
     // Town Portal Scroll.
@@ -466,10 +596,11 @@ pub const ITEMS: [ItemDef; 43] = [
         charges: 1,
         cooldown: rules::SCROLL_WAIT_TICKS,
         shared_wait: true,
-        active: Some(ItemUse::Teleport {
-            channel: 90,
-            range: 600,
-        }),
+        aim: Some(Aim::Building),
+        range: 600,
+        duration: 90,
+        on_use: scroll_reads,
+        on_complete: scroll_carries,
         ..PLAIN
     },
     // Circlet.
@@ -661,7 +792,8 @@ pub const ITEMS: [ItemDef; 43] = [
             attack_speed: 25,
             ..NOTHING
         },
-        active: Some(ItemUse::Switch),
+        aim: Some(Aim::Own),
+        on_use: treads,
         ..PLAIN
     },
     // Phase Boots.
@@ -674,7 +806,8 @@ pub const ITEMS: [ItemDef; 43] = [
             damage: 18,
             ..NOTHING
         },
-        active: Some(ItemUse::Phase { pct: 20, ticks: 93 }),
+        aim: Some(Aim::Own),
+        on_use: phase,
         ..PLAIN
     },
     // Blink Dagger.
@@ -682,7 +815,9 @@ pub const ITEMS: [ItemDef; 43] = [
         cost: 2250,
         cooldown: 450,
         breaks_on_damage: 90,
-        active: Some(ItemUse::Blink { range: 1200 }),
+        aim: Some(Aim::Point),
+        range: 1200,
+        on_use: blink,
         ..PLAIN
     },
     // Bracer.
@@ -720,10 +855,9 @@ pub const ITEMS: [ItemDef; 43] = [
         cost: 200,
         cast_charges: 10,
         cooldown: 390,
-        active: Some(ItemUse::Restore {
-            hp_per_charge: 15,
-            mana_per_charge: 15,
-        }),
+        aim: Some(Aim::Own),
+        spends: Spends::All,
+        on_use: stick,
         ..PLAIN
     },
     // Magic Wand.
@@ -736,10 +870,9 @@ pub const ITEMS: [ItemDef; 43] = [
             attributes: Attributes::all(3),
             ..NOTHING
         },
-        active: Some(ItemUse::Restore {
-            hp_per_charge: 15,
-            mana_per_charge: 15,
-        }),
+        aim: Some(Aim::Own),
+        spends: Spends::All,
+        on_use: stick,
         ..PLAIN
     },
     // The recipe Phase Boots are built with.
@@ -761,51 +894,13 @@ pub const ITEMS: [ItemDef; 43] = [
             hp_regen: MANGO_HP_REGEN,
             ..NOTHING
         },
-        active: Some(ItemUse::ReplenishMana { amount: MANGO_MANA }),
+        aim: Some(Aim::Own),
+        spends: Spends::One,
+        mana_deficit: true,
+        on_use: mango,
         ..PLAIN
     },
 ];
-
-/// How one use of an item is aimed.
-pub fn item_aim(use_of: ItemUse) -> Aim {
-    match use_of {
-        // What eats a tree is aimed at one; what is drunk is aimed at whoever
-        // drinks it.
-        ItemUse::Mend { eats_a_tree, .. } => {
-            if eats_a_tree {
-                Aim::Tree
-            } else {
-                Aim::Unit
-            }
-        }
-        ItemUse::Fell { .. } => Aim::Tree,
-        ItemUse::Ward { .. } | ItemUse::Plant { .. } | ItemUse::Blink { .. } => Aim::Point,
-        ItemUse::Teleport { .. } => Aim::Building,
-        ItemUse::Restore { .. }
-        | ItemUse::ReplenishMana { .. }
-        | ItemUse::Phase { .. }
-        | ItemUse::Switch => Aim::Own,
-    }
-}
-
-/// How far one use of an item reaches, in world units.
-///
-/// For one aimed at a building this is how far from that building it may
-/// land, not how far its user may stand from it.
-pub fn item_range(use_of: ItemUse) -> i32 {
-    match use_of {
-        ItemUse::Mend { range, .. }
-        | ItemUse::Ward { range, .. }
-        | ItemUse::Fell { range }
-        | ItemUse::Plant { range, .. }
-        | ItemUse::Teleport { range, .. }
-        | ItemUse::Blink { range } => range,
-        ItemUse::Restore { .. }
-        | ItemUse::ReplenishMana { .. }
-        | ItemUse::Phase { .. }
-        | ItemUse::Switch => 0,
-    }
-}
 
 /// What one item is, or nothing if no such item exists.
 pub fn item_def(id: ItemId) -> Option<&'static ItemDef> {
@@ -850,8 +945,8 @@ pub fn item_views(bag: &Inventory) -> Vec<Option<ItemView>> {
                     mute_left: stack.mute,
                     mode: stack.mode,
                     mana_cost: def.map_or(0, |def| def.mana_cost),
-                    range: def.and_then(|def| def.active).map_or(0, item_range),
-                    aim: def.and_then(|def| def.active).map(item_aim),
+                    range: def.map_or(0, |def| def.range),
+                    aim: def.and_then(|def| def.aim),
                     for_sale: stack.for_sale,
                 }
             })

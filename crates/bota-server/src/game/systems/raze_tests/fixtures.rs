@@ -25,7 +25,7 @@ pub(super) fn hero(world: &mut World, side: Team, pos: Vec2, slot: SlotId) -> En
 
 pub(super) fn prepare(world: &mut World, entity: Entity, pos: Vec2) {
     world.def.remove(entity);
-    world.attacking.remove(entity);
+    world.action.remove(entity);
     world.hull.remove(entity);
     world.stats.insert(entity, stats());
     world.fill_pools(entity);
@@ -50,7 +50,7 @@ fn stats() -> Stats {
         damage: 0,
         attack_range: Fixed::ZERO,
         acquisition: Fixed::ZERO,
-        attack_interval: 30,
+        attack_time: 1000,
         attack_speed: 100,
         attributes: bota_proto::Attributes::ZERO,
         primary: None,
