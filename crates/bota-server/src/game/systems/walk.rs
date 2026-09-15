@@ -137,12 +137,15 @@ impl World {
                 continue;
             }
             let waypoint = self.next_corner(entity, from, dest);
-            // Where the walk ends is where it stands: nothing left to walk.
-            if waypoint == from {
-                continue;
-            }
             let step = per_tick(stats.move_speed);
             let marching = self.march.get(entity).is_some();
+            // On the last stretch, what a player drives stops where the
+            // ground or the body on its destination stops it, and faces it,
+            // rather than going round for a spot it can never take.
+            if !marching && waypoint == dest && self.walk_ends_short(entity, from, dest, step) {
+                self.turn_to(entity, dest);
+                continue;
+            }
             // A walker works round the bodies in its way with the same held
             // side a marcher does; only what flies is over them.
             let (aim, trace) = if marching {
@@ -269,20 +272,21 @@ impl World {
         {
             route.path.remove(0);
         }
-        // With the corners walked, the last stretch runs to where the walk
-        // ends: the destination itself when the line to it is clear, else
-        // the end of a route laid to it. A route is laid only for a
-        // destination not yet walked up to.
+        // With the corners walked, the last stretch aims at the destination
+        // itself, and the ground or the body holding it stops the walk as
+        // near as it gets. A route is laid only for a destination not yet
+        // walked up to: within a cell of where the last one ended, none is.
+        let room = self.hull.get(entity).map_or(Fixed::ZERO, |h| h.collision);
         if route.path.is_empty() {
-            if grid_los(&self.grid, from, dest) {
+            if grid_los(&self.grid, from, dest, room) {
                 route.end = dest;
-            } else if !from.within(route.end, rules::units(rules::WAYPOINT_RADIUS)) {
-                route.path = find_path(&self.grid, from, dest);
+            } else if !from.within(route.end, rules::units(rules::GRID_CELL_SIZE)) {
+                route.path = find_path(&self.grid, from, dest, room);
                 route.goal = dest;
                 route.end = route.path.last().copied().unwrap_or(from);
             }
         }
-        let next = route.path.first().copied().unwrap_or(route.end);
+        let next = route.path.first().copied().unwrap_or(dest);
         self.route.insert(entity, route);
         next
     }
@@ -356,7 +360,7 @@ impl World {
         }
         let waypoint = self.next_corner(entity, from, aim);
         // As near as the ground lets it get: it comes round and waits there.
-        if waypoint == from {
+        if waypoint == aim && self.walk_ends_short(entity, from, aim, per_tick(stats.move_speed)) {
             self.turn_to(entity, aim);
             return;
         }

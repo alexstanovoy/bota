@@ -338,14 +338,19 @@ pub const HERO_HP_REGEN: Fixed = Fixed::from_ratio(1, 4 * TICKS_PER_SECOND as i3
 /// Mana per tick a hero mends before intelligence.
 pub const HERO_MANA_REGEN: Fixed = Fixed::from_ratio(1, 4 * TICKS_PER_SECOND as i32);
 /// Highest hero level.
-pub const HERO_MAX_LEVEL: u8 = 10;
+pub const HERO_MAX_LEVEL: u8 = 30;
 /// Total experience required to sit at each level, indexed by `level - 1`.
-pub const XP_THRESHOLDS: [i32; HERO_MAX_LEVEL as usize] =
-    [0, 230, 600, 1080, 1660, 2260, 2980, 3730, 4620, 5550];
-/// Ticks a dead hero waits before respawning, plus the per-level term.
-pub const RESPAWN_BASE_TICKS: u32 = 120;
-/// Additional respawn ticks per hero level.
-pub const RESPAWN_PER_LEVEL_TICKS: u32 = 120;
+pub const XP_THRESHOLDS: [i32; HERO_MAX_LEVEL as usize] = [
+    0, 240, 640, 1160, 1760, 2440, 3200, 4000, 4900, 5900, 7000, 8200, 9500, 10900, 12400, 14000,
+    15700, 17500, 19400, 21400, 23600, 26000, 28600, 31400, 34400, 38400, 43400, 49400, 56400,
+    63900,
+];
+/// Seconds a dead hero waits before respawning, indexed by `level - 1`.
+/// Past the last entry the wait is the last entry's.
+pub const RESPAWN_SECONDS: [u32; 25] = [
+    12, 15, 18, 21, 24, 26, 28, 30, 32, 34, 36, 44, 46, 48, 50, 52, 54, 65, 70, 75, 80, 85, 90, 95,
+    100,
+];
 
 // Creep stats: melee, ranged, siege.
 
@@ -584,9 +589,9 @@ pub const CREEP_CHASE_TICKS: u32 = 69;
 pub const FOLLOW_DISTANCE: i32 = 150;
 /// Extra clearance added around structures when blocking grid cells.
 pub const STEER_MARGIN: i32 = 8;
-/// What a tree's footprint grows by on the grid: the widest walker's
-/// collision size and the margin.
-pub const WALKER_CLEARANCE: i32 = SIEGE_CREEP_COLLISION + STEER_MARGIN;
+/// The collision size a lane route keeps clear of every post: the widest
+/// marcher's, so every creep of a wave can walk it.
+pub const WIDEST_MARCHER: i32 = SIEGE_CREEP_COLLISION;
 /// A path waypoint counts as reached within this distance.
 pub const WAYPOINT_RADIUS: i32 = 40;
 /// A stored path is recomputed once its goal drifted this far.
@@ -633,7 +638,7 @@ pub const ABILITY_MAX_LEVEL: u8 = 4;
 /// Levels the ultimate can reach.
 pub const ULT_MAX_LEVEL: u8 = 3;
 /// Hero level required for each ultimate level.
-pub const ULT_LEVEL_FLOORS: [u8; 3] = [6, 8, 10];
+pub const ULT_LEVEL_FLOORS: [u8; 3] = [6, 12, 18];
 
 // Sylla: crit passive / attack speed buff / bouncing projectile / multishot.
 
@@ -812,8 +817,16 @@ pub const ROT_SLOW_PCT: [i32; 4] = [10, 15, 20, 25];
 /// How near an enemy hero has to fall to feed the flesh heap, in world
 /// units.
 pub const FLESH_HEAP_RANGE: i32 = 450;
-/// Strength one stack of the flesh heap is worth.
-pub const FLESH_HEAP_STRENGTH: i32 = 2;
+/// Strength one stack of the flesh heap is worth, by the heap's level.
+pub const FLESH_HEAP_STRENGTH_PER_STACK: [Fixed; 4] = [
+    Fixed::from_ratio(3, 2),
+    Fixed::from_int(2),
+    Fixed::from_ratio(5, 2),
+    Fixed::from_int(3),
+];
+/// Magic resistance the flesh heap grants, percent by its level, on top of
+/// what its holder has.
+pub const FLESH_HEAP_MAGIC_RESIST_PCT: [i32; 4] = [12, 14, 16, 18];
 /// Mana the dismember costs, by level.
 pub const DISMEMBER_MANA: [i32; 3] = [100, 130, 170];
 /// Ticks between dismembers, by level.
@@ -943,18 +956,22 @@ pub const ARMOR_SCALE: i32 = 6;
 pub const STARTING_GOLD: i32 = 600;
 /// One gold arrives every this many ticks.
 pub const PASSIVE_GOLD_PERIOD_TICKS: u32 = 30;
-/// Gold a dying hero loses, per level of it, never more than it holds.
-pub const DEATH_GOLD_LOSS_PER_LEVEL: i32 = 30;
+/// A dying hero loses its net worth over this, never more than it holds.
+pub const DEATH_GOLD_LOSS_SHARE: i32 = 40;
 /// Gold for killing a hero, before the streak bonus.
 pub const HERO_KILL_BOUNTY_BASE: i32 = 200;
 /// Extra gold per kill in the victim's streak.
 pub const HERO_KILL_BOUNTY_PER_STREAK: i32 = 50;
 /// The streak bonus stops growing past this many kills.
 pub const HERO_KILL_STREAK_CAP: i32 = 6;
-/// Experience for killing a hero, before the per-level term.
+/// Experience for killing a hero, before the share of its own.
 pub const HERO_KILL_XP_BASE: i32 = 100;
-/// Extra experience per level of the killed hero.
-pub const HERO_KILL_XP_PER_LEVEL: i32 = 40;
+/// Percent of the fallen hero's own experience paid for its head besides.
+pub const HERO_KILL_XP_SHARE_PCT: i32 = 13;
+/// The shortest streak whose end pays experience.
+pub const STREAK_XP_FROM: i32 = 3;
+/// Streaks longer than this pay no more for their end.
+pub const STREAK_XP_CAP: i32 = 10;
 /// Radius around a death within which enemy heroes receive experience.
 pub const XP_RADIUS: i32 = 1500;
 

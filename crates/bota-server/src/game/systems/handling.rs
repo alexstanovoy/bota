@@ -94,7 +94,7 @@ impl World {
             self.set_order(unit, UnitOrder::Move { pos });
             return false;
         }
-        if !self.grid.walkable(pos) {
+        if !self.grid.stands_clear(pos) {
             return true;
         }
         let Some(stack) = self.take_from_bag(unit, slot) else {

@@ -131,7 +131,7 @@ pub const ABILITIES: [AbilityFace; 19] = [
     AbilityFace {
         id: 6,
         name: "Heap",
-        blurb: "Passive. +2 strength for every enemy hero that dies within 450 of you, whoever brought it down. Kept through your own death.",
+        blurb: "Passive. 12/14/16/18% magic resistance on top of your own, and +1.5/2/2.5/3 strength for every enemy hero that dies within 450 of you, whoever brought it down. Stacks are kept through your own death.",
         icon: None,
         art: Art::Missile,
     },

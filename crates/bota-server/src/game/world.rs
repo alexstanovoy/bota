@@ -403,9 +403,11 @@ impl World {
             let (Some(at), Some(hull)) = (self.transform.get(entity), self.hull.get(entity)) else {
                 continue;
             };
-            grid.block_circle(at.pos, crate::game::structure_clearance(hull.collision));
+            grid.block_post(at.pos, crate::game::structure_clearance(hull.collision));
         }
-        let tree_radius = crate::game::tree_clearance();
+        let tree_radius = crate::game::structure_clearance(crate::game::rules::units(
+            crate::game::rules::TREE_RADIUS,
+        ));
         for (index, at) in crate::game::tree_positions(self.map)
             .into_iter()
             .enumerate()

@@ -124,7 +124,7 @@ pub fn lane_route(map: &crate::game::MapDef, team: Team, lane: u8) -> Vec<Vec2> 
 pub fn build_grid(map: &crate::game::MapDef) -> PassGrid {
     let mut grid = build_terrain_grid(map);
     let mut block = |pos: Vec2, radius: bota_proto::Fixed| {
-        grid.block_circle(pos, crate::game::structure_clearance(radius));
+        grid.block_post(pos, crate::game::structure_clearance(radius));
     };
     for at in map.fountains {
         block(at, rules::units(rules::FOUNTAIN_COLLISION));
@@ -141,7 +141,10 @@ pub fn build_grid(map: &crate::game::MapDef) -> PassGrid {
         block(at, rules::units(rules::RAX_COLLISION));
     }
     for at in tree_positions(map) {
-        grid.block_circle(at, crate::game::tree_clearance());
+        grid.block_circle(
+            at,
+            crate::game::structure_clearance(rules::units(rules::TREE_RADIUS)),
+        );
     }
     grid
 }
@@ -198,6 +201,7 @@ fn walk_lane(map: &crate::game::MapDef, grid: &PassGrid, team: Team, lane: u8) -
     if marks.len() < 2 {
         return Vec::new();
     }
+    let room = rules::units(rules::WIDEST_MARCHER);
     let stops: Vec<Vec2> = marks
         .iter()
         .enumerate()
@@ -208,12 +212,12 @@ fn walk_lane(map: &crate::game::MapDef, grid: &PassGrid, team: Team, lane: u8) -
             } else {
                 marks[at.saturating_sub(1)]
             };
-            crate::game::open_beside(grid, mark, toward)
+            crate::game::open_beside(grid, mark, toward, room)
         })
         .collect();
     let mut out = Vec::new();
     for leg in stops.windows(2) {
-        out.extend(crate::game::find_path(grid, leg[0], leg[1]));
+        out.extend(crate::game::find_path(grid, leg[0], leg[1], room));
         if out.last() != Some(&leg[1]) {
             out.push(leg[1]);
         }
@@ -260,21 +264,27 @@ pub fn team_index(team: Team) -> usize {
     }
 }
 
-/// Which waypoint of a route a walker aims at next.
+/// Which waypoint of a route a walker of a collision size aims at next.
 ///
 /// A creep aims at its next waypoint and nothing else: it is never pulled
 /// sideways towards the centreline, and a waypoint counts as reached from
 /// anywhere inside [`rules::LANE_WAYPOINT_RADIUS`] — but only while the
-/// ground to the waypoint after it is clear. The radius spans a tower, and a
-/// waypoint that exists to route around one must not be cleared from its far
-/// side. Several waypoints may fall inside the radius at once, and all of
-/// them are cleared together.
-pub fn advance_waypoint(grid: &PassGrid, route: &[Vec2], from: usize, at: Vec2) -> usize {
+/// ground to the waypoint after it is clear for its body. The radius spans
+/// a tower, and a waypoint that exists to route around one must not be
+/// cleared from its far side. Several waypoints may fall inside the radius
+/// at once, and all of them are cleared together.
+pub fn advance_waypoint(
+    grid: &PassGrid,
+    route: &[Vec2],
+    from: usize,
+    at: Vec2,
+    room: bota_proto::Fixed,
+) -> usize {
     let radius = rules::units(rules::LANE_WAYPOINT_RADIUS);
     let mut step = from.min(route.len().saturating_sub(1));
     while step + 1 < route.len()
         && at.within(route[step], radius)
-        && crate::game::grid_los(grid, at, route[step + 1])
+        && crate::game::grid_los(grid, at, route[step + 1], room)
     {
         step += 1;
     }

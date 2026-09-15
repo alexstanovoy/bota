@@ -1,6 +1,6 @@
 //! Waves: putting them on the map and walking them down their lane.
 
-use bota_proto::{Team, Vec2};
+use bota_proto::{Fixed, Team, Vec2};
 
 use crate::game::{CreepRank, Entity, March, StructureId, UnitDef, UnitOrder, World};
 use crate::game::{
@@ -136,7 +136,8 @@ impl World {
         if route.is_empty() {
             return None;
         }
-        let step = advance_waypoint(&self.grid, route, usize::from(march.route_step), at);
+        let room = self.hull.get(entity).map_or(Fixed::ZERO, |h| h.collision);
+        let step = advance_waypoint(&self.grid, route, usize::from(march.route_step), at, room);
         march.route_step = step as u16;
         Some(route[step])
     }

@@ -100,7 +100,7 @@ impl World {
         }
         let first = holding.unwrap_or_else(|| {
             self.blocking_body(mover, straight)
-                .map_or(TraceSide::Left, |body| pick_side(from, body, waypoint))
+                .map_or(TraceSide::Left, |(body, _)| pick_side(from, body, waypoint))
         });
         let reach = i64::from(
             (self.hull.get(mover).map_or(Fixed::ZERO, |h| h.collision)
@@ -122,11 +122,12 @@ impl World {
         (aim_at(from, -dx, -dy, reach), Some(first))
     }
 
-    /// The body a straight step would walk into, nearest first.
-    fn blocking_body(&self, mover: Entity, straight: Vec2) -> Option<Vec2> {
+    /// The body a straight step would walk into, nearest first: where it
+    /// stands and its collision size.
+    fn blocking_body(&self, mover: Entity, straight: Vec2) -> Option<(Vec2, Fixed)> {
         let mine = self.hull.get(mover).map(|h| h.collision)?;
         let from = self.transform.get(mover).map(|t| t.pos)?;
-        let mut best: Option<(i64, Vec2)> = None;
+        let mut best: Option<(i64, Vec2, Fixed)> = None;
         for other in self.entities.iter() {
             if other == mover {
                 continue;
@@ -142,11 +143,27 @@ impl World {
                 continue;
             }
             let near = from.distance_squared(at);
-            if best.is_none_or(|(had, _)| near < had) {
-                best = Some((near, at));
+            if best.is_none_or(|(had, _, _)| near < had) {
+                best = Some((near, at, theirs));
             }
         }
-        best.map(|(_, at)| at)
+        best.map(|(_, at, theirs)| (at, theirs))
+    }
+
+    /// Whether a walker aiming straight at its goal has come as near as it
+    /// gets: the step is refused by closed ground, or by the body standing
+    /// on the goal itself. A body merely in the way is still gone round.
+    pub fn walk_ends_short(&self, mover: Entity, from: Vec2, goal: Vec2, step: Fixed) -> bool {
+        let straight = clamp_to_map(move_towards(from, goal, step));
+        if self.step_free(mover, from, straight, false) {
+            return false;
+        }
+        let flies = self.stats.get(mover).is_some_and(|stats| stats.flies);
+        if !flies && !self.grid.walkable(straight) && self.grid.walkable(from) {
+            return true;
+        }
+        self.blocking_body(mover, straight)
+            .is_some_and(|(body, hull)| goal.within(body, hull))
     }
 
     /// One step of a walk, sliding along whatever it grazes.
@@ -161,7 +178,7 @@ impl World {
         if self.step_free(mover, from, straight, false) {
             return straight;
         }
-        if let Some(body) = self.blocking_body(mover, straight) {
+        if let Some((body, _)) = self.blocking_body(mover, straight) {
             for side in [1, -1] {
                 let slid = tangent_step(from, body, aim, step, side);
                 if slid != from && self.step_free(mover, from, slid, false) {

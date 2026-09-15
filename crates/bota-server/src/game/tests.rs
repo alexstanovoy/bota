@@ -1525,13 +1525,13 @@ fn a_hero_kill_pays_by_the_streak_and_a_death_costs_gold_by_the_level() {
     assert_eq!(world.seats[0].last_hits, 0, "a hero is not a last hit");
     assert_eq!(
         world.seats[0].xp,
-        rules::HERO_KILL_XP_BASE + 4 * rules::HERO_KILL_XP_PER_LEVEL,
-        "experience pays by the fallen hero's level"
+        World::hero_kill_xp(0, 3, 4),
+        "experience pays by what the fallen had earned and the streak it wore"
     );
     assert_eq!(
         world.seats[1].gold,
-        500 - 4 * rules::DEATH_GOLD_LOSS_PER_LEVEL,
-        "dying costs gold by the level"
+        500 - 500 / rules::DEATH_GOLD_LOSS_SHARE,
+        "dying costs a share of the net worth"
     );
     assert_eq!(
         world.seats[1].streak, 0,
@@ -1561,14 +1561,19 @@ fn a_death_never_takes_more_gold_than_the_purse_holds() {
         rules::STASH_SLOTS,
     ));
     world.seats[0].unit = Some(prey);
+    // Fifty in the purse and the rest in items: a fortieth of the worth is
+    // a hundred, and only the fifty is there to take.
     world.seats[0].gold = 50;
-    world.seats[0].net_worth = 50;
+    world.seats[0].net_worth = 4000;
     world.seats[0].level = 10;
     world.settle();
     let mut events = Vec::new();
     world.bury(vec![(prey, None)], &mut events);
     assert_eq!(world.seats[0].gold, 0, "the purse is emptied, not owed");
-    assert_eq!(world.seats[0].net_worth, 0);
+    assert_eq!(
+        world.seats[0].net_worth, 3950,
+        "and the items keep their worth"
+    );
     let told = events.iter().find_map(|event| match event.kind {
         bota_proto::EventKind::Died { gold, .. } => Some(gold),
         _ => None,
@@ -5942,13 +5947,56 @@ fn a_flesh_heap_keeps_every_enemy_hero_that_falls_near_it_and_nothing_else() {
         0,
         "neither a hero of its own side, nor an enemy hero falling too far off"
     );
+    // Brought down the way a fight brings a hero down: dead before it is
+    // buried.
+    world.health.insert(foe, Health { hp: Fixed::ZERO });
     world.bury(vec![(foe, None)], &mut events);
     world.step();
     assert_eq!(heap(&world), 1, "an enemy hero falling beside it feeds it");
     assert_eq!(
         world.stats.get(pudge).map(|s| s.attributes.strength),
-        Some(bare + Fixed::from_int(rules::FLESH_HEAP_STRENGTH)),
-        "and one stack is worth its strength"
+        Some(bare + rules::FLESH_HEAP_STRENGTH_PER_STACK[0]),
+        "and one stack is worth its strength at the heap's first level"
+    );
+}
+
+/// The heap's levels: more strength a stack, and magic resistance thickening
+/// what the hero already has, multiplied and not added.
+#[test]
+fn a_thicker_heap_is_worth_more_a_stack_and_turns_more_magic() {
+    let mut world = World::new();
+    let pudge = world.spawn_hero(
+        bota_proto::Team::Radiant,
+        bota_proto::Vec2::from_ints(5000, 5000),
+        bota_proto::SlotId(0),
+        bota_proto::HeroId(1),
+    );
+    world.settle();
+    world.step();
+    let bare = world.stats.get(pudge).expect("settled").attributes.strength;
+    assert_eq!(
+        world.stats.get(pudge).map(|s| s.magic_resist_pct),
+        Some(rules::HERO_MAGIC_RESIST_PCT),
+        "unlearned, the heap thickens nothing"
+    );
+    if let Some(book) = world.abilities.get_mut(pudge) {
+        book.slots[2].level = 4;
+    }
+    let mut kept = crate::game::Stacks::default();
+    kept.gather(StackKind::FleshHeap, 3);
+    world.stacks.insert(pudge, kept);
+    world.step();
+    assert_eq!(
+        world.stats.get(pudge).map(|s| s.attributes.strength),
+        Some(bare + Fixed::from_int(9)),
+        "three stacks at the fourth level are worth three strength each"
+    );
+    let base = rules::HERO_MAGIC_RESIST_PCT;
+    let heap = rules::FLESH_HEAP_MAGIC_RESIST_PCT[3];
+    assert_eq!(
+        world.stats.get(pudge).map(|s| s.magic_resist_pct),
+        Some(100 - (100 - base) * (100 - heap) / 100),
+        "and the resistance multiplies with the hero's own"
     );
 }
 
@@ -8335,7 +8383,7 @@ fn a_world_with_a_wall(from: bota_proto::Vec2, to: bota_proto::Vec2) -> World {
     };
     world.grid.block_circle(middle, rules::units(600));
     assert!(
-        !crate::game::grid_los(&world.grid, from, to),
+        !crate::game::grid_los(&world.grid, from, to, Fixed::ZERO),
         "the wall stands in the way"
     );
     world
@@ -8471,7 +8519,7 @@ fn a_flesh_heap_outlives_the_death_of_the_one_carrying_it() {
     );
     assert_eq!(
         world.stats.get(back).map(|s| s.attributes.strength),
-        Some(bare + Fixed::from_int(rules::FLESH_HEAP_STRENGTH)),
+        Some(bare + rules::FLESH_HEAP_STRENGTH_PER_STACK[0]),
         "worth as much strength as it was before"
     );
 }
@@ -9266,6 +9314,38 @@ fn fell_at(world: &mut World, pos: bota_proto::Vec2) {
     world.step();
 }
 
+/// The game's own numbers for a hero's head and its wait, as the wiki gives
+/// them: a streak of three ends for 13.75 experience a level, ten or more
+/// for 110, a tenth of a thousand earned and a bit besides for the share.
+#[test]
+fn a_heros_head_and_its_wait_are_priced_as_the_game_prices_them() {
+    assert_eq!(World::hero_kill_xp(0, 0, 1), rules::HERO_KILL_XP_BASE);
+    assert_eq!(World::hero_kill_xp(0, 2, 9), rules::HERO_KILL_XP_BASE);
+    assert_eq!(World::hero_kill_xp(0, 3, 4), rules::HERO_KILL_XP_BASE + 55);
+    assert_eq!(
+        World::hero_kill_xp(0, 10, 2),
+        rules::HERO_KILL_XP_BASE + 220
+    );
+    assert_eq!(
+        World::hero_kill_xp(0, 14, 2),
+        rules::HERO_KILL_XP_BASE + 220
+    );
+    assert_eq!(
+        World::hero_kill_xp(1000, 0, 5),
+        rules::HERO_KILL_XP_BASE + 130
+    );
+    assert_eq!(World::respawn_wait(1), 12 * rules::TICKS_PER_SECOND);
+    assert_eq!(World::respawn_wait(12), 44 * rules::TICKS_PER_SECOND);
+    assert_eq!(World::respawn_wait(25), 100 * rules::TICKS_PER_SECOND);
+    assert_eq!(World::respawn_wait(30), 100 * rules::TICKS_PER_SECOND);
+    assert_eq!(
+        rules::XP_THRESHOLDS[5],
+        2440,
+        "the sixth level, the ultimate's"
+    );
+    assert_eq!(rules::XP_THRESHOLDS[29], 63900, "the last");
+}
+
 /// The bug this guards against: told to walk into the middle of a tower, a
 /// hero walked up to it and then circled it for ever, trying for a spot it
 /// could never stand on.
@@ -9328,7 +9408,8 @@ fn a_walk_to_where_no_way_leads_ends_at_the_nearest_spot_got_to() {
     }
     let from = bota_proto::Vec2::from_ints(1000, 1000);
     let beyond = bota_proto::Vec2::from_ints(10000, 1000);
-    let path = crate::game::find_path(&grid, from, beyond);
+    let body = rules::units(rules::HERO_COLLISION);
+    let path = crate::game::find_path(&grid, from, beyond, body);
     let end = *path.last().expect("it walks somewhere");
     assert!(
         end.x.to_int() < wall as i32 * rules::GRID_CELL_SIZE,
@@ -9341,7 +9422,7 @@ fn a_walk_to_where_no_way_leads_ends_at_the_nearest_spot_got_to() {
     // A spot that can be stood on and reached is the walk's own end.
     let there = bota_proto::Vec2::from_ints(5000, 3000);
     assert_eq!(
-        crate::game::find_path(&grid, from, there).last(),
+        crate::game::find_path(&grid, from, there, body).last(),
         Some(&there)
     );
 }
@@ -9429,16 +9510,25 @@ fn a_lane_opens_tower_by_tower_into_its_barracks() {
 fn a_destroyed_structure_reopens_the_ground_it_blocked() {
     let mut world = World::on_map(crate::game::map_of(bota_proto::MapId(0)));
     let tower = rules::RADIANT_TOWERS[0].2;
+    let body = rules::units(rules::HERO_COLLISION);
     assert!(
-        !world.grid.walkable(tower),
-        "a standing tower blocks its cell"
+        world.grid.walkable(tower),
+        "the ground under a tower is ground all the same"
+    );
+    assert!(
+        !world.grid.stands_clear(tower),
+        "but nothing is put down where a standing tower is"
+    );
+    assert!(
+        !world.grid.walkable_for(tower, body),
+        "and no walk is planned through it"
     );
 
     fell_at(&mut world, tower);
 
     assert!(
-        world.grid.walkable(tower),
-        "the tower's walkable terrain reopens after its destruction"
+        world.grid.stands_clear(tower) && world.grid.walkable_for(tower, body),
+        "the tower's ground is anybody's after its destruction"
     );
 }
 
@@ -9796,8 +9886,10 @@ fn lane_progress(line: &[bota_proto::Vec2], pos: bota_proto::Vec2) -> i64 {
 /// the lane; walking back further than that footprint is walking back.
 #[test]
 fn no_route_on_any_map_walks_a_wave_backwards() {
-    let slack =
-        i64::from(crate::game::structure_clearance(rules::units(rules::TOWER_COLLISION)).to_int());
+    let slack = i64::from(
+        crate::game::structure_clearance(rules::units(rules::TOWER_COLLISION)).to_int()
+            + rules::WIDEST_MARCHER,
+    );
     for map_id in [bota_proto::MapId(0), bota_proto::MapId(1)] {
         let map = crate::game::map_of(map_id);
         let routes = crate::game::lane_routes(map);

@@ -41,8 +41,7 @@ impl World {
                 let seat = &self.seats[index];
                 Bounty {
                     gold: World::hero_bounty(i32::from(seat.streak)),
-                    xp: rules::HERO_KILL_XP_BASE
-                        + rules::HERO_KILL_XP_PER_LEVEL * i32::from(seat.level),
+                    xp: World::hero_kill_xp(seat.xp, i32::from(seat.streak), i32::from(seat.level)),
                 }
             }
             None => match self.bounty.get(fallen).copied() {
@@ -52,7 +51,7 @@ impl World {
         };
         if let Some(index) = fallen_seat {
             let seat = &mut self.seats[index];
-            let loss = (rules::DEATH_GOLD_LOSS_PER_LEVEL * i32::from(seat.level)).min(seat.gold);
+            let loss = (seat.net_worth / rules::DEATH_GOLD_LOSS_SHARE).clamp(0, seat.gold);
             seat.gold -= loss;
             seat.net_worth -= loss;
             seat.streak = 0;
@@ -193,9 +192,22 @@ impl World {
         }
     }
 
-    /// How long a seat waits before its hero comes back.
+    /// How long a seat waits before its hero comes back, by its level.
     pub fn respawn_wait(level: u8) -> u32 {
-        rules::RESPAWN_BASE_TICKS + rules::RESPAWN_PER_LEVEL_TICKS * u32::from(level)
+        let at = usize::from(level.max(1) - 1).min(rules::RESPAWN_SECONDS.len() - 1);
+        rules::RESPAWN_SECONDS[at] * rules::TICKS_PER_SECOND
+    }
+
+    /// What bringing down a hero pays in experience: a base, a share of what
+    /// the fallen had earned, and a bonus for the streak its death ends.
+    pub fn hero_kill_xp(victim_xp: i32, streak: i32, level: i32) -> i32 {
+        let streak = streak.min(rules::STREAK_XP_CAP);
+        let streak_bonus = if streak < rules::STREAK_XP_FROM {
+            0
+        } else {
+            (5 * streak * streak - 10 * streak + 40) * level / 4
+        };
+        rules::HERO_KILL_XP_BASE + victim_xp * rules::HERO_KILL_XP_SHARE_PCT / 100 + streak_bonus
     }
 
     /// What bringing down a hero on a streak of so many pays.

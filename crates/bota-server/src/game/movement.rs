@@ -137,14 +137,24 @@ pub fn clamp_to_map(pos: Vec2) -> Vec2 {
     }
 }
 
-/// The walkability grid of the map.
+/// The walkability grid of the map: the ground, and the posts standing on
+/// it.
 ///
-/// One bit per cell, `true` is walkable. The map is open ground; structures
-/// close the cells they stand on when the world is built.
+/// One bit per cell, `true` is ground that can be walked; the terrain and
+/// the trees close cells when the world is built. A structure closes no
+/// cell: it stands as a post, the circle nothing walks into, met exactly,
+/// and the grid keeps at every cell the room a body may have there clear of
+/// every post, for planning a walk at the walker's own size.
 #[derive(Clone, Debug)]
 pub struct PassGrid {
     /// One bit per cell, row-major.
     bits: Vec<u64>,
+    /// At each cell, row-major: how wide a body may be and stand at the
+    /// cell's centre clear of every post, in world units, capped at
+    /// [`u8::MAX`].
+    room: Vec<u8>,
+    /// Every post: where it stands and the radius nothing walks into.
+    posts: Vec<(Vec2, Fixed)>,
 }
 
 impl PassGrid {
@@ -152,6 +162,8 @@ impl PassGrid {
     pub fn open() -> PassGrid {
         PassGrid {
             bits: vec![u64::MAX; rules::GRID_CELLS * rules::GRID_CELLS / 64],
+            room: vec![u8::MAX; rules::GRID_CELLS * rules::GRID_CELLS],
+            posts: Vec::new(),
         }
     }
 
@@ -190,14 +202,56 @@ impl PassGrid {
         }
     }
 
-    /// Closes every cell whose center lies within `radius` of `center`.
-    pub fn block_circle(&mut self, center: Vec2, radius: Fixed) {
-        self.paint_circle(center, radius, false);
+    /// Whether a body of a collision size may stand at a cell's centre: the
+    /// cell is walkable and there is more room there than the body needs.
+    pub fn fits(&self, cx: usize, cy: usize, room: Fixed) -> bool {
+        self.cell_open(cx, cy) && i32::from(self.room[cy * rules::GRID_CELLS + cx]) > room.to_int()
     }
 
-    /// Reopens every cell whose center lies within `radius` of `center`.
-    pub fn open_circle(&mut self, center: Vec2, radius: Fixed) {
-        self.paint_circle(center, radius, true);
+    /// Whether a spot is walkable ground outside every post: where a thing
+    /// may be put down or come out.
+    pub fn stands_clear(&self, pos: Vec2) -> bool {
+        self.walkable(pos)
+            && self
+                .posts
+                .iter()
+                .all(|&(post, radius)| !pos.within(post, radius))
+    }
+
+    /// Whether a position is on the map and a body of a collision size may
+    /// stand at its cell's centre.
+    pub fn walkable_for(&self, pos: Vec2, room: Fixed) -> bool {
+        match PassGrid::cell_of(pos) {
+            None => false,
+            Some((cx, cy)) => self.fits(cx, cy, room),
+        }
+    }
+
+    /// Whether a body of a collision size walking the straight segment keeps
+    /// clear of every post.
+    pub fn clear_of_posts(&self, from: Vec2, to: Vec2, room: Fixed) -> bool {
+        self.posts.iter().all(|&(post, radius)| {
+            segment_distance_squared(post, from, to) >= (radius + room).squared_raw()
+        })
+    }
+
+    /// Closes every cell whose center lies within `radius` of `center`.
+    pub fn block_circle(&mut self, center: Vec2, radius: Fixed) {
+        self.each_cell_about(center, radius, |grid, idx, _| {
+            grid.bits[idx / 64] &= !(1 << (idx % 64));
+        });
+    }
+
+    /// Stands a post: leaves every cell about it only the room between its
+    /// centre and the post, none within the post itself. The ground stays
+    /// as it is; the post is met as a circle.
+    pub fn block_post(&mut self, center: Vec2, radius: Fixed) {
+        let about = radius + rules::units(rules::GRID_CELL_SIZE);
+        self.each_cell_about(center, about, |grid, idx, apart| {
+            let room = (apart - i64::from(radius.to_int())).clamp(0, i64::from(u8::MAX)) as u8;
+            grid.room[idx] = grid.room[idx].min(room);
+        });
+        self.posts.push((center, radius));
     }
 
     /// Closes one cell.
@@ -206,7 +260,15 @@ impl PassGrid {
         self.bits[idx / 64] &= !(1 << (idx % 64));
     }
 
-    fn paint_circle(&mut self, center: Vec2, radius: Fixed, open: bool) {
+    /// Calls back for every cell whose centre lies within `radius` of
+    /// `center`, with the cell's index and how far its centre is, in world
+    /// units.
+    fn each_cell_about(
+        &mut self,
+        center: Vec2,
+        radius: Fixed,
+        mut each: impl FnMut(&mut PassGrid, usize, i64),
+    ) {
         let cells = rules::GRID_CELLS as i32;
         let span = radius.to_int() / rules::GRID_CELL_SIZE + 1;
         let ccx = center.x.to_int() / rules::GRID_CELL_SIZE;
@@ -216,28 +278,19 @@ impl PassGrid {
                 let c = PassGrid::cell_center((cx as usize, cy as usize));
                 if c.within(center, radius) {
                     let idx = cy as usize * rules::GRID_CELLS + cx as usize;
-                    if open {
-                        self.bits[idx / 64] |= 1 << (idx % 64);
-                    } else {
-                        self.bits[idx / 64] &= !(1 << (idx % 64));
-                    }
+                    let apart = isqrt64(c.distance_squared(center)) >> Fixed::FRAC_BITS;
+                    each(self, idx, apart);
                 }
             }
         }
     }
 }
 
-/// The grid clearance a structure blocks: its collision size and a margin.
-/// A walker's own size is kept off it by the body the structure is.
+/// What a structure or a tree keeps clear on the grid: its collision size
+/// and a margin. A walker keeps its own size clear of it besides, by the
+/// room the grid keeps about a post.
 pub fn structure_clearance(collision: Fixed) -> Fixed {
     collision + rules::units(rules::STEER_MARGIN)
-}
-
-/// The grid clearance a tree blocks: its trunk, the widest walker and a
-/// margin. A tree is no body, and the grid is all that keeps a walker out
-/// of it.
-pub fn tree_clearance() -> Fixed {
-    rules::units(rules::TREE_RADIUS + rules::WALKER_CLEARANCE)
 }
 
 /// The shortest signed rotation from one facing to another, in brads.

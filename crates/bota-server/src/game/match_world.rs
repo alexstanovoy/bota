@@ -354,7 +354,7 @@ impl World {
                 match target {
                     Target::None => Ok(()),
                     Target::Pos(pos) => {
-                        if self.grid.walkable(*pos) {
+                        if self.grid.stands_clear(*pos) {
                             Ok(())
                         } else {
                             Err(RejectReason::ClosedGround)

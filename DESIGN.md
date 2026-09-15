@@ -431,10 +431,14 @@ exploit any leak a human reviewer shrugs off:
   every footprint for ever and a wave walked round the empty ground a fallen
   tower had stood on. A found path keeps only the corners the grid line
   cannot skip: cell by cell it rounded a footprint in right angles.
-- Hero: Sylla (ranged carry). 3 abilities + an ultimate, levels 1–10.
+- Hero: Sylla (ranged carry). 3 abilities + an ultimate, levels 1–30 on the
+  game's own experience table and respawn times, taken from the wiki in
+  September 2026.
 - Economy: passive gold 1/sec, last hits, a hero kill bounty priced by the
-  victim's streak, and a death that costs the fallen thirty gold a level,
-  capped by the purse. The `Died` event carries the gold the killing side was
+  victim's streak, a hero's head worth in experience a base, thirteen percent
+  of what the fallen had earned and the game's own bonus for the streak it
+  ends, and a death that costs the fallen a fortieth of its net worth, capped
+  by the purse. The `Died` event carries the gold the killing side was
   paid, so a seat reads off the wire what a fight moved. The kill constants
   sat in `rules.rs` unwired for a while — heroes spawned with no bounty
   component, so bringing one down paid nothing and dying cost nothing but the
@@ -610,12 +614,31 @@ emergent, because creeps arrive first. On top of that sit the aggro calls:
   have lengthened every attack and cast by the difference.
   The static grid is a hard wall too: a step or sidestep into a cell closed by a
   structure or a tree is refused outright, while a step out of one is always
-  allowed, so nothing ever wedges inside the forest. A walk to a spot that
-  cannot be stood on, or that no way leads to, ends at the nearest spot that
-  can: the path finder answers with the open cell nearest the asked one, or
-  the nearest it got to, and the route remembers where the walk ends, so a
-  hero sent into the middle of a tower comes up to it and stands instead of
-  circling it for a spot it can never take. A
+  allowed, so nothing ever wedges inside the forest. A structure closes no cell
+  at all: it is a body, and its body keeps every walker off it exactly, edge to
+  edge. For planning it stands on the grid as a post, the circle of its
+  collision size and a margin: the grid keeps at every cell the room a body may
+  have there clear of every post, and the path finder and the line test plan
+  for the walker's own collision size, the line met against the posts as the
+  circles they are. So every walker's route keeps the margin off a tower's body
+  at its own size, a hero hugs a tower closer than a siege creep, nothing a
+  route asks of a walker is refused by the body it was planned around, and a
+  walk sent into a tower ends where the bodies touch, not at a cell's edge.
+  Lane routes are planned for the widest marcher. Whatever is put down or comes
+  out on the ground, a ward, an item, a blink, a scroll, asks the grid for
+  ground clear of every post. A footprint grown by the widest walker for
+  everyone held a hero a hand short of a tower; a footprint grown by nothing
+  laid corners where a hero's body could not go, and it turned at the tower's
+  side every step; a footprint of cells held it a cell's edge short of touching.
+  A tree is no body and keeps only its trunk.
+  A walk to a spot that cannot be stood on, or that no way leads to, ends as
+  near as it gets: the path finder answers with the first open cell on the
+  walker's own side of what shuts the spot, or the nearest cell it got to, the
+  last stretch aims at the spot itself, and a step refused there by closed
+  ground or by the body standing on the spot ends the walk facing it. A body
+  merely in the way is still gone round. A hero sent into the middle of a
+  tower so comes up to it from its own side and stands, instead of circling
+  for a spot it can never take. A
   unit that is walking is not avoided at all: whoever runs into it presses into
   the body, fully stopped, for the block wait, and only then starts sidestepping
   around. That stop, paid again on every new contact, is what makes creep-blocking
@@ -650,7 +673,7 @@ four for most, six for Shadow Fiend, the row is per-hero data — each slot with
 level and a cooldown, held on the seat like items, so both survive the
 hero's death — and cooldowns keep running while it is dead. A skill point arrives
 with every hero level; basic ability level k needs hero level 2k-1, ultimate
-levels open at 6, 8 and 10. Slots may share a level: `learn_group` folds a family
+levels open at 6, 12 and 18, as in the game. Slots may share a level: `learn_group` folds a family
 of ids into one, a point into any of them levels the whole family, and the point
 accounting counts the family once. The razes are the one family so far. A cast
 order is validated (learned, off cooldown, mana, target kind, cast range) and
@@ -764,6 +787,13 @@ Hero roadmap (added as data + ability implementations; the engine does not chang
 
 Built since: Pudge (hook / rot / flesh heap / ult: dismember) and Shadow Fiend
 (three razes sharing a level / necromastery / presence / ult: requiem).
+
+Flesh Heap is the 7.28 to 7.30 passive, from the wiki's changelog: 12/14/16/18%
+magic resistance multiplied with the hero's own and 1.5/2/2.5/3 strength a stack
+by level, a stack for every enemy hero dying within 450. Today's game splits it
+into an innate strength heap and an active damage block, Meat Shield; a passive
+whose levels changed nothing left three of four points dead, and an innate
+without the active half is a slot with nothing in it.
 
 ## Protocol
 
