@@ -90,8 +90,9 @@ pub fn derive_stats(cx: StatsCx<'_>) {
                 now.attack_range += Fixed::from_int(carried.melee_range);
             }
         }
-        // What the flesh heap has kept is worth strength, once the heap is
-        // known at all.
+        // What the flesh heap has kept is worth strength by the heap's
+        // level, once the heap is known at all, and the heap thickens the
+        // skin: its magic resistance multiplies with what is already there.
         let gathered = stacks.get(entity).copied().unwrap_or_default();
         let heap = abilities.get(entity).map_or(0, |book| {
             book.slots
@@ -99,9 +100,14 @@ pub fn derive_stats(cx: StatsCx<'_>) {
                 .find(|slot| slot.id == crate::game::ability::FLESH_HEAP)
                 .map_or(0, |slot| slot.level)
         });
-        if heap > 0 {
+        if let Some(level) = heap.checked_sub(1).map(usize::from) {
             let kept = gathered.of(StackKind::FleshHeap) as i32;
-            now.attributes.strength += Fixed::from_int(rules::FLESH_HEAP_STRENGTH * kept);
+            now.attributes.strength +=
+                rules::FLESH_HEAP_STRENGTH_PER_STACK[level] * Fixed::from_int(kept);
+            let kept_through = (100 - now.magic_resist_pct)
+                * (100 - rules::FLESH_HEAP_MAGIC_RESIST_PCT[level])
+                / 100;
+            now.magic_resist_pct = 100 - kept_through;
         }
         from_attributes(&mut now);
         // A share of the base pace and of what agility adds, and of nothing

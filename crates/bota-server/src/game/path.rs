@@ -3,15 +3,16 @@
 use std::cmp::Reverse;
 use std::collections::BinaryHeap;
 
-use bota_proto::Vec2;
+use bota_proto::{Fixed, Vec2};
 
 use crate::game::{PassGrid, rules};
 
-/// Whether the straight segment crosses only walkable cells.
+/// Whether a body of a collision size can walk the straight segment: it
+/// crosses only walkable cells and keeps the body clear of every post.
 ///
-/// Sampled every half-cell along the line, which cannot skip over a cell at
-/// that spacing.
-pub fn grid_los(grid: &PassGrid, from: Vec2, to: Vec2) -> bool {
+/// Cells are sampled every half-cell along the line, which cannot skip over
+/// a cell at that spacing; posts are met as the circles they are.
+pub fn grid_los(grid: &PassGrid, from: Vec2, to: Vec2, room: Fixed) -> bool {
     let dx = i64::from(to.x.raw) - i64::from(from.x.raw);
     let dy = i64::from(to.y.raw) - i64::from(from.y.raw);
     let sample = i64::from(rules::GRID_CELL_SIZE) << 15; // half a cell, raw
@@ -30,7 +31,7 @@ pub fn grid_los(grid: &PassGrid, from: Vec2, to: Vec2) -> bool {
             return false;
         }
     }
-    true
+    grid.clear_of_posts(from, to, room)
 }
 
 const CELLS: usize = rules::GRID_CELLS;
@@ -43,25 +44,26 @@ fn heuristic(a: (usize, usize), b: (usize, usize)) -> u32 {
     STRAIGHT * dx.max(dy) + (DIAGONAL - STRAIGHT) * dx.min(dy)
 }
 
-/// The spot a unit may actually stand on beside a point that may sit inside
-/// a building's footprint: the point itself when it is open, else the first
-/// open cell's centre on the way out of the footprint towards `toward`.
+/// The spot a body of a collision size may actually stand on beside a point
+/// that may sit inside a building's footprint: the point itself when there
+/// is room for it, else the centre of the first cell with room on the way
+/// out of the footprint towards `toward`.
 ///
-/// Falls back on the nearest open cell in any direction when that way out
-/// is shut too.
-pub fn open_beside(grid: &PassGrid, at: Vec2, toward: Vec2) -> Vec2 {
-    if grid.walkable(at) {
+/// Falls back on the nearest cell with room in any direction when that way
+/// out is shut too.
+pub fn open_beside(grid: &PassGrid, at: Vec2, toward: Vec2, room: Fixed) -> Vec2 {
+    if grid.walkable_for(at, room) {
         return at;
     }
-    cell_beside(grid, at, toward)
-        .or_else(|| PassGrid::cell_of(at).and_then(|cell| routable_cell(grid, cell)))
+    cell_beside(grid, at, toward, room)
+        .or_else(|| PassGrid::cell_of(at).and_then(|cell| routable_cell(grid, cell, room)))
         .map_or(at, PassGrid::cell_center)
 }
 
-/// The first open cell on the way from a point towards another, the point's
-/// own cell included, within [`OPEN_SEARCH_CELLS`]. None with the whole way
-/// shut, or the two points one.
-fn cell_beside(grid: &PassGrid, at: Vec2, toward: Vec2) -> Option<(usize, usize)> {
+/// The first cell with room for a body on the way from a point towards
+/// another, the point's own cell included, within [`OPEN_SEARCH_CELLS`].
+/// None with the whole way shut, or the two points one.
+fn cell_beside(grid: &PassGrid, at: Vec2, toward: Vec2, room: Fixed) -> Option<(usize, usize)> {
     let dx = i64::from(toward.x.raw) - i64::from(at.x.raw);
     let dy = i64::from(toward.y.raw) - i64::from(at.y.raw);
     let len = dx.abs().max(dy.abs());
@@ -80,7 +82,7 @@ fn cell_beside(grid: &PassGrid, at: Vec2, toward: Vec2) -> Option<(usize, usize)
             },
         };
         if let Some(cell) = PassGrid::cell_of(p)
-            && grid.cell_open(cell.0, cell.1)
+            && grid.fits(cell.0, cell.1, room)
         {
             return Some(cell);
         }
@@ -88,18 +90,20 @@ fn cell_beside(grid: &PassGrid, at: Vec2, toward: Vec2) -> Option<(usize, usize)
     None
 }
 
-/// How many cells out an open cell is looked for: across the widest
-/// footprint on any map, and one more.
+/// How many cells out a cell with room is looked for: across the widest
+/// footprint on any map and the widest body, and one more.
 const OPEN_SEARCH_CELLS: i32 =
-    (rules::DIRE_ANCIENT_COLLISION + rules::STEER_MARGIN) / rules::GRID_CELL_SIZE + 2;
+    (rules::DIRE_ANCIENT_COLLISION + rules::STEER_MARGIN + rules::WIDEST_MARCHER)
+        / rules::GRID_CELL_SIZE
+        + 2;
 
-/// The open cell to route to for a goal: the goal cell itself, or the open
-/// cell nearest to it when that one is blocked.
+/// The cell to route a body to for a goal: the goal cell itself, or the
+/// cell with room nearest to it when there is none there.
 ///
 /// Ties break on the lower row, then the lower column. None when nothing
-/// within [`OPEN_SEARCH_CELLS`] is open.
-fn routable_cell(grid: &PassGrid, cell: (usize, usize)) -> Option<(usize, usize)> {
-    if grid.cell_open(cell.0, cell.1) {
+/// within [`OPEN_SEARCH_CELLS`] has room.
+fn routable_cell(grid: &PassGrid, cell: (usize, usize), room: Fixed) -> Option<(usize, usize)> {
+    if grid.fits(cell.0, cell.1, room) {
         return Some(cell);
     }
     let mut best: Option<(i32, (usize, usize))> = None;
@@ -117,7 +121,7 @@ fn routable_cell(grid: &PassGrid, cell: (usize, usize)) -> Option<(usize, usize)
                 if nx < 0 || ny < 0 || nx as usize >= CELLS || ny as usize >= CELLS {
                     continue;
                 }
-                if !grid.cell_open(nx as usize, ny as usize) {
+                if !grid.fits(nx as usize, ny as usize, room) {
                     continue;
                 }
                 let apart = dx * dx + dy * dy;
@@ -149,13 +153,13 @@ const NEIGHBOURS: [(i32, i32); 8] = [
 /// Empty when the walk ends in the cell the walker stands in. Diagonal
 /// steps never cut a blocked corner. Ties break on cell index, so the route
 /// is the same on every platform.
-pub fn find_path(grid: &PassGrid, from: Vec2, to: Vec2) -> Vec<Vec2> {
+pub fn find_path(grid: &PassGrid, from: Vec2, to: Vec2, room: Fixed) -> Vec<Vec2> {
     let (Some(start), Some(asked)) = (PassGrid::cell_of(from), PassGrid::cell_of(to)) else {
         return Vec::new();
     };
     let (Some(start), Some(goal)) = (
-        routable_cell(grid, start),
-        cell_beside(grid, to, from).or_else(|| routable_cell(grid, asked)),
+        routable_cell(grid, start, room),
+        cell_beside(grid, to, from, room).or_else(|| routable_cell(grid, asked, room)),
     ) else {
         return Vec::new();
     };
@@ -189,11 +193,11 @@ pub fn find_path(grid: &PassGrid, from: Vec2, to: Vec2) -> Vec<Vec2> {
                 continue;
             }
             let next = (nx as usize, ny as usize);
-            if !grid.cell_open(next.0, next.1) {
+            if !grid.fits(next.0, next.1, room) {
                 continue;
             }
             let diagonal = i >= 4;
-            if diagonal && (!grid.cell_open(next.0, cell.1) || !grid.cell_open(cell.0, next.1)) {
+            if diagonal && (!grid.fits(next.0, cell.1, room) || !grid.fits(cell.0, next.1, room)) {
                 continue; // no cutting a blocked corner
             }
             let cost = g + if diagonal { DIAGONAL } else { STRAIGHT };
@@ -247,21 +251,21 @@ pub fn find_path(grid: &PassGrid, from: Vec2, to: Vec2) -> Vec<Vec2> {
     if goal == asked {
         *spots.last_mut().expect("the end is kept") = to;
     }
-    pull_string(grid, from, spots)
+    pull_string(grid, from, spots, room)
 }
 
 /// The corners a walk keeps: from where it stands and from each corner kept,
 /// the walk goes straight to the farthest later corner the grid line
 /// reaches, so a route that stepped round a footprint cell by cell rounds it
 /// in a few straight legs. The last corner is always kept.
-fn pull_string(grid: &PassGrid, from: Vec2, corners: Vec<Vec2>) -> Vec<Vec2> {
+fn pull_string(grid: &PassGrid, from: Vec2, corners: Vec<Vec2>, room: Fixed) -> Vec<Vec2> {
     let mut kept = Vec::with_capacity(corners.len());
     let mut anchor = from;
     let mut at = 0;
     while at < corners.len() {
         let mut far = at;
         for (later, &corner) in corners.iter().enumerate().skip(at + 1) {
-            if grid_los(grid, anchor, corner) {
+            if grid_los(grid, anchor, corner, room) {
                 far = later;
             }
         }

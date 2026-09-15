@@ -1036,7 +1036,7 @@ impl World {
         let step = rules::units(rules::BLINK_STEP_BACK);
         let mut at = aim;
         for _ in 0..rules::BLINK_STEP_TRIES {
-            if self.grid.walkable(at) {
+            if self.grid.stands_clear(at) {
                 return Some(at);
             }
             if at == from {
@@ -1086,7 +1086,7 @@ impl World {
         let Some(from) = self.transform.get(user).map(|t| t.pos) else {
             return false;
         };
-        if !from.within(pos, rules::units(range)) || !self.grid.walkable(pos) {
+        if !from.within(pos, rules::units(range)) || !self.grid.stands_clear(pos) {
             return false;
         }
         // Not on top of a tree already standing there.

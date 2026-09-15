@@ -154,12 +154,18 @@ impl World {
         if !self.is_hero(fallen) {
             return;
         }
-        let Some(at) = self.transform.get(fallen).map(|t| t.pos) else {
+        let (Some(at), Some(theirs)) = (
+            self.transform.get(fallen).map(|t| t.pos),
+            self.team.get(fallen).copied(),
+        ) else {
             return;
         };
         let reach = rules::units(rules::FLESH_HEAP_RANGE);
         for hero in self.entities.iter().collect::<Vec<_>>() {
-            if hero == fallen || self.heap_level(hero) == 0 || !self.hostile(hero, fallen) {
+            // The fallen is dead by now, so it is its side that is looked at,
+            // not whether it could still be fought.
+            let enemy = self.team.get(hero).is_some_and(|mine| *mine != theirs);
+            if hero == fallen || self.heap_level(hero) == 0 || !enemy {
                 continue;
             }
             if !self
