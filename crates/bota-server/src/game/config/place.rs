@@ -5,7 +5,7 @@
 
 use bota_proto::{Team, Vec2};
 
-use crate::game::{Ground, PassGrid, rules};
+use crate::game::{Clearance, Obstacles, Planner, rules};
 
 /// The fountain position of a team. The jungle's is the map center: it has
 /// no fountain, and nothing ever stands there.
@@ -117,52 +117,6 @@ pub fn lane_route(map: &crate::game::MapDef, team: Team, lane: u8) -> Vec<Vec2> 
     line.split_off(nearest.0 + 1)
 }
 
-/// The passability grid of a map: its terrain, its buildings and its forest.
-///
-/// Built from the map alone, so the routes found on it never depend on which
-/// world asked first.
-pub fn build_grid(map: &crate::game::MapDef) -> PassGrid {
-    let mut grid = build_terrain_grid(map);
-    let mut block = |pos: Vec2, radius: bota_proto::Fixed| {
-        grid.block_post(pos, crate::game::structure_clearance(radius));
-    };
-    for at in map.fountains {
-        block(at, rules::units(rules::FOUNTAIN_COLLISION));
-    }
-    for (team, at) in [Team::Radiant, Team::Dire].into_iter().zip(map.ancients) {
-        if let Some(at) = at {
-            block(at, rules::units(crate::game::ancient_of(team).collision));
-        }
-    }
-    for &(_, _, at) in map.radiant_towers.iter().chain(map.dire_towers) {
-        block(at, rules::units(rules::TOWER_COLLISION));
-    }
-    for &(_, _, at) in map.barracks[0].iter().chain(map.barracks[1]) {
-        block(at, rules::units(rules::RAX_COLLISION));
-    }
-    for at in tree_positions(map) {
-        grid.block_circle(
-            at,
-            crate::game::structure_clearance(rules::units(rules::TREE_RADIUS)),
-        );
-    }
-    grid
-}
-
-/// The passability grid before dynamic structures and trees are laid on it.
-pub fn build_terrain_grid(map: &crate::game::MapDef) -> PassGrid {
-    let ground = Ground::of(map);
-    let mut grid = PassGrid::open();
-    for cy in 0..rules::GRID_CELLS {
-        for cx in 0..rules::GRID_CELLS {
-            if !ground.cell_walkable(cx, cy) {
-                grid.close_cell(cx, cy);
-            }
-        }
-    }
-    grid
-}
-
 /// The landmarks a team's creeps march through on a lane, spawner first.
 fn lane_landmarks(map: &crate::game::MapDef, team: Team, lane: u8) -> Vec<Vec2> {
     let mut line = vec![creep_spawn_pos(map, team, lane)];
@@ -172,21 +126,30 @@ fn lane_landmarks(map: &crate::game::MapDef, team: Team, lane: u8) -> Vec<Vec2> 
 
 /// The walked route of every lane, both sides, indexed by team then lane,
 /// with everything the map starts with standing.
-pub fn lane_routes(map: &crate::game::MapDef) -> [[Vec<Vec2>; 3]; 2] {
-    lane_routes_on(map, &build_grid(map))
+pub fn lane_routes(map: &'static crate::game::MapDef) -> [[Vec<Vec2>; 3]; 2] {
+    let field = Clearance::of_map(map);
+    let mut planner = Planner::new();
+    lane_routes_on(map, &field, &mut planner)
 }
 
 /// The walked route of every lane, both sides, indexed by team then lane,
-/// on the ground as a grid has it.
-pub fn lane_routes_on(map: &crate::game::MapDef, grid: &PassGrid) -> [[Vec<Vec2>; 3]; 2] {
-    let build = |team: Team| {
+/// on the ground as a field has it.
+pub fn lane_routes_on(
+    map: &crate::game::MapDef,
+    field: &Clearance,
+    planner: &mut Planner,
+) -> [[Vec<Vec2>; 3]; 2] {
+    let ob = Obstacles { field, extra: &[] };
+    let mut build = |team: Team| {
         [
-            walk_lane(map, grid, team, rules::LANE_MID),
-            walk_lane(map, grid, team, rules::LANE_TOP),
-            walk_lane(map, grid, team, rules::LANE_BOT),
+            walk_lane(map, &ob, planner, team, rules::LANE_MID),
+            walk_lane(map, &ob, planner, team, rules::LANE_TOP),
+            walk_lane(map, &ob, planner, team, rules::LANE_BOT),
         ]
     };
-    [build(Team::Radiant), build(Team::Dire)]
+    let radiant = build(Team::Radiant);
+    let dire = build(Team::Dire);
+    [radiant, dire]
 }
 
 /// One lane's walked route: a stop beside each landmark, with a found path
@@ -196,7 +159,13 @@ pub fn lane_routes_on(map: &crate::game::MapDef, grid: &PassGrid) -> [[Vec<Vec2>
 /// on: the stop is beside it on its lane side, away from the base it
 /// guards. The march walks past its own towers on the way out of its base
 /// and comes up to the enemy's from the lane.
-fn walk_lane(map: &crate::game::MapDef, grid: &PassGrid, team: Team, lane: u8) -> Vec<Vec2> {
+fn walk_lane(
+    map: &crate::game::MapDef,
+    ob: &Obstacles,
+    planner: &mut Planner,
+    team: Team,
+    lane: u8,
+) -> Vec<Vec2> {
     let marks = lane_landmarks(map, team, lane);
     if marks.len() < 2 {
         return Vec::new();
@@ -212,12 +181,12 @@ fn walk_lane(map: &crate::game::MapDef, grid: &PassGrid, team: Team, lane: u8) -
             } else {
                 marks[at.saturating_sub(1)]
             };
-            crate::game::open_beside(grid, mark, toward, room)
+            crate::game::open_beside(ob, mark, toward, room)
         })
         .collect();
     let mut out = Vec::new();
     for leg in stops.windows(2) {
-        out.extend(crate::game::find_path(grid, leg[0], leg[1], room));
+        out.extend(planner.find_path(ob, leg[0], leg[1], room));
         if out.last() != Some(&leg[1]) {
             out.push(leg[1]);
         }
@@ -264,28 +233,36 @@ pub fn team_index(team: Team) -> usize {
     }
 }
 
-/// Which waypoint of a route a walker of a collision size aims at next.
+/// Which waypoint of a lane route a marcher aims at next, never one it has
+/// already passed.
 ///
-/// A creep aims at its next waypoint and nothing else: it is never pulled
-/// sideways towards the centreline, and a waypoint counts as reached from
-/// anywhere inside [`rules::LANE_WAYPOINT_RADIUS`] — but only while the
-/// ground to the waypoint after it is clear for its body. The radius spans
-/// a tower, and a waypoint that exists to route around one must not be
-/// cleared from its far side. Several waypoints may fall inside the radius
-/// at once, and all of them are cleared together.
+/// A waypoint is passed once the marcher stands within
+/// [`rules::LANE_WAYPOINT_RADIUS`] of it, or beside or beyond it along the
+/// leg to the next with its body able to walk straight to that next one
+/// from where it stands. Several may be passed at once.
 pub fn advance_waypoint(
-    grid: &PassGrid,
+    field: &Clearance,
     route: &[Vec2],
     from: usize,
     at: Vec2,
-    room: bota_proto::Fixed,
+    collision: bota_proto::Fixed,
 ) -> usize {
     let radius = rules::units(rules::LANE_WAYPOINT_RADIUS);
+    let room = crate::game::plan_radius(collision);
     let mut step = from.min(route.len().saturating_sub(1));
-    while step + 1 < route.len()
-        && at.within(route[step], radius)
-        && crate::game::grid_los(grid, at, route[step + 1], room)
-    {
+    while step + 1 < route.len() {
+        let (here, next) = (route[step], route[step + 1]);
+        let beyond = {
+            let ax = i64::from(at.x.raw) - i64::from(here.x.raw);
+            let ay = i64::from(at.y.raw) - i64::from(here.y.raw);
+            let lx = i64::from(next.x.raw) - i64::from(here.x.raw);
+            let ly = i64::from(next.y.raw) - i64::from(here.y.raw);
+            ax * lx + ay * ly > 0
+        };
+        let passed = at.within(here, radius) || (beyond && field.capsule_clear(at, next, room));
+        if !passed {
+            break;
+        }
         step += 1;
     }
     step

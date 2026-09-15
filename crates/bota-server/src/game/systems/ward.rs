@@ -46,7 +46,7 @@ impl World {
         ) else {
             return false;
         };
-        if !from.within(pos, rules::units(range)) || !self.grid.stands_clear(pos) {
+        if !from.within(pos, rules::units(range)) || !self.clearance.stands_clear(pos) {
             return false;
         }
         self.spawn_ward(def, side, pos, ticks);

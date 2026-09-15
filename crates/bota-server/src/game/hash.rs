@@ -105,8 +105,31 @@ impl World {
                 }
             }
             if let Some(march) = self.march.get(entity) {
-                fnv.u32(u32::from(march.route_step));
-                fnv.u32(march.shove);
+                fnv.u32(u32::from(march.next));
+            }
+            if let Some(motion) = self.motion.get(entity) {
+                fnv.vec2(motion.delta);
+                fnv.u32(motion.stalled);
+                fnv.u32(motion.still);
+                fnv.u32(motion.wait_until);
+                fnv.u32(motion.relaid);
+                fnv.u32(motion.bumped);
+                fnv.u32(motion.bumps);
+            }
+            if let Some(route) = self.route.get(entity) {
+                fnv.u32(route.corners.len() as u32);
+                fnv.some(route.goal.is_some());
+                if let Some(goal) = route.goal {
+                    fnv.vec2(goal);
+                }
+                fnv.vec2(route.end);
+                fnv.some(route.done);
+            }
+            if let Some(plan) = self.plan.get(entity) {
+                fnv.u32(plan.steps.len() as u32);
+                fnv.u32(plan.at as u32);
+                fnv.u32(plan.from);
+                fnv.u32(plan.laid);
             }
             if let Some(shot) = self.projectile.get(entity) {
                 fnv.fixed(shot.speed);

@@ -7,8 +7,8 @@ use bota_proto::{HeroId, SlotId, Team, UnitKind};
 use crate::game::{
     AbilityBook, Action, AuraCx, Auras, Bounty, CampHome, Def, Entity, EntityAllocator, Errand,
     Expiry, Forest, Handling, Health, Hit, Hook, Hull, Inventory, Landed, Lane, LaneAi, Level,
-    Loot, Mana, March, Mark, Missed, Modifiers, NeutralAi, Orders, Place, Projectile, Rax,
-    RequiemLine, Route, Seat, SightCx, Stacks, Stats, StatsCx, Table, Target, Tier, Transform,
+    Loot, Mana, March, Mark, Missed, Modifiers, Motion, NeutralAi, Orders, Place, Plan, Projectile,
+    Rax, RequiemLine, Route, Seat, SightCx, Stacks, Stats, StatsCx, Table, Target, Tier, Transform,
     UnitOrder, Upgrades, Visibility, aura_system, derive_stats, hitting_system, missile_system,
     regenerate, visibility_system,
 };
@@ -33,8 +33,11 @@ pub struct World {
     pub map: &'static crate::game::MapDef,
     /// Where every roll of the dice comes from.
     pub rng: crate::game::MatchRng,
-    /// Which cells anything may stand on.
-    pub grid: crate::game::PassGrid,
+    /// The ground as bodies meet it: what stands where, and the room a body
+    /// has anywhere.
+    pub clearance: crate::game::Clearance,
+    /// The scratch routes are searched in.
+    pub planner: crate::game::Planner,
     /// Uphill miss sequences, indexed by attacker's entity slot.
     pub uphill_miss: Vec<Option<crate::game::PseudoRandom25>>,
     /// Critical strike sequences, indexed by attacker's entity slot.
@@ -48,7 +51,7 @@ pub struct World {
     /// The height of the ground everywhere.
     pub ground: crate::game::Ground,
     /// Which cells stop a sight line: trees and the map's own walls.
-    pub sight_block: crate::game::PassGrid,
+    pub sight_block: crate::game::CellGrid,
     /// The forest as it stands: what is down, and what has been put up.
     pub trees: Forest,
     /// Blows dealt and not yet felt. Filled and emptied inside one tick.
@@ -111,10 +114,22 @@ pub struct World {
     /// What each entity hands out to those standing near it.
     pub auras: Table<Auras>,
 
-    /// Routes being walked by whoever a player drives.
+    /// The route each walker is on.
     pub route: Table<Route>,
+    /// The next stretch of each walker's walk.
+    pub plan: Table<Plan>,
+    /// How each walker has been moving.
+    pub motion: Table<Motion>,
     /// What a creep keeps while marching its lane.
     pub march: Table<March>,
+    /// Where every body stood at the start of this tick's walking.
+    pub bodies: crate::game::BodyIndex,
+    /// The scratch local plans are searched in.
+    pub local_scratch: crate::game::LocalScratch,
+    /// Reused room for the bodies the index is laid from.
+    pub(crate) body_scratch: Vec<crate::game::Body>,
+    /// Reused room for the circles a stalled walker routes round.
+    pub(crate) extra_scratch: Vec<(bota_proto::Vec2, bota_proto::Fixed)>,
 
     /// The order each entity is following.
     pub orders: Table<Orders>,
@@ -172,14 +187,15 @@ impl World {
             cheats: false,
             map: crate::game::map_of(bota_proto::MapId(0)),
             rng: crate::game::MatchRng::new(&[0; 32], 0),
-            grid: crate::game::PassGrid::open(),
+            clearance: crate::game::Clearance::open(),
+            planner: crate::game::Planner::new(),
             uphill_miss: Vec::new(),
             crit: Vec::new(),
             evasion: Vec::new(),
             pierce: Vec::new(),
             camp_last: Vec::new(),
             ground: crate::game::Ground::of(crate::game::map_of(bota_proto::MapId(0))),
-            sight_block: crate::game::PassGrid::open(),
+            sight_block: crate::game::CellGrid::open(),
             trees: Forest::default(),
             hits: VecDeque::new(),
             landed: VecDeque::new(),
@@ -209,6 +225,12 @@ impl World {
             expiry: Table::new(),
             auras: Table::new(),
             route: Table::new(),
+            plan: Table::new(),
+            motion: Table::new(),
+            bodies: crate::game::BodyIndex::empty(),
+            local_scratch: crate::game::LocalScratch::new(),
+            body_scratch: Vec::new(),
+            extra_scratch: Vec::new(),
             march: Table::new(),
             orders: Table::new(),
             target: Table::new(),
@@ -338,7 +360,7 @@ impl World {
     pub fn on_map(map: &'static crate::game::MapDef) -> World {
         let mut world = World::new();
         world.map = map;
-        world.grid = crate::game::build_terrain_grid(map);
+        world.clearance = crate::game::Clearance::of_map(map);
         world.ground = crate::game::Ground::of(map);
         world.trees = Forest::of(map);
         world.sight_block = crate::game::build_sight_block(map);
@@ -390,9 +412,10 @@ impl World {
         world
     }
 
-    /// Rebuilds walkability from terrain and what still stands on it.
+    /// Lays what stands on the ground afresh: every standing structure and
+    /// tree, at its collision size.
     pub fn lay_passability(&mut self) {
-        let mut grid = crate::game::build_terrain_grid(self.map);
+        let mut circles = Vec::new();
         for entity in self.entities.iter() {
             let Some(kind) = self.kind.get(entity).copied() else {
                 continue;
@@ -403,33 +426,25 @@ impl World {
             let (Some(at), Some(hull)) = (self.transform.get(entity), self.hull.get(entity)) else {
                 continue;
             };
-            grid.block_post(at.pos, crate::game::structure_clearance(hull.collision));
+            circles.push((at.pos, hull.collision));
         }
-        let tree_radius = crate::game::structure_clearance(crate::game::rules::units(
-            crate::game::rules::TREE_RADIUS,
-        ));
+        let tree_radius = crate::game::rules::units(crate::game::rules::TREE_RADIUS);
         for (index, at) in crate::game::tree_positions(self.map)
             .into_iter()
             .enumerate()
         {
             if self.trees.rooted_stands(index) {
-                grid.block_circle(at, tree_radius);
+                circles.push((at, tree_radius));
             }
         }
         for tree in self.trees.planted() {
-            grid.block_circle(tree.at, tree_radius);
+            circles.push((tree.at, tree_radius));
         }
-        self.grid = grid;
+        self.clearance.set_circles(circles);
         self.lane_routes = None;
-        for entity in self.entities.iter() {
-            if let Some(route) = self.route.get_mut(entity) {
-                route.path.clear();
-                route.end = route.goal;
-                route.trace = None;
-            }
-            if let Some(march) = self.march.get_mut(entity) {
-                march.trace = None;
-            }
+        let walkers: Vec<Entity> = self.entities.iter().collect();
+        for entity in walkers {
+            self.forget_walk(entity);
         }
     }
 
@@ -446,7 +461,7 @@ impl World {
     /// Lays the lane routes on the ground as it stands, and puts every
     /// marcher at the waypoint of its new route nearest to where it is.
     fn lay_lane_routes(&mut self) {
-        let routes = crate::game::lane_routes_on(self.map, &self.grid);
+        let routes = crate::game::lane_routes_on(self.map, &self.clearance, &mut self.planner);
         for entity in self.entities.iter() {
             let (Some(at), Some(team), Some(lane)) = (
                 self.transform.get(entity).map(|t| t.pos),
@@ -464,7 +479,7 @@ impl World {
                 .enumerate()
                 .min_by_key(|(_, spot)| at.distance_squared(**spot))
                 .map_or(0, |(step, _)| step);
-            march.route_step = nearest as u16;
+            march.next = nearest as u16;
         }
         self.lane_routes = Some(routes);
     }
@@ -473,8 +488,8 @@ impl World {
     /// now stands.
     pub fn lay_sight_block(&mut self) {
         let mut grid = crate::game::build_fow_walls(self.map);
-        let close = |grid: &mut crate::game::PassGrid, at| {
-            if let Some((cx, cy)) = crate::game::PassGrid::cell_of(at) {
+        let close = |grid: &mut crate::game::CellGrid, at| {
+            if let Some((cx, cy)) = crate::game::CellGrid::cell_of(at) {
                 grid.close_cell(cx, cy);
             }
         };

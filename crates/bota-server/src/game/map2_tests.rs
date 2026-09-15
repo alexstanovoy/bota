@@ -6,7 +6,7 @@ use bota_proto::{
 };
 
 use crate::game::{
-    Command, Entity, Event, EventVisibility, MatchConfig, PassGrid, Seat, World, build_grid,
+    CellGrid, Clearance, Command, Entity, Event, EventVisibility, MatchConfig, Seat, World,
     hero_spawn_pos, lane_polyline, lane_route, lane_routes, map_of, rules, tree_positions,
     wave_plan, wire_id,
 };
@@ -144,14 +144,21 @@ fn map0_and_map2_walked_routes_match_on_all_lanes_and_both_sides() {
 fn map0_and_map2_passability_terrain_and_sight_match_in_every_cell() {
     let full = World::on_map(map_of(MapId(0)));
     let mid = World::on_map(map_of(MID_MAP));
-    let full_grid = build_grid(full.map);
-    let mid_grid = build_grid(mid.map);
+    let full_field = Clearance::of_map(full.map);
+    let mid_field = Clearance::of_map(mid.map);
+    assert_eq!(full_field.circles(), mid_field.circles());
 
     for y in 0..rules::GRID_CELLS {
         for x in 0..rules::GRID_CELLS {
-            let at = PassGrid::cell_center((x, y));
-            assert_eq!(mid_grid.cell_open(x, y), full_grid.cell_open(x, y));
-            assert_eq!(mid.grid.cell_open(x, y), full.grid.cell_open(x, y));
+            let at = CellGrid::cell_center((x, y));
+            assert_eq!(
+                mid_field.terrain().cell_open(x, y),
+                full_field.terrain().cell_open(x, y)
+            );
+            assert_eq!(
+                mid.clearance.terrain().cell_open(x, y),
+                full.clearance.terrain().cell_open(x, y)
+            );
             assert_eq!(
                 mid.sight_block.cell_open(x, y),
                 full.sight_block.cell_open(x, y)

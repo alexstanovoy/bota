@@ -7,8 +7,6 @@ use crate::game::Entity;
 /// What a lane creep keeps while it is chasing or coming back.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct LaneAi {
-    /// Where it left its route. Absent while it is on the route.
-    pub anchor: Option<Vec2>,
     /// Where its target was last seen. Absent when it never lost one.
     pub last_seen: Option<Vec2>,
     /// The tick until which its target is kept whatever else turns up. What

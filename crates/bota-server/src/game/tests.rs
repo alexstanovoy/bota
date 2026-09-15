@@ -727,7 +727,12 @@ fn an_order_to_walk_moves_a_body_and_turns_it_first() {
     }
     let now = world.transform.get(hero).expect("alive").pos;
     assert!(now.x < start.x, "it walks towards where it was sent");
-    assert_eq!(now.y, start.y, "and holds the line it was sent along");
+    // Coming round costs whole ticks, so a turn a little short of the way
+    // is the faster start; the line is kept to within that little.
+    assert!(
+        (now.y.to_int() - start.y.to_int()).abs() < 40,
+        "and keeps to the line it was sent along: {now:?}"
+    );
 }
 
 #[test]
@@ -1617,7 +1622,10 @@ fn a_fallen_hero_comes_back_at_its_fountain() {
         crate::game::hero_spawn_pos(map, bota_proto::Team::Radiant),
         "it came back somewhere else"
     );
-    assert!(world.grid.walkable(at), "and on ground it can walk off");
+    assert!(
+        world.clearance.walkable(at),
+        "and on ground it can walk off"
+    );
     let full = world.stats.get(back).expect("settled").max_hp;
     assert_eq!(world.health.get(back).map(|h| h.hp), Some(full), "and full");
 }
@@ -2048,7 +2056,6 @@ fn thinking_creep(world: &mut World, at: bota_proto::Vec2) -> Entity {
     world.lane_ai.insert(
         creep,
         crate::game::LaneAi {
-            anchor: None,
             last_seen: None,
             keep_until: 0,
             roused_by: None,
@@ -2089,24 +2096,49 @@ fn a_creep_gives_up_a_chase_it_cannot_finish() {
     );
 }
 
+/// The rule this guards: a creep that left its route, chasing or pushed,
+/// is sent on to the route ahead of it, never back to where it left.
 #[test]
-fn a_creep_walks_back_to_where_it_left_its_route() {
-    let mut world = World::new();
-    let start = bota_proto::Vec2::from_ints(5000, 5000);
-    let creep = thinking_creep(&mut world, start);
-    world.settle();
-    if let Some(ai) = world.lane_ai.get_mut(creep) {
-        ai.anchor = Some(start);
+fn a_creep_off_its_route_rejoins_it_ahead_and_never_walks_back() {
+    let map = crate::game::map_of(bota_proto::MapId(1));
+    let mut world = World::on_map(map);
+    while world.tick < rules::FIRST_WAVE_TICK {
+        world.step();
     }
+    let creep = world
+        .entities
+        .iter()
+        .find(|e| {
+            world.march.get(*e).is_some() && world.team.get(*e) == Some(&bota_proto::Team::Radiant)
+        })
+        .expect("a wave came out");
+    let route = world.walked_lanes()[0][0].clone();
+    assert!(route.len() >= 3, "the lane has corners to be ahead of");
+    // Carried past its next two waypoints and off to one side of the road.
+    let ahead = route[2] + bota_proto::Vec2::from_ints(0, 300);
     if let Some(at) = world.transform.get_mut(creep) {
-        at.pos = bota_proto::Vec2::from_ints(5600, 5000);
+        at.pos = ahead;
     }
+    let was = lane_progress(&route, ahead);
     world.step();
-    let order = world.orders.get(creep).map(|o| o.current);
-    assert_eq!(
-        order,
-        Some(crate::game::UnitOrder::AttackMove { pos: start }),
-        "it is sent back to where it left"
+    let Some(crate::game::UnitOrder::AttackMove { pos }) =
+        world.orders.get(creep).map(|o| o.current)
+    else {
+        panic!("it is sent somewhere");
+    };
+    assert!(
+        lane_progress(&route, pos) + 40 >= was,
+        "it is sent on, not back: to {} from {}",
+        lane_progress(&route, pos),
+        was
+    );
+    for _ in 0..90 {
+        world.step();
+    }
+    let now = world.transform.get(creep).expect("alive").pos;
+    assert!(
+        lane_progress(&route, now) > was,
+        "and it gets further along the lane"
     );
 }
 
@@ -2524,24 +2556,24 @@ fn a_creep_is_sent_one_way_at_a_time() {
             world.march.get(*e).is_some() && world.team.get(*e) == Some(&bota_proto::Team::Radiant)
         })
         .expect("a wave came out");
-    // Left the route: the mark it was given must not change from tick to tick
-    // while nothing about it changes.
-    if let Some(ai) = world.lane_ai.get_mut(creep) {
-        ai.anchor = Some(bota_proto::Vec2::from_ints(6800, 9600));
+    // Pushed off the route: the mark it is given must not change from tick
+    // to tick while nothing about it changes.
+    if let Some(at) = world.transform.get_mut(creep) {
+        at.pos += bota_proto::Vec2::from_ints(-200, 200);
     }
     world.step();
     let first = world.orders.get(creep).map(|o| o.current);
     world.step();
     let second = world.orders.get(creep).map(|o| o.current);
     assert_eq!(first, second, "it is not pulled two ways in one breath");
-    let x = world.transform.get(creep).expect("alive").pos.x.to_int();
+    let was = world.transform.get(creep).expect("alive").pos;
     for _ in 0..60 {
         world.step();
     }
-    let later = world.transform.get(creep).expect("alive").pos.x.to_int();
+    let later = world.transform.get(creep).expect("alive").pos;
     assert!(
-        (later - x).abs() > 40,
-        "and it actually goes somewhere: {x} then {later}"
+        !later.within(was, rules::units(40)),
+        "and it actually goes somewhere: {was:?} then {later:?}"
     );
 }
 
@@ -3559,7 +3591,6 @@ fn what_is_in_reach_is_kept_unless_a_better_class_is_also_in_reach() {
     world.lane_ai.insert(
         siege,
         crate::game::LaneAi {
-            anchor: None,
             last_seen: None,
             keep_until: 0,
             roused_by: None,
@@ -3641,7 +3672,6 @@ fn thinking_creep_of(world: &mut World, team: Team, at: bota_proto::Vec2) -> Ent
     world.lane_ai.insert(
         creep,
         crate::game::LaneAi {
-            anchor: None,
             last_seen: None,
             keep_until: 0,
             roused_by: None,
@@ -4043,7 +4073,7 @@ fn a_hero_stands_up_beside_its_fountain_and_not_in_it() {
         for team in [bota_proto::Team::Radiant, bota_proto::Team::Dire] {
             let at = crate::game::hero_spawn_pos(map, team);
             assert!(
-                world.grid.walkable(at),
+                world.clearance.walkable(at),
                 "map {id}, {team:?}: a hero stands up on ground it can walk off"
             );
         }
@@ -4466,11 +4496,12 @@ fn an_empty_spot(world: &World) -> bota_proto::Vec2 {
                     .get(entity)
                     .is_some_and(|t| t.pos.within(at, bota_proto::Fixed::from_int(800)))
             });
+            let room = crate::game::plan_radius(rules::units(rules::HERO_COLLISION));
             let open = (-2..=14).all(|dx: i32| {
                 (-2..=2).all(|dy: i32| {
                     world
-                        .grid
-                        .walkable(at + bota_proto::Vec2::from_ints(dx * 50, dy * 100))
+                        .clearance
+                        .point_clear(at + bota_proto::Vec2::from_ints(dx * 50, dy * 100), room)
                 })
             });
             if clear && open {
@@ -4515,7 +4546,7 @@ fn beside_own_tower(world: &World) -> bota_proto::Vec2 {
         .expect("its side has towers");
     let at = world.transform.get(tower).expect("standing").pos;
     let beside = at + bota_proto::Vec2::from_ints(300, 0);
-    if world.grid.walkable(beside) {
+    if world.clearance.walkable(beside) {
         beside
     } else {
         at + bota_proto::Vec2::from_ints(-300, 0)
@@ -4908,10 +4939,10 @@ fn a_ward_cannot_be_put_where_nothing_may_walk() {
     // Closed ground with open ground to stand on beside it.
     let (stand, wall) = (0..200)
         .flat_map(|x| (0..200).map(move |y| bota_proto::Vec2::from_ints(x * 100, y * 100)))
-        .filter(|at| !world.grid.walkable(*at))
+        .filter(|at| !world.clearance.walkable(*at))
         .find_map(|wall| {
             let beside = wall + bota_proto::Vec2::from_ints(0, 300);
-            world.grid.walkable(beside).then_some((beside, wall))
+            world.clearance.walkable(beside).then_some((beside, wall))
         })
         .expect("the map has walls with room beside them");
     world.transform.get_mut(hero).expect("hero").pos = stand;
@@ -5056,11 +5087,11 @@ fn a_hero_by_the_trees(item: u16, charges: u8) -> (World, Entity, bota_proto::Ve
         .into_iter()
         .find(|at| {
             world
-                .grid
-                .walkable(*at + bota_proto::Vec2::from_ints(120, 0))
+                .clearance
+                .stands_clear(*at + bota_proto::Vec2::from_ints(120, 0))
                 && world
-                    .grid
-                    .walkable(*at + bota_proto::Vec2::from_ints(240, 0))
+                    .clearance
+                    .stands_clear(*at + bota_proto::Vec2::from_ints(240, 0))
         })
         .expect("some tree has open ground beside it");
     let stand = tree + bota_proto::Vec2::from_ints(120, 0);
@@ -5098,7 +5129,7 @@ fn a_hero_by_the_trees(item: u16, charges: u8) -> (World, Entity, bota_proto::Ve
 
 /// Whether the cell a spot falls in still stops a sight line.
 fn sight_stopped_at(world: &World, at: bota_proto::Vec2) -> bool {
-    crate::game::PassGrid::cell_of(at).is_some_and(|(cx, cy)| !world.sight_block.cell_open(cx, cy))
+    crate::game::CellGrid::cell_of(at).is_some_and(|(cx, cy)| !world.sight_block.cell_open(cx, cy))
 }
 
 #[test]
@@ -6169,34 +6200,40 @@ fn a_creep_that_has_stood_long_enough_shoves_through() {
     let mut world = World::new();
     let at = bota_proto::Vec2::from_ints(5000, 5000);
     let creep = world.spawn_unit(&MELEE_CREEP, bota_proto::Team::Radiant, at);
-    world.march.insert(
-        creep,
-        crate::game::March {
-            route_step: 0,
-            trace: None,
-            shove: 0,
-        },
-    );
-    // A body right in front of it, close enough that a step enters its hull.
-    world.spawn_unit(
-        &MELEE_CREEP,
-        bota_proto::Team::Radiant,
-        at + bota_proto::Vec2::from_ints(40, 0),
-    );
+    world.march.insert(creep, crate::game::March { next: 0 });
+    // A hexagon of bodies packed about it, each just clear of it and of
+    // its neighbours, so no step in any direction stays clear of them all.
+    for (dx, dy) in [
+        (72, 0),
+        (36, 63),
+        (-36, 63),
+        (-72, 0),
+        (-36, -63),
+        (36, -63),
+    ] {
+        world.spawn_unit(
+            &MELEE_CREEP,
+            bota_proto::Team::Radiant,
+            at + bota_proto::Vec2::from_ints(dx, dy),
+        );
+    }
     world.settle();
     let aim = at + bota_proto::Vec2::from_ints(400, 0);
-    let step = bota_proto::Fixed::from_int(10);
+    world.set_order(creep, crate::game::UnitOrder::AttackMove { pos: aim });
+    for _ in 0..rules::MARCH_SHOVE_TICKS - 2 {
+        world.step();
+    }
     assert_eq!(
-        world.march_step(creep, aim, step),
-        at,
-        "with a body in the way it does not move"
+        world.transform.get(creep).map(|t| t.pos),
+        Some(at),
+        "boxed in, it does not move"
     );
-    if let Some(march) = world.march.get_mut(creep) {
-        march.shove = rules::MARCH_SHOVE_TICKS;
+    for _ in 0..12 {
+        world.step();
     }
     assert_ne!(
-        world.march_step(creep, aim, step),
-        at,
+        world.transform.get(creep).map(|t| t.pos),
+        Some(at),
         "but once it has stood long enough it shoves through"
     );
 }
@@ -8070,15 +8107,16 @@ fn a_blink_aimed_at_closed_ground_steps_back_to_open() {
         x: from.x + rules::units(600),
         y: from.y,
     };
-    world
-        .grid
-        .block_circle(aim, rules::units(rules::BLINK_STEP_BACK * 2));
+    stand_a_wall(&mut world, aim, rules::units(rules::BLINK_STEP_BACK * 2));
     assert!(
         world.use_item(hero, 0, bota_proto::Target::Pos(aim), &mut Vec::new()),
         "it goes"
     );
     let landed = world.transform.get(hero).expect("stands somewhere").pos;
-    assert!(world.grid.walkable(landed), "and it lands on open ground");
+    assert!(
+        world.clearance.walkable(landed),
+        "and it lands on open ground"
+    );
     assert!(landed != aim, "short of what it was aimed at");
 }
 
@@ -8381,12 +8419,20 @@ fn a_world_with_a_wall(from: bota_proto::Vec2, to: bota_proto::Vec2) -> World {
             raw: (from.y.raw / 2).saturating_add(to.y.raw / 2),
         },
     };
-    world.grid.block_circle(middle, rules::units(600));
+    stand_a_wall(&mut world, middle, rules::units(600));
     assert!(
-        !crate::game::grid_los(&world.grid, from, to, Fixed::ZERO),
+        !world.clearance.capsule_clear(from, to, Fixed::ZERO),
         "the wall stands in the way"
     );
     world
+}
+
+/// Stands a circle of closed ground on a world, beside everything else
+/// standing on it.
+fn stand_a_wall(world: &mut World, at: bota_proto::Vec2, radius: Fixed) {
+    let mut circles = world.clearance.circles().to_vec();
+    circles.push((at, radius));
+    world.clearance.set_circles(circles);
 }
 
 #[test]
@@ -8455,7 +8501,7 @@ fn a_way_found_to_a_spot_that_walks_away_is_found_again() {
         world
             .route
             .get(hero)
-            .is_some_and(|route| !route.path.is_empty()),
+            .is_some_and(|route| !route.corners.is_empty()),
         "a way round the wall was found"
     );
     // The spot creeps away, a little every tick, exactly as a walking hero
@@ -8469,7 +8515,7 @@ fn a_way_found_to_a_spot_that_walks_away_is_found_again() {
     let end = world
         .route
         .get(hero)
-        .and_then(|route| route.path.last().copied())
+        .and_then(|route| route.corners.last().copied())
         .expect("still walking a way round");
     assert!(
         end.within(goal, rules::units(600)),
@@ -9376,7 +9422,7 @@ fn a_hero_told_to_walk_into_a_tower_walks_up_to_it_and_stands() {
         world.advance(&[]);
         seen.push(world.transform.get(hero).expect("standing").pos);
     }
-    let footprint = crate::game::structure_clearance(rules::units(rules::TOWER_COLLISION));
+    let footprint = crate::game::plan_radius(rules::units(rules::TOWER_COLLISION));
     let last = *seen.last().expect("walked");
     assert!(
         !last.within(start, rules::units(300)),
@@ -9401,11 +9447,12 @@ fn a_hero_told_to_walk_into_a_tower_walks_up_to_it_and_stands() {
 /// straight at it and stood pressed against whatever was in the way.
 #[test]
 fn a_walk_to_where_no_way_leads_ends_at_the_nearest_spot_got_to() {
-    let mut grid = crate::game::PassGrid::open();
+    let mut cells = crate::game::CellGrid::open();
     let wall = 100;
     for cy in 0..rules::GRID_CELLS {
-        grid.close_cell(wall, cy);
+        cells.close_cell(wall, cy);
     }
+    let grid = crate::game::Clearance::from_cells(cells);
     let from = bota_proto::Vec2::from_ints(1000, 1000);
     let beyond = bota_proto::Vec2::from_ints(10000, 1000);
     let body = rules::units(rules::HERO_COLLISION);
@@ -9445,7 +9492,7 @@ fn a_wave_walks_over_where_its_tower_stood_once_it_has_fallen() {
     let mut world = World::for_match(&cfg, cfg.rng());
     let (lane, _, tower) = rules::RADIANT_TOWERS[2];
     assert_eq!(lane, rules::LANE_MID, "the Radiant mid tier three");
-    let footprint = crate::game::structure_clearance(rules::units(rules::TOWER_COLLISION));
+    let footprint = crate::game::plan_radius(rules::units(rules::TOWER_COLLISION));
     assert!(
         world.walked_lanes()[0][0]
             .iter()
@@ -9512,22 +9559,22 @@ fn a_destroyed_structure_reopens_the_ground_it_blocked() {
     let tower = rules::RADIANT_TOWERS[0].2;
     let body = rules::units(rules::HERO_COLLISION);
     assert!(
-        world.grid.walkable(tower),
+        world.clearance.walkable(tower),
         "the ground under a tower is ground all the same"
     );
     assert!(
-        !world.grid.stands_clear(tower),
+        !world.clearance.stands_clear(tower),
         "but nothing is put down where a standing tower is"
     );
     assert!(
-        !world.grid.walkable_for(tower, body),
+        !world.clearance.fits_at(tower, body),
         "and no walk is planned through it"
     );
 
     fell_at(&mut world, tower);
 
     assert!(
-        world.grid.stands_clear(tower) && world.grid.walkable_for(tower, body),
+        world.clearance.stands_clear(tower) && world.clearance.fits_at(tower, body),
         "the tower's ground is anybody's after its destruction"
     );
 }
@@ -9539,27 +9586,32 @@ fn passability_changes_invalidate_cached_routes() {
     world.route.insert(
         entity,
         crate::game::Route {
-            path: vec![bota_proto::Vec2::from_ints(5_000, 5_000)],
-            goal: bota_proto::Vec2::from_ints(6_000, 5_000),
+            corners: vec![bota_proto::Vec2::from_ints(5_000, 5_000)],
+            goal: Some(bota_proto::Vec2::from_ints(6_000, 5_000)),
             end: bota_proto::Vec2::from_ints(5_000, 5_000),
-            trace: Some(crate::game::TraceSide::Left),
+            done: true,
         },
     );
-    world.march.insert(
+    world.plan.insert(
         entity,
-        crate::game::March {
-            route_step: 0,
-            trace: Some(crate::game::TraceSide::Right),
-            shove: 0,
+        crate::game::Plan {
+            steps: vec![bota_proto::Vec2::from_ints(4_010, 5_000)],
+            from: 1,
+            at: 0,
+            goal: bota_proto::Vec2::from_ints(6_000, 5_000),
+            step: bota_proto::Fixed::from_int(10),
+            laid: 0,
+            last: false,
         },
     );
 
     world.lay_passability();
 
     let route = world.route.get(entity).expect("route remains");
-    assert!(route.path.is_empty());
-    assert_eq!(route.trace, None);
-    assert_eq!(world.march.get(entity).expect("march remains").trace, None);
+    assert!(route.corners.is_empty());
+    assert_eq!(route.goal, None);
+    assert!(!route.done);
+    assert!(!world.plan.get(entity).expect("plan remains").stands());
 }
 
 #[test]
@@ -9834,7 +9886,7 @@ fn the_demo_waves_walk_the_road_and_not_through_their_towers() {
         rules::DEMO_RADIANT_TOWERS[0].2,
         rules::DEMO_DIRE_TOWERS[0].2,
     ];
-    let footprint = crate::game::structure_clearance(rules::units(rules::TOWER_COLLISION));
+    let footprint = crate::game::plan_radius(rules::units(rules::TOWER_COLLISION));
     let routes = crate::game::lane_routes(map);
     for side in &routes {
         let route = &side[0];
@@ -9887,7 +9939,7 @@ fn lane_progress(line: &[bota_proto::Vec2], pos: bota_proto::Vec2) -> i64 {
 #[test]
 fn no_route_on_any_map_walks_a_wave_backwards() {
     let slack = i64::from(
-        crate::game::structure_clearance(rules::units(rules::TOWER_COLLISION)).to_int()
+        crate::game::plan_radius(rules::units(rules::TOWER_COLLISION)).to_int()
             + rules::WIDEST_MARCHER,
     );
     for map_id in [bota_proto::MapId(0), bota_proto::MapId(1)] {
@@ -9966,14 +10018,7 @@ fn walkers_and_marchers_both_work_round_a_wall_of_bodies() {
         bota_proto::Team::Radiant,
         bota_proto::Vec2::from_ints(5000, 6000),
     );
-    world.march.insert(
-        creep,
-        crate::game::March {
-            route_step: 0,
-            trace: None,
-            shove: 0,
-        },
-    );
+    world.march.insert(creep, crate::game::March { next: 0 });
     wall(&mut world, 5400, 6000);
     world.settle();
     let goal = bota_proto::Vec2::from_ints(5900, 6000);
@@ -10264,4 +10309,324 @@ fn uphill_eligibility_uses_attacker_and_target_elevation_at_impact() {
         "the miss rate stays near one quarter"
     );
     assert_eq!(pierced_down, 512, "a shot that pierces never misses uphill");
+}
+
+/// Steps a world until a mover stands within fifty units of a spot, and
+/// how many ticks that took. None when it never got there in time.
+fn ticks_until_near(
+    world: &mut World,
+    mover: Entity,
+    goal: bota_proto::Vec2,
+    within: u32,
+) -> Option<u32> {
+    for t in 0..within {
+        world.step();
+        let at = world.transform.get(mover).expect("standing").pos;
+        if at.within(goal, rules::units(50)) {
+            return Some(t + 1);
+        }
+    }
+    None
+}
+
+/// The bug this guards against: a hero pressed against a tower saw no
+/// corner along it at the route's margin, laid its route again every tick
+/// and stood at the first corner for ever.
+#[test]
+fn a_hero_touching_a_tower_and_sent_past_it_goes_round_briskly() {
+    let map = crate::game::map_of(bota_proto::MapId(1));
+    let mut world = World::on_map(map);
+    let (_, _, tower) = map.radiant_towers[0];
+    let touching = rules::TOWER_COLLISION + rules::HERO_COLLISION + 1;
+    let hero = world.spawn_hero(
+        bota_proto::Team::Radiant,
+        tower - bota_proto::Vec2::from_ints(touching, 0),
+        bota_proto::SlotId(0),
+        bota_proto::HeroId(0),
+    );
+    world.settle();
+    let goal = tower + bota_proto::Vec2::from_ints(300, 0);
+    world.set_order(hero, crate::game::UnitOrder::Move { pos: goal });
+    let took = ticks_until_near(&mut world, hero, goal, 200);
+    assert!(
+        took.is_some_and(|t| t <= 90),
+        "round the tower and past it within three seconds, not {took:?}"
+    );
+}
+
+/// The bug this guards against: creeps stood fighting kept the plans they
+/// had marched by, so a hero read them as about to walk off, planned
+/// straight through them, ran into them and stood the block wait, over and
+/// over.
+#[test]
+fn a_hero_walks_round_a_wave_stood_fighting() {
+    let map = crate::game::map_of(bota_proto::MapId(1));
+    let mut world = World::on_map(map);
+    while world.tick < rules::FIRST_WAVE_TICK {
+        world.step();
+    }
+    for _ in 0..(12 * rules::TICKS_PER_SECOND) {
+        world.step();
+    }
+    let creeps: Vec<Entity> = world
+        .entities
+        .iter()
+        .filter(|e| world.march.get(*e).is_some())
+        .collect();
+    assert!(
+        creeps.len() >= 6,
+        "the waves have met and are still standing"
+    );
+    let (mut cx, mut cy) = (0i64, 0i64);
+    for creep in &creeps {
+        let at = world.transform.get(*creep).expect("standing").pos;
+        cx += i64::from(at.x.to_int());
+        cy += i64::from(at.y.to_int());
+    }
+    let centre = bota_proto::Vec2::from_ints(
+        (cx / creeps.len() as i64) as i32,
+        (cy / creeps.len() as i64) as i32,
+    );
+    let from = centre - bota_proto::Vec2::from_ints(400, 300);
+    let goal = centre + bota_proto::Vec2::from_ints(400, 300);
+    let hero = world.spawn_hero(
+        bota_proto::Team::Radiant,
+        from,
+        bota_proto::SlotId(0),
+        bota_proto::HeroId(0),
+    );
+    world.settle();
+    world.set_order(hero, crate::game::UnitOrder::Move { pos: goal });
+    let took = ticks_until_near(&mut world, hero, goal, 240);
+    assert!(
+        took.is_some_and(|t| t <= 150),
+        "past the fight within five seconds, not {took:?}"
+    );
+}
+
+/// A wave marching up its lane finds a hero of its own side standing on
+/// the road and walks round it without stopping.
+#[test]
+fn marchers_walk_round_a_hero_standing_on_their_lane() {
+    let map = crate::game::map_of(bota_proto::MapId(1));
+    let mut world = World::on_map(map);
+    while world.tick < rules::FIRST_WAVE_TICK {
+        world.step();
+    }
+    let route = world.walked_lanes()[0][0].clone();
+    let spot = crate::game::point_along(route[1], route[2], rules::units(300));
+    let _hero = world.spawn_hero(
+        bota_proto::Team::Radiant,
+        spot,
+        bota_proto::SlotId(0),
+        bota_proto::HeroId(0),
+    );
+    world.settle();
+    let creeps: Vec<Entity> = world
+        .entities
+        .iter()
+        .filter(|e| {
+            world.march.get(*e).is_some() && world.team.get(*e) == Some(&bota_proto::Team::Radiant)
+        })
+        .collect();
+    let blocked = lane_progress(&route, spot);
+    // On the way up to the hero and past it, no creep stands stalled for
+    // long: the enemy wave it meets further on is another matter.
+    for _ in 0..(7 * rules::TICKS_PER_SECOND) {
+        world.step();
+        for creep in &creeps {
+            let at = world.transform.get(*creep).expect("alive").pos;
+            if lane_progress(&route, at) > blocked + 150 {
+                continue;
+            }
+            let stalled = world.motion.get(*creep).expect("walks").stalled;
+            assert!(
+                stalled < 20,
+                "a creep stood stalled {stalled} ticks against the hero at ({},{})",
+                at.x.to_int(),
+                at.y.to_int()
+            );
+        }
+    }
+    for creep in &creeps {
+        let at = world.transform.get(*creep).expect("alive").pos;
+        assert!(
+            lane_progress(&route, at) > blocked + 150,
+            "a creep is held up by the hero at ({},{})",
+            at.x.to_int(),
+            at.y.to_int()
+        );
+    }
+}
+
+/// How far along the lane the Radiant wave stands: its front, and all of
+/// it on average.
+fn wave_progress(world: &World, route: &[bota_proto::Vec2]) -> (i64, i64) {
+    let each: Vec<i64> = world
+        .entities
+        .iter()
+        .filter(|e| {
+            world.march.get(*e).is_some() && world.team.get(*e) == Some(&bota_proto::Team::Radiant)
+        })
+        .map(|e| lane_progress(route, world.transform.get(e).expect("standing").pos))
+        .collect();
+    let front = each.iter().copied().max().unwrap_or(0);
+    let mean = if each.is_empty() {
+        0
+    } else {
+        each.iter().sum::<i64>() / each.len() as i64
+    };
+    (front, mean)
+}
+
+/// The spot a progress along a polyline lands on, shifted sideways.
+fn along_lane(route: &[bota_proto::Vec2], progress: i64, aside: i64) -> bota_proto::Vec2 {
+    let mut left = progress;
+    for (i, seg) in route.windows(2).enumerate() {
+        let (a, b) = (seg[0], seg[1]);
+        let len = crate::game::isqrt64(a.distance_squared(b)) >> 16;
+        if len >= left || i + 2 == route.len() {
+            let dx = i64::from(b.x.to_int() - a.x.to_int());
+            let dy = i64::from(b.y.to_int() - a.y.to_int());
+            let len = len.max(1);
+            let x = i64::from(a.x.to_int()) + dx * left / len - dy * aside / len;
+            let y = i64::from(a.y.to_int()) + dy * left / len + dx * aside / len;
+            return bota_proto::Vec2::from_ints(x as i32, y as i32);
+        }
+        left -= len;
+    }
+    route[route.len() - 1]
+}
+
+/// Creep blocking: a hero on the move is not planned round in advance,
+/// so a creep it keeps stepping in front of runs into it, stands the block
+/// wait, tries straight again and is held back, while the creeps it does
+/// not cover pass by its sides. A hero that stands still is flowed round.
+#[test]
+fn a_hero_pacing_before_a_wave_holds_the_creep_it_covers() {
+    let map = crate::game::map_of(bota_proto::MapId(1));
+    let seconds = 10;
+    let mut world = World::on_map(map);
+    while world.tick < rules::FIRST_WAVE_TICK {
+        world.step();
+    }
+    let route = world.walked_lanes()[0][0].clone();
+    for _ in 0..30 {
+        world.step();
+    }
+    let (start, start_mean) = wave_progress(&world, &route);
+    for _ in 0..(seconds * rules::TICKS_PER_SECOND) {
+        world.step();
+    }
+    let (_, free_mean) = wave_progress(&world, &route);
+    let mut world = World::on_map(map);
+    while world.tick < rules::FIRST_WAVE_TICK {
+        world.step();
+    }
+    for _ in 0..30 {
+        world.step();
+    }
+    let (front, _) = wave_progress(&world, &route);
+    let hero = world.spawn_hero(
+        bota_proto::Team::Radiant,
+        along_lane(&route, front + 70, 0),
+        bota_proto::SlotId(0),
+        bota_proto::HeroId(0),
+    );
+    world.settle();
+    let mut contacts = 0u32;
+    for _ in 0..(seconds * rules::TICKS_PER_SECOND) {
+        // Keep just ahead of the creep furthest up the lane.
+        let hp = world.transform.get(hero).expect("standing").pos;
+        let mine = lane_progress(&route, hp);
+        let mut lead: Option<(i64, bota_proto::Vec2)> = None;
+        for e in world.entities.iter() {
+            if world.march.get(e).is_none() || world.team.get(e) != Some(&bota_proto::Team::Radiant)
+            {
+                continue;
+            }
+            let at = world.transform.get(e).expect("standing").pos;
+            let p = lane_progress(&route, at);
+            if lead.is_none_or(|(had, _)| p > had) {
+                lead = Some((p, at));
+            }
+        }
+        let creep = lead.map(|(_, at)| at).unwrap_or(hp);
+        let dir = along_lane(&route, mine + 100, 0) - along_lane(&route, mine, 0);
+        let target =
+            creep + crate::game::point_along(bota_proto::Vec2::ZERO, dir, rules::units(70));
+        world.set_order(hero, crate::game::UnitOrder::Move { pos: target });
+        world.step();
+        for e in world.entities.iter() {
+            if world.march.get(e).is_some()
+                && world.motion.get(e).is_some_and(|m| m.bumped == world.tick)
+            {
+                contacts += 1;
+            }
+        }
+    }
+    let held = world
+        .entities
+        .iter()
+        .filter(|e| {
+            world.march.get(*e).is_some() && world.team.get(*e) == Some(&bota_proto::Team::Radiant)
+        })
+        .map(|e| lane_progress(&route, world.transform.get(e).expect("standing").pos) - start)
+        .min()
+        .expect("the wave stands");
+    assert!(
+        contacts >= 3,
+        "the creeps ran into the hero: {contacts} contacts"
+    );
+    assert!(
+        held + 150 < free_mean - start_mean,
+        "the creep it covered is held back: {held} against a free wave's {}",
+        free_mean - start_mean
+    );
+}
+
+/// The bug this guards against: a walk at a target that cannot be stood on
+/// ended beside it, and a melee hero sent at a tower from afar judged its
+/// reach from that spot beside the tower rather than from the tower's
+/// centre, stood short of it and never swung.
+#[test]
+fn every_hero_sent_at_a_tower_from_afar_walks_into_reach_and_strikes() {
+    for id in 0..crate::game::HEROES.len() as u16 {
+        let map = crate::game::map_of(bota_proto::MapId(0));
+        let mut world = World::on_map(map);
+        let tower_at = rules::RADIANT_TOWERS[0].2;
+        let tower = world
+            .entities
+            .iter()
+            .find(|e| world.transform.get(*e).is_some_and(|t| t.pos == tower_at))
+            .expect("the tower stands");
+        let hero = world.spawn_hero(
+            bota_proto::Team::Dire,
+            tower_at + bota_proto::Vec2::from_ints(900, 900),
+            bota_proto::SlotId(0),
+            bota_proto::HeroId(id),
+        );
+        world.settle();
+        world.fill_pools(hero);
+        let before = world.health.get(tower).expect("standing").hp;
+        world.set_order(
+            hero,
+            crate::game::UnitOrder::Attack {
+                target: tower,
+                last_seen: tower_at,
+            },
+        );
+        let mut struck = None;
+        for t in 0..(8 * rules::TICKS_PER_SECOND) {
+            world.step();
+            if world.health.get(tower).expect("standing").hp < before {
+                struck = Some(t + 1);
+                break;
+            }
+        }
+        assert!(
+            struck.is_some(),
+            "hero {id} never struck the tower within eight seconds"
+        );
+    }
 }

@@ -4,8 +4,8 @@ use bota_proto::{AbilityId, Angle, Fixed, HeroId, SlotId, Team, Vec2};
 
 use crate::game::{
     Action, ActionState, Auras, Bounty, CampHome, Def, Entity, Errand, Expiry, Health, Hull,
-    Inventory, Lane, LaneAi, Level, Mana, March, Mark, Modifiers, NeutralAi, Orders, Rax, Tier,
-    Transform, UnitDef, UnitOrder, Upgrades, World, rules,
+    Inventory, Lane, LaneAi, Level, Mana, March, Mark, Modifiers, Motion, NeutralAi, Orders, Plan,
+    Rax, Route, Tier, Transform, UnitDef, UnitOrder, Upgrades, World, rules,
 };
 
 /// Which building of a side one is.
@@ -77,7 +77,8 @@ impl World {
         );
     }
 
-    /// A body that takes orders, told nothing yet.
+    /// A body that takes orders, told nothing yet, with the route, the plan
+    /// and the motion a walk keeps, all empty.
     fn give_orders(&mut self, entity: Entity) {
         self.orders.insert(
             entity,
@@ -87,6 +88,9 @@ impl World {
                 pending: None,
             },
         );
+        self.route.insert(entity, Route::none());
+        self.plan.insert(entity, Plan::none());
+        self.motion.insert(entity, Motion::default());
     }
 
     /// Puts a hero on the map for a seat.
@@ -122,18 +126,10 @@ impl World {
         self.give_orders(entity);
         self.lane.insert(entity, Lane(lane));
         self.upgrades.insert(entity, Upgrades(upgrades));
-        self.march.insert(
-            entity,
-            March {
-                route_step: 0,
-                trace: None,
-                shove: 0,
-            },
-        );
+        self.march.insert(entity, March { next: 0 });
         self.lane_ai.insert(
             entity,
             LaneAi {
-                anchor: None,
                 last_seen: None,
                 keep_until: 0,
                 roused_by: None,
@@ -312,14 +308,7 @@ impl World {
                 | bota_proto::UnitKind::CreepRanged
                 | bota_proto::UnitKind::CreepSiege
         ) {
-            self.march.insert(
-                entity,
-                March {
-                    route_step: 0,
-                    trace: None,
-                    shove: 0,
-                },
-            );
+            self.march.insert(entity, March { next: 0 });
         }
         entity
     }

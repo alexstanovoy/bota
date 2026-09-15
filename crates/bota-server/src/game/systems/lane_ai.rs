@@ -267,8 +267,8 @@ impl World {
         self.select_target(entity)
     }
 
-    /// Keeps a creep's marks up to date: how long the chase has left, where it
-    /// last saw what it is after, and where it left its route.
+    /// Keeps a creep's marks up to date: how long the chase has left and
+    /// where it last saw what it is after.
     fn mark_chase(&mut self, entity: Entity) {
         let Some(mut ai) = self.lane_ai.get(entity).copied() else {
             return;
@@ -279,9 +279,6 @@ impl World {
             .map_or(Fixed::ZERO, |stats| stats.attack_range);
         match self.target_of(entity) {
             Some(held) => {
-                if ai.anchor.is_none() {
-                    ai.anchor = self.transform.get(entity).map(|t| t.pos);
-                }
                 ai.last_seen = self.transform.get(held).map(|t| t.pos);
                 if self.reachable(entity, reach, held) {
                     ai.chase_until = self.tick + rules::CREEP_CHASE_TICKS;
@@ -289,13 +286,10 @@ impl World {
             }
             None => {
                 let radius = rules::units(rules::LANE_WAYPOINT_RADIUS);
-                if let Some(at) = self.transform.get(entity).map(|t| t.pos) {
-                    if ai.last_seen.is_some_and(|spot| at.within(spot, radius)) {
-                        ai.last_seen = None;
-                    }
-                    if ai.anchor.is_some_and(|spot| at.within(spot, radius)) {
-                        ai.anchor = None;
-                    }
+                if let Some(at) = self.transform.get(entity).map(|t| t.pos)
+                    && ai.last_seen.is_some_and(|spot| at.within(spot, radius))
+                {
+                    ai.last_seen = None;
                 }
             }
         }
@@ -335,9 +329,6 @@ impl World {
             if let Some(orders) = self.orders.get_mut(creep) {
                 orders.cooldown = rules::ORDER_AGGRO_COOLDOWN_TICKS;
             }
-        }
-        if ai.anchor.is_none() {
-            ai.anchor = self.transform.get(creep).map(|t| t.pos);
         }
         ai.roused_by = Some(orderer);
         ai.roused_at_own = at_own;

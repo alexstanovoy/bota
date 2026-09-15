@@ -1,8 +1,12 @@
+mod bodies;
+mod cells;
+mod clearance;
 mod components;
 mod config;
 mod forest;
 mod ground;
 mod hash;
+mod local;
 mod match_world;
 mod movement;
 mod path;
@@ -16,10 +20,14 @@ mod world;
 
 pub use crate::engine::{Entity, EntityAllocator, Fnv, Generation, Index, Table};
 
+pub use bodies::*;
+pub use cells::*;
+pub use clearance::*;
 pub use components::*;
 pub use config::*;
 pub use forest::*;
 pub use ground::*;
+pub use local::*;
 pub use movement::*;
 pub use path::*;
 pub use progress::*;

@@ -168,7 +168,7 @@ impl World {
                 ticks_left: Some(2),
             },
         );
-        self.route.remove(caught);
+        self.forget_walk(caught);
     }
 
     /// Takes a hook and its chain out of the world.

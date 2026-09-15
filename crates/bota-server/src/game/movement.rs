@@ -1,4 +1,4 @@
-//! Deterministic integer geometry: stepping, blocking, turning, bounds.
+//! Deterministic integer geometry: stepping, turning, distances.
 
 use bota_proto::{Angle, Fixed, Vec2};
 
@@ -137,162 +137,6 @@ pub fn clamp_to_map(pos: Vec2) -> Vec2 {
     }
 }
 
-/// The walkability grid of the map: the ground, and the posts standing on
-/// it.
-///
-/// One bit per cell, `true` is ground that can be walked; the terrain and
-/// the trees close cells when the world is built. A structure closes no
-/// cell: it stands as a post, the circle nothing walks into, met exactly,
-/// and the grid keeps at every cell the room a body may have there clear of
-/// every post, for planning a walk at the walker's own size.
-#[derive(Clone, Debug)]
-pub struct PassGrid {
-    /// One bit per cell, row-major.
-    bits: Vec<u64>,
-    /// At each cell, row-major: how wide a body may be and stand at the
-    /// cell's centre clear of every post, in world units, capped at
-    /// [`u8::MAX`].
-    room: Vec<u8>,
-    /// Every post: where it stands and the radius nothing walks into.
-    posts: Vec<(Vec2, Fixed)>,
-}
-
-impl PassGrid {
-    /// A fully walkable map.
-    pub fn open() -> PassGrid {
-        PassGrid {
-            bits: vec![u64::MAX; rules::GRID_CELLS * rules::GRID_CELLS / 64],
-            room: vec![u8::MAX; rules::GRID_CELLS * rules::GRID_CELLS],
-            posts: Vec::new(),
-        }
-    }
-
-    /// The cell a position falls into, if it is on the map.
-    pub fn cell_of(pos: Vec2) -> Option<(usize, usize)> {
-        if pos.x.raw < 0 || pos.y.raw < 0 {
-            return None;
-        }
-        let cx = pos.x.to_int() / rules::GRID_CELL_SIZE;
-        let cy = pos.y.to_int() / rules::GRID_CELL_SIZE;
-        if cx >= rules::GRID_CELLS as i32 || cy >= rules::GRID_CELLS as i32 {
-            return None;
-        }
-        Some((cx as usize, cy as usize))
-    }
-
-    /// The center of a cell.
-    pub fn cell_center(cell: (usize, usize)) -> Vec2 {
-        Vec2::from_ints(
-            cell.0 as i32 * rules::GRID_CELL_SIZE + rules::GRID_CELL_SIZE / 2,
-            cell.1 as i32 * rules::GRID_CELL_SIZE + rules::GRID_CELL_SIZE / 2,
-        )
-    }
-
-    /// Whether a cell is walkable.
-    pub fn cell_open(&self, cx: usize, cy: usize) -> bool {
-        let idx = cy * rules::GRID_CELLS + cx;
-        self.bits[idx / 64] & (1 << (idx % 64)) != 0
-    }
-
-    /// Whether a position is on the map and walkable.
-    pub fn walkable(&self, pos: Vec2) -> bool {
-        match PassGrid::cell_of(pos) {
-            None => false,
-            Some((cx, cy)) => self.cell_open(cx, cy),
-        }
-    }
-
-    /// Whether a body of a collision size may stand at a cell's centre: the
-    /// cell is walkable and there is more room there than the body needs.
-    pub fn fits(&self, cx: usize, cy: usize, room: Fixed) -> bool {
-        self.cell_open(cx, cy) && i32::from(self.room[cy * rules::GRID_CELLS + cx]) > room.to_int()
-    }
-
-    /// Whether a spot is walkable ground outside every post: where a thing
-    /// may be put down or come out.
-    pub fn stands_clear(&self, pos: Vec2) -> bool {
-        self.walkable(pos)
-            && self
-                .posts
-                .iter()
-                .all(|&(post, radius)| !pos.within(post, radius))
-    }
-
-    /// Whether a position is on the map and a body of a collision size may
-    /// stand at its cell's centre.
-    pub fn walkable_for(&self, pos: Vec2, room: Fixed) -> bool {
-        match PassGrid::cell_of(pos) {
-            None => false,
-            Some((cx, cy)) => self.fits(cx, cy, room),
-        }
-    }
-
-    /// Whether a body of a collision size walking the straight segment keeps
-    /// clear of every post.
-    pub fn clear_of_posts(&self, from: Vec2, to: Vec2, room: Fixed) -> bool {
-        self.posts.iter().all(|&(post, radius)| {
-            segment_distance_squared(post, from, to) >= (radius + room).squared_raw()
-        })
-    }
-
-    /// Closes every cell whose center lies within `radius` of `center`.
-    pub fn block_circle(&mut self, center: Vec2, radius: Fixed) {
-        self.each_cell_about(center, radius, |grid, idx, _| {
-            grid.bits[idx / 64] &= !(1 << (idx % 64));
-        });
-    }
-
-    /// Stands a post: leaves every cell about it only the room between its
-    /// centre and the post, none within the post itself. The ground stays
-    /// as it is; the post is met as a circle.
-    pub fn block_post(&mut self, center: Vec2, radius: Fixed) {
-        let about = radius + rules::units(rules::GRID_CELL_SIZE);
-        self.each_cell_about(center, about, |grid, idx, apart| {
-            let room = (apart - i64::from(radius.to_int())).clamp(0, i64::from(u8::MAX)) as u8;
-            grid.room[idx] = grid.room[idx].min(room);
-        });
-        self.posts.push((center, radius));
-    }
-
-    /// Closes one cell.
-    pub fn close_cell(&mut self, cx: usize, cy: usize) {
-        let idx = cy * rules::GRID_CELLS + cx;
-        self.bits[idx / 64] &= !(1 << (idx % 64));
-    }
-
-    /// Calls back for every cell whose centre lies within `radius` of
-    /// `center`, with the cell's index and how far its centre is, in world
-    /// units.
-    fn each_cell_about(
-        &mut self,
-        center: Vec2,
-        radius: Fixed,
-        mut each: impl FnMut(&mut PassGrid, usize, i64),
-    ) {
-        let cells = rules::GRID_CELLS as i32;
-        let span = radius.to_int() / rules::GRID_CELL_SIZE + 1;
-        let ccx = center.x.to_int() / rules::GRID_CELL_SIZE;
-        let ccy = center.y.to_int() / rules::GRID_CELL_SIZE;
-        for cy in (ccy - span).max(0)..=(ccy + span).min(cells - 1) {
-            for cx in (ccx - span).max(0)..=(ccx + span).min(cells - 1) {
-                let c = PassGrid::cell_center((cx as usize, cy as usize));
-                if c.within(center, radius) {
-                    let idx = cy as usize * rules::GRID_CELLS + cx as usize;
-                    let apart = isqrt64(c.distance_squared(center)) >> Fixed::FRAC_BITS;
-                    each(self, idx, apart);
-                }
-            }
-        }
-    }
-}
-
-/// What a structure or a tree keeps clear on the grid: its collision size
-/// and a margin. A walker keeps its own size clear of it besides, by the
-/// room the grid keeps about a post.
-pub fn structure_clearance(collision: Fixed) -> Fixed {
-    collision + rules::units(rules::STEER_MARGIN)
-}
-
 /// The shortest signed rotation from one facing to another, in brads.
 ///
 /// An exactly opposite facing turns counter-clockwise.
@@ -312,6 +156,18 @@ pub fn turn_towards(from: Angle, to: Angle, rate: u16) -> Angle {
 /// How far a facing is from another, in brads, ignoring direction.
 pub fn facing_gap(a: Angle, b: Angle) -> u16 {
     angle_delta(a, b).unsigned_abs() as u16
+}
+
+/// Ticks a body turning at a rate stands before it may walk off in a new
+/// direction: it walks once within [`rules::TURN_TOLERANCE_BRADS`] of it.
+pub fn stall_ticks(facing: Angle, wanted: Angle, rate: u16) -> u32 {
+    let gap = u32::from(facing_gap(facing, wanted));
+    let tolerance = u32::from(rules::TURN_TOLERANCE_BRADS);
+    if gap <= tolerance {
+        return 0;
+    }
+    let rate = u32::from(rate).max(1);
+    (gap - tolerance).div_ceil(rate)
 }
 
 /// Squared distance from a point to a segment, in the raw units of
@@ -353,4 +209,55 @@ pub fn segment_nearest(p: Vec2, a: Vec2, b: Vec2) -> Vec2 {
         x: Fixed { raw: x as i32 },
         y: Fixed { raw: y as i32 },
     }
+}
+
+/// Squared distance from a point to an axis-aligned box given by its low
+/// and high corners, in the raw units of [`Vec2::distance_squared`]. Zero
+/// inside the box.
+pub fn point_box_distance_squared(p: Vec2, lo: Vec2, hi: Vec2) -> i64 {
+    let px = i64::from(p.x.raw);
+    let py = i64::from(p.y.raw);
+    let dx = (i64::from(lo.x.raw) - px)
+        .max(px - i64::from(hi.x.raw))
+        .max(0);
+    let dy = (i64::from(lo.y.raw) - py)
+        .max(py - i64::from(hi.y.raw))
+        .max(0);
+    dx * dx + dy * dy
+}
+
+/// Whether a segment touches an axis-aligned box.
+pub fn segment_hits_box(a: Vec2, b: Vec2, lo: Vec2, hi: Vec2) -> bool {
+    if a.x.max(b.x) < lo.x || a.x.min(b.x) > hi.x || a.y.max(b.y) < lo.y || a.y.min(b.y) > hi.y {
+        return false;
+    }
+    let dx = i64::from(b.x.raw) - i64::from(a.x.raw);
+    let dy = i64::from(b.y.raw) - i64::from(a.y.raw);
+    if dx == 0 && dy == 0 {
+        return true;
+    }
+    // Along the segment's normal the segment is one point; the box
+    // straddles it or misses it.
+    let (mut least, mut most) = (i128::MAX, i128::MIN);
+    for (cx, cy) in [(lo.x, lo.y), (hi.x, lo.y), (hi.x, hi.y), (lo.x, hi.y)] {
+        let rx = i128::from(cx.raw) - i128::from(a.x.raw);
+        let ry = i128::from(cy.raw) - i128::from(a.y.raw);
+        let side = -i128::from(dy) * rx + i128::from(dx) * ry;
+        least = least.min(side);
+        most = most.max(side);
+    }
+    least <= 0 && most >= 0
+}
+
+/// Squared distance from a segment to an axis-aligned box, in the raw units
+/// of [`Vec2::distance_squared`]. Zero where they touch.
+pub fn segment_box_distance_squared(a: Vec2, b: Vec2, lo: Vec2, hi: Vec2) -> i64 {
+    if segment_hits_box(a, b, lo, hi) {
+        return 0;
+    }
+    let mut best = point_box_distance_squared(a, lo, hi).min(point_box_distance_squared(b, lo, hi));
+    for corner in [lo, Vec2 { x: hi.x, y: lo.y }, hi, Vec2 { x: lo.x, y: hi.y }] {
+        best = best.min(segment_distance_squared(corner, a, b));
+    }
+    best
 }

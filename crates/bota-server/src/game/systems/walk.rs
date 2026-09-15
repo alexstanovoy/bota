@@ -1,41 +1,51 @@
-//! Walking: turning towards where an entity is going, then taking its step.
+//! Walking: where an entity is going, the route and the plan that take it
+//! there, and the step it takes this tick.
 
 use bota_proto::{Fixed, Vec2};
 
-use crate::game::{ActionPhase, ActionState, Entity, Route, UnitOrder, World};
-use crate::game::{facing_gap, facing_towards, find_path, grid_los, per_tick, rules, turn_towards};
+use crate::game::{
+    ActionPhase, ActionState, Entity, Foreseen, LocalAsk, LocalScratch, Obstacles, Plan, Planner,
+    Route, UnitOrder, World, plan_local, plan_radius,
+};
+use crate::game::{
+    facing_gap, facing_towards, move_towards, per_tick, point_along, rules, turn_towards,
+};
 
 impl World {
     /// Turns and steps everything that has somewhere to be.
     ///
     /// Being held roots outright, and so does a channel; a swing roots
-    /// whoever is making it: from
-    /// the moment it begins until the recovery after it runs out, the entity
-    /// does not leave the spot it stands on, though it keeps coming round to
-    /// what it is swinging at.
+    /// whoever is making it: from the moment it begins until the recovery
+    /// after it runs out, the entity does not leave the spot it stands on,
+    /// though it keeps coming round to what it is swinging at.
     ///
     /// Past that, what an entity is set on decides first: with its target in
     /// reach it stands still and comes round to it, out of reach it walks at
     /// it. Only with nothing to fight does it walk where it was told.
-    ///
-    /// Turning comes first and costs the tick: an entity more than
-    /// [`rules::TURN_TOLERANCE_BRADS`] off the way it wants to face stands
-    /// still until it has come round. A creep marches round what is in its
-    /// way; anything a player drives slides along it.
     pub fn walk_bodies(&mut self) {
+        self.lay_bodies();
+        let mut scratch = std::mem::take(&mut self.local_scratch);
         let entities = self.take_entity_snapshot();
         for entity in entities.iter().copied() {
+            // Every mover begins the tick standing; a step taken below
+            // says otherwise.
+            if let Some(motion) = self.motion.get_mut(entity) {
+                motion.delta = Vec2::ZERO;
+                motion.still = motion.still.saturating_add(1);
+            }
             // Feared, it runs from whoever put the fear on and does nothing
             // else; with nobody left to run from it stands where it is.
             if self.feared(entity) {
-                if let Some(from) = self.flees_from(entity) {
-                    self.flee(entity, from);
+                match self.flees_from(entity) {
+                    Some(from) => self.flee(entity, from, &mut scratch),
+                    None => self.stand(entity),
                 }
                 continue;
             }
             // Held or channelling roots outright: there is nothing to come
             // round to.
             if self.held(entity) || self.is_channelling(entity) {
+                self.stand(entity);
                 continue;
             }
             // Mid-swing it comes round to what the swing was begun against;
@@ -61,14 +71,9 @@ impl World {
                 if let Some(at) = face.and_then(|on| self.transform.get(on)).map(|t| t.pos) {
                     self.turn_to(entity, at);
                 }
+                self.stand(entity);
                 continue;
             }
-            // What it is set on comes before where it was told to go: in
-            // reach it stands and comes round, out of reach it closes.
-            //
-            // An attack order at something it cannot strike still walks it
-            // there, and right up to it: reach is only worth stopping at when
-            // there is something to do from reach.
             // A cast aimed further off than it reaches walks the caster in,
             // and answers before anything else it was told to do.
             if let Some(pending) = self.pending_cast(entity)
@@ -76,7 +81,7 @@ impl World {
             {
                 let reach = self.cast_reach(entity, pending);
                 if reach > 0 {
-                    self.walk_at(entity, aim, rules::units(reach));
+                    self.walk_toward(entity, aim, rules::units(reach), &mut scratch);
                     continue;
                 }
             }
@@ -94,125 +99,79 @@ impl World {
                 (Some(on), _) => self
                     .transform
                     .get(on)
-                    .map(|at| (at.pos, self.in_reach(entity, on))),
+                    .map(|at| (at.pos, self.attack_reach(entity, on))),
                 // Something it may not: reach means nothing, so it closes
                 // until the bodies touch and stands there, following it for
                 // as long as the order stands.
                 (None, Some(on)) => self
                     .transform
                     .get(on)
-                    .map(|at| (at.pos, self.bodies_touch(entity, on))),
+                    .map(|at| (at.pos, self.touching_distance(entity, on))),
                 (None, None) => None,
             };
             let holding = matches!(
                 self.orders.get(entity).map(|o| o.current),
                 Some(UnitOrder::Hold)
             );
-            let (dest, facing_only) = match on_target {
+            let (dest, arrive) = match on_target {
                 // Holding, it comes round to what it is set on but never
                 // leaves the spot it was left on.
-                Some((at, in_reach)) => (at, in_reach || holding),
+                Some((at, _)) if holding => {
+                    self.turn_to(entity, at);
+                    self.stand(entity);
+                    continue;
+                }
+                Some((at, reach)) => (at, reach),
                 None => {
                     let Some(dest) = self
                         .orders
                         .get(entity)
                         .and_then(|o| destination(&o.current))
                     else {
+                        self.stand(entity);
                         continue;
                     };
-                    (dest, false)
+                    (dest, Fixed::ZERO)
                 }
             };
-            let (Some(from), Some(stats)) = (
-                self.transform.get(entity).map(|t| t.pos),
-                self.stats.get(entity).copied(),
-            ) else {
-                continue;
-            };
-            if from == dest {
-                continue;
-            }
-            if facing_only {
-                self.turn_to(entity, dest);
-                continue;
-            }
-            let waypoint = self.next_corner(entity, from, dest);
-            let step = per_tick(stats.move_speed);
-            let marching = self.march.get(entity).is_some();
-            // On the last stretch, what a player drives stops where the
-            // ground or the body on its destination stops it, and faces it,
-            // rather than going round for a spot it can never take.
-            if !marching && waypoint == dest && self.walk_ends_short(entity, from, dest, step) {
-                self.turn_to(entity, dest);
-                continue;
-            }
-            // A walker works round the bodies in its way with the same held
-            // side a marcher does; only what flies is over them.
-            let (aim, trace) = if marching {
-                let held = self.march.get(entity).and_then(|m| m.trace);
-                self.march_aim(entity, waypoint, step, held)
-            } else if stats.flies {
-                (waypoint, None)
-            } else {
-                let held = self.route.get(entity).and_then(|r| r.trace);
-                self.march_aim(entity, waypoint, step, held)
-            };
-            let wanted = facing_towards(from, aim);
-            let facing = turn_towards(
-                self.transform.get(entity).expect("looked up above").facing,
-                wanted,
-                stats.turn_rate,
-            );
-            let mut next = from;
-            if facing_gap(facing, wanted) <= rules::TURN_TOLERANCE_BRADS {
-                next = if marching {
-                    self.march_step(entity, aim, step)
-                } else {
-                    self.walk_step(entity, aim, step)
-                };
-            }
-            if let Some(mut march) = self.march.get(entity).copied() {
-                march.shove = if next == from {
-                    march.shove.saturating_add(1)
-                } else {
-                    march.shove.saturating_sub(1)
-                };
-                march.trace = trace;
-                self.march.insert(entity, march);
-            } else if let Some(route) = self.route.get_mut(entity) {
-                route.trace = trace;
-            }
-            if let Some(transform) = self.transform.get_mut(entity) {
-                transform.facing = facing;
-                transform.pos = next;
-            }
+            self.walk_toward(entity, dest, arrive, &mut scratch);
         }
         self.recycle_entity_snapshot(entities);
+        self.local_scratch = scratch;
     }
 
-    /// Whether two bodies stand near enough to be touching.
-    ///
-    /// A hair further apart than the hulls themselves, so what stops here is
-    /// not overlapping and is not eased away again by [`World::push_apart`],
-    /// which would leave it walking in and being pushed out for ever.
-    ///
-    /// [`World::push_apart`]: crate::game::World::push_apart
-    fn bodies_touch(&self, one: Entity, other: Entity) -> bool {
-        let (Some(here), Some(there)) = (
-            self.transform.get(one).map(|at| at.pos),
-            self.transform.get(other).map(|at| at.pos),
-        ) else {
-            return false;
-        };
-        let hulls = self
-            .hull
+    /// How near an attacker's centre has to come to a target's to strike
+    /// it: its attack range and both bound radii.
+    fn attack_reach(&self, attacker: Entity, target: Entity) -> Fixed {
+        let range = self
+            .stats
+            .get(attacker)
+            .map_or(Fixed::ZERO, |stats| stats.attack_range);
+        range
+            + self.hull.get(attacker).map_or(Fixed::ZERO, |h| h.bound)
+            + self.hull.get(target).map_or(Fixed::ZERO, |h| h.bound)
+    }
+
+    /// How near two bodies' centres are when the bodies touch: a hair
+    /// further apart than the hulls themselves, so what stops here is not
+    /// overlapping and is not eased away again by [`World::push_apart`].
+    fn touching_distance(&self, one: Entity, other: Entity) -> Fixed {
+        self.hull
             .get(one)
             .map_or(Fixed::ZERO, |hull| hull.collision)
             + self
                 .hull
                 .get(other)
-                .map_or(Fixed::ZERO, |hull| hull.collision);
-        here.within(there, hulls + rules::units(rules::STEER_MARGIN))
+                .map_or(Fixed::ZERO, |hull| hull.collision)
+            + rules::units(rules::STEER_MARGIN)
+    }
+
+    /// Stands this tick: whatever stretch of walk it had planned is
+    /// forgotten, so nobody plans round where it was going to be.
+    fn stand(&mut self, entity: Entity) {
+        if let Some(plan) = self.plan.get_mut(entity) {
+            plan.clear();
+        }
     }
 
     /// Comes round towards a spot without leaving the one it stands on.
@@ -232,68 +191,588 @@ impl World {
         }
     }
 
-    /// The corner to walk at next: the destination itself when it is in plain
-    /// sight, otherwise the next corner of a route laid round the buildings.
-    ///
-    /// Only what a player drives keeps a route; a creep walks the lane it was
-    /// given and never plans around anything. A destination that cannot be
-    /// stood on or reached is walked to the nearest spot that can, and the
-    /// walk ends there: the spot itself comes back once it is stood on.
-    fn next_corner(&mut self, entity: Entity, from: Vec2, dest: Vec2) -> Vec2 {
-        if self.march.get(entity).is_some() {
-            return dest;
-        }
-        // What flies is over all of it: closed ground is nothing to it, and a
-        // way round it is a way round nothing.
-        if self.stats.get(entity).is_some_and(|stats| stats.flies) {
-            self.route.remove(entity);
-            return dest;
-        }
-        let mut route = self.route.remove(entity).unwrap_or(Route {
-            path: Vec::new(),
-            goal: dest,
-            end: dest,
-            trace: None,
-        });
-        // A path is worth walking only to the spot it was found for. What is
-        // kept here is that spot and not the last one asked for: chasing
-        // something that moves a little every tick would otherwise never
-        // drift far enough in one tick to be noticed, and the whole stale
-        // path would be walked to where the quarry used to be.
-        if !route.goal.within(dest, rules::units(rules::REPATH_DRIFT)) {
-            route.path.clear();
-            route.goal = dest;
-            route.end = dest;
-        }
-        while route
-            .path
-            .first()
-            .is_some_and(|corner| from.within(*corner, rules::units(rules::WAYPOINT_RADIUS)))
-        {
-            route.path.remove(0);
-        }
-        // With the corners walked, the last stretch aims at the destination
-        // itself, and the ground or the body holding it stops the walk as
-        // near as it gets. A route is laid only for a destination not yet
-        // walked up to: within a cell of where the last one ended, none is.
-        let room = self.hull.get(entity).map_or(Fixed::ZERO, |h| h.collision);
-        if route.path.is_empty() {
-            if grid_los(&self.grid, from, dest, room) {
-                route.end = dest;
-            } else if !from.within(route.end, rules::units(rules::GRID_CELL_SIZE)) {
-                route.path = find_path(&self.grid, from, dest, room);
-                route.goal = dest;
-                route.end = route.path.last().copied().unwrap_or(from);
-            }
-        }
-        let next = route.path.first().copied().unwrap_or(dest);
-        self.route.insert(entity, route);
-        next
-    }
-
     /// Whether an entity is marching a lane rather than being driven.
     pub fn is_marching(&self, entity: Entity) -> bool {
         self.march.get(entity).is_some()
+    }
+
+    /// Forgets the way an entity was walking: what put it somewhere else
+    /// calls this, and the walk is laid again from where it now stands.
+    pub fn forget_walk(&mut self, entity: Entity) {
+        if let Some(route) = self.route.get_mut(entity) {
+            *route = Route::none();
+        }
+        if let Some(plan) = self.plan.get_mut(entity) {
+            plan.clear();
+        }
+    }
+
+    /// Walks one entity towards a spot until it stands within a reach of
+    /// it, one tick's worth.
+    ///
+    /// Standing near enough already, it only comes round to face the spot.
+    /// What flies goes straight; what walks follows its route round what
+    /// stands still and its plan round what moves, and takes the plan's
+    /// next step unless a body has come to stand in it.
+    fn walk_toward(
+        &mut self,
+        entity: Entity,
+        dest: Vec2,
+        arrive: Fixed,
+        scratch: &mut LocalScratch,
+    ) {
+        let (Some(from), Some(stats)) = (
+            self.transform.get(entity).map(|t| t.pos),
+            self.stats.get(entity).copied(),
+        ) else {
+            return;
+        };
+        if from == dest || (arrive > Fixed::ZERO && from.within(dest, arrive)) {
+            self.turn_to(entity, dest);
+            self.stand(entity);
+            return;
+        }
+        let step = per_tick(stats.move_speed);
+        if step <= Fixed::ZERO {
+            self.stand(entity);
+            return;
+        }
+        if stats.flies {
+            self.fly_toward(entity, dest, step);
+            return;
+        }
+        let now = self.tick;
+        let collision = self.hull.get(entity).map_or(Fixed::ZERO, |h| h.collision);
+        let motion = self.motion.get(entity).copied().unwrap_or_default();
+        // Just walked into a body that was itself moving: it stands for
+        // the block wait, facing where it was going.
+        if motion.wait_until > now {
+            self.turn_to(entity, dest);
+            if let Some(motion) = self.motion.get_mut(entity) {
+                motion.stalled = motion.stalled.saturating_add(1);
+            }
+            return;
+        }
+        let (mut aim, mut last) = self.lay_route(entity, from, dest, collision, &[]);
+        if self.route.get(entity).is_some_and(|route| route.done) {
+            self.turn_to(entity, dest);
+            self.stand(entity);
+            return;
+        }
+        // A walk that ends within a reach of its destination is judged
+        // against the destination itself, not the spot beside it the route
+        // ends on: a tower's centre cannot be stood on, but its reach is
+        // measured from there.
+        if last && arrive > Fixed::ZERO {
+            aim = dest;
+        }
+        let aim_arrive = if last {
+            arrive
+        } else {
+            rules::units(rules::WAYPOINT_RADIUS)
+        };
+        let marching = self.march.get(entity).is_some();
+        let shoving = marching && motion.stalled >= rules::MARCH_SHOVE_TICKS;
+        // The plan round what moves: kept while it still leads where the
+        // route goes and has enough left, laid again otherwise, though not
+        // too often.
+        let goal = self
+            .route
+            .get(entity)
+            .and_then(|route| route.goal)
+            .unwrap_or(dest);
+        let plan = self.plan.get(entity).cloned().unwrap_or_else(Plan::none);
+        // A plan is walked from where it was laid: a body put somewhere
+        // else since, by a hook or a shove, has no plan.
+        let astray = plan
+            .steps
+            .get(plan.at)
+            .is_some_and(|next| !next.within(from, step + rules::units(rules::PLAN_STRAY)));
+        // Stalled long, it asks for a plan less often.
+        let pause = if motion.stalled >= rules::STALL_BACKOFF_AFTER {
+            rules::REPLAN_STALLED_TICKS
+        } else {
+            rules::REPLAN_MIN_TICKS
+        };
+        let rested = now >= plan.laid + pause;
+        let stale = astray
+            || plan.step != step
+            || !plan.goal.within(goal, rules::units(rules::PLAN_DRIFT))
+            || (plan.steps.is_empty() && rested)
+            || (!plan.stands() && !plan.steps.is_empty())
+            || (plan.left() < rules::REPLAN_LEFT_TICKS as usize && !plan.last && rested);
+        if stale {
+            let (mut steps, crowded, mut reached) =
+                self.lay_plan(entity, from, aim, aim_arrive, collision, step, scratch);
+            // Short of the aim with bodies about, the route is laid round
+            // the bodies standing there as if they were structures, and
+            // the plan laid again along it: a wall of them is too wide for
+            // the plan to find its way round on its own.
+            if !reached && crowded && now >= motion.relaid + rules::STALL_RELAY_GAP {
+                let mut extra = std::mem::take(&mut self.extra_scratch);
+                extra.clear();
+                self.standing_about(entity, from, &mut extra);
+                if !extra.is_empty() {
+                    if let Some(motion) = self.motion.get_mut(entity) {
+                        motion.relaid = now;
+                    }
+                    let (mut aim2, last2) = self.lay_route(entity, from, dest, collision, &extra);
+                    if last2 && arrive > Fixed::ZERO {
+                        aim2 = dest;
+                    }
+                    let arrive2 = if last2 {
+                        arrive
+                    } else {
+                        rules::units(rules::WAYPOINT_RADIUS)
+                    };
+                    let (steps2, _, reached2) =
+                        self.lay_plan(entity, from, aim2, arrive2, collision, step, scratch);
+                    if reached2 || steps2.len() > steps.len() {
+                        steps = steps2;
+                        aim = aim2;
+                        last = last2;
+                        reached = reached2;
+                    }
+                }
+                self.extra_scratch = extra;
+            }
+            let empty = steps.is_empty();
+            self.plan.insert(
+                entity,
+                Plan {
+                    steps,
+                    from: now + 1,
+                    at: 0,
+                    goal,
+                    step,
+                    laid: now,
+                    last,
+                },
+            );
+            if empty && reached && !last {
+                // Standing on a spot of the route already: the next tick
+                // aims past it.
+                if let Some(route) = self.route.get_mut(entity)
+                    && route.corners.len() > 1
+                {
+                    route.corners.remove(0);
+                }
+                self.turn_to(entity, dest);
+                return;
+            }
+            if empty {
+                // Nothing gets it nearer. At the end of its route with
+                // nobody about, that is the ground's last word and the walk
+                // is over; with bodies about it is stuck for now, and asks
+                // again once they have moved.
+                let over = last && !crowded;
+                if over {
+                    if let Some(route) = self.route.get_mut(entity) {
+                        route.done = true;
+                    }
+                    self.turn_to(entity, dest);
+                    return;
+                }
+                if shoving {
+                    self.shove(entity, from, aim, step, collision);
+                    return;
+                }
+                self.stall(entity, dest);
+                return;
+            }
+        }
+        let Some(target) = self
+            .plan
+            .get(entity)
+            .and_then(|plan| plan.steps.get(plan.at).copied())
+        else {
+            if shoving {
+                self.shove(entity, from, aim, step, collision);
+                return;
+            }
+            self.stall(entity, dest);
+            return;
+        };
+        if target == from {
+            // A tick stood turning onto the next stretch.
+            let upcoming = self.plan.get(entity).and_then(|plan| {
+                plan.steps[plan.at..]
+                    .iter()
+                    .find(|spot| **spot != from)
+                    .copied()
+            });
+            self.turn_to(entity, upcoming.unwrap_or(dest));
+            if let Some(plan) = self.plan.get_mut(entity) {
+                plan.at += 1;
+            }
+            return;
+        }
+        if !shoving
+            && !self.phased(entity)
+            && let Some(blocker) = self.body_in_the_way(entity, from, target)
+        {
+            // Whoever stands in the step was not where the plan had them.
+            // A body that is itself moving costs the block wait; a standing
+            // one is planned round again straight away.
+            let moving = self
+                .motion
+                .get(blocker)
+                .is_some_and(|theirs| theirs.delta != Vec2::ZERO)
+                || self.plan.get(blocker).is_some_and(|theirs| theirs.stands());
+            let hero = self.hero.get(blocker).is_some();
+            if let Some(motion) = self.motion.get_mut(entity) {
+                if moving {
+                    motion.wait_until = now + rules::BLOCK_WAIT_TICKS;
+                }
+                if hero {
+                    motion.bumps = if now < motion.bumped + rules::HEED_HERO_TICKS {
+                        motion.bumps.saturating_add(1)
+                    } else {
+                        1
+                    };
+                    motion.bumped = now;
+                }
+            }
+            if let Some(plan) = self.plan.get_mut(entity) {
+                plan.clear();
+            }
+            self.turn_to(entity, target);
+            self.stall(entity, dest);
+            return;
+        }
+        self.take_step(entity, from, target);
+        if let Some(plan) = self.plan.get_mut(entity) {
+            plan.at += 1;
+        }
+    }
+
+    /// Lays the next stretch of a walk: the plan from where the entity
+    /// stands to its aim, round the bodies about it and where they are
+    /// going. Answers whether any body was about to be planned round, and
+    /// whether the plan gets to the aim.
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "a plan is asked for by this many things"
+    )]
+    fn lay_plan(
+        &self,
+        entity: Entity,
+        from: Vec2,
+        aim: Vec2,
+        arrive: Fixed,
+        collision: Fixed,
+        step: Fixed,
+        scratch: &mut LocalScratch,
+    ) -> (Vec<Vec2>, bool, bool) {
+        let ob = Obstacles {
+            field: &self.clearance,
+            extra: &[],
+        };
+        let now = self.tick;
+        let facing = self
+            .transform
+            .get(entity)
+            .map_or(bota_proto::Angle::default(), |t| t.facing);
+        let turn_rate = self.stats.get(entity).map_or(0, |stats| stats.turn_rate);
+        let ask = LocalAsk {
+            from,
+            facing,
+            goal: aim,
+            arrive,
+            radius: collision,
+            step,
+            turn_rate,
+            now: self.tick,
+        };
+        let mut foreseen = Vec::new();
+        if !self.phased(entity) {
+            let reach = Fixed {
+                raw: step.raw.saturating_mul(rules::LOCAL_HORIZON_TICKS as i32),
+            } + rules::units(rules::LOCAL_BODIES_PAD);
+            self.bodies.near(from, reach, |body| {
+                if body.entity == entity || self.phased(body.entity) {
+                    return;
+                }
+                let Some(at) = self.transform.get(body.entity).map(|t| t.pos) else {
+                    return;
+                };
+                // A hero is foreseen where it stands, and only when it has
+                // stood there a while or has been run into again and again
+                // of late: it goes where a player sends it next, which
+                // nothing here knows, and one on the move is met when it is
+                // met, and tried again straight after.
+                if self.hero.get(body.entity).is_some() {
+                    let steady = body.still >= rules::STANDING_TICKS;
+                    let bumped = self.motion.get(entity).is_some_and(|mine| {
+                        now < mine.bumped + rules::HEED_HERO_TICKS
+                            && mine.bumps >= rules::BUMPS_BEFORE_HEED
+                    });
+                    if steady || bumped {
+                        foreseen.push(Foreseen {
+                            at,
+                            radius: body.radius,
+                            delta: Vec2::ZERO,
+                            steps: &[],
+                            from: 0,
+                        });
+                    }
+                    return;
+                }
+                let (steps, plan_from) = self
+                    .plan
+                    .get(body.entity)
+                    .filter(|plan| plan.stands())
+                    .map_or((&[][..], 0), |plan| (plan.steps.as_slice(), plan.from));
+                foreseen.push(Foreseen {
+                    at,
+                    radius: body.radius,
+                    delta: body.delta,
+                    steps,
+                    from: plan_from,
+                });
+            });
+        }
+        let crowded = !foreseen.is_empty();
+        let (steps, reached) = plan_local(&ob, &foreseen, &ask, scratch);
+        (steps, crowded, reached)
+    }
+
+    /// Every body standing still about a spot that is not a structure,
+    /// as circles a route may be laid round.
+    fn standing_about(&self, entity: Entity, from: Vec2, out: &mut Vec<(Vec2, Fixed)>) {
+        let reach = rules::units(rules::STANDING_REACH);
+        self.bodies.near(from, reach, |body| {
+            if body.entity == entity || body.fixed || body.still < rules::STANDING_TICKS {
+                return;
+            }
+            if let Some(at) = self.transform.get(body.entity).map(|t| t.pos) {
+                out.push((at, body.radius));
+            }
+        });
+    }
+
+    /// Keeps an entity's route to a destination: laid afresh when the
+    /// destination is new or has drifted, its last leg swung onto a
+    /// destination that moved a little, its corners dropped as they are
+    /// passed, and laid again from where the entity stands when the way
+    /// to its next corner is shut.
+    ///
+    /// Answers the spot the entity walks at next: as far along the route as
+    /// [`rules::LOCAL_REACH`] and a straight line from where it stands
+    /// allow, and whether that spot is the route's end.
+    fn lay_route(
+        &mut self,
+        entity: Entity,
+        from: Vec2,
+        dest: Vec2,
+        collision: Fixed,
+        extra: &[(Vec2, Fixed)],
+    ) -> (Vec2, bool) {
+        let room = plan_radius(collision);
+        let mut route = self
+            .route
+            .get_mut(entity)
+            .map_or_else(Route::none, |route| std::mem::replace(route, Route::none()));
+        let ob = Obstacles {
+            field: &self.clearance,
+            extra,
+        };
+        let mut fresh = !extra.is_empty();
+        match route.goal {
+            None => fresh = true,
+            Some(goal) if goal == dest => {}
+            Some(goal) if !goal.within(dest, rules::units(rules::REPATH_DRIFT)) => fresh = true,
+            Some(_) => {
+                // A little drift: the last leg swings onto the new goal
+                // when it can, else the route is laid afresh.
+                let anchor = if route.corners.len() >= 2 {
+                    route.corners[route.corners.len() - 2]
+                } else {
+                    from
+                };
+                if ob.clear(anchor, dest, room) {
+                    if let Some(last) = route.corners.last_mut() {
+                        *last = dest;
+                    }
+                    route.end = dest;
+                    route.goal = Some(dest);
+                    route.done = false;
+                } else {
+                    fresh = true;
+                }
+            }
+        }
+        if fresh {
+            relay(&mut self.planner, &mut route, &ob, from, dest, collision);
+        }
+        // What the body itself can walk is judged at its own size: the
+        // route keeps a margin off everything, and a body pressed against
+        // a tower sees nothing along it at that margin.
+        pass_corners(&ob, &mut route, from, collision);
+        // Pushed off the route with no straight way back to its next
+        // corner, it is laid again from here.
+        if !fresh
+            && let Some(first) = route.corners.first().copied()
+            && !ob.clear(from, first, collision)
+        {
+            relay(&mut self.planner, &mut route, &ob, from, dest, collision);
+            pass_corners(&ob, &mut route, from, collision);
+        }
+        // Beside the end of a route that stops short of its goal, the last
+        // stretch aims at the goal itself: the route keeps a margin the
+        // body does not, and the walk gets as near as the body lets it.
+        if route.corners.len() == 1
+            && route.end != dest
+            && from.within(route.end, rules::units(rules::WAYPOINT_RADIUS))
+        {
+            route.corners[0] = dest;
+            route.end = dest;
+        }
+        let end = route.end;
+        let points: &[Vec2] = if route.corners.is_empty() {
+            std::slice::from_ref(&end)
+        } else {
+            &route.corners
+        };
+        let aim = visible_along(
+            &ob,
+            from,
+            points,
+            rules::units(rules::LOCAL_REACH),
+            collision,
+        );
+        if let Some(slot) = self.route.get_mut(entity) {
+            *slot = route;
+        } else {
+            self.route.insert(entity, route);
+        }
+        aim
+    }
+
+    /// Takes a step: the body moves and comes round towards the way it
+    /// went.
+    fn take_step(&mut self, entity: Entity, from: Vec2, to: Vec2) {
+        let rate = self.stats.get(entity).map_or(0, |stats| stats.turn_rate);
+        if let Some(transform) = self.transform.get_mut(entity) {
+            transform.facing = turn_towards(transform.facing, facing_towards(from, to), rate);
+            transform.pos = to;
+        }
+        if let Some(motion) = self.motion.get_mut(entity) {
+            motion.delta = to - from;
+            motion.still = 0;
+            motion.stalled = 0;
+        }
+    }
+
+    /// A tick stood wanting to move and unable to.
+    fn stall(&mut self, entity: Entity, dest: Vec2) {
+        self.turn_to(entity, dest);
+        if let Some(motion) = self.motion.get_mut(entity) {
+            motion.stalled = motion.stalled.saturating_add(1);
+        }
+    }
+
+    /// A creep that has stood stalled long enough walks into the bodies in
+    /// its way, straight at its aim, and is eased out of them after. Closed
+    /// ground stops it all the same.
+    fn shove(&mut self, entity: Entity, from: Vec2, aim: Vec2, step: Fixed, collision: Fixed) {
+        let next = move_towards(from, aim, step);
+        if next != from && self.clearance.capsule_clear(from, next, collision) {
+            self.take_step(entity, from, next);
+        } else {
+            self.stall(entity, aim);
+        }
+    }
+
+    /// What flies goes straight: closed ground and bodies are nothing to
+    /// it. It turns first, like everything else.
+    fn fly_toward(&mut self, entity: Entity, dest: Vec2, step: Fixed) {
+        let (Some(from), Some(rate)) = (
+            self.transform.get(entity).map(|t| t.pos),
+            self.stats.get(entity).map(|stats| stats.turn_rate),
+        ) else {
+            return;
+        };
+        let wanted = facing_towards(from, dest);
+        let facing = turn_towards(
+            self.transform.get(entity).expect("looked up above").facing,
+            wanted,
+            rate,
+        );
+        if let Some(transform) = self.transform.get_mut(entity) {
+            transform.facing = facing;
+        }
+        if facing_gap(facing, wanted) <= rules::TURN_TOLERANCE_BRADS {
+            let next = crate::game::clamp_to_map(move_towards(from, dest, step));
+            self.take_step(entity, from, next);
+        }
+    }
+
+    /// Runs one entity straight away from another, a step a tick.
+    fn flee(&mut self, entity: Entity, from: Entity, scratch: &mut LocalScratch) {
+        let (Some(here), Some(there)) = (
+            self.transform.get(entity).map(|t| t.pos),
+            self.transform.get(from).map(|t| t.pos),
+        ) else {
+            return;
+        };
+        if here == there {
+            return;
+        }
+        let away = crate::game::clamp_to_map(point_along(
+            here,
+            here + (here - there),
+            Fixed::from_int(rules::FLEE_LOOKAHEAD),
+        ));
+        self.walk_toward(entity, away, Fixed::ZERO, scratch);
+    }
+}
+
+/// Drops the corners of a route a body has passed: it stands beside one,
+/// or beside or beyond it along the leg to the next with that next in a
+/// straight line at the body's own size. The end is never dropped.
+fn pass_corners(ob: &Obstacles, route: &mut Route, from: Vec2, collision: Fixed) {
+    while route.corners.len() > 1 {
+        let (here, next) = (route.corners[0], route.corners[1]);
+        let beyond = {
+            let ax = i64::from(from.x.raw) - i64::from(here.x.raw);
+            let ay = i64::from(from.y.raw) - i64::from(here.y.raw);
+            let lx = i64::from(next.x.raw) - i64::from(here.x.raw);
+            let ly = i64::from(next.y.raw) - i64::from(here.y.raw);
+            ax * lx + ay * ly > 0
+        };
+        let passed = from.within(here, rules::units(rules::WAYPOINT_RADIUS))
+            || (beyond && ob.clear(from, next, collision));
+        if !passed {
+            break;
+        }
+        route.corners.remove(0);
+    }
+}
+
+/// Lays a route afresh from a spot to a destination: no corners when the
+/// destination is in a straight line, else the corners found.
+fn relay(
+    planner: &mut Planner,
+    route: &mut Route,
+    ob: &Obstacles,
+    from: Vec2,
+    dest: Vec2,
+    collision: Fixed,
+) {
+    route.goal = Some(dest);
+    route.done = false;
+    if ob.clear(from, dest, plan_radius(collision)) {
+        route.corners.clear();
+        route.end = dest;
+    } else {
+        let budget = if ob.extra.is_empty() {
+            rules::PATH_EXPANSIONS
+        } else {
+            rules::STALL_PATH_EXPANSIONS
+        };
+        route.corners = planner.find_path_within(ob, from, dest, collision, budget);
+        route.end = route.corners.last().copied().unwrap_or(from);
     }
 }
 
@@ -309,74 +788,37 @@ fn destination(order: &UnitOrder) -> Option<Vec2> {
     }
 }
 
-impl World {
-    /// Runs one entity straight away from another, a step a tick, turning
-    /// first when it has to.
-    fn flee(&mut self, entity: Entity, from: Entity) {
-        let (Some(here), Some(there), Some(stats)) = (
-            self.transform.get(entity).map(|t| t.pos),
-            self.transform.get(from).map(|t| t.pos),
-            self.stats.get(entity).copied(),
-        ) else {
-            return;
-        };
-        if here == there {
-            return;
+/// The spot to walk at next along a polyline from a position: as far along
+/// it as a reach allows, and no further than a straight line from the
+/// position stays clear, with whether that spot is the polyline's end.
+///
+/// The first point itself when not even it is in a straight line: the walk
+/// has to work its way there.
+fn visible_along(
+    ob: &Obstacles,
+    from: Vec2,
+    points: &[Vec2],
+    reach: Fixed,
+    room: Fixed,
+) -> (Vec2, bool) {
+    let mut at = from;
+    let mut left = i64::from(reach.raw);
+    let mut best: Option<(Vec2, bool)> = None;
+    for (i, &point) in points.iter().enumerate() {
+        let leg = crate::game::isqrt64(at.distance_squared(point));
+        if leg > left {
+            let spot = point_along(at, point, Fixed { raw: left as i32 });
+            if ob.clear(from, spot, room) {
+                return (spot, false);
+            }
+            break;
         }
-        let away = crate::game::point_along(
-            here,
-            here + (here - there),
-            Fixed::from_int(rules::FLEE_LOOKAHEAD),
-        );
-        let wanted = facing_towards(here, away);
-        let facing = turn_towards(
-            self.transform.get(entity).expect("looked up above").facing,
-            wanted,
-            stats.turn_rate,
-        );
-        let mut next = here;
-        if facing_gap(facing, wanted) <= rules::TURN_TOLERANCE_BRADS {
-            next = self.walk_step(entity, away, per_tick(stats.move_speed));
+        if !ob.clear(from, point, room) {
+            break;
         }
-        if let Some(transform) = self.transform.get_mut(entity) {
-            transform.facing = facing;
-            transform.pos = next;
-        }
+        best = Some((point, i + 1 == points.len()));
+        left -= leg;
+        at = point;
     }
-
-    /// Walks one entity at a spot until it stands within a reach of it.
-    ///
-    /// Standing near enough already, it only comes round to face the spot.
-    fn walk_at(&mut self, entity: Entity, aim: Vec2, reach: bota_proto::Fixed) {
-        let (Some(from), Some(stats)) = (
-            self.transform.get(entity).map(|t| t.pos),
-            self.stats.get(entity).copied(),
-        ) else {
-            return;
-        };
-        if from.within(aim, reach) {
-            self.turn_to(entity, aim);
-            return;
-        }
-        let waypoint = self.next_corner(entity, from, aim);
-        // As near as the ground lets it get: it comes round and waits there.
-        if waypoint == aim && self.walk_ends_short(entity, from, aim, per_tick(stats.move_speed)) {
-            self.turn_to(entity, aim);
-            return;
-        }
-        let wanted = facing_towards(from, waypoint);
-        let facing = turn_towards(
-            self.transform.get(entity).expect("looked up above").facing,
-            wanted,
-            stats.turn_rate,
-        );
-        let mut next = from;
-        if facing_gap(facing, wanted) <= rules::TURN_TOLERANCE_BRADS {
-            next = self.walk_step(entity, waypoint, per_tick(stats.move_speed));
-        }
-        if let Some(transform) = self.transform.get_mut(entity) {
-            transform.facing = facing;
-            transform.pos = next;
-        }
-    }
+    best.unwrap_or((points[0], points.len() == 1))
 }

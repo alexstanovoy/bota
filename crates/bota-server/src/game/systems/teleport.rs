@@ -9,7 +9,7 @@ impl World {
     /// Whether a spot may be teleported to: walkable ground within reach of a
     /// building of one's own side that still stands.
     pub fn teleport_spot(&self, side: bota_proto::Team, to: Vec2, range: i32) -> bool {
-        if !self.grid.stands_clear(to) {
+        if !self.clearance.stands_clear(to) {
             return false;
         }
         let reach = rules::units(range);
@@ -49,7 +49,7 @@ impl World {
         if let Some(at) = self.transform.get_mut(entity) {
             at.pos = pos;
         }
-        self.route.remove(entity);
+        self.forget_walk(entity);
         self.set_order(entity, crate::game::UnitOrder::Idle);
         self.spend_charge(entity, slot);
     }

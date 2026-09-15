@@ -88,8 +88,9 @@ impl World {
     /// Sends every creep where it should be walking.
     ///
     /// This is the one place a creep's order is written. What it is set on
-    /// comes first, then the spot its target was last seen, then the place it
-    /// left its route, and only then the route itself.
+    /// comes first, then the spot its target was last seen, and only then
+    /// the route itself: back on it at the next waypoint it has not passed,
+    /// never at where it left.
     pub fn march_lanes(&mut self) {
         self.walked_lanes();
         let entities = self.take_entity_snapshot();
@@ -105,9 +106,7 @@ impl World {
                 .filter(|target| self.alive(*target))
                 .and_then(|target| self.transform.get(target).map(|t| t.pos));
             let ai = self.lane_ai.get(entity).copied();
-            let going = chasing
-                .or_else(|| ai.and_then(|ai| ai.last_seen))
-                .or_else(|| ai.and_then(|ai| ai.anchor));
+            let going = chasing.or_else(|| ai.and_then(|ai| ai.last_seen));
             let going = match going {
                 Some(spot) => Some(spot),
                 None => {
@@ -137,8 +136,8 @@ impl World {
             return None;
         }
         let room = self.hull.get(entity).map_or(Fixed::ZERO, |h| h.collision);
-        let step = advance_waypoint(&self.grid, route, usize::from(march.route_step), at, room);
-        march.route_step = step as u16;
+        let step = advance_waypoint(&self.clearance, route, usize::from(march.next), at, room);
+        march.next = step as u16;
         Some(route[step])
     }
 }

@@ -20,6 +20,85 @@ pub const GRID_CELLS: usize = 288;
 /// World units covered by one passability cell.
 pub const GRID_CELL_SIZE: i32 = MAP_SIZE / GRID_CELLS as i32;
 
+// The ground as a body meets it.
+
+/// World units covered by one node of the walking lattice, on which routes
+/// are planned and the room a body has is kept.
+pub const WALK_CELL_SIZE: i32 = 32;
+/// Nodes per axis of the walking lattice.
+pub const WALK_CELLS: usize = (MAP_SIZE / WALK_CELL_SIZE) as usize;
+/// The most room a node records, in world units. Everything further from
+/// every obstacle than this reads the same.
+pub const CLEARANCE_CAP: i32 = 96;
+/// World units covered by one bucket of the obstacle and body indexes.
+pub const BUCKET_SIZE: i32 = 256;
+/// Buckets per axis of the obstacle and body indexes.
+pub const BUCKETS: usize = (MAP_SIZE / BUCKET_SIZE) as usize;
+/// How far a route corner is drawn in towards the obstacle it rounds, at
+/// most, in world units: the half diagonal of a walking node and a little.
+pub const TIGHTEN_MAX: i32 = 48;
+/// Nodes a route search expands before it settles for the node nearest
+/// its goal.
+pub const PATH_EXPANSIONS: u32 = 20_000;
+/// How far ahead along its route a walker plans its next stretch, in world
+/// units.
+pub const LOCAL_REACH: i32 = 440;
+/// Ticks one straight stretch of a local plan lasts.
+pub const LOCAL_PRIM_TICKS: u32 = 4;
+/// Ticks a local plan reaches into the future, at most.
+pub const LOCAL_HORIZON_TICKS: u32 = 40;
+/// States a local search expands before it settles for the best it got to.
+pub const LOCAL_EXPANSIONS: u32 = 120;
+/// World units of the lattice two local states are told apart by.
+pub const LOCAL_KEY_CELL: i32 = 32;
+/// Ticks a body's last step is carried forward when it has no plan to read.
+pub const PREDICT_TICKS: u32 = 12;
+/// Ticks that pass at least between two local plans of one body, unless a
+/// step of its plan was refused.
+pub const REPLAN_MIN_TICKS: u32 = 4;
+/// Ticks that pass between two local plans of a body that has stood
+/// stalled for [`STALL_BACKOFF_AFTER`] ticks: it asks less often.
+pub const REPLAN_STALLED_TICKS: u32 = 16;
+/// Ticks stalled after which a body asks for a plan only every
+/// [`REPLAN_STALLED_TICKS`].
+pub const STALL_BACKOFF_AFTER: u32 = 30;
+/// A local plan with fewer ticks left than this is laid again.
+pub const REPLAN_LEFT_TICKS: u32 = 12;
+/// Ticks a body stands after walking into a body that is itself moving.
+pub const BLOCK_WAIT_TICKS: u32 = 8;
+/// Ticks within which running into a hero again counts as running into it
+/// again and again, and for which a body then plans round where the hero
+/// stands rather than trying straight through once more.
+pub const HEED_HERO_TICKS: u32 = 90;
+/// How many times running a body runs into a hero before it plans round
+/// where the hero stands.
+pub const BUMPS_BEFORE_HEED: u32 = 6;
+/// A local plan is laid again once the route goal it was laid for has
+/// moved this far, in world units.
+pub const PLAN_DRIFT: i32 = 64;
+/// How far past a step a body may stand from its plan's next step and
+/// still walk the plan, in world units: what easing apart moves it.
+pub const PLAN_STRAY: i32 = 8;
+/// How far past its own reach over the horizon a walker asks after bodies
+/// when laying a local plan, in world units: what they may cover meanwhile.
+pub const LOCAL_BODIES_PAD: i32 = 600;
+/// How far about a stalled walker the bodies standing still are taken for
+/// obstacles, in world units.
+pub const STANDING_REACH: i32 = 800;
+/// Ticks a body has stood wanting to move before its route is laid again
+/// with the bodies standing about it as obstacles.
+pub const STALL_REPLAN_TICKS: u32 = 12;
+/// Ticks that pass at least between two such layings for one body.
+pub const STALL_RELAY_GAP: u32 = 48;
+/// Nodes a route laid round standing bodies expands at most: they stand
+/// near, and so does any way round them.
+pub const STALL_PATH_EXPANSIONS: u32 = 600;
+/// Ticks a body has not moved before a stalled walker routes round it.
+pub const STANDING_TICKS: u32 = 8;
+/// How far the body index is asked past what is wanted, in world units:
+/// the most a body moves between the index being laid and being read.
+pub const BODY_INDEX_SLACK: i32 = 32;
+
 // Landmarks: the current Dota 2 map, every position shifted by half the map
 // so Dota's origin sits at the center. The two sides are not mirror images;
 // each carries its own table.
@@ -587,27 +666,20 @@ pub const EARLY_AGGRO_TOWER_RANGE: i32 = 1500;
 pub const CREEP_CHASE_TICKS: u32 = 69;
 /// How close a hero follows an ally it was ordered to attack but may not.
 pub const FOLLOW_DISTANCE: i32 = 150;
-/// Extra clearance added around structures when blocking grid cells.
+/// Room a route keeps past the walker's own collision size, in world units.
 pub const STEER_MARGIN: i32 = 8;
-/// The collision size a lane route keeps clear of every post: the widest
+/// The collision size a lane route keeps clear of every obstacle: the widest
 /// marcher's, so every creep of a wave can walk it.
 pub const WIDEST_MARCHER: i32 = SIEGE_CREEP_COLLISION;
-/// A path waypoint counts as reached within this distance.
+/// A route corner counts as reached within this distance.
 pub const WAYPOINT_RADIUS: i32 = 40;
-/// A stored path is recomputed once its goal drifted this far.
+/// A stored route is laid again once its goal drifted this far.
 pub const REPATH_DRIFT: i32 = 128;
-/// The smallest part of a step a slide keeps, as one over this. A walker
-/// square against a body still works its way round, slowly.
-pub const SLIDE_FLOOR_PART: i32 = 4;
 /// Ticks a creep stands unable to move before it shoves through bodies.
 pub const MARCH_SHOVE_TICKS: u32 = 30;
 
 /// How far a body may be eased out of another one in a tick, in units.
 pub const SEPARATION_STEP: i32 = 4;
-
-pub const TRACE_CLEARANCE: i32 = 24;
-/// How many times a blocked step is halved looking for one that fits.
-pub const STEP_FIT_TRIES: u32 = 3;
 /// Milliseconds a hero recovers after a swing. Cancelled by any order.
 pub const HERO_ATTACK_BACKSWING: u32 = 400;
 /// Milliseconds a creep recovers after a swing.

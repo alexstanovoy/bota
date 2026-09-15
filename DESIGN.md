@@ -90,8 +90,12 @@ server/src/
 │   ├── heroes/       hero stats and ability implementations (stage 9)
 │   ├── abilities.rs  ability engine: cast point / channel / cooldown / mana (stage 9)
 │   ├── combat.rs     windups, projectiles, the damage queue, armor and resist
-│   ├── movement.rs   isqrt, stepping, blocking, turning, passability grid
-│   ├── path.rs       A* over the grid, grid line of sight
+│   ├── movement.rs   isqrt, stepping, turning, segment and box distances
+│   ├── cells.rs      one bit per terrain cell, for sight
+│   ├── clearance.rs  the ground as a body meets it: room per node, exact capsule test
+│   ├── path.rs       A* over the walking lattice, corners drawn tight
+│   ├── bodies.rs     where every body stands, by bucket
+│   ├── local.rs      the next stretch of a walk: A* over spot, facing and tick
 │   ├── vision.rs     fog of war: pure radius queries, nothing cached
 │   ├── econ.rs       gold, experience, levels, deaths, respawns
 │   ├── rules.rs      balance constants
@@ -310,8 +314,9 @@ exploit any leak a human reviewer shrugs off:
 - Map 18432×18432 — Dota's scale, so speeds, ranges and vision keep their Dota
   absolute values. Symmetric along the diagonal. Three lanes: mid along the diagonal,
   top up the west edge and along the north edge, bottom its mirror; the diagonal
-  mirror that swaps the sides also swaps top and bottom. Passability is a 288×288 bit
-  grid.
+  mirror that swaps the sides also swaps top and bottom. Terrain is a 288×288 bit
+  grid of 64-unit cells; walking is planned on a 576×576 lattice of 32-unit nodes
+  laid over it.
 - A second map, `MapId(1)`, is the game's own hero demo map (`hero_demo_main`),
   imported the same way: one short lane bending through its real path corners,
   a single tier-one tower a side, two fountains, its own 187 trees, its own
@@ -595,75 +600,131 @@ emergent, because creeps arrive first. On top of that sit the aggro calls:
   order or stopping leaves the wave alone. A move order ignores enemies for its
   whole length, Hold attacks whatever is in range without moving, attack-move
   acquires along the way.
-- Collision follows Dota's documented two-pather model. The long path is planned
-  against static blockers only — structures on the grid; the short path steers the
-  walker along it around standing bodies in continuous space: within the steer
-  range the walker aims at a tangent point of the first standing circle across its
-  segment, resolved over a few hops when one tangent uncovers the next body, so a
-  stander is skirted along its hull at full speed — standing in front of a wave
-  does not hold it, exactly as in Dota, where stationary units are avoidance
-  obstacles for the short pather. Whoever occupies the walker's own goal is not
-  steered around. All contact is solid: the distance between two units never drops
-  below the sum of their collision sizes, a step deeper into anybody's circle is
-  refused, and a walker pressed right against a stander traces its circle by
-  sidesteps. A body has two radii, as in Dota: the collision size nothing walks
-  into, and the smaller bound radius that attack range, cast range and areas are
-  measured to. One radius served both until the hulls were brought to Dota's
-  numbers: the bound radius as a hull packed waves tighter than Dota's and let
-  creeps stand where Dota's could not, while the collision size as a reach would
-  have lengthened every attack and cast by the difference.
-  The static grid is a hard wall too: a step or sidestep into a cell closed by a
-  structure or a tree is refused outright, while a step out of one is always
-  allowed, so nothing ever wedges inside the forest. A structure closes no cell
-  at all: it is a body, and its body keeps every walker off it exactly, edge to
-  edge. For planning it stands on the grid as a post, the circle of its
-  collision size and a margin: the grid keeps at every cell the room a body may
-  have there clear of every post, and the path finder and the line test plan
-  for the walker's own collision size, the line met against the posts as the
-  circles they are. So every walker's route keeps the margin off a tower's body
-  at its own size, a hero hugs a tower closer than a siege creep, nothing a
-  route asks of a walker is refused by the body it was planned around, and a
-  walk sent into a tower ends where the bodies touch, not at a cell's edge.
-  Lane routes are planned for the widest marcher. Whatever is put down or comes
-  out on the ground, a ward, an item, a blink, a scroll, asks the grid for
-  ground clear of every post. A footprint grown by the widest walker for
-  everyone held a hero a hand short of a tower; a footprint grown by nothing
-  laid corners where a hero's body could not go, and it turned at the tower's
-  side every step; a footprint of cells held it a cell's edge short of touching.
-  A tree is no body and keeps only its trunk.
-  A walk to a spot that cannot be stood on, or that no way leads to, ends as
-  near as it gets: the path finder answers with the first open cell on the
-  walker's own side of what shuts the spot, or the nearest cell it got to, the
-  last stretch aims at the spot itself, and a step refused there by closed
-  ground or by the body standing on the spot ends the walk facing it. A body
-  merely in the way is still gone round. A hero sent into the middle of a
-  tower so comes up to it from its own side and stands, instead of circling
-  for a spot it can never take. A
-  unit that is walking is not avoided at all: whoever runs into it presses into
-  the body, fully stopped, for the block wait, and only then starts sidestepping
-  around. That stop, paid again on every new contact, is what makes creep-blocking
-  work — a hero zigzagging across the wave's path re-stops every creep whose step
-  his hull intersects, while a hero standing still is simply flowed around. Nobody
-  is ever pushed: the unit standing its ground does not move a hair, and a unit
-  stands still for its whole attack point and backswing.
+- A body has two radii, as in Dota: the collision size nothing walks into, and
+  the smaller bound radius that attack range, cast range and areas are measured
+  to. One radius served both until the hulls were brought to Dota's numbers: the
+  bound radius as a hull packed waves tighter than Dota's and let creeps stand
+  where Dota's could not, while the collision size as a reach would have
+  lengthened every attack and cast by the difference. All contact is solid: the
+  distance between two units never drops below the sum of their collision sizes,
+  and a step deeper into anybody's circle is refused. Easing apart is a safety
+  net for spawns and shoves, four units a tick; nothing else moves a body but its
+  own step.
+- Walking is planned in three layers, one over the other, all in integers.
+  The static layer is the ground as a body meets it. Terrain closes 64-unit
+  cells, met as squares; a tree is the circle of its trunk; a structure the
+  circle of its collision size. Over them a lattice of 32-unit nodes keeps at
+  every node the room a body has there: the distance from the node's centre to
+  the nearest obstacle, capped at 96 units. The terrain's part of the field is
+  baked once per map in two one-dimensional passes and cached for the process;
+  buildings and trees are laid into it as circles and taken out again by redoing
+  the window about them, so a tree felled costs a window, not the map. An exact
+  test says whether a body of a radius can walk a segment: the circles come from
+  a bucket index, the closed cells are met about every node the segment crosses,
+  and a node whose room exceeds the radius and half its own diagonal is passed
+  without looking. A body already inside an obstacle is let out: an obstacle it
+  overlaps stops only a step that comes nearer it somewhere along the way than
+  where the body stands; a step that merely ended further off was let through
+  the middle of a wall of bodies. The old 64-cell grid tested
+  only the walker's centre against trees and terrain and kept room about
+  structures alone: a hero walked with its body inside a tree, and a corridor two
+  cells wide was open or shut by the luck of where its centres fell. Read at 32
+  the corridor is right for every body up to the siege creep's, and the exact
+  test is what makes a plan honest: nothing a route asks is refused by the ground
+  it was planned on. Closed terrain stands as solid squares for the body, which
+  shuts a two-cell corridor to bodies wider than 32 units, the melee and siege
+  creeps; Dota reads terrain against the centre alone. One field and one rule
+  were taken over two fields: the wide bodies plan round such corridors and
+  heroes pass them.
+  The route is A* over the lattice, eight-connected, never cutting a blocked
+  corner, a node open when its room covers the body's collision size and an
+  8-unit margin, in scratch kept between searches under an epoch stamp, with a
+  budget of expansions past which the walk goes to the nearest node reached. The
+  corners found are pulled straight against the exact test, then each drawn in
+  along the bisector of its legs by binary search as far as both legs stay clear,
+  then pulled again, so they land on the tangents of what they round to within a
+  unit. A goal that cannot be stood on ends the route at the first node with room
+  on the walker's own side of it, or at the goal itself when that lies in a
+  straight line from the node. A route is kept while its goal drifts under 128
+  units, its last leg swung onto a goal that moved a little, its corners dropped
+  as they are passed, beside one or beyond it along the next leg with that leg
+  clear, and laid again from where the walker stands when the way to its next
+  corner is shut. Lane routes are laid for the widest marcher, as before.
+  The plan is the next stretch of the walk, tick by tick, laid by A* over states
+  of spot, facing and tick, at most 40 ticks ahead. A step of the search is a
+  stretch of four ticks along one of sixteen headings or straight at the aim,
+  the turn onto it paid first in ticks stood still exactly as the walk would
+  stand them, or four ticks stood waiting for a body to pass, or the last few
+  ticks straight at the aim. The cost is time; a tie falls to the state nearer
+  the aim, then to fewer turns. Headings more than five of the sixteen off the
+  way to the aim are not tried: a way back is the route's to find. Bodies within
+  the walker's reach over the horizon and their own are foreseen: by their own
+  plans where a body planned earlier in the tick, else by their last step carried
+  forward twelve ticks and held; a stretch that would bring the body within the
+  two collision sizes of a foreseen body at any tick is not taken. The search
+  expands at most 80 states and settles for the state nearest the aim, and
+  answers nothing when that is under two steps nearer. The aim is a spot up to
+  440 units along the route, as far as a straight line from the walker stays
+  clear; on the last stretch the route's end, with the order's own arrival: an
+  attack's reach, the touching distance of a follow, nothing for a walk. A walk
+  with a reach is judged against the destination itself rather than the spot
+  the route ends on beside it: a tower's centre cannot be stood on, but its
+  reach is measured from there, and a melee hero that judged its reach from the
+  spot beside the tower stood short of it and never swung.
+  Steering was tried first: three swings off the line, a side held until the way
+  ahead cleared, slides along a graze. It pressed walkers into crowds, wiggled
+  them at walls, and could not see a body coming. A search over time finds the
+  way round a moving body before contact and the wait that lets it pass, and its
+  cost is the walk's own turn rule, so what it plans is what happens.
+  A hero is foreseen only where it stands, and only once it has stood there
+  eight ticks or has been run into six times in three seconds: it goes where a
+  player sends it next, which nothing here knows, and a creep that read its
+  plan walked round it before it got there. A hero on the move is met when it
+  is met.
+  A plan is walked a step a tick. Each step is checked against the bodies as
+  they now stand: one that has come to stand in the step refuses it, and one
+  that was itself moving costs a block wait of eight ticks stood still, after
+  which the way straight on is tried again. That is what keeps creep blocking:
+  a creep a hero keeps stepping in front of runs into it, stands, tries again
+  and is held to the hero's pace, while the creeps the hero does not cover pass
+  by its sides, and a hero that stands still is flowed round. A creep run into
+  a hero six times in three seconds plans round where the hero stands, so a
+  hero merely walking up the lane ahead of its wave does not hold it for ever. A plan is laid again when its route goal has moved 64
+  units, the body's speed changed, the body was put somewhere else, fewer than
+  12 ticks of it are left short of the route's end, or a step was refused, and
+  not oftener than every four ticks, or sixteen once the body has stood stalled
+  a second. A body that stands this tick, held, swinging, in reach of what it
+  fights or with nowhere to go, forgets its plan: creeps stood fighting once
+  kept the plans they had marched by, a hero read them as about to walk off,
+  planned straight through them, ran into them and stood the block wait, over
+  and over. A plan that falls short of its aim with bodies about lays the route
+  again at once round the bodies standing there as if they were structures,
+  within a small budget and not oftener than every 48 ticks: a wall of them is
+  too wide for the plan's own budget to find its way round, and waiting twelve
+  stalled ticks for that was two seconds of dithering at every wave. What the
+  body can walk is judged at its own size, not the route's margin: pressed
+  against a tower, a body saw no corner along it at the margin and laid its
+  route again every tick. A creep stalled thirty ticks walks into whatever
+  stands in its way and is eased out after.
+  Coming round costs whole ticks, so a turn a little short of the way is the
+  faster start: a walk sent straight back sets off a heading short of the
+  reverse and comes onto the way as it goes, a curve of a few tens of units,
+  which the search finds on its own.
+  In the thick of the demo map's wave fight, ten creeps cost about 50 to 70
+  microseconds a tick in release and under 10 elsewhere; the steering they
+  replace cost 5 to 10 throughout. A map's field is baked once per process in 15
+  milliseconds, its lane routes in 3, a route across the map in half of one.
+- A creep is on its lane route as on a rail: it aims at the next waypoint it has
+  not passed, a waypoint passed once the creep stands within 250 units of it or
+  beside or beyond it along the leg to the next with the leg clear, and it
+  rejoins the rail there after a chase or a push, never at where it left. The
+  anchor it used to walk back to walked waves backwards after every chase.
 - A calm creep dragged off the lane beyond its leash gives up, goes deaf to targets
   and walks straight back to the nearest point of the lane; an open aggro window
   overrides the leash.
 - Units turn at a finite rate and only walk or swing once they face their current
   path leg, so corners cost time. Buildings do not turn.
 
-Movement routes around structures with A* over the passability grid: structures close
-cells when the world is built and reopen them when they fall. A unit walks straight
-whenever the grid says the line is clear, and otherwise follows the corner waypoints
-of a route; each leg is walked only after turning onto it, so corners cost time.
-Bodies in the way are worked round the same way by everything on the ground:
-the mover settles a side on first touch and holds it, swinging its aim an
-eighth of a turn off the line, then a quarter, then three eighths, and only
-with that side exhausted trying the other — a side worked through in full
-before the other is touched, because alternating between them wiggles at a
-wall of creeps for ever. Walkers used to slide along the nearest body
-instead, which pressed a hero into a crowd and crawled him along it; the
-slide survives inside the walker's step as the smoothing over a graze.
 Every swing ends in a backswing the unit stands through, which is the
 pause a creep makes over its kill before marching on. A hero's order cancels its
 backswing.

@@ -2,10 +2,10 @@
 
 use bota_proto::{Fixed, Team, UnitKind, Vec2};
 
+use crate::game::{CellGrid, Event, EventVisibility, Ground, sight_clear};
 use crate::game::{
     Entity, EntityAllocator, Stats, Table, Transform, Visibility, World, is_structure,
 };
-use crate::game::{Event, EventVisibility, Ground, PassGrid, sight_clear};
 
 /// Rewrites who sees each entity.
 ///
@@ -41,7 +41,7 @@ pub struct SightCx<'a> {
     /// The height of the ground.
     pub ground: &'a Ground,
     /// Which cells stop a sight line.
-    pub sight_block: &'a PassGrid,
+    pub sight_block: &'a CellGrid,
     /// Where the answer goes.
     pub visibility: &'a mut Table<Visibility>,
 }
