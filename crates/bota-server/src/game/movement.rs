@@ -227,10 +227,17 @@ impl PassGrid {
     }
 }
 
-/// The grid clearance a structure blocks: its own radius, the widest walker
-/// and a margin.
-pub fn structure_clearance(radius: Fixed) -> Fixed {
-    radius + rules::units(rules::HERO_RADIUS + rules::STEER_MARGIN)
+/// The grid clearance a structure blocks: its collision size and a margin.
+/// A walker's own size is kept off it by the body the structure is.
+pub fn structure_clearance(collision: Fixed) -> Fixed {
+    collision + rules::units(rules::STEER_MARGIN)
+}
+
+/// The grid clearance a tree blocks: its trunk, the widest walker and a
+/// margin. A tree is no body, and the grid is all that keeps a walker out
+/// of it.
+pub fn tree_clearance() -> Fixed {
+    rules::units(rules::TREE_RADIUS + rules::WALKER_CLEARANCE)
 }
 
 /// The shortest signed rotation from one facing to another, in brads.

@@ -5,7 +5,23 @@ use bota_proto::{DamageKind, Fixed, Team, Vec2};
 use crate::game::rules;
 use std::collections::VecDeque;
 
-use crate::game::{Entity, Health, Hit, HitEffect, Stats, StatusKind, Statuses, Table, Transform};
+use crate::game::{
+    Chance, Entity, Health, Hit, HitEffect, MatchRng, ModifierKind, Modifiers, Purpose, Ratio,
+    Stats, Table, Transform, wire_id,
+};
+
+/// One attack that did not land.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Missed {
+    /// Who swung, while that one still stands.
+    pub source: Option<Entity>,
+    /// Who it was swung at.
+    pub target: Entity,
+    /// Where it happened.
+    pub at: Vec2,
+    /// The side it was swung at.
+    pub side: Team,
+}
 
 /// One blow once it has been felt.
 ///
@@ -45,8 +61,14 @@ pub struct HitCx<'a> {
     pub stats: &'a Table<Stats>,
     /// What the blow comes off.
     pub health: &'a mut Table<Health>,
-    /// Timed statuses read and applied by successful blows.
-    pub statuses: &'a mut Table<Statuses>,
+    /// What is on each entity, read and added to by successful blows.
+    pub modifiers: &'a mut Table<Modifiers>,
+    /// Hidden streams, for a target's first evasion roll.
+    pub rng: &'a MatchRng,
+    /// Evasion sequence per target slot.
+    pub evasion: &'a mut Vec<Option<Chance>>,
+    /// Where an attack that was evaded is left for whatever answers to it.
+    pub missed: &'a mut VecDeque<Missed>,
 }
 
 /// Takes every waiting blow off the health it landed on.
@@ -62,7 +84,10 @@ pub fn hitting_system(cx: HitCx<'_>) {
         team,
         stats,
         health,
-        statuses,
+        modifiers,
+        rng,
+        evasion,
+        missed,
     } = cx;
     while let Some(blow) = hits.pop_front() {
         let standing = health
@@ -71,13 +96,22 @@ pub fn hitting_system(cx: HitCx<'_>) {
         let Some(stat) = stats.get(blow.target).copied() else {
             continue;
         };
-        let on_it = statuses.get(blow.target);
-        let shielded = on_it.is_some_and(|statuses| {
-            statuses
+        let on_it = modifiers.get(blow.target);
+        let shielded = on_it.is_some_and(|on_it| {
+            on_it
                 .active()
-                .any(|status| status.kind == StatusKind::Shielded)
+                .any(|held| held.kind == ModifierKind::Shielded)
         });
         if !standing || stat.invulnerable || shielded {
+            continue;
+        }
+        if blow.attack && !blow.pierces && evades(blow.target, stat.evasion, rng, evasion) {
+            missed.push_back(Missed {
+                source: blow.source,
+                target: blow.target,
+                at: transform.get(blow.target).map_or(Vec2::ZERO, |t| t.pos),
+                side: team.get(blow.target).copied().unwrap_or(Team::Neutral),
+            });
             continue;
         }
         let amount = amplified_damage(blow, on_it);
@@ -89,7 +123,7 @@ pub fn hitting_system(cx: HitCx<'_>) {
         pool.hp -= Fixed::from_int(applied);
         let fatal = pool.hp <= Fixed::ZERO;
         if applied > 0 && !fatal {
-            apply_hit_effect(blow, statuses);
+            apply_hit_effect(blow, modifiers);
         }
         landed.push_back(Landed {
             source: blow.source,
@@ -104,30 +138,50 @@ pub fn hitting_system(cx: HitCx<'_>) {
     }
 }
 
+/// Whether an attack at a target is evaded: the target's share of misses,
+/// held exactly over every block of attacks at it. Nothing is rolled for a
+/// target that evades nothing. The sequence is the target's own, on source
+/// one of the evasion purpose; source zero is the attacker's uphill
+/// sequence.
+pub fn evades(
+    target: Entity,
+    ratio: Ratio,
+    rng: &MatchRng,
+    evasion: &mut Vec<Option<Chance>>,
+) -> bool {
+    if ratio == Ratio::NEVER {
+        return false;
+    }
+    let index = target.index().0 as usize;
+    if evasion.len() <= index {
+        evasion.resize_with(index + 1, || None);
+    }
+    let chance = evasion[index].get_or_insert_with(|| {
+        Chance::new(rng.for_unit(Purpose::Evasion, wire_id(target), 1), ratio)
+    });
+    chance.roll(ratio)
+}
+
 /// Pre-mitigation damage including the current valid same-caster stack count.
-fn amplified_damage(blow: Hit, statuses: Option<&Statuses>) -> i32 {
+fn amplified_damage(blow: Hit, on_it: Option<&Modifiers>) -> i32 {
     let HitEffect::Shadowraze { level } = blow.effect else {
         return blow.amount;
     };
     assert_eq!(blow.kind, DamageKind::Magical);
     assert!(usize::from(level) < rules::RAZE_STACK_DAMAGE.len());
     let caster = blow.source.expect("a Shadowraze hit has a caster");
-    let stacks = statuses.map_or(0, |statuses| statuses.raze_stacks(caster));
+    let stacks = on_it.map_or(0, |on_it| on_it.raze_stacks(caster));
     blow.amount + i32::from(stacks) * rules::RAZE_STACK_DAMAGE[usize::from(level)]
 }
 
-/// Applies a damaging hit's status to a surviving target.
-fn apply_hit_effect(blow: Hit, statuses: &mut Table<Statuses>) {
+/// Applies a damaging hit's modifier to a surviving target.
+fn apply_hit_effect(blow: Hit, modifiers: &mut Table<Modifiers>) {
     if let HitEffect::Shadowraze { .. } = blow.effect {
         assert_eq!(blow.kind, DamageKind::Magical);
         assert!(blow.amount > 0);
         let caster = blow.source.expect("a Shadowraze hit has a caster");
-        if let Some(on_it) = statuses.get_mut(blow.target) {
+        if let Some(on_it) = modifiers.get_mut(blow.target) {
             on_it.stack_raze(caster);
-        } else {
-            let mut on_it = Statuses::default();
-            on_it.stack_raze(caster);
-            statuses.insert(blow.target, on_it);
         }
     }
 }

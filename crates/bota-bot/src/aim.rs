@@ -31,7 +31,7 @@ pub fn span(one: Vec2, other: Vec2) -> f32 {
 
 /// The ground between two bodies, edge to edge. Negative when they overlap.
 pub fn gap_between(one: &UnitView, other: &UnitView) -> f32 {
-    span(one.pos, other.pos) - one.radius.to_f32() - other.radius.to_f32()
+    span(one.pos, other.pos) - one.bound.to_f32() - other.bound.to_f32()
 }
 
 /// The facing from one spot towards another, in brads.

@@ -1,0 +1,8 @@
+<svg width="100%" viewBox="0 0 680 260" role="img" xmlns="http://www.w3.org/2000/svg"><title>Claymore</title><desc>Rectangular icon: a long straight sword with a wide cross guard</desc>
+<rect x="220" y="50" width="240" height="160" fill="#241d1a"/>
+<path d="M300 170 L 396 82" fill="none" stroke="#c7ced6" stroke-width="16" stroke-linecap="round"/>
+<path d="M300 170 L 396 82" fill="none" stroke="#f2f5f8" stroke-width="4" stroke-linecap="round" opacity="0.7"/>
+<path d="M300 148 L 322 170" fill="none" stroke="#8a6a2a" stroke-width="12" stroke-linecap="round"/>
+<path d="M310 160 L 292 178" fill="none" stroke="#6b4a2c" stroke-width="12" stroke-linecap="round"/>
+<circle cx="286" cy="184" r="8" fill="#c9a14a"/>
+</svg>

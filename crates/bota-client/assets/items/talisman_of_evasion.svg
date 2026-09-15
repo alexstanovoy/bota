@@ -1,0 +1,8 @@
+<svg width="100%" viewBox="0 0 680 260" role="img" xmlns="http://www.w3.org/2000/svg"><title>Talisman of Evasion</title><desc>Rectangular icon: a green stone pendant on a cord</desc>
+<rect x="220" y="50" width="240" height="160" fill="#18251c"/>
+<path d="M300 70 C 300 120, 380 120, 380 70" fill="none" stroke="#8b5a2b" stroke-width="6" stroke-linecap="round"/>
+<circle cx="340" cy="150" r="34" fill="#3aa06a"/>
+<circle cx="340" cy="150" r="34" fill="none" stroke="#c9a14a" stroke-width="6"/>
+<circle cx="328" cy="138" r="9" fill="#ffffff" opacity="0.45"/>
+<path d="M340 116 L 340 104" fill="none" stroke="#c9a14a" stroke-width="6" stroke-linecap="round"/>
+</svg>

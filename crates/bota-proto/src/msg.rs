@@ -160,6 +160,8 @@ pub enum RejectReason {
     ClosedGround,
     /// The slot named is not one the unit carries on itself.
     NotInBag,
+    /// The match was not started with cheats on.
+    NoCheats,
 }
 
 /// Final numbers for one seat.

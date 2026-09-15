@@ -40,6 +40,14 @@ pub enum EventKind {
         /// else.
         crit: bool,
     },
+    /// An attack did not land: the target evaded it, or it was thrown
+    /// uphill and missed.
+    Missed {
+        /// Who swung. Absent once that unit is gone.
+        source: Option<EntityId>,
+        /// Who it was swung at.
+        target: EntityId,
+    },
     /// A unit was mended by somebody's hand: an item drunk or a charge
     /// spent. Passive regeneration and the fountain are not told of.
     Healed {

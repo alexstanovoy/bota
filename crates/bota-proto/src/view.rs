@@ -45,6 +45,8 @@ impl StatusFlags {
     pub const INVULNERABLE: u16 = 1 << 9;
     /// Performing a channelled ability or item action.
     pub const CHANNELLING: u16 = 1 << 10;
+    /// Running from whoever put the fear on; cannot act, and no order lands.
+    pub const FEARED: u16 = 1 << 11;
 }
 
 /// One ability slot of a visible hero.
@@ -158,16 +160,24 @@ pub struct UnitView {
     pub attack_damage: i32,
     /// Attack range.
     pub attack_range: Fixed,
-    /// Ticks between the start of one attack and the next.
-    pub attack_interval: u32,
+    /// Milliseconds between the start of one attack and the next, after
+    /// attack speed.
+    pub attack_time: u32,
+    /// Milliseconds from the start of an attack to the hit, after attack
+    /// speed.
+    pub attack_point: u32,
     /// Attack speed, where 100 is the unit's own pace and 200 is twice it.
     pub attack_speed: i32,
     /// Armor.
     pub armor: Fixed,
     /// Magic resistance as a fraction, where 1.0 is total immunity.
     pub magic_resist: Fixed,
-    /// Radius the unit occupies, used for collision and hit detection.
-    pub radius: Fixed,
+    /// Collision size: how near another body's centre may come, less that
+    /// body's own, in world units. Zero for what has no body.
+    pub collision: Fixed,
+    /// Bound radius: where its edge is for attack range, cast range and
+    /// areas, in world units.
+    pub bound: Fixed,
     /// How far this unit lights the fog for its own team. Zero if it lights
     /// none.
     ///
@@ -198,7 +208,8 @@ pub struct UnitView {
     pub effects: Vec<EffectView>,
 }
 
-/// A projectile in flight that the viewing team can see.
+/// A missile in flight, or what an ability shows where it stands, that the
+/// viewing team can see.
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct ProjectileView {
     /// Stable handle for this projectile.
@@ -209,7 +220,7 @@ pub struct ProjectileView {
     pub facing: Angle,
     /// Which side launched it.
     pub team: Team,
-    /// Which ability launched it. Absent for a plain attack.
+    /// Which ability it belongs to. Absent for a plain attack.
     pub ability: Option<AbilityId>,
 }
 

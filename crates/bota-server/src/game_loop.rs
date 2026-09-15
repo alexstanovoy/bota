@@ -33,6 +33,8 @@ pub struct ServerOpts {
     pub seed: u64,
     /// Which map to play.
     pub map: MapId,
+    /// Whether cheat orders are honoured.
+    pub cheats: bool,
     /// Lockstep: how many tick-lengths to wait for a straggler.
     pub ack_timeout_ticks: u32,
 }
@@ -234,6 +236,7 @@ impl Server {
             tick_rate: self.opts.tick_rate,
             mode: self.opts.mode,
             ack_timeout_ticks: self.opts.ack_timeout_ticks,
+            cheats: self.opts.cheats,
         }
     }
 

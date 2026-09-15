@@ -3,175 +3,155 @@
 use bota_proto::{DamageKind, Fixed, Target};
 
 use crate::engine::Entity;
-use crate::game::{Dismembering, Rotting, StackKind, Status, StatusKind, World, ability, rules};
+use crate::game::{Modifier, ModifierKind, StackKind, World, ability, rules};
 
 impl World {
-    /// Switches the rot on, or off if it already burns.
+    /// Switches the rot on, or off if it already burns. On, its cloud shows
+    /// where its owner stands.
     pub fn toggle_rot(&mut self, caster: Entity, level: usize) -> bool {
-        match self.rotting.get(caster) {
-            Some(_) => {
-                self.rotting.remove(caster);
-            }
-            None => {
-                self.rotting.insert(caster, Rotting { level });
-            }
+        let Some(on_it) = self.modifiers.get(caster) else {
+            return false;
+        };
+        let running = on_it
+            .0
+            .iter()
+            .any(|held| matches!(held.kind, ModifierKind::Rot { .. }));
+        if running {
+            self.rot_goes_out(caster);
+            return true;
+        }
+        self.put_modifier(
+            caster,
+            Modifier {
+                kind: ModifierKind::Rot { level: level as u8 },
+                source: Some(caster),
+                ticks_left: None,
+            },
+        );
+        if let Some(at) = self.transform.get(caster).map(|t| t.pos) {
+            self.spawn_mark(ability::ROT, caster, at, 0);
         }
         true
     }
 
-    /// Burns and slows everything standing in the rot, its owner included.
-    ///
-    /// What it does is handed out afresh every tick, so walking out of it
-    /// lifts it, and switching it off lifts it everywhere at once. Its owner
-    /// burns by the same amount but never to death.
-    pub fn tick_rot(&mut self) {
-        let entities = self.take_entity_snapshot();
-        for owner in entities.iter().copied() {
-            let Some(rot) = self.rotting.get(owner).copied() else {
-                continue;
-            };
-            if !self.alive(owner) {
-                self.rotting.remove(owner);
-                continue;
-            }
-            let (Some(at), Some(side)) = (
-                self.transform.get(owner).map(|t| t.pos),
-                self.team.get(owner).copied(),
-            ) else {
-                continue;
-            };
-            let amount = rules::ROT_DAMAGE_PER_SECOND[rot.level] * rules::BURN_PERIOD_TICKS as i32
-                / rules::TICKS_PER_SECOND as i32;
-            let reach = rules::units(rules::ROT_RADIUS);
-            for other in self.entities.iter().collect::<Vec<_>>() {
-                if !self.alive(other) || self.hull.get(other).is_none() {
-                    continue;
-                }
-                if !self
-                    .transform
-                    .get(other)
-                    .is_some_and(|t| t.pos.within(at, reach))
-                {
-                    continue;
-                }
-                let theirs = self.team.get(other).copied();
-                if other == owner {
-                    self.put_for_a_tick(
-                        owner,
-                        StatusKind::Burning {
-                            amount,
-                            kind: DamageKind::Magical,
-                            from: None,
-                            lethal: false,
-                        },
-                    );
-                    continue;
-                }
-                if theirs == Some(side) {
-                    continue;
-                }
-                self.put_for_a_tick(
-                    other,
-                    StatusKind::Burning {
-                        amount,
-                        kind: DamageKind::Magical,
-                        from: Some(owner),
-                        lethal: true,
-                    },
-                );
-                self.put_for_a_tick(
-                    other,
-                    StatusKind::Slowed {
-                        pct: rules::ROT_SLOW_PCT[rot.level],
-                    },
-                );
-            }
+    /// Puts an entity's rot out, and the cloud shown for it goes with it.
+    pub fn rot_goes_out(&mut self, owner: Entity) {
+        if let Some(on_it) = self.modifiers.get_mut(owner) {
+            on_it
+                .0
+                .retain(|held| !matches!(held.kind, ModifierKind::Rot { .. }));
         }
-        self.recycle_entity_snapshot(entities);
+        if let Some(shown) = self.mark_of(owner, ability::ROT) {
+            self.take_mark(shown);
+        }
     }
 
-    /// Takes hold of one unit within reach and starts eating it.
-    pub fn cast_dismember(&mut self, caster: Entity, level: usize, target: Target) -> bool {
-        let Target::Unit(target) = target else {
-            return false;
-        };
-        let Some(on) = self.of_wire(target) else {
+    /// Takes hold of one unit within reach: it stands stunned and burning
+    /// for as long as it is held, and the one holding it mends by as much.
+    pub fn dismember_takes_hold(&mut self, caster: Entity, target: Target) -> bool {
+        let Some(on) = self.dismember_mark(target) else {
             return false;
         };
         if !self.hostile(caster, on) || !self.in_range_of(caster, on, rules::DISMEMBER_RANGE) {
             return false;
         }
-        self.dismember.insert(
-            caster,
-            Dismembering {
-                target: on,
-                ticks_left: rules::DISMEMBER_TICKS,
-                level,
+        let level = usize::from(self.carried_level(caster, ability::DISMEMBER).max(1) - 1);
+        let amount = rules::DISMEMBER_DAMAGE_PER_SECOND[level] * rules::BURN_PERIOD_TICKS as i32
+            / rules::TICKS_PER_SECOND as i32;
+        self.put_modifier(
+            on,
+            Modifier {
+                kind: ModifierKind::Stunned,
+                source: Some(caster),
+                ticks_left: None,
             },
         );
-        true
-    }
-
-    /// Runs every dismember one tick on.
-    ///
-    /// It ends when its time runs out, when what it holds is gone or walks
-    /// out of reach, or when whoever is channelling it can no longer act.
-    pub fn tick_dismembers(&mut self) {
-        let entities = self.take_entity_snapshot();
-        for caster in entities.iter().copied() {
-            let Some(mut eating) = self.dismember.get(caster).copied() else {
-                continue;
-            };
-            let out_of_reach = !self.in_range_of(caster, eating.target, rules::DISMEMBER_RANGE);
-            if !self.alive(caster)
-                || self.held(caster)
-                || !self.alive(eating.target)
-                || out_of_reach
-            {
-                self.dismember.remove(caster);
-                continue;
-            }
-            eating.ticks_left = eating.ticks_left.saturating_sub(1);
-            if eating.ticks_left == 0 {
-                self.dismember.remove(caster);
-            } else {
-                self.dismember.insert(caster, eating);
-            }
-            let amount = rules::DISMEMBER_DAMAGE_PER_SECOND[eating.level]
-                * rules::BURN_PERIOD_TICKS as i32
-                / rules::TICKS_PER_SECOND as i32;
-            self.put_for_a_tick(eating.target, StatusKind::Stunned);
-            self.put_for_a_tick(
-                eating.target,
-                StatusKind::Burning {
+        self.put_modifier(
+            on,
+            Modifier {
+                kind: ModifierKind::Burning {
                     amount,
                     kind: DamageKind::Pure,
-                    from: Some(caster),
                     lethal: true,
                 },
-            );
-            // What it eats it keeps: the one channelling mends by as much.
-            self.put_for_a_tick(
-                caster,
-                StatusKind::Mending {
+                source: Some(caster),
+                ticks_left: None,
+            },
+        );
+        // What it eats it keeps: the one channelling mends by as much.
+        self.put_modifier(
+            caster,
+            Modifier {
+                kind: ModifierKind::Mending {
                     per_tick: amount * 100 / rules::BURN_PERIOD_TICKS as i32,
                     breaks: false,
                 },
-            );
+                source: Some(caster),
+                ticks_left: None,
+            },
+        );
+        if let Some(at) = self.transform.get(on).map(|t| t.pos) {
+            self.spawn_mark(ability::DISMEMBER, caster, at, 0);
         }
-        self.recycle_entity_snapshot(entities);
+        true
     }
 
-    /// Feeds the flesh heap of every hero near a death.
-    ///
-    /// A structure or a ward going down feeds nothing.
-    pub fn feed_flesh_heaps(&mut self, fallen: Entity) {
-        if self
-            .kind
-            .get(fallen)
-            .copied()
-            .is_none_or(|kind| !crate::game::leaves_a_death(kind))
+    /// Whether a dismember still has something to hold: its mark stands and
+    /// is within reach. The hold shown on it follows it.
+    pub fn dismember_holds(&mut self, caster: Entity, target: Target) -> bool {
+        let Some(on) = self.dismember_mark(target) else {
+            return false;
+        };
+        if let (Some(at), Some(shown)) = (
+            self.transform.get(on).map(|t| t.pos),
+            self.mark_of(caster, ability::DISMEMBER),
+        ) && let Some(transform) = self.transform.get_mut(shown)
         {
+            transform.pos = at;
+        }
+        self.alive(on) && self.in_range_of(caster, on, rules::DISMEMBER_RANGE)
+    }
+
+    /// Lets go of what a dismember held: what it put on the mark and on
+    /// the one holding it is taken off, and the hold shown on it goes.
+    pub fn dismember_lets_go(&mut self, caster: Entity, target: Target) {
+        if let Some(shown) = self.mark_of(caster, ability::DISMEMBER) {
+            self.take_mark(shown);
+        }
+        if let Some(on) = self.dismember_mark(target) {
+            self.take_modifier(on, ModifierKind::Stunned, Some(caster));
+            self.take_modifier(
+                on,
+                ModifierKind::Burning {
+                    amount: 0,
+                    kind: DamageKind::Pure,
+                    lethal: true,
+                },
+                Some(caster),
+            );
+        }
+        self.take_modifier(
+            caster,
+            ModifierKind::Mending {
+                per_tick: 0,
+                breaks: false,
+            },
+            Some(caster),
+        );
+    }
+
+    /// The unit a dismember is aimed at, while it is one.
+    fn dismember_mark(&self, target: Target) -> Option<Entity> {
+        let Target::Unit(target) = target else {
+            return None;
+        };
+        self.of_wire(target)
+    }
+
+    /// Feeds the flesh heap of every hero standing near an enemy hero's
+    /// death, whoever brought it down. Nothing else that falls feeds one.
+    pub fn feed_flesh_heaps(&mut self, fallen: Entity) {
+        if !self.is_hero(fallen) {
             return;
         }
         let Some(at) = self.transform.get(fallen).map(|t| t.pos) else {
@@ -179,7 +159,7 @@ impl World {
         };
         let reach = rules::units(rules::FLESH_HEAP_RANGE);
         for hero in self.entities.iter().collect::<Vec<_>>() {
-            if hero == fallen || self.heap_level(hero) == 0 {
+            if hero == fallen || self.heap_level(hero) == 0 || !self.hostile(hero, fallen) {
                 continue;
             }
             if !self
@@ -214,18 +194,8 @@ impl World {
         ) else {
             return false;
         };
-        let hulls = self.hull.get(from).map_or(Fixed::ZERO, |hull| hull.radius)
-            + self.hull.get(to).map_or(Fixed::ZERO, |hull| hull.radius);
+        let hulls = self.hull.get(from).map_or(Fixed::ZERO, |hull| hull.bound)
+            + self.hull.get(to).map_or(Fixed::ZERO, |hull| hull.bound);
         here.within(there, rules::units(range) + hulls)
-    }
-
-    /// Puts an effect on for this tick alone.
-    fn put_for_a_tick(&mut self, on: Entity, kind: StatusKind) {
-        let mut on_it = self.statuses.remove(on).unwrap_or_default();
-        on_it.put(Status {
-            kind,
-            ticks_left: 2,
-        });
-        self.statuses.insert(on, on_it);
     }
 }

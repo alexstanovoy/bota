@@ -2,7 +2,7 @@ use bota_proto::{
     EntityId, Fixed, HeroId, ItemId, ItemSlot, Order, RejectReason, SlotId, Target, Team,
 };
 
-use crate::game::{BAG_SLOTS, Status, StatusKind, Statuses, rules, wire_id};
+use crate::game::{BAG_SLOTS, Modifier, ModifierKind, Modifiers, rules, wire_id};
 
 use super::fixtures::*;
 
@@ -350,11 +350,12 @@ fn use_order_keeps_cooldown_and_disabled_errors_before_mana_readiness() {
         Err(RejectReason::OnCooldown)
     );
     world.tick_gear();
-    world.statuses.insert(
+    world.modifiers.insert(
         hero,
-        Statuses(vec![Status {
-            kind: StatusKind::Stunned,
-            ticks_left: 1,
+        Modifiers(vec![Modifier {
+            kind: ModifierKind::Stunned,
+            source: None,
+            ticks_left: Some(1),
         }]),
     );
     assert_eq!(

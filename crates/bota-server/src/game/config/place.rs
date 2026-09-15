@@ -127,19 +127,21 @@ pub fn build_grid(map: &crate::game::MapDef) -> PassGrid {
         grid.block_circle(pos, crate::game::structure_clearance(radius));
     };
     for at in map.fountains {
-        block(at, rules::units(rules::FOUNTAIN_RADIUS));
+        block(at, rules::units(rules::FOUNTAIN_COLLISION));
     }
-    for at in map.ancients.into_iter().flatten() {
-        block(at, rules::units(rules::ANCIENT_RADIUS));
+    for (team, at) in [Team::Radiant, Team::Dire].into_iter().zip(map.ancients) {
+        if let Some(at) = at {
+            block(at, rules::units(crate::game::ancient_of(team).collision));
+        }
     }
     for &(_, _, at) in map.radiant_towers.iter().chain(map.dire_towers) {
-        block(at, rules::units(rules::TOWER_RADIUS));
+        block(at, rules::units(rules::TOWER_COLLISION));
     }
     for &(_, _, at) in map.barracks[0].iter().chain(map.barracks[1]) {
-        block(at, rules::units(rules::RAX_RADIUS));
+        block(at, rules::units(rules::RAX_COLLISION));
     }
     for at in tree_positions(map) {
-        block(at, rules::units(rules::TREE_RADIUS));
+        grid.block_circle(at, crate::game::tree_clearance());
     }
     grid
 }
@@ -165,41 +167,70 @@ fn lane_landmarks(map: &crate::game::MapDef, team: Team, lane: u8) -> Vec<Vec2> 
     line
 }
 
-/// The walked route of every lane, both sides, indexed by team then lane.
-///
-/// Every match runs the same map, so the routes are found once and shared.
-pub fn lane_routes(map: &'static crate::game::MapDef) -> &'static [[Vec<Vec2>; 3]; 2] {
-    static ROUTES: std::sync::OnceLock<Vec<[[Vec<Vec2>; 3]; 2]>> = std::sync::OnceLock::new();
-    &ROUTES.get_or_init(|| {
-        crate::game::MAPS
-            .iter()
-            .map(|m| {
-                let grid = build_grid(m);
-                let build = |team: Team| {
-                    [
-                        walk_lane(m, &grid, team, rules::LANE_MID),
-                        walk_lane(m, &grid, team, rules::LANE_TOP),
-                        walk_lane(m, &grid, team, rules::LANE_BOT),
-                    ]
-                };
-                [build(Team::Radiant), build(Team::Dire)]
-            })
-            .collect()
-    })[map.index()]
+/// The walked route of every lane, both sides, indexed by team then lane,
+/// with everything the map starts with standing.
+pub fn lane_routes(map: &crate::game::MapDef) -> [[Vec<Vec2>; 3]; 2] {
+    lane_routes_on(map, &build_grid(map))
 }
 
-/// One lane's walked route: the landmarks, with a found path laid between
-/// each pair so the march goes around what stands in the way.
+/// The walked route of every lane, both sides, indexed by team then lane,
+/// on the ground as a grid has it.
+pub fn lane_routes_on(map: &crate::game::MapDef, grid: &PassGrid) -> [[Vec<Vec2>; 3]; 2] {
+    let build = |team: Team| {
+        [
+            walk_lane(map, grid, team, rules::LANE_MID),
+            walk_lane(map, grid, team, rules::LANE_TOP),
+            walk_lane(map, grid, team, rules::LANE_BOT),
+        ]
+    };
+    [build(Team::Radiant), build(Team::Dire)]
+}
+
+/// One lane's walked route: a stop beside each landmark, with a found path
+/// laid between each pair so the march goes around what stands in the way.
+///
+/// Landmarks are tower positions, and a tower closes the ground it stands
+/// on: the stop is beside it on its lane side, away from the base it
+/// guards. The march walks past its own towers on the way out of its base
+/// and comes up to the enemy's from the lane.
 fn walk_lane(map: &crate::game::MapDef, grid: &PassGrid, team: Team, lane: u8) -> Vec<Vec2> {
     let marks = lane_landmarks(map, team, lane);
+    if marks.len() < 2 {
+        return Vec::new();
+    }
+    let stops: Vec<Vec2> = marks
+        .iter()
+        .enumerate()
+        .map(|(at, &mark)| {
+            let own = guarded_by(map, mark) == Some(team);
+            let toward = if own && at + 1 < marks.len() {
+                marks[at + 1]
+            } else {
+                marks[at.saturating_sub(1)]
+            };
+            crate::game::open_beside(grid, mark, toward)
+        })
+        .collect();
     let mut out = Vec::new();
-    for leg in marks.windows(2) {
+    for leg in stops.windows(2) {
         out.extend(crate::game::find_path(grid, leg[0], leg[1]));
-        // Landmarks are tower positions, and a tower closes the ground it
-        // stands on: the march aims beside it, not at it.
-        out.push(crate::game::nearest_open(grid, leg[1]));
+        if out.last() != Some(&leg[1]) {
+            out.push(leg[1]);
+        }
     }
     out
+}
+
+/// The team whose tower or Ancient stands at a spot, if one does.
+fn guarded_by(map: &crate::game::MapDef, at: Vec2) -> Option<Team> {
+    let stands = |towers: &[(u8, u8, Vec2)]| towers.iter().any(|&(_, _, pos)| pos == at);
+    if stands(map.radiant_towers) || map.ancients[0] == Some(at) {
+        Some(Team::Radiant)
+    } else if stands(map.dire_towers) || map.ancients[1] == Some(at) {
+        Some(Team::Dire)
+    } else {
+        None
+    }
 }
 
 /// Squared distance from a lane's centerline.

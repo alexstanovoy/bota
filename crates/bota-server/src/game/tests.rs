@@ -5,8 +5,8 @@ use bota_proto::{Attributes, Fixed, Team};
 use crate::game::rules;
 use crate::game::{
     AbilityBook, AbilityState, Def, Entity, EntityAllocator, FLAGBEARER_CREEP, HERO, Health,
-    Inventory, ItemStack, Level, MELEE_CREEP, Mana, NEUTRALS, NeutralKind, RANGED_CREEP, StackKind,
-    Stats, Status, StatusKind, Statuses, Table, UnitDef, Upgrades, Visibility, World,
+    Inventory, ItemStack, Level, MELEE_CREEP, Mana, Modifier, ModifierKind, Modifiers, NEUTRALS,
+    NeutralKind, RANGED_CREEP, StackKind, Stats, Table, UnitDef, Upgrades, Visibility, World,
 };
 
 #[test]
@@ -131,7 +131,7 @@ fn stats() -> Stats {
         damage: 0,
         attack_range: Fixed::ZERO,
         acquisition: Fixed::ZERO,
-        attack_interval: 30,
+        attack_time: 1000,
         attack_speed: 100,
         attributes: Attributes::ZERO,
         primary: None,
@@ -149,6 +149,9 @@ fn stats() -> Stats {
         flies: false,
         phased: false,
         invulnerable: false,
+        evasion: crate::game::Ratio::NEVER,
+        pierce: crate::game::Ratio::NEVER,
+        pierce_damage: 0,
     }
 }
 
@@ -321,6 +324,7 @@ fn plain_creep(world: &mut World) -> Entity {
     let creep = world.spawn();
     world.def.insert(creep, Def(&MELEE_CREEP));
     world.health.insert(creep, Health { hp: Fixed::ZERO });
+    world.modifiers.insert(creep, Modifiers(Vec::new()));
     creep
 }
 
@@ -333,7 +337,7 @@ fn a_plain_creep_gets_the_numbers_of_its_kind() {
     assert_eq!(stats.max_hp, Fixed::from_int(rules::MELEE_CREEP_HP));
     assert_eq!(stats.damage, rules::MELEE_CREEP_ATTACK_DAMAGE);
     assert_eq!(stats.armor, Fixed::from_int(rules::MELEE_CREEP_ARMOR));
-    assert_eq!(stats.attack_interval, rules::CREEP_ATTACK_INTERVAL);
+    assert_eq!(stats.attack_time, rules::CREEP_ATTACK_TIME);
     assert_eq!(stats.projectile_speed, None, "a melee creep throws nothing");
 }
 
@@ -485,23 +489,24 @@ fn levels_raise_a_hero() {
 fn haste_shortens_the_wait_between_attacks_while_it_lasts() {
     let mut world = World::new();
     let creep = plain_creep(&mut world);
-    world.statuses.insert(
+    world.modifiers.insert(
         creep,
-        Statuses(vec![Status {
-            kind: StatusKind::Haste { speed: 40 },
-            ticks_left: 5,
+        Modifiers(vec![Modifier {
+            kind: ModifierKind::Haste { speed: 40 },
+            source: None,
+            ticks_left: Some(5),
         }]),
     );
     world.step();
     assert_eq!(
-        world.stats.get(creep).map(|s| s.attack_interval),
-        Some(rules::CREEP_ATTACK_INTERVAL * 100 / 140)
+        world.stats.get(creep).map(|s| s.attack_speed),
+        Some(rules::BASE_ATTACK_SPEED + 40)
     );
-    world.statuses.insert(creep, Statuses(Vec::new()));
+    world.modifiers.insert(creep, Modifiers(Vec::new()));
     world.step();
     assert_eq!(
-        world.stats.get(creep).map(|s| s.attack_interval),
-        Some(rules::CREEP_ATTACK_INTERVAL),
+        world.stats.get(creep).map(|s| s.attack_speed),
+        Some(rules::BASE_ATTACK_SPEED),
         "what is worked out afresh forgets what has lifted"
     );
 }
@@ -510,14 +515,15 @@ fn haste_shortens_the_wait_between_attacks_while_it_lasts() {
 fn mending_adds_to_what_a_kind_regenerates() {
     let mut world = World::new();
     let creep = plain_creep(&mut world);
-    world.statuses.insert(
+    world.modifiers.insert(
         creep,
-        Statuses(vec![Status {
-            kind: StatusKind::Mending {
+        Modifiers(vec![Modifier {
+            kind: ModifierKind::Mending {
                 per_tick: 25,
                 breaks: false,
             },
-            ticks_left: 5,
+            source: None,
+            ticks_left: Some(5),
         }]),
     );
     world.step();
@@ -541,8 +547,15 @@ fn every_neutral_kind_has_numbers_of_its_own() {
     assert_eq!(kobold.max_hp, 240);
     assert_eq!(kobold.projectile_speed, None, "a kobold swings");
     assert!(!kobold.ancient);
-    assert_eq!(kobold.radius, rules::NEUTRAL_RADIUS);
-    assert_eq!(kobold.vision, rules::NEUTRAL_VISION);
+    assert_eq!(kobold.collision, rules::NEUTRAL_COLLISION);
+    assert_eq!(kobold.bound, rules::NEUTRAL_BOUND);
+    assert_eq!(kobold.vision, 1400, "a kobold sees further than most camps");
+    assert_eq!(NeutralKind::GnollAssassin.def().vision, 400);
+    assert_eq!(
+        NeutralKind::OgreMauler.def().vision,
+        rules::NEUTRAL_VISION,
+        "a camp with no sight of its own sees the usual distance"
+    );
     assert_eq!(kobold.per_upgrade.hp, rules::NEUTRAL_UPGRADE_HP);
     assert_eq!(NEUTRALS.len(), 36);
 }
@@ -698,6 +711,7 @@ fn an_order_to_walk_moves_a_body_and_turns_it_first() {
                 pos: bota_proto::Vec2::from_ints(0, 1000),
             },
             cooldown: 0,
+            pending: None,
         },
     );
     // Facing east and sent west: it turns before it takes a step.
@@ -791,7 +805,7 @@ fn a_tower_takes_the_nearest_enemy_and_brings_it_down() {
 fn a_fallen_ancient_ends_the_match() {
     let mut world = World::new();
     let ancient = world.spawn_unit(
-        &crate::game::ANCIENT,
+        crate::game::ancient_of(bota_proto::Team::Dire),
         bota_proto::Team::Dire,
         bota_proto::Vec2::from_ints(1000, 1000),
     );
@@ -813,12 +827,12 @@ fn a_fallen_ancient_ends_the_match() {
 fn simultaneous_ancient_deaths_preserve_the_first_terminal_result() {
     let mut world = World::new();
     let radiant = world.spawn_unit(
-        &crate::game::ANCIENT,
+        crate::game::ancient_of(bota_proto::Team::Radiant),
         bota_proto::Team::Radiant,
         bota_proto::Vec2::from_ints(1000, 1000),
     );
     let dire = world.spawn_unit(
-        &crate::game::ANCIENT,
+        crate::game::ancient_of(bota_proto::Team::Dire),
         bota_proto::Team::Dire,
         bota_proto::Vec2::from_ints(2000, 2000),
     );
@@ -1174,6 +1188,7 @@ fn a_body_does_not_walk_through_a_building() {
                 pos: tower + bota_proto::Vec2::from_ints(400, 0),
             },
             cooldown: 0,
+            pending: None,
         },
     );
     let mut nearest = i64::MAX;
@@ -1182,7 +1197,7 @@ fn a_body_does_not_walk_through_a_building() {
         let at = world.transform.get(hero).expect("alive").pos;
         nearest = nearest.min(crate::game::isqrt64(at.distance_squared(tower)));
     }
-    let hull = world.hull.get(hero).expect("has one").radius;
+    let hull = world.hull.get(hero).expect("has one").collision;
     assert!(
         nearest > i64::from(hull.raw),
         "it never stood inside the tower"
@@ -1205,8 +1220,8 @@ fn two_bodies_on_one_spot_are_eased_apart() {
         world.transform.get(one).expect("alive").pos,
         world.transform.get(other).expect("alive").pos,
     );
-    let hulls = world.hull.get(one).expect("has one").radius
-        + world.hull.get(other).expect("has one").radius;
+    let hulls = world.hull.get(one).expect("has one").collision
+        + world.hull.get(other).expect("has one").collision;
     // Easing apart stops at the moment they stop overlapping, which leaves
     // them touching exactly.
     let apart = crate::game::isqrt64(a.distance_squared(b));
@@ -1651,10 +1666,7 @@ fn what_a_hero_carries_shows_up_in_its_stats() {
 
 /// How long the salve mends for.
 fn salve_ticks() -> u32 {
-    match crate::game::ITEMS[usize::from(crate::game::ITEM_HEALING_SALVE)].active {
-        Some(crate::game::ItemUse::Mend { ticks, .. }) => ticks,
-        _ => panic!("the salve mends"),
-    }
+    crate::game::SALVE_TICKS
 }
 
 #[test]
@@ -1921,6 +1933,7 @@ fn config() -> crate::game::MatchConfig {
         tick_rate: 30,
         mode: bota_proto::TickMode::Lockstep,
         ack_timeout_ticks: 30,
+        cheats: false,
     }
 }
 
@@ -1985,6 +1998,8 @@ fn world_with_projectile_uphill_state(launch_tier: u8, can_miss_uphill: bool) ->
             launch_tier,
             can_miss_uphill,
             crit: false,
+            pierces: false,
+            pierce_damage: 0,
             bounces_left: 0,
             bounce_range: 0,
             bounced: Vec::new(),
@@ -2246,10 +2261,10 @@ fn frenzy_puts_haste_on_its_caster_and_spends_the_mana() {
     let mut world = World::new();
     let hero = caster(&mut world, bota_proto::Vec2::from_ints(5000, 5000), 1);
     let full = world.mana.get(hero).expect("has mana").mana;
-    let plain = world.stats.get(hero).expect("settled").attack_interval;
+    let plain = world.stats.get(hero).expect("settled").attack_speed;
     world.order_cast(
         hero,
-        crate::game::PendingCast {
+        crate::game::PendingCast::Ability {
             slot: bota_proto::AbilitySlot(1),
             target: bota_proto::Target::None,
         },
@@ -2263,7 +2278,7 @@ fn frenzy_puts_haste_on_its_caster_and_spends_the_mana() {
     // from the tick after.
     world.step();
     assert!(
-        world.stats.get(hero).expect("settled").attack_interval < plain,
+        world.stats.get(hero).expect("settled").attack_speed > plain,
         "and it swings faster while the haste holds"
     );
     assert!(
@@ -2281,7 +2296,7 @@ fn a_cast_with_no_mana_behind_it_does_nothing() {
     }
     world.order_cast(
         hero,
-        crate::game::PendingCast {
+        crate::game::PendingCast::Ability {
             slot: bota_proto::AbilitySlot(1),
             target: bota_proto::Target::None,
         },
@@ -2325,7 +2340,7 @@ fn a_multishot_strikes_everything_around_and_leaves_allies_be() {
     );
     world.order_cast(
         hero,
-        crate::game::PendingCast {
+        crate::game::PendingCast::Ability {
             slot: bota_proto::AbilitySlot(3),
             target: bota_proto::Target::None,
         },
@@ -2433,6 +2448,8 @@ fn critical_hits_keep_their_flag_in_damage_events() {
         amount: 10,
         kind: bota_proto::DamageKind::Physical,
         crit: true,
+        attack: true,
+        pierces: false,
         effect: crate::game::HitEffect::None,
     });
 
@@ -2597,22 +2614,34 @@ fn a_missile_is_seen_from_the_tick_it_is_thrown() {
 
 /// Runs one tick of the attack cycle and nothing else.
 fn swing_once(world: &mut World) {
-    crate::game::attacking_system(crate::game::AttackCx {
-        entities: &mut world.entities,
-        transform: &mut world.transform,
-        hull: &world.hull,
-        ground: &world.ground,
-        kind: &world.kind,
-        team: &mut world.team,
-        health: &world.health,
-        stats: &world.stats,
-        visibility: &mut world.visibility,
-        target: &world.target,
-        statuses: &world.statuses,
-        attacking: &mut world.attacking,
-        hits: &mut world.hits,
-        projectile: &mut world.projectile,
-    });
+    world.run_actions();
+}
+
+/// Who an entity is mid-swing at, if it is mid-swing at all.
+fn swinging(world: &World, entity: Entity) -> Option<Entity> {
+    match world.action.get(entity).map(|action| action.state) {
+        Some(crate::game::ActionState::Attack {
+            target,
+            phase: crate::game::ActionPhase::Before { .. },
+        }) => Some(target),
+        _ => None,
+    }
+}
+
+/// Whether an entity is recovering from a swing that landed.
+fn recovering(world: &World, entity: Entity) -> bool {
+    matches!(
+        world.action.get(entity).map(|action| action.state),
+        Some(crate::game::ActionState::Attack {
+            phase: crate::game::ActionPhase::After { .. },
+            ..
+        })
+    )
+}
+
+/// The tick a span of milliseconds is crossed on at the base attack speed.
+fn ticks_of(ms: u32) -> u32 {
+    (ms * rules::TICKS_PER_SECOND).div_ceil(1000)
 }
 
 /// An attacker and its mark, standing where they are put and nothing else.
@@ -2639,7 +2668,7 @@ fn a_swing_waits_on_the_angle_it_is_looking_at() {
     }
     swing_once(&mut world);
     assert_eq!(
-        world.attacking.get(attacker).and_then(|a| a.windup),
+        swinging(&world, attacker),
         None,
         "nothing begins while it is looking the other way"
     );
@@ -2649,11 +2678,7 @@ fn a_swing_waits_on_the_angle_it_is_looking_at() {
     }
     swing_once(&mut world);
     assert!(
-        world
-            .attacking
-            .get(attacker)
-            .and_then(|a| a.windup)
-            .is_some(),
+        swinging(&world, attacker).is_some(),
         "and begins once it is"
     );
 }
@@ -2667,7 +2692,7 @@ fn a_swing_waits_on_being_able_to_see_at_all() {
     }
     swing_once(&mut world);
     assert_eq!(
-        world.attacking.get(attacker).and_then(|a| a.windup),
+        swinging(&world, attacker),
         None,
         "what a side has no eyes on it does not swing at"
     );
@@ -2678,11 +2703,7 @@ fn a_swing_waits_on_reach() {
     let (mut world, attacker, mark) = duel(600);
     world.set_target(attacker, mark);
     swing_once(&mut world);
-    assert_eq!(
-        world.attacking.get(attacker).and_then(|a| a.windup),
-        None,
-        "too far to touch"
-    );
+    assert_eq!(swinging(&world, attacker), None, "too far to touch");
 }
 
 #[test]
@@ -2696,18 +2717,11 @@ fn a_swing_lands_on_whoever_it_began_against() {
     world.settle();
     world.set_target(attacker, mark);
     world.step();
-    assert!(
-        world
-            .attacking
-            .get(attacker)
-            .and_then(|a| a.windup)
-            .is_some(),
-        "the swing began"
-    );
+    assert!(swinging(&world, attacker).is_some(), "the swing began");
     // Set on somebody else halfway through.
     world.set_target(attacker, other);
     let was = world.health.get(mark).expect("standing").hp;
-    for _ in 0..rules::MELEE_CREEP_ATTACK_POINT + 1 {
+    for _ in 0..ticks_of(rules::MELEE_CREEP_ATTACK_POINT) + 1 {
         world.step();
     }
     assert!(
@@ -2740,6 +2754,7 @@ fn a_hero_told_to_attack_comes_round_and_closes() {
                 last_seen: bota_proto::Vec2::from_ints(4000, 5000),
             },
             cooldown: 0,
+            pending: None,
         },
     );
     let start = world.transform.get(hero).expect("standing").pos;
@@ -2756,17 +2771,13 @@ fn a_swing_that_began_still_connects_a_little_past_reach() {
     world.set_target(attacker, mark);
     world.step();
     assert!(
-        world
-            .attacking
-            .get(attacker)
-            .and_then(|a| a.windup)
-            .is_some(),
+        swinging(&world, attacker).is_some(),
         "the swing began in reach"
     );
     // Backs off by less than the leeway while the swing is under way.
     let just_out = rules::MELEE_CREEP_ATTACK_RANGE + 60;
     let was = world.health.get(mark).expect("standing").hp;
-    for _ in 0..rules::MELEE_CREEP_ATTACK_POINT + 1 {
+    for _ in 0..ticks_of(rules::MELEE_CREEP_ATTACK_POINT) + 1 {
         if let Some(at) = world.transform.get_mut(mark) {
             at.pos = bota_proto::Vec2::from_ints(5000 + just_out, 5000);
         }
@@ -2784,11 +2795,7 @@ fn a_swing_is_given_up_when_the_target_gets_away() {
     world.set_target(attacker, mark);
     world.step();
     assert!(
-        world
-            .attacking
-            .get(attacker)
-            .and_then(|a| a.windup)
-            .is_some(),
+        swinging(&world, attacker).is_some(),
         "the swing began in reach"
     );
     let far = rules::MELEE_CREEP_ATTACK_RANGE + rules::ATTACK_RANGE_LEEWAY + 200;
@@ -2798,12 +2805,12 @@ fn a_swing_is_given_up_when_the_target_gets_away() {
     }
     world.step();
     assert_eq!(
-        world.attacking.get(attacker).and_then(|a| a.windup),
+        swinging(&world, attacker),
         None,
         "the swing is given up the moment it gets away"
     );
     assert_eq!(
-        world.attacking.get(attacker).map(|a| a.cooldown),
+        world.action.get(attacker).map(|a| a.attack_cooldown),
         Some(0),
         "and costs nothing, so the next one may start at once"
     );
@@ -2819,17 +2826,11 @@ fn a_swing_is_given_up_when_the_target_falls() {
     let (mut world, attacker, mark) = duel(100);
     world.set_target(attacker, mark);
     world.step();
-    assert!(
-        world
-            .attacking
-            .get(attacker)
-            .and_then(|a| a.windup)
-            .is_some()
-    );
+    assert!(swinging(&world, attacker).is_some());
     world.health.insert(mark, Health { hp: Fixed::ZERO });
     world.step();
     assert_eq!(
-        world.attacking.get(attacker).and_then(|a| a.windup),
+        swinging(&world, attacker),
         None,
         "there is nothing left to strike"
     );
@@ -2840,20 +2841,14 @@ fn a_swing_is_given_up_when_the_target_is_lost_from_sight() {
     let (mut world, attacker, mark) = duel(100);
     world.set_target(attacker, mark);
     world.step();
-    assert!(
-        world
-            .attacking
-            .get(attacker)
-            .and_then(|a| a.windup)
-            .is_some()
-    );
+    assert!(swinging(&world, attacker).is_some());
     // Blinded to it, the way stepping into fog would.
     if let Some(seen) = world.visibility.get_mut(mark) {
         seen.clear();
     }
     swing_once(&mut world);
     assert_eq!(
-        world.attacking.get(attacker).and_then(|a| a.windup),
+        swinging(&world, attacker),
         None,
         "it does not finish a swing at what it can no longer see"
     );
@@ -3089,6 +3084,7 @@ fn hero_past_an_enemy(order: crate::game::UnitOrder) -> (World, Entity, Entity) 
         crate::game::Orders {
             current: order,
             cooldown: 0,
+            pending: None,
         },
     );
     (world, hero, enemy)
@@ -3532,6 +3528,7 @@ fn a_hero_putting_out_its_own_is_taken_on_last() {
                 last_seen: bota_proto::Vec2::from_ints(5400, 5000),
             },
             cooldown: 0,
+            pending: None,
         },
     );
     assert_eq!(
@@ -3878,8 +3875,8 @@ fn an_attack_order_at_one_of_your_own_walks_you_to_it_and_waits() {
         "it walks to what it was pointed at: {now:?} from {start:?}"
     );
     // Right up to it, not merely into reach: it has nothing to do from reach.
-    let hulls = world.hull.get(hero).expect("has one").radius
-        + world.hull.get(ours).expect("has one").radius;
+    let hulls = world.hull.get(hero).expect("has one").collision
+        + world.hull.get(ours).expect("has one").collision;
     let apart = crate::game::isqrt64(
         now.distance_squared(world.transform.get(ours).expect("standing").pos),
     );
@@ -3972,20 +3969,13 @@ fn an_order_to_break_off_gives_up_a_swing_that_has_not_landed() {
     let (mut world, hero, theirs, _ours, _foe) = a_lane_with_a_hero(150);
     attack_click(&mut world, theirs);
     for _ in 0..60 {
-        if world
-            .attacking
-            .get(hero)
-            .is_some_and(|state| state.windup.is_some())
-        {
+        if swinging(&world, hero).is_some() {
             break;
         }
         world.advance(&[]);
     }
     assert!(
-        world
-            .attacking
-            .get(hero)
-            .is_some_and(|state| state.windup.is_some()),
+        swinging(&world, hero).is_some(),
         "the hero should be mid-swing by now"
     );
     world.advance(&[crate::game::Command {
@@ -3995,9 +3985,13 @@ fn an_order_to_break_off_gives_up_a_swing_that_has_not_landed() {
             target: bota_proto::Target::None,
         },
     }]);
-    let state = world.attacking.get(hero).copied().expect("attacking");
-    assert!(state.windup.is_none(), "the swing is given up");
-    assert_eq!(state.cooldown, 0, "and nothing was spent on it");
+    let action = world.action.get(hero).copied().expect("acting");
+    assert_eq!(
+        action.state,
+        crate::game::ActionState::Ready,
+        "the swing is given up"
+    );
+    assert_eq!(action.attack_cooldown, 0, "and nothing was spent on it");
 }
 
 #[test]
@@ -4005,21 +3999,17 @@ fn an_order_after_a_swing_lands_does_not_hurry_the_next_one() {
     let (mut world, hero, theirs, _ours, _foe) = a_lane_with_a_hero(150);
     attack_click(&mut world, theirs);
     for _ in 0..120 {
-        if world
-            .attacking
-            .get(hero)
-            .is_some_and(|state| state.recovering > 0)
-        {
+        if recovering(&world, hero) {
             break;
         }
         world.advance(&[]);
     }
     let before = world
-        .attacking
+        .action
         .get(hero)
         .copied()
-        .expect("attacking")
-        .cooldown;
+        .expect("acting")
+        .attack_cooldown;
     assert!(
         before > 0,
         "the swing that landed spent the wait for the next"
@@ -4031,11 +4021,11 @@ fn an_order_after_a_swing_lands_does_not_hurry_the_next_one() {
             target: bota_proto::Target::None,
         },
     }]);
-    let state = world.attacking.get(hero).copied().expect("attacking");
-    assert_eq!(state.recovering, 0, "the recovery is cancelled");
+    assert!(!recovering(&world, hero), "the recovery is cancelled");
+    let gain = crate::game::attack_gain(world.stats.get(hero).expect("settled").attack_speed);
     assert_eq!(
-        state.cooldown,
-        before - 1,
+        world.action.get(hero).expect("acting").attack_cooldown,
+        before - gain,
         "but the wait for the next swing runs on"
     );
 }
@@ -4070,20 +4060,25 @@ fn a_hero_stands_up_beside_its_fountain_at_the_start_of_a_match() {
 }
 
 /// The effect a fountain hands out.
-const FOUNTAIN_EFFECT: crate::game::StatusKind = crate::game::StatusKind::Fountain {
+const FOUNTAIN_EFFECT: crate::game::ModifierKind = crate::game::ModifierKind::Fountain {
     hp_per_tick: rules::FOUNTAIN_HEAL_HP_PER_TICK * 100,
     mana_per_tick: rules::FOUNTAIN_HEAL_MANA_PER_TICK * 100,
 };
 
 /// Whether a unit carries an effect of one kind right now, whatever there is
 /// of it.
-fn carries(world: &World, entity: Entity, kind: crate::game::StatusKind) -> bool {
+fn carries(world: &World, entity: Entity, kind: crate::game::ModifierKind) -> bool {
     let same = std::mem::discriminant(&kind);
-    world.statuses.get(entity).is_some_and(|on_it| {
+    world.modifiers.get(entity).is_some_and(|on_it| {
         on_it
             .active()
-            .any(|status| std::mem::discriminant(&status.kind) == same)
+            .any(|held| std::mem::discriminant(&held.kind) == same)
     })
+}
+
+/// Whether a unit has its rot switched on.
+fn rotting(world: &World, entity: Entity) -> bool {
+    carries(world, entity, crate::game::ModifierKind::Rot { level: 0 })
 }
 
 #[test]
@@ -4124,13 +4119,13 @@ fn a_fountain_hands_out_mending_to_whoever_stands_in_it() {
 }
 
 /// A tower's protection, whatever tier hands it out.
-const GUARDED_EFFECT: crate::game::StatusKind = crate::game::StatusKind::Guarded {
+const GUARDED_EFFECT: crate::game::ModifierKind = crate::game::ModifierKind::Guarded {
     armor: rules::TOWER_AURA_ARMOR[0],
     hp_per_second: rules::TOWER_AURA_REGEN[0],
 };
 
 /// A flagbearer's inspiration.
-const INSPIRED_EFFECT: crate::game::StatusKind = crate::game::StatusKind::Inspired {
+const INSPIRED_EFFECT: crate::game::ModifierKind = crate::game::ModifierKind::Inspired {
     hp_per_second: rules::FLAGBEARER_AURA_REGEN,
 };
 
@@ -4561,9 +4556,15 @@ fn a_scroll_carries_its_user_once_the_channel_runs_out() {
         world.inventory.get(hero).expect("has a bag").slots[0].is_some(),
         "and the scroll is not spent yet"
     );
-    for _ in 0..90 {
+    for _ in 0..88 {
         world.step();
     }
+    assert_eq!(
+        world.transform.get(hero).map(|t| t.pos),
+        Some(from),
+        "and one tick short of the channel it has not moved"
+    );
+    world.step();
     assert_eq!(
         world.transform.get(hero).map(|t| t.pos),
         Some(to),
@@ -5034,9 +5035,9 @@ fn a_drink_may_be_aimed_at_the_one_drinking_it() {
             "item {item} may be drunk by whoever holds it"
         );
         assert!(
-            world.statuses.get(hero).is_some_and(|on_it| on_it
+            world.modifiers.get(hero).is_some_and(|on_it| on_it
                 .active()
-                .any(|status| !matches!(status.kind, crate::game::StatusKind::Fountain { .. }))),
+                .any(|held| !matches!(held.kind, crate::game::ModifierKind::Fountain { .. }))),
             "item {item} leaves its effect on the one who drank it"
         );
     }
@@ -5143,7 +5144,7 @@ fn a_tango_eats_a_tree_and_without_one_eats_nothing() {
         carries(
             &world,
             hero,
-            crate::game::StatusKind::Mending {
+            crate::game::ModifierKind::Mending {
                 per_tick: 0,
                 breaks: false
             }
@@ -5186,7 +5187,9 @@ fn a_branch_puts_a_tree_up_and_eating_that_one_feeds_twice_as_long() {
 
 /// How long a tango eaten off the tree at a spot mends for.
 fn tango_ticks(world: &mut World, hero: Entity, at: bota_proto::Vec2) -> u32 {
-    world.statuses.remove(hero);
+    world
+        .modifiers
+        .insert(hero, crate::game::Modifiers(Vec::new()));
     if let Some(bag) = world.inventory.get_mut(hero) {
         bag.slots[1] = Some(crate::game::ItemStack {
             id: bota_proto::ItemId(crate::game::ITEM_TANGO),
@@ -5202,13 +5205,14 @@ fn tango_ticks(world: &mut World, hero: Entity, at: bota_proto::Vec2) -> u32 {
     }
     assert!(world.use_item(hero, 1, bota_proto::Target::Pos(at), &mut Vec::new()));
     world
-        .statuses
+        .modifiers
         .get(hero)
         .expect("it mends")
         .active()
-        .find(|status| matches!(status.kind, crate::game::StatusKind::Mending { .. }))
+        .find(|held| matches!(held.kind, crate::game::ModifierKind::Mending { .. }))
         .expect("of health")
         .ticks_left
+        .expect("for a while")
 }
 
 #[test]
@@ -5243,10 +5247,9 @@ fn a_blade_cannot_reach_a_tree_it_was_pointed_at_from_far_off() {
 /// What one swing of an entity takes off another, run to the blow itself.
 fn one_swing_takes(world: &mut World, from: Entity, on: Entity) -> i32 {
     world.set_target(from, on);
-    if let Some(state) = world.attacking.get_mut(from) {
-        state.cooldown = 0;
-        state.windup = None;
-        state.recovering = 0;
+    if let Some(action) = world.action.get_mut(from) {
+        action.state = crate::game::ActionState::Ready;
+        action.attack_cooldown = 0;
     }
     let before = world.health.get(on).expect("standing").hp;
     for _ in 0..120 {
@@ -5323,13 +5326,15 @@ fn a_quelling_blade_is_worth_something_against_a_creep_and_nothing_against_a_her
 }
 
 /// Puts an effect on a unit for a while.
-fn put_on(world: &mut World, entity: Entity, kind: crate::game::StatusKind, ticks: u32) {
-    let mut on_it = world.statuses.remove(entity).unwrap_or_default();
-    on_it.put(crate::game::Status {
-        kind,
-        ticks_left: ticks,
-    });
-    world.statuses.insert(entity, on_it);
+fn put_on(world: &mut World, entity: Entity, kind: crate::game::ModifierKind, ticks: u32) {
+    world.put_modifier(
+        entity,
+        crate::game::Modifier {
+            kind,
+            source: None,
+            ticks_left: Some(ticks),
+        },
+    );
 }
 
 #[test]
@@ -5346,7 +5351,7 @@ fn a_held_unit_neither_walks_nor_swings_nor_casts() {
     world.settle();
     world.step();
     let full = world.health.get(creep).expect("standing").hp;
-    put_on(&mut world, hero, crate::game::StatusKind::Stunned, 60);
+    put_on(&mut world, hero, crate::game::ModifierKind::Stunned, 60);
     let stood = world.transform.get(hero).expect("standing").pos;
     world.set_order(
         hero,
@@ -5386,7 +5391,7 @@ fn a_slow_takes_its_share_of_the_speed() {
     put_on(
         &mut world,
         creep,
-        crate::game::StatusKind::Slowed { pct: 25 },
+        crate::game::ModifierKind::Slowed { pct: 25 },
         60,
     );
     world.step();
@@ -5408,10 +5413,9 @@ fn a_burn_takes_health_on_the_beat_and_may_be_told_to_leave_one() {
     put_on(
         &mut world,
         creep,
-        crate::game::StatusKind::Burning {
+        crate::game::ModifierKind::Burning {
             amount: 5,
             kind: bota_proto::DamageKind::Pure,
-            from: None,
             lethal: true,
         },
         rules::BURN_PERIOD_TICKS * 4,
@@ -5434,10 +5438,9 @@ fn a_burn_takes_health_on_the_beat_and_may_be_told_to_leave_one() {
     put_on(
         &mut world,
         creep,
-        crate::game::StatusKind::Burning {
+        crate::game::ModifierKind::Burning {
             amount: 100,
             kind: bota_proto::DamageKind::Pure,
-            from: None,
             lethal: false,
         },
         rules::BURN_PERIOD_TICKS * 10,
@@ -5730,7 +5733,7 @@ fn the_rot_burns_and_slows_what_stands_in_it_and_lifts_when_switched_off() {
     }
     let full = world.health.get(mark).expect("standing").hp;
     pudge_casts(&mut world, 1, bota_proto::Target::None);
-    assert!(world.rotting.get(pudge).is_some(), "it is switched on");
+    assert!(rotting(&world, pudge), "it is switched on");
     for _ in 0..rules::BURN_PERIOD_TICKS * 4 {
         world.step();
     }
@@ -5739,17 +5742,66 @@ fn the_rot_burns_and_slows_what_stands_in_it_and_lifts_when_switched_off() {
         "what stands in it burns"
     );
     assert!(
-        carries(&world, mark, crate::game::StatusKind::Slowed { pct: 0 }),
+        carries(&world, mark, crate::game::ModifierKind::Slowed { pct: 0 }),
         "and is slowed while it stands there"
     );
     pudge_casts(&mut world, 1, bota_proto::Target::None);
-    assert!(world.rotting.get(pudge).is_none(), "it is switched off");
+    assert!(!rotting(&world, pudge), "it is switched off");
     for _ in 0..3 {
         world.step();
     }
     assert!(
-        !carries(&world, mark, crate::game::StatusKind::Slowed { pct: 0 }),
+        !carries(&world, mark, crate::game::ModifierKind::Slowed { pct: 0 }),
         "and nothing is left slowed"
+    );
+}
+
+#[test]
+fn the_rot_shows_its_cloud_where_its_owner_stands_while_it_is_on() {
+    // The mark stands too far off to be taken on, so he only moves when
+    // moved.
+    let (mut world, pudge, _mark) = pudge_and_a_mark(2000);
+    if let Some(book) = world.abilities.get_mut(pudge) {
+        book.slots[1].level = 1;
+    }
+    pudge_casts(&mut world, 1, bota_proto::Target::None);
+    let cloud = world
+        .mark_of(pudge, crate::game::ability::ROT)
+        .expect("switched on, the cloud shows");
+    let stood = world.transform.get(pudge).expect("standing").pos;
+    assert_eq!(world.transform.get(cloud).map(|t| t.pos), Some(stood));
+    world.transform.get_mut(pudge).expect("standing").pos =
+        stood + bota_proto::Vec2::from_ints(0, 90);
+    world.step();
+    assert_eq!(
+        world.transform.get(cloud).map(|t| t.pos),
+        world.transform.get(pudge).map(|t| t.pos),
+        "and follows him"
+    );
+    assert!(
+        world
+            .view_full()
+            .projectiles
+            .iter()
+            .any(|shown| shown.ability == Some(crate::game::ability::ROT)),
+        "and is in the view"
+    );
+    pudge_casts(&mut world, 1, bota_proto::Target::None);
+    assert_eq!(
+        world.mark_of(pudge, crate::game::ability::ROT),
+        None,
+        "switched off, it goes"
+    );
+    pudge_casts(&mut world, 1, bota_proto::Target::None);
+    assert!(world.mark_of(pudge, crate::game::ability::ROT).is_some());
+    let mut events = Vec::new();
+    world.bury(vec![(pudge, None)], &mut events);
+    assert!(
+        world.entities.iter().all(|entity| world
+            .mark
+            .get(entity)
+            .is_none_or(|shown| shown.ability != crate::game::ability::ROT)),
+        "and it goes with him when he falls"
     );
 }
 
@@ -5767,9 +5819,14 @@ fn the_rot_never_kills_the_one_carrying_it() {
     }
     world.settle();
     world.step();
-    world
-        .rotting
-        .insert(pudge, crate::game::Rotting { level: 3 });
+    world.put_modifier(
+        pudge,
+        crate::game::Modifier {
+            kind: crate::game::ModifierKind::Rot { level: 3 },
+            source: Some(pudge),
+            ticks_left: None,
+        },
+    );
     world.health.insert(
         pudge,
         Health {
@@ -5810,12 +5867,12 @@ fn a_dismember_holds_what_it_eats_and_feeds_the_one_eating() {
         3,
         bota_proto::Target::Unit(crate::game::wire_id(mark)),
     );
-    assert!(world.dismember.get(pudge).is_some(), "it takes hold");
+    assert!(world.is_channelling(pudge), "it takes hold");
     for _ in 0..30 {
         world.step();
     }
     assert!(
-        carries(&world, mark, crate::game::StatusKind::Stunned),
+        carries(&world, mark, crate::game::ModifierKind::Stunned),
         "what it holds cannot act"
     );
     assert!(
@@ -5834,37 +5891,64 @@ fn a_dismember_holds_what_it_eats_and_feeds_the_one_eating() {
             target: bota_proto::Target::None,
         },
     }]);
-    assert!(world.dismember.get(pudge).is_none(), "an order lets go");
+    assert!(!world.is_channelling(pudge), "an order lets go");
 }
 
 #[test]
-fn a_flesh_heap_keeps_what_dies_near_it_and_the_keeping_outlives_a_death() {
+fn a_flesh_heap_keeps_every_enemy_hero_that_falls_near_it_and_nothing_else() {
     let (mut world, pudge, mark) = pudge_and_a_mark(200);
     if let Some(book) = world.abilities.get_mut(pudge) {
         book.slots[2].level = 1;
     }
+    let foe = world.spawn_hero(
+        bota_proto::Team::Dire,
+        bota_proto::Vec2::from_ints(5300, 5000),
+        bota_proto::SlotId(1),
+        bota_proto::HeroId(0),
+    );
+    let friend = world.spawn_hero(
+        bota_proto::Team::Radiant,
+        bota_proto::Vec2::from_ints(5000, 5300),
+        bota_proto::SlotId(2),
+        bota_proto::HeroId(0),
+    );
+    let far = world.spawn_hero(
+        bota_proto::Team::Dire,
+        bota_proto::Vec2::from_ints(5000 + rules::FLESH_HEAP_RANGE + 200, 5000),
+        bota_proto::SlotId(3),
+        bota_proto::HeroId(0),
+    );
+    world.settle();
     world.step();
-    let bare = world.stats.get(pudge).expect("settled").max_hp;
+    let heap = |world: &World| {
+        world
+            .stacks
+            .get(pudge)
+            .map_or(0, |kept| kept.of(StackKind::FleshHeap))
+    };
+    let bare = world.stats.get(pudge).expect("settled").attributes.strength;
     let mut events = Vec::new();
     world.bury(vec![(mark, None)], &mut events);
     world.step();
     assert_eq!(
-        world
-            .stacks
-            .get(pudge)
-            .map(|kept| kept.of(StackKind::FleshHeap)),
-        Some(1),
-        "a death beside it feeds it"
+        heap(&world),
+        0,
+        "a creep falling beside it feeds it nothing"
     );
+    world.bury(vec![(friend, None), (far, None)], &mut events);
+    world.step();
     assert_eq!(
-        world.stats.get(pudge).map(|s| s.max_hp),
-        Some(bare + Fixed::from_int(rules::FLESH_HEAP_HP)),
-        "and one stack is worth its health"
+        heap(&world),
+        0,
+        "neither a hero of its own side, nor an enemy hero falling too far off"
     );
-    assert!(
-        world.stats.get(pudge).expect("settled").magic_resist_pct
-            > crate::game::PUDGE.magic_resist_pct,
-        "and knowing it at all holds magic off"
+    world.bury(vec![(foe, None)], &mut events);
+    world.step();
+    assert_eq!(heap(&world), 1, "an enemy hero falling beside it feeds it");
+    assert_eq!(
+        world.stats.get(pudge).map(|s| s.attributes.strength),
+        Some(bare + Fixed::from_int(rules::FLESH_HEAP_STRENGTH)),
+        "and one stack is worth its strength"
     );
 }
 
@@ -5976,7 +6060,7 @@ fn a_hero_hit_loses_its_drink_but_never_what_a_tree_bought() {
     );
     world.settle();
     world.step();
-    let salve = crate::game::StatusKind::Mending {
+    let salve = crate::game::ModifierKind::Mending {
         per_tick: 0,
         breaks: false,
     };
@@ -6239,7 +6323,7 @@ fn a_cast_aimed_out_of_reach_walks_the_caster_in_and_then_goes_off() {
     let far = from + bota_proto::Vec2::from_ints(rules::HOOK_RANGE + 900, 0);
     throw_hook(&mut world, far);
     assert!(
-        world.casting.get(pudge).is_some(),
+        world.pending_cast(pudge).is_some(),
         "out of reach the cast is held rather than dropped"
     );
     let mut thrown = false;
@@ -6271,7 +6355,7 @@ fn a_later_order_calls_a_held_cast_off() {
     let far = from + bota_proto::Vec2::from_ints(rules::HOOK_RANGE + 900, 0);
     throw_hook(&mut world, far);
     assert!(
-        world.casting.get(pudge).is_some(),
+        world.pending_cast(pudge).is_some(),
         "out of reach the cast is held rather than dropped"
     );
     world.advance(&[crate::game::Command {
@@ -6282,7 +6366,7 @@ fn a_later_order_calls_a_held_cast_off() {
         },
     }]);
     assert_eq!(
-        world.casting.get(pudge),
+        world.pending_cast(pudge),
         None,
         "the later order took the held cast away"
     );
@@ -6321,19 +6405,19 @@ fn a_cast_walked_towards_a_target_that_fell_is_given_up_and_costs_nothing() {
         },
     }]);
     assert!(
-        world.casting.get(pudge).is_some(),
+        world.pending_cast(pudge).is_some(),
         "out of reach the cast is held while the caster walks in"
     );
     world.push_hit(None, mark, 10_000, bota_proto::DamageKind::Pure);
     for _ in 0..3 {
         world.step();
         assert!(
-            world.dismember.get(pudge).is_none(),
+            !world.is_channelling(pudge),
             "a cast at what has fallen never goes off"
         );
     }
     assert_eq!(
-        world.casting.get(pudge),
+        world.pending_cast(pudge),
         None,
         "the held cast is given up with its target"
     );
@@ -6518,7 +6602,7 @@ fn a_bolt_goes_on_to_the_next_and_never_back_to_the_same_one() {
         .collect();
     world.order_cast(
         hero,
-        crate::game::PendingCast {
+        crate::game::PendingCast::Ability {
             slot: bota_proto::AbilitySlot(2),
             target: bota_proto::Target::Unit(crate::game::wire_id(marks[0])),
         },
@@ -7313,15 +7397,14 @@ fn attack_speed_shortens_the_wait_between_attacks() {
         plain.attack_speed + 20,
         "the gloves are worth twenty"
     );
-    assert!(
-        hasted.attack_interval < plain.attack_interval,
-        "and the wait is shorter for it"
-    );
     assert_eq!(
-        hasted.attack_interval,
-        crate::game::HERO.attack_interval * rules::BASE_ATTACK_SPEED as u32
-            / hasted.attack_speed as u32,
-        "by exactly what the speed says"
+        hasted.attack_time, plain.attack_time,
+        "the cycle itself is the kind's own"
+    );
+    assert!(
+        crate::game::attack_gain(hasted.attack_speed)
+            > crate::game::attack_gain(plain.attack_speed),
+        "and it runs faster for the speed"
     );
 }
 
@@ -7912,10 +7995,7 @@ fn a_blink_carries_no_further_than_it_reaches() {
     let from = world.transform.get(hero).expect("stands somewhere").pos;
     hand_item(&mut world, hero, crate::game::ITEM_BLINK_DAGGER, 0);
     world.step();
-    let range = match crate::game::ITEMS[usize::from(crate::game::ITEM_BLINK_DAGGER)].active {
-        Some(crate::game::ItemUse::Blink { range }) => range,
-        _ => panic!("the dagger blinks"),
-    };
+    let range = crate::game::BLINK_RANGE;
     let far = bota_proto::Vec2 {
         x: from.x + rules::units(range * 4),
         y: from.y,
@@ -8122,8 +8202,8 @@ fn walking_at_an_ally_stops_where_the_bodies_meet() {
         seen.push(world.transform.get(hero).expect("standing").pos);
     }
     let theirs = world.transform.get(ally).expect("standing").pos;
-    let hulls = world.hull.get(hero).expect("has one").radius
-        + world.hull.get(ally).expect("has one").radius;
+    let hulls = world.hull.get(hero).expect("has one").collision
+        + world.hull.get(ally).expect("has one").collision;
     let last = *seen.last().expect("walked");
     assert!(
         last.within(theirs, hulls + rules::units(rules::STEER_MARGIN * 2)),
@@ -8351,14 +8431,21 @@ fn a_way_found_to_a_spot_that_walks_away_is_found_again() {
 
 #[test]
 fn a_flesh_heap_outlives_the_death_of_the_one_carrying_it() {
-    let (mut world, pudge, mark) = pudge_and_a_mark(200);
+    let (mut world, pudge, _mark) = pudge_and_a_mark(200);
     if let Some(book) = world.abilities.get_mut(pudge) {
         book.slots[2].level = 1;
     }
+    let foe = world.spawn_hero(
+        bota_proto::Team::Dire,
+        bota_proto::Vec2::from_ints(5100, 5200),
+        bota_proto::SlotId(1),
+        bota_proto::HeroId(0),
+    );
+    world.settle();
     world.step();
-    let bare = world.stats.get(pudge).expect("settled").max_hp;
+    let bare = world.stats.get(pudge).expect("settled").attributes.strength;
     let mut events = Vec::new();
-    world.bury(vec![(mark, None)], &mut events);
+    world.bury(vec![(foe, None)], &mut events);
     world.step();
     assert_eq!(
         world
@@ -8383,9 +8470,9 @@ fn a_flesh_heap_outlives_the_death_of_the_one_carrying_it() {
         "and what it kept comes back with it"
     );
     assert_eq!(
-        world.stats.get(back).map(|s| s.max_hp),
-        Some(bare + Fixed::from_int(rules::FLESH_HEAP_HP)),
-        "worth as much health as it was before"
+        world.stats.get(back).map(|s| s.attributes.strength),
+        Some(bare + Fixed::from_int(rules::FLESH_HEAP_STRENGTH)),
+        "worth as much strength as it was before"
     );
 }
 
@@ -8605,7 +8692,9 @@ fn every_soul_held_is_worth_attack_damage() {
 
 #[test]
 fn a_raze_goes_off_where_it_is_asked_for_and_walks_the_caster_nowhere() {
-    let (mut world, fiend, _mark) = fiend_and_a_mark(50);
+    // Near enough for the shortest raze, far enough that the bodies do not
+    // touch and get eased apart.
+    let (mut world, fiend, _mark) = fiend_and_a_mark(80);
     let out = a_creep_at(
         &mut world,
         bota_proto::Team::Dire,
@@ -8719,16 +8808,21 @@ fn souls_outlive_the_death_of_the_one_who_gathered_them() {
 }
 
 #[test]
-fn a_requiem_grows_with_the_souls_held_and_spends_none_of_them() {
+fn a_requiem_lets_a_line_fly_for_every_soul_and_a_line_burns_what_it_crosses_once() {
     let (mut world, fiend, mark) = fiend_and_a_mark(400);
     hand_souls(&mut world, fiend, 5);
     world.step();
     let full = world.health.get(mark).expect("standing").hp;
     let_go(&mut world, 5);
-    world.step();
-    world.step();
-    let taken = full - world.health.get(mark).expect("standing").hp;
-    assert!(taken > Fixed::ZERO, "everything near feels it: {taken:?}");
+    let flying = |world: &World| {
+        world
+            .view_full()
+            .projectiles
+            .iter()
+            .filter(|shown| shown.ability == Some(crate::game::ability::REQUIEM))
+            .count()
+    };
+    assert_eq!(flying(&world), 5, "one line to a soul");
     assert_eq!(
         world
             .stacks
@@ -8737,11 +8831,241 @@ fn a_requiem_grows_with_the_souls_held_and_spends_none_of_them() {
         Some(5),
         "and the souls are kept"
     );
+    // The line along the fiend's facing reaches the mark; the others fly
+    // wide of it. His swings at it are not the requiem's and are left out.
+    let mut burns = Vec::new();
+    for _ in 0..60 {
+        for event in world.step() {
+            if let bota_proto::EventKind::Damaged {
+                source,
+                target,
+                amount,
+                kind: bota_proto::DamageKind::Magical,
+                ..
+            } = event.kind
+                && source == Some(crate::game::wire_id(fiend))
+                && target == crate::game::wire_id(mark)
+            {
+                burns.push(amount);
+            }
+        }
+    }
+    assert_eq!(
+        burns,
+        vec![rules::REQUIEM_LINE_DAMAGE[0]],
+        "one line's worth, once"
+    );
     assert!(
-        world.statuses.get(mark).is_some_and(|on_it| on_it
+        world.health.get(mark).expect("standing").hp < full,
+        "and it was felt"
+    );
+    assert_eq!(flying(&world), 0, "and the lines have flown out");
+}
+
+#[test]
+fn what_stands_at_the_fiend_is_crossed_by_every_line_and_held_the_longest() {
+    let (mut world, fiend, mark) = fiend_and_a_mark(60);
+    hand_souls(&mut world, fiend, 5);
+    world.step();
+    let full = world.health.get(mark).expect("standing").hp;
+    let_go(&mut world, 5);
+    world.step();
+    let taken = full - world.health.get(mark).expect("standing").hp;
+    assert_eq!(
+        taken,
+        Fixed::from_int(5 * rules::REQUIEM_LINE_DAMAGE[0]),
+        "five lines, five burns"
+    );
+    let held = world.modifiers.get(mark).and_then(|on_it| {
+        on_it
             .active()
-            .any(|status| matches!(status.kind, StatusKind::Slowed { .. }))),
-        "what it caught walks slower"
+            .find(|held| held.kind == ModifierKind::Feared && held.source == Some(fiend))
+            .and_then(|held| held.ticks_left)
+    });
+    assert_eq!(
+        held,
+        Some(rules::REQUIEM_HOLD_MAX_TICKS),
+        "five lines' fear, capped"
+    );
+    assert!(
+        world.modifiers.get(mark).is_some_and(|on_it| on_it
+            .active()
+            .any(|held| matches!(held.kind, ModifierKind::Slowed { .. }))),
+        "and it walks slower"
+    );
+    let projected = world
+        .view(bota_proto::Team::Dire)
+        .units
+        .into_iter()
+        .find(|unit| unit.id == crate::game::wire_id(mark))
+        .expect("the frightened creep is projected");
+    assert_ne!(
+        projected.statuses.bits & bota_proto::StatusFlags::FEARED,
+        0,
+        "and the fear is on the wire"
+    );
+}
+
+#[test]
+fn what_the_requiem_frightens_runs_from_the_fiend_and_swings_at_nothing() {
+    let (mut world, fiend, mark) = fiend_and_a_mark(150);
+    hand_souls(&mut world, fiend, 5);
+    world.step();
+    let apart = |world: &World| {
+        crate::game::isqrt64(
+            world
+                .transform
+                .get(fiend)
+                .expect("standing")
+                .pos
+                .distance_squared(world.transform.get(mark).expect("standing").pos),
+        )
+    };
+    let_go(&mut world, 5);
+    world.step();
+    assert!(
+        world.feared(mark),
+        "the first line crossing it frightens it"
+    );
+    let before = apart(&world);
+    for _ in 0..10 {
+        world.step();
+        assert!(
+            !matches!(
+                world.action.get(mark).map(|action| action.state),
+                Some(crate::game::ActionState::Attack { .. })
+            ),
+            "feared, it swings at nothing"
+        );
+    }
+    let after = apart(&world);
+    // Ten ticks, a few of them spent turning round.
+    assert!(
+        after > before + Fixed::from_int(50).raw as i64,
+        "and it has run: {before} then {after}"
+    );
+}
+
+#[test]
+fn a_death_lets_a_share_of_the_souls_go() {
+    let (mut world, fiend, _mark) = fiend_and_a_mark(400);
+    hand_souls(&mut world, fiend, 10);
+    let mut events = Vec::new();
+    world.bury(vec![(fiend, None)], &mut events);
+    for _ in 0..world.seats[0].respawn_left {
+        world.step();
+    }
+    let back = world.seats[0].unit.expect("stands again");
+    assert_eq!(
+        world.stacks.get(back).map(|kept| kept.of(StackKind::Souls)),
+        Some(7),
+        "three of ten are let go"
+    );
+}
+
+#[test]
+fn a_raze_leaves_its_mark_where_it_lands_for_whoever_sees_the_spot() {
+    // The creep stands past its own sight of the fiend, and the far raze
+    // lands beside it.
+    let apart = rules::RAZE_DISTANCE[2] + 150;
+    assert!(
+        apart > rules::CREEP_VISION,
+        "the fiend is out of the creep's sight"
+    );
+    let (mut world, _fiend, _mark) = fiend_and_a_mark(apart);
+    let_go(&mut world, 2);
+    world.step();
+    let dire = world.view(bota_proto::Team::Dire);
+    let landed = dire
+        .projectiles
+        .iter()
+        .find(|shown| shown.ability == Some(crate::game::ability::RAZE_FAR))
+        .expect("the Dire side sees the raze where it landed");
+    assert_eq!(
+        landed.pos,
+        bota_proto::Vec2::from_ints(5000 + rules::RAZE_DISTANCE[2], 5000)
+    );
+    assert!(
+        dire.units
+            .iter()
+            .all(|shown| shown.hero != Some(bota_proto::HeroId(2))),
+        "and still does not see the fiend"
+    );
+    for _ in 0..rules::MARK_TICKS {
+        world.step();
+    }
+    assert!(
+        world
+            .view_full()
+            .projectiles
+            .iter()
+            .all(|shown| shown.ability != Some(crate::game::ability::RAZE_FAR)),
+        "the mark is gone once its ticks have run"
+    );
+}
+
+#[test]
+fn a_hook_flies_out_on_a_chain_of_links_and_takes_them_home() {
+    let (mut world, _pudge, _mark) = pudge_and_a_mark(600);
+    throw_hook(&mut world, bota_proto::Vec2::from_ints(4000, 5000));
+    world.step();
+    let chained = |world: &World| {
+        world
+            .view_full()
+            .projectiles
+            .iter()
+            .filter(|shown| shown.ability == Some(crate::game::ability::MEAT_HOOK))
+            .count()
+    };
+    assert_eq!(
+        chained(&world),
+        rules::HOOK_LINKS + 1,
+        "the hook and every link of its chain are in the view"
+    );
+    for _ in 0..200 {
+        world.step();
+        if world.entities.iter().all(|e| world.hook.get(e).is_none()) {
+            break;
+        }
+    }
+    assert_eq!(chained(&world), 0, "the chain went home with the hook");
+}
+
+#[test]
+fn a_dismember_shows_its_hold_on_what_it_eats_until_it_lets_go() {
+    let (mut world, pudge, mark) = pudge_and_a_mark(100);
+    if let Some(book) = world.abilities.get_mut(pudge) {
+        book.slots[3].level = 1;
+    }
+    pudge_casts(
+        &mut world,
+        3,
+        bota_proto::Target::Unit(crate::game::wire_id(mark)),
+    );
+    let shown = world
+        .mark_of(pudge, crate::game::ability::DISMEMBER)
+        .expect("the hold is shown");
+    let eaten = world.transform.get(mark).expect("standing").pos;
+    assert_eq!(world.transform.get(shown).map(|t| t.pos), Some(eaten));
+    world.transform.get_mut(mark).expect("standing").pos =
+        eaten + bota_proto::Vec2::from_ints(40, 0);
+    world.step();
+    assert_eq!(
+        world.transform.get(shown).map(|t| t.pos),
+        world.transform.get(mark).map(|t| t.pos),
+        "and follows what is eaten"
+    );
+    world.advance(&[crate::game::Command {
+        slot: bota_proto::SlotId(0),
+        unit: None,
+        order: bota_proto::Order::Move {
+            target: bota_proto::Target::None,
+        },
+    }]);
+    assert_eq!(
+        world.mark_of(pudge, crate::game::ability::DISMEMBER),
+        None,
+        "letting go takes the hold away"
     );
 }
 
@@ -8758,9 +9082,9 @@ fn a_requiem_with_no_souls_gathered_touches_nobody() {
         "nothing gathered is nothing let go"
     );
     assert!(
-        world.statuses.get(mark).is_none_or(|on_it| on_it
+        world.modifiers.get(mark).is_none_or(|on_it| on_it
             .active()
-            .all(|status| !matches!(status.kind, StatusKind::Slowed { .. }))),
+            .all(|held| !matches!(held.kind, ModifierKind::Slowed { .. }))),
         "not even the slow"
     );
     let spent = world
@@ -8854,6 +9178,7 @@ fn no_creep_of_the_first_waves_is_left_wrestling_its_own_base() {
         tick_rate: 30,
         mode: bota_proto::TickMode::Realtime,
         ack_timeout_ticks: 0,
+        cheats: false,
     };
     let mut world = World::for_match(&cfg, cfg.rng());
     for _ in 0..=rules::FIRST_WAVE_TICK {
@@ -8941,6 +9266,139 @@ fn fell_at(world: &mut World, pos: bota_proto::Vec2) {
     world.step();
 }
 
+/// The bug this guards against: told to walk into the middle of a tower, a
+/// hero walked up to it and then circled it for ever, trying for a spot it
+/// could never stand on.
+#[test]
+fn a_hero_told_to_walk_into_a_tower_walks_up_to_it_and_stands() {
+    let cfg = crate::game::MatchConfig {
+        match_id: 7,
+        master_key: [0; 32],
+        picks: vec![],
+        map: bota_proto::MapId(0),
+        tick_rate: 30,
+        mode: bota_proto::TickMode::Realtime,
+        ack_timeout_ticks: 0,
+        cheats: false,
+    };
+    let mut world = World::for_match(&cfg, cfg.rng());
+    let (_, _, tower) = rules::RADIANT_TOWERS[2];
+    let start = bota_proto::Vec2::from_ints(4000, 4500);
+    let hero = world.spawn_hero(
+        bota_proto::Team::Radiant,
+        start,
+        bota_proto::SlotId(0),
+        bota_proto::HeroId(0),
+    );
+    world.set_order(hero, crate::game::UnitOrder::Move { pos: tower });
+    let mut seen = Vec::new();
+    for _ in 0..(10 * rules::TICKS_PER_SECOND) {
+        world.advance(&[]);
+        seen.push(world.transform.get(hero).expect("standing").pos);
+    }
+    let footprint = crate::game::structure_clearance(rules::units(rules::TOWER_COLLISION));
+    let last = *seen.last().expect("walked");
+    assert!(
+        !last.within(start, rules::units(300)),
+        "it set off: {last:?}"
+    );
+    assert!(
+        !last.within(tower, footprint),
+        "it never stood in the tower"
+    );
+    assert!(
+        last.within(tower, footprint + rules::units(rules::GRID_CELL_SIZE * 2)),
+        "and got as near as the ground lets it: {last:?}"
+    );
+    let settled = &seen[seen.len() - rules::TICKS_PER_SECOND as usize..];
+    assert!(
+        settled.iter().all(|at| *at == last),
+        "and stood there through the last second instead of circling"
+    );
+}
+
+/// The bug this guards against: a walk to a spot no way leads to went
+/// straight at it and stood pressed against whatever was in the way.
+#[test]
+fn a_walk_to_where_no_way_leads_ends_at_the_nearest_spot_got_to() {
+    let mut grid = crate::game::PassGrid::open();
+    let wall = 100;
+    for cy in 0..rules::GRID_CELLS {
+        grid.close_cell(wall, cy);
+    }
+    let from = bota_proto::Vec2::from_ints(1000, 1000);
+    let beyond = bota_proto::Vec2::from_ints(10000, 1000);
+    let path = crate::game::find_path(&grid, from, beyond);
+    let end = *path.last().expect("it walks somewhere");
+    assert!(
+        end.x.to_int() < wall as i32 * rules::GRID_CELL_SIZE,
+        "it stops this side of the wall: {end:?}"
+    );
+    assert!(
+        end.x.to_int() >= (wall as i32 - 1) * rules::GRID_CELL_SIZE,
+        "right up against it: {end:?}"
+    );
+    // A spot that can be stood on and reached is the walk's own end.
+    let there = bota_proto::Vec2::from_ints(5000, 3000);
+    assert_eq!(
+        crate::game::find_path(&grid, from, there).last(),
+        Some(&there)
+    );
+}
+
+/// The bug this guards against: the lane routes were laid once with every
+/// tower's footprint in them, and a wave kept walking round the ground a
+/// fallen tower had stood on.
+#[test]
+fn a_wave_walks_over_where_its_tower_stood_once_it_has_fallen() {
+    let cfg = crate::game::MatchConfig {
+        match_id: 7,
+        master_key: [0; 32],
+        picks: vec![],
+        map: bota_proto::MapId(0),
+        tick_rate: 30,
+        mode: bota_proto::TickMode::Realtime,
+        ack_timeout_ticks: 0,
+        cheats: false,
+    };
+    let mut world = World::for_match(&cfg, cfg.rng());
+    let (lane, _, tower) = rules::RADIANT_TOWERS[2];
+    assert_eq!(lane, rules::LANE_MID, "the Radiant mid tier three");
+    let footprint = crate::game::structure_clearance(rules::units(rules::TOWER_COLLISION));
+    assert!(
+        world.walked_lanes()[0][0]
+            .iter()
+            .all(|spot| !spot.within(tower, footprint)),
+        "standing, the tower is walked round"
+    );
+    fell_at(&mut world, tower);
+    assert!(
+        world.walked_lanes()[0][0].contains(&tower),
+        "fallen, the route runs over its ground"
+    );
+    for _ in 0..=rules::FIRST_WAVE_TICK {
+        world.advance(&[]);
+    }
+    let mut nearest = i64::MAX;
+    for _ in 0..(20 * rules::TICKS_PER_SECOND) {
+        world.advance(&[]);
+        for creep in world.entities.iter() {
+            if world.march.get(creep).is_none()
+                || world.team.get(creep) != Some(&bota_proto::Team::Radiant)
+                || world.lane.get(creep).map(|l| l.0) != Some(rules::LANE_MID)
+            {
+                continue;
+            }
+            let at = world.transform.get(creep).expect("standing").pos;
+            nearest = nearest.min(crate::game::isqrt64(at.distance_squared(tower)) >> 16);
+        }
+    }
+    assert!(
+        nearest < i64::from(rules::TOWER_COLLISION),
+        "the wave walks where the tower's body was: nearest {nearest}"
+    );
+}
+
 #[test]
 fn a_lane_opens_tower_by_tower_into_its_barracks() {
     let mut world = World::on_map(crate::game::map_of(bota_proto::MapId(0)));
@@ -8993,6 +9451,7 @@ fn passability_changes_invalidate_cached_routes() {
         crate::game::Route {
             path: vec![bota_proto::Vec2::from_ints(5_000, 5_000)],
             goal: bota_proto::Vec2::from_ints(6_000, 5_000),
+            end: bota_proto::Vec2::from_ints(5_000, 5_000),
             trace: Some(crate::game::TraceSide::Left),
         },
     );
@@ -9070,6 +9529,7 @@ fn a_fallen_barracks_turns_the_waves_against_it_super_and_all_of_them_mega() {
         tick_rate: 30,
         mode: bota_proto::TickMode::Realtime,
         ack_timeout_ticks: 0,
+        cheats: false,
     };
     let mut world = World::for_match(&cfg, cfg.rng());
     // Whole barracks: plain waves.
@@ -9116,12 +9576,8 @@ fn a_fallen_barracks_turns_the_waves_against_it_super_and_all_of_them_mega() {
         .find(|e| world.kind.get(**e) == Some(&bota_proto::UnitKind::CreepMelee))
         .expect("a melee creep spawned");
     assert_eq!(
-        world
-            .stats
-            .get(*mega_melee)
-            .expect("settled")
-            .attack_interval,
-        rules::MEGA_MELEE_ATTACK_INTERVAL,
+        world.stats.get(*mega_melee).expect("settled").attack_time,
+        rules::MEGA_MELEE_ATTACK_TIME,
         "a mega melee swings faster than a super one"
     );
 }
@@ -9136,6 +9592,7 @@ fn the_demo_waves_march_out_and_meet_between_the_towers() {
         tick_rate: 30,
         mode: bota_proto::TickMode::Realtime,
         ack_timeout_ticks: 0,
+        cheats: false,
     };
     let mut world = World::for_match(&cfg, cfg.rng());
     for _ in 0..=rules::FIRST_WAVE_TICK {
@@ -9193,6 +9650,7 @@ fn the_fountain_melts_whoever_steps_into_its_reach_and_spares_who_stays_out() {
         tick_rate: 30,
         mode: bota_proto::TickMode::Realtime,
         ack_timeout_ticks: 0,
+        cheats: false,
     };
     let mut world = World::for_match(&cfg, cfg.rng());
     let hero = world.seats[0].unit.expect("stood up");
@@ -9286,13 +9744,15 @@ fn the_demo_waves_walk_the_road_and_not_through_their_towers() {
         rules::DEMO_RADIANT_TOWERS[0].2,
         rules::DEMO_DIRE_TOWERS[0].2,
     ];
-    for team_at in 0..2 {
-        let route = &crate::game::lane_routes(map)[team_at][0];
+    let footprint = crate::game::structure_clearance(rules::units(rules::TOWER_COLLISION));
+    let routes = crate::game::lane_routes(map);
+    for side in &routes {
+        let route = &side[0];
         assert!(!route.is_empty(), "the lane is walked");
         for waypoint in route {
             for tower in towers {
                 assert!(
-                    !waypoint.within(tower, rules::units(250)),
+                    !waypoint.within(tower, footprint),
                     "a waypoint at ({},{}) aims into the tower at ({},{})",
                     waypoint.x.to_int(),
                     waypoint.y.to_int(),
@@ -9304,40 +9764,65 @@ fn the_demo_waves_walk_the_road_and_not_through_their_towers() {
     }
 }
 
+/// How far along a lane's centerline a point stands, in world units: the
+/// length of the line up to the point's foot on its nearest segment.
+fn lane_progress(line: &[bota_proto::Vec2], pos: bota_proto::Vec2) -> i64 {
+    let at = |v: bota_proto::Vec2| (i64::from(v.x.to_int()), i64::from(v.y.to_int()));
+    let (px, py) = at(pos);
+    let mut nearest: Option<(i64, i64)> = None;
+    let mut walked = 0;
+    for seg in line.windows(2) {
+        let (ax, ay) = at(seg[0]);
+        let (bx, by) = at(seg[1]);
+        let (dx, dy) = (bx - ax, by - ay);
+        let len2 = (dx * dx + dy * dy).max(1);
+        let len = len2.isqrt();
+        let t = ((px - ax) * dx + (py - ay) * dy).clamp(0, len2);
+        let (fx, fy) = (ax + dx * t / len2, ay + dy * t / len2);
+        let off = (px - fx).pow(2) + (py - fy).pow(2);
+        if nearest.is_none_or(|(had, _)| off < had) {
+            nearest = Some((off, walked + t / len));
+        }
+        walked += len;
+    }
+    nearest.map_or(0, |(_, progress)| progress)
+}
+
 /// The bug this guards against: on lanes whose spawner stands ahead of its
 /// own rearmost tower, the route began behind the wave, and every fresh
 /// wave walked back to its own tower before turning around.
+///
+/// Going round a tower's footprint gives back a little of the way along
+/// the lane; walking back further than that footprint is walking back.
 #[test]
 fn no_route_on_any_map_walks_a_wave_backwards() {
+    let slack =
+        i64::from(crate::game::structure_clearance(rules::units(rules::TOWER_COLLISION)).to_int());
     for map_id in [bota_proto::MapId(0), bota_proto::MapId(1)] {
         let map = crate::game::map_of(map_id);
+        let routes = crate::game::lane_routes(map);
         for (ti, team) in [bota_proto::Team::Radiant, bota_proto::Team::Dire]
             .into_iter()
             .enumerate()
         {
             for lane in map.lanes() {
-                let route = &crate::game::lane_routes(map)[ti][usize::from(lane)];
+                let route = &routes[ti][usize::from(lane)];
                 assert!(!route.is_empty(), "the lane is walked");
-                let mut at = crate::game::creep_spawn_pos(map, team, lane);
-                let mut last: Option<(i64, i64)> = None;
+                let mut line = crate::game::lane_polyline(map, lane);
+                if team == bota_proto::Team::Dire {
+                    line.reverse();
+                }
+                let mut furthest =
+                    lane_progress(&line, crate::game::creep_spawn_pos(map, team, lane));
                 for (i, w) in route.iter().enumerate() {
-                    let d = (
-                        i64::from(w.x.raw) - i64::from(at.x.raw),
-                        i64::from(w.y.raw) - i64::from(at.y.raw),
+                    let here = lane_progress(&line, *w);
+                    assert!(
+                        here + slack >= furthest,
+                        "{team:?} lane {lane} on map {map_id:?} walks back along the lane at waypoint {i} ({},{}): {here} after {furthest}",
+                        w.x.to_int(),
+                        w.y.to_int()
                     );
-                    if d == (0, 0) {
-                        continue;
-                    }
-                    if let Some(p) = last {
-                        assert!(
-                            p.0 * d.0 + p.1 * d.1 >= 0,
-                            "{team:?} lane {lane} on map {map_id:?} turns                              right around at waypoint {i} ({},{})",
-                            w.x.to_int(),
-                            w.y.to_int()
-                        );
-                    }
-                    last = Some(d);
-                    at = *w;
+                    furthest = furthest.max(here);
                 }
             }
         }
@@ -9448,8 +9933,9 @@ fn nearby_elevations(
 const UPHILL_TEST_ATTACKER: UnitDef = UnitDef {
     max_hp: 8_000,
     damage: 1,
-    attack_interval: 1,
-    attack_point: 1,
+    attack_time: 33,
+    attack_point: 33,
+    attack_backswing: 0,
     projectile_speed: Some(6_000),
     move_speed: 0,
     ..RANGED_CREEP
@@ -9521,6 +10007,71 @@ fn ranged_attacks_can_miss_uphill_but_not_on_level_ground() {
     );
 }
 
+/// Blows an attacker landed and missed on a target over the same run as
+/// [`ranged_damage_after_ticks`], counted from what the ticks told of.
+fn ranged_swings_after_ticks(
+    source: bota_proto::Vec2,
+    target: bota_proto::Vec2,
+    attacker_def: &'static UnitDef,
+    target_def: &'static UnitDef,
+) -> (usize, usize) {
+    const OBSERVER: UnitDef = UnitDef {
+        max_hp: 8_000,
+        damage: 0,
+        move_speed: 0,
+        vision: 2_000,
+        ..MELEE_CREEP
+    };
+    let mut world = World::new();
+    let attacker = world.spawn_unit(attacker_def, Team::Radiant, source);
+    let mark = world.spawn_unit(target_def, Team::Dire, target);
+    world.spawn_unit(&OBSERVER, Team::Radiant, target);
+    world.settle();
+    world.set_target(attacker, mark);
+    if let Some(at) = world.transform.get_mut(attacker) {
+        at.facing = crate::game::facing_towards(source, target);
+    }
+    let (mut landed, mut missed) = (0, 0);
+    for _ in 0..512 {
+        for event in world.step() {
+            match event.kind {
+                bota_proto::EventKind::Damaged { source, target, .. }
+                    if source == Some(crate::game::wire_id(attacker))
+                        && target == crate::game::wire_id(mark) =>
+                {
+                    landed += 1;
+                }
+                bota_proto::EventKind::Missed { source, target }
+                    if source == Some(crate::game::wire_id(attacker))
+                        && target == crate::game::wire_id(mark) =>
+                {
+                    missed += 1;
+                }
+                _ => {}
+            }
+        }
+    }
+    (landed, missed)
+}
+
+#[test]
+fn an_uphill_miss_is_told_of_and_a_level_shot_never_is() {
+    let ground = crate::game::Ground::of(crate::game::map_of(bota_proto::MapId(0)));
+    let (source, level, uphill) = nearby_elevations(&ground);
+    let (level_landed, level_missed) =
+        ranged_swings_after_ticks(source, level, &UPHILL_TEST_ATTACKER, &UPHILL_TEST_TARGET);
+    let (uphill_landed, uphill_missed) =
+        ranged_swings_after_ticks(source, uphill, &UPHILL_TEST_ATTACKER, &UPHILL_TEST_TARGET);
+    assert!(level_landed > 0, "the level-ground control lands");
+    assert_eq!(level_missed, 0, "and nothing misses on level ground");
+    assert!(uphill_missed > 0, "uphill, misses are told of");
+    assert!(
+        uphill_missed < uphill_landed,
+        "and they are the smaller part: {uphill_missed} of {}",
+        uphill_landed + uphill_missed
+    );
+}
+
 #[test]
 fn buildings_and_flying_attackers_are_exempt_from_uphill_misses() {
     let ground = crate::game::Ground::of(crate::game::map_of(bota_proto::MapId(0)));
@@ -9551,6 +10102,7 @@ fn manual_projectile_damage(
     source_pos: bota_proto::Vec2,
     target_pos: bota_proto::Vec2,
     launch_tier: u8,
+    pierces: bool,
 ) -> i32 {
     const SHOTS: usize = 512;
     let mut world = World::new();
@@ -9581,6 +10133,8 @@ fn manual_projectile_damage(
                 launch_tier,
                 can_miss_uphill: true,
                 crit: false,
+                pierces,
+                pierce_damage: 0,
                 bounces_left: 0,
                 bounce_range: 0,
                 bounced: Vec::new(),
@@ -9601,8 +10155,9 @@ fn uphill_eligibility_uses_attacker_and_target_elevation_at_impact() {
     let low_tier = ground.tier(low);
     let high_tier = ground.tier(high);
 
-    let moved_up = manual_projectile_damage(high, high, low_tier);
-    let moved_down = manual_projectile_damage(low, high, high_tier);
+    let moved_up = manual_projectile_damage(high, high, low_tier, false);
+    let moved_down = manual_projectile_damage(low, high, high_tier, false);
+    let pierced_down = manual_projectile_damage(low, high, high_tier, true);
 
     assert_eq!(
         moved_up, 512,
@@ -9616,4 +10171,5 @@ fn uphill_eligibility_uses_attacker_and_target_elevation_at_impact() {
         moved_down > moved_up / 2,
         "the miss rate stays near one quarter"
     );
+    assert_eq!(pierced_down, 512, "a shot that pierces never misses uphill");
 }

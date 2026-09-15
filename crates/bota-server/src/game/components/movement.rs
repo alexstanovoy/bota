@@ -9,6 +9,9 @@ pub struct Route {
     pub path: Vec<Vec2>,
     /// Where the route was laid to.
     pub goal: Vec2,
+    /// Where the walk ends: the goal when it can be stood on and reached,
+    /// else the nearest spot that can.
+    pub end: Vec2,
     /// The way round a body it settled on, while it is still working round.
     pub trace: Option<TraceSide>,
 }

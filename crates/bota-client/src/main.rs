@@ -6,6 +6,7 @@
 
 mod camera;
 mod catalog;
+mod console;
 mod hud;
 mod icons;
 mod input;

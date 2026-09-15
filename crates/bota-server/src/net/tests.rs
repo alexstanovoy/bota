@@ -89,6 +89,7 @@ fn a_realtime_match_reaches_two_clients() {
         seed: 7,
         map: bota_proto::MapId(0),
         ack_timeout_ticks: 150,
+        cheats: false,
     });
 
     let (mut c1, slot1) = join_as_bot(addr, "alpha");
@@ -175,6 +176,7 @@ fn a_spectator_borrows_eyes_and_is_told_the_orders_they_see() {
         seed: 9,
         map: bota_proto::MapId(0),
         ack_timeout_ticks: 150,
+        cheats: false,
     });
     let (mut c1, _) = join_as_bot(addr, "alpha");
     let (mut c2, _) = join_as_bot(addr, "beta");
@@ -260,6 +262,7 @@ fn lockstep_advances_as_fast_as_the_acks_come() {
         seed: 8,
         map: bota_proto::MapId(0),
         ack_timeout_ticks: 600, // ten seconds: only acks can move this match
+        cheats: false,
     });
 
     let (mut c1, _) = join_as_bot(addr, "alpha");

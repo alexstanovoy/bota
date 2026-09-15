@@ -3,6 +3,7 @@
 use bota_proto::{Fixed, Vec2};
 
 use crate::engine::Entity;
+use crate::game::rules;
 
 /// A hook thrown out and on its way somewhere.
 ///
@@ -26,4 +27,7 @@ pub struct Hook {
     pub caught: Option<Entity>,
     /// Whether it is on its way back.
     pub returning: bool,
+    /// The marks its chain is laid out with, evenly between the thrower and
+    /// the hook.
+    pub links: [Entity; rules::HOOK_LINKS],
 }

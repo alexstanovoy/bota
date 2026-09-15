@@ -1,8 +1,8 @@
 //! The jungle: filling camps, and what a neutral does once drawn off one.
 
-use bota_proto::{Team, Vec2};
+use bota_proto::Vec2;
 
-use crate::game::{CampHome, Entity, NeutralAi, UnitOrder, Upgrades, World, rosters_of};
+use crate::game::{Entity, UnitOrder, World, rosters_of};
 use crate::game::{Purpose, rules};
 
 impl World {
@@ -44,26 +44,7 @@ impl World {
                 let across =
                     (slot as i32 - (creeps.len() as i32 - 1) / 2) * rules::CAMP_SPAWN_SPACING;
                 let at = camp.pos + Vec2::from_ints(across, 0);
-                let beast = self.spawn_unit(kind.def(), Team::Neutral, at);
-                self.upgrades.insert(beast, Upgrades(upgrades));
-                self.camp_home.insert(
-                    beast,
-                    CampHome {
-                        camp: index as u8,
-                        home: at,
-                    },
-                );
-                self.neutral_ai.insert(
-                    beast,
-                    NeutralAi {
-                        leash_left: rules::NEUTRAL_AGGRO_WINDOW,
-                        reaggro_block: 0,
-                        next_window: rules::NEUTRAL_AGGRO_WINDOW,
-                        going_home: false,
-                        roused_by: None,
-                        awake: false,
-                    },
-                );
+                self.spawn_neutral(kind.def(), at, index as u8, upgrades);
             }
         }
         self.settle();

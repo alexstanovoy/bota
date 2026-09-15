@@ -10,6 +10,26 @@
 
 use bota_proto::{ItemId, ShopEntry};
 
+/// How what an ability shows on the ground is drawn, in world units.
+///
+/// The wire brings where it stands, as one of the view's projectiles; this
+/// is only the shape.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Art {
+    /// A missile: a dot.
+    Missile,
+    /// A burst on the ground, `radius` wide.
+    Burst { radius: u16 },
+    /// A soul in flight: a streak along its facing.
+    Soul,
+    /// One link of a chain.
+    Link,
+    /// A hold on the unit it stands on.
+    Hold,
+    /// A cloud on the ground, `radius` wide.
+    Cloud { radius: u16 },
+}
+
 /// One ability, as the client shows and aims it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct AbilityFace {
@@ -21,6 +41,8 @@ pub struct AbilityFace {
     pub blurb: &'static str,
     /// The drawing of it. Absent while there is none.
     pub icon: Option<&'static [u8]>,
+    /// How what it shows on the ground is drawn.
+    pub art: Art,
 }
 
 /// One item, as the client shows and aims it.
@@ -69,119 +91,138 @@ pub const ABILITIES: [AbilityFace; 19] = [
         name: "Crit",
         blurb: "Passive. 20/25/30/35% chance to strike for 175/200/225/250% damage.",
         icon: None,
+        art: Art::Missile,
     },
     AbilityFace {
         id: 1,
         name: "Frenzy",
         blurb: "No target. +20/28/36/44% attack speed for 6 s. 30/40/50/60 mana.",
         icon: None,
+        art: Art::Missile,
     },
     AbilityFace {
         id: 2,
         name: "Bounce",
         blurb: "Enemy target, range 550. 70/140/210/280 magic damage, then jumps to the 2/4/6/8 nearest new enemies.",
         icon: None,
+        art: Art::Missile,
     },
     AbilityFace {
         id: 3,
         name: "Volley",
         blurb: "Ultimate, no target. An attack at 80/100/120% damage flies at every enemy within 700.",
         icon: None,
+        art: Art::Missile,
     },
     AbilityFace {
         id: 4,
         name: "Hook",
-        blurb: "Point target, range 1100. Catches the first unit in its way, drags it back and deals 90/180/270/360 pure damage.",
+        blurb: "Point target, range 1300. Catches the first unit in its way, drags it back and deals 90/180/270/360 pure damage.",
         icon: None,
+        art: Art::Link,
     },
     AbilityFace {
         id: 5,
         name: "Rot",
         blurb: "Toggle. Burns everything within 250 for 30/60/90/120 a second and slows it, its owner included, but never kills its owner.",
         icon: None,
+        art: Art::Cloud { radius: 250 },
     },
     AbilityFace {
         id: 6,
         name: "Heap",
-        blurb: "Passive. Magic resistance, and health for every death near you.",
+        blurb: "Passive. +2 strength for every enemy hero that dies within 450 of you, whoever brought it down. Kept through your own death.",
         icon: None,
+        art: Art::Missile,
     },
     AbilityFace {
         id: 7,
         name: "Dismem",
-        blurb: "Ultimate, enemy target, range 150. Holds it for 3 s, eating it and healing you.",
+        blurb: "Ultimate, enemy target, range 200. Holds it for 3 s, eating it and healing you.",
         icon: None,
+        art: Art::Hold,
     },
     AbilityFace {
         id: 8,
         name: "Burst",
         blurb: "No target. The courier flies 50% faster for 6 s. 120 s wait.",
         icon: None,
+        art: Art::Missile,
     },
     AbilityFace {
         id: 9,
         name: "Return",
         blurb: "No target. The courier puts what it holds back in the stash, then goes home.",
         icon: None,
+        art: Art::Missile,
     },
     AbilityFace {
         id: 10,
         name: "Stash",
         blurb: "No target. The courier takes what waits in your stash and carries it to you.",
         icon: None,
+        art: Art::Missile,
     },
     AbilityFace {
         id: 11,
         name: "Give",
         blurb: "No target. The courier carries what it holds to you, then goes home.",
         icon: None,
+        art: Art::Missile,
     },
     AbilityFace {
         id: 12,
         name: "Shield",
         blurb: "No target. Nothing gets through to the courier for 2 s. 200 s wait.",
         icon: None,
+        art: Art::Missile,
     },
     AbilityFace {
         id: 13,
         name: "Raze 1",
         blurb: "No target. Burns everything within 250 of a spot 200 ahead of where you face for 90/160/230/300 magic damage, plus 50/60/70/80 per prior same-caster stack. Each damaging hit refreshes all stacks for 8 s. One point levels all three razes. 10 s wait.",
         icon: None,
+        art: Art::Burst { radius: 250 },
     },
     AbilityFace {
         id: 14,
         name: "Raze 2",
         blurb: "No target. Burns everything within 250 of a spot 450 ahead of where you face for 90/160/230/300 magic damage, plus 50/60/70/80 per prior same-caster stack. Each damaging hit refreshes all stacks for 8 s. One point levels all three razes. 10 s wait.",
         icon: None,
+        art: Art::Burst { radius: 250 },
     },
     AbilityFace {
         id: 15,
         name: "Raze 3",
         blurb: "No target. Burns everything within 250 of a spot 700 ahead of where you face for 90/160/230/300 magic damage, plus 50/60/70/80 per prior same-caster stack. Each damaging hit refreshes all stacks for 8 s. One point levels all three razes. 10 s wait.",
         icon: None,
+        art: Art::Burst { radius: 250 },
     },
     AbilityFace {
         id: 16,
         name: "Requiem",
-        blurb: "Ultimate, no target. Every enemy within 900 takes 8/11/14 magic damage per soul held and is slowed for 2 s. The souls are kept.",
+        blurb: "Ultimate, no target. Lets a line fly out for every soul held, up to 20, out to 1000. Each line burns what it crosses for 80/120/160 magic damage, and every hit adds 0.6 s of fear and a 20/25/30% slow, up to 2.15 s. What stands close is crossed by many lines. The souls are kept.",
         icon: None,
+        art: Art::Soul,
     },
     AbilityFace {
         id: 17,
         name: "Necro",
-        blurb: "Passive. A soul is kept of everything you bring down, three for a hero, each worth +2 attack damage. Holds up to 12/16/20/24, and they survive your death.",
+        blurb: "Passive. A soul is kept of everything you bring down, three for a hero, each worth +2 attack damage. Holds up to 12/16/20/24; a death lets 30% of them go.",
         icon: None,
+        art: Art::Missile,
     },
     AbilityFace {
         id: 18,
         name: "Presence",
-        blurb: "Passive. Enemies within 900 wear 2/3/4/5 less armor.",
+        blurb: "Passive. Enemies within 1200 wear 2/3/4/5 less armor.",
         icon: None,
+        art: Art::Missile,
     },
 ];
 
 /// Every item the shop sells, in id order.
-pub const ITEMS: [ItemFace; 43] = [
+pub const ITEMS: [ItemFace; 52] = [
     ItemFace {
         id: 0,
         name: "Boots",
@@ -483,10 +524,73 @@ pub const ITEMS: [ItemFace; 43] = [
         blurb: "One charge per purchase, stacks up to three. Each charge adds 0.4 health regeneration per second. Self-use consumes one charge to restore up to 100 mana instantly. Requires missing mana.",
         icon: Some(include_bytes!("../assets/items/mango.svg")),
     },
+    ItemFace {
+        id: 43,
+        name: "Eaglesong",
+        stats: "+25 AGI",
+        blurb: "+25 agility.",
+        icon: Some(include_bytes!("../assets/items/eaglesong.svg")),
+    },
+    ItemFace {
+        id: 44,
+        name: "Claymore",
+        stats: "+20 DMG",
+        blurb: "+20 attack damage.",
+        icon: Some(include_bytes!("../assets/items/claymore.svg")),
+    },
+    ItemFace {
+        id: 45,
+        name: "Talisman",
+        stats: "15% evasion",
+        blurb: "15% of attacks at the carrier miss. Of several evasions carried, only the best counts.",
+        icon: Some(include_bytes!("../assets/items/talisman_of_evasion.svg")),
+    },
+    ItemFace {
+        id: 46,
+        name: "Butterfly",
+        stats: "+30 AGI, 35% eva",
+        blurb: "+30 agility, +30 attack damage, +20% base attack speed. 35% of attacks at the carrier miss. Of several evasions carried, only the best counts.",
+        icon: Some(include_bytes!("../assets/items/butterfly.svg")),
+    },
+    ItemFace {
+        id: 47,
+        name: "Javelin",
+        stats: "25% pierce",
+        blurb: "25% of attacks pierce: they cannot miss and deal 60 bonus magical damage. Not against buildings.",
+        icon: Some(include_bytes!("../assets/items/javelin.svg")),
+    },
+    ItemFace {
+        id: 48,
+        name: "Demon Edge",
+        stats: "+40 DMG",
+        blurb: "+40 attack damage.",
+        icon: Some(include_bytes!("../assets/items/demon_edge.svg")),
+    },
+    ItemFace {
+        id: 49,
+        name: "Blitz",
+        stats: "+35 AS",
+        blurb: "+35 attack speed.",
+        icon: Some(include_bytes!("../assets/items/blitz_knuckles.svg")),
+    },
+    ItemFace {
+        id: 50,
+        name: "Rcp MKB",
+        stats: "recipe",
+        blurb: "Builds a Monkey King Bar out of a Demon Edge, Blitz Knuckles and a Javelin.",
+        icon: Some(include_bytes!("../assets/items/recipe.svg")),
+    },
+    ItemFace {
+        id: 51,
+        name: "MKB",
+        stats: "+50 DMG, 80% pierce",
+        blurb: "+50 attack damage, +50 attack speed, +50 attack range in melee hands. 80% of attacks pierce: they cannot miss and deal 70 bonus magical damage. Not against buildings. Of several pierces carried, only the best counts.",
+        icon: Some(include_bytes!("../assets/items/monkey_king_bar.svg")),
+    },
 ];
 
 /// Every timed effect, in id order.
-pub const EFFECTS: [EffectFace; 16] = [
+pub const EFFECTS: [EffectFace; 18] = [
     EffectFace {
         id: 0,
         name: "Frenzy",
@@ -581,6 +685,18 @@ pub const EFFECTS: [EffectFace; 16] = [
         id: 15,
         name: "Razed",
         blurb: "Shadowrazes from the same caster deal 50/60/70/80 more magic damage per stack. Each damaging hit refreshes all stacks for 8 s; up to 255 stacks.",
+        icon: None,
+    },
+    EffectFace {
+        id: 16,
+        name: "Rot",
+        blurb: "The rot is on: everything within 250 burns and slows, its owner included.",
+        icon: None,
+    },
+    EffectFace {
+        id: 17,
+        name: "Feared",
+        blurb: "Running from whoever put the fear on. Cannot attack or cast.",
         icon: None,
     },
 ];

@@ -275,6 +275,18 @@ fn a_held_hero_is_told_nothing() {
 }
 
 #[test]
+fn a_feared_hero_is_told_nothing() {
+    // It runs on its own and the server refuses whatever it is told.
+    let mut bot = seated(Vec::new());
+    let view = tick(|me| {
+        me.statuses = bota_proto::StatusFlags {
+            bits: bota_proto::StatusFlags::FEARED,
+        };
+    });
+    assert_eq!(bot.on_tick(&view), None);
+}
+
+#[test]
 fn a_wand_is_pressed_for_the_pool_it_would_fill() {
     let mut bot = seated(Vec::new());
     let view = tick(|me| {

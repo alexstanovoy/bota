@@ -43,33 +43,91 @@ fn heuristic(a: (usize, usize), b: (usize, usize)) -> u32 {
     STRAIGHT * dx.max(dy) + (DIAGONAL - STRAIGHT) * dx.min(dy)
 }
 
-/// The nearest spot a unit may actually stand on, for a point that may sit
-/// inside a building's footprint.
-pub fn nearest_open(grid: &PassGrid, at: Vec2) -> Vec2 {
-    PassGrid::cell_of(at)
-        .and_then(|cell| routable_cell(grid, cell))
+/// The spot a unit may actually stand on beside a point that may sit inside
+/// a building's footprint: the point itself when it is open, else the first
+/// open cell's centre on the way out of the footprint towards `toward`.
+///
+/// Falls back on the nearest open cell in any direction when that way out
+/// is shut too.
+pub fn open_beside(grid: &PassGrid, at: Vec2, toward: Vec2) -> Vec2 {
+    if grid.walkable(at) {
+        return at;
+    }
+    cell_beside(grid, at, toward)
+        .or_else(|| PassGrid::cell_of(at).and_then(|cell| routable_cell(grid, cell)))
         .map_or(at, PassGrid::cell_center)
 }
 
-/// The open cell to route to for a goal, stepping to a neighbour when the
-/// goal cell itself is blocked.
+/// The first open cell on the way from a point towards another, the point's
+/// own cell included, within [`OPEN_SEARCH_CELLS`]. None with the whole way
+/// shut, or the two points one.
+fn cell_beside(grid: &PassGrid, at: Vec2, toward: Vec2) -> Option<(usize, usize)> {
+    let dx = i64::from(toward.x.raw) - i64::from(at.x.raw);
+    let dy = i64::from(toward.y.raw) - i64::from(at.y.raw);
+    let len = dx.abs().max(dy.abs());
+    if len == 0 {
+        return None;
+    }
+    let sample = i64::from(rules::GRID_CELL_SIZE) << 15; // half a cell, raw
+    let steps = i64::from(OPEN_SEARCH_CELLS) * 2;
+    for step in 0..=steps {
+        let p = Vec2 {
+            x: bota_proto::Fixed {
+                raw: (i64::from(at.x.raw) + dx * sample * step / len) as i32,
+            },
+            y: bota_proto::Fixed {
+                raw: (i64::from(at.y.raw) + dy * sample * step / len) as i32,
+            },
+        };
+        if let Some(cell) = PassGrid::cell_of(p)
+            && grid.cell_open(cell.0, cell.1)
+        {
+            return Some(cell);
+        }
+    }
+    None
+}
+
+/// How many cells out an open cell is looked for: across the widest
+/// footprint on any map, and one more.
+const OPEN_SEARCH_CELLS: i32 =
+    (rules::DIRE_ANCIENT_COLLISION + rules::STEER_MARGIN) / rules::GRID_CELL_SIZE + 2;
+
+/// The open cell to route to for a goal: the goal cell itself, or the open
+/// cell nearest to it when that one is blocked.
+///
+/// Ties break on the lower row, then the lower column. None when nothing
+/// within [`OPEN_SEARCH_CELLS`] is open.
 fn routable_cell(grid: &PassGrid, cell: (usize, usize)) -> Option<(usize, usize)> {
     if grid.cell_open(cell.0, cell.1) {
         return Some(cell);
     }
-    for (dx, dy) in NEIGHBOURS {
-        let nx = cell.0 as i32 + dx;
-        let ny = cell.1 as i32 + dy;
-        if nx >= 0
-            && ny >= 0
-            && (nx as usize) < CELLS
-            && (ny as usize) < CELLS
-            && grid.cell_open(nx as usize, ny as usize)
-        {
-            return Some((nx as usize, ny as usize));
+    let mut best: Option<(i32, (usize, usize))> = None;
+    for ring in 1..=OPEN_SEARCH_CELLS {
+        if best.is_some_and(|(had, _)| ring * ring > had) {
+            break;
+        }
+        for dy in -ring..=ring {
+            for dx in -ring..=ring {
+                if dx.abs() != ring && dy.abs() != ring {
+                    continue;
+                }
+                let nx = cell.0 as i32 + dx;
+                let ny = cell.1 as i32 + dy;
+                if nx < 0 || ny < 0 || nx as usize >= CELLS || ny as usize >= CELLS {
+                    continue;
+                }
+                if !grid.cell_open(nx as usize, ny as usize) {
+                    continue;
+                }
+                let apart = dx * dx + dy * dy;
+                if best.is_none_or(|(had, _)| apart < had) {
+                    best = Some((apart, (nx as usize, ny as usize)));
+                }
+            }
         }
     }
-    None
+    best.map(|(_, found)| found)
 }
 
 const NEIGHBOURS: [(i32, i32); 8] = [
@@ -83,16 +141,22 @@ const NEIGHBOURS: [(i32, i32); 8] = [
     (1, -1),
 ];
 
-/// A* over the passability grid, returning the corner waypoints of the route.
+/// A* over the passability grid, returning the corners of the walk, the
+/// last of them where the walk ends: at `to` when it can be stood on and
+/// reached, else at the open spot nearest to it that can, on the walker's
+/// own side of whatever shuts it.
 ///
-/// Empty when no route exists or none is needed. Diagonal steps never cut a
-/// blocked corner. Ties break on cell index, so the route is the same on
-/// every platform.
+/// Empty when the walk ends in the cell the walker stands in. Diagonal
+/// steps never cut a blocked corner. Ties break on cell index, so the route
+/// is the same on every platform.
 pub fn find_path(grid: &PassGrid, from: Vec2, to: Vec2) -> Vec<Vec2> {
-    let (Some(start), Some(goal)) = (PassGrid::cell_of(from), PassGrid::cell_of(to)) else {
+    let (Some(start), Some(asked)) = (PassGrid::cell_of(from), PassGrid::cell_of(to)) else {
         return Vec::new();
     };
-    let (Some(start), Some(goal)) = (routable_cell(grid, start), routable_cell(grid, goal)) else {
+    let (Some(start), Some(goal)) = (
+        routable_cell(grid, start),
+        cell_beside(grid, to, from).or_else(|| routable_cell(grid, asked)),
+    ) else {
         return Vec::new();
     };
     if start == goal {
@@ -104,11 +168,18 @@ pub fn find_path(grid: &PassGrid, from: Vec2, to: Vec2) -> Vec<Vec2> {
     let mut heap = BinaryHeap::new();
     best[idx(start)] = 0;
     heap.push(Reverse((heuristic(start, goal), idx(start) as u32)));
+    // The cell got to that lies nearest the goal, for when no way leads
+    // there.
+    let mut nearest = (heuristic(start, goal), idx(start));
     while let Some(Reverse((_, at))) = heap.pop() {
         let at = at as usize;
         let cell = (at % CELLS, at / CELLS);
         if cell == goal {
             break;
+        }
+        let left = heuristic(cell, goal);
+        if left < nearest.0 {
+            nearest = (left, at);
         }
         let g = best[at];
         for (i, (dx, dy)) in NEIGHBOURS.iter().enumerate() {
@@ -134,12 +205,18 @@ pub fn find_path(grid: &PassGrid, from: Vec2, to: Vec2) -> Vec<Vec2> {
             }
         }
     }
-    if parent[idx(goal)] == u32::MAX {
+    let end = if parent[idx(goal)] == u32::MAX {
+        nearest.1
+    } else {
+        idx(goal)
+    };
+    if end == idx(start) {
         return Vec::new();
     }
+    let goal = (end % CELLS, end / CELLS);
     // Walk the parents back, then keep only the corners.
     let mut cells = vec![goal];
-    let mut at = idx(goal);
+    let mut at = end;
     while at != idx(start) {
         at = parent[at] as usize;
         cells.push((at % CELLS, at / CELLS));
@@ -166,5 +243,31 @@ pub fn find_path(grid: &PassGrid, from: Vec2, to: Vec2) -> Vec<Vec2> {
         }
     }
     corners.push(goal);
-    corners.iter().map(|&c| PassGrid::cell_center(c)).collect()
+    let mut spots: Vec<Vec2> = corners.iter().map(|&c| PassGrid::cell_center(c)).collect();
+    if goal == asked {
+        *spots.last_mut().expect("the end is kept") = to;
+    }
+    pull_string(grid, from, spots)
+}
+
+/// The corners a walk keeps: from where it stands and from each corner kept,
+/// the walk goes straight to the farthest later corner the grid line
+/// reaches, so a route that stepped round a footprint cell by cell rounds it
+/// in a few straight legs. The last corner is always kept.
+fn pull_string(grid: &PassGrid, from: Vec2, corners: Vec<Vec2>) -> Vec<Vec2> {
+    let mut kept = Vec::with_capacity(corners.len());
+    let mut anchor = from;
+    let mut at = 0;
+    while at < corners.len() {
+        let mut far = at;
+        for (later, &corner) in corners.iter().enumerate().skip(at + 1) {
+            if grid_los(grid, anchor, corner) {
+                far = later;
+            }
+        }
+        anchor = corners[far];
+        kept.push(anchor);
+        at = far + 1;
+    }
+    kept
 }

@@ -1,0 +1,9 @@
+<svg width="100%" viewBox="0 0 680 260" role="img" xmlns="http://www.w3.org/2000/svg"><title>Blitz Knuckles</title><desc>Rectangular icon: a four-ring knuckle duster with a spark</desc>
+<rect x="220" y="50" width="240" height="160" fill="#1a1e2a"/>
+<rect x="290" y="112" width="100" height="40" rx="12" fill="#9aa3ad"/>
+<circle cx="304" cy="132" r="9" fill="#1a1e2a"/>
+<circle cx="328" cy="132" r="9" fill="#1a1e2a"/>
+<circle cx="352" cy="132" r="9" fill="#1a1e2a"/>
+<circle cx="376" cy="132" r="9" fill="#1a1e2a"/>
+<path d="M340 78 L 332 100 L 346 98 L 336 116" fill="none" stroke="#f0d27a" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

@@ -2,6 +2,8 @@
 
 use bota_proto::{Attribute, Attributes, Fixed};
 
+use crate::game::Ratio;
+
 /// Everything the type an entity is, its level, its items and what is on it
 /// add up to.
 ///
@@ -29,16 +31,26 @@ pub struct Stats {
     pub attack_range: Fixed,
     /// How far it looks for something to attack.
     pub acquisition: Fixed,
-    /// Ticks between the starts of two attacks, after attack speed.
-    pub attack_interval: u32,
+    /// Milliseconds between the starts of two attacks at
+    /// [`rules::BASE_ATTACK_SPEED`].
+    ///
+    /// [`rules::BASE_ATTACK_SPEED`]: crate::game::rules::BASE_ATTACK_SPEED
+    pub attack_time: u32,
     /// How fast it swings, where [`rules::BASE_ATTACK_SPEED`] is its own pace
-    /// and twice that is twice the pace.
+    /// and twice that is twice the pace. Clamped to
+    /// `MIN_ATTACK_SPEED..=MAX_ATTACK_SPEED` where read.
     ///
     /// [`rules::BASE_ATTACK_SPEED`]: crate::game::rules::BASE_ATTACK_SPEED
     pub attack_speed: i32,
-    /// Ticks from the start of an attack to the hit.
+    /// Milliseconds from the start of an attack to the hit at
+    /// [`rules::BASE_ATTACK_SPEED`].
+    ///
+    /// [`rules::BASE_ATTACK_SPEED`]: crate::game::rules::BASE_ATTACK_SPEED
     pub attack_point: u32,
-    /// Ticks after the hit before it may move again.
+    /// Milliseconds after the hit before it may move again at
+    /// [`rules::BASE_ATTACK_SPEED`].
+    ///
+    /// [`rules::BASE_ATTACK_SPEED`]: crate::game::rules::BASE_ATTACK_SPEED
     pub attack_backswing: u32,
     /// Speed of the missile it throws. Absent for a melee attack.
     pub projectile_speed: Option<Fixed>,
@@ -46,6 +58,13 @@ pub struct Stats {
     pub armor: Fixed,
     /// Magic resistance, percent.
     pub magic_resist_pct: i32,
+    /// Share of attacks at it that miss.
+    pub evasion: Ratio,
+    /// Share of its attacks that pierce: go through evasion and an uphill
+    /// miss, and land bonus magical damage.
+    pub pierce: Ratio,
+    /// Magical damage a pierce lands alongside the attack.
+    pub pierce_damage: i32,
     /// World units per second on the ground.
     pub move_speed: Fixed,
     /// Brads per tick it turns.

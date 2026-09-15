@@ -2,7 +2,7 @@
 
 use bota_proto::Vec2;
 
-use crate::game::Entity;
+use crate::game::{Entity, PendingCast};
 
 /// The standing order an entity is following.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -50,4 +50,7 @@ pub struct Orders {
     /// Ticks before an attack order may re-aim it. Zero when it answers the
     /// next one.
     pub cooldown: u32,
+    /// A cast ordered and not yet begun. Any order to the body takes it
+    /// away.
+    pub pending: Option<PendingCast>,
 }

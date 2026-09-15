@@ -3,7 +3,7 @@
 use bota_proto::{DamageKind, Fixed, Target, UnitKind, Vec2};
 
 use crate::engine::Entity;
-use crate::game::{Hook, Status, StatusKind, Transform, World, is_structure, rules};
+use crate::game::{Hook, Modifier, ModifierKind, Transform, World, ability, is_structure, rules};
 use crate::game::{facing_towards, move_towards, per_tick};
 
 impl World {
@@ -29,6 +29,7 @@ impl World {
             },
         );
         self.set_team(hook, side);
+        let links = std::array::from_fn(|_| self.spawn_mark(ability::MEAT_HOOK, caster, from, 0));
         self.hook.insert(
             hook,
             Hook {
@@ -40,9 +41,22 @@ impl World {
                 damage: rules::HOOK_DAMAGE[level],
                 caught: None,
                 returning: false,
+                links,
             },
         );
         true
+    }
+
+    /// Lays a hook's chain out evenly between the thrower and the hook.
+    fn lay_chain(&mut self, hook: &Hook, home: Vec2, at: Vec2) {
+        let count = rules::HOOK_LINKS as i32 + 1;
+        for (index, link) in hook.links.into_iter().enumerate() {
+            let along = Fixed::from_ratio(index as i32 + 1, count);
+            let spot = home + (at - home) * along;
+            if let Some(transform) = self.transform.get_mut(link) {
+                transform.pos = spot;
+            }
+        }
     }
 
     /// Runs every hook one tick on.
@@ -70,8 +84,9 @@ impl World {
             if hook.returning {
                 let next = move_towards(at, home, step);
                 self.put_at(entity, next, home);
+                self.lay_chain(&hook, home, next);
                 if let Some(caught) = hook.caught {
-                    self.drag(caught, next);
+                    self.drag(entity, caught, next);
                 }
                 if next == home {
                     self.let_go(entity);
@@ -83,6 +98,7 @@ impl World {
             let next = move_towards(at, hook.aim, step);
             hook.reach_left -= step;
             self.put_at(entity, next, hook.aim);
+            self.lay_chain(&hook, home, next);
             if let Some(caught) = self.caught_at(entity, hook.owner, next, hook.radius) {
                 hook.caught = Some(caught);
                 hook.returning = true;
@@ -116,7 +132,7 @@ impl World {
             let Some(spot) = self.transform.get(other).map(|t| t.pos) else {
                 continue;
             };
-            let hulls = self.hull.get(other).map_or(Fixed::ZERO, |hull| hull.radius);
+            let hulls = self.hull.get(other).map_or(Fixed::ZERO, |hull| hull.bound);
             if !spot.within(at, radius + hulls) {
                 continue;
             }
@@ -140,21 +156,28 @@ impl World {
     ///
     /// The hold is handed out afresh every tick, so it lifts on its own once
     /// the hook lets go.
-    fn drag(&mut self, caught: Entity, to: Vec2) {
+    fn drag(&mut self, hook: Entity, caught: Entity, to: Vec2) {
         if let Some(at) = self.transform.get_mut(caught) {
             at.pos = to;
         }
-        let mut on_it = self.statuses.remove(caught).unwrap_or_default();
-        on_it.put(Status {
-            kind: StatusKind::Stunned,
-            ticks_left: 2,
-        });
-        self.statuses.insert(caught, on_it);
+        self.put_modifier(
+            caught,
+            Modifier {
+                kind: ModifierKind::Stunned,
+                source: Some(hook),
+                ticks_left: Some(2),
+            },
+        );
         self.route.remove(caught);
     }
 
-    /// Takes a hook out of the world.
+    /// Takes a hook and its chain out of the world.
     fn let_go(&mut self, hook: Entity) {
+        if let Some(flown) = self.hook.get(hook).copied() {
+            for link in flown.links {
+                self.take_mark(link);
+            }
+        }
         self.hook.remove(hook);
         self.transform.remove(hook);
         self.team.remove(hook);

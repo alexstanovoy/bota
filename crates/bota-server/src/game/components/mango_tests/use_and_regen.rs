@@ -6,7 +6,7 @@ use super::fixtures::*;
 
 #[test]
 fn catalog_appends_numeric_mango_with_one_charge_and_self_aim() {
-    assert_eq!(crate::game::ITEMS.len(), 43);
+    assert_eq!(crate::game::ITEMS.len(), 52);
     let def = item_def(MANGO).expect("Mango must exist at item id 42");
     assert_eq!(def.cost, 65);
     assert_eq!(def.charges, 1);
@@ -19,7 +19,7 @@ fn catalog_appends_numeric_mango_with_one_charge_and_self_aim() {
     assert_eq!(view.charges, Some(3));
     assert_eq!(view.aim, Some(Aim::Own));
     assert_eq!(view.range, 0);
-    assert_eq!(crate::game::shop_entries().last().unwrap().id, MANGO);
+    assert_eq!(crate::game::shop_entries()[42].id, MANGO);
 }
 
 #[test]
@@ -41,7 +41,12 @@ fn use_restores_exactly_one_hundred_mana_and_spends_only_one_charge() {
     }
     assert_eq!(world.tick, tick);
     assert_eq!(world.health.get(hero).unwrap().hp, health);
-    assert!(world.statuses.get(hero).is_none());
+    assert!(
+        world
+            .modifiers
+            .get(hero)
+            .is_none_or(|on_it| on_it.0.is_empty())
+    );
     assert!(world.seats[0].item_clocks.is_empty());
     reject_use(&mut world, hero, 0, Target::None);
 }

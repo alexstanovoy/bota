@@ -65,8 +65,7 @@ impl World {
             return;
         };
         for entity in self.entities.iter().collect::<Vec<_>>() {
-            if self.team.get(entity).copied() == Some(side) || self.attacking.get(entity).is_none()
-            {
+            if self.team.get(entity).copied() == Some(side) || !self.can_attack(entity) {
                 continue;
             }
             if self.lane_ai.get(entity).is_some() {

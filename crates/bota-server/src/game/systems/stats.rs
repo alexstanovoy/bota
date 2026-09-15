@@ -1,11 +1,11 @@
 //! Working out what each entity fights by, from scratch, every tick.
 
-use bota_proto::Fixed;
+use bota_proto::{Attributes, Fixed};
 
 use crate::game::rules;
 use crate::game::{
-    AbilityBook, Def, EntityAllocator, Growth, Health, Inventory, Level, Mana, StackKind, Stacks,
-    Stats, StatusKind, Statuses, Table, UnitDef, Upgrades,
+    AbilityBook, Def, EntityAllocator, Growth, Health, Inventory, Level, Mana, ModifierKind,
+    Modifiers, Ratio, StackKind, Stacks, Stats, Table, UnitDef, Upgrades,
 };
 
 /// What working out stats reads and writes.
@@ -27,7 +27,7 @@ pub struct StatsCx<'a> {
     /// What each entity carries.
     pub inventory: &'a Table<Inventory>,
     /// What is on each entity.
-    pub statuses: &'a Table<Statuses>,
+    pub modifiers: &'a Table<Modifiers>,
     /// What each entity has learned, for what its passives are worth.
     pub abilities: &'a Table<AbilityBook>,
     /// What each entity has kept of the deaths around it.
@@ -54,7 +54,7 @@ pub fn derive_stats(cx: StatsCx<'_>) {
         level,
         upgrades,
         inventory,
-        statuses,
+        modifiers,
         abilities,
         stacks,
         stats,
@@ -68,8 +68,11 @@ pub fn derive_stats(cx: StatsCx<'_>) {
         let levels = level.get(entity).map_or(0, |l| i32::from(l.0.max(1) - 1));
         let steps = upgrades.get(entity).map_or(0, |u| u.0 as i32);
         let mut now = raised(kind, levels, steps);
-        if let Some(bag) = inventory.get(entity).filter(|_| !kind.porter) {
-            let carried = crate::game::carried_bonus(bag);
+        let carried = inventory
+            .get(entity)
+            .filter(|_| !kind.porter)
+            .map(crate::game::carried_bonus);
+        if let Some(carried) = carried {
             now.attributes += carried.attributes;
             now.max_hp += Fixed::from_int(carried.hp);
             now.max_mana += Fixed::from_int(carried.mana);
@@ -80,72 +83,86 @@ pub fn derive_stats(cx: StatsCx<'_>) {
             now.attack_speed += carried.attack_speed;
             now.armor += carried.armor;
             now.move_speed += Fixed::from_int(carried.move_speed);
+            now.evasion = carried.evasion;
+            now.pierce = carried.pierce;
+            now.pierce_damage = carried.pierce_damage;
+            if now.projectile_speed.is_none() {
+                now.attack_range += Fixed::from_int(carried.melee_range);
+            }
         }
-        from_attributes(&mut now);
-        // What the flesh heap has kept is worth health, and knowing it at all
-        // is worth holding magic off.
+        // What the flesh heap has kept is worth strength, once the heap is
+        // known at all.
+        let gathered = stacks.get(entity).copied().unwrap_or_default();
         let heap = abilities.get(entity).map_or(0, |book| {
             book.slots
                 .iter()
                 .find(|slot| slot.id == crate::game::ability::FLESH_HEAP)
                 .map_or(0, |slot| slot.level)
         });
-        let gathered = stacks.get(entity).copied().unwrap_or_default();
         if heap > 0 {
-            let kept = gathered.of(StackKind::FleshHeap);
-            now.max_hp += Fixed::from_int(rules::FLESH_HEAP_HP * kept as i32);
-            now.magic_resist_pct += rules::FLESH_HEAP_RESIST_PCT[usize::from(heap - 1)];
+            let kept = gathered.of(StackKind::FleshHeap) as i32;
+            now.attributes.strength += Fixed::from_int(rules::FLESH_HEAP_STRENGTH * kept);
+        }
+        from_attributes(&mut now);
+        // A share of the base pace and of what agility adds, and of nothing
+        // else.
+        if let Some(carried) = carried
+            && carried.base_attack_speed_pct != 0
+        {
+            let base = rules::BASE_ATTACK_SPEED + agility_pace(now.attributes);
+            now.attack_speed += base * carried.base_attack_speed_pct / 100;
         }
         // Every soul gathered is worth attack damage for as long as it is
         // held.
         now.damage += rules::DAMAGE_PER_SOUL * gathered.of(StackKind::Souls) as i32;
-        if let Some(on_it) = statuses.get(entity) {
-            for status in on_it.active() {
-                match status.kind {
-                    StatusKind::Haste { speed } => now.attack_speed += speed,
-                    StatusKind::Mending { per_tick, .. } => {
+        if let Some(on_it) = modifiers.get(entity) {
+            for held in on_it.active() {
+                match held.kind {
+                    ModifierKind::Haste { speed } => now.attack_speed += speed,
+                    ModifierKind::Mending { per_tick, .. } => {
                         now.hp_regen += Fixed::from_ratio(per_tick, 100);
                     }
-                    StatusKind::Clarity { per_tick, .. } => {
+                    ModifierKind::Clarity { per_tick, .. } => {
                         now.mana_regen += Fixed::from_ratio(per_tick, 100);
                     }
-                    StatusKind::Fountain {
+                    ModifierKind::Fountain {
                         hp_per_tick,
                         mana_per_tick,
                     } => {
                         now.hp_regen += Fixed::from_ratio(hp_per_tick, 100);
                         now.mana_regen += Fixed::from_ratio(mana_per_tick, 100);
                     }
-                    StatusKind::Slowed { pct } => {
+                    ModifierKind::Slowed { pct } => {
                         now.move_speed = scaled(now.move_speed, (100 - pct).clamp(0, 100));
                     }
-                    StatusKind::Hastened { pct } => {
+                    ModifierKind::Hastened { pct } => {
                         now.move_speed = scaled(now.move_speed, 100 + pct.max(0));
                     }
-                    StatusKind::ArmorBroken { armor } => {
+                    ModifierKind::ArmorBroken { armor } => {
                         now.armor -= Fixed::from_int(armor);
                     }
-                    StatusKind::Guarded {
+                    ModifierKind::Guarded {
                         armor,
                         hp_per_second,
                     } => {
                         now.armor += Fixed::from_int(armor);
                         now.hp_regen += per_second(hp_per_second);
                     }
-                    StatusKind::Inspired { hp_per_second } => {
+                    ModifierKind::Inspired { hp_per_second } => {
                         now.hp_regen += per_second(hp_per_second);
                     }
-                    StatusKind::Shielded => now.invulnerable = true,
-                    StatusKind::Phased => now.phased = true,
-                    // What holds a unit still and what burns it are read
-                    // where they are acted on, not here.
-                    StatusKind::Stunned
-                    | StatusKind::Burning { .. }
-                    | StatusKind::Shadowraze { .. } => {}
+                    ModifierKind::Shielded => now.invulnerable = true,
+                    ModifierKind::Phased => now.phased = true,
+                    // What holds a unit still, what burns it and what it
+                    // hands out are read where they are acted on, not here.
+                    ModifierKind::Stunned
+                    | ModifierKind::Feared
+                    | ModifierKind::Burning { .. }
+                    | ModifierKind::Shadowraze { .. }
+                    | ModifierKind::Rot { .. } => {}
                 }
             }
         }
-        now.attack_interval = swing_interval(now.attack_interval, now.attack_speed);
         let before = stats.get(entity).copied();
         if let Some(hp) = health.get_mut(entity) {
             hp.hp = match before {
@@ -174,20 +191,15 @@ fn from_attributes(now: &mut Stats) {
     now.max_mana += Fixed::from_int(rules::MANA_PER_INTELLIGENCE) * has.intelligence;
     now.mana_regen += rules::MANA_REGEN_PER_INTELLIGENCE * has.intelligence;
     now.armor += rules::ARMOR_PER_AGILITY * has.agility;
-    now.attack_speed += (has.agility * Fixed::from_int(rules::ATTACK_SPEED_PER_AGILITY)).to_int();
+    now.attack_speed += agility_pace(has);
     if let Some(primary) = now.primary {
         now.damage += (has.of(primary) * Fixed::from_int(rules::DAMAGE_PER_PRIMARY)).to_int();
     }
 }
 
-/// The wait between two attacks at a given attack speed.
-///
-/// Never shorter than a tick: two attacks in one tick is a swing that never
-/// happened.
-fn swing_interval(interval: u32, speed: i32) -> u32 {
-    let speed = speed.clamp(rules::MIN_ATTACK_SPEED, rules::MAX_ATTACK_SPEED);
-    let scaled = i64::from(interval) * i64::from(rules::BASE_ATTACK_SPEED) / i64::from(speed);
-    scaled.max(1) as u32
+/// Attack speed the agility attribute is worth.
+fn agility_pace(has: Attributes) -> i32 {
+    (has.agility * Fixed::from_int(rules::ATTACK_SPEED_PER_AGILITY)).to_int()
 }
 
 /// The plain form of a kind raised by `levels` levels and `steps` upgrades.
@@ -214,13 +226,16 @@ fn raised(kind: &UnitDef, levels: i32, steps: i32) -> Stats {
         damage_to_creeps: 0,
         attack_range: Fixed::from_int(kind.attack_range),
         acquisition: Fixed::from_int(kind.acquisition),
-        attack_interval: kind.attack_interval,
+        attack_time: kind.attack_time,
         attack_speed: rules::BASE_ATTACK_SPEED,
         attack_point: kind.attack_point,
         attack_backswing: kind.attack_backswing,
         projectile_speed: kind.projectile_speed.map(Fixed::from_int),
         armor: Fixed::from_ratio(kind.armor * 2 + up.armor_halves, 2),
         magic_resist_pct: kind.magic_resist_pct,
+        evasion: Ratio::NEVER,
+        pierce: Ratio::NEVER,
+        pierce_damage: 0,
         move_speed: Fixed::from_int(kind.move_speed),
         turn_rate: kind.turn_rate,
         vision: Fixed::from_int(kind.vision),

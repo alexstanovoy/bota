@@ -2,11 +2,11 @@
 
 use std::collections::VecDeque;
 
-use bota_proto::{Fixed, Team, UnitKind};
+use bota_proto::{DamageKind, Fixed, Team, UnitKind};
 
 use crate::game::{
-    Entity, EntityAllocator, Ground, Health, Hit, MatchRng, Projectile, PseudoRandom25, Purpose,
-    Table, Transform, Visibility, World, is_structure, rules, wire_id,
+    Entity, EntityAllocator, Ground, Health, Hit, MatchRng, Missed, Projectile, PseudoRandom25,
+    Purpose, Table, Transform, Visibility, World, is_structure, rules, wire_id,
 };
 use crate::game::{facing_towards, move_towards, per_tick};
 
@@ -36,6 +36,8 @@ pub struct MissileCx<'a> {
     pub hits: &'a mut VecDeque<Hit>,
     /// Where one that still has a bounce in it is left to be sent on.
     pub bounced: &'a mut VecDeque<(Entity, Entity)>,
+    /// Where one that missed uphill is left for whatever answers to it.
+    pub missed: &'a mut VecDeque<Missed>,
 }
 
 /// Moves every missile along and turns the ones that arrive into blows.
@@ -57,6 +59,7 @@ pub fn missile_system(cx: MissileCx<'_>) {
         uphill_miss,
         hits,
         bounced,
+        missed,
     } = cx;
     for missile in entities.iter().collect::<Vec<_>>() {
         let Some(shot) = projectile.get(missile).cloned() else {
@@ -79,7 +82,13 @@ pub fn missile_system(cx: MissileCx<'_>) {
         if next != to {
             continue;
         }
-        if misses_uphill(&shot, to, transform, kind, ground, rng, uphill_miss) {
+        if !shot.pierces && misses_uphill(&shot, to, transform, kind, ground, rng, uphill_miss) {
+            missed.push_back(Missed {
+                source: shot.source,
+                target: shot.target,
+                at: to,
+                side: team.get(shot.target).copied().unwrap_or(Team::Neutral),
+            });
             give_up(missile, entities, projectile, transform, team, visibility);
             continue;
         }
@@ -89,8 +98,22 @@ pub fn missile_system(cx: MissileCx<'_>) {
             amount: shot.damage,
             kind: shot.kind,
             crit: shot.crit,
+            attack: shot.ability.is_none(),
+            pierces: shot.pierces,
             effect: crate::game::HitEffect::None,
         });
+        if shot.pierce_damage > 0 {
+            hits.push_back(Hit {
+                source: shot.source,
+                target: shot.target,
+                amount: shot.pierce_damage,
+                kind: DamageKind::Magical,
+                crit: false,
+                attack: false,
+                pierces: false,
+                effect: crate::game::HitEffect::None,
+            });
+        }
         // One with bounces left is kept where it landed: where it goes next
         // is settled once it is known what stands there.
         if shot.bounces_left > 0 {

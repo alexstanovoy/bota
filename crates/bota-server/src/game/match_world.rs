@@ -26,6 +26,7 @@ impl World {
         let map = map_of(cfg.map);
         let mut world = World::on_map(map);
         world.rng = rng;
+        world.cheats = cfg.cheats;
         for pick in &cfg.picks {
             let at = hero_spawn_pos(map, pick.team);
             let hero = world.spawn_hero(pick.team, at, pick.slot, pick.hero);
@@ -86,21 +87,22 @@ impl World {
                 self.buy(cmd.slot, item, events);
                 return;
             }
+            Order::Cheat { cheat } => {
+                self.cheat(cmd.slot, unit, cheat, events);
+                return;
+            }
             _ => {}
         }
         // An order is an animation cancel: the recovery after a swing ends
-        // with it. Giving up a swing that has not landed is the attack
-        // cycle's own business.
-        if let Some(state) = self.attacking.get_mut(unit) {
-            state.recovering = 0;
-        }
-        // An order also takes a channel away, a held cast and an errand with
-        // it, before whatever the order itself does gets a chance to start
-        // another.
-        self.teleport.remove(unit);
-        self.dismember.remove(unit);
+        // with it, and so does an ability or item that runs on. Giving up a
+        // swing that has not landed is the attack cycle's own business.
+        self.cancel_action(unit);
+        // An order also takes a held cast and an errand with it, before
+        // whatever the order itself does gets a chance to start another.
         self.handling.remove(unit);
-        self.casting.remove(unit);
+        if let Some(orders) = self.orders.get_mut(unit) {
+            orders.pending = None;
+        }
         if self.errand.get(unit).is_some() {
             self.errand.insert(unit, crate::game::Errand::None);
         }
@@ -165,15 +167,19 @@ impl World {
                 if aimed {
                     self.set_order(unit, UnitOrder::Idle);
                 }
-                self.order_cast(unit, PendingCast { slot, target });
+                self.order_cast(unit, PendingCast::Ability { slot, target });
                 return;
             }
             Order::Use { slot, target } => {
-                self.use_item(unit, usize::from(slot.0), target, events);
+                self.order_cast(unit, PendingCast::Item { slot, target });
                 return;
             }
             // Taken before the body was interrupted.
-            Order::Learn { .. } | Order::Swap { .. } | Order::Sell { .. } | Order::Buy { .. } => {
+            Order::Learn { .. }
+            | Order::Swap { .. }
+            | Order::Sell { .. }
+            | Order::Buy { .. }
+            | Order::Cheat { .. } => {
                 return;
             }
             Order::Put { slot, target } => {
@@ -271,7 +277,7 @@ impl World {
                 if held.cooldown > 0 {
                     return Err(RejectReason::OnCooldown);
                 }
-                if self.held(unit) || self.is_channelling(unit) {
+                if self.held(unit) || self.feared(unit) || self.is_channelling(unit) {
                     return Err(RejectReason::Disabled);
                 }
                 if !aimed_right(def.aim, target) {
@@ -418,7 +424,7 @@ impl World {
                 if stack.mute > 0 {
                     return Err(RejectReason::NotReady);
                 }
-                let Some(active) = def.active else {
+                let Some(aim) = def.aim else {
                     return Err(RejectReason::NotCastable);
                 };
                 if stack.cooldown > 0 || (def.shared_wait && self.owes_wait(unit, stack.id)) {
@@ -427,12 +433,11 @@ impl World {
                 if (def.charges > 0 || def.cast_charges > 0) && stack.charges == 0 {
                     return Err(RejectReason::NoCharges);
                 }
-                let replenishes_mana = matches!(active, crate::game::ItemUse::ReplenishMana { .. });
-                let aimed = if replenishes_mana {
+                let aimed = if def.mana_deficit {
                     matches!(target, Target::None)
                         || *target == Target::Unit(crate::game::wire_id(unit))
                 } else {
-                    aimed_right(crate::game::item_aim(active), target)
+                    aimed_right(aim, target)
                 };
                 if !aimed {
                     return Err(RejectReason::WrongTargetKind);
@@ -445,13 +450,20 @@ impl World {
                 if self.mana.get(unit).map_or(0, |pool| pool.mana.to_int()) < def.mana_cost {
                     return Err(RejectReason::NotEnoughMana);
                 }
-                if self.held(unit) || self.is_channelling(unit) {
+                if self.held(unit) || self.feared(unit) || self.is_channelling(unit) {
                     return Err(RejectReason::Disabled);
                 }
-                if replenishes_mana && !self.can_replenish_mana(unit, *target) {
+                if def.mana_deficit && !self.can_replenish_mana(unit, *target) {
                     return Err(RejectReason::NotReady);
                 }
                 Ok(())
+            }
+            Order::Cheat { .. } => {
+                if self.cheats {
+                    Ok(())
+                } else {
+                    Err(RejectReason::NoCheats)
+                }
             }
             _ => Ok(()),
         }

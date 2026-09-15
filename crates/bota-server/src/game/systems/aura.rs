@@ -3,7 +3,7 @@
 use bota_proto::{Team, UnitKind};
 
 use crate::game::rules;
-use crate::game::{Auras, EntityAllocator, Reach, Status, Statuses, Table, Transform};
+use crate::game::{Auras, EntityAllocator, Modifier, Modifiers, Reach, Table, Transform};
 
 /// What handing out effects reads and writes.
 pub struct AuraCx<'a> {
@@ -19,7 +19,7 @@ pub struct AuraCx<'a> {
     /// What each entity hands out.
     pub auras: &'a Table<Auras>,
     /// Where a handed-out effect lands.
-    pub statuses: &'a mut Table<Statuses>,
+    pub modifiers: &'a mut Table<Modifiers>,
 }
 
 /// Puts every aura on everyone standing in it.
@@ -34,7 +34,7 @@ pub fn aura_system(cx: AuraCx<'_>) {
         team,
         kind,
         auras,
-        statuses,
+        modifiers,
     } = cx;
     for source in entities.iter() {
         let Some(Auras(handed)) = auras.get(source).copied() else {
@@ -65,17 +65,12 @@ pub fn aura_system(cx: AuraCx<'_>) {
                 {
                     continue;
                 }
-                let put = Status {
-                    kind: aura.kind,
-                    ticks_left: aura.ticks,
-                };
-                match statuses.get_mut(entity) {
-                    Some(on_it) => on_it.put(put),
-                    None => {
-                        let mut on_it = Statuses::default();
-                        on_it.put(put);
-                        statuses.insert(entity, on_it);
-                    }
+                if let Some(on_it) = modifiers.get_mut(entity) {
+                    on_it.put(Modifier {
+                        kind: aura.kind,
+                        source: Some(source),
+                        ticks_left: Some(aura.ticks),
+                    });
                 }
             }
         }

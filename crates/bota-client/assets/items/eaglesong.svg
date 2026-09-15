@@ -1,0 +1,8 @@
+<svg width="100%" viewBox="0 0 680 260" role="img" xmlns="http://www.w3.org/2000/svg"><title>Eaglesong</title><desc>Rectangular icon: a curved golden horn with a green ribbon</desc>
+<rect x="220" y="50" width="240" height="160" fill="#1c2418"/>
+<path d="M292 96 C 300 160, 360 186, 404 154" fill="none" stroke="#c9a14a" stroke-width="22" stroke-linecap="round"/>
+<path d="M292 96 C 300 160, 360 186, 404 154" fill="none" stroke="#f0d27a" stroke-width="7" stroke-linecap="round" opacity="0.6"/>
+<circle cx="288" cy="94" r="12" fill="#8a6a2a"/>
+<path d="M404 154 L 424 136 L 428 168 Z" fill="#c9a14a"/>
+<path d="M330 150 L 350 174" fill="none" stroke="#5aa04a" stroke-width="8" stroke-linecap="round"/>
+</svg>

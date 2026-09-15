@@ -47,6 +47,9 @@ struct Args {
     /// Lockstep: tick-lengths to wait for a straggler before moving on.
     #[arg(long, default_value_t = 150)]
     ack_timeout_ticks: u32,
+    /// Honour cheat orders: gold, levels, items and refreshes for the asking.
+    #[arg(long)]
+    cheats: bool,
 }
 
 fn main() -> std::io::Result<()> {
@@ -72,6 +75,7 @@ fn main() -> std::io::Result<()> {
             seed,
             map: bota_proto::MapId(args.map),
             ack_timeout_ticks: args.ack_timeout_ticks,
+            cheats: args.cheats,
         },
     )
 }

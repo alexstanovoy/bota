@@ -25,6 +25,32 @@ pub enum Target {
     Unit(EntityId),
 }
 
+/// A shortcut round the rules, honoured only in a match started with
+/// cheats on. Anywhere else it is rejected with
+/// [`RejectReason::NoCheats`](crate::RejectReason::NoCheats).
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum Cheat {
+    /// Gold put into the seat's hand. Negative takes gold away, never
+    /// below nothing.
+    Gold {
+        /// How much.
+        amount: i32,
+    },
+    /// Levels the hero goes up at once, to the cap at most.
+    Levels {
+        /// How many.
+        count: u8,
+    },
+    /// Health and mana back to full, every cooldown and wait cleared.
+    Refresh,
+    /// An item put into the hero's bag for nothing, or into the stash when
+    /// the bag has no room.
+    Item {
+        /// Which item.
+        item: ItemId,
+    },
+}
+
 /// A single instruction from a participant to its own hero.
 ///
 /// A target the issuing team cannot currently see is rejected with
@@ -118,5 +144,10 @@ pub enum Order {
     Learn {
         /// Which of the four ability slots to level.
         slot: AbilitySlot,
+    },
+    /// Take a shortcut round the rules. Interrupts nothing the body is doing.
+    Cheat {
+        /// Which one.
+        cheat: Cheat,
     },
 }

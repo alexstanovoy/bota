@@ -177,10 +177,13 @@ impl Playbook {
     pub fn decide(&mut self, field: &Field) -> Option<Ask> {
         self.rung = "none";
         let me = field.me?;
-        // Held, nothing the body is told will land; in the middle of a
-        // channel, an order is how the channel is thrown away. Either way the
-        // tick is not the seat's to spend.
-        if me.statuses.bits & (StatusFlags::STUNNED | StatusFlags::CHANNELLING) != 0 {
+        // Held or feared, nothing the body is told will land; in the middle
+        // of a channel, an order is how the channel is thrown away. Either
+        // way the tick is not the seat's to spend.
+        if me.statuses.bits
+            & (StatusFlags::STUNNED | StatusFlags::FEARED | StatusFlags::CHANNELLING)
+            != 0
+        {
             self.rung = "held";
             return None;
         }
@@ -496,9 +499,11 @@ impl Playbook {
         if field.foes_within(FIGHT_RANGE).next().is_some() {
             return None;
         }
+        // The scroll is read inside the tick it was aimed on, so the wait
+        // runs from the tick after.
         if self
             .portalled_at
-            .is_some_and(|at| self.tick.saturating_sub(at) < SCROLL_WAIT)
+            .is_some_and(|at| self.tick.saturating_sub(at) <= SCROLL_WAIT)
         {
             return None;
         }

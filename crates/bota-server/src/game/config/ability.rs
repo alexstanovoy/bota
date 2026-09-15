@@ -1,14 +1,18 @@
-//! Every ability a hero may carry, and what each one costs to use.
-//!
-//! What an ability does is the cast system's business; what it is called, how
-//! it is aimed and what it asks for is here.
+//! Every ability a hero may carry: what it is called, how it is aimed, what
+//! it asks for, and what it does at each moment of its life.
 
-use bota_proto::{AbilityId, Aim};
+use bota_proto::{AbilityId, Aim, Target};
 
-use crate::game::rules;
+use crate::game::{Entity, World, rules};
+
+/// What an ability does at a moment of its life. `false`: it did not happen.
+pub type CastHook = fn(&mut World, Entity, Target) -> bool;
+
+/// What an ability does when it ends.
+pub type EndHook = fn(&mut World, Entity, Target);
 
 /// One entry of the ability list.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug)]
 pub struct AbilityDef {
     /// What it is called.
     pub name: &'static str,
@@ -28,6 +32,133 @@ pub struct AbilityDef {
     pub cooldown: &'static [u32],
     /// How far it reaches, in world units. Zero for one that reaches nowhere.
     pub range: i32,
+    /// Milliseconds of cast point. Zero: the effect lands in the same tick.
+    pub point: u32,
+    /// Milliseconds of animation after. Zero: the body is not held.
+    pub backswing: u32,
+    /// Ticks it runs on after the cast. Zero: over at once.
+    pub duration: u32,
+    /// At the cast point. `false`: nothing happened and nothing is spent.
+    pub on_cast: CastHook,
+    /// Every tick it runs on. `false`: it breaks off.
+    pub on_during: CastHook,
+    /// Broken off by an order, a stun, the caster falling, or its own
+    /// `false`.
+    pub on_cancel: EndHook,
+    /// Run to the end of `duration`.
+    pub on_complete: EndHook,
+}
+
+/// Nothing at all, so an entry names only what sets it apart.
+const PLAIN: AbilityDef = AbilityDef {
+    name: "",
+    aim: Aim::Own,
+    max_level: 0,
+    passive: true,
+    ultimate: false,
+    at_an_enemy: false,
+    mana: &[],
+    cooldown: &[],
+    range: 0,
+    point: 0,
+    backswing: 0,
+    duration: 0,
+    on_cast: never,
+    on_during: goes_on,
+    on_cancel: nothing,
+    on_complete: nothing,
+};
+
+fn never(_: &mut World, _: Entity, _: Target) -> bool {
+    false
+}
+
+fn goes_on(_: &mut World, _: Entity, _: Target) -> bool {
+    true
+}
+
+fn nothing(_: &mut World, _: Entity, _: Target) {}
+
+/// Which level of an ability its caster has learned, counted from zero.
+fn level_of(world: &World, caster: Entity, id: AbilityId) -> usize {
+    usize::from(world.carried_level(caster, id).max(1) - 1)
+}
+
+fn frenzy(world: &mut World, caster: Entity, _: Target) -> bool {
+    let level = level_of(world, caster, FRENZY);
+    world.cast_frenzy(caster, level)
+}
+
+fn bounce(world: &mut World, caster: Entity, target: Target) -> bool {
+    let level = level_of(world, caster, BOUNCE);
+    world.cast_bounce(caster, level, target)
+}
+
+fn volley(world: &mut World, caster: Entity, _: Target) -> bool {
+    let level = level_of(world, caster, VOLLEY).min(2);
+    world.cast_multishot(caster, level)
+}
+
+fn meat_hook(world: &mut World, caster: Entity, target: Target) -> bool {
+    let level = level_of(world, caster, MEAT_HOOK);
+    world.cast_hook(caster, level, target)
+}
+
+fn rot(world: &mut World, caster: Entity, _: Target) -> bool {
+    let level = level_of(world, caster, ROT);
+    world.toggle_rot(caster, level)
+}
+
+fn dismember(world: &mut World, caster: Entity, target: Target) -> bool {
+    world.dismember_takes_hold(caster, target)
+}
+
+fn dismember_holds(world: &mut World, caster: Entity, target: Target) -> bool {
+    world.dismember_holds(caster, target)
+}
+
+fn dismember_lets_go(world: &mut World, caster: Entity, target: Target) {
+    world.dismember_lets_go(caster, target);
+}
+
+fn burst(world: &mut World, courier: Entity, _: Target) -> bool {
+    world.courier_burst(courier)
+}
+
+fn return_items(world: &mut World, courier: Entity, _: Target) -> bool {
+    world.courier_return_items(courier)
+}
+
+fn take_stash(world: &mut World, courier: Entity, _: Target) -> bool {
+    world.courier_take_stash(courier)
+}
+
+fn deliver(world: &mut World, courier: Entity, _: Target) -> bool {
+    world.courier_deliver(courier)
+}
+
+fn shield(world: &mut World, courier: Entity, _: Target) -> bool {
+    world.courier_shield(courier)
+}
+
+fn raze_near(world: &mut World, caster: Entity, _: Target) -> bool {
+    let level = level_of(world, caster, RAZE_NEAR);
+    world.cast_raze(caster, level, 0)
+}
+
+fn raze_mid(world: &mut World, caster: Entity, _: Target) -> bool {
+    let level = level_of(world, caster, RAZE_MID);
+    world.cast_raze(caster, level, 1)
+}
+
+fn raze_far(world: &mut World, caster: Entity, _: Target) -> bool {
+    let level = level_of(world, caster, RAZE_FAR);
+    world.cast_raze(caster, level, 2)
+}
+
+fn requiem(world: &mut World, caster: Entity, _: Target) -> bool {
+    let level = level_of(world, caster, REQUIEM).min(2);
+    world.cast_requiem(caster, level)
 }
 
 /// Sylla's critical strike: nothing is cast, it simply happens.
@@ -44,7 +175,7 @@ pub const MEAT_HOOK: AbilityId = AbilityId(4);
 pub const ROT: AbilityId = AbilityId(5);
 /// Pudge's flesh heap: what he keeps of everything that dies near him.
 pub const FLESH_HEAP: AbilityId = AbilityId(6);
-/// Pudge's dismember: a channel that holds one unit and eats it.
+/// Pudge's dismember: holds one unit and eats it.
 pub const DISMEMBER: AbilityId = AbilityId(7);
 /// A courier's burst of speed.
 pub const BURST: AbilityId = AbilityId(8);
@@ -74,80 +205,67 @@ pub const PRESENCE: AbilityId = AbilityId(18);
 pub const ABILITIES: [AbilityDef; 19] = [
     AbilityDef {
         name: "Crit",
-        aim: Aim::Own,
         max_level: rules::ABILITY_MAX_LEVEL,
-        passive: true,
-        ultimate: false,
-        at_an_enemy: false,
-        mana: &[],
-        cooldown: &[],
-        range: 0,
+        ..PLAIN
     },
     AbilityDef {
         name: "Frenzy",
-        aim: Aim::Own,
         max_level: rules::ABILITY_MAX_LEVEL,
         passive: false,
-        ultimate: false,
-        at_an_enemy: false,
         mana: &rules::SYLLA_FRENZY_MANA,
         cooldown: &rules::SYLLA_FRENZY_COOLDOWN,
-        range: 0,
+        on_cast: frenzy,
+        ..PLAIN
     },
     AbilityDef {
         name: "Bounce",
         aim: Aim::Unit,
         max_level: rules::ABILITY_MAX_LEVEL,
         passive: false,
-        ultimate: false,
         at_an_enemy: true,
         mana: &rules::SYLLA_BOUNCE_MANA,
         cooldown: &rules::SYLLA_BOUNCE_COOLDOWN,
         range: rules::SYLLA_BOUNCE_CAST_RANGE,
+        on_cast: bounce,
+        ..PLAIN
     },
     AbilityDef {
         name: "Volley",
-        aim: Aim::Own,
         max_level: rules::ULT_MAX_LEVEL,
         passive: false,
         ultimate: true,
-        at_an_enemy: false,
         mana: &rules::SYLLA_MULTI_MANA,
         cooldown: &rules::SYLLA_MULTI_COOLDOWN,
         range: rules::SYLLA_MULTI_RADIUS,
+        on_cast: volley,
+        ..PLAIN
     },
     AbilityDef {
         name: "Meat Hook",
         aim: Aim::Point,
         max_level: rules::ABILITY_MAX_LEVEL,
         passive: false,
-        ultimate: false,
-        at_an_enemy: false,
         mana: &rules::HOOK_MANA,
         cooldown: &rules::HOOK_COOLDOWN,
         range: rules::HOOK_RANGE,
+        on_cast: meat_hook,
+        ..PLAIN
     },
     AbilityDef {
         name: "Rot",
-        aim: Aim::Own,
         max_level: rules::ABILITY_MAX_LEVEL,
         passive: false,
-        ultimate: false,
-        at_an_enemy: false,
         mana: &[0, 0, 0, 0],
         cooldown: &[0, 0, 0, 0],
         range: rules::ROT_RADIUS,
+        on_cast: rot,
+        ..PLAIN
     },
     AbilityDef {
         name: "Flesh Heap",
-        aim: Aim::Own,
         max_level: rules::ABILITY_MAX_LEVEL,
-        passive: true,
-        ultimate: false,
-        at_an_enemy: false,
-        mana: &[],
-        cooldown: &[],
         range: rules::FLESH_HEAP_RANGE,
+        ..PLAIN
     },
     AbilityDef {
         name: "Dismember",
@@ -159,127 +277,109 @@ pub const ABILITIES: [AbilityDef; 19] = [
         mana: &rules::DISMEMBER_MANA,
         cooldown: &rules::DISMEMBER_COOLDOWN,
         range: rules::DISMEMBER_RANGE,
+        duration: rules::DISMEMBER_TICKS,
+        on_cast: dismember,
+        on_during: dismember_holds,
+        on_cancel: dismember_lets_go,
+        on_complete: dismember_lets_go,
+        ..PLAIN
     },
     AbilityDef {
         name: "Burst",
-        aim: Aim::Own,
         max_level: 1,
         passive: false,
-        ultimate: false,
-        at_an_enemy: false,
         mana: &[0],
         cooldown: &[rules::COURIER_BURST_COOLDOWN],
-        range: 0,
+        on_cast: burst,
+        ..PLAIN
     },
     AbilityDef {
         name: "Return",
-        aim: Aim::Own,
         max_level: 1,
         passive: false,
-        ultimate: false,
-        at_an_enemy: false,
         mana: &[0],
         cooldown: &[0],
-        range: 0,
+        on_cast: return_items,
+        ..PLAIN
     },
     AbilityDef {
         name: "Take Stash",
-        aim: Aim::Own,
         max_level: 1,
         passive: false,
-        ultimate: false,
-        at_an_enemy: false,
         mana: &[0],
         cooldown: &[0],
-        range: 0,
+        on_cast: take_stash,
+        ..PLAIN
     },
     AbilityDef {
         name: "Deliver",
-        aim: Aim::Own,
         max_level: 1,
         passive: false,
-        ultimate: false,
-        at_an_enemy: false,
         mana: &[0],
         cooldown: &[0],
-        range: 0,
+        on_cast: deliver,
+        ..PLAIN
     },
     AbilityDef {
         name: "Shield",
-        aim: Aim::Own,
         max_level: 1,
         passive: false,
-        ultimate: false,
-        at_an_enemy: false,
         mana: &[0],
         cooldown: &[rules::COURIER_SHIELD_COOLDOWN],
-        range: 0,
+        on_cast: shield,
+        ..PLAIN
     },
     AbilityDef {
         name: "Shadowraze (Near)",
-        aim: Aim::Own,
         max_level: rules::ABILITY_MAX_LEVEL,
         passive: false,
-        ultimate: false,
-        at_an_enemy: false,
         mana: &rules::RAZE_MANA,
         cooldown: &rules::RAZE_COOLDOWN,
         range: rules::RAZE_DISTANCE[0],
+        on_cast: raze_near,
+        ..PLAIN
     },
     AbilityDef {
         name: "Shadowraze (Mid)",
-        aim: Aim::Own,
         max_level: rules::ABILITY_MAX_LEVEL,
         passive: false,
-        ultimate: false,
-        at_an_enemy: false,
         mana: &rules::RAZE_MANA,
         cooldown: &rules::RAZE_COOLDOWN,
         range: rules::RAZE_DISTANCE[1],
+        on_cast: raze_mid,
+        ..PLAIN
     },
     AbilityDef {
         name: "Shadowraze (Far)",
-        aim: Aim::Own,
         max_level: rules::ABILITY_MAX_LEVEL,
         passive: false,
-        ultimate: false,
-        at_an_enemy: false,
         mana: &rules::RAZE_MANA,
         cooldown: &rules::RAZE_COOLDOWN,
         range: rules::RAZE_DISTANCE[2],
+        on_cast: raze_far,
+        ..PLAIN
     },
     AbilityDef {
         name: "Requiem of Souls",
-        aim: Aim::Own,
         max_level: rules::ULT_MAX_LEVEL,
         passive: false,
         ultimate: true,
-        at_an_enemy: false,
         mana: &rules::REQUIEM_MANA,
         cooldown: &rules::REQUIEM_COOLDOWN,
-        range: rules::REQUIEM_RADIUS,
+        range: rules::REQUIEM_LINE_DISTANCE,
+        on_cast: requiem,
+        ..PLAIN
     },
     AbilityDef {
         name: "Necromastery",
-        aim: Aim::Own,
         max_level: rules::ABILITY_MAX_LEVEL,
-        passive: true,
-        ultimate: false,
-        at_an_enemy: false,
-        mana: &[],
-        cooldown: &[],
-        range: 0,
+        ..PLAIN
     },
     AbilityDef {
         name: "Presence of the Dark Lord",
-        aim: Aim::Own,
         max_level: rules::ABILITY_MAX_LEVEL,
-        passive: true,
-        ultimate: false,
-        at_an_enemy: false,
-        mana: &[],
-        cooldown: &[],
         range: rules::PRESENCE_RADIUS,
+        ..PLAIN
     },
 ];
 

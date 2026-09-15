@@ -26,12 +26,20 @@ pub struct Beat {
     /// Ticks between the start of one of the hero's swings and the next, as
     /// the last snapshot had it.
     interval: u32,
+    /// Ticks between a swing starting and the blow leaving, as the last
+    /// snapshot had it.
+    point: u32,
     /// The tick last seen.
     tick: u32,
     /// Health seen on each body over the last few ticks, oldest first.
     traces: Vec<Trace>,
     /// Who has struck the hero lately, and when.
     struck_by: Vec<(u32, EntityId)>,
+}
+
+/// The tick a span of milliseconds is crossed on, at the tick rate.
+fn ticks_of(ms: u32, rate: f32) -> u32 {
+    (ms as f32 * rate / 1000.0).ceil() as u32
 }
 
 /// The health of one body over the last few ticks.
@@ -53,6 +61,7 @@ impl Beat {
             rate: f32::from(tick_rate.max(1)),
             struck_at: None,
             interval: 0,
+            point: 0,
             tick: 0,
             traces: Vec::new(),
             struck_by: Vec::new(),
@@ -71,7 +80,8 @@ impl Beat {
     pub fn watch(&mut self, view: &WorldView, me: Option<&UnitView>) {
         self.tick = view.tick;
         if let Some(me) = me {
-            self.interval = me.attack_interval;
+            self.interval = ticks_of(me.attack_time, self.rate);
+            self.point = ticks_of(me.attack_point, self.rate);
         }
         for unit in &view.units {
             match self.traces.iter_mut().find(|trace| trace.id == unit.id) {
@@ -121,10 +131,10 @@ impl Beat {
     /// Ticks between a swing beginning and its blow arriving over a gap.
     pub fn flight_over(&self, gap: f32) -> u32 {
         if self.swing.missile_speed <= 0 {
-            return self.swing.point;
+            return self.point;
         }
         let seconds = gap.max(0.0) / self.swing.missile_speed as f32;
-        self.swing.point + (seconds * self.rate).ceil() as u32
+        self.point + (seconds * self.rate).ceil() as u32
     }
 
     /// Ticks from now until the hero's next blow could arrive over a gap.
