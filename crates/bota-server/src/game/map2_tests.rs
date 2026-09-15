@@ -35,6 +35,7 @@ fn config(map: MapId) -> MatchConfig {
         tick_rate: 30,
         mode: TickMode::Lockstep,
         ack_timeout_ticks: 150,
+        cheats: false,
     }
 }
 

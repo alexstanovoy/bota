@@ -196,9 +196,11 @@ pub const CAMP_SPAWN_SPACING: i32 = 64;
 pub const FIRST_NEUTRAL_TICK: u32 = PREGAME_TICKS + 60 * TICKS_PER_SECOND;
 /// Ticks between neutral spawn checks.
 pub const NEUTRAL_SPAWN_PERIOD_TICKS: u32 = 60 * TICKS_PER_SECOND;
-/// Neutral creep collision radius. Neutrals name no hull and take the
-/// unit template's, which is the hero hull.
-pub const NEUTRAL_RADIUS: i32 = 24;
+/// Neutral creep collision size. Neutrals name no hull and take the unit
+/// template's, which is the hero hull.
+pub const NEUTRAL_COLLISION: i32 = 27;
+/// Neutral creep bound radius, the hero hull's.
+pub const NEUTRAL_BOUND: i32 = 24;
 /// Neutral creep fog light radius.
 pub const NEUTRAL_VISION: i32 = 800;
 /// How far a neutral creep looks for something to attack once awake.
@@ -249,8 +251,9 @@ pub const RANGED_UPGRADE_DAMAGE: i32 = 2;
 pub const RANGED_UPGRADE_GOLD: i32 = 6;
 /// Experience one upgrade adds to a ranged creep.
 pub const RANGED_UPGRADE_XP: i32 = 8;
-/// World units between neighbours in a wave's rank.
-pub const WAVE_SPAWN_SPACING: i32 = 48;
+/// World units between neighbours in a wave's rank: two melee bodies and
+/// the margin.
+pub const WAVE_SPAWN_SPACING: i32 = 2 * MELEE_CREEP_COLLISION + STEER_MARGIN;
 /// World units the ranged rank trails the front one.
 pub const WAVE_SPAWN_RANK: i32 = 96;
 /// Flagbearer magic resistance, percent.
@@ -306,8 +309,10 @@ pub const HERO_PROJECTILE_SPEED: i32 = 900;
 pub const HERO_ARMOR: i32 = -1;
 /// Hero magic resistance, percent.
 pub const HERO_MAGIC_RESIST_PCT: i32 = 25;
-/// Hero collision radius, the Dota hero hull.
-pub const HERO_RADIUS: i32 = 24;
+/// Hero collision size, the Dota hero hull.
+pub const HERO_COLLISION: i32 = 27;
+/// Hero bound radius, the Dota hero hull.
+pub const HERO_BOUND: i32 = 24;
 /// Hero fog light radius.
 pub const HERO_VISION: i32 = 1800;
 /// Hero attributes at level one.
@@ -354,8 +359,10 @@ pub const MELEE_CREEP_ATTACK_RANGE: i32 = 100;
 pub const MELEE_CREEP_ACQUISITION: i32 = 500;
 /// Melee creep armor.
 pub const MELEE_CREEP_ARMOR: i32 = 2;
-/// Melee creep collision radius, the Dota regular hull.
-pub const MELEE_CREEP_RADIUS: i32 = 16;
+/// Melee creep collision size, the Dota regular hull.
+pub const MELEE_CREEP_COLLISION: i32 = 36;
+/// Melee creep bound radius, the Dota regular hull.
+pub const MELEE_CREEP_BOUND: i32 = 16;
 /// Milliseconds from a melee creep's attack start to the hit.
 pub const MELEE_CREEP_ATTACK_POINT: u32 = 466;
 /// Melee creep gold bounty, the midpoint of 34 to 39.
@@ -371,8 +378,10 @@ pub const RANGED_CREEP_ATTACK_DAMAGE: i32 = 23;
 pub const RANGED_CREEP_ATTACK_RANGE: i32 = 500;
 /// How far a ranged creep looks for something to attack.
 pub const RANGED_CREEP_ACQUISITION: i32 = 600;
-/// Ranged creep collision radius, the Dota small hull.
-pub const RANGED_CREEP_RADIUS: i32 = 8;
+/// Ranged creep collision size, the Dota small hull.
+pub const RANGED_CREEP_COLLISION: i32 = 18;
+/// Ranged creep bound radius, the Dota small hull.
+pub const RANGED_CREEP_BOUND: i32 = 8;
 /// Milliseconds from a ranged creep's attack start to the projectile
 /// leaving.
 pub const RANGED_CREEP_ATTACK_POINT: u32 = 500;
@@ -395,8 +404,10 @@ pub const SIEGE_CREEP_ACQUISITION: i32 = 800;
 pub const SIEGE_CREEP_ARMOR: i32 = 0;
 /// Siege creep magic resistance, percent.
 pub const SIEGE_CREEP_MAGIC_RESIST_PCT: i32 = 80;
-/// Siege creep collision radius, the Dota siege hull.
-pub const SIEGE_CREEP_RADIUS: i32 = 16;
+/// Siege creep collision size, the Dota siege hull.
+pub const SIEGE_CREEP_COLLISION: i32 = 40;
+/// Siege creep bound radius, the Dota siege hull.
+pub const SIEGE_CREEP_BOUND: i32 = 16;
 /// Milliseconds between siege creep attack starts.
 pub const SIEGE_CREEP_ATTACK_TIME: u32 = 3000;
 /// Milliseconds from a siege creep's attack start to the projectile
@@ -478,8 +489,10 @@ pub const FLAGBEARER_AURA_RADIUS: i32 = 700;
 /// Health a flagbearer's inspiration mends, in hundredths of a point a
 /// second.
 pub const FLAGBEARER_AURA_REGEN: i32 = 300;
-/// Tower collision radius.
-pub const TOWER_RADIUS: i32 = 40;
+/// Tower collision size, the Dota tower hull.
+pub const TOWER_COLLISION: i32 = 144;
+/// Tower bound radius, the Dota tower hull.
+pub const TOWER_BOUND: i32 = 144;
 /// Tower fog light radius.
 pub const TOWER_VISION: i32 = 1900;
 
@@ -497,8 +510,10 @@ pub const RAX_RANGED_ARMOR: i32 = 9;
 pub const RAX_MELEE_BOUNTY: i32 = 225;
 /// Gold paid to the killer of a ranged barracks.
 pub const RAX_RANGED_BOUNTY: i32 = 150;
-/// Barracks collision radius.
-pub const RAX_RADIUS: i32 = 60;
+/// Barracks collision size, the Dota barracks hull.
+pub const RAX_COLLISION: i32 = 160;
+/// Barracks bound radius, the Dota barracks hull.
+pub const RAX_BOUND: i32 = 144;
 /// Barracks fog light radius.
 pub const RAX_VISION: i32 = 900;
 
@@ -506,10 +521,16 @@ pub const RAX_VISION: i32 = 900;
 pub const ANCIENT_HP: i32 = 4500;
 /// Ancient armor.
 pub const ANCIENT_ARMOR: i32 = 13;
-/// Ancient collision radius.
-pub const ANCIENT_RADIUS: i32 = 72;
+/// The Radiant Ancient's collision size, its own model's.
+pub const RADIANT_ANCIENT_COLLISION: i32 = 315;
+/// The Radiant Ancient's bound radius, its own model's.
+pub const RADIANT_ANCIENT_BOUND: i32 = 299;
+/// The Dire Ancient's collision size, its own model's.
+pub const DIRE_ANCIENT_COLLISION: i32 = 390;
+/// The Dire Ancient's bound radius, its own model's.
+pub const DIRE_ANCIENT_BOUND: i32 = 374;
 /// Ancient fog light radius.
-pub const ANCIENT_VISION: i32 = 1200;
+pub const ANCIENT_VISION: i32 = 2600;
 
 /// Fountain health. It is never lost: the fountain cannot be struck.
 pub const FOUNTAIN_HP: i32 = 500;
@@ -523,8 +544,10 @@ pub const FOUNTAIN_ATTACK_TIME: u32 = 166;
 pub const FOUNTAIN_ATTACK_POINT: u32 = 33;
 /// Fountain attack projectile speed, world units per second.
 pub const FOUNTAIN_PROJECTILE_SPEED: i32 = 1400;
-/// Fountain collision radius, the Dota tower hull.
-pub const FOUNTAIN_RADIUS: i32 = 144;
+/// Fountain collision size, the Dota tower hull.
+pub const FOUNTAIN_COLLISION: i32 = 144;
+/// Fountain bound radius, the Dota tower hull.
+pub const FOUNTAIN_BOUND: i32 = 144;
 /// Fountain fog light radius.
 pub const FOUNTAIN_VISION: i32 = 1800;
 /// Health restored per tick to allies inside the fountain area.
@@ -561,6 +584,9 @@ pub const CREEP_CHASE_TICKS: u32 = 69;
 pub const FOLLOW_DISTANCE: i32 = 150;
 /// Extra clearance added around structures when blocking grid cells.
 pub const STEER_MARGIN: i32 = 8;
+/// What a tree's footprint grows by on the grid: the widest walker's
+/// collision size and the margin.
+pub const WALKER_CLEARANCE: i32 = SIEGE_CREEP_COLLISION + STEER_MARGIN;
 /// A path waypoint counts as reached within this distance.
 pub const WAYPOINT_RADIUS: i32 = 40;
 /// A stored path is recomputed once its goal drifted this far.
@@ -745,7 +771,7 @@ pub const COURIER_HP: i32 = 250;
 /// World units a second a courier flies.
 pub const COURIER_MOVE_SPEED: i32 = 380;
 /// How far a courier sees.
-pub const COURIER_VISION: i32 = 500;
+pub const COURIER_VISION: i32 = 200;
 /// Ticks a courier waits before it comes back.
 pub const COURIER_RESPAWN_TICKS: u32 = 25 * TICKS_PER_SECOND;
 /// Percent a burst adds to a courier's speed.
@@ -770,7 +796,7 @@ pub const HOOK_MANA: [i32; 4] = [110, 120, 130, 140];
 /// Ticks between hooks, by level.
 pub const HOOK_COOLDOWN: [u32; 4] = [810, 690, 570, 450];
 /// How far the hook flies, in world units.
-pub const HOOK_RANGE: i32 = 1100;
+pub const HOOK_RANGE: i32 = 1300;
 /// How fast the hook flies, in world units a second.
 pub const HOOK_SPEED: i32 = 1600;
 /// How wide the hook catches, in world units.
@@ -783,18 +809,17 @@ pub const ROT_RADIUS: i32 = 250;
 pub const ROT_DAMAGE_PER_SECOND: [i32; 4] = [30, 60, 90, 120];
 /// Percent of speed the rot takes, by level.
 pub const ROT_SLOW_PCT: [i32; 4] = [10, 15, 20, 25];
-/// How near a death has to be to feed the flesh heap, in world units.
-pub const FLESH_HEAP_RANGE: i32 = 700;
-/// Health one stack of the flesh heap is worth.
-pub const FLESH_HEAP_HP: i32 = 14;
-/// Magic resistance each level of the flesh heap gives, percent.
-pub const FLESH_HEAP_RESIST_PCT: [i32; 4] = [4, 8, 12, 16];
+/// How near an enemy hero has to fall to feed the flesh heap, in world
+/// units.
+pub const FLESH_HEAP_RANGE: i32 = 450;
+/// Strength one stack of the flesh heap is worth.
+pub const FLESH_HEAP_STRENGTH: i32 = 2;
 /// Mana the dismember costs, by level.
 pub const DISMEMBER_MANA: [i32; 3] = [100, 130, 170];
 /// Ticks between dismembers, by level.
 pub const DISMEMBER_COOLDOWN: [u32; 3] = [900, 750, 600];
 /// How far the dismember reaches, in world units.
-pub const DISMEMBER_RANGE: i32 = 150;
+pub const DISMEMBER_RANGE: i32 = 200;
 /// Ticks a dismember holds what it caught.
 pub const DISMEMBER_TICKS: u32 = 90;
 /// Damage the dismember deals a second, by level.
@@ -839,20 +864,39 @@ pub const SOULS_PER_HERO: u32 = 3;
 pub const NECRO_SOUL_CAP: [u32; 4] = [12, 16, 20, 24];
 /// Attack damage one soul is worth.
 pub const DAMAGE_PER_SOUL: i32 = 2;
+/// Percent of the souls held that a death lets go, rounded down.
+pub const SOULS_LOST_ON_DEATH_PCT: u32 = 30;
 /// How far the presence reaches, in world units.
-pub const PRESENCE_RADIUS: i32 = 900;
+pub const PRESENCE_RADIUS: i32 = 1200;
 /// Armor the presence takes from an enemy standing in it, by level.
 pub const PRESENCE_ARMOR: [i32; 4] = [2, 3, 4, 5];
 /// Ticks the presence lingers on an enemy that walks out of it.
 pub const PRESENCE_LINGER_TICKS: u32 = TICKS_PER_SECOND / 2;
-/// How far the requiem reaches, in world units.
-pub const REQUIEM_RADIUS: i32 = 900;
-/// Damage the requiem deals for each soul held, by level.
-pub const REQUIEM_DAMAGE_PER_SOUL: [i32; 3] = [8, 11, 14];
+/// How far each line of the requiem flies, in world units.
+pub const REQUIEM_LINE_DISTANCE: i32 = 1000;
+/// World units a second a line of the requiem flies.
+pub const REQUIEM_LINE_SPEED: i32 = 700;
+/// How wide a line of the requiem catches as it sets out, in world units.
+pub const REQUIEM_LINE_WIDTH_START: i32 = 125;
+/// How wide a line of the requiem catches at the end of its flight.
+pub const REQUIEM_LINE_WIDTH_END: i32 = 300;
+/// The most lines one requiem lets go.
+pub const REQUIEM_LINES_MAX: u32 = 20;
+/// Damage each line of the requiem lands on each it crosses, by level.
+pub const REQUIEM_LINE_DAMAGE: [i32; 3] = [80, 120, 160];
 /// Percent of speed the requiem takes from what it catches, by level.
-pub const REQUIEM_SLOW_PCT: [i32; 3] = [30, 40, 50];
-/// Ticks the requiem's slow holds.
-pub const REQUIEM_SLOW_TICKS: u32 = 2 * TICKS_PER_SECOND;
+pub const REQUIEM_SLOW_PCT: [i32; 3] = [20, 25, 30];
+/// Ticks the requiem's fear and slow hold for each line that crosses what
+/// it catches.
+pub const REQUIEM_LINE_TICKS: u32 = 18;
+/// The most ticks the requiem's fear and slow hold.
+pub const REQUIEM_HOLD_MAX_TICKS: u32 = 64;
+/// How far ahead of itself a feared unit aims each step, in world units.
+pub const FLEE_LOOKAHEAD: i32 = 600;
+/// Ticks a burst or a ring an ability left is seen on the ground.
+pub const MARK_TICKS: u32 = 15;
+/// Links a hook's chain is laid out with between the thrower and the hook.
+pub const HOOK_LINKS: usize = 10;
 /// Mana the requiem costs, by level.
 pub const REQUIEM_MANA: [i32; 3] = [150, 175, 200];
 /// Ticks between requiems, by level.

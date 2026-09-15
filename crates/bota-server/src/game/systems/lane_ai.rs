@@ -139,9 +139,10 @@ impl World {
             if !self.can_attack(entity) {
                 continue;
             }
-            // Channelling, it takes on nothing at all; neither does a body
-            // still walking in to make a cast.
-            if self.is_channelling(entity) || self.cast_out_of_reach(entity) {
+            // Channelling or feared, it takes on nothing at all; neither does
+            // a body still walking in to make a cast.
+            if self.is_channelling(entity) || self.feared(entity) || self.cast_out_of_reach(entity)
+            {
                 self.target.remove(entity);
                 continue;
             }

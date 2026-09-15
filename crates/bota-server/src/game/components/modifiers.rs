@@ -89,6 +89,9 @@ pub enum ModifierKind {
         /// Which level of it is running, counted from zero.
         level: u8,
     },
+    /// Runs from whoever put it on, and neither swings nor casts, until it
+    /// lifts.
+    Feared,
 }
 
 /// One modifier on an entity.

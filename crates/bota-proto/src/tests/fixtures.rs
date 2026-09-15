@@ -79,7 +79,8 @@ pub fn hero_unit() -> UnitView {
         primary: None,
         armor: fixed(3),
         magic_resist: Fixed { raw: 16384 },
-        radius: fixed(24),
+        collision: fixed(27),
+        bound: fixed(24),
         vision_radius: fixed(1800),
         true_sight_radius: fixed(0),
         statuses: StatusFlags {
@@ -131,7 +132,8 @@ pub fn creep_unit(idx: u32) -> UnitView {
         primary: None,
         armor: fixed(2),
         magic_resist: Fixed { raw: 0 },
-        radius: fixed(16),
+        collision: fixed(36),
+        bound: fixed(16),
         vision_radius: fixed(1100),
         true_sight_radius: fixed(0),
         statuses: StatusFlags::default(),
@@ -348,6 +350,18 @@ pub fn all_orders() -> Vec<Order> {
         Order::Take {
             target: Target::Unit(entity(21)),
         },
+        Order::Cheat {
+            cheat: Cheat::Gold { amount: 500 },
+        },
+        Order::Cheat {
+            cheat: Cheat::Levels { count: 3 },
+        },
+        Order::Cheat {
+            cheat: Cheat::Refresh,
+        },
+        Order::Cheat {
+            cheat: Cheat::Item { item: ItemId(46) },
+        },
     ]
 }
 
@@ -367,6 +381,10 @@ pub fn all_events() -> Vec<EventKind> {
             amount: 300,
             kind: DamageKind::Pure,
             crit: false,
+        },
+        EventKind::Missed {
+            source: Some(entity(7)),
+            target: entity(100),
         },
         EventKind::Healed {
             source: None,

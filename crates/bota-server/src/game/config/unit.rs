@@ -6,7 +6,7 @@
 //!
 //! [`Stats`]: crate::game::Stats
 
-use bota_proto::{Attribute, Attributes, Fixed, UnitKind};
+use bota_proto::{Attribute, Attributes, Fixed, Team, UnitKind};
 
 use crate::game::rules;
 use crate::game::{Aura, ModifierKind, Reach};
@@ -86,8 +86,12 @@ pub struct UnitDef {
     /// Whether it only carries for another: what is in its bag is worth
     /// nothing to it.
     pub porter: bool,
-    /// The circle it occupies, in world units.
-    pub radius: i32,
+    /// Collision size: how near another body's centre may come, less that
+    /// body's own, in world units. Zero for what has no body.
+    pub collision: i32,
+    /// Bound radius: where its edge is for attack range, cast range and
+    /// areas, in world units.
+    pub bound: i32,
     /// Whether damage passes it by.
     pub invulnerable: bool,
     /// Whether it counts as ancient.
@@ -140,7 +144,8 @@ const NOTHING: UnitDef = UnitDef {
     hides: false,
     flies: false,
     porter: false,
-    radius: 0,
+    collision: 0,
+    bound: 0,
     invulnerable: false,
     ancient: false,
     bounty_gold: 0,
@@ -168,7 +173,8 @@ pub const MELEE_CREEP: UnitDef = UnitDef {
     move_speed: rules::CREEP_MOVE_SPEED,
     turn_rate: rules::TURN_RATE_BRADS,
     vision: rules::CREEP_VISION,
-    radius: rules::MELEE_CREEP_RADIUS,
+    collision: rules::MELEE_CREEP_COLLISION,
+    bound: rules::MELEE_CREEP_BOUND,
     bounty_gold: rules::MELEE_CREEP_BOUNTY,
     bounty_xp: rules::MELEE_CREEP_XP,
     per_upgrade: Growth {
@@ -210,7 +216,8 @@ pub const RANGED_CREEP: UnitDef = UnitDef {
     acquisition: rules::RANGED_CREEP_ACQUISITION,
     attack_point: rules::RANGED_CREEP_ATTACK_POINT,
     projectile_speed: Some(rules::RANGED_CREEP_PROJECTILE_SPEED),
-    radius: rules::RANGED_CREEP_RADIUS,
+    collision: rules::RANGED_CREEP_COLLISION,
+    bound: rules::RANGED_CREEP_BOUND,
     bounty_gold: rules::RANGED_CREEP_BOUNTY,
     bounty_xp: rules::RANGED_CREEP_XP,
     per_upgrade: Growth {
@@ -263,7 +270,8 @@ pub const SIEGE_CREEP: UnitDef = UnitDef {
     projectile_speed: Some(rules::SIEGE_CREEP_PROJECTILE_SPEED),
     armor: rules::SIEGE_CREEP_ARMOR,
     magic_resist_pct: rules::SIEGE_CREEP_MAGIC_RESIST_PCT,
-    radius: rules::SIEGE_CREEP_RADIUS,
+    collision: rules::SIEGE_CREEP_COLLISION,
+    bound: rules::SIEGE_CREEP_BOUND,
     bounty_gold: rules::SIEGE_CREEP_BOUNTY,
     bounty_xp: rules::SIEGE_CREEP_XP,
     per_upgrade: NO_GROWTH,
@@ -291,7 +299,8 @@ pub const HERO: UnitDef = UnitDef {
     move_speed: rules::HERO_MOVE_SPEED,
     turn_rate: rules::TURN_RATE_BRADS,
     vision: rules::HERO_VISION,
-    radius: rules::HERO_RADIUS,
+    collision: rules::HERO_COLLISION,
+    bound: rules::HERO_BOUND,
     per_level: Growth {
         attributes: rules::HERO_ATTRIBUTES_PER_LEVEL,
         hp: rules::HERO_HP_PER_LEVEL,
@@ -313,7 +322,7 @@ pub const PUDGE: UnitDef = UnitDef {
     max_hp: 150,
     max_mana: 82,
     damage: 21,
-    attack_range: 150,
+    attack_range: 175,
     attack_time: 1933,
     attack_point: 500,
     projectile_speed: None,
@@ -345,7 +354,8 @@ pub const SHADOW_FIEND: UnitDef = UnitDef {
     max_hp: 120,
     max_mana: 75,
     damage: 25,
-    attack_range: 500,
+    attack_range: 525,
+    acquisition: 800,
     attack_time: 1700,
     attack_point: 500,
     projectile_speed: Some(1200),
@@ -378,7 +388,8 @@ pub const BARRACKS_MELEE: UnitDef = UnitDef {
     hp_regen: rules::RAX_MELEE_HP_REGEN,
     armor: rules::RAX_MELEE_ARMOR,
     vision: rules::RAX_VISION,
-    radius: rules::RAX_RADIUS,
+    collision: rules::RAX_COLLISION,
+    bound: rules::RAX_BOUND,
     bounty_gold: rules::RAX_MELEE_BOUNTY,
     ..NOTHING
 };
@@ -389,20 +400,37 @@ pub const BARRACKS_RANGED: UnitDef = UnitDef {
     max_hp: rules::RAX_RANGED_HP,
     armor: rules::RAX_RANGED_ARMOR,
     vision: rules::RAX_VISION,
-    radius: rules::RAX_RADIUS,
+    collision: rules::RAX_COLLISION,
+    bound: rules::RAX_BOUND,
     bounty_gold: rules::RAX_RANGED_BOUNTY,
     ..NOTHING
 };
 
-/// An Ancient.
-pub const ANCIENT: UnitDef = UnitDef {
+/// The Radiant Ancient.
+pub const RADIANT_ANCIENT: UnitDef = UnitDef {
     kind: UnitKind::Ancient,
     max_hp: rules::ANCIENT_HP,
     armor: rules::ANCIENT_ARMOR,
     vision: rules::ANCIENT_VISION,
-    radius: rules::ANCIENT_RADIUS,
+    collision: rules::RADIANT_ANCIENT_COLLISION,
+    bound: rules::RADIANT_ANCIENT_BOUND,
     ..NOTHING
 };
+
+/// The Dire Ancient: the same building on a wider footprint.
+pub const DIRE_ANCIENT: UnitDef = UnitDef {
+    collision: rules::DIRE_ANCIENT_COLLISION,
+    bound: rules::DIRE_ANCIENT_BOUND,
+    ..RADIANT_ANCIENT
+};
+
+/// The Ancient a side raises. The jungle raises the Radiant one.
+pub fn ancient_of(team: Team) -> &'static UnitDef {
+    match team {
+        Team::Radiant | Team::Neutral => &RADIANT_ANCIENT,
+        Team::Dire => &DIRE_ANCIENT,
+    }
+}
 
 /// A fountain.
 /// What a fountain mends on its own side standing in it.
@@ -428,7 +456,8 @@ pub const FOUNTAIN: UnitDef = UnitDef {
     attack_backswing: rules::FOUNTAIN_ATTACK_BACKSWING,
     projectile_speed: Some(rules::FOUNTAIN_PROJECTILE_SPEED),
     vision: rules::FOUNTAIN_VISION,
-    radius: rules::FOUNTAIN_RADIUS,
+    collision: rules::FOUNTAIN_COLLISION,
+    bound: rules::FOUNTAIN_BOUND,
     invulnerable: true,
     ..NOTHING
 };
@@ -460,7 +489,7 @@ pub const SENTRY_WARD: UnitDef = UnitDef {
     kind: UnitKind::Ward,
     max_hp: 200,
     vision: 0,
-    true_sight: 850,
+    true_sight: 1050,
     hides: true,
     ..NOTHING
 };
@@ -502,7 +531,8 @@ const fn tower_of(index: usize) -> UnitDef {
         armor: rules::TOWER_TIER_ARMOR[index],
         turn_rate: rules::TURN_RATE_BRADS,
         vision: rules::TOWER_VISION,
-        radius: rules::TOWER_RADIUS,
+        collision: rules::TOWER_COLLISION,
+        bound: rules::TOWER_BOUND,
         bounty_gold: rules::TOWER_TIER_BOUNTY[index],
         ..NOTHING
     }

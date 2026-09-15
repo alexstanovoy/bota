@@ -124,7 +124,8 @@ const NEUTRAL_BASE: UnitDef = UnitDef {
     move_speed: 0,
     turn_rate: 0,
     vision: rules::NEUTRAL_VISION,
-    radius: rules::NEUTRAL_RADIUS,
+    collision: rules::NEUTRAL_COLLISION,
+    bound: rules::NEUTRAL_BOUND,
     invulnerable: false,
     ancient: false,
     bounty_gold: 0,
@@ -150,6 +151,7 @@ const NEUTRAL_BASE: UnitDef = UnitDef {
 pub const NEUTRALS: [UnitDef; 36] = [
     // Kobold
     UnitDef {
+        vision: 1400,
         max_hp: 240,
         damage: 15,
         attack_range: 100,
@@ -222,6 +224,7 @@ pub const NEUTRALS: [UnitDef; 36] = [
     },
     // ForestTrollHighPriest
     UnitDef {
+        vision: 1400,
         max_hp: 450,
         damage: 31,
         attack_range: 600,
@@ -240,6 +243,7 @@ pub const NEUTRALS: [UnitDef; 36] = [
     },
     // GnollAssassin
     UnitDef {
+        vision: 400,
         max_hp: 400,
         damage: 26,
         attack_range: 500,
@@ -294,6 +298,7 @@ pub const NEUTRALS: [UnitDef; 36] = [
     },
     // HarpyScout
     UnitDef {
+        vision: 1200,
         max_hp: 400,
         damage: 31,
         attack_range: 300,
@@ -312,6 +317,7 @@ pub const NEUTRALS: [UnitDef; 36] = [
     },
     // HarpyStorm
     UnitDef {
+        vision: 1800,
         max_hp: 500,
         damage: 33,
         attack_range: 450,
@@ -726,6 +732,7 @@ pub const NEUTRALS: [UnitDef; 36] = [
     },
     // SmallThunderLizard
     UnitDef {
+        vision: 1400,
         max_hp: 800,
         damage: 33,
         attack_range: 300,
@@ -744,6 +751,7 @@ pub const NEUTRALS: [UnitDef; 36] = [
     },
     // BigThunderLizard
     UnitDef {
+        vision: 1400,
         max_hp: 1700,
         damage: 62,
         attack_range: 300,
@@ -780,6 +788,7 @@ pub const NEUTRALS: [UnitDef; 36] = [
     },
     // IceShaman
     UnitDef {
+        vision: 1400,
         max_hp: 1500,
         damage: 60,
         attack_range: 500,

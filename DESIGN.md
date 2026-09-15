@@ -418,6 +418,19 @@ exploit any leak a human reviewer shrugs off:
   the grid line to the waypoint after it is clear: the radius spans a tower, and
   clearing a corner waypoint through the tower it was routing around left one
   Radiant mid creep of every wave wrestling its own tier three.
+  A tower landmark becomes a stop beside the tower, on its lane side away from
+  the base it guards. With the game's own 144-unit tower hulls the centre is
+  out of reach and the grid line past it never clears, so every wave stood
+  wrestling its tier three; the nearest open cell picks a grid-arbitrary side
+  and sent waves round the back of towers; and a stop facing the base lands in
+  the pocket between a tier three and its barracks, walking the wave in and
+  back out. The lane side is open on every tower of both maps.
+  The routes are laid per world on the ground as it stands and laid again the
+  next time a wave asks after the ground changes, with every marcher put at
+  the waypoint of its new route nearest to it. Laid once per map, they kept
+  every footprint for ever and a wave walked round the empty ground a fallen
+  tower had stood on. A found path keeps only the corners the grid line
+  cannot skip: cell by cell it rounded a footprint in right angles.
 - Hero: Sylla (ranged carry). 3 abilities + an ultimate, levels 1–10.
 - Economy: passive gold 1/sec, last hits, a hero kill bounty priced by the
   victim's streak, and a death that costs the fallen thirty gold a level,
@@ -587,11 +600,22 @@ emergent, because creeps arrive first. On top of that sit the aggro calls:
   does not hold it, exactly as in Dota, where stationary units are avoidance
   obstacles for the short pather. Whoever occupies the walker's own goal is not
   steered around. All contact is solid: the distance between two units never drops
-  below the sum of their radii, a step deeper into anybody's circle is refused,
-  and a walker pressed right against a stander traces its circle by sidesteps.
+  below the sum of their collision sizes, a step deeper into anybody's circle is
+  refused, and a walker pressed right against a stander traces its circle by
+  sidesteps. A body has two radii, as in Dota: the collision size nothing walks
+  into, and the smaller bound radius that attack range, cast range and areas are
+  measured to. One radius served both until the hulls were brought to Dota's
+  numbers: the bound radius as a hull packed waves tighter than Dota's and let
+  creeps stand where Dota's could not, while the collision size as a reach would
+  have lengthened every attack and cast by the difference.
   The static grid is a hard wall too: a step or sidestep into a cell closed by a
   structure or a tree is refused outright, while a step out of one is always
-  allowed, so nothing ever wedges inside the forest. A
+  allowed, so nothing ever wedges inside the forest. A walk to a spot that
+  cannot be stood on, or that no way leads to, ends at the nearest spot that
+  can: the path finder answers with the open cell nearest the asked one, or
+  the nearest it got to, and the route remembers where the walk ends, so a
+  hero sent into the middle of a tower comes up to it and stands instead of
+  circling it for a spot it can never take. A
   unit that is walking is not avoided at all: whoever runs into it presses into
   the body, fully stopped, for the block wait, and only then starts sidestepping
   around. That stop, paid again on every new contact, is what makes creep-blocking

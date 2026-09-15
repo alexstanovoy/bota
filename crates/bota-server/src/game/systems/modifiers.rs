@@ -16,11 +16,50 @@ impl World {
         })
     }
 
+    /// Whether an entity is feared: it runs from whoever put the fear on,
+    /// and neither swings nor casts until it lifts.
+    pub fn feared(&self, entity: Entity) -> bool {
+        self.modifiers
+            .get(entity)
+            .is_some_and(|on_it| on_it.active().any(|held| held.kind == ModifierKind::Feared))
+    }
+
+    /// Whoever a feared entity runs from, while that one is still known.
+    pub fn flees_from(&self, entity: Entity) -> Option<Entity> {
+        self.modifiers.get(entity).and_then(|on_it| {
+            on_it
+                .active()
+                .find(|held| held.kind == ModifierKind::Feared)
+                .and_then(|held| held.source)
+        })
+    }
+
     /// Puts a modifier on an entity. One that is not a unit takes nothing.
     pub fn put_modifier(&mut self, on: Entity, modifier: Modifier) {
         if let Some(on_it) = self.modifiers.get_mut(on) {
             on_it.put(modifier);
         }
+    }
+
+    /// Puts a timed modifier on, adding its time to what the same kind from
+    /// the same source already holds, up to `cap` ticks in all.
+    pub fn extend_modifier(&mut self, on: Entity, modifier: Modifier, cap: u32) {
+        let Some(on_it) = self.modifiers.get_mut(on) else {
+            return;
+        };
+        let same = std::mem::discriminant(&modifier.kind);
+        let held = on_it
+            .active()
+            .find(|held| {
+                std::mem::discriminant(&held.kind) == same && held.source == modifier.source
+            })
+            .and_then(|held| held.ticks_left)
+            .unwrap_or(0);
+        let more = modifier.ticks_left.unwrap_or(0);
+        on_it.put(Modifier {
+            ticks_left: Some((held + more).min(cap)),
+            ..modifier
+        });
     }
 
     /// Takes off every modifier of one kind from one source.
@@ -79,11 +118,7 @@ impl World {
     /// burns by the same amount but never to death.
     fn rot(&mut self, owner: Entity, level: u8) {
         if !self.alive(owner) {
-            if let Some(on_it) = self.modifiers.get_mut(owner) {
-                on_it
-                    .0
-                    .retain(|held| !matches!(held.kind, ModifierKind::Rot { .. }));
-            }
+            self.rot_goes_out(owner);
             return;
         }
         let (Some(at), Some(side)) = (
@@ -92,6 +127,12 @@ impl World {
         ) else {
             return;
         };
+        // The cloud shown for it stands where its owner now stands.
+        if let Some(shown) = self.mark_of(owner, crate::game::ability::ROT)
+            && let Some(transform) = self.transform.get_mut(shown)
+        {
+            transform.pos = at;
+        }
         let amount = rules::ROT_DAMAGE_PER_SECOND[usize::from(level)]
             * rules::BURN_PERIOD_TICKS as i32
             / rules::TICKS_PER_SECOND as i32;

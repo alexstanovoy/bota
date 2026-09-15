@@ -11,8 +11,8 @@ use bota_proto::{DamageKind, Fixed, ItemSlot, Team, Vec2};
 
 use crate::game::{
     ActionPhase, ActionState, BEATS_PER_TICK, Chance, Entity, Hit, HitEffect, PendingCast,
-    Projectile, Purpose, Stats, Target, Visibility, World, ability, attack_gain, beats, cross,
-    is_creep, rules, wire_id,
+    Projectile, Purpose, Ratio, Stats, Target, Visibility, World, ability, attack_gain, beats,
+    cross, is_creep, is_structure, rules, wire_id,
 };
 use crate::game::{facing_gap, facing_towards};
 
@@ -194,7 +194,7 @@ impl World {
                 0
             };
             action.attack_cooldown = action.attack_cooldown.saturating_sub(gain);
-            let held = self.held(entity);
+            let held = self.held(entity) || self.feared(entity);
             // The phase the tick began in is broken off or carried one tick
             // on. A swing or a cast given up before it lands costs nothing;
             // an ability that runs on is told when it is broken off.
@@ -393,7 +393,7 @@ impl World {
             self.order_cast_off(entity);
             return false;
         }
-        if self.cast_out_of_reach(entity) || self.held(entity) {
+        if self.cast_out_of_reach(entity) || self.held(entity) || self.feared(entity) {
             return false;
         }
         let Some(timing) = self.timing_of(entity, pending) else {
@@ -551,15 +551,32 @@ impl World {
             Some(pct) => (damage * pct / 100, true),
             None => (damage, false),
         };
+        let pierce = self.roll_pierce(attacker, on, stats);
         match stats.projectile_speed {
-            None => self.hits.push_back(Hit {
-                source: Some(attacker),
-                target: on,
-                amount: damage,
-                kind: DamageKind::Physical,
-                crit,
-                effect: HitEffect::None,
-            }),
+            None => {
+                self.hits.push_back(Hit {
+                    source: Some(attacker),
+                    target: on,
+                    amount: damage,
+                    kind: DamageKind::Physical,
+                    crit,
+                    attack: true,
+                    pierces: pierce.is_some(),
+                    effect: HitEffect::None,
+                });
+                if let Some(bonus) = pierce {
+                    self.hits.push_back(Hit {
+                        source: Some(attacker),
+                        target: on,
+                        amount: bonus,
+                        kind: DamageKind::Magical,
+                        crit: false,
+                        attack: false,
+                        pierces: false,
+                        effect: HitEffect::None,
+                    });
+                }
+            }
             Some(speed) => {
                 let Some(at) = self.transform.get(attacker).copied() else {
                     return;
@@ -582,6 +599,8 @@ impl World {
                         launch_tier: self.ground.tier(at.pos),
                         can_miss_uphill: !stats.flies,
                         crit,
+                        pierces: pierce.is_some(),
+                        pierce_damage: pierce.unwrap_or(0),
                         bounces_left: 0,
                         bounce_range: 0,
                         bounced: Vec::new(),
@@ -613,6 +632,27 @@ impl World {
         }
         let chance = self.crit[index].as_mut().expect("opened above");
         chance.roll(ratio).then_some(rules::SYLLA_CRIT_MULT_PCT[at])
+    }
+
+    /// Whether a swing pierces, and then the magical damage it lands
+    /// alongside. Absent for a swing that does not.
+    ///
+    /// Only an attacker carrying a pierce ever rolls, and a structure is
+    /// never pierced; the share is held exactly over every block of rolls.
+    fn roll_pierce(&mut self, attacker: Entity, on: Entity, stats: &Stats) -> Option<i32> {
+        if stats.pierce == Ratio::NEVER || self.kind.get(on).copied().is_some_and(is_structure) {
+            return None;
+        }
+        let index = attacker.index().0 as usize;
+        if self.pierce.len() <= index {
+            self.pierce.resize_with(index + 1, || None);
+        }
+        if self.pierce[index].is_none() {
+            let stream = self.rng.for_unit(Purpose::Pierce, wire_id(attacker), 0);
+            self.pierce[index] = Some(Chance::new(stream, stats.pierce));
+        }
+        let chance = self.pierce[index].as_mut().expect("opened above");
+        chance.roll(stats.pierce).then_some(stats.pierce_damage)
     }
 
     /// Whether a swing may begin: the target is standing, seen, in reach, and
@@ -663,8 +703,8 @@ impl World {
         let (Some(from), Some(at)) = (self.transform.get(attacker), self.transform.get(on)) else {
             return false;
         };
-        let hulls = self.hull.get(attacker).map_or(Fixed::ZERO, |h| h.radius)
-            + self.hull.get(on).map_or(Fixed::ZERO, |h| h.radius);
+        let hulls = self.hull.get(attacker).map_or(Fixed::ZERO, |h| h.bound)
+            + self.hull.get(on).map_or(Fixed::ZERO, |h| h.bound);
         from.pos.within(at.pos, reach + hulls)
     }
 }

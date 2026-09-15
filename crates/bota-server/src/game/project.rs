@@ -51,7 +51,10 @@ impl World {
                 .entities
                 .iter()
                 .filter(|entity| {
-                    self.projectile.get(*entity).is_some() || self.hook.get(*entity).is_some()
+                    self.projectile.get(*entity).is_some()
+                        || self.hook.get(*entity).is_some()
+                        || self.mark.get(*entity).is_some()
+                        || self.requiem_line.get(*entity).is_some()
                 })
                 .filter(|entity| match viewer {
                     None => true,
@@ -62,9 +65,14 @@ impl World {
                 })
                 .filter_map(|entity| {
                     let at = self.transform.get(entity)?;
-                    let ability = match self.projectile.get(entity) {
-                        Some(shot) => shot.ability,
-                        None => Some(crate::game::ability::MEAT_HOOK),
+                    let ability = if let Some(shot) = self.projectile.get(entity) {
+                        shot.ability
+                    } else if let Some(mark) = self.mark.get(entity) {
+                        Some(mark.ability)
+                    } else if self.requiem_line.get(entity).is_some() {
+                        Some(crate::game::ability::REQUIEM)
+                    } else {
+                        Some(crate::game::ability::MEAT_HOOK)
                     };
                     Some(ProjectileView {
                         id: wire_id(entity),
@@ -166,7 +174,8 @@ impl World {
             attack_speed: stats.attack_speed,
             armor: stats.armor,
             magic_resist: Fixed::from_ratio(stats.magic_resist_pct, 100),
-            radius: self.hull.get(entity).map_or(Fixed::ZERO, |h| h.radius),
+            collision: self.hull.get(entity).map_or(Fixed::ZERO, |h| h.collision),
+            bound: self.hull.get(entity).map_or(Fixed::ZERO, |h| h.bound),
             vision_radius: stats.vision,
             true_sight_radius: stats.true_sight,
             statuses: StatusFlags {
@@ -290,6 +299,7 @@ fn effect_id(kind: ModifierKind) -> u16 {
         ModifierKind::Inspired { .. } => 14,
         ModifierKind::Shadowraze { .. } => EFFECT_SHADOWRAZE,
         ModifierKind::Rot { .. } => 16,
+        ModifierKind::Feared => 17,
     }
 }
 
@@ -362,6 +372,7 @@ impl World {
                 ModifierKind::Shielded => StatusFlags::MAGIC_IMMUNE,
                 ModifierKind::Slowed { .. } => StatusFlags::SLOWED,
                 ModifierKind::Burning { .. } => StatusFlags::DOT,
+                ModifierKind::Feared => StatusFlags::FEARED,
                 _ => 0,
             };
         }

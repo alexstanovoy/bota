@@ -35,15 +35,17 @@ impl World {
                 fnv.u8(failures);
             }
         }
-        fnv.u32(self.crit.len() as u32);
-        for chance in &self.crit {
-            fnv.some(chance.is_some());
-            if let Some(chance) = chance {
-                let (draws, at) = chance.state();
-                fnv.u64(draws);
-                fnv.u8(at);
-                fnv.u8(chance.current().num());
-                fnv.u8(chance.current().den());
+        for stream in [&self.crit, &self.evasion, &self.pierce] {
+            fnv.u32(stream.len() as u32);
+            for chance in stream {
+                fnv.some(chance.is_some());
+                if let Some(chance) = chance {
+                    let (draws, at) = chance.state();
+                    fnv.u64(draws);
+                    fnv.u8(at);
+                    fnv.u8(chance.current().num());
+                    fnv.u8(chance.current().den());
+                }
             }
         }
         fnv.u32(self.hits.len() as u32);
@@ -122,6 +124,8 @@ impl World {
                 fnv.u8(shot.launch_tier);
                 fnv.some(shot.can_miss_uphill);
                 fnv.some(shot.crit);
+                fnv.some(shot.pierces);
+                fnv.i32(shot.pierce_damage);
                 fnv.u8(shot.bounces_left);
                 fnv.i32(shot.bounce_range);
                 fnv.u32(shot.bounced.len() as u32);
@@ -160,6 +164,26 @@ impl World {
                     fnv.entity(caught);
                 }
                 fnv.some(hook.returning);
+                for link in hook.links {
+                    fnv.entity(link);
+                }
+            }
+            if let Some(mark) = self.mark.get(entity) {
+                fnv.u32(u32::from(mark.ability.0));
+                fnv.entity(mark.owner);
+            }
+            if let Some(line) = self.requiem_line.get(entity) {
+                fnv.entity(line.owner);
+                fnv.vec2(line.aim);
+                fnv.fixed(line.speed);
+                fnv.fixed(line.travelled);
+                fnv.fixed(line.distance);
+                fnv.i32(line.damage);
+                fnv.i32(line.slow_pct);
+                fnv.u32(line.struck.len() as u32);
+                for crossed in &line.struck {
+                    fnv.entity(*crossed);
+                }
             }
             if let Some(ai) = self.neutral_ai.get(entity) {
                 fnv.some(ai.awake);
@@ -268,6 +292,8 @@ fn hash_hit(fnv: &mut Fnv, hit: &Hit) {
     fnv.i32(hit.amount);
     fnv.u8(hit.kind as u8);
     fnv.some(hit.crit);
+    fnv.some(hit.attack);
+    fnv.some(hit.pierces);
     match hit.effect {
         HitEffect::None => fnv.u8(0),
         HitEffect::Shadowraze { level } => {
@@ -347,6 +373,7 @@ fn hash_modifier_kind(fnv: &mut Fnv, kind: ModifierKind) {
             fnv.u8(14);
             fnv.u8(level);
         }
+        ModifierKind::Feared => fnv.u8(15),
     }
 }
 

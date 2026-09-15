@@ -1,0 +1,9 @@
+<svg width="100%" viewBox="0 0 680 260" role="img" xmlns="http://www.w3.org/2000/svg"><title>Butterfly</title><desc>Rectangular icon: a butterfly with pale green wings</desc>
+<rect x="220" y="50" width="240" height="160" fill="#1a2230"/>
+<path d="M336 130 C 300 70, 250 90, 262 130 C 250 170, 300 190, 336 130 Z" fill="#7fd3a8"/>
+<path d="M344 130 C 380 70, 430 90, 418 130 C 430 170, 380 190, 344 130 Z" fill="#7fd3a8"/>
+<path d="M336 130 C 310 100, 280 105, 286 130 C 280 155, 310 160, 336 130 Z" fill="#3aa06a" opacity="0.7"/>
+<path d="M344 130 C 370 100, 400 105, 394 130 C 400 155, 370 160, 344 130 Z" fill="#3aa06a" opacity="0.7"/>
+<path d="M340 100 L 340 168" fill="none" stroke="#2b2b33" stroke-width="10" stroke-linecap="round"/>
+<path d="M340 100 L 326 80 M340 100 L 354 80" fill="none" stroke="#2b2b33" stroke-width="4" stroke-linecap="round"/>
+</svg>

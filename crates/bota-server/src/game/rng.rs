@@ -26,9 +26,11 @@ pub enum Purpose {
     NeutralSpawn = 4,
     /// Which melee creep of a wave carries the flag.
     Wave = 5,
+    /// Pierce ordering.
+    Pierce = 6,
 }
 
-const PURPOSE_COUNT: usize = Purpose::Wave as usize + 1;
+const PURPOSE_COUNT: usize = Purpose::Pierce as usize + 1;
 
 /// The root of all hidden randomness in one match.
 ///
@@ -207,6 +209,17 @@ impl Ratio {
     /// Attempts per block.
     pub const fn den(self) -> u8 {
         self.den
+    }
+
+    /// Whether it hits more often than another.
+    pub const fn beats(self, other: Ratio) -> bool {
+        (self.num as u16) * (other.den as u16) > (other.num as u16) * (self.den as u16)
+    }
+}
+
+impl Default for Ratio {
+    fn default() -> Ratio {
+        Ratio::NEVER
     }
 }
 

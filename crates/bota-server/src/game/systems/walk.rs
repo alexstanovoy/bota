@@ -25,6 +25,14 @@ impl World {
     pub fn walk_bodies(&mut self) {
         let entities = self.take_entity_snapshot();
         for entity in entities.iter().copied() {
+            // Feared, it runs from whoever put the fear on and does nothing
+            // else; with nobody left to run from it stands where it is.
+            if self.feared(entity) {
+                if let Some(from) = self.flees_from(entity) {
+                    self.flee(entity, from);
+                }
+                continue;
+            }
             // Held or channelling roots outright: there is nothing to come
             // round to.
             if self.held(entity) || self.is_channelling(entity) {
@@ -129,6 +137,10 @@ impl World {
                 continue;
             }
             let waypoint = self.next_corner(entity, from, dest);
+            // Where the walk ends is where it stands: nothing left to walk.
+            if waypoint == from {
+                continue;
+            }
             let step = per_tick(stats.move_speed);
             let marching = self.march.get(entity).is_some();
             // A walker works round the bodies in its way with the same held
@@ -189,8 +201,14 @@ impl World {
         ) else {
             return false;
         };
-        let hulls = self.hull.get(one).map_or(Fixed::ZERO, |hull| hull.radius)
-            + self.hull.get(other).map_or(Fixed::ZERO, |hull| hull.radius);
+        let hulls = self
+            .hull
+            .get(one)
+            .map_or(Fixed::ZERO, |hull| hull.collision)
+            + self
+                .hull
+                .get(other)
+                .map_or(Fixed::ZERO, |hull| hull.collision);
         here.within(there, hulls + rules::units(rules::STEER_MARGIN))
     }
 
@@ -215,7 +233,9 @@ impl World {
     /// sight, otherwise the next corner of a route laid round the buildings.
     ///
     /// Only what a player drives keeps a route; a creep walks the lane it was
-    /// given and never plans around anything.
+    /// given and never plans around anything. A destination that cannot be
+    /// stood on or reached is walked to the nearest spot that can, and the
+    /// walk ends there: the spot itself comes back once it is stood on.
     fn next_corner(&mut self, entity: Entity, from: Vec2, dest: Vec2) -> Vec2 {
         if self.march.get(entity).is_some() {
             return dest;
@@ -229,6 +249,7 @@ impl World {
         let mut route = self.route.remove(entity).unwrap_or(Route {
             path: Vec::new(),
             goal: dest,
+            end: dest,
             trace: None,
         });
         // A path is worth walking only to the spot it was found for. What is
@@ -238,6 +259,8 @@ impl World {
         // path would be walked to where the quarry used to be.
         if !route.goal.within(dest, rules::units(rules::REPATH_DRIFT)) {
             route.path.clear();
+            route.goal = dest;
+            route.end = dest;
         }
         while route
             .path
@@ -246,11 +269,20 @@ impl World {
         {
             route.path.remove(0);
         }
-        if route.path.is_empty() && !grid_los(&self.grid, from, dest) {
-            route.path = find_path(&self.grid, from, dest);
-            route.goal = dest;
+        // With the corners walked, the last stretch runs to where the walk
+        // ends: the destination itself when the line to it is clear, else
+        // the end of a route laid to it. A route is laid only for a
+        // destination not yet walked up to.
+        if route.path.is_empty() {
+            if grid_los(&self.grid, from, dest) {
+                route.end = dest;
+            } else if !from.within(route.end, rules::units(rules::WAYPOINT_RADIUS)) {
+                route.path = find_path(&self.grid, from, dest);
+                route.goal = dest;
+                route.end = route.path.last().copied().unwrap_or(from);
+            }
         }
-        let next = route.path.first().copied().unwrap_or(dest);
+        let next = route.path.first().copied().unwrap_or(route.end);
         self.route.insert(entity, route);
         next
     }
@@ -274,6 +306,40 @@ fn destination(order: &UnitOrder) -> Option<Vec2> {
 }
 
 impl World {
+    /// Runs one entity straight away from another, a step a tick, turning
+    /// first when it has to.
+    fn flee(&mut self, entity: Entity, from: Entity) {
+        let (Some(here), Some(there), Some(stats)) = (
+            self.transform.get(entity).map(|t| t.pos),
+            self.transform.get(from).map(|t| t.pos),
+            self.stats.get(entity).copied(),
+        ) else {
+            return;
+        };
+        if here == there {
+            return;
+        }
+        let away = crate::game::point_along(
+            here,
+            here + (here - there),
+            Fixed::from_int(rules::FLEE_LOOKAHEAD),
+        );
+        let wanted = facing_towards(here, away);
+        let facing = turn_towards(
+            self.transform.get(entity).expect("looked up above").facing,
+            wanted,
+            stats.turn_rate,
+        );
+        let mut next = here;
+        if facing_gap(facing, wanted) <= rules::TURN_TOLERANCE_BRADS {
+            next = self.walk_step(entity, away, per_tick(stats.move_speed));
+        }
+        if let Some(transform) = self.transform.get_mut(entity) {
+            transform.facing = facing;
+            transform.pos = next;
+        }
+    }
+
     /// Walks one entity at a spot until it stands within a reach of it.
     ///
     /// Standing near enough already, it only comes round to face the spot.
@@ -289,6 +355,11 @@ impl World {
             return;
         }
         let waypoint = self.next_corner(entity, from, aim);
+        // As near as the ground lets it get: it comes round and waits there.
+        if waypoint == from {
+            self.turn_to(entity, aim);
+            return;
+        }
         let wanted = facing_towards(from, waypoint);
         let facing = turn_towards(
             self.transform.get(entity).expect("looked up above").facing,

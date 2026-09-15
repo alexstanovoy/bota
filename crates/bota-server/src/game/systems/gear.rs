@@ -90,6 +90,15 @@ pub fn carried_bonus(inventory: &Inventory) -> Carried {
         total.hp_regen += def.carried.hp_regen * Fixed::from_int(regen_charges);
         total.mana_regen += def.carried.mana_regen;
         total.damage_to_creeps += def.carried.damage_to_creeps;
+        total.base_attack_speed_pct += def.carried.base_attack_speed_pct;
+        if def.carried.evasion.beats(total.evasion) {
+            total.evasion = def.carried.evasion;
+        }
+        if def.carried.pierce.beats(total.pierce) {
+            total.pierce = def.carried.pierce;
+            total.pierce_damage = def.carried.pierce_damage;
+        }
+        total.melee_range += def.carried.melee_range;
         // What an item is set to is worth points of that attribute alone.
         if let Some(mode) = stack.mode {
             let bonus = Fixed::from_int(def.mode_bonus);

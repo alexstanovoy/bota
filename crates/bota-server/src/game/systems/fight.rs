@@ -24,8 +24,8 @@ impl World {
         ) else {
             return false;
         };
-        let hulls = self.hull.get(attacker).map_or(Fixed::ZERO, |h| h.radius)
-            + self.hull.get(target).map_or(Fixed::ZERO, |h| h.radius);
+        let hulls = self.hull.get(attacker).map_or(Fixed::ZERO, |h| h.bound)
+            + self.hull.get(target).map_or(Fixed::ZERO, |h| h.bound);
         at.pos.within(their_at.pos, stats.attack_range + hulls)
     }
 
@@ -41,6 +41,19 @@ impl World {
                     crit: blow.crit,
                 },
                 visible_to: self.who_may_know(blow.at, blow.side),
+            });
+        }
+    }
+
+    /// Tells each side of the attacks it was near enough to see miss.
+    pub fn tell_of_misses(&self, missed: &[crate::game::Missed], events: &mut Vec<Event>) {
+        for miss in missed {
+            events.push(Event {
+                kind: EventKind::Missed {
+                    source: miss.source.map(wire_id),
+                    target: wire_id(miss.target),
+                },
+                visible_to: self.who_may_know(miss.at, miss.side),
             });
         }
     }
@@ -95,6 +108,7 @@ impl World {
     ) -> Option<(UnitKind, Team)> {
         assert!(self.entities.contains(entity));
         self.cancel_action(entity);
+        self.rot_goes_out(entity);
         self.carry_fights_on(entity);
         self.feed_flesh_heaps(entity);
         self.feed_souls(entity, killer);
@@ -151,6 +165,7 @@ impl World {
         for index in 0..self.seats.len() {
             if self.seats[index].unit == Some(entity) {
                 let level = self.seats[index].level;
+                self.let_souls_go(entity);
                 let kept = crate::game::Kept {
                     book: self.abilities.remove(entity).unwrap_or_default(),
                     bag: self.inventory.remove(entity).unwrap_or_default(),

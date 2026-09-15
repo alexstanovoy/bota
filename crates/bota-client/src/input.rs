@@ -11,6 +11,9 @@ use crate::state::{App, Phase, Source, Tap};
 
 /// Handles one frame of input.
 pub fn handle(app: &mut App) {
+    if console_controls(app) {
+        return;
+    }
     if is_key_pressed(KeyCode::Escape) {
         if app.attack_move_armed || app.aiming.is_some() || app.held_item.is_some() {
             app.attack_move_armed = false;
@@ -72,6 +75,40 @@ pub fn handle(app: &mut App) {
             }
         }
     }
+}
+
+/// Opens the console line on Enter and, while it is open, types into it.
+/// Enter sends what was typed, Escape drops it. Returns whether the console
+/// took the frame's keys, so typing never doubles as hotkeys.
+fn console_controls(app: &mut App) -> bool {
+    let Some(line) = app.console.as_mut() else {
+        if app.phase == Phase::Playing && app.my_slot.is_some() && is_key_pressed(KeyCode::Enter) {
+            app.console = Some(String::new());
+            while get_char_pressed().is_some() {}
+            return true;
+        }
+        return false;
+    };
+    while let Some(typed) = get_char_pressed() {
+        if !typed.is_control() {
+            line.push(typed);
+        }
+    }
+    if is_key_pressed(KeyCode::Backspace) {
+        line.pop();
+    }
+    if is_key_pressed(KeyCode::Escape) {
+        app.console = None;
+        return true;
+    }
+    if is_key_pressed(KeyCode::Enter) {
+        let line = app.console.take().unwrap_or_default();
+        match crate::console::parse(&line) {
+            Ok(order) => app.send_order(order),
+            Err(why) => app.reject = Some((why, 2.5)),
+        }
+    }
+    true
 }
 
 /// Handles clicks landing on the HUD. Returns whether one did, so a click on
@@ -716,7 +753,7 @@ pub fn unit_under_cursor(
         let dx = u.pos.x.to_f32() - wx;
         let dy = u.pos.y.to_f32() - wy;
         let dist = (dx * dx + dy * dy).sqrt();
-        let slack = u.radius.to_f32().max(20.0) + 15.0;
+        let slack = u.collision.to_f32().max(20.0) + 15.0;
         if dist <= slack && best.is_none_or(|(b, _)| dist < b) {
             best = Some((dist, u.id));
         }
@@ -747,7 +784,7 @@ pub fn enemy_near_cursor(
         let dx = u.pos.x.to_f32() - wx;
         let dy = u.pos.y.to_f32() - wy;
         let dist = (dx * dx + dy * dy).sqrt();
-        let reach = u.radius.to_f32() + ATTACK_SNAP;
+        let reach = u.collision.to_f32() + ATTACK_SNAP;
         if dist <= reach && best.is_none_or(|(b, _)| dist < b) {
             best = Some((dist, u.id));
         }

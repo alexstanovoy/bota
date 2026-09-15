@@ -7,8 +7,8 @@
 use bota_proto::{DamageKind, Target, UnitView, Vec2};
 
 use crate::{
-    Ask, Beat, Field, RAZE_DAMAGE, RAZE_RADIUS, RAZES, REQUIEM, REQUIEM_DAMAGE_PER_SOUL,
-    after_mitigation, facing_gap, facing_towards, span, spot_ahead, within,
+    Ask, Beat, Field, RAZE_DAMAGE, RAZE_RADIUS, RAZES, REQUIEM, REQUIEM_LINE_DAMAGE,
+    REQUIEM_LINE_WIDTH, after_mitigation, facing_gap, facing_towards, span, spot_ahead, within,
 };
 
 /// Souls a requiem is worth letting go for a lone enemy that it would not
@@ -71,17 +71,28 @@ fn requiem(field: &Field) -> Option<Ask> {
     if souls == 0 {
         return None;
     }
-    let each = REQUIEM_DAMAGE_PER_SOUL
+    let each = REQUIEM_LINE_DAMAGE
         .get(usize::from(held.level - 1))
         .copied()
         .unwrap_or(0);
     let caught: Vec<&UnitView> = field.foes_within(held.range).collect();
-    let kills = caught
-        .iter()
-        .any(|foe| after_mitigation(each * souls as i32, DamageKind::Magical, foe) >= foe.hp);
+    let kills = caught.iter().any(|foe| {
+        let raw = each * lines_crossing(souls, me, foe);
+        after_mitigation(raw, DamageKind::Magical, foe) >= foe.hp
+    });
     let worth =
         caught.len() >= REQUIEM_CROWD || kills || (!caught.is_empty() && souls >= REQUIEM_SOULS);
     worth.then(|| Ask::cast(slot, Target::None))
+}
+
+/// How many of a requiem's lines would cross a foe where it stands: the
+/// share of the circle round the caster its body and a line's width take,
+/// one at the least.
+fn lines_crossing(souls: u32, me: &UnitView, foe: &UnitView) -> i32 {
+    let apart = span(foe.pos, me.pos).max(1.0);
+    let caught = foe.bound.to_f32() + REQUIEM_LINE_WIDTH;
+    let share = souls as f32 * caught / (std::f32::consts::PI * apart);
+    (share.floor() as i32).clamp(1, souls as i32)
 }
 
 /// The best raze the hero is already looking down the line of.

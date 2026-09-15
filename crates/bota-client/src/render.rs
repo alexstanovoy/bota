@@ -389,21 +389,21 @@ fn draw_world(app: &App, view: &WorldView) {
     for u in &view.units {
         draw_unit(app, u, me == Some(u.id), to_screen);
     }
-    for p in &view.projectiles {
-        let (x, y) = to_screen(p.pos.x.to_f32(), p.pos.y.to_f32());
-        draw_circle(x, y, 3.0, GOLD);
-    }
+    draw_casts(app, view, &to_screen);
     for f in &app.floaters {
         let (x, y) = to_screen(f.world.0, f.world.1);
         let rise = f.age * 40.0;
         let alpha = (1.2 - f.age).clamp(0.0, 1.0);
-        draw_text(
-            &f.text,
-            x + 10.0,
-            y - 14.0 - rise,
-            18.0,
-            Color::new(1.0, 0.9, 0.6, alpha),
-        );
+        // A crit is bigger and red, a miss small and pale; the rest is the
+        // plain damage colour.
+        let (size, color) = match f.kind {
+            crate::state::FloaterKind::Crit => (26.0, Color::new(1.0, 0.35, 0.2, alpha)),
+            crate::state::FloaterKind::Miss => (16.0, Color::new(0.75, 0.75, 0.8, alpha)),
+            crate::state::FloaterKind::Damage | crate::state::FloaterKind::Level => {
+                (18.0, Color::new(1.0, 0.9, 0.6, alpha))
+            }
+        };
+        draw_text(&f.text, x + 10.0, y - 14.0 - rise, size, color);
     }
 }
 
@@ -442,7 +442,7 @@ fn draw_orders(app: &App, view: &WorldView, to_screen: impl Fn(f32, f32) -> (f32
                     continue;
                 };
                 let (x, y) = to_screen(mark.pos.x.to_f32(), mark.pos.y.to_f32());
-                let body = (mark.radius.to_f32() * app.camera.zoom).max(6.0);
+                let body = (mark.collision.to_f32() * app.camera.zoom).max(6.0);
                 draw_circle_lines(x, y, body + 3.0 + 6.0 * fade, 2.0, colour);
             }
             Target::None => {
@@ -457,7 +457,7 @@ fn draw_orders(app: &App, view: &WorldView, to_screen: impl Fn(f32, f32) -> (f32
                     continue;
                 };
                 let (x, y) = to_screen(from.pos.x.to_f32(), from.pos.y.to_f32());
-                let body = (from.radius.to_f32() * app.camera.zoom).max(6.0);
+                let body = (from.collision.to_f32() * app.camera.zoom).max(6.0);
                 draw_circle_lines(x, y, body + 3.0 + 6.0 * fade, 2.0, colour);
             }
         }
@@ -512,7 +512,7 @@ fn draw_aim(app: &App, view: &WorldView, to_screen: impl Fn(f32, f32) -> (f32, f
                 return;
             };
             let (x, y) = to_screen(mark.pos.x.to_f32(), mark.pos.y.to_f32());
-            let r = (mark.radius.to_f32() * app.camera.zoom).max(8.0) + 6.0;
+            let r = (mark.collision.to_f32() * app.camera.zoom).max(8.0) + 6.0;
             let colour = if within(mark.pos.x.to_f32(), mark.pos.y.to_f32()) {
                 if Some(mark.team) == app.my_team() {
                     good
@@ -628,9 +628,62 @@ fn draw_tree_pick(app: &App, view: &WorldView, to_screen: impl Fn(f32, f32) -> (
     }
 }
 
+/// Everything in flight or left on the ground, drawn by the shape its
+/// ability is given: a dot for a missile, a burst where a raze landed, a
+/// soul a requiem let fly, a link of a hook's chain, a hold on what a
+/// dismember eats, a cloud where a rot burns.
+fn draw_casts(app: &App, view: &WorldView, to_screen: &impl Fn(f32, f32) -> (f32, f32)) {
+    use crate::catalog::Art;
+    let zoom = app.camera.zoom;
+    for p in &view.projectiles {
+        let (x, y) = to_screen(p.pos.x.to_f32(), p.pos.y.to_f32());
+        let art = p
+            .ability
+            .and_then(|id| crate::catalog::ability(id.0))
+            .map_or(Art::Missile, |face| face.art);
+        match art {
+            Art::Missile => draw_circle(x, y, 3.0, GOLD),
+            Art::Cloud { radius } => {
+                let r = f32::from(radius) * zoom;
+                draw_circle(x, y, r, Color::new(0.4, 0.9, 0.3, 0.15));
+                draw_circle_lines(x, y, r, 2.0, Color::new(0.4, 0.9, 0.3, 0.6));
+            }
+            Art::Burst { radius } => {
+                let r = f32::from(radius) * zoom;
+                draw_circle(x, y, r, Color::new(1.0, 0.45, 0.15, 0.25));
+                draw_circle_lines(x, y, r, 2.0, Color::new(1.0, 0.6, 0.2, 0.9));
+            }
+            Art::Soul => {
+                let theta = f32::from(p.facing.brads) / 65536.0 * std::f32::consts::TAU;
+                let (fx, fy) = (theta.cos(), -theta.sin());
+                let tail = (40.0 * zoom).max(10.0);
+                draw_line(
+                    x - fx * tail,
+                    y - fy * tail,
+                    x,
+                    y,
+                    3.0,
+                    Color::new(0.7, 0.3, 1.0, 0.7),
+                );
+                draw_circle(x, y, (6.0 * zoom).max(3.0), Color::new(0.85, 0.6, 1.0, 1.0));
+            }
+            Art::Link => draw_circle(
+                x,
+                y,
+                (5.0 * zoom).max(3.0),
+                Color::new(0.85, 0.85, 0.9, 1.0),
+            ),
+            Art::Hold => {
+                let r = (30.0 * zoom).max(8.0);
+                draw_circle_lines(x, y, r, 3.0, Color::new(0.9, 0.2, 0.2, 0.9));
+            }
+        }
+    }
+}
+
 fn draw_unit(app: &App, u: &UnitView, mine: bool, to_screen: impl Fn(f32, f32) -> (f32, f32)) {
     let (x, y) = to_screen(u.pos.x.to_f32(), u.pos.y.to_f32());
-    let r = (u.radius.to_f32() * app.camera.zoom).max(4.0);
+    let r = (u.collision.to_f32() * app.camera.zoom).max(4.0);
     let mut color = team_color(u.team);
     // What cannot be struck yet is drawn washed out.
     if u.statuses.bits & bota_proto::StatusFlags::INVULNERABLE != 0 {
@@ -642,10 +695,11 @@ fn draw_unit(app: &App, u: &UnitView, mine: bool, to_screen: impl Fn(f32, f32) -
         );
     }
     match u.kind {
-        UnitKind::Tower => draw_rectangle(x - r, y - r, r * 2.0, r * 2.0, color),
-        UnitKind::Barracks => draw_poly(x, y, 4, r * 1.2, 0.0, color),
-        UnitKind::Ancient => {
-            draw_poly(x, y, 4, r * 1.3, 45.0, color);
+        // A building is drawn to the circle nothing walks into, with a dark
+        // rim so it reads apart from a hero.
+        UnitKind::Tower | UnitKind::Barracks | UnitKind::Ancient => {
+            draw_circle(x, y, r, color);
+            draw_circle_lines(x, y, r, 2.0, Color::new(0.0, 0.0, 0.0, 0.45));
         }
         UnitKind::Fountain => {
             draw_circle_lines(x, y, r, 3.0, color);
@@ -785,6 +839,15 @@ fn draw_hud(app: &App, view: &WorldView) {
         // the fight.
         let panel = crate::hud::bottom_panel(screen_width(), screen_height());
         draw_text(reason, panel.x + 8.0, panel.y - 8.0, 20.0, ORANGE);
+    }
+    if let Some(line) = &app.console {
+        // A dark strip above the panel, so what is typed reads against any
+        // ground.
+        let panel = crate::hud::bottom_panel(screen_width(), screen_height());
+        let (x, y, w, h) = (panel.x, panel.y - 62.0, panel.w.max(420.0), 30.0);
+        draw_rectangle(x, y, w, h, Color::new(0.0, 0.0, 0.0, 0.75));
+        draw_rectangle_lines(x, y, w, h, 1.0, GRAY);
+        draw_text(format!("> {line}_"), x + 8.0, y + 22.0, 22.0, WHITE);
     }
     if app.attack_move_armed {
         center_text_at(

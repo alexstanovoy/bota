@@ -68,6 +68,9 @@ fn stats() -> Stats {
         flies: false,
         phased: false,
         invulnerable: false,
+        evasion: crate::game::Ratio::NEVER,
+        pierce: crate::game::Ratio::NEVER,
+        pierce_damage: 0,
     }
 }
 

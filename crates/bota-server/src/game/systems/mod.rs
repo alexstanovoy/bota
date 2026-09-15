@@ -1,6 +1,7 @@
 mod actions;
 mod aura;
 mod cast;
+mod cheats;
 mod courier;
 mod econ;
 mod fiend;
@@ -42,6 +43,12 @@ mod actions_tests;
 #[cfg(test)]
 mod cast_tests;
 #[cfg(test)]
+mod cheats_tests;
+#[cfg(test)]
 mod crit_tests;
+#[cfg(test)]
+mod evasion_tests;
+#[cfg(test)]
+mod pierce_tests;
 #[cfg(test)]
 mod raze_tests;

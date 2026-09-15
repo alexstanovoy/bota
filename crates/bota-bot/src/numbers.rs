@@ -33,8 +33,11 @@ pub const SOULS: EffectId = EffectId(11);
 /// What one raze burns for, by the level it is cast at.
 pub const RAZE_DAMAGE: [i32; 4] = [90, 160, 230, 300];
 
-/// What one soul is worth to a requiem, by the level it is cast at.
-pub const REQUIEM_DAMAGE_PER_SOUL: [i32; 3] = [8, 11, 14];
+/// Magic damage each line of a requiem lands on what it crosses, by the
+/// level it is cast at.
+pub const REQUIEM_LINE_DAMAGE: [i32; 3] = [80, 120, 160];
+/// How wide a line of a requiem catches as it sets out, in world units.
+pub const REQUIEM_LINE_WIDTH: f32 = 125.0;
 
 /// How far a tower reaches.
 pub const TOWER_ATTACK_RANGE: i32 = 700;

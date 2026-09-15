@@ -25,6 +25,8 @@ pub struct MatchConfig {
     /// In lockstep, how long to wait for an acknowledgement before advancing
     /// with an empty order, in ticks of wall-clock time at `tick_rate`.
     pub ack_timeout_ticks: u32,
+    /// Whether cheat orders are honoured.
+    pub cheats: bool,
 }
 
 impl MatchConfig {

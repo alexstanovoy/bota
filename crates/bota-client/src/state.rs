@@ -182,13 +182,29 @@ pub fn refusal(reason: bota_proto::RejectReason) -> &'static str {
         Why::NotYourItem => "not yours to sell",
         Why::ClosedGround => "nothing can lie there",
         Why::NotInBag => "not carried in the bag",
+        Why::NoCheats => "cheats are off in this match",
     }
+}
+
+/// What a floater tells of, which decides how it is drawn.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FloaterKind {
+    /// Health taken off by a plain blow.
+    Damage,
+    /// Health taken off by a critical strike.
+    Crit,
+    /// An attack that missed.
+    Miss,
+    /// A level gained.
+    Level,
 }
 
 /// A damage number floating off a unit.
 pub struct Floater {
     /// The text shown.
     pub text: String,
+    /// What it tells of.
+    pub kind: FloaterKind,
     /// World position it rises from.
     pub world: (f32, f32),
     /// Seconds since it appeared.
@@ -293,6 +309,8 @@ pub struct App {
     pub refused: Option<(crate::slots::Slot, f32)>,
     /// The last rejected order, shown briefly: text and seconds left.
     pub reject: Option<(String, f32)>,
+    /// The console line being typed. Absent while it is closed.
+    pub console: Option<String>,
     /// The end of the match, once it came.
     pub over: Option<(Team, MatchStats)>,
     /// Set when the window should close.
@@ -341,6 +359,7 @@ impl App {
             aimed_from: None,
             refused: None,
             reject: None,
+            console: None,
             over: None,
             quit: false,
         }
@@ -669,10 +688,31 @@ impl App {
 
     fn absorb_event(&mut self, event: EventKind) {
         match event {
-            EventKind::Damaged { target, amount, .. } => {
+            EventKind::Damaged {
+                target,
+                amount,
+                crit,
+                ..
+            } => {
+                if let Some(pos) = self.unit_pos(target) {
+                    let (text, kind) = if crit {
+                        (format!("{amount}!"), FloaterKind::Crit)
+                    } else {
+                        (format!("{amount}"), FloaterKind::Damage)
+                    };
+                    self.floaters.push(Floater {
+                        text,
+                        kind,
+                        world: pos,
+                        age: 0.0,
+                    });
+                }
+            }
+            EventKind::Missed { target, .. } => {
                 if let Some(pos) = self.unit_pos(target) {
                     self.floaters.push(Floater {
-                        text: format!("{amount}"),
+                        text: "miss".to_string(),
+                        kind: FloaterKind::Miss,
                         world: pos,
                         age: 0.0,
                     });
@@ -717,6 +757,7 @@ impl App {
                 if let Some(pos) = self.unit_pos(unit) {
                     self.floaters.push(Floater {
                         text: format!("level {level}"),
+                        kind: FloaterKind::Level,
                         world: pos,
                         age: 0.0,
                     });

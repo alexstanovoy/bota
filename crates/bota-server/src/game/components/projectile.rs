@@ -30,6 +30,11 @@ pub struct Projectile {
     pub can_miss_uphill: bool,
     /// Whether the hit is a critical strike.
     pub crit: bool,
+    /// Whether it goes through evasion and an uphill miss.
+    pub pierces: bool,
+    /// Magical damage it lands alongside its own, from a pierce. Zero for
+    /// none.
+    pub pierce_damage: i32,
     /// Bounces it has left.
     pub bounces_left: u8,
     /// How far it may look for that next mark, in world units.

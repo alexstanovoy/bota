@@ -178,8 +178,8 @@ impl World {
 
     /// The two hulls that stand between a pair, edge to edge.
     fn hulls(&self, one: Entity, other: Entity) -> Fixed {
-        self.hull.get(one).map_or(Fixed::ZERO, |h| h.radius)
-            + self.hull.get(other).map_or(Fixed::ZERO, |h| h.radius)
+        self.hull.get(one).map_or(Fixed::ZERO, |h| h.bound)
+            + self.hull.get(other).map_or(Fixed::ZERO, |h| h.bound)
     }
 
     /// The best candidate by class, then closeness, then what it is doing.

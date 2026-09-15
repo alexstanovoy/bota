@@ -177,10 +177,13 @@ impl Playbook {
     pub fn decide(&mut self, field: &Field) -> Option<Ask> {
         self.rung = "none";
         let me = field.me?;
-        // Held, nothing the body is told will land; in the middle of a
-        // channel, an order is how the channel is thrown away. Either way the
-        // tick is not the seat's to spend.
-        if me.statuses.bits & (StatusFlags::STUNNED | StatusFlags::CHANNELLING) != 0 {
+        // Held or feared, nothing the body is told will land; in the middle
+        // of a channel, an order is how the channel is thrown away. Either
+        // way the tick is not the seat's to spend.
+        if me.statuses.bits
+            & (StatusFlags::STUNNED | StatusFlags::FEARED | StatusFlags::CHANNELLING)
+            != 0
+        {
             self.rung = "held";
             return None;
         }

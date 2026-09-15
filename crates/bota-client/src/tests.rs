@@ -14,12 +14,61 @@ use crate::Args;
 use crate::camera::Camera;
 
 #[test]
+fn the_console_turns_a_typed_line_into_a_cheat_order() {
+    use bota_proto::Cheat;
+    let parse = crate::console::parse;
+    assert_eq!(
+        parse("-gold 500"),
+        Ok(Order::Cheat {
+            cheat: Cheat::Gold { amount: 500 }
+        })
+    );
+    assert_eq!(
+        parse("gold"),
+        Ok(Order::Cheat {
+            cheat: Cheat::Gold { amount: 1000 }
+        }),
+        "gold alone is worth a thousand"
+    );
+    assert_eq!(
+        parse("-lvlup 3"),
+        Ok(Order::Cheat {
+            cheat: Cheat::Levels { count: 3 }
+        })
+    );
+    assert_eq!(
+        parse("-refresh"),
+        Ok(Order::Cheat {
+            cheat: Cheat::Refresh
+        })
+    );
+    assert_eq!(
+        parse("-item Butterfly"),
+        Ok(Order::Cheat {
+            cheat: Cheat::Item { item: ItemId(46) }
+        }),
+        "an item goes by the name the catalog shows"
+    );
+    assert_eq!(
+        parse("-item 42"),
+        Ok(Order::Cheat {
+            cheat: Cheat::Item { item: ItemId(42) }
+        }),
+        "or by its id"
+    );
+    assert!(parse("-fly").is_err(), "a command that is not one");
+    assert!(parse("-gold lots").is_err(), "a number that is not one");
+    assert!(parse("-item wings").is_err(), "an item that is not one");
+    assert!(parse("").is_err(), "nothing at all");
+}
+
+#[test]
 fn mechanics_catalog_mango_has_an_append_only_id_and_describes_consumption() {
     let mango = crate::catalog::item(42).expect("Mango catalog entry");
     assert_eq!(mango.id, 42);
     assert_eq!(mango.name, "Mango");
     assert!(mango.blurb.contains("100 mana"));
-    assert_eq!(crate::catalog::ITEMS.len(), 43);
+    assert_eq!(crate::catalog::ITEMS.len(), 52);
 }
 
 #[test]
@@ -50,7 +99,7 @@ fn mechanics_catalog_shadowraze_effect_describes_the_counted_timer() {
     assert_eq!(effect.name, "Razed");
     assert!(effect.blurb.contains("8 s"));
     assert!(effect.blurb.contains("same caster"));
-    assert_eq!(crate::catalog::EFFECTS.len(), 16);
+    assert_eq!(crate::catalog::EFFECTS.len(), 18);
 }
 
 #[test]
@@ -63,7 +112,7 @@ fn mechanics_catalog_auras_and_shadowraze_keep_distinct_contiguous_effect_ids() 
     for (id, effect) in crate::catalog::EFFECTS.iter().enumerate() {
         assert_eq!(usize::from(effect.id), id);
     }
-    assert!(crate::catalog::effect(16).is_none());
+    assert!(crate::catalog::effect(18).is_none());
     assert!(crate::catalog::effect(u16::MAX).is_none());
 }
 
@@ -400,7 +449,8 @@ pub fn a_unit() -> UnitView {
         attack_speed: 100,
         armor: Fixed::from_int(3),
         magic_resist: Fixed::from_ratio(25, 100),
-        radius: Fixed::from_int(24),
+        collision: Fixed::from_int(27),
+        bound: Fixed::from_int(24),
         vision_radius: Fixed::from_int(1800),
         true_sight_radius: Fixed::ZERO,
         statuses: StatusFlags::default(),

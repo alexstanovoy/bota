@@ -1,10 +1,10 @@
 //! Putting an entity into the world with everything its kind needs.
 
-use bota_proto::{Angle, Fixed, HeroId, SlotId, Team, Vec2};
+use bota_proto::{AbilityId, Angle, Fixed, HeroId, SlotId, Team, Vec2};
 
 use crate::game::{
     Action, ActionState, Auras, Bounty, CampHome, Def, Entity, Errand, Expiry, Health, Hull,
-    Inventory, Lane, LaneAi, Level, Mana, March, Modifiers, NeutralAi, Orders, Rax, Tier,
+    Inventory, Lane, LaneAi, Level, Mana, March, Mark, Modifiers, NeutralAi, Orders, Rax, Tier,
     Transform, UnitDef, UnitOrder, Upgrades, World, rules,
 };
 
@@ -55,12 +55,13 @@ impl World {
         entity
     }
 
-    /// The room a body takes on the ground.
+    /// The room a body takes on the ground and the edge it is reached at.
     fn give_hull(&mut self, entity: Entity, def: &UnitDef) {
         self.hull.insert(
             entity,
             Hull {
-                radius: Fixed::from_int(def.radius),
+                collision: Fixed::from_int(def.collision),
+                bound: Fixed::from_int(def.bound),
             },
         );
     }
@@ -245,13 +246,57 @@ impl World {
         entity
     }
 
+    /// Leaves an ability's mark at a spot, on the caster's side, for so many
+    /// ticks. Zero ticks leaves one that stands until it is taken.
+    pub fn spawn_mark(
+        &mut self,
+        ability: AbilityId,
+        owner: Entity,
+        pos: Vec2,
+        ticks: u32,
+    ) -> Entity {
+        let entity = self.spawn();
+        self.transform.insert(
+            entity,
+            Transform {
+                pos,
+                facing: Angle::default(),
+            },
+        );
+        let side = self.team.get(owner).copied().unwrap_or(Team::Neutral);
+        self.set_team(entity, side);
+        self.mark.insert(entity, Mark { ability, owner });
+        if ticks > 0 {
+            self.expiry.insert(entity, Expiry { ticks_left: ticks });
+        }
+        entity
+    }
+
+    /// Takes a mark out of the world.
+    pub fn take_mark(&mut self, entity: Entity) {
+        self.mark.remove(entity);
+        self.expiry.remove(entity);
+        self.transform.remove(entity);
+        self.team.remove(entity);
+        self.despawn(entity);
+    }
+
+    /// The mark one caster's ability is showing, if it is showing one.
+    pub fn mark_of(&self, owner: Entity, ability: AbilityId) -> Option<Entity> {
+        self.entities.iter().find(|entity| {
+            self.mark
+                .get(*entity)
+                .is_some_and(|mark| mark.owner == owner && mark.ability == ability)
+        })
+    }
+
     /// Puts one unit of any kind on the map with what its numbers call for:
-    /// a hull for a radius, an action for damage, orders for a speed, a march
-    /// for a lane creep kind.
+    /// a hull for a collision size, an action for damage, orders for a speed,
+    /// a march for a lane creep kind.
     #[cfg(test)]
     pub fn spawn_unit(&mut self, def: &'static UnitDef, team: Team, pos: Vec2) -> Entity {
         let entity = self.spawn_body(def, team, pos);
-        if def.radius > 0 {
+        if def.collision > 0 {
             self.give_hull(entity, def);
         }
         if def.damage > 0 {

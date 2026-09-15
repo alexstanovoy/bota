@@ -1,11 +1,11 @@
 //! Working out what each entity fights by, from scratch, every tick.
 
-use bota_proto::Fixed;
+use bota_proto::{Attributes, Fixed};
 
 use crate::game::rules;
 use crate::game::{
     AbilityBook, Def, EntityAllocator, Growth, Health, Inventory, Level, Mana, ModifierKind,
-    Modifiers, StackKind, Stacks, Stats, Table, UnitDef, Upgrades,
+    Modifiers, Ratio, StackKind, Stacks, Stats, Table, UnitDef, Upgrades,
 };
 
 /// What working out stats reads and writes.
@@ -68,8 +68,11 @@ pub fn derive_stats(cx: StatsCx<'_>) {
         let levels = level.get(entity).map_or(0, |l| i32::from(l.0.max(1) - 1));
         let steps = upgrades.get(entity).map_or(0, |u| u.0 as i32);
         let mut now = raised(kind, levels, steps);
-        if let Some(bag) = inventory.get(entity).filter(|_| !kind.porter) {
-            let carried = crate::game::carried_bonus(bag);
+        let carried = inventory
+            .get(entity)
+            .filter(|_| !kind.porter)
+            .map(crate::game::carried_bonus);
+        if let Some(carried) = carried {
             now.attributes += carried.attributes;
             now.max_hp += Fixed::from_int(carried.hp);
             now.max_mana += Fixed::from_int(carried.mana);
@@ -80,21 +83,34 @@ pub fn derive_stats(cx: StatsCx<'_>) {
             now.attack_speed += carried.attack_speed;
             now.armor += carried.armor;
             now.move_speed += Fixed::from_int(carried.move_speed);
+            now.evasion = carried.evasion;
+            now.pierce = carried.pierce;
+            now.pierce_damage = carried.pierce_damage;
+            if now.projectile_speed.is_none() {
+                now.attack_range += Fixed::from_int(carried.melee_range);
+            }
         }
-        from_attributes(&mut now);
-        // What the flesh heap has kept is worth health, and knowing it at all
-        // is worth holding magic off.
+        // What the flesh heap has kept is worth strength, once the heap is
+        // known at all.
+        let gathered = stacks.get(entity).copied().unwrap_or_default();
         let heap = abilities.get(entity).map_or(0, |book| {
             book.slots
                 .iter()
                 .find(|slot| slot.id == crate::game::ability::FLESH_HEAP)
                 .map_or(0, |slot| slot.level)
         });
-        let gathered = stacks.get(entity).copied().unwrap_or_default();
         if heap > 0 {
-            let kept = gathered.of(StackKind::FleshHeap);
-            now.max_hp += Fixed::from_int(rules::FLESH_HEAP_HP * kept as i32);
-            now.magic_resist_pct += rules::FLESH_HEAP_RESIST_PCT[usize::from(heap - 1)];
+            let kept = gathered.of(StackKind::FleshHeap) as i32;
+            now.attributes.strength += Fixed::from_int(rules::FLESH_HEAP_STRENGTH * kept);
+        }
+        from_attributes(&mut now);
+        // A share of the base pace and of what agility adds, and of nothing
+        // else.
+        if let Some(carried) = carried
+            && carried.base_attack_speed_pct != 0
+        {
+            let base = rules::BASE_ATTACK_SPEED + agility_pace(now.attributes);
+            now.attack_speed += base * carried.base_attack_speed_pct / 100;
         }
         // Every soul gathered is worth attack damage for as long as it is
         // held.
@@ -140,6 +156,7 @@ pub fn derive_stats(cx: StatsCx<'_>) {
                     // What holds a unit still, what burns it and what it
                     // hands out are read where they are acted on, not here.
                     ModifierKind::Stunned
+                    | ModifierKind::Feared
                     | ModifierKind::Burning { .. }
                     | ModifierKind::Shadowraze { .. }
                     | ModifierKind::Rot { .. } => {}
@@ -174,10 +191,15 @@ fn from_attributes(now: &mut Stats) {
     now.max_mana += Fixed::from_int(rules::MANA_PER_INTELLIGENCE) * has.intelligence;
     now.mana_regen += rules::MANA_REGEN_PER_INTELLIGENCE * has.intelligence;
     now.armor += rules::ARMOR_PER_AGILITY * has.agility;
-    now.attack_speed += (has.agility * Fixed::from_int(rules::ATTACK_SPEED_PER_AGILITY)).to_int();
+    now.attack_speed += agility_pace(has);
     if let Some(primary) = now.primary {
         now.damage += (has.of(primary) * Fixed::from_int(rules::DAMAGE_PER_PRIMARY)).to_int();
     }
+}
+
+/// Attack speed the agility attribute is worth.
+fn agility_pace(has: Attributes) -> i32 {
+    (has.agility * Fixed::from_int(rules::ATTACK_SPEED_PER_AGILITY)).to_int()
 }
 
 /// The plain form of a kind raised by `levels` levels and `steps` upgrades.
@@ -211,6 +233,9 @@ fn raised(kind: &UnitDef, levels: i32, steps: i32) -> Stats {
         projectile_speed: kind.projectile_speed.map(Fixed::from_int),
         armor: Fixed::from_ratio(kind.armor * 2 + up.armor_halves, 2),
         magic_resist_pct: kind.magic_resist_pct,
+        evasion: Ratio::NEVER,
+        pierce: Ratio::NEVER,
+        pierce_damage: 0,
         move_speed: Fixed::from_int(kind.move_speed),
         turn_rate: kind.turn_rate,
         vision: Fixed::from_int(kind.vision),

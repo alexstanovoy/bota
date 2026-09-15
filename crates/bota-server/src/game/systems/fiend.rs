@@ -1,12 +1,12 @@
 //! The razes, the souls gathered from what falls, the presence worn by the
 //! enemies near him, and the requiem the souls feed.
 
-use bota_proto::{AbilityId, DamageKind, Fixed};
+use bota_proto::{AbilityId, Angle, DamageKind, Fixed};
 
 use crate::engine::Entity;
 use crate::game::{
-    Hit, HitEffect, Modifier, ModifierKind, StackKind, World, ability, heading_of, leaves_a_death,
-    point_along, rules,
+    Hit, HitEffect, Modifier, ModifierKind, RequiemLine, StackKind, Transform, World, ability,
+    heading_of, leaves_a_death, move_towards, per_tick, point_along, rules,
 };
 
 impl World {
@@ -48,54 +48,149 @@ impl World {
                 amount: rules::RAZE_DAMAGE[level],
                 kind: DamageKind::Magical,
                 crit: false,
+                attack: false,
+                pierces: false,
                 effect: HitEffect::Shadowraze { level: level as u8 },
             });
         }
+        let which = AbilityId(ability::RAZE_NEAR.0 + reach as u16);
+        self.spawn_mark(which, caster, at, rules::MARK_TICKS);
         true
     }
 
-    /// Lets the gathered souls go at once: everything hostile within
-    /// [`rules::REQUIEM_RADIUS`] takes what each soul is worth and walks
-    /// slower for a while. What is let go is not spent; with nothing gathered
-    /// the cast still happens and nothing goes out.
+    /// Lets the gathered souls go as lines flying out of the caster, one to
+    /// a soul up to [`rules::REQUIEM_LINES_MAX`], spread evenly round it
+    /// starting along its facing. Each line burns what it crosses on its
+    /// way out. What is let go is not spent; with nothing gathered the cast
+    /// still happens and nothing goes out.
     pub fn cast_requiem(&mut self, caster: Entity, level: usize) -> bool {
-        let Some(at) = self.transform.get(caster).map(|t| t.pos) else {
+        let (Some(from), Some(side)) = (
+            self.transform.get(caster).copied(),
+            self.team.get(caster).copied(),
+        ) else {
             return false;
         };
         let held = self
             .stacks
             .get(caster)
             .map_or(0, |kept| kept.of(StackKind::Souls));
-        if held == 0 {
-            return true;
-        }
-        let damage = rules::REQUIEM_DAMAGE_PER_SOUL[level] * held as i32;
-        let radius = rules::units(rules::REQUIEM_RADIUS);
-        let struck: Vec<Entity> = self
-            .entities
-            .iter()
-            .filter(|other| {
-                self.hostile(caster, *other)
-                    && self
-                        .transform
-                        .get(*other)
-                        .is_some_and(|t| t.pos.within(at, radius))
-            })
-            .collect();
-        for mark in struck {
-            self.push_hit(Some(caster), mark, damage, DamageKind::Magical);
-            self.put_modifier(
-                mark,
-                Modifier {
-                    kind: ModifierKind::Slowed {
-                        pct: rules::REQUIEM_SLOW_PCT[level],
-                    },
-                    source: Some(caster),
-                    ticks_left: Some(rules::REQUIEM_SLOW_TICKS),
+        let lines = held.min(rules::REQUIEM_LINES_MAX);
+        for nth in 0..lines {
+            let facing = Angle {
+                brads: from.facing.brads.wrapping_add((nth * 65536 / lines) as u16),
+            };
+            let aim = point_along(
+                from.pos,
+                from.pos + heading_of(facing),
+                Fixed::from_int(rules::REQUIEM_LINE_DISTANCE),
+            );
+            let line = self.spawn();
+            self.transform.insert(
+                line,
+                Transform {
+                    pos: from.pos,
+                    facing,
+                },
+            );
+            self.set_team(line, side);
+            self.requiem_line.insert(
+                line,
+                RequiemLine {
+                    owner: caster,
+                    aim,
+                    speed: Fixed::from_int(rules::REQUIEM_LINE_SPEED),
+                    travelled: Fixed::ZERO,
+                    distance: Fixed::from_int(rules::REQUIEM_LINE_DISTANCE),
+                    damage: rules::REQUIEM_LINE_DAMAGE[level],
+                    slow_pct: rules::REQUIEM_SLOW_PCT[level],
+                    struck: Vec::new(),
                 },
             );
         }
         true
+    }
+
+    /// Flies every line of a requiem one tick on.
+    ///
+    /// A line burns everything hostile within its width of where it now
+    /// flies, once each, and adds [`rules::REQUIEM_LINE_TICKS`] of fear and
+    /// slow to it, up to [`rules::REQUIEM_HOLD_MAX_TICKS`]. It widens as it
+    /// goes, and is gone once it has flown its distance.
+    pub fn tick_requiem_lines(&mut self) {
+        let entities = self.take_entity_snapshot();
+        for entity in entities.iter().copied() {
+            let Some(mut line) = self.requiem_line.get(entity).cloned() else {
+                continue;
+            };
+            let Some(at) = self.transform.get(entity).map(|t| t.pos) else {
+                self.put_out(entity);
+                continue;
+            };
+            let step = per_tick(line.speed);
+            let next = move_towards(at, line.aim, step);
+            line.travelled = (line.travelled + step).min(line.distance);
+            if let Some(transform) = self.transform.get_mut(entity) {
+                transform.pos = next;
+            }
+            let width = requiem_width(line.travelled, line.distance);
+            let crossed: Vec<Entity> = self
+                .entities
+                .iter()
+                .filter(|other| {
+                    *other != entity
+                        && !line.struck.contains(other)
+                        && self.hostile(entity, *other)
+                        && self.transform.get(*other).is_some_and(|t| {
+                            let hull = self.hull.get(*other).map_or(Fixed::ZERO, |h| h.bound);
+                            t.pos.within(next, width + hull)
+                        })
+                })
+                .collect();
+            for other in crossed {
+                self.push_hit(Some(line.owner), other, line.damage, DamageKind::Magical);
+                for kind in [
+                    ModifierKind::Slowed { pct: line.slow_pct },
+                    ModifierKind::Feared,
+                ] {
+                    self.extend_modifier(
+                        other,
+                        Modifier {
+                            kind,
+                            source: Some(line.owner),
+                            ticks_left: Some(rules::REQUIEM_LINE_TICKS),
+                        },
+                        rules::REQUIEM_HOLD_MAX_TICKS,
+                    );
+                }
+                line.struck.push(other);
+            }
+            if next == line.aim || line.travelled >= line.distance {
+                self.put_out(entity);
+            } else {
+                self.requiem_line.insert(entity, line);
+            }
+        }
+        self.recycle_entity_snapshot(entities);
+    }
+
+    /// Takes a line of a requiem out of the world.
+    fn put_out(&mut self, line: Entity) {
+        self.requiem_line.remove(line);
+        self.transform.remove(line);
+        self.team.remove(line);
+        self.despawn(line);
+    }
+
+    /// Lets a share of the souls go when the one holding them falls:
+    /// [`rules::SOULS_LOST_ON_DEATH_PCT`] of them, rounded down.
+    pub fn let_souls_go(&mut self, fallen: Entity) {
+        if let Some(kept) = self.stacks.get_mut(fallen) {
+            let held = kept.of(StackKind::Souls);
+            kept.set(
+                StackKind::Souls,
+                held - held * rules::SOULS_LOST_ON_DEATH_PCT / 100,
+            );
+        }
     }
 
     /// Lays the presence on everything hostile standing near its carriers.
@@ -201,4 +296,17 @@ impl World {
                 .map_or(0, |slot| slot.level)
         })
     }
+}
+
+/// How wide a line of the requiem catches once it has flown so far of its
+/// distance: from [`rules::REQUIEM_LINE_WIDTH_START`] out to
+/// [`rules::REQUIEM_LINE_WIDTH_END`], evenly along the way.
+fn requiem_width(travelled: Fixed, distance: Fixed) -> Fixed {
+    let start = Fixed::from_int(rules::REQUIEM_LINE_WIDTH_START);
+    let growth = i64::from(rules::REQUIEM_LINE_WIDTH_END - rules::REQUIEM_LINE_WIDTH_START);
+    if distance.raw <= 0 {
+        return start;
+    }
+    let grown = growth * i64::from(travelled.raw) / i64::from(distance.raw);
+    start + Fixed::from_int(grown as i32)
 }

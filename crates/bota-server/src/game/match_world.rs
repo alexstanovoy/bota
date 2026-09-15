@@ -26,6 +26,7 @@ impl World {
         let map = map_of(cfg.map);
         let mut world = World::on_map(map);
         world.rng = rng;
+        world.cheats = cfg.cheats;
         for pick in &cfg.picks {
             let at = hero_spawn_pos(map, pick.team);
             let hero = world.spawn_hero(pick.team, at, pick.slot, pick.hero);
@@ -84,6 +85,10 @@ impl World {
             }
             Order::Buy { item } => {
                 self.buy(cmd.slot, item, events);
+                return;
+            }
+            Order::Cheat { cheat } => {
+                self.cheat(cmd.slot, unit, cheat, events);
                 return;
             }
             _ => {}
@@ -170,7 +175,11 @@ impl World {
                 return;
             }
             // Taken before the body was interrupted.
-            Order::Learn { .. } | Order::Swap { .. } | Order::Sell { .. } | Order::Buy { .. } => {
+            Order::Learn { .. }
+            | Order::Swap { .. }
+            | Order::Sell { .. }
+            | Order::Buy { .. }
+            | Order::Cheat { .. } => {
                 return;
             }
             Order::Put { slot, target } => {
@@ -268,7 +277,7 @@ impl World {
                 if held.cooldown > 0 {
                     return Err(RejectReason::OnCooldown);
                 }
-                if self.held(unit) || self.is_channelling(unit) {
+                if self.held(unit) || self.feared(unit) || self.is_channelling(unit) {
                     return Err(RejectReason::Disabled);
                 }
                 if !aimed_right(def.aim, target) {
@@ -441,13 +450,20 @@ impl World {
                 if self.mana.get(unit).map_or(0, |pool| pool.mana.to_int()) < def.mana_cost {
                     return Err(RejectReason::NotEnoughMana);
                 }
-                if self.held(unit) || self.is_channelling(unit) {
+                if self.held(unit) || self.feared(unit) || self.is_channelling(unit) {
                     return Err(RejectReason::Disabled);
                 }
                 if def.mana_deficit && !self.can_replenish_mana(unit, *target) {
                     return Err(RejectReason::NotReady);
                 }
                 Ok(())
+            }
+            Order::Cheat { .. } => {
+                if self.cheats {
+                    Ok(())
+                } else {
+                    Err(RejectReason::NoCheats)
+                }
             }
             _ => Ok(()),
         }

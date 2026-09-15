@@ -167,6 +167,8 @@ impl World {
                 launch_tier: 0,
                 can_miss_uphill: false,
                 crit: false,
+                pierces: false,
+                pierce_damage: 0,
                 bounces_left: rules::SYLLA_BOUNCE_COUNT[level],
                 bounce_range: rules::SYLLA_BOUNCE_RANGE,
                 bounced: vec![mark],

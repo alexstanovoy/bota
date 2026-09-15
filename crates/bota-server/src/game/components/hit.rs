@@ -21,6 +21,11 @@ pub struct Hit {
     pub kind: DamageKind,
     /// Whether it was a critical strike.
     pub crit: bool,
+    /// Whether it is a swing of the attacker's weapon. Only such a blow can
+    /// be evaded.
+    pub attack: bool,
+    /// Whether it goes through evasion.
+    pub pierces: bool,
     /// A damage modifier and status applied only when this blow deals damage.
     pub effect: HitEffect,
 }

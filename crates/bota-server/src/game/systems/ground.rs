@@ -16,7 +16,7 @@ impl World {
     /// A step deeper into any hull is refused; a step out of an overlap is
     /// allowed, so nothing can wedge for good.
     pub fn blocked_by_bodies(&self, mover: Entity, from: Vec2, next: Vec2) -> bool {
-        let Some(mine) = self.hull.get(mover).map(|h| h.radius) else {
+        let Some(mine) = self.hull.get(mover).map(|h| h.collision) else {
             return false;
         };
         for other in self.entities.iter() {
@@ -24,7 +24,7 @@ impl World {
                 continue;
             }
             let (Some(theirs), Some(at)) = (
-                self.hull.get(other).map(|h| h.radius),
+                self.hull.get(other).map(|h| h.collision),
                 self.transform.get(other).map(|t| t.pos),
             ) else {
                 continue;
@@ -103,7 +103,7 @@ impl World {
                 .map_or(TraceSide::Left, |body| pick_side(from, body, waypoint))
         });
         let reach = i64::from(
-            (self.hull.get(mover).map_or(Fixed::ZERO, |h| h.radius)
+            (self.hull.get(mover).map_or(Fixed::ZERO, |h| h.collision)
                 + rules::units(rules::TRACE_CLEARANCE))
             .raw,
         ) * 2;
@@ -124,7 +124,7 @@ impl World {
 
     /// The body a straight step would walk into, nearest first.
     fn blocking_body(&self, mover: Entity, straight: Vec2) -> Option<Vec2> {
-        let mine = self.hull.get(mover).map(|h| h.radius)?;
+        let mine = self.hull.get(mover).map(|h| h.collision)?;
         let from = self.transform.get(mover).map(|t| t.pos)?;
         let mut best: Option<(i64, Vec2)> = None;
         for other in self.entities.iter() {
@@ -132,7 +132,7 @@ impl World {
                 continue;
             }
             let (Some(theirs), Some(at)) = (
-                self.hull.get(other).map(|h| h.radius),
+                self.hull.get(other).map(|h| h.collision),
                 self.transform.get(other).map(|t| t.pos),
             ) else {
                 continue;
@@ -193,7 +193,7 @@ impl World {
             .iter()
             .filter_map(|entity| {
                 let at = self.transform.get(entity)?.pos;
-                let radius = self.hull.get(entity)?.radius;
+                let radius = self.hull.get(entity)?.collision;
                 let still = self
                     .stats
                     .get(entity)

@@ -2,10 +2,10 @@
 
 use bota_proto::{Team, Vec2};
 
-use crate::game::{CreepRank, StructureId, UnitDef, UnitOrder, World};
+use crate::game::{CreepRank, Entity, March, StructureId, UnitDef, UnitOrder, World};
 use crate::game::{
-    Purpose, WavePlan, advance_waypoint, creep_spawn_pos, lane_routes, rules, spawn_offsets,
-    team_index, wave_at, wave_plan,
+    Purpose, WavePlan, advance_waypoint, creep_spawn_pos, rules, spawn_offsets, team_index,
+    wave_at, wave_plan,
 };
 
 impl World {
@@ -19,11 +19,13 @@ impl World {
         for team in [Team::Radiant, Team::Dire] {
             for &lane in map.wave_lanes {
                 let at = creep_spawn_pos(map, team, lane);
-                let route = &lane_routes(map)[team_index(team)][usize::from(lane)];
-                let forward = route
-                    .iter()
-                    .find(|w| !w.within(at, rules::units(rules::WAVE_FACING_LOOKAHEAD)))
-                    .map_or(Vec2::ZERO, |w| *w - at);
+                let forward = {
+                    let route = &self.walked_lanes()[team_index(team)][usize::from(lane)];
+                    route
+                        .iter()
+                        .find(|w| !w.within(at, rules::units(rules::WAVE_FACING_LOOKAHEAD)))
+                        .map_or(Vec2::ZERO, |w| *w - at)
+                };
                 let offsets = spawn_offsets(&plan, forward);
                 let flag_slot = self.flag_slot(plan.melee);
                 let ranks = self.wave_creep_ranks(team, lane);
@@ -89,7 +91,7 @@ impl World {
     /// comes first, then the spot its target was last seen, then the place it
     /// left its route, and only then the route itself.
     pub fn march_lanes(&mut self) {
-        let map = self.map;
+        self.walked_lanes();
         let entities = self.take_entity_snapshot();
         for entity in entities.iter().copied() {
             let Some(mut march) = self.march.get(entity).copied() else {
@@ -105,28 +107,38 @@ impl World {
             let ai = self.lane_ai.get(entity).copied();
             let going = chasing
                 .or_else(|| ai.and_then(|ai| ai.last_seen))
-                .or_else(|| ai.and_then(|ai| ai.anchor))
-                .or_else(|| {
-                    let (team, lane) = (
-                        self.team.get(entity).copied()?,
-                        self.lane.get(entity).copied()?,
-                    );
-                    let route = &lane_routes(map)[team_index(team)][usize::from(lane.0)];
-                    if route.is_empty() {
-                        return None;
-                    }
-                    let step =
-                        advance_waypoint(&self.grid, route, usize::from(march.route_step), at);
-                    march.route_step = step as u16;
+                .or_else(|| ai.and_then(|ai| ai.anchor));
+            let going = match going {
+                Some(spot) => Some(spot),
+                None => {
+                    let stop = self.next_lane_stop(entity, &mut march, at);
                     self.march.insert(entity, march);
-                    Some(route[step])
-                });
+                    stop
+                }
+            };
             let Some(going) = going else {
                 continue;
             };
             self.set_order(entity, UnitOrder::AttackMove { pos: going });
         }
         self.recycle_entity_snapshot(entities);
+    }
+
+    /// The next waypoint of a creep's lane, with its place on the route
+    /// moved up past whatever it has reached. None off any lane, or before
+    /// the routes are laid.
+    fn next_lane_stop(&self, entity: Entity, march: &mut March, at: Vec2) -> Option<Vec2> {
+        let (team, lane) = (
+            self.team.get(entity).copied()?,
+            self.lane.get(entity).copied()?,
+        );
+        let route = &self.lane_routes.as_ref()?[team_index(team)][usize::from(lane.0)];
+        if route.is_empty() {
+            return None;
+        }
+        let step = advance_waypoint(&self.grid, route, usize::from(march.route_step), at);
+        march.route_step = step as u16;
+        Some(route[step])
     }
 }
 

@@ -366,7 +366,7 @@ pub const ABILITIES: [AbilityDef; 19] = [
         ultimate: true,
         mana: &rules::REQUIEM_MANA,
         cooldown: &rules::REQUIEM_COOLDOWN,
-        range: rules::REQUIEM_RADIUS,
+        range: rules::REQUIEM_LINE_DISTANCE,
         on_cast: requiem,
         ..PLAIN
     },

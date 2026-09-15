@@ -2,6 +2,8 @@
 
 use bota_proto::{Attribute, Attributes, Fixed};
 
+use crate::game::Ratio;
+
 /// Everything the type an entity is, its level, its items and what is on it
 /// add up to.
 ///
@@ -56,6 +58,13 @@ pub struct Stats {
     pub armor: Fixed,
     /// Magic resistance, percent.
     pub magic_resist_pct: i32,
+    /// Share of attacks at it that miss.
+    pub evasion: Ratio,
+    /// Share of its attacks that pierce: go through evasion and an uphill
+    /// miss, and land bonus magical damage.
+    pub pierce: Ratio,
+    /// Magical damage a pierce lands alongside the attack.
+    pub pierce_damage: i32,
     /// World units per second on the ground.
     pub move_speed: Fixed,
     /// Brads per tick it turns.

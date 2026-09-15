@@ -5,6 +5,7 @@
 use bota_proto::{Aim, Attribute, Attributes, Fixed, ItemId, ItemView, Target};
 
 use crate::game::Inventory;
+use crate::game::Ratio;
 use crate::game::rules;
 
 /// Which pool an item mends.
@@ -39,6 +40,21 @@ pub struct Carried {
     pub mana_regen: Fixed,
     /// Attack damage added against anything that is not a hero.
     pub damage_to_creeps: i32,
+    /// Percent added to the base attack speed and to what agility adds.
+    /// Attack speed from items and from what is on the carrier is left
+    /// alone.
+    pub base_attack_speed_pct: i32,
+    /// Share of attacks at the carrier that miss. Of several carried, the
+    /// best counts.
+    pub evasion: Ratio,
+    /// Share of the carrier's attacks that pierce: go through evasion and an
+    /// uphill miss, and land bonus magical damage. Of several carried, the
+    /// best counts, with its own damage.
+    pub pierce: Ratio,
+    /// Magical damage a pierce lands alongside the attack.
+    pub pierce_damage: i32,
+    /// Attack range added to a melee carrier and to nobody else.
+    pub melee_range: i32,
 }
 
 /// Nothing carried at all, so an entry names only what it adds.
@@ -53,6 +69,11 @@ const NOTHING: Carried = Carried {
     hp_regen: Fixed::ZERO,
     mana_regen: Fixed::ZERO,
     damage_to_creeps: 0,
+    base_attack_speed_pct: 0,
+    evasion: Ratio::NEVER,
+    pierce: Ratio::NEVER,
+    pierce_damage: 0,
+    melee_range: 0,
 };
 
 /// Whole points of one attribute and none of the others.
@@ -443,6 +464,24 @@ pub const ITEM_RECIPE_NULL_TALISMAN: u16 = 40;
 pub const ITEM_RECIPE_MAGIC_WAND: u16 = 41;
 /// Enchanted Mango.
 pub const ITEM_MANGO: u16 = 42;
+/// Eaglesong.
+pub const ITEM_EAGLESONG: u16 = 43;
+/// Claymore.
+pub const ITEM_CLAYMORE: u16 = 44;
+/// Talisman of Evasion.
+pub const ITEM_TALISMAN_OF_EVASION: u16 = 45;
+/// Butterfly.
+pub const ITEM_BUTTERFLY: u16 = 46;
+/// Javelin.
+pub const ITEM_JAVELIN: u16 = 47;
+/// Demon Edge.
+pub const ITEM_DEMON_EDGE: u16 = 48;
+/// Blitz Knuckles.
+pub const ITEM_BLITZ_KNUCKLES: u16 = 49;
+/// The recipe a Monkey King Bar is built with.
+pub const ITEM_RECIPE_MONKEY_KING_BAR: u16 = 50;
+/// Monkey King Bar.
+pub const ITEM_MONKEY_KING_BAR: u16 = 51;
 
 /// Gold per Mango charge, bought one at a time.
 pub const MANGO_COST: i32 = 65;
@@ -499,9 +538,22 @@ const WAND_PARTS: [ItemId; 4] = [
     ItemId(ITEM_IRON_BRANCH),
     ItemId(ITEM_RECIPE_MAGIC_WAND),
 ];
+/// What a Butterfly is built from.
+const BUTTERFLY_PARTS: [ItemId; 3] = [
+    ItemId(ITEM_EAGLESONG),
+    ItemId(ITEM_CLAYMORE),
+    ItemId(ITEM_TALISMAN_OF_EVASION),
+];
+/// What a Monkey King Bar is built from.
+const MKB_PARTS: [ItemId; 4] = [
+    ItemId(ITEM_DEMON_EDGE),
+    ItemId(ITEM_BLITZ_KNUCKLES),
+    ItemId(ITEM_JAVELIN),
+    ItemId(ITEM_RECIPE_MONKEY_KING_BAR),
+];
 
 /// The catalog, indexed by [`ItemId`].
-pub const ITEMS: [ItemDef; 43] = [
+pub const ITEMS: [ItemDef; 52] = [
     // Boots of Speed.
     ItemDef {
         cost: 500,
@@ -898,6 +950,90 @@ pub const ITEMS: [ItemDef; 43] = [
         spends: Spends::One,
         mana_deficit: true,
         on_use: mango,
+        ..PLAIN
+    },
+    // Eaglesong.
+    ItemDef {
+        cost: 2800,
+        carried: Carried {
+            attributes: points(Attribute::Agility, 25),
+            ..NOTHING
+        },
+        ..PLAIN
+    },
+    // Claymore.
+    ItemDef {
+        cost: 1350,
+        carried: Carried {
+            damage: 20,
+            ..NOTHING
+        },
+        ..PLAIN
+    },
+    // Talisman of Evasion.
+    ItemDef {
+        cost: 1300,
+        carried: Carried {
+            evasion: Ratio::new(3, 20),
+            ..NOTHING
+        },
+        ..PLAIN
+    },
+    // Butterfly.
+    ItemDef {
+        cost: 5450,
+        components: &BUTTERFLY_PARTS,
+        carried: Carried {
+            attributes: points(Attribute::Agility, 30),
+            damage: 30,
+            base_attack_speed_pct: 20,
+            evasion: Ratio::new(7, 20),
+            ..NOTHING
+        },
+        ..PLAIN
+    },
+    // Javelin.
+    ItemDef {
+        cost: 900,
+        carried: Carried {
+            pierce: Ratio::new(1, 4),
+            pierce_damage: 60,
+            ..NOTHING
+        },
+        ..PLAIN
+    },
+    // Demon Edge.
+    ItemDef {
+        cost: 2200,
+        carried: Carried {
+            damage: 40,
+            ..NOTHING
+        },
+        ..PLAIN
+    },
+    // Blitz Knuckles.
+    ItemDef {
+        cost: 1000,
+        carried: Carried {
+            attack_speed: 35,
+            ..NOTHING
+        },
+        ..PLAIN
+    },
+    // The recipe a Monkey King Bar is built with.
+    ItemDef { cost: 900, ..PLAIN },
+    // Monkey King Bar.
+    ItemDef {
+        cost: 5000,
+        components: &MKB_PARTS,
+        carried: Carried {
+            damage: 50,
+            attack_speed: 50,
+            melee_range: 50,
+            pierce: Ratio::new(4, 5),
+            pierce_damage: 70,
+            ..NOTHING
+        },
         ..PLAIN
     },
 ];
