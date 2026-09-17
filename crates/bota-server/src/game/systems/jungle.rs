@@ -141,11 +141,10 @@ impl World {
         };
         let reach = rules::units(range);
         self.entities.iter().any(|other| {
-            self.hostile(entity, other)
-                && self
-                    .transform
-                    .get(other)
-                    .is_some_and(|t| t.pos.within(at, reach))
+            self.transform
+                .get(other)
+                .is_some_and(|t| t.pos.within(at, reach))
+                && self.hostile(entity, other)
         })
     }
 

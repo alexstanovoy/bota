@@ -63,10 +63,11 @@ impl World {
     pub fn best_valid_in_range(&self, seeker: Entity, reach: Fixed) -> Option<Entity> {
         let order = self.priority_of(seeker);
         let at = self.transform.get(seeker)?.pos;
+        // Reaching a candidate is being hostile to it within the reach, so
+        // the range is weighed first and hostility once.
         self.entities
             .iter()
-            .filter(|candidate| *candidate != seeker && self.valid_target(seeker, *candidate))
-            .filter(|candidate| self.reachable(seeker, reach, *candidate))
+            .filter(|candidate| *candidate != seeker && self.reachable(seeker, reach, *candidate))
             .min_by_key(|candidate| {
                 let far = self
                     .transform

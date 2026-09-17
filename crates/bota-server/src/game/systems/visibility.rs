@@ -44,6 +44,64 @@ pub struct SightCx<'a> {
     pub sight_block: &'a CellGrid,
     /// Where the answer goes.
     pub visibility: &'a mut Table<Visibility>,
+    /// Reused buffers the tables are read into.
+    pub sight: &'a mut SightScratch,
+}
+
+/// The scratch a pass of sight works in, kept between passes.
+#[derive(Default)]
+pub struct SightScratch {
+    /// One row per live entity.
+    rows: Vec<SightRow>,
+    /// Every entity whose side and ordinary sight are worth asking about.
+    viewers: Vec<SightViewer>,
+    /// Every entity whose side and true sight are worth asking about.
+    true_viewers: Vec<SightViewer>,
+}
+
+impl SightScratch {
+    /// Scratch that has worked out nothing.
+    pub fn new() -> SightScratch {
+        SightScratch::default()
+    }
+}
+
+/// One entity as the sight system reads it: what it is, where it stands and
+/// which sides see it.
+struct SightRow {
+    /// Which entity this is.
+    entity: Entity,
+    /// Which side it is on.
+    team: Option<Team>,
+    /// Where it stands.
+    at: Option<Vec2>,
+    /// How far it sees.
+    vision: Fixed,
+    /// How far true sight reaches.
+    true_sight: Fixed,
+    /// What kind of thing it is.
+    kind: Option<UnitKind>,
+    /// Whether true sight alone finds it.
+    hides: bool,
+    /// The height it stands at.
+    tier: u8,
+    /// Which sides see it, as the table has it.
+    seen: Option<Visibility>,
+}
+
+/// One entity that can see: where from, how far, and how far true sight
+/// reaches.
+struct SightViewer {
+    /// Which side it is on.
+    side: Team,
+    /// Where it stands.
+    from: Vec2,
+    /// How far it sees.
+    vision: Fixed,
+    /// How far true sight reaches.
+    true_sight: Fixed,
+    /// The height it stands at.
+    tier: u8,
 }
 
 pub fn visibility_system(cx: SightCx<'_>) {
@@ -56,88 +114,110 @@ pub fn visibility_system(cx: SightCx<'_>) {
         ground,
         sight_block,
         visibility,
+        sight,
     } = cx;
 
+    sight.rows.clear();
     for entity in entities.iter() {
-        let Some(seen) = visibility.get_mut(entity) else {
+        sight.rows.push(SightRow {
+            entity,
+            team: team.get(entity).copied(),
+            at: transform.get(entity).map(|t| t.pos),
+            vision: stats.get(entity).map_or(Fixed::ZERO, |s| s.vision),
+            true_sight: stats.get(entity).map_or(Fixed::ZERO, |s| s.true_sight),
+            kind: kind.get(entity).copied(),
+            hides: stats.get(entity).is_some_and(|s| s.hides),
+            tier: transform.get(entity).map_or(0, |t| ground.tier(t.pos)),
+            seen: visibility.get(entity).copied(),
+        });
+    }
+    sight.viewers.clear();
+    sight.true_viewers.clear();
+    for row in &sight.rows {
+        let (Some(side), Some(from)) = (row.team, row.at) else {
             continue;
         };
-        seen.clear();
-        if let Some(side) = team.get(entity).copied() {
+        if row.vision > Fixed::ZERO {
+            sight.viewers.push(SightViewer {
+                side,
+                from,
+                vision: row.vision,
+                true_sight: row.true_sight,
+                tier: row.tier,
+            });
+        }
+        if row.true_sight > Fixed::ZERO {
+            sight.true_viewers.push(SightViewer {
+                side,
+                from,
+                vision: row.vision,
+                true_sight: row.true_sight,
+                tier: row.tier,
+            });
+        }
+    }
+    for row in &mut sight.rows {
+        let Some(seen) = row.seen.as_mut() else {
+            continue;
+        };
+        *seen = Visibility::NONE;
+        if let Some(side) = row.team {
             seen.add(side);
         }
         // A building is on every map both sides look at, ward and unit alike
         // are not.
-        if kind.get(entity).copied().is_some_and(is_structure) {
+        if row.kind.is_some_and(is_structure) {
             seen.add(Team::Radiant);
             seen.add(Team::Dire);
         }
     }
-    for viewer in entities.iter() {
-        let (Some(side), Some(from), Some(radius)) = (
-            team.get(viewer).copied(),
-            transform.get(viewer).map(|t| t.pos),
-            stats.get(viewer).map(|s| s.vision),
-        ) else {
-            continue;
-        };
-        if radius <= Fixed::ZERO {
-            continue;
-        }
-        let viewer_tier = ground.tier(from);
-        for target in entities.iter() {
-            if visibility.get(target).is_some_and(|seen| seen.by(side)) {
+    for viewer in &sight.viewers {
+        for row in sight.rows.iter_mut() {
+            if row.seen.as_ref().is_some_and(|seen| seen.by(viewer.side)) {
                 continue;
             }
-            let Some(at) = transform.get(target).map(|t| t.pos) else {
+            let Some(at) = row.at else {
                 continue;
             };
-            if !from.within(at, radius) || viewer_tier < ground.tier(at) {
+            if !viewer.from.within(at, viewer.vision) || viewer.tier < row.tier {
                 continue;
             }
-            if sight_clear(ground, sight_block, from, viewer_tier, at)
-                && let Some(seen) = visibility.get_mut(target)
+            if sight_clear(ground, sight_block, viewer.from, viewer.tier, at)
+                && let Some(seen) = row.seen.as_mut()
             {
-                seen.add(side);
+                seen.add(viewer.side);
             }
         }
     }
     // What hides is not given away by standing in the open: for the other
     // side it exists only where true sight reaches it.
-    for hidden in entities.iter() {
-        if !stats.get(hidden).is_some_and(|stats| stats.hides) {
+    for row in &mut sight.rows {
+        if !row.hides {
             continue;
         }
-        let (Some(side), Some(at)) = (
-            team.get(hidden).copied(),
-            transform.get(hidden).map(|t| t.pos),
-        ) else {
+        let (Some(side), Some(at)) = (row.team, row.at) else {
             continue;
         };
-        let Some(already) = visibility.get(hidden).copied() else {
+        let Some(already) = row.seen else {
             continue;
         };
         let mut seen = Visibility::NONE;
         seen.add(side);
-        for viewer in entities.iter() {
-            let (Some(their_side), Some(from), Some(reach)) = (
-                team.get(viewer).copied(),
-                transform.get(viewer).map(|t| t.pos),
-                stats.get(viewer).map(|stats| stats.true_sight),
-            ) else {
-                continue;
-            };
-            if their_side != side
-                && already.by(their_side)
-                && reach > Fixed::ZERO
-                && from.within(at, reach)
+        for viewer in &sight.true_viewers {
+            if viewer.side != side
+                && already.by(viewer.side)
+                && viewer.from.within(at, viewer.true_sight)
             {
-                seen.add(their_side);
+                seen.add(viewer.side);
             }
         }
-        if let Some(row) = visibility.get_mut(hidden) {
-            *row = seen;
-        }
+        row.seen = Some(seen);
+    }
+    for row in &sight.rows {
+        let (Some(seen), Some(slot)) = (row.seen, visibility.get_mut(row.entity)) else {
+            continue;
+        };
+        *slot = seen;
     }
 }
 

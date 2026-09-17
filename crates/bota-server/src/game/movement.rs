@@ -12,13 +12,25 @@ pub fn isqrt64(n: i64) -> i64 {
     if n <= 0 {
         return 0;
     }
-    let mut x = n;
-    let mut next = (x + 1) / 2;
-    while next < x {
-        x = next;
-        next = (x + n / x) / 2;
+    // One bit of the root a pass, from the top down, by repeated subtraction:
+    // no division in the loop, and a bit shorter than the widest square.
+    let mut rest = n as u64;
+    let mut root = 0u64;
+    let mut bit = 1u64 << 62;
+    while bit > rest {
+        bit >>= 2;
     }
-    x
+    while bit != 0 {
+        let grown = root + bit;
+        if rest >= grown {
+            rest -= grown;
+            root = (root >> 1) + bit;
+        } else {
+            root >>= 1;
+        }
+        bit >>= 2;
+    }
+    root as i64
 }
 
 /// The distance covered in one tick at a per-second speed.

@@ -165,15 +165,13 @@ impl World {
 
     /// Whether an entity is a candidate for another at all.
     pub fn reachable(&self, seeker: Entity, range: Fixed, other: Entity) -> bool {
-        if !self.hostile(seeker, other) {
-            return false;
-        }
         let (Some(at), Some(their_at)) = (self.transform.get(seeker), self.transform.get(other))
         else {
             return false;
         };
         at.pos
             .within(their_at.pos, range + self.hulls(seeker, other))
+            && self.hostile(seeker, other)
     }
 
     /// The two hulls that stand between a pair, edge to edge.
@@ -196,13 +194,16 @@ impl World {
         let mut nearest = i64::MAX;
         let mut found: Vec<(u8, i64, Entity)> = Vec::new();
         for other in self.entities.iter() {
-            if other == seeker || Some(other) == skip || !self.hostile(seeker, other) {
+            if other == seeker || Some(other) == skip {
                 continue;
             }
             let Some(their_at) = self.transform.get(other).map(|t| t.pos) else {
                 continue;
             };
             if !at.within(their_at, range + self.hulls(seeker, other)) {
+                continue;
+            }
+            if !self.hostile(seeker, other) {
                 continue;
             }
             let Some(kind) = self.kind.get(other).copied() else {

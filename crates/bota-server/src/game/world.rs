@@ -8,9 +8,9 @@ use crate::game::{
     AbilityBook, Action, AuraCx, Auras, Bounty, CampHome, Def, Entity, EntityAllocator, Errand,
     Expiry, Forest, Handling, Health, Hit, Hook, Hull, Inventory, Landed, Lane, LaneAi, Level,
     Loot, Mana, March, Mark, Missed, Modifier, Modifiers, Motion, NeutralAi, Orders, Place, Plan,
-    Projectile, Rax, RequiemLine, Route, Seat, SightCx, Stacks, Stats, StatsCx, Table, Target,
-    Tier, Transform, UnitOrder, Upgrades, Visibility, aura_system, derive_stats, hitting_system,
-    missile_system, regenerate, visibility_system,
+    Projectile, Rax, RequiemLine, Route, Seat, SightCx, SightScratch, Stacks, Stats, StatsCx,
+    Table, Target, Tier, Transform, UnitOrder, Upgrades, Visibility, aura_system, derive_stats,
+    hitting_system, missile_system, regenerate, visibility_system,
 };
 use crate::game::{HitCx, MissileCx};
 
@@ -75,6 +75,8 @@ pub struct World {
     /// Reused active-modifier buffer for systems that edit modifiers while
     /// reading them.
     pub(crate) modifier_scratch: Vec<Modifier>,
+    /// Reused buffers the sight system reads the world into.
+    pub(crate) sight_scratch: SightScratch,
 
     /// Where each entity stands.
     pub transform: Table<Transform>,
@@ -209,6 +211,7 @@ impl World {
             entities: EntityAllocator::new(),
             entity_scratch: Vec::new(),
             modifier_scratch: Vec::new(),
+            sight_scratch: SightScratch::new(),
             transform: Table::new(),
             hull: Table::new(),
             kind: Table::new(),
@@ -543,6 +546,7 @@ impl World {
             ground: &self.ground,
             sight_block: &self.sight_block,
             visibility: &mut self.visibility,
+            sight: &mut self.sight_scratch,
         });
     }
 
@@ -612,6 +616,7 @@ impl World {
             ground: &self.ground,
             sight_block: &self.sight_block,
             visibility: &mut self.visibility,
+            sight: &mut self.sight_scratch,
         });
         self.tend_attack_orders();
         regenerate(
