@@ -26,17 +26,47 @@ pub struct Mend {
     pub breaks: bool,
 }
 
+/// The slots held that cover a list of parts, one slot to each part.
+#[derive(Clone, Copy)]
+struct Spent {
+    slots: [usize; MAX_COMPONENTS],
+    len: usize,
+}
+
+impl Spent {
+    fn iter(&self) -> impl Iterator<Item = usize> + '_ {
+        self.slots[..self.len].iter().copied()
+    }
+
+    fn contains(&self, slot: usize) -> bool {
+        self.slots[..self.len].contains(&slot)
+    }
+
+    fn min(&self) -> Option<usize> {
+        self.iter().min()
+    }
+}
+
+/// The most parts any build in the catalog asks for.
+const MAX_COMPONENTS: usize = 4;
+
 /// Which of the slots held cover a list of parts, one slot to each part.
 ///
 /// Nothing at all when any part is missing: a build takes every part or none.
-fn parts_in(held: &[(usize, ItemStack)], parts: &[ItemId]) -> Option<Vec<usize>> {
-    let mut spent: Vec<usize> = Vec::with_capacity(parts.len());
+/// The fixed array keeps the per-tick catalog check from allocating.
+fn parts_in(held: &[(usize, ItemStack)], parts: &[ItemId]) -> Option<Spent> {
+    assert!(parts.len() <= MAX_COMPONENTS);
+    let mut spent = Spent {
+        slots: [0; MAX_COMPONENTS],
+        len: 0,
+    };
     for part in parts {
         let at = held
             .iter()
-            .find(|(at, stack)| stack.id == *part && !spent.contains(at))
+            .find(|(at, stack)| stack.id == *part && !spent.contains(*at))
             .map(|(at, _)| *at)?;
-        spent.push(at);
+        spent.slots[spent.len] = at;
+        spent.len += 1;
     }
     Some(spent)
 }
@@ -163,12 +193,13 @@ impl World {
     /// Run every tick, so a build follows however the last part arrived: a
     /// purchase, a slot moved, or a courier setting one down.
     pub fn assemble_bags(&mut self) {
-        for (slot, unit) in self
-            .seats
-            .iter()
-            .filter_map(|seat| seat.unit.map(|unit| (seat.slot, unit)))
-            .collect::<Vec<_>>()
-        {
+        let mut seats = Vec::with_capacity(self.seats.len());
+        seats.extend(
+            self.seats
+                .iter()
+                .filter_map(|seat| seat.unit.map(|unit| (seat.slot, unit))),
+        );
+        for (slot, unit) in seats {
             // One build may hand the next its last part, and each one leaves
             // fewer stacks than it took, so the run ends.
             for _ in 0..BAG_SLOTS {
@@ -205,11 +236,11 @@ impl World {
             let Some(spent) = parts_in(&held, def.components) else {
                 continue;
             };
-            let landing = spent.iter().copied().min().expect("a build has parts");
+            let landing = spent.min().expect("a build has parts");
             // A build that holds charges takes over whatever its parts held.
             let charges = held
                 .iter()
-                .filter(|(at, _)| spent.contains(at))
+                .filter(|(at, _)| spent.contains(*at))
                 .filter(|(_, stack)| item_def(stack.id).is_some_and(|part| part.cast_charges > 0))
                 .map(|(_, stack)| stack.charges)
                 .sum::<u8>()
@@ -232,7 +263,7 @@ impl World {
             let Some(bag) = self.inventory.get_mut(unit) else {
                 return false;
             };
-            for at in spent {
+            for at in spent.iter() {
                 bag.slots[at] = None;
             }
             bag.slots[landing] = Some(built);

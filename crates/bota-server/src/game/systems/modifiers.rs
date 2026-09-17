@@ -77,12 +77,16 @@ impl World {
     pub fn tick_modifiers(&mut self) {
         let on_beat = self.tick.is_multiple_of(rules::BURN_PERIOD_TICKS);
         let entities = self.take_entity_snapshot();
+        // One buffer for every entity this tick: `active()` borrows the
+        // modifier table while the effects below edit other tables.
+        let mut held = std::mem::take(&mut self.modifier_scratch);
+        held.clear();
         for entity in entities.iter().copied() {
             let Some(on_it) = self.modifiers.get(entity) else {
                 continue;
             };
-            let held: Vec<Modifier> = on_it.active().copied().collect();
-            for modifier in held {
+            held.extend(on_it.active().copied());
+            for modifier in held.drain(..) {
                 match modifier.kind {
                     ModifierKind::Burning {
                         amount,
@@ -107,6 +111,8 @@ impl World {
                 }
             }
         }
+        assert!(held.is_empty());
+        self.modifier_scratch = held;
         self.recycle_entity_snapshot(entities);
     }
 

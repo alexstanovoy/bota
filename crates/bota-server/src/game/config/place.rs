@@ -40,15 +40,27 @@ pub fn tree_positions(map: &crate::game::MapDef) -> Vec<Vec2> {
         r * r
     };
     let base_clear = rules::units(rules::TREE_BASE_CLEAR);
+    // The lane polylines are the map's, not each tree's: laying them once
+    // keeps a map's worth of trees from laying them again for every tree.
+    let lanes: Vec<(u8, Vec<Vec2>)> = if lane_clear > 0 {
+        map.lanes()
+            .map(|lane| (lane, lane_polyline(map, lane)))
+            .collect()
+    } else {
+        Vec::new()
+    };
     map.trees
         .iter()
         .map(|&(x, y)| Vec2::from_ints(i32::from(x), i32::from(y)))
         .filter(|&pos| {
-            if lane_clear > 0 {
-                for lane in map.lanes() {
-                    if lane_offset_squared(map, lane, pos) < lane_clear {
-                        return false;
-                    }
+            for (_, line) in &lanes {
+                let offset = line
+                    .windows(2)
+                    .map(|s| crate::game::segment_distance_squared(pos, s[0], s[1]))
+                    .min()
+                    .expect("a lane has at least one segment");
+                if offset < lane_clear {
+                    return false;
                 }
             }
             !pos.within(map.fountains[0], base_clear) && !pos.within(map.fountains[1], base_clear)

@@ -281,27 +281,10 @@ impl World {
             .get(entity)
             .and_then(|route| route.goal)
             .unwrap_or(dest);
-        let plan = self.plan.get(entity).cloned().unwrap_or_else(Plan::none);
         // A plan is walked from where it was laid: a body put somewhere
-        // else since, by a hook or a shove, has no plan.
-        let astray = plan
-            .steps
-            .get(plan.at)
-            .is_some_and(|next| !next.within(from, step + rules::units(rules::PLAN_STRAY)));
-        // Stalled long, it asks for a plan less often.
-        let pause = if motion.stalled >= rules::STALL_BACKOFF_AFTER {
-            rules::REPLAN_STALLED_TICKS
-        } else {
-            rules::REPLAN_MIN_TICKS
-        };
-        let rested = now >= plan.laid + pause;
-        let stale = astray
-            || plan.step != step
-            || !plan.goal.within(goal, rules::units(rules::PLAN_DRIFT))
-            || (plan.steps.is_empty() && rested)
-            || (!plan.stands() && !plan.steps.is_empty())
-            || (plan.left() < rules::REPLAN_LEFT_TICKS as usize && !plan.last && rested);
-        if stale {
+        // else since, by a hook or a shove, has no plan. The check reads the
+        // plan in place; cloning it only to test it bought nothing.
+        if plan_stale(self.plan.get(entity), from, step, goal, motion.stalled, now) {
             let (mut steps, crowded, mut reached) =
                 self.lay_plan(entity, from, aim, aim_arrive, collision, step, scratch);
             // Short of the aim with bodies about, the route is laid round
@@ -786,6 +769,40 @@ fn destination(order: &UnitOrder) -> Option<Vec2> {
         | UnitOrder::Attack { .. }
         | UnitOrder::Follow { .. } => None,
     }
+}
+
+/// Whether the laid plan still leads where the route goes and has enough left.
+///
+/// A plan that was never laid reads as stale: its step is zero against a
+/// positive step per tick, exactly as the clone-based check read it.
+fn plan_stale(
+    plan: Option<&Plan>,
+    from: Vec2,
+    step: Fixed,
+    goal: Vec2,
+    stalled: u32,
+    now: u32,
+) -> bool {
+    // Stalled long, it asks for a plan less often.
+    let pause = if stalled >= rules::STALL_BACKOFF_AFTER {
+        rules::REPLAN_STALLED_TICKS
+    } else {
+        rules::REPLAN_MIN_TICKS
+    };
+    let Some(plan) = plan else {
+        return true;
+    };
+    let astray = plan
+        .steps
+        .get(plan.at)
+        .is_some_and(|next| !next.within(from, step + rules::units(rules::PLAN_STRAY)));
+    let rested = now >= plan.laid + pause;
+    astray
+        || plan.step != step
+        || !plan.goal.within(goal, rules::units(rules::PLAN_DRIFT))
+        || (plan.steps.is_empty() && rested)
+        || (!plan.stands() && !plan.steps.is_empty())
+        || (plan.left() < rules::REPLAN_LEFT_TICKS as usize && !plan.last && rested)
 }
 
 /// The spot to walk at next along a polyline from a position: as far along

@@ -8,7 +8,7 @@
 //! goal tick by tick. The cost is time.
 
 use std::cmp::Reverse;
-use std::collections::{BTreeMap, BinaryHeap};
+use std::collections::{BinaryHeap, HashMap};
 
 use bota_proto::{Angle, Fixed, Vec2};
 
@@ -143,7 +143,10 @@ pub struct LocalScratch {
     /// turns taken, the state.
     heap: BinaryHeap<Reverse<(u32, i64, u32, u32)>>,
     /// The best state at each spot, heading and stretch of time.
-    seen: BTreeMap<u64, u32>,
+    ///
+    /// A hash map, not an ordered one: the search only looks states up, and
+    /// clearing it between plans keeps its allocation for the next search.
+    seen: HashMap<u64, u32>,
     /// The squared distance each body must be kept at, in the order of the
     /// bodies asked about.
     need: Vec<i64>,

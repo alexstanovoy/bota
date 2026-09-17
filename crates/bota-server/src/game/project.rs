@@ -31,24 +31,24 @@ impl World {
 
     /// Everything a viewer is allowed to be told. `None` holds nothing back.
     fn project(&self, viewer: Option<Team>) -> WorldView {
-        let units = self
-            .entities
-            .iter()
-            .filter(|entity| match viewer {
-                None => true,
-                Some(team) => {
-                    self.team.get(*entity) == Some(&team)
-                        || self.visibility.get(*entity).is_some_and(|s| s.by(team))
-                }
-            })
-            .filter_map(|entity| self.project_unit(entity))
-            .collect();
-        WorldView {
-            tick: self.tick,
-            viewer,
-            units,
-            projectiles: self
-                .entities
+        // The entity table bounds every filtered collection below, so the
+        // one allocation each needs is taken up front instead of grown.
+        let mut units = Vec::with_capacity(self.entities.len());
+        units.extend(
+            self.entities
+                .iter()
+                .filter(|entity| match viewer {
+                    None => true,
+                    Some(team) => {
+                        self.team.get(*entity) == Some(&team)
+                            || self.visibility.get(*entity).is_some_and(|s| s.by(team))
+                    }
+                })
+                .filter_map(|entity| self.project_unit(entity)),
+        );
+        let mut projectiles = Vec::with_capacity(self.entities.len());
+        projectiles.extend(
+            self.entities
                 .iter()
                 .filter(|entity| {
                     self.projectile.get(*entity).is_some()
@@ -81,8 +81,36 @@ impl World {
                         team: self.team.get(entity).copied().unwrap_or(Team::Neutral),
                         ability,
                     })
+                }),
+        );
+        let mut loot = Vec::with_capacity(self.entities.len());
+        loot.extend(
+            self.entities
+                .iter()
+                .filter(|entity| self.loot.get(*entity).is_some())
+                .filter(|entity| match viewer {
+                    None => true,
+                    Some(team) => self.visibility.get(*entity).is_some_and(|s| s.by(team)),
                 })
-                .collect(),
+                .filter_map(|entity| {
+                    let crate::game::Loot(stack) = self.loot.get(entity)?;
+                    let at = self.transform.get(entity)?;
+                    let def = crate::game::item_def(stack.id);
+                    Some(bota_proto::LootView {
+                        id: wire_id(entity),
+                        pos: at.pos,
+                        item: stack.id,
+                        charges: def
+                            .filter(|def| def.charges > 0 || def.cast_charges > 0)
+                            .map(|_| stack.charges),
+                    })
+                }),
+        );
+        WorldView {
+            tick: self.tick,
+            viewer,
+            units,
+            projectiles,
             players: self
                 .seats
                 .iter()
@@ -124,28 +152,7 @@ impl World {
                 .collect(),
             felled_trees: self.trees.felled().collect(),
             planted_trees: self.trees.planted().iter().map(|tree| tree.at).collect(),
-            loot: self
-                .entities
-                .iter()
-                .filter(|entity| self.loot.get(*entity).is_some())
-                .filter(|entity| match viewer {
-                    None => true,
-                    Some(team) => self.visibility.get(*entity).is_some_and(|s| s.by(team)),
-                })
-                .filter_map(|entity| {
-                    let crate::game::Loot(stack) = self.loot.get(entity)?;
-                    let at = self.transform.get(entity)?;
-                    let def = crate::game::item_def(stack.id);
-                    Some(bota_proto::LootView {
-                        id: wire_id(entity),
-                        pos: at.pos,
-                        item: stack.id,
-                        charges: def
-                            .filter(|def| def.charges > 0 || def.cast_charges > 0)
-                            .map(|_| stack.charges),
-                    })
-                })
-                .collect(),
+            loot,
         }
     }
 
@@ -311,18 +318,21 @@ impl World {
             self.modifiers
                 .get(entity)
                 .map_or_else(Vec::new, |modifiers| {
-                    modifiers
-                        .active()
-                        .filter(|held| !matches!(held.kind, ModifierKind::Rot { .. }))
-                        .map(|held| EffectView {
-                            id: EffectId(effect_id(held.kind)),
-                            ticks_left: held.ticks_left,
-                            stacks: match held.kind {
-                                ModifierKind::Shadowraze { stacks } => Some(u32::from(stacks)),
-                                _ => None,
-                            },
-                        })
-                        .collect()
+                    let mut views = Vec::with_capacity(modifiers.active().count());
+                    views.extend(
+                        modifiers
+                            .active()
+                            .filter(|held| !matches!(held.kind, ModifierKind::Rot { .. }))
+                            .map(|held| EffectView {
+                                id: EffectId(effect_id(held.kind)),
+                                ticks_left: held.ticks_left,
+                                stacks: match held.kind {
+                                    ModifierKind::Shadowraze { stacks } => Some(u32::from(stacks)),
+                                    _ => None,
+                                },
+                            }),
+                    );
+                    views
                 });
         if let Some(gathered) = self.stacks.get(entity) {
             on_it.extend(gathered.held().map(|(kind, many)| EffectView {
