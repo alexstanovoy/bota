@@ -8,9 +8,10 @@
 //! goal tick by tick. The cost is time.
 
 use std::cmp::Reverse;
-use std::collections::{BinaryHeap, HashMap};
+use std::collections::BinaryHeap;
 
 use bota_proto::{Angle, Fixed, Vec2};
+use rustc_hash::FxHashMap;
 
 use crate::game::{
     Obstacles, facing_gap, facing_towards, heading_of, isqrt64, move_towards, point_along, rules,
@@ -146,7 +147,7 @@ pub struct LocalScratch {
     ///
     /// A hash map, not an ordered one: the search only looks states up, and
     /// clearing it between plans keeps its allocation for the next search.
-    seen: HashMap<u64, u32>,
+    seen: FxHashMap<u64, u32>,
     /// The squared distance each body must be kept at, in the order of the
     /// bodies asked about.
     need: Vec<i64>,
