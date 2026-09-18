@@ -108,6 +108,7 @@ New external dependencies only after discussion. Allowed:
 | `macroquad` | `bota-client` | rendering |
 | `resvg` | `bota-client` | rasterising the item art |
 | `rand_chacha` 0.10 | `bota-server` | PRNG |
+| `rustc-hash` 2.1.3 | `bota-server` | lookup-only integer-key maps |
 | `clap` (derive) | every binary | command line arguments |
 
 Every binary parses its arguments with `clap` and its derive. There is no bar low enough
@@ -140,3 +141,18 @@ cargo test --all --release
 Release is run separately not for speed: `debug_assert!` is off there, and overflow
 behavior switches from panicking to saturating. A test that covers only one half fails
 in the other mode — and it fails exactly where we would notice it last.
+
+## Benchmarks
+
+The dummy-game tick loop and its micro cases are criterion benchmarks in
+`crates/bota-server/benches/dummy` (a dev-dependency only):
+
+```
+cargo bench -p bota-server --bench dummy
+```
+
+Criterion writes its data under `target/criterion`. To compare two commits, point both
+runs at one criterion home (`CRITERION_HOME`, or copy `target/criterion` between the
+worktrees), run one with `-- --save-baseline <name>` and the other with
+`-- --baseline <name>`. Keep one `CARGO_TARGET_DIR` per worktree: cargo 1.98 serves
+stale artifacts when worktrees share one because packages share relative source paths.

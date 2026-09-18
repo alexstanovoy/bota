@@ -14,6 +14,7 @@ edition = "2024"
 [workspace.dependencies]
 bota-proto = { path = "crates/bota-proto" }
 bota-server = { path = "crates/bota-server" }
+criterion = { version = "=0.8.2", default-features = false }
 
 [workspace.lints.clippy]
 float_arithmetic = "deny"

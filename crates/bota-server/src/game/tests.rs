@@ -10691,3 +10691,47 @@ fn every_hero_sent_at_a_tower_from_afar_walks_into_reach_and_strikes() {
         );
     }
 }
+
+/// The dummy match the criterion benches also play.
+#[path = "../../benches/dummy/scenario.rs"]
+#[allow(dead_code)]
+mod dummy_scenario;
+
+/// Ticks the determinism test plays.
+const SHORT_TICKS: u32 = 300;
+
+#[test]
+fn the_dummy_scenario_is_deterministic() {
+    let first = short_digest();
+    let second = short_digest();
+    assert_eq!(first.0, second.0, "the world digest must not move");
+    assert_eq!(first.1, second.1, "the view digest must not move");
+}
+
+/// The world and view fingerprints of a short window.
+fn short_digest() -> (u64, u64) {
+    let mut dummy = dummy_scenario::Dummy::build(true);
+    for _ in 0..SHORT_TICKS {
+        dummy.step();
+    }
+    dummy.digest()
+}
+
+#[test]
+fn a_sentry_reveals_the_observer_it_stands_beside() {
+    let mut dummy = dummy_scenario::Dummy::build(false);
+    assert!(
+        dummy.world.can_see(Team::Dire, dummy.observers[0]),
+        "the dire sentry must find the radiant observer"
+    );
+    assert!(
+        dummy.world.can_see(Team::Radiant, dummy.observers[1]),
+        "the radiant sentry must find the dire observer"
+    );
+    dummy.world.despawn(dummy.sentries[0]);
+    dummy.world.settle();
+    assert!(
+        !dummy.world.can_see(Team::Dire, dummy.observers[0]),
+        "without the sentry the observer hides again"
+    );
+}
