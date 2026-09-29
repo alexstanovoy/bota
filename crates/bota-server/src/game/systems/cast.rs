@@ -2,9 +2,7 @@
 
 use bota_proto::{AbilitySlot, DamageKind, EventKind, Fixed, Target, Team};
 
-use crate::game::{
-    Entity, Modifier, ModifierKind, Projectile, World, ability_cooldown, ability_mana_cost, wire_id,
-};
+use crate::game::{Entity, Modifier, ModifierKind, Projectile, World, wire_id};
 use crate::game::{Event, rules};
 
 impl World {
@@ -44,11 +42,11 @@ impl World {
         if def.passive || ability.level == 0 || ability.cooldown > 0 {
             return false;
         }
-        let cost = ability_mana_cost(ability.id, ability.level);
+        let cost = self.ability_mana_cost(entity, ability.id, ability.level);
         if self.mana.get(entity).map_or(0, |m| m.mana.to_int()) < cost {
             return false;
         }
-        let cooldown = ability_cooldown(ability.id, ability.level);
+        let cooldown = self.ability_cooldown(entity, ability.id, ability.level);
         if !(def.on_cast)(self, entity, target) {
             return false;
         }
@@ -152,6 +150,7 @@ impl World {
         ) else {
             return false;
         };
+        let damage_amp_bp = self.outgoing_damage_amp_bp(Some(caster), DamageKind::Magical);
         let missile = self.spawn();
         self.transform.insert(missile, at);
         self.set_team(missile, side);
@@ -163,12 +162,14 @@ impl World {
                 target: mark,
                 damage: rules::SYLLA_BOUNCE_DAMAGE[level],
                 kind: DamageKind::Magical,
+                damage_amp_bp,
                 ability: Some(bota_proto::AbilityId(2)),
                 launch_tier: 0,
                 can_miss_uphill: false,
                 crit: false,
                 pierces: false,
                 pierce_damage: 0,
+                pierce_amp_bp: rules::NOMINAL_BP,
                 bounces_left: rules::SYLLA_BOUNCE_COUNT[level],
                 bounce_range: rules::SYLLA_BOUNCE_RANGE,
                 bounced: vec![mark],

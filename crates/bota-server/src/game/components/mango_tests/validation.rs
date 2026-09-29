@@ -130,7 +130,7 @@ fn courier_named_buy_order_counts_hero_stack_room_at_shop() {
 }
 
 #[test]
-fn non_mango_buy_order_keeps_catalog_price_and_empty_slot_validation() {
+fn non_mango_buy_order_uses_missing_cost_and_keeps_empty_slot_validation() {
     let (mut world, hero) = fixture();
     let mut stick = mango(1);
     stick.id = ItemId(crate::game::ITEM_MAGIC_STICK);
@@ -140,10 +140,7 @@ fn non_mango_buy_order_keeps_catalog_price_and_empty_slot_validation() {
     let wand = Order::Buy {
         item: ItemId(crate::game::ITEM_MAGIC_WAND),
     };
-    assert_eq!(
-        world.validate_order(OWNER, None, &wand),
-        Err(RejectReason::NotEnoughGold)
-    );
+    assert_eq!(world.validate_order(OWNER, None, &wand), Ok(()));
     fill_storage(&mut world, hero);
     world.inventory.get_mut(hero).unwrap().slots[0] = Some(mango(1));
     let tango = Order::Buy {

@@ -183,6 +183,7 @@ pub fn refusal(reason: bota_proto::RejectReason) -> &'static str {
         Why::ClosedGround => "nothing can lie there",
         Why::NotInBag => "not carried in the bag",
         Why::NoCheats => "cheats are off in this match",
+        Why::BadCheat => "the cheat is out of bounds",
     }
 }
 

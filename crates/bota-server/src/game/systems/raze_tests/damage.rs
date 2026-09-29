@@ -56,6 +56,24 @@ fn raze_magic_resistance_reduces_the_total_after_adding_stack_bonus() {
 }
 
 #[test]
+fn raze_outgoing_amplification_multiplies_base_and_prior_stacks_together() {
+    let (mut amplified, caster, target) = fixture();
+    assert_eq!(land(&mut amplified, caster, target, 0), 90);
+    assert_eq!(land(&mut amplified, caster, target, 0), 140);
+    amplified.stats.get_mut(caster).unwrap().magic_amp_bp = 15_000;
+    assert_eq!(
+        land(&mut amplified, caster, target, 0),
+        (90 + 2 * 50) * 15_000 / 10_000,
+        "the stack composition is multiplied once as a whole"
+    );
+
+    let (mut plain, caster, target) = fixture();
+    assert_eq!(land(&mut plain, caster, target, 0), 90);
+    assert_eq!(land(&mut plain, caster, target, 0), 140);
+    assert_eq!(land(&mut plain, caster, target, 0), 90 + 2 * 50);
+}
+
+#[test]
 fn raze_same_team_casters_keep_independent_damage_stacks() {
     let (mut world, first, target) = fixture();
     let second = hero(&mut world, Team::Radiant, ORIGIN, SlotId(2));

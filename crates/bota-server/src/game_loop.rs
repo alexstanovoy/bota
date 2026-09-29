@@ -237,6 +237,7 @@ impl Server {
             mode: self.opts.mode,
             ack_timeout_ticks: self.opts.ack_timeout_ticks,
             cheats: self.opts.cheats,
+            spawn_modifiers: Vec::new(),
         }
     }
 

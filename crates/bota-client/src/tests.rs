@@ -269,7 +269,12 @@ fn every_item_drawing_rasterises_to_something_visible() {
         assert_eq!(w, 192, "{name} is drawn to the frame");
         assert_eq!(h, 128, "{name} is drawn to the frame");
         assert_eq!(bytes.len(), (w * h * 4) as usize);
-        let painted = bytes.chunks_exact(4).filter(|px| px[3] > 0).count();
+        let painted = bytes
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .filter(|px| px[3] > 0)
+            .count();
         assert!(
             painted > (w * h / 2) as usize,
             "{name} covers its frame: {painted} of {}",

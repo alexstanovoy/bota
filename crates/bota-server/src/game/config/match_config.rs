@@ -2,7 +2,42 @@
 
 use bota_proto::{EntityId, EventKind, MapId, MatchInfo, Order, Pick, SlotId, Team, TickMode};
 
-use crate::game::MatchRng;
+use crate::game::{
+    MAX_SPAWN_MODIFIERS, MatchRng, SpawnModifier, SpawnModifierError, check_spawn_modifier,
+};
+
+/// Why a match description was refused.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MatchConfigError {
+    /// More spawn modifiers than a match may carry.
+    TooManySpawnModifiers {
+        /// How many were offered.
+        count: usize,
+    },
+    /// One spawn modifier is not one a match may carry.
+    SpawnModifier {
+        /// Where it sits in the list.
+        at: usize,
+        /// Why it was refused.
+        error: SpawnModifierError,
+    },
+}
+
+impl core::fmt::Display for MatchConfigError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            MatchConfigError::TooManySpawnModifiers { count } => write!(
+                f,
+                "{count} spawn modifiers exceed the {MAX_SPAWN_MODIFIERS} a match may carry"
+            ),
+            MatchConfigError::SpawnModifier { at, error } => {
+                write!(f, "spawn modifier {at} is refused: {error}")
+            }
+        }
+    }
+}
+
+impl std::error::Error for MatchConfigError {}
 
 /// Full server-side description of one match.
 ///
@@ -27,12 +62,30 @@ pub struct MatchConfig {
     pub ack_timeout_ticks: u32,
     /// Whether cheat orders are honoured.
     pub cheats: bool,
+    /// Trusted modifiers put on units as they are stood up, and on those
+    /// already standing when the match begins. `MAX_SPAWN_MODIFIERS` at most.
+    pub spawn_modifiers: Vec<SpawnModifier>,
 }
 
 impl MatchConfig {
     /// The hidden randomness of this match.
     pub fn rng(&self) -> MatchRng {
         MatchRng::new(&self.master_key, self.match_id)
+    }
+
+    /// Whether the description may build a match. The spawn modifiers must
+    /// fit the bound and every one of them must be valid.
+    pub fn validate(&self) -> Result<(), MatchConfigError> {
+        if self.spawn_modifiers.len() > MAX_SPAWN_MODIFIERS {
+            return Err(MatchConfigError::TooManySpawnModifiers {
+                count: self.spawn_modifiers.len(),
+            });
+        }
+        for (at, rule) in self.spawn_modifiers.iter().enumerate() {
+            check_spawn_modifier(rule)
+                .map_err(|error| MatchConfigError::SpawnModifier { at, error })?;
+        }
+        Ok(())
     }
 
     /// The projection onto the wire. Carries no secret.

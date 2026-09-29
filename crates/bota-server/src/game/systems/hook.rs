@@ -20,6 +20,7 @@ impl World {
         };
         let reach = rules::units(rules::HOOK_RANGE);
         let aim = move_towards(from, pos, reach);
+        let damage_amp_bp = self.outgoing_damage_amp_bp(Some(caster), DamageKind::Pure);
         let hook = self.spawn();
         self.transform.insert(
             hook,
@@ -39,6 +40,7 @@ impl World {
                 reach_left: reach,
                 radius: rules::units(rules::HOOK_RADIUS),
                 damage: rules::HOOK_DAMAGE[level],
+                damage_amp_bp,
                 caught: None,
                 returning: false,
                 links,
@@ -103,7 +105,13 @@ impl World {
                 hook.caught = Some(caught);
                 hook.returning = true;
                 if self.team.get(caught).copied() != self.team.get(hook.owner).copied() {
-                    self.push_hit(Some(hook.owner), caught, hook.damage, DamageKind::Pure);
+                    self.push_hit_with_amp(
+                        Some(hook.owner),
+                        caught,
+                        hook.damage,
+                        DamageKind::Pure,
+                        hook.damage_amp_bp,
+                    );
                 }
             } else if next == hook.aim || hook.reach_left <= Fixed::ZERO {
                 hook.returning = true;

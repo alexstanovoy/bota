@@ -9,6 +9,12 @@ use crate::game::{clamp_to_map, isqrt64, rules};
 impl World {
     /// Lays the body index out from where everything with a hull stands.
     pub fn lay_bodies(&mut self) {
+        #[cfg(feature = "phase-profile")]
+        let _profile = crate::profile::ScopeGuard::new(
+            crate::profile::Phase::BodyIndex,
+            self.tick,
+            self.entities.len(),
+        );
         let mut bodies = std::mem::take(&mut self.body_scratch);
         bodies.clear();
         for entity in self.entities.iter() {
@@ -72,6 +78,12 @@ impl World {
     /// onto closed ground. A building never moves: the whole correction
     /// falls on whatever walked into it.
     pub fn push_apart(&mut self) {
+        #[cfg(feature = "phase-profile")]
+        let _profile = crate::profile::ScopeGuard::new(
+            crate::profile::Phase::Separation,
+            self.tick,
+            self.entities.len(),
+        );
         let mut bodies = std::mem::take(&mut self.body_scratch);
         bodies.clear();
         for entity in self.entities.iter() {

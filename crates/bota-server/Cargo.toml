@@ -3,6 +3,10 @@ name = "bota-server"
 version.workspace = true
 edition.workspace = true
 
+[features]
+default = []
+phase-profile = []
+
 [dependencies]
 bota-proto = { workspace = true }
 rand_chacha = "0.10"

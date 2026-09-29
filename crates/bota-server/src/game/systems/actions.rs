@@ -552,6 +552,8 @@ impl World {
             None => (damage, false),
         };
         let pierce = self.roll_pierce(attacker, on, stats);
+        let physical_amp_bp = stats.damage_amp_bp(DamageKind::Physical);
+        let magical_amp_bp = stats.damage_amp_bp(DamageKind::Magical);
         match stats.projectile_speed {
             None => {
                 self.hits.push_back(Hit {
@@ -559,6 +561,7 @@ impl World {
                     target: on,
                     amount: damage,
                     kind: DamageKind::Physical,
+                    damage_amp_bp: physical_amp_bp,
                     crit,
                     attack: true,
                     pierces: pierce.is_some(),
@@ -570,6 +573,7 @@ impl World {
                         target: on,
                         amount: bonus,
                         kind: DamageKind::Magical,
+                        damage_amp_bp: magical_amp_bp,
                         crit: false,
                         attack: false,
                         pierces: false,
@@ -595,12 +599,14 @@ impl World {
                         target: on,
                         damage,
                         kind: DamageKind::Physical,
+                        damage_amp_bp: physical_amp_bp,
                         ability: None,
                         launch_tier: self.ground.tier(at.pos),
                         can_miss_uphill: !stats.flies,
                         crit,
                         pierces: pierce.is_some(),
                         pierce_damage: pierce.unwrap_or(0),
+                        pierce_amp_bp: magical_amp_bp,
                         bounces_left: 0,
                         bounce_range: 0,
                         bounced: Vec::new(),

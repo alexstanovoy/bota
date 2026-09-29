@@ -3,7 +3,9 @@
 use bota_proto::{Team, UnitKind};
 
 use crate::game::rules;
-use crate::game::{Auras, EntityAllocator, Modifier, Modifiers, Reach, Table, Transform};
+use crate::game::{Auras, EntityAllocator, Modifier, Modifiers, Reach, Stats, Table, Transform};
+
+use super::modifiers::resisted_ticks;
 
 /// What handing out effects reads and writes.
 pub struct AuraCx<'a> {
@@ -18,6 +20,8 @@ pub struct AuraCx<'a> {
     pub kind: &'a Table<UnitKind>,
     /// What each entity hands out.
     pub auras: &'a Table<Auras>,
+    /// Status resistance, for the timed effects an aura may hand out.
+    pub stats: &'a Table<Stats>,
     /// Where a handed-out effect lands.
     pub modifiers: &'a mut Table<Modifiers>,
 }
@@ -34,6 +38,7 @@ pub fn aura_system(cx: AuraCx<'_>) {
         team,
         kind,
         auras,
+        stats,
         modifiers,
     } = cx;
     for source in entities.iter() {
@@ -69,7 +74,7 @@ pub fn aura_system(cx: AuraCx<'_>) {
                     on_it.put(Modifier {
                         kind: aura.kind,
                         source: Some(source),
-                        ticks_left: Some(aura.ticks),
+                        ticks_left: Some(resisted_ticks(stats, entity, aura.kind, aura.ticks)),
                     });
                 }
             }

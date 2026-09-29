@@ -25,6 +25,8 @@ pub struct RequiemLine {
     pub distance: Fixed,
     /// Damage it lands on each it crosses.
     pub damage: i32,
+    /// Outgoing magical amplification captured when the line was let go.
+    pub damage_amp_bp: i32,
     /// Percent of speed it takes from each it crosses.
     pub slow_pct: i32,
     /// What it has crossed already, never crossed twice.

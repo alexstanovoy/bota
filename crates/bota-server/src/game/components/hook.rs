@@ -23,6 +23,8 @@ pub struct Hook {
     pub radius: Fixed,
     /// Damage it deals to an enemy it catches.
     pub damage: i32,
+    /// Outgoing pure-damage amplification captured when it was thrown.
+    pub damage_amp_bp: i32,
     /// What it caught, while it is dragging it.
     pub caught: Option<Entity>,
     /// Whether it is on its way back.

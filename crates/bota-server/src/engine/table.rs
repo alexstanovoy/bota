@@ -90,4 +90,10 @@ impl<T> Table<T> {
     pub fn contains(&self, entity: Entity) -> bool {
         self.get(entity).is_some()
     }
+
+    /// Whether nothing has ever been written, or everything written has been
+    /// taken away. A slot left by a dead entity still counts as written.
+    pub fn is_empty(&self) -> bool {
+        self.slots.iter().all(Option::is_none)
+    }
 }

@@ -1066,7 +1066,12 @@ pub fn shop_entries() -> Vec<bota_proto::ShopEntry> {
 }
 
 /// What a bag looks like on the wire, an empty slot keeping its place.
-pub fn item_views(bag: &Inventory) -> Vec<Option<ItemView>> {
+///
+/// Mana costs carry the holder's mana cost rate; `mana_rate_bp` is
+/// [`rules::NOMINAL_BP`] for a bag with no body behind it.
+///
+/// [`rules::NOMINAL_BP`]: crate::game::rules::NOMINAL_BP
+pub fn item_views(bag: &Inventory, mana_rate_bp: i32) -> Vec<Option<ItemView>> {
     bag.slots
         .iter()
         .map(|slot| {
@@ -1080,7 +1085,9 @@ pub fn item_views(bag: &Inventory) -> Vec<Option<ItemView>> {
                     cooldown_left: stack.cooldown,
                     mute_left: stack.mute,
                     mode: stack.mode,
-                    mana_cost: def.map_or(0, |def| def.mana_cost),
+                    mana_cost: def.map_or(0, |def| {
+                        crate::game::cost_after(def.mana_cost, mana_rate_bp)
+                    }),
                     range: def.map_or(0, |def| def.range),
                     aim: def.and_then(|def| def.aim),
                     for_sale: stack.for_sale,

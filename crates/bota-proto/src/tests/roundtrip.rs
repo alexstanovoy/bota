@@ -128,6 +128,8 @@ fn every_reject_reason_survives() {
         RejectReason::NotYourItem,
         RejectReason::ClosedGround,
         RejectReason::NotInBag,
+        RejectReason::NoCheats,
+        RejectReason::BadCheat,
     ];
     for reason in reasons {
         assert_eq!(roundtrip(&reason), reason, "{reason:?}");

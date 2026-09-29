@@ -31,6 +31,12 @@ impl World {
 
     /// Everything a viewer is allowed to be told. `None` holds nothing back.
     fn project(&self, viewer: Option<Team>) -> WorldView {
+        #[cfg(feature = "phase-profile")]
+        let _profile = crate::profile::ScopeGuard::new(
+            crate::profile::Phase::Projection,
+            self.tick,
+            self.entities.len(),
+        );
         // The entity table bounds every filtered collection below, so the
         // one allocation each needs is taken up front instead of grown.
         let mut units = Vec::with_capacity(self.entities.len());
@@ -130,7 +136,7 @@ impl World {
                     },
                     stash: match viewer {
                         Some(team) if team != seat.team => None,
-                        _ => Some(item_views(&seat.stash)),
+                        _ => Some(item_views(&seat.stash, self.mana_cost_rate_of(seat.unit))),
                     },
                     // What a fallen body left is told to its own side alone.
                     // The other side is left with whatever it saw last, which
@@ -138,8 +144,8 @@ impl World {
                     kit: match viewer {
                         Some(team) if team != seat.team => None,
                         _ => seat.kept.as_ref().map(|kept| bota_proto::Kit {
-                            abilities: ability_views(&kept.book),
-                            items: item_views(&kept.bag),
+                            abilities: ability_views(&kept.book, self.mana_cost_rate_of(seat.unit)),
+                            items: item_views(&kept.bag, self.mana_cost_rate_of(seat.unit)),
                         }),
                     },
                     kills: seat.kills,
@@ -216,11 +222,14 @@ impl World {
                             ability,
                             self.ability_on(entity, ability.id),
                             self.can_level(entity, ability.id, ability.level),
+                            self.mana_cost_rate_of(Some(entity)),
                         )
                     })
                     .collect()
             }),
-            items: self.inventory.get(entity).map_or_else(Vec::new, item_views),
+            items: self.inventory.get(entity).map_or_else(Vec::new, |bag| {
+                item_views(bag, self.mana_cost_rate_of(Some(entity)))
+            }),
             effects: self.effects_on(entity),
         })
     }
@@ -253,14 +262,19 @@ fn shown(held: Fixed) -> i32 {
 /// What is worked out from the body it sits on — whether a toggle is running
 /// and whether a point could go into it — is asked of the caller, since a
 /// book that outlived its body has neither.
-fn ability_view(held: &crate::game::AbilityState, on: bool, can_level: bool) -> AbilityView {
+fn ability_view(
+    held: &crate::game::AbilityState,
+    on: bool,
+    can_level: bool,
+    mana_rate_bp: i32,
+) -> AbilityView {
     let def = crate::game::ability_def(held.id);
     AbilityView {
         id: held.id,
         level: held.level,
         max_level: def.map_or(0, |def| def.max_level),
         cooldown_left: held.cooldown,
-        mana_cost: ability_mana_cost(held.id, held.level),
+        mana_cost: crate::game::cost_after(ability_mana_cost(held.id, held.level), mana_rate_bp),
         range: def.map_or(0, |def| def.range),
         aim: def.map_or(bota_proto::Aim::Own, |def| def.aim),
         passive: def.is_some_and(|def| def.passive),
@@ -273,10 +287,10 @@ fn ability_view(held: &crate::game::AbilityState, on: bool, can_level: bool) -> 
 ///
 /// Nothing is toggled on and no point may be spent: both want a body, and a
 /// kept book has none.
-fn ability_views(book: &crate::game::AbilityBook) -> Vec<AbilityView> {
+fn ability_views(book: &crate::game::AbilityBook, mana_rate_bp: i32) -> Vec<AbilityView> {
     book.slots
         .iter()
-        .map(|held| ability_view(held, false, false))
+        .map(|held| ability_view(held, false, false, mana_rate_bp))
         .collect()
 }
 

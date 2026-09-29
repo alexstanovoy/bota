@@ -11,6 +11,9 @@ use crate::game::Ratio;
 /// Simulation ticks per second of game time.
 pub const TICKS_PER_SECOND: u32 = 30;
 
+/// What a rate or an amplification is worth at nominal, in basis points.
+pub const NOMINAL_BP: i32 = 10_000;
+
 /// The map spans `0..MAP_SIZE` on both axes.
 pub const MAP_SIZE: i32 = 18432;
 

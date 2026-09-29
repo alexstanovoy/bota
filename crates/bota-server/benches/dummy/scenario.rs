@@ -202,6 +202,7 @@ fn match_config() -> MatchConfig {
         mode: TickMode::Lockstep,
         ack_timeout_ticks: 0,
         cheats: false,
+        spawn_modifiers: Vec::new(),
     }
 }
 

@@ -163,6 +163,12 @@ fn stats() -> Stats {
         projectile_speed: None,
         armor: Fixed::ZERO,
         magic_resist_pct: 0,
+        status_resist_bp: 0,
+        physical_amp_bp: rules::NOMINAL_BP,
+        magic_amp_bp: rules::NOMINAL_BP,
+        pure_amp_bp: rules::NOMINAL_BP,
+        cooldown_rate_bp: rules::NOMINAL_BP,
+        mana_cost_rate_bp: rules::NOMINAL_BP,
         move_speed: Fixed::ZERO,
         turn_rate: 0,
         damage_to_creeps: 0,
@@ -1971,7 +1977,28 @@ fn config() -> crate::game::MatchConfig {
         mode: bota_proto::TickMode::Lockstep,
         ack_timeout_ticks: 30,
         cheats: false,
+        spawn_modifiers: Vec::new(),
     }
+}
+
+fn advance_validated(
+    world: &mut World,
+    unit: Option<Entity>,
+    order: bota_proto::Order,
+) -> Vec<crate::game::Event> {
+    let command = crate::game::Command {
+        slot: bota_proto::SlotId(0),
+        unit: unit.map(crate::game::wire_id),
+        order,
+    };
+    assert_eq!(
+        world.validate_order(command.slot, command.unit, &command.order),
+        Ok(())
+    );
+    let tick = world.tick;
+    let events = world.advance(&[command]);
+    assert_eq!(world.tick, tick + 1);
+    events
 }
 
 #[test]
@@ -2031,12 +2058,14 @@ fn world_with_projectile_uphill_state(launch_tier: u8, can_miss_uphill: bool) ->
             target,
             damage: 1,
             kind: bota_proto::DamageKind::Physical,
+            damage_amp_bp: rules::NOMINAL_BP,
             ability: None,
             launch_tier,
             can_miss_uphill,
             crit: false,
             pierces: false,
             pierce_damage: 0,
+            pierce_amp_bp: rules::NOMINAL_BP,
             bounces_left: 0,
             bounce_range: 0,
             bounced: Vec::new(),
@@ -2508,6 +2537,7 @@ fn critical_hits_keep_their_flag_in_damage_events() {
         target,
         amount: 10,
         kind: bota_proto::DamageKind::Physical,
+        damage_amp_bp: rules::NOMINAL_BP,
         crit: true,
         attack: true,
         pierces: false,
@@ -6793,18 +6823,44 @@ fn a_seat_stands_up_with_a_courier_of_its_own() {
 
 #[test]
 fn a_courier_brought_down_comes_back_in_its_own_time() {
+    use crate::game::{Errand, wire_id};
+    use bota_proto::{AbilitySlot, Order, RejectReason, SlotId, Target};
+
     let mut world = World::for_match(&config(), config().rng());
     let courier = the_courier(&world);
+    let deliver = Order::Cast {
+        slot: AbilitySlot(3),
+        target: Target::None,
+    };
+    advance_validated(&mut world, Some(courier), deliver);
+    assert_eq!(world.errand.get(courier), Some(&Errand::ToOwner));
     let mut events = Vec::new();
     world.bury(vec![(courier, None)], &mut events);
     world.step();
     assert!(world.seats[0].courier.is_none(), "it is gone");
     assert!(world.seats[0].courier_left > 0, "and a wait has started");
+    let burst = Order::Cast {
+        slot: AbilitySlot(2),
+        target: Target::None,
+    };
+    assert_eq!(
+        world.validate_order(SlotId(0), Some(wire_id(courier)), &burst),
+        Err(RejectReason::NotYourUnit)
+    );
     for _ in 0..rules::COURIER_RESPAWN_TICKS {
         world.step();
     }
     let back = world.seats[0].courier.expect("it came back");
     assert_ne!(back, courier, "as a new body");
+    assert_eq!(world.errand.get(back), Some(&Errand::None));
+    assert_eq!(
+        world.validate_order(SlotId(0), Some(wire_id(courier)), &burst),
+        Err(RejectReason::NotYourUnit)
+    );
+    assert_eq!(
+        world.validate_order(SlotId(0), Some(wire_id(back)), &burst),
+        Ok(())
+    );
     assert_eq!(
         world.transform.get(back).map(|at| at.pos),
         Some(world.courier_home(bota_proto::Team::Radiant)),
@@ -7134,6 +7190,138 @@ fn an_order_takes_a_courier_off_its_errand() {
         Some(aside),
         "and it went where it was told"
     );
+}
+
+fn courier_on_delivery() -> (World, Entity, Entity) {
+    use bota_proto::{AbilitySlot, Order, Target};
+
+    let (mut world, hero) = a_hero_with_gold(0);
+    let courier = the_courier(&world);
+    world.transform.get_mut(hero).expect("standing").pos = rules::DEMO_LANE_CORNERS[0];
+    hand_item(&mut world, courier, crate::game::ITEM_BOOTS, 0);
+    advance_validated(
+        &mut world,
+        Some(courier),
+        Order::Cast {
+            slot: AbilitySlot(3),
+            target: Target::None,
+        },
+    );
+    world.advance(&[]);
+    assert_eq!(
+        world.errand.get(courier),
+        Some(&crate::game::Errand::ToOwner)
+    );
+    assert!(slot_of(&world, courier, 0).is_some());
+    (world, hero, courier)
+}
+
+#[test]
+fn courier_auxiliary_casts_keep_delivery_tracking_a_moving_owner() {
+    use crate::game::{Errand, UnitOrder, ability, wire_id};
+    use bota_proto::{AbilitySlot, EventKind, Order, RejectReason, SlotId, Target};
+
+    for (slot, ability, cooldown) in [
+        (2, ability::BURST, rules::COURIER_BURST_COOLDOWN),
+        (4, ability::SHIELD, rules::COURIER_SHIELD_COOLDOWN),
+    ] {
+        let (mut world, hero, courier) = courier_on_delivery();
+        let cargo = slot_of(&world, courier, 0);
+        let speed = world.stats.get(courier).expect("settled").move_speed;
+        let mana = world.mana.get(courier).map(|pool| pool.mana);
+        let order = Order::Cast {
+            slot: AbilitySlot(slot),
+            target: Target::None,
+        };
+
+        let events = advance_validated(&mut world, Some(courier), order);
+
+        assert_eq!(world.errand.get(courier), Some(&Errand::ToOwner));
+        assert!(events.iter().any(|event| event.kind
+            == EventKind::AbilityCast {
+                caster: wire_id(courier),
+                ability,
+            }));
+        assert_eq!(
+            world.abilities.get(courier).expect("book").slots[usize::from(slot)].cooldown,
+            cooldown
+        );
+        assert_eq!(world.mana.get(courier).map(|pool| pool.mana), mana);
+        assert_eq!(
+            world.validate_order(SlotId(0), Some(wire_id(courier)), &order),
+            Err(RejectReason::OnCooldown)
+        );
+        world.advance(&[]);
+        let stats = world.stats.get(courier).expect("settled");
+        if ability == ability::BURST {
+            assert_eq!(
+                stats.move_speed,
+                speed * Fixed::from_ratio(100 + rules::COURIER_BURST_PCT, 100)
+            );
+        } else {
+            assert!(stats.invulnerable);
+        }
+        let moved = rules::DEMO_LANE_CORNERS[1];
+        assert_ne!(world.transform.get(hero).expect("standing").pos, moved);
+        world.transform.get_mut(hero).expect("standing").pos = moved;
+        world.advance(&[]);
+        assert_eq!(
+            world.orders.get(courier).expect("orders").current,
+            UnitOrder::Move { pos: moved }
+        );
+        for _ in 0..400 {
+            world.advance(&[]);
+            if slot_of(&world, hero, 0).is_some() {
+                break;
+            }
+        }
+        assert_eq!(slot_of(&world, hero, 0), cargo);
+        assert_eq!(world.inventory.get(courier).expect("bag").held().count(), 0);
+    }
+}
+
+#[test]
+fn courier_return_move_and_stop_replace_delivery() {
+    use crate::game::Errand;
+    use bota_proto::{AbilitySlot, Order, Target, Vec2};
+
+    for order in [
+        Order::Cast {
+            slot: AbilitySlot(1),
+            target: Target::None,
+        },
+        Order::Move {
+            target: Target::Pos(Vec2::from_ints(5000, 5000)),
+        },
+        Order::Move {
+            target: Target::None,
+        },
+    ] {
+        let (mut world, hero, courier) = courier_on_delivery();
+        let returning = matches!(order, Order::Cast { .. });
+
+        advance_validated(&mut world, Some(courier), order);
+
+        assert_eq!(
+            world.errand.get(courier),
+            Some(&if returning {
+                Errand::PutBack
+            } else {
+                Errand::None
+            })
+        );
+        for _ in 0..30 {
+            world.advance(&[]);
+        }
+        assert_eq!(world.inventory.get(hero).expect("bag").held().count(), 0);
+        if returning {
+            assert_eq!(world.seats[0].stash.held().count(), 1);
+            assert_eq!(world.inventory.get(courier).expect("bag").held().count(), 0);
+        } else {
+            assert_eq!(world.errand.get(courier), Some(&Errand::None));
+            assert_eq!(world.inventory.get(courier).expect("bag").held().count(), 1);
+        }
+    }
 }
 
 #[test]
@@ -7550,6 +7738,157 @@ fn buying_a_built_item_buys_only_the_parts_it_lacks() {
             .all(|slot| slot.is_none()),
         "leaving nothing of what went into it"
     );
+}
+
+fn reject_purchase_without_mutation(
+    world: &mut World,
+    hero: Entity,
+    item: bota_proto::ItemId,
+    reason: bota_proto::RejectReason,
+) {
+    let bag = world.inventory.get(hero).expect("bag").clone();
+    let stash = world.seats[0].stash.clone();
+    let gold = world.seats[0].gold;
+    let order = bota_proto::Order::Buy { item };
+    for unit in [None, Some(crate::game::wire_id(the_courier(world)))] {
+        assert_eq!(
+            world.validate_order(bota_proto::SlotId(0), unit, &order),
+            Err(reason)
+        );
+    }
+    let mut events = Vec::new();
+    assert!(!world.buy(bota_proto::SlotId(0), item, &mut events));
+    assert_eq!(world.inventory.get(hero), Some(&bag));
+    assert_eq!(world.seats[0].stash, stash);
+    assert_eq!(world.seats[0].gold, gold);
+    assert!(events.is_empty());
+}
+
+#[test]
+fn composite_buy_order_pays_missing_cost_and_assembles_owned_parts() {
+    use crate::game::{BAG_SLOTS, ITEM_CIRCLET, ITEM_WRAITH_BAND};
+    use bota_proto::{EventKind, ItemId, ItemSlot, Order, RejectReason, SlotId};
+
+    assert_eq!(price_of(ITEM_WRAITH_BAND), 505);
+    assert_eq!(price_of(ITEM_CIRCLET), 155);
+    for location in [0, rules::INVENTORY_SLOTS, BAG_SLOTS] {
+        let (mut world, hero) = a_hero_with_gold(349);
+        let circlet = a_stack_of(ITEM_CIRCLET, 0);
+        if location == BAG_SLOTS {
+            world.seats[0].stash.slots[0] = Some(circlet);
+        } else {
+            world.inventory.get_mut(hero).expect("bag").slots[location] = Some(circlet);
+        }
+        let item = ItemId(ITEM_WRAITH_BAND);
+        reject_purchase_without_mutation(&mut world, hero, item, RejectReason::NotEnoughGold);
+        world.seats[0].gold = 350;
+
+        let events = advance_validated(&mut world, None, Order::Buy { item });
+
+        assert_eq!(world.seats[0].gold, 0);
+        assert_eq!(
+            events
+                .iter()
+                .filter(|event| event.kind
+                    == EventKind::ItemBought {
+                        slot: SlotId(0),
+                        item
+                    })
+                .count(),
+            1
+        );
+        if location == BAG_SLOTS {
+            assert_eq!(world.seats[0].stash.slots[0], Some(circlet));
+            assert_eq!(world.inventory.get(hero).expect("bag").held().count(), 2);
+            advance_validated(
+                &mut world,
+                None,
+                Order::Swap {
+                    from: ItemSlot(BAG_SLOTS as u8),
+                    to: ItemSlot(2),
+                },
+            );
+        }
+        let bag = world.inventory.get(hero).expect("bag");
+        assert_eq!(bag.held().count(), 1);
+        assert_eq!(bag.held().next().map(|stack| stack.id), Some(item));
+        assert_eq!(world.seats[0].stash.held().count(), 0);
+    }
+}
+
+#[test]
+fn composite_buy_order_requires_room_for_every_missing_part_before_assembly() {
+    use crate::game::{
+        ITEM_BOOTS, ITEM_CIRCLET, ITEM_RECIPE_WRAITH_BAND, ITEM_SLIPPERS, ITEM_WRAITH_BAND,
+    };
+    use bota_proto::{ItemId, Order, RejectReason};
+
+    for remote in [false, true] {
+        let (mut world, hero) = a_hero_with_gold(505);
+        if !remote {
+            world
+                .inventory
+                .get_mut(hero)
+                .expect("bag")
+                .slots
+                .fill(Some(a_stack_of(ITEM_BOOTS, 0)));
+        }
+        world.inventory.get_mut(hero).expect("bag").slots[0] = Some(a_stack_of(ITEM_CIRCLET, 0));
+        world.seats[0]
+            .stash
+            .slots
+            .fill(Some(a_stack_of(ITEM_BOOTS, 0)));
+        if remote {
+            world.transform.get_mut(hero).expect("standing").pos = rules::DEMO_LANE_CORNERS[0];
+        }
+        let item = ItemId(ITEM_WRAITH_BAND);
+        world.seats[0].stash.slots[4] = None;
+        reject_purchase_without_mutation(&mut world, hero, item, RejectReason::InventoryFull);
+        world.seats[0].stash.slots[5] = None;
+        let courier = the_courier(&world);
+
+        advance_validated(&mut world, Some(courier), Order::Buy { item });
+
+        assert_eq!(world.seats[0].gold, 155);
+        assert_eq!(
+            world.seats[0].stash.slots[4].map(|stack| stack.id),
+            Some(ItemId(ITEM_SLIPPERS))
+        );
+        assert_eq!(
+            world.seats[0].stash.slots[5].map(|stack| stack.id),
+            Some(ItemId(ITEM_RECIPE_WRAITH_BAND))
+        );
+        assert_eq!(
+            slot_of(&world, hero, 0).map(|stack| stack.id),
+            Some(ItemId(ITEM_CIRCLET))
+        );
+    }
+}
+
+#[test]
+fn composite_buy_order_does_not_credit_foreign_or_sale_marked_parts() {
+    use crate::game::{ITEM_CIRCLET, ITEM_WRAITH_BAND};
+    use bota_proto::{ItemId, RejectReason};
+
+    for in_stash in [false, true] {
+        for (owner, for_sale) in [(1, false), (0, true)] {
+            let (mut world, hero) = a_hero_with_gold(350);
+            let mut circlet = a_stack_of(ITEM_CIRCLET, owner);
+            circlet.for_sale = for_sale;
+            if in_stash {
+                world.seats[0].stash.slots[0] = Some(circlet);
+            } else {
+                world.inventory.get_mut(hero).expect("bag").slots[0] = Some(circlet);
+            }
+
+            reject_purchase_without_mutation(
+                &mut world,
+                hero,
+                ItemId(ITEM_WRAITH_BAND),
+                RejectReason::NotEnoughGold,
+            );
+        }
+    }
 }
 
 #[test]
@@ -9297,6 +9636,7 @@ fn no_creep_of_the_first_waves_is_left_wrestling_its_own_base() {
         mode: bota_proto::TickMode::Realtime,
         ack_timeout_ticks: 0,
         cheats: false,
+        spawn_modifiers: Vec::new(),
     };
     let mut world = World::for_match(&cfg, cfg.rng());
     for _ in 0..=rules::FIRST_WAVE_TICK {
@@ -9430,6 +9770,7 @@ fn a_hero_told_to_walk_into_a_tower_walks_up_to_it_and_stands() {
         mode: bota_proto::TickMode::Realtime,
         ack_timeout_ticks: 0,
         cheats: false,
+        spawn_modifiers: Vec::new(),
     };
     let mut world = World::for_match(&cfg, cfg.rng());
     let (_, _, tower) = rules::RADIANT_TOWERS[2];
@@ -9549,6 +9890,7 @@ fn a_wave_walks_over_where_its_tower_stood_once_it_has_fallen() {
         mode: bota_proto::TickMode::Realtime,
         ack_timeout_ticks: 0,
         cheats: false,
+        spawn_modifiers: Vec::new(),
     };
     let mut world = World::for_match(&cfg, cfg.rng());
     let (lane, _, tower) = rules::RADIANT_TOWERS[2];
@@ -9733,6 +10075,7 @@ fn a_fallen_barracks_turns_the_waves_against_it_super_and_all_of_them_mega() {
         mode: bota_proto::TickMode::Realtime,
         ack_timeout_ticks: 0,
         cheats: false,
+        spawn_modifiers: Vec::new(),
     };
     let mut world = World::for_match(&cfg, cfg.rng());
     // Whole barracks: plain waves.
@@ -9796,6 +10139,7 @@ fn the_demo_waves_march_out_and_meet_between_the_towers() {
         mode: bota_proto::TickMode::Realtime,
         ack_timeout_ticks: 0,
         cheats: false,
+        spawn_modifiers: Vec::new(),
     };
     let mut world = World::for_match(&cfg, cfg.rng());
     for _ in 0..=rules::FIRST_WAVE_TICK {
@@ -9854,6 +10198,7 @@ fn the_fountain_melts_whoever_steps_into_its_reach_and_spares_who_stays_out() {
         mode: bota_proto::TickMode::Realtime,
         ack_timeout_ticks: 0,
         cheats: false,
+        spawn_modifiers: Vec::new(),
     };
     let mut world = World::for_match(&cfg, cfg.rng());
     let hero = world.seats[0].unit.expect("stood up");
@@ -10327,12 +10672,14 @@ fn manual_projectile_damage(
                 target,
                 damage: 1,
                 kind: bota_proto::DamageKind::Physical,
+                damage_amp_bp: rules::NOMINAL_BP,
                 ability: None,
                 launch_tier,
                 can_miss_uphill: true,
                 crit: false,
                 pierces,
                 pierce_damage: 0,
+                pierce_amp_bp: rules::NOMINAL_BP,
                 bounces_left: 0,
                 bounce_range: 0,
                 bounced: Vec::new(),

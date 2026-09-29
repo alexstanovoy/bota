@@ -63,6 +63,12 @@ impl World {
     pub fn best_valid_in_range(&self, seeker: Entity, reach: Fixed) -> Option<Entity> {
         let order = self.priority_of(seeker);
         let at = self.transform.get(seeker)?.pos;
+        #[cfg(feature = "phase-profile")]
+        let _profile = crate::profile::ScopeGuard::new(
+            crate::profile::Phase::TargetQuery,
+            self.tick,
+            self.entities.len(),
+        );
         // Reaching a candidate is being hostile to it within the reach, so
         // the range is weighed first and hostility once.
         self.entities
@@ -114,6 +120,9 @@ impl World {
             // Close enough to strike: only a better class is worth turning to,
             // and only one already in reach.
             let order = self.priority_of(seeker);
+            if self.class_priority(held, order) == 0 {
+                return Some(held);
+            }
             let best = self.best_valid_in_range(seeker, reach);
             let better = best.is_some_and(|best| {
                 self.class_priority(best, order) < self.class_priority(held, order)

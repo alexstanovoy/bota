@@ -485,6 +485,14 @@ exploit any leak a human reviewer shrugs off:
   a missed one would leave parts sitting side by side. Only what a hero
   carries builds; the stash does not, since it is a shelf at the shop and not a
   pair of hands.
+  Order validation and execution use the same purchase plan: missing parts,
+  their catalog cost, and room for all of them before assembly. Requiring the
+  whole item's price at validation would refuse an affordable upgrade; counting
+  only its final slot would accept parts that cannot arrive. Owned, unmarked
+  parts in the hero's bag, backpack and stash count toward the plan. Foreign or
+  sale-marked parts do not, since assembly cannot consume them. Purchases use
+  the hero's location and storage even when the order names its courier; courier
+  cargo is neither a component source nor a purchase destination.
 - Items follow the Dota slot topology, engine in `game/systems/gear.rs`. A seat owns
   fifteen slots: six inventory, where items work; three backpack, where they ride
   inert — and a stack leaving the backpack for the inventory is muted for six
@@ -565,6 +573,13 @@ exploit any leak a human reviewer shrugs off:
   Wearing, using and handing back are all allowed on anybody's stack — the
   rule guards the till, not the hands. Ownership stays server-side; the wire
   does not carry it.
+- A courier's Burst and Shield keep its current errand running while their
+  effects and cooldowns follow the ordinary casting path. Keeping only the last
+  movement order would lose delivery and stop following a moving owner, even
+  though neither buff requests a new destination. Movement, Stop and explicit
+  errand casts still cancel or replace the errand. This exception names the two
+  auxiliary abilities, not every own-target cast: the errands themselves are
+  own-target casts and must still replace one another.
 - Fog of war is mandatory: without it a bot learns to play with full information.
 - Victory: the Ancient falls.
 
@@ -610,6 +625,11 @@ emergent, because creeps arrive first. On top of that sit the aggro calls:
   and a step deeper into anybody's circle is refused. Easing apart is a safety
   net for spawns and shoves, four units a tick; nothing else moves a body but its
   own step.
+- Target retention checks validity, the current hold and reach before ranking a
+  replacement. Once a reachable held target has class zero, the best class in
+  that unit's priority order, a full search cannot replace it: replacement needs
+  a strictly lower class. That search is skipped, without changing acquisition
+  for missing, invalid or out-of-range targets, or searches from a worse class.
 - Walking is planned in three layers, one over the other, all in integers.
   The static layer is the ground as a body meets it. Terrain closes 64-unit
   cells, met as squares; a tree is the circle of its trunk; a structure the
@@ -2511,3 +2531,129 @@ metadata conservation. It does not claim neural learning or latest-patch parity.
 Rebase integration tests additionally pin simultaneous aura/raze projection and
 stat bonuses, the mana-healing wire event, Mango's embedded drawing, and the
 fifteen-minute cap including continuation through the old ten-minute boundary.
+
+## Applied unit modifiers and the general stats behind them
+
+A modifier is a bounded stat change that a cheat or trusted match setup can
+put on; only its countdown or the fall of the body can take it away. Every
+modifier has unit
+scope: it is carried in `World::applied`, a table of `AppliedModifier` values
+apart from `Modifiers`, so no ability, item, dispel or ordinary expiry reaches
+it. It does not show in `MatchInfo` or `UnitView.effects`, and the hash
+includes one only when it is present, so an unmodified world hashes as it
+always did. A unit's copy is removed on `despawn`, so a respawned body starts
+clean and re-application is the cheat caller's business. The countdown runs at
+the end of the tick that applies it, so `ticks` counts the applying tick as
+the first.
+
+**The payload is a bounded spec, not one cheat per stat.** `Cheat::ApplyModifier`
+carries a `ModifierSpec` of signed basis-point fields (10,000 nominal for
+scales, hundredths of a percentage point for resistances) plus a tick count
+bounded by `MAX_MODIFIER_TICKS`; `Cheat::ClearModifiers` takes the change away.
+The server gate rejects out-of-bounds specs and tick counts with
+`RejectReason::BadCheat` before the world ever sees them, and `World::cheat`
+turns away anything unbounded that arrived another way. The variants are
+appended, so existing cheat tags keep their numbers; the order budget test now
+allows 80 bytes for cheat orders and keeps 32 for everything else, because a
+whole spec no longer fits the old room; the widest possible order (every
+number at its wire maximum) measures 70 bytes and is pinned, and the canonical
+bytes of one spec order are pinned in `bota-proto`.
+
+**Modifiers are folded first and additively.** `derive_stats` applies a unit's
+spec immediately after the raised base block and before carried items,
+attributes, auras, slows and every other stage, so the modifier is part of the
+base the rest of the pipeline works on. Every family is summed as a delta:
+resistances add in their own units, scales add as deltas of the nominal 10,000
+so that sources never compound, and the fold happens once. The magnitudes
+(`move_speed`, `max_hp`, `max_mana`) are scaled from the raised base at that
+point; flat item bonuses, strength and intelligence, and the `Slowed` or
+`Hastened` multipliers all land on top and are not scaled again. An applied maximum
+is just another source of the maximum: when it moves for a living body, the
+pool keeps its filled fraction (`hp' = hp * new / old`, clamped to the new
+maximum), so a full pool stays full, a body at three fifths stays at three
+fifths, and a pool that held anything stays non-empty. A respawned body has
+no earlier pool to scale and stands at its full effective maximum, and a unit
+seeded at match start is settled once its rules have landed, so a standing
+tower or hero is full at the scaled maximum immediately. The mechanics are real
+derived stats, neutral by default: `Stats` gains `status_resist_bp`,
+`physical_amp_bp`, `magic_amp_bp`, `pure_amp_bp`, `cooldown_rate_bp` and
+`mana_cost_rate_bp`, while magic resistance was already a stat and the spec
+adds to it. The fold compiles out when the whole table is empty, so the default
+game pays nothing; hitting compiles its share out the same way, because the
+amplification multiply runs only in a world where some applied change exists.
+Future items, auras or abilities can add to the same fields without touching
+any consumer. Every unit kind walks the same derive, so one `max_hp` scale
+covers heroes, lane and neutral creeps, and buildings alike.
+
+**The bounds are part of composition.** A match carries at most 64 setup
+rules, one selector walks at most 16 exact kinds/categories, and one unit
+carries at most those 64 setup entries plus one cheat entry. Every sum uses
+saturating arithmetic. Magic resistance finishes in `0..=100` percent and
+status resistance in `0..=9_999` bp. The three magnitude scales (`move_speed`,
+`max_hp`, `max_mana`) saturate after addition at one source's
+`2_500..=40_000` bound, keeping world magnitudes within 0.25x..4x. Damage
+amplification, cooldown/mana rates and bounty gold deliberately retain every
+bounded additive source, up to `MAX_COMBINED_MODIFIER_SCALE = 1_960_000`
+(196x, with lower floors of zero or one). The asymmetry is intentional:
+magnitudes cap world size, while the other families preserve all bounded
+source contributions; every loop and accumulator still has a fixed ceiling.
+
+**Each stat has one reading.** Magic resistance is added as a delta and clamped
+to `0..=100` percent before Flesh Heap multiplies it, so mitigation, projection
+and the bots agree. Damage amplification scales a blow before armor and
+resistance, after Shadowraze stack composition, per the dealing unit's kind
+field; a blow with no source is left alone, and pure damage stays unmitigated
+but still scales. The outgoing scale is captured when a blow or in-flight
+carrier is created (attacks, projectiles, hooks and requiem lines), just as
+crit is: source death, modifier expiry, despawn and slot reuse cannot alter a
+hit already in flight, and immediate damage captures and consumes it once.
+Status resistance scales the ticks of `Stunned`, `Feared` and
+`Slowed` wherever they are put on — an ability, an item and an aura all pass
+through the same point — down to one tick, and never touches buffs; the time
+already held is not shortened a second time when a disable is extended. A hold
+that is put on afresh every tick for as long as its channel runs (Dismember,
+the hook's drag) has its recorded ticks shortened like any other, but its
+length is governed by the channel and not by the countdown.
+Cooldown rate scales every cooldown at the moment it is set: a cast, an item
+use, a shared item wait and the break-on-damage mute, with a floor of one tick
+for a cooldown that was set at all. It never scales the decrement, so a cooldown
+keeps its stored value and every view of it stays exact. Mana cost rate scales
+every read of a cost: the order gate, the cast and use that charge it,
+`AbilityView.mana_cost` and `ItemView.mana_cost`, so an action the view calls
+affordable is accepted and charged the same amount. Gold income scales the
+bounty a killing unit is paid: `pay_for` scales the composed bounty once as it
+is credited to the killer, so bringing down a creep, hero or building earns
+more. Passive gold, starting gold, sale refunds and death losses are not
+bounties and are left alone. A stat change applied mid-tick is seen by
+everything derived or read after it; a disable put on before the first derive
+in that tick (a hook stun beside the application) is the one boundary that
+still reads the previous tick's resistance.
+
+No item in the current catalog pays mana, so the nonzero
+`ItemView.mana_cost` case cannot be produced without inventing catalog data.
+The projection delegates directly to the pure, nonzero-tested `cost_after`
+helper; the kept-kit branch is tested and is nominal after the body (and its
+unit-scoped modifier) falls. A synthetic production item or test-only catalog
+seam would add more surface than it verifies and is not carried.
+
+**Trusted setup can put modifiers on spawns.** A match description carries a
+bounded list of spawn modifiers (`SpawnModifier`), each a selector (a side, an
+exact kind or category), an existing `ModifierSpec` and a duration:
+`MatchLong` until the body falls, or a tick count. `World::for_match`
+copies the list into the world, puts it on every unit already standing
+(buildings included) and, through `spawn_body`, on every unit stood up later;
+each wave, each camp, each building and each respawned body gets the rules
+afresh, with the tick count of a `Ticks` rule restarting on the new body. The
+cheat order path is untouched and independent: a unit may carry both, and
+clearing a cheat leaves what trusted setup put there alone.
+`MatchConfig::validate` refuses a spec outside the bounds the cheat gate uses,
+a duration outside `1..=MAX_MODIFIER_TICKS`, and a list past
+`MAX_SPAWN_MODIFIERS`, naming the rule that failed; `World::for_match` calls
+it and stops loudly rather than dropping a rule, and a rule that somehow
+reaches a spawn unchecked does the same. The hash covers every spec field and
+the rule list itself while any of it is present, so an unmodified world hashes
+as it always did; a setup that does not carry the list at all behaves exactly
+as before, and the empty-list guards keep the default game paying nothing.
+The server binary does not expose the list: the TCP lobby always starts with
+an empty one, and the entry point is the library value a setup builds in
+process.

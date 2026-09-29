@@ -64,7 +64,7 @@ pub fn pixels(art: &[u8]) -> Option<(u32, u32, Vec<u8>)> {
     let mut bytes = pixmap.data().to_vec();
     // What comes out is multiplied by its own alpha; what goes to the screen
     // is not.
-    for pixel in bytes.chunks_exact_mut(4) {
+    for pixel in bytes.as_chunks_mut::<4>().0 {
         let alpha = u32::from(pixel[3]);
         if alpha == 0 || alpha == 255 {
             continue;

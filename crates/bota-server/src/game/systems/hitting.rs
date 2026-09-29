@@ -76,7 +76,9 @@ pub struct HitCx<'a> {
 /// A blow at something already down, or at something damage passes by, is
 /// given up unfelt. Every blow leaves the queue either way: none survives the
 /// tick that resolves it.
-pub fn hitting_system(cx: HitCx<'_>) {
+///
+/// Outgoing amplification is compiled out when every queued blow is nominal.
+pub fn hitting_system<const AMPLIFIED: bool>(cx: HitCx<'_>) {
     let HitCx {
         hits,
         landed,
@@ -114,7 +116,13 @@ pub fn hitting_system(cx: HitCx<'_>) {
             });
             continue;
         }
-        let amount = amplified_damage(blow, on_it);
+        let amount = stacked_damage(blow, on_it);
+        let amount = if AMPLIFIED {
+            amplify(amount, blow.damage_amp_bp)
+        } else {
+            debug_assert_eq!(blow.damage_amp_bp, rules::NOMINAL_BP);
+            amount
+        };
         let taken = mitigate(amount, blow.kind, stat.armor, stat.magic_resist_pct);
         let Some(pool) = health.get_mut(blow.target) else {
             continue;
@@ -163,7 +171,7 @@ pub fn evades(
 }
 
 /// Pre-mitigation damage including the current valid same-caster stack count.
-fn amplified_damage(blow: Hit, on_it: Option<&Modifiers>) -> i32 {
+fn stacked_damage(blow: Hit, on_it: Option<&Modifiers>) -> i32 {
     let HitEffect::Shadowraze { level } = blow.effect else {
         return blow.amount;
     };
@@ -172,6 +180,15 @@ fn amplified_damage(blow: Hit, on_it: Option<&Modifiers>) -> i32 {
     let caster = blow.source.expect("a Shadowraze hit has a caster");
     let stacks = on_it.map_or(0, |on_it| on_it.raze_stacks(caster));
     blow.amount + i32::from(stacks) * rules::RAZE_STACK_DAMAGE[usize::from(level)]
+}
+
+/// Damage after the outgoing amplification captured when the blow was made.
+fn amplify(amount: i32, bp: i32) -> i32 {
+    if bp == rules::NOMINAL_BP {
+        return amount;
+    }
+    (i64::from(amount) * i64::from(bp) / i64::from(rules::NOMINAL_BP))
+        .clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32
 }
 
 /// Applies a damaging hit's modifier to a surviving target.

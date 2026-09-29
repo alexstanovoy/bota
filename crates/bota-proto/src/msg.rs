@@ -162,6 +162,8 @@ pub enum RejectReason {
     NotInBag,
     /// The match was not started with cheats on.
     NoCheats,
+    /// The cheat payload is the wrong shape or outside its bounds.
+    BadCheat,
 }
 
 /// Final numbers for one seat.

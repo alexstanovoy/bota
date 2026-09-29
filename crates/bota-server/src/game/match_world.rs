@@ -1,6 +1,8 @@
 //! The surface a match runs a world through: what the game loop asks of it.
 
-use bota_proto::{Aim, MatchStats, Order, RejectReason, SlotId, SlotStats, Target, Team};
+use bota_proto::{
+    Aim, Cheat, MatchStats, Order, RejectReason, SlotId, SlotStats, Target, Team, UnitKind,
+};
 
 use crate::game::{BAG_SLOTS, Command, Event, MatchConfig, MatchRng, hero_spawn_pos, in_backpack};
 use crate::game::{Entity, PendingCast, Seat, UnitOrder, World};
@@ -23,10 +25,15 @@ impl World {
     ///
     /// No camp is filled; the jungle has not been carried over yet.
     pub fn for_match(cfg: &MatchConfig, rng: MatchRng) -> World {
+        if let Err(error) = cfg.validate() {
+            panic!("the match setup was refused: {error}");
+        }
         let map = map_of(cfg.map);
         let mut world = World::on_map(map);
         world.rng = rng;
         world.cheats = cfg.cheats;
+        world.spawn_modifiers = cfg.spawn_modifiers.clone();
+        world.apply_spawn_modifiers_to_all();
         for pick in &cfg.picks {
             let at = hero_spawn_pos(map, pick.team);
             let hero = world.spawn_hero(pick.team, at, pick.slot, pick.hero);
@@ -97,14 +104,16 @@ impl World {
         // with it, and so does an ability or item that runs on. Giving up a
         // swing that has not landed is the attack cycle's own business.
         self.cancel_action(unit);
-        // An order also takes a held cast and an errand with it, before
-        // whatever the order itself does gets a chance to start another.
+        // An order also takes a held cast with it before starting another.
         self.handling.remove(unit);
         if let Some(orders) = self.orders.get_mut(unit) {
             orders.pending = None;
         }
-        if self.errand.get(unit).is_some() {
-            self.errand.insert(unit, crate::game::Errand::None);
+        let keeps_errand = self.kind.get(unit) == Some(&UnitKind::Courier)
+            && matches!(cmd.order, Order::Cast { slot, target: Target::None }
+                if matches!(self.ability_in(unit, slot), crate::game::ability::BURST | crate::game::ability::SHIELD));
+        if !keeps_errand && let Some(errand) = self.errand.get_mut(unit) {
+            *errand = crate::game::Errand::None;
         }
         let wanted = match cmd.order {
             Order::Move {
@@ -215,6 +224,24 @@ impl World {
         self.seats.iter().find(|s| s.slot == slot)
     }
 
+    /// The unit a cheat names, or why it cannot land there.
+    ///
+    /// Nothing names the unit the cheat was issued for. Only something that
+    /// is a unit can be aimed at; a position names nothing at all.
+    pub fn cheat_target(&self, unit: Entity, target: Target) -> Result<Entity, RejectReason> {
+        match target {
+            Target::None => Ok(unit),
+            Target::Unit(id) => {
+                let mark = self.of_wire(id).ok_or(RejectReason::UnknownTarget)?;
+                if self.def.get(mark).is_none() {
+                    return Err(RejectReason::UnknownTarget);
+                }
+                Ok(mark)
+            }
+            Target::Pos(_) => Err(RejectReason::WrongTargetKind),
+        }
+    }
+
     /// Whether a seat may issue an order right now.
     ///
     /// A seat with no body standing may order nothing, and a target it cannot
@@ -292,30 +319,22 @@ impl World {
                     }
                 }
                 let held_mana = self.mana.get(unit).map_or(0, |mana| mana.mana.to_int());
-                if held_mana < crate::game::ability_mana_cost(held.id, held.level) {
+                if held_mana < self.ability_mana_cost(unit, held.id, held.level) {
                     return Err(RejectReason::NotEnoughMana);
                 }
                 Ok(())
             }
             Order::Buy { item } => {
-                let Some(def) = item_def(*item) else {
+                if item_def(*item).is_none() {
                     return Err(RejectReason::UnknownItem);
-                };
-                if seat.gold < def.cost {
+                }
+                let plan = self
+                    .purchase_plan(slot, *item)
+                    .ok_or(RejectReason::HeroDead)?;
+                if seat.gold < plan.cost {
                     return Err(RejectReason::NotEnoughGold);
                 }
-                if def.stack_limit > 0 {
-                    if !self.purchase_fits(slot, *item) {
-                        return Err(RejectReason::InventoryFull);
-                    }
-                    return Ok(());
-                }
-                let in_hand = self.at_shop(unit)
-                    && self
-                        .inventory
-                        .get(unit)
-                        .is_some_and(|bag| bag.slots.iter().any(|slot| slot.is_none()));
-                if !in_hand && !seat.stash.slots.iter().any(|slot| slot.is_none()) {
+                if !plan.fits {
                     return Err(RejectReason::InventoryFull);
                 }
                 Ok(())
@@ -447,7 +466,9 @@ impl World {
                 {
                     return Err(RejectReason::UnknownTarget);
                 }
-                if self.mana.get(unit).map_or(0, |pool| pool.mana.to_int()) < def.mana_cost {
+                if self.mana.get(unit).map_or(0, |pool| pool.mana.to_int())
+                    < self.item_mana_cost(unit, stack.id)
+                {
                     return Err(RejectReason::NotEnoughMana);
                 }
                 if self.held(unit) || self.feared(unit) || self.is_channelling(unit) {
@@ -458,12 +479,27 @@ impl World {
                 }
                 Ok(())
             }
-            Order::Cheat { .. } => {
-                if self.cheats {
-                    Ok(())
-                } else {
-                    Err(RejectReason::NoCheats)
+            Order::Cheat { cheat } => {
+                if !self.cheats {
+                    return Err(RejectReason::NoCheats);
                 }
+                match cheat {
+                    Cheat::ApplyModifier {
+                        target,
+                        spec,
+                        ticks,
+                    } => {
+                        if !spec.is_bounded() || !bota_proto::modifier_ticks_bounded(*ticks) {
+                            return Err(RejectReason::BadCheat);
+                        }
+                        self.cheat_target(unit, *target)?;
+                    }
+                    Cheat::ClearModifiers { target } => {
+                        self.cheat_target(unit, *target)?;
+                    }
+                    _ => {}
+                }
+                Ok(())
             }
             _ => Ok(()),
         }

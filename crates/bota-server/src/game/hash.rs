@@ -5,7 +5,8 @@
 
 use crate::engine::Fnv;
 use crate::game::{
-    ActionPhase, ActionState, Hit, HitEffect, Inventory, ItemStack, ModifierKind, Target, World,
+    ActionPhase, ActionState, AppliedOrigin, Hit, HitEffect, Inventory, ItemStack,
+    ModifierDuration, ModifierKind, SpawnCategory, SpawnModifier, SpawnTarget, Target, World,
 };
 
 impl World {
@@ -140,6 +141,7 @@ impl World {
                 fnv.entity(shot.target);
                 fnv.i32(shot.damage);
                 fnv.u8(shot.kind as u8);
+                hash_damage_amp(&mut fnv, shot.damage_amp_bp);
                 fnv.some(shot.ability.is_some());
                 if let Some(ability) = shot.ability {
                     fnv.u32(u32::from(ability.0));
@@ -149,6 +151,7 @@ impl World {
                 fnv.some(shot.crit);
                 fnv.some(shot.pierces);
                 fnv.i32(shot.pierce_damage);
+                hash_damage_amp(&mut fnv, shot.pierce_amp_bp);
                 fnv.u8(shot.bounces_left);
                 fnv.i32(shot.bounce_range);
                 fnv.u32(shot.bounced.len() as u32);
@@ -171,6 +174,19 @@ impl World {
                     fnv.u32(held.ticks_left.unwrap_or(0));
                 }
             }
+            if let Some(applied) = self.applied.get(entity) {
+                fnv.u8(1);
+                fnv.u32(applied.iter().count() as u32);
+                for held in applied.iter() {
+                    hash_modifier_spec(&mut fnv, held.spec);
+                    fnv.some(held.ticks_left.is_some());
+                    fnv.u32(held.ticks_left.unwrap_or(0));
+                    fnv.u8(match held.origin {
+                        AppliedOrigin::Setup => 0,
+                        AppliedOrigin::Cheat => 1,
+                    });
+                }
+            }
             if let Some(bag) = self.inventory.get(entity) {
                 hash_bag(&mut fnv, bag);
             }
@@ -182,6 +198,7 @@ impl World {
                 fnv.entity(hook.owner);
                 fnv.vec2(hook.aim);
                 fnv.fixed(hook.reach_left);
+                hash_damage_amp(&mut fnv, hook.damage_amp_bp);
                 fnv.some(hook.caught.is_some());
                 if let Some(caught) = hook.caught {
                     fnv.entity(caught);
@@ -202,6 +219,7 @@ impl World {
                 fnv.fixed(line.travelled);
                 fnv.fixed(line.distance);
                 fnv.i32(line.damage);
+                hash_damage_amp(&mut fnv, line.damage_amp_bp);
                 fnv.i32(line.slow_pct);
                 fnv.u32(line.struck.len() as u32);
                 for crossed in &line.struck {
@@ -267,6 +285,14 @@ impl World {
                 }
             }
         }
+        if !self.spawn_modifiers.is_empty() {
+            assert!(self.spawn_modifiers.len() <= crate::game::MAX_SPAWN_MODIFIERS);
+            fnv.u8(1);
+            fnv.u32(self.spawn_modifiers.len() as u32);
+            for rule in &self.spawn_modifiers {
+                hash_spawn_modifier(&mut fnv, rule);
+            }
+        }
         fnv.done()
     }
 }
@@ -314,6 +340,7 @@ fn hash_hit(fnv: &mut Fnv, hit: &Hit) {
     fnv.entity(hit.target);
     fnv.i32(hit.amount);
     fnv.u8(hit.kind as u8);
+    hash_damage_amp(fnv, hit.damage_amp_bp);
     fnv.some(hit.crit);
     fnv.some(hit.attack);
     fnv.some(hit.pierces);
@@ -323,6 +350,15 @@ fn hash_hit(fnv: &mut Fnv, hit: &Hit) {
             fnv.u8(1);
             fnv.u8(level);
         }
+    }
+}
+
+/// One non-neutral outgoing amplification. Nominal writes nothing so the
+/// default fingerprint is byte-identical.
+fn hash_damage_amp(fnv: &mut Fnv, bp: i32) {
+    if bp != crate::game::rules::NOMINAL_BP {
+        fnv.u8(1);
+        fnv.i32(bp);
     }
 }
 
@@ -398,6 +434,56 @@ fn hash_modifier_kind(fnv: &mut Fnv, kind: ModifierKind) {
         }
         ModifierKind::Feared => fnv.u8(15),
     }
+}
+
+/// One trusted spawn rule: what it takes, what it puts on, how long.
+fn hash_spawn_modifier(fnv: &mut Fnv, rule: &SpawnModifier) {
+    assert!(rule.select.targets.len() <= crate::game::MAX_SPAWN_TARGETS);
+    fnv.some(rule.select.team.is_some());
+    if let Some(team) = rule.select.team {
+        fnv.team(team);
+    }
+    fnv.u32(rule.select.targets.len() as u32);
+    for target in &rule.select.targets {
+        match target {
+            SpawnTarget::Kind(kind) => {
+                fnv.u8(0);
+                fnv.kind(*kind);
+            }
+            SpawnTarget::Category(category) => {
+                fnv.u8(1);
+                fnv.u8(match category {
+                    SpawnCategory::Hero => 0,
+                    SpawnCategory::LaneCreep => 1,
+                    SpawnCategory::NeutralCreep => 2,
+                    SpawnCategory::Structure => 3,
+                });
+            }
+        }
+    }
+    match rule.duration {
+        ModifierDuration::MatchLong => fnv.u8(0),
+        ModifierDuration::Ticks(ticks) => {
+            fnv.u8(1);
+            fnv.u32(ticks);
+        }
+    }
+    hash_modifier_spec(fnv, rule.spec);
+}
+
+/// An applied stat change, field by field in declaration order.
+fn hash_modifier_spec(fnv: &mut Fnv, spec: bota_proto::ModifierSpec) {
+    fnv.i32(spec.magic_resist);
+    fnv.i32(spec.status_resist);
+    fnv.i32(spec.physical_damage);
+    fnv.i32(spec.magic_damage);
+    fnv.i32(spec.pure_damage);
+    fnv.i32(spec.cooldown_rate);
+    fnv.i32(spec.mana_cost_rate);
+    fnv.i32(spec.move_speed);
+    fnv.i32(spec.max_hp);
+    fnv.i32(spec.max_mana);
+    fnv.i32(spec.gold_income);
 }
 
 /// Every slot of a bag, empty ones counted so slots keep their numbers.

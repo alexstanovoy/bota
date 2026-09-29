@@ -29,6 +29,9 @@ impl World {
     /// A hero's head is priced by its streak, which ends with it, and its
     /// death costs it gold by its level — whoever struck the blow, and never
     /// more than it holds.
+    ///
+    /// The killing unit's gold income modifier scales the bounty once, after
+    /// the bounty is composed and before it is credited.
     pub fn pay_for(
         &mut self,
         fallen: Entity,
@@ -72,9 +75,9 @@ impl World {
                 } else {
                     self.seats[index].last_hits += 1;
                 }
-                self.seats[index].gold += bounty.gold;
-                self.seats[index].net_worth += bounty.gold;
-                paid = bounty.gold;
+                paid = self.bounty_after(killer, bounty.gold);
+                self.seats[index].gold += paid;
+                self.seats[index].net_worth += paid;
             }
         }
         if denied {

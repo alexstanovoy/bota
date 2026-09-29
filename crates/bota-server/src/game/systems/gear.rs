@@ -10,6 +10,13 @@ use crate::game::{
 use crate::game::{Event, EventVisibility, rules};
 use crate::game::{clamp_to_map, move_towards};
 
+/// Missing purchase parts, their total price, and destination capacity.
+pub(crate) struct PurchasePlan {
+    parts: Vec<ItemId>,
+    pub(crate) cost: i32,
+    pub(crate) fits: bool,
+}
+
 /// What one drink of an item does, gathered so it travels as one thing.
 pub struct Mend {
     /// Which pool it mends.
@@ -285,25 +292,17 @@ impl World {
         let Some(unit) = self.seats[index].unit else {
             return false;
         };
-        if item_def(item).is_none() {
-            return false;
-        }
         if item_def(item).is_some_and(|def| def.stack_limit > 0) {
             return self.buy_stackable(index, unit, item, events);
         }
-        let parts = self.missing_parts(index, unit, item);
-        let price: i32 = parts
-            .iter()
-            .filter_map(|part| item_def(*part))
-            .map(|def| def.cost)
-            .sum();
-        if self.seats[index].gold < price || self.free_slots(index, unit) < parts.len() {
+        let Some(plan) = self.purchase_plan(slot, item) else {
+            return false;
+        };
+        if self.seats[index].gold < plan.cost || !plan.fits {
             return false;
         }
-        for part in parts {
-            let Some(def) = item_def(part) else {
-                continue;
-            };
+        for part in plan.parts {
+            let def = item_def(part).expect("known catalog component");
             let bought = ItemStack {
                 id: part,
                 charges: def.charges,
@@ -323,36 +322,42 @@ impl World {
                     .map(|free| *free = Some(bought))
                     .is_some();
             if !in_hand {
-                self.put_in_stash(index, bought);
+                assert!(self.put_in_stash(index, bought));
             }
         }
-        self.finish_purchase(index, item, price, events);
+        self.finish_purchase(index, item, plan.cost, events);
         true
     }
 
     /// Whether a purchase fits at its current destination, independent of affordability.
     pub fn purchase_fits(&self, slot: SlotId, item: ItemId) -> bool {
-        let Some(seat) = self.seats.iter().position(|seat| seat.slot == slot) else {
-            return false;
+        self.purchase_plan(slot, item).is_some_and(|plan| plan.fits)
+    }
+
+    /// Plans a known item's purchase into the seat hero's bag or stash.
+    pub(crate) fn purchase_plan(&self, slot: SlotId, item: ItemId) -> Option<PurchasePlan> {
+        let seat = self.seats.iter().position(|seat| seat.slot == slot)?;
+        let unit = self.seats[seat].unit?;
+        let def = item_def(item)?;
+        let parts = self.missing_parts(seat, unit, item);
+        let cost = parts
+            .iter()
+            .map(|part| item_def(*part).expect("known catalog component").cost)
+            .sum();
+        let fits = if def.stack_limit == 0 {
+            self.free_slots(seat, unit) >= parts.len()
+        } else {
+            assert!(def.components.is_empty());
+            let bought = ItemStack::bought(item, slot, self.tick).expect("known catalog item");
+            assert!(bought.charges <= def.stack_limit);
+            (self.at_shop(unit)
+                && self
+                    .inventory
+                    .get(unit)
+                    .is_some_and(|bag| bag.receiving_slot(&bought).is_some()))
+                || self.seats[seat].stash.receiving_slot(&bought).is_some()
         };
-        let Some(unit) = self.seats[seat].unit else {
-            return false;
-        };
-        let Some(def) = item_def(item) else {
-            return false;
-        };
-        if def.stack_limit == 0 {
-            return self.free_slots(seat, unit) >= self.missing_parts(seat, unit, item).len();
-        }
-        assert!(def.components.is_empty());
-        let bought = ItemStack::bought(item, slot, self.tick).expect("known catalog item");
-        assert!(bought.charges <= def.stack_limit);
-        (self.at_shop(unit)
-            && self
-                .inventory
-                .get(unit)
-                .is_some_and(|bag| bag.receiving_slot(&bought).is_some()))
-            || self.seats[seat].stash.receiving_slot(&bought).is_some()
+        Some(PurchasePlan { parts, cost, fits })
     }
 
     /// Buys one mergeable charge, with capacity and price checked before mutation.
@@ -412,6 +417,7 @@ impl World {
             .into_iter()
             .flat_map(|bag| bag.slots.iter().take(BAG_SLOTS).flatten())
             .chain(self.seats[seat].stash.slots.iter().flatten())
+            .filter(|stack| stack.owner == self.seats[seat].slot && !stack.for_sale)
             .map(|stack| stack.id)
             .collect();
         let mut wanted = Vec::new();
@@ -517,31 +523,32 @@ impl World {
         if (def.charges > 0 || def.cast_charges > 0) && stack.charges == 0 {
             return false;
         }
-        if def.mana_cost > 0
+        let cost = self.item_mana_cost(entity, stack.id);
+        if cost > 0
             && self
                 .mana
                 .get(entity)
-                .is_none_or(|pool| pool.mana < Fixed::from_int(def.mana_cost))
+                .is_none_or(|pool| pool.mana < Fixed::from_int(cost))
         {
             return false;
         }
         if !(def.on_use)(self, entity, slot, target) {
             return false;
         }
-        if def.mana_cost > 0
+        if cost > 0
             && let Some(pool) = self.mana.get_mut(entity)
         {
-            pool.mana -= Fixed::from_int(def.mana_cost);
+            pool.mana -= Fixed::from_int(cost);
         }
-        let cooldown = if def.shared_wait { 0 } else { def.cooldown };
+        let cooldown = self.item_cooldown(entity, stack.id);
         if def.shared_wait {
-            self.owe_wait(entity, stack.id, def.cooldown);
+            self.owe_wait(entity, stack.id, cooldown);
         }
         if let Some(bag) = self.inventory.get_mut(entity)
             && let Some(held) = bag.slots.get_mut(slot)
             && let Some(stack) = held
         {
-            stack.cooldown = cooldown;
+            stack.cooldown = if def.shared_wait { 0 } else { cooldown };
             stack.touched = true;
             stack.charges = match def.spends {
                 Spends::Nothing => stack.charges,

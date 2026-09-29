@@ -11,7 +11,8 @@ use crate::game::Entity;
 /// nothing outlives the resolving, so it carries no place and no side.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Hit {
-    /// Who dealt it, while that one still stands.
+    /// Who dealt it. The handle may outlive the body; outgoing amplification
+    /// is already captured on the blow.
     pub source: Option<Entity>,
     /// Who takes it.
     pub target: Entity,
@@ -19,6 +20,9 @@ pub struct Hit {
     pub amount: i32,
     /// Which reduction applies.
     pub kind: DamageKind,
+    /// Outgoing amplification captured when the blow was made, in basis
+    /// points where 10_000 is nominal.
+    pub damage_amp_bp: i32,
     /// Whether it was a critical strike.
     pub crit: bool,
     /// Whether it is a swing of the attacker's weapon. Only such a blow can

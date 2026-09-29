@@ -3,7 +3,28 @@
 use bota_proto::{DamageKind, Fixed, UnitKind};
 
 use crate::engine::Entity;
-use crate::game::{Modifier, ModifierKind, World, rules};
+use crate::game::{Modifier, ModifierKind, Stats, Table, World, rules};
+
+/// How long a disable or slow holds on an entity after its status
+/// resistance. Every other kind is left as it is.
+///
+/// Every timed disable and slow passes here, whatever hands it out: an
+/// ability, an item or an aura.
+pub fn resisted_ticks(stats: &Table<Stats>, on: Entity, kind: ModifierKind, ticks: u32) -> u32 {
+    if !matches!(
+        kind,
+        ModifierKind::Stunned | ModifierKind::Feared | ModifierKind::Slowed { .. }
+    ) {
+        return ticks;
+    }
+    let resist = stats
+        .get(on)
+        .map_or(0, |stats| stats.status_resist_bp)
+        .clamp(0, rules::NOMINAL_BP - 1);
+    let kept =
+        i64::from(ticks) * i64::from(rules::NOMINAL_BP - resist) / i64::from(rules::NOMINAL_BP);
+    kept.max(1) as u32
+}
 
 impl World {
     /// Whether an entity is held: it neither walks, nor turns, nor swings,
@@ -35,7 +56,13 @@ impl World {
     }
 
     /// Puts a modifier on an entity. One that is not a unit takes nothing.
-    pub fn put_modifier(&mut self, on: Entity, modifier: Modifier) {
+    ///
+    /// A timed disable or slow is shortened first by the target's status
+    /// resistance, down to one tick.
+    pub fn put_modifier(&mut self, on: Entity, mut modifier: Modifier) {
+        if let Some(ticks) = modifier.ticks_left {
+            modifier.ticks_left = Some(resisted_ticks(&self.stats, on, modifier.kind, ticks));
+        }
         if let Some(on_it) = self.modifiers.get_mut(on) {
             on_it.put(modifier);
         }
@@ -43,7 +70,13 @@ impl World {
 
     /// Puts a timed modifier on, adding its time to what the same kind from
     /// the same source already holds, up to `cap` ticks in all.
+    ///
+    /// The time added is shortened by the target's status resistance; what is
+    /// already held has been shortened once and is not shortened again.
     pub fn extend_modifier(&mut self, on: Entity, modifier: Modifier, cap: u32) {
+        let more = modifier.ticks_left.map_or(0, |ticks| {
+            resisted_ticks(&self.stats, on, modifier.kind, ticks)
+        });
         let Some(on_it) = self.modifiers.get_mut(on) else {
             return;
         };
@@ -55,9 +88,8 @@ impl World {
             })
             .and_then(|held| held.ticks_left)
             .unwrap_or(0);
-        let more = modifier.ticks_left.unwrap_or(0);
         on_it.put(Modifier {
-            ticks_left: Some((held + more).min(cap)),
+            ticks_left: Some(held.saturating_add(more).min(cap)),
             ..modifier
         });
     }
@@ -225,13 +257,19 @@ impl World {
                     )
                 });
             }
+            let rate = self
+                .stats
+                .get(blow.target)
+                .map_or(rules::NOMINAL_BP, |stats| stats.cooldown_rate_bp);
             if let Some(bag) = self.inventory.get_mut(blow.target) {
                 for stack in bag.slots.iter_mut().flatten() {
                     let Some(def) = crate::game::item_def(stack.id) else {
                         continue;
                     };
                     if def.breaks_on_damage > 0 {
-                        stack.cooldown = stack.cooldown.max(def.breaks_on_damage);
+                        stack.cooldown = stack
+                            .cooldown
+                            .max(crate::game::cooldown_after(def.breaks_on_damage, rate));
                     }
                 }
             }

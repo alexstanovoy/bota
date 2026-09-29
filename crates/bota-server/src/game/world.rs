@@ -5,12 +5,13 @@ use std::collections::VecDeque;
 use bota_proto::{HeroId, SlotId, Team, UnitKind};
 
 use crate::game::{
-    AbilityBook, Action, AuraCx, Auras, Bounty, CampHome, Def, Entity, EntityAllocator, Errand,
-    Expiry, Forest, Handling, Health, Hit, Hook, Hull, Inventory, Landed, Lane, LaneAi, Level,
-    Loot, Mana, March, Mark, Missed, Modifier, Modifiers, Motion, NeutralAi, Orders, Place, Plan,
-    Projectile, Rax, RequiemLine, Route, Seat, SightCx, SightScratch, Stacks, Stats, StatsCx,
-    Table, Target, Tier, Transform, UnitOrder, Upgrades, Visibility, aura_system, derive_stats,
-    hitting_system, missile_system, regenerate, visibility_system,
+    AbilityBook, Action, AppliedModifiers, AuraCx, Auras, Bounty, CampHome, Def, Entity,
+    EntityAllocator, Errand, Expiry, Forest, Handling, Health, Hit, Hook, Hull, Inventory, Landed,
+    Lane, LaneAi, Level, Loot, Mana, March, Mark, Missed, Modifier, Modifiers, Motion, NeutralAi,
+    Orders, Place, Plan, Projectile, Rax, RequiemLine, Route, Seat, SightCx, SightScratch,
+    SpawnModifier, Stacks, Stats, StatsCx, Table, Target, Tier, Transform, UnitOrder, Upgrades,
+    Visibility, aura_system, derive_stats, hitting_system, missile_system, regenerate,
+    visibility_system,
 };
 use crate::game::{HitCx, MissileCx};
 
@@ -104,6 +105,11 @@ pub struct World {
     pub stats: Table<Stats>,
     /// What is on each entity.
     pub modifiers: Table<Modifiers>,
+    /// Applied stat changes on each entity, apart from what abilities, items
+    /// and dispels may touch.
+    pub applied: Table<AppliedModifiers>,
+    /// Trusted match setup's modifiers, put on each unit as it is stood up.
+    pub spawn_modifiers: Vec<SpawnModifier>,
     /// The hook each entity that is one is flying.
     pub hook: Table<Hook>,
     /// What each entity that is an ability's mark shows.
@@ -224,6 +230,8 @@ impl World {
             tier: Table::new(),
             stats: Table::new(),
             modifiers: Table::new(),
+            applied: Table::new(),
+            spawn_modifiers: Vec::new(),
             hook: Table::new(),
             mark: Table::new(),
             requiem_line: Table::new(),
@@ -302,11 +310,25 @@ impl World {
         amount: i32,
         kind: bota_proto::DamageKind,
     ) {
+        let damage_amp_bp = self.outgoing_damage_amp_bp(source, kind);
+        self.push_hit_with_amp(source, target, amount, kind, damage_amp_bp);
+    }
+
+    /// Leaves a blow carrying amplification captured by an in-flight source.
+    pub(crate) fn push_hit_with_amp(
+        &mut self,
+        source: Option<Entity>,
+        target: Entity,
+        amount: i32,
+        kind: bota_proto::DamageKind,
+        damage_amp_bp: i32,
+    ) {
         self.hits.push_back(Hit {
             source,
             target,
             amount,
             kind,
+            damage_amp_bp,
             crit: false,
             attack: false,
             pierces: false,
@@ -355,11 +377,13 @@ impl World {
     /// Takes an entity out of the world. False when the handle named nobody
     /// live.
     ///
-    /// What sides could see of it is given up here. What it held besides stays
-    /// where it is; the slot's next tenant carries a raised generation, so none
-    /// of it reads back as that tenant's own.
+    /// What sides could see of it is given up here, and so is any
+    /// applied stat change. What it held besides stays where it is; the
+    /// slot's next tenant carries a raised generation, so none of it reads
+    /// back as that tenant's own.
     pub fn despawn(&mut self, entity: Entity) -> bool {
         self.visibility.remove(entity);
+        self.applied.remove(entity);
         self.entities.free(entity)
     }
 
@@ -523,6 +547,12 @@ impl World {
     /// left alone: what stands with them is whatever it has left, and filling
     /// them is the business of whoever stood the entity up.
     pub fn settle(&mut self) {
+        #[cfg(feature = "phase-profile")]
+        let _profile = crate::profile::ScopeGuard::new(
+            crate::profile::Phase::Settle,
+            self.tick,
+            self.entities.len(),
+        );
         derive_stats(StatsCx {
             entities: &self.entities,
             def: &self.def,
@@ -530,6 +560,7 @@ impl World {
             upgrades: &self.upgrades,
             inventory: &self.inventory,
             modifiers: &self.modifiers,
+            applied: &self.applied,
             abilities: &self.abilities,
             stacks: &self.stacks,
             stats: &mut self.stats,
@@ -557,6 +588,18 @@ impl World {
         }
         let mut events = Vec::new();
         self.tick += 1;
+        #[cfg(feature = "phase-profile")]
+        let _tick_profile = crate::profile::ScopeGuard::new(
+            crate::profile::Phase::Tick,
+            self.tick,
+            self.entities.len(),
+        );
+        #[cfg(feature = "phase-profile")]
+        let _phase_profile = crate::profile::ScopeGuard::new(
+            crate::profile::Phase::Upkeep,
+            self.tick,
+            self.entities.len(),
+        );
         self.spawn_waves();
         self.fill_camps();
         self.tick_gear();
@@ -567,6 +610,14 @@ impl World {
         self.tick_handling();
         self.settle_sales();
         self.tick_expiries();
+        #[cfg(feature = "phase-profile")]
+        drop(_phase_profile);
+        #[cfg(feature = "phase-profile")]
+        let _phase_profile = crate::profile::ScopeGuard::new(
+            crate::profile::Phase::Effects,
+            self.tick,
+            self.entities.len(),
+        );
         self.tick_modifiers();
         self.tick_hooks();
         self.tick_requiem_lines();
@@ -581,8 +632,17 @@ impl World {
             team: &self.team,
             kind: &self.kind,
             auras: &self.auras,
+            stats: &self.stats,
             modifiers: &mut self.modifiers,
         });
+        #[cfg(feature = "phase-profile")]
+        drop(_phase_profile);
+        #[cfg(feature = "phase-profile")]
+        let _phase_profile = crate::profile::ScopeGuard::new(
+            crate::profile::Phase::Stats,
+            self.tick,
+            self.entities.len(),
+        );
         derive_stats(StatsCx {
             entities: &self.entities,
             def: &self.def,
@@ -590,6 +650,7 @@ impl World {
             upgrades: &self.upgrades,
             inventory: &self.inventory,
             modifiers: &self.modifiers,
+            applied: &self.applied,
             abilities: &self.abilities,
             stacks: &self.stacks,
             stats: &mut self.stats,
@@ -597,16 +658,49 @@ impl World {
             mana: &mut self.mana,
         });
         self.guard_structures();
+        #[cfg(feature = "phase-profile")]
+        drop(_phase_profile);
         self.step_combat(&mut events);
+        self.tick_applied();
         events
     }
 
     fn step_combat(&mut self, events: &mut Vec<crate::game::Event>) {
+        #[cfg(feature = "phase-profile")]
+        let _phase_profile = crate::profile::ScopeGuard::new(
+            crate::profile::Phase::Targeting,
+            self.tick,
+            self.entities.len(),
+        );
         self.tick_targeting();
+        #[cfg(feature = "phase-profile")]
+        drop(_phase_profile);
+        #[cfg(feature = "phase-profile")]
+        let _phase_profile = crate::profile::ScopeGuard::new(
+            crate::profile::Phase::Movement,
+            self.tick,
+            self.entities.len(),
+        );
+        #[cfg(feature = "phase-profile")]
+        let _intent_profile = crate::profile::ScopeGuard::new(
+            crate::profile::Phase::MovementIntent,
+            self.tick,
+            self.entities.len(),
+        );
         self.tick_jungle();
         self.march_lanes();
+        #[cfg(feature = "phase-profile")]
+        drop(_intent_profile);
         self.walk_bodies();
         self.push_apart();
+        #[cfg(feature = "phase-profile")]
+        drop(_phase_profile);
+        #[cfg(feature = "phase-profile")]
+        let _phase_profile = crate::profile::ScopeGuard::new(
+            crate::profile::Phase::Visibility,
+            self.tick,
+            self.entities.len(),
+        );
         visibility_system(SightCx {
             entities: &self.entities,
             transform: &self.transform,
@@ -618,6 +712,14 @@ impl World {
             visibility: &mut self.visibility,
             sight: &mut self.sight_scratch,
         });
+        #[cfg(feature = "phase-profile")]
+        drop(_phase_profile);
+        #[cfg(feature = "phase-profile")]
+        let _phase_profile = crate::profile::ScopeGuard::new(
+            crate::profile::Phase::Actions,
+            self.tick,
+            self.entities.len(),
+        );
         self.tend_attack_orders();
         regenerate(
             &self.entities,
@@ -643,11 +745,23 @@ impl World {
         });
         self.bounce_missiles();
         events.append(&mut self.events);
+        #[cfg(feature = "phase-profile")]
+        drop(_phase_profile);
         self.step_damage(events);
     }
 
     fn step_damage(&mut self, events: &mut Vec<crate::game::Event>) {
-        hitting_system(HitCx {
+        #[cfg(feature = "phase-profile")]
+        let _profile = crate::profile::ScopeGuard::new(
+            crate::profile::Phase::Damage,
+            self.tick,
+            self.entities.len(),
+        );
+        let amplified = self
+            .hits
+            .iter()
+            .any(|hit| hit.damage_amp_bp != crate::game::rules::NOMINAL_BP);
+        let cx = HitCx {
             hits: &mut self.hits,
             landed: &mut self.landed,
             transform: &self.transform,
@@ -658,7 +772,12 @@ impl World {
             rng: &self.rng,
             evasion: &mut self.evasion,
             missed: &mut self.missed,
-        });
+        };
+        if amplified {
+            hitting_system::<true>(cx);
+        } else {
+            hitting_system::<false>(cx);
+        }
         let felt: Vec<Landed> = self.landed.drain(..).collect();
         self.break_on_blows(&felt);
         self.rouse_camps(&felt);

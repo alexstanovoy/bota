@@ -362,6 +362,30 @@ pub fn all_orders() -> Vec<Order> {
         Order::Cheat {
             cheat: Cheat::Item { item: ItemId(46) },
         },
+        Order::Cheat {
+            cheat: Cheat::ApplyModifier {
+                target: Target::Unit(entity(7)),
+                spec: ModifierSpec {
+                    magic_resist: 1_000,
+                    status_resist: 2_000,
+                    physical_damage: 11_000,
+                    magic_damage: 12_000,
+                    pure_damage: 13_000,
+                    cooldown_rate: 9_000,
+                    mana_cost_rate: 8_000,
+                    move_speed: 8_500,
+                    max_hp: 11_000,
+                    max_mana: 12_000,
+                    gold_income: 7_500,
+                },
+                ticks: 900,
+            },
+        },
+        Order::Cheat {
+            cheat: Cheat::ClearModifiers {
+                target: Target::None,
+            },
+        },
     ]
 }
 

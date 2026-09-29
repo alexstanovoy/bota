@@ -15,7 +15,7 @@ fn catalog_appends_numeric_mango_with_one_charge_and_self_aim() {
     assert_eq!(def.mana_cost, 0);
     let (mut world, hero) = fixture();
     put(&mut world, hero, 0, mango(3));
-    let view = item_views(world.inventory.get(hero).unwrap())[0].unwrap();
+    let view = item_views(world.inventory.get(hero).unwrap(), rules::NOMINAL_BP)[0].unwrap();
     assert_eq!(view.charges, Some(3));
     assert_eq!(view.aim, Some(Aim::Own));
     assert_eq!(view.range, 0);

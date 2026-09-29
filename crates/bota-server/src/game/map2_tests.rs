@@ -36,6 +36,7 @@ fn config(map: MapId) -> MatchConfig {
         mode: TickMode::Lockstep,
         ack_timeout_ticks: 150,
         cheats: false,
+        spawn_modifiers: Vec::new(),
     }
 }
 

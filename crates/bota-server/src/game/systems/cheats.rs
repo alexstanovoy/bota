@@ -1,9 +1,11 @@
 //! Shortcuts round the rules, for trying things out in a match that allows
 //! them.
 
-use bota_proto::{Cheat, EventKind, ItemId, SlotId};
+use bota_proto::{Cheat, EventKind, ItemId, SlotId, modifier_ticks_bounded};
 
-use crate::game::{Entity, Event, EventVisibility, ItemStack, World, rules};
+use crate::game::{
+    AppliedModifier, AppliedOrigin, Entity, Event, EventVisibility, ItemStack, World, rules,
+};
 
 impl World {
     /// Carries out a cheat for a seat and the hero it drives.
@@ -19,6 +21,43 @@ impl World {
             Cheat::Levels { count } => self.raise_levels(seat, count, events),
             Cheat::Refresh => self.refresh(seat, unit),
             Cheat::Item { item } => self.hand_out(seat, item, events),
+            Cheat::ApplyModifier {
+                target,
+                spec,
+                ticks,
+            } => {
+                // The order gate rejects unbounded payloads; a caller that
+                // came another way is turned away rather than trusted.
+                if !spec.is_bounded() || !modifier_ticks_bounded(ticks) {
+                    return;
+                }
+                if let Ok(mark) = self.cheat_target(unit, target) {
+                    // The cheat replaces what it put there before and leaves
+                    // whatever trusted setup put on the unit alone.
+                    let mut applied = self.applied.remove(mark).unwrap_or_default();
+                    applied.retain(|held| held.origin != AppliedOrigin::Cheat);
+                    applied.push(AppliedModifier {
+                        spec,
+                        ticks_left: Some(ticks),
+                        origin: AppliedOrigin::Cheat,
+                    });
+                    self.applied.insert(mark, applied);
+                }
+            }
+            Cheat::ClearModifiers { target } => {
+                if let Ok(mark) = self.cheat_target(unit, target) {
+                    let empty = match self.applied.get_mut(mark) {
+                        Some(applied) => {
+                            applied.retain(|held| held.origin != AppliedOrigin::Cheat);
+                            applied.is_empty()
+                        }
+                        None => false,
+                    };
+                    if empty {
+                        self.applied.remove(mark);
+                    }
+                }
+            }
         }
     }
 

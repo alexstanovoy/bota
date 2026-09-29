@@ -41,12 +41,14 @@ impl World {
                         .is_some_and(|t| t.pos.within(at, radius))
             })
             .collect();
+        let damage_amp_bp = self.outgoing_damage_amp_bp(Some(caster), DamageKind::Magical);
         for mark in struck {
             self.hits.push_back(Hit {
                 source: Some(caster),
                 target: mark,
                 amount: rules::RAZE_DAMAGE[level],
                 kind: DamageKind::Magical,
+                damage_amp_bp,
                 crit: false,
                 attack: false,
                 pierces: false,
@@ -75,6 +77,7 @@ impl World {
             .get(caster)
             .map_or(0, |kept| kept.of(StackKind::Souls));
         let lines = held.min(rules::REQUIEM_LINES_MAX);
+        let damage_amp_bp = self.outgoing_damage_amp_bp(Some(caster), DamageKind::Magical);
         for nth in 0..lines {
             let facing = Angle {
                 brads: from.facing.brads.wrapping_add((nth * 65536 / lines) as u16),
@@ -102,6 +105,7 @@ impl World {
                     travelled: Fixed::ZERO,
                     distance: Fixed::from_int(rules::REQUIEM_LINE_DISTANCE),
                     damage: rules::REQUIEM_LINE_DAMAGE[level],
+                    damage_amp_bp,
                     slow_pct: rules::REQUIEM_SLOW_PCT[level],
                     struck: Vec::new(),
                 },
@@ -147,7 +151,13 @@ impl World {
                 })
                 .collect();
             for other in crossed {
-                self.push_hit(Some(line.owner), other, line.damage, DamageKind::Magical);
+                self.push_hit_with_amp(
+                    Some(line.owner),
+                    other,
+                    line.damage,
+                    DamageKind::Magical,
+                    line.damage_amp_bp,
+                );
                 for kind in [
                     ModifierKind::Slowed { pct: line.slow_pct },
                     ModifierKind::Feared,

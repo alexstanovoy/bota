@@ -23,6 +23,12 @@ impl World {
     /// reach it stands still and comes round to it, out of reach it walks at
     /// it. Only with nothing to fight does it walk where it was told.
     pub fn walk_bodies(&mut self) {
+        #[cfg(feature = "phase-profile")]
+        let _profile = crate::profile::ScopeGuard::new(
+            crate::profile::Phase::Walk,
+            self.tick,
+            self.entities.len(),
+        );
         self.lay_bodies();
         let mut scratch = std::mem::take(&mut self.local_scratch);
         let entities = self.take_entity_snapshot();
@@ -447,6 +453,12 @@ impl World {
         step: Fixed,
         scratch: &mut LocalScratch,
     ) -> (Vec<Vec2>, bool, bool) {
+        #[cfg(feature = "phase-profile")]
+        let _profile = crate::profile::ScopeGuard::new(
+            crate::profile::Phase::LocalPlan,
+            self.tick,
+            self.entities.len(),
+        );
         let ob = Obstacles {
             field: &self.clearance,
             extra: &[],
@@ -516,6 +528,12 @@ impl World {
             });
         }
         let crowded = !foreseen.is_empty();
+        #[cfg(feature = "phase-profile")]
+        let _search_profile = crate::profile::ScopeGuard::new(
+            crate::profile::Phase::LocalSearch,
+            self.tick,
+            self.entities.len(),
+        );
         let (steps, reached) = plan_local(&ob, &foreseen, &ask, scratch);
         (steps, crowded, reached)
     }
@@ -551,6 +569,12 @@ impl World {
         collision: Fixed,
         extra: &[(Vec2, Fixed)],
     ) -> (Vec2, bool) {
+        #[cfg(feature = "phase-profile")]
+        let _profile = crate::profile::ScopeGuard::new(
+            crate::profile::Phase::Route,
+            self.tick,
+            self.entities.len(),
+        );
         let room = plan_radius(collision);
         let mut route = self
             .route
@@ -586,6 +610,12 @@ impl World {
             }
         }
         if fresh {
+            #[cfg(feature = "phase-profile")]
+            let _path_profile = crate::profile::ScopeGuard::new(
+                crate::profile::Phase::PathQuery,
+                self.tick,
+                self.entities.len(),
+            );
             relay(&mut self.planner, &mut route, &ob, from, dest, collision);
         }
         // What the body itself can walk is judged at its own size: the
@@ -598,7 +628,15 @@ impl World {
             && let Some(first) = route.corners.first().copied()
             && !ob.clear(from, first, collision)
         {
+            #[cfg(feature = "phase-profile")]
+            let _path_profile = crate::profile::ScopeGuard::new(
+                crate::profile::Phase::PathQuery,
+                self.tick,
+                self.entities.len(),
+            );
             relay(&mut self.planner, &mut route, &ob, from, dest, collision);
+            #[cfg(feature = "phase-profile")]
+            drop(_path_profile);
             pass_corners(&ob, &mut route, from, collision);
         }
         // Beside the end of a route that stops short of its goal, the last
