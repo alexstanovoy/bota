@@ -547,6 +547,12 @@ impl World {
     /// left alone: what stands with them is whatever it has left, and filling
     /// them is the business of whoever stood the entity up.
     pub fn settle(&mut self) {
+        #[cfg(feature = "phase-profile")]
+        let _profile = crate::profile::ScopeGuard::new(
+            crate::profile::Phase::Settle,
+            self.tick,
+            self.entities.len(),
+        );
         derive_stats(StatsCx {
             entities: &self.entities,
             def: &self.def,
@@ -582,6 +588,18 @@ impl World {
         }
         let mut events = Vec::new();
         self.tick += 1;
+        #[cfg(feature = "phase-profile")]
+        let _tick_profile = crate::profile::ScopeGuard::new(
+            crate::profile::Phase::Tick,
+            self.tick,
+            self.entities.len(),
+        );
+        #[cfg(feature = "phase-profile")]
+        let _phase_profile = crate::profile::ScopeGuard::new(
+            crate::profile::Phase::Upkeep,
+            self.tick,
+            self.entities.len(),
+        );
         self.spawn_waves();
         self.fill_camps();
         self.tick_gear();
@@ -592,6 +610,14 @@ impl World {
         self.tick_handling();
         self.settle_sales();
         self.tick_expiries();
+        #[cfg(feature = "phase-profile")]
+        drop(_phase_profile);
+        #[cfg(feature = "phase-profile")]
+        let _phase_profile = crate::profile::ScopeGuard::new(
+            crate::profile::Phase::Effects,
+            self.tick,
+            self.entities.len(),
+        );
         self.tick_modifiers();
         self.tick_hooks();
         self.tick_requiem_lines();
@@ -609,6 +635,14 @@ impl World {
             stats: &self.stats,
             modifiers: &mut self.modifiers,
         });
+        #[cfg(feature = "phase-profile")]
+        drop(_phase_profile);
+        #[cfg(feature = "phase-profile")]
+        let _phase_profile = crate::profile::ScopeGuard::new(
+            crate::profile::Phase::Stats,
+            self.tick,
+            self.entities.len(),
+        );
         derive_stats(StatsCx {
             entities: &self.entities,
             def: &self.def,
@@ -624,17 +658,49 @@ impl World {
             mana: &mut self.mana,
         });
         self.guard_structures();
+        #[cfg(feature = "phase-profile")]
+        drop(_phase_profile);
         self.step_combat(&mut events);
         self.tick_applied();
         events
     }
 
     fn step_combat(&mut self, events: &mut Vec<crate::game::Event>) {
+        #[cfg(feature = "phase-profile")]
+        let _phase_profile = crate::profile::ScopeGuard::new(
+            crate::profile::Phase::Targeting,
+            self.tick,
+            self.entities.len(),
+        );
         self.tick_targeting();
+        #[cfg(feature = "phase-profile")]
+        drop(_phase_profile);
+        #[cfg(feature = "phase-profile")]
+        let _phase_profile = crate::profile::ScopeGuard::new(
+            crate::profile::Phase::Movement,
+            self.tick,
+            self.entities.len(),
+        );
+        #[cfg(feature = "phase-profile")]
+        let _intent_profile = crate::profile::ScopeGuard::new(
+            crate::profile::Phase::MovementIntent,
+            self.tick,
+            self.entities.len(),
+        );
         self.tick_jungle();
         self.march_lanes();
+        #[cfg(feature = "phase-profile")]
+        drop(_intent_profile);
         self.walk_bodies();
         self.push_apart();
+        #[cfg(feature = "phase-profile")]
+        drop(_phase_profile);
+        #[cfg(feature = "phase-profile")]
+        let _phase_profile = crate::profile::ScopeGuard::new(
+            crate::profile::Phase::Visibility,
+            self.tick,
+            self.entities.len(),
+        );
         visibility_system(SightCx {
             entities: &self.entities,
             transform: &self.transform,
@@ -646,6 +712,14 @@ impl World {
             visibility: &mut self.visibility,
             sight: &mut self.sight_scratch,
         });
+        #[cfg(feature = "phase-profile")]
+        drop(_phase_profile);
+        #[cfg(feature = "phase-profile")]
+        let _phase_profile = crate::profile::ScopeGuard::new(
+            crate::profile::Phase::Actions,
+            self.tick,
+            self.entities.len(),
+        );
         self.tend_attack_orders();
         regenerate(
             &self.entities,
@@ -671,10 +745,18 @@ impl World {
         });
         self.bounce_missiles();
         events.append(&mut self.events);
+        #[cfg(feature = "phase-profile")]
+        drop(_phase_profile);
         self.step_damage(events);
     }
 
     fn step_damage(&mut self, events: &mut Vec<crate::game::Event>) {
+        #[cfg(feature = "phase-profile")]
+        let _profile = crate::profile::ScopeGuard::new(
+            crate::profile::Phase::Damage,
+            self.tick,
+            self.entities.len(),
+        );
         let amplified = self
             .hits
             .iter()

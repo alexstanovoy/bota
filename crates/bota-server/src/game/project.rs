@@ -31,6 +31,12 @@ impl World {
 
     /// Everything a viewer is allowed to be told. `None` holds nothing back.
     fn project(&self, viewer: Option<Team>) -> WorldView {
+        #[cfg(feature = "phase-profile")]
+        let _profile = crate::profile::ScopeGuard::new(
+            crate::profile::Phase::Projection,
+            self.tick,
+            self.entities.len(),
+        );
         // The entity table bounds every filtered collection below, so the
         // one allocation each needs is taken up front instead of grown.
         let mut units = Vec::with_capacity(self.entities.len());

@@ -625,6 +625,11 @@ emergent, because creeps arrive first. On top of that sit the aggro calls:
   and a step deeper into anybody's circle is refused. Easing apart is a safety
   net for spawns and shoves, four units a tick; nothing else moves a body but its
   own step.
+- Target retention checks validity, the current hold and reach before ranking a
+  replacement. Once a reachable held target has class zero, the best class in
+  that unit's priority order, a full search cannot replace it: replacement needs
+  a strictly lower class. That search is skipped, without changing acquisition
+  for missing, invalid or out-of-range targets, or searches from a worse class.
 - Walking is planned in three layers, one over the other, all in integers.
   The static layer is the ground as a body meets it. Terrain closes 64-unit
   cells, met as squares; a tree is the circle of its trunk; a structure the
