@@ -70,6 +70,11 @@ pub struct Seat {
     pub last_hits: u16,
     /// Its own units it brought down.
     pub denies: u16,
+    /// Damage its hero has dealt to enemy heroes, after armor and resistance.
+    pub hero_damage: i32,
+    /// Damage its hero has dealt to enemy structures, after armor and
+    /// resistance.
+    pub structure_damage: i32,
 }
 
 impl Seat {
@@ -97,6 +102,8 @@ impl Seat {
             assists: 0,
             last_hits: 0,
             denies: 0,
+            hero_damage: 0,
+            structure_damage: 0,
         }
     }
 }

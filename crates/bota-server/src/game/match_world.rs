@@ -278,7 +278,7 @@ impl World {
                 }
                 Ok(())
             }
-            Order::Cast { slot, target } => self.check_cast(unit, *slot, target),
+            Order::Cast { slot, target } => self.check_cast(unit, seat, *slot, target),
             Order::Buy { item } => self.check_buy(seat, *item),
             Order::Sell { slot: named } => self.check_sale(unit, seat, usize::from(named.0)),
             Order::Put {
@@ -296,7 +296,7 @@ impl World {
                 }
                 Ok(())
             }
-            Order::Use { slot, target } => self.check_use(unit, usize::from(slot.0), target),
+            Order::Use { slot, target } => self.check_use(unit, seat, usize::from(slot.0), target),
             Order::Cheat { cheat } => self.check_cheat(unit, cheat),
             _ => Ok(()),
         }
@@ -346,6 +346,7 @@ impl World {
     fn check_cast(
         &self,
         unit: Entity,
+        seat: &Seat,
         slot: bota_proto::AbilitySlot,
         target: &Target,
     ) -> Result<(), RejectReason> {
@@ -372,7 +373,7 @@ impl World {
             return Err(RejectReason::WrongTargetKind);
         }
         if let Target::Unit(target) = target {
-            let mark = self.of_wire(*target).ok_or(RejectReason::UnknownTarget)?;
+            let mark = self.seen_by(seat, *target)?;
             if def.at_an_enemy && !self.hostile(unit, mark) {
                 return Err(RejectReason::WrongTargetKind);
             }
@@ -441,7 +442,13 @@ impl World {
 
     /// Whether a unit may use the item in one of its inventory slots at a
     /// target right now.
-    fn check_use(&self, unit: Entity, at: usize, target: &Target) -> Result<(), RejectReason> {
+    fn check_use(
+        &self,
+        unit: Entity,
+        seat: &Seat,
+        at: usize,
+        target: &Target,
+    ) -> Result<(), RejectReason> {
         if in_stash(at) || in_backpack(at) {
             return Err(RejectReason::WrongTargetKind);
         }
@@ -472,10 +479,8 @@ impl World {
         if !aimed {
             return Err(RejectReason::WrongTargetKind);
         }
-        if let Target::Unit(target) = target
-            && self.of_wire(*target).is_none()
-        {
-            return Err(RejectReason::UnknownTarget);
+        if let Target::Unit(target) = target {
+            self.seen_by(seat, *target)?;
         }
         if self.mana.get(unit).map_or(0, |pool| pool.mana.to_int())
             < self.item_mana_cost(unit, stack.id)
@@ -557,8 +562,8 @@ impl World {
                     last_hits: s.last_hits,
                     denies: s.denies,
                     net_worth: s.net_worth,
-                    hero_damage: 0,
-                    structure_damage: 0,
+                    hero_damage: s.hero_damage,
+                    structure_damage: s.structure_damage,
                 })
                 .collect(),
         }

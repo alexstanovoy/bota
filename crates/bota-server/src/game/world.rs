@@ -742,6 +742,7 @@ impl World {
         let felt: Vec<Landed> = self.landed.drain(..).collect();
         self.break_on_blows(&felt);
         self.rouse_camps(&felt);
+        self.credit_damage(&felt);
         self.tell_of(&felt, events);
         let missed: Vec<Missed> = self.missed.drain(..).collect();
         self.tell_of_misses(&missed, events);

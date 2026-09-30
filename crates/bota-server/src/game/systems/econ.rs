@@ -2,7 +2,7 @@
 
 use bota_proto::{EventKind, Team, UnitKind, Vec2};
 
-use crate::game::{Bounty, Entity, Level, World, is_lane_creep, wire_id};
+use crate::game::{Bounty, Entity, Level, World, is_lane_creep, is_structure, wire_id};
 use crate::game::{Event, EventVisibility, hero_spawn_pos, rules};
 
 impl World {
@@ -98,6 +98,28 @@ impl World {
         let killer_seat = fallen_seat.and_then(|_| killer.and_then(|entity| self.seat_of(entity)));
         self.grant_xp_around(at, earners, bounty.xp, killer_seat, events);
         paid
+    }
+
+    /// Adds blows a seat's hero landed on enemy heroes and structures to
+    /// that seat's damage totals.
+    pub fn credit_damage(&mut self, felt: &[crate::game::Landed]) {
+        for blow in felt {
+            let Some(index) = blow.source.and_then(|source| self.seat_of(source)) else {
+                continue;
+            };
+            if self.seats[index].team == blow.side {
+                continue;
+            }
+            let Some(kind) = self.kind.get(blow.target).copied() else {
+                continue;
+            };
+            let seat = &mut self.seats[index];
+            if kind == UnitKind::Hero {
+                seat.hero_damage = seat.hero_damage.saturating_add(blow.amount);
+            } else if is_structure(kind) {
+                seat.structure_damage = seat.structure_damage.saturating_add(blow.amount);
+            }
+        }
     }
 
     /// Which seat drives an entity, if any does.
