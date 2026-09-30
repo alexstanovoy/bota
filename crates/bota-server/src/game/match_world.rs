@@ -54,10 +54,9 @@ impl World {
         world
     }
 
-    /// One tick of the match.
-    ///
-    /// Only orders that send a body somewhere are carried over; anything else
-    /// is dropped. A completed Map2 ignores commands and advances no further.
+    /// One tick of the match: every command taken in the order given, then
+    /// [`World::step`]. A completed Map2 ignores commands and advances no
+    /// further.
     pub fn advance(&mut self, cmds: &[Command]) -> Vec<Event> {
         if self.map2_finished() {
             return Vec::new();
