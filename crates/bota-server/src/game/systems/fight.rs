@@ -6,9 +6,6 @@ use crate::game::{Entity, MAP2_ID, MAP2_TICK_CAP, UnitOrder, World, is_structure
 use crate::game::{Event, EventVisibility};
 
 impl World {
-    /// Each entity that can attack takes the best hostile in reach of its
-    /// acquisition, and keeps it while it lives and stays in range.
-    ///
     /// Whether an entity is still standing.
     pub fn alive(&self, entity: Entity) -> bool {
         self.entities.contains(entity)

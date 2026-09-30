@@ -80,42 +80,46 @@ impl World {
         match cmd.order {
             Order::Learn { slot } => {
                 self.learn(unit, usize::from(slot.0), events);
-                return;
             }
             Order::Swap { from, to } => {
                 self.move_item(cmd.slot, unit, usize::from(from.0), usize::from(to.0));
-                return;
             }
             Order::Sell { slot: at } => {
                 self.sell_item(cmd.slot, unit, usize::from(at.0));
-                return;
             }
             Order::Buy { item } => {
                 self.buy(cmd.slot, item, events);
-                return;
             }
             Order::Cheat { cheat } => {
                 self.cheat(cmd.slot, unit, cheat, events);
-                return;
             }
-            _ => {}
+            order => {
+                self.interrupt(unit, order);
+                self.take_body_order(unit, order);
+            }
         }
-        // An order is an animation cancel: the recovery after a swing ends
-        // with it, and so does an ability or item that runs on. Giving up a
-        // swing that has not landed is the attack cycle's own business.
+    }
+
+    /// What an order to the body breaks off: the action under way, as an
+    /// animation cancel, a held cast, and an errand unless a courier keeps
+    /// it for a burst or a shield.
+    fn interrupt(&mut self, unit: Entity, order: Order) {
         self.cancel_action(unit);
-        // An order also takes a held cast with it before starting another.
         self.handling.remove(unit);
         if let Some(orders) = self.orders.get_mut(unit) {
             orders.pending = None;
         }
         let keeps_errand = self.kind.get(unit) == Some(&UnitKind::Courier)
-            && matches!(cmd.order, Order::Cast { slot, target: Target::None }
+            && matches!(order, Order::Cast { slot, target: Target::None }
                 if matches!(self.ability_in(unit, slot), crate::game::ability::BURST | crate::game::ability::SHIELD));
         if !keeps_errand && let Some(errand) = self.errand.get_mut(unit) {
             *errand = crate::game::Errand::None;
         }
-        let wanted = match cmd.order {
+    }
+
+    /// Sets a body on what an order asks of it.
+    fn take_body_order(&mut self, unit: Entity, order: Order) {
+        let wanted = match order {
             Order::Move {
                 target: Target::Pos(pos),
             } => UnitOrder::Move { pos },
@@ -134,13 +138,9 @@ impl World {
                 let Some(mark) = self.of_wire(target) else {
                     return;
                 };
-                let at = self
-                    .transform
-                    .get(mark)
-                    .map_or(bota_proto::Vec2::ZERO, |t| t.pos);
                 UnitOrder::Follow {
                     target: mark,
-                    last_seen: at,
+                    last_seen: self.pos_of(mark),
                 }
             }
             Order::Attack {
@@ -150,45 +150,17 @@ impl World {
                     return;
                 };
                 self.rouse_bystanders(unit, mark);
-                let at = self
-                    .transform
-                    .get(mark)
-                    .map_or(bota_proto::Vec2::ZERO, |t| t.pos);
                 UnitOrder::Attack {
                     target: mark,
-                    last_seen: at,
+                    last_seen: self.pos_of(mark),
                 }
             }
             Order::Cast { slot, target } => {
-                // A spell aimed at somebody is as plain to the creeps as a
-                // swing at them.
-                if let Target::Unit(target) = target
-                    && let Some(mark) = self.of_wire(target)
-                {
-                    self.rouse_by_cast(unit, mark);
-                }
-                // An aimed cast takes the body over: what it was doing
-                // before is not returned to once the cast has gone off. A
-                // cast at oneself asks nothing of the body and leaves its
-                // order be.
-                let aimed = crate::game::ability_def(self.ability_in(unit, slot))
-                    .is_some_and(|def| def.aim != Aim::Own);
-                if aimed {
-                    self.set_order(unit, UnitOrder::Idle);
-                }
-                self.order_cast(unit, PendingCast::Ability { slot, target });
+                self.take_cast(unit, slot, target);
                 return;
             }
             Order::Use { slot, target } => {
                 self.order_cast(unit, PendingCast::Item { slot, target });
-                return;
-            }
-            // Taken before the body was interrupted.
-            Order::Learn { .. }
-            | Order::Swap { .. }
-            | Order::Sell { .. }
-            | Order::Buy { .. }
-            | Order::Cheat { .. } => {
                 return;
             }
             Order::Put { slot, target } => {
@@ -201,9 +173,39 @@ impl World {
                 self.take_item(unit, target);
                 return;
             }
-            Order::Take { .. } => return,
+            Order::Take { .. }
+            | Order::Learn { .. }
+            | Order::Swap { .. }
+            | Order::Sell { .. }
+            | Order::Buy { .. }
+            | Order::Cheat { .. } => return,
         };
         self.set_order(unit, wanted);
+    }
+
+    /// Where an entity stands, or the map's origin for one that stands
+    /// nowhere.
+    fn pos_of(&self, entity: Entity) -> bota_proto::Vec2 {
+        self.transform
+            .get(entity)
+            .map_or(bota_proto::Vec2::ZERO, |t| t.pos)
+    }
+
+    /// Orders a cast. A spell aimed at somebody is as plain to the creeps as
+    /// a swing at them; an aimed cast takes the body over, so what it was
+    /// doing is not returned to, while a cast at oneself leaves its order be.
+    fn take_cast(&mut self, unit: Entity, slot: bota_proto::AbilitySlot, target: Target) {
+        if let Target::Unit(target) = target
+            && let Some(mark) = self.of_wire(target)
+        {
+            self.rouse_by_cast(unit, mark);
+        }
+        let aimed = crate::game::ability_def(self.ability_in(unit, slot))
+            .is_some_and(|def| def.aim != Aim::Own);
+        if aimed {
+            self.set_order(unit, UnitOrder::Idle);
+        }
+        self.order_cast(unit, PendingCast::Ability { slot, target });
     }
 
     /// The unit an order is for, if the seat drives it.
@@ -269,61 +271,15 @@ impl World {
         }
         match order {
             Order::Move { target } | Order::Attack { target } => {
+                // Pointing an attack at one of your own is an order like any
+                // other: what it cannot do is land, and that is settled when
+                // targets are chosen.
                 if let Target::Unit(named) = target {
-                    let Some(entity) = self.of_wire(*named) else {
-                        return Err(RejectReason::UnknownTarget);
-                    };
-                    if !self.can_see(seat.team, entity) {
-                        return Err(RejectReason::UnknownTarget);
-                    }
-                    // Pointing an attack at one of your own is an order like
-                    // any other: what it cannot do is land, and that is
-                    // settled when targets are chosen. Turning it down here
-                    // would take the creeps' answer to it with it.
+                    self.seen_by(seat, *named)?;
                 }
                 Ok(())
             }
-            Order::Cast { slot, target } => {
-                let held = self
-                    .abilities
-                    .get(unit)
-                    .and_then(|book| book.slots.get(usize::from(slot.0)))
-                    .copied();
-                let Some(held) = held else {
-                    return Err(RejectReason::EmptySlot);
-                };
-                let Some(def) = crate::game::ability_def(held.id) else {
-                    return Err(RejectReason::EmptySlot);
-                };
-                if def.passive {
-                    return Err(RejectReason::NotCastable);
-                }
-                if held.level == 0 {
-                    return Err(RejectReason::NotLearned);
-                }
-                if held.cooldown > 0 {
-                    return Err(RejectReason::OnCooldown);
-                }
-                if self.held(unit) || self.feared(unit) || self.is_channelling(unit) {
-                    return Err(RejectReason::Disabled);
-                }
-                if !aimed_right(def.aim, target) {
-                    return Err(RejectReason::WrongTargetKind);
-                }
-                if let Target::Unit(target) = target {
-                    let Some(mark) = self.of_wire(*target) else {
-                        return Err(RejectReason::UnknownTarget);
-                    };
-                    if def.at_an_enemy && !self.hostile(unit, mark) {
-                        return Err(RejectReason::WrongTargetKind);
-                    }
-                }
-                let held_mana = self.mana.get(unit).map_or(0, |mana| mana.mana.to_int());
-                if held_mana < self.ability_mana_cost(unit, held.id, held.level) {
-                    return Err(RejectReason::NotEnoughMana);
-                }
-                Ok(())
-            }
+            Order::Cast { slot, target } => self.check_cast(unit, *slot, target),
             Order::Buy { item } => {
                 if item_def(*item).is_none() {
                     return Err(RejectReason::UnknownItem);
@@ -339,73 +295,16 @@ impl World {
                 }
                 Ok(())
             }
-            Order::Sell { slot: named } => {
-                let at = usize::from(named.0);
-                let held = if in_stash(at) {
-                    seat.stash.slots.get(at - BAG_SLOTS).copied().flatten()
-                } else {
-                    self.inventory
-                        .get(unit)
-                        .and_then(|bag| bag.slots.get(at).copied().flatten())
-                };
-                let Some(held) = held else {
-                    return Err(RejectReason::EmptySlot);
-                };
-                // Away from the shop the order marks rather than sells, so
-                // there is no place it is refused for — only a stack that is
-                // not this seat's to sell.
-                if held.owner != slot {
-                    return Err(RejectReason::NotYourItem);
-                }
-                Ok(())
-            }
+            Order::Sell { slot: named } => self.check_sale(unit, seat, usize::from(named.0)),
             Order::Put {
                 slot: named,
                 target,
-            } => {
-                let at = usize::from(named.0);
-                if at >= BAG_SLOTS {
-                    return Err(RejectReason::NotInBag);
-                }
-                if !self.holds(unit, seat, at) {
-                    return Err(RejectReason::EmptySlot);
-                }
-                match target {
-                    Target::None => Ok(()),
-                    Target::Pos(pos) => {
-                        if self.clearance.stands_clear(*pos) {
-                            Ok(())
-                        } else {
-                            Err(RejectReason::ClosedGround)
-                        }
-                    }
-                    Target::Unit(target) => {
-                        let Some(to) = self.of_wire(*target) else {
-                            return Err(RejectReason::UnknownTarget);
-                        };
-                        if !self.can_see(seat.team, to) {
-                            return Err(RejectReason::UnknownTarget);
-                        }
-                        if to == unit
-                            || self.team.get(to) != Some(&seat.team)
-                            || self.inventory.get(to).is_none()
-                        {
-                            return Err(RejectReason::WrongTargetKind);
-                        }
-                        Ok(())
-                    }
-                }
-            }
+            } => self.check_put(unit, seat, usize::from(named.0), target),
             Order::Take { target } => {
                 let Target::Unit(named) = target else {
                     return Err(RejectReason::WrongTargetKind);
                 };
-                let Some(mark) = self.of_wire(*named) else {
-                    return Err(RejectReason::UnknownTarget);
-                };
-                if !self.can_see(seat.team, mark) {
-                    return Err(RejectReason::UnknownTarget);
-                }
+                let mark = self.seen_by(seat, *named)?;
                 if self.loot.get(mark).is_none() || self.inventory.get(unit).is_none() {
                     return Err(RejectReason::WrongTargetKind);
                 }
@@ -421,88 +320,194 @@ impl World {
                 }
                 Ok(())
             }
-            Order::Use { slot, target } => {
-                let at = usize::from(slot.0);
-                if in_stash(at) || in_backpack(at) {
-                    return Err(RejectReason::WrongTargetKind);
-                }
-                let stack = self
-                    .inventory
-                    .get(unit)
-                    .and_then(|bag| bag.slots.get(at))
-                    .copied()
-                    .flatten();
-                let Some(stack) = stack else {
-                    return Err(RejectReason::EmptySlot);
-                };
-                let Some(def) = item_def(stack.id) else {
-                    return Err(RejectReason::EmptySlot);
-                };
-                // A stack just out of the backpack carries nothing and does
-                // nothing until it has woken up.
-                if stack.mute > 0 {
-                    return Err(RejectReason::NotReady);
-                }
-                let Some(aim) = def.aim else {
-                    return Err(RejectReason::NotCastable);
-                };
-                if stack.cooldown > 0 || (def.shared_wait && self.owes_wait(unit, stack.id)) {
-                    return Err(RejectReason::OnCooldown);
-                }
-                if (def.charges > 0 || def.cast_charges > 0) && stack.charges == 0 {
-                    return Err(RejectReason::NoCharges);
-                }
-                let aimed = if def.mana_deficit {
-                    matches!(target, Target::None)
-                        || *target == Target::Unit(crate::game::wire_id(unit))
-                } else {
-                    aimed_right(aim, target)
-                };
-                if !aimed {
-                    return Err(RejectReason::WrongTargetKind);
-                }
-                if let Target::Unit(target) = target
-                    && self.of_wire(*target).is_none()
-                {
-                    return Err(RejectReason::UnknownTarget);
-                }
-                if self.mana.get(unit).map_or(0, |pool| pool.mana.to_int())
-                    < self.item_mana_cost(unit, stack.id)
-                {
-                    return Err(RejectReason::NotEnoughMana);
-                }
-                if self.held(unit) || self.feared(unit) || self.is_channelling(unit) {
-                    return Err(RejectReason::Disabled);
-                }
-                if def.mana_deficit && !self.can_replenish_mana(unit, *target) {
-                    return Err(RejectReason::NotReady);
-                }
-                Ok(())
-            }
-            Order::Cheat { cheat } => {
-                if !self.cheats {
-                    return Err(RejectReason::NoCheats);
-                }
-                match cheat {
-                    Cheat::ApplyModifier {
-                        target,
-                        spec,
-                        ticks,
-                    } => {
-                        if !spec.is_bounded() || !bota_proto::modifier_ticks_bounded(*ticks) {
-                            return Err(RejectReason::BadCheat);
-                        }
-                        self.cheat_target(unit, *target)?;
-                    }
-                    Cheat::ClearModifiers { target } => {
-                        self.cheat_target(unit, *target)?;
-                    }
-                    _ => {}
-                }
-                Ok(())
-            }
+            Order::Use { slot, target } => self.check_use(unit, usize::from(slot.0), target),
+            Order::Cheat { cheat } => self.check_cheat(unit, cheat),
             _ => Ok(()),
         }
+    }
+
+    /// The entity a seat names on the wire, while its side sees it.
+    fn seen_by(&self, seat: &Seat, named: bota_proto::EntityId) -> Result<Entity, RejectReason> {
+        let entity = self.of_wire(named).ok_or(RejectReason::UnknownTarget)?;
+        if !self.can_see(seat.team, entity) {
+            return Err(RejectReason::UnknownTarget);
+        }
+        Ok(entity)
+    }
+
+    /// Whether a unit may cast the ability in one of its slots at a target
+    /// right now.
+    fn check_cast(
+        &self,
+        unit: Entity,
+        slot: bota_proto::AbilitySlot,
+        target: &Target,
+    ) -> Result<(), RejectReason> {
+        let held = self
+            .abilities
+            .get(unit)
+            .and_then(|book| book.slots.get(usize::from(slot.0)))
+            .copied()
+            .ok_or(RejectReason::EmptySlot)?;
+        let def = crate::game::ability_def(held.id).ok_or(RejectReason::EmptySlot)?;
+        if def.passive {
+            return Err(RejectReason::NotCastable);
+        }
+        if held.level == 0 {
+            return Err(RejectReason::NotLearned);
+        }
+        if held.cooldown > 0 {
+            return Err(RejectReason::OnCooldown);
+        }
+        if self.held(unit) || self.feared(unit) || self.is_channelling(unit) {
+            return Err(RejectReason::Disabled);
+        }
+        if !aimed_right(def.aim, target) {
+            return Err(RejectReason::WrongTargetKind);
+        }
+        if let Target::Unit(target) = target {
+            let mark = self.of_wire(*target).ok_or(RejectReason::UnknownTarget)?;
+            if def.at_an_enemy && !self.hostile(unit, mark) {
+                return Err(RejectReason::WrongTargetKind);
+            }
+        }
+        let held_mana = self.mana.get(unit).map_or(0, |mana| mana.mana.to_int());
+        if held_mana < self.ability_mana_cost(unit, held.id, held.level) {
+            return Err(RejectReason::NotEnoughMana);
+        }
+        Ok(())
+    }
+
+    /// Whether a seat may sell or mark what one of its slots holds. Away
+    /// from the shop the order marks rather than sells, so only a stack
+    /// that is not the seat's own is refused.
+    fn check_sale(&self, unit: Entity, seat: &Seat, at: usize) -> Result<(), RejectReason> {
+        let held = if in_stash(at) {
+            seat.stash.slots.get(at - BAG_SLOTS).copied().flatten()
+        } else {
+            self.inventory
+                .get(unit)
+                .and_then(|bag| bag.slots.get(at).copied().flatten())
+        };
+        let held = held.ok_or(RejectReason::EmptySlot)?;
+        if held.owner != seat.slot {
+            return Err(RejectReason::NotYourItem);
+        }
+        Ok(())
+    }
+
+    /// Whether a unit may lay what a bag slot holds on open ground, underfoot
+    /// or into a seen ally's bag.
+    fn check_put(
+        &self,
+        unit: Entity,
+        seat: &Seat,
+        at: usize,
+        target: &Target,
+    ) -> Result<(), RejectReason> {
+        if at >= BAG_SLOTS {
+            return Err(RejectReason::NotInBag);
+        }
+        if !self.holds(unit, seat, at) {
+            return Err(RejectReason::EmptySlot);
+        }
+        match target {
+            Target::None => Ok(()),
+            Target::Pos(pos) => {
+                if self.clearance.stands_clear(*pos) {
+                    Ok(())
+                } else {
+                    Err(RejectReason::ClosedGround)
+                }
+            }
+            Target::Unit(target) => {
+                let to = self.seen_by(seat, *target)?;
+                if to == unit
+                    || self.team.get(to) != Some(&seat.team)
+                    || self.inventory.get(to).is_none()
+                {
+                    return Err(RejectReason::WrongTargetKind);
+                }
+                Ok(())
+            }
+        }
+    }
+
+    /// Whether a unit may use the item in one of its inventory slots at a
+    /// target right now.
+    fn check_use(&self, unit: Entity, at: usize, target: &Target) -> Result<(), RejectReason> {
+        if in_stash(at) || in_backpack(at) {
+            return Err(RejectReason::WrongTargetKind);
+        }
+        let stack = self
+            .inventory
+            .get(unit)
+            .and_then(|bag| bag.slots.get(at))
+            .copied()
+            .flatten()
+            .ok_or(RejectReason::EmptySlot)?;
+        let def = item_def(stack.id).ok_or(RejectReason::EmptySlot)?;
+        // A stack just out of the backpack does nothing until it has woken up.
+        if stack.mute > 0 {
+            return Err(RejectReason::NotReady);
+        }
+        let aim = def.aim.ok_or(RejectReason::NotCastable)?;
+        if stack.cooldown > 0 || (def.shared_wait && self.owes_wait(unit, stack.id)) {
+            return Err(RejectReason::OnCooldown);
+        }
+        if (def.charges > 0 || def.cast_charges > 0) && stack.charges == 0 {
+            return Err(RejectReason::NoCharges);
+        }
+        let aimed = if def.mana_deficit {
+            matches!(target, Target::None) || *target == Target::Unit(crate::game::wire_id(unit))
+        } else {
+            aimed_right(aim, target)
+        };
+        if !aimed {
+            return Err(RejectReason::WrongTargetKind);
+        }
+        if let Target::Unit(target) = target
+            && self.of_wire(*target).is_none()
+        {
+            return Err(RejectReason::UnknownTarget);
+        }
+        if self.mana.get(unit).map_or(0, |pool| pool.mana.to_int())
+            < self.item_mana_cost(unit, stack.id)
+        {
+            return Err(RejectReason::NotEnoughMana);
+        }
+        if self.held(unit) || self.feared(unit) || self.is_channelling(unit) {
+            return Err(RejectReason::Disabled);
+        }
+        if def.mana_deficit && !self.can_replenish_mana(unit, *target) {
+            return Err(RejectReason::NotReady);
+        }
+        Ok(())
+    }
+
+    /// Whether a cheat may be issued: cheats on, and a modifier cheat
+    /// bounded and aimed at a unit.
+    fn check_cheat(&self, unit: Entity, cheat: &Cheat) -> Result<(), RejectReason> {
+        if !self.cheats {
+            return Err(RejectReason::NoCheats);
+        }
+        match cheat {
+            Cheat::ApplyModifier {
+                target,
+                spec,
+                ticks,
+            } => {
+                if !spec.is_bounded() || !bota_proto::modifier_ticks_bounded(*ticks) {
+                    return Err(RejectReason::BadCheat);
+                }
+                self.cheat_target(unit, *target)?;
+            }
+            Cheat::ClearModifiers { target } => {
+                self.cheat_target(unit, *target)?;
+            }
+            _ => {}
+        }
+        Ok(())
     }
 
     /// Whether one of a seat's slots holds anything at all.

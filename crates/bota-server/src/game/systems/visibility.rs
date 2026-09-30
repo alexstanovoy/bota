@@ -7,26 +7,7 @@ use crate::game::{
     Entity, EntityAllocator, Stats, Table, Transform, Visibility, World, is_structure,
 };
 
-/// Rewrites who sees each entity.
-///
-/// The row itself belongs to the entity: it is made when the entity is and
-/// given up when it goes, so this only ever rewrites what is already there.
-///
-/// A side always sees its own, and both sides always see a building. What
-/// hides asks for two things at once from any other side: ordinary sight of
-/// where it stands, and true sight reaching it. True sight takes nothing off
-/// what hides in ground nobody is looking at. Beyond
-/// that, everything that can see is walked
-/// in turn against everything inside its sight radius, and the line is traced
-/// only for what its side cannot already see: once one pair of eyes has an
-/// entity, no other pair of the same side pays for it again.
 /// What working out sight reads and writes.
-///
-/// The set runs past what is readable named one by one at a call site;
-/// gathered here, the access a system takes is still declared, and still
-/// checked when [`World::step`] hands the tables over.
-///
-/// [`World::step`]: crate::game::World::step
 pub struct SightCx<'a> {
     /// Which entities exist.
     pub entities: &'a EntityAllocator,
@@ -93,6 +74,7 @@ struct SightRow {
 
 /// One entity that can see: where from, how far, and how far true sight
 /// reaches.
+#[derive(Clone, Copy)]
 struct SightViewer {
     /// Which side it is on.
     side: Team,
@@ -106,6 +88,12 @@ struct SightViewer {
     tier: u8,
 }
 
+/// Rewrites who sees each entity that has a row of sight.
+///
+/// A side always sees its own, and both sides see every building. Past
+/// that, a side sees what one of its viewers has in range, on ground no
+/// higher than its own, along an open sight line. What hides is seen by the
+/// other side only where that side's true sight also reaches it.
 pub fn visibility_system(cx: SightCx<'_>) {
     let SightCx {
         entities,
@@ -118,115 +106,128 @@ pub fn visibility_system(cx: SightCx<'_>) {
         visibility,
         sight,
     } = cx;
-
     sight.rows.clear();
     for entity in entities.iter() {
+        let at = transform.get(entity).map(|t| t.pos);
+        let stats = stats.get(entity);
         sight.rows.push(SightRow {
             entity,
             team: team.get(entity).copied(),
-            at: transform.get(entity).map(|t| t.pos),
-            vision: stats.get(entity).map_or(Fixed::ZERO, |s| s.vision),
-            true_sight: stats.get(entity).map_or(Fixed::ZERO, |s| s.true_sight),
+            at,
+            vision: stats.map_or(Fixed::ZERO, |s| s.vision),
+            true_sight: stats.map_or(Fixed::ZERO, |s| s.true_sight),
             kind: kind.get(entity).copied(),
-            hides: stats.get(entity).is_some_and(|s| s.hides),
-            tier: transform.get(entity).map_or(0, |t| ground.tier(t.pos)),
+            hides: stats.is_some_and(|s| s.hides),
+            tier: at.map_or(0, |at| ground.tier(at)),
             seen: visibility.get(entity).copied(),
         });
     }
-    sight.viewers.clear();
-    sight.true_viewers.clear();
-    for row in &sight.rows {
-        let (Some(side), Some(from)) = (row.team, row.at) else {
-            continue;
-        };
-        if row.vision > Fixed::ZERO {
-            sight.viewers.push(SightViewer {
-                side,
-                from,
-                vision: row.vision,
-                true_sight: row.true_sight,
-                tier: row.tier,
-            });
-        }
-        if row.true_sight > Fixed::ZERO {
-            sight.true_viewers.push(SightViewer {
-                side,
-                from,
-                vision: row.vision,
-                true_sight: row.true_sight,
-                tier: row.tier,
-            });
-        }
-    }
-    for row in &mut sight.rows {
-        let Some(seen) = row.seen.as_mut() else {
-            continue;
-        };
-        *seen = Visibility::NONE;
-        if let Some(side) = row.team {
-            seen.add(side);
-        }
-        // A building is on every map both sides look at, ward and unit alike
-        // are not.
-        if row.kind.is_some_and(is_structure) {
-            seen.add(Team::Radiant);
-            seen.add(Team::Dire);
-        }
-    }
-    sight.spots.clear();
-    for (index, row) in sight.rows.iter().enumerate() {
-        if let (Some(at), Some(_)) = (row.at, row.seen) {
-            sight.spots.push(at, index as u32);
-        }
-    }
-    sight.spots.sort();
-    for viewer in &sight.viewers {
-        let reach = i64::from(viewer.vision.raw).abs();
-        for index in sight.spots.around(viewer.from, reach) {
-            let row = &mut sight.rows[index as usize];
-            let (Some(at), Some(seen)) = (row.at, row.seen.as_mut()) else {
-                continue;
-            };
-            if seen.by(viewer.side)
-                || !viewer.from.within(at, viewer.vision)
-                || viewer.tier < row.tier
-            {
-                continue;
-            }
-            if sight_clear(ground, sight_block, viewer.from, viewer.tier, at) {
-                seen.add(viewer.side);
-            }
-        }
-    }
-    // What hides is not given away by standing in the open: for the other
-    // side it exists only where true sight reaches it.
-    for row in &mut sight.rows {
-        if !row.hides {
-            continue;
-        }
-        let (Some(side), Some(at)) = (row.team, row.at) else {
-            continue;
-        };
-        let Some(already) = row.seen else {
-            continue;
-        };
-        let mut seen = Visibility::NONE;
-        seen.add(side);
-        for viewer in &sight.true_viewers {
-            if viewer.side != side
-                && already.by(viewer.side)
-                && viewer.from.within(at, viewer.true_sight)
-            {
-                seen.add(viewer.side);
-            }
-        }
-        row.seen = Some(seen);
-    }
+    sight.gather_viewers();
+    sight.reset_rows();
+    sight.trace(ground, sight_block);
+    sight.hide();
     for row in &sight.rows {
         let (Some(seen), Some(slot)) = (row.seen, visibility.get_mut(row.entity)) else {
             continue;
         };
         *slot = seen;
+    }
+}
+
+impl SightScratch {
+    /// Every row that can see, by ordinary sight and by true sight.
+    fn gather_viewers(&mut self) {
+        self.viewers.clear();
+        self.true_viewers.clear();
+        for row in &self.rows {
+            let (Some(side), Some(from)) = (row.team, row.at) else {
+                continue;
+            };
+            let viewer = SightViewer {
+                side,
+                from,
+                vision: row.vision,
+                true_sight: row.true_sight,
+                tier: row.tier,
+            };
+            if row.vision > Fixed::ZERO {
+                self.viewers.push(viewer);
+            }
+            if row.true_sight > Fixed::ZERO {
+                self.true_viewers.push(viewer);
+            }
+        }
+    }
+
+    /// Every row seen by its own side alone, and a building by both.
+    fn reset_rows(&mut self) {
+        for row in &mut self.rows {
+            let Some(seen) = row.seen.as_mut() else {
+                continue;
+            };
+            *seen = Visibility::NONE;
+            if let Some(side) = row.team {
+                seen.add(side);
+            }
+            if row.kind.is_some_and(is_structure) {
+                seen.add(Team::Radiant);
+                seen.add(Team::Dire);
+            }
+        }
+    }
+
+    /// Adds each viewer's side to every row it sees, walking only the rows
+    /// within the square its vision spans.
+    fn trace(&mut self, ground: &Ground, sight_block: &CellGrid) {
+        self.spots.clear();
+        for (index, row) in self.rows.iter().enumerate() {
+            if let (Some(at), Some(_)) = (row.at, row.seen) {
+                self.spots.push(at, index as u32);
+            }
+        }
+        self.spots.sort();
+        for viewer in &self.viewers {
+            let reach = i64::from(viewer.vision.raw).abs();
+            for index in self.spots.around(viewer.from, reach) {
+                let row = &mut self.rows[index as usize];
+                let (Some(at), Some(seen)) = (row.at, row.seen.as_mut()) else {
+                    continue;
+                };
+                if seen.by(viewer.side)
+                    || !viewer.from.within(at, viewer.vision)
+                    || viewer.tier < row.tier
+                {
+                    continue;
+                }
+                if sight_clear(ground, sight_block, viewer.from, viewer.tier, at) {
+                    seen.add(viewer.side);
+                }
+            }
+        }
+    }
+
+    /// Takes what hides away from every side whose true sight does not
+    /// reach it.
+    fn hide(&mut self) {
+        for row in &mut self.rows {
+            if !row.hides {
+                continue;
+            }
+            let (Some(side), Some(at), Some(already)) = (row.team, row.at, row.seen) else {
+                continue;
+            };
+            let mut seen = Visibility::NONE;
+            seen.add(side);
+            for viewer in &self.true_viewers {
+                if viewer.side != side
+                    && already.by(viewer.side)
+                    && viewer.from.within(at, viewer.true_sight)
+                {
+                    seen.add(viewer.side);
+                }
+            }
+            row.seen = Some(seen);
+        }
     }
 }
 

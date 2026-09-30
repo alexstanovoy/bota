@@ -309,12 +309,7 @@ impl World {
         self.target.insert(entity, Target(on));
     }
 
-    /// Leaves a blow for the next tick of resolving to take off somebody.
-    ///
-    /// Lays a blow on the queue for this tick.
-    ///
-    /// A blow is a message rather than a thing standing on the map: it is
-    /// felt and forgotten inside the tick that dealt it.
+    /// Lays a blow on the queue, felt and forgotten inside this tick.
     pub fn push_hit(
         &mut self,
         source: Option<Entity>,
@@ -349,9 +344,6 @@ impl World {
     }
 
     /// Tells an entity what to do, leaving what it is waiting on alone.
-    ///
-    /// The order and the wait before it may be re-aimed live in one component;
-    /// writing that component whole is how the wait gets lost.
     pub fn set_order(&mut self, entity: Entity, order: UnitOrder) {
         match self.orders.get_mut(entity) {
             Some(orders) => orders.current = order,
@@ -368,12 +360,8 @@ impl World {
         }
     }
 
-    /// Puts an entity on a side.
-    ///
-    /// Standing on a side is what makes an entity something sides can see, so
-    /// its row in the sight table is made here and nowhere else. That side has
-    /// it from this moment rather than from the next pass of sight, which
-    /// matters for whatever is stood up mid-tick.
+    /// Puts an entity on a side, and gives it its row of sight, seen by that
+    /// side from this moment. The only place a row of sight is made.
     pub fn set_team(&mut self, entity: Entity, team: Team) {
         self.team.insert(entity, team);
         match self.visibility.get_mut(entity) {
@@ -386,13 +374,9 @@ impl World {
         }
     }
 
-    /// Takes an entity out of the world. False when the handle named nobody
-    /// live.
-    ///
-    /// What sides could see of it is given up here, and so is any
-    /// applied stat change. What it held besides stays where it is; the
-    /// slot's next tenant carries a raised generation, so none of it reads
-    /// back as that tenant's own.
+    /// Takes an entity out of the world, with its row of sight and its applied
+    /// stat changes. False when the handle named nobody live. Its other
+    /// components stay in their tables under the old generation.
     pub fn despawn(&mut self, entity: Entity) -> bool {
         self.visibility.remove(entity);
         self.applied.remove(entity);

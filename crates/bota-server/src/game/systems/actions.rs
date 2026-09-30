@@ -10,11 +10,26 @@
 use bota_proto::{DamageKind, Fixed, ItemSlot, Team, Vec2};
 
 use crate::game::{
-    ActionPhase, ActionState, BEATS_PER_TICK, Chance, Entity, Hit, HitEffect, PendingCast,
+    Action, ActionPhase, ActionState, BEATS_PER_TICK, Chance, Entity, Hit, HitEffect, PendingCast,
     Projectile, Purpose, Ratio, Stats, Target, Visibility, World, ability, attack_gain, beats,
     cross, is_creep, is_structure, rules, wire_id,
 };
 use crate::game::{facing_gap, facing_towards};
+
+/// What one swing deals, rolled when it lands.
+#[derive(Clone, Copy)]
+struct Swing {
+    /// Its physical damage.
+    damage: i32,
+    /// Whether it is a critical strike.
+    crit: bool,
+    /// The magical damage piercing with it, when it pierces.
+    pierce: Option<i32>,
+    /// Physical amplification, in basis points.
+    physical_amp_bp: i32,
+    /// Magical amplification, in basis points.
+    magical_amp_bp: i32,
+}
 
 /// The milliseconds and ticks an ability or an item holds the body for.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -175,202 +190,245 @@ impl World {
     pub fn run_actions(&mut self) {
         let entities = self.take_entity_snapshot();
         for entity in entities.iter().copied() {
-            let took = self.try_pending(entity);
-            let Some(mut action) = self.action.get(entity).copied() else {
-                continue;
-            };
-            // A cast that took the body this tick has run for none of it.
-            let cast_gain = if took { 0 } else { BEATS_PER_TICK };
-            let Some(stats) = self.stats.get(entity).copied() else {
-                continue;
-            };
-            let gain = attack_gain(stats.attack_speed);
-            let len = beats(stats.attack_time);
-            let hit_at = beats(stats.attack_point);
-            let swing_end = beats(stats.attack_backswing);
-            let mut carry = if 0 < action.attack_cooldown && action.attack_cooldown <= gain {
-                gain - action.attack_cooldown
-            } else {
-                0
-            };
-            action.attack_cooldown = action.attack_cooldown.saturating_sub(gain);
-            let held = self.held(entity) || self.feared(entity);
-            // The phase the tick began in is broken off or carried one tick
-            // on. A swing or a cast given up before it lands costs nothing;
-            // an ability that runs on is told when it is broken off.
-            let broken = match action.state {
-                ActionState::Ready => false,
-                ActionState::Attack { target, phase } => match phase {
-                    ActionPhase::Before { progress } => {
-                        if held
-                            || self.target.get(entity).is_none()
-                            || !self.still_worth_swinging_at(entity, target, stats.attack_range)
-                        {
-                            action.state = ActionState::Ready;
-                            action.attack_cooldown = 0;
-                            true
-                        } else {
-                            action.state = ActionState::Attack {
-                                target,
-                                phase: ActionPhase::Before {
-                                    progress: progress + gain,
-                                },
-                            };
-                            false
-                        }
-                    }
-                    ActionPhase::During { progress } => {
-                        action.state = ActionState::Attack {
-                            target,
-                            phase: ActionPhase::During {
-                                progress: progress + gain,
-                            },
-                        };
-                        false
-                    }
-                    ActionPhase::After { progress } => {
-                        action.state = ActionState::Attack {
-                            target,
-                            phase: ActionPhase::After {
-                                progress: progress + gain,
-                            },
-                        };
-                        false
-                    }
-                },
-                ActionState::CastAbility { phase, .. } | ActionState::UseItem { phase, .. } => {
-                    let what = what_of(action.state).expect("a cast names what it casts");
-                    match phase {
-                        ActionPhase::Before { progress } => {
-                            if held {
-                                action.state = ActionState::Ready;
-                                true
-                            } else {
-                                action.state = with_phase(
-                                    action.state,
-                                    ActionPhase::Before {
-                                        progress: progress + cast_gain,
-                                    },
-                                );
-                                false
-                            }
-                        }
-                        ActionPhase::During { progress } => {
-                            if held || !self.call_during(entity, what) {
-                                self.call_cancel(entity, what);
-                                action.state = ActionState::Ready;
-                                true
-                            } else {
-                                action.state = with_phase(
-                                    action.state,
-                                    ActionPhase::During {
-                                        progress: progress + cast_gain,
-                                    },
-                                );
-                                false
-                            }
-                        }
-                        ActionPhase::After { progress } => {
-                            action.state = with_phase(
-                                action.state,
-                                ActionPhase::After {
-                                    progress: progress + cast_gain,
-                                },
-                            );
-                            false
-                        }
-                    }
-                }
-            };
-            if broken {
-                self.action.insert(entity, action);
-                continue;
-            }
-            loop {
-                match action.state {
-                    ActionState::Ready => {
-                        if action.attack_cooldown == 0
-                            && !held
-                            && stats.damage > 0
-                            && let Some(Target(on)) = self.target.get(entity).copied()
-                            && self.may_swing(entity, on, &stats)
-                        {
-                            action.state = ActionState::Attack {
-                                target: on,
-                                phase: ActionPhase::Before { progress: carry },
-                            };
-                            action.attack_cooldown = len.saturating_sub(carry);
-                            carry = carry.saturating_sub(len);
-                            continue;
-                        }
-                        break;
-                    }
-                    ActionState::Attack { target, phase } => match phase {
-                        ActionPhase::Before { progress } => {
-                            let Some(over) = cross(progress, hit_at) else {
-                                break;
-                            };
-                            self.strike(entity, target, &stats);
-                            action.state = ActionState::Attack {
-                                target,
-                                phase: ActionPhase::During { progress: over },
-                            };
-                        }
-                        ActionPhase::During { progress } => {
-                            action.state = ActionState::Attack {
-                                target,
-                                phase: ActionPhase::After { progress },
-                            };
-                        }
-                        ActionPhase::After { progress } => {
-                            if cross(progress, swing_end).is_none() {
-                                break;
-                            }
-                            action.state = ActionState::Ready;
-                        }
-                    },
-                    ActionState::CastAbility { phase, .. } | ActionState::UseItem { phase, .. } => {
-                        let what = what_of(action.state).expect("a cast names what it casts");
-                        let Some(timing) = self.timing_of(entity, what) else {
-                            action.state = ActionState::Ready;
-                            continue;
-                        };
-                        match phase {
-                            ActionPhase::Before { progress } => {
-                                let Some(over) = cross(progress, beats(timing.point)) else {
-                                    break;
-                                };
-                                if !self.begin(entity, what) {
-                                    action.state = ActionState::Ready;
-                                    continue;
-                                }
-                                action.state = with_phase(
-                                    action.state,
-                                    ActionPhase::During { progress: over },
-                                );
-                            }
-                            ActionPhase::During { progress } => {
-                                let mark = timing.duration * BEATS_PER_TICK;
-                                let Some(over) = cross(progress, mark) else {
-                                    break;
-                                };
-                                self.call_complete(entity, what);
-                                action.state =
-                                    with_phase(action.state, ActionPhase::After { progress: over });
-                            }
-                            ActionPhase::After { progress } => {
-                                if cross(progress, beats(timing.backswing)).is_none() {
-                                    break;
-                                }
-                                action.state = ActionState::Ready;
-                            }
-                        }
-                    }
-                }
-            }
-            self.action.insert(entity, action);
+            self.run_action(entity);
         }
         self.recycle_entity_snapshot(entities);
+    }
+
+    /// Runs one entity's action one tick on: the phase the tick began in is
+    /// broken off or carried on, and what comes due after it is done.
+    fn run_action(&mut self, entity: Entity) {
+        let took = self.try_pending(entity);
+        let Some(mut action) = self.action.get(entity).copied() else {
+            return;
+        };
+        let Some(stats) = self.stats.get(entity).copied() else {
+            return;
+        };
+        let gain = attack_gain(stats.attack_speed);
+        let carry = if 0 < action.attack_cooldown && action.attack_cooldown <= gain {
+            gain - action.attack_cooldown
+        } else {
+            0
+        };
+        action.attack_cooldown = action.attack_cooldown.saturating_sub(gain);
+        let held = self.held(entity) || self.feared(entity);
+        // A cast that took the body this tick has run for none of it.
+        let cast_gain = if took { 0 } else { BEATS_PER_TICK };
+        let broken = match action.state {
+            ActionState::Ready => false,
+            ActionState::Attack { target, phase } => {
+                self.carry_swing_on(entity, &mut action, target, phase, &stats, held)
+            }
+            ActionState::CastAbility { phase, .. } | ActionState::UseItem { phase, .. } => {
+                self.carry_cast_on(entity, &mut action, phase, cast_gain, held)
+            }
+        };
+        if !broken {
+            self.come_due(entity, &mut action, &stats, carry, held);
+        }
+        self.action.insert(entity, action);
+    }
+
+    /// Carries a swing one tick on, or breaks it off before it lands when
+    /// the swinger is held, set on nobody, or no longer worth swinging at
+    /// what it began on. A swing given up costs nothing. Answers whether it
+    /// was broken off.
+    fn carry_swing_on(
+        &mut self,
+        entity: Entity,
+        action: &mut Action,
+        target: Entity,
+        phase: ActionPhase,
+        stats: &Stats,
+        held: bool,
+    ) -> bool {
+        let gain = attack_gain(stats.attack_speed);
+        let phase = match phase {
+            ActionPhase::Before { progress } => {
+                if held
+                    || self.target.get(entity).is_none()
+                    || !self.still_worth_swinging_at(entity, target, stats.attack_range)
+                {
+                    action.state = ActionState::Ready;
+                    action.attack_cooldown = 0;
+                    return true;
+                }
+                ActionPhase::Before {
+                    progress: progress + gain,
+                }
+            }
+            ActionPhase::During { progress } => ActionPhase::During {
+                progress: progress + gain,
+            },
+            ActionPhase::After { progress } => ActionPhase::After {
+                progress: progress + gain,
+            },
+        };
+        action.state = ActionState::Attack { target, phase };
+        false
+    }
+
+    /// Carries a cast one tick on, or breaks it off: before it goes off when
+    /// the caster is held, while it runs on when the caster is held or the
+    /// ability says so, which the ability is told. Answers whether it was
+    /// broken off.
+    fn carry_cast_on(
+        &mut self,
+        entity: Entity,
+        action: &mut Action,
+        phase: ActionPhase,
+        cast_gain: u32,
+        held: bool,
+    ) -> bool {
+        let what = what_of(action.state).expect("a cast names what it casts");
+        let phase = match phase {
+            ActionPhase::Before { progress } => {
+                if held {
+                    action.state = ActionState::Ready;
+                    return true;
+                }
+                ActionPhase::Before {
+                    progress: progress + cast_gain,
+                }
+            }
+            ActionPhase::During { progress } => {
+                if held || !self.call_during(entity, what) {
+                    self.call_cancel(entity, what);
+                    action.state = ActionState::Ready;
+                    return true;
+                }
+                ActionPhase::During {
+                    progress: progress + cast_gain,
+                }
+            }
+            ActionPhase::After { progress } => ActionPhase::After {
+                progress: progress + cast_gain,
+            },
+        };
+        action.state = with_phase(action.state, phase);
+        false
+    }
+
+    /// Does whatever of an action has come due this tick: a swing begun
+    /// when ready and set on something to swing at, a blow struck at the
+    /// attack point, a cast gone off at its cast point and completed after
+    /// its duration, and a recovery run out.
+    fn come_due(
+        &mut self,
+        entity: Entity,
+        action: &mut Action,
+        stats: &Stats,
+        mut carry: u32,
+        held: bool,
+    ) {
+        let len = beats(stats.attack_time);
+        loop {
+            match action.state {
+                ActionState::Ready => {
+                    if action.attack_cooldown == 0
+                        && !held
+                        && stats.damage > 0
+                        && let Some(Target(on)) = self.target.get(entity).copied()
+                        && self.may_swing(entity, on, stats)
+                    {
+                        action.state = ActionState::Attack {
+                            target: on,
+                            phase: ActionPhase::Before { progress: carry },
+                        };
+                        action.attack_cooldown = len.saturating_sub(carry);
+                        carry = carry.saturating_sub(len);
+                        continue;
+                    }
+                    return;
+                }
+                ActionState::Attack { target, phase } => {
+                    if !self.swing_due(entity, action, target, phase, stats) {
+                        return;
+                    }
+                }
+                ActionState::CastAbility { phase, .. } | ActionState::UseItem { phase, .. } => {
+                    if !self.cast_due(entity, action, phase) {
+                        return;
+                    }
+                }
+            }
+        }
+    }
+
+    /// Moves a swing on to its next phase if it has come due, striking at
+    /// the attack point. Answers whether it moved on.
+    fn swing_due(
+        &mut self,
+        entity: Entity,
+        action: &mut Action,
+        target: Entity,
+        phase: ActionPhase,
+        stats: &Stats,
+    ) -> bool {
+        match phase {
+            ActionPhase::Before { progress } => {
+                let Some(over) = cross(progress, beats(stats.attack_point)) else {
+                    return false;
+                };
+                self.strike(entity, target, stats);
+                action.state = ActionState::Attack {
+                    target,
+                    phase: ActionPhase::During { progress: over },
+                };
+            }
+            ActionPhase::During { progress } => {
+                action.state = ActionState::Attack {
+                    target,
+                    phase: ActionPhase::After { progress },
+                };
+            }
+            ActionPhase::After { progress } => {
+                if cross(progress, beats(stats.attack_backswing)).is_none() {
+                    return false;
+                }
+                action.state = ActionState::Ready;
+            }
+        }
+        true
+    }
+
+    /// Moves a cast on to its next phase if it has come due: going off at
+    /// its cast point, completing after its duration, readying after its
+    /// recovery. One that has no timing, or fails to go off, is given up.
+    /// Answers whether it moved on.
+    fn cast_due(&mut self, entity: Entity, action: &mut Action, phase: ActionPhase) -> bool {
+        let what = what_of(action.state).expect("a cast names what it casts");
+        let Some(timing) = self.timing_of(entity, what) else {
+            action.state = ActionState::Ready;
+            return true;
+        };
+        match phase {
+            ActionPhase::Before { progress } => {
+                let Some(over) = cross(progress, beats(timing.point)) else {
+                    return false;
+                };
+                action.state = if self.begin(entity, what) {
+                    with_phase(action.state, ActionPhase::During { progress: over })
+                } else {
+                    ActionState::Ready
+                };
+            }
+            ActionPhase::During { progress } => {
+                let Some(over) = cross(progress, timing.duration * BEATS_PER_TICK) else {
+                    return false;
+                };
+                self.call_complete(entity, what);
+                action.state = with_phase(action.state, ActionPhase::After { progress: over });
+            }
+            ActionPhase::After { progress } => {
+                if cross(progress, beats(timing.backswing)).is_none() {
+                    return false;
+                }
+                action.state = ActionState::Ready;
+            }
+        }
+        true
     }
 
     /// Starts the cast an entity was ordered to make, once it is in reach.
@@ -539,7 +597,6 @@ impl World {
 
     /// Leaves what a swing that came due turns into.
     fn strike(&mut self, attacker: Entity, on: Entity, stats: &Stats) {
-        let side = self.team.get(attacker).copied().unwrap_or(Team::Neutral);
         // What is carried against creeps is worth nothing against anything else.
         let damage = stats.damage
             + if self.kind.get(on).copied().is_some_and(is_creep) {
@@ -551,69 +608,89 @@ impl World {
             Some(pct) => (damage * pct / 100, true),
             None => (damage, false),
         };
-        let pierce = self.roll_pierce(attacker, on, stats);
-        let physical_amp_bp = stats.damage_amp_bp(DamageKind::Physical);
-        let magical_amp_bp = stats.damage_amp_bp(DamageKind::Magical);
+        let swing = Swing {
+            damage,
+            crit,
+            pierce: self.roll_pierce(attacker, on, stats),
+            physical_amp_bp: stats.damage_amp_bp(DamageKind::Physical),
+            magical_amp_bp: stats.damage_amp_bp(DamageKind::Magical),
+        };
         match stats.projectile_speed {
-            None => {
-                self.hits.push_back(Hit {
-                    source: Some(attacker),
-                    target: on,
-                    amount: damage,
-                    kind: DamageKind::Physical,
-                    damage_amp_bp: physical_amp_bp,
-                    crit,
-                    attack: true,
-                    pierces: pierce.is_some(),
-                    effect: HitEffect::None,
-                });
-                if let Some(bonus) = pierce {
-                    self.hits.push_back(Hit {
-                        source: Some(attacker),
-                        target: on,
-                        amount: bonus,
-                        kind: DamageKind::Magical,
-                        damage_amp_bp: magical_amp_bp,
-                        crit: false,
-                        attack: false,
-                        pierces: false,
-                        effect: HitEffect::None,
-                    });
-                }
-            }
-            Some(speed) => {
-                let Some(at) = self.transform.get(attacker).copied() else {
-                    return;
-                };
-                let missile = self.spawn();
-                self.transform.insert(missile, at);
-                self.team.insert(missile, side);
-                let mut seen = Visibility::NONE;
-                seen.add(side);
-                self.visibility.insert(missile, seen);
-                self.projectile.insert(
-                    missile,
-                    Projectile {
-                        speed,
-                        source: Some(attacker),
-                        target: on,
-                        damage,
-                        kind: DamageKind::Physical,
-                        damage_amp_bp: physical_amp_bp,
-                        ability: None,
-                        launch_tier: self.ground.tier(at.pos),
-                        can_miss_uphill: !stats.flies,
-                        crit,
-                        pierces: pierce.is_some(),
-                        pierce_damage: pierce.unwrap_or(0),
-                        pierce_amp_bp: magical_amp_bp,
-                        bounces_left: 0,
-                        bounce_range: 0,
-                        bounced: Vec::new(),
-                    },
-                );
-            }
+            None => self.strike_home(attacker, on, swing),
+            Some(speed) => self.throw_at(attacker, on, swing, speed, !stats.flies),
         }
+    }
+
+    /// A melee swing's blows, laid where the target stands: the swing
+    /// itself, and the magical pierce riding with it.
+    fn strike_home(&mut self, attacker: Entity, on: Entity, swing: Swing) {
+        self.hits.push_back(Hit {
+            source: Some(attacker),
+            target: on,
+            amount: swing.damage,
+            kind: DamageKind::Physical,
+            damage_amp_bp: swing.physical_amp_bp,
+            crit: swing.crit,
+            attack: true,
+            pierces: swing.pierce.is_some(),
+            effect: HitEffect::None,
+        });
+        if let Some(bonus) = swing.pierce {
+            self.hits.push_back(Hit {
+                source: Some(attacker),
+                target: on,
+                amount: bonus,
+                kind: DamageKind::Magical,
+                damage_amp_bp: swing.magical_amp_bp,
+                crit: false,
+                attack: false,
+                pierces: false,
+                effect: HitEffect::None,
+            });
+        }
+    }
+
+    /// A ranged swing's missile, thrown from where the attacker stands and
+    /// seen by its side from the throw.
+    fn throw_at(
+        &mut self,
+        attacker: Entity,
+        on: Entity,
+        swing: Swing,
+        speed: Fixed,
+        can_miss_uphill: bool,
+    ) {
+        let Some(at) = self.transform.get(attacker).copied() else {
+            return;
+        };
+        let side = self.team.get(attacker).copied().unwrap_or(Team::Neutral);
+        let missile = self.spawn();
+        self.transform.insert(missile, at);
+        self.team.insert(missile, side);
+        let mut seen = Visibility::NONE;
+        seen.add(side);
+        self.visibility.insert(missile, seen);
+        self.projectile.insert(
+            missile,
+            Projectile {
+                speed,
+                source: Some(attacker),
+                target: on,
+                damage: swing.damage,
+                kind: DamageKind::Physical,
+                damage_amp_bp: swing.physical_amp_bp,
+                ability: None,
+                launch_tier: self.ground.tier(at.pos),
+                can_miss_uphill,
+                crit: swing.crit,
+                pierces: swing.pierce.is_some(),
+                pierce_damage: swing.pierce.unwrap_or(0),
+                pierce_amp_bp: swing.magical_amp_bp,
+                bounces_left: 0,
+                bounce_range: 0,
+                bounced: Vec::new(),
+            },
+        );
     }
 
     /// Whether a swing is a critical strike, and then what it is worth as a

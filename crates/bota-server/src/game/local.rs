@@ -173,6 +173,55 @@ impl LocalScratch {
     pub fn new() -> LocalScratch {
         LocalScratch::default()
     }
+
+    /// Forgets the last search and works out what every stretch tried in
+    /// the next one reads: where each body stands after each tick of the
+    /// horizon, how near it may come, and the offsets of every heading.
+    fn prepare(&mut self, bodies: &[Foreseen], ask: &LocalAsk) {
+        self.nodes.clear();
+        self.trail.clear();
+        self.heap.clear();
+        self.seen.clear();
+        self.need.clear();
+        self.reach.clear();
+        self.moving = false;
+        self.foreseen.clear();
+        for body in bodies {
+            let apart = ask.from.distance_squared(body.at);
+            let need = (ask.radius + body.radius).squared_raw();
+            // A body it already overlaps stops only a step deeper into it.
+            let need = need.min(apart);
+            self.need.push(need);
+            // Where the body stands after each tick of the horizon: the same
+            // answer for every stretch tried, so it is worked out once.
+            for step in 1..=HORIZON {
+                self.foreseen.push(body.at_tick(ask.now, ask.now + step));
+            }
+            self.reach.push(body.reach(ask.now) + isqrt64(need));
+            self.moving |= body.moves();
+        }
+        debug_assert_eq!(self.foreseen.len(), bodies.len() * HORIZON as usize);
+        if self.offsets_step != Some(ask.step.raw) {
+            self.offsets.clear();
+            for heading in 0..HEADINGS {
+                let angle = Angle {
+                    brads: (heading * HEADING_BRADS) as u16,
+                };
+                let towards = heading_of(angle);
+                for k in 1..=PRIM {
+                    self.offsets.push(point_along(
+                        Vec2::ZERO,
+                        towards,
+                        Fixed {
+                            raw: ask.step.raw.saturating_mul(k as i32),
+                        },
+                    ));
+                }
+            }
+            debug_assert_eq!(self.offsets.len(), HEADINGS as usize * PRIM as usize);
+            self.offsets_step = Some(ask.step.raw);
+        }
+    }
 }
 
 /// Where the body stands after each tick of the best stretch found, and
@@ -188,49 +237,7 @@ pub fn plan_local(
     if ask.step.raw <= 0 || ask.from.within(ask.goal, ask.arrive) {
         return (Vec::new(), true);
     }
-    scratch.nodes.clear();
-    scratch.trail.clear();
-    scratch.heap.clear();
-    scratch.seen.clear();
-    scratch.need.clear();
-    scratch.reach.clear();
-    scratch.moving = false;
-    scratch.foreseen.clear();
-    for body in bodies {
-        let apart = ask.from.distance_squared(body.at);
-        let need = (ask.radius + body.radius).squared_raw();
-        // A body it already overlaps stops only a step deeper into it.
-        let need = need.min(apart);
-        scratch.need.push(need);
-        // Where the body stands after each tick of the horizon: the same
-        // answer for every stretch tried, so it is worked out once.
-        for step in 1..=HORIZON {
-            scratch.foreseen.push(body.at_tick(ask.now, ask.now + step));
-        }
-        scratch.reach.push(body.reach(ask.now) + isqrt64(need));
-        scratch.moving |= body.moves();
-    }
-    debug_assert_eq!(scratch.foreseen.len(), bodies.len() * HORIZON as usize);
-    if scratch.offsets_step != Some(ask.step.raw) {
-        scratch.offsets.clear();
-        for heading in 0..HEADINGS {
-            let angle = Angle {
-                brads: (heading * HEADING_BRADS) as u16,
-            };
-            let towards = heading_of(angle);
-            for k in 1..=PRIM {
-                scratch.offsets.push(point_along(
-                    Vec2::ZERO,
-                    towards,
-                    Fixed {
-                        raw: ask.step.raw.saturating_mul(k as i32),
-                    },
-                ));
-            }
-        }
-        debug_assert_eq!(scratch.offsets.len(), HEADINGS as usize * PRIM as usize);
-        scratch.offsets_step = Some(ask.step.raw);
-    }
+    scratch.prepare(bodies, ask);
     let (far, left) = goal_gap(ask, ask.from);
     let start = Node {
         pos: ask.from,
