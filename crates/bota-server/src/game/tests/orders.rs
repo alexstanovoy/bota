@@ -726,8 +726,8 @@ fn walking_at_an_ally_stops_where_the_bodies_meet() {
         last.within(theirs, hulls + rules::units(rules::STEER_MARGIN * 2)),
         "it comes right up to what it was pointed at"
     );
-    // Once it has arrived it stays arrived: what used to happen is that it
-    // pressed into the body, was eased out, and walked in again for ever.
+    // Once it has arrived it stays arrived, not pressing into the body and
+    // being eased out over and over.
     let settled = &seen[seen.len() - 60..];
     let drift = settled
         .iter()

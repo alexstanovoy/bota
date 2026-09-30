@@ -579,7 +579,7 @@ fn a_courier_sent_for_the_stash_carries_on_what_it_already_holds() {
     let home = crate::game::fountain_pos(world.map, bota_proto::Team::Radiant);
     world.transform.get_mut(hero).expect("standing").pos =
         home + bota_proto::Vec2::from_ints(2500, 0);
-    // The stash is empty, so the old answer was to fly home with the goods.
+    // The stash is empty, and the goods still go to the hero, not home.
     assert!(world.courier_take_stash(courier));
     for _ in 0..600 {
         world.step();

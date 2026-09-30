@@ -73,8 +73,8 @@ fn tick_loop(c: &mut Criterion) {
     group.finish();
 }
 
-/// Measures the tick as the trainer drives it: a Map2 skirmish advanced and
-/// seen by both sides every tick.
+/// Measures the trainer-like tick: a Map2 skirmish advanced and seen by both
+/// sides every tick.
 fn trainer(c: &mut Criterion) {
     check_skirmish();
     let mut group = c.benchmark_group("trainer");

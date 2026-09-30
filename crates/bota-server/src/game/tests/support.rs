@@ -6,8 +6,7 @@ use crate::game::{
 };
 use bota_proto::{Attributes, Fixed, Team};
 
-/// A stat block with every field named, so a new one has to be thought about
-/// here before any test compiles again.
+/// A stat block with every field named.
 pub(super) fn stats() -> Stats {
     Stats {
         max_hp: Fixed::from_int(20),
@@ -54,7 +53,7 @@ pub(super) fn health(hp: i32) -> Health {
     }
 }
 
-/// A creep with nothing done to it.
+/// A bare melee creep: its def, zero health and no modifiers, nothing else.
 pub(super) fn plain_creep(world: &mut World) -> Entity {
     let creep = world.spawn();
     world.def.insert(creep, Def(&MELEE_CREEP));
@@ -155,7 +154,7 @@ pub(super) fn world_with_projectile_uphill_state(launch_tier: u8, can_miss_uphil
     world
 }
 
-/// A lane creep on clear ground with a mind of its own.
+/// A Radiant melee creep with a lane mind of its own.
 pub(super) fn thinking_creep(world: &mut World, at: bota_proto::Vec2) -> Entity {
     let creep = world.spawn_unit(&MELEE_CREEP, bota_proto::Team::Radiant, at);
     world.lane_ai.insert(
@@ -190,7 +189,7 @@ pub(super) fn caster(world: &mut World, at: bota_proto::Vec2, slot: usize) -> En
     hero
 }
 
-/// Runs one tick of the attack cycle and nothing else.
+/// Runs the actions pass once, and nothing else of the tick.
 pub(super) fn swing_once(world: &mut World) {
     world.run_actions();
 }
@@ -217,12 +216,13 @@ pub(super) fn recovering(world: &World, entity: Entity) -> bool {
     )
 }
 
-/// The tick a span of milliseconds is crossed on at the base attack speed.
+/// Ticks a span of milliseconds takes, rounded up.
 pub(super) fn ticks_of(ms: u32) -> u32 {
     (ms * rules::TICKS_PER_SECOND).div_ceil(1000)
 }
 
-/// An attacker and its mark, standing where they are put and nothing else.
+/// A Radiant melee creep and a Dire one `gap` east of it, settled and
+/// nothing else.
 pub(super) fn duel(gap: i32) -> (World, Entity, Entity) {
     let mut world = World::new();
     let at = bota_proto::Vec2::from_ints(5000, 5000);
@@ -236,7 +236,8 @@ pub(super) fn duel(gap: i32) -> (World, Entity, Entity) {
     (world, attacker, mark)
 }
 
-/// A seated hero ordered at an enemy standing in plain sight `apart` away.
+/// A seated hero one tick after being ordered to attack a Dire creep
+/// `apart` east of it.
 pub(super) fn hero_ordered_at_an_enemy(apart: i32) -> (World, Entity, Entity) {
     let mut world = World::new();
     let hero = world.spawn_hero(
@@ -269,7 +270,7 @@ pub(super) fn hero_ordered_at_an_enemy(apart: i32) -> (World, Entity, Entity) {
     (world, hero, mark)
 }
 
-/// The same seat and enemy, with a follow order in place of the attack.
+/// The same seat and enemy, one tick after a move order at the enemy.
 pub(super) fn hero_following_an_enemy(apart: i32) -> (World, Entity, Entity) {
     let (mut world, hero, mark) = hero_ordered_at_an_enemy(apart);
     world.advance(&[crate::game::Command {
@@ -282,7 +283,7 @@ pub(super) fn hero_following_an_enemy(apart: i32) -> (World, Entity, Entity) {
     (world, hero, mark)
 }
 
-/// A hero, an enemy standing in its way, and the order it was given.
+/// A seated hero holding `order`, and a Dire creep 400 east of it.
 pub(super) fn hero_past_an_enemy(order: crate::game::UnitOrder) -> (World, Entity, Entity) {
     let mut world = World::new();
     world.seats.push(crate::game::Seat::new(
@@ -344,11 +345,9 @@ pub(super) fn hero_and_own_creep() -> (World, Entity, Entity) {
     (world, hero, own)
 }
 
-/// A hero of one side, a creep of the other with a mind of its own, one of the
-/// hero's own creeps for that creep to prefer, and an enemy hero to point at.
-///
-/// The enemy creep stands `apart` from the hero. Only an order at the enemy
-/// hero calls creeps on, so that is what the pull tests click.
+/// A standing Radiant hero, a Dire lane creep `apart` east of it, a Radiant
+/// creep beside that creep, and a standing Dire hero to aim orders at; one
+/// tick has run.
 pub(super) fn a_lane_with_a_hero(apart: i32) -> (World, Entity, Entity, Entity, Entity) {
     let mut world = World::new();
     world.seats.push(crate::game::Seat::new(
@@ -365,22 +364,19 @@ pub(super) fn a_lane_with_a_hero(apart: i32) -> (World, Entity, Entity, Entity, 
         bota_proto::HeroId(0),
     );
     world.seats[0].unit = Some(hero);
-    // Standing, so it takes nothing on of its own and is no threat to anybody
-    // until it is told to be.
+    // Standing, so it takes nothing on of its own.
     world.set_order(hero, crate::game::UnitOrder::Stand);
     let theirs = thinking_creep_of(
         &mut world,
         Team::Dire,
         bota_proto::Vec2::from_ints(5000 + apart, 5000),
     );
-    // One of the hero's own, standing right by the enemy creep, which is what
-    // that creep would rather be fighting.
     let ours = world.spawn_unit(
         &MELEE_CREEP,
         Team::Radiant,
         bota_proto::Vec2::from_ints(5000 + apart + 60, 5000),
     );
-    // Somebody worth pointing at: a last hit on a creep moves nobody.
+    // Only an order at an enemy hero calls creeps on.
     let foe = world.spawn_hero(
         Team::Dire,
         bota_proto::Vec2::from_ints(5000 + apart + 200, 5000),
@@ -409,7 +405,7 @@ pub(super) fn thinking_creep_of(world: &mut World, team: Team, at: bota_proto::V
     creep
 }
 
-/// The order a player gives by clicking attack on somebody.
+/// Seat 0 clicks attack on somebody, and the world advances one tick.
 pub(super) fn attack_click(world: &mut World, on: Entity) {
     world.advance(&[crate::game::Command {
         slot: bota_proto::SlotId(0),
@@ -420,7 +416,7 @@ pub(super) fn attack_click(world: &mut World, on: Entity) {
     }]);
 }
 
-/// How far apart two entities stand, along the lane.
+/// How far apart two entities stand along x, in whole units.
 pub(super) fn gap_along_lane(world: &World, one: Entity, other: Entity) -> i32 {
     let at = |entity| {
         world
@@ -467,7 +463,8 @@ pub(super) const INSPIRED_EFFECT: crate::game::ModifierKind = crate::game::Modif
     hp_per_second: rules::FLAGBEARER_AURA_REGEN,
 };
 
-/// A match world with one hero standing at its own shop, an item in its stash.
+/// A match world with its one hero beside its fountain and boots in the
+/// first stash slot.
 pub(super) fn a_hero_at_the_shop() -> (World, Entity, bota_proto::ItemId) {
     let mut world = World::for_match(&config(), config().rng());
     let hero = world.seats[0].unit.expect("stood up");
@@ -486,8 +483,8 @@ pub(super) fn a_hero_at_the_shop() -> (World, Entity, bota_proto::ItemId) {
     (world, hero, boots)
 }
 
-/// Walkable ground out in the open: nothing standing near it, and the
-/// ground clear for a short walk in every direction it is put to.
+/// A spot with nothing standing within 800 units, and hero-sized room from
+/// 100 west to 700 east of it, 200 either side.
 pub(super) fn an_empty_spot(world: &World) -> bota_proto::Vec2 {
     for row in 0..16 {
         for step in 0..60 {
@@ -514,7 +511,8 @@ pub(super) fn an_empty_spot(world: &World) -> bota_proto::Vec2 {
     panic!("the map has room somewhere")
 }
 
-/// A hero out in the lane with a scroll in its first slot.
+/// A match hero moved to [`an_empty_spot`] with a town portal scroll in its
+/// first slot, one tick on.
 pub(super) fn a_hero_with_a_scroll() -> (World, Entity) {
     let mut world = World::for_match(&config(), config().rng());
     let hero = world.seats[0].unit.expect("stood up");
@@ -536,7 +534,8 @@ pub(super) fn a_hero_with_a_scroll() -> (World, Entity) {
     (world, hero)
 }
 
-/// Where the scroll is aimed: beside a tower of one's own.
+/// 300 east of the first Radiant tower, or 300 west when east is not
+/// walkable.
 pub(super) fn beside_own_tower(world: &World) -> bota_proto::Vec2 {
     let tower = world
         .entities
@@ -555,7 +554,8 @@ pub(super) fn beside_own_tower(world: &World) -> bota_proto::Vec2 {
     }
 }
 
-/// A hero out in the open with one ward of a kind in its first slot.
+/// A match hero moved to [`an_empty_spot`] with one charge of `item` in its
+/// first slot, one tick on.
 pub(super) fn a_hero_with_a_ward(item: u16) -> (World, Entity, bota_proto::Vec2) {
     let mut world = World::for_match(&config(), config().rng());
     let hero = world.seats[0].unit.expect("stood up");
@@ -688,7 +688,7 @@ pub(super) fn one_swing_takes(world: &mut World, from: Entity, on: Entity) -> i3
     panic!("the swing never landed")
 }
 
-/// Puts an effect on a unit for a while.
+/// Puts an effect with no source on a unit for `ticks` ticks.
 pub(super) fn put_on(
     world: &mut World,
     entity: Entity,
@@ -705,8 +705,8 @@ pub(super) fn put_on(
     );
 }
 
-/// Pudge standing in the open with his hook learned, and an enemy creep a
-/// way off in front of him.
+/// Pudge with his hook learned and a Dire creep `apart` east of him, one
+/// tick on.
 pub(super) fn pudge_and_a_mark(apart: i32) -> (World, Entity, Entity) {
     let mut world = World::new();
     let pudge = world.spawn_hero(
@@ -805,7 +805,8 @@ pub(super) fn a_camp_at(world: &mut World, at: bota_proto::Vec2) -> Vec<Entity> 
     beasts
 }
 
-/// Sends the bolt at somebody the way a player does.
+/// Casts seat 0's third ability (Sylla's bounce) at somebody, the way a
+/// player does.
 pub(super) fn cast_at(world: &mut World, mark: Entity) {
     world.advance(&[crate::game::Command {
         slot: bota_proto::SlotId(0),
@@ -817,7 +818,7 @@ pub(super) fn cast_at(world: &mut World, mark: Entity) {
     }]);
 }
 
-/// The courier of the first seat, while one stands.
+/// The first seat's courier; panics when it has none.
 pub(super) fn the_courier(world: &World) -> Entity {
     world.seats[0].courier.expect("a seat has a courier")
 }
@@ -846,14 +847,14 @@ pub(super) fn courier_on_delivery() -> (World, Entity, Entity) {
     (world, hero, courier)
 }
 
-/// A hero of the plain kind, standing at its own shop with gold in hand.
+/// A match hero of the plain kind beside its fountain, its seat holding
+/// `gold`, one tick on.
 pub(super) fn a_hero_with_gold(gold: i32) -> (World, Entity) {
     let mut world = World::for_match(&config(), config().rng());
     let hero = world.seats[0].unit.expect("stood up");
     world.seats[0].gold = gold;
     world.settle();
-    // A tick past settling, so what the fountain hands out is already on and
-    // does not read as a change of its own.
+    // A tick past settling, so the fountain's effect is already on.
     world.step();
     (world, hero)
 }
@@ -945,8 +946,8 @@ pub(super) fn stand_a_wall(world: &mut World, at: bota_proto::Vec2, radius: Fixe
     world.clearance.set_circles(circles);
 }
 
-/// Shadow Fiend at the middle of the map, facing east, with a creep `apart`
-/// to the east of him and his whole kit learned to its first level.
+/// Shadow Fiend at (5000, 5000), facing east, with his whole kit at level
+/// one and a Dire creep `apart` east of him, one tick on.
 pub(super) fn fiend_and_a_mark(apart: i32) -> (World, Entity, Entity) {
     let mut world = World::new();
     let fiend = world.spawn_hero(
@@ -1001,7 +1002,7 @@ pub(super) fn a_creep_at(
     creep
 }
 
-/// Lays a count of souls on a hero the way killing for them would.
+/// Sets a hero's soul count.
 pub(super) fn hand_souls(world: &mut World, hero: Entity, many: u32) {
     let mut kept = world.stacks.get(hero).copied().unwrap_or_default();
     kept.set(crate::game::StackKind::Souls, many);

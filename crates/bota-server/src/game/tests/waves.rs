@@ -22,8 +22,6 @@ fn a_wave_carries_one_flag_from_the_fifth_wave_on() {
     assert_eq!(flags, 2 * usize::from(map.lanes), "one a lane a side");
 }
 
-/// The rule this guards: a creep that left its route, chasing or pushed,
-/// is sent on to the route ahead of it, never back to where it left.
 #[test]
 fn a_creep_off_its_route_rejoins_it_ahead_and_never_walks_back() {
     let map = crate::game::map_of(bota_proto::MapId(1));
@@ -103,9 +101,6 @@ fn a_creep_is_sent_one_way_at_a_time() {
     );
 }
 
-/// The bug this guards against: a waypoint that routes a wave around its own
-/// tower was cleared straight through the tower, and one Radiant mid creep of
-/// every wave spent fifteen seconds wrestling its own tier three.
 #[test]
 fn no_creep_of_the_first_waves_is_left_wrestling_its_own_base() {
     let cfg = crate::game::MatchConfig {
@@ -175,9 +170,6 @@ fn no_creep_of_the_first_waves_is_left_wrestling_its_own_base() {
     }
 }
 
-/// The bug this guards against: the lane routes were laid once with every
-/// tower's footprint in them, and a wave kept walking round the ground a
-/// fallen tower had stood on.
 #[test]
 fn a_wave_walks_over_where_its_tower_stood_once_it_has_fallen() {
     let cfg = crate::game::MatchConfig {
@@ -425,9 +417,7 @@ fn the_demo_waves_march_out_and_meet_between_the_towers() {
     assert_eq!(world.victor(), None, "no tower or hero has fallen enough");
 }
 
-/// The bug this guards against: the demo lane was drawn through the towers
-/// the way the big map's lanes are, and every wave hooked around its own
-/// tower instead of walking the road past it.
+/// No waypoint of the demo lanes falls inside a tower's footprint.
 #[test]
 fn the_demo_waves_walk_the_road_and_not_through_their_towers() {
     let map = crate::game::map_of(bota_proto::MapId(1));
@@ -455,12 +445,8 @@ fn the_demo_waves_walk_the_road_and_not_through_their_towers() {
     }
 }
 
-/// The bug this guards against: on lanes whose spawner stands ahead of its
-/// own rearmost tower, the route began behind the wave, and every fresh
-/// wave walked back to its own tower before turning around.
-///
-/// Going round a tower's footprint gives back a little of the way along
-/// the lane; walking back further than that footprint is walking back.
+/// Giving back up to a tower's footprint plus the widest marcher counts as
+/// going round a tower, not walking back.
 #[test]
 fn no_route_on_any_map_walks_a_wave_backwards() {
     let slack = i64::from(

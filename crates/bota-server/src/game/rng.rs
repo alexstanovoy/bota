@@ -1,16 +1,10 @@
-//! Hidden randomness.
-//!
-//! Nothing here ever reaches a participant. A client that could read a stream
-//! position could name the tick of the next critical strike.
+//! Hidden randomness. Nothing here ever reaches a participant.
 
 use bota_proto::EntityId;
 use rand_chacha::ChaCha8Rng;
 use rand_chacha::rand_core::{Rng as _, SeedableRng};
 
-/// What a stream feeds.
-///
-/// Streams are kept apart by purpose so that adding a draw in one place does not
-/// shift the sequence anywhere else.
+/// What a stream feeds. Each purpose draws from a stream of its own.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(u16)]
 pub enum Purpose {
@@ -18,11 +12,11 @@ pub enum Purpose {
     Crit = 0,
     /// Damage block ordering.
     Block = 1,
-    /// Evasion ordering.
+    /// Evasion and uphill-miss ordering.
     Evasion = 2,
     /// Which rune spawns.
     Rune = 3,
-    /// Scatter of neutral camp spawns.
+    /// Which roster a neutral camp puts out.
     NeutralSpawn = 4,
     /// Which melee creep of a wave carries the flag.
     Wave = 5,
@@ -32,10 +26,8 @@ pub enum Purpose {
 
 const PURPOSE_COUNT: usize = Purpose::Pierce as usize + 1;
 
-/// The root of all hidden randomness in one match.
-///
-/// Reproducible from the pair of a server key and a match id, which is what
-/// makes a reported match replayable without storing anything secret.
+/// The root of all hidden randomness in one match, reproducible from the
+/// pair of a server key and a match id.
 #[derive(Clone, Debug)]
 pub struct MatchRng {
     seed: [u8; 32],
@@ -60,12 +52,10 @@ impl MatchRng {
         &mut self.global[purpose as usize]
     }
 
-    /// A stream that belongs to one unit and one of its sources of chance.
-    ///
-    /// `source` separates several sources on the same unit, such as a crit
-    /// passive and a bash. Streams are keyed by slot index rather than by whole
-    /// [`EntityId`], so a unit that takes over a freed slot continues the
-    /// sequence rather than restarting it.
+    /// A fresh stream that belongs to one unit and one of its sources of
+    /// chance. `source` separates several sources on the same unit. Keyed by
+    /// the slot index, not the generation: every occupant of a slot gets the
+    /// same stream.
     pub fn for_unit(&self, purpose: Purpose, unit: EntityId, source: u8) -> Stream {
         self.open(
             ((purpose as u64) << PURPOSE_SHIFT) | ((unit.idx as u64) << UNIT_SHIFT) | source as u64,
@@ -119,8 +109,7 @@ impl Stream {
     /// Panics when `n` is zero.
     pub fn below(&mut self, n: u32) -> u32 {
         assert!(n > 0, "below(0) has no answer");
-        // Reject the tail that would make low values more likely. Rejection
-        // consumes from the stream, so it stays reproducible.
+        // Reject the tail that would make low values more likely.
         let zone = ((1u64 << 32) / n as u64) * n as u64;
         loop {
             let v = self.next_u32() as u64;
@@ -170,10 +159,7 @@ impl PseudoRandom25 {
     }
 }
 
-/// An exact rate, written as a fraction of attempts.
-///
-/// Balance constants are fractions rather than percentages because the rate is
-/// honoured exactly: `Ratio::new(3, 10)` hits three times in every ten
+/// An exact rate: `Ratio::new(3, 10)` hits three times in every ten
 /// attempts, not three times on average.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct Ratio {
@@ -225,11 +211,9 @@ impl Default for Ratio {
 
 /// A source of chance that honours its [`Ratio`] exactly while hiding its order.
 ///
-/// Every block of `den` attempts contains exactly `num` hits. Which attempts
-/// those are comes from a hidden stream, so watching past outcomes says nothing
-/// about the next block. The first block starts at an offset drawn from the same
-/// stream and is therefore short, which is what keeps block boundaries from
-/// being countable.
+/// Every block of `den` attempts contains exactly `num` hits, placed by a
+/// hidden stream. The first block starts at an offset drawn from the same
+/// stream.
 ///
 /// A [`Ratio`] passed to [`roll`](Chance::roll) takes effect at the next block
 /// boundary. The block in progress finishes under the ratio it started with.

@@ -51,8 +51,8 @@ fn simultaneous_ancient_deaths_preserve_the_first_terminal_result() {
 
 #[test]
 fn every_map_sits_at_the_place_its_id_names() {
-    // The per-map route cache is indexed by the id, not by the position, so
-    // the two have to agree.
+    // The per-map clearance base field is indexed by the id, not by the
+    // position.
     for (at, map) in crate::game::MAPS.iter().enumerate() {
         assert_eq!(
             usize::from(map.id.0),
@@ -487,9 +487,9 @@ fn what_a_hero_owes_runs_down_while_it_is_dead() {
     );
 }
 
-/// The game's own numbers for a hero's head and its wait, as the wiki gives
-/// them: a streak of three ends for 13.75 experience a level, ten or more
-/// for 110, a tenth of a thousand earned and a bit besides for the share.
+/// A hero's head and its wait: a streak of three ends for 13.75 experience
+/// a level, ten or more for 110, a tenth of a thousand earned and a bit
+/// besides for the share.
 #[test]
 fn a_heros_head_and_its_wait_are_priced_as_the_game_prices_them() {
     assert_eq!(World::hero_kill_xp(0, 0, 1), rules::HERO_KILL_XP_BASE);

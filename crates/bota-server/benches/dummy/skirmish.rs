@@ -1,4 +1,4 @@
-//! The trainer's usage: a Map2 mid skirmish of two Shadow Fiends on a fixed
+//! A trainer-like Map2 mid skirmish of two Shadow Fiends on a fixed
 //! order stream, each tick advanced, then seen by both sides with their
 //! events.
 
@@ -9,7 +9,7 @@ use bota_proto::{
 
 use crate::game::{Command, EventVisibility, Fnv, ITEM_MANGO, MAP2_ID, MatchConfig, World, rules};
 
-/// Ticks between two decisions of a seat, as the trainer decides.
+/// Ticks between two decisions of a seat.
 const DECISION_TICKS: u32 = 3;
 /// Identity and seed of the skirmish.
 const MATCH_ID: u64 = 11;
@@ -22,7 +22,7 @@ const SPREAD: u32 = 500;
 pub(crate) struct Skirmish {
     /// The world the match is played in.
     pub(crate) world: World,
-    /// Where each side's hero fights, Radiant first: a third of the way
+    /// Where each side's hero fights, Radiant first: a sixth of the way
     /// from its own first mid tower to the other's.
     fronts: [Vec2; 2],
     /// The xorshift state the order stream draws from.
@@ -61,7 +61,7 @@ impl Skirmish {
         }
     }
 
-    /// One trainer tick: the orders due, validated, the world advanced, and
+    /// One tick: the orders due, validated, the world advanced, and
     /// both sides' views and events taken.
     pub(crate) fn step(&mut self) {
         let mut commands = Vec::new();

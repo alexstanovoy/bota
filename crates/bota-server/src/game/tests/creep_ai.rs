@@ -376,7 +376,7 @@ fn the_hold_lets_go_after_two_and_a_third_seconds() {
     let (mut world, hero, theirs, ours, foe) = a_lane_with_a_hero(300);
     attack_click(&mut world, foe);
     assert_eq!(world.target_of(theirs), Some(hero));
-    // The hero stops, so it is no longer laying into that side.
+    // The hero stops laying into that side.
     world.advance(&[crate::game::Command {
         slot: bota_proto::SlotId(0),
         unit: None,

@@ -9,10 +9,8 @@ use crate::game::{Entity, PendingCast};
 pub enum UnitOrder {
     /// Stand still. Takes on enemies that come near of its own accord.
     Idle,
-    /// Stand still and take on nothing at all.
-    ///
-    /// What a stop order leaves behind: the entity keeps the ground it is on
-    /// and pays no attention to whoever walks past.
+    /// Stand still and take on nothing at all: what a stop order leaves
+    /// behind.
     Stand,
     /// Stand still, attack what comes into range, never move.
     Hold,
@@ -42,13 +40,14 @@ pub enum UnitOrder {
     },
 }
 
-/// The order in hand, and when the next one may re-aim it.
+/// The order in hand, a cast waiting on it, and how soon an enemy hero's
+/// attack order may draw it again.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Orders {
     /// What it is doing.
     pub current: UnitOrder,
-    /// Ticks before an attack order may re-aim it. Zero when it answers the
-    /// next one.
+    /// Ticks before an enemy hero's attack order may draw it again. Zero
+    /// when it answers the next one.
     pub cooldown: u32,
     /// A cast ordered and not yet begun. Any order to the body takes it
     /// away.

@@ -4,15 +4,11 @@ use bota_proto::DamageKind;
 
 use crate::game::Entity;
 
-/// Damage that has been dealt and not yet taken off anybody.
-///
-/// It stands on an entity of its own for the moment between the swing that
-/// made it and the tick that resolves it. Nothing points at that entity and
-/// nothing outlives the resolving, so it carries no place and no side.
+/// Damage that has been dealt and not yet taken off anybody, queued on
+/// [`World::hits`](crate::game::World::hits) and felt within the tick.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Hit {
-    /// Who dealt it. The handle may outlive the body; outgoing amplification
-    /// is already captured on the blow.
+    /// Who dealt it. The handle may outlive the body.
     pub source: Option<Entity>,
     /// Who takes it.
     pub target: Entity,
@@ -30,15 +26,19 @@ pub struct Hit {
     pub attack: bool,
     /// Whether it goes through evasion.
     pub pierces: bool,
-    /// A damage modifier and status applied only when this blow deals damage.
+    /// What else the blow does.
     pub effect: HitEffect,
 }
 
-/// Additional behavior resolved with a queued blow.
+/// What a blow does besides its damage.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum HitEffect {
-    /// No additional behavior.
+    /// Nothing.
     None,
-    /// Same-caster amplification; `level` is zero-based in `0..4`.
+    /// Adds [`rules::RAZE_STACK_DAMAGE`] per Shadowraze stack the source
+    /// already holds on the target, and stacks one more on a target that
+    /// takes damage and survives. `level` is the ability level, from zero.
+    ///
+    /// [`rules::RAZE_STACK_DAMAGE`]: crate::game::rules::RAZE_STACK_DAMAGE
     Shadowraze { level: u8 },
 }

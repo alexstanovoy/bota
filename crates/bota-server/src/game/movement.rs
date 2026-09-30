@@ -5,15 +5,12 @@ use bota_proto::{Angle, Fixed, Vec2};
 use crate::game::rules;
 
 /// Integer square root, rounded down.
-///
-/// The one place a length is ever taken; everything else compares squares.
 pub fn isqrt64(n: i64) -> i64 {
     debug_assert!(n >= 0, "no square root of a negative");
     if n <= 0 {
         return 0;
     }
-    // One bit of the root a pass, from the top down, by repeated subtraction:
-    // no division in the loop, and a bit shorter than the widest square.
+    // One bit of the root a pass, from the top down, by repeated subtraction.
     let mut rest = n as u64;
     let mut root = 0u64;
     let mut bit = 1u64 << 62;
@@ -118,8 +115,8 @@ pub fn facing_towards(from: Vec2, to: Vec2) -> Angle {
 /// [`facing_towards`].
 ///
 /// The inverse of [`facing_towards`]: the facing from any point towards that
-/// point plus this offset is the angle handed in. The offset is direction
-/// only; its length is one octant span of world units, and never zero.
+/// point plus this offset is the angle handed in. Its larger component is
+/// 8192 world units.
 pub fn heading_of(facing: Angle) -> Vec2 {
     let brads = i32::from(facing.brads);
     let slope = brads % 8192;

@@ -7,8 +7,9 @@ use crate::game::Ratio;
 /// Everything the type an entity is, its level, its items and what is on it
 /// add up to.
 ///
-/// Written by the system that works stats out and read by everything else.
-/// Nothing else writes here: a value put in by hand is gone next tick.
+/// Written by [`derive_stats`](crate::game::derive_stats), then by
+/// [`World::guard_structures`](crate::game::World::guard_structures) for a
+/// guarded structure; a value put in by hand is gone next tick.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Stats {
     /// The three attributes, after everything that adds to them.
@@ -31,10 +32,8 @@ pub struct Stats {
     pub attack_range: Fixed,
     /// How far it looks for something to attack.
     pub acquisition: Fixed,
-    /// Milliseconds between the starts of two attacks at
-    /// [`rules::BASE_ATTACK_SPEED`].
-    ///
-    /// [`rules::BASE_ATTACK_SPEED`]: crate::game::rules::BASE_ATTACK_SPEED
+    /// Milliseconds between the starts of two attacks at the base attack
+    /// speed.
     pub attack_time: u32,
     /// How fast it swings, where [`rules::BASE_ATTACK_SPEED`] is its own pace
     /// and twice that is twice the pace. Clamped to
@@ -42,15 +41,11 @@ pub struct Stats {
     ///
     /// [`rules::BASE_ATTACK_SPEED`]: crate::game::rules::BASE_ATTACK_SPEED
     pub attack_speed: i32,
-    /// Milliseconds from the start of an attack to the hit at
-    /// [`rules::BASE_ATTACK_SPEED`].
-    ///
-    /// [`rules::BASE_ATTACK_SPEED`]: crate::game::rules::BASE_ATTACK_SPEED
+    /// Milliseconds from the start of an attack to the hit at the base
+    /// attack speed.
     pub attack_point: u32,
-    /// Milliseconds after the hit before it may move again at
-    /// [`rules::BASE_ATTACK_SPEED`].
-    ///
-    /// [`rules::BASE_ATTACK_SPEED`]: crate::game::rules::BASE_ATTACK_SPEED
+    /// Milliseconds after the hit before it may move again at the base
+    /// attack speed.
     pub attack_backswing: u32,
     /// Speed of the missile it throws. Absent for a melee attack.
     pub projectile_speed: Option<Fixed>,
