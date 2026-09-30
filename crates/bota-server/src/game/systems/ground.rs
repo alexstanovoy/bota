@@ -5,16 +5,12 @@ use bota_proto::{Fixed, Vec2};
 
 use crate::game::{Body, Entity, World};
 use crate::game::{clamp_to_map, isqrt64, rules};
+use crate::profile::Phase;
 
 impl World {
     /// Lays the body index out from where everything with a hull stands.
     pub fn lay_bodies(&mut self) {
-        #[cfg(feature = "phase-profile")]
-        let _profile = crate::profile::ScopeGuard::new(
-            crate::profile::Phase::BodyIndex,
-            self.tick,
-            self.entities.len(),
-        );
+        let _profile = self.scope(Phase::BodyIndex);
         let mut bodies = std::mem::take(&mut self.body_scratch);
         bodies.clear();
         for entity in self.entities.iter() {
@@ -78,12 +74,7 @@ impl World {
     /// onto closed ground. A building never moves: the whole correction
     /// falls on whatever walked into it.
     pub fn push_apart(&mut self) {
-        #[cfg(feature = "phase-profile")]
-        let _profile = crate::profile::ScopeGuard::new(
-            crate::profile::Phase::Separation,
-            self.tick,
-            self.entities.len(),
-        );
+        let _profile = self.scope(Phase::Separation);
         let mut bodies = std::mem::take(&mut self.body_scratch);
         bodies.clear();
         for entity in self.entities.iter() {

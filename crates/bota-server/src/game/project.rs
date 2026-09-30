@@ -6,6 +6,7 @@ use bota_proto::{
 };
 
 use crate::game::{Entity, ModifierKind, StackKind, World, ability_mana_cost, item_views};
+use crate::profile::Phase;
 
 /// Shadowraze amplification; each anonymous source row carries both ticks and stacks.
 pub const EFFECT_SHADOWRAZE: u16 = 15;
@@ -31,12 +32,7 @@ impl World {
 
     /// Everything a viewer is allowed to be told. `None` holds nothing back.
     fn project(&self, viewer: Option<Team>) -> WorldView {
-        #[cfg(feature = "phase-profile")]
-        let _profile = crate::profile::ScopeGuard::new(
-            crate::profile::Phase::Projection,
-            self.tick,
-            self.entities.len(),
-        );
+        let _profile = self.scope(Phase::Projection);
         let mut units = Vec::with_capacity(self.entities.len());
         let mut projectiles = Vec::new();
         let mut loot = Vec::new();

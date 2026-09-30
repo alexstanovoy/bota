@@ -1,12 +1,14 @@
 //! Sampled native phase timings and entity counts, emitted once per thread.
 
+use crate::profile::Phase;
+
 use std::cell::RefCell;
 use std::io::{self, Write};
 use std::marker::PhantomData;
 use std::rc::Rc;
 use std::time::Instant;
 
-const PHASE_NAMES: [&str; 21] = [
+const PHASE_NAMES: [&str; 20] = [
     "tick",
     "upkeep",
     "effects",
@@ -19,7 +21,6 @@ const PHASE_NAMES: [&str; 21] = [
     "projection",
     "settle",
     "target_query",
-    "class_zero_query",
     "movement_intent",
     "walk",
     "separation",
@@ -40,33 +41,6 @@ thread_local! {
 
 struct Recorder {
     samples: [[u64; 3]; PHASE_COUNT],
-}
-
-/// Timed native regions; nested regions report inclusive durations.
-#[repr(usize)]
-#[derive(Clone, Copy)]
-pub enum Phase {
-    Tick,
-    Upkeep,
-    Effects,
-    Stats,
-    Targeting,
-    Movement,
-    Visibility,
-    Actions,
-    Damage,
-    Projection,
-    Settle,
-    TargetQuery,
-    ClassZeroQuery,
-    MovementIntent,
-    Walk,
-    Separation,
-    BodyIndex,
-    Route,
-    PathQuery,
-    LocalPlan,
-    LocalSearch,
 }
 
 const _: () = assert!(Phase::LocalSearch as usize + 1 == PHASE_COUNT);

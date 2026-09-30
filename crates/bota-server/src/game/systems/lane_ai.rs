@@ -10,6 +10,7 @@ use bota_proto::{Fixed, UnitKind};
 
 use crate::game::{Candidates, Entity, PriorityOrder, UnitOrder, World, class_rank_of};
 use crate::game::{isqrt64, rules};
+use crate::profile::Phase;
 
 impl World {
     /// Where a candidate sits by what it is doing. Lower is taken first.
@@ -68,12 +69,7 @@ impl World {
     ) -> Option<Entity> {
         let order = self.priority_of(seeker);
         let at = self.transform.get(seeker)?.pos;
-        #[cfg(feature = "phase-profile")]
-        let _profile = crate::profile::ScopeGuard::new(
-            crate::profile::Phase::TargetQuery,
-            self.tick,
-            self.entities.len(),
-        );
+        let _profile = self.scope(Phase::TargetQuery);
         // Reaching a candidate is being hostile to it within the reach, so
         // the range is weighed first and hostility once.
         self.near(seeker, at, reach, candidates)
