@@ -122,38 +122,34 @@ fn a_point_is_spent_only_when_there_is_one_and_the_level_allows_it() {
         bota_proto::HeroId(1),
     );
     world.settle();
-    let mut events = Vec::new();
-    assert!(world.learn(hero, 0, &mut events), "the first point goes in");
+    assert!(world.learn(hero, 0), "the first point goes in");
     assert!(
-        !world.learn(hero, 1, &mut events),
+        !world.learn(hero, 1),
         "and the second waits for a second level"
     );
     assert!(
-        !world.learn(hero, 0, &mut events),
+        !world.learn(hero, 0),
         "one ability twice over is no different"
     );
     // Levelled up, the point is there, but the ultimate still waits.
     world.level.insert(hero, crate::game::Level(2));
     assert!(
-        !world.learn(hero, 3, &mut events),
+        !world.learn(hero, 3),
         "the ultimate waits for the level it asks for"
     );
-    assert!(world.learn(hero, 1, &mut events), "a basic one does not");
+    assert!(world.learn(hero, 1), "a basic one does not");
     // A passive takes points like anything else.
     world.level.insert(hero, crate::game::Level(3));
-    assert!(
-        world.learn(hero, 2, &mut events),
-        "a passive is learned, not cast"
-    );
+    assert!(world.learn(hero, 2), "a passive is learned, not cast");
     // Right up to the level it opens on, the ultimate answers.
     world
         .level
         .insert(hero, crate::game::Level(rules::ULT_LEVEL_FLOORS[0]));
-    assert!(world.learn(hero, 3, &mut events), "and then it opens");
+    assert!(world.learn(hero, 3), "and then it opens");
     // Nothing goes past its own cap, however many levels are had.
     world.level.insert(hero, crate::game::Level(50));
     for _ in 0..10 {
-        world.learn(hero, 0, &mut events);
+        world.learn(hero, 0);
     }
     assert_eq!(
         world.abilities.get(hero).expect("casts").slots[0].level,
@@ -431,8 +427,7 @@ fn a_spell_aimed_at_what_it_cannot_take_is_named_and_refused() {
     world
         .level
         .insert(hero, crate::game::Level(rules::HERO_MAX_LEVEL));
-    let mut events = Vec::new();
-    assert!(world.learn(hero, 2, &mut events), "the bolt is learned");
+    assert!(world.learn(hero, 2), "the bolt is learned");
     let ally = world.spawn_unit(
         &MELEE_CREEP,
         bota_proto::Team::Radiant,
@@ -461,8 +456,7 @@ fn one_point_levels_every_raze_at_once_and_costs_one() {
         bota_proto::HeroId(2),
     );
     world.settle();
-    let mut events = Vec::new();
-    assert!(world.learn(fiend, 2, &mut events), "the point goes in");
+    assert!(world.learn(fiend, 2), "the point goes in");
     let levels: Vec<u8> = world
         .abilities
         .get(fiend)
@@ -481,18 +475,36 @@ fn one_point_levels_every_raze_at_once_and_costs_one() {
         1,
         "the three cost one point together"
     );
-    assert!(
-        !world.learn(fiend, 3, &mut events),
-        "and there is nothing left to spend"
-    );
+    assert!(!world.learn(fiend, 3), "and there is nothing left to spend");
     // The trio waits for hero levels the same as any one ability would.
     world.level.insert(fiend, crate::game::Level(2));
     assert!(
-        !world.learn(fiend, 0, &mut events),
+        !world.learn(fiend, 0),
         "the second raze level waits for hero level three"
     );
     assert!(
-        world.learn(fiend, 3, &mut events),
+        world.learn(fiend, 3),
         "while the necromastery is open to the spare point"
+    );
+}
+
+#[test]
+fn learning_an_ability_tells_of_no_cast() {
+    let (mut world, hero) = a_hero_with_gold(0);
+
+    let events = advance_validated(
+        &mut world,
+        Some(hero),
+        bota_proto::Order::Learn {
+            slot: bota_proto::AbilitySlot(0),
+        },
+    );
+
+    assert_eq!(world.abilities.get(hero).expect("book").slots[0].level, 1);
+    assert!(
+        !events
+            .iter()
+            .any(|event| matches!(event.kind, bota_proto::EventKind::AbilityCast { .. })),
+        "a skill point is not a cast"
     );
 }

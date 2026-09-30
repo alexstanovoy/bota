@@ -409,8 +409,8 @@ fn a_hero_keeps_what_it_learned_and_carried_through_a_death() {
     world.level.insert(hero, crate::game::Level(7));
     world.seats[0].level = 7;
     let mut events = Vec::new();
-    assert!(world.learn(hero, 1, &mut events));
-    assert!(world.learn(hero, 1, &mut events));
+    assert!(world.learn(hero, 1));
+    assert!(world.learn(hero, 1));
     let boots = bota_proto::ItemId(crate::game::ITEM_BOOTS);
     assert!(world.buy(bota_proto::SlotId(0), boots, &mut events));
     world.bury(vec![(hero, None)], &mut events);
@@ -458,7 +458,7 @@ fn what_a_hero_owes_runs_down_while_it_is_dead() {
     world.level.insert(hero, crate::game::Level(7));
     world.seats[0].level = 7;
     let mut events = Vec::new();
-    assert!(world.learn(hero, 1, &mut events));
+    assert!(world.learn(hero, 1));
     if let Some(book) = world.abilities.get_mut(hero) {
         book.slots[1].cooldown = 300;
     }
