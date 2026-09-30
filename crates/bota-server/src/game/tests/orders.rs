@@ -65,6 +65,77 @@ fn an_order_at_something_a_side_cannot_see_is_refused() {
 }
 
 #[test]
+fn a_use_or_cast_at_something_a_side_cannot_see_is_refused_like_a_dead_target() {
+    let map = crate::game::map_of(bota_proto::MapId(1));
+    let mut world = World::on_map(map);
+    let hero = world.spawn_hero(
+        bota_proto::Team::Radiant,
+        bota_proto::Vec2::from_ints(6800, 9216),
+        bota_proto::SlotId(0),
+        bota_proto::HeroId(1),
+    );
+    world.seats.push(crate::game::Seat::new(
+        bota_proto::SlotId(0),
+        bota_proto::Team::Radiant,
+        bota_proto::HeroId(1),
+        0,
+        rules::STASH_SLOTS,
+    ));
+    world.seats[0].unit = Some(hero);
+    if let Some(book) = world.abilities.get_mut(hero) {
+        book.slots[3].level = 1;
+    }
+    if let Some(bag) = world.inventory.get_mut(hero) {
+        bag.slots[0] = Some(crate::game::ItemStack {
+            id: bota_proto::ItemId(crate::game::ITEM_HEALING_SALVE),
+            charges: 1,
+            cooldown: 0,
+            mute: 0,
+            mode: None,
+            bought_tick: 0,
+            touched: false,
+            owner: bota_proto::SlotId(0),
+            for_sale: false,
+        });
+    }
+    let hidden = world.spawn_unit(
+        &MELEE_CREEP,
+        bota_proto::Team::Dire,
+        bota_proto::Vec2::from_ints(13200, 9216),
+    );
+    world.settle();
+    world.fill_pools(hero);
+    crate::game::visibility_system(crate::game::SightCx {
+        entities: &world.entities,
+        transform: &world.transform,
+        team: &world.team,
+        kind: &world.kind,
+        stats: &world.stats,
+        ground: &world.ground,
+        sight_block: &world.sight_block,
+        visibility: &mut world.visibility,
+        sight: &mut world.sight_scratch,
+    });
+    let target = bota_proto::Target::Unit(crate::game::wire_id(hidden));
+    for order in [
+        bota_proto::Order::Use {
+            slot: bota_proto::ItemSlot(0),
+            target,
+        },
+        bota_proto::Order::Cast {
+            slot: bota_proto::AbilitySlot(3),
+            target,
+        },
+    ] {
+        assert_eq!(
+            world.validate_order(bota_proto::SlotId(0), None, &order),
+            Err(bota_proto::RejectReason::UnknownTarget),
+            "{order:?}"
+        );
+    }
+}
+
+#[test]
 fn a_seat_with_no_body_standing_may_order_nothing() {
     let mut world = World::new();
     world.seats.push(crate::game::Seat::new(

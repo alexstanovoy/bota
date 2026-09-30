@@ -518,3 +518,70 @@ fn a_heros_head_and_its_wait_are_priced_as_the_game_prices_them() {
     );
     assert_eq!(rules::XP_THRESHOLDS[29], 63900, "the last");
 }
+
+#[test]
+fn a_heros_blows_on_enemy_heroes_and_structures_are_counted_in_the_final_stats() {
+    let mut world = World::new();
+    let at = bota_proto::Vec2::from_ints(5000, 5000);
+    let hero = world.spawn_hero(
+        Team::Radiant,
+        at,
+        bota_proto::SlotId(0),
+        bota_proto::HeroId(0),
+    );
+    let foe = world.spawn_hero(
+        Team::Dire,
+        at + bota_proto::Vec2::from_ints(100, 0),
+        bota_proto::SlotId(1),
+        bota_proto::HeroId(0),
+    );
+    let ancient = world.spawn_unit(
+        crate::game::ancient_of(Team::Dire),
+        Team::Dire,
+        at + bota_proto::Vec2::from_ints(0, 100),
+    );
+    for (slot, team, unit) in [(0, Team::Radiant, hero), (1, Team::Dire, foe)] {
+        world.seats.push(crate::game::Seat::new(
+            bota_proto::SlotId(slot),
+            team,
+            bota_proto::HeroId(0),
+            0,
+            rules::STASH_SLOTS,
+        ));
+        world.seats[usize::from(slot)].unit = Some(unit);
+    }
+    world.settle();
+    let (mut to_hero, mut to_ancient) = (0, 0);
+    for (aim, tally) in [(foe, &mut to_hero), (ancient, &mut to_ancient)] {
+        world.set_order(
+            hero,
+            crate::game::UnitOrder::Attack {
+                target: aim,
+                last_seen: at,
+            },
+        );
+        for _ in 0..120 {
+            for event in world.advance(&[]) {
+                if let bota_proto::EventKind::Damaged {
+                    source: Some(source),
+                    target,
+                    amount,
+                    ..
+                } = event.kind
+                    && source == crate::game::wire_id(hero)
+                    && target == crate::game::wire_id(aim)
+                {
+                    *tally += amount;
+                }
+            }
+        }
+    }
+    assert!(to_hero > 0 && to_ancient > 0, "both were struck");
+    let stats = world.match_stats();
+    assert_eq!(stats.slots[0].hero_damage, to_hero);
+    assert_eq!(stats.slots[0].structure_damage, to_ancient);
+    assert_eq!(
+        stats.slots[1].structure_damage, 0,
+        "the foe hit no building"
+    );
+}

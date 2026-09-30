@@ -375,7 +375,7 @@ const PINS: [Pinned; 7] = [
             (16500, 0x6ad9_e2e8_82f5_18dc, 0x0c6e_ae80_8419_ae2b),
             (18000, 0x33f9_2f7f_08fc_1559, 0xf6a5_7266_dbb2_a72c),
         ],
-        last: 0x7e69_f6d3_80e6_d189,
+        last: 0x9e37_2061_50ec_7b89,
     },
     Pinned {
         map: MapId(0),
@@ -395,7 +395,7 @@ const PINS: [Pinned; 7] = [
             (16500, 0x6ded_1785_daf8_f451, 0x34ed_9e5c_02b8_af9a),
             (18000, 0x3be2_b6de_5c6a_0a86, 0x67a5_34bc_c57b_ac7a),
         ],
-        last: 0x8412_278f_b2ae_b7df,
+        last: 0x696a_ca58_47e3_a147,
     },
     Pinned {
         map: MapId(1),
@@ -415,7 +415,7 @@ const PINS: [Pinned; 7] = [
             (16500, 0xe674_0fcc_5e05_4063, 0x3c34_e617_050e_a606),
             (18000, 0x6d6d_7b71_6ffe_178c, 0xbab6_0613_d794_9440),
         ],
-        last: 0xce2e_f892_34fa_1bbe,
+        last: 0xcdc7_9d36_f3cb_481b,
     },
     Pinned {
         map: MapId(1),
@@ -435,7 +435,7 @@ const PINS: [Pinned; 7] = [
             (16500, 0xd456_80ef_8f31_73a6, 0xcda5_aa61_ea43_83b3),
             (18000, 0x9d79_a985_5ccc_0ddb, 0x73a1_697e_b029_ce3b),
         ],
-        last: 0xbf13_5bb0_bdc7_cae4,
+        last: 0x8cf1_8d06_91e5_a889,
     },
     Pinned {
         map: MapId(2),
@@ -447,7 +447,7 @@ const PINS: [Pinned; 7] = [
             (4500, 0x0979_d73a_376b_eeea, 0xf3b3_bda0_fc52_4fdf),
             (6000, 0x407d_c454_bb58_2962, 0xdd56_cb1a_8761_0859),
         ],
-        last: 0xd9ab_4f5e_b116_0374,
+        last: 0x736d_7ca6_5043_6e28,
     },
     Pinned {
         map: MapId(2),
@@ -461,7 +461,7 @@ const PINS: [Pinned; 7] = [
             (7500, 0x5211_e068_c74a_977b, 0x52ec_1c43_d8ff_6997),
             (9000, 0x04a2_0a75_faa5_40ef, 0x3faa_a34d_279c_b09b),
         ],
-        last: 0x630f_4d2f_c0e3_d73e,
+        last: 0xf160_5f90_63da_09af,
     },
     Pinned {
         map: MapId(2),
@@ -473,6 +473,6 @@ const PINS: [Pinned; 7] = [
             (4500, 0x4def_d504_554c_ddba, 0xc118_d5fe_8c76_a7c5),
             (6000, 0xce5b_8d3c_2f9e_9682, 0x8e8b_1a52_8859_68da),
         ],
-        last: 0xe422_60ab_43c4_1991,
+        last: 0xae0b_a054_ff18_0e88,
     },
 ];
