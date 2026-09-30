@@ -1143,7 +1143,7 @@ impl World {
     /// Each level of an ability waits for a hero level of its own, and none
     /// goes past its own cap. A point into a slot that shares its level with
     /// others (the razes) levels every slot of the group at once.
-    pub fn learn(&mut self, entity: Entity, slot: usize, events: &mut Vec<Event>) -> bool {
+    pub fn learn(&mut self, entity: Entity, slot: usize) -> bool {
         let Some(book) = self.abilities.get(entity) else {
             return false;
         };
@@ -1171,13 +1171,6 @@ impl World {
                 held.level += 1;
             }
         }
-        events.push(Event {
-            kind: EventKind::AbilityCast {
-                caster: wire_id(entity),
-                ability: ability.id,
-            },
-            visible_to: EventVisibility::Everyone,
-        });
         true
     }
 

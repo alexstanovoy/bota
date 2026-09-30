@@ -65,10 +65,7 @@ fn sylla_mid_swing() -> (World, Entity) {
         .insert(sylla, crate::game::Level(rules::HERO_MAX_LEVEL));
     world.settle();
     world.fill_pools(sylla);
-    assert!(
-        world.learn(sylla, 1, &mut Vec::new()),
-        "the frenzy is learned"
-    );
+    assert!(world.learn(sylla, 1), "the frenzy is learned");
     world.set_target(sylla, anvil);
     world.step();
     world.step();

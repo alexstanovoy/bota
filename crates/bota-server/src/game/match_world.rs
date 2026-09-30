@@ -76,7 +76,7 @@ impl World {
         // is doing.
         match cmd.order {
             Order::Learn { slot } => {
-                self.learn(unit, usize::from(slot.0), events);
+                self.learn(unit, usize::from(slot.0));
             }
             Order::Swap { from, to } => {
                 self.move_item(cmd.slot, unit, usize::from(from.0), usize::from(to.0));

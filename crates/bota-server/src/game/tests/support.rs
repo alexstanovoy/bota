@@ -184,8 +184,7 @@ pub(super) fn caster(world: &mut World, at: bota_proto::Vec2, slot: usize) -> En
         .insert(hero, crate::game::Level(rules::HERO_MAX_LEVEL));
     world.settle();
     world.fill_pools(hero);
-    let mut events = Vec::new();
-    assert!(world.learn(hero, slot, &mut events), "the slot is learned");
+    assert!(world.learn(hero, slot), "the slot is learned");
     hero
 }
 

@@ -66,7 +66,7 @@ pub enum EventKind {
         /// deny, or when no hero struck last.
         gold: i32,
     },
-    /// A unit's ability took effect, or a hero put a skill point into it.
+    /// A unit's ability took effect.
     ///
     /// A cast is told at the moment of effect, not when the order was issued.
     AbilityCast {
