@@ -388,19 +388,3 @@ fn bisector(prev: Vec2, corner: Vec2, next: Vec2) -> Option<Vec2> {
         y: Fixed { raw: by as i32 },
     })
 }
-
-/// The point a reach along a polyline from a position, through its points
-/// in order: the polyline's last point when it is shorter than the reach.
-pub fn along_polyline(from: Vec2, points: &[Vec2], reach: Fixed) -> Vec2 {
-    let mut at = from;
-    let mut left = i64::from(reach.raw);
-    for &point in points {
-        let leg = isqrt64(at.distance_squared(point));
-        if leg >= left {
-            return point_along(at, point, Fixed { raw: left as i32 });
-        }
-        left -= leg;
-        at = point;
-    }
-    at
-}

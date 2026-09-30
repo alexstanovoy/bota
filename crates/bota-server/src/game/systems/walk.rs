@@ -193,11 +193,6 @@ impl World {
         }
     }
 
-    /// Whether an entity is marching a lane rather than being driven.
-    pub fn is_marching(&self, entity: Entity) -> bool {
-        self.march.get(entity).is_some()
-    }
-
     /// Forgets the way an entity was walking: what put it somewhere else
     /// calls this, and the walk is laid again from where it now stands.
     pub fn forget_walk(&mut self, entity: Entity) {

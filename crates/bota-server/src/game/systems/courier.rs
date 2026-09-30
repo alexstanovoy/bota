@@ -75,15 +75,6 @@ impl World {
         true
     }
 
-    /// Sends a courier home to its own fountain.
-    pub fn courier_go_home(&mut self, courier: Entity) -> bool {
-        if self.seat_of_courier(courier).is_none() {
-            return false;
-        }
-        self.errand.insert(courier, Errand::GoingHome);
-        true
-    }
-
     /// Sends it for what waits in its owner's stash.
     pub fn courier_take_stash(&mut self, courier: Entity) -> bool {
         if self.seat_of_courier(courier).is_none() {

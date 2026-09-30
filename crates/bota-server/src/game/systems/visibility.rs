@@ -2,7 +2,7 @@
 
 use bota_proto::{Fixed, Team, UnitKind, Vec2};
 
-use crate::game::{CellGrid, Event, EventVisibility, Ground, Spots, sight_clear};
+use crate::game::{CellGrid, EventVisibility, Ground, Spots, sight_clear};
 use crate::game::{
     Entity, EntityAllocator, Stats, Table, Transform, Visibility, World, is_structure,
 };
@@ -275,15 +275,6 @@ impl World {
             (true, false) => EventVisibility::OneTeam(Team::Radiant),
             (false, true) => EventVisibility::OneTeam(Team::Dire),
             (false, false) => EventVisibility::OneTeam(involved),
-        }
-    }
-
-    /// Keeps from a side what it had no way of seeing.
-    pub fn hide_unseen(&self, events: &mut [Event], places: &[(usize, Vec2, Team)]) {
-        for &(index, at, involved) in places {
-            if let Some(event) = events.get_mut(index) {
-                event.visible_to = self.who_may_know(at, involved);
-            }
         }
     }
 }

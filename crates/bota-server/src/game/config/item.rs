@@ -1043,15 +1043,6 @@ pub fn item_def(id: ItemId) -> Option<&'static ItemDef> {
     ITEMS.get(usize::from(id.0))
 }
 
-/// Every item built from a given one, in catalog order.
-pub fn built_from(part: ItemId) -> impl Iterator<Item = ItemId> {
-    ITEMS
-        .iter()
-        .enumerate()
-        .filter(move |(_, def)| def.components.contains(&part))
-        .map(|(index, _)| ItemId(index as u16))
-}
-
 /// The whole shop as the wire states it, in item id order.
 pub fn shop_entries() -> Vec<bota_proto::ShopEntry> {
     ITEMS

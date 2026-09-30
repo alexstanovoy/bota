@@ -201,28 +201,6 @@ pub fn segment_distance_squared(p: Vec2, a: Vec2, b: Vec2) -> i64 {
     (i128::from(cross) * i128::from(cross) / i128::from(len2)) as i64
 }
 
-/// The nearest point of a segment.
-pub fn segment_nearest(p: Vec2, a: Vec2, b: Vec2) -> Vec2 {
-    let apx = i64::from(p.x.raw) - i64::from(a.x.raw);
-    let apy = i64::from(p.y.raw) - i64::from(a.y.raw);
-    let abx = i64::from(b.x.raw) - i64::from(a.x.raw);
-    let aby = i64::from(b.y.raw) - i64::from(a.y.raw);
-    let dot = apx * abx + apy * aby;
-    let len2 = abx * abx + aby * aby;
-    if dot <= 0 || len2 == 0 {
-        return a;
-    }
-    if dot >= len2 {
-        return b;
-    }
-    let x = i64::from(a.x.raw) + (i128::from(abx) * i128::from(dot) / i128::from(len2)) as i64;
-    let y = i64::from(a.y.raw) + (i128::from(aby) * i128::from(dot) / i128::from(len2)) as i64;
-    Vec2 {
-        x: Fixed { raw: x as i32 },
-        y: Fixed { raw: y as i32 },
-    }
-}
-
 /// Squared distance from a point to an axis-aligned box given by its low
 /// and high corners, in the raw units of [`Vec2::distance_squared`]. Zero
 /// inside the box.
