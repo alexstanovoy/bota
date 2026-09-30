@@ -238,6 +238,11 @@ pub struct App {
     pub shop_scroll: usize,
     /// What the shop sells and asks for it, from MatchStart.
     pub shop: Vec<bota_proto::ShopEntry>,
+    /// Fountain of each team, Radiant then Dire, from MatchStart.
+    pub fountains: [bota_proto::Vec2; 2],
+    /// World units from its fountain within which a hero is in the home shop,
+    /// from MatchStart.
+    pub shop_range: i32,
     /// Every tree on the map, from MatchStart.
     pub trees: Vec<(f32, f32)>,
     /// Cells per terrain axis, from MatchStart.
@@ -321,6 +326,8 @@ impl App {
             shop_open: false,
             shop_scroll: 0,
             shop: Vec::new(),
+            fountains: [bota_proto::Vec2::ZERO; 2],
+            shop_range: 0,
             trees: Vec::new(),
             terrain_cells: 0,
             terrain: Vec::new(),
@@ -500,8 +507,8 @@ impl App {
         view.viewer
     }
 
-    /// Whether our hero stands within 1000 of its fountain, at the main map's
-    /// fountain positions.
+    /// Whether our hero stands within the match's shop range of its own
+    /// fountain.
     pub fn at_home_shop(&self) -> bool {
         let Some(slot) = self.my_slot else {
             return false;
@@ -515,14 +522,15 @@ impl App {
         let Some(unit) = p.unit.and_then(|id| view.units.iter().find(|u| u.id == id)) else {
             return false;
         };
-        let (fx, fy) = match p.team {
-            bota_proto::Team::Radiant => (1760.0, 2278.0),
-            bota_proto::Team::Dire => (16624.0, 16064.0),
+        let fountain = match p.team {
+            bota_proto::Team::Radiant => self.fountains[0],
+            bota_proto::Team::Dire => self.fountains[1],
             bota_proto::Team::Neutral => return false,
         };
-        let dx = unit.pos.x.to_f32() - fx;
-        let dy = unit.pos.y.to_f32() - fy;
-        dx * dx + dy * dy <= 1000.0 * 1000.0
+        let dx = unit.pos.x.to_f32() - fountain.x.to_f32();
+        let dy = unit.pos.y.to_f32() - fountain.y.to_f32();
+        let range = self.shop_range as f32;
+        dx * dx + dy * dy <= range * range
     }
 
     /// Whether one of the panel's fifteen item slots holds an item right now.
@@ -611,6 +619,8 @@ impl App {
                 self.tick_rate = info.tick_rate;
                 self.pregame_ticks = info.pregame_ticks;
                 self.shop = info.shop.clone();
+                self.fountains = info.fountains;
+                self.shop_range = info.shop_range;
                 self.trees = info
                     .trees
                     .iter()

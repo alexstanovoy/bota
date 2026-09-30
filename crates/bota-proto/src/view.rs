@@ -95,6 +95,8 @@ pub struct ItemView {
     pub aim: Option<Aim>,
     /// Whether it is marked to be sold when it next reaches the shop.
     pub for_sale: bool,
+    /// The seat that bought it.
+    pub owner: SlotId,
 }
 
 /// An item lying on the ground that the viewing team can see.

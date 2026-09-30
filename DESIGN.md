@@ -1077,7 +1077,10 @@ followed it.
 The one thing that belongs to no unit is what the shop asks for a thing nobody
 holds yet, so `MatchInfo` carries the price and the parts of every item once
 per match, and the client prices a purchase against what the seat holds by the
-same rule the server charges by. The client's own catalog is what is left over
+same rule the server charges by: only what the seat bought itself and has not
+marked for sale counts, which is why `ItemView` names its owner. `MatchInfo` also
+carries both fountains and the shop range, so the client knows where the home shop
+is on any map. The client's own catalog is what is left over
 after that: names, blurbs and art, and not one number.
 
 `can_level` is a bit rather than a rule. The client used to hold its own copy

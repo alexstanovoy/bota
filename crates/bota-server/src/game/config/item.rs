@@ -1080,6 +1080,7 @@ pub fn item_views(bag: &Inventory, mana_rate_bp: i32) -> Vec<Option<ItemView>> {
                     range: def.map_or(0, |def| def.range),
                     aim: def.and_then(|def| def.aim),
                     for_sale: stack.for_sale,
+                    owner: stack.owner,
                 }
             })
         })

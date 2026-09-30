@@ -102,6 +102,11 @@ pub struct MatchInfo {
     pub picks: Vec<Pick>,
     /// Everything the shop sells, in item id order.
     pub shop: Vec<ShopEntry>,
+    /// Fountain of each team, Radiant then Dire.
+    pub fountains: [Vec2; 2],
+    /// How close to its own fountain a hero counts as standing in the home
+    /// shop, in world units.
+    pub shop_range: i32,
 }
 
 /// Why the server refused an order.

@@ -102,6 +102,8 @@ impl MatchConfig {
             mode: self.mode,
             picks: self.picks.clone(),
             shop: crate::game::shop_entries(),
+            fountains: crate::game::map_of(self.map).fountains,
+            shop_range: crate::game::rules::SHOP_RANGE,
         }
     }
 }
