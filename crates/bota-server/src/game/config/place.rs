@@ -27,11 +27,6 @@ pub fn hero_spawn_pos(map: &crate::game::MapDef, team: Team) -> Vec2 {
     fountain_pos(map, team) + offset
 }
 
-/// The mirror of a position through the map center.
-pub fn mirror(pos: Vec2) -> Vec2 {
-    Vec2::from_ints(rules::MAP_SIZE, rules::MAP_SIZE) - pos
-}
-
 /// Every tree on the map: its own forest, with the lane corridors the map
 /// asks for and both spawn pads kept clear.
 pub fn tree_positions(map: &crate::game::MapDef) -> Vec<Vec2> {
@@ -216,15 +211,6 @@ fn guarded_by(map: &crate::game::MapDef, at: Vec2) -> Option<Team> {
     } else {
         None
     }
-}
-
-/// Squared distance from a lane's centerline.
-pub fn lane_offset_squared(map: &crate::game::MapDef, lane: u8, pos: Vec2) -> i64 {
-    let line = lane_polyline(map, lane);
-    line.windows(2)
-        .map(|s| crate::game::segment_distance_squared(pos, s[0], s[1]))
-        .min()
-        .expect("a lane has at least one segment")
 }
 
 /// The creep spawn position of a team on a lane. The jungle runs no lanes.

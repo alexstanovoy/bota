@@ -11,8 +11,6 @@ use bota_proto::{Fixed, Vec2};
 
 use crate::game::{CellGrid, rules};
 
-pub static SCRATCH_CALLS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-
 /// The cells that block sight lines: every standing tree and the map's own
 /// fog blocker walls, which is what seals the river pit against looks
 /// through its entrance.
