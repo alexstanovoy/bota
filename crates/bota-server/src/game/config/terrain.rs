@@ -2,8 +2,8 @@
 
 /// Run-length encoded terrain cells of the current Dota 2 map, row-major
 /// from the map's south-west corner, one byte per 64-unit cell: bit 7 is
-/// ground the gridnav calls walkable, bit 6 is river water, the low bits
-/// are the elevation tier in 128-unit steps from the lowest ground.
+/// ground the gridnav calls walkable, bit 6 is river water, the low five
+/// bits are the elevation tier in 128-unit steps from the lowest ground.
 pub const TERRAIN_RLE: &[(u16, u8)] = &[
     (84, 0x00),
     (6, 0x05),
@@ -7901,9 +7901,7 @@ pub const TERRAIN_RLE: &[(u16, u8)] = &[
 pub const TERRAIN_CELLS: usize = 288;
 
 /// Run-length encoded terrain cells of the hero demo map, in the same
-/// frame and format as [`TERRAIN_RLE`]: baked from the map's own gridnav
-/// walkability, its physics mesh in 128-unit elevation steps, and its
-/// river water.
+/// frame and format as [`TERRAIN_RLE`].
 pub const DEMO_TERRAIN_RLE: &[(u16, u8)] = &[
     (288, 0x00),
     (288, 0x00),

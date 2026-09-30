@@ -58,8 +58,7 @@ struct EntityMeta {
 /// Hands out [`Entity`] handles and knows which of them are still live.
 ///
 /// A freed slot goes back to be handed out again ahead of any slot never yet
-/// used, carrying a raised generation. Iteration runs in slot order and never
-/// depends on a hash, which is what makes a tick reproducible.
+/// used, carrying a raised generation. Iteration runs in slot order.
 pub struct EntityAllocator {
     /// One entry per slot ever handed out, indexed by [`Index`].
     entities: Vec<EntityMeta>,

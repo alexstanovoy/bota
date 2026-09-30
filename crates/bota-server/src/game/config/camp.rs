@@ -2,9 +2,7 @@
 
 use bota_proto::Vec2;
 
-/// The size class of a neutral camp.
-///
-/// Decides which roster spawns and how strong it is.
+/// The size class of a neutral camp: which rosters it draws from.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum CampKind {
     /// Three creeps, five in the kobold camp. Six rosters.
@@ -27,8 +25,8 @@ pub struct CampDef {
     /// Whether lane creeps will engage this camp's neutrals. True on the
     /// four camps the map marks with an aggro type of one.
     pub pullable: bool,
-    /// Whether the map fills this camp from the amphibian roster, whose
-    /// creeps promote a tier every five minutes. Read by nothing yet.
+    /// Whether the map marks this camp as filled from the amphibian roster.
+    /// Read by nothing.
     pub flooded: bool,
 }
 

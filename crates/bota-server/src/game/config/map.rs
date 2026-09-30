@@ -1,8 +1,8 @@
 //! The maps a match may be played on.
 //!
 //! Everything that differs between them lives here: where the buildings
-//! stand, where the lanes run, which camps the jungle holds, and whether the
-//! ground is the real terrain or open field.
+//! stand, where the lanes run, which camps the jungle holds, the forest and
+//! the ground.
 
 use bota_proto::{MapId, Vec2};
 
@@ -14,7 +14,8 @@ pub const MAP2_ID: MapId = MapId(2);
 pub const MAP2_DEATH_LIMIT: u16 = rules::SKIRMISH_DEATH_LIMIT;
 /// Map2 gameplay duration in simulation ticks, excluding pregame.
 pub const MAP2_GAME_TICKS: u32 = 15 * 60 * rules::TICKS_PER_SECOND;
-/// Map2's final simulation tick, including the unchanged pregame.
+/// The tick Map2 ends on as a draw when nothing decided it earlier, pregame
+/// included.
 pub const MAP2_TICK_CAP: u32 = rules::PREGAME_TICKS + MAP2_GAME_TICKS;
 
 const _: () = assert!(MAP2_DEATH_LIMIT > 0);
@@ -27,8 +28,7 @@ pub struct MapDef {
     pub id: MapId,
     /// Fountain centres, Radiant first.
     pub fountains: [Vec2; 2],
-    /// Ancient positions, Radiant first. Absent for a side that has none;
-    /// a match with no Ancients runs until its clock says otherwise.
+    /// Ancient positions, Radiant first. Absent for a side that has none.
     pub ancients: [Option<Vec2>; 2],
     /// Radiant towers as lane, tier and position.
     pub radiant_towers: &'static [(u8, u8, Vec2)],
@@ -56,8 +56,7 @@ pub struct MapDef {
     /// The forest, tree by tree. Empty for a map with none.
     pub trees: &'static [(i16, i16)],
     /// Trees this close to a lane centerline are dropped, in world units.
-    /// Zero keeps every tree: a map whose corners follow the real roads has
-    /// nothing standing on them.
+    /// Zero keeps every tree.
     pub lane_clear: i32,
     /// The map's own vision blocker walls. Empty for a map with none.
     pub fow_blockers: &'static [&'static [(i16, i16)]],
@@ -88,9 +87,6 @@ const fn camp(pos: Vec2, kind: CampKind, pullable: bool, flooded: bool) -> CampD
 
 /// The demo map's two camps, in the wooded pockets either side of the
 /// lane, both pullable.
-///
-/// The real demo map runs no jungle; these stand in so everything the
-/// jungle does can be read off the small map too.
 const DEMO_CAMPS: [CampDef; 2] = [
     camp(Vec2::from_ints(8992, 7968), CampKind::Small, true, false),
     camp(Vec2::from_ints(8864, 9952), CampKind::Small, true, false),
@@ -176,7 +172,7 @@ impl MapDef {
         0..self.lanes
     }
 
-    /// Where this map's index sits in the per-team tables.
+    /// This map's place in per-map tables: its id.
     pub fn index(&self) -> usize {
         self.id.0 as usize
     }

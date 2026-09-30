@@ -1,7 +1,9 @@
 //! The fog-of-war blocker walls, node by node.
 
 /// The map's own vision blocker polylines, in this map's frame. A sight
-/// line crossing any segment is blocked, whichever side looks.
+/// line crossing a segment between two nodes no further apart than
+/// [`FOW_BLOCKER_SPAN`](crate::game::rules::FOW_BLOCKER_SPAN) is blocked,
+/// whichever side looks.
 pub const FOW_BLOCKERS: &[&[(i16, i16)]] = &[
     // fow_blocker_radiant_sideshop
     &[

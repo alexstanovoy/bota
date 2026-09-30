@@ -4,16 +4,17 @@ use bota_proto::Vec2;
 
 use crate::game::{isqrt64, rules};
 
-/// How strong a side's creeps are, by which barracks still stand.
-///
-/// Only [`Normal`](CreepRank::Normal) ever spawns until barracks exist.
+/// How strong one kind of a side's lane creeps is, by which enemy barracks
+/// have fallen. Always [`Normal`](CreepRank::Normal) on a map with no
+/// barracks.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CreepRank {
-    /// Both barracks of the lane standing.
+    /// Neither of the others.
     Normal,
-    /// The lane's barracks destroyed.
+    /// The enemy barracks of the lane matching its kind destroyed: melee or
+    /// ranged, both of them for siege.
     Super,
-    /// Every barracks destroyed.
+    /// Every enemy barracks destroyed.
     Mega,
 }
 
@@ -28,7 +29,8 @@ pub struct WavePlan {
     pub ranged: u32,
     /// Siege creeps.
     pub siege: u32,
-    /// Upgrades applied to this wave's melee and ranged creeps.
+    /// Upgrades the wave's creeps carry. Siege creeps and the flagbearer
+    /// gain nothing from them.
     pub upgrades: u32,
 }
 
@@ -97,8 +99,7 @@ pub fn spawn_offsets(plan: &WavePlan, forward: Vec2) -> Vec<Vec2> {
             + i64::from(forward.y.raw) * i64::from(forward.y.raw),
     );
     // A wave with nowhere to march lines up along the x axis. The length
-    // divides last: dividing first rounds the direction to zero, because the
-    // raw components and the length share a scale.
+    // divides last: divided first, the raw direction rounds to zero.
     let (dx, dy, len) = if len == 0 {
         (1i64, 0i64, 1i64)
     } else {
