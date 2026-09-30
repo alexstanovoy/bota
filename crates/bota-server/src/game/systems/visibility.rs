@@ -2,7 +2,7 @@
 
 use bota_proto::{Fixed, Team, UnitKind, Vec2};
 
-use crate::game::{CellGrid, Event, EventVisibility, Ground, sight_clear};
+use crate::game::{CellGrid, Event, EventVisibility, Ground, Spots, sight_clear};
 use crate::game::{
     Entity, EntityAllocator, Stats, Table, Transform, Visibility, World, is_structure,
 };
@@ -57,6 +57,8 @@ pub struct SightScratch {
     viewers: Vec<SightViewer>,
     /// Every entity whose side and true sight are worth asking about.
     true_viewers: Vec<SightViewer>,
+    /// Every row that stands somewhere and has sight to write, by where.
+    spots: Spots<u32>,
 }
 
 impl SightScratch {
@@ -171,20 +173,27 @@ pub fn visibility_system(cx: SightCx<'_>) {
             seen.add(Team::Dire);
         }
     }
+    sight.spots.clear();
+    for (index, row) in sight.rows.iter().enumerate() {
+        if let (Some(at), Some(_)) = (row.at, row.seen) {
+            sight.spots.push(at, index as u32);
+        }
+    }
+    sight.spots.sort();
     for viewer in &sight.viewers {
-        for row in sight.rows.iter_mut() {
-            if row.seen.as_ref().is_some_and(|seen| seen.by(viewer.side)) {
-                continue;
-            }
-            let Some(at) = row.at else {
+        let reach = i64::from(viewer.vision.raw).abs();
+        for index in sight.spots.around(viewer.from, reach) {
+            let row = &mut sight.rows[index as usize];
+            let (Some(at), Some(seen)) = (row.at, row.seen.as_mut()) else {
                 continue;
             };
-            if !viewer.from.within(at, viewer.vision) || viewer.tier < row.tier {
+            if seen.by(viewer.side)
+                || !viewer.from.within(at, viewer.vision)
+                || viewer.tier < row.tier
+            {
                 continue;
             }
-            if sight_clear(ground, sight_block, viewer.from, viewer.tier, at)
-                && let Some(seen) = row.seen.as_mut()
-            {
+            if sight_clear(ground, sight_block, viewer.from, viewer.tier, at) {
                 seen.add(viewer.side);
             }
         }
@@ -229,18 +238,20 @@ impl World {
     pub fn can_see_point(&self, team: Team, at: Vec2) -> bool {
         let target_tier = self.ground.tier(at);
         self.entities.iter().any(|entity| {
-            let (Some(side), Some(from), Some(radius)) = (
-                self.team.get(entity).copied(),
+            if self.team.get(entity) != Some(&team) {
+                return false;
+            }
+            let (Some(from), Some(radius)) = (
                 self.transform.get(entity).map(|t| t.pos),
                 self.stats.get(entity).map(|s| s.vision),
             ) else {
                 return false;
             };
+            if radius <= Fixed::ZERO || !from.within(at, radius) {
+                return false;
+            }
             let viewer_tier = self.ground.tier(from);
-            side == team
-                && radius > Fixed::ZERO
-                && from.within(at, radius)
-                && viewer_tier >= target_tier
+            viewer_tier >= target_tier
                 && sight_clear(&self.ground, &self.sight_block, from, viewer_tier, at)
         })
     }
