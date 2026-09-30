@@ -89,7 +89,7 @@ pub const ABILITIES: [AbilityFace; 19] = [
     AbilityFace {
         id: 1,
         name: "Frenzy",
-        blurb: "No target. +20/28/36/44% attack speed for 6 s. 30/40/50/60 mana.",
+        blurb: "No target. +25/39/56/79% attack speed for 6 s. 30/40/50/60 mana.",
         icon: None,
         art: Art::Missile,
     },
@@ -103,7 +103,7 @@ pub const ABILITIES: [AbilityFace; 19] = [
     AbilityFace {
         id: 3,
         name: "Volley",
-        blurb: "Ultimate, no target. An attack at 80/100/120% damage flies at every enemy within 700.",
+        blurb: "Ultimate, no target. Strikes every enemy within 700 at once for 80/100/120% of attack damage, as physical damage.",
         icon: None,
         art: Art::Missile,
     },
@@ -117,7 +117,7 @@ pub const ABILITIES: [AbilityFace; 19] = [
     AbilityFace {
         id: 5,
         name: "Rot",
-        blurb: "Toggle. Burns everything within 250 for 30/60/90/120 a second and slows it, its owner included, but never kills its owner.",
+        blurb: "Toggle. Burns every enemy within 250 for 30/60/90/120 a second and slows it 10/15/20/25%. It burns its owner for the same, but never kills its owner.",
         icon: None,
         art: Art::Cloud { radius: 250 },
     },
@@ -194,7 +194,7 @@ pub const ABILITIES: [AbilityFace; 19] = [
     AbilityFace {
         id: 16,
         name: "Requiem",
-        blurb: "Ultimate, no target. Lets a line fly out for every soul held, up to 20, out to 1000. Each line burns what it crosses for 80/120/160 magic damage, and every hit adds 0.6 s of fear and a 20/25/30% slow, up to 2.15 s. What stands close is crossed by many lines. The souls are kept.",
+        blurb: "Ultimate, no target. Lets a line fly out for every soul held, up to 20, out to 1000. Each line burns what it crosses for 80/120/160 magic damage, and every hit adds 0.6 s of fear and a 20/25/30% slow, up to 2.1 s. What stands close is crossed by many lines. The souls are kept.",
         icon: None,
         art: Art::Soul,
     },
@@ -227,14 +227,14 @@ pub const ITEMS: [ItemFace; 52] = [
         id: 1,
         name: "Clarity",
         stats: "150MP/25s",
-        blurb: "Consumable. Restores 150 mana over 25 s. Any hero's hit breaks it.",
+        blurb: "Consumable. Restores 150 mana over 25 s. A blow from a hero or a tower breaks it.",
         icon: Some(include_bytes!("../assets/items/clarity.svg")),
     },
     ItemFace {
         id: 2,
         name: "Salve",
         stats: "400HP/10s",
-        blurb: "Consumable. Restores 400 health over 10 s. Any hero's hit breaks it.",
+        blurb: "Consumable. Restores 400 health over 10 s. A blow from a hero or a tower breaks it.",
         icon: Some(include_bytes!("../assets/items/healing_salve.svg")),
     },
     ItemFace {
@@ -430,14 +430,14 @@ pub const ITEMS: [ItemFace; 52] = [
         id: 30,
         name: "Phase",
         stats: "+45MS+18DMG",
-        blurb: "+45 movement speed, +18 attack damage. Walks 20% faster and through bodies for 3 s. 8 s wait.",
+        blurb: "+45 movement speed, +18 attack damage. Walks 20% faster and through bodies for 3.1 s. 8 s wait.",
         icon: Some(include_bytes!("../assets/items/phase_boots.svg")),
     },
     ItemFace {
         id: 31,
         name: "Blink",
         stats: "1200 jump",
-        blurb: "Carries you to a point up to 1200 away. 15 s wait, and any hero's blow sets it back 3 s.",
+        blurb: "Carries you to a point up to 1200 away. 15 s wait, and a blow from a hero or a tower leaves it at least 3 s from ready.",
         icon: Some(include_bytes!("../assets/items/blink_dagger.svg")),
     },
     ItemFace {
@@ -647,7 +647,7 @@ pub const EFFECTS: [EffectFace; 18] = [
     EffectFace {
         id: 10,
         name: "Heap",
-        blurb: "Health kept from every death nearby.",
+        blurb: "Strength kept from every enemy hero that died nearby.",
         icon: None,
     },
     EffectFace {
@@ -683,7 +683,7 @@ pub const EFFECTS: [EffectFace; 18] = [
     EffectFace {
         id: 16,
         name: "Rot",
-        blurb: "The rot is on: everything within 250 burns and slows, its owner included.",
+        blurb: "The rot is on. It is never listed on a unit: the toggle shows on the ability.",
         icon: None,
     },
     EffectFace {
