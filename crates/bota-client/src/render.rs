@@ -1694,10 +1694,11 @@ fn draw_shop(app: &App, view: &WorldView) {
 /// The circle a tree stands in, in world units.
 pub const TREE_RADIUS: f32 = 48.0;
 
-/// Every item in a seat's hero's bag and in its stash, for [`price_for`].
+/// Every item in a seat's hero's bag and in its stash that the seat bought
+/// and has not marked for sale, for [`price_for`].
 ///
 /// [`price_for`]: crate::catalog::price_for
-fn held_items(view: &WorldView, p: &bota_proto::PlayerView) -> Vec<bota_proto::ItemId> {
+pub(crate) fn held_items(view: &WorldView, p: &bota_proto::PlayerView) -> Vec<bota_proto::ItemId> {
     let bag = p
         .unit
         .and_then(|id| view.units.iter().find(|u| u.id == id))
@@ -1706,6 +1707,7 @@ fn held_items(view: &WorldView, p: &bota_proto::PlayerView) -> Vec<bota_proto::I
     bag.iter()
         .chain(p.stash.iter().flatten())
         .flatten()
+        .filter(|item| item.owner == p.slot && !item.for_sale)
         .map(|item| item.id)
         .collect()
 }

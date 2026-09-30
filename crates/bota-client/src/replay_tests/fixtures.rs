@@ -3,7 +3,7 @@ use std::io::{self, Cursor, Read};
 use std::rc::Rc;
 
 use bota_proto::{
-    MapId, MatchInfo, ReplayRecord, ServerMsg, TickMode, WorldView, encode_frame_to_vec,
+    MapId, MatchInfo, ReplayRecord, ServerMsg, TickMode, Vec2, WorldView, encode_frame_to_vec,
 };
 
 pub fn match_start(tick_rate: u16) -> ReplayRecord {
@@ -20,6 +20,8 @@ pub fn match_start(tick_rate: u16) -> ReplayRecord {
             mode: TickMode::Lockstep,
             picks: Vec::new(),
             shop: Vec::new(),
+            fountains: [Vec2::ZERO, Vec2::ZERO],
+            shop_range: 0,
         },
     })
 }
