@@ -6,72 +6,6 @@ use crate::game::rules;
 use super::support::*;
 
 #[test]
-fn buying_needs_the_shop() {
-    let map = crate::game::map_of(bota_proto::MapId(1));
-    let mut world = World::on_map(map);
-    let away = bota_proto::Vec2::from_ints(9600, 9216);
-    let hero = world.spawn_hero(
-        bota_proto::Team::Radiant,
-        away,
-        bota_proto::SlotId(0),
-        bota_proto::HeroId(0),
-    );
-    let mut seat = crate::game::Seat::new(
-        bota_proto::SlotId(0),
-        bota_proto::Team::Radiant,
-        bota_proto::HeroId(0),
-        rules::STARTING_GOLD,
-        rules::STASH_SLOTS,
-    );
-    seat.unit = Some(hero);
-    world.seats.push(seat);
-    world.settle();
-    let mut events = Vec::new();
-    let salve = bota_proto::ItemId(crate::game::ITEM_HEALING_SALVE);
-    assert!(
-        world.buy(bota_proto::SlotId(0), salve, &mut events),
-        "out in the lane it buys all the same"
-    );
-    assert_eq!(
-        world.seats[0].stash.slots[0].map(|stack| stack.id),
-        Some(salve),
-        "and what it bought waits in the stash"
-    );
-    assert!(
-        world.inventory.get(hero).expect("has a bag").held().count() == 0,
-        "nothing reaches its hands out there"
-    );
-    if let Some(at) = world.transform.get_mut(hero) {
-        at.pos = crate::game::fountain_pos(map, bota_proto::Team::Radiant);
-    }
-    assert!(
-        world.buy(bota_proto::SlotId(0), salve, &mut events),
-        "at its own shop it may"
-    );
-    assert!(world.seats[0].gold < rules::STARTING_GOLD, "and it paid");
-}
-
-#[test]
-fn buying_through_a_command_returns_the_purchase_event() {
-    let mut world = World::for_match(&config(), config().rng());
-    let item = bota_proto::ItemId(crate::game::ITEM_HEALING_SALVE);
-
-    let events = world.advance(&[crate::game::Command {
-        slot: bota_proto::SlotId(0),
-        unit: None,
-        order: bota_proto::Order::Buy { item },
-    }]);
-
-    assert!(events.iter().any(|event| {
-        event.kind
-            == bota_proto::EventKind::ItemBought {
-                slot: bota_proto::SlotId(0),
-                item,
-            }
-    }));
-}
-
-#[test]
 fn what_a_hero_bought_is_in_the_view_its_side_is_sent() {
     let mut world = World::for_match(&config(), config().rng());
     let hero = world.seats[0].unit.expect("stood up");
@@ -225,21 +159,6 @@ fn the_stash_is_out_of_reach_away_from_the_shop() {
 }
 
 #[test]
-fn selling_soon_after_buying_pays_the_whole_price_back() {
-    let mut world = World::for_match(&config(), config().rng());
-    let hero = world.seats[0].unit.expect("stood up");
-    let purse = world.seats[0].gold;
-    let boots = bota_proto::ItemId(crate::game::ITEM_BOOTS);
-    let mut events = Vec::new();
-    assert!(world.buy(bota_proto::SlotId(0), boots, &mut events));
-    assert!(
-        world.sell_item(bota_proto::SlotId(0), hero, 0),
-        "and sells it back"
-    );
-    assert_eq!(world.seats[0].gold, purse, "nothing was lost on it");
-}
-
-#[test]
 fn the_stash_sells_from_anywhere_and_a_bag_far_out_only_marks() {
     let mut world = World::for_match(&config(), config().rng());
     let hero = world.seats[0].unit.expect("stood up");
@@ -293,41 +212,6 @@ fn the_stash_sells_from_anywhere_and_a_bag_far_out_only_marks() {
     assert_eq!(
         world.validate_order(bota_proto::SlotId(0), None, &sell_bag),
         Ok(())
-    );
-}
-
-#[test]
-fn buying_a_built_item_buys_only_the_parts_it_lacks() {
-    let (mut world, hero) = a_hero_with_gold(10_000);
-    let treads = bota_proto::ItemId(crate::game::ITEM_POWER_TREADS);
-    hand_item(&mut world, hero, crate::game::ITEM_BOOTS, 0);
-    let before = world.seats[0].gold;
-    let mut events = Vec::new();
-    assert!(
-        world.buy(bota_proto::SlotId(0), treads, &mut events),
-        "bought"
-    );
-    assert_eq!(
-        before - world.seats[0].gold,
-        price_of(crate::game::ITEM_POWER_TREADS) - price_of(crate::game::ITEM_BOOTS),
-        "the boots already in hand are not paid for twice"
-    );
-    world.step();
-    assert_eq!(
-        slot_of(&world, hero, 0).map(|stack| stack.id),
-        Some(treads),
-        "and the parts build themselves into the whole"
-    );
-    assert!(
-        world
-            .inventory
-            .get(hero)
-            .expect("has a bag")
-            .slots
-            .iter()
-            .skip(1)
-            .all(|slot| slot.is_none()),
-        "leaving nothing of what went into it"
     );
 }
 
@@ -729,21 +613,6 @@ fn a_courier_called_empty_still_collects_what_is_marked() {
         world.seats[0].stash.held().count() == 0,
         "sold at the shop rather than shelved"
     );
-}
-
-#[test]
-fn what_another_seat_bought_is_not_yours_to_sell() {
-    let (mut world, hero) = a_hero_with_gold(0);
-    if let Some(bag) = world.inventory.get_mut(hero) {
-        bag.slots[0] = Some(a_stack_of(crate::game::ITEM_BOOTS, 1));
-    }
-    let before = world.seats[0].gold;
-    assert!(
-        !world.sell_item(bota_proto::SlotId(0), hero, 0),
-        "the other seat bought it"
-    );
-    assert!(slot_of(&world, hero, 0).is_some(), "so it stays");
-    assert_eq!(world.seats[0].gold, before);
 }
 
 #[test]

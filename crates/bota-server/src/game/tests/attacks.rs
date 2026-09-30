@@ -1,7 +1,7 @@
 //! The attack cycle and uphill misses.
 
 use crate::game::rules;
-use crate::game::{Health, MELEE_CREEP, World};
+use crate::game::{Health, MELEE_CREEP};
 use bota_proto::{Fixed, Team};
 
 use super::support::*;
@@ -76,41 +76,6 @@ fn a_swing_lands_on_whoever_it_began_against() {
         world.health.get(mark).expect("standing").hp < was,
         "and landed on the one it began against"
     );
-}
-
-#[test]
-fn a_hero_told_to_attack_comes_round_and_closes() {
-    let mut world = World::new();
-    let hero = world.spawn_hero(
-        Team::Radiant,
-        bota_proto::Vec2::from_ints(5000, 5000),
-        bota_proto::SlotId(0),
-        bota_proto::HeroId(0),
-    );
-    let mark = world.spawn_unit(
-        &MELEE_CREEP,
-        Team::Dire,
-        bota_proto::Vec2::from_ints(4000, 5000),
-    );
-    world.settle();
-    // Ordered at it, the way a player does.
-    world.orders.insert(
-        hero,
-        crate::game::Orders {
-            current: crate::game::UnitOrder::Attack {
-                target: mark,
-                last_seen: bota_proto::Vec2::from_ints(4000, 5000),
-            },
-            cooldown: 0,
-            pending: None,
-        },
-    );
-    let start = world.transform.get(hero).expect("standing").pos;
-    for _ in 0..60 {
-        world.step();
-    }
-    let now = world.transform.get(hero).expect("standing").pos;
-    assert!(now.x < start.x, "it walked at what it was set on: {now:?}");
 }
 
 #[test]

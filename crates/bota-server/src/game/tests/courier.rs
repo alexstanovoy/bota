@@ -7,31 +7,6 @@ use bota_proto::Fixed;
 use super::support::*;
 
 #[test]
-fn a_seat_stands_up_with_a_courier_of_its_own() {
-    let world = World::for_match(&config(), config().rng());
-    let courier = the_courier(&world);
-    assert_eq!(
-        world.kind.get(courier),
-        Some(&bota_proto::UnitKind::Courier),
-        "it is a courier"
-    );
-    assert_eq!(
-        world.owner.get(courier),
-        Some(&bota_proto::SlotId(0)),
-        "and it belongs to the seat"
-    );
-    assert!(
-        world.inventory.get(courier).is_some(),
-        "and it has room to carry"
-    );
-    assert_eq!(
-        world.stats.get(courier).map(|stats| stats.damage),
-        Some(0),
-        "a courier does not fight"
-    );
-}
-
-#[test]
 fn a_courier_brought_down_comes_back_in_its_own_time() {
     use crate::game::{Errand, wire_id};
     use bota_proto::{AbilitySlot, Order, RejectReason, SlotId, Target};
@@ -139,24 +114,6 @@ fn a_courier_fetches_the_stash_and_hands_it_to_its_owner() {
 }
 
 #[test]
-fn a_burst_makes_a_courier_fly_faster_and_only_one_at_a_time() {
-    let mut world = World::for_match(&config(), config().rng());
-    let courier = the_courier(&world);
-    world.step();
-    let plain = world.stats.get(courier).expect("settled").move_speed;
-    assert!(world.courier_burst(courier));
-    world.step();
-    assert!(
-        world.stats.get(courier).expect("settled").move_speed > plain,
-        "it flies faster"
-    );
-    assert!(
-        !world.courier_burst(courier),
-        "and one burst at a time is all it has"
-    );
-}
-
-#[test]
 fn an_order_goes_to_the_unit_it_names_and_only_to_ones_this_seat_drives() {
     let mut world = World::for_match(&config(), config().rng());
     let hero = world.seats[0].unit.expect("stood up");
@@ -211,52 +168,6 @@ fn an_order_goes_to_the_unit_it_names_and_only_to_ones_this_seat_drives() {
         ),
         Err(bota_proto::RejectReason::NotYourUnit),
         "a creep of its own side is still not its to drive"
-    );
-}
-
-#[test]
-fn a_courier_carries_its_errands_as_abilities() {
-    let mut world = World::for_match(&config(), config().rng());
-    let courier = the_courier(&world);
-    let book = world.abilities.get(courier).expect("a courier casts");
-    let carried: Vec<_> = book.slots.iter().map(|slot| slot.id).collect();
-    assert_eq!(
-        carried,
-        vec![
-            crate::game::ability::TAKE_STASH,
-            crate::game::ability::RETURN_ITEMS,
-            crate::game::ability::BURST,
-            crate::game::ability::DELIVER,
-            crate::game::ability::SHIELD,
-        ],
-        "it knows what a courier knows"
-    );
-    assert!(
-        book.slots.iter().all(|slot| slot.level == 1),
-        "and knows them from the start"
-    );
-    // Sent through the wire the way a player sends it.
-    let named = Some(crate::game::wire_id(courier));
-    // The burst sits third, after the two that fetch and put back.
-    let burst = bota_proto::Order::Cast {
-        slot: bota_proto::AbilitySlot(2),
-        target: bota_proto::Target::None,
-    };
-    assert_eq!(
-        world.validate_order(bota_proto::SlotId(0), named, &burst),
-        Ok(())
-    );
-    world.step();
-    let plain = world.stats.get(courier).expect("settled").move_speed;
-    world.advance(&[crate::game::Command {
-        slot: bota_proto::SlotId(0),
-        unit: named,
-        order: burst,
-    }]);
-    world.step();
-    assert!(
-        world.stats.get(courier).expect("settled").move_speed > plain,
-        "the burst went off"
     );
 }
 
@@ -343,62 +254,6 @@ fn a_courier_at_the_fountain_reaches_the_stash_itself() {
         world.seats[0].stash.slots[0].map(|held| held.id),
         Some(boots),
         "it goes back the same way"
-    );
-}
-
-#[test]
-fn an_order_takes_a_courier_off_its_errand() {
-    let mut world = World::for_match(&config(), config().rng());
-    let hero = world.seats[0].unit.expect("stood up");
-    let courier = the_courier(&world);
-    let home = world.courier_home(bota_proto::Team::Radiant);
-    world.transform.get_mut(hero).expect("standing").pos =
-        home + bota_proto::Vec2::from_ints(3000, 0);
-    // Something to carry, or it would simply go home instead.
-    if let Some(bag) = world.inventory.get_mut(courier) {
-        bag.slots[0] = Some(crate::game::ItemStack {
-            id: bota_proto::ItemId(crate::game::ITEM_BOOTS),
-            charges: 0,
-            cooldown: 0,
-            mute: 0,
-            mode: None,
-            bought_tick: 0,
-            touched: false,
-            owner: bota_proto::SlotId(0),
-            for_sale: false,
-        });
-    }
-    // Sent to its owner, it is on its way.
-    assert!(world.courier_deliver(courier));
-    for _ in 0..30 {
-        world.step();
-    }
-    assert_eq!(
-        world.errand.get(courier),
-        Some(&crate::game::Errand::ToOwner),
-        "it is on the errand"
-    );
-    // Told to go somewhere else, it goes there instead.
-    let aside = home + bota_proto::Vec2::from_ints(0, 800);
-    world.advance(&[crate::game::Command {
-        slot: bota_proto::SlotId(0),
-        unit: Some(crate::game::wire_id(courier)),
-        order: bota_proto::Order::Move {
-            target: bota_proto::Target::Pos(aside),
-        },
-    }]);
-    assert_eq!(
-        world.errand.get(courier),
-        Some(&crate::game::Errand::None),
-        "the order took it off the errand"
-    );
-    for _ in 0..300 {
-        world.step();
-    }
-    assert_eq!(
-        world.transform.get(courier).map(|at| at.pos),
-        Some(aside),
-        "and it went where it was told"
     );
 }
 

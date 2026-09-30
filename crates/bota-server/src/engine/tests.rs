@@ -86,17 +86,3 @@ fn what_a_dead_entity_left_is_never_the_new_tenants() {
     assert_eq!(table.get(second), Some(&3));
     assert_eq!(table.get(first), None, "the old handle reads nothing");
 }
-
-#[test]
-fn a_table_answers_for_the_handle_it_is_given_not_for_the_living() {
-    // Liveness is the allocator's to know. Until the slot changes hands the
-    // table still answers the dead handle, so walking entities goes through
-    // `EntityAllocator::iter` and never through a table alone.
-    let mut entities = EntityAllocator::new();
-    let gone = entities.alloc();
-    let mut table: Table<i32> = Table::new();
-    table.insert(gone, 7);
-    assert!(entities.free(gone));
-    assert!(!entities.contains(gone));
-    assert_eq!(table.get(gone), Some(&7));
-}

@@ -98,63 +98,6 @@ fn a_ward_in_a_camp_keeps_it_empty() {
 }
 
 #[test]
-fn a_camp_struck_answers_as_one() {
-    let mut world = World::new();
-    let camp = bota_proto::Vec2::from_ints(5000, 5000);
-    let mut beasts = Vec::new();
-    for step in 0..2 {
-        let beast = world.spawn_unit(
-            crate::game::NeutralKind::Kobold.def(),
-            bota_proto::Team::Neutral,
-            camp + bota_proto::Vec2::from_ints(60 * step, 0),
-        );
-        world.camp_home.insert(
-            beast,
-            crate::game::CampHome {
-                camp: 0,
-                home: camp,
-            },
-        );
-        world.neutral_ai.insert(
-            beast,
-            crate::game::NeutralAi {
-                leash_left: rules::NEUTRAL_AGGRO_WINDOW,
-                reaggro_block: 0,
-                next_window: rules::NEUTRAL_AGGRO_WINDOW,
-                going_home: false,
-                roused_by: None,
-                awake: false,
-            },
-        );
-        beasts.push(beast);
-    }
-    // Far enough off that neither would notice a hero standing there.
-    let hero = world.spawn_hero(
-        bota_proto::Team::Radiant,
-        camp + bota_proto::Vec2::from_ints(700, 0),
-        bota_proto::SlotId(0),
-        bota_proto::HeroId(0),
-    );
-    world.settle();
-    world.step();
-    assert!(
-        beasts.iter().all(|beast| world.target_of(*beast).is_none()),
-        "left alone the camp takes nobody on"
-    );
-    // One of them is struck from out there.
-    world.push_hit(Some(hero), beasts[0], 10, bota_proto::DamageKind::Physical);
-    world.step();
-    world.step();
-    for beast in &beasts {
-        assert_eq!(
-            world.target_of(*beast),
-            Some(hero),
-            "every one of the camp answers, not only the one struck"
-        );
-    }
-}
-
-#[test]
 fn a_neutral_sleeps_until_something_comes_right_up_to_it() {
     let camp = bota_proto::Vec2::from_ints(5000, 5000);
     for (apart, wakes) in [

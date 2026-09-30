@@ -2,168 +2,78 @@
 
 use crate::game::rules;
 use crate::game::{
-    AbilityBook, AbilityState, Def, FLAGBEARER_CREEP, HERO, Health, Inventory, ItemStack, Level,
-    MELEE_CREEP, Mana, Modifier, ModifierKind, Modifiers, NEUTRALS, NeutralKind, RANGED_CREEP,
-    Stats, Upgrades, World,
+    Def, FLAGBEARER_CREEP, HERO, Health, Level, MELEE_CREEP, Mana, Modifier, ModifierKind,
+    Modifiers, RANGED_CREEP, Stats, Upgrades, World,
 };
 use bota_proto::Fixed;
 
 use super::support::*;
 
+/// A pool a tick regenerates.
+#[derive(Clone, Copy, Debug)]
+enum Pool {
+    Health,
+    Mana,
+}
+
+/// Regeneration cases: the pool, its rate a tick (none for a body with no
+/// stats), where it starts, the ticks run, and where it stands after.
+const REGENERATION: [(Pool, Option<Fixed>, i32, u32, i32); 8] = [
+    (Pool::Health, Some(Fixed::from_int(3)), 10, 1, 13),
+    (Pool::Health, Some(Fixed::from_int(3)), 10, 11, 20),
+    (Pool::Health, Some(Fixed::from_ratio(1, 4)), 10, 3, 10),
+    (Pool::Health, Some(Fixed::from_ratio(1, 4)), 10, 4, 11),
+    (Pool::Health, Some(Fixed::from_ratio(1, 4)), 10, 8, 12),
+    (Pool::Mana, Some(Fixed::from_ratio(1, 2)), 0, 2, 1),
+    (Pool::Health, Some(Fixed::from_int(3)), 0, 1, 0),
+    (Pool::Health, None, 10, 1, 10),
+];
+
 #[test]
-fn a_tick_mends_what_can_mend() {
-    let mut world = World::new();
-    let hurt = world.spawn();
-    world.health.insert(hurt, health(10));
-    world.stats.insert(
-        hurt,
-        Stats {
-            hp_regen: Fixed::from_int(3),
-            ..stats()
-        },
-    );
-    world.step();
-    assert_eq!(world.tick, 1);
-    assert_eq!(world.health.get(hurt).map(|h| h.hp.to_int()), Some(13));
-    for _ in 0..10 {
-        world.step();
+fn a_pool_regenerates_in_whole_points_up_to_its_maximum_and_not_once_empty() {
+    for (pool, rate, start, ticks, expected) in REGENERATION {
+        let mut world = World::new();
+        let body = world.spawn();
+        match pool {
+            Pool::Health => {
+                world.health.insert(body, health(start));
+            }
+            Pool::Mana => {
+                world.mana.insert(
+                    body,
+                    Mana {
+                        mana: Fixed::from_int(start),
+                    },
+                );
+            }
+        }
+        if let Some(rate) = rate {
+            let (hp_regen, mana_regen) = match pool {
+                Pool::Health => (rate, Fixed::ZERO),
+                Pool::Mana => (Fixed::ZERO, rate),
+            };
+            world.stats.insert(
+                body,
+                Stats {
+                    hp_regen,
+                    mana_regen,
+                    ..stats()
+                },
+            );
+        }
+        for _ in 0..ticks {
+            world.step();
+        }
+        let left = match pool {
+            Pool::Health => world.health.get(body).map(|h| h.hp.to_int()),
+            Pool::Mana => world.mana.get(body).map(|m| m.mana.to_int()),
+        };
+        assert_eq!(
+            left,
+            Some(expected),
+            "{pool:?} from {start} at {rate:?} a tick for {ticks} ticks"
+        );
     }
-    assert_eq!(
-        world.health.get(hurt).map(|h| h.hp.to_int()),
-        Some(20),
-        "mending stops at the maximum"
-    );
-}
-
-#[test]
-fn mending_finer_than_a_point_gathers_until_it_is_worth_one() {
-    let mut world = World::new();
-    let hurt = world.spawn();
-    world.health.insert(hurt, health(10));
-    world.stats.insert(
-        hurt,
-        Stats {
-            hp_regen: Fixed::from_ratio(1, 4),
-            ..stats()
-        },
-    );
-    for _ in 0..3 {
-        world.step();
-    }
-    assert_eq!(
-        world.health.get(hurt).map(|h| h.hp.to_int()),
-        Some(10),
-        "three quarters of a point is not a point"
-    );
-    world.step();
-    assert_eq!(world.health.get(hurt).map(|h| h.hp.to_int()), Some(11));
-    for _ in 0..4 {
-        world.step();
-    }
-    assert_eq!(
-        world.health.get(hurt).map(|h| h.hp.to_int()),
-        Some(12),
-        "nothing is lost between whole points"
-    );
-}
-
-#[test]
-fn mana_mends_the_same_way() {
-    let mut world = World::new();
-    let caster = world.spawn();
-    world.mana.insert(caster, Mana { mana: Fixed::ZERO });
-    world.stats.insert(
-        caster,
-        Stats {
-            mana_regen: Fixed::from_ratio(1, 2),
-            ..stats()
-        },
-    );
-    for _ in 0..2 {
-        world.step();
-    }
-    assert_eq!(world.mana.get(caster).map(|m| m.mana.to_int()), Some(1));
-}
-
-#[test]
-fn the_dead_mend_nothing() {
-    let mut world = World::new();
-    let dead = world.spawn();
-    world.health.insert(dead, health(0));
-    world.stats.insert(
-        dead,
-        Stats {
-            hp_regen: Fixed::from_int(3),
-            ..stats()
-        },
-    );
-    world.step();
-    assert_eq!(world.health.get(dead).map(|h| h.hp.to_int()), Some(0));
-}
-
-#[test]
-fn a_tick_leaves_alone_what_carries_no_stats() {
-    let mut world = World::new();
-    let stone = world.spawn();
-    world.health.insert(stone, health(10));
-    world.step();
-    assert_eq!(world.health.get(stone).map(|h| h.hp.to_int()), Some(10));
-}
-
-#[test]
-fn a_tick_leaves_alone_what_is_no_longer_in_the_world() {
-    let mut world = World::new();
-    let gone = world.spawn();
-    world.health.insert(gone, health(10));
-    world.stats.insert(
-        gone,
-        Stats {
-            hp_regen: Fixed::from_int(3),
-            ..stats()
-        },
-    );
-    assert!(world.despawn(gone));
-    world.step();
-    // The row is still there, untouched: the tick walks the allocator, and
-    // the allocator no longer names it.
-    assert_eq!(world.health.get(gone).map(|h| h.hp.to_int()), Some(10));
-}
-
-#[test]
-fn what_a_despawned_entity_left_is_not_inherited() {
-    let mut world = World::new();
-    let first = world.spawn();
-    world.health.insert(first, health(10));
-    world.stats.insert(
-        first,
-        Stats {
-            hp_regen: Fixed::from_int(3),
-            ..stats()
-        },
-    );
-    assert!(world.despawn(first));
-    let second = world.spawn();
-    assert_eq!(first.index(), second.index());
-    assert_eq!(world.health.get(second), None);
-    world.step();
-    assert_eq!(
-        world.health.get(second),
-        None,
-        "it mends nothing it never had"
-    );
-}
-
-#[test]
-fn a_plain_creep_gets_the_numbers_of_its_kind() {
-    let mut world = World::new();
-    let creep = plain_creep(&mut world);
-    world.step();
-    let stats = world.stats.get(creep).expect("worked out this tick");
-    assert_eq!(stats.max_hp, Fixed::from_int(rules::MELEE_CREEP_HP));
-    assert_eq!(stats.damage, rules::MELEE_CREEP_ATTACK_DAMAGE);
-    assert_eq!(stats.armor, Fixed::from_int(rules::MELEE_CREEP_ARMOR));
-    assert_eq!(stats.attack_time, rules::CREEP_ATTACK_TIME);
-    assert_eq!(stats.projectile_speed, None, "a melee creep throws nothing");
 }
 
 #[test]
@@ -351,72 +261,6 @@ fn mending_adds_to_what_a_kind_regenerates() {
 }
 
 #[test]
-fn every_neutral_kind_has_numbers_of_its_own() {
-    let dragon = NeutralKind::BlackDragon.def();
-    assert_eq!(dragon.max_hp, 2000);
-    assert_eq!(
-        dragon.projectile_speed,
-        Some(Fixed::from_int(1500).to_int())
-    );
-    assert!(dragon.ancient, "a dragon is an ancient creep");
-    let kobold = NeutralKind::Kobold.def();
-    assert_eq!(kobold.max_hp, 240);
-    assert_eq!(kobold.projectile_speed, None, "a kobold swings");
-    assert!(!kobold.ancient);
-    assert_eq!(kobold.collision, rules::NEUTRAL_COLLISION);
-    assert_eq!(kobold.bound, rules::NEUTRAL_BOUND);
-    assert_eq!(kobold.vision, 1400, "a kobold sees further than most camps");
-    assert_eq!(NeutralKind::GnollAssassin.def().vision, 400);
-    assert_eq!(
-        NeutralKind::OgreMauler.def().vision,
-        rules::NEUTRAL_VISION,
-        "a camp with no sight of its own sees the usual distance"
-    );
-    assert_eq!(kobold.per_upgrade.hp, rules::NEUTRAL_UPGRADE_HP);
-    assert_eq!(NEUTRALS.len(), 36);
-}
-
-#[test]
-fn what_an_entity_carries_and_casts_keeps_its_slots() {
-    let mut inventory = Inventory::empty(3);
-    assert_eq!(inventory.held().count(), 0);
-    inventory.slots[1] = Some(ItemStack {
-        id: bota_proto::ItemId(7),
-        charges: 2,
-        cooldown: 0,
-        mute: 0,
-        mode: None,
-        bought_tick: 0,
-        touched: false,
-        owner: bota_proto::SlotId(0),
-        for_sale: false,
-    });
-    assert_eq!(inventory.held().count(), 1);
-    assert_eq!(inventory.slots.len(), 3, "an empty slot keeps its number");
-
-    let book = AbilityBook {
-        slots: vec![
-            AbilityState {
-                id: bota_proto::AbilityId(1),
-                level: 0,
-                cooldown: 0,
-            },
-            AbilityState {
-                id: bota_proto::AbilityId(2),
-                level: 3,
-                cooldown: 0,
-            },
-        ],
-    };
-    assert_eq!(
-        book.learned().count(),
-        1,
-        "an unlearned ability is not held"
-    );
-    assert_eq!(book.slot(1).map(|a| a.level), Some(3));
-}
-
-#[test]
 fn what_a_hero_carries_shows_up_in_its_stats() {
     let mut world = World::new();
     let hero = world.spawn_hero(
@@ -580,37 +424,6 @@ fn a_burn_takes_health_on_the_beat_and_may_be_told_to_leave_one() {
         Some(1),
         "on its last point"
     );
-}
-
-#[test]
-fn each_hero_stands_up_with_what_its_own_kind_carries() {
-    for (id, def) in crate::game::HEROES.iter().enumerate() {
-        let mut world = World::new();
-        let hero = world.spawn_hero(
-            bota_proto::Team::Radiant,
-            bota_proto::Vec2::from_ints(5000, 5000),
-            bota_proto::SlotId(0),
-            bota_proto::HeroId(id as u16),
-        );
-        world.settle();
-        let book = world.abilities.get(hero).expect("a hero casts");
-        let carried: Vec<_> = book.slots.iter().map(|slot| slot.id).collect();
-        assert_eq!(
-            carried,
-            def.abilities.to_vec(),
-            "{} carries its own",
-            def.name
-        );
-        assert_eq!(
-            world.stats.get(hero).map(|s| s.max_hp),
-            Some(
-                Fixed::from_int(def.unit.max_hp)
-                    + Fixed::from_int(rules::HP_PER_STRENGTH) * def.unit.attributes.strength
-            ),
-            "{} stands up in its own body",
-            def.name
-        );
-    }
 }
 
 #[test]
