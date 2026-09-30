@@ -33,12 +33,13 @@ pub(crate) struct Dummy {
     pub(crate) patrol: Vec<Vec2>,
     /// The hidden observer of each side, Radiant first.
     pub(crate) observers: [Entity; 2],
-    /// The true-sight sentry of each side, Radiant first.
+    /// The sentry beside each observer, of the observer's enemy: Dire's by
+    /// Radiant's observer first.
     pub(crate) sentries: [Entity; 2],
     /// Whether each side saw the other's observer when the stage was set.
     pub(crate) reveal: [bool; 2],
-    /// Whether each side failed to see the other's sentry when the stage was
-    /// set.
+    /// Whether each side, Radiant first, failed to see the other's sentry
+    /// when the stage was set.
     pub(crate) sentries_hidden: [bool; 2],
     /// The views of the last tick, when projection is on.
     views: Option<(WorldView, WorldView, WorldView)>,

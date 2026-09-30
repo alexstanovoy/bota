@@ -38,8 +38,8 @@ pub enum ActionState {
 pub enum ActionPhase {
     /// Windup or cast point. Cancelled at no cost.
     Before { progress: u32 },
-    /// The ability under way. Zero length for an attack and for one that is
-    /// over at once. Breaking it off calls its `on_cancel`.
+    /// The ability or item under way. Zero length for an attack and for one
+    /// that is over at once. Breaking it off calls its `on_cancel`.
     During { progress: u32 },
     /// Backswing. Cancelled at no cost.
     After { progress: u32 },

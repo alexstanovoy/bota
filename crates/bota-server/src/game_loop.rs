@@ -271,7 +271,7 @@ impl Server {
                 ack_timeout,
             );
             if self.roster.seats.iter().all(|s| s.player.is_none()) {
-                break; // nobody left to play or watch the seats
+                break; // every seat is empty
             }
             let cmds: Vec<Command> = pending
                 .iter()
@@ -351,9 +351,7 @@ impl Server {
                     events: visible,
                 });
                 // A spectator watching through one seat's eyes is told that
-                // seat's own orders. Watching everything is watching the
-                // game, not the hands, and brings none; a seat knows its
-                // own.
+                // seat's orders; nobody else is told any.
                 if let Some(eyes) = eyes {
                     let told: Vec<SlotOrder> = taken
                         .iter()

@@ -110,8 +110,7 @@ pub struct World {
     pub stats: Table<Stats>,
     /// What is on each entity.
     pub modifiers: Table<Modifiers>,
-    /// Applied stat changes on each entity, apart from what abilities, items
-    /// and dispels may touch.
+    /// Applied stat changes on each entity.
     pub applied: Table<AppliedModifiers>,
     /// Trusted match setup's modifiers, put on each unit as it is stood up.
     pub spawn_modifiers: Vec<SpawnModifier>,
@@ -361,7 +360,7 @@ impl World {
     }
 
     /// Puts an entity on a side, and gives it its row of sight, seen by that
-    /// side from this moment. The only place a row of sight is made.
+    /// side from this moment.
     pub fn set_team(&mut self, entity: Entity, team: Team) {
         self.team.insert(entity, team);
         match self.visibility.get_mut(entity) {
@@ -535,13 +534,9 @@ impl World {
         self.sight_block = grid;
     }
 
-    /// Brings everything worked out into line with what stands: stats and who
-    /// sees what.
-    ///
-    /// Called for a world just built and after anything is put into one, so
-    /// nothing newly stood up is invisible until the next tick. Pools are
-    /// left alone: what stands with them is whatever it has left, and filling
-    /// them is the business of whoever stood the entity up.
+    /// Brings stats, pools and who sees what into line with what stands.
+    /// Called for a world just built and after anything is put into one.
+    /// Pools follow their maxima as [`derive_stats`] moves them.
     pub fn settle(&mut self) {
         let _profile = self.scope(Phase::Settle);
         derive_stats(StatsCx {
@@ -572,7 +567,8 @@ impl World {
         });
     }
 
-    /// One tick, or no change after Map2 completes. Systems run in written order.
+    /// One tick, or no change after Map2 completes. The phases run in the
+    /// order written, and applied stat changes run down last.
     pub fn step(&mut self) -> Vec<crate::game::Event> {
         if self.map2_finished() {
             return Vec::new();
@@ -592,8 +588,8 @@ impl World {
         events
     }
 
-    /// Waves, camps, gear, gold, respawns, couriers, errands, sales and
-    /// what runs out.
+    /// Waves, camps, cooldowns, item builds, gold, respawns, couriers, item
+    /// errands, sales and what runs out.
     fn step_upkeep(&mut self) {
         let _profile = self.scope(Phase::Upkeep);
         self.spawn_waves();
@@ -685,8 +681,8 @@ impl World {
         });
     }
 
-    /// Orders kept honest, pools regenerated, actions run and missiles
-    /// flown; what they told of goes into the tick's events.
+    /// Attack orders tended, pools regenerated, actions run, missiles flown
+    /// and bounced; what they told of goes into the tick's events.
     fn step_actions(&mut self, events: &mut Vec<crate::game::Event>) {
         let _profile = self.scope(Phase::Actions);
         self.tend_attack_orders();
@@ -716,6 +712,9 @@ impl World {
         events.append(&mut self.events);
     }
 
+    /// Blows felt, then what answers to them: drinks and item cooldowns
+    /// broken, camps roused, damage credited, events and misses told, the
+    /// dead buried.
     fn step_damage(&mut self, events: &mut Vec<crate::game::Event>) {
         let _profile = self.scope(Phase::Damage);
         let amplified = self

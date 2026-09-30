@@ -263,9 +263,6 @@ fn a_way_found_to_a_spot_that_walks_away_is_found_again() {
     );
 }
 
-/// The bug this guards against: told to walk into the middle of a tower, a
-/// hero walked up to it and then circled it for ever, trying for a spot it
-/// could never stand on.
 #[test]
 fn a_hero_told_to_walk_into_a_tower_walks_up_to_it_and_stands() {
     let cfg = crate::game::MatchConfig {
@@ -315,8 +312,6 @@ fn a_hero_told_to_walk_into_a_tower_walks_up_to_it_and_stands() {
     );
 }
 
-/// The bug this guards against: a walk to a spot no way leads to went
-/// straight at it and stood pressed against whatever was in the way.
 #[test]
 fn a_walk_to_where_no_way_leads_ends_at_the_nearest_spot_got_to() {
     let mut cells = crate::game::CellGrid::open();
@@ -383,9 +378,6 @@ fn a_capsule_is_stopped_by_a_circle_exactly_where_the_circle_stops_it() {
     assert!(stopped > 0 && free > 0, "both answers have to be seen");
 }
 
-/// The bug this guards against: the demo map's shore rocks were read as
-/// walkable ground, and the central water could be crossed anywhere rather
-/// than through its two openings.
 #[test]
 fn the_demo_lake_is_walled_by_its_shore_and_crossed_at_its_ford() {
     let map = crate::game::map_of(bota_proto::MapId(1));
@@ -421,9 +413,6 @@ fn the_demo_lake_is_walled_by_its_shore_and_crossed_at_its_ford() {
     }
 }
 
-/// The bugs this guards against: a walker pressed into a knot of creeps and
-/// crawled along it at slide speed, and a marcher wiggled at a wall of
-/// bodies for ever, flipping sides every tick and never working round.
 #[test]
 fn walkers_and_marchers_both_work_round_a_wall_of_bodies() {
     let wall = |world: &mut World, x: i32, y: i32| {
@@ -475,9 +464,6 @@ fn walkers_and_marchers_both_work_round_a_wall_of_bodies() {
     assert!(took.is_some(), "the creep works round the wall");
 }
 
-/// The bug this guards against: a hero pressed against a tower saw no
-/// corner along it at the route's margin, laid its route again every tick
-/// and stood at the first corner for ever.
 #[test]
 fn a_hero_touching_a_tower_and_sent_past_it_goes_round_briskly() {
     let map = crate::game::map_of(bota_proto::MapId(1));
@@ -500,10 +486,6 @@ fn a_hero_touching_a_tower_and_sent_past_it_goes_round_briskly() {
     );
 }
 
-/// The bug this guards against: creeps stood fighting kept the plans they
-/// had marched by, so a hero read them as about to walk off, planned
-/// straight through them, ran into them and stood the block wait, over and
-/// over.
 #[test]
 fn a_hero_walks_round_a_wave_stood_fighting() {
     let map = crate::game::map_of(bota_proto::MapId(1));
@@ -605,10 +587,8 @@ fn marchers_walk_round_a_hero_standing_on_their_lane() {
     }
 }
 
-/// Creep blocking: a hero on the move is not planned round in advance,
-/// so a creep it keeps stepping in front of runs into it, stands the block
-/// wait, tries straight again and is held back, while the creeps it does
-/// not cover pass by its sides. A hero that stands still is flowed round.
+/// Creep blocking: a hero pacing just ahead of its own wave's lead creep is
+/// run into, and holds that creep back against a wave left alone.
 #[test]
 fn a_hero_pacing_before_a_wave_holds_the_creep_it_covers() {
     let map = crate::game::map_of(bota_proto::MapId(1));
@@ -692,10 +672,6 @@ fn a_hero_pacing_before_a_wave_holds_the_creep_it_covers() {
     );
 }
 
-/// The bug this guards against: a walk at a target that cannot be stood on
-/// ended beside it, and a melee hero sent at a tower from afar judged its
-/// reach from that spot beside the tower rather than from the tower's
-/// centre, stood short of it and never swung.
 #[test]
 fn every_hero_sent_at_a_tower_from_afar_walks_into_reach_and_strikes() {
     for id in 0..crate::game::HEROES.len() as u16 {

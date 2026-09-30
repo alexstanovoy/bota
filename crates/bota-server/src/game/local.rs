@@ -49,9 +49,9 @@ pub struct Foreseen<'a> {
 }
 
 impl Foreseen<'_> {
-    /// Where the body is after a tick: by its plan while that reaches, else
-    /// its last step carried forward for [`rules::PREDICT_TICKS`] and held
-    /// there.
+    /// Where the body is after a tick: by its plan, held at the plan's end
+    /// once past it; without a plan, or before `from`, its last step carried
+    /// forward for [`rules::PREDICT_TICKS`] and held there.
     pub fn at_tick(&self, now: u32, tick: u32) -> Vec2 {
         if !self.steps.is_empty() && tick >= self.from {
             let index = (tick - self.from) as usize;
@@ -144,15 +144,12 @@ pub struct LocalScratch {
     /// turns taken, the state.
     heap: BinaryHeap<Reverse<(u32, i64, u32, u32)>>,
     /// The best state at each spot, heading and stretch of time.
-    ///
-    /// A hash map, not an ordered one: the search only looks states up, and
-    /// clearing it between plans keeps its allocation for the next search.
     seen: FxHashMap<u64, u32>,
     /// The squared distance each body must be kept at, in the order of the
     /// bodies asked about.
     need: Vec<i64>,
-    /// How far each body may stray from where it stands, in raw units,
-    /// and the distance it must be kept at.
+    /// How far each body may stray from where it stands plus the distance
+    /// it must be kept at, in raw units.
     reach: Vec<i64>,
     /// Whether any body asked about is going anywhere.
     moving: bool,
@@ -192,8 +189,6 @@ impl LocalScratch {
             // A body it already overlaps stops only a step deeper into it.
             let need = need.min(apart);
             self.need.push(need);
-            // Where the body stands after each tick of the horizon: the same
-            // answer for every stretch tried, so it is worked out once.
             for step in 1..=HORIZON {
                 self.foreseen.push(body.at_tick(ask.now, ask.now + step));
             }
@@ -227,7 +222,8 @@ impl LocalScratch {
 /// Where the body stands after each tick of the best stretch found, and
 /// whether that gets it to the goal: there when a state gets there within
 /// the horizon and the search budget, else as near as any state got. Empty
-/// when nothing gets it anywhere, or it is there already.
+/// when nothing gets it anywhere; empty and there when it is there already
+/// or cannot step.
 pub fn plan_local(
     ob: &Obstacles,
     bodies: &[Foreseen],
@@ -534,8 +530,8 @@ fn key_of(node: &Node) -> u64 {
     key_parts(node.pos, node.heading, node.t)
 }
 
-/// The key of a state at a spot, heading and tick: neighbouring headings
-/// share a key, so a wall of bodies is not felt along at every angle.
+/// The key of a state at a spot, heading and tick: each pair of
+/// neighbouring headings shares a key.
 fn key_parts(pos: Vec2, heading: u32, t: u32) -> u64 {
     let cell = |v: Fixed| (v.to_int().max(0) / rules::LOCAL_KEY_CELL) as u64;
     (cell(pos.x) << 40) | (cell(pos.y) << 20) | (u64::from(heading / 2) << 8) | u64::from(t / PRIM)

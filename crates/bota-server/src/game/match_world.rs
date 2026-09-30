@@ -20,10 +20,8 @@ pub fn aimed_right(aim: Aim, target: &Target) -> bool {
 }
 
 impl World {
-    /// A world at tick zero for a match: the map standing, a seat per player,
-    /// and a hero at each fountain.
-    ///
-    /// No camp is filled; the jungle has not been carried over yet.
+    /// A world at tick zero for a match: the map standing, the setup's
+    /// modifiers put on, and a seat, a hero and a courier per pick.
     pub fn for_match(cfg: &MatchConfig, rng: MatchRng) -> World {
         if let Err(error) = cfg.validate() {
             panic!("the match setup was refused: {error}");
@@ -74,8 +72,8 @@ impl World {
         let Some(unit) = self.driven_by(cmd.slot, cmd.unit) else {
             return;
         };
-        // Business with the bag and the shop asks nothing of the body, so it
-        // interrupts nothing the body is doing.
+        // Learning, the bag, the shop and cheats interrupt nothing the body
+        // is doing.
         match cmd.order {
             Order::Learn { slot } => {
                 self.learn(unit, usize::from(slot.0), events);
@@ -207,10 +205,8 @@ impl World {
         self.order_cast(unit, PendingCast::Ability { slot, target });
     }
 
-    /// The unit an order is for, if the seat drives it.
-    ///
-    /// Naming nobody means the seat's own hero, which is what most orders
-    /// are for. Naming anything a seat does not drive is nobody at all.
+    /// The unit an order is for, if the seat drives it. Naming nobody means
+    /// the seat's own hero.
     pub fn driven_by(&self, slot: SlotId, named: Option<bota_proto::EntityId>) -> Option<Entity> {
         let seat = self.seats.iter().find(|seat| seat.slot == slot)?;
         let Some(named) = named else {

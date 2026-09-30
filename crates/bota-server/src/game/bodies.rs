@@ -24,9 +24,8 @@ pub struct Body {
 }
 
 /// Every body of the world by the bucket it stands in, laid once a tick.
-///
 /// A bucket holds its bodies in entity order, and buckets are read in row
-/// order, so what is asked for comes back the same on every run.
+/// order.
 #[derive(Clone, Debug, Default)]
 pub struct BodyIndex {
     /// Where each bucket's bodies begin in `items`, one more entry than

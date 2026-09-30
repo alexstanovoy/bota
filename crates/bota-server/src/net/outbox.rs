@@ -103,10 +103,8 @@ impl Outbox {
                 }
             };
             let Some(frame) = frame else {
-                // The sending half only. Shutting both down while the peer
-                // still has bytes of ours in flight resets the connection,
-                // and a reset throws away what was already sent — including
-                // the message saying who won.
+                // The sending half only: shutting both down with our bytes
+                // still in flight resets the connection and loses them.
                 let _ = stream.shutdown(std::net::Shutdown::Write);
                 return;
             };

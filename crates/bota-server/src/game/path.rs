@@ -12,8 +12,8 @@ const NODES: usize = rules::WALK_CELLS;
 const STRAIGHT: u32 = 100;
 const DIAGONAL: u32 = 141;
 
-/// How many nodes out a node with room is looked for: across the widest
-/// footprint on any map and the widest body, and one more.
+/// How many nodes out a node with room is looked for: the Dire ancient's
+/// footprint, the steer margin and the widest marcher, in nodes, plus two.
 const OPEN_SEARCH_NODES: i32 =
     (rules::DIRE_ANCIENT_COLLISION + rules::STEER_MARGIN + rules::WIDEST_MARCHER)
         / rules::WALK_CELL_SIZE
@@ -68,9 +68,9 @@ impl Planner {
     /// when it can be stood on and reached, else at the open spot nearest
     /// to it that can, on the walker's own side of whatever shuts it.
     ///
-    /// Empty when the walk ends in the node the walker stands in. Diagonal
-    /// steps never cut a blocked corner. Ties break on node index, so the
-    /// route is the same on every platform.
+    /// Empty when the walk ends in the node the walker stands in or no node
+    /// with room is found at either end. Diagonal steps never cut a blocked
+    /// corner. Ties break on node index.
     pub fn find_path(
         &mut self,
         ob: &Obstacles,
@@ -304,8 +304,8 @@ fn node_beside(ob: &Obstacles, at: Vec2, toward: Vec2, room: Fixed) -> Option<(u
 /// The node to route a body to for a goal: the goal node itself, or the
 /// node with room nearest to it when there is none there.
 ///
-/// Ties break on the lower row, then the lower column. None when nothing
-/// within [`OPEN_SEARCH_NODES`] has room.
+/// Ties break on the inner ring, then the lower row, then the lower
+/// column. None when nothing within [`OPEN_SEARCH_NODES`] has room.
 fn routable_node(ob: &Obstacles, node: (usize, usize), room: Fixed) -> Option<(usize, usize)> {
     if ob.fits(node, room) {
         return Some(node);
@@ -340,8 +340,7 @@ fn routable_node(ob: &Obstacles, node: (usize, usize), room: Fixed) -> Option<(u
 
 /// The corners a walk keeps: from where it stands and from each corner kept,
 /// the walk goes straight to the farthest later corner the body can reach
-/// in a line, so a route that stepped round a footprint node by node rounds
-/// it in a few straight legs. The last corner is always kept.
+/// in a line. The last corner is always kept.
 fn pull_string(ob: &Obstacles, from: Vec2, corners: Vec<Vec2>, room: Fixed) -> Vec<Vec2> {
     let mut kept = Vec::with_capacity(corners.len());
     let mut anchor = from;

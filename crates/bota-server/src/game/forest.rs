@@ -33,7 +33,7 @@ pub struct Planted {
 pub struct Forest {
     /// The tick each of the map's trees comes back. Zero for one standing.
     back: Vec<u32>,
-    /// Every one of the map's trees that is down, in order.
+    /// Every one of the map's trees that is down, by index, ascending.
     down: Vec<u32>,
     /// What has been put up and not yet gone.
     planted: Vec<Planted>,
@@ -75,10 +75,8 @@ impl Forest {
         }
     }
 
-    /// The standing tree nearest a spot, within a reach of it.
-    ///
-    /// One put up is taken before one of the map's own at the same distance,
-    /// so a tree standing where it was asked for is the one that answers.
+    /// The standing tree nearest a spot, within a reach of it. One put up is
+    /// taken before one of the map's own at the same distance.
     pub fn nearest(
         &self,
         map: &'static crate::game::MapDef,
@@ -130,10 +128,7 @@ impl Forest {
     }
 
     /// Brings back what has waited out its time and takes away what has run
-    /// out of it.
-    ///
-    /// Answers whether anything changed, since what blocks sight has to be
-    /// laid again when it did.
+    /// out of it. Answers whether anything changed.
     pub fn tick(&mut self, now: u32) -> bool {
         let before = self.down.len();
         let back = &mut self.back;

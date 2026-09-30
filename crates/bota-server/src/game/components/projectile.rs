@@ -14,8 +14,7 @@ use crate::game::Entity;
 pub struct Projectile {
     /// World units per second.
     pub speed: bota_proto::Fixed,
-    /// Who threw it. The handle may outlive the body; damage and outgoing
-    /// amplification are already captured on the projectile.
+    /// Who threw it. The handle may outlive the body.
     pub source: Option<Entity>,
     /// Who it is aimed at.
     pub target: Entity,
@@ -42,7 +41,7 @@ pub struct Projectile {
     pub pierce_amp_bp: i32,
     /// Bounces it has left.
     pub bounces_left: u8,
-    /// How far it may look for that next mark, in world units.
+    /// How far it may look for its next mark, in world units.
     pub bounce_range: i32,
     /// Who it has already struck, so it does not strike them twice.
     pub bounced: Vec<Entity>,

@@ -4,16 +4,15 @@
 //! to a team when any of its units with a vision radius stands close
 //! enough, on ground at least as high as the point, with no opaque cell in
 //! between. A cell is opaque to a viewer when its ground is higher than
-//! the viewer's or a tree stands on it; buildings and water block nothing.
-//! Nothing is cached; the world is small enough to ask directly.
+//! the viewer's, a tree stands on it or a fog blocker wall crosses it;
+//! buildings and water block nothing.
 
 use bota_proto::{Fixed, Vec2};
 
 use crate::game::{CellGrid, rules};
 
-/// The cells that block sight lines: every standing tree and the map's own
-/// fog blocker walls, which is what seals the river pit against looks
-/// through its entrance.
+/// The cells that block sight lines at the start of a match: every tree and
+/// the map's own fog blocker walls.
 pub fn build_sight_block(map: &crate::game::MapDef) -> CellGrid {
     let mut grid = build_fow_walls(map);
     for pos in crate::game::tree_positions(map) {
@@ -25,9 +24,6 @@ pub fn build_sight_block(map: &crate::game::MapDef) -> CellGrid {
 }
 
 /// The fog blocker walls alone, with no tree closed.
-///
-/// What a forest that changes over a match is built on: the walls never move,
-/// so they are laid once and the standing trees closed over them.
 pub fn build_fow_walls(map: &crate::game::MapDef) -> CellGrid {
     let mut grid = CellGrid::open();
     for wall in map.fow_blockers {
@@ -82,8 +78,7 @@ fn close_segment(grid: &mut CellGrid, a: Vec2, b: Vec2) {
 
 /// Whether the sight line from a viewer to a point crosses an opaque cell:
 /// ground above the viewer's tier, a standing tree or a blocker wall. The
-/// viewer's own cell and the target's cell never block, so a viewer beside
-/// a tree is not blinded by it and a treeline's own edge stays visible.
+/// viewer's own cell and the target's cell never block.
 pub fn sight_clear(
     ground: &crate::game::Ground,
     tree_cover: &CellGrid,

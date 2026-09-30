@@ -8,7 +8,8 @@ use bota_proto::{
 use crate::game::{Entity, ModifierKind, StackKind, World, ability_mana_cost, item_views};
 use crate::profile::Phase;
 
-/// Shadowraze amplification; each anonymous source row carries both ticks and stacks.
+/// The wire's effect id of Shadowraze: one row per source, carrying its ticks
+/// and stacks.
 pub const EFFECT_SHADOWRAZE: u16 = 15;
 
 /// The handle as it travels on the wire.
@@ -79,8 +80,6 @@ impl World {
                         _ => Some(item_views(&seat.stash, self.mana_cost_rate_of(seat.unit))),
                     },
                     // What a fallen body left is told to its own side alone.
-                    // The other side is left with whatever it saw last, which
-                    // is its own business to remember.
                     kit: match viewer {
                         Some(team) if team != seat.team => None,
                         _ => seat.kept.as_ref().map(|kept| bota_proto::Kit {
@@ -224,10 +223,8 @@ fn after_speed(ms: u32, attack_speed: i32) -> u32 {
     ms * crate::game::rules::BASE_ATTACK_SPEED as u32 / speed as u32
 }
 
-/// A pool as a number to show.
-///
-/// Anything left of a pool counts as one point, so a unit still standing never
-/// reads as empty.
+/// A pool as a number to show: anything above zero shows as at least one
+/// point.
 fn shown(held: Fixed) -> i32 {
     if held > Fixed::ZERO {
         held.to_int().max(1)
@@ -236,11 +233,8 @@ fn shown(held: Fixed) -> i32 {
     }
 }
 
-/// One ability slot on the wire.
-///
-/// What is worked out from the body it sits on — whether a toggle is running
-/// and whether a point could go into it — is asked of the caller, since a
-/// book that outlived its body has neither.
+/// One ability slot on the wire. Whether a toggle is running and whether a
+/// point could go into it come from the caller.
 fn ability_view(
     held: &crate::game::AbilityState,
     on: bool,
@@ -262,10 +256,8 @@ fn ability_view(
     }
 }
 
-/// A whole book on the wire, as it stands with no body under it.
-///
-/// Nothing is toggled on and no point may be spent: both want a body, and a
-/// kept book has none.
+/// A whole book on the wire, as it stands with no body under it: nothing
+/// toggled on and no point to spend.
 fn ability_views(book: &crate::game::AbilityBook, mana_rate_bp: i32) -> Vec<AbilityView> {
     book.slots
         .iter()
@@ -304,8 +296,8 @@ fn effect_id(kind: ModifierKind) -> u16 {
 }
 
 impl World {
-    /// Everything showing on one entity: what runs out, then what is
-    /// gathered.
+    /// Everything showing on one entity: its active modifiers but the rot,
+    /// then what it has gathered.
     fn effects_on(&self, entity: Entity) -> Vec<EffectView> {
         let mut on_it: Vec<EffectView> =
             self.modifiers

@@ -1,7 +1,6 @@
 //! A fingerprint of the world, for telling two runs apart.
 //!
-//! Everything the simulation acts on goes in, walked in slot order and never
-//! through a hash map, so the same run always gives the same number.
+//! Everything the simulation acts on goes in, walked in slot order.
 
 use crate::engine::Fnv;
 use crate::game::{
@@ -11,9 +10,6 @@ use crate::game::{
 
 impl World {
     /// A fingerprint of everything a tick acts on.
-    ///
-    /// Two worlds that agree here have agreed on every position, pool, order
-    /// and timer; two that differ have diverged somewhere.
     pub fn hash(&self) -> u64 {
         let mut fnv = Fnv::new();
         fnv.u32(self.tick);
@@ -353,8 +349,9 @@ fn hash_hit(fnv: &mut Fnv, hit: &Hit) {
     }
 }
 
-/// One non-neutral outgoing amplification. Nominal writes nothing so the
-/// default fingerprint is byte-identical.
+/// One outgoing amplification; nothing for [`rules::NOMINAL_BP`].
+///
+/// [`rules::NOMINAL_BP`]: crate::game::rules::NOMINAL_BP
 fn hash_damage_amp(fnv: &mut Fnv, bp: i32) {
     if bp != crate::game::rules::NOMINAL_BP {
         fnv.u8(1);

@@ -35,7 +35,7 @@ impl Ground {
         self.cells[cy as usize * TERRAIN_CELLS + cx as usize]
     }
 
-    /// The elevation tier under a position. Higher is higher ground.
+    /// The elevation tier under a position; zero off the map.
     pub fn tier(&self, pos: Vec2) -> u8 {
         self.cell(pos) & 0x1f
     }

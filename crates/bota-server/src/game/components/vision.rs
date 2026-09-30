@@ -2,11 +2,9 @@
 
 use bota_proto::Team;
 
-/// Which sides see an entity right now, one bit a side.
-///
-/// Written afresh each tick by the system that works out sight, and read by
-/// everything that has to know what a side is allowed to be told. Nothing else
-/// writes here: a value put in by hand is gone next tick.
+/// Which sides see an entity right now, one bit a side. Worked out afresh by
+/// [`visibility_system`](crate::game::visibility_system); a value put in by
+/// hand is gone the next time it runs.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Visibility(u8);
 

@@ -25,10 +25,8 @@ impl StackKind {
     }
 }
 
-/// What one entity has gathered, counted by kind.
-///
-/// Nothing here runs out on its own. It outlives the body: the counts wait on
-/// the seat while the hero that gathered them is down.
+/// What one entity has gathered, counted by kind. Nothing here runs out on
+/// its own; a fallen hero's counts wait in its seat's [`Kept`](crate::game::Kept).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Stacks {
     /// One count per kind, indexed by [`StackKind::at`].

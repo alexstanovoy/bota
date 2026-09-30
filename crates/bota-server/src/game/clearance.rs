@@ -296,10 +296,9 @@ impl Clearance {
         let (Some(_), Some(_)) = (Clearance::node_of(from), Clearance::node_of(to)) else {
             return false;
         };
-        // A body of this size is within half a node of a node centre all
-        // along the segment, and every node with room above this keeps every
-        // circle and closed cell a whole unit clear of the body: the exact
-        // checks below can only answer yes.
+        // Every point of the segment is within half a diagonal of the centre
+        // of a node it passes, so room above this at every such node keeps
+        // every circle and closed cell a whole unit clear of the body.
         let filter = whole_units(radius) + HALF_DIAGONAL;
         if each_node_along(from, to, |node| self.room_at(node) > filter) {
             return true;
