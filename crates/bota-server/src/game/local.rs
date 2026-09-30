@@ -362,32 +362,31 @@ fn try_heading(
     if node.t + ticks > HORIZON {
         return;
     }
-    let mut steps = std::mem::take(&mut scratch.steps);
-    steps.clear();
-    if heading < HEADINGS {
-        let from = (heading * PRIM) as usize;
-        for offset in &scratch.offsets[from..from + PRIM as usize] {
-            steps.push(node.pos + *offset);
-        }
-    } else {
-        let towards = node.pos + heading_of(angle);
-        for k in 1..=PRIM {
-            steps.push(point_along(
+    let towards = node.pos + heading_of(angle);
+    let step_at = |k: u32| -> Vec2 {
+        if heading < HEADINGS {
+            node.pos + scratch.offsets[(heading * PRIM + k - 1) as usize]
+        } else {
+            point_along(
                 node.pos,
                 towards,
                 Fixed {
                     raw: ask.step.raw.saturating_mul(k as i32),
                 },
-            ));
+            )
         }
+    };
+    let end = step_at(PRIM);
+    if !worth(scratch, end, heading, node.t + ticks) || !ob.clear(node.pos, end, ask.radius) {
+        return;
     }
-    let end = *steps.last().expect("a stretch has steps");
-    if worth(scratch, end, heading, node.t + ticks) && ob.clear(node.pos, end, ask.radius) {
-        let turned = facing_gap(node.facing, angle) > 0;
-        add_stretch(
-            bodies, ask, scratch, index, angle, heading, stall, &steps, turned,
-        );
-    }
+    let mut steps = std::mem::take(&mut scratch.steps);
+    steps.clear();
+    steps.extend((1..=PRIM).map(step_at));
+    let turned = facing_gap(node.facing, angle) > 0;
+    add_stretch(
+        bodies, ask, scratch, index, angle, heading, stall, &steps, turned,
+    );
     scratch.steps = steps;
 }
 
