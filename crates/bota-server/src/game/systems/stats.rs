@@ -92,26 +92,8 @@ fn derive_stats_impl<const APPLIED: bool>(cx: StatsCx<'_>) {
             .filter(|_| !kind.porter)
             .map(crate::game::carried_bonus);
         if let Some(carried) = carried {
-            now.attributes += carried.attributes;
-            now.max_hp += Fixed::from_int(carried.hp);
-            now.max_mana += Fixed::from_int(carried.mana);
-            now.hp_regen += carried.hp_regen;
-            now.mana_regen += carried.mana_regen;
-            now.damage += carried.damage;
-            now.damage_to_creeps += carried.damage_to_creeps;
-            now.attack_speed += carried.attack_speed;
-            now.armor += carried.armor;
-            now.move_speed += Fixed::from_int(carried.move_speed);
-            now.evasion = carried.evasion;
-            now.pierce = carried.pierce;
-            now.pierce_damage = carried.pierce_damage;
-            if now.projectile_speed.is_none() {
-                now.attack_range += Fixed::from_int(carried.melee_range);
-            }
+            add_carried(&mut now, &carried);
         }
-        // What the flesh heap has kept is worth strength by the heap's
-        // level, once the heap is known at all, and the heap thickens the
-        // skin: its magic resistance multiplies with what is already there.
         let gathered = stacks.get(entity).copied().unwrap_or_default();
         let heap = abilities.get(entity).map_or(0, |book| {
             book.slots
@@ -119,15 +101,7 @@ fn derive_stats_impl<const APPLIED: bool>(cx: StatsCx<'_>) {
                 .find(|slot| slot.id == crate::game::ability::FLESH_HEAP)
                 .map_or(0, |slot| slot.level)
         });
-        if let Some(level) = heap.checked_sub(1).map(usize::from) {
-            let kept = gathered.of(StackKind::FleshHeap) as i32;
-            now.attributes.strength +=
-                rules::FLESH_HEAP_STRENGTH_PER_STACK[level] * Fixed::from_int(kept);
-            let kept_through = (100 - now.magic_resist_pct)
-                * (100 - rules::FLESH_HEAP_MAGIC_RESIST_PCT[level])
-                / 100;
-            now.magic_resist_pct = 100 - kept_through;
-        }
+        add_heap(&mut now, &gathered, heap);
         from_attributes(&mut now);
         // A share of the base pace and of what agility adds, and of nothing
         // else.
@@ -141,52 +115,7 @@ fn derive_stats_impl<const APPLIED: bool>(cx: StatsCx<'_>) {
         // held.
         now.damage += rules::DAMAGE_PER_SOUL * gathered.of(StackKind::Souls) as i32;
         if let Some(on_it) = modifiers.get(entity) {
-            for held in on_it.active() {
-                match held.kind {
-                    ModifierKind::Haste { speed } => now.attack_speed += speed,
-                    ModifierKind::Mending { per_tick, .. } => {
-                        now.hp_regen += Fixed::from_ratio(per_tick, 100);
-                    }
-                    ModifierKind::Clarity { per_tick, .. } => {
-                        now.mana_regen += Fixed::from_ratio(per_tick, 100);
-                    }
-                    ModifierKind::Fountain {
-                        hp_per_tick,
-                        mana_per_tick,
-                    } => {
-                        now.hp_regen += Fixed::from_ratio(hp_per_tick, 100);
-                        now.mana_regen += Fixed::from_ratio(mana_per_tick, 100);
-                    }
-                    ModifierKind::Slowed { pct } => {
-                        now.move_speed = scaled(now.move_speed, (100 - pct).clamp(0, 100));
-                    }
-                    ModifierKind::Hastened { pct } => {
-                        now.move_speed = scaled(now.move_speed, 100 + pct.max(0));
-                    }
-                    ModifierKind::ArmorBroken { armor } => {
-                        now.armor -= Fixed::from_int(armor);
-                    }
-                    ModifierKind::Guarded {
-                        armor,
-                        hp_per_second,
-                    } => {
-                        now.armor += Fixed::from_int(armor);
-                        now.hp_regen += per_second(hp_per_second);
-                    }
-                    ModifierKind::Inspired { hp_per_second } => {
-                        now.hp_regen += per_second(hp_per_second);
-                    }
-                    ModifierKind::Shielded => now.invulnerable = true,
-                    ModifierKind::Phased => now.phased = true,
-                    // What holds a unit still, what burns it and what it
-                    // hands out are read where they are acted on, not here.
-                    ModifierKind::Stunned
-                    | ModifierKind::Feared
-                    | ModifierKind::Burning { .. }
-                    | ModifierKind::Shadowraze { .. }
-                    | ModifierKind::Rot { .. } => {}
-                }
-            }
+            add_modifiers(&mut now, on_it);
         }
         let before = stats.get(entity).copied();
         if let Some(hp) = health.get_mut(entity) {
@@ -202,6 +131,90 @@ fn derive_stats_impl<const APPLIED: bool>(cx: StatsCx<'_>) {
             };
         }
         stats.insert(entity, now);
+    }
+}
+
+/// Adds what the inventory proper carries.
+fn add_carried(now: &mut Stats, carried: &crate::game::Carried) {
+    now.attributes += carried.attributes;
+    now.max_hp += Fixed::from_int(carried.hp);
+    now.max_mana += Fixed::from_int(carried.mana);
+    now.hp_regen += carried.hp_regen;
+    now.mana_regen += carried.mana_regen;
+    now.damage += carried.damage;
+    now.damage_to_creeps += carried.damage_to_creeps;
+    now.attack_speed += carried.attack_speed;
+    now.armor += carried.armor;
+    now.move_speed += Fixed::from_int(carried.move_speed);
+    now.evasion = carried.evasion;
+    now.pierce = carried.pierce;
+    now.pierce_damage = carried.pierce_damage;
+    if now.projectile_speed.is_none() {
+        now.attack_range += Fixed::from_int(carried.melee_range);
+    }
+}
+
+/// What the flesh heap has kept, worth strength by the heap's level once
+/// the heap is learned at all; the heap's magic resistance multiplies with
+/// what is already there.
+fn add_heap(now: &mut Stats, gathered: &Stacks, heap: u8) {
+    let Some(level) = heap.checked_sub(1).map(usize::from) else {
+        return;
+    };
+    let kept = gathered.of(StackKind::FleshHeap) as i32;
+    now.attributes.strength += rules::FLESH_HEAP_STRENGTH_PER_STACK[level] * Fixed::from_int(kept);
+    let kept_through =
+        (100 - now.magic_resist_pct) * (100 - rules::FLESH_HEAP_MAGIC_RESIST_PCT[level]) / 100;
+    now.magic_resist_pct = 100 - kept_through;
+}
+
+/// Adds what every active modifier on a unit is worth to its stats. What
+/// holds a unit still, what burns it and what it hands out are read where
+/// they are acted on, not here.
+fn add_modifiers(now: &mut Stats, on_it: &Modifiers) {
+    for held in on_it.active() {
+        match held.kind {
+            ModifierKind::Haste { speed } => now.attack_speed += speed,
+            ModifierKind::Mending { per_tick, .. } => {
+                now.hp_regen += Fixed::from_ratio(per_tick, 100);
+            }
+            ModifierKind::Clarity { per_tick, .. } => {
+                now.mana_regen += Fixed::from_ratio(per_tick, 100);
+            }
+            ModifierKind::Fountain {
+                hp_per_tick,
+                mana_per_tick,
+            } => {
+                now.hp_regen += Fixed::from_ratio(hp_per_tick, 100);
+                now.mana_regen += Fixed::from_ratio(mana_per_tick, 100);
+            }
+            ModifierKind::Slowed { pct } => {
+                now.move_speed = scaled(now.move_speed, (100 - pct).clamp(0, 100));
+            }
+            ModifierKind::Hastened { pct } => {
+                now.move_speed = scaled(now.move_speed, 100 + pct.max(0));
+            }
+            ModifierKind::ArmorBroken { armor } => {
+                now.armor -= Fixed::from_int(armor);
+            }
+            ModifierKind::Guarded {
+                armor,
+                hp_per_second,
+            } => {
+                now.armor += Fixed::from_int(armor);
+                now.hp_regen += per_second(hp_per_second);
+            }
+            ModifierKind::Inspired { hp_per_second } => {
+                now.hp_regen += per_second(hp_per_second);
+            }
+            ModifierKind::Shielded => now.invulnerable = true,
+            ModifierKind::Phased => now.phased = true,
+            ModifierKind::Stunned
+            | ModifierKind::Feared
+            | ModifierKind::Burning { .. }
+            | ModifierKind::Shadowraze { .. }
+            | ModifierKind::Rot { .. } => {}
+        }
     }
 }
 

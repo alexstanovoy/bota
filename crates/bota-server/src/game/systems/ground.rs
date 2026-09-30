@@ -95,6 +95,40 @@ impl World {
             });
         }
         let cap = i64::from(rules::units(rules::SEPARATION_STEP).raw);
+        let push = self.overlaps(&bodies, cap);
+        for (index, body) in bodies.iter().enumerate() {
+            let (mut dx, mut dy) = push[index];
+            if body.fixed || (dx == 0 && dy == 0) {
+                continue;
+            }
+            let len = isqrt64(dx * dx + dy * dy);
+            if len > cap {
+                dx = dx * cap / len;
+                dy = dy * cap / len;
+            }
+            let next = clamp_to_map(Vec2 {
+                x: Fixed {
+                    raw: body.at.x.raw.saturating_add(dx as i32),
+                },
+                y: Fixed {
+                    raw: body.at.y.raw.saturating_add(dy as i32),
+                },
+            });
+            if !self.clearance.walkable(next) && self.clearance.walkable(body.at) {
+                continue;
+            }
+            if let Some(transform) = self.transform.get_mut(body.entity) {
+                transform.pos = next;
+            }
+        }
+        self.body_scratch = bodies;
+    }
+
+    /// How far each body is pushed out of the bodies it overlaps, each push
+    /// at most a cap: a fixed body takes none of it, two that walk share
+    /// it, and two on one spot part along the x axis, the earlier entity
+    /// westward. A phased body neither pushes nor is pushed.
+    fn overlaps(&self, bodies: &[Body], cap: i64) -> Vec<(i64, i64)> {
         let mut push = vec![(0i64, 0i64); bodies.len()];
         for (i, one) in bodies.iter().enumerate() {
             if one.fixed {
@@ -132,31 +166,6 @@ impl World {
                 push[i].1 -= uy * mine.min(cap) / len;
             });
         }
-        for (index, body) in bodies.iter().enumerate() {
-            let (mut dx, mut dy) = push[index];
-            if body.fixed || (dx == 0 && dy == 0) {
-                continue;
-            }
-            let len = isqrt64(dx * dx + dy * dy);
-            if len > cap {
-                dx = dx * cap / len;
-                dy = dy * cap / len;
-            }
-            let next = clamp_to_map(Vec2 {
-                x: Fixed {
-                    raw: body.at.x.raw.saturating_add(dx as i32),
-                },
-                y: Fixed {
-                    raw: body.at.y.raw.saturating_add(dy as i32),
-                },
-            });
-            if !self.clearance.walkable(next) && self.clearance.walkable(body.at) {
-                continue;
-            }
-            if let Some(transform) = self.transform.get_mut(body.entity) {
-                transform.pos = next;
-            }
-        }
-        self.body_scratch = bodies;
+        push
     }
 }

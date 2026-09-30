@@ -92,30 +92,7 @@ pub fn missile_system(cx: MissileCx<'_>) {
             give_up(missile, entities, projectile, transform, team, visibility);
             continue;
         }
-        hits.push_back(Hit {
-            source: shot.source,
-            target: shot.target,
-            amount: shot.damage,
-            kind: shot.kind,
-            damage_amp_bp: shot.damage_amp_bp,
-            crit: shot.crit,
-            attack: shot.ability.is_none(),
-            pierces: shot.pierces,
-            effect: crate::game::HitEffect::None,
-        });
-        if shot.pierce_damage > 0 {
-            hits.push_back(Hit {
-                source: shot.source,
-                target: shot.target,
-                amount: shot.pierce_damage,
-                kind: DamageKind::Magical,
-                damage_amp_bp: shot.pierce_amp_bp,
-                crit: false,
-                attack: false,
-                pierces: false,
-                effect: crate::game::HitEffect::None,
-            });
-        }
+        land(&shot, hits);
         // One with bounces left is kept where it landed: where it goes next
         // is settled once it is known what stands there.
         if shot.bounces_left > 0 {
@@ -123,6 +100,35 @@ pub fn missile_system(cx: MissileCx<'_>) {
             continue;
         }
         give_up(missile, entities, projectile, transform, team, visibility);
+    }
+}
+
+/// Lays the blows a missile that arrived deals: its own, and the magical
+/// pierce riding with it.
+fn land(shot: &Projectile, hits: &mut VecDeque<Hit>) {
+    hits.push_back(Hit {
+        source: shot.source,
+        target: shot.target,
+        amount: shot.damage,
+        kind: shot.kind,
+        damage_amp_bp: shot.damage_amp_bp,
+        crit: shot.crit,
+        attack: shot.ability.is_none(),
+        pierces: shot.pierces,
+        effect: crate::game::HitEffect::None,
+    });
+    if shot.pierce_damage > 0 {
+        hits.push_back(Hit {
+            source: shot.source,
+            target: shot.target,
+            amount: shot.pierce_damage,
+            kind: DamageKind::Magical,
+            damage_amp_bp: shot.pierce_amp_bp,
+            crit: false,
+            attack: false,
+            pierces: false,
+            effect: crate::game::HitEffect::None,
+        });
     }
 }
 
