@@ -5,7 +5,7 @@ use bota_proto::{AbilityId, AbilitySlot, HeroId, SlotId, Team, Vec2};
 use crate::tests::fixtures;
 use crate::{
     BOUNCE, CRIT, FIEND_PLAN, Field, NECROMASTERY, RAZE_FAR, RAZE_MID, RAZE_NEAR, REQUIEM, Role,
-    SHADOW_FIEND, SYLLA, SYLLA_PLAN, VOLLEY, next_point, plan_of,
+    SHADOW_FIEND, SYLLA, SYLLA_PLAN, ULT_LEVEL_FLOORS, VOLLEY, next_point, plan_of,
 };
 
 /// Shadow Fiend's book, with the razes all standing at one level.
@@ -103,9 +103,7 @@ fn sylla_starts_with_the_bolt() {
 }
 
 #[test]
-fn a_plan_spends_one_point_per_hero_level() {
-    assert_eq!(FIEND_PLAN.len(), 10);
-    assert_eq!(SYLLA_PLAN.len(), 10);
+fn a_plan_is_looked_up_by_hero() {
     assert_eq!(plan_of(SHADOW_FIEND), &FIEND_PLAN);
     assert_eq!(plan_of(SYLLA), &SYLLA_PLAN);
     assert!(plan_of(HeroId(99)).is_empty());
@@ -124,16 +122,17 @@ fn no_plan_asks_for_more_of_an_ability_than_it_holds() {
 
 #[test]
 fn an_ultimate_is_never_asked_for_before_its_level() {
-    // The ultimate opens at hero level six, and the n-th point is spent at
-    // hero level n.
-    for (at, id) in FIEND_PLAN.iter().enumerate() {
-        if *id == REQUIEM {
-            assert!(at + 1 >= 6, "the requiem is asked for at point {}", at + 1);
-        }
-    }
-    for (at, id) in SYLLA_PLAN.iter().enumerate() {
-        if *id == VOLLEY {
-            assert!(at + 1 >= 6, "the volley is asked for at point {}", at + 1);
+    // The n-th point is spent at hero level n, and each level of the
+    // ultimate waits for a hero level of its own.
+    for (plan, ult) in [(&FIEND_PLAN[..], REQUIEM), (&SYLLA_PLAN[..], VOLLEY)] {
+        let asked: Vec<usize> = (0..plan.len()).filter(|at| plan[*at] == ult).collect();
+        for (had, at) in asked.iter().enumerate() {
+            assert!(
+                at + 1 >= usize::from(ULT_LEVEL_FLOORS[had]),
+                "ultimate level {} is asked for at point {}",
+                had + 1,
+                at + 1
+            );
         }
     }
 }
