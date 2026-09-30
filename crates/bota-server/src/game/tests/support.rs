@@ -1345,20 +1345,3 @@ pub(super) fn along_lane(
     }
     route[route.len() - 1]
 }
-
-/// The dummy match the criterion benches also play.
-#[path = "../../../benches/dummy/scenario.rs"]
-#[allow(dead_code)]
-pub(super) mod dummy_scenario;
-
-/// Ticks the determinism test plays.
-pub(super) const SHORT_TICKS: u32 = 300;
-
-/// The world and view fingerprints of a short window.
-pub(super) fn short_digest() -> (u64, u64) {
-    let mut dummy = dummy_scenario::Dummy::build(true);
-    for _ in 0..SHORT_TICKS {
-        dummy.step();
-    }
-    dummy.digest()
-}

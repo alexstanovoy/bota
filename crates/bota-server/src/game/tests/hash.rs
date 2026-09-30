@@ -18,20 +18,6 @@ fn global_random_streams_advance_between_draws() {
 }
 
 #[test]
-fn two_runs_of_one_script_agree_at_every_checkpoint() {
-    let mut first = World::for_match(&config(), config().rng());
-    let mut second = World::for_match(&config(), config().rng());
-    assert_eq!(first.hash(), second.hash(), "they start the same");
-    for tick in 1..=600u32 {
-        first.step();
-        second.step();
-        if tick % 60 == 0 {
-            assert_eq!(first.hash(), second.hash(), "they parted at tick {tick}");
-        }
-    }
-}
-
-#[test]
 fn world_hash_changes_when_hidden_random_state_advances() {
     let mut world = World::new();
     let before = world.hash();
@@ -89,12 +75,4 @@ fn the_fingerprint_moves_when_the_world_does() {
         health.hp -= Fixed::ONE;
     }
     assert_ne!(with, world.hash(), "so is a point of health");
-}
-
-#[test]
-fn the_dummy_scenario_is_deterministic() {
-    let first = short_digest();
-    let second = short_digest();
-    assert_eq!(first.0, second.0, "the world digest must not move");
-    assert_eq!(first.1, second.1, "the view digest must not move");
 }

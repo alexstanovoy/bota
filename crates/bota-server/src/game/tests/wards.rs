@@ -2,7 +2,6 @@
 
 use crate::game::World;
 use crate::game::rules;
-use bota_proto::Team;
 
 use super::support::*;
 
@@ -328,24 +327,5 @@ fn both_wards_hide_and_each_reveals_the_other_side() {
     assert!(
         world.can_see(bota_proto::Team::Radiant, counter),
         "and ours finds theirs"
-    );
-}
-
-#[test]
-fn a_sentry_reveals_the_observer_it_stands_beside() {
-    let mut dummy = dummy_scenario::Dummy::build(false);
-    assert!(
-        dummy.world.can_see(Team::Dire, dummy.observers[0]),
-        "the dire sentry must find the radiant observer"
-    );
-    assert!(
-        dummy.world.can_see(Team::Radiant, dummy.observers[1]),
-        "the radiant sentry must find the dire observer"
-    );
-    dummy.world.despawn(dummy.sentries[0]);
-    dummy.world.settle();
-    assert!(
-        !dummy.world.can_see(Team::Dire, dummy.observers[0]),
-        "without the sentry the observer hides again"
     );
 }

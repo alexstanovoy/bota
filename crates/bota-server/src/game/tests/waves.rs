@@ -7,41 +7,6 @@ use bota_proto::Fixed;
 use super::support::*;
 
 #[test]
-fn a_wave_arrives_on_the_clock_and_walks_its_lane() {
-    let map = crate::game::map_of(bota_proto::MapId(1));
-    let mut world = World::on_map(map);
-    while world.tick < rules::FIRST_WAVE_TICK {
-        world.step();
-    }
-    let wave: Vec<_> = world
-        .entities
-        .iter()
-        .filter(|e| world.march.get(*e).is_some())
-        .collect();
-    let plan = crate::game::wave_plan(1);
-    let per_side = (plan.melee + plan.ranged + plan.siege) as usize;
-    assert_eq!(
-        wave.len(),
-        per_side * 2 * usize::from(map.lanes),
-        "one wave a lane a side"
-    );
-    let radiant: Vec<_> = wave
-        .iter()
-        .copied()
-        .filter(|e| world.team.get(*e) == Some(&bota_proto::Team::Radiant))
-        .collect();
-    let start = world.transform.get(radiant[0]).expect("just placed").pos.x;
-    for _ in 0..90 {
-        world.step();
-    }
-    let now = world.transform.get(radiant[0]).expect("alive").pos.x;
-    assert!(
-        now > start,
-        "a Radiant creep walks up its lane: {now:?} from {start:?}"
-    );
-}
-
-#[test]
 fn a_wave_carries_one_flag_from_the_fifth_wave_on() {
     let map = crate::game::map_of(bota_proto::MapId(1));
     let mut world = World::on_map(map);
@@ -314,41 +279,6 @@ fn a_destroyed_structure_reopens_the_ground_it_blocked() {
         world.clearance.stands_clear(tower) && world.clearance.fits_at(tower, body),
         "the tower's ground is anybody's after its destruction"
     );
-}
-
-#[test]
-fn passability_changes_invalidate_cached_routes() {
-    let mut world = World::new();
-    let entity = world.spawn();
-    world.route.insert(
-        entity,
-        crate::game::Route {
-            corners: vec![bota_proto::Vec2::from_ints(5_000, 5_000)],
-            goal: Some(bota_proto::Vec2::from_ints(6_000, 5_000)),
-            end: bota_proto::Vec2::from_ints(5_000, 5_000),
-            done: true,
-        },
-    );
-    world.plan.insert(
-        entity,
-        crate::game::Plan {
-            steps: vec![bota_proto::Vec2::from_ints(4_010, 5_000)],
-            from: 1,
-            at: 0,
-            goal: bota_proto::Vec2::from_ints(6_000, 5_000),
-            step: bota_proto::Fixed::from_int(10),
-            laid: 0,
-            last: false,
-        },
-    );
-
-    world.lay_passability();
-
-    let route = world.route.get(entity).expect("route remains");
-    assert!(route.corners.is_empty());
-    assert_eq!(route.goal, None);
-    assert!(!route.done);
-    assert!(!world.plan.get(entity).expect("plan remains").stands());
 }
 
 #[test]

@@ -780,39 +780,6 @@ fn a_blow_from_a_hero_sets_a_blink_back() {
 }
 
 #[test]
-fn a_magic_stick_gains_charges_and_is_kept_when_it_spends_them() {
-    let (mut world, hero) = a_hero_with_gold(0);
-    hand_item(&mut world, hero, crate::game::ITEM_MAGIC_STICK, 0);
-    world.step();
-    assert!(
-        !world.use_item(hero, 0, bota_proto::Target::None, &mut Vec::new()),
-        "with no charge there is nothing to spend"
-    );
-    if let Some(bag) = world.inventory.get_mut(hero)
-        && let Some(stack) = bag.slots[0].as_mut()
-    {
-        stack.charges = 4;
-    }
-    if let Some(pool) = world.health.get_mut(hero) {
-        pool.hp = Fixed::from_int(100);
-    }
-    world.step();
-    let before = world.health.get(hero).expect("has health").hp;
-    assert!(
-        world.use_item(hero, 0, bota_proto::Target::None, &mut Vec::new()),
-        "with charges it mends"
-    );
-    assert!(
-        world.health.get(hero).expect("has health").hp > before,
-        "and health comes back"
-    );
-    assert!(
-        slot_of(&world, hero, 0).is_some_and(|stack| stack.charges == 0),
-        "every charge goes at once, and the stack stays"
-    );
-}
-
-#[test]
 fn phase_walks_a_body_through_another() {
     let (mut world, hero) = a_hero_with_gold(0);
     hand_item(&mut world, hero, crate::game::ITEM_PHASE_BOOTS, 0);

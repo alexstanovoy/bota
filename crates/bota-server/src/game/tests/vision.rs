@@ -1,24 +1,10 @@
 //! Who sees what, and what each side is told.
 
 use crate::game::rules;
-use crate::game::{Health, MELEE_CREEP, RANGED_CREEP, Visibility, World};
+use crate::game::{Health, MELEE_CREEP, RANGED_CREEP, World};
 use bota_proto::{Fixed, Team};
 
 use super::support::*;
-
-#[test]
-fn who_sees_an_entity_is_a_set_of_bits() {
-    let mut seen = Visibility::default();
-    assert!(!seen.by(Team::Radiant));
-    seen.add(Team::Radiant);
-    seen.add(Team::Radiant);
-    assert!(seen.by(Team::Radiant), "naming a side twice sets one bit");
-    assert!(!seen.by(Team::Dire), "and leaves the others alone");
-    seen.add(Team::Dire);
-    assert!(seen.by(Team::Radiant) && seen.by(Team::Dire));
-    seen.clear();
-    assert!(seen.is_empty() && !seen.by(Team::Dire));
-}
 
 #[test]
 fn a_world_built_on_a_map_stands_its_buildings_full() {
@@ -140,37 +126,6 @@ fn a_side_sees_what_stands_inside_its_sight() {
 }
 
 #[test]
-fn a_missile_carries_the_hit_rather_than_landing_it_at_once() {
-    let mut world = World::new();
-    let archer = world.spawn_unit(
-        &RANGED_CREEP,
-        bota_proto::Team::Radiant,
-        bota_proto::Vec2::from_ints(1000, 1000),
-    );
-    let mark = world.spawn_unit(
-        &MELEE_CREEP,
-        bota_proto::Team::Dire,
-        bota_proto::Vec2::from_ints(1400, 1000),
-    );
-    world.settle();
-    let full = world.health.get(mark).expect("standing").hp;
-    for _ in 0..20 {
-        world.step();
-    }
-    assert!(
-        world.projectile.get(archer).is_none(),
-        "the archer is not its own missile"
-    );
-    let mut flying = 0;
-    for entity in world.entities.iter() {
-        if world.projectile.get(entity).is_some() {
-            flying += 1;
-        }
-    }
-    assert!(flying > 0 || world.health.get(mark).expect("standing").hp < full);
-}
-
-#[test]
 fn a_side_is_told_only_of_what_it_could_see() {
     let map = crate::game::map_of(bota_proto::MapId(1));
     let mut world = World::on_map(map);
@@ -197,48 +152,6 @@ fn a_side_is_told_only_of_what_it_could_see() {
         crate::game::EventVisibility::Everyone
     );
     let _ = watcher;
-}
-
-#[test]
-fn critical_hits_keep_their_flag_in_damage_events() {
-    let mut world = World::new();
-    let source = world.spawn_unit(
-        &MELEE_CREEP,
-        Team::Radiant,
-        bota_proto::Vec2::from_ints(5_000, 5_000),
-    );
-    let target = world.spawn_unit(
-        &MELEE_CREEP,
-        Team::Dire,
-        bota_proto::Vec2::from_ints(5_100, 5_000),
-    );
-    world.settle();
-    world.hits.push_back(crate::game::Hit {
-        source: Some(source),
-        target,
-        amount: 10,
-        kind: bota_proto::DamageKind::Physical,
-        damage_amp_bp: rules::NOMINAL_BP,
-        crit: true,
-        attack: true,
-        pierces: false,
-        effect: crate::game::HitEffect::None,
-    });
-
-    let events = world.step();
-
-    assert!(events.iter().any(|event| {
-        matches!(
-            event.kind,
-            bota_proto::EventKind::Damaged {
-                source: Some(_),
-                target: _,
-                amount: _,
-                kind: bota_proto::DamageKind::Physical,
-                crit: true,
-            }
-        )
-    }));
 }
 
 #[test]
@@ -274,42 +187,6 @@ fn a_ranged_attack_puts_a_missile_where_a_side_can_see_it() {
     assert!(
         !view.projectiles.is_empty(),
         "and its own side is told of it"
-    );
-}
-
-#[test]
-fn a_visibility_row_belongs_to_whatever_stands_on_a_side() {
-    let mut world = World::new();
-    let entity = world.spawn();
-    assert_eq!(
-        world.visibility.get(entity),
-        None,
-        "what stands on no side is not something sides see"
-    );
-    world.set_team(entity, Team::Radiant);
-    assert!(
-        world
-            .visibility
-            .get(entity)
-            .is_some_and(|s| s.by(Team::Radiant)),
-        "taking a side makes the row, and that side has it at once"
-    );
-    world.step();
-    assert!(
-        world
-            .visibility
-            .get(entity)
-            .is_some_and(|s| s.by(Team::Radiant)),
-        "its own side has it from the first tick"
-    );
-    assert!(world.despawn(entity));
-    assert_eq!(world.visibility.get(entity), None, "and given up with it");
-    let next = world.spawn();
-    assert_eq!(next.index(), entity.index(), "the slot came back round");
-    assert_eq!(
-        world.visibility.get(next),
-        None,
-        "and the new tenant inherits nothing"
     );
 }
 

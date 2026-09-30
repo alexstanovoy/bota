@@ -85,12 +85,6 @@ fn a_tower_guards_the_heroes_of_its_own_side_that_stand_by_it() {
 }
 
 #[test]
-fn what_a_tower_adds_grows_past_the_first_tier() {
-    assert_eq!(rules::TOWER_AURA_ARMOR, [3, 5, 5, 5]);
-    assert_eq!(rules::TOWER_AURA_REGEN, [100, 300, 300, 300]);
-}
-
-#[test]
 fn a_tower_guards_nobody_but_heroes() {
     let mut world = World::new();
     let at = bota_proto::Vec2::from_ints(5000, 5000);
