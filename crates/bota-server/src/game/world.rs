@@ -14,6 +14,7 @@ use crate::game::{
     regenerate, visibility_system,
 };
 use crate::game::{HitCx, MissileCx};
+use crate::profile::{Phase, ScopeGuard};
 
 /// Everything a match is made of.
 ///
@@ -271,6 +272,11 @@ impl World {
             visibility: Table::new(),
             projectile: Table::new(),
         }
+    }
+
+    /// Starts timing a region of the tick, for the phase profile.
+    pub(crate) fn scope(&self, phase: Phase) -> ScopeGuard {
+        ScopeGuard::new(phase, self.tick, self.entities.len())
     }
 
     /// Takes a reusable stable snapshot of all entities currently standing.
@@ -553,12 +559,7 @@ impl World {
     /// left alone: what stands with them is whatever it has left, and filling
     /// them is the business of whoever stood the entity up.
     pub fn settle(&mut self) {
-        #[cfg(feature = "phase-profile")]
-        let _profile = crate::profile::ScopeGuard::new(
-            crate::profile::Phase::Settle,
-            self.tick,
-            self.entities.len(),
-        );
+        let _profile = self.scope(Phase::Settle);
         derive_stats(StatsCx {
             entities: &self.entities,
             def: &self.def,
@@ -594,18 +595,23 @@ impl World {
         }
         let mut events = Vec::new();
         self.tick += 1;
-        #[cfg(feature = "phase-profile")]
-        let _tick_profile = crate::profile::ScopeGuard::new(
-            crate::profile::Phase::Tick,
-            self.tick,
-            self.entities.len(),
-        );
-        #[cfg(feature = "phase-profile")]
-        let _phase_profile = crate::profile::ScopeGuard::new(
-            crate::profile::Phase::Upkeep,
-            self.tick,
-            self.entities.len(),
-        );
+        let _profile = self.scope(Phase::Tick);
+        self.step_upkeep();
+        self.step_effects();
+        self.step_stats();
+        self.step_targeting();
+        self.step_movement();
+        self.step_visibility();
+        self.step_actions(&mut events);
+        self.step_damage(&mut events);
+        self.tick_applied();
+        events
+    }
+
+    /// Waves, camps, gear, gold, respawns, couriers, errands, sales and
+    /// what runs out.
+    fn step_upkeep(&mut self) {
+        let _profile = self.scope(Phase::Upkeep);
         self.spawn_waves();
         self.fill_camps();
         self.tick_gear();
@@ -616,14 +622,11 @@ impl World {
         self.tick_handling();
         self.settle_sales();
         self.tick_expiries();
-        #[cfg(feature = "phase-profile")]
-        drop(_phase_profile);
-        #[cfg(feature = "phase-profile")]
-        let _phase_profile = crate::profile::ScopeGuard::new(
-            crate::profile::Phase::Effects,
-            self.tick,
-            self.entities.len(),
-        );
+    }
+
+    /// Modifiers, hooks, requiem lines, the forest, presence and auras.
+    fn step_effects(&mut self) {
+        let _profile = self.scope(Phase::Effects);
         self.tick_modifiers();
         self.tick_hooks();
         self.tick_requiem_lines();
@@ -642,14 +645,11 @@ impl World {
             modifiers: &mut self.modifiers,
             spots: &mut self.aura_spots,
         });
-        #[cfg(feature = "phase-profile")]
-        drop(_phase_profile);
-        #[cfg(feature = "phase-profile")]
-        let _phase_profile = crate::profile::ScopeGuard::new(
-            crate::profile::Phase::Stats,
-            self.tick,
-            self.entities.len(),
-        );
+    }
+
+    /// Stats worked out afresh, and the structures guarded.
+    fn step_stats(&mut self) {
+        let _profile = self.scope(Phase::Stats);
         derive_stats(StatsCx {
             entities: &self.entities,
             def: &self.def,
@@ -665,49 +665,29 @@ impl World {
             mana: &mut self.mana,
         });
         self.guard_structures();
-        #[cfg(feature = "phase-profile")]
-        drop(_phase_profile);
-        self.step_combat(&mut events);
-        self.tick_applied();
-        events
     }
 
-    fn step_combat(&mut self, events: &mut Vec<crate::game::Event>) {
-        #[cfg(feature = "phase-profile")]
-        let _phase_profile = crate::profile::ScopeGuard::new(
-            crate::profile::Phase::Targeting,
-            self.tick,
-            self.entities.len(),
-        );
+    /// Who everything that fights of its own accord is set on.
+    fn step_targeting(&mut self) {
+        let _profile = self.scope(Phase::Targeting);
         self.tick_targeting();
-        #[cfg(feature = "phase-profile")]
-        drop(_phase_profile);
-        #[cfg(feature = "phase-profile")]
-        let _phase_profile = crate::profile::ScopeGuard::new(
-            crate::profile::Phase::Movement,
-            self.tick,
-            self.entities.len(),
-        );
-        #[cfg(feature = "phase-profile")]
-        let _intent_profile = crate::profile::ScopeGuard::new(
-            crate::profile::Phase::MovementIntent,
-            self.tick,
-            self.entities.len(),
-        );
+    }
+
+    /// Where everything means to go, the steps taken there, and bodies
+    /// eased apart.
+    fn step_movement(&mut self) {
+        let _profile = self.scope(Phase::Movement);
+        let intent = self.scope(Phase::MovementIntent);
         self.tick_jungle();
         self.march_lanes();
-        #[cfg(feature = "phase-profile")]
-        drop(_intent_profile);
+        drop(intent);
         self.walk_bodies();
         self.push_apart();
-        #[cfg(feature = "phase-profile")]
-        drop(_phase_profile);
-        #[cfg(feature = "phase-profile")]
-        let _phase_profile = crate::profile::ScopeGuard::new(
-            crate::profile::Phase::Visibility,
-            self.tick,
-            self.entities.len(),
-        );
+    }
+
+    /// Who sees what, from where everything now stands.
+    fn step_visibility(&mut self) {
+        let _profile = self.scope(Phase::Visibility);
         visibility_system(SightCx {
             entities: &self.entities,
             transform: &self.transform,
@@ -719,14 +699,12 @@ impl World {
             visibility: &mut self.visibility,
             sight: &mut self.sight_scratch,
         });
-        #[cfg(feature = "phase-profile")]
-        drop(_phase_profile);
-        #[cfg(feature = "phase-profile")]
-        let _phase_profile = crate::profile::ScopeGuard::new(
-            crate::profile::Phase::Actions,
-            self.tick,
-            self.entities.len(),
-        );
+    }
+
+    /// Orders kept honest, pools regenerated, actions run and missiles
+    /// flown; what they told of goes into the tick's events.
+    fn step_actions(&mut self, events: &mut Vec<crate::game::Event>) {
+        let _profile = self.scope(Phase::Actions);
         self.tend_attack_orders();
         regenerate(
             &self.entities,
@@ -752,18 +730,10 @@ impl World {
         });
         self.bounce_missiles();
         events.append(&mut self.events);
-        #[cfg(feature = "phase-profile")]
-        drop(_phase_profile);
-        self.step_damage(events);
     }
 
     fn step_damage(&mut self, events: &mut Vec<crate::game::Event>) {
-        #[cfg(feature = "phase-profile")]
-        let _profile = crate::profile::ScopeGuard::new(
-            crate::profile::Phase::Damage,
-            self.tick,
-            self.entities.len(),
-        );
+        let _profile = self.scope(Phase::Damage);
         let amplified = self
             .hits
             .iter()

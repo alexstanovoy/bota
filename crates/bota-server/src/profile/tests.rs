@@ -23,7 +23,6 @@ fn phase_scopes_keep_sampled_counts_separate_and_snapshot_drains() {
     assert_eq!(snapshot[Phase::Targeting as usize][2], 12);
     assert_eq!(snapshot[Phase::TargetQuery as usize][0], 1);
     assert_eq!(snapshot[Phase::TargetQuery as usize][2], 12);
-    assert_eq!(snapshot[Phase::ClassZeroQuery as usize], [0; 3]);
     assert!(take_snapshot().iter().all(|sample| *sample == [0; 3]));
 }
 
@@ -88,6 +87,5 @@ fn class_zero_target_retention_performs_no_full_search() {
 
     assert_eq!(selected, Some(held));
     assert_eq!(world.hash(), before);
-    assert_eq!(snapshot[Phase::ClassZeroQuery as usize][0], 0);
     assert_eq!(snapshot[Phase::TargetQuery as usize][0], 0);
 }

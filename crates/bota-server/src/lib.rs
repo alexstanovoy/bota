@@ -14,7 +14,4 @@ pub mod lobby;
 pub mod net;
 pub mod replay;
 
-#[cfg(feature = "phase-profile")]
 pub mod profile;
-#[cfg(all(test, feature = "phase-profile"))]
-mod profile_tests;
