@@ -225,15 +225,14 @@ impl World {
                 .entities
                 .iter()
                 .filter(|other| {
-                    self.hostile(carrier, *other)
+                    self.transform
+                        .get(*other)
+                        .is_some_and(|t| t.pos.within(from, reach))
                         && self
                             .kind
                             .get(*other)
                             .is_some_and(|kind| leaves_a_death(*kind))
-                        && self
-                            .transform
-                            .get(*other)
-                            .is_some_and(|t| t.pos.within(from, reach))
+                        && self.hostile(carrier, *other)
                 })
                 .collect();
             for mark in struck {

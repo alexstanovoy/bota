@@ -9,9 +9,9 @@ use crate::game::{
     Entity, EntityAllocator, Errand, Expiry, Forest, Handling, Health, Hit, Hook, Hull, Inventory,
     Landed, Lane, LaneAi, Level, Loot, Mana, March, Mark, Missed, Modifier, Modifiers, Motion,
     NeutralAi, Orders, Place, Plan, Projectile, Rax, RequiemLine, Route, Seat, SightCx,
-    SightScratch, SpawnModifier, Stacks, Stats, StatsCx, Table, Target, Tier, Transform, UnitOrder,
-    Upgrades, Visibility, aura_system, derive_stats, hitting_system, missile_system, regenerate,
-    visibility_system,
+    SightScratch, SpawnModifier, Spots, Stacks, Stats, StatsCx, Table, Target, Tier, Transform,
+    UnitOrder, Upgrades, Visibility, aura_system, derive_stats, hitting_system, missile_system,
+    regenerate, visibility_system,
 };
 use crate::game::{HitCx, MissileCx};
 
@@ -80,6 +80,8 @@ pub struct World {
     pub(crate) sight_scratch: SightScratch,
     /// Reused room targets are chosen among.
     pub(crate) candidates: Candidates,
+    /// Reused room auras find who stands in them in.
+    pub(crate) aura_spots: Spots<Entity>,
 
     /// Where each entity stands.
     pub transform: Table<Transform>,
@@ -221,6 +223,7 @@ impl World {
             modifier_scratch: Vec::new(),
             sight_scratch: SightScratch::new(),
             candidates: Candidates::default(),
+            aura_spots: Spots::default(),
             transform: Table::new(),
             hull: Table::new(),
             kind: Table::new(),
@@ -637,6 +640,7 @@ impl World {
             auras: &self.auras,
             stats: &self.stats,
             modifiers: &mut self.modifiers,
+            spots: &mut self.aura_spots,
         });
         #[cfg(feature = "phase-profile")]
         drop(_phase_profile);
