@@ -883,6 +883,12 @@ mid-attack — and pointing it is done with the body, by turning. Facing was cos
 once; it has been load-bearing since attacks began waiting on it, and the razes now
 lean on it too.
 
+A raze and a requiem line pass buildings by, as in Dota: they burn, stack, frighten and
+slow every hostile unit in their reach but a structure, and the presence and the souls
+already skipped them. Until this was fixed a raze landing on a tower took 90 to 300 off
+it through its zero magic resistance, which taught a learning bot to siege with razes
+from 950 away — a way to push that the game it imitates does not have.
+
 Hero roadmap (added as data + ability implementations; the engine does not change):
 
 | Hero | Type | Abilities |
