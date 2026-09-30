@@ -95,13 +95,7 @@ fn derive_stats_impl<const APPLIED: bool>(cx: StatsCx<'_>) {
             add_carried(&mut now, &carried);
         }
         let gathered = stacks.get(entity).copied().unwrap_or_default();
-        let heap = abilities.get(entity).map_or(0, |book| {
-            book.slots
-                .iter()
-                .find(|slot| slot.id == crate::game::ability::FLESH_HEAP)
-                .map_or(0, |slot| slot.level)
-        });
-        add_heap(&mut now, &gathered, heap);
+        add_heap(&mut now, &gathered, abilities.get(entity));
         from_attributes(&mut now);
         // A share of the base pace and of what agility adds, and of nothing
         // else.
@@ -119,16 +113,14 @@ fn derive_stats_impl<const APPLIED: bool>(cx: StatsCx<'_>) {
         }
         let before = stats.get(entity).copied();
         if let Some(hp) = health.get_mut(entity) {
-            hp.hp = match before {
-                Some(before) => follow(hp.hp, before.max_hp, now.max_hp),
-                None => now.max_hp,
-            };
+            hp.hp = before.map_or(now.max_hp, |before| {
+                follow(hp.hp, before.max_hp, now.max_hp)
+            });
         }
         if let Some(mp) = mana.get_mut(entity) {
-            mp.mana = match before {
-                Some(before) => follow(mp.mana, before.max_mana, now.max_mana),
-                None => now.max_mana,
-            };
+            mp.mana = before.map_or(now.max_mana, |before| {
+                follow(mp.mana, before.max_mana, now.max_mana)
+            });
         }
         stats.insert(entity, now);
     }
@@ -157,7 +149,13 @@ fn add_carried(now: &mut Stats, carried: &crate::game::Carried) {
 /// What the flesh heap has kept, worth strength by the heap's level once
 /// the heap is learned at all; the heap's magic resistance multiplies with
 /// what is already there.
-fn add_heap(now: &mut Stats, gathered: &Stacks, heap: u8) {
+fn add_heap(now: &mut Stats, gathered: &Stacks, book: Option<&AbilityBook>) {
+    let heap = book.map_or(0, |book| {
+        book.slots
+            .iter()
+            .find(|slot| slot.id == crate::game::ability::FLESH_HEAP)
+            .map_or(0, |slot| slot.level)
+    });
     let Some(level) = heap.checked_sub(1).map(usize::from) else {
         return;
     };

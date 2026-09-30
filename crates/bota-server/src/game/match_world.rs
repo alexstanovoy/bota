@@ -279,36 +279,13 @@ impl World {
                 Ok(())
             }
             Order::Cast { slot, target } => self.check_cast(unit, *slot, target),
-            Order::Buy { item } => {
-                if item_def(*item).is_none() {
-                    return Err(RejectReason::UnknownItem);
-                }
-                let plan = self
-                    .purchase_plan(slot, *item)
-                    .ok_or(RejectReason::HeroDead)?;
-                if seat.gold < plan.cost {
-                    return Err(RejectReason::NotEnoughGold);
-                }
-                if !plan.fits {
-                    return Err(RejectReason::InventoryFull);
-                }
-                Ok(())
-            }
+            Order::Buy { item } => self.check_buy(seat, *item),
             Order::Sell { slot: named } => self.check_sale(unit, seat, usize::from(named.0)),
             Order::Put {
                 slot: named,
                 target,
             } => self.check_put(unit, seat, usize::from(named.0), target),
-            Order::Take { target } => {
-                let Target::Unit(named) = target else {
-                    return Err(RejectReason::WrongTargetKind);
-                };
-                let mark = self.seen_by(seat, *named)?;
-                if self.loot.get(mark).is_none() || self.inventory.get(unit).is_none() {
-                    return Err(RejectReason::WrongTargetKind);
-                }
-                Ok(())
-            }
+            Order::Take { target } => self.check_take(unit, seat, target),
             Order::Swap { from, to } => {
                 let (from, to) = (usize::from(from.0), usize::from(to.0));
                 if from == to || !self.holds(unit, seat, from) {
@@ -323,6 +300,36 @@ impl World {
             Order::Cheat { cheat } => self.check_cheat(unit, cheat),
             _ => Ok(()),
         }
+    }
+
+    /// Whether a seat may buy an item: one that exists, with gold enough
+    /// for what it lacks of it and room for what it buys.
+    fn check_buy(&self, seat: &Seat, item: bota_proto::ItemId) -> Result<(), RejectReason> {
+        if item_def(item).is_none() {
+            return Err(RejectReason::UnknownItem);
+        }
+        let plan = self
+            .purchase_plan(seat.slot, item)
+            .ok_or(RejectReason::HeroDead)?;
+        if seat.gold < plan.cost {
+            return Err(RejectReason::NotEnoughGold);
+        }
+        if !plan.fits {
+            return Err(RejectReason::InventoryFull);
+        }
+        Ok(())
+    }
+
+    /// Whether a unit with a bag may take a seen item off the ground.
+    fn check_take(&self, unit: Entity, seat: &Seat, target: &Target) -> Result<(), RejectReason> {
+        let Target::Unit(named) = target else {
+            return Err(RejectReason::WrongTargetKind);
+        };
+        let mark = self.seen_by(seat, *named)?;
+        if self.loot.get(mark).is_none() || self.inventory.get(unit).is_none() {
+            return Err(RejectReason::WrongTargetKind);
+        }
+        Ok(())
     }
 
     /// The entity a seat names on the wire, while its side sees it.
