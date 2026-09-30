@@ -683,7 +683,13 @@ emergent, because creeps arrive first. On top of that sit the aggro calls:
   The route is A* over the lattice, eight-connected, never cutting a blocked
   corner, a node open when its room covers the body's collision size and an
   8-unit margin, in scratch kept between searches under an epoch stamp, with a
-  budget of expansions past which the walk goes to the nearest node reached. The
+  budget of expansions past which the walk goes to the nearest node reached. A
+  walker the margin shuts in, no node with room for it at either end or every
+  node the search got to expanded without meeting the goal, has the route laid
+  again at its bare collision size: a hero walks at its own size into gaps
+  between trees narrower than its size and the margin, and a route laid only at
+  the margin found no way out of them, so the hero stood there deaf to every
+  walk, the way home included. The
   corners found are pulled straight against the exact test, then each drawn in
   along the bisector of its legs by binary search as far as both legs stay clear,
   then pulled again, so they land on the tangents of what they round to within a
