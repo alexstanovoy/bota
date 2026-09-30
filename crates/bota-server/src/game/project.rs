@@ -37,81 +37,25 @@ impl World {
             self.tick,
             self.entities.len(),
         );
-        // The entity table bounds every filtered collection below, so the
-        // one allocation each needs is taken up front instead of grown.
         let mut units = Vec::with_capacity(self.entities.len());
-        units.extend(
-            self.entities
-                .iter()
-                .filter(|entity| match viewer {
-                    None => true,
-                    Some(team) => {
-                        self.team.get(*entity) == Some(&team)
-                            || self.visibility.get(*entity).is_some_and(|s| s.by(team))
-                    }
-                })
-                .filter_map(|entity| self.project_unit(entity)),
-        );
-        let mut projectiles = Vec::with_capacity(self.entities.len());
-        projectiles.extend(
-            self.entities
-                .iter()
-                .filter(|entity| {
-                    self.projectile.get(*entity).is_some()
-                        || self.hook.get(*entity).is_some()
-                        || self.mark.get(*entity).is_some()
-                        || self.requiem_line.get(*entity).is_some()
-                })
-                .filter(|entity| match viewer {
-                    None => true,
-                    Some(team) => {
-                        self.team.get(*entity) == Some(&team)
-                            || self.visibility.get(*entity).is_some_and(|s| s.by(team))
-                    }
-                })
-                .filter_map(|entity| {
-                    let at = self.transform.get(entity)?;
-                    let ability = if let Some(shot) = self.projectile.get(entity) {
-                        shot.ability
-                    } else if let Some(mark) = self.mark.get(entity) {
-                        Some(mark.ability)
-                    } else if self.requiem_line.get(entity).is_some() {
-                        Some(crate::game::ability::REQUIEM)
-                    } else {
-                        Some(crate::game::ability::MEAT_HOOK)
-                    };
-                    Some(ProjectileView {
-                        id: wire_id(entity),
-                        pos: at.pos,
-                        facing: at.facing,
-                        team: self.team.get(entity).copied().unwrap_or(Team::Neutral),
-                        ability,
-                    })
-                }),
-        );
-        let mut loot = Vec::with_capacity(self.entities.len());
-        loot.extend(
-            self.entities
-                .iter()
-                .filter(|entity| self.loot.get(*entity).is_some())
-                .filter(|entity| match viewer {
-                    None => true,
-                    Some(team) => self.visibility.get(*entity).is_some_and(|s| s.by(team)),
-                })
-                .filter_map(|entity| {
-                    let crate::game::Loot(stack) = self.loot.get(entity)?;
-                    let at = self.transform.get(entity)?;
-                    let def = crate::game::item_def(stack.id);
-                    Some(bota_proto::LootView {
-                        id: wire_id(entity),
-                        pos: at.pos,
-                        item: stack.id,
-                        charges: def
-                            .filter(|def| def.charges > 0 || def.cast_charges > 0)
-                            .map(|_| stack.charges),
-                    })
-                }),
-        );
+        let mut projectiles = Vec::new();
+        let mut loot = Vec::new();
+        for entity in self.entities.iter() {
+            let seen = viewer.is_none_or(|team| {
+                self.visibility
+                    .get(entity)
+                    .is_some_and(|seen| seen.by(team))
+            });
+            let told = seen || viewer.is_some_and(|team| self.team.get(entity) == Some(&team));
+            if !told {
+                continue;
+            }
+            units.extend(self.project_unit(entity));
+            projectiles.extend(self.project_projectile(entity));
+            if seen {
+                loot.extend(self.project_loot(entity));
+            }
+        }
         WorldView {
             tick: self.tick,
             viewer,
@@ -160,6 +104,45 @@ impl World {
             planted_trees: self.trees.planted().iter().map(|tree| tree.at).collect(),
             loot,
         }
+    }
+
+    /// One missile, hook, mark or line of a requiem, or nothing when the
+    /// entity is none of them.
+    fn project_projectile(&self, entity: Entity) -> Option<ProjectileView> {
+        let ability = if let Some(shot) = self.projectile.get(entity) {
+            shot.ability
+        } else if let Some(mark) = self.mark.get(entity) {
+            Some(mark.ability)
+        } else if self.requiem_line.get(entity).is_some() {
+            Some(crate::game::ability::REQUIEM)
+        } else if self.hook.get(entity).is_some() {
+            Some(crate::game::ability::MEAT_HOOK)
+        } else {
+            return None;
+        };
+        let at = self.transform.get(entity)?;
+        Some(ProjectileView {
+            id: wire_id(entity),
+            pos: at.pos,
+            facing: at.facing,
+            team: self.team.get(entity).copied().unwrap_or(Team::Neutral),
+            ability,
+        })
+    }
+
+    /// One item on the ground, or nothing when the entity is not one.
+    fn project_loot(&self, entity: Entity) -> Option<bota_proto::LootView> {
+        let crate::game::Loot(stack) = self.loot.get(entity)?;
+        let at = self.transform.get(entity)?;
+        let def = crate::game::item_def(stack.id);
+        Some(bota_proto::LootView {
+            id: wire_id(entity),
+            pos: at.pos,
+            item: stack.id,
+            charges: def
+                .filter(|def| def.charges > 0 || def.cast_charges > 0)
+                .map(|_| stack.charges),
+        })
     }
 
     /// One unit, or nothing when the entity is not one.
