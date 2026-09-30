@@ -83,7 +83,7 @@ fn class_zero_target_retention_performs_no_full_search() {
     let before = world.hash();
     let _ = take_snapshot();
 
-    let selected = world.select_target(seeker);
+    let selected = world.select_target(seeker, &world.candidates());
     let snapshot = take_snapshot();
 
     assert_eq!(selected, Some(held));

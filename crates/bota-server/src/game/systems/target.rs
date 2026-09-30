@@ -2,7 +2,7 @@
 
 use bota_proto::{Fixed, Team, UnitKind, Vec2};
 
-use crate::game::{CAMPS, isqrt64, rules};
+use crate::game::{CAMPS, Spots, isqrt64, rules};
 use crate::game::{Entity, World, is_lane_creep, is_structure};
 
 /// The class order a unit ranks its targets by.
@@ -61,12 +61,58 @@ fn class_rank(class: TargetClass, order: PriorityOrder) -> u8 {
     }
 }
 
+/// Every entity that stands somewhere, by where it stood when laid, for
+/// choosing targets among.
+#[derive(Default)]
+pub struct Candidates {
+    /// Every entity that stands somewhere.
+    spots: Spots<Entity>,
+    /// The largest bound radius of any entity laid, in raw units.
+    widest: i64,
+}
+
 /// Whether the camp at this spot is one lane creeps will fight.
 pub fn pullable_camp(pos: Vec2) -> bool {
     CAMPS.iter().any(|camp| camp.pullable && camp.pos == pos)
 }
 
 impl World {
+    /// Where every entity stands now, for choosing targets among.
+    pub fn candidates(&self) -> Candidates {
+        let mut candidates = Candidates::default();
+        self.lay_candidates(&mut candidates);
+        candidates
+    }
+
+    /// Lays candidates afresh from where every entity stands now.
+    pub fn lay_candidates(&self, candidates: &mut Candidates) {
+        candidates.spots.clear();
+        candidates.widest = 0;
+        for entity in self.entities.iter() {
+            let Some(at) = self.transform.get(entity) else {
+                continue;
+            };
+            candidates.spots.push(at.pos, entity);
+            let bound = self.hull.get(entity).map_or(0, |hull| hull.bound.raw);
+            candidates.widest = candidates.widest.max(i64::from(bound).abs());
+        }
+        candidates.spots.sort();
+    }
+
+    /// Every candidate that may stand within a range of a seeker at a spot,
+    /// edge to edge; the range itself is checked by the caller.
+    pub(crate) fn near<'a>(
+        &self,
+        seeker: Entity,
+        at: Vec2,
+        range: Fixed,
+        candidates: &'a Candidates,
+    ) -> impl Iterator<Item = Entity> + 'a {
+        let own = self.hull.get(seeker).map_or(0, |hull| hull.bound.raw);
+        let reach = i64::from(range.raw).abs() + i64::from(own).abs() + candidates.widest;
+        candidates.spots.around(at, reach)
+    }
+
     /// The class order a unit ranks targets by.
     pub fn priority_of(&self, entity: Entity) -> PriorityOrder {
         if self.kind.get(entity) == Some(&UnitKind::CreepSiege) {
@@ -147,8 +193,14 @@ impl World {
     /// mark, and everything within [`rules::AGGRO_TIE_RANGE`] of that mark
     /// counts as equally close; among those, what a hero is doing decides,
     /// then the distance itself, then the entity.
-    pub fn acquire(&self, seeker: Entity, range: Fixed, order: PriorityOrder) -> Option<Entity> {
-        self.acquire_demoting(seeker, range, order, None)
+    pub fn acquire(
+        &self,
+        seeker: Entity,
+        range: Fixed,
+        order: PriorityOrder,
+        candidates: &Candidates,
+    ) -> Option<Entity> {
+        self.acquire_demoting(seeker, range, order, None, candidates)
     }
 
     /// The same, with one candidate put last however close it stands.
@@ -158,8 +210,9 @@ impl World {
         range: Fixed,
         order: PriorityOrder,
         demoted: Option<Entity>,
+        candidates: &Candidates,
     ) -> Option<Entity> {
-        self.ranked(seeker, range, order, demoted)
+        self.ranked(seeker, range, order, demoted, candidates)
             .or_else(|| demoted.filter(|&last| self.reachable(seeker, range, last)))
     }
 
@@ -187,13 +240,14 @@ impl World {
         range: Fixed,
         order: PriorityOrder,
         skip: Option<Entity>,
+        candidates: &Candidates,
     ) -> Option<Entity> {
         let side = self.team.get(seeker).copied()?;
         let at = self.transform.get(seeker)?.pos;
         let mut best_class = u8::MAX;
         let mut nearest = i64::MAX;
         let mut found: Vec<(u8, i64, Entity)> = Vec::new();
-        for other in self.entities.iter() {
+        for other in self.near(seeker, at, range, candidates) {
             if other == seeker || Some(other) == skip {
                 continue;
             }
