@@ -1,8 +1,7 @@
 //! bota client: rendering, input, spectating and replays.
 //!
 //! The client draws what the server sends and sends back intents. It holds no
-//! `World` and cannot: the simulation lives in a crate this one does not
-//! depend on.
+//! `World`.
 
 mod camera;
 mod catalog;

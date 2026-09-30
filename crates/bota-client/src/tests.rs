@@ -427,8 +427,7 @@ fn a_part_in_hand_comes_off_what_the_shop_asks() {
     );
 }
 
-/// A hero body with every field named, so a new one in `UnitView` has to be
-/// thought about here before these tests compile again.
+/// A hero body with every field named.
 pub fn a_unit() -> UnitView {
     UnitView {
         id: EntityId {
@@ -704,8 +703,7 @@ fn no_two_boxes_of_the_panel_sit_on_one_another() {
             );
         }
     }
-    // The panel's own boxes stay inside it. The stash strip is drawn above
-    // the panel on purpose and is left out of this.
+    // The panel's own boxes stay inside it; the stash strip sits above it.
     for (which, r) in boxes.iter().filter(|(name, _)| !name.starts_with("stash")) {
         assert!(
             r.x >= panel.x
@@ -792,8 +790,7 @@ fn the_cursor_pushes_the_camera_only_at_the_very_edge() {
     );
 }
 
-/// A seat with every field named, so a new one in `PlayerView` has to be
-/// thought about here before these tests compile again.
+/// A seat with every field named.
 pub fn a_player() -> PlayerView {
     PlayerView {
         slot: SlotId(0),

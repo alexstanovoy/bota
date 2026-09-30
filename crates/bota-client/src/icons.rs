@@ -11,10 +11,7 @@ const FRAME: (f32, f32, f32, f32) = (220.0, 50.0, 240.0, 160.0);
 /// How many pixels one unit of that frame is rasterised to.
 const SCALE: f32 = 0.8;
 
-/// The texture of one drawing.
-///
-/// The first call for a drawing rasterises it; every call after hands back the
-/// same texture.
+/// The texture of one drawing, rasterised on the first call and cached.
 pub fn icon(art: &'static [u8]) -> Option<Texture2D> {
     thread_local! {
         static DRAWN: std::cell::RefCell<Vec<(usize, Option<Texture2D>)>> =
