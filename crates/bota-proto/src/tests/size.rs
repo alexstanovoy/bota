@@ -1,9 +1,6 @@
 //! Budgets for how much a snapshot costs on the wire.
 //!
-//! Full views are sent every tick with no delta encoding, so the size of a
-//! snapshot is the bandwidth of the game. These bounds are loose enough to
-//! ignore ordinary changes and tight enough to catch a field that costs far
-//! more than it looks.
+//! Full views are sent every tick with no delta encoding.
 
 use super::fixtures::*;
 use crate::*;
@@ -107,8 +104,7 @@ fn the_widest_cheat_order_fits_its_budget() {
 #[test]
 fn a_modifier_cheat_encodes_canonically() {
     // Postcard: order tag 10, cheat tag 4, target tag 2, entity idx and
-    // generation varints, eleven zigzag varints, then the tick count. The
-    // bytes are pinned so a field change cannot pass unnoticed.
+    // generation varints, eleven zigzag varints, then the tick count.
     let order = Order::Cheat {
         cheat: Cheat::ApplyModifier {
             target: Target::Unit(entity(7)),

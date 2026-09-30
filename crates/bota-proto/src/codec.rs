@@ -1,22 +1,15 @@
 //! Turning messages into bytes and back.
 //!
 //! A message on the wire is a little endian `u32` length followed by that many
-//! bytes of postcard payload.
-//!
-//! Nothing here performs input or output. [`FrameReader`] is fed whatever bytes
-//! arrived, from a socket or from a file, and hands back messages once it has
-//! seen enough of them.
+//! bytes of postcard payload. Nothing here performs input or output.
 
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 
-/// Largest payload accepted in one frame.
-///
-/// A frame claiming more than this is treated as a broken or hostile peer rather
-/// than allocated for.
+/// Largest payload accepted in one frame, in bytes.
 pub const MAX_PAYLOAD_LEN: usize = 4 * 1024 * 1024;
 
-/// Number of bytes in the length prefix.
+/// Bytes in the length prefix.
 pub const LEN_PREFIX: usize = 4;
 
 /// Something went wrong turning bytes into a message or back.
@@ -51,8 +44,6 @@ impl From<postcard::Error> for CodecError {
 }
 
 /// Encode one message and append the whole frame to `out`.
-///
-/// `out` may already hold earlier frames, so this appends rather than clears.
 pub fn encode_frame<T: Serialize + ?Sized>(msg: &T, out: &mut Vec<u8>) -> Result<(), CodecError> {
     let payload = postcard::to_allocvec(msg)?;
     if payload.len() > MAX_PAYLOAD_LEN {
@@ -77,10 +68,6 @@ pub fn decode_payload<T: DeserializeOwned>(payload: &[u8]) -> Result<T, CodecErr
 }
 
 /// Reassembles messages from a byte stream that arrives in arbitrary pieces.
-///
-/// A stream delivers whatever it likes: half a frame, three frames, one byte.
-/// Push bytes in as they arrive and pull messages out until there are no
-/// complete ones left.
 ///
 /// ```
 /// # use bota_proto::{encode_frame, FrameReader};
@@ -116,9 +103,8 @@ impl FrameReader {
 
     /// Take the next complete message, or `None` if one has not fully arrived.
     ///
-    /// On [`CodecError`] the stream cannot be resynchronised, because a frame
-    /// boundary is only known from the prefix of the frame before it. The caller
-    /// should drop the connection.
+    /// After a [`CodecError`] the offending bytes stay at the front, and every
+    /// later call returns the same error.
     pub fn next_message<T: DeserializeOwned>(&mut self) -> Result<Option<T>, CodecError> {
         let Some(len) = self.peek_len()? else {
             return Ok(None);

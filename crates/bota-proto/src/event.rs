@@ -1,10 +1,6 @@
 //! Things that happened during one tick.
 //!
-//! A snapshot carries state, an event carries what occurred. Anything
-//! instantaneous, such as a hit that took a unit from full health to dead,
-//! appears here and nowhere else.
-//!
-//! The server drops the events a team may not see before sending.
+//! A team is sent only the events it may know of.
 
 use crate::{AbilityId, EntityId, ItemId, SlotId, Team};
 use serde::{Deserialize, Serialize};
@@ -12,23 +8,20 @@ use serde::{Deserialize, Serialize};
 /// How a chunk of damage is reduced before it is applied.
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum DamageKind {
-    /// Reduced by armor. Dealt by attacks and most melee abilities.
+    /// Reduced by armor.
     Physical,
-    /// Reduced by magic resistance. Dealt by most abilities.
+    /// Reduced by magic resistance.
     Magical,
     /// Not reduced by anything.
     Pure,
 }
 
 /// A single thing that happened on one tick.
-///
-/// Used by the client for damage numbers, sounds and the kill feed, and by a bot
-/// to notice what a snapshot does not show.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum EventKind {
     /// A unit took damage.
     Damaged {
-        /// Who dealt it. Absent for environmental damage such as the fountain.
+        /// Who dealt it, if anyone; may name a unit that has since died.
         source: Option<EntityId>,
         /// Who took it.
         target: EntityId,
@@ -36,14 +29,13 @@ pub enum EventKind {
         amount: i32,
         /// Which reduction applied.
         kind: DamageKind,
-        /// Whether this hit was a critical strike. Reported here and nowhere
-        /// else.
+        /// Whether this hit was a critical strike.
         crit: bool,
     },
     /// An attack did not land: the target evaded it, or it was thrown
     /// uphill and missed.
     Missed {
-        /// Who swung. Absent once that unit is gone.
+        /// Who swung; may name a unit that has since died.
         source: Option<EntityId>,
         /// Who it was swung at.
         target: EntityId,
@@ -70,27 +62,28 @@ pub enum EventKind {
         killer: Option<EntityId>,
         /// Whether the killer was on the same team, making this a deny.
         denied: bool,
-        /// Gold the killing side was paid for it. Nought for a deny, or when
-        /// nothing with a seat struck last.
+        /// Gold paid to the seat of the hero that struck last. Zero for a
+        /// deny, or when no hero struck last.
         gold: i32,
     },
-    /// A hero finished a cast and the ability took effect.
+    /// A unit's ability took effect, or a hero put a skill point into it.
     ///
-    /// Emitted at the moment of effect, not when the order was issued.
+    /// A cast is told at the moment of effect, not when the order was issued.
     AbilityCast {
         /// Who cast it.
         caster: EntityId,
         /// Which ability.
         ability: AbilityId,
     },
-    /// A hero gained a level.
+    /// A hero gained a level. Not sent for a level gained while it is dead.
     LevelUp {
         /// Which hero.
         unit: EntityId,
         /// The level just reached.
         level: u8,
     },
-    /// A hero bought an item.
+    /// A seat bought an item, or was handed one by a cheat. Told to its own
+    /// team alone.
     ItemBought {
         /// Which seat bought it.
         slot: SlotId,

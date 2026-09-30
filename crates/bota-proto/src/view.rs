@@ -1,8 +1,4 @@
 //! What one side is allowed to know about the world right now.
-//!
-//! A [`WorldView`] is the server's world projected through one team's fog of
-//! war. It is the only shape of game state that leaves the server, and the same
-//! type is delivered to humans and to bots.
 
 use crate::{
     AbilityId, Aim, Angle, Attribute, Attributes, EffectId, EntityId, Fixed, HeroId, ItemId,
@@ -10,10 +6,8 @@ use crate::{
 };
 use serde::{Deserialize, Serialize};
 
-/// Conditions currently affecting a unit.
-///
-/// A unit can be under several at once, so this is a bit set. Compare against
-/// the associated constants.
+/// Conditions currently affecting a unit, as a bit set of the associated
+/// constants.
 #[derive(
     Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash,
 )]
@@ -35,7 +29,7 @@ impl StatusFlags {
     pub const SLOWED: u16 = 1 << 4;
     /// Losing health over time.
     pub const DOT: u16 = 1 << 5;
-    /// Invisible to the other team.
+    /// Seen by the other team only through true sight.
     pub const INVISIBLE: u16 = 1 << 6;
     /// Immune to magical damage and most disables.
     pub const MAGIC_IMMUNE: u16 = 1 << 7;
@@ -45,13 +39,11 @@ impl StatusFlags {
     pub const INVULNERABLE: u16 = 1 << 9;
     /// Performing a channelled ability or item action.
     pub const CHANNELLING: u16 = 1 << 10;
-    /// Running from whoever put the fear on; cannot act, and no order lands.
+    /// Running from whoever put the fear on; cannot attack or cast.
     pub const FEARED: u16 = 1 << 11;
 }
 
-/// One ability slot of a visible hero.
-///
-/// Present for enemy heroes as well as friendly ones.
+/// One ability slot of a visible unit, enemy or friendly.
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct AbilityView {
     /// Which ability sits in this slot.
@@ -78,9 +70,6 @@ pub struct AbilityView {
 }
 
 /// An effect currently on a visible unit.
-///
-/// The two counts are independent: an effect may run out, may be counted, may
-/// do both, and one that does neither carries only its id.
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct EffectView {
     /// Which effect it is.
@@ -91,17 +80,17 @@ pub struct EffectView {
     pub stacks: Option<u32>,
 }
 
-/// One inventory slot of a visible hero.
+/// One item slot of a visible unit.
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct ItemView {
     /// Which item sits in this slot.
     pub id: ItemId,
-    /// Charges left. Absent for an item that has no charges at all, so an
-    /// empty stack and one that never held any are told apart.
+    /// Charges left. Absent for an item that has no charges at all.
     pub charges: Option<u8>,
     /// Ticks remaining before the item can be used again. Zero means ready.
     pub cooldown_left: u32,
-    /// Backpack mute ticks remaining. Zero means ready.
+    /// Ticks it stays inert after coming out of the backpack. Zero means
+    /// ready.
     pub mute_left: u32,
     /// Which attribute it is set to. Absent for an item that is not set to one.
     pub mode: Option<Attribute>,
@@ -129,10 +118,9 @@ pub struct LootView {
     pub charges: Option<u8>,
 }
 
-/// A unit the viewing team can currently see.
+/// A unit the viewing team can currently see, or one of its own.
 ///
-/// Every stat is the effective value, after buffs, items and auras. A unit the
-/// team cannot see is absent from the view rather than blanked out.
+/// Every stat is the effective value, after buffs, items and auras.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct UnitView {
     /// Stable handle for this unit.
@@ -143,14 +131,14 @@ pub struct UnitView {
     pub team: Team,
     /// Current position.
     pub pos: Vec2,
-    /// Which way it is facing. Turning takes time, so this does not follow from
-    /// the movement direction.
+    /// Which way it is facing.
     pub facing: Angle,
-    /// Current health.
+    /// Current health, whole points. At least 1 while any is left.
     pub hp: i32,
     /// Maximum health.
     pub max_hp: i32,
-    /// Current mana. Zero for units that do not have any.
+    /// Current mana, whole points. At least 1 while any is left; zero for
+    /// units that have none.
     pub mana: i32,
     /// Maximum mana. Zero for units that do not have any.
     pub max_mana: i32,
@@ -158,7 +146,7 @@ pub struct UnitView {
     pub move_speed: Fixed,
     /// Attack damage per hit, before the target's armor.
     pub attack_damage: i32,
-    /// Attack range.
+    /// Attack range in world units, edge to edge of the [`bound`](Self::bound)s.
     pub attack_range: Fixed,
     /// Milliseconds between the start of one attack and the next, after
     /// attack speed.
@@ -178,11 +166,8 @@ pub struct UnitView {
     /// Bound radius: where its edge is for attack range, cast range and
     /// areas, in world units.
     pub bound: Fixed,
-    /// How far this unit lights the fog for its own team. Zero if it lights
-    /// none.
-    ///
-    /// The fog itself is not on the wire; each side derives what it needs from
-    /// this field and the positions in the view.
+    /// How far this unit lights the fog for its own team, in world units.
+    /// Zero if it lights none.
     pub vision_radius: Fixed,
     /// How far it reveals what hides. Zero for whatever gives no true sight.
     pub true_sight_radius: Fixed,
@@ -195,21 +180,22 @@ pub struct UnitView {
     pub primary: Option<Attribute>,
     /// Which hero this is, when `kind` is [`UnitKind::Hero`].
     pub hero: Option<HeroId>,
-    /// Which seat controls it, when it is a hero or a hero's summon.
+    /// Which seat controls it: set for a hero and a courier.
     pub owner: Option<SlotId>,
     /// Hero level. Zero for units that do not level.
     pub level: u8,
-    /// Ability slots. Empty for anything that is not a hero.
+    /// Ability slots, in slot order. Empty for anything but a hero or a
+    /// courier.
     pub abilities: Vec<AbilityView>,
-    /// The six inventory and three backpack slots, in slot order. Empty for
-    /// anything that is not a hero.
+    /// Item slots in slot order: a hero's six inventory and three backpack
+    /// slots, a courier's six. Empty for anything else.
     pub items: Vec<Option<ItemView>>,
     /// Effects currently on the unit, timed and counted alike.
     pub effects: Vec<EffectView>,
 }
 
 /// A missile in flight, or what an ability shows where it stands, that the
-/// viewing team can see.
+/// viewing team can see or launched itself.
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct ProjectileView {
     /// Stable handle for this projectile.
@@ -224,14 +210,10 @@ pub struct ProjectileView {
     pub ability: Option<AbilityId>,
 }
 
-/// What a hero's body left behind while it is gone.
-///
-/// Abilities and items outlive the body they were carried on, so a seat with
-/// no hero standing still has both. While one stands they ride in its
-/// [`UnitView`] instead, and this is absent.
+/// The abilities and items of a seat whose hero is dead.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Kit {
-    /// The ability slots, in the order they are shown.
+    /// The ability slots, in slot order.
     pub abilities: Vec<AbilityView>,
     /// The inventory and backpack slots, in slot order.
     pub items: Vec<Option<ItemView>>,
@@ -253,16 +235,15 @@ pub struct PlayerView {
     pub unit: Option<EntityId>,
     /// Hero level.
     pub level: u8,
-    /// Experience towards the next level.
+    /// Experience gathered over the whole match.
     pub xp: i32,
     /// Unspent gold. Absent for the opposing team.
     pub gold: Option<i32>,
     /// The six stash slots at the home shop, in slot order. Absent for the
     /// opposing team.
     pub stash: Option<Vec<Option<ItemView>>>,
-    /// What the body left behind while it is gone. Absent while a hero
-    /// stands, and absent for the opposing team, which is left with whatever
-    /// it saw last.
+    /// What the dead hero carried. Absent while the hero stands, and for the
+    /// opposing team.
     pub kit: Option<Kit>,
     /// Kills scored.
     pub kills: u16,
@@ -279,24 +260,24 @@ pub struct PlayerView {
 }
 
 /// Everything one team is allowed to know, as of one tick.
-///
-/// Produced on the server by projecting the world through a team's fog of war,
-/// and sent whole on every tick.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct WorldView {
-    /// Which tick this describes. Divide by the tick rate from
-    /// [`MatchInfo`](crate::MatchInfo) for a clock time.
+    /// Which tick this describes. Divide by
+    /// [`MatchInfo::tick_rate`](crate::MatchInfo::tick_rate) for seconds since
+    /// the start.
     pub tick: u32,
-    /// Whose eyes this is through. Absent for a spectator seeing everything.
+    /// Whose eyes this is through. Absent for a view of everything.
     pub viewer: Option<Team>,
-    /// Every unit currently visible, sorted by [`EntityId`].
+    /// Every unit currently visible and every unit of the viewing team,
+    /// sorted by [`EntityId`].
     pub units: Vec<UnitView>,
-    /// Every projectile currently visible, sorted by [`EntityId`].
+    /// Every projectile currently visible and every one the viewing team
+    /// launched, sorted by [`EntityId`].
     pub projectiles: Vec<ProjectileView>,
     /// The scoreboard, one entry per seat, sorted by [`SlotId`].
     pub players: Vec<PlayerView>,
-    /// Which of the map's own trees are down right now, by their place in the
-    /// list [`MatchInfo`](crate::MatchInfo) carried at the start.
+    /// Which of the map's own trees are down right now, as indices into
+    /// [`MatchInfo::trees`](crate::MatchInfo::trees).
     pub felled_trees: Vec<u32>,
     /// Where every tree put up during the match stands.
     pub planted_trees: Vec<Vec2>,

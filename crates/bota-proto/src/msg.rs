@@ -7,13 +7,13 @@ use serde::{Deserialize, Serialize};
 
 /// Why a participant connected.
 ///
-/// Decides what the server sends back: a player and a bot get their own team's
-/// fog of war, a spectator gets the whole map.
+/// A player and a bot take a seat and see through its team's fog of war; a
+/// spectator takes none.
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Role {
     /// A human at a client, taking a seat.
     Player,
-    /// A program taking a seat. The simulation treats it exactly as a player.
+    /// A program taking a seat. The server treats it exactly as a player.
     Bot,
     /// An observer with no seat.
     Spectator,
@@ -22,11 +22,11 @@ pub enum Role {
 /// How the server decides when to advance a tick.
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum TickMode {
-    /// Advance on a wall clock at the configured rate. An order that misses its
-    /// tick applies on the next one.
+    /// Advance on a wall clock at the configured rate. An order that misses
+    /// its tick applies on the next one.
     Realtime,
-    /// Advance only once every participant has acknowledged the tick, with no
-    /// bound on how long one may take.
+    /// Advance once every connected seat has acknowledged the tick, or when
+    /// the server's acknowledgement timeout runs out.
     Lockstep,
 }
 
@@ -59,13 +59,6 @@ pub struct LobbySlot {
 }
 
 /// What the shop asks for one item.
-///
-/// The price of a thing nobody holds yet, so it belongs to no unit and is
-/// stated once for the whole match. Everything an item is worth to whoever
-/// carries it rides in [`ItemView`] instead, where it can differ between two
-/// units holding the same item.
-///
-/// [`ItemView`]: crate::ItemView
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct ShopEntry {
     /// Which item.
@@ -90,8 +83,9 @@ pub struct MatchInfo {
     /// Ticks before the game clock reaches zero. The clock counts up from
     /// minus this; creep waves start at zero.
     pub pregame_ticks: u32,
-    /// Every tree on the map. Static for the whole match; sent once here so
-    /// the client can draw and never has to know the layout rules.
+    /// Every tree the map starts with.
+    /// [`WorldView::felled_trees`](crate::WorldView::felled_trees) indexes
+    /// into this.
     pub trees: Vec<Vec2>,
     /// Cells per terrain axis.
     pub terrain_cells: u32,
@@ -99,8 +93,8 @@ pub struct MatchInfo {
     /// corner, one byte each: bit 7 walkable ground, bit 6 river water, the
     /// low bits the elevation tier.
     pub terrain_rle: Vec<(u16, u8)>,
-    /// Cells that block sight lines regardless of elevation: trees and the
-    /// map's fog blocker walls. The client shades its own fog with these.
+    /// `(x, y)` cells of the terrain grid that block sight lines regardless of
+    /// elevation: the map's own trees and its fog blocker walls.
     pub opaque_cells: Vec<(u16, u16)>,
     /// How the server advances ticks.
     pub mode: TickMode,
@@ -118,7 +112,6 @@ pub enum RejectReason {
     /// The hero is dead.
     HeroDead,
     /// The target does not exist, or is not currently visible to this team.
-    /// One answer covers both cases.
     UnknownTarget,
     /// The ability or item does not accept this kind of target.
     WrongTargetKind,
@@ -132,13 +125,15 @@ pub enum RejectReason {
     NotEnoughGold,
     /// The referenced ability or inventory slot is empty.
     EmptySlot,
-    /// The ability works on its own and is never cast.
+    /// The ability works on its own and is never cast, or the item cannot be
+    /// used.
     NotCastable,
     /// The ability has no points in it yet.
     NotLearned,
     /// The item has no charges left to spend.
     NoCharges,
-    /// The item has come out of the backpack and is not working yet.
+    /// The item has come out of the backpack and is not working yet, or a
+    /// mana item has nothing to fill.
     NotReady,
     /// The order named a unit this seat does not drive.
     NotYourUnit,
@@ -146,11 +141,12 @@ pub enum RejectReason {
     UnknownItem,
     /// No skill point is available, or the ability is already at its cap.
     CannotLevelUp,
-    /// Buying and selling require standing in the fountain area.
+    /// Moving an item into or out of the stash requires standing at the
+    /// home shop.
     NotAtShop,
     /// The inventory is full.
     InventoryFull,
-    /// A status such as silence or stun forbids this action right now.
+    /// The unit is stunned, feared or channelling.
     Disabled,
     /// The match has not started or has already finished.
     NotPlaying,
@@ -225,18 +221,16 @@ pub enum ClientMsg {
         hero: HeroId,
     },
     /// Declare readiness, or withdraw it. The match starts when every seat is
-    /// filled and ready.
+    /// filled, picked and ready.
     SetReady(bool),
     /// Tell one of the units this seat drives what to do.
     ///
-    /// At most one order per seat survives per tick and the last one wins, so
-    /// re-sending is harmless.
+    /// At most one order per seat is applied per tick: the last one accepted.
     Order {
-        /// Sequence number, unique per connection and increasing. A
-        /// [`ServerMsg::OrderRejected`] names the order by this.
+        /// Chosen by the sender. A [`ServerMsg::OrderRejected`] names the
+        /// order by this.
         seq: u32,
-        /// Which unit it is for. Absent means the seat's own hero, which is
-        /// what most orders are for.
+        /// Which unit it is for. Absent means the seat's own hero.
         unit: Option<EntityId>,
         /// What to do.
         order: Order,
@@ -252,9 +246,10 @@ pub enum ClientMsg {
     ///
     /// A seat sets the fog of the snapshots to its side's and brings that
     /// seat's own orders; absent watches everything and is told none.
-    /// Ignored for a seated participant, whose eyes are its own.
+    /// Ignored for a seated participant.
     ViewAs {
-        /// Which seat to watch as. Absent for the whole map.
+        /// Which seat to watch as. Absent, or a seat not in the match, for the
+        /// whole map.
         seat: Option<SlotId>,
     },
 }
@@ -284,10 +279,7 @@ pub enum ServerMsg {
         info: MatchInfo,
     },
     /// The state of the world on one tick, already filtered through this team's
-    /// fog.
-    ///
-    /// Sent whole on every tick. A client can start rendering from any one of
-    /// these without having received an earlier one.
+    /// fog. Sent whole on every tick.
     Snapshot {
         /// The state. Its own [`WorldView::tick`] says which tick it is.
         view: WorldView,
@@ -310,9 +302,8 @@ pub enum ServerMsg {
     /// The orders accepted on one tick, as far as the receiver may know
     /// them.
     ///
-    /// Sent to a spectator watching through one seat's eyes, and carries
-    /// that seat's orders alone. Watching everything brings none, and a
-    /// seated participant knows its own.
+    /// Sent only to a spectator watching through one seat's eyes, and
+    /// carries that seat's orders alone.
     Orders {
         /// Which tick they were applied on.
         tick: u32,
@@ -321,7 +312,7 @@ pub enum ServerMsg {
     },
     /// The match is over.
     MatchOver {
-        /// Which side won.
+        /// Which side won. [`Team::Neutral`] for a draw.
         winner: Team,
         /// Final numbers.
         stats: MatchStats,
@@ -338,8 +329,8 @@ pub enum ServerMsg {
 
 /// One frame of a replay file.
 ///
-/// A replay file is a sequence of length-prefixed frames, framed exactly like
-/// the socket, each carrying one record. Read by the client in replay mode.
+/// A replay file is a sequence of frames, framed exactly like the socket, each
+/// carrying one record.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub enum ReplayRecord {
     /// A message of the fogless spectator stream.
