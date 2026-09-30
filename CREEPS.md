@@ -1,12 +1,8 @@
-# Creep system — agreed plan
+# Creeps — the Dota reference
 
-Status: **in progress.** Steps 1 to 5 of section 6 are in the tree; 6 to 10
-are not. Sections 1, 3, 5 and 7 describe what is being built and are kept in
-step with the code; section 2 marks what is already closed. When section 6 is
-finished the facts fold into `DESIGN.md` and this file goes away.
-
-Target: Dota 2 **7.41e** (Summer Scrub, August 2026 — the current gameplay
-patch).
+The Dota 2 **7.41e** rules (Summer Scrub, August 2026) for lane and neutral creeps
+that the simulation follows: the numbers, the behaviour, and where they came from.
+What of it is not modelled yet is listed at the end.
 
 ## 0. Sources
 
@@ -48,7 +44,7 @@ Hull radius is the collision radius: what other units cannot enter.
 | Gold bounty | 34–39 | 34–39 | 43–52 | 59–72 |
 | XP bounty | 57 | 57 | 69 | 88 |
 
-Attack modifiers, for the record — see §7 for which of these ship now:
+Attack modifiers, for the record — see *Not yet modelled* for which of these ship now:
 
 - `creep_irresolute` — melee and flagbearer: **−25 %** damage to heroes.
 - `creep_piercing` — ranged: **+50 %** to creeps, **−50 %** to heroes,
@@ -145,7 +141,8 @@ attack happens or not and however far the ordered target is:
   the same tick, so the creep is never left standing with no target.
 - an attack order on an enemy **creep** is a last hit and moves nobody
 - **3 s cooldown** per creep on both
-- the switch **holds for 3 s** — **[approximation]**, see §7 — and this hold is
+- the switch **holds for 3 s** — **[approximation]**: Valve publishes the 3 s
+  cooldown but no hold duration — and this hold is
   the only thing that makes a hero target stick at all. When it runs out the
   creep weighs its options again; the ordering hero can still win that on
   §1.5's tie-break while it keeps swinging at the creep's own side, which is
@@ -186,7 +183,7 @@ not restricted — the rule is about being called on.
 - Upgrades every **7:30**, **30 times**, applied to **living** creeps as well:
   +30 health, +0.5 armour, +3 attack damage, +5 attack speed, +1 gold, +5 XP.
 - Towers never attack neutrals.
-- Night: aggro range 0. bota has no day cycle — see §7.
+- Night: aggro range 0. bota has no day cycle — see *Not yet modelled*.
 
 ### 1.6.1 Returning to the camp
 
@@ -215,8 +212,7 @@ Consequences that fall straight out of it and need no extra rule:
   stops to attack covers less.
 - The camp a neutral is dragged towards is irrelevant; only the distance from
   its own spawn spot counts.
-- Arriving home does **not** restore health. bota currently heals to full,
-  which is why jungle farming is free today.
+- Arriving home does **not** restore health.
 - A neutral walking home is still aggressive: it acquires anything inside its
   acquisition range on the way, and that does not touch the timer.
 
@@ -263,12 +259,11 @@ flag, not a distance effect.
 
 The rest of this section is kept for the record:
 
-- The camp flag ships as a single `pullable: bool` per camp in `camp.rs`, read
-  in exactly one place — the hostility function in `acquire.rs`.
+- The camp flag ships as a single `pullable: bool` per camp in
+  `game/config/camp.rs`, read in one place — `pullable_camp` in
+  `game/systems/target.rs`.
 - Setting every camp `pullable: true` reduces the behaviour to your model
   exactly, with the guard distance doing all the work.
-- `pull.rs` in the test plan covers both readings, so switching is a one-line
-  change plus a test flip.
 
 ### 1.6.3 Neutral creep stats
 
@@ -382,7 +377,7 @@ current shipped data:
 | 4 | ancient_frog | ancient_frog_mage | 1250 | 60-64 / 58-62 | 53-56 | 104 |
 
 This needs a river that knows which camps it covers, and bota has no river
-state at all. Out of scope; see section 7.
+state at all. See *Not yet modelled*.
 
 ### 1.7 Hull radii
 
@@ -399,467 +394,20 @@ state at all. Out of scope; see section 7.
 
 ---
 
-## 2. What the current implementation does instead
-
-| # | Was | Now | |
-|---|---|---|---|
-| 1 | one acquisition range for every creep (500) | 500 / 600 / 800 by type | done |
-| 2 | `pick_target` ranks by distance only | class tiers, then the tie band, then hero behaviour | done |
-| 3 | siege creeps have no building preference | buildings first | done |
-| 4 | aggro window is a 70-tick timer per creep; cooldown 90 ticks | the click switches outright and holds 3 s; 3 s cooldown | done |
-| 5 | no pre-5:00 aggro restriction | present | done |
-| 6 | leash is "800 from the lane centreline, return to the nearest point" | 2.3 s out-of-range chase, return to the departure point | done |
-| 7 | neutrals aggro at 400, leash at 700 by distance, heal to full on return | 240 proximity / 1800 damage; guard distance 400 plus a 5 s timer; no free heal | done |
-| 8 | `Team::Neutral` is hostile to lane creeps everywhere | only the pull camps | done |
-| 9 | all creeps radius 8; heroes 27 | 16 / 8 / 16 by type, heroes 24, neutrals 24 | done |
-| 9a | towers 40, ancient 72, fountain 60 | 144, 81, 81 | not done, see section 7 |
-| 10 | siege attack interval a bare constant | derived from the real BAT | done |
-| 11 | 3 melee + 1 ranged, siege every 5th wave, no growth, no upgrades | sections 1.2 and 1.3 | done |
-| 12 | no flagbearer | flagbearer from wave 5 | done |
-| 13 | neutrals: one generic unit, 2 per camp, no camp identity | real per-type stats, real rosters, four camp categories | done |
-| 14 | walker-vs-walker contact is a full stop for 12 ticks, then a sidestep | continuous slide; no stop timer | done |
-| 15 | `steer_target` ignores moving units entirely | every unit is an obstacle | done |
-| 16 | lane path is a straight tower-to-tower polyline | a found path laid between the landmarks | done |
-
-Rows 14 and 15 were why creep blocking barely worked; both are closed. Row 9a
-is not, and deliberately: see section 7.
-
----
-
-## 3. Decisions taken
-
-| Question | Decision |
-|---|---|
-| Neutral camp fidelity | **Real per-type data.** `npc_units.txt` stats for every neutral type (§1.6.3) and the real camp rosters (§1.6.4), so full accuracy is reachable later by adding abilities only. Abilities themselves are a separate system and stay inert for now. |
-| Lane creep aggro on neutrals | **Camp flag, as Valve has it.** `pullable: bool` per camp, read only by the hostility function in `acquire.rs` (§1.6.2). |
-| Lane routes | **A\* over the passability grid** from the spawner to the enemy Ancient, computed once at world build. No hand-placed waypoints. |
-| Barracks, super and mega creeps | **Out.** They do not change creep logic. The wave builder carries a `CreepRank` so they drop in later without restructuring. |
-| Combat rework | **Out. `combat.rs` is not touched.** Everything achievable through per-unit data in `units.rs` is done; what needs `combat.rs` is listed in §7. |
-
-Two things I decide myself unless you say otherwise:
-
-- **Camp typing.** The 28 camp positions in `rules.rs` carry no type. I build
-  the small/medium/large/ancient tag and the `pullable` flag as a table in
-  `camp.rs`, derived from the map geometry and cross-checked against the
-  published camp map, and show you the table before wiring it in. `pullable` is
-  read in exactly one place, so flipping every camp to `true` collapses the
-  behaviour onto the pure-distance model — see §1.6.2.
-- **Day and night.** Not added. Sleeping neutrals therefore do not exist —
-  §7.
-
----
-
-## 4. Proposed state
-
-New module tree, replacing the creep logic currently spread across `step.rs`,
-`econ.rs`, `steer.rs`, `movement.rs` and `rules.rs`. Names stay unique across
-the crate because `sim/mod.rs` re-exports with globs.
-
-```
-sim/creep/
-  mod.rs        mod + use only                                    in tree
-  acquire.rs    the shared target-priority function               in tree
-  camp.rs       CampKind, CampDef, the 28-camp table              in tree
-  lane_ai.rs    LaneCreepAi: route, chase, return                 in tree
-  wave.rs       schedule, composition, upgrades, spawn ranks      in tree
-  neutral.rs    36 neutral kinds and the 21 camp rosters           in tree
-  neutral_ai.rs NeutralAi: guard distance, window, re-aggro block  in tree
-```
-
-`Unit` lost `provoked_ticks`, `aggro_cooldown`, `shunned` and `lane_step`, and
-gained one field:
-
-```rust
-/// Per-kind autonomous behaviour. Absent for heroes and buildings.
-pub ai: Option<CreepAi>,
-```
-
-It kept `lane`, because towers name one too; `order_cooldown`, because towers
-answer attack orders too; and `camp` and `returning`, which belong to neutrals
-until step 7 moves them into `NeutralAi`.
-
-```rust
-pub enum CreepAi {
-    Lane(LaneCreepAi),
-    // Neutral(NeutralAi) arrives with step 7.
-}
-
-pub struct LaneCreepAi {
-    /// How many waypoints of its route are behind it.
-    pub step: u16,
-    /// Where it left the route. Absent while it is on the route.
-    pub anchor: Option<Vec2>,
-    /// Ticks left of the chase after the target left acquisition range.
-    /// Zero once the chase is spent.
-    pub chase_left: u32,
-    /// Ticks left in which the ordinary ranking may not take the creep off
-    /// the target an attack order handed it. Zero when the ranking rules.
-    pub provoked: u32,
-    /// Where a target was last seen before the fog took it. Set the moment a
-    /// target is acquired and refreshed while it stays in sight.
-    pub last_seen: Option<Vec2>,
-}
-
-pub struct NeutralAi {
-    /// Index into the camp table.
-    pub camp: u8,
-    /// The exact spot this creep spawned on, and returns to.
-    pub home: Vec2,
-    /// Ticks left before aggro is lost while beyond the guard distance.
-    /// Zero while inside it.
-    pub leash_left: u32,
-    /// Ticks during which damage cannot re-aggro after a leash break.
-    pub reaggro_block: u32,
-    /// Length of the aggro window granted on the next aggro, in ticks.
-    pub next_window: u32,
-    /// Where it is fleeing to, and for how long.
-    pub flee: Option<(Vec2, u32)>,
-    /// Walking home, deaf to proximity but not to damage.
-    pub going_home: bool,
-}
-```
-
-`World` gains:
-
-```rust
-/// Waves spawned so far. Drives composition and the upgrade count.
-pub wave_count: u32,
-/// Roster last spawned at each camp, so a camp never repeats one.
-pub camp_last: Vec<u8>,
-/// The A* lane routes, built once at world creation.
-pub lane_routes: [[Vec<Vec2>; 3]; 2],
-```
-
----
-
-## 5. Proposed algorithms
-
-### 5.1 Target acquisition — `acquire.rs`
-
-One function serves lane creeps, neutrals, towers and attack-moving heroes:
-
-```rust
-pub fn acquire(world: &World, id: EntityId, range: Fixed, order: PriorityOrder)
-    -> Option<EntityId>
-```
-
-`PriorityOrder` is `Normal` (heroes and units, siege, buildings, wards) or
-`SiegeFirst` (buildings, siege, everything, wards). Candidates are the
-attackable hostiles inside `range`, sorted by
-
-```
-(class_tier, tie band from the nearest, hero_behaviour_rank, distance, entity_id)
-```
-
-- Runs when §1.4 says the creep may look again, never on its own schedule.
-  A held target is not re-ranked while the creep can still hit it.
-- The closest candidate of the best class sets the mark; everything within
-  `AGGRO_TIE_RANGE` of that mark counts as equally close — **[approximation]**,
-  `AGGRO_TIE_RANGE = 100`. A band from the nearest, not a grid of buckets:
-  quantising absolute distance would split two candidates 60 apart into
-  different buckets depending on where they happen to stand.
-- `hero_behaviour_rank`: 0 attacking a **hero** of my side, 2 attacking its own
-  allies, 1 otherwise. Non-heroes are always 1, and so is a hero last hitting a
-  creep — that is what keeps last hits from drawing aggro even when the creep
-  re-acquires for some other reason.
-- distance, then `entity_id`, so the choice is platform-stable.
-
-Hostility becomes a function, not `team !=`: neutrals are hostile to both
-sides, lane creeps are hostile to neutrals **only** from a pull camp, towers
-are never hostile to neutrals.
-
-### 5.2 Lane creep tick
-
-```
-if disarmed             -> stand, clear everything
-tick order_cooldown and the provoke hold down
-look_again = target lost,
-             or something of a better class is in attack range,
-             or no pull holds the target and it has left attack range
-pick = look_again ? acquire(acquisition_range, order) : None
-if a pull is holding and the held target still lives -> keep it
-else if pick is Some                                 -> engage = pick
-else if engaged:
-    target gone      -> drop
-    target unseen    -> drop, walk to last_seen
-    otherwise        -> chase_left -= 1; drop at zero
-if not engaged:
-    last_seen set                 -> walk there, forget it on arrival
-    else off the lane with anchor -> walk to the anchor, clear it on arrival
-    else                          -> attack-move the next route waypoint
-```
-
-`acquire` runs only when `look_again` says so. Running it every tick instead
-looks reasonable and is wrong: it hands the creep to whichever enemy stands
-nearest, so a hero merely walking past pulls a wave off the creeps it is
-fighting.
-
-The anchor is written the tick a creep first takes a target and is cleared
-when the creep is back within `LANE_WAYPOINT_RADIUS` of it **or** of its own
-lane. The second test is what keeps a creep that only ever fought in its lane
-from walking backwards to the spot the skirmish started.
-
-`order_aggro` works over the ranking in both directions: an order at an enemy
-hero sets `engage` to that hero and starts the hold; an order at an ally runs
-the ranking with that hero demoted below everyone else, falling back to it when
-the ranking comes up empty.
-
-### 5.3 Neutral tick
-
-```
-if disarmed -> stand, drop aggro
-if fleeing  -> walk, count down, then go home
-if going_home:
-    still acquire within acquisition range (aggressive on the way)
-    arriving home clears going_home; health is NOT restored
-if beyond the guard distance (400 from home):
-    leash_left -= 1
-    at zero -> drop aggro, going_home = true,
-               reaggro_block = 3 s, next_window = 3 s
-else:
-    leash_left = next_window
-aggro sources:
-    proximity: a hostile unit within 240, only while not going_home
-    damage or a single-target spell within 1800, only while reaggro_block == 0
-on aggro -> engage = acquire(own acquisition range, Normal)
-```
-
-The free heal on return goes away — it is a bota invention and it makes
-jungling free.
-
-### 5.4 Movement
-
-The complaints about obstacle avoidance, formation and blocking share one
-cause, so the whole locomotion path is replaced.
-
-1. **Hulls.** Real radii from §1.7. This alone changes what fits where.
-2. **Static pathing.** Keep the 64-unit grid — it is Dota's own cell size —
-   but inflate blockers by the *mover's* hull, so a siege creep and a ranged
-   creep do not get the same route through a gap.
-3. **Lane routes.** A path found between each pair of lane landmarks -- the
-   spawner, the three own towers, the corner on a side lane, the three enemy
-   towers, the enemy Ancient -- and stitched into one route, found once and
-   shared because every match runs the same map. Landmarks are snapped to open
-   ground, because a tower closes the cell it stands on.
-
-   Pathing straight from the spawner to the enemy Ancient, as this section
-   first said, is wrong: the shortest way across the map is the diagonal, so a
-   side lane would cut through the jungle instead of following its road. The
-   landmarks are what make a lane a lane; the pathfinder only decides how to
-   get from one to the next.
-4. **A creep marches; a hero walks.** The two are separate code paths:
-   `creep/march.rs` for creeps and neutrals, `walk_step` in `movement.rs` for
-   everything a player steers.
-
-   A hero slides: for every unit whose hull overlaps its destination the step
-   is projected onto the tangent of that hull, keeping only what the wanted
-   direction had along it, with a floor of a quarter step. Square into a body
-   loses the whole step, a graze loses almost nothing.
-
-   A creep does not slide and does not plan. It aims at its next waypoint
-   until the step ahead is shut, then picks one side and keeps it until the
-   way is clear again. Within that side the aim swings an eighth of a turn
-   off the line, then a quarter, then three eighths, and the last resort is
-   straight back. Ground and bodies are tested the same way at every stage:
-   a side that runs into a building is not a side.
-
-   Turning is what all this costs: a creep does not move while it is more
-   than `TURN_TOLERANCE_BRADS` off the way it wants to face, so one working
-   round a body stands still for as long as the turn takes.
-
-   A creep that has stood for `MARCH_SHOVE_TICKS` shoves: bodies count as
-   passable, ground still does not, and separation parts it from whatever it
-   walked into. The count falls back a tick at a time rather than clearing,
-   so a creep jittering on the spot still reaches the point of shoving.
-   Without it a hero can pin a creep against a tower for good, since the two
-   hulls together leave no gap to work round.
-
-   Measured on open ground over 400 ticks, as a share of the ground a free
-   creep covers: a body parked once and walked past leaves it 99 per cent, a
-   body walking the same way in front leaves it 98, and a body put back in the
-   way every tick leaves it 14. That is the shape blocking has in Dota: one
-   parked body is not a block, staying in front is. The last figure was under
-   one per cent while creeps still slid along bodies; a creep that works its
-   way round instead recovers about a seventh of its ground against a blocker
-   that never misses a tick.
-
-5. **Bodies are eased apart** — `separate.rs`, after movement. Two hulls that
-   overlap are pushed along the line between them, each taking half the
-   overlap and at most `SEPARATION_STEP` units in a tick, never into a closed
-   cell. A structure does not move, so the whole correction falls on whatever
-   walked into it.
-
-   The march itself never creates an overlap: measured over 2400 ticks of a
-   full match, not one pair of hulls meets. The one source is the spawner,
-   which lays a wave on fixed offsets around the spawn point without asking
-   whether anything stands there. A side pinned in its own base piles the
-   remains of one wave on the spot the next one appears, and the two creeps
-   land on the same point exactly. Without separation the pile never comes
-   apart, because every step out of it is refused as a step into a hull.
-
-6. **Turning.** The shipped `MovementTurnRate` is radians per 0.03 seconds,
-   so a half -- what every lane creep and most heroes carry -- is 5795 brads
-   over a tick of a thirtieth, and a half turn takes six ticks, a fifth of a
-   second. That is fast enough to look instant, and it is what Dota quotes.
-
-   A unit's facing is advanced in exactly one place, movement, at that
-   unit's own rate. Attacking does not turn anything: it waits on the
-   facing and swings when it is inside `TURN_TOLERANCE_BRADS`. A unit
-   mid-swing or in backswing does not walk but still comes round to what it
-   is hitting, and a tower, which cannot walk at all, comes round the same
-   way.
-
-7. **A flagbearer is a melee creep.** It carries the lane AI, marches the
-   route and picks targets the same way; only its magic resistance and its
-   exemption from upgrades differ. Anywhere the simulation names the creep
-   kinds one by one, `CreepFlagbearer` belongs in the list.
-
-8. **Formation is not modelled** — Dota has none. Ranged creeps end up behind
-   melee because of the spawn offsets and equal speed, and the collision
-   resolver keeps them there.
-
-### 5.5 What creep timing gets without touching `combat.rs`
-
-`attack_interval`, `attack_point`, `projectile_speed`, `attack_range`,
-`radius`, `armor`, `magic_resist_pct` and `vision_radius` are already per-unit
-fields, so all of these become real data in `units.rs`:
-
-- melee and ranged interval `30 ticks` (BAT 1.0), siege `90 ticks` (BAT 3.0)
-- attack point: melee 14 ticks (0.467 s), ranged 15 (0.5 s), siege 21 (0.7 s)
-- projectile speed: ranged 900, siege 1100
-- neutrals: BAT 2.0 → 60 ticks, per-type attack points
-
-Damage stays a single number per unit; see §7.
-
-### 5.6 Tick order
-
-```
-2.  orders            -> also fires the order-aggro/de-aggro event
-3.  scheduled         -> waves (new composition), neutrals (new rosters)
-4.  statuses          -> creep timers: chase_left, order_cooldown,
-                         leash_left, reaggro_block, flee
-5.  target choice     -> lane creeps, neutrals, towers, heroes
-6.  movement          -> new locomotion
-```
-
----
-
-## 6. Implementation order
-
-Each step compiles and its tests pass before the next starts.
-
-1. **done** — `camp.rs`, the camp table straight out of `dota.vpk`. `stat.rs`
-   moved to step 6, where the wave builder needs it.
-2. **done** — hull radii and the per-unit timing data from section 5.5.
-   Building hulls held back to step 9, see section 2 row 9a.
-3. **done** — `acquire.rs` and the hostility function; `pick_target` deleted.
-4. **done** — order aggro rewritten; `provoked_ticks`, `aggro_cooldown`,
-   `shunned` removed from `Unit`.
-5. **done** — `lane_ai.rs`: chase, anchor return, route following.
-6. **done** — `wave.rs`: schedule, composition, flagbearer, upgrades. The
-   stat table folded into it rather than a separate `stat.rs`; `CreepRank`
-   lives there for step 9's barracks.
-7. **done** — `neutral.rs` and `neutral_ai.rs`: 36 kinds straight out of
-   `npc_units.txt`, 21 rosters, guard distance, the window and the re-aggro
-   block. Fleeing from invisible damage is not built: bota has no invisibility.
-8. **done** — lane routes found once at world build and shared, since every
-   match runs the same map.
-9. **done** — `steer.rs` deleted, `walk_step` in `movement.rs` resolves every
-   contact by sliding. `stuck_ticks` and `moving` gone from `Unit`.
-10. **done** — a second map, `map.rs`: one straight lane on open ground, for
-    reading behaviour off without building the Dota grid.
-11. **done** — creep movement split off into `creep/march.rs`, turn rate a
-    per-unit field, and `separate.rs` easing overlapping bodies apart.
-12. `DESIGN.md` updated, `CREEPS.md` deleted.
-
-### Tests — `sim/tests/creep/`
-
-In the tree:
-
-- `acquire.rs` — class order; siege preference; the hero behaviour tie-break;
-  distance beats behaviour past the tie band; lane creeps fight only the pull
-  camps and towers never fight the jungle at all.
-- `lane.rs` — the anchor is where the creep left the route; the 2.3 s
-  out-of-range chase; the walk to the last sighting; the walk back and the
-  return to the march.
-- `lane.rs` also covers the routes: every waypoint stands on walkable ground,
-  the march ends beside the enemy Ancient, and no waypoint strays more than 900
-  from its lane's centreline.
-- `block.rs` — a body in the way costs a creep ground; a body kept in front
-  nearly stops it; a creep never stalls for long against one; the hulls the map
-  is walked with.
-- `wave.rs` — the wave numbering; the opening wave; the flagbearer from wave 5
-  every second wave, replacing rather than adding; the siege creep from wave 11
-  every tenth; the count growth at waves 31, 61, 71 and 81; the upgrade cadence
-  and its cap; an upgraded wave's stats; the ranged rank behind the front one.
-- `switching.rs` — a hero walking up steals nothing; a creep on a building
-  drops it for an arriving unit; a hero in reach is kept over a nearer creep;
-  a hero out of reach is not; the click switches outright and holds 3 s; an
-  attacking hero keeps winning the tie until it stops.
-
-Still to write, with their steps:
-
-- `neutral.rs` — the 240 aggro radius against the longer acquisition range; the
-  window running only beyond the guard distance; the leash break and what it
-  sets; proximity going deaf on the way home; per-kind stats and upgrades; the
-  roster counts per camp size.
-
-Every test that asserts a target is *kept* must run longer than the longest
-timer in the system, or it proves nothing: a 60-tick probe missed a bug that
-dropped every target on a 69-tick clock.
-
-- Determinism and release-mode runs as usual.
-
----
-
-## 7. Known deviations from Dota 7.41e
-
-Everything this plan will **not** reproduce, and why. Each is small and
-isolated if you want it later.
-
-1. **Attack classes are absent.** `creep_irresolute` (−25 % melee damage to
-   heroes), `creep_piercing` (+50 % / −50 % / −50 % for ranged) and
-   `creep_siege` (+150 % to buildings, −50 / −30 / −40 % incoming) all apply
-   their multiplier at damage time, which lives in `combat.rs`. Consequence:
-   creep damage against heroes and buildings is off by exactly those
-   percentages.
-2. **No per-swing damage roll.** `Unit::attack_damage` is one number, so the
-   19–23 style ranges collapse to their midpoint. Rolling needs `combat.rs`.
-3. **No attack speed.** Neutral upgrades grant +5 attack speed every 7:30;
-   without an attack-speed stat that part of the upgrade is dropped. Health,
-   armour, damage, gold and XP still apply.
-4. **No super or mega creeps** — barracks are not modelled. `CreepRank` exists
-   so they slot in later.
-5. **No day and night**, so neutrals never sleep and their aggro range is
-   always 240.
-6. **Neutral abilities are inert.** Stats and rosters are real; auras, stuns,
-   heals and the golem split are not. This is the piece that stands between
-   this plan and full accuracy, and the data model is built so that adding
-   them changes nothing else.
-7. **Flagbearer aura is partial.** The 40 % magic resistance and the creep
-   itself are real; the +3 health regen aura, the 1200-radius area gold and
-   the growing magic resistance need an aura system.
-8. **`AGGRO_TIE_RANGE`** is an approximation of "about equally close" — see
-   §5.1. Valve has never published the real rule.
-8a. **The 3 s provoke hold** is an approximation. Valve publishes the 3 s
-   *cooldown* on the aggro check but no duration for how long the pulled creep
-   stays pulled. Three seconds is used for both, which reproduces the observed
-   loop: re-click every three seconds to keep a wave on you.
-9. **Local avoidance is a model, not Valve's algorithm.** Valve has never
-   published it. §5.4 is calibrated against observable behaviour: blocking
-   works, creeps do not freeze on contact, waves meet where they should.
-10. **No flooded camps.** §1.6.5 needs a river that knows which camps it
-    covers and a 5-minute promotion clock. bota has no river state. The frog
-    tiers are real data and go in the table, spawning nothing.
-11. **Building hulls are still bota's**: towers 40, ancient 72, fountain 60,
-    against Dota's 144 and 81. Raising them is not a pathing change alone:
-    `in_attack_range` counts both hulls, so a 144 tower would also reach 104
-    further, and reach is a combat question with `combat.rs` out of scope.
-    Doing it properly means separating the collision hull from the range hull.
-12. **One pathing grid, not one per hull.** Section 5.4 asks for static
-    blockers inflated by the mover's own hull; the grid is inflated by the
-    widest walker instead. A ranged creep therefore cannot squeeze through a
-    gap a hero could not.
-13. **Neutral vision is uniform.** Per-type day and night vision is in the
-    stat table but bota has one vision number per unit and no night, so the
-    day figure is used.
+## Not yet modelled
+
+1. **Attack classes.** `creep_irresolute`, `creep_piercing` and `creep_siege`
+   (§1.1) are not applied: mitigation reads only the damage kind, so creep damage
+   against heroes and buildings, and damage into siege creeps, is off by exactly
+   those percentages.
+2. **No per-swing damage roll.** A unit has one damage number, so the 19–23 style
+   ranges collapse to one value.
+3. **No day and night.** Neutrals never sleep, their aggro range is always 240,
+   and each uses its day vision.
+4. **Neutral abilities are inert.** Stats and rosters are real; auras, stuns,
+   heals and the golem split are not.
+5. **`AGGRO_TIE_RANGE`** is an approximation of "about equally close" (§1.5).
+   Valve has never published the real rule.
+6. **No flooded camps.** §1.6.5 needs a river that knows which camps it covers
+   and a 5-minute promotion clock. The camp table carries a `flooded` flag that
+   nothing reads.
