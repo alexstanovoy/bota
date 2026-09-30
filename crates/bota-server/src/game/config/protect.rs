@@ -8,8 +8,8 @@ use crate::game::rules;
 
 /// Names structures of one side on the map.
 ///
-/// One name may fit several bodies — the two tier fours share a lane and a
-/// tier — and then it names all of them at once: such a group counts as
+/// One name may fit several bodies, as the two tier fours share a lane and
+/// a tier, and then it names all of them at once: such a group counts as
 /// fallen only when none of it is left standing.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum StructureId {

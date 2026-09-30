@@ -1,8 +1,8 @@
 //! Balance constants.
 //!
-//! Everything here is in ticks, whole world units or plain integers. Time
-//! constants assume [`TICKS_PER_SECOND`]; the wall-clock pace of a match is a
-//! server option and does not change them.
+//! Time is in ticks unless a doc says milliseconds or seconds, distances in
+//! whole world units. Time constants assume [`TICKS_PER_SECOND`]; the
+//! wall-clock pace of a match is a server option and does not change them.
 
 use bota_proto::{Attributes, Fixed, Vec2};
 
@@ -38,7 +38,7 @@ pub const BUCKET_SIZE: i32 = 256;
 /// Buckets per axis of the obstacle and body indexes.
 pub const BUCKETS: usize = (MAP_SIZE / BUCKET_SIZE) as usize;
 /// How far a route corner is drawn in towards the obstacle it rounds, at
-/// most, in world units: the half diagonal of a walking node and a little.
+/// most, in world units.
 pub const TIGHTEN_MAX: i32 = 48;
 /// Nodes a route search expands before it settles for the node nearest
 /// its goal.
@@ -56,50 +56,52 @@ pub const LOCAL_EXPANSIONS: u32 = 120;
 pub const LOCAL_KEY_CELL: i32 = 32;
 /// Ticks a body's last step is carried forward when it has no plan to read.
 pub const PREDICT_TICKS: u32 = 12;
-/// Ticks that pass at least between two local plans of one body, unless a
-/// step of its plan was refused.
+/// Ticks after a local plan is laid before it is laid again for coming out
+/// empty or running short.
 pub const REPLAN_MIN_TICKS: u32 = 4;
-/// Ticks that pass between two local plans of a body that has stood
-/// stalled for [`STALL_BACKOFF_AFTER`] ticks: it asks less often.
+/// [`REPLAN_MIN_TICKS`] for a body that has stood stalled for
+/// [`STALL_BACKOFF_AFTER`] ticks or more.
 pub const REPLAN_STALLED_TICKS: u32 = 16;
-/// Ticks stalled after which a body asks for a plan only every
-/// [`REPLAN_STALLED_TICKS`].
+/// Ticks stalled from which a body waits [`REPLAN_STALLED_TICKS`] rather
+/// than [`REPLAN_MIN_TICKS`].
 pub const STALL_BACKOFF_AFTER: u32 = 30;
-/// A local plan with fewer ticks left than this is laid again.
+/// A local plan laid to a spot short of the route's end is laid again once
+/// fewer ticks than this are left of it.
 pub const REPLAN_LEFT_TICKS: u32 = 12;
 /// Ticks a body stands after walking into a body that is itself moving.
 pub const BLOCK_WAIT_TICKS: u32 = 8;
-/// Ticks within which running into a hero again counts as running into it
-/// again and again, and for which a body then plans round where the hero
-/// stands rather than trying straight through once more.
+/// Ticks after running into a hero within which running into one again adds
+/// to the count, and for which a body at [`BUMPS_BEFORE_HEED`] plans round
+/// heroes where they stand.
 pub const HEED_HERO_TICKS: u32 = 90;
-/// How many times running a body runs into a hero before it plans round
-/// where the hero stands.
+/// Heroes a body runs into, each within [`HEED_HERO_TICKS`] of the last,
+/// before it plans round heroes where they stand.
 pub const BUMPS_BEFORE_HEED: u32 = 6;
 /// A local plan is laid again once the route goal it was laid for has
 /// moved this far, in world units.
 pub const PLAN_DRIFT: i32 = 64;
-/// How far past a step a body may stand from its plan's next step and
-/// still walk the plan, in world units: what easing apart moves it.
+/// How far beyond one tick's step a body may stand from its plan's next
+/// step and still walk the plan, in world units.
 pub const PLAN_STRAY: i32 = 8;
 /// How far past its own reach over the horizon a walker asks after bodies
 /// when laying a local plan, in world units: what they may cover meanwhile.
 pub const LOCAL_BODIES_PAD: i32 = 600;
-/// How far about a stalled walker the bodies standing still are taken for
-/// obstacles, in world units.
+/// How far about a walker the bodies standing still are taken for obstacles
+/// when its route is laid round them, in world units.
 pub const STANDING_REACH: i32 = 800;
 /// Ticks a body has stood wanting to move before its route is laid again
 /// with the bodies standing about it as obstacles.
 pub const STALL_REPLAN_TICKS: u32 = 12;
-/// Ticks that pass at least between two such layings for one body.
+/// Ticks that pass at least between two routes of one body laid round the
+/// bodies standing about it.
 pub const STALL_RELAY_GAP: u32 = 48;
-/// Nodes a route laid round standing bodies expands at most: they stand
-/// near, and so does any way round them.
+/// Nodes a route search laid round standing bodies expands at most.
 pub const STALL_PATH_EXPANSIONS: u32 = 600;
-/// Ticks a body has not moved before a stalled walker routes round it.
+/// Ticks a body has not moved before it counts as standing: a hero is then
+/// planned round where it stands, and any body may be routed round.
 pub const STANDING_TICKS: u32 = 8;
-/// How far the body index is asked past what is wanted, in world units:
-/// the most a body moves between the index being laid and being read.
+/// How far the body index is searched past the reach asked, in world units,
+/// for bodies that moved since it was laid.
 pub const BODY_INDEX_SLACK: i32 = 32;
 
 // Landmarks: the current Dota 2 map, every position shifted by half the map
@@ -115,7 +117,7 @@ pub const RADIANT_ANCIENT_POS: Vec2 = Vec2::from_ints(3296, 3864);
 /// The Dire Ancient.
 pub const DIRE_ANCIENT_POS: Vec2 = Vec2::from_ints(14744, 14216);
 /// How far from the fountain center a hero appears, along both axes towards
-/// the map center. Keeps the spawn clear of the fountain's collision radius.
+/// the map center.
 pub const HERO_SPAWN_OFFSET: i32 = 280;
 
 // Lanes. Lane 0 is mid across the middle; lane 1 is top, up the west edge
@@ -228,31 +230,29 @@ pub const DEMO_LANE_CORNERS: [Vec2; 3] = [
 // Trees and the jungle.
 
 /// Tree trunk collision radius. Also what a click has to land inside to be a
-/// click on that tree, and how far from one another two trees may stand.
+/// click on that tree, and how near a tree another may not be planted.
 pub const TREE_RADIUS: i32 = 48;
-/// Imported trees this close to a lane centerline are dropped: the real
-/// forest follows the real curved lanes, and this map walks straightened
-/// ones.
+/// Trees of the Dota map this close to a lane centerline are dropped.
 pub const TREE_LANE_CLEAR: i32 = 450;
-/// Tree-free radius around each fountain: the spawn pad. The rest of the
-/// base keeps its real trees.
+/// Tree-free radius around each fountain.
 pub const TREE_BASE_CLEAR: i32 = 500;
 
 /// Any unit inside this radius of a camp center blocks its spawn.
 pub const CAMP_BOX_RADIUS: i32 = 300;
 /// A neutral wakes when a hostile unit comes this close to it.
 pub const NEUTRAL_AGGRO_RANGE: i32 = 240;
-/// A neutral wakes when damaged or targeted from this far away.
+/// A neutral's camp wakes when one of it is struck by something within
+/// this range.
 pub const NEUTRAL_DAMAGE_AGGRO_RANGE: i32 = 1800;
 /// How far from its spawn spot a neutral may stand before its aggro window
 /// starts running down.
 pub const NEUTRAL_GUARD_DISTANCE: i32 = 400;
-/// Ticks a neutral stays awake beyond the guard distance.
+/// Ticks a neutral may spend beyond its guard distance before it walks
+/// home.
 pub const NEUTRAL_AGGRO_WINDOW: u32 = 5 * TICKS_PER_SECOND;
-/// The shorter window a neutral gets when damage wakes it again soon after a
-/// leash break.
+/// [`NEUTRAL_AGGRO_WINDOW`] of a neutral that has once been led home.
 pub const NEUTRAL_SHORT_WINDOW: u32 = 3 * TICKS_PER_SECOND;
-/// Ticks after a leash break in which damage cannot wake a neutral.
+/// Ticks after a leash break in which nothing wakes a neutral.
 pub const NEUTRAL_REAGGRO_BLOCK: u32 = 3 * TICKS_PER_SECOND;
 /// Being this close to its spawn spot ends a neutral's walk home.
 pub const NEUTRAL_RETURN: i32 = 100;
@@ -270,7 +270,8 @@ pub const NEUTRAL_UPGRADE_DAMAGE: i32 = 3;
 pub const NEUTRAL_UPGRADE_GOLD: i32 = 1;
 /// Experience one upgrade adds to a neutral.
 pub const NEUTRAL_UPGRADE_XP: i32 = 5;
-/// How far along its route a wave looks to know which way it faces.
+/// A wave spawns facing the first waypoint of its lane further than this
+/// from its spawn.
 pub const WAVE_FACING_LOOKAHEAD: i32 = 200;
 /// World units between neighbours in a camp when it spawns.
 pub const CAMP_SPAWN_SPACING: i32 = 64;
@@ -278,8 +279,7 @@ pub const CAMP_SPAWN_SPACING: i32 = 64;
 pub const FIRST_NEUTRAL_TICK: u32 = PREGAME_TICKS + 60 * TICKS_PER_SECOND;
 /// Ticks between neutral spawn checks.
 pub const NEUTRAL_SPAWN_PERIOD_TICKS: u32 = 60 * TICKS_PER_SECOND;
-/// Neutral creep collision size. Neutrals name no hull and take the unit
-/// template's, which is the hero hull.
+/// Neutral creep collision size, the hero hull's.
 pub const NEUTRAL_COLLISION: i32 = 27;
 /// Neutral creep bound radius, the hero hull's.
 pub const NEUTRAL_BOUND: i32 = 24;
@@ -341,8 +341,7 @@ pub const WAVE_SPAWN_RANK: i32 = 96;
 /// Flagbearer magic resistance, percent.
 pub const FLAGBEARER_MAGIC_RESIST_PCT: i32 = 40;
 
-// What the three attributes are worth. Every one of them is read once, by the
-// system that works out stats, and applies to whatever holds attributes at all.
+// What the three attributes are worth to whatever holds attributes.
 
 /// Health one point of strength adds.
 pub const HP_PER_STRENGTH: i32 = 22;
@@ -369,7 +368,8 @@ pub const MIN_ATTACK_SPEED: i32 = 20;
 /// Fastest a unit may be brought to swing.
 pub const MAX_ATTACK_SPEED: i32 = 700;
 
-// Generic hero stats. Per-hero data replaces these when heroes arrive.
+// Hero stats: Sylla's, and what any other hero keeps where it names none of
+// its own.
 
 /// Hero health at level one, before strength.
 pub const HERO_HP: i32 = 180;
@@ -568,8 +568,8 @@ pub const TOWER_AURA_ARMOR: [i32; 4] = [3, 5, 5, 5];
 /// Health a tower's protection mends, in hundredths of a point a second,
 /// indexed by tier less one.
 pub const TOWER_AURA_REGEN: [i32; 4] = [100, 300, 300, 300];
-/// Ticks an aura's effect holds once handed out, which is how long it lingers
-/// after walking out of one.
+/// Ticks a tower's or flagbearer's aura holds once handed out, which is how
+/// long it lingers after walking out of one.
 pub const AURA_LINGER_TICKS: u32 = TICKS_PER_SECOND / 2;
 /// How far a flagbearer's inspiration reaches.
 pub const FLAGBEARER_AURA_RADIUS: i32 = 700;
@@ -619,7 +619,7 @@ pub const DIRE_ANCIENT_BOUND: i32 = 374;
 /// Ancient fog light radius.
 pub const ANCIENT_VISION: i32 = 2600;
 
-/// Fountain health. It is never lost: the fountain cannot be struck.
+/// Fountain health. It is never lost: the fountain is invulnerable.
 pub const FOUNTAIN_HP: i32 = 500;
 /// Fountain attack damage, the midpoint of 290 to 310.
 pub const FOUNTAIN_ATTACK_DAMAGE: i32 = 300;
@@ -637,9 +637,9 @@ pub const FOUNTAIN_COLLISION: i32 = 144;
 pub const FOUNTAIN_BOUND: i32 = 144;
 /// Fountain fog light radius.
 pub const FOUNTAIN_VISION: i32 = 1800;
-/// Health restored per tick to allies inside the fountain area.
+/// Health restored per tick to its own side inside the fountain area.
 pub const FOUNTAIN_HEAL_HP_PER_TICK: i32 = 25;
-/// Mana restored per tick to allies inside the fountain area.
+/// Mana restored per tick to its own side inside the fountain area.
 pub const FOUNTAIN_HEAL_MANA_PER_TICK: i32 = 15;
 /// Radius of the fountain heal area.
 pub const FOUNTAIN_HEAL_RADIUS: i32 = 1200;
@@ -659,13 +659,13 @@ pub const ORDER_AGGRO_COOLDOWN_TICKS: u32 = 90;
 /// Ticks a creep handed a target by an attack order keeps it before the
 /// ordinary ranking may take it back, 2.33 seconds.
 pub const ORDER_AGGRO_HOLD_TICKS: u32 = 70;
-/// Game tick from which player units may aggro lane creeps unconditionally.
+/// Tick from which an attack order may draw any lane creep.
 pub const FREE_AGGRO_TICK: u32 = FIRST_WAVE_TICK + 5 * 60 * TICKS_PER_SECOND;
 /// How close to its own tier-one tower a lane creep may be aggroed before
 /// [`FREE_AGGRO_TICK`].
 pub const EARLY_AGGRO_TOWER_RANGE: i32 = 1500;
-/// Ticks a lane creep chases a target that left its acquisition range,
-/// 2.3 seconds.
+/// Ticks a lane creep keeps a target that left its attack range while
+/// nothing else is in its acquisition range, 2.3 seconds.
 pub const CREEP_CHASE_TICKS: u32 = 69;
 /// How close a hero follows an ally it was ordered to attack but may not.
 pub const FOLLOW_DISTANCE: i32 = 150;
@@ -678,10 +678,12 @@ pub const WIDEST_MARCHER: i32 = SIEGE_CREEP_COLLISION;
 pub const WAYPOINT_RADIUS: i32 = 40;
 /// A stored route is laid again once its goal drifted this far.
 pub const REPATH_DRIFT: i32 = 128;
-/// Ticks a creep stands unable to move before it shoves through bodies.
+/// Ticks a marching lane creep stands unable to move before it shoves
+/// through bodies.
 pub const MARCH_SHOVE_TICKS: u32 = 30;
 
-/// How far a body may be eased out of another one in a tick, in units.
+/// How far a body may be eased out of another one in a tick, in world
+/// units.
 pub const SEPARATION_STEP: i32 = 4;
 /// Milliseconds a hero recovers after a swing. Cancelled by any order.
 pub const HERO_ATTACK_BACKSWING: u32 = 400;
@@ -691,15 +693,11 @@ pub const CREEP_ATTACK_BACKSWING: u32 = 500;
 pub const TOWER_ATTACK_BACKSWING: u32 = 133;
 /// Milliseconds the fountain recovers after a shot.
 pub const FOUNTAIN_ATTACK_BACKSWING: u32 = 66;
-/// How fast a unit turns, in brads per tick.
-///
-/// The shipped `MovementTurnRate` is radians per 0.03 seconds; a half, which
-/// every lane creep carries, is this many brads over a tick of a thirtieth.
+/// How fast a unit turns, in brads per tick: a `MovementTurnRate` of 0.5,
+/// read as radians per 0.03 seconds.
 pub const TURN_RATE_BRADS: u16 = 5795;
-/// A unit swings only when facing within this error of its target, in brads.
-///
-/// An eighth of a right angle less a touch: the 11.5 degrees Dota allows an
-/// order before the unit has to come round first.
+/// A unit starts a swing only when facing within this error of its target,
+/// in brads: 11.5 degrees.
 pub const ATTACK_ANGLE_BRADS: u16 = 2094;
 
 /// A unit walks only when facing within this error of where it is going, in
@@ -715,14 +713,14 @@ pub const ULT_MAX_LEVEL: u8 = 3;
 /// Hero level required for each ultimate level.
 pub const ULT_LEVEL_FLOORS: [u8; 3] = [6, 12, 18];
 
-// Sylla: crit passive / attack speed buff / bouncing projectile / multishot.
-
 /// Chance for a ranged attack to miss a target on higher ground.
 pub const UPHILL_MISS: Ratio = Ratio::new(1, 4);
 
 /// Fog blocker nodes further apart than this belong to different walls of
 /// the same named group, not to one span.
 pub const FOW_BLOCKER_SPAN: i32 = 600;
+
+// Sylla: crit passive / attack speed buff / bouncing projectile / multishot.
 
 /// Chance of a critical strike per crit level.
 pub const SYLLA_CRIT_CHANCE: [Ratio; 4] = [
@@ -747,7 +745,7 @@ pub const SYLLA_BOUNCE_MANA: [i32; 4] = [90, 100, 110, 120];
 pub const SYLLA_BOUNCE_COOLDOWN: [u32; 4] = [300, 270, 240, 210];
 /// Bounce magical damage per hit per level.
 pub const SYLLA_BOUNCE_DAMAGE: [i32; 4] = [70, 140, 210, 280];
-/// Extra targets after the first per level.
+/// Bounce extra targets after the first, per level.
 pub const SYLLA_BOUNCE_COUNT: [u8; 4] = [2, 4, 6, 8];
 /// Cast range of the bounce.
 pub const SYLLA_BOUNCE_CAST_RANGE: i32 = 550;
@@ -766,10 +764,7 @@ pub const SYLLA_MULTI_RADIUS: i32 = 700;
 
 // Items and the shop.
 
-/// The flat bonuses and price of one purchasable item.
-///
-/// `charges` above zero makes the item a consumable with that many uses and
-/// no bonuses while carried.
+/// The flat bonuses and price of one item of [`ITEMS`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ItemDef {
     /// Price in gold.
@@ -807,9 +802,8 @@ const fn passive(
     }
 }
 
-/// The catalog, indexed by `ItemId`: Boots of Speed, Blades of Attack,
-/// Broadsword, Claymore, Platemail, Vitality Booster, Energy Booster,
-/// Healing Salve, Clarity.
+/// Boots of Speed, Blades of Attack, Broadsword, Claymore, Platemail,
+/// Vitality Booster, Energy Booster, Healing Salve and Clarity.
 pub const ITEMS: [ItemDef; 9] = [
     passive(500, 45, 0, 0, 0, 0),
     passive(450, 0, 9, 0, 0, 0),
@@ -864,7 +858,7 @@ pub const COURIER_BURST_COOLDOWN: u32 = 120 * TICKS_PER_SECOND;
 pub const COURIER_SHIELD_TICKS: u32 = 2 * TICKS_PER_SECOND;
 /// Ticks between shields.
 pub const COURIER_SHIELD_COOLDOWN: u32 = 200 * TICKS_PER_SECOND;
-/// How far from the shop a courier stands to reach the stash.
+/// How near its home fountain a courier has to be to reach the stash.
 pub const COURIER_STASH_RANGE: i32 = 700;
 /// How close a courier must be to hand over what it carries.
 pub const COURIER_DELIVER_RANGE: i32 = 200;
@@ -899,8 +893,8 @@ pub const FLESH_HEAP_STRENGTH_PER_STACK: [Fixed; 4] = [
     Fixed::from_ratio(5, 2),
     Fixed::from_int(3),
 ];
-/// Magic resistance the flesh heap grants, percent by its level, on top of
-/// what its holder has.
+/// Magic resistance the flesh heap grants, percent by its level, stacking
+/// multiplicatively with what its holder has.
 pub const FLESH_HEAP_MAGIC_RESIST_PCT: [i32; 4] = [12, 14, 16, 18];
 /// Mana the dismember costs, by level.
 pub const DISMEMBER_MANA: [i32; 3] = [100, 130, 170];
@@ -1031,7 +1025,8 @@ pub const ARMOR_SCALE: i32 = 6;
 pub const STARTING_GOLD: i32 = 600;
 /// One gold arrives every this many ticks.
 pub const PASSIVE_GOLD_PERIOD_TICKS: u32 = 30;
-/// A dying hero loses its net worth over this, never more than it holds.
+/// A dying hero loses its net worth divided by this, never more gold than
+/// it holds.
 pub const DEATH_GOLD_LOSS_SHARE: i32 = 40;
 /// Gold for killing a hero, before the streak bonus.
 pub const HERO_KILL_BOUNTY_BASE: i32 = 200;
@@ -1050,17 +1045,17 @@ pub const STREAK_XP_CAP: i32 = 10;
 /// Radius around a death within which enemy heroes receive experience.
 pub const XP_RADIUS: i32 = 1500;
 
-/// A friendly creep may be denied when its health is strictly below this
-/// fraction of the maximum, expressed as a percent.
+/// A friendly lane creep may be denied when its health is strictly below
+/// this percent of its maximum.
 pub const DENY_HP_PCT: i32 = 50;
 
-/// A friendly building may be denied when its health is strictly below this
-/// fraction of the maximum, expressed as a percent.
+/// A friendly building may be denied when its health is strictly below
+/// this percent of its maximum.
 pub const DENY_BUILDING_HP_PCT: i32 = 10;
-/// Denied creeps grant this percent of their experience.
+/// Percent of a denied lane creep's experience the enemy still gets.
 pub const DENIED_XP_PCT: i32 = 50;
 
-/// Helper for constants that are distances: a whole number of world units.
+/// A whole number of world units as a [`Fixed`] distance.
 pub const fn units(n: i32) -> Fixed {
     Fixed::from_int(n)
 }

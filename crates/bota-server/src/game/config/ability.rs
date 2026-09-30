@@ -173,7 +173,8 @@ pub const VOLLEY: AbilityId = AbilityId(3);
 pub const MEAT_HOOK: AbilityId = AbilityId(4);
 /// Pudge's rot: a toggle that burns everything near, its owner included.
 pub const ROT: AbilityId = AbilityId(5);
-/// Pudge's flesh heap: what he keeps of everything that dies near him.
+/// Pudge's flesh heap: what he keeps of every enemy hero that falls near
+/// him.
 pub const FLESH_HEAP: AbilityId = AbilityId(6);
 /// Pudge's dismember: holds one unit and eats it.
 pub const DISMEMBER: AbilityId = AbilityId(7);
@@ -193,8 +194,8 @@ pub const RAZE_NEAR: AbilityId = AbilityId(13);
 pub const RAZE_MID: AbilityId = AbilityId(14);
 /// Shadow Fiend's farthest raze.
 pub const RAZE_FAR: AbilityId = AbilityId(15);
-/// Shadow Fiend's requiem, which spends nothing and grows with the souls it
-/// has gathered.
+/// Shadow Fiend's requiem: a line for each soul gathered, which it does not
+/// spend.
 pub const REQUIEM: AbilityId = AbilityId(16);
 /// Shadow Fiend's necromastery: a soul kept of everything he brings down.
 pub const NECROMASTERY: AbilityId = AbilityId(17);

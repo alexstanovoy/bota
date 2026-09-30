@@ -342,8 +342,7 @@ pub const PUDGE: UnitDef = UnitDef {
     ..HERO
 };
 
-/// Shadow Fiend: fragile, long-ranged, and everything it grows into is in
-/// its attack.
+/// Shadow Fiend: fragile and long-ranged.
 pub const SHADOW_FIEND: UnitDef = UnitDef {
     attributes: Attributes {
         strength: Fixed::from_int(18),
@@ -432,7 +431,6 @@ pub fn ancient_of(team: Team) -> &'static UnitDef {
     }
 }
 
-/// A fountain.
 /// What a fountain mends on its own side standing in it.
 const FOUNTAIN_AURAS: [Aura; 1] = [Aura {
     kind: ModifierKind::Fountain {
@@ -444,6 +442,7 @@ const FOUNTAIN_AURAS: [Aura; 1] = [Aura {
     ticks: rules::TICKS_PER_SECOND,
 }];
 
+/// A fountain.
 pub const FOUNTAIN: UnitDef = UnitDef {
     kind: UnitKind::Fountain,
     max_hp: rules::FOUNTAIN_HP,
@@ -494,12 +493,8 @@ pub const SENTRY_WARD: UnitDef = UnitDef {
     ..NOTHING
 };
 
-/// A lane tower of one tier.
 /// What a tower of each tier keeps its own heroes in, indexed by tier less
 /// one.
-///
-/// Heroes and nothing else: a wave standing under its own tower is not what
-/// the protection is for.
 const TOWER_AURAS: [[Aura; 1]; 4] = [tower_aura(0), tower_aura(1), tower_aura(2), tower_aura(3)];
 
 /// One tier's protection.
@@ -515,6 +510,7 @@ const fn tower_aura(index: usize) -> [Aura; 1] {
     }]
 }
 
+/// A lane tower, by tier less one.
 const fn tower_of(index: usize) -> UnitDef {
     UnitDef {
         kind: UnitKind::Tower,

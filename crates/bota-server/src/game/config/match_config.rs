@@ -117,10 +117,8 @@ pub struct Command {
     pub order: Order,
 }
 
-/// Who may learn that an event happened.
-///
-/// Spectators and the replay always see everything; this limits the player
-/// streams.
+/// Who may learn that an event happened. Limits the player streams;
+/// spectators see every event.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum EventVisibility {
     /// Both teams.
