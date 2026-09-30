@@ -1,14 +1,7 @@
-//! The attack cycle, and how fast bodies are falling.
+//! The attack cycle, and how fast bodies are falling: neither is on the wire.
 //!
-//! Neither is on the wire. A snapshot says how long a unit takes between
-//! swings but not where in that interval it stands, and it says what a body's
-//! health is now but not what it will be when a blow arrives. Both are needed
-//! to take a last hit: an order given a second early is a creep somebody else
-//! kills.
-//!
-//! What the wire does carry is every blow that lands. One of the hero's own
-//! says the cycle came round a wind-up ago; a run of snapshots says how fast
-//! a creep is losing health.
+//! One of the hero's own blows says the cycle came round a wind-up ago; a run
+//! of snapshots says how fast a creep is losing health.
 
 use bota_proto::{DamageKind, EntityId, EventKind, HeroId, UnitView, WorldView};
 
@@ -68,10 +61,8 @@ impl Beat {
         }
     }
 
-    /// Whether a body has struck the hero within the last few ticks.
-    ///
-    /// The wire says who each blow came from but not who anybody is set on,
-    /// so this is the only way to tell which creeps are chewing on the hero.
+    /// Whether a body has struck the hero within the last
+    /// [`BITTEN_TICKS`].
     pub fn struck_me(&self, who: EntityId) -> bool {
         self.struck_by.iter().any(|(_, had)| *had == who)
     }
@@ -173,10 +164,7 @@ impl Beat {
     }
 
     /// What a body's health will be in so many ticks, if it keeps falling as
-    /// it has been.
-    ///
-    /// Past [`FORECAST_TICKS`] the fall is not carried forward: what a creep
-    /// is taking now says little about what it will be taking in two seconds.
+    /// it has been. The fall is carried forward [`FORECAST_TICKS`] at most.
     pub fn health_in(&self, unit: &UnitView, ticks: u32) -> i32 {
         let carried = ticks.min(FORECAST_TICKS) as f32;
         let left = unit.hp as f32 - self.falling(unit.id) * carried;

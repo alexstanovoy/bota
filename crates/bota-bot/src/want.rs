@@ -1,11 +1,7 @@
 //! The one want a tick, and when it is worth saying again.
 //!
-//! The server keeps one order per seat per tick and the last one wins, so a
-//! want is a single [`Ask`] rather than a queue. Saying the want already
-//! standing is not free: an order ends the recovery after a swing and calls
-//! the creeps onto whoever gave it. So a want equal to the one in hand waits
-//! [`RESEND_TICKS`] before it goes out again, and two walks aimed less than
-//! [`RESEND_DRIFT`] apart count as one want.
+//! A want equal to the one in hand waits [`RESEND_TICKS`] before it goes out
+//! again.
 
 use bota_proto::{Order, Target};
 
@@ -47,11 +43,8 @@ impl Steady {
     }
 }
 
-/// Whether two asks are the same want.
-///
-/// Two walks or two attack-moves aimed less than [`RESEND_DRIFT`] apart are
-/// one want: a wave that moves a little every tick would otherwise be
-/// followed by a fresh route every tick, and every route thrown away.
+/// Whether two asks are the same want. Two walks or two attack-moves aimed
+/// less than [`RESEND_DRIFT`] apart are one.
 pub fn same_want(one: Ask, other: Ask) -> bool {
     if one.unit != other.unit {
         return false;

@@ -97,8 +97,8 @@ fn lines_crossing(souls: u32, me: &UnitView, foe: &UnitView) -> i32 {
 
 /// The best raze the hero is already looking down the line of.
 ///
-/// Between two that cover the same mark, the one whose burn lands nearest it
-/// is taken: a mark at the edge of one is a mark a step out of it.
+/// Between two that are otherwise equal, the one whose burn lands nearest a
+/// mark is taken.
 fn raze(field: &Field, beat: &Beat) -> Option<Ask> {
     let me = field.me?;
     let mut best: Option<((usize, usize, usize, i64), bota_proto::AbilitySlot)> = None;

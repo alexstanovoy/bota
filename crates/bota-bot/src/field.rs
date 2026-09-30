@@ -27,11 +27,12 @@ pub struct Field<'a> {
     pub hero: HeroId,
     /// What the seat is there to do.
     pub role: Role,
-    /// The lane that role holds. Absent before the buildings are up.
+    /// The lane that role holds. Absent when the snapshot shows no
+    /// fountains.
     pub lane: Option<Lane>,
-    /// Wave creeps of the other side, nearest first.
+    /// Wave creeps of the other side within [`NEARBY`], nearest first.
     pub creeps: Vec<&'a UnitView>,
-    /// Wave creeps of its own, nearest first.
+    /// Wave creeps of its own within [`NEARBY`], nearest first.
     pub own_creeps: Vec<&'a UnitView>,
     /// Heroes of the other side, nearest first.
     pub enemies: Vec<&'a UnitView>,
@@ -165,7 +166,7 @@ impl<'a> Field<'a> {
         self.seat.gold.unwrap_or(0)
     }
 
-    /// Whether the hero stands where buying and selling are taken.
+    /// Whether the hero stands within [`SHOP_RANGE`] of its own fountain.
     pub fn at_shop(&self) -> bool {
         match (self.me, self.home) {
             (Some(me), Some(home)) => me.pos.within(home, Fixed::from_int(SHOP_RANGE)),
@@ -184,7 +185,8 @@ impl<'a> Field<'a> {
             .map(|at| (AbilitySlot(at as u8), &book[at]))
     }
 
-    /// Every ability slot the hero carries, in the order they are shown.
+    /// Every ability slot the hero carries, in slot order. Empty while it is
+    /// dead.
     pub fn abilities(&self) -> &'a [AbilityView] {
         self.me.map_or(&[][..], |me| &me.abilities)
     }
@@ -253,9 +255,6 @@ pub const WORN_SLOTS: usize = 6;
 
 /// How far from the hero a creep is still one of the creeps it is dealing
 /// with.
-///
-/// Waves on the other lanes are visible and have nothing to do with where
-/// this hero stands or what it swings at.
 pub const NEARBY: i32 = 2400;
 
 /// Whether a kind is one of the creeps a lane wave is made of.

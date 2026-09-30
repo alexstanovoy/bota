@@ -1,21 +1,17 @@
-//! Everything the bot weighs that a snapshot does not state.
-//!
-//! Two kinds of number live here. Some are the server's own and simply never
-//! cross the wire — the raze radius, the wind-up before a swing lands, the
-//! reach of a shop. The rest are taste: how low is low, how far is far, how
-//! long a want stands before it is worth repeating.
+//! Everything the bot weighs that a snapshot does not state: the server's own
+//! rules that never cross the wire, and taste.
 
 use bota_proto::{AbilityId, EffectId, HeroId, ItemId};
 
 // Rules the wire leaves out.
 
-/// Divisor turning armor into the fraction of a physical blow that lands.
+/// A physical blow lands `100 / (100 + ARMOR_SCALE * armor)` of itself.
 pub const ARMOR_SCALE: i32 = 6;
 
 /// How wide a raze burns around where it lands, in world units.
 pub const RAZE_RADIUS: i32 = 250;
 
-/// How far from a fountain an order to buy or to sell is taken.
+/// How far from its own fountain a unit is at the shop, in world units.
 pub const SHOP_RANGE: i32 = 1000;
 
 /// How far off a swing may be looking when it begins, in brads.
@@ -24,7 +20,7 @@ pub const ATTACK_ANGLE: u16 = 2094;
 /// How far a hero turns in one tick, in brads.
 pub const TURN_RATE: u16 = 5795;
 
-/// How far a hero reaches to take an item off the ground.
+/// How far a hero reaches to take an item off the ground, in world units.
 pub const TAKE_ITEM_RANGE: i32 = 150;
 
 /// The effect a Shadow Fiend's gathered souls show up as.
@@ -39,7 +35,7 @@ pub const REQUIEM_LINE_DAMAGE: [i32; 3] = [80, 120, 160];
 /// How wide a line of a requiem catches as it sets out, in world units.
 pub const REQUIEM_LINE_WIDTH: f32 = 125.0;
 
-/// How far a tower reaches.
+/// How far a tower reaches, in world units.
 pub const TOWER_ATTACK_RANGE: i32 = 700;
 
 /// Sylla, who crits, hastens, bounces a bolt and looses a volley.
@@ -201,10 +197,8 @@ pub const RECIPE_NULL_TALISMAN: ItemId = ItemId(40);
 /// The recipe a Magic Wand is finished with.
 pub const RECIPE_MAGIC_WAND: ItemId = ItemId(41);
 
-/// Attack damage a Quelling Blade adds against anything that is not a hero.
-///
-/// Carried damage that answers to what is being struck, so it rides in no
-/// stat a view shows.
+/// Attack damage a Quelling Blade adds against a creep. Not part of
+/// [`UnitView::attack_damage`](bota_proto::UnitView::attack_damage).
 pub const QUELLING_BONUS: i32 = 18;
 
 // Taste.
@@ -229,10 +223,6 @@ pub const TANGO_HEALTH: f32 = 0.7;
 pub const CLARITY_MANA: f32 = 0.5;
 
 /// How far a hero will walk to reach a tree worth eating.
-///
-/// A tango is paid for by a tree standing within reach of it, and the trees
-/// beside a lane are cleared away from its centre, so the tango a hero is
-/// carrying is of no use where it is standing.
 pub const TANGO_WALK: f32 = 1300.0;
 
 /// Health one salve gives back over the whole of it.
@@ -249,10 +239,6 @@ pub const RESTORE_CHARGES: u8 = 5;
 
 /// Working slots that must be free over and above the one a consumable would
 /// take for it to be bought at all.
-///
-/// Nought, so a consumable is bought whenever any working slot is free. A
-/// higher figure stops the drink being restocked at all once the goods fill
-/// the bag, which is exactly when a hero has furthest to walk home.
 pub const SPARE_SLOTS: usize = 0;
 
 /// How far from an enemy hero counts as being in a fight.
@@ -290,18 +276,14 @@ pub const HISTORY_TICKS: u32 = 10;
 
 /// Ticks a blow taken is remembered for, when working out what is chewing on
 /// the hero.
-///
-/// Longer than a creep's interval between swings, so a creep that is set on
-/// the hero is still counted between its blows.
 pub const BITTEN_TICKS: u32 = 60;
 
 /// Creeps that must be chewing on the hero for it to be worth shaking them
 /// off.
 pub const SHAKE_CREEPS: usize = 2;
 
-/// How far a lane creep looks for something to take on.
-///
-/// Also how near the hero a creep must stand to hear an order it gave.
+/// How far a melee lane creep looks for something to take on, and how near
+/// the hero it must stand to hear an attack order the hero gave.
 pub const CREEP_ACQUISITION: i32 = 500;
 
 /// Ticks a creep called on by an order stays called on.
@@ -319,16 +301,10 @@ pub const PULL_DRIFT: f32 = 700.0;
 pub const PULL_HEALTH: f32 = 0.6;
 
 /// Ticks between one shake and the next.
-///
-/// An order at one of your own costs the creeps nothing and puts nothing on
-/// the clock, so the only reason to wait is that the tick it takes is a tick
-/// the hero did not swing in.
 pub const SHAKE_TICKS: u32 = 45;
 
-/// How much of a swing's worth is allowed to go to waste on a last hit.
-///
-/// A blow forecast to land on a creep already below this share of what the
-/// swing is worth is a blow that would have fallen anyway.
+/// Share of a swing's damage a creep must still hold when the swing lands
+/// for the swing to be taken.
 pub const LAST_HIT_SLACK: f32 = 0.15;
 
 /// How far an enemy hero may stand and still be worth swinging at.

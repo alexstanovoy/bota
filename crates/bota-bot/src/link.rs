@@ -15,7 +15,7 @@ use crate::Ask;
 pub struct Seated {
     /// The handle this connection was given.
     pub player: PlayerId,
-    /// The seat it was given. Absent when no seat was free.
+    /// The seat it was given. Absent for a spectator.
     pub slot: Option<SlotId>,
     /// Simulation ticks per second.
     pub tick_rate: u16,
@@ -31,7 +31,11 @@ pub struct Link {
 }
 
 impl Link {
-    /// Joins a server, waits for a seat, and asks for a hero.
+    /// Joins a server as a bot, waits for a seat, picks a hero and declares
+    /// itself ready.
+    ///
+    /// Fails when the server hangs up instead, as it does when no seat is
+    /// free.
     pub fn join(addr: &str, name: &str, hero: HeroId) -> std::io::Result<(Link, Seated)> {
         let stream = TcpStream::connect(addr)?;
         stream.set_nodelay(true)?;
@@ -91,9 +95,8 @@ impl Link {
         self.send(&ClientMsg::Ack { tick })
     }
 
-    /// The next message from the server, waiting for one if it must.
-    ///
-    /// `None` means the server hung up.
+    /// The next message from the server, waiting for one if it must. `None`
+    /// means the server hung up.
     pub fn hear(&mut self) -> std::io::Result<Option<ServerMsg>> {
         loop {
             match self.reader.next_message::<ServerMsg>() {

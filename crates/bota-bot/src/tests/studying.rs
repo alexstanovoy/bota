@@ -124,8 +124,8 @@ fn no_plan_asks_for_more_of_an_ability_than_it_holds() {
 
 #[test]
 fn an_ultimate_is_never_asked_for_before_its_level() {
-    // The ultimate opens at hero levels six, eight and ten, which are the
-    // sixth, eighth and tenth points.
+    // The ultimate opens at hero level six, and the n-th point is spent at
+    // hero level n.
     for (at, id) in FIEND_PLAN.iter().enumerate() {
         if *id == REQUIEM {
             assert!(at + 1 >= 6, "the requiem is asked for at point {}", at + 1);

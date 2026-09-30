@@ -3,9 +3,6 @@
 use bota_proto::{AbilitySlot, EntityId, ItemId, ItemSlot, Order, Target};
 
 /// One order and the unit it is for.
-///
-/// A unit of `None` means the seat's own hero, which is what most orders are
-/// for; a courier errand names the courier.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct Ask {
     /// Which unit it is for. Absent means the seat's own hero.
