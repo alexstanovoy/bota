@@ -68,6 +68,9 @@ impl Planner {
     /// when it can be stood on and reached, else at the open spot nearest
     /// to it that can, on the walker's own side of whatever shuts it.
     ///
+    /// The walk keeps [`plan_radius`] off everything, or only the body's
+    /// own collision size when the margin shuts the walker in.
+    ///
     /// Empty when the walk ends in the node the walker stands in or no node
     /// with room is found at either end. Diagonal steps never cut a blocked
     /// corner. Ties break on node index.
@@ -90,22 +93,39 @@ impl Planner {
         collision: Fixed,
         budget: u32,
     ) -> Vec<Vec2> {
-        let room = plan_radius(collision);
+        match self.walk_keeping(ob, from, to, plan_radius(collision), budget) {
+            (spots, false) => spots,
+            (_, true) => self.walk_keeping(ob, from, to, collision, budget).0,
+        }
+    }
+
+    /// The corners of a walk that keeps a room off everything, as
+    /// [`Planner::find_path`] answers them, and whether the room shuts the
+    /// walker in: no node with room at either end, or every node got to
+    /// expanded within the budget and none of them the goal.
+    fn walk_keeping(
+        &mut self,
+        ob: &Obstacles,
+        from: Vec2,
+        to: Vec2,
+        room: Fixed,
+        budget: u32,
+    ) -> (Vec<Vec2>, bool) {
         let (Some(start), Some(asked)) = (Clearance::node_of(from), Clearance::node_of(to)) else {
-            return Vec::new();
+            return (Vec::new(), false);
         };
         let (Some(start), Some(goal)) = (
             routable_node(ob, start, room),
             node_beside(ob, to, from, room).or_else(|| routable_node(ob, asked, room)),
         ) else {
-            return Vec::new();
+            return (Vec::new(), true);
         };
         if start == goal {
-            return Vec::new();
+            return (Vec::new(), false);
         }
-        let end = self.search(ob, start, goal, room, budget);
+        let (end, shut) = self.search(ob, start, goal, room, budget);
         if end == idx(start) {
-            return Vec::new();
+            return (Vec::new(), shut);
         }
         let goal = (end % NODES, end / NODES);
         let corners = self.corners(start, end);
@@ -119,13 +139,14 @@ impl Planner {
         }
         let mut spots = pull_string(ob, from, spots, room);
         tighten(ob, from, &mut spots, room);
-        pull_string(ob, from, spots, room)
+        (pull_string(ob, from, spots, room), shut)
     }
 
     /// Runs A* from a node towards a goal node within a budget of nodes to
     /// expand, and answers the node the walk ends in: the goal when it was
     /// got to within the budget, else the node got to that lies nearest it.
-    /// Ties break on node index.
+    /// Ties break on node index. Answers too whether every node got to was
+    /// expanded within the budget without getting to the goal.
     fn search(
         &mut self,
         ob: &Obstacles,
@@ -133,7 +154,7 @@ impl Planner {
         goal: (usize, usize),
         room: Fixed,
         budget: u32,
-    ) -> usize {
+    ) -> (usize, bool) {
         self.epoch = self.epoch.wrapping_add(1);
         if self.epoch == 0 {
             self.stamp.fill(0);
@@ -148,6 +169,7 @@ impl Planner {
             .push(Reverse((heuristic(start, goal), idx(start) as u32)));
         let mut nearest = (heuristic(start, goal), idx(start));
         let mut expanded = 0;
+        let mut shut = true;
         while let Some(Reverse((f, at))) = self.heap.pop() {
             let at = at as usize;
             let node = (at % NODES, at / NODES);
@@ -156,6 +178,7 @@ impl Planner {
                 continue; // an entry left behind by a better way to the node
             }
             if node == goal || expanded >= budget {
+                shut = false;
                 break;
             }
             expanded += 1;
@@ -166,9 +189,9 @@ impl Planner {
             self.expand(ob, node, goal, room);
         }
         if self.stamp[idx(goal)] == epoch && expanded < budget {
-            idx(goal)
+            (idx(goal), false)
         } else {
-            nearest.1
+            (nearest.1, shut)
         }
     }
 

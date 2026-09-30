@@ -713,3 +713,35 @@ fn every_hero_sent_at_a_tower_from_afar_walks_into_reach_and_strikes() {
         );
     }
 }
+
+/// Spots among Map2's trees a hero walked into at its own size, where the
+/// route's margin finds no way out: one whose node has no room for the
+/// margin, one whose nodes with room for it are closed in.
+#[test]
+fn a_hero_among_trees_too_close_for_the_route_margin_still_walks_home() {
+    let map = crate::game::map_of(bota_proto::MapId(2));
+    for (team, x, y) in [
+        (bota_proto::Team::Dire, 739_766_649, 791_609_959),
+        (bota_proto::Team::Radiant, 469_633_835, 567_213_857),
+    ] {
+        let mut world = World::on_map(map);
+        let start = bota_proto::Vec2 {
+            x: Fixed { raw: x },
+            y: Fixed { raw: y },
+        };
+        let hero = world.spawn_hero(team, start, bota_proto::SlotId(0), bota_proto::HeroId(2));
+        world.settle();
+        let home = map.fountains[usize::from(team == bota_proto::Team::Dire)];
+        world.set_order(hero, crate::game::UnitOrder::Move { pos: home });
+        for _ in 0..(5 * rules::TICKS_PER_SECOND) {
+            world.step();
+        }
+        let now = world.transform.get(hero).expect("standing").pos;
+        let gained = crate::game::isqrt64(start.distance_squared(home))
+            - crate::game::isqrt64(now.distance_squared(home));
+        assert!(
+            gained > i64::from(rules::units(500).raw),
+            "from {start:?} it walked towards home, not stood at {now:?}"
+        );
+    }
+}
