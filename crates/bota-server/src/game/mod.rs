@@ -39,6 +39,8 @@ pub use vision::*;
 pub use world::*;
 
 #[cfg(test)]
+mod determinism_tests;
+#[cfg(test)]
 mod map2_tests;
 #[cfg(test)]
 mod target_retention_tests;
