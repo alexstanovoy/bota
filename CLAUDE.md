@@ -89,11 +89,13 @@ units, the items, the camps and the balance constants. `game` names what it take
 
 ### bota-proto and bota-server
 
-- No `f32`/`f64`: `#![deny(clippy::float_arithmetic)]`. Reason: `sin/cos/sqrt` from
+- No `f32`/`f64`: `clippy::float_arithmetic = "deny"` in the workspace lints, which
+  both crates take (`[lints] workspace = true`). Reason: `sin/cos/sqrt` from
   libm differ across platforms and break determinism. Float is allowed in `bota-client`
   (rendering) and in `bota-bot` (what gets recorded are the bot's orders, not its
   reasoning).
-- No `HashMap`/`HashSet` in the simulation: iteration order is not guaranteed.
+- Nothing in the simulation iterates a `HashMap`/`HashSet`: iteration order is not
+  guaranteed. `rustc_hash` maps serve integer-key lookup only.
 - No `std::time` in `game/`: time exists only as ticks.
 - `game/` knows nothing about sockets or `PlayerId` — only `SlotId`.
 
@@ -110,6 +112,7 @@ New external dependencies only after discussion. Allowed:
 | `rand_chacha` 0.10 | `bota-server` | PRNG |
 | `rustc-hash` 2.1.3 | `bota-server` | lookup-only integer-key maps |
 | `clap` (derive) | every binary | command line arguments |
+| `criterion` 0.8.2 | `bota-server` (dev) | benchmarks |
 
 Every binary parses its arguments with `clap` and its derive. There is no bar low enough
 for a hand-rolled parser to be worth clearing: it costs a hundred lines, generates no
@@ -139,7 +142,8 @@ cargo test --all --release
 ```
 
 Release is run separately not for speed: `debug_assert!` is off there, and overflow
-behavior switches from panicking to saturating. A test that covers only one half fails
+behavior switches from panicking to saturating for `Fixed` and to wrapping for
+plain integers. A test that covers only one half fails
 in the other mode — and it fails exactly where we would notice it last.
 
 ## Benchmarks

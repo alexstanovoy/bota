@@ -23,7 +23,8 @@ the mechanics wiki. Nothing is guessed except where it says **[approximation]**.
 
 ### 1.1 Lane creep stats, wave 1
 
-Hull radius is the collision radius: what other units cannot enter.
+Hull radius is the bound radius attack range and areas are measured to; bodies keep
+apart by a larger collision size, per kind in `rules.rs`.
 
 | | Melee | Flagbearer | Ranged | Siege |
 |---|---|---|---|---|
@@ -94,12 +95,14 @@ Every **7:30**, applied to *newly spawned* creeps, **30 times maximum**
     never abandons what it is hitting: a ranged creep shooting a hero keeps
     shooting it however close a creep stands, and the same holds for a creep
     target. Out of reach it weighs its options again, and whatever it can hit
-    wins. Only a click makes an out-of-reach hero stick, and only for its three
-    seconds.
+    wins. Only a click makes an out-of-reach hero stick, and only for its hold
+    (§1.5).
 - Target entered fog → walk to the last seen spot; still nothing → return.
 - Target outside acquisition range → chase at most **2.3 s**, then return.
 - Return is to **the point where the creep left its lane**, not the nearest
-  point of the lane. A creep never joins another lane, however close.
+  point of the lane. A creep never joins another lane, however close. bota
+  differs: a creep rejoins its lane at the next waypoint it has not passed
+  (`DESIGN.md`).
 - A creep that never left its lane has nothing to return to: it simply resumes
   the march from where it stands. Only a creep dragged off the lane walks
   back.
@@ -141,8 +144,9 @@ attack happens or not and however far the ordered target is:
   the same tick, so the creep is never left standing with no target.
 - an attack order on an enemy **creep** is a last hit and moves nobody
 - **3 s cooldown** per creep on both
-- the switch **holds for 3 s** — **[approximation]**: Valve publishes the 3 s
-  cooldown but no hold duration — and this hold is
+- the switch **holds for 2.33 s** (`ORDER_AGGRO_HOLD_TICKS`, 70 ticks) —
+  **[approximation]**: Valve publishes the 3 s cooldown but no hold duration —
+  and this hold is
   the only thing that makes a hero target stick at all. When it runs out the
   creep weighs its options again; the ordering hero can still win that on
   §1.5's tie-break while it keeps swinging at the creep's own side, which is
@@ -218,11 +222,8 @@ Consequences that fall straight out of it and need no extra rule:
 
 ### 1.6.2 Which neutrals lane creeps will fight
 
-Your read is that this is purely a distance effect — that neutrals simply
-cannot be dragged far enough from most camps, and no camp condition exists.
-I checked, because it is the more economical explanation. It is not what the
-game does: there are **two independent rules**, and the camp one is Valve's,
-introduced in 7.23b (Outlanders). The patch line reads
+This is not a distance effect alone: there are **two independent rules**, and
+the camp one is Valve's, introduced in 7.23b (Outlanders). The patch line reads
 
 > Neutrals' lane creep aggro is now based on which neutral spawn area they're
 > in (enabled for the traditional safelane/offlane pull camps).
@@ -244,11 +245,10 @@ So the two rules do different jobs:
   at all. It applies to four camps: one small camp and one large camp per side,
   the traditional safelane and offlane pull camps.
 
-The distinguishing observation, if you want to check it in a game: drag a
-medium or ancient camp's neutrals into a lane so they start hitting your lane
-creeps. Under your model the lane creeps fight back; under Valve's they keep
-walking and let themselves be chewed on. The wiki asserts the second, twice
-and explicitly.
+To tell them apart in a game, drag a medium or ancient camp's neutrals into
+a lane so they start hitting the lane creeps: under a distance rule alone the
+lane creeps fight back; under Valve's they keep walking and let themselves be
+chewed on. The wiki asserts the second, twice and explicitly.
 
 **Settled by the map itself.** The map's `npc_dota_neutral_spawner` entities
 carry an `AggroType` field, and exactly four of the twenty-eight have it set
@@ -257,13 +257,9 @@ to one: `neutralcamp_good_1` and `neutralcamp_evil_2`, both small, and
 large per side, which is the wiki's sentence word for word. It is a per-camp
 flag, not a distance effect.
 
-The rest of this section is kept for the record:
-
-- The camp flag ships as a single `pullable: bool` per camp in
-  `game/config/camp.rs`, read in one place — `pullable_camp` in
-  `game/systems/target.rs`.
-- Setting every camp `pullable: true` reduces the behaviour to your model
-  exactly, with the guard distance doing all the work.
+The flag ships as `pullable: bool` per camp in `game/config/camp.rs`, read in
+one place, `pullable_camp` in `game/systems/target.rs`. Setting every camp
+`pullable: true` leaves the guard distance doing all the work.
 
 ### 1.6.3 Neutral creep stats
 
@@ -354,8 +350,8 @@ published total, which is a strong check that these are right.
 
 The Thunderhide camp is the one that does not reconcile: 800 + 800 + 1700 is
 3300, the wiki says 3400. Either the wiki lags a stat change or the roster is
-not two small and one big. I will settle it against the shipped data during
-implementation rather than ship a guessed roster.
+not two small and one big; `game/config/roster.rs` ships two small and one big,
+and which it is stays unsettled.
 
 Spawn chance per category on a camp of that category, first spawn then every
 following spawn, from the wiki totals: small 17 % / 20 %, medium 20 % / 25 %,
@@ -411,3 +407,8 @@ state at all. See *Not yet modelled*.
 6. **No flooded camps.** §1.6.5 needs a river that knows which camps it covers
    and a 5-minute promotion clock. The camp table carries a `flooded` flag that
    nothing reads.
+7. **Neutral upgrades land at spawn only.** A neutral carries the upgrades of
+   the tick it spawned on, and an upgrade adds no attack speed (§1.6).
+8. **No invisibility, untargetability or disarm.** The flee on damage from an
+   invisible unit and the untargetable rules of §1.6, and the disarm rule of
+   §1.4, have nothing to act on.

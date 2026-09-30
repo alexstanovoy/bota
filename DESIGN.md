@@ -152,7 +152,7 @@ root.set_stream(match_id);
 let mut seed = [0u8; 32];
 root.fill_bytes(&mut seed);
 
-// one stream per purpose — crits, runes, spawn scatter
+// one stream per purpose — crits, evasion, camp rosters
 rng.global(Purpose::Rune)
 rng.for_unit(Purpose::Crit, unit, source)
 ```
@@ -161,10 +161,13 @@ Streams are separated by purpose (`Purpose`: `Crit`, `Block`, `Evasion`, `Rune`,
 `NeutralSpawn`, `Wave`, `Pierce`) so that a new draw in one place does not shift generation anywhere
 else. A per-unit stream is keyed by `(purpose, slot index, source)` packed into the
 64-bit ChaCha8 stream id — purpose in the top bits, slot index in the middle, a source
-byte to separate several sources of chance on the same unit (a crit passive and a
-bash). The key uses the slot index rather than the full `EntityId`: the stream id
-space stays bounded, and a unit reusing a freed slot continues that slot's hidden
-sequence, which no observer can distinguish from a fresh one.
+byte to separate several sources of chance of one purpose on the same unit (the
+evasion a unit rolls as a target and the uphill miss it rolls as an attacker). The key
+uses the slot index rather than the full `EntityId`, so the stream id space stays
+bounded. The world keeps each slot's opened crit, evasion and pierce `Chance` for as
+long as the match runs, so a unit reusing a freed slot continues that slot's hidden
+sequence, which no observer can distinguish from a fresh one. `Block` and `Rune` are
+reserved and drawn from nowhere yet.
 
 ```rust
 impl World {
@@ -209,15 +212,18 @@ determinism demands exactly one implementation.
 
 ## Determinism rules
 
-1. No `f32/f64` in `bota-proto` and `bota-server`: `#![deny(clippy::float_arithmetic)]`.
+1. No `f32/f64` in `bota-proto` and `bota-server`: `clippy::float_arithmetic` is denied
+   in the workspace lints.
    Float operations themselves are deterministic per IEEE-754, but `sin/cos/sqrt` from
    libm are not — they differ across glibc / musl / macOS / wasm. The client renders in
    float freely. The bot is also free to think in float: what gets recorded are its
    orders, not its reasoning.
 2. Scalars are `Fixed` = Q16.16 in `i32`, multiplication through an intermediate `i64`.
-   Range ±32768 units, precision 1/65536. The 16384-unit map keeps squared distances
+   Range ±32768 units, precision 1/65536. The 18432-unit map keeps squared distances
    inside an `i64`; segment projections that would square a dot product go through
-   `i128`.
+   `i128`. The operators debug-assert on overflow and saturate in release: a
+   saturated value stops at the end of the range, a wrapped one would land on the
+   far side of the map.
 3. Angles are "brads": `u16`, 65536 = a full turn. sin/cos from a hardcoded table of
    1024 entries.
 4. Distances are compared as squares, no sqrt.
@@ -291,7 +297,8 @@ requirement.
 When the chance changes (a crit buff), the current block finishes under the old
 fraction; the new one takes effect from the next block.
 
-The PRNG is also used where an exact rate is meaningless (rune drop, spawn scatter).
+The PRNG is also used where an exact rate is meaningless (which roster a camp fills
+with).
 Streams are separated by purpose via `ChaCha8Rng::set_stream`, so that a new call in
 one place does not shift the rest of the generation.
 
@@ -313,7 +320,8 @@ Server-only, never reaches `WorldView`:
 
 - `MatchRng` and the positions of all streams;
 - each unit's `Chance { mask, idx }`;
-- outcomes of scheduled events that have not happened yet (which rune will spawn).
+- outcomes of scheduled events that have not happened yet (which roster a camp fills
+  with next).
 
 It also follows that client-side prediction covers only movement and animation. Damage
 numbers and the fact of a crit arrive as events from the server.
@@ -332,9 +340,8 @@ exploit any leak a human reviewer shrugs off:
 ## Game model v0.1
 
 - Map 18432×18432 — Dota's scale, so speeds, ranges and vision keep their Dota
-  absolute values. Symmetric along the diagonal. Three lanes: mid along the diagonal,
-  top up the west edge and along the north edge, bottom its mirror; the diagonal
-  mirror that swaps the sides also swaps top and bottom. Terrain is a 288×288 bit
+  absolute values. Three lanes: mid along the diagonal, top up the west edge and
+  along the north edge, bottom along the south and east edges. Terrain is a 288×288 bit
   grid of 64-unit cells; walking is planned on a 576×576 lattice of 32-unit nodes
   laid over it.
 - A second map, `MapId(1)`, is the game's own hero demo map (`hero_demo_main`),
@@ -357,19 +364,14 @@ exploit any leak a human reviewer shrugs off:
   lanes are defined by their towers, while the demo map's corners trace the
   real road and its towers stand beside it — drawn through them, every wave
   hooked around its own tower on the way out.
-- A third, `MapId(2)`, is the Dota map to a short finish: the first side to lose
-  a tower or to lose `SKIRMISH_DEATH_LIMIT` heroes loses; opposing losses in one
-  tick draw. It spawns only mid waves and draws after fifteen gameplay minutes.
-  The same ground, buildings and routes come from `SKIRMISH` using `..DOTA`,
-  overriding only its id, wave selection and completion fields. What ends a
-  match is map data now (`death_limit` and `tower_ends_it`) rather than a
-  `map.id == MapId(1)` written into `fight.rs` twice: a rule keyed on which map
-  it is cannot be given to a second map without being written a third time. The
-  demo map used to carry both endings and now carries neither, which leaves it
-  what its name says — a lane to try things in, ending the way the big map does.
-- The per-map route cache is indexed by `MapId`, not by the position in `MAPS`,
-  so the two have to agree; a test says so, since nothing else would notice a map
-  added out of order.
+- A third, `MapId(2)`, is the Dota map to a short finish; see Map2 below. What ends
+  a match is map data (`death_limit` and `tower_ends_it`) rather than a check on the
+  map id in `fight.rs`: a rule keyed on which map it is cannot be given to a second map
+  without being written again. The demo map carries neither ending and ends the way
+  the big map does.
+- The per-map field cache (`BASES` in `clearance.rs`) is indexed by `MapId`, not by
+  the position in `MAPS`, so the two have to agree; a test says so, since nothing
+  else would notice a map added out of order.
 - Teams Radiant / Dire, 1v1 (the architecture is sized for 5v5).
 - Buildings: three towers per lane per side — tier one by the river, tier three by
   the base — plus a pair of tier fours by each Ancient, two barracks per lane
@@ -437,8 +439,9 @@ exploit any leak a human reviewer shrugs off:
   its aggro range or hits it; led past its guard distance for longer than its
   window it goes home deaf, and arriving home restores nothing. Its bounty goes to the killer, its experience to the
   killer's team nearby.
-- Creeps: 3 melee + 1 ranged every 900 ticks (30 s) on every lane, a siege creep
-  every 5th wave. A wave marches its own lane's waypoints and is leashed to its own
+- Creeps: 3 melee + 1 ranged every 900 ticks (30 s) on every lane; a siege creep
+  joins wave 11 and every tenth wave after, a flagbearer wave 5 and every second
+  wave after, and the counts grow later in the match (`rules.rs`). A wave marches its own lane's waypoints and never joins another
   lane. A lane whose enemy melee or ranged barracks has fallen spawns that kind
   super, its siege once both are down, and every enemy barracks fallen makes the
   whole side's waves mega, at the game's own numbers; the flagbearer stays plain.
@@ -530,8 +533,8 @@ exploit any leak a human reviewer shrugs off:
   refilled both pools from next to nothing. The scaling floors, so a full
   wheel can only lose a sliver, never gain one; and a pool that held anything
   is kept off zero, so the wheel cannot kill its owner either. Consumables
-  (Healing Salve, Clarity) drip over
-  thirty seconds and spill on any hit from a hero. Items survive the hero's
+  drip over their duration (Healing Salve ten seconds, Clarity twenty-five) and
+  spill on any hit from a hero or a tower. Items survive the hero's
   death on the seat.
 - An item set to an attribute — Power Treads — keeps which one on the stack
   rather than in the catalog, and the wire carries it in `ItemView`, since two
@@ -703,7 +706,7 @@ emergent, because creeps arrive first. On top of that sit the aggro calls:
   plans where a body planned earlier in the tick, else by their last step carried
   forward twelve ticks and held; a stretch that would bring the body within the
   two collision sizes of a foreseen body at any tick is not taken. The search
-  expands at most 80 states and settles for the state nearest the aim, and
+  expands at most 120 states and settles for the state nearest the aim, and
   answers nothing when that is under two steps nearer. The aim is a spot up to
   440 units along the route, as far as a straight line from the walker stays
   clear; on the last stretch the route's end, with the order's own arrival: an
@@ -760,9 +763,9 @@ emergent, because creeps arrive first. On top of that sit the aggro calls:
   beside or beyond it along the leg to the next with the leg clear, and it
   rejoins the rail there after a chase or a push, never at where it left. The
   anchor it used to walk back to walked waves backwards after every chase.
-- A calm creep dragged off the lane beyond its leash gives up, goes deaf to targets
-  and walks straight back to the nearest point of the lane; an open aggro window
-  overrides the leash.
+- A lane creep has no leash of its own: a chase ends `CREEP_CHASE_TICKS` after its
+  target was last in attack range, a target lost from sight is walked after to where
+  it was last seen, and then the creep takes up the rail again.
 - Units turn at a finite rate and only walk or swing once they face their current
   path leg, so corners cost time. Buildings do not turn.
 
@@ -825,10 +828,9 @@ are separate kinds even though a body could carry both, because naming them apar
 lets a client tell a tower's doing from a flagbearer's, and what keeps the bot from
 reading either as the mending a salve puts on.
 
-What a flagbearer's death pays the enemy heroes around it is **not** here. The wire's
-`UnitKind::CreepFlagbearer` says it is, and nothing implements it: in Dota the bounty
-reaches 1200 and pays every enemy hero in it once, on top of whatever the killer earns.
-The doc is ahead of the code, which is the wrong way round.
+What a flagbearer's death pays the enemy heroes around it is **not** implemented: in
+Dota the bounty reaches 1200 and pays every enemy hero in it once, on top of whatever the
+killer earns.
 
 Two more places fall short of the wiki, and neither is reachable on the maps as they
 stand. Several auras are not meant to stack, and they do not — but which one holds is
@@ -848,11 +850,11 @@ put them.
 
 A soul is taken only from what he brings down himself, which is the killer `bury`
 already carries, and a hero is worth three where anything else is worth one. Souls
-outlive his own death — they wait on the seat in `Kept` with the abilities and the
-items — which Dota does not do. Dota's version spends the accumulation twice, once on
-death and once on the requiem, and a hero whose only scaling is a resource that two
-different events take away is a hero the bots learn to stop gathering with. The requiem
-therefore reads the souls and keeps them; its cooldown is what limits it.
+wait on the seat in `Kept` with the abilities and the items, less the
+`SOULS_LOST_ON_DEATH_PCT` (30%, rounded down) that his own death lets go. The requiem
+reads the souls and keeps them; its cooldown is what limits it: a hero whose only
+scaling is a resource that two different events take away is a hero the bots learn to
+stop gathering with.
 
 Souls are not a component of their own. Necromastery and Flesh Heap are the same shape -
 a count that grows on a death, never runs out, and survives the body - so both are one
@@ -1023,71 +1025,43 @@ compressor's job, not the protocol's.
 
 ### Bounded replay playback in the client
 
-Opening a replay must not depend on its duration. The client previously read the
-whole file, fed it to the socket `FrameReader`, and decoded every record before
-the first render. Removing each decoded prefix from that reader moved the entire
-remaining tail. A roughly 500 MB, 127,000-record replay therefore incurred
-quadratic copying as well as retaining all decoded snapshots. A window already
-created by macroquad stayed black during that work. Small counted-reader and
-clock tests reproduced the failure without running the large files through the
-old loader.
+Opening a replay does not depend on its length. The client once read the whole file
+into the socket `FrameReader` and decoded every record before the first render;
+removing each decoded prefix moved the whole remaining tail, so a 500 MB,
+127,000-record replay cost quadratic copying and held every snapshot while the window
+stayed black.
 
-The replay player now opens the file without reading records. A client-local
-`BufReader<Read>` reads the existing little-endian length prefix and calls the
-existing `decode_payload` on one record at a time. The shared codec, replay
-format, server and live networking are unchanged. A file-sized byte buffer, a
-decoded frame queue, a background producer and a replay index are unnecessary
-for forward playback; omitting them also removes producer backpressure and
-thread shutdown protocols. One future record is retained as lookahead.
+`replay_play.rs` opens the file without reading records. A client-local buffered reader
+reads the little-endian length prefix and calls `decode_payload` one record at a time,
+with one record of lookahead; the codec, the replay format and the server are
+untouched. There is no file-sized buffer, decoded-frame queue, background producer or
+replay index, and so no backpressure or thread shutdown to get right.
 
-Each GUI-frame poll has three independent limits: 64 records inspected or
-released, 256 KiB of framing/payload bytes consumed, and 128 reader calls,
-including interruptions. Read-ahead is another 8 KiB at most. The existing
-4 MiB payload limit is checked before allocation. A payload can span polls;
-prefix and payload progress survive the yield, and the reusable byte buffer
-never exceeds that payload limit. An already partly read or waiting record can
-complete in a later batch, so a batch's decoded contents are bounded by one
-maximum payload plus that poll's byte budget, not just by the byte budget.
-Decoded Rust values can occupy more than their encoded bytes. Neither their
-retention nor the parser's storage grows with replay length. These are work and
-storage bounds, not a wall-clock timeout on a synchronous filesystem call or
-a new validator of game data inside decodable records.
+Each GUI-frame poll is bounded three ways: `MAX_RECORDS_PER_POLL` (64) records,
+`MAX_BYTES_PER_POLL` (256 KiB) of prefix and payload bytes and `MAX_READS_PER_POLL`
+(128) reader calls, interruptions included; read-ahead is at most
+`REPLAY_BUFFER_CAPACITY` (8 KiB). `MAX_PAYLOAD_LEN` (4 MiB) is checked before
+allocating. A payload may span polls, and a poll's decoded content is bounded by one
+maximum payload plus its byte budget. These bound work and storage, not wall-clock time
+of a synchronous read.
 
-The first snapshot is a render boundary: startup stops there without decoding
-the rest of the replay, and the clock anchors to that snapshot's tick. Loading
-polls and the interval spent drawing the first snapshot do not advance playback.
-Otherwise macroquad's previous frame time could count loading or first-use
-rendering as game time and silently skip the start. Later elapsed time uses the
-recorded tick rate and selected speed. Budget exhaustion leaves the target clock
-fixed while subsequent frames finish the queued work, rather than accumulating
-an ever-growing catch-up debt. Pause stops elapsed-time advancement; previously
-queued work still completes. A step or forward jump only moves the target clock,
-clamped to the largest wire tick, and performs no I/O; the next ordinary poll
-does the work. There is no second decoding pass from input handling and no
-backward seek or replay-sized index.
+The first snapshot is a render boundary: startup stops there, and the playback clock
+anchors to its tick, so neither loading nor drawing the first frame counts as game
+time. Later time runs at the recorded tick rate and the chosen speed. When a poll's
+budget runs out the target clock stays put while later frames finish the work, so no
+catch-up debt builds. Pause stops the clock; a step or a forward jump only moves the
+target clock, clamped to the last tick on the wire, and the next poll does the reading.
+There is no backward seek.
 
-Records keep file order across all yields. `ReplayRecord::Orders` is converted
-in place to the already supported `ServerMsg::Orders`, instead of waiting in an
-independent order queue. This both bounds retention without a separate consumer
-and makes step-delivered orders reach the overlay with their snapshots/events,
-not on a later GUI frame. Snapshots and order records gate on their ticks;
-intervening messages retain the recorded sequence, including the final events
-and `MatchOver` before EOF.
+Records keep file order. `ReplayRecord::Orders` becomes `ServerMsg::Orders` in place,
+so orders reach the overlay with their snapshot and events. Clean EOF is told apart from
+an empty recording, a torn prefix or payload, an invalid length, a decode failure and a
+read failure; a failure keeps the record number and byte offset, stops reading, and
+leaves what was decoded on screen under the error. EOF alone invents no match result.
 
-Clean EOF is distinct from an empty recording, a partial prefix, a partial
-payload, an invalid length, a decoding failure and a reader failure. A failure
-keeps the record number and byte offset, stops further reads, and leaves already
-decoded messages available for that frame. The client shows a loading screen
-before opening and before the first snapshot, and a persistent error over the
-last view on failure. EOF alone does not invent a match result.
-
-Headless release tests use counted, fragmented and virtual gigabyte readers to
-verify the limits without timing assertions or sleeps. The explicitly ignored
-`both_real_replays_stream_correctly_with_bounded_prefix` test takes
-`BOTA_REPLAY_NEURAL` and `BOTA_REPLAY_TEACHER` paths. It compares every streamed
-message against an independent sequential record reader, checks complete EOF and
-match results for both artifacts, and reports first-snapshot read counts and
-full-scan measurements. GUI validation remains separate from that parser probe.
+The ignored `both_real_replays_stream_correctly_with_bounded_prefix` test streams the
+files named by `BOTA_REPLAY_NEURAL` and `BOTA_REPLAY_TEACHER` and checks every message
+against a sequential reader.
 
 ### What a slot is worth, and who works it out
 
@@ -1107,8 +1081,7 @@ same rule the server charges by. The client's own catalog is what is left over
 after that: names, blurbs and art, and not one number.
 
 `can_level` is a bit rather than a rule. The client used to hold its own copy
-of "a basic ability's level k waits for hero level 2k-1, an ultimate for 6, 8
-and 10" and its own subtraction of points spent from the hero level; the
+of the level floors and its own subtraction of points spent from the hero level; the
 server already answers all of that in `level_floor`, and answering it once is
 cheaper than keeping two copies honest.
 
@@ -1267,7 +1240,8 @@ targeting
 movement:    jungle, march lanes, walk, push apart
 visibility
 actions:     attack orders, regen, actions, missiles, bounces
-damage:      hits, break on blows, rouse camps, events, bury (deaths and the victor)
+damage:      hits, break on blows, rouse camps, credit damage, events and misses,
+             bury (deaths and the victor)
 then:        applied modifiers count down
 ```
 
@@ -1350,7 +1324,7 @@ moves anything stranded in the backpack forward, since a build lands in the lowe
 any of its parts came out of and a part bought with the bag full comes out of the
 backpack.
 
-Thirteen things were found by playing rather than by reading, and each is now a test, a
+What follows was found by playing rather than by reading, and each is now a test, a
 named constant, or a measurement worth not repeating.
 
 **An order is an animation cancel.** The holding spot drifts a little every tick, and a
@@ -1617,344 +1591,235 @@ last message of a match is queued at the moment the server has nothing left to d
 
 ## Map2: mid-only play on the full Dota map
 
-`MapId(2)` copies the single `DOTA` definition in `game/config/map.rs`, overriding
-the wire id, creep-wave lane selection and upstream completion fields. No landmark, tree,
-camp, terrain, or blocker tables are duplicated. `MapDef.lanes` and `lanes()`
-remain geometric: Map0 and Map2 both have three lane centerlines, and tree
-clearance and route construction still see all three. The separate
-`wave_lanes` slice selects mid alone on Map2. Setting `lanes` to one instead
-would leave extra trees on the side roads and change passability and vision,
-so it would not preserve the full map. Static side-lane structures and the
-jungle remain active. Map0 and the hero demo Map1 keep the upstream data, wave
-order and completion rules: neither loses on a tower or hero death. The prior
-local Map1 short-ending rules are not restored during the upstream merge.
+`MapId(2)` (`SKIRMISH` in `game/config/map.rs`) is `DOTA` with its own id, mid-only
+waves and its own ending; no landmark, tree, camp, terrain or blocker table is
+duplicated. `lanes` stays three: tree clearance and route construction still see every
+lane, and only `wave_lanes` selects mid. Setting `lanes` to one would leave trees on
+the side roads and change passability and vision. Side-lane structures and the jungle
+stay active.
 
-Map2 ends when a side loses its second hero life, counted across that side's
-seats, or its first tower on any lane. All deaths of a tick are processed
-before adjudication; if both sides lose on that tick, the result is a draw.
-This includes a tower lost on one side and a second hero death on the other.
-Choosing a winner inside the burial loop would make that draw depend on hit
-iteration order. Couriers do not consume hero lives. An Ancient is not a
-separate Map2 win condition: its normal protection cannot open before a tower
-has already ended the match.
+A side loses on its `MAP2_DEATH_LIMIT`-th hero death, counted across its seats
+(couriers do not count), or on its first tower lost on any lane. All deaths of a tick
+are buried before the match is judged, and a tick on which both sides lose is a draw,
+a tower on one side and a hero on the other included: picking a winner inside the
+burial loop would make that draw depend on hit order. The Ancient is not a separate
+win condition: its protection cannot open before a tower has ended the match.
 
-The limit is fifteen gameplay minutes at the fixed simulation rate, 27,000 ticks,
-plus the unchanged 900 pregame ticks. Tick 27,900 runs completely, including
-orders, scheduled waves, economy, combat, and death accounting, then draws
-even if one side loses on that tick. A loss at 27,899 still wins immediately.
-Wall-clock `tick_rate` and realtime/lockstep mode do not alter this limit.
-`World::advance` and `World::step` stop mutating a completed Map2, including
-orders with immediate shop side effects. A world already at the cap seals
-the draw without running a late tick. Map0/Map1 do not gain either this cap
-or this post-completion freeze.
+`MAP2_TICK_CAP` is fifteen gameplay minutes (27,000 ticks) past the 900-tick pregame,
+independent of wall-clock `tick_rate` and tick mode. Tick 27,900 runs in full and then
+draws even if a side loses on it; a loss on tick 27,899 still wins. Once a winner is
+set, `advance` and `step` change nothing, orders with immediate shop effects included,
+and a world already at the cap seals the draw without running another tick. Map0 and
+Map1 have neither the cap nor the freeze.
 
-`World::victor()` and the existing native `ServerMsg::MatchOver.winner` use
-`Team::Neutral` to mean a Map2 draw, not a jungle victory. This avoids a new
-wire outcome schema: TCP and in-process runners read the same World result
-and `match_stats().duration` after the final tick. The existing globally
-visible `StructureDestroyed` event identifies the fallen tower and side;
-final seat death counts and duration identify life-limit and cap endings.
-There is no new reason field in MatchOver. Consumers must classify Neutral
-as Draw rather than as a loss for both seats. The existing bota client banner
-for this value reads `NOBODY WINS`; this change does not modify the viewer.
+A draw is `Team::Neutral` in `World::victor()` and `ServerMsg::MatchOver.winner`, so
+the wire needs no outcome field of its own: the `StructureDestroyed` event names the
+fallen tower, and the final death counts and `MatchStats.duration` tell a life-limit
+ending from the cap. A consumer reads `Neutral` as a draw, not as a loss for both
+seats; the client's banner reads `NOBODY WINS`.
 
-## Mango and stacking Shadowraze: the 2026-09-10 balance choice
+## Mango and stacking Shadowraze
 
-These are authorized bota mechanics, not a claim of parity with the latest Dota
-patch. The conventional Mango price and restoration and raze stack bonuses were
-chosen explicitly; the existing bota raze base damage and cast rules are retained.
+Both are chosen bota mechanics, not a claim of parity with the latest Dota patch: the
+Mango's price and restoration are Dota's, the raze keeps bota's base damage and cast
+rules and adds Dota's stacking bonus.
 
-### Exact Mango rules
+### Mango
 
-`game::ITEM_MANGO` is appended as `42`; `game::ITEMS` and the client item catalog
-now contain 43 entries. Ids 0 through 41 keep their meanings. The shop still sends
-an ordinary `ShopEntry`, and carried Mangoes use existing `ItemView.charges`.
-Public constants in `game/config/item.rs`, re-exported through `game`, are:
+`ITEM_MANGO` is 42. The shop sends it as an ordinary `ShopEntry`, and a carried one
+counts in `ItemView.charges`. Its numbers, in `game/config/item.rs`:
 
-| Constant | Exact value |
+| Constant | Value |
 |---|---|
 | `MANGO_COST` | 65 gold for one charge |
 | `MANGO_STACK_MAX` | 3 charges per slot |
 | `MANGO_MANA` | 100 mana per use |
 | `MANGO_HP_REGEN` | `Fixed::from_ratio(2, 5 * TICKS_PER_SECOND)` per charge per tick |
 
-At 30 ticks/s the passive is 873 raw Q16.16 HP per tick per charge, or exactly
-0.399627685546875 HP/s. Each charge is quantized before multiplication: stacks
-of one, two and three add 873, 1746 and 2619 raw HP/tick. Splitting or merging
-stacks cannot change their combined regeneration. A float, a coarse hundredth-HP
-timed effect and an extra fractional accumulator were rejected: the existing
-fixed-point regeneration path supplies a deterministic, sufficiently close
-representation of the nominal 0.4 HP/s without more state.
+The passive is 873 raw Q16.16 health per tick per charge, 0.399627685546875 HP/s at 30
+ticks/s. Each charge is quantized before multiplication, so stacks of one, two and
+three add 873, 1746 and 2619 and splitting or merging stacks cannot change their sum.
+The ordinary fixed-point regeneration comes that close to Dota's 0.4 HP/s without a
+float, a timed effect or an extra accumulator.
 
-Mango has zero mana cost, zero cooldown, zero range and `Aim::Own`. Both
-`Target::None` and an explicit self handle are legal. One successful use consumes
-exactly one charge and restores `min(100, max_mana - mana)` immediately. Any
-strictly positive deficit, including one raw Q16.16 unit, qualifies. Full or
-overfull mana, a missing pool or nonpositive capacity cannot consume a charge.
-The order validator reports `NotReady` for an ineffective restoration and
-`WrongTargetKind` for any non-self target. This is a legal-action rule, not a
-strategy requiring a 100-mana deficit. Wasting a charge at full mana and reusing
-Stick/Wand's all-charges restoration were rejected. `ItemDef.mana_deficit` marks the
-item and its use calls `World::replenish_mana`; no order or wire field is added.
+A Mango has no mana cost, cooldown or range and is aimed `Aim::Own`: `Target::None`
+and the user's own handle are both legal, any other target is `WrongTargetKind`. A use
+consumes one charge and restores `min(100, max_mana - mana)` at once. Any positive
+deficit, down to one raw unit, qualifies; full or overfull mana, a missing pool or a
+nonpositive capacity is `NotReady`, so a charge is never spent for nothing, and the
+all-charges restoration of Stick and Wand is not reused. `ItemDef.mana_deficit` marks
+the item; its use calls `World::replenish_mana`, and `World::can_replenish_mana` is
+the check both share. A use emits a mana-only `Healed` event with the whole points
+restored, and none when less than one whole point was restored.
 
-The merged upstream protocol already carries `Healed.mana`. Mango uses that
-contract: one consumption emits a mana-only `Healed` event with the actual
-clamped restoration in whole points and the usual healing visibility. Restoring
-less than one whole point consumes the charge but emits no zero-valued event,
-matching upstream's positive whole-point reporting. Rejected use and subsequent
-passive regeneration emit no consumption event. Mango adds no further wire fields.
+Only unmuted inventory slots 0 to 5 grant the passive or allow a use; the backpack
+(6 to 8) and the stash (9 to 14) are inert, and a stack moved from the backpack into
+the inventory is muted for `BACKPACK_MUTE_TICKS`. A consumed charge leaves the passive
+at the next stats derivation, and the last one empties the slot. Couriers carry
+charges intact and get no item bonuses; a hero's bag and a dead courier's load keep
+their charges on the seat.
 
-Only unmuted inventory slots 0 through 5 grant the per-charge passive or permit
-use. Backpack slots 6 through 8 and stash slots 9 through 14 remain inert. Moving
-out of the backpack into inventory imposes the existing 180-tick mute. Consumption
-reduces the passive at the next normal stats derivation; the last charge removes
-the slot. Couriers transport charges intact and receive no item stat bonuses.
-The hero's bag and a dead courier's load keep their charges through the existing
-seat-owned death/respawn path.
+`ItemDef::stack_limit` opts an item into merging; zero keeps every other item's
+bundled charges as they are. A purchase fills a compatible stack before it takes an
+empty slot: at the home shop (`SHOP_RANGE`) the bag before the stash, elsewhere only
+the stash. `World::purchase_fits` checks gold-independent capacity, stack room
+included, before anything changes. An explicit slot move merges up to three and
+leaves the excess in the source; a full or incompatible destination swaps. Courier and
+ground transfers move whole stacks, with no global merge pass. An invalid courier
+backpack destination is refused before the source is taken, so no charge is lost.
 
-`ItemDef::stack_limit` opts into merging; zero preserves every older item's bundled
-charge behavior. A purchase fills a compatible Mango stack before taking an empty
-slot in its destination. At the home shop (the existing 1000-unit fountain circle)
-the bag is preferred to the stash; elsewhere only the stash receives purchases.
-Affordability and capacity are checked before mutation, including stack space when
-no slot is empty. Explicit slot moves merge up to three, leaving excess charges in
-the source; a full or incompatible destination uses the existing swap behavior.
-Courier and ground-item transfers keep whole stacks rather than adding a global
-automatic merge pass. This preserves their existing slot-capacity behavior and
-avoids another per-tick scan. Invalid courier backpack destinations are checked
-before taking the source, closing the charge-loss case reproduced by the tests.
+Two stacks merge only with the same id, owner, attribute mode and sale mark. The
+result keeps the oldest purchase tick, the OR of the touched flags and the larger
+cooldown and mute, and an explicit move touches both stacks. Per-charge purchase
+history is not kept: the merged metadata can only cost a fresh charge its refund, never
+renew an old charge's refund window, lift its mute or change its owner. Only the buyer
+sells: an untouched stack at most `SELL_REFUND_TICKS` old returns 65 per remaining
+charge, anything else half the remaining value rounded down (32, 65 and 97 gold for
+one, two and three charges). Consumed charges are never refunded.
 
-Merge compatibility requires the same id, owner, attribute mode and sale mark.
-The resulting stack takes the oldest purchase tick, the OR of touched flags and
-the maximum cooldown and mute. An explicit move touches both remaining stacks.
-Per-charge purchase histories were rejected: conservative stack metadata can
-reduce a fresh charge's refund eligibility, but cannot renew an old charge's
-refund window, remove its mute, or launder ownership. Only the purchaser may sell.
-Sale returns 65 times the remaining charges for an untouched stack aged at most
-300 ticks. Otherwise the entire remaining value is halved with integer floor:
-one, two and three charges return 32, 65 and 97 gold. Consumed charges are never
-refunded. Remote sale marks and courier return sales retain the existing paths.
+### Shadowraze
 
-`World::purchase_fits` exposes the capacity check independently of gold;
-`World::can_replenish_mana` exposes the self-target, live-user and positive-deficit
-check. Slot, charge, cooldown, mute and disable validation remain separate.
-
-### Exact Shadowraze rules
-
-| Constant in `game::rules` | Exact value |
+| Constant in `game::rules` | Value |
 |---|---|
-| `RAZE_DAMAGE` | 90, 160, 230, 300 magical damage at levels 1 through 4, unchanged |
-| `RAZE_STACK_DAMAGE` | 50, 60, 70, 80 per prior valid same-caster stack |
-| `RAZE_DEBUFF_TICKS` | 240 ticks, exactly 8 seconds at 30 ticks/s |
-| `RAZE_MAX_STACKS` | 255 per victim and full caster generation |
-| `RAZE_MAX_SOURCES` | 16 independent caster records per victim |
-| `RAZE_DISTANCE` | 200, 450, 700 world units, unchanged |
-| `RAZE_RADIUS` | 250 world units, unchanged |
-| `RAZE_MANA` | 75, 80, 85, 90 mana by level, unchanged |
-| `RAZE_COOLDOWN` | 300 ticks independently for each reach, unchanged |
+| `RAZE_DAMAGE` | 90, 160, 230, 300 magical damage at levels 1 to 4 |
+| `RAZE_STACK_DAMAGE` | 50, 60, 70, 80 per earlier live stack of the same caster |
+| `RAZE_DEBUFF_TICKS` | 240 ticks, 8 seconds |
+| `RAZE_MAX_STACKS` | 255 per victim and caster generation |
+| `RAZE_MAX_SOURCES` | 16 caster records per victim |
+| `RAZE_DISTANCE` | 200, 450, 700 world units |
+| `RAZE_RADIUS` | 250 world units |
+| `RAZE_MANA` | 75, 80, 85, 90 mana by level |
+| `RAZE_COOLDOWN` | 300 ticks, for each reach on its own |
 
-A hit first reads the current valid count for its exact caster and adds that count
-times the bonus at the current cast level to the base damage. The total then passes
-through the existing magical resistance and integer truncation. For example,
-level-one hits at zero resistance deal 90, 140, 190, 240; at 25% resistance they
-deal 67, 105, 142, 180. At level four and the maximum count, raw damage is 20,700,
-inside the fixed-point pool range. The count is a saturating `u8`; a compile-time
-assertion ties its maximum to the declared cap. A hard cap of three was rejected:
-the three reach slots are casts, not the lifetime limit of a debuff.
+A hit reads the live count of its own caster's record on the victim and adds that
+count times the bonus at the current level to the base damage; the total then passes
+magical resistance and integer truncation. Level-one hits at zero resistance deal 90,
+140, 190, 240; at 25% they deal 67, 105, 142, 180. At level four and the full count
+the raw damage is 20,700, inside the fixed-point range. The count is a saturating
+`u8`, tied to the cap by a compile-time assertion; a cap of three would confuse the
+three reach slots with the debuff's own limit.
 
-Every positive-damage hit on a surviving victim adds one stack and refreshes that
-caster's entire count to 240 ticks, including hits at the count cap. No separate
-timer is stored per hit. A hit applied in tick H is valid through H+239;
-`tick_modifiers` removes it before casts resolve at H+240. A refreshing hit at H+239 gets
-the bonus and starts a new 240-tick interval. A hit at H+240 gets base damage and
-starts at one. Different casters, including allied casters hitting the same enemy
-or opposing casters hitting a neutral, neither borrow nor refresh each other's
-counts. At the 16-source storage limit, a new source evicts the record with the
-least time left, with current record order breaking ties. Refreshing an existing
-source evicts nothing. Expired records are discarded before capacity selection.
+Every hit that deals positive damage to a victim that survives it adds one stack and
+refreshes that caster's whole record to 240 ticks, at the cap too. A hit in tick H is
+live through H+239; `tick_modifiers` removes it before casts resolve at H+240, so a
+hit at H+239 gets the bonus and a hit at H+240 starts again at one. Different casters,
+allies or not, neither read nor refresh each other's records. With 16 records held, a
+new caster evicts the one with the least time left, the first in record order on a
+tie; refreshing an existing record evicts nothing, and expired records go first.
 
-The source key and count are a `ModifierKind::Shadowraze` on the victim's timed
-`Modifiers`, not a permanent `Stacks` entry kept on its seat. Target
-death and respawn therefore cannot carry the debuff into a new body. A source's
-record can finish its timer after that source dies, but its respawned or reused
-entity slot has a different generation and cannot use the old bonus. This avoids
-a lifecycle hook in `fight.rs`, another world table, and a cleanup pass scanning
-all victims on every death.
+The record is a `ModifierKind::Shadowraze` in the victim's timed `Modifiers`, not a
+`Stacks` entry on its seat, so death and respawn cannot carry it into a new body, and
+no hook in `fight.rs`, extra table or cleanup pass on death is needed. A record may
+outlive its caster, but a respawned or reused slot has a new generation and cannot
+read it.
 
-An appended server-only `HitEffect::Shadowraze` tags the queued damage with the
-zero-based cast level. Stack lookup and application happen in the existing hit
-resolution phase, in damage queue order. Two queued razes from one caster thus
-observe each other's successful hits. Applying a modifier when merely queuing a
-cast was rejected: an earlier queued lethal hit or invulnerability at resolution
-could leave a debuff for damage that never happened. Misses, allies, failed casts
-(including casts initiated by an already-dead caster), invulnerability, and damage
-reduced or rounded to zero add no stack
-and do not refresh one. Resolution also reads an active Shielded modifier directly:
-a shield cast in that phase must protect before the next stats derivation. The
-old stat-only check failed a regression test of this boundary. Fatal hits need
-no new modifier on the dying body. Ordinary
-magical hits are not razes and cannot receive or build this bonus. Existing
-facing, no-target casting, shared learning, and hostile/visible target selection
-are unchanged; no movement slow or additional disable is introduced.
+`HitEffect::Shadowraze` tags the queued damage with the zero-based cast level. The
+count is read and added to during hit resolution, in queue order, so two queued razes
+of one caster see each other's hits. Adding it when the cast is queued would leave a
+debuff for damage an earlier lethal hit or invulnerability then prevented. Misses,
+allies, failed casts (a dead caster's included), invulnerability and damage reduced or
+rounded to zero add no stack and refresh none. Resolution reads an active `Shielded`
+modifier itself, so a shield cast in that phase protects before the next stats
+derivation. A fatal hit puts nothing on the dying body. Other magical hits neither get
+nor build the bonus, and facing, casting, shared learning and targeting are the
+raze's as before.
 
-A valid cast already queued while its source was alive keeps its damage and
-stacking behavior if an earlier blow in the same resolution batch kills that
-source. Cancelling it or suppressing only its effect would make the accepted
-cast depend on unrelated queue position; it follows the existing queued-damage
-model instead. The resulting record still belongs to the dead generation, never
-to its respawn. A separate regression test pins this posthumous-hit boundary.
+A raze queued while its caster lived keeps its damage and stacking when an earlier
+blow in the same batch kills the caster: cancelling it would make an accepted cast
+depend on queue position. Its record belongs to the dead generation, never to the
+respawn.
 
-### Public effects, hashes and integration
+### On the wire and in the hash
 
-`game::EFFECT_SHADOWRAZE` is `15`. Upstream's Guarded tower aura keeps id 13 and
-Inspired flagbearer aura keeps id 14; the pre-rebase Shadowraze id 13 is retired
-to avoid aliasing unrelated effects. Each active
-source appears on a visible victim as the existing three-field `EffectView`:
-`id = EffectId(15)`, `ticks_left = Some(1..=240)`, `stacks = Some(1..=255)`.
-Multiple sources yield multiple anonymous rows, each preserving its own count
-and timer pair. No source field or new status bit is added to the protocol. The
-caster's internal handle is never projected in these rows, including when the
-caster is fogged, and which caster an anonymous row belongs to is not promised.
-Hidden victims remain absent under ordinary fog rules. The client shows `Razed`
-and Mango text without a new icon dependency.
+`EFFECT_SHADOWRAZE` is `15` (13 and 14 are the tower's and the flagbearer's auras).
+Each live record shows on a visible victim as an `EffectView` with `id =
+EffectId(15)`, `ticks_left = Some(1..=240)` and `stacks = Some(1..=255)`; several
+casters give several anonymous rows. The caster is never projected, fogged or not, and
+which caster a row belongs to is not promised. The client names the effect `Razed`.
 
-The world hash includes raze source index and generation, count and timer, and
-queued hit effect/level before resolution. The item hash now also covers merge
-ownership, mode, sale marks, the dead courier's kept bag and complete ground item
-stacks; carried charges and other stack timers were already hashed. Tests reproduced
-the missing hash distinctions before the additions.
-
-Tests were written against numeric ids and the old behavior first. Verification
-covers exact damage, queue order, all four levels, tick boundaries,
-source separation, source bounds, generations, death/respawn, fog and codec
-projection, plus Mango purchase, legal use, passive, storage, transfer, sale and
-metadata conservation. It does not claim latest-patch parity.
-Rebase integration tests additionally pin simultaneous aura/raze projection and
-stat bonuses, the mana-healing wire event, Mango's embedded drawing, and the
-fifteen-minute cap including continuation through the old ten-minute boundary.
+The world hash covers each record's source index and generation, count and timer,
+and a queued hit's effect and level. The item hash covers merge ownership, mode, sale
+marks, the dead courier's kept bag and whole ground stacks.
 
 ## Applied unit modifiers and the general stats behind them
 
-A modifier is a bounded stat change that a cheat or trusted match setup can
-put on; only its countdown or the fall of the body can take it away. Every
-modifier has unit
-scope: it is carried in `World::applied`, a table of `AppliedModifier` values
-apart from `Modifiers`, so no ability, item, dispel or ordinary expiry reaches
-it. It does not show in `MatchInfo` or `UnitView.effects`, and the hash
-includes one only when it is present, so an unmodified world hashes as it
-always did. A unit's copy is removed on `despawn`, so a respawned body starts
-clean and re-application is the cheat caller's business. The countdown runs at
-the end of the tick that applies it, so `ticks` counts the applying tick as
-the first.
+A modifier is a bounded stat change that a cheat or trusted match setup puts on a unit;
+only its countdown or the fall of the body takes it away. It lives in `World::applied`,
+a table of `AppliedModifier` apart from `Modifiers`, so no ability, item, dispel or
+ordinary expiry reaches it. It shows neither in `MatchInfo` nor in `UnitView.effects`.
+`despawn` removes a unit's copy, so a respawned body starts clean. The countdown runs at
+the end of the tick, so `ticks` counts the applying tick as the first. The hash covers
+applied modifiers only while there are any, so an unmodified world hashes as one
+without the feature.
 
 **The payload is a bounded spec, not one cheat per stat.** `Cheat::ApplyModifier`
-carries a `ModifierSpec` of signed basis-point fields (10,000 nominal for
-scales, hundredths of a percentage point for resistances) plus a tick count
-bounded by `MAX_MODIFIER_TICKS`; `Cheat::ClearModifiers` takes the change away.
-The server gate rejects out-of-bounds specs and tick counts with
-`RejectReason::BadCheat` before the world ever sees them, and `World::cheat`
-turns away anything unbounded that arrived another way. The variants are
-appended, so existing cheat tags keep their numbers; the order budget test now
-allows 80 bytes for cheat orders and keeps 32 for everything else, because a
-whole spec no longer fits the old room; the widest possible order (every
-number at its wire maximum) measures 70 bytes and is pinned, and the canonical
-bytes of one spec order are pinned in `bota-proto`.
+carries a `ModifierSpec` of signed basis-point fields (10,000 nominal for scales,
+hundredths of a percentage point for resistances) and a tick count bounded by
+`MAX_MODIFIER_TICKS`; `Cheat::ClearModifiers` takes it away. The server gate refuses an
+out-of-bounds spec or tick count with `RejectReason::BadCheat`, and `World::cheat`
+refuses anything unbounded that arrived another way. The order size budget is 80 bytes
+for a cheat order and 32 for any other; the widest cheat order measures 70 bytes, and
+the canonical bytes of one spec order are pinned in `bota-proto`.
 
-**Modifiers are folded first and additively.** `derive_stats` applies a unit's
-spec immediately after the raised base block and before carried items,
-attributes, auras, slows and every other stage, so the modifier is part of the
-base the rest of the pipeline works on. Every family is summed as a delta:
-resistances add in their own units, scales add as deltas of the nominal 10,000
-so that sources never compound, and the fold happens once. The magnitudes
-(`move_speed`, `max_hp`, `max_mana`) are scaled from the raised base at that
-point; flat item bonuses, strength and intelligence, and the `Slowed` or
-`Hastened` multipliers all land on top and are not scaled again. An applied maximum
-is just another source of the maximum: when it moves for a living body, the
-pool keeps its filled fraction (`hp' = hp * new / old`, clamped to the new
-maximum), so a full pool stays full, a body at three fifths stays at three
-fifths, and a pool that held anything stays non-empty. A respawned body has
-no earlier pool to scale and stands at its full effective maximum, and a unit
-seeded at match start is settled once its rules have landed, so a standing
-tower or hero is full at the scaled maximum immediately. The mechanics are real
-derived stats, neutral by default: `Stats` gains `status_resist_bp`,
-`physical_amp_bp`, `magic_amp_bp`, `pure_amp_bp`, `cooldown_rate_bp` and
-`mana_cost_rate_bp`, while magic resistance was already a stat and the spec
-adds to it. The fold compiles out when the whole table is empty, so the default
-game pays nothing; hitting compiles its share out the same way, because the
-amplification multiply runs only in a world where some applied change exists.
-Future items, auras or abilities can add to the same fields without touching
-any consumer. Every unit kind walks the same derive, so one `max_hp` scale
-covers heroes, lane and neutral creeps, and buildings alike.
+**Modifiers are folded first and additively.** `derive_stats` folds a unit's specs
+right after the raised base block and before items, attributes, auras, slows and every
+other stage, so the modifier is part of the base the rest works on. Every family is
+summed as a delta and written once: resistances in their own units, scales as deltas of
+the nominal 10,000, so sources never compound. `move_speed`, `max_hp` and `max_mana`
+are scaled from the raised base; flat item bonuses, strength, intelligence and the
+`Slowed` and `Hastened` multipliers land on top unscaled. When an applied maximum moves
+for a living body, the pool keeps its filled fraction (`hp' = hp * new / old`, clamped),
+so a full pool stays full and a pool that held anything stays non-empty. A respawned
+body, and a unit seeded at match start once its rules have landed, stands at its full
+effective maximum. `Stats` carries `status_resist_bp`, `physical_amp_bp`,
+`magic_amp_bp`, `pure_amp_bp`, `cooldown_rate_bp` and `mana_cost_rate_bp`, all neutral
+by default; magic resistance was a stat already. Every unit kind walks the same derive.
+The fold compiles out while the table is empty (`derive_stats_impl::<false>`), and so
+does the amplification multiply in hitting (`hitting_system::<false>`) while no blow is
+amplified, so the default game pays nothing.
 
-**The bounds are part of composition.** A match carries at most 64 setup
-rules, one selector walks at most 16 exact kinds/categories, and one unit
-carries at most those 64 setup entries plus one cheat entry. Every sum uses
-saturating arithmetic. Magic resistance finishes in `0..=100` percent and
-status resistance in `0..=9_999` bp. The three magnitude scales (`move_speed`,
-`max_hp`, `max_mana`) saturate after addition at one source's
-`2_500..=40_000` bound, keeping world magnitudes within 0.25x..4x. Damage
-amplification, cooldown/mana rates and bounty gold deliberately retain every
-bounded additive source, up to `MAX_COMBINED_MODIFIER_SCALE = 1_960_000`
-(196x, with lower floors of zero or one). The asymmetry is intentional:
-magnitudes cap world size, while the other families preserve all bounded
-source contributions; every loop and accumulator still has a fixed ceiling.
+**The bounds are part of composition.** A match carries at most `MAX_SPAWN_MODIFIERS`
+(64) setup rules, a selector names at most `MAX_SPAWN_TARGETS` (16) kinds and
+categories, and a unit carries at most those 64 entries plus one cheat entry. Every
+sum saturates. Magic resistance ends in `0..=100` percent and status resistance in
+`0..=9_999` bp. The three magnitude scales saturate after addition at one source's
+`2_500..=40_000`, keeping world magnitudes within 0.25x to 4x: they bound the size of
+the world. Damage amplification, the cooldown and mana cost rates and bounty gold keep
+every bounded source, up to `MAX_COMBINED_MODIFIER_SCALE` = 1,960,000 (196x), with
+floors of zero or one; every loop and accumulator still has a fixed ceiling.
 
-**Each stat has one reading.** Magic resistance is added as a delta and clamped
-to `0..=100` percent before Flesh Heap multiplies it, so mitigation, projection
-and the bots agree. Damage amplification scales a blow before armor and
-resistance, after Shadowraze stack composition, per the dealing unit's kind
-field; a blow with no source is left alone, and pure damage stays unmitigated
-but still scales. The outgoing scale is captured when a blow or in-flight
-carrier is created (attacks, projectiles, hooks and requiem lines), just as
-crit is: source death, modifier expiry, despawn and slot reuse cannot alter a
-hit already in flight, and immediate damage captures and consumes it once.
-Status resistance scales the ticks of `Stunned`, `Feared` and
-`Slowed` wherever they are put on — an ability, an item and an aura all pass
-through the same point — down to one tick, and never touches buffs; the time
-already held is not shortened a second time when a disable is extended. A hold
-that is put on afresh every tick for as long as its channel runs (Dismember,
-the hook's drag) has its recorded ticks shortened like any other, but its
-length is governed by the channel and not by the countdown.
-Cooldown rate scales every cooldown at the moment it is set: a cast, an item
-use, a shared item wait and the break-on-damage mute, with a floor of one tick
-for a cooldown that was set at all. It never scales the decrement, so a cooldown
-keeps its stored value and every view of it stays exact. Mana cost rate scales
-every read of a cost: the order gate, the cast and use that charge it,
-`AbilityView.mana_cost` and `ItemView.mana_cost`, so an action the view calls
-affordable is accepted and charged the same amount. Gold income scales the
-bounty a killing unit is paid: `pay_for` scales the composed bounty once as it
-is credited to the killer, so bringing down a creep, hero or building earns
-more. Passive gold, starting gold, sale refunds and death losses are not
-bounties and are left alone. A stat change applied mid-tick is seen by
-everything derived or read after it; a disable put on before the first derive
-in that tick (a hook stun beside the application) is the one boundary that
-still reads the previous tick's resistance.
+**Each stat has one reading.** Magic resistance is added as a delta and clamped to
+`0..=100` before Flesh Heap multiplies it, so mitigation, projection and the bots
+agree. Damage amplification scales a blow before armor and resistance, after the
+Shadowraze stack bonus, by the dealer's field for the damage kind; a blow with no
+source is left alone, and pure damage stays unmitigated but still scales. The outgoing
+scale is captured when a blow or its carrier is created (attacks, projectiles, hooks,
+requiem lines), as a crit is, so nothing that happens to the source afterwards changes
+a hit in flight. Status resistance scales the ticks of `Stunned`, `Feared` and `Slowed`
+wherever they are put on, down to one tick, and never touches buffs; time already held
+is not shortened again when a disable is extended. A hold renewed every tick of a
+channel (Dismember, the hook's drag) has its ticks shortened too, but its length is the
+channel's. Cooldown rate scales a cooldown when it is set (a cast, an item use, a
+shared item wait, the break-on-damage mute), to at least one tick, and never the
+decrement, so a stored cooldown and every view of it stay exact. Mana cost rate scales
+every read of a cost: the order gate, the charge, `AbilityView.mana_cost` and
+`ItemView.mana_cost`, so what the view calls affordable is accepted and charged the
+same. Gold income scales the bounty once, as `pay_for` credits it to the killer; passive
+gold, starting gold, sale refunds and death losses are not bounties. A change applied
+mid-tick is seen by everything derived or read after it; a disable put on before the
+tick's first derive (a hook stun beside the application) still reads the previous
+tick's resistance.
 
-No item in the current catalog pays mana, so the nonzero
-`ItemView.mana_cost` case cannot be produced without inventing catalog data.
-The projection delegates directly to the pure, nonzero-tested `cost_after`
-helper; the kept-kit branch is tested and is nominal after the body (and its
-unit-scoped modifier) falls. A synthetic production item or test-only catalog
-seam would add more surface than it verifies and is not carried.
-
-**Trusted setup can put modifiers on spawns.** A match description carries a
-bounded list of spawn modifiers (`SpawnModifier`), each a selector (a side, an
-exact kind or category), an existing `ModifierSpec` and a duration:
-`MatchLong` until the body falls, or a tick count. `World::for_match`
-copies the list into the world, puts it on every unit already standing
-(buildings included) and, through `spawn_body`, on every unit stood up later;
-each wave, each camp, each building and each respawned body gets the rules
-afresh, with the tick count of a `Ticks` rule restarting on the new body. The
-cheat order path is untouched and independent: a unit may carry both, and
-clearing a cheat leaves what trusted setup put there alone.
-`MatchConfig::validate` refuses a spec outside the bounds the cheat gate uses,
-a duration outside `1..=MAX_MODIFIER_TICKS`, and a list past
-`MAX_SPAWN_MODIFIERS`, naming the rule that failed; `World::for_match` calls
-it and stops loudly rather than dropping a rule, and a rule that somehow
-reaches a spawn unchecked does the same. The hash covers every spec field and
-the rule list itself while any of it is present, so an unmodified world hashes
-as it always did; a setup that does not carry the list at all behaves exactly
-as before, and the empty-list guards keep the default game paying nothing.
-The server binary does not expose the list: the TCP lobby always starts with
-an empty one, and the entry point is the library value a setup builds in
-process.
+**Trusted setup can put modifiers on spawns.** `MatchConfig` carries a bounded list of
+`SpawnModifier`, each a selector (a side, exact kinds or categories), a `ModifierSpec`
+and a duration: `MatchLong` until the body falls, or a tick count. `World::for_match`
+copies the list into the world and puts it on every unit already standing, buildings
+included, and `spawn_body` on every unit stood up later: each wave, camp, building and
+respawned body gets the rules afresh, a `Ticks` rule restarting on the new body. The
+cheat path is independent: a unit may carry both, and clearing a cheat leaves the
+setup's entries alone. `MatchConfig::validate` refuses a spec outside the cheat gate's
+bounds, a duration outside `1..=MAX_MODIFIER_TICKS` and a list past
+`MAX_SPAWN_MODIFIERS`, naming the rule that failed; `World::for_match` calls it and
+panics rather than dropping a rule, as does a spawn reached by an unchecked rule. The
+hash covers every rule while the list is non-empty. The server binary does not expose
+the list: the TCP lobby always starts with none, and a setup builds it in process.
