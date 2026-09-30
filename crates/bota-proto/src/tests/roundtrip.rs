@@ -111,7 +111,6 @@ fn empty_collections_survive() {
 #[test]
 fn every_reject_reason_survives() {
     let reasons = [
-        RejectReason::NotYourSlot,
         RejectReason::HeroDead,
         RejectReason::UnknownTarget,
         RejectReason::WrongTargetKind,
@@ -120,11 +119,9 @@ fn every_reject_reason_survives() {
         RejectReason::NotEnoughGold,
         RejectReason::EmptySlot,
         RejectReason::UnknownItem,
-        RejectReason::CannotLevelUp,
         RejectReason::NotAtShop,
         RejectReason::InventoryFull,
         RejectReason::Disabled,
-        RejectReason::NotPlaying,
         RejectReason::NotYourItem,
         RejectReason::ClosedGround,
         RejectReason::NotInBag,

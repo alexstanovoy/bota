@@ -89,9 +89,6 @@ pub const LOCAL_BODIES_PAD: i32 = 600;
 /// How far about a walker the bodies standing still are taken for obstacles
 /// when its route is laid round them, in world units.
 pub const STANDING_REACH: i32 = 800;
-/// Ticks a body has stood wanting to move before its route is laid again
-/// with the bodies standing about it as obstacles.
-pub const STALL_REPLAN_TICKS: u32 = 12;
 /// Ticks that pass at least between two routes of one body laid round the
 /// bodies standing about it.
 pub const STALL_RELAY_GAP: u32 = 48;
@@ -285,8 +282,6 @@ pub const NEUTRAL_COLLISION: i32 = 27;
 pub const NEUTRAL_BOUND: i32 = 24;
 /// Neutral creep fog light radius.
 pub const NEUTRAL_VISION: i32 = 800;
-/// How far a neutral creep looks for something to attack once awake.
-pub const NEUTRAL_ACQUISITION: i32 = 500;
 
 // Creep waves.
 
@@ -667,8 +662,6 @@ pub const EARLY_AGGRO_TOWER_RANGE: i32 = 1500;
 /// Ticks a lane creep keeps a target that left its attack range while
 /// nothing else is in its acquisition range, 2.3 seconds.
 pub const CREEP_CHASE_TICKS: u32 = 69;
-/// How close a hero follows an ally it was ordered to attack but may not.
-pub const FOLLOW_DISTANCE: i32 = 150;
 /// Room a route keeps past the walker's own collision size, in world units.
 pub const STEER_MARGIN: i32 = 8;
 /// The collision size a lane route keeps clear of every obstacle: the widest
@@ -712,9 +705,6 @@ pub const ABILITY_MAX_LEVEL: u8 = 4;
 pub const ULT_MAX_LEVEL: u8 = 3;
 /// Hero level required for each ultimate level.
 pub const ULT_LEVEL_FLOORS: [u8; 3] = [6, 12, 18];
-
-/// Chance for a ranged attack to miss a target on higher ground.
-pub const UPHILL_MISS: Ratio = Ratio::new(1, 4);
 
 /// Fog blocker nodes further apart than this belong to different walls of
 /// the same named group, not to one span.
@@ -764,73 +754,6 @@ pub const SYLLA_MULTI_RADIUS: i32 = 700;
 
 // Items and the shop.
 
-/// The flat bonuses and price of one item of [`ITEMS`].
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct ItemDef {
-    /// Price in gold.
-    pub cost: i32,
-    /// Movement speed added.
-    pub move_speed: i32,
-    /// Attack damage added.
-    pub damage: i32,
-    /// Armor added.
-    pub armor: i32,
-    /// Maximum health added.
-    pub hp: i32,
-    /// Maximum mana added.
-    pub mana: i32,
-    /// Uses a consumable carries. Zero for carried bonuses.
-    pub charges: u8,
-}
-
-const fn passive(
-    cost: i32,
-    move_speed: i32,
-    damage: i32,
-    armor: i32,
-    hp: i32,
-    mana: i32,
-) -> ItemDef {
-    ItemDef {
-        cost,
-        move_speed,
-        damage,
-        armor,
-        hp,
-        mana,
-        charges: 0,
-    }
-}
-
-/// Boots of Speed, Blades of Attack, Broadsword, Claymore, Platemail,
-/// Vitality Booster, Energy Booster, Healing Salve and Clarity.
-pub const ITEMS: [ItemDef; 9] = [
-    passive(500, 45, 0, 0, 0, 0),
-    passive(450, 0, 9, 0, 0, 0),
-    passive(1000, 0, 16, 0, 0, 0),
-    passive(1400, 0, 20, 0, 0, 0),
-    passive(1400, 0, 0, 10, 0, 0),
-    passive(1100, 0, 0, 0, 250, 0),
-    passive(800, 0, 0, 0, 0, 250),
-    ItemDef {
-        cost: 110,
-        move_speed: 0,
-        damage: 0,
-        armor: 0,
-        hp: 0,
-        mana: 0,
-        charges: 1,
-    },
-    ItemDef {
-        cost: 95,
-        move_speed: 0,
-        damage: 0,
-        armor: 0,
-        hp: 0,
-        mana: 0,
-        charges: 1,
-    },
-];
 /// Ticks a felled tree takes to come back, five minutes.
 pub const TREE_REGROW_TICKS: u32 = 5 * 60 * TICKS_PER_SECOND;
 /// Ticks a planted tree stands before it goes on its own, forty seconds.
