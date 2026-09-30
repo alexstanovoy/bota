@@ -10,8 +10,9 @@ use crate::{
 };
 
 /// Shadow Fiend's points: the razes first, the souls beside them, the
-/// requiem whenever it opens.
-pub const FIEND_PLAN: [AbilityId; 10] = [
+/// requiem when it opens at hero level 6; its later levels come through the
+/// fallback once the hero level allows.
+pub const FIEND_PLAN: [AbilityId; 9] = [
     RAZE_NEAR,
     NECROMASTERY,
     RAZE_NEAR,
@@ -19,15 +20,14 @@ pub const FIEND_PLAN: [AbilityId; 10] = [
     RAZE_NEAR,
     REQUIEM,
     RAZE_NEAR,
-    REQUIEM,
     NECROMASTERY,
-    REQUIEM,
+    NECROMASTERY,
 ];
 
-/// Sylla's points: the bolt first, the crit beside it, the volley whenever it
-/// opens.
+/// Sylla's points: the bolt first, the crit beside it, the volley when it
+/// opens at hero level 6; its later levels come through the fallback.
 pub const SYLLA_PLAN: [AbilityId; 10] = [
-    BOUNCE, CRIT, BOUNCE, CRIT, BOUNCE, VOLLEY, BOUNCE, VOLLEY, FRENZY, VOLLEY,
+    BOUNCE, CRIT, BOUNCE, CRIT, BOUNCE, VOLLEY, BOUNCE, CRIT, FRENZY, FRENZY,
 ];
 
 /// The plan a hero follows. Empty for one the bot has no plan for.
