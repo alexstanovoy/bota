@@ -6,11 +6,11 @@ use bota_proto::{AbilityId, Angle, DamageKind, Fixed};
 use crate::engine::Entity;
 use crate::game::{
     Hit, HitEffect, Modifier, ModifierKind, RequiemLine, StackKind, Transform, World, ability,
-    heading_of, leaves_a_death, move_towards, per_tick, point_along, rules,
+    heading_of, is_structure, leaves_a_death, move_towards, per_tick, point_along, rules,
 };
 
 impl World {
-    /// Burns everything hostile standing where a raze lands.
+    /// Burns everything hostile but a structure standing where a raze lands.
     ///
     /// A raze takes no aim: it lands at its own reach from the caster, along
     /// the line the caster faces. `reach` indexes [`rules::RAZE_DISTANCE`].
@@ -34,7 +34,7 @@ impl World {
             .entities
             .iter()
             .filter(|other| {
-                self.hostile(caster, *other)
+                self.burns(caster, *other)
                     && self
                         .transform
                         .get(*other)
@@ -116,10 +116,10 @@ impl World {
 
     /// Flies every line of a requiem one tick on.
     ///
-    /// A line burns everything hostile within its width of where it now
-    /// flies, once each, and adds [`rules::REQUIEM_LINE_TICKS`] of fear and
-    /// slow to it, up to [`rules::REQUIEM_HOLD_MAX_TICKS`]. It widens as it
-    /// goes, and is gone once it has flown its distance.
+    /// A line burns everything hostile but a structure within its width of
+    /// where it now flies, once each, and adds [`rules::REQUIEM_LINE_TICKS`]
+    /// of fear and slow to it, up to [`rules::REQUIEM_HOLD_MAX_TICKS`]. It
+    /// widens as it goes, and is gone once it has flown its distance.
     pub fn tick_requiem_lines(&mut self) {
         let entities = self.take_entity_snapshot();
         for entity in entities.iter().copied() {
@@ -143,7 +143,7 @@ impl World {
                 .filter(|other| {
                     *other != entity
                         && !line.struck.contains(other)
-                        && self.hostile(entity, *other)
+                        && self.burns(entity, *other)
                         && self.transform.get(*other).is_some_and(|t| {
                             let hull = self.hull.get(*other).map_or(Fixed::ZERO, |h| h.bound);
                             t.pos.within(next, width + hull)
@@ -181,6 +181,12 @@ impl World {
             }
         }
         self.recycle_entity_snapshot(entities);
+    }
+
+    /// Whether a raze or a requiem line of one side lands on another entity:
+    /// anything hostile to it but a structure.
+    fn burns(&self, from: Entity, other: Entity) -> bool {
+        self.hostile(from, other) && !self.kind.get(other).copied().is_some_and(is_structure)
     }
 
     /// Takes a line of a requiem out of the world.

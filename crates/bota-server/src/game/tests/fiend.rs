@@ -32,6 +32,40 @@ fn a_raze_burns_what_stands_where_it_lands_and_nothing_else() {
 }
 
 #[test]
+fn a_raze_burns_the_creep_at_a_tower_and_leaves_the_tower_whole() {
+    let (mut world, fiend, creep) = fiend_and_a_mark(rules::RAZE_DISTANCE[1]);
+    let tower = world.spawn_unit(
+        crate::game::tower_def(1),
+        bota_proto::Team::Dire,
+        bota_proto::Vec2::from_ints(5000 + rules::RAZE_DISTANCE[1], 5000 + 200),
+    );
+    world.settle();
+    let (was_creep, was_tower) = (
+        world.health.get(creep).expect("standing").hp,
+        world.health.get(tower).expect("standing").hp,
+    );
+    let_go(&mut world, 1);
+    world.step();
+    assert!(
+        world.health.get(creep).expect("standing").hp < was_creep,
+        "the creep at the tower feels the raze"
+    );
+    assert_eq!(
+        world.health.get(tower).expect("standing").hp,
+        was_tower,
+        "and the tower does not"
+    );
+    assert_eq!(
+        world
+            .modifiers
+            .get(tower)
+            .map_or(0, |on_it| on_it.raze_stacks(fiend)),
+        0,
+        "nor does it keep a stack"
+    );
+}
+
+#[test]
 fn a_raze_lands_at_its_own_reach_however_near_the_enemy_stands() {
     let (mut world, _fiend, under) = fiend_and_a_mark(50);
     let out = a_creep_at(
@@ -292,6 +326,43 @@ fn a_requiem_lets_a_line_fly_for_every_soul_and_a_line_burns_what_it_crosses_onc
         "and it was felt"
     );
     assert_eq!(flying(&world), 0, "and the lines have flown out");
+}
+
+#[test]
+fn a_requiem_burns_the_creep_at_a_tower_and_leaves_the_tower_whole() {
+    let (mut world, fiend, creep) = fiend_and_a_mark(400);
+    let tower = world.spawn_unit(
+        crate::game::tower_def(1),
+        bota_proto::Team::Dire,
+        bota_proto::Vec2::from_ints(5700, 5000),
+    );
+    world.settle();
+    hand_souls(&mut world, fiend, 5);
+    world.step();
+    let (was_creep, was_tower) = (
+        world.health.get(creep).expect("standing").hp,
+        world.health.get(tower).expect("standing").hp,
+    );
+    let_go(&mut world, 5);
+    for _ in 0..60 {
+        world.step();
+    }
+    assert!(
+        world.health.get(creep).expect("standing").hp < was_creep,
+        "the line along his facing burns the creep"
+    );
+    assert_eq!(
+        world.health.get(tower).expect("standing").hp,
+        was_tower,
+        "and passes the tower by"
+    );
+    assert!(
+        world
+            .modifiers
+            .get(tower)
+            .is_none_or(|on_it| on_it.active().all(|held| held.source != Some(fiend))),
+        "leaving neither fear nor slow on it"
+    );
 }
 
 #[test]
