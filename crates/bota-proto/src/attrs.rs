@@ -22,11 +22,8 @@ pub enum Attribute {
     Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash,
 )]
 pub struct Attributes {
-    /// Strength.
     pub strength: Fixed,
-    /// Agility.
     pub agility: Fixed,
-    /// Intelligence.
     pub intelligence: Fixed,
 }
 

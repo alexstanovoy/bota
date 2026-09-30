@@ -1,13 +1,11 @@
 //! Identifiers and small enumerations used across every message.
 
 use serde::{Deserialize, Serialize};
-/// A handle to a live entity in the world: a unit, a building or a ward.
+/// A handle to an entity in the world: a unit, a projectile or an item on the
+/// ground.
 ///
-/// Used by orders to name a target, by views to key each unit, and by events to
-/// attribute damage. Handles are generational, so a handle to a dead entity
-/// never becomes valid again.
-///
-/// Opaque to a client, and meaningful only within the match that issued it.
+/// Generational: a handle to a dead entity never becomes valid again.
+/// Meaningful only within the match that issued it.
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct EntityId {
     /// Slot index into the entity arena.
@@ -16,17 +14,16 @@ pub struct EntityId {
     pub generation: u32,
 }
 
-/// A seat in the match, from zero up to the number of participants.
+/// A seat in the match, `0..` the number of seats.
 ///
-/// Assigned when the lobby fills and stable for the rest of the match, so it is
-/// usable as an array index and as a sort key for orders.
+/// Fixed for the whole match, so it is usable as an array index.
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct SlotId(pub u8);
 
-/// A connected participant, as seen by the network layer.
+/// A connection, as seen by the network layer.
 ///
-/// Distinct from [`SlotId`]: a spectator has a `PlayerId` and no slot, and a
-/// reconnecting player gets a fresh `PlayerId` for the same slot.
+/// Every connection gets a fresh one. A spectator has a `PlayerId` and no
+/// [`SlotId`].
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct PlayerId(pub u32);
 
@@ -37,13 +34,11 @@ pub enum Team {
     Radiant,
     /// The side spawning in the upper right corner.
     Dire,
-    /// The jungle's own: hostile to both sides, seats never sit here.
+    /// The jungle's own: hostile to both sides. No seat plays for it.
     Neutral,
 }
 
 /// Selects one of the playable heroes.
-///
-/// Used in lobby picks and to name the hero behind a hero unit.
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct HeroId(pub u16);
 
@@ -66,7 +61,7 @@ pub enum Aim {
     Unit,
     /// At the tree standing on the spot it is pointed at.
     Tree,
-    /// At a spot within reach of an allied building.
+    /// At a spot within reach of an allied tower, Ancient or fountain.
     Building,
 }
 
@@ -74,9 +69,8 @@ pub enum Aim {
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct EffectId(pub u16);
 
-/// Which of a hero's four ability slots is meant.
-///
-/// Slots 0 to 2 are the basic abilities and slot 3 is the ultimate.
+/// An index into a unit's ability slots, as listed in
+/// [`UnitView::abilities`](crate::UnitView::abilities).
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct AbilitySlot(pub u8);
 
@@ -98,12 +92,12 @@ pub enum UnitKind {
     Hero,
     /// A melee lane creep.
     CreepMelee,
-    /// A melee lane creep carrying the flag: tougher against magic, and its
-    /// death pays every enemy hero nearby.
+    /// A melee lane creep carrying the flag: resistant to magic, and mends
+    /// the health of its own side nearby.
     CreepFlagbearer,
     /// A ranged lane creep.
     CreepRanged,
-    /// A siege creep, spawned with every fifth wave.
+    /// A siege creep.
     CreepSiege,
     /// A neutral camp creep.
     CreepNeutral,
@@ -111,9 +105,10 @@ pub enum UnitKind {
     Tower,
     /// The structure that ends the match when destroyed.
     Ancient,
-    /// A barracks; while it stands, the enemy lane creeps stay plain.
+    /// A barracks; while it stands, the enemy creeps of its kind in its lane
+    /// stay plain.
     Barracks,
-    /// The fountain, which heals its own team and burns intruders.
+    /// The fountain, which mends its own side and attacks enemies in reach.
     Fountain,
     /// An observer ward placed by a hero.
     Ward,

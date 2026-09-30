@@ -55,8 +55,7 @@ fn multiplication_keeps_the_scale() {
 
 #[test]
 fn multiplication_of_map_scale_values_does_not_overflow_the_intermediate() {
-    // Both raw values are around 2^29; their product needs 58 bits, so the
-    // i64 intermediate is what keeps this exact.
+    // The raw product needs 44 bits; the i64 intermediate keeps it exact.
     let far = Fixed::from_int(8000);
     assert_eq!(far * HALF, Fixed::from_int(4000));
 }
@@ -72,8 +71,7 @@ fn division_inverts_multiplication() {
 
 #[test]
 fn rounding_goes_towards_negative_infinity() {
-    // Documented behaviour of both multiplication and to_int, because an
-    // arithmetic shift floors rather than truncating towards zero.
+    // An arithmetic shift floors rather than truncating towards zero.
     assert_eq!(Fixed { raw: -1 }.to_int(), -1);
     assert_eq!(Fixed { raw: 1 }.to_int(), 0);
     assert_eq!(Fixed::from_ratio(-1, 2).to_int(), -1);
@@ -195,8 +193,8 @@ fn length_squared_is_the_pythagorean_sum() {
 
 #[test]
 fn distance_squared_spans_the_whole_map_without_overflow() {
-    // The far corners of an 8192 by 8192 map. Squaring that distance is what
-    // would overflow a Fixed, which is why these stay raw.
+    // Opposite corners of an 8192-unit square: the squared distance
+    // overflows a Fixed.
     let a = Vec2::ZERO;
     let b = Vec2::from_ints(8192, 8192);
 

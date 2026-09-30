@@ -1,11 +1,6 @@
-//! What a participant asks its hero to do.
+//! What a participant asks the units of its seat to do.
 //!
-//! An order is an intent. The server validates it, may reject it, and decides
-//! what actually happens; the result shows up in the next snapshot and in
-//! [`EventKind`](crate::EventKind).
-//!
-//! At most one order per seat survives per tick, and the last one submitted
-//! wins. There is no shift-queue in v0.1.
+//! There is no order queue.
 
 use crate::{AbilitySlot, EntityId, ItemId, ItemSlot, Vec2};
 use serde::{Deserialize, Serialize};
@@ -33,16 +28,14 @@ pub const fn modifier_ticks_bounded(ticks: u32) -> bool {
     ticks >= 1 && ticks <= MAX_MODIFIER_TICKS
 }
 
-/// What a scale is worth at nominal, in basis points.
+/// A scale at nominal, in basis points.
 const NOMINAL_RATE: i32 = 10_000;
 
 /// Bounded stat changes a cheat may put on one unit.
 ///
-/// Rates, amplifications and magnitudes are scales in basis points of the
-/// nominal 10_000, so 100 is one percent and a value below nominal reduces.
-/// Scales add as deltas of the nominal, so two sources never compound.
-/// Resistances are additive hundredths of a percentage point. Every field at
-/// its neutral value changes nothing.
+/// Scales are in basis points of the nominal 10_000. Several sources add as
+/// deltas of the nominal and never compound. Resistances are additive
+/// hundredths of a percentage point.
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct ModifierSpec {
     /// Magic resistance added, in hundredths of a percentage point.
@@ -160,7 +153,7 @@ pub enum Cheat {
     /// A stat change put on one unit for a time, replacing whatever this
     /// cheat put there before.
     ApplyModifier {
-        /// Which unit it lands on. Nothing means the hero the order is for.
+        /// Which unit it lands on. Nothing means the unit the order is for.
         target: Target,
         /// What it changes. Outside its bounds it is rejected with
         /// [`RejectReason::BadCheat`](crate::RejectReason::BadCheat).
@@ -170,13 +163,13 @@ pub enum Cheat {
     },
     /// Takes the stat change this cheat put on one unit away.
     ClearModifiers {
-        /// Which unit it is taken off. Nothing means the hero the order is
+        /// Which unit it is taken off. Nothing means the unit the order is
         /// for.
         target: Target,
     },
 }
 
-/// A single instruction from a participant to its own hero.
+/// A single instruction to one unit a seat drives.
 ///
 /// A target the issuing team cannot currently see is rejected with
 /// [`RejectReason::UnknownTarget`](crate::RejectReason::UnknownTarget).
@@ -184,9 +177,9 @@ pub enum Cheat {
 pub enum Order {
     /// Go somewhere, ignoring enemies on the way.
     ///
-    /// Aimed at nothing it cancels the current order and stands still. Aimed
-    /// at a position it walks there. Aimed at a unit it follows that unit; a
-    /// plain follow calls no enemy creeps or towers on or off.
+    /// Aimed at nothing it cancels the current order and stands still,
+    /// attacking nothing. Aimed at a position it walks there. Aimed at a unit
+    /// it follows that unit.
     Move {
         /// Where to go: nothing to stand still, a position to walk to, a
         /// unit to follow.
@@ -198,22 +191,25 @@ pub enum Order {
     /// range. Aimed at a position it walks there, stopping to attack enemies
     /// encountered on the way. Aimed at a unit it attacks that unit, following
     /// it if it moves out of range; against a friendly unit this is a follow,
-    /// turning into a deny once the unit is low enough to allow one, and
-    /// either way an order aimed at a unit calls off any enemy creeps and
-    /// towers currently aggroed on the issuer.
+    /// turning into a deny once the unit is low enough to allow one.
+    ///
+    /// A hero's attack order at an enemy hero draws nearby enemy creeps and
+    /// towers onto the hero; one at a friendly unit calls them off.
     Attack {
         /// What to fight: nothing to hold position, a position to
         /// attack-move to, a unit to attack.
         target: Target,
     },
-    /// Cast one of the hero's abilities.
+    /// Cast one of the unit's abilities. A hero's cast at an enemy hero draws
+    /// creeps and towers as an attack order does.
     Cast {
-        /// Which of the four ability slots to cast.
+        /// Which ability slot to cast.
         slot: AbilitySlot,
         /// What the ability is aimed at.
         target: Target,
     },
-    /// Activate an item in the inventory.
+    /// Activate an item in the inventory. Backpack and stash items cannot be
+    /// used.
     Use {
         /// Which inventory slot holds the item.
         slot: ItemSlot,
@@ -241,19 +237,20 @@ pub enum Order {
         /// [`RejectReason::WrongTargetKind`](crate::RejectReason::WrongTargetKind).
         target: Target,
     },
-    /// Buy an item. Legal only while standing in the fountain area.
+    /// Buy an item, with any of its parts not already held. Needs the hero
+    /// alive. It goes into the hero's bag while at the home shop and there is
+    /// room, into the stash otherwise.
     Buy {
         /// What to buy.
         item: ItemId,
     },
-    /// Sell an item from the inventory for part of its cost.
+    /// Sell an item for part of its cost.
     ///
-    /// Away from the shop this marks the stack for sale instead, and a second
-    /// order on the same slot unmarks it. A marked stack is sold the moment it
-    /// reaches the shop — carried there, delivered by courier, or put in the
-    /// stash.
+    /// The stash sells from anywhere. A bag away from the shop marks the stack
+    /// for sale instead, and a second order on the same slot unmarks it; a
+    /// marked stack is sold once it reaches the shop.
     Sell {
-        /// Which inventory slot to empty.
+        /// Which slot to empty.
         slot: ItemSlot,
     },
     /// Move an item between two slots, swapping whatever is in the way.
@@ -267,7 +264,7 @@ pub enum Order {
     },
     /// Spend a skill point on an ability.
     Learn {
-        /// Which of the four ability slots to level.
+        /// Which ability slot to level.
         slot: AbilitySlot,
     },
     /// Take a shortcut round the rules. Interrupts nothing the body is doing.

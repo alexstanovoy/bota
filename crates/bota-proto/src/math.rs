@@ -10,13 +10,8 @@ use serde::{Deserialize, Serialize};
 
 /// A fixed-point scalar in Q16.16 format.
 ///
-/// Used for world coordinates, movement speed, attack range, armor and
-/// multipliers such as magic resistance. The integral range is
-/// `-32768..=32767` world units and the resolution is `1/65536` of one.
-///
-/// The operators debug-assert on overflow and saturate in release. A value that
-/// saturates stops at the end of the range; one that wrapped would appear on the
-/// far side of the map.
+/// The integral range is `-32768..=32767` and the resolution is `1/65536`.
+/// The operators debug-assert on overflow and saturate in release.
 #[derive(Serialize, Deserialize, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Fixed {
     /// Raw Q16.16 representation. Multiply by `2^-16` to get world units.
@@ -32,7 +27,6 @@ impl Fixed {
         raw: 1 << Self::FRAC_BITS,
     };
 
-    /// Zero.
     pub const ZERO: Fixed = Fixed { raw: 0 };
 
     /// Smallest representable value.
@@ -73,11 +67,8 @@ impl Fixed {
         Fixed::from_i64((self.raw as i64).abs())
     }
 
-    /// The value squared, as a raw Q32.32 integer.
-    ///
-    /// Squaring a map-scale distance does not fit in a [`Fixed`], so the result
-    /// stays raw. Compare it against [`Vec2::distance_squared`], which is in the
-    /// same units.
+    /// The value squared, as a raw Q32.32 integer: the units of
+    /// [`Vec2::distance_squared`].
     pub const fn squared_raw(self) -> i64 {
         (self.raw as i64) * (self.raw as i64)
     }
@@ -229,9 +220,8 @@ pub struct Angle {
 
 /// A position or offset on the map, in world units.
 ///
-/// Used for unit and projectile positions and for order targets. The map spans
-/// `0..8192` on both axes, with the Radiant fountain in the lower left corner
-/// and the Dire fountain in the upper right.
+/// The map spans `0..=18432` on both axes, with the Radiant fountain in the
+/// lower left corner and the Dire fountain in the upper right.
 #[derive(
     Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash,
 )]
@@ -257,11 +247,8 @@ impl Vec2 {
         }
     }
 
-    /// The squared length, as a raw Q32.32 integer.
-    ///
-    /// Squaring a map-scale distance overflows a [`Fixed`], so the result stays
-    /// raw. Compare it against [`Fixed::squared_raw`], which is in the same
-    /// units, and skip the square root a real length would need.
+    /// The squared length, as a raw Q32.32 integer: the units of
+    /// [`Fixed::squared_raw`].
     pub const fn length_squared(self) -> i64 {
         self.x.squared_raw() + self.y.squared_raw()
     }

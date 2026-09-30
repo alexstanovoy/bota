@@ -1,8 +1,7 @@
 //! Sample values for the tests.
 //!
-//! Every struct here is built by listing all of its fields. Adding a field to a
-//! wire type breaks compilation right here, which is the point: it forces a
-//! decision about what the new field carries before it can ship.
+//! Every struct here is built by listing all of its fields, so a new field on
+//! a wire type breaks compilation here.
 
 use crate::*;
 
