@@ -55,7 +55,8 @@ pub struct ReplayPlayer {
     catching_up: bool,
     clock_ticks: f64,
     tick_rate: f64,
-    /// Whether elapsed time advances the clock; queued work still completes.
+    /// Whether elapsed time is kept off the clock; records already due still
+    /// come out.
     pub paused: bool,
     /// Positive, finite clock multiplier: 1.0 is the recorded pace.
     pub speed: f32,

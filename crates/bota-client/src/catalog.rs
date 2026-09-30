@@ -1,19 +1,12 @@
 //! What the client knows about abilities, items, effects and heroes.
 //!
-//! Names, blurbs and art only: every number an entry is worth rides the wire,
-//! in the views for what a unit holds and in the shop table for what a thing
-//! costs before anybody holds it.
-//!
-//! One entry to a thing, found by the id the wire carries. Anything the view
-//! already brings -- level, mana cost, cooldown left, charges left -- is read
-//! from the view; what stands here is what the wire does not send.
+//! Names, blurbs and art only, one entry to a thing, found by the id the wire
+//! carries. The numbers ride the wire: in the views for what a unit holds and
+//! in the shop table for what a thing costs.
 
 use bota_proto::{ItemId, ShopEntry};
 
-/// How what an ability shows on the ground is drawn, in world units.
-///
-/// The wire brings where it stands, as one of the view's projectiles; this
-/// is only the shape.
+/// The shape a projectile of an ability is drawn as. Radii are in world units.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Art {
     /// A missile: a dot.
@@ -734,10 +727,9 @@ pub fn whole_price(shop: &[ShopEntry], item: ItemId) -> i32 {
         .map_or(0, |entry| entry.cost)
 }
 
-/// What the shop asks a seat holding `held` for one item.
-///
-/// The rule the server charges by: what was asked for is bought however many
-/// of it are already held, and only its parts are looked for in hand.
+/// What the shop asks a seat holding `held` for one item: an item without
+/// parts costs its whole price however many are held; a built one costs the
+/// parts not found in `held`, each spent once.
 pub fn price_for(shop: &[ShopEntry], item: ItemId, held: &[ItemId]) -> i32 {
     let mut spare = held.to_vec();
     let mut wanted = Vec::new();

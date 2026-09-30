@@ -241,8 +241,8 @@ fn item_box_under(mx: f32, my: f32, sw: f32, sh: f32) -> Option<u8> {
 /// Ends an item drag: dropped on itself a consumable is used, on another box
 /// it moves, on the sell strip it is sold or marked for sale, on an ally's
 /// portrait it is handed over, and over the open world it is put out of the
-/// bag — into an allied bag under the cursor, or onto the ground. The rest
-/// of the HUD swallows the drop.
+/// bag: into an allied bag under the cursor, or onto the ground. The rest of
+/// the HUD swallows the drop.
 fn finish_item_drag(app: &mut App, mx: f32, my: f32, sw: f32, sh: f32) {
     let Some(from) = app.held_item.take() else {
         return;
@@ -351,9 +351,6 @@ fn selection_clicks(app: &mut App) {
     let Some(view) = &app.view else {
         return;
     };
-    // One rule for everything that stands: a hero, a courier, a creep, a
-    // building, one's own side or the other. A click picks it; a second click
-    // on the same one pins the camera to it.
     let hit = unit_under_cursor(view, wx, wy, None, false);
     let again = hit.is_some_and(|id| app.tapped_twice(Tap::Unit(id)));
     app.choose(hit, again);
@@ -461,14 +458,12 @@ fn camera_controls(app: &mut App) {
     let (edge_x, edge_y) = edge_push(pan);
     steer = (steer.0 + edge_x, steer.1 + edge_y);
     if steer != (0.0, 0.0) {
-        // Driving the camera by hand lets go of whatever it was pinned to:
-        // asking to look elsewhere is asking to stop being carried.
+        // Driving the camera by hand lets go of whatever it was pinned to.
         app.pinned = None;
         app.camera.pan(steer.0, steer.1);
         return;
     }
-    // The first hero to stand is looked at once, so a match does not open on
-    // an empty middle of the map.
+    // The camera is pinned to one's own hero the first time it stands.
     if !app.found_my_hero
         && app.my_hero().is_some()
         && let Some(slot) = app.my_slot
@@ -535,7 +530,6 @@ fn order_controls(app: &mut App) {
     if app.my_hero().is_none() || !app.controls_selection() {
         return;
     }
-    // A player's hero cannot pan by keys, so the letters are free for orders.
     if is_key_pressed(KeyCode::A) {
         app.attack_move_armed = true;
     }
@@ -610,10 +604,9 @@ fn order_controls(app: &mut App) {
             .view
             .as_ref()
             .and_then(|view| unit_under_cursor(view, wx, wy, me, true));
-        // A right click reads the ground the way Dota does: an enemy under
-        // the cursor is attacked, one of this side's own is followed, an
-        // item lying there is picked up, open ground is walked to. Denying
-        // is the attack click's business.
+        // An enemy under the cursor is attacked, one of this side's own is
+        // followed, an item lying there is picked up, open ground is walked
+        // to. Denying is the attack click's business.
         let lying = match target {
             Some(_) => None,
             None => app
@@ -688,11 +681,8 @@ fn item_keys(app: &mut App) {
     }
 }
 
-/// Answers a press of one slot, however it was pressed.
-///
-/// The one door a key and a click both go through, so neither can grow a rule
-/// the other does not have. What a press means is [`press`]; nothing is asked
-/// here about whether the order would be carried out.
+/// Answers a press of one slot, by key or by click. What a press means is
+/// [`press`].
 pub fn do_press(app: &mut App, slot: Slot, ctrl: bool) {
     match press(app, slot, ctrl) {
         Press::Send(order) => {
@@ -720,8 +710,6 @@ fn ability_keys(app: &mut App) {
         (KeyCode::T, 4),
         (KeyCode::G, 5),
     ];
-    // What is selected may be looked at whatever it is; the keys answer only
-    // for what this seat drives.
     if !app.commanded().is_some_and(|unit| app.drives(unit)) {
         return;
     }
@@ -735,9 +723,8 @@ fn ability_keys(app: &mut App) {
 
 /// The clickable unit nearest the cursor, if the cursor is close enough.
 ///
-/// `exclude` names a unit that never matches — one's own hero when aiming an
-/// order, so a click on it is a move like any other. `for_orders` also skips
-/// what cannot be a target at all; selection wants those too.
+/// `exclude` names a unit that never matches. `for_orders` skips fountains,
+/// which selection still picks.
 pub fn unit_under_cursor(
     view: &WorldView,
     wx: f32,
@@ -767,9 +754,8 @@ const ATTACK_SNAP: f32 = 25.0;
 
 /// The enemy nearest the cursor within the attack snap, if one is that near.
 ///
-/// Only enemies stick. An order at one of this side's own — a follow, an
-/// aggro drop or a deny — is asked for by the click that lands on the body
-/// itself.
+/// Fountains never stick. An order at one of this side's own (a follow, an
+/// aggro drop or a deny) takes a click on the body itself.
 pub fn enemy_near_cursor(
     view: &WorldView,
     wx: f32,

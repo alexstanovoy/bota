@@ -407,7 +407,7 @@ fn draw_world(app: &App, view: &WorldView) {
     }
 }
 
-/// Ticks an order marker lasts: a short flash, half a second.
+/// Ticks an order marker lasts: half a second at 30 ticks a second.
 const ORDER_SHOWN_TICKS: u32 = 15;
 /// The marker colour of a move or follow order.
 const MOVE_ORDER: Color = Color::new(0.35, 0.85, 0.45, 1.0);
@@ -418,7 +418,8 @@ const ATTACK_ORDER: Color = Color::new(0.95, 0.35, 0.30, 1.0);
 /// on the ground for a spot, a ring around the body for a unit or for an
 /// order aimed at nothing.
 ///
-/// A live seat knows only its own orders; a replay carries every seat's.
+/// A seat knows its own orders, a spectator those of the seat it watches
+/// through, and a replay every seat's.
 fn draw_orders(app: &App, view: &WorldView, to_screen: impl Fn(f32, f32) -> (f32, f32)) {
     for shown in &app.shown_orders {
         let age = view.tick.saturating_sub(shown.tick);
@@ -465,10 +466,7 @@ fn draw_orders(app: &App, view: &WorldView, to_screen: impl Fn(f32, f32) -> (f32
 }
 
 /// What a slot taken up is being aimed at: how far it reaches, and what the
-/// cursor is over.
-///
-/// A target it would be turned down for is drawn in the colour of a refusal
-/// rather than hidden, so the reason is on the screen before the click.
+/// cursor is over. A target out of reach is drawn in the colour of a refusal.
 fn draw_aim(app: &App, view: &WorldView, to_screen: impl Fn(f32, f32) -> (f32, f32)) {
     let Some(slot) = app.aiming else {
         return;
@@ -590,8 +588,8 @@ fn draw_landing_spots(app: &App, view: &WorldView, to_screen: impl Fn(f32, f32) 
     }
 }
 
-/// The tree a held item is pointed at right now, ringed so it is plain which
-/// one would go.
+/// Rings the standing tree nearest the cursor, within [`TREE_RADIUS`], while
+/// a slot aimed at a tree is taken up.
 fn draw_tree_pick(app: &App, view: &WorldView, to_screen: impl Fn(f32, f32) -> (f32, f32)) {
     let Some(slot) = app.aiming else {
         return;
@@ -982,10 +980,8 @@ fn draw_bottom_panel(app: &App, view: &WorldView) {
         Color::new(0.4, 0.4, 0.4, 1.0),
     );
     let rate = u32::from(app.tick_rate.max(1));
-    // A picked creep or building shows its own status.
     // A hero, whoever owns it, is shown through its seat: the gold, the
-    // stash and the score belong there. Everything else — a courier, a creep,
-    // a building — is shown as itself.
+    // stash and the score belong there. Everything else is shown as itself.
     if let Some((u, stale)) = app.selected.and_then(|id| app.known(id))
         && u.kind != UnitKind::Hero
     {
@@ -1067,11 +1063,8 @@ fn draw_bottom_panel(app: &App, view: &WorldView) {
     }
 }
 
-/// What the bottom panel is about.
-///
-/// The body it shows, what a fallen body left behind, and how long ago the
-/// body was last true. Read by the panel and by the popups over it, so the
-/// two never show different things about one slot.
+/// What the bottom panel is about: the body it shows, what a fallen body left
+/// behind, and how many ticks ago the body was last seen.
 fn panel_subject<'a>(
     app: &'a App,
     view: &'a WorldView,
@@ -1179,7 +1172,7 @@ fn draw_minimap(app: &App, view: &WorldView) {
     draw_rectangle_lines(r.x, r.y, r.w, r.h, 2.0, Color::new(0.4, 0.4, 0.4, 1.0));
 }
 
-/// The chips of the timed effects on the panel's hero.
+/// The chips of the timed effects on the panel's unit.
 fn draw_effects(unit: &UnitView, rect: &crate::hud::UiRect, rate: u32) {
     let boxes = crate::hud::effect_boxes(rect, unit.effects.len());
     for (e, r) in unit.effects.iter().zip(boxes) {
@@ -1322,11 +1315,7 @@ const ABILITY_KEYS: [&str; 6] = ["Q", "W", "E", "R", "T", "G"];
 pub fn ability_key(slot: usize) -> Option<&'static str> {
     ABILITY_KEYS.get(slot).copied()
 }
-/// The frame round a slot, by what state it is in.
-///
-/// A slot taken up to be aimed is gold, the same gold a selection is drawn
-/// with, and a toggle that is on is not: they have to be told apart at a
-/// glance. What works on its own is given no frame at all.
+/// The frame round a slot, by what state it is in. A passive gets none.
 fn slot_frame(look: &crate::slots::Look, aiming: bool, refused: bool) -> Option<Color> {
     if refused {
         return Some(Color::new(0.95, 0.35, 0.30, 1.0));
@@ -1343,10 +1332,8 @@ fn slot_frame(look: &crate::slots::Look, aiming: bool, refused: bool) -> Option<
     Some(GRAY)
 }
 
-/// Lays the shade of whatever keeps a slot from working over it.
-///
-/// Nothing learned yet is darker than something learned and merely not ready,
-/// so the two never read as one another.
+/// Lays the shade of whatever keeps a slot from working over it: darker for
+/// nothing learned than for learned and not ready.
 fn shade_slot(look: &crate::slots::Look, x: f32, y: f32, w: f32, h: f32, rate: u32) {
     if !look.filled {
         return;
@@ -1355,8 +1342,7 @@ fn shade_slot(look: &crate::slots::Look, x: f32, y: f32, w: f32, h: f32, rate: u
         draw_rectangle(x, y, w, h, Color::new(0.0, 0.0, 0.0, 0.72));
         draw_rectangle_lines(x, y, w, h, 1.0, Color::new(0.5, 0.45, 0.2, 0.7));
     } else if !look.usable && !look.passive {
-        // What works on its own is working: it is not held back by anything,
-        // it is simply never pressed.
+        // A passive is never pressed, so it is never shaded as not ready.
         draw_rectangle(x, y, w, h, Color::new(0.0, 0.0, 0.0, 0.5));
     }
     if look.cooldown_left > 0 {
@@ -1370,8 +1356,7 @@ fn shade_slot(look: &crate::slots::Look, x: f32, y: f32, w: f32, h: f32, rate: u
 /// The right of the bottom panel: the ability slots and the item slots.
 ///
 /// What is drawn comes from the body when one stands and from what the body
-/// left behind when none does, so a hero that has fallen still shows what it
-/// learned and what it carries.
+/// left behind when none does.
 fn draw_slot_boxes(
     app: &App,
     unit: Option<&UnitView>,
@@ -1459,8 +1444,7 @@ fn draw_slot_boxes(
             GOLD,
         );
     }
-    // Only the slots this unit has: a courier carries, but has no pocket to
-    // carry inert things in.
+    // Only the slots this unit has: a courier has no backpack.
     for (slot, r) in crate::hud::item_boxes(rect) {
         if usize::from(slot) >= carried_items.len() {
             continue;
@@ -1565,10 +1549,7 @@ fn draw_item_box(
     shade_slot(&look, r.x, r.y, r.w, r.h, rate);
 }
 
-/// The item being dragged, riding under the cursor.
-///
-/// Drawn over the whole of the HUD, so the hand is never hidden by what it
-/// is carried across.
+/// The item being dragged, riding under the cursor over the whole of the HUD.
 fn draw_held_item(app: &App) {
     let Some(slot) = app.held_item else {
         return;
@@ -1713,10 +1694,9 @@ fn draw_shop(app: &App, view: &WorldView) {
 /// The circle a tree stands in, in world units.
 pub const TREE_RADIUS: f32 = 48.0;
 
-/// Every item one seat holds, in its hero's bag and in its stash.
+/// Every item in a seat's hero's bag and in its stash, for [`price_for`].
 ///
-/// What the shop charges is worked out against this, so a part already in hand
-/// is not asked for twice.
+/// [`price_for`]: crate::catalog::price_for
 fn held_items(view: &WorldView, p: &bota_proto::PlayerView) -> Vec<bota_proto::ItemId> {
     let bag = p
         .unit
@@ -1733,7 +1713,8 @@ fn held_items(view: &WorldView, p: &bota_proto::PlayerView) -> Vec<bota_proto::I
 /// The hover popup for whatever HUD element sits under the cursor.
 fn draw_tooltips(app: &App, view: &WorldView) {
     if app.held_item.is_some() {
-        return; // mid-drag the cursor means a drop spot, not a question
+        // Mid-drag the cursor means a drop spot, not a question.
+        return;
     }
     let (mx, my) = mouse_position();
     let (sw, sh) = (screen_width(), screen_height());

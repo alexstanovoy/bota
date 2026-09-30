@@ -1,8 +1,7 @@
 //! Screen layout of the HUD panels.
 //!
 //! Pure geometry, no drawing: the renderer draws these rectangles and the
-//! input layer hit-tests them, so the two always agree and the math is
-//! testable without a window.
+//! input layer hit-tests them.
 
 use bota_proto::{PlayerView, SlotId, Team};
 
@@ -83,15 +82,12 @@ pub fn bottom_panel(screen_w: f32, screen_h: f32) -> UiRect {
     }
 }
 
-/// The ability boxes of the bottom panel, four to a row.
-///
-/// Four across is what fits before the item boxes begin; whatever carries
-/// more than four wraps onto a second row rather than running under the
-/// items.
 /// How many ability boxes the panel has room for: as many as the widest
 /// carrier holds.
 pub const ABILITY_BOXES: u8 = 6;
 
+/// The ability boxes of the bottom panel, four to a row so they stop short
+/// of the item boxes.
 pub fn ability_boxes(panel: &UiRect) -> Vec<(u8, UiRect)> {
     (0..ABILITY_BOXES)
         .map(|i| {
@@ -129,8 +125,8 @@ pub fn item_boxes(panel: &UiRect) -> Vec<(u8, UiRect)> {
     out
 }
 
-/// The six stash boxes, a strip sitting on top of the bottom panel. Shown
-/// only within the home shop area.
+/// The six stash boxes, slots 9 to 14, a strip sitting on top of the bottom
+/// panel.
 pub fn stash_boxes(panel: &UiRect) -> Vec<(u8, UiRect)> {
     (0..6u8)
         .map(|i| {
@@ -147,7 +143,7 @@ pub fn stash_boxes(panel: &UiRect) -> Vec<(u8, UiRect)> {
         .collect()
 }
 
-/// The shop panel on the right edge. Shown only within the home shop area.
+/// The shop panel on the right edge.
 pub fn shop_panel(screen_w: f32, screen_h: f32) -> UiRect {
     let h = 620.0_f32.min(screen_h - 180.0).max(160.0);
     UiRect {
@@ -221,7 +217,7 @@ pub fn shop_button(screen_w: f32, screen_h: f32) -> UiRect {
     }
 }
 
-/// The chips of the timed effects on the panel's hero, sitting on top of the
+/// The chips of the timed effects on the panel's unit, sitting on top of the
 /// bottom panel.
 pub fn effect_boxes(panel: &UiRect, count: usize) -> Vec<UiRect> {
     (0..count)

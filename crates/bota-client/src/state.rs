@@ -59,21 +59,17 @@ pub enum Phase {
 /// What the camera is carried by.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Pin {
-    /// A seat's hero, whichever body it is standing in.
-    ///
-    /// A hero that dies comes back as a new entity, and a camera pinned to
-    /// the body rather than the seat would be left behind by that.
+    /// A seat's hero, whichever body it is standing in: a respawned hero is
+    /// a new entity.
     Hero(SlotId),
     /// One unit, for as long as it stands.
     Unit(EntityId),
 }
 
-/// Keeps the last state of every unit a seat owns.
+/// Keeps the last state of every unit a seat owns, and the tick it was seen.
 ///
-/// Only what a seat owns is kept, which bounds this to a handful of entries:
-/// an enemy hero out of sight is worth remembering, the creep wave it walked
-/// past is not. A seat stands in one body at a time, so a body it has left
-/// for a new one is dropped rather than piling up.
+/// An entry out of view is dropped once its seat has another unit of the same
+/// kind in view.
 pub fn remember(seen: &mut Vec<(u32, bota_proto::UnitView)>, view: &WorldView) {
     for unit in view.units.iter().filter(|unit| unit.owner.is_some()) {
         match seen.iter_mut().find(|(_, held)| held.id == unit.id) {
@@ -105,8 +101,8 @@ pub fn known_in<'a>(
 
 /// The body a seat last stood in, whether or not it still stands.
 ///
-/// A seat with its hero down has no unit on the wire at all, so the body it
-/// left behind is the only handle there is to pick it by.
+/// A seat with its hero dead has no unit on the wire; this falls back to the
+/// last hero body kept for it.
 pub fn body_in(
     seen: &[(u32, bota_proto::UnitView)],
     view: &WorldView,
@@ -200,7 +196,7 @@ pub enum FloaterKind {
     Level,
 }
 
-/// A damage number floating off a unit.
+/// A number or word floating off a unit.
 pub struct Floater {
     /// The text shown.
     pub text: String,
@@ -240,8 +236,7 @@ pub struct App {
     pub aiming: Option<crate::slots::Slot>,
     /// An item slot picked up and waiting for the destination click.
     pub held_item: Option<u8>,
-    /// Whether the shop panel is open. Toggled by key or button; buying
-    /// away from home lands in the stash.
+    /// Whether the shop panel is open.
     pub shop_open: bool,
     /// The catalog row the shop panel starts at.
     pub shop_scroll: usize,
@@ -261,18 +256,15 @@ pub struct App {
     pub mode: Option<TickMode>,
     /// The lobby as last broadcast.
     pub lobby: Vec<LobbySlot>,
-    /// Seat names captured from the lobby for the scoreboard.
+    /// Seat names from the lobby.
     pub names: Vec<(SlotId, String)>,
     /// The freshest state of the world.
     pub view: Option<WorldView>,
-    /// The state one snapshot ago, for naming what died.
+    /// The state one snapshot ago, for placing and naming what has just
+    /// left the view.
     pub prev_view: Option<WorldView>,
     /// The last state seen of every unit a seat owns, and the tick it was
-    /// seen on.
-    ///
-    /// Only what a seat owns is kept, which bounds this to a handful of
-    /// entries: an enemy hero out of sight is worth remembering, the creep
-    /// wave it walked past is not.
+    /// seen on. Kept by [`remember`].
     pub seen: Vec<(u32, bota_proto::UnitView)>,
     /// The eye.
     pub camera: Camera,
@@ -280,8 +272,7 @@ pub struct App {
     pub seq: u32,
     /// Whether the next left click is an attack-move.
     pub attack_move_armed: bool,
-    /// The unit picked, if one is. Nothing picked falls back to one's own
-    /// hero, so orders always have somewhere to go.
+    /// The unit picked, if one is. Nothing picked means one's own hero.
     pub selected: Option<EntityId>,
     /// What the camera is pinned to. Nothing means a free camera.
     pub pinned: Option<Pin>,
@@ -403,11 +394,8 @@ impl App {
         }
     }
 
-    /// Picks a unit, and pins the camera to it when the same thing is
-    /// reached for twice.
-    ///
-    /// Picking alone never moves the camera: what a player is looking at and
-    /// what a player is commanding are two different questions.
+    /// Picks a unit, and pins the camera to it when `again` says the same
+    /// thing was reached for twice. Picking alone never moves the camera.
     pub fn choose(&mut self, unit: Option<EntityId>, again: bool) {
         self.selected = unit;
         self.aiming = None;
@@ -496,12 +484,8 @@ impl App {
         view.players.iter().find(|p| p.slot == slot).map(|p| p.team)
     }
 
-    /// Whether the current selection is a unit this player commands.
-    ///
-    /// Orders go to the selection; anything not ours ignores them, so an
-    /// enemy or a creep can be inspected without stealing the keys. What is
-    /// ours answers wherever it came from: a hero, a courier, or anything
-    /// else this seat is given to drive.
+    /// Whether the current selection is a unit this seat drives, or nothing
+    /// is selected.
     pub fn controls_selection(&self) -> bool {
         match self.selected {
             None => true,
@@ -520,7 +504,8 @@ impl App {
         view.viewer
     }
 
-    /// Whether our hero stands in its home shop area.
+    /// Whether our hero stands within 1000 of its fountain, at the main map's
+    /// fountain positions.
     pub fn at_home_shop(&self) -> bool {
         let Some(slot) = self.my_slot else {
             return false;
@@ -561,11 +546,8 @@ impl App {
         self.send_order_to(unit, order);
     }
 
-    /// Sends one order to a named unit, whatever is selected.
-    ///
-    /// What is selected is where orders go by default; this is for the few
-    /// that name their unit themselves, so that sending one does not mean
-    /// looking away from the fight.
+    /// Sends one order to a named unit, whatever is selected. Absent names
+    /// the seat's hero.
     pub fn send_order_to(&mut self, unit: Option<bota_proto::EntityId>, order: Order) {
         self.seq += 1;
         let seq = self.seq;
@@ -666,8 +648,7 @@ impl App {
             }
             ServerMsg::OrderRejected { seq, reason } => {
                 self.reject = Some((refusal(reason).to_string(), 2.5));
-                // The slot that earned it lights up, so the answer is where
-                // the press was rather than only in a line of text.
+                // The slot that earned it lights up.
                 self.refused = self
                     .aimed_from
                     .filter(|(sent, _)| *sent == seq)

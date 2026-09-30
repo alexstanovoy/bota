@@ -1,10 +1,8 @@
 //! What sits in a slot of the panel: how pressing it is answered, and how it
 //! is drawn.
 //!
-//! Nothing here asks whether an order would succeed. A press is sent whatever
-//! state the slot is in, and the server names what was wrong with it; what is
-//! worked out here is only which order a press means and what the slot should
-//! look like.
+//! Nothing here asks whether an order would succeed: a press is sent whatever
+//! state the slot is in, and the server names what was wrong with it.
 
 use bota_proto::{
     AbilitySlot, AbilityView, Aim, EntityId, ItemSlot, ItemView, Order, Target, UnitView,
@@ -41,17 +39,16 @@ pub enum Press {
 
 /// How a slot is drawn.
 ///
-/// The states are not exclusive and are not meant to be: what has no points
-/// in it is unusable as well as unlearned, and a passive may sit on a
-/// cooldown of its own. Each field answers one question and the drawing
-/// decides what to do with all of them together.
+/// The states are not exclusive: what has no points in it is unusable as well
+/// as unlearned, and a passive may sit on a cooldown of its own.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Look {
     /// Whether anything is in the slot at all.
     pub filled: bool,
     /// Whether it has been learned. Always true for an item.
     pub learned: bool,
-    /// Whether pressing it right now would be carried out.
+    /// Whether it looks ready: learned, not passive, off cooldown and
+    /// affordable; an item also in the inventory with charges left.
     pub usable: bool,
     /// Whether it is a toggle that is currently on.
     pub toggled: bool,
@@ -70,9 +67,8 @@ impl App {
 
     /// What sits in one item slot of the panel.
     ///
-    /// The bag slots are the commanded unit's — the same bag the panel
-    /// draws, a courier's as readily as the hero's. The stash is the seat's
-    /// own whatever is commanded.
+    /// The bag slots are the commanded unit's, a courier's as readily as the
+    /// hero's. The stash is the seat's own whatever is commanded.
     pub fn item_in(&self, slot: u8) -> Option<ItemView> {
         if slot < BAG_SLOTS {
             let unit = self.slot_unit()?;
@@ -145,9 +141,7 @@ pub fn decide(
             slot: AbilitySlot(at),
         });
     }
-    // The backpack and the stash are reached by dragging, not by pressing:
-    // there is nothing there a press could mean. This is about where the slot
-    // is, not about whether what sits in it would work.
+    // The backpack and the stash are reached by dragging, not by pressing.
     if let Slot::Item(at) = slot
         && at >= INVENTORY_SLOTS
     {
@@ -172,10 +166,7 @@ pub fn decide(
     }
 }
 
-/// How a slot is aimed, and whether there is anything in it at all.
-///
-/// The outer answer says whether the slot holds something; the inner one how
-/// that something is aimed, absent for one that is never used.
+/// What one slot holds, in the shape [`decide`] takes as `held`.
 fn filled(app: &App, slot: Slot) -> Option<Option<Aim>> {
     match slot {
         Slot::Ability(at) => app
