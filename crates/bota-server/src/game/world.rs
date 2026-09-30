@@ -5,12 +5,12 @@ use std::collections::VecDeque;
 use bota_proto::{HeroId, SlotId, Team, UnitKind};
 
 use crate::game::{
-    AbilityBook, Action, AppliedModifiers, AuraCx, Auras, Bounty, CampHome, Def, Entity,
-    EntityAllocator, Errand, Expiry, Forest, Handling, Health, Hit, Hook, Hull, Inventory, Landed,
-    Lane, LaneAi, Level, Loot, Mana, March, Mark, Missed, Modifier, Modifiers, Motion, NeutralAi,
-    Orders, Place, Plan, Projectile, Rax, RequiemLine, Route, Seat, SightCx, SightScratch,
-    SpawnModifier, Stacks, Stats, StatsCx, Table, Target, Tier, Transform, UnitOrder, Upgrades,
-    Visibility, aura_system, derive_stats, hitting_system, missile_system, regenerate,
+    AbilityBook, Action, AppliedModifiers, AuraCx, Auras, Bounty, CampHome, Candidates, Def,
+    Entity, EntityAllocator, Errand, Expiry, Forest, Handling, Health, Hit, Hook, Hull, Inventory,
+    Landed, Lane, LaneAi, Level, Loot, Mana, March, Mark, Missed, Modifier, Modifiers, Motion,
+    NeutralAi, Orders, Place, Plan, Projectile, Rax, RequiemLine, Route, Seat, SightCx,
+    SightScratch, SpawnModifier, Stacks, Stats, StatsCx, Table, Target, Tier, Transform, UnitOrder,
+    Upgrades, Visibility, aura_system, derive_stats, hitting_system, missile_system, regenerate,
     visibility_system,
 };
 use crate::game::{HitCx, MissileCx};
@@ -78,6 +78,8 @@ pub struct World {
     pub(crate) modifier_scratch: Vec<Modifier>,
     /// Reused buffers the sight system reads the world into.
     pub(crate) sight_scratch: SightScratch,
+    /// Reused room targets are chosen among.
+    pub(crate) candidates: Candidates,
 
     /// Where each entity stands.
     pub transform: Table<Transform>,
@@ -218,6 +220,7 @@ impl World {
             entity_scratch: Vec::new(),
             modifier_scratch: Vec::new(),
             sight_scratch: SightScratch::new(),
+            candidates: Candidates::default(),
             transform: Table::new(),
             hull: Table::new(),
             kind: Table::new(),

@@ -1138,13 +1138,23 @@ fn a_unit_is_taken_before_a_building_and_a_siege_creep_takes_the_building_first(
     world.settle();
     let reach = world.stats.get(creep).expect("settled").acquisition;
     assert_eq!(
-        world.acquire(creep, reach, crate::game::PriorityOrder::Normal),
+        world.acquire(
+            creep,
+            reach,
+            crate::game::PriorityOrder::Normal,
+            &world.candidates()
+        ),
         Some(enemy),
         "a unit outranks a building however much nearer the building stands"
     );
     let siege_reach = world.stats.get(siege).expect("settled").acquisition;
     assert_eq!(
-        world.acquire(siege, siege_reach, crate::game::PriorityOrder::SiegeFirst),
+        world.acquire(
+            siege,
+            siege_reach,
+            crate::game::PriorityOrder::SiegeFirst,
+            &world.candidates()
+        ),
         Some(tower),
         "a siege creep goes for the building"
     );
@@ -3532,7 +3542,7 @@ fn a_creep_prefers_a_creep_to_a_hero_that_is_doing_nothing() {
     );
     world.settle();
     assert_eq!(
-        world.best_valid_in_range(creep, Fixed::from_int(600)),
+        world.best_valid_in_range(creep, Fixed::from_int(600), &world.candidates()),
         Some(other),
         "what it is doing outranks how near it stands"
     );
@@ -3580,7 +3590,7 @@ fn a_hero_laying_into_your_side_counts_for_no_more_than_a_creep() {
         "laying into this side, it counts the same as a creep"
     );
     assert_eq!(
-        world.best_valid_in_range(creep, Fixed::from_int(600)),
+        world.best_valid_in_range(creep, Fixed::from_int(600), &world.candidates()),
         Some(other),
         "so the nearer of the two wins, and that is the creep"
     );
@@ -3589,7 +3599,7 @@ fn a_hero_laying_into_your_side_counts_for_no_more_than_a_creep() {
         at.pos = bota_proto::Vec2::from_ints(5040, 5000);
     }
     assert_eq!(
-        world.best_valid_in_range(creep, Fixed::from_int(600)),
+        world.best_valid_in_range(creep, Fixed::from_int(600), &world.candidates()),
         Some(hero),
         "nearness decides between equals"
     );
@@ -3628,7 +3638,7 @@ fn a_hero_putting_out_its_own_is_taken_on_last() {
         "putting out its own puts it last"
     );
     assert_eq!(
-        world.best_valid_in_range(creep, Fixed::from_int(600)),
+        world.best_valid_in_range(creep, Fixed::from_int(600), &world.candidates()),
         Some(theirs),
         "so the creep it was denying is taken on instead"
     );
@@ -3665,7 +3675,7 @@ fn what_is_in_reach_is_kept_unless_a_better_class_is_also_in_reach() {
     world.settle();
     world.set_target(siege, creep);
     assert_eq!(
-        world.select_target(siege),
+        world.select_target(siege, &world.candidates()),
         Some(tower),
         "a siege creep turns from a unit to the building it prefers"
     );

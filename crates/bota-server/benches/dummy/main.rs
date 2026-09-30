@@ -291,12 +291,15 @@ fn bench_targeting(group: &mut BenchmarkGroup<'_, WallTime>) {
             black_box(sink)
         });
     });
+    let candidates = world.candidates();
     group.throughput(Throughput::Elements(asks.len() as u64));
     group.bench_function("best_valid_in_range", |b| {
         b.iter(|| {
             let mut sink = 0u32;
             for &(seeker, reach) in &asks {
-                sink += u32::from(black_box(world.best_valid_in_range(seeker, reach)).is_some());
+                sink += u32::from(
+                    black_box(world.best_valid_in_range(seeker, reach, &candidates)).is_some(),
+                );
             }
             black_box(sink)
         });
@@ -346,7 +349,7 @@ fn plan_fingerprint(
 fn targeting_fingerprint(world: &World, asks: &[(Entity, Fixed)], bodies: &[Entity]) -> u64 {
     let mut hash = Fnv::new();
     for &(seeker, reach) in asks {
-        match world.best_valid_in_range(seeker, reach) {
+        match world.best_valid_in_range(seeker, reach, &world.candidates()) {
             Some(target) => {
                 hash.some(true);
                 hash.entity(target);
