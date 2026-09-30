@@ -1,9 +1,10 @@
 //! What an attack order does to everybody who is not the one giving it.
 //!
-//! The order alone does it, whether the attack ever happens or not. Only an
-//! order at an enemy hero calls creeps on, and only an order at *another* of
-//! your own calls them off; an order at an enemy creep is a last hit and moves
-//! nobody, and one a hero aims at itself is nobody's business but its own.
+//! The order alone does it, whether the attack ever happens or not, and only
+//! a hero's order does it. Only an order at an enemy hero calls creeps and
+//! towers on, and only an order at *another* of your own calls them off; an
+//! order at any other enemy moves nobody, and one a hero aims at itself is
+//! nobody's business but its own.
 
 use bota_proto::{Team, UnitKind, Vec2};
 
@@ -23,8 +24,6 @@ impl World {
     /// Wakes whatever an attack order reaches onto, or off, the one who gave
     /// it.
     pub fn rouse_bystanders(&mut self, orderer: Entity, mark: Entity) {
-        // Letting go is done by pointing at somebody else of your own. A hero
-        // pointing at itself has told the creeps nothing.
         if orderer == mark {
             return;
         }
@@ -77,11 +76,6 @@ impl World {
     }
 
     /// Which way an order at this mark calls, if it calls at all.
-    ///
-    /// The mark is never the one who gave the order; [`rouse_bystanders`]
-    /// turns that away before it gets here.
-    ///
-    /// [`rouse_bystanders`]: World::rouse_bystanders
     fn call_of(&self, side: Team, mark: Entity) -> Option<Call> {
         let their_side = self.team.get(mark).copied()?;
         if their_side == side {
@@ -114,10 +108,11 @@ impl World {
         self.provoke(creep, orderer, call == Call::Off);
     }
 
-    /// One tower's answer: it does not weigh the offender against anything.
+    /// One tower's answer, when the orderer is in its reach.
     ///
-    /// A dive draws it outright; a click at one of your own lets it go, and
-    /// letting go answers at once however recently it was drawn.
+    /// Called on, it takes the orderer as its target unless an earlier call
+    /// is still cooling down; called off, it drops the orderer if that is its
+    /// target, cooldown or not.
     fn rouse_tower(&mut self, tower: Entity, orderer: Entity, call: Call) {
         if !self.in_reach(tower, orderer) {
             return;

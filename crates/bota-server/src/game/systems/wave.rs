@@ -52,7 +52,7 @@ impl World {
     /// Losing a barracks strengthens the creeps marching against it: a
     /// wave's melee go super once the enemy melee barracks of its lane is
     /// down, its ranged likewise, its siege once the lane holds no barracks
-    /// at all — and everything goes mega once every enemy barracks has
+    /// at all, and everything goes mega once every enemy barracks has
     /// fallen. A map with no barracks spawns plain waves for ever.
     fn wave_creep_ranks(&self, team: Team, lane: u8) -> [CreepRank; 3] {
         let their = match team {

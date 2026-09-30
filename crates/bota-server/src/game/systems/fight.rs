@@ -1,4 +1,5 @@
-//! Picking a target, and clearing away what has fallen.
+//! Who stands and who is in reach, telling of blows, and clearing away what
+//! has fallen.
 
 use bota_proto::{EventKind, Fixed, Team, UnitKind};
 
@@ -57,9 +58,8 @@ impl World {
 
     /// Hands on the fights and follows aimed at a fallen entity.
     ///
-    /// An attack order degrades to attack-moving at the spot the target was
-    /// last seen, so the fight carries on with whatever acquisition finds
-    /// there. A follow ends where the one followed fell.
+    /// An attack order at it becomes an attack-move to the spot it was last
+    /// seen; a follow becomes a walk to that spot.
     fn carry_fights_on(&mut self, fallen: Entity) {
         for follower in self.entities.iter().collect::<Vec<_>>() {
             match self.orders.get(follower).map(|o| o.current) {

@@ -30,11 +30,11 @@ pub struct AuraCx<'a> {
     pub spots: &'a mut Spots<Entity>,
 }
 
-/// Puts every aura on everyone standing in it.
+/// Puts every aura on every ally of its source standing in it, the source
+/// included.
 ///
-/// Standing in one hands the effect out afresh every tick, which is both how
-/// it is put on and how it is held; walking out of it leaves it to run out on
-/// its own, with nothing having to take it off.
+/// Standing in one puts the effect on afresh every tick; walking out leaves it
+/// to run out on its own.
 pub fn aura_system(cx: AuraCx<'_>) {
     let AuraCx {
         entities,

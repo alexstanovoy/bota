@@ -252,9 +252,10 @@ impl World {
 
     /// Hands the soul of what has fallen to whoever brought it down.
     ///
-    /// Only a hero with the necromastery learned takes one, and only up to
-    /// what its level lets it hold. A hero is worth more than anything else;
-    /// a structure or a ward is worth nothing.
+    /// Only a killer with the necromastery learned takes one, and only up to
+    /// what its level lets it hold. A hero is worth
+    /// [`rules::SOULS_PER_HERO`], anything else [`rules::SOULS_PER_UNIT`]; a
+    /// structure or a ward is worth nothing.
     pub fn feed_souls(&mut self, fallen: Entity, killer: Option<Entity>) {
         let Some(killer) = killer.filter(|killer| *killer != fallen) else {
             return;

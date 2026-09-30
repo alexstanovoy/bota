@@ -56,9 +56,10 @@ impl World {
 
     /// Carries every item errand one tick on.
     ///
-    /// A unit not yet in reach walks; one in reach does the thing. An errand
-    /// that comes to nothing — the slot emptied, the target fallen or full,
-    /// the item taken by somebody quicker — is put down where it is found.
+    /// A unit not yet in reach walks; one in reach does the thing and is left
+    /// standing. An errand that comes to nothing (the slot emptied, the target
+    /// fallen or full, the item taken by somebody quicker) ends where it is
+    /// found, the same way.
     pub fn tick_handling(&mut self) {
         let entities = self.take_entity_snapshot();
         for unit in entities.iter().copied() {

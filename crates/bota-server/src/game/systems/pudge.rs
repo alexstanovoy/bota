@@ -78,7 +78,6 @@ impl World {
                 ticks_left: None,
             },
         );
-        // What it eats it keeps: the one channelling mends by as much.
         self.put_modifier(
             caster,
             Modifier {

@@ -22,8 +22,8 @@ impl World {
     /// What every kind stands on: where it is, what it is, whose it is, and
     /// the pools it fills once its stats are known.
     ///
-    /// Health and mana start empty; the system that works out stats fills
-    /// them on the tick after, since the maximum is its to decide.
+    /// Health and mana start empty; [`derive_stats`](crate::game::derive_stats)
+    /// fills them the first time it sees the entity.
     fn spawn_body(&mut self, def: &'static UnitDef, team: Team, pos: Vec2) -> Entity {
         let entity = self.spawn();
         self.def.insert(entity, Def(def));
@@ -60,11 +60,8 @@ impl World {
     /// Puts every trusted match-setup modifier that takes a unit on it, each
     /// with its own countdown, replacing what setup put there before.
     ///
-    /// Every spawn is a fresh application: a new wave, a camp that fills
-    /// again, a tower stood up later and a respawned body all get the rules
-    /// afresh. What a cheat put on the unit is left alone. A rule that was
-    /// never checked is a broken setup and stops here rather than landing
-    /// half applied.
+    /// Runs for every body stood up, a respawned hero included. What a cheat
+    /// put on the unit is left alone. Panics on a rule that was never checked.
     pub fn apply_spawn_modifiers(&mut self, entity: Entity) {
         if self.spawn_modifiers.is_empty() {
             return;
@@ -368,9 +365,8 @@ impl World {
         entity
     }
 
-    /// Fills a unit's pools to whatever its stats now allow.
-    ///
-    /// Called once the stats are known, which is why spawning does not do it.
+    /// Fills a unit's pools to whatever its derived stats allow. A unit with
+    /// no stats yet is left alone.
     pub fn fill_pools(&mut self, entity: Entity) {
         let Some(stats) = self.stats.get(entity).copied() else {
             return;

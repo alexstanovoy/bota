@@ -23,9 +23,9 @@ impl World {
     /// Casts one of an entity's abilities to the moment it has gone off:
     /// the checks, the ability's own work, and the cost.
     ///
-    /// False when it did not go off, and then nothing was spent: the level
-    /// must be learned, the cooldown run out, the mana be there, and the
-    /// ability itself must have found something to do.
+    /// False when it did not go off, and then nothing was spent: the ability
+    /// must be active and learned, the cooldown run out, the mana be there,
+    /// and the ability itself must have found something to do.
     pub fn begin_ability(&mut self, entity: Entity, slot: AbilitySlot, target: Target) -> bool {
         let at = usize::from(slot.0);
         let Some(ability) = self
@@ -204,7 +204,8 @@ impl World {
         true
     }
 
-    /// Which ability sits in one of an entity's slots.
+    /// Which ability sits in one of an entity's slots; `AbilityId(u16::MAX)`
+    /// when there is none.
     pub fn ability_in(
         &self,
         entity: Entity,

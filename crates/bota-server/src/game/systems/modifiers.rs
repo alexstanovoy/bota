@@ -1,4 +1,4 @@
-//! What is on a unit: putting it on, running it one tick on, taking it off.
+//! What is on a unit: putting it on, doing its work each tick, taking it off.
 
 use bota_proto::{DamageKind, Fixed, UnitKind};
 
@@ -101,11 +101,11 @@ impl World {
         }
     }
 
-    /// Runs every modifier one tick on: what burns takes health on the beat,
-    /// and the rot puts its burn and slow on everything standing in it.
+    /// Does every modifier's work for the tick: what burns takes health on
+    /// the beat, and the rot puts its burn and slow on everything standing in
+    /// it. Their time runs down in [`World::tick_gear`].
     ///
-    /// A burn that may not take the last point stops one short of it, so
-    /// what its own owner carries never kills that owner.
+    /// A burn that is not lethal stops one short of the last point.
     pub fn tick_modifiers(&mut self) {
         let on_beat = self.tick.is_multiple_of(rules::BURN_PERIOD_TICKS);
         let entities = self.take_entity_snapshot();
@@ -148,12 +148,14 @@ impl World {
         self.recycle_entity_snapshot(entities);
     }
 
-    /// Burns and slows everything standing in one entity's rot, its owner
-    /// included.
+    /// Burns and slows every unit of another side with a hull standing in
+    /// one entity's rot.
+    /// Its owner burns by the same amount, never to death, and is not
+    /// slowed.
     ///
-    /// What it does is handed out afresh every tick, so walking out of it
-    /// lifts it, and switching it off lifts it everywhere at once. Its owner
-    /// burns by the same amount but never to death.
+    /// What it does is handed out afresh every tick for two ticks, so walking
+    /// out of it or switching it off lifts it. A rot whose owner is dead goes
+    /// out.
     fn rot(&mut self, owner: Entity, level: u8) {
         if !self.alive(owner) {
             self.rot_goes_out(owner);
@@ -232,9 +234,8 @@ impl World {
     /// Puts out every drink a blow is enough to break, and sets back every
     /// item that answers to one.
     ///
-    /// Only a hero or a tower breaks anything; a creep may hit all day
-    /// without it. What was drunk with nothing to break it is left alone, and
-    /// so is an item that answers to no blow.
+    /// Only a blow from a hero or a tower breaks anything. A drink that does
+    /// not break and an item with no break cooldown are left alone.
     pub fn break_on_blows(&mut self, felt: &[crate::game::Landed]) {
         for blow in felt {
             let Some(from) = blow.source else {

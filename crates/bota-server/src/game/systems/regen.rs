@@ -5,10 +5,7 @@ use bota_proto::Fixed;
 use crate::game::{EntityAllocator, Health, Mana, Stats, Table};
 
 /// Adds what each entity mends to its health and mana, up to its maximum.
-///
-/// Both pools are held finer than a whole point, so mending of less than one a
-/// tick adds up rather than falling away. An entity already dead mends no
-/// health.
+/// An entity already dead mends no health.
 pub fn regenerate(
     entities: &EntityAllocator,
     stats: &Table<Stats>,

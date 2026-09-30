@@ -58,9 +58,8 @@ impl World {
 
     /// Marks every structure the map still guards untouchable.
     ///
-    /// Runs right after stats are derived: the guard is worn as
-    /// invulnerability, so targeting, orders and blows all refuse it the
-    /// same way they refuse anything invulnerable.
+    /// Runs right after stats are derived; the guard is worn as
+    /// [`Stats::invulnerable`](crate::game::Stats::invulnerable).
     pub fn guard_structures(&mut self) {
         let entities = self.take_entity_snapshot();
         for entity in entities.iter().copied() {

@@ -11,8 +11,6 @@ use crate::game::{
 impl World {
     /// Runs every applied stat change one tick down and drops what has run
     /// out.
-    ///
-    /// A world where nothing is applied pays nothing for the pass.
     pub fn tick_applied(&mut self) {
         if self.applied.is_empty() {
             return;
@@ -50,9 +48,10 @@ impl World {
             .clamp(0, i64::from(i32::MAX)) as i32
     }
 
-    /// Outgoing damage amplification captured while a source is still live.
-    /// A delayed carrier keeps this value if the source later falls or its
-    /// slot changes hands.
+    /// A source's outgoing damage amplification for a kind of damage, in
+    /// basis points; nominal for no source, one gone from the world or one
+    /// with no stats. A missile or a requiem line keeps the value it was
+    /// launched with.
     pub fn outgoing_damage_amp_bp(&self, source: Option<Entity>, kind: DamageKind) -> i32 {
         source
             .filter(|source| self.entities.contains(*source))

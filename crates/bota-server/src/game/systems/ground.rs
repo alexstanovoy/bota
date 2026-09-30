@@ -38,8 +38,8 @@ impl World {
     /// The body a step from one spot to another would walk into, the
     /// nearest to where the step begins when there are several.
     ///
-    /// A step deeper into any hull is refused; a step out of an overlap is
-    /// allowed, so nothing can wedge for good.
+    /// Only a step that ends inside a hull and nearer its centre counts; a
+    /// step out of an overlap does not.
     pub fn body_in_the_way(&self, mover: Entity, from: Vec2, next: Vec2) -> Option<Entity> {
         let mine = self.hull.get(mover)?.collision;
         let mut best: Option<(i64, Entity)> = None;
@@ -71,8 +71,8 @@ impl World {
     /// Eases apart every pair of bodies whose hulls overlap.
     ///
     /// A body moves at most [`rules::SEPARATION_STEP`] in a tick and never
-    /// onto closed ground. A building never moves: the whole correction
-    /// falls on whatever walked into it.
+    /// from open ground onto closed. A body with no move speed never moves:
+    /// the whole correction falls on whatever overlaps it.
     pub fn push_apart(&mut self) {
         let _profile = self.scope(Phase::Separation);
         let mut bodies = std::mem::take(&mut self.body_scratch);
@@ -152,15 +152,12 @@ impl World {
                     return;
                 }
                 let far = isqrt64(apart);
-                // Two on one spot part along the x axis, the earlier entity
-                // westward.
                 let (ux, uy, len) = if far == 0 {
                     (if one.entity < other.entity { 1 } else { -1 }, 0, 1)
                 } else {
                     (dx, dy, far)
                 };
                 let gap = least - far;
-                // A fixed body takes none of it; two that walk share it.
                 let mine = if other.fixed { gap } else { gap / 2 };
                 push[i].0 -= ux * mine.min(cap) / len;
                 push[i].1 -= uy * mine.min(cap) / len;
