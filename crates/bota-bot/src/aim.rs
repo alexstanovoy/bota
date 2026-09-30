@@ -1,10 +1,7 @@
 //! Geometry and damage arithmetic the wire does not carry.
 //!
-//! The server decides which way a body looks, where a raze lands and what a
-//! blow is worth after armor. A bot that wants to know before it asks works
-//! the same sums here. The geometry is the server's own, integer for integer;
-//! the mitigation is worked from the rounded stats a view carries, so it is a
-//! forecast rather than the number the server will reach.
+//! The geometry is the server's own, integer for integer; the mitigation is
+//! worked from the rounded stats a view carries, so it is a forecast.
 
 use bota_proto::{Angle, DamageKind, Fixed, UnitView, Vec2};
 

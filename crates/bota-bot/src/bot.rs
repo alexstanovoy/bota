@@ -11,14 +11,11 @@ use bota_proto::{
 
 use crate::{Ask, Link, Seated};
 
-/// Anything that can hold a seat in a match.
-///
-/// The hero is picked when the connection is made rather than asked for here:
-/// picking happens in the lobby, before there is a [`MatchInfo`] to decide
-/// from.
+/// Anything that can hold a seat in a match. The hero is picked by
+/// [`Chair::hero`].
 pub trait Bot {
     /// Told which seat the server gave this connection, before the match
-    /// starts. Absent when no seat was free.
+    /// starts.
     fn seated(&mut self, slot: Option<SlotId>);
 
     /// Told the terms of the match, once, when it begins.
@@ -53,7 +50,7 @@ pub struct Chair {
 /// What one match came to.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Outcome {
-    /// The seat that was held. Absent when none was free.
+    /// The seat that was held.
     pub slot: Option<SlotId>,
     /// The side that seat played for.
     pub team: Option<Team>,

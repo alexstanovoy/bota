@@ -2,8 +2,7 @@
 //!
 //! The map's own forest is sent once, when the match begins; which of those
 //! trees are down and which have been put up during the match ride in every
-//! snapshot. Both are needed to eat a tango, which asks for a tree by the
-//! ground it stands on.
+//! snapshot.
 
 use bota_proto::{MatchInfo, Vec2, WorldView};
 
@@ -30,9 +29,6 @@ impl Forest {
     }
 
     /// The same, of the trees a filter keeps.
-    ///
-    /// Used to leave out the ones a hero would have to walk the wrong way up
-    /// the lane to reach.
     pub fn nearest_kept(
         &self,
         view: &WorldView,

@@ -1,13 +1,8 @@
 //! What the bot buys, and how what it buys reaches its hands.
 //!
-//! Prices and parts are read off [`MatchInfo::shop`] rather than written out
-//! here: the wire carries both, so the one thing the bot has to know of
-//! itself is which items it wants and in what order.
-//!
-//! The list is parts rather than builds. An order to buy a built item is
-//! turned down unless the whole of its price is in hand, while the server
-//! puts a build together on its own the moment its parts are in the bag —
-//! so buying the parts spends gold as it arrives.
+//! Prices and parts are read off [`MatchInfo::shop`]. The lists name parts
+//! rather than builds: the server puts a build together once its parts are in
+//! the bag.
 
 use bota_proto::{HeroId, ItemId, ItemView, MatchInfo, ShopEntry, Target};
 
@@ -89,13 +84,8 @@ impl Stall {
 
     /// The next thing on a hero's list, when there is gold for it.
     ///
-    /// The list is walked in order and stops at the first thing not owned:
-    /// skipping ahead to whatever is affordable spends on the tail of a list
-    /// the gold its head was being saved for.
-    ///
-    /// A consumable with no working slot to go in is stepped over rather than
-    /// stopped at. What holds it up is room, not gold, and gold that is not
-    /// being saved for it should go on what comes next.
+    /// The list is walked in order and stops at the first thing not owned,
+    /// stepping over a consumable with no working slot to go in.
     pub fn next_buy(&self, field: &Field) -> Option<ItemId> {
         let room = field.free_slots() > SPARE_SLOTS;
         let mut wanted: Vec<(ItemId, usize)> = Vec::new();
@@ -127,12 +117,7 @@ impl Stall {
     }
 }
 
-/// The consumables the bot buys.
-///
-/// What an item **is** does not cross the wire, so the ones that are spent by
-/// using them are named here. Their place in a list is where restocking
-/// happens: drunk, a stack stops being held, and the next walk of the list
-/// finds it wanting again.
+/// The consumables the bot buys: the items spent by using them.
 pub const CONSUMABLES: [ItemId; 4] = [TANGO, CLARITY, SALVE, SCROLL];
 
 /// Whether an item is one that is spent by using it.
@@ -140,13 +125,8 @@ pub fn is_consumable(item: ItemId) -> bool {
     CONSUMABLES.contains(&item)
 }
 
-/// Shadow Fiend's list: the drink first, then everything that answers the
-/// one thing he runs out of — a talisman and a mask for the mana, a wand for
-/// both pools — and plain damage last.
-///
-/// A raze costs the better part of a hundred mana against a pool that mends
-/// some two a second, so what is bought is mana before damage. Nothing is
-/// bought that no want on the ladder reaches for.
+/// Shadow Fiend's list: the drink first, then a talisman and a mask for the
+/// mana, a wand for both pools, and plain damage last.
 pub const FIEND_GOODS: [ItemId; 16] = [
     TANGO,
     CLARITY,
@@ -246,8 +226,8 @@ impl Errands {
     ///
     /// A trip is not made for one item: it waits until [`COURIER_BATCH`] have
     /// piled up or the first has waited [`COURIER_PATIENCE`] ticks. It is
-    /// held back entirely while an enemy hero stands near the seat's own
-    /// hero, since a courier walks to where its owner stands.
+    /// held back entirely while an enemy hero is within [`FIGHT_RANGE`] of the
+    /// seat's own hero.
     pub fn errand(&mut self, tick: u32, field: &Field) -> Option<Ask> {
         let bird = field.courier?;
         if self

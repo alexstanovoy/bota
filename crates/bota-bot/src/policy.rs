@@ -1,10 +1,7 @@
 //! The deterministic policy: one ladder of wants, walked top to bottom.
 //!
 //! Every tick the same questions are asked in the same order, and the first
-//! one with an answer is what the seat does. Nothing is drawn at random and
-//! nothing is remembered beyond the last snapshot, the attack cycle and how
-//! long the courier has been idle, so the same match played twice goes the
-//! same way.
+//! one with an answer is what the seat does.
 
 use bota_proto::{
     DamageKind, EffectId, EventKind, HeroId, MatchInfo, MatchStats, SlotId, StatusFlags, Target,
@@ -42,7 +39,8 @@ const SWING_PATIENCE: u32 = 45;
 /// How far inside its own reach a hero stands from what it is swinging at.
 const SWING_EDGE: f32 = 40.0;
 
-/// How far behind the tower it is aimed at a scroll lands.
+/// How far behind the frontmost tower, or out from the fountain, a scroll is
+/// aimed.
 const PORTAL_STANDOFF: f32 = 300.0;
 
 /// How far the lane has to be for a scroll to beat walking.
@@ -235,9 +233,8 @@ impl Playbook {
             self.swinging_since = self.tick;
             return Some(blow);
         }
-        // A swing already under way is left alone. An order of any kind ends
-        // the wind-up before it, so walking somewhere on the tick a blow was
-        // about to land is that blow given up.
+        // A swing already under way is left alone: an order to the body ends
+        // the wind-up before it.
         if self.mid_swing(field) {
             self.rung = "mid-swing";
             return None;
@@ -288,18 +285,16 @@ impl Playbook {
         if !field.at_shop() && field.foes_within(FIGHT_RANGE).next().is_some() {
             return None;
         }
-        // Bought away from the shop, goods land in the stash, where only a
-        // courier can reach them.
+        // Bought away from the shop, goods land in the stash, out of the
+        // hero's reach.
         if !field.at_shop() && field.courier.is_none() {
             return None;
         }
         self.stall.next_buy(field).map(Ask::buy)
     }
 
-    /// A consumable worth spending now.
-    ///
-    /// Only while nobody of the other side is near: a mend a blow puts out is
-    /// a mend thrown away.
+    /// A consumable worth spending now. Only a wand is spent while an enemy
+    /// hero is within [`FIGHT_RANGE`].
     fn remedy(&self, field: &Field) -> Option<Ask> {
         let me = field.me?;
         let ready = |id| {
@@ -312,8 +307,7 @@ impl Playbook {
                 })
                 .map(|(slot, _)| slot)
         };
-        // A wand is pressed in a fight as readily as out of one: what it
-        // gives back arrives at once, and nothing puts it out.
+        // What a wand gives back arrives at once, and nothing puts it out.
         if let Some(press) = self.press_a_wand(field) {
             return Some(press);
         }
@@ -322,10 +316,7 @@ impl Playbook {
         }
         let showing = |what: EffectId| me.effects.iter().any(|effect| effect.id == what);
         // A hero already walking to its fountain spends a mend only on one
-        // that would turn the walk round. The fountain gives back
-        // twenty-five a tick and asks nothing for it, so a mend that runs
-        // out short of fighting health is a mend the fountain was about to
-        // make free.
+        // that would turn the walk round.
         let worth_mending = |heals: i32| {
             !self.pulling_out || me.hp + heals >= (MENDED_RETURN * me.max_hp as f32).round() as i32
         };
@@ -336,9 +327,8 @@ impl Playbook {
         {
             return Some(Ask::use_item(slot, Target::Unit(me.id)));
         }
-        // A tango is paid for by a tree standing within reach of it, and a
-        // lane is cleared of trees either side of its centre, so the walk to
-        // one is part of eating it.
+        // A tango eats a tree within its reach, so the walk to one is part of
+        // eating it.
         if !showing(MENDING)
             && field.health() < TANGO_HEALTH
             && worth_mending(TANGO_HEALS)
@@ -363,11 +353,8 @@ impl Playbook {
         None
     }
 
-    /// The nearest tree worth *walking* to for a tango.
-    ///
-    /// Only the ones no further up the lane than the hero already stands: a
-    /// hero on a third of its health has no business walking towards the
-    /// other side's fountain for a bite.
+    /// The nearest tree worth walking to for a tango: within [`TANGO_WALK`],
+    /// and no further up the lane than the hero already stands.
     fn tree_to_eat(&self, field: &Field) -> Option<Vec2> {
         let me = field.me?;
         let Some(lane) = field.lane.as_ref() else {
@@ -402,10 +389,6 @@ impl Playbook {
     }
 
     /// Goods stranded in the backpack, moved to a working slot.
-    ///
-    /// A build lands in the lowest slot any of its parts came out of, and
-    /// parts bought with the working slots full come out of the backpack, so
-    /// a finished item can end up somewhere it does nothing.
     fn tidy(&self, field: &Field) -> Option<Ask> {
         let me = field.me?;
         let free = me
@@ -427,15 +410,8 @@ impl Playbook {
     }
 
     /// Settles whether the hero is on its way out of the lane.
-    ///
-    /// Kept apart from [`Playbook::retreat`] so that everything below it on
-    /// the ladder — the scroll above all — reads a flag settled this tick
-    /// rather than last.
     fn mind_health(&mut self, field: &Field) {
         let health = field.health();
-        // A hero already being mended is on its way back rather than on its
-        // way home: the walk to the fountain buys what the mend is already
-        // paying for, and costs the lane the whole of the round trip.
         let mending = field
             .me
             .is_some_and(|me| me.effects.iter().any(|effect| effect.id == MENDING));
@@ -476,31 +452,23 @@ impl Playbook {
         ))
     }
 
-    /// The scroll home, for a hero standing at its shop with the lane a walk
-    /// away.
+    /// The scroll: home while pulling out, otherwise to just behind the
+    /// frontmost tower the lane still holds, when that is further than
+    /// [`PORTAL_WORTH`] and no enemy hero is within [`FIGHT_RANGE`].
     ///
-    /// A scroll lands where it is aimed, and what it is aimed at is the
-    /// ground just behind the frontmost tower the lane still holds.
-    ///
-    /// The wait a scroll leaves behind is shared by every scroll a hero will
-    /// ever hold, and it is not on the wire: the slot of a scroll bought to
-    /// replace one just spent reads as ready. So the wait is counted here
-    /// instead, from the tick the last one was aimed.
+    /// The wait a scroll leaves behind is shared by every scroll a hero
+    /// holds, and it is not on the wire: a scroll bought to replace one just
+    /// spent reads as ready. So the wait is counted here, from the tick the
+    /// last one was aimed.
     fn portal(&self, field: &Field) -> Option<Ask> {
-        // A scroll is not cast from anywhere in particular; what it asks is
-        // that the spot it is aimed at stand by a building of one's own. So
-        // the question is only whether where the hero is going is far enough
-        // to be worth three seconds of standing still, and whether standing
-        // still is safe. It carries both ways: out of the lane while hurt,
-        // and back into it once mended.
         if self.tick < self.pregame {
             return None;
         }
         if field.foes_within(FIGHT_RANGE).next().is_some() {
             return None;
         }
-        // The scroll is read inside the tick it was aimed on, so the wait
-        // runs from the tick after.
+        // The order lands on the tick after it is aimed, and the wait runs
+        // from there.
         if self
             .portalled_at
             .is_some_and(|at| self.tick.saturating_sub(at) <= SCROLL_WAIT)
@@ -556,10 +524,8 @@ impl Playbook {
         } else {
             0
         };
-        // The worn one rather than the near one. A body only ever loses
-        // health, so the lowest of them is the lowest again next tick, while
-        // the nearest changes every time the wave shuffles — and a swing that
-        // keeps changing its mind never lands.
+        // The worn one rather than the near one: the lowest stays the lowest
+        // next tick, while the nearest changes whenever the wave shuffles.
         if let Some(mark) = field
             .creeps
             .iter()
@@ -579,28 +545,12 @@ impl Playbook {
         Some(Ask::swing_at(denied.id))
     }
 
-    /// Shakes off the creeps that are chewing on the hero.
-    ///
-    /// An attack order aimed at one of your own makes every enemy creep near
-    /// enough to have seen it pick a target afresh with the one who gave it
-    /// put last. The order alone does it, whether the attack ever happens or
-    /// not, and unlike calling creeps *on*, letting them go waits on nothing
-    /// and spends nothing.
-    ///
-    /// It has to be aimed at somebody *else* of its own: a hero pointing at
-    /// itself has told the creeps nothing. The nearest of its own creeps is
-    /// what it points at, and the tick after, it is told to stand, since an
-    /// order at a unit is a follow and the follow would walk it out of the
-    /// spot it was holding.
+    /// Shakes off the creeps that are chewing on the hero, with an attack
+    /// order at the nearest other unit of its own.
     fn shake(&mut self, field: &Field) -> Option<Ask> {
-        // An order at a unit is a follow, so the tick after the shake the
-        // hero is walking to whatever it pointed at. Standing still puts that
-        // right; the creeps were let go the moment the order was taken and do
-        // not come back for it.
-        //
-        // The tick this answers on is not itself a shake, so it does not
-        // start the clock again: doing that would leave every tick the tick
-        // after a shake, and the hero standing still for good.
+        // The tick after a shake the hero stands, ending the follow the order
+        // turned into. That tick is not itself a shake, or every tick would be
+        // the tick after one.
         if self.shook_at == Some(self.tick.saturating_sub(1)) {
             return Some(Ask::mine(bota_proto::Order::Move {
                 target: Target::None,
@@ -632,17 +582,8 @@ impl Playbook {
         Some(Ask::swing_at(ally))
     }
 
-    /// Calls the other side's creeps onto the hero, to drag where the waves
-    /// meet back down the lane.
-    ///
-    /// An attack order aimed at an enemy hero makes every enemy creep within
-    /// its own acquisition of the one who gave it come for him instead, for
-    /// [`AGGRO_HOLD`] ticks. Standing behind its own line, the hero is a spot
-    /// they have to walk past that line to reach, and the fight comes with
-    /// them.
-    ///
-    /// What it costs is the blows they land on the way, which is why it waits
-    /// on health and on the wave having actually been pushed.
+    /// Calls the other side's creeps onto the hero with an attack order at an
+    /// enemy hero, to drag where the waves meet back down the lane.
     fn pull(&self, field: &Field) -> Option<Ask> {
         let lane = field.lane.as_ref()?;
         if field.health() < PULL_HEALTH {
@@ -681,13 +622,11 @@ impl Playbook {
         {
             return Some(Ask::swing_at(mark.id));
         }
-        // With the lane clear, whatever of theirs stands next in it.
+        // Whatever of theirs stands next in the lane, only with the lane clear
+        // and its own creeps within a tower's reach of it.
         if !field.creeps.is_empty() {
             return None;
         }
-        // Whatever of theirs stands next in the lane, and only with its own
-        // creeps in front of it: a hero alone under a tower is a hero the
-        // tower shoots.
         let works = field.enemy_works.first()?;
         let shielded = field
             .own_creeps
@@ -704,17 +643,13 @@ impl Playbook {
 
     /// Where to stand while there is nothing else to do.
     ///
-    /// Behind its own creep line while the waves are in contact, and at the
-    /// spot they meet while they are not. A hero already standing within
-    /// [`HOLD_SLACK`] of that spot is told nothing at all: an order would end
-    /// whatever swing it was in the middle of, for a step it did not need.
+    /// Just inside a swing of the nearest enemy creep; with none about,
+    /// behind its own creep line or at the spot the waves meet. A hero already
+    /// within [`HOLD_SLACK`] of that spot is told nothing.
     fn hold(&self, field: &Field) -> Option<Ask> {
         let me = field.me?;
         let lane = field.lane.as_ref()?;
         let spot = match field.creeps.first() {
-            // Just inside a swing of the nearest of theirs, and no nearer:
-            // standing among them is four creeps' worth of blows for nothing
-            // a swing from further back would not have reached.
             Some(creep) => lane.spot_from(creep.pos, -(me.attack_range.to_f32() - SWING_EDGE)),
             None => {
                 let front = field

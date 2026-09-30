@@ -1,15 +1,9 @@
 //! A bot that plays by rules rather than by weights.
 //!
-//! Two pieces sit here. [`Bot`] and [`play`] are the seam: whatever holds a
-//! seat is handed one tick at a time and answers with at most one [`Ask`],
-//! and the loop between that and a socket is written once. [`Playbook`] is
-//! the bot this crate ships — a ladder of wants walked top to bottom, with
-//! spellwork for Shadow Fiend and for Sylla.
-//!
-//! Nothing in it is drawn at random, so a match played twice against the same
-//! opponent goes the same way both times.
-//!
-//! See `DESIGN.md` for the architecture this follows from.
+//! [`Bot`] and [`play`] are the seam: whatever holds a seat is handed one tick
+//! at a time and answers with at most one [`Ask`]. [`Playbook`] is the bot this
+//! crate ships: a ladder of wants walked top to bottom, with spellwork for
+//! Shadow Fiend and for Sylla. Nothing in it is drawn at random.
 
 mod aim;
 mod ask;

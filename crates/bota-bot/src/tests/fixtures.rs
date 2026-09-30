@@ -1,7 +1,6 @@
 //! Views built by hand, for tests that need a tick to read.
 //!
-//! Every field is listed. A field added to a view breaks these, which is the
-//! point: what the bot should make of it is a decision, not a default.
+//! Every field is listed, so a field added to a view breaks these.
 
 use bota_proto::{
     AbilityId, AbilityView, Aim, Angle, Attribute, Attributes, EffectId, EffectView, EntityId,

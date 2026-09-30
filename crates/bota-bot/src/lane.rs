@@ -1,8 +1,7 @@
 //! Which lane a seat holds, and where along it things are.
 //!
-//! The lane is read off the snapshot rather than carried as a table: both
-//! sides always see every building, so the fountains and the towers are
-//! enough to lay out where a lane runs on whichever map is being played.
+//! The lane is read off the snapshot: both sides always see every building,
+//! so the fountains and the towers lay out where a lane runs.
 
 use bota_proto::{Team, UnitKind, Vec2, WorldView};
 
@@ -104,8 +103,7 @@ pub struct Lane {
 impl Lane {
     /// Lays out a lane from the buildings a snapshot shows.
     ///
-    /// `None` when the snapshot shows no fountains, which is the state
-    /// before a match has started.
+    /// `None` when the snapshot shows no fountains.
     pub fn read(view: &WorldView, which: Which, team: Team) -> Option<Lane> {
         let radiant = fountain(view, Team::Radiant)?;
         let dire = fountain(view, Team::Dire)?;

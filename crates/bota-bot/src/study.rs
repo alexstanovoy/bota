@@ -1,8 +1,7 @@
 //! Where a hero's skill points go.
 //!
 //! A plan is the abilities in the order points are spent on them, one entry
-//! per point. The place of an entry is the hero level that point is spent at,
-//! so the tenth entry is the last point a hero gets.
+//! per point. The place of an entry is the hero level that point is spent at.
 
 use bota_proto::{AbilityId, AbilitySlot, HeroId};
 

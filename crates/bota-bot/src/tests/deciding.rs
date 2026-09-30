@@ -100,8 +100,6 @@ fn a_scroll_carries_a_healthy_hero_back_to_its_lane() {
 
 #[test]
 fn a_scroll_is_not_spent_before_the_creeps_set_out() {
-    // Walking there takes the whole of the pregame anyway, and the wait a
-    // scroll leaves behind is longer than the walk it saved.
     let mut bot = stocked(vec![fixtures::sold(TANGO, 90, vec![])], Vec::new());
     let mut view = at_the_shop(|me| {
         me.items[0] = Some(stack(SCROLL, 1));
@@ -198,9 +196,8 @@ fn a_tree_further_up_the_lane_is_not_walked_to() {
 
 #[test]
 fn a_tango_is_not_eaten_on_the_way_to_the_fountain() {
-    // Down to a fifth, so the hero is walking home; a tango's hundred and
-    // fifteen would run out well short of fighting health, and the fountain
-    // gives that back in a moment for nothing.
+    // Down to a fifth, so the hero is walking home, and a tango's hundred and
+    // fifteen would not turn it round.
     let tree = Vec2::from_ints(8800, 8800);
     let mut bot = seated(vec![tree]);
     let view = tick(|me| {
@@ -276,7 +273,7 @@ fn a_held_hero_is_told_nothing() {
 
 #[test]
 fn a_feared_hero_is_told_nothing() {
-    // It runs on its own and the server refuses whatever it is told.
+    // It runs on its own, and a cast or a use is refused.
     let mut bot = seated(Vec::new());
     let view = tick(|me| {
         me.statuses = bota_proto::StatusFlags {
