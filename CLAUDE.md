@@ -144,7 +144,8 @@ in the other mode — and it fails exactly where we would notice it last.
 
 ## Benchmarks
 
-The dummy-game tick loop and its micro cases are criterion benchmarks in
+The dummy-game tick loop, the trainer-like Map2 skirmish (advance plus both
+sides' views every tick) and the micro cases are criterion benchmarks in
 `crates/bota-server/benches/dummy` (a dev-dependency only):
 
 ```

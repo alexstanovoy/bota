@@ -1,4 +1,5 @@
-//! The dummy tick loop and the micro cases under it, measured with criterion.
+//! The dummy tick loop, the trainer-like Map2 skirmish and the micro cases
+//! under them, measured with criterion.
 //!
 //! ```text
 //! cargo bench -p bota-server --bench dummy
@@ -17,7 +18,9 @@ use criterion::{
 };
 
 mod scenario;
+mod skirmish;
 use scenario::{CAPSULE_RADIUS, Dummy, WARMUP_TICKS};
+use skirmish::Skirmish;
 
 /// The windows the tick loop is measured over, in ticks.
 const TICK_WINDOWS: [u32; 2] = [600, 3_000];
@@ -27,6 +30,13 @@ const TICK_WINDOW_DIGESTS: [(u32, u64, u64); 2] = [
     (600, 0x66d1_240f_c318_0456, 0x5395_dd38_08cf_f17f),
     (3000, 0xd4d0_5edc_fe49_40e1, 0xc8e3_77ae_2136_3d71),
 ];
+
+/// Ticks of the trainer-like skirmish measured: the pregame and the lane
+/// phase after it.
+const SKIRMISH_TICKS: u32 = 9_000;
+
+/// The world and handed-out fingerprints at the end of the skirmish.
+const SKIRMISH_DIGEST: (u64, u64) = (0xaf91_5e8e_523b_8203, 0x68cd_3612_7264_50b8);
 
 /// The fingerprint of the fixed isqrt64 answers.
 const ISQRT_DIGEST: u64 = 0x797c_0b4c_e20e_e1b1;
@@ -40,7 +50,7 @@ const TARGETING_DIGEST: u64 = 0x9886_dd66_4506_3527;
 /// The spots of the dummy circuit the plan-search case routes to.
 const PLAN_GOALS: [usize; 3] = [2, 4, 6];
 
-criterion_group!(benches, tick_loop, micro);
+criterion_group!(benches, tick_loop, trainer, micro);
 criterion_main!(benches);
 
 /// Measures the whole server tick over fixed windows of the dummy game.
@@ -61,6 +71,48 @@ fn tick_loop(c: &mut Criterion) {
         });
     }
     group.finish();
+}
+
+/// Measures the tick as the trainer drives it: a Map2 skirmish advanced and
+/// seen by both sides every tick.
+fn trainer(c: &mut Criterion) {
+    check_skirmish();
+    let mut group = c.benchmark_group("trainer");
+    group.sample_size(10);
+    group.throughput(Throughput::Elements(u64::from(SKIRMISH_TICKS)));
+    group.bench_function(BenchmarkId::new("map2_skirmish", SKIRMISH_TICKS), |b| {
+        b.iter_batched(
+            Skirmish::build,
+            |mut skirmish| {
+                for _ in 0..SKIRMISH_TICKS {
+                    skirmish.step();
+                }
+                skirmish.world.tick
+            },
+            BatchSize::PerIteration,
+        );
+    });
+    group.finish();
+}
+
+/// Plays the skirmish once and checks its fingerprints and that it lasts
+/// the whole window.
+fn check_skirmish() {
+    let mut skirmish = Skirmish::build();
+    for _ in 0..SKIRMISH_TICKS {
+        skirmish.step();
+    }
+    assert_eq!(
+        skirmish.world.victor(),
+        None,
+        "the skirmish must last the window"
+    );
+    assert_eq!(
+        skirmish.digest(),
+        SKIRMISH_DIGEST,
+        "the skirmish moved: {:#x?}",
+        skirmish.digest()
+    );
 }
 
 /// Measures the isolated cases under the tick loop.
