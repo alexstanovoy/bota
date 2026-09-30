@@ -3,7 +3,9 @@
 use bota_proto::{Team, UnitKind};
 
 use crate::game::rules;
-use crate::game::{Auras, EntityAllocator, Modifier, Modifiers, Reach, Stats, Table, Transform};
+use crate::game::{
+    Auras, Entity, EntityAllocator, Modifier, Modifiers, Reach, Spots, Stats, Table, Transform,
+};
 
 use super::modifiers::resisted_ticks;
 
@@ -24,6 +26,8 @@ pub struct AuraCx<'a> {
     pub stats: &'a Table<Stats>,
     /// Where a handed-out effect lands.
     pub modifiers: &'a mut Table<Modifiers>,
+    /// Reused room every entity is sorted by where it stands in.
+    pub spots: &'a mut Spots<Entity>,
 }
 
 /// Puts every aura on everyone standing in it.
@@ -40,7 +44,15 @@ pub fn aura_system(cx: AuraCx<'_>) {
         auras,
         stats,
         modifiers,
+        spots,
     } = cx;
+    spots.clear();
+    for entity in entities.iter() {
+        if let Some(at) = transform.get(entity) {
+            spots.push(at.pos, entity);
+        }
+    }
+    spots.sort();
     for source in entities.iter() {
         let Some(Auras(handed)) = auras.get(source).copied() else {
             continue;
@@ -53,7 +65,7 @@ pub fn aura_system(cx: AuraCx<'_>) {
         };
         for aura in handed {
             let reach = rules::units(aura.radius);
-            for entity in entities.iter() {
+            for entity in spots.around(from, i64::from(reach.raw).abs()) {
                 if team.get(entity).copied() != Some(side) {
                     continue;
                 }

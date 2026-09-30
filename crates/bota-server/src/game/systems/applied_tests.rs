@@ -988,6 +988,7 @@ fn an_aura_hands_out_a_slow_through_the_same_resistance() {
         auras: &world.auras,
         stats: &world.stats,
         modifiers: &mut world.modifiers,
+        spots: &mut crate::game::Spots::default(),
     });
     assert_eq!(
         left_on(&world, hero, ModifierKind::Slowed { pct: 30 }),
