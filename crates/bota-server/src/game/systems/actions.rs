@@ -31,7 +31,8 @@ struct Swing {
     magical_amp_bp: i32,
 }
 
-/// The milliseconds and ticks an ability or an item holds the body for.
+/// How long an ability or an item holds the body: `point` and `backswing` in
+/// milliseconds, `duration` in ticks.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct Timing {
     point: u32,
@@ -495,8 +496,8 @@ impl World {
         }
     }
 
-    /// Uses an item now, the way a test or a hook does: it goes off at once,
-    /// and one that runs on takes the body over.
+    /// Uses an item now, outside the order flow: it goes off at once, and one
+    /// that runs on takes the body over.
     pub fn use_item(
         &mut self,
         entity: Entity,
@@ -776,7 +777,6 @@ impl World {
         if !standing {
             return false;
         }
-        // Seen: a side does not swing at what it has no eyes on.
         let Some(side) = self.team.get(attacker).copied() else {
             return false;
         };

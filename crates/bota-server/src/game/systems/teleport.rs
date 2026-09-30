@@ -6,8 +6,9 @@ use crate::game::rules;
 use crate::game::{Entity, World};
 
 impl World {
-    /// Whether a spot may be teleported to: walkable ground within reach of a
-    /// building of one's own side that still stands.
+    /// Whether a spot may be teleported to: clear walkable ground within
+    /// `range` of a tower, the ancient or the fountain of one's own side that
+    /// still stands.
     pub fn teleport_spot(&self, side: bota_proto::Team, to: Vec2, range: i32) -> bool {
         if !self.clearance.stands_clear(to) {
             return false;
@@ -38,10 +39,7 @@ impl World {
     }
 
     /// Carries an entity to the spot its scroll was read at, leaves it
-    /// standing there, and spends the scroll in the slot.
-    ///
-    /// Whatever it was told to do before is left behind with the spot it was
-    /// told it in: it arrives standing.
+    /// standing idle there, and spends the scroll in the slot.
     pub fn teleport_to(&mut self, entity: Entity, slot: usize, target: Target) {
         let Target::Pos(pos) = target else {
             return;

@@ -26,9 +26,8 @@ impl World {
 
     /// Stands a ward at the spot an item was aimed at.
     ///
-    /// The spot has to be ground its user could walk on, within reach of where
-    /// that user stands. What stands there afterwards takes no room: it is
-    /// walked through rather than round.
+    /// The spot has to be clear walkable ground within `range` of the user.
+    /// The ward has no hull: it takes no room.
     pub fn stand_ward(
         &mut self,
         user: Entity,

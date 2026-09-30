@@ -6,11 +6,11 @@ use crate::game::{Entity, UnitOrder, World, rosters_of};
 use crate::game::{Purpose, rules};
 
 impl World {
-    /// Fills every empty, unblocked camp on the minute mark.
+    /// Fills every unblocked camp on the minute mark, with a roster other
+    /// than the one it last put out.
     ///
-    /// A camp with anything standing in its box puts nothing out, which is
-    /// what makes blocking a camp work: anything that walks, and a ward,
-    /// which walks nowhere but is put there for exactly this.
+    /// A camp with anything alive that walks, or a ward, standing in its box
+    /// puts nothing out.
     pub fn fill_camps(&mut self) {
         if self.tick < rules::FIRST_NEUTRAL_TICK
             || !(self.tick - rules::FIRST_NEUTRAL_TICK)
@@ -56,7 +56,7 @@ impl World {
         periods.min(rules::NEUTRAL_UPGRADE_CAP as u32)
     }
 
-    /// Whether anything that walks stands inside a circle.
+    /// Whether anything alive that walks, or a ward, stands inside a circle.
     fn anything_in(&self, at: Vec2, radius: bota_proto::Fixed) -> bool {
         self.entities.iter().any(|entity| {
             let blocks = self
@@ -151,8 +151,9 @@ impl World {
     /// Wakes every neutral of a camp onto whoever struck one of them.
     ///
     /// A camp answers as one: what is struck does not answer alone, and what
-    /// is walking home is not called back by it. A blow carries further than
-    /// eyes do and wakes them whether they can see who threw it or not.
+    /// is walking home or still blocked from waking is not called back by it.
+    /// A blow wakes them from as far as [`rules::NEUTRAL_DAMAGE_AGGRO_RANGE`],
+    /// seen or not.
     pub fn rouse_camps(&mut self, felt: &[crate::game::Landed]) {
         for blow in felt {
             let (Some(by), Some(struck)) = (blow.source, self.camp_home.get(blow.target).copied())

@@ -638,7 +638,7 @@ fn nothing_a_normal_modifier_does_reaches_a_cheat_modifier() {
     );
 }
 
-/// A Pudge with Flesh Heap learned and souls in the heap.
+/// A Pudge with Flesh Heap learned and stacks in the heap.
 fn pudge_with_a_heap() -> (World, Entity) {
     let mut world = World::new();
     let pudge = world.spawn_hero(

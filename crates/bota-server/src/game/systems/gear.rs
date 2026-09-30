@@ -17,13 +17,13 @@ pub(crate) struct PurchasePlan {
     pub(crate) fits: bool,
 }
 
-/// What one drink of an item does, gathered so it travels as one thing.
+/// What one drink of an item does.
 pub struct Mend {
     /// Which pool it mends.
     pub pool: Pool,
     /// How much it mends over the whole of it.
     pub total: i32,
-    /// How long it runs.
+    /// How long it runs, in ticks.
     pub ticks: u32,
     /// How far it reaches, in world units.
     pub range: i32,
@@ -60,7 +60,6 @@ const MAX_COMPONENTS: usize = 4;
 /// Which of the slots held cover a list of parts, one slot to each part.
 ///
 /// Nothing at all when any part is missing: a build takes every part or none.
-/// The fixed array keeps the per-tick catalog check from allocating.
 fn parts_in(held: &[(usize, ItemStack)], parts: &[ItemId]) -> Option<Spent> {
     assert!(parts.len() <= MAX_COMPONENTS);
     let mut spent = Spent {
@@ -96,7 +95,7 @@ pub fn hero_kit(hero: bota_proto::HeroId) -> AbilityBook {
 /// What a whole inventory adds.
 ///
 /// Only what sits in the inventory proper counts; what is in the backpack is
-/// carried inert.
+/// carried inert, and so is a muted stack.
 pub fn carried_bonus(inventory: &Inventory) -> Carried {
     let mut total = Carried::default();
     for stack in inventory
@@ -150,7 +149,9 @@ pub fn carried_bonus(inventory: &Inventory) -> Carried {
 }
 
 impl World {
-    /// Runs down every cooldown an entity is waiting on.
+    /// Runs down every ability and item cooldown and every mute, on bodies
+    /// and on what a fallen hero's seat keeps, every seat's item waits, and
+    /// every timed modifier, dropping the modifiers and waits that run out.
     pub fn tick_gear(&mut self) {
         // A wait runs whether the body it belongs to is standing or not: what
         // waits with a seat runs down beside what waits on a body.
@@ -421,8 +422,6 @@ impl World {
             .map(|stack| stack.id)
             .collect();
         let mut wanted = Vec::new();
-        // What was asked for is bought however many of it are already held:
-        // only its parts are looked for in hand.
         match item_def(item).map_or(&[][..], |def| def.components) {
             [] => wanted.push(item),
             parts => {
@@ -825,9 +824,9 @@ impl World {
     /// or swapping whatever is in the way. A partial merge leaves its remainder in place.
     ///
     /// Slots run the unit's own bag first, then the seat's stash. The stash
-    /// takes part only while that unit stands in its own shop, so a courier
-    /// waiting at the fountain reaches it as readily as a hero does. A stack coming out of the
-    /// backpack into the inventory is muted for a while.
+    /// takes part only while that unit stands in its own shop, a courier as
+    /// much as a hero. A stack coming out of the backpack into the inventory
+    /// is muted for [`rules::BACKPACK_MUTE_TICKS`].
     pub fn move_item(&mut self, slot: SlotId, unit: Entity, from: usize, to: usize) -> bool {
         let Some(seat) = self.seats.iter().position(|s| s.slot == slot) else {
             return false;
@@ -880,8 +879,9 @@ impl World {
     /// slot unmarks it. Only the seat that bought a stack may sell or mark
     /// it.
     ///
-    /// An untouched stack sold soon after it was bought pays back what it
-    /// cost; anything else pays back a part of it.
+    /// An untouched stack sold within [`rules::SELL_REFUND_TICKS`] of its
+    /// purchase pays back what it cost; anything else pays back
+    /// [`rules::SELL_PCT`] of it.
     pub fn sell_item(&mut self, slot: SlotId, unit: Entity, at: usize) -> bool {
         let Some(seat) = self.seats.iter().position(|s| s.slot == slot) else {
             return false;
@@ -904,9 +904,6 @@ impl World {
         if held.owner != slot {
             return false;
         }
-        // What waits in the stash waits at the shop, so it sells from
-        // anywhere; what a unit carries sells only where that unit stands.
-        // Anywhere else the order is a mark, and marks toggle.
         if !in_stash(at) && !self.at_shop(unit) {
             if let Some(stack) = self.slot_mut(unit, seat, at) {
                 stack.for_sale = !stack.for_sale;
@@ -948,10 +945,9 @@ impl World {
 
     /// Sells every stack marked for sale that has reached the shop.
     ///
-    /// A marked stack sells wherever it sits — its owner's stash, or any bag
-    /// standing within the owner's home shop area — and the gold goes to the
-    /// owner. One pass owns every way a stack can arrive: carried there,
-    /// delivered by courier, or put back into the stash.
+    /// A marked stack sells in a stash, or in any bag standing within
+    /// [`rules::SHOP_RANGE`] of its owner's fountain, however it got there;
+    /// the gold goes to its owner.
     pub fn settle_sales(&mut self) {
         for seat in 0..self.seats.len() {
             for at in 0..self.seats[seat].stash.slots.len() {
@@ -1087,10 +1083,9 @@ impl World {
 
     /// The tree an item was aimed at.
     ///
-    /// The spot aimed at has to fall inside a tree's own circle: what answers
-    /// is the tree that was pointed at, not whatever tree happened to be
-    /// nearest. That tree then has to be within reach of the one using the
-    /// item.
+    /// The tree nearest the spot aimed at, within [`rules::TREE_RADIUS`] of
+    /// it, and within `range` of the one using the item. Aimed at a unit, the
+    /// spot is where the unit stands; aimed at nothing, where the user does.
     fn reach_a_tree(&self, user: Entity, target: Target, range: i32) -> Option<crate::game::Tree> {
         let from = self.transform.get(user).map(|t| t.pos)?;
         let at = match target {
@@ -1147,7 +1142,7 @@ impl World {
     /// A point has to be there to spend: a hero has one per level and no more.
     /// Each level of an ability waits for a hero level of its own, and none
     /// goes past its own cap. A point into a slot that shares its level with
-    /// others — a raze — levels every slot of the group at once.
+    /// others (the razes) levels every slot of the group at once.
     pub fn learn(&mut self, entity: Entity, slot: usize, events: &mut Vec<Event>) -> bool {
         let Some(book) = self.abilities.get(entity) else {
             return false;

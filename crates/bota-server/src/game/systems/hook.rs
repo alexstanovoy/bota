@@ -123,8 +123,9 @@ impl World {
 
     /// What a hook catches where it now flies.
     ///
-    /// The nearest body in its way that is neither the one who threw it nor
-    /// anything rooted to the map: a hook takes units, not buildings.
+    /// The nearest living unit within its radius of the hook, edge counted,
+    /// other than the one who threw it. A structure or a ward is never
+    /// caught.
     fn caught_at(&self, hook: Entity, owner: Entity, at: Vec2, radius: Fixed) -> Option<Entity> {
         let mut best: Option<(i64, Entity)> = None;
         for other in self.entities.iter() {

@@ -70,7 +70,7 @@ struct Told {
     landed: usize,
     /// Attacks that missed.
     missed: usize,
-    /// Magical bonuses landed by a pierce, and what each took off.
+    /// What the magical bonus a pierce landed took off, if one did.
     bonus: Option<i32>,
 }
 

@@ -232,10 +232,8 @@ impl SightScratch {
 }
 
 impl World {
-    /// Whether a side sees a point on the map.
-    ///
-    /// A point has no row of its own, so this is asked live: for an event at a
-    /// spot, or for an order at somewhere nobody stands.
+    /// Whether a side sees a point on the map, worked out live from its
+    /// viewers' ordinary sight.
     pub fn can_see_point(&self, team: Team, at: Vec2) -> bool {
         let target_tier = self.ground.tier(at);
         self.entities.iter().any(|entity| {

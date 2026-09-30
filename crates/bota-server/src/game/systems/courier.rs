@@ -24,8 +24,8 @@ impl World {
         self.seats[seat].courier_left = 0;
     }
 
-    /// Brings back every courier whose wait is out, and starts the wait for
-    /// every one that has just gone.
+    /// Carries every errand one tick on, brings back every courier whose
+    /// wait is out, and starts the wait for every one that has just gone.
     pub fn tick_couriers(&mut self) {
         self.run_errands();
         for seat in 0..self.seats.len() {
@@ -147,10 +147,9 @@ impl World {
 
     /// Takes what waits in a seat stash, from the spot by the shop.
     ///
-    /// Nothing to take is not a failure. Carrying something already, it takes
-    /// that on to its owner rather than fetching nothing; carrying nothing
-    /// either, it goes home and stays. What is taken is carried on at once,
-    /// without being asked twice.
+    /// With the stash empty it takes what it carries on to its owner, or,
+    /// carrying nothing, goes home. What it takes it carries on to its owner
+    /// at once.
     fn take_the_stash(&mut self, seat: usize, courier: Entity) -> bool {
         if self.seats[seat].stash.held().count() == 0 {
             let carrying = self
@@ -186,7 +185,6 @@ impl World {
             moved = true;
         }
         if moved {
-            // Having taken it, it is carrying it: that is one errand, not two.
             self.errand.insert(courier, Errand::ToOwner);
         }
         false
@@ -288,8 +286,8 @@ impl World {
         }
         self.hand_over(courier, owner);
         self.collect_marked(courier, owner);
-        // What its owner had no room for is carried back to the stash rather
-        // than flown home and sat on, and what was marked rides the same leg.
+        // What its owner had no room for, and what was marked, goes back to
+        // the stash.
         let left = self
             .inventory
             .get(courier)
@@ -377,7 +375,7 @@ impl World {
         }
     }
 
-    /// Where a side's couriers stand up, for anything that needs to know.
+    /// Where a side's couriers stand up: its fountain.
     pub fn courier_home(&self, team: Team) -> Vec2 {
         crate::game::fountain_pos(self.map, team)
     }

@@ -13,7 +13,7 @@ use crate::game::{
 /// One attack that did not land.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Missed {
-    /// Who swung, while that one still stands.
+    /// Who swung. The handle may outlive the body.
     pub source: Option<Entity>,
     /// Who it was swung at.
     pub target: Entity,
@@ -24,16 +24,14 @@ pub struct Missed {
 }
 
 /// One blow once it has been felt.
-///
-/// What the world does with it afterwards — the event it sends, the bounty it
-/// pays — is not this system's business.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Landed {
-    /// Who dealt it, while that one still stands.
+    /// Who dealt it. The handle may outlive the body.
     pub source: Option<Entity>,
     /// Who took it.
     pub target: Entity,
-    /// After armor and resistance.
+    /// Health taken, after armor and resistance, at most one past what the
+    /// target had left.
     pub amount: i32,
     /// Which reduction applied.
     pub kind: DamageKind,

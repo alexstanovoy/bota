@@ -436,8 +436,8 @@ impl World {
     }
 
     /// Whoever stands in a walker's step was not where its plan had them:
-    /// a body that is itself moving costs the block wait, a standing one is
-    /// planned round again straight away, and a hero run into is counted.
+    /// the plan is dropped, a body that is itself moving costs the block
+    /// wait, and a hero run into is counted.
     fn blocked_by(&mut self, entity: Entity, blocker: Entity) {
         let now = self.tick;
         let moving = self
@@ -561,8 +561,8 @@ impl World {
         foreseen
     }
 
-    /// Every body standing still about a spot that is not a structure,
-    /// as circles a route may be laid round.
+    /// Every body about a spot that can move but has stood still for
+    /// [`rules::STANDING_TICKS`], as circles a route may be laid round.
     fn standing_about(&self, entity: Entity, from: Vec2, out: &mut Vec<(Vec2, Fixed)>) {
         let reach = rules::units(rules::STANDING_REACH);
         self.bodies.near(from, reach, |body| {
@@ -884,9 +884,7 @@ fn destination(order: &UnitOrder) -> Option<Vec2> {
 }
 
 /// Whether the laid plan still leads where the route goes and has enough left.
-///
-/// A plan that was never laid reads as stale: its step is zero against a
-/// positive step per tick, exactly as the clone-based check read it.
+/// A plan that was never laid is stale.
 fn plan_stale(
     plan: Option<&Plan>,
     from: Vec2,

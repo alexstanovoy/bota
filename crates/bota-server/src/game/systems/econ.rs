@@ -6,8 +6,8 @@ use crate::game::{Bounty, Entity, Level, World, is_lane_creep, is_structure, wir
 use crate::game::{Event, EventVisibility, hero_spawn_pos, rules};
 
 impl World {
-    /// Hands out the gold that arrives on its own: one a period, to every
-    /// seat.
+    /// Hands out the gold that arrives on its own: one every
+    /// [`rules::PASSIVE_GOLD_PERIOD_TICKS`] after the horn, to every seat.
     pub fn passive_gold(&mut self) {
         if self.tick <= rules::PREGAME_TICKS
             || !(self.tick - rules::PREGAME_TICKS).is_multiple_of(rules::PASSIVE_GOLD_PERIOD_TICKS)
@@ -22,13 +22,15 @@ impl World {
 
     /// Pays for one entity brought down, and says how much gold that paid.
     ///
-    /// Gold goes to whoever struck last; experience is shared among the
-    /// enemy heroes standing near enough to see it fall. Bringing down one of
-    /// your own is a deny: it pays the other side nothing.
+    /// Gold goes to the seat whose hero struck last; experience is shared
+    /// among the killer side's living heroes within [`rules::XP_RADIUS`], and
+    /// the killer of a hero shares wherever it stands. Bringing down one of
+    /// your own is a deny: it pays no gold, and only a denied lane creep
+    /// gives the other side [`rules::DENIED_XP_PCT`] of its experience.
     ///
     /// A hero's head is priced by its streak, which ends with it, and its
-    /// death costs it gold by its level — whoever struck the blow, and never
-    /// more than it holds.
+    /// death costs it its net worth over [`rules::DEATH_GOLD_LOSS_SHARE`],
+    /// whoever struck the blow, and never more than it holds.
     ///
     /// The killing unit's gold income modifier scales the bounty once, after
     /// the bounty is composed and before it is credited.

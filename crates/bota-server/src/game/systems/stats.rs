@@ -10,12 +10,6 @@ use crate::game::{
 };
 
 /// What working out stats reads and writes.
-///
-/// The set is wide enough that naming the tables one by one runs past what is
-/// readable at a call site; gathered here, the access a system takes is still
-/// declared, and still checked when [`World::step`] hands the tables over.
-///
-/// [`World::step`]: crate::game::World::step
 pub struct StatsCx<'a> {
     /// Which entities exist.
     pub entities: &'a EntityAllocator,
@@ -105,8 +99,6 @@ fn derive_stats_impl<const APPLIED: bool>(cx: StatsCx<'_>) {
             let base = rules::BASE_ATTACK_SPEED + agility_pace(now.attributes);
             now.attack_speed += base * carried.base_attack_speed_pct / 100;
         }
-        // Every soul gathered is worth attack damage for as long as it is
-        // held.
         now.damage += rules::DAMAGE_PER_SOUL * gathered.of(StackKind::Souls) as i32;
         if let Some(on_it) = modifiers.get(entity) {
             add_modifiers(&mut now, on_it);
@@ -220,8 +212,7 @@ fn add_modifiers(now: &mut Stats, on_it: &Modifiers) {
 ///
 /// Every family is summed as a delta first and written once, so several
 /// sources never compound. Resistances are added in their own units and
-/// scales as deltas of the nominal; everything the rest of the pipeline adds
-/// or multiplies lands on top of the result.
+/// scales as deltas of the nominal.
 fn fold_applied(now: &mut Stats, applied: &AppliedModifiers) {
     let mut magic_resist: i32 = 0;
     let mut status_resist: i32 = 0;
@@ -390,10 +381,8 @@ fn per_second(hundredths: i32) -> Fixed {
     Fixed::from_ratio(hundredths, 100 * rules::TICKS_PER_SECOND as i32)
 }
 
-/// A speed taken to a percent of itself.
-///
-/// Worked out wide: a speed in fixed point is already millions of raw units,
-/// and a hundredth of it would overflow the width it is kept in.
+/// A speed taken to a percent of itself, worked out in `i64` and clamped
+/// to what a [`Fixed`] holds.
 fn scaled(speed: Fixed, pct: i32) -> Fixed {
     let raw = i64::from(speed.raw) * i64::from(pct) / 100;
     Fixed {

@@ -1,4 +1,4 @@
-//! The attack cycle: exact counts at every speed, and the old ticks at the
+//! The attack cycle: exact counts at every speed, and the pinned ticks at the
 //! base one.
 
 use bota_proto::{Fixed, Team, Vec2};

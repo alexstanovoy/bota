@@ -18,11 +18,11 @@ pub enum PriorityOrder {
 /// The priority class of a target, before the class order is applied.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum TargetClass {
-    /// A hero or an ordinary unit.
+    /// Anything not in another class, a barracks included.
     Unit,
     /// A siege creep.
     Siege,
-    /// A building.
+    /// A tower, an ancient or a fountain.
     Building,
     /// A ward.
     Ward,
@@ -124,10 +124,10 @@ impl World {
 
     /// Whether one entity attacks another of its own accord.
     ///
-    /// Team alone does not decide it: what a side cannot see it does not take
-    /// on, the jungle is hostile to both sides but only the pull camps are
-    /// hostile back to lane creeps, and buildings never shoot the jungle at
-    /// all.
+    /// Never one of its own side, anything down, anything its side cannot
+    /// see, or anything invulnerable. The jungle pays a courier no mind; a
+    /// structure never takes on the jungle, and a lane creep takes on only the
+    /// neutrals of a pull camp.
     pub fn hostile(&self, seeker: Entity, target: Entity) -> bool {
         let (Some(mine), Some(theirs)) = (
             self.team.get(seeker).copied(),
@@ -138,15 +138,12 @@ impl World {
         if mine == theirs || !self.alive(target) {
             return false;
         }
-        // Nothing is taken on that its side has no eyes on.
         if !self.can_see(mine, target) {
             return false;
         }
         if self.stats.get(target).is_some_and(|s| s.invulnerable) {
             return false;
         }
-        // The jungle pays a courier no mind. Everything else takes it on like
-        // anything else.
         if mine == Team::Neutral && self.kind.get(target) == Some(&UnitKind::Courier) {
             return false;
         }
@@ -285,8 +282,9 @@ impl World {
 impl World {
     /// Whether one entity may be attacked by another on an order.
     ///
-    /// An enemy always may. One of your own may only once it is worn down far
-    /// enough to be denied, and only a lane creep or a building ever is.
+    /// Only what is alive and seen by the attacker's side. An enemy may unless
+    /// it is invulnerable; one of your own only once it is
+    /// [`deniable`](World::deniable).
     pub fn may_attack_on_order(&self, attacker: Entity, on: Entity) -> bool {
         if !self.alive(on) || !self.can_see_of(attacker, on) {
             return false;
