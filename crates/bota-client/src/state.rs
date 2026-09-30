@@ -155,12 +155,10 @@ pub fn tap_again(last: Option<(Tap, f32)>, what: Tap) -> (bool, Option<(Tap, f32
 pub fn refusal(reason: bota_proto::RejectReason) -> &'static str {
     use bota_proto::RejectReason as Why;
     match reason {
-        Why::NotYourSlot => "that seat is not yours",
         Why::HeroDead => "your hero is not standing",
         Why::UnknownTarget => "no such target",
         Why::WrongTargetKind => "not aimed at what it takes",
         Why::OnCooldown => "still on cooldown",
-        Why::OutOfRange => "out of range",
         Why::NotEnoughMana => "not enough mana",
         Why::NotEnoughGold => "not enough gold",
         Why::EmptySlot => "that slot is empty",
@@ -170,11 +168,9 @@ pub fn refusal(reason: bota_proto::RejectReason) -> &'static str {
         Why::NotReady => "it is not working yet",
         Why::NotYourUnit => "you do not drive that unit",
         Why::UnknownItem => "the shop does not sell that",
-        Why::CannotLevelUp => "no skill point for it",
         Why::NotAtShop => "only at the shop",
         Why::InventoryFull => "no room for it",
         Why::Disabled => "you cannot act right now",
-        Why::NotPlaying => "the match is not running",
         Why::NotYourItem => "not yours to sell",
         Why::ClosedGround => "nothing can lie there",
         Why::NotInBag => "not carried in the bag",

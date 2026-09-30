@@ -107,8 +107,6 @@ pub struct MatchInfo {
 /// Why the server refused an order.
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum RejectReason {
-    /// The order arrived for a seat this connection does not hold.
-    NotYourSlot,
     /// The hero is dead.
     HeroDead,
     /// The target does not exist, or is not currently visible to this team.
@@ -117,8 +115,6 @@ pub enum RejectReason {
     WrongTargetKind,
     /// The ability or item is still on cooldown.
     OnCooldown,
-    /// The target is beyond the ability's cast range.
-    OutOfRange,
     /// Not enough mana.
     NotEnoughMana,
     /// Not enough gold.
@@ -139,8 +135,6 @@ pub enum RejectReason {
     NotYourUnit,
     /// No item with this id is sold.
     UnknownItem,
-    /// No skill point is available, or the ability is already at its cap.
-    CannotLevelUp,
     /// Moving an item into or out of the stash requires standing at the
     /// home shop.
     NotAtShop,
@@ -148,8 +142,6 @@ pub enum RejectReason {
     InventoryFull,
     /// The unit is stunned, feared or channelling.
     Disabled,
-    /// The match has not started or has already finished.
-    NotPlaying,
     /// Only the seat that bought an item may sell it or mark it for sale.
     NotYourItem,
     /// The spot aimed at is ground nothing may stand on.

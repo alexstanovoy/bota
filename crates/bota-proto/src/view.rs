@@ -19,12 +19,6 @@ pub struct StatusFlags {
 impl StatusFlags {
     /// Cannot act, move or turn.
     pub const STUNNED: u16 = 1 << 0;
-    /// Cannot cast abilities, but can still move and attack.
-    pub const SILENCED: u16 = 1 << 1;
-    /// Cannot move, but can still act.
-    pub const ROOTED: u16 = 1 << 2;
-    /// Cannot attack, but can still move and cast.
-    pub const DISARMED: u16 = 1 << 3;
     /// Movement speed is reduced.
     pub const SLOWED: u16 = 1 << 4;
     /// Losing health over time.
@@ -33,8 +27,6 @@ impl StatusFlags {
     pub const INVISIBLE: u16 = 1 << 6;
     /// Immune to magical damage and most disables.
     pub const MAGIC_IMMUNE: u16 = 1 << 7;
-    /// Dead and waiting to respawn.
-    pub const DEAD: u16 = 1 << 8;
     /// Cannot be attacked or damaged at all.
     pub const INVULNERABLE: u16 = 1 << 9;
     /// Performing a channelled ability or item action.
