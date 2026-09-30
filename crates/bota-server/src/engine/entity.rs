@@ -140,6 +140,13 @@ impl EntityAllocator {
         !meta.free && meta.generation == entity.generation
     }
 
+    /// The live entity holding a slot as a given tenant, if there is one.
+    pub fn resolve(&self, index: Index, generation: u32) -> Option<Entity> {
+        let generation = Generation(NonZeroU32::new(generation)?);
+        let meta = self.entities.get(index.0 as usize)?;
+        (!meta.free && meta.generation == generation).then_some(Entity { index, generation })
+    }
+
     /// Every live entity, in slot order.
     pub fn iter(&self) -> impl Iterator<Item = Entity> {
         self.entities

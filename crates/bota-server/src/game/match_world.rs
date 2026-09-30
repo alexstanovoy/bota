@@ -523,8 +523,7 @@ impl World {
     /// The entity behind a handle from the wire, while it still stands.
     pub fn of_wire(&self, id: bota_proto::EntityId) -> Option<Entity> {
         self.entities
-            .iter()
-            .find(|entity| crate::game::wire_id(*entity) == id)
+            .resolve(crate::game::Index(id.idx), id.generation)
     }
 
     /// The match result, when complete. `Team::Neutral` denotes a Map2 draw.
