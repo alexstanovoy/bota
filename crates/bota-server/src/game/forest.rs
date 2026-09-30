@@ -33,6 +33,8 @@ pub struct Planted {
 pub struct Forest {
     /// The tick each of the map's trees comes back. Zero for one standing.
     back: Vec<u32>,
+    /// Every one of the map's trees that is down, in order.
+    down: Vec<u32>,
     /// What has been put up and not yet gone.
     planted: Vec<Planted>,
 }
@@ -42,6 +44,7 @@ impl Forest {
     pub fn of(map: &'static crate::game::MapDef) -> Forest {
         Forest {
             back: vec![0; crate::game::tree_positions(map).len()],
+            down: Vec::new(),
             planted: Vec::new(),
         }
     }
@@ -53,11 +56,7 @@ impl Forest {
 
     /// Every one of the map's trees that is down, in order.
     pub fn felled(&self) -> impl Iterator<Item = u32> + '_ {
-        self.back
-            .iter()
-            .enumerate()
-            .filter(|(_, back)| **back > 0)
-            .map(|(index, _)| index as u32)
+        self.down.iter().copied()
     }
 
     /// Every tree put up and still standing, in order.
@@ -112,6 +111,9 @@ impl Forest {
             Tree::Rooted(index) => {
                 if let Some(back) = self.back.get_mut(index) {
                     *back = now + rules::TREE_REGROW_TICKS;
+                    if let Err(at) = self.down.binary_search(&(index as u32)) {
+                        self.down.insert(at, index as u32);
+                    }
                 }
             }
             Tree::Planted(index) => {
@@ -133,13 +135,16 @@ impl Forest {
     /// Answers whether anything changed, since what blocks sight has to be
     /// laid again when it did.
     pub fn tick(&mut self, now: u32) -> bool {
-        let mut moved = false;
-        for back in self.back.iter_mut() {
-            if *back > 0 && now >= *back {
+        let before = self.down.len();
+        let back = &mut self.back;
+        self.down.retain(|&index| {
+            let back = &mut back[index as usize];
+            if now >= *back {
                 *back = 0;
-                moved = true;
             }
-        }
+            *back > 0
+        });
+        let moved = self.down.len() != before;
         let before = self.planted.len();
         self.planted.retain(|tree| now < tree.until);
         moved || self.planted.len() != before
