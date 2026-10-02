@@ -103,6 +103,7 @@ pub(super) fn config() -> crate::game::MatchConfig {
         ack_timeout_ticks: 30,
         cheats: false,
         spawn_modifiers: Vec::new(),
+        immortal_structures: false,
     }
 }
 

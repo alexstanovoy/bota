@@ -26,6 +26,7 @@ fn config(cheats: bool) -> MatchConfig {
         ack_timeout_ticks: 30,
         cheats,
         spawn_modifiers: Vec::new(),
+        immortal_structures: false,
     }
 }
 

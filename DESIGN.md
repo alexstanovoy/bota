@@ -132,6 +132,7 @@ pub struct MatchConfig {
     pub match_id: u64, pub master_key: [u8; 32], pub picks: Vec<Pick>,
     pub map: MapId, pub tick_rate: u16, pub mode: TickMode, pub ack_timeout_ticks: u32,
     pub cheats: bool, pub spawn_modifiers: Vec<SpawnModifier>,
+    pub immortal_structures: bool,   // server-only: structures never drop below 1 hp (training, practice)
 }
 
 impl MatchConfig {
@@ -1210,7 +1211,8 @@ describing a different item from the one drawn in it.
 ```
 main:
   parse args (--port, --mode realtime|lockstep, --tick-rate, --players,
-              --replay out.brp, --map, --seed, --ack-timeout-ticks, --cheats)
+              --replay out.brp, --map, --seed, --ack-timeout-ticks, --cheats,
+              --immortal-structures, --dummy-seat)
   listen TCP; the accept thread queues connections
   state = Lobby
 
