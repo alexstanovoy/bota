@@ -1,13 +1,13 @@
 //! Taking blows off the health they landed on.
 
-use bota_proto::{DamageKind, Fixed, Team, Vec2};
+use bota_proto::{DamageKind, Fixed, Team, UnitKind, Vec2};
 
 use crate::game::rules;
 use std::collections::VecDeque;
 
 use crate::game::{
     Chance, Entity, Health, Hit, HitEffect, MatchRng, ModifierKind, Modifiers, Purpose, Ratio,
-    Stats, Table, Transform, wire_id,
+    Stats, Table, Transform, is_structure, wire_id,
 };
 
 /// One attack that did not land.
@@ -61,6 +61,10 @@ pub struct HitCx<'a> {
     pub health: &'a mut Table<Health>,
     /// What is on each entity, read and added to by successful blows.
     pub modifiers: &'a mut Table<Modifiers>,
+    /// What kind of thing each entity is.
+    pub kind: &'a Table<UnitKind>,
+    /// Whether a blow never takes a structure below 1 hp.
+    pub immortal_structures: bool,
     /// Hidden streams, for a target's first evasion roll.
     pub rng: &'a MatchRng,
     /// Evasion sequence per target slot.
@@ -85,6 +89,8 @@ pub fn hitting_system<const AMPLIFIED: bool>(cx: HitCx<'_>) {
         stats,
         health,
         modifiers,
+        kind,
+        immortal_structures,
         rng,
         evasion,
         missed,
@@ -125,7 +131,12 @@ pub fn hitting_system<const AMPLIFIED: bool>(cx: HitCx<'_>) {
         let Some(pool) = health.get_mut(blow.target) else {
             continue;
         };
-        let applied = taken.min(pool.hp.to_int().max(0) + 1);
+        let spared = immortal_structures && kind.get(blow.target).is_some_and(|k| is_structure(*k));
+        let applied = if spared {
+            taken.min((pool.hp - Fixed::from_int(1)).to_int().max(0))
+        } else {
+            taken.min(pool.hp.to_int().max(0) + 1)
+        };
         pool.hp -= Fixed::from_int(applied);
         let fatal = pool.hp <= Fixed::ZERO;
         if applied > 0 && !fatal {

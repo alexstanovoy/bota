@@ -35,6 +35,10 @@ pub struct ServerOpts {
     pub map: MapId,
     /// Whether cheat orders are honoured.
     pub cheats: bool,
+    /// Whether structures keep at least 1 hp and never fall.
+    pub immortal_structures: bool,
+    /// Whether the last seat is a dummy: a hero that stays put and never acts.
+    pub dummy_seat: bool,
     /// Lockstep: how many tick-lengths to wait for a straggler.
     pub ack_timeout_ticks: u32,
 }
@@ -50,10 +54,10 @@ pub fn run(listener: TcpListener, opts: ServerOpts) -> std::io::Result<()> {
         _tx: tx,
         conns: Vec::new(),
         spectators: Vec::new(),
-        roster: Roster::new(0),
+        roster: Roster::new(0, false),
         next_player: 1,
     };
-    server.roster = Roster::new(server.opts.players);
+    server.roster = Roster::new(server.opts.players, server.opts.dummy_seat);
     let cfg = server.lobby_phase();
     server.match_phase(cfg);
     Ok(())
@@ -237,6 +241,7 @@ impl Server {
             mode: self.opts.mode,
             ack_timeout_ticks: self.opts.ack_timeout_ticks,
             cheats: self.opts.cheats,
+            immortal_structures: self.opts.immortal_structures,
             spawn_modifiers: Vec::new(),
         }
     }

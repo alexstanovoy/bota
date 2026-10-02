@@ -113,6 +113,7 @@ fn no_creep_of_the_first_waves_is_left_wrestling_its_own_base() {
         ack_timeout_ticks: 0,
         cheats: false,
         spawn_modifiers: Vec::new(),
+        immortal_structures: false,
     };
     let mut world = World::for_match(&cfg, cfg.rng());
     for _ in 0..=rules::FIRST_WAVE_TICK {
@@ -182,6 +183,7 @@ fn a_wave_walks_over_where_its_tower_stood_once_it_has_fallen() {
         ack_timeout_ticks: 0,
         cheats: false,
         spawn_modifiers: Vec::new(),
+        immortal_structures: false,
     };
     let mut world = World::for_match(&cfg, cfg.rng());
     let (lane, _, tower) = rules::RADIANT_TOWERS[2];
@@ -310,6 +312,7 @@ fn a_fallen_barracks_turns_the_waves_against_it_super_and_all_of_them_mega() {
         ack_timeout_ticks: 0,
         cheats: false,
         spawn_modifiers: Vec::new(),
+        immortal_structures: false,
     };
     let mut world = World::for_match(&cfg, cfg.rng());
     // Whole barracks: plain waves.
@@ -374,6 +377,7 @@ fn the_demo_waves_march_out_and_meet_between_the_towers() {
         ack_timeout_ticks: 0,
         cheats: false,
         spawn_modifiers: Vec::new(),
+        immortal_structures: false,
     };
     let mut world = World::for_match(&cfg, cfg.rng());
     for _ in 0..=rules::FIRST_WAVE_TICK {

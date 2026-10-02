@@ -90,6 +90,8 @@ fn a_realtime_match_reaches_two_clients() {
         map: bota_proto::MapId(0),
         ack_timeout_ticks: 150,
         cheats: false,
+        immortal_structures: false,
+        dummy_seat: false,
     });
 
     let (mut c1, slot1) = join_as_bot(addr, "alpha");
@@ -177,6 +179,8 @@ fn a_spectator_borrows_eyes_and_is_told_the_orders_they_see() {
         map: bota_proto::MapId(0),
         ack_timeout_ticks: 150,
         cheats: false,
+        immortal_structures: false,
+        dummy_seat: false,
     });
     let (mut c1, _) = join_as_bot(addr, "alpha");
     let (mut c2, _) = join_as_bot(addr, "beta");
@@ -263,6 +267,8 @@ fn lockstep_advances_as_fast_as_the_acks_come() {
         map: bota_proto::MapId(0),
         ack_timeout_ticks: 600, // ten seconds: only acks can move this match
         cheats: false,
+        immortal_structures: false,
+        dummy_seat: false,
     });
 
     let (mut c1, _) = join_as_bot(addr, "alpha");
@@ -281,4 +287,34 @@ fn lockstep_advances_as_fast_as_the_acks_come() {
         }
     }
     assert!(last_tick >= 4, "the match advanced on acknowledgements");
+}
+
+#[test]
+fn a_dummy_seat_lets_one_client_start_a_match_alone() {
+    let addr = start_server(ServerOpts {
+        mode: bota_proto::TickMode::Realtime,
+        tick_rate: 60,
+        players: 2,
+        replay: None,
+        seed: 11,
+        map: bota_proto::MapId(2),
+        ack_timeout_ticks: 150,
+        cheats: false,
+        immortal_structures: true,
+        dummy_seat: true,
+    });
+    let (mut client, slot) = join_as_bot(addr, "alone");
+    assert_eq!(slot, Some(bota_proto::SlotId(0)));
+    client.recv_until(|msg| match msg {
+        ServerMsg::MatchStart { info } => {
+            assert_eq!(info.picks.len(), 2);
+            Some(())
+        }
+        _ => None,
+    });
+    let view = client.recv_until(|msg| match msg {
+        ServerMsg::Snapshot { view } if view.tick > 1 => Some(view),
+        _ => None,
+    });
+    assert_eq!(view.players.len(), 2);
 }

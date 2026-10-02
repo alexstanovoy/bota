@@ -2,6 +2,9 @@
 
 use bota_proto::{HeroId, LobbySlot, PlayerId, Role, SlotId, Team};
 
+/// The hero a dummy seat plays: Shadow Fiend.
+pub const DUMMY_HERO: HeroId = HeroId(2);
+
 /// One seat of the match and who currently holds it.
 #[derive(Clone, Debug)]
 pub struct RosterSeat {
@@ -19,6 +22,8 @@ pub struct RosterSeat {
     pub hero: Option<HeroId>,
     /// Whether the holder declared readiness.
     pub ready: bool,
+    /// A seat nobody holds: ready from the start, its hero stays put and never acts.
+    pub dummy: bool,
 }
 
 /// All seats, and the `PlayerId` to `SlotId` mapping.
@@ -32,8 +37,9 @@ pub struct Roster {
 }
 
 impl Roster {
-    /// An empty roster: even slots are Radiant, odd are Dire.
-    pub fn new(players: u8) -> Roster {
+    /// An empty roster: even slots are Radiant, odd are Dire. With `dummy`
+    /// the last seat is a ready dummy playing `DUMMY_HERO`.
+    pub fn new(players: u8, dummy: bool) -> Roster {
         Roster {
             seats: (0..players)
                 .map(|i| RosterSeat {
@@ -48,9 +54,22 @@ impl Roster {
                     role: None,
                     hero: None,
                     ready: false,
+                    dummy: false,
                 })
                 .collect(),
         }
+        .with_dummy(dummy)
+    }
+
+    fn with_dummy(mut self, dummy: bool) -> Roster {
+        if let Some(seat) = self.seats.last_mut().filter(|_| dummy) {
+            seat.dummy = true;
+            seat.name = "dummy".to_string();
+            seat.role = Some(Role::Bot);
+            seat.hero = Some(DUMMY_HERO);
+            seat.ready = true;
+        }
+        self
     }
 
     /// The seat a connection holds.
@@ -65,7 +84,9 @@ impl Roster {
 
     /// The first open seat, if any.
     pub fn free_seat_mut(&mut self) -> Option<&mut RosterSeat> {
-        self.seats.iter_mut().find(|s| s.player.is_none())
+        self.seats
+            .iter_mut()
+            .find(|s| s.player.is_none() && !s.dummy)
     }
 
     /// Releases whatever seat a connection held.
@@ -82,7 +103,7 @@ impl Roster {
     pub fn all_ready(&self) -> bool {
         self.seats
             .iter()
-            .all(|s| s.player.is_some() && s.hero.is_some() && s.ready)
+            .all(|s| (s.dummy || s.player.is_some()) && s.hero.is_some() && s.ready)
     }
 
     /// The lobby as the wire sees it.

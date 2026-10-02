@@ -50,6 +50,12 @@ struct Args {
     /// Honour cheat orders: gold, levels, items and refreshes for the asking.
     #[arg(long)]
     cheats: bool,
+    /// Structures take damage but never fall: no tower-loss ending, for practice.
+    #[arg(long)]
+    immortal_structures: bool,
+    /// Seat a dummy in the last seat: its hero stays put and never acts, so one player can practise alone.
+    #[arg(long)]
+    dummy_seat: bool,
 }
 
 fn main() -> std::io::Result<()> {
@@ -76,6 +82,8 @@ fn main() -> std::io::Result<()> {
             map: bota_proto::MapId(args.map),
             ack_timeout_ticks: args.ack_timeout_ticks,
             cheats: args.cheats,
+            immortal_structures: args.immortal_structures,
+            dummy_seat: args.dummy_seat,
         },
     )
 }

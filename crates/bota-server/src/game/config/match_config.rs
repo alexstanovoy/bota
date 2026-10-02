@@ -65,6 +65,9 @@ pub struct MatchConfig {
     /// Trusted modifiers put on units as they are stood up, and on those
     /// already standing when the match begins. `MAX_SPAWN_MODIFIERS` at most.
     pub spawn_modifiers: Vec<SpawnModifier>,
+    /// Whether structures keep at least 1 hp: they take damage and draw aggro
+    /// as usual but never fall.
+    pub immortal_structures: bool,
 }
 
 impl MatchConfig {

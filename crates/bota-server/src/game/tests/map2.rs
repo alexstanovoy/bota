@@ -1,8 +1,8 @@
 //! Map2 geometry, waves, and end-of-tick match completion.
 
 use bota_proto::{
-    DamageKind, EventKind, HeroId, ItemId, MapId, Order, Pick, ReplayRecord, ServerMsg, SlotId,
-    Team, TickMode, UnitKind, Vec2, decode_payload, encode_frame_to_vec,
+    DamageKind, EventKind, Fixed, HeroId, ItemId, MapId, Order, Pick, ReplayRecord, ServerMsg,
+    SlotId, Team, TickMode, UnitKind, Vec2, decode_payload, encode_frame_to_vec,
 };
 
 use crate::game::{
@@ -37,6 +37,7 @@ fn config(map: MapId) -> MatchConfig {
         ack_timeout_ticks: 150,
         cheats: false,
         spawn_modifiers: Vec::new(),
+        immortal_structures: false,
     }
 }
 
@@ -300,6 +301,27 @@ fn map2_first_tower_loss_on_any_lane_ends_with_public_structure_reason() {
             assert_eq!(world.seats[1].deaths, 0);
         }
     }
+}
+
+#[test]
+fn map2_immortal_structures_survive_sustained_attack_and_the_match_goes_on() {
+    let mut cfg = config(MID_MAP);
+    cfg.immortal_structures = true;
+    let mut world = World::for_match(&cfg, cfg.rng());
+    let victim = tower(&world, Team::Dire, rules::LANE_MID);
+    let mut felt = 0;
+    for _ in 0..30 {
+        world.push_hit(None, victim, 30_000, DamageKind::Pure);
+        let events = world.advance(&[]);
+        felt += events
+            .iter()
+            .filter(|event| matches!(&event.kind, EventKind::Damaged { target, amount, .. } if *target == wire_id(victim) && *amount > 0))
+            .count();
+        assert!(world.alive(victim));
+        assert!(world.health.get(victim).expect("health").hp >= Fixed::from_int(1));
+        assert_eq!(world.victor(), None);
+    }
+    assert!(felt > 0, "the tower still takes and reports damage");
 }
 
 #[test]

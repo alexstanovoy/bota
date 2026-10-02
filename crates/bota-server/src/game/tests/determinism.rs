@@ -163,6 +163,7 @@ fn config(pinned: &Pinned) -> MatchConfig {
         ack_timeout_ticks: 0,
         cheats: false,
         spawn_modifiers: Vec::new(),
+        immortal_structures: false,
     }
 }
 
