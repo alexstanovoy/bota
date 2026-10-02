@@ -276,6 +276,7 @@ fn a_hero_told_to_walk_into_a_tower_walks_up_to_it_and_stands() {
         cheats: false,
         spawn_modifiers: Vec::new(),
         immortal_structures: false,
+        immortal_heroes: false,
     };
     let mut world = World::for_match(&cfg, cfg.rng());
     let (_, _, tower) = rules::RADIANT_TOWERS[2];

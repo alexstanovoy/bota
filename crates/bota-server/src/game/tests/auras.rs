@@ -187,6 +187,7 @@ fn the_fountain_melts_whoever_steps_into_its_reach_and_spares_who_stays_out() {
         cheats: false,
         spawn_modifiers: Vec::new(),
         immortal_structures: false,
+        immortal_heroes: false,
     };
     let mut world = World::for_match(&cfg, cfg.rng());
     let hero = world.seats[0].unit.expect("stood up");

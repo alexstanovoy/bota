@@ -47,6 +47,7 @@ fn config(cheats: bool, rules: Vec<SpawnModifier>) -> MatchConfig {
         cheats,
         spawn_modifiers: rules,
         immortal_structures: false,
+        immortal_heroes: false,
     }
 }
 

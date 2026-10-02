@@ -38,6 +38,7 @@ fn config(map: MapId) -> MatchConfig {
         cheats: false,
         spawn_modifiers: Vec::new(),
         immortal_structures: false,
+        immortal_heroes: false,
     }
 }
 
@@ -322,6 +323,31 @@ fn map2_immortal_structures_survive_sustained_attack_and_the_match_goes_on() {
         assert_eq!(world.victor(), None);
     }
     assert!(felt > 0, "the tower still takes and reports damage");
+}
+
+#[test]
+fn map2_immortal_heroes_survive_lethal_blows_and_no_death_ends_the_match() {
+    let mut cfg = config(MID_MAP);
+    cfg.immortal_heroes = true;
+    let mut world = World::for_match(&cfg, cfg.rng());
+    for _ in 0..3 {
+        for seat in 0..2 {
+            let hero = world.seats[seat].unit.expect("hero");
+            lethal_hit(&mut world, hero);
+        }
+        world.advance(&[]);
+        for seat in 0..2 {
+            let hero = world.seats[seat].unit.expect("hero");
+            assert!(world.alive(hero));
+            let hp = world.health.get(hero).expect("health").hp;
+            assert!(
+                hp >= Fixed::from_int(1) && hp < Fixed::from_int(2),
+                "{hp:?}"
+            );
+            assert_eq!(world.seats[seat].deaths, 0);
+        }
+        assert_eq!(world.victor(), None);
+    }
 }
 
 #[test]
