@@ -65,6 +65,8 @@ pub struct HitCx<'a> {
     pub kind: &'a Table<UnitKind>,
     /// Whether a blow never takes a structure below 1 hp.
     pub immortal_structures: bool,
+    /// Whether a blow never takes a hero below 1 hp.
+    pub immortal_heroes: bool,
     /// Hidden streams, for a target's first evasion roll.
     pub rng: &'a MatchRng,
     /// Evasion sequence per target slot.
@@ -91,6 +93,7 @@ pub fn hitting_system<const AMPLIFIED: bool>(cx: HitCx<'_>) {
         modifiers,
         kind,
         immortal_structures,
+        immortal_heroes,
         rng,
         evasion,
         missed,
@@ -131,7 +134,9 @@ pub fn hitting_system<const AMPLIFIED: bool>(cx: HitCx<'_>) {
         let Some(pool) = health.get_mut(blow.target) else {
             continue;
         };
-        let spared = immortal_structures && kind.get(blow.target).is_some_and(|k| is_structure(*k));
+        let spared = kind.get(blow.target).is_some_and(|k| {
+            (immortal_structures && is_structure(*k)) || (immortal_heroes && *k == UnitKind::Hero)
+        });
         let applied = if spared {
             taken.min((pool.hp - Fixed::from_int(1)).to_int().max(0))
         } else {

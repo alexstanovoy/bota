@@ -68,6 +68,9 @@ pub struct MatchConfig {
     /// Whether structures keep at least 1 hp: they take damage and draw aggro
     /// as usual but never fall.
     pub immortal_structures: bool,
+    /// Whether heroes keep at least 1 hp: they take damage as usual but never
+    /// die, so no match ends by hero deaths.
+    pub immortal_heroes: bool,
 }
 
 impl MatchConfig {

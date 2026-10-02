@@ -53,6 +53,9 @@ struct Args {
     /// Structures take damage but never fall: no tower-loss ending, for practice.
     #[arg(long)]
     immortal_structures: bool,
+    /// Heroes take damage but never die: no hero-death ending, for last-hit practice.
+    #[arg(long)]
+    immortal_heroes: bool,
     /// Seat a dummy in the last seat: its hero stays put and never acts, so one player can practise alone.
     #[arg(long)]
     dummy_seat: bool,
@@ -83,6 +86,7 @@ fn main() -> std::io::Result<()> {
             ack_timeout_ticks: args.ack_timeout_ticks,
             cheats: args.cheats,
             immortal_structures: args.immortal_structures,
+            immortal_heroes: args.immortal_heroes,
             dummy_seat: args.dummy_seat,
         },
     )

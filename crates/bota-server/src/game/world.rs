@@ -33,6 +33,8 @@ pub struct World {
     pub cheats: bool,
     /// Whether structures keep at least 1 hp and never fall.
     pub immortal_structures: bool,
+    /// Whether heroes keep at least 1 hp and never die.
+    pub immortal_heroes: bool,
     /// The map it is played on.
     pub map: &'static crate::game::MapDef,
     /// Where every roll of the dice comes from.
@@ -203,6 +205,7 @@ impl World {
             winner: None,
             cheats: false,
             immortal_structures: false,
+            immortal_heroes: false,
             map: crate::game::map_of(bota_proto::MapId(0)),
             rng: crate::game::MatchRng::new(&[0; 32], 0),
             clearance: crate::game::Clearance::open(),
@@ -734,6 +737,7 @@ impl World {
             modifiers: &mut self.modifiers,
             kind: &self.kind,
             immortal_structures: self.immortal_structures,
+            immortal_heroes: self.immortal_heroes,
             rng: &self.rng,
             evasion: &mut self.evasion,
             missed: &mut self.missed,

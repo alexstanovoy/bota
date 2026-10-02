@@ -31,6 +31,7 @@ impl World {
         world.rng = rng;
         world.cheats = cfg.cheats;
         world.immortal_structures = cfg.immortal_structures;
+        world.immortal_heroes = cfg.immortal_heroes;
         world.spawn_modifiers = cfg.spawn_modifiers.clone();
         world.apply_spawn_modifiers_to_all();
         for pick in &cfg.picks {

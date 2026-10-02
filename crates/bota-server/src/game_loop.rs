@@ -37,6 +37,8 @@ pub struct ServerOpts {
     pub cheats: bool,
     /// Whether structures keep at least 1 hp and never fall.
     pub immortal_structures: bool,
+    /// Whether heroes keep at least 1 hp and never die.
+    pub immortal_heroes: bool,
     /// Whether the last seat is a dummy: a hero that stays put and never acts.
     pub dummy_seat: bool,
     /// Lockstep: how many tick-lengths to wait for a straggler.
@@ -242,6 +244,7 @@ impl Server {
             ack_timeout_ticks: self.opts.ack_timeout_ticks,
             cheats: self.opts.cheats,
             immortal_structures: self.opts.immortal_structures,
+            immortal_heroes: self.opts.immortal_heroes,
             spawn_modifiers: Vec::new(),
         }
     }

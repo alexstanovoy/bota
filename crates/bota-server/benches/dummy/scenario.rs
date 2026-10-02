@@ -205,6 +205,7 @@ fn match_config() -> MatchConfig {
         cheats: false,
         spawn_modifiers: Vec::new(),
         immortal_structures: false,
+        immortal_heroes: false,
     }
 }
 
