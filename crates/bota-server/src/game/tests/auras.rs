@@ -1,9 +1,20 @@
 //! Fountain, tower and flagbearer auras.
 
-use crate::game::{FLAGBEARER_CREEP, Level, MELEE_CREEP, World, rules, tower_def};
+use crate::game::{FLAGBEARER_CREEP, Level, MELEE_CREEP, ModifierKind, World, rules, tower_def};
 use bota_proto::{Fixed, HeroId, MapId, Pick, SlotId, Team, Vec2};
 
 use super::support::*;
+
+/// A tower's protection, whatever tier hands it out.
+const GUARDED_EFFECT: ModifierKind = ModifierKind::Guarded {
+    armor: rules::TOWER_AURA_ARMOR[0],
+    hp_per_second: rules::TOWER_AURA_REGEN[0],
+};
+
+/// A flagbearer's inspiration.
+const INSPIRED_EFFECT: ModifierKind = ModifierKind::Inspired {
+    hp_per_second: rules::FLAGBEARER_AURA_REGEN,
+};
 
 #[test]
 fn a_fountain_hands_out_mending_to_its_own_side_standing_in_it() {

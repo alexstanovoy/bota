@@ -316,7 +316,7 @@ pub(super) fn a_lane_with_a_hero(apart: i32) -> (World, Entity, Entity, Entity, 
 }
 
 /// A creep of a side with a mind of its own.
-pub(super) fn thinking_creep_of(world: &mut World, team: Team, at: Vec2) -> Entity {
+fn thinking_creep_of(world: &mut World, team: Team, at: Vec2) -> Entity {
     let creep = world.spawn_unit(&MELEE_CREEP, team, at);
     world.lane_ai.insert(
         creep,
@@ -377,17 +377,6 @@ pub(super) fn carries(world: &World, entity: Entity, kind: ModifierKind) -> bool
 pub(super) fn rotting(world: &World, entity: Entity) -> bool {
     carries(world, entity, ModifierKind::Rot { level: 0 })
 }
-
-/// A tower's protection, whatever tier hands it out.
-pub(super) const GUARDED_EFFECT: ModifierKind = ModifierKind::Guarded {
-    armor: rules::TOWER_AURA_ARMOR[0],
-    hp_per_second: rules::TOWER_AURA_REGEN[0],
-};
-
-/// A flagbearer's inspiration.
-pub(super) const INSPIRED_EFFECT: ModifierKind = ModifierKind::Inspired {
-    hp_per_second: rules::FLAGBEARER_AURA_REGEN,
-};
 
 /// A match world with its one hero beside its fountain and boots in the
 /// first stash slot.
