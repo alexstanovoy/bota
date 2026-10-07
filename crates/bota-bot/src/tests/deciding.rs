@@ -52,36 +52,33 @@ fn stack(id: bota_proto::ItemId, charges: u8) -> ItemView {
     }
 }
 
-/// One tick with the hero standing in its own shop, the mid towers up.
-fn at_the_shop(shape: impl Fn(&mut UnitView)) -> bota_proto::WorldView {
-    let mut me = fixtures::hero(1, Team::Radiant, Vec2::from_ints(2040, 2558));
-    shape(&mut me);
-    let mut units = fixtures::fountains();
-    units.push(fixtures::works(
-        10,
-        bota_proto::UnitKind::Tower,
-        Team::Radiant,
-        Vec2::from_ints(7672, 7808),
-    ));
-    units.push(fixtures::works(
-        11,
-        bota_proto::UnitKind::Tower,
-        Team::Dire,
-        Vec2::from_ints(9740, 9868),
-    ));
-    units.push(me);
-    let seat = fixtures::seat(SlotId(0), Team::Radiant, HeroId(2), Some(fixtures::id(1)));
-    fixtures::tick(1000, units, vec![seat])
+/// A bot at its own shop with a scroll in its first slot and no gold to
+/// spend, so the shop is not what answers first.
+fn scroll_at_the_shop() -> (Playbook, bota_proto::WorldView) {
+    let bot = stocked(vec![fixtures::sold(TANGO, 90, vec![])], Vec::new());
+    let mut view = in_the_lane(Vec2::from_ints(2040, 2558), |units| {
+        if let Some(me) = units.iter_mut().find(|unit| unit.id == fixtures::id(1)) {
+            me.items[0] = Some(stack(SCROLL, 1));
+        }
+    });
+    view.players[0].gold = Some(0);
+    (bot, view)
+}
+
+/// Whether an ask is the use of an item.
+fn is_use(ask: Option<Ask>) -> bool {
+    matches!(
+        ask,
+        Some(Ask {
+            order: Order::Use { .. },
+            ..
+        })
+    )
 }
 
 #[test]
 fn a_scroll_carries_a_healthy_hero_back_to_its_lane() {
-    let mut bot = stocked(vec![fixtures::sold(TANGO, 90, vec![])], Vec::new());
-    let mut view = at_the_shop(|me| {
-        me.items[0] = Some(stack(SCROLL, 1));
-    });
-    // Nothing in hand to spend, so the shop is not what answers first.
-    view.players[0].gold = Some(0);
+    let (mut bot, view) = scroll_at_the_shop();
     let ask = bot.on_tick(&view);
     assert!(
         matches!(
@@ -100,37 +97,17 @@ fn a_scroll_carries_a_healthy_hero_back_to_its_lane() {
 
 #[test]
 fn a_scroll_is_not_spent_before_the_creeps_set_out() {
-    let mut bot = stocked(vec![fixtures::sold(TANGO, 90, vec![])], Vec::new());
-    let mut view = at_the_shop(|me| {
-        me.items[0] = Some(stack(SCROLL, 1));
-    });
+    let (mut bot, mut view) = scroll_at_the_shop();
     view.tick = 300;
-    view.players[0].gold = Some(0);
-    assert!(!matches!(
-        bot.on_tick(&view),
-        Some(Ask {
-            order: Order::Use { .. },
-            ..
-        })
-    ));
+    assert!(!is_use(bot.on_tick(&view)));
 }
 
 #[test]
 fn a_scroll_is_not_channelled_with_a_foe_at_hand() {
-    let mut bot = stocked(vec![fixtures::sold(TANGO, 90, vec![])], Vec::new());
-    let mut view = at_the_shop(|me| {
-        me.items[0] = Some(stack(SCROLL, 1));
-    });
-    view.players[0].gold = Some(0);
+    let (mut bot, mut view) = scroll_at_the_shop();
     view.units
         .push(fixtures::hero(5, Team::Dire, Vec2::from_ints(2400, 2900)));
-    assert!(!matches!(
-        bot.on_tick(&view),
-        Some(Ask {
-            order: Order::Use { .. },
-            ..
-        })
-    ));
+    assert!(!is_use(bot.on_tick(&view)));
 }
 
 #[test]
@@ -205,16 +182,7 @@ fn a_tango_is_not_eaten_on_the_way_to_the_fountain() {
         me.items[0] = Some(stack(TANGO, 3));
     });
     let ask = bot.on_tick(&view);
-    assert!(
-        !matches!(
-            ask,
-            Some(Ask {
-                order: Order::Use { .. },
-                ..
-            })
-        ),
-        "expected the walk home, got {ask:?}"
-    );
+    assert!(!is_use(ask), "expected the walk home, got {ask:?}");
 }
 
 #[test]
@@ -248,39 +216,17 @@ fn a_tango_is_still_eaten_by_a_hero_staying_in_its_lane() {
 }
 
 #[test]
-fn a_hero_in_the_middle_of_a_channel_is_told_nothing() {
-    // An order is how a channel is thrown away, and a scroll takes three
-    // seconds of standing still.
-    let mut bot = seated(Vec::new());
-    let view = tick(|me| {
-        me.statuses = bota_proto::StatusFlags {
-            bits: bota_proto::StatusFlags::CHANNELLING,
-        };
-    });
-    assert_eq!(bot.on_tick(&view), None);
-}
-
-#[test]
-fn a_held_hero_is_told_nothing() {
-    let mut bot = seated(Vec::new());
-    let view = tick(|me| {
-        me.statuses = bota_proto::StatusFlags {
-            bits: bota_proto::StatusFlags::STUNNED,
-        };
-    });
-    assert_eq!(bot.on_tick(&view), None);
-}
-
-#[test]
-fn a_feared_hero_is_told_nothing() {
-    // It runs on its own, and a cast or a use is refused.
-    let mut bot = seated(Vec::new());
-    let view = tick(|me| {
-        me.statuses = bota_proto::StatusFlags {
-            bits: bota_proto::StatusFlags::FEARED,
-        };
-    });
-    assert_eq!(bot.on_tick(&view), None);
+fn a_stunned_feared_or_channelling_hero_is_told_nothing() {
+    use bota_proto::StatusFlags;
+    for bits in [
+        StatusFlags::STUNNED,
+        StatusFlags::FEARED,
+        StatusFlags::CHANNELLING,
+    ] {
+        let mut bot = seated(Vec::new());
+        let view = tick(|me| me.statuses = StatusFlags { bits });
+        assert_eq!(bot.on_tick(&view), None, "status bits {bits:#x}");
+    }
 }
 
 #[test]
@@ -297,40 +243,19 @@ fn a_wand_is_pressed_for_the_pool_it_would_fill() {
 }
 
 #[test]
-fn a_wand_holding_little_is_left_alone() {
-    let mut bot = seated(Vec::new());
-    let view = tick(|me| {
-        me.mana = 50;
-        me.items[0] = Some(stack(MAGIC_WAND, 2));
-    });
-    assert!(
-        !matches!(
-            bot.on_tick(&view),
-            Some(Ask {
-                order: Order::Use { .. },
-                ..
-            })
-        ),
-        "two charges are not worth the press"
-    );
-}
-
-#[test]
-fn a_wand_is_left_alone_when_nothing_is_missing() {
-    let mut bot = seated(Vec::new());
-    let view = tick(|me| {
-        me.items[0] = Some(stack(MAGIC_WAND, 10));
-    });
-    assert!(
-        !matches!(
-            bot.on_tick(&view),
-            Some(Ask {
-                order: Order::Use { .. },
-                ..
-            })
-        ),
-        "a full hero wastes what it presses"
-    );
+fn a_wand_is_left_alone_when_its_press_would_be_wasted() {
+    // Two charges are not worth a press; ten into full pools are wasted.
+    for (mana, charges) in [(50, 2), (300, 10)] {
+        let mut bot = seated(Vec::new());
+        let view = tick(|me| {
+            me.mana = mana;
+            me.items[0] = Some(stack(MAGIC_WAND, charges));
+        });
+        assert!(
+            !is_use(bot.on_tick(&view)),
+            "{charges} charges at {mana} mana"
+        );
+    }
 }
 
 /// The lane laid out with its two tier-one towers, the hero where it is put.
@@ -446,7 +371,7 @@ fn creeps_that_have_not_touched_the_hero_are_left_alone() {
     bot.on_events(999, &[struck(fixtures::id(20))]);
     assert_ne!(
         bot.on_tick(&view),
-        Some(Ask::swing_at(fixtures::id(1))),
+        Some(Ask::swing_at(fixtures::id(30))),
         "one creep is not a wave worth spending a tick on"
     );
 }

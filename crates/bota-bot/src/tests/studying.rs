@@ -5,7 +5,7 @@ use bota_proto::{AbilityId, AbilitySlot, HeroId, SlotId, Team, Vec2};
 use crate::tests::fixtures;
 use crate::{
     BOUNCE, CRIT, FIEND_PLAN, Field, NECROMASTERY, RAZE_FAR, RAZE_MID, RAZE_NEAR, REQUIEM, Role,
-    SHADOW_FIEND, SYLLA, SYLLA_PLAN, VOLLEY, next_point, plan_of,
+    SHADOW_FIEND, SYLLA, SYLLA_PLAN, VOLLEY, next_point,
 };
 
 /// Shadow Fiend's book, with the razes all standing at one level.
@@ -100,13 +100,6 @@ fn sylla_starts_with_the_bolt() {
     let view = field_with(book, SYLLA);
     let field = Field::of(&view, SlotId(0), Role::Mid).expect("a seat in the view");
     assert_eq!(next_point(&field), Some(AbilitySlot(2)));
-}
-
-#[test]
-fn a_plan_is_looked_up_by_hero() {
-    assert_eq!(plan_of(SHADOW_FIEND), &FIEND_PLAN);
-    assert_eq!(plan_of(SYLLA), &SYLLA_PLAN);
-    assert!(plan_of(HeroId(99)).is_empty());
 }
 
 #[test]

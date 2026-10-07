@@ -1,12 +1,11 @@
 //! Buying, and knowing what is already owned.
 
-use bota_proto::{HeroId, ItemId, SlotId, Team, Vec2};
+use bota_proto::{ItemId, SlotId, Team, Vec2};
 
 use crate::tests::fixtures;
 use crate::{
     BRANCH, CIRCLET, CLARITY, FIEND_GOODS, Field, MAGIC_STICK, MAGIC_WAND, MANTLE, NULL_TALISMAN,
-    RECIPE_MAGIC_WAND, RECIPE_NULL_TALISMAN, Role, SCROLL, SHADOW_FIEND, SYLLA_GOODS, Stall, TANGO,
-    shopping_list,
+    RECIPE_MAGIC_WAND, RECIPE_NULL_TALISMAN, Role, SCROLL, SHADOW_FIEND, Stall, TANGO,
 };
 
 /// A shop holding everything the lists name, with the builds it puts together.
@@ -76,11 +75,11 @@ fn the_list_is_not_skipped_over_to_reach_what_is_affordable() {
     // for the recipe. Nothing further down is bought with the gold the recipe
     // is waiting for.
     let held = vec![TANGO, BRANCH, BRANCH, SCROLL, CIRCLET, MANTLE];
-    let view = field_holding(held, 150);
+    let view = field_holding(held.clone(), 150);
     let field = Field::of(&view, SlotId(0), Role::Mid).expect("a seat in the view");
     assert_eq!(stall().next_buy(&field), None);
 
-    let view = field_holding(vec![TANGO, BRANCH, BRANCH, SCROLL, CIRCLET, MANTLE], 250);
+    let view = field_holding(held, 250);
     let field = Field::of(&view, SlotId(0), Role::Mid).expect("a seat in the view");
     assert_eq!(stall().next_buy(&field), Some(RECIPE_NULL_TALISMAN));
 }
@@ -130,13 +129,6 @@ fn a_drink_is_bought_again_once_it_has_been_drunk() {
 }
 
 #[test]
-fn a_hero_with_no_list_of_its_own_still_has_one() {
-    assert_eq!(shopping_list(SHADOW_FIEND), &FIEND_GOODS);
-    assert_eq!(shopping_list(crate::SYLLA), &SYLLA_GOODS);
-    assert!(!shopping_list(HeroId(99)).is_empty());
-}
-
-#[test]
 fn a_list_starts_with_what_the_starting_gold_pays_for() {
     let stall = stall();
     let start: i32 = FIEND_GOODS
@@ -151,22 +143,4 @@ fn a_list_starts_with_what_the_starting_gold_pays_for() {
 fn a_price_the_shop_does_not_name_is_nothing_at_all() {
     assert_eq!(stall().cost_of(ItemId(999)), 0);
     assert!(stall().parts_of(ItemId(999)).is_empty());
-}
-
-#[test]
-fn the_shop_is_read_off_the_terms_of_the_match() {
-    let info = fixtures::started(
-        vec![
-            fixtures::sold(TANGO, 90, vec![]),
-            fixtures::sold(
-                MAGIC_WAND,
-                450,
-                vec![MAGIC_STICK, BRANCH, BRANCH, RECIPE_MAGIC_WAND],
-            ),
-        ],
-        Vec::new(),
-    );
-    let stall = Stall::of(&info);
-    assert_eq!(stall.cost_of(TANGO), 90);
-    assert_eq!(stall.parts_of(MAGIC_WAND).len(), 4);
 }

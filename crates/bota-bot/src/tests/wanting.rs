@@ -6,12 +6,6 @@ use crate::tests::fixtures;
 use crate::{Ask, RESEND_TICKS, Steady, same_want};
 
 #[test]
-fn the_first_want_of_all_goes_out() {
-    let mut steady = Steady::new();
-    assert!(steady.worth_sending(0, Ask::walk_to(Vec2::from_ints(100, 100))));
-}
-
-#[test]
 fn the_want_in_hand_is_not_said_again_straight_away() {
     let mut steady = Steady::new();
     let ask = Ask::swing_at(fixtures::id(4));

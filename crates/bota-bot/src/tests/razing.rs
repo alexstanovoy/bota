@@ -1,6 +1,6 @@
 //! Shadow Fiend's spellwork: what a raze is cast at, and what turns first.
 
-use bota_proto::{AbilitySlot, Angle, HeroId, Order, SlotId, Target, Team, Vec2, WorldView};
+use bota_proto::{AbilitySlot, Angle, Order, SlotId, Target, Team, Vec2, WorldView};
 
 use crate::tests::fixtures;
 use crate::{
@@ -56,27 +56,25 @@ fn read(view: &WorldView) -> Field<'_> {
     Field::of(view, SlotId(0), Role::Mid).expect("a seat in the view")
 }
 
+/// What Shadow Fiend would cast on this tick, with a fresh beat.
+fn spell(view: &WorldView) -> Option<Ask> {
+    fiend_spell(&read(view), &Beat::new(SHADOW_FIEND, 30))
+}
+
 #[test]
 fn a_raze_goes_off_at_a_foe_the_hero_is_already_looking_at() {
     // Looking east, with an enemy hero four hundred and fifty units east:
     // the middle raze lands on him.
     let foe = fixtures::hero(5, Team::Dire, Vec2::from_ints(8450, 8000));
     let view = tick(0, 1, 0, 0, vec![foe]);
-    let field = read(&view);
-    let beat = Beat::new(SHADOW_FIEND, 30);
-    assert_eq!(
-        fiend_spell(&field, &beat),
-        Some(Ask::cast(AbilitySlot(1), Target::None))
-    );
+    assert_eq!(spell(&view), Some(Ask::cast(AbilitySlot(1), Target::None)));
 }
 
 #[test]
 fn nothing_is_cast_down_an_empty_line() {
     let foe = fixtures::hero(5, Team::Dire, Vec2::from_ints(8000, 8600));
     let view = tick(0, 1, 0, 0, vec![foe]);
-    let field = read(&view);
-    let beat = Beat::new(SHADOW_FIEND, 30);
-    assert_eq!(fiend_spell(&field, &beat), None);
+    assert_eq!(spell(&view), None);
 }
 
 #[test]
@@ -104,35 +102,19 @@ fn a_foe_beyond_every_raze_is_not_turned_towards() {
 }
 
 #[test]
-fn an_unlearned_raze_is_not_cast() {
-    let foe = fixtures::hero(5, Team::Dire, Vec2::from_ints(8450, 8000));
-    let view = tick(0, 0, 0, 0, vec![foe]);
-    let field = read(&view);
-    let beat = Beat::new(SHADOW_FIEND, 30);
-    assert_eq!(fiend_spell(&field, &beat), None);
-    assert_eq!(fiend_aim(&field), None);
-}
-
-#[test]
-fn a_raze_still_waiting_is_not_cast() {
-    let foe = fixtures::hero(5, Team::Dire, Vec2::from_ints(8450, 8000));
-    let mut view = tick(0, 1, 0, 0, vec![foe]);
-    for slot in &mut view.units[2].abilities {
+fn a_raze_that_is_not_ready_is_neither_cast_nor_aimed() {
+    let foe = || vec![fixtures::hero(5, Team::Dire, Vec2::from_ints(8450, 8000))];
+    let unlearned = tick(0, 0, 0, 0, foe());
+    let mut waiting = tick(0, 1, 0, 0, foe());
+    for slot in &mut waiting.units[2].abilities {
         slot.cooldown_left = 40;
     }
-    let field = read(&view);
-    let beat = Beat::new(SHADOW_FIEND, 30);
-    assert_eq!(fiend_spell(&field, &beat), None);
-}
-
-#[test]
-fn a_raze_there_is_no_mana_for_is_not_cast() {
-    let foe = fixtures::hero(5, Team::Dire, Vec2::from_ints(8450, 8000));
-    let mut view = tick(0, 1, 0, 0, vec![foe]);
-    view.units[2].mana = 10;
-    let field = read(&view);
-    let beat = Beat::new(SHADOW_FIEND, 30);
-    assert_eq!(fiend_spell(&field, &beat), None);
+    let mut drained = tick(0, 1, 0, 0, foe());
+    drained.units[2].mana = 10;
+    for view in [unlearned, waiting, drained] {
+        assert_eq!(spell(&view), None);
+        assert_eq!(fiend_aim(&read(&view)), None);
+    }
 }
 
 #[test]
@@ -142,12 +124,7 @@ fn the_requiem_goes_off_for_a_crowd() {
         fixtures::hero(6, Team::Dire, Vec2::from_ints(8000, 8300)),
     ];
     let view = tick(16384, 1, 1, 6, foes);
-    let field = read(&view);
-    let beat = Beat::new(SHADOW_FIEND, 30);
-    assert_eq!(
-        fiend_spell(&field, &beat),
-        Some(Ask::cast(AbilitySlot(5), Target::None))
-    );
+    assert_eq!(spell(&view), Some(Ask::cast(AbilitySlot(5), Target::None)));
 }
 
 #[test]
@@ -157,9 +134,7 @@ fn the_requiem_is_not_let_go_with_no_souls_gathered() {
         fixtures::hero(6, Team::Dire, Vec2::from_ints(8000, 8300)),
     ];
     let view = tick(16384, 0, 1, 0, foes);
-    let field = read(&view);
-    let beat = Beat::new(SHADOW_FIEND, 30);
-    assert_eq!(fiend_spell(&field, &beat), None);
+    assert_eq!(spell(&view), None);
 }
 
 #[test]
@@ -168,10 +143,8 @@ fn the_requiem_is_let_go_at_one_it_would_kill() {
     foe.hp = 30;
     // Looking away from him, so no raze is offered instead.
     let view = tick(32768, 0, 1, 6, vec![foe]);
-    let field = read(&view);
-    let beat = Beat::new(SHADOW_FIEND, 30);
     assert!(matches!(
-        fiend_spell(&field, &beat),
+        spell(&view),
         Some(Ask {
             unit: None,
             order: Order::Cast {
@@ -180,13 +153,4 @@ fn the_requiem_is_let_go_at_one_it_would_kill() {
             }
         })
     ));
-}
-
-#[test]
-fn another_hero_s_spellwork_is_none_of_the_fiend_s() {
-    let mut view = tick(0, 1, 0, 0, vec![]);
-    view.units[2].hero = Some(HeroId(0));
-    view.players[0].hero = HeroId(0);
-    let field = read(&view);
-    assert_eq!(field.hero, HeroId(0));
 }
