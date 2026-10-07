@@ -170,22 +170,7 @@ impl World {
             vision_radius: stats.vision,
             true_sight_radius: stats.true_sight,
             statuses: StatusFlags {
-                bits: self.state_of(entity)
-                    | if stats.hides {
-                        StatusFlags::INVISIBLE
-                    } else {
-                        0
-                    }
-                    | if stats.invulnerable {
-                        StatusFlags::INVULNERABLE
-                    } else {
-                        0
-                    }
-                    | if self.is_channelling(entity) {
-                        StatusFlags::CHANNELLING
-                    } else {
-                        0
-                    },
+                bits: self.statuses_of(entity, stats),
             },
             attributes: stats.attributes,
             primary: stats.primary,
@@ -299,26 +284,21 @@ impl World {
     /// Everything showing on one entity: its active modifiers but the rot,
     /// then what it has gathered.
     fn effects_on(&self, entity: Entity) -> Vec<EffectView> {
-        let mut on_it: Vec<EffectView> =
-            self.modifiers
-                .get(entity)
-                .map_or_else(Vec::new, |modifiers| {
-                    let mut views = Vec::with_capacity(modifiers.active().count());
-                    views.extend(
-                        modifiers
-                            .active()
-                            .filter(|held| !matches!(held.kind, ModifierKind::Rot { .. }))
-                            .map(|held| EffectView {
-                                id: EffectId(effect_id(held.kind)),
-                                ticks_left: held.ticks_left,
-                                stacks: match held.kind {
-                                    ModifierKind::Shadowraze { stacks } => Some(u32::from(stacks)),
-                                    _ => None,
-                                },
-                            }),
-                    );
-                    views
-                });
+        let mut on_it: Vec<EffectView> = self
+            .modifiers
+            .get(entity)
+            .into_iter()
+            .flat_map(|on_it| on_it.active())
+            .filter(|held| !matches!(held.kind, ModifierKind::Rot { .. }))
+            .map(|held| EffectView {
+                id: EffectId(effect_id(held.kind)),
+                ticks_left: held.ticks_left,
+                stacks: match held.kind {
+                    ModifierKind::Shadowraze { stacks } => Some(u32::from(stacks)),
+                    _ => None,
+                },
+            })
+            .collect();
         if let Some(gathered) = self.stacks.get(entity) {
             on_it.extend(gathered.held().map(|(kind, many)| EffectView {
                 id: EffectId(stack_effect_id(kind)),
@@ -355,13 +335,16 @@ impl World {
             && hero_level >= crate::game::level_floor(def, level)
     }
 
-    /// The state a unit is in, as the wire names it.
-    fn state_of(&self, entity: Entity) -> u16 {
-        let Some(on_it) = self.modifiers.get(entity) else {
-            return 0;
-        };
+    /// The [`StatusFlags`] bits of a unit: what its modifiers do to it, and
+    /// whether it hides, cannot be hurt or channels.
+    fn statuses_of(&self, entity: Entity, stats: &crate::game::Stats) -> u16 {
         let mut bits = 0;
-        for held in on_it.active() {
+        for held in self
+            .modifiers
+            .get(entity)
+            .into_iter()
+            .flat_map(|on_it| on_it.active())
+        {
             bits |= match held.kind {
                 ModifierKind::Stunned => StatusFlags::STUNNED,
                 ModifierKind::Shielded => StatusFlags::MAGIC_IMMUNE,
@@ -370,6 +353,15 @@ impl World {
                 ModifierKind::Feared => StatusFlags::FEARED,
                 _ => 0,
             };
+        }
+        for (set, flag) in [
+            (stats.hides, StatusFlags::INVISIBLE),
+            (stats.invulnerable, StatusFlags::INVULNERABLE),
+            (self.is_channelling(entity), StatusFlags::CHANNELLING),
+        ] {
+            if set {
+                bits |= flag;
+            }
         }
         bits
     }
