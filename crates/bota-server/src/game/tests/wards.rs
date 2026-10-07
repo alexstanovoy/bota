@@ -91,8 +91,7 @@ fn a_ward_aimed_out_of_reach_is_not_put_down() {
 
 #[test]
 fn a_sentry_alone_takes_nothing_off_what_hides_in_the_dark() {
-    let map = map_of(MapId(0));
-    let mut world = World::on_map(map);
+    let mut world = World::on_map(map_of(MapId(0)));
     let at = Vec2::from_ints(7000, 7000);
     let ward = world.spawn_unit(&OBSERVER_WARD, Team::Radiant, at);
     world.spawn_unit(&SENTRY_WARD, Team::Dire, at);
@@ -106,8 +105,7 @@ fn a_sentry_alone_takes_nothing_off_what_hides_in_the_dark() {
 
 #[test]
 fn true_sight_reaches_only_so_far_over_ground_that_is_watched() {
-    let map = map_of(MapId(0));
-    let mut world = World::on_map(map);
+    let mut world = World::on_map(map_of(MapId(0)));
     let at = Vec2::from_ints(7000, 7000);
     let ward = world.spawn_unit(&OBSERVER_WARD, Team::Radiant, at);
     // Eyes of their own on the spot, so what is being measured is the reach
@@ -141,8 +139,7 @@ fn true_sight_reaches_only_so_far_over_ground_that_is_watched() {
 
 #[test]
 fn a_tower_reveals_what_hides_as_far_as_it_shoots() {
-    let map = map_of(MapId(0));
-    let mut world = World::on_map(map);
+    let mut world = World::on_map(map_of(MapId(0)));
     let tower = world
         .entities
         .iter()
@@ -255,8 +252,6 @@ fn each_ward_stands_up_what_its_own_item_names() {
             "and it sees what it sees"
         );
         assert_eq!(stats.hides, def.hides, "and hides as it should");
-        // What the wire carries has to tell the two apart, or nothing on
-        // screen can.
         let view = world.view(Team::Radiant);
         let shown = view
             .units
@@ -269,8 +264,7 @@ fn each_ward_stands_up_what_its_own_item_names() {
 
 #[test]
 fn both_wards_hide_and_each_reveals_the_other_side() {
-    let map = map_of(MapId(0));
-    let mut world = World::on_map(map);
+    let mut world = World::on_map(map_of(MapId(0)));
     let at = Vec2::from_ints(7000, 7000);
     // A hero of each side standing right there, so ordinary sight is not what
     // is being measured.

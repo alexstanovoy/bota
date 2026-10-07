@@ -2,10 +2,10 @@
 
 use crate::game::{
     Def, FLAGBEARER_CREEP, HERO, Health, ITEM_BAND, ITEM_BELT, ITEM_BOOTS, ITEM_GLOVES, ITEM_ROBE,
-    ITEMS, ItemStack, Level, MELEE_CREEP, Mana, Modifier, ModifierKind, Modifiers, RANGED_CREEP,
-    Stats, UnitOrder, Upgrades, World, attack_gain, map_of, rules,
+    ITEMS, Level, MELEE_CREEP, Mana, ModifierKind, Modifiers, RANGED_CREEP, Stats, UnitOrder,
+    Upgrades, World, attack_gain, map_of, rules,
 };
-use bota_proto::{DamageKind, Fixed, ItemId, MapId, SlotId, Team, UnitKind, Vec2};
+use bota_proto::{DamageKind, Fixed, MapId, Team, UnitKind, Vec2};
 
 use super::support::*;
 
@@ -87,12 +87,7 @@ fn a_pool_stands_up_full_and_is_only_capped_after() {
         Some(full),
         "with no stats behind it, it has just been stood up"
     );
-    world.health.insert(
-        creep,
-        Health {
-            hp: Fixed::from_int(100),
-        },
-    );
+    world.health.insert(creep, health(100));
     world.step();
     assert_eq!(
         world.health.get(creep).map(|h| h.hp),
@@ -120,14 +115,9 @@ fn a_wave_coming_out_does_not_mend_what_already_stands() {
     let hurt = world
         .entities
         .iter()
-        .find(|e| world.kind.get(*e) == Some(&UnitKind::Tower));
-    let hurt = hurt.expect("the map has towers");
-    world.health.insert(
-        hurt,
-        Health {
-            hp: Fixed::from_int(100),
-        },
-    );
+        .find(|e| world.kind.get(*e) == Some(&UnitKind::Tower))
+        .expect("the map has towers");
+    world.health.insert(hurt, health(100));
     while world.tick <= rules::FIRST_WAVE_TICK {
         world.step();
     }
@@ -146,12 +136,7 @@ fn a_wave_coming_out_does_not_mend_what_already_stands() {
 fn upgrades_raise_a_creep_and_carry_its_health_with_them() {
     let mut world = World::new();
     let creep = plain_creep(&mut world);
-    world.health.insert(
-        creep,
-        Health {
-            hp: Fixed::from_int(rules::MELEE_CREEP_HP),
-        },
-    );
+    world.health.insert(creep, health(rules::MELEE_CREEP_HP));
     world.step();
     let full = world.health.get(creep).expect("alive").hp;
     world.upgrades.insert(creep, Upgrades(3));
@@ -215,14 +200,7 @@ fn levels_raise_a_hero() {
 fn haste_shortens_the_wait_between_attacks_while_it_lasts() {
     let mut world = World::new();
     let creep = plain_creep(&mut world);
-    world.modifiers.insert(
-        creep,
-        Modifiers(vec![Modifier {
-            kind: ModifierKind::Haste { speed: 40 },
-            source: None,
-            ticks_left: Some(5),
-        }]),
-    );
+    put_on(&mut world, creep, ModifierKind::Haste { speed: 40 }, 5);
     world.step();
     assert_eq!(
         world.stats.get(creep).map(|s| s.attack_speed),
@@ -241,17 +219,11 @@ fn haste_shortens_the_wait_between_attacks_while_it_lasts() {
 fn mending_adds_to_what_a_kind_regenerates() {
     let mut world = World::new();
     let creep = plain_creep(&mut world);
-    world.modifiers.insert(
-        creep,
-        Modifiers(vec![Modifier {
-            kind: ModifierKind::Mending {
-                per_tick: 25,
-                breaks: false,
-            },
-            source: None,
-            ticks_left: Some(5),
-        }]),
-    );
+    let mending = ModifierKind::Mending {
+        per_tick: 25,
+        breaks: false,
+    };
+    put_on(&mut world, creep, mending, 5);
     world.step();
     assert_eq!(
         world.stats.get(creep).map(|s| s.hp_regen),
@@ -272,28 +244,14 @@ fn what_a_hero_carries_shows_up_in_its_stats() {
         .enumerate()
         .find(|(_, d)| d.carried.damage > 0)
         .expect("some item adds damage");
-    if let Some(bag) = world.inventory.get_mut(hero) {
-        bag.slots[0] = Some(ItemStack {
-            id: ItemId(id as u16),
-            charges: def.charges,
-            cooldown: 0,
-            mute: 0,
-            mode: None,
-            bought_tick: 0,
-            touched: false,
-            owner: SlotId(0),
-            for_sale: false,
-        });
-    }
+    hand_item(&mut world, hero, id as u16, def.charges);
     world.step();
     assert_eq!(
         world.stats.get(hero).map(|s| s.damage),
         Some(bare + def.carried.damage),
         "the damage it carries is added"
     );
-    if let Some(bag) = world.inventory.get_mut(hero) {
-        bag.slots[0] = None;
-    }
+    world.inventory.get_mut(hero).expect("has a bag").slots[0] = None;
     world.step();
     assert_eq!(
         world.stats.get(hero).map(|s| s.damage),
@@ -385,12 +343,7 @@ fn a_burn_takes_health_on_the_beat_and_may_be_told_to_leave_one() {
         "it burns on the beat, not every tick: {full} then {left}"
     );
     // One that may not take the last point stops one short of it.
-    world.health.insert(
-        creep,
-        Health {
-            hp: Fixed::from_int(3),
-        },
-    );
+    world.health.insert(creep, health(3));
     put_on(
         &mut world,
         creep,
@@ -418,9 +371,7 @@ fn what_a_courier_carries_is_worth_nothing_to_the_courier() {
     let courier = the_courier(&world);
     world.step();
     let plain = world.stats.get(courier).expect("settled").move_speed;
-    if let Some(bag) = world.inventory.get_mut(courier) {
-        bag.slots[0] = Some(fresh_stack(ITEM_BOOTS, 0));
-    }
+    hand_item(&mut world, courier, ITEM_BOOTS, 0);
     world.step();
     assert_eq!(
         world.stats.get(courier).map(|stats| stats.move_speed),
