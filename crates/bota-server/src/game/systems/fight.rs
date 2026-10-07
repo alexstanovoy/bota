@@ -146,7 +146,7 @@ impl World {
             }
         }
         self.bury_seat(entity);
-        if let Some(index) = killer.and_then(|k| self.seats.iter().position(|s| s.unit == Some(k)))
+        if let Some(index) = killer.and_then(|k| self.seat_of(k))
             && kind == Some(UnitKind::Hero)
             && !denied
         {
@@ -231,7 +231,7 @@ impl World {
 }
 
 /// The side that is not this one.
-fn other_side(team: Team) -> Team {
+pub(super) fn other_side(team: Team) -> Team {
     match team {
         Team::Radiant => Team::Dire,
         Team::Dire => Team::Radiant,

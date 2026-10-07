@@ -7,6 +7,8 @@ use crate::game::{
     is_structure, rules, wire_id,
 };
 
+use super::fight::other_side;
+
 impl World {
     /// Hands out the gold that arrives on its own: one every
     /// [`rules::PASSIVE_GOLD_PERIOD_TICKS`] after the horn, to every seat.
@@ -86,13 +88,8 @@ impl World {
         }
         if denied {
             if self.kind.get(fallen).copied().is_some_and(is_lane_creep) {
-                let enemy = match side {
-                    Team::Radiant => Team::Dire,
-                    Team::Dire => Team::Radiant,
-                    Team::Neutral => Team::Neutral,
-                };
                 let xp = bounty.xp * rules::DENIED_XP_PCT / 100;
-                self.grant_xp_around(at, enemy, xp, None, events);
+                self.grant_xp_around(at, other_side(side), xp, None, events);
             }
             return 0;
         }
@@ -127,7 +124,7 @@ impl World {
     }
 
     /// Which seat drives an entity, if any does.
-    fn seat_of(&self, entity: Entity) -> Option<usize> {
+    pub(super) fn seat_of(&self, entity: Entity) -> Option<usize> {
         self.seats.iter().position(|s| s.unit == Some(entity))
     }
 

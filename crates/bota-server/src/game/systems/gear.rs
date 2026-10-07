@@ -304,18 +304,7 @@ impl World {
             return false;
         }
         for part in plan.parts {
-            let def = item_def(part).expect("known catalog component");
-            let bought = ItemStack {
-                id: part,
-                charges: def.charges,
-                cooldown: 0,
-                mute: 0,
-                mode: def.mode,
-                bought_tick: self.tick,
-                touched: false,
-                owner: slot,
-                for_sale: false,
-            };
+            let bought = ItemStack::bought(part, slot, self.tick).expect("known catalog component");
             let in_hand = self.at_shop(unit)
                 && self
                     .inventory
@@ -593,17 +582,7 @@ impl World {
         assert!(pool.mana <= maximum);
         let restored = (pool.mana - before).to_int();
         if restored > 0 {
-            let at = self.transform.get(user).map_or(Vec2::ZERO, |t| t.pos);
-            let side = self.team.get(user).copied().unwrap_or(Team::Neutral);
-            self.events.push(Event {
-                kind: EventKind::Healed {
-                    source: Some(wire_id(user)),
-                    target: wire_id(user),
-                    amount: 0,
-                    mana: restored,
-                },
-                visible_to: self.who_may_know(at, side),
-            });
+            self.tell_healed(user, user, 0, restored);
         }
         true
     }
@@ -631,17 +610,7 @@ impl World {
             refilled = (pool.mana - before).to_int();
         }
         if restored > 0 || refilled > 0 {
-            let at = self.transform.get(on).map_or(Vec2::ZERO, |t| t.pos);
-            let side = self.team.get(on).copied().unwrap_or(Team::Neutral);
-            self.events.push(Event {
-                kind: EventKind::Healed {
-                    source: Some(wire_id(on)),
-                    target: wire_id(on),
-                    amount: restored,
-                    mana: refilled,
-                },
-                visible_to: self.who_may_know(at, side),
-            });
+            self.tell_healed(on, on, restored, refilled);
         }
         true
     }
@@ -764,13 +733,13 @@ impl World {
                 ticks_left: Some(ticks),
             },
         );
-        self.tell_mend(user, on, at, pool, total);
+        self.tell_mend(user, on, pool, total);
         true
     }
 
     /// Tells of a mend as it begins, worth what `on` is missing of `pool` and
     /// no more than `total`. A mend broken early has still been told in full.
-    fn tell_mend(&mut self, user: Entity, on: Entity, at: Vec2, pool: Pool, total: i32) {
+    fn tell_mend(&mut self, user: Entity, on: Entity, pool: Pool, total: i32) {
         let (amount, mana) = match pool {
             Pool::Health => {
                 let missing = self
@@ -792,17 +761,24 @@ impl World {
             }
         };
         if amount > 0 || mana > 0 {
-            let side = self.team.get(on).copied().unwrap_or(Team::Neutral);
-            self.events.push(Event {
-                kind: EventKind::Healed {
-                    source: Some(wire_id(user)),
-                    target: wire_id(on),
-                    amount,
-                    mana,
-                },
-                visible_to: self.who_may_know(at, side),
-            });
+            self.tell_healed(user, on, amount, mana);
         }
+    }
+
+    /// Tells who may know that `source` mended `on` by `amount` health and
+    /// `mana` mana.
+    fn tell_healed(&mut self, source: Entity, on: Entity, amount: i32, mana: i32) {
+        let at = self.transform.get(on).map_or(Vec2::ZERO, |t| t.pos);
+        let side = self.team.get(on).copied().unwrap_or(Team::Neutral);
+        self.events.push(Event {
+            kind: EventKind::Healed {
+                source: Some(wire_id(source)),
+                target: wire_id(on),
+                amount,
+                mana,
+            },
+            visible_to: self.who_may_know(at, side),
+        });
     }
 
     /// Burns one charge of what sits in a slot, clearing the slot when the
@@ -985,11 +961,7 @@ impl World {
                     continue;
                 }
                 let back = self.sale_price(&stack);
-                if let Some(bag) = self.inventory.get_mut(holder)
-                    && let Some(held) = bag.slots.get_mut(at)
-                {
-                    *held = None;
-                }
+                self.take_from_bag(holder, at);
                 self.seats[owner].gold += back;
             }
         }
