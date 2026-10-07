@@ -163,6 +163,7 @@ impl World {
             if self.seats[index].unit == Some(entity) {
                 let level = self.seats[index].level;
                 self.let_souls_go(entity);
+                self.requiem_on_death(entity);
                 let kept = Kept {
                     book: self.abilities.remove(entity).unwrap_or_default(),
                     bag: self.inventory.remove(entity).unwrap_or_default(),

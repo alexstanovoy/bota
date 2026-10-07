@@ -3,9 +3,11 @@
 use bota_proto::{DamageKind, Fixed, Team, UnitKind, Vec2};
 
 use crate::game::{
-    Chance, Entity, Health, Hit, HitEffect, MatchRng, ModifierKind, Modifiers, Purpose, Ratio,
-    Stats, Table, Transform, is_structure, rules, wire_id,
+    Chance, Entity, Health, Hit, HitEffect, MatchRng, Modifier, ModifierKind, Modifiers, Purpose,
+    Ratio, Stats, Table, Transform, is_structure, rules, wire_id,
 };
+
+use super::modifiers::resisted_ticks;
 
 use std::collections::VecDeque;
 
@@ -120,7 +122,7 @@ pub fn hitting_system<const AMPLIFIED: bool>(cx: HitCx<'_>) {
             continue;
         }
         let amount = dealt::<AMPLIFIED>(blow, on_it);
-        let taken = mitigate(amount, blow.kind, stat.armor, stat.magic_resist_pct);
+        let taken = mitigate(amount, blow.kind, stat.armor, stat.magic_resist_bp);
         let Some(pool) = health.get_mut(blow.target) else {
             continue;
         };
@@ -131,7 +133,7 @@ pub fn hitting_system<const AMPLIFIED: bool>(cx: HitCx<'_>) {
         pool.hp -= Fixed::from_int(applied);
         let fatal = pool.hp <= Fixed::ZERO;
         if applied > 0 && !fatal {
-            apply_hit_effect(blow, modifiers);
+            apply_hit_effect(blow, stats, modifiers);
         }
         landed.push_back(Landed {
             source: blow.source,
@@ -223,29 +225,72 @@ fn bite(hp: Fixed, taken: i32, spared: bool) -> i32 {
 }
 
 /// Applies a damaging hit's modifier to a surviving target.
-fn apply_hit_effect(blow: Hit, modifiers: &mut Table<Modifiers>) {
-    if let HitEffect::Shadowraze { .. } = blow.effect {
-        assert_eq!(blow.kind, DamageKind::Magical);
-        assert!(blow.amount > 0);
-        let caster = blow.source.expect("a Shadowraze hit has a caster");
-        if let Some(on_it) = modifiers.get_mut(blow.target) {
-            on_it.stack_raze(caster);
+fn apply_hit_effect(blow: Hit, stats: &Table<Stats>, modifiers: &mut Table<Modifiers>) {
+    match blow.effect {
+        HitEffect::None => {}
+        HitEffect::Shadowraze { .. } => {
+            assert_eq!(blow.kind, DamageKind::Magical);
+            assert!(blow.amount > 0);
+            let caster = blow.source.expect("a Shadowraze hit has a caster");
+            if let Some(on_it) = modifiers.get_mut(blow.target) {
+                on_it.stack_raze(caster);
+            }
         }
+        HitEffect::Requiem { level } => frighten(blow, usize::from(level), stats, modifiers),
+    }
+}
+
+/// Lays a requiem line's fear, slow and torn magic resistance on what it
+/// burnt, each lengthened by the line's share and shortened by the target's
+/// status resistance.
+fn frighten(blow: Hit, level: usize, stats: &Table<Stats>, modifiers: &mut Table<Modifiers>) {
+    assert_eq!(blow.kind, DamageKind::Magical);
+    assert!(level < rules::REQUIEM_SLOW_PCT.len());
+    let Some(on_it) = modifiers.get_mut(blow.target) else {
+        return;
+    };
+    for kind in [
+        ModifierKind::Slowed {
+            pct: rules::REQUIEM_SLOW_PCT[level],
+        },
+        ModifierKind::MagicBroken {
+            pct: rules::REQUIEM_MAGIC_BREAK_PCT[level],
+        },
+        ModifierKind::Feared,
+    ] {
+        let ticks = resisted_ticks(stats, blow.target, kind, rules::REQUIEM_LINE_TICKS);
+        on_it.extend(
+            Modifier {
+                kind,
+                source: blow.source,
+                ticks_left: Some(ticks),
+            },
+            rules::REQUIEM_HOLD_MAX_TICKS,
+        );
     }
 }
 
 /// Damage after armor or magic resistance.
-fn mitigate(amount: i32, kind: DamageKind, armor: Fixed, magic_resist_pct: i32) -> i32 {
+fn mitigate(amount: i32, kind: DamageKind, armor: Fixed, magic_resist_bp: i32) -> i32 {
     match kind {
         DamageKind::Physical => {
-            let armor = armor.max(Fixed::ZERO);
+            // Dota's curve: `1 / (1 + 0.06 a)` above zero, `2 - 1 / (1 + 0.06 |a|)`
+            // below it.
             let whole = i64::from(Fixed::ONE.raw);
-            let den = 100 * whole + i64::from(rules::ARMOR_SCALE) * i64::from(armor.raw);
-            (i64::from(amount) * 100 * whole / den) as i32
+            let scaled = i64::from(rules::ARMOR_SCALE) * i64::from(armor.raw).abs();
+            let den = 100 * whole + scaled;
+            let num = if armor < Fixed::ZERO {
+                den + scaled
+            } else {
+                100 * whole
+            };
+            (i64::from(amount) * num / den).clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32
         }
         DamageKind::Magical => {
-            let kept = (100 - magic_resist_pct).clamp(0, 100);
-            (i64::from(amount) * i64::from(kept) / 100) as i32
+            let let_through = (rules::NOMINAL_BP - magic_resist_bp)
+                .clamp(0, rules::NOMINAL_BP - rules::MIN_MAGIC_RESIST_BP);
+            (i64::from(amount) * i64::from(let_through) / i64::from(rules::NOMINAL_BP))
+                .clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32
         }
         DamageKind::Pure => amount,
     }

@@ -127,13 +127,18 @@ pub fn within(unit: &UnitView, spot: Vec2, radius: i32) -> bool {
 pub fn after_mitigation(amount: i32, kind: DamageKind, target: &UnitView) -> i32 {
     match kind {
         DamageKind::Physical => {
-            let armor = target.armor.max(Fixed::ZERO);
             let whole = i64::from(Fixed::ONE.raw);
-            let den = 100 * whole + i64::from(crate::ARMOR_SCALE) * i64::from(armor.raw);
-            (i64::from(amount) * 100 * whole / den) as i32
+            let scaled = i64::from(crate::ARMOR_SCALE) * i64::from(target.armor.raw).abs();
+            let den = 100 * whole + scaled;
+            let num = if target.armor < Fixed::ZERO {
+                den + scaled
+            } else {
+                100 * whole
+            };
+            (i64::from(amount) * num / den) as i32
         }
         DamageKind::Magical => {
-            let kept = Fixed::ONE - target.magic_resist.clamp(Fixed::ZERO, Fixed::ONE);
+            let kept = Fixed::ONE - target.magic_resist.clamp(-Fixed::ONE, Fixed::ONE);
             (Fixed::from_int(amount) * kept).to_int()
         }
         DamageKind::Pure => amount,

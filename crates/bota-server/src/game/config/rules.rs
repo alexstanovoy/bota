@@ -14,6 +14,10 @@ pub const TICKS_PER_SECOND: u32 = 30;
 /// What a rate or an amplification is worth at nominal, in basis points.
 pub const NOMINAL_BP: i32 = 10_000;
 
+/// The lowest magic resistance anything can be brought to, in basis points:
+/// magic damage at most doubled.
+pub const MIN_MAGIC_RESIST_BP: i32 = -NOMINAL_BP;
+
 /// The map spans `0..MAP_SIZE` on both axes.
 pub const MAP_SIZE: i32 = 18432;
 
@@ -689,6 +693,9 @@ pub const FOUNTAIN_ATTACK_BACKSWING: u32 = 66;
 /// How fast a unit turns, in brads per tick: a `MovementTurnRate` of 0.5,
 /// read as radians per 0.03 seconds.
 pub const TURN_RATE_BRADS: u16 = 5795;
+/// How fast a quick unit turns, in brads per tick: a `MovementTurnRate` of
+/// 0.9, read the same way.
+pub const FAST_TURN_RATE_BRADS: u16 = 10431;
 /// A unit starts a swing only when facing within this error of its target,
 /// in brads: 11.5 degrees.
 pub const ATTACK_ANGLE_BRADS: u16 = 2094;
@@ -830,51 +837,71 @@ pub const DISMEMBER_TICKS: u32 = 90;
 /// Damage the dismember deals a second, by level.
 pub const DISMEMBER_DAMAGE_PER_SECOND: [i32; 3] = [75, 125, 175];
 
-// Shadow Fiend.
+// Shadow Fiend, as of Dota 7.41f (`DESIGN.md`, Shadow Fiend).
 
 /// How far in front of the caster a raze lands, in world units, from the
 /// nearest reach to the farthest.
 pub const RAZE_DISTANCE: [i32; 3] = [200, 450, 700];
 /// How wide a raze burns, in world units.
 pub const RAZE_RADIUS: i32 = 250;
-/// Damage a raze deals, by level.
-pub const RAZE_DAMAGE: [i32; 4] = [90, 160, 230, 300];
+/// Damage a raze deals before the souls, by level.
+pub const RAZE_DAMAGE: [i32; 4] = [85, 150, 215, 280];
+/// Damage a raze adds for every soul its caster holds when it goes off.
+pub const RAZE_DAMAGE_PER_SOUL: i32 = 2;
 /// Additional magical damage per prior same-caster stack, by cast level.
-pub const RAZE_STACK_DAMAGE: [i32; 4] = [50, 60, 70, 80];
+pub const RAZE_STACK_DAMAGE: [i32; 4] = [35, 50, 65, 80];
 /// Ticks until all of one caster's stacks expire after its latest damaging hit.
-pub const RAZE_DEBUFF_TICKS: u32 = 8 * TICKS_PER_SECOND;
+pub const RAZE_DEBUFF_TICKS: u32 = 6 * TICKS_PER_SECOND;
 /// Maximum stacks held per target and caster.
 pub const RAZE_MAX_STACKS: u8 = 255;
 /// Maximum independent caster records on one target; earliest expiry is evicted first.
 pub const RAZE_MAX_SOURCES: usize = 16;
+/// Milliseconds of a raze's cast point. A raze has no backswing.
+pub const RAZE_CAST_POINT_MS: u32 = 550;
 
 const _: () = {
     assert!(RAZE_STACK_DAMAGE.len() == RAZE_DAMAGE.len());
-    assert!(RAZE_DEBUFF_TICKS == 240);
+    assert!(RAZE_DEBUFF_TICKS == 180);
     assert!(RAZE_MAX_SOURCES > 0);
     assert!(RAZE_MAX_STACKS > 3);
     assert!(RAZE_MAX_STACKS == u8::MAX);
-    assert!(RAZE_DAMAGE[3] + RAZE_STACK_DAMAGE[3] * (RAZE_MAX_STACKS as i32) < 32768);
+    assert!(
+        RAZE_DAMAGE[3]
+            + RAZE_DAMAGE_PER_SOUL * SOULS_HELD_MAX as i32
+            + RAZE_STACK_DAMAGE[3] * (RAZE_MAX_STACKS as i32)
+            < 32768
+    );
 };
 
 /// Mana a raze costs, by level.
-pub const RAZE_MANA: [i32; 4] = [75, 80, 85, 90];
-/// Ticks between two razes of the same reach, by level.
-pub const RAZE_COOLDOWN: [u32; 4] = [10 * TICKS_PER_SECOND; 4];
+pub const RAZE_MANA: [i32; 4] = [75; 4];
+/// Ticks between two razes of the same reach, by level. Each reach keeps its
+/// own.
+pub const RAZE_COOLDOWN: [u32; 4] = [9 * TICKS_PER_SECOND; 4];
 /// Souls one unit brought down is worth to whoever gathers them.
 pub const SOULS_PER_UNIT: u32 = 1;
 /// Souls one hero brought down is worth to whoever gathers them.
-pub const SOULS_PER_HERO: u32 = 3;
-/// Souls that may be held, by necromastery level.
-pub const NECRO_SOUL_CAP: [u32; 4] = [12, 16, 20, 24];
-/// Attack damage one soul is worth.
-pub const DAMAGE_PER_SOUL: i32 = 2;
+pub const SOULS_PER_HERO: u32 = 4;
+/// Souls the necromastery holds from kills.
+pub const NECRO_SOUL_CAP: u32 = 20;
+/// Tenths of attack damage one soul is worth at hero levels 1 to 5.
+pub const SOUL_DAMAGE_TENTHS: i32 = 10;
+/// Tenths of attack damage one soul gains every [`SOUL_DAMAGE_LEVELS`]
+/// hero levels.
+pub const SOUL_DAMAGE_TENTHS_GAIN: i32 = 8;
+/// Hero levels between two gains of what a soul is worth.
+pub const SOUL_DAMAGE_LEVELS: i32 = 6;
 /// Percent of the souls held that a death lets go, rounded down.
 pub const SOULS_LOST_ON_DEATH_PCT: u32 = 30;
 /// How far the presence reaches, in world units.
 pub const PRESENCE_RADIUS: i32 = 1200;
 /// Armor the presence takes from an enemy standing in it, by level.
-pub const PRESENCE_ARMOR: [i32; 4] = [2, 3, 4, 5];
+pub const PRESENCE_ARMOR: [Fixed; 4] = [
+    Fixed::from_ratio(5, 2),
+    Fixed::from_int(4),
+    Fixed::from_ratio(11, 2),
+    Fixed::from_int(7),
+];
 /// Ticks the presence lingers on an enemy that walks out of it.
 pub const PRESENCE_LINGER_TICKS: u32 = TICKS_PER_SECOND / 2;
 /// How far each line of the requiem flies, in world units.
@@ -891,11 +918,22 @@ pub const REQUIEM_LINES_MAX: u32 = 20;
 pub const REQUIEM_LINE_DAMAGE: [i32; 3] = [80, 120, 160];
 /// Percent of speed the requiem takes from what it catches, by level.
 pub const REQUIEM_SLOW_PCT: [i32; 3] = [20, 25, 30];
-/// Ticks the requiem's fear and slow hold for each line that crosses what
-/// it catches.
+/// Percent of the magic it keeps out that the requiem takes from what it
+/// catches, by level.
+pub const REQUIEM_MAGIC_BREAK_PCT: [i32; 3] = [5, 10, 15];
+/// Ticks the requiem's fear, slow and torn resistance hold for each line
+/// that crosses what it catches: 0.6 seconds.
 pub const REQUIEM_LINE_TICKS: u32 = 18;
-/// The most ticks the requiem's fear and slow hold.
-pub const REQUIEM_HOLD_MAX_TICKS: u32 = 64;
+/// The most ticks the requiem's fear, slow and torn resistance hold: 2.15
+/// seconds, the half tick rounded up.
+pub const REQUIEM_HOLD_MAX_TICKS: u32 = 65;
+/// Milliseconds of the requiem's cast point.
+pub const REQUIEM_CAST_POINT_MS: u32 = 1670;
+/// Milliseconds of the requiem's backswing.
+pub const REQUIEM_BACKSWING_MS: u32 = 900;
+/// Share of the souls kept through a death that the requiem cast on that
+/// death lets fly as lines, rounded down.
+pub const REQUIEM_DEATH_LINES: Ratio = Ratio::new(1, 2);
 /// How far ahead of itself a feared unit aims each step, in world units.
 pub const FLEE_LOOKAHEAD: i32 = 600;
 /// Ticks a burst or a ring an ability left is seen on the ground.
@@ -910,6 +948,42 @@ pub const REQUIEM_COOLDOWN: [u32; 3] = [
     110 * TICKS_PER_SECOND,
     100 * TICKS_PER_SECOND,
 ];
+/// Attack speed the feast of souls adds, by level.
+pub const FEAST_ATTACK_SPEED: [i32; 4] = [35, 50, 65, 80];
+/// Percent the feast of souls adds to movement speed, by level.
+pub const FEAST_MOVE_PCT: [i32; 4] = [4, 6, 8, 10];
+/// Ticks the feast of souls runs.
+pub const FEAST_TICKS: u32 = 8 * TICKS_PER_SECOND;
+/// Ticks between two gatherings of a feast, the first one that long after
+/// the cast.
+pub const FEAST_PERIOD_TICKS: u32 = TICKS_PER_SECOND / 2;
+/// Enemies one gathering of a feast takes souls from at most.
+pub const FEAST_PER_PERIOD: usize = 2;
+/// How far from its caster a feast takes souls, in world units.
+pub const FEAST_RADIUS: i32 = 600;
+/// Souls a feast takes from an enemy hero.
+pub const FEAST_SOULS_PER_HERO: u32 = 3;
+/// Souls a feast takes from any other enemy.
+pub const FEAST_SOULS_PER_UNIT: u32 = 1;
+/// Enemies one feast takes souls from in all, by level.
+pub const FEAST_TARGETS: [usize; 4] = [4, 6, 8, 10];
+/// Ticks the souls of the enemies that died during a feast are kept past
+/// the cap once the feast is over.
+pub const FEAST_LINGER_TICKS: u32 = 8 * TICKS_PER_SECOND;
+/// Mana the feast of souls costs, by level.
+pub const FEAST_MANA: [i32; 4] = [60, 65, 70, 75];
+/// Ticks between two feasts.
+pub const FEAST_COOLDOWN: [u32; 4] = [21 * TICKS_PER_SECOND; 4];
+/// Souls a Shadow Fiend can hold at once: the cap and every soul the
+/// largest feast can take on top of it.
+pub const SOULS_HELD_MAX: u32 = NECRO_SOUL_CAP + FEAST_TARGETS[3] as u32 * FEAST_SOULS_PER_HERO;
+
+const _: () = {
+    assert!(FEAST_TICKS.is_multiple_of(FEAST_PERIOD_TICKS));
+    assert!(FEAST_PER_PERIOD > 0);
+    assert!(FEAST_TARGETS[3] >= FEAST_TARGETS[0]);
+    assert!(REQUIEM_HOLD_MAX_TICKS >= REQUIEM_LINE_TICKS);
+};
 
 /// Ticks between the beats of anything that burns over time.
 pub const BURN_PERIOD_TICKS: u32 = 3;
@@ -939,7 +1013,8 @@ pub const BLINK_STEP_BACK: i32 = 64;
 /// Steps back a blink takes before it gives up on finding open ground.
 pub const BLINK_STEP_TRIES: u32 = 20;
 /// Denominator scale of the armor formula: each point of armor adds
-/// `ARMOR_SCALE` to a base of one hundred.
+/// `ARMOR_SCALE` to a base of one hundred, and below zero each point lets
+/// as much more through.
 pub const ARMOR_SCALE: i32 = 6;
 
 // Economy.

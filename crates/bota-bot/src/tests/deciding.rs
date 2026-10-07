@@ -216,12 +216,13 @@ fn a_tango_is_still_eaten_by_a_hero_staying_in_its_lane() {
 }
 
 #[test]
-fn a_stunned_feared_or_channelling_hero_is_told_nothing() {
+fn a_stunned_feared_channelling_or_casting_hero_is_told_nothing() {
     use bota_proto::StatusFlags;
     for bits in [
         StatusFlags::STUNNED,
         StatusFlags::FEARED,
         StatusFlags::CHANNELLING,
+        StatusFlags::CASTING,
     ] {
         let mut bot = seated(Vec::new());
         let view = tick(|me| me.statuses = StatusFlags { bits });

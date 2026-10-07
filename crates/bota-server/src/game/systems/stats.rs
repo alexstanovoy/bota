@@ -3,9 +3,9 @@
 use bota_proto::{Attributes, Fixed, ModifierSpec};
 
 use crate::game::{
-    AbilityBook, AppliedModifiers, Carried, Def, EntityAllocator, Growth, Health, Inventory, Level,
-    MAX_COMBINED_MODIFIER_SCALE, Mana, ModifierKind, Modifiers, Ratio, StackKind, Stacks, Stats,
-    Table, UnitDef, Upgrades, ability, carried_bonus, rules,
+    AbilityBook, AppliedModifiers, Carried, Def, EntityAllocator, Feast, FeastPhase, Growth,
+    Health, Inventory, Level, MAX_COMBINED_MODIFIER_SCALE, Mana, ModifierKind, Modifiers, Ratio,
+    StackKind, Stacks, Stats, Table, UnitDef, Upgrades, ability, carried_bonus, rules,
 };
 
 /// What working out stats reads and writes.
@@ -22,6 +22,8 @@ pub struct StatsCx<'a> {
     pub abilities: &'a Table<AbilityBook>,
     /// What each entity has kept of the deaths around it.
     pub stacks: &'a Table<Stacks>,
+    /// The feast each entity has on it, for its haste.
+    pub feast: &'a Table<Feast>,
     /// Where the answer goes.
     pub stats: &'a mut Table<Stats>,
     /// Health, which follows its maximum.
@@ -58,6 +60,7 @@ fn derive_stats_impl<const APPLIED: bool>(cx: StatsCx<'_>) {
         applied,
         abilities,
         stacks,
+        feast,
         stats,
         health,
         mana,
@@ -92,9 +95,12 @@ fn derive_stats_impl<const APPLIED: bool>(cx: StatsCx<'_>) {
             let base = rules::BASE_ATTACK_SPEED + agility_pace(now.attributes);
             now.attack_speed += base * carried.base_attack_speed_pct / 100;
         }
-        now.damage += rules::DAMAGE_PER_SOUL * gathered.of(StackKind::Souls) as i32;
+        now.damage += soul_damage(gathered.of(StackKind::Souls), levels + 1);
         if let Some(on_it) = modifiers.get(entity) {
             add_modifiers(&mut now, on_it);
+        }
+        if let Some(feast) = feast.get(entity) {
+            add_feast(&mut now, feast);
         }
         let before = stats.get(entity).copied();
         if let Some(hp) = health.get_mut(entity) {
@@ -109,6 +115,27 @@ fn derive_stats_impl<const APPLIED: bool>(cx: StatsCx<'_>) {
         }
         stats.insert(entity, now);
     }
+}
+
+/// Attack damage the souls held are worth at a hero level: tenths of a point
+/// a soul that grow every [`rules::SOUL_DAMAGE_LEVELS`] levels, the sum
+/// rounded down.
+fn soul_damage(souls: u32, hero_level: i32) -> i32 {
+    assert!(hero_level >= 1);
+    let souls = souls.min(rules::SOULS_HELD_MAX) as i32;
+    let tenths = rules::SOUL_DAMAGE_TENTHS
+        + rules::SOUL_DAMAGE_TENTHS_GAIN * (hero_level / rules::SOUL_DAMAGE_LEVELS);
+    souls * tenths / 10
+}
+
+/// Adds the haste of a feast that is running.
+fn add_feast(now: &mut Stats, feast: &Feast) {
+    if feast.phase != FeastPhase::Feasting {
+        return;
+    }
+    let level = usize::from(feast.level);
+    now.attack_speed += rules::FEAST_ATTACK_SPEED[level];
+    now.move_speed = scaled(now.move_speed, 100 + rules::FEAST_MOVE_PCT[level]);
 }
 
 /// Adds what the inventory proper carries.
@@ -146,9 +173,10 @@ fn add_heap(now: &mut Stats, gathered: &Stacks, book: Option<&AbilityBook>) {
     };
     let kept = gathered.of(StackKind::FleshHeap) as i32;
     now.attributes.strength += rules::FLESH_HEAP_STRENGTH_PER_STACK[level] * Fixed::from_int(kept);
-    let kept_through =
-        (100 - now.magic_resist_pct) * (100 - rules::FLESH_HEAP_MAGIC_RESIST_PCT[level]) / 100;
-    now.magic_resist_pct = 100 - kept_through;
+    let let_through = (rules::NOMINAL_BP - now.magic_resist_bp)
+        * (100 - rules::FLESH_HEAP_MAGIC_RESIST_PCT[level])
+        / 100;
+    now.magic_resist_bp = rules::NOMINAL_BP - let_through;
 }
 
 /// Adds what every active modifier on a unit is worth to its stats. What
@@ -178,7 +206,14 @@ fn add_modifiers(now: &mut Stats, on_it: &Modifiers) {
                 now.move_speed = scaled(now.move_speed, 100 + pct.max(0));
             }
             ModifierKind::ArmorBroken { armor } => {
-                now.armor -= Fixed::from_int(armor);
+                now.armor -= armor;
+            }
+            ModifierKind::MagicBroken { pct } => {
+                let let_through =
+                    i64::from(rules::NOMINAL_BP - now.magic_resist_bp) * i64::from(100 + pct) / 100;
+                now.magic_resist_bp = (i64::from(rules::NOMINAL_BP) - let_through)
+                    .clamp(rules::MIN_MAGIC_RESIST_BP.into(), rules::NOMINAL_BP.into())
+                    as i32;
             }
             ModifierKind::Guarded {
                 armor,
@@ -230,7 +265,10 @@ fn fold_applied(now: &mut Stats, applied: &AppliedModifiers) {
         max_hp = max_hp.saturating_add(spec.max_hp - rules::NOMINAL_BP);
         max_mana = max_mana.saturating_add(spec.max_mana - rules::NOMINAL_BP);
     }
-    now.magic_resist_pct = (now.magic_resist_pct + magic_resist / 100).clamp(0, 100);
+    now.magic_resist_bp = now
+        .magic_resist_bp
+        .saturating_add(magic_resist)
+        .clamp(0, rules::NOMINAL_BP);
     now.status_resist_bp = now
         .status_resist_bp
         .saturating_add(status_resist)
@@ -329,7 +367,7 @@ fn raised(kind: &UnitDef, levels: i32, steps: i32) -> Stats {
         attack_backswing: kind.attack_backswing,
         projectile_speed: kind.projectile_speed.map(Fixed::from_int),
         armor: Fixed::from_ratio(kind.armor * 2 + up.armor_halves, 2),
-        magic_resist_pct: kind.magic_resist_pct,
+        magic_resist_bp: kind.magic_resist_pct * 100,
         status_resist_bp: 0,
         physical_amp_bp: rules::NOMINAL_BP,
         magic_amp_bp: rules::NOMINAL_BP,

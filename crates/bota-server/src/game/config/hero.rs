@@ -14,6 +14,9 @@ pub struct HeroDef {
     /// The slots it carries, in the order they are shown. The ultimate sits
     /// last.
     pub abilities: &'static [AbilityId],
+    /// The innate ability it carries from its first level in no slot, never
+    /// learned. Absent for a hero with none.
+    pub innate: Option<AbilityId>,
 }
 
 /// Every hero, indexed by [`HeroId`].
@@ -27,6 +30,7 @@ pub const HEROES: [HeroDef; 3] = [
             ability::BOUNCE,
             ability::VOLLEY,
         ],
+        innate: None,
     },
     HeroDef {
         name: "Pudge",
@@ -37,6 +41,7 @@ pub const HEROES: [HeroDef; 3] = [
             ability::FLESH_HEAP,
             ability::DISMEMBER,
         ],
+        innate: None,
     },
     HeroDef {
         name: "Shadow Fiend",
@@ -45,10 +50,11 @@ pub const HEROES: [HeroDef; 3] = [
             ability::RAZE_NEAR,
             ability::RAZE_MID,
             ability::RAZE_FAR,
-            ability::NECROMASTERY,
+            ability::FEAST_OF_SOULS,
             ability::PRESENCE,
             ability::REQUIEM,
         ],
+        innate: Some(ability::NECROMASTERY),
     },
 ];
 

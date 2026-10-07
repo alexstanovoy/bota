@@ -40,7 +40,7 @@ fn auras_and_shadowraze_project_distinct_ids_and_round_trip_together() {
             ticks_left: Some(14),
             stacks: None,
         },
-        effect(2, 240),
+        effect(2, 180),
     ];
 
     for view in [
@@ -92,7 +92,7 @@ fn expired_auras_are_not_projected_or_counted_as_shadowraze() {
         .iter()
         .find(|unit| unit.id == wire_id(target))
         .unwrap();
-    assert_eq!(unit.effects, vec![effect(1, 239)]);
+    assert_eq!(unit.effects, vec![effect(1, 179)]);
     assert_eq!(world.modifiers.get(target).unwrap().raze_stacks(caster), 1);
 }
 
@@ -145,5 +145,5 @@ fn tower_flagbearer_and_mango_bonuses_survive_shadowraze_refresh() {
             1
         );
     }
-    assert_eq!(effects(&world, target), vec![effect(2, 240)]);
+    assert_eq!(effects(&world, target), vec![effect(2, 180)]);
 }

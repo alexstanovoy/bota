@@ -33,6 +33,9 @@ impl StatusFlags {
     pub const CHANNELLING: u16 = 1 << 10;
     /// Running from whoever put the fear on; cannot attack or cast.
     pub const FEARED: u16 = 1 << 11;
+    /// In the cast point of an ability or an item: a new order to the body
+    /// breaks the cast off before anything is spent.
+    pub const CASTING: u16 = 1 << 12;
 }
 
 /// One ability slot of a visible unit, enemy or friendly.

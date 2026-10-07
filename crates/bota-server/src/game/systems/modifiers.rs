@@ -16,7 +16,10 @@ use crate::engine::Entity;
 pub fn resisted_ticks(stats: &Table<Stats>, on: Entity, kind: ModifierKind, ticks: u32) -> u32 {
     if !matches!(
         kind,
-        ModifierKind::Stunned | ModifierKind::Feared | ModifierKind::Slowed { .. }
+        ModifierKind::Stunned
+            | ModifierKind::Feared
+            | ModifierKind::Slowed { .. }
+            | ModifierKind::MagicBroken { .. }
     ) {
         return ticks;
     }
@@ -80,21 +83,15 @@ impl World {
         let more = modifier.ticks_left.map_or(0, |ticks| {
             resisted_ticks(&self.stats, on, modifier.kind, ticks)
         });
-        let Some(on_it) = self.modifiers.get_mut(on) else {
-            return;
-        };
-        let same = std::mem::discriminant(&modifier.kind);
-        let held = on_it
-            .active()
-            .find(|held| {
-                std::mem::discriminant(&held.kind) == same && held.source == modifier.source
-            })
-            .and_then(|held| held.ticks_left)
-            .unwrap_or(0);
-        on_it.put(Modifier {
-            ticks_left: Some(held.saturating_add(more).min(cap)),
-            ..modifier
-        });
+        if let Some(on_it) = self.modifiers.get_mut(on) {
+            on_it.extend(
+                Modifier {
+                    ticks_left: Some(more),
+                    ..modifier
+                },
+                cap,
+            );
+        }
     }
 
     /// Takes off every modifier of one kind from one source.

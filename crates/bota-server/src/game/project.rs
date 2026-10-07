@@ -5,7 +5,9 @@ use bota_proto::{
     UnitView, WorldView,
 };
 
-use crate::game::{Entity, ModifierKind, StackKind, World, ability_mana_cost, item_views};
+use crate::game::{
+    Entity, FeastPhase, ModifierKind, StackKind, World, ability_mana_cost, item_views, rules,
+};
 use crate::profile::Phase;
 
 /// The wire's effect id of Shadowraze: one row per source, carrying its ticks
@@ -164,7 +166,7 @@ impl World {
             attack_point: after_speed(stats.attack_point, stats.attack_speed),
             attack_speed: stats.attack_speed,
             armor: stats.armor,
-            magic_resist: Fixed::from_ratio(stats.magic_resist_pct, 100),
+            magic_resist: Fixed::from_ratio(stats.magic_resist_bp, rules::NOMINAL_BP),
             collision: self.hull.get(entity).map_or(Fixed::ZERO, |h| h.collision),
             bound: self.hull.get(entity).map_or(Fixed::ZERO, |h| h.bound),
             vision_radius: stats.vision,
@@ -272,6 +274,7 @@ fn effect_id(kind: ModifierKind) -> u16 {
         ModifierKind::Burning { .. } => 6,
         ModifierKind::Phased => 9,
         ModifierKind::ArmorBroken { .. } => 12,
+        ModifierKind::MagicBroken { .. } => EffectId::MAGIC_BROKEN.0,
         ModifierKind::Guarded { .. } => 13,
         ModifierKind::Inspired { .. } => 14,
         ModifierKind::Shadowraze { .. } => EFFECT_SHADOWRAZE,
@@ -305,6 +308,16 @@ impl World {
                 ticks_left: None,
                 stacks: Some(many),
             }));
+        }
+        if let Some(feast) = self.feast.get(entity) {
+            on_it.push(EffectView {
+                id: match feast.phase {
+                    FeastPhase::Feasting => EffectId::FEASTING,
+                    FeastPhase::Lingering => EffectId::FEAST_LINGER,
+                },
+                ticks_left: Some(feast.ticks_left),
+                stacks: Some(feast.souls()),
+            });
         }
         on_it
     }
@@ -358,6 +371,7 @@ impl World {
             (stats.hides, StatusFlags::INVISIBLE),
             (stats.invulnerable, StatusFlags::INVULNERABLE),
             (self.is_channelling(entity), StatusFlags::CHANNELLING),
+            (self.is_casting(entity), StatusFlags::CASTING),
         ] {
             if set {
                 bits |= flag;

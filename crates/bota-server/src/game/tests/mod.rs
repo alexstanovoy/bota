@@ -4,6 +4,7 @@ mod cast;
 mod courier;
 mod creep_ai;
 mod determinism;
+mod feast;
 mod fiend;
 mod hash;
 mod items;

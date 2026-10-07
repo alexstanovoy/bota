@@ -1,7 +1,7 @@
 //! What has been put on an entity: what it does, who put it, how long it
 //! holds.
 
-use bota_proto::DamageKind;
+use bota_proto::{DamageKind, Fixed};
 
 use crate::engine::Entity;
 use crate::game::rules;
@@ -53,8 +53,14 @@ pub enum ModifierKind {
     },
     /// Wears less armor for standing near a dark presence.
     ArmorBroken {
-        /// Armor taken off, in whole points.
-        armor: i32,
+        /// Armor taken off.
+        armor: Fixed,
+    },
+    /// Keeps less magic out for having been crossed by a requiem: what its
+    /// resistance lets through grows by `pct` percent.
+    MagicBroken {
+        /// Percent added to the share of magic damage let through.
+        pct: i32,
     },
     /// Wears more armor and mends faster for standing by a tower of its own.
     Guarded {
@@ -150,6 +156,24 @@ impl Modifiers {
             }
         }
         self.0.push(modifier);
+    }
+
+    /// Puts a timed modifier on, adding its time to what the same kind from
+    /// the same source already holds, up to `cap` ticks in all.
+    pub fn extend(&mut self, modifier: Modifier, cap: u32) {
+        let more = modifier.ticks_left.expect("an extended modifier runs out");
+        let same = std::mem::discriminant(&modifier.kind);
+        let held = self
+            .active()
+            .find(|held| {
+                std::mem::discriminant(&held.kind) == same && held.source == modifier.source
+            })
+            .and_then(|held| held.ticks_left)
+            .unwrap_or(0);
+        self.put(Modifier {
+            ticks_left: Some(held.saturating_add(more).min(cap)),
+            ..modifier
+        });
     }
 
     /// Takes off every modifier of one kind from one source, whatever there

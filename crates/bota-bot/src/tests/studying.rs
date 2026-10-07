@@ -4,12 +4,12 @@ use bota_proto::{AbilityId, AbilitySlot, HeroId, SlotId, Team, Vec2};
 
 use crate::tests::fixtures;
 use crate::{
-    BOUNCE, CRIT, FIEND_PLAN, Field, NECROMASTERY, RAZE_FAR, RAZE_MID, RAZE_NEAR, REQUIEM, Role,
+    BOUNCE, CRIT, FEAST_OF_SOULS, FIEND_PLAN, Field, RAZE_FAR, RAZE_MID, RAZE_NEAR, REQUIEM, Role,
     SHADOW_FIEND, SYLLA, SYLLA_PLAN, VOLLEY, next_point,
 };
 
 /// Shadow Fiend's book, with the razes all standing at one level.
-fn fiend_book(raze: u8, necro: u8, requiem: u8, points: bool) -> Vec<bota_proto::AbilityView> {
+fn fiend_book(raze: u8, feast: u8, requiem: u8, points: bool) -> Vec<bota_proto::AbilityView> {
     let slot = |id: AbilityId, level: u8, max: u8| {
         let mut view = fixtures::ability(id, level, 0);
         view.max_level = max;
@@ -20,7 +20,7 @@ fn fiend_book(raze: u8, necro: u8, requiem: u8, points: bool) -> Vec<bota_proto:
         slot(RAZE_NEAR, raze, 4),
         slot(RAZE_MID, raze, 4),
         slot(RAZE_FAR, raze, 4),
-        slot(NECROMASTERY, necro, 4),
+        slot(FEAST_OF_SOULS, feast, 4),
         slot(crate::PRESENCE, 0, 4),
         slot(REQUIEM, requiem, 3),
     ]
@@ -44,7 +44,7 @@ fn a_fresh_fiend_puts_its_first_point_in_a_raze() {
 }
 
 #[test]
-fn the_second_point_goes_to_the_souls() {
+fn the_second_point_goes_to_the_feast() {
     let view = field_with(fiend_book(1, 0, 0, true), SHADOW_FIEND);
     let field = Field::of(&view, SlotId(0), Role::Mid).expect("a seat in the view");
     assert_eq!(next_point(&field), Some(AbilitySlot(3)));
@@ -106,7 +106,7 @@ fn sylla_starts_with_the_bolt() {
 fn no_plan_asks_for_more_of_an_ability_than_it_holds() {
     let counted = |plan: &[AbilityId], id: AbilityId| plan.iter().filter(|had| **had == id).count();
     assert!(counted(&FIEND_PLAN, RAZE_NEAR) <= 4);
-    assert!(counted(&FIEND_PLAN, NECROMASTERY) <= 4);
+    assert!(counted(&FIEND_PLAN, FEAST_OF_SOULS) <= 4);
     assert!(counted(&FIEND_PLAN, REQUIEM) <= 3);
     assert!(counted(&SYLLA_PLAN, BOUNCE) <= 4);
     assert!(counted(&SYLLA_PLAN, CRIT) <= 4);

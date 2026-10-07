@@ -73,6 +73,22 @@ impl World {
         )
     }
 
+    /// Whether an entity stands in the cast point of an ability or an item.
+    pub fn is_casting(&self, entity: Entity) -> bool {
+        matches!(
+            self.action.get(entity).map(|action| action.state),
+            Some(
+                ActionState::CastAbility {
+                    phase: ActionPhase::Before { .. },
+                    ..
+                } | ActionState::UseItem {
+                    phase: ActionPhase::Before { .. },
+                    ..
+                }
+            )
+        )
+    }
+
     /// Points an entity at the cast it was ordered to make.
     pub fn order_cast(&mut self, entity: Entity, pending: PendingCast) {
         if let Some(orders) = self.orders.get_mut(entity) {
@@ -199,6 +215,7 @@ impl World {
     /// Runs one entity's action one tick on: the phase the tick began in is
     /// broken off or carried on, and what comes due after it is done.
     fn run_action(&mut self, entity: Entity) {
+        self.try_immediate(entity);
         let took = self.try_pending(entity);
         let Some(mut action) = self.action.get(entity).copied() else {
             return;
@@ -476,6 +493,22 @@ impl World {
             with_phase(state_of(pending), ActionPhase::Before { progress: 0 }),
         );
         true
+    }
+
+    /// Sets off the immediate cast an entity was ordered to make this tick,
+    /// beside whatever it is doing. One whose caster is held or feared is
+    /// dropped.
+    fn try_immediate(&mut self, entity: Entity) {
+        let Some(immediate) = self
+            .orders
+            .get_mut(entity)
+            .and_then(|orders| orders.immediate.take())
+        else {
+            return;
+        };
+        if !self.held(entity) && !self.feared(entity) {
+            self.begin(entity, immediate);
+        }
     }
 
     /// Takes away the cast an entity was ordered to make.

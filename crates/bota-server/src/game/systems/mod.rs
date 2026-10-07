@@ -5,6 +5,7 @@ mod cast;
 mod cheats;
 mod courier;
 mod econ;
+mod feast;
 mod fiend;
 mod fight;
 mod gear;

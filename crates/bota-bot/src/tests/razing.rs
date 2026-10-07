@@ -4,7 +4,7 @@ use bota_proto::{AbilitySlot, Angle, Order, SlotId, Target, Team, Vec2, WorldVie
 
 use crate::tests::fixtures;
 use crate::{
-    Ask, Beat, Field, NECROMASTERY, PRESENCE, RAZE_FAR, RAZE_MID, RAZE_NEAR, REQUIEM, Role,
+    Ask, Beat, FEAST_OF_SOULS, Field, PRESENCE, RAZE_FAR, RAZE_MID, RAZE_NEAR, REQUIEM, Role,
     SHADOW_FIEND, fiend_aim, fiend_spell,
 };
 
@@ -18,7 +18,7 @@ fn book(raze: u8, requiem: u8) -> Vec<bota_proto::AbilityView> {
         .enumerate()
         .map(|(at, id)| fixtures::ability(*id, raze, reach[at]))
         .collect();
-    slots.push(fixtures::ability(NECROMASTERY, 1, 0));
+    slots.push(fixtures::ability(FEAST_OF_SOULS, 0, 600));
     slots.push(fixtures::ability(PRESENCE, 0, 900));
     let mut ult = fixtures::ability(REQUIEM, requiem, 900);
     ult.max_level = 3;
@@ -153,4 +153,30 @@ fn the_requiem_is_let_go_at_one_it_would_kill() {
             }
         })
     ));
+}
+
+#[test]
+fn the_feast_goes_off_before_a_raze_with_a_foe_within_its_reach() {
+    let foe = fixtures::hero(5, Team::Dire, Vec2::from_ints(8450, 8000));
+    let mut view = tick(0, 1, 0, 0, vec![foe]);
+    view.units[2].abilities[3].level = 1;
+    view.units[2].abilities[3].mana_cost = 60;
+    assert_eq!(spell(&view), Some(Ask::cast(AbilitySlot(3), Target::None)));
+}
+
+#[test]
+fn the_souls_held_make_a_raze_worth_casting_at_creeps_it_otherwise_would_not_kill() {
+    // Two creeps on the middle raze's spot with 100 health: the first-level
+    // raze kills them only with eight souls behind it.
+    let creeps = || {
+        vec![
+            fixtures::creep(7, Team::Dire, Vec2::from_ints(8450, 8000), 100),
+            fixtures::creep(8, Team::Dire, Vec2::from_ints(8450, 8050), 100),
+        ]
+    };
+    assert_eq!(spell(&tick(0, 1, 0, 0, creeps())), None);
+    assert_eq!(
+        spell(&tick(0, 1, 0, 8, creeps())),
+        Some(Ask::cast(AbilitySlot(1), Target::None))
+    );
 }

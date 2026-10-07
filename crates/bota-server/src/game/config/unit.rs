@@ -342,33 +342,34 @@ pub const PUDGE: UnitDef = UnitDef {
     ..HERO
 };
 
-/// Shadow Fiend: fragile and long-ranged.
+/// Shadow Fiend: fragile and long-ranged, at Dota 7.41f's numbers. The attack
+/// damage is the middle of Dota's 16 to 22.
 pub const SHADOW_FIEND: UnitDef = UnitDef {
     attributes: Attributes {
-        strength: Fixed::from_int(18),
-        agility: Fixed::from_int(20),
-        intelligence: Fixed::from_int(18),
+        strength: Fixed::from_int(19),
+        agility: Fixed::from_int(25),
+        intelligence: Fixed::from_int(16),
     },
     primary: Some(Attribute::Agility),
     max_hp: 120,
     max_mana: 75,
-    damage: 25,
+    mana_regen: Fixed::from_ratio(3, 10 * rules::TICKS_PER_SECOND as i32),
+    damage: 19,
     attack_range: 525,
     acquisition: 800,
-    attack_time: 1700,
+    attack_time: 1600,
     attack_point: 500,
+    attack_backswing: 540,
     projectile_speed: Some(1200),
     armor: 0,
     move_speed: 305,
+    turn_rate: rules::FAST_TURN_RATE_BRADS,
     per_level: Growth {
         attributes: Attributes {
-            strength: Fixed::from_ratio(20, 10),
-            agility: Fixed::from_ratio(33, 10),
-            intelligence: Fixed::from_ratio(21, 10),
+            strength: Fixed::from_ratio(27, 10),
+            agility: Fixed::from_ratio(36, 10),
+            intelligence: Fixed::from_ratio(22, 10),
         },
-        hp: 38,
-        mana: 6,
-        damage: 1,
         ..NO_GROWTH
     },
     ..HERO

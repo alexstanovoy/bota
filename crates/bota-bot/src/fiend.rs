@@ -1,14 +1,16 @@
 //! Shadow Fiend's spellwork.
 //!
 //! A raze takes no aim. It lands at its own reach along the line the caster
-//! is already looking down, so casting one is two decisions: which way to
-//! look, and whether what stands where it would land is worth the mana.
+//! is already looking down once its cast point is over, so casting one is
+//! two decisions: which way to look, and whether what stands where it would
+//! land is worth the mana.
 
 use bota_proto::{DamageKind, Target, UnitView, Vec2};
 
 use crate::{
-    Ask, Beat, Field, RAZE_DAMAGE, RAZE_RADIUS, RAZES, REQUIEM, REQUIEM_LINE_DAMAGE,
-    REQUIEM_LINE_WIDTH, after_mitigation, facing_gap, facing_towards, span, spot_ahead, within,
+    Ask, Beat, FEAST_OF_SOULS, FEAST_RADIUS, Field, RAZE_DAMAGE, RAZE_DAMAGE_PER_SOUL,
+    RAZE_POINT_TICKS, RAZE_RADIUS, RAZES, REQUIEM, REQUIEM_LINE_DAMAGE, REQUIEM_LINE_WIDTH,
+    after_mitigation, facing_gap, facing_towards, span, spot_ahead, within,
 };
 
 /// Souls a requiem is worth letting go for a lone enemy that it would not
@@ -25,9 +27,36 @@ pub const RAZE_CROWD: usize = 3;
 /// Mana, as a part of the whole, kept back from razing a wave.
 pub const RAZE_SPARE_MANA: f32 = 0.5;
 
+/// The most lines one requiem lets fly, however many souls are held.
+pub const REQUIEM_LINES_MAX: u32 = 20;
+
+/// Creeps within a feast's reach that make it worth casting for the wave
+/// alone.
+pub const FEAST_CROWD: usize = 4;
+
 /// What Shadow Fiend would cast this tick.
 pub fn fiend_spell(field: &Field, beat: &Beat) -> Option<Ask> {
-    requiem(field).or_else(|| raze(field, beat))
+    requiem(field)
+        .or_else(|| feast(field))
+        .or_else(|| raze(field, beat))
+}
+
+/// The feast, when there is an enemy hero to take souls from, or a wave to
+/// take them from and mana to spare for the razes they feed.
+fn feast(field: &Field) -> Option<Ask> {
+    let me = field.me?;
+    let (slot, held) = field.ability(FEAST_OF_SOULS)?;
+    if held.level == 0 || held.cooldown_left > 0 || me.mana < held.mana_cost {
+        return None;
+    }
+    let heroes = field.foes_within(FEAST_RADIUS).count();
+    let creeps = field
+        .creeps
+        .iter()
+        .filter(|creep| span(creep.pos, me.pos) <= FEAST_RADIUS as f32)
+        .count();
+    let worth = heroes > 0 || (field.mana() >= RAZE_SPARE_MANA && creeps >= FEAST_CROWD);
+    worth.then(|| Ask::cast(slot, Target::None))
 }
 
 /// Where Shadow Fiend should look so that a raze would land on somebody.
@@ -67,7 +96,7 @@ fn requiem(field: &Field) -> Option<Ask> {
     if held.level == 0 || held.cooldown_left > 0 || me.mana < held.mana_cost {
         return None;
     }
-    let souls = field.souls();
+    let souls = field.souls().min(REQUIEM_LINES_MAX);
     if souls == 0 {
         return None;
     }
@@ -112,7 +141,8 @@ fn raze(field: &Field, beat: &Beat) -> Option<Ask> {
         let damage = RAZE_DAMAGE
             .get(usize::from(held.level - 1))
             .copied()
-            .unwrap_or(0);
+            .unwrap_or(0)
+            + RAZE_DAMAGE_PER_SOUL * field.souls() as i32;
         let lands = spot_ahead(me, held.range);
         let struck: Vec<&UnitView> = field
             .enemies
@@ -130,7 +160,8 @@ fn raze(field: &Field, beat: &Beat) -> Option<Ask> {
         let killed = caught
             .iter()
             .filter(|creep| {
-                after_mitigation(damage, DamageKind::Magical, creep) >= beat.health_in(creep, 1)
+                let left = beat.health_in(creep, RAZE_POINT_TICKS);
+                left > 0 && after_mitigation(damage, DamageKind::Magical, creep) >= left
             })
             .count();
         let spare = field.mana() >= RAZE_SPARE_MANA;

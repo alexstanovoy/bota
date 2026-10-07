@@ -447,3 +447,42 @@ fn attack_speed_shortens_the_wait_between_attacks() {
         "and it runs faster for the speed"
     );
 }
+
+#[test]
+fn shadow_fiend_stands_at_dota_numbers_from_the_first_level_to_the_last() {
+    // Dota 7.41f with nothing bought: level, health, mana, attack damage
+    // (the middle of the spread), milliseconds between swings, and armor in
+    // thousandths. Health and mana show their whole points.
+    for (level, hp, mana, damage, swing, armor) in [
+        (1, 538, 267, 44, 1280, 4_166),
+        (15, 1369, 636, 94, 914, 12_565),
+        (30, 2260, 1032, 148, 698, 21_565),
+    ] {
+        let mut world = World::new();
+        let fiend = seated_hero(
+            &mut world,
+            Vec2::from_ints(5000, 5000),
+            bota_proto::HeroId(2),
+        );
+        world.level.insert(fiend, Level(level));
+        world.settle();
+        let shown = world
+            .view_full()
+            .units
+            .into_iter()
+            .find(|unit| unit.hero == Some(bota_proto::HeroId(2)))
+            .expect("he is projected");
+        assert_eq!(shown.max_hp, hp, "level {level} health");
+        assert_eq!(shown.max_mana, mana, "level {level} mana");
+        assert_eq!(shown.attack_damage, damage, "level {level} damage");
+        assert_eq!(shown.attack_time, swing, "level {level} swing");
+        assert_eq!(
+            (shown.armor * Fixed::from_int(1000)).to_int(),
+            armor,
+            "level {level} armor"
+        );
+        assert_eq!(shown.magic_resist, Fixed::from_ratio(1, 4));
+        assert_eq!(shown.move_speed, Fixed::from_int(305));
+        assert_eq!(shown.attack_range, Fixed::from_int(525));
+    }
+}

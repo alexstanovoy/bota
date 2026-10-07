@@ -770,7 +770,11 @@ waits as a `PendingCast`, walking the caster into reach when it has to. It then
 runs as the body's action: the cast point (`ActionPhase::Before`), the ability's
 own `duration` (`During`, which is how Dismember channels) and the backswing
 (`After`), all from `AbilityDef`; a cast point of zero goes off in the tick it
-starts. Cooldowns tick in the upkeep before actions run, so a fresh cooldown
+starts. A cast point roots the caster and is shown as `StatusFlags::CASTING`; any
+order to the body breaks it off before anything is spent, as in Dota. An
+`immediate` ability (Feast of Souls, Dota's `DOTA_ABILITY_BEHAVIOR_IMMEDIATE`) has no
+cast point, backswing or duration, and ordering it breaks nothing off: it goes off
+beside a swing or another cast point. Cooldowns tick in the upkeep before actions run, so a fresh cooldown
 surfaces at its full value. Sylla's kit: slot 0 a critical strike
 passive fed by the hidden per-unit `Chance` stream (the stream is keyed by the
 entity slot, so respawning continues the sequence); slot 1 an attack speed
@@ -780,13 +784,13 @@ slot 3 an ultimate volley launching an attack projectile at every enemy unit in
 its radius. A crit rolls once at windup completion and rides the projectile,
 reported only in the `Damaged` event.
 
-Shadow Fiend carries Dota's six entries in six slots: three razes, Necromastery,
-Presence of the Dark Lord and Requiem of Souls; the slot row is per-hero data, so
-squeezing him into four slots buys nothing. The three razes share one level, which is
-Dota's rule and what keeps the trio from costing twelve points: a point into any of them
-levels all three, and the spent-point sum counts the trio once. Necromastery is an
-ordinary leveled passive — the soul cap reads its level, and nothing is gathered while it
-is unlearned. Presence is a leveled
+Shadow Fiend carries Dota 7.41f's six slots: three razes, Feast of Souls, Presence of
+the Dark Lord and Requiem of Souls; the slot row is per-hero data, so squeezing him
+into four slots buys nothing. The three razes share one level, which is Dota's rule and
+what keeps the trio from costing twelve points: a point into any of them levels all
+three, and the spent-point sum counts the trio once. Necromastery is his innate
+(`HeroDef::innate`): in no slot, never learned, gathering from his first level, as
+Dota's hidden innate is. Presence is a leveled
 aura on the enemy: each tick it lays an armor-break modifier with a short linger on
 everything hostile in reach, and the stats pass reads that modifier like any other. It does
 not go through the `Auras` component, which is static body data handed out to its own
@@ -829,12 +833,12 @@ the wire and are needed to read it, so they belong in `bota-proto` — which is 
 next one added should put them.
 
 A soul is taken only from what he brings down himself, which is the killer `bury`
-already carries, and a hero is worth three where anything else is worth one. Souls
-wait on the seat in `Kept` with the abilities and the items, less the
+already carries, and a hero is worth four where anything else is worth one, up to
+twenty. Souls wait on the seat in `Kept` with the abilities and the items, less the
 `SOULS_LOST_ON_DEATH_PCT` (30%, rounded down) that his own death lets go. The requiem
-reads the souls and keeps them; its cooldown is what limits it: a hero whose only
-scaling is a resource that two different events take away is a hero the bots learn to
-stop gathering with.
+reads the souls and keeps them; its cooldown is what limits it. Feast of Souls is the
+one thing that carries the count past twenty, and only for a while (Shadow Fiend at
+Dota 7.41f, below).
 
 Souls are not a component of their own. Necromastery and Flesh Heap are the same shape -
 a count that grows on a death, never runs out, and survives the body - so both are one
@@ -853,9 +857,11 @@ second `Option` buys that.
 A raze takes no aim: it is fired along the caster's facing and lands at its own
 distance, as in Dota. `facing_towards` is a piecewise-linear octant map and `heading_of`
 inverts it exactly, so a facing round-trips without drift and the aim of a raze is
-`Own`. The consequences: the cast goes off on the tick it is asked for and never walks
-the caster in, an order is not interrupted by it — he razes mid-walk and mid-attack —
-and pointing it is done with the body, by turning. Attacks and razes both wait on
+`Own`. The consequences: the cast never walks the caster in, and pointing it is done
+with the body, by turning. Its 0.55 s cast point roots him without turning, so the
+facing he begins it with is the one it lands along 17 ticks later; the order he was
+walking or swinging on is kept and taken up again once it has gone off, and a new
+order to the body inside the cast point breaks it off. Attacks and razes both wait on
 facing, so it is load-bearing, not cosmetic.
 
 A raze and a requiem line pass buildings by, as in Dota: they burn, stack, frighten and
@@ -874,7 +880,8 @@ Hero roadmap (added as data + ability implementations; the engine does not chang
 | Lira | support | heal / shield / wards / ult: team heal aura |
 
 Built since: Pudge (hook / rot / flesh heap / ult: dismember) and Shadow Fiend
-(three razes sharing a level / necromastery / presence / ult: requiem).
+(innate necromastery / three razes sharing a level / feast of souls / presence /
+ult: requiem).
 
 Flesh Heap is the 7.28 to 7.30 passive, from the wiki's changelog: 12/14/16/18%
 magic resistance multiplied with the hero's own and 1.5/2/2.5/3 strength a stack
@@ -1254,7 +1261,7 @@ the orders it gave, not the arithmetic behind them.
 
 **The order of the list is the whole of the judgement.** There is one order a tick, so
 which want is asked first is the only priority there is: standing still while stunned,
-feared or channelling, a skill point, a courier errand, the shop, tidying the bag, a
+feared, channelling or in a cast point, a skill point, a courier errand, the shop, tidying the bag, a
 drink or a wand, the scroll, leaving while hurt, a spell, turning to aim one, a last hit
 or a deny, waiting out a swing already under way, shaking the creeps off, pulling the
 wave back, striking their hero or pushing a building behind the wave, and holding the
@@ -1275,9 +1282,12 @@ because a salve and a ward are one shape on the wire.
 the caster already faces, so casting one is two decisions. `fiend_spell` works out where
 each raze would land from the facing in the snapshot — the server's own octant geometry,
 integer for integer, in `aim.rs` — and casts only if something worth burning is standing
-there. `fiend_aim` is the other half: a mark inside the union of the three burns but off
+there, counting the souls held and forecasting creep health over the 17-tick cast point.
+`fiend_aim` is the other half: a mark inside the union of the three burns but off
 the line gets a walk towards it, which is how a hero turns. The burns (reaches 200, 450
 and 700, radius 250) overlap, so anything within 950 units can be razed by facing it.
+The feast goes off ahead of a raze whenever an enemy hero stands within its 600, or a
+wave of four creeps does and mana is to spare.
 
 **Buying is sequential, and the list is parts.** The server charges a built item the
 price of the parts the seat does not already hold, and assembles a build the moment its
@@ -1382,7 +1392,7 @@ frontmost tower its lane holds once mended, and it sits above the walk home, sin
 that walk is for is the thing a scroll does in three seconds. Its shared wait is not on
 the wire, so `Playbook` counts it from the tick the last scroll was aimed.
 
-**Mana was short because nothing was ever bought for it.** A raze costs 75 or more
+**Mana was short because nothing was ever bought for it.** A raze costs 75
 against a pool that mends about two a second. Every list carries a clarity, and a
 wand — twenty charges worth fifteen of each pool — is pressed whenever the pool it fills
 is missing what its charges are worth. Shadow Fiend buys a Sage's Mask rather than a
@@ -1545,9 +1555,9 @@ seats; the client's banner reads `NOBODY WINS`.
 
 ## Mango and stacking Shadowraze
 
-Both are chosen bota mechanics, not a claim of parity with the latest Dota patch: the
-Mango's price and restoration are Dota's, the raze keeps bota's base damage and cast
-rules and adds Dota's stacking bonus.
+The Mango is a chosen bota mechanic, not a claim of parity with the latest Dota patch:
+its price and restoration are Dota's. The raze is Dota 7.41f's in full (Shadow Fiend
+at Dota 7.41f, below).
 
 ### Mango
 
@@ -1606,28 +1616,31 @@ one, two and three charges). Consumed charges are never refunded.
 
 | Constant in `game::rules` | Value |
 |---|---|
-| `RAZE_DAMAGE` | 90, 160, 230, 300 magical damage at levels 1 to 4 |
-| `RAZE_STACK_DAMAGE` | 50, 60, 70, 80 per earlier live stack of the same caster |
-| `RAZE_DEBUFF_TICKS` | 240 ticks, 8 seconds |
+| `RAZE_DAMAGE` | 85, 150, 215, 280 magical damage at levels 1 to 4 |
+| `RAZE_DAMAGE_PER_SOUL` | 2 for every soul the caster holds as it goes off |
+| `RAZE_STACK_DAMAGE` | 35, 50, 65, 80 per earlier live stack of the same caster |
+| `RAZE_DEBUFF_TICKS` | 180 ticks, 6 seconds |
 | `RAZE_MAX_STACKS` | 255 per victim and caster generation |
 | `RAZE_MAX_SOURCES` | 16 caster records per victim |
 | `RAZE_DISTANCE` | 200, 450, 700 world units |
 | `RAZE_RADIUS` | 250 world units |
-| `RAZE_MANA` | 75, 80, 85, 90 mana by level |
-| `RAZE_COOLDOWN` | 300 ticks, for each reach on its own |
+| `RAZE_MANA` | 75 mana at every level |
+| `RAZE_COOLDOWN` | 270 ticks, for each reach on its own |
+| `RAZE_CAST_POINT_MS` | 550 ms, 17 ticks; no backswing |
 
-A hit reads the live count of its own caster's record on the victim and adds that
-count times the bonus at the current level to the base damage; the total then passes
-magical resistance and integer truncation. Level-one hits at zero resistance deal 90,
-140, 190, 240; at 25% they deal 67, 105, 142, 180. At level four and the full count
-the raw damage is 20,700, inside the fixed-point range. The count is a saturating
-`u8`, tied to the cap by a compile-time assertion; a cap of three would confuse the
-three reach slots with the debuff's own limit.
+A hit carries its base damage and the caster's souls as it went off, reads the live
+count of its own caster's record on the victim and adds that count times the bonus at
+the current level; the total then passes magical resistance and integer truncation.
+Level-one hits with no souls at zero resistance deal 85, 120, 155, 190; at 25% they
+deal 63, 90, 116, 142. At level four, fifty souls and the full count the raw damage is
+20,780, inside the fixed-point range. The count is a saturating `u8`, tied to the cap
+by a compile-time assertion; a cap of three would confuse the three reach slots with
+the debuff's own limit. Dota's has no cap at all.
 
 Every hit that deals positive damage to a victim that survives it adds one stack and
-refreshes that caster's whole record to 240 ticks, at the cap too. A hit in tick H is
-live through H+239; `tick_modifiers` removes it before casts resolve at H+240, so a
-hit at H+239 gets the bonus and a hit at H+240 starts again at one. Different casters,
+refreshes that caster's whole record to 180 ticks, at the cap too. A hit in tick H is
+live through H+179; `tick_modifiers` removes it before casts resolve at H+180, so a
+hit at H+179 gets the bonus and a hit at H+180 starts again at one. Different casters,
 allies or not, neither read nor refresh each other's records. With 16 records held, a
 new caster evicts the one with the least time left, the first in record order on a
 tie; refreshing an existing record evicts nothing, and expired records go first.
@@ -1658,13 +1671,142 @@ respawn.
 
 `EFFECT_SHADOWRAZE` is `15` (13 and 14 are the tower's and the flagbearer's auras).
 Each live record shows on a visible victim as an `EffectView` with `id =
-EffectId(15)`, `ticks_left = Some(1..=240)` and `stacks = Some(1..=255)`; several
+EffectId(15)`, `ticks_left = Some(1..=180)` and `stacks = Some(1..=255)`; several
 casters give several anonymous rows. The caster is never projected, fogged or not, and
 which caster a row belongs to is not promised. The client names the effect `Razed`.
 
 The world hash covers each record's source index and generation, count and timer,
 and a queued hit's effect and level. The item hash covers merge ownership, mode, sale
 marks, the dead courier's kept bag and whole ground stacks.
+
+## Shadow Fiend at Dota 7.41f
+
+Shadow Fiend is Dota 7.41f's, numbers and mechanics, wherever the engine has the
+mechanic at all. The sources, all read in October 2026:
+
+- the official hero data, `https://www.dota2.com/datafeed/herodata?language=english&hero_id=11`
+  (base stats, every ability's special values, talents, no facets);
+- the official patch notes from the same datafeed (`patchnoteslist`, then
+  `patchnotes?version=7.39 … 7.41f`), which date every change below;
+- the ability KV file `scripts/npc/heroes/npc_dota_hero_nevermore.txt` of
+  `dotabuff/d2vpkr` at commit `969480b2e3` (client 6933, 2026-09-15, the day 7.41f
+  shipped), byte-identical to `spirit-bear-productions/dota_vpk_updates`: cast points,
+  behaviours, the death requiem's share and the Necromastery level curve;
+- Liquipedia's Shadow Fiend page (`ctrlver = 7.41f`) for what neither of those says:
+  attack backswing 0.54 s, the requiem's 0.9 s backswing, its first line due east, the
+  death requiem applying the soul loss first and only burning, the feast's 0.5 s
+  first gathering and that each enemy feeds it once.
+
+Where they disagree the live data wins: 7.40b's notes and Liquipedia make the
+requiem's magic resistance reduction a flat 10%, the 7.41 KV and the herodata both
+say 5/10/15%, and 5/10/15% it is.
+
+| | bota before | Dota 7.41f | bota now |
+|---|---|---|---|
+| Strength, agility, intelligence | 18 / 20 / 18 | 19 / 25 / 16 | 19 / 25 / 16 |
+| Gain a level | 2.0 / 3.3 / 2.1 | 2.7 / 3.6 / 2.2 | 2.7 / 3.6 / 2.2 |
+| Extra health, mana, damage a level | 38 / 6 / 1 | none | none |
+| Base attack damage | 25 | 16–22 | 19 |
+| Attack damage at level 1 | 45 | 41–47 | 44 |
+| Health, mana at level 1 | 516 / 291 | 538 / 267 | 538 / 267 |
+| Armor at level 1 | 3.33 | 4.17 | 4.17 |
+| Base attack time | 1.7 s | 1.6 s | 1.6 s |
+| Attack point, backswing | 0.5 s, 0.4 s | 0.5 s, 0.54 s | 0.5 s, 0.54 s |
+| Turn rate | 0.5 | 0.9 | 0.9 (10431 brads a tick) |
+| Mana regeneration | 0.25/s | 0.3/s | 0.3/s |
+| Health regeneration, magic resistance, move speed, range, missile | 0.25/s, 25%, 305, 525, 1200 | the same | the same |
+| Necromastery | learned, 4 levels | innate | innate, no slot |
+| Souls cap | 12/16/20/24 | 20 | 20 |
+| Souls a hero, a creep | 3, 1 | 4, 1 | 4, 1 |
+| Damage a soul | 2 | 1 + 0.8 every 6 levels | the same, sum rounded down |
+| Souls lost on death | 30% | 30% | 30%, rounded down |
+| Raze damage | 90/160/230/300 | 85/150/215/280 + 2 a soul | 85/150/215/280 + 2 a soul |
+| Raze stack bonus, duration | 50/60/70/80, 8 s | 35/50/65/80, 6 s | 35/50/65/80, 6 s |
+| Raze mana, cooldown | 75/80/85/90, 10 s | 75, 9 s | 75, 9 s |
+| Raze cast point | none | 0.55 s, no backswing | 0.55 s (17 ticks), none |
+| Feast of Souls | absent | see below | see below |
+| Presence armor | 2/3/4/5 | 2.5/4/5.5/7 | 2.5/4/5.5/7 |
+| Presence reach | 1200, every enemy | 1200, enemies that see him | 1200, enemies whose side sees him |
+| Armor the presence takes below zero | counted as zero | amplifies physical damage | amplifies, Dota's curve, for every unit |
+| Requiem cast point, backswing | none | 1.67 s, 0.9 s | 1.67 s (51 ticks), 0.9 s |
+| Requiem fear per line, max | 0.6 s, 2.13 s | 0.6 s, 2.15 s | 18 ticks, 65 ticks |
+| Requiem magic resistance | none | -5/-10/-15%, multiplied | the same |
+| Requiem lines | first along his facing | first due east | first due east |
+| Requiem on death | none | half the kept souls, burn only | the same |
+
+**Necromastery** is no ability to learn: `HeroDef::innate` names it and
+`gathers_souls` asks the hero rather than the book. A soul's worth is held in tenths,
+`10 + 8 * (level / 6)`, so twenty souls are worth 20, 36, 52, 68, 84 and 100 at levels
+1, 6, 12, 18, 24 and 30; the sum is rounded down once.
+
+**Feast of Souls** (`AbilityId(19)`, slot 3) is immediate: no cast point, nothing
+broken off: it waits in a slot of its own on his orders (`Orders::immediate`), which
+no other order clears, and goes off when actions run that tick. For 8 s it adds
+35/50/65/80 attack speed and 4/6/8/10% movement speed, and every 0.5 s from the cast
+— fifteen times; one on the tick it ends would be taken back at once — it takes souls
+from up to two enemy heroes or creeps within 600 that his side sees, that damage
+reaches and that it has not fed on yet: heroes first, the nearest first among each, 3 a hero and 1 a
+creep, from 4/6/8/10 enemies in all. Those souls go on top of the count and past the
+cap. When it ends, the souls of those still standing go; those of the fallen stay for
+8 s more, and then whatever is over twenty goes. A kill while the count is past
+twenty adds nothing. The feast's own state is a `Feast` component on him, its souls
+are ordinary souls in `Stacks`; a death ends it at once, as running out would, before
+the death takes its 30%. Recasting it on a feast still running (only a cooldown rate
+modifier allows that) ends the old one first. Which enemies come first among equals
+is not documented by Valve; nearest-first is bota's choice. A hero that dies and
+respawns inside one feast is a new body and could be fed on twice; eight seconds
+leave no room for it in practice.
+
+**Requiem of Souls** keeps the souls it lets go, one line each up to twenty, the first
+due east whatever his facing. A line that burns a unit and leaves it standing
+frightens it, slows it and tears its magic resistance — the share it lets through
+grows by 5/10/15% — for 0.6 s more a line, up to 2.15 s; those land with the burn in
+hit resolution, so a line's own burn never feels its own tear, and lines landing in
+one tick all burn at the resistance the tick began with. On his death, if the requiem
+is learned and whatever its cooldown or his mana, a requiem goes off where he fell:
+after the death's 30%, half of what is kept, rounded down, fly as lines that only
+burn.
+
+**What is not matched, and why.**
+
+- A swing deals one number, not a roll between a minimum and a maximum: no unit in
+  bota has a damage spread, and adding one is a new hidden stream for every attacker.
+  Shadow Fiend's 16–22 is its mean, 19.
+- Agility's attack speed and the primary attribute's damage are whole points, as for
+  every hero: 75.4 agility at level 15 is 175 attack speed and 75 damage, not 175.4
+  and 75.4.
+- Intelligence's 0.1% magic resistance a point, the Attribute Bonus that levels on its
+  own, talents and Aghanim's Scepter and Shard are not in the game for any hero, so
+  Shadow Fiend has none of them. The talent levels that grant no ability point in
+  Dota change nothing here: without talents fifteen points max his kit by level 18
+  either way.
+- Day and night do not exist: his 800 night vision never applies.
+- Break does not exist, so nothing stops the souls being gathered.
+- The requiem's phase movement in its cast point is not modelled.
+- `shadowraze_cooldown 3` in the KV is not a rule of the normal game: the three razes
+  keep independent 9 s cooldowns (Liquipedia: "Each Shadowraze ability independently
+  checks …"), and the value has stood unchanged since well before the current
+  cooldown. It is most likely Ability Draft's charge timing, where Shadowraze (Medium)
+  is drafted alone with three charges; that mode does not exist here.
+- The raze stack count stops at 255; Dota's has no cap.
+- What a death requiem's lines kill pays nobody: a blow's source is a body, his is
+  gone, and the bounty is found through the body's seat. Dota credits him. Lines of
+  a requiem cast alive that outlive him, and his missiles in flight, were already so.
+
+**On the wire.** These are the changes a third-party client sees:
+
+- Shadow Fiend's slot 3 is Feast of Souls (`AbilityId(19)`, `Aim::Own`, castable, levels
+  1–4) instead of Necromastery (`AbilityId(17)`), which no longer sits in any slot.
+- Razes and the requiem have cast points: a cast is accepted, `AbilityCast` arrives
+  when it goes off, and any order to the body before that breaks it off with nothing
+  spent. `StatusFlags::CASTING` (bit 12) is set on a unit in a cast point.
+- `EffectId::MAGIC_BROKEN` (18, `ticks_left`) is a requiem's torn resistance;
+  `EffectId::FEASTING` (19, `ticks_left` and `stacks`: souls taken so far) and
+  `EffectId::FEAST_LINGER` (20, `ticks_left` until what is past the cap is lost and
+  `stacks`: souls taken from enemies that have died since) are the feast. They are the first effect ids `bota-proto` names.
+- `UnitView.magic_resist` may be negative, down to -1, under a requiem.
+- The souls effect (11) may count up to fifty while a feast runs or lingers.
+- Raze stacks (effect 15) last at most 180 ticks.
 
 ## Applied unit modifiers and the general stats behind them
 
@@ -1706,21 +1848,23 @@ amplified, so the default game pays nothing.
 **The bounds are part of composition.** A match carries at most `MAX_SPAWN_MODIFIERS`
 (64) setup rules, a selector names at most `MAX_SPAWN_TARGETS` (16) kinds and
 categories, and a unit carries at most those 64 entries plus one cheat entry. Every
-sum saturates. Magic resistance ends in `0..=100` percent and status resistance in
-`0..=9_999` bp. The three magnitude scales saturate after addition at one source's
+sum saturates. Applied magic resistance ends in `0..=10_000` bp and status
+resistance in `0..=9_999` bp. The three magnitude scales saturate after addition at one source's
 `2_500..=40_000`, keeping world magnitudes within 0.25x to 4x: they bound the size of
 the world. Damage amplification, the cooldown and mana cost rates and bounty gold keep
 every bounded source, up to `MAX_COMBINED_MODIFIER_SCALE` = 1,960,000 (196x), with
 floors of zero or one; every loop and accumulator still has a fixed ceiling.
 
-**Each stat has one reading.** Magic resistance is added as a delta and clamped to
-`0..=100` before Flesh Heap multiplies it, so mitigation, projection and the bots
-agree. Damage amplification scales a blow before armor and resistance, after the
+**Each stat has one reading.** Magic resistance is kept in basis points, added as a
+delta and clamped to `0..=10_000` before Flesh Heap multiplies it, so mitigation,
+projection and the bots agree; a requiem's torn resistance multiplies last and is the
+one thing that takes it below zero, down to `rules::MIN_MAGIC_RESIST_BP` (-100%), where
+magic damage lands amplified as in Dota. Damage amplification scales a blow before armor and resistance, after the
 Shadowraze stack bonus, by the dealer's field for the damage kind; a blow with no
 source is left alone, and pure damage stays unmitigated but still scales. The outgoing
 scale is captured when a blow or its carrier is created (attacks, projectiles, hooks,
 requiem lines), as a crit is, so nothing that happens to the source afterwards changes
-a hit in flight. Status resistance scales the ticks of `Stunned`, `Feared` and `Slowed`
+a hit in flight. Status resistance scales the ticks of `Stunned`, `Feared`, `Slowed` and `MagicBroken`
 wherever they are put on, down to one tick, and never touches buffs; time already held
 is not shortened again when a disable is extended. A hold renewed every tick of a
 channel (Dismember, the hook's drag) has its ticks shortened too, but its length is the

@@ -44,10 +44,15 @@ impl Stacks {
         self.gather_up_to(kind, many, u32::MAX);
     }
 
-    /// Puts more of one kind on, holding no more than `cap` of it in all.
+    /// Puts more of one kind on, holding no more than `cap` of it in all. A
+    /// count already past `cap` stays where it is.
     pub const fn gather_up_to(&mut self, kind: StackKind, many: u32, cap: u32) {
         let at = kind.at();
-        let held = self.counts[at].saturating_add(many);
+        let had = self.counts[at];
+        if had >= cap {
+            return;
+        }
+        let held = had.saturating_add(many);
         self.counts[at] = if held > cap { cap } else { held };
     }
 

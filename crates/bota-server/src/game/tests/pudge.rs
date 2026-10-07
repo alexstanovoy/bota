@@ -315,8 +315,8 @@ fn a_thicker_heap_is_worth_more_a_stack_and_turns_more_magic() {
     let (mut world, pudge) = a_lone_pudge();
     let bare = world.stats.get(pudge).expect("settled").attributes.strength;
     assert_eq!(
-        world.stats.get(pudge).map(|s| s.magic_resist_pct),
-        Some(rules::HERO_MAGIC_RESIST_PCT),
+        world.stats.get(pudge).map(|s| s.magic_resist_bp),
+        Some(rules::HERO_MAGIC_RESIST_PCT * 100),
         "unlearned, the heap thickens nothing"
     );
     set_level(&mut world, pudge, 2, 4);
@@ -332,8 +332,8 @@ fn a_thicker_heap_is_worth_more_a_stack_and_turns_more_magic() {
     let base = rules::HERO_MAGIC_RESIST_PCT;
     let heap = rules::FLESH_HEAP_MAGIC_RESIST_PCT[3];
     assert_eq!(
-        world.stats.get(pudge).map(|s| s.magic_resist_pct),
-        Some(100 - (100 - base) * (100 - heap) / 100),
+        world.stats.get(pudge).map(|s| s.magic_resist_bp),
+        Some(rules::NOMINAL_BP - (rules::NOMINAL_BP - 100 * base) * (100 - heap) / 100),
         "and the resistance multiplies with the hero's own"
     );
 }

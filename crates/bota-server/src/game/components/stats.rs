@@ -51,8 +51,10 @@ pub struct Stats {
     pub projectile_speed: Option<Fixed>,
     /// Armor, reducing physical damage.
     pub armor: Fixed,
-    /// Magic resistance, percent.
-    pub magic_resist_pct: i32,
+    /// Magic resistance, in basis points where 10_000 keeps everything out,
+    /// within `rules::MIN_MAGIC_RESIST_BP..=10_000`. Below zero, magic
+    /// damage lands amplified.
+    pub magic_resist_bp: i32,
     /// Share taken off the durations of stuns, fears and slows, in basis
     /// points where 10_000 is everything and zero is nothing.
     pub status_resist_bp: i32,

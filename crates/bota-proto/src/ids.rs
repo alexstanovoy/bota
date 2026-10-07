@@ -70,6 +70,18 @@ pub enum Aim {
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct EffectId(pub u16);
 
+impl EffectId {
+    /// Magic resistance torn by a Requiem of Souls line: `ticks_left` only.
+    pub const MAGIC_BROKEN: EffectId = EffectId(18);
+    /// Feast of Souls under way on its caster: `ticks_left` until it ends,
+    /// `stacks` the souls it has collected so far.
+    pub const FEASTING: EffectId = EffectId(19);
+    /// What a Feast of Souls left behind once it ended: `ticks_left` until
+    /// the souls held past the cap are lost, `stacks` the souls it took from
+    /// enemies that have died since.
+    pub const FEAST_LINGER: EffectId = EffectId(20);
+}
+
 /// An index into a unit's ability slots, as listed in
 /// [`UnitView::abilities`](crate::UnitView::abilities).
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]

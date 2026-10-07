@@ -26,6 +26,10 @@ pub struct AbilityDef {
     pub ultimate: bool,
     /// Whether what it is aimed at has to be something its caster fights.
     pub at_an_enemy: bool,
+    /// Whether ordering it leaves what the body is doing alone: it goes off
+    /// beside a swing or another cast instead of breaking either off. Only
+    /// an ability with no cast point, backswing or duration may be.
+    pub immediate: bool,
     /// Mana each level costs.
     pub mana: &'static [i32],
     /// Ticks between casts, by level.
@@ -57,6 +61,7 @@ const PLAIN: AbilityDef = AbilityDef {
     passive: true,
     ultimate: false,
     at_an_enemy: false,
+    immediate: false,
     mana: &[],
     cooldown: &[],
     range: 0,
@@ -161,6 +166,11 @@ fn requiem(world: &mut World, caster: Entity, _: Target) -> bool {
     world.cast_requiem(caster, level)
 }
 
+fn feast(world: &mut World, caster: Entity, _: Target) -> bool {
+    let level = level_of(world, caster, FEAST_OF_SOULS);
+    world.cast_feast(caster, level)
+}
+
 /// Sylla's critical strike: nothing is cast, it simply happens.
 pub const CRIT: AbilityId = AbilityId(0);
 /// Sylla's frenzy: attacks come faster for a while.
@@ -198,12 +208,16 @@ pub const RAZE_FAR: AbilityId = AbilityId(15);
 /// spend.
 pub const REQUIEM: AbilityId = AbilityId(16);
 /// Shadow Fiend's necromastery: a soul kept of everything he brings down.
+/// Innate: it sits in no slot and is never learned.
 pub const NECROMASTERY: AbilityId = AbilityId(17);
 /// Shadow Fiend's presence: enemies standing near him wear less armor.
 pub const PRESENCE: AbilityId = AbilityId(18);
+/// Shadow Fiend's feast of souls: attacks and steps come faster for a while,
+/// and souls are taken from the enemies near him.
+pub const FEAST_OF_SOULS: AbilityId = AbilityId(19);
 
 /// Every ability, indexed by [`AbilityId`].
-pub const ABILITIES: [AbilityDef; 19] = [
+pub const ABILITIES: [AbilityDef; 20] = [
     AbilityDef {
         name: "Crit",
         max_level: rules::ABILITY_MAX_LEVEL,
@@ -337,6 +351,7 @@ pub const ABILITIES: [AbilityDef; 19] = [
         mana: &rules::RAZE_MANA,
         cooldown: &rules::RAZE_COOLDOWN,
         range: rules::RAZE_DISTANCE[0],
+        point: rules::RAZE_CAST_POINT_MS,
         on_cast: raze_near,
         ..PLAIN
     },
@@ -347,6 +362,7 @@ pub const ABILITIES: [AbilityDef; 19] = [
         mana: &rules::RAZE_MANA,
         cooldown: &rules::RAZE_COOLDOWN,
         range: rules::RAZE_DISTANCE[1],
+        point: rules::RAZE_CAST_POINT_MS,
         on_cast: raze_mid,
         ..PLAIN
     },
@@ -357,6 +373,7 @@ pub const ABILITIES: [AbilityDef; 19] = [
         mana: &rules::RAZE_MANA,
         cooldown: &rules::RAZE_COOLDOWN,
         range: rules::RAZE_DISTANCE[2],
+        point: rules::RAZE_CAST_POINT_MS,
         on_cast: raze_far,
         ..PLAIN
     },
@@ -368,12 +385,14 @@ pub const ABILITIES: [AbilityDef; 19] = [
         mana: &rules::REQUIEM_MANA,
         cooldown: &rules::REQUIEM_COOLDOWN,
         range: rules::REQUIEM_LINE_DISTANCE,
+        point: rules::REQUIEM_CAST_POINT_MS,
+        backswing: rules::REQUIEM_BACKSWING_MS,
         on_cast: requiem,
         ..PLAIN
     },
     AbilityDef {
         name: "Necromastery",
-        max_level: rules::ABILITY_MAX_LEVEL,
+        max_level: 1,
         ..PLAIN
     },
     AbilityDef {
@@ -382,7 +401,27 @@ pub const ABILITIES: [AbilityDef; 19] = [
         range: rules::PRESENCE_RADIUS,
         ..PLAIN
     },
+    AbilityDef {
+        name: "Feast of Souls",
+        max_level: rules::ABILITY_MAX_LEVEL,
+        passive: false,
+        immediate: true,
+        mana: &rules::FEAST_MANA,
+        cooldown: &rules::FEAST_COOLDOWN,
+        range: rules::FEAST_RADIUS,
+        on_cast: feast,
+        ..PLAIN
+    },
 ];
+
+const _: () = {
+    let mut at = 0;
+    while at < ABILITIES.len() {
+        let def = &ABILITIES[at];
+        assert!(!def.immediate || (def.point == 0 && def.backswing == 0 && def.duration == 0));
+        at += 1;
+    }
+};
 
 /// What one ability is, or nothing if no such ability exists.
 pub fn ability_def(id: AbilityId) -> Option<&'static AbilityDef> {

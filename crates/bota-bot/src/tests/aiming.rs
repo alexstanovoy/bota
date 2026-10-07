@@ -80,8 +80,9 @@ fn armor_takes_its_share_of_a_blow() {
     mark.armor = Fixed::from_int(2);
     // A hundred through two armor: 100 * 100 / (100 + 6 * 2).
     assert_eq!(after_mitigation(100, DamageKind::Physical, &mark), 89);
+    // Below zero, five armor lets 100 * (100 + 60) / (100 + 30) through.
     mark.armor = Fixed::from_int(-5);
-    assert_eq!(after_mitigation(100, DamageKind::Physical, &mark), 100);
+    assert_eq!(after_mitigation(100, DamageKind::Physical, &mark), 123);
 }
 
 #[test]

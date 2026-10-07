@@ -39,7 +39,7 @@ fn mechanics_hash_includes_caster_generation_stack_count_and_ticks() {
     let returned = hero(&mut world, Team::Radiant, ORIGIN, SlotId(0));
     assert_eq!(returned.index(), caster.index());
     let mut before = world.hash();
-    for (from, stacks, ticks) in [(returned, 1, 240), (returned, 2, 240), (returned, 2, 239)] {
+    for (from, stacks, ticks) in [(returned, 1, 180), (returned, 2, 180), (returned, 2, 179)] {
         let held = &mut world.modifiers.get_mut(target).unwrap().0[0];
         held.kind = ModifierKind::Shadowraze { stacks };
         held.source = Some(from);

@@ -6,22 +6,23 @@
 use bota_proto::{AbilityId, AbilitySlot, HeroId};
 
 use crate::{
-    BOUNCE, CRIT, FRENZY, Field, NECROMASTERY, RAZE_NEAR, REQUIEM, SHADOW_FIEND, SYLLA, VOLLEY,
+    BOUNCE, CRIT, FEAST_OF_SOULS, FRENZY, Field, PRESENCE, RAZE_NEAR, REQUIEM, SHADOW_FIEND, SYLLA,
+    VOLLEY,
 };
 
-/// Shadow Fiend's points: the razes first, the souls beside them, the
+/// Shadow Fiend's points: the razes first, the feast beside them, the
 /// requiem when it opens at hero level 6; its later levels come through the
-/// fallback once the hero level allows.
+/// fallback once the hero level allows. The souls ask for none.
 pub const FIEND_PLAN: [AbilityId; 9] = [
     RAZE_NEAR,
-    NECROMASTERY,
+    FEAST_OF_SOULS,
     RAZE_NEAR,
-    NECROMASTERY,
+    FEAST_OF_SOULS,
     RAZE_NEAR,
     REQUIEM,
     RAZE_NEAR,
-    NECROMASTERY,
-    NECROMASTERY,
+    PRESENCE,
+    PRESENCE,
 ];
 
 /// Sylla's points: the bolt first, the crit beside it, the volley when it

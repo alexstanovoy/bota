@@ -175,10 +175,13 @@ impl Playbook {
     pub fn decide(&mut self, field: &Field) -> Option<Ask> {
         self.rung = "none";
         let me = field.me?;
-        // Stunned or feared, no order lands; channelling, any order breaks
-        // the channel.
+        // Stunned or feared, no order lands; channelling or in a cast point,
+        // any order breaks what is under way.
         if me.statuses.bits
-            & (StatusFlags::STUNNED | StatusFlags::FEARED | StatusFlags::CHANNELLING)
+            & (StatusFlags::STUNNED
+                | StatusFlags::FEARED
+                | StatusFlags::CHANNELLING
+                | StatusFlags::CASTING)
             != 0
         {
             self.rung = "held";

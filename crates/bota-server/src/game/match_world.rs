@@ -75,8 +75,8 @@ impl World {
         let Some(unit) = self.driven_by(cmd.slot, cmd.unit) else {
             return;
         };
-        // Learning, the bag, the shop and cheats interrupt nothing the body
-        // is doing.
+        // Learning, the bag, the shop, cheats and immediate casts interrupt
+        // nothing the body is doing.
         match cmd.order {
             Order::Learn { slot } => {
                 self.learn(unit, usize::from(slot.0));
@@ -93,11 +93,22 @@ impl World {
             Order::Cheat { cheat } => {
                 self.cheat(cmd.slot, unit, cheat, events);
             }
+            Order::Cast { slot, target } if self.is_immediate(unit, slot) => {
+                if let Some(orders) = self.orders.get_mut(unit) {
+                    orders.immediate = Some(PendingCast::Ability { slot, target });
+                }
+            }
             order => {
                 self.interrupt(unit, order);
                 self.take_body_order(unit, order);
             }
         }
+    }
+
+    /// Whether the ability in one of a unit's slots goes off beside whatever
+    /// the body is doing.
+    fn is_immediate(&self, unit: Entity, slot: bota_proto::AbilitySlot) -> bool {
+        crate::game::ability_def(self.ability_in(unit, slot)).is_some_and(|def| def.immediate)
     }
 
     /// What an order to the body breaks off: the action under way, as an

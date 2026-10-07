@@ -169,6 +169,9 @@ impl World {
         if let Some(gathered) = self.stacks.get(entity) {
             hash_stacks(fnv, gathered);
         }
+        if let Some(feast) = self.feast.get(entity) {
+            hash_feast(fnv, feast);
+        }
     }
 }
 
@@ -293,10 +296,22 @@ fn hash_requiem_line(fnv: &mut Fnv, line: &RequiemLine) {
     fnv.fixed(line.distance);
     fnv.i32(line.damage);
     hash_damage_amp(fnv, line.damage_amp_bp);
-    fnv.i32(line.slow_pct);
+    fnv.u8(line.level);
+    fnv.some(line.frightens);
     fnv.u32(line.struck.len() as u32);
     for crossed in &line.struck {
         fnv.entity(*crossed);
+    }
+}
+
+fn hash_feast(fnv: &mut Fnv, feast: &crate::game::Feast) {
+    fnv.u8(feast.level);
+    fnv.u8(feast.phase as u8);
+    fnv.u32(feast.ticks_left);
+    fnv.u32(feast.fed.len() as u32);
+    for fed in &feast.fed {
+        fnv.entity(fed.from);
+        fnv.u32(fed.souls);
     }
 }
 
@@ -393,6 +408,10 @@ fn hash_hit(fnv: &mut Fnv, hit: &Hit) {
     fnv.some(hit.pierces);
     match hit.effect {
         HitEffect::None => fnv.u8(0),
+        HitEffect::Requiem { level } => {
+            fnv.u8(2);
+            fnv.u8(level);
+        }
         HitEffect::Shadowraze { level } => {
             fnv.u8(1);
             fnv.u8(level);
@@ -446,7 +465,8 @@ fn hash_modifier_kind(fnv: &mut Fnv, kind: ModifierKind) {
             fnv.i32(hp_per_second);
         }
         ModifierKind::Inspired { hp_per_second } => hash_tagged(fnv, 13, hp_per_second),
-        ModifierKind::ArmorBroken { armor } => hash_tagged(fnv, 10, armor),
+        ModifierKind::ArmorBroken { armor } => hash_tagged(fnv, 10, armor.raw),
+        ModifierKind::MagicBroken { pct } => hash_tagged(fnv, 16, pct),
         ModifierKind::Burning {
             amount,
             kind,

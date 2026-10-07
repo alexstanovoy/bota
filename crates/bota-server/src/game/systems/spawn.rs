@@ -139,6 +139,7 @@ impl World {
                 current: UnitOrder::Idle,
                 cooldown: 0,
                 pending: None,
+                immediate: None,
             },
         );
         self.route.insert(entity, Route::none());

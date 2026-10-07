@@ -52,4 +52,8 @@ pub struct Orders {
     /// A cast ordered and not yet begun. Any order to the body takes it
     /// away.
     pub pending: Option<PendingCast>,
+    /// An immediate cast ordered this tick, to go off beside whatever the
+    /// body does. Nothing but its going off, or its caster being held or
+    /// feared then, takes it away.
+    pub immediate: Option<PendingCast>,
 }

@@ -1,11 +1,11 @@
 //! The razes, the souls gathered from what falls, the presence worn by the
 //! enemies near him, and the requiem the souls feed.
 
-use bota_proto::{AbilityId, Angle, DamageKind, Fixed};
+use bota_proto::{AbilityId, Angle, DamageKind, Fixed, Team};
 
 use crate::game::{
     Hit, HitEffect, Modifier, ModifierKind, RequiemLine, StackKind, Transform, World, ability,
-    heading_of, is_structure, leaves_a_death, move_towards, per_tick, point_along, rules,
+    heading_of, hero_def, is_structure, leaves_a_death, move_towards, per_tick, point_along, rules,
 };
 
 use crate::engine::Entity;
@@ -15,6 +15,8 @@ impl World {
     ///
     /// A raze takes no aim: it lands at its own reach from the caster, along
     /// the line the caster faces. `reach` indexes [`rules::RAZE_DISTANCE`].
+    /// Every soul the caster holds as it goes off adds
+    /// [`rules::RAZE_DAMAGE_PER_SOUL`].
     pub fn cast_raze(&mut self, caster: Entity, level: usize, reach: usize) -> bool {
         assert!(level < rules::RAZE_DAMAGE.len());
         assert!(reach < rules::RAZE_DISTANCE.len());
@@ -42,12 +44,14 @@ impl World {
                         .is_some_and(|t| t.pos.within(at, radius))
             })
             .collect();
+        let souls = self.souls_of(caster).min(rules::SOULS_HELD_MAX);
+        let amount = rules::RAZE_DAMAGE[level] + rules::RAZE_DAMAGE_PER_SOUL * souls as i32;
         let damage_amp_bp = self.outgoing_damage_amp_bp(Some(caster), DamageKind::Magical);
         for mark in struck {
             self.hits.push_back(Hit {
                 source: Some(caster),
                 target: mark,
-                amount: rules::RAZE_DAMAGE[level],
+                amount,
                 kind: DamageKind::Magical,
                 damage_amp_bp,
                 crit: false,
@@ -62,26 +66,46 @@ impl World {
     }
 
     /// Lets the gathered souls go as lines flying out of the caster, one to
-    /// a soul up to [`rules::REQUIEM_LINES_MAX`], spread evenly round it
-    /// starting along its facing. Each line burns what it crosses on its
-    /// way out. What is let go is not spent; with nothing gathered the cast
-    /// still happens and nothing goes out.
+    /// a soul up to [`rules::REQUIEM_LINES_MAX`]. What is let go is not
+    /// spent; with nothing gathered the cast still happens and nothing goes
+    /// out.
     pub fn cast_requiem(&mut self, caster: Entity, level: usize) -> bool {
+        let lines = self.souls_of(caster).min(rules::REQUIEM_LINES_MAX);
+        self.release_lines(caster, level, lines, true)
+    }
+
+    /// The requiem a fallen Shadow Fiend lets go where he fell, once his
+    /// death has taken its share of the souls: a line for every
+    /// [`rules::REQUIEM_DEATH_LINES`] of what is left, whatever the cooldown
+    /// and the mana say. Its lines only burn. Nothing goes out while the
+    /// requiem is unlearned.
+    pub fn requiem_on_death(&mut self, fallen: Entity) {
+        let level = self.carried_level(fallen, ability::REQUIEM);
+        if level == 0 {
+            return;
+        }
+        let share = rules::REQUIEM_DEATH_LINES;
+        let lines = (self.souls_of(fallen) * u32::from(share.num()) / u32::from(share.den()))
+            .min(rules::REQUIEM_LINES_MAX);
+        let level = usize::from(level - 1).min(rules::REQUIEM_LINE_DAMAGE.len() - 1);
+        self.release_lines(fallen, level, lines, false);
+    }
+
+    /// Sends `lines` lines of a requiem out of the caster, spread evenly round
+    /// it, the first due east whichever way the caster faces.
+    fn release_lines(&mut self, caster: Entity, level: usize, lines: u32, frightens: bool) -> bool {
+        assert!(level < rules::REQUIEM_LINE_DAMAGE.len());
+        assert!(lines <= rules::REQUIEM_LINES_MAX);
         let (Some(from), Some(side)) = (
             self.transform.get(caster).copied(),
             self.team.get(caster).copied(),
         ) else {
             return false;
         };
-        let held = self
-            .stacks
-            .get(caster)
-            .map_or(0, |kept| kept.of(StackKind::Souls));
-        let lines = held.min(rules::REQUIEM_LINES_MAX);
         let damage_amp_bp = self.outgoing_damage_amp_bp(Some(caster), DamageKind::Magical);
         for nth in 0..lines {
             let facing = Angle {
-                brads: from.facing.brads.wrapping_add((nth * 65536 / lines) as u16),
+                brads: (nth * 65536 / lines) as u16,
             };
             let aim = point_along(
                 from.pos,
@@ -107,7 +131,8 @@ impl World {
                     distance: Fixed::from_int(rules::REQUIEM_LINE_DISTANCE),
                     damage: rules::REQUIEM_LINE_DAMAGE[level],
                     damage_amp_bp,
-                    slow_pct: rules::REQUIEM_SLOW_PCT[level],
+                    level: level as u8,
+                    frightens,
                     struck: Vec::new(),
                 },
             );
@@ -118,9 +143,9 @@ impl World {
     /// Flies every line of a requiem one tick on.
     ///
     /// A line burns everything hostile but a structure within its width of
-    /// where it now flies, once each, and adds [`rules::REQUIEM_LINE_TICKS`]
-    /// of fear and slow to it, up to [`rules::REQUIEM_HOLD_MAX_TICKS`]. It
-    /// widens as it goes, and is gone once it has flown its distance.
+    /// where it now flies, once each, frightening it as
+    /// [`HitEffect::Requiem`] says when the line frightens. It widens as it
+    /// goes, and is gone once it has flown its distance.
     pub fn tick_requiem_lines(&mut self) {
         let entities = self.take_entity_snapshot();
         for entity in entities.iter().copied() {
@@ -152,27 +177,7 @@ impl World {
                 })
                 .collect();
             for other in crossed {
-                self.push_hit_with_amp(
-                    Some(line.owner),
-                    other,
-                    line.damage,
-                    DamageKind::Magical,
-                    line.damage_amp_bp,
-                );
-                for kind in [
-                    ModifierKind::Slowed { pct: line.slow_pct },
-                    ModifierKind::Feared,
-                ] {
-                    self.extend_modifier(
-                        other,
-                        Modifier {
-                            kind,
-                            source: Some(line.owner),
-                            ticks_left: Some(rules::REQUIEM_LINE_TICKS),
-                        },
-                        rules::REQUIEM_HOLD_MAX_TICKS,
-                    );
-                }
+                self.cross(&line, other);
                 line.struck.push(other);
             }
             if next == line.aim || line.travelled >= line.distance {
@@ -182,6 +187,26 @@ impl World {
             }
         }
         self.recycle_entity_snapshot(entities);
+    }
+
+    /// What a line of a requiem does to one it crosses: a burn that, from a
+    /// line that frightens, frightens what it does not kill.
+    fn cross(&mut self, line: &RequiemLine, other: Entity) {
+        self.hits.push_back(Hit {
+            source: Some(line.owner),
+            target: other,
+            amount: line.damage,
+            kind: DamageKind::Magical,
+            damage_amp_bp: line.damage_amp_bp,
+            crit: false,
+            attack: false,
+            pierces: false,
+            effect: if line.frightens {
+                HitEffect::Requiem { level: line.level }
+            } else {
+                HitEffect::None
+            },
+        });
     }
 
     /// Whether a raze or a requiem line of one side lands on another entity:
@@ -198,9 +223,11 @@ impl World {
         self.despawn(line);
     }
 
-    /// Lets a share of the souls go when the one holding them falls:
-    /// [`rules::SOULS_LOST_ON_DEATH_PCT`] of them, rounded down.
+    /// Lets a share of the souls go when the one holding them falls: a
+    /// feast under way ends first, then [`rules::SOULS_LOST_ON_DEATH_PCT`]
+    /// of what is left goes, rounded down.
     pub fn let_souls_go(&mut self, fallen: Entity) {
+        self.end_feast(fallen);
         if let Some(kept) = self.stacks.get_mut(fallen) {
             let held = kept.of(StackKind::Souls);
             kept.set(
@@ -210,10 +237,12 @@ impl World {
         }
     }
 
-    /// Lays the presence on everything hostile standing near its carriers.
+    /// Lays the presence on every enemy standing near its carriers that
+    /// sees the carrier.
     ///
     /// Standing in it puts the armor break on afresh every tick; walking out
-    /// leaves it to run out on its own. A structure or a ward wears none.
+    /// leaves it to run out on its own. A structure, a ward or what damage
+    /// passes by wears none.
     pub fn spread_presence(&mut self) {
         let carriers: Vec<(Entity, u8)> = self
             .entities
@@ -224,7 +253,10 @@ impl World {
             })
             .collect();
         for (carrier, level) in carriers {
-            let Some(from) = self.transform.get(carrier).map(|t| t.pos) else {
+            let (Some(from), Some(side)) = (
+                self.transform.get(carrier).map(|t| t.pos),
+                self.team.get(carrier).copied(),
+            ) else {
                 continue;
             };
             let reach = rules::units(rules::PRESENCE_RADIUS);
@@ -235,11 +267,7 @@ impl World {
                     self.transform
                         .get(*other)
                         .is_some_and(|t| t.pos.within(from, reach))
-                        && self
-                            .kind
-                            .get(*other)
-                            .is_some_and(|kind| leaves_a_death(*kind))
-                        && self.hostile(carrier, *other)
+                        && self.wears_presence(carrier, side, *other)
                 })
                 .collect();
             for mark in struck {
@@ -257,12 +285,32 @@ impl World {
         }
     }
 
+    /// Whether one entity wears the presence of a carrier of a side: a
+    /// standing enemy that leaves a death, that damage reaches, and whose
+    /// side sees the carrier.
+    fn wears_presence(&self, carrier: Entity, side: Team, other: Entity) -> bool {
+        let Some(theirs) = self.team.get(other).copied() else {
+            return false;
+        };
+        theirs != side
+            && self.alive(other)
+            && self
+                .kind
+                .get(other)
+                .is_some_and(|kind| leaves_a_death(*kind))
+            && !self
+                .stats
+                .get(other)
+                .is_some_and(|stats| stats.invulnerable)
+            && self.can_see(theirs, carrier)
+    }
+
     /// Hands the soul of what has fallen to whoever brought it down.
     ///
-    /// Only a killer with the necromastery learned takes one, and only up to
-    /// what its level lets it hold. A hero is worth
-    /// [`rules::SOULS_PER_HERO`], anything else [`rules::SOULS_PER_UNIT`]; a
-    /// structure or a ward is worth nothing.
+    /// Only a killer that gathers souls takes any, and only up to
+    /// [`rules::NECRO_SOUL_CAP`]; a count a feast has carried past it stays
+    /// where it is. A hero is worth [`rules::SOULS_PER_HERO`], anything else
+    /// [`rules::SOULS_PER_UNIT`]; a structure or a ward is worth nothing.
     pub fn feed_souls(&mut self, fallen: Entity, killer: Option<Entity>) {
         let Some(killer) = killer.filter(|killer| *killer != fallen) else {
             return;
@@ -283,24 +331,35 @@ impl World {
         } else {
             rules::SOULS_PER_UNIT
         };
-        let cap = self.soul_cap(killer);
         let mut held = self.stacks.get(killer).copied().unwrap_or_default();
-        held.gather_up_to(StackKind::Souls, worth, cap);
+        held.gather_up_to(StackKind::Souls, worth, self.soul_cap(killer));
         self.stacks.insert(killer, held);
     }
 
-    /// Whether an entity gathers souls at all: the necromastery is learned.
+    /// Whether an entity gathers souls at all: it is a hero whose innate is
+    /// the necromastery.
     pub fn gathers_souls(&self, entity: Entity) -> bool {
-        self.carried_level(entity, ability::NECROMASTERY) > 0
+        self.hero
+            .get(entity)
+            .and_then(|hero| hero_def(*hero))
+            .is_some_and(|def| def.innate == Some(ability::NECROMASTERY))
     }
 
-    /// How many souls an entity may hold at the necromastery level it has
-    /// learned. Zero while it is unlearned.
+    /// How many souls an entity may gather from kills. Zero for one that
+    /// gathers none.
     pub fn soul_cap(&self, entity: Entity) -> u32 {
-        match self.carried_level(entity, ability::NECROMASTERY) {
-            0 => 0,
-            level => rules::NECRO_SOUL_CAP[usize::from(level - 1)],
+        if self.gathers_souls(entity) {
+            rules::NECRO_SOUL_CAP
+        } else {
+            0
         }
+    }
+
+    /// Souls an entity holds right now, those a feast has taken included.
+    pub fn souls_of(&self, entity: Entity) -> u32 {
+        self.stacks
+            .get(entity)
+            .map_or(0, |kept| kept.of(StackKind::Souls))
     }
 
     /// Which level of an ability an entity has learned. Zero for one that

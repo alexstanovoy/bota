@@ -72,7 +72,7 @@ pub struct HeroFace {
 }
 
 /// Every ability, in id order.
-pub const ABILITIES: [AbilityFace; 19] = [
+pub const ABILITIES: [AbilityFace; 20] = [
     AbilityFace {
         id: 0,
         name: "Crit",
@@ -154,37 +154,43 @@ pub const ABILITIES: [AbilityFace; 19] = [
     AbilityFace {
         id: 13,
         name: "Raze 1",
-        blurb: "No target. Burns every enemy but a building within 250 of a spot 200 ahead of where you face for 90/160/230/300 magic damage, plus 50/60/70/80 per prior same-caster stack. Each damaging hit refreshes all stacks for 8 s. One point levels all three razes. 10 s wait.",
+        blurb: "No target, 0.55 s cast point. Burns every enemy but a building within 250 of a spot 200 ahead of where you face for 85/150/215/280 magic damage, plus 2 per soul held and 35/50/65/80 per prior same-caster stack. Each damaging hit refreshes all stacks for 6 s. One point levels all three razes. 75 mana, 9 s wait.",
         art: Art::Burst { radius: 250 },
     },
     AbilityFace {
         id: 14,
         name: "Raze 2",
-        blurb: "No target. Burns every enemy but a building within 250 of a spot 450 ahead of where you face for 90/160/230/300 magic damage, plus 50/60/70/80 per prior same-caster stack. Each damaging hit refreshes all stacks for 8 s. One point levels all three razes. 10 s wait.",
+        blurb: "No target, 0.55 s cast point. Burns every enemy but a building within 250 of a spot 450 ahead of where you face for 85/150/215/280 magic damage, plus 2 per soul held and 35/50/65/80 per prior same-caster stack. Each damaging hit refreshes all stacks for 6 s. One point levels all three razes. 75 mana, 9 s wait.",
         art: Art::Burst { radius: 250 },
     },
     AbilityFace {
         id: 15,
         name: "Raze 3",
-        blurb: "No target. Burns every enemy but a building within 250 of a spot 700 ahead of where you face for 90/160/230/300 magic damage, plus 50/60/70/80 per prior same-caster stack. Each damaging hit refreshes all stacks for 8 s. One point levels all three razes. 10 s wait.",
+        blurb: "No target, 0.55 s cast point. Burns every enemy but a building within 250 of a spot 700 ahead of where you face for 85/150/215/280 magic damage, plus 2 per soul held and 35/50/65/80 per prior same-caster stack. Each damaging hit refreshes all stacks for 6 s. One point levels all three razes. 75 mana, 9 s wait.",
         art: Art::Burst { radius: 250 },
     },
     AbilityFace {
         id: 16,
         name: "Requiem",
-        blurb: "Ultimate, no target. Lets a line fly out for every soul held, up to 20, out to 1000. Each line burns every enemy but a building it crosses for 80/120/160 magic damage, and every hit adds 0.6 s of fear and a 20/25/30% slow, up to 2.1 s. What stands close is crossed by many lines. The souls are kept.",
+        blurb: "Ultimate, no target, 1.67 s cast point. Lets a line fly out for every soul held, up to 20, out to 1000. Each line burns every enemy but a building it crosses for 80/120/160 magic damage, and every hit adds 0.6 s of fear, a 20/25/30% slow and 5/10/15% less magic resistance, up to 2.15 s. What stands close is crossed by many lines. The souls are kept. On your death, half the souls you keep fly out as lines that only burn.",
         art: Art::Soul,
     },
     AbilityFace {
         id: 17,
         name: "Necro",
-        blurb: "Passive. A soul is kept of everything you bring down, three for a hero, each worth +2 attack damage. Holds up to 12/16/20/24; a death lets 30% of them go.",
+        blurb: "Innate. A soul is kept of everything you bring down, four for a hero, each worth 1 attack damage and 0.8 more every 6 levels. Holds up to 20; a death lets 30% of them go.",
         art: Art::Missile,
     },
     AbilityFace {
         id: 18,
         name: "Presence",
-        blurb: "Passive. Enemies within 1200 wear 2/3/4/5 less armor.",
+        blurb: "Passive. Enemies within 1200 that see you wear 2.5/4/5.5/7 less armor.",
+        art: Art::Missile,
+    },
+    AbilityFace {
+        id: 19,
+        name: "Feast",
+        blurb: "No target, goes off beside whatever you are doing. For 8 s: +35/50/65/80 attack speed and +4/6/8/10% movement speed, and every 0.5 s souls from two enemies within 600 you have not fed on yet, heroes first: 3 a hero, 1 a creep, from up to 4/6/8/10 enemies. Then the souls of those still standing go; the rest stay 8 s past the cap. 60/65/70/75 mana, 21 s wait.",
         art: Art::Missile,
     },
 ];
@@ -558,7 +564,7 @@ pub const ITEMS: [ItemFace; 52] = [
 ];
 
 /// Every timed effect, in id order.
-pub const EFFECTS: [EffectFace; 18] = [
+pub const EFFECTS: [EffectFace; 21] = [
     EffectFace {
         id: 0,
         name: "Frenzy",
@@ -637,7 +643,7 @@ pub const EFFECTS: [EffectFace; 18] = [
     EffectFace {
         id: 15,
         name: "Razed",
-        blurb: "Shadowrazes from the same caster deal 50/60/70/80 more magic damage per stack. Each damaging hit refreshes all stacks for 8 s; up to 255 stacks.",
+        blurb: "Shadowrazes from the same caster deal 35/50/65/80 more magic damage per stack. Each damaging hit refreshes all stacks for 6 s; up to 255 stacks.",
     },
     EffectFace {
         id: 16,
@@ -648,6 +654,21 @@ pub const EFFECTS: [EffectFace; 18] = [
         id: 17,
         name: "Feared",
         blurb: "Running from whoever put the fear on. Cannot attack or cast.",
+    },
+    EffectFace {
+        id: 18,
+        name: "Torn",
+        blurb: "Magic resistance torn by a requiem.",
+    },
+    EffectFace {
+        id: 19,
+        name: "Feast",
+        blurb: "Attacking and moving faster while taking souls from enemies nearby; counts the souls taken.",
+    },
+    EffectFace {
+        id: 20,
+        name: "Fed",
+        blurb: "Souls a feast took from enemies since fallen, kept past the cap until it runs out.",
     },
 ];
 

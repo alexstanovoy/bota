@@ -74,7 +74,7 @@ fn the_shop_reaches_as_far_as_it_reaches() {
 fn an_ability_is_found_by_what_sits_in_the_slot() {
     let mut me = fixtures::hero(1, Team::Radiant, MID);
     me.abilities = vec![
-        fixtures::ability(crate::NECROMASTERY, 1, 0),
+        fixtures::ability(crate::FEAST_OF_SOULS, 1, 0),
         fixtures::ability(RAZE_NEAR, 2, 200),
     ];
     let view = field_of(vec![me], Some(1));

@@ -1,4 +1,4 @@
-use crate::game::{Modifier, ModifierKind, Modifiers, PendingCast};
+use crate::game::{Action, ActionState, Modifier, ModifierKind, Modifiers, PendingCast};
 use bota_proto::{AbilitySlot, DamageKind, Fixed, Target, Team, Vec2};
 
 use super::fixtures::*;
@@ -19,7 +19,7 @@ fn raze_miss_neither_applies_nor_refreshes_a_debuff() {
     world.transform.get_mut(target).unwrap().pos = Vec2::from_ints(6000, 5000);
     assert!(world.cast_raze(caster, 0, 1));
     assert!(damage(&world.step(), target).is_empty());
-    assert_eq!(effects(&world, target), vec![effect(1, 239)]);
+    assert_eq!(effects(&world, target), vec![effect(1, 179)]);
 }
 
 #[test]
@@ -67,8 +67,8 @@ fn raze_expired_shield_does_not_block_damage_or_debuff() {
     world
         .modifiers
         .insert(target, held(ModifierKind::Shielded, 1));
-    assert_eq!(land(&mut world, caster, target, 0), 90);
-    assert_eq!(effects(&world, target), vec![effect(1, 240)]);
+    assert_eq!(land(&mut world, caster, target, 0), 85);
+    assert_eq!(effects(&world, target), vec![effect(1, 180)]);
 }
 
 #[test]
@@ -79,7 +79,7 @@ fn raze_existing_debuff_is_not_refreshed_by_a_missed_invulnerable_target() {
     reveal(&mut world, target);
     assert!(world.cast_raze(caster, 0, 1));
     assert!(damage(&world.step(), target).is_empty());
-    assert_eq!(effects(&world, target), vec![effect(1, 239)]);
+    assert_eq!(effects(&world, target), vec![effect(1, 179)]);
 }
 
 #[test]
@@ -88,28 +88,28 @@ fn raze_stacks_do_not_amplify_or_refresh_from_ordinary_magical_damage() {
     land(&mut world, caster, target, 0);
     world.push_hit(Some(caster), target, 90, DamageKind::Magical);
     assert_eq!(damage(&world.step(), target), vec![90]);
-    assert_eq!(effects(&world, target), vec![effect(1, 239)]);
+    assert_eq!(effects(&world, target), vec![effect(1, 179)]);
 }
 
 #[test]
 fn raze_zero_damage_from_total_resistance_neither_adds_nor_refreshes_stacks() {
     let (mut world, caster, target) = fixture();
     land(&mut world, caster, target, 0);
-    world.stats.get_mut(target).unwrap().magic_resist_pct = 100;
+    world.stats.get_mut(target).unwrap().magic_resist_bp = 10000;
     assert_eq!(land(&mut world, caster, target, 0), 0);
-    assert_eq!(effects(&world, target), vec![effect(1, 239)]);
-    world.stats.get_mut(target).unwrap().magic_resist_pct = 0;
-    assert_eq!(land(&mut world, caster, target, 0), 140);
+    assert_eq!(effects(&world, target), vec![effect(1, 179)]);
+    world.stats.get_mut(target).unwrap().magic_resist_bp = 0;
+    assert_eq!(land(&mut world, caster, target, 0), 120);
 }
 
 #[test]
 fn raze_rounding_to_zero_damage_does_not_create_a_first_stack() {
     let (mut world, caster, target) = fixture();
-    world.stats.get_mut(target).unwrap().magic_resist_pct = 99;
+    world.stats.get_mut(target).unwrap().magic_resist_bp = 9900;
     assert_eq!(land(&mut world, caster, target, 0), 0);
     assert!(effects(&world, target).is_empty());
-    world.stats.get_mut(target).unwrap().magic_resist_pct = 0;
-    assert_eq!(land(&mut world, caster, target, 0), 90);
+    world.stats.get_mut(target).unwrap().magic_resist_bp = 0;
+    assert_eq!(land(&mut world, caster, target, 0), 85);
 }
 
 #[test]
@@ -143,6 +143,13 @@ fn raze_failed_casts_leave_existing_stacks_unmodified() {
             }
             _ => unreachable!(),
         }
+        world.action.insert(
+            caster,
+            Action {
+                state: ActionState::Ready,
+                attack_cooldown: 0,
+            },
+        );
         world.order_cast(
             caster,
             PendingCast::Ability {
@@ -150,8 +157,11 @@ fn raze_failed_casts_leave_existing_stacks_unmodified() {
                 target: Target::None,
             },
         );
-        assert!(damage(&world.step(), target).is_empty());
-        assert_eq!(effects(&world, target), vec![effect(1, 239)]);
+        // The order's own tick and the whole cast point after it.
+        for _ in 0..18 {
+            assert!(damage(&world.step(), target).is_empty());
+        }
+        assert_eq!(effects(&world, target), vec![effect(1, 162)]);
     }
 }
 

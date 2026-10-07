@@ -58,7 +58,7 @@ fn stats() -> Stats {
         attack_backswing: 0,
         projectile_speed: None,
         armor: Fixed::ZERO,
-        magic_resist_pct: 0,
+        magic_resist_bp: 0,
         status_resist_bp: 0,
         physical_amp_bp: rules::NOMINAL_BP,
         magic_amp_bp: rules::NOMINAL_BP,

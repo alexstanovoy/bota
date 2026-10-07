@@ -5,7 +5,9 @@ use bota_proto::{AbilityId, EffectId, HeroId, ItemId};
 
 // Rules the wire leaves out.
 
-/// A physical blow lands `100 / (100 + ARMOR_SCALE * armor)` of itself.
+/// A physical blow lands `100 / (100 + ARMOR_SCALE * armor)` of itself, and
+/// `(100 + 2 * ARMOR_SCALE * |armor|) / (100 + ARMOR_SCALE * |armor|)` below
+/// zero armor.
 pub const ARMOR_SCALE: i32 = 6;
 
 /// How wide a raze burns around where it lands, in world units.
@@ -17,8 +19,17 @@ pub const SHOP_RANGE: i32 = 1000;
 /// The effect a Shadow Fiend's gathered souls show up as.
 pub const SOULS: EffectId = EffectId(11);
 
-/// What one raze burns for, by the level it is cast at.
-pub const RAZE_DAMAGE: [i32; 4] = [90, 160, 230, 300];
+/// What one raze burns for before the souls, by the level it is cast at.
+pub const RAZE_DAMAGE: [i32; 4] = [85, 150, 215, 280];
+
+/// What every soul the caster holds adds to a raze.
+pub const RAZE_DAMAGE_PER_SOUL: i32 = 2;
+
+/// Ticks from a raze being ordered to it landing: its cast point.
+pub const RAZE_POINT_TICKS: u32 = 17;
+
+/// How far from the hero a feast of souls takes souls, in world units.
+pub const FEAST_RADIUS: i32 = 600;
 
 /// Magic damage each line of a requiem lands on what it crosses, by the
 /// level it is cast at.
@@ -71,10 +82,10 @@ pub const RAZE_MID: AbilityId = AbilityId(14);
 pub const RAZE_FAR: AbilityId = AbilityId(15);
 /// Shadow Fiend's requiem.
 pub const REQUIEM: AbilityId = AbilityId(16);
-/// Shadow Fiend's necromastery.
-pub const NECROMASTERY: AbilityId = AbilityId(17);
 /// Shadow Fiend's presence.
 pub const PRESENCE: AbilityId = AbilityId(18);
+/// Shadow Fiend's feast of souls.
+pub const FEAST_OF_SOULS: AbilityId = AbilityId(19);
 
 /// The three razes, nearest first.
 pub const RAZES: [AbilityId; 3] = [RAZE_NEAR, RAZE_MID, RAZE_FAR];

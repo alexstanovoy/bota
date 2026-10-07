@@ -152,7 +152,7 @@ fn every_combined_modifier_family_has_an_explicit_bound() {
         (
             ModifierSpec::MAX_SCALE,
             resist,
-            100,
+            rules::NOMINAL_BP,
             top,
             top,
             100 * top / rules::NOMINAL_BP,
@@ -164,7 +164,7 @@ fn every_combined_modifier_family_has_an_explicit_bound() {
         world.applied.insert(hero, full_applied(extreme));
         world.settle();
         let stats = *world.stats.get(hero).expect("settled");
-        assert_eq!(stats.magic_resist_pct, pct, "scale {scale}");
+        assert_eq!(stats.magic_resist_bp, pct, "scale {scale}");
         assert_eq!(
             stats.status_resist_bp,
             rules::NOMINAL_BP - 1,
@@ -542,8 +542,8 @@ fn nothing_a_normal_modifier_does_reaches_an_applied_modifier() {
         "only the countdown may take it away"
     );
     assert_eq!(
-        world.stats.get(hero).map(|stats| stats.magic_resist_pct),
-        Some(35),
+        world.stats.get(hero).map(|stats| stats.magic_resist_bp),
+        Some(3_500),
         "and its stat still applies"
     );
 }
@@ -570,20 +570,21 @@ fn pudge_with_a_heap() -> (World, Entity) {
 #[test]
 fn magic_resistance_adds_before_the_flesh_heap_multiplies() {
     let (mut world, pudge) = pudge_with_a_heap();
-    let base = world.stats.get(pudge).expect("settled").magic_resist_pct;
+    let base = world.stats.get(pudge).expect("settled").magic_resist_bp;
     apply(&mut world, pudge, spec(|s| s.magic_resist = 5_000), 10);
-    let before_heap = (rules::HERO_MAGIC_RESIST_PCT + 50).clamp(0, 100);
-    let kept = (100 - before_heap) * (100 - rules::FLESH_HEAP_MAGIC_RESIST_PCT[0]) / 100;
-    let folded_first = 100 - kept;
+    let before_heap = (rules::HERO_MAGIC_RESIST_PCT * 100 + 5_000).clamp(0, rules::NOMINAL_BP);
+    let kept =
+        (rules::NOMINAL_BP - before_heap) * (100 - rules::FLESH_HEAP_MAGIC_RESIST_PCT[0]) / 100;
+    let folded_first = rules::NOMINAL_BP - kept;
     assert_eq!(
-        world.stats.get(pudge).map(|stats| stats.magic_resist_pct),
+        world.stats.get(pudge).map(|stats| stats.magic_resist_bp),
         Some(folded_first),
         "the heap multiplies what the modifier added"
     );
     assert!(
-        folded_first < base + 50,
+        folded_first < base + 5_000,
         "adding after the heap would give {}, which would let the modifier dodge it",
-        base + 50
+        base + 5_000
     );
 }
 
@@ -597,8 +598,8 @@ fn magic_resistance_is_clamped_before_the_flesh_heap_multiplies() {
         10,
     );
     assert_eq!(
-        world.stats.get(pudge).map(|stats| stats.magic_resist_pct),
-        Some(100),
+        world.stats.get(pudge).map(|stats| stats.magic_resist_bp),
+        Some(rules::NOMINAL_BP),
         "the added delta is clamped at immunity and stays there"
     );
 }

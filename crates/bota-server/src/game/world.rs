@@ -125,6 +125,8 @@ pub struct World {
     pub requiem_line: Table<RequiemLine>,
     /// What each entity has gathered and keeps.
     pub stacks: Table<Stacks>,
+    /// The feast of souls each entity that cast one has on it.
+    pub feast: Table<crate::game::Feast>,
     /// The errand each courier is on.
     pub errand: Table<Errand>,
     /// How long each entity that stands for a time has left.
@@ -247,6 +249,7 @@ impl World {
             mark: Table::new(),
             requiem_line: Table::new(),
             stacks: Table::new(),
+            feast: Table::new(),
             errand: Table::new(),
             expiry: Table::new(),
             auras: Table::new(),
@@ -358,6 +361,7 @@ impl World {
                         current: order,
                         cooldown: 0,
                         pending: None,
+                        immediate: None,
                     },
                 );
             }
@@ -583,6 +587,7 @@ impl World {
         self.tick_modifiers();
         self.tick_hooks();
         self.tick_requiem_lines();
+        self.tick_feasts();
         if self.trees.tick(self.tick) {
             self.lay_sight_block();
             self.lay_passability();
@@ -619,6 +624,7 @@ impl World {
             applied: &self.applied,
             abilities: &self.abilities,
             stacks: &self.stacks,
+            feast: &self.feast,
             stats: &mut self.stats,
             health: &mut self.health,
             mana: &mut self.mana,

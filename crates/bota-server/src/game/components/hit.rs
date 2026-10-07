@@ -41,4 +41,13 @@ pub enum HitEffect {
     ///
     /// [`rules::RAZE_STACK_DAMAGE`]: crate::game::rules::RAZE_STACK_DAMAGE
     Shadowraze { level: u8 },
+    /// Frightens, slows and tears the magic resistance of a target that
+    /// takes damage and survives, for
+    /// [`rules::REQUIEM_LINE_TICKS`] more, up to
+    /// [`rules::REQUIEM_HOLD_MAX_TICKS`]. `level` is the requiem's, from
+    /// zero.
+    ///
+    /// [`rules::REQUIEM_LINE_TICKS`]: crate::game::rules::REQUIEM_LINE_TICKS
+    /// [`rules::REQUIEM_HOLD_MAX_TICKS`]: crate::game::rules::REQUIEM_HOLD_MAX_TICKS
+    Requiem { level: u8 },
 }
