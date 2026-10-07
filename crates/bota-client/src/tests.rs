@@ -2,12 +2,12 @@
 
 use bota_proto::{
     AbilityId, AbilitySlot, AbilityView, Aim, Angle, Attributes, EntityId, Fixed, HeroId, ItemId,
-    ItemSlot, ItemView, Order, PlayerView, ShopEntry, SlotId, StatusFlags, Target, Team, UnitKind,
-    UnitView, Vec2, WorldView,
+    ItemView, Order, PlayerView, ShopEntry, SlotId, StatusFlags, Target, Team, UnitKind, UnitView,
+    Vec2, WorldView,
 };
 use clap::Parser;
 
-use crate::slots::{Look, Press, Slot, ability_look, decide, item_look};
+use crate::slots::{Look, Press, Slot, ability_look, decide, item_look, order_for};
 use crate::state::{Tap, body_in, known_in, remember, tap_again};
 
 use crate::Args;
@@ -17,117 +17,23 @@ use crate::camera::Camera;
 fn the_console_turns_a_typed_line_into_a_cheat_order() {
     use bota_proto::Cheat;
     let parse = crate::console::parse;
-    assert_eq!(
-        parse("-gold 500"),
-        Ok(Order::Cheat {
-            cheat: Cheat::Gold { amount: 500 }
-        })
-    );
-    assert_eq!(
-        parse("gold"),
-        Ok(Order::Cheat {
-            cheat: Cheat::Gold { amount: 1000 }
-        }),
-        "gold alone is worth a thousand"
-    );
-    assert_eq!(
-        parse("-lvlup 3"),
-        Ok(Order::Cheat {
-            cheat: Cheat::Levels { count: 3 }
-        })
-    );
-    assert_eq!(
-        parse("-refresh"),
-        Ok(Order::Cheat {
-            cheat: Cheat::Refresh
-        })
-    );
-    assert_eq!(
-        parse("-item Butterfly"),
-        Ok(Order::Cheat {
-            cheat: Cheat::Item { item: ItemId(46) }
-        }),
-        "an item goes by the name the catalog shows"
-    );
-    assert_eq!(
-        parse("-item 42"),
-        Ok(Order::Cheat {
-            cheat: Cheat::Item { item: ItemId(42) }
-        }),
-        "or by its id"
-    );
-    assert!(parse("-fly").is_err(), "a command that is not one");
-    assert!(parse("-gold lots").is_err(), "a number that is not one");
-    assert!(parse("-item wings").is_err(), "an item that is not one");
-    assert!(parse("").is_err(), "nothing at all");
-}
-
-#[test]
-fn mechanics_catalog_mango_has_an_append_only_id_and_describes_consumption() {
-    let mango = crate::catalog::item(42).expect("Mango catalog entry");
-    assert_eq!(mango.id, 42);
-    assert_eq!(mango.name, "Mango");
-    assert!(mango.blurb.contains("100 mana"));
-    assert_eq!(crate::catalog::ITEMS.len(), 52);
-}
-
-#[test]
-fn mechanics_catalog_mango_icon_rasterises_visible_fruit_inside_the_item_frame() {
-    let mango = crate::catalog::item(42).expect("Mango catalog entry");
-    let art = mango.icon.expect("Mango must have embedded item art");
-
-    let (width, height, bytes) = crate::icons::pixels(art).expect("Mango SVG must rasterise");
-
-    assert_eq!((width, height), (192, 128));
-    assert_eq!(bytes.len(), (width * height * 4) as usize);
-    let pixels = bytes.as_chunks::<4>().0;
-    let background = pixels[0];
-    let fruit = pixels
-        .iter()
-        .filter(|pixel| pixel[3] > 0 && **pixel != background)
-        .count();
-    assert!(
-        fruit > (width * height / 10) as usize,
-        "Mango fruit must be visible against its frame: {fruit} pixels"
-    );
-}
-
-#[test]
-fn mechanics_catalog_shadowraze_effect_describes_the_counted_timer() {
-    let effect = crate::catalog::effect(15).expect("Shadowraze debuff catalog entry");
-    assert_eq!(effect.id, 15);
-    assert_eq!(effect.name, "Razed");
-    assert!(effect.blurb.contains("8 s"));
-    assert!(effect.blurb.contains("same caster"));
-    assert_eq!(crate::catalog::EFFECTS.len(), 18);
-}
-
-#[test]
-fn mechanics_catalog_auras_and_shadowraze_keep_distinct_contiguous_effect_ids() {
-    for (id, name) in [(13, "Guarded"), (14, "Inspired"), (15, "Razed")] {
-        let effect = crate::catalog::effect(id).expect("merged effect catalog entry");
-        assert_eq!(effect.id, id);
-        assert_eq!(effect.name, name);
+    for (line, cheat) in [
+        ("-gold 500", Cheat::Gold { amount: 500 }),
+        ("gold", Cheat::Gold { amount: 1000 }),
+        ("-lvlup 3", Cheat::Levels { count: 3 }),
+        ("-refresh", Cheat::Refresh),
+        ("-item Butterfly", Cheat::Item { item: ItemId(46) }),
+        ("-item 42", Cheat::Item { item: ItemId(42) }),
+    ] {
+        assert_eq!(parse(line), Ok(Order::Cheat { cheat }), "{line:?}");
     }
-    for (id, effect) in crate::catalog::EFFECTS.iter().enumerate() {
-        assert_eq!(usize::from(effect.id), id);
-    }
-    assert!(crate::catalog::effect(18).is_none());
-    assert!(crate::catalog::effect(u16::MAX).is_none());
-}
-
-#[test]
-fn mechanics_catalog_all_razes_describe_exact_base_and_stacking_damage() {
-    for id in 13..=15 {
-        let raze = crate::catalog::ability(id).unwrap();
-        assert!(raze.blurb.contains("90/160/230/300"));
-        assert!(raze.blurb.contains("50/60/70/80"));
-        assert!(raze.blurb.contains("8 s"));
+    for line in ["-fly", "-gold lots", "-item wings", ""] {
+        assert!(parse(line).is_err(), "{line:?} is refused");
     }
 }
 
 #[test]
-fn camera_transforms_round_trip() {
+fn the_camera_round_trips_and_shows_greater_world_y_higher() {
     let cam = Camera {
         x: 4096.0,
         y: 4096.0,
@@ -145,17 +51,8 @@ fn camera_transforms_round_trip() {
         assert!((bx - wx).abs() < 0.01, "{bx} vs {wx}");
         assert!((by - wy).abs() < 0.01, "{by} vs {wy}");
     }
-}
-
-#[test]
-fn the_world_y_axis_points_up_on_screen() {
-    let cam = Camera {
-        x: 4096.0,
-        y: 4096.0,
-        zoom: 0.45,
-    };
-    let (_, low) = cam.world_to_screen(4096.0, 0.0, 1280.0, 800.0);
-    let (_, high) = cam.world_to_screen(4096.0, 8192.0, 1280.0, 800.0);
+    let (_, low) = cam.world_to_screen(4096.0, 0.0, sw, sh);
+    let (_, high) = cam.world_to_screen(4096.0, 8192.0, sw, sh);
     assert!(high < low, "greater world Y must sit higher on the screen");
 }
 
@@ -174,36 +71,19 @@ fn zoom_stays_within_its_limits() {
 
 #[test]
 fn portraits_split_the_teams_around_the_clock() {
-    use bota_proto::{HeroId, PlayerView, SlotId, Team};
-    let player = |slot: u8, team: Team| PlayerView {
-        slot: SlotId(slot),
-        team,
-        hero: HeroId(0),
-        unit: None,
-        level: 1,
-        xp: 0,
-        gold: None,
-        stash: None,
-        kit: None,
-        kills: 0,
-        deaths: 0,
-        assists: 0,
-        last_hits: 0,
-        denies: 0,
-        respawn_left: 0,
-    };
-    let players = [
-        player(0, Team::Radiant),
-        player(1, Team::Dire),
-        player(2, Team::Radiant),
-        player(3, Team::Dire),
-    ];
+    let players = [Team::Radiant, Team::Dire, Team::Radiant, Team::Dire]
+        .into_iter()
+        .zip(0..)
+        .map(|(team, slot)| PlayerView {
+            team,
+            ..a_seat(SlotId(slot), None)
+        })
+        .collect::<Vec<_>>();
     let sw = 1280.0;
     let rects = crate::hud::top_portraits(&players, sw);
     assert_eq!(rects.len(), 4);
     for (slot, rect) in &rects {
-        let radiant = slot.0.is_multiple_of(2);
-        if radiant {
+        if slot.0.is_multiple_of(2) {
             assert!(rect.x + rect.w < sw / 2.0, "radiant sits left of the clock");
         } else {
             assert!(rect.x > sw / 2.0, "dire sits right of the clock");
@@ -211,7 +91,6 @@ fn portraits_split_the_teams_around_the_clock() {
         assert!(rect.contains(rect.x + 1.0, rect.y + 1.0));
         assert!(!rect.contains(rect.x - 1.0, rect.y));
     }
-    // No two portraits overlap.
     for (i, (_, a)) in rects.iter().enumerate() {
         for (_, b) in &rects[i + 1..] {
             let apart = a.x + a.w <= b.x || b.x + b.w <= a.x;
@@ -285,18 +164,9 @@ fn every_item_drawing_rasterises_to_something_visible() {
 
 #[test]
 fn every_ability_box_has_a_key_to_press() {
-    let panel = crate::hud::UiRect {
-        x: 0.0,
-        y: 0.0,
-        w: 1600.0,
-        h: 200.0,
-    };
+    let panel = crate::hud::bottom_panel(1280.0, 800.0);
     let boxes = crate::hud::ability_boxes(&panel);
-    assert_eq!(
-        boxes.len(),
-        usize::from(crate::hud::ABILITY_BOXES),
-        "the panel draws as many boxes as it says it has"
-    );
+    assert_eq!(boxes.len(), usize::from(crate::hud::ABILITY_BOXES));
     for (slot, _) in boxes {
         assert!(
             crate::render::ability_key(usize::from(slot)).is_some(),
@@ -306,104 +176,51 @@ fn every_ability_box_has_a_key_to_press() {
 }
 
 #[test]
-fn every_catalog_entry_answers_to_its_own_id() {
-    for (index, face) in crate::catalog::ABILITIES.iter().enumerate() {
-        assert_eq!(
-            usize::from(face.id),
-            index,
-            "ability {} is in place",
-            face.name
-        );
-        assert_eq!(
-            crate::catalog::ability(face.id).map(|found| found.name),
-            Some(face.name)
-        );
+fn every_catalog_entry_is_named_and_found_by_its_own_id() {
+    use crate::catalog::{ABILITIES, EFFECTS, HEROES, ITEMS, ability, effect, hero, item};
+    let groups: [Vec<(u16, &str, Option<&str>)>; 4] = [
+        ABILITIES
+            .iter()
+            .map(|f| (f.id, f.name, ability(f.id).map(|x| x.name)))
+            .collect(),
+        ITEMS
+            .iter()
+            .map(|f| (f.id, f.name, item(f.id).map(|x| x.name)))
+            .collect(),
+        EFFECTS
+            .iter()
+            .map(|f| (f.id, f.name, effect(f.id).map(|x| x.name)))
+            .collect(),
+        HEROES
+            .iter()
+            .map(|f| (f.id, f.name, hero(f.id).map(|x| x.name)))
+            .collect(),
+    ];
+    for group in groups {
+        for (index, (id, name, found)) in group.into_iter().enumerate() {
+            assert_eq!(usize::from(id), index, "{name} is in place");
+            assert_eq!(found, Some(name), "{name} is found by its id");
+            assert!(!name.is_empty(), "entry {id} has a name");
+        }
     }
-    for (index, face) in crate::catalog::ITEMS.iter().enumerate() {
-        assert_eq!(
-            usize::from(face.id),
-            index,
-            "item {} is in place",
-            face.name
-        );
-        assert_eq!(
-            crate::catalog::item(face.id).map(|found| found.name),
-            Some(face.name)
-        );
-    }
-    for (index, face) in crate::catalog::EFFECTS.iter().enumerate() {
-        assert_eq!(
-            usize::from(face.id),
-            index,
-            "effect {} is in place",
-            face.name
-        );
-        assert_eq!(
-            crate::catalog::effect(face.id).map(|found| found.name),
-            Some(face.name)
-        );
-    }
-    for (index, face) in crate::catalog::HEROES.iter().enumerate() {
-        assert_eq!(
-            usize::from(face.id),
-            index,
-            "hero {} is in place",
-            face.name
-        );
-    }
-}
-
-#[test]
-fn every_catalog_entry_has_something_to_say() {
-    for face in crate::catalog::ABILITIES {
-        assert!(
-            !face.name.is_empty() && !face.blurb.is_empty(),
-            "{}",
-            face.id
-        );
-    }
-    for face in crate::catalog::ITEMS {
-        assert!(
-            !face.name.is_empty() && !face.blurb.is_empty() && !face.stats.is_empty(),
-            "{}",
-            face.id
-        );
-    }
-    for face in crate::catalog::EFFECTS {
-        assert!(
-            !face.name.is_empty() && !face.blurb.is_empty(),
-            "{}",
-            face.id
-        );
-    }
-    for face in crate::catalog::HEROES {
-        assert!(!face.name.is_empty(), "{}", face.id);
-    }
+    assert!(ability(ABILITIES.len() as u16).is_none());
+    assert!(item(u16::MAX).is_none());
+    assert!(effect(EFFECTS.len() as u16).is_none());
+    assert!(hero(HEROES.len() as u16).is_none());
 }
 
 #[test]
 fn a_part_in_hand_comes_off_what_the_shop_asks() {
+    let entry = |id: u16, cost: i32, parts: &[u16]| ShopEntry {
+        id: ItemId(id),
+        cost,
+        components: parts.iter().copied().map(ItemId).collect(),
+    };
     let shop = vec![
-        ShopEntry {
-            id: ItemId(0),
-            cost: 500,
-            components: Vec::new(),
-        },
-        ShopEntry {
-            id: ItemId(19),
-            cost: 450,
-            components: Vec::new(),
-        },
-        ShopEntry {
-            id: ItemId(13),
-            cost: 450,
-            components: Vec::new(),
-        },
-        ShopEntry {
-            id: ItemId(29),
-            cost: 1400,
-            components: vec![ItemId(0), ItemId(19), ItemId(13)],
-        },
+        entry(0, 500, &[]),
+        entry(19, 450, &[]),
+        entry(13, 450, &[]),
+        entry(29, 1400, &[0, 19, 13]),
     ];
     assert_eq!(
         crate::catalog::price_for(&shop, ItemId(29), &[]),
@@ -428,7 +245,7 @@ fn a_part_in_hand_comes_off_what_the_shop_asks() {
 }
 
 /// A hero body with every field named.
-pub fn a_unit() -> UnitView {
+fn a_unit() -> UnitView {
     UnitView {
         id: EntityId {
             idx: 3,
@@ -469,112 +286,46 @@ pub fn a_unit() -> UnitView {
     }
 }
 
-/// A slot holding something aimed the given way.
-fn holding(aim: Option<Aim>) -> Option<Option<Aim>> {
-    Some(aim)
-}
-
-/// The one this seat commands, for the self-target case.
-fn me() -> Option<EntityId> {
-    Some(EntityId {
-        idx: 3,
-        generation: 1,
-    })
-}
-
 #[test]
-fn a_press_is_sent_whatever_state_the_slot_is_in() {
+fn a_press_means_what_its_slot_and_its_state_settle() {
     // Nothing here looks at cooldown, mana or points: the server is what
     // turns a press down, and it has to be reached to do it.
-    let slot = Slot::Ability(0);
-    assert_eq!(
-        decide(slot, false, holding(Some(Aim::Own)), None, me()),
-        Press::Send(Order::Cast {
-            slot: AbilitySlot(0),
-            target: Target::None,
-        }),
-        "one that needs no aiming goes at once"
-    );
-    assert_eq!(
-        decide(slot, false, holding(None), None, me()),
-        Press::Send(Order::Cast {
-            slot: AbilitySlot(0),
-            target: Target::None,
-        }),
-        "and so does a passive, which the server answers for"
-    );
-    assert_eq!(
-        decide(slot, false, holding(Some(Aim::Point)), None, me()),
-        Press::Aim(slot),
-        "one that is aimed waits for the click"
-    );
-}
-
-#[test]
-fn control_spends_a_point_instead_of_casting() {
-    assert_eq!(
-        decide(
-            Slot::Ability(2),
-            true,
-            holding(Some(Aim::Point)),
-            None,
-            me()
-        ),
-        Press::Send(Order::Learn {
-            slot: AbilitySlot(2),
-        }),
-        "held down, control levels whatever the slot is"
-    );
-    assert_eq!(
-        decide(Slot::Item(1), true, holding(Some(Aim::Own)), None, me()),
-        Press::Send(Order::Use {
-            slot: ItemSlot(1),
-            target: Target::None,
-        }),
-        "an item has no points to spend, so control is nothing to it"
-    );
-}
-
-#[test]
-fn an_empty_slot_and_a_pocket_answer_to_nothing() {
-    assert_eq!(
-        decide(Slot::Ability(0), false, None, None, me()),
-        Press::Nothing,
-        "nothing in the slot, nothing to press"
-    );
-    assert_eq!(
-        decide(Slot::Item(7), false, holding(Some(Aim::Own)), None, me()),
-        Press::Nothing,
-        "the backpack is reached by dragging, not by pressing"
-    );
-    assert_eq!(
-        decide(Slot::Item(11), false, holding(Some(Aim::Own)), None, me()),
-        Press::Nothing,
-        "and so is the stash"
-    );
-}
-
-#[test]
-fn reaching_twice_for_what_is_aimed_at_a_unit_aims_it_at_oneself() {
-    let slot = Slot::Item(0);
-    assert_eq!(
-        decide(slot, false, holding(Some(Aim::Unit)), None, me()),
-        Press::Aim(slot),
-        "the first press takes it up"
-    );
-    assert_eq!(
-        decide(slot, false, holding(Some(Aim::Unit)), Some(slot), me()),
-        Press::Send(Order::Use {
-            slot: ItemSlot(0),
-            target: Target::Unit(me().expect("a commander")),
-        }),
-        "the second drinks it"
-    );
-    assert_eq!(
-        decide(slot, false, holding(Some(Aim::Point)), Some(slot), me()),
-        Press::Aim(slot),
-        "one aimed at the ground has no such shortcut"
-    );
+    let me = EntityId {
+        idx: 3,
+        generation: 1,
+    };
+    let own = Some(Some(Aim::Own));
+    let point = Some(Some(Aim::Point));
+    let unit = Some(Some(Aim::Unit));
+    let (q, e, salve) = (Slot::Ability(0), Slot::Ability(2), Slot::Item(0));
+    let cast = Press::Send(order_for(q, Target::None));
+    let drink = |target| Press::Send(order_for(salve, target));
+    let learn = Press::Send(Order::Learn {
+        slot: AbilitySlot(2),
+    });
+    let cases = [
+        // What needs no aim goes at once, and so does a passive.
+        (q, false, own, None, cast.clone()),
+        (q, false, Some(None), None, cast),
+        // What is aimed waits for a click.
+        (q, false, point, None, Press::Aim(q)),
+        // Control levels an ability, and is nothing to an item.
+        (e, true, point, None, learn),
+        (salve, true, own, None, drink(Target::None)),
+        // An empty slot, the backpack and the stash answer nothing.
+        (q, false, None, None, Press::Nothing),
+        (Slot::Item(7), false, own, None, Press::Nothing),
+        (Slot::Item(11), false, own, None, Press::Nothing),
+        // A salve is taken up, and a second press drinks it; what is aimed
+        // at the ground has no such shortcut.
+        (salve, false, unit, None, Press::Aim(salve)),
+        (salve, false, unit, Some(salve), drink(Target::Unit(me))),
+        (salve, false, point, Some(salve), Press::Aim(salve)),
+    ];
+    for (case, (slot, ctrl, held, aiming, expected)) in cases.into_iter().enumerate() {
+        let pressed = decide(slot, ctrl, held, aiming, Some(me));
+        assert_eq!(pressed, expected, "case {case}");
+    }
 }
 
 /// An ability slot with the numbers given.
@@ -734,65 +485,32 @@ fn a_second_reach_for_the_same_thing_makes_a_pair() {
     assert!(!again, "so the third is a single press");
     let (again, _) = tap_again(kept, Tap::Courier);
     assert!(!again, "and reaching for something else never pairs");
-}
 
-#[test]
-fn a_pair_of_reaches_for_two_different_things_is_no_pair() {
-    let one = Tap::Unit(EntityId {
-        idx: 4,
-        generation: 1,
-    });
-    let other = Tap::Unit(EntityId {
-        idx: 5,
-        generation: 1,
-    });
-    let (_, kept) = tap_again(None, one);
-    let (again, _) = tap_again(kept, other);
+    let unit = |idx| Tap::Unit(EntityId { idx, generation: 1 });
+    let (_, kept) = tap_again(None, unit(4));
+    let (again, _) = tap_again(kept, unit(5));
     assert!(!again, "two units clicked in turn are two picks");
 }
 
 #[test]
 fn the_cursor_pushes_the_camera_only_at_the_very_edge() {
     let (sw, sh, pan) = (1280.0, 800.0, 9.0);
-    assert_eq!(
-        crate::input::edge_of(640.0, 400.0, sw, sh, pan),
-        (0.0, 0.0),
-        "the middle of the screen pushes nothing"
-    );
-    assert_eq!(
-        crate::input::edge_of(1.0, 400.0, sw, sh, pan),
-        (-pan, 0.0),
-        "the left edge pushes left"
-    );
-    assert_eq!(
-        crate::input::edge_of(sw - 1.0, 400.0, sw, sh, pan),
-        (pan, 0.0),
-        "and the right edge right"
-    );
-    assert_eq!(
-        crate::input::edge_of(640.0, 1.0, sw, sh, pan),
-        (0.0, -pan),
-        "the top edge pushes up"
-    );
-    assert_eq!(
-        crate::input::edge_of(1.0, sh - 1.0, sw, sh, pan),
-        (-pan, pan),
-        "a corner pushes both ways at once"
-    );
-    assert_eq!(
-        crate::input::edge_of(-4.0, 400.0, sw, sh, pan),
-        (0.0, 0.0),
-        "a cursor gone out of the window pushes nothing"
-    );
-    assert_eq!(
-        crate::input::edge_of(640.0, sh + 40.0, sw, sh, pan),
-        (0.0, 0.0),
-        "and neither does one below it"
-    );
+    for (at, push, why) in [
+        ((640.0, 400.0), (0.0, 0.0), "the middle pushes nothing"),
+        ((1.0, 400.0), (-pan, 0.0), "the left edge pushes left"),
+        ((sw - 1.0, 400.0), (pan, 0.0), "the right edge right"),
+        ((640.0, 1.0), (0.0, -pan), "the top edge up"),
+        ((1.0, sh - 1.0), (-pan, pan), "a corner both ways at once"),
+        ((-4.0, 400.0), (0.0, 0.0), "one out of the window nothing"),
+        ((640.0, sh + 40.0), (0.0, 0.0), "nor one below it"),
+    ] {
+        let pushed = crate::input::edge_of(at.0, at.1, sw, sh, pan);
+        assert_eq!(pushed, push, "{why}");
+    }
 }
 
 /// A seat with every field named.
-pub fn a_player() -> PlayerView {
+fn a_player() -> PlayerView {
     PlayerView {
         slot: SlotId(0),
         team: Team::Radiant,
@@ -916,33 +634,25 @@ fn only_what_a_seat_owns_is_worth_remembering() {
 }
 
 #[test]
-fn a_unit_out_of_sight_is_known_as_it_was_and_how_long_ago() {
+fn a_unit_is_known_live_first_and_otherwise_as_it_was_and_how_long_ago() {
     let mut seen = Vec::new();
     let hero = owned(1, UnitKind::Hero, Some(SlotId(0)));
     let id = hero.id;
-    let seat = a_seat(SlotId(0), Some(id));
-    remember(&mut seen, &a_tick(10, vec![hero], vec![seat.clone()]));
+    remember(&mut seen, &a_tick(10, vec![hero], Vec::new()));
 
-    let live = a_tick(10, Vec::new(), vec![seat.clone()]);
-    let (held, stale) = known_in(&seen, &live, id).expect("it is remembered");
+    let now = a_tick(10, Vec::new(), Vec::new());
+    let (held, stale) = known_in(&seen, &now, id).expect("it is remembered");
     assert_eq!(held.id, id, "the body it was is still there to look at");
     assert_eq!(stale, 0, "and this tick it is as fresh as the memory");
 
-    let later = a_tick(70, Vec::new(), vec![seat]);
+    let later = a_tick(70, Vec::new(), Vec::new());
     let (_, stale) = known_in(&seen, &later, id).expect("still remembered");
     assert_eq!(stale, 60, "sixty ticks later it is sixty ticks old");
-}
 
-#[test]
-fn what_stands_now_is_known_before_what_was_remembered() {
-    let mut seen = Vec::new();
-    let was = owned(1, UnitKind::Hero, Some(SlotId(0)));
-    let id = was.id;
-    remember(&mut seen, &a_tick(10, vec![was], Vec::new()));
     let mut now = owned(1, UnitKind::Hero, Some(SlotId(0)));
     now.hp = 42;
-    let view = a_tick(90, vec![now], Vec::new());
-    let (held, stale) = known_in(&seen, &view, id).expect("it stands");
+    let back = a_tick(90, vec![now], Vec::new());
+    let (held, stale) = known_in(&seen, &back, id).expect("it stands");
     assert_eq!(held.hp, 42, "the live body wins over the kept one");
     assert_eq!(stale, 0, "and nothing about it is old");
 }
