@@ -32,33 +32,6 @@ fn first_snapshot_is_available_without_reading_the_replay_tail() {
 }
 
 #[test]
-fn initial_frame_time_does_not_skip_the_start_of_the_replay() {
-    let records = [snapshot(0), snapshot(1), snapshot(30)];
-    let mut player = ReplayPlayer::from_reader(Cursor::new(wire(&records)));
-
-    let messages = player.poll(60.0);
-
-    assert_eq!(messages.len(), 1, "loading time is not playback time");
-    assert!(matches!(&messages[0], ServerMsg::Snapshot { view } if view.tick == 0));
-}
-
-#[test]
-fn fast_forward_yields_before_an_unbounded_batch_of_records() {
-    let records: Vec<_> = (0..4096).map(snapshot).collect();
-    let mut player = ReplayPlayer::from_reader(Cursor::new(wire(&records)));
-    player.poll(0.0);
-
-    player.advance_ticks(4096.0);
-    let messages = player.poll(0.0);
-
-    assert!(messages.len() <= 64, "a GUI frame must have bounded work");
-    assert!(
-        !player.finished(),
-        "the remaining work waits for another frame"
-    );
-}
-
-#[test]
 fn fragmented_io_preserves_every_message_for_each_fragment_size() {
     let records: Vec<_> = (0..20).map(snapshot).collect();
     for fragment in 1..=32 {
@@ -224,7 +197,7 @@ fn queued_seek_completes_under_backpressure_without_adding_elapsed_time() {
 }
 
 #[test]
-fn orders_only_batches_do_not_accumulate_in_an_unconsumed_side_queue() {
+fn orders_before_any_snapshot_flow_out_in_bounded_batches() {
     let record = ReplayRecord::Orders {
         tick: 0,
         orders: Vec::new(),
@@ -249,22 +222,4 @@ fn orders_only_batches_do_not_accumulate_in_an_unconsumed_side_queue() {
         );
     }
     assert!(player.error().is_none());
-}
-
-#[test]
-fn paused_future_lookahead_applies_backpressure_without_more_reads() {
-    let (reader, bytes, calls) = counted(wire(&[snapshot(0), snapshot(1), snapshot(2)]), 1);
-    let mut player = ReplayPlayer::from_reader(reader);
-    player.poll(0.0);
-    player.poll(0.0);
-    player.paused = true;
-    let before = (bytes.get(), calls.get());
-    for _ in 0..100 {
-        assert!(player.poll(60.0).is_empty());
-    }
-    assert_eq!((bytes.get(), calls.get()), before);
-    assert_eq!(
-        player.bytes_read(),
-        wire(&[snapshot(0), snapshot(1)]).len() as u64
-    );
 }

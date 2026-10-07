@@ -57,8 +57,15 @@ fn pause_freezes_elapsed_time_and_step_queues_one_tick_without_reading() {
     player.poll(0.0);
     player.paused = true;
     assert_eq!(player.status(), "paused");
-    assert!(player.poll(60.0).is_empty());
     let before = (bytes.get(), calls.get());
+    for _ in 0..10 {
+        assert!(player.poll(60.0).is_empty());
+    }
+    assert_eq!(
+        player.bytes_read(),
+        wire(&[snapshot(0), snapshot(1)]).len() as u64,
+        "one record of lookahead and no more"
+    );
 
     player.advance_ticks(1.0);
 

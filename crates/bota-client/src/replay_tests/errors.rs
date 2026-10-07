@@ -32,64 +32,37 @@ fn assert_rejected(bytes: Vec<u8>, kind: io::ErrorKind, detail: &str) {
 }
 
 #[test]
-fn empty_input_is_an_error_instead_of_clean_eof() {
-    assert_rejected(
-        Vec::new(),
-        io::ErrorKind::InvalidData,
-        "no replay records in the file",
-    );
-}
-
-#[test]
-fn zero_payload_length_is_rejected() {
-    assert_rejected(
-        vec![0; 4],
-        io::ErrorKind::InvalidData,
-        "empty payload length",
-    );
-}
-
-#[test]
-fn every_partial_length_prefix_reports_the_missing_bytes() {
+fn every_invalid_framing_is_rejected_with_its_reason() {
+    use io::ErrorKind::{InvalidData, UnexpectedEof};
+    let mut cases = vec![
+        (
+            Vec::new(),
+            InvalidData,
+            "no replay records in the file".to_string(),
+        ),
+        (vec![0; 4], InvalidData, "empty payload length".to_string()),
+        (
+            vec![1, 0, 0, 0, 255],
+            InvalidData,
+            "frame payload did not decode".to_string(),
+        ),
+    ];
     for length in 1..4 {
-        assert_rejected(
-            vec![1; length],
-            io::ErrorKind::UnexpectedEof,
-            &format!("truncated length prefix: expected 4 bytes, got {length}"),
-        );
+        let detail = format!("truncated length prefix: expected 4 bytes, got {length}");
+        cases.push((vec![1; length], UnexpectedEof, detail));
     }
-}
-
-#[test]
-fn oversized_lengths_are_rejected_before_reading_a_payload() {
     for length in [MAX_PAYLOAD_LEN as u32 + 1, u32::MAX] {
-        assert_rejected(
-            length.to_le_bytes().to_vec(),
-            io::ErrorKind::InvalidData,
-            &format!("payload length {length} exceeds {MAX_PAYLOAD_LEN} bytes"),
-        );
+        let detail = format!("payload length {length} exceeds {MAX_PAYLOAD_LEN} bytes");
+        cases.push((length.to_le_bytes().to_vec(), InvalidData, detail));
     }
-}
-
-#[test]
-fn malformed_payload_is_not_treated_as_eof() {
-    assert_rejected(
-        vec![1, 0, 0, 0, 255],
-        io::ErrorKind::InvalidData,
-        "frame payload did not decode",
-    );
-}
-
-#[test]
-fn every_partial_payload_reports_the_missing_bytes() {
     let frame = wire(&[snapshot(0)]);
     let length = frame.len() - 4;
     for received in 0..length {
-        assert_rejected(
-            frame[..4 + received].to_vec(),
-            io::ErrorKind::UnexpectedEof,
-            &format!("truncated payload: expected {length} bytes, got {received}"),
-        );
+        let detail = format!("truncated payload: expected {length} bytes, got {received}");
+        cases.push((frame[..4 + received].to_vec(), UnexpectedEof, detail));
+    }
+    for (bytes, kind, detail) in cases {
+        assert_rejected(bytes, kind, &detail);
     }
 }
 
