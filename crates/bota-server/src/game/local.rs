@@ -266,35 +266,45 @@ pub fn plan_local(
         if (node.far, node.t) < (best.0, best.1) {
             best = (node.far, node.t, index);
         }
-        try_straight_at_goal(ob, bodies, ask, scratch, index);
-        let at_goal = facing_towards(node.pos, ask.goal);
-        if heading_number(at_goal) == ANY_HEADING {
-            try_heading(ob, bodies, ask, scratch, index, at_goal, ANY_HEADING);
-        }
-        // Headings that lead away from the goal are not tried: a way back
-        // is the route's to find, not the plan's.
-        for heading in 0..HEADINGS {
-            let angle = Angle {
-                brads: (heading * HEADING_BRADS) as u16,
-            };
-            if u32::from(facing_gap(angle, at_goal)) > SIDEWAYS_BRADS {
-                continue;
-            }
-            try_heading(ob, bodies, ask, scratch, index, angle, heading);
-        }
-        // Waiting is for letting a body pass: with nothing moving there is
-        // nothing to wait for.
-        if scratch.moving {
-            try_waiting(bodies, ask, scratch, index);
-        }
+        expand(ob, bodies, ask, scratch, index, node.pos);
     }
-    // Short of the goal, a state is worth walking to only when it is
-    // nearer the goal by a couple of steps: less is standing about.
+    // Short of the goal, a state is walked to only when it is at least two
+    // steps nearer the goal than the start.
     let gained = start.far - best.0;
     if best.2 == 0 || gained < i64::from(ask.step.raw) * 2 {
         return (Vec::new(), false);
     }
     (walk_back(scratch, best.2), false)
+}
+
+/// Tries every stretch out of one state: straight at the goal, along each
+/// heading within [`SIDEWAYS_BRADS`] of the goal, and, while any body moves,
+/// standing still.
+fn expand(
+    ob: &Obstacles,
+    bodies: &[Foreseen],
+    ask: &LocalAsk,
+    scratch: &mut LocalScratch,
+    index: u32,
+    pos: Vec2,
+) {
+    try_straight_at_goal(ob, bodies, ask, scratch, index);
+    let at_goal = facing_towards(pos, ask.goal);
+    if heading_number(at_goal) == ANY_HEADING {
+        try_heading(ob, bodies, ask, scratch, index, at_goal, ANY_HEADING);
+    }
+    for heading in 0..HEADINGS {
+        let angle = Angle {
+            brads: (heading * HEADING_BRADS) as u16,
+        };
+        if u32::from(facing_gap(angle, at_goal)) > SIDEWAYS_BRADS {
+            continue;
+        }
+        try_heading(ob, bodies, ask, scratch, index, angle, heading);
+    }
+    if scratch.moving {
+        try_waiting(bodies, ask, scratch, index);
+    }
 }
 
 /// The last stretch: straight at the goal, tick by tick, until near enough,
