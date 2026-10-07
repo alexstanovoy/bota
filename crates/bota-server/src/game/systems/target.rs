@@ -224,8 +224,9 @@ impl World {
             && self.hostile(seeker, other)
     }
 
-    /// The two hulls that stand between a pair, edge to edge.
-    fn hulls(&self, one: Entity, other: Entity) -> Fixed {
+    /// The bound radii of a pair added together: how far apart their
+    /// centres stand when they touch edge to edge.
+    pub(crate) fn hulls(&self, one: Entity, other: Entity) -> Fixed {
         self.hull.get(one).map_or(Fixed::ZERO, |h| h.bound)
             + self.hull.get(other).map_or(Fixed::ZERO, |h| h.bound)
     }

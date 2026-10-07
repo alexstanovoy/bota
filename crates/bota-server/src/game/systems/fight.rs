@@ -24,9 +24,10 @@ impl World {
         ) else {
             return false;
         };
-        let hulls = self.hull.get(attacker).map_or(Fixed::ZERO, |h| h.bound)
-            + self.hull.get(target).map_or(Fixed::ZERO, |h| h.bound);
-        at.pos.within(their_at.pos, stats.attack_range + hulls)
+        at.pos.within(
+            their_at.pos,
+            stats.attack_range + self.hulls(attacker, target),
+        )
     }
 
     /// Tells each side what it was near enough to feel.

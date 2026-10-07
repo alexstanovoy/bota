@@ -142,9 +142,7 @@ impl World {
             .stats
             .get(attacker)
             .map_or(Fixed::ZERO, |stats| stats.attack_range);
-        range
-            + self.hull.get(attacker).map_or(Fixed::ZERO, |h| h.bound)
-            + self.hull.get(target).map_or(Fixed::ZERO, |h| h.bound)
+        range + self.hulls(attacker, target)
     }
 
     /// How near two bodies' centres are when the bodies touch: a hair

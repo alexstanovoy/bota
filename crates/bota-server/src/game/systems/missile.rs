@@ -10,6 +10,8 @@ use crate::game::{
     move_towards, per_tick, rules, wire_id,
 };
 
+use super::hitting::entity_slot;
+
 /// What flight reads and writes.
 pub struct MissileCx<'a> {
     /// Which entities exist; a missile given up is freed here.
@@ -152,11 +154,7 @@ fn misses_uphill(
     let Some(source) = shot.source else {
         return false;
     };
-    let index = source.index().0 as usize;
-    if uphill_miss.len() <= index {
-        uphill_miss.resize_with(index + 1, || None);
-    }
-    let chance = uphill_miss[index].get_or_insert_with(|| {
+    let chance = entity_slot(uphill_miss, source, || {
         PseudoRandom25::new(rng.for_unit(Purpose::Evasion, wire_id(source), 0))
     });
     chance.roll()

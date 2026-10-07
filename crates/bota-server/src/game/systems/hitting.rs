@@ -163,14 +163,24 @@ pub fn evades(
     if ratio == Ratio::NEVER {
         return false;
     }
-    let index = target.index().0 as usize;
-    if evasion.len() <= index {
-        evasion.resize_with(index + 1, || None);
-    }
-    let chance = evasion[index].get_or_insert_with(|| {
+    let chance = entity_slot(evasion, target, || {
         Chance::new(rng.for_unit(Purpose::Evasion, wire_id(target), 1), ratio)
     });
     chance.roll(ratio)
+}
+
+/// An entity's own entry in a table indexed by entity slot, opened with
+/// `open` the first time it is asked for.
+pub(crate) fn entity_slot<T>(
+    slots: &mut Vec<Option<T>>,
+    entity: Entity,
+    open: impl FnOnce() -> T,
+) -> &mut T {
+    let index = entity.index().0 as usize;
+    if slots.len() <= index {
+        slots.resize_with(index + 1, || None);
+    }
+    slots[index].get_or_insert_with(open)
 }
 
 /// Pre-mitigation damage including the current valid same-caster stack count.

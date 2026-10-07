@@ -9,6 +9,8 @@
 
 use bota_proto::{Aim, DamageKind, Fixed, ItemSlot, Team, Vec2};
 
+use super::hitting::entity_slot;
+
 use crate::game::{
     Action, ActionPhase, ActionState, BEATS_PER_TICK, Chance, Entity, Event, Hit, HitEffect,
     PendingCast, Projectile, Purpose, Ratio, Stats, Target, Visibility, World, ability,
@@ -704,15 +706,10 @@ impl World {
         }
         let at = usize::from(level - 1);
         let ratio = rules::SYLLA_CRIT_CHANCE[at];
-        let index = attacker.index().0 as usize;
-        if self.crit.len() <= index {
-            self.crit.resize_with(index + 1, || None);
-        }
-        if self.crit[index].is_none() {
-            let stream = self.rng.for_unit(Purpose::Crit, wire_id(attacker), 0);
-            self.crit[index] = Some(Chance::new(stream, ratio));
-        }
-        let chance = self.crit[index].as_mut().expect("opened above");
+        let rng = &self.rng;
+        let chance = entity_slot(&mut self.crit, attacker, || {
+            Chance::new(rng.for_unit(Purpose::Crit, wire_id(attacker), 0), ratio)
+        });
         chance.roll(ratio).then_some(rules::SYLLA_CRIT_MULT_PCT[at])
     }
 
@@ -725,15 +722,13 @@ impl World {
         if stats.pierce == Ratio::NEVER || self.kind.get(on).copied().is_some_and(is_structure) {
             return None;
         }
-        let index = attacker.index().0 as usize;
-        if self.pierce.len() <= index {
-            self.pierce.resize_with(index + 1, || None);
-        }
-        if self.pierce[index].is_none() {
-            let stream = self.rng.for_unit(Purpose::Pierce, wire_id(attacker), 0);
-            self.pierce[index] = Some(Chance::new(stream, stats.pierce));
-        }
-        let chance = self.pierce[index].as_mut().expect("opened above");
+        let rng = &self.rng;
+        let chance = entity_slot(&mut self.pierce, attacker, || {
+            Chance::new(
+                rng.for_unit(Purpose::Pierce, wire_id(attacker), 0),
+                stats.pierce,
+            )
+        });
         chance.roll(stats.pierce).then_some(stats.pierce_damage)
     }
 
@@ -784,9 +779,7 @@ impl World {
         let (Some(from), Some(at)) = (self.transform.get(attacker), self.transform.get(on)) else {
             return false;
         };
-        let hulls = self.hull.get(attacker).map_or(Fixed::ZERO, |h| h.bound)
-            + self.hull.get(on).map_or(Fixed::ZERO, |h| h.bound);
-        from.pos.within(at.pos, reach + hulls)
+        from.pos.within(at.pos, reach + self.hulls(attacker, on))
     }
 }
 
