@@ -76,7 +76,7 @@ pub fn pixels(art: &[u8]) -> Option<(u32, u32, Vec<u8>)> {
 /// Draws an item's icon to fill a box, or reports that there is none to draw.
 pub fn draw_item_icon(id: u16, x: f32, y: f32, w: f32, h: f32) -> bool {
     let Some(texture) = crate::catalog::item(id)
-        .and_then(|face| face.icon)
+        .map(|face| face.icon)
         .and_then(icon)
     else {
         return false;

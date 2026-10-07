@@ -143,7 +143,7 @@ fn arguments_parse_and_default() {
 fn every_item_drawing_rasterises_to_something_visible() {
     for face in crate::catalog::ITEMS {
         let name = face.name;
-        let art = face.icon.expect("every item is drawn");
+        let art = face.icon;
         let (w, h, bytes) = crate::icons::pixels(art).expect("the drawing is readable");
         assert_eq!(w, 192, "{name} is drawn to the frame");
         assert_eq!(h, 128, "{name} is drawn to the frame");
