@@ -1,8 +1,8 @@
 //! Couriers and their errands.
 
 use crate::game::{
-    BAG_SLOTS, Command, Errand, ITEM_BOOTS, ITEM_IRON_BRANCH, ItemStack, MELEE_CREEP, UnitOrder,
-    World, ability, fountain_pos, isqrt64, rules, wire_id,
+    BAG_SLOTS, Command, Entity, Errand, ITEM_BOOTS, ITEM_IRON_BRANCH, ItemStack, MELEE_CREEP,
+    UnitOrder, World, ability, fountain_pos, isqrt64, rules, wire_id,
 };
 use bota_proto::{
     AbilitySlot, DamageKind, EventKind, Fixed, ItemId, Order, RejectReason, SlotId, Target, Team,
@@ -13,8 +13,7 @@ use super::support::*;
 
 #[test]
 fn a_courier_brought_down_comes_back_in_its_own_time() {
-    let mut world = World::for_match(&config(), config().rng());
-    let courier = the_courier(&world);
+    let (mut world, _, courier) = a_match();
     let deliver = Order::Cast {
         slot: AbilitySlot(3),
         target: Target::None,
@@ -56,22 +55,11 @@ fn a_courier_brought_down_comes_back_in_its_own_time() {
 }
 
 #[test]
-fn a_courier_fetches_the_stash_and_hands_it_to_its_owner() {
-    let mut world = World::for_match(&config(), config().rng());
-    let hero = world.seats[0].unit.expect("stood up");
-    let courier = the_courier(&world);
+fn a_courier_fetches_the_stash_hands_it_over_and_turns_for_home() {
+    let (mut world, hero, courier) = a_match();
+    let home = world.courier_home(Team::Radiant);
     let boots = ItemId(ITEM_BOOTS);
-    world.seats[0].stash.slots[0] = Some(ItemStack {
-        id: boots,
-        charges: 0,
-        cooldown: 0,
-        mute: 0,
-        mode: None,
-        bought_tick: 0,
-        touched: false,
-        owner: SlotId(0),
-        for_sale: false,
-    });
+    world.seats[0].stash.slots[0] = Some(fresh_stack(ITEM_BOOTS, 0));
     // Standing at the fountain, it takes what waits there on the next tick.
     assert!(world.courier_take_stash(courier));
     world.step();
@@ -80,46 +68,37 @@ fn a_courier_fetches_the_stash_and_hands_it_to_its_owner() {
         "the stash is empty"
     );
     assert_eq!(
-        world.inventory.get(courier).expect("carries").slots[0].map(|held| held.id),
+        slot_of(&world, courier, 0).map(|held| held.id),
         Some(boots),
         "and the courier holds it"
     );
-    // Sent out to its owner, it walks there and hands it over.
-    world.transform.get_mut(hero).expect("standing").pos =
-        world.courier_home(Team::Radiant) + Vec2::from_ints(900, 0);
+    world.transform.get_mut(hero).expect("standing").pos = home + Vec2::from_ints(900, 0);
     assert!(world.courier_deliver(courier));
-    for _ in 0..400 {
-        world.step();
-        if world
-            .inventory
-            .get(hero)
-            .is_some_and(|bag| bag.held().count() > 0)
-        {
-            break;
-        }
-    }
+    step_until(&mut world, 400, |world| {
+        world.errand.get(courier) == Some(&Errand::None)
+    });
     assert_eq!(
-        world.inventory.get(hero).expect("has a bag").slots[0].map(|held| held.id),
+        slot_of(&world, hero, 0).map(|held| held.id),
         Some(boots),
         "what it carried is in its owner's hands"
     );
     assert_eq!(
-        world
-            .inventory
-            .get(courier)
-            .expect("carries")
-            .held()
-            .count(),
+        held(&world, courier),
         0,
         "and the courier carries nothing now"
+    );
+    assert!(
+        matches!(
+            world.orders.get(courier).map(|orders| orders.current),
+            Some(UnitOrder::Move { pos }) if pos == home
+        ),
+        "and it turned for home on its own"
     );
 }
 
 #[test]
 fn an_order_goes_to_the_unit_it_names_and_only_to_ones_this_seat_drives() {
-    let mut world = World::for_match(&config(), config().rng());
-    let hero = world.seats[0].unit.expect("stood up");
-    let courier = the_courier(&world);
+    let (mut world, hero, courier) = a_match();
     let to = world.courier_home(Team::Radiant) + Vec2::from_ints(600, 0);
     let walk = Order::Move {
         target: Target::Pos(to),
@@ -164,8 +143,7 @@ fn an_order_goes_to_the_unit_it_names_and_only_to_ones_this_seat_drives() {
 
 #[test]
 fn a_courier_told_to_go_at_a_unit_follows_it() {
-    let mut world = World::for_match(&config(), config().rng());
-    let courier = the_courier(&world);
+    let (mut world, _, courier) = a_match();
     let home = world.courier_home(Team::Radiant);
     // Something of its own side standing a way off, that then walks further.
     let mark = world.spawn_unit(&MELEE_CREEP, Team::Radiant, home + Vec2::from_ints(700, 0));
@@ -196,21 +174,9 @@ fn a_courier_told_to_go_at_a_unit_follows_it() {
 
 #[test]
 fn a_courier_at_the_fountain_reaches_the_stash_itself() {
-    let mut world = World::for_match(&config(), config().rng());
-    let hero = world.seats[0].unit.expect("stood up");
-    let courier = the_courier(&world);
+    let (mut world, hero, courier) = a_match();
     let boots = ItemId(ITEM_BOOTS);
-    world.seats[0].stash.slots[0] = Some(ItemStack {
-        id: boots,
-        charges: 0,
-        cooldown: 0,
-        mute: 0,
-        mode: None,
-        bought_tick: 0,
-        touched: false,
-        owner: SlotId(0),
-        for_sale: false,
-    });
+    world.seats[0].stash.slots[0] = Some(fresh_stack(ITEM_BOOTS, 0));
     // The hero is out in the lane, so the stash is nothing to it.
     world.transform.get_mut(hero).expect("standing").pos =
         world.courier_home(Team::Radiant) + Vec2::from_ints(4000, 0);
@@ -218,14 +184,12 @@ fn a_courier_at_the_fountain_reaches_the_stash_itself() {
         !world.move_item(SlotId(0), hero, BAG_SLOTS, 0),
         "out in the lane a hero cannot reach into the stash"
     );
-    // The courier is standing at the fountain, so for it the stash is right
-    // there.
     assert!(
         world.move_item(SlotId(0), courier, BAG_SLOTS, 0),
         "the courier at the fountain reaches it"
     );
     assert_eq!(
-        world.inventory.get(courier).expect("carries").slots[0].map(|held| held.id),
+        slot_of(&world, courier, 0).map(|held| held.id),
         Some(boots),
         "and what waited there is in its hands"
     );
@@ -305,8 +269,6 @@ fn courier_auxiliary_casts_keep_delivery_tracking_a_moving_owner() {
 
 #[test]
 fn courier_return_move_and_stop_replace_delivery() {
-    use Errand;
-
     for order in [
         Order::Cast {
             slot: AbilitySlot(1),
@@ -347,67 +309,22 @@ fn courier_return_move_and_stop_replace_delivery() {
 }
 
 #[test]
-fn a_courier_that_has_handed_over_turns_for_home() {
-    let mut world = World::for_match(&config(), config().rng());
-    let hero = world.seats[0].unit.expect("stood up");
-    let courier = the_courier(&world);
-    let home = world.courier_home(Team::Radiant);
-    world.transform.get_mut(hero).expect("standing").pos = home + Vec2::from_ints(900, 0);
-    world.seats[0].stash.slots[0] = Some(fresh_stack(ITEM_BOOTS, 0));
-    assert!(world.courier_take_stash(courier));
-    world.step();
-    assert!(world.courier_deliver(courier));
-    for _ in 0..300 {
-        world.step();
-        if world.errand.get(courier) == Some(&Errand::None) {
-            break;
-        }
-    }
-    assert!(
-        world
-            .inventory
-            .get(hero)
-            .is_some_and(|bag| bag.held().count() > 0),
-        "it handed over"
-    );
-    assert!(
-        matches!(
-            world.orders.get(courier).map(|orders| orders.current),
-            Some(UnitOrder::Move { pos }) if pos == home
-        ),
-        "and turned for home on its own"
-    );
-}
-
-#[test]
 fn taking_the_stash_carries_it_on_without_being_asked_twice() {
-    let mut world = World::for_match(&config(), config().rng());
-    let hero = world.seats[0].unit.expect("stood up");
-    let courier = the_courier(&world);
+    let (mut world, hero, courier) = a_match();
     let home = world.courier_home(Team::Radiant);
     world.transform.get_mut(hero).expect("standing").pos = home + Vec2::from_ints(900, 0);
     world.seats[0].stash.slots[0] = Some(fresh_stack(ITEM_BOOTS, 0));
     assert!(world.courier_take_stash(courier));
-    for _ in 0..300 {
-        world.step();
-        if world
-            .inventory
-            .get(hero)
-            .is_some_and(|bag| bag.held().count() > 0)
-        {
-            break;
-        }
-    }
+    step_until(&mut world, 300, |world| held(world, hero) > 0);
     assert!(
-        world.inventory.get(hero).expect("has a bag").held().count() > 0,
+        held(&world, hero) > 0,
         "one press fetched it and brought it"
     );
 }
 
 #[test]
 fn an_errand_with_nothing_to_do_sends_the_courier_home() {
-    let mut world = World::for_match(&config(), config().rng());
-    let courier = the_courier(&world);
+    let (mut world, _, courier) = a_match();
     let home = world.courier_home(Team::Radiant);
     world.transform.get_mut(courier).expect("standing").pos = home + Vec2::from_ints(1500, 0);
     // Nothing in the stash and nothing in its hands.
@@ -430,21 +347,13 @@ fn an_errand_with_nothing_to_do_sends_the_courier_home() {
 
 #[test]
 fn a_courier_whose_owner_fell_puts_what_it_carries_back() {
-    let mut world = World::for_match(&config(), config().rng());
-    let hero = world.seats[0].unit.expect("stood up");
-    let courier = the_courier(&world);
-    if let Some(bag) = world.inventory.get_mut(courier) {
-        bag.slots[0] = Some(fresh_stack(ITEM_BOOTS, 0));
-    }
-    let mut events = Vec::new();
-    world.bury(vec![(hero, None)], &mut events);
+    let (mut world, hero, courier) = a_match();
+    hand_item(&mut world, courier, ITEM_BOOTS, 0);
+    world.bury(vec![(hero, None)], &mut Vec::new());
     assert!(world.courier_deliver(courier));
-    for _ in 0..300 {
-        world.step();
-        if world.seats[0].stash.held().count() > 0 {
-            break;
-        }
-    }
+    step_until(&mut world, 300, |world| {
+        world.seats[0].stash.held().count() > 0
+    });
     assert!(
         world.seats[0].stash.held().count() > 0,
         "with nobody to hand to, it put it back in the stash"
@@ -453,8 +362,7 @@ fn a_courier_whose_owner_fell_puts_what_it_carries_back() {
 
 #[test]
 fn a_shielded_courier_takes_nothing() {
-    let mut world = World::for_match(&config(), config().rng());
-    let courier = the_courier(&world);
+    let (mut world, _, courier) = a_match();
     world.step();
     let full = world.health.get(courier).expect("standing").hp;
     assert!(world.courier_shield(courier));
@@ -480,12 +388,9 @@ fn a_shielded_courier_takes_nothing() {
 #[test]
 fn a_courier_keeps_its_load_through_death() {
     let (mut world, _hero) = a_hero_with_gold(0);
-    let courier = world.seats[0].courier.expect("stands with one");
-    if let Some(bag) = world.inventory.get_mut(courier) {
-        bag.slots[0] = Some(a_stack_of(ITEM_BOOTS, 0));
-    }
-    let mut events = Vec::new();
-    world.bury(vec![(courier, None)], &mut events);
+    let courier = the_courier(&world);
+    world.inventory.get_mut(courier).expect("carries").slots[0] = Some(a_stack_of(ITEM_BOOTS, 0));
+    world.bury(vec![(courier, None)], &mut Vec::new());
     assert!(
         world.seats[0]
             .courier_kept
@@ -498,101 +403,73 @@ fn a_courier_keeps_its_load_through_death() {
     }
     let back = world.seats[0].courier.expect("stands again");
     assert_ne!(back, courier, "in a new body");
-    assert_eq!(
-        world.inventory.get(back).map(|bag| bag.held().count()),
-        Some(1),
-        "with the load back aboard"
-    );
+    assert_eq!(held(&world, back), 1, "with the load back aboard");
 }
 
 #[test]
 fn a_courier_sent_for_the_stash_carries_on_what_it_already_holds() {
-    let mut world = World::for_match(&config(), config().rng());
-    let hero = world.seats[0].unit.expect("stood up");
-    let courier = the_courier(&world);
-    let boots = ItemId(ITEM_BOOTS);
-    if let Some(bag) = world.inventory.get_mut(courier) {
-        bag.slots[0] = Some(ItemStack {
-            id: boots,
-            charges: 0,
-            cooldown: 0,
-            mute: 0,
-            mode: None,
-            bought_tick: 0,
-            touched: false,
-            owner: SlotId(0),
-            for_sale: false,
-        });
-    }
+    let (mut world, hero, courier) = a_match();
+    hand_item(&mut world, courier, ITEM_BOOTS, 0);
     let home = fountain_pos(world.map, Team::Radiant);
     world.transform.get_mut(hero).expect("standing").pos = home + Vec2::from_ints(2500, 0);
     // The stash is empty, and the goods still go to the hero, not home.
     assert!(world.courier_take_stash(courier));
-    for _ in 0..600 {
-        world.step();
-        if world
-            .inventory
-            .get(hero)
-            .is_some_and(|bag| bag.held().count() > 0)
-        {
-            break;
-        }
-    }
+    step_until(&mut world, 600, |world| held(world, hero) > 0);
     assert_eq!(
-        world.inventory.get(hero).expect("has a bag").slots[0].map(|held| held.id),
-        Some(boots),
+        slot_of(&world, hero, 0).map(|held| held.id),
+        Some(ItemId(ITEM_BOOTS)),
         "what it was already carrying reaches its owner"
     );
 }
 
 #[test]
 fn what_an_owner_has_no_room_for_goes_back_to_the_stash() {
-    let mut world = World::for_match(&config(), config().rng());
-    let hero = world.seats[0].unit.expect("stood up");
-    let courier = the_courier(&world);
-    let branch = ItemId(ITEM_IRON_BRANCH);
+    let (mut world, hero, courier) = a_match();
     let stack = ItemStack {
-        id: branch,
         charges: 1,
-        cooldown: 0,
-        mute: 0,
-        mode: None,
-        bought_tick: 0,
-        touched: true,
-        owner: SlotId(0),
-        for_sale: false,
+        ..a_stack_of(ITEM_IRON_BRANCH, 0)
     };
     // Every slot the hero has is taken, so there is nowhere to hand it.
-    if let Some(bag) = world.inventory.get_mut(hero) {
-        for slot in bag.slots.iter_mut() {
-            *slot = Some(stack);
-        }
-    }
-    if let Some(bag) = world.inventory.get_mut(courier) {
-        bag.slots[0] = Some(stack);
-    }
+    world
+        .inventory
+        .get_mut(hero)
+        .expect("has a bag")
+        .slots
+        .fill(Some(stack));
+    world.inventory.get_mut(courier).expect("carries").slots[0] = Some(stack);
     let home = fountain_pos(world.map, Team::Radiant);
     world.transform.get_mut(hero).expect("standing").pos = home + Vec2::from_ints(1500, 0);
     assert!(world.courier_deliver(courier));
-    for _ in 0..900 {
-        world.step();
-        if world.seats[0].stash.held().count() > 0 {
-            break;
-        }
-    }
+    step_until(&mut world, 900, |world| {
+        world.seats[0].stash.held().count() > 0
+    });
     assert_eq!(
         world.seats[0].stash.held().count(),
         1,
         "with nowhere to put it, it is carried back to the stash"
     );
-    assert_eq!(
-        world
-            .inventory
-            .get(courier)
-            .expect("carries")
-            .held()
-            .count(),
-        0,
-        "and the courier is empty again"
-    );
+    assert_eq!(held(&world, courier), 0, "and the courier is empty again");
+}
+
+/// A match world, its hero and its courier, before any tick has run.
+fn a_match() -> (World, Entity, Entity) {
+    let world = World::for_match(&config(), config().rng());
+    let hero = world.seats[0].unit.expect("stood up");
+    let courier = the_courier(&world);
+    (world, hero, courier)
+}
+
+/// Steps a world up to `ticks` times, stopping on the tick `done` holds.
+fn step_until(world: &mut World, ticks: u32, done: impl Fn(&World) -> bool) {
+    for _ in 0..ticks {
+        world.step();
+        if done(world) {
+            break;
+        }
+    }
+}
+
+/// How many stacks a unit carries.
+fn held(world: &World, unit: Entity) -> usize {
+    world.inventory.get(unit).expect("has a bag").held().count()
 }
