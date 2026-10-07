@@ -129,9 +129,7 @@ impl World {
         }
         self.recycle_entity_snapshot(entities);
     }
-}
 
-impl World {
     /// Whether anything this entity would fight stands within a reach of it.
     fn anything_hostile_near(&self, entity: Entity, range: i32) -> bool {
         let Some(at) = self.transform.get(entity).map(|t| t.pos) else {

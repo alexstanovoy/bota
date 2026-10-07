@@ -66,7 +66,6 @@ fn class_rank(class: TargetClass, order: PriorityOrder) -> u8 {
 /// choosing targets among.
 #[derive(Default)]
 pub struct Candidates {
-    /// Every entity that stands somewhere.
     spots: Spots<Entity>,
     /// The largest bound radius of any entity laid, in raw units.
     widest: i64,
@@ -278,9 +277,7 @@ impl World {
             .min_by_key(|&(_, distance, other)| (self.behaviour_rank(side, other), distance, other))
             .map(|(_, _, other)| other)
     }
-}
 
-impl World {
     /// Whether one entity may be attacked by another on an order.
     ///
     /// Only what is alive and seen by the attacker's side. An enemy may unless
