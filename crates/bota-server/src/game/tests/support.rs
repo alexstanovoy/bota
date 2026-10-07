@@ -573,6 +573,11 @@ pub(super) fn pudge_and_a_mark(apart: i32) -> (World, Entity, Entity) {
     (world, pudge, mark)
 }
 
+/// Whether a hook is out.
+pub(super) fn hook_flying(world: &World) -> bool {
+    world.entities.iter().any(|e| world.hook.get(e).is_some())
+}
+
 /// Sends Pudge's hook at a spot the way a player does.
 pub(super) fn throw_hook(world: &mut World, at: Vec2) {
     world.advance(&[Command {
@@ -1145,4 +1150,12 @@ pub(super) fn along_lane(route: &[Vec2], progress: i64, aside: i64) -> Vec2 {
         left -= len;
     }
     route[route.len() - 1]
+}
+
+/// Steps the world through seat 0's respawn wait and hands back its new body.
+pub(super) fn back_on_its_feet(world: &mut World) -> Entity {
+    for _ in 0..world.seats[0].respawn_left {
+        world.step();
+    }
+    world.seats[0].unit.expect("it came back")
 }

@@ -8,7 +8,6 @@ use bota_proto::{
     Vec2,
 };
 
-use super::pudge::hook_flying;
 use super::support::*;
 
 #[test]

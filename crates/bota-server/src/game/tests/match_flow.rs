@@ -393,11 +393,3 @@ fn a_level_seven_hero() -> (World, Entity) {
     assert!(world.learn(hero, 1));
     (world, hero)
 }
-
-/// Steps the world through seat 0's respawn wait and hands back its new body.
-pub(super) fn back_on_its_feet(world: &mut World) -> Entity {
-    for _ in 0..world.seats[0].respawn_left {
-        world.step();
-    }
-    world.seats[0].unit.expect("it came back")
-}

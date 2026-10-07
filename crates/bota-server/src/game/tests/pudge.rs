@@ -6,7 +6,6 @@ use crate::game::{
 };
 use bota_proto::{Fixed, HeroId, Order, SlotId, Target, Team, Vec2};
 
-use super::match_flow::back_on_its_feet;
 use super::support::*;
 
 #[test]
@@ -395,11 +394,6 @@ fn heap(world: &World, hero: Entity) -> u32 {
         .stacks
         .get(hero)
         .map_or(0, |kept| kept.of(StackKind::FleshHeap))
-}
-
-/// Whether a hook is out.
-pub(super) fn hook_flying(world: &World) -> bool {
-    world.entities.iter().any(|e| world.hook.get(e).is_some())
 }
 
 /// Seat 0 orders a move at nothing, which interrupts whatever it was doing.

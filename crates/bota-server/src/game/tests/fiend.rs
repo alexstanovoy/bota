@@ -6,7 +6,6 @@ use crate::game::{
 };
 use bota_proto::{DamageKind, EventKind, Fixed, HeroId, SlotId, StatusFlags, Team, Vec2};
 
-use super::match_flow::back_on_its_feet;
 use super::support::*;
 
 #[test]
