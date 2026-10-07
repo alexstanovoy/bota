@@ -175,9 +175,8 @@ impl Playbook {
     pub fn decide(&mut self, field: &Field) -> Option<Ask> {
         self.rung = "none";
         let me = field.me?;
-        // Held or feared, nothing the body is told will land; in the middle
-        // of a channel, an order is how the channel is thrown away. Either
-        // way the tick is not the seat's to spend.
+        // Stunned or feared, no order lands; channelling, any order breaks
+        // the channel.
         if me.statuses.bits
             & (StatusFlags::STUNNED | StatusFlags::FEARED | StatusFlags::CHANNELLING)
             != 0
@@ -201,15 +200,11 @@ impl Playbook {
             self.rung = "tidy";
             return Some(moved);
         }
-        // Settled before the drink, so that a mend is weighed against a walk
-        // to the fountain that has already been decided on.
         self.mind_health(field);
         if let Some(remedy) = self.remedy(field) {
             self.rung = "remedy";
             return Some(remedy);
         }
-        // Before the walk, since what the walk is for is the thing a scroll
-        // does in three seconds.
         if let Some(back) = self.portal(field) {
             self.rung = "portal";
             self.portalled_at = Some(self.tick);
@@ -219,6 +214,12 @@ impl Playbook {
             self.rung = "retreat";
             return Some(away);
         }
+        self.fight(field)
+    }
+
+    /// The lower rungs of [`decide`](Self::decide): what to do in the lane
+    /// once nothing more pressing is.
+    fn fight(&mut self, field: &Field) -> Option<Ask> {
         if let Some(spell) = self.spell(field) {
             self.rung = "spell";
             return Some(spell);
@@ -229,12 +230,11 @@ impl Playbook {
         }
         if let Some(blow) = self.finish(field) {
             self.rung = "finish";
-            self.swinging_at = field.me.map(|_| blow);
+            self.swinging_at = Some(blow);
             self.swinging_since = self.tick;
             return Some(blow);
         }
-        // A swing already under way is left alone: an order to the body ends
-        // the wind-up before it.
+        // An order to the body ends the wind-up of the swing under way.
         if self.mid_swing(field) {
             self.rung = "mid-swing";
             return None;
@@ -307,7 +307,6 @@ impl Playbook {
                 })
                 .map(|(slot, _)| slot)
         };
-        // What a wand gives back arrives at once, and nothing puts it out.
         if let Some(press) = self.press_a_wand(field) {
             return Some(press);
         }
@@ -456,10 +455,9 @@ impl Playbook {
     /// frontmost tower the lane still holds, when that is further than
     /// [`PORTAL_WORTH`] and no enemy hero is within [`FIGHT_RANGE`].
     ///
-    /// The wait a scroll leaves behind is shared by every scroll a hero
-    /// holds, and it is not on the wire: a scroll bought to replace one just
-    /// spent reads as ready. So the wait is counted here, from the tick the
-    /// last one was aimed.
+    /// The wait a scroll leaves behind is shared by every scroll a hero holds
+    /// and is not on the wire, where a fresh scroll reads as ready: it is
+    /// counted here from the tick the last one was aimed.
     fn portal(&self, field: &Field) -> Option<Ask> {
         if self.tick < self.pregame {
             return None;
@@ -524,8 +522,6 @@ impl Playbook {
         } else {
             0
         };
-        // The worn one rather than the near one: the lowest stays the lowest
-        // next tick, while the nearest changes whenever the wave shuffles.
         if let Some(mark) = field
             .creeps
             .iter()
@@ -548,9 +544,8 @@ impl Playbook {
     /// Shakes off the creeps that are chewing on the hero, with an attack
     /// order at the nearest other unit of its own.
     fn shake(&mut self, field: &Field) -> Option<Ask> {
-        // The tick after a shake the hero stands, ending the follow the order
-        // turned into. That tick is not itself a shake, or every tick would be
-        // the tick after one.
+        // The tick after a shake the hero stands still, ending the follow the
+        // attack order turned into.
         if self.shook_at == Some(self.tick.saturating_sub(1)) {
             return Some(Ask::mine(bota_proto::Order::Move {
                 target: Target::None,
@@ -570,8 +565,7 @@ impl Playbook {
         if biting < SHAKE_CREEPS {
             return None;
         }
-        // Somebody else of its own, and the nearest of them, so the follow it
-        // turns into is the shortest one going.
+        // The nearest unit of its own, so the follow is the shortest.
         let ally = field
             .own_creeps
             .first()
@@ -604,17 +598,16 @@ impl Playbook {
         if lane.how_far_along(near.pos) - meet < PULL_DRIFT {
             return None;
         }
-        // The order names a hero; which creeps answer is settled by where
-        // they stand, so how far off that hero is does not matter.
+        // Which creeps answer depends on where they stand, not on how far off
+        // the hero named is.
         let mark = field.enemies.first()?;
         Some(Ask::swing_at(mark.id))
     }
 
     /// An enemy or a building worth walking at.
     fn press(&self, field: &Field) -> Option<Ask> {
-        // Somebody of the other side standing close enough to swing at,
-        // while there is health to spare for what swinging at them calls
-        // down.
+        // An enemy hero within a swing, while there is health to spare for
+        // the creeps and towers that swinging at it draws.
         if field.health() >= HARASS_HEALTH
             && let Some(mark) = field
                 .foes_within(HARASS_RANGE)
@@ -622,8 +615,8 @@ impl Playbook {
         {
             return Some(Ask::swing_at(mark.id));
         }
-        // Whatever of theirs stands next in the lane, only with the lane clear
-        // and its own creeps within a tower's reach of it.
+        // Their nearest building, only with no enemy creeps about and its own
+        // creeps within a tower's reach of it.
         if !field.creeps.is_empty() {
             return None;
         }
