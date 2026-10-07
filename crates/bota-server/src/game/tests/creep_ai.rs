@@ -1,12 +1,35 @@
 //! What creeps and towers choose to fight, and what pulls them.
 
 use crate::game::{
-    CAMPS, CampHome, Command, Health, MELEE_CREEP, NeutralAi, NeutralKind, Orders, PriorityOrder,
+    CAMPS, CampHome, Command, Entity, MELEE_CREEP, NeutralAi, NeutralKind, PriorityOrder,
     SIEGE_CREEP, UnitOrder, World, rules, tower_def,
 };
 use bota_proto::{Fixed, HeroId, Order, SlotId, Target, Team, Vec2};
 
+use super::orders::wear_down;
 use super::support::*;
+
+/// Seat 0 presses the stop key, and the world advances one tick.
+pub(super) fn stop_click(world: &mut World) {
+    world.advance(&[Command {
+        slot: SlotId(0),
+        unit: None,
+        order: Order::Move {
+            target: Target::None,
+        },
+    }]);
+}
+
+/// Steps the world, putting a creep back where the lane fixture stood it
+/// after every tick, so only the clock decides what it does.
+fn held_in_place(world: &mut World, creep: Entity, ticks: u32) {
+    for _ in 0..ticks {
+        world.step();
+        if let Some(at) = world.transform.get_mut(creep) {
+            at.pos = Vec2::from_ints(5300, 5000);
+        }
+    }
+}
 
 #[test]
 fn a_tower_takes_the_nearest_enemy_and_brings_it_down() {
@@ -167,7 +190,7 @@ fn a_creep_prefers_a_creep_to_a_hero_that_is_doing_nothing() {
     let mut world = World::new();
     let creep = thinking_creep(&mut world, Vec2::from_ints(5000, 5000));
     // The hero stands nearer than the enemy creep.
-    let hero = world.spawn_hero(
+    world.spawn_hero(
         Team::Dire,
         Vec2::from_ints(5100, 5000),
         SlotId(0),
@@ -180,7 +203,6 @@ fn a_creep_prefers_a_creep_to_a_hero_that_is_doing_nothing() {
         Some(other),
         "what it is doing outranks how near it stands"
     );
-    let _ = hero;
 }
 
 #[test]
@@ -243,15 +265,11 @@ fn a_hero_putting_out_its_own_is_taken_on_last() {
         HeroId(0),
     );
     world.settle();
-    world.orders.insert(
+    world.set_order(
         hero,
-        Orders {
-            current: UnitOrder::Attack {
-                target: theirs,
-                last_seen: Vec2::from_ints(5400, 5000),
-            },
-            cooldown: 0,
-            pending: None,
+        UnitOrder::Attack {
+            target: theirs,
+            last_seen: Vec2::from_ints(5400, 5000),
         },
     );
     assert_eq!(
@@ -297,7 +315,7 @@ fn attacking_an_enemy_creep_pulls_nobody() {
 #[test]
 fn a_creep_too_far_off_pays_the_order_no_mind() {
     // Past a melee creep's acquisition of 500.
-    let (mut world, hero, theirs, ours, foe) = a_lane_with_a_hero(700);
+    let (mut world, _hero, theirs, ours, foe) = a_lane_with_a_hero(700);
     assert_eq!(world.target_of(theirs), Some(ours));
     attack_click(&mut world, foe);
     assert_eq!(
@@ -305,7 +323,6 @@ fn a_creep_too_far_off_pays_the_order_no_mind() {
         Some(ours),
         "it never saw the order given"
     );
-    let _ = hero;
 }
 
 #[test]
@@ -314,31 +331,14 @@ fn the_hold_lets_go_after_two_and_a_third_seconds() {
     attack_click(&mut world, foe);
     assert_eq!(world.target_of(theirs), Some(hero));
     // The hero stops laying into that side.
-    world.advance(&[Command {
-        slot: SlotId(0),
-        unit: None,
-        order: Order::Move {
-            target: Target::None,
-        },
-    }]);
-    for _ in 0..rules::ORDER_AGGRO_HOLD_TICKS - 4 {
-        world.step();
-        // Held where they were put, so only the clock decides.
-        if let Some(at) = world.transform.get_mut(theirs) {
-            at.pos = Vec2::from_ints(5300, 5000);
-        }
-    }
+    stop_click(&mut world);
+    held_in_place(&mut world, theirs, rules::ORDER_AGGRO_HOLD_TICKS - 4);
     assert_eq!(
         world.target_of(theirs),
         Some(hero),
         "the hold has not run out yet"
     );
-    for _ in 0..6 {
-        world.step();
-        if let Some(at) = world.transform.get_mut(theirs) {
-            at.pos = Vec2::from_ints(5300, 5000);
-        }
-    }
+    held_in_place(&mut world, theirs, 6);
     assert_eq!(
         world.target_of(theirs),
         Some(ours),
@@ -352,19 +352,8 @@ fn a_second_click_inside_the_wait_pulls_nothing() {
     attack_click(&mut world, foe);
     assert_eq!(world.target_of(theirs), Some(hero));
     // Stop, wait out the hold, and click again while the wait still runs.
-    world.advance(&[Command {
-        slot: SlotId(0),
-        unit: None,
-        order: Order::Move {
-            target: Target::None,
-        },
-    }]);
-    for _ in 0..rules::ORDER_AGGRO_HOLD_TICKS + 2 {
-        world.step();
-        if let Some(at) = world.transform.get_mut(theirs) {
-            at.pos = Vec2::from_ints(5300, 5000);
-        }
-    }
+    stop_click(&mut world);
+    held_in_place(&mut world, theirs, rules::ORDER_AGGRO_HOLD_TICKS + 2);
     assert_eq!(world.target_of(theirs), Some(ours), "it let go");
     assert!(
         world
@@ -383,18 +372,9 @@ fn a_second_click_inside_the_wait_pulls_nothing() {
 
 #[test]
 fn clicking_your_own_does_not_pull_the_creeps_onto_you() {
-    let (mut world, hero, theirs, ours, foe) = a_lane_with_a_hero(300);
-    let _ = foe;
+    let (mut world, hero, theirs, ours, _foe) = a_lane_with_a_hero(300);
     // Worn down far enough to be worth denying.
-    let max = world.stats.get(ours).expect("settled").max_hp;
-    world.health.insert(
-        ours,
-        Health {
-            hp: Fixed {
-                raw: max.raw * 40 / 100,
-            },
-        },
-    );
+    wear_down(&mut world, ours, 40);
     attack_click(&mut world, ours);
     assert_eq!(
         world.target_of(hero),
@@ -426,19 +406,8 @@ fn a_hold_is_not_broken_by_clicking_your_own() {
         "and the hero strikes nothing of its own"
     );
     // Once the hold is out, the ranking takes the creep back on its own.
-    world.advance(&[Command {
-        slot: SlotId(0),
-        unit: None,
-        order: Order::Move {
-            target: Target::None,
-        },
-    }]);
-    for _ in 0..rules::ORDER_AGGRO_HOLD_TICKS + 2 {
-        world.step();
-        if let Some(at) = world.transform.get_mut(theirs) {
-            at.pos = Vec2::from_ints(5300, 5000);
-        }
-    }
+    stop_click(&mut world);
+    held_in_place(&mut world, theirs, rules::ORDER_AGGRO_HOLD_TICKS + 2);
     assert_eq!(
         world.target_of(theirs),
         Some(ours),

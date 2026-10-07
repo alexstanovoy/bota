@@ -1,42 +1,37 @@
 //! Orders to units, and denying your own.
 
 use crate::game::{
-    Command, Health, ITEM_HEALING_SALVE, MELEE_CREEP, Seat, SightCx, UnitOrder, World, isqrt64,
-    map_of, rules, tower_def, visibility_system, wire_id,
+    Entity, Health, ITEM_HEALING_SALVE, MELEE_CREEP, Seat, UnitOrder, World, isqrt64, map_of,
+    rules, tower_def, wire_id,
 };
 use bota_proto::{
     AbilitySlot, DamageKind, Fixed, HeroId, ItemSlot, MapId, Order, RejectReason, SlotId, Target,
     Team, Vec2,
 };
 
+use super::creep_ai::stop_click;
 use super::support::*;
+
+/// Sets a unit's health to so many hundredths of its most.
+pub(super) fn wear_down(world: &mut World, unit: Entity, hundredths: i32) {
+    let max = world.stats.get(unit).expect("settled").max_hp;
+    world.health.insert(
+        unit,
+        Health {
+            hp: Fixed {
+                raw: max.raw * hundredths / 100,
+            },
+        },
+    );
+}
 
 #[test]
 fn an_order_at_something_a_side_cannot_see_is_refused() {
     let map = map_of(MapId(1));
     let mut world = World::on_map(map);
-    let hero = hero_at(&mut world, Vec2::from_ints(6800, 9216));
-    world.seats.push(Seat::new(
-        SlotId(0),
-        Team::Radiant,
-        HeroId(0),
-        0,
-        rules::STASH_SLOTS,
-    ));
-    world.seats[0].unit = Some(hero);
+    seated_hero(&mut world, Vec2::from_ints(6800, 9216), HeroId(0));
     let hidden = world.spawn_unit(&MELEE_CREEP, Team::Dire, Vec2::from_ints(13200, 9216));
     world.settle();
-    visibility_system(SightCx {
-        entities: &world.entities,
-        transform: &world.transform,
-        team: &world.team,
-        kind: &world.kind,
-        stats: &world.stats,
-        ground: &world.ground,
-        sight_block: &world.sight_block,
-        visibility: &mut world.visibility,
-        sight: &mut world.sight_scratch,
-    });
     let order = Order::Attack {
         target: Target::Unit(wire_id(hidden)),
     };
@@ -57,40 +52,14 @@ fn an_order_at_something_a_side_cannot_see_is_refused() {
 fn a_use_or_cast_at_something_a_side_cannot_see_is_refused_like_a_dead_target() {
     let map = map_of(MapId(1));
     let mut world = World::on_map(map);
-    let hero = world.spawn_hero(
-        Team::Radiant,
-        Vec2::from_ints(6800, 9216),
-        SlotId(0),
-        HeroId(1),
-    );
-    world.seats.push(Seat::new(
-        SlotId(0),
-        Team::Radiant,
-        HeroId(1),
-        0,
-        rules::STASH_SLOTS,
-    ));
-    world.seats[0].unit = Some(hero);
+    let hero = seated_hero(&mut world, Vec2::from_ints(6800, 9216), HeroId(1));
     if let Some(book) = world.abilities.get_mut(hero) {
         book.slots[3].level = 1;
     }
-    if let Some(bag) = world.inventory.get_mut(hero) {
-        bag.slots[0] = Some(fresh_stack(ITEM_HEALING_SALVE, 1));
-    }
+    hand_item(&mut world, hero, ITEM_HEALING_SALVE, 1);
     let hidden = world.spawn_unit(&MELEE_CREEP, Team::Dire, Vec2::from_ints(13200, 9216));
     world.settle();
     world.fill_pools(hero);
-    visibility_system(SightCx {
-        entities: &world.entities,
-        transform: &world.transform,
-        team: &world.team,
-        kind: &world.kind,
-        stats: &world.stats,
-        ground: &world.ground,
-        sight_block: &world.sight_block,
-        visibility: &mut world.visibility,
-        sight: &mut world.sight_scratch,
-    });
     let target = Target::Unit(wire_id(hidden));
     for order in [
         Order::Use {
@@ -130,26 +99,30 @@ fn a_seat_with_no_body_standing_may_order_nothing() {
 }
 
 #[test]
-fn an_attack_order_at_what_slipped_into_fog_walks_to_where_it_was_last_seen() {
-    let (mut world, hero, mark) = hero_ordered_at_an_enemy(1000);
-    let seen_at = world.transform.get(mark).expect("standing").pos;
-    // It slips away through the fog, far past the hero's sight.
-    if let Some(at) = world.transform.get_mut(mark) {
-        at.pos = Vec2::from_ints(6000, 12000);
-    }
-    for _ in 0..240 {
-        world.step();
-        let now = world.transform.get(hero).expect("standing").pos;
+fn an_attack_or_follow_at_what_slipped_into_fog_walks_to_where_it_was_last_seen() {
+    for (order, (mut world, hero, mark)) in [
+        ("attack", hero_ordered_at_an_enemy(1000)),
+        ("follow", hero_following_an_enemy(1000)),
+    ] {
+        let seen_at = world.transform.get(mark).expect("standing").pos;
+        // It slips away through the fog, far past the hero's sight.
+        if let Some(at) = world.transform.get_mut(mark) {
+            at.pos = Vec2::from_ints(6000, 12000);
+        }
+        for _ in 0..240 {
+            world.step();
+            let now = world.transform.get(hero).expect("standing").pos;
+            assert!(
+                now.y.to_int() < 5400,
+                "{order}: its path never bends after what its side cannot see: {now:?}"
+            );
+        }
+        let stood = world.transform.get(hero).expect("standing").pos;
         assert!(
-            now.y.to_int() < 5400,
-            "its path never bends after what its side cannot see: {now:?}"
+            stood.within(seen_at, Fixed::from_int(400)),
+            "{order}: it walked to where the enemy was last seen: {stood:?}"
         );
     }
-    let stood = world.transform.get(hero).expect("standing").pos;
-    assert!(
-        stood.within(seen_at, Fixed::from_int(400)),
-        "it walked to where the enemy was last seen: {stood:?}"
-    );
 }
 
 #[test]
@@ -228,28 +201,6 @@ fn a_follow_at_an_enemy_closes_and_never_swings() {
     assert!(
         stood.within(theirs, Fixed::from_int(200)),
         "the follower closed until the bodies met: {stood:?}"
-    );
-}
-
-#[test]
-fn a_follow_at_what_slipped_into_fog_walks_to_where_it_was_last_seen() {
-    let (mut world, hero, mark) = hero_following_an_enemy(1000);
-    let seen_at = world.transform.get(mark).expect("standing").pos;
-    if let Some(at) = world.transform.get_mut(mark) {
-        at.pos = Vec2::from_ints(6000, 12000);
-    }
-    for _ in 0..240 {
-        world.step();
-        let now = world.transform.get(hero).expect("standing").pos;
-        assert!(
-            now.y.to_int() < 5400,
-            "its path never bends after what its side cannot see: {now:?}"
-        );
-    }
-    let stood = world.transform.get(hero).expect("standing").pos;
-    assert!(
-        stood.within(seen_at, Fixed::from_int(400)),
-        "it walked to where the one followed was last seen: {stood:?}"
     );
 }
 
@@ -353,14 +304,7 @@ fn a_hero_told_to_stop_stands_and_takes_on_nothing() {
         Some(enemy),
         "walking to attack, it took the enemy on"
     );
-    // The stop key.
-    world.advance(&[Command {
-        slot: SlotId(0),
-        unit: None,
-        order: Order::Move {
-            target: Target::None,
-        },
-    }]);
+    stop_click(&mut world);
     assert_eq!(
         world.target_of(hero),
         None,
@@ -399,11 +343,7 @@ fn one_of_your_own_at_full_health_cannot_be_struck() {
         Ok(()),
         "the order may still be given: it is how creeps are shaken off"
     );
-    world.advance(&[Command {
-        slot: SlotId(0),
-        unit: None,
-        order,
-    }]);
+    attack_click(&mut world, own);
     let was = world.health.get(own).expect("standing").hp;
     for _ in 0..90 {
         world.step();
@@ -423,16 +363,8 @@ fn one_of_your_own_at_full_health_cannot_be_struck() {
 #[test]
 fn one_of_your_own_worn_down_far_enough_may_be_put_out() {
     let (mut world, hero, own) = hero_and_own_creep();
-    let max = world.stats.get(own).expect("settled").max_hp;
     // A shade under half of what it can hold.
-    world.health.insert(
-        own,
-        Health {
-            hp: Fixed {
-                raw: max.raw * 49 / 100,
-            },
-        },
-    );
+    wear_down(&mut world, own, 49);
     assert!(
         world.may_attack_on_order(hero, own),
         "worn down, it may be put out"
@@ -441,11 +373,7 @@ fn one_of_your_own_worn_down_far_enough_may_be_put_out() {
         target: Target::Unit(wire_id(own)),
     };
     assert_eq!(world.validate_order(SlotId(0), None, &order), Ok(()));
-    world.advance(&[Command {
-        slot: SlotId(0),
-        unit: None,
-        order,
-    }]);
+    attack_click(&mut world, own);
     assert_eq!(world.target_of(hero), Some(own), "it takes it on");
     let was = world.health.get(own).expect("standing").hp;
     for _ in 0..90 {
@@ -461,25 +389,11 @@ fn one_of_your_own_worn_down_far_enough_may_be_put_out() {
 #[test]
 fn a_deny_is_given_up_when_the_creep_is_no_longer_worn_down() {
     let (mut world, hero, own) = hero_and_own_creep();
-    let max = world.stats.get(own).expect("settled").max_hp;
-    world.health.insert(
-        own,
-        Health {
-            hp: Fixed {
-                raw: max.raw * 49 / 100,
-            },
-        },
-    );
-    world.advance(&[Command {
-        slot: SlotId(0),
-        unit: None,
-        order: Order::Attack {
-            target: Target::Unit(wire_id(own)),
-        },
-    }]);
+    wear_down(&mut world, own, 49);
+    attack_click(&mut world, own);
     assert_eq!(world.target_of(hero), Some(own));
     // Mended back over the line.
-    world.health.insert(own, Health { hp: max });
+    world.fill_pools(own);
     world.step();
     assert_eq!(
         world.target_of(hero),
@@ -491,43 +405,22 @@ fn a_deny_is_given_up_when_the_creep_is_no_longer_worn_down() {
 #[test]
 fn your_own_building_goes_only_at_a_tenth() {
     let mut world = World::new();
-    world.seats.push(Seat::new(
-        SlotId(0),
-        Team::Radiant,
-        HeroId(0),
-        0,
-        rules::STASH_SLOTS,
-    ));
-    let hero = hero_at(&mut world, Vec2::from_ints(5000, 5000));
-    world.seats[0].unit = Some(hero);
+    let hero = seated_hero(&mut world, Vec2::from_ints(5000, 5000), HeroId(0));
     let tower = world.spawn_unit(tower_def(1), Team::Radiant, Vec2::from_ints(5300, 5000));
     world.settle();
     world.fill_pools(hero);
     world.fill_pools(tower);
-    let max = world.stats.get(tower).expect("settled").max_hp;
     assert!(
         !world.may_attack_on_order(hero, tower),
         "standing tall, it is nobody to strike"
     );
     // A tenth is still too much; a shade under is not.
-    world.health.insert(
-        tower,
-        Health {
-            hp: Fixed { raw: max.raw / 10 },
-        },
-    );
+    wear_down(&mut world, tower, 10);
     assert!(
         !world.may_attack_on_order(hero, tower),
         "exactly a tenth is not below a tenth"
     );
-    world.health.insert(
-        tower,
-        Health {
-            hp: Fixed {
-                raw: max.raw * 9 / 100,
-            },
-        },
-    );
+    wear_down(&mut world, tower, 9);
     assert!(
         world.may_attack_on_order(hero, tower),
         "worn past it, it may be put out"
@@ -536,11 +429,7 @@ fn your_own_building_goes_only_at_a_tenth() {
         target: Target::Unit(wire_id(tower)),
     };
     assert_eq!(world.validate_order(SlotId(0), None, &order), Ok(()));
-    world.advance(&[Command {
-        slot: SlotId(0),
-        unit: None,
-        order,
-    }]);
+    attack_click(&mut world, tower);
     assert_eq!(world.target_of(hero), Some(tower));
 }
 
@@ -565,15 +454,7 @@ fn your_own_hero_is_never_struck_however_worn_down() {
 #[test]
 fn an_attack_order_at_one_of_your_own_walks_you_to_it_and_waits() {
     let mut world = World::new();
-    world.seats.push(Seat::new(
-        SlotId(0),
-        Team::Radiant,
-        HeroId(0),
-        0,
-        rules::STASH_SLOTS,
-    ));
-    let hero = hero_at(&mut world, Vec2::from_ints(5000, 5000));
-    world.seats[0].unit = Some(hero);
+    let hero = seated_hero(&mut world, Vec2::from_ints(5000, 5000), HeroId(0));
     // Well out of reach, and at full health so it cannot be put out yet.
     let ours = world.spawn_unit(&MELEE_CREEP, Team::Radiant, Vec2::from_ints(6500, 5000));
     world.settle();
@@ -606,17 +487,9 @@ fn an_attack_order_at_one_of_your_own_walks_you_to_it_and_waits() {
         None,
         "but takes nothing on while it cannot be struck"
     );
-    let full = world.health.get(ours).expect("standing").hp;
     // Worn down past half, it may be put out after all.
-    let max = world.stats.get(ours).expect("settled").max_hp;
-    world.health.insert(
-        ours,
-        Health {
-            hp: Fixed {
-                raw: max.raw * 40 / 100,
-            },
-        },
-    );
+    wear_down(&mut world, ours, 40);
+    let worn = world.health.get(ours).expect("standing").hp;
     for _ in 0..120 {
         world.step();
     }
@@ -626,7 +499,7 @@ fn an_attack_order_at_one_of_your_own_walks_you_to_it_and_waits() {
         "and strikes the moment it may"
     );
     assert!(
-        world.health.get(ours).map_or(Fixed::ZERO, |h| h.hp) < full,
+        world.health.get(ours).map_or(Fixed::ZERO, |h| h.hp) < worn,
         "it did put damage on it"
     );
 }
@@ -638,13 +511,7 @@ fn walking_at_an_ally_stops_where_the_bodies_meet() {
     let at = world.transform.get(hero).expect("standing").pos;
     let ally = world.spawn_unit(&MELEE_CREEP, Team::Radiant, at + Vec2::from_ints(600, 0));
     world.settle();
-    world.advance(&[Command {
-        slot: SlotId(0),
-        unit: None,
-        order: Order::Attack {
-            target: Target::Unit(wire_id(ally)),
-        },
-    }]);
+    attack_click(&mut world, ally);
     let mut seen: Vec<Vec2> = Vec::new();
     for _ in 0..240 {
         world.advance(&[]);

@@ -3,6 +3,7 @@
 use crate::game::{ActionState, Command, Ground, Health, MELEE_CREEP, attack_gain, map_of, rules};
 use bota_proto::{Angle, Fixed, MapId, Order, SlotId, Target, Team, Vec2};
 
+use super::creep_ai::stop_click;
 use super::support::*;
 
 #[test]
@@ -208,13 +209,7 @@ fn an_order_to_break_off_gives_up_a_swing_that_has_not_landed() {
         swinging(&world, hero).is_some(),
         "the hero should be mid-swing by now"
     );
-    world.advance(&[Command {
-        slot: SlotId(0),
-        unit: None,
-        order: Order::Move {
-            target: Target::None,
-        },
-    }]);
+    stop_click(&mut world);
     let action = world.action.get(hero).copied().expect("acting");
     assert_eq!(action.state, ActionState::Ready, "the swing is given up");
     assert_eq!(action.attack_cooldown, 0, "and nothing was spent on it");
@@ -240,13 +235,7 @@ fn an_order_after_a_swing_lands_does_not_hurry_the_next_one() {
         before > 0,
         "the swing that landed spent the wait for the next"
     );
-    world.advance(&[Command {
-        slot: SlotId(0),
-        unit: None,
-        order: Order::Move {
-            target: Target::None,
-        },
-    }]);
+    stop_click(&mut world);
     assert!(!recovering(&world, hero), "the recovery is cancelled");
     let gain = attack_gain(world.stats.get(hero).expect("settled").attack_speed);
     assert_eq!(
@@ -257,27 +246,19 @@ fn an_order_after_a_swing_lands_does_not_hurry_the_next_one() {
 }
 
 #[test]
-fn ranged_attacks_can_miss_uphill_but_not_on_level_ground() {
+fn ranged_attacks_miss_uphill_and_say_so_but_never_on_level_ground() {
     let ground = Ground::of(map_of(MapId(0)));
     let (source, level, uphill) = nearby_elevations(&ground);
-
     let level_damage =
         ranged_damage_after_ticks(source, level, &UPHILL_TEST_ATTACKER, &UPHILL_TEST_TARGET);
     let uphill_damage =
         ranged_damage_after_ticks(source, uphill, &UPHILL_TEST_ATTACKER, &UPHILL_TEST_TARGET);
-
     assert!(level_damage > 0, "the level-ground control must attack");
     assert!(uphill_damage < level_damage, "uphill attacks must miss");
     assert!(
         uphill_damage > level_damage / 2,
         "the uphill miss rate must stay near one quarter"
     );
-}
-
-#[test]
-fn an_uphill_miss_is_told_of_and_a_level_shot_never_is() {
-    let ground = Ground::of(map_of(MapId(0)));
-    let (source, level, uphill) = nearby_elevations(&ground);
     let (level_landed, level_missed) =
         ranged_swings_after_ticks(source, level, &UPHILL_TEST_ATTACKER, &UPHILL_TEST_TARGET);
     let (uphill_landed, uphill_missed) =
@@ -296,7 +277,6 @@ fn an_uphill_miss_is_told_of_and_a_level_shot_never_is() {
 fn buildings_and_flying_attackers_are_exempt_from_uphill_misses() {
     let ground = Ground::of(map_of(MapId(0)));
     let (source, level, uphill) = nearby_elevations(&ground);
-
     let building_level =
         ranged_damage_after_ticks(source, level, &UPHILL_TEST_ATTACKER, &UPHILL_TEST_BUILDING);
     let building_uphill =
@@ -313,7 +293,6 @@ fn buildings_and_flying_attackers_are_exempt_from_uphill_misses() {
         &UPHILL_TEST_FLYING_ATTACKER,
         &UPHILL_TEST_TARGET,
     );
-
     assert_eq!(building_uphill, building_level, "buildings do not evade");
     assert_eq!(flying_uphill, flying_level, "flying attacks do not miss");
 }
@@ -324,11 +303,9 @@ fn uphill_eligibility_uses_attacker_and_target_elevation_at_impact() {
     let (low, _, high) = nearby_elevations(&ground);
     let low_tier = ground.tier(low);
     let high_tier = ground.tier(high);
-
     let moved_up = manual_projectile_damage(high, high, low_tier, false);
     let moved_down = manual_projectile_damage(low, high, high_tier, false);
     let pierced_down = manual_projectile_damage(low, high, high_tier, true);
-
     assert_eq!(
         moved_up, 512,
         "an attacker now level with its target does not miss"
