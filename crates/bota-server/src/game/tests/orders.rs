@@ -1,29 +1,15 @@
 //! Orders to units, and denying your own.
 
 use crate::game::{
-    Entity, Health, ITEM_HEALING_SALVE, MELEE_CREEP, Seat, UnitOrder, World, isqrt64, map_of,
-    rules, tower_def, wire_id,
+    Health, ITEM_HEALING_SALVE, MELEE_CREEP, Seat, UnitOrder, World, isqrt64, map_of, rules,
+    tower_def, wire_id,
 };
 use bota_proto::{
     AbilitySlot, DamageKind, Fixed, HeroId, ItemSlot, MapId, Order, RejectReason, SlotId, Target,
     Team, Vec2,
 };
 
-use super::creep_ai::stop_click;
 use super::support::*;
-
-/// Sets a unit's health to so many hundredths of its most.
-pub(super) fn wear_down(world: &mut World, unit: Entity, hundredths: i32) {
-    let max = world.stats.get(unit).expect("settled").max_hp;
-    world.health.insert(
-        unit,
-        Health {
-            hp: Fixed {
-                raw: max.raw * hundredths / 100,
-            },
-        },
-    );
-}
 
 #[test]
 fn an_order_at_something_a_side_cannot_see_is_refused() {

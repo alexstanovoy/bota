@@ -1,24 +1,12 @@
 //! What creeps and towers choose to fight, and what pulls them.
 
 use crate::game::{
-    CAMPS, CampHome, Command, Entity, MELEE_CREEP, NeutralAi, NeutralKind, PriorityOrder,
-    SIEGE_CREEP, UnitOrder, World, rules, tower_def,
+    CAMPS, CampHome, Entity, MELEE_CREEP, NeutralAi, NeutralKind, PriorityOrder, SIEGE_CREEP,
+    UnitOrder, World, rules, tower_def,
 };
-use bota_proto::{Fixed, HeroId, Order, SlotId, Target, Team, Vec2};
+use bota_proto::{Fixed, HeroId, SlotId, Team, Vec2};
 
-use super::orders::wear_down;
 use super::support::*;
-
-/// Seat 0 presses the stop key, and the world advances one tick.
-pub(super) fn stop_click(world: &mut World) {
-    world.advance(&[Command {
-        slot: SlotId(0),
-        unit: None,
-        order: Order::Move {
-            target: Target::None,
-        },
-    }]);
-}
 
 /// Steps the world, putting a creep back where the lane fixture stood it
 /// after every tick, so only the clock decides what it does.

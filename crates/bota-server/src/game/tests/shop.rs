@@ -1,9 +1,9 @@
 //! Buying, selling, the stash and items on the ground.
 
 use crate::game::{
-    BAG_SLOTS, Command, Entity, HERO, ITEM_BELT, ITEM_BOOTS, ITEM_CIRCLET, ITEM_GLOVES,
-    ITEM_IRON_BRANCH, ITEM_POWER_TREADS, ITEM_RECIPE_WRAITH_BAND, ITEM_SLIPPERS, ITEM_WRAITH_BAND,
-    ItemStack, Seat, World, fountain_pos, rules, wire_id,
+    BAG_SLOTS, Entity, HERO, ITEM_BELT, ITEM_BOOTS, ITEM_CIRCLET, ITEM_GLOVES, ITEM_IRON_BRANCH,
+    ITEM_POWER_TREADS, ITEM_RECIPE_WRAITH_BAND, ITEM_SLIPPERS, ITEM_WRAITH_BAND, ItemStack, Seat,
+    World, fountain_pos, rules, wire_id,
 };
 use bota_proto::{
     EventKind, Fixed, HeroId, ItemId, ItemSlot, Order, RejectReason, SlotId, Target, Team, Vec2,
@@ -589,13 +589,7 @@ fn a_later_order_calls_an_item_errand_off() {
     let from = world.transform.get(hero).expect("stands").pos;
     let spot = from + Vec2::from_ints(1000, 1000);
     assert!(world.put_item(hero, 0, Target::Pos(spot)));
-    world.advance(&[Command {
-        slot: SlotId(0),
-        unit: None,
-        order: Order::Move {
-            target: Target::None,
-        },
-    }]);
+    stop_click(&mut world);
     for _ in 0..200 {
         world.step();
     }

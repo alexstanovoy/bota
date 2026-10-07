@@ -186,13 +186,7 @@ fn an_order_takes_a_channel_away_and_leaves_the_scroll() {
     let (mut world, hero) = a_hero_with_a_scroll();
     let to = beside_own_tower(&world);
     assert!(world.use_item(hero, 0, Target::Pos(to), &mut Vec::new()));
-    world.advance(&[Command {
-        slot: SlotId(0),
-        unit: None,
-        order: Order::Move {
-            target: Target::None,
-        },
-    }]);
+    stop_click(&mut world);
     assert!(!world.is_channelling(hero), "the order took it away");
     assert!(
         world.inventory.get(hero).expect("has a bag").slots[0].is_some(),

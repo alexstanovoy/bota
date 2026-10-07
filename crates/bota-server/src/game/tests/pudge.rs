@@ -1,10 +1,9 @@
 //! Pudge.
 
 use crate::game::{
-    Command, Entity, Modifier, ModifierKind, StackKind, Stacks, World, ability, rules, tower_def,
-    wire_id,
+    Entity, Modifier, ModifierKind, StackKind, Stacks, World, ability, rules, tower_def, wire_id,
 };
-use bota_proto::{Fixed, HeroId, Order, SlotId, Target, Team, Vec2};
+use bota_proto::{Fixed, HeroId, SlotId, Target, Team, Vec2};
 
 use super::support::*;
 
@@ -222,7 +221,7 @@ fn a_dismember_holds_what_it_eats_and_feeds_the_one_eating() {
         world.health.get(pudge).expect("standing").hp > hurt,
         "while the one eating mends"
     );
-    walk_off(&mut world);
+    stop_click(&mut world);
     assert!(!world.is_channelling(pudge), "an order of any kind lets go");
 }
 
@@ -243,7 +242,7 @@ fn a_dismember_shows_its_hold_on_what_it_eats_until_it_lets_go() {
         world.transform.get(mark).map(|t| t.pos),
         "and follows what is eaten"
     );
-    walk_off(&mut world);
+    stop_click(&mut world);
     assert_eq!(
         world.mark_of(pudge, ability::DISMEMBER),
         None,
@@ -394,15 +393,4 @@ fn heap(world: &World, hero: Entity) -> u32 {
         .stacks
         .get(hero)
         .map_or(0, |kept| kept.of(StackKind::FleshHeap))
-}
-
-/// Seat 0 orders a move at nothing, which interrupts whatever it was doing.
-fn walk_off(world: &mut World) {
-    world.advance(&[Command {
-        slot: SlotId(0),
-        unit: None,
-        order: Order::Move {
-            target: Target::None,
-        },
-    }]);
 }

@@ -1,48 +1,12 @@
 //! Lane waves, their routes, and the structures that open lanes.
 
 use crate::game::{
-    Entity, Lane, MatchConfig, UnitOrder, World, creep_spawn_pos, isqrt64, lane_polyline,
-    lane_routes, map_of, plan_radius, rules,
+    Entity, Lane, UnitOrder, World, creep_spawn_pos, isqrt64, lane_polyline, lane_routes, map_of,
+    plan_radius, rules,
 };
-use bota_proto::{Fixed, MapId, Team, TickMode, UnitKind, Vec2};
+use bota_proto::{Fixed, MapId, Team, UnitKind, Vec2};
 
 use super::support::*;
-
-/// A realtime match on a map with nobody seated.
-pub(super) fn a_match_with_nobody_in_it(match_id: u64, map: MapId) -> World {
-    let config = MatchConfig {
-        match_id,
-        master_key: [0; 32],
-        picks: vec![],
-        map,
-        tick_rate: 30,
-        mode: TickMode::Realtime,
-        ack_timeout_ticks: 0,
-        cheats: false,
-        spawn_modifiers: Vec::new(),
-        immortal_structures: false,
-        immortal_heroes: false,
-    };
-    World::for_match(&config, config.rng())
-}
-
-/// The demo map stepped to the tick its first waves come out.
-pub(super) fn the_demo_lane_at_its_first_wave() -> World {
-    let mut world = World::on_map(map_of(MapId(1)));
-    while world.tick < rules::FIRST_WAVE_TICK {
-        world.step();
-    }
-    world
-}
-
-/// Every Radiant lane creep standing.
-pub(super) fn radiant_marchers(world: &World) -> Vec<Entity> {
-    world
-        .entities
-        .iter()
-        .filter(|e| world.march.get(*e).is_some() && world.team.get(*e) == Some(&Team::Radiant))
-        .collect()
-}
 
 /// Runs a match past its first waves and half a minute on: how many came
 /// out, and each still standing with its spawner's spot and its own.

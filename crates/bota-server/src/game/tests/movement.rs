@@ -7,7 +7,6 @@ use crate::game::{
 use bota_proto::{Fixed, HeroId, MapId, SlotId, Team, Vec2};
 
 use super::support::*;
-use super::waves::{a_match_with_nobody_in_it, radiant_marchers, the_demo_lane_at_its_first_wave};
 
 /// A xorshift stream of draws from a seed.
 fn xorshift(mut seed: u64) -> impl FnMut() -> u64 {

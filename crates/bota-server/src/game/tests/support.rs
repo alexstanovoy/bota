@@ -1159,3 +1159,63 @@ pub(super) fn back_on_its_feet(world: &mut World) -> Entity {
     }
     world.seats[0].unit.expect("it came back")
 }
+
+/// Seat 0 presses the stop key, and the world advances one tick.
+pub(super) fn stop_click(world: &mut World) {
+    world.advance(&[Command {
+        slot: SlotId(0),
+        unit: None,
+        order: Order::Move {
+            target: Target::None,
+        },
+    }]);
+}
+
+/// Sets a unit's health to so many hundredths of its most.
+pub(super) fn wear_down(world: &mut World, unit: Entity, hundredths: i32) {
+    let max = world.stats.get(unit).expect("settled").max_hp;
+    world.health.insert(
+        unit,
+        Health {
+            hp: Fixed {
+                raw: max.raw * hundredths / 100,
+            },
+        },
+    );
+}
+
+/// A realtime match on a map with nobody seated.
+pub(super) fn a_match_with_nobody_in_it(match_id: u64, map: MapId) -> World {
+    let config = MatchConfig {
+        match_id,
+        master_key: [0; 32],
+        picks: vec![],
+        map,
+        tick_rate: 30,
+        mode: TickMode::Realtime,
+        ack_timeout_ticks: 0,
+        cheats: false,
+        spawn_modifiers: Vec::new(),
+        immortal_structures: false,
+        immortal_heroes: false,
+    };
+    World::for_match(&config, config.rng())
+}
+
+/// The demo map stepped to the tick its first waves come out.
+pub(super) fn the_demo_lane_at_its_first_wave() -> World {
+    let mut world = World::on_map(map_of(MapId(1)));
+    while world.tick < rules::FIRST_WAVE_TICK {
+        world.step();
+    }
+    world
+}
+
+/// Every Radiant lane creep standing.
+pub(super) fn radiant_marchers(world: &World) -> Vec<Entity> {
+    world
+        .entities
+        .iter()
+        .filter(|e| world.march.get(*e).is_some() && world.team.get(*e) == Some(&Team::Radiant))
+        .collect()
+}
