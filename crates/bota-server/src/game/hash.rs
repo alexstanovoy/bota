@@ -4,8 +4,9 @@
 
 use crate::engine::Fnv;
 use crate::game::{
-    ActionPhase, ActionState, AppliedOrigin, Hit, HitEffect, Inventory, ItemStack,
-    ModifierDuration, ModifierKind, SpawnCategory, SpawnModifier, SpawnTarget, Target, World,
+    Action, ActionPhase, ActionState, AppliedModifiers, AppliedOrigin, Entity, Hit, HitEffect,
+    Hook, Inventory, ItemStack, ModifierDuration, ModifierKind, Modifiers, Motion, Projectile,
+    RequiemLine, Seat, SpawnCategory, SpawnModifier, SpawnTarget, Stacks, Target, World,
 };
 
 impl World {
@@ -17,6 +18,39 @@ impl World {
         if let Some(winner) = self.winner {
             fnv.team(winner);
         }
+        self.hash_randomness(&mut fnv);
+        fnv.u32(self.hits.len() as u32);
+        for hit in &self.hits {
+            hash_hit(&mut fnv, hit);
+        }
+        for entity in self.entities.iter() {
+            fnv.entity(entity);
+            self.hash_body(&mut fnv, entity);
+            self.hash_effects(&mut fnv, entity);
+        }
+        for index in self.trees.felled() {
+            fnv.u32(index);
+        }
+        for tree in self.trees.planted() {
+            fnv.vec2(tree.at);
+            fnv.u32(tree.until);
+        }
+        for seat in self.seats.iter() {
+            hash_seat(&mut fnv, seat);
+        }
+        if !self.spawn_modifiers.is_empty() {
+            assert!(self.spawn_modifiers.len() <= crate::game::MAX_SPAWN_MODIFIERS);
+            fnv.u8(1);
+            fnv.u32(self.spawn_modifiers.len() as u32);
+            for rule in &self.spawn_modifiers {
+                hash_spawn_modifier(&mut fnv, rule);
+            }
+        }
+        fnv.done()
+    }
+
+    /// The seed, the global draw counts and every per-entity chance stream.
+    fn hash_randomness(&self, fnv: &mut Fnv) {
         for byte in self.rng.seed() {
             fnv.u8(*byte);
         }
@@ -45,251 +79,268 @@ impl World {
                 }
             }
         }
-        fnv.u32(self.hits.len() as u32);
-        for hit in &self.hits {
-            hash_hit(&mut fnv, hit);
+    }
+
+    /// What an entity is, where it stands, its pools, and how it acts and moves.
+    fn hash_body(&self, fnv: &mut Fnv, entity: Entity) {
+        if let Some(kind) = self.kind.get(entity) {
+            fnv.kind(*kind);
         }
-        for entity in self.entities.iter() {
-            fnv.entity(entity);
-            if let Some(kind) = self.kind.get(entity) {
-                fnv.kind(*kind);
+        if let Some(side) = self.team.get(entity) {
+            fnv.team(*side);
+        }
+        if let Some(at) = self.transform.get(entity) {
+            fnv.vec2(at.pos);
+            fnv.angle(at.facing);
+        }
+        if let Some(health) = self.health.get(entity) {
+            fnv.fixed(health.hp);
+        }
+        if let Some(mana) = self.mana.get(entity) {
+            fnv.fixed(mana.mana);
+        }
+        if let Some(Target(on)) = self.target.get(entity) {
+            fnv.entity(*on);
+        }
+        if let Some(action) = self.action.get(entity) {
+            hash_action(fnv, action);
+        }
+        if let Some(march) = self.march.get(entity) {
+            fnv.u32(u32::from(march.next));
+        }
+        if let Some(motion) = self.motion.get(entity) {
+            hash_motion(fnv, motion);
+        }
+        if let Some(route) = self.route.get(entity) {
+            fnv.u32(route.corners.len() as u32);
+            fnv.some(route.goal.is_some());
+            if let Some(goal) = route.goal {
+                fnv.vec2(goal);
             }
-            if let Some(side) = self.team.get(entity) {
-                fnv.team(*side);
-            }
-            if let Some(at) = self.transform.get(entity) {
-                fnv.vec2(at.pos);
-                fnv.angle(at.facing);
-            }
-            if let Some(health) = self.health.get(entity) {
-                fnv.fixed(health.hp);
-            }
-            if let Some(mana) = self.mana.get(entity) {
-                fnv.fixed(mana.mana);
-            }
-            if let Some(Target(on)) = self.target.get(entity) {
-                fnv.entity(*on);
-            }
-            if let Some(action) = self.action.get(entity) {
-                fnv.u32(action.attack_cooldown);
-                match action.state {
-                    ActionState::Ready => fnv.u8(0),
-                    ActionState::Attack { target, phase } => {
-                        fnv.u8(1);
-                        fnv.entity(target);
-                        hash_phase(&mut fnv, phase);
-                    }
-                    ActionState::CastAbility {
-                        target,
-                        slot,
-                        phase,
-                    } => {
-                        fnv.u8(2);
-                        hash_aim(&mut fnv, target);
-                        fnv.u8(slot.0);
-                        hash_phase(&mut fnv, phase);
-                    }
-                    ActionState::UseItem {
-                        target,
-                        slot,
-                        phase,
-                    } => {
-                        fnv.u8(3);
-                        hash_aim(&mut fnv, target);
-                        fnv.u8(slot.0);
-                        hash_phase(&mut fnv, phase);
-                    }
-                }
-            }
-            if let Some(march) = self.march.get(entity) {
-                fnv.u32(u32::from(march.next));
-            }
-            if let Some(motion) = self.motion.get(entity) {
-                fnv.vec2(motion.delta);
-                fnv.u32(motion.stalled);
-                fnv.u32(motion.still);
-                fnv.u32(motion.wait_until);
-                fnv.u32(motion.relaid);
-                fnv.u32(motion.bumped);
-                fnv.u32(motion.bumps);
-            }
-            if let Some(route) = self.route.get(entity) {
-                fnv.u32(route.corners.len() as u32);
-                fnv.some(route.goal.is_some());
-                if let Some(goal) = route.goal {
-                    fnv.vec2(goal);
-                }
-                fnv.vec2(route.end);
-                fnv.some(route.done);
-            }
-            if let Some(plan) = self.plan.get(entity) {
-                fnv.u32(plan.steps.len() as u32);
-                fnv.u32(plan.at as u32);
-                fnv.u32(plan.from);
-                fnv.u32(plan.laid);
-            }
-            if let Some(shot) = self.projectile.get(entity) {
-                fnv.fixed(shot.speed);
-                fnv.some(shot.source.is_some());
-                if let Some(source) = shot.source {
-                    fnv.entity(source);
-                }
-                fnv.entity(shot.target);
-                fnv.i32(shot.damage);
-                fnv.u8(shot.kind as u8);
-                hash_damage_amp(&mut fnv, shot.damage_amp_bp);
-                fnv.some(shot.ability.is_some());
-                if let Some(ability) = shot.ability {
-                    fnv.u32(u32::from(ability.0));
-                }
-                fnv.u8(shot.launch_tier);
-                fnv.some(shot.can_miss_uphill);
-                fnv.some(shot.crit);
-                fnv.some(shot.pierces);
-                fnv.i32(shot.pierce_damage);
-                hash_damage_amp(&mut fnv, shot.pierce_amp_bp);
-                fnv.u8(shot.bounces_left);
-                fnv.i32(shot.bounce_range);
-                fnv.u32(shot.bounced.len() as u32);
-                for target in &shot.bounced {
-                    fnv.entity(*target);
-                }
-            }
-            if let Some(seen) = self.visibility.get(entity) {
-                fnv.u8(seen.bits());
-            }
-            if let Some(on_it) = self.modifiers.get(entity) {
-                fnv.u32(on_it.0.len() as u32);
-                for held in on_it.0.iter() {
-                    hash_modifier_kind(&mut fnv, held.kind);
-                    fnv.some(held.source.is_some());
-                    if let Some(source) = held.source {
-                        fnv.entity(source);
-                    }
-                    fnv.some(held.ticks_left.is_some());
-                    fnv.u32(held.ticks_left.unwrap_or(0));
-                }
-            }
-            if let Some(applied) = self.applied.get(entity) {
-                fnv.u8(1);
-                fnv.u32(applied.iter().count() as u32);
-                for held in applied.iter() {
-                    hash_modifier_spec(&mut fnv, held.spec);
-                    fnv.some(held.ticks_left.is_some());
-                    fnv.u32(held.ticks_left.unwrap_or(0));
-                    fnv.u8(match held.origin {
-                        AppliedOrigin::Setup => 0,
-                        AppliedOrigin::Cheat => 1,
-                    });
-                }
-            }
-            if let Some(bag) = self.inventory.get(entity) {
-                hash_bag(&mut fnv, bag);
-            }
-            fnv.some(self.loot.get(entity).is_some());
-            if let Some(loot) = self.loot.get(entity) {
-                hash_stack(&mut fnv, &loot.0);
-            }
-            if let Some(hook) = self.hook.get(entity) {
-                fnv.entity(hook.owner);
-                fnv.vec2(hook.aim);
-                fnv.fixed(hook.reach_left);
-                hash_damage_amp(&mut fnv, hook.damage_amp_bp);
-                fnv.some(hook.caught.is_some());
-                if let Some(caught) = hook.caught {
-                    fnv.entity(caught);
-                }
-                fnv.some(hook.returning);
-                for link in hook.links {
-                    fnv.entity(link);
-                }
-            }
-            if let Some(mark) = self.mark.get(entity) {
-                fnv.u32(u32::from(mark.ability.0));
-                fnv.entity(mark.owner);
-            }
-            if let Some(line) = self.requiem_line.get(entity) {
-                fnv.entity(line.owner);
-                fnv.vec2(line.aim);
-                fnv.fixed(line.speed);
-                fnv.fixed(line.travelled);
-                fnv.fixed(line.distance);
-                fnv.i32(line.damage);
-                hash_damage_amp(&mut fnv, line.damage_amp_bp);
-                fnv.i32(line.slow_pct);
-                fnv.u32(line.struck.len() as u32);
-                for crossed in &line.struck {
-                    fnv.entity(*crossed);
-                }
-            }
-            if let Some(ai) = self.neutral_ai.get(entity) {
-                fnv.some(ai.awake);
-                fnv.some(ai.roused_by.is_some());
-                if let Some(by) = ai.roused_by {
-                    fnv.entity(by);
-                }
-            }
-            if let Some(gathered) = self.stacks.get(entity) {
-                for (kind, many) in gathered.held() {
-                    fnv.u32(kind.at() as u32);
-                    fnv.u32(many);
-                }
+            fnv.vec2(route.end);
+            fnv.some(route.done);
+        }
+        if let Some(plan) = self.plan.get(entity) {
+            fnv.u32(plan.steps.len() as u32);
+            fnv.u32(plan.at as u32);
+            fnv.u32(plan.from);
+            fnv.u32(plan.laid);
+        }
+    }
+
+    /// What an entity flies as, carries, and has on it.
+    fn hash_effects(&self, fnv: &mut Fnv, entity: Entity) {
+        if let Some(shot) = self.projectile.get(entity) {
+            hash_projectile(fnv, shot);
+        }
+        if let Some(seen) = self.visibility.get(entity) {
+            fnv.u8(seen.bits());
+        }
+        if let Some(on_it) = self.modifiers.get(entity) {
+            hash_modifiers(fnv, on_it);
+        }
+        if let Some(applied) = self.applied.get(entity) {
+            hash_applied(fnv, applied);
+        }
+        if let Some(bag) = self.inventory.get(entity) {
+            hash_bag(fnv, bag);
+        }
+        fnv.some(self.loot.get(entity).is_some());
+        if let Some(loot) = self.loot.get(entity) {
+            hash_stack(fnv, &loot.0);
+        }
+        if let Some(hook) = self.hook.get(entity) {
+            hash_hook(fnv, hook);
+        }
+        if let Some(mark) = self.mark.get(entity) {
+            fnv.u32(u32::from(mark.ability.0));
+            fnv.entity(mark.owner);
+        }
+        if let Some(line) = self.requiem_line.get(entity) {
+            hash_requiem_line(fnv, line);
+        }
+        if let Some(ai) = self.neutral_ai.get(entity) {
+            fnv.some(ai.awake);
+            fnv.some(ai.roused_by.is_some());
+            if let Some(by) = ai.roused_by {
+                fnv.entity(by);
             }
         }
-        for index in self.trees.felled() {
-            fnv.u32(index);
+        if let Some(gathered) = self.stacks.get(entity) {
+            hash_stacks(fnv, gathered);
         }
-        for tree in self.trees.planted() {
-            fnv.vec2(tree.at);
-            fnv.u32(tree.until);
-        }
-        for seat in self.seats.iter() {
-            fnv.u32(u32::from(seat.slot.0));
-            fnv.i32(seat.gold);
-            fnv.i32(seat.xp);
-            fnv.u8(seat.level);
-            fnv.u32(seat.respawn_left);
-            fnv.u32(u32::from(seat.kills));
-            fnv.u32(u32::from(seat.deaths));
-            fnv.u32(u32::from(seat.last_hits));
-            fnv.u32(u32::from(seat.denies));
-            hash_bag(&mut fnv, &seat.stash);
-            for (item, left) in seat.item_clocks.iter() {
-                fnv.u32(u32::from(item.0));
-                fnv.u32(*left);
-            }
-            fnv.some(seat.courier.is_some());
-            if let Some(courier) = seat.courier {
-                fnv.entity(courier);
-            }
-            fnv.u32(seat.courier_left);
-            fnv.some(seat.courier_kept.is_some());
-            if let Some(bag) = &seat.courier_kept {
-                hash_bag(&mut fnv, bag);
-            }
-            fnv.some(seat.kept.is_some());
-            if let Some(kept) = &seat.kept {
-                for slot in kept.book.slots.iter() {
-                    fnv.u32(u32::from(slot.id.0));
-                    fnv.u8(slot.level);
-                    fnv.u32(slot.cooldown);
-                }
-                hash_bag(&mut fnv, &kept.bag);
-                for (kind, many) in kept.stacks.held() {
-                    fnv.u32(kind.at() as u32);
-                    fnv.u32(many);
-                }
-            }
-        }
-        if !self.spawn_modifiers.is_empty() {
-            assert!(self.spawn_modifiers.len() <= crate::game::MAX_SPAWN_MODIFIERS);
+    }
+}
+
+/// The attack clock and whatever the entity is doing.
+fn hash_action(fnv: &mut Fnv, action: &Action) {
+    fnv.u32(action.attack_cooldown);
+    match action.state {
+        ActionState::Ready => fnv.u8(0),
+        ActionState::Attack { target, phase } => {
             fnv.u8(1);
-            fnv.u32(self.spawn_modifiers.len() as u32);
-            for rule in &self.spawn_modifiers {
-                hash_spawn_modifier(&mut fnv, rule);
-            }
+            fnv.entity(target);
+            hash_phase(fnv, phase);
         }
-        fnv.done()
+        ActionState::CastAbility {
+            target,
+            slot,
+            phase,
+        } => {
+            fnv.u8(2);
+            hash_aim(fnv, target);
+            fnv.u8(slot.0);
+            hash_phase(fnv, phase);
+        }
+        ActionState::UseItem {
+            target,
+            slot,
+            phase,
+        } => {
+            fnv.u8(3);
+            hash_aim(fnv, target);
+            fnv.u8(slot.0);
+            hash_phase(fnv, phase);
+        }
+    }
+}
+
+fn hash_motion(fnv: &mut Fnv, motion: &Motion) {
+    fnv.vec2(motion.delta);
+    fnv.u32(motion.stalled);
+    fnv.u32(motion.still);
+    fnv.u32(motion.wait_until);
+    fnv.u32(motion.relaid);
+    fnv.u32(motion.bumped);
+    fnv.u32(motion.bumps);
+}
+
+fn hash_projectile(fnv: &mut Fnv, shot: &Projectile) {
+    fnv.fixed(shot.speed);
+    fnv.some(shot.source.is_some());
+    if let Some(source) = shot.source {
+        fnv.entity(source);
+    }
+    fnv.entity(shot.target);
+    fnv.i32(shot.damage);
+    fnv.u8(shot.kind as u8);
+    hash_damage_amp(fnv, shot.damage_amp_bp);
+    fnv.some(shot.ability.is_some());
+    if let Some(ability) = shot.ability {
+        fnv.u32(u32::from(ability.0));
+    }
+    fnv.u8(shot.launch_tier);
+    fnv.some(shot.can_miss_uphill);
+    fnv.some(shot.crit);
+    fnv.some(shot.pierces);
+    fnv.i32(shot.pierce_damage);
+    hash_damage_amp(fnv, shot.pierce_amp_bp);
+    fnv.u8(shot.bounces_left);
+    fnv.i32(shot.bounce_range);
+    fnv.u32(shot.bounced.len() as u32);
+    for target in &shot.bounced {
+        fnv.entity(*target);
+    }
+}
+
+fn hash_modifiers(fnv: &mut Fnv, on_it: &Modifiers) {
+    fnv.u32(on_it.0.len() as u32);
+    for held in on_it.0.iter() {
+        hash_modifier_kind(fnv, held.kind);
+        fnv.some(held.source.is_some());
+        if let Some(source) = held.source {
+            fnv.entity(source);
+        }
+        fnv.some(held.ticks_left.is_some());
+        fnv.u32(held.ticks_left.unwrap_or(0));
+    }
+}
+
+fn hash_applied(fnv: &mut Fnv, applied: &AppliedModifiers) {
+    fnv.u8(1);
+    fnv.u32(applied.iter().count() as u32);
+    for held in applied.iter() {
+        hash_modifier_spec(fnv, held.spec);
+        fnv.some(held.ticks_left.is_some());
+        fnv.u32(held.ticks_left.unwrap_or(0));
+        fnv.u8(match held.origin {
+            AppliedOrigin::Setup => 0,
+            AppliedOrigin::Cheat => 1,
+        });
+    }
+}
+
+fn hash_hook(fnv: &mut Fnv, hook: &Hook) {
+    fnv.entity(hook.owner);
+    fnv.vec2(hook.aim);
+    fnv.fixed(hook.reach_left);
+    hash_damage_amp(fnv, hook.damage_amp_bp);
+    fnv.some(hook.caught.is_some());
+    if let Some(caught) = hook.caught {
+        fnv.entity(caught);
+    }
+    fnv.some(hook.returning);
+    for link in hook.links {
+        fnv.entity(link);
+    }
+}
+
+fn hash_requiem_line(fnv: &mut Fnv, line: &RequiemLine) {
+    fnv.entity(line.owner);
+    fnv.vec2(line.aim);
+    fnv.fixed(line.speed);
+    fnv.fixed(line.travelled);
+    fnv.fixed(line.distance);
+    fnv.i32(line.damage);
+    hash_damage_amp(fnv, line.damage_amp_bp);
+    fnv.i32(line.slow_pct);
+    fnv.u32(line.struck.len() as u32);
+    for crossed in &line.struck {
+        fnv.entity(*crossed);
+    }
+}
+
+fn hash_stacks(fnv: &mut Fnv, gathered: &Stacks) {
+    for (kind, many) in gathered.held() {
+        fnv.u32(kind.at() as u32);
+        fnv.u32(many);
+    }
+}
+
+/// A seat's purse, tallies, stash, item clocks, courier and kept hero state.
+fn hash_seat(fnv: &mut Fnv, seat: &Seat) {
+    fnv.u32(u32::from(seat.slot.0));
+    fnv.i32(seat.gold);
+    fnv.i32(seat.xp);
+    fnv.u8(seat.level);
+    fnv.u32(seat.respawn_left);
+    fnv.u32(u32::from(seat.kills));
+    fnv.u32(u32::from(seat.deaths));
+    fnv.u32(u32::from(seat.last_hits));
+    fnv.u32(u32::from(seat.denies));
+    hash_bag(fnv, &seat.stash);
+    for (item, left) in seat.item_clocks.iter() {
+        fnv.u32(u32::from(item.0));
+        fnv.u32(*left);
+    }
+    fnv.some(seat.courier.is_some());
+    if let Some(courier) = seat.courier {
+        fnv.entity(courier);
+    }
+    fnv.u32(seat.courier_left);
+    fnv.some(seat.courier_kept.is_some());
+    if let Some(bag) = &seat.courier_kept {
+        hash_bag(fnv, bag);
+    }
+    fnv.some(seat.kept.is_some());
+    if let Some(kept) = &seat.kept {
+        for slot in kept.book.slots.iter() {
+            fnv.u32(u32::from(slot.id.0));
+            fnv.u8(slot.level);
+            fnv.u32(slot.cooldown);
+        }
+        hash_bag(fnv, &kept.bag);
+        hash_stacks(fnv, &kept.stacks);
     }
 }
 
@@ -362,10 +413,7 @@ fn hash_damage_amp(fnv: &mut Fnv, bp: i32) {
 /// One modifier kind and everything it carries.
 fn hash_modifier_kind(fnv: &mut Fnv, kind: ModifierKind) {
     match kind {
-        ModifierKind::Haste { speed } => {
-            fnv.u8(0);
-            fnv.i32(speed);
-        }
+        ModifierKind::Haste { speed } => hash_tagged(fnv, 0, speed),
         ModifierKind::Phased => fnv.u8(9),
         ModifierKind::Mending { per_tick, breaks } => {
             fnv.u8(1);
@@ -387,14 +435,8 @@ fn hash_modifier_kind(fnv: &mut Fnv, kind: ModifierKind) {
         }
         ModifierKind::Stunned => fnv.u8(4),
         ModifierKind::Shielded => fnv.u8(8),
-        ModifierKind::Slowed { pct } => {
-            fnv.u8(5);
-            fnv.i32(pct);
-        }
-        ModifierKind::Hastened { pct } => {
-            fnv.u8(7);
-            fnv.i32(pct);
-        }
+        ModifierKind::Slowed { pct } => hash_tagged(fnv, 5, pct),
+        ModifierKind::Hastened { pct } => hash_tagged(fnv, 7, pct),
         ModifierKind::Guarded {
             armor,
             hp_per_second,
@@ -403,14 +445,8 @@ fn hash_modifier_kind(fnv: &mut Fnv, kind: ModifierKind) {
             fnv.i32(armor);
             fnv.i32(hp_per_second);
         }
-        ModifierKind::Inspired { hp_per_second } => {
-            fnv.u8(13);
-            fnv.i32(hp_per_second);
-        }
-        ModifierKind::ArmorBroken { armor } => {
-            fnv.u8(10);
-            fnv.i32(armor);
-        }
+        ModifierKind::Inspired { hp_per_second } => hash_tagged(fnv, 13, hp_per_second),
+        ModifierKind::ArmorBroken { armor } => hash_tagged(fnv, 10, armor),
         ModifierKind::Burning {
             amount,
             kind,
@@ -431,6 +467,12 @@ fn hash_modifier_kind(fnv: &mut Fnv, kind: ModifierKind) {
         }
         ModifierKind::Feared => fnv.u8(15),
     }
+}
+
+/// A tag and one number.
+fn hash_tagged(fnv: &mut Fnv, tag: u8, value: i32) {
+    fnv.u8(tag);
+    fnv.i32(value);
 }
 
 /// One trusted spawn rule: what it takes, what it puts on, how long.
