@@ -49,7 +49,7 @@ fn a_courier_brought_down_comes_back_in_its_own_time() {
     );
     assert_eq!(
         world.transform.get(back).map(|at| at.pos),
-        Some(world.courier_home(Team::Radiant)),
+        Some(fountain_pos(world.map, Team::Radiant)),
         "at its own fountain"
     );
 }
@@ -57,7 +57,7 @@ fn a_courier_brought_down_comes_back_in_its_own_time() {
 #[test]
 fn a_courier_fetches_the_stash_hands_it_over_and_turns_for_home() {
     let (mut world, hero, courier) = a_match();
-    let home = world.courier_home(Team::Radiant);
+    let home = fountain_pos(world.map, Team::Radiant);
     let boots = ItemId(ITEM_BOOTS);
     world.seats[0].stash.slots[0] = Some(fresh_stack(ITEM_BOOTS, 0));
     // Standing at the fountain, it takes what waits there on the next tick.
@@ -99,7 +99,7 @@ fn a_courier_fetches_the_stash_hands_it_over_and_turns_for_home() {
 #[test]
 fn an_order_goes_to_the_unit_it_names_and_only_to_ones_this_seat_drives() {
     let (mut world, hero, courier) = a_match();
-    let to = world.courier_home(Team::Radiant) + Vec2::from_ints(600, 0);
+    let to = fountain_pos(world.map, Team::Radiant) + Vec2::from_ints(600, 0);
     let walk = Order::Move {
         target: Target::Pos(to),
     };
@@ -144,7 +144,7 @@ fn an_order_goes_to_the_unit_it_names_and_only_to_ones_this_seat_drives() {
 #[test]
 fn a_courier_told_to_go_at_a_unit_follows_it() {
     let (mut world, _, courier) = a_match();
-    let home = world.courier_home(Team::Radiant);
+    let home = fountain_pos(world.map, Team::Radiant);
     // Something of its own side standing a way off, that then walks further.
     let mark = world.spawn_unit(&MELEE_CREEP, Team::Radiant, home + Vec2::from_ints(700, 0));
     world.settle();
@@ -179,7 +179,7 @@ fn a_courier_at_the_fountain_reaches_the_stash_itself() {
     world.seats[0].stash.slots[0] = Some(fresh_stack(ITEM_BOOTS, 0));
     // The hero is out in the lane, so the stash is nothing to it.
     world.transform.get_mut(hero).expect("standing").pos =
-        world.courier_home(Team::Radiant) + Vec2::from_ints(4000, 0);
+        fountain_pos(world.map, Team::Radiant) + Vec2::from_ints(4000, 0);
     assert!(
         !world.move_item(SlotId(0), hero, BAG_SLOTS, 0),
         "out in the lane a hero cannot reach into the stash"
@@ -311,7 +311,7 @@ fn courier_return_move_and_stop_replace_delivery() {
 #[test]
 fn taking_the_stash_carries_it_on_without_being_asked_twice() {
     let (mut world, hero, courier) = a_match();
-    let home = world.courier_home(Team::Radiant);
+    let home = fountain_pos(world.map, Team::Radiant);
     world.transform.get_mut(hero).expect("standing").pos = home + Vec2::from_ints(900, 0);
     world.seats[0].stash.slots[0] = Some(fresh_stack(ITEM_BOOTS, 0));
     assert!(world.courier_take_stash(courier));
@@ -325,7 +325,7 @@ fn taking_the_stash_carries_it_on_without_being_asked_twice() {
 #[test]
 fn an_errand_with_nothing_to_do_sends_the_courier_home() {
     let (mut world, _, courier) = a_match();
-    let home = world.courier_home(Team::Radiant);
+    let home = fountain_pos(world.map, Team::Radiant);
     world.transform.get_mut(courier).expect("standing").pos = home + Vec2::from_ints(1500, 0);
     // Nothing in the stash and nothing in its hands.
     assert!(world.courier_take_stash(courier));

@@ -1,7 +1,5 @@
 //! Couriers: standing them up, sending them on errands, bringing them back.
 
-use bota_proto::{Team, Vec2};
-
 use crate::game::{
     Errand, Inventory, Modifier, ModifierKind, UnitOrder, World, fountain_pos, rules,
 };
@@ -351,10 +349,5 @@ impl World {
         *free = Some(stack);
         self.take_from_bag(from, at);
         true
-    }
-
-    /// Where a side's couriers stand up: its fountain.
-    pub fn courier_home(&self, team: Team) -> Vec2 {
-        fountain_pos(self.map, team)
     }
 }

@@ -169,7 +169,7 @@ fn the_stash_sells_from_anywhere_and_a_bag_far_out_only_marks() {
     world.seats[0].stash.slots[0] = Some(stack);
     // Out in the lane, well away from its own shop.
     world.transform.get_mut(hero).expect("standing").pos =
-        world.courier_home(Team::Radiant) + Vec2::from_ints(4000, 0);
+        fountain_pos(world.map, Team::Radiant) + Vec2::from_ints(4000, 0);
     world.settle();
     let purse = world.seats[0].gold;
     assert!(
