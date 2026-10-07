@@ -1,10 +1,10 @@
 //! Consumables, active items and trees.
 
 use crate::game::{
-    BLINK_RANGE, Command, Event, HERO, Health, ITEM_BLINK_DAGGER, ITEM_BOOTS, ITEM_CLARITY,
+    BLINK_RANGE, Command, Event, HERO, ITEM_BLINK_DAGGER, ITEM_BOOTS, ITEM_CLARITY,
     ITEM_HEALING_SALVE, ITEM_IRON_BRANCH, ITEM_PHASE_BOOTS, ITEM_POWER_TREADS, ITEM_QUELLING_BLADE,
     ITEM_TANGO, ITEM_TOWN_PORTAL_SCROLL, ITEMS, ItemStack, MELEE_CREEP, Mana, ModifierKind,
-    SALVE_TICKS, Seat, UnitOrder, World, map_of, rules, tree_positions, wire_id,
+    SALVE_TICKS, UnitOrder, World, map_of, rules, tree_positions, wire_id,
 };
 use bota_proto::{
     AbilitySlot, Attribute, DamageKind, EventKind, Fixed, HeroId, ItemId, ItemSlot, MapId, Order,
@@ -18,9 +18,7 @@ fn a_salve_puts_mending_on_whoever_drinks_it_and_runs_out() {
     let mut world = World::new();
     let hero = hero_at(&mut world, Vec2::from_ints(5000, 5000));
     world.step();
-    if let Some(bag) = world.inventory.get_mut(hero) {
-        bag.slots[0] = Some(fresh_stack(ITEM_HEALING_SALVE, 1));
-    }
+    hand_item(&mut world, hero, ITEM_HEALING_SALVE, 1);
     assert!(
         world.use_item(hero, 0, Target::None, &mut Vec::new()),
         "it drinks"
@@ -50,10 +48,7 @@ fn a_drink_is_told_of_as_what_was_missing_and_a_full_hero_is_not_told_at_all() {
     let mut world = World::new();
     let hero = hero_at(&mut world, Vec2::from_ints(5000, 5000));
     world.step();
-    let salve = fresh_stack(ITEM_HEALING_SALVE, 1);
-    if let Some(bag) = world.inventory.get_mut(hero) {
-        bag.slots[0] = Some(salve);
-    }
+    hand_item(&mut world, hero, ITEM_HEALING_SALVE, 1);
     let mut events = Vec::new();
     assert!(
         world.use_item(hero, 0, Target::None, &mut events),
@@ -67,12 +62,8 @@ fn a_drink_is_told_of_as_what_was_missing_and_a_full_hero_is_not_told_at_all() {
     };
     assert_eq!(told(&events), None, "with nothing missing, nothing is told");
 
-    if let Some(health) = world.health.get_mut(hero) {
-        health.hp -= Fixed::from_int(150);
-    }
-    if let Some(bag) = world.inventory.get_mut(hero) {
-        bag.slots[0] = Some(salve);
-    }
+    world.health.get_mut(hero).expect("standing").hp -= Fixed::from_int(150);
+    hand_item(&mut world, hero, ITEM_HEALING_SALVE, 1);
     let mut events = Vec::new();
     assert!(
         world.use_item(hero, 0, Target::None, &mut events),
@@ -90,12 +81,8 @@ fn a_clarity_is_told_of_by_the_mana_that_was_missing() {
     let mut world = World::new();
     let hero = hero_at(&mut world, Vec2::from_ints(5000, 5000));
     world.step();
-    if let Some(pool) = world.mana.get_mut(hero) {
-        pool.mana -= Fixed::from_int(60);
-    }
-    if let Some(bag) = world.inventory.get_mut(hero) {
-        bag.slots[0] = Some(fresh_stack(ITEM_CLARITY, 1));
-    }
+    world.mana.get_mut(hero).expect("has a pool").mana -= Fixed::from_int(60);
+    hand_item(&mut world, hero, ITEM_CLARITY, 1);
     let mut events = Vec::new();
     assert!(
         world.use_item(hero, 0, Target::None, &mut events),
@@ -244,11 +231,8 @@ fn business_with_the_bag_and_the_shop_takes_no_channel_away() {
 #[test]
 fn a_drink_may_be_aimed_at_the_one_drinking_it() {
     for item in [ITEM_HEALING_SALVE, ITEM_CLARITY] {
-        let mut world = World::for_match(&config(), config().rng());
-        let hero = world.seats[0].unit.expect("stood up");
-        if let Some(bag) = world.inventory.get_mut(hero) {
-            bag.slots[0] = Some(fresh_stack(item, 1));
-        }
+        let (mut world, hero) = a_hero_with_gold(0);
+        hand_item(&mut world, hero, item, 1);
         world.step();
         // Aimed at itself by name, the way a click on one's own hero sends it.
         assert!(
@@ -354,32 +338,28 @@ fn a_branch_puts_a_tree_up_and_eating_that_one_feeds_twice_as_long() {
 }
 
 #[test]
-fn a_blade_takes_the_tree_it_was_pointed_at_and_no_other() {
+fn a_blade_takes_only_the_tree_it_was_pointed_at_and_only_within_reach() {
     let (mut world, hero, tree) = a_hero_by_the_trees(ITEM_QUELLING_BLADE, 0);
+    let stand = world.transform.get(hero).expect("hero").pos;
     // Open ground a step off the trunk, still well inside the blade's reach.
     let beside = tree + Vec2::from_ints(rules::TREE_RADIUS + 20, 0);
     assert!(
         !world.use_item(hero, 0, Target::Pos(beside), &mut Vec::new()),
         "pointed at ground beside a tree it takes nothing"
     );
-    assert_eq!(world.trees.felled().count(), 0);
-    let on_it = tree + Vec2::from_ints(rules::TREE_RADIUS - 10, 0);
-    assert!(
-        world.use_item(hero, 0, Target::Pos(on_it), &mut Vec::new()),
-        "pointed at the trunk it takes that tree"
-    );
-    assert_eq!(world.trees.felled().count(), 1);
-}
-
-#[test]
-fn a_blade_cannot_reach_a_tree_it_was_pointed_at_from_far_off() {
-    let (mut world, hero, tree) = a_hero_by_the_trees(ITEM_QUELLING_BLADE, 0);
     world.transform.get_mut(hero).expect("hero").pos = tree + Vec2::from_ints(2000, 0);
     assert!(
         !world.use_item(hero, 0, Target::Pos(tree), &mut Vec::new()),
         "the tree is the one pointed at, but it is out of reach"
     );
     assert_eq!(world.trees.felled().count(), 0);
+    world.transform.get_mut(hero).expect("hero").pos = stand;
+    let on_it = tree + Vec2::from_ints(rules::TREE_RADIUS - 10, 0);
+    assert!(
+        world.use_item(hero, 0, Target::Pos(on_it), &mut Vec::new()),
+        "pointed at the trunk it takes that tree"
+    );
+    assert_eq!(world.trees.felled().count(), 1);
 }
 
 #[test]
@@ -397,9 +377,7 @@ fn a_quelling_blade_is_worth_something_against_a_creep_and_nothing_against_a_her
     world.step();
     let bare_creep = one_swing_takes(&mut world, hero, creep);
     let bare_hero = one_swing_takes(&mut world, hero, theirs);
-    if let Some(bag) = world.inventory.get_mut(hero) {
-        bag.slots[0] = Some(fresh_stack(ITEM_QUELLING_BLADE, 0));
-    }
+    hand_item(&mut world, hero, ITEM_QUELLING_BLADE, 0);
     world.step();
     let blade = ITEMS[usize::from(ITEM_QUELLING_BLADE)]
         .carried
@@ -542,36 +520,14 @@ fn what_an_item_is_set_to_is_worth_points_of_that_attribute() {
 #[test]
 fn treads_switched_round_the_wheel_mend_nothing() {
     let mut world = World::new();
-    let hero = hero_at(&mut world, Vec2::from_ints(5000, 5000));
-    world.seats.push(Seat::new(
-        SlotId(0),
-        Team::Radiant,
-        HeroId(0),
-        0,
-        rules::STASH_SLOTS,
-    ));
-    world.seats[0].unit = Some(hero);
-    if let Some(bag) = world.inventory.get_mut(hero) {
-        bag.slots[0] = Some(ItemStack {
-            id: ItemId(ITEM_POWER_TREADS),
-            charges: 0,
-            cooldown: 0,
-            mute: 0,
-            mode: Some(Attribute::Strength),
-            bought_tick: 0,
-            touched: false,
-            owner: SlotId(0),
-            for_sale: false,
-        });
-    }
+    let hero = seated_hero(&mut world, Vec2::from_ints(5000, 5000), HeroId(0));
+    world.inventory.get_mut(hero).expect("has a bag").slots[0] = Some(ItemStack {
+        mode: Some(Attribute::Strength),
+        ..fresh_stack(ITEM_POWER_TREADS, 0)
+    });
     world.settle();
     world.step();
-    world.health.insert(
-        hero,
-        Health {
-            hp: Fixed::from_int(100),
-        },
-    );
+    world.health.insert(hero, health(100));
     world.mana.insert(
         hero,
         Mana {
@@ -617,11 +573,7 @@ fn a_blink_carries_no_further_than_it_reaches() {
     let from = world.transform.get(hero).expect("stands somewhere").pos;
     hand_item(&mut world, hero, ITEM_BLINK_DAGGER, 0);
     world.step();
-    let range = BLINK_RANGE;
-    let far = Vec2 {
-        x: from.x + rules::units(range * 4),
-        y: from.y,
-    };
+    let far = from + Vec2::from_ints(BLINK_RANGE * 4, 0);
     assert!(
         world.use_item(hero, 0, Target::Pos(far), &mut Vec::new()),
         "it goes"
@@ -629,7 +581,7 @@ fn a_blink_carries_no_further_than_it_reaches() {
     let landed = world.transform.get(hero).expect("stands somewhere").pos;
     assert!(landed != from, "and it carried");
     assert!(
-        landed.within(from, rules::units(range)),
+        landed.within(from, rules::units(BLINK_RANGE)),
         "no further than it reaches"
     );
 }
@@ -640,10 +592,7 @@ fn a_blink_aimed_at_closed_ground_steps_back_to_open() {
     let from = world.transform.get(hero).expect("stands somewhere").pos;
     hand_item(&mut world, hero, ITEM_BLINK_DAGGER, 0);
     world.step();
-    let aim = Vec2 {
-        x: from.x + rules::units(600),
-        y: from.y,
-    };
+    let aim = from + Vec2::from_ints(600, 0);
     stand_a_wall(&mut world, aim, rules::units(rules::BLINK_STEP_BACK * 2));
     assert!(
         world.use_item(hero, 0, Target::Pos(aim), &mut Vec::new()),
