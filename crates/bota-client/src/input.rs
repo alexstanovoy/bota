@@ -6,6 +6,7 @@ use bota_proto::{
 };
 use macroquad::prelude::*;
 
+use crate::camera::MAP_SIZE;
 use crate::slots::{Press, Slot, order_for, press};
 use crate::state::{App, Phase, Pin, Source, Tap};
 
@@ -152,8 +153,8 @@ fn ui_clicks(app: &mut App) -> bool {
     }
     let minimap = crate::hud::minimap(sh);
     if minimap.contains(mx, my) {
-        let wx = (mx - minimap.x) / minimap.w * 18432.0;
-        let wy = (1.0 - (my - minimap.y) / minimap.h) * 18432.0;
+        let wx = (mx - minimap.x) / minimap.w * MAP_SIZE;
+        let wy = (1.0 - (my - minimap.y) / minimap.h) * MAP_SIZE;
         minimap_click(app, left, right, wx, wy);
         return true;
     }

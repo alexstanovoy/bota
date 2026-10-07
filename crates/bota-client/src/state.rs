@@ -6,7 +6,7 @@ use bota_proto::{
     WorldView,
 };
 
-use crate::camera::Camera;
+use crate::camera::{Camera, MAP_SIZE};
 use crate::net::Net;
 use crate::replay_play::ReplayPlayer;
 
@@ -132,7 +132,7 @@ pub enum Tap {
     Seat(SlotId),
 }
 
-/// How long after one press a second counts as a double.
+/// Seconds after one press within which a second makes a pair.
 pub const DOUBLE_TAP: f32 = 0.35;
 
 /// Whether reaching for something makes a pair with what was reached for
@@ -288,7 +288,7 @@ pub struct App {
     pub shown_orders: Vec<ShownOrder>,
     /// The seat whose eyes a spectator has asked to watch through.
     pub eyes: Option<SlotId>,
-    /// Damage numbers in flight.
+    /// Floaters in flight.
     pub floaters: Vec<Floater>,
     /// Kill feed lines.
     pub feed: Vec<FeedLine>,
@@ -335,7 +335,7 @@ impl App {
             view: None,
             prev_view: None,
             seen: Vec::new(),
-            camera: Camera::over(9216.0, 9216.0),
+            camera: Camera::over(MAP_SIZE / 2.0, MAP_SIZE / 2.0),
             seq: 0,
             attack_move_armed: false,
             selected: None,

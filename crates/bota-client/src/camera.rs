@@ -13,6 +13,9 @@ pub struct Camera {
     pub zoom: f32,
 }
 
+/// The world spans this many units per axis; the server's `MAP_SIZE`.
+pub const MAP_SIZE: f32 = 18432.0;
+
 /// Closest allowed zoom, pixels per world unit.
 pub const ZOOM_MAX: f32 = 1.5;
 /// Farthest allowed zoom.

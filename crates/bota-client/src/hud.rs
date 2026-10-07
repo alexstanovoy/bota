@@ -5,6 +5,8 @@
 
 use bota_proto::{PlayerView, SlotId, Team};
 
+use crate::slots::BAG_SLOTS;
+
 /// A screen-space rectangle.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct UiRect {
@@ -26,52 +28,44 @@ impl UiRect {
 }
 
 /// Width of one top-bar portrait.
-pub const PORTRAIT_W: f32 = 52.0;
+const PORTRAIT_W: f32 = 52.0;
 /// Height of one top-bar portrait.
-pub const PORTRAIT_H: f32 = 56.0;
+const PORTRAIT_H: f32 = 56.0;
 /// Gap between portraits.
-pub const PORTRAIT_GAP: f32 = 8.0;
+const PORTRAIT_GAP: f32 = 8.0;
 /// Half-width kept free around the screen center for the clock.
-pub const CLOCK_GAP: f32 = 56.0;
+const CLOCK_GAP: f32 = 56.0;
 /// Top margin of the portrait row.
-pub const PORTRAIT_TOP: f32 = 8.0;
+const PORTRAIT_TOP: f32 = 8.0;
 
 /// The portrait of every seat: Radiant grows leftwards from the clock, Dire
 /// rightwards, both in slot order.
 pub fn top_portraits(players: &[PlayerView], screen_w: f32) -> Vec<(SlotId, UiRect)> {
     let center = screen_w / 2.0;
-    let mut out = Vec::new();
+    let step = PORTRAIT_W + PORTRAIT_GAP;
     let radiant: Vec<&PlayerView> = players.iter().filter(|p| p.team == Team::Radiant).collect();
-    let dire: Vec<&PlayerView> = players.iter().filter(|p| p.team == Team::Dire).collect();
-    for (i, p) in radiant.iter().enumerate() {
+    let dire = players.iter().filter(|p| p.team == Team::Dire);
+    let left = radiant.iter().enumerate().map(|(i, p)| {
         let from_clock = (radiant.len() - i) as f32;
-        let x = center - CLOCK_GAP - from_clock * (PORTRAIT_W + PORTRAIT_GAP);
-        out.push((
-            p.slot,
-            UiRect {
+        (p.slot, center - CLOCK_GAP - from_clock * step)
+    });
+    let right = dire
+        .enumerate()
+        .map(|(i, p)| (p.slot, center + CLOCK_GAP + PORTRAIT_GAP + i as f32 * step));
+    left.chain(right)
+        .map(|(slot, x)| {
+            let rect = UiRect {
                 x,
                 y: PORTRAIT_TOP,
                 w: PORTRAIT_W,
                 h: PORTRAIT_H,
-            },
-        ));
-    }
-    for (i, p) in dire.iter().enumerate() {
-        let x = center + CLOCK_GAP + PORTRAIT_GAP + i as f32 * (PORTRAIT_W + PORTRAIT_GAP);
-        out.push((
-            p.slot,
-            UiRect {
-                x,
-                y: PORTRAIT_TOP,
-                w: PORTRAIT_W,
-                h: PORTRAIT_H,
-            },
-        ));
-    }
-    out
+            };
+            (slot, rect)
+        })
+        .collect()
 }
 
-/// The bottom panel showing the selected hero.
+/// The bottom panel showing what is selected.
 pub fn bottom_panel(screen_w: f32, screen_h: f32) -> UiRect {
     let w = 840.0_f32.min(screen_w - 40.0);
     UiRect {
@@ -108,21 +102,18 @@ pub fn ability_boxes(panel: &UiRect) -> Vec<(u8, UiRect)> {
 /// The nine carried item boxes of the bottom panel: two rows of three for
 /// the inventory, one dimmer row below for the backpack.
 pub fn item_boxes(panel: &UiRect) -> Vec<(u8, UiRect)> {
-    let ix = panel.x + 623.0;
-    let mut out = Vec::new();
-    for slot in 0..9u8 {
-        let (col, row) = (f32::from(slot % 3), f32::from(slot / 3));
-        out.push((
-            slot,
-            UiRect {
-                x: ix + col * 36.0,
+    (0..BAG_SLOTS)
+        .map(|slot| {
+            let (col, row) = (f32::from(slot % 3), f32::from(slot / 3));
+            let rect = UiRect {
+                x: panel.x + 623.0 + col * 36.0,
                 y: panel.y + 10.0 + row * 30.0,
                 w: 32.0,
                 h: 26.0,
-            },
-        ));
-    }
-    out
+            };
+            (slot, rect)
+        })
+        .collect()
 }
 
 /// The six stash boxes, slots 9 to 14, a strip sitting on top of the bottom
@@ -131,7 +122,7 @@ pub fn stash_boxes(panel: &UiRect) -> Vec<(u8, UiRect)> {
     (0..6u8)
         .map(|i| {
             (
-                9 + i,
+                BAG_SLOTS + i,
                 UiRect {
                     x: panel.x + 623.0 + f32::from(i % 3) * 36.0,
                     y: panel.y - 74.0 + f32::from(i / 3) * 30.0,

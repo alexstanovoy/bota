@@ -6,6 +6,7 @@ use bota_proto::{
 };
 use macroquad::prelude::*;
 
+use crate::camera::MAP_SIZE;
 use crate::hud::UiRect;
 use crate::state::{App, FloaterKind, Phase, Source};
 
@@ -172,9 +173,6 @@ fn draw_lobby(app: &App) {
 const TREE: Color = Color::new(0.16, 0.30, 0.16, 1.0);
 /// The circle a tree stands in, in world units.
 const TREE_RADIUS: f32 = 48.0;
-
-/// The world spans this many units per axis; the server's `MAP_SIZE`.
-const MAP_SIZE: f32 = 18432.0;
 
 /// The terrain texture, baked from the MatchStart cells on first use.
 fn terrain_texture(app: &App) -> Option<Texture2D> {
@@ -775,7 +773,7 @@ fn draw_unit(app: &App, u: &UnitView, mine: bool, to_screen: impl Fn(f32, f32) -
             draw_text(&name, x - width / 2.0, y + r + 18.0, 16.0, WHITE);
         }
     }
-    // Health, and mana for heroes.
+    // Health, and mana for what has any.
     let bar_w = (r * 2.2).max(26.0);
     let bar_x = x - bar_w / 2.0;
     let bar_y = y - r - 10.0;
@@ -1303,7 +1301,7 @@ fn draw_vitals(u: &UnitView, rect: &UiRect) {
     draw_attributes(u, bx, rect.y + 114.0);
 }
 
-/// The three attributes in a row, the one paying for damage marked with a dot.
+/// The three attributes in a row, the one paying for damage marked with a star.
 fn draw_attributes(u: &UnitView, x: f32, y: f32) {
     if u.attributes == Attributes::ZERO {
         return;
@@ -1408,9 +1406,6 @@ fn kit_slots<'a>(
 }
 
 /// The right of the bottom panel: the ability slots and the item slots.
-///
-/// What is drawn comes from the body when one stands and from what the body
-/// left behind when none does.
 fn draw_slot_boxes(
     app: &App,
     unit: Option<&UnitView>,
