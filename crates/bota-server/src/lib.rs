@@ -12,6 +12,5 @@ pub mod game;
 pub mod game_loop;
 pub mod lobby;
 pub mod net;
-pub mod replay;
-
 pub mod profile;
+pub mod replay;

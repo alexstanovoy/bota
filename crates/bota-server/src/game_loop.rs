@@ -2,21 +2,19 @@
 
 use std::net::TcpListener;
 use std::path::PathBuf;
-use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender, channel};
+use std::sync::mpsc::{Receiver, Sender, channel};
 use std::thread;
 use std::time::{Duration, Instant};
 
 use bota_proto::{
-    ClientMsg, MapId, Order, PlayerId, ReplayRecord, Role, ServerMsg, SlotId, SlotOrder, Team,
-    TickMode, encode_frame_to_vec,
+    ClientMsg, EventKind, MapId, PlayerId, ReplayRecord, Role, ServerMsg, SlotId, SlotOrder, Team,
+    TickMode, WorldView, encode_frame_to_vec,
 };
 
-use crate::game::{Command, EventVisibility, MatchConfig};
+use crate::game::{Command, Event, EventVisibility, MatchConfig, World};
 use crate::lobby::Roster;
 use crate::net::{Connection, NetEvent, accept_loop};
 use crate::replay::ReplayWriter;
-
-use crate::game::World;
 
 /// Everything the command line decides.
 #[derive(Clone, Debug)]
@@ -50,16 +48,16 @@ pub fn run(listener: TcpListener, opts: ServerOpts) -> std::io::Result<()> {
     let (tx, rx) = channel();
     let accept_tx = tx.clone();
     thread::spawn(move || accept_loop(listener, accept_tx));
+    let roster = Roster::new(opts.players, opts.dummy_seat);
     let mut server = Server {
         opts,
         rx,
-        _tx: tx,
+        tx,
         conns: Vec::new(),
         spectators: Vec::new(),
-        roster: Roster::new(0, false),
+        roster,
         next_player: 1,
     };
-    server.roster = Roster::new(server.opts.players, server.opts.dummy_seat);
     let cfg = server.lobby_phase();
     server.match_phase(cfg);
     Ok(())
@@ -68,14 +66,32 @@ pub fn run(listener: TcpListener, opts: ServerOpts) -> std::io::Result<()> {
 struct Server {
     opts: ServerOpts,
     rx: Receiver<NetEvent>,
-    /// Keeps the channel open across reader-thread turnover.
-    _tx: Sender<NetEvent>,
+    /// Cloned into every connection's reader thread; keeps `rx` open.
+    tx: Sender<NetEvent>,
     conns: Vec<Connection>,
     /// Connections that said Hello as spectators, and the seat whose eyes
     /// each one watches through. Absent eyes watch everything.
     spectators: Vec<(PlayerId, Option<SlotId>)>,
     roster: Roster,
     next_player: u32,
+}
+
+/// What the seats sent during one tick of the match.
+struct Inbox {
+    /// The latest valid order of each seat, indexed by slot.
+    orders: Vec<Option<Command>>,
+    /// The latest tick each seat acknowledged, indexed by slot.
+    acked: Vec<u32>,
+}
+
+/// The wall-clock timing of the tick loop.
+struct Pace {
+    /// When the first tick began.
+    started: Instant,
+    /// One tick of wall-clock time.
+    period: Duration,
+    /// Lockstep: how long to wait for a straggler's acknowledgement.
+    ack_timeout: Duration,
 }
 
 impl Server {
@@ -103,20 +119,11 @@ impl Server {
         self.spectators.retain(|&(p, _)| p != id);
     }
 
-    /// The seat a spectator watches through. Absent for anybody seated, and
-    /// for a spectator watching everything.
-    fn eyes_of(&self, id: PlayerId) -> Option<SlotId> {
-        self.spectators
-            .iter()
-            .find(|&&(p, _)| p == id)
-            .and_then(|&(_, eyes)| eyes)
-    }
-
     /// Accepts a fresh stream and hands out a `PlayerId`.
     fn adopt(&mut self, stream: std::net::TcpStream) -> PlayerId {
         let id = PlayerId(self.next_player);
         self.next_player += 1;
-        let conn = Connection::spawn(id, stream, self._tx.clone());
+        let conn = Connection::spawn(id, stream, self.tx.clone());
         self.conns.push(conn);
         id
     }
@@ -178,10 +185,7 @@ impl Server {
     /// Collects seats and picks until everyone is ready.
     fn lobby_phase(&mut self) -> MatchConfig {
         loop {
-            let event = match self.rx.recv() {
-                Ok(event) => event,
-                Err(_) => unreachable!("the server holds a sender"),
-            };
+            let event = self.rx.recv().expect("the server holds a sender");
             match event {
                 NetEvent::Connected(stream) => {
                     self.adopt(stream);
@@ -222,21 +226,10 @@ impl Server {
     }
 
     fn build_config(&self) -> MatchConfig {
-        let mut master_key = [0u8; 32];
-        for (i, b) in self
-            .opts
-            .seed
-            .to_le_bytes()
-            .iter()
-            .cycle()
-            .take(32)
-            .enumerate()
-        {
-            master_key[i] = *b;
-        }
+        let seed = self.opts.seed.to_le_bytes();
         MatchConfig {
             match_id: self.opts.seed,
-            master_key,
+            master_key: std::array::from_fn(|i| seed[i % seed.len()]),
             picks: self.roster.picks(),
             map: self.opts.map,
             tick_rate: self.opts.tick_rate,
@@ -251,7 +244,7 @@ impl Server {
 
     /// Runs the match to its end.
     fn match_phase(&mut self, cfg: MatchConfig) {
-        let mut world = new_world(&cfg);
+        let mut world = World::for_match(&cfg, cfg.rng());
         let mut replay = match &self.opts.replay {
             None => ReplayWriter::disabled(),
             Some(path) => ReplayWriter::create(path).unwrap_or_else(|_| ReplayWriter::disabled()),
@@ -260,38 +253,23 @@ impl Server {
             info: cfg.info(),
         }));
         self.broadcast(&ServerMsg::MatchStart { info: cfg.info() });
-
         let period = Duration::from_nanos(1_000_000_000 / u64::from(self.opts.tick_rate.max(1)));
-        let ack_timeout = period * self.opts.ack_timeout_ticks.max(1);
-        let started = Instant::now();
-        let mut pending: Vec<Option<(u32, Option<bota_proto::EntityId>, Order)>> =
-            vec![None; self.roster.seats.len()];
-        let mut acked: Vec<u32> = vec![0; self.roster.seats.len()];
-
+        let pace = Pace {
+            started: Instant::now(),
+            period,
+            ack_timeout: period * self.opts.ack_timeout_ticks.max(1),
+        };
+        let seats = self.roster.seats.len();
+        let mut inbox = Inbox {
+            orders: vec![None; seats],
+            acked: vec![0; seats],
+        };
         loop {
-            self.gather_input(
-                &world,
-                &cfg,
-                &mut pending,
-                &mut acked,
-                started,
-                period,
-                ack_timeout,
-            );
+            self.gather_input(&world, &cfg, &mut inbox, &pace);
             if self.roster.seats.iter().all(|s| s.player.is_none()) {
                 break; // every seat is empty
             }
-            let cmds: Vec<Command> = pending
-                .iter()
-                .enumerate()
-                .filter_map(|(i, slot)| {
-                    slot.map(|(_, unit, order)| Command {
-                        slot: SlotId(i as u8),
-                        unit,
-                        order,
-                    })
-                })
-                .collect();
+            let cmds: Vec<Command> = inbox.orders.iter_mut().filter_map(Option::take).collect();
             let taken: Vec<SlotOrder> = cmds
                 .iter()
                 .map(|c| SlotOrder {
@@ -304,87 +282,12 @@ impl Server {
                 tick: world.tick + 1,
                 orders: taken.clone(),
             });
-            pending.fill(None);
-            let events = advance(&mut world, &cmds);
-
-            let full = world.view_full();
-            let full_frame = encode_frame_to_vec(&ServerMsg::Snapshot { view: full.clone() })
-                .expect("a view always encodes");
-            let team_frame = |team: Team| {
-                encode_frame_to_vec(&ServerMsg::Snapshot {
-                    view: world.view(team),
-                })
-                .expect("a view always encodes")
-            };
-            let radiant_frame = team_frame(Team::Radiant);
-            let dire_frame = team_frame(Team::Dire);
-            replay.record(&ReplayRecord::Msg(ServerMsg::Snapshot { view: full }));
-
-            for conn in &self.conns {
-                let seat_team = self.roster.seat_of(conn.id).map(|s| s.team);
-                // The eyes a connection watches through: its own seat's, or
-                // the seat a spectator chose. Absent eyes see everything.
-                let eyes = if seat_team.is_none() {
-                    self.eyes_of(conn.id)
-                } else {
-                    None
-                };
-                let viewing = seat_team.or_else(|| {
-                    eyes.and_then(|slot| {
-                        self.roster
-                            .seats
-                            .iter()
-                            .find(|s| s.slot == slot)
-                            .map(|s| s.team)
-                    })
-                });
-                let frame = match viewing {
-                    Some(Team::Radiant) => radiant_frame.clone(),
-                    Some(Team::Dire) => dire_frame.clone(),
-                    // Seats never sit on the jungle's side.
-                    Some(Team::Neutral) | None => full_frame.clone(),
-                };
-                conn.send_snapshot(frame);
-                let visible: Vec<bota_proto::EventKind> = events
-                    .iter()
-                    .filter(|e| match (e.visible_to, viewing) {
-                        (_, None) => true,
-                        (EventVisibility::Everyone, _) => true,
-                        (EventVisibility::OneTeam(team), Some(mine)) => team == mine,
-                    })
-                    .map(|e| e.kind.clone())
-                    .collect();
-                conn.send(&ServerMsg::Events {
-                    tick: world.tick,
-                    events: visible,
-                });
-                // A spectator watching through one seat's eyes is told that
-                // seat's orders; nobody else is told any.
-                if let Some(eyes) = eyes {
-                    let told: Vec<SlotOrder> = taken
-                        .iter()
-                        .filter(|given| given.slot == eyes)
-                        .copied()
-                        .collect();
-                    if !told.is_empty() {
-                        conn.send(&ServerMsg::Orders {
-                            tick: world.tick,
-                            orders: told,
-                        });
-                    }
-                }
-            }
-            if !events.is_empty() {
-                replay.record(&ReplayRecord::Msg(ServerMsg::Events {
-                    tick: world.tick,
-                    events: events.iter().map(|e| e.kind.clone()).collect(),
-                }));
-            }
-
-            if let Some(winner) = victor(&world) {
+            let events = world.advance(&cmds);
+            self.publish_tick(&world, &events, &taken, &mut replay);
+            if let Some(winner) = world.victor() {
                 let over = ServerMsg::MatchOver {
                     winner,
-                    stats: match_stats(&world),
+                    stats: world.match_stats(),
                 };
                 replay.record(&ReplayRecord::Msg(over.clone()));
                 self.broadcast(&over);
@@ -397,24 +300,89 @@ impl Server {
         }
     }
 
-    /// Waits out the tick according to the mode, handling messages meanwhile.
-    #[expect(clippy::too_many_arguments, reason = "the tick loop's working set")]
-    fn gather_input(
-        &mut self,
+    /// Sends a finished tick to every connection, each through its own eyes,
+    /// and records it.
+    fn publish_tick(
+        &self,
         world: &World,
-        cfg: &MatchConfig,
-        pending: &mut [Option<(u32, Option<bota_proto::EntityId>, Order)>],
-        acked: &mut [u32],
-        started: Instant,
-        period: Duration,
-        ack_timeout: Duration,
+        events: &[Event],
+        taken: &[SlotOrder],
+        replay: &mut ReplayWriter,
     ) {
+        let full = world.view_full();
+        let full_frame = snapshot_frame(full.clone());
+        let radiant_frame = snapshot_frame(world.view(Team::Radiant));
+        let dire_frame = snapshot_frame(world.view(Team::Dire));
+        replay.record(&ReplayRecord::Msg(ServerMsg::Snapshot { view: full }));
+        for conn in &self.conns {
+            let (eyes, viewing) = self.sight_of(conn.id);
+            let frame = match viewing {
+                Some(Team::Radiant) => radiant_frame.clone(),
+                Some(Team::Dire) => dire_frame.clone(),
+                // Seats never sit on the jungle's side.
+                Some(Team::Neutral) | None => full_frame.clone(),
+            };
+            conn.send_snapshot(frame);
+            conn.send(&ServerMsg::Events {
+                tick: world.tick,
+                events: visible_events(events, viewing),
+            });
+            // A spectator watching through one seat's eyes is told that
+            // seat's orders; nobody else is told any.
+            if let Some(eyes) = eyes {
+                let told: Vec<SlotOrder> = taken
+                    .iter()
+                    .filter(|given| given.slot == eyes)
+                    .copied()
+                    .collect();
+                if !told.is_empty() {
+                    conn.send(&ServerMsg::Orders {
+                        tick: world.tick,
+                        orders: told,
+                    });
+                }
+            }
+        }
+        if !events.is_empty() {
+            replay.record(&ReplayRecord::Msg(ServerMsg::Events {
+                tick: world.tick,
+                events: events.iter().map(|e| e.kind.clone()).collect(),
+            }));
+        }
+    }
+
+    /// The seat a connection borrows eyes from and the side it sees as.
+    ///
+    /// A seated connection sees as its own side and borrows nothing; a
+    /// spectator sees as the side of the seat it chose. No side sees
+    /// everything.
+    fn sight_of(&self, id: PlayerId) -> (Option<SlotId>, Option<Team>) {
+        if let Some(seat) = self.roster.seat_of(id) {
+            return (None, Some(seat.team));
+        }
+        let eyes = self
+            .spectators
+            .iter()
+            .find(|&&(p, _)| p == id)
+            .and_then(|&(_, eyes)| eyes);
+        let team = eyes.and_then(|slot| {
+            self.roster
+                .seats
+                .iter()
+                .find(|s| s.slot == slot)
+                .map(|s| s.team)
+        });
+        (eyes, team)
+    }
+
+    /// Waits out the tick according to the mode, handling messages meanwhile.
+    fn gather_input(&mut self, world: &World, cfg: &MatchConfig, inbox: &mut Inbox, pace: &Pace) {
         let deadline = match self.opts.mode {
-            TickMode::Realtime => started + period * (world.tick + 1),
-            TickMode::Lockstep => Instant::now() + ack_timeout,
+            TickMode::Realtime => pace.started + pace.period * (world.tick + 1),
+            TickMode::Lockstep => Instant::now() + pace.ack_timeout,
         };
         loop {
-            if self.opts.mode == TickMode::Lockstep && self.all_acked(world.tick, acked) {
+            if self.opts.mode == TickMode::Lockstep && self.all_acked(world.tick, &inbox.acked) {
                 break;
             }
             let now = Instant::now();
@@ -422,8 +390,7 @@ impl Server {
                 break;
             }
             match self.rx.recv_timeout(deadline - now) {
-                Err(RecvTimeoutError::Timeout) => break,
-                Err(RecvTimeoutError::Disconnected) => break,
+                Err(_) => break,
                 Ok(NetEvent::Connected(stream)) => {
                     self.adopt(stream);
                 }
@@ -436,41 +403,53 @@ impl Server {
                         slot,
                     });
                 }
-                Ok(NetEvent::Msg(id, msg)) => match msg {
-                    ClientMsg::Hello { role, name } => {
-                        self.greet(id, role, name, Some(cfg));
-                    }
-                    ClientMsg::Order { seq, unit, order } => {
-                        let Some(slot) = self.roster.seat_of(id).map(|s| s.slot) else {
-                            continue;
-                        };
-                        match validate(world, slot, unit, &order) {
-                            Ok(()) => pending[usize::from(slot.0)] = Some((seq, unit, order)),
-                            Err(reason) => {
-                                if let Some(conn) = self.conn(id) {
-                                    conn.send(&ServerMsg::OrderRejected { seq, reason });
-                                }
-                            }
-                        }
-                    }
-                    ClientMsg::Ack { tick } => {
-                        if let Some(seat) = self.roster.seat_of(id) {
-                            let i = usize::from(seat.slot.0);
-                            acked[i] = acked[i].max(tick);
-                        }
-                    }
-                    ClientMsg::ViewAs { seat } => {
-                        // Only a seat that is in the match has eyes to lend.
-                        let eyes =
-                            seat.filter(|seat| self.roster.seats.iter().any(|s| s.slot == *seat));
-                        if let Some(spectator) = self.spectators.iter_mut().find(|(p, _)| *p == id)
-                        {
-                            spectator.1 = eyes;
-                        }
-                    }
-                    ClientMsg::PickHero { .. } | ClientMsg::SetReady(_) => {}
-                },
+                Ok(NetEvent::Msg(id, msg)) => self.receive_in_match(id, msg, world, cfg, inbox),
             }
+        }
+    }
+
+    /// One message that arrives while the match runs.
+    fn receive_in_match(
+        &mut self,
+        id: PlayerId,
+        msg: ClientMsg,
+        world: &World,
+        cfg: &MatchConfig,
+        inbox: &mut Inbox,
+    ) {
+        match msg {
+            ClientMsg::Hello { role, name } => {
+                self.greet(id, role, name, Some(cfg));
+            }
+            ClientMsg::Order { seq, unit, order } => {
+                let Some(slot) = self.roster.seat_of(id).map(|s| s.slot) else {
+                    return;
+                };
+                match world.validate_order(slot, unit, &order) {
+                    Ok(()) => {
+                        inbox.orders[usize::from(slot.0)] = Some(Command { slot, unit, order })
+                    }
+                    Err(reason) => {
+                        if let Some(conn) = self.conn(id) {
+                            conn.send(&ServerMsg::OrderRejected { seq, reason });
+                        }
+                    }
+                }
+            }
+            ClientMsg::Ack { tick } => {
+                if let Some(seat) = self.roster.seat_of(id) {
+                    let i = usize::from(seat.slot.0);
+                    inbox.acked[i] = inbox.acked[i].max(tick);
+                }
+            }
+            ClientMsg::ViewAs { seat } => {
+                // Only a seat that is in the match has eyes to lend.
+                let eyes = seat.filter(|seat| self.roster.seats.iter().any(|s| s.slot == *seat));
+                if let Some(spectator) = self.spectators.iter_mut().find(|(p, _)| *p == id) {
+                    spectator.1 = eyes;
+                }
+            }
+            ClientMsg::PickHero { .. } | ClientMsg::SetReady(_) => {}
         }
     }
 
@@ -484,32 +463,19 @@ impl Server {
     }
 }
 
-/// A world for a match.
-fn new_world(cfg: &MatchConfig) -> World {
-    World::for_match(cfg, cfg.rng())
+/// A snapshot as a frame ready to queue.
+fn snapshot_frame(view: WorldView) -> Vec<u8> {
+    encode_frame_to_vec(&ServerMsg::Snapshot { view }).expect("a view always encodes")
 }
 
-/// One tick of the match.
-fn advance(world: &mut World, cmds: &[Command]) -> Vec<crate::game::Event> {
-    world.advance(cmds)
-}
-
-/// The side that has won, if either has.
-fn victor(world: &World) -> Option<bota_proto::Team> {
-    world.victor()
-}
-
-/// Final numbers for every seat.
-fn match_stats(world: &World) -> bota_proto::MatchStats {
-    world.match_stats()
-}
-
-/// Whether a seat may issue this order right now.
-fn validate(
-    world: &World,
-    slot: bota_proto::SlotId,
-    unit: Option<bota_proto::EntityId>,
-    order: &bota_proto::Order,
-) -> Result<(), bota_proto::RejectReason> {
-    world.validate_order(slot, unit, order)
+/// The kinds of the events a side may see. No side sees all of them.
+fn visible_events(events: &[Event], viewing: Option<Team>) -> Vec<EventKind> {
+    events
+        .iter()
+        .filter(|e| match (e.visible_to, viewing) {
+            (_, None) | (EventVisibility::Everyone, _) => true,
+            (EventVisibility::OneTeam(team), Some(mine)) => team == mine,
+        })
+        .map(|e| e.kind.clone())
+        .collect()
 }

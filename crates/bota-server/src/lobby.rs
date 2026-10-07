@@ -8,19 +8,16 @@ pub const DUMMY_HERO: HeroId = HeroId(2);
 /// One seat of the match and who currently holds it.
 #[derive(Clone, Debug)]
 pub struct RosterSeat {
-    /// Which seat.
     pub slot: SlotId,
-    /// Which side it plays for.
     pub team: Team,
     /// The connection holding it. Absent while open.
     pub player: Option<PlayerId>,
     /// Display name of the holder. Empty while open.
     pub name: String,
-    /// What holds it.
+    /// Absent while open.
     pub role: Option<Role>,
-    /// The picked hero.
+    /// Absent until picked.
     pub hero: Option<HeroId>,
-    /// Whether the holder declared readiness.
     pub ready: bool,
     /// A seat nobody holds: ready from the start, its hero stays put and never acts.
     pub dummy: bool,
@@ -38,9 +35,9 @@ pub struct Roster {
 
 impl Roster {
     /// An empty roster: even slots are Radiant, odd are Dire. With `dummy`
-    /// the last seat is a ready dummy playing `DUMMY_HERO`.
+    /// the last seat is a ready dummy playing [`DUMMY_HERO`].
     pub fn new(players: u8, dummy: bool) -> Roster {
-        Roster {
+        let mut roster = Roster {
             seats: (0..players)
                 .map(|i| RosterSeat {
                     slot: SlotId(i),
@@ -57,19 +54,15 @@ impl Roster {
                     dummy: false,
                 })
                 .collect(),
-        }
-        .with_dummy(dummy)
-    }
-
-    fn with_dummy(mut self, dummy: bool) -> Roster {
-        if let Some(seat) = self.seats.last_mut().filter(|_| dummy) {
+        };
+        if dummy && let Some(seat) = roster.seats.last_mut() {
             seat.dummy = true;
             seat.name = "dummy".to_string();
             seat.role = Some(Role::Bot);
             seat.hero = Some(DUMMY_HERO);
             seat.ready = true;
         }
-        self
+        roster
     }
 
     /// The seat a connection holds.
@@ -89,14 +82,14 @@ impl Roster {
             .find(|s| s.player.is_none() && !s.dummy)
     }
 
-    /// Releases whatever seat a connection held.
-    pub fn release(&mut self, player: PlayerId) -> Option<SlotId> {
-        let seat = self.seat_of_mut(player)?;
-        seat.player = None;
-        seat.name.clear();
-        seat.role = None;
-        seat.ready = false;
-        Some(seat.slot)
+    /// Opens whatever seat a connection held; its pick stays.
+    pub fn release(&mut self, player: PlayerId) {
+        if let Some(seat) = self.seat_of_mut(player) {
+            seat.player = None;
+            seat.name.clear();
+            seat.role = None;
+            seat.ready = false;
+        }
     }
 
     /// Whether every seat is held, picked and ready.
@@ -121,7 +114,7 @@ impl Roster {
             .collect()
     }
 
-    /// The picks, once every seat is ready.
+    /// The picks. Panics unless every seat has picked.
     pub fn picks(&self) -> Vec<bota_proto::Pick> {
         self.seats
             .iter()
