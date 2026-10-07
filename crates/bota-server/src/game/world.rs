@@ -6,14 +6,13 @@ use bota_proto::{HeroId, SlotId, Team, UnitKind};
 
 use crate::game::{
     AbilityBook, Action, AppliedModifiers, AuraCx, Auras, Bounty, CampHome, Candidates, Def,
-    Entity, EntityAllocator, Errand, Expiry, Forest, Handling, Health, Hit, Hook, Hull, Inventory,
-    Landed, Lane, LaneAi, Level, Loot, Mana, March, Mark, Missed, Modifier, Modifiers, Motion,
-    NeutralAi, Orders, Place, Plan, Projectile, Rax, RequiemLine, Route, Seat, SightCx,
-    SightScratch, SpawnModifier, Spots, Stacks, Stats, StatsCx, Table, Target, Tier, Transform,
-    UnitOrder, Upgrades, Visibility, aura_system, derive_stats, hitting_system, missile_system,
-    regenerate, visibility_system,
+    Entity, EntityAllocator, Errand, Expiry, Forest, Handling, Health, Hit, HitCx, Hook, Hull,
+    Inventory, Landed, Lane, LaneAi, Level, Loot, Mana, March, Mark, Missed, MissileCx, Modifier,
+    Modifiers, Motion, NeutralAi, Orders, Place, Plan, Projectile, Rax, RequiemLine, Route, Seat,
+    SightCx, SightScratch, SpawnModifier, Spots, Stacks, Stats, StatsCx, Table, Target, Tier,
+    Transform, UnitOrder, Upgrades, Visibility, aura_system, derive_stats, hitting_system,
+    missile_system, regenerate, visibility_system,
 };
-use crate::game::{HitCx, MissileCx};
 use crate::profile::{Phase, ScopeGuard};
 
 /// Everything a match is made of.
@@ -461,17 +460,7 @@ impl World {
             circles.push((at.pos, hull.collision));
         }
         let tree_radius = crate::game::rules::units(crate::game::rules::TREE_RADIUS);
-        for (index, at) in crate::game::tree_positions(self.map)
-            .into_iter()
-            .enumerate()
-        {
-            if self.trees.rooted_stands(index) {
-                circles.push((at, tree_radius));
-            }
-        }
-        for tree in self.trees.planted() {
-            circles.push((tree.at, tree_radius));
-        }
+        circles.extend(self.standing_trees().map(|at| (at, tree_radius)));
         self.clearance.set_circles(circles);
         self.lane_routes = None;
         let walkers = self.take_entity_snapshot();
@@ -521,23 +510,25 @@ impl World {
     /// now stands.
     pub fn lay_sight_block(&mut self) {
         let mut grid = crate::game::build_fow_walls(self.map);
-        let close = |grid: &mut crate::game::CellGrid, at| {
+        for at in self.standing_trees() {
             if let Some((cx, cy)) = crate::game::CellGrid::cell_of(at) {
                 grid.close_cell(cx, cy);
             }
-        };
-        for (index, at) in crate::game::tree_positions(self.map)
-            .into_iter()
-            .enumerate()
-        {
-            if self.trees.rooted_stands(index) {
-                close(&mut grid, at);
-            }
-        }
-        for tree in self.trees.planted() {
-            close(&mut grid, tree.at);
         }
         self.sight_block = grid;
+    }
+
+    /// Every standing tree: the map's own in [`tree_positions`] order, then
+    /// the planted ones.
+    ///
+    /// [`tree_positions`]: crate::game::tree_positions
+    fn standing_trees(&self) -> impl Iterator<Item = bota_proto::Vec2> + '_ {
+        crate::game::tree_positions(self.map)
+            .into_iter()
+            .enumerate()
+            .filter(|(index, _)| self.trees.rooted_stands(*index))
+            .map(|(_, at)| at)
+            .chain(self.trees.planted().iter().map(|tree| tree.at))
     }
 
     /// Brings stats, pools and who sees what into line with what stands.
@@ -545,32 +536,8 @@ impl World {
     /// Pools follow their maxima as [`derive_stats`] moves them.
     pub fn settle(&mut self) {
         let _profile = self.scope(Phase::Settle);
-        derive_stats(StatsCx {
-            entities: &self.entities,
-            def: &self.def,
-            level: &self.level,
-            upgrades: &self.upgrades,
-            inventory: &self.inventory,
-            modifiers: &self.modifiers,
-            applied: &self.applied,
-            abilities: &self.abilities,
-            stacks: &self.stacks,
-            stats: &mut self.stats,
-            health: &mut self.health,
-            mana: &mut self.mana,
-        });
-        self.guard_structures();
-        visibility_system(SightCx {
-            entities: &self.entities,
-            transform: &self.transform,
-            team: &self.team,
-            kind: &self.kind,
-            stats: &self.stats,
-            ground: &self.ground,
-            sight_block: &self.sight_block,
-            visibility: &mut self.visibility,
-            sight: &mut self.sight_scratch,
-        });
+        self.refresh_stats();
+        self.refresh_sight();
     }
 
     /// One tick, or no change after Map2 completes. The phases run in the
@@ -636,6 +603,12 @@ impl World {
     /// Stats worked out afresh, and the structures guarded.
     fn step_stats(&mut self) {
         let _profile = self.scope(Phase::Stats);
+        self.refresh_stats();
+    }
+
+    /// Stats worked out afresh, pools following their maxima, and the
+    /// structures guarded.
+    fn refresh_stats(&mut self) {
         derive_stats(StatsCx {
             entities: &self.entities,
             def: &self.def,
@@ -651,6 +624,21 @@ impl World {
             mana: &mut self.mana,
         });
         self.guard_structures();
+    }
+
+    /// Who sees what, from where everything stands.
+    fn refresh_sight(&mut self) {
+        visibility_system(SightCx {
+            entities: &self.entities,
+            transform: &self.transform,
+            team: &self.team,
+            kind: &self.kind,
+            stats: &self.stats,
+            ground: &self.ground,
+            sight_block: &self.sight_block,
+            visibility: &mut self.visibility,
+            sight: &mut self.sight_scratch,
+        });
     }
 
     /// Who everything that fights of its own accord is set on.
@@ -674,17 +662,7 @@ impl World {
     /// Who sees what, from where everything now stands.
     fn step_visibility(&mut self) {
         let _profile = self.scope(Phase::Visibility);
-        visibility_system(SightCx {
-            entities: &self.entities,
-            transform: &self.transform,
-            team: &self.team,
-            kind: &self.kind,
-            stats: &self.stats,
-            ground: &self.ground,
-            sight_block: &self.sight_block,
-            visibility: &mut self.visibility,
-            sight: &mut self.sight_scratch,
-        });
+        self.refresh_sight();
     }
 
     /// Attack orders tended, pools regenerated, actions run, missiles flown
