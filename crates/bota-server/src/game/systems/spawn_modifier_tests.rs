@@ -1,6 +1,6 @@
 //! Trusted setup modifiers: which spawns they take and how long they hold.
 
-use super::applied_tests::{a_spec, spec};
+use super::test_support::{a_spec, spec};
 use crate::game::{
     AppliedModifier, AppliedModifiers, AppliedOrigin, Command, Def, Entity, MAX_SPAWN_MODIFIERS,
     MAX_SPAWN_TARGETS, MELEE_CREEP, MatchConfig, MatchConfigError, ModifierDuration, Place,

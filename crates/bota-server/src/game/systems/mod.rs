@@ -58,3 +58,5 @@ mod pierce_tests;
 mod raze_tests;
 #[cfg(test)]
 mod spawn_modifier_tests;
+#[cfg(test)]
+mod test_support;

@@ -6,7 +6,7 @@ use crate::game::{
 };
 use bota_proto::{EventKind, HeroId, SlotId, Team, Vec2};
 
-use super::actions_tests::{
+use super::test_support::{
     ANVIL, assert_exact_blocks, opened, step_until, swinging_at, until_opened,
 };
 

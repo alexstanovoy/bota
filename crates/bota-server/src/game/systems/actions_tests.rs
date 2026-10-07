@@ -1,105 +1,10 @@
 //! The attack cycle: exact counts at every speed, and the pinned ticks at the
-//! base one. Also the fixtures the other attack tests share.
+//! base one.
 
-use std::fmt::Debug;
+use crate::game::{ActionState, Entity, MELEE_CREEP, UnitDef, World, attack_gain, beats};
+use bota_proto::{Team, Vec2};
 
-use crate::game::{
-    ActionState, Chance, Entity, Event, ItemStack, MELEE_CREEP, Modifier, ModifierKind, Modifiers,
-    Ratio, UnitDef, World, attack_gain, beats, rules,
-};
-use bota_proto::{Fixed, ItemId, SlotId, Team, Vec2};
-
-/// What takes a strike and never falls: no armor, no mending, no swing back.
-pub(super) const ANVIL: UnitDef = UnitDef {
-    max_hp: 30_000,
-    armor: 0,
-    damage: 0,
-    hp_regen: Fixed::ZERO,
-    ..MELEE_CREEP
-};
-
-/// A haste that holds a body's attack speed at `speed` for good.
-pub(super) fn swinging_at(speed: i32) -> Modifiers {
-    Modifiers(vec![Modifier {
-        kind: ModifierKind::Haste {
-            speed: speed - rules::BASE_ATTACK_SPEED,
-        },
-        source: None,
-        ticks_left: Some(u32::MAX / 2),
-    }])
-}
-
-/// Puts a freshly bought item in one of a hero's slots.
-pub(super) fn hold(world: &mut World, hero: Entity, slot: usize, item: u16) {
-    let stack = ItemStack::bought(ItemId(item), SlotId(0), 0).expect("the item is sold");
-    world.inventory.get_mut(hero).expect("has a bag").slots[slot] = Some(stack);
-}
-
-/// The roll stream an entity has opened in one of the world's stream tables.
-pub(super) fn opened(streams: &[Option<Chance>], of: Entity) -> Option<&Chance> {
-    streams.get(of.index().0 as usize)?.as_ref()
-}
-
-/// Steps until `stream` opens (at most `ticks` steps). Returns what `told`
-/// read off those steps and how many rolls of its first block the opening
-/// roll left, itself included.
-pub(super) fn until_opened<T>(
-    world: &mut World,
-    ticks: usize,
-    told: impl Fn(&[Event]) -> Vec<T>,
-    stream: impl Fn(&World) -> Option<&Chance>,
-) -> (Vec<T>, usize) {
-    let mut seen = Vec::new();
-    for _ in 0..ticks {
-        seen.extend(told(&world.step()));
-        if let Some(chance) = stream(world) {
-            let den = usize::from(chance.current().den());
-            let first = match usize::from(chance.block_position()) {
-                0 => 1,
-                pos => den - (pos - 1),
-            };
-            return (seen, first);
-        }
-    }
-    panic!("no roll within {ticks} ticks")
-}
-
-/// Steps (at most 800 times) until `seen` holds `wanted` entries of what
-/// `told` reads off each step.
-pub(super) fn step_until<T>(
-    world: &mut World,
-    seen: &mut Vec<T>,
-    wanted: usize,
-    told: impl Fn(&[Event]) -> Vec<T>,
-) {
-    for _ in 0..800 {
-        if seen.len() >= wanted {
-            return;
-        }
-        seen.extend(told(&world.step()));
-    }
-}
-
-/// Asserts that past the first `first` outcomes come at least five full
-/// blocks, each holding exactly `ratio.num()` hits.
-pub(super) fn assert_exact_blocks<T: Debug>(
-    seen: &[T],
-    first: usize,
-    ratio: Ratio,
-    hit: impl Fn(&T) -> bool,
-    case: &str,
-) {
-    let full = seen[first..].chunks_exact(usize::from(ratio.den()));
-    assert!(full.len() >= 5, "{case}: five full blocks");
-    for (nth, block) in full.enumerate() {
-        let hits = block.iter().filter(|outcome| hit(outcome)).count();
-        assert_eq!(
-            hits,
-            usize::from(ratio.num()),
-            "{case}, block {nth}: {block:?}"
-        );
-    }
-}
+use super::test_support::{ANVIL, swinging_at};
 
 /// A melee attacker worth one point a strike, at a cycle of its own.
 const fn pace(attack_time: u32, attack_point: u32, attack_backswing: u32) -> UnitDef {

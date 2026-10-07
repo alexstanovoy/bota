@@ -13,7 +13,7 @@ use bota_proto::{
     UnitKind, Vec2,
 };
 
-use super::actions_tests::hold;
+use super::test_support::{hold, spec};
 
 /// A world with a hero and a creep standing well apart.
 fn arena() -> (World, Entity, Entity) {
@@ -27,30 +27,6 @@ fn arena() -> (World, Entity, Entity) {
     let creep = world.spawn_unit(&MELEE_CREEP, Team::Dire, Vec2::from_ints(1000, 1000));
     world.settle();
     (world, hero, creep)
-}
-
-/// A nominal spec with one change on it.
-pub(super) fn spec(change: impl FnOnce(&mut ModifierSpec)) -> ModifierSpec {
-    let mut spec = ModifierSpec::NOMINAL;
-    change(&mut spec);
-    spec
-}
-
-/// A spec with a non-neutral value in every field, inside the bounds.
-pub(super) fn a_spec() -> ModifierSpec {
-    ModifierSpec {
-        magic_resist: 1_000,
-        status_resist: 2_000,
-        physical_damage: 11_000,
-        magic_damage: 12_000,
-        pure_damage: 13_000,
-        cooldown_rate: 9_000,
-        mana_cost_rate: 8_000,
-        move_speed: 8_500,
-        max_hp: 11_000,
-        max_mana: 12_000,
-        gold_income: 7_500,
-    }
 }
 
 /// One setup entry in an applied set.
