@@ -12,8 +12,6 @@ mod hit;
 mod hook;
 mod items;
 mod loot;
-#[cfg(test)]
-mod mango_tests;
 mod mark;
 mod modifiers;
 mod movement;
@@ -53,3 +51,6 @@ pub use target::*;
 pub use transform::*;
 pub use vision::*;
 pub use vitals::*;
+
+#[cfg(test)]
+mod tests;

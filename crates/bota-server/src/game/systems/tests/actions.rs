@@ -4,7 +4,7 @@
 use crate::game::{ActionState, Entity, MELEE_CREEP, UnitDef, World, attack_gain, beats};
 use bota_proto::{Team, Vec2};
 
-use super::test_support::{ANVIL, swinging_at};
+use super::support::{ANVIL, swinging_at};
 
 /// A melee attacker worth one point a strike, at a cycle of its own.
 const fn pace(attack_time: u32, attack_point: u32, attack_backswing: u32) -> UnitDef {

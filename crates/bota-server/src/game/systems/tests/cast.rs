@@ -7,7 +7,7 @@ use crate::game::{
 };
 use bota_proto::{AbilitySlot, DamageKind, HeroId, Order, SlotId, Target, Team, Vec2};
 
-use super::test_support::ANVIL;
+use super::support::ANVIL;
 
 /// Pudge in a seat with the dismember learned, and a mark 100 off.
 fn pudge_and_a_mark() -> (World, Entity, Entity) {

@@ -16,8 +16,6 @@ mod slots;
 mod state;
 
 #[cfg(test)]
-mod replay_tests;
-#[cfg(test)]
 mod tests;
 
 use std::path::PathBuf;

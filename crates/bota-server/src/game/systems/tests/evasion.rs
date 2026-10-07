@@ -7,9 +7,7 @@ use crate::game::{
 };
 use bota_proto::{DamageKind, EventKind, Fixed, HeroId, SlotId, Team, Vec2};
 
-use super::test_support::{
-    assert_exact_blocks, hold, opened, step_until, swinging_at, until_opened,
-};
+use super::support::{assert_exact_blocks, hold, opened, step_until, swinging_at, until_opened};
 
 /// A melee attacker worth a point a strike on a short cycle, never landing
 /// two strikes in one tick, never falling and never bringing a hero down.

@@ -1,6 +1,6 @@
 //! Cheats: what each one does, and that a match without them refuses them.
 
-use super::test_support::{a_spec, spec};
+use super::support::{a_spec, spec};
 use crate::game::{
     Command, Entity, Event, ITEM_BUTTERFLY, ITEM_TOWN_PORTAL_SCROLL, ITEMS, ItemStack, MELEE_CREEP,
     MatchConfig, World, ability, ability_mana_cost, rules, wire_id,

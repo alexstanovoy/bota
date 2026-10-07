@@ -321,3 +321,6 @@ impl ReplayStream {
         )
     }
 }
+
+#[cfg(test)]
+mod tests;

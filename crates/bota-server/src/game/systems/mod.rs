@@ -41,22 +41,4 @@ pub use target::*;
 pub use visibility::*;
 
 #[cfg(test)]
-mod actions_tests;
-#[cfg(test)]
-mod applied_tests;
-#[cfg(test)]
-mod cast_tests;
-#[cfg(test)]
-mod cheats_tests;
-#[cfg(test)]
-mod crit_tests;
-#[cfg(test)]
-mod evasion_tests;
-#[cfg(test)]
-mod pierce_tests;
-#[cfg(test)]
-mod raze_tests;
-#[cfg(test)]
-mod spawn_modifier_tests;
-#[cfg(test)]
-mod test_support;
+mod tests;

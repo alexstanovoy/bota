@@ -13,7 +13,7 @@ use bota_proto::{
     UnitKind, Vec2,
 };
 
-use super::test_support::{hold, spec};
+use super::support::{hold, spec};
 
 /// A world with a hero and a creep standing well apart.
 fn arena() -> (World, Entity, Entity) {

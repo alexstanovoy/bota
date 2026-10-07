@@ -6,9 +6,7 @@ use crate::game::{
 };
 use bota_proto::{EventKind, HeroId, SlotId, Team, Vec2};
 
-use super::test_support::{
-    ANVIL, assert_exact_blocks, opened, step_until, swinging_at, until_opened,
-};
+use super::support::{ANVIL, assert_exact_blocks, opened, step_until, swinging_at, until_opened};
 
 /// A melee attacker worth a hundred a strike on a short cycle, never
 /// landing two strikes in one tick.
