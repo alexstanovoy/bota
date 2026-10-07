@@ -14,15 +14,6 @@ pub const RAZE_RADIUS: i32 = 250;
 /// How far from its own fountain a unit is at the shop, in world units.
 pub const SHOP_RANGE: i32 = 1000;
 
-/// How far off a swing may be looking when it begins, in brads.
-pub const ATTACK_ANGLE: u16 = 2094;
-
-/// How far a hero turns in one tick, in brads.
-pub const TURN_RATE: u16 = 5795;
-
-/// How far a hero reaches to take an item off the ground, in world units.
-pub const TAKE_ITEM_RANGE: i32 = 150;
-
 /// The effect a Shadow Fiend's gathered souls show up as.
 pub const SOULS: EffectId = EffectId(11);
 
@@ -32,8 +23,6 @@ pub const RAZE_DAMAGE: [i32; 4] = [90, 160, 230, 300];
 /// Magic damage each line of a requiem lands on what it crosses, by the
 /// level it is cast at.
 pub const REQUIEM_LINE_DAMAGE: [i32; 3] = [80, 120, 160];
-/// The hero level each level of an ultimate waits for.
-pub const ULT_LEVEL_FLOORS: [u8; 3] = [6, 12, 18];
 
 /// How wide a line of a requiem catches as it sets out, in world units.
 pub const REQUIEM_LINE_WIDTH: f32 = 125.0;
@@ -50,22 +39,13 @@ pub const PUDGE: HeroId = HeroId(1);
 /// Shadow Fiend, who razes and gathers souls.
 pub const SHADOW_FIEND: HeroId = HeroId(2);
 
-/// What a hero's swing takes to leave and to arrive.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Swing {
-    /// World units a missile covers in a second. Zero for a hero that
-    /// strikes by hand.
-    pub missile_speed: i32,
-}
-
-/// What one hero's swing is made of.
-pub fn swing_of(hero: HeroId) -> Swing {
+/// World units a hero's attack missile covers in a second. Zero for a hero
+/// that strikes by hand.
+pub fn missile_speed(hero: HeroId) -> i32 {
     match hero {
-        SHADOW_FIEND => Swing {
-            missile_speed: 1200,
-        },
-        PUDGE => Swing { missile_speed: 0 },
-        _ => Swing { missile_speed: 900 },
+        SHADOW_FIEND => 1200,
+        PUDGE => 0,
+        _ => 900,
     }
 }
 
@@ -79,24 +59,10 @@ pub const FRENZY: AbilityId = AbilityId(1);
 pub const BOUNCE: AbilityId = AbilityId(2);
 /// Sylla's volley.
 pub const VOLLEY: AbilityId = AbilityId(3);
-/// Pudge's hook.
-pub const MEAT_HOOK: AbilityId = AbilityId(4);
-/// Pudge's rot.
-pub const ROT: AbilityId = AbilityId(5);
-/// Pudge's flesh heap.
-pub const FLESH_HEAP: AbilityId = AbilityId(6);
-/// Pudge's dismember.
-pub const DISMEMBER: AbilityId = AbilityId(7);
-/// A courier's burst of speed.
-pub const BURST: AbilityId = AbilityId(8);
-/// A courier putting back what it carries.
-pub const RETURN_ITEMS: AbilityId = AbilityId(9);
 /// A courier taking what waits in the stash.
 pub const TAKE_STASH: AbilityId = AbilityId(10);
 /// A courier handing over what it carries.
 pub const DELIVER: AbilityId = AbilityId(11);
-/// A courier's shield.
-pub const SHIELD: AbilityId = AbilityId(12);
 /// Shadow Fiend's nearest raze.
 pub const RAZE_NEAR: AbilityId = AbilityId(13);
 /// Shadow Fiend's middle raze.
@@ -123,12 +89,8 @@ pub const CLARITY: ItemId = ItemId(1);
 pub const SALVE: ItemId = ItemId(2);
 /// Iron Branch.
 pub const BRANCH: ItemId = ItemId(3);
-/// Observer Ward.
-pub const OBSERVER_WARD: ItemId = ItemId(4);
 /// Quelling Blade.
 pub const QUELLING_BLADE: ItemId = ItemId(5);
-/// Sentry Ward.
-pub const SENTRY_WARD: ItemId = ItemId(6);
 /// Tango.
 pub const TANGO: ItemId = ItemId(7);
 /// Town Portal Scroll.
@@ -143,54 +105,20 @@ pub const SLIPPERS: ItemId = ItemId(11);
 pub const MANTLE: ItemId = ItemId(12);
 /// Belt of Strength.
 pub const BELT: ItemId = ItemId(13);
-/// Band of Elvenskin.
-pub const BAND: ItemId = ItemId(14);
-/// Robe of the Magi.
-pub const ROBE: ItemId = ItemId(15);
-/// Ogre Axe.
-pub const OGRE_AXE: ItemId = ItemId(16);
-/// Blade of Alacrity.
-pub const ALACRITY: ItemId = ItemId(17);
-/// Staff of Wizardry.
-pub const WIZARDRY: ItemId = ItemId(18);
 /// Gloves of Haste.
 pub const GLOVES: ItemId = ItemId(19);
-/// Blades of Attack.
-pub const BLADES: ItemId = ItemId(20);
 /// Broadsword.
 pub const BROADSWORD: ItemId = ItemId(21);
 /// Quarterstaff.
 pub const QUARTERSTAFF: ItemId = ItemId(22);
-/// Ring of Protection.
-pub const RING_OF_PROTECTION: ItemId = ItemId(23);
-/// Chainmail.
-pub const CHAINMAIL: ItemId = ItemId(24);
-/// Ring of Regeneration.
-pub const RING_OF_REGEN: ItemId = ItemId(25);
 /// Sage's Mask.
 pub const SAGES_MASK: ItemId = ItemId(26);
-/// Vitality Booster.
-pub const VITALITY_BOOSTER: ItemId = ItemId(27);
-/// Energy Booster.
-pub const ENERGY_BOOSTER: ItemId = ItemId(28);
-/// Power Treads.
-pub const POWER_TREADS: ItemId = ItemId(29);
-/// Phase Boots.
-pub const PHASE_BOOTS: ItemId = ItemId(30);
-/// Blink Dagger.
-pub const BLINK_DAGGER: ItemId = ItemId(31);
-/// Bracer.
-pub const BRACER: ItemId = ItemId(32);
-/// Wraith Band.
-pub const WRAITH_BAND: ItemId = ItemId(33);
 /// Null Talisman.
 pub const NULL_TALISMAN: ItemId = ItemId(34);
 /// Magic Stick.
 pub const MAGIC_STICK: ItemId = ItemId(35);
 /// Magic Wand.
 pub const MAGIC_WAND: ItemId = ItemId(36);
-/// The recipe Phase Boots are finished with.
-pub const RECIPE_PHASE_BOOTS: ItemId = ItemId(37);
 /// The recipe a Bracer is finished with.
 pub const RECIPE_BRACER: ItemId = ItemId(38);
 /// The recipe a Wraith Band is finished with.
@@ -288,9 +216,6 @@ pub const SHAKE_CREEPS: usize = 2;
 /// How far a melee lane creep looks for something to take on, and how near
 /// the hero it must stand to hear an attack order the hero gave.
 pub const CREEP_ACQUISITION: i32 = 500;
-
-/// Ticks a creep called on by an order stays called on.
-pub const AGGRO_HOLD: u32 = 70;
 
 /// Ticks before an order may call the same creep on again.
 pub const AGGRO_COOLDOWN: u32 = 90;

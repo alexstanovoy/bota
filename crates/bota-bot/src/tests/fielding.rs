@@ -48,7 +48,7 @@ fn a_wave_on_another_lane_is_not_this_hero_s_business() {
 fn a_seat_with_no_body_standing_reads_as_one() {
     let view = field_of(vec![], None);
     let field = Field::of(&view, SlotId(0), Role::Mid).expect("a seat in the view");
-    assert!(!field.alive());
+    assert!(field.me.is_none());
     assert_eq!(field.at(), Vec2::from_ints(1760, 2278));
 }
 
@@ -82,7 +82,7 @@ fn an_ability_is_found_by_what_sits_in_the_slot() {
     let (slot, held) = field.ability(RAZE_NEAR).expect("the raze is carried");
     assert_eq!(slot, bota_proto::AbilitySlot(1));
     assert_eq!(held.level, 2);
-    assert_eq!(field.ability(crate::MEAT_HOOK), None);
+    assert_eq!(field.ability(crate::REQUIEM), None);
 }
 
 #[test]

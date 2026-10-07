@@ -24,7 +24,7 @@ pub const BOUNCE_CHAIN: usize = 3;
 pub const BOLT_SPARE_MANA: f32 = 0.55;
 
 /// What Sylla would cast this tick.
-pub fn sylla_spell(field: &Field, _beat: &crate::Beat) -> Option<Ask> {
+pub fn sylla_spell(field: &Field) -> Option<Ask> {
     volley(field)
         .or_else(|| frenzy(field))
         .or_else(|| bolt(field))

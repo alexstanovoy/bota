@@ -130,9 +130,15 @@ fn a_role_takes_the_lane_its_side_farms_it_from() {
 
 #[test]
 fn a_role_is_numbered_as_it_is_spoken_of() {
-    for number in 1..=5u8 {
-        let role = Role::of(number).expect("five roles");
-        assert_eq!(role.number(), number);
+    let roles = [
+        Role::Carry,
+        Role::Mid,
+        Role::Offlane,
+        Role::Roamer,
+        Role::Support,
+    ];
+    for (number, role) in (1..=5u8).zip(roles) {
+        assert_eq!(Role::of(number), Some(role));
     }
     assert_eq!(Role::of(0), None);
     assert_eq!(Role::of(6), None);

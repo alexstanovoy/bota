@@ -130,16 +130,6 @@ impl<'a> Field<'a> {
             .unwrap_or(Vec2::ZERO)
     }
 
-    /// Whether the hero is standing at all.
-    pub fn alive(&self) -> bool {
-        self.me.is_some()
-    }
-
-    /// The side that is not its own.
-    pub fn foe(&self) -> Team {
-        other_side(self.team)
-    }
-
     /// The ground between the hero and a body, edge to edge.
     pub fn gap_to(&self, other: &UnitView) -> f32 {
         self.me.map_or(f32::MAX, |me| gap_between(me, other))
@@ -236,17 +226,6 @@ impl<'a> Field<'a> {
             .iter()
             .copied()
             .filter(move |unit| span(unit.pos, at) <= reach)
-    }
-
-    /// The frontmost spot along the lane its own side holds: the standing
-    /// tower nearest the other side's end.
-    pub fn own_front(&self) -> Option<Vec2> {
-        let lane = self.lane.as_ref()?;
-        self.own_towers
-            .iter()
-            .map(|tower| tower.pos)
-            .max_by(|one, other| order_by(lane.how_far_along(*one), lane.how_far_along(*other)))
-            .or(self.home)
     }
 }
 

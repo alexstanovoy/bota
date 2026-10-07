@@ -22,9 +22,6 @@ pub enum Role {
     Support,
 }
 
-/// How many roles there are.
-pub const ROLES: usize = 5;
-
 impl Role {
     /// The role a number names, counting from one as they are spoken of.
     pub fn of(number: u8) -> Option<Role> {
@@ -36,17 +33,6 @@ impl Role {
             5 => Role::Support,
             _ => return None,
         })
-    }
-
-    /// Its number, counting from one.
-    pub fn number(self) -> u8 {
-        match self {
-            Role::Carry => 1,
-            Role::Mid => 2,
-            Role::Offlane => 3,
-            Role::Roamer => 4,
-            Role::Support => 5,
-        }
     }
 
     /// Which lane it belongs in, for a side.
@@ -108,16 +94,14 @@ impl Lane {
         let radiant = fountain(view, Team::Radiant)?;
         let dire = fountain(view, Team::Dire)?;
         let coarse = coarse_line(which, radiant, dire);
-        let mine: Vec<Vec2> = towers_of(view, which, team, radiant, dire);
-        let theirs: Vec<Vec2> = towers_of(view, which, other_side(team), radiant, dire);
+        let mut mine = towers_of(view, which, team, radiant, dire);
+        let mut theirs = towers_of(view, which, other_side(team), radiant, dire);
         let (home, away) = if team == Team::Radiant {
             (radiant, dire)
         } else {
             (dire, radiant)
         };
         let along = |at: Vec2| walked_to(&coarse, at);
-        let mut mine = mine;
-        let mut theirs = theirs;
         mine.sort_by(|one, other| order_by(along(*one), along(*other)));
         theirs.sort_by(|one, other| order_by(along(*one), along(*other)));
         if team == Team::Dire {
@@ -183,14 +167,6 @@ impl Lane {
     /// How far along the lane a spot falls, from the reading side's own end.
     pub fn how_far_along(&self, at: Vec2) -> f32 {
         walked_to(&self.route, at)
-    }
-
-    /// How far off the centerline a spot lies.
-    pub fn off_the_line(&self, at: Vec2) -> f32 {
-        self.route
-            .windows(2)
-            .map(|leg| onto(leg[0], leg[1], at).1)
-            .fold(f32::MAX, f32::min)
     }
 
     /// The spot that many world units along the lane from a spot on it,

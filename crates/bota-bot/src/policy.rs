@@ -493,7 +493,7 @@ impl Playbook {
     fn spell(&self, field: &Field) -> Option<Ask> {
         match field.hero {
             SHADOW_FIEND => fiend_spell(field, &self.beat),
-            SYLLA => sylla_spell(field, &self.beat),
+            SYLLA => sylla_spell(field),
             _ => None,
         }
     }

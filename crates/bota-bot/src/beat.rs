@@ -5,13 +5,14 @@
 
 use bota_proto::{DamageKind, EntityId, EventKind, HeroId, UnitView, WorldView};
 
-use crate::{BITTEN_TICKS, FORECAST_TICKS, HISTORY_TICKS, Swing, swing_of};
+use crate::{BITTEN_TICKS, FORECAST_TICKS, HISTORY_TICKS, missile_speed};
 
 /// What is known of the cycle and of the fall of everything in sight.
 #[derive(Clone, Debug)]
 pub struct Beat {
-    /// What the hero's own swing is made of.
-    swing: Swing,
+    /// World units the hero's attack missile covers in a second. Zero for a
+    /// hero that strikes by hand.
+    missile_speed: i32,
     /// Simulation ticks in a second.
     rate: f32,
     /// The tick the last blow of the hero's own landed.
@@ -50,7 +51,7 @@ impl Beat {
     /// A beat that has seen nothing yet.
     pub fn new(hero: HeroId, tick_rate: u16) -> Beat {
         Beat {
-            swing: swing_of(hero),
+            missile_speed: missile_speed(hero),
             rate: f32::from(tick_rate.max(1)),
             struck_at: None,
             interval: 0,
@@ -121,10 +122,10 @@ impl Beat {
 
     /// Ticks between a swing beginning and its blow arriving over a gap.
     pub fn flight_over(&self, gap: f32) -> u32 {
-        if self.swing.missile_speed <= 0 {
+        if self.missile_speed <= 0 {
             return self.point;
         }
-        let seconds = gap.max(0.0) / self.swing.missile_speed as f32;
+        let seconds = gap.max(0.0) / self.missile_speed as f32;
         self.point + (seconds * self.rate).ceil() as u32
     }
 

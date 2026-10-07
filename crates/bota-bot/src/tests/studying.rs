@@ -5,7 +5,7 @@ use bota_proto::{AbilityId, AbilitySlot, HeroId, SlotId, Team, Vec2};
 use crate::tests::fixtures;
 use crate::{
     BOUNCE, CRIT, FIEND_PLAN, Field, NECROMASTERY, RAZE_FAR, RAZE_MID, RAZE_NEAR, REQUIEM, Role,
-    SHADOW_FIEND, SYLLA, SYLLA_PLAN, ULT_LEVEL_FLOORS, VOLLEY, next_point, plan_of,
+    SHADOW_FIEND, SYLLA, SYLLA_PLAN, VOLLEY, next_point, plan_of,
 };
 
 /// Shadow Fiend's book, with the razes all standing at one level.
@@ -122,8 +122,9 @@ fn no_plan_asks_for_more_of_an_ability_than_it_holds() {
 
 #[test]
 fn an_ultimate_is_never_asked_for_before_its_level() {
-    // The n-th point is spent at hero level n, and each level of the
-    // ultimate waits for a hero level of its own.
+    // The n-th point is spent at hero level n; the server opens ultimate
+    // levels at hero levels 6, 12 and 18.
+    const ULT_LEVEL_FLOORS: [u8; 3] = [6, 12, 18];
     for (plan, ult) in [(&FIEND_PLAN[..], REQUIEM), (&SYLLA_PLAN[..], VOLLEY)] {
         let asked: Vec<usize> = (0..plan.len()).filter(|at| plan[*at] == ult).collect();
         for (had, at) in asked.iter().enumerate() {
