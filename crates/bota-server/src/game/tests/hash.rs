@@ -1,6 +1,6 @@
 //! The world fingerprint and the match randomness it covers.
 
-use crate::game::{MELEE_CREEP, MatchRng, PseudoRandom25, Purpose, World};
+use crate::game::{MatchRng, PseudoRandom25, Purpose, World};
 use bota_proto::{EntityId, Fixed, Team, Vec2};
 
 use super::support::*;
@@ -62,8 +62,7 @@ fn the_fingerprint_moves_when_the_world_does() {
     let before = world.hash();
     world.step();
     assert_ne!(before, world.hash(), "a tick is a change");
-    let creep = world.spawn_unit(&MELEE_CREEP, Team::Dire, Vec2::from_ints(9000, 9216));
-    world.settle();
+    let creep = a_creep_at(&mut world, Team::Dire, Vec2::from_ints(9000, 9216));
     let with = world.hash();
     if let Some(health) = world.health.get_mut(creep) {
         health.hp -= Fixed::ONE;
