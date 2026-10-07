@@ -1,5 +1,6 @@
 //! Cheats: what each one does, and that a match without them refuses them.
 
+use super::applied_tests::{a_spec, spec};
 use crate::game::{
     Command, Entity, Event, ITEM_BUTTERFLY, ITEM_TOWN_PORTAL_SCROLL, ITEMS, ItemStack, MELEE_CREEP,
     MatchConfig, World, ability, ability_mana_cost, rules, wire_id,
@@ -63,30 +64,6 @@ fn cheat_modifier(world: &mut World, spec: ModifierSpec, ticks: u32) {
             ticks,
         },
     );
-}
-
-/// A nominal spec with one change on it.
-fn spec(change: impl FnOnce(&mut ModifierSpec)) -> ModifierSpec {
-    let mut spec = ModifierSpec::NOMINAL;
-    change(&mut spec);
-    spec
-}
-
-/// A spec with a non-neutral value in every field, inside the bounds.
-fn a_spec() -> ModifierSpec {
-    ModifierSpec {
-        magic_resist: 1_000,
-        status_resist: 2_000,
-        physical_damage: 11_000,
-        magic_damage: 12_000,
-        pure_damage: 13_000,
-        cooldown_rate: 9_000,
-        mana_cost_rate: 8_000,
-        move_speed: 8_500,
-        max_hp: 11_000,
-        max_mana: 12_000,
-        gold_income: 7_500,
-    }
 }
 
 /// A modifier order aimed at `target`.

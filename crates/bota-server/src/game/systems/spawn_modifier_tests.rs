@@ -1,5 +1,6 @@
 //! Trusted setup modifiers: which spawns they take and how long they hold.
 
+use super::applied_tests::{a_spec, spec};
 use crate::game::{
     AppliedModifier, AppliedModifiers, AppliedOrigin, Command, Def, Entity, MAX_SPAWN_MODIFIERS,
     MAX_SPAWN_TARGETS, MELEE_CREEP, MatchConfig, MatchConfigError, ModifierDuration, Place,
@@ -10,13 +11,6 @@ use bota_proto::{
     Cheat, DamageKind, Fixed, HeroId, MAX_MODIFIER_TICKS, MapId, ModifierSpec, Order, Pick, SlotId,
     Target, Team, TickMode, UnitKind, Vec2,
 };
-
-/// A spec with one change on it, everything else neutral.
-fn spec(change: impl FnOnce(&mut ModifierSpec)) -> ModifierSpec {
-    let mut spec = ModifierSpec::NOMINAL;
-    change(&mut spec);
-    spec
-}
 
 /// A rule taking everything either side, running until the body falls.
 fn a_rule(spec: ModifierSpec) -> SpawnModifier {
@@ -415,19 +409,7 @@ type FieldChange = (&'static str, fn(&mut ModifierSpec));
 
 #[test]
 fn every_modifier_field_changes_the_hash() {
-    let base = spec(|s| {
-        s.magic_resist = 1_000;
-        s.status_resist = 2_000;
-        s.physical_damage = 11_000;
-        s.magic_damage = 12_000;
-        s.pure_damage = 13_000;
-        s.cooldown_rate = 9_000;
-        s.mana_cost_rate = 8_000;
-        s.move_speed = 8_500;
-        s.max_hp = 11_000;
-        s.max_mana = 12_000;
-        s.gold_income = 7_500;
-    });
+    let base = a_spec();
     let baseline = hash_with_spec(base);
     let changes: [FieldChange; 11] = [
         ("magic_resist", |s| s.magic_resist += 1),
