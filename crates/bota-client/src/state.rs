@@ -1,8 +1,9 @@
 //! Everything the client knows, and how server messages change it.
 
 use bota_proto::{
-    ClientMsg, EntityId, EventKind, HeroId, LobbySlot, MatchStats, Order, PlayerId, ServerMsg,
-    SlotId, Team, TickMode, UnitKind, WorldView,
+    ClientMsg, EntityId, EventKind, HeroId, LobbySlot, MatchInfo, MatchStats, Order, PlayerId,
+    RejectReason, ServerMsg, ShopEntry, SlotId, Team, TickMode, UnitKind, UnitView, Vec2,
+    WorldView,
 };
 
 use crate::camera::Camera;
@@ -70,7 +71,7 @@ pub enum Pin {
 ///
 /// An entry out of view is dropped once its seat has another unit of the same
 /// kind in view.
-pub fn remember(seen: &mut Vec<(u32, bota_proto::UnitView)>, view: &WorldView) {
+pub fn remember(seen: &mut Vec<(u32, UnitView)>, view: &WorldView) {
     for unit in view.units.iter().filter(|unit| unit.owner.is_some()) {
         match seen.iter_mut().find(|(_, held)| held.id == unit.id) {
             Some(held) => *held = (view.tick, unit.clone()),
@@ -87,10 +88,10 @@ pub fn remember(seen: &mut Vec<(u32, bota_proto::UnitView)>, view: &WorldView) {
 
 /// What is known of a unit, and how many ticks ago that was true.
 pub fn known_in<'a>(
-    seen: &'a [(u32, bota_proto::UnitView)],
+    seen: &'a [(u32, UnitView)],
     view: &'a WorldView,
     id: EntityId,
-) -> Option<(&'a bota_proto::UnitView, u32)> {
+) -> Option<(&'a UnitView, u32)> {
     if let Some(live) = view.units.iter().find(|unit| unit.id == id) {
         return Some((live, 0));
     }
@@ -103,11 +104,7 @@ pub fn known_in<'a>(
 ///
 /// A seat with its hero dead has no unit on the wire; this falls back to the
 /// last hero body kept for it.
-pub fn body_in(
-    seen: &[(u32, bota_proto::UnitView)],
-    view: &WorldView,
-    slot: SlotId,
-) -> Option<EntityId> {
+pub fn body_in(seen: &[(u32, UnitView)], view: &WorldView, slot: SlotId) -> Option<EntityId> {
     if let Some(unit) = view
         .players
         .iter()
@@ -152,8 +149,8 @@ pub fn tap_again(last: Option<(Tap, f32)>, what: Tap) -> (bool, Option<(Tap, f32
 }
 
 /// What a refusal is called in plain words.
-pub fn refusal(reason: bota_proto::RejectReason) -> &'static str {
-    use bota_proto::RejectReason as Why;
+pub fn refusal(reason: RejectReason) -> &'static str {
+    use RejectReason as Why;
     match reason {
         Why::HeroDead => "your hero is not standing",
         Why::UnknownTarget => "no such target",
@@ -237,9 +234,9 @@ pub struct App {
     /// The catalog row the shop panel starts at.
     pub shop_scroll: usize,
     /// What the shop sells and asks for it, from MatchStart.
-    pub shop: Vec<bota_proto::ShopEntry>,
+    pub shop: Vec<ShopEntry>,
     /// Fountain of each team, Radiant then Dire, from MatchStart.
-    pub fountains: [bota_proto::Vec2; 2],
+    pub fountains: [Vec2; 2],
     /// World units from its fountain within which a hero is in the home shop,
     /// from MatchStart.
     pub shop_range: i32,
@@ -266,7 +263,7 @@ pub struct App {
     pub prev_view: Option<WorldView>,
     /// The last state seen of every unit a seat owns, and the tick it was
     /// seen on. Kept by [`remember`].
-    pub seen: Vec<(u32, bota_proto::UnitView)>,
+    pub seen: Vec<(u32, UnitView)>,
     /// The eye.
     pub camera: Camera,
     /// Sequence number of the next order.
@@ -326,7 +323,7 @@ impl App {
             shop_open: false,
             shop_scroll: 0,
             shop: Vec::new(),
-            fountains: [bota_proto::Vec2::ZERO; 2],
+            fountains: [Vec2::ZERO; 2],
             shop_range: 0,
             trees: Vec::new(),
             terrain_cells: 0,
@@ -371,7 +368,7 @@ impl App {
 
     /// What is known of a unit: its live state, or the last one seen of it
     /// and how many ticks ago that was.
-    pub fn known(&self, id: EntityId) -> Option<(&bota_proto::UnitView, u32)> {
+    pub fn known(&self, id: EntityId) -> Option<(&UnitView, u32)> {
         known_in(&self.seen, self.view.as_ref()?, id)
     }
 
@@ -381,7 +378,7 @@ impl App {
     }
 
     /// Our hero's unit id, while it is alive and known.
-    pub fn my_hero(&self) -> Option<bota_proto::EntityId> {
+    pub fn my_hero(&self) -> Option<EntityId> {
         let slot = self.my_slot?;
         let view = self.view.as_ref()?;
         view.players.iter().find(|p| p.slot == slot)?.unit
@@ -390,7 +387,7 @@ impl App {
     /// Which unit the slot panel and the keys are about.
     ///
     /// Whatever is picked, if anything is; one's own hero otherwise.
-    pub fn commanded(&self) -> Option<bota_proto::EntityId> {
+    pub fn commanded(&self) -> Option<EntityId> {
         match self.selected {
             Some(id) => Some(id),
             None => self.my_hero(),
@@ -447,17 +444,17 @@ impl App {
     }
 
     /// Our own courier, while one stands.
-    pub fn my_courier(&self) -> Option<bota_proto::EntityId> {
+    pub fn my_courier(&self) -> Option<EntityId> {
         let view = self.view.as_ref()?;
         let mine = self.my_slot?;
         view.units
             .iter()
-            .find(|unit| unit.kind == bota_proto::UnitKind::Courier && unit.owner == Some(mine))
+            .find(|unit| unit.kind == UnitKind::Courier && unit.owner == Some(mine))
             .map(|unit| unit.id)
     }
 
     /// Whether a unit is one this seat drives.
-    pub fn drives(&self, id: bota_proto::EntityId) -> bool {
+    pub fn drives(&self, id: EntityId) -> bool {
         let Some(view) = self.view.as_ref() else {
             return false;
         };
@@ -472,7 +469,7 @@ impl App {
     /// Whatever of ours is selected takes it; with our own hero selected, or
     /// nothing of ours at all, the order names nobody and the server sends it
     /// to the hero.
-    pub fn ordering_unit(&self) -> Option<bota_proto::EntityId> {
+    pub fn ordering_unit(&self) -> Option<EntityId> {
         let id = self.selected?;
         let view = self.view.as_ref()?;
         let mine = self.my_slot?;
@@ -481,7 +478,7 @@ impl App {
     }
 
     /// Which side this player is on, once the match has told us.
-    pub fn my_team(&self) -> Option<bota_proto::Team> {
+    pub fn my_team(&self) -> Option<Team> {
         let slot = self.my_slot?;
         let view = self.view.as_ref()?;
         view.players.iter().find(|p| p.slot == slot).map(|p| p.team)
@@ -498,13 +495,12 @@ impl App {
 
     /// The team whose fog this client lives under. Absent for spectators,
     /// who see everything.
-    pub fn fog_team(&self) -> Option<bota_proto::Team> {
-        let view = self.view.as_ref()?;
-        if let Some(slot) = self.my_slot {
-            return view.players.iter().find(|p| p.slot == slot).map(|p| p.team);
+    pub fn fog_team(&self) -> Option<Team> {
+        if self.my_slot.is_some() {
+            return self.my_team();
         }
         // A spectator's fog is whatever eyes the snapshot came through.
-        view.viewer
+        self.view.as_ref()?.viewer
     }
 
     /// Whether our hero stands within the match's shop range of its own
@@ -523,19 +519,14 @@ impl App {
             return false;
         };
         let fountain = match p.team {
-            bota_proto::Team::Radiant => self.fountains[0],
-            bota_proto::Team::Dire => self.fountains[1],
-            bota_proto::Team::Neutral => return false,
+            Team::Radiant => self.fountains[0],
+            Team::Dire => self.fountains[1],
+            Team::Neutral => return false,
         };
         let dx = unit.pos.x.to_f32() - fountain.x.to_f32();
         let dy = unit.pos.y.to_f32() - fountain.y.to_f32();
         let range = self.shop_range as f32;
         dx * dx + dy * dy <= range * range
-    }
-
-    /// Whether one of the panel's fifteen item slots holds an item right now.
-    pub fn item_at(&self, slot: u8) -> bool {
-        self.item_in(slot).is_some()
     }
 
     /// The seat the bottom panel falls back to: our own, else the first one.
@@ -552,7 +543,7 @@ impl App {
 
     /// Sends one order to a named unit, whatever is selected. Absent names
     /// the seat's hero.
-    pub fn send_order_to(&mut self, unit: Option<bota_proto::EntityId>, order: Order) {
+    pub fn send_order_to(&mut self, unit: Option<EntityId>, order: Order) {
         self.seq += 1;
         let seq = self.seq;
         if let (Some(slot), Some(view)) = (self.my_slot, self.view.as_ref()) {
@@ -614,32 +605,7 @@ impl App {
                     self.note_order(given.slot, given.unit, tick, given.order);
                 }
             }
-            ServerMsg::MatchStart { info } => {
-                self.shown_orders.clear();
-                self.tick_rate = info.tick_rate;
-                self.pregame_ticks = info.pregame_ticks;
-                self.shop = info.shop.clone();
-                self.fountains = info.fountains;
-                self.shop_range = info.shop_range;
-                self.trees = info
-                    .trees
-                    .iter()
-                    .map(|t| (t.x.to_f32(), t.y.to_f32()))
-                    .collect();
-                self.terrain_cells = info.terrain_cells as usize;
-                self.terrain = info
-                    .terrain_rle
-                    .iter()
-                    .flat_map(|&(n, v)| std::iter::repeat_n(v, usize::from(n)))
-                    .collect();
-                let n = self.terrain_cells;
-                self.opaque = vec![0u64; (n * n).div_ceil(64)];
-                for &(cx, cy) in &info.opaque_cells {
-                    let idx = usize::from(cy) * n + usize::from(cx);
-                    self.opaque[idx / 64] |= 1 << (idx % 64);
-                }
-                self.phase = Phase::Playing;
-            }
+            ServerMsg::MatchStart { info } => self.start_match(&info),
             ServerMsg::Snapshot { view } => {
                 if self.mode == Some(TickMode::Lockstep) && self.my_slot.is_some() {
                     self.source.send(&ClientMsg::Ack { tick: view.tick });
@@ -665,13 +631,39 @@ impl App {
             }
             ServerMsg::ParticipantLeft { slot, .. } => {
                 if let Some(slot) = slot {
-                    self.feed.push(FeedLine {
-                        text: format!("{} disconnected", self.seat_name(slot)),
-                        age: 0.0,
-                    });
+                    let text = format!("{} disconnected", self.seat_name(slot));
+                    self.feed.push(FeedLine { text, age: 0.0 });
                 }
             }
         }
+    }
+
+    /// Takes in what the match is played on and switches to it.
+    fn start_match(&mut self, info: &MatchInfo) {
+        self.shown_orders.clear();
+        self.tick_rate = info.tick_rate;
+        self.pregame_ticks = info.pregame_ticks;
+        self.shop = info.shop.clone();
+        self.fountains = info.fountains;
+        self.shop_range = info.shop_range;
+        self.trees = info
+            .trees
+            .iter()
+            .map(|t| (t.x.to_f32(), t.y.to_f32()))
+            .collect();
+        self.terrain_cells = info.terrain_cells as usize;
+        self.terrain = info
+            .terrain_rle
+            .iter()
+            .flat_map(|&(n, v)| std::iter::repeat_n(v, usize::from(n)))
+            .collect();
+        let n = self.terrain_cells;
+        self.opaque = vec![0u64; (n * n).div_ceil(64)];
+        for &(cx, cy) in &info.opaque_cells {
+            let idx = usize::from(cy) * n + usize::from(cx);
+            self.opaque[idx / 64] |= 1 << (idx % 64);
+        }
+        self.phase = Phase::Playing;
     }
 
     fn absorb_event(&mut self, event: EventKind) {
@@ -682,58 +674,21 @@ impl App {
                 crit,
                 ..
             } => {
-                if let Some(pos) = self.unit_pos(target) {
-                    let (text, kind) = if crit {
-                        (format!("{amount}!"), FloaterKind::Crit)
-                    } else {
-                        (format!("{amount}"), FloaterKind::Damage)
-                    };
-                    self.floaters.push(Floater {
-                        text,
-                        kind,
-                        world: pos,
-                        age: 0.0,
-                    });
+                if crit {
+                    self.float(target, format!("{amount}!"), FloaterKind::Crit);
+                } else {
+                    self.float(target, format!("{amount}"), FloaterKind::Damage);
                 }
             }
             EventKind::Missed { target, .. } => {
-                if let Some(pos) = self.unit_pos(target) {
-                    self.floaters.push(Floater {
-                        text: "miss".to_string(),
-                        kind: FloaterKind::Miss,
-                        world: pos,
-                        age: 0.0,
-                    });
-                }
+                self.float(target, "miss".to_string(), FloaterKind::Miss);
             }
             EventKind::Died {
                 unit, killer, gold, ..
             } => {
-                let Some((kind, team, owner)) = self.unit_identity(unit) else {
-                    return;
-                };
-                if kind != UnitKind::Hero {
-                    return;
+                if let Some(text) = self.death_line(unit, killer, gold) {
+                    self.feed.push(FeedLine { text, age: 0.0 });
                 }
-                let victim = match owner {
-                    Some(slot) => self.seat_name(slot),
-                    None => format!("a {team:?} hero"),
-                };
-                let by =
-                    killer
-                        .and_then(|k| self.unit_identity(k))
-                        .map(|(kind, team, owner)| match (kind, owner) {
-                            (UnitKind::Hero, Some(slot)) => self.seat_name(slot),
-                            (UnitKind::Tower, _) => format!("the {team:?} tower"),
-                            (UnitKind::Fountain, _) => format!("the {team:?} fountain"),
-                            (kind, _) => format!("a {team:?} {kind:?}"),
-                        });
-                let text = match by {
-                    Some(by) if gold > 0 => format!("{victim} was slain by {by} for {gold} gold"),
-                    Some(by) => format!("{victim} was slain by {by}"),
-                    None => format!("{victim} died"),
-                };
-                self.feed.push(FeedLine { text, age: 0.0 });
             }
             EventKind::StructureDestroyed { team, .. } => {
                 self.feed.push(FeedLine {
@@ -742,14 +697,7 @@ impl App {
                 });
             }
             EventKind::LevelUp { unit, level } => {
-                if let Some(pos) = self.unit_pos(unit) {
-                    self.floaters.push(Floater {
-                        text: format!("level {level}"),
-                        kind: FloaterKind::Level,
-                        world: pos,
-                        age: 0.0,
-                    });
-                }
+                self.float(unit, format!("level {level}"), FloaterKind::Level);
             }
             EventKind::Healed { .. }
             | EventKind::AbilityCast { .. }
@@ -757,30 +705,50 @@ impl App {
         }
     }
 
-    /// The position of a unit in the freshest view that still has it.
-    fn unit_pos(&self, id: bota_proto::EntityId) -> Option<(f32, f32)> {
-        for view in [self.view.as_ref(), self.prev_view.as_ref()]
-            .into_iter()
-            .flatten()
-        {
-            if let Some(u) = view.units.iter().find(|u| u.id == id) {
-                return Some((u.pos.x.to_f32(), u.pos.y.to_f32()));
-            }
+    /// Sets a floater off a unit, if it is still to be found.
+    fn float(&mut self, unit: EntityId, text: String, kind: FloaterKind) {
+        if let Some(u) = self.freshest(unit) {
+            let world = (u.pos.x.to_f32(), u.pos.y.to_f32());
+            self.floaters.push(Floater {
+                text,
+                kind,
+                world,
+                age: 0.0,
+            });
         }
-        None
     }
 
-    /// Kind, team and owner of a unit, from the freshest view that has it.
-    fn unit_identity(&self, id: bota_proto::EntityId) -> Option<(UnitKind, Team, Option<SlotId>)> {
-        for view in [self.view.as_ref(), self.prev_view.as_ref()]
+    /// The kill feed line of a death. Only a hero's death has one.
+    fn death_line(&self, unit: EntityId, killer: Option<EntityId>, gold: i32) -> Option<String> {
+        let victim = self.freshest(unit)?;
+        if victim.kind != UnitKind::Hero {
+            return None;
+        }
+        let victim = match victim.owner {
+            Some(slot) => self.seat_name(slot),
+            None => format!("a {:?} hero", victim.team),
+        };
+        let by = killer
+            .and_then(|k| self.freshest(k))
+            .map(|k| match (k.kind, k.owner) {
+                (UnitKind::Hero, Some(slot)) => self.seat_name(slot),
+                (UnitKind::Tower, _) => format!("the {:?} tower", k.team),
+                (UnitKind::Fountain, _) => format!("the {:?} fountain", k.team),
+                (kind, _) => format!("a {:?} {kind:?}", k.team),
+            });
+        Some(match by {
+            Some(by) if gold > 0 => format!("{victim} was slain by {by} for {gold} gold"),
+            Some(by) => format!("{victim} was slain by {by}"),
+            None => format!("{victim} died"),
+        })
+    }
+
+    /// A unit as the freshest view that still has it shows it.
+    fn freshest(&self, id: EntityId) -> Option<&UnitView> {
+        [self.view.as_ref(), self.prev_view.as_ref()]
             .into_iter()
             .flatten()
-        {
-            if let Some(u) = view.units.iter().find(|u| u.id == id) {
-                return Some((u.kind, u.team, u.owner));
-            }
-        }
-        None
+            .find_map(|view| view.units.iter().find(|u| u.id == id))
     }
 
     /// Notices a dead socket once and says so.
