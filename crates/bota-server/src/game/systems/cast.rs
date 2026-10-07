@@ -5,8 +5,8 @@ use bota_proto::{
 };
 
 use crate::game::{
-    Entity, Event, Modifier, ModifierKind, Projectile, World, ability_def, fountain_pos, item_def,
-    rules, wire_id,
+    Entity, Event, Modifier, ModifierKind, Projectile, World, ability, ability_def, fountain_pos,
+    item_def, rules, wire_id,
 };
 
 impl World {
@@ -164,7 +164,7 @@ impl World {
                 damage: rules::SYLLA_BOUNCE_DAMAGE[level],
                 kind: DamageKind::Magical,
                 damage_amp_bp,
-                ability: Some(AbilityId(2)),
+                ability: Some(ability::BOUNCE),
                 launch_tier: 0,
                 can_miss_uphill: false,
                 crit: false,
