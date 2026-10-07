@@ -8,6 +8,7 @@ use bota_proto::{
     Vec2,
 };
 
+use super::pudge::hook_flying;
 use super::support::*;
 
 #[test]
@@ -16,13 +17,7 @@ fn frenzy_puts_haste_on_its_caster_and_spends_the_mana() {
     let hero = caster(&mut world, Vec2::from_ints(5000, 5000), 1);
     let full = world.mana.get(hero).expect("has mana").mana;
     let plain = world.stats.get(hero).expect("settled").attack_speed;
-    world.order_cast(
-        hero,
-        PendingCast::Ability {
-            slot: AbilitySlot(1),
-            target: Target::None,
-        },
-    );
+    order(&mut world, hero, 1, Target::None);
     world.step();
     assert!(
         world.mana.get(hero).expect("has mana").mana < full,
@@ -48,13 +43,7 @@ fn a_cast_with_no_mana_behind_it_does_nothing() {
     if let Some(mana) = world.mana.get_mut(hero) {
         mana.mana = Fixed::ZERO;
     }
-    world.order_cast(
-        hero,
-        PendingCast::Ability {
-            slot: AbilitySlot(1),
-            target: Target::None,
-        },
-    );
+    order(&mut world, hero, 1, Target::None);
     world.step();
     assert_eq!(
         world.abilities.get(hero).expect("has a book").slots[1].cooldown,
@@ -72,33 +61,17 @@ fn a_multishot_strikes_everything_around_and_leaves_allies_be() {
     let ally = world.spawn_unit(&MELEE_CREEP, Team::Radiant, Vec2::from_ints(5200, 5100));
     let far = world.spawn_unit(&MELEE_CREEP, Team::Dire, Vec2::from_ints(7000, 5000));
     world.settle();
-    world.fill_pools(near);
-    world.fill_pools(ally);
-    world.fill_pools(far);
-    let (was_near, was_ally, was_far) = (
-        world.health.get(near).expect("standing").hp,
-        world.health.get(ally).expect("standing").hp,
-        world.health.get(far).expect("standing").hp,
-    );
-    world.order_cast(
-        hero,
-        PendingCast::Ability {
-            slot: AbilitySlot(3),
-            target: Target::None,
-        },
-    );
+    for unit in [near, ally, far] {
+        world.fill_pools(unit);
+    }
+    let hp = |world: &World, unit| world.health.get(unit).expect("standing").hp;
+    let (was_near, was_ally, was_far) = (hp(&world, near), hp(&world, ally), hp(&world, far));
+    order(&mut world, hero, 3, Target::None);
     world.step();
-    assert!(
-        world.health.get(near).expect("standing").hp < was_near,
-        "the one in the ring is struck"
-    );
+    assert!(hp(&world, near) < was_near, "the one in the ring is struck");
+    assert_eq!(hp(&world, ally), was_ally, "its own side is left be");
     assert_eq!(
-        world.health.get(ally).expect("standing").hp,
-        was_ally,
-        "its own side is left be"
-    );
-    assert_eq!(
-        world.health.get(far).expect("standing").hp,
+        hp(&world, far),
         was_far,
         "and the one outside the ring is untouched"
     );
@@ -123,20 +96,16 @@ fn a_point_is_spent_only_when_there_is_one_and_the_level_allows_it() {
         !world.learn(hero, 0),
         "one ability twice over is no different"
     );
-    // Levelled up, the point is there, but the ultimate still waits.
     world.level.insert(hero, Level(2));
     assert!(
         !world.learn(hero, 3),
         "the ultimate waits for the level it asks for"
     );
     assert!(world.learn(hero, 1), "a basic one does not");
-    // A passive takes points like anything else.
     world.level.insert(hero, Level(3));
     assert!(world.learn(hero, 2), "a passive is learned, not cast");
-    // Right up to the level it opens on, the ultimate answers.
     world.level.insert(hero, Level(rules::ULT_LEVEL_FLOORS[0]));
     assert!(world.learn(hero, 3), "and then it opens");
-    // Nothing goes past its own cap, however many levels are had.
     world.level.insert(hero, Level(50));
     for _ in 0..10 {
         world.learn(hero, 0);
@@ -150,18 +119,11 @@ fn a_point_is_spent_only_when_there_is_one_and_the_level_allows_it() {
 
 #[test]
 fn a_cast_aimed_out_of_reach_walks_the_caster_in_and_then_goes_off() {
-    let (mut world, pudge, _mark) = pudge_and_a_mark(4000);
-    let from = world.transform.get(pudge).expect("standing").pos;
-    let far = from + Vec2::from_ints(rules::HOOK_RANGE + 900, 0);
-    throw_hook(&mut world, far);
-    assert!(
-        world.pending_cast(pudge).is_some(),
-        "out of reach the cast is held rather than dropped"
-    );
+    let (mut world, pudge, from, far) = a_held_hook();
     let mut thrown = false;
     for _ in 0..400 {
         world.step();
-        if world.entities.iter().any(|e| world.hook.get(e).is_some()) {
+        if hook_flying(&world) {
             thrown = true;
             break;
         }
@@ -182,14 +144,7 @@ fn a_cast_aimed_out_of_reach_walks_the_caster_in_and_then_goes_off() {
 
 #[test]
 fn a_later_order_calls_a_held_cast_off() {
-    let (mut world, pudge, _mark) = pudge_and_a_mark(4000);
-    let from = world.transform.get(pudge).expect("standing").pos;
-    let far = from + Vec2::from_ints(rules::HOOK_RANGE + 900, 0);
-    throw_hook(&mut world, far);
-    assert!(
-        world.pending_cast(pudge).is_some(),
-        "out of reach the cast is held rather than dropped"
-    );
+    let (mut world, pudge, from, _far) = a_held_hook();
     world.advance(&[Command {
         slot: SlotId(0),
         unit: None,
@@ -204,10 +159,7 @@ fn a_later_order_calls_a_held_cast_off() {
     );
     for _ in 0..120 {
         world.step();
-        assert!(
-            !world.entities.iter().any(|e| world.hook.get(e).is_some()),
-            "and it never goes off"
-        );
+        assert!(!hook_flying(&world), "and it never goes off");
     }
     let stood = world.transform.get(pudge).expect("standing").pos;
     assert!(
@@ -228,14 +180,7 @@ fn a_cast_walked_towards_a_target_that_fell_is_given_up_and_costs_nothing() {
             mana: Fixed::from_int(110),
         },
     );
-    world.advance(&[Command {
-        slot: SlotId(0),
-        unit: None,
-        order: Order::Cast {
-            slot: AbilitySlot(3),
-            target: Target::Unit(wire_id(mark)),
-        },
-    }]);
+    pudge_casts(&mut world, 3, Target::Unit(wire_id(mark)));
     assert!(
         world.pending_cast(pudge).is_some(),
         "out of reach the cast is held while the caster walks in"
@@ -266,13 +211,7 @@ fn a_cast_walked_towards_a_target_that_fell_is_given_up_and_costs_nothing() {
 #[test]
 fn an_aimed_cast_takes_the_bodys_order_over() {
     let (mut world, pudge, mark) = pudge_and_a_mark(600);
-    world.advance(&[Command {
-        slot: SlotId(0),
-        unit: None,
-        order: Order::Attack {
-            target: Target::Unit(wire_id(mark)),
-        },
-    }]);
+    attack_click(&mut world, mark);
     assert!(
         matches!(
             world.orders.get(pudge).map(|o| o.current),
@@ -331,7 +270,6 @@ fn a_cast_with_no_mana_is_named_and_refused() {
         Err(RejectReason::NotEnoughMana),
         "and without it the seat is told why"
     );
-    // An unlearned slot and a wrongly aimed one are named too.
     let unlearned = Order::Cast {
         slot: AbilitySlot(3),
         target: Target::Unit(wire_id(pudge)),
@@ -341,8 +279,6 @@ fn a_cast_with_no_mana_is_named_and_refused() {
         Err(RejectReason::NotLearned),
         "a slot with no points in it says so"
     );
-    // A passive is not a slot with nothing in it: it is one that is never
-    // cast at all.
     let passive = Order::Cast {
         slot: AbilitySlot(2),
         target: Target::None,
@@ -383,13 +319,7 @@ fn a_bolt_goes_on_to_the_next_and_never_back_to_the_same_one() {
         .iter()
         .map(|mark| world.health.get(*mark).expect("standing").hp.to_int())
         .collect();
-    world.order_cast(
-        hero,
-        PendingCast::Ability {
-            slot: AbilitySlot(2),
-            target: Target::Unit(wire_id(marks[0])),
-        },
-    );
+    order(&mut world, hero, 2, Target::Unit(wire_id(marks[0])));
     for _ in 0..120 {
         world.step();
     }
@@ -462,7 +392,6 @@ fn one_point_levels_every_raze_at_once_and_costs_one() {
         "the three cost one point together"
     );
     assert!(!world.learn(fiend, 3), "and there is nothing left to spend");
-    // The trio waits for hero levels the same as any one ability would.
     world.level.insert(fiend, Level(2));
     assert!(
         !world.learn(fiend, 0),
@@ -492,5 +421,30 @@ fn learning_an_ability_tells_of_no_cast() {
             .iter()
             .any(|event| matches!(event.kind, EventKind::AbilityCast { .. })),
         "a skill point is not a cast"
+    );
+}
+
+/// Pudge with a hook ordered out of reach, held while he walks in: the world,
+/// Pudge, where he stood and where the hook is aimed.
+fn a_held_hook() -> (World, Entity, Vec2, Vec2) {
+    let (mut world, pudge, _mark) = pudge_and_a_mark(4000);
+    let from = world.transform.get(pudge).expect("standing").pos;
+    let far = from + Vec2::from_ints(rules::HOOK_RANGE + 900, 0);
+    throw_hook(&mut world, far);
+    assert!(
+        world.pending_cast(pudge).is_some(),
+        "out of reach the cast is held rather than dropped"
+    );
+    (world, pudge, from, far)
+}
+
+/// Orders a hero to cast one of its slots, bypassing the seat.
+fn order(world: &mut World, hero: Entity, slot: u8, target: Target) {
+    world.order_cast(
+        hero,
+        PendingCast::Ability {
+            slot: AbilitySlot(slot),
+            target,
+        },
     );
 }
