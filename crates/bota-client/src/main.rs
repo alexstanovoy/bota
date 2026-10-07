@@ -24,14 +24,14 @@ use std::path::PathBuf;
 
 use bota_proto::{ClientMsg, Role};
 use clap::Parser;
-use macroquad::prelude::{Conf, next_frame};
+use macroquad::prelude::{Conf, KeyCode, get_frame_time, is_key_pressed, next_frame};
 
 use crate::net::Net;
 use crate::replay_play::ReplayPlayer;
 use crate::state::{App, Source};
 
 /// bota client: rendering, input, spectating and replays.
-#[derive(Parser, Clone, Debug, PartialEq, Eq)]
+#[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
 pub struct Args {
     /// Where the server listens.
@@ -75,7 +75,7 @@ async fn main() {
         }
     };
     loop {
-        let dt = macroquad::prelude::get_frame_time();
+        let dt = get_frame_time();
         let msgs = app.source.poll(dt);
         for msg in msgs {
             app.handle(msg);
@@ -95,7 +95,7 @@ async fn replay_open_error(error: &str) {
     loop {
         render::draw_replay_loading(0);
         render::draw_replay_error(error);
-        if macroquad::prelude::is_key_pressed(macroquad::prelude::KeyCode::Escape) {
+        if is_key_pressed(KeyCode::Escape) {
             return;
         }
         next_frame().await;
