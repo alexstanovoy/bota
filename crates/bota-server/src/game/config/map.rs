@@ -6,7 +6,7 @@
 
 use bota_proto::{MapId, Vec2};
 
-use crate::game::{CampDef, CampKind, Protection, rules};
+use crate::game::{CampDef, CampKind, Protection, camp, rules};
 
 /// Full Dota geometry with mid-only waves and bounded hero/tower play.
 pub const MAP2_ID: MapId = MapId(2);
@@ -75,15 +75,6 @@ const DOTA_CORNERS: &[&[Vec2]] = &[&[], &[rules::TOP_CORNER], &[rules::BOT_CORNE
 
 /// The demo lane bends through its own path corners, straight from the map.
 const DEMO_CORNERS: &[&[Vec2]] = &[&rules::DEMO_LANE_CORNERS];
-
-const fn camp(pos: Vec2, kind: CampKind, pullable: bool, flooded: bool) -> CampDef {
-    CampDef {
-        pos,
-        kind,
-        pullable,
-        flooded,
-    }
-}
 
 /// The demo map's two camps, in the wooded pockets either side of the
 /// lane, both pullable.

@@ -393,18 +393,12 @@ pub fn ability_def(id: AbilityId) -> Option<&'static AbilityDef> {
 ///
 /// Zero for a slot that holds nothing castable.
 pub fn ability_mana_cost(id: AbilityId, level: u8) -> i32 {
-    let Some(def) = ability_def(id) else {
-        return 0;
-    };
-    pick(def.mana, level)
+    ability_def(id).map_or(0, |def| pick(def.mana, level))
 }
 
 /// What one cast puts on the clock at a level.
 pub fn ability_cooldown(id: AbilityId, level: u8) -> u32 {
-    let Some(def) = ability_def(id) else {
-        return 0;
-    };
-    pick(def.cooldown, level)
+    ability_def(id).map_or(0, |def| pick(def.cooldown, level))
 }
 
 /// The entry of a per-level table for a level, the last one standing for

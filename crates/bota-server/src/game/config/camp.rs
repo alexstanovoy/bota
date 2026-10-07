@@ -30,7 +30,8 @@ pub struct CampDef {
     pub flooded: bool,
 }
 
-const fn camp(pos: Vec2, kind: CampKind, pullable: bool, flooded: bool) -> CampDef {
+/// A camp from its fields, in declaration order.
+pub(crate) const fn camp(pos: Vec2, kind: CampKind, pullable: bool, flooded: bool) -> CampDef {
     CampDef {
         pos,
         kind,

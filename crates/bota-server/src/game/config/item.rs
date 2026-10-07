@@ -4,9 +4,7 @@
 
 use bota_proto::{Aim, Attribute, Attributes, Fixed, ItemId, ItemView, Target};
 
-use crate::game::Inventory;
-use crate::game::Ratio;
-use crate::game::rules;
+use crate::game::{Entity, Inventory, Ratio, World, rules};
 
 /// Which pool an item mends.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -121,27 +119,22 @@ pub enum Spends {
 
 /// What an item does at a moment of its use, given its user and the slot
 /// it sits in. `false`: it did not happen.
-pub type UseHook = fn(&mut crate::game::World, crate::game::Entity, usize, Target) -> bool;
+pub type UseHook = fn(&mut World, Entity, usize, Target) -> bool;
 
 /// What an item does when its use ends.
-pub type ItemEndHook = fn(&mut crate::game::World, crate::game::Entity, usize, Target);
+pub type ItemEndHook = fn(&mut World, Entity, usize, Target);
 
-fn unused(_: &mut crate::game::World, _: crate::game::Entity, _: usize, _: Target) -> bool {
+fn unused(_: &mut World, _: Entity, _: usize, _: Target) -> bool {
     false
 }
 
-fn goes_on(_: &mut crate::game::World, _: crate::game::Entity, _: usize, _: Target) -> bool {
+fn goes_on(_: &mut World, _: Entity, _: usize, _: Target) -> bool {
     true
 }
 
-fn nothing(_: &mut crate::game::World, _: crate::game::Entity, _: usize, _: Target) {}
+fn nothing(_: &mut World, _: Entity, _: usize, _: Target) {}
 
-fn clarity(
-    world: &mut crate::game::World,
-    user: crate::game::Entity,
-    _: usize,
-    target: Target,
-) -> bool {
+fn clarity(world: &mut World, user: Entity, _: usize, target: Target) -> bool {
     world.mend_with(
         user,
         target,
@@ -156,12 +149,7 @@ fn clarity(
     )
 }
 
-fn salve(
-    world: &mut crate::game::World,
-    user: crate::game::Entity,
-    _: usize,
-    target: Target,
-) -> bool {
+fn salve(world: &mut World, user: Entity, _: usize, target: Target) -> bool {
     world.mend_with(
         user,
         target,
@@ -176,48 +164,23 @@ fn salve(
     )
 }
 
-fn branch(
-    world: &mut crate::game::World,
-    user: crate::game::Entity,
-    _: usize,
-    target: Target,
-) -> bool {
+fn branch(world: &mut World, user: Entity, _: usize, target: Target) -> bool {
     world.plant_a_tree(user, target, rules::PLANTED_TREE_TICKS, 350)
 }
 
-fn observer(
-    world: &mut crate::game::World,
-    user: crate::game::Entity,
-    _: usize,
-    target: Target,
-) -> bool {
+fn observer(world: &mut World, user: Entity, _: usize, target: Target) -> bool {
     world.stand_ward(user, target, &crate::game::OBSERVER_WARD, 10800, 500)
 }
 
-fn quelling(
-    world: &mut crate::game::World,
-    user: crate::game::Entity,
-    _: usize,
-    target: Target,
-) -> bool {
+fn quelling(world: &mut World, user: Entity, _: usize, target: Target) -> bool {
     world.fell_a_tree(user, target, 350)
 }
 
-fn sentry(
-    world: &mut crate::game::World,
-    user: crate::game::Entity,
-    _: usize,
-    target: Target,
-) -> bool {
+fn sentry(world: &mut World, user: Entity, _: usize, target: Target) -> bool {
     world.stand_ward(user, target, &crate::game::SENTRY_WARD, 12600, 500)
 }
 
-fn tango(
-    world: &mut crate::game::World,
-    user: crate::game::Entity,
-    _: usize,
-    target: Target,
-) -> bool {
+fn tango(world: &mut World, user: Entity, _: usize, target: Target) -> bool {
     world.mend_with(
         user,
         target,
@@ -232,62 +195,32 @@ fn tango(
     )
 }
 
-fn scroll_reads(
-    world: &mut crate::game::World,
-    user: crate::game::Entity,
-    _: usize,
-    target: Target,
-) -> bool {
+fn scroll_reads(world: &mut World, user: Entity, _: usize, target: Target) -> bool {
     world.may_teleport(user, target, 600)
 }
 
-fn scroll_carries(
-    world: &mut crate::game::World,
-    user: crate::game::Entity,
-    slot: usize,
-    target: Target,
-) {
+fn scroll_carries(world: &mut World, user: Entity, slot: usize, target: Target) {
     world.teleport_to(user, slot, target);
 }
 
-fn treads(
-    world: &mut crate::game::World,
-    user: crate::game::Entity,
-    slot: usize,
-    _: Target,
-) -> bool {
+fn treads(world: &mut World, user: Entity, slot: usize, _: Target) -> bool {
     world.switch_mode(user, slot)
 }
 
-fn phase(world: &mut crate::game::World, user: crate::game::Entity, _: usize, _: Target) -> bool {
+fn phase(world: &mut World, user: Entity, _: usize, _: Target) -> bool {
     world.walk_through(user, 20, 93)
 }
 
-fn blink(
-    world: &mut crate::game::World,
-    user: crate::game::Entity,
-    _: usize,
-    target: Target,
-) -> bool {
+fn blink(world: &mut World, user: Entity, _: usize, target: Target) -> bool {
     world.blink_to(user, target, BLINK_RANGE)
 }
 
-fn stick(
-    world: &mut crate::game::World,
-    user: crate::game::Entity,
-    slot: usize,
-    _: Target,
-) -> bool {
+fn stick(world: &mut World, user: Entity, slot: usize, _: Target) -> bool {
     let charges = i32::from(world.charges_in(user, slot));
     world.restore_with(user, charges * 15, charges * 15)
 }
 
-fn mango(
-    world: &mut crate::game::World,
-    user: crate::game::Entity,
-    _: usize,
-    target: Target,
-) -> bool {
+fn mango(world: &mut World, user: Entity, _: usize, target: Target) -> bool {
     world.replenish_mana(user, target, MANGO_MANA)
 }
 

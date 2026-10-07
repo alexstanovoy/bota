@@ -98,8 +98,7 @@ pub fn spawn_offsets(plan: &WavePlan, forward: Vec2) -> Vec<Vec2> {
         i64::from(forward.x.raw) * i64::from(forward.x.raw)
             + i64::from(forward.y.raw) * i64::from(forward.y.raw),
     );
-    // A wave with nowhere to march lines up along the x axis. The length
-    // divides last: divided first, the raw direction rounds to zero.
+    // A wave with nowhere to march lines up along the x axis.
     let (dx, dy, len) = if len == 0 {
         (1i64, 0i64, 1i64)
     } else {
@@ -119,10 +118,7 @@ pub fn spawn_offsets(plan: &WavePlan, forward: Vec2) -> Vec<Vec2> {
     };
     let mut out = Vec::with_capacity(plan.size() as usize);
     let front = plan.melee + plan.siege;
-    let spread = |i: u32, of: u32| {
-        let step = rules::WAVE_SPAWN_SPACING;
-        (i as i32 - (of as i32 - 1) / 2) * step
-    };
+    let spread = |i: u32, of: u32| (i as i32 - (of as i32 - 1) / 2) * rules::WAVE_SPAWN_SPACING;
     for i in 0..front {
         out.push(across(spread(i, front)));
     }
