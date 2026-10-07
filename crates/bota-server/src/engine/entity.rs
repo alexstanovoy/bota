@@ -72,8 +72,8 @@ impl EntityAllocator {
     /// An allocator that has handed out nothing.
     pub fn new() -> Self {
         Self {
-            entities: Default::default(),
-            free: Default::default(),
+            entities: Vec::new(),
+            free: Vec::new(),
             len: 0,
         }
     }
@@ -116,9 +116,8 @@ impl EntityAllocator {
     /// Gives up the entity's slot. False when the handle named nobody live,
     /// which covers freeing twice.
     pub fn free(&mut self, entity: Entity) -> bool {
-        let meta = match self.entities.get_mut(entity.index.0 as usize) {
-            Some(v) => v,
-            None => return false,
+        let Some(meta) = self.entities.get_mut(entity.index.0 as usize) else {
+            return false;
         };
         if meta.free || meta.generation != entity.generation {
             return false;
@@ -132,11 +131,9 @@ impl EntityAllocator {
 
     /// Whether the handle still names a live entity.
     pub fn contains(&self, entity: Entity) -> bool {
-        let meta = match self.entities.get(entity.index.0 as usize) {
-            Some(v) => v,
-            None => return false,
-        };
-        !meta.free && meta.generation == entity.generation
+        self.entities
+            .get(entity.index.0 as usize)
+            .is_some_and(|meta| !meta.free && meta.generation == entity.generation)
     }
 
     /// The live entity holding a slot as a given tenant, if there is one.
@@ -151,15 +148,10 @@ impl EntityAllocator {
         self.entities
             .iter()
             .enumerate()
-            .filter_map(|(idx, entity)| {
-                if entity.free {
-                    None
-                } else {
-                    Some(Entity {
-                        index: Index(idx as u32),
-                        generation: entity.generation,
-                    })
-                }
+            .filter(|(_, meta)| !meta.free)
+            .map(|(index, meta)| Entity {
+                index: Index(index as u32),
+                generation: meta.generation,
             })
     }
 }

@@ -6,7 +6,6 @@ use crate::engine::{Entity, Generation};
 struct Slot<T> {
     /// The generation of the entity the value was written for.
     generation: Generation,
-    /// The component.
     value: T,
 }
 
