@@ -1,8 +1,10 @@
 //! How a match ends, kills, experience, gold and respawns.
 
-use crate::game::rules;
-use crate::game::{Health, MELEE_CREEP, World};
-use bota_proto::{Fixed, Team};
+use crate::game::{
+    HERO, Health, ITEM_BOOTS, ITEM_QUELLING_BLADE, Level, MAPS, MELEE_CREEP, Seat, UnitOrder,
+    World, ancient_of, hero_spawn_pos, map_of, rules, wire_id,
+};
+use bota_proto::{EventKind, Fixed, HeroId, ItemId, MapId, SlotId, Team, Vec2};
 
 use super::support::*;
 
@@ -10,9 +12,9 @@ use super::support::*;
 fn a_fallen_ancient_ends_the_match() {
     let mut world = World::new();
     let ancient = world.spawn_unit(
-        crate::game::ancient_of(bota_proto::Team::Dire),
-        bota_proto::Team::Dire,
-        bota_proto::Vec2::from_ints(1000, 1000),
+        ancient_of(Team::Dire),
+        Team::Dire,
+        Vec2::from_ints(1000, 1000),
     );
     world.settle();
     // An Ancient shrugs damage off while it stands invulnerable, so this one
@@ -20,11 +22,11 @@ fn a_fallen_ancient_ends_the_match() {
     world.health.insert(ancient, Health { hp: Fixed::ZERO });
     let mut events = Vec::new();
     world.bury(vec![(ancient, None)], &mut events);
-    assert_eq!(world.winner, Some(bota_proto::Team::Radiant));
+    assert_eq!(world.winner, Some(Team::Radiant));
     assert!(
         events
             .iter()
-            .any(|e| matches!(e.kind, bota_proto::EventKind::StructureDestroyed { .. }))
+            .any(|e| matches!(e.kind, EventKind::StructureDestroyed { .. }))
     );
 }
 
@@ -32,28 +34,28 @@ fn a_fallen_ancient_ends_the_match() {
 fn simultaneous_ancient_deaths_preserve_the_first_terminal_result() {
     let mut world = World::new();
     let radiant = world.spawn_unit(
-        crate::game::ancient_of(bota_proto::Team::Radiant),
-        bota_proto::Team::Radiant,
-        bota_proto::Vec2::from_ints(1000, 1000),
+        ancient_of(Team::Radiant),
+        Team::Radiant,
+        Vec2::from_ints(1000, 1000),
     );
     let dire = world.spawn_unit(
-        crate::game::ancient_of(bota_proto::Team::Dire),
-        bota_proto::Team::Dire,
-        bota_proto::Vec2::from_ints(2000, 2000),
+        ancient_of(Team::Dire),
+        Team::Dire,
+        Vec2::from_ints(2000, 2000),
     );
     world.settle();
     let mut events = Vec::new();
 
     world.bury(vec![(radiant, None), (dire, None)], &mut events);
 
-    assert_eq!(world.victor(), Some(bota_proto::Team::Dire));
+    assert_eq!(world.victor(), Some(Team::Dire));
 }
 
 #[test]
 fn every_map_sits_at_the_place_its_id_names() {
     // The per-map clearance base field is indexed by the id, not by the
     // position.
-    for (at, map) in crate::game::MAPS.iter().enumerate() {
+    for (at, map) in MAPS.iter().enumerate() {
         assert_eq!(
             usize::from(map.id.0),
             at,
@@ -68,24 +70,20 @@ fn every_map_sits_at_the_place_its_id_names() {
 fn a_kill_pays_the_one_who_struck_last_and_feeds_the_side() {
     let mut world = World::new();
     let hero = world.spawn_hero(
-        bota_proto::Team::Radiant,
-        bota_proto::Vec2::from_ints(5000, 5000),
-        bota_proto::SlotId(0),
-        bota_proto::HeroId(0),
+        Team::Radiant,
+        Vec2::from_ints(5000, 5000),
+        SlotId(0),
+        HeroId(0),
     );
-    world.seats.push(crate::game::Seat::new(
-        bota_proto::SlotId(0),
-        bota_proto::Team::Radiant,
-        bota_proto::HeroId(0),
+    world.seats.push(Seat::new(
+        SlotId(0),
+        Team::Radiant,
+        HeroId(0),
         0,
         rules::STASH_SLOTS,
     ));
     world.seats[0].unit = Some(hero);
-    let prey = world.spawn_unit(
-        &MELEE_CREEP,
-        bota_proto::Team::Dire,
-        bota_proto::Vec2::from_ints(5050, 5000),
-    );
+    let prey = world.spawn_unit(&MELEE_CREEP, Team::Dire, Vec2::from_ints(5050, 5000));
     world.settle();
     world.health.insert(prey, Health { hp: Fixed::ZERO });
     let mut events = Vec::new();
@@ -98,31 +96,13 @@ fn a_kill_pays_the_one_who_struck_last_and_feeds_the_side() {
 #[test]
 fn nearby_allied_heroes_split_a_units_experience_evenly() {
     let mut world = World::new();
-    for (slot, x) in [
-        (bota_proto::SlotId(0), 5_000),
-        (bota_proto::SlotId(1), 5_100),
-    ] {
-        let hero = world.spawn_hero(
-            Team::Radiant,
-            bota_proto::Vec2::from_ints(x, 5_000),
-            slot,
-            bota_proto::HeroId(0),
-        );
-        let mut seat = crate::game::Seat::new(
-            slot,
-            Team::Radiant,
-            bota_proto::HeroId(0),
-            0,
-            rules::STASH_SLOTS,
-        );
+    for (slot, x) in [(SlotId(0), 5_000), (SlotId(1), 5_100)] {
+        let hero = world.spawn_hero(Team::Radiant, Vec2::from_ints(x, 5_000), slot, HeroId(0));
+        let mut seat = Seat::new(slot, Team::Radiant, HeroId(0), 0, rules::STASH_SLOTS);
         seat.unit = Some(hero);
         world.seats.push(seat);
     }
-    let prey = world.spawn_unit(
-        &MELEE_CREEP,
-        Team::Dire,
-        bota_proto::Vec2::from_ints(5_050, 5_000),
-    );
+    let prey = world.spawn_unit(&MELEE_CREEP, Team::Dire, Vec2::from_ints(5_050, 5_000));
     world.settle();
     let mut events = Vec::new();
 
@@ -136,31 +116,13 @@ fn nearby_allied_heroes_split_a_units_experience_evenly() {
 #[test]
 fn dead_allied_heroes_do_not_take_an_experience_share() {
     let mut world = World::new();
-    for (slot, x) in [
-        (bota_proto::SlotId(0), 5_000),
-        (bota_proto::SlotId(1), 5_100),
-    ] {
-        let hero = world.spawn_hero(
-            Team::Radiant,
-            bota_proto::Vec2::from_ints(x, 5_000),
-            slot,
-            bota_proto::HeroId(0),
-        );
-        let mut seat = crate::game::Seat::new(
-            slot,
-            Team::Radiant,
-            bota_proto::HeroId(0),
-            0,
-            rules::STASH_SLOTS,
-        );
+    for (slot, x) in [(SlotId(0), 5_000), (SlotId(1), 5_100)] {
+        let hero = world.spawn_hero(Team::Radiant, Vec2::from_ints(x, 5_000), slot, HeroId(0));
+        let mut seat = Seat::new(slot, Team::Radiant, HeroId(0), 0, rules::STASH_SLOTS);
         seat.unit = Some(hero);
         world.seats.push(seat);
     }
-    let prey = world.spawn_unit(
-        &MELEE_CREEP,
-        Team::Dire,
-        bota_proto::Vec2::from_ints(5_050, 5_000),
-    );
+    let prey = world.spawn_unit(&MELEE_CREEP, Team::Dire, Vec2::from_ints(5_050, 5_000));
     world.settle();
     let dead = world.seats[1].unit.expect("second hero");
     world.health.get_mut(dead).expect("hero health").hp = Fixed::ZERO;
@@ -176,24 +138,20 @@ fn dead_allied_heroes_do_not_take_an_experience_share() {
 fn bringing_down_your_own_is_a_deny_and_pays_the_other_side_nothing() {
     let mut world = World::new();
     let hero = world.spawn_hero(
-        bota_proto::Team::Radiant,
-        bota_proto::Vec2::from_ints(5000, 5000),
-        bota_proto::SlotId(0),
-        bota_proto::HeroId(0),
+        Team::Radiant,
+        Vec2::from_ints(5000, 5000),
+        SlotId(0),
+        HeroId(0),
     );
-    world.seats.push(crate::game::Seat::new(
-        bota_proto::SlotId(0),
-        bota_proto::Team::Radiant,
-        bota_proto::HeroId(0),
+    world.seats.push(Seat::new(
+        SlotId(0),
+        Team::Radiant,
+        HeroId(0),
         0,
         rules::STASH_SLOTS,
     ));
     world.seats[0].unit = Some(hero);
-    let own = world.spawn_unit(
-        &MELEE_CREEP,
-        bota_proto::Team::Radiant,
-        bota_proto::Vec2::from_ints(5050, 5000),
-    );
+    let own = world.spawn_unit(&MELEE_CREEP, Team::Radiant, Vec2::from_ints(5050, 5000));
     world.settle();
     let mut events = Vec::new();
     world.bury(vec![(own, Some(hero))], &mut events);
@@ -206,25 +164,15 @@ fn bringing_down_your_own_is_a_deny_and_pays_the_other_side_nothing() {
 fn denied_lane_creeps_give_reduced_experience_to_nearby_enemies() {
     let mut world = World::new();
     for (slot, team, x) in [
-        (bota_proto::SlotId(0), Team::Radiant, 5_000),
-        (bota_proto::SlotId(1), Team::Dire, 5_100),
+        (SlotId(0), Team::Radiant, 5_000),
+        (SlotId(1), Team::Dire, 5_100),
     ] {
-        let hero = world.spawn_hero(
-            team,
-            bota_proto::Vec2::from_ints(x, 5_000),
-            slot,
-            bota_proto::HeroId(0),
-        );
-        let mut seat =
-            crate::game::Seat::new(slot, team, bota_proto::HeroId(0), 0, rules::STASH_SLOTS);
+        let hero = world.spawn_hero(team, Vec2::from_ints(x, 5_000), slot, HeroId(0));
+        let mut seat = Seat::new(slot, team, HeroId(0), 0, rules::STASH_SLOTS);
         seat.unit = Some(hero);
         world.seats.push(seat);
     }
-    let denied = world.spawn_unit(
-        &MELEE_CREEP,
-        Team::Radiant,
-        bota_proto::Vec2::from_ints(5_050, 5_000),
-    );
+    let denied = world.spawn_unit(&MELEE_CREEP, Team::Radiant, Vec2::from_ints(5_050, 5_000));
     world.settle();
     let mut events = Vec::new();
 
@@ -241,28 +189,21 @@ fn denied_lane_creeps_give_reduced_experience_to_nearby_enemies() {
 fn a_hero_kill_pays_by_the_streak_and_a_death_costs_gold_by_the_level() {
     let mut world = World::new();
     let hunter = world.spawn_hero(
-        bota_proto::Team::Radiant,
-        bota_proto::Vec2::from_ints(5000, 5000),
-        bota_proto::SlotId(0),
-        bota_proto::HeroId(0),
+        Team::Radiant,
+        Vec2::from_ints(5000, 5000),
+        SlotId(0),
+        HeroId(0),
     );
     let prey = world.spawn_hero(
-        bota_proto::Team::Dire,
-        bota_proto::Vec2::from_ints(5050, 5000),
-        bota_proto::SlotId(1),
-        bota_proto::HeroId(0),
+        Team::Dire,
+        Vec2::from_ints(5050, 5000),
+        SlotId(1),
+        HeroId(0),
     );
-    for (slot, team) in [
-        (bota_proto::SlotId(0), bota_proto::Team::Radiant),
-        (bota_proto::SlotId(1), bota_proto::Team::Dire),
-    ] {
-        world.seats.push(crate::game::Seat::new(
-            slot,
-            team,
-            bota_proto::HeroId(0),
-            0,
-            rules::STASH_SLOTS,
-        ));
+    for (slot, team) in [(SlotId(0), Team::Radiant), (SlotId(1), Team::Dire)] {
+        world
+            .seats
+            .push(Seat::new(slot, team, HeroId(0), 0, rules::STASH_SLOTS));
     }
     world.seats[0].unit = Some(hunter);
     world.seats[1].unit = Some(prey);
@@ -300,7 +241,7 @@ fn a_hero_kill_pays_by_the_streak_and_a_death_costs_gold_by_the_level() {
         "and the streak ends with the body"
     );
     let told = events.iter().find_map(|event| match event.kind {
-        bota_proto::EventKind::Died { gold, .. } => Some(gold),
+        EventKind::Died { gold, .. } => Some(gold),
         _ => None,
     });
     assert_eq!(told, Some(head), "the event says what the kill paid");
@@ -310,15 +251,15 @@ fn a_hero_kill_pays_by_the_streak_and_a_death_costs_gold_by_the_level() {
 fn a_death_never_takes_more_gold_than_the_purse_holds() {
     let mut world = World::new();
     let prey = world.spawn_hero(
-        bota_proto::Team::Dire,
-        bota_proto::Vec2::from_ints(5000, 5000),
-        bota_proto::SlotId(0),
-        bota_proto::HeroId(0),
+        Team::Dire,
+        Vec2::from_ints(5000, 5000),
+        SlotId(0),
+        HeroId(0),
     );
-    world.seats.push(crate::game::Seat::new(
-        bota_proto::SlotId(0),
-        bota_proto::Team::Dire,
-        bota_proto::HeroId(0),
+    world.seats.push(Seat::new(
+        SlotId(0),
+        Team::Dire,
+        HeroId(0),
         0,
         rules::STASH_SLOTS,
     ));
@@ -337,7 +278,7 @@ fn a_death_never_takes_more_gold_than_the_purse_holds() {
         "and the items keep their worth"
     );
     let told = events.iter().find_map(|event| match event.kind {
-        bota_proto::EventKind::Died { gold, .. } => Some(gold),
+        EventKind::Died { gold, .. } => Some(gold),
         _ => None,
     });
     assert_eq!(told, Some(0), "and nobody was paid for the fall");
@@ -345,18 +286,18 @@ fn a_death_never_takes_more_gold_than_the_purse_holds() {
 
 #[test]
 fn a_fallen_hero_comes_back_at_its_fountain() {
-    let map = crate::game::map_of(bota_proto::MapId(1));
+    let map = map_of(MapId(1));
     let mut world = World::on_map(map);
     let hero = world.spawn_hero(
-        bota_proto::Team::Radiant,
-        bota_proto::Vec2::from_ints(9000, 9216),
-        bota_proto::SlotId(0),
-        bota_proto::HeroId(0),
+        Team::Radiant,
+        Vec2::from_ints(9000, 9216),
+        SlotId(0),
+        HeroId(0),
     );
-    world.seats.push(crate::game::Seat::new(
-        bota_proto::SlotId(0),
-        bota_proto::Team::Radiant,
-        bota_proto::HeroId(0),
+    world.seats.push(Seat::new(
+        SlotId(0),
+        Team::Radiant,
+        HeroId(0),
         0,
         rules::STASH_SLOTS,
     ));
@@ -376,7 +317,7 @@ fn a_fallen_hero_comes_back_at_its_fountain() {
     // It comes back beside the fountain, on the spot it first stood up on.
     assert_eq!(
         at,
-        crate::game::hero_spawn_pos(map, bota_proto::Team::Radiant),
+        hero_spawn_pos(map, Team::Radiant),
         "it came back somewhere else"
     );
     assert!(
@@ -390,10 +331,10 @@ fn a_fallen_hero_comes_back_at_its_fountain() {
 #[test]
 fn a_hero_stands_up_beside_its_fountain_and_not_in_it() {
     for id in [0u16, 1] {
-        let map = crate::game::map_of(bota_proto::MapId(id));
+        let map = map_of(MapId(id));
         let world = World::on_map(map);
-        for team in [bota_proto::Team::Radiant, bota_proto::Team::Dire] {
-            let at = crate::game::hero_spawn_pos(map, team);
+        for team in [Team::Radiant, Team::Dire] {
+            let at = hero_spawn_pos(map, team);
             assert!(
                 world.clearance.walkable(at),
                 "map {id}, {team:?}: a hero stands up on ground it can walk off"
@@ -406,13 +347,13 @@ fn a_hero_stands_up_beside_its_fountain_and_not_in_it() {
 fn a_hero_keeps_what_it_learned_and_carried_through_a_death() {
     let mut world = World::for_match(&config(), config().rng());
     let hero = world.seats[0].unit.expect("stood up");
-    world.level.insert(hero, crate::game::Level(7));
+    world.level.insert(hero, Level(7));
     world.seats[0].level = 7;
     let mut events = Vec::new();
     assert!(world.learn(hero, 1));
     assert!(world.learn(hero, 1));
-    let boots = bota_proto::ItemId(crate::game::ITEM_BOOTS);
-    assert!(world.buy(bota_proto::SlotId(0), boots, &mut events));
+    let boots = ItemId(ITEM_BOOTS);
+    assert!(world.buy(SlotId(0), boots, &mut events));
     world.bury(vec![(hero, None)], &mut events);
     assert!(
         world.seats[0].kept.is_some(),
@@ -444,9 +385,7 @@ fn a_hero_keeps_what_it_learned_and_carried_through_a_death() {
     world.step();
     assert_eq!(
         world.stats.get(back).map(|s| s.move_speed),
-        Some(bota_proto::Fixed::from_int(
-            crate::game::HERO.move_speed + 45
-        )),
+        Some(Fixed::from_int(HERO.move_speed + 45)),
         "the boots work again at once"
     );
 }
@@ -455,14 +394,14 @@ fn a_hero_keeps_what_it_learned_and_carried_through_a_death() {
 fn what_a_hero_owes_runs_down_while_it_is_dead() {
     let mut world = World::for_match(&config(), config().rng());
     let hero = world.seats[0].unit.expect("stood up");
-    world.level.insert(hero, crate::game::Level(7));
+    world.level.insert(hero, Level(7));
     world.seats[0].level = 7;
     let mut events = Vec::new();
     assert!(world.learn(hero, 1));
     if let Some(book) = world.abilities.get_mut(hero) {
         book.slots[1].cooldown = 300;
     }
-    hand_item(&mut world, hero, crate::game::ITEM_QUELLING_BLADE, 0);
+    hand_item(&mut world, hero, ITEM_QUELLING_BLADE, 0);
     if let Some(bag) = world.inventory.get_mut(hero)
         && let Some(Some(stack)) = bag.slots.get_mut(0)
     {
@@ -522,29 +461,24 @@ fn a_heros_head_and_its_wait_are_priced_as_the_game_prices_them() {
 #[test]
 fn a_heros_blows_on_enemy_heroes_and_structures_are_counted_in_the_final_stats() {
     let mut world = World::new();
-    let at = bota_proto::Vec2::from_ints(5000, 5000);
-    let hero = world.spawn_hero(
-        Team::Radiant,
-        at,
-        bota_proto::SlotId(0),
-        bota_proto::HeroId(0),
-    );
+    let at = Vec2::from_ints(5000, 5000);
+    let hero = world.spawn_hero(Team::Radiant, at, SlotId(0), HeroId(0));
     let foe = world.spawn_hero(
         Team::Dire,
-        at + bota_proto::Vec2::from_ints(100, 0),
-        bota_proto::SlotId(1),
-        bota_proto::HeroId(0),
+        at + Vec2::from_ints(100, 0),
+        SlotId(1),
+        HeroId(0),
     );
     let ancient = world.spawn_unit(
-        crate::game::ancient_of(Team::Dire),
+        ancient_of(Team::Dire),
         Team::Dire,
-        at + bota_proto::Vec2::from_ints(0, 100),
+        at + Vec2::from_ints(0, 100),
     );
     for (slot, team, unit) in [(0, Team::Radiant, hero), (1, Team::Dire, foe)] {
-        world.seats.push(crate::game::Seat::new(
-            bota_proto::SlotId(slot),
+        world.seats.push(Seat::new(
+            SlotId(slot),
             team,
-            bota_proto::HeroId(0),
+            HeroId(0),
             0,
             rules::STASH_SLOTS,
         ));
@@ -555,21 +489,21 @@ fn a_heros_blows_on_enemy_heroes_and_structures_are_counted_in_the_final_stats()
     for (aim, tally) in [(foe, &mut to_hero), (ancient, &mut to_ancient)] {
         world.set_order(
             hero,
-            crate::game::UnitOrder::Attack {
+            UnitOrder::Attack {
                 target: aim,
                 last_seen: at,
             },
         );
         for _ in 0..120 {
             for event in world.advance(&[]) {
-                if let bota_proto::EventKind::Damaged {
+                if let EventKind::Damaged {
                     source: Some(source),
                     target,
                     amount,
                     ..
                 } = event.kind
-                    && source == crate::game::wire_id(hero)
-                    && target == crate::game::wire_id(aim)
+                    && source == wire_id(hero)
+                    && target == wire_id(aim)
                 {
                     *tally += amount;
                 }

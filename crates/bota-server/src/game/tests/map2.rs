@@ -1,14 +1,14 @@
 //! Map2 geometry, waves, and end-of-tick match completion.
 
+use crate::game::{
+    CellGrid, Clearance, Command, Entity, Event, EventVisibility, ITEM_BOOTS, MAP2_DEATH_LIMIT,
+    MAP2_GAME_TICKS, MAP2_ID, MAP2_TICK_CAP, MAPS, MatchConfig, Seat, World, hero_spawn_pos,
+    item_def, lane_polyline, lane_route, lane_routes, map_of, rules, tree_positions, wave_plan,
+    wire_id,
+};
 use bota_proto::{
     DamageKind, EventKind, Fixed, HeroId, ItemId, MapId, Order, Pick, ReplayRecord, ServerMsg,
     SlotId, Team, TickMode, UnitKind, Vec2, decode_payload, encode_frame_to_vec,
-};
-
-use crate::game::{
-    CellGrid, Clearance, Command, Entity, Event, EventVisibility, MatchConfig, Seat, World,
-    hero_spawn_pos, lane_polyline, lane_route, lane_routes, map_of, rules, tree_positions,
-    wave_plan, wire_id,
 };
 
 const MID_MAP: MapId = MapId(2);
@@ -477,12 +477,12 @@ fn map2_keeps_playing_through_the_old_ten_minute_cap() {
 
 #[test]
 fn map2_public_limits_and_wave_selection_match_the_match_contract() {
-    assert_eq!(crate::game::MAP2_ID, MID_MAP);
-    assert_eq!(crate::game::MAP2_DEATH_LIMIT, 2);
-    assert_eq!(crate::game::MAP2_GAME_TICKS, 27_000);
-    assert_eq!(crate::game::MAP2_TICK_CAP, TICK_CAP);
+    assert_eq!(MAP2_ID, MID_MAP);
+    assert_eq!(MAP2_DEATH_LIMIT, 2);
+    assert_eq!(MAP2_GAME_TICKS, 27_000);
+    assert_eq!(MAP2_TICK_CAP, TICK_CAP);
     assert_eq!(map_of(MID_MAP).wave_lanes, &[rules::LANE_MID]);
-    for map in &crate::game::MAPS {
+    for map in &MAPS {
         assert!(map.lanes <= 3);
         assert!(map.wave_lanes.len() <= usize::from(map.lanes));
         for (index, &lane) in map.wave_lanes.iter().enumerate() {
@@ -497,8 +497,8 @@ fn map2_cap_tick_completes_orders_gold_waves_and_tower_death_before_drawing() {
     let mut world = match_world(MID_MAP);
     world.tick = TICK_CAP - 1;
     let hero = world.seats[0].unit.expect("Radiant buyer");
-    let boots = ItemId(crate::game::ITEM_BOOTS);
-    let cost = crate::game::item_def(boots).expect("boots in catalog").cost;
+    let boots = ItemId(ITEM_BOOTS);
+    let cost = item_def(boots).expect("boots in catalog").cost;
     let gold = world.seats[0].gold;
     let order = Order::Buy { item: boots };
     assert_eq!(world.validate_order(SlotId(0), None, &order), Ok(()));

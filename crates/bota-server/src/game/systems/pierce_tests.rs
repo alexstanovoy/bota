@@ -1,12 +1,12 @@
 //! Pierce: the share of an attacker's swings that go through evasion and
 //! land their bonus, held exactly; a structure is never pierced.
 
-use bota_proto::{DamageKind, EventKind, Fixed, HeroId, ItemId, SlotId, Team, UnitKind, Vec2};
-
 use crate::game::{
-    Entity, Event, ITEM_BUTTERFLY, ITEM_JAVELIN, ITEM_MONKEY_KING_BAR, ItemStack, MELEE_CREEP,
-    Modifier, ModifierKind, Modifiers, Ratio, UnitDef, UnitOrder, World, rules, wire_id,
+    Chance, Entity, Event, ITEM_BUTTERFLY, ITEM_JAVELIN, ITEM_MONKEY_KING_BAR, ItemStack,
+    MELEE_CREEP, Modifier, ModifierKind, Modifiers, Ratio, UnitDef, UnitOrder, World, rules,
+    wire_id,
 };
+use bota_proto::{DamageKind, EventKind, Fixed, HeroId, ItemId, SlotId, Team, UnitKind, Vec2};
 
 /// What takes a strike and never falls: no armor, no mending, no swing back.
 const ANVIL: UnitDef = UnitDef {
@@ -117,7 +117,7 @@ fn swings(world: &mut World, from: Entity, on: Entity, wanted: usize) -> Vec<Tol
 }
 
 /// The stream of pierce rolls an attacker has opened, if it has.
-fn pierce_stream(world: &World, attacker: Entity) -> Option<&crate::game::Chance> {
+fn pierce_stream(world: &World, attacker: Entity) -> Option<&Chance> {
     world
         .pierce
         .get(attacker.index().0 as usize)

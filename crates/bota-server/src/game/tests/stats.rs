@@ -1,11 +1,11 @@
 //! Pools, regeneration, and the stats worked out every tick.
 
-use crate::game::rules;
 use crate::game::{
-    Def, FLAGBEARER_CREEP, HERO, Health, Level, MELEE_CREEP, Mana, Modifier, ModifierKind,
-    Modifiers, RANGED_CREEP, Stats, Upgrades, World,
+    Def, FLAGBEARER_CREEP, HERO, Health, ITEM_BAND, ITEM_BELT, ITEM_BOOTS, ITEM_GLOVES, ITEM_ROBE,
+    ITEMS, ItemStack, Level, MELEE_CREEP, Mana, Modifier, ModifierKind, Modifiers, RANGED_CREEP,
+    Stats, UnitOrder, Upgrades, World, attack_gain, map_of, rules,
 };
-use bota_proto::Fixed;
+use bota_proto::{DamageKind, Fixed, HeroId, ItemId, MapId, SlotId, Team, UnitKind, Vec2};
 
 use super::support::*;
 
@@ -115,12 +115,12 @@ fn a_pool_stands_up_full_and_is_only_capped_after() {
 
 #[test]
 fn a_wave_coming_out_does_not_mend_what_already_stands() {
-    let map = crate::game::map_of(bota_proto::MapId(1));
+    let map = map_of(MapId(1));
     let mut world = World::on_map(map);
     let hurt = world
         .entities
         .iter()
-        .find(|e| world.kind.get(*e) == Some(&bota_proto::UnitKind::Tower));
+        .find(|e| world.kind.get(*e) == Some(&UnitKind::Tower));
     let hurt = hurt.expect("the map has towers");
     world.health.insert(
         hurt,
@@ -264,29 +264,29 @@ fn mending_adds_to_what_a_kind_regenerates() {
 fn what_a_hero_carries_shows_up_in_its_stats() {
     let mut world = World::new();
     let hero = world.spawn_hero(
-        bota_proto::Team::Radiant,
-        bota_proto::Vec2::from_ints(5000, 5000),
-        bota_proto::SlotId(0),
-        bota_proto::HeroId(0),
+        Team::Radiant,
+        Vec2::from_ints(5000, 5000),
+        SlotId(0),
+        HeroId(0),
     );
     world.step();
     let bare = world.stats.get(hero).expect("settled").damage;
     // The first item in the table that carries damage rather than charges.
-    let (id, def) = crate::game::ITEMS
+    let (id, def) = ITEMS
         .iter()
         .enumerate()
         .find(|(_, d)| d.carried.damage > 0)
         .expect("some item adds damage");
     if let Some(bag) = world.inventory.get_mut(hero) {
-        bag.slots[0] = Some(crate::game::ItemStack {
-            id: bota_proto::ItemId(id as u16),
+        bag.slots[0] = Some(ItemStack {
+            id: ItemId(id as u16),
             charges: def.charges,
             cooldown: 0,
             mute: 0,
             mode: None,
             bought_tick: 0,
             touched: false,
-            owner: bota_proto::SlotId(0),
+            owner: SlotId(0),
             for_sale: false,
         });
     }
@@ -313,20 +313,16 @@ fn a_held_unit_neither_walks_nor_swings_nor_casts() {
     let hero = world.seats[0].unit.expect("stood up");
     let spot = an_empty_spot(&world);
     world.transform.get_mut(hero).expect("hero").pos = spot;
-    let creep = world.spawn_unit(
-        &MELEE_CREEP,
-        bota_proto::Team::Dire,
-        spot + bota_proto::Vec2::from_ints(100, 0),
-    );
+    let creep = world.spawn_unit(&MELEE_CREEP, Team::Dire, spot + Vec2::from_ints(100, 0));
     world.settle();
     world.step();
     let full = world.health.get(creep).expect("standing").hp;
-    put_on(&mut world, hero, crate::game::ModifierKind::Stunned, 60);
+    put_on(&mut world, hero, ModifierKind::Stunned, 60);
     let stood = world.transform.get(hero).expect("standing").pos;
     world.set_order(
         hero,
-        crate::game::UnitOrder::Move {
-            pos: spot + bota_proto::Vec2::from_ints(1000, 0),
+        UnitOrder::Move {
+            pos: spot + Vec2::from_ints(1000, 0),
         },
     );
     for _ in 0..40 {
@@ -358,16 +354,11 @@ fn a_slow_takes_its_share_of_the_speed() {
     let creep = plain_creep(&mut world);
     world.step();
     let full = world.stats.get(creep).expect("settled").move_speed;
-    put_on(
-        &mut world,
-        creep,
-        crate::game::ModifierKind::Slowed { pct: 25 },
-        60,
-    );
+    put_on(&mut world, creep, ModifierKind::Slowed { pct: 25 }, 60);
     world.step();
     assert_eq!(
         world.stats.get(creep).map(|s| s.move_speed),
-        Some(bota_proto::Fixed {
+        Some(Fixed {
             raw: full.raw * 75 / 100
         }),
         "three quarters of what it had"
@@ -383,9 +374,9 @@ fn a_burn_takes_health_on_the_beat_and_may_be_told_to_leave_one() {
     put_on(
         &mut world,
         creep,
-        crate::game::ModifierKind::Burning {
+        ModifierKind::Burning {
             amount: 5,
-            kind: bota_proto::DamageKind::Pure,
+            kind: DamageKind::Pure,
             lethal: true,
         },
         rules::BURN_PERIOD_TICKS * 4,
@@ -408,9 +399,9 @@ fn a_burn_takes_health_on_the_beat_and_may_be_told_to_leave_one() {
     put_on(
         &mut world,
         creep,
-        crate::game::ModifierKind::Burning {
+        ModifierKind::Burning {
             amount: 100,
-            kind: bota_proto::DamageKind::Pure,
+            kind: DamageKind::Pure,
             lethal: false,
         },
         rules::BURN_PERIOD_TICKS * 10,
@@ -433,15 +424,15 @@ fn what_a_courier_carries_is_worth_nothing_to_the_courier() {
     world.step();
     let plain = world.stats.get(courier).expect("settled").move_speed;
     if let Some(bag) = world.inventory.get_mut(courier) {
-        bag.slots[0] = Some(crate::game::ItemStack {
-            id: bota_proto::ItemId(crate::game::ITEM_BOOTS),
+        bag.slots[0] = Some(ItemStack {
+            id: ItemId(ITEM_BOOTS),
             charges: 0,
             cooldown: 0,
             mute: 0,
             mode: None,
             bought_tick: 0,
             touched: false,
-            owner: bota_proto::SlotId(0),
+            owner: SlotId(0),
             for_sale: false,
         });
     }
@@ -458,7 +449,7 @@ fn every_attribute_pays_for_what_it_is_worth() {
     let (mut world, hero) = a_hero_with_gold(0);
     let before = *world.stats.get(hero).expect("settled");
     let six = Fixed::from_int(6);
-    hand_item(&mut world, hero, crate::game::ITEM_BELT, 0);
+    hand_item(&mut world, hero, ITEM_BELT, 0);
     world.step();
     let with_belt = *world.stats.get(hero).expect("settled");
     assert_eq!(
@@ -476,7 +467,7 @@ fn every_attribute_pays_for_what_it_is_worth() {
         rules::HP_REGEN_PER_STRENGTH * six,
         "and mending"
     );
-    hand_item(&mut world, hero, crate::game::ITEM_ROBE, 0);
+    hand_item(&mut world, hero, ITEM_ROBE, 0);
     world.step();
     let with_robe = *world.stats.get(hero).expect("settled");
     assert_eq!(
@@ -484,7 +475,7 @@ fn every_attribute_pays_for_what_it_is_worth() {
         Fixed::from_int(rules::MANA_PER_INTELLIGENCE) * six,
         "intelligence is worth mana"
     );
-    hand_item(&mut world, hero, crate::game::ITEM_BAND, 0);
+    hand_item(&mut world, hero, ITEM_BAND, 0);
     world.step();
     let with_band = *world.stats.get(hero).expect("settled");
     assert_eq!(
@@ -503,7 +494,7 @@ fn every_attribute_pays_for_what_it_is_worth() {
 fn attack_speed_shortens_the_wait_between_attacks() {
     let (mut world, hero) = a_hero_with_gold(0);
     let plain = *world.stats.get(hero).expect("settled");
-    hand_item(&mut world, hero, crate::game::ITEM_GLOVES, 0);
+    hand_item(&mut world, hero, ITEM_GLOVES, 0);
     world.step();
     let hasted = *world.stats.get(hero).expect("settled");
     assert_eq!(
@@ -516,8 +507,7 @@ fn attack_speed_shortens_the_wait_between_attacks() {
         "the cycle itself is the kind's own"
     );
     assert!(
-        crate::game::attack_gain(hasted.attack_speed)
-            > crate::game::attack_gain(plain.attack_speed),
+        attack_gain(hasted.attack_speed) > attack_gain(plain.attack_speed),
         "and it runs faster for the speed"
     );
 }

@@ -1,6 +1,11 @@
-use bota_proto::{EffectId, EffectView, Fixed, HeroId, ItemId, SlotId, Team, WorldView};
-
-use crate::game::{ItemStack, Modifier, ModifierKind, Modifiers, World, rules, wire_id};
+use crate::game::{
+    EFFECT_SHADOWRAZE, FLAGBEARER_CREEP, ItemStack, Modifier, ModifierKind, Modifiers, World,
+    item_def, rules, tower_def, wire_id,
+};
+use bota_proto::{
+    EffectId, EffectView, Fixed, HeroId, ItemId, LEN_PREFIX, SlotId, Team, WorldView,
+    decode_payload, encode_frame_to_vec,
+};
 
 use super::fixtures::*;
 
@@ -47,9 +52,8 @@ fn auras_and_shadowraze_project_distinct_ids_and_round_trip_together() {
         world.view(Team::Dire),
         world.view(Team::Radiant),
     ] {
-        let encoded = bota_proto::encode_frame_to_vec(&view).unwrap();
-        let decoded: WorldView =
-            bota_proto::decode_payload(&encoded[bota_proto::LEN_PREFIX..]).unwrap();
+        let encoded = encode_frame_to_vec(&view).unwrap();
+        let decoded: WorldView = decode_payload(&encoded[LEN_PREFIX..]).unwrap();
         assert_eq!(decoded, view);
         let unit = decoded
             .units
@@ -58,7 +62,7 @@ fn auras_and_shadowraze_project_distinct_ids_and_round_trip_together() {
             .unwrap();
         assert_eq!(unit.effects, expected);
     }
-    assert_eq!(crate::game::EFFECT_SHADOWRAZE, 15);
+    assert_eq!(EFFECT_SHADOWRAZE, 15);
 }
 
 #[test]
@@ -103,8 +107,8 @@ fn tower_flagbearer_and_mango_bonuses_survive_shadowraze_refresh() {
     let caster = world.spawn_hero(Team::Radiant, ORIGIN, SlotId(0), HeroId(2));
     world.settle();
     let plain = *world.stats.get(target).unwrap();
-    world.spawn_unit(crate::game::tower_def(1), Team::Dire, TARGET);
-    world.spawn_unit(&crate::game::FLAGBEARER_CREEP, Team::Dire, TARGET);
+    world.spawn_unit(tower_def(1), Team::Dire, TARGET);
+    world.spawn_unit(&FLAGBEARER_CREEP, Team::Dire, TARGET);
     world.inventory.get_mut(target).unwrap().slots[0] = ItemStack::bought(ItemId(42), SlotId(1), 0);
     world.step();
     world.modifiers.get_mut(target).unwrap().stack_raze(caster);
@@ -128,7 +132,7 @@ fn tower_flagbearer_and_mango_bonuses_survive_shadowraze_refresh() {
                 rules::FLAGBEARER_AURA_REGEN,
                 100 * rules::TICKS_PER_SECOND as i32
             )
-            + crate::game::item_def(ItemId(42)).unwrap().carried.hp_regen
+            + item_def(ItemId(42)).unwrap().carried.hp_regen
     );
     let view = world.view_full();
     let unit = view

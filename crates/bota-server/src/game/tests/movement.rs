@@ -1,15 +1,18 @@
 //! Walking, routes round what stands, and bodies eased apart.
 
-use crate::game::rules;
-use crate::game::{Entity, MELEE_CREEP, World};
-use bota_proto::Fixed;
+use crate::game::{
+    CellGrid, Clearance, Entity, Ground, HEROES, ITEM_BOOTS, ItemStack, MELEE_CREEP, March,
+    MatchConfig, Orders, UnitOrder, World, circle_stops, find_path, isqrt64, map_of, plan_radius,
+    point_along, rules,
+};
+use bota_proto::{Fixed, HeroId, ItemId, MapId, SlotId, Team, TickMode, Vec2};
 
 use super::support::*;
 
 #[test]
 fn the_integer_square_root_is_the_floor_of_the_real_one() {
     for n in 0..4096i64 {
-        let root = crate::game::isqrt64(n);
+        let root = isqrt64(n);
         assert!(root * root <= n, "root squared must not pass n: {n}");
         assert!((root + 1) * (root + 1) > n, "the root must be the floor");
     }
@@ -22,28 +25,28 @@ fn the_integer_square_root_is_the_floor_of_the_real_one() {
     };
     for _ in 0..16_384 {
         let n = (draw() >> 1) as i64;
-        let root = i128::from(crate::game::isqrt64(n));
+        let root = i128::from(isqrt64(n));
         assert!(root * root <= i128::from(n));
         assert!((root + 1) * (root + 1) > i128::from(n));
     }
-    assert_eq!(crate::game::isqrt64(i64::MAX), 3_037_000_499);
+    assert_eq!(isqrt64(i64::MAX), 3_037_000_499);
 }
 
 #[test]
 fn an_order_to_walk_moves_a_body_and_turns_it_first() {
     let mut world = World::new();
     let hero = world.spawn_hero(
-        bota_proto::Team::Radiant,
-        bota_proto::Vec2::from_ints(1000, 1000),
-        bota_proto::SlotId(0),
-        bota_proto::HeroId(0),
+        Team::Radiant,
+        Vec2::from_ints(1000, 1000),
+        SlotId(0),
+        HeroId(0),
     );
     world.settle();
     world.orders.insert(
         hero,
-        crate::game::Orders {
-            current: crate::game::UnitOrder::Move {
-                pos: bota_proto::Vec2::from_ints(0, 1000),
+        Orders {
+            current: UnitOrder::Move {
+                pos: Vec2::from_ints(0, 1000),
             },
             cooldown: 0,
             pending: None,
@@ -72,21 +75,21 @@ fn an_order_to_walk_moves_a_body_and_turns_it_first() {
 
 #[test]
 fn a_body_does_not_walk_through_a_building() {
-    let map = crate::game::map_of(bota_proto::MapId(1));
+    let map = map_of(MapId(1));
     let mut world = World::on_map(map);
     let (_, _, tower) = map.radiant_towers[0];
     let hero = world.spawn_hero(
-        bota_proto::Team::Radiant,
-        tower - bota_proto::Vec2::from_ints(400, 0),
-        bota_proto::SlotId(0),
-        bota_proto::HeroId(0),
+        Team::Radiant,
+        tower - Vec2::from_ints(400, 0),
+        SlotId(0),
+        HeroId(0),
     );
     world.settle();
     world.orders.insert(
         hero,
-        crate::game::Orders {
-            current: crate::game::UnitOrder::Move {
-                pos: tower + bota_proto::Vec2::from_ints(400, 0),
+        Orders {
+            current: UnitOrder::Move {
+                pos: tower + Vec2::from_ints(400, 0),
             },
             cooldown: 0,
             pending: None,
@@ -96,7 +99,7 @@ fn a_body_does_not_walk_through_a_building() {
     for _ in 0..300 {
         world.step();
         let at = world.transform.get(hero).expect("alive").pos;
-        nearest = nearest.min(crate::game::isqrt64(at.distance_squared(tower)));
+        nearest = nearest.min(isqrt64(at.distance_squared(tower)));
     }
     let hull = world.hull.get(hero).expect("has one").collision;
     assert!(
@@ -110,9 +113,9 @@ fn a_body_does_not_walk_through_a_building() {
 #[test]
 fn two_bodies_on_one_spot_are_eased_apart() {
     let mut world = World::new();
-    let at = bota_proto::Vec2::from_ints(5000, 5000);
-    let one = world.spawn_unit(&MELEE_CREEP, bota_proto::Team::Radiant, at);
-    let other = world.spawn_unit(&MELEE_CREEP, bota_proto::Team::Radiant, at);
+    let at = Vec2::from_ints(5000, 5000);
+    let one = world.spawn_unit(&MELEE_CREEP, Team::Radiant, at);
+    let other = world.spawn_unit(&MELEE_CREEP, Team::Radiant, at);
     world.settle();
     for _ in 0..30 {
         world.step();
@@ -125,7 +128,7 @@ fn two_bodies_on_one_spot_are_eased_apart() {
         + world.hull.get(other).expect("has one").collision;
     // Easing apart stops at the moment they stop overlapping, which leaves
     // them touching exactly.
-    let apart = crate::game::isqrt64(a.distance_squared(b));
+    let apart = isqrt64(a.distance_squared(b));
     assert!(
         apart >= i64::from(hulls.raw),
         "still inside one another: {a:?} {b:?}"
@@ -135,9 +138,9 @@ fn two_bodies_on_one_spot_are_eased_apart() {
 #[test]
 fn a_creep_that_has_stood_long_enough_shoves_through() {
     let mut world = World::new();
-    let at = bota_proto::Vec2::from_ints(5000, 5000);
-    let creep = world.spawn_unit(&MELEE_CREEP, bota_proto::Team::Radiant, at);
-    world.march.insert(creep, crate::game::March { next: 0 });
+    let at = Vec2::from_ints(5000, 5000);
+    let creep = world.spawn_unit(&MELEE_CREEP, Team::Radiant, at);
+    world.march.insert(creep, March { next: 0 });
     // A hexagon of bodies packed about it, each just clear of it and of
     // its neighbours, so no step in any direction stays clear of them all.
     for (dx, dy) in [
@@ -148,15 +151,11 @@ fn a_creep_that_has_stood_long_enough_shoves_through() {
         (-36, -63),
         (36, -63),
     ] {
-        world.spawn_unit(
-            &MELEE_CREEP,
-            bota_proto::Team::Radiant,
-            at + bota_proto::Vec2::from_ints(dx, dy),
-        );
+        world.spawn_unit(&MELEE_CREEP, Team::Radiant, at + Vec2::from_ints(dx, dy));
     }
     world.settle();
-    let aim = at + bota_proto::Vec2::from_ints(400, 0);
-    world.set_order(creep, crate::game::UnitOrder::AttackMove { pos: aim });
+    let aim = at + Vec2::from_ints(400, 0);
+    world.set_order(creep, UnitOrder::AttackMove { pos: aim });
     for _ in 0..rules::MARCH_SHOVE_TICKS - 2 {
         world.step();
     }
@@ -177,16 +176,16 @@ fn a_creep_that_has_stood_long_enough_shoves_through() {
 
 #[test]
 fn what_flies_goes_straight_over_what_a_walker_goes_round() {
-    let hero_at = bota_proto::Vec2::from_ints(6000, 9216);
-    let far = bota_proto::Vec2::from_ints(9000, 9216);
+    let hero_at = Vec2::from_ints(6000, 9216);
+    let far = Vec2::from_ints(9000, 9216);
     let mut world = a_world_with_a_wall(hero_at, far);
     let hero = world.seats[0].unit.expect("stood up");
     let courier = the_courier(&world);
     world.transform.get_mut(hero).expect("standing").pos = far;
     world.transform.get_mut(courier).expect("flies").pos = hero_at;
-    let boots = bota_proto::ItemId(crate::game::ITEM_BOOTS);
+    let boots = ItemId(ITEM_BOOTS);
     if let Some(bag) = world.inventory.get_mut(courier) {
-        bag.slots[0] = Some(crate::game::ItemStack {
+        bag.slots[0] = Some(ItemStack {
             id: boots,
             charges: 0,
             cooldown: 0,
@@ -194,7 +193,7 @@ fn what_flies_goes_straight_over_what_a_walker_goes_round() {
             mode: None,
             bought_tick: 0,
             touched: false,
-            owner: bota_proto::SlotId(0),
+            owner: SlotId(0),
             for_sale: false,
         });
     }
@@ -229,13 +228,13 @@ fn what_flies_goes_straight_over_what_a_walker_goes_round() {
 
 #[test]
 fn a_way_found_to_a_spot_that_walks_away_is_found_again() {
-    let hero_at = bota_proto::Vec2::from_ints(6000, 9216);
-    let goal_at = bota_proto::Vec2::from_ints(9000, 9216);
+    let hero_at = Vec2::from_ints(6000, 9216);
+    let goal_at = Vec2::from_ints(9000, 9216);
     let mut world = a_world_with_a_wall(hero_at, goal_at);
     let hero = world.seats[0].unit.expect("stood up");
     world.transform.get_mut(hero).expect("standing").pos = hero_at;
     let mut goal = goal_at;
-    world.set_order(hero, crate::game::UnitOrder::Move { pos: goal });
+    world.set_order(hero, UnitOrder::Move { pos: goal });
     world.step();
     assert!(
         world
@@ -248,8 +247,8 @@ fn a_way_found_to_a_spot_that_walks_away_is_found_again() {
     // does to a courier chasing it. Never enough in one tick to look like a
     // new goal, and after a while far beyond where the way was laid to.
     for _ in 0..60 {
-        goal += bota_proto::Vec2::from_ints(0, 20);
-        world.set_order(hero, crate::game::UnitOrder::Move { pos: goal });
+        goal += Vec2::from_ints(0, 20);
+        world.set_order(hero, UnitOrder::Move { pos: goal });
         world.step();
     }
     let end = world
@@ -265,13 +264,13 @@ fn a_way_found_to_a_spot_that_walks_away_is_found_again() {
 
 #[test]
 fn a_hero_told_to_walk_into_a_tower_walks_up_to_it_and_stands() {
-    let cfg = crate::game::MatchConfig {
+    let cfg = MatchConfig {
         match_id: 7,
         master_key: [0; 32],
         picks: vec![],
-        map: bota_proto::MapId(0),
+        map: MapId(0),
         tick_rate: 30,
-        mode: bota_proto::TickMode::Realtime,
+        mode: TickMode::Realtime,
         ack_timeout_ticks: 0,
         cheats: false,
         spawn_modifiers: Vec::new(),
@@ -280,20 +279,15 @@ fn a_hero_told_to_walk_into_a_tower_walks_up_to_it_and_stands() {
     };
     let mut world = World::for_match(&cfg, cfg.rng());
     let (_, _, tower) = rules::RADIANT_TOWERS[2];
-    let start = bota_proto::Vec2::from_ints(4000, 4500);
-    let hero = world.spawn_hero(
-        bota_proto::Team::Radiant,
-        start,
-        bota_proto::SlotId(0),
-        bota_proto::HeroId(0),
-    );
-    world.set_order(hero, crate::game::UnitOrder::Move { pos: tower });
+    let start = Vec2::from_ints(4000, 4500);
+    let hero = world.spawn_hero(Team::Radiant, start, SlotId(0), HeroId(0));
+    world.set_order(hero, UnitOrder::Move { pos: tower });
     let mut seen = Vec::new();
     for _ in 0..(10 * rules::TICKS_PER_SECOND) {
         world.advance(&[]);
         seen.push(world.transform.get(hero).expect("standing").pos);
     }
-    let footprint = crate::game::plan_radius(rules::units(rules::TOWER_COLLISION));
+    let footprint = plan_radius(rules::units(rules::TOWER_COLLISION));
     let last = *seen.last().expect("walked");
     assert!(
         !last.within(start, rules::units(300)),
@@ -316,16 +310,16 @@ fn a_hero_told_to_walk_into_a_tower_walks_up_to_it_and_stands() {
 
 #[test]
 fn a_walk_to_where_no_way_leads_ends_at_the_nearest_spot_got_to() {
-    let mut cells = crate::game::CellGrid::open();
+    let mut cells = CellGrid::open();
     let wall = 100;
     for cy in 0..rules::GRID_CELLS {
         cells.close_cell(wall, cy);
     }
-    let grid = crate::game::Clearance::from_cells(cells);
-    let from = bota_proto::Vec2::from_ints(1000, 1000);
-    let beyond = bota_proto::Vec2::from_ints(10000, 1000);
+    let grid = Clearance::from_cells(cells);
+    let from = Vec2::from_ints(1000, 1000);
+    let beyond = Vec2::from_ints(10000, 1000);
     let body = rules::units(rules::HERO_COLLISION);
-    let path = crate::game::find_path(&grid, from, beyond, body);
+    let path = find_path(&grid, from, beyond, body);
     let end = *path.last().expect("it walks somewhere");
     assert!(
         end.x.to_int() < wall as i32 * rules::GRID_CELL_SIZE,
@@ -336,18 +330,15 @@ fn a_walk_to_where_no_way_leads_ends_at_the_nearest_spot_got_to() {
         "right up against it: {end:?}"
     );
     // A spot that can be stood on and reached is the walk's own end.
-    let there = bota_proto::Vec2::from_ints(5000, 3000);
-    assert_eq!(
-        crate::game::find_path(&grid, from, there, body).last(),
-        Some(&there)
-    );
+    let there = Vec2::from_ints(5000, 3000);
+    assert_eq!(find_path(&grid, from, there, body).last(), Some(&there));
 }
 
 #[test]
 fn a_capsule_is_stopped_by_a_circle_exactly_where_the_circle_stops_it() {
-    let at = bota_proto::Vec2::from_ints(3000, 4000);
+    let at = Vec2::from_ints(3000, 4000);
     let theirs = Fixed::from_int(48);
-    let field = crate::game::Clearance::build(crate::game::CellGrid::open(), vec![(at, theirs)]);
+    let field = Clearance::build(CellGrid::open(), vec![(at, theirs)]);
     let radius = Fixed::from_int(8);
     let mut seed = 0x0dd0_5eed_1234_5678u64;
     let mut draw = || {
@@ -359,17 +350,18 @@ fn a_capsule_is_stopped_by_a_circle_exactly_where_the_circle_stops_it() {
     let mut stopped = 0;
     let mut free = 0;
     for _ in 0..4096 {
-        let from = bota_proto::Vec2::from_ints(
+        let from = Vec2::from_ints(
             (draw() % rules::MAP_SIZE as u64) as i32,
             (draw() % rules::MAP_SIZE as u64) as i32,
         );
-        let to = bota_proto::Vec2::from_ints(
+        let to = Vec2::from_ints(
             (draw() % rules::MAP_SIZE as u64) as i32,
             (draw() % rules::MAP_SIZE as u64) as i32,
         );
-        let reference = !field.circles().iter().any(|&(centre, their)| {
-            crate::game::circle_stops(centre, their, from, to, radius, true)
-        });
+        let reference = !field
+            .circles()
+            .iter()
+            .any(|&(centre, their)| circle_stops(centre, their, from, to, radius, true));
         assert_eq!(
             field.capsule_clear(from, to, radius),
             reference,
@@ -382,8 +374,8 @@ fn a_capsule_is_stopped_by_a_circle_exactly_where_the_circle_stops_it() {
 
 #[test]
 fn the_demo_lake_is_walled_by_its_shore_and_crossed_at_its_ford() {
-    let map = crate::game::map_of(bota_proto::MapId(1));
-    let ground = crate::game::Ground::of(map);
+    let map = map_of(MapId(1));
+    let ground = Ground::of(map);
     let cell = |x: i32, y: i32| {
         (
             (x / rules::GRID_CELL_SIZE) as usize,
@@ -394,7 +386,7 @@ fn the_demo_lake_is_walled_by_its_shore_and_crossed_at_its_ford() {
     let (fx, fy) = cell(8768, 9024);
     assert!(ground.cell_walkable(fx, fy), "the ford is walked");
     assert!(
-        ground.water(bota_proto::Vec2::from_ints(8768, 9024)),
+        ground.water(Vec2::from_ints(8768, 9024)),
         "and it is water underfoot"
     );
     // The rocks ringing the lake bar the way outside the openings.
@@ -419,14 +411,10 @@ fn the_demo_lake_is_walled_by_its_shore_and_crossed_at_its_ford() {
 fn walkers_and_marchers_both_work_round_a_wall_of_bodies() {
     let wall = |world: &mut World, x: i32, y: i32| {
         for i in -2..=2i32 {
-            world.spawn_unit(
-                &MELEE_CREEP,
-                bota_proto::Team::Radiant,
-                bota_proto::Vec2::from_ints(x, y + i * 40),
-            );
+            world.spawn_unit(&MELEE_CREEP, Team::Radiant, Vec2::from_ints(x, y + i * 40));
         }
     };
-    let arrives_by = |world: &mut World, mover: Entity, goal: bota_proto::Vec2, within: u32| {
+    let arrives_by = |world: &mut World, mover: Entity, goal: Vec2, within: u32| {
         for t in 0..within {
             world.step();
             let at = world.transform.get(mover).expect("standing").pos;
@@ -439,48 +427,44 @@ fn walkers_and_marchers_both_work_round_a_wall_of_bodies() {
     // A hero ordered through the knot gets round it briskly.
     let mut world = World::new();
     let hero = world.spawn_hero(
-        bota_proto::Team::Radiant,
-        bota_proto::Vec2::from_ints(5000, 5000),
-        bota_proto::SlotId(0),
-        bota_proto::HeroId(0),
+        Team::Radiant,
+        Vec2::from_ints(5000, 5000),
+        SlotId(0),
+        HeroId(0),
     );
     wall(&mut world, 5400, 5000);
     world.settle();
-    let goal = bota_proto::Vec2::from_ints(5900, 5000);
-    world.set_order(hero, crate::game::UnitOrder::Move { pos: goal });
+    let goal = Vec2::from_ints(5900, 5000);
+    world.set_order(hero, UnitOrder::Move { pos: goal });
     let took = arrives_by(&mut world, hero, goal, 130);
     assert!(took.is_some(), "the hero works round the wall");
     // A marching creep held off any lane does the same.
     let mut world = World::new();
-    let creep = world.spawn_unit(
-        &MELEE_CREEP,
-        bota_proto::Team::Radiant,
-        bota_proto::Vec2::from_ints(5000, 6000),
-    );
-    world.march.insert(creep, crate::game::March { next: 0 });
+    let creep = world.spawn_unit(&MELEE_CREEP, Team::Radiant, Vec2::from_ints(5000, 6000));
+    world.march.insert(creep, March { next: 0 });
     wall(&mut world, 5400, 6000);
     world.settle();
-    let goal = bota_proto::Vec2::from_ints(5900, 6000);
-    world.set_order(creep, crate::game::UnitOrder::AttackMove { pos: goal });
+    let goal = Vec2::from_ints(5900, 6000);
+    world.set_order(creep, UnitOrder::AttackMove { pos: goal });
     let took = arrives_by(&mut world, creep, goal, 130);
     assert!(took.is_some(), "the creep works round the wall");
 }
 
 #[test]
 fn a_hero_touching_a_tower_and_sent_past_it_goes_round_briskly() {
-    let map = crate::game::map_of(bota_proto::MapId(1));
+    let map = map_of(MapId(1));
     let mut world = World::on_map(map);
     let (_, _, tower) = map.radiant_towers[0];
     let touching = rules::TOWER_COLLISION + rules::HERO_COLLISION + 1;
     let hero = world.spawn_hero(
-        bota_proto::Team::Radiant,
-        tower - bota_proto::Vec2::from_ints(touching, 0),
-        bota_proto::SlotId(0),
-        bota_proto::HeroId(0),
+        Team::Radiant,
+        tower - Vec2::from_ints(touching, 0),
+        SlotId(0),
+        HeroId(0),
     );
     world.settle();
-    let goal = tower + bota_proto::Vec2::from_ints(300, 0);
-    world.set_order(hero, crate::game::UnitOrder::Move { pos: goal });
+    let goal = tower + Vec2::from_ints(300, 0);
+    world.set_order(hero, UnitOrder::Move { pos: goal });
     let took = ticks_until_near(&mut world, hero, goal, 200);
     assert!(
         took.is_some_and(|t| t <= 90),
@@ -490,7 +474,7 @@ fn a_hero_touching_a_tower_and_sent_past_it_goes_round_briskly() {
 
 #[test]
 fn a_hero_walks_round_a_wave_stood_fighting() {
-    let map = crate::game::map_of(bota_proto::MapId(1));
+    let map = map_of(MapId(1));
     let mut world = World::on_map(map);
     while world.tick < rules::FIRST_WAVE_TICK {
         world.step();
@@ -513,20 +497,15 @@ fn a_hero_walks_round_a_wave_stood_fighting() {
         cx += i64::from(at.x.to_int());
         cy += i64::from(at.y.to_int());
     }
-    let centre = bota_proto::Vec2::from_ints(
+    let centre = Vec2::from_ints(
         (cx / creeps.len() as i64) as i32,
         (cy / creeps.len() as i64) as i32,
     );
-    let from = centre - bota_proto::Vec2::from_ints(400, 300);
-    let goal = centre + bota_proto::Vec2::from_ints(400, 300);
-    let hero = world.spawn_hero(
-        bota_proto::Team::Radiant,
-        from,
-        bota_proto::SlotId(0),
-        bota_proto::HeroId(0),
-    );
+    let from = centre - Vec2::from_ints(400, 300);
+    let goal = centre + Vec2::from_ints(400, 300);
+    let hero = world.spawn_hero(Team::Radiant, from, SlotId(0), HeroId(0));
     world.settle();
-    world.set_order(hero, crate::game::UnitOrder::Move { pos: goal });
+    world.set_order(hero, UnitOrder::Move { pos: goal });
     let took = ticks_until_near(&mut world, hero, goal, 240);
     assert!(
         took.is_some_and(|t| t <= 150),
@@ -538,26 +517,19 @@ fn a_hero_walks_round_a_wave_stood_fighting() {
 /// the road and walks round it without stopping.
 #[test]
 fn marchers_walk_round_a_hero_standing_on_their_lane() {
-    let map = crate::game::map_of(bota_proto::MapId(1));
+    let map = map_of(MapId(1));
     let mut world = World::on_map(map);
     while world.tick < rules::FIRST_WAVE_TICK {
         world.step();
     }
     let route = world.walked_lanes()[0][0].clone();
-    let spot = crate::game::point_along(route[1], route[2], rules::units(300));
-    let _hero = world.spawn_hero(
-        bota_proto::Team::Radiant,
-        spot,
-        bota_proto::SlotId(0),
-        bota_proto::HeroId(0),
-    );
+    let spot = point_along(route[1], route[2], rules::units(300));
+    let _hero = world.spawn_hero(Team::Radiant, spot, SlotId(0), HeroId(0));
     world.settle();
     let creeps: Vec<Entity> = world
         .entities
         .iter()
-        .filter(|e| {
-            world.march.get(*e).is_some() && world.team.get(*e) == Some(&bota_proto::Team::Radiant)
-        })
+        .filter(|e| world.march.get(*e).is_some() && world.team.get(*e) == Some(&Team::Radiant))
         .collect();
     let blocked = lane_progress(&route, spot);
     // On the way up to the hero and past it, no creep stands stalled for
@@ -593,7 +565,7 @@ fn marchers_walk_round_a_hero_standing_on_their_lane() {
 /// run into, and holds that creep back against a wave left alone.
 #[test]
 fn a_hero_pacing_before_a_wave_holds_the_creep_it_covers() {
-    let map = crate::game::map_of(bota_proto::MapId(1));
+    let map = map_of(MapId(1));
     let seconds = 10;
     let mut world = World::on_map(map);
     while world.tick < rules::FIRST_WAVE_TICK {
@@ -617,10 +589,10 @@ fn a_hero_pacing_before_a_wave_holds_the_creep_it_covers() {
     }
     let (front, _) = wave_progress(&world, &route);
     let hero = world.spawn_hero(
-        bota_proto::Team::Radiant,
+        Team::Radiant,
         along_lane(&route, front + 70, 0),
-        bota_proto::SlotId(0),
-        bota_proto::HeroId(0),
+        SlotId(0),
+        HeroId(0),
     );
     world.settle();
     let mut contacts = 0u32;
@@ -628,10 +600,9 @@ fn a_hero_pacing_before_a_wave_holds_the_creep_it_covers() {
         // Keep just ahead of the creep furthest up the lane.
         let hp = world.transform.get(hero).expect("standing").pos;
         let mine = lane_progress(&route, hp);
-        let mut lead: Option<(i64, bota_proto::Vec2)> = None;
+        let mut lead: Option<(i64, Vec2)> = None;
         for e in world.entities.iter() {
-            if world.march.get(e).is_none() || world.team.get(e) != Some(&bota_proto::Team::Radiant)
-            {
+            if world.march.get(e).is_none() || world.team.get(e) != Some(&Team::Radiant) {
                 continue;
             }
             let at = world.transform.get(e).expect("standing").pos;
@@ -642,9 +613,8 @@ fn a_hero_pacing_before_a_wave_holds_the_creep_it_covers() {
         }
         let creep = lead.map(|(_, at)| at).unwrap_or(hp);
         let dir = along_lane(&route, mine + 100, 0) - along_lane(&route, mine, 0);
-        let target =
-            creep + crate::game::point_along(bota_proto::Vec2::ZERO, dir, rules::units(70));
-        world.set_order(hero, crate::game::UnitOrder::Move { pos: target });
+        let target = creep + point_along(Vec2::ZERO, dir, rules::units(70));
+        world.set_order(hero, UnitOrder::Move { pos: target });
         world.step();
         for e in world.entities.iter() {
             if world.march.get(e).is_some()
@@ -657,9 +627,7 @@ fn a_hero_pacing_before_a_wave_holds_the_creep_it_covers() {
     let held = world
         .entities
         .iter()
-        .filter(|e| {
-            world.march.get(*e).is_some() && world.team.get(*e) == Some(&bota_proto::Team::Radiant)
-        })
+        .filter(|e| world.march.get(*e).is_some() && world.team.get(*e) == Some(&Team::Radiant))
         .map(|e| lane_progress(&route, world.transform.get(e).expect("standing").pos) - start)
         .min()
         .expect("the wave stands");
@@ -676,8 +644,8 @@ fn a_hero_pacing_before_a_wave_holds_the_creep_it_covers() {
 
 #[test]
 fn every_hero_sent_at_a_tower_from_afar_walks_into_reach_and_strikes() {
-    for id in 0..crate::game::HEROES.len() as u16 {
-        let map = crate::game::map_of(bota_proto::MapId(0));
+    for id in 0..HEROES.len() as u16 {
+        let map = map_of(MapId(0));
         let mut world = World::on_map(map);
         let tower_at = rules::RADIANT_TOWERS[0].2;
         let tower = world
@@ -686,17 +654,17 @@ fn every_hero_sent_at_a_tower_from_afar_walks_into_reach_and_strikes() {
             .find(|e| world.transform.get(*e).is_some_and(|t| t.pos == tower_at))
             .expect("the tower stands");
         let hero = world.spawn_hero(
-            bota_proto::Team::Dire,
-            tower_at + bota_proto::Vec2::from_ints(900, 900),
-            bota_proto::SlotId(0),
-            bota_proto::HeroId(id),
+            Team::Dire,
+            tower_at + Vec2::from_ints(900, 900),
+            SlotId(0),
+            HeroId(id),
         );
         world.settle();
         world.fill_pools(hero);
         let before = world.health.get(tower).expect("standing").hp;
         world.set_order(
             hero,
-            crate::game::UnitOrder::Attack {
+            UnitOrder::Attack {
                 target: tower,
                 last_seen: tower_at,
             },
@@ -721,26 +689,25 @@ fn every_hero_sent_at_a_tower_from_afar_walks_into_reach_and_strikes() {
 /// margin, one whose nodes with room for it are closed in.
 #[test]
 fn a_hero_among_trees_too_close_for_the_route_margin_still_walks_home() {
-    let map = crate::game::map_of(bota_proto::MapId(2));
+    let map = map_of(MapId(2));
     for (team, x, y) in [
-        (bota_proto::Team::Dire, 739_766_649, 791_609_959),
-        (bota_proto::Team::Radiant, 469_633_835, 567_213_857),
+        (Team::Dire, 739_766_649, 791_609_959),
+        (Team::Radiant, 469_633_835, 567_213_857),
     ] {
         let mut world = World::on_map(map);
-        let start = bota_proto::Vec2 {
+        let start = Vec2 {
             x: Fixed { raw: x },
             y: Fixed { raw: y },
         };
-        let hero = world.spawn_hero(team, start, bota_proto::SlotId(0), bota_proto::HeroId(2));
+        let hero = world.spawn_hero(team, start, SlotId(0), HeroId(2));
         world.settle();
-        let home = map.fountains[usize::from(team == bota_proto::Team::Dire)];
-        world.set_order(hero, crate::game::UnitOrder::Move { pos: home });
+        let home = map.fountains[usize::from(team == Team::Dire)];
+        world.set_order(hero, UnitOrder::Move { pos: home });
         for _ in 0..(5 * rules::TICKS_PER_SECOND) {
             world.step();
         }
         let now = world.transform.get(hero).expect("standing").pos;
-        let gained = crate::game::isqrt64(start.distance_squared(home))
-            - crate::game::isqrt64(now.distance_squared(home));
+        let gained = isqrt64(start.distance_squared(home)) - isqrt64(now.distance_squared(home));
         assert!(
             gained > i64::from(rules::units(500).raw),
             "from {start:?} it walked towards home, not stood at {now:?}"

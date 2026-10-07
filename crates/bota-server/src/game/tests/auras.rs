@@ -1,8 +1,9 @@
 //! Fountain, tower and flagbearer auras.
 
-use crate::game::rules;
-use crate::game::{FLAGBEARER_CREEP, Health, MELEE_CREEP, World};
-use bota_proto::{Fixed, Team};
+use crate::game::{
+    FLAGBEARER_CREEP, Health, Level, MELEE_CREEP, MatchConfig, World, rules, tower_def,
+};
+use bota_proto::{Fixed, HeroId, MapId, Pick, SlotId, Team, TickMode, Vec2};
 
 use super::support::*;
 
@@ -28,7 +29,7 @@ fn a_fountain_hands_out_mending_to_whoever_stands_in_it() {
     );
     // Walked out of reach, it runs out on its own: nothing takes it off, and
     // what it has left is what the fountain last handed it.
-    world.transform.get_mut(hero).expect("hero").pos = bota_proto::Vec2::from_ints(9600, 9216);
+    world.transform.get_mut(hero).expect("hero").pos = Vec2::from_ints(9600, 9216);
     world.step();
     assert!(
         carries(&world, hero, FOUNTAIN_EFFECT),
@@ -48,19 +49,19 @@ fn a_tower_guards_the_heroes_of_its_own_side_that_stand_by_it() {
     // Every tier, since what a tower adds is not the same at each of them.
     for tier in 1..=4u8 {
         let mut world = World::new();
-        let at = bota_proto::Vec2::from_ints(5000, 5000);
-        world.spawn_unit(crate::game::tower_def(tier), Team::Radiant, at);
+        let at = Vec2::from_ints(5000, 5000);
+        world.spawn_unit(tower_def(tier), Team::Radiant, at);
         let hero = world.spawn_hero(
             Team::Radiant,
-            bota_proto::Vec2::from_ints(5400, 5000),
-            bota_proto::SlotId(0),
-            bota_proto::HeroId(0),
+            Vec2::from_ints(5400, 5000),
+            SlotId(0),
+            HeroId(0),
         );
         let bare = world.spawn_hero(
             Team::Radiant,
-            bota_proto::Vec2::from_ints(5000 + rules::TOWER_AURA_RADIUS + 200, 5000),
-            bota_proto::SlotId(1),
-            bota_proto::HeroId(0),
+            Vec2::from_ints(5000 + rules::TOWER_AURA_RADIUS + 200, 5000),
+            SlotId(1),
+            HeroId(0),
         );
         world.settle();
         world.step();
@@ -87,18 +88,14 @@ fn a_tower_guards_the_heroes_of_its_own_side_that_stand_by_it() {
 #[test]
 fn a_tower_guards_nobody_but_heroes() {
     let mut world = World::new();
-    let at = bota_proto::Vec2::from_ints(5000, 5000);
-    world.spawn_unit(crate::game::tower_def(1), Team::Radiant, at);
-    let creep = world.spawn_unit(
-        &MELEE_CREEP,
-        Team::Radiant,
-        bota_proto::Vec2::from_ints(5400, 5000),
-    );
+    let at = Vec2::from_ints(5000, 5000);
+    world.spawn_unit(tower_def(1), Team::Radiant, at);
+    let creep = world.spawn_unit(&MELEE_CREEP, Team::Radiant, Vec2::from_ints(5400, 5000));
     let theirs = world.spawn_hero(
         Team::Dire,
-        bota_proto::Vec2::from_ints(5400, 5100),
-        bota_proto::SlotId(0),
-        bota_proto::HeroId(0),
+        Vec2::from_ints(5400, 5100),
+        SlotId(0),
+        HeroId(0),
     );
     world.settle();
     world.step();
@@ -115,29 +112,25 @@ fn a_tower_guards_nobody_but_heroes() {
 #[test]
 fn a_flagbearer_inspires_everyone_of_its_own_side_around_it() {
     let mut world = World::new();
-    let at = bota_proto::Vec2::from_ints(5000, 5000);
+    let at = Vec2::from_ints(5000, 5000);
     world.spawn_unit(&FLAGBEARER_CREEP, Team::Radiant, at);
-    let creep = world.spawn_unit(
-        &MELEE_CREEP,
-        Team::Radiant,
-        bota_proto::Vec2::from_ints(5300, 5000),
-    );
+    let creep = world.spawn_unit(&MELEE_CREEP, Team::Radiant, Vec2::from_ints(5300, 5000));
     let far = world.spawn_unit(
         &MELEE_CREEP,
         Team::Radiant,
-        bota_proto::Vec2::from_ints(5000 + rules::FLAGBEARER_AURA_RADIUS + 200, 5000),
+        Vec2::from_ints(5000 + rules::FLAGBEARER_AURA_RADIUS + 200, 5000),
     );
     let hero = world.spawn_hero(
         Team::Radiant,
-        bota_proto::Vec2::from_ints(5300, 5100),
-        bota_proto::SlotId(0),
-        bota_proto::HeroId(0),
+        Vec2::from_ints(5300, 5100),
+        SlotId(0),
+        HeroId(0),
     );
     let theirs = world.spawn_hero(
         Team::Dire,
-        bota_proto::Vec2::from_ints(5300, 4900),
-        bota_proto::SlotId(1),
-        bota_proto::HeroId(0),
+        Vec2::from_ints(5300, 4900),
+        SlotId(1),
+        HeroId(0),
     );
     world.settle();
     world.step();
@@ -158,10 +151,10 @@ fn a_fountain_hands_out_nothing_to_the_other_side() {
     let mut world = World::for_match(&config(), config().rng());
     let hero = world.seats[0].unit.expect("stood up");
     let theirs = world.spawn_hero(
-        bota_proto::Team::Dire,
+        Team::Dire,
         world.transform.get(hero).expect("standing").pos,
-        bota_proto::SlotId(1),
-        bota_proto::HeroId(0),
+        SlotId(1),
+        HeroId(0),
     );
     world.step();
     assert!(
@@ -172,17 +165,17 @@ fn a_fountain_hands_out_nothing_to_the_other_side() {
 
 #[test]
 fn the_fountain_melts_whoever_steps_into_its_reach_and_spares_who_stays_out() {
-    let cfg = crate::game::MatchConfig {
+    let cfg = MatchConfig {
         match_id: 13,
         master_key: [0; 32],
-        picks: vec![bota_proto::Pick {
-            slot: bota_proto::SlotId(0),
-            team: bota_proto::Team::Dire,
-            hero: bota_proto::HeroId(1),
+        picks: vec![Pick {
+            slot: SlotId(0),
+            team: Team::Dire,
+            hero: HeroId(1),
         }],
-        map: bota_proto::MapId(0),
+        map: MapId(0),
         tick_rate: 30,
-        mode: bota_proto::TickMode::Realtime,
+        mode: TickMode::Realtime,
         ack_timeout_ticks: 0,
         cheats: false,
         spawn_modifiers: Vec::new(),
@@ -191,7 +184,7 @@ fn the_fountain_melts_whoever_steps_into_its_reach_and_spares_who_stays_out() {
     };
     let mut world = World::for_match(&cfg, cfg.rng());
     let hero = world.seats[0].unit.expect("stood up");
-    world.level.insert(hero, crate::game::Level(10));
+    world.level.insert(hero, Level(10));
     world.settle();
     world.fill_pools(hero);
     let fountain = rules::RADIANT_FOUNTAIN_POS;
@@ -204,7 +197,7 @@ fn the_fountain_melts_whoever_steps_into_its_reach_and_spares_who_stays_out() {
         }
     };
     // Past its reach, nothing comes out.
-    let outside = fountain + bota_proto::Vec2::from_ints(1400, 0);
+    let outside = fountain + Vec2::from_ints(1400, 0);
     if let Some(t) = world.transform.get_mut(hero) {
         t.pos = outside;
     }
@@ -216,7 +209,7 @@ fn the_fountain_melts_whoever_steps_into_its_reach_and_spares_who_stays_out() {
         "out of reach the fountain leaves it be"
     );
     // Inside, a hero of the tenth level is torn apart within seconds.
-    let inside = fountain + bota_proto::Vec2::from_ints(1000, 0);
+    let inside = fountain + Vec2::from_ints(1000, 0);
     if let Some(t) = world.transform.get_mut(hero) {
         t.pos = inside;
     }

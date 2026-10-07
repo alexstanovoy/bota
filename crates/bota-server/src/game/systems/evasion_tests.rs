@@ -1,12 +1,11 @@
 //! Evasion: the share of attacks at a carrier that miss, held exactly and
 //! told of; what is not an attack never misses.
 
-use bota_proto::{DamageKind, EventKind, Fixed, HeroId, ItemId, SlotId, Team, Vec2};
-
 use crate::game::{
-    Entity, Event, ITEM_BUTTERFLY, ITEM_TALISMAN_OF_EVASION, ItemStack, MELEE_CREEP, Modifier,
-    ModifierKind, Modifiers, RANGED_CREEP, Ratio, UnitDef, World, rules, wire_id,
+    Chance, Entity, Event, ITEM_BUTTERFLY, ITEM_TALISMAN_OF_EVASION, ItemStack, MELEE_CREEP,
+    Modifier, ModifierKind, Modifiers, RANGED_CREEP, Ratio, UnitDef, World, rules, wire_id,
 };
+use bota_proto::{DamageKind, EventKind, Fixed, HeroId, ItemId, SlotId, Team, Vec2};
 
 /// A melee attacker worth a point a strike on a short cycle, never landing
 /// two strikes in one tick, never falling and never bringing a hero down.
@@ -118,7 +117,7 @@ fn swing(world: &mut World, from: Entity, on: Entity, seen: &mut Vec<bool>, want
 }
 
 /// The stream of evasion rolls a target has opened, if it has.
-fn evasion_stream(world: &World, target: Entity) -> Option<&crate::game::Chance> {
+fn evasion_stream(world: &World, target: Entity) -> Option<&Chance> {
     world
         .evasion
         .get(target.index().0 as usize)

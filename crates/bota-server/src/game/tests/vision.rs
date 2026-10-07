@@ -1,14 +1,15 @@
 //! Who sees what, and what each side is told.
 
-use crate::game::rules;
-use crate::game::{Health, MELEE_CREEP, RANGED_CREEP, World};
-use bota_proto::{Fixed, Team};
+use crate::game::{
+    EventVisibility, Health, MELEE_CREEP, RANGED_CREEP, World, map_of, rules, wire_id,
+};
+use bota_proto::{Fixed, HeroId, MapId, SlotId, Team, UnitKind, Vec2};
 
 use super::support::*;
 
 #[test]
 fn a_world_built_on_a_map_stands_its_buildings_full() {
-    let map = crate::game::map_of(bota_proto::MapId(1));
+    let map = map_of(MapId(1));
     let world = World::on_map(map);
     assert_eq!(
         world.entities.len(),
@@ -20,26 +21,23 @@ fn a_world_built_on_a_map_stands_its_buildings_full() {
     let tower = view
         .units
         .iter()
-        .find(|u| u.kind == bota_proto::UnitKind::Tower)
+        .find(|u| u.kind == UnitKind::Tower)
         .expect("a tower stands");
     assert_eq!(tower.hp, rules::TOWER_TIER_HP[0], "built and full");
     assert_eq!(tower.max_hp, rules::TOWER_TIER_HP[0]);
     // The demo map raises no Ancients at all.
     assert!(
-        !view
-            .units
-            .iter()
-            .any(|u| u.kind == bota_proto::UnitKind::Ancient),
+        !view.units.iter().any(|u| u.kind == UnitKind::Ancient),
         "no Ancient stands on the demo map"
     );
 }
 
 #[test]
 fn both_sides_are_always_told_of_every_building() {
-    let map = crate::game::map_of(bota_proto::MapId(1));
+    let map = map_of(MapId(1));
     let world = World::on_map(map);
     let standing = map_buildings(map);
-    let view = world.view(bota_proto::Team::Radiant);
+    let view = world.view(Team::Radiant);
     assert_eq!(
         view.units.len(),
         standing,
@@ -54,17 +52,17 @@ fn both_sides_are_always_told_of_every_building() {
 
 #[test]
 fn a_unit_across_the_map_is_still_kept_from_a_side() {
-    let map = crate::game::map_of(bota_proto::MapId(1));
+    let map = map_of(MapId(1));
     let mut world = World::on_map(map);
-    let far = world.spawn_unit(&MELEE_CREEP, bota_proto::Team::Dire, map.fountains[1]);
+    let far = world.spawn_unit(&MELEE_CREEP, Team::Dire, map.fountains[1]);
     world.settle();
     assert!(
-        !world.can_see(bota_proto::Team::Radiant, far),
+        !world.can_see(Team::Radiant, far),
         "a creep is not a building"
     );
-    let view = world.view(bota_proto::Team::Radiant);
+    let view = world.view(Team::Radiant);
     assert!(
-        !view.units.iter().any(|u| u.id == crate::game::wire_id(far)),
+        !view.units.iter().any(|u| u.id == wire_id(far)),
         "and the fog keeps it back"
     );
 }
@@ -72,11 +70,7 @@ fn a_unit_across_the_map_is_still_kept_from_a_side() {
 #[test]
 fn a_unit_still_standing_never_reads_as_empty() {
     let mut world = World::new();
-    let creep = world.spawn_unit(
-        &MELEE_CREEP,
-        bota_proto::Team::Radiant,
-        bota_proto::Vec2::ZERO,
-    );
+    let creep = world.spawn_unit(&MELEE_CREEP, Team::Radiant, Vec2::ZERO);
     world.settle();
     world.health.insert(
         creep,
@@ -93,63 +87,47 @@ fn a_unit_still_standing_never_reads_as_empty() {
 fn a_side_sees_what_stands_inside_its_sight() {
     let mut world = World::new();
     let watcher = world.spawn_hero(
-        bota_proto::Team::Radiant,
-        bota_proto::Vec2::from_ints(1000, 1000),
-        bota_proto::SlotId(0),
-        bota_proto::HeroId(0),
+        Team::Radiant,
+        Vec2::from_ints(1000, 1000),
+        SlotId(0),
+        HeroId(0),
     );
-    let near = world.spawn_unit(
-        &MELEE_CREEP,
-        bota_proto::Team::Dire,
-        bota_proto::Vec2::from_ints(1200, 1000),
-    );
-    let far = world.spawn_unit(
-        &MELEE_CREEP,
-        bota_proto::Team::Dire,
-        bota_proto::Vec2::from_ints(9000, 9000),
-    );
+    let near = world.spawn_unit(&MELEE_CREEP, Team::Dire, Vec2::from_ints(1200, 1000));
+    let far = world.spawn_unit(&MELEE_CREEP, Team::Dire, Vec2::from_ints(9000, 9000));
     world.settle();
     world.step();
     let seen_near = world.visibility.get(near).expect("worked out this tick");
-    assert!(seen_near.by(bota_proto::Team::Radiant), "close enough");
-    assert!(seen_near.by(bota_proto::Team::Dire), "its own side always");
+    assert!(seen_near.by(Team::Radiant), "close enough");
+    assert!(seen_near.by(Team::Dire), "its own side always");
     let seen_far = world.visibility.get(far).expect("worked out this tick");
-    assert!(!seen_far.by(bota_proto::Team::Radiant), "out of sight");
-    let view = world.view(bota_proto::Team::Radiant);
+    assert!(!seen_far.by(Team::Radiant), "out of sight");
+    let view = world.view(Team::Radiant);
     let ids: Vec<_> = view.units.iter().map(|u| u.id).collect();
-    assert!(ids.contains(&crate::game::wire_id(watcher)));
-    assert!(ids.contains(&crate::game::wire_id(near)));
-    assert!(
-        !ids.contains(&crate::game::wire_id(far)),
-        "fog holds it back"
-    );
+    assert!(ids.contains(&wire_id(watcher)));
+    assert!(ids.contains(&wire_id(near)));
+    assert!(!ids.contains(&wire_id(far)), "fog holds it back");
 }
 
 #[test]
 fn a_side_is_told_only_of_what_it_could_see() {
-    let map = crate::game::map_of(bota_proto::MapId(1));
+    let map = map_of(MapId(1));
     let mut world = World::on_map(map);
-    let far = bota_proto::Vec2::from_ints(9600, 12000);
+    let far = Vec2::from_ints(9600, 12000);
     assert!(
-        !world.can_see_point(bota_proto::Team::Radiant, far),
+        !world.can_see_point(Team::Radiant, far),
         "nothing of that side stands anywhere near"
     );
     assert_eq!(
-        world.who_may_know(far, bota_proto::Team::Dire),
-        crate::game::EventVisibility::OneTeam(bota_proto::Team::Dire),
+        world.who_may_know(far, Team::Dire),
+        EventVisibility::OneTeam(Team::Dire),
         "only the side party to it is told"
     );
-    let watcher = world.spawn_hero(
-        bota_proto::Team::Radiant,
-        far,
-        bota_proto::SlotId(0),
-        bota_proto::HeroId(0),
-    );
+    let watcher = world.spawn_hero(Team::Radiant, far, SlotId(0), HeroId(0));
     world.settle();
-    assert!(world.can_see_point(bota_proto::Team::Radiant, far));
+    assert!(world.can_see_point(Team::Radiant, far));
     assert_eq!(
-        world.who_may_know(far, bota_proto::Team::Dire),
-        crate::game::EventVisibility::Everyone
+        world.who_may_know(far, Team::Dire),
+        EventVisibility::Everyone
     );
     let _ = watcher;
 }
@@ -158,16 +136,12 @@ fn a_side_is_told_only_of_what_it_could_see() {
 fn a_ranged_attack_puts_a_missile_where_a_side_can_see_it() {
     let mut world = World::new();
     let archer = world.spawn_hero(
-        bota_proto::Team::Radiant,
-        bota_proto::Vec2::from_ints(5000, 5000),
-        bota_proto::SlotId(0),
-        bota_proto::HeroId(0),
+        Team::Radiant,
+        Vec2::from_ints(5000, 5000),
+        SlotId(0),
+        HeroId(0),
     );
-    let mark = world.spawn_unit(
-        &MELEE_CREEP,
-        bota_proto::Team::Dire,
-        bota_proto::Vec2::from_ints(5300, 5000),
-    );
+    let mark = world.spawn_unit(&MELEE_CREEP, Team::Dire, Vec2::from_ints(5300, 5000));
     world.settle();
     world.fill_pools(archer);
     world.fill_pools(mark);
@@ -183,7 +157,7 @@ fn a_ranged_attack_puts_a_missile_where_a_side_can_see_it() {
         flew,
         "a ranged hero throws something the client is told about"
     );
-    let view = world.view(bota_proto::Team::Radiant);
+    let view = world.view(Team::Radiant);
     assert!(
         !view.projectiles.is_empty(),
         "and its own side is told of it"
@@ -193,16 +167,8 @@ fn a_ranged_attack_puts_a_missile_where_a_side_can_see_it() {
 #[test]
 fn a_missile_is_seen_from_the_tick_it_is_thrown() {
     let mut world = World::new();
-    let archer = world.spawn_unit(
-        &RANGED_CREEP,
-        Team::Radiant,
-        bota_proto::Vec2::from_ints(5000, 5000),
-    );
-    let watcher = world.spawn_unit(
-        &MELEE_CREEP,
-        Team::Dire,
-        bota_proto::Vec2::from_ints(5300, 5000),
-    );
+    let archer = world.spawn_unit(&RANGED_CREEP, Team::Radiant, Vec2::from_ints(5000, 5000));
+    let watcher = world.spawn_unit(&MELEE_CREEP, Team::Dire, Vec2::from_ints(5300, 5000));
     world.settle();
     let mut thrown = None;
     for _ in 0..40 {

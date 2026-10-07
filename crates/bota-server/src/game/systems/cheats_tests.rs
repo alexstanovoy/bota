@@ -1,13 +1,12 @@
 //! Cheats: what each one does, and that a match without them refuses them.
 
-use bota_proto::{
-    AbilitySlot, Cheat, DamageKind, EventKind, Fixed, HeroId, ItemId, MapId, ModifierSpec, Order,
-    Pick, RejectReason, SlotId, Target, Team, TickMode, Vec2,
-};
-
 use crate::game::{
-    Command, Entity, Event, ITEM_BUTTERFLY, ItemStack, MatchConfig, World, ability,
-    ability_mana_cost, rules, wire_id,
+    Command, Entity, Event, ITEM_BUTTERFLY, ITEM_TOWN_PORTAL_SCROLL, ITEMS, ItemStack, MELEE_CREEP,
+    MatchConfig, World, ability, ability_mana_cost, rules, wire_id,
+};
+use bota_proto::{
+    AbilitySlot, Cheat, DamageKind, EntityId, EventKind, Fixed, HeroId, ItemId, MAX_MODIFIER_TICKS,
+    MapId, ModifierSpec, Order, Pick, RejectReason, SlotId, Target, Team, TickMode, Vec2,
 };
 
 /// A one-seat match on the demo map, with or without cheats.
@@ -87,7 +86,7 @@ fn a_refresh_fills_the_pools_and_clears_every_wait() {
     world.mana.get_mut(hero).expect("has mana").mana = Fixed::ZERO;
     world.abilities.get_mut(hero).expect("has a book").slots[1].cooldown = 100;
     world.inventory.get_mut(hero).expect("has a bag").slots[0] = Some(ItemStack {
-        id: ItemId(crate::game::ITEM_TOWN_PORTAL_SCROLL),
+        id: ItemId(ITEM_TOWN_PORTAL_SCROLL),
         charges: 1,
         cooldown: 50,
         mute: 20,
@@ -99,7 +98,7 @@ fn a_refresh_fills_the_pools_and_clears_every_wait() {
     });
     world.seats[0]
         .item_clocks
-        .push((ItemId(crate::game::ITEM_TOWN_PORTAL_SCROLL), 900));
+        .push((ItemId(ITEM_TOWN_PORTAL_SCROLL), 900));
     cheat(&mut world, Cheat::Refresh);
     let stats = *world.stats.get(hero).expect("settled");
     assert_eq!(world.health.get(hero).map(|h| h.hp), Some(stats.max_hp));
@@ -201,11 +200,7 @@ fn a_modifier_cheat_is_refused_without_cheats_and_taken_with_them() {
 #[test]
 fn a_modifier_cheat_lands_on_the_named_unit_alone() {
     let (mut world, hero) = cheating_world();
-    let creep = world.spawn_unit(
-        &crate::game::MELEE_CREEP,
-        Team::Dire,
-        Vec2::from_ints(7000, 7000),
-    );
+    let creep = world.spawn_unit(&MELEE_CREEP, Team::Dire, Vec2::from_ints(7000, 7000));
     world.settle();
     let order = Order::Cheat {
         cheat: Cheat::ApplyModifier {
@@ -283,7 +278,7 @@ fn an_out_of_bounds_spec_is_refused_as_a_bad_cheat() {
 #[test]
 fn a_modifier_duration_outside_its_bounds_is_refused_as_a_bad_cheat() {
     let (world, _hero) = cheating_world();
-    for ticks in [0, bota_proto::MAX_MODIFIER_TICKS + 1] {
+    for ticks in [0, MAX_MODIFIER_TICKS + 1] {
         assert_eq!(
             world.validate_order(SlotId(0), None, &modifier_order(a_spec(), ticks)),
             Err(RejectReason::BadCheat),
@@ -294,7 +289,7 @@ fn a_modifier_duration_outside_its_bounds_is_refused_as_a_bad_cheat() {
         world.validate_order(
             SlotId(0),
             None,
-            &modifier_order(a_spec(), bota_proto::MAX_MODIFIER_TICKS)
+            &modifier_order(a_spec(), MAX_MODIFIER_TICKS)
         ),
         Ok(())
     );
@@ -321,7 +316,7 @@ fn a_modifier_cheat_aimed_at_nobody_is_an_unknown_target() {
     let (world, _hero) = cheating_world();
     let order = Order::Cheat {
         cheat: Cheat::ApplyModifier {
-            target: Target::Unit(bota_proto::EntityId {
+            target: Target::Unit(EntityId {
                 idx: 999,
                 generation: 3,
             }),
@@ -584,7 +579,7 @@ fn gold_income_leaves_starting_passive_and_refunded_gold_alone() {
         .expect("the Butterfly is sold");
     stack.touched = true;
     world.inventory.get_mut(hero).expect("has a bag").slots[0] = Some(stack);
-    let price = crate::game::ITEMS[usize::from(ITEM_BUTTERFLY)].cost;
+    let price = ITEMS[usize::from(ITEM_BUTTERFLY)].cost;
     let gold = world.seats[0].gold;
     assert!(world.sell_item(SlotId(0), hero, 0), "it sells at the shop");
     assert_eq!(

@@ -1,6 +1,5 @@
-use bota_proto::{HeroId, SlotId, Team};
-
 use crate::game::{Seat, rules, wire_id};
+use bota_proto::{DamageKind, Fixed, HeroId, SlotId, Team};
 
 use super::fixtures::*;
 
@@ -8,8 +7,8 @@ use super::fixtures::*;
 fn raze_already_queued_before_caster_death_keeps_its_damage_and_old_generation_effect() {
     let (mut world, caster, target) = fixture();
     land(&mut world, caster, target, 0);
-    world.health.get_mut(caster).unwrap().hp = bota_proto::Fixed::ONE;
-    world.push_hit(None, caster, 1, bota_proto::DamageKind::Pure);
+    world.health.get_mut(caster).unwrap().hp = Fixed::ONE;
+    world.push_hit(None, caster, 1, DamageKind::Pure);
     reveal(&mut world, target);
     assert!(world.cast_raze(caster, 0, 1));
     assert_eq!(damage(&world.step(), target), vec![140]);

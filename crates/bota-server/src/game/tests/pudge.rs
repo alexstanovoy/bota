@@ -1,8 +1,10 @@
 //! Pudge.
 
-use crate::game::rules;
-use crate::game::{Health, StackKind, World};
-use bota_proto::Fixed;
+use crate::game::{
+    Command, Health, Modifier, ModifierKind, StackKind, Stacks, World, ability, rules, tower_def,
+    wire_id,
+};
+use bota_proto::{Fixed, HeroId, Order, SlotId, Target, Team, Vec2};
 
 use super::support::*;
 
@@ -11,7 +13,7 @@ fn a_hook_catches_what_it_flies_into_and_drags_it_home() {
     let (mut world, pudge, mark) = pudge_and_a_mark(600);
     let full = world.health.get(mark).expect("standing").hp.to_int();
     let home = world.transform.get(pudge).expect("standing").pos;
-    throw_hook(&mut world, bota_proto::Vec2::from_ints(6000, 5000));
+    throw_hook(&mut world, Vec2::from_ints(6000, 5000));
     for _ in 0..120 {
         world.step();
         if world.entities.iter().all(|e| world.hook.get(e).is_none()) {
@@ -20,7 +22,7 @@ fn a_hook_catches_what_it_flies_into_and_drags_it_home() {
     }
     let landed = world.transform.get(mark).expect("standing").pos;
     assert!(
-        landed.within(home, bota_proto::Fixed::from_int(200)),
+        landed.within(home, Fixed::from_int(200)),
         "what it caught is dragged to the one who threw it: {landed:?} against {home:?}"
     );
     assert!(
@@ -33,7 +35,7 @@ fn a_hook_catches_what_it_flies_into_and_drags_it_home() {
 fn a_hook_that_catches_nothing_comes_back_by_itself() {
     let (mut world, pudge, _mark) = pudge_and_a_mark(600);
     // Thrown the other way, so it flies out over open ground and returns.
-    throw_hook(&mut world, bota_proto::Vec2::from_ints(4000, 5000));
+    throw_hook(&mut world, Vec2::from_ints(4000, 5000));
     let (mut flew, mut caught) = (false, false);
     for _ in 0..200 {
         world.step();
@@ -64,10 +66,7 @@ fn a_hook_flies_no_further_than_it_reaches() {
     let (mut world, _pudge, _mark) = pudge_and_a_mark(4000);
     // Aimed at the very edge of its reach: further off than that the caster
     // walks in first, which is movement's business rather than the hook's.
-    throw_hook(
-        &mut world,
-        bota_proto::Vec2::from_ints(5000 + rules::HOOK_RANGE, 5000),
-    );
+    throw_hook(&mut world, Vec2::from_ints(5000 + rules::HOOK_RANGE, 5000));
     let mut furthest = 0;
     for _ in 0..200 {
         world.step();
@@ -97,7 +96,7 @@ fn the_rot_burns_and_slows_what_stands_in_it_and_lifts_when_switched_off() {
         book.slots[1].level = 1;
     }
     let full = world.health.get(mark).expect("standing").hp;
-    pudge_casts(&mut world, 1, bota_proto::Target::None);
+    pudge_casts(&mut world, 1, Target::None);
     assert!(rotting(&world, pudge), "it is switched on");
     for _ in 0..rules::BURN_PERIOD_TICKS * 4 {
         world.step();
@@ -107,16 +106,16 @@ fn the_rot_burns_and_slows_what_stands_in_it_and_lifts_when_switched_off() {
         "what stands in it burns"
     );
     assert!(
-        carries(&world, mark, crate::game::ModifierKind::Slowed { pct: 0 }),
+        carries(&world, mark, ModifierKind::Slowed { pct: 0 }),
         "and is slowed while it stands there"
     );
-    pudge_casts(&mut world, 1, bota_proto::Target::None);
+    pudge_casts(&mut world, 1, Target::None);
     assert!(!rotting(&world, pudge), "it is switched off");
     for _ in 0..3 {
         world.step();
     }
     assert!(
-        !carries(&world, mark, crate::game::ModifierKind::Slowed { pct: 0 }),
+        !carries(&world, mark, ModifierKind::Slowed { pct: 0 }),
         "and nothing is left slowed"
     );
 }
@@ -129,14 +128,13 @@ fn the_rot_shows_its_cloud_where_its_owner_stands_while_it_is_on() {
     if let Some(book) = world.abilities.get_mut(pudge) {
         book.slots[1].level = 1;
     }
-    pudge_casts(&mut world, 1, bota_proto::Target::None);
+    pudge_casts(&mut world, 1, Target::None);
     let cloud = world
-        .mark_of(pudge, crate::game::ability::ROT)
+        .mark_of(pudge, ability::ROT)
         .expect("switched on, the cloud shows");
     let stood = world.transform.get(pudge).expect("standing").pos;
     assert_eq!(world.transform.get(cloud).map(|t| t.pos), Some(stood));
-    world.transform.get_mut(pudge).expect("standing").pos =
-        stood + bota_proto::Vec2::from_ints(0, 90);
+    world.transform.get_mut(pudge).expect("standing").pos = stood + Vec2::from_ints(0, 90);
     world.step();
     assert_eq!(
         world.transform.get(cloud).map(|t| t.pos),
@@ -148,24 +146,24 @@ fn the_rot_shows_its_cloud_where_its_owner_stands_while_it_is_on() {
             .view_full()
             .projectiles
             .iter()
-            .any(|shown| shown.ability == Some(crate::game::ability::ROT)),
+            .any(|shown| shown.ability == Some(ability::ROT)),
         "and is in the view"
     );
-    pudge_casts(&mut world, 1, bota_proto::Target::None);
+    pudge_casts(&mut world, 1, Target::None);
     assert_eq!(
-        world.mark_of(pudge, crate::game::ability::ROT),
+        world.mark_of(pudge, ability::ROT),
         None,
         "switched off, it goes"
     );
-    pudge_casts(&mut world, 1, bota_proto::Target::None);
-    assert!(world.mark_of(pudge, crate::game::ability::ROT).is_some());
+    pudge_casts(&mut world, 1, Target::None);
+    assert!(world.mark_of(pudge, ability::ROT).is_some());
     let mut events = Vec::new();
     world.bury(vec![(pudge, None)], &mut events);
     assert!(
         world.entities.iter().all(|entity| world
             .mark
             .get(entity)
-            .is_none_or(|shown| shown.ability != crate::game::ability::ROT)),
+            .is_none_or(|shown| shown.ability != ability::ROT)),
         "and it goes with him when he falls"
     );
 }
@@ -174,10 +172,10 @@ fn the_rot_shows_its_cloud_where_its_owner_stands_while_it_is_on() {
 fn the_rot_never_kills_the_one_carrying_it() {
     let mut world = World::new();
     let pudge = world.spawn_hero(
-        bota_proto::Team::Radiant,
-        bota_proto::Vec2::from_ints(5000, 5000),
-        bota_proto::SlotId(0),
-        bota_proto::HeroId(1),
+        Team::Radiant,
+        Vec2::from_ints(5000, 5000),
+        SlotId(0),
+        HeroId(1),
     );
     if let Some(book) = world.abilities.get_mut(pudge) {
         book.slots[1].level = 3;
@@ -186,8 +184,8 @@ fn the_rot_never_kills_the_one_carrying_it() {
     world.step();
     world.put_modifier(
         pudge,
-        crate::game::Modifier {
-            kind: crate::game::ModifierKind::Rot { level: 3 },
+        Modifier {
+            kind: ModifierKind::Rot { level: 3 },
             source: Some(pudge),
             ticks_left: None,
         },
@@ -227,17 +225,13 @@ fn a_dismember_holds_what_it_eats_and_feeds_the_one_eating() {
     world.step();
     let hurt = world.health.get(pudge).expect("standing").hp;
     let full = world.health.get(mark).expect("standing").hp;
-    pudge_casts(
-        &mut world,
-        3,
-        bota_proto::Target::Unit(crate::game::wire_id(mark)),
-    );
+    pudge_casts(&mut world, 3, Target::Unit(wire_id(mark)));
     assert!(world.is_channelling(pudge), "it takes hold");
     for _ in 0..30 {
         world.step();
     }
     assert!(
-        carries(&world, mark, crate::game::ModifierKind::Stunned),
+        carries(&world, mark, ModifierKind::Stunned),
         "what it holds cannot act"
     );
     assert!(
@@ -249,11 +243,11 @@ fn a_dismember_holds_what_it_eats_and_feeds_the_one_eating() {
         "while the one eating mends"
     );
     // An order of any kind lets go.
-    world.advance(&[crate::game::Command {
-        slot: bota_proto::SlotId(0),
+    world.advance(&[Command {
+        slot: SlotId(0),
         unit: None,
-        order: bota_proto::Order::Move {
-            target: bota_proto::Target::None,
+        order: Order::Move {
+            target: Target::None,
         },
     }]);
     assert!(!world.is_channelling(pudge), "an order lets go");
@@ -266,22 +260,22 @@ fn a_flesh_heap_keeps_every_enemy_hero_that_falls_near_it_and_nothing_else() {
         book.slots[2].level = 1;
     }
     let foe = world.spawn_hero(
-        bota_proto::Team::Dire,
-        bota_proto::Vec2::from_ints(5300, 5000),
-        bota_proto::SlotId(1),
-        bota_proto::HeroId(0),
+        Team::Dire,
+        Vec2::from_ints(5300, 5000),
+        SlotId(1),
+        HeroId(0),
     );
     let friend = world.spawn_hero(
-        bota_proto::Team::Radiant,
-        bota_proto::Vec2::from_ints(5000, 5300),
-        bota_proto::SlotId(2),
-        bota_proto::HeroId(0),
+        Team::Radiant,
+        Vec2::from_ints(5000, 5300),
+        SlotId(2),
+        HeroId(0),
     );
     let far = world.spawn_hero(
-        bota_proto::Team::Dire,
-        bota_proto::Vec2::from_ints(5000 + rules::FLESH_HEAP_RANGE + 200, 5000),
-        bota_proto::SlotId(3),
-        bota_proto::HeroId(0),
+        Team::Dire,
+        Vec2::from_ints(5000 + rules::FLESH_HEAP_RANGE + 200, 5000),
+        SlotId(3),
+        HeroId(0),
     );
     world.settle();
     world.step();
@@ -326,10 +320,10 @@ fn a_flesh_heap_keeps_every_enemy_hero_that_falls_near_it_and_nothing_else() {
 fn a_thicker_heap_is_worth_more_a_stack_and_turns_more_magic() {
     let mut world = World::new();
     let pudge = world.spawn_hero(
-        bota_proto::Team::Radiant,
-        bota_proto::Vec2::from_ints(5000, 5000),
-        bota_proto::SlotId(0),
-        bota_proto::HeroId(1),
+        Team::Radiant,
+        Vec2::from_ints(5000, 5000),
+        SlotId(0),
+        HeroId(1),
     );
     world.settle();
     world.step();
@@ -342,7 +336,7 @@ fn a_thicker_heap_is_worth_more_a_stack_and_turns_more_magic() {
     if let Some(book) = world.abilities.get_mut(pudge) {
         book.slots[2].level = 4;
     }
-    let mut kept = crate::game::Stacks::default();
+    let mut kept = Stacks::default();
     kept.gather(StackKind::FleshHeap, 3);
     world.stacks.insert(pudge, kept);
     world.step();
@@ -367,10 +361,10 @@ fn a_flesh_heap_outlives_the_death_of_the_one_carrying_it() {
         book.slots[2].level = 1;
     }
     let foe = world.spawn_hero(
-        bota_proto::Team::Dire,
-        bota_proto::Vec2::from_ints(5100, 5200),
-        bota_proto::SlotId(1),
-        bota_proto::HeroId(0),
+        Team::Dire,
+        Vec2::from_ints(5100, 5200),
+        SlotId(1),
+        HeroId(0),
     );
     world.settle();
     world.step();
@@ -410,14 +404,14 @@ fn a_flesh_heap_outlives_the_death_of_the_one_carrying_it() {
 #[test]
 fn a_hook_flies_out_on_a_chain_of_links_and_takes_them_home() {
     let (mut world, _pudge, _mark) = pudge_and_a_mark(600);
-    throw_hook(&mut world, bota_proto::Vec2::from_ints(4000, 5000));
+    throw_hook(&mut world, Vec2::from_ints(4000, 5000));
     world.step();
     let chained = |world: &World| {
         world
             .view_full()
             .projectiles
             .iter()
-            .filter(|shown| shown.ability == Some(crate::game::ability::MEAT_HOOK))
+            .filter(|shown| shown.ability == Some(ability::MEAT_HOOK))
             .count()
     };
     assert_eq!(
@@ -440,33 +434,28 @@ fn a_dismember_shows_its_hold_on_what_it_eats_until_it_lets_go() {
     if let Some(book) = world.abilities.get_mut(pudge) {
         book.slots[3].level = 1;
     }
-    pudge_casts(
-        &mut world,
-        3,
-        bota_proto::Target::Unit(crate::game::wire_id(mark)),
-    );
+    pudge_casts(&mut world, 3, Target::Unit(wire_id(mark)));
     let shown = world
-        .mark_of(pudge, crate::game::ability::DISMEMBER)
+        .mark_of(pudge, ability::DISMEMBER)
         .expect("the hold is shown");
     let eaten = world.transform.get(mark).expect("standing").pos;
     assert_eq!(world.transform.get(shown).map(|t| t.pos), Some(eaten));
-    world.transform.get_mut(mark).expect("standing").pos =
-        eaten + bota_proto::Vec2::from_ints(40, 0);
+    world.transform.get_mut(mark).expect("standing").pos = eaten + Vec2::from_ints(40, 0);
     world.step();
     assert_eq!(
         world.transform.get(shown).map(|t| t.pos),
         world.transform.get(mark).map(|t| t.pos),
         "and follows what is eaten"
     );
-    world.advance(&[crate::game::Command {
-        slot: bota_proto::SlotId(0),
+    world.advance(&[Command {
+        slot: SlotId(0),
         unit: None,
-        order: bota_proto::Order::Move {
-            target: bota_proto::Target::None,
+        order: Order::Move {
+            target: Target::None,
         },
     }]);
     assert_eq!(
-        world.mark_of(pudge, crate::game::ability::DISMEMBER),
+        world.mark_of(pudge, ability::DISMEMBER),
         None,
         "letting go takes the hold away"
     );
@@ -478,11 +467,7 @@ fn a_structure_falling_beside_a_flesh_heap_feeds_it_nothing() {
     if let Some(book) = world.abilities.get_mut(pudge) {
         book.slots[2].level = 1;
     }
-    let tower = world.spawn_unit(
-        crate::game::tower_def(1),
-        bota_proto::Team::Dire,
-        bota_proto::Vec2::from_ints(5200, 5000),
-    );
+    let tower = world.spawn_unit(tower_def(1), Team::Dire, Vec2::from_ints(5200, 5000));
     world.settle();
     let mut events = Vec::new();
     world.bury(vec![(tower, None)], &mut events);

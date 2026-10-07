@@ -1,29 +1,19 @@
 //! What creeps and towers choose to fight, and what pulls them.
 
-use crate::game::rules;
-use crate::game::{Health, MELEE_CREEP, World};
-use bota_proto::{Fixed, Team};
+use crate::game::{
+    CAMPS, CampHome, Command, Health, MELEE_CREEP, NeutralAi, NeutralKind, Orders, PriorityOrder,
+    SIEGE_CREEP, UnitOrder, World, rules, tower_def,
+};
+use bota_proto::{Fixed, HeroId, Order, SlotId, Target, Team, Vec2};
 
 use super::support::*;
 
 #[test]
 fn a_tower_takes_the_nearest_enemy_and_brings_it_down() {
     let mut world = World::new();
-    let tower = world.spawn_unit(
-        crate::game::tower_def(1),
-        bota_proto::Team::Radiant,
-        bota_proto::Vec2::from_ints(1000, 1000),
-    );
-    let near = world.spawn_unit(
-        &MELEE_CREEP,
-        bota_proto::Team::Dire,
-        bota_proto::Vec2::from_ints(1200, 1000),
-    );
-    let far = world.spawn_unit(
-        &MELEE_CREEP,
-        bota_proto::Team::Dire,
-        bota_proto::Vec2::from_ints(1600, 1000),
-    );
+    let tower = world.spawn_unit(tower_def(1), Team::Radiant, Vec2::from_ints(1000, 1000));
+    let near = world.spawn_unit(&MELEE_CREEP, Team::Dire, Vec2::from_ints(1200, 1000));
+    let far = world.spawn_unit(&MELEE_CREEP, Team::Dire, Vec2::from_ints(1600, 1000));
     world.settle();
     world.step();
     assert_eq!(
@@ -44,28 +34,15 @@ fn a_tower_takes_the_nearest_enemy_and_brings_it_down() {
 #[test]
 fn a_unit_is_taken_before_a_building_and_a_siege_creep_takes_the_building_first() {
     let mut world = World::new();
-    let at = bota_proto::Vec2::from_ints(1000, 1000);
-    let creep = world.spawn_unit(&MELEE_CREEP, bota_proto::Team::Radiant, at);
-    let siege = world.spawn_unit(&crate::game::SIEGE_CREEP, bota_proto::Team::Radiant, at);
-    let tower = world.spawn_unit(
-        crate::game::tower_def(1),
-        bota_proto::Team::Dire,
-        bota_proto::Vec2::from_ints(1100, 1000),
-    );
-    let enemy = world.spawn_unit(
-        &MELEE_CREEP,
-        bota_proto::Team::Dire,
-        bota_proto::Vec2::from_ints(1300, 1000),
-    );
+    let at = Vec2::from_ints(1000, 1000);
+    let creep = world.spawn_unit(&MELEE_CREEP, Team::Radiant, at);
+    let siege = world.spawn_unit(&SIEGE_CREEP, Team::Radiant, at);
+    let tower = world.spawn_unit(tower_def(1), Team::Dire, Vec2::from_ints(1100, 1000));
+    let enemy = world.spawn_unit(&MELEE_CREEP, Team::Dire, Vec2::from_ints(1300, 1000));
     world.settle();
     let reach = world.stats.get(creep).expect("settled").acquisition;
     assert_eq!(
-        world.acquire(
-            creep,
-            reach,
-            crate::game::PriorityOrder::Normal,
-            &world.candidates()
-        ),
+        world.acquire(creep, reach, PriorityOrder::Normal, &world.candidates()),
         Some(enemy),
         "a unit outranks a building however much nearer the building stands"
     );
@@ -74,42 +51,31 @@ fn a_unit_is_taken_before_a_building_and_a_siege_creep_takes_the_building_first(
         world.acquire(
             siege,
             siege_reach,
-            crate::game::PriorityOrder::SiegeFirst,
+            PriorityOrder::SiegeFirst,
             &world.candidates()
         ),
         Some(tower),
         "a siege creep goes for the building"
     );
-    assert_eq!(
-        world.priority_of(siege),
-        crate::game::PriorityOrder::SiegeFirst
-    );
-    assert_eq!(world.priority_of(creep), crate::game::PriorityOrder::Normal);
+    assert_eq!(world.priority_of(siege), PriorityOrder::SiegeFirst);
+    assert_eq!(world.priority_of(creep), PriorityOrder::Normal);
 }
 
 #[test]
 fn a_building_never_shoots_the_jungle_and_a_creep_only_at_a_pull_camp() {
     let mut world = World::new();
-    let tower = world.spawn_unit(
-        crate::game::tower_def(1),
-        bota_proto::Team::Radiant,
-        bota_proto::Vec2::from_ints(1000, 1000),
-    );
-    let creep = world.spawn_unit(
-        &MELEE_CREEP,
-        bota_proto::Team::Radiant,
-        bota_proto::Vec2::from_ints(1000, 1000),
-    );
+    let tower = world.spawn_unit(tower_def(1), Team::Radiant, Vec2::from_ints(1000, 1000));
+    let creep = world.spawn_unit(&MELEE_CREEP, Team::Radiant, Vec2::from_ints(1000, 1000));
     let hero = world.spawn_hero(
-        bota_proto::Team::Radiant,
-        bota_proto::Vec2::from_ints(1000, 1000),
-        bota_proto::SlotId(0),
-        bota_proto::HeroId(0),
+        Team::Radiant,
+        Vec2::from_ints(1000, 1000),
+        SlotId(0),
+        HeroId(0),
     );
     let beast = world.spawn_unit(
-        crate::game::NeutralKind::Kobold.def(),
-        bota_proto::Team::Neutral,
-        bota_proto::Vec2::from_ints(1100, 1000),
+        NeutralKind::Kobold.def(),
+        Team::Neutral,
+        Vec2::from_ints(1100, 1000),
     );
     world.settle();
     assert!(!world.hostile(tower, beast), "a tower leaves the jungle be");
@@ -118,13 +84,13 @@ fn a_building_never_shoots_the_jungle_and_a_creep_only_at_a_pull_camp() {
         !world.hostile(creep, beast),
         "a lane creep leaves a camp it cannot be pulled to"
     );
-    let pull = crate::game::CAMPS
+    let pull = CAMPS
         .iter()
         .find(|c| c.pullable)
         .expect("the map marks pull camps");
     world.camp_home.insert(
         beast,
-        crate::game::CampHome {
+        CampHome {
             camp: 0,
             home: pull.pos,
         },
@@ -138,23 +104,19 @@ fn a_building_never_shoots_the_jungle_and_a_creep_only_at_a_pull_camp() {
 #[test]
 fn a_creep_gives_up_a_chase_it_cannot_finish() {
     let mut world = World::new();
-    let creep = thinking_creep(&mut world, bota_proto::Vec2::from_ints(5000, 5000));
-    let prey = world.spawn_unit(
-        &MELEE_CREEP,
-        bota_proto::Team::Dire,
-        bota_proto::Vec2::from_ints(5100, 5000),
-    );
+    let creep = thinking_creep(&mut world, Vec2::from_ints(5000, 5000));
+    let prey = world.spawn_unit(&MELEE_CREEP, Team::Dire, Vec2::from_ints(5100, 5000));
     world.settle();
     world.step();
     assert_eq!(world.target_of(creep), Some(prey), "it takes it");
     // Carried out of everything it can see, and the creep held where it was.
-    let away = bota_proto::Vec2::from_ints(5900, 5000);
+    let away = Vec2::from_ints(5900, 5000);
     for _ in 0..rules::CREEP_CHASE_TICKS + 2 {
         if let Some(at) = world.transform.get_mut(prey) {
             at.pos = away;
         }
         if let Some(at) = world.transform.get_mut(creep) {
-            at.pos = bota_proto::Vec2::from_ints(5000, 5000);
+            at.pos = Vec2::from_ints(5000, 5000);
         }
         world.step();
     }
@@ -168,28 +130,24 @@ fn a_creep_gives_up_a_chase_it_cannot_finish() {
 #[test]
 fn an_attack_order_a_hero_aims_at_itself_moves_nobody() {
     let mut world = World::new();
-    let at = bota_proto::Vec2::from_ints(5000, 5000);
+    let at = Vec2::from_ints(5000, 5000);
     let creep = thinking_creep(&mut world, at);
     let hero = world.spawn_hero(
         Team::Dire,
-        bota_proto::Vec2::from_ints(5040, 5000),
-        bota_proto::SlotId(0),
-        bota_proto::HeroId(0),
+        Vec2::from_ints(5040, 5000),
+        SlotId(0),
+        HeroId(0),
     );
     // Somebody else for the creep to fall back on, so that a hero put last
     // would show.
-    world.spawn_unit(
-        &MELEE_CREEP,
-        Team::Dire,
-        bota_proto::Vec2::from_ints(5300, 5000),
-    );
+    world.spawn_unit(&MELEE_CREEP, Team::Dire, Vec2::from_ints(5300, 5000));
     world.settle();
     // Swinging at the creep's own is what makes the creep look at a hero at
     // all; left alone it would take the creep and there would be nothing to
     // let go of.
     world.set_order(
         hero,
-        crate::game::UnitOrder::Attack {
+        UnitOrder::Attack {
             target: creep,
             last_seen: at,
         },
@@ -212,19 +170,15 @@ fn an_attack_order_a_hero_aims_at_itself_moves_nobody() {
 #[test]
 fn a_creep_prefers_a_creep_to_a_hero_that_is_doing_nothing() {
     let mut world = World::new();
-    let creep = thinking_creep(&mut world, bota_proto::Vec2::from_ints(5000, 5000));
+    let creep = thinking_creep(&mut world, Vec2::from_ints(5000, 5000));
     // The hero stands nearer than the enemy creep.
     let hero = world.spawn_hero(
         Team::Dire,
-        bota_proto::Vec2::from_ints(5100, 5000),
-        bota_proto::SlotId(0),
-        bota_proto::HeroId(0),
+        Vec2::from_ints(5100, 5000),
+        SlotId(0),
+        HeroId(0),
     );
-    let other = world.spawn_unit(
-        &MELEE_CREEP,
-        Team::Dire,
-        bota_proto::Vec2::from_ints(5400, 5000),
-    );
+    let other = world.spawn_unit(&MELEE_CREEP, Team::Dire, Vec2::from_ints(5400, 5000));
     world.settle();
     assert_eq!(
         world.best_valid_in_range(creep, Fixed::from_int(600), &world.candidates()),
@@ -237,25 +191,17 @@ fn a_creep_prefers_a_creep_to_a_hero_that_is_doing_nothing() {
 #[test]
 fn a_hero_laying_into_your_side_counts_for_no_more_than_a_creep() {
     let mut world = World::new();
-    let creep = thinking_creep(&mut world, bota_proto::Vec2::from_ints(5000, 5000));
-    let friend = world.spawn_unit(
-        &MELEE_CREEP,
-        Team::Radiant,
-        bota_proto::Vec2::from_ints(5050, 5000),
-    );
+    let creep = thinking_creep(&mut world, Vec2::from_ints(5000, 5000));
+    let friend = world.spawn_unit(&MELEE_CREEP, Team::Radiant, Vec2::from_ints(5050, 5000));
     let hero = world.spawn_hero(
         Team::Dire,
-        bota_proto::Vec2::from_ints(5300, 5000),
-        bota_proto::SlotId(0),
-        bota_proto::HeroId(0),
+        Vec2::from_ints(5300, 5000),
+        SlotId(0),
+        HeroId(0),
     );
-    let other = world.spawn_unit(
-        &MELEE_CREEP,
-        Team::Dire,
-        bota_proto::Vec2::from_ints(5100, 5000),
-    );
+    let other = world.spawn_unit(&MELEE_CREEP, Team::Dire, Vec2::from_ints(5100, 5000));
     world.settle();
-    world.set_order(hero, crate::game::UnitOrder::Stand);
+    world.set_order(hero, UnitOrder::Stand);
     assert_eq!(
         world.threat_priority(creep, hero),
         2,
@@ -264,9 +210,9 @@ fn a_hero_laying_into_your_side_counts_for_no_more_than_a_creep() {
     // The hero lays into one of ours.
     world.set_order(
         hero,
-        crate::game::UnitOrder::Attack {
+        UnitOrder::Attack {
             target: friend,
-            last_seen: bota_proto::Vec2::from_ints(5050, 5000),
+            last_seen: Vec2::from_ints(5050, 5000),
         },
     );
     assert_eq!(
@@ -281,7 +227,7 @@ fn a_hero_laying_into_your_side_counts_for_no_more_than_a_creep() {
     );
     // With the hero the nearer of the two, it is the one taken.
     if let Some(at) = world.transform.get_mut(hero) {
-        at.pos = bota_proto::Vec2::from_ints(5040, 5000);
+        at.pos = Vec2::from_ints(5040, 5000);
     }
     assert_eq!(
         world.best_valid_in_range(creep, Fixed::from_int(600), &world.candidates()),
@@ -293,25 +239,21 @@ fn a_hero_laying_into_your_side_counts_for_no_more_than_a_creep() {
 #[test]
 fn a_hero_putting_out_its_own_is_taken_on_last() {
     let mut world = World::new();
-    let creep = thinking_creep(&mut world, bota_proto::Vec2::from_ints(5000, 5000));
-    let theirs = world.spawn_unit(
-        &MELEE_CREEP,
-        Team::Dire,
-        bota_proto::Vec2::from_ints(5400, 5000),
-    );
+    let creep = thinking_creep(&mut world, Vec2::from_ints(5000, 5000));
+    let theirs = world.spawn_unit(&MELEE_CREEP, Team::Dire, Vec2::from_ints(5400, 5000));
     let hero = world.spawn_hero(
         Team::Dire,
-        bota_proto::Vec2::from_ints(5100, 5000),
-        bota_proto::SlotId(0),
-        bota_proto::HeroId(0),
+        Vec2::from_ints(5100, 5000),
+        SlotId(0),
+        HeroId(0),
     );
     world.settle();
     world.orders.insert(
         hero,
-        crate::game::Orders {
-            current: crate::game::UnitOrder::Attack {
+        Orders {
+            current: UnitOrder::Attack {
                 target: theirs,
-                last_seen: bota_proto::Vec2::from_ints(5400, 5000),
+                last_seen: Vec2::from_ints(5400, 5000),
             },
             cooldown: 0,
             pending: None,
@@ -377,18 +319,18 @@ fn the_hold_lets_go_after_two_and_a_third_seconds() {
     attack_click(&mut world, foe);
     assert_eq!(world.target_of(theirs), Some(hero));
     // The hero stops laying into that side.
-    world.advance(&[crate::game::Command {
-        slot: bota_proto::SlotId(0),
+    world.advance(&[Command {
+        slot: SlotId(0),
         unit: None,
-        order: bota_proto::Order::Move {
-            target: bota_proto::Target::None,
+        order: Order::Move {
+            target: Target::None,
         },
     }]);
     for _ in 0..rules::ORDER_AGGRO_HOLD_TICKS - 4 {
         world.step();
         // Held where they were put, so only the clock decides.
         if let Some(at) = world.transform.get_mut(theirs) {
-            at.pos = bota_proto::Vec2::from_ints(5300, 5000);
+            at.pos = Vec2::from_ints(5300, 5000);
         }
     }
     assert_eq!(
@@ -399,7 +341,7 @@ fn the_hold_lets_go_after_two_and_a_third_seconds() {
     for _ in 0..6 {
         world.step();
         if let Some(at) = world.transform.get_mut(theirs) {
-            at.pos = bota_proto::Vec2::from_ints(5300, 5000);
+            at.pos = Vec2::from_ints(5300, 5000);
         }
     }
     assert_eq!(
@@ -415,17 +357,17 @@ fn a_second_click_inside_the_wait_pulls_nothing() {
     attack_click(&mut world, foe);
     assert_eq!(world.target_of(theirs), Some(hero));
     // Stop, wait out the hold, and click again while the wait still runs.
-    world.advance(&[crate::game::Command {
-        slot: bota_proto::SlotId(0),
+    world.advance(&[Command {
+        slot: SlotId(0),
         unit: None,
-        order: bota_proto::Order::Move {
-            target: bota_proto::Target::None,
+        order: Order::Move {
+            target: Target::None,
         },
     }]);
     for _ in 0..rules::ORDER_AGGRO_HOLD_TICKS + 2 {
         world.step();
         if let Some(at) = world.transform.get_mut(theirs) {
-            at.pos = bota_proto::Vec2::from_ints(5300, 5000);
+            at.pos = Vec2::from_ints(5300, 5000);
         }
     }
     assert_eq!(world.target_of(theirs), Some(ours), "it let go");
@@ -489,17 +431,17 @@ fn a_hold_is_not_broken_by_clicking_your_own() {
         "and the hero strikes nothing of its own"
     );
     // Once the hold is out, the ranking takes the creep back on its own.
-    world.advance(&[crate::game::Command {
-        slot: bota_proto::SlotId(0),
+    world.advance(&[Command {
+        slot: SlotId(0),
         unit: None,
-        order: bota_proto::Order::Move {
-            target: bota_proto::Target::None,
+        order: Order::Move {
+            target: Target::None,
         },
     }]);
     for _ in 0..rules::ORDER_AGGRO_HOLD_TICKS + 2 {
         world.step();
         if let Some(at) = world.transform.get_mut(theirs) {
-            at.pos = bota_proto::Vec2::from_ints(5300, 5000);
+            at.pos = Vec2::from_ints(5300, 5000);
         }
     }
     assert_eq!(
@@ -550,17 +492,13 @@ fn the_jungle_pays_a_courier_no_mind_but_the_other_side_does_not() {
     let courier = the_courier(&world);
     let at = world.transform.get(courier).expect("standing").pos;
     // A neutral and a creep of the other side, both standing on top of it.
-    let beast = world.spawn_unit(
-        crate::game::NeutralKind::Kobold.def(),
-        bota_proto::Team::Neutral,
-        at,
-    );
+    let beast = world.spawn_unit(NeutralKind::Kobold.def(), Team::Neutral, at);
     world
         .camp_home
-        .insert(beast, crate::game::CampHome { camp: 0, home: at });
+        .insert(beast, CampHome { camp: 0, home: at });
     world.neutral_ai.insert(
         beast,
-        crate::game::NeutralAi {
+        NeutralAi {
             leash_left: rules::NEUTRAL_AGGRO_WINDOW,
             reaggro_block: 0,
             next_window: rules::NEUTRAL_AGGRO_WINDOW,
@@ -569,7 +507,7 @@ fn the_jungle_pays_a_courier_no_mind_but_the_other_side_does_not() {
             awake: true,
         },
     );
-    let creep = world.spawn_unit(&MELEE_CREEP, bota_proto::Team::Dire, at);
+    let creep = world.spawn_unit(&MELEE_CREEP, Team::Dire, at);
     world.settle();
     for _ in 0..10 {
         world.step();

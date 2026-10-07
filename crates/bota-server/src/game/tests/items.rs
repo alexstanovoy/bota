@@ -1,8 +1,15 @@
 //! Consumables, active items and trees.
 
-use crate::game::rules;
-use crate::game::{Health, MELEE_CREEP, Mana, World};
-use bota_proto::Fixed;
+use crate::game::{
+    BLINK_RANGE, Command, Event, HERO, Health, ITEM_BLINK_DAGGER, ITEM_BOOTS, ITEM_CLARITY,
+    ITEM_HEALING_SALVE, ITEM_IRON_BRANCH, ITEM_PHASE_BOOTS, ITEM_POWER_TREADS, ITEM_QUELLING_BLADE,
+    ITEM_TANGO, ITEM_TOWN_PORTAL_SCROLL, ITEMS, ItemStack, MELEE_CREEP, Mana, ModifierKind, Seat,
+    UnitOrder, World, map_of, rules, tree_positions, wire_id,
+};
+use bota_proto::{
+    AbilitySlot, Attribute, DamageKind, EventKind, Fixed, HeroId, ItemId, ItemSlot, MapId, Order,
+    SlotId, StatusFlags, Target, Team, UnitKind, Vec2,
+};
 
 use super::support::*;
 
@@ -10,27 +17,27 @@ use super::support::*;
 fn a_salve_puts_mending_on_whoever_drinks_it_and_runs_out() {
     let mut world = World::new();
     let hero = world.spawn_hero(
-        bota_proto::Team::Radiant,
-        bota_proto::Vec2::from_ints(5000, 5000),
-        bota_proto::SlotId(0),
-        bota_proto::HeroId(0),
+        Team::Radiant,
+        Vec2::from_ints(5000, 5000),
+        SlotId(0),
+        HeroId(0),
     );
     world.step();
     if let Some(bag) = world.inventory.get_mut(hero) {
-        bag.slots[0] = Some(crate::game::ItemStack {
-            id: bota_proto::ItemId(crate::game::ITEM_HEALING_SALVE),
+        bag.slots[0] = Some(ItemStack {
+            id: ItemId(ITEM_HEALING_SALVE),
             charges: 1,
             cooldown: 0,
             mute: 0,
             mode: None,
             bought_tick: 0,
             touched: false,
-            owner: bota_proto::SlotId(0),
+            owner: SlotId(0),
             for_sale: false,
         });
     }
     assert!(
-        world.use_item(hero, 0, bota_proto::Target::None, &mut Vec::new()),
+        world.use_item(hero, 0, Target::None, &mut Vec::new()),
         "it drinks"
     );
     assert!(
@@ -38,8 +45,7 @@ fn a_salve_puts_mending_on_whoever_drinks_it_and_runs_out() {
         "the last charge takes the stack with it"
     );
     world.step();
-    let plain = crate::game::HERO.hp_regen
-        + rules::HP_REGEN_PER_STRENGTH * crate::game::HERO.attributes.strength;
+    let plain = HERO.hp_regen + rules::HP_REGEN_PER_STRENGTH * HERO.attributes.strength;
     assert!(
         world.stats.get(hero).expect("settled").hp_regen > plain,
         "it mends faster while the salve holds"
@@ -58,21 +64,21 @@ fn a_salve_puts_mending_on_whoever_drinks_it_and_runs_out() {
 fn a_drink_is_told_of_as_what_was_missing_and_a_full_hero_is_not_told_at_all() {
     let mut world = World::new();
     let hero = world.spawn_hero(
-        bota_proto::Team::Radiant,
-        bota_proto::Vec2::from_ints(5000, 5000),
-        bota_proto::SlotId(0),
-        bota_proto::HeroId(0),
+        Team::Radiant,
+        Vec2::from_ints(5000, 5000),
+        SlotId(0),
+        HeroId(0),
     );
     world.step();
-    let salve = crate::game::ItemStack {
-        id: bota_proto::ItemId(crate::game::ITEM_HEALING_SALVE),
+    let salve = ItemStack {
+        id: ItemId(ITEM_HEALING_SALVE),
         charges: 1,
         cooldown: 0,
         mute: 0,
         mode: None,
         bought_tick: 0,
         touched: false,
-        owner: bota_proto::SlotId(0),
+        owner: SlotId(0),
         for_sale: false,
     };
     if let Some(bag) = world.inventory.get_mut(hero) {
@@ -80,12 +86,12 @@ fn a_drink_is_told_of_as_what_was_missing_and_a_full_hero_is_not_told_at_all() {
     }
     let mut events = Vec::new();
     assert!(
-        world.use_item(hero, 0, bota_proto::Target::None, &mut events),
+        world.use_item(hero, 0, Target::None, &mut events),
         "a full hero still drinks"
     );
-    let told = |events: &[crate::game::Event]| {
+    let told = |events: &[Event]| {
         events.iter().find_map(|event| match event.kind {
-            bota_proto::EventKind::Healed { target, amount, .. } => Some((target, amount)),
+            EventKind::Healed { target, amount, .. } => Some((target, amount)),
             _ => None,
         })
     };
@@ -99,12 +105,12 @@ fn a_drink_is_told_of_as_what_was_missing_and_a_full_hero_is_not_told_at_all() {
     }
     let mut events = Vec::new();
     assert!(
-        world.use_item(hero, 0, bota_proto::Target::None, &mut events),
+        world.use_item(hero, 0, Target::None, &mut events),
         "a hurt one drinks"
     );
     assert_eq!(
         told(&events),
-        Some((crate::game::wire_id(hero), 150)),
+        Some((wire_id(hero), 150)),
         "and the mending is told at what was missing, not the whole drink"
     );
 }
@@ -113,35 +119,35 @@ fn a_drink_is_told_of_as_what_was_missing_and_a_full_hero_is_not_told_at_all() {
 fn a_clarity_is_told_of_by_the_mana_that_was_missing() {
     let mut world = World::new();
     let hero = world.spawn_hero(
-        bota_proto::Team::Radiant,
-        bota_proto::Vec2::from_ints(5000, 5000),
-        bota_proto::SlotId(0),
-        bota_proto::HeroId(0),
+        Team::Radiant,
+        Vec2::from_ints(5000, 5000),
+        SlotId(0),
+        HeroId(0),
     );
     world.step();
     if let Some(pool) = world.mana.get_mut(hero) {
         pool.mana -= Fixed::from_int(60);
     }
     if let Some(bag) = world.inventory.get_mut(hero) {
-        bag.slots[0] = Some(crate::game::ItemStack {
-            id: bota_proto::ItemId(crate::game::ITEM_CLARITY),
+        bag.slots[0] = Some(ItemStack {
+            id: ItemId(ITEM_CLARITY),
             charges: 1,
             cooldown: 0,
             mute: 0,
             mode: None,
             bought_tick: 0,
             touched: false,
-            owner: bota_proto::SlotId(0),
+            owner: SlotId(0),
             for_sale: false,
         });
     }
     let mut events = Vec::new();
     assert!(
-        world.use_item(hero, 0, bota_proto::Target::None, &mut events),
+        world.use_item(hero, 0, Target::None, &mut events),
         "it drinks"
     );
     let told = events.iter().find_map(|event| match event.kind {
-        bota_proto::EventKind::Healed { amount, mana, .. } => Some((amount, mana)),
+        EventKind::Healed { amount, mana, .. } => Some((amount, mana)),
         _ => None,
     });
     assert_eq!(
@@ -160,23 +166,23 @@ fn a_scroll_carries_its_user_once_the_channel_runs_out() {
     // behind with the spot it was given in.
     world.set_order(
         hero,
-        crate::game::UnitOrder::Move {
-            pos: bota_proto::Vec2::from_ints(8000, 12000),
+        UnitOrder::Move {
+            pos: Vec2::from_ints(8000, 12000),
         },
     );
     assert!(
-        world.use_item(hero, 0, bota_proto::Target::Pos(to), &mut Vec::new()),
+        world.use_item(hero, 0, Target::Pos(to), &mut Vec::new()),
         "beside a building of its own it may go"
     );
     assert!(world.is_channelling(hero), "and stands through the channel");
     let projected = world
-        .view(bota_proto::Team::Radiant)
+        .view(Team::Radiant)
         .units
         .into_iter()
-        .find(|unit| unit.id == crate::game::wire_id(hero))
+        .find(|unit| unit.id == wire_id(hero))
         .expect("channelled hero is projected");
     assert_ne!(
-        projected.statuses.bits & bota_proto::StatusFlags::CHANNELLING,
+        projected.statuses.bits & StatusFlags::CHANNELLING,
         0,
         "channel state crosses the seat-visible protocol"
     );
@@ -221,9 +227,9 @@ fn a_scroll_carries_its_user_once_the_channel_runs_out() {
 #[test]
 fn a_scroll_aimed_where_nothing_of_its_own_stands_does_nothing() {
     let (mut world, hero) = a_hero_with_a_scroll();
-    let nowhere = bota_proto::Vec2::from_ints(14000, 9216);
+    let nowhere = Vec2::from_ints(14000, 9216);
     assert!(
-        !world.use_item(hero, 0, bota_proto::Target::Pos(nowhere), &mut Vec::new()),
+        !world.use_item(hero, 0, Target::Pos(nowhere), &mut Vec::new()),
         "the middle of the map is nothing to go to"
     );
     assert!(!world.is_channelling(hero));
@@ -237,12 +243,12 @@ fn a_scroll_aimed_where_nothing_of_its_own_stands_does_nothing() {
 fn an_order_takes_a_channel_away_and_leaves_the_scroll() {
     let (mut world, hero) = a_hero_with_a_scroll();
     let to = beside_own_tower(&world);
-    assert!(world.use_item(hero, 0, bota_proto::Target::Pos(to), &mut Vec::new()));
-    world.advance(&[crate::game::Command {
-        slot: bota_proto::SlotId(0),
+    assert!(world.use_item(hero, 0, Target::Pos(to), &mut Vec::new()));
+    world.advance(&[Command {
+        slot: SlotId(0),
         unit: None,
-        order: bota_proto::Order::Move {
-            target: bota_proto::Target::None,
+        order: Order::Move {
+            target: Target::None,
         },
     }]);
     assert!(!world.is_channelling(hero), "the order took it away");
@@ -257,21 +263,19 @@ fn business_with_the_bag_and_the_shop_takes_no_channel_away() {
     let (mut world, hero) = a_hero_with_a_scroll();
     world.seats[0].gold = 5000;
     let to = beside_own_tower(&world);
-    assert!(world.use_item(hero, 0, bota_proto::Target::Pos(to), &mut Vec::new()));
+    assert!(world.use_item(hero, 0, Target::Pos(to), &mut Vec::new()));
     let asks = [
-        bota_proto::Order::Buy {
-            item: bota_proto::ItemId(crate::game::ITEM_BOOTS),
+        Order::Buy {
+            item: ItemId(ITEM_BOOTS),
         },
-        bota_proto::Order::Learn {
-            slot: bota_proto::AbilitySlot(0),
+        Order::Learn {
+            slot: AbilitySlot(0),
         },
-        bota_proto::Order::Sell {
-            slot: bota_proto::ItemSlot(9),
-        },
+        Order::Sell { slot: ItemSlot(9) },
     ];
     for order in asks {
-        world.advance(&[crate::game::Command {
-            slot: bota_proto::SlotId(0),
+        world.advance(&[Command {
+            slot: SlotId(0),
             unit: None,
             order,
         }]);
@@ -284,37 +288,32 @@ fn business_with_the_bag_and_the_shop_takes_no_channel_away() {
 
 #[test]
 fn a_drink_may_be_aimed_at_the_one_drinking_it() {
-    for item in [crate::game::ITEM_HEALING_SALVE, crate::game::ITEM_CLARITY] {
+    for item in [ITEM_HEALING_SALVE, ITEM_CLARITY] {
         let mut world = World::for_match(&config(), config().rng());
         let hero = world.seats[0].unit.expect("stood up");
         if let Some(bag) = world.inventory.get_mut(hero) {
-            bag.slots[0] = Some(crate::game::ItemStack {
-                id: bota_proto::ItemId(item),
+            bag.slots[0] = Some(ItemStack {
+                id: ItemId(item),
                 charges: 1,
                 cooldown: 0,
                 mute: 0,
                 mode: None,
                 bought_tick: 0,
                 touched: false,
-                owner: bota_proto::SlotId(0),
+                owner: SlotId(0),
                 for_sale: false,
             });
         }
         world.step();
         // Aimed at itself by name, the way a click on one's own hero sends it.
         assert!(
-            world.use_item(
-                hero,
-                0,
-                bota_proto::Target::Unit(crate::game::wire_id(hero)),
-                &mut Vec::new()
-            ),
+            world.use_item(hero, 0, Target::Unit(wire_id(hero)), &mut Vec::new()),
             "item {item} may be drunk by whoever holds it"
         );
         assert!(
             world.modifiers.get(hero).is_some_and(|on_it| on_it
                 .active()
-                .any(|held| !matches!(held.kind, crate::game::ModifierKind::Fountain { .. }))),
+                .any(|held| !matches!(held.kind, ModifierKind::Fountain { .. }))),
             "item {item} leaves its effect on the one who drank it"
         );
     }
@@ -322,10 +321,10 @@ fn a_drink_may_be_aimed_at_the_one_drinking_it() {
 
 #[test]
 fn a_quelling_blade_takes_a_tree_down_and_the_tree_comes_back() {
-    let (mut world, hero, tree) = a_hero_by_the_trees(crate::game::ITEM_QUELLING_BLADE, 0);
+    let (mut world, hero, tree) = a_hero_by_the_trees(ITEM_QUELLING_BLADE, 0);
     assert!(sight_stopped_at(&world, tree), "the tree stops a look");
     assert!(
-        world.use_item(hero, 0, bota_proto::Target::Pos(tree), &mut Vec::new()),
+        world.use_item(hero, 0, Target::Pos(tree), &mut Vec::new()),
         "the blade reaches it"
     );
     assert_eq!(world.trees.felled().count(), 1, "one tree is down");
@@ -346,10 +345,10 @@ fn a_quelling_blade_takes_a_tree_down_and_the_tree_comes_back() {
 
 #[test]
 fn a_tango_eats_a_tree_and_without_one_eats_nothing() {
-    let (mut world, hero, tree) = a_hero_by_the_trees(crate::game::ITEM_TANGO, 3);
-    let far = tree + bota_proto::Vec2::from_ints(4000, 0);
+    let (mut world, hero, tree) = a_hero_by_the_trees(ITEM_TANGO, 3);
+    let far = tree + Vec2::from_ints(4000, 0);
     assert!(
-        !world.use_item(hero, 0, bota_proto::Target::Pos(far), &mut Vec::new()),
+        !world.use_item(hero, 0, Target::Pos(far), &mut Vec::new()),
         "aimed where no tree stands it does nothing"
     );
     assert_eq!(
@@ -357,7 +356,7 @@ fn a_tango_eats_a_tree_and_without_one_eats_nothing() {
         Some(3),
         "and spends no charge on it"
     );
-    assert!(world.use_item(hero, 0, bota_proto::Target::Pos(tree), &mut Vec::new()));
+    assert!(world.use_item(hero, 0, Target::Pos(tree), &mut Vec::new()));
     assert_eq!(world.trees.felled().count(), 1, "the tree it ate is gone");
     assert_eq!(
         world.inventory.get(hero).expect("has a bag").slots[0].map(|s| s.charges),
@@ -368,7 +367,7 @@ fn a_tango_eats_a_tree_and_without_one_eats_nothing() {
         carries(
             &world,
             hero,
-            crate::game::ModifierKind::Mending {
+            ModifierKind::Mending {
                 per_tick: 0,
                 breaks: false
             }
@@ -379,10 +378,10 @@ fn a_tango_eats_a_tree_and_without_one_eats_nothing() {
 
 #[test]
 fn a_branch_puts_a_tree_up_and_eating_that_one_feeds_twice_as_long() {
-    let (mut world, hero, tree) = a_hero_by_the_trees(crate::game::ITEM_IRON_BRANCH, 1);
-    let spot = tree + bota_proto::Vec2::from_ints(240, 0);
+    let (mut world, hero, tree) = a_hero_by_the_trees(ITEM_IRON_BRANCH, 1);
+    let spot = tree + Vec2::from_ints(240, 0);
     assert!(
-        world.use_item(hero, 0, bota_proto::Target::Pos(spot), &mut Vec::new()),
+        world.use_item(hero, 0, Target::Pos(spot), &mut Vec::new()),
         "the branch goes into open ground"
     );
     assert_eq!(world.trees.planted().len(), 1, "and a tree stands there");
@@ -399,9 +398,9 @@ fn a_branch_puts_a_tree_up_and_eating_that_one_feeds_twice_as_long() {
     let put_up = tango_ticks(&mut world, hero, spot);
     assert_eq!(put_up, plain * 2, "a tree put up feeds twice as long");
     // What is left of it goes on its own.
-    let (mut world, hero, tree) = a_hero_by_the_trees(crate::game::ITEM_IRON_BRANCH, 1);
-    let spot = tree + bota_proto::Vec2::from_ints(240, 0);
-    assert!(world.use_item(hero, 0, bota_proto::Target::Pos(spot), &mut Vec::new()));
+    let (mut world, hero, tree) = a_hero_by_the_trees(ITEM_IRON_BRANCH, 1);
+    let spot = tree + Vec2::from_ints(240, 0);
+    assert!(world.use_item(hero, 0, Target::Pos(spot), &mut Vec::new()));
     for _ in 0..rules::PLANTED_TREE_TICKS + 1 {
         world.step();
     }
@@ -411,17 +410,17 @@ fn a_branch_puts_a_tree_up_and_eating_that_one_feeds_twice_as_long() {
 
 #[test]
 fn a_blade_takes_the_tree_it_was_pointed_at_and_no_other() {
-    let (mut world, hero, tree) = a_hero_by_the_trees(crate::game::ITEM_QUELLING_BLADE, 0);
+    let (mut world, hero, tree) = a_hero_by_the_trees(ITEM_QUELLING_BLADE, 0);
     // Open ground a step off the trunk, still well inside the blade's reach.
-    let beside = tree + bota_proto::Vec2::from_ints(rules::TREE_RADIUS + 20, 0);
+    let beside = tree + Vec2::from_ints(rules::TREE_RADIUS + 20, 0);
     assert!(
-        !world.use_item(hero, 0, bota_proto::Target::Pos(beside), &mut Vec::new()),
+        !world.use_item(hero, 0, Target::Pos(beside), &mut Vec::new()),
         "pointed at ground beside a tree it takes nothing"
     );
     assert_eq!(world.trees.felled().count(), 0);
-    let on_it = tree + bota_proto::Vec2::from_ints(rules::TREE_RADIUS - 10, 0);
+    let on_it = tree + Vec2::from_ints(rules::TREE_RADIUS - 10, 0);
     assert!(
-        world.use_item(hero, 0, bota_proto::Target::Pos(on_it), &mut Vec::new()),
+        world.use_item(hero, 0, Target::Pos(on_it), &mut Vec::new()),
         "pointed at the trunk it takes that tree"
     );
     assert_eq!(world.trees.felled().count(), 1);
@@ -429,10 +428,10 @@ fn a_blade_takes_the_tree_it_was_pointed_at_and_no_other() {
 
 #[test]
 fn a_blade_cannot_reach_a_tree_it_was_pointed_at_from_far_off() {
-    let (mut world, hero, tree) = a_hero_by_the_trees(crate::game::ITEM_QUELLING_BLADE, 0);
-    world.transform.get_mut(hero).expect("hero").pos = tree + bota_proto::Vec2::from_ints(2000, 0);
+    let (mut world, hero, tree) = a_hero_by_the_trees(ITEM_QUELLING_BLADE, 0);
+    world.transform.get_mut(hero).expect("hero").pos = tree + Vec2::from_ints(2000, 0);
     assert!(
-        !world.use_item(hero, 0, bota_proto::Target::Pos(tree), &mut Vec::new()),
+        !world.use_item(hero, 0, Target::Pos(tree), &mut Vec::new()),
         "the tree is the one pointed at, but it is out of reach"
     );
     assert_eq!(world.trees.felled().count(), 0);
@@ -442,41 +441,37 @@ fn a_blade_cannot_reach_a_tree_it_was_pointed_at_from_far_off() {
 fn a_quelling_blade_is_worth_something_against_a_creep_and_nothing_against_a_hero() {
     let mut world = World::new();
     let hero = world.spawn_hero(
-        bota_proto::Team::Radiant,
-        bota_proto::Vec2::from_ints(5000, 5000),
-        bota_proto::SlotId(0),
-        bota_proto::HeroId(0),
+        Team::Radiant,
+        Vec2::from_ints(5000, 5000),
+        SlotId(0),
+        HeroId(0),
     );
-    let creep = world.spawn_unit(
-        &MELEE_CREEP,
-        bota_proto::Team::Dire,
-        bota_proto::Vec2::from_ints(5100, 5000),
-    );
+    let creep = world.spawn_unit(&MELEE_CREEP, Team::Dire, Vec2::from_ints(5100, 5000));
     let theirs = world.spawn_hero(
-        bota_proto::Team::Dire,
-        bota_proto::Vec2::from_ints(5000, 5100),
-        bota_proto::SlotId(1),
-        bota_proto::HeroId(0),
+        Team::Dire,
+        Vec2::from_ints(5000, 5100),
+        SlotId(1),
+        HeroId(0),
     );
     world.settle();
     world.step();
     let bare_creep = one_swing_takes(&mut world, hero, creep);
     let bare_hero = one_swing_takes(&mut world, hero, theirs);
     if let Some(bag) = world.inventory.get_mut(hero) {
-        bag.slots[0] = Some(crate::game::ItemStack {
-            id: bota_proto::ItemId(crate::game::ITEM_QUELLING_BLADE),
+        bag.slots[0] = Some(ItemStack {
+            id: ItemId(ITEM_QUELLING_BLADE),
             charges: 0,
             cooldown: 0,
             mute: 0,
             mode: None,
             bought_tick: 0,
             touched: false,
-            owner: bota_proto::SlotId(0),
+            owner: SlotId(0),
             for_sale: false,
         });
     }
     world.step();
-    let blade = crate::game::ITEMS[usize::from(crate::game::ITEM_QUELLING_BLADE)]
+    let blade = ITEMS[usize::from(ITEM_QUELLING_BLADE)]
         .carried
         .damage_to_creeps;
     assert_eq!(
@@ -505,7 +500,7 @@ fn a_quelling_blade_is_worth_something_against_a_creep_and_nothing_against_a_her
 fn a_scroll_read_is_owed_by_the_hero_and_not_by_the_scroll() {
     let (mut world, hero) = a_hero_with_a_scroll();
     let to = beside_own_tower(&world);
-    assert!(world.use_item(hero, 0, bota_proto::Target::Pos(to), &mut Vec::new()));
+    assert!(world.use_item(hero, 0, Target::Pos(to), &mut Vec::new()));
     for _ in 0..91 {
         world.step();
     }
@@ -514,10 +509,10 @@ fn a_scroll_read_is_owed_by_the_hero_and_not_by_the_scroll() {
         "the scroll went with the teleport"
     );
     // A fresh scroll, bought after the first was spent, is still on the wait.
-    hand_item(&mut world, hero, crate::game::ITEM_TOWN_PORTAL_SCROLL, 1);
+    hand_item(&mut world, hero, ITEM_TOWN_PORTAL_SCROLL, 1);
     let there = beside_own_tower(&world);
     assert!(
-        !world.use_item(hero, 0, bota_proto::Target::Pos(there), &mut Vec::new()),
+        !world.use_item(hero, 0, Target::Pos(there), &mut Vec::new()),
         "a new scroll does not buy a new wait"
     );
     assert!(
@@ -528,62 +523,53 @@ fn a_scroll_read_is_owed_by_the_hero_and_not_by_the_scroll() {
         world.step();
     }
     assert!(
-        world.use_item(hero, 0, bota_proto::Target::Pos(there), &mut Vec::new()),
+        world.use_item(hero, 0, Target::Pos(there), &mut Vec::new()),
         "once the wait is out it reads again"
     );
 }
 
 #[test]
 fn a_hero_hit_loses_its_drink_but_never_what_a_tree_bought() {
-    let map = crate::game::map_of(bota_proto::MapId(0));
+    let map = map_of(MapId(0));
     let mut world = World::on_map(map);
     let hero = world.spawn_hero(
-        bota_proto::Team::Radiant,
-        bota_proto::Vec2::from_ints(7000, 7000),
-        bota_proto::SlotId(0),
-        bota_proto::HeroId(0),
+        Team::Radiant,
+        Vec2::from_ints(7000, 7000),
+        SlotId(0),
+        HeroId(0),
     );
     let theirs = world.spawn_hero(
-        bota_proto::Team::Dire,
-        bota_proto::Vec2::from_ints(7000, 7000),
-        bota_proto::SlotId(1),
-        bota_proto::HeroId(0),
+        Team::Dire,
+        Vec2::from_ints(7000, 7000),
+        SlotId(1),
+        HeroId(0),
     );
-    let creep = world.spawn_unit(
-        &MELEE_CREEP,
-        bota_proto::Team::Dire,
-        bota_proto::Vec2::from_ints(7000, 7000),
-    );
+    let creep = world.spawn_unit(&MELEE_CREEP, Team::Dire, Vec2::from_ints(7000, 7000));
     world.settle();
     world.step();
-    let salve = crate::game::ModifierKind::Mending {
+    let salve = ModifierKind::Mending {
         per_tick: 0,
         breaks: false,
     };
     // A creep may hit all day and the drink holds.
-    hand_item(&mut world, hero, crate::game::ITEM_HEALING_SALVE, 1);
-    assert!(world.use_item(hero, 0, bota_proto::Target::None, &mut Vec::new()));
-    world.push_hit(Some(creep), hero, 10, bota_proto::DamageKind::Physical);
+    hand_item(&mut world, hero, ITEM_HEALING_SALVE, 1);
+    assert!(world.use_item(hero, 0, Target::None, &mut Vec::new()));
+    world.push_hit(Some(creep), hero, 10, DamageKind::Physical);
     world.step();
     assert!(carries(&world, hero, salve), "a creep does not break it");
     // A hero's blow puts it out.
-    world.push_hit(Some(theirs), hero, 10, bota_proto::DamageKind::Physical);
+    world.push_hit(Some(theirs), hero, 10, DamageKind::Physical);
     world.step();
     assert!(!carries(&world, hero, salve), "a hero does");
     // What a tree bought is broken by nothing.
-    let tree = crate::game::tree_positions(map)
+    let tree = tree_positions(map)
         .into_iter()
-        .find(|at| {
-            at.within(
-                bota_proto::Vec2::from_ints(7000, 7000),
-                bota_proto::Fixed::from_int(4000),
-            )
-        })
+        .find(|at| at.within(Vec2::from_ints(7000, 7000), Fixed::from_int(4000)))
         .expect("the forest reaches here");
-    world.transform.get_mut(hero).expect("hero").pos = tree + bota_proto::Vec2::from_ints(120, 0);
-    hand_item(&mut world, hero, crate::game::ITEM_TANGO, 1);
-    assert!(world.use_item(hero, 0, bota_proto::Target::Pos(tree), &mut Vec::new()));
-    world.push_hit(Some(theirs), hero, 10, bota_proto::DamageKind::Physical);
+    world.transform.get_mut(hero).expect("hero").pos = tree + Vec2::from_ints(120, 0);
+    hand_item(&mut world, hero, ITEM_TANGO, 1);
+    assert!(world.use_item(hero, 0, Target::Pos(tree), &mut Vec::new()));
+    world.push_hit(Some(theirs), hero, 10, DamageKind::Physical);
     world.step();
     assert!(
         carries(&world, hero, salve),
@@ -594,30 +580,26 @@ fn a_hero_hit_loses_its_drink_but_never_what_a_tree_bought() {
 #[test]
 fn what_an_item_is_set_to_is_worth_points_of_that_attribute() {
     let (mut world, hero) = a_hero_with_gold(10_000);
-    let treads = bota_proto::ItemId(crate::game::ITEM_POWER_TREADS);
+    let treads = ItemId(ITEM_POWER_TREADS);
     let mut events = Vec::new();
-    assert!(
-        world.buy(bota_proto::SlotId(0), treads, &mut events),
-        "bought"
-    );
+    assert!(world.buy(SlotId(0), treads, &mut events), "bought");
     world.step();
-    let bonus =
-        Fixed::from_int(crate::game::ITEMS[usize::from(crate::game::ITEM_POWER_TREADS)].mode_bonus);
+    let bonus = Fixed::from_int(ITEMS[usize::from(ITEM_POWER_TREADS)].mode_bonus);
     let on_strength = *world.stats.get(hero).expect("settled");
     assert_eq!(
         slot_of(&world, hero, 0).and_then(|stack| stack.mode),
-        Some(bota_proto::Attribute::Strength),
+        Some(Attribute::Strength),
         "they come set to strength"
     );
     assert!(
-        world.use_item(hero, 0, bota_proto::Target::None, &mut Vec::new()),
+        world.use_item(hero, 0, Target::None, &mut Vec::new()),
         "and using them sets them over"
     );
     world.step();
     let on_agility = *world.stats.get(hero).expect("settled");
     assert_eq!(
         slot_of(&world, hero, 0).and_then(|stack| stack.mode),
-        Some(bota_proto::Attribute::Agility),
+        Some(Attribute::Agility),
         "to the attribute after the one they were on"
     );
     assert_eq!(
@@ -636,29 +618,29 @@ fn what_an_item_is_set_to_is_worth_points_of_that_attribute() {
 fn treads_switched_round_the_wheel_mend_nothing() {
     let mut world = World::new();
     let hero = world.spawn_hero(
-        bota_proto::Team::Radiant,
-        bota_proto::Vec2::from_ints(5000, 5000),
-        bota_proto::SlotId(0),
-        bota_proto::HeroId(0),
+        Team::Radiant,
+        Vec2::from_ints(5000, 5000),
+        SlotId(0),
+        HeroId(0),
     );
-    world.seats.push(crate::game::Seat::new(
-        bota_proto::SlotId(0),
-        bota_proto::Team::Radiant,
-        bota_proto::HeroId(0),
+    world.seats.push(Seat::new(
+        SlotId(0),
+        Team::Radiant,
+        HeroId(0),
         0,
         rules::STASH_SLOTS,
     ));
     world.seats[0].unit = Some(hero);
     if let Some(bag) = world.inventory.get_mut(hero) {
-        bag.slots[0] = Some(crate::game::ItemStack {
-            id: bota_proto::ItemId(crate::game::ITEM_POWER_TREADS),
+        bag.slots[0] = Some(ItemStack {
+            id: ItemId(ITEM_POWER_TREADS),
             charges: 0,
             cooldown: 0,
             mute: 0,
-            mode: Some(bota_proto::Attribute::Strength),
+            mode: Some(Attribute::Strength),
             bought_tick: 0,
             touched: false,
-            owner: bota_proto::SlotId(0),
+            owner: SlotId(0),
             for_sale: false,
         });
     }
@@ -679,20 +661,19 @@ fn treads_switched_round_the_wheel_mend_nothing() {
     let switches = 12;
     for _ in 0..switches {
         assert!(
-            world.use_item(hero, 0, bota_proto::Target::None, &mut Vec::new()),
+            world.use_item(hero, 0, Target::None, &mut Vec::new()),
             "switched"
         );
         world.step();
     }
     assert_eq!(
         slot_of(&world, hero, 0).and_then(|stack| stack.mode),
-        Some(bota_proto::Attribute::Strength),
+        Some(Attribute::Strength),
         "four full turns of the wheel end where they began"
     );
     // What the pools may gain over the wheel is what regeneration mends and
     // not a drop more, bounded by the highest rate any mode pays.
-    let bonus =
-        Fixed::from_int(crate::game::ITEMS[usize::from(crate::game::ITEM_POWER_TREADS)].mode_bonus);
+    let bonus = Fixed::from_int(ITEMS[usize::from(ITEM_POWER_TREADS)].mode_bonus);
     let ticks = Fixed::from_int(switches);
     let mended = (rules::HERO_HP_REGEN
         + rules::HP_REGEN_PER_STRENGTH * (rules::HERO_ATTRIBUTES.strength + bonus))
@@ -714,15 +695,15 @@ fn treads_switched_round_the_wheel_mend_nothing() {
 fn a_blink_carries_no_further_than_it_reaches() {
     let (mut world, hero) = a_hero_with_gold(0);
     let from = world.transform.get(hero).expect("stands somewhere").pos;
-    hand_item(&mut world, hero, crate::game::ITEM_BLINK_DAGGER, 0);
+    hand_item(&mut world, hero, ITEM_BLINK_DAGGER, 0);
     world.step();
-    let range = crate::game::BLINK_RANGE;
-    let far = bota_proto::Vec2 {
+    let range = BLINK_RANGE;
+    let far = Vec2 {
         x: from.x + rules::units(range * 4),
         y: from.y,
     };
     assert!(
-        world.use_item(hero, 0, bota_proto::Target::Pos(far), &mut Vec::new()),
+        world.use_item(hero, 0, Target::Pos(far), &mut Vec::new()),
         "it goes"
     );
     let landed = world.transform.get(hero).expect("stands somewhere").pos;
@@ -737,15 +718,15 @@ fn a_blink_carries_no_further_than_it_reaches() {
 fn a_blink_aimed_at_closed_ground_steps_back_to_open() {
     let (mut world, hero) = a_hero_with_gold(0);
     let from = world.transform.get(hero).expect("stands somewhere").pos;
-    hand_item(&mut world, hero, crate::game::ITEM_BLINK_DAGGER, 0);
+    hand_item(&mut world, hero, ITEM_BLINK_DAGGER, 0);
     world.step();
-    let aim = bota_proto::Vec2 {
+    let aim = Vec2 {
         x: from.x + rules::units(600),
         y: from.y,
     };
     stand_a_wall(&mut world, aim, rules::units(rules::BLINK_STEP_BACK * 2));
     assert!(
-        world.use_item(hero, 0, bota_proto::Target::Pos(aim), &mut Vec::new()),
+        world.use_item(hero, 0, Target::Pos(aim), &mut Vec::new()),
         "it goes"
     );
     let landed = world.transform.get(hero).expect("stands somewhere").pos;
@@ -759,7 +740,7 @@ fn a_blink_aimed_at_closed_ground_steps_back_to_open() {
 #[test]
 fn a_blow_from_a_hero_sets_a_blink_back() {
     let (mut world, hero) = a_hero_with_gold(0);
-    hand_item(&mut world, hero, crate::game::ITEM_BLINK_DAGGER, 0);
+    hand_item(&mut world, hero, ITEM_BLINK_DAGGER, 0);
     world.step();
     assert_eq!(
         slot_of(&world, hero, 0).map(|stack| stack.cooldown),
@@ -767,10 +748,10 @@ fn a_blow_from_a_hero_sets_a_blink_back() {
         "it is ready"
     );
     let hitter = world.spawn();
-    world.kind.insert(hitter, bota_proto::UnitKind::Hero);
-    world.push_hit(Some(hitter), hero, 10, bota_proto::DamageKind::Physical);
+    world.kind.insert(hitter, UnitKind::Hero);
+    world.push_hit(Some(hitter), hero, 10, DamageKind::Physical);
     world.step();
-    let wait = crate::game::ITEMS[usize::from(crate::game::ITEM_BLINK_DAGGER)].breaks_on_damage;
+    let wait = ITEMS[usize::from(ITEM_BLINK_DAGGER)].breaks_on_damage;
     assert!(
         slot_of(&world, hero, 0)
             .map(|stack| stack.cooldown)
@@ -782,14 +763,14 @@ fn a_blow_from_a_hero_sets_a_blink_back() {
 #[test]
 fn phase_walks_a_body_through_another() {
     let (mut world, hero) = a_hero_with_gold(0);
-    hand_item(&mut world, hero, crate::game::ITEM_PHASE_BOOTS, 0);
+    hand_item(&mut world, hero, ITEM_PHASE_BOOTS, 0);
     world.step();
     assert!(
         !world.stats.get(hero).expect("settled").phased,
         "it walks round what is in the way until the boots are used"
     );
     assert!(
-        world.use_item(hero, 0, bota_proto::Target::None, &mut Vec::new()),
+        world.use_item(hero, 0, Target::None, &mut Vec::new()),
         "it goes"
     );
     world.step();

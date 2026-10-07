@@ -1,12 +1,11 @@
 //! The attack cycle: exact counts at every speed, and the pinned ticks at the
 //! base one.
 
-use bota_proto::{Fixed, Team, Vec2};
-
 use crate::game::{
-    Entity, MELEE_CREEP, Modifier, ModifierKind, Modifiers, UnitDef, World, attack_gain, beats,
-    rules,
+    ActionState, Entity, MELEE_CREEP, Modifier, ModifierKind, Modifiers, UnitDef, World,
+    attack_gain, beats, rules,
 };
+use bota_proto::{Fixed, Team, Vec2};
 
 /// What takes a strike and never falls: no armor, no mending, no swing back.
 const ANVIL: UnitDef = UnitDef {
@@ -153,7 +152,7 @@ fn a_swing_that_lands_holds_the_body_for_the_backswing_and_no_longer() {
         world.step();
         let held = matches!(
             world.action.get(from).map(|a| a.state),
-            Some(crate::game::ActionState::Attack { .. })
+            Some(ActionState::Attack { .. })
         );
         if held {
             rooted.push(step);

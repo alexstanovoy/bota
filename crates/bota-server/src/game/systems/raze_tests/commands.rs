@@ -1,8 +1,7 @@
+use crate::game::{Command, Seat, fountain_pos, rules, wire_id};
 use bota_proto::{
     AbilitySlot, EventKind, Fixed, HeroId, ItemId, ItemSlot, Order, SlotId, Target, Team,
 };
-
-use crate::game::{Command, Seat, rules};
 
 use super::fixtures::*;
 
@@ -12,8 +11,7 @@ fn mango_mana_enables_a_validated_raze_without_changing_any_strategy() {
     let mut seat = Seat::new(SlotId(0), Team::Radiant, HeroId(2), 65, rules::STASH_SLOTS);
     seat.unit = Some(caster);
     world.seats.push(seat);
-    world.transform.get_mut(caster).unwrap().pos =
-        crate::game::fountain_pos(world.map, Team::Radiant);
+    world.transform.get_mut(caster).unwrap().pos = fountain_pos(world.map, Team::Radiant);
     let buy = Order::Buy { item: ItemId(42) };
     assert_eq!(world.validate_order(SlotId(0), None, &buy), Ok(()));
     world.advance(&[Command {
@@ -37,8 +35,8 @@ fn mango_mana_enables_a_validated_raze_without_changing_any_strategy() {
     assert_eq!(
         consumed[0].kind,
         EventKind::Healed {
-            source: Some(crate::game::wire_id(caster)),
-            target: crate::game::wire_id(caster),
+            source: Some(wire_id(caster)),
+            target: wire_id(caster),
             amount: 0,
             mana: 100,
         }

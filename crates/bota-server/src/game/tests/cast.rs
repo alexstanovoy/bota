@@ -1,22 +1,26 @@
 //! Casting abilities.
 
-use crate::game::rules;
-use crate::game::{Entity, MELEE_CREEP, World};
-use bota_proto::Fixed;
+use crate::game::{
+    Command, Entity, Level, MELEE_CREEP, Mana, PendingCast, UnitOrder, World, rules, wire_id,
+};
+use bota_proto::{
+    AbilitySlot, DamageKind, EventKind, Fixed, HeroId, Order, RejectReason, SlotId, Target, Team,
+    Vec2,
+};
 
 use super::support::*;
 
 #[test]
 fn frenzy_puts_haste_on_its_caster_and_spends_the_mana() {
     let mut world = World::new();
-    let hero = caster(&mut world, bota_proto::Vec2::from_ints(5000, 5000), 1);
+    let hero = caster(&mut world, Vec2::from_ints(5000, 5000), 1);
     let full = world.mana.get(hero).expect("has mana").mana;
     let plain = world.stats.get(hero).expect("settled").attack_speed;
     world.order_cast(
         hero,
-        crate::game::PendingCast::Ability {
-            slot: bota_proto::AbilitySlot(1),
-            target: bota_proto::Target::None,
+        PendingCast::Ability {
+            slot: AbilitySlot(1),
+            target: Target::None,
         },
     );
     world.step();
@@ -40,15 +44,15 @@ fn frenzy_puts_haste_on_its_caster_and_spends_the_mana() {
 #[test]
 fn a_cast_with_no_mana_behind_it_does_nothing() {
     let mut world = World::new();
-    let hero = caster(&mut world, bota_proto::Vec2::from_ints(5000, 5000), 1);
+    let hero = caster(&mut world, Vec2::from_ints(5000, 5000), 1);
     if let Some(mana) = world.mana.get_mut(hero) {
         mana.mana = Fixed::ZERO;
     }
     world.order_cast(
         hero,
-        crate::game::PendingCast::Ability {
-            slot: bota_proto::AbilitySlot(1),
-            target: bota_proto::Target::None,
+        PendingCast::Ability {
+            slot: AbilitySlot(1),
+            target: Target::None,
         },
     );
     world.step();
@@ -62,23 +66,11 @@ fn a_cast_with_no_mana_behind_it_does_nothing() {
 #[test]
 fn a_multishot_strikes_everything_around_and_leaves_allies_be() {
     let mut world = World::new();
-    let at = bota_proto::Vec2::from_ints(5000, 5000);
+    let at = Vec2::from_ints(5000, 5000);
     let hero = caster(&mut world, at, 3);
-    let near = world.spawn_unit(
-        &MELEE_CREEP,
-        bota_proto::Team::Dire,
-        bota_proto::Vec2::from_ints(5200, 5000),
-    );
-    let ally = world.spawn_unit(
-        &MELEE_CREEP,
-        bota_proto::Team::Radiant,
-        bota_proto::Vec2::from_ints(5200, 5100),
-    );
-    let far = world.spawn_unit(
-        &MELEE_CREEP,
-        bota_proto::Team::Dire,
-        bota_proto::Vec2::from_ints(7000, 5000),
-    );
+    let near = world.spawn_unit(&MELEE_CREEP, Team::Dire, Vec2::from_ints(5200, 5000));
+    let ally = world.spawn_unit(&MELEE_CREEP, Team::Radiant, Vec2::from_ints(5200, 5100));
+    let far = world.spawn_unit(&MELEE_CREEP, Team::Dire, Vec2::from_ints(7000, 5000));
     world.settle();
     world.fill_pools(near);
     world.fill_pools(ally);
@@ -90,9 +82,9 @@ fn a_multishot_strikes_everything_around_and_leaves_allies_be() {
     );
     world.order_cast(
         hero,
-        crate::game::PendingCast::Ability {
-            slot: bota_proto::AbilitySlot(3),
-            target: bota_proto::Target::None,
+        PendingCast::Ability {
+            slot: AbilitySlot(3),
+            target: Target::None,
         },
     );
     world.step();
@@ -116,10 +108,10 @@ fn a_multishot_strikes_everything_around_and_leaves_allies_be() {
 fn a_point_is_spent_only_when_there_is_one_and_the_level_allows_it() {
     let mut world = World::new();
     let hero = world.spawn_hero(
-        bota_proto::Team::Radiant,
-        bota_proto::Vec2::from_ints(5000, 5000),
-        bota_proto::SlotId(0),
-        bota_proto::HeroId(1),
+        Team::Radiant,
+        Vec2::from_ints(5000, 5000),
+        SlotId(0),
+        HeroId(1),
     );
     world.settle();
     assert!(world.learn(hero, 0), "the first point goes in");
@@ -132,22 +124,20 @@ fn a_point_is_spent_only_when_there_is_one_and_the_level_allows_it() {
         "one ability twice over is no different"
     );
     // Levelled up, the point is there, but the ultimate still waits.
-    world.level.insert(hero, crate::game::Level(2));
+    world.level.insert(hero, Level(2));
     assert!(
         !world.learn(hero, 3),
         "the ultimate waits for the level it asks for"
     );
     assert!(world.learn(hero, 1), "a basic one does not");
     // A passive takes points like anything else.
-    world.level.insert(hero, crate::game::Level(3));
+    world.level.insert(hero, Level(3));
     assert!(world.learn(hero, 2), "a passive is learned, not cast");
     // Right up to the level it opens on, the ultimate answers.
-    world
-        .level
-        .insert(hero, crate::game::Level(rules::ULT_LEVEL_FLOORS[0]));
+    world.level.insert(hero, Level(rules::ULT_LEVEL_FLOORS[0]));
     assert!(world.learn(hero, 3), "and then it opens");
     // Nothing goes past its own cap, however many levels are had.
-    world.level.insert(hero, crate::game::Level(50));
+    world.level.insert(hero, Level(50));
     for _ in 0..10 {
         world.learn(hero, 0);
     }
@@ -162,7 +152,7 @@ fn a_point_is_spent_only_when_there_is_one_and_the_level_allows_it() {
 fn a_cast_aimed_out_of_reach_walks_the_caster_in_and_then_goes_off() {
     let (mut world, pudge, _mark) = pudge_and_a_mark(4000);
     let from = world.transform.get(pudge).expect("standing").pos;
-    let far = from + bota_proto::Vec2::from_ints(rules::HOOK_RANGE + 900, 0);
+    let far = from + Vec2::from_ints(rules::HOOK_RANGE + 900, 0);
     throw_hook(&mut world, far);
     assert!(
         world.pending_cast(pudge).is_some(),
@@ -185,7 +175,7 @@ fn a_cast_aimed_out_of_reach_walks_the_caster_in_and_then_goes_off() {
         stood.x.to_int()
     );
     assert!(
-        stood.within(far, bota_proto::Fixed::from_int(rules::HOOK_RANGE)),
+        stood.within(far, Fixed::from_int(rules::HOOK_RANGE)),
         "and no further than it had to"
     );
 }
@@ -194,17 +184,17 @@ fn a_cast_aimed_out_of_reach_walks_the_caster_in_and_then_goes_off() {
 fn a_later_order_calls_a_held_cast_off() {
     let (mut world, pudge, _mark) = pudge_and_a_mark(4000);
     let from = world.transform.get(pudge).expect("standing").pos;
-    let far = from + bota_proto::Vec2::from_ints(rules::HOOK_RANGE + 900, 0);
+    let far = from + Vec2::from_ints(rules::HOOK_RANGE + 900, 0);
     throw_hook(&mut world, far);
     assert!(
         world.pending_cast(pudge).is_some(),
         "out of reach the cast is held rather than dropped"
     );
-    world.advance(&[crate::game::Command {
-        slot: bota_proto::SlotId(0),
+    world.advance(&[Command {
+        slot: SlotId(0),
         unit: None,
-        order: bota_proto::Order::Move {
-            target: bota_proto::Target::Pos(bota_proto::Vec2::from_ints(4200, 5000)),
+        order: Order::Move {
+            target: Target::Pos(Vec2::from_ints(4200, 5000)),
         },
     }]);
     assert_eq!(
@@ -234,23 +224,23 @@ fn a_cast_walked_towards_a_target_that_fell_is_given_up_and_costs_nothing() {
     }
     world.mana.insert(
         pudge,
-        crate::game::Mana {
+        Mana {
             mana: Fixed::from_int(110),
         },
     );
-    world.advance(&[crate::game::Command {
-        slot: bota_proto::SlotId(0),
+    world.advance(&[Command {
+        slot: SlotId(0),
         unit: None,
-        order: bota_proto::Order::Cast {
-            slot: bota_proto::AbilitySlot(3),
-            target: bota_proto::Target::Unit(crate::game::wire_id(mark)),
+        order: Order::Cast {
+            slot: AbilitySlot(3),
+            target: Target::Unit(wire_id(mark)),
         },
     }]);
     assert!(
         world.pending_cast(pudge).is_some(),
         "out of reach the cast is held while the caster walks in"
     );
-    world.push_hit(None, mark, 10_000, bota_proto::DamageKind::Pure);
+    world.push_hit(None, mark, 10_000, DamageKind::Pure);
     for _ in 0..3 {
         world.step();
         assert!(
@@ -276,26 +266,26 @@ fn a_cast_walked_towards_a_target_that_fell_is_given_up_and_costs_nothing() {
 #[test]
 fn an_aimed_cast_takes_the_bodys_order_over() {
     let (mut world, pudge, mark) = pudge_and_a_mark(600);
-    world.advance(&[crate::game::Command {
-        slot: bota_proto::SlotId(0),
+    world.advance(&[Command {
+        slot: SlotId(0),
         unit: None,
-        order: bota_proto::Order::Attack {
-            target: bota_proto::Target::Unit(crate::game::wire_id(mark)),
+        order: Order::Attack {
+            target: Target::Unit(wire_id(mark)),
         },
     }]);
     assert!(
         matches!(
             world.orders.get(pudge).map(|o| o.current),
-            Some(crate::game::UnitOrder::Attack { .. })
+            Some(UnitOrder::Attack { .. })
         ),
         "the attack order stands"
     );
     let from = world.transform.get(pudge).expect("standing").pos;
-    throw_hook(&mut world, from + bota_proto::Vec2::from_ints(400, 0));
+    throw_hook(&mut world, from + Vec2::from_ints(400, 0));
     assert!(
         matches!(
             world.orders.get(pudge).map(|o| o.current),
-            Some(crate::game::UnitOrder::Idle)
+            Some(UnitOrder::Idle)
         ),
         "the cast took the order's place and the attack is not returned to"
     );
@@ -306,7 +296,7 @@ fn a_body_walking_into_a_cast_swings_at_nothing_on_the_way() {
     let (mut world, pudge, mark) = pudge_and_a_mark(300);
     let full = world.health.get(mark).expect("standing").hp;
     let from = world.transform.get(pudge).expect("standing").pos;
-    let far = from + bota_proto::Vec2::from_ints(0, rules::HOOK_RANGE + 900);
+    let far = from + Vec2::from_ints(0, rules::HOOK_RANGE + 900);
     throw_hook(&mut world, far);
     for _ in 0..30 {
         world.step();
@@ -326,66 +316,64 @@ fn a_body_walking_into_a_cast_swings_at_nothing_on_the_way() {
 #[test]
 fn a_cast_with_no_mana_is_named_and_refused() {
     let (mut world, pudge, _mark) = pudge_and_a_mark(600);
-    let aim = bota_proto::Order::Cast {
-        slot: bota_proto::AbilitySlot(0),
-        target: bota_proto::Target::Pos(bota_proto::Vec2::from_ints(5600, 5000)),
+    let aim = Order::Cast {
+        slot: AbilitySlot(0),
+        target: Target::Pos(Vec2::from_ints(5600, 5000)),
     };
     assert_eq!(
-        world.validate_order(bota_proto::SlotId(0), None, &aim),
+        world.validate_order(SlotId(0), None, &aim),
         Ok(()),
         "with the mana for it, it is allowed"
     );
-    world
-        .mana
-        .insert(pudge, crate::game::Mana { mana: Fixed::ZERO });
+    world.mana.insert(pudge, Mana { mana: Fixed::ZERO });
     assert_eq!(
-        world.validate_order(bota_proto::SlotId(0), None, &aim),
-        Err(bota_proto::RejectReason::NotEnoughMana),
+        world.validate_order(SlotId(0), None, &aim),
+        Err(RejectReason::NotEnoughMana),
         "and without it the seat is told why"
     );
     // An unlearned slot and a wrongly aimed one are named too.
-    let unlearned = bota_proto::Order::Cast {
-        slot: bota_proto::AbilitySlot(3),
-        target: bota_proto::Target::Unit(crate::game::wire_id(pudge)),
+    let unlearned = Order::Cast {
+        slot: AbilitySlot(3),
+        target: Target::Unit(wire_id(pudge)),
     };
     assert_eq!(
-        world.validate_order(bota_proto::SlotId(0), None, &unlearned),
-        Err(bota_proto::RejectReason::NotLearned),
+        world.validate_order(SlotId(0), None, &unlearned),
+        Err(RejectReason::NotLearned),
         "a slot with no points in it says so"
     );
     // A passive is not a slot with nothing in it: it is one that is never
     // cast at all.
-    let passive = bota_proto::Order::Cast {
-        slot: bota_proto::AbilitySlot(2),
-        target: bota_proto::Target::None,
+    let passive = Order::Cast {
+        slot: AbilitySlot(2),
+        target: Target::None,
     };
     assert_eq!(
-        world.validate_order(bota_proto::SlotId(0), None, &passive),
-        Err(bota_proto::RejectReason::NotCastable),
+        world.validate_order(SlotId(0), None, &passive),
+        Err(RejectReason::NotCastable),
         "and a passive says that instead"
     );
-    let wrongly_aimed = bota_proto::Order::Cast {
-        slot: bota_proto::AbilitySlot(0),
-        target: bota_proto::Target::None,
+    let wrongly_aimed = Order::Cast {
+        slot: AbilitySlot(0),
+        target: Target::None,
     };
     assert_eq!(
-        world.validate_order(bota_proto::SlotId(0), None, &wrongly_aimed),
-        Err(bota_proto::RejectReason::WrongTargetKind)
+        world.validate_order(SlotId(0), None, &wrongly_aimed),
+        Err(RejectReason::WrongTargetKind)
     );
 }
 
 #[test]
 fn a_bolt_goes_on_to_the_next_and_never_back_to_the_same_one() {
     let mut world = World::new();
-    let at = bota_proto::Vec2::from_ints(5000, 5000);
+    let at = Vec2::from_ints(5000, 5000);
     let hero = caster(&mut world, at, 2);
     // Three enemies in a row, each within a bounce of the last.
     let marks: Vec<Entity> = (0..3)
         .map(|step| {
             world.spawn_unit(
                 &MELEE_CREEP,
-                bota_proto::Team::Dire,
-                at + bota_proto::Vec2::from_ints(300 + 300 * step, 0),
+                Team::Dire,
+                at + Vec2::from_ints(300 + 300 * step, 0),
             )
         })
         .collect();
@@ -397,9 +385,9 @@ fn a_bolt_goes_on_to_the_next_and_never_back_to_the_same_one() {
         .collect();
     world.order_cast(
         hero,
-        crate::game::PendingCast::Ability {
-            slot: bota_proto::AbilitySlot(2),
-            target: bota_proto::Target::Unit(crate::game::wire_id(marks[0])),
+        PendingCast::Ability {
+            slot: AbilitySlot(2),
+            target: Target::Unit(wire_id(marks[0])),
         },
     );
     for _ in 0..120 {
@@ -424,24 +412,22 @@ fn a_bolt_goes_on_to_the_next_and_never_back_to_the_same_one() {
 fn a_spell_aimed_at_what_it_cannot_take_is_named_and_refused() {
     let mut world = World::for_match(&config(), config().rng());
     let hero = world.seats[0].unit.expect("stood up");
-    world
-        .level
-        .insert(hero, crate::game::Level(rules::HERO_MAX_LEVEL));
+    world.level.insert(hero, Level(rules::HERO_MAX_LEVEL));
     assert!(world.learn(hero, 2), "the bolt is learned");
     let ally = world.spawn_unit(
         &MELEE_CREEP,
-        bota_proto::Team::Radiant,
+        Team::Radiant,
         world.transform.get(hero).expect("standing").pos,
     );
     world.settle();
     world.step();
-    let at_an_ally = bota_proto::Order::Cast {
-        slot: bota_proto::AbilitySlot(2),
-        target: bota_proto::Target::Unit(crate::game::wire_id(ally)),
+    let at_an_ally = Order::Cast {
+        slot: AbilitySlot(2),
+        target: Target::Unit(wire_id(ally)),
     };
     assert_eq!(
-        world.validate_order(bota_proto::SlotId(0), None, &at_an_ally),
-        Err(bota_proto::RejectReason::WrongTargetKind),
+        world.validate_order(SlotId(0), None, &at_an_ally),
+        Err(RejectReason::WrongTargetKind),
         "a bolt at one of your own is refused and named"
     );
 }
@@ -450,10 +436,10 @@ fn a_spell_aimed_at_what_it_cannot_take_is_named_and_refused() {
 fn one_point_levels_every_raze_at_once_and_costs_one() {
     let mut world = World::new();
     let fiend = world.spawn_hero(
-        bota_proto::Team::Radiant,
-        bota_proto::Vec2::from_ints(5000, 5000),
-        bota_proto::SlotId(0),
-        bota_proto::HeroId(2),
+        Team::Radiant,
+        Vec2::from_ints(5000, 5000),
+        SlotId(0),
+        HeroId(2),
     );
     world.settle();
     assert!(world.learn(fiend, 2), "the point goes in");
@@ -477,7 +463,7 @@ fn one_point_levels_every_raze_at_once_and_costs_one() {
     );
     assert!(!world.learn(fiend, 3), "and there is nothing left to spend");
     // The trio waits for hero levels the same as any one ability would.
-    world.level.insert(fiend, crate::game::Level(2));
+    world.level.insert(fiend, Level(2));
     assert!(
         !world.learn(fiend, 0),
         "the second raze level waits for hero level three"
@@ -495,8 +481,8 @@ fn learning_an_ability_tells_of_no_cast() {
     let events = advance_validated(
         &mut world,
         Some(hero),
-        bota_proto::Order::Learn {
-            slot: bota_proto::AbilitySlot(0),
+        Order::Learn {
+            slot: AbilitySlot(0),
         },
     );
 
@@ -504,7 +490,7 @@ fn learning_an_ability_tells_of_no_cast() {
     assert!(
         !events
             .iter()
-            .any(|event| matches!(event.kind, bota_proto::EventKind::AbilityCast { .. })),
+            .any(|event| matches!(event.kind, EventKind::AbilityCast { .. })),
         "a skill point is not a cast"
     );
 }

@@ -1,12 +1,11 @@
 //! Sylla's critical strike: its share of every block, what it is worth, and
 //! how it is told of.
 
-use bota_proto::{EventKind, Fixed, HeroId, SlotId, Team, Vec2};
-
 use crate::game::{
-    AbilityBook, AbilityState, Entity, Event, MELEE_CREEP, Modifier, ModifierKind, Modifiers,
-    UnitDef, World, ability, rules, wire_id,
+    AbilityBook, AbilityState, Chance, Entity, Event, MELEE_CREEP, Modifier, ModifierKind,
+    Modifiers, UnitDef, World, ability, rules, wire_id,
 };
+use bota_proto::{EventKind, Fixed, HeroId, SlotId, Team, Vec2};
 
 /// What takes a strike and never falls: no armor, no mending, no swing back.
 const ANVIL: UnitDef = UnitDef {
@@ -132,7 +131,7 @@ fn blows_by(world: &mut World, from: Entity, on: Entity, wanted: usize) -> Vec<(
 }
 
 /// The stream of crit rolls an attacker has opened, if it has.
-fn crit_stream(world: &World, attacker: Entity) -> Option<&crate::game::Chance> {
+fn crit_stream(world: &World, attacker: Entity) -> Option<&Chance> {
     world
         .crit
         .get(attacker.index().0 as usize)

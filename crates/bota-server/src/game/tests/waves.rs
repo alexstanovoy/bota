@@ -1,14 +1,16 @@
 //! Lane waves, their routes, and the structures that open lanes.
 
-use crate::game::rules;
-use crate::game::{Entity, World};
-use bota_proto::Fixed;
+use crate::game::{
+    Entity, Lane, MatchConfig, UnitOrder, World, creep_spawn_pos, isqrt64, lane_polyline,
+    lane_routes, map_of, plan_radius, rules,
+};
+use bota_proto::{Fixed, MapId, Team, TickMode, UnitKind, Vec2};
 
 use super::support::*;
 
 #[test]
 fn a_wave_carries_one_flag_from_the_fifth_wave_on() {
-    let map = crate::game::map_of(bota_proto::MapId(1));
+    let map = map_of(MapId(1));
     let mut world = World::on_map(map);
     let fifth = rules::FIRST_WAVE_TICK + 4 * rules::WAVE_PERIOD_TICKS;
     while world.tick < fifth {
@@ -17,14 +19,14 @@ fn a_wave_carries_one_flag_from_the_fifth_wave_on() {
     let flags = world
         .entities
         .iter()
-        .filter(|e| world.kind.get(*e) == Some(&bota_proto::UnitKind::CreepFlagbearer))
+        .filter(|e| world.kind.get(*e) == Some(&UnitKind::CreepFlagbearer))
         .count();
     assert_eq!(flags, 2 * usize::from(map.lanes), "one a lane a side");
 }
 
 #[test]
 fn a_creep_off_its_route_rejoins_it_ahead_and_never_walks_back() {
-    let map = crate::game::map_of(bota_proto::MapId(1));
+    let map = map_of(MapId(1));
     let mut world = World::on_map(map);
     while world.tick < rules::FIRST_WAVE_TICK {
         world.step();
@@ -32,22 +34,18 @@ fn a_creep_off_its_route_rejoins_it_ahead_and_never_walks_back() {
     let creep = world
         .entities
         .iter()
-        .find(|e| {
-            world.march.get(*e).is_some() && world.team.get(*e) == Some(&bota_proto::Team::Radiant)
-        })
+        .find(|e| world.march.get(*e).is_some() && world.team.get(*e) == Some(&Team::Radiant))
         .expect("a wave came out");
     let route = world.walked_lanes()[0][0].clone();
     assert!(route.len() >= 3, "the lane has corners to be ahead of");
     // Carried past its next two waypoints and off to one side of the road.
-    let ahead = route[2] + bota_proto::Vec2::from_ints(0, 300);
+    let ahead = route[2] + Vec2::from_ints(0, 300);
     if let Some(at) = world.transform.get_mut(creep) {
         at.pos = ahead;
     }
     let was = lane_progress(&route, ahead);
     world.step();
-    let Some(crate::game::UnitOrder::AttackMove { pos }) =
-        world.orders.get(creep).map(|o| o.current)
-    else {
+    let Some(UnitOrder::AttackMove { pos }) = world.orders.get(creep).map(|o| o.current) else {
         panic!("it is sent somewhere");
     };
     assert!(
@@ -68,7 +66,7 @@ fn a_creep_off_its_route_rejoins_it_ahead_and_never_walks_back() {
 
 #[test]
 fn a_creep_is_sent_one_way_at_a_time() {
-    let map = crate::game::map_of(bota_proto::MapId(1));
+    let map = map_of(MapId(1));
     let mut world = World::on_map(map);
     while world.tick < rules::FIRST_WAVE_TICK {
         world.step();
@@ -76,14 +74,12 @@ fn a_creep_is_sent_one_way_at_a_time() {
     let creep = world
         .entities
         .iter()
-        .find(|e| {
-            world.march.get(*e).is_some() && world.team.get(*e) == Some(&bota_proto::Team::Radiant)
-        })
+        .find(|e| world.march.get(*e).is_some() && world.team.get(*e) == Some(&Team::Radiant))
         .expect("a wave came out");
     // Pushed off the route: the mark it is given must not change from tick
     // to tick while nothing about it changes.
     if let Some(at) = world.transform.get_mut(creep) {
-        at.pos += bota_proto::Vec2::from_ints(-200, 200);
+        at.pos += Vec2::from_ints(-200, 200);
     }
     world.step();
     let first = world.orders.get(creep).map(|o| o.current);
@@ -103,13 +99,13 @@ fn a_creep_is_sent_one_way_at_a_time() {
 
 #[test]
 fn no_creep_of_the_first_waves_is_left_wrestling_its_own_base() {
-    let cfg = crate::game::MatchConfig {
+    let cfg = MatchConfig {
         match_id: 7,
         master_key: [0; 32],
         picks: vec![],
-        map: bota_proto::MapId(0),
+        map: MapId(0),
         tick_rate: 30,
-        mode: bota_proto::TickMode::Realtime,
+        mode: TickMode::Realtime,
         ack_timeout_ticks: 0,
         cheats: false,
         spawn_modifiers: Vec::new(),
@@ -120,14 +116,14 @@ fn no_creep_of_the_first_waves_is_left_wrestling_its_own_base() {
     for _ in 0..=rules::FIRST_WAVE_TICK {
         world.advance(&[]);
     }
-    let first: Vec<(Entity, bota_proto::Vec2)> = world
+    let first: Vec<(Entity, Vec2)> = world
         .entities
         .iter()
         .filter(|e| world.march.get(*e).is_some())
         .map(|e| {
             let team = world.team.get(e).copied().expect("has a side");
             let lane = world.lane.get(e).copied().expect("has a lane");
-            let spawn = crate::game::creep_spawn_pos(world.map, team, lane.0);
+            let spawn = creep_spawn_pos(world.map, team, lane.0);
             (e, spawn)
         })
         .collect();
@@ -155,10 +151,10 @@ fn no_creep_of_the_first_waves_is_left_wrestling_its_own_base() {
     }
     // And the mid waves in particular met in the middle of no-man's land,
     // four against four.
-    let meet = bota_proto::Vec2::from_ints(8706, 8838);
+    let meet = Vec2::from_ints(8706, 8838);
     for (creep, _) in &first {
         if !world.entities.iter().any(|e| e == *creep)
-            || world.lane.get(*creep).copied() != Some(crate::game::Lane(rules::LANE_MID))
+            || world.lane.get(*creep).copied() != Some(Lane(rules::LANE_MID))
         {
             continue;
         }
@@ -174,13 +170,13 @@ fn no_creep_of_the_first_waves_is_left_wrestling_its_own_base() {
 
 #[test]
 fn a_wave_walks_over_where_its_tower_stood_once_it_has_fallen() {
-    let cfg = crate::game::MatchConfig {
+    let cfg = MatchConfig {
         match_id: 7,
         master_key: [0; 32],
         picks: vec![],
-        map: bota_proto::MapId(0),
+        map: MapId(0),
         tick_rate: 30,
-        mode: bota_proto::TickMode::Realtime,
+        mode: TickMode::Realtime,
         ack_timeout_ticks: 0,
         cheats: false,
         spawn_modifiers: Vec::new(),
@@ -190,7 +186,7 @@ fn a_wave_walks_over_where_its_tower_stood_once_it_has_fallen() {
     let mut world = World::for_match(&cfg, cfg.rng());
     let (lane, _, tower) = rules::RADIANT_TOWERS[2];
     assert_eq!(lane, rules::LANE_MID, "the Radiant mid tier three");
-    let footprint = crate::game::plan_radius(rules::units(rules::TOWER_COLLISION));
+    let footprint = plan_radius(rules::units(rules::TOWER_COLLISION));
     assert!(
         world.walked_lanes()[0][0]
             .iter()
@@ -210,13 +206,13 @@ fn a_wave_walks_over_where_its_tower_stood_once_it_has_fallen() {
         world.advance(&[]);
         for creep in world.entities.iter() {
             if world.march.get(creep).is_none()
-                || world.team.get(creep) != Some(&bota_proto::Team::Radiant)
+                || world.team.get(creep) != Some(&Team::Radiant)
                 || world.lane.get(creep).map(|l| l.0) != Some(rules::LANE_MID)
             {
                 continue;
             }
             let at = world.transform.get(creep).expect("standing").pos;
-            nearest = nearest.min(crate::game::isqrt64(at.distance_squared(tower)) >> 16);
+            nearest = nearest.min(isqrt64(at.distance_squared(tower)) >> 16);
         }
     }
     assert!(
@@ -227,7 +223,7 @@ fn a_wave_walks_over_where_its_tower_stood_once_it_has_fallen() {
 
 #[test]
 fn a_lane_opens_tower_by_tower_into_its_barracks() {
-    let mut world = World::on_map(crate::game::map_of(bota_proto::MapId(0)));
+    let mut world = World::on_map(map_of(MapId(0)));
     let t1 = rules::RADIANT_TOWERS[0].2;
     let t2 = rules::RADIANT_TOWERS[1].2;
     let t3 = rules::RADIANT_TOWERS[2].2;
@@ -253,7 +249,7 @@ fn a_lane_opens_tower_by_tower_into_its_barracks() {
 
 #[test]
 fn a_destroyed_structure_reopens_the_ground_it_blocked() {
-    let mut world = World::on_map(crate::game::map_of(bota_proto::MapId(0)));
+    let mut world = World::on_map(map_of(MapId(0)));
     let tower = rules::RADIANT_TOWERS[0].2;
     let body = rules::units(rules::HERO_COLLISION);
     assert!(
@@ -279,7 +275,7 @@ fn a_destroyed_structure_reopens_the_ground_it_blocked() {
 
 #[test]
 fn the_ancient_waits_for_both_tier_fours() {
-    let mut world = World::on_map(crate::game::map_of(bota_proto::MapId(0)));
+    let mut world = World::on_map(map_of(MapId(0)));
     let t4_near = rules::RADIANT_TOWERS[9].2;
     let t4_far = rules::RADIANT_TOWERS[10].2;
     let ancient = rules::RADIANT_ANCIENT_POS;
@@ -304,13 +300,13 @@ fn the_ancient_waits_for_both_tier_fours() {
 
 #[test]
 fn a_fallen_barracks_turns_the_waves_against_it_super_and_all_of_them_mega() {
-    let cfg = crate::game::MatchConfig {
+    let cfg = MatchConfig {
         match_id: 9,
         master_key: [0; 32],
         picks: vec![],
-        map: bota_proto::MapId(0),
+        map: MapId(0),
         tick_rate: 30,
-        mode: bota_proto::TickMode::Realtime,
+        mode: TickMode::Realtime,
         ack_timeout_ticks: 0,
         cheats: false,
         spawn_modifiers: Vec::new(),
@@ -319,7 +315,7 @@ fn a_fallen_barracks_turns_the_waves_against_it_super_and_all_of_them_mega() {
     };
     let mut world = World::for_match(&cfg, cfg.rng());
     // Whole barracks: plain waves.
-    let plain = next_mid_wave(&mut world, bota_proto::Team::Dire);
+    let plain = next_mid_wave(&mut world, Team::Dire);
     assert!(
         plain
             .iter()
@@ -330,22 +326,22 @@ fn a_fallen_barracks_turns_the_waves_against_it_super_and_all_of_them_mega() {
     // The Radiant mid melee barracks falls: Dire mid melee go super, the
     // ranged stay plain, and Radiant's own creeps are untouched.
     fell_at(&mut world, rules::RADIANT_BARRACKS[0].2);
-    let dire = next_mid_wave(&mut world, bota_proto::Team::Dire);
+    let dire = next_mid_wave(&mut world, Team::Dire);
     let hp_of = |world: &World, e: Entity| world.stats.get(e).expect("settled").max_hp;
     assert!(
         dire.iter().any(
             |e| hp_of(&world, *e) >= Fixed::from_int(rules::SUPER_MELEE_HP)
-                && world.kind.get(*e) == Some(&bota_proto::UnitKind::CreepMelee)
+                && world.kind.get(*e) == Some(&UnitKind::CreepMelee)
         ),
         "the melee spawn super"
     );
     assert!(
         dire.iter()
-            .filter(|e| world.kind.get(**e) == Some(&bota_proto::UnitKind::CreepRanged))
+            .filter(|e| world.kind.get(**e) == Some(&UnitKind::CreepRanged))
             .all(|e| hp_of(&world, *e) < Fixed::from_int(rules::SUPER_RANGED_HP)),
         "the ranged do not"
     );
-    let radiant = next_mid_wave(&mut world, bota_proto::Team::Radiant);
+    let radiant = next_mid_wave(&mut world, Team::Radiant);
     assert!(
         radiant
             .iter()
@@ -356,10 +352,10 @@ fn a_fallen_barracks_turns_the_waves_against_it_super_and_all_of_them_mega() {
     for (_, _, at) in rules::RADIANT_BARRACKS.iter().skip(1) {
         fell_at(&mut world, *at);
     }
-    let mega = next_mid_wave(&mut world, bota_proto::Team::Dire);
+    let mega = next_mid_wave(&mut world, Team::Dire);
     let mega_melee = mega
         .iter()
-        .find(|e| world.kind.get(**e) == Some(&bota_proto::UnitKind::CreepMelee))
+        .find(|e| world.kind.get(**e) == Some(&UnitKind::CreepMelee))
         .expect("a melee creep spawned");
     assert_eq!(
         world.stats.get(*mega_melee).expect("settled").attack_time,
@@ -370,13 +366,13 @@ fn a_fallen_barracks_turns_the_waves_against_it_super_and_all_of_them_mega() {
 
 #[test]
 fn the_demo_waves_march_out_and_meet_between_the_towers() {
-    let cfg = crate::game::MatchConfig {
+    let cfg = MatchConfig {
         match_id: 11,
         master_key: [0; 32],
         picks: vec![],
-        map: bota_proto::MapId(1),
+        map: MapId(1),
         tick_rate: 30,
-        mode: bota_proto::TickMode::Realtime,
+        mode: TickMode::Realtime,
         ack_timeout_ticks: 0,
         cheats: false,
         spawn_modifiers: Vec::new(),
@@ -387,13 +383,13 @@ fn the_demo_waves_march_out_and_meet_between_the_towers() {
     for _ in 0..=rules::FIRST_WAVE_TICK {
         world.advance(&[]);
     }
-    let first: Vec<(Entity, bota_proto::Vec2)> = world
+    let first: Vec<(Entity, Vec2)> = world
         .entities
         .iter()
         .filter(|e| world.march.get(*e).is_some())
         .map(|e| {
             let team = world.team.get(e).copied().expect("has a side");
-            (e, crate::game::creep_spawn_pos(world.map, team, 0))
+            (e, creep_spawn_pos(world.map, team, 0))
         })
         .collect();
     assert_eq!(first.len(), 8, "one wave a side on the one lane");
@@ -403,7 +399,7 @@ fn the_demo_waves_march_out_and_meet_between_the_towers() {
     // Half a minute in the survivors are grinding in the middle of the
     // lane, nobody is left wrestling its own base, and with no Ancient
     // standing there is nothing to win by.
-    let meet = bota_proto::Vec2::from_ints(8850, 9020);
+    let meet = Vec2::from_ints(8850, 9020);
     for (creep, spawn) in &first {
         if !world.entities.iter().any(|e| e == *creep) {
             continue;
@@ -428,13 +424,13 @@ fn the_demo_waves_march_out_and_meet_between_the_towers() {
 /// No waypoint of the demo lanes falls inside a tower's footprint.
 #[test]
 fn the_demo_waves_walk_the_road_and_not_through_their_towers() {
-    let map = crate::game::map_of(bota_proto::MapId(1));
+    let map = map_of(MapId(1));
     let towers = [
         rules::DEMO_RADIANT_TOWERS[0].2,
         rules::DEMO_DIRE_TOWERS[0].2,
     ];
-    let footprint = crate::game::plan_radius(rules::units(rules::TOWER_COLLISION));
-    let routes = crate::game::lane_routes(map);
+    let footprint = plan_radius(rules::units(rules::TOWER_COLLISION));
+    let routes = lane_routes(map);
     for side in &routes {
         let route = &side[0];
         assert!(!route.is_empty(), "the lane is walked");
@@ -458,25 +454,20 @@ fn the_demo_waves_walk_the_road_and_not_through_their_towers() {
 #[test]
 fn no_route_on_any_map_walks_a_wave_backwards() {
     let slack = i64::from(
-        crate::game::plan_radius(rules::units(rules::TOWER_COLLISION)).to_int()
-            + rules::WIDEST_MARCHER,
+        plan_radius(rules::units(rules::TOWER_COLLISION)).to_int() + rules::WIDEST_MARCHER,
     );
-    for map_id in [bota_proto::MapId(0), bota_proto::MapId(1)] {
-        let map = crate::game::map_of(map_id);
-        let routes = crate::game::lane_routes(map);
-        for (ti, team) in [bota_proto::Team::Radiant, bota_proto::Team::Dire]
-            .into_iter()
-            .enumerate()
-        {
+    for map_id in [MapId(0), MapId(1)] {
+        let map = map_of(map_id);
+        let routes = lane_routes(map);
+        for (ti, team) in [Team::Radiant, Team::Dire].into_iter().enumerate() {
             for lane in map.lanes() {
                 let route = &routes[ti][usize::from(lane)];
                 assert!(!route.is_empty(), "the lane is walked");
-                let mut line = crate::game::lane_polyline(map, lane);
-                if team == bota_proto::Team::Dire {
+                let mut line = lane_polyline(map, lane);
+                if team == Team::Dire {
                     line.reverse();
                 }
-                let mut furthest =
-                    lane_progress(&line, crate::game::creep_spawn_pos(map, team, lane));
+                let mut furthest = lane_progress(&line, creep_spawn_pos(map, team, lane));
                 for (i, w) in route.iter().enumerate() {
                     let here = lane_progress(&line, *w);
                     assert!(

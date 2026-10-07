@@ -1,16 +1,18 @@
 //! Couriers and their errands.
 
-use crate::game::rules;
-use crate::game::{MELEE_CREEP, World};
-use bota_proto::Fixed;
+use crate::game::{
+    BAG_SLOTS, Command, Errand, ITEM_BOOTS, ITEM_IRON_BRANCH, ItemStack, MELEE_CREEP, UnitOrder,
+    World, ability, fountain_pos, isqrt64, rules, wire_id,
+};
+use bota_proto::{
+    AbilitySlot, DamageKind, EventKind, Fixed, ItemId, Order, RejectReason, SlotId, Target, Team,
+    Vec2,
+};
 
 use super::support::*;
 
 #[test]
 fn a_courier_brought_down_comes_back_in_its_own_time() {
-    use crate::game::{Errand, wire_id};
-    use bota_proto::{AbilitySlot, Order, RejectReason, SlotId, Target};
-
     let mut world = World::for_match(&config(), config().rng());
     let courier = the_courier(&world);
     let deliver = Order::Cast {
@@ -48,7 +50,7 @@ fn a_courier_brought_down_comes_back_in_its_own_time() {
     );
     assert_eq!(
         world.transform.get(back).map(|at| at.pos),
-        Some(world.courier_home(bota_proto::Team::Radiant)),
+        Some(world.courier_home(Team::Radiant)),
         "at its own fountain"
     );
 }
@@ -58,8 +60,8 @@ fn a_courier_fetches_the_stash_and_hands_it_to_its_owner() {
     let mut world = World::for_match(&config(), config().rng());
     let hero = world.seats[0].unit.expect("stood up");
     let courier = the_courier(&world);
-    let boots = bota_proto::ItemId(crate::game::ITEM_BOOTS);
-    world.seats[0].stash.slots[0] = Some(crate::game::ItemStack {
+    let boots = ItemId(ITEM_BOOTS);
+    world.seats[0].stash.slots[0] = Some(ItemStack {
         id: boots,
         charges: 0,
         cooldown: 0,
@@ -67,7 +69,7 @@ fn a_courier_fetches_the_stash_and_hands_it_to_its_owner() {
         mode: None,
         bought_tick: 0,
         touched: false,
-        owner: bota_proto::SlotId(0),
+        owner: SlotId(0),
         for_sale: false,
     });
     // Standing at the fountain, it takes what waits there on the next tick.
@@ -84,7 +86,7 @@ fn a_courier_fetches_the_stash_and_hands_it_to_its_owner() {
     );
     // Sent out to its owner, it walks there and hands it over.
     world.transform.get_mut(hero).expect("standing").pos =
-        world.courier_home(bota_proto::Team::Radiant) + bota_proto::Vec2::from_ints(900, 0);
+        world.courier_home(Team::Radiant) + Vec2::from_ints(900, 0);
     assert!(world.courier_deliver(courier));
     for _ in 0..400 {
         world.step();
@@ -118,55 +120,44 @@ fn an_order_goes_to_the_unit_it_names_and_only_to_ones_this_seat_drives() {
     let mut world = World::for_match(&config(), config().rng());
     let hero = world.seats[0].unit.expect("stood up");
     let courier = the_courier(&world);
-    let to = world.courier_home(bota_proto::Team::Radiant) + bota_proto::Vec2::from_ints(600, 0);
-    let walk = bota_proto::Order::Move {
-        target: bota_proto::Target::Pos(to),
+    let to = world.courier_home(Team::Radiant) + Vec2::from_ints(600, 0);
+    let walk = Order::Move {
+        target: Target::Pos(to),
     };
     // Naming nobody is the hero.
-    assert_eq!(
-        world.validate_order(bota_proto::SlotId(0), None, &walk),
-        Ok(())
-    );
+    assert_eq!(world.validate_order(SlotId(0), None, &walk), Ok(()));
     // Naming its own courier is allowed, and the order lands on the courier.
-    let named = Some(crate::game::wire_id(courier));
+    let named = Some(wire_id(courier));
     assert_eq!(
-        world.validate_order(bota_proto::SlotId(0), named, &walk),
+        world.validate_order(SlotId(0), named, &walk),
         Ok(()),
         "a seat drives its own courier"
     );
-    world.advance(&[crate::game::Command {
-        slot: bota_proto::SlotId(0),
+    world.advance(&[Command {
+        slot: SlotId(0),
         unit: named,
         order: walk,
     }]);
     assert!(
         matches!(
             world.orders.get(courier).map(|orders| orders.current),
-            Some(crate::game::UnitOrder::Move { pos }) if pos == to
+            Some(UnitOrder::Move { pos }) if pos == to
         ),
         "the courier was told, not the hero"
     );
     assert!(
         !matches!(
             world.orders.get(hero).map(|orders| orders.current),
-            Some(crate::game::UnitOrder::Move { .. })
+            Some(UnitOrder::Move { .. })
         ),
         "and the hero was left alone"
     );
     // Anything else is nobody this seat drives.
-    let creep = world.spawn_unit(
-        &MELEE_CREEP,
-        bota_proto::Team::Radiant,
-        bota_proto::Vec2::from_ints(6000, 6000),
-    );
+    let creep = world.spawn_unit(&MELEE_CREEP, Team::Radiant, Vec2::from_ints(6000, 6000));
     world.settle();
     assert_eq!(
-        world.validate_order(
-            bota_proto::SlotId(0),
-            Some(crate::game::wire_id(creep)),
-            &walk
-        ),
-        Err(bota_proto::RejectReason::NotYourUnit),
+        world.validate_order(SlotId(0), Some(wire_id(creep)), &walk),
+        Err(RejectReason::NotYourUnit),
         "a creep of its own side is still not its to drive"
     );
 }
@@ -175,19 +166,15 @@ fn an_order_goes_to_the_unit_it_names_and_only_to_ones_this_seat_drives() {
 fn a_courier_told_to_go_at_a_unit_follows_it() {
     let mut world = World::for_match(&config(), config().rng());
     let courier = the_courier(&world);
-    let home = world.courier_home(bota_proto::Team::Radiant);
+    let home = world.courier_home(Team::Radiant);
     // Something of its own side standing a way off, that then walks further.
-    let mark = world.spawn_unit(
-        &MELEE_CREEP,
-        bota_proto::Team::Radiant,
-        home + bota_proto::Vec2::from_ints(700, 0),
-    );
+    let mark = world.spawn_unit(&MELEE_CREEP, Team::Radiant, home + Vec2::from_ints(700, 0));
     world.settle();
-    world.advance(&[crate::game::Command {
-        slot: bota_proto::SlotId(0),
-        unit: Some(crate::game::wire_id(courier)),
-        order: bota_proto::Order::Attack {
-            target: bota_proto::Target::Unit(crate::game::wire_id(mark)),
+    world.advance(&[Command {
+        slot: SlotId(0),
+        unit: Some(wire_id(courier)),
+        order: Order::Attack {
+            target: Target::Unit(wire_id(mark)),
         },
     }]);
     for _ in 0..120 {
@@ -196,13 +183,11 @@ fn a_courier_told_to_go_at_a_unit_follows_it() {
     let near = |world: &World| {
         let at = world.transform.get(courier).expect("standing").pos;
         let to = world.transform.get(mark).expect("standing").pos;
-        crate::game::isqrt64(at.distance_squared(to))
-            <= i64::from(bota_proto::Fixed::from_int(150).raw)
+        isqrt64(at.distance_squared(to)) <= i64::from(Fixed::from_int(150).raw)
     };
     assert!(near(&world), "it went to it");
     // Moved on, it is followed rather than left behind.
-    world.transform.get_mut(mark).expect("standing").pos =
-        home + bota_proto::Vec2::from_ints(700, 900);
+    world.transform.get_mut(mark).expect("standing").pos = home + Vec2::from_ints(700, 900);
     for _ in 0..200 {
         world.step();
     }
@@ -214,8 +199,8 @@ fn a_courier_at_the_fountain_reaches_the_stash_itself() {
     let mut world = World::for_match(&config(), config().rng());
     let hero = world.seats[0].unit.expect("stood up");
     let courier = the_courier(&world);
-    let boots = bota_proto::ItemId(crate::game::ITEM_BOOTS);
-    world.seats[0].stash.slots[0] = Some(crate::game::ItemStack {
+    let boots = ItemId(ITEM_BOOTS);
+    world.seats[0].stash.slots[0] = Some(ItemStack {
         id: boots,
         charges: 0,
         cooldown: 0,
@@ -223,20 +208,20 @@ fn a_courier_at_the_fountain_reaches_the_stash_itself() {
         mode: None,
         bought_tick: 0,
         touched: false,
-        owner: bota_proto::SlotId(0),
+        owner: SlotId(0),
         for_sale: false,
     });
     // The hero is out in the lane, so the stash is nothing to it.
     world.transform.get_mut(hero).expect("standing").pos =
-        world.courier_home(bota_proto::Team::Radiant) + bota_proto::Vec2::from_ints(4000, 0);
+        world.courier_home(Team::Radiant) + Vec2::from_ints(4000, 0);
     assert!(
-        !world.move_item(bota_proto::SlotId(0), hero, crate::game::BAG_SLOTS, 0),
+        !world.move_item(SlotId(0), hero, BAG_SLOTS, 0),
         "out in the lane a hero cannot reach into the stash"
     );
     // The courier is standing at the fountain, so for it the stash is right
     // there.
     assert!(
-        world.move_item(bota_proto::SlotId(0), courier, crate::game::BAG_SLOTS, 0),
+        world.move_item(SlotId(0), courier, BAG_SLOTS, 0),
         "the courier at the fountain reaches it"
     );
     assert_eq!(
@@ -249,7 +234,7 @@ fn a_courier_at_the_fountain_reaches_the_stash_itself() {
         "the stash is empty"
     );
     // And back again.
-    assert!(world.move_item(bota_proto::SlotId(0), courier, 0, crate::game::BAG_SLOTS));
+    assert!(world.move_item(SlotId(0), courier, 0, BAG_SLOTS));
     assert_eq!(
         world.seats[0].stash.slots[0].map(|held| held.id),
         Some(boots),
@@ -259,9 +244,6 @@ fn a_courier_at_the_fountain_reaches_the_stash_itself() {
 
 #[test]
 fn courier_auxiliary_casts_keep_delivery_tracking_a_moving_owner() {
-    use crate::game::{Errand, UnitOrder, ability, wire_id};
-    use bota_proto::{AbilitySlot, EventKind, Order, RejectReason, SlotId, Target};
-
     for (slot, ability, cooldown) in [
         (2, ability::BURST, rules::COURIER_BURST_COOLDOWN),
         (4, ability::SHIELD, rules::COURIER_SHIELD_COOLDOWN),
@@ -323,8 +305,7 @@ fn courier_auxiliary_casts_keep_delivery_tracking_a_moving_owner() {
 
 #[test]
 fn courier_return_move_and_stop_replace_delivery() {
-    use crate::game::Errand;
-    use bota_proto::{AbilitySlot, Order, Target, Vec2};
+    use Errand;
 
     for order in [
         Order::Cast {
@@ -370,18 +351,17 @@ fn a_courier_that_has_handed_over_turns_for_home() {
     let mut world = World::for_match(&config(), config().rng());
     let hero = world.seats[0].unit.expect("stood up");
     let courier = the_courier(&world);
-    let home = world.courier_home(bota_proto::Team::Radiant);
-    world.transform.get_mut(hero).expect("standing").pos =
-        home + bota_proto::Vec2::from_ints(900, 0);
-    world.seats[0].stash.slots[0] = Some(crate::game::ItemStack {
-        id: bota_proto::ItemId(crate::game::ITEM_BOOTS),
+    let home = world.courier_home(Team::Radiant);
+    world.transform.get_mut(hero).expect("standing").pos = home + Vec2::from_ints(900, 0);
+    world.seats[0].stash.slots[0] = Some(ItemStack {
+        id: ItemId(ITEM_BOOTS),
         charges: 0,
         cooldown: 0,
         mute: 0,
         mode: None,
         bought_tick: 0,
         touched: false,
-        owner: bota_proto::SlotId(0),
+        owner: SlotId(0),
         for_sale: false,
     });
     assert!(world.courier_take_stash(courier));
@@ -389,7 +369,7 @@ fn a_courier_that_has_handed_over_turns_for_home() {
     assert!(world.courier_deliver(courier));
     for _ in 0..300 {
         world.step();
-        if world.errand.get(courier) == Some(&crate::game::Errand::None) {
+        if world.errand.get(courier) == Some(&Errand::None) {
             break;
         }
     }
@@ -403,7 +383,7 @@ fn a_courier_that_has_handed_over_turns_for_home() {
     assert!(
         matches!(
             world.orders.get(courier).map(|orders| orders.current),
-            Some(crate::game::UnitOrder::Move { pos }) if pos == home
+            Some(UnitOrder::Move { pos }) if pos == home
         ),
         "and turned for home on its own"
     );
@@ -414,18 +394,17 @@ fn taking_the_stash_carries_it_on_without_being_asked_twice() {
     let mut world = World::for_match(&config(), config().rng());
     let hero = world.seats[0].unit.expect("stood up");
     let courier = the_courier(&world);
-    let home = world.courier_home(bota_proto::Team::Radiant);
-    world.transform.get_mut(hero).expect("standing").pos =
-        home + bota_proto::Vec2::from_ints(900, 0);
-    world.seats[0].stash.slots[0] = Some(crate::game::ItemStack {
-        id: bota_proto::ItemId(crate::game::ITEM_BOOTS),
+    let home = world.courier_home(Team::Radiant);
+    world.transform.get_mut(hero).expect("standing").pos = home + Vec2::from_ints(900, 0);
+    world.seats[0].stash.slots[0] = Some(ItemStack {
+        id: ItemId(ITEM_BOOTS),
         charges: 0,
         cooldown: 0,
         mute: 0,
         mode: None,
         bought_tick: 0,
         touched: false,
-        owner: bota_proto::SlotId(0),
+        owner: SlotId(0),
         for_sale: false,
     });
     assert!(world.courier_take_stash(courier));
@@ -449,15 +428,14 @@ fn taking_the_stash_carries_it_on_without_being_asked_twice() {
 fn an_errand_with_nothing_to_do_sends_the_courier_home() {
     let mut world = World::for_match(&config(), config().rng());
     let courier = the_courier(&world);
-    let home = world.courier_home(bota_proto::Team::Radiant);
-    world.transform.get_mut(courier).expect("standing").pos =
-        home + bota_proto::Vec2::from_ints(1500, 0);
+    let home = world.courier_home(Team::Radiant);
+    world.transform.get_mut(courier).expect("standing").pos = home + Vec2::from_ints(1500, 0);
     // Nothing in the stash and nothing in its hands.
     assert!(world.courier_take_stash(courier));
     world.step();
     assert_eq!(
         world.errand.get(courier),
-        Some(&crate::game::Errand::GoingHome),
+        Some(&Errand::GoingHome),
         "with nothing to take it goes home"
     );
     for _ in 0..400 {
@@ -476,15 +454,15 @@ fn a_courier_whose_owner_fell_puts_what_it_carries_back() {
     let hero = world.seats[0].unit.expect("stood up");
     let courier = the_courier(&world);
     if let Some(bag) = world.inventory.get_mut(courier) {
-        bag.slots[0] = Some(crate::game::ItemStack {
-            id: bota_proto::ItemId(crate::game::ITEM_BOOTS),
+        bag.slots[0] = Some(ItemStack {
+            id: ItemId(ITEM_BOOTS),
             charges: 0,
             cooldown: 0,
             mute: 0,
             mode: None,
             bought_tick: 0,
             touched: false,
-            owner: bota_proto::SlotId(0),
+            owner: SlotId(0),
             for_sale: false,
         });
     }
@@ -511,7 +489,7 @@ fn a_shielded_courier_takes_nothing() {
     let full = world.health.get(courier).expect("standing").hp;
     assert!(world.courier_shield(courier));
     world.step();
-    world.push_hit(None, courier, 100, bota_proto::DamageKind::Pure);
+    world.push_hit(None, courier, 100, DamageKind::Pure);
     world.step();
     assert_eq!(
         world.health.get(courier).map(|health| health.hp),
@@ -521,7 +499,7 @@ fn a_shielded_courier_takes_nothing() {
     for _ in 0..rules::COURIER_SHIELD_TICKS {
         world.step();
     }
-    world.push_hit(None, courier, 100, bota_proto::DamageKind::Pure);
+    world.push_hit(None, courier, 100, DamageKind::Pure);
     world.step();
     assert!(
         world.health.get(courier).expect("standing").hp < full,
@@ -534,7 +512,7 @@ fn a_courier_keeps_its_load_through_death() {
     let (mut world, _hero) = a_hero_with_gold(0);
     let courier = world.seats[0].courier.expect("stands with one");
     if let Some(bag) = world.inventory.get_mut(courier) {
-        bag.slots[0] = Some(a_stack_of(crate::game::ITEM_BOOTS, 0));
+        bag.slots[0] = Some(a_stack_of(ITEM_BOOTS, 0));
     }
     let mut events = Vec::new();
     world.bury(vec![(courier, None)], &mut events);
@@ -562,9 +540,9 @@ fn a_courier_sent_for_the_stash_carries_on_what_it_already_holds() {
     let mut world = World::for_match(&config(), config().rng());
     let hero = world.seats[0].unit.expect("stood up");
     let courier = the_courier(&world);
-    let boots = bota_proto::ItemId(crate::game::ITEM_BOOTS);
+    let boots = ItemId(ITEM_BOOTS);
     if let Some(bag) = world.inventory.get_mut(courier) {
-        bag.slots[0] = Some(crate::game::ItemStack {
+        bag.slots[0] = Some(ItemStack {
             id: boots,
             charges: 0,
             cooldown: 0,
@@ -572,13 +550,12 @@ fn a_courier_sent_for_the_stash_carries_on_what_it_already_holds() {
             mode: None,
             bought_tick: 0,
             touched: false,
-            owner: bota_proto::SlotId(0),
+            owner: SlotId(0),
             for_sale: false,
         });
     }
-    let home = crate::game::fountain_pos(world.map, bota_proto::Team::Radiant);
-    world.transform.get_mut(hero).expect("standing").pos =
-        home + bota_proto::Vec2::from_ints(2500, 0);
+    let home = fountain_pos(world.map, Team::Radiant);
+    world.transform.get_mut(hero).expect("standing").pos = home + Vec2::from_ints(2500, 0);
     // The stash is empty, and the goods still go to the hero, not home.
     assert!(world.courier_take_stash(courier));
     for _ in 0..600 {
@@ -603,8 +580,8 @@ fn what_an_owner_has_no_room_for_goes_back_to_the_stash() {
     let mut world = World::for_match(&config(), config().rng());
     let hero = world.seats[0].unit.expect("stood up");
     let courier = the_courier(&world);
-    let branch = bota_proto::ItemId(crate::game::ITEM_IRON_BRANCH);
-    let stack = crate::game::ItemStack {
+    let branch = ItemId(ITEM_IRON_BRANCH);
+    let stack = ItemStack {
         id: branch,
         charges: 1,
         cooldown: 0,
@@ -612,7 +589,7 @@ fn what_an_owner_has_no_room_for_goes_back_to_the_stash() {
         mode: None,
         bought_tick: 0,
         touched: true,
-        owner: bota_proto::SlotId(0),
+        owner: SlotId(0),
         for_sale: false,
     };
     // Every slot the hero has is taken, so there is nowhere to hand it.
@@ -624,9 +601,8 @@ fn what_an_owner_has_no_room_for_goes_back_to_the_stash() {
     if let Some(bag) = world.inventory.get_mut(courier) {
         bag.slots[0] = Some(stack);
     }
-    let home = crate::game::fountain_pos(world.map, bota_proto::Team::Radiant);
-    world.transform.get_mut(hero).expect("standing").pos =
-        home + bota_proto::Vec2::from_ints(1500, 0);
+    let home = fountain_pos(world.map, Team::Radiant);
+    world.transform.get_mut(hero).expect("standing").pos = home + Vec2::from_ints(1500, 0);
     assert!(world.courier_deliver(courier));
     for _ in 0..900 {
         world.step();

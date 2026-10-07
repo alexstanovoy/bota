@@ -1,15 +1,16 @@
 //! Applied stat changes: what each is worth and what it ignores.
 
-use bota_proto::{
-    AbilitySlot, DamageKind, Fixed, HeroId, ItemId, ModifierSpec, SlotId, Target, Team, UnitKind,
-    Vec2,
-};
-
 use crate::game::{
-    AppliedModifier, AppliedModifiers, AppliedOrigin, Aura, AuraCx, Auras, Entity, ITEMS,
-    ItemStack, MAX_APPLIED_MODIFIERS_PER_UNIT, MAX_COMBINED_MODIFIER_SCALE, MELEE_CREEP, Modifier,
-    ModifierKind, Reach, StackKind, Stacks, World, ability, ability_cooldown, ability_mana_cost,
-    aura_system, cooldown_after, cost_after, rules, wire_id,
+    AppliedModifier, AppliedModifiers, AppliedOrigin, Aura, AuraCx, Auras, Entity,
+    ITEM_BLINK_DAGGER, ITEM_BOOTS, ITEM_BRACER, ITEM_MAGIC_STICK, ITEM_NULL_TALISMAN,
+    ITEM_PHASE_BOOTS, ITEM_TOWN_PORTAL_SCROLL, ITEMS, ItemStack, MAX_APPLIED_MODIFIERS_PER_UNIT,
+    MAX_COMBINED_MODIFIER_SCALE, MELEE_CREEP, Modifier, ModifierKind, Place, Reach, Seat, Spots,
+    StackKind, Stacks, World, ability, ability_cooldown, ability_mana_cost, aura_system,
+    cooldown_after, cost_after, map_of, rules, tower_def, wire_id,
+};
+use bota_proto::{
+    AbilitySlot, DamageKind, Fixed, HeroId, ItemId, MapId, ModifierSpec, SlotId, Target, Team,
+    UnitKind, Vec2,
 };
 
 /// A world with a hero and a creep standing well apart.
@@ -512,7 +513,7 @@ fn cooldown_rate_shortens_what_a_cast_sets() {
 #[test]
 fn cooldown_rate_shortens_what_an_item_use_sets() {
     let (mut world, hero, _creep) = arena();
-    give(&mut world, hero, crate::game::ITEM_MAGIC_STICK);
+    give(&mut world, hero, ITEM_MAGIC_STICK);
     if let Some(stack) = world
         .inventory
         .get_mut(hero)
@@ -522,7 +523,7 @@ fn cooldown_rate_shortens_what_an_item_use_sets() {
     }
     apply(&mut world, hero, spec(|s| s.cooldown_rate = 5_000), 10);
     assert!(world.begin_item(hero, 0, Target::None));
-    let full = ITEMS[usize::from(crate::game::ITEM_MAGIC_STICK)].cooldown;
+    let full = ITEMS[usize::from(ITEM_MAGIC_STICK)].cooldown;
     assert_eq!(
         world
             .inventory
@@ -537,12 +538,12 @@ fn cooldown_rate_shortens_what_an_item_use_sets() {
 fn a_shared_item_wait_is_scaled_with_the_cooldown_rate() {
     let (mut world, hero, _creep) = arena();
     world.spawn_building(
-        crate::game::tower_def(1),
+        tower_def(1),
         Team::Radiant,
         Vec2::from_ints(7300, 7000),
-        crate::game::Place::Tower { lane: 0, tier: 1 },
+        Place::Tower { lane: 0, tier: 1 },
     );
-    let mut seat = crate::game::Seat::new(
+    let mut seat = Seat::new(
         SlotId(0),
         Team::Radiant,
         HeroId(0),
@@ -551,7 +552,7 @@ fn a_shared_item_wait_is_scaled_with_the_cooldown_rate() {
     );
     seat.unit = Some(hero);
     world.seats.push(seat);
-    give(&mut world, hero, crate::game::ITEM_TOWN_PORTAL_SCROLL);
+    give(&mut world, hero, ITEM_TOWN_PORTAL_SCROLL);
     apply(&mut world, hero, spec(|s| s.cooldown_rate = 5_000), 10);
     let at = world.transform.get(hero).expect("standing").pos;
     assert!(
@@ -561,7 +562,7 @@ fn a_shared_item_wait_is_scaled_with_the_cooldown_rate() {
     assert_eq!(
         world.seats[0].item_clocks,
         vec![(
-            ItemId(crate::game::ITEM_TOWN_PORTAL_SCROLL),
+            ItemId(ITEM_TOWN_PORTAL_SCROLL),
             rules::SCROLL_WAIT_TICKS / 2
         )],
         "the wait on the kind of item is halved"
@@ -580,13 +581,13 @@ fn a_shared_item_wait_is_scaled_with_the_cooldown_rate() {
 #[test]
 fn a_blow_sets_a_muted_item_back_by_the_cooldown_rate() {
     let (mut world, hero, _creep) = arena();
-    give(&mut world, hero, crate::game::ITEM_BLINK_DAGGER);
+    give(&mut world, hero, ITEM_BLINK_DAGGER);
     apply(&mut world, hero, spec(|s| s.cooldown_rate = 5_000), 10);
     let hitter = world.spawn();
     world.kind.insert(hitter, UnitKind::Hero);
     world.push_hit(Some(hitter), hero, 10, DamageKind::Physical);
     world.step();
-    let full = ITEMS[usize::from(crate::game::ITEM_BLINK_DAGGER)].breaks_on_damage;
+    let full = ITEMS[usize::from(ITEM_BLINK_DAGGER)].breaks_on_damage;
     assert_eq!(
         world
             .inventory
@@ -696,7 +697,7 @@ fn magic_resistance_is_clamped_before_the_flesh_heap_multiplies() {
 #[test]
 fn movement_speed_adds_before_items_and_slows() {
     let (mut world, hero, _creep) = arena();
-    give(&mut world, hero, crate::game::ITEM_BOOTS);
+    give(&mut world, hero, ITEM_BOOTS);
     apply(&mut world, hero, spec(|s| s.move_speed = 15_000), 10);
     let carried = rules::HERO_MOVE_SPEED * 3 / 2 + 45;
     assert_eq!(
@@ -723,7 +724,7 @@ fn movement_speed_adds_before_items_and_slows() {
 #[test]
 fn max_health_scales_the_raised_base_before_items() {
     let (mut world, hero, _creep) = arena();
-    give(&mut world, hero, crate::game::ITEM_BRACER);
+    give(&mut world, hero, ITEM_BRACER);
     apply(&mut world, hero, spec(|s| s.max_hp = 20_000), 10);
     let expected = rules::HERO_HP * 2 + rules::HP_PER_STRENGTH * 26;
     assert_eq!(
@@ -736,7 +737,7 @@ fn max_health_scales_the_raised_base_before_items() {
 #[test]
 fn max_mana_scales_the_raised_base_before_items() {
     let (mut world, hero, _creep) = arena();
-    give(&mut world, hero, crate::game::ITEM_NULL_TALISMAN);
+    give(&mut world, hero, ITEM_NULL_TALISMAN);
     apply(&mut world, hero, spec(|s| s.max_mana = 20_000), 10);
     let expected = rules::HERO_MANA * 2 + rules::MANA_PER_INTELLIGENCE * 24;
     assert_eq!(
@@ -761,7 +762,7 @@ fn a_nominal_spec_leaves_the_new_stats_alone() {
 #[test]
 fn damage_amplification_multiplies_the_whole_damage_before_mitigation() {
     let (mut world, hero, creep) = arena();
-    give(&mut world, hero, crate::game::ITEM_PHASE_BOOTS);
+    give(&mut world, hero, ITEM_PHASE_BOOTS);
     apply(&mut world, hero, spec(|s| s.pure_damage = 15_000), 10);
     let damage = world.stats.get(hero).expect("settled").damage;
     assert!(
@@ -886,7 +887,7 @@ fn a_creep_spawned_with_a_modifier_is_raised_with_it() {
 
 #[test]
 fn a_tower_takes_the_same_maximum_health_modifier() {
-    let mut world = World::on_map(crate::game::map_of(bota_proto::MapId(0)));
+    let mut world = World::on_map(map_of(MapId(0)));
     let tower = world
         .entities
         .iter()
@@ -925,12 +926,12 @@ fn a_tower_takes_the_same_maximum_health_modifier() {
 #[test]
 fn a_tower_spawned_with_a_modifier_is_raised_with_it() {
     let mut world = World::new();
-    let def = crate::game::tower_def(1);
+    let def = tower_def(1);
     let tower = world.spawn_building(
         def,
         Team::Radiant,
         Vec2::from_ints(5000, 5000),
-        crate::game::Place::Tower { lane: 0, tier: 1 },
+        Place::Tower { lane: 0, tier: 1 },
     );
     world
         .applied
@@ -988,7 +989,7 @@ fn an_aura_hands_out_a_slow_through_the_same_resistance() {
         auras: &world.auras,
         stats: &world.stats,
         modifiers: &mut world.modifiers,
-        spots: &mut crate::game::Spots::default(),
+        spots: &mut Spots::default(),
     });
     assert_eq!(
         left_on(&world, hero, ModifierKind::Slowed { pct: 30 }),

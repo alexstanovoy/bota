@@ -1,14 +1,14 @@
 //! Trusted setup modifiers: which spawns they take and how long they hold.
 
+use crate::game::{
+    AppliedModifier, AppliedModifiers, AppliedOrigin, Command, Def, Entity, MAX_SPAWN_MODIFIERS,
+    MAX_SPAWN_TARGETS, MELEE_CREEP, MatchConfig, MatchConfigError, ModifierDuration, Place,
+    RANGED_CREEP, SpawnCategory, SpawnModifier, SpawnModifierError, SpawnSelector, SpawnTarget,
+    World, rules, tower_def,
+};
 use bota_proto::{
     Cheat, DamageKind, Fixed, HeroId, MAX_MODIFIER_TICKS, MapId, ModifierSpec, Order, Pick, SlotId,
     Target, Team, TickMode, UnitKind, Vec2,
-};
-
-use crate::game::{
-    AppliedModifier, AppliedModifiers, AppliedOrigin, Command, Def, Entity, MAX_SPAWN_MODIFIERS,
-    MAX_SPAWN_TARGETS, MatchConfig, MatchConfigError, ModifierDuration, SpawnCategory,
-    SpawnModifier, SpawnModifierError, SpawnSelector, SpawnTarget, World, rules,
 };
 
 /// A spec with one change on it, everything else neutral.
@@ -60,11 +60,7 @@ fn arena(rules: Vec<SpawnModifier>) -> (World, Entity, Entity) {
         SlotId(0),
         HeroId(0),
     );
-    let creep = world.spawn_unit(
-        &crate::game::MELEE_CREEP,
-        Team::Dire,
-        Vec2::from_ints(2000, 2000),
-    );
+    let creep = world.spawn_unit(&MELEE_CREEP, Team::Dire, Vec2::from_ints(2000, 2000));
     world.spawn_modifiers = rules;
     world.apply_spawn_modifiers_to_all();
     world.settle();
@@ -128,16 +124,8 @@ fn a_hero_on_the_other_side_is_left_alone() {
 #[test]
 fn an_exact_kind_selector_takes_only_that_kind() {
     let mut world = World::new();
-    let melee = world.spawn_unit(
-        &crate::game::MELEE_CREEP,
-        Team::Dire,
-        Vec2::from_ints(2000, 2000),
-    );
-    let ranged = world.spawn_unit(
-        &crate::game::RANGED_CREEP,
-        Team::Dire,
-        Vec2::from_ints(2200, 2000),
-    );
+    let melee = world.spawn_unit(&MELEE_CREEP, Team::Dire, Vec2::from_ints(2000, 2000));
+    let ranged = world.spawn_unit(&RANGED_CREEP, Team::Dire, Vec2::from_ints(2200, 2000));
     world.spawn_modifiers = vec![SpawnModifier {
         select: SpawnSelector {
             targets: vec![SpawnTarget::Kind(UnitKind::CreepRanged)],
@@ -291,16 +279,16 @@ fn structures_are_seeded_at_the_start_and_when_stood_up() {
     let mut later = World::new();
     later.spawn_modifiers = vec![rule];
     let standing = later.spawn_building(
-        crate::game::tower_def(1),
+        tower_def(1),
         Team::Dire,
         Vec2::from_ints(5000, 5000),
-        crate::game::Place::Tower { lane: 0, tier: 1 },
+        Place::Tower { lane: 0, tier: 1 },
     );
     later.settle();
     assert!(later.applied.contains(standing), "a later tower is seeded");
     assert_eq!(
         later.stats.get(standing).map(|stats| stats.max_hp.to_int()),
-        Some(crate::game::tower_def(1).max_hp * 15_000 / 10_000)
+        Some(tower_def(1).max_hp * 15_000 / 10_000)
     );
 }
 
@@ -393,7 +381,7 @@ fn a_respawned_hero_is_seeded_afresh_and_stands_full() {
             .applied
             .get(reborn)
             .and_then(|applied| applied.iter().next()),
-        Some(&crate::game::AppliedModifier {
+        Some(&AppliedModifier {
             spec: spec(|s| s.max_hp = 20_000),
             ticks_left: None,
             origin: AppliedOrigin::Setup,
@@ -512,11 +500,7 @@ fn an_empty_rule_list_leaves_the_world_alone() {
 /// The hash of a world holding one applied spec.
 fn hash_with_spec(spec: ModifierSpec) -> u64 {
     let mut world = World::new();
-    let creep = world.spawn_unit(
-        &crate::game::MELEE_CREEP,
-        Team::Dire,
-        Vec2::from_ints(2000, 2000),
-    );
+    let creep = world.spawn_unit(&MELEE_CREEP, Team::Dire, Vec2::from_ints(2000, 2000));
     let mut applied = AppliedModifiers::default();
     applied.push(AppliedModifier {
         spec,
@@ -728,11 +712,7 @@ fn a_spawn_refuses_an_unchecked_rule_with_its_index_and_reason() {
     invalid.select.targets = vec![SpawnTarget::Kind(UnitKind::CreepMelee); MAX_SPAWN_TARGETS + 1];
     let mut world = World::new();
     world.spawn_modifiers = vec![a_rule(ModifierSpec::NOMINAL), invalid];
-    world.spawn_unit(
-        &crate::game::MELEE_CREEP,
-        Team::Dire,
-        Vec2::from_ints(2000, 2000),
-    );
+    world.spawn_unit(&MELEE_CREEP, Team::Dire, Vec2::from_ints(2000, 2000));
 }
 
 #[test]

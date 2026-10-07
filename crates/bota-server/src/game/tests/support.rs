@@ -1,10 +1,17 @@
 //! Fixtures and helpers the game tests share.
 
-use crate::game::rules;
 use crate::game::{
-    Def, Entity, Health, MELEE_CREEP, Modifiers, RANGED_CREEP, Stats, UnitDef, World,
+    ActionPhase, ActionState, CampHome, CellGrid, Command, Def, Entity, Errand, Event, Ground,
+    Health, ITEM_BOOTS, ITEM_TANGO, ITEM_TOWN_PORTAL_SCROLL, ITEMS, ItemStack, Lane, LaneAi, Level,
+    MELEE_CREEP, MapDef, MatchConfig, Modifier, ModifierKind, Modifiers, NeutralAi, NeutralKind,
+    Orders, Projectile, RANGED_CREEP, Ratio, SALVE_TICKS, Seat, StackKind, Stats, TERRAIN_CELLS,
+    Transform, UnitDef, UnitOrder, World, facing_towards, is_structure, isqrt64, map_of,
+    plan_radius, rules, tree_positions, wire_id,
 };
-use bota_proto::{Attributes, Fixed, Team};
+use bota_proto::{
+    AbilitySlot, Angle, Attributes, DamageKind, EventKind, Fixed, HeroId, ItemId, MapId, Order,
+    Pick, RejectReason, SlotId, Target, Team, TickMode, UnitKind, Vec2,
+};
 
 /// A stat block with every field named.
 pub(super) fn stats() -> Stats {
@@ -40,8 +47,8 @@ pub(super) fn stats() -> Stats {
         flies: false,
         phased: false,
         invulnerable: false,
-        evasion: crate::game::Ratio::NEVER,
-        pierce: crate::game::Ratio::NEVER,
+        evasion: Ratio::NEVER,
+        pierce: Ratio::NEVER,
         pierce_damage: 0,
     }
 }
@@ -73,7 +80,7 @@ pub(super) fn body_at(levels: i32) -> Fixed {
 
 /// Buildings a map stands up: its towers, its barracks, both fountains, and
 /// whatever Ancients it has.
-pub(super) fn map_buildings(map: &crate::game::MapDef) -> usize {
+pub(super) fn map_buildings(map: &MapDef) -> usize {
     map.radiant_towers.len()
         + map.dire_towers.len()
         + map.barracks[0].len()
@@ -84,22 +91,22 @@ pub(super) fn map_buildings(map: &crate::game::MapDef) -> usize {
 
 /// How long the salve mends for.
 pub(super) fn salve_ticks() -> u32 {
-    crate::game::SALVE_TICKS
+    SALVE_TICKS
 }
 
 /// A match config that always names the same numbers.
-pub(super) fn config() -> crate::game::MatchConfig {
-    crate::game::MatchConfig {
+pub(super) fn config() -> MatchConfig {
+    MatchConfig {
         match_id: 7,
         master_key: [3; 32],
-        picks: vec![bota_proto::Pick {
-            slot: bota_proto::SlotId(0),
-            team: bota_proto::Team::Radiant,
-            hero: bota_proto::HeroId(0),
+        picks: vec![Pick {
+            slot: SlotId(0),
+            team: Team::Radiant,
+            hero: HeroId(0),
         }],
-        map: bota_proto::MapId(1),
+        map: MapId(1),
         tick_rate: 30,
-        mode: bota_proto::TickMode::Lockstep,
+        mode: TickMode::Lockstep,
         ack_timeout_ticks: 30,
         cheats: false,
         spawn_modifiers: Vec::new(),
@@ -111,11 +118,11 @@ pub(super) fn config() -> crate::game::MatchConfig {
 pub(super) fn advance_validated(
     world: &mut World,
     unit: Option<Entity>,
-    order: bota_proto::Order,
-) -> Vec<crate::game::Event> {
-    let command = crate::game::Command {
-        slot: bota_proto::SlotId(0),
-        unit: unit.map(crate::game::wire_id),
+    order: Order,
+) -> Vec<Event> {
+    let command = Command {
+        slot: SlotId(0),
+        unit: unit.map(wire_id),
         order,
     };
     assert_eq!(
@@ -134,12 +141,12 @@ pub(super) fn world_with_projectile_uphill_state(launch_tier: u8, can_miss_uphil
     let missile = world.spawn();
     world.projectile.insert(
         missile,
-        crate::game::Projectile {
+        Projectile {
             speed: Fixed::ONE,
             source: None,
             target,
             damage: 1,
-            kind: bota_proto::DamageKind::Physical,
+            kind: DamageKind::Physical,
             damage_amp_bp: rules::NOMINAL_BP,
             ability: None,
             launch_tier,
@@ -157,11 +164,11 @@ pub(super) fn world_with_projectile_uphill_state(launch_tier: u8, can_miss_uphil
 }
 
 /// A Radiant melee creep with a lane mind of its own.
-pub(super) fn thinking_creep(world: &mut World, at: bota_proto::Vec2) -> Entity {
-    let creep = world.spawn_unit(&MELEE_CREEP, bota_proto::Team::Radiant, at);
+pub(super) fn thinking_creep(world: &mut World, at: Vec2) -> Entity {
+    let creep = world.spawn_unit(&MELEE_CREEP, Team::Radiant, at);
     world.lane_ai.insert(
         creep,
-        crate::game::LaneAi {
+        LaneAi {
             last_seen: None,
             keep_until: 0,
             roused_by: None,
@@ -173,17 +180,10 @@ pub(super) fn thinking_creep(world: &mut World, at: bota_proto::Vec2) -> Entity 
 }
 
 /// A hero that has learned one ability to its first level, with mana to spend.
-pub(super) fn caster(world: &mut World, at: bota_proto::Vec2, slot: usize) -> Entity {
-    let hero = world.spawn_hero(
-        bota_proto::Team::Radiant,
-        at,
-        bota_proto::SlotId(0),
-        bota_proto::HeroId(0),
-    );
+pub(super) fn caster(world: &mut World, at: Vec2, slot: usize) -> Entity {
+    let hero = world.spawn_hero(Team::Radiant, at, SlotId(0), HeroId(0));
     // Levelled enough that the slot under test is one it may learn.
-    world
-        .level
-        .insert(hero, crate::game::Level(rules::HERO_MAX_LEVEL));
+    world.level.insert(hero, Level(rules::HERO_MAX_LEVEL));
     world.settle();
     world.fill_pools(hero);
     assert!(world.learn(hero, slot), "the slot is learned");
@@ -198,9 +198,9 @@ pub(super) fn swing_once(world: &mut World) {
 /// Who an entity is mid-swing at, if it is mid-swing at all.
 pub(super) fn swinging(world: &World, entity: Entity) -> Option<Entity> {
     match world.action.get(entity).map(|action| action.state) {
-        Some(crate::game::ActionState::Attack {
+        Some(ActionState::Attack {
             target,
-            phase: crate::game::ActionPhase::Before { .. },
+            phase: ActionPhase::Before { .. },
         }) => Some(target),
         _ => None,
     }
@@ -210,8 +210,8 @@ pub(super) fn swinging(world: &World, entity: Entity) -> Option<Entity> {
 pub(super) fn recovering(world: &World, entity: Entity) -> bool {
     matches!(
         world.action.get(entity).map(|action| action.state),
-        Some(crate::game::ActionState::Attack {
-            phase: crate::game::ActionPhase::After { .. },
+        Some(ActionState::Attack {
+            phase: ActionPhase::After { .. },
             ..
         })
     )
@@ -226,13 +226,9 @@ pub(super) fn ticks_of(ms: u32) -> u32 {
 /// nothing else.
 pub(super) fn duel(gap: i32) -> (World, Entity, Entity) {
     let mut world = World::new();
-    let at = bota_proto::Vec2::from_ints(5000, 5000);
+    let at = Vec2::from_ints(5000, 5000);
     let attacker = world.spawn_unit(&MELEE_CREEP, Team::Radiant, at);
-    let mark = world.spawn_unit(
-        &MELEE_CREEP,
-        Team::Dire,
-        bota_proto::Vec2::from_ints(5000 + gap, 5000),
-    );
+    let mark = world.spawn_unit(&MELEE_CREEP, Team::Dire, Vec2::from_ints(5000 + gap, 5000));
     world.settle();
     (world, attacker, mark)
 }
@@ -243,29 +239,29 @@ pub(super) fn hero_ordered_at_an_enemy(apart: i32) -> (World, Entity, Entity) {
     let mut world = World::new();
     let hero = world.spawn_hero(
         Team::Radiant,
-        bota_proto::Vec2::from_ints(5000, 5000),
-        bota_proto::SlotId(0),
-        bota_proto::HeroId(0),
+        Vec2::from_ints(5000, 5000),
+        SlotId(0),
+        HeroId(0),
     );
     let mark = world.spawn_unit(
         &MELEE_CREEP,
         Team::Dire,
-        bota_proto::Vec2::from_ints(5000 + apart, 5000),
+        Vec2::from_ints(5000 + apart, 5000),
     );
-    world.seats.push(crate::game::Seat::new(
-        bota_proto::SlotId(0),
+    world.seats.push(Seat::new(
+        SlotId(0),
         Team::Radiant,
-        bota_proto::HeroId(0),
+        HeroId(0),
         0,
         rules::STASH_SLOTS,
     ));
     world.seats[0].unit = Some(hero);
     world.settle();
-    world.advance(&[crate::game::Command {
-        slot: bota_proto::SlotId(0),
+    world.advance(&[Command {
+        slot: SlotId(0),
         unit: None,
-        order: bota_proto::Order::Attack {
-            target: bota_proto::Target::Unit(crate::game::wire_id(mark)),
+        order: Order::Attack {
+            target: Target::Unit(wire_id(mark)),
         },
     }]);
     (world, hero, mark)
@@ -274,42 +270,38 @@ pub(super) fn hero_ordered_at_an_enemy(apart: i32) -> (World, Entity, Entity) {
 /// The same seat and enemy, one tick after a move order at the enemy.
 pub(super) fn hero_following_an_enemy(apart: i32) -> (World, Entity, Entity) {
     let (mut world, hero, mark) = hero_ordered_at_an_enemy(apart);
-    world.advance(&[crate::game::Command {
-        slot: bota_proto::SlotId(0),
+    world.advance(&[Command {
+        slot: SlotId(0),
         unit: None,
-        order: bota_proto::Order::Move {
-            target: bota_proto::Target::Unit(crate::game::wire_id(mark)),
+        order: Order::Move {
+            target: Target::Unit(wire_id(mark)),
         },
     }]);
     (world, hero, mark)
 }
 
 /// A seated hero holding `order`, and a Dire creep 400 east of it.
-pub(super) fn hero_past_an_enemy(order: crate::game::UnitOrder) -> (World, Entity, Entity) {
+pub(super) fn hero_past_an_enemy(order: UnitOrder) -> (World, Entity, Entity) {
     let mut world = World::new();
-    world.seats.push(crate::game::Seat::new(
-        bota_proto::SlotId(0),
+    world.seats.push(Seat::new(
+        SlotId(0),
         Team::Radiant,
-        bota_proto::HeroId(0),
+        HeroId(0),
         0,
         rules::STASH_SLOTS,
     ));
     let hero = world.spawn_hero(
         Team::Radiant,
-        bota_proto::Vec2::from_ints(5000, 5000),
-        bota_proto::SlotId(0),
-        bota_proto::HeroId(0),
+        Vec2::from_ints(5000, 5000),
+        SlotId(0),
+        HeroId(0),
     );
-    let enemy = world.spawn_unit(
-        &MELEE_CREEP,
-        Team::Dire,
-        bota_proto::Vec2::from_ints(5400, 5000),
-    );
+    let enemy = world.spawn_unit(&MELEE_CREEP, Team::Dire, Vec2::from_ints(5400, 5000));
     world.settle();
     world.seats[0].unit = Some(hero);
     world.orders.insert(
         hero,
-        crate::game::Orders {
+        Orders {
             current: order,
             cooldown: 0,
             pending: None,
@@ -321,25 +313,21 @@ pub(super) fn hero_past_an_enemy(order: crate::game::UnitOrder) -> (World, Entit
 /// A hero of a side and one of its own creeps beside it.
 pub(super) fn hero_and_own_creep() -> (World, Entity, Entity) {
     let mut world = World::new();
-    world.seats.push(crate::game::Seat::new(
-        bota_proto::SlotId(0),
+    world.seats.push(Seat::new(
+        SlotId(0),
         Team::Radiant,
-        bota_proto::HeroId(0),
+        HeroId(0),
         0,
         rules::STASH_SLOTS,
     ));
     let hero = world.spawn_hero(
         Team::Radiant,
-        bota_proto::Vec2::from_ints(5000, 5000),
-        bota_proto::SlotId(0),
-        bota_proto::HeroId(0),
+        Vec2::from_ints(5000, 5000),
+        SlotId(0),
+        HeroId(0),
     );
     world.seats[0].unit = Some(hero);
-    let own = world.spawn_unit(
-        &MELEE_CREEP,
-        Team::Radiant,
-        bota_proto::Vec2::from_ints(5100, 5000),
-    );
+    let own = world.spawn_unit(&MELEE_CREEP, Team::Radiant, Vec2::from_ints(5100, 5000));
     world.settle();
     world.fill_pools(hero);
     world.fill_pools(own);
@@ -351,51 +339,47 @@ pub(super) fn hero_and_own_creep() -> (World, Entity, Entity) {
 /// tick has run.
 pub(super) fn a_lane_with_a_hero(apart: i32) -> (World, Entity, Entity, Entity, Entity) {
     let mut world = World::new();
-    world.seats.push(crate::game::Seat::new(
-        bota_proto::SlotId(0),
+    world.seats.push(Seat::new(
+        SlotId(0),
         Team::Radiant,
-        bota_proto::HeroId(0),
+        HeroId(0),
         0,
         rules::STASH_SLOTS,
     ));
     let hero = world.spawn_hero(
         Team::Radiant,
-        bota_proto::Vec2::from_ints(5000, 5000),
-        bota_proto::SlotId(0),
-        bota_proto::HeroId(0),
+        Vec2::from_ints(5000, 5000),
+        SlotId(0),
+        HeroId(0),
     );
     world.seats[0].unit = Some(hero);
     // Standing, so it takes nothing on of its own.
-    world.set_order(hero, crate::game::UnitOrder::Stand);
-    let theirs = thinking_creep_of(
-        &mut world,
-        Team::Dire,
-        bota_proto::Vec2::from_ints(5000 + apart, 5000),
-    );
+    world.set_order(hero, UnitOrder::Stand);
+    let theirs = thinking_creep_of(&mut world, Team::Dire, Vec2::from_ints(5000 + apart, 5000));
     let ours = world.spawn_unit(
         &MELEE_CREEP,
         Team::Radiant,
-        bota_proto::Vec2::from_ints(5000 + apart + 60, 5000),
+        Vec2::from_ints(5000 + apart + 60, 5000),
     );
     // Only an order at an enemy hero calls creeps on.
     let foe = world.spawn_hero(
         Team::Dire,
-        bota_proto::Vec2::from_ints(5000 + apart + 200, 5000),
-        bota_proto::SlotId(1),
-        bota_proto::HeroId(0),
+        Vec2::from_ints(5000 + apart + 200, 5000),
+        SlotId(1),
+        HeroId(0),
     );
-    world.set_order(foe, crate::game::UnitOrder::Stand);
+    world.set_order(foe, UnitOrder::Stand);
     world.settle();
     world.step();
     (world, hero, theirs, ours, foe)
 }
 
 /// A creep of a side with a mind of its own.
-pub(super) fn thinking_creep_of(world: &mut World, team: Team, at: bota_proto::Vec2) -> Entity {
+pub(super) fn thinking_creep_of(world: &mut World, team: Team, at: Vec2) -> Entity {
     let creep = world.spawn_unit(&MELEE_CREEP, team, at);
     world.lane_ai.insert(
         creep,
-        crate::game::LaneAi {
+        LaneAi {
             last_seen: None,
             keep_until: 0,
             roused_by: None,
@@ -408,11 +392,11 @@ pub(super) fn thinking_creep_of(world: &mut World, team: Team, at: bota_proto::V
 
 /// Seat 0 clicks attack on somebody, and the world advances one tick.
 pub(super) fn attack_click(world: &mut World, on: Entity) {
-    world.advance(&[crate::game::Command {
-        slot: bota_proto::SlotId(0),
+    world.advance(&[Command {
+        slot: SlotId(0),
         unit: None,
-        order: bota_proto::Order::Attack {
-            target: bota_proto::Target::Unit(crate::game::wire_id(on)),
+        order: Order::Attack {
+            target: Target::Unit(wire_id(on)),
         },
     }]);
 }
@@ -432,14 +416,14 @@ pub(super) fn gap_along_lane(world: &World, one: Entity, other: Entity) -> i32 {
 }
 
 /// The effect a fountain hands out.
-pub(super) const FOUNTAIN_EFFECT: crate::game::ModifierKind = crate::game::ModifierKind::Fountain {
+pub(super) const FOUNTAIN_EFFECT: ModifierKind = ModifierKind::Fountain {
     hp_per_tick: rules::FOUNTAIN_HEAL_HP_PER_TICK * 100,
     mana_per_tick: rules::FOUNTAIN_HEAL_MANA_PER_TICK * 100,
 };
 
 /// Whether a unit carries an effect of one kind right now, whatever there is
 /// of it.
-pub(super) fn carries(world: &World, entity: Entity, kind: crate::game::ModifierKind) -> bool {
+pub(super) fn carries(world: &World, entity: Entity, kind: ModifierKind) -> bool {
     let same = std::mem::discriminant(&kind);
     world.modifiers.get(entity).is_some_and(|on_it| {
         on_it
@@ -450,27 +434,27 @@ pub(super) fn carries(world: &World, entity: Entity, kind: crate::game::Modifier
 
 /// Whether a unit has its rot switched on.
 pub(super) fn rotting(world: &World, entity: Entity) -> bool {
-    carries(world, entity, crate::game::ModifierKind::Rot { level: 0 })
+    carries(world, entity, ModifierKind::Rot { level: 0 })
 }
 
 /// A tower's protection, whatever tier hands it out.
-pub(super) const GUARDED_EFFECT: crate::game::ModifierKind = crate::game::ModifierKind::Guarded {
+pub(super) const GUARDED_EFFECT: ModifierKind = ModifierKind::Guarded {
     armor: rules::TOWER_AURA_ARMOR[0],
     hp_per_second: rules::TOWER_AURA_REGEN[0],
 };
 
 /// A flagbearer's inspiration.
-pub(super) const INSPIRED_EFFECT: crate::game::ModifierKind = crate::game::ModifierKind::Inspired {
+pub(super) const INSPIRED_EFFECT: ModifierKind = ModifierKind::Inspired {
     hp_per_second: rules::FLAGBEARER_AURA_REGEN,
 };
 
 /// A match world with its one hero beside its fountain and boots in the
 /// first stash slot.
-pub(super) fn a_hero_at_the_shop() -> (World, Entity, bota_proto::ItemId) {
+pub(super) fn a_hero_at_the_shop() -> (World, Entity, ItemId) {
     let mut world = World::for_match(&config(), config().rng());
     let hero = world.seats[0].unit.expect("stood up");
-    let boots = bota_proto::ItemId(crate::game::ITEM_BOOTS);
-    world.seats[0].stash.slots[0] = Some(crate::game::ItemStack {
+    let boots = ItemId(ITEM_BOOTS);
+    world.seats[0].stash.slots[0] = Some(ItemStack {
         id: boots,
         charges: 0,
         cooldown: 0,
@@ -478,7 +462,7 @@ pub(super) fn a_hero_at_the_shop() -> (World, Entity, bota_proto::ItemId) {
         mode: None,
         bought_tick: 0,
         touched: false,
-        owner: bota_proto::SlotId(0),
+        owner: SlotId(0),
         for_sale: false,
     });
     (world, hero, boots)
@@ -486,22 +470,22 @@ pub(super) fn a_hero_at_the_shop() -> (World, Entity, bota_proto::ItemId) {
 
 /// A spot with nothing standing within 800 units, and hero-sized room from
 /// 100 west to 700 east of it, 200 either side.
-pub(super) fn an_empty_spot(world: &World) -> bota_proto::Vec2 {
+pub(super) fn an_empty_spot(world: &World) -> Vec2 {
     for row in 0..16 {
         for step in 0..60 {
-            let at = bota_proto::Vec2::from_ints(5600 + step * 100, 6000 + row * 200);
+            let at = Vec2::from_ints(5600 + step * 100, 6000 + row * 200);
             let clear = world.entities.iter().all(|entity| {
                 !world
                     .transform
                     .get(entity)
-                    .is_some_and(|t| t.pos.within(at, bota_proto::Fixed::from_int(800)))
+                    .is_some_and(|t| t.pos.within(at, Fixed::from_int(800)))
             });
-            let room = crate::game::plan_radius(rules::units(rules::HERO_COLLISION));
+            let room = plan_radius(rules::units(rules::HERO_COLLISION));
             let open = (-2..=14).all(|dx: i32| {
                 (-2..=2).all(|dy: i32| {
                     world
                         .clearance
-                        .point_clear(at + bota_proto::Vec2::from_ints(dx * 50, dy * 100), room)
+                        .point_clear(at + Vec2::from_ints(dx * 50, dy * 100), room)
                 })
             });
             if clear && open {
@@ -519,15 +503,15 @@ pub(super) fn a_hero_with_a_scroll() -> (World, Entity) {
     let hero = world.seats[0].unit.expect("stood up");
     world.transform.get_mut(hero).expect("hero").pos = an_empty_spot(&world);
     if let Some(bag) = world.inventory.get_mut(hero) {
-        bag.slots[0] = Some(crate::game::ItemStack {
-            id: bota_proto::ItemId(crate::game::ITEM_TOWN_PORTAL_SCROLL),
+        bag.slots[0] = Some(ItemStack {
+            id: ItemId(ITEM_TOWN_PORTAL_SCROLL),
             charges: 1,
             cooldown: 0,
             mute: 0,
             mode: None,
             bought_tick: 0,
             touched: false,
-            owner: bota_proto::SlotId(0),
+            owner: SlotId(0),
             for_sale: false,
         });
     }
@@ -537,41 +521,41 @@ pub(super) fn a_hero_with_a_scroll() -> (World, Entity) {
 
 /// 300 east of the first Radiant tower, or 300 west when east is not
 /// walkable.
-pub(super) fn beside_own_tower(world: &World) -> bota_proto::Vec2 {
+pub(super) fn beside_own_tower(world: &World) -> Vec2 {
     let tower = world
         .entities
         .iter()
         .find(|entity| {
-            world.kind.get(*entity) == Some(&bota_proto::UnitKind::Tower)
-                && world.team.get(*entity) == Some(&bota_proto::Team::Radiant)
+            world.kind.get(*entity) == Some(&UnitKind::Tower)
+                && world.team.get(*entity) == Some(&Team::Radiant)
         })
         .expect("its side has towers");
     let at = world.transform.get(tower).expect("standing").pos;
-    let beside = at + bota_proto::Vec2::from_ints(300, 0);
+    let beside = at + Vec2::from_ints(300, 0);
     if world.clearance.walkable(beside) {
         beside
     } else {
-        at + bota_proto::Vec2::from_ints(-300, 0)
+        at + Vec2::from_ints(-300, 0)
     }
 }
 
 /// A match hero moved to [`an_empty_spot`] with one charge of `item` in its
 /// first slot, one tick on.
-pub(super) fn a_hero_with_a_ward(item: u16) -> (World, Entity, bota_proto::Vec2) {
+pub(super) fn a_hero_with_a_ward(item: u16) -> (World, Entity, Vec2) {
     let mut world = World::for_match(&config(), config().rng());
     let hero = world.seats[0].unit.expect("stood up");
     let spot = an_empty_spot(&world);
     world.transform.get_mut(hero).expect("hero").pos = spot;
     if let Some(bag) = world.inventory.get_mut(hero) {
-        bag.slots[0] = Some(crate::game::ItemStack {
-            id: bota_proto::ItemId(item),
+        bag.slots[0] = Some(ItemStack {
+            id: ItemId(item),
             charges: 1,
             cooldown: 0,
             mute: 0,
             mode: None,
             bought_tick: 0,
             touched: false,
-            owner: bota_proto::SlotId(0),
+            owner: SlotId(0),
             for_sale: false,
         });
     }
@@ -584,50 +568,41 @@ pub(super) fn the_ward(world: &World) -> Entity {
     world
         .entities
         .iter()
-        .find(|entity| world.kind.get(*entity) == Some(&bota_proto::UnitKind::Ward))
+        .find(|entity| world.kind.get(*entity) == Some(&UnitKind::Ward))
         .expect("a ward stands")
 }
 
 /// A hero on the big map standing beside the forest, with one item in hand.
-pub(super) fn a_hero_by_the_trees(item: u16, charges: u8) -> (World, Entity, bota_proto::Vec2) {
-    let map = crate::game::map_of(bota_proto::MapId(0));
+pub(super) fn a_hero_by_the_trees(item: u16, charges: u8) -> (World, Entity, Vec2) {
+    let map = map_of(MapId(0));
     let mut world = World::on_map(map);
-    let tree = crate::game::tree_positions(map)
+    let tree = tree_positions(map)
         .into_iter()
         .find(|at| {
-            world
-                .clearance
-                .stands_clear(*at + bota_proto::Vec2::from_ints(120, 0))
-                && world
-                    .clearance
-                    .stands_clear(*at + bota_proto::Vec2::from_ints(240, 0))
+            world.clearance.stands_clear(*at + Vec2::from_ints(120, 0))
+                && world.clearance.stands_clear(*at + Vec2::from_ints(240, 0))
         })
         .expect("some tree has open ground beside it");
-    let stand = tree + bota_proto::Vec2::from_ints(120, 0);
-    let hero = world.spawn_hero(
-        bota_proto::Team::Radiant,
-        stand,
-        bota_proto::SlotId(0),
-        bota_proto::HeroId(0),
-    );
-    world.seats.push(crate::game::Seat::new(
-        bota_proto::SlotId(0),
-        bota_proto::Team::Radiant,
-        bota_proto::HeroId(0),
+    let stand = tree + Vec2::from_ints(120, 0);
+    let hero = world.spawn_hero(Team::Radiant, stand, SlotId(0), HeroId(0));
+    world.seats.push(Seat::new(
+        SlotId(0),
+        Team::Radiant,
+        HeroId(0),
         0,
         rules::STASH_SLOTS,
     ));
     world.seats[0].unit = Some(hero);
     if let Some(bag) = world.inventory.get_mut(hero) {
-        bag.slots[0] = Some(crate::game::ItemStack {
-            id: bota_proto::ItemId(item),
+        bag.slots[0] = Some(ItemStack {
+            id: ItemId(item),
             charges,
             cooldown: 0,
             mute: 0,
             mode: None,
             bought_tick: 0,
             touched: false,
-            owner: bota_proto::SlotId(0),
+            owner: SlotId(0),
             for_sale: false,
         });
     }
@@ -637,35 +612,33 @@ pub(super) fn a_hero_by_the_trees(item: u16, charges: u8) -> (World, Entity, bot
 }
 
 /// Whether the cell a spot falls in still stops a sight line.
-pub(super) fn sight_stopped_at(world: &World, at: bota_proto::Vec2) -> bool {
-    crate::game::CellGrid::cell_of(at).is_some_and(|(cx, cy)| !world.sight_block.cell_open(cx, cy))
+pub(super) fn sight_stopped_at(world: &World, at: Vec2) -> bool {
+    CellGrid::cell_of(at).is_some_and(|(cx, cy)| !world.sight_block.cell_open(cx, cy))
 }
 
 /// How long a tango eaten off the tree at a spot mends for.
-pub(super) fn tango_ticks(world: &mut World, hero: Entity, at: bota_proto::Vec2) -> u32 {
-    world
-        .modifiers
-        .insert(hero, crate::game::Modifiers(Vec::new()));
+pub(super) fn tango_ticks(world: &mut World, hero: Entity, at: Vec2) -> u32 {
+    world.modifiers.insert(hero, Modifiers(Vec::new()));
     if let Some(bag) = world.inventory.get_mut(hero) {
-        bag.slots[1] = Some(crate::game::ItemStack {
-            id: bota_proto::ItemId(crate::game::ITEM_TANGO),
+        bag.slots[1] = Some(ItemStack {
+            id: ItemId(ITEM_TANGO),
             charges: 1,
             cooldown: 0,
             mute: 0,
             mode: None,
             bought_tick: 0,
             touched: false,
-            owner: bota_proto::SlotId(0),
+            owner: SlotId(0),
             for_sale: false,
         });
     }
-    assert!(world.use_item(hero, 1, bota_proto::Target::Pos(at), &mut Vec::new()));
+    assert!(world.use_item(hero, 1, Target::Pos(at), &mut Vec::new()));
     world
         .modifiers
         .get(hero)
         .expect("it mends")
         .active()
-        .find(|held| matches!(held.kind, crate::game::ModifierKind::Mending { .. }))
+        .find(|held| matches!(held.kind, ModifierKind::Mending { .. }))
         .expect("of health")
         .ticks_left
         .expect("for a while")
@@ -675,7 +648,7 @@ pub(super) fn tango_ticks(world: &mut World, hero: Entity, at: bota_proto::Vec2)
 pub(super) fn one_swing_takes(world: &mut World, from: Entity, on: Entity) -> i32 {
     world.set_target(from, on);
     if let Some(action) = world.action.get_mut(from) {
-        action.state = crate::game::ActionState::Ready;
+        action.state = ActionState::Ready;
         action.attack_cooldown = 0;
     }
     let before = world.health.get(on).expect("standing").hp;
@@ -690,15 +663,10 @@ pub(super) fn one_swing_takes(world: &mut World, from: Entity, on: Entity) -> i3
 }
 
 /// Puts an effect with no source on a unit for `ticks` ticks.
-pub(super) fn put_on(
-    world: &mut World,
-    entity: Entity,
-    kind: crate::game::ModifierKind,
-    ticks: u32,
-) {
+pub(super) fn put_on(world: &mut World, entity: Entity, kind: ModifierKind, ticks: u32) {
     world.put_modifier(
         entity,
-        crate::game::Modifier {
+        Modifier {
             kind,
             source: None,
             ticks_left: Some(ticks),
@@ -711,23 +679,23 @@ pub(super) fn put_on(
 pub(super) fn pudge_and_a_mark(apart: i32) -> (World, Entity, Entity) {
     let mut world = World::new();
     let pudge = world.spawn_hero(
-        bota_proto::Team::Radiant,
-        bota_proto::Vec2::from_ints(5000, 5000),
-        bota_proto::SlotId(0),
-        bota_proto::HeroId(1),
+        Team::Radiant,
+        Vec2::from_ints(5000, 5000),
+        SlotId(0),
+        HeroId(1),
     );
     let mark = world.spawn_unit(
         &MELEE_CREEP,
-        bota_proto::Team::Dire,
-        bota_proto::Vec2::from_ints(5000 + apart, 5000),
+        Team::Dire,
+        Vec2::from_ints(5000 + apart, 5000),
     );
     if let Some(book) = world.abilities.get_mut(pudge) {
         book.slots[0].level = 1;
     }
-    world.seats.push(crate::game::Seat::new(
-        bota_proto::SlotId(0),
-        bota_proto::Team::Radiant,
-        bota_proto::HeroId(1),
+    world.seats.push(Seat::new(
+        SlotId(0),
+        Team::Radiant,
+        HeroId(1),
         0,
         rules::STASH_SLOTS,
     ));
@@ -738,24 +706,24 @@ pub(super) fn pudge_and_a_mark(apart: i32) -> (World, Entity, Entity) {
 }
 
 /// Sends Pudge's hook at a spot the way a player does.
-pub(super) fn throw_hook(world: &mut World, at: bota_proto::Vec2) {
-    world.advance(&[crate::game::Command {
-        slot: bota_proto::SlotId(0),
+pub(super) fn throw_hook(world: &mut World, at: Vec2) {
+    world.advance(&[Command {
+        slot: SlotId(0),
         unit: None,
-        order: bota_proto::Order::Cast {
-            slot: bota_proto::AbilitySlot(0),
-            target: bota_proto::Target::Pos(at),
+        order: Order::Cast {
+            slot: AbilitySlot(0),
+            target: Target::Pos(at),
         },
     }]);
 }
 
 /// Sends one of Pudge's abilities the way a player does.
-pub(super) fn pudge_casts(world: &mut World, slot: u8, target: bota_proto::Target) {
-    world.advance(&[crate::game::Command {
-        slot: bota_proto::SlotId(0),
+pub(super) fn pudge_casts(world: &mut World, slot: u8, target: Target) {
+    world.advance(&[Command {
+        slot: SlotId(0),
         unit: None,
-        order: bota_proto::Order::Cast {
-            slot: bota_proto::AbilitySlot(slot),
+        order: Order::Cast {
+            slot: AbilitySlot(slot),
             target,
         },
     }]);
@@ -764,35 +732,35 @@ pub(super) fn pudge_casts(world: &mut World, slot: u8, target: bota_proto::Targe
 /// Lays one item in a hero's first slot.
 pub(super) fn hand_item(world: &mut World, hero: Entity, item: u16, charges: u8) {
     if let Some(bag) = world.inventory.get_mut(hero) {
-        bag.slots[0] = Some(crate::game::ItemStack {
-            id: bota_proto::ItemId(item),
+        bag.slots[0] = Some(ItemStack {
+            id: ItemId(item),
             charges,
             cooldown: 0,
             mute: 0,
             mode: None,
             bought_tick: 0,
             touched: false,
-            owner: bota_proto::SlotId(0),
+            owner: SlotId(0),
             for_sale: false,
         });
     }
 }
 
 /// A camp of two kobolds at a spot, asleep and at home.
-pub(super) fn a_camp_at(world: &mut World, at: bota_proto::Vec2) -> Vec<Entity> {
+pub(super) fn a_camp_at(world: &mut World, at: Vec2) -> Vec<Entity> {
     let mut beasts = Vec::new();
     for step in 0..2 {
         let beast = world.spawn_unit(
-            crate::game::NeutralKind::Kobold.def(),
-            bota_proto::Team::Neutral,
-            at + bota_proto::Vec2::from_ints(60 * step, 0),
+            NeutralKind::Kobold.def(),
+            Team::Neutral,
+            at + Vec2::from_ints(60 * step, 0),
         );
         world
             .camp_home
-            .insert(beast, crate::game::CampHome { camp: 0, home: at });
+            .insert(beast, CampHome { camp: 0, home: at });
         world.neutral_ai.insert(
             beast,
-            crate::game::NeutralAi {
+            NeutralAi {
                 leash_left: rules::NEUTRAL_AGGRO_WINDOW,
                 reaggro_block: 0,
                 next_window: rules::NEUTRAL_AGGRO_WINDOW,
@@ -809,12 +777,12 @@ pub(super) fn a_camp_at(world: &mut World, at: bota_proto::Vec2) -> Vec<Entity> 
 /// Casts seat 0's third ability (Sylla's bounce) at somebody, the way a
 /// player does.
 pub(super) fn cast_at(world: &mut World, mark: Entity) {
-    world.advance(&[crate::game::Command {
-        slot: bota_proto::SlotId(0),
+    world.advance(&[Command {
+        slot: SlotId(0),
         unit: None,
-        order: bota_proto::Order::Cast {
-            slot: bota_proto::AbilitySlot(2),
-            target: bota_proto::Target::Unit(crate::game::wire_id(mark)),
+        order: Order::Cast {
+            slot: AbilitySlot(2),
+            target: Target::Unit(wire_id(mark)),
         },
     }]);
 }
@@ -825,12 +793,10 @@ pub(super) fn the_courier(world: &World) -> Entity {
 }
 
 pub(super) fn courier_on_delivery() -> (World, Entity, Entity) {
-    use bota_proto::{AbilitySlot, Order, Target};
-
     let (mut world, hero) = a_hero_with_gold(0);
     let courier = the_courier(&world);
     world.transform.get_mut(hero).expect("standing").pos = rules::DEMO_LANE_CORNERS[0];
-    hand_item(&mut world, courier, crate::game::ITEM_BOOTS, 0);
+    hand_item(&mut world, courier, ITEM_BOOTS, 0);
     advance_validated(
         &mut world,
         Some(courier),
@@ -840,10 +806,7 @@ pub(super) fn courier_on_delivery() -> (World, Entity, Entity) {
         },
     );
     world.advance(&[]);
-    assert_eq!(
-        world.errand.get(courier),
-        Some(&crate::game::Errand::ToOwner)
-    );
+    assert_eq!(world.errand.get(courier), Some(&Errand::ToOwner));
     assert!(slot_of(&world, courier, 0).is_some());
     (world, hero, courier)
 }
@@ -861,33 +824,30 @@ pub(super) fn a_hero_with_gold(gold: i32) -> (World, Entity) {
 }
 
 /// What sits in one of a hero's inventory slots.
-pub(super) fn slot_of(world: &World, hero: Entity, at: usize) -> Option<crate::game::ItemStack> {
+pub(super) fn slot_of(world: &World, hero: Entity, at: usize) -> Option<ItemStack> {
     world.inventory.get(hero).and_then(|bag| bag.slots[at])
 }
 
 /// What one item of the catalog costs.
 pub(super) fn price_of(item: u16) -> i32 {
-    crate::game::ITEMS[usize::from(item)].cost
+    ITEMS[usize::from(item)].cost
 }
 
 pub(super) fn reject_purchase_without_mutation(
     world: &mut World,
     hero: Entity,
-    item: bota_proto::ItemId,
-    reason: bota_proto::RejectReason,
+    item: ItemId,
+    reason: RejectReason,
 ) {
     let bag = world.inventory.get(hero).expect("bag").clone();
     let stash = world.seats[0].stash.clone();
     let gold = world.seats[0].gold;
-    let order = bota_proto::Order::Buy { item };
-    for unit in [None, Some(crate::game::wire_id(the_courier(world)))] {
-        assert_eq!(
-            world.validate_order(bota_proto::SlotId(0), unit, &order),
-            Err(reason)
-        );
+    let order = Order::Buy { item };
+    for unit in [None, Some(wire_id(the_courier(world)))] {
+        assert_eq!(world.validate_order(SlotId(0), unit, &order), Err(reason));
     }
     let mut events = Vec::new();
-    assert!(!world.buy(bota_proto::SlotId(0), item, &mut events));
+    assert!(!world.buy(SlotId(0), item, &mut events));
     assert_eq!(world.inventory.get(hero), Some(&bag));
     assert_eq!(world.seats[0].stash, stash);
     assert_eq!(world.seats[0].gold, gold);
@@ -904,30 +864,30 @@ pub(super) fn on_the_ground(world: &World) -> Vec<Entity> {
 }
 
 /// A plain stack of one item for a seat, already touched.
-pub(super) fn a_stack_of(item: u16, owner: u8) -> crate::game::ItemStack {
-    crate::game::ItemStack {
-        id: bota_proto::ItemId(item),
+pub(super) fn a_stack_of(item: u16, owner: u8) -> ItemStack {
+    ItemStack {
+        id: ItemId(item),
         charges: 0,
         cooldown: 0,
         mute: 0,
         mode: None,
         bought_tick: 0,
         touched: true,
-        owner: bota_proto::SlotId(owner),
+        owner: SlotId(owner),
         for_sale: false,
     }
 }
 
 /// A world with a wall of closed ground between two spots, so the way from
 /// one to the other has to be found rather than walked straight.
-pub(super) fn a_world_with_a_wall(from: bota_proto::Vec2, to: bota_proto::Vec2) -> World {
+pub(super) fn a_world_with_a_wall(from: Vec2, to: Vec2) -> World {
     let mut world = World::for_match(&config(), config().rng());
     world.settle();
-    let middle = bota_proto::Vec2 {
-        x: bota_proto::Fixed {
+    let middle = Vec2 {
+        x: Fixed {
             raw: (from.x.raw / 2).saturating_add(to.x.raw / 2),
         },
-        y: bota_proto::Fixed {
+        y: Fixed {
             raw: (from.y.raw / 2).saturating_add(to.y.raw / 2),
         },
     };
@@ -941,7 +901,7 @@ pub(super) fn a_world_with_a_wall(from: bota_proto::Vec2, to: bota_proto::Vec2) 
 
 /// Stands a circle of closed ground on a world, beside everything else
 /// standing on it.
-pub(super) fn stand_a_wall(world: &mut World, at: bota_proto::Vec2, radius: Fixed) {
+pub(super) fn stand_a_wall(world: &mut World, at: Vec2, radius: Fixed) {
     let mut circles = world.clearance.circles().to_vec();
     circles.push((at, radius));
     world.clearance.set_circles(circles);
@@ -952,25 +912,25 @@ pub(super) fn stand_a_wall(world: &mut World, at: bota_proto::Vec2, radius: Fixe
 pub(super) fn fiend_and_a_mark(apart: i32) -> (World, Entity, Entity) {
     let mut world = World::new();
     let fiend = world.spawn_hero(
-        bota_proto::Team::Radiant,
-        bota_proto::Vec2::from_ints(5000, 5000),
-        bota_proto::SlotId(0),
-        bota_proto::HeroId(2),
+        Team::Radiant,
+        Vec2::from_ints(5000, 5000),
+        SlotId(0),
+        HeroId(2),
     );
     let mark = world.spawn_unit(
         &MELEE_CREEP,
-        bota_proto::Team::Dire,
-        bota_proto::Vec2::from_ints(5000 + apart, 5000),
+        Team::Dire,
+        Vec2::from_ints(5000 + apart, 5000),
     );
     if let Some(book) = world.abilities.get_mut(fiend) {
         for held in book.slots.iter_mut() {
             held.level = 1;
         }
     }
-    world.seats.push(crate::game::Seat::new(
-        bota_proto::SlotId(0),
-        bota_proto::Team::Radiant,
-        bota_proto::HeroId(2),
+    world.seats.push(Seat::new(
+        SlotId(0),
+        Team::Radiant,
+        HeroId(2),
         0,
         rules::STASH_SLOTS,
     ));
@@ -982,22 +942,18 @@ pub(super) fn fiend_and_a_mark(apart: i32) -> (World, Entity, Entity) {
 
 /// Casts one of the slots at nothing, the way a player does.
 pub(super) fn let_go(world: &mut World, slot: u8) {
-    world.advance(&[crate::game::Command {
-        slot: bota_proto::SlotId(0),
+    world.advance(&[Command {
+        slot: SlotId(0),
         unit: None,
-        order: bota_proto::Order::Cast {
-            slot: bota_proto::AbilitySlot(slot),
-            target: bota_proto::Target::None,
+        order: Order::Cast {
+            slot: AbilitySlot(slot),
+            target: Target::None,
         },
     }]);
 }
 
 /// Stands a creep of one side up at a spot.
-pub(super) fn a_creep_at(
-    world: &mut World,
-    team: bota_proto::Team,
-    at: bota_proto::Vec2,
-) -> Entity {
+pub(super) fn a_creep_at(world: &mut World, team: Team, at: Vec2) -> Entity {
     let creep = world.spawn_unit(&MELEE_CREEP, team, at);
     world.settle();
     creep
@@ -1006,34 +962,30 @@ pub(super) fn a_creep_at(
 /// Sets a hero's soul count.
 pub(super) fn hand_souls(world: &mut World, hero: Entity, many: u32) {
     let mut kept = world.stacks.get(hero).copied().unwrap_or_default();
-    kept.set(crate::game::StackKind::Souls, many);
+    kept.set(StackKind::Souls, many);
     world.stacks.insert(hero, kept);
 }
 
 /// The standing structure at a spot, however it is guarded.
-pub(super) fn structure_at(world: &World, pos: bota_proto::Vec2) -> Entity {
+pub(super) fn structure_at(world: &World, pos: Vec2) -> Entity {
     world
         .entities
         .iter()
         .find(|e| {
             world.transform.get(*e).is_some_and(|t| t.pos == pos)
-                && world
-                    .kind
-                    .get(*e)
-                    .copied()
-                    .is_some_and(crate::game::is_structure)
+                && world.kind.get(*e).copied().is_some_and(is_structure)
         })
         .expect("a structure stands there")
 }
 
 /// Whether the structure at a spot may be struck.
-pub(super) fn open_at(world: &World, pos: bota_proto::Vec2) -> bool {
+pub(super) fn open_at(world: &World, pos: Vec2) -> bool {
     let it = structure_at(world, pos);
     !world.stats.get(it).expect("settled").invulnerable
 }
 
 /// Takes a structure at a spot down the way a fight would.
-pub(super) fn fell_at(world: &mut World, pos: bota_proto::Vec2) {
+pub(super) fn fell_at(world: &mut World, pos: Vec2) {
     let it = structure_at(world, pos);
     let mut events = Vec::new();
     world.bury(vec![(it, None)], &mut events);
@@ -1042,7 +994,7 @@ pub(super) fn fell_at(world: &mut World, pos: bota_proto::Vec2) {
 
 /// Steps the world to the next wave spawn and hands back that wave's mid
 /// creeps of one side.
-pub(super) fn next_mid_wave(world: &mut World, team: bota_proto::Team) -> Vec<Entity> {
+pub(super) fn next_mid_wave(world: &mut World, team: Team) -> Vec<Entity> {
     let before: Vec<Entity> = world.entities.iter().collect();
     loop {
         world.advance(&[]);
@@ -1052,7 +1004,7 @@ pub(super) fn next_mid_wave(world: &mut World, team: bota_proto::Team) -> Vec<En
             .filter(|e| {
                 !before.contains(e)
                     && world.march.get(*e).is_some()
-                    && world.lane.get(*e).copied() == Some(crate::game::Lane(rules::LANE_MID))
+                    && world.lane.get(*e).copied() == Some(Lane(rules::LANE_MID))
                     && world.team.get(*e).copied() == Some(team)
             })
             .collect();
@@ -1064,8 +1016,8 @@ pub(super) fn next_mid_wave(world: &mut World, team: bota_proto::Team) -> Vec<En
 
 /// How far along a lane's centerline a point stands, in world units: the
 /// length of the line up to the point's foot on its nearest segment.
-pub(super) fn lane_progress(line: &[bota_proto::Vec2], pos: bota_proto::Vec2) -> i64 {
-    let at = |v: bota_proto::Vec2| (i64::from(v.x.to_int()), i64::from(v.y.to_int()));
+pub(super) fn lane_progress(line: &[Vec2], pos: Vec2) -> i64 {
+    let at = |v: Vec2| (i64::from(v.x.to_int()), i64::from(v.y.to_int()));
     let (px, py) = at(pos);
     let mut nearest: Option<(i64, i64)> = None;
     let mut walked = 0;
@@ -1086,16 +1038,14 @@ pub(super) fn lane_progress(line: &[bota_proto::Vec2], pos: bota_proto::Vec2) ->
     nearest.map_or(0, |(_, progress)| progress)
 }
 
-pub(super) fn nearby_elevations(
-    ground: &crate::game::Ground,
-) -> (bota_proto::Vec2, bota_proto::Vec2, bota_proto::Vec2) {
+pub(super) fn nearby_elevations(ground: &Ground) -> (Vec2, Vec2, Vec2) {
     const RADIUS: usize = 6;
-    for sy in RADIUS..crate::game::TERRAIN_CELLS - RADIUS {
-        for sx in RADIUS..crate::game::TERRAIN_CELLS - RADIUS {
+    for sy in RADIUS..TERRAIN_CELLS - RADIUS {
+        for sx in RADIUS..TERRAIN_CELLS - RADIUS {
             if !ground.cell_walkable(sx, sy) {
                 continue;
             }
-            let source = bota_proto::Vec2::from_ints(
+            let source = Vec2::from_ints(
                 sx as i32 * rules::GRID_CELL_SIZE + rules::GRID_CELL_SIZE / 2,
                 sy as i32 * rules::GRID_CELL_SIZE + rules::GRID_CELL_SIZE / 2,
             );
@@ -1107,7 +1057,7 @@ pub(super) fn nearby_elevations(
                     if (tx == sx && ty == sy) || !ground.cell_walkable(tx, ty) {
                         continue;
                     }
-                    let target = bota_proto::Vec2::from_ints(
+                    let target = Vec2::from_ints(
                         tx as i32 * rules::GRID_CELL_SIZE + rules::GRID_CELL_SIZE / 2,
                         ty as i32 * rules::GRID_CELL_SIZE + rules::GRID_CELL_SIZE / 2,
                     );
@@ -1151,14 +1101,14 @@ pub(super) const UPHILL_TEST_TARGET: UnitDef = UnitDef {
 };
 
 pub(super) const UPHILL_TEST_BUILDING: UnitDef = UnitDef {
-    kind: bota_proto::UnitKind::Tower,
+    kind: UnitKind::Tower,
     move_speed: 0,
     ..UPHILL_TEST_TARGET
 };
 
 pub(super) fn ranged_damage_after_ticks(
-    source: bota_proto::Vec2,
-    target: bota_proto::Vec2,
+    source: Vec2,
+    target: Vec2,
     attacker_def: &'static UnitDef,
     target_def: &'static UnitDef,
 ) -> i32 {
@@ -1178,7 +1128,7 @@ pub(super) fn ranged_damage_after_ticks(
     world.settle();
     world.set_target(attacker, mark);
     if let Some(at) = world.transform.get_mut(attacker) {
-        at.facing = crate::game::facing_towards(source, target);
+        at.facing = facing_towards(source, target);
     }
     let before = world.health.get(mark).expect("target health").hp;
     for _ in 0..TICKS {
@@ -1191,8 +1141,8 @@ pub(super) fn ranged_damage_after_ticks(
 /// Blows an attacker landed and missed on a target over the same run as
 /// [`ranged_damage_after_ticks`], counted from what the ticks told of.
 pub(super) fn ranged_swings_after_ticks(
-    source: bota_proto::Vec2,
-    target: bota_proto::Vec2,
+    source: Vec2,
+    target: Vec2,
     attacker_def: &'static UnitDef,
     target_def: &'static UnitDef,
 ) -> (usize, usize) {
@@ -1210,21 +1160,19 @@ pub(super) fn ranged_swings_after_ticks(
     world.settle();
     world.set_target(attacker, mark);
     if let Some(at) = world.transform.get_mut(attacker) {
-        at.facing = crate::game::facing_towards(source, target);
+        at.facing = facing_towards(source, target);
     }
     let (mut landed, mut missed) = (0, 0);
     for _ in 0..512 {
         for event in world.step() {
             match event.kind {
-                bota_proto::EventKind::Damaged { source, target, .. }
-                    if source == Some(crate::game::wire_id(attacker))
-                        && target == crate::game::wire_id(mark) =>
+                EventKind::Damaged { source, target, .. }
+                    if source == Some(wire_id(attacker)) && target == wire_id(mark) =>
                 {
                     landed += 1;
                 }
-                bota_proto::EventKind::Missed { source, target }
-                    if source == Some(crate::game::wire_id(attacker))
-                        && target == crate::game::wire_id(mark) =>
+                EventKind::Missed { source, target }
+                    if source == Some(wire_id(attacker)) && target == wire_id(mark) =>
                 {
                     missed += 1;
                 }
@@ -1236,8 +1184,8 @@ pub(super) fn ranged_swings_after_ticks(
 }
 
 pub(super) fn manual_projectile_damage(
-    source_pos: bota_proto::Vec2,
-    target_pos: bota_proto::Vec2,
+    source_pos: Vec2,
+    target_pos: Vec2,
     launch_tier: u8,
     pierces: bool,
 ) -> i32 {
@@ -1252,20 +1200,20 @@ pub(super) fn manual_projectile_damage(
         let missile = world.spawn();
         world.transform.insert(
             missile,
-            crate::game::Transform {
+            Transform {
                 pos: target_pos,
-                facing: bota_proto::Angle::default(),
+                facing: Angle::default(),
             },
         );
         world.set_team(missile, Team::Radiant);
         world.projectile.insert(
             missile,
-            crate::game::Projectile {
+            Projectile {
                 speed: Fixed::ONE,
                 source: Some(source),
                 target,
                 damage: 1,
-                kind: bota_proto::DamageKind::Physical,
+                kind: DamageKind::Physical,
                 damage_amp_bp: rules::NOMINAL_BP,
                 ability: None,
                 launch_tier,
@@ -1292,7 +1240,7 @@ pub(super) fn manual_projectile_damage(
 pub(super) fn ticks_until_near(
     world: &mut World,
     mover: Entity,
-    goal: bota_proto::Vec2,
+    goal: Vec2,
     within: u32,
 ) -> Option<u32> {
     for t in 0..within {
@@ -1307,13 +1255,11 @@ pub(super) fn ticks_until_near(
 
 /// How far along the lane the Radiant wave stands: its front, and all of
 /// it on average.
-pub(super) fn wave_progress(world: &World, route: &[bota_proto::Vec2]) -> (i64, i64) {
+pub(super) fn wave_progress(world: &World, route: &[Vec2]) -> (i64, i64) {
     let each: Vec<i64> = world
         .entities
         .iter()
-        .filter(|e| {
-            world.march.get(*e).is_some() && world.team.get(*e) == Some(&bota_proto::Team::Radiant)
-        })
+        .filter(|e| world.march.get(*e).is_some() && world.team.get(*e) == Some(&Team::Radiant))
         .map(|e| lane_progress(route, world.transform.get(e).expect("standing").pos))
         .collect();
     let front = each.iter().copied().max().unwrap_or(0);
@@ -1326,22 +1272,18 @@ pub(super) fn wave_progress(world: &World, route: &[bota_proto::Vec2]) -> (i64, 
 }
 
 /// The spot a progress along a polyline lands on, shifted sideways.
-pub(super) fn along_lane(
-    route: &[bota_proto::Vec2],
-    progress: i64,
-    aside: i64,
-) -> bota_proto::Vec2 {
+pub(super) fn along_lane(route: &[Vec2], progress: i64, aside: i64) -> Vec2 {
     let mut left = progress;
     for (i, seg) in route.windows(2).enumerate() {
         let (a, b) = (seg[0], seg[1]);
-        let len = crate::game::isqrt64(a.distance_squared(b)) >> 16;
+        let len = isqrt64(a.distance_squared(b)) >> 16;
         if len >= left || i + 2 == route.len() {
             let dx = i64::from(b.x.to_int() - a.x.to_int());
             let dy = i64::from(b.y.to_int() - a.y.to_int());
             let len = len.max(1);
             let x = i64::from(a.x.to_int()) + dx * left / len - dy * aside / len;
             let y = i64::from(a.y.to_int()) + dy * left / len + dx * aside / len;
-            return bota_proto::Vec2::from_ints(x as i32, y as i32);
+            return Vec2::from_ints(x as i32, y as i32);
         }
         left -= len;
     }

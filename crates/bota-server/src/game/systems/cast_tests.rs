@@ -1,12 +1,11 @@
 //! Casting through the body: what goes off at once, what holds the body,
 //! and how what holds it ends.
 
-use bota_proto::{AbilitySlot, DamageKind, Fixed, HeroId, Order, SlotId, Target, Team, Vec2};
-
 use crate::game::{
-    ActionPhase, ActionState, Command, Entity, MELEE_CREEP, Modifier, ModifierKind, PendingCast,
-    Seat, UnitDef, World, rules, wire_id,
+    ActionPhase, ActionState, Command, Entity, Level, MELEE_CREEP, Modifier, ModifierKind,
+    PendingCast, Seat, UnitDef, World, rules, wire_id,
 };
+use bota_proto::{AbilitySlot, DamageKind, Fixed, HeroId, Order, SlotId, Target, Team, Vec2};
 
 /// What takes a strike and never falls: no armor, no mending, no swing back.
 const ANVIL: UnitDef = UnitDef {
@@ -60,9 +59,7 @@ fn sylla_mid_swing() -> (World, Entity) {
         HeroId(0),
     );
     let anvil = world.spawn_unit(&ANVIL, Team::Dire, Vec2::from_ints(5100, 5000));
-    world
-        .level
-        .insert(sylla, crate::game::Level(rules::HERO_MAX_LEVEL));
+    world.level.insert(sylla, Level(rules::HERO_MAX_LEVEL));
     world.settle();
     world.fill_pools(sylla);
     assert!(world.learn(sylla, 1), "the frenzy is learned");

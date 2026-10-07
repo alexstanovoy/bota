@@ -1,6 +1,8 @@
-use bota_proto::{Attribute, HeroId, ItemId, SlotId, Team, WorldView};
-
-use crate::game::{HitEffect, Inventory, ItemStack, ModifierKind, Seat, rules};
+use crate::game::{HitEffect, Inventory, ItemStack, ModifierKind, Seat, rules, wire_id};
+use bota_proto::{
+    Attribute, HeroId, ItemId, LEN_PREFIX, SlotId, Team, WorldView, decode_payload,
+    encode_frame_to_vec,
+};
 
 use super::fixtures::*;
 
@@ -117,7 +119,7 @@ fn mechanics_hash_keeps_mango_charges_and_ownership_observable_after_dropping() 
     assert_ne!(world.hash(), changed_owner);
     let expected = world.loot.get(loot).unwrap().0;
     reveal(&mut world, loot);
-    assert!(world.take_item(caster, crate::game::wire_id(loot)));
+    assert!(world.take_item(caster, wire_id(loot)));
     world.tick_handling();
     assert_eq!(
         world.inventory.get(caster).unwrap().slots[0],
@@ -132,9 +134,8 @@ fn raze_ticks_and_counts_round_trip_through_the_existing_snapshot_codec() {
     land(&mut world, caster, target, 0);
     land(&mut world, caster, target, 0);
     let view = world.view_full();
-    let encoded = bota_proto::encode_frame_to_vec(&view).unwrap();
-    let decoded: WorldView =
-        bota_proto::decode_payload(&encoded[bota_proto::LEN_PREFIX..]).unwrap();
+    let encoded = encode_frame_to_vec(&view).unwrap();
+    let decoded: WorldView = decode_payload(&encoded[LEN_PREFIX..]).unwrap();
     assert_eq!(decoded, view);
     assert_eq!(effects(&world, target), vec![effect(2, 240)]);
 }

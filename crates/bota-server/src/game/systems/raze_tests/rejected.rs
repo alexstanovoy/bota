@@ -1,6 +1,5 @@
-use bota_proto::{AbilitySlot, DamageKind, Fixed, Target, Team, Vec2};
-
 use crate::game::{Modifier, ModifierKind, Modifiers, PendingCast};
+use bota_proto::{AbilitySlot, DamageKind, Fixed, Target, Team, Vec2};
 
 use super::fixtures::*;
 

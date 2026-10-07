@@ -1,8 +1,7 @@
 //! Keeping a target in reach against a closer one of the same class.
 
-use bota_proto::{Fixed, Team, Vec2};
-
 use crate::game::{Entity, LaneAi, MELEE_CREEP, SIEGE_CREEP, Visibility, World, tower_def};
+use bota_proto::{Fixed, Team, Vec2};
 
 #[test]
 fn reachable_class_zero_target_is_kept_over_a_closer_equal_class() {

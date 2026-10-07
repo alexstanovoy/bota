@@ -1,19 +1,16 @@
 //! Shadow Fiend.
 
-use crate::game::rules;
-use crate::game::{ModifierKind, StackKind, World};
-use bota_proto::Fixed;
+use crate::game::{
+    ActionState, ModifierKind, StackKind, World, ability, isqrt64, rules, tower_def, wire_id,
+};
+use bota_proto::{DamageKind, EventKind, Fixed, HeroId, SlotId, StatusFlags, Team, Vec2};
 
 use super::support::*;
 
 #[test]
 fn a_raze_burns_what_stands_where_it_lands_and_nothing_else() {
     let (mut world, _fiend, near) = fiend_and_a_mark(rules::RAZE_DISTANCE[1]);
-    let far = a_creep_at(
-        &mut world,
-        bota_proto::Team::Dire,
-        bota_proto::Vec2::from_ints(5000 + 900, 5000),
-    );
+    let far = a_creep_at(&mut world, Team::Dire, Vec2::from_ints(5000 + 900, 5000));
     let (was_near, was_far) = (
         world.health.get(near).expect("standing").hp,
         world.health.get(far).expect("standing").hp,
@@ -35,9 +32,9 @@ fn a_raze_burns_what_stands_where_it_lands_and_nothing_else() {
 fn a_raze_burns_the_creep_at_a_tower_and_leaves_the_tower_whole() {
     let (mut world, fiend, creep) = fiend_and_a_mark(rules::RAZE_DISTANCE[1]);
     let tower = world.spawn_unit(
-        crate::game::tower_def(1),
-        bota_proto::Team::Dire,
-        bota_proto::Vec2::from_ints(5000 + rules::RAZE_DISTANCE[1], 5000 + 200),
+        tower_def(1),
+        Team::Dire,
+        Vec2::from_ints(5000 + rules::RAZE_DISTANCE[1], 5000 + 200),
     );
     world.settle();
     let (was_creep, was_tower) = (
@@ -70,8 +67,8 @@ fn a_raze_lands_at_its_own_reach_however_near_the_enemy_stands() {
     let (mut world, _fiend, under) = fiend_and_a_mark(50);
     let out = a_creep_at(
         &mut world,
-        bota_proto::Team::Dire,
-        bota_proto::Vec2::from_ints(5000 + rules::RAZE_DISTANCE[2], 5000),
+        Team::Dire,
+        Vec2::from_ints(5000 + rules::RAZE_DISTANCE[2], 5000),
     );
     let (was_under, was_out) = (
         world.health.get(under).expect("standing").hp,
@@ -97,8 +94,8 @@ fn a_raze_lays_itself_along_the_facing() {
     let (mut world, _fiend, ahead) = fiend_and_a_mark(rules::RAZE_DISTANCE[1]);
     let behind = a_creep_at(
         &mut world,
-        bota_proto::Team::Dire,
-        bota_proto::Vec2::from_ints(5000 - rules::RAZE_DISTANCE[1], 5000),
+        Team::Dire,
+        Vec2::from_ints(5000 - rules::RAZE_DISTANCE[1], 5000),
     );
     let (was_ahead, was_behind) = (
         world.health.get(ahead).expect("standing").hp,
@@ -121,11 +118,7 @@ fn a_raze_lays_itself_along_the_facing() {
 fn souls_come_only_from_what_the_gatherer_brings_down() {
     let (mut world, fiend, mark) = fiend_and_a_mark(400);
     let mut events = Vec::new();
-    let other = a_creep_at(
-        &mut world,
-        bota_proto::Team::Dire,
-        bota_proto::Vec2::from_ints(5400, 5000),
-    );
+    let other = a_creep_at(&mut world, Team::Dire, Vec2::from_ints(5400, 5000));
     world.bury(vec![(other, None)], &mut events);
     assert_eq!(
         world
@@ -150,10 +143,10 @@ fn souls_come_only_from_what_the_gatherer_brings_down() {
 fn a_hero_brought_down_is_worth_more_souls_than_a_creep() {
     let (mut world, fiend, _mark) = fiend_and_a_mark(400);
     let victim = world.spawn_hero(
-        bota_proto::Team::Dire,
-        bota_proto::Vec2::from_ints(5400, 5000),
-        bota_proto::SlotId(1),
-        bota_proto::HeroId(0),
+        Team::Dire,
+        Vec2::from_ints(5400, 5000),
+        SlotId(1),
+        HeroId(0),
     );
     world.settle();
     let mut events = Vec::new();
@@ -207,11 +200,7 @@ fn a_raze_goes_off_where_it_is_asked_for_and_walks_the_caster_nowhere() {
     // Near enough for the shortest raze, far enough that the bodies do not
     // touch and get eased apart.
     let (mut world, fiend, _mark) = fiend_and_a_mark(80);
-    let out = a_creep_at(
-        &mut world,
-        bota_proto::Team::Dire,
-        bota_proto::Vec2::from_ints(6000, 5000),
-    );
+    let out = a_creep_at(&mut world, Team::Dire, Vec2::from_ints(6000, 5000));
     let stood = world.transform.get(fiend).expect("standing").pos;
     let full = world.health.get(out).expect("standing").hp;
     let_go(&mut world, 1);
@@ -240,8 +229,8 @@ fn the_presence_wears_down_the_armor_of_enemies_near_its_carrier() {
     let (mut world, _fiend, near) = fiend_and_a_mark(400);
     let out = a_creep_at(
         &mut world,
-        bota_proto::Team::Dire,
-        bota_proto::Vec2::from_ints(5000 + rules::PRESENCE_RADIUS + 500, 5000),
+        Team::Dire,
+        Vec2::from_ints(5000 + rules::PRESENCE_RADIUS + 500, 5000),
     );
     world.step();
     let (worn, whole) = (
@@ -285,7 +274,7 @@ fn a_requiem_lets_a_line_fly_for_every_soul_and_a_line_burns_what_it_crosses_onc
             .view_full()
             .projectiles
             .iter()
-            .filter(|shown| shown.ability == Some(crate::game::ability::REQUIEM))
+            .filter(|shown| shown.ability == Some(ability::REQUIEM))
             .count()
     };
     assert_eq!(flying(&world), 5, "one line to a soul");
@@ -302,15 +291,15 @@ fn a_requiem_lets_a_line_fly_for_every_soul_and_a_line_burns_what_it_crosses_onc
     let mut burns = Vec::new();
     for _ in 0..60 {
         for event in world.step() {
-            if let bota_proto::EventKind::Damaged {
+            if let EventKind::Damaged {
                 source,
                 target,
                 amount,
-                kind: bota_proto::DamageKind::Magical,
+                kind: DamageKind::Magical,
                 ..
             } = event.kind
-                && source == Some(crate::game::wire_id(fiend))
-                && target == crate::game::wire_id(mark)
+                && source == Some(wire_id(fiend))
+                && target == wire_id(mark)
             {
                 burns.push(amount);
             }
@@ -331,11 +320,7 @@ fn a_requiem_lets_a_line_fly_for_every_soul_and_a_line_burns_what_it_crosses_onc
 #[test]
 fn a_requiem_burns_the_creep_at_a_tower_and_leaves_the_tower_whole() {
     let (mut world, fiend, creep) = fiend_and_a_mark(400);
-    let tower = world.spawn_unit(
-        crate::game::tower_def(1),
-        bota_proto::Team::Dire,
-        bota_proto::Vec2::from_ints(5700, 5000),
-    );
+    let tower = world.spawn_unit(tower_def(1), Team::Dire, Vec2::from_ints(5700, 5000));
     world.settle();
     hand_souls(&mut world, fiend, 5);
     world.step();
@@ -397,13 +382,13 @@ fn what_stands_at_the_fiend_is_crossed_by_every_line_and_held_the_longest() {
         "and it walks slower"
     );
     let projected = world
-        .view(bota_proto::Team::Dire)
+        .view(Team::Dire)
         .units
         .into_iter()
-        .find(|unit| unit.id == crate::game::wire_id(mark))
+        .find(|unit| unit.id == wire_id(mark))
         .expect("the frightened creep is projected");
     assert_ne!(
-        projected.statuses.bits & bota_proto::StatusFlags::FEARED,
+        projected.statuses.bits & StatusFlags::FEARED,
         0,
         "and the fear is on the wire"
     );
@@ -415,7 +400,7 @@ fn what_the_requiem_frightens_runs_from_the_fiend_and_swings_at_nothing() {
     hand_souls(&mut world, fiend, 5);
     world.step();
     let apart = |world: &World| {
-        crate::game::isqrt64(
+        isqrt64(
             world
                 .transform
                 .get(fiend)
@@ -436,7 +421,7 @@ fn what_the_requiem_frightens_runs_from_the_fiend_and_swings_at_nothing() {
         assert!(
             !matches!(
                 world.action.get(mark).map(|action| action.state),
-                Some(crate::game::ActionState::Attack { .. })
+                Some(ActionState::Attack { .. })
             ),
             "feared, it swings at nothing"
         );
@@ -478,20 +463,18 @@ fn a_raze_leaves_its_mark_where_it_lands_for_whoever_sees_the_spot() {
     let (mut world, _fiend, _mark) = fiend_and_a_mark(apart);
     let_go(&mut world, 2);
     world.step();
-    let dire = world.view(bota_proto::Team::Dire);
+    let dire = world.view(Team::Dire);
     let landed = dire
         .projectiles
         .iter()
-        .find(|shown| shown.ability == Some(crate::game::ability::RAZE_FAR))
+        .find(|shown| shown.ability == Some(ability::RAZE_FAR))
         .expect("the Dire side sees the raze where it landed");
     assert_eq!(
         landed.pos,
-        bota_proto::Vec2::from_ints(5000 + rules::RAZE_DISTANCE[2], 5000)
+        Vec2::from_ints(5000 + rules::RAZE_DISTANCE[2], 5000)
     );
     assert!(
-        dire.units
-            .iter()
-            .all(|shown| shown.hero != Some(bota_proto::HeroId(2))),
+        dire.units.iter().all(|shown| shown.hero != Some(HeroId(2))),
         "and still does not see the fiend"
     );
     for _ in 0..rules::MARK_TICKS {
@@ -502,7 +485,7 @@ fn a_raze_leaves_its_mark_where_it_lands_for_whoever_sees_the_spot() {
             .view_full()
             .projectiles
             .iter()
-            .all(|shown| shown.ability != Some(crate::game::ability::RAZE_FAR)),
+            .all(|shown| shown.ability != Some(ability::RAZE_FAR)),
         "the mark is gone once its ticks have run"
     );
 }
@@ -535,11 +518,7 @@ fn a_requiem_with_no_souls_gathered_touches_nobody() {
 #[test]
 fn a_structure_brought_down_is_worth_no_soul() {
     let (mut world, fiend, _mark) = fiend_and_a_mark(400);
-    let tower = world.spawn_unit(
-        crate::game::tower_def(1),
-        bota_proto::Team::Dire,
-        bota_proto::Vec2::from_ints(5600, 5000),
-    );
+    let tower = world.spawn_unit(tower_def(1), Team::Dire, Vec2::from_ints(5600, 5000));
     world.settle();
     let mut events = Vec::new();
     world.bury(vec![(tower, Some(fiend))], &mut events);
@@ -558,11 +537,11 @@ fn the_view_carries_what_has_been_gathered_as_a_counted_effect() {
     let mut events = Vec::new();
     world.bury(vec![(mark, Some(fiend))], &mut events);
     world.step();
-    let view = world.view(bota_proto::Team::Radiant);
+    let view = world.view(Team::Radiant);
     let shown = view
         .units
         .iter()
-        .find(|u| u.hero == Some(bota_proto::HeroId(2)))
+        .find(|u| u.hero == Some(HeroId(2)))
         .expect("he is in the view");
     let souls = shown
         .effects

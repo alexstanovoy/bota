@@ -1,8 +1,8 @@
+use crate::game::{Entity, Event, Ratio, Stats, UnitOrder, World, rules, wire_id};
 use bota_proto::{
-    Angle, DamageKind, EffectId, EffectView, EventKind, Fixed, HeroId, SlotId, Team, Vec2,
+    Angle, Attributes, DamageKind, EffectId, EffectView, EventKind, Fixed, HeroId, SlotId, Team,
+    Vec2,
 };
-
-use crate::game::{Entity, Event, Stats, UnitOrder, World, wire_id};
 
 pub(super) const RAZE_EFFECT: EffectId = EffectId(15);
 pub(super) const ORIGIN: Vec2 = Vec2::from_ints(5000, 5000);
@@ -52,7 +52,7 @@ fn stats() -> Stats {
         acquisition: Fixed::ZERO,
         attack_time: 1000,
         attack_speed: 100,
-        attributes: bota_proto::Attributes::ZERO,
+        attributes: Attributes::ZERO,
         primary: None,
         attack_point: 0,
         attack_backswing: 0,
@@ -60,11 +60,11 @@ fn stats() -> Stats {
         armor: Fixed::ZERO,
         magic_resist_pct: 0,
         status_resist_bp: 0,
-        physical_amp_bp: crate::game::rules::NOMINAL_BP,
-        magic_amp_bp: crate::game::rules::NOMINAL_BP,
-        pure_amp_bp: crate::game::rules::NOMINAL_BP,
-        cooldown_rate_bp: crate::game::rules::NOMINAL_BP,
-        mana_cost_rate_bp: crate::game::rules::NOMINAL_BP,
+        physical_amp_bp: rules::NOMINAL_BP,
+        magic_amp_bp: rules::NOMINAL_BP,
+        pure_amp_bp: rules::NOMINAL_BP,
+        cooldown_rate_bp: rules::NOMINAL_BP,
+        mana_cost_rate_bp: rules::NOMINAL_BP,
         move_speed: Fixed::ZERO,
         turn_rate: 0,
         damage_to_creeps: 0,
@@ -74,8 +74,8 @@ fn stats() -> Stats {
         flies: false,
         phased: false,
         invulnerable: false,
-        evasion: crate::game::Ratio::NEVER,
-        pierce: crate::game::Ratio::NEVER,
+        evasion: Ratio::NEVER,
+        pierce: Ratio::NEVER,
         pierce_damage: 0,
     }
 }
