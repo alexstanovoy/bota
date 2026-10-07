@@ -2,8 +2,9 @@
 
 use bota_proto::{DamageKind, Fixed, Target};
 
-use crate::engine::Entity;
 use crate::game::{Modifier, ModifierKind, StackKind, World, ability, rules};
+
+use crate::engine::Entity;
 
 impl World {
     /// Switches the rot on, or off if it already burns. On, its cloud shows

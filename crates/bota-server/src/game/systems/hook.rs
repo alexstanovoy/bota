@@ -2,9 +2,12 @@
 
 use bota_proto::{DamageKind, Fixed, Target, UnitKind, Vec2};
 
+use crate::game::{
+    Hook, Modifier, ModifierKind, Transform, World, ability, facing_towards, is_structure,
+    move_towards, per_tick, rules,
+};
+
 use crate::engine::Entity;
-use crate::game::{Hook, Modifier, ModifierKind, Transform, World, ability, is_structure, rules};
-use crate::game::{facing_towards, move_towards, per_tick};
 
 impl World {
     /// Throws a hook at a spot, no further out than it reaches.

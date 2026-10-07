@@ -2,8 +2,11 @@
 
 use bota_proto::{DamageKind, Fixed, UnitKind};
 
+use crate::game::{
+    Landed, Modifier, ModifierKind, Stats, Table, World, ability, cooldown_after, item_def, rules,
+};
+
 use crate::engine::Entity;
-use crate::game::{Modifier, ModifierKind, Stats, Table, World, rules};
 
 /// How long a disable or slow holds on an entity after its status
 /// resistance. Every other kind is left as it is.
@@ -168,7 +171,7 @@ impl World {
             return;
         };
         // The cloud shown for it stands where its owner now stands.
-        if let Some(shown) = self.mark_of(owner, crate::game::ability::ROT)
+        if let Some(shown) = self.mark_of(owner, ability::ROT)
             && let Some(transform) = self.transform.get_mut(shown)
         {
             transform.pos = at;
@@ -241,7 +244,7 @@ impl World {
     ///
     /// Only a blow from a hero or a tower breaks anything. A drink that does
     /// not break and an item with no break cooldown are left alone.
-    pub fn break_on_blows(&mut self, felt: &[crate::game::Landed]) {
+    pub fn break_on_blows(&mut self, felt: &[Landed]) {
         for blow in felt {
             let Some(from) = blow.source else {
                 continue;
@@ -269,13 +272,13 @@ impl World {
                 .map_or(rules::NOMINAL_BP, |stats| stats.cooldown_rate_bp);
             if let Some(bag) = self.inventory.get_mut(blow.target) {
                 for stack in bag.slots.iter_mut().flatten() {
-                    let Some(def) = crate::game::item_def(stack.id) else {
+                    let Some(def) = item_def(stack.id) else {
                         continue;
                     };
                     if def.breaks_on_damage > 0 {
                         stack.cooldown = stack
                             .cooldown
-                            .max(crate::game::cooldown_after(def.breaks_on_damage, rate));
+                            .max(cooldown_after(def.breaks_on_damage, rate));
                     }
                 }
             }

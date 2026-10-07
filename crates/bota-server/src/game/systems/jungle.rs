@@ -1,9 +1,8 @@
 //! The jungle: filling camps, and what a neutral does once drawn off one.
 
-use bota_proto::Vec2;
+use bota_proto::{Fixed, UnitKind, Vec2};
 
-use crate::game::{Entity, UnitOrder, World, rosters_of};
-use crate::game::{Purpose, rules};
+use crate::game::{Entity, Landed, Purpose, Roster, UnitOrder, World, rosters_of, rules};
 
 impl World {
     /// Fills every unblocked camp on the minute mark, with a roster other
@@ -24,10 +23,9 @@ impl World {
             if self.anything_in(camp.pos, box_radius) {
                 continue;
             }
-            let choices: Vec<(u8, &crate::game::Roster)> = rosters_of(camp.kind).collect();
+            let choices: Vec<(u8, &Roster)> = rosters_of(camp.kind).collect();
             let last = self.camp_last.get(index).copied().unwrap_or(u8::MAX);
-            let fresh: Vec<&(u8, &crate::game::Roster)> =
-                choices.iter().filter(|(id, _)| *id != last).collect();
+            let fresh: Vec<&(u8, &Roster)> = choices.iter().filter(|(id, _)| *id != last).collect();
             if fresh.is_empty() {
                 continue;
             }
@@ -57,13 +55,13 @@ impl World {
     }
 
     /// Whether anything alive that walks, or a ward, stands inside a circle.
-    fn anything_in(&self, at: Vec2, radius: bota_proto::Fixed) -> bool {
+    fn anything_in(&self, at: Vec2, radius: Fixed) -> bool {
         self.entities.iter().any(|entity| {
             let blocks = self
                 .stats
                 .get(entity)
-                .is_some_and(|stats| stats.move_speed > bota_proto::Fixed::ZERO)
-                || self.kind.get(entity) == Some(&bota_proto::UnitKind::Ward);
+                .is_some_and(|stats| stats.move_speed > Fixed::ZERO)
+                || self.kind.get(entity) == Some(&UnitKind::Ward);
             blocks
                 && self.alive(entity)
                 && self
@@ -154,7 +152,7 @@ impl World {
     /// is walking home or still blocked from waking is not called back by it.
     /// A blow wakes them from as far as [`rules::NEUTRAL_DAMAGE_AGGRO_RANGE`],
     /// seen or not.
-    pub fn rouse_camps(&mut self, felt: &[crate::game::Landed]) {
+    pub fn rouse_camps(&mut self, felt: &[Landed]) {
         for blow in felt {
             let (Some(by), Some(struck)) = (blow.source, self.camp_home.get(blow.target).copied())
             else {

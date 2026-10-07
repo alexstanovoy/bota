@@ -2,11 +2,10 @@
 
 use bota_proto::{Attributes, Fixed, ModifierSpec};
 
-use crate::game::rules;
 use crate::game::{
-    AbilityBook, AppliedModifiers, Def, EntityAllocator, Growth, Health, Inventory, Level,
+    AbilityBook, AppliedModifiers, Carried, Def, EntityAllocator, Growth, Health, Inventory, Level,
     MAX_COMBINED_MODIFIER_SCALE, Mana, ModifierKind, Modifiers, Ratio, StackKind, Stacks, Stats,
-    Table, UnitDef, Upgrades,
+    Table, UnitDef, Upgrades, ability, carried_bonus, rules,
 };
 
 /// What working out stats reads and writes.
@@ -84,7 +83,7 @@ fn derive_stats_impl<const APPLIED: bool>(cx: StatsCx<'_>) {
         let carried = inventory
             .get(entity)
             .filter(|_| !kind.porter)
-            .map(crate::game::carried_bonus);
+            .map(carried_bonus);
         if let Some(carried) = carried {
             add_carried(&mut now, &carried);
         }
@@ -119,7 +118,7 @@ fn derive_stats_impl<const APPLIED: bool>(cx: StatsCx<'_>) {
 }
 
 /// Adds what the inventory proper carries.
-fn add_carried(now: &mut Stats, carried: &crate::game::Carried) {
+fn add_carried(now: &mut Stats, carried: &Carried) {
     now.attributes += carried.attributes;
     now.max_hp += Fixed::from_int(carried.hp);
     now.max_mana += Fixed::from_int(carried.mana);
@@ -145,7 +144,7 @@ fn add_heap(now: &mut Stats, gathered: &Stacks, book: Option<&AbilityBook>) {
     let heap = book.map_or(0, |book| {
         book.slots
             .iter()
-            .find(|slot| slot.id == crate::game::ability::FLESH_HEAP)
+            .find(|slot| slot.id == ability::FLESH_HEAP)
             .map_or(0, |slot| slot.level)
     });
     let Some(level) = heap.checked_sub(1).map(usize::from) else {

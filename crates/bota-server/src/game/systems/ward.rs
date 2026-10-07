@@ -2,8 +2,7 @@
 
 use bota_proto::Target;
 
-use crate::game::rules;
-use crate::game::{Entity, UnitDef, World};
+use crate::game::{Entity, UnitDef, World, rules};
 
 impl World {
     /// Runs down what stands for a time, and takes away whatever has run out.

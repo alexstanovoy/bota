@@ -1,10 +1,12 @@
 //! Who stands and who is in reach, telling of blows, and clearing away what
 //! has fallen.
 
-use bota_proto::{EventKind, Fixed, Team, UnitKind};
+use bota_proto::{EventKind, Fixed, Team, UnitKind, Vec2};
 
-use crate::game::{Entity, MAP2_ID, MAP2_TICK_CAP, UnitOrder, World, is_structure, wire_id};
-use crate::game::{Event, EventVisibility};
+use crate::game::{
+    Entity, Event, EventVisibility, Kept, Landed, MAP2_ID, MAP2_TICK_CAP, Missed, UnitOrder, World,
+    is_structure, wire_id,
+};
 
 impl World {
     /// Whether an entity is still standing.
@@ -28,7 +30,7 @@ impl World {
     }
 
     /// Tells each side what it was near enough to feel.
-    pub fn tell_of(&self, felt: &[crate::game::Landed], events: &mut Vec<Event>) {
+    pub fn tell_of(&self, felt: &[Landed], events: &mut Vec<Event>) {
         for blow in felt {
             events.push(Event {
                 kind: EventKind::Damaged {
@@ -44,7 +46,7 @@ impl World {
     }
 
     /// Tells each side of the attacks it was near enough to see miss.
-    pub fn tell_of_misses(&self, missed: &[crate::game::Missed], events: &mut Vec<Event>) {
+    pub fn tell_of_misses(&self, missed: &[Missed], events: &mut Vec<Event>) {
         for miss in missed {
             events.push(Event {
                 kind: EventKind::Missed {
@@ -115,10 +117,7 @@ impl World {
             .and_then(|k| self.team.get(k).copied())
             .is_some_and(|theirs| Some(theirs) == side);
         let paid = self.pay_for(entity, killer, events);
-        let at = self
-            .transform
-            .get(entity)
-            .map_or(bota_proto::Vec2::ZERO, |t| t.pos);
+        let at = self.transform.get(entity).map_or(Vec2::ZERO, |t| t.pos);
         events.push(Event {
             kind: EventKind::Died {
                 unit: wire_id(entity),
@@ -163,7 +162,7 @@ impl World {
             if self.seats[index].unit == Some(entity) {
                 let level = self.seats[index].level;
                 self.let_souls_go(entity);
-                let kept = crate::game::Kept {
+                let kept = Kept {
                     book: self.abilities.remove(entity).unwrap_or_default(),
                     bag: self.inventory.remove(entity).unwrap_or_default(),
                     stacks: self.stacks.remove(entity).unwrap_or_default(),

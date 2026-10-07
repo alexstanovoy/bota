@@ -2,10 +2,11 @@
 
 use bota_proto::{Fixed, Team, Vec2};
 
-use crate::game::{CreepRank, Entity, March, StructureId, UnitDef, UnitOrder, World};
 use crate::game::{
-    Purpose, WavePlan, advance_waypoint, creep_spawn_pos, rules, spawn_offsets, team_index,
-    wave_at, wave_plan,
+    CreepRank, Entity, FLAGBEARER_CREEP, MEGA_MELEE_CREEP, MELEE_CREEP, March, Purpose,
+    RANGED_CREEP, SIEGE_CREEP, SUPER_MELEE_CREEP, SUPER_RANGED_CREEP, SUPER_SIEGE_CREEP,
+    StructureId, UnitDef, UnitOrder, WavePlan, World, advance_waypoint, creep_spawn_pos, rules,
+    spawn_offsets, team_index, wave_at, wave_plan,
 };
 
 impl World {
@@ -148,17 +149,17 @@ impl World {
 /// flagbearer stays its plain self whatever has fallen.
 fn wave_ranks(plan: &WavePlan, flag_slot: u32, ranks: [CreepRank; 3]) -> Vec<&'static UnitDef> {
     let melee_def = match ranks[0] {
-        CreepRank::Normal => &crate::game::MELEE_CREEP,
-        CreepRank::Super => &crate::game::SUPER_MELEE_CREEP,
-        CreepRank::Mega => &crate::game::MEGA_MELEE_CREEP,
+        CreepRank::Normal => &MELEE_CREEP,
+        CreepRank::Super => &SUPER_MELEE_CREEP,
+        CreepRank::Mega => &MEGA_MELEE_CREEP,
     };
     let ranged_def = match ranks[1] {
-        CreepRank::Normal => &crate::game::RANGED_CREEP,
-        CreepRank::Super | CreepRank::Mega => &crate::game::SUPER_RANGED_CREEP,
+        CreepRank::Normal => &RANGED_CREEP,
+        CreepRank::Super | CreepRank::Mega => &SUPER_RANGED_CREEP,
     };
     let siege_def = match ranks[2] {
-        CreepRank::Normal => &crate::game::SIEGE_CREEP,
-        CreepRank::Super | CreepRank::Mega => &crate::game::SUPER_SIEGE_CREEP,
+        CreepRank::Normal => &SIEGE_CREEP,
+        CreepRank::Super | CreepRank::Mega => &SUPER_SIEGE_CREEP,
     };
     let mut out = Vec::new();
     let front = plan.melee + plan.siege;
@@ -172,7 +173,7 @@ fn wave_ranks(plan: &WavePlan, flag_slot: u32, ranks: [CreepRank; 3]) -> Vec<&'s
         let flagged = plan.flagbearer && melee_seen == flag_slot;
         melee_seen += 1;
         out.push(if flagged {
-            &crate::game::FLAGBEARER_CREEP
+            &FLAGBEARER_CREEP
         } else {
             melee_def
         });

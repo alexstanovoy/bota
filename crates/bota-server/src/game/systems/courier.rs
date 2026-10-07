@@ -2,15 +2,18 @@
 
 use bota_proto::{Team, Vec2};
 
+use crate::game::{
+    Errand, Inventory, Modifier, ModifierKind, UnitOrder, World, fountain_pos, rules,
+};
+
 use crate::engine::Entity;
-use crate::game::{Errand, Inventory, Modifier, ModifierKind, UnitOrder, World, rules};
 
 impl World {
     /// Stands a courier up for one seat at its own fountain.
     pub fn stand_up_courier(&mut self, seat: usize) {
         let (Some(side), at) = (
             self.seats.get(seat).map(|seat| seat.team),
-            crate::game::fountain_pos(self.map, self.seats[seat].team),
+            fountain_pos(self.map, self.seats[seat].team),
         ) else {
             return;
         };
@@ -235,7 +238,7 @@ impl World {
     /// Whether a courier stands where the stash can be reached, walking to
     /// that spot if it does not.
     fn at_the_stash(&mut self, seat: usize, courier: Entity) -> bool {
-        let shop = crate::game::fountain_pos(self.map, self.seats[seat].team);
+        let shop = fountain_pos(self.map, self.seats[seat].team);
         if self.transform.get(courier).is_some_and(|at| {
             at.pos
                 .within(shop, rules::units(rules::COURIER_STASH_RANGE))
@@ -342,7 +345,7 @@ impl World {
 
     /// Walks home and stands there.
     fn go_home(&mut self, seat: usize, courier: Entity) -> bool {
-        let home = crate::game::fountain_pos(self.map, self.seats[seat].team);
+        let home = fountain_pos(self.map, self.seats[seat].team);
         if self.transform.get(courier).is_some_and(|at| at.pos == home) {
             return true;
         }
@@ -377,6 +380,6 @@ impl World {
 
     /// Where a side's couriers stand up: its fountain.
     pub fn courier_home(&self, team: Team) -> Vec2 {
-        crate::game::fountain_pos(self.map, team)
+        fountain_pos(self.map, team)
     }
 }

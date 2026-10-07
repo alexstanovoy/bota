@@ -1,15 +1,14 @@
 //! Teleporting: where a scroll may carry, and carrying.
 
-use bota_proto::{Target, UnitKind, Vec2};
+use bota_proto::{Target, Team, UnitKind, Vec2};
 
-use crate::game::rules;
-use crate::game::{Entity, World};
+use crate::game::{Entity, UnitOrder, World, rules};
 
 impl World {
     /// Whether a spot may be teleported to: clear walkable ground within
     /// `range` of a tower, the ancient or the fountain of one's own side that
     /// still stands.
-    pub fn teleport_spot(&self, side: bota_proto::Team, to: Vec2, range: i32) -> bool {
+    pub fn teleport_spot(&self, side: Team, to: Vec2, range: i32) -> bool {
         if !self.clearance.stands_clear(to) {
             return false;
         }
@@ -48,7 +47,7 @@ impl World {
             at.pos = pos;
         }
         self.forget_walk(entity);
-        self.set_order(entity, crate::game::UnitOrder::Idle);
+        self.set_order(entity, UnitOrder::Idle);
         self.spend_charge(entity, slot);
     }
 }

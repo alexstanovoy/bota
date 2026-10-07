@@ -2,9 +2,9 @@
 
 use bota_proto::{Fixed, Team, UnitKind, Vec2};
 
-use crate::game::{CellGrid, EventVisibility, Ground, Spots, sight_clear};
 use crate::game::{
-    Entity, EntityAllocator, Stats, Table, Transform, Visibility, World, is_structure,
+    CellGrid, Entity, EntityAllocator, EventVisibility, Ground, Spots, Stats, Table, Transform,
+    Visibility, World, is_structure, sight_clear,
 };
 
 /// What working out sight reads and writes.

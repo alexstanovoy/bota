@@ -2,10 +2,9 @@
 
 use bota_proto::{AbilityId, DamageKind, ItemId};
 
-use crate::game::rules;
 use crate::game::{
     Entity, MAX_COMBINED_MODIFIER_SCALE, Stats, World, ability_cooldown, ability_mana_cost,
-    item_def,
+    item_def, rules,
 };
 
 impl World {

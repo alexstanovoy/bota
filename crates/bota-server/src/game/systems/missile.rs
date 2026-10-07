@@ -2,13 +2,13 @@
 
 use std::collections::VecDeque;
 
-use bota_proto::{DamageKind, Fixed, Team, UnitKind};
+use bota_proto::{DamageKind, Fixed, Team, UnitKind, Vec2};
 
 use crate::game::{
-    Entity, EntityAllocator, Ground, Health, Hit, MatchRng, Missed, Projectile, PseudoRandom25,
-    Purpose, Table, Transform, Visibility, World, is_structure, rules, wire_id,
+    Entity, EntityAllocator, Ground, Health, Hit, HitEffect, MatchRng, Missed, Projectile,
+    PseudoRandom25, Purpose, Table, Transform, Visibility, World, facing_towards, is_structure,
+    move_towards, per_tick, rules, wire_id,
 };
-use crate::game::{facing_towards, move_towards, per_tick};
 
 /// What flight reads and writes.
 pub struct MissileCx<'a> {
@@ -113,7 +113,7 @@ fn land(shot: &Projectile, hits: &mut VecDeque<Hit>) {
         crit: shot.crit,
         attack: shot.ability.is_none(),
         pierces: shot.pierces,
-        effect: crate::game::HitEffect::None,
+        effect: HitEffect::None,
     });
     if shot.pierce_damage > 0 {
         hits.push_back(Hit {
@@ -125,14 +125,14 @@ fn land(shot: &Projectile, hits: &mut VecDeque<Hit>) {
             crit: false,
             attack: false,
             pierces: false,
-            effect: crate::game::HitEffect::None,
+            effect: HitEffect::None,
         });
     }
 }
 
 fn misses_uphill(
     shot: &Projectile,
-    target_pos: bota_proto::Vec2,
+    target_pos: Vec2,
     transform: &Table<Transform>,
     kind: &Table<UnitKind>,
     ground: &Ground,
@@ -164,7 +164,7 @@ fn misses_uphill(
 
 /// Takes a missile out of the air and out of the world.
 fn give_up(
-    missile: crate::game::Entity,
+    missile: Entity,
     entities: &mut EntityAllocator,
     projectile: &mut Table<Projectile>,
     transform: &mut Table<Transform>,

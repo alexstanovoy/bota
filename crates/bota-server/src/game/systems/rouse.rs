@@ -6,10 +6,9 @@
 //! order at any other enemy moves nobody, and one a hero aims at itself is
 //! nobody's business but its own.
 
-use bota_proto::{Team, UnitKind, Vec2};
+use bota_proto::{Fixed, Team, UnitKind, Vec2};
 
-use crate::game::rules;
-use crate::game::{Entity, World, is_lane_creep};
+use crate::game::{Entity, World, is_lane_creep, rules};
 
 /// Which way an order moves the bystanders, if it moves them at all.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -92,7 +91,7 @@ impl World {
         let reach = self
             .stats
             .get(creep)
-            .map_or(bota_proto::Fixed::ZERO, |stats| stats.acquisition);
+            .map_or(Fixed::ZERO, |stats| stats.acquisition);
         if !self
             .transform
             .get(creep)

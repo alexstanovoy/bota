@@ -2,13 +2,12 @@
 
 use bota_proto::{DamageKind, Fixed, Team, UnitKind, Vec2};
 
-use crate::game::rules;
-use std::collections::VecDeque;
-
 use crate::game::{
     Chance, Entity, Health, Hit, HitEffect, MatchRng, ModifierKind, Modifiers, Purpose, Ratio,
-    Stats, Table, Transform, is_structure, wire_id,
+    Stats, Table, Transform, is_structure, rules, wire_id,
 };
+
+use std::collections::VecDeque;
 
 /// One attack that did not land.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

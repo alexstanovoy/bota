@@ -2,8 +2,9 @@
 
 use bota_proto::{Fixed, Team, UnitKind, Vec2};
 
-use crate::game::{CAMPS, Spots, isqrt64, rules};
-use crate::game::{Entity, World, is_lane_creep, is_structure};
+use crate::game::{
+    CAMPS, Entity, Spots, UnitOrder, World, is_lane_creep, is_structure, isqrt64, rules,
+};
 
 /// The class order a unit ranks its targets by.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -170,8 +171,7 @@ impl World {
         if self.kind.get(candidate) != Some(&UnitKind::Hero) {
             return 1;
         }
-        let Some(crate::game::UnitOrder::Attack { target, .. }) =
-            self.orders.get(candidate).map(|o| o.current)
+        let Some(UnitOrder::Attack { target, .. }) = self.orders.get(candidate).map(|o| o.current)
         else {
             return 1;
         };

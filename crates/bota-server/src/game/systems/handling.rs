@@ -1,7 +1,7 @@
 //! Item errands: walking an item out of a bag, into another, or off the
 //! ground.
 
-use bota_proto::{Target, Vec2};
+use bota_proto::{Angle, EntityId, Target, Vec2};
 
 use crate::game::{
     BAG_SLOTS, Entity, Handling, ItemStack, Loot, Transform, UnitOrder, Visibility, World, rules,
@@ -43,7 +43,7 @@ impl World {
     }
 
     /// Starts walking a unit over to a ground item to take it.
-    pub fn take_item(&mut self, unit: Entity, target: bota_proto::EntityId) -> bool {
+    pub fn take_item(&mut self, unit: Entity, target: EntityId) -> bool {
         let Some(mark) = self.of_wire(target) else {
             return false;
         };
@@ -182,7 +182,7 @@ impl World {
             entity,
             Transform {
                 pos,
-                facing: bota_proto::Angle::default(),
+                facing: Angle::default(),
             },
         );
         self.loot.insert(

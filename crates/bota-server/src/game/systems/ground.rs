@@ -3,8 +3,8 @@
 
 use bota_proto::{Fixed, Vec2};
 
-use crate::game::{Body, Entity, World};
-use crate::game::{clamp_to_map, isqrt64, rules};
+use crate::game::{Body, Entity, World, clamp_to_map, isqrt64, rules};
+
 use crate::profile::Phase;
 
 impl World {

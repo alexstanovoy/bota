@@ -2,9 +2,9 @@
 
 use bota_proto::{Team, UnitKind};
 
-use crate::game::rules;
 use crate::game::{
     Auras, Entity, EntityAllocator, Modifier, Modifiers, Reach, Spots, Stats, Table, Transform,
+    rules,
 };
 
 use super::modifiers::resisted_ticks;

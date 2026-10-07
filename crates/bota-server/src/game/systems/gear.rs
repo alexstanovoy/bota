@@ -1,14 +1,15 @@
 //! Items carried and abilities held: what they add, and what they cost.
 
-use bota_proto::{AbilityId, Attribute, EventKind, Fixed, ItemId, SlotId, Target, Team, Vec2};
+use bota_proto::{
+    AbilityId, Attribute, EventKind, Fixed, HeroId, ItemId, SlotId, Target, Team, Vec2,
+};
 
 use crate::game::{
-    AbilityBook, AbilityState, BAG_SLOTS, Carried, Entity, Inventory, ItemDef, ItemStack, Modifier,
-    ModifierKind, Pool, Spends, World, hero_def, in_backpack, in_inventory, in_stash, item_def,
-    wire_id,
+    AbilityBook, AbilityState, BAG_SLOTS, Carried, Entity, Event, EventVisibility, ITEMS,
+    Inventory, ItemDef, ItemStack, Modifier, ModifierKind, Pool, Spends, Tree, World, ability_def,
+    clamp_to_map, fountain_pos, hero_def, in_backpack, in_inventory, in_stash, item_def,
+    learn_group, level_floor, move_towards, rules, wire_id,
 };
-use crate::game::{Event, EventVisibility, rules};
-use crate::game::{clamp_to_map, move_towards};
 
 /// Missing purchase parts, their total price, and destination capacity.
 pub(crate) struct PurchasePlan {
@@ -78,7 +79,7 @@ fn parts_in(held: &[(usize, ItemStack)], parts: &[ItemId]) -> Option<Spent> {
 }
 
 /// The slots a hero of this kind carries, all unlearned.
-pub fn hero_kit(hero: bota_proto::HeroId) -> AbilityBook {
+pub fn hero_kit(hero: HeroId) -> AbilityBook {
     let carried = hero_def(hero).map_or(&[] as &[AbilityId], |def| def.abilities);
     AbilityBook {
         slots: carried
@@ -237,7 +238,7 @@ impl World {
             .filter_map(|(at, held)| held.map(|stack| (at, stack)))
             .filter(|(_, stack)| stack.owner == slot && !stack.for_sale)
             .collect();
-        for (index, def) in crate::game::ITEMS.iter().enumerate() {
+        for (index, def) in ITEMS.iter().enumerate() {
             if def.components.is_empty() {
                 continue;
             }
@@ -745,7 +746,7 @@ impl World {
             let Some(tree) = self.reach_a_tree(user, target, range) else {
                 return false;
             };
-            if matches!(tree, crate::game::Tree::Planted(_)) {
+            if matches!(tree, Tree::Planted(_)) {
                 ticks *= 2;
                 total *= 2;
             }
@@ -983,7 +984,7 @@ impl World {
                 let Some(owner) = self.seats.iter().position(|s| s.slot == stack.owner) else {
                     continue;
                 };
-                let shop = crate::game::fountain_pos(self.map, self.seats[owner].team);
+                let shop = fountain_pos(self.map, self.seats[owner].team);
                 if !at_pos.within(shop, rules::units(rules::SHOP_RANGE)) {
                     continue;
                 }
@@ -1087,7 +1088,7 @@ impl World {
     /// The tree nearest the spot aimed at, within [`rules::TREE_RADIUS`] of
     /// it, and within `range` of the one using the item. Aimed at a unit, the
     /// spot is where the unit stands; aimed at nothing, where the user does.
-    fn reach_a_tree(&self, user: Entity, target: Target, range: i32) -> Option<crate::game::Tree> {
+    fn reach_a_tree(&self, user: Entity, target: Target, range: i32) -> Option<Tree> {
         let from = self.transform.get(user).map(|t| t.pos)?;
         let at = match target {
             Target::Pos(pos) => pos,
@@ -1151,24 +1152,22 @@ impl World {
         let Some(ability) = book.slots.get(slot).copied() else {
             return false;
         };
-        let Some(def) = crate::game::ability_def(ability.id) else {
+        let Some(def) = ability_def(ability.id) else {
             return false;
         };
         if ability.level >= def.max_level {
             return false;
         }
         let hero_level = self.level.get(entity).map_or(1, |level| level.0);
-        if self.points_spent(entity) >= hero_level
-            || hero_level < crate::game::level_floor(def, ability.level)
-        {
+        if self.points_spent(entity) >= hero_level || hero_level < level_floor(def, ability.level) {
             return false;
         }
-        let group = crate::game::learn_group(ability.id);
+        let group = learn_group(ability.id);
         let Some(book) = self.abilities.get_mut(entity) else {
             return false;
         };
         for held in &mut book.slots {
-            if crate::game::learn_group(held.id) == group {
+            if learn_group(held.id) == group {
                 held.level += 1;
             }
         }
@@ -1187,10 +1186,10 @@ impl World {
             .iter()
             .enumerate()
             .filter(|(at, held)| {
-                let group = crate::game::learn_group(held.id);
+                let group = learn_group(held.id);
                 !book.slots[..*at]
                     .iter()
-                    .any(|other| crate::game::learn_group(other.id) == group)
+                    .any(|other| learn_group(other.id) == group)
             })
             .map(|(_, held)| held.level)
             .sum()

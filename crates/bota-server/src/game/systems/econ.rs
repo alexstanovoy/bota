@@ -2,8 +2,10 @@
 
 use bota_proto::{EventKind, Team, UnitKind, Vec2};
 
-use crate::game::{Bounty, Entity, Level, World, is_lane_creep, is_structure, wire_id};
-use crate::game::{Event, EventVisibility, hero_spawn_pos, rules};
+use crate::game::{
+    Bounty, Entity, Event, EventVisibility, Landed, Level, World, hero_spawn_pos, is_lane_creep,
+    is_structure, rules, wire_id,
+};
 
 impl World {
     /// Hands out the gold that arrives on its own: one every
@@ -104,7 +106,7 @@ impl World {
 
     /// Adds blows a seat's hero landed on enemy heroes and structures to
     /// that seat's damage totals.
-    pub fn credit_damage(&mut self, felt: &[crate::game::Landed]) {
+    pub fn credit_damage(&mut self, felt: &[Landed]) {
         for blow in felt {
             let Some(index) = blow.source.and_then(|source| self.seat_of(source)) else {
                 continue;

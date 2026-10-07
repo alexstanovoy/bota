@@ -3,11 +3,12 @@
 
 use bota_proto::{AbilityId, Angle, DamageKind, Fixed};
 
-use crate::engine::Entity;
 use crate::game::{
     Hit, HitEffect, Modifier, ModifierKind, RequiemLine, StackKind, Transform, World, ability,
     heading_of, is_structure, leaves_a_death, move_towards, per_tick, point_along, rules,
 };
+
+use crate::engine::Entity;
 
 impl World {
     /// Burns everything hostile but a structure standing where a raze lands.

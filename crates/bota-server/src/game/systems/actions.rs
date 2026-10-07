@@ -7,14 +7,14 @@
 //! and the attacker is looking near enough at it; a cast begins once what it
 //! is aimed at is in reach.
 
-use bota_proto::{DamageKind, Fixed, ItemSlot, Team, Vec2};
+use bota_proto::{Aim, DamageKind, Fixed, ItemSlot, Team, Vec2};
 
 use crate::game::{
-    Action, ActionPhase, ActionState, BEATS_PER_TICK, Chance, Entity, Hit, HitEffect, PendingCast,
-    Projectile, Purpose, Ratio, Stats, Target, Visibility, World, ability, attack_gain, beats,
-    cross, is_creep, is_structure, rules, wire_id,
+    Action, ActionPhase, ActionState, BEATS_PER_TICK, Chance, Entity, Event, Hit, HitEffect,
+    PendingCast, Projectile, Purpose, Ratio, Stats, Target, Visibility, World, ability,
+    ability_def, attack_gain, beats, cross, facing_gap, facing_towards, is_creep, is_structure,
+    rules, wire_id,
 };
-use crate::game::{facing_gap, facing_towards};
 
 /// What one swing deals, rolled when it lands.
 #[derive(Clone, Copy)]
@@ -106,13 +106,11 @@ impl World {
     pub fn cast_reach(&self, entity: Entity, pending: PendingCast) -> i32 {
         match pending {
             PendingCast::Ability { slot, .. } => {
-                crate::game::ability_def(self.ability_in(entity, slot)).map_or(0, |def| def.range)
+                ability_def(self.ability_in(entity, slot)).map_or(0, |def| def.range)
             }
             PendingCast::Item { slot, .. } => self
                 .item_def_in(entity, usize::from(slot.0))
-                .filter(|def| {
-                    matches!(def.aim, Some(bota_proto::Aim::Unit | bota_proto::Aim::Tree))
-                })
+                .filter(|def| matches!(def.aim, Some(Aim::Unit | Aim::Tree)))
                 .map_or(0, |def| def.range),
         }
     }
@@ -503,7 +501,7 @@ impl World {
         entity: Entity,
         slot: usize,
         target: bota_proto::Target,
-        events: &mut Vec<crate::game::Event>,
+        events: &mut Vec<Event>,
     ) -> bool {
         let duration = self.item_def_in(entity, slot).map_or(0, |def| def.duration);
         let went = self.begin_item(entity, slot, target);
@@ -525,7 +523,7 @@ impl World {
     fn timing_of(&self, entity: Entity, what: PendingCast) -> Option<Timing> {
         match what {
             PendingCast::Ability { slot, .. } => {
-                let def = crate::game::ability_def(self.ability_in(entity, slot))?;
+                let def = ability_def(self.ability_in(entity, slot))?;
                 Some(Timing {
                     point: def.point,
                     backswing: def.backswing,
@@ -547,7 +545,7 @@ impl World {
     fn call_during(&mut self, entity: Entity, what: PendingCast) -> bool {
         match what {
             PendingCast::Ability { slot, target } => {
-                let Some(def) = crate::game::ability_def(self.ability_in(entity, slot)) else {
+                let Some(def) = ability_def(self.ability_in(entity, slot)) else {
                     return false;
                 };
                 (def.on_during)(self, entity, target)
@@ -566,7 +564,7 @@ impl World {
     fn call_cancel(&mut self, entity: Entity, what: PendingCast) {
         match what {
             PendingCast::Ability { slot, target } => {
-                if let Some(def) = crate::game::ability_def(self.ability_in(entity, slot)) {
+                if let Some(def) = ability_def(self.ability_in(entity, slot)) {
                     (def.on_cancel)(self, entity, target);
                 }
             }
@@ -583,7 +581,7 @@ impl World {
     fn call_complete(&mut self, entity: Entity, what: PendingCast) {
         match what {
             PendingCast::Ability { slot, target } => {
-                if let Some(def) = crate::game::ability_def(self.ability_in(entity, slot)) {
+                if let Some(def) = ability_def(self.ability_in(entity, slot)) {
                     (def.on_complete)(self, entity, target);
                 }
             }

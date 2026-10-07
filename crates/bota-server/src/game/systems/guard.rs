@@ -2,8 +2,9 @@
 
 use bota_proto::{Team, UnitKind};
 
-use crate::engine::Entity;
 use crate::game::{StructureId, Until, World, is_structure};
+
+use crate::engine::Entity;
 
 impl World {
     /// Whether an entity is one a structure id names.

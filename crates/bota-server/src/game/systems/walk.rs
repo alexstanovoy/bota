@@ -1,15 +1,14 @@
 //! Walking: where an entity is going, the route and the plan that take it
 //! there, and the step it takes this tick.
 
-use bota_proto::{Fixed, Vec2};
+use bota_proto::{Angle, Fixed, Target, Vec2};
 
 use crate::game::{
-    ActionPhase, ActionState, Entity, Foreseen, LocalAsk, LocalScratch, Obstacles, Plan, Planner,
-    Route, UnitOrder, World, plan_local, plan_radius,
+    ActionPhase, ActionState, Entity, Foreseen, LocalAsk, LocalScratch, Motion, Obstacles, Plan,
+    Planner, Route, UnitOrder, World, clamp_to_map, facing_gap, facing_towards, isqrt64,
+    move_towards, per_tick, plan_local, plan_radius, point_along, rules, turn_towards,
 };
-use crate::game::{
-    facing_gap, facing_towards, move_towards, per_tick, point_along, rules, turn_towards,
-};
+
 use crate::profile::Phase;
 
 impl World {
@@ -103,7 +102,7 @@ impl World {
             Some(ActionState::Attack { .. }) => Some(self.target_of(entity)),
             Some(ActionState::CastAbility { target, .. } | ActionState::UseItem { target, .. }) => {
                 Some(match target {
-                    bota_proto::Target::Unit(target) => self.of_wire(target),
+                    Target::Unit(target) => self.of_wire(target),
                     _ => None,
                 })
             }
@@ -302,7 +301,7 @@ impl World {
         &mut self,
         leg: &mut Leg,
         goal: Vec2,
-        motion: crate::game::Motion,
+        motion: Motion,
         scratch: &mut LocalScratch,
     ) -> bool {
         let (entity, now) = (leg.entity, self.tick);
@@ -489,7 +488,7 @@ impl World {
             facing: self
                 .transform
                 .get(leg.entity)
-                .map_or(bota_proto::Angle::default(), |t| t.facing),
+                .map_or(Angle::default(), |t| t.facing),
             goal: leg.aim,
             arrive: leg.aim_arrive(),
             radius: leg.collision,
@@ -686,7 +685,7 @@ impl World {
             transform.facing = facing;
         }
         if facing_gap(facing, wanted) <= rules::TURN_TOLERANCE_BRADS {
-            let next = crate::game::clamp_to_map(move_towards(from, dest, step));
+            let next = clamp_to_map(move_towards(from, dest, step));
             self.take_step(entity, from, next);
         }
     }
@@ -702,7 +701,7 @@ impl World {
         if here == there {
             return;
         }
-        let away = crate::game::clamp_to_map(point_along(
+        let away = clamp_to_map(point_along(
             here,
             here + (here - there),
             Fixed::from_int(rules::FLEE_LOOKAHEAD),
@@ -932,7 +931,7 @@ fn visible_along(
     let mut left = i64::from(reach.raw);
     let mut best: Option<(Vec2, bool)> = None;
     for (i, &point) in points.iter().enumerate() {
-        let leg = crate::game::isqrt64(at.distance_squared(point));
+        let leg = isqrt64(at.distance_squared(point));
         if leg > left {
             let spot = point_along(at, point, Fixed { raw: left as i32 });
             if ob.clear(from, spot, room) {

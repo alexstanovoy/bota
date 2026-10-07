@@ -1,9 +1,13 @@
 //! Casting abilities: what starts one, what it costs, and what each one does.
 
-use bota_proto::{AbilitySlot, DamageKind, EventKind, Fixed, Target, Team};
+use bota_proto::{
+    AbilityId, AbilitySlot, DamageKind, EventKind, Fixed, Target, Team, UnitKind, Vec2,
+};
 
-use crate::game::{Entity, Modifier, ModifierKind, Projectile, World, wire_id};
-use crate::game::{Event, rules};
+use crate::game::{
+    Entity, Event, Modifier, ModifierKind, Projectile, World, ability_def, fountain_pos, item_def,
+    rules, wire_id,
+};
 
 impl World {
     /// Whether an entity stands in its own shop.
@@ -15,7 +19,7 @@ impl World {
             return false;
         };
         at.within(
-            crate::game::fountain_pos(self.map, side),
+            fountain_pos(self.map, side),
             rules::units(rules::SHOP_RANGE),
         )
     }
@@ -36,7 +40,7 @@ impl World {
         else {
             return false;
         };
-        let Some(def) = crate::game::ability_def(ability.id) else {
+        let Some(def) = ability_def(ability.id) else {
             return false;
         };
         if def.passive || ability.level == 0 || ability.cooldown > 0 {
@@ -59,10 +63,7 @@ impl World {
         {
             ability.cooldown = cooldown;
         }
-        let at = self
-            .transform
-            .get(entity)
-            .map_or(bota_proto::Vec2::ZERO, |t| t.pos);
+        let at = self.transform.get(entity).map_or(Vec2::ZERO, |t| t.pos);
         let side = self.team.get(entity).copied().unwrap_or(Team::Neutral);
         let visible_to = self.who_may_know(at, side);
         self.events.push(Event {
@@ -80,7 +81,7 @@ impl World {
     /// Only a cast by a hero is worth a charge, and only a hero standing
     /// within [`rules::MAGIC_CHARGE_RANGE`] of it takes one.
     fn charge_nearby_items(&mut self, caster: Entity) {
-        if self.kind.get(caster).copied() != Some(bota_proto::UnitKind::Hero) {
+        if self.kind.get(caster).copied() != Some(UnitKind::Hero) {
             return;
         }
         let (Some(at), Some(side)) = (
@@ -92,7 +93,7 @@ impl World {
         let reach = rules::units(rules::MAGIC_CHARGE_RANGE);
         for other in self.entities.iter().collect::<Vec<_>>() {
             if self.team.get(other).copied() == Some(side)
-                || self.kind.get(other).copied() != Some(bota_proto::UnitKind::Hero)
+                || self.kind.get(other).copied() != Some(UnitKind::Hero)
                 || !self
                     .transform
                     .get(other)
@@ -104,7 +105,7 @@ impl World {
                 continue;
             };
             for stack in bag.slots.iter_mut().flatten() {
-                let Some(def) = crate::game::item_def(stack.id) else {
+                let Some(def) = item_def(stack.id) else {
                     continue;
                 };
                 if def.cast_charges > 0 {
@@ -163,7 +164,7 @@ impl World {
                 damage: rules::SYLLA_BOUNCE_DAMAGE[level],
                 kind: DamageKind::Magical,
                 damage_amp_bp,
-                ability: Some(bota_proto::AbilityId(2)),
+                ability: Some(AbilityId(2)),
                 launch_tier: 0,
                 can_miss_uphill: false,
                 crit: false,
@@ -206,14 +207,10 @@ impl World {
 
     /// Which ability sits in one of an entity's slots; `AbilityId(u16::MAX)`
     /// when there is none.
-    pub fn ability_in(
-        &self,
-        entity: Entity,
-        slot: bota_proto::AbilitySlot,
-    ) -> bota_proto::AbilityId {
+    pub fn ability_in(&self, entity: Entity, slot: AbilitySlot) -> AbilityId {
         self.abilities
             .get(entity)
             .and_then(|book| book.slots.get(usize::from(slot.0)))
-            .map_or(bota_proto::AbilityId(u16::MAX), |held| held.id)
+            .map_or(AbilityId(u16::MAX), |held| held.id)
     }
 }

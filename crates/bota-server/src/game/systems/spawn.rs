@@ -3,10 +3,11 @@
 use bota_proto::{AbilityId, Angle, Fixed, HeroId, SlotId, Team, Vec2};
 
 use crate::game::{
-    Action, ActionState, AppliedModifier, AppliedOrigin, Auras, Bounty, CampHome, Def, Entity,
-    Errand, Expiry, Health, Hull, Inventory, Lane, LaneAi, Level, Mana, March, Mark, Modifiers,
-    Motion, NeutralAi, Orders, Plan, Rax, Route, Tier, Transform, UnitDef, UnitOrder, Upgrades,
-    World, rules,
+    AbilityBook, AbilityState, Action, ActionState, AppliedModifier, AppliedOrigin, Auras, Bounty,
+    COURIER, CampHome, Def, Entity, Errand, Expiry, HERO, Health, Hull, Inventory, Lane, LaneAi,
+    Level, MAX_SPAWN_MODIFIERS, Mana, March, Mark, Modifiers, Motion, NeutralAi, Orders, Plan, Rax,
+    Route, Tier, Transform, UnitDef, UnitOrder, Upgrades, World, ability, check_spawn_modifier,
+    hero_def, hero_kit, rules,
 };
 
 /// Which building of a side one is.
@@ -67,9 +68,9 @@ impl World {
             return;
         }
         assert!(
-            self.spawn_modifiers.len() <= crate::game::MAX_SPAWN_MODIFIERS,
+            self.spawn_modifiers.len() <= MAX_SPAWN_MODIFIERS,
             "a match may carry at most {} spawn modifiers",
-            crate::game::MAX_SPAWN_MODIFIERS
+            MAX_SPAWN_MODIFIERS
         );
         let Some(Def(def)) = self.def.get(entity).copied() else {
             return;
@@ -78,7 +79,7 @@ impl World {
         let mut applied = self.applied.remove(entity).unwrap_or_default();
         applied.retain(|held| held.origin != AppliedOrigin::Setup);
         for (at, rule) in self.spawn_modifiers.iter().enumerate() {
-            if let Err(error) = crate::game::check_spawn_modifier(rule) {
+            if let Err(error) = check_spawn_modifier(rule) {
                 panic!("spawn modifier {at} was applied without being checked: {error}");
             }
             if rule.select.takes(def.kind, team) {
@@ -147,7 +148,7 @@ impl World {
 
     /// Puts a hero on the map for a seat.
     pub fn spawn_hero(&mut self, team: Team, pos: Vec2, slot: SlotId, hero: HeroId) -> Entity {
-        let body = crate::game::hero_def(hero).map_or(&crate::game::HERO, |def| def.unit);
+        let body = hero_def(hero).map_or(&HERO, |def| def.unit);
         let entity = self.spawn_body(body, team, pos);
         self.give_hull(entity, body);
         self.give_action(entity);
@@ -155,7 +156,7 @@ impl World {
         self.owner.insert(entity, slot);
         self.hero.insert(entity, hero);
         self.level.insert(entity, Level(1));
-        self.abilities.insert(entity, crate::game::hero_kit(hero));
+        self.abilities.insert(entity, hero_kit(hero));
         self.inventory.insert(
             entity,
             Inventory::empty(rules::INVENTORY_SLOTS + rules::BACKPACK_SLOTS),
@@ -253,23 +254,23 @@ impl World {
         slot: SlotId,
         load: Inventory,
     ) -> Entity {
-        let entity = self.spawn_body(&crate::game::COURIER, team, pos);
+        let entity = self.spawn_body(&COURIER, team, pos);
         self.give_action(entity);
         self.give_orders(entity);
         self.owner.insert(entity, slot);
         self.inventory.insert(entity, load);
         self.abilities.insert(
             entity,
-            crate::game::AbilityBook {
+            AbilityBook {
                 slots: [
-                    crate::game::ability::TAKE_STASH,
-                    crate::game::ability::RETURN_ITEMS,
-                    crate::game::ability::BURST,
-                    crate::game::ability::DELIVER,
-                    crate::game::ability::SHIELD,
+                    ability::TAKE_STASH,
+                    ability::RETURN_ITEMS,
+                    ability::BURST,
+                    ability::DELIVER,
+                    ability::SHIELD,
                 ]
                 .into_iter()
-                .map(|id| crate::game::AbilityState {
+                .map(|id| AbilityState {
                     id,
                     level: 1,
                     cooldown: 0,

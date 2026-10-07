@@ -1,10 +1,12 @@
 //! Choosing what to attack, and holding to it: one rule for everything that
 //! fights of its own accord.
 
-use bota_proto::{Fixed, UnitKind};
+use bota_proto::{Fixed, Target, UnitKind};
 
-use crate::game::{Candidates, Entity, PriorityOrder, UnitOrder, World, class_rank_of};
-use crate::game::{isqrt64, rules};
+use crate::game::{
+    Candidates, Entity, PriorityOrder, UnitOrder, World, class_rank_of, isqrt64, rules,
+};
+
 use crate::profile::Phase;
 
 impl World {
@@ -26,7 +28,7 @@ impl World {
         let casting_at = self
             .pending_cast(candidate)
             .and_then(|pending| match pending.target() {
-                bota_proto::Target::Unit(target) => self.of_wire(target),
+                Target::Unit(target) => self.of_wire(target),
                 _ => None,
             });
         let struck = match self.orders.get(candidate).map(|o| o.current) {
