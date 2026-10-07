@@ -2,55 +2,21 @@
 //! land their bonus, held exactly; a structure is never pierced.
 
 use crate::game::{
-    Chance, Entity, Event, ITEM_BUTTERFLY, ITEM_JAVELIN, ITEM_MONKEY_KING_BAR, ItemStack,
-    MELEE_CREEP, Modifier, ModifierKind, Modifiers, Ratio, UnitDef, UnitOrder, World, rules,
-    wire_id,
+    Entity, Event, ITEM_BUTTERFLY, ITEM_JAVELIN, ITEM_MONKEY_KING_BAR, Ratio, UnitDef, UnitOrder,
+    World, rules, wire_id,
 };
-use bota_proto::{DamageKind, EventKind, Fixed, HeroId, ItemId, SlotId, Team, UnitKind, Vec2};
+use bota_proto::{DamageKind, EventKind, Fixed, HeroId, SlotId, Team, UnitKind, Vec2};
 
-/// What takes a strike and never falls: no armor, no mending, no swing back.
-const ANVIL: UnitDef = UnitDef {
-    max_hp: 30_000,
-    armor: 0,
-    damage: 0,
-    hp_regen: Fixed::ZERO,
-    ..MELEE_CREEP
+use super::actions_tests::{
+    ANVIL, assert_exact_blocks, hold, opened, step_until, swinging_at, until_opened,
 };
 
-/// The same, standing as a building.
+/// The anvil, standing as a building.
 const KEEP: UnitDef = UnitDef {
     kind: UnitKind::Tower,
     move_speed: 0,
     ..ANVIL
 };
-
-/// Swinging as fast as a body may.
-fn fastest() -> Modifiers {
-    Modifiers(vec![Modifier {
-        kind: ModifierKind::Haste {
-            speed: rules::MAX_ATTACK_SPEED - rules::BASE_ATTACK_SPEED,
-        },
-        source: None,
-        ticks_left: Some(u32::MAX / 2),
-    }])
-}
-
-/// Puts an item in one of a hero's slots.
-fn hold(world: &mut World, hero: Entity, slot: usize, item: u16) {
-    if let Some(bag) = world.inventory.get_mut(hero) {
-        bag.slots[slot] = Some(ItemStack {
-            id: ItemId(item),
-            charges: 0,
-            cooldown: 0,
-            mute: 0,
-            mode: None,
-            bought_tick: 0,
-            touched: false,
-            owner: SlotId(0),
-            for_sale: false,
-        });
-    }
-}
 
 /// A hero of a kind on the Radiant side, holding what it is given and
 /// swinging as fast as it may.
@@ -59,7 +25,9 @@ fn hero_holding(world: &mut World, hero: HeroId, held: &[u16]) -> Entity {
     for (slot, item) in held.iter().enumerate() {
         hold(world, entity, slot, *item);
     }
-    world.modifiers.insert(entity, fastest());
+    world
+        .modifiers
+        .insert(entity, swinging_at(rules::MAX_ATTACK_SPEED));
     entity
 }
 
@@ -101,68 +69,48 @@ fn told_in(events: &[Event], from: Entity, on: Entity) -> Told {
     told
 }
 
-/// Steps until so many ticks have told of a swing, keeping what each told.
-fn swings(world: &mut World, from: Entity, on: Entity, wanted: usize) -> Vec<Told> {
-    let mut seen = Vec::new();
-    for _ in 0..800 {
-        if seen.len() >= wanted {
-            break;
-        }
-        let told = told_in(&world.step(), from, on);
-        if told != Told::default() {
-            seen.push(told);
-        }
+/// What a tick told of one entity's attacks at another, if it told of any.
+fn swing_in(events: &[Event], from: Entity, on: Entity) -> Vec<Told> {
+    let told = told_in(events, from, on);
+    if told == Told::default() {
+        Vec::new()
+    } else {
+        vec![told]
     }
-    seen
 }
 
-/// The stream of pierce rolls an attacker has opened, if it has.
-fn pierce_stream(world: &World, attacker: Entity) -> Option<&Chance> {
-    world
-        .pierce
-        .get(attacker.index().0 as usize)
-        .and_then(|chance| chance.as_ref())
+/// The first `wanted` ticks that told of a swing.
+fn swings(world: &mut World, from: Entity, on: Entity, wanted: usize) -> Vec<Told> {
+    let mut seen = Vec::new();
+    step_until(world, &mut seen, wanted, |events| {
+        swing_in(events, from, on)
+    });
+    seen
 }
 
 #[test]
 fn a_monkey_king_bar_pierces_exactly_its_share_and_lands_its_bonus() {
     let ratio = Ratio::new(4, 5);
-    let (num, den) = (usize::from(ratio.num()), usize::from(ratio.den()));
     let mut world = World::new();
     let pudge = hero_holding(&mut world, HeroId(1), &[ITEM_MONKEY_KING_BAR]);
     let anvil = world.spawn_unit(&ANVIL, Team::Dire, Vec2::from_ints(5100, 5000));
     world.settle();
     world.set_target(pudge, anvil);
-    // Step to the first swing, which opens the stream and says where in
-    // its block it opened.
-    let mut seen = Vec::new();
-    let mut first = None;
-    for _ in 0..40 {
-        let told = told_in(&world.step(), pudge, anvil);
-        if told != Told::default() {
-            seen.push(told);
-        }
-        if let Some(chance) = pierce_stream(&world, pudge) {
-            first = Some(match usize::from(chance.block_position()) {
-                0 => 1,
-                pos => den - (pos - 1),
-            });
-            break;
-        }
-    }
-    let first = first.expect("a swing came within forty ticks");
+    let told = |events: &[Event]| swing_in(events, pudge, anvil);
+    let (mut seen, first) =
+        until_opened(&mut world, 40, told, |world| opened(&world.pierce, pudge));
     assert_eq!(
         seen.len(),
         1,
         "the first swing was told of the tick it rolled"
     );
-    seen.extend(swings(&mut world, pudge, anvil, first + den * 5));
-    let full = seen[first..].chunks_exact(den);
-    assert!(full.len() >= 5, "five full blocks of swings were told of");
-    for (nth, block) in full.enumerate() {
-        let pierced = block.iter().filter(|told| told.bonus.is_some()).count();
-        assert_eq!(pierced, num, "block {nth}: {block:?}");
-    }
+    step_until(
+        &mut world,
+        &mut seen,
+        first + 5 * usize::from(ratio.den()),
+        told,
+    );
+    assert_exact_blocks(&seen, first, ratio, |told| told.bonus.is_some(), "the bar");
     for told in &seen {
         assert_eq!(told.landed, 1, "every swing landed: {told:?}");
         if let Some(bonus) = told.bonus {
@@ -192,10 +140,7 @@ fn a_pierced_swing_is_never_evaded() {
             break;
         }
         world.fill_pools(sylla);
-        let told = told_in(&world.step(), pudge, sylla);
-        if told != Told::default() {
-            seen.push(told);
-        }
+        seen.extend(swing_in(&world.step(), pudge, sylla));
     }
     assert_eq!(seen.len(), 40, "forty swings were told of");
     for told in &seen {
@@ -229,7 +174,7 @@ fn a_structure_is_never_pierced() {
         "none of them pierced"
     );
     assert!(
-        pierce_stream(&world, pudge).is_none(),
+        opened(&world.pierce, pudge).is_none(),
         "and no stream was opened"
     );
 }

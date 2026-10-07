@@ -3,22 +3,14 @@
 
 use crate::game::{
     ActionPhase, ActionState, Command, Entity, Level, MELEE_CREEP, Modifier, ModifierKind,
-    PendingCast, Seat, UnitDef, World, rules, wire_id,
+    PendingCast, Seat, World, rules, wire_id,
 };
-use bota_proto::{AbilitySlot, DamageKind, Fixed, HeroId, Order, SlotId, Target, Team, Vec2};
+use bota_proto::{AbilitySlot, DamageKind, HeroId, Order, SlotId, Target, Team, Vec2};
 
-/// What takes a strike and never falls: no armor, no mending, no swing back.
-const ANVIL: UnitDef = UnitDef {
-    max_hp: 30_000,
-    armor: 0,
-    damage: 0,
-    hp_regen: Fixed::ZERO,
-    ..MELEE_CREEP
-};
+use super::actions_tests::ANVIL;
 
-/// Pudge in a seat with the dismember learned, and a mark standing so far
-/// off.
-fn pudge_and_a_mark(apart: i32) -> (World, Entity, Entity) {
+/// Pudge in a seat with the dismember learned, and a mark 100 off.
+fn pudge_and_a_mark() -> (World, Entity, Entity) {
     let mut world = World::new();
     let pudge = world.spawn_hero(
         Team::Radiant,
@@ -26,11 +18,7 @@ fn pudge_and_a_mark(apart: i32) -> (World, Entity, Entity) {
         SlotId(0),
         HeroId(1),
     );
-    let mark = world.spawn_unit(
-        &MELEE_CREEP,
-        Team::Dire,
-        Vec2::from_ints(5000 + apart, 5000),
-    );
+    let mark = world.spawn_unit(&MELEE_CREEP, Team::Dire, Vec2::from_ints(5100, 5000));
     if let Some(book) = world.abilities.get_mut(pudge) {
         book.slots[3].level = 1;
     }
@@ -79,12 +67,15 @@ fn sylla_mid_swing() -> (World, Entity) {
     (world, sylla)
 }
 
-/// Hands one order to the seat's hero.
-fn order(world: &mut World, order: Order) {
+/// Orders the seat's Pudge to dismember the mark.
+fn dismember(world: &mut World, mark: Entity) {
     world.advance(&[Command {
         slot: SlotId(0),
         unit: None,
-        order,
+        order: Order::Cast {
+            slot: AbilitySlot(3),
+            target: Target::Unit(wire_id(mark)),
+        },
     }]);
 }
 
@@ -98,52 +89,22 @@ fn put_on(world: &World, entity: Entity, kind: ModifierKind, by: Entity) -> bool
     })
 }
 
-/// Whether everything a dismember puts on is on.
-fn dismember_is_on(world: &World, pudge: Entity, mark: Entity) -> bool {
-    put_on(world, mark, ModifierKind::Stunned, pudge)
-        && put_on(
-            world,
-            mark,
-            ModifierKind::Burning {
-                amount: 0,
-                kind: DamageKind::Pure,
-                lethal: true,
-            },
-            pudge,
-        )
-        && put_on(
-            world,
-            pudge,
-            ModifierKind::Mending {
-                per_tick: 0,
-                breaks: false,
-            },
-            pudge,
-        )
-}
-
-/// Whether nothing a dismember puts on is left.
-fn dismember_is_off(world: &World, pudge: Entity, mark: Entity) -> bool {
-    !put_on(world, mark, ModifierKind::Stunned, pudge)
-        && !put_on(
-            world,
-            mark,
-            ModifierKind::Burning {
-                amount: 0,
-                kind: DamageKind::Pure,
-                lethal: true,
-            },
-            pudge,
-        )
-        && !put_on(
-            world,
-            pudge,
-            ModifierKind::Mending {
-                per_tick: 0,
-                breaks: false,
-            },
-            pudge,
-        )
+/// Which of the stun, the burn and the mending a dismember puts on are on.
+fn dismember_parts(world: &World, pudge: Entity, mark: Entity) -> [bool; 3] {
+    let burn = ModifierKind::Burning {
+        amount: 0,
+        kind: DamageKind::Pure,
+        lethal: true,
+    };
+    let mend = ModifierKind::Mending {
+        per_tick: 0,
+        breaks: false,
+    };
+    [
+        put_on(world, mark, ModifierKind::Stunned, pudge),
+        put_on(world, mark, burn, pudge),
+        put_on(world, pudge, mend, pudge),
+    ]
 }
 
 #[test]
@@ -174,96 +135,70 @@ fn a_cast_that_holds_the_body_for_no_time_goes_off_mid_swing_on_the_tick_it_is_o
 
 #[test]
 fn a_dismember_holds_for_exactly_its_ticks_and_then_lets_go() {
-    let (mut world, pudge, mark) = pudge_and_a_mark(100);
-    order(
-        &mut world,
-        Order::Cast {
-            slot: AbilitySlot(3),
-            target: Target::Unit(wire_id(mark)),
-        },
-    );
+    let (mut world, pudge, mark) = pudge_and_a_mark();
+    dismember(&mut world, mark);
     assert!(
         world.is_channelling(pudge),
         "it takes hold on the tick it is ordered"
     );
-    assert!(
-        dismember_is_on(&world, pudge, mark),
+    assert_eq!(
+        dismember_parts(&world, pudge, mark),
+        [true; 3],
         "and puts on all of it"
     );
     for tick in 1..rules::DISMEMBER_TICKS {
         world.step();
         assert!(world.is_channelling(pudge), "still holding {tick} ticks in");
-        assert!(dismember_is_on(&world, pudge, mark), "{tick} ticks in");
+        assert_eq!(
+            dismember_parts(&world, pudge, mark),
+            [true; 3],
+            "{tick} ticks in"
+        );
     }
     world.step();
     assert!(
         !world.is_channelling(pudge),
         "it lets go once its ticks have run"
     );
-    assert!(
-        dismember_is_off(&world, pudge, mark),
+    assert_eq!(
+        dismember_parts(&world, pudge, mark),
+        [false; 3],
         "and takes off everything it put on"
     );
 }
 
-#[test]
-fn a_stun_on_the_one_holding_breaks_a_dismember_off() {
-    let (mut world, pudge, mark) = pudge_and_a_mark(100);
-    order(
-        &mut world,
-        Order::Cast {
-            slot: AbilitySlot(3),
-            target: Target::Unit(wire_id(mark)),
-        },
-    );
-    for _ in 0..10 {
-        world.step();
-    }
-    assert!(
-        world.is_channelling(pudge),
-        "it holds until something stops it"
-    );
-    world.put_modifier(
-        pudge,
-        Modifier {
-            kind: ModifierKind::Stunned,
-            source: None,
-            ticks_left: Some(5),
-        },
-    );
-    world.step();
-    assert!(!world.is_channelling(pudge), "stunned, it lets go");
-    assert!(
-        dismember_is_off(&world, pudge, mark),
-        "and takes off everything it put on"
-    );
-}
+/// Something done to a world holding a dismember, given Pudge and the mark.
+type BreakOff = fn(&mut World, Entity, Entity);
 
 #[test]
-fn a_mark_that_leaves_reach_lets_a_dismember_go() {
-    let (mut world, pudge, mark) = pudge_and_a_mark(100);
-    order(
-        &mut world,
-        Order::Cast {
-            slot: AbilitySlot(3),
-            target: Target::Unit(wire_id(mark)),
-        },
-    );
-    for _ in 0..10 {
+fn a_stun_on_the_one_holding_or_a_mark_out_of_reach_breaks_a_dismember_off() {
+    let breaks: [(&str, BreakOff); 2] = [
+        ("stunned", |world, pudge, _| {
+            let stun = Modifier {
+                kind: ModifierKind::Stunned,
+                source: None,
+                ticks_left: Some(5),
+            };
+            world.put_modifier(pudge, stun);
+        }),
+        ("out of reach", |world, _, mark| {
+            world.transform.get_mut(mark).expect("standing").pos = Vec2::from_ints(7000, 5000);
+        }),
+    ];
+    for (case, break_off) in breaks {
+        let (mut world, pudge, mark) = pudge_and_a_mark();
+        dismember(&mut world, mark);
+        for _ in 0..10 {
+            world.step();
+        }
+        assert!(world.is_channelling(pudge), "{case}: it holds until then");
+        break_off(&mut world, pudge, mark);
         world.step();
+        assert!(!world.is_channelling(pudge), "{case}: it lets go");
+        assert_eq!(
+            dismember_parts(&world, pudge, mark),
+            [false; 3],
+            "{case}: and takes off everything it put on"
+        );
     }
-    assert!(
-        world.is_channelling(pudge),
-        "it holds while the mark is near"
-    );
-    world.transform.get_mut(mark).expect("standing").pos = Vec2::from_ints(7000, 5000);
-    world.step();
-    assert!(
-        !world.is_channelling(pudge),
-        "with the mark out of reach it has nothing to hold"
-    );
-    assert!(
-        dismember_is_off(&world, pudge, mark),
-        "and takes off everything it put on"
-    );
 }

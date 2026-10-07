@@ -2,10 +2,14 @@
 //! told of; what is not an attack never misses.
 
 use crate::game::{
-    Chance, Entity, Event, ITEM_BUTTERFLY, ITEM_TALISMAN_OF_EVASION, ItemStack, MELEE_CREEP,
-    Modifier, ModifierKind, Modifiers, RANGED_CREEP, Ratio, UnitDef, World, rules, wire_id,
+    Entity, Event, ITEM_BUTTERFLY, ITEM_TALISMAN_OF_EVASION, MELEE_CREEP, RANGED_CREEP, Ratio,
+    UnitDef, World, rules, wire_id,
 };
-use bota_proto::{DamageKind, EventKind, Fixed, HeroId, ItemId, SlotId, Team, Vec2};
+use bota_proto::{DamageKind, EventKind, Fixed, HeroId, SlotId, Team, Vec2};
+
+use super::actions_tests::{
+    assert_exact_blocks, hold, opened, step_until, swinging_at, until_opened,
+};
 
 /// A melee attacker worth a point a strike on a short cycle, never landing
 /// two strikes in one tick, never falling and never bringing a hero down.
@@ -35,34 +39,6 @@ const ARCHER: UnitDef = UnitDef {
     ..RANGED_CREEP
 };
 
-/// Swinging as fast as a body may.
-fn fastest() -> Modifiers {
-    Modifiers(vec![Modifier {
-        kind: ModifierKind::Haste {
-            speed: rules::MAX_ATTACK_SPEED - rules::BASE_ATTACK_SPEED,
-        },
-        source: None,
-        ticks_left: Some(u32::MAX / 2),
-    }])
-}
-
-/// Puts an item in one of a hero's slots.
-fn hold(world: &mut World, hero: Entity, slot: usize, item: u16) {
-    if let Some(bag) = world.inventory.get_mut(hero) {
-        bag.slots[slot] = Some(ItemStack {
-            id: ItemId(item),
-            charges: 0,
-            cooldown: 0,
-            mute: 0,
-            mode: None,
-            bought_tick: 0,
-            touched: false,
-            owner: SlotId(0),
-            for_sale: false,
-        });
-    }
-}
-
 /// An attacker of a kind set on a hero in reach, the hero holding what it
 /// is given.
 fn attacker_at_a_hero(attacker: &'static UnitDef, held: &[u16]) -> (World, Entity, Entity) {
@@ -77,7 +53,9 @@ fn attacker_at_a_hero(attacker: &'static UnitDef, held: &[u16]) -> (World, Entit
     for (slot, item) in held.iter().enumerate() {
         hold(&mut world, mark, slot, *item);
     }
-    world.modifiers.insert(from, fastest());
+    world
+        .modifiers
+        .insert(from, swinging_at(rules::MAX_ATTACK_SPEED));
     world.settle();
     world.fill_pools(mark);
     world.set_target(from, mark);
@@ -105,78 +83,28 @@ fn swings_in(events: &[Event], from: Entity, on: Entity) -> Vec<bool> {
         .collect()
 }
 
-/// Steps until so many swings have been told of, adding them to what was
-/// seen.
-fn swing(world: &mut World, from: Entity, on: Entity, seen: &mut Vec<bool>, wanted: usize) {
-    for _ in 0..800 {
-        if seen.len() >= wanted {
-            return;
-        }
-        seen.extend(swings_in(&world.step(), from, on));
-    }
-}
-
-/// The stream of evasion rolls a target has opened, if it has.
-fn evasion_stream(world: &World, target: Entity) -> Option<&Chance> {
-    world
-        .evasion
-        .get(target.index().0 as usize)
-        .and_then(|chance| chance.as_ref())
-}
-
-/// How many rolls of the first block the first roll left, itself included.
-fn first_block_len(world: &World, target: Entity, den: usize) -> usize {
-    let chance = evasion_stream(world, target).expect("the first swing opened the stream");
-    match usize::from(chance.block_position()) {
-        0 => 1,
-        pos => den - (pos - 1),
-    }
-}
-
-/// Runs an attacker at a hero holding a Butterfly and checks that every
-/// full block of swings carries exactly the Butterfly's share of misses.
-fn misses_hold_exactly(attacker: &'static UnitDef) {
+#[test]
+fn a_butterfly_makes_exactly_its_share_of_melee_and_thrown_swings_miss() {
     let ratio = Ratio::new(7, 20);
-    let (num, den) = (usize::from(ratio.num()), usize::from(ratio.den()));
-    let (mut world, from, mark) = attacker_at_a_hero(attacker, &[ITEM_BUTTERFLY]);
-    assert_eq!(
-        world.stats.get(mark).map(|stats| stats.evasion),
-        Some(ratio),
-        "the Butterfly is worth its evasion"
-    );
-    // Step to the first swing that arrives, which opens the stream.
-    let mut swings = Vec::new();
-    let mut first = None;
-    for _ in 0..40 {
-        swings.extend(swings_in(&world.step(), from, mark));
-        if evasion_stream(&world, mark).is_some() {
-            first = Some(first_block_len(&world, mark, den));
-            break;
-        }
+    for (attacker, case) in [(&STRIKER, "melee"), (&ARCHER, "thrown")] {
+        let (mut world, from, mark) = attacker_at_a_hero(attacker, &[ITEM_BUTTERFLY]);
+        assert_eq!(
+            world.stats.get(mark).map(|stats| stats.evasion),
+            Some(ratio),
+            "the Butterfly is worth its evasion"
+        );
+        let told = |events: &[Event]| swings_in(events, from, mark);
+        let (mut swings, first) =
+            until_opened(&mut world, 40, told, |world| opened(&world.evasion, mark));
+        assert_eq!(swings.len(), 1, "{case}: told of the tick it rolled");
+        step_until(
+            &mut world,
+            &mut swings,
+            first + 5 * usize::from(ratio.den()),
+            told,
+        );
+        assert_exact_blocks(&swings, first, ratio, |landed| !*landed, case);
     }
-    let first = first.expect("a swing arrived within forty ticks");
-    assert_eq!(
-        swings.len(),
-        1,
-        "the first swing was told of the tick it rolled"
-    );
-    swing(&mut world, from, mark, &mut swings, first + den * 5);
-    let full = swings[first..].chunks_exact(den);
-    assert!(full.len() >= 5, "five full blocks of swings were told of");
-    for (nth, block) in full.enumerate() {
-        let missed = block.iter().filter(|landed| !**landed).count();
-        assert_eq!(missed, num, "block {nth}: {block:?}");
-    }
-}
-
-#[test]
-fn a_butterfly_makes_exactly_its_share_of_melee_swings_miss() {
-    misses_hold_exactly(&STRIKER);
-}
-
-#[test]
-fn a_butterfly_makes_exactly_its_share_of_thrown_swings_miss() {
-    misses_hold_exactly(&ARCHER);
 }
 
 #[test]
@@ -198,11 +126,13 @@ fn what_is_not_an_attack_never_misses() {
 fn without_evasion_nothing_is_rolled_and_nothing_misses() {
     let (mut world, from, mark) = attacker_at_a_hero(&STRIKER, &[]);
     let mut swings = Vec::new();
-    swing(&mut world, from, mark, &mut swings, 30);
+    step_until(&mut world, &mut swings, 30, |events| {
+        swings_in(events, from, mark)
+    });
     assert_eq!(swings.len(), 30, "thirty swings were told of");
     assert!(swings.iter().all(|landed| *landed), "all of them landed");
     assert!(
-        evasion_stream(&world, mark).is_none(),
+        opened(&world.evasion, mark).is_none(),
         "and no stream was opened"
     );
 }
@@ -232,8 +162,7 @@ fn a_butterfly_is_worth_its_agility_damage_and_share_of_the_base_pace() {
         with.attributes.agility - bare.attributes.agility,
         Fixed::from_int(30)
     );
-    // Thirty of its own; Pudge's primary is strength, so agility pays no
-    // damage.
+    // Thirty of its own; Pudge's primary is strength, so agility adds none.
     assert_eq!(with.damage - bare.damage, 30);
     let agility_pace =
         (with.attributes.agility * Fixed::from_int(rules::ATTACK_SPEED_PER_AGILITY)).to_int();
