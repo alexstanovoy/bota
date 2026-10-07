@@ -4,9 +4,9 @@ use crate::game::{
     ActionPhase, ActionState, CampHome, CellGrid, Command, Def, Entity, Errand, Event, Ground,
     Health, ITEM_BOOTS, ITEM_TANGO, ITEM_TOWN_PORTAL_SCROLL, ITEMS, ItemStack, Lane, LaneAi, Level,
     MELEE_CREEP, MapDef, MatchConfig, Modifier, ModifierKind, Modifiers, NeutralAi, NeutralKind,
-    Orders, Projectile, RANGED_CREEP, Ratio, SALVE_TICKS, Seat, StackKind, Stats, TERRAIN_CELLS,
-    Transform, UnitDef, UnitOrder, World, facing_towards, is_structure, isqrt64, map_of,
-    plan_radius, rules, tree_positions, wire_id,
+    Orders, Projectile, RANGED_CREEP, Ratio, Seat, StackKind, Stats, TERRAIN_CELLS, Transform,
+    UnitDef, UnitOrder, World, facing_towards, is_structure, isqrt64, map_of, plan_radius, rules,
+    tree_positions, wire_id,
 };
 use bota_proto::{
     AbilitySlot, Angle, Attributes, DamageKind, EventKind, Fixed, HeroId, ItemId, MapId, Order,
@@ -89,11 +89,6 @@ pub(super) fn map_buildings(map: &MapDef) -> usize {
         + map.ancients.iter().flatten().count()
 }
 
-/// How long the salve mends for.
-pub(super) fn salve_ticks() -> u32 {
-    SALVE_TICKS
-}
-
 /// A match config that always names the same numbers.
 pub(super) fn config() -> MatchConfig {
     MatchConfig {
@@ -165,34 +160,32 @@ pub(super) fn world_with_projectile_uphill_state(launch_tier: u8, can_miss_uphil
 
 /// A Radiant melee creep with a lane mind of its own.
 pub(super) fn thinking_creep(world: &mut World, at: Vec2) -> Entity {
-    let creep = world.spawn_unit(&MELEE_CREEP, Team::Radiant, at);
-    world.lane_ai.insert(
-        creep,
-        LaneAi {
-            last_seen: None,
-            keep_until: 0,
-            roused_by: None,
-            roused_at_own: false,
-            chase_until: 0,
-        },
-    );
-    creep
+    thinking_creep_of(world, Team::Radiant, at)
+}
+
+/// A Radiant hero of the plain kind for seat 0, unseated.
+pub(super) fn hero_at(world: &mut World, at: Vec2) -> Entity {
+    world.spawn_hero(Team::Radiant, at, SlotId(0), HeroId(0))
+}
+
+/// A Radiant hero of one kind sat in a fresh seat 0 with no gold.
+pub(super) fn seated_hero(world: &mut World, at: Vec2, hero: HeroId) -> Entity {
+    let unit = world.spawn_hero(Team::Radiant, at, SlotId(0), hero);
+    let mut seat = Seat::new(SlotId(0), Team::Radiant, hero, 0, rules::STASH_SLOTS);
+    seat.unit = Some(unit);
+    world.seats.push(seat);
+    unit
 }
 
 /// A hero that has learned one ability to its first level, with mana to spend.
 pub(super) fn caster(world: &mut World, at: Vec2, slot: usize) -> Entity {
-    let hero = world.spawn_hero(Team::Radiant, at, SlotId(0), HeroId(0));
+    let hero = hero_at(world, at);
     // Levelled enough that the slot under test is one it may learn.
     world.level.insert(hero, Level(rules::HERO_MAX_LEVEL));
     world.settle();
     world.fill_pools(hero);
     assert!(world.learn(hero, slot), "the slot is learned");
     hero
-}
-
-/// Runs the actions pass once, and nothing else of the tick.
-pub(super) fn swing_once(world: &mut World) {
-    world.run_actions();
 }
 
 /// Who an entity is mid-swing at, if it is mid-swing at all.
@@ -237,25 +230,12 @@ pub(super) fn duel(gap: i32) -> (World, Entity, Entity) {
 /// `apart` east of it.
 pub(super) fn hero_ordered_at_an_enemy(apart: i32) -> (World, Entity, Entity) {
     let mut world = World::new();
-    let hero = world.spawn_hero(
-        Team::Radiant,
-        Vec2::from_ints(5000, 5000),
-        SlotId(0),
-        HeroId(0),
-    );
+    let hero = seated_hero(&mut world, Vec2::from_ints(5000, 5000), HeroId(0));
     let mark = world.spawn_unit(
         &MELEE_CREEP,
         Team::Dire,
         Vec2::from_ints(5000 + apart, 5000),
     );
-    world.seats.push(Seat::new(
-        SlotId(0),
-        Team::Radiant,
-        HeroId(0),
-        0,
-        rules::STASH_SLOTS,
-    ));
-    world.seats[0].unit = Some(hero);
     world.settle();
     world.advance(&[Command {
         slot: SlotId(0),
@@ -283,22 +263,9 @@ pub(super) fn hero_following_an_enemy(apart: i32) -> (World, Entity, Entity) {
 /// A seated hero holding `order`, and a Dire creep 400 east of it.
 pub(super) fn hero_past_an_enemy(order: UnitOrder) -> (World, Entity, Entity) {
     let mut world = World::new();
-    world.seats.push(Seat::new(
-        SlotId(0),
-        Team::Radiant,
-        HeroId(0),
-        0,
-        rules::STASH_SLOTS,
-    ));
-    let hero = world.spawn_hero(
-        Team::Radiant,
-        Vec2::from_ints(5000, 5000),
-        SlotId(0),
-        HeroId(0),
-    );
+    let hero = seated_hero(&mut world, Vec2::from_ints(5000, 5000), HeroId(0));
     let enemy = world.spawn_unit(&MELEE_CREEP, Team::Dire, Vec2::from_ints(5400, 5000));
     world.settle();
-    world.seats[0].unit = Some(hero);
     world.orders.insert(
         hero,
         Orders {
@@ -313,20 +280,7 @@ pub(super) fn hero_past_an_enemy(order: UnitOrder) -> (World, Entity, Entity) {
 /// A hero of a side and one of its own creeps beside it.
 pub(super) fn hero_and_own_creep() -> (World, Entity, Entity) {
     let mut world = World::new();
-    world.seats.push(Seat::new(
-        SlotId(0),
-        Team::Radiant,
-        HeroId(0),
-        0,
-        rules::STASH_SLOTS,
-    ));
-    let hero = world.spawn_hero(
-        Team::Radiant,
-        Vec2::from_ints(5000, 5000),
-        SlotId(0),
-        HeroId(0),
-    );
-    world.seats[0].unit = Some(hero);
+    let hero = seated_hero(&mut world, Vec2::from_ints(5000, 5000), HeroId(0));
     let own = world.spawn_unit(&MELEE_CREEP, Team::Radiant, Vec2::from_ints(5100, 5000));
     world.settle();
     world.fill_pools(hero);
@@ -339,20 +293,7 @@ pub(super) fn hero_and_own_creep() -> (World, Entity, Entity) {
 /// tick has run.
 pub(super) fn a_lane_with_a_hero(apart: i32) -> (World, Entity, Entity, Entity, Entity) {
     let mut world = World::new();
-    world.seats.push(Seat::new(
-        SlotId(0),
-        Team::Radiant,
-        HeroId(0),
-        0,
-        rules::STASH_SLOTS,
-    ));
-    let hero = world.spawn_hero(
-        Team::Radiant,
-        Vec2::from_ints(5000, 5000),
-        SlotId(0),
-        HeroId(0),
-    );
-    world.seats[0].unit = Some(hero);
+    let hero = seated_hero(&mut world, Vec2::from_ints(5000, 5000), HeroId(0));
     // Standing, so it takes nothing on of its own.
     world.set_order(hero, UnitOrder::Stand);
     let theirs = thinking_creep_of(&mut world, Team::Dire, Vec2::from_ints(5000 + apart, 5000));
@@ -454,17 +395,7 @@ pub(super) fn a_hero_at_the_shop() -> (World, Entity, ItemId) {
     let mut world = World::for_match(&config(), config().rng());
     let hero = world.seats[0].unit.expect("stood up");
     let boots = ItemId(ITEM_BOOTS);
-    world.seats[0].stash.slots[0] = Some(ItemStack {
-        id: boots,
-        charges: 0,
-        cooldown: 0,
-        mute: 0,
-        mode: None,
-        bought_tick: 0,
-        touched: false,
-        owner: SlotId(0),
-        for_sale: false,
-    });
+    world.seats[0].stash.slots[0] = Some(fresh_stack(ITEM_BOOTS, 0));
     (world, hero, boots)
 }
 
@@ -503,17 +434,7 @@ pub(super) fn a_hero_with_a_scroll() -> (World, Entity) {
     let hero = world.seats[0].unit.expect("stood up");
     world.transform.get_mut(hero).expect("hero").pos = an_empty_spot(&world);
     if let Some(bag) = world.inventory.get_mut(hero) {
-        bag.slots[0] = Some(ItemStack {
-            id: ItemId(ITEM_TOWN_PORTAL_SCROLL),
-            charges: 1,
-            cooldown: 0,
-            mute: 0,
-            mode: None,
-            bought_tick: 0,
-            touched: false,
-            owner: SlotId(0),
-            for_sale: false,
-        });
+        bag.slots[0] = Some(fresh_stack(ITEM_TOWN_PORTAL_SCROLL, 1));
     }
     world.step();
     (world, hero)
@@ -547,17 +468,7 @@ pub(super) fn a_hero_with_a_ward(item: u16) -> (World, Entity, Vec2) {
     let spot = an_empty_spot(&world);
     world.transform.get_mut(hero).expect("hero").pos = spot;
     if let Some(bag) = world.inventory.get_mut(hero) {
-        bag.slots[0] = Some(ItemStack {
-            id: ItemId(item),
-            charges: 1,
-            cooldown: 0,
-            mute: 0,
-            mode: None,
-            bought_tick: 0,
-            touched: false,
-            owner: SlotId(0),
-            for_sale: false,
-        });
+        bag.slots[0] = Some(fresh_stack(item, 1));
     }
     world.step();
     (world, hero, spot)
@@ -584,28 +495,8 @@ pub(super) fn a_hero_by_the_trees(item: u16, charges: u8) -> (World, Entity, Vec
         })
         .expect("some tree has open ground beside it");
     let stand = tree + Vec2::from_ints(120, 0);
-    let hero = world.spawn_hero(Team::Radiant, stand, SlotId(0), HeroId(0));
-    world.seats.push(Seat::new(
-        SlotId(0),
-        Team::Radiant,
-        HeroId(0),
-        0,
-        rules::STASH_SLOTS,
-    ));
-    world.seats[0].unit = Some(hero);
-    if let Some(bag) = world.inventory.get_mut(hero) {
-        bag.slots[0] = Some(ItemStack {
-            id: ItemId(item),
-            charges,
-            cooldown: 0,
-            mute: 0,
-            mode: None,
-            bought_tick: 0,
-            touched: false,
-            owner: SlotId(0),
-            for_sale: false,
-        });
-    }
+    let hero = seated_hero(&mut world, stand, HeroId(0));
+    hand_item(&mut world, hero, item, charges);
     world.settle();
     world.step();
     (world, hero, tree)
@@ -620,17 +511,7 @@ pub(super) fn sight_stopped_at(world: &World, at: Vec2) -> bool {
 pub(super) fn tango_ticks(world: &mut World, hero: Entity, at: Vec2) -> u32 {
     world.modifiers.insert(hero, Modifiers(Vec::new()));
     if let Some(bag) = world.inventory.get_mut(hero) {
-        bag.slots[1] = Some(ItemStack {
-            id: ItemId(ITEM_TANGO),
-            charges: 1,
-            cooldown: 0,
-            mute: 0,
-            mode: None,
-            bought_tick: 0,
-            touched: false,
-            owner: SlotId(0),
-            for_sale: false,
-        });
+        bag.slots[1] = Some(fresh_stack(ITEM_TANGO, 1));
     }
     assert!(world.use_item(hero, 1, Target::Pos(at), &mut Vec::new()));
     world
@@ -678,12 +559,7 @@ pub(super) fn put_on(world: &mut World, entity: Entity, kind: ModifierKind, tick
 /// tick on.
 pub(super) fn pudge_and_a_mark(apart: i32) -> (World, Entity, Entity) {
     let mut world = World::new();
-    let pudge = world.spawn_hero(
-        Team::Radiant,
-        Vec2::from_ints(5000, 5000),
-        SlotId(0),
-        HeroId(1),
-    );
+    let pudge = seated_hero(&mut world, Vec2::from_ints(5000, 5000), HeroId(1));
     let mark = world.spawn_unit(
         &MELEE_CREEP,
         Team::Dire,
@@ -692,14 +568,6 @@ pub(super) fn pudge_and_a_mark(apart: i32) -> (World, Entity, Entity) {
     if let Some(book) = world.abilities.get_mut(pudge) {
         book.slots[0].level = 1;
     }
-    world.seats.push(Seat::new(
-        SlotId(0),
-        Team::Radiant,
-        HeroId(1),
-        0,
-        rules::STASH_SLOTS,
-    ));
-    world.seats[0].unit = Some(pudge);
     world.settle();
     world.step();
     (world, pudge, mark)
@@ -732,17 +600,22 @@ pub(super) fn pudge_casts(world: &mut World, slot: u8, target: Target) {
 /// Lays one item in a hero's first slot.
 pub(super) fn hand_item(world: &mut World, hero: Entity, item: u16, charges: u8) {
     if let Some(bag) = world.inventory.get_mut(hero) {
-        bag.slots[0] = Some(ItemStack {
-            id: ItemId(item),
-            charges,
-            cooldown: 0,
-            mute: 0,
-            mode: None,
-            bought_tick: 0,
-            touched: false,
-            owner: SlotId(0),
-            for_sale: false,
-        });
+        bag.slots[0] = Some(fresh_stack(item, charges));
+    }
+}
+
+/// An untouched stack of one item for seat 0.
+pub(super) fn fresh_stack(item: u16, charges: u8) -> ItemStack {
+    ItemStack {
+        id: ItemId(item),
+        charges,
+        cooldown: 0,
+        mute: 0,
+        mode: None,
+        bought_tick: 0,
+        touched: false,
+        owner: SlotId(0),
+        for_sale: false,
     }
 }
 
@@ -911,12 +784,7 @@ pub(super) fn stand_a_wall(world: &mut World, at: Vec2, radius: Fixed) {
 /// one and a Dire creep `apart` east of him, one tick on.
 pub(super) fn fiend_and_a_mark(apart: i32) -> (World, Entity, Entity) {
     let mut world = World::new();
-    let fiend = world.spawn_hero(
-        Team::Radiant,
-        Vec2::from_ints(5000, 5000),
-        SlotId(0),
-        HeroId(2),
-    );
+    let fiend = seated_hero(&mut world, Vec2::from_ints(5000, 5000), HeroId(2));
     let mark = world.spawn_unit(
         &MELEE_CREEP,
         Team::Dire,
@@ -927,14 +795,6 @@ pub(super) fn fiend_and_a_mark(apart: i32) -> (World, Entity, Entity) {
             held.level = 1;
         }
     }
-    world.seats.push(Seat::new(
-        SlotId(0),
-        Team::Radiant,
-        HeroId(2),
-        0,
-        rules::STASH_SLOTS,
-    ));
-    world.seats[0].unit = Some(fiend);
     world.settle();
     world.step();
     (world, fiend, mark)
@@ -1106,32 +966,44 @@ pub(super) const UPHILL_TEST_BUILDING: UnitDef = UnitDef {
     ..UPHILL_TEST_TARGET
 };
 
+/// A Radiant spotter that keeps the target of a ranged run in sight.
+const UPHILL_TEST_OBSERVER: UnitDef = UnitDef {
+    max_hp: 8_000,
+    damage: 0,
+    move_speed: 0,
+    vision: 2_000,
+    ..MELEE_CREEP
+};
+
+/// A Radiant attacker set on a Dire target, with a spotter standing on the
+/// target, settled and facing it.
+fn ranged_duel(
+    source: Vec2,
+    target: Vec2,
+    attacker_def: &'static UnitDef,
+    target_def: &'static UnitDef,
+) -> (World, Entity, Entity) {
+    let mut world = World::new();
+    let attacker = world.spawn_unit(attacker_def, Team::Radiant, source);
+    let mark = world.spawn_unit(target_def, Team::Dire, target);
+    world.spawn_unit(&UPHILL_TEST_OBSERVER, Team::Radiant, target);
+    world.settle();
+    world.set_target(attacker, mark);
+    if let Some(at) = world.transform.get_mut(attacker) {
+        at.facing = facing_towards(source, target);
+    }
+    (world, attacker, mark)
+}
+
 pub(super) fn ranged_damage_after_ticks(
     source: Vec2,
     target: Vec2,
     attacker_def: &'static UnitDef,
     target_def: &'static UnitDef,
 ) -> i32 {
-    const OBSERVER: UnitDef = UnitDef {
-        max_hp: 8_000,
-        damage: 0,
-        move_speed: 0,
-        vision: 2_000,
-        ..MELEE_CREEP
-    };
-    const TICKS: u32 = 512;
-
-    let mut world = World::new();
-    let attacker = world.spawn_unit(attacker_def, Team::Radiant, source);
-    let mark = world.spawn_unit(target_def, Team::Dire, target);
-    world.spawn_unit(&OBSERVER, Team::Radiant, target);
-    world.settle();
-    world.set_target(attacker, mark);
-    if let Some(at) = world.transform.get_mut(attacker) {
-        at.facing = facing_towards(source, target);
-    }
+    let (mut world, _, mark) = ranged_duel(source, target, attacker_def, target_def);
     let before = world.health.get(mark).expect("target health").hp;
-    for _ in 0..TICKS {
+    for _ in 0..512 {
         world.step();
     }
     let after = world.health.get(mark).expect("target survives").hp;
@@ -1146,22 +1018,7 @@ pub(super) fn ranged_swings_after_ticks(
     attacker_def: &'static UnitDef,
     target_def: &'static UnitDef,
 ) -> (usize, usize) {
-    const OBSERVER: UnitDef = UnitDef {
-        max_hp: 8_000,
-        damage: 0,
-        move_speed: 0,
-        vision: 2_000,
-        ..MELEE_CREEP
-    };
-    let mut world = World::new();
-    let attacker = world.spawn_unit(attacker_def, Team::Radiant, source);
-    let mark = world.spawn_unit(target_def, Team::Dire, target);
-    world.spawn_unit(&OBSERVER, Team::Radiant, target);
-    world.settle();
-    world.set_target(attacker, mark);
-    if let Some(at) = world.transform.get_mut(attacker) {
-        at.facing = facing_towards(source, target);
-    }
+    let (mut world, attacker, mark) = ranged_duel(source, target, attacker_def, target_def);
     let (mut landed, mut missed) = (0, 0);
     for _ in 0..512 {
         for event in world.step() {

@@ -353,17 +353,7 @@ fn a_courier_that_has_handed_over_turns_for_home() {
     let courier = the_courier(&world);
     let home = world.courier_home(Team::Radiant);
     world.transform.get_mut(hero).expect("standing").pos = home + Vec2::from_ints(900, 0);
-    world.seats[0].stash.slots[0] = Some(ItemStack {
-        id: ItemId(ITEM_BOOTS),
-        charges: 0,
-        cooldown: 0,
-        mute: 0,
-        mode: None,
-        bought_tick: 0,
-        touched: false,
-        owner: SlotId(0),
-        for_sale: false,
-    });
+    world.seats[0].stash.slots[0] = Some(fresh_stack(ITEM_BOOTS, 0));
     assert!(world.courier_take_stash(courier));
     world.step();
     assert!(world.courier_deliver(courier));
@@ -396,17 +386,7 @@ fn taking_the_stash_carries_it_on_without_being_asked_twice() {
     let courier = the_courier(&world);
     let home = world.courier_home(Team::Radiant);
     world.transform.get_mut(hero).expect("standing").pos = home + Vec2::from_ints(900, 0);
-    world.seats[0].stash.slots[0] = Some(ItemStack {
-        id: ItemId(ITEM_BOOTS),
-        charges: 0,
-        cooldown: 0,
-        mute: 0,
-        mode: None,
-        bought_tick: 0,
-        touched: false,
-        owner: SlotId(0),
-        for_sale: false,
-    });
+    world.seats[0].stash.slots[0] = Some(fresh_stack(ITEM_BOOTS, 0));
     assert!(world.courier_take_stash(courier));
     for _ in 0..300 {
         world.step();
@@ -454,17 +434,7 @@ fn a_courier_whose_owner_fell_puts_what_it_carries_back() {
     let hero = world.seats[0].unit.expect("stood up");
     let courier = the_courier(&world);
     if let Some(bag) = world.inventory.get_mut(courier) {
-        bag.slots[0] = Some(ItemStack {
-            id: ItemId(ITEM_BOOTS),
-            charges: 0,
-            cooldown: 0,
-            mute: 0,
-            mode: None,
-            bought_tick: 0,
-            touched: false,
-            owner: SlotId(0),
-            for_sale: false,
-        });
+        bag.slots[0] = Some(fresh_stack(ITEM_BOOTS, 0));
     }
     let mut events = Vec::new();
     world.bury(vec![(hero, None)], &mut events);

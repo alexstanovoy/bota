@@ -1,7 +1,7 @@
 //! Neutral camps.
 
 use crate::game::{CAMPS, OBSERVER_WARD, World, map_of, rules};
-use bota_proto::{DamageKind, HeroId, MapId, SlotId, Team, Vec2};
+use bota_proto::{DamageKind, MapId, Team, Vec2};
 
 use super::support::*;
 
@@ -106,12 +106,7 @@ fn a_neutral_sleeps_until_something_comes_right_up_to_it() {
     ] {
         let mut world = World::new();
         let beasts = a_camp_at(&mut world, camp);
-        let hero = world.spawn_hero(
-            Team::Radiant,
-            camp + Vec2::from_ints(apart, 0),
-            SlotId(0),
-            HeroId(0),
-        );
+        let hero = hero_at(&mut world, camp + Vec2::from_ints(apart, 0));
         world.settle();
         world.step();
         world.step();
@@ -130,12 +125,7 @@ fn a_blow_wakes_a_camp_from_further_than_it_can_see() {
     let beasts = a_camp_at(&mut world, camp);
     // Far past anything they could see, but inside the reach of a blow.
     let apart = rules::NEUTRAL_DAMAGE_AGGRO_RANGE - 100;
-    let hero = world.spawn_hero(
-        Team::Radiant,
-        camp + Vec2::from_ints(apart, 0),
-        SlotId(0),
-        HeroId(0),
-    );
+    let hero = hero_at(&mut world, camp + Vec2::from_ints(apart, 0));
     world.settle();
     world.step();
     assert!(
@@ -159,11 +149,9 @@ fn a_blow_wakes_a_camp_from_further_than_it_can_see() {
     // Further off than a blow carries, it wakes nobody.
     let mut world = World::new();
     let beasts = a_camp_at(&mut world, camp);
-    let far = world.spawn_hero(
-        Team::Radiant,
+    let far = hero_at(
+        &mut world,
         camp + Vec2::from_ints(rules::NEUTRAL_DAMAGE_AGGRO_RANGE + 400, 0),
-        SlotId(0),
-        HeroId(0),
     );
     world.settle();
     world.push_hit(Some(far), beasts[0], 10, DamageKind::Physical);

@@ -35,12 +35,7 @@ fn the_integer_square_root_is_the_floor_of_the_real_one() {
 #[test]
 fn an_order_to_walk_moves_a_body_and_turns_it_first() {
     let mut world = World::new();
-    let hero = world.spawn_hero(
-        Team::Radiant,
-        Vec2::from_ints(1000, 1000),
-        SlotId(0),
-        HeroId(0),
-    );
+    let hero = hero_at(&mut world, Vec2::from_ints(1000, 1000));
     world.settle();
     world.orders.insert(
         hero,
@@ -78,12 +73,7 @@ fn a_body_does_not_walk_through_a_building() {
     let map = map_of(MapId(1));
     let mut world = World::on_map(map);
     let (_, _, tower) = map.radiant_towers[0];
-    let hero = world.spawn_hero(
-        Team::Radiant,
-        tower - Vec2::from_ints(400, 0),
-        SlotId(0),
-        HeroId(0),
-    );
+    let hero = hero_at(&mut world, tower - Vec2::from_ints(400, 0));
     world.settle();
     world.orders.insert(
         hero,
@@ -280,7 +270,7 @@ fn a_hero_told_to_walk_into_a_tower_walks_up_to_it_and_stands() {
     let mut world = World::for_match(&cfg, cfg.rng());
     let (_, _, tower) = rules::RADIANT_TOWERS[2];
     let start = Vec2::from_ints(4000, 4500);
-    let hero = world.spawn_hero(Team::Radiant, start, SlotId(0), HeroId(0));
+    let hero = hero_at(&mut world, start);
     world.set_order(hero, UnitOrder::Move { pos: tower });
     let mut seen = Vec::new();
     for _ in 0..(10 * rules::TICKS_PER_SECOND) {
@@ -426,12 +416,7 @@ fn walkers_and_marchers_both_work_round_a_wall_of_bodies() {
     };
     // A hero ordered through the knot gets round it briskly.
     let mut world = World::new();
-    let hero = world.spawn_hero(
-        Team::Radiant,
-        Vec2::from_ints(5000, 5000),
-        SlotId(0),
-        HeroId(0),
-    );
+    let hero = hero_at(&mut world, Vec2::from_ints(5000, 5000));
     wall(&mut world, 5400, 5000);
     world.settle();
     let goal = Vec2::from_ints(5900, 5000);
@@ -456,12 +441,7 @@ fn a_hero_touching_a_tower_and_sent_past_it_goes_round_briskly() {
     let mut world = World::on_map(map);
     let (_, _, tower) = map.radiant_towers[0];
     let touching = rules::TOWER_COLLISION + rules::HERO_COLLISION + 1;
-    let hero = world.spawn_hero(
-        Team::Radiant,
-        tower - Vec2::from_ints(touching, 0),
-        SlotId(0),
-        HeroId(0),
-    );
+    let hero = hero_at(&mut world, tower - Vec2::from_ints(touching, 0));
     world.settle();
     let goal = tower + Vec2::from_ints(300, 0);
     world.set_order(hero, UnitOrder::Move { pos: goal });
@@ -503,7 +483,7 @@ fn a_hero_walks_round_a_wave_stood_fighting() {
     );
     let from = centre - Vec2::from_ints(400, 300);
     let goal = centre + Vec2::from_ints(400, 300);
-    let hero = world.spawn_hero(Team::Radiant, from, SlotId(0), HeroId(0));
+    let hero = hero_at(&mut world, from);
     world.settle();
     world.set_order(hero, UnitOrder::Move { pos: goal });
     let took = ticks_until_near(&mut world, hero, goal, 240);
@@ -524,7 +504,7 @@ fn marchers_walk_round_a_hero_standing_on_their_lane() {
     }
     let route = world.walked_lanes()[0][0].clone();
     let spot = point_along(route[1], route[2], rules::units(300));
-    let _hero = world.spawn_hero(Team::Radiant, spot, SlotId(0), HeroId(0));
+    let _hero = hero_at(&mut world, spot);
     world.settle();
     let creeps: Vec<Entity> = world
         .entities
@@ -588,12 +568,7 @@ fn a_hero_pacing_before_a_wave_holds_the_creep_it_covers() {
         world.step();
     }
     let (front, _) = wave_progress(&world, &route);
-    let hero = world.spawn_hero(
-        Team::Radiant,
-        along_lane(&route, front + 70, 0),
-        SlotId(0),
-        HeroId(0),
-    );
+    let hero = hero_at(&mut world, along_lane(&route, front + 70, 0));
     world.settle();
     let mut contacts = 0u32;
     for _ in 0..(seconds * rules::TICKS_PER_SECOND) {

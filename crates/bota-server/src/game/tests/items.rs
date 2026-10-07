@@ -3,8 +3,8 @@
 use crate::game::{
     BLINK_RANGE, Command, Event, HERO, Health, ITEM_BLINK_DAGGER, ITEM_BOOTS, ITEM_CLARITY,
     ITEM_HEALING_SALVE, ITEM_IRON_BRANCH, ITEM_PHASE_BOOTS, ITEM_POWER_TREADS, ITEM_QUELLING_BLADE,
-    ITEM_TANGO, ITEM_TOWN_PORTAL_SCROLL, ITEMS, ItemStack, MELEE_CREEP, Mana, ModifierKind, Seat,
-    UnitOrder, World, map_of, rules, tree_positions, wire_id,
+    ITEM_TANGO, ITEM_TOWN_PORTAL_SCROLL, ITEMS, ItemStack, MELEE_CREEP, Mana, ModifierKind,
+    SALVE_TICKS, Seat, UnitOrder, World, map_of, rules, tree_positions, wire_id,
 };
 use bota_proto::{
     AbilitySlot, Attribute, DamageKind, EventKind, Fixed, HeroId, ItemId, ItemSlot, MapId, Order,
@@ -16,25 +16,10 @@ use super::support::*;
 #[test]
 fn a_salve_puts_mending_on_whoever_drinks_it_and_runs_out() {
     let mut world = World::new();
-    let hero = world.spawn_hero(
-        Team::Radiant,
-        Vec2::from_ints(5000, 5000),
-        SlotId(0),
-        HeroId(0),
-    );
+    let hero = hero_at(&mut world, Vec2::from_ints(5000, 5000));
     world.step();
     if let Some(bag) = world.inventory.get_mut(hero) {
-        bag.slots[0] = Some(ItemStack {
-            id: ItemId(ITEM_HEALING_SALVE),
-            charges: 1,
-            cooldown: 0,
-            mute: 0,
-            mode: None,
-            bought_tick: 0,
-            touched: false,
-            owner: SlotId(0),
-            for_sale: false,
-        });
+        bag.slots[0] = Some(fresh_stack(ITEM_HEALING_SALVE, 1));
     }
     assert!(
         world.use_item(hero, 0, Target::None, &mut Vec::new()),
@@ -50,7 +35,7 @@ fn a_salve_puts_mending_on_whoever_drinks_it_and_runs_out() {
         world.stats.get(hero).expect("settled").hp_regen > plain,
         "it mends faster while the salve holds"
     );
-    for _ in 0..salve_ticks() + 1 {
+    for _ in 0..SALVE_TICKS + 1 {
         world.step();
     }
     assert_eq!(
@@ -63,24 +48,9 @@ fn a_salve_puts_mending_on_whoever_drinks_it_and_runs_out() {
 #[test]
 fn a_drink_is_told_of_as_what_was_missing_and_a_full_hero_is_not_told_at_all() {
     let mut world = World::new();
-    let hero = world.spawn_hero(
-        Team::Radiant,
-        Vec2::from_ints(5000, 5000),
-        SlotId(0),
-        HeroId(0),
-    );
+    let hero = hero_at(&mut world, Vec2::from_ints(5000, 5000));
     world.step();
-    let salve = ItemStack {
-        id: ItemId(ITEM_HEALING_SALVE),
-        charges: 1,
-        cooldown: 0,
-        mute: 0,
-        mode: None,
-        bought_tick: 0,
-        touched: false,
-        owner: SlotId(0),
-        for_sale: false,
-    };
+    let salve = fresh_stack(ITEM_HEALING_SALVE, 1);
     if let Some(bag) = world.inventory.get_mut(hero) {
         bag.slots[0] = Some(salve);
     }
@@ -118,28 +88,13 @@ fn a_drink_is_told_of_as_what_was_missing_and_a_full_hero_is_not_told_at_all() {
 #[test]
 fn a_clarity_is_told_of_by_the_mana_that_was_missing() {
     let mut world = World::new();
-    let hero = world.spawn_hero(
-        Team::Radiant,
-        Vec2::from_ints(5000, 5000),
-        SlotId(0),
-        HeroId(0),
-    );
+    let hero = hero_at(&mut world, Vec2::from_ints(5000, 5000));
     world.step();
     if let Some(pool) = world.mana.get_mut(hero) {
         pool.mana -= Fixed::from_int(60);
     }
     if let Some(bag) = world.inventory.get_mut(hero) {
-        bag.slots[0] = Some(ItemStack {
-            id: ItemId(ITEM_CLARITY),
-            charges: 1,
-            cooldown: 0,
-            mute: 0,
-            mode: None,
-            bought_tick: 0,
-            touched: false,
-            owner: SlotId(0),
-            for_sale: false,
-        });
+        bag.slots[0] = Some(fresh_stack(ITEM_CLARITY, 1));
     }
     let mut events = Vec::new();
     assert!(
@@ -292,17 +247,7 @@ fn a_drink_may_be_aimed_at_the_one_drinking_it() {
         let mut world = World::for_match(&config(), config().rng());
         let hero = world.seats[0].unit.expect("stood up");
         if let Some(bag) = world.inventory.get_mut(hero) {
-            bag.slots[0] = Some(ItemStack {
-                id: ItemId(item),
-                charges: 1,
-                cooldown: 0,
-                mute: 0,
-                mode: None,
-                bought_tick: 0,
-                touched: false,
-                owner: SlotId(0),
-                for_sale: false,
-            });
+            bag.slots[0] = Some(fresh_stack(item, 1));
         }
         world.step();
         // Aimed at itself by name, the way a click on one's own hero sends it.
@@ -440,12 +385,7 @@ fn a_blade_cannot_reach_a_tree_it_was_pointed_at_from_far_off() {
 #[test]
 fn a_quelling_blade_is_worth_something_against_a_creep_and_nothing_against_a_hero() {
     let mut world = World::new();
-    let hero = world.spawn_hero(
-        Team::Radiant,
-        Vec2::from_ints(5000, 5000),
-        SlotId(0),
-        HeroId(0),
-    );
+    let hero = hero_at(&mut world, Vec2::from_ints(5000, 5000));
     let creep = world.spawn_unit(&MELEE_CREEP, Team::Dire, Vec2::from_ints(5100, 5000));
     let theirs = world.spawn_hero(
         Team::Dire,
@@ -458,17 +398,7 @@ fn a_quelling_blade_is_worth_something_against_a_creep_and_nothing_against_a_her
     let bare_creep = one_swing_takes(&mut world, hero, creep);
     let bare_hero = one_swing_takes(&mut world, hero, theirs);
     if let Some(bag) = world.inventory.get_mut(hero) {
-        bag.slots[0] = Some(ItemStack {
-            id: ItemId(ITEM_QUELLING_BLADE),
-            charges: 0,
-            cooldown: 0,
-            mute: 0,
-            mode: None,
-            bought_tick: 0,
-            touched: false,
-            owner: SlotId(0),
-            for_sale: false,
-        });
+        bag.slots[0] = Some(fresh_stack(ITEM_QUELLING_BLADE, 0));
     }
     world.step();
     let blade = ITEMS[usize::from(ITEM_QUELLING_BLADE)]
@@ -532,12 +462,7 @@ fn a_scroll_read_is_owed_by_the_hero_and_not_by_the_scroll() {
 fn a_hero_hit_loses_its_drink_but_never_what_a_tree_bought() {
     let map = map_of(MapId(0));
     let mut world = World::on_map(map);
-    let hero = world.spawn_hero(
-        Team::Radiant,
-        Vec2::from_ints(7000, 7000),
-        SlotId(0),
-        HeroId(0),
-    );
+    let hero = hero_at(&mut world, Vec2::from_ints(7000, 7000));
     let theirs = world.spawn_hero(
         Team::Dire,
         Vec2::from_ints(7000, 7000),
@@ -617,12 +542,7 @@ fn what_an_item_is_set_to_is_worth_points_of_that_attribute() {
 #[test]
 fn treads_switched_round_the_wheel_mend_nothing() {
     let mut world = World::new();
-    let hero = world.spawn_hero(
-        Team::Radiant,
-        Vec2::from_ints(5000, 5000),
-        SlotId(0),
-        HeroId(0),
-    );
+    let hero = hero_at(&mut world, Vec2::from_ints(5000, 5000));
     world.seats.push(Seat::new(
         SlotId(0),
         Team::Radiant,

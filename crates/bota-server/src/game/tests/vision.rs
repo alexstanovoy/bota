@@ -3,7 +3,7 @@
 use crate::game::{
     EventVisibility, Health, MELEE_CREEP, RANGED_CREEP, World, map_of, rules, wire_id,
 };
-use bota_proto::{Fixed, HeroId, MapId, SlotId, Team, UnitKind, Vec2};
+use bota_proto::{Fixed, MapId, Team, UnitKind, Vec2};
 
 use super::support::*;
 
@@ -86,12 +86,7 @@ fn a_unit_still_standing_never_reads_as_empty() {
 #[test]
 fn a_side_sees_what_stands_inside_its_sight() {
     let mut world = World::new();
-    let watcher = world.spawn_hero(
-        Team::Radiant,
-        Vec2::from_ints(1000, 1000),
-        SlotId(0),
-        HeroId(0),
-    );
+    let watcher = hero_at(&mut world, Vec2::from_ints(1000, 1000));
     let near = world.spawn_unit(&MELEE_CREEP, Team::Dire, Vec2::from_ints(1200, 1000));
     let far = world.spawn_unit(&MELEE_CREEP, Team::Dire, Vec2::from_ints(9000, 9000));
     world.settle();
@@ -122,7 +117,7 @@ fn a_side_is_told_only_of_what_it_could_see() {
         EventVisibility::OneTeam(Team::Dire),
         "only the side party to it is told"
     );
-    let watcher = world.spawn_hero(Team::Radiant, far, SlotId(0), HeroId(0));
+    let watcher = hero_at(&mut world, far);
     world.settle();
     assert!(world.can_see_point(Team::Radiant, far));
     assert_eq!(
@@ -135,12 +130,7 @@ fn a_side_is_told_only_of_what_it_could_see() {
 #[test]
 fn a_ranged_attack_puts_a_missile_where_a_side_can_see_it() {
     let mut world = World::new();
-    let archer = world.spawn_hero(
-        Team::Radiant,
-        Vec2::from_ints(5000, 5000),
-        SlotId(0),
-        HeroId(0),
-    );
+    let archer = hero_at(&mut world, Vec2::from_ints(5000, 5000));
     let mark = world.spawn_unit(&MELEE_CREEP, Team::Dire, Vec2::from_ints(5300, 5000));
     world.settle();
     world.fill_pools(archer);

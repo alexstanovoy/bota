@@ -66,12 +66,7 @@ fn a_building_never_shoots_the_jungle_and_a_creep_only_at_a_pull_camp() {
     let mut world = World::new();
     let tower = world.spawn_unit(tower_def(1), Team::Radiant, Vec2::from_ints(1000, 1000));
     let creep = world.spawn_unit(&MELEE_CREEP, Team::Radiant, Vec2::from_ints(1000, 1000));
-    let hero = world.spawn_hero(
-        Team::Radiant,
-        Vec2::from_ints(1000, 1000),
-        SlotId(0),
-        HeroId(0),
-    );
+    let hero = hero_at(&mut world, Vec2::from_ints(1000, 1000));
     let beast = world.spawn_unit(
         NeutralKind::Kobold.def(),
         Team::Neutral,

@@ -69,12 +69,7 @@ fn every_map_sits_at_the_place_its_id_names() {
 #[test]
 fn a_kill_pays_the_one_who_struck_last_and_feeds_the_side() {
     let mut world = World::new();
-    let hero = world.spawn_hero(
-        Team::Radiant,
-        Vec2::from_ints(5000, 5000),
-        SlotId(0),
-        HeroId(0),
-    );
+    let hero = hero_at(&mut world, Vec2::from_ints(5000, 5000));
     world.seats.push(Seat::new(
         SlotId(0),
         Team::Radiant,
@@ -137,12 +132,7 @@ fn dead_allied_heroes_do_not_take_an_experience_share() {
 #[test]
 fn bringing_down_your_own_is_a_deny_and_pays_the_other_side_nothing() {
     let mut world = World::new();
-    let hero = world.spawn_hero(
-        Team::Radiant,
-        Vec2::from_ints(5000, 5000),
-        SlotId(0),
-        HeroId(0),
-    );
+    let hero = hero_at(&mut world, Vec2::from_ints(5000, 5000));
     world.seats.push(Seat::new(
         SlotId(0),
         Team::Radiant,
@@ -188,12 +178,7 @@ fn denied_lane_creeps_give_reduced_experience_to_nearby_enemies() {
 #[test]
 fn a_hero_kill_pays_by_the_streak_and_a_death_costs_gold_by_the_level() {
     let mut world = World::new();
-    let hunter = world.spawn_hero(
-        Team::Radiant,
-        Vec2::from_ints(5000, 5000),
-        SlotId(0),
-        HeroId(0),
-    );
+    let hunter = hero_at(&mut world, Vec2::from_ints(5000, 5000));
     let prey = world.spawn_hero(
         Team::Dire,
         Vec2::from_ints(5050, 5000),
@@ -288,12 +273,7 @@ fn a_death_never_takes_more_gold_than_the_purse_holds() {
 fn a_fallen_hero_comes_back_at_its_fountain() {
     let map = map_of(MapId(1));
     let mut world = World::on_map(map);
-    let hero = world.spawn_hero(
-        Team::Radiant,
-        Vec2::from_ints(9000, 9216),
-        SlotId(0),
-        HeroId(0),
-    );
+    let hero = hero_at(&mut world, Vec2::from_ints(9000, 9216));
     world.seats.push(Seat::new(
         SlotId(0),
         Team::Radiant,
@@ -462,7 +442,7 @@ fn a_heros_head_and_its_wait_are_priced_as_the_game_prices_them() {
 fn a_heros_blows_on_enemy_heroes_and_structures_are_counted_in_the_final_stats() {
     let mut world = World::new();
     let at = Vec2::from_ints(5000, 5000);
-    let hero = world.spawn_hero(Team::Radiant, at, SlotId(0), HeroId(0));
+    let hero = hero_at(&mut world, at);
     let foe = world.spawn_hero(
         Team::Dire,
         at + Vec2::from_ints(100, 0),

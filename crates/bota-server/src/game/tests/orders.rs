@@ -1,12 +1,12 @@
 //! Orders to units, and denying your own.
 
 use crate::game::{
-    Command, Health, ITEM_HEALING_SALVE, ItemStack, MELEE_CREEP, Seat, SightCx, UnitOrder, World,
-    isqrt64, map_of, rules, tower_def, visibility_system, wire_id,
+    Command, Health, ITEM_HEALING_SALVE, MELEE_CREEP, Seat, SightCx, UnitOrder, World, isqrt64,
+    map_of, rules, tower_def, visibility_system, wire_id,
 };
 use bota_proto::{
-    AbilitySlot, DamageKind, Fixed, HeroId, ItemId, ItemSlot, MapId, Order, RejectReason, SlotId,
-    Target, Team, Vec2,
+    AbilitySlot, DamageKind, Fixed, HeroId, ItemSlot, MapId, Order, RejectReason, SlotId, Target,
+    Team, Vec2,
 };
 
 use super::support::*;
@@ -15,12 +15,7 @@ use super::support::*;
 fn an_order_at_something_a_side_cannot_see_is_refused() {
     let map = map_of(MapId(1));
     let mut world = World::on_map(map);
-    let hero = world.spawn_hero(
-        Team::Radiant,
-        Vec2::from_ints(6800, 9216),
-        SlotId(0),
-        HeroId(0),
-    );
+    let hero = hero_at(&mut world, Vec2::from_ints(6800, 9216));
     world.seats.push(Seat::new(
         SlotId(0),
         Team::Radiant,
@@ -80,17 +75,7 @@ fn a_use_or_cast_at_something_a_side_cannot_see_is_refused_like_a_dead_target() 
         book.slots[3].level = 1;
     }
     if let Some(bag) = world.inventory.get_mut(hero) {
-        bag.slots[0] = Some(ItemStack {
-            id: ItemId(ITEM_HEALING_SALVE),
-            charges: 1,
-            cooldown: 0,
-            mute: 0,
-            mode: None,
-            bought_tick: 0,
-            touched: false,
-            owner: SlotId(0),
-            for_sale: false,
-        });
+        bag.slots[0] = Some(fresh_stack(ITEM_HEALING_SALVE, 1));
     }
     let hidden = world.spawn_unit(&MELEE_CREEP, Team::Dire, Vec2::from_ints(13200, 9216));
     world.settle();
@@ -513,12 +498,7 @@ fn your_own_building_goes_only_at_a_tenth() {
         0,
         rules::STASH_SLOTS,
     ));
-    let hero = world.spawn_hero(
-        Team::Radiant,
-        Vec2::from_ints(5000, 5000),
-        SlotId(0),
-        HeroId(0),
-    );
+    let hero = hero_at(&mut world, Vec2::from_ints(5000, 5000));
     world.seats[0].unit = Some(hero);
     let tower = world.spawn_unit(tower_def(1), Team::Radiant, Vec2::from_ints(5300, 5000));
     world.settle();
@@ -567,12 +547,7 @@ fn your_own_building_goes_only_at_a_tenth() {
 #[test]
 fn your_own_hero_is_never_struck_however_worn_down() {
     let mut world = World::new();
-    let mine = world.spawn_hero(
-        Team::Radiant,
-        Vec2::from_ints(5000, 5000),
-        SlotId(0),
-        HeroId(0),
-    );
+    let mine = hero_at(&mut world, Vec2::from_ints(5000, 5000));
     let theirs = world.spawn_hero(
         Team::Radiant,
         Vec2::from_ints(5100, 5000),
@@ -597,12 +572,7 @@ fn an_attack_order_at_one_of_your_own_walks_you_to_it_and_waits() {
         0,
         rules::STASH_SLOTS,
     ));
-    let hero = world.spawn_hero(
-        Team::Radiant,
-        Vec2::from_ints(5000, 5000),
-        SlotId(0),
-        HeroId(0),
-    );
+    let hero = hero_at(&mut world, Vec2::from_ints(5000, 5000));
     world.seats[0].unit = Some(hero);
     // Well out of reach, and at full health so it cannot be put out yet.
     let ours = world.spawn_unit(&MELEE_CREEP, Team::Radiant, Vec2::from_ints(6500, 5000));

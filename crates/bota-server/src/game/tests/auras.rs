@@ -51,12 +51,7 @@ fn a_tower_guards_the_heroes_of_its_own_side_that_stand_by_it() {
         let mut world = World::new();
         let at = Vec2::from_ints(5000, 5000);
         world.spawn_unit(tower_def(tier), Team::Radiant, at);
-        let hero = world.spawn_hero(
-            Team::Radiant,
-            Vec2::from_ints(5400, 5000),
-            SlotId(0),
-            HeroId(0),
-        );
+        let hero = hero_at(&mut world, Vec2::from_ints(5400, 5000));
         let bare = world.spawn_hero(
             Team::Radiant,
             Vec2::from_ints(5000 + rules::TOWER_AURA_RADIUS + 200, 5000),
@@ -120,12 +115,7 @@ fn a_flagbearer_inspires_everyone_of_its_own_side_around_it() {
         Team::Radiant,
         Vec2::from_ints(5000 + rules::FLAGBEARER_AURA_RADIUS + 200, 5000),
     );
-    let hero = world.spawn_hero(
-        Team::Radiant,
-        Vec2::from_ints(5300, 5100),
-        SlotId(0),
-        HeroId(0),
-    );
+    let hero = hero_at(&mut world, Vec2::from_ints(5300, 5100));
     let theirs = world.spawn_hero(
         Team::Dire,
         Vec2::from_ints(5300, 4900),

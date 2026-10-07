@@ -5,7 +5,7 @@ use crate::game::{
     ITEMS, ItemStack, Level, MELEE_CREEP, Mana, Modifier, ModifierKind, Modifiers, RANGED_CREEP,
     Stats, UnitOrder, Upgrades, World, attack_gain, map_of, rules,
 };
-use bota_proto::{DamageKind, Fixed, HeroId, ItemId, MapId, SlotId, Team, UnitKind, Vec2};
+use bota_proto::{DamageKind, Fixed, ItemId, MapId, SlotId, Team, UnitKind, Vec2};
 
 use super::support::*;
 
@@ -263,12 +263,7 @@ fn mending_adds_to_what_a_kind_regenerates() {
 #[test]
 fn what_a_hero_carries_shows_up_in_its_stats() {
     let mut world = World::new();
-    let hero = world.spawn_hero(
-        Team::Radiant,
-        Vec2::from_ints(5000, 5000),
-        SlotId(0),
-        HeroId(0),
-    );
+    let hero = hero_at(&mut world, Vec2::from_ints(5000, 5000));
     world.step();
     let bare = world.stats.get(hero).expect("settled").damage;
     // The first item in the table that carries damage rather than charges.
@@ -424,17 +419,7 @@ fn what_a_courier_carries_is_worth_nothing_to_the_courier() {
     world.step();
     let plain = world.stats.get(courier).expect("settled").move_speed;
     if let Some(bag) = world.inventory.get_mut(courier) {
-        bag.slots[0] = Some(ItemStack {
-            id: ItemId(ITEM_BOOTS),
-            charges: 0,
-            cooldown: 0,
-            mute: 0,
-            mode: None,
-            bought_tick: 0,
-            touched: false,
-            owner: SlotId(0),
-            for_sale: false,
-        });
+        bag.slots[0] = Some(fresh_stack(ITEM_BOOTS, 0));
     }
     world.step();
     assert_eq!(

@@ -13,7 +13,7 @@ fn a_swing_waits_on_the_angle_it_is_looking_at() {
     if let Some(at) = world.transform.get_mut(attacker) {
         at.facing = Angle { brads: 32768 };
     }
-    swing_once(&mut world);
+    world.run_actions();
     assert_eq!(
         swinging(&world, attacker),
         None,
@@ -23,7 +23,7 @@ fn a_swing_waits_on_the_angle_it_is_looking_at() {
     if let Some(at) = world.transform.get_mut(attacker) {
         at.facing = Angle { brads: 0 };
     }
-    swing_once(&mut world);
+    world.run_actions();
     assert!(
         swinging(&world, attacker).is_some(),
         "and begins once it is"
@@ -37,7 +37,7 @@ fn a_swing_waits_on_being_able_to_see_at_all() {
     if let Some(seen) = world.visibility.get_mut(mark) {
         seen.clear();
     }
-    swing_once(&mut world);
+    world.run_actions();
     assert_eq!(
         swinging(&world, attacker),
         None,
@@ -49,7 +49,7 @@ fn a_swing_waits_on_being_able_to_see_at_all() {
 fn a_swing_waits_on_reach() {
     let (mut world, attacker, mark) = duel(600);
     world.set_target(attacker, mark);
-    swing_once(&mut world);
+    world.run_actions();
     assert_eq!(swinging(&world, attacker), None, "too far to touch");
 }
 
@@ -154,7 +154,7 @@ fn a_swing_is_given_up_when_the_target_is_lost_from_sight() {
     if let Some(seen) = world.visibility.get_mut(mark) {
         seen.clear();
     }
-    swing_once(&mut world);
+    world.run_actions();
     assert_eq!(
         swinging(&world, attacker),
         None,
