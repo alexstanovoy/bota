@@ -1,141 +1,94 @@
 //! Shadow Fiend.
 
 use crate::game::{
-    ActionState, ModifierKind, StackKind, World, ability, isqrt64, rules, tower_def, wire_id,
+    ActionState, Entity, ModifierKind, StackKind, World, ability, isqrt64, rules, tower_def,
+    wire_id,
 };
 use bota_proto::{DamageKind, EventKind, Fixed, HeroId, SlotId, StatusFlags, Team, Vec2};
 
+use super::match_flow::back_on_its_feet;
 use super::support::*;
 
 #[test]
 fn a_raze_burns_what_stands_where_it_lands_and_nothing_else() {
-    let (mut world, _fiend, near) = fiend_and_a_mark(rules::RAZE_DISTANCE[1]);
-    let far = a_creep_at(&mut world, Team::Dire, Vec2::from_ints(5000 + 900, 5000));
-    let (was_near, was_far) = (
-        world.health.get(near).expect("standing").hp,
-        world.health.get(far).expect("standing").hp,
-    );
-    let_go(&mut world, 1);
-    world.step();
-    assert!(
-        world.health.get(near).expect("standing").hp < was_near,
-        "what stands where the raze lands feels it"
-    );
-    assert_eq!(
-        world.health.get(far).expect("standing").hp,
-        was_far,
-        "and what stands past it does not"
-    );
+    let mid = rules::RAZE_DISTANCE[1];
+    // The mark stands `apart` east, another creep `other` east; one of them
+    // stands where the raze lands.
+    for (case, apart, other, slot, mark_struck) in [
+        ("a creep past it", mid, 900, 1, true),
+        ("one under his feet", 50, rules::RAZE_DISTANCE[2], 2, false),
+        ("one behind him", mid, -mid, 1, true),
+    ] {
+        let (mut world, _fiend, mark) = fiend_and_a_mark(apart);
+        let other = a_creep_at(&mut world, Team::Dire, Vec2::from_ints(5000 + other, 5000));
+        let (struck, spared) = if mark_struck {
+            (mark, other)
+        } else {
+            (other, mark)
+        };
+        let (was_struck, was_spared) = (hp(&world, struck), hp(&world, spared));
+        let_go(&mut world, slot);
+        world.step();
+        assert!(
+            hp(&world, struck) < was_struck,
+            "{case}: what stands where it lands feels it"
+        );
+        assert_eq!(hp(&world, spared), was_spared, "{case}: is spared");
+    }
 }
 
 #[test]
-fn a_raze_burns_the_creep_at_a_tower_and_leaves_the_tower_whole() {
-    let (mut world, fiend, creep) = fiend_and_a_mark(rules::RAZE_DISTANCE[1]);
-    let tower = world.spawn_unit(
-        tower_def(1),
-        Team::Dire,
-        Vec2::from_ints(5000 + rules::RAZE_DISTANCE[1], 5000 + 200),
-    );
-    world.settle();
-    let (was_creep, was_tower) = (
-        world.health.get(creep).expect("standing").hp,
-        world.health.get(tower).expect("standing").hp,
-    );
-    let_go(&mut world, 1);
-    world.step();
-    assert!(
-        world.health.get(creep).expect("standing").hp < was_creep,
-        "the creep at the tower feels the raze"
-    );
-    assert_eq!(
-        world.health.get(tower).expect("standing").hp,
-        was_tower,
-        "and the tower does not"
-    );
-    assert_eq!(
-        world
-            .modifiers
-            .get(tower)
-            .map_or(0, |on_it| on_it.raze_stacks(fiend)),
-        0,
-        "nor does it keep a stack"
-    );
+fn a_raze_or_a_requiem_burns_the_creep_at_a_tower_and_leaves_the_tower_whole() {
+    let mid = rules::RAZE_DISTANCE[1];
+    for (case, slot, apart, tower_at, ticks) in [
+        ("raze", 1, mid, Vec2::from_ints(5000 + mid, 5200), 1),
+        ("requiem", 5, 400, Vec2::from_ints(5700, 5000), 60),
+    ] {
+        let (mut world, fiend, creep) = fiend_and_a_mark(apart);
+        let tower = world.spawn_unit(tower_def(1), Team::Dire, tower_at);
+        world.settle();
+        hand_souls(&mut world, fiend, 5);
+        world.step();
+        let (was_creep, was_tower) = (hp(&world, creep), hp(&world, tower));
+        let_go(&mut world, slot);
+        for _ in 0..ticks {
+            world.step();
+        }
+        assert!(
+            hp(&world, creep) < was_creep,
+            "{case}: the creep at the tower feels it"
+        );
+        assert_eq!(hp(&world, tower), was_tower, "{case}: the tower does not");
+        assert!(
+            world
+                .modifiers
+                .get(tower)
+                .is_none_or(|on_it| on_it.active().all(|held| held.source != Some(fiend))),
+            "{case}: nor does it keep a stack, a fear or a slow"
+        );
+    }
 }
 
 #[test]
-fn a_raze_lands_at_its_own_reach_however_near_the_enemy_stands() {
-    let (mut world, _fiend, under) = fiend_and_a_mark(50);
-    let out = a_creep_at(
-        &mut world,
-        Team::Dire,
-        Vec2::from_ints(5000 + rules::RAZE_DISTANCE[2], 5000),
-    );
-    let (was_under, was_out) = (
-        world.health.get(under).expect("standing").hp,
-        world.health.get(out).expect("standing").hp,
-    );
-    // The farthest raze lands at its own reach, over the head of what stands
-    // right under his feet.
-    let_go(&mut world, 2);
-    world.step();
-    assert!(
-        world.health.get(out).expect("standing").hp < was_out,
-        "the raze lands at its own reach"
-    );
-    assert_eq!(
-        world.health.get(under).expect("standing").hp,
-        was_under,
-        "and nowhere nearer"
-    );
-}
-
-#[test]
-fn a_raze_lays_itself_along_the_facing() {
-    let (mut world, _fiend, ahead) = fiend_and_a_mark(rules::RAZE_DISTANCE[1]);
-    let behind = a_creep_at(
-        &mut world,
-        Team::Dire,
-        Vec2::from_ints(5000 - rules::RAZE_DISTANCE[1], 5000),
-    );
-    let (was_ahead, was_behind) = (
-        world.health.get(ahead).expect("standing").hp,
-        world.health.get(behind).expect("standing").hp,
-    );
-    let_go(&mut world, 1);
-    world.step();
-    assert!(
-        world.health.get(ahead).expect("standing").hp < was_ahead,
-        "what stands where he faces feels it"
-    );
-    assert_eq!(
-        world.health.get(behind).expect("standing").hp,
-        was_behind,
-        "and what stands behind him does not"
-    );
-}
-
-#[test]
-fn souls_come_only_from_what_the_gatherer_brings_down() {
+fn souls_come_only_from_the_units_the_gatherer_brings_down() {
     let (mut world, fiend, mark) = fiend_and_a_mark(400);
-    let mut events = Vec::new();
     let other = a_creep_at(&mut world, Team::Dire, Vec2::from_ints(5400, 5000));
+    let tower = world.spawn_unit(tower_def(1), Team::Dire, Vec2::from_ints(5600, 5000));
+    world.settle();
+    let mut events = Vec::new();
     world.bury(vec![(other, None)], &mut events);
     assert_eq!(
-        world
-            .stacks
-            .get(fiend)
-            .map_or(0, |kept| kept.of(StackKind::Souls)),
+        souls(&world, fiend),
         0,
         "a death nobody is answerable for is worth nothing"
     );
+    world.bury(vec![(tower, Some(fiend))], &mut events);
+    assert_eq!(souls(&world, fiend), 0, "nor is a structure");
     world.bury(vec![(mark, Some(fiend))], &mut events);
     assert_eq!(
-        world
-            .stacks
-            .get(fiend)
-            .map(|kept| kept.of(StackKind::Souls)),
-        Some(rules::SOULS_PER_UNIT),
-        "and one he brought down is worth its soul"
+        souls(&world, fiend),
+        rules::SOULS_PER_UNIT,
+        "and a creep he brought down is worth its soul"
     );
 }
 
@@ -149,15 +102,8 @@ fn a_hero_brought_down_is_worth_more_souls_than_a_creep() {
         HeroId(0),
     );
     world.settle();
-    let mut events = Vec::new();
-    world.bury(vec![(victim, Some(fiend))], &mut events);
-    assert_eq!(
-        world
-            .stacks
-            .get(fiend)
-            .map(|kept| kept.of(StackKind::Souls)),
-        Some(rules::SOULS_PER_HERO),
-    );
+    world.bury(vec![(victim, Some(fiend))], &mut Vec::new());
+    assert_eq!(souls(&world, fiend), rules::SOULS_PER_HERO);
 }
 
 #[test]
@@ -170,14 +116,10 @@ fn souls_stop_at_what_the_necromastery_holds() {
         "the necromastery at its first level"
     );
     hand_souls(&mut world, fiend, cap);
-    let mut events = Vec::new();
-    world.bury(vec![(mark, Some(fiend))], &mut events);
+    world.bury(vec![(mark, Some(fiend))], &mut Vec::new());
     assert_eq!(
-        world
-            .stacks
-            .get(fiend)
-            .map(|kept| kept.of(StackKind::Souls)),
-        Some(cap),
+        souls(&world, fiend),
+        cap,
         "no more are held than the level allows"
     );
 }
@@ -202,7 +144,7 @@ fn a_raze_goes_off_where_it_is_asked_for_and_walks_the_caster_nowhere() {
     let (mut world, fiend, _mark) = fiend_and_a_mark(80);
     let out = a_creep_at(&mut world, Team::Dire, Vec2::from_ints(6000, 5000));
     let stood = world.transform.get(fiend).expect("standing").pos;
-    let full = world.health.get(out).expect("standing").hp;
+    let full = hp(&world, out);
     let_go(&mut world, 1);
     world.step();
     assert_eq!(
@@ -211,7 +153,7 @@ fn a_raze_goes_off_where_it_is_asked_for_and_walks_the_caster_nowhere() {
         "a raze takes no aim, so there is nothing to walk into"
     );
     assert_eq!(
-        world.health.get(out).expect("standing").hp,
+        hp(&world, out),
         full,
         "and what stands past its reach is missed, not chased"
     );
@@ -245,21 +187,15 @@ fn the_presence_wears_down_the_armor_of_enemies_near_its_carrier() {
 }
 
 #[test]
-fn souls_outlive_the_death_of_the_one_who_gathered_them() {
-    let (mut world, fiend, mark) = fiend_and_a_mark(400);
-    let mut events = Vec::new();
-    world.bury(vec![(mark, Some(fiend))], &mut events);
-    world.bury(vec![(fiend, None)], &mut events);
-    assert_eq!(world.seats[0].unit, None, "the body is gone");
-    for _ in 0..world.seats[0].respawn_left {
-        world.step();
+fn souls_outlive_the_death_of_the_one_who_gathered_them_but_for_a_share() {
+    for (held, kept) in [(rules::SOULS_PER_UNIT, rules::SOULS_PER_UNIT), (10, 7)] {
+        let (mut world, fiend, _mark) = fiend_and_a_mark(400);
+        hand_souls(&mut world, fiend, held);
+        world.bury(vec![(fiend, None)], &mut Vec::new());
+        assert_eq!(world.seats[0].unit, None, "the body is gone");
+        let back = back_on_its_feet(&mut world);
+        assert_eq!(souls(&world, back), kept, "{held} held, {kept} come back");
     }
-    let back = world.seats[0].unit.expect("stands again");
-    assert_eq!(
-        world.stacks.get(back).map(|kept| kept.of(StackKind::Souls)),
-        Some(rules::SOULS_PER_UNIT),
-        "what was gathered comes back with him"
-    );
 }
 
 #[test]
@@ -267,7 +203,7 @@ fn a_requiem_lets_a_line_fly_for_every_soul_and_a_line_burns_what_it_crosses_onc
     let (mut world, fiend, mark) = fiend_and_a_mark(400);
     hand_souls(&mut world, fiend, 5);
     world.step();
-    let full = world.health.get(mark).expect("standing").hp;
+    let full = hp(&world, mark);
     let_go(&mut world, 5);
     let flying = |world: &World| {
         world
@@ -278,14 +214,7 @@ fn a_requiem_lets_a_line_fly_for_every_soul_and_a_line_burns_what_it_crosses_onc
             .count()
     };
     assert_eq!(flying(&world), 5, "one line to a soul");
-    assert_eq!(
-        world
-            .stacks
-            .get(fiend)
-            .map(|kept| kept.of(StackKind::Souls)),
-        Some(5),
-        "and the souls are kept"
-    );
+    assert_eq!(souls(&world, fiend), 5, "and the souls are kept");
     // The line along the fiend's facing reaches the mark; the others fly
     // wide of it. His swings at it are not the requiem's and are left out.
     let mut burns = Vec::new();
@@ -310,44 +239,8 @@ fn a_requiem_lets_a_line_fly_for_every_soul_and_a_line_burns_what_it_crosses_onc
         vec![rules::REQUIEM_LINE_DAMAGE[0]],
         "one line's worth, once"
     );
-    assert!(
-        world.health.get(mark).expect("standing").hp < full,
-        "and it was felt"
-    );
+    assert!(hp(&world, mark) < full, "and it was felt");
     assert_eq!(flying(&world), 0, "and the lines have flown out");
-}
-
-#[test]
-fn a_requiem_burns_the_creep_at_a_tower_and_leaves_the_tower_whole() {
-    let (mut world, fiend, creep) = fiend_and_a_mark(400);
-    let tower = world.spawn_unit(tower_def(1), Team::Dire, Vec2::from_ints(5700, 5000));
-    world.settle();
-    hand_souls(&mut world, fiend, 5);
-    world.step();
-    let (was_creep, was_tower) = (
-        world.health.get(creep).expect("standing").hp,
-        world.health.get(tower).expect("standing").hp,
-    );
-    let_go(&mut world, 5);
-    for _ in 0..60 {
-        world.step();
-    }
-    assert!(
-        world.health.get(creep).expect("standing").hp < was_creep,
-        "the line along his facing burns the creep"
-    );
-    assert_eq!(
-        world.health.get(tower).expect("standing").hp,
-        was_tower,
-        "and passes the tower by"
-    );
-    assert!(
-        world
-            .modifiers
-            .get(tower)
-            .is_none_or(|on_it| on_it.active().all(|held| held.source != Some(fiend))),
-        "leaving neither fear nor slow on it"
-    );
 }
 
 #[test]
@@ -355,10 +248,10 @@ fn what_stands_at_the_fiend_is_crossed_by_every_line_and_held_the_longest() {
     let (mut world, fiend, mark) = fiend_and_a_mark(60);
     hand_souls(&mut world, fiend, 5);
     world.step();
-    let full = world.health.get(mark).expect("standing").hp;
+    let full = hp(&world, mark);
     let_go(&mut world, 5);
     world.step();
-    let taken = full - world.health.get(mark).expect("standing").hp;
+    let taken = full - hp(&world, mark);
     assert_eq!(
         taken,
         Fixed::from_int(5 * rules::REQUIEM_LINE_DAMAGE[0]),
@@ -376,9 +269,7 @@ fn what_stands_at_the_fiend_is_crossed_by_every_line_and_held_the_longest() {
         "five lines' fear, capped"
     );
     assert!(
-        world.modifiers.get(mark).is_some_and(|on_it| on_it
-            .active()
-            .any(|held| matches!(held.kind, ModifierKind::Slowed { .. }))),
+        carries(&world, mark, ModifierKind::Slowed { pct: 0 }),
         "and it walks slower"
     );
     let projected = world
@@ -435,23 +326,6 @@ fn what_the_requiem_frightens_runs_from_the_fiend_and_swings_at_nothing() {
 }
 
 #[test]
-fn a_death_lets_a_share_of_the_souls_go() {
-    let (mut world, fiend, _mark) = fiend_and_a_mark(400);
-    hand_souls(&mut world, fiend, 10);
-    let mut events = Vec::new();
-    world.bury(vec![(fiend, None)], &mut events);
-    for _ in 0..world.seats[0].respawn_left {
-        world.step();
-    }
-    let back = world.seats[0].unit.expect("stands again");
-    assert_eq!(
-        world.stacks.get(back).map(|kept| kept.of(StackKind::Souls)),
-        Some(7),
-        "three of ten are let go"
-    );
-}
-
-#[test]
 fn a_raze_leaves_its_mark_where_it_lands_for_whoever_sees_the_spot() {
     // The creep stands past its own sight of the fiend, and the far raze
     // lands beside it.
@@ -493,19 +367,13 @@ fn a_raze_leaves_its_mark_where_it_lands_for_whoever_sees_the_spot() {
 #[test]
 fn a_requiem_with_no_souls_gathered_touches_nobody() {
     let (mut world, fiend, mark) = fiend_and_a_mark(400);
-    let full = world.health.get(mark).expect("standing").hp;
+    let full = hp(&world, mark);
     let_go(&mut world, 5);
     world.step();
     world.step();
-    assert_eq!(
-        world.health.get(mark).expect("standing").hp,
-        full,
-        "nothing gathered is nothing let go"
-    );
+    assert_eq!(hp(&world, mark), full, "nothing gathered is nothing let go");
     assert!(
-        world.modifiers.get(mark).is_none_or(|on_it| on_it
-            .active()
-            .all(|held| !matches!(held.kind, ModifierKind::Slowed { .. }))),
+        !carries(&world, mark, ModifierKind::Slowed { pct: 0 }),
         "not even the slow"
     );
     let spent = world
@@ -513,22 +381,6 @@ fn a_requiem_with_no_souls_gathered_touches_nobody() {
         .get(fiend)
         .map_or(0, |book| book.slots[5].cooldown);
     assert!(spent > 0, "though the cast itself happened");
-}
-
-#[test]
-fn a_structure_brought_down_is_worth_no_soul() {
-    let (mut world, fiend, _mark) = fiend_and_a_mark(400);
-    let tower = world.spawn_unit(tower_def(1), Team::Dire, Vec2::from_ints(5600, 5000));
-    world.settle();
-    let mut events = Vec::new();
-    world.bury(vec![(tower, Some(fiend))], &mut events);
-    assert_eq!(
-        world
-            .stacks
-            .get(fiend)
-            .map_or(0, |kept| kept.of(StackKind::Souls)),
-        0,
-    );
 }
 
 #[test]
@@ -550,4 +402,17 @@ fn the_view_carries_what_has_been_gathered_as_a_counted_effect() {
         .expect("what is gathered is on him");
     assert_eq!(souls.stacks, Some(rules::SOULS_PER_UNIT));
     assert_eq!(souls.ticks_left, None, "and nothing counts it down");
+}
+
+/// What a unit has left of its health.
+fn hp(world: &World, unit: Entity) -> Fixed {
+    world.health.get(unit).expect("standing").hp
+}
+
+/// Souls a hero holds.
+fn souls(world: &World, hero: Entity) -> u32 {
+    world
+        .stacks
+        .get(hero)
+        .map_or(0, |kept| kept.of(StackKind::Souls))
 }
