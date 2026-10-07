@@ -24,10 +24,8 @@ pub enum NetEvent {
 pub struct Connection {
     /// Wire identity of the peer.
     pub id: PlayerId,
-    /// Frames on their way out.
-    pub outbox: Arc<Outbox>,
-    /// The thread putting them on the socket, kept so the last of them can be
-    /// waited for.
+    outbox: Arc<Outbox>,
+    /// The thread draining `outbox` onto the socket; taken once joined.
     writer: Option<thread::JoinHandle<()>>,
 }
 

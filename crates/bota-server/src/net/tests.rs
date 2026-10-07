@@ -7,7 +7,7 @@ use std::time::Duration;
 
 use bota_proto::{
     ClientMsg, FrameReader, HeroId, Order, RejectReason, ReplayRecord, Role, ServerMsg, Target,
-    Team, Vec2, encode_frame_to_vec,
+    Team, Vec2, WorldView, encode_frame_to_vec,
 };
 
 use crate::game_loop::{ServerOpts, run};
@@ -78,42 +78,63 @@ fn join_as_bot(addr: std::net::SocketAddr, name: &str) -> (TestClient, Option<bo
     (client, slot)
 }
 
-#[test]
-fn a_realtime_match_reaches_two_clients() {
-    let replay_path = std::env::temp_dir().join("bota-net-test-realtime.brp");
-    let addr = start_server(ServerOpts {
+/// A realtime two-seat match on Map0 with every option off.
+fn realtime(seed: u64) -> ServerOpts {
+    ServerOpts {
         mode: bota_proto::TickMode::Realtime,
         tick_rate: 60,
         players: 2,
-        replay: Some(replay_path.clone()),
-        seed: 7,
+        replay: None,
+        seed,
         map: bota_proto::MapId(0),
         ack_timeout_ticks: 150,
         cheats: false,
         immortal_structures: false,
         immortal_heroes: false,
         dummy_seat: false,
-    });
+    }
+}
+
+fn move_order(seq: u32, x: i32, y: i32) -> ClientMsg {
+    ClientMsg::Order {
+        seq,
+        unit: None,
+        order: Order::Move {
+            target: Target::Pos(Vec2::from_ints(x, y)),
+        },
+    }
+}
+
+fn snapshot(msg: ServerMsg) -> Option<WorldView> {
+    match msg {
+        ServerMsg::Snapshot { view } => Some(view),
+        _ => None,
+    }
+}
+
+fn match_start_picks(msg: ServerMsg) -> Option<usize> {
+    match msg {
+        ServerMsg::MatchStart { info } => Some(info.picks.len()),
+        _ => None,
+    }
+}
+
+#[test]
+fn a_realtime_match_reaches_two_clients() {
+    let replay_path = std::env::temp_dir().join("bota-net-test-realtime.brp");
+    let mut opts = realtime(7);
+    opts.replay = Some(replay_path.clone());
+    let addr = start_server(opts);
 
     let (mut c1, slot1) = join_as_bot(addr, "alpha");
     let (mut c2, slot2) = join_as_bot(addr, "beta");
     assert_eq!(slot1, Some(bota_proto::SlotId(0)));
     assert_eq!(slot2, Some(bota_proto::SlotId(1)));
-
     for client in [&mut c1, &mut c2] {
-        client.recv_until(|msg| match msg {
-            ServerMsg::MatchStart { info } => {
-                assert_eq!(info.picks.len(), 2);
-                Some(())
-            }
-            _ => None,
-        });
+        assert_eq!(client.recv_until(match_start_picks), 2);
     }
 
-    let first = c1.recv_until(|msg| match msg {
-        ServerMsg::Snapshot { view } => Some(view),
-        _ => None,
-    });
+    let first = c1.recv_until(snapshot);
     assert_eq!(first.viewer, Some(Team::Radiant));
     assert_eq!(first.players.len(), 2);
     assert!(first.units.iter().any(|u| u.team == Team::Radiant));
@@ -124,13 +145,7 @@ fn a_realtime_match_reaches_two_clients() {
     assert!(first_events.is_empty());
 
     // A legal order passes silently; an impossible one is named and refused.
-    c1.send(&ClientMsg::Order {
-        seq: 1,
-        unit: None,
-        order: Order::Move {
-            target: Target::Pos(Vec2::from_ints(1000, 1000)),
-        },
-    });
+    c1.send(&move_order(1, 1000, 1000));
     c1.send(&ClientMsg::Order {
         seq: 2,
         unit: None,
@@ -144,11 +159,7 @@ fn a_realtime_match_reaches_two_clients() {
     });
     assert_eq!(seq, 2);
     assert_eq!(reason, RejectReason::UnknownItem);
-
-    let later = c1.recv_until(|msg| match msg {
-        ServerMsg::Snapshot { view } if view.tick > first.tick => Some(view),
-        _ => None,
-    });
+    let later = c1.recv_until(|msg| snapshot(msg).filter(|view| view.tick > first.tick));
     assert!(later.tick > first.tick);
 
     // Hanging up empties the seats; the server ends the match and flushes.
@@ -157,13 +168,12 @@ fn a_realtime_match_reaches_two_clients() {
     for _ in 0..100 {
         thread::sleep(Duration::from_millis(50));
         let bytes = std::fs::read(&replay_path).unwrap_or_default();
-        if !bytes.is_empty() {
-            let mut reader = FrameReader::new();
-            reader.push(&bytes);
-            match reader.next_message::<ReplayRecord>() {
-                Ok(Some(ReplayRecord::Msg(ServerMsg::MatchStart { .. }))) => return,
-                _ => continue, // still being written
-            }
+        let mut reader = FrameReader::new();
+        reader.push(&bytes);
+        if let Ok(Some(ReplayRecord::Msg(ServerMsg::MatchStart { .. }))) =
+            reader.next_message::<ReplayRecord>()
+        {
+            return;
         }
     }
     panic!("the replay never became readable");
@@ -171,19 +181,7 @@ fn a_realtime_match_reaches_two_clients() {
 
 #[test]
 fn a_spectator_borrows_eyes_and_is_told_the_orders_they_see() {
-    let addr = start_server(ServerOpts {
-        mode: bota_proto::TickMode::Realtime,
-        tick_rate: 60,
-        players: 2,
-        replay: None,
-        seed: 9,
-        map: bota_proto::MapId(0),
-        ack_timeout_ticks: 150,
-        cheats: false,
-        immortal_structures: false,
-        immortal_heroes: false,
-        dummy_seat: false,
-    });
+    let addr = start_server(realtime(9));
     let (mut c1, _) = join_as_bot(addr, "alpha");
     let (mut c2, _) = join_as_bot(addr, "beta");
     let mut watcher = TestClient::connect(addr);
@@ -196,24 +194,14 @@ fn a_spectator_borrows_eyes_and_is_told_the_orders_they_see() {
         _ => None,
     });
     assert_eq!(slot, None, "a spectator takes no seat");
-    let first = watcher.recv_until(|msg| match msg {
-        ServerMsg::Snapshot { view } => Some(view),
-        _ => None,
-    });
+    let first = watcher.recv_until(snapshot);
     assert_eq!(
         first.viewer, None,
         "everything, before any eyes are asked for"
     );
 
-    // A free view is a clean one: an order given while nobody's eyes are
-    // borrowed is told to no spectator.
-    c1.send(&ClientMsg::Order {
-        seq: 1,
-        unit: None,
-        order: Order::Move {
-            target: Target::Pos(Vec2::from_ints(1000, 1000)),
-        },
-    });
+    // An order given while nobody's eyes are borrowed is told to no spectator.
+    c1.send(&move_order(1, 1000, 1000));
     let mut told_freely = 0u32;
     for _ in 0..3 {
         watcher.recv_until(|msg| match msg {
@@ -230,10 +218,7 @@ fn a_spectator_borrows_eyes_and_is_told_the_orders_they_see() {
     watcher.send(&ClientMsg::ViewAs {
         seat: Some(bota_proto::SlotId(1)),
     });
-    let fogged = watcher.recv_until(|msg| match msg {
-        ServerMsg::Snapshot { view } if view.viewer.is_some() => Some(view),
-        _ => None,
-    });
+    let fogged = watcher.recv_until(|msg| snapshot(msg).filter(|view| view.viewer.is_some()));
     assert_eq!(
         fogged.viewer,
         Some(Team::Dire),
@@ -241,13 +226,7 @@ fn a_spectator_borrows_eyes_and_is_told_the_orders_they_see() {
     );
 
     // Through one side's eyes, only that side's orders are told.
-    c2.send(&ClientMsg::Order {
-        seq: 1,
-        unit: None,
-        order: Order::Move {
-            target: Target::Pos(Vec2::from_ints(15000, 15000)),
-        },
-    });
+    c2.send(&move_order(1, 15000, 15000));
     let told = watcher.recv_until(|msg| match msg {
         ServerMsg::Orders { orders, .. } => Some(orders),
         _ => None,
@@ -260,19 +239,10 @@ fn a_spectator_borrows_eyes_and_is_told_the_orders_they_see() {
 
 #[test]
 fn lockstep_advances_as_fast_as_the_acks_come() {
-    let addr = start_server(ServerOpts {
-        mode: bota_proto::TickMode::Lockstep,
-        tick_rate: 60,
-        players: 2,
-        replay: None,
-        seed: 8,
-        map: bota_proto::MapId(0),
-        ack_timeout_ticks: 600, // ten seconds: only acks can move this match
-        cheats: false,
-        immortal_structures: false,
-        immortal_heroes: false,
-        dummy_seat: false,
-    });
+    let mut opts = realtime(8);
+    opts.mode = bota_proto::TickMode::Lockstep;
+    opts.ack_timeout_ticks = 600; // ten seconds: only acks can move this match
+    let addr = start_server(opts);
 
     let (mut c1, _) = join_as_bot(addr, "alpha");
     let (mut c2, _) = join_as_bot(addr, "beta");
@@ -281,10 +251,7 @@ fn lockstep_advances_as_fast_as_the_acks_come() {
     let mut last_tick = 0;
     for _ in 0..5 {
         for client in [&mut c1, &mut c2] {
-            let tick = client.recv_until(|msg| match msg {
-                ServerMsg::Snapshot { view } => Some(view.tick),
-                _ => None,
-            });
+            let tick = client.recv_until(snapshot).tick;
             client.send(&ClientMsg::Ack { tick });
             last_tick = last_tick.max(tick);
         }
@@ -294,31 +261,14 @@ fn lockstep_advances_as_fast_as_the_acks_come() {
 
 #[test]
 fn a_dummy_seat_lets_one_client_start_a_match_alone() {
-    let addr = start_server(ServerOpts {
-        mode: bota_proto::TickMode::Realtime,
-        tick_rate: 60,
-        players: 2,
-        replay: None,
-        seed: 11,
-        map: bota_proto::MapId(2),
-        ack_timeout_ticks: 150,
-        cheats: false,
-        immortal_structures: true,
-        immortal_heroes: false,
-        dummy_seat: true,
-    });
+    let mut opts = realtime(11);
+    opts.map = bota_proto::MapId(2);
+    opts.immortal_structures = true;
+    opts.dummy_seat = true;
+    let addr = start_server(opts);
     let (mut client, slot) = join_as_bot(addr, "alone");
     assert_eq!(slot, Some(bota_proto::SlotId(0)));
-    client.recv_until(|msg| match msg {
-        ServerMsg::MatchStart { info } => {
-            assert_eq!(info.picks.len(), 2);
-            Some(())
-        }
-        _ => None,
-    });
-    let view = client.recv_until(|msg| match msg {
-        ServerMsg::Snapshot { view } if view.tick > 1 => Some(view),
-        _ => None,
-    });
+    assert_eq!(client.recv_until(match_start_picks), 2);
+    let view = client.recv_until(|msg| snapshot(msg).filter(|view| view.tick > 1));
     assert_eq!(view.players.len(), 2);
 }

@@ -81,11 +81,6 @@ impl Outbox {
         self.wake.notify_one();
     }
 
-    /// Whether the outbox has been closed.
-    pub fn is_closed(&self) -> bool {
-        self.state.lock().expect("outbox lock").closed
-    }
-
     /// The writer thread body: drains frames onto the socket until the outbox
     /// closes and empties, or the socket fails.
     pub fn run_writer(self: &Arc<Outbox>, mut stream: TcpStream) {
@@ -103,8 +98,6 @@ impl Outbox {
                 }
             };
             let Some(frame) = frame else {
-                // The sending half only: shutting both down with our bytes
-                // still in flight resets the connection and loses them.
                 let _ = stream.shutdown(std::net::Shutdown::Write);
                 return;
             };
