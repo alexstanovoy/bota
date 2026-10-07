@@ -1,27 +1,20 @@
-use crate::game::{HitEffect, Inventory, ItemStack, ModifierKind, Seat, rules, wire_id};
-use bota_proto::{
-    Attribute, HeroId, ItemId, LEN_PREFIX, SlotId, Team, WorldView, decode_payload,
-    encode_frame_to_vec,
-};
+use crate::game::{HitEffect, Inventory, ItemStack, ModifierKind, wire_id};
+use bota_proto::{Attribute, ItemId, SlotId, Team};
 
 use super::fixtures::*;
 
 #[test]
-fn mechanics_hash_distinguishes_pending_raze_from_an_ordinary_magical_hit() {
-    let (mut world, caster, _) = fixture();
-    assert!(world.cast_raze(caster, 0, 1));
-    let before = world.hash();
-    world.hits.front_mut().unwrap().effect = HitEffect::None;
-    assert_ne!(world.hash(), before);
-}
-
-#[test]
-fn mechanics_hash_distinguishes_pending_raze_levels_before_damage_is_resolved() {
-    let (mut world, caster, _) = fixture();
-    assert!(world.cast_raze(caster, 0, 1));
-    let before = world.hash();
-    world.hits.front_mut().unwrap().effect = HitEffect::Shadowraze { level: 1 };
-    assert_ne!(world.hash(), before);
+fn mechanics_hash_distinguishes_a_pending_raze_from_a_plain_hit_and_other_levels() {
+    for (effect, case) in [
+        (HitEffect::None, "an ordinary magical hit"),
+        (HitEffect::Shadowraze { level: 1 }, "another level"),
+    ] {
+        let (mut world, caster, _) = fixture();
+        assert!(world.cast_raze(caster, 0, 1));
+        let before = world.hash();
+        world.hits.front_mut().unwrap().effect = effect;
+        assert_ne!(world.hash(), before, "{case}");
+    }
 }
 
 #[test]
@@ -57,85 +50,78 @@ fn mechanics_hash_includes_caster_generation_stack_count_and_ticks() {
     }
 }
 
-#[test]
-fn mechanics_hash_includes_mango_merge_owner_and_sale_mark() {
+/// Where a stack may be kept: in the caster's bag, in the courier's kept bag
+/// or on the ground.
+#[derive(Clone, Copy, Debug)]
+enum Kept {
+    Bag,
+    Courier,
+    Ground,
+}
+
+/// The hash of a world keeping `stack` at `kept`.
+fn hash_keeping(kept: Kept, stack: ItemStack) -> u64 {
     let (mut world, caster, _) = fixture();
-    world.inventory.get_mut(caster).unwrap().slots[0] = ItemStack::bought(ItemId(42), SlotId(0), 0);
-    let before = world.hash();
-    world.inventory.get_mut(caster).unwrap().slots[0]
-        .as_mut()
-        .unwrap()
-        .owner = SlotId(1);
-    let changed_owner = world.hash();
-    assert_ne!(changed_owner, before);
-    world.inventory.get_mut(caster).unwrap().slots[0]
-        .as_mut()
-        .unwrap()
-        .for_sale = true;
-    assert_ne!(world.hash(), changed_owner);
+    match kept {
+        Kept::Bag => world.inventory.get_mut(caster).unwrap().slots[0] = Some(stack),
+        Kept::Courier => {
+            seat(&mut world, SlotId(0), Team::Radiant, caster, 0);
+            let mut bag = Inventory::empty(6);
+            bag.slots[0] = Some(stack);
+            world.seats[0].courier_kept = Some(bag);
+        }
+        Kept::Ground => {
+            world.lay_loot(stack, ORIGIN);
+        }
+    }
+    world.hash()
+}
+
+/// One named change to an item stack.
+type StackChange = (&'static str, fn(&mut ItemStack));
+
+#[test]
+fn mechanics_hash_includes_every_merge_field_of_a_stack_wherever_it_is_kept() {
+    let changes: [StackChange; 4] = [
+        ("charges", |stack| stack.charges = 2),
+        ("owner", |stack| stack.owner = SlotId(1)),
+        ("sale mark", |stack| stack.for_sale = true),
+        ("mode", |stack| stack.mode = Some(Attribute::Agility)),
+    ];
+    for kept in [Kept::Bag, Kept::Courier, Kept::Ground] {
+        for item in [ItemId(42), ItemId(29)] {
+            let base = ItemStack::bought(item, SlotId(0), 0).unwrap();
+            for (name, change) in changes {
+                let mut changed = base;
+                change(&mut changed);
+                assert_ne!(
+                    hash_keeping(kept, changed),
+                    hash_keeping(kept, base),
+                    "{name} of item {} kept in {kept:?}",
+                    item.0
+                );
+            }
+        }
+    }
 }
 
 #[test]
-fn mechanics_hash_includes_item_mode_used_by_merge_compatibility() {
+fn a_dropped_mango_is_picked_up_with_its_charges_and_ownership() {
     let (mut world, caster, _) = fixture();
-    world.inventory.get_mut(caster).unwrap().slots[0] = ItemStack::bought(ItemId(29), SlotId(0), 0);
-    let before = world.hash();
-    world.inventory.get_mut(caster).unwrap().slots[0]
-        .as_mut()
-        .unwrap()
-        .mode = Some(Attribute::Agility);
-    assert_ne!(world.hash(), before);
-}
-
-#[test]
-fn mechanics_hash_includes_mango_charges_kept_while_courier_is_dead() {
-    let (mut world, _, _) = fixture();
-    let mut seat = Seat::new(SlotId(0), Team::Radiant, HeroId(2), 0, rules::STASH_SLOTS);
-    let mut bag = Inventory::empty(6);
-    bag.slots[0] = ItemStack::bought(ItemId(42), SlotId(0), 0);
-    seat.courier_kept = Some(bag);
-    world.seats.push(seat);
-    let before = world.hash();
-    world.seats[0].courier_kept.as_mut().unwrap().slots[0]
-        .as_mut()
-        .unwrap()
-        .charges = 2;
-    assert_ne!(world.hash(), before);
-}
-
-#[test]
-fn mechanics_hash_keeps_mango_charges_and_ownership_observable_after_dropping() {
-    let (mut world, caster, _) = fixture();
-    let stack = ItemStack::bought(ItemId(42), SlotId(0), 0).unwrap();
+    let mut stack = ItemStack::bought(ItemId(42), SlotId(0), 0).unwrap();
+    (stack.charges, stack.owner, stack.for_sale) = (3, SlotId(1), true);
     let loot = world.lay_loot(stack, ORIGIN);
-    let before = world.hash();
-    world.loot.get_mut(loot).unwrap().0.charges = 3;
-    let changed_charges = world.hash();
-    assert_ne!(changed_charges, before);
-    world.loot.get_mut(loot).unwrap().0.owner = SlotId(1);
-    let changed_owner = world.hash();
-    assert_ne!(changed_owner, changed_charges);
-    world.loot.get_mut(loot).unwrap().0.for_sale = true;
-    assert_ne!(world.hash(), changed_owner);
-    let expected = world.loot.get(loot).unwrap().0;
+    let laid = world.loot.get(loot).unwrap().0;
+    assert_eq!(
+        laid,
+        ItemStack {
+            touched: true,
+            ..stack
+        }
+    );
     reveal(&mut world, loot);
     assert!(world.take_item(caster, wire_id(loot)));
     world.tick_handling();
-    assert_eq!(
-        world.inventory.get(caster).unwrap().slots[0],
-        Some(expected)
-    );
+    assert_eq!(world.inventory.get(caster).unwrap().slots[0], Some(laid));
     assert!(!world.entities.contains(loot));
-}
-
-#[test]
-fn raze_ticks_and_counts_round_trip_through_the_existing_snapshot_codec() {
-    let (mut world, caster, target) = fixture();
-    land(&mut world, caster, target, 0);
-    land(&mut world, caster, target, 0);
-    let view = world.view_full();
-    let encoded = encode_frame_to_vec(&view).unwrap();
-    let decoded: WorldView = decode_payload(&encoded[LEN_PREFIX..]).unwrap();
-    assert_eq!(decoded, view);
-    assert_eq!(effects(&world, target), vec![effect(2, 240)]);
 }

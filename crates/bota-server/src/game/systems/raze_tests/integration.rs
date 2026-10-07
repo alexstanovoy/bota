@@ -40,11 +40,7 @@ fn auras_and_shadowraze_project_distinct_ids_and_round_trip_together() {
             ticks_left: Some(14),
             stacks: None,
         },
-        EffectView {
-            id: EffectId(15),
-            ticks_left: Some(240),
-            stacks: Some(2),
-        },
+        effect(2, 240),
     ];
 
     for view in [

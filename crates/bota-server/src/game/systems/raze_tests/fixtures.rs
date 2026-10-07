@@ -1,7 +1,7 @@
-use crate::game::{Entity, Event, Ratio, Stats, UnitOrder, World, rules, wire_id};
+use crate::game::{Command, Entity, Event, Ratio, Seat, Stats, UnitOrder, World, rules, wire_id};
 use bota_proto::{
-    Angle, Attributes, DamageKind, EffectId, EffectView, EventKind, Fixed, HeroId, SlotId, Team,
-    Vec2,
+    Angle, Attributes, DamageKind, EffectId, EffectView, EventKind, Fixed, HeroId, Order, SlotId,
+    Team, Vec2,
 };
 
 pub(super) const RAZE_EFFECT: EffectId = EffectId(15);
@@ -78,6 +78,23 @@ fn stats() -> Stats {
         pierce: Ratio::NEVER,
         pierce_damage: 0,
     }
+}
+
+/// Puts `unit` in a new seat at `slot` holding `gold`.
+pub(super) fn seat(world: &mut World, slot: SlotId, team: Team, unit: Entity, gold: i32) {
+    let mut seat = Seat::new(slot, team, HeroId(2), gold, rules::STASH_SLOTS);
+    seat.unit = Some(unit);
+    world.seats.push(seat);
+}
+
+/// Validates an order from seat 0 and runs the tick it lands in.
+pub(super) fn order(world: &mut World, order: Order) -> Vec<Event> {
+    assert_eq!(world.validate_order(SlotId(0), None, &order), Ok(()));
+    world.advance(&[Command {
+        slot: SlotId(0),
+        unit: None,
+        order,
+    }])
 }
 
 pub(super) fn reveal(world: &mut World, entity: Entity) {

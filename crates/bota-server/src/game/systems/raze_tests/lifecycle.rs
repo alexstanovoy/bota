@@ -1,5 +1,5 @@
-use crate::game::{Seat, rules, wire_id};
-use bota_proto::{DamageKind, Fixed, HeroId, SlotId, Team};
+use crate::game::wire_id;
+use bota_proto::{DamageKind, Fixed, SlotId, Team};
 
 use super::fixtures::*;
 
@@ -22,9 +22,7 @@ fn raze_already_queued_before_caster_death_keeps_its_damage_and_old_generation_e
 #[test]
 fn raze_target_death_and_respawn_do_not_restore_timed_stacks() {
     let (mut world, caster, target) = fixture();
-    let mut seat = Seat::new(SlotId(1), Team::Dire, HeroId(2), 0, rules::STASH_SLOTS);
-    seat.unit = Some(target);
-    world.seats.push(seat);
+    seat(&mut world, SlotId(1), Team::Dire, target, 0);
     land(&mut world, caster, target, 0);
     assert_eq!(effects(&world, target), vec![effect(1, 240)]);
     world.bury(vec![(target, None)], &mut Vec::new());
@@ -54,9 +52,7 @@ fn raze_reused_caster_index_does_not_inherit_the_previous_generations_bonus() {
 #[test]
 fn raze_caster_death_and_respawn_cannot_use_its_old_bodys_stacks() {
     let (mut world, caster, target) = fixture();
-    let mut seat = Seat::new(SlotId(0), Team::Radiant, HeroId(2), 0, rules::STASH_SLOTS);
-    seat.unit = Some(caster);
-    world.seats.push(seat);
+    seat(&mut world, SlotId(0), Team::Radiant, caster, 0);
     land(&mut world, caster, target, 0);
     assert_eq!(effects(&world, target), vec![effect(1, 240)]);
     world.bury(vec![(caster, None)], &mut Vec::new());

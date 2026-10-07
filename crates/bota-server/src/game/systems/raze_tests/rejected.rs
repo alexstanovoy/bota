@@ -3,6 +3,15 @@ use bota_proto::{AbilitySlot, DamageKind, Fixed, Target, Team, Vec2};
 
 use super::fixtures::*;
 
+/// A modifier set holding one sourceless modifier for `ticks`.
+fn held(kind: ModifierKind, ticks: u32) -> Modifiers {
+    Modifiers(vec![Modifier {
+        kind,
+        source: None,
+        ticks_left: Some(ticks),
+    }])
+}
+
 #[test]
 fn raze_miss_neither_applies_nor_refreshes_a_debuff() {
     let (mut world, caster, target) = fixture();
@@ -44,14 +53,9 @@ fn raze_invulnerability_at_impact_prevents_a_previously_queued_debuff() {
 fn raze_shield_applied_before_impact_blocks_damage_without_waiting_for_stats() {
     let (mut world, caster, target) = fixture();
     assert!(world.cast_raze(caster, 0, 1));
-    world.modifiers.insert(
-        target,
-        Modifiers(vec![Modifier {
-            kind: ModifierKind::Shielded,
-            source: None,
-            ticks_left: Some(30),
-        }]),
-    );
+    world
+        .modifiers
+        .insert(target, held(ModifierKind::Shielded, 30));
     assert!(!world.stats.get(target).unwrap().invulnerable);
     assert!(damage(&world.step(), target).is_empty());
     assert!(effects(&world, target).is_empty());
@@ -60,14 +64,9 @@ fn raze_shield_applied_before_impact_blocks_damage_without_waiting_for_stats() {
 #[test]
 fn raze_expired_shield_does_not_block_damage_or_debuff() {
     let (mut world, caster, target) = fixture();
-    world.modifiers.insert(
-        target,
-        Modifiers(vec![Modifier {
-            kind: ModifierKind::Shielded,
-            source: None,
-            ticks_left: Some(1),
-        }]),
-    );
+    world
+        .modifiers
+        .insert(target, held(ModifierKind::Shielded, 1));
     assert_eq!(land(&mut world, caster, target, 0), 90);
     assert_eq!(effects(&world, target), vec![effect(1, 240)]);
 }
@@ -138,14 +137,9 @@ fn raze_failed_casts_leave_existing_stacks_unmodified() {
             1 => world.abilities.get_mut(caster).unwrap().slots[1].cooldown = 30,
             2 => world.mana.get_mut(caster).unwrap().mana = Fixed::ZERO,
             3 => {
-                world.modifiers.insert(
-                    caster,
-                    Modifiers(vec![Modifier {
-                        kind: ModifierKind::Stunned,
-                        source: None,
-                        ticks_left: Some(30),
-                    }]),
-                );
+                world
+                    .modifiers
+                    .insert(caster, held(ModifierKind::Stunned, 30));
             }
             _ => unreachable!(),
         }
