@@ -85,14 +85,14 @@ impl BodyIndex {
     }
 }
 
-/// The bucket a position falls in.
-fn bucket_of(at: Vec2) -> usize {
+/// The bucket a position falls in, row-major.
+pub(crate) fn bucket_of(at: Vec2) -> usize {
     let (bx, by) = bucket_coords(at);
     by * BUCKETS + bx
 }
 
 /// The bucket coordinates of a position, clamped to the map.
-fn bucket_coords(at: Vec2) -> (usize, usize) {
+pub(crate) fn bucket_coords(at: Vec2) -> (usize, usize) {
     let last = BUCKETS as i32 - 1;
     let bx = (at.x.to_int() / rules::BUCKET_SIZE).clamp(0, last);
     let by = (at.y.to_int() / rules::BUCKET_SIZE).clamp(0, last);

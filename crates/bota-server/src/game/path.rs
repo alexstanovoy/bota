@@ -24,6 +24,13 @@ fn idx(node: (usize, usize)) -> usize {
     node.1 * NODES + node.0
 }
 
+/// The node an offset away from another, while it lies on the lattice.
+fn offset_node(node: (usize, usize), dx: i32, dy: i32) -> Option<(usize, usize)> {
+    let x = usize::try_from(node.0 as i32 + dx).ok()?;
+    let y = usize::try_from(node.1 as i32 + dy).ok()?;
+    (x < NODES && y < NODES).then_some((x, y))
+}
+
 /// The room a route keeps for a body: its collision size and the margin.
 pub fn plan_radius(collision: Fixed) -> Fixed {
     collision + rules::units(rules::STEER_MARGIN)
@@ -200,15 +207,9 @@ impl Planner {
     fn expand(&mut self, ob: &Obstacles, node: (usize, usize), goal: (usize, usize), room: Fixed) {
         let (at, g, epoch) = (idx(node), self.g[idx(node)], self.epoch);
         for (i, (dx, dy)) in NEIGHBOURS.iter().enumerate() {
-            let nx = node.0 as i32 + dx;
-            let ny = node.1 as i32 + dy;
-            if nx < 0 || ny < 0 || nx as usize >= NODES || ny as usize >= NODES {
+            let Some(next) = offset_node(node, *dx, *dy).filter(|next| ob.fits(*next, room)) else {
                 continue;
-            }
-            let next = (nx as usize, ny as usize);
-            if !ob.fits(next, room) {
-                continue;
-            }
+            };
             let diagonal = i >= 4;
             if diagonal && (!ob.fits((next.0, node.1), room) || !ob.fits((node.0, next.1), room)) {
                 continue;
@@ -343,17 +344,13 @@ fn routable_node(ob: &Obstacles, node: (usize, usize), room: Fixed) -> Option<(u
                 if dx.abs() != ring && dy.abs() != ring {
                     continue;
                 }
-                let nx = node.0 as i32 + dx;
-                let ny = node.1 as i32 + dy;
-                if nx < 0 || ny < 0 || nx as usize >= NODES || ny as usize >= NODES {
+                let Some(near) = offset_node(node, dx, dy).filter(|near| ob.fits(*near, room))
+                else {
                     continue;
-                }
-                if !ob.fits((nx as usize, ny as usize), room) {
-                    continue;
-                }
+                };
                 let apart = dx * dx + dy * dy;
                 if best.is_none_or(|(had, _)| apart < had) {
-                    best = Some((apart, (nx as usize, ny as usize)));
+                    best = Some((apart, near));
                 }
             }
         }

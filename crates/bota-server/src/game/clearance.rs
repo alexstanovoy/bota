@@ -7,8 +7,8 @@ use std::sync::OnceLock;
 use bota_proto::{Fixed, Vec2};
 
 use crate::game::{
-    CellGrid, isqrt64, point_box_distance_squared, rules, segment_box_distance_squared,
-    segment_distance_squared,
+    CellGrid, bucket_coords, bucket_of, isqrt64, point_box_distance_squared, rules,
+    segment_box_distance_squared, segment_distance_squared,
 };
 
 const NODES: usize = rules::WALK_CELLS;
@@ -470,20 +470,6 @@ fn splat(room: &mut [u8], at: Vec2, radius: Fixed, lo: (usize, usize), hi: (usiz
             *slot = (*slot).min(far as u8);
         }
     }
-}
-
-/// The bucket a position's centre falls in.
-fn bucket_of(at: Vec2) -> usize {
-    let (bx, by) = bucket_coords(at);
-    by * BUCKETS + bx
-}
-
-/// The bucket coordinates of a position, clamped to the map.
-fn bucket_coords(at: Vec2) -> (usize, usize) {
-    let last = BUCKETS as i32 - 1;
-    let bx = (at.x.to_int() / rules::BUCKET_SIZE).clamp(0, last);
-    let by = (at.y.to_int() / rules::BUCKET_SIZE).clamp(0, last);
-    (bx as usize, by as usize)
 }
 
 /// The squared distance from a node's centre to a closed node square that
