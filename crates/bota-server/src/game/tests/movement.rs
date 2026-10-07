@@ -1,13 +1,23 @@
 //! Walking, routes round what stands, and bodies eased apart.
 
 use crate::game::{
-    CellGrid, Clearance, Entity, Ground, HEROES, ITEM_BOOTS, ItemStack, MELEE_CREEP, March,
-    MatchConfig, Orders, UnitOrder, World, circle_stops, find_path, isqrt64, map_of, plan_radius,
-    point_along, rules,
+    CellGrid, Clearance, Entity, Ground, HEROES, ITEM_BOOTS, MELEE_CREEP, March, UnitOrder, World,
+    circle_stops, find_path, isqrt64, map_of, plan_radius, point_along, rules,
 };
-use bota_proto::{Fixed, HeroId, ItemId, MapId, SlotId, Team, TickMode, Vec2};
+use bota_proto::{Fixed, HeroId, MapId, SlotId, Team, Vec2};
 
 use super::support::*;
+use super::waves::{a_match_with_nobody_in_it, radiant_marchers, the_demo_lane_at_its_first_wave};
+
+/// A xorshift stream of draws from a seed.
+fn xorshift(mut seed: u64) -> impl FnMut() -> u64 {
+    move || {
+        seed ^= seed << 13;
+        seed ^= seed >> 7;
+        seed ^= seed << 17;
+        seed
+    }
+}
 
 #[test]
 fn the_integer_square_root_is_the_floor_of_the_real_one() {
@@ -16,13 +26,7 @@ fn the_integer_square_root_is_the_floor_of_the_real_one() {
         assert!(root * root <= n, "root squared must not pass n: {n}");
         assert!((root + 1) * (root + 1) > n, "the root must be the floor");
     }
-    let mut seed = 0x1234_5678_9abc_def0u64;
-    let mut draw = || {
-        seed ^= seed << 13;
-        seed ^= seed >> 7;
-        seed ^= seed << 17;
-        seed
-    };
+    let mut draw = xorshift(0x1234_5678_9abc_def0);
     for _ in 0..16_384 {
         let n = (draw() >> 1) as i64;
         let root = i128::from(isqrt64(n));
@@ -37,14 +41,10 @@ fn an_order_to_walk_moves_a_body_and_turns_it_first() {
     let mut world = World::new();
     let hero = hero_at(&mut world, Vec2::from_ints(1000, 1000));
     world.settle();
-    world.orders.insert(
+    world.set_order(
         hero,
-        Orders {
-            current: UnitOrder::Move {
-                pos: Vec2::from_ints(0, 1000),
-            },
-            cooldown: 0,
-            pending: None,
+        UnitOrder::Move {
+            pos: Vec2::from_ints(0, 1000),
         },
     );
     // Facing east and sent west: it turns before it takes a step.
@@ -75,14 +75,10 @@ fn a_body_does_not_walk_through_a_building() {
     let (_, _, tower) = map.radiant_towers[0];
     let hero = hero_at(&mut world, tower - Vec2::from_ints(400, 0));
     world.settle();
-    world.orders.insert(
+    world.set_order(
         hero,
-        Orders {
-            current: UnitOrder::Move {
-                pos: tower + Vec2::from_ints(400, 0),
-            },
-            cooldown: 0,
-            pending: None,
+        UnitOrder::Move {
+            pos: tower + Vec2::from_ints(400, 0),
         },
     );
     let mut nearest = i64::MAX;
@@ -173,21 +169,14 @@ fn what_flies_goes_straight_over_what_a_walker_goes_round() {
     let courier = the_courier(&world);
     world.transform.get_mut(hero).expect("standing").pos = far;
     world.transform.get_mut(courier).expect("flies").pos = hero_at;
-    let boots = ItemId(ITEM_BOOTS);
-    if let Some(bag) = world.inventory.get_mut(courier) {
-        bag.slots[0] = Some(ItemStack {
-            id: boots,
-            charges: 0,
-            cooldown: 0,
-            mute: 0,
-            mode: None,
-            bought_tick: 0,
-            touched: false,
-            owner: SlotId(0),
-            for_sale: false,
-        });
-    }
+    hand_item(&mut world, courier, ITEM_BOOTS, 0);
     assert!(world.courier_deliver(courier));
+    let delivered = |world: &World| {
+        world
+            .inventory
+            .get(hero)
+            .is_some_and(|bag| bag.held().count() > 0)
+    };
     // Straight there means the line it walks never wanders off the line it
     // was on: a flier routed like a walker swings wide round the wall.
     let mut widest = 0;
@@ -195,21 +184,11 @@ fn what_flies_goes_straight_over_what_a_walker_goes_round() {
         world.step();
         let now = world.transform.get(courier).expect("flies").pos;
         widest = widest.max((now.y.raw - hero_at.y.raw).abs());
-        if world
-            .inventory
-            .get(hero)
-            .is_some_and(|bag| bag.held().count() > 0)
-        {
+        if delivered(&world) {
             break;
         }
     }
-    assert!(
-        world
-            .inventory
-            .get(hero)
-            .is_some_and(|bag| bag.held().count() > 0),
-        "it got there"
-    );
+    assert!(delivered(&world), "it got there");
     assert!(
         widest < rules::units(200).raw,
         "and it went over the wall rather than round it"
@@ -254,20 +233,7 @@ fn a_way_found_to_a_spot_that_walks_away_is_found_again() {
 
 #[test]
 fn a_hero_told_to_walk_into_a_tower_walks_up_to_it_and_stands() {
-    let cfg = MatchConfig {
-        match_id: 7,
-        master_key: [0; 32],
-        picks: vec![],
-        map: MapId(0),
-        tick_rate: 30,
-        mode: TickMode::Realtime,
-        ack_timeout_ticks: 0,
-        cheats: false,
-        spawn_modifiers: Vec::new(),
-        immortal_structures: false,
-        immortal_heroes: false,
-    };
-    let mut world = World::for_match(&cfg, cfg.rng());
+    let mut world = a_match_with_nobody_in_it(7, MapId(0));
     let (_, _, tower) = rules::RADIANT_TOWERS[2];
     let start = Vec2::from_ints(4000, 4500);
     let hero = hero_at(&mut world, start);
@@ -330,13 +296,7 @@ fn a_capsule_is_stopped_by_a_circle_exactly_where_the_circle_stops_it() {
     let theirs = Fixed::from_int(48);
     let field = Clearance::build(CellGrid::open(), vec![(at, theirs)]);
     let radius = Fixed::from_int(8);
-    let mut seed = 0x0dd0_5eed_1234_5678u64;
-    let mut draw = || {
-        seed ^= seed << 13;
-        seed ^= seed >> 7;
-        seed ^= seed << 17;
-        seed
-    };
+    let mut draw = xorshift(0x0dd0_5eed_1234_5678);
     let mut stopped = 0;
     let mut free = 0;
     for _ in 0..4096 {
@@ -404,16 +364,6 @@ fn walkers_and_marchers_both_work_round_a_wall_of_bodies() {
             world.spawn_unit(&MELEE_CREEP, Team::Radiant, Vec2::from_ints(x, y + i * 40));
         }
     };
-    let arrives_by = |world: &mut World, mover: Entity, goal: Vec2, within: u32| {
-        for t in 0..within {
-            world.step();
-            let at = world.transform.get(mover).expect("standing").pos;
-            if at.within(goal, rules::units(50)) {
-                return Some(t + 1);
-            }
-        }
-        None
-    };
     // A hero ordered through the knot gets round it briskly.
     let mut world = World::new();
     let hero = hero_at(&mut world, Vec2::from_ints(5000, 5000));
@@ -421,7 +371,7 @@ fn walkers_and_marchers_both_work_round_a_wall_of_bodies() {
     world.settle();
     let goal = Vec2::from_ints(5900, 5000);
     world.set_order(hero, UnitOrder::Move { pos: goal });
-    let took = arrives_by(&mut world, hero, goal, 130);
+    let took = ticks_until_near(&mut world, hero, goal, 130);
     assert!(took.is_some(), "the hero works round the wall");
     // A marching creep held off any lane does the same.
     let mut world = World::new();
@@ -431,7 +381,7 @@ fn walkers_and_marchers_both_work_round_a_wall_of_bodies() {
     world.settle();
     let goal = Vec2::from_ints(5900, 6000);
     world.set_order(creep, UnitOrder::AttackMove { pos: goal });
-    let took = arrives_by(&mut world, creep, goal, 130);
+    let took = ticks_until_near(&mut world, creep, goal, 130);
     assert!(took.is_some(), "the creep works round the wall");
 }
 
@@ -454,11 +404,7 @@ fn a_hero_touching_a_tower_and_sent_past_it_goes_round_briskly() {
 
 #[test]
 fn a_hero_walks_round_a_wave_stood_fighting() {
-    let map = map_of(MapId(1));
-    let mut world = World::on_map(map);
-    while world.tick < rules::FIRST_WAVE_TICK {
-        world.step();
-    }
+    let mut world = the_demo_lane_at_its_first_wave();
     for _ in 0..(12 * rules::TICKS_PER_SECOND) {
         world.step();
     }
@@ -497,20 +443,12 @@ fn a_hero_walks_round_a_wave_stood_fighting() {
 /// the road and walks round it without stopping.
 #[test]
 fn marchers_walk_round_a_hero_standing_on_their_lane() {
-    let map = map_of(MapId(1));
-    let mut world = World::on_map(map);
-    while world.tick < rules::FIRST_WAVE_TICK {
-        world.step();
-    }
+    let mut world = the_demo_lane_at_its_first_wave();
     let route = world.walked_lanes()[0][0].clone();
     let spot = point_along(route[1], route[2], rules::units(300));
-    let _hero = hero_at(&mut world, spot);
+    hero_at(&mut world, spot);
     world.settle();
-    let creeps: Vec<Entity> = world
-        .entities
-        .iter()
-        .filter(|e| world.march.get(*e).is_some() && world.team.get(*e) == Some(&Team::Radiant))
-        .collect();
+    let creeps = radiant_marchers(&world);
     let blocked = lane_progress(&route, spot);
     // On the way up to the hero and past it, no creep stands stalled for
     // long: the enemy wave it meets further on is another matter.
@@ -545,64 +483,46 @@ fn marchers_walk_round_a_hero_standing_on_their_lane() {
 /// run into, and holds that creep back against a wave left alone.
 #[test]
 fn a_hero_pacing_before_a_wave_holds_the_creep_it_covers() {
-    let map = map_of(MapId(1));
-    let seconds = 10;
-    let mut world = World::on_map(map);
-    while world.tick < rules::FIRST_WAVE_TICK {
-        world.step();
-    }
+    let ticks = 10 * rules::TICKS_PER_SECOND;
+    let mut world = the_demo_lane_at_its_first_wave();
     let route = world.walked_lanes()[0][0].clone();
     for _ in 0..30 {
         world.step();
     }
     let (start, start_mean) = wave_progress(&world, &route);
-    for _ in 0..(seconds * rules::TICKS_PER_SECOND) {
+    for _ in 0..ticks {
         world.step();
     }
     let (_, free_mean) = wave_progress(&world, &route);
-    let mut world = World::on_map(map);
-    while world.tick < rules::FIRST_WAVE_TICK {
-        world.step();
-    }
+    // The same wave again, with a hero set down just ahead of it.
+    let mut world = the_demo_lane_at_its_first_wave();
     for _ in 0..30 {
         world.step();
     }
     let (front, _) = wave_progress(&world, &route);
     let hero = hero_at(&mut world, along_lane(&route, front + 70, 0));
     world.settle();
-    let mut contacts = 0u32;
-    for _ in 0..(seconds * rules::TICKS_PER_SECOND) {
+    let mut contacts = 0;
+    for _ in 0..ticks {
         // Keep just ahead of the creep furthest up the lane.
         let hp = world.transform.get(hero).expect("standing").pos;
         let mine = lane_progress(&route, hp);
-        let mut lead: Option<(i64, Vec2)> = None;
-        for e in world.entities.iter() {
-            if world.march.get(e).is_none() || world.team.get(e) != Some(&Team::Radiant) {
-                continue;
-            }
-            let at = world.transform.get(e).expect("standing").pos;
-            let p = lane_progress(&route, at);
-            if lead.is_none_or(|(had, _)| p > had) {
-                lead = Some((p, at));
-            }
-        }
-        let creep = lead.map(|(_, at)| at).unwrap_or(hp);
+        let creep = lead_creep_at(&world, &route).unwrap_or(hp);
         let dir = along_lane(&route, mine + 100, 0) - along_lane(&route, mine, 0);
         let target = creep + point_along(Vec2::ZERO, dir, rules::units(70));
         world.set_order(hero, UnitOrder::Move { pos: target });
         world.step();
-        for e in world.entities.iter() {
-            if world.march.get(e).is_some()
-                && world.motion.get(e).is_some_and(|m| m.bumped == world.tick)
-            {
-                contacts += 1;
-            }
-        }
+        contacts += world
+            .entities
+            .iter()
+            .filter(|e| {
+                world.march.get(*e).is_some()
+                    && world.motion.get(*e).is_some_and(|m| m.bumped == world.tick)
+            })
+            .count();
     }
-    let held = world
-        .entities
-        .iter()
-        .filter(|e| world.march.get(*e).is_some() && world.team.get(*e) == Some(&Team::Radiant))
+    let held = radiant_marchers(&world)
+        .into_iter()
         .map(|e| lane_progress(&route, world.transform.get(e).expect("standing").pos) - start)
         .min()
         .expect("the wave stands");
@@ -617,17 +537,26 @@ fn a_hero_pacing_before_a_wave_holds_the_creep_it_covers() {
     );
 }
 
+/// Where the Radiant lane creep furthest along a route stands.
+fn lead_creep_at(world: &World, route: &[Vec2]) -> Option<Vec2> {
+    let mut lead: Option<(i64, Vec2)> = None;
+    for creep in radiant_marchers(world) {
+        let at = world.transform.get(creep).expect("standing").pos;
+        let progress = lane_progress(route, at);
+        if lead.is_none_or(|(had, _)| progress > had) {
+            lead = Some((progress, at));
+        }
+    }
+    lead.map(|(_, at)| at)
+}
+
 #[test]
 fn every_hero_sent_at_a_tower_from_afar_walks_into_reach_and_strikes() {
     for id in 0..HEROES.len() as u16 {
         let map = map_of(MapId(0));
         let mut world = World::on_map(map);
         let tower_at = rules::RADIANT_TOWERS[0].2;
-        let tower = world
-            .entities
-            .iter()
-            .find(|e| world.transform.get(*e).is_some_and(|t| t.pos == tower_at))
-            .expect("the tower stands");
+        let tower = structure_at(&world, tower_at);
         let hero = world.spawn_hero(
             Team::Dire,
             tower_at + Vec2::from_ints(900, 900),
@@ -644,16 +573,12 @@ fn every_hero_sent_at_a_tower_from_afar_walks_into_reach_and_strikes() {
                 last_seen: tower_at,
             },
         );
-        let mut struck = None;
-        for t in 0..(8 * rules::TICKS_PER_SECOND) {
+        let struck = (0..8 * rules::TICKS_PER_SECOND).any(|_| {
             world.step();
-            if world.health.get(tower).expect("standing").hp < before {
-                struck = Some(t + 1);
-                break;
-            }
-        }
+            world.health.get(tower).expect("standing").hp < before
+        });
         assert!(
-            struck.is_some(),
+            struck,
             "hero {id} never struck the tower within eight seconds"
         );
     }

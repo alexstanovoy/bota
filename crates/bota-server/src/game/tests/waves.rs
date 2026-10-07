@@ -8,6 +8,75 @@ use bota_proto::{Fixed, MapId, Team, TickMode, UnitKind, Vec2};
 
 use super::support::*;
 
+/// A realtime match on a map with nobody seated.
+pub(super) fn a_match_with_nobody_in_it(match_id: u64, map: MapId) -> World {
+    let config = MatchConfig {
+        match_id,
+        master_key: [0; 32],
+        picks: vec![],
+        map,
+        tick_rate: 30,
+        mode: TickMode::Realtime,
+        ack_timeout_ticks: 0,
+        cheats: false,
+        spawn_modifiers: Vec::new(),
+        immortal_structures: false,
+        immortal_heroes: false,
+    };
+    World::for_match(&config, config.rng())
+}
+
+/// The demo map stepped to the tick its first waves come out.
+pub(super) fn the_demo_lane_at_its_first_wave() -> World {
+    let mut world = World::on_map(map_of(MapId(1)));
+    while world.tick < rules::FIRST_WAVE_TICK {
+        world.step();
+    }
+    world
+}
+
+/// Every Radiant lane creep standing.
+pub(super) fn radiant_marchers(world: &World) -> Vec<Entity> {
+    world
+        .entities
+        .iter()
+        .filter(|e| world.march.get(*e).is_some() && world.team.get(*e) == Some(&Team::Radiant))
+        .collect()
+}
+
+/// Runs a match past its first waves and half a minute on: how many came
+/// out, and each still standing with its spawner's spot and its own.
+fn the_first_waves_half_a_minute_on(world: &mut World) -> (usize, Vec<(Entity, Vec2, Vec2)>) {
+    for _ in 0..=rules::FIRST_WAVE_TICK {
+        world.advance(&[]);
+    }
+    let first: Vec<(Entity, Vec2)> = world
+        .entities
+        .iter()
+        .filter(|e| world.march.get(*e).is_some())
+        .map(|e| {
+            let team = world.team.get(e).copied().expect("has a side");
+            let lane = world.lane.get(e).copied().expect("has a lane");
+            (e, creep_spawn_pos(world.map, team, lane.0))
+        })
+        .collect();
+    for _ in 0..(30 * rules::TICKS_PER_SECOND) {
+        world.advance(&[]);
+    }
+    let standing = first
+        .iter()
+        .filter(|(creep, _)| world.entities.contains(*creep))
+        .map(|&(creep, spawn)| {
+            (
+                creep,
+                spawn,
+                world.transform.get(creep).expect("standing").pos,
+            )
+        })
+        .collect();
+    (first.len(), standing)
+}
+
 #[test]
 fn a_wave_carries_one_flag_from_the_fifth_wave_on() {
     let map = map_of(MapId(1));
@@ -26,16 +95,8 @@ fn a_wave_carries_one_flag_from_the_fifth_wave_on() {
 
 #[test]
 fn a_creep_off_its_route_rejoins_it_ahead_and_never_walks_back() {
-    let map = map_of(MapId(1));
-    let mut world = World::on_map(map);
-    while world.tick < rules::FIRST_WAVE_TICK {
-        world.step();
-    }
-    let creep = world
-        .entities
-        .iter()
-        .find(|e| world.march.get(*e).is_some() && world.team.get(*e) == Some(&Team::Radiant))
-        .expect("a wave came out");
+    let mut world = the_demo_lane_at_its_first_wave();
+    let creep = *radiant_marchers(&world).first().expect("a wave came out");
     let route = world.walked_lanes()[0][0].clone();
     assert!(route.len() >= 3, "the lane has corners to be ahead of");
     // Carried past its next two waypoints and off to one side of the road.
@@ -66,16 +127,8 @@ fn a_creep_off_its_route_rejoins_it_ahead_and_never_walks_back() {
 
 #[test]
 fn a_creep_is_sent_one_way_at_a_time() {
-    let map = map_of(MapId(1));
-    let mut world = World::on_map(map);
-    while world.tick < rules::FIRST_WAVE_TICK {
-        world.step();
-    }
-    let creep = world
-        .entities
-        .iter()
-        .find(|e| world.march.get(*e).is_some() && world.team.get(*e) == Some(&Team::Radiant))
-        .expect("a wave came out");
+    let mut world = the_demo_lane_at_its_first_wave();
+    let creep = *radiant_marchers(&world).first().expect("a wave came out");
     // Pushed off the route: the mark it is given must not change from tick
     // to tick while nothing about it changes.
     if let Some(at) = world.transform.get_mut(creep) {
@@ -99,91 +152,33 @@ fn a_creep_is_sent_one_way_at_a_time() {
 
 #[test]
 fn no_creep_of_the_first_waves_is_left_wrestling_its_own_base() {
-    let cfg = MatchConfig {
-        match_id: 7,
-        master_key: [0; 32],
-        picks: vec![],
-        map: MapId(0),
-        tick_rate: 30,
-        mode: TickMode::Realtime,
-        ack_timeout_ticks: 0,
-        cheats: false,
-        spawn_modifiers: Vec::new(),
-        immortal_structures: false,
-        immortal_heroes: false,
-    };
-    let mut world = World::for_match(&cfg, cfg.rng());
-    for _ in 0..=rules::FIRST_WAVE_TICK {
-        world.advance(&[]);
-    }
-    let first: Vec<(Entity, Vec2)> = world
-        .entities
-        .iter()
-        .filter(|e| world.march.get(*e).is_some())
-        .map(|e| {
-            let team = world.team.get(e).copied().expect("has a side");
-            let lane = world.lane.get(e).copied().expect("has a lane");
-            let spawn = creep_spawn_pos(world.map, team, lane.0);
-            (e, spawn)
-        })
-        .collect();
-    assert_eq!(
-        first.len(),
-        24,
-        "four creeps a lane, three lanes, two sides"
-    );
-    for _ in 0..(30 * rules::TICKS_PER_SECOND) {
-        world.advance(&[]);
-    }
-    // Half a minute in, everything still standing has long left its base;
-    // what died, died out on the lane.
-    for (creep, spawn) in &first {
-        if !world.entities.iter().any(|e| e == *creep) {
-            continue;
-        }
-        let at = world.transform.get(*creep).expect("standing").pos;
+    let mut world = a_match_with_nobody_in_it(7, MapId(0));
+    let (spawned, standing) = the_first_waves_half_a_minute_on(&mut world);
+    assert_eq!(spawned, 24, "four creeps a lane, three lanes, two sides");
+    // What died, died out on the lane; the mid waves met in the middle of
+    // no-man's land, four against four.
+    let meet = Vec2::from_ints(8706, 8838);
+    for &(creep, spawn, at) in &standing {
         assert!(
-            !at.within(*spawn, rules::units(1500)),
+            !at.within(spawn, rules::units(1500)),
             "a creep is still beside its spawner at ({},{})",
             at.x.to_int(),
             at.y.to_int()
         );
-    }
-    // And the mid waves in particular met in the middle of no-man's land,
-    // four against four.
-    let meet = Vec2::from_ints(8706, 8838);
-    for (creep, _) in &first {
-        if !world.entities.iter().any(|e| e == *creep)
-            || world.lane.get(*creep).copied() != Some(Lane(rules::LANE_MID))
-        {
-            continue;
+        if world.lane.get(creep).copied() == Some(Lane(rules::LANE_MID)) {
+            assert!(
+                at.within(meet, rules::units(900)),
+                "a mid creep never reached the river: ({},{})",
+                at.x.to_int(),
+                at.y.to_int()
+            );
         }
-        let at = world.transform.get(*creep).expect("standing").pos;
-        assert!(
-            at.within(meet, rules::units(900)),
-            "a mid creep never reached the river: ({},{})",
-            at.x.to_int(),
-            at.y.to_int()
-        );
     }
 }
 
 #[test]
 fn a_wave_walks_over_where_its_tower_stood_once_it_has_fallen() {
-    let cfg = MatchConfig {
-        match_id: 7,
-        master_key: [0; 32],
-        picks: vec![],
-        map: MapId(0),
-        tick_rate: 30,
-        mode: TickMode::Realtime,
-        ack_timeout_ticks: 0,
-        cheats: false,
-        spawn_modifiers: Vec::new(),
-        immortal_structures: false,
-        immortal_heroes: false,
-    };
-    let mut world = World::for_match(&cfg, cfg.rng());
+    let mut world = a_match_with_nobody_in_it(7, MapId(0));
     let (lane, _, tower) = rules::RADIANT_TOWERS[2];
     assert_eq!(lane, rules::LANE_MID, "the Radiant mid tier three");
     let footprint = plan_radius(rules::units(rules::TOWER_COLLISION));
@@ -204,15 +199,11 @@ fn a_wave_walks_over_where_its_tower_stood_once_it_has_fallen() {
     let mut nearest = i64::MAX;
     for _ in 0..(20 * rules::TICKS_PER_SECOND) {
         world.advance(&[]);
-        for creep in world.entities.iter() {
-            if world.march.get(creep).is_none()
-                || world.team.get(creep) != Some(&Team::Radiant)
-                || world.lane.get(creep).map(|l| l.0) != Some(rules::LANE_MID)
-            {
-                continue;
+        for creep in radiant_marchers(&world) {
+            if world.lane.get(creep) == Some(&Lane(rules::LANE_MID)) {
+                let at = world.transform.get(creep).expect("standing").pos;
+                nearest = nearest.min(isqrt64(at.distance_squared(tower)) >> 16);
             }
-            let at = world.transform.get(creep).expect("standing").pos;
-            nearest = nearest.min(isqrt64(at.distance_squared(tower)) >> 16);
         }
     }
     assert!(
@@ -300,20 +291,7 @@ fn the_ancient_waits_for_both_tier_fours() {
 
 #[test]
 fn a_fallen_barracks_turns_the_waves_against_it_super_and_all_of_them_mega() {
-    let cfg = MatchConfig {
-        match_id: 9,
-        master_key: [0; 32],
-        picks: vec![],
-        map: MapId(0),
-        tick_rate: 30,
-        mode: TickMode::Realtime,
-        ack_timeout_ticks: 0,
-        cheats: false,
-        spawn_modifiers: Vec::new(),
-        immortal_structures: false,
-        immortal_heroes: false,
-    };
-    let mut world = World::for_match(&cfg, cfg.rng());
+    let mut world = a_match_with_nobody_in_it(9, MapId(0));
     // Whole barracks: plain waves.
     let plain = next_mid_wave(&mut world, Team::Dire);
     assert!(
@@ -366,47 +344,15 @@ fn a_fallen_barracks_turns_the_waves_against_it_super_and_all_of_them_mega() {
 
 #[test]
 fn the_demo_waves_march_out_and_meet_between_the_towers() {
-    let cfg = MatchConfig {
-        match_id: 11,
-        master_key: [0; 32],
-        picks: vec![],
-        map: MapId(1),
-        tick_rate: 30,
-        mode: TickMode::Realtime,
-        ack_timeout_ticks: 0,
-        cheats: false,
-        spawn_modifiers: Vec::new(),
-        immortal_structures: false,
-        immortal_heroes: false,
-    };
-    let mut world = World::for_match(&cfg, cfg.rng());
-    for _ in 0..=rules::FIRST_WAVE_TICK {
-        world.advance(&[]);
-    }
-    let first: Vec<(Entity, Vec2)> = world
-        .entities
-        .iter()
-        .filter(|e| world.march.get(*e).is_some())
-        .map(|e| {
-            let team = world.team.get(e).copied().expect("has a side");
-            (e, creep_spawn_pos(world.map, team, 0))
-        })
-        .collect();
-    assert_eq!(first.len(), 8, "one wave a side on the one lane");
-    for _ in 0..(30 * rules::TICKS_PER_SECOND) {
-        world.advance(&[]);
-    }
-    // Half a minute in the survivors are grinding in the middle of the
-    // lane, nobody is left wrestling its own base, and with no Ancient
+    let mut world = a_match_with_nobody_in_it(11, MapId(1));
+    let (spawned, standing) = the_first_waves_half_a_minute_on(&mut world);
+    assert_eq!(spawned, 8, "one wave a side on the one lane");
+    // The survivors grind in the middle of the lane, and with no Ancient
     // standing there is nothing to win by.
     let meet = Vec2::from_ints(8850, 9020);
-    for (creep, spawn) in &first {
-        if !world.entities.iter().any(|e| e == *creep) {
-            continue;
-        }
-        let at = world.transform.get(*creep).expect("standing").pos;
+    for (_, spawn, at) in standing {
         assert!(
-            !at.within(*spawn, rules::units(600)),
+            !at.within(spawn, rules::units(600)),
             "a creep is still beside its spawner at ({},{})",
             at.x.to_int(),
             at.y.to_int()
