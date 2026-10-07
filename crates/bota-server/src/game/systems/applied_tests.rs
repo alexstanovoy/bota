@@ -508,7 +508,7 @@ fn a_blow_sets_a_muted_item_back_by_the_cooldown_rate() {
 }
 
 #[test]
-fn a_cheat_modifier_is_not_an_effect_on_the_wire() {
+fn an_applied_modifier_is_not_an_effect_on_the_wire() {
     let (mut world, hero, _creep) = arena();
     let effects = |world: &World| {
         world
@@ -525,7 +525,7 @@ fn a_cheat_modifier_is_not_an_effect_on_the_wire() {
 }
 
 #[test]
-fn nothing_a_normal_modifier_does_reaches_a_cheat_modifier() {
+fn nothing_a_normal_modifier_does_reaches_an_applied_modifier() {
     let (mut world, hero, _creep) = arena();
     apply(&mut world, hero, spec(|s| s.magic_resist = 1_000), 100);
     world.put_modifier(hero, stun(10));
