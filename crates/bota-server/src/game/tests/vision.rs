@@ -117,14 +117,13 @@ fn a_side_is_told_only_of_what_it_could_see() {
         EventVisibility::OneTeam(Team::Dire),
         "only the side party to it is told"
     );
-    let watcher = hero_at(&mut world, far);
+    hero_at(&mut world, far);
     world.settle();
     assert!(world.can_see_point(Team::Radiant, far));
     assert_eq!(
         world.who_may_know(far, Team::Dire),
         EventVisibility::Everyone
     );
-    let _ = watcher;
 }
 
 #[test]
@@ -135,14 +134,10 @@ fn a_ranged_attack_puts_a_missile_where_a_side_can_see_it() {
     world.settle();
     world.fill_pools(archer);
     world.fill_pools(mark);
-    let mut flew = false;
-    for _ in 0..40 {
+    let flew = (0..40).any(|_| {
         world.step();
-        if !world.view_full().projectiles.is_empty() {
-            flew = true;
-            break;
-        }
-    }
+        !world.view_full().projectiles.is_empty()
+    });
     assert!(
         flew,
         "a ranged hero throws something the client is told about"
@@ -157,21 +152,18 @@ fn a_ranged_attack_puts_a_missile_where_a_side_can_see_it() {
 #[test]
 fn a_missile_is_seen_from_the_tick_it_is_thrown() {
     let mut world = World::new();
-    let archer = world.spawn_unit(&RANGED_CREEP, Team::Radiant, Vec2::from_ints(5000, 5000));
-    let watcher = world.spawn_unit(&MELEE_CREEP, Team::Dire, Vec2::from_ints(5300, 5000));
+    world.spawn_unit(&RANGED_CREEP, Team::Radiant, Vec2::from_ints(5000, 5000));
+    world.spawn_unit(&MELEE_CREEP, Team::Dire, Vec2::from_ints(5300, 5000));
     world.settle();
-    let mut thrown = None;
-    for _ in 0..40 {
-        world.step();
-        thrown = world
-            .entities
-            .iter()
-            .find(|e| world.projectile.get(*e).is_some());
-        if thrown.is_some() {
-            break;
-        }
-    }
-    let missile = thrown.expect("the archer threw something");
+    let missile = (0..40)
+        .find_map(|_| {
+            world.step();
+            world
+                .entities
+                .iter()
+                .find(|e| world.projectile.get(*e).is_some())
+        })
+        .expect("the archer threw something");
     assert!(
         world
             .visibility
@@ -179,5 +171,4 @@ fn a_missile_is_seen_from_the_tick_it_is_thrown() {
             .is_some_and(|s| s.by(Team::Radiant)),
         "its own side has it"
     );
-    let _ = (archer, watcher);
 }

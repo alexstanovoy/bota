@@ -12,22 +12,23 @@ fn camps_fill_on_the_minute_and_stay_full() {
     while world.tick < rules::FIRST_NEUTRAL_TICK {
         world.step();
     }
-    let filled = world
-        .entities
-        .iter()
-        .filter(|e| world.camp_home.get(*e).is_some())
-        .count();
+    let neutrals = |world: &World| {
+        world
+            .entities
+            .iter()
+            .filter(|e| world.camp_home.get(*e).is_some())
+            .count()
+    };
+    let filled = neutrals(&world);
     assert!(filled > 0, "the jungle put something out");
-    let before = filled;
     for _ in 0..rules::NEUTRAL_SPAWN_PERIOD_TICKS {
         world.step();
     }
-    let now = world
-        .entities
-        .iter()
-        .filter(|e| world.camp_home.get(*e).is_some())
-        .count();
-    assert_eq!(now, before, "a full camp puts out nothing more");
+    assert_eq!(
+        neutrals(&world),
+        filled,
+        "a full camp puts out nothing more"
+    );
 }
 
 #[test]
