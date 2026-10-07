@@ -68,9 +68,8 @@ compilation and demands a conscious decision about what to put in it.
 
 Four crates: `bota-proto` (shared vocabulary + codec), `bota-server` (simulation +
 networking), `bota-client`, and `bota-bot`. All depend only on `proto`, and in particular
-no bot depends on another: a second bot that leaned on the first would mean every future
-one carrying every past one about with it. The wire and the match loop are short enough
-to be worth writing twice.
+no bot depends on another: the wire and the match loop are short enough to be worth
+writing twice.
 
 The membership criterion for `bota-proto` is the single rule deciding where code lives:
 
@@ -84,8 +83,7 @@ principle.
 handles, component tables, the fingerprint hasher — and knows nothing of Dota.
 `game/` is the game: `world.rs` and the tick order, `systems/`, `components/`, and
 `config/` for everything the game is made of — the map, the terrain, the forest, the
-units, the items, the camps and the balance constants. `game` names what it takes from
-`engine` in one place, `game/mod.rs`.
+units, the items, the camps and the balance constants.
 
 ### bota-proto and bota-server
 
@@ -114,9 +112,9 @@ New external dependencies only after discussion. Allowed:
 | `clap` (derive) | every binary | command line arguments |
 | `criterion` 0.8.2 | `bota-server` (dev) | benchmarks |
 
-Every binary parses its arguments with `clap` and its derive. There is no bar low enough
-for a hand-rolled parser to be worth clearing: it costs a hundred lines, generates no
-`--help`, validates nothing, and quietly lets a flag apply to the wrong subcommand.
+Every binary parses its arguments with `clap` and its derive, never by hand: a
+hand-rolled parser generates no `--help`, validates nothing, and quietly lets a flag
+apply to the wrong subcommand.
 
 The requirement for any primitive that affects the simulation: **value-stability**,
 i.e. a guarantee of identical values across versions and platforms. Hence
@@ -142,9 +140,9 @@ cargo test --all --release
 ```
 
 Release is run separately not for speed: `debug_assert!` is off there, and overflow
-behavior switches from panicking to saturating for `Fixed` and to wrapping for
-plain integers. A test that covers only one half fails
-in the other mode — and it fails exactly where we would notice it last.
+switches from panicking to saturating for `Fixed` and to wrapping for plain integers.
+A test that covers only one mode fails in the other, exactly where we would notice it
+last.
 
 ## Benchmarks
 
