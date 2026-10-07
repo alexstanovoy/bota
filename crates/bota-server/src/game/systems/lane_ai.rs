@@ -47,11 +47,6 @@ impl World {
         }
     }
 
-    /// Whether one entity may be taken on by another right now.
-    pub fn valid_target(&self, seeker: Entity, candidate: Entity) -> bool {
-        self.hostile(seeker, candidate)
-    }
-
     /// The best thing this entity may take on within a reach.
     ///
     /// Ranked by what it is, then by what it is doing, then by how far off it
@@ -105,7 +100,7 @@ impl World {
         let Some(held) = self.target_of(seeker) else {
             return self.best_valid_in_range(seeker, acquisition, candidates);
         };
-        if !self.valid_target(seeker, held) {
+        if !self.hostile(seeker, held) {
             return self
                 .best_valid_in_range(seeker, acquisition, candidates)
                 .or_else(|| keeping.then_some(held));
