@@ -490,9 +490,7 @@ impl World {
 
     /// Charges the stack in one of an entity's item slots holds.
     pub fn charges_in(&self, entity: Entity, slot: usize) -> u8 {
-        self.inventory
-            .get(entity)
-            .and_then(|bag| bag.slots.get(slot).copied().flatten())
+        self.held_in_bag(entity, slot)
             .map_or(0, |stack| stack.charges)
     }
 
@@ -896,9 +894,7 @@ impl World {
                 .copied()
                 .flatten()
         } else {
-            self.inventory
-                .get(unit)
-                .and_then(|bag| bag.slots.get(at).copied().flatten())
+            self.held_in_bag(unit, at)
         };
         let Some(held) = held else {
             return false;

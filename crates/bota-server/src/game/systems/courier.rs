@@ -11,12 +11,8 @@ use crate::engine::Entity;
 impl World {
     /// Stands a courier up for one seat at its own fountain.
     pub fn stand_up_courier(&mut self, seat: usize) {
-        let (Some(side), at) = (
-            self.seats.get(seat).map(|seat| seat.team),
-            fountain_pos(self.map, self.seats[seat].team),
-        ) else {
-            return;
-        };
+        let side = self.seats[seat].team;
+        let at = fountain_pos(self.map, side);
         // What the last courier carried when it fell comes back aboard.
         let load = self.seats[seat]
             .courier_kept
@@ -209,11 +205,7 @@ impl World {
             return false;
         }
         for at in 0..rules::INVENTORY_SLOTS {
-            let Some(stack) = self
-                .inventory
-                .get(courier)
-                .and_then(|bag| bag.slots.get(at).copied().flatten())
-            else {
+            let Some(stack) = self.held_in_bag(courier, at) else {
                 continue;
             };
             let Some(free) = self.seats[seat]
@@ -225,11 +217,7 @@ impl World {
                 break;
             };
             *free = Some(stack);
-            if let Some(bag) = self.inventory.get_mut(courier)
-                && let Some(held) = bag.slots.get_mut(at)
-            {
-                *held = None;
-            }
+            self.take_from_bag(courier, at);
         }
         self.errand.insert(courier, Errand::GoingHome);
         false
@@ -318,27 +306,11 @@ impl World {
     fn collect_marked(&mut self, courier: Entity, owner: Entity) {
         let slots = self.inventory.get(owner).map_or(0, |bag| bag.slots.len());
         for at in 0..slots {
-            let Some(stack) = self
-                .inventory
-                .get(owner)
-                .and_then(|bag| bag.slots.get(at).copied().flatten())
-            else {
-                continue;
-            };
-            if !stack.for_sale {
-                continue;
-            }
-            let Some(bag) = self.inventory.get_mut(courier) else {
+            let marked = self
+                .held_in_bag(owner, at)
+                .is_some_and(|stack| stack.for_sale);
+            if marked && !self.pass_on(owner, at, courier) {
                 return;
-            };
-            let Some(free) = bag.slots.iter_mut().find(|held| held.is_none()) else {
-                return;
-            };
-            *free = Some(stack);
-            if let Some(bag) = self.inventory.get_mut(owner)
-                && let Some(held) = bag.slots.get_mut(at)
-            {
-                *held = None;
             }
         }
     }
@@ -356,26 +328,29 @@ impl World {
     /// Moves what a courier holds into whatever room its owner has.
     fn hand_over(&mut self, courier: Entity, owner: Entity) {
         for at in 0..rules::INVENTORY_SLOTS {
-            let Some(stack) = self
-                .inventory
-                .get(courier)
-                .and_then(|bag| bag.slots.get(at).copied().flatten())
-            else {
-                continue;
-            };
-            let Some(bag) = self.inventory.get_mut(owner) else {
+            if !self.pass_on(courier, at, owner) {
                 return;
-            };
-            let Some(free) = bag.slots.iter_mut().find(|slot| slot.is_none()) else {
-                return;
-            };
-            *free = Some(stack);
-            if let Some(bag) = self.inventory.get_mut(courier)
-                && let Some(held) = bag.slots.get_mut(at)
-            {
-                *held = None;
             }
         }
+    }
+
+    /// Moves the stack in one of a unit's bag slots into the first free slot
+    /// of another's bag. False, with nothing moved, when that bag has no
+    /// room; an empty slot passes nothing and answers true.
+    fn pass_on(&mut self, from: Entity, at: usize, to: Entity) -> bool {
+        let Some(stack) = self.held_in_bag(from, at) else {
+            return true;
+        };
+        let Some(free) = self
+            .inventory
+            .get_mut(to)
+            .and_then(|bag| bag.slots.iter_mut().find(|slot| slot.is_none()))
+        else {
+            return false;
+        };
+        *free = Some(stack);
+        self.take_from_bag(from, at);
+        true
     }
 
     /// Where a side's couriers stand up: its fountain.

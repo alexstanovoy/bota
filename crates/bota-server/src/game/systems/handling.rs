@@ -198,14 +198,14 @@ impl World {
     }
 
     /// The stack in one of a unit's own bag slots, read in place.
-    fn held_in_bag(&self, unit: Entity, slot: usize) -> Option<ItemStack> {
+    pub(crate) fn held_in_bag(&self, unit: Entity, slot: usize) -> Option<ItemStack> {
         self.inventory
             .get(unit)
             .and_then(|bag| bag.slots.get(slot).copied().flatten())
     }
 
     /// Takes the stack out of one of a unit's own bag slots.
-    fn take_from_bag(&mut self, unit: Entity, slot: usize) -> Option<ItemStack> {
+    pub(crate) fn take_from_bag(&mut self, unit: Entity, slot: usize) -> Option<ItemStack> {
         self.inventory.get_mut(unit)?.slots.get_mut(slot)?.take()
     }
 }
