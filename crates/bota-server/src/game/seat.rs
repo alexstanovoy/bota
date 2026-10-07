@@ -1,8 +1,6 @@
 //! A place at the match, and what belongs to a player rather than to a body.
 
-use bota_proto::{HeroId, SlotId, Team};
-
-use bota_proto::ItemId;
+use bota_proto::{HeroId, ItemId, SlotId, Team};
 
 use crate::game::{AbilityBook, Entity, Inventory, Stacks};
 

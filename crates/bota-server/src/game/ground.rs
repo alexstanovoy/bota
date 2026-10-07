@@ -18,9 +18,7 @@ impl Ground {
     pub fn of(map: &crate::game::MapDef) -> Ground {
         let mut cells = Vec::with_capacity(TERRAIN_CELLS * TERRAIN_CELLS);
         for &(run, value) in map.terrain_rle {
-            for _ in 0..run {
-                cells.push(value);
-            }
+            cells.extend(std::iter::repeat_n(value, usize::from(run)));
         }
         debug_assert_eq!(cells.len(), TERRAIN_CELLS * TERRAIN_CELLS);
         Ground { cells }

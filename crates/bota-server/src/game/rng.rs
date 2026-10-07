@@ -53,16 +53,13 @@ impl MatchRng {
     /// the slot index, not the generation: every occupant of a slot gets the
     /// same stream.
     pub fn for_unit(&self, purpose: Purpose, unit: EntityId, source: u8) -> Stream {
-        self.open(
+        open_stream(
+            self.seed,
             ((purpose as u64) << PURPOSE_SHIFT) | ((unit.idx as u64) << UNIT_SHIFT) | source as u64,
         )
     }
 
-    fn open(&self, stream_id: u64) -> Stream {
-        open_stream(self.seed, stream_id)
-    }
-
-    /// Root seed used to derive every stream.
+    /// The root seed every stream is derived from.
     pub fn seed(&self) -> &[u8; 32] {
         &self.seed
     }
@@ -169,9 +166,6 @@ impl Ratio {
 
     /// Never hits.
     pub const NEVER: Ratio = Ratio { num: 0, den: 1 };
-
-    /// Always hits.
-    pub const ALWAYS: Ratio = Ratio { num: 1, den: 1 };
 
     /// `num` hits out of every `den` attempts.
     ///

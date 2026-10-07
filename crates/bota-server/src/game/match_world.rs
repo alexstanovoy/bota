@@ -4,9 +4,10 @@ use bota_proto::{
     Aim, Cheat, MatchStats, Order, RejectReason, SlotId, SlotStats, Target, Team, UnitKind,
 };
 
-use crate::game::{BAG_SLOTS, Command, Event, MatchConfig, MatchRng, hero_spawn_pos, in_backpack};
-use crate::game::{Entity, PendingCast, Seat, UnitOrder, World};
-use crate::game::{in_stash, item_def, map_of, rules};
+use crate::game::{
+    BAG_SLOTS, Command, Entity, Event, MatchConfig, MatchRng, PendingCast, Seat, UnitOrder, World,
+    hero_spawn_pos, in_backpack, in_stash, item_def, map_of, rules,
+};
 
 /// Whether an order aims at the kind of thing something takes.
 pub fn aimed_right(aim: Aim, target: &Target) -> bool {
@@ -210,7 +211,7 @@ impl World {
     /// The unit an order is for, if the seat drives it. Naming nobody means
     /// the seat's own hero.
     pub fn driven_by(&self, slot: SlotId, named: Option<bota_proto::EntityId>) -> Option<Entity> {
-        let seat = self.seats.iter().find(|seat| seat.slot == slot)?;
+        let seat = self.seat(slot)?;
         let Some(named) = named else {
             return seat.unit;
         };
@@ -252,7 +253,7 @@ impl World {
         named: Option<bota_proto::EntityId>,
         order: &Order,
     ) -> Result<(), RejectReason> {
-        let Some(seat) = self.seats.iter().find(|s| s.slot == slot) else {
+        let Some(seat) = self.seat(slot) else {
             return Err(RejectReason::HeroDead);
         };
         // A named unit has to be one this seat drives; naming nobody means
