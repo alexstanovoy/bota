@@ -17,7 +17,7 @@ pub enum Attribute {
     Intelligence,
 }
 
-/// Every one of them at once, in whole points and fractions of one.
+/// All three attributes, in fractional points.
 #[derive(
     Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash,
 )]

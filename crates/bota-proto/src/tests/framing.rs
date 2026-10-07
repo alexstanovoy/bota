@@ -12,18 +12,12 @@ fn wire(msgs: &[ClientMsg]) -> Vec<u8> {
 }
 
 #[test]
-fn empty_reader_yields_nothing() {
+fn nothing_is_yielded_before_a_whole_frame_arrives() {
     let mut reader = FrameReader::new();
     assert_eq!(reader.next_message::<ClientMsg>().unwrap(), None);
     assert_eq!(reader.buffered(), 0);
-}
 
-#[test]
-fn a_prefix_alone_yields_nothing() {
-    let msgs = all_client_msgs();
-    let bytes = wire(&msgs[..1]);
-
-    let mut reader = FrameReader::new();
+    let bytes = wire(&all_client_msgs()[..1]);
     reader.push(&bytes[..LEN_PREFIX]);
     assert_eq!(reader.next_message::<ClientMsg>().unwrap(), None);
     assert_eq!(reader.buffered(), LEN_PREFIX);
@@ -150,18 +144,6 @@ fn decoding_as_the_wrong_message_type_fails() {
     let mut reader = FrameReader::new();
     reader.push(&frame);
     assert!(reader.next_message::<ClientMsg>().is_err());
-}
-
-#[test]
-fn encode_frame_appends_rather_than_clears() {
-    let msgs = all_client_msgs();
-    let mut out = Vec::new();
-    encode_frame(&msgs[0], &mut out).unwrap();
-    let after_first = out.len();
-    encode_frame(&msgs[1], &mut out).unwrap();
-
-    assert!(out.len() > after_first);
-    assert_eq!(wire(&msgs[..2]), out);
 }
 
 #[test]

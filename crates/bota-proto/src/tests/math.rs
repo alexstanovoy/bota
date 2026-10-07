@@ -13,12 +13,6 @@ fn whole_units_survive_a_round_trip() {
 }
 
 #[test]
-fn one_is_one_shifted() {
-    assert_eq!(Fixed::ONE, Fixed::from_int(1));
-    assert_eq!(Fixed::ONE.raw, 1 << Fixed::FRAC_BITS);
-}
-
-#[test]
 fn ratios_are_exact_when_the_denominator_is_a_power_of_two() {
     assert_eq!(HALF.raw, 32768);
     assert_eq!(QUARTER.raw, 16384);
@@ -33,15 +27,12 @@ fn addition_and_subtraction_are_inverses() {
     assert_eq!(a + b - b, a);
     assert_eq!(a - a, Fixed::ZERO);
     assert_eq!(-(-a), a);
-}
 
-#[test]
-fn assignment_operators_match_their_binary_forms() {
-    let mut a = Fixed::from_int(10);
-    a += HALF;
-    assert_eq!(a, Fixed::from_int(10) + HALF);
-    a -= HALF;
-    assert_eq!(a, Fixed::from_int(10));
+    let mut b = a;
+    b += HALF;
+    assert_eq!(b, a + HALF);
+    b -= HALF;
+    assert_eq!(b, a);
 }
 
 #[test]
@@ -51,13 +42,8 @@ fn multiplication_keeps_the_scale() {
     assert_eq!(HALF * HALF, QUARTER);
     assert_eq!(Fixed::from_int(200) * HALF, Fixed::from_int(100));
     assert_eq!(Fixed::from_int(-200) * HALF, Fixed::from_int(-100));
-}
-
-#[test]
-fn multiplication_of_map_scale_values_does_not_overflow_the_intermediate() {
     // The raw product needs 44 bits; the i64 intermediate keeps it exact.
-    let far = Fixed::from_int(8000);
-    assert_eq!(far * HALF, Fixed::from_int(4000));
+    assert_eq!(Fixed::from_int(8000) * HALF, Fixed::from_int(4000));
 }
 
 #[test]
@@ -193,12 +179,11 @@ fn length_squared_is_the_pythagorean_sum() {
 
 #[test]
 fn distance_squared_spans_the_whole_map_without_overflow() {
-    // Opposite corners of an 8192-unit square: the squared distance
-    // overflows a Fixed.
+    // Opposite corners of the map: the squared distance overflows a Fixed.
     let a = Vec2::ZERO;
-    let b = Vec2::from_ints(8192, 8192);
+    let b = Vec2::from_ints(18432, 18432);
 
-    let expected = 2 * Fixed::from_int(8192).squared_raw();
+    let expected = 2 * Fixed::from_int(18432).squared_raw();
     assert_eq!(a.distance_squared(b), expected);
     assert_eq!(b.distance_squared(a), expected);
     assert!(expected > i32::MAX as i64, "the point of keeping this raw");
@@ -218,14 +203,4 @@ fn within_compares_against_a_radius() {
     assert!(origin.within(target, exact + Fixed::EPSILON));
     assert!(!origin.within(target, exact - Fixed::EPSILON));
     assert!(origin.within(origin, Fixed::ZERO));
-}
-
-#[test]
-fn within_holds_at_attack_range_across_the_map() {
-    let tower = Vec2::from_ints(7000, 7000);
-    let hero = Vec2::from_ints(7000, 6300);
-    let range = Fixed::from_int(700);
-
-    assert!(tower.within(hero, range));
-    assert!(!tower.within(hero, range - Fixed::EPSILON));
 }

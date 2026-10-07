@@ -94,11 +94,7 @@ fn the_widest_cheat_order_fits_its_budget() {
         },
     };
     let len = encoded_len(&msg);
-    assert_eq!(
-        len, 70,
-        "the widest cheat order is pinned so it cannot creep"
-    );
-    assert!(len <= 80, "the widest cheat order grew to {len} bytes");
+    assert_eq!(len, 70, "the widest cheat order is pinned");
 }
 
 #[test]
@@ -106,23 +102,7 @@ fn a_modifier_cheat_encodes_canonically() {
     // Postcard: order tag 10, cheat tag 4, target tag 2, entity idx and
     // generation varints, eleven zigzag varints, then the tick count.
     let order = Order::Cheat {
-        cheat: Cheat::ApplyModifier {
-            target: Target::Unit(entity(7)),
-            spec: ModifierSpec {
-                magic_resist: 1_000,
-                status_resist: 2_000,
-                physical_damage: 11_000,
-                magic_damage: 12_000,
-                pure_damage: 13_000,
-                cooldown_rate: 9_000,
-                mana_cost_rate: 8_000,
-                move_speed: 8_500,
-                max_hp: 11_000,
-                max_mana: 12_000,
-                gold_income: 7_500,
-            },
-            ticks: 900,
-        },
+        cheat: modifier_cheat(),
     };
     let bytes = encode_frame_to_vec(&order).expect("encode");
     assert_eq!(
@@ -151,16 +131,7 @@ fn a_modifier_cheat_encodes_canonically() {
 #[test]
 fn an_empty_view_costs_almost_nothing() {
     let msg = ServerMsg::Snapshot {
-        view: WorldView {
-            tick: 0,
-            viewer: None,
-            units: Vec::new(),
-            projectiles: Vec::new(),
-            players: Vec::new(),
-            felled_trees: Vec::new(),
-            planted_trees: Vec::new(),
-            loot: Vec::new(),
-        },
+        view: empty_world_view(),
     };
     let len = encoded_len(&msg);
     assert!(len <= 16, "an empty snapshot cost {len} bytes");

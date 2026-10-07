@@ -1,6 +1,7 @@
 //! Identifiers and small enumerations used across every message.
 
 use serde::{Deserialize, Serialize};
+
 /// A handle to an entity in the world: a unit, a projectile or an item on the
 /// ground.
 ///

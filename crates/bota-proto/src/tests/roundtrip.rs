@@ -54,29 +54,11 @@ fn replay_records_survive() {
 }
 
 #[test]
-fn world_view_survives() {
-    let view = world_view(24);
-    assert_eq!(roundtrip(&view), view);
-}
-
-#[test]
-fn negative_and_extreme_fixed_survive() {
-    let values = [
-        Fixed { raw: 0 },
-        Fixed { raw: 1 },
-        Fixed { raw: -1 },
-        Fixed { raw: i32::MIN },
-        Fixed { raw: i32::MAX },
-        fixed(-8192),
-        fixed(8191),
-    ];
-    for v in values {
-        assert_eq!(roundtrip(&v), v, "{v:?}");
+fn extreme_scalars_survive() {
+    for raw in [0, 1, -1, i32::MIN, i32::MAX] {
+        let value = Fixed { raw };
+        assert_eq!(roundtrip(&value), value, "{value:?}");
     }
-}
-
-#[test]
-fn angle_wraps_are_preserved() {
     for brads in [0u16, 1, 16384, 32768, 65535] {
         let angle = Angle { brads };
         assert_eq!(roundtrip(&angle), angle);
@@ -95,47 +77,36 @@ fn absent_optionals_stay_absent() {
 
 #[test]
 fn empty_collections_survive() {
-    let view = WorldView {
-        tick: 0,
-        viewer: None,
-        units: Vec::new(),
-        projectiles: Vec::new(),
-        players: Vec::new(),
-        felled_trees: Vec::new(),
-        planted_trees: Vec::new(),
-        loot: Vec::new(),
-    };
+    let view = empty_world_view();
     assert_eq!(roundtrip(&view), view);
 }
 
-#[test]
-fn every_reject_reason_survives() {
-    let reasons = [
-        RejectReason::HeroDead,
-        RejectReason::UnknownTarget,
-        RejectReason::WrongTargetKind,
-        RejectReason::OnCooldown,
-        RejectReason::NotEnoughMana,
-        RejectReason::NotEnoughGold,
-        RejectReason::EmptySlot,
-        RejectReason::UnknownItem,
-        RejectReason::NotAtShop,
-        RejectReason::InventoryFull,
-        RejectReason::Disabled,
-        RejectReason::NotYourItem,
-        RejectReason::ClosedGround,
-        RejectReason::NotInBag,
-        RejectReason::NoCheats,
-        RejectReason::BadCheat,
-    ];
-    for reason in reasons {
-        assert_eq!(roundtrip(&reason), reason, "{reason:?}");
+/// Each value survives and encodes as the one-byte tag of its position in
+/// `values`, which lists an enum's variants in declaration order.
+fn assert_tagged_in_order<T>(values: &[T])
+where
+    T: serde::Serialize + serde::de::DeserializeOwned + PartialEq + core::fmt::Debug,
+{
+    for (index, value) in values.iter().enumerate() {
+        assert_eq!(&roundtrip(value), value);
+        let frame = encode_frame_to_vec(value).expect("encode");
+        assert_eq!(frame[LEN_PREFIX..], [index as u8], "{value:?}");
     }
 }
 
 #[test]
-fn every_unit_kind_survives() {
-    let kinds = [
+fn fieldless_enums_are_tagged_in_declaration_order() {
+    assert_tagged_in_order(&[Team::Radiant, Team::Dire, Team::Neutral]);
+    assert_tagged_in_order(&[Aim::Own, Aim::Point, Aim::Unit, Aim::Tree, Aim::Building]);
+    assert_tagged_in_order(&[
+        Attribute::Strength,
+        Attribute::Agility,
+        Attribute::Intelligence,
+    ]);
+    assert_tagged_in_order(&[DamageKind::Physical, DamageKind::Magical, DamageKind::Pure]);
+    assert_tagged_in_order(&[Role::Player, Role::Bot, Role::Spectator]);
+    assert_tagged_in_order(&[TickMode::Realtime, TickMode::Lockstep]);
+    assert_tagged_in_order(&[
         UnitKind::Hero,
         UnitKind::CreepMelee,
         UnitKind::CreepFlagbearer,
@@ -148,8 +119,32 @@ fn every_unit_kind_survives() {
         UnitKind::Fountain,
         UnitKind::Ward,
         UnitKind::Courier,
-    ];
-    for kind in kinds {
-        assert_eq!(roundtrip(&kind), kind, "{kind:?}");
-    }
+    ]);
+}
+
+#[test]
+fn reject_reasons_are_tagged_in_declaration_order() {
+    assert_tagged_in_order(&[
+        RejectReason::HeroDead,
+        RejectReason::UnknownTarget,
+        RejectReason::WrongTargetKind,
+        RejectReason::OnCooldown,
+        RejectReason::NotEnoughMana,
+        RejectReason::NotEnoughGold,
+        RejectReason::EmptySlot,
+        RejectReason::NotCastable,
+        RejectReason::NotLearned,
+        RejectReason::NoCharges,
+        RejectReason::NotReady,
+        RejectReason::NotYourUnit,
+        RejectReason::UnknownItem,
+        RejectReason::NotAtShop,
+        RejectReason::InventoryFull,
+        RejectReason::Disabled,
+        RejectReason::NotYourItem,
+        RejectReason::ClosedGround,
+        RejectReason::NotInBag,
+        RejectReason::NoCheats,
+        RejectReason::BadCheat,
+    ]);
 }

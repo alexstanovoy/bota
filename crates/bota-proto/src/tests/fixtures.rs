@@ -9,7 +9,7 @@ pub fn entity(idx: u32) -> EntityId {
     EntityId { idx, generation: 1 }
 }
 
-pub fn fixed(units: i32) -> Fixed {
+fn fixed(units: i32) -> Fixed {
     Fixed { raw: units << 16 }
 }
 
@@ -46,10 +46,7 @@ pub fn item_view(slot: u16) -> ItemView {
 pub fn loot_view() -> LootView {
     LootView {
         id: entity(21),
-        pos: Vec2 {
-            x: fixed(6000),
-            y: fixed(6200),
-        },
+        pos: Vec2::from_ints(6000, 6200),
         item: ItemId(3),
         charges: Some(2),
     }
@@ -60,10 +57,7 @@ pub fn hero_unit() -> UnitView {
         id: entity(7),
         kind: UnitKind::Hero,
         team: Team::Radiant,
-        pos: Vec2 {
-            x: fixed(4096),
-            y: fixed(3200),
-        },
+        pos: Vec2::from_ints(4096, 3200),
         facing: Angle { brads: 12345 },
         hp: 640,
         max_hp: 700,
@@ -113,10 +107,7 @@ pub fn creep_unit(idx: u32) -> UnitView {
         id: entity(idx),
         kind: UnitKind::CreepMelee,
         team: Team::Dire,
-        pos: Vec2 {
-            x: fixed(2048),
-            y: fixed(2048),
-        },
+        pos: Vec2::from_ints(2048, 2048),
         facing: Angle { brads: 0 },
         hp: 480,
         max_hp: 550,
@@ -149,10 +140,7 @@ pub fn creep_unit(idx: u32) -> UnitView {
 pub fn projectile() -> ProjectileView {
     ProjectileView {
         id: entity(99),
-        pos: Vec2 {
-            x: fixed(3000),
-            y: fixed(3000),
-        },
+        pos: Vec2::from_ints(3000, 3000),
         facing: Angle { brads: 32768 },
         team: Team::Radiant,
         ability: Some(AbilityId(2)),
@@ -208,16 +196,7 @@ pub fn match_info() -> MatchInfo {
         map: MapId(1),
         tick_rate: 30,
         pregame_ticks: 900,
-        trees: vec![
-            Vec2 {
-                x: fixed(5000),
-                y: fixed(4000),
-            },
-            Vec2 {
-                x: fixed(11384),
-                y: fixed(12384),
-            },
-        ],
+        trees: vec![Vec2::from_ints(5000, 4000), Vec2::from_ints(11384, 12384)],
         terrain_cells: 4,
         terrain_rle: vec![(12, 0x81), (4, 0xc0)],
         opaque_cells: vec![(1, 1), (2, 1)],
@@ -279,9 +258,9 @@ pub fn match_stats() -> MatchStats {
     }
 }
 
-/// Every [`Order`] variant.
+/// Every [`Order`] variant, with every [`Target`] shape it takes.
 pub fn all_orders() -> Vec<Order> {
-    vec![
+    let mut orders = vec![
         Order::Move {
             target: Target::None,
         },
@@ -289,16 +268,10 @@ pub fn all_orders() -> Vec<Order> {
             target: Target::None,
         },
         Order::Move {
-            target: Target::Pos(Vec2 {
-                x: fixed(100),
-                y: fixed(-100),
-            }),
+            target: Target::Pos(Vec2::from_ints(100, -100)),
         },
         Order::Attack {
-            target: Target::Pos(Vec2 {
-                x: fixed(0),
-                y: fixed(0),
-            }),
+            target: Target::Pos(Vec2::from_ints(0, 0)),
         },
         Order::Attack {
             target: Target::Unit(entity(7)),
@@ -312,21 +285,26 @@ pub fn all_orders() -> Vec<Order> {
         },
         Order::Cast {
             slot: AbilitySlot(0),
-            target: Target::Pos(Vec2 {
-                x: fixed(512),
-                y: fixed(512),
-            }),
+            target: Target::Pos(Vec2::from_ints(512, 512)),
         },
         Order::Cast {
             slot: AbilitySlot(1),
             target: Target::Unit(entity(8)),
         },
+        Order::Learn {
+            slot: AbilitySlot(2),
+        },
+    ];
+    orders.extend(item_orders());
+    orders.extend(cheat_orders());
+    orders
+}
+
+fn item_orders() -> Vec<Order> {
+    vec![
         Order::Use {
             slot: ItemSlot(2),
             target: Target::Unit(entity(9)),
-        },
-        Order::Learn {
-            slot: AbilitySlot(2),
         },
         Order::Buy { item: ItemId(4) },
         Order::Sell { slot: ItemSlot(5) },
@@ -340,10 +318,7 @@ pub fn all_orders() -> Vec<Order> {
         },
         Order::Put {
             slot: ItemSlot(0),
-            target: Target::Pos(Vec2 {
-                x: fixed(700),
-                y: fixed(900),
-            }),
+            target: Target::Pos(Vec2::from_ints(700, 900)),
         },
         Order::Put {
             slot: ItemSlot(6),
@@ -352,43 +327,58 @@ pub fn all_orders() -> Vec<Order> {
         Order::Take {
             target: Target::Unit(entity(21)),
         },
-        Order::Cheat {
-            cheat: Cheat::Gold { amount: 500 },
-        },
-        Order::Cheat {
-            cheat: Cheat::Levels { count: 3 },
-        },
-        Order::Cheat {
-            cheat: Cheat::Refresh,
-        },
-        Order::Cheat {
-            cheat: Cheat::Item { item: ItemId(46) },
-        },
-        Order::Cheat {
-            cheat: Cheat::ApplyModifier {
-                target: Target::Unit(entity(7)),
-                spec: ModifierSpec {
-                    magic_resist: 1_000,
-                    status_resist: 2_000,
-                    physical_damage: 11_000,
-                    magic_damage: 12_000,
-                    pure_damage: 13_000,
-                    cooldown_rate: 9_000,
-                    mana_cost_rate: 8_000,
-                    move_speed: 8_500,
-                    max_hp: 11_000,
-                    max_mana: 12_000,
-                    gold_income: 7_500,
-                },
-                ticks: 900,
-            },
-        },
-        Order::Cheat {
-            cheat: Cheat::ClearModifiers {
-                target: Target::None,
-            },
+    ]
+}
+
+fn cheat_orders() -> Vec<Order> {
+    [
+        Cheat::Gold { amount: 500 },
+        Cheat::Levels { count: 3 },
+        Cheat::Refresh,
+        Cheat::Item { item: ItemId(46) },
+        modifier_cheat(),
+        Cheat::ClearModifiers {
+            target: Target::None,
         },
     ]
+    .into_iter()
+    .map(|cheat| Order::Cheat { cheat })
+    .collect()
+}
+
+/// A modifier cheat on `entity(7)` with every field off nominal.
+pub fn modifier_cheat() -> Cheat {
+    Cheat::ApplyModifier {
+        target: Target::Unit(entity(7)),
+        spec: ModifierSpec {
+            magic_resist: 1_000,
+            status_resist: 2_000,
+            physical_damage: 11_000,
+            magic_damage: 12_000,
+            pure_damage: 13_000,
+            cooldown_rate: 9_000,
+            mana_cost_rate: 8_000,
+            move_speed: 8_500,
+            max_hp: 11_000,
+            max_mana: 12_000,
+            gold_income: 7_500,
+        },
+        ticks: 900,
+    }
+}
+
+/// A view of nothing at all.
+pub fn empty_world_view() -> WorldView {
+    WorldView {
+        tick: 0,
+        viewer: None,
+        units: Vec::new(),
+        projectiles: Vec::new(),
+        players: Vec::new(),
+        felled_trees: Vec::new(),
+        planted_trees: Vec::new(),
+        loot: Vec::new(),
+    }
 }
 
 /// Every [`EventKind`] variant.
