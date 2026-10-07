@@ -11,6 +11,8 @@ use bota_proto::{
     SlotId, Team, TickMode, UnitKind, Vec2, decode_payload, encode_frame_to_vec,
 };
 
+use super::support::advance_validated;
+
 const MID_MAP: MapId = MapId(2);
 const TICK_CAP: u32 = 27_900;
 const FINAL_WAVE: u32 = (TICK_CAP - rules::FIRST_WAVE_TICK) / rules::WAVE_PERIOD_TICKS + 1;
@@ -75,6 +77,22 @@ fn lethal_hit(world: &mut World, victim: Entity) {
     world.push_hit(None, victim, 30_000, DamageKind::Pure);
 }
 
+/// Lands a lethal hit on a side's tier-one mid tower and hands it back.
+fn topple(world: &mut World, team: Team) -> Entity {
+    let victim = tower(world, team, rules::LANE_MID);
+    lethal_hit(world, victim);
+    victim
+}
+
+/// Seat 0 buying the first item of the catalog.
+fn late_buy() -> Command {
+    Command {
+        slot: SlotId(0),
+        unit: None,
+        order: Order::Buy { item: ItemId(0) },
+    }
+}
+
 fn assert_destroyed(events: &[Event], victim: Entity, team: Team) {
     let destroyed = events
         .iter()
@@ -91,15 +109,7 @@ fn assert_destroyed(events: &[Event], victim: Entity, team: Team) {
 }
 
 #[test]
-fn map2_is_registered_as_its_own_map_not_a_fallback() {
-    let map = map_of(MID_MAP);
-
-    assert_eq!(map.id, MID_MAP);
-    assert_eq!(map.index(), 2);
-}
-
-#[test]
-fn map0_and_map2_landmarks_and_geometry_tables_are_identical() {
+fn map0_and_map2_share_every_landmark_lane_route_and_tree() {
     let full = map_of(MapId(0));
     let mid = map_of(MID_MAP);
 
@@ -117,23 +127,7 @@ fn map0_and_map2_landmarks_and_geometry_tables_are_identical() {
     assert_eq!(mid.lane_clear, full.lane_clear);
     assert_eq!(mid.fow_blockers, full.fow_blockers);
     assert_eq!(mid.terrain_rle, full.terrain_rle);
-}
-
-#[test]
-fn map2_keeps_three_geometric_lanes_and_the_same_cleared_forest() {
-    let full = map_of(MapId(0));
-    let mid = map_of(MID_MAP);
-
     assert_eq!(mid.lanes().collect::<Vec<_>>(), vec![0, 1, 2]);
-    assert!(!tree_positions(full).is_empty());
-    assert_eq!(tree_positions(mid), tree_positions(full));
-}
-
-#[test]
-fn map0_and_map2_walked_routes_match_on_all_lanes_and_both_sides() {
-    let full = map_of(MapId(0));
-    let mid = map_of(MID_MAP);
-
     for lane in [rules::LANE_MID, rules::LANE_TOP, rules::LANE_BOT] {
         assert_eq!(lane_polyline(mid, lane), lane_polyline(full, lane));
         for team in [Team::Radiant, Team::Dire] {
@@ -141,6 +135,8 @@ fn map0_and_map2_walked_routes_match_on_all_lanes_and_both_sides() {
         }
     }
     assert_eq!(lane_routes(mid), lane_routes(full));
+    assert!(!tree_positions(full).is_empty());
+    assert_eq!(tree_positions(mid), tree_positions(full));
 }
 
 #[test]
@@ -364,58 +360,21 @@ fn map2_courier_death_does_not_spend_a_hero_life_or_end_the_match() {
 }
 
 #[test]
-fn map2_simultaneous_second_hero_deaths_draw_in_either_hit_order() {
-    for order in [[0, 1], [1, 0]] {
-        let mut world = match_world(MID_MAP);
-        for seat in &mut world.seats {
-            seat.deaths = 1;
-        }
-        for seat in order {
-            let victim = world.seats[seat].unit.expect("second life");
-            lethal_hit(&mut world, victim);
-        }
-
-        world.advance(&[]);
-
-        assert_eq!(world.victor(), Some(Team::Neutral));
-        assert_eq!(world.seats[0].deaths, 2);
-        assert_eq!(world.seats[1].deaths, 2);
-    }
-}
-
-#[test]
-fn map2_simultaneous_tower_losses_draw_in_either_hit_order() {
-    for order in [[Team::Radiant, Team::Dire], [Team::Dire, Team::Radiant]] {
-        let mut world = match_world(MID_MAP);
-        for team in order {
-            let victim = tower(&world, team, rules::LANE_MID);
-            lethal_hit(&mut world, victim);
-        }
-
-        let events = world.advance(&[]);
-
-        assert_eq!(world.victor(), Some(Team::Neutral));
-        assert_eq!(
-            events
-                .iter()
-                .filter(|event| { matches!(event.kind, EventKind::StructureDestroyed { .. }) })
-                .count(),
-            2
-        );
-    }
-}
-
-#[test]
-fn map2_tower_loss_and_opposing_second_hero_death_draw_in_either_order() {
-    for tower_side in [Team::Radiant, Team::Dire] {
+fn map2_both_sides_losing_on_one_tick_draw_in_either_hit_order() {
+    // Per side, Radiant first: a tower loss, or else a second hero death.
+    for by_tower in [[false, false], [true, true], [true, false], [false, true]] {
         for reverse in [false, true] {
+            let case = format!("towers {by_tower:?}, reversed {reverse}");
             let mut world = match_world(MID_MAP);
-            let seat = if tower_side == Team::Radiant { 1 } else { 0 };
-            world.seats[seat].deaths = 1;
-            let mut victims = [
-                tower(&world, tower_side, rules::LANE_MID),
-                world.seats[seat].unit.expect("hero"),
-            ];
+            let mut victims = Vec::new();
+            for (seat, team) in [(0, Team::Radiant), (1, Team::Dire)] {
+                if by_tower[seat] {
+                    victims.push(tower(&world, team, rules::LANE_MID));
+                } else {
+                    world.seats[seat].deaths = 1;
+                    victims.push(world.seats[seat].unit.expect("second life"));
+                }
+            }
             if reverse {
                 victims.reverse();
             }
@@ -423,9 +382,18 @@ fn map2_tower_loss_and_opposing_second_hero_death_draw_in_either_order() {
                 lethal_hit(&mut world, victim);
             }
 
-            world.advance(&[]);
+            let events = world.advance(&[]);
 
-            assert_eq!(world.victor(), Some(Team::Neutral));
+            assert_eq!(world.victor(), Some(Team::Neutral), "{case}");
+            let felled = events
+                .iter()
+                .filter(|event| matches!(event.kind, EventKind::StructureDestroyed { .. }))
+                .count();
+            assert_eq!(felled, by_tower.iter().filter(|&&t| t).count(), "{case}");
+            for (seat, tower_lost) in by_tower.into_iter().enumerate() {
+                let deaths = if tower_lost { 0 } else { 2 };
+                assert_eq!(world.seats[seat].deaths, deaths, "{case}: seat {seat}");
+            }
         }
     }
 }
@@ -464,7 +432,7 @@ fn map2_cap_draws_at_fifteen_game_minutes_plus_unchanged_pregame() {
 }
 
 #[test]
-fn map2_keeps_playing_through_the_old_ten_minute_cap() {
+fn map2_plays_on_past_the_ten_minute_mark() {
     let mut world = match_world(MID_MAP);
     world.tick = 18_899;
 
@@ -478,6 +446,8 @@ fn map2_keeps_playing_through_the_old_ten_minute_cap() {
 #[test]
 fn map2_public_limits_and_wave_selection_match_the_match_contract() {
     assert_eq!(MAP2_ID, MID_MAP);
+    assert_eq!(map_of(MID_MAP).id, MID_MAP, "map 2 is its own map");
+    assert_eq!(map_of(MID_MAP).index(), 2);
     assert_eq!(MAP2_DEATH_LIMIT, 2);
     assert_eq!(MAP2_GAME_TICKS, 27_000);
     assert_eq!(MAP2_TICK_CAP, TICK_CAP);
@@ -500,17 +470,9 @@ fn map2_cap_tick_completes_orders_gold_waves_and_tower_death_before_drawing() {
     let boots = ItemId(ITEM_BOOTS);
     let cost = item_def(boots).expect("boots in catalog").cost;
     let gold = world.seats[0].gold;
-    let order = Order::Buy { item: boots };
-    assert_eq!(world.validate_order(SlotId(0), None, &order), Ok(()));
-    let victim = tower(&world, Team::Dire, rules::LANE_MID);
-    lethal_hit(&mut world, victim);
-    let command = Command {
-        slot: SlotId(0),
-        unit: None,
-        order,
-    };
+    let victim = topple(&mut world, Team::Dire);
 
-    let events = world.advance(&[command]);
+    let events = advance_validated(&mut world, None, Order::Buy { item: boots });
 
     assert!(
         world
@@ -534,37 +496,24 @@ fn map2_cap_tick_completes_orders_gold_waves_and_tower_death_before_drawing() {
 }
 
 #[test]
-fn map2_already_at_cap_draws_without_running_a_late_step() {
-    let mut world = match_world(MID_MAP);
-    world.tick = TICK_CAP;
-    let before = world.view_full();
+fn map2_already_at_cap_draws_without_running_a_late_step_or_command() {
+    for with_command in [false, true] {
+        let mut world = match_world(MID_MAP);
+        world.tick = TICK_CAP;
+        let before = world.view_full();
 
-    let events = world.step();
+        let events = if with_command {
+            world.advance(&[late_buy()])
+        } else {
+            world.step()
+        };
 
-    assert_eq!(world.tick, TICK_CAP);
-    assert!(events.is_empty());
-    assert_eq!(world.view_full(), before);
-    assert_eq!(world.victor(), Some(Team::Neutral));
-}
-
-#[test]
-fn map2_already_at_cap_ignores_late_commands_before_drawing() {
-    let mut world = match_world(MID_MAP);
-    world.tick = TICK_CAP;
-    let before = world.view_full();
-    let command = Command {
-        slot: SlotId(0),
-        unit: None,
-        order: Order::Buy { item: ItemId(0) },
-    };
-
-    let events = world.advance(&[command]);
-
-    assert_eq!(world.tick, TICK_CAP);
-    assert_eq!(world.view_full(), before);
-    assert!(events.is_empty());
-    assert_eq!(world.match_stats().duration, TICK_CAP);
-    assert_eq!(world.victor(), Some(Team::Neutral));
+        assert_eq!(world.tick, TICK_CAP, "command: {with_command}");
+        assert!(events.is_empty(), "command: {with_command}");
+        assert_eq!(world.view_full(), before, "command: {with_command}");
+        assert_eq!(world.match_stats().duration, TICK_CAP);
+        assert_eq!(world.victor(), Some(Team::Neutral));
+    }
 }
 
 #[test]
@@ -572,8 +521,7 @@ fn map2_tower_loss_one_tick_before_cap_wins_but_on_cap_draws() {
     for (tick, expected) in [(TICK_CAP - 2, Team::Dire), (TICK_CAP - 1, Team::Neutral)] {
         let mut world = match_world(MID_MAP);
         world.tick = tick;
-        let victim = tower(&world, Team::Radiant, rules::LANE_MID);
-        lethal_hit(&mut world, victim);
+        let victim = topple(&mut world, Team::Radiant);
 
         let events = world.advance(&[]);
 
@@ -604,21 +552,15 @@ fn map2_terminal_step_and_advance_freeze_world_and_ignore_shop_orders() {
         if cap {
             world.tick = TICK_CAP - 1;
         } else {
-            let victim = tower(&world, Team::Dire, rules::LANE_MID);
-            lethal_hit(&mut world, victim);
+            topple(&mut world, Team::Dire);
         }
         world.advance(&[]);
         assert!(world.victor().is_some());
         let before = world.hash();
         let view = world.view_full();
         let stats = world.match_stats();
-        let command = Command {
-            slot: SlotId(0),
-            unit: None,
-            order: Order::Buy { item: ItemId(0) },
-        };
 
-        let events = world.advance(&[command]);
+        let events = world.advance(&[late_buy()]);
         let stepped = world.step();
 
         assert!(events.is_empty());
@@ -648,7 +590,7 @@ fn map2_cap_is_independent_of_wall_clock_tick_rate_and_mode() {
 }
 
 #[test]
-fn map0_and_map1_wave_lane_counts_and_map1_geometry_are_preserved() {
+fn map0_and_map1_keep_their_wave_lanes_and_map1_its_geometry() {
     for (map, count) in [(MapId(0), 3), (MapId(1), 1)] {
         let mut world = World::on_map(map_of(map));
         world.tick = rules::FIRST_WAVE_TICK;
@@ -687,7 +629,7 @@ fn map0_and_map1_do_not_gain_the_map2_cap() {
 }
 
 #[test]
-fn map0_and_map1_ignore_tower_and_second_hero_loss_as_in_upstream() {
+fn map0_and_map1_end_on_neither_a_tower_nor_a_second_hero_death() {
     for map in [MapId(0), MapId(1)] {
         for hero_loss in [false, true] {
             let mut world = match_world(map);
@@ -713,8 +655,7 @@ fn map2_step_and_match_advance_share_completion_events_stats_and_hash() {
         let mut adapter = match_world(MID_MAP);
         for world in [&mut direct, &mut adapter] {
             if let Some(team) = loser {
-                let victim = tower(world, team, rules::LANE_MID);
-                lethal_hit(world, victim);
+                topple(world, team);
             } else {
                 world.tick = TICK_CAP - 1;
             }
@@ -748,8 +689,7 @@ fn map2_native_frames_and_replay_preserve_world_result_and_final_statistics() {
             } else {
                 Team::Radiant
             };
-            let victim = tower(&world, loser, rules::LANE_MID);
-            lethal_hit(&mut world, victim);
+            topple(&mut world, loser);
         }
         let events = world.advance(&[]);
         assert_eq!(world.victor(), Some(winner));
