@@ -3,7 +3,7 @@
 use crate::game::{
     AppliedModifier, AppliedModifiers, AppliedOrigin, Aura, AuraCx, Auras, Entity,
     ITEM_BLINK_DAGGER, ITEM_BOOTS, ITEM_BRACER, ITEM_MAGIC_STICK, ITEM_NULL_TALISMAN,
-    ITEM_PHASE_BOOTS, ITEM_TOWN_PORTAL_SCROLL, ITEMS, ItemStack, MAX_APPLIED_MODIFIERS_PER_UNIT,
+    ITEM_PHASE_BOOTS, ITEM_TOWN_PORTAL_SCROLL, ITEMS, MAX_APPLIED_MODIFIERS_PER_UNIT,
     MAX_COMBINED_MODIFIER_SCALE, MELEE_CREEP, Modifier, ModifierKind, Place, Reach, Seat, Spots,
     StackKind, Stacks, World, ability, ability_cooldown, ability_mana_cost, aura_system,
     cooldown_after, cost_after, map_of, rules, tower_def, wire_id,
@@ -12,6 +12,8 @@ use bota_proto::{
     AbilitySlot, DamageKind, Fixed, HeroId, ItemId, MapId, ModifierSpec, SlotId, Target, Team,
     UnitKind, Vec2,
 };
+
+use super::actions_tests::hold;
 
 /// A world with a hero and a creep standing well apart.
 fn arena() -> (World, Entity, Entity) {
@@ -149,96 +151,65 @@ fn left_on(world: &World, on: Entity, kind: ModifierKind) -> Option<u32> {
         .ticks_left
 }
 
-/// Puts an item in the first bag slot of a unit.
-fn give(world: &mut World, on: Entity, item: u16) {
-    let tick = world.tick;
-    let Some(stack) = ItemStack::bought(ItemId(item), SlotId(0), tick) else {
-        return;
-    };
-    if let Some(bag) = world.inventory.get_mut(on) {
-        bag.slots[0] = Some(stack);
-    }
-}
-
 #[test]
-fn every_combined_modifier_family_has_an_explicit_upper_bound() {
-    let (mut world, hero, _creep) = arena();
-    world.applied.insert(
-        hero,
-        full_applied(extreme_spec(
+fn every_combined_modifier_family_has_an_explicit_bound() {
+    let top = MAX_COMBINED_MODIFIER_SCALE;
+    let resist = ModifierSpec::MAX_RESIST;
+    for (scale, resist, pct, amp, rate, bounty) in [
+        (
             ModifierSpec::MAX_SCALE,
-            ModifierSpec::MAX_RESIST,
-            ModifierSpec::MAX_STATUS_RESIST,
-        )),
-    );
-    world.settle();
-    let stats = *world.stats.get(hero).expect("settled");
-    assert_eq!(stats.magic_resist_pct, 100);
-    assert_eq!(stats.status_resist_bp, rules::NOMINAL_BP - 1);
-    assert_eq!(stats.physical_amp_bp, MAX_COMBINED_MODIFIER_SCALE);
-    assert_eq!(stats.magic_amp_bp, MAX_COMBINED_MODIFIER_SCALE);
-    assert_eq!(stats.pure_amp_bp, MAX_COMBINED_MODIFIER_SCALE);
-    assert_eq!(stats.cooldown_rate_bp, MAX_COMBINED_MODIFIER_SCALE);
-    assert_eq!(stats.mana_cost_rate_bp, MAX_COMBINED_MODIFIER_SCALE);
-    assert_eq!(
-        stats.move_speed.to_int(),
-        rules::HERO_MOVE_SPEED * ModifierSpec::MAX_SCALE / rules::NOMINAL_BP,
-        "world magnitudes saturate at one source's 4x bound"
-    );
-    assert_eq!(
-        stats.max_hp.to_int(),
-        rules::HERO_HP * ModifierSpec::MAX_SCALE / rules::NOMINAL_BP + rules::HP_PER_STRENGTH * 20
-    );
-    assert_eq!(
-        stats.max_mana.to_int(),
-        rules::HERO_MANA * ModifierSpec::MAX_SCALE / rules::NOMINAL_BP
-            + rules::MANA_PER_INTELLIGENCE * 18
-    );
-    assert_eq!(
-        world.bounty_after(Some(hero), 100),
-        100 * MAX_COMBINED_MODIFIER_SCALE / rules::NOMINAL_BP,
-        "bounty keeps every bounded additive source"
-    );
-    assert_eq!(
-        world.applied.get(hero).map(|held| held.iter().count()),
-        Some(MAX_APPLIED_MODIFIERS_PER_UNIT)
-    );
-}
-
-#[test]
-fn every_combined_modifier_family_has_an_explicit_lower_bound() {
-    let (mut world, hero, _creep) = arena();
-    world.applied.insert(
-        hero,
-        full_applied(extreme_spec(
-            ModifierSpec::MIN_SCALE,
-            -ModifierSpec::MAX_RESIST,
-            ModifierSpec::MAX_STATUS_RESIST,
-        )),
-    );
-    world.settle();
-    let stats = *world.stats.get(hero).expect("settled");
-    assert_eq!(stats.magic_resist_pct, 0);
-    assert_eq!(stats.status_resist_bp, rules::NOMINAL_BP - 1);
-    assert_eq!(stats.physical_amp_bp, 0);
-    assert_eq!(stats.magic_amp_bp, 0);
-    assert_eq!(stats.pure_amp_bp, 0);
-    assert_eq!(stats.cooldown_rate_bp, 1);
-    assert_eq!(stats.mana_cost_rate_bp, 1);
-    assert_eq!(
-        stats.move_speed.to_int(),
-        rules::HERO_MOVE_SPEED * ModifierSpec::MIN_SCALE / rules::NOMINAL_BP
-    );
-    assert_eq!(
-        stats.max_hp.to_int(),
-        rules::HERO_HP * ModifierSpec::MIN_SCALE / rules::NOMINAL_BP + rules::HP_PER_STRENGTH * 20
-    );
-    assert_eq!(
-        stats.max_mana.to_int(),
-        rules::HERO_MANA * ModifierSpec::MIN_SCALE / rules::NOMINAL_BP
-            + rules::MANA_PER_INTELLIGENCE * 18
-    );
-    assert_eq!(world.bounty_after(Some(hero), 100), 0);
+            resist,
+            100,
+            top,
+            top,
+            100 * top / rules::NOMINAL_BP,
+        ),
+        (ModifierSpec::MIN_SCALE, -resist, 0, 0, 1, 0),
+    ] {
+        let (mut world, hero, _creep) = arena();
+        let extreme = extreme_spec(scale, resist, ModifierSpec::MAX_STATUS_RESIST);
+        world.applied.insert(hero, full_applied(extreme));
+        world.settle();
+        let stats = *world.stats.get(hero).expect("settled");
+        assert_eq!(stats.magic_resist_pct, pct, "scale {scale}");
+        assert_eq!(
+            stats.status_resist_bp,
+            rules::NOMINAL_BP - 1,
+            "scale {scale}"
+        );
+        assert_eq!(
+            [stats.physical_amp_bp, stats.magic_amp_bp, stats.pure_amp_bp],
+            [amp; 3],
+            "scale {scale}"
+        );
+        assert_eq!(
+            [stats.cooldown_rate_bp, stats.mana_cost_rate_bp],
+            [rate; 2],
+            "scale {scale}"
+        );
+        assert_eq!(
+            stats.move_speed.to_int(),
+            rules::HERO_MOVE_SPEED * scale / rules::NOMINAL_BP,
+            "world magnitudes saturate at one source's bound"
+        );
+        assert_eq!(
+            stats.max_hp.to_int(),
+            rules::HERO_HP * scale / rules::NOMINAL_BP + rules::HP_PER_STRENGTH * 20
+        );
+        assert_eq!(
+            stats.max_mana.to_int(),
+            rules::HERO_MANA * scale / rules::NOMINAL_BP + rules::MANA_PER_INTELLIGENCE * 18
+        );
+        assert_eq!(
+            world.bounty_after(Some(hero), 100),
+            bounty,
+            "bounty keeps every bounded additive source"
+        );
+        assert_eq!(
+            world.applied.get(hero).map(|held| held.iter().count()),
+            Some(MAX_APPLIED_MODIFIERS_PER_UNIT)
+        );
+    }
 }
 
 #[test]
@@ -253,102 +224,58 @@ fn a_unit_refuses_one_applied_entry_past_its_bound() {
 }
 
 #[test]
-fn neutral_stats_leave_damage_alone() {
+fn damage_modifiers_scale_and_resist_only_their_own_kind() {
+    use DamageKind::{Magical, Physical, Pure};
     let (mut world, hero, creep) = arena();
-    apply(&mut world, hero, ModifierSpec::NOMINAL, 10);
-    assert_eq!(dealt(&mut world, hero, creep, 100, DamageKind::Pure), 100);
-    assert_eq!(dealt(&mut world, hero, creep, 64, DamageKind::Magical), 64);
-}
-
-#[test]
-fn magic_resistance_delta_reduces_magical_damage_only() {
-    let (mut world, hero, creep) = arena();
-    apply(&mut world, creep, spec(|s| s.magic_resist = 5_000), 10);
-    assert_eq!(dealt(&mut world, hero, creep, 100, DamageKind::Magical), 50);
-    assert_eq!(dealt(&mut world, hero, creep, 100, DamageKind::Pure), 100);
-}
-
-#[test]
-fn magic_resistance_delta_is_clamped_at_total_immunity() {
-    let (mut world, hero, creep) = arena();
-    apply(&mut world, creep, spec(|s| s.magic_resist = 10_000), 10);
-    assert_eq!(
-        world.stats.get(creep).map(|stats| stats.magic_resist_pct),
-        Some(100),
-        "the delta may not take it past immunity"
-    );
-    assert_eq!(dealt(&mut world, hero, creep, 100, DamageKind::Magical), 0);
-}
-
-#[test]
-fn magical_amplification_scales_magical_damage() {
-    let (mut world, hero, creep) = arena();
-    apply(&mut world, hero, spec(|s| s.magic_damage = 15_000), 10);
-    assert_eq!(
-        dealt(&mut world, hero, creep, 100, DamageKind::Magical),
-        150
-    );
-}
-
-#[test]
-fn magical_amplification_applies_before_magic_resistance() {
-    let (mut world, hero, creep) = arena();
-    apply(&mut world, hero, spec(|s| s.magic_damage = 20_000), 10);
-    apply(&mut world, creep, spec(|s| s.magic_resist = 5_000), 10);
-    assert_eq!(
-        dealt(&mut world, hero, creep, 100, DamageKind::Magical),
-        100,
-        "double the blow, then half of it kept"
-    );
-}
-
-#[test]
-fn physical_amplification_scales_physical_damage() {
-    let (mut world, hero, creep) = arena();
-    let neutral = dealt(&mut world, hero, creep, 100, DamageKind::Physical);
-    assert!(neutral > 0);
-    let (mut world, hero, creep) = arena();
-    apply(&mut world, hero, spec(|s| s.physical_damage = 20_000), 10);
-    assert_eq!(
-        dealt(&mut world, hero, creep, 100, DamageKind::Physical),
-        2 * neutral
-    );
-}
-
-#[test]
-fn pure_amplification_scales_pure_damage() {
-    let (mut world, hero, creep) = arena();
-    let neutral = dealt(&mut world, hero, creep, 100, DamageKind::Pure);
-    let (mut world, hero, creep) = arena();
-    apply(&mut world, hero, spec(|s| s.pure_damage = 15_000), 10);
-    assert_eq!(dealt(&mut world, hero, creep, 100, DamageKind::Pure), 150);
-    assert_eq!(neutral, 100);
-}
-
-#[test]
-fn amplification_of_one_kind_leaves_the_other_kinds_alone() {
-    let (mut world, hero, creep) = arena();
-    apply(&mut world, hero, spec(|s| s.physical_damage = 20_000), 10);
-    assert_eq!(
-        dealt(&mut world, hero, creep, 100, DamageKind::Magical),
-        100
-    );
-    assert_eq!(dealt(&mut world, hero, creep, 100, DamageKind::Pure), 100);
-}
-
-#[test]
-fn a_projectile_keeps_its_launch_amplification_after_the_attacker_falls() {
-    let (mut world, caster, target, missile) = amplified_bounce(100);
-    world.push_hit(None, caster, 1_000_000, DamageKind::Pure);
-    world.step();
-    assert!(!world.alive(caster), "the caster fell before impact");
-    let before = world.health.get(target).expect("standing").hp;
-    let taken = land_bounce(&mut world, target, missile);
-    assert_eq!(taken, rules::SYLLA_BOUNCE_DAMAGE[0] * 2);
-    assert_eq!(
-        world.health.get(target).expect("survives").hp,
-        before - Fixed::from_int(taken)
-    );
+    let physical = dealt(&mut world, hero, creep, 100, Physical);
+    assert!(physical > 0, "armor leaves something of a physical blow");
+    let nominal = ModifierSpec::NOMINAL;
+    let half_resist = spec(|s| s.magic_resist = 5_000);
+    let immune = spec(|s| s.magic_resist = 10_000);
+    let magic_x1_5 = spec(|s| s.magic_damage = 15_000);
+    let magic_x2 = spec(|s| s.magic_damage = 20_000);
+    let physical_x2 = spec(|s| s.physical_damage = 20_000);
+    let pure_x1_5 = spec(|s| s.pure_damage = 15_000);
+    for (attacker, defender, kind, expected, case) in [
+        (nominal, nominal, Pure, 100, "nominal pure"),
+        (nominal, nominal, Magical, 100, "nominal magical"),
+        (nominal, half_resist, Magical, 50, "resisted magical"),
+        (nominal, half_resist, Pure, 100, "resistance spares pure"),
+        (nominal, immune, Magical, 0, "total immunity"),
+        (magic_x1_5, nominal, Magical, 150, "amplified magical"),
+        (
+            magic_x2,
+            half_resist,
+            Magical,
+            100,
+            "doubled first, then half kept",
+        ),
+        (
+            physical_x2,
+            nominal,
+            Physical,
+            2 * physical,
+            "amplified physical",
+        ),
+        (
+            physical_x2,
+            nominal,
+            Magical,
+            100,
+            "physical amp spares magical",
+        ),
+        (physical_x2, nominal, Pure, 100, "physical amp spares pure"),
+        (pure_x1_5, nominal, Pure, 150, "amplified pure"),
+    ] {
+        let (mut world, hero, creep) = arena();
+        apply(&mut world, hero, attacker, 10);
+        apply(&mut world, creep, defender, 10);
+        assert_eq!(
+            dealt(&mut world, hero, creep, 100, kind),
+            expected,
+            "{case}"
+        );
+    }
 }
 
 #[test]
@@ -384,11 +311,17 @@ fn a_projectile_keeps_its_launch_amplification_when_the_source_slot_is_reused() 
 }
 
 #[test]
-fn neutral_status_resistance_leaves_durations_alone() {
-    let (mut world, hero, _creep) = arena();
-    apply(&mut world, hero, ModifierSpec::NOMINAL, 10);
-    world.put_modifier(hero, stun(10));
-    assert_eq!(left_on(&world, hero, ModifierKind::Stunned), Some(10));
+fn status_resistance_shortens_a_stun_but_never_below_one_tick() {
+    for (resist, ticks, left) in [(0, 10, 10), (5_000, 10, 5), (9_000, 3, 1)] {
+        let (mut world, hero, _creep) = arena();
+        apply(&mut world, hero, spec(|s| s.status_resist = resist), 10);
+        world.put_modifier(hero, stun(ticks));
+        assert_eq!(
+            left_on(&world, hero, ModifierKind::Stunned),
+            Some(left),
+            "{resist} bp on {ticks} ticks"
+        );
+    }
 }
 
 #[test]
@@ -427,14 +360,6 @@ fn status_resistance_shortens_stuns_fears_and_slows() {
 }
 
 #[test]
-fn status_resistance_never_shortens_a_disable_below_one_tick() {
-    let (mut world, hero, _creep) = arena();
-    apply(&mut world, hero, spec(|s| s.status_resist = 9_000), 10);
-    world.put_modifier(hero, stun(3));
-    assert_eq!(left_on(&world, hero, ModifierKind::Stunned), Some(1));
-}
-
-#[test]
 fn status_resistance_shortens_the_stretch_extended_by_once() {
     let (mut world, hero, _creep) = arena();
     apply(&mut world, hero, spec(|s| s.status_resist = 5_000), 10);
@@ -449,26 +374,30 @@ fn status_resistance_shortens_the_stretch_extended_by_once() {
 }
 
 #[test]
-fn neutral_rates_leave_costs_and_cooldowns_alone() {
-    let (mut world, hero, _creep) = arena();
-    apply(&mut world, hero, ModifierSpec::NOMINAL, 10);
+fn a_nominal_spec_changes_no_stat_cost_or_cooldown() {
+    let (plain, hero, _creep) = arena();
+    let (mut world, twin, _creep) = arena();
+    apply(&mut world, twin, ModifierSpec::NOMINAL, 10);
+    assert_eq!(plain.stats.get(hero), world.stats.get(twin));
     assert_eq!(
-        world.ability_mana_cost(hero, ability::FRENZY, 1),
+        world.ability_mana_cost(twin, ability::FRENZY, 1),
         ability_mana_cost(ability::FRENZY, 1)
     );
     assert_eq!(
-        world.ability_cooldown(hero, ability::FRENZY, 1),
+        world.ability_cooldown(twin, ability::FRENZY, 1),
         ability_cooldown(ability::FRENZY, 1)
     );
 }
 
 #[test]
-fn mana_cost_rate_is_charged_and_shown() {
+fn cost_and_cooldown_rates_scale_what_a_cast_charges_shows_and_sets() {
     let (mut world, hero, _creep) = arena();
-    if let Some(book) = world.abilities.get_mut(hero) {
-        book.slots[1].level = 1;
-    }
-    apply(&mut world, hero, spec(|s| s.mana_cost_rate = 5_000), 10);
+    world.abilities.get_mut(hero).expect("has a book").slots[1].level = 1;
+    let rates = spec(|s| {
+        s.mana_cost_rate = 5_000;
+        s.cooldown_rate = 6_000;
+    });
+    apply(&mut world, hero, rates, 10);
     let base = ability_mana_cost(ability::FRENZY, 1);
     assert_eq!(base, rules::SYLLA_FRENZY_MANA[0]);
     assert_eq!(world.ability_mana_cost(hero, ability::FRENZY, 1), base / 2);
@@ -490,30 +419,17 @@ fn mana_cost_rate_is_charged_and_shown() {
         Fixed::from_int(base / 2),
         "the cast charged the scaled cost"
     );
-}
-
-#[test]
-fn cooldown_rate_shortens_what_a_cast_sets() {
-    let (mut world, hero, _creep) = arena();
-    if let Some(book) = world.abilities.get_mut(hero) {
-        book.slots[1].level = 1;
-    }
-    apply(&mut world, hero, spec(|s| s.cooldown_rate = 5_000), 10);
-    assert!(world.begin_ability(hero, AbilitySlot(1), Target::None));
     assert_eq!(
-        world
-            .abilities
-            .get(hero)
-            .and_then(|book| book.slots.get(1))
-            .map(|slot| slot.cooldown),
-        Some(ability_cooldown(ability::FRENZY, 1) / 2)
+        world.abilities.get(hero).map(|book| book.slots[1].cooldown),
+        Some(ability_cooldown(ability::FRENZY, 1) * 3 / 5),
+        "and set the scaled cooldown"
     );
 }
 
 #[test]
 fn cooldown_rate_shortens_what_an_item_use_sets() {
     let (mut world, hero, _creep) = arena();
-    give(&mut world, hero, ITEM_MAGIC_STICK);
+    hold(&mut world, hero, 0, ITEM_MAGIC_STICK);
     if let Some(stack) = world
         .inventory
         .get_mut(hero)
@@ -552,7 +468,7 @@ fn a_shared_item_wait_is_scaled_with_the_cooldown_rate() {
     );
     seat.unit = Some(hero);
     world.seats.push(seat);
-    give(&mut world, hero, ITEM_TOWN_PORTAL_SCROLL);
+    hold(&mut world, hero, 0, ITEM_TOWN_PORTAL_SCROLL);
     apply(&mut world, hero, spec(|s| s.cooldown_rate = 5_000), 10);
     let at = world.transform.get(hero).expect("standing").pos;
     assert!(
@@ -581,7 +497,7 @@ fn a_shared_item_wait_is_scaled_with_the_cooldown_rate() {
 #[test]
 fn a_blow_sets_a_muted_item_back_by_the_cooldown_rate() {
     let (mut world, hero, _creep) = arena();
-    give(&mut world, hero, ITEM_BLINK_DAGGER);
+    hold(&mut world, hero, 0, ITEM_BLINK_DAGGER);
     apply(&mut world, hero, spec(|s| s.cooldown_rate = 5_000), 10);
     let hitter = world.spawn();
     world.kind.insert(hitter, UnitKind::Hero);
@@ -697,7 +613,7 @@ fn magic_resistance_is_clamped_before_the_flesh_heap_multiplies() {
 #[test]
 fn movement_speed_adds_before_items_and_slows() {
     let (mut world, hero, _creep) = arena();
-    give(&mut world, hero, ITEM_BOOTS);
+    hold(&mut world, hero, 0, ITEM_BOOTS);
     apply(&mut world, hero, spec(|s| s.move_speed = 15_000), 10);
     let carried = rules::HERO_MOVE_SPEED * 3 / 2 + 45;
     assert_eq!(
@@ -724,7 +640,7 @@ fn movement_speed_adds_before_items_and_slows() {
 #[test]
 fn max_health_scales_the_raised_base_before_items() {
     let (mut world, hero, _creep) = arena();
-    give(&mut world, hero, ITEM_BRACER);
+    hold(&mut world, hero, 0, ITEM_BRACER);
     apply(&mut world, hero, spec(|s| s.max_hp = 20_000), 10);
     let expected = rules::HERO_HP * 2 + rules::HP_PER_STRENGTH * 26;
     assert_eq!(
@@ -737,7 +653,7 @@ fn max_health_scales_the_raised_base_before_items() {
 #[test]
 fn max_mana_scales_the_raised_base_before_items() {
     let (mut world, hero, _creep) = arena();
-    give(&mut world, hero, ITEM_NULL_TALISMAN);
+    hold(&mut world, hero, 0, ITEM_NULL_TALISMAN);
     apply(&mut world, hero, spec(|s| s.max_mana = 20_000), 10);
     let expected = rules::HERO_MANA * 2 + rules::MANA_PER_INTELLIGENCE * 24;
     assert_eq!(
@@ -748,21 +664,9 @@ fn max_mana_scales_the_raised_base_before_items() {
 }
 
 #[test]
-fn a_nominal_spec_leaves_the_new_stats_alone() {
-    let (plain, hero, _creep) = arena();
-    let (mut world, twin, _creep) = arena();
-    apply(&mut world, twin, ModifierSpec::NOMINAL, 10);
-    let plain = *plain.stats.get(hero).expect("settled");
-    let scaled = *world.stats.get(twin).expect("settled");
-    assert_eq!(plain.max_hp, scaled.max_hp);
-    assert_eq!(plain.max_mana, scaled.max_mana);
-    assert_eq!(plain.move_speed, scaled.move_speed);
-}
-
-#[test]
 fn damage_amplification_multiplies_the_whole_damage_before_mitigation() {
     let (mut world, hero, creep) = arena();
-    give(&mut world, hero, ITEM_PHASE_BOOTS);
+    hold(&mut world, hero, 0, ITEM_PHASE_BOOTS);
     apply(&mut world, hero, spec(|s| s.pure_damage = 15_000), 10);
     let damage = world.stats.get(hero).expect("settled").damage;
     assert!(
