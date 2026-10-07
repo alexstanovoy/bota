@@ -5,29 +5,6 @@ use crate::game::{BAG_SLOTS, carried_bonus, rules};
 use super::fixtures::*;
 
 #[test]
-fn explicit_move_merges_into_stack_and_clears_source() {
-    let (mut world, hero) = fixture();
-    put(&mut world, hero, 0, mango(2));
-    put(&mut world, hero, 1, mango(1));
-    assert!(world.move_item(OWNER, hero, 1, 0));
-    assert_eq!(held(&world, hero, 0).charges, 3);
-    assert!(held(&world, hero, 0).touched);
-    assert!(world.inventory.get(hero).unwrap().slots[1].is_none());
-}
-
-#[test]
-fn explicit_move_caps_destination_and_retains_source_remainder() {
-    let (mut world, hero) = fixture();
-    put(&mut world, hero, 0, mango(2));
-    put(&mut world, hero, 1, mango(3));
-    assert!(world.move_item(OWNER, hero, 1, 0));
-    assert_eq!(held(&world, hero, 0).charges, 3);
-    assert_eq!(held(&world, hero, 1).charges, 2);
-    assert_eq!(charges_in(world.inventory.get(hero).unwrap()), 5);
-    assert!(held(&world, hero, 1).touched);
-}
-
-#[test]
 fn every_merge_charge_pair_preserves_cap_count_and_source_metadata() {
     let (mut world, hero) = fixture();
     for target_charges in 1..3 {
@@ -94,44 +71,26 @@ fn merge_keeps_oldest_purchase_and_strongest_mute_and_cooldown() {
 }
 
 #[test]
-fn different_owners_swap_intact_instead_of_merging() {
-    let (mut world, hero) = fixture();
+fn stacks_of_another_owner_mode_or_sale_mark_swap_intact_instead_of_merging() {
     let mut foreign = mango(2);
     foreign.owner = SlotId(1);
-    put(&mut world, hero, 0, mango(1));
-    put(&mut world, hero, 1, foreign);
-    assert!(world.move_item(OWNER, hero, 1, 0));
-    foreign.touched = true;
-    assert_eq!(held(&world, hero, 0), foreign);
-    assert_eq!(held(&world, hero, 1).owner, OWNER);
-    assert_eq!(held(&world, hero, 1).charges, 1);
-}
-
-#[test]
-fn different_sale_marks_swap_without_clearing_or_propagating_marks() {
-    let (mut world, hero) = fixture();
+    let mut moded = mango(2);
+    moded.mode = Some(bota_proto::Attribute::Strength);
     let mut marked = mango(2);
     marked.for_sale = true;
-    put(&mut world, hero, 0, mango(1));
-    put(&mut world, hero, 1, marked);
-    assert!(world.move_item(OWNER, hero, 1, 0));
-    assert!(held(&world, hero, 0).for_sale);
-    assert!(!held(&world, hero, 1).for_sale);
-    assert_eq!(charges_in(world.inventory.get(hero).unwrap()), 3);
-}
-
-#[test]
-fn different_modes_swap_intact_instead_of_merging() {
-    let (mut world, hero) = fixture();
-    let mut different = mango(2);
-    different.mode = Some(bota_proto::Attribute::Strength);
-    put(&mut world, hero, 0, mango(1));
-    put(&mut world, hero, 1, different);
-    assert!(world.move_item(OWNER, hero, 1, 0));
-    different.touched = true;
-    assert_eq!(held(&world, hero, 0), different);
-    assert_eq!(held(&world, hero, 1).mode, None);
-    assert_eq!(charges_in(world.inventory.get(hero).unwrap()), 3);
+    for mut moved in [foreign, moded, marked] {
+        let (mut world, hero) = fixture();
+        put(&mut world, hero, 0, mango(1));
+        put(&mut world, hero, 1, moved);
+        assert!(world.move_item(OWNER, hero, 1, 0));
+        moved.touched = true;
+        assert_eq!(held(&world, hero, 0), moved);
+        let stayed = held(&world, hero, 1);
+        assert_eq!(stayed.charges, 1);
+        assert_eq!(stayed.owner, OWNER);
+        assert_eq!(stayed.mode, None);
+        assert!(!stayed.for_sale);
+    }
 }
 
 #[test]

@@ -1,15 +1,8 @@
 use bota_proto::{EventKind, ItemId, SlotId};
 
-use crate::game::{EventVisibility, rules};
+use crate::game::EventVisibility;
 
 use super::fixtures::*;
-
-#[test]
-fn sixty_four_gold_rejects_atomically() {
-    let (mut world, hero) = fixture();
-    world.seats[0].gold = 64;
-    reject_buy(&mut world, hero);
-}
 
 #[test]
 fn sixty_five_gold_buys_one_charge_and_emits_one_event() {
@@ -51,50 +44,6 @@ fn purchases_fill_three_charges_then_use_next_slot() {
 }
 
 #[test]
-fn full_storage_can_buy_into_remaining_stack_room() {
-    let (mut world, hero) = fixture();
-    fill_storage(&mut world, hero);
-    world.inventory.get_mut(hero).unwrap().slots[0] = Some(mango(2));
-    assert!(world.buy(OWNER, MANGO, &mut Vec::new()));
-    assert_eq!(held(&world, hero, 0).charges, 3);
-    assert_eq!(world.seats[0].gold, 935);
-    reject_buy(&mut world, hero);
-}
-
-#[test]
-fn full_storage_can_buy_into_backpack_stack_room() {
-    let (mut world, hero) = fixture();
-    fill_storage(&mut world, hero);
-    world.inventory.get_mut(hero).unwrap().slots[rules::INVENTORY_SLOTS] = Some(mango(2));
-    assert!(world.buy(OWNER, MANGO, &mut Vec::new()));
-    assert_eq!(held(&world, hero, rules::INVENTORY_SLOTS).charges, 3);
-    assert_eq!(world.seats[0].gold, 935);
-}
-
-#[test]
-fn remote_purchase_merges_only_in_stash() {
-    let (mut world, hero) = fixture();
-    fill_storage(&mut world, hero);
-    world.inventory.get_mut(hero).unwrap().slots[0] = Some(mango(1));
-    world.seats[0].stash.slots[0] = Some(mango(2));
-    world.transform.get_mut(hero).unwrap().pos = AWAY;
-    assert!(world.buy(OWNER, MANGO, &mut Vec::new()));
-    assert_eq!(world.seats[0].stash.slots[0].unwrap().charges, 3);
-    assert_eq!(held(&world, hero, 0).charges, 1);
-    reject_buy(&mut world, hero);
-}
-
-#[test]
-fn full_bag_falls_back_to_stash_stack_room_at_shop() {
-    let (mut world, hero) = fixture();
-    fill_storage(&mut world, hero);
-    world.seats[0].stash.slots[0] = Some(mango(2));
-    assert!(world.buy(OWNER, MANGO, &mut Vec::new()));
-    assert_eq!(world.seats[0].stash.slots[0], Some(mango(3)));
-    assert_eq!(world.seats[0].gold, 935);
-}
-
-#[test]
 fn fourth_remote_purchase_uses_next_stash_slot() {
     let (mut world, hero) = fixture();
     world.transform.get_mut(hero).unwrap().pos = AWAY;
@@ -105,14 +54,6 @@ fn fourth_remote_purchase_uses_next_stash_slot() {
     assert_eq!(world.seats[0].stash.slots[1], Some(mango(1)));
     assert_eq!(charges_in(world.inventory.get(hero).unwrap()), 0);
     assert_eq!(world.seats[0].gold, 740);
-}
-
-#[test]
-fn full_stack_without_free_slot_rejects_atomically() {
-    let (mut world, hero) = fixture();
-    fill_storage(&mut world, hero);
-    world.inventory.get_mut(hero).unwrap().slots[0] = Some(mango(3));
-    reject_buy(&mut world, hero);
 }
 
 #[test]
@@ -151,19 +92,6 @@ fn purchases_do_not_merge_foreign_owned_or_marked_stacks() {
     assert_eq!(held(&world, hero, 0), foreign);
     assert_eq!(held(&world, hero, 1), marked);
     assert_eq!(held(&world, hero, 2), mango(1));
-}
-
-#[test]
-fn incompatible_stack_room_does_not_bypass_full_storage() {
-    let (mut world, hero) = fixture();
-    fill_storage(&mut world, hero);
-    let mut foreign = mango(1);
-    foreign.owner = SlotId(1);
-    world.inventory.get_mut(hero).unwrap().slots[0] = Some(foreign);
-    let mut marked = mango(1);
-    marked.for_sale = true;
-    world.seats[0].stash.slots[0] = Some(marked);
-    reject_buy(&mut world, hero);
 }
 
 #[test]

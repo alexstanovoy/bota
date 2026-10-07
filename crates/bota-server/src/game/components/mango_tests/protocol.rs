@@ -34,6 +34,7 @@ fn mango_reports_actual_whole_mana_once_per_consumed_charge() {
             );
             assert_eq!(world.health.get(hero).unwrap().hp, health);
             assert_eq!(held(&world, hero, 0).charges, 2);
+            assert!(held(&world, hero, 0).touched);
             assert_eq!(events.len(), 1);
             assert_eq!(
                 events[0].kind,

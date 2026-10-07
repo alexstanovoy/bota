@@ -1,6 +1,6 @@
-use bota_proto::{Aim, EntityId, Fixed, ItemSlot, Order, RejectReason, Target, Team};
+use bota_proto::{Aim, Fixed, Target};
 
-use crate::game::{BAG_SLOTS, carried_bonus, item_def, item_views, regenerate, rules, wire_id};
+use crate::game::{BAG_SLOTS, carried_bonus, item_def, item_views, regenerate, rules};
 
 use super::fixtures::*;
 
@@ -52,35 +52,6 @@ fn use_restores_exactly_one_hundred_mana_and_spends_only_one_charge() {
 }
 
 #[test]
-fn explicit_self_target_succeeds() {
-    let (mut world, hero) = fixture();
-    put(&mut world, hero, 0, mango(2));
-    assert!(world.use_item(hero, 0, Target::Unit(wire_id(hero)), &mut Vec::new()));
-    assert_eq!(world.mana.get(hero).unwrap().mana, Fixed::from_int(100));
-    assert_eq!(held(&world, hero, 0).charges, 1);
-    assert!(held(&world, hero, 0).touched);
-}
-
-#[test]
-fn every_positive_deficit_through_one_hundred_succeeds_and_clamps() {
-    let (mut world, hero) = fixture();
-    let maximum = world.stats.get(hero).unwrap().max_mana;
-    for deficit in [
-        Fixed::EPSILON,
-        Fixed::from_ratio(1, 2),
-        Fixed::ONE,
-        Fixed::from_int(99),
-        Fixed::from_int(100),
-    ] {
-        world.mana.get_mut(hero).unwrap().mana = maximum - deficit;
-        put(&mut world, hero, 0, mango(1));
-        assert!(world.use_item(hero, 0, Target::None, &mut Vec::new()));
-        assert_eq!(world.mana.get(hero).unwrap().mana, maximum);
-        assert!(world.inventory.get(hero).unwrap().slots[0].is_none());
-    }
-}
-
-#[test]
 fn near_fixed_maximum_restoration_does_not_overflow() {
     let (mut world, hero) = fixture();
     world.stats.get_mut(hero).unwrap().max_mana = Fixed::MAX;
@@ -89,49 +60,6 @@ fn near_fixed_maximum_restoration_does_not_overflow() {
     assert!(world.use_item(hero, 0, Target::None, &mut Vec::new()));
     assert_eq!(world.mana.get(hero).unwrap().mana, Fixed::MAX);
     assert!(world.inventory.get(hero).unwrap().slots[0].is_none());
-}
-
-#[test]
-fn full_and_overfull_mana_reject_without_mutation() {
-    let (mut world, hero) = fixture();
-    put(&mut world, hero, 0, mango(3));
-    for extra in [Fixed::ZERO, Fixed::EPSILON] {
-        world.mana.get_mut(hero).unwrap().mana = world.stats.get(hero).unwrap().max_mana + extra;
-        reject_use(&mut world, hero, 0, Target::None);
-    }
-}
-
-#[test]
-fn missing_mana_pool_zero_capacity_and_missing_stats_reject() {
-    let (mut world, hero) = fixture();
-    put(&mut world, hero, 0, mango(3));
-    world.stats.get_mut(hero).unwrap().max_mana = Fixed::ZERO;
-    reject_use(&mut world, hero, 0, Target::None);
-    world.stats.get_mut(hero).unwrap().max_mana = Fixed::from_int(500);
-    let pool = world.mana.remove(hero).unwrap();
-    reject_use(&mut world, hero, 0, Target::None);
-    world.mana.insert(hero, pool);
-    world.stats.remove(hero);
-    reject_use(&mut world, hero, 0, Target::None);
-}
-
-#[test]
-fn invalid_position_ally_enemy_and_stale_targets_reject() {
-    let (mut world, hero) = fixture();
-    put(&mut world, hero, 0, mango(3));
-    let ally = world.spawn_unit(&crate::game::HERO, Team::Radiant, AWAY);
-    let enemy = world.spawn_unit(&crate::game::HERO, Team::Dire, AWAY);
-    for target in [
-        Target::Pos(AWAY),
-        Target::Unit(wire_id(ally)),
-        Target::Unit(wire_id(enemy)),
-        Target::Unit(EntityId {
-            idx: u32::MAX,
-            generation: u32::MAX,
-        }),
-    ] {
-        reject_use(&mut world, hero, 0, target);
-    }
 }
 
 #[test]
@@ -167,50 +95,6 @@ fn mute_cooldown_and_zero_charges_reject() {
         world.inventory.get_mut(hero).unwrap().slots[0] = Some(stack);
         reject_use(&mut world, hero, 0, Target::None);
     }
-}
-
-#[test]
-fn order_errors_report_backpack_mute_and_death_exactly() {
-    let (mut world, hero) = fixture();
-    put(&mut world, hero, 0, mango(3));
-    let order = Order::Use {
-        slot: ItemSlot(0),
-        target: Target::None,
-    };
-    world.inventory.get_mut(hero).unwrap().slots[0]
-        .as_mut()
-        .unwrap()
-        .mute = 1;
-    assert_eq!(
-        world.validate_order(OWNER, None, &order),
-        Err(RejectReason::NotReady)
-    );
-    let backpack = Order::Use {
-        slot: ItemSlot(6),
-        target: Target::None,
-    };
-    assert_eq!(
-        world.validate_order(OWNER, None, &backpack),
-        Err(RejectReason::WrongTargetKind)
-    );
-    world.health.get_mut(hero).unwrap().hp = Fixed::ZERO;
-    assert_eq!(
-        world.validate_order(OWNER, None, &order),
-        Err(RejectReason::HeroDead)
-    );
-}
-
-#[test]
-fn regen_quantizes_each_charge_before_multiplication() {
-    let (mut world, hero) = fixture();
-    for charges in 1..=3 {
-        world.inventory.get_mut(hero).unwrap().slots[0] = Some(mango(charges));
-        let bonus = carried_bonus(world.inventory.get(hero).unwrap());
-        assert_eq!(bonus.hp_regen.raw, 873 * i32::from(charges));
-        assert_eq!(bonus.mana_regen, Fixed::ZERO);
-    }
-    assert_eq!(rules::TICKS_PER_SECOND, 30);
-    assert_eq!(873 * rules::TICKS_PER_SECOND, 26190);
 }
 
 #[test]

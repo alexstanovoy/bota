@@ -1,6 +1,6 @@
-use bota_proto::{Fixed, Target};
+use bota_proto::{Fixed, ItemSlot, Order, RejectReason, Target};
 
-use crate::game::{BAG_SLOTS, Errand, rules};
+use crate::game::{BAG_SLOTS, Errand, rules, wire_id};
 
 use super::fixtures::*;
 
@@ -54,6 +54,14 @@ fn courier_has_no_mango_regen_and_cannot_use_without_mana_pool() {
     world.settle();
     assert_eq!(world.stats.get(courier), Some(&baseline));
     assert!(world.mana.get(courier).is_none());
+    let use_mango = Order::Use {
+        slot: ItemSlot(0),
+        target: Target::None,
+    };
+    assert_eq!(
+        world.validate_order(OWNER, Some(wire_id(courier)), &use_mango),
+        Err(RejectReason::NotReady)
+    );
     reject_use(&mut world, courier, 0, Target::None);
     assert_eq!(charges_in(world.inventory.get(hero).unwrap()), 0);
 }

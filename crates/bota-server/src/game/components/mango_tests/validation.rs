@@ -2,7 +2,7 @@ use bota_proto::{
     EntityId, Fixed, HeroId, ItemId, ItemSlot, Order, RejectReason, SlotId, Target, Team,
 };
 
-use crate::game::{BAG_SLOTS, Modifier, ModifierKind, Modifiers, rules, wire_id};
+use crate::game::{BAG_SLOTS, Entity, Modifier, ModifierKind, Modifiers, World, rules, wire_id};
 
 use super::fixtures::*;
 
@@ -25,10 +25,17 @@ fn buy_order_accepts_full_storage_with_inventory_backpack_or_stash_stack_room() 
         assert_eq!(world.validate_order(OWNER, None, &BUY_MANGO), Ok(()));
         assert!(world.buy(OWNER, MANGO, &mut Vec::new()));
         assert_eq!(world.seats[0].gold, 935);
+        let grown = if at < BAG_SLOTS {
+            held(&world, hero, at)
+        } else {
+            world.seats[0].stash.slots[at - BAG_SLOTS].unwrap()
+        };
+        assert_eq!(grown.charges, 3);
         assert_eq!(
             world.validate_order(OWNER, None, &BUY_MANGO),
             Err(RejectReason::InventoryFull)
         );
+        reject_buy(&mut world, hero);
     }
 }
 
@@ -194,45 +201,33 @@ fn use_order_rejects_full_and_overfull_mana_as_not_ready() {
                 world.validate_order(OWNER, None, &order),
                 Err(RejectReason::NotReady)
             );
+            reject_use(&mut world, hero, 0, target);
         }
     }
     assert_eq!(held(&world, hero, 0), mango(3));
 }
 
 #[test]
-fn use_order_rejects_absent_mana_pool_as_not_ready() {
-    let (mut world, hero) = fixture();
-    put(&mut world, hero, 0, mango(3));
-    world.mana.remove(hero);
-    assert_eq!(
-        world.validate_order(OWNER, None, &USE_MANGO),
-        Err(RejectReason::NotReady)
-    );
-    reject_use(&mut world, hero, 0, Target::None);
-}
-
-#[test]
-fn use_order_rejects_zero_mana_capacity_as_not_ready() {
-    let (mut world, hero) = fixture();
-    put(&mut world, hero, 0, mango(3));
-    world.stats.get_mut(hero).unwrap().max_mana = Fixed::ZERO;
-    assert_eq!(
-        world.validate_order(OWNER, None, &USE_MANGO),
-        Err(RejectReason::NotReady)
-    );
-    reject_use(&mut world, hero, 0, Target::None);
-}
-
-#[test]
-fn use_order_rejects_missing_stats_as_not_ready() {
-    let (mut world, hero) = fixture();
-    put(&mut world, hero, 0, mango(3));
-    world.stats.remove(hero);
-    assert_eq!(
-        world.validate_order(OWNER, None, &USE_MANGO),
-        Err(RejectReason::NotReady)
-    );
-    reject_use(&mut world, hero, 0, Target::None);
+fn use_order_rejects_a_missing_or_empty_mana_pool_as_not_ready() {
+    let strips: [fn(&mut World, Entity); 3] = [
+        |world, hero| {
+            world.mana.remove(hero);
+        },
+        |world, hero| world.stats.get_mut(hero).unwrap().max_mana = Fixed::ZERO,
+        |world, hero| {
+            world.stats.remove(hero);
+        },
+    ];
+    for strip in strips {
+        let (mut world, hero) = fixture();
+        put(&mut world, hero, 0, mango(3));
+        strip(&mut world, hero);
+        assert_eq!(
+            world.validate_order(OWNER, None, &USE_MANGO),
+            Err(RejectReason::NotReady)
+        );
+        reject_use(&mut world, hero, 0, Target::None);
+    }
 }
 
 #[test]
@@ -364,20 +359,6 @@ fn use_order_keeps_cooldown_and_disabled_errors_before_mana_readiness() {
         world.validate_order(OWNER, None, &USE_MANGO),
         Err(RejectReason::Disabled)
     );
-}
-
-#[test]
-fn courier_use_order_without_mana_pool_rejects_as_not_ready() {
-    let (mut world, _) = fixture();
-    world.stand_up_courier(0);
-    world.settle();
-    let courier = world.seats[0].courier.unwrap();
-    put(&mut world, courier, 0, mango(3));
-    assert_eq!(
-        world.validate_order(OWNER, Some(wire_id(courier)), &USE_MANGO),
-        Err(RejectReason::NotReady)
-    );
-    reject_use(&mut world, courier, 0, Target::None);
 }
 
 #[test]
