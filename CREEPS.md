@@ -245,11 +245,6 @@ So the two rules do different jobs:
   at all. It applies to four camps: one small camp and one large camp per side,
   the traditional safelane and offlane pull camps.
 
-To tell them apart in a game, drag a medium or ancient camp's neutrals into
-a lane so they start hitting the lane creeps: under a distance rule alone the
-lane creeps fight back; under Valve's they keep walking and let themselves be
-chewed on. The wiki asserts the second, twice and explicitly.
-
 **Settled by the map itself.** The map's `npc_dota_neutral_spawner` entities
 carry an `AggroType` field, and exactly four of the twenty-eight have it set
 to one: `neutralcamp_good_1` and `neutralcamp_evil_2`, both small, and
@@ -388,6 +383,9 @@ state at all. See *Not yet modelled*.
 | `BARRACKS` | 144 | barracks |
 | `TOWER` | 144 | towers |
 
+bota takes structure sizes from the map rather than from these hulls: towers,
+barracks and fountains are 144, the Ancients 299 (Radiant) and 374 (Dire).
+
 ---
 
 ## Not yet modelled
@@ -412,3 +410,8 @@ state at all. See *Not yet modelled*.
 8. **No invisibility, untargetability or disarm.** The flee on damage from an
    invisible unit and the untargetable rules of §1.6, and the disarm rule of
    §1.4, have nothing to act on.
+9. **No lane creep regeneration.** The 0.5 and 2 health a second of §1.1 are
+   not applied; lane creeps regenerate nothing.
+10. **The flagbearer is its aura and its magic resistance alone.** The area
+    bounty on its death and the magic resistance it gains over time (§1.1) are
+    not applied.

@@ -11,10 +11,10 @@ Code conventions — `CLAUDE.md`.
 |---|---|---|
 | Client rendering | macroquad | one direct dependency, 2D + text out of the box, Linux/Win/macOS/WASM |
 | Tick mode | Realtime **and** Lockstep | humans play in realtime, bots are debugged/trained in reproducible lockstep |
-| v0.1 scope | 1v1, three lanes, 1 hero | a vertical slice of the whole stack on minimal content |
+| v0.1 scope | 1v1, three lanes, a handful of heroes | a vertical slice of the whole stack on minimal content |
 | Transport | TCP + length-prefixed frames | no tokio: a thread per client + a simulation thread + mpsc |
-| Serialization | `serde` + `postcard` | derive removes ~250 lines of manual put/get; the format is compact (varint) and stable within 1.x |
-| Player networking | full snapshots with fog | measured: 1425 bytes per snapshot in 1v1, 41 KB/s at 30 Hz. Deltas will be needed by 5v5, not earlier |
+| Serialization | `serde` + `postcard` | derive instead of hand-written put/get; the format is compact (varint) and stable within 1.x |
+| Player networking | full snapshots with fog | a 1v1 snapshot is budgeted at 4 KiB by a `bota-proto` size test, 120 KB/s at 30 Hz at most. Deltas will be needed by 5v5, not earlier |
 | Live spectating | the same snapshots, without fog | client-side simulation is impossible, and that is intentional |
 | Replay | fogless `ServerMsg` stream + all orders | plays back without a server: the client reads frames from a file instead of a socket; coupled to the wire format only, so it survives balance changes; the client still cannot simulate |
 | PRNG | `rand_chacha::ChaCha8Rng` in `bota-server` | value-stable by the crate's contract; `rand::StdRng` is **forbidden** — it is allowed to change its algorithm in a minor release |
@@ -37,8 +37,6 @@ bota/
    server  client  bot
 ```
 
-The workspace contains all four.
-
 The bot and the client are symmetric consumers of `proto`: a human and a bot see
 literally the same `WorldView` type. No asymmetry that could be exploited.
 
@@ -54,11 +52,10 @@ The single rule deciding where code lives:
 | `Order`, `EventKind`, `WorldView`, codec and framing | `Command`, `Event.visible_to`, `MatchRng`, `Stream`, `Chance`, `Ratio` |
 | `MatchInfo`, `ClientMsg`, `ServerMsg`, `ReplayRecord` | `MatchConfig`, balance constants, hero stats, ability implementations |
 
-A previous version of the design had a `bota-core` crate holding the simulation. It was
-dropped: "core" had no checkable membership criterion, and `seed`, `tick_rate` and
-`PlayerId` steadily leaked into it — exactly what does not belong there. A side benefit
-of moving the simulation into the server: the client is **structurally** incapable of
-simulating, `World` lives in a crate it does not depend on.
+A `bota-core` crate holding the simulation was rejected: "core" has no checkable
+membership criterion, and `seed`, `tick_rate` and `PlayerId` leak into it. With the
+simulation in the server, the client is **structurally** incapable of simulating:
+`World` lives in a crate it does not depend on.
 
 ### Module layout
 
@@ -154,22 +151,21 @@ root.set_stream(match_id);
 let mut seed = [0u8; 32];
 root.fill_bytes(&mut seed);
 
-// one stream per purpose — crits, evasion, camp rosters
-rng.global(Purpose::Rune)
+// one stream per purpose — crits, evasion, pierce, camp rosters, flagbearers
+rng.global(Purpose::Wave)
 rng.for_unit(Purpose::Crit, unit, source)
 ```
 
-Streams are separated by purpose (`Purpose`: `Crit`, `Block`, `Evasion`, `Rune`,
-`NeutralSpawn`, `Wave`, `Pierce`) so that a new draw in one place does not shift generation anywhere
-else. A per-unit stream is keyed by `(purpose, slot index, source)` packed into the
-64-bit ChaCha8 stream id — purpose in the top bits, slot index in the middle, a source
+Streams are separated by purpose (`Purpose`: `Crit`, `Evasion`, `NeutralSpawn`, `Wave`,
+`Pierce`) so that a new draw in one place does not shift generation anywhere else. A
+per-unit stream is keyed by `(purpose, slot index, source)` packed into the 64-bit
+ChaCha8 stream id — purpose in the top bits, slot index in the middle, a source
 byte to separate several sources of chance of one purpose on the same unit (the
 evasion a unit rolls as a target and the uphill miss it rolls as an attacker). The key
 uses the slot index rather than the full `EntityId`, so the stream id space stays
 bounded. The world keeps each slot's opened crit, evasion and pierce `Chance` for as
 long as the match runs, so a unit reusing a freed slot continues that slot's hidden
-sequence, which no observer can distinguish from a fresh one. `Block` and `Rune` are
-reserved and drawn from nowhere yet.
+sequence, which no observer can distinguish from a fresh one.
 
 ```rust
 impl World {
@@ -226,9 +222,10 @@ determinism demands exactly one implementation.
    `i128`. The operators debug-assert on overflow and saturate in release: a
    saturated value stops at the end of the range, a wrapped one would land on the
    far side of the map.
-3. Angles are "brads": `u16`, 65536 = a full turn. sin/cos from a hardcoded table of
-   1024 entries.
-4. Distances are compared as squares, no sqrt.
+3. Angles are "brads": `u16`, 65536 = a full turn. There is no trigonometry: facings and
+   headings use an integer octant approximation (`facing_towards`, `heading_of` in
+   `game/movement.rs`).
+4. Distances are compared as squares; where a length itself is needed, `isqrt64`.
 5. Entity iteration is always in ascending slot order (`EntityAllocator::iter`).
    Nothing in the simulation iterates a hash map; `rustc_hash::FxHashMap` is allowed
    for lookup only, keyed by integers.
@@ -250,7 +247,7 @@ streams drive a match, and the world hash and the encoded view and event streams
 both sides every 1500 ticks, plus the final stats, must match the recorded values. A
 deliberate rule change re-records them with the ignored `print_pins` test.
 
-### Chances (crits, block, evasion)
+### Chances (crits, evasion, pierce)
 
 The requirements conflict: an exact 30% rate **and** no way to predict the next crit.
 A simple accumulator (`acc += 0.30`, firing at `acc >= 1`) gives the first but not the
@@ -261,7 +258,7 @@ The solution is exact counting per block with a hidden order inside the block. A
 is declared as a fraction:
 
 ```rust
-pub struct Ratio { num: u8, den: u8 }     // rules.rs: CRIT_CHANCE = Ratio::new(3, 10)
+pub struct Ratio { num: u8, den: u8 }     // rules.rs: SYLLA_CRIT_CHANCE, one per level
 
 pub struct Chance {
     stream: Stream,   // this source's own hidden ChaCha8 stream
@@ -274,7 +271,8 @@ impl Chance {
     pub fn roll(&mut self, ratio: Ratio) -> bool {
         if self.idx >= self.current.den() {
             self.current = ratio;                     // new ratio takes effect here
-            self.reshuffle();                         // partial Fisher-Yates off the stream
+            self.idx = 0;
+            self.mask = Chance::pick(&mut self.stream, ratio); // partial Fisher-Yates
         }
         let hit = self.mask & (1 << self.idx) != 0;
         self.idx += 1;
@@ -288,7 +286,7 @@ impl Chance {
 - The order comes from a ChaCha8 stream: observing past crits says nothing about the
   next block. A replay reproduces bit-for-bit — the stream is deterministic, just
   unreachable from outside.
-- The initial block offset of every source is drawn from the same stream, so block
+- Every source starts mid-block at an offset drawn from the same stream, so block
   boundaries are not known to an observer.
 
 Residual leak: within a block the opponent can count (saw 3 crits in 6 hits — knows the
@@ -299,10 +297,8 @@ requirement.
 When the chance changes (a crit buff), the current block finishes under the old
 fraction; the new one takes effect from the next block.
 
-The PRNG is also used where an exact rate is meaningless (which roster a camp fills
-with).
-Streams are separated by purpose via `ChaCha8Rng::set_stream`, so that a new call in
-one place does not shift the rest of the generation.
+The PRNG is also used where an exact rate is meaningless: which roster a camp fills
+with, which melee creep of a wave carries the flag.
 
 ### Hidden state
 
@@ -350,9 +346,9 @@ exploit any leak a human reviewer shrugs off:
   imported the same way: one short lane bending through its real path corners,
   a single tier-one tower a side, two fountains, its own 187 trees, its own
   ground — and no Ancients at all, so nothing ends a match there but the
-  clock. The slot used to hold an invented three-tower training lane; the real
-  demo map costs the same tables and is ground the bots' habits can carry to
-  the big map. Its terrain is baked exactly like the big map's: walkability
+  clock. A real map rather than an invented training lane is ground the bots'
+  habits can carry to the big map. Its terrain is baked exactly like the big
+  map's: walkability
   from the map's own gridnav, elevation tiers rasterised off its physics mesh
   in 128-unit steps — river bed 0, ground 1, the high spots 2, the cliffs
   above — the river as the water mask, and its one fog blocker wall sealing
@@ -396,8 +392,7 @@ exploit any leak a human reviewer shrugs off:
   `dota.vpk` with ValveResourceFormat and shifted by half the map so Dota's
   origin sits at the center: `MAP_SIZE` 18432, both fountains, both Ancients,
   all 22 towers, all 6 lane spawners and all 28 neutral camps at their real
-  positions. The two sides are not mirrors; each carries its own table, and
-  `mirror()` survives only as a utility.
+  positions. The two sides are not mirrors; each carries its own table.
 - The terrain is the same map's own ground, baked in `game/config/terrain.rs` and
   read through `game/ground.rs`: the gridnav's static walkability (cliffs, pits, the map edge close their cells
   before trees and buildings do) and, from the physics mesh, an elevation tier
@@ -448,25 +443,21 @@ exploit any leak a human reviewer shrugs off:
   super, its siege once both are down, and every enemy barracks fallen makes the
   whole side's waves mega, at the game's own numbers; the flagbearer stays plain.
   A waypoint counts as reached from anywhere inside its radius, but only while
-  the grid line to the waypoint after it is clear: the radius spans a tower, and
-  clearing a corner waypoint through the tower it was routing around left one
-  Radiant mid creep of every wave wrestling its own tier three.
+  the grid line to the waypoint after it is clear: the radius spans a tower,
+  and a corner cleared through the tower it routes around leaves a creep
+  wrestling that tower.
   A tower landmark becomes a stop beside the tower, on its lane side away from
-  the base it guards. With the game's own 144-unit tower hulls the centre is
-  out of reach and the grid line past it never clears, so every wave stood
-  wrestling its tier three; the nearest open cell picks a grid-arbitrary side
-  and sent waves round the back of towers; and a stop facing the base lands in
-  the pocket between a tier three and its barracks, walking the wave in and
-  back out. The lane side is open on every tower of both maps.
+  the base it guards. The centre of a 144-unit tower hull is out of reach; the
+  nearest open cell picks a grid-arbitrary side and sends waves round the back;
+  and a stop facing the base lands in the pocket between a tier three and its
+  barracks. The lane side is open on every tower of both maps.
   The routes are laid per world on the ground as it stands and laid again the
   next time a wave asks after the ground changes, with every marcher put at
-  the waypoint of its new route nearest to it. Laid once per map, they kept
-  every footprint for ever and a wave walked round the empty ground a fallen
-  tower had stood on. A found path keeps only the corners the grid line
-  cannot skip: cell by cell it rounded a footprint in right angles.
-- Hero: Sylla (ranged carry). 3 abilities + an ultimate, levels 1–30 on the
-  game's own experience table and respawn times, taken from the wiki in
-  September 2026.
+  the waypoint of its new route nearest to it, so a wave does not walk round
+  the empty ground a fallen tower stood on. A found path keeps only the corners
+  the grid line cannot skip.
+- Heroes: Sylla, Pudge and Shadow Fiend (below). Levels 1–30 on the game's own
+  experience table and respawn times, taken from the wiki in September 2026.
 - Economy: passive gold 1/sec, last hits, a hero kill bounty priced by the
   victim's streak, a hero's head worth in experience a base, thirteen percent
   of what the fallen had earned and the game's own bonus for the streak it
@@ -485,9 +476,7 @@ exploit any leak a human reviewer shrugs off:
   hero on two different curves depending on where the rounding fell. They sit
   on `UnitDef` and in `Stats`, so a creep simply has none of them and pays for
   nothing; the derivation runs once, after items have been added and before
-  anything reads what attributes pay for. The base numbers of both heroes were
-  cut by exactly what their attributes now hand back, so level one is the body
-  it always was.
+  anything reads what attributes pay for.
   The alternative — leaving attributes out and giving every item flat health,
   mana and damage — was rejected because it throws away the whole cheap end of
   the Dota shop: Circlet, the three 140-gold attribute items, Bracer and its
@@ -495,10 +484,9 @@ exploit any leak a human reviewer shrugs off:
   for them is work with nothing behind it.
 - Attack speed is a number on the Dota scale, where 100 is a unit's own pace,
   and the interval between two attacks is the kind's own interval scaled by it.
-  It replaces the earlier haste effect, which took a percentage off the
-  interval directly: percentages off an interval do not add up — two sources of
-  twenty percent are not forty — so item bonuses and Frenzy could not have been
-  put on the same footing. The bounds are Dota's, 20 to 700.
+  A percentage taken off the interval directly was rejected: percentages off an
+  interval do not add up — two sources of twenty percent are not forty — so item
+  bonuses and Frenzy could not share a footing. The bounds are Dota's, 20 to 700.
 - Items are built from components. Every built item's price is exactly the sum
   of its parts, with the difference carried by an ordinary catalog entry — a
   recipe — rather than by a number on the item, so there is one rule for what a
@@ -528,11 +516,10 @@ exploit any leak a human reviewer shrugs off:
   Selling also happens at the shop: half price back, the full price for an
   untouched item within ten seconds of purchase. `Order::Swap` swaps any two slots.
   Carried bonuses are flat and apply only from unmuted inventory slots; a pool
-  keeps its filled fraction whichever way its maximum moves. The earlier rule —
-  grow by the whole delta, shrink by clamping alone — was a mint: a Power
-  Treads wheel (strength → agility → intelligence → strength) re-gained on
-  every switch back what the switch away never took, and a few dozen switches
-  refilled both pools from next to nothing. The scaling floors, so a full
+  keeps its filled fraction whichever way its maximum moves. Growing by the whole
+  delta and shrinking by clamping alone is a mint: a Power Treads wheel
+  (strength → agility → intelligence → strength) re-gains on every switch back
+  what the switch away never took. The scaling floors, so a full
   wheel can only lose a sliver, never gain one; and a pool that held anything
   is kept off zero, so the wheel cannot kill its owner either. Consumables
   drip over their duration (Healing Salve ten seconds, Clarity twenty-five) and
@@ -597,8 +584,8 @@ exploit any leak a human reviewer shrugs off:
   mark it. Without this, sell-by-ally is a wire for pumping gold between
   seats, and an enemy who picks a dropped item up cashes it at the shop.
   Wearing, using and handing back are all allowed on anybody's stack — the
-  rule guards the till, not the hands. Ownership stays server-side; the wire
-  does not carry it.
+  rule guards the till, not the hands. The wire carries the owner as
+  `ItemView::owner`.
 - A courier's Burst and Shield keep its current errand running while their
   effects and cooldowns follow the ordinary casting path. Keeping only the last
   movement order would lose delivery and stop following a moving owner, even
@@ -643,10 +630,9 @@ emergent, because creeps arrive first. On top of that sit the aggro calls:
   acquires along the way.
 - A body has two radii, as in Dota: the collision size nothing walks into, and
   the smaller bound radius that attack range, cast range and areas are measured
-  to. One radius served both until the hulls were brought to Dota's numbers: the
-  bound radius as a hull packed waves tighter than Dota's and let creeps stand
-  where Dota's could not, while the collision size as a reach would have
-  lengthened every attack and cast by the difference. All contact is solid: the
+  to. One radius for both cannot be right: the bound radius as a hull packs waves
+  tighter than Dota's, and the collision size as a reach lengthens every attack
+  and cast by the difference. All contact is solid: the
   distance between two units never drops below the sum of their collision sizes,
   and a step deeper into anybody's circle is refused. Easing apart is a safety
   net for spawns and shoves, four units a tick; nothing else moves a body but its
@@ -670,14 +656,13 @@ emergent, because creeps arrive first. On top of that sit the aggro calls:
   and a node whose room exceeds the radius and half its own diagonal is passed
   without looking. A body already inside an obstacle is let out: an obstacle it
   overlaps stops only a step that comes nearer it somewhere along the way than
-  where the body stands; a step that merely ended further off was let through
-  the middle of a wall of bodies. The old 64-cell grid tested
-  only the walker's centre against trees and terrain and kept room about
-  structures alone: a hero walked with its body inside a tree, and a corridor two
-  cells wide was open or shut by the luck of where its centres fell. Read at 32
-  the corridor is right for every body up to the siege creep's, and the exact
-  test is what makes a plan honest: nothing a route asks is refused by the ground
-  it was planned on. Closed terrain stands as solid squares for the body, which
+  where the body stands (judging only where a step ends lets it through the
+  middle of a wall of bodies). Testing only the walker's centre on the 64-unit
+  grid put a hero's body inside a tree and opened or shut a two-cell corridor by
+  the luck of where its centres fell. Read at 32 the corridor is right for every
+  body up to the siege creep's, and the exact test is what makes a plan honest:
+  nothing a route asks is refused by the ground it was planned on. Closed terrain
+  stands as solid squares for the body, which
   shuts a two-cell corridor to bodies wider than 32 units, the melee and siege
   creeps; Dota reads terrain against the centre alone. One field and one rule
   were taken over two fields: the wide bodies plan round such corridors and
@@ -690,8 +675,7 @@ emergent, because creeps arrive first. On top of that sit the aggro calls:
   node the search got to expanded without meeting the goal, has the route laid
   again at its bare collision size: a hero walks at its own size into gaps
   between trees narrower than its size and the margin, and a route laid only at
-  the margin found no way out of them, so the hero stood there deaf to every
-  walk, the way home included. The
+  the margin finds no way out of them. The
   corners found are pulled straight against the exact test, then each drawn in
   along the bisector of its legs by binary search as far as both legs stay clear,
   then pulled again, so they land on the tangents of what they round to within a
@@ -701,7 +685,7 @@ emergent, because creeps arrive first. On top of that sit the aggro calls:
   units, its last leg swung onto a goal that moved a little, its corners dropped
   as they are passed, beside one or beyond it along the next leg with that leg
   clear, and laid again from where the walker stands when the way to its next
-  corner is shut. Lane routes are laid for the widest marcher, as before.
+  corner is shut. Lane routes are laid for the widest marcher.
   The plan is the next stretch of the walk, tick by tick, laid by A* over states
   of spot, facing and tick, at most 40 ticks ahead. A step of the search is a
   stretch of four ticks along one of sixteen headings or straight at the aim,
@@ -721,18 +705,16 @@ emergent, because creeps arrive first. On top of that sit the aggro calls:
   attack's reach, the touching distance of a follow, nothing for a walk. A walk
   with a reach is judged against the destination itself rather than the spot
   the route ends on beside it: a tower's centre cannot be stood on, but its
-  reach is measured from there, and a melee hero that judged its reach from the
-  spot beside the tower stood short of it and never swung.
-  Steering was tried first: three swings off the line, a side held until the way
-  ahead cleared, slides along a graze. It pressed walkers into crowds, wiggled
-  them at walls, and could not see a body coming. A search over time finds the
-  way round a moving body before contact and the wait that lets it pass, and its
-  cost is the walk's own turn rule, so what it plans is what happens.
+  reach is measured from there.
+  Steering (swings off the line, a side held until the way ahead cleared, slides
+  along a graze) was rejected: it pressed walkers into crowds, wiggled them at
+  walls, and could not see a body coming. A search over time finds the way round
+  a moving body before contact and the wait that lets it pass, and its cost is
+  the walk's own turn rule, so what it plans is what happens.
   A hero is foreseen only where it stands, and only once it has stood there
   eight ticks or has been run into six times in three seconds: it goes where a
-  player sends it next, which nothing here knows, and a creep that read its
-  plan walked round it before it got there. A hero on the move is met when it
-  is met.
+  player sends it next, which nothing here knows. A hero on the move is met
+  when it is met.
   A plan is walked a step a tick. Each step is checked against the bodies as
   they now stand: one that has come to stand in the step refuses it, and one
   that was itself moving costs a block wait of eight ticks stood still, after
@@ -746,31 +728,24 @@ emergent, because creeps arrive first. On top of that sit the aggro calls:
   12 ticks of it are left short of the route's end, or a step was refused, and
   not oftener than every four ticks, or sixteen once the body has stood stalled
   a second. A body that stands this tick, held, swinging, in reach of what it
-  fights or with nowhere to go, forgets its plan: creeps stood fighting once
-  kept the plans they had marched by, a hero read them as about to walk off,
-  planned straight through them, ran into them and stood the block wait, over
-  and over. A plan that falls short of its aim with bodies about lays the route
-  again at once round the bodies standing there as if they were structures,
-  within a small budget and not oftener than every 48 ticks: a wall of them is
-  too wide for the plan's own budget to find its way round, and waiting twelve
-  stalled ticks for that was two seconds of dithering at every wave. What the
-  body can walk is judged at its own size, not the route's margin: pressed
-  against a tower, a body saw no corner along it at the margin and laid its
-  route again every tick. A creep stalled thirty ticks walks into whatever
-  stands in its way and is eased out after.
+  fights or with nowhere to go, forgets its plan, so nobody foresees a fighting
+  creep walking off and plans straight through it. A plan that falls short of
+  its aim with bodies about lays the route again at once round the bodies
+  standing there as if they were structures, within a small budget and not
+  oftener than every 48 ticks: a wall of them is too wide for the plan's own
+  budget to find its way round. What the body can walk is judged at its own
+  size, not the route's margin, or a body pressed against a tower sees no corner
+  along it and lays its route again every tick. A creep stalled thirty ticks
+  walks into whatever stands in its way and is eased out after.
   Coming round costs whole ticks, so a turn a little short of the way is the
   faster start: a walk sent straight back sets off a heading short of the
   reverse and comes onto the way as it goes, a curve of a few tens of units,
   which the search finds on its own.
-  In the thick of the demo map's wave fight, ten creeps cost about 50 to 70
-  microseconds a tick in release and under 10 elsewhere; the steering they
-  replace cost 5 to 10 throughout. A map's field is baked once per process in 15
-  milliseconds, its lane routes in 3, a route across the map in half of one.
 - A creep is on its lane route as on a rail: it aims at the next waypoint it has
   not passed, a waypoint passed once the creep stands within 250 units of it or
   beside or beyond it along the leg to the next with the leg clear, and it
-  rejoins the rail there after a chase or a push, never at where it left. The
-  anchor it used to walk back to walked waves backwards after every chase.
+  rejoins the rail there after a chase or a push, never at where it left, which
+  would walk waves backwards after every chase.
 - A lane creep has no leash of its own: a chase ends `CREEP_CHASE_TICKS` after its
   target was last in attack range, a target lost from sight is walked after to where
   it was last seen, and then the creep takes up the rail again.
@@ -806,14 +781,12 @@ its radius. A crit rolls once at windup completion and rides the projectile,
 reported only in the `Damaged` event.
 
 Shadow Fiend carries Dota's six entries in six slots: three razes, Necromastery,
-Presence of the Dark Lord and Requiem of Souls. An earlier cut squeezed him into four —
-Necromastery as an innate `souls` flag on `HeroDef` with a cap that grew with the hero
-level, Presence dropped outright — and was thrown away once the slot row became per-hero
-data: the panel already draws six boxes for the courier, so the squeeze was buying
-nothing. The three razes share one level, which is Dota's rule and what keeps the trio
-from costing twelve points: a point into any of them levels all three, and the spent-point
-sum counts the trio once. Necromastery is an ordinary leveled passive again — the soul
-cap reads its level, and nothing is gathered while it is unlearned. Presence is a leveled
+Presence of the Dark Lord and Requiem of Souls; the slot row is per-hero data, so
+squeezing him into four slots buys nothing. The three razes share one level, which is
+Dota's rule and what keeps the trio from costing twelve points: a point into any of them
+levels all three, and the spent-point sum counts the trio once. Necromastery is an
+ordinary leveled passive — the soul cap reads its level, and nothing is gathered while it
+is unlearned. Presence is a leveled
 aura on the enemy: each tick it lays an armor-break modifier with a short linger on
 everything hostile in reach, and the stats pass reads that modifier like any other. It does
 not go through the `Auras` component, which is static body data handed out to its own
@@ -830,8 +803,8 @@ inspiration reaches 700, mends 3 a second, and reaches **everyone of its own sid
 heroes counted in. Both linger half a second, which is what the `ticks` on an `Aura`
 buys, and neither stacks, because `Modifiers::put` keeps one modifier of a kind.
 
-`Aura` grew a `Reach` for the tower: it used to hand out to the whole of its own side,
-which the fountain and the flagbearer do and the tower does not. `Guarded` and `Inspired`
+`Aura` has a `Reach` because the fountain and the flagbearer hand out to the whole of
+their own side and the tower to its heroes alone. `Guarded` and `Inspired`
 are separate kinds even though a body could carry both, because naming them apart is what
 lets a client tell a tower's doing from a flagbearer's, and what keeps the bot from
 reading either as the mending a salve puts on.
@@ -849,12 +822,11 @@ tower's protection is meant to pass an invulnerable hero by only when it is *hid
 nothing here checks that, and no hero in the game can hide.
 
 **An effect id is a wire vocabulary that lives in neither crate.** The server hands them
-out in `project.rs` and the client reads them in `catalog.rs`, and nothing holds the two
-lists together: adding the tower and flagbearer effects left the client drawing `?`
-chips, and every test passed, because the client's tests only check that its own catalog
-is indexed by its own ids. By the membership rule the ids cross the wire and are needed
-to read it, so they belong in `bota-proto` — which is where the next one added should
-put them.
+out in `project.rs`, the client reads them in `catalog.rs` and the bot names the few it
+weighs in `numbers.rs`, and nothing holds the lists together: a new effect leaves the
+client drawing `?` chips while every test passes. By the membership rule the ids cross
+the wire and are needed to read it, so they belong in `bota-proto` — which is where the
+next one added should put them.
 
 A soul is taken only from what he brings down himself, which is the killer `bury`
 already carries, and a hero is worth three where anything else is worth one. Souls
@@ -870,32 +842,26 @@ a count that grows on a death, never runs out, and survives the body - so both a
 a table, a field in `StatsCx`, a line in the hash and a line in the projection. The wire
 follows: an `EffectView` carries `ticks_left` for one that runs out and `stacks` for one
 that is counted, and a gathered count travels as an ordinary effect with its own
-`EffectId`. A `souls: u32` on `UnitView` was written first and thrown away: it
-puts one hero's vocabulary into the shared one, it says nothing about the flesh heap,
-which has the same shape and was not on the wire at all, and every counter after it would
-have to buy its own field. The two counts are separate optional fields rather than one
+`EffectId`. A `souls: u32` on `UnitView` was rejected: it puts one hero's vocabulary
+into the shared one, says nothing about the flesh heap, which has the same shape, and
+every counter after it would have to buy its own field. The two counts are separate optional fields rather than one
 enum of `Ticks` or `Stacks`: an effect that stacks and also runs out is an ordinary thing
 to want - Dota's Fury Swipes is one - and a sum type forecloses it in the shared
 vocabulary, which is the expensive place to be wrong. The byte an effect pays for the
 second `Option` buys that.
 
 A raze takes no aim: it is fired along the caster's facing and lands at its own
-distance, as in Dota. The first version aimed it at a point instead, because the engine
-had no way back from an angle to a direction — `facing_towards` is a piecewise-linear
-octant map — and the only exact line was caster-to-point. The way back turned out to be
-ten lines of the same integer arithmetic: `heading_of` inverts the octant map exactly,
-so a facing round-trips through it without drift, and the aim vocabulary for a raze
-shrinks to `Own`. The consequences: the cast goes off on the tick it is asked for and
-never walks the caster in, an order is not interrupted by it — he razes mid-walk and
-mid-attack — and pointing it is done with the body, by turning. Facing was cosmetic
-once; it has been load-bearing since attacks began waiting on it, and the razes now
-lean on it too.
+distance, as in Dota. `facing_towards` is a piecewise-linear octant map and `heading_of`
+inverts it exactly, so a facing round-trips without drift and the aim of a raze is
+`Own`. The consequences: the cast goes off on the tick it is asked for and never walks
+the caster in, an order is not interrupted by it — he razes mid-walk and mid-attack —
+and pointing it is done with the body, by turning. Attacks and razes both wait on
+facing, so it is load-bearing, not cosmetic.
 
 A raze and a requiem line pass buildings by, as in Dota: they burn, stack, frighten and
-slow every hostile unit in their reach but a structure, and the presence and the souls
-already skipped them. Until this was fixed a raze landing on a tower took 90 to 300 off
-it through its zero magic resistance, which taught a learning bot to siege with razes
-from 950 away — a way to push that the game it imitates does not have.
+slow every hostile unit in their reach but a structure, as the presence and the souls
+do. A raze that burned towers through their zero magic resistance would teach a learning
+bot to siege from 950 away — a way to push that the game it imitates does not have.
 
 Hero roadmap (added as data + ability implementations; the engine does not change):
 
@@ -922,11 +888,9 @@ without the active half is a slot with nothing in it.
 Frame: `u32 len (LE) | postcard payload`. The message kind is the postcard enum tag
 inside the payload. TCP, `TCP_NODELAY`.
 
-Until the first release there is no versioning and no compatibility: the wire carries
-no version field and no ruleset fingerprint, and nothing — protocol, replay files,
-hash baselines — promises to survive across pre-release commits. Mismatched builds
-are not detected; they are simply not run against each other. Version and fingerprint
-fields appear with the first release, when there is something to be compatible with.
+Until the first release there is no versioning and no compatibility (see
+`CLAUDE.md`); version and fingerprint fields appear with the first release, when there
+is something to be compatible with.
 
 ### Client → server
 
@@ -980,8 +944,8 @@ enum ServerMsg {
 A Player/Bot receives a whole `WorldView` on every tick, filtered through its team's
 fog. A live Spectator receives the same stream unfiltered. There are no deltas: a
 client can start rendering from any snapshot, so joining mid-match requires nothing
-special. Measured: 1425 bytes per snapshot in 1v1 (25 entities), 41 KB/s at 30 Hz.
-`diff`/`apply` will arrive together with 5v5, where it would reach about 150 KB/s.
+special. A `bota-proto` size test budgets a 1v1 snapshot of 25 units at 4 KiB;
+`diff`/`apply` will arrive together with 5v5.
 
 Within a tick the order on the wire is fixed: `Snapshot(t)`, then `Events(t)`. An
 event may name an entity the snapshot no longer carries — it died on that very tick;
@@ -996,8 +960,7 @@ The vision mask does **not** go over the wire. The server decides which entities
 is told of — sight lines in `game/vision.rs`, who sees what each tick in
 `game/systems/visibility.rs` — and the client draws its own fog from what it already
 holds: the terrain and `opaque_cells` from `MatchStart`, and the positions and
-`vision_radius` of its own units, walking the same sight lines. Saves two kilobytes per
-snapshot.
+`vision_radius` of its own units, walking the same sight lines.
 
 There is no shared implementation in `proto`, and that is not an omission. The sides
 need different things: the server — an exact answer to "does this team see this
@@ -1034,16 +997,14 @@ is what makes a replay more useful than a live spectator seat when debugging a b
 Nothing in the file is re-simulated: a replay is coupled to the wire format only,
 survives balance changes, and grants the client nothing beyond what a live spectator
 already gets. Snapshots are whole, so rendering can resume from any point of the
-file. In 1v1 the stream runs at about 2.5 MB per minute; archiving is an external
-compressor's job, not the protocol's.
+file. Archiving is an external compressor's job, not the protocol's.
 
 ### Bounded replay playback in the client
 
-Opening a replay does not depend on its length. The client once read the whole file
-into the socket `FrameReader` and decoded every record before the first render;
-removing each decoded prefix moved the whole remaining tail, so a 500 MB,
-127,000-record replay cost quadratic copying and held every snapshot while the window
-stayed black.
+Opening a replay does not depend on its length. Reading the whole file into the
+socket `FrameReader` and decoding every record before the first render costs quadratic
+copying (each decoded prefix moves the remaining tail) and holds every snapshot while
+the window stays black.
 
 `replay_play.rs` opens the file without reading records. A client-local buffered reader
 reads the little-endian length prefix and calls `decode_payload` one record at a time,
@@ -1085,8 +1046,7 @@ mana, whether a toggle is on, whether a skill point could go into it. None of
 it is a number the client looks up. The reason is that none of these are
 properties of a catalog entry: a range moves with the level, and once an item
 or a talent moves it, two units holding the same ability hold two different
-ranges. `AbilityView.mana_cost` already worked this way, and everything else
-followed it.
+ranges.
 
 The one thing that belongs to no unit is what the shop asks for a thing nobody
 holds yet, so `MatchInfo` carries the price and the parts of every item once
@@ -1097,10 +1057,8 @@ carries both fountains and the shop range, so the client knows where the home sh
 is on any map. The client's own catalog is what is left over
 after that: names, blurbs and art, and not one number.
 
-`can_level` is a bit rather than a rule. The client used to hold its own copy
-of the level floors and its own subtraction of points spent from the hero level; the
-server already answers all of that in `level_floor`, and answering it once is
-cheaper than keeping two copies honest.
+`can_level` is a bit rather than a rule: the server answers it from `level_floor` and
+the points spent, and answering it once is cheaper than keeping two copies honest.
 
 `Aim` names a fourth and fifth kind of target beyond nothing, a point and a
 unit: a tree, and a spot within reach of an allied building. Both cross the
@@ -1126,10 +1084,8 @@ no longer holds an opinion — has nothing to show.
 Both a key and a click on the box go through one function, and what a press
 means is decided by a pure one that takes only the facts that settle it: which
 slot, whether control is down, what is in the slot and how it is aimed, what
-is already taken up, and who is commanded. Two entry points that each grew
-their own rules is what the client had before — a click on an ability box did
-nothing at all, and a click on an item box worked only for consumables while
-its key worked for everything.
+is already taken up, and who is commanded. Two entry points with rules of their
+own drift apart: a click and its key would answer differently.
 
 How a slot is drawn is a set of independent answers rather than one state,
 because the states genuinely combine: what has no points in it is unlearned
@@ -1302,17 +1258,17 @@ feared or channelling, a skill point, a courier errand, the shop, tidying the ba
 drink or a wand, the scroll, leaving while hurt, a spell, turning to aim one, a last hit
 or a deny, waiting out a swing already under way, shaking the creeps off, pulling the
 wave back, striking their hero or pushing a building behind the wave, and holding the
-lane.
-Nothing is drawn at random and what is remembered between ticks is only what the wire
-will not say twice — the attack cycle, how long the stash has been waiting, the scroll's
-own clock — so the same match played twice goes the same way.
+lane. Nothing is drawn at random, and what is remembered between ticks is only what the
+wire does not carry — the attack cycle, recent health, who struck the hero, how long the
+stash has been waiting, the scroll's shared wait — so the same match played twice goes
+the same way.
 
 **What an ability is comes off the wire; what it does does not.** `AbilityView` carries
 the level, the wait, the cost, the reach and how a cast is aimed, so nothing mirrors the
-ability table by hand. What does not cross the wire is what an ability *means*, and that
-is why there is a file per hero: `fiend.rs` decides when a raze is worth its mana and
-`sylla.rs` when a bolt is. Prices are the same story — `MatchInfo` carries the shop, so
-`Stall` reads costs and components off it and only the item **numbers** are written out,
+ability table by hand. What an ability *means* does not cross the wire, so there is a
+file per hero: `fiend.rs` decides when a raze is worth its mana and `sylla.rs` when a
+bolt is. `MatchInfo` carries the shop, so `Stall` reads costs and components off it and
+only the item and ability **numbers** the bot uses are written out in `numbers.rs`,
 because a salve and a ward are one shape on the wire.
 
 **A raze is aimed by looking, not by pointing.** It lands at its own reach along the line
@@ -1320,109 +1276,92 @@ the caster already faces, so casting one is two decisions. `fiend_spell` works o
 each raze would land from the facing in the snapshot — the server's own octant geometry,
 integer for integer, in `aim.rs` — and casts only if something worth burning is standing
 there. `fiend_aim` is the other half: a mark inside the union of the three burns but off
-the line gets a walk towards it, which is how a hero turns. The bands overlap, so
-anything within nine hundred and fifty units can be razed by facing it.
+the line gets a walk towards it, which is how a hero turns. The burns (reaches 200, 450
+and 700, radius 250) overlap, so anything within 950 units can be razed by facing it.
 
 **Buying is sequential, and the list is parts.** The server charges a built item the
 price of the parts the seat does not already hold, and assembles a build the moment its
 parts are in the bag — so the lists name parts, and gold is spent as it arrives rather
-than saved up for the whole.
-`next_buy` stops at the first thing not owned rather than skipping to whatever is
-affordable: skipping spends on the tail of a list the gold its head was saving for, which
-is how a Shadow Fiend ends a match with three salves and no dagger. What is already
-inside a build counts as owned, worked out by walking the components the wire gave.
+than saved up for the whole. `next_buy` stops at the first thing not owned rather than
+skipping to whatever is affordable: skipping spends on the tail of a list the gold its
+head was saving for. What is already inside a build counts as owned, worked out by
+walking the components the wire gave. Nothing goes on a list that no want reaches for:
+an item no rung ever names is gold and a working slot spent for nothing.
 
 **The consumables sit at the head of every list, and that is the restocking.** A stack
 that is drunk stops being held, so the next walk of the list finds it wanting again and
-buys another; nothing else has to know that an item was spent. The one exception to
-stopping at the first thing not owned is a consumable with no working slot to go in —
-what holds that up is room and not gold, so it is stepped over. `SPARE_SLOTS` keeps a
-working slot clear of drink so that what is built has somewhere to land, and `tidy`
-moves anything stranded in the backpack forward, since a build lands in the lowest slot
-any of its parts came out of and a part bought with the bag full comes out of the
-backpack.
+buys another. The one exception to stopping at the first thing not owned is a
+consumable with no working slot to go in — what holds that up is room and not gold, so
+it is stepped over. `SPARE_SLOTS` is the working slots kept clear of drink beyond the one
+it takes; at nought a consumable is bought whenever a working slot is free (at one the
+bot stopped restocking once five items were held, and the one scroll spent was never
+replaced). `tidy` moves anything stranded in the backpack forward, since a build lands
+in the lowest slot any of its parts came out of and a part bought with the bag full
+comes out of the backpack.
 
-What follows was found by playing rather than by reading, and each is now a test, a
-named constant, or a measurement worth not repeating.
+What follows was found by playing rather than by reading, and each is now a test or a
+named constant.
 
 **An order is an animation cancel.** The holding spot drifts a little every tick, and a
-fresh `Move` to it every tick threw away the swing that was already winding up — fifteen
-ticks of wind-up against a want resent every eight. Two rules answer it: a walk is
-ordered only when the spot is more than `HOLD_SLACK` off, and a swing already ordered
-holds the seat silent until it lands or `SWING_PATIENCE` runs out. Before them the bot
-took two creeps in nine thousand ticks; after them, fifteen.
+fresh `Move` every tick threw away the swing already winding up — fifteen ticks of
+wind-up against a want resent every eight. So a walk is ordered only when the spot is
+more than `HOLD_SLACK` off, and a swing already ordered holds the seat silent until it
+lands or `SWING_PATIENCE` runs out. Before these rules the bot took two creeps in nine
+thousand ticks; after them, fifteen.
 
-**Stand at the edge of your own reach.** Where to stand was reckoned off its own creeps,
-which walk into the enemy wave — so the hero walked in with them and took four creeps'
-worth of blows for nothing a swing from further back would not have reached. It is now
-reckoned off the *nearest of theirs*, at the hero's own reach less `SWING_EDGE`.
+**Stand at the edge of your own reach.** Reckoned off its own creeps, which walk into the
+enemy wave, the holding spot walked the hero in with them to take blows for nothing. It
+is reckoned off the *nearest of theirs*, at the hero's own reach less `SWING_EDGE`.
 
-**Swing at the worn one, not the near one.** Aiming at the nearest creep in reach changed
-target whenever the wave shuffled, and a swing that keeps changing its mind never lands.
-A body only ever loses health, so the lowest is the same one next tick.
+**Swing at the worn one, not the near one.** The nearest creep in reach changes whenever
+the wave shuffles, and a swing that keeps changing its mind never lands. A body only ever
+loses health, so the lowest is the same one next tick.
 
-**A wave in another lane is not this hero's business.** Every wave on the map is visible
-and `field.creeps` counted all of them, so on the tick the first waves spawned the bot
-turned round and walked home to stand behind the top lane's creeps. Creeps are now filtered
-to `NEARBY` of the hero, which is also what makes "the lane is clear" mean anything.
+**A wave in another lane is not this hero's business.** Every wave on the map is visible,
+so creeps are filtered to `NEARBY` of the hero — otherwise the bot walks off to stand
+behind another lane's creeps, and "the lane is clear" means nothing.
 
-**A tango is paid for by a tree, and a lane has none.** The forest is cleared for four
-hundred and fifty units either side of a lane's centre, so a hero standing where it farms
-never has one within the hundred and sixty-five a tango reaches. The bot carried three
-charges up the lane and ate one in a whole match, then walked the length of the map to
-heal at the fountain instead — some eight hundred ticks a trip, four or five trips a
-match. Walking to the tree is now part of eating the tango, and only to trees no further
-up the lane than the hero already stands. `MENDED_RETURN` finishes the thought: a hero a
-mend is already carrying turns round early rather than walking a trip the mend has
-already paid for.
+**A tango is paid for by a tree, and a lane has none.** The forest is cleared for
+`TREE_LANE_CLEAR` (450) either side of a lane's centre, so a hero where it farms never
+has a tree within the 165 a tango reaches; the bot carried its tangoes up the lane and
+walked to the fountain instead. Walking to the tree is now part of eating the tango, and
+only to trees no further up the lane than the hero already stands.
+
+**A mend spent on a walk to the fountain is a mend the fountain was about to make
+free.** A tango gives 115 health over sixteen seconds; the fountain gives 25 a tick for
+nothing. While the hero is pulling out, a mend is spent only if it would carry it back
+over `MENDED_RETURN`, which a salve's 400 does and a tango's 115 usually does not; and a
+hero a mend is already carrying turns round at `MENDED_RETURN` rather than
+`RETURN_HEALTH`. `mind_health` settles the pulling-out flag before the drink is weighed
+so the two agree.
 
 **The lane is held by talking to the creeps, not by standing somewhere.** An attack order
-does something to everybody who is not the one giving it, and the order alone does it,
-whether the attack ever happens or not: aimed at an enemy hero it calls every enemy creep
-within its own acquisition of the orderer onto him for `AGGRO_HOLD` ticks, and aimed at
-one of your own it makes them pick again with him put last. Two wants come out of that.
-`pull` gives the first when the wave has been pushed more than `PULL_DRIFT` past where it
-should meet: standing behind its own line, the hero is a spot their creeps must walk past
-that line to reach, and the fight comes back down the lane with them. `shake` gives the
-second when creeps are chewing on the hero, aimed at the nearest of its own creeps.
+does something to everybody who is not the one giving it, whether the attack ever
+happens or not: aimed at an enemy hero it calls every enemy creep within its own
+acquisition of the orderer onto him for `ORDER_AGGRO_HOLD_TICKS`, and aimed at one of
+your own it makes them pick again with him put last. `pull` uses the first when the wave
+has been pushed more than `PULL_DRIFT` past where it should meet: standing behind its
+own line, the hero is a spot their creeps must walk past that line to reach, and the
+fight comes back down the lane with them. Given to one side only, it is worth four and a
+half last hits to that side, at the cost of denies for both. `shake` uses the second
+when `SHAKE_CREEPS` creeps are chewing on the hero, aimed at the nearest unit of its own.
 
-It was aimed at the hero itself first, and that was a hole in the rule rather than a use
-of it. A hero is on its own side, so `call_of` read a self-click as letting go, and the
-server would not let the swing land either — which made it a free aggro drop that cost
-not even a step. Dota has no such click. `rouse_bystanders` now turns away an order whose
-mark is the one who gave it, and the test for it needs a hero already swinging at one of
-the creep's own: `threat_priority` ranks an idle hero below a creep, so with nobody
-swinging the creep was never on the hero and there was nothing to demote. Pointing at a
-creep instead costs the follow that pointing at a unit always costs, so the tick after a
-shake the hero is told to stand — and that tick must not itself count as a shake, or
-every tick is the tick after one and the hero stands still for good.
+Aimed at the hero itself, the shake was a free aggro drop Dota does not have — a hero is
+on its own side, so `call_of` read a self-click as letting go — and `rouse_bystanders`
+now turns away an order whose mark is the one who gave it. Pointing at a creep costs the
+follow that pointing at a unit always costs, so the tick after a shake the hero is told
+to stand, and that tick must not itself count as a shake, or the hero stands still for
+good. Standing at the edge of its own reach, the bot is rarely under a wave, so `shake`
+seldom fires; it is kept for what it costs, which is a tick.
 
-Given to one side only, `pull` is worth four and a half last hits and four tenths of a
-level to the side that does it, and it is the only change so far that moved the hero's
-own farm rather than moving it between the two seats. What it trades is denies, which
-fall for both — a wave held near your own tower is a wave the other side is not pushing
-into, and there is less of it left low enough to put out. `shake` fires three times in a
-match and measures as nothing: standing at the edge of its own reach, the bot is in range
-of one ranged creep and no melee ones, so there is rarely a wave on it to shake. It is
-kept for what it costs, which is a tick, and for the heroes with less reach that will
-come.
+**A held body is not the seat's to spend a tick on.** `StatusFlags` carries the stun, the
+fear and the channel, so the ladder stops at the top for any of them: an order given
+during a channel is how the channel is thrown away, which the bot was doing to its own
+scroll.
 
-**A held body is not the seat's to spend a tick on.** `StatusFlags` carries both the stun
-and the channel, so the ladder stops at the top for either: an order given during a
-channel is how the channel is thrown away, which the bot was doing to its own scroll
-eleven times a match.
-
-**Nothing is on a list that no want reaches for.** Shadow Fiend's list ended in a Blink
-Dagger, two thousand two hundred and fifty gold and a working slot for an item no rung of
-the ladder ever names — the same fault as the scroll, caught the same way and worth
-looking for whenever a list grows. It ends in a Broadsword now, which the swing
-arithmetic does read.
-
-**What limits the last hitting is not the swing.** Over one match Shadow Fiend committed
-a swing to fifty-three creeps and took thirty-seven of them, so seven attempts in ten
-land; what it does not do is attempt, on a hundred and sixty creeps that spawn either
-side. Two ways of buying more damage into that were tried and both measured worse over
-five seeds, each read on the pair's total rather than one hero's line:
+**What limits the last hitting is not the swing.** Shadow Fiend lands about seven swings
+in ten; what it does not do is attempt. Two ways of buying damage into that measured
+worse over five seeds, read on the pair's last hits and denies:
 
 | | pair, last hits and denies |
 |---|---|
@@ -1431,59 +1370,33 @@ five seeds, each read on the pair's total rather than one hero's line:
 | a Quelling Blade for one side only | Shadow Fiend 41.8, from 48.0 |
 | standing a hundred and sixty inside reach rather than forty | 67.0 |
 
-Eighteen more damage against creeps widens the window a swing is worth taking in, and
-the bot then commits earlier and holds its target through `SWING_PATIENCE` while the
-creep is taken from under it; standing closer reaches more of the wave and buys four
-creeps' worth of blows for it. Neither is a knob to turn until the thing that is actually
-short — ticks spent standing where the wave is dying — is shorter.
+Eighteen more damage against creeps widens the window a swing is worth taking in, so the
+bot commits earlier and holds its target through `SWING_PATIENCE` while the creep is
+taken from under it; standing closer buys blows for the reach. Neither is a knob to turn
+until the ticks spent standing where the wave is dying are fewer.
 
-**A mend spent on a walk to the fountain is a mend the fountain was about to make
-free.** The bot ate tangoes on its way home — eight of them in one match, and five
-hundred ticks of detours to the trees that paid for them — for a hundred and fifteen
-health over sixteen seconds, while walking towards something that gives twenty-five a
-tick and asks nothing. A mend is now weighed against the walk that has already been
-decided on: while the hero is pulling out, it is spent only if it would carry it back
-over `MENDED_RETURN`, which a salve's four hundred does and a tango's hundred and fifteen
-usually does not. `mind_health` was split out of the walk itself so the flag is settled
-before the drink is weighed rather than after. Eight wasted tangoes became none, the
-detours five hundred ticks became forty, and the time spent walking home fell by a fifth.
+**A scroll is constrained by where it is aimed, not where it is cast from.** The want
+once required standing in the shop, where the bot no longer went once it had drink and a
+courier. It now carries both ways, home while pulling out and back to just behind the
+frontmost tower its lane holds once mended, and it sits above the walk home, since what
+that walk is for is the thing a scroll does in three seconds. Its shared wait is not on
+the wire, so `Playbook` counts it from the tick the last scroll was aimed.
 
-**A scroll bought and never spent.** The want asked the hero to be standing in its own
-shop, which is where a scroll is bought and nowhere it ever needs to be — a scroll
-constrains where it is *aimed*, not where it is cast from, and the bot with its drink and
-its courier had stopped going home at all: eleven ticks inside the shop radius in a
-twenty-four-thousand-tick match. Two more things had to give before it fired. It now
-carries both ways, home while hurt and back into the lane once mended, and it sits above
-the walk home rather than below it, since what that walk is for is the thing a scroll
-does in three seconds. `SPARE_SLOTS` was the last of it: at one it stopped restocking any
-consumable once five items were held, so the one scroll spent was never replaced. At
-nought a consumable is bought whenever a working slot is free, and `tidy` carries what
-that costs. Six casts a match now, one about every four thousand ticks, which is the
-shared wait and not the policy.
+**Mana was short because nothing was ever bought for it.** A raze costs 75 or more
+against a pool that mends about two a second. Every list carries a clarity, and a
+wand — twenty charges worth fifteen of each pool — is pressed whenever the pool it fills
+is missing what its charges are worth. Shadow Fiend buys a Sage's Mask rather than a
+Wraith Band: over five seeds the two were a wash on the scoreboard, and the mask costs
+175 to the band's 505 and leaves a working slot for the drink.
 
-Reading a one-in-ten trace to decide whether an item is used at all is how three of those
-were missed: a cast is one tick and the replacement is bought on the next, so the bag
-looks untouched at every sample. `Playbook` keeps the name of the rung that answered and
-the trace prints it; counting those over every tick is the measurement that settled it.
-
-**Mana was short because nothing was ever bought for it.** A raze costs the better part
-of a hundred against a pool that mends about two a second, and the bot had the code to
-drink a clarity but no clarity on any list, and a wand it never pressed — a wand holds
-twenty charges worth fifteen of each pool, which is three razes in one keystroke. Both
-are now on the ladder, and Shadow Fiend buys a Sage's Mask where he used to buy a Wraith
-Band. Over five seeds the mask is a wash on the scoreboard — 26.8 last hits to the band's
-25.6, inside the noise of five matches — and it is kept for costing a hundred and
-seventy-five where the band cost five hundred and five, which leaves a working slot for
-the drink rather than a third stat item.
+A one-in-ten trace misses whether an item is used at all: a cast is one tick and the
+replacement is bought on the next. `Playbook` keeps the name of the rung that answered
+and the trace (`--trace`) prints it; count those over every tick instead.
 
 What it does not do: it will not dive a tower, leave its lane to gank, stack or pull a
 camp, place a ward, or fight for a rune. It takes buildings only by walking up with its
-own wave. Two bots of it play a full match to an Ancient: seventy-five thousand ticks in
-the run this was written from, both seats at the level cap, a hundred and fifty-two last
-hits to fifty-one denies on the winning side, and no order refused on either. How long a
-match runs moves a great deal with the ruleset — it was a hundred and thirteen thousand
-before towers and flagbearers handed anything out, since a wave that lives longer is a
-wave that pushes. The same seed run twice gives the same numbers down to the order count.
+own wave. Two bots of it play a full match to an Ancient, and the same seed run twice
+gives the same numbers down to the order count.
 
 The two heroes trade places on the scoreboard with almost every change to the ladder,
 and the pair's total farm barely moves: they are the same policy on both sides of one
@@ -1524,73 +1437,67 @@ The server keeps one order per seat per tick and the last one wins, so a want is
 single `Ask` and the policy ranks its wants rather than queueing them. Re-sending the
 want already standing is not free: an order cancels the recovery after a swing and calls
 the creeps onto whoever gave it. So `Steady` holds a want equal to the one in hand back
-for `RESEND_TICKS`, and two walks to spots less than `RESEND_DRIFT` apart count as one
-want — otherwise following a moving wave throws away the route the server laid every
-tick.
+for `RESEND_TICKS`, and two walks or attack-moves to spots less than `RESEND_DRIFT` apart
+count as one want — otherwise following a moving wave throws away the route the server
+laid every tick.
 
 ### The courier
 
 A courier is what makes the shopping list past the first trip worth having: anything
-bought away from the shop falls into a stash the hero cannot reach from the lane, so
-without one the only way to spend gold is to walk home for it. With one, the bot buys
-wherever it stands — and only while a courier of its own is standing, because gold in
-hand is worth more than an item in a stash nothing is coming for.
+bought away from the shop falls into a stash the hero cannot reach from the lane. With
+one, the bot buys wherever it stands — and away from the shop only while a courier of its
+own is standing, because gold in hand is worth more than an item in a stash nothing is
+coming for.
 
 The errands are abilities the courier carries, so an order for one names the courier in
-`ClientMsg::Order`'s `unit` and casts the slot the errand sits in. Which slot that is, is
-read off the courier rather than assumed: the order the server fills its book in is the
-server's business. That is why the bot answers each tick with an `Ask` — an order and a
+`ClientMsg::Order`'s `unit` and casts the slot the errand sits in, read off the courier
+rather than assumed. That is why the bot answers each tick with an `Ask` — an order and a
 unit — rather than an order alone.
 
-An errand outlives the tick it was given in. Saying it again changes nothing about what
-the courier does and costs the one order the seat has that tick, which is an order the
-hero did not get to give: the first cut of this sent five hundred and thirty-six errands
-in one match, and the hero took a quarter more damage for want of the ticks. So an errand
-already under way is not repeated for `ERRAND_TICKS`, which is a safety net for an order
-that never arrived rather than a schedule. A trip is not made for one item: it waits
-until `COURIER_BATCH` of them have piled up or the first has waited `COURIER_PATIENCE`
-ticks. And it is held back entirely while an enemy hero is near — a courier walks to
-where its owner stands, and where its owner stands is what is shooting.
+An errand outlives the tick it was given in. Saying it again changes nothing and costs
+the one order the seat has that tick: sent every tick, errands took enough of the hero's
+ticks that it took a quarter more damage. So an errand already under way is not repeated
+for `ERRAND_TICKS`, a safety net for an order that never arrived rather than a schedule.
+A trip waits until `COURIER_BATCH` items have piled up or the first has waited
+`COURIER_PATIENCE` ticks, and is held back entirely while an enemy hero is within
+`FIGHT_RANGE` — a courier walks to where its owner stands, and that is what is being
+shot at.
 
 ### Server-side walking and courier behaviour
 
 An errand answers to what the courier is carrying, not only to what waits in the
 stash. Sent for a stash that is empty while already holding something, it takes what it
-holds on to its owner rather than flying home with it: a courier that comes to be
-carrying goods it could not hand over would otherwise be sent home by the very key
-meant to bring them, and the goods would ride back and forth for ever. And what an
-owner has no room for is carried back to the stash rather than kept aboard, so a full
-bag leaves the goods somewhere its owner can reach them rather than orbiting the lane.
+holds on to its owner rather than flying home with it: otherwise goods it could not hand
+over would be sent home by the very key meant to bring them, and ride back and forth for
+ever. What an owner has no room for is carried back to the stash rather than kept aboard.
 
 A courier brought down keeps its load. The stacks wait on the seat while the courier is
 gone and come back aboard the next one, the same way a fallen hero's bag waits on the
-seat. Spilling the load on the ground was considered and turned down: the wait already
-prices the death, and a bot that loses items outright learns to fear the courier rather
-than to use it.
+seat. Spilling the load on the ground was turned down: the wait already prices the
+death, and a bot that loses items outright learns to fear the courier rather than to use
+it.
 
-A way found round something is walked to the spot it was found for, and the spot it
-was found for is what is kept beside it. Keeping the last spot asked for instead is what
-made a courier fly the whole of a stale way to where its owner used to stand: a quarry
-that moves a little every tick never moves far enough in one tick to look like a new
-goal, so the way was never found again until its last corner had been reached. And a way
-round anything is found only for what walks. What flies is over all of it, so it is
-pointed straight at where it is going and keeps no route at all.
+A way found round something is walked to the spot it was found for, and that spot is
+what is kept beside it. Keeping the last spot asked for instead made a courier fly the
+whole of a stale way to where its owner used to stand: a quarry that moves a little
+every tick never moves far enough in one tick to look like a new goal. A way round
+anything is found only for what walks; what flies is pointed straight at where it is
+going and keeps no route.
 
 Walking at something that cannot be struck — an ally, most often, since an order aimed
 at one is how creeps are shaken off — closes until the bodies touch and stops there,
-following it for as long as the order stands. Aiming at the middle of a body instead is
-aiming at a spot inside it, which cannot be reached: the walk presses in, the pass that
-eases overlapping bodies apart pushes back out, and the two together read on the screen
-as circling.
+following it for as long as the order stands. Aiming at the middle of a body is aiming
+at a spot inside it, which cannot be reached: the walk presses in, the pass that eases
+overlapping bodies apart pushes back out, and the two read on the screen as circling.
 
 ### Hanging up
 
 A connection is closed one half at a time: the writer shuts down the sending side and
 leaves the receiving side open. Closing both while the peer still has bytes of ours in
 flight resets the connection, and a reset discards what was already sent — so the peer
-loses the message saying who won and sees an aborted socket instead of a result. The
-server also waits for its writer threads rather than exiting from under them, since the
-last message of a match is queued at the moment the server has nothing left to do.
+loses the message saying who won. The server also waits for its writer threads rather
+than exiting from under them, since the last message of a match is queued at the moment
+the server has nothing left to do.
 
 ## Stages
 
@@ -1599,7 +1506,7 @@ last message of a match is queued at the moment the server has nothing left to d
 | 0 | ✅ workspace builds | Cargo.toml, `bota-proto`, workspace lint policy |
 | 1 | ✅ `bota-proto` types | `Fixed`, `Angle`, `Vec2`, identifiers, `Order`, `EventKind`, `WorldView`, messages |
 | 2 | ✅ codec | serde derive, postcard, framing, `FrameReader` |
-| 3 | ✅ `bota-proto` tests | round-trip of every message, torn stream into `FrameReader`, snapshot size budget |
+| 3 | ✅ `bota-proto` tests | round-trip of every message, torn stream into `FrameReader`, snapshot size budget, enum tag order |
 | 4 | ✅ `Fixed` arithmetic | Q16.16 ops through an intermediate `i64`, `Vec2`, `distance_squared` in raw Q32.32, tests in debug and release |
 | 5 | ✅ `World` ticks | entities and component tables, units, movement, orders, creeps, towers, Ancient; `rng.rs` with streams and Ratio/Chance |
 | 6 | ✅ combat | attacks, projectiles, damage, deaths, gold/xp, victory |
@@ -1739,8 +1646,8 @@ allies, failed casts (a dead caster's included), invulnerability and damage redu
 rounded to zero add no stack and refresh none. Resolution reads an active `Shielded`
 modifier itself, so a shield cast in that phase protects before the next stats
 derivation. A fatal hit puts nothing on the dying body. Other magical hits neither get
-nor build the bonus, and facing, casting, shared learning and targeting are the
-raze's as before.
+nor build the bonus; facing, casting, shared learning and targeting are a plain
+raze's.
 
 A raze queued while its caster lived keeps its damage and stacking when an earlier
 blow in the same batch kills the caster: cancelling it would make an accepted cast
