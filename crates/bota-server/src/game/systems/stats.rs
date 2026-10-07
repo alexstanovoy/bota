@@ -10,19 +10,13 @@ use crate::game::{
 
 /// What working out stats reads and writes.
 pub struct StatsCx<'a> {
-    /// Which entities exist.
     pub entities: &'a EntityAllocator,
-    /// Which kind of unit each entity is.
     pub def: &'a Table<Def>,
-    /// Hero levels.
     pub level: &'a Table<Level>,
     /// Upgrade intervals a creep spawned after.
     pub upgrades: &'a Table<Upgrades>,
-    /// What each entity carries.
     pub inventory: &'a Table<Inventory>,
-    /// What is on each entity.
     pub modifiers: &'a Table<Modifiers>,
-    /// Applied stat changes on each entity.
     pub applied: &'a Table<AppliedModifiers>,
     /// What each entity has learned, for what its passives are worth.
     pub abilities: &'a Table<AbilityBook>,

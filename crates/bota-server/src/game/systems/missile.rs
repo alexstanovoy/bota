@@ -16,11 +16,9 @@ use super::hitting::entity_slot;
 pub struct MissileCx<'a> {
     /// Which entities exist; a missile given up is freed here.
     pub entities: &'a mut EntityAllocator,
-    /// The missiles themselves.
     pub projectile: &'a mut Table<Projectile>,
     /// Where everything stands, missiles included.
     pub transform: &'a mut Table<Transform>,
-    /// Which side each entity is on.
     pub team: &'a mut Table<Team>,
     /// Who sees what; a missile given up loses its row here.
     pub visibility: &'a mut Table<Visibility>,

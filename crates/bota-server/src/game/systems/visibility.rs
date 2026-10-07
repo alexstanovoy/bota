@@ -9,13 +9,9 @@ use crate::game::{
 
 /// What working out sight reads and writes.
 pub struct SightCx<'a> {
-    /// Which entities exist.
     pub entities: &'a EntityAllocator,
-    /// Where each entity stands.
     pub transform: &'a Table<Transform>,
-    /// Which side each entity is on.
     pub team: &'a Table<Team>,
-    /// What kind of thing each entity is.
     pub kind: &'a Table<UnitKind>,
     /// How far each entity sees.
     pub stats: &'a Table<Stats>,

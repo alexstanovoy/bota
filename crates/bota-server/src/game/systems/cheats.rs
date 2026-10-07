@@ -26,14 +26,11 @@ impl World {
                 spec,
                 ticks,
             } => {
-                // The order gate rejects unbounded payloads; a caller that
-                // came another way is turned away rather than trusted.
                 if !spec.is_bounded() || !modifier_ticks_bounded(ticks) {
                     return;
                 }
                 if let Ok(mark) = self.cheat_target(unit, target) {
-                    // The cheat replaces what it put there before and leaves
-                    // whatever trusted setup put on the unit alone.
+                    // Replaces only what a cheat put there before.
                     let mut applied = self.applied.remove(mark).unwrap_or_default();
                     applied.retain(|held| held.origin != AppliedOrigin::Cheat);
                     applied.push(AppliedModifier {

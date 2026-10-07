@@ -11,22 +11,17 @@ use super::modifiers::resisted_ticks;
 
 /// What handing out effects reads and writes.
 pub struct AuraCx<'a> {
-    /// Which entities exist.
     pub entities: &'a EntityAllocator,
-    /// Where each entity stands.
     pub transform: &'a Table<Transform>,
-    /// Which side each entity is on.
     pub team: &'a Table<Team>,
-    /// What kind of thing each entity is, for the auras that reach only some
-    /// of them.
+    /// For the auras that reach only heroes.
     pub kind: &'a Table<UnitKind>,
-    /// What each entity hands out.
     pub auras: &'a Table<Auras>,
     /// Status resistance, for the timed effects an aura may hand out.
     pub stats: &'a Table<Stats>,
     /// Where a handed-out effect lands.
     pub modifiers: &'a mut Table<Modifiers>,
-    /// Reused room every entity is sorted by where it stands in.
+    /// Reused buffer every entity is sorted into by where it stands.
     pub spots: &'a mut Spots<Entity>,
 }
 

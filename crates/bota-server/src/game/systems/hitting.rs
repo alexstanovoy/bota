@@ -50,9 +50,7 @@ pub struct HitCx<'a> {
     pub hits: &'a mut VecDeque<Hit>,
     /// Where a blow that was felt is left for whatever answers to it.
     pub landed: &'a mut VecDeque<Landed>,
-    /// Where each entity stands.
     pub transform: &'a Table<Transform>,
-    /// Which side each entity is on.
     pub team: &'a Table<Team>,
     /// Armor and resistance.
     pub stats: &'a Table<Stats>,
@@ -60,7 +58,6 @@ pub struct HitCx<'a> {
     pub health: &'a mut Table<Health>,
     /// What is on each entity, read and added to by successful blows.
     pub modifiers: &'a mut Table<Modifiers>,
-    /// What kind of thing each entity is.
     pub kind: &'a Table<UnitKind>,
     /// Whether a blow never takes a structure below 1 hp.
     pub immortal_structures: bool,
