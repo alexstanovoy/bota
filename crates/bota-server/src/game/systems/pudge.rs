@@ -1,6 +1,6 @@
 //! The rot, the dismember and what the flesh heap keeps.
 
-use bota_proto::{DamageKind, Fixed, Target};
+use bota_proto::{DamageKind, Target};
 
 use crate::game::{Modifier, ModifierKind, StackKind, World, ability, rules};
 
@@ -165,7 +165,7 @@ impl World {
             // The fallen is dead by now, so it is its side that is looked at,
             // not whether it could still be fought.
             let enemy = self.team.get(hero).is_some_and(|mine| *mine != theirs);
-            if hero == fallen || self.heap_level(hero) == 0 || !enemy {
+            if hero == fallen || self.carried_level(hero, ability::FLESH_HEAP) == 0 || !enemy {
                 continue;
             }
             if !self
@@ -181,17 +181,6 @@ impl World {
         }
     }
 
-    /// Which level of the flesh heap an entity has learned. Zero for one that
-    /// does not carry it at all.
-    pub fn heap_level(&self, entity: Entity) -> u8 {
-        self.abilities.get(entity).map_or(0, |book| {
-            book.slots
-                .iter()
-                .find(|slot| slot.id == ability::FLESH_HEAP)
-                .map_or(0, |slot| slot.level)
-        })
-    }
-
     /// Whether one entity stands within a reach of another, edge to edge.
     fn in_range_of(&self, from: Entity, to: Entity, range: i32) -> bool {
         let (Some(here), Some(there)) = (
@@ -200,8 +189,6 @@ impl World {
         ) else {
             return false;
         };
-        let hulls = self.hull.get(from).map_or(Fixed::ZERO, |hull| hull.bound)
-            + self.hull.get(to).map_or(Fixed::ZERO, |hull| hull.bound);
-        here.within(there, rules::units(range) + hulls)
+        here.within(there, rules::units(range) + self.hulls(from, to))
     }
 }
