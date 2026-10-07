@@ -713,8 +713,8 @@ impl World {
     pub fn mend_with(&mut self, user: Entity, target: Target, drink: Mend) -> bool {
         let Mend {
             pool,
-            total,
-            ticks,
+            mut total,
+            mut ticks,
             range,
             eats_a_tree,
             breaks,
@@ -741,8 +741,6 @@ impl World {
         // What eats a tree is paid for by one: with none in reach nothing is
         // eaten and nothing is spent. One that was put up feeds twice as long
         // as one the map grew.
-        let mut ticks = ticks;
-        let mut total = total;
         if eats_a_tree {
             let Some(tree) = self.reach_a_tree(user, target, range) else {
                 return false;
@@ -767,9 +765,13 @@ impl World {
                 ticks_left: Some(ticks),
             },
         );
-        // The mending is told of as it begins, worth what was missing and no
-        // more than it holds. A mend broken early has still been told in
-        // full.
+        self.tell_mend(user, on, at, pool, total);
+        true
+    }
+
+    /// Tells of a mend as it begins, worth what `on` is missing of `pool` and
+    /// no more than `total`. A mend broken early has still been told in full.
+    fn tell_mend(&mut self, user: Entity, on: Entity, at: Vec2, pool: Pool, total: i32) {
         let (amount, mana) = match pool {
             Pool::Health => {
                 let missing = self
@@ -802,7 +804,6 @@ impl World {
                 visible_to: self.who_may_know(at, side),
             });
         }
-        true
     }
 
     /// Burns one charge of what sits in a slot, clearing the slot when the

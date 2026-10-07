@@ -203,32 +203,37 @@ impl World {
                 );
                 continue;
             }
-            if self.team.get(other).copied() == Some(side) {
-                continue;
+            if self.team.get(other).copied() != Some(side) {
+                self.rot_on(owner, other, amount, level);
             }
-            self.put_modifier(
-                other,
-                Modifier {
-                    kind: ModifierKind::Burning {
-                        amount,
-                        kind: DamageKind::Magical,
-                        lethal: true,
-                    },
-                    source: Some(owner),
-                    ticks_left: Some(2),
-                },
-            );
-            self.put_modifier(
-                other,
-                Modifier {
-                    kind: ModifierKind::Slowed {
-                        pct: rules::ROT_SLOW_PCT[usize::from(level)],
-                    },
-                    source: Some(owner),
-                    ticks_left: Some(2),
-                },
-            );
         }
+    }
+
+    /// Burns `other` by `amount` and slows it, for two ticks, from `owner`'s
+    /// rot.
+    fn rot_on(&mut self, owner: Entity, other: Entity, amount: i32, level: u8) {
+        self.put_modifier(
+            other,
+            Modifier {
+                kind: ModifierKind::Burning {
+                    amount,
+                    kind: DamageKind::Magical,
+                    lethal: true,
+                },
+                source: Some(owner),
+                ticks_left: Some(2),
+            },
+        );
+        self.put_modifier(
+            other,
+            Modifier {
+                kind: ModifierKind::Slowed {
+                    pct: rules::ROT_SLOW_PCT[usize::from(level)],
+                },
+                source: Some(owner),
+                ticks_left: Some(2),
+            },
+        );
     }
 
     /// Puts out every drink a blow is enough to break, and sets back every

@@ -123,13 +123,7 @@ pub fn hitting_system<const AMPLIFIED: bool>(cx: HitCx<'_>) {
             });
             continue;
         }
-        let amount = stacked_damage(blow, on_it);
-        let amount = if AMPLIFIED {
-            amplify(amount, blow.damage_amp_bp)
-        } else {
-            debug_assert_eq!(blow.damage_amp_bp, rules::NOMINAL_BP);
-            amount
-        };
+        let amount = dealt::<AMPLIFIED>(blow, on_it);
         let taken = mitigate(amount, blow.kind, stat.armor, stat.magic_resist_pct);
         let Some(pool) = health.get_mut(blow.target) else {
             continue;
@@ -137,11 +131,7 @@ pub fn hitting_system<const AMPLIFIED: bool>(cx: HitCx<'_>) {
         let spared = kind.get(blow.target).is_some_and(|k| {
             (immortal_structures && is_structure(*k)) || (immortal_heroes && *k == UnitKind::Hero)
         });
-        let applied = if spared {
-            taken.min((pool.hp - Fixed::from_int(1)).to_int().max(0))
-        } else {
-            taken.min(pool.hp.to_int().max(0) + 1)
-        };
+        let applied = bite(pool.hp, taken, spared);
         pool.hp -= Fixed::from_int(applied);
         let fatal = pool.hp <= Fixed::ZERO;
         if applied > 0 && !fatal {
@@ -196,6 +186,17 @@ fn stacked_damage(blow: Hit, on_it: Option<&Modifiers>) -> i32 {
     blow.amount + i32::from(stacks) * rules::RAZE_STACK_DAMAGE[usize::from(level)]
 }
 
+/// Pre-mitigation damage, amplified only when `AMPLIFIED`.
+fn dealt<const AMPLIFIED: bool>(blow: Hit, on_it: Option<&Modifiers>) -> i32 {
+    let amount = stacked_damage(blow, on_it);
+    if AMPLIFIED {
+        amplify(amount, blow.damage_amp_bp)
+    } else {
+        debug_assert_eq!(blow.damage_amp_bp, rules::NOMINAL_BP);
+        amount
+    }
+}
+
 /// Damage after the outgoing amplification captured when the blow was made.
 fn amplify(amount: i32, bp: i32) -> i32 {
     if bp == rules::NOMINAL_BP {
@@ -203,6 +204,16 @@ fn amplify(amount: i32, bp: i32) -> i32 {
     }
     (i64::from(amount) * i64::from(bp) / i64::from(rules::NOMINAL_BP))
         .clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32
+}
+
+/// Health `taken` comes off `hp` as: at most one past what is left, or down to
+/// 1 hp and no further when `spared`.
+fn bite(hp: Fixed, taken: i32, spared: bool) -> i32 {
+    if spared {
+        taken.min((hp - Fixed::from_int(1)).to_int().max(0))
+    } else {
+        taken.min(hp.to_int().max(0) + 1)
+    }
 }
 
 /// Applies a damaging hit's modifier to a surviving target.
