@@ -30,12 +30,17 @@ fn config(cheats: bool) -> MatchConfig {
     }
 }
 
-/// A world with cheats on and its one hero.
-fn cheating_world() -> (World, Entity) {
-    let cfg = config(true);
+/// A world with cheats on or off, and its one hero.
+fn world_with(cheats: bool) -> (World, Entity) {
+    let cfg = config(cheats);
     let world = World::for_match(&cfg, cfg.rng());
     let hero = world.seats[0].unit.expect("stood up");
     (world, hero)
+}
+
+/// A world with cheats on and its one hero.
+fn cheating_world() -> (World, Entity) {
+    world_with(true)
 }
 
 /// Hands one cheat to the seat and runs the tick it lands in.
@@ -45,6 +50,54 @@ fn cheat(world: &mut World, cheat: Cheat) -> Vec<Event> {
         unit: None,
         order: Order::Cheat { cheat },
     }])
+}
+
+/// Cheats a modifier onto the seat's own hero.
+fn cheat_modifier(world: &mut World, spec: ModifierSpec, ticks: u32) {
+    let target = Target::None;
+    cheat(
+        world,
+        Cheat::ApplyModifier {
+            target,
+            spec,
+            ticks,
+        },
+    );
+}
+
+/// A nominal spec with one change on it.
+fn spec(change: impl FnOnce(&mut ModifierSpec)) -> ModifierSpec {
+    let mut spec = ModifierSpec::NOMINAL;
+    change(&mut spec);
+    spec
+}
+
+/// A spec with a non-neutral value in every field, inside the bounds.
+fn a_spec() -> ModifierSpec {
+    ModifierSpec {
+        magic_resist: 1_000,
+        status_resist: 2_000,
+        physical_damage: 11_000,
+        magic_damage: 12_000,
+        pure_damage: 13_000,
+        cooldown_rate: 9_000,
+        mana_cost_rate: 8_000,
+        move_speed: 8_500,
+        max_hp: 11_000,
+        max_mana: 12_000,
+        gold_income: 7_500,
+    }
+}
+
+/// A modifier order aimed at `target`.
+fn modifier_order(target: Target, spec: ModifierSpec, ticks: u32) -> Order {
+    Order::Cheat {
+        cheat: Cheat::ApplyModifier {
+            target,
+            spec,
+            ticks,
+        },
+    }
 }
 
 #[test]
@@ -85,17 +138,10 @@ fn a_refresh_fills_the_pools_and_clears_every_wait() {
     world.health.get_mut(hero).expect("standing").hp = Fixed::from_int(1);
     world.mana.get_mut(hero).expect("has mana").mana = Fixed::ZERO;
     world.abilities.get_mut(hero).expect("has a book").slots[1].cooldown = 100;
-    world.inventory.get_mut(hero).expect("has a bag").slots[0] = Some(ItemStack {
-        id: ItemId(ITEM_TOWN_PORTAL_SCROLL),
-        charges: 1,
-        cooldown: 50,
-        mute: 20,
-        mode: None,
-        bought_tick: 0,
-        touched: false,
-        owner: SlotId(0),
-        for_sale: false,
-    });
+    let mut scroll = ItemStack::bought(ItemId(ITEM_TOWN_PORTAL_SCROLL), SlotId(0), 0)
+        .expect("the scroll is sold");
+    (scroll.cooldown, scroll.mute) = (50, 20);
+    world.inventory.get_mut(hero).expect("has a bag").slots[0] = Some(scroll);
     world.seats[0]
         .item_clocks
         .push((ItemId(ITEM_TOWN_PORTAL_SCROLL), 900));
@@ -142,59 +188,37 @@ fn an_item_is_handed_out_for_nothing_and_told_of_as_bought() {
 }
 
 #[test]
-fn a_match_without_cheats_refuses_them_and_one_with_them_takes_them() {
-    let order = Order::Cheat {
-        cheat: Cheat::Gold { amount: 1 },
-    };
-    let cfg = config(false);
-    let world = World::for_match(&cfg, cfg.rng());
-    assert_eq!(
-        world.validate_order(SlotId(0), None, &order),
-        Err(RejectReason::NoCheats)
-    );
-    let (world, _hero) = cheating_world();
-    assert_eq!(world.validate_order(SlotId(0), None, &order), Ok(()));
-}
-
-/// A spec with a non-neutral value in every field, inside the bounds.
-fn a_spec() -> ModifierSpec {
-    ModifierSpec {
-        magic_resist: 1_000,
-        status_resist: 2_000,
-        physical_damage: 11_000,
-        magic_damage: 12_000,
-        pure_damage: 13_000,
-        cooldown_rate: 9_000,
-        mana_cost_rate: 8_000,
-        move_speed: 8_500,
-        max_hp: 11_000,
-        max_mana: 12_000,
-        gold_income: 7_500,
-    }
-}
-
-/// A modifier order aimed at the seat's own hero.
-fn modifier_order(spec: ModifierSpec, ticks: u32) -> Order {
-    Order::Cheat {
-        cheat: Cheat::ApplyModifier {
-            target: Target::None,
-            spec,
-            ticks,
+fn a_match_without_cheats_refuses_every_cheat_and_one_with_them_takes_it() {
+    let (plain, _hero) = world_with(false);
+    let (cheating, _hero) = cheating_world();
+    for cheat in [
+        Cheat::Gold { amount: 1 },
+        Cheat::Levels { count: 1 },
+        Cheat::Refresh,
+        Cheat::Item {
+            item: ItemId(ITEM_BUTTERFLY),
         },
+        Cheat::ApplyModifier {
+            target: Target::None,
+            spec: a_spec(),
+            ticks: 10,
+        },
+        Cheat::ClearModifiers {
+            target: Target::None,
+        },
+    ] {
+        let order = Order::Cheat { cheat };
+        assert_eq!(
+            plain.validate_order(SlotId(0), None, &order),
+            Err(RejectReason::NoCheats),
+            "{cheat:?}"
+        );
+        assert_eq!(
+            cheating.validate_order(SlotId(0), None, &order),
+            Ok(()),
+            "{cheat:?}"
+        );
     }
-}
-
-#[test]
-fn a_modifier_cheat_is_refused_without_cheats_and_taken_with_them() {
-    let order = modifier_order(a_spec(), 10);
-    let cfg = config(false);
-    let world = World::for_match(&cfg, cfg.rng());
-    assert_eq!(
-        world.validate_order(SlotId(0), None, &order),
-        Err(RejectReason::NoCheats)
-    );
-    let (world, _hero) = cheating_world();
-    assert_eq!(world.validate_order(SlotId(0), None, &order), Ok(()));
 }
 
 #[test]
@@ -202,13 +226,7 @@ fn a_modifier_cheat_lands_on_the_named_unit_alone() {
     let (mut world, hero) = cheating_world();
     let creep = world.spawn_unit(&MELEE_CREEP, Team::Dire, Vec2::from_ints(7000, 7000));
     world.settle();
-    let order = Order::Cheat {
-        cheat: Cheat::ApplyModifier {
-            target: Target::Unit(wire_id(creep)),
-            spec: a_spec(),
-            ticks: 10,
-        },
-    };
+    let order = modifier_order(Target::Unit(wire_id(creep)), a_spec(), 10);
     assert_eq!(world.validate_order(SlotId(0), None, &order), Ok(()));
     world.advance(&[Command {
         slot: SlotId(0),
@@ -226,51 +244,47 @@ fn a_modifier_cheat_lands_on_the_named_unit_alone() {
     assert!(!world.applied.contains(hero), "and nowhere else");
 }
 
+/// One named change to a spec.
+type SpecChange = (&'static str, fn(&mut ModifierSpec));
+
 #[test]
 fn an_out_of_bounds_spec_is_refused_as_a_bad_cheat() {
     let (world, _hero) = cheating_world();
-    let mut specs = Vec::new();
-    let mut magic = a_spec();
-    magic.magic_resist = ModifierSpec::MAX_RESIST + 1;
-    specs.push(magic);
-    let mut status_low = a_spec();
-    status_low.status_resist = -1;
-    specs.push(status_low);
-    let mut status_high = a_spec();
-    status_high.status_resist = ModifierSpec::MAX_STATUS_RESIST + 1;
-    specs.push(status_high);
-    let mut physical = a_spec();
-    physical.physical_damage = ModifierSpec::MIN_SCALE - 1;
-    specs.push(physical);
-    let mut magical = a_spec();
-    magical.magic_damage = ModifierSpec::MAX_SCALE + 1;
-    specs.push(magical);
-    let mut pure = a_spec();
-    pure.pure_damage = 0;
-    specs.push(pure);
-    let mut cooldown = a_spec();
-    cooldown.cooldown_rate = ModifierSpec::MIN_SCALE - 1;
-    specs.push(cooldown);
-    let mut mana = a_spec();
-    mana.mana_cost_rate = ModifierSpec::MAX_SCALE + 1;
-    specs.push(mana);
-    let mut speed = a_spec();
-    speed.move_speed = ModifierSpec::MIN_SCALE - 1;
-    specs.push(speed);
-    let mut health = a_spec();
-    health.max_hp = ModifierSpec::MAX_SCALE + 1;
-    specs.push(health);
-    let mut mana_pool = a_spec();
-    mana_pool.max_mana = ModifierSpec::MIN_SCALE - 1;
-    specs.push(mana_pool);
-    let mut gold = a_spec();
-    gold.gold_income = ModifierSpec::MAX_SCALE + 1;
-    specs.push(gold);
-    for spec in specs {
+    let changes: [SpecChange; 12] = [
+        ("magic_resist", |s| {
+            s.magic_resist = ModifierSpec::MAX_RESIST + 1
+        }),
+        ("status_resist low", |s| s.status_resist = -1),
+        ("status_resist high", |s| {
+            s.status_resist = ModifierSpec::MAX_STATUS_RESIST + 1;
+        }),
+        ("physical_damage", |s| {
+            s.physical_damage = ModifierSpec::MIN_SCALE - 1
+        }),
+        ("magic_damage", |s| {
+            s.magic_damage = ModifierSpec::MAX_SCALE + 1
+        }),
+        ("pure_damage", |s| s.pure_damage = 0),
+        ("cooldown_rate", |s| {
+            s.cooldown_rate = ModifierSpec::MIN_SCALE - 1
+        }),
+        ("mana_cost_rate", |s| {
+            s.mana_cost_rate = ModifierSpec::MAX_SCALE + 1
+        }),
+        ("move_speed", |s| s.move_speed = ModifierSpec::MIN_SCALE - 1),
+        ("max_hp", |s| s.max_hp = ModifierSpec::MAX_SCALE + 1),
+        ("max_mana", |s| s.max_mana = ModifierSpec::MIN_SCALE - 1),
+        ("gold_income", |s| {
+            s.gold_income = ModifierSpec::MAX_SCALE + 1
+        }),
+    ];
+    for (name, change) in changes {
+        let mut spec = a_spec();
+        change(&mut spec);
         assert_eq!(
-            world.validate_order(SlotId(0), None, &modifier_order(spec, 10)),
+            world.validate_order(SlotId(0), None, &modifier_order(Target::None, spec, 10)),
             Err(RejectReason::BadCheat),
-            "{spec:?}"
+            "{name}"
         );
     }
 }
@@ -280,7 +294,11 @@ fn a_modifier_duration_outside_its_bounds_is_refused_as_a_bad_cheat() {
     let (world, _hero) = cheating_world();
     for ticks in [0, MAX_MODIFIER_TICKS + 1] {
         assert_eq!(
-            world.validate_order(SlotId(0), None, &modifier_order(a_spec(), ticks)),
+            world.validate_order(
+                SlotId(0),
+                None,
+                &modifier_order(Target::None, a_spec(), ticks)
+            ),
             Err(RejectReason::BadCheat),
             "{ticks} ticks"
         );
@@ -289,58 +307,45 @@ fn a_modifier_duration_outside_its_bounds_is_refused_as_a_bad_cheat() {
         world.validate_order(
             SlotId(0),
             None,
-            &modifier_order(a_spec(), MAX_MODIFIER_TICKS)
+            &modifier_order(Target::None, a_spec(), MAX_MODIFIER_TICKS)
         ),
         Ok(())
     );
 }
 
 #[test]
-fn a_modifier_cheat_aimed_at_the_ground_is_the_wrong_target_kind() {
-    let (world, _hero) = cheating_world();
-    let order = Order::Cheat {
-        cheat: Cheat::ApplyModifier {
-            target: Target::Pos(Vec2::from_ints(100, 100)),
-            spec: a_spec(),
-            ticks: 10,
-        },
+fn a_modifier_cheat_must_be_aimed_at_a_standing_unit() {
+    let (mut world, _hero) = cheating_world();
+    let mark = world.spawn();
+    let nobody = EntityId {
+        idx: 999,
+        generation: 3,
     };
-    assert_eq!(
-        world.validate_order(SlotId(0), None, &order),
-        Err(RejectReason::WrongTargetKind)
-    );
-}
-
-#[test]
-fn a_modifier_cheat_aimed_at_nobody_is_an_unknown_target() {
-    let (world, _hero) = cheating_world();
-    let order = Order::Cheat {
-        cheat: Cheat::ApplyModifier {
-            target: Target::Unit(EntityId {
-                idx: 999,
-                generation: 3,
-            }),
-            spec: a_spec(),
-            ticks: 10,
-        },
-    };
-    assert_eq!(
-        world.validate_order(SlotId(0), None, &order),
-        Err(RejectReason::UnknownTarget)
-    );
+    for (target, refused, case) in [
+        (
+            Target::Pos(Vec2::from_ints(100, 100)),
+            RejectReason::WrongTargetKind,
+            "the ground",
+        ),
+        (Target::Unit(nobody), RejectReason::UnknownTarget, "nobody"),
+        (
+            Target::Unit(wire_id(mark)),
+            RejectReason::UnknownTarget,
+            "not a unit",
+        ),
+    ] {
+        assert_eq!(
+            world.validate_order(SlotId(0), None, &modifier_order(target, a_spec(), 10)),
+            Err(refused),
+            "{case}"
+        );
+    }
 }
 
 #[test]
 fn a_modifier_cheat_runs_for_its_ticks_and_then_lifts() {
     let (mut world, hero) = cheating_world();
-    cheat(
-        &mut world,
-        Cheat::ApplyModifier {
-            target: Target::None,
-            spec: a_spec(),
-            ticks: 2,
-        },
-    );
+    cheat_modifier(&mut world, a_spec(), 2);
     assert_eq!(
         world
             .applied
@@ -355,77 +360,43 @@ fn a_modifier_cheat_runs_for_its_ticks_and_then_lifts() {
 }
 
 #[test]
-fn a_clear_cheat_takes_the_modifier_off_and_is_harmless_without_one() {
+fn a_modifier_cheat_replaces_its_own_and_a_clear_takes_it_off_harmlessly() {
     let (mut world, hero) = cheating_world();
-    cheat(
-        &mut world,
-        Cheat::ApplyModifier {
-            target: Target::None,
-            spec: a_spec(),
-            ticks: 100,
-        },
+    cheat_modifier(&mut world, a_spec(), 100);
+    let second = spec(|s| s.max_hp = 12_000);
+    cheat_modifier(&mut world, second, 50);
+    let applied = world.applied.get(hero).expect("on the hero");
+    assert_eq!(
+        applied.iter().map(|held| held.spec).collect::<Vec<_>>(),
+        vec![second],
+        "the second cheat replaced the first"
     );
-    assert!(world.applied.contains(hero));
-    cheat(
-        &mut world,
-        Cheat::ClearModifiers {
-            target: Target::None,
-        },
-    );
+    let clear = Cheat::ClearModifiers {
+        target: Target::None,
+    };
+    cheat(&mut world, clear);
     assert!(!world.applied.contains(hero));
-    cheat(
-        &mut world,
-        Cheat::ClearModifiers {
-            target: Target::None,
-        },
-    );
+    cheat(&mut world, clear);
     assert!(!world.applied.contains(hero));
 }
 
 #[test]
 fn an_unbounded_cheat_is_turned_away_even_when_it_skips_the_gate() {
     let (mut world, hero) = cheating_world();
-    let mut unbounded = a_spec();
-    unbounded.max_hp = ModifierSpec::MAX_SCALE + 1;
-    world.cheat(
-        SlotId(0),
-        hero,
-        Cheat::ApplyModifier {
-            target: Target::None,
-            spec: unbounded,
-            ticks: 10,
-        },
-        &mut Vec::new(),
-    );
-    assert!(!world.applied.contains(hero), "the spec was refused");
-    world.cheat(
-        SlotId(0),
-        hero,
-        Cheat::ApplyModifier {
-            target: Target::None,
-            spec: a_spec(),
-            ticks: 0,
-        },
-        &mut Vec::new(),
-    );
-    assert!(!world.applied.contains(hero), "the duration was refused");
-}
-
-#[test]
-fn a_modifier_cheat_aimed_at_something_that_is_not_a_unit_is_an_unknown_target() {
-    let (mut world, _hero) = cheating_world();
-    let mark = world.spawn();
-    let order = Order::Cheat {
-        cheat: Cheat::ApplyModifier {
-            target: Target::Unit(wire_id(mark)),
-            spec: a_spec(),
-            ticks: 10,
-        },
-    };
-    assert_eq!(
-        world.validate_order(SlotId(0), None, &order),
-        Err(RejectReason::UnknownTarget)
-    );
+    let unbounded = spec(|s| s.max_hp = ModifierSpec::MAX_SCALE + 1);
+    for (spec, ticks, case) in [
+        (unbounded, 10, "the spec was refused"),
+        (a_spec(), 0, "the duration was refused"),
+    ] {
+        let target = Target::None;
+        let apply = Cheat::ApplyModifier {
+            target,
+            spec,
+            ticks,
+        };
+        world.cheat(SlotId(0), hero, apply, &mut Vec::new());
+        assert!(!world.applied.contains(hero), "{case}");
+    }
 }
 
 #[test]
@@ -437,16 +408,7 @@ fn a_kept_kit_is_projected_after_the_body_falls() {
     let stack = ItemStack::bought(ItemId(ITEM_BUTTERFLY), SlotId(0), world.tick)
         .expect("the Butterfly is sold");
     world.inventory.get_mut(hero).expect("has a bag").slots[0] = Some(stack);
-    let mut spec = ModifierSpec::NOMINAL;
-    spec.mana_cost_rate = 5_000;
-    cheat(
-        &mut world,
-        Cheat::ApplyModifier {
-            target: Target::None,
-            spec,
-            ticks: 100,
-        },
-    );
+    cheat_modifier(&mut world, spec(|s| s.mana_cost_rate = 5_000), 100);
     let live = world.view_full();
     let unit = live
         .units
@@ -483,14 +445,7 @@ fn a_kept_kit_is_projected_after_the_body_falls() {
 #[test]
 fn a_fallen_hero_takes_its_modifier_with_it_and_respawns_clean() {
     let (mut world, hero) = cheating_world();
-    cheat(
-        &mut world,
-        Cheat::ApplyModifier {
-            target: Target::None,
-            spec: a_spec(),
-            ticks: 100_000,
-        },
-    );
+    cheat_modifier(&mut world, a_spec(), 100_000);
     assert!(world.applied.contains(hero));
     world.push_hit(None, hero, 100_000, DamageKind::Pure);
     world.step();
@@ -524,16 +479,7 @@ fn gold_income_scales_the_bounty_a_kill_pays() {
     let victim = world.seats[1].unit.expect("the victim stands");
     world.seats[1].streak = 3;
     let composed = World::hero_bounty(3);
-    let mut spec = ModifierSpec::NOMINAL;
-    spec.gold_income = 15_000;
-    cheat(
-        &mut world,
-        Cheat::ApplyModifier {
-            target: Target::None,
-            spec,
-            ticks: 1_000,
-        },
-    );
+    cheat_modifier(&mut world, spec(|s| s.gold_income = 15_000), 1_000);
     let before = world.seats[0].gold;
     let net_worth = world.seats[0].net_worth;
     world.push_hit(Some(killer), victim, 100_000, DamageKind::Pure);
@@ -556,17 +502,8 @@ fn gold_income_scales_the_bounty_a_kill_pays() {
 #[test]
 fn gold_income_leaves_starting_passive_and_refunded_gold_alone() {
     let (mut world, hero) = cheating_world();
-    let mut spec = ModifierSpec::NOMINAL;
-    spec.gold_income = 20_000;
     let before = world.seats[0].gold;
-    cheat(
-        &mut world,
-        Cheat::ApplyModifier {
-            target: Target::None,
-            spec,
-            ticks: 1_000,
-        },
-    );
+    cheat_modifier(&mut world, spec(|s| s.gold_income = 20_000), 1_000);
     assert_eq!(world.seats[0].gold, before, "no gold arrives with it");
     world.tick = rules::PREGAME_TICKS + rules::PASSIVE_GOLD_PERIOD_TICKS;
     world.passive_gold();
@@ -596,16 +533,7 @@ fn a_scaled_mana_cost_is_what_the_cast_checks_and_spends() {
         book.slots[1].level = 1;
     }
     let full = ability_mana_cost(ability::FRENZY, 1);
-    let mut spec = ModifierSpec::NOMINAL;
-    spec.mana_cost_rate = 5_000;
-    cheat(
-        &mut world,
-        Cheat::ApplyModifier {
-            target: Target::None,
-            spec,
-            ticks: 100,
-        },
-    );
+    cheat_modifier(&mut world, spec(|s| s.mana_cost_rate = 5_000), 100);
     let cast = Order::Cast {
         slot: AbilitySlot(1),
         target: Target::None,
