@@ -35,6 +35,7 @@ pub fn snapshot(tick: u32) -> ReplayRecord {
             players: Vec::new(),
             projectiles: Vec::new(),
             loot: Vec::new(),
+            aggro: Vec::new(),
             felled_trees: Vec::new(),
             planted_trees: Vec::new(),
         },

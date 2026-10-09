@@ -191,6 +191,45 @@ pub struct UnitView {
     pub effects: Vec<EffectView>,
 }
 
+/// A swing under way that has not struck yet.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct SwingView {
+    /// Whom it strikes. Always one of [`WorldView::units`].
+    pub target: EntityId,
+    /// Ticks until it strikes at the current attack speed, unless it is
+    /// broken off first: a melee blow lands, a ranged missile leaves. At
+    /// least 1.
+    pub strike_in: u32,
+}
+
+/// Whom a unit in the view fights, and how firmly it holds to that.
+///
+/// Every id it names is one of [`WorldView::units`]. A unit without an entry
+/// is set on nobody, is not swinging and holds no timer.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct AggroView {
+    /// The unit this describes.
+    pub unit: EntityId,
+    /// Whom it is set on: what it attacks or walks up to attack. Absent when
+    /// it is set on nobody, or on a unit this view does not carry.
+    pub target: Option<EntityId>,
+    /// Its swing in the windup. Absent between swings, in the recovery after
+    /// one, and when the swing is at a unit this view does not carry.
+    pub swing: Option<SwingView>,
+    /// Ticks a lane creep keeps its target whatever else turns up, after an
+    /// enemy hero's attack order drew it. Zero when nothing holds it.
+    pub hold_left: u32,
+    /// Ticks a lane creep keeps chasing its target out of attack range while
+    /// nothing else is within its acquisition range. Full while the target
+    /// is within reach; zero when it is set on nobody.
+    pub chase_left: u32,
+    /// Ticks before an enemy hero's attack order may draw this lane creep or
+    /// tower again. Zero when the next one does.
+    pub draw_cooldown: u32,
+    /// Whether this neutral walks back to its camp and takes nothing on.
+    pub returning: bool,
+}
+
 /// A missile in flight, or what an ability shows where it stands, that the
 /// viewing team can see or launched itself.
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -281,4 +320,7 @@ pub struct WorldView {
     /// Every item lying on the ground currently visible, sorted by
     /// [`EntityId`].
     pub loot: Vec<LootView>,
+    /// Whom the units fight, at most one entry a unit of
+    /// [`units`](Self::units), sorted by [`EntityId`]. Last on the wire.
+    pub aggro: Vec<AggroView>,
 }

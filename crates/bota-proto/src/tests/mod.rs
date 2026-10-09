@@ -1,3 +1,4 @@
+mod compat;
 mod fixtures;
 mod framing;
 mod math;

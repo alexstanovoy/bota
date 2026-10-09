@@ -187,6 +187,23 @@ pub fn world_view(creeps: u32) -> WorldView {
         felled_trees: Vec::new(),
         planted_trees: Vec::new(),
         loot: vec![loot_view()],
+        aggro: (0..creeps).map(|i| aggro_view(100 + i)).collect(),
+    }
+}
+
+/// Creep `idx` swinging at the hero, drawn onto it a moment ago.
+pub fn aggro_view(idx: u32) -> AggroView {
+    AggroView {
+        unit: entity(idx),
+        target: Some(entity(7)),
+        swing: Some(SwingView {
+            target: entity(7),
+            strike_in: 4,
+        }),
+        hold_left: 52,
+        chase_left: 69,
+        draw_cooldown: 72,
+        returning: false,
     }
 }
 
@@ -378,6 +395,7 @@ pub fn empty_world_view() -> WorldView {
         felled_trees: Vec::new(),
         planted_trees: Vec::new(),
         loot: Vec::new(),
+        aggro: Vec::new(),
     }
 }
 

@@ -377,6 +377,7 @@ fn draw_world(app: &App, view: &WorldView) {
     draw_landing_spots(app, view, to_screen);
     draw_tree_pick(app, view, to_screen);
     draw_orders(app, view, to_screen);
+    draw_aggro(app, view, to_screen);
     // What lies on the ground, under whatever stands over it.
     for lying in &view.loot {
         let (x, y) = to_screen(lying.pos.x.to_f32(), lying.pos.y.to_f32());
@@ -489,6 +490,33 @@ fn draw_orders(app: &App, view: &WorldView, to_screen: impl Fn(f32, f32) -> (f32
                 draw_circle_lines(x, y, body + 3.0 + 6.0 * fade, 2.0, colour);
             }
         }
+    }
+}
+
+/// Whom the commanded unit fights, and who fights it: a thin line from each
+/// attacker to its target in the attacker's colour, drawn thicker while the
+/// attacker is in the windup of a swing at it.
+fn draw_aggro(app: &App, view: &WorldView, to_screen: impl Fn(f32, f32) -> (f32, f32)) {
+    let Some(focus) = app.commanded() else {
+        return;
+    };
+    let at = |id| view.units.iter().find(|unit| unit.id == id);
+    for entry in &view.aggro {
+        let Some(target) = entry.target else {
+            continue;
+        };
+        if entry.unit != focus && target != focus {
+            continue;
+        }
+        let (Some(from), Some(to)) = (at(entry.unit), at(target)) else {
+            continue;
+        };
+        let (x0, y0) = to_screen(from.pos.x.to_f32(), from.pos.y.to_f32());
+        let (x1, y1) = to_screen(to.pos.x.to_f32(), to.pos.y.to_f32());
+        let swinging = entry.swing.is_some_and(|swing| swing.target == target);
+        let colour = team_color(from.team);
+        let colour = Color::new(colour.r, colour.g, colour.b, 0.7);
+        draw_line(x0, y0, x1, y1, if swinging { 2.5 } else { 1.0 }, colour);
     }
 }
 

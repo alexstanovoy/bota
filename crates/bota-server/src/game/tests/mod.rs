@@ -1,3 +1,4 @@
+mod aggro_view;
 mod attacks;
 mod auras;
 mod cast;

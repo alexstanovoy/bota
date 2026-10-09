@@ -603,6 +603,7 @@ fn a_tick(tick: u32, units: Vec<UnitView>, players: Vec<PlayerView>) -> WorldVie
         felled_trees: Vec::new(),
         planted_trees: Vec::new(),
         loot: Vec::new(),
+        aggro: Vec::new(),
     }
 }
 

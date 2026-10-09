@@ -1,12 +1,13 @@
 //! The world as a side is allowed to see it.
 
 use bota_proto::{
-    AbilityView, EffectId, EffectView, Fixed, PlayerView, ProjectileView, StatusFlags, Team,
-    UnitView, WorldView,
+    AbilityView, AggroView, EffectId, EffectView, Fixed, PlayerView, ProjectileView, StatusFlags,
+    SwingView, Team, UnitKind, UnitView, WorldView,
 };
 
 use crate::game::{
-    Entity, FeastPhase, ModifierKind, StackKind, World, ability_mana_cost, item_views, rules,
+    ActionPhase, ActionState, Entity, FeastPhase, ModifierKind, StackKind, World,
+    ability_mana_cost, attack_gain, beats, is_lane_creep, item_views, rules,
 };
 use crate::profile::Phase;
 
@@ -39,22 +40,27 @@ impl World {
         let mut units = Vec::with_capacity(self.entities.len());
         let mut projectiles = Vec::new();
         let mut loot = Vec::new();
+        let mut aggro = Vec::new();
         for entity in self.entities.iter() {
-            let seen = viewer.is_none_or(|team| {
-                self.visibility
-                    .get(entity)
-                    .is_some_and(|seen| seen.by(team))
-            });
-            let told = seen || viewer.is_some_and(|team| self.team.get(entity) == Some(&team));
-            if !told {
+            let seen = self.viewer_sees(viewer, entity);
+            if !(seen || self.own_to(viewer, entity)) {
                 continue;
             }
-            units.extend(self.project_unit(entity));
+            if let Some(unit) = self.project_unit(entity) {
+                aggro.extend(self.project_aggro(viewer, entity, unit.kind));
+                units.push(unit);
+            }
             projectiles.extend(self.project_projectile(entity));
             if seen {
                 loot.extend(self.project_loot(entity));
             }
         }
+        debug_assert!(aggro.iter().all(|entry| {
+            let carried = |id| units.binary_search_by_key(&id, |unit| unit.id).is_ok();
+            carried(entry.unit)
+                && entry.target.is_none_or(carried)
+                && entry.swing.is_none_or(|swing| carried(swing.target))
+        }));
         WorldView {
             tick: self.tick,
             viewer,
@@ -100,7 +106,97 @@ impl World {
             felled_trees: self.trees.felled().collect(),
             planted_trees: self.trees.planted().iter().map(|tree| tree.at).collect(),
             loot,
+            aggro,
         }
+    }
+
+    /// Whether a viewer sees an entity. `None` sees everything.
+    fn viewer_sees(&self, viewer: Option<Team>, entity: Entity) -> bool {
+        viewer.is_none_or(|team| {
+            self.visibility
+                .get(entity)
+                .is_some_and(|seen| seen.by(team))
+        })
+    }
+
+    /// Whether an entity is of a viewer's own side.
+    fn own_to(&self, viewer: Option<Team>, entity: Entity) -> bool {
+        viewer.is_some_and(|team| self.team.get(entity) == Some(&team))
+    }
+
+    /// Whether a viewer's units carry this entity.
+    fn carried(&self, viewer: Option<Team>, entity: Entity) -> bool {
+        self.entities.contains(entity)
+            && (self.viewer_sees(viewer, entity) || self.own_to(viewer, entity))
+            && self.kind.contains(entity)
+            && self.transform.contains(entity)
+            && self.stats.contains(entity)
+    }
+
+    /// Whom one carried unit of a kind fights, as far as the viewer is told,
+    /// or nothing when there is nothing to tell.
+    fn project_aggro(
+        &self,
+        viewer: Option<Team>,
+        entity: Entity,
+        kind: UnitKind,
+    ) -> Option<AggroView> {
+        let held = self.target_of(entity);
+        let swing = self.swing_of(entity);
+        let lane = is_lane_creep(kind)
+            .then(|| self.lane_ai.get(entity))
+            .flatten();
+        let drawn = is_lane_creep(kind) || kind == UnitKind::Tower;
+        let draw_cooldown = if drawn {
+            self.orders.get(entity).map_or(0, |orders| orders.cooldown)
+        } else {
+            0
+        };
+        let returning = kind == UnitKind::CreepNeutral
+            && self.neutral_ai.get(entity).is_some_and(|ai| ai.going_home);
+        let hold_left = lane.map_or(0, |ai| ai.keep_until.saturating_sub(self.tick));
+        let chase_left = lane
+            .filter(|_| held.is_some())
+            .map_or(0, |ai| ai.chase_until.saturating_sub(self.tick));
+        let target = held.filter(|on| self.carried(viewer, *on)).map(wire_id);
+        let swing = swing
+            .filter(|(on, _)| self.carried(viewer, *on))
+            .map(|(on, strike_in)| SwingView {
+                target: wire_id(on),
+                strike_in,
+            });
+        let quiet = target.is_none()
+            && swing.is_none()
+            && hold_left == 0
+            && chase_left == 0
+            && draw_cooldown == 0
+            && !returning;
+        (!quiet).then(|| AggroView {
+            unit: wire_id(entity),
+            target,
+            swing,
+            hold_left,
+            chase_left,
+            draw_cooldown,
+            returning,
+        })
+    }
+
+    /// The swing an entity has in its windup: whom at, and in how many ticks
+    /// it strikes at the current attack speed.
+    fn swing_of(&self, entity: Entity) -> Option<(Entity, u32)> {
+        let ActionState::Attack {
+            target,
+            phase: ActionPhase::Before { progress },
+        } = self.action.get(entity)?.state
+        else {
+            return None;
+        };
+        let stats = self.stats.get(entity)?;
+        let left = beats(stats.attack_point).saturating_sub(progress);
+        let gain = attack_gain(stats.attack_speed);
+        assert!(gain > 0);
+        Some((target, left.div_ceil(gain).max(1)))
     }
 
     /// One missile, hook, mark or line of a requiem, or nothing when the

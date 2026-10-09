@@ -1163,6 +1163,49 @@ is being shown, what a fallen one left behind, and how stale it is. Two
 readings of that question would drift, and the popup over a slot would end up
 describing a different item from the one drawn in it.
 
+### Whom units fight
+
+Every unit that fights of its own accord holds a target, and a lane creep holds
+timers on it: the hold an attack order puts on it, the chase it keeps up after
+a target that left its reach, and the wait before an order may draw it again.
+A player reads all of it off the screen — the creep turns, walks and swings at
+somebody, and the click that drew it was the player's own or happened in
+plain view — so a bot is told it too, as `WorldView::aggro`: one `AggroView`
+for every carried unit that has anything to say, sorted by `EntityId`.
+
+| Field | Wire type | Meaning |
+|---|---|---|
+| `unit` | `EntityId` | the unit described; always one of `units` |
+| `target` | `Option<EntityId>` | whom it is set on: what it attacks or walks up to attack |
+| `swing` | `Option<SwingView { target: EntityId, strike_in: u32 }>` | the swing in its windup, and in how many ticks it strikes at the current attack speed (at least 1) |
+| `hold_left` | `u32` | ticks a lane creep keeps its target whatever else turns up, after an attack order drew it |
+| `chase_left` | `u32` | ticks a lane creep keeps after a target out of its attack range while nothing else is within its acquisition; full while the target is in reach, zero when set on nobody |
+| `draw_cooldown` | `u32` | ticks before an enemy hero's attack order may draw this lane creep or tower again |
+| `returning` | `bool` | a neutral walks back to its camp and takes nothing on |
+
+A unit without an entry is set on nobody, is not swinging and holds no timer.
+
+The fog rule is the projection's own: an id is named only when the unit it
+names is in the same view's `units`. A target, or a swing's target, that the
+viewer is not told of is sent as absent — the same absent as having no target
+at all, so a creep chasing into the fog says that it chases (its timers stay)
+and never whom. A debug assertion in the projection checks every id against
+`units`.
+
+Not carried: whether a lane creep may be drawn yet before
+`FREE_AGGRO_TICK` (that is the public rule plus positions the view already
+holds, and answering it per creep costs a scan of the world per creep), and
+a neutral's leash and re-aggro counters (a player sees only whether it walks
+home).
+
+The list is the last field of `WorldView`, and `Snapshot { view }` is the last
+thing in its frame, so the list is the tail of the payload. A bot outside this
+repository reads this wire; a decoder that predates the list stops before it,
+and postcard's `from_bytes` leaves trailing bytes unread, so it keeps working
+unchanged. `bota-proto`'s `compat` test decodes a fresh snapshot through the
+old shape. A decoder that insists on consuming every byte of a frame does
+not tolerate it.
+
 ### Tick modes
 
 - `Realtime` — 30 Hz on the wall clock, a late command applies on the next tick.
