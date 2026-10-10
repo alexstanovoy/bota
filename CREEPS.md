@@ -115,6 +115,14 @@ Every **7:30**, applied to *newly spawned* creeps, **30 times maximum**
   since 7.40, though one line of Liquipedia's *Lane Creeps* still says it does not)
 - ranged: +12 health, +2 attack damage, +3 gold (6 before 7.39), +8 XP
 - siege: no periodic upgrade
+- super melee: 700 health, 3 armour, 36–44 damage, 20–26 gold, 25 XP; +19
+  health, +2 damage, +1.5 gold (bota pays the half gold rounded down)
+- super ranged: 475 health, 1 armour, 41–46 damage, 19–25 gold, 22 XP; +18
+  health, +3 damage, +6 gold
+- mega melee 1270 health, 96–104 damage, and mega ranged 1015 health,
+  131–136 damage: a fully upgraded super creep that grows only its bounty
+  (+1.5 and +6 gold), swinging at the plain 1 s pace
+- super and mega siege: 51–62 damage, no periodic upgrade
 - the gold and experience steps have no cap in Dota; bota counts at most 30
   intervals for everything, which differs only past 225:00
 
@@ -472,7 +480,3 @@ barracks and fountains are 144, the Ancients 299 (Radiant) and 374 (Dire).
 6. **No invisibility, untargetability or disarm.** The flee on damage from an
    invisible unit and the untargetable rules of §1.6, and the disarm rule of
    §1.4, have nothing to act on.
-7. **Super and mega creeps** carry pre-7.41 numbers: Liquipedia lists super
-   melee 36–44 damage, super ranged 41–46, mega melee 1270 health and 96–104
-   damage, mega ranged 1015 and 131–136; bota has 41–49, 46–51 and mega as a
-   faster-swinging super.

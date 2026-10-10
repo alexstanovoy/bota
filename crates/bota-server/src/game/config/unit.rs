@@ -25,8 +25,9 @@ pub struct Growth {
     pub damage: i32,
     /// Half points of armor added, so an odd number is half a point a step.
     pub armor_halves: i32,
-    /// Gold added to the bounty.
-    pub gold: i32,
+    /// Half points of gold added to both ends of the bounty, so an odd
+    /// number is half a gold a step; a part gold left over is not paid.
+    pub gold_halves: i32,
     /// Experience added to the bounty.
     pub xp: i32,
 }
@@ -118,7 +119,7 @@ const NO_GROWTH: Growth = Growth {
     mana: 0,
     damage: 0,
     armor_halves: 0,
-    gold: 0,
+    gold_halves: 0,
     xp: 0,
 };
 
@@ -186,7 +187,7 @@ pub const MELEE_CREEP: UnitDef = UnitDef {
     per_upgrade: Growth {
         hp: rules::MELEE_UPGRADE_HP,
         damage: rules::MELEE_UPGRADE_DAMAGE,
-        gold: rules::MELEE_UPGRADE_GOLD,
+        gold_halves: 2 * rules::MELEE_UPGRADE_GOLD,
         ..NO_GROWTH
     },
     ..NOTHING
@@ -231,7 +232,7 @@ pub const RANGED_CREEP: UnitDef = UnitDef {
     per_upgrade: Growth {
         hp: rules::RANGED_UPGRADE_HP,
         damage: rules::RANGED_UPGRADE_DAMAGE,
-        gold: rules::RANGED_UPGRADE_GOLD,
+        gold_halves: 2 * rules::RANGED_UPGRADE_GOLD,
         xp: rules::RANGED_UPGRADE_XP,
         ..NO_GROWTH
     },
@@ -247,13 +248,24 @@ pub const SUPER_MELEE_CREEP: UnitDef = UnitDef {
     armor: rules::SUPER_MELEE_ARMOR,
     bounty_gold: rules::SUPER_MELEE_BOUNTY,
     bounty_xp: rules::SUPER_MELEE_XP,
+    per_upgrade: Growth {
+        hp: rules::SUPER_MELEE_UPGRADE_HP,
+        damage: rules::SUPER_MELEE_UPGRADE_DAMAGE,
+        gold_halves: rules::SUPER_MELEE_UPGRADE_GOLD_HALVES,
+        ..NO_GROWTH
+    },
     ..MELEE_CREEP
 };
 
-/// A mega melee creep: a super one swinging faster, once every enemy
-/// barracks has fallen.
+/// A mega melee creep, once every enemy barracks has fallen: a fully
+/// upgraded super one whose bounty alone still grows.
 pub const MEGA_MELEE_CREEP: UnitDef = UnitDef {
-    attack_time: rules::MEGA_MELEE_ATTACK_TIME,
+    max_hp: rules::MEGA_MELEE_HP,
+    damage: rules::MEGA_MELEE_ATTACK_DAMAGE,
+    per_upgrade: Growth {
+        gold_halves: rules::SUPER_MELEE_UPGRADE_GOLD_HALVES,
+        ..NO_GROWTH
+    },
     ..SUPER_MELEE_CREEP
 };
 
@@ -265,7 +277,25 @@ pub const SUPER_RANGED_CREEP: UnitDef = UnitDef {
     armor: rules::SUPER_RANGED_ARMOR,
     bounty_gold: rules::SUPER_RANGED_BOUNTY,
     bounty_xp: rules::SUPER_RANGED_XP,
+    per_upgrade: Growth {
+        hp: rules::SUPER_RANGED_UPGRADE_HP,
+        damage: rules::SUPER_RANGED_UPGRADE_DAMAGE,
+        gold_halves: 2 * rules::SUPER_RANGED_UPGRADE_GOLD,
+        ..NO_GROWTH
+    },
     ..RANGED_CREEP
+};
+
+/// A mega ranged creep, once every enemy barracks has fallen: a fully
+/// upgraded super one whose bounty alone still grows.
+pub const MEGA_RANGED_CREEP: UnitDef = UnitDef {
+    max_hp: rules::MEGA_RANGED_HP,
+    damage: rules::MEGA_RANGED_ATTACK_DAMAGE,
+    per_upgrade: Growth {
+        gold_halves: 2 * rules::SUPER_RANGED_UPGRADE_GOLD,
+        ..NO_GROWTH
+    },
+    ..SUPER_RANGED_CREEP
 };
 
 /// A siege creep. Takes no upgrades.

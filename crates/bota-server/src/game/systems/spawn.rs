@@ -232,7 +232,7 @@ impl World {
         self.upgrades.insert(entity, Upgrades(upgrades));
         let steps = i32::try_from(upgrades).expect("upgrade count fits an i32");
         if let Some(bounty) = self.bounty.get_mut(entity) {
-            bounty.gold = bounty.gold.raised(def.per_upgrade.gold * steps);
+            bounty.gold = bounty.gold.raised(def.per_upgrade.gold_halves * steps / 2);
             bounty.xp += def.per_upgrade.xp * steps;
         }
     }

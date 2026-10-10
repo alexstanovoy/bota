@@ -99,7 +99,7 @@ const NEUTRAL_GROWTH: Growth = Growth {
     mana: 0,
     damage: rules::NEUTRAL_UPGRADE_DAMAGE,
     armor_halves: rules::NEUTRAL_UPGRADE_ARMOR_HALVES,
-    gold: rules::NEUTRAL_UPGRADE_GOLD,
+    gold_halves: 2 * rules::NEUTRAL_UPGRADE_GOLD,
     xp: rules::NEUTRAL_UPGRADE_XP,
 };
 
@@ -137,7 +137,7 @@ const NEUTRAL_BASE: UnitDef = UnitDef {
         mana: 0,
         damage: 0,
         armor_halves: 0,
-        gold: 0,
+        gold_halves: 0,
         xp: 0,
     },
     per_upgrade: NEUTRAL_GROWTH,

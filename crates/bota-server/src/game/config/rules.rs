@@ -539,8 +539,8 @@ pub const CREEP_VISION: i32 = 750;
 
 /// Super melee creep health.
 pub const SUPER_MELEE_HP: i32 = 700;
-/// Least attack damage of a super melee creep's swing, of 41 to 49.
-pub const SUPER_MELEE_ATTACK_DAMAGE: i32 = 41;
+/// Least attack damage of a super melee creep's swing, of 36 to 44.
+pub const SUPER_MELEE_ATTACK_DAMAGE: i32 = 36;
 /// How much more a super melee creep's swing may deal.
 pub const SUPER_MELEE_DAMAGE_SPREAD: i32 = 8;
 /// Super melee creep armor.
@@ -551,8 +551,8 @@ pub const SUPER_MELEE_BOUNTY: GoldRange = GoldRange::new(20, 26);
 pub const SUPER_MELEE_XP: i32 = 25;
 /// Super ranged creep health.
 pub const SUPER_RANGED_HP: i32 = 475;
-/// Least attack damage of a super ranged creep's swing, of 46 to 51.
-pub const SUPER_RANGED_ATTACK_DAMAGE: i32 = 46;
+/// Least attack damage of a super ranged creep's swing, of 41 to 46.
+pub const SUPER_RANGED_ATTACK_DAMAGE: i32 = 41;
 /// How much more a super ranged creep's swing may deal.
 pub const SUPER_RANGED_DAMAGE_SPREAD: i32 = 5;
 /// Super ranged creep armor.
@@ -565,8 +565,26 @@ pub const SUPER_RANGED_XP: i32 = 22;
 pub const SUPER_SIEGE_ATTACK_DAMAGE: i32 = 51;
 /// How much more a super siege creep's swing may deal.
 pub const SUPER_SIEGE_DAMAGE_SPREAD: i32 = 11;
-/// Milliseconds between mega melee creep attack starts.
-pub const MEGA_MELEE_ATTACK_TIME: u32 = 900;
+/// Health one upgrade adds to a super melee creep.
+pub const SUPER_MELEE_UPGRADE_HP: i32 = 19;
+/// Attack damage one upgrade adds to a super melee creep.
+pub const SUPER_MELEE_UPGRADE_DAMAGE: i32 = 2;
+/// Half gold one upgrade adds to a super or mega melee creep's bounty.
+pub const SUPER_MELEE_UPGRADE_GOLD_HALVES: i32 = 3;
+/// Health one upgrade adds to a super ranged creep.
+pub const SUPER_RANGED_UPGRADE_HP: i32 = 18;
+/// Attack damage one upgrade adds to a super ranged creep.
+pub const SUPER_RANGED_UPGRADE_DAMAGE: i32 = 3;
+/// Gold one upgrade adds to a super or mega ranged creep's bounty.
+pub const SUPER_RANGED_UPGRADE_GOLD: i32 = 6;
+/// Mega melee creep health.
+pub const MEGA_MELEE_HP: i32 = 1270;
+/// Least attack damage of a mega melee creep's swing, of 96 to 104.
+pub const MEGA_MELEE_ATTACK_DAMAGE: i32 = 96;
+/// Mega ranged creep health.
+pub const MEGA_RANGED_HP: i32 = 1015;
+/// Least attack damage of a mega ranged creep's swing, of 131 to 136.
+pub const MEGA_RANGED_ATTACK_DAMAGE: i32 = 131;
 
 // Buildings.
 

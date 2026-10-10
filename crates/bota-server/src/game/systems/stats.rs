@@ -352,7 +352,7 @@ fn raised(kind: &UnitDef, levels: i32, steps: i32) -> Stats {
         mana: g.mana * levels + per.mana * steps,
         damage: g.damage * levels + per.damage * steps,
         armor_halves: g.armor_halves * levels + per.armor_halves * steps,
-        gold: g.gold * levels + per.gold * steps,
+        gold_halves: g.gold_halves * levels + per.gold_halves * steps,
         xp: g.xp * levels + per.xp * steps,
     };
     let up = gained(&kind.per_level, &kind.per_upgrade);
