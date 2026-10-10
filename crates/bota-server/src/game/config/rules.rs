@@ -601,8 +601,18 @@ pub const TOWER_TIER_ARMOR: [i32; 4] = [12, 16, 16, 21];
 pub const TOWER_ATTACK_SPEED: i32 = 110;
 /// How fast a tower turns, in brads per tick: a `MovementTurnRate` of 1.
 pub const TOWER_TURN_RATE_BRADS: u16 = 11_590;
-/// Gold paid to the killer of a tower, indexed by tier minus one.
-pub const TOWER_TIER_BOUNTY: [i32; 4] = [200, 250, 300, 350];
+/// Gold paid to the hero that strikes a tower down, on top of its team
+/// bounty, indexed by tier minus one.
+pub const TOWER_TIER_BOUNTY: [GoldRange; 4] = [
+    GoldRange::new(110, 130),
+    GoldRange::new(130, 150),
+    GoldRange::new(150, 170),
+    GoldRange::new(170, 190),
+];
+/// Gold a tower's fall pays every seat of the side that brought it down,
+/// indexed by tier minus one; a deny pays half of it to every seat of both
+/// sides.
+pub const TOWER_TIER_TEAM_BOUNTY: [i32; 4] = [90, 110, 125, 145];
 /// Tower attack range.
 pub const TOWER_ATTACK_RANGE: i32 = 700;
 /// Milliseconds between tower attack starts at [`BASE_ATTACK_SPEED`].

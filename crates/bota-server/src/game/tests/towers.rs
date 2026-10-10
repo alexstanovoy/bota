@@ -1,8 +1,10 @@
 //! Towers at Dota 7.41f: what they are made of, how fast they shoot, what
 //! their fall pays and how often they let go.
 
-use crate::game::{MELEE_CREEP, UnitDef, World, tower_def};
+use crate::game::{MELEE_CREEP, UnitDef, World, rules, tower_def};
 use bota_proto::{Fixed, Team, UnitKind, Vec2};
+
+use super::support::*;
 
 /// A creep that bears no armor and never falls.
 const TARGET: UnitDef = UnitDef {
@@ -67,4 +69,62 @@ fn every_tier_stands_and_shoots_as_in_seven_forty_one() {
             "tier {tier}: {shots:?}"
         );
     }
+}
+
+#[test]
+fn a_fallen_tower_pays_its_side_and_its_striker_and_a_deny_pays_both_sides_half() {
+    // Liquipedia, Tower (Tier 1): last hit 110-130 on top of a 90 team
+    // bounty to every hero of the side; denying grants 45 to both teams.
+    let range = rules::TOWER_TIER_BOUNTY[0];
+    let team = rules::TOWER_TIER_TEAM_BOUNTY[0];
+    let (mut world, _) = a_tower_and_three_seats();
+    let striker = world.seats[0].unit.expect("seated");
+    let mut seen = Vec::new();
+    for _ in 0..40 {
+        let before: Vec<i32> = world.seats.iter().map(|seat| seat.gold).collect();
+        let tower = world.spawn_unit(tower_def(1), Team::Dire, Vec2::from_ints(5000, 5000));
+        world.settle();
+        world.health.insert(tower, health(0));
+        let mut events = Vec::new();
+        world.bury(vec![(tower, Some(striker))], &mut events);
+        let gold: Vec<i32> = world
+            .seats
+            .iter()
+            .zip(&before)
+            .map(|(seat, was)| seat.gold - was)
+            .collect();
+        let last_hit = gold[0] - team;
+        assert!((range.min..=range.max).contains(&last_hit), "{gold:?}");
+        assert_eq!(paid(&events), Some(gold[0]), "the event tells both");
+        assert_eq!(gold[1], team, "an ally anywhere gets the team bounty");
+        assert_eq!(gold[2], 0, "the side that lost it gets nothing");
+        seen.push(last_hit);
+    }
+    assert!(seen.iter().any(|&g| g != seen[0]), "the last hit is drawn");
+    let (mut world, tower) = a_tower_and_three_seats();
+    world.health.insert(tower, health(0));
+    let denier = world.seats[2].unit.expect("seated");
+    let mut events = Vec::new();
+    world.bury(vec![(tower, Some(denier))], &mut events);
+    let gold: Vec<i32> = world.seats.iter().map(|seat| seat.gold).collect();
+    assert_eq!(gold, vec![team / 2; 3], "a deny pays every seat half");
+    assert_eq!(paid(&events), Some(team / 2));
+}
+
+/// A Dire tier-one tower, two Radiant seats (the first beside it, the
+/// second across the map) and the Dire seat that owns it, all with no gold.
+fn a_tower_and_three_seats() -> (World, crate::game::Entity) {
+    let mut world = World::new();
+    let tower = world.spawn_unit(tower_def(1), Team::Dire, Vec2::from_ints(5000, 5000));
+    seat_hero(&mut world, 0, Team::Radiant, Vec2::from_ints(5300, 5000));
+    seat_hero(
+        &mut world,
+        1,
+        Team::Radiant,
+        Vec2::from_ints(15_000, 15_000),
+    );
+    seat_hero(&mut world, 2, Team::Dire, Vec2::from_ints(4700, 5000));
+    world.settle();
+    world.health.insert(tower, health(0));
+    (world, tower)
 }

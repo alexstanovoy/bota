@@ -395,9 +395,9 @@ const PINS: [Pinned; 7] = [
             (13500, 0x673f_5d09_78b8_6e1c, 0xc73f_33bf_be6f_8db3),
             (15000, 0xa1da_6ecf_25ad_325b, 0x9aec_f40b_755e_1999),
             (16500, 0x0c65_85d4_24f4_40ff, 0xa036_b5b2_41db_4d2a),
-            (18000, 0x6233_ad1e_6aa8_093c, 0x1c1d_1d75_4f45_920a),
+            (18000, 0x9e00_427e_56fb_8edf, 0xe404_d44e_5eb2_ab6c),
         ],
-        last: 0xf25e_2f1c_a7f6_a653,
+        last: 0x4536_13a5_d541_bd4f,
     },
     Pinned {
         map: MapId(1),

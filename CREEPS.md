@@ -479,6 +479,13 @@ next shot cutting the 0.4 s backswing short; range and acquisition 700;
 missile 750; turn rate 1; vision 1900 by day. Damage is drawn per shot, as a
 creep's is. Tier 4's armour from standing barracks is not modelled.
 
+**Bounty.** A tower's fall pays a **team bounty** — 90 / 110 / 125 / 145 by
+tier — to every hero of the side that brought it down, living or dead, whoever
+struck last (a creep included). The hero that struck last is paid a draw from
+110–130 / 130–150 / 150–170 / 170–190 on top. A **deny** pays half the team
+bounty to every hero of **both** sides (Dota pays 62.5 at tier 3; bota pays
+whole gold, 62) and no last-hit gold. No experience.
+
 ---
 
 ## Not yet modelled

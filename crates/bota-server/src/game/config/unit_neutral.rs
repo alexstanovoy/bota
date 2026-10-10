@@ -131,6 +131,7 @@ const NEUTRAL_BASE: UnitDef = UnitDef {
     invulnerable: false,
     ancient: false,
     bounty_gold: GoldRange::ZERO,
+    bounty_team: 0,
     bounty_xp: 0,
     per_level: Growth {
         attributes: Attributes::ZERO,

@@ -42,12 +42,13 @@ impl World {
         if def.max_mana > 0 {
             self.mana.insert(entity, Mana { mana: Fixed::ZERO });
         }
-        if def.bounty_gold.max > 0 || def.bounty_xp > 0 {
+        if def.bounty_gold.max > 0 || def.bounty_xp > 0 || def.bounty_team > 0 {
             self.bounty.insert(
                 entity,
                 Bounty {
                     gold: def.bounty_gold,
                     bonus: 0,
+                    team: def.bounty_team,
                     xp: def.bounty_xp,
                 },
             );

@@ -1151,7 +1151,8 @@ the order kills happen in is already deterministic, and a stream of its own leav
 other purpose's sequence where it was. A range of one amount — a tower, a barracks, a
 hero's head — draws nothing, so only what Dota randomises spends draws. Upgrades move
 both ends of the range (and add their experience) once, as the creep spawns, which is
-also when Dota fixes them. The midpoints the ranges replace paid ranged creeps 47
+also when Dota fixes them. A tower adds a team bounty that does not depend on who struck
+last, so it is a field of its own on the `Bounty` rather than a second range. The midpoints the ranges replace paid ranged creeps 47
 against a mean of 47.5, and paid a flagbearer and every upgraded creep as if it had
 never been upgraded: `Growth::gold` and `Growth::xp` were computed and dropped.
 

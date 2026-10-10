@@ -482,7 +482,11 @@ fn map2_cap_tick_completes_orders_gold_waves_and_tower_death_before_drawing() {
             .held()
             .any(|stack| stack.id == boots)
     );
-    assert_eq!(world.seats[0].gold, gold - cost + 1);
+    // A second of passive gold, and the fallen tower's team bounty.
+    assert_eq!(
+        world.seats[0].gold,
+        gold - cost + 1 + rules::TOWER_TIER_TEAM_BOUNTY[0]
+    );
     let plan = wave_plan(FINAL_WAVE);
     let creeps = world
         .entities

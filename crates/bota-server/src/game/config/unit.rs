@@ -104,6 +104,9 @@ pub struct UnitDef {
     pub ancient: bool,
     /// Gold killing it pays.
     pub bounty_gold: GoldRange,
+    /// Gold its fall pays every seat of the side that brought it down, half
+    /// to every seat of both sides on a deny. Zero for whatever pays none.
+    pub bounty_team: i32,
     /// Experience killing it pays.
     pub bounty_xp: i32,
     /// What each level past the first adds.
@@ -157,6 +160,7 @@ const NOTHING: UnitDef = UnitDef {
     invulnerable: false,
     ancient: false,
     bounty_gold: GoldRange::ZERO,
+    bounty_team: 0,
     bounty_xp: 0,
     per_level: NO_GROWTH,
     per_upgrade: NO_GROWTH,
@@ -579,7 +583,8 @@ const fn tower_of(index: usize) -> UnitDef {
         vision: rules::TOWER_VISION,
         collision: rules::TOWER_COLLISION,
         bound: rules::TOWER_BOUND,
-        bounty_gold: GoldRange::exactly(rules::TOWER_TIER_BOUNTY[index]),
+        bounty_gold: rules::TOWER_TIER_BOUNTY[index],
+        bounty_team: rules::TOWER_TIER_TEAM_BOUNTY[index],
         ..NOTHING
     }
 }
