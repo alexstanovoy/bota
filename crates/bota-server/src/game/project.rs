@@ -148,8 +148,8 @@ impl World {
         let lane = is_lane_creep(kind)
             .then(|| self.lane_ai.get(entity))
             .flatten();
-        let drawn = is_lane_creep(kind) || kind == UnitKind::Tower;
-        let draw_cooldown = if drawn {
+        let own_hero = kind == UnitKind::Hero && (viewer.is_none() || self.own_to(viewer, entity));
+        let draw_cooldown = if own_hero || kind == UnitKind::Tower {
             self.orders.get(entity).map_or(0, |orders| orders.cooldown)
         } else {
             0

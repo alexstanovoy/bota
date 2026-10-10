@@ -1224,7 +1224,8 @@ describing a different item from the one drawn in it.
 
 Every unit that fights of its own accord holds a target, and a lane creep holds
 timers on it: the hold an attack order puts on it, the chase it keeps up after
-a target that left its reach, and the wait before an order may draw it again.
+a target that left its reach; a hero holds the wait before its attack order
+may draw creeps again, and a tower the wait before an order may draw it.
 A player reads all of it off the screen — the creep turns, walks and swings at
 somebody, and the click that drew it was the player's own or happened in
 plain view — so a bot is told it too, as `WorldView::aggro`: one `AggroView`
@@ -1237,7 +1238,7 @@ for every carried unit that has anything to say, sorted by `EntityId`.
 | `swing` | `Option<SwingView { target: EntityId, strike_in: u32 }>` | the swing in its windup, and in how many ticks it strikes at the current attack speed (at least 1) |
 | `hold_left` | `u32` | ticks a lane creep keeps its target whatever else turns up, after an attack order drew it |
 | `chase_left` | `u32` | ticks a lane creep keeps after a target out of its attack range while nothing else is within its acquisition; full while the target is in reach, zero when set on nobody |
-| `draw_cooldown` | `u32` | ticks before an enemy hero's attack order may draw this lane creep or tower again |
+| `draw_cooldown` | `u32` | a hero, to its own side only: ticks before its attack order may draw lane creeps again; a tower: ticks before an enemy hero's order may draw it again; zero for anything else |
 | `returning` | `bool` | a neutral walks back to its camp and takes nothing on |
 
 A unit without an entry is set on nobody, is not swinging and holds no timer.

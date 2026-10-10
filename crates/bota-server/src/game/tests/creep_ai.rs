@@ -343,18 +343,45 @@ fn a_second_click_inside_the_wait_pulls_nothing() {
     stop_click(&mut world);
     held_in_place(&mut world, theirs, rules::ORDER_AGGRO_HOLD_TICKS + 2);
     assert_eq!(world.target_of(theirs), Some(ours), "it let go");
-    assert!(
-        world
-            .orders
-            .get(theirs)
-            .is_some_and(|orders| orders.cooldown > 0),
-        "and the wait before it answers again still runs"
-    );
-    attack_click(&mut world, theirs);
+    attack_click(&mut world, foe);
     assert_eq!(
         world.target_of(theirs),
         Some(ours),
         "so a second click inside that wait pulls nothing"
+    );
+}
+
+#[test]
+fn the_wait_is_the_heros_and_starts_with_no_creep_near() {
+    // Liquipedia: the 3 s cooldown always triggers, even with no creeps
+    // nearby, and each hero keeps its own.
+    let (mut world, hero, theirs, ours, foe) = a_lane_with_a_hero(700);
+    attack_click(&mut world, foe);
+    assert_eq!(world.target_of(theirs), Some(ours), "too far to hear it");
+    stop_click(&mut world);
+    let near = Vec2::from_ints(5000 + 700 - 300, 5000);
+    let walk_in = |world: &mut World| {
+        if let Some(at) = world.transform.get_mut(hero) {
+            at.pos = near;
+        }
+    };
+    walk_in(&mut world);
+    attack_click(&mut world, foe);
+    assert_eq!(
+        world.target_of(theirs),
+        Some(ours),
+        "near now, but the far click started the hero's wait"
+    );
+    stop_click(&mut world);
+    for _ in 0..rules::ORDER_AGGRO_COOLDOWN_TICKS {
+        world.step();
+        walk_in(&mut world);
+    }
+    attack_click(&mut world, foe);
+    assert_eq!(
+        world.target_of(theirs),
+        Some(hero),
+        "once it has run out, the next click pulls"
     );
 }
 

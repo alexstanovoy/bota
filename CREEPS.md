@@ -178,7 +178,10 @@ attack happens or not and however far the ordered target is:
   Last, not struck off — with nobody else in range the hero is taken again in
   the same tick, so the creep is never left standing with no target.
 - an attack order on an enemy **creep** is a last hit and moves nobody
-- **3 s cooldown** per creep on both
+- **3 s cooldown on the ordering hero**: an order at an enemy hero draws
+  creeps only when that hero's own cooldown has run out, and starts it again
+  whether or not a creep was near to hear it, so a click from far away spends
+  it. Letting go never waits. Each hero keeps its own.
 - the switch **holds for 2.3 s** (`ORDER_AGGRO_HOLD_TICKS`, 69 ticks, the
   figure Liquipedia gives), and this hold is
   the only thing that makes a hero target stick at all. When it runs out the
@@ -190,8 +193,8 @@ attack happens or not and however far the ordered target is:
 its own — draws the lane creeps of the other side within **500** of the
 attacker onto it. It starts no cooldown and holds nobody: the creep goes back to
 its own ranking the next tick, so in practice it pulls only a creep with
-nothing else in its attack range. It never overrides a running order hold or
-cooldown. Liquipedia does not say whether a creep that cannot see the attacker
+nothing else in its attack range. It never overrides a running order hold, and
+a hero whose order cooldown runs draws nobody this way either. Liquipedia does not say whether a creep that cannot see the attacker
 is drawn; bota draws only creeps whose side sees it **[approximation]**. An
 attack from the fog therefore draws nobody until its first strike has shown the
 attacker (below), and from then on every swing does.
@@ -461,14 +464,11 @@ barracks and fountains are 144, the Ancients 299 (Radiant) and 374 (Dire).
 7. **No invisibility, untargetability or disarm.** The flee on damage from an
    invisible unit and the untargetable rules of §1.6, and the disarm rule of
    §1.4, have nothing to act on.
-8. **Order aggro cools down per creep.** Liquipedia keeps the 3 s cooldown on
-   the ordering hero (it starts even with no creep near); bota keeps it on
-   each creep drawn.
-9. **Spells draw creeps.** `rouse_by_cast` answers a unit-target spell at an
+8. **Spells draw creeps.** `rouse_by_cast` answers a unit-target spell at an
    enemy hero like an attack order; Liquipedia says lane creeps ignore casts.
-10. **Super and mega creeps** carry pre-7.41 numbers: Liquipedia lists super
-    melee 36–44 damage, super ranged 41–46, mega melee 1270 health and 96–104
-    damage, mega ranged 1015 and 131–136; bota has 41–49, 46–51 and mega as a
-    faster-swinging super.
-11. **Flying attackers never miss uphill.** 7.41 lets units with free movement
+9. **Super and mega creeps** carry pre-7.41 numbers: Liquipedia lists super
+   melee 36–44 damage, super ranged 41–46, mega melee 1270 health and 96–104
+   damage, mega ranged 1015 and 131–136; bota has 41–49, 46–51 and mega as a
+   faster-swinging super.
+10. **Flying attackers never miss uphill.** 7.41 lets units with free movement
     miss uphill too.

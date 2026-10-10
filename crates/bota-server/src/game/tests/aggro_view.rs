@@ -62,11 +62,21 @@ fn a_draw_is_told_to_both_sides_and_runs_out_on_the_wire() {
         "both sides see the same creep fight the same hero"
     );
     assert!(0 < drawn.hold_left && drawn.hold_left <= rules::ORDER_AGGRO_HOLD_TICKS);
-    assert!(drawn.hold_left < drawn.draw_cooldown);
-    assert!(drawn.draw_cooldown <= rules::ORDER_AGGRO_COOLDOWN_TICKS);
+    assert_eq!(drawn.draw_cooldown, 0, "a creep keeps no wait of its own");
+    let wait = |world: &World, side| {
+        told_of(&received(world, Some(side)), hero).map_or(0, |entry| entry.draw_cooldown)
+    };
+    assert!(drawn.hold_left < wait(&world, Team::Radiant));
+    assert!(wait(&world, Team::Radiant) <= rules::ORDER_AGGRO_COOLDOWN_TICKS);
+    assert_eq!(
+        wait(&world, Team::Dire),
+        0,
+        "the hero's wait is its own side's"
+    );
     stop_click(&mut world);
     let mut last = told_of(&received(&world, Some(Team::Radiant)), theirs).expect("held");
     while last.hold_left > 0 {
+        let waited = wait(&world, Team::Radiant);
         assert_eq!(last.target, Some(wire_id(hero)), "the hold keeps the hero");
         step_held(&mut world, theirs);
         let now = told_of(&received(&world, Some(Team::Radiant)), theirs).expect("held");
@@ -76,9 +86,9 @@ fn a_draw_is_told_to_both_sides_and_runs_out_on_the_wire() {
             "the hold counts down a tick a tick"
         );
         assert_eq!(
-            now.draw_cooldown,
-            last.draw_cooldown - 1,
-            "so does the wait"
+            wait(&world, Team::Radiant),
+            waited - 1,
+            "so does the hero's wait"
         );
         last = now;
     }

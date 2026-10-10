@@ -53,6 +53,11 @@ impl World {
     }
 
     /// Puts a call out to everything that can hear it.
+    ///
+    /// A call on reaches the lane creeps only when the orderer's own
+    /// [`rules::ORDER_AGGRO_COOLDOWN_TICKS`] has run out, and starts it again
+    /// whether or not a creep was near to hear it. Letting go waits on
+    /// nothing, and towers keep their own wait.
     fn rouse_with(&mut self, orderer: Entity, call: Call) {
         if self.kind.get(orderer) != Some(&UnitKind::Hero) {
             return;
@@ -63,16 +68,36 @@ impl World {
         ) else {
             return;
         };
+        let creeps_hear = match call {
+            Call::On => self.start_draw_cooldown(orderer),
+            Call::Off => true,
+        };
         for entity in self.entities.iter().collect::<Vec<_>>() {
             if self.team.get(entity).copied() == Some(side) || !self.can_attack(entity) {
                 continue;
             }
             if self.lane_ai.get(entity).is_some() {
-                self.rouse_creep(entity, orderer, at, call);
+                if creeps_hear {
+                    self.rouse_creep(entity, orderer, at, call);
+                }
             } else if self.kind.get(entity) == Some(&UnitKind::Tower) {
                 self.rouse_tower(entity, orderer, call);
             }
         }
+    }
+
+    /// Starts a hero's wait before its attack orders may draw lane creeps
+    /// again, unless one is already running. Answers whether it was free to
+    /// draw them.
+    fn start_draw_cooldown(&mut self, hero: Entity) -> bool {
+        let Some(orders) = self.orders.get_mut(hero) else {
+            return false;
+        };
+        if orders.cooldown > 0 {
+            return false;
+        }
+        orders.cooldown = rules::ORDER_AGGRO_COOLDOWN_TICKS;
+        true
     }
 
     /// Draws the lane creeps around a hero that begins a swing at a hero
@@ -80,12 +105,13 @@ impl World {
     ///
     /// Every lane creep not of the swinger's side within
     /// [`rules::HERO_AGGRO_RANGE`] that sees it and may be called on yet
-    /// takes it as its target, unless an attack order holds the creep or its
-    /// cooldown still runs. Nothing is held and no cooldown starts: the
-    /// creep goes back to its own ranking the tick after.
+    /// takes it as its target, unless an attack order holds the creep or the
+    /// swinger's own order wait still runs. Nothing is held and no wait
+    /// starts: the creep goes back to its own ranking the tick after.
     pub fn rouse_by_swing(&mut self, swinger: Entity, mark: Entity) {
         if self.kind.get(swinger) != Some(&UnitKind::Hero)
             || self.kind.get(mark) != Some(&UnitKind::Hero)
+            || self.orders.get(swinger).is_some_and(|o| o.cooldown > 0)
         {
             return;
         }
@@ -107,10 +133,8 @@ impl World {
                 .transform
                 .get(creep)
                 .is_some_and(|t| t.pos.within(at, reach));
-            let cooling = self.orders.get(creep).is_some_and(|o| o.cooldown > 0);
             if theirs == side
                 || !near
-                || cooling
                 || self.tick < ai.keep_until
                 || !self.can_attack(creep)
                 || !self.can_see(theirs, swinger)
