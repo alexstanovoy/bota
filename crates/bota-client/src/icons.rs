@@ -73,12 +73,70 @@ pub fn pixels(art: &[u8]) -> Option<(u32, u32, Vec<u8>)> {
     Some((w, h, bytes))
 }
 
+/// The drawing of an item, an SVG file, by the item's id.
+pub fn item_art(id: u16) -> Option<&'static [u8]> {
+    Some(match id {
+        0 => include_bytes!("../assets/items/boots.svg"),
+        1 => include_bytes!("../assets/items/clarity.svg"),
+        2 => include_bytes!("../assets/items/healing_salve.svg"),
+        3 => include_bytes!("../assets/items/iron_branch.svg"),
+        4 => include_bytes!("../assets/items/observer_ward.svg"),
+        5 => include_bytes!("../assets/items/quelling_blade.svg"),
+        6 => include_bytes!("../assets/items/sentry_ward.svg"),
+        7 => include_bytes!("../assets/items/tango.svg"),
+        8 => include_bytes!("../assets/items/town_portal_scroll.svg"),
+        9 => include_bytes!("../assets/items/circlet.svg"),
+        10 => include_bytes!("../assets/items/gauntlets.svg"),
+        11 => include_bytes!("../assets/items/slippers.svg"),
+        12 => include_bytes!("../assets/items/mantle.svg"),
+        13 => include_bytes!("../assets/items/belt.svg"),
+        14 => include_bytes!("../assets/items/band.svg"),
+        15 => include_bytes!("../assets/items/robe.svg"),
+        16 => include_bytes!("../assets/items/ogre_axe.svg"),
+        17 => include_bytes!("../assets/items/blade_of_alacrity.svg"),
+        18 => include_bytes!("../assets/items/staff_of_wizardry.svg"),
+        19 => include_bytes!("../assets/items/gloves.svg"),
+        20 => include_bytes!("../assets/items/blades_of_attack.svg"),
+        21 => include_bytes!("../assets/items/broadsword.svg"),
+        22 => include_bytes!("../assets/items/quarterstaff.svg"),
+        23 => include_bytes!("../assets/items/ring_of_protection.svg"),
+        24 => include_bytes!("../assets/items/chainmail.svg"),
+        25 => include_bytes!("../assets/items/ring_of_regen.svg"),
+        26 => include_bytes!("../assets/items/sages_mask.svg"),
+        27 => include_bytes!("../assets/items/vitality_booster.svg"),
+        28 => include_bytes!("../assets/items/energy_booster.svg"),
+        29 => include_bytes!("../assets/items/power_treads.svg"),
+        30 => include_bytes!("../assets/items/phase_boots.svg"),
+        31 => include_bytes!("../assets/items/blink_dagger.svg"),
+        32 => include_bytes!("../assets/items/bracer.svg"),
+        33 => include_bytes!("../assets/items/wraith_band.svg"),
+        34 => include_bytes!("../assets/items/null_talisman.svg"),
+        35 => include_bytes!("../assets/items/magic_stick.svg"),
+        36 => include_bytes!("../assets/items/magic_wand.svg"),
+        37 => include_bytes!("../assets/items/recipe.svg"),
+        38 => include_bytes!("../assets/items/recipe.svg"),
+        39 => include_bytes!("../assets/items/recipe.svg"),
+        40 => include_bytes!("../assets/items/recipe.svg"),
+        41 => include_bytes!("../assets/items/recipe.svg"),
+        42 => include_bytes!("../assets/items/mango.svg"),
+        43 => include_bytes!("../assets/items/eaglesong.svg"),
+        44 => include_bytes!("../assets/items/claymore.svg"),
+        45 => include_bytes!("../assets/items/talisman_of_evasion.svg"),
+        46 => include_bytes!("../assets/items/butterfly.svg"),
+        47 => include_bytes!("../assets/items/javelin.svg"),
+        48 => include_bytes!("../assets/items/demon_edge.svg"),
+        49 => include_bytes!("../assets/items/blitz_knuckles.svg"),
+        50 => include_bytes!("../assets/items/recipe.svg"),
+        51 => include_bytes!("../assets/items/monkey_king_bar.svg"),
+        52 => include_bytes!("../assets/items/wind_lace.svg"),
+        53 => include_bytes!("../assets/items/blood_grenade.svg"),
+        _ => return None,
+    })
+}
+
 /// Draws an item's icon to fill a box, or reports that there is none to draw.
 pub fn draw_item_icon(id: u16, x: f32, y: f32, w: f32, h: f32) -> bool {
-    let Some(texture) = crate::catalog::item(id)
-        .map(|face| face.icon)
-        .and_then(icon)
-    else {
+    let Some(texture) = item_art(id).and_then(icon) else {
         return false;
     };
     draw_texture_ex(

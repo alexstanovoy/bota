@@ -5,7 +5,7 @@
 
 use bota_proto::{PlayerView, SlotId, Team};
 
-use crate::slots::BAG_SLOTS;
+use bota_client_core::BAG_SLOTS;
 
 /// A screen-space rectangle.
 #[derive(Clone, Copy, Debug, PartialEq)]

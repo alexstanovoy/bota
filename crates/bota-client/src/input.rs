@@ -1,17 +1,15 @@
 //! Keys and mouse into orders and camera motion.
 
-use bota_proto::{
-    AbilitySlot, Aim, ClientMsg, EntityId, Fixed, HeroId, ItemId, ItemSlot, Order, SlotId, Target,
-    Team, UnitKind, Vec2, WorldView,
-};
+use bota_client_core::{Intent, Slot};
 use macroquad::prelude::*;
 
 use crate::camera::MAP_SIZE;
-use crate::slots::{Press, Slot, order_for, press};
-use crate::state::{App, Phase, Pin, Source, Tap};
+use bota_client_core::{Phase, Pin, Source};
+
+use crate::gui::Gui;
 
 /// Handles one frame of input.
-pub fn handle(app: &mut App) {
+pub fn handle(app: &mut Gui) {
     if console_controls(app) {
         return;
     }
@@ -64,28 +62,14 @@ pub fn handle(app: &mut App) {
 
 /// Moves a live spectator on to the next eyes to watch through: everything,
 /// then each seat in turn.
-fn next_eyes(app: &mut App) {
-    let seats: Vec<SlotId> = app
-        .view
-        .as_ref()
-        .map(|view| view.players.iter().map(|player| player.slot).collect())
-        .unwrap_or_default();
-    app.eyes = match app.eyes {
-        None => seats.first().copied(),
-        Some(current) => seats
-            .iter()
-            .position(|slot| *slot == current)
-            .and_then(|at| seats.get(at + 1))
-            .copied(),
-    };
-    let seat = app.eyes;
-    app.source.send(&ClientMsg::ViewAs { seat });
+fn next_eyes(app: &mut Gui) {
+    app.act(Intent::NextEyes);
 }
 
 /// Opens the console line on Enter and, while it is open, types into it.
 /// Enter sends what was typed, Escape drops it. Returns whether the console
 /// took the frame's keys, so typing never doubles as hotkeys.
-fn console_controls(app: &mut App) -> bool {
+fn console_controls(app: &mut Gui) -> bool {
     let Some(line) = app.console.as_mut() else {
         if app.phase == Phase::Playing && app.my_slot.is_some() && is_key_pressed(KeyCode::Enter) {
             app.console = Some(String::new());
@@ -108,17 +92,14 @@ fn console_controls(app: &mut App) -> bool {
     }
     if is_key_pressed(KeyCode::Enter) {
         let line = app.console.take().unwrap_or_default();
-        match crate::console::parse(&line) {
-            Ok(order) => app.send_order(order),
-            Err(why) => app.reject = Some((why, 2.5)),
-        }
+        app.act(Intent::Console(line));
     }
     true
 }
 
 /// Handles clicks landing on the HUD. Returns whether one did, so a click on
 /// a panel never doubles as an order into the world behind it.
-fn ui_clicks(app: &mut App) -> bool {
+fn ui_clicks(app: &mut Gui) -> bool {
     let left = is_mouse_button_pressed(MouseButton::Left);
     let right = is_mouse_button_pressed(MouseButton::Right);
     let released = is_mouse_button_released(MouseButton::Left);
@@ -145,9 +126,7 @@ fn ui_clicks(app: &mut App) -> bool {
         if left {
             // The body a seat last stood in, so a hero in the fog or one
             // that has fallen is still something to pick.
-            let body = app.body_of(slot);
-            let again = app.tapped_twice(Tap::Seat(slot));
-            app.choose(body, again);
+            app.act(Intent::SelectSeat(slot));
         }
         return true;
     }
@@ -172,18 +151,13 @@ fn ui_clicks(app: &mut App) -> bool {
 
 /// A click on the minimap at a world point: right click orders a move there,
 /// A-click an attack-move, a plain left click sends the camera.
-fn minimap_click(app: &mut App, left: bool, right: bool, wx: f32, wy: f32) {
-    let ground = world_vec(wx, wy);
+fn minimap_click(app: &mut Gui, left: bool, right: bool, wx: f32, wy: f32) {
     let commands = app.controls_selection() && app.my_hero().is_some();
     if right && commands {
-        app.send_order(Order::Move {
-            target: Target::Pos(ground),
-        });
+        app.act(Intent::MoveTo((wx, wy)));
     } else if left && app.attack_move_armed && commands {
         app.attack_move_armed = false;
-        app.send_order(Order::Attack {
-            target: Target::Pos(ground),
-        });
+        app.act(Intent::AttackMoveTo((wx, wy)));
     } else if left {
         // Sending the camera somewhere lets go of what carried it, or it
         // would be pulled straight back.
@@ -195,7 +169,7 @@ fn minimap_click(app: &mut App, left: bool, right: bool, wx: f32, wy: f32) {
 
 /// Handles a click on the slot boxes or the open shop of a selection this
 /// seat drives. Returns whether one landed there.
-fn panel_clicks(app: &mut App, left: bool, right: bool, mx: f32, my: f32) -> bool {
+fn panel_clicks(app: &mut Gui, left: bool, right: bool, mx: f32, my: f32) -> bool {
     let (sw, sh) = (screen_width(), screen_height());
     let panel = crate::hud::bottom_panel(sw, sh);
     // Only the boxes this unit actually carries: the rest are not drawn,
@@ -226,10 +200,11 @@ fn panel_clicks(app: &mut App, left: bool, right: bool, mx: f32, my: f32) -> boo
         return false;
     }
     if left {
-        for (id, rect) in crate::hud::shop_rows(&shop, crate::catalog::ITEMS.len(), app.shop_scroll)
+        for (id, rect) in
+            crate::hud::shop_rows(&shop, bota_client_core::ITEMS.len(), app.shop_scroll)
         {
             if rect.contains(mx, my) {
-                app.send_order(Order::Buy { item: ItemId(id) });
+                app.act(Intent::Buy(id));
             }
         }
     }
@@ -257,7 +232,7 @@ fn item_box_under(mx: f32, my: f32, sw: f32, sh: f32) -> Option<u8> {
 /// portrait it is handed over, and over the open world it is put out of the
 /// bag: into an allied bag under the cursor, or onto the ground. The rest of
 /// the HUD swallows the drop.
-fn finish_item_drag(app: &mut App, mx: f32, my: f32, sw: f32, sh: f32) {
+fn finish_item_drag(app: &mut Gui, mx: f32, my: f32, sw: f32, sh: f32) {
     let Some(from) = app.held_item.take() else {
         return;
     };
@@ -267,19 +242,14 @@ fn finish_item_drag(app: &mut App, mx: f32, my: f32, sw: f32, sh: f32) {
             // that slot and nothing more.
             do_press(app, Slot::Item(from), false);
         } else {
-            app.send_order(Order::Swap {
-                from: ItemSlot(from),
-                to: ItemSlot(to),
-            });
+            app.act(Intent::Swap { from, to });
         }
         return;
     }
     if app.shop_open {
         let shop = crate::hud::shop_panel(sw, sh);
         if crate::hud::sell_strip(&shop).contains(mx, my) {
-            app.send_order(Order::Sell {
-                slot: ItemSlot(from),
-            });
+            app.act(Intent::Sell(from));
             return;
         }
         if shop.contains(mx, my) {
@@ -295,33 +265,18 @@ fn finish_item_drag(app: &mut App, mx: f32, my: f32, sw: f32, sh: f32) {
     {
         return;
     }
-    // Over the open world. What the stash holds stays put: it is a shelf at
-    // the shop, not a pair of hands.
-    if from >= crate::slots::BAG_SLOTS {
-        return;
-    }
+    // Over the open world.
     let (wx, wy) = app.camera.screen_to_world(mx, my, sw, sh);
-    // Whoever the panel is about is the one that puts: the courier lays its
-    // own load out the same way the hero does. Its own body under the cursor
-    // reads as the ground at its feet.
-    let carrier = app.commanded();
-    let target = app
-        .view
-        .as_ref()
-        .and_then(|view| unit_under_cursor(view, wx, wy, carrier, true))
-        .filter(|id| takes_a_handover(app, *id))
-        .map(Target::Unit)
-        .unwrap_or(Target::Pos(world_vec(wx, wy)));
-    app.send_order(Order::Put {
-        slot: ItemSlot(from),
-        target,
+    app.act(Intent::PutAt {
+        slot: from,
+        at: (wx, wy),
     });
 }
 
 /// A drop on a portrait: on an ally's, a bag item is handed to that seat's
-/// body wherever it stands, the walk being the server's business. Returns
-/// whether the drop landed on a portrait at all.
-fn drop_on_portrait(app: &mut App, from: u8, mx: f32, my: f32, sw: f32) -> bool {
+/// body wherever it stands. Returns whether the drop landed on a portrait at
+/// all.
+fn drop_on_portrait(app: &mut Gui, from: u8, mx: f32, my: f32, sw: f32) -> bool {
     let Some(view) = &app.view else {
         return false;
     };
@@ -331,87 +286,42 @@ fn drop_on_portrait(app: &mut App, from: u8, mx: f32, my: f32, sw: f32) -> bool 
     else {
         return false;
     };
-    let ally = view
-        .players
-        .iter()
-        .find(|p| p.slot == seat)
-        .is_some_and(|p| Some(p.team) == app.my_team());
-    if from < crate::slots::BAG_SLOTS
-        && ally
-        && let Some(body) = app.body_of(seat)
-    {
-        app.send_order(Order::Put {
-            slot: ItemSlot(from),
-            target: Target::Unit(body),
-        });
-    }
+    app.act(Intent::HandTo { slot: from, seat });
     true
-}
-
-/// Whether a unit is one an item can be handed to: an allied hero or courier.
-fn takes_a_handover(app: &App, id: EntityId) -> bool {
-    let Some(view) = &app.view else {
-        return false;
-    };
-    view.units.iter().find(|u| u.id == id).is_some_and(|u| {
-        Some(u.team) == app.my_team() && matches!(u.kind, UnitKind::Hero | UnitKind::Courier)
-    })
 }
 
 /// A free left click picks what it lands on, whatever that is; the ground
 /// picks nothing. A second click on the same one pins the camera to it.
-fn selection_clicks(app: &mut App) {
+fn selection_clicks(app: &mut Gui) {
     if !is_mouse_button_pressed(MouseButton::Left) {
         return;
     }
     let (sx, sy) = mouse_position();
-    let (wx, wy) = app
+    let at = app
         .camera
         .screen_to_world(sx, sy, screen_width(), screen_height());
-    let Some(view) = &app.view else {
-        return;
-    };
-    let hit = unit_under_cursor(view, wx, wy, None, false);
-    let again = hit.is_some_and(|id| app.tapped_twice(Tap::Unit(id)));
-    app.choose(hit, again);
+    app.act(Intent::SelectAt(at));
 }
 
 /// How near an edge the cursor drives the camera that way, in pixels.
 const EDGE_MARGIN: f32 = 6.0;
 
-/// Which ability of a courier fetches the stash.
-const TAKE_STASH: u16 = 10;
-
 /// F1 picks one's own hero and F2 one's own courier; pressed twice, either
 /// one pins the camera to what it picked. F3 sends the courier for the stash
 /// without looking away from the fight, and picks nothing.
-fn pick_controls(app: &mut App) {
+fn pick_controls(app: &mut Gui) {
     if is_key_pressed(KeyCode::F1) {
-        let hero = app.my_hero();
-        let again = app.tapped_twice(Tap::Hero);
-        app.choose(hero, again);
+        app.act(Intent::SelectHero);
     }
-    if is_key_pressed(KeyCode::F2)
-        && let Some(courier) = app.my_courier()
-    {
-        let again = app.tapped_twice(Tap::Courier);
-        app.choose(Some(courier), again);
+    if is_key_pressed(KeyCode::F2) {
+        app.act(Intent::SelectCourier);
     }
-    if is_key_pressed(KeyCode::F3)
-        && let Some(courier) = app.my_courier()
-        && let Some(slot) = app.courier_slot(TAKE_STASH)
-    {
-        app.send_order_to(
-            Some(courier),
-            Order::Cast {
-                slot: AbilitySlot(slot),
-                target: Target::None,
-            },
-        );
+    if is_key_pressed(KeyCode::F3) {
+        app.act(Intent::CourierDeliver);
     }
 }
 
-fn lobby_controls(app: &mut App) {
+fn lobby_controls(app: &mut Gui) {
     let picks = [
         KeyCode::Key1,
         KeyCode::Key2,
@@ -423,23 +333,19 @@ fn lobby_controls(app: &mut App) {
         for (id, key) in picks
             .into_iter()
             .enumerate()
-            .take(crate::catalog::HEROES.len())
+            .take(bota_client_core::HEROES.len())
         {
             if is_key_pressed(key) {
-                app.source.send(&ClientMsg::PickHero {
-                    hero: HeroId(id as u16),
-                });
+                app.act(Intent::PickHero(id as u16));
             }
         }
     }
     if app.my_slot.is_some() && is_key_pressed(KeyCode::R) {
-        app.ready = !app.ready;
-        let ready = app.ready;
-        app.source.send(&ClientMsg::SetReady(ready));
+        app.act(Intent::ToggleReady);
     }
 }
 
-fn camera_controls(app: &mut App) {
+fn camera_controls(app: &mut Gui) {
     let (_, wheel) = mouse_wheel();
     if wheel != 0.0 {
         // Over the shop the wheel runs the catalog; anywhere else it zooms.
@@ -447,7 +353,7 @@ fn camera_controls(app: &mut App) {
         let (mx, my) = mouse_position();
         let shop = crate::hud::shop_panel(sw, sh);
         if app.shop_open && shop.contains(mx, my) {
-            let end = crate::hud::shop_scroll_end(&shop, crate::catalog::ITEMS.len());
+            let end = crate::hud::shop_scroll_end(&shop, bota_client_core::ITEMS.len());
             app.shop_scroll = if wheel > 0.0 {
                 app.shop_scroll.saturating_sub(1)
             } else {
@@ -523,25 +429,25 @@ pub fn edge_of(mx: f32, my: f32, sw: f32, sh: f32, pan: f32) -> (f32, f32) {
     push
 }
 
-fn replay_controls(app: &mut App) {
-    let Source::Replay(player) = &mut app.source else {
+fn replay_controls(app: &mut Gui) {
+    if !matches!(app.source, Source::Replay(_)) {
         return;
-    };
+    }
     if is_key_pressed(KeyCode::Space) {
-        player.paused = !player.paused;
+        app.act(Intent::TogglePause);
     }
     if is_key_pressed(KeyCode::Equal) || is_key_pressed(KeyCode::KpAdd) {
-        player.speed = (player.speed * 2.0).min(16.0);
+        app.act(Intent::Faster);
     }
     if is_key_pressed(KeyCode::Minus) || is_key_pressed(KeyCode::KpSubtract) {
-        player.speed = (player.speed / 2.0).max(0.25);
+        app.act(Intent::Slower);
     }
-    if player.paused && is_key_pressed(KeyCode::Period) {
-        player.advance_ticks(1.0);
+    if is_key_pressed(KeyCode::Period) {
+        app.act(Intent::Step);
     }
 }
 
-fn order_controls(app: &mut App) {
+fn order_controls(app: &mut Gui) {
     if app.my_hero().is_none() || !app.controls_selection() {
         return;
     }
@@ -551,15 +457,11 @@ fn order_controls(app: &mut App) {
     if is_key_pressed(KeyCode::S) {
         app.attack_move_armed = false;
         app.aiming = None;
-        app.send_order(Order::Move {
-            target: Target::None,
-        });
+        app.act(Intent::Stop);
     }
     if is_key_pressed(KeyCode::H) {
         app.attack_move_armed = false;
-        app.send_order(Order::Attack {
-            target: Target::None,
-        });
+        app.act(Intent::Hold);
     }
     ability_keys(app);
     item_keys(app);
@@ -570,118 +472,25 @@ fn order_controls(app: &mut App) {
     if is_mouse_button_pressed(MouseButton::Left) {
         // A slot taken up spends the next left click, on the ground or on a
         // unit.
-        if let Some(slot) = app.aiming {
-            app.aiming = None;
-            spend_aim(app, slot, wx, wy);
+        if app.aiming.is_some() {
+            app.act(Intent::Aimed((wx, wy)));
             return;
         }
         if app.attack_move_armed {
             app.attack_move_armed = false;
-            attack_move_click(app, wx, wy);
+            app.act(Intent::AttackAt((wx, wy)));
             return;
         }
     }
     if is_mouse_button_pressed(MouseButton::Right) {
         app.attack_move_armed = false;
         app.aiming = None;
-        right_click(app, wx, wy);
+        app.act(Intent::Smart((wx, wy)));
     }
-}
-
-/// Sends the order of a slot taken up at what the click at a world point
-/// landed on.
-fn spend_aim(app: &mut App, slot: Slot, wx: f32, wy: f32) {
-    let target = match app.aim_in(slot) {
-        // A tree and a landing spot are both named by the ground under
-        // the cursor; which one was meant is the server's to settle.
-        Some(Aim::Point | Aim::Tree | Aim::Building) => Some(Target::Pos(world_vec(wx, wy))),
-        // One's own hero is a target like any other here: a salve is
-        // drunk by clicking the one drinking it.
-        Some(Aim::Unit) => app
-            .view
-            .as_ref()
-            .and_then(|view| unit_under_cursor(view, wx, wy, None, true))
-            .map(Target::Unit),
-        Some(Aim::Own) | None => Some(Target::None),
-    };
-    if let Some(target) = target {
-        app.aimed_from = Some((app.seq + 1, slot));
-        app.send_order(order_for(slot, target));
-    }
-}
-
-/// An armed attack-move click at a world point. A unit under the cursor
-/// takes the attack order itself: on an ally this is the aggro-drop click.
-/// Near an enemy the order sticks to it.
-fn attack_move_click(app: &mut App, wx: f32, wy: f32) {
-    let me = app.my_hero();
-    let target = app.view.as_ref().and_then(|view| {
-        unit_under_cursor(view, wx, wy, me, true)
-            .or_else(|| enemy_near_cursor(view, wx, wy, app.my_team()))
-    });
-    let target = match target {
-        Some(target) => Target::Unit(target),
-        None => Target::Pos(world_vec(wx, wy)),
-    };
-    app.send_order(Order::Attack { target });
-}
-
-/// A right click at a world point: an enemy under the cursor is attacked,
-/// one of this side's own is followed, an item lying there is picked up,
-/// open ground is walked to. Near an enemy the click still attacks it.
-/// Denying is the attack click's business.
-fn right_click(app: &mut App, wx: f32, wy: f32) {
-    let Some(view) = &app.view else {
-        app.send_order(Order::Move {
-            target: Target::Pos(world_vec(wx, wy)),
-        });
-        return;
-    };
-    let order = match unit_under_cursor(view, wx, wy, app.my_hero(), true) {
-        Some(target) => {
-            let own = view
-                .units
-                .iter()
-                .find(|unit| unit.id == target)
-                .is_some_and(|unit| Some(unit.team) == app.my_team());
-            if own {
-                Order::Move {
-                    target: Target::Unit(target),
-                }
-            } else {
-                Order::Attack {
-                    target: Target::Unit(target),
-                }
-            }
-        }
-        None => match loot_under_cursor(view, wx, wy) {
-            Some(item) => Order::Take {
-                target: Target::Unit(item),
-            },
-            None => match enemy_near_cursor(view, wx, wy, app.my_team()) {
-                Some(mark) => Order::Attack {
-                    target: Target::Unit(mark),
-                },
-                None => Order::Move {
-                    target: Target::Pos(world_vec(wx, wy)),
-                },
-            },
-        },
-    };
-    app.send_order(order);
-}
-
-/// The ground item nearest the cursor, if the cursor is close enough.
-pub fn loot_under_cursor(view: &WorldView, wx: f32, wy: f32) -> Option<EntityId> {
-    nearest(
-        wx,
-        wy,
-        view.loot.iter().map(|lying| (lying.id, lying.pos, 35.0)),
-    )
 }
 
 /// The number keys use the six inventory slots.
-fn item_keys(app: &mut App) {
+fn item_keys(app: &mut Gui) {
     let keys = [
         KeyCode::Key1,
         KeyCode::Key2,
@@ -697,27 +506,19 @@ fn item_keys(app: &mut App) {
     }
 }
 
-/// Answers a press of one slot, by key or by click. What a press means is
-/// [`press`].
-pub fn do_press(app: &mut App, slot: Slot, ctrl: bool) {
-    match press(app, slot, ctrl) {
-        Press::Send(order) => {
-            app.aiming = None;
-            app.aimed_from = Some((app.seq + 1, slot));
-            app.send_order(order);
-        }
-        Press::Aim(slot) => {
-            app.attack_move_armed = false;
-            app.aiming = Some(slot);
-        }
-        Press::Nothing => {}
+/// Answers a press of one slot, by key or by click: an aimed slot is taken
+/// up and disarms a pending attack-move.
+pub fn do_press(app: &mut Gui, slot: Slot, ctrl: bool) {
+    app.act(Intent::Press { slot, ctrl });
+    if app.aiming.is_some() {
+        app.attack_move_armed = false;
     }
 }
 
 /// Q, W, E, R, T and G cast the slots of whatever is selected; with Control
 /// held they spend a skill point instead. One that is aimed arms and waits
 /// for a click. Nothing is sent for a unit this seat does not drive.
-fn ability_keys(app: &mut App) {
+fn ability_keys(app: &mut Gui) {
     let keys = [
         (KeyCode::Q, 0u8),
         (KeyCode::W, 1),
@@ -734,77 +535,5 @@ fn ability_keys(app: &mut App) {
         if is_key_pressed(key) {
             do_press(app, Slot::Ability(slot), ctrl);
         }
-    }
-}
-
-/// The clickable unit nearest the cursor, if the cursor is close enough.
-///
-/// `exclude` names a unit that never matches. `for_orders` skips fountains,
-/// which selection still picks.
-pub fn unit_under_cursor(
-    view: &WorldView,
-    wx: f32,
-    wy: f32,
-    exclude: Option<EntityId>,
-    for_orders: bool,
-) -> Option<EntityId> {
-    let clickable = view
-        .units
-        .iter()
-        .filter(|u| Some(u.id) != exclude && !(for_orders && u.kind == UnitKind::Fountain))
-        .map(|u| (u.id, u.pos, u.collision.to_f32().max(20.0) + 15.0));
-    nearest(wx, wy, clickable)
-}
-
-/// How far past a body's edge an attack click still sticks to it, in world
-/// units.
-const ATTACK_SNAP: f32 = 25.0;
-
-/// The enemy nearest the cursor within the attack snap, if one is that near.
-///
-/// Fountains never stick. An order at one of this side's own (a follow, an
-/// aggro drop or a deny) takes a click on the body itself.
-pub fn enemy_near_cursor(
-    view: &WorldView,
-    wx: f32,
-    wy: f32,
-    mine: Option<Team>,
-) -> Option<EntityId> {
-    let enemies = view
-        .units
-        .iter()
-        .filter(|u| u.kind != UnitKind::Fountain && Some(u.team) != mine)
-        .map(|u| (u.id, u.pos, u.collision.to_f32() + ATTACK_SNAP));
-    nearest(wx, wy, enemies)
-}
-
-/// The candidate nearest a world point among those within their own reach of
-/// it, the first one listed on a tie.
-fn nearest(
-    wx: f32,
-    wy: f32,
-    candidates: impl Iterator<Item = (EntityId, Vec2, f32)>,
-) -> Option<EntityId> {
-    let mut best: Option<(f32, EntityId)> = None;
-    for (id, pos, reach) in candidates {
-        let dx = pos.x.to_f32() - wx;
-        let dy = pos.y.to_f32() - wy;
-        let dist = (dx * dx + dy * dy).sqrt();
-        if dist <= reach && best.is_none_or(|(b, _)| dist < b) {
-            best = Some((dist, id));
-        }
-    }
-    best.map(|(_, id)| id)
-}
-
-/// A world position as the wire carries it.
-pub fn world_vec(x: f32, y: f32) -> Vec2 {
-    Vec2 {
-        x: Fixed {
-            raw: (x * 65536.0) as i32,
-        },
-        y: Fixed {
-            raw: (y * 65536.0) as i32,
-        },
     }
 }

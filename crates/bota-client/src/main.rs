@@ -4,16 +4,11 @@
 //! `World`.
 
 mod camera;
-mod catalog;
-mod console;
+mod gui;
 mod hud;
 mod icons;
 mod input;
-mod net;
 mod render;
-mod replay_play;
-mod slots;
-mod state;
 
 #[cfg(test)]
 mod tests;
@@ -24,9 +19,9 @@ use bota_proto::{ClientMsg, Role};
 use clap::Parser;
 use macroquad::prelude::{Conf, KeyCode, get_frame_time, is_key_pressed, next_frame};
 
-use crate::net::Net;
-use crate::replay_play::ReplayPlayer;
-use crate::state::{App, Source};
+use bota_client_core::{Net, ReplayPlayer, Source};
+
+use crate::gui::Gui;
 
 /// bota client: rendering, input, spectating and replays.
 #[derive(Parser, Debug)]
@@ -74,13 +69,10 @@ async fn main() {
     };
     loop {
         let dt = get_frame_time();
-        let msgs = app.source.poll(dt);
-        for msg in msgs {
-            app.handle(msg);
-        }
+        app.pump(dt);
+        // The debug viewer plays no sound.
+        app.cues.clear();
         input::handle(&mut app);
-        app.check_connection();
-        app.tick_effects(dt);
         render::draw(&app);
         if app.quit {
             return;
@@ -100,10 +92,10 @@ async fn replay_open_error(error: &str) {
     }
 }
 
-fn build_app(args: &Args) -> std::io::Result<App> {
+fn build_app(args: &Args) -> std::io::Result<Gui> {
     if let Some(path) = &args.replay {
         let player = ReplayPlayer::load(path)?;
-        return Ok(App::new(Source::Replay(Box::new(player))));
+        return Ok(Gui::new(Source::Replay(Box::new(player))));
     }
     let mut net = Net::connect(&args.addr)?;
     let role = if args.spectate {
@@ -115,5 +107,5 @@ fn build_app(args: &Args) -> std::io::Result<App> {
         role,
         name: args.name.clone(),
     });
-    Ok(App::new(Source::Live(net)))
+    Ok(Gui::new(Source::Live(net)))
 }

@@ -8,7 +8,9 @@ use macroquad::prelude::*;
 
 use crate::camera::MAP_SIZE;
 use crate::hud::UiRect;
-use crate::state::{App, FloaterKind, Phase, Source};
+use bota_client_core::{FloaterKind, Phase, Source};
+
+use crate::gui::Gui;
 
 const BACKGROUND: Color = Color::new(0.07, 0.08, 0.10, 1.0);
 const GROUND: Color = Color::new(0.12, 0.14, 0.13, 1.0);
@@ -29,7 +31,7 @@ fn team_color(team: Team) -> Color {
 const PANEL_EDGE: Color = Color::new(0.4, 0.4, 0.4, 1.0);
 
 /// Ticks in one second of the match, never zero.
-fn tick_rate(app: &App) -> u32 {
+fn tick_rate(app: &Gui) -> u32 {
     u32::from(app.tick_rate.max(1))
 }
 
@@ -65,7 +67,7 @@ fn draw_panel(r: &UiRect, fill: Color) {
 }
 
 /// Draws one frame.
-pub fn draw(app: &App) {
+pub fn draw(app: &Gui) {
     if let Source::Replay(player) = &app.source
         && app.view.is_none()
     {
@@ -123,7 +125,7 @@ pub fn draw_replay_error(error: &str) {
     center_text_at("[Esc] close", middle + 48.0, 20.0, GRAY);
 }
 
-fn draw_lobby(app: &App) {
+fn draw_lobby(app: &Gui) {
     let x = 60.0;
     let mut y = 80.0;
     draw_text("bota", x, y, 48.0, WHITE);
@@ -142,7 +144,7 @@ fn draw_lobby(app: &App) {
     draw_text(hint, x, y, 24.0, GRAY);
     y += 40.0;
     if app.my_slot.is_some() {
-        let roster = crate::catalog::HEROES
+        let roster = bota_client_core::HEROES
             .iter()
             .enumerate()
             .map(|(id, hero)| format!("{}: {}", id + 1, hero.name))
@@ -160,7 +162,7 @@ fn draw_lobby(app: &App) {
         };
         let hero = slot
             .hero
-            .and_then(|hero| crate::catalog::hero(hero.0))
+            .and_then(|hero| bota_client_core::hero(hero.0))
             .map_or(String::new(), |hero| format!(" as {}", hero.name));
         let line = format!("{:?} seat {}: {holder}{hero}", slot.team, slot.slot.0);
         let mine = app.my_slot == Some(slot.slot);
@@ -175,7 +177,7 @@ const TREE: Color = Color::new(0.16, 0.30, 0.16, 1.0);
 const TREE_RADIUS: f32 = 48.0;
 
 /// The terrain texture, baked from the MatchStart cells on first use.
-fn terrain_texture(app: &App) -> Option<Texture2D> {
+fn terrain_texture(app: &Gui) -> Option<Texture2D> {
     thread_local! {
         static BAKED: std::cell::RefCell<Option<Texture2D>> = const { std::cell::RefCell::new(None) };
     }
@@ -209,111 +211,44 @@ fn terrain_texture(app: &App) -> Option<Texture2D> {
     })
 }
 
-/// One viewer of the client's own fog: position, vision radius, ground tier.
-struct FogViewer {
-    x: f32,
-    y: f32,
-    radius: f32,
-    tier: u8,
-}
-
-/// Everything the client-side fog needs for one frame.
-struct Fog<'a> {
-    n: usize,
-    terrain: &'a [u8],
-    opaque: &'a [u64],
-    viewers: Vec<FogViewer>,
-}
-
-impl Fog<'_> {
-    fn gather<'a>(app: &'a App, view: &WorldView) -> Option<Fog<'a>> {
-        let team = app.fog_team()?;
-        if app.terrain_cells == 0 {
-            return None;
-        }
-        let viewers = view
-            .units
-            .iter()
-            .filter(|u| u.team == team && u.vision_radius.to_f32() > 0.0)
-            .map(|u| {
-                let (x, y) = (u.pos.x.to_f32(), u.pos.y.to_f32());
-                FogViewer {
-                    x,
-                    y,
-                    radius: u.vision_radius.to_f32(),
-                    tier: tier_at(app, x, y),
-                }
-            })
-            .collect();
-        Some(Fog {
-            n: app.terrain_cells,
-            terrain: &app.terrain,
-            opaque: &app.opaque,
-            viewers,
-        })
+/// The cells of the terrain lit for the fog's side, one per cell row-major
+/// from the south-west, worked out once a tick; absent when the client sees
+/// everything.
+fn lit_cells(app: &Gui, view: &WorldView) -> Option<std::rc::Rc<Vec<bool>>> {
+    thread_local! {
+        static LIT: std::cell::RefCell<Option<(u32, std::rc::Rc<Vec<bool>>)>> =
+            const { std::cell::RefCell::new(None) };
     }
-
-    fn opaque_at(&self, cx: usize, cy: usize) -> bool {
-        let idx = cy * self.n + cx;
-        self.opaque[idx / 64] & (1 << (idx % 64)) != 0
-    }
-
-    /// Whether any viewer lights a terrain cell: within radius, on ground
-    /// at least as high, with no opaque cell across the sight line.
-    fn lit(&self, cx: usize, cy: usize) -> bool {
-        let px = cx as f32 * 64.0 + 32.0;
-        let py = cy as f32 * 64.0 + 32.0;
-        let cell_tier = self.terrain[cy * self.n + cx] & 0x1f;
-        'viewers: for v in &self.viewers {
-            let (dx, dy) = (px - v.x, py - v.y);
-            if dx * dx + dy * dy > v.radius * v.radius || cell_tier > v.tier {
-                continue;
-            }
-            let len = dx.abs().max(dy.abs());
-            let steps = ((len / 32.0) as i32 + 1).max(1);
-            let from_cell = ((v.x / 64.0) as usize, (v.y / 64.0) as usize);
-            for i in 1..steps {
-                let sx = v.x + dx * i as f32 / steps as f32;
-                let sy = v.y + dy * i as f32 / steps as f32;
-                let sc = ((sx / 64.0) as usize, (sy / 64.0) as usize);
-                if sc == from_cell || sc == (cx, cy) {
-                    continue;
-                }
-                if sc.0 >= self.n
-                    || sc.1 >= self.n
-                    || self.opaque_at(sc.0, sc.1)
-                    || self.terrain[sc.1 * self.n + sc.0] & 0x1f > v.tier
-                {
-                    continue 'viewers;
-                }
-            }
-            return true;
-        }
-        false
-    }
-}
-
-/// The ground tier under a world position.
-fn tier_at(app: &App, x: f32, y: f32) -> u8 {
+    let team = app.fog_team()?;
     let n = app.terrain_cells;
-    let cx = (x / 64.0) as usize;
-    let cy = (y / 64.0) as usize;
-    if n == 0 || cx >= n || cy >= n {
-        return 0;
+    if n == 0 {
+        return None;
     }
-    app.terrain[cy * n + cx] & 0x1f
+    LIT.with(|slot| {
+        let mut slot = slot.borrow_mut();
+        if let Some((tick, lit)) = &*slot
+            && *tick == view.tick
+        {
+            return Some(lit.clone());
+        }
+        let mut lit = vec![false; n * n];
+        bota_client_core::light(app, view, team, &mut lit);
+        let lit = std::rc::Rc::new(lit);
+        *slot = Some((view.tick, lit.clone()));
+        Some(lit)
+    })
 }
 
 const FOG_SHADE: Color = Color::new(0.0, 0.0, 0.02, 0.52);
 
 /// Shades the unseen ground of the minimap. The mask is rebuilt every few
 /// frames; between rebuilds the last texture is reused.
-fn draw_minimap_fog(app: &App, view: &WorldView, r: &UiRect) {
+fn draw_minimap_fog(app: &Gui, view: &WorldView, r: &UiRect) {
     thread_local! {
         static CACHE: std::cell::RefCell<Option<(u32, Texture2D)>> =
             const { std::cell::RefCell::new(None) };
     }
-    let Some(fog) = Fog::gather(app, view) else {
+    let Some(lit) = lit_cells(app, view) else {
         return;
     };
     CACHE.with(|slot| {
@@ -324,12 +259,12 @@ fn draw_minimap_fog(app: &App, view: &WorldView, r: &UiRect) {
             None => true,
         };
         if stale {
-            let n = fog.n;
+            let n = app.terrain_cells;
             let mut img =
                 Image::gen_image_color(n as u16, n as u16, Color::new(0.0, 0.0, 0.0, 0.0));
             for cy in 0..n {
                 for cx in 0..n {
-                    if !fog.lit(cx, cy) {
+                    if !lit[cy * n + cx] {
                         img.set_pixel(cx as u32, (n - 1 - cy) as u32, FOG_SHADE);
                     }
                 }
@@ -345,20 +280,21 @@ fn draw_minimap_fog(app: &App, view: &WorldView, r: &UiRect) {
 }
 
 /// Shades the unseen ground of the visible part of the world.
-fn draw_world_fog(app: &App, view: &WorldView, sw: f32, sh: f32) {
-    let Some(fog) = Fog::gather(app, view) else {
+fn draw_world_fog(app: &Gui, view: &WorldView, sw: f32, sh: f32) {
+    let Some(lit) = lit_cells(app, view) else {
         return;
     };
+    let n = app.terrain_cells;
     let (wx0, wy1) = app.camera.screen_to_world(0.0, 0.0, sw, sh);
     let (wx1, wy0) = app.camera.screen_to_world(sw, sh, sw, sh);
     let c0 = ((wx0 / 64.0).floor().max(0.0)) as usize;
-    let c1 = (((wx1 / 64.0).ceil()) as usize).min(fog.n - 1);
+    let c1 = (((wx1 / 64.0).ceil()) as usize).min(n - 1);
     let r0 = ((wy0 / 64.0).floor().max(0.0)) as usize;
-    let r1 = (((wy1 / 64.0).ceil()) as usize).min(fog.n - 1);
+    let r1 = (((wy1 / 64.0).ceil()) as usize).min(n - 1);
     let cell_px = 64.0 * app.camera.zoom;
     for cy in r0..=r1 {
         for cx in c0..=c1 {
-            if !fog.lit(cx, cy) {
+            if !lit[cy * n + cx] {
                 let (x, y) =
                     app.camera
                         .world_to_screen(cx as f32 * 64.0, cy as f32 * 64.0 + 64.0, sw, sh);
@@ -368,7 +304,7 @@ fn draw_world_fog(app: &App, view: &WorldView, sw: f32, sh: f32) {
     }
 }
 
-fn draw_world(app: &App, view: &WorldView) {
+fn draw_world(app: &Gui, view: &WorldView) {
     let (sw, sh) = (screen_width(), screen_height());
     let to_screen = |wx: f32, wy: f32| app.camera.world_to_screen(wx, wy, sw, sh);
     draw_ground(app, view, to_screen);
@@ -396,7 +332,7 @@ fn draw_world(app: &App, view: &WorldView) {
 }
 
 /// The terrain and the trees standing on it.
-fn draw_ground(app: &App, view: &WorldView, to_screen: impl Fn(f32, f32) -> (f32, f32)) {
+fn draw_ground(app: &Gui, view: &WorldView, to_screen: impl Fn(f32, f32) -> (f32, f32)) {
     let (x0, y0) = to_screen(0.0, MAP_SIZE);
     let (x1, y1) = to_screen(MAP_SIZE, 0.0);
     match terrain_texture(app) {
@@ -421,7 +357,7 @@ fn draw_ground(app: &App, view: &WorldView, to_screen: impl Fn(f32, f32) -> (f32
 
 /// The numbers and words rising off units: a crit bigger and red, a miss
 /// small and pale, the rest in the plain damage colour.
-fn draw_floaters(app: &App, to_screen: impl Fn(f32, f32) -> (f32, f32)) {
+fn draw_floaters(app: &Gui, to_screen: impl Fn(f32, f32) -> (f32, f32)) {
     for f in &app.floaters {
         let (x, y) = to_screen(f.world.0, f.world.1);
         let rise = f.age * 40.0;
@@ -429,6 +365,10 @@ fn draw_floaters(app: &App, to_screen: impl Fn(f32, f32) -> (f32, f32)) {
         let (size, color) = match f.kind {
             FloaterKind::Crit => (26.0, Color::new(1.0, 0.35, 0.2, alpha)),
             FloaterKind::Miss => (16.0, Color::new(0.75, 0.75, 0.8, alpha)),
+            FloaterKind::Magic => (18.0, Color::new(0.7, 0.6, 1.0, alpha)),
+            FloaterKind::Gold => (18.0, Color::new(1.0, 0.82, 0.3, alpha)),
+            FloaterKind::Deny => (24.0, Color::new(0.6, 0.85, 1.0, alpha)),
+            FloaterKind::Heal => (16.0, Color::new(0.45, 1.0, 0.5, alpha)),
             FloaterKind::Damage | FloaterKind::Level => (18.0, Color::new(1.0, 0.9, 0.6, alpha)),
         };
         draw_text(&f.text, x + 10.0, y - 14.0 - rise, size, color);
@@ -448,7 +388,7 @@ const ATTACK_ORDER: Color = Color::new(0.95, 0.35, 0.30, 1.0);
 ///
 /// A seat knows its own orders, a spectator those of the seat it watches
 /// through, and a replay every seat's.
-fn draw_orders(app: &App, view: &WorldView, to_screen: impl Fn(f32, f32) -> (f32, f32)) {
+fn draw_orders(app: &Gui, view: &WorldView, to_screen: impl Fn(f32, f32) -> (f32, f32)) {
     for shown in &app.shown_orders {
         let age = view.tick.saturating_sub(shown.tick);
         if age > ORDER_SHOWN_TICKS {
@@ -496,7 +436,7 @@ fn draw_orders(app: &App, view: &WorldView, to_screen: impl Fn(f32, f32) -> (f32
 /// Whom the commanded unit fights, and who fights it: a thin line from each
 /// attacker to its target in the attacker's colour, drawn thicker while the
 /// attacker is in the windup of a swing at it.
-fn draw_aggro(app: &App, view: &WorldView, to_screen: impl Fn(f32, f32) -> (f32, f32)) {
+fn draw_aggro(app: &Gui, view: &WorldView, to_screen: impl Fn(f32, f32) -> (f32, f32)) {
     let Some(focus) = app.commanded() else {
         return;
     };
@@ -522,7 +462,7 @@ fn draw_aggro(app: &App, view: &WorldView, to_screen: impl Fn(f32, f32) -> (f32,
 
 /// What a slot taken up is being aimed at: how far it reaches, and what the
 /// cursor is over. A target out of reach is drawn in the colour of a refusal.
-fn draw_aim(app: &App, view: &WorldView, to_screen: impl Fn(f32, f32) -> (f32, f32)) {
+fn draw_aim(app: &Gui, view: &WorldView, to_screen: impl Fn(f32, f32) -> (f32, f32)) {
     let Some(slot) = app.aiming else {
         return;
     };
@@ -580,13 +520,13 @@ const AIM_BAD: Color = Color::new(0.95, 0.35, 0.30, 0.95);
 /// Rings the unit under the cursor as a target: `within` says whether a world
 /// point is in reach.
 fn draw_aimed_unit(
-    app: &App,
+    app: &Gui,
     view: &WorldView,
     (wx, wy): (f32, f32),
     within: impl Fn(f32, f32) -> bool,
     to_screen: impl Fn(f32, f32) -> (f32, f32),
 ) {
-    let Some(mark) = crate::input::unit_under_cursor(view, wx, wy, None, true)
+    let Some(mark) = bota_client_core::unit_under_cursor(view, (wx, wy), None, true)
         .and_then(|id| view.units.iter().find(|u| u.id == id))
     else {
         return;
@@ -613,7 +553,7 @@ fn draw_crosshair(x: f32, y: f32, colour: Color) {
 }
 
 /// Whether a spot is within `reach` of a standing building of one's own side.
-fn near_a_building(app: &App, view: &WorldView, wx: f32, wy: f32, reach: f32) -> bool {
+fn near_a_building(app: &Gui, view: &WorldView, wx: f32, wy: f32, reach: f32) -> bool {
     let Some(side) = app.my_team() else {
         return false;
     };
@@ -632,7 +572,7 @@ fn near_a_building(app: &App, view: &WorldView, wx: f32, wy: f32, reach: f32) ->
 
 /// The ground a slot aimed at a building may be landed on: a ring round every
 /// building of one's own side that still stands.
-fn draw_landing_spots(app: &App, view: &WorldView, to_screen: impl Fn(f32, f32) -> (f32, f32)) {
+fn draw_landing_spots(app: &Gui, view: &WorldView, to_screen: impl Fn(f32, f32) -> (f32, f32)) {
     let Some(slot) = app.aiming else {
         return;
     };
@@ -660,7 +600,7 @@ fn draw_landing_spots(app: &App, view: &WorldView, to_screen: impl Fn(f32, f32) 
 
 /// Rings the standing tree nearest the cursor, within [`TREE_RADIUS`], while
 /// a slot aimed at a tree is taken up.
-fn draw_tree_pick(app: &App, view: &WorldView, to_screen: impl Fn(f32, f32) -> (f32, f32)) {
+fn draw_tree_pick(app: &Gui, view: &WorldView, to_screen: impl Fn(f32, f32) -> (f32, f32)) {
     let Some(slot) = app.aiming else {
         return;
     };
@@ -700,14 +640,14 @@ fn draw_tree_pick(app: &App, view: &WorldView, to_screen: impl Fn(f32, f32) -> (
 /// ability is given: a dot for a missile, a burst where a raze landed, a
 /// soul a requiem let fly, a link of a hook's chain, a hold on what a
 /// dismember eats, a cloud where a rot burns.
-fn draw_casts(app: &App, view: &WorldView, to_screen: &impl Fn(f32, f32) -> (f32, f32)) {
-    use crate::catalog::Art;
+fn draw_casts(app: &Gui, view: &WorldView, to_screen: &impl Fn(f32, f32) -> (f32, f32)) {
+    use bota_client_core::Art;
     let zoom = app.camera.zoom;
     for p in &view.projectiles {
         let (x, y) = to_screen(p.pos.x.to_f32(), p.pos.y.to_f32());
         let art = p
             .ability
-            .and_then(|id| crate::catalog::ability(id.0))
+            .and_then(|id| bota_client_core::ability(id.0))
             .map_or(Art::Missile, |face| face.art);
         match art {
             Art::Missile => draw_circle(x, y, 3.0, GOLD),
@@ -749,7 +689,7 @@ fn draw_casts(app: &App, view: &WorldView, to_screen: &impl Fn(f32, f32) -> (f32
     }
 }
 
-fn draw_unit(app: &App, u: &UnitView, mine: bool, to_screen: impl Fn(f32, f32) -> (f32, f32)) {
+fn draw_unit(app: &Gui, u: &UnitView, mine: bool, to_screen: impl Fn(f32, f32) -> (f32, f32)) {
     let (x, y) = to_screen(u.pos.x.to_f32(), u.pos.y.to_f32());
     let r = (u.collision.to_f32() * app.camera.zoom).max(4.0);
     let mut color = team_color(u.team);
@@ -821,7 +761,7 @@ fn draw_unit(app: &App, u: &UnitView, mine: bool, to_screen: impl Fn(f32, f32) -
 
 /// The shape of one unit by its kind, centred at `x`, `y` with hull radius
 /// `r` on the screen.
-fn draw_body(app: &App, u: &UnitView, mine: bool, (x, y, r): (f32, f32, f32), color: Color) {
+fn draw_body(app: &Gui, u: &UnitView, mine: bool, (x, y, r): (f32, f32, f32), color: Color) {
     match u.kind {
         // A building is drawn to the circle nothing walks into, with a dark
         // rim so it reads apart from a hero.
@@ -859,7 +799,7 @@ fn draw_body(app: &App, u: &UnitView, mine: bool, (x, y, r): (f32, f32, f32), co
     }
 }
 
-fn draw_hud(app: &App, view: &WorldView) {
+fn draw_hud(app: &Gui, view: &WorldView) {
     // A live spectator is told whose eyes it is watching through.
     if app.my_slot.is_none() && matches!(app.source, Source::Live(_)) {
         let eyes = match app.eyes {
@@ -917,7 +857,7 @@ fn draw_hud(app: &App, view: &WorldView) {
 }
 
 /// The game clock at the top middle, negative before the horn.
-fn draw_clock(app: &App, view: &WorldView) {
+fn draw_clock(app: &Gui, view: &WorldView) {
     let ticks = i64::from(view.tick) - i64::from(app.pregame_ticks);
     let seconds = ticks.div_euclid(i64::from(tick_rate(app)));
     let clock = format!(
@@ -932,7 +872,7 @@ fn draw_clock(app: &App, view: &WorldView) {
 
 /// The passing word of the moment: a refusal, the console line, an armed
 /// attack-move, the respawn wait and a lost connection.
-fn draw_notices(app: &App, view: &WorldView) {
+fn draw_notices(app: &Gui, view: &WorldView) {
     let panel = crate::hud::bottom_panel(screen_width(), screen_height());
     if let Some((reason, _)) = &app.reject {
         // Beside the panel, where the press was, rather than in the middle of
@@ -973,7 +913,7 @@ fn draw_notices(app: &App, view: &WorldView) {
     }
 }
 
-fn draw_top_panel(app: &App, view: &WorldView) {
+fn draw_top_panel(app: &Gui, view: &WorldView) {
     for (slot, rect) in crate::hud::top_portraits(&view.players, screen_width()) {
         let Some(p) = view.players.iter().find(|pl| pl.slot == slot) else {
             continue;
@@ -1010,7 +950,7 @@ fn draw_top_panel(app: &App, view: &WorldView) {
 /// How a seat's hero fares, at the foot of its portrait: a health bar while
 /// it is in view, a question mark while it stands out of view, the respawn
 /// wait over the whole portrait while it is down.
-fn draw_portrait_state(app: &App, view: &WorldView, p: &PlayerView, rect: &UiRect) {
+fn draw_portrait_state(app: &Gui, view: &WorldView, p: &PlayerView, rect: &UiRect) {
     if let Some(u) = p.unit.and_then(|id| view.units.iter().find(|u| u.id == id)) {
         let (x, y, w) = (rect.x + 2.0, rect.y + rect.h - 8.0, rect.w - 4.0);
         draw_rectangle(x, y, w, 6.0, HP_BACK);
@@ -1042,7 +982,7 @@ fn draw_portrait_state(app: &App, view: &WorldView, p: &PlayerView, rect: &UiRec
     }
 }
 
-fn draw_bottom_panel(app: &App, view: &WorldView) {
+fn draw_bottom_panel(app: &Gui, view: &WorldView) {
     let rect = crate::hud::bottom_panel(screen_width(), screen_height());
     draw_panel(&rect, Color::new(0.05, 0.06, 0.08, 0.92));
     let rate = tick_rate(app);
@@ -1091,7 +1031,7 @@ fn draw_bottom_panel(app: &App, view: &WorldView) {
 
 /// The bottom panel for a unit that is not a hero, last seen `stale` ticks
 /// ago.
-fn draw_unit_panel(app: &App, u: &UnitView, stale: u32, rect: &UiRect) {
+fn draw_unit_panel(app: &Gui, u: &UnitView, stale: u32, rect: &UiRect) {
     let rate = tick_rate(app);
     let title = format!("{:?} {}", u.team, kind_name(u.kind));
     draw_text(
@@ -1115,7 +1055,7 @@ fn draw_unit_panel(app: &App, u: &UnitView, stale: u32, rect: &UiRect) {
 }
 
 /// The seat's name, level, score and gold down the left of the panel.
-fn draw_seat_lines(app: &App, p: &PlayerView, x0: f32, y0: f32) {
+fn draw_seat_lines(app: &Gui, p: &PlayerView, x0: f32, y0: f32) {
     draw_text(app.seat_name(p.slot), x0, y0, 22.0, team_color(p.team));
     draw_text(format!("Level {}", p.level), x0, y0 + 22.0, 16.0, WHITE);
     draw_text(
@@ -1140,7 +1080,7 @@ fn draw_seat_lines(app: &App, p: &PlayerView, x0: f32, y0: f32) {
 /// What the bottom panel is about: the body it shows, what a fallen body left
 /// behind, and how many ticks ago the body was last seen.
 fn panel_subject<'a>(
-    app: &'a App,
+    app: &'a Gui,
     view: &'a WorldView,
 ) -> (Option<&'a UnitView>, Option<&'a Kit>, u32) {
     if let Some((unit, stale)) = app.selected.and_then(|id| app.known(id))
@@ -1175,7 +1115,7 @@ fn draw_stale(stale: u32, x: f32, y: f32, rate: u32) {
 }
 
 /// The minimap: terrain, every visible unit, the camera frame.
-fn draw_minimap(app: &App, view: &WorldView) {
+fn draw_minimap(app: &Gui, view: &WorldView) {
     let r = crate::hud::minimap(screen_height());
     let at = |wx: f32, wy: f32| (r.x + wx / MAP_SIZE * r.w, r.y + (1.0 - wy / MAP_SIZE) * r.h);
     match terrain_texture(app) {
@@ -1243,7 +1183,7 @@ fn draw_effects(unit: &UnitView, rect: &UiRect, rate: u32) {
     for (e, r) in unit.effects.iter().zip(boxes) {
         draw_rectangle(r.x, r.y, r.w, r.h, Color::new(0.08, 0.10, 0.14, 0.95));
         draw_rectangle_lines(r.x, r.y, r.w, r.h, 1.0, Color::new(0.7, 0.6, 0.2, 1.0));
-        let name = crate::catalog::effect(e.id.0).map_or("?", |face| face.name);
+        let name = bota_client_core::effect(e.id.0).map_or("?", |face| face.name);
         draw_text(name, r.x + 4.0, r.y + 15.0, 13.0, WHITE);
         // What is counted shows how many, what runs out shows how long, and
         // one that does both shows both.
@@ -1383,7 +1323,7 @@ pub fn ability_key(slot: usize) -> Option<&'static str> {
 }
 
 /// The frame round a slot, by what state it is in. A passive gets none.
-fn slot_frame(look: &crate::slots::Look, aiming: bool, refused: bool) -> Option<Color> {
+fn slot_frame(look: &bota_client_core::Look, aiming: bool, refused: bool) -> Option<Color> {
     if refused {
         return Some(Color::new(0.95, 0.35, 0.30, 1.0));
     }
@@ -1401,7 +1341,7 @@ fn slot_frame(look: &crate::slots::Look, aiming: bool, refused: bool) -> Option<
 
 /// Lays the shade of whatever keeps a slot from working over it: darker for
 /// nothing learned than for learned and not ready.
-fn shade_slot(look: &crate::slots::Look, x: f32, y: f32, w: f32, h: f32, rate: u32) {
+fn shade_slot(look: &bota_client_core::Look, x: f32, y: f32, w: f32, h: f32, rate: u32) {
     if !look.filled {
         return;
     }
@@ -1435,7 +1375,7 @@ fn kit_slots<'a>(
 
 /// The right of the bottom panel: the ability slots and the item slots.
 fn draw_slot_boxes(
-    app: &App,
+    app: &Gui,
     unit: Option<&UnitView>,
     kit: Option<&Kit>,
     rect: &UiRect,
@@ -1457,8 +1397,8 @@ fn draw_slot_boxes(
         let Some(a) = abilities.get(usize::from(slot)) else {
             continue;
         };
-        let this = crate::slots::Slot::Ability(slot);
-        let look = crate::slots::ability_look(Some(a), mana);
+        let this = bota_client_core::Slot::Ability(slot);
+        let look = bota_client_core::ability_look(Some(a), mana);
         let frame = slot_frame(&look, aiming == Some(this), refused == Some(this));
         let key = ability_key(usize::from(slot)).unwrap_or("");
         draw_ability_box(&r, key, a, &look, frame, rate, own);
@@ -1482,13 +1422,13 @@ fn draw_slot_boxes(
         let item = carried_items
             .get(usize::from(slot))
             .and_then(|s| s.as_ref());
-        let this = crate::slots::Slot::Item(slot);
+        let this = bota_client_core::Slot::Item(slot);
         draw_item_box(
             &r,
             item,
-            crate::slots::item_look(item, slot, mana),
+            bota_client_core::item_look(item, slot, mana),
             ItemBoxState {
-                backpack: slot >= crate::slots::INVENTORY_SLOTS,
+                backpack: slot >= bota_client_core::INVENTORY_SLOTS,
                 held: held == Some(slot),
                 aiming: aiming == Some(this),
                 refused: refused == Some(this),
@@ -1504,7 +1444,7 @@ fn draw_ability_box(
     r: &UiRect,
     key: &str,
     a: &AbilityView,
-    look: &crate::slots::Look,
+    look: &bota_client_core::Look,
     frame: Option<Color>,
     rate: u32,
     own: bool,
@@ -1515,7 +1455,7 @@ fn draw_ability_box(
         draw_rectangle_lines(cx, cy, cw, ch, 1.0, frame);
     }
     draw_text(key, cx + 4.0, cy + 16.0, 16.0, WHITE);
-    let name = crate::catalog::ability(a.id.0).map_or("?", |face| face.name);
+    let name = bota_client_core::ability(a.id.0).map_or("?", |face| face.name);
     draw_text(name, cx + 2.0, cy + 28.0, 11.0, LIGHTGRAY);
     if a.level > 0 && a.mana_cost > 0 {
         draw_text(
@@ -1554,7 +1494,7 @@ struct ItemBoxState {
 fn draw_item_box(
     r: &UiRect,
     item: Option<&ItemView>,
-    look: crate::slots::Look,
+    look: bota_client_core::Look,
     state: ItemBoxState,
     rate: u32,
 ) {
@@ -1580,7 +1520,7 @@ fn draw_item_box(
         return;
     };
     if !crate::icons::draw_item_icon(item.id.0, r.x + 1.0, r.y + 1.0, r.w - 2.0, r.h - 2.0) {
-        let name = crate::catalog::item(item.id.0).map_or("?", |face| face.name);
+        let name = bota_client_core::item(item.id.0).map_or("?", |face| face.name);
         draw_text(name, r.x + 2.0, r.y + 16.0, 12.0, WHITE);
     }
     if let Some(charges) = item.charges.filter(|left| *left > 0) {
@@ -1619,7 +1559,7 @@ fn draw_item_box(
 }
 
 /// The item being dragged, riding under the cursor over the whole of the HUD.
-fn draw_held_item(app: &App) {
+fn draw_held_item(app: &Gui) {
     let Some(slot) = app.held_item else {
         return;
     };
@@ -1629,13 +1569,13 @@ fn draw_held_item(app: &App) {
     let (mx, my) = mouse_position();
     let (w, h) = (32.0, 26.0);
     if !crate::icons::draw_item_icon(item.id.0, mx - w / 2.0, my - h / 2.0, w, h) {
-        let name = crate::catalog::item(item.id.0).map_or("?", |face| face.name);
+        let name = bota_client_core::item(item.id.0).map_or("?", |face| face.name);
         draw_text(name, mx - w / 2.0, my + 4.0, 12.0, WHITE);
     }
 }
 
 /// The stash strip above the bottom panel, dimmed away from home.
-fn draw_stash(app: &App, view: &WorldView) {
+fn draw_stash(app: &Gui, view: &WorldView) {
     let panel = crate::hud::bottom_panel(screen_width(), screen_height());
     let rate = tick_rate(app);
     let Some(my) = app.my_slot else {
@@ -1653,12 +1593,12 @@ fn draw_stash(app: &App, view: &WorldView) {
         let item = p
             .stash
             .as_ref()
-            .and_then(|s| s.get(usize::from(slot - crate::slots::BAG_SLOTS)))
+            .and_then(|s| s.get(usize::from(slot - bota_client_core::BAG_SLOTS)))
             .and_then(|s| s.as_ref());
         draw_item_box(
             r,
             item,
-            crate::slots::item_look(item, *slot, mana),
+            bota_client_core::item_look(item, *slot, mana),
             ItemBoxState {
                 held: app.held_item == Some(*slot),
                 ..Default::default()
@@ -1672,7 +1612,7 @@ fn draw_stash(app: &App, view: &WorldView) {
 }
 
 /// The button toggling the shop panel.
-fn draw_shop_button(app: &App) {
+fn draw_shop_button(app: &Gui) {
     let r = crate::hud::shop_button(screen_width(), screen_height());
     let bg = if app.shop_open {
         Color::new(0.25, 0.22, 0.10, 0.95)
@@ -1686,7 +1626,7 @@ fn draw_shop_button(app: &App) {
 
 /// The shop panel. Open anywhere: purchases away from home land in the
 /// stash.
-fn draw_shop(app: &App, view: &WorldView) {
+fn draw_shop(app: &Gui, view: &WorldView) {
     let Some(my) = app.my_slot else {
         return;
     };
@@ -1706,8 +1646,8 @@ fn draw_shop(app: &App, view: &WorldView) {
         );
     }
     let gold = p.gold.unwrap_or(0);
-    let held = held_items(view, p);
-    for (id, r) in crate::hud::shop_rows(&shop, crate::catalog::ITEMS.len(), app.shop_scroll) {
+    let held = bota_client_core::held_items(view, p);
+    for (id, r) in crate::hud::shop_rows(&shop, bota_client_core::ITEMS.len(), app.shop_scroll) {
         draw_shop_row(app, id, &r, gold, &held);
     }
     let sell = crate::hud::sell_strip(&shop);
@@ -1723,11 +1663,11 @@ fn draw_shop(app: &App, view: &WorldView) {
 /// One shop row: the icon, the name, the stats and the price to a seat with
 /// `gold` holding `held`, beside the whole price when the parts in hand save
 /// some of it.
-fn draw_shop_row(app: &App, id: u16, r: &UiRect, gold: i32, held: &[ItemId]) {
-    let Some(face) = crate::catalog::item(id) else {
+fn draw_shop_row(app: &Gui, id: u16, r: &UiRect, gold: i32, held: &[ItemId]) {
+    let Some(face) = bota_client_core::item(id) else {
         return;
     };
-    let price = crate::catalog::price_for(&app.shop, ItemId(id), held);
+    let price = bota_client_core::price_for(&app.shop, ItemId(id), held);
     let color = if gold >= price { WHITE } else { GRAY };
     let icon = r.h - 4.0;
     let drawn = crate::icons::draw_item_icon(id, r.x + 2.0, r.y + 2.0, icon * 1.5, icon);
@@ -1738,7 +1678,7 @@ fn draw_shop_row(app: &App, id: u16, r: &UiRect, gold: i32, held: &[ItemId]) {
     };
     draw_text(face.name, text, r.y + 16.0, 15.0, color);
     draw_text(face.stats, text + 62.0, r.y + 16.0, 13.0, DARKGRAY);
-    let whole = crate::catalog::whole_price(&app.shop, ItemId(id));
+    let whole = bota_client_core::whole_price(&app.shop, ItemId(id));
     let shown = if price < whole {
         format!("{price} / {whole}")
     } else {
@@ -1748,29 +1688,11 @@ fn draw_shop_row(app: &App, id: u16, r: &UiRect, gold: i32, held: &[ItemId]) {
     draw_text(&shown, r.x + r.w - w - 4.0, r.y + 16.0, 14.0, GOLD);
 }
 
-/// Every item in a seat's hero's bag and in its stash that the seat bought
-/// and has not marked for sale, for [`price_for`].
-///
-/// [`price_for`]: crate::catalog::price_for
-pub(crate) fn held_items(view: &WorldView, p: &PlayerView) -> Vec<ItemId> {
-    let bag = p
-        .unit
-        .and_then(|id| view.units.iter().find(|u| u.id == id))
-        .map(|u| u.items.as_slice())
-        .unwrap_or_default();
-    bag.iter()
-        .chain(p.stash.iter().flatten())
-        .flatten()
-        .filter(|item| item.owner == p.slot && !item.for_sale)
-        .map(|item| item.id)
-        .collect()
-}
-
 /// A hover popup: its title and its lines.
 type Tip = (String, Vec<String>);
 
 /// The hover popup for whatever HUD element sits under the cursor.
-fn draw_tooltips(app: &App, view: &WorldView) {
+fn draw_tooltips(app: &Gui, view: &WorldView) {
     if app.held_item.is_some() {
         // Mid-drag the cursor means a drop spot, not a question.
         return;
@@ -1789,7 +1711,11 @@ fn draw_tooltips(app: &App, view: &WorldView) {
         .filter(|(_, r)| r.contains(mx, my))
         .find_map(|(slot, _)| {
             let item = carried.get(usize::from(slot)).copied().flatten()?;
-            Some(item_tip(&item, slot >= crate::slots::INVENTORY_SLOTS, rate))
+            Some(item_tip(
+                &item,
+                slot >= bota_client_core::INVENTORY_SLOTS,
+                rate,
+            ))
         });
     tip = item.or(tip);
     if app.controls_selection() {
@@ -1815,7 +1741,7 @@ fn draw_tooltips(app: &App, view: &WorldView) {
 
 /// The popup of one ability slot.
 fn ability_tip(slot: u8, a: &AbilityView, rate: u32) -> Tip {
-    let face = crate::catalog::ability(a.id.0);
+    let face = bota_client_core::ability(a.id.0);
     let name = face.map_or("?", |face| face.name);
     let mut lines = vec![face.map_or("", |face| face.blurb).to_string()];
     if a.level == 0 {
@@ -1832,7 +1758,7 @@ fn ability_tip(slot: u8, a: &AbilityView, rate: u32) -> Tip {
 }
 
 /// The popup of the seat's stash box under the cursor.
-fn stash_tip(app: &App, view: &WorldView, panel: &UiRect, (mx, my): (f32, f32)) -> Option<Tip> {
+fn stash_tip(app: &Gui, view: &WorldView, panel: &UiRect, (mx, my): (f32, f32)) -> Option<Tip> {
     let my_seat = app
         .my_slot
         .and_then(|s| view.players.iter().find(|p| p.slot == s));
@@ -1842,7 +1768,7 @@ fn stash_tip(app: &App, view: &WorldView, panel: &UiRect, (mx, my): (f32, f32)) 
         .filter(|(_, r)| r.contains(mx, my))
         .find_map(|(slot, _)| {
             let item = my_seat.and_then(|p| p.stash.as_ref()).and_then(|s| {
-                s.get(usize::from(slot - crate::slots::BAG_SLOTS))
+                s.get(usize::from(slot - bota_client_core::BAG_SLOTS))
                     .copied()
                     .flatten()
             })?;
@@ -1858,23 +1784,23 @@ fn stash_tip(app: &App, view: &WorldView, panel: &UiRect, (mx, my): (f32, f32)) 
 
 /// The popup of the shop row under the cursor: the blurb, what the parts in
 /// hand save, and where a purchase lands.
-fn shop_tip(app: &App, view: &WorldView, (mx, my): (f32, f32)) -> Option<Tip> {
+fn shop_tip(app: &Gui, view: &WorldView, (mx, my): (f32, f32)) -> Option<Tip> {
     let shop = crate::hud::shop_panel(screen_width(), screen_height());
     let held = app
         .my_slot
         .and_then(|slot| view.players.iter().find(|p| p.slot == slot))
-        .map_or_else(Vec::new, |p| held_items(view, p));
-    let (id, _) = crate::hud::shop_rows(&shop, crate::catalog::ITEMS.len(), app.shop_scroll)
+        .map_or_else(Vec::new, |p| bota_client_core::held_items(view, p));
+    let (id, _) = crate::hud::shop_rows(&shop, bota_client_core::ITEMS.len(), app.shop_scroll)
         .into_iter()
-        .find(|(id, r)| r.contains(mx, my) && crate::catalog::item(*id).is_some())?;
-    let face = crate::catalog::item(id)?;
+        .find(|(id, r)| r.contains(mx, my) && bota_client_core::item(*id).is_some())?;
+    let face = bota_client_core::item(id)?;
     let where_to = if app.at_home_shop() {
         "Click to buy."
     } else {
         "Click to buy into the stash."
     };
-    let price = crate::catalog::price_for(&app.shop, ItemId(id), &held);
-    let whole = crate::catalog::whole_price(&app.shop, ItemId(id));
+    let price = bota_client_core::price_for(&app.shop, ItemId(id), &held);
+    let whole = bota_client_core::whole_price(&app.shop, ItemId(id));
     let mut lines = vec![face.blurb.to_string()];
     if price < whole {
         lines.push(format!(
@@ -1888,7 +1814,7 @@ fn shop_tip(app: &App, view: &WorldView, (mx, my): (f32, f32)) -> Option<Tip> {
 
 /// The popup of one timed effect chip.
 fn effect_tip(e: &EffectView, rate: u32) -> Tip {
-    let face = crate::catalog::effect(e.id.0);
+    let face = bota_client_core::effect(e.id.0);
     let left = [
         e.stacks.map(|many| format!("{many} held.")),
         e.ticks_left
@@ -1905,7 +1831,7 @@ fn effect_tip(e: &EffectView, rate: u32) -> Tip {
 
 /// The popup lines of one owned item.
 fn item_tip(item: &ItemView, backpack: bool, rate: u32) -> Tip {
-    let face = crate::catalog::item(item.id.0);
+    let face = bota_client_core::item(item.id.0);
     let name = face.map_or("?", |face| face.name);
     let mut lines = vec![face.map_or("", |face| face.blurb).to_string()];
     if let Some(charges) = item.charges {
