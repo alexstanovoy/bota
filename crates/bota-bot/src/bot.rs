@@ -103,6 +103,9 @@ pub fn play_on(
                 bot.match_started(&info);
             }
             ServerMsg::Snapshot { view } => {
+                for skipped in &view.skipped_ticks {
+                    bot.on_events(skipped.tick, &skipped.events);
+                }
                 out.ticks = view.tick;
                 out.mine = view
                     .players

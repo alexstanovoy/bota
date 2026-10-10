@@ -108,6 +108,7 @@ impl World {
             loot,
             aggro,
             order_delays: Vec::new(),
+            skipped_ticks: Vec::new(),
         }
     }
 

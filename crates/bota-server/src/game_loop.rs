@@ -337,11 +337,7 @@ impl Server {
                 // Seats never sit on the jungle's side.
                 Some(Team::Neutral) | None => full_frame.clone(),
             };
-            conn.send_snapshot(frame);
-            conn.send(&ServerMsg::Events {
-                tick: world.tick,
-                events: visible_events(events, viewing),
-            });
+            conn.send_tick(frame, world.tick, visible_events(events, viewing));
             // A spectator watching through one seat's eyes is told that
             // seat's orders; nobody else is told any.
             if let Some(eyes) = eyes {

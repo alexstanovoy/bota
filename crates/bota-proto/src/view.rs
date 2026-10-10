@@ -1,8 +1,8 @@
 //! What one side is allowed to know about the world right now.
 
 use crate::{
-    AbilityId, Aim, Angle, Attribute, Attributes, EffectId, EntityId, Fixed, HeroId, ItemId,
-    SlotId, Team, UnitKind, Vec2,
+    AbilityId, Aim, Angle, Attribute, Attributes, EffectId, EntityId, EventKind, Fixed, HeroId,
+    ItemId, SlotId, Team, UnitKind, Vec2,
 };
 use serde::{Deserialize, Serialize};
 
@@ -306,6 +306,16 @@ pub struct OrderDelayView {
     pub ticks: u32,
 }
 
+/// One tick whose snapshot a connection was never sent, with the events of it
+/// the connection may know.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+pub struct SkippedTick {
+    /// Which tick.
+    pub tick: u32,
+    /// Its events, in the order the simulation produced them.
+    pub events: Vec<EventKind>,
+}
+
 /// Everything one team is allowed to know, as of one tick.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct WorldView {
@@ -336,6 +346,11 @@ pub struct WorldView {
     pub aggro: Vec<AggroView>,
     /// The order delay of every seat this view is through whose applied
     /// orders named the view they were given on, sorted by [`SlotId`]. Empty
-    /// until such an order takes effect. Last on the wire.
+    /// until such an order takes effect.
     pub order_delays: Vec<OrderDelayView>,
+    /// Every tick after the previous snapshot the receiver was sent and before
+    /// this one, oldest first, each with its events: a receiver too slow for
+    /// every snapshot is sent the latest one. Empty when none was skipped.
+    /// Last on the wire.
+    pub skipped_ticks: Vec<SkippedTick>,
 }

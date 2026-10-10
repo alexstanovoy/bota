@@ -6,7 +6,7 @@ use std::sync::Arc;
 use std::sync::mpsc::Sender;
 use std::thread;
 
-use bota_proto::{ClientMsg, FrameReader, PlayerId, ServerMsg, encode_frame_to_vec};
+use bota_proto::{ClientMsg, EventKind, FrameReader, PlayerId, ServerMsg, encode_frame_to_vec};
 
 use crate::net::Outbox;
 
@@ -52,9 +52,10 @@ impl Connection {
         }
     }
 
-    /// Queues a snapshot frame, replacing any still-waiting one.
-    pub fn send_snapshot(&self, frame: Vec<u8>) {
-        self.outbox.push_snapshot(frame);
+    /// Queues a tick, its encoded snapshot frame and the events of it this
+    /// peer may know, replacing any tick still waiting.
+    pub fn send_tick(&self, snapshot: Vec<u8>, tick: u32, events: Vec<EventKind>) {
+        self.outbox.push_tick(snapshot, tick, events);
     }
 
     /// Stops sending and waits for what is queued to reach the socket.
