@@ -166,32 +166,35 @@ impl World {
     /// One tower's answer, when the orderer is in its reach.
     ///
     /// Called on, it takes the orderer as its target unless an earlier call
-    /// is still cooling down; called off, it drops the orderer if that is its
-    /// target, cooldown or not.
+    /// is still cooling down, and starts that wait again. Called off, it
+    /// drops the orderer if that is its target, at most once every
+    /// [`rules::TOWER_RELEASE_COOLDOWN_TICKS`].
     fn rouse_tower(&mut self, tower: Entity, orderer: Entity, call: Call) {
         if !self.in_reach(tower, orderer) {
             return;
         }
+        let Some(orders) = self.orders.get(tower).copied() else {
+            return;
+        };
         match call {
             Call::On => {
-                if self
-                    .orders
-                    .get(tower)
-                    .is_some_and(|orders| orders.cooldown > 0)
-                {
+                if orders.cooldown > 0 {
                     return;
                 }
                 self.set_target(tower, orderer);
+                if let Some(orders) = self.orders.get_mut(tower) {
+                    orders.cooldown = rules::ORDER_AGGRO_COOLDOWN_TICKS;
+                }
             }
             Call::Off => {
-                if self.target_of(tower) != Some(orderer) {
+                if orders.release_cooldown > 0 || self.target_of(tower) != Some(orderer) {
                     return;
                 }
                 self.target.remove(tower);
+                if let Some(orders) = self.orders.get_mut(tower) {
+                    orders.release_cooldown = rules::TOWER_RELEASE_COOLDOWN_TICKS;
+                }
             }
-        }
-        if let Some(orders) = self.orders.get_mut(tower) {
-            orders.cooldown = rules::ORDER_AGGRO_COOLDOWN_TICKS;
         }
     }
 

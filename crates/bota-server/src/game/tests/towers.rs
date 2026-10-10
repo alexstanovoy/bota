@@ -128,3 +128,39 @@ fn a_tower_and_three_seats() -> (World, crate::game::Entity) {
     world.health.insert(tower, health(0));
     (world, tower)
 }
+
+#[test]
+fn a_tower_lets_go_of_a_hero_at_most_once_every_two_and_a_half_seconds() {
+    // Liquipedia, Buildings, "Manual de-aggro": an attack order at an
+    // allied unit makes the tower choose again, "only once every 2.5
+    // seconds this way".
+    let mut world = World::new();
+    let tower = world.spawn_unit(tower_def(1), Team::Dire, Vec2::from_ints(5000, 5000));
+    let own = world.spawn_unit(&TARGET, Team::Radiant, Vec2::from_ints(5300, 5000));
+    let hero = seat_hero(&mut world, 0, Team::Radiant, Vec2::from_ints(5500, 5000));
+    world.settle();
+    let shot_at_then_shed = |world: &mut World| {
+        world.set_target(tower, hero);
+        attack_click(world, own);
+        stop_click(world);
+        world.target_of(tower)
+    };
+    assert_eq!(
+        shot_at_then_shed(&mut world),
+        Some(own),
+        "the first click sheds it"
+    );
+    assert_eq!(
+        shot_at_then_shed(&mut world),
+        Some(hero),
+        "a second click inside 2.5 s does not"
+    );
+    for _ in 0..rules::TOWER_RELEASE_COOLDOWN_TICKS {
+        world.step();
+    }
+    assert_eq!(
+        shot_at_then_shed(&mut world),
+        Some(own),
+        "once the wait has run out, a click sheds it again"
+    );
+}

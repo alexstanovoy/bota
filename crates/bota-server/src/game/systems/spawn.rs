@@ -140,6 +140,7 @@ impl World {
             Orders {
                 current: UnitOrder::Idle,
                 cooldown: 0,
+                release_cooldown: 0,
                 pending: None,
                 immediate: None,
             },
@@ -254,6 +255,7 @@ impl World {
             Place::Tower { lane, tier } => {
                 self.lane.insert(entity, Lane(lane));
                 self.tier.insert(entity, Tier(tier));
+                self.give_orders(entity);
             }
             Place::Barracks { lane, ranged } => {
                 self.lane.insert(entity, Lane(lane));
@@ -368,7 +370,7 @@ impl World {
         if def.damage > 0 {
             self.give_action(entity);
         }
-        if def.move_speed > 0 {
+        if def.move_speed > 0 || def.kind == bota_proto::UnitKind::Tower {
             self.give_orders(entity);
         }
         if matches!(

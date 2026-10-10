@@ -289,6 +289,7 @@ pub(super) fn hero_past_an_enemy(order: UnitOrder) -> (World, Entity, Entity) {
         Orders {
             current: order,
             cooldown: 0,
+            release_cooldown: 0,
             pending: None,
             immediate: None,
         },

@@ -723,6 +723,9 @@ pub const AGGRO_TIE_RANGE: i32 = 100;
 /// Ticks before an attack order may re-aim the same creep or tower again,
 /// 3 seconds.
 pub const ORDER_AGGRO_COOLDOWN_TICKS: u32 = 90;
+/// Ticks before an order at an ally may take a tower off the orderer again,
+/// 2.5 seconds.
+pub const TOWER_RELEASE_COOLDOWN_TICKS: u32 = 75;
 /// Ticks a creep handed a target by an attack order keeps it before the
 /// ordinary ranking may take it back, 2.3 seconds.
 pub const ORDER_AGGRO_HOLD_TICKS: u32 = 69;

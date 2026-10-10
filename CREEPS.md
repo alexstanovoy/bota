@@ -229,8 +229,9 @@ The 25 % **uphill miss** of a ranged attack still stands in 7.41, and since
 7.41 a flying attacker misses uphill too.
 
 Towers are outside this spec and keep Dota's own tower rule: a dive draws the
-tower outright rather than through the tie band, and an order at an ally sheds
-it at once, however recently it was drawn.
+tower outright rather than through the tie band, at most once every 3 s per
+tower, and an order at an ally sheds it however recently it was drawn, but
+at most once every **2.5 s** (Liquipedia, *Buildings*, "Manual de-aggro").
 
 **Before 5:00** a lane creep cannot be aggroed by player units at all, unless
 it already has an enemy lane creep or a neutral creep inside its acquisition

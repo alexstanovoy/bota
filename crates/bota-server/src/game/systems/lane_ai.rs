@@ -143,6 +143,7 @@ impl World {
         for entity in entities.iter().copied() {
             if let Some(orders) = self.orders.get_mut(entity) {
                 orders.cooldown = orders.cooldown.saturating_sub(1);
+                orders.release_cooldown = orders.release_cooldown.saturating_sub(1);
             }
             if !self.can_attack(entity) {
                 continue;
