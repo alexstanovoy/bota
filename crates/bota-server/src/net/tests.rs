@@ -392,3 +392,55 @@ fn a_slow_reader_skips_snapshots_but_no_tick_and_no_event() {
     let skipped: Vec<(u32, Vec<EventKind>)> = (2..=5).map(|tick| (tick, events(tick))).collect();
     assert_eq!(seen, vec![(1, Vec::new()), (6, skipped)]);
 }
+
+/// Reads snapshots and events for `wall`, checking that every tick between two snapshots
+/// is told once, with its events after its own snapshot; returns the last tick, the
+/// pending events tick and how many ticks were skipped.
+fn read_ticks(
+    client: &mut TestClient,
+    (mut last, mut events_tick): (u32, Option<u32>),
+    wall: Duration,
+) -> (u32, Option<u32>, usize) {
+    let mut skipped = 0;
+    let started = std::time::Instant::now();
+    while started.elapsed() < wall {
+        match client.recv() {
+            ServerMsg::Snapshot { view } => {
+                assert_eq!(events_tick, None, "the previous tick's events came");
+                let told: Vec<u32> = view.skipped_ticks.iter().map(|s| s.tick).collect();
+                assert_eq!(told, (last + 1..view.tick).collect::<Vec<_>>());
+                skipped += told.len();
+                last = view.tick;
+                events_tick = Some(view.tick);
+            }
+            ServerMsg::Events { tick, .. } => {
+                assert_eq!(
+                    events_tick.take(),
+                    Some(tick),
+                    "events follow their snapshot"
+                );
+            }
+            _ => {}
+        }
+    }
+    (last, events_tick, skipped)
+}
+
+#[test]
+fn a_reader_that_keeps_up_is_never_skipped_and_a_stalled_one_is_at_once() {
+    let mut opts = realtime(14);
+    opts.tick_rate = 30;
+    opts.map = bota_proto::MapId(2);
+    opts.dummy_seat = true;
+    let addr = start_server(opts);
+    let (mut client, _) = join_as_bot(addr, "lagging");
+    let first = client.recv_until(snapshot).tick;
+    let (last, pending, skipped) =
+        read_ticks(&mut client, (first, Some(first)), Duration::from_secs(2));
+    assert_eq!(skipped, 0, "a reader that keeps up sees every snapshot");
+    assert!(last >= first + 45);
+    // Three seconds of Map2 snapshots outgrow the capped send buffer and the reader's own.
+    thread::sleep(Duration::from_secs(3));
+    let (_, _, skipped) = read_ticks(&mut client, (last, pending), Duration::from_secs(1));
+    assert!(skipped > 0, "a stalled reader is skipped ahead");
+}

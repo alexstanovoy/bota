@@ -1272,6 +1272,14 @@ per side; only a snapshot that carries skipped ticks is decoded and encoded agai
 the connection's writer thread. More than `MAX_SKIPPED_TICKS` (900) skipped in a row,
 like an overflowing queue, closes the connection.
 
+The outbox only skips once the kernel stops taking bytes, so each connection's send
+buffer is capped at `SEND_BUFFER_BYTES` (16 KiB, about four 3.3-3.8 KB Map2 snapshots,
+socket2): with Linux's autotuned buffers a stalled reader otherwise trails by tens of
+seconds of queued states before the first skip, which is the opposite of what a realtime
+player needs. The receiver's own buffer still holds what its kernel accepted before the
+stall (128 KiB by default, about a second of Map2 snapshots). A reader keeping up, on
+loopback or a LAN, never fills either and is never skipped.
+
 ### Order delay
 
 An order given on the view of tick `T` takes effect on tick `T + 1` at the earliest.

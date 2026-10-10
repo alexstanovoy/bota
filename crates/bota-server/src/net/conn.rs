@@ -10,6 +10,10 @@ use bota_proto::{ClientMsg, EventKind, FrameReader, PlayerId, ServerMsg, encode_
 
 use crate::net::Outbox;
 
+/// The kernel send buffer of one connection, in bytes: about four Map2 snapshots (3.3-3.8 KB
+/// each).
+pub const SEND_BUFFER_BYTES: usize = 16 * 1024;
+
 /// Everything that reaches the server thread from the network.
 pub enum NetEvent {
     /// A peer finished the TCP handshake.
@@ -33,6 +37,9 @@ impl Connection {
     /// Adopts an accepted stream: spawns its reader and writer threads.
     pub fn spawn(id: PlayerId, stream: TcpStream, events: Sender<NetEvent>) -> Connection {
         let _ = stream.set_nodelay(true);
+        // A failure leaves the kernel's default buffer: the peer then lags longer before it is
+        // skipped ahead, nothing worse.
+        let _ = socket2::SockRef::from(&stream).set_send_buffer_size(SEND_BUFFER_BYTES);
         let outbox = Outbox::new();
         let writer_outbox = Arc::clone(&outbox);
         let writer_stream = stream.try_clone().expect("cloning a tcp stream");
