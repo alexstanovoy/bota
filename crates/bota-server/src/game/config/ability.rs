@@ -89,21 +89,6 @@ fn level_of(world: &World, caster: Entity, id: AbilityId) -> usize {
     usize::from(world.carried_level(caster, id).max(1) - 1)
 }
 
-fn frenzy(world: &mut World, caster: Entity, _: Target) -> bool {
-    let level = level_of(world, caster, FRENZY);
-    world.cast_frenzy(caster, level)
-}
-
-fn bounce(world: &mut World, caster: Entity, target: Target) -> bool {
-    let level = level_of(world, caster, BOUNCE);
-    world.cast_bounce(caster, level, target)
-}
-
-fn volley(world: &mut World, caster: Entity, _: Target) -> bool {
-    let level = level_of(world, caster, VOLLEY).min(2);
-    world.cast_multishot(caster, level)
-}
-
 fn meat_hook(world: &mut World, caster: Entity, target: Target) -> bool {
     let level = level_of(world, caster, MEAT_HOOK);
     world.cast_hook(caster, level, target)
@@ -171,92 +156,47 @@ fn feast(world: &mut World, caster: Entity, _: Target) -> bool {
     world.cast_feast(caster, level)
 }
 
-/// Sylla's critical strike: nothing is cast, it simply happens.
-pub const CRIT: AbilityId = AbilityId(0);
-/// Sylla's frenzy: attacks come faster for a while.
-pub const FRENZY: AbilityId = AbilityId(1);
-/// Sylla's bouncing bolt.
-pub const BOUNCE: AbilityId = AbilityId(2);
-/// Sylla's volley: everything near takes a shot.
-pub const VOLLEY: AbilityId = AbilityId(3);
 /// Pudge's hook.
-pub const MEAT_HOOK: AbilityId = AbilityId(4);
+pub const MEAT_HOOK: AbilityId = AbilityId(0);
 /// Pudge's rot: a toggle that burns everything near, its owner included.
-pub const ROT: AbilityId = AbilityId(5);
+pub const ROT: AbilityId = AbilityId(1);
 /// Pudge's flesh heap: what he keeps of every enemy hero that falls near
 /// him.
-pub const FLESH_HEAP: AbilityId = AbilityId(6);
+pub const FLESH_HEAP: AbilityId = AbilityId(2);
 /// Pudge's dismember: holds one unit and eats it.
-pub const DISMEMBER: AbilityId = AbilityId(7);
+pub const DISMEMBER: AbilityId = AbilityId(3);
 /// A courier's burst of speed.
-pub const BURST: AbilityId = AbilityId(8);
+pub const BURST: AbilityId = AbilityId(4);
 /// A courier putting back what it carries.
-pub const RETURN_ITEMS: AbilityId = AbilityId(9);
+pub const RETURN_ITEMS: AbilityId = AbilityId(5);
 /// A courier taking what waits in the stash.
-pub const TAKE_STASH: AbilityId = AbilityId(10);
+pub const TAKE_STASH: AbilityId = AbilityId(6);
 /// A courier handing over what it carries.
-pub const DELIVER: AbilityId = AbilityId(11);
+pub const DELIVER: AbilityId = AbilityId(7);
 /// A courier's shield, which nothing gets through.
-pub const SHIELD: AbilityId = AbilityId(12);
+pub const SHIELD: AbilityId = AbilityId(8);
 /// Shadow Fiend's nearest raze.
-pub const RAZE_NEAR: AbilityId = AbilityId(13);
+pub const RAZE_NEAR: AbilityId = AbilityId(9);
 /// Shadow Fiend's middle raze.
-pub const RAZE_MID: AbilityId = AbilityId(14);
+pub const RAZE_MID: AbilityId = AbilityId(10);
 /// Shadow Fiend's farthest raze.
-pub const RAZE_FAR: AbilityId = AbilityId(15);
+pub const RAZE_FAR: AbilityId = AbilityId(11);
 /// Shadow Fiend's requiem: a line for each soul gathered, which it does not
 /// spend.
-pub const REQUIEM: AbilityId = AbilityId(16);
+pub const REQUIEM: AbilityId = AbilityId(12);
 /// Shadow Fiend's necromastery: a soul kept of everything he brings down.
 /// Innate: it sits in no slot and is never learned.
-pub const NECROMASTERY: AbilityId = AbilityId(17);
+pub const NECROMASTERY: AbilityId = AbilityId(13);
 /// Shadow Fiend's presence: enemies standing near him wear less armor.
-pub const PRESENCE: AbilityId = AbilityId(18);
+pub const PRESENCE: AbilityId = AbilityId(14);
 /// Shadow Fiend's feast of souls: attacks and steps come faster for a while,
 /// and souls are taken from the enemies near him.
-pub const FEAST_OF_SOULS: AbilityId = AbilityId(19);
+pub const FEAST_OF_SOULS: AbilityId = AbilityId(15);
 /// A Blood Grenade's throw: what names one in flight. Sits in no slot.
-pub const THROW_GRENADE: AbilityId = AbilityId(20);
+pub const THROW_GRENADE: AbilityId = AbilityId(16);
 
 /// Every ability, indexed by [`AbilityId`].
-pub const ABILITIES: [AbilityDef; 21] = [
-    AbilityDef {
-        name: "Crit",
-        max_level: rules::ABILITY_MAX_LEVEL,
-        ..PLAIN
-    },
-    AbilityDef {
-        name: "Frenzy",
-        max_level: rules::ABILITY_MAX_LEVEL,
-        passive: false,
-        mana: &rules::SYLLA_FRENZY_MANA,
-        cooldown: &rules::SYLLA_FRENZY_COOLDOWN,
-        on_cast: frenzy,
-        ..PLAIN
-    },
-    AbilityDef {
-        name: "Bounce",
-        aim: Aim::Unit,
-        max_level: rules::ABILITY_MAX_LEVEL,
-        passive: false,
-        at_an_enemy: true,
-        mana: &rules::SYLLA_BOUNCE_MANA,
-        cooldown: &rules::SYLLA_BOUNCE_COOLDOWN,
-        range: rules::SYLLA_BOUNCE_CAST_RANGE,
-        on_cast: bounce,
-        ..PLAIN
-    },
-    AbilityDef {
-        name: "Volley",
-        max_level: rules::ULT_MAX_LEVEL,
-        passive: false,
-        ultimate: true,
-        mana: &rules::SYLLA_MULTI_MANA,
-        cooldown: &rules::SYLLA_MULTI_COOLDOWN,
-        range: rules::SYLLA_MULTI_RADIUS,
-        on_cast: volley,
-        ..PLAIN
-    },
+pub const ABILITIES: [AbilityDef; 17] = [
     AbilityDef {
         name: "Meat Hook",
         aim: Aim::Point,

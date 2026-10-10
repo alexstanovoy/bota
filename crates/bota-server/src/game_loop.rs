@@ -124,6 +124,23 @@ impl Server {
         self.spectators.retain(|&(p, _)| p != id);
     }
 
+    /// Tells the operator of a peer that sent bytes no message decodes
+    /// from. The peer is then treated as having left, so only its own
+    /// connection closes; the protocol has no message to answer it with.
+    fn note(&self, event: &NetEvent) {
+        let NetEvent::Malformed(id, error) = event else {
+            return;
+        };
+        let seat = self.roster.seat_of(*id).map_or_else(
+            || "no seat".to_string(),
+            |seat| format!("seat {}", seat.slot.0),
+        );
+        eprintln!(
+            "bota-server: player {} ({seat}) sent an undecodable message ({error}); closing its connection",
+            id.0
+        );
+    }
+
     /// Accepts a fresh stream and hands out a `PlayerId`.
     fn adopt(&mut self, stream: std::net::TcpStream) -> PlayerId {
         let id = PlayerId(self.next_player);
@@ -191,11 +208,12 @@ impl Server {
     fn lobby_phase(&mut self) -> MatchConfig {
         loop {
             let event = self.rx.recv().expect("the server holds a sender");
+            self.note(&event);
             match event {
                 NetEvent::Connected(stream) => {
                     self.adopt(stream);
                 }
-                NetEvent::Disconnected(id) => {
+                NetEvent::Disconnected(id) | NetEvent::Malformed(id, _) => {
                     self.roster.release(id);
                     self.drop_conn(id);
                     self.broadcast_lobby();
@@ -400,12 +418,16 @@ impl Server {
             if now >= deadline {
                 break;
             }
-            match self.rx.recv_timeout(deadline - now) {
+            let event = self.rx.recv_timeout(deadline - now);
+            if let Ok(event) = &event {
+                self.note(event);
+            }
+            match event {
                 Err(_) => break,
                 Ok(NetEvent::Connected(stream)) => {
                     self.adopt(stream);
                 }
-                Ok(NetEvent::Disconnected(id)) => {
+                Ok(NetEvent::Disconnected(id) | NetEvent::Malformed(id, _)) => {
                     let slot = self.roster.seat_of(id).map(|s| s.slot);
                     self.roster.release(id);
                     self.drop_conn(id);

@@ -73,7 +73,7 @@ impl World {
                 fnv.u8(failures);
             }
         }
-        for stream in [&self.crit, &self.evasion, &self.pierce] {
+        for stream in [&self.evasion, &self.pierce] {
             fnv.u32(stream.len() as u32);
             for chance in stream {
                 fnv.some(chance.is_some());
@@ -253,22 +253,11 @@ fn hash_projectile(fnv: &mut Fnv, shot: &Projectile) {
     fnv.i32(shot.damage);
     fnv.u8(shot.kind as u8);
     hash_damage_amp(fnv, shot.damage_amp_bp);
-    fnv.some(shot.ability.is_some());
-    if let Some(ability) = shot.ability {
-        fnv.u32(u32::from(ability.0));
-    }
     fnv.u8(shot.launch_tier);
     fnv.some(shot.can_miss_uphill);
-    fnv.some(shot.crit);
     fnv.some(shot.pierces);
     fnv.i32(shot.pierce_damage);
     hash_damage_amp(fnv, shot.pierce_amp_bp);
-    fnv.u8(shot.bounces_left);
-    fnv.i32(shot.bounce_range);
-    fnv.u32(shot.bounced.len() as u32);
-    for target in &shot.bounced {
-        fnv.entity(*target);
-    }
 }
 
 fn hash_modifiers(fnv: &mut Fnv, on_it: &Modifiers) {
@@ -431,7 +420,6 @@ fn hash_hit(fnv: &mut Fnv, hit: &Hit) {
     fnv.i32(hit.amount);
     fnv.u8(hit.kind as u8);
     hash_damage_amp(fnv, hit.damage_amp_bp);
-    fnv.some(hit.crit);
     fnv.some(hit.attack);
     fnv.some(hit.pierces);
     match hit.effect {
@@ -462,8 +450,9 @@ fn hash_damage_amp(fnv: &mut Fnv, bp: i32) {
 /// One modifier kind and everything it carries.
 fn hash_modifier_kind(fnv: &mut Fnv, kind: ModifierKind) {
     match kind {
-        ModifierKind::Haste { speed } => hash_tagged(fnv, 0, speed),
         ModifierKind::Phased => fnv.u8(9),
+        #[cfg(test)]
+        ModifierKind::Haste { speed } => hash_tagged(fnv, 0, speed),
         ModifierKind::Mending { per_tick, breaks } => {
             fnv.u8(1);
             fnv.i32(per_tick);

@@ -11,7 +11,7 @@ use crate::slots::{BAG_SLOTS, Press, Slot, order_for, press};
 use crate::state::{App, Pin, Source, Tap};
 
 /// Which ability of a courier fetches the stash.
-const TAKE_STASH: u16 = 10;
+const TAKE_STASH: u16 = 6;
 /// How far past a body's edge an attack click still sticks to it, in world
 /// units.
 const ATTACK_SNAP: f32 = 25.0;

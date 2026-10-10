@@ -41,51 +41,39 @@ pub const REQUIEM_LINE_WIDTH: f32 = 125.0;
 /// How far a tower reaches, in world units.
 pub const TOWER_ATTACK_RANGE: i32 = 700;
 
-/// Sylla, who crits, hastens, bounces a bolt and looses a volley.
-pub const SYLLA: HeroId = HeroId(0);
-
 /// Pudge, who hooks.
-pub const PUDGE: HeroId = HeroId(1);
+pub const PUDGE: HeroId = HeroId(0);
 
 /// Shadow Fiend, who razes and gathers souls.
-pub const SHADOW_FIEND: HeroId = HeroId(2);
+pub const SHADOW_FIEND: HeroId = HeroId(1);
 
 /// World units a hero's attack missile covers in a second. Zero for a hero
 /// that strikes by hand.
 pub fn missile_speed(hero: HeroId) -> i32 {
     match hero {
         SHADOW_FIEND => 1200,
-        PUDGE => 0,
-        _ => 900,
+        _ => 0,
     }
 }
 
 // The abilities, by the numbers the wire names them with.
 
-/// Sylla's critical strike.
-pub const CRIT: AbilityId = AbilityId(0);
-/// Sylla's frenzy.
-pub const FRENZY: AbilityId = AbilityId(1);
-/// Sylla's bouncing bolt.
-pub const BOUNCE: AbilityId = AbilityId(2);
-/// Sylla's volley.
-pub const VOLLEY: AbilityId = AbilityId(3);
 /// A courier taking what waits in the stash.
-pub const TAKE_STASH: AbilityId = AbilityId(10);
+pub const TAKE_STASH: AbilityId = AbilityId(6);
 /// A courier handing over what it carries.
-pub const DELIVER: AbilityId = AbilityId(11);
+pub const DELIVER: AbilityId = AbilityId(7);
 /// Shadow Fiend's nearest raze.
-pub const RAZE_NEAR: AbilityId = AbilityId(13);
+pub const RAZE_NEAR: AbilityId = AbilityId(9);
 /// Shadow Fiend's middle raze.
-pub const RAZE_MID: AbilityId = AbilityId(14);
+pub const RAZE_MID: AbilityId = AbilityId(10);
 /// Shadow Fiend's farthest raze.
-pub const RAZE_FAR: AbilityId = AbilityId(15);
+pub const RAZE_FAR: AbilityId = AbilityId(11);
 /// Shadow Fiend's requiem.
-pub const REQUIEM: AbilityId = AbilityId(16);
+pub const REQUIEM: AbilityId = AbilityId(12);
 /// Shadow Fiend's presence.
-pub const PRESENCE: AbilityId = AbilityId(18);
+pub const PRESENCE: AbilityId = AbilityId(14);
 /// Shadow Fiend's feast of souls.
-pub const FEAST_OF_SOULS: AbilityId = AbilityId(19);
+pub const FEAST_OF_SOULS: AbilityId = AbilityId(15);
 
 /// The three razes, nearest first.
 pub const RAZES: [AbilityId; 3] = [RAZE_NEAR, RAZE_MID, RAZE_FAR];

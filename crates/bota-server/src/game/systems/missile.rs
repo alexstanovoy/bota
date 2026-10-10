@@ -6,8 +6,8 @@ use bota_proto::{DamageKind, Fixed, Team, UnitKind, Vec2};
 
 use crate::game::{
     Entity, EntityAllocator, Ground, Health, Hit, HitEffect, MatchRng, Missed, Projectile,
-    PseudoRandom25, Purpose, Table, Transform, Visibility, World, facing_towards, is_structure,
-    move_towards, per_tick, rules, wire_id,
+    PseudoRandom25, Purpose, Table, Transform, Visibility, facing_towards, is_structure,
+    move_towards, per_tick, wire_id,
 };
 
 use super::hitting::entity_slot;
@@ -34,8 +34,6 @@ pub struct MissileCx<'a> {
     pub uphill_miss: &'a mut Vec<Option<PseudoRandom25>>,
     /// Where an arriving missile leaves its blow.
     pub hits: &'a mut VecDeque<Hit>,
-    /// Where one that still has a bounce in it is left to be sent on.
-    pub bounced: &'a mut VecDeque<(Entity, Entity)>,
     /// Where one that missed uphill is left for whatever answers to it.
     pub missed: &'a mut VecDeque<Missed>,
 }
@@ -43,8 +41,7 @@ pub struct MissileCx<'a> {
 /// Moves every missile along and turns the ones that arrive into blows.
 ///
 /// A missile whose target has fallen is given up in the air. One that misses
-/// uphill is given up and left on `missed`. One that lands with a bounce
-/// still in it is left on the bounce queue rather than given up.
+/// uphill is given up and left on `missed`.
 pub fn missile_system(cx: MissileCx<'_>) {
     let MissileCx {
         entities,
@@ -58,7 +55,6 @@ pub fn missile_system(cx: MissileCx<'_>) {
         rng,
         uphill_miss,
         hits,
-        bounced,
         missed,
     } = cx;
     for missile in entities.iter().collect::<Vec<_>>() {
@@ -93,10 +89,6 @@ pub fn missile_system(cx: MissileCx<'_>) {
             continue;
         }
         land(&shot, hits);
-        if shot.bounces_left > 0 {
-            bounced.push_back((missile, shot.target));
-            continue;
-        }
         give_up(missile, entities, projectile, transform, team, visibility);
     }
 }
@@ -110,8 +102,7 @@ fn land(shot: &Projectile, hits: &mut VecDeque<Hit>) {
         amount: shot.damage,
         kind: shot.kind,
         damage_amp_bp: shot.damage_amp_bp,
-        crit: shot.crit,
-        attack: shot.ability.is_none(),
+        attack: true,
         pierces: shot.pierces,
         effect: HitEffect::None,
     });
@@ -122,7 +113,6 @@ fn land(shot: &Projectile, hits: &mut VecDeque<Hit>) {
             amount: shot.pierce_damage,
             kind: DamageKind::Magical,
             damage_amp_bp: shot.pierce_amp_bp,
-            crit: false,
             attack: false,
             pierces: false,
             effect: HitEffect::None,
@@ -172,69 +162,4 @@ fn give_up(
     team.remove(missile);
     visibility.remove(missile);
     entities.free(missile);
-}
-
-impl World {
-    /// Sends every missile that landed on to its next mark, and gives up the
-    /// ones with nowhere left to go.
-    pub fn bounce_missiles(&mut self) {
-        for (missile, from) in std::mem::take(&mut self.bounced) {
-            if !self.bounce_on(missile, from) {
-                self.give_up_missile(missile);
-            }
-        }
-    }
-
-    /// Sends a missile on to the enemy of its source nearest to where it
-    /// landed, within its bounce range.
-    ///
-    /// It never strikes the same one twice, and stops once its bounces are
-    /// spent, its source is unknown or there is nobody left to go to.
-    pub fn bounce_on(&mut self, missile: Entity, from: Entity) -> bool {
-        let Some(mut shot) = self.projectile.get(missile).cloned() else {
-            return false;
-        };
-        if shot.bounces_left == 0 {
-            return false;
-        }
-        let Some(at) = self.transform.get(from).map(|t| t.pos) else {
-            return false;
-        };
-        let radius = rules::units(shot.bounce_range);
-        let Some(source) = shot.source else {
-            return false;
-        };
-        let next = self
-            .entities
-            .iter()
-            .filter(|other| {
-                !shot.bounced.contains(other)
-                    && self.hostile(source, *other)
-                    && self
-                        .transform
-                        .get(*other)
-                        .is_some_and(|t| t.pos.within(at, radius))
-            })
-            .min_by_key(|other| {
-                self.transform
-                    .get(*other)
-                    .map_or(i64::MAX, |t| t.pos.distance_squared(at))
-            });
-        let Some(next) = next else {
-            return false;
-        };
-        shot.bounces_left -= 1;
-        shot.bounced.push(next);
-        shot.target = next;
-        self.projectile.insert(missile, shot);
-        true
-    }
-
-    /// Takes a missile out of the air and out of the world.
-    pub fn give_up_missile(&mut self, missile: Entity) {
-        self.projectile.remove(missile);
-        self.transform.remove(missile);
-        self.team.remove(missile);
-        self.despawn(missile);
-    }
 }

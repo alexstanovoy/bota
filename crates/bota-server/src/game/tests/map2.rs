@@ -25,12 +25,12 @@ fn config(map: MapId) -> MatchConfig {
             Pick {
                 slot: SlotId(0),
                 team: Team::Radiant,
-                hero: HeroId(0),
+                hero: HeroId(1),
             },
             Pick {
                 slot: SlotId(1),
                 team: Team::Dire,
-                hero: HeroId(0),
+                hero: HeroId(1),
             },
         ],
         map,
@@ -267,9 +267,9 @@ fn map2_first_hero_death_allows_respawn_and_second_death_loses() {
 fn map2_hero_lives_are_counted_per_side_across_seats() {
     let mut world = match_world(MID_MAP);
     let slot = SlotId(2);
-    let mut teammate = Seat::new(slot, Team::Radiant, HeroId(0), 0, rules::STASH_SLOTS);
+    let mut teammate = Seat::new(slot, Team::Radiant, HeroId(1), 0, rules::STASH_SLOTS);
     teammate.unit =
-        Some(world.spawn_hero(Team::Radiant, Vec2::from_ints(5000, 5000), slot, HeroId(0)));
+        Some(world.spawn_hero(Team::Radiant, Vec2::from_ints(5000, 5000), slot, HeroId(1)));
     teammate.deaths = 1;
     world.seats.push(teammate);
     let victim = world.seats[0].unit.expect("Radiant hero");

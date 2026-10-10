@@ -17,7 +17,7 @@ fn seated(trees: Vec<Vec2>) -> Playbook {
 
 /// The same, with a shop that names what its rows cost.
 fn stocked(shop: Vec<bota_proto::ShopEntry>, trees: Vec<Vec2>) -> Playbook {
-    let mut bot = Playbook::new(Role::Mid, HeroId(2));
+    let mut bot = Playbook::new(Role::Mid, HeroId(1));
     bot.seated(Some(SlotId(0)));
     bot.match_started(&fixtures::started(shop, trees));
     bot
@@ -29,7 +29,7 @@ fn tick(shape: impl Fn(&mut UnitView)) -> bota_proto::WorldView {
     shape(&mut me);
     let mut units = fixtures::fountains();
     units.push(me);
-    let seat = fixtures::seat(SlotId(0), Team::Radiant, HeroId(2), Some(fixtures::id(1)));
+    let seat = fixtures::seat(SlotId(0), Team::Radiant, HeroId(1), Some(fixtures::id(1)));
     fixtures::tick(1000, units, vec![seat])
 }
 
@@ -40,7 +40,6 @@ fn struck(source: bota_proto::EntityId) -> bota_proto::EventKind {
         target: fixtures::id(1),
         amount: 21,
         kind: bota_proto::DamageKind::Physical,
-        crit: false,
     }
 }
 
@@ -276,7 +275,7 @@ fn in_the_lane(at: Vec2, shape: impl Fn(&mut Vec<UnitView>)) -> bota_proto::Worl
     ));
     units.push(fixtures::hero(1, Team::Radiant, at));
     shape(&mut units);
-    let seat = fixtures::seat(SlotId(0), Team::Radiant, HeroId(2), Some(fixtures::id(1)));
+    let seat = fixtures::seat(SlotId(0), Team::Radiant, HeroId(1), Some(fixtures::id(1)));
     fixtures::tick(1000, units, vec![seat])
 }
 

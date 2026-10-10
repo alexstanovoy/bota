@@ -264,8 +264,8 @@ impl World {
     /// One missile, hook, mark, line of a requiem or Blood Grenade, or
     /// nothing when the entity is none of them.
     fn project_projectile(&self, entity: Entity) -> Option<ProjectileView> {
-        let ability = if let Some(shot) = self.projectile.get(entity) {
-            shot.ability
+        let ability = if self.projectile.get(entity).is_some() {
+            None
         } else if let Some(mark) = self.mark.get(entity) {
             Some(mark.ability)
         } else if self.requiem_line.get(entity).is_some() {
@@ -321,6 +321,8 @@ impl World {
             max_mana: stats.max_mana.to_int(),
             move_speed: stats.move_speed,
             attack_damage: stats.damage + stats.damage_spread / 2,
+            attack_damage_min: stats.damage,
+            attack_damage_max: stats.damage + stats.damage_spread,
             attack_range: stats.attack_range,
             attack_time: after_speed(stats.attack_time, stats.attack_speed),
             attack_point: after_speed(stats.attack_point, stats.attack_speed),
@@ -423,6 +425,7 @@ fn stack_effect_id(kind: StackKind) -> u16 {
 /// The number the wire names a modifier with.
 fn effect_id(kind: ModifierKind) -> u16 {
     match kind {
+        #[cfg(test)]
         ModifierKind::Haste { .. } => 0,
         ModifierKind::Mending { .. } => 1,
         ModifierKind::Clarity { .. } => 2,

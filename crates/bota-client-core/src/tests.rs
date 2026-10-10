@@ -30,7 +30,7 @@ fn the_console_turns_a_typed_line_into_a_cheat_order() {
 #[test]
 fn every_catalog_entry_is_named_and_found_by_its_own_id() {
     use crate::catalog::{ABILITIES, EFFECTS, HEROES, ITEMS, ability, effect, hero, item};
-    let groups: [Vec<(u16, &str, Option<&str>)>; 4] = [
+    let groups: [Vec<(u16, &str, Option<&str>)>; 3] = [
         ABILITIES
             .iter()
             .map(|f| (f.id, f.name, ability(f.id).map(|x| x.name)))
@@ -38,10 +38,6 @@ fn every_catalog_entry_is_named_and_found_by_its_own_id() {
         ITEMS
             .iter()
             .map(|f| (f.id, f.name, item(f.id).map(|x| x.name)))
-            .collect(),
-        EFFECTS
-            .iter()
-            .map(|f| (f.id, f.name, effect(f.id).map(|x| x.name)))
             .collect(),
         HEROES
             .iter()
@@ -55,9 +51,14 @@ fn every_catalog_entry_is_named_and_found_by_its_own_id() {
             assert!(!name.is_empty(), "entry {id} has a name");
         }
     }
+    for face in EFFECTS {
+        assert_eq!(effect(face.id).map(|x| x.name), Some(face.name));
+        assert!(!face.name.is_empty(), "effect {} has a name", face.id);
+    }
+    assert!(effect(0).is_none(), "the retired effect is gone");
     assert!(ability(ABILITIES.len() as u16).is_none());
     assert!(item(u16::MAX).is_none());
-    assert!(effect(EFFECTS.len() as u16).is_none());
+    assert!(effect(u16::MAX).is_none());
     assert!(hero(HEROES.len() as u16).is_none());
 }
 
@@ -116,6 +117,8 @@ fn a_unit() -> UnitView {
         max_mana: 300,
         move_speed: Fixed::from_int(300),
         attack_damage: 55,
+        attack_damage_min: 55,
+        attack_damage_max: 55,
         attack_range: Fixed::from_int(600),
         attack_time: 1700,
         attack_point: 500,
@@ -607,4 +610,25 @@ fn a_unit_is_drawn_between_two_ticks_and_jumps_are_not_drawn_out() {
         (bodies[1].x - 2000.0).abs() < 0.01,
         "a blink is shown at once"
     );
+}
+
+#[test]
+fn the_damage_range_is_the_wires_with_the_bonus_split_off_a_hero() {
+    use crate::catalog::damage_range;
+    // Shadow Fiend: 16 base and 25 agility make 41; 12 of items on top.
+    let mut fiend = a_unit();
+    fiend.hero = Some(HeroId(1));
+    fiend.primary = Some(bota_proto::Attribute::Agility);
+    fiend.attributes.agility = Fixed::from_int(25);
+    fiend.attack_damage_min = 41 + 12;
+    fiend.attack_damage_max = 47 + 12;
+    let range = damage_range(&fiend);
+    assert_eq!((range.min, range.max, range.bonus), (41, 47, 12));
+    // A creep has no base to split: its whole range is the range.
+    let mut creep = a_unit();
+    creep.hero = None;
+    creep.attack_damage_min = 19;
+    creep.attack_damage_max = 23;
+    let range = damage_range(&creep);
+    assert_eq!((range.min, range.max, range.bonus), (19, 23, 0));
 }

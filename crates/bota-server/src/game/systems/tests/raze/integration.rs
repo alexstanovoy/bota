@@ -105,8 +105,8 @@ fn expired_auras_are_not_projected_or_counted_as_shadowraze() {
 #[test]
 fn tower_and_mango_bonuses_survive_shadowraze_refresh() {
     let mut world = World::new();
-    let target = world.spawn_hero(Team::Dire, TARGET, SlotId(1), HeroId(2));
-    let caster = world.spawn_hero(Team::Radiant, ORIGIN, SlotId(0), HeroId(2));
+    let target = world.spawn_hero(Team::Dire, TARGET, SlotId(1), HeroId(1));
+    let caster = world.spawn_hero(Team::Radiant, ORIGIN, SlotId(0), HeroId(1));
     world.settle();
     let plain = *world.stats.get(target).unwrap();
     world.spawn_unit(tower_def(1), Team::Dire, TARGET);

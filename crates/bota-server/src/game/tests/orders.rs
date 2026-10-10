@@ -15,7 +15,7 @@ use super::support::*;
 fn an_order_at_something_a_side_cannot_see_is_refused() {
     let map = map_of(MapId(1));
     let mut world = World::on_map(map);
-    seated_hero(&mut world, Vec2::from_ints(6800, 9216), HeroId(0));
+    seated_hero(&mut world, Vec2::from_ints(6800, 9216), HeroId(1));
     let hidden = world.spawn_unit(&MELEE_CREEP, Team::Dire, Vec2::from_ints(13200, 9216));
     world.settle();
     let order = Order::Attack {
@@ -38,7 +38,7 @@ fn an_order_at_something_a_side_cannot_see_is_refused() {
 fn a_use_or_cast_at_something_a_side_cannot_see_is_refused_like_a_dead_target() {
     let map = map_of(MapId(1));
     let mut world = World::on_map(map);
-    let hero = seated_hero(&mut world, Vec2::from_ints(6800, 9216), HeroId(1));
+    let hero = seated_hero(&mut world, Vec2::from_ints(6800, 9216), HeroId(0));
     if let Some(book) = world.abilities.get_mut(hero) {
         book.slots[3].level = 1;
     }
@@ -71,7 +71,7 @@ fn a_seat_with_no_body_standing_may_order_nothing() {
     world.seats.push(Seat::new(
         SlotId(0),
         Team::Radiant,
-        HeroId(0),
+        HeroId(1),
         0,
         rules::STASH_SLOTS,
     ));
@@ -391,7 +391,7 @@ fn a_deny_is_given_up_when_the_creep_is_no_longer_worn_down() {
 #[test]
 fn your_own_building_goes_only_at_a_tenth() {
     let mut world = World::new();
-    let hero = seated_hero(&mut world, Vec2::from_ints(5000, 5000), HeroId(0));
+    let hero = seated_hero(&mut world, Vec2::from_ints(5000, 5000), HeroId(1));
     let tower = world.spawn_unit(tower_def(1), Team::Radiant, Vec2::from_ints(5300, 5000));
     world.settle();
     world.fill_pools(hero);
@@ -427,7 +427,7 @@ fn your_own_hero_is_never_struck_however_worn_down() {
         Team::Radiant,
         Vec2::from_ints(5100, 5000),
         SlotId(1),
-        HeroId(0),
+        HeroId(1),
     );
     world.settle();
     world.health.insert(theirs, Health { hp: Fixed::ONE });
@@ -440,7 +440,7 @@ fn your_own_hero_is_never_struck_however_worn_down() {
 #[test]
 fn an_attack_order_at_one_of_your_own_walks_you_to_it_and_waits() {
     let mut world = World::new();
-    let hero = seated_hero(&mut world, Vec2::from_ints(5000, 5000), HeroId(0));
+    let hero = seated_hero(&mut world, Vec2::from_ints(5000, 5000), HeroId(1));
     // Well out of reach, and at full health so it cannot be put out yet.
     let ours = world.spawn_unit(&MELEE_CREEP, Team::Radiant, Vec2::from_ints(6500, 5000));
     world.settle();

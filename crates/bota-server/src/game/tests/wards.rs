@@ -51,7 +51,7 @@ fn an_observer_is_hidden_from_the_other_side_until_a_sentry_finds_it() {
     let ward = the_ward(&world);
     assert!(world.can_see(Team::Radiant, ward), "its own side sees it");
     // An enemy hero standing on top of it makes no difference.
-    let theirs = world.spawn_hero(Team::Dire, at, SlotId(1), HeroId(0));
+    let theirs = world.spawn_hero(Team::Dire, at, SlotId(1), HeroId(1));
     world.settle();
     world.step();
     assert!(
@@ -110,7 +110,7 @@ fn true_sight_reaches_only_so_far_over_ground_that_is_watched() {
     let ward = world.spawn_unit(&OBSERVER_WARD, Team::Radiant, at);
     // Eyes of their own on the spot, so what is being measured is the reach
     // of the sentry and nothing else.
-    world.spawn_hero(Team::Dire, at, SlotId(1), HeroId(0));
+    world.spawn_hero(Team::Dire, at, SlotId(1), HeroId(1));
     let reach = SENTRY_WARD.true_sight;
     let near = world.spawn_unit(
         &SENTRY_WARD,
@@ -269,7 +269,7 @@ fn both_wards_hide_and_each_reveals_the_other_side() {
     // A hero of each side standing right there, so ordinary sight is not what
     // is being measured.
     for (index, side) in [Team::Radiant, Team::Dire].into_iter().enumerate() {
-        world.spawn_hero(side, at, SlotId(index as u8), HeroId(0));
+        world.spawn_hero(side, at, SlotId(index as u8), HeroId(1));
     }
     let theirs = world.spawn_unit(&OBSERVER_WARD, Team::Dire, at);
     world.settle();

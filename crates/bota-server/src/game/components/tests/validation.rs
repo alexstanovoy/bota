@@ -234,8 +234,8 @@ fn use_order_rejects_a_missing_or_empty_mana_pool_as_not_ready() {
 fn use_order_rejects_other_units_positions_and_stale_targets_as_wrong_target_kind() {
     let (mut world, hero) = fixture();
     put(&mut world, hero, 0, mango(3));
-    let ally = world.spawn_hero(Team::Radiant, AWAY, SlotId(1), HeroId(2));
-    let enemy = world.spawn_hero(Team::Dire, AWAY, SlotId(2), HeroId(2));
+    let ally = world.spawn_hero(Team::Radiant, AWAY, SlotId(1), HeroId(1));
+    let enemy = world.spawn_hero(Team::Dire, AWAY, SlotId(2), HeroId(1));
     world.settle();
     let own_position = world.transform.get(hero).unwrap().pos;
     for target in [

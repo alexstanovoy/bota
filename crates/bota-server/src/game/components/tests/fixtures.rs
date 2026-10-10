@@ -9,8 +9,8 @@ pub(super) const AWAY: Vec2 = Vec2::from_ints(8000, 8000);
 pub(super) fn fixture() -> (World, Entity) {
     let mut world = World::new();
     let home = fountain_pos(world.map, Team::Radiant);
-    let hero = world.spawn_hero(Team::Radiant, home, OWNER, HeroId(2));
-    let mut seat = Seat::new(OWNER, Team::Radiant, HeroId(2), 1000, rules::STASH_SLOTS);
+    let hero = world.spawn_hero(Team::Radiant, home, OWNER, HeroId(1));
+    let mut seat = Seat::new(OWNER, Team::Radiant, HeroId(1), 1000, rules::STASH_SLOTS);
     seat.unit = Some(hero);
     world.seats.push(seat);
     world.settle();

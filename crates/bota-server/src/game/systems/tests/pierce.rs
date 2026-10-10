@@ -92,7 +92,7 @@ fn swings(world: &mut World, from: Entity, on: Entity, wanted: usize) -> Vec<Tol
 fn a_monkey_king_bar_pierces_exactly_its_share_and_lands_its_bonus() {
     let ratio = Ratio::new(4, 5);
     let mut world = World::new();
-    let pudge = hero_holding(&mut world, HeroId(1), &[ITEM_MONKEY_KING_BAR]);
+    let pudge = hero_holding(&mut world, HeroId(0), &[ITEM_MONKEY_KING_BAR]);
     let anvil = world.spawn_unit(&ANVIL, Team::Dire, Vec2::from_ints(5100, 5000));
     world.settle();
     world.set_target(pudge, anvil);
@@ -122,25 +122,25 @@ fn a_monkey_king_bar_pierces_exactly_its_share_and_lands_its_bonus() {
 #[test]
 fn a_pierced_swing_is_never_evaded() {
     let mut world = World::new();
-    let pudge = hero_holding(&mut world, HeroId(1), &[ITEM_MONKEY_KING_BAR]);
-    let sylla = world.spawn_hero(
+    let pudge = hero_holding(&mut world, HeroId(0), &[ITEM_MONKEY_KING_BAR]);
+    let dodger = world.spawn_hero(
         Team::Dire,
         Vec2::from_ints(5100, 5000),
         SlotId(1),
-        HeroId(0),
+        HeroId(1),
     );
-    hold(&mut world, sylla, 0, ITEM_BUTTERFLY);
+    hold(&mut world, dodger, 0, ITEM_BUTTERFLY);
     world.settle();
-    world.set_order(sylla, UnitOrder::Stand);
-    world.set_target(pudge, sylla);
+    world.set_order(dodger, UnitOrder::Stand);
+    world.set_target(pudge, dodger);
     // Mended to full before every tick, so the bar never brings her down.
     let mut seen = Vec::new();
     for _ in 0..800 {
         if seen.len() >= 40 {
             break;
         }
-        world.fill_pools(sylla);
-        seen.extend(swing_in(&world.step(), pudge, sylla));
+        world.fill_pools(dodger);
+        seen.extend(swing_in(&world.step(), pudge, dodger));
     }
     assert_eq!(seen.len(), 40, "forty swings were told of");
     for told in &seen {
@@ -163,7 +163,7 @@ fn a_pierced_swing_is_never_evaded() {
 #[test]
 fn a_structure_is_never_pierced() {
     let mut world = World::new();
-    let pudge = hero_holding(&mut world, HeroId(1), &[ITEM_MONKEY_KING_BAR]);
+    let pudge = hero_holding(&mut world, HeroId(0), &[ITEM_MONKEY_KING_BAR]);
     let keep = world.spawn_unit(&KEEP, Team::Dire, Vec2::from_ints(5100, 5000));
     world.settle();
     world.set_target(pudge, keep);
@@ -182,12 +182,12 @@ fn a_structure_is_never_pierced() {
 #[test]
 fn of_two_pierces_carried_the_better_counts_with_its_own_damage() {
     let mut world = World::new();
-    let both = hero_holding(&mut world, HeroId(1), &[ITEM_JAVELIN, ITEM_MONKEY_KING_BAR]);
+    let both = hero_holding(&mut world, HeroId(0), &[ITEM_JAVELIN, ITEM_MONKEY_KING_BAR]);
     world.settle();
     let stats = *world.stats.get(both).expect("settled");
     assert_eq!((stats.pierce, stats.pierce_damage), (Ratio::new(4, 5), 70));
     let mut world = World::new();
-    let javelin = hero_holding(&mut world, HeroId(1), &[ITEM_JAVELIN]);
+    let javelin = hero_holding(&mut world, HeroId(0), &[ITEM_JAVELIN]);
     world.settle();
     let stats = *world.stats.get(javelin).expect("settled");
     assert_eq!((stats.pierce, stats.pierce_damage), (Ratio::new(1, 4), 60));
@@ -196,10 +196,10 @@ fn of_two_pierces_carried_the_better_counts_with_its_own_damage() {
 #[test]
 fn a_monkey_king_bar_reaches_further_in_melee_hands_only() {
     let mut world = World::new();
-    let bare = hero_holding(&mut world, HeroId(1), &[]);
-    let armed = hero_holding(&mut world, HeroId(1), &[ITEM_MONKEY_KING_BAR]);
-    let archer = hero_holding(&mut world, HeroId(0), &[]);
-    let armed_archer = hero_holding(&mut world, HeroId(0), &[ITEM_MONKEY_KING_BAR]);
+    let bare = hero_holding(&mut world, HeroId(0), &[]);
+    let armed = hero_holding(&mut world, HeroId(0), &[ITEM_MONKEY_KING_BAR]);
+    let archer = hero_holding(&mut world, HeroId(1), &[]);
+    let armed_archer = hero_holding(&mut world, HeroId(1), &[ITEM_MONKEY_KING_BAR]);
     world.settle();
     let reach = |entity: Entity| world.stats.get(entity).expect("settled").attack_range;
     assert_eq!(reach(armed) - reach(bare), Fixed::from_int(50));

@@ -28,13 +28,13 @@ fn the_kit_is_three_razes_the_feast_the_presence_and_the_requiem_with_no_slot_fo
         .iter()
         .map(|held| held.id.0)
         .collect();
-    assert_eq!(ids, vec![13, 14, 15, 19, 18, 16]);
+    assert_eq!(ids, vec![9, 10, 11, 15, 14, 12]);
 }
 
 #[test]
 fn the_necromastery_gathers_from_the_first_level_with_no_point_spent() {
     let mut world = World::new();
-    let fiend = seated_hero(&mut world, Vec2::from_ints(5000, 5000), HeroId(2));
+    let fiend = seated_hero(&mut world, Vec2::from_ints(5000, 5000), HeroId(1));
     let creep = a_creep_at(&mut world, Team::Dire, Vec2::from_ints(5400, 5000));
     world.settle();
     assert_eq!(world.points_spent(fiend), 0, "nothing learned");
@@ -246,7 +246,7 @@ fn a_hero_brought_down_is_worth_four_souls() {
         Team::Dire,
         Vec2::from_ints(5400, 5000),
         SlotId(1),
-        HeroId(0),
+        HeroId(1),
     );
     world.settle();
     world.bury(vec![(victim, Some(fiend))], &mut Vec::new());
@@ -383,7 +383,7 @@ fn a_raze_leaves_its_mark_where_it_lands_for_whoever_sees_the_spot() {
         Vec2::from_ints(5000 + rules::RAZE_DISTANCE[2], 5000)
     );
     assert!(
-        dire.units.iter().all(|shown| shown.hero != Some(HeroId(2))),
+        dire.units.iter().all(|shown| shown.hero != Some(HeroId(1))),
         "and still does not see the fiend"
     );
     for _ in 0..rules::MARK_TICKS {
@@ -409,7 +409,7 @@ fn the_view_carries_what_has_been_gathered_as_a_counted_effect() {
     let shown = view
         .units
         .iter()
-        .find(|u| u.hero == Some(HeroId(2)))
+        .find(|u| u.hero == Some(HeroId(1)))
         .expect("he is in the view");
     let souls = shown
         .effects
@@ -508,7 +508,7 @@ fn a_requiem_line_tears_magic_resistance_by_a_share_of_what_it_keeps_out() {
         Team::Dire,
         Vec2::from_ints(5300, 5000),
         SlotId(1),
-        HeroId(0),
+        HeroId(1),
     );
     world.settle();
     hand_souls(&mut world, fiend, 1);

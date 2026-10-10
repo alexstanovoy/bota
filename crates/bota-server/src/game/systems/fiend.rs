@@ -62,7 +62,6 @@ impl World {
                 amount,
                 kind: DamageKind::Magical,
                 damage_amp_bp,
-                crit: false,
                 attack: false,
                 pierces: false,
                 effect: HitEffect::Shadowraze { stack_damage },
@@ -96,7 +95,6 @@ impl World {
             amount: damage * class_pct / 100,
             kind: DamageKind::Physical,
             damage_amp_bp: stats.damage_amp_bp(DamageKind::Physical),
-            crit: false,
             attack: false,
             pierces: false,
             effect: HitEffect::None,
@@ -248,7 +246,6 @@ impl World {
             amount: line.damage,
             kind: DamageKind::Magical,
             damage_amp_bp: line.damage_amp_bp,
-            crit: false,
             attack: false,
             pierces: false,
             effect: if line.frightens {

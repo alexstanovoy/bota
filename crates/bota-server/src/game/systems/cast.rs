@@ -1,13 +1,8 @@
 //! Casting abilities: what starts one, what it costs, and what each one does.
 
-use bota_proto::{
-    AbilityId, AbilitySlot, DamageKind, EventKind, Fixed, Target, Team, UnitKind, Vec2,
-};
+use bota_proto::{AbilityId, AbilitySlot, EventKind, Fixed, Target, Team, UnitKind, Vec2};
 
-use crate::game::{
-    Entity, Event, Modifier, ModifierKind, Projectile, World, ability, ability_def, fountain_pos,
-    item_def, rules, wire_id,
-};
+use crate::game::{Entity, Event, World, ability_def, fountain_pos, item_def, rules, wire_id};
 
 impl World {
     /// Whether an entity stands in its own shop.
@@ -114,96 +109,6 @@ impl World {
                 }
             }
         }
-    }
-
-    /// Puts haste on the caster for a while.
-    pub fn cast_frenzy(&mut self, caster: Entity, level: usize) -> bool {
-        self.put_modifier(
-            caster,
-            Modifier {
-                kind: ModifierKind::Haste {
-                    speed: rules::SYLLA_FRENZY_ATTACK_SPEED[level],
-                },
-                source: Some(caster),
-                ticks_left: Some(rules::SYLLA_FRENZY_TICKS),
-            },
-        );
-        true
-    }
-
-    /// Throws a missile that goes on to the next enemy after each hit.
-    pub fn cast_bounce(&mut self, caster: Entity, level: usize, target: Target) -> bool {
-        let Target::Unit(target) = target else {
-            return false;
-        };
-        let Some(mark) = self.of_wire(target) else {
-            return false;
-        };
-        if !self.hostile(caster, mark) {
-            return false;
-        }
-        let range = rules::units(rules::SYLLA_BOUNCE_CAST_RANGE);
-        if !self.reachable(caster, range, mark) {
-            return false;
-        }
-        let (Some(at), Some(side)) = (
-            self.transform.get(caster).copied(),
-            self.team.get(caster).copied(),
-        ) else {
-            return false;
-        };
-        let damage_amp_bp = self.outgoing_damage_amp_bp(Some(caster), DamageKind::Magical);
-        let missile = self.spawn();
-        self.transform.insert(missile, at);
-        self.set_team(missile, side);
-        self.projectile.insert(
-            missile,
-            Projectile {
-                speed: Fixed::from_int(rules::SYLLA_BOUNCE_SPEED),
-                source: Some(caster),
-                target: mark,
-                damage: rules::SYLLA_BOUNCE_DAMAGE[level],
-                kind: DamageKind::Magical,
-                damage_amp_bp,
-                ability: Some(ability::BOUNCE),
-                launch_tier: 0,
-                can_miss_uphill: false,
-                crit: false,
-                pierces: false,
-                pierce_damage: 0,
-                pierce_amp_bp: rules::NOMINAL_BP,
-                bounces_left: rules::SYLLA_BOUNCE_COUNT[level],
-                bounce_range: rules::SYLLA_BOUNCE_RANGE,
-                bounced: vec![mark],
-            },
-        );
-        true
-    }
-
-    /// Strikes every enemy standing near the caster at once.
-    pub fn cast_multishot(&mut self, caster: Entity, level: usize) -> bool {
-        let Some(at) = self.transform.get(caster).map(|t| t.pos) else {
-            return false;
-        };
-        let damage = self.stats.get(caster).map_or(0, |s| s.damage)
-            * rules::SYLLA_MULTI_DMG_PCT[level]
-            / 100;
-        let radius = rules::units(rules::SYLLA_MULTI_RADIUS);
-        let struck: Vec<Entity> = self
-            .entities
-            .iter()
-            .filter(|other| {
-                self.hostile(caster, *other)
-                    && self
-                        .transform
-                        .get(*other)
-                        .is_some_and(|t| t.pos.within(at, radius))
-            })
-            .collect();
-        for mark in struck {
-            self.push_hit(Some(caster), mark, damage, DamageKind::Physical);
-        }
-        true
     }
 
     /// Which ability sits in one of an entity's slots; `AbilityId(u16::MAX)`

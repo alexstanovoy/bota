@@ -2,7 +2,7 @@
 
 use bota_proto::{AbilityId, HeroId};
 
-use crate::game::{HERO, PUDGE, SHADOW_FIEND, SHADOW_FIEND_TALENTS, TalentTree, UnitDef, ability};
+use crate::game::{PUDGE, SHADOW_FIEND, SHADOW_FIEND_TALENTS, TalentTree, UnitDef, ability};
 
 /// One hero: what it is made of and what it can do.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -23,19 +23,7 @@ pub struct HeroDef {
 }
 
 /// Every hero, indexed by [`HeroId`].
-pub const HEROES: [HeroDef; 3] = [
-    HeroDef {
-        name: "Sylla",
-        unit: &HERO,
-        abilities: &[
-            ability::CRIT,
-            ability::FRENZY,
-            ability::BOUNCE,
-            ability::VOLLEY,
-        ],
-        innate: None,
-        talents: None,
-    },
+pub const HEROES: [HeroDef; 2] = [
     HeroDef {
         name: "Pudge",
         unit: &PUDGE,

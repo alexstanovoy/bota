@@ -23,7 +23,7 @@ fn empty_tick() -> bota_proto::WorldView {
         vec![fixtures::seat(
             SlotId(0),
             Team::Radiant,
-            bota_proto::HeroId(2),
+            bota_proto::HeroId(1),
             None,
         )],
     )

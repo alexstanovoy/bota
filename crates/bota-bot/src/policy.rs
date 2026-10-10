@@ -13,9 +13,9 @@ use crate::{
     Field, Forest, HARASS_RANGE, LAST_HIT_SLACK, MAGIC_STICK, MAGIC_WAND, MENDED_RETURN,
     PULL_DRIFT, PULL_HEALTH, QUELLING_BLADE, QUELLING_BONUS, RESTORE_CHARGES, RESTORE_PER_CHARGE,
     RETREAT_HEALTH, RETURN_HEALTH, Role, SALVE, SALVE_HEALS, SALVE_HEALTH, SCROLL, SHADOW_FIEND,
-    SHAKE_CREEPS, SHAKE_TICKS, STAND_BEHIND, SYLLA, Stall, Steady, TANGO, TANGO_HEALS,
-    TANGO_HEALTH, TANGO_WALK, TOWER_ATTACK_RANGE, TOWER_KEEP_OUT, WORN_SLOTS, after_mitigation,
-    fiend_aim, fiend_spell, next_point, next_talent, order_by, point_along, span, sylla_spell,
+    SHAKE_CREEPS, SHAKE_TICKS, STAND_BEHIND, Stall, Steady, TANGO, TANGO_HEALS, TANGO_HEALTH,
+    TANGO_WALK, TOWER_ATTACK_RANGE, TOWER_KEEP_OUT, WORN_SLOTS, after_mitigation, fiend_aim,
+    fiend_spell, next_point, next_talent, order_by, point_along, span,
 };
 
 /// The mending a salve or a tango puts on, as the wire names it.
@@ -498,7 +498,6 @@ impl Playbook {
     fn spell(&self, field: &Field) -> Option<Ask> {
         match field.hero {
             SHADOW_FIEND => fiend_spell(field, &self.beat),
-            SYLLA => sylla_spell(field),
             _ => None,
         }
     }

@@ -8,9 +8,9 @@ use crate::state::{App, CueKind, FeedLine, Floater, FloaterKind};
 /// Health share under which the low-health cue comes.
 const LOW_HP: f32 = 0.25;
 /// The id of the first of the three razes.
-pub const RAZE_NEAR: u16 = 13;
+pub const RAZE_NEAR: u16 = 9;
 /// The id of the requiem.
-pub const REQUIEM: u16 = 16;
+pub const REQUIEM: u16 = 12;
 
 impl App {
     /// The hero the cues and the aids are about: one's own, else the hero
@@ -36,8 +36,7 @@ impl App {
                 target,
                 amount,
                 kind,
-                crit,
-            } => self.on_damage(source, target, amount, kind, crit),
+            } => self.on_damage(source, target, amount, kind),
             EventKind::Missed { source, target } => {
                 if self.involves_hero(source, target) {
                     self.float(target, "miss".to_string(), FloaterKind::Miss);
@@ -83,20 +82,18 @@ impl App {
         target: EntityId,
         amount: i32,
         kind: DamageKind,
-        crit: bool,
     ) {
         if !self.involves_hero(source, target) {
             return;
         }
-        let (text, look) = match (crit, kind) {
-            (true, _) => (format!("{amount}!"), FloaterKind::Crit),
-            (false, DamageKind::Physical) => (format!("{amount}"), FloaterKind::Damage),
-            (false, _) => (format!("{amount}"), FloaterKind::Magic),
+        let (text, look) = match kind {
+            DamageKind::Physical => (format!("{amount}"), FloaterKind::Damage),
+            _ => (format!("{amount}"), FloaterKind::Magic),
         };
         self.float(target, text, look);
         let ears = self.ears();
         if source.is_some() && source == ears && kind == DamageKind::Physical {
-            self.cue(CueKind::Hit, if crit { 1.0 } else { 0.55 }, None);
+            self.cue(CueKind::Hit, 0.55, None);
         }
         let by_tower = source
             .and_then(|id| self.freshest(id))

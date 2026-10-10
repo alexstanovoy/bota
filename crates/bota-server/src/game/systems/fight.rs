@@ -39,7 +39,6 @@ impl World {
                     target: wire_id(blow.target),
                     amount: blow.amount,
                     kind: blow.kind,
-                    crit: blow.crit,
                 },
                 visible_to: self.who_may_know(blow.at, blow.side),
             });

@@ -8,8 +8,6 @@ use rand_chacha::rand_core::{Rng as _, SeedableRng};
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(u16)]
 pub enum Purpose {
-    /// Critical strike ordering.
-    Crit = 0,
     /// Evasion and uphill-miss ordering.
     Evasion = 2,
     /// Which roster a neutral camp puts out.

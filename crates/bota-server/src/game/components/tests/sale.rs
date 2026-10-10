@@ -126,7 +126,7 @@ fn courier_sale_pays_item_owner_not_courier_owner() {
     world.seats.push(crate::game::Seat::new(
         other,
         bota_proto::Team::Radiant,
-        bota_proto::HeroId(2),
+        bota_proto::HeroId(1),
         200,
         rules::STASH_SLOTS,
     ));

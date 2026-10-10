@@ -6,7 +6,9 @@ use std::sync::Arc;
 use std::sync::mpsc::Sender;
 use std::thread;
 
-use bota_proto::{ClientMsg, EventKind, FrameReader, PlayerId, ServerMsg, encode_frame_to_vec};
+use bota_proto::{
+    ClientMsg, CodecError, EventKind, FrameReader, PlayerId, ServerMsg, encode_frame_to_vec,
+};
 
 use crate::net::Outbox;
 
@@ -22,6 +24,9 @@ pub enum NetEvent {
     Msg(PlayerId, ClientMsg),
     /// A peer's connection ended, cleanly or not.
     Disconnected(PlayerId),
+    /// A peer sent bytes that are no message of this protocol, and will
+    /// be heard from no more.
+    Malformed(PlayerId, CodecError),
 }
 
 /// The server-side handle of one peer.
@@ -96,8 +101,8 @@ fn read_loop(id: PlayerId, mut stream: TcpStream, events: Sender<NetEvent>) {
                     }
                 }
                 Ok(None) => break,
-                Err(_) => {
-                    let _ = events.send(NetEvent::Disconnected(id));
+                Err(error) => {
+                    let _ = events.send(NetEvent::Malformed(id, error));
                     return;
                 }
             }

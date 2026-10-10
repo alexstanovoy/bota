@@ -465,7 +465,7 @@ fn shadow_fiend_stands_at_dota_numbers_from_the_first_level_to_the_last() {
         let fiend = seated_hero(
             &mut world,
             Vec2::from_ints(5000, 5000),
-            bota_proto::HeroId(2),
+            bota_proto::HeroId(1),
         );
         world.level.insert(fiend, Level(level));
         world.settle();
@@ -473,7 +473,7 @@ fn shadow_fiend_stands_at_dota_numbers_from_the_first_level_to_the_last() {
             .view_full()
             .units
             .into_iter()
-            .find(|unit| unit.hero == Some(bota_proto::HeroId(2)))
+            .find(|unit| unit.hero == Some(bota_proto::HeroId(1)))
             .expect("he is projected");
         assert_eq!(shown.max_hp, hp, "level {level} health");
         assert_eq!(shown.max_mana, mana, "level {level} mana");

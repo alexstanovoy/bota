@@ -11,12 +11,12 @@ use bota_proto::{
 use super::support::*;
 
 #[test]
-fn frenzy_puts_haste_on_its_caster_and_spends_the_mana() {
+fn a_feast_speeds_its_caster_up_and_spends_the_mana() {
     let mut world = World::new();
-    let hero = caster(&mut world, Vec2::from_ints(5000, 5000), 1);
+    let hero = caster(&mut world, Vec2::from_ints(5000, 5000), 3);
     let full = world.mana.get(hero).expect("has mana").mana;
     let plain = world.stats.get(hero).expect("settled").attack_speed;
-    order(&mut world, hero, 1, Target::None);
+    order(&mut world, hero, 3, Target::None);
     world.step();
     assert!(
         world.mana.get(hero).expect("has mana").mana < full,
@@ -27,10 +27,10 @@ fn frenzy_puts_haste_on_its_caster_and_spends_the_mana() {
     world.step();
     assert!(
         world.stats.get(hero).expect("settled").attack_speed > plain,
-        "and it swings faster while the haste holds"
+        "and it swings faster while the feast holds"
     );
     assert!(
-        world.abilities.get(hero).expect("has a book").slots[1].cooldown > 0,
+        world.abilities.get(hero).expect("has a book").slots[3].cooldown > 0,
         "and waits before casting again"
     );
 }
@@ -38,41 +38,16 @@ fn frenzy_puts_haste_on_its_caster_and_spends_the_mana() {
 #[test]
 fn a_cast_with_no_mana_behind_it_does_nothing() {
     let mut world = World::new();
-    let hero = caster(&mut world, Vec2::from_ints(5000, 5000), 1);
+    let hero = caster(&mut world, Vec2::from_ints(5000, 5000), 3);
     if let Some(mana) = world.mana.get_mut(hero) {
         mana.mana = Fixed::ZERO;
     }
-    order(&mut world, hero, 1, Target::None);
-    world.step();
-    assert_eq!(
-        world.abilities.get(hero).expect("has a book").slots[1].cooldown,
-        0,
-        "nothing was spent and nothing began"
-    );
-}
-
-#[test]
-fn a_multishot_strikes_everything_around_and_leaves_allies_be() {
-    let mut world = World::new();
-    let at = Vec2::from_ints(5000, 5000);
-    let hero = caster(&mut world, at, 3);
-    let near = world.spawn_unit(&MELEE_CREEP, Team::Dire, Vec2::from_ints(5200, 5000));
-    let ally = world.spawn_unit(&MELEE_CREEP, Team::Radiant, Vec2::from_ints(5200, 5100));
-    let far = world.spawn_unit(&MELEE_CREEP, Team::Dire, Vec2::from_ints(7000, 5000));
-    world.settle();
-    for unit in [near, ally, far] {
-        world.fill_pools(unit);
-    }
-    let hp = |world: &World, unit| world.health.get(unit).expect("standing").hp;
-    let (was_near, was_ally, was_far) = (hp(&world, near), hp(&world, ally), hp(&world, far));
     order(&mut world, hero, 3, Target::None);
     world.step();
-    assert!(hp(&world, near) < was_near, "the one in the ring is struck");
-    assert_eq!(hp(&world, ally), was_ally, "its own side is left be");
     assert_eq!(
-        hp(&world, far),
-        was_far,
-        "and the one outside the ring is untouched"
+        world.abilities.get(hero).expect("has a book").slots[3].cooldown,
+        0,
+        "nothing was spent and nothing began"
     );
 }
 
@@ -83,7 +58,7 @@ fn a_point_is_spent_only_when_there_is_one_and_the_level_allows_it() {
         Team::Radiant,
         Vec2::from_ints(5000, 5000),
         SlotId(0),
-        HeroId(1),
+        HeroId(0),
     );
     world.settle();
     assert!(world.learn(hero, 0), "the first point goes in");
@@ -298,46 +273,6 @@ fn a_cast_with_no_mana_is_named_and_refused() {
 }
 
 #[test]
-fn a_bolt_goes_on_to_the_next_and_never_back_to_the_same_one() {
-    let mut world = World::new();
-    let at = Vec2::from_ints(5000, 5000);
-    let hero = caster(&mut world, at, 2);
-    // Three enemies in a row, each within a bounce of the last.
-    let marks: Vec<Entity> = (0..3)
-        .map(|step| {
-            world.spawn_unit(
-                &MELEE_CREEP,
-                Team::Dire,
-                at + Vec2::from_ints(300 + 300 * step, 0),
-            )
-        })
-        .collect();
-    world.settle();
-    world.step();
-    let full: Vec<i32> = marks
-        .iter()
-        .map(|mark| world.health.get(*mark).expect("standing").hp.to_int())
-        .collect();
-    order(&mut world, hero, 2, Target::Unit(wire_id(marks[0])));
-    for _ in 0..120 {
-        world.step();
-    }
-    for (mark, was) in marks.iter().zip(full) {
-        assert!(
-            world.health.get(*mark).expect("standing").hp.to_int() < was,
-            "the bolt reached every one of them"
-        );
-    }
-    assert!(
-        world
-            .entities
-            .iter()
-            .all(|entity| world.projectile.get(entity).is_none()),
-        "and is gone once it runs out of places to go"
-    );
-}
-
-#[test]
 fn a_spell_aimed_at_what_it_cannot_take_is_named_and_refused() {
     let mut world = World::for_match(&config(), config().rng());
     let hero = world.seats[0].unit.expect("stood up");
@@ -368,7 +303,7 @@ fn one_point_levels_every_raze_at_once_and_costs_one() {
         Team::Radiant,
         Vec2::from_ints(5000, 5000),
         SlotId(0),
-        HeroId(2),
+        HeroId(1),
     );
     world.settle();
     assert!(world.learn(fiend, 2), "the point goes in");

@@ -29,8 +29,6 @@ pub enum EventKind {
         amount: i32,
         /// Which reduction applied.
         kind: DamageKind,
-        /// Whether this hit was a critical strike.
-        crit: bool,
     },
     /// An attack did not land: the target evaded it, or it was thrown
     /// uphill and missed.

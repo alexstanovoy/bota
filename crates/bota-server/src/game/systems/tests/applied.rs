@@ -4,9 +4,9 @@ use crate::game::{
     AppliedModifier, AppliedModifiers, AppliedOrigin, Aura, AuraCx, Auras, Entity,
     ITEM_BLINK_DAGGER, ITEM_BOOTS, ITEM_BRACER, ITEM_MAGIC_STICK, ITEM_NULL_TALISMAN,
     ITEM_PHASE_BOOTS, ITEM_TOWN_PORTAL_SCROLL, ITEMS, MAX_APPLIED_MODIFIERS_PER_UNIT,
-    MAX_COMBINED_MODIFIER_SCALE, MELEE_CREEP, Modifier, ModifierKind, Place, Reach, Seat, Spots,
-    StackKind, Stacks, World, ability, ability_cooldown, ability_mana_cost, aura_system,
-    cooldown_after, cost_after, map_of, rules, tower_def, wire_id,
+    MAX_COMBINED_MODIFIER_SCALE, MELEE_CREEP, Modifier, ModifierKind, Place, Reach, SHADOW_FIEND,
+    Seat, Spots, StackKind, Stacks, World, ability, ability_cooldown, ability_mana_cost,
+    aura_system, cooldown_after, cost_after, map_of, rules, tower_def, wire_id,
 };
 use bota_proto::{
     AbilitySlot, DamageKind, Fixed, HeroId, ItemId, MapId, ModifierSpec, SlotId, Target, Team,
@@ -22,7 +22,7 @@ fn arena() -> (World, Entity, Entity) {
         Team::Radiant,
         Vec2::from_ints(7000, 7000),
         SlotId(0),
-        HeroId(0),
+        HeroId(1),
     );
     let creep = world.spawn_unit(&MELEE_CREEP, Team::Dire, Vec2::from_ints(1000, 1000));
     world.settle();
@@ -88,41 +88,43 @@ fn dealt(world: &mut World, from: Entity, to: Entity, amount: i32, kind: DamageK
     (before - world.health.get(to).expect("standing").hp).to_int()
 }
 
-/// A magical bounce in flight, its source carrying double amplification.
-fn amplified_bounce(ticks: u32) -> (World, Entity, Entity, Entity) {
+/// A requiem line in flight at a creep, its source carrying double
+/// amplification.
+fn amplified_requiem(ticks: u32) -> (World, Entity, Entity) {
     let mut world = World::new();
     let caster = world.spawn_hero(
         Team::Radiant,
         Vec2::from_ints(5000, 5000),
         SlotId(0),
-        HeroId(0),
+        HeroId(1),
     );
-    let target = world.spawn_unit(&MELEE_CREEP, Team::Dire, Vec2::from_ints(5500, 5000));
+    let target = world.spawn_unit(&MELEE_CREEP, Team::Dire, Vec2::from_ints(5300, 5000));
     world.settle();
     apply(&mut world, caster, spec(|s| s.magic_damage = 20_000), ticks);
-    assert!(world.cast_bounce(caster, 0, Target::Unit(wire_id(target))));
-    let missile = world
+    let mut kept = world.stacks.get(caster).copied().unwrap_or_default();
+    kept.set(StackKind::Souls, 1);
+    world.stacks.insert(caster, kept);
+    assert!(world.cast_requiem(caster, 0));
+    let line = world
         .entities
         .iter()
-        .find(|entity| world.projectile.get(*entity).is_some())
-        .expect("the bounce is in flight");
-    let shot = world.projectile.get_mut(missile).expect("in flight");
-    shot.bounces_left = 0;
-    assert_eq!(shot.damage_amp_bp, 20_000);
-    (world, caster, target, missile)
+        .find_map(|entity| world.requiem_line.get(entity))
+        .expect("the line is in flight");
+    assert_eq!(line.damage_amp_bp, 20_000);
+    (world, caster, target)
 }
 
-/// Runs one launched bounce to impact and returns health it took.
-fn land_bounce(world: &mut World, target: Entity, missile: Entity) -> i32 {
+/// Runs one released line to the creep and returns the health it took.
+fn land_requiem(world: &mut World, target: Entity) -> i32 {
     let before = world.health.get(target).expect("standing").hp;
     for _ in 0..64 {
         world.step();
-        if world.projectile.get(missile).is_none() {
-            let after = world.health.get(target).expect("survives").hp;
+        let after = world.health.get(target).expect("survives").hp;
+        if after < before {
             return (before - after).to_int();
         }
     }
-    panic!("the bounce did not land inside its bounded flight")
+    panic!("the line did not reach the creep inside its bounded flight")
 }
 
 /// A stun of `ticks` ticks.
@@ -182,16 +184,16 @@ fn every_combined_modifier_family_has_an_explicit_bound() {
         );
         assert_eq!(
             stats.move_speed.to_int(),
-            rules::HERO_MOVE_SPEED * scale / rules::NOMINAL_BP,
+            SHADOW_FIEND.move_speed * scale / rules::NOMINAL_BP,
             "world magnitudes saturate at one source's bound"
         );
         assert_eq!(
             stats.max_hp.to_int(),
-            rules::HERO_HP * scale / rules::NOMINAL_BP + rules::HP_PER_STRENGTH * 20
+            SHADOW_FIEND.max_hp * scale / rules::NOMINAL_BP + rules::HP_PER_STRENGTH * 19
         );
         assert_eq!(
             stats.max_mana.to_int(),
-            rules::HERO_MANA * scale / rules::NOMINAL_BP + rules::MANA_PER_INTELLIGENCE * 18
+            SHADOW_FIEND.max_mana * scale / rules::NOMINAL_BP + rules::MANA_PER_INTELLIGENCE * 16
         );
         assert_eq!(
             world.bounty_after(Some(hero), 100),
@@ -272,24 +274,25 @@ fn damage_modifiers_scale_and_resist_only_their_own_kind() {
 }
 
 #[test]
-fn a_projectile_keeps_its_launch_amplification_after_the_modifier_lifts() {
-    let (mut world, caster, target, missile) = amplified_bounce(1);
+fn a_requiem_line_keeps_its_launch_amplification_after_the_modifier_lifts() {
+    let (mut world, caster, target) = amplified_requiem(1);
     world.step();
     assert!(world.alive(caster));
     assert!(!world.applied.contains(caster), "the modifier has run out");
     assert_eq!(
-        land_bounce(&mut world, target, missile),
-        rules::SYLLA_BOUNCE_DAMAGE[0] * 2
+        land_requiem(&mut world, target),
+        rules::REQUIEM_LINE_DAMAGE[0] * 2
     );
 }
 
 #[test]
-fn a_projectile_keeps_its_launch_amplification_when_the_source_slot_is_reused() {
-    let (mut world, caster, target, missile) = amplified_bounce(100);
+fn a_requiem_line_keeps_its_launch_amplification_when_the_source_slot_is_reused() {
+    let (mut world, caster, target) = amplified_requiem(100);
     world.push_hit(None, caster, 1_000_000, DamageKind::Pure);
     world.step();
     assert!(!world.alive(caster));
-    let replacement = world.spawn_unit(&MELEE_CREEP, Team::Radiant, Vec2::from_ints(3000, 3000));
+    // Near enough for its side to see the creep the line is flying at.
+    let replacement = world.spawn_unit(&MELEE_CREEP, Team::Radiant, Vec2::from_ints(5000, 4700));
     assert_eq!(
         replacement.index(),
         caster.index(),
@@ -298,8 +301,8 @@ fn a_projectile_keeps_its_launch_amplification_when_the_source_slot_is_reused() 
     assert_ne!(replacement.generation(), caster.generation());
     world.settle();
     assert_eq!(
-        land_bounce(&mut world, target, missile),
-        rules::SYLLA_BOUNCE_DAMAGE[0] * 2
+        land_requiem(&mut world, target),
+        rules::REQUIEM_LINE_DAMAGE[0] * 2
     );
 }
 
@@ -340,13 +343,13 @@ fn status_resistance_shortens_stuns_fears_and_slows() {
     world.put_modifier(
         hero,
         Modifier {
-            kind: ModifierKind::Haste { speed: 10 },
+            kind: ModifierKind::Hastened { pct: 10 },
             source: None,
             ticks_left: Some(10),
         },
     );
     assert_eq!(
-        left_on(&world, hero, ModifierKind::Haste { speed: 10 }),
+        left_on(&world, hero, ModifierKind::Hastened { pct: 10 }),
         Some(10),
         "a buff is not a disable"
     );
@@ -373,27 +376,30 @@ fn a_nominal_spec_changes_no_stat_cost_or_cooldown() {
     apply(&mut world, twin, ModifierSpec::NOMINAL, 10);
     assert_eq!(plain.stats.get(hero), world.stats.get(twin));
     assert_eq!(
-        world.ability_mana_cost(twin, ability::FRENZY, 1),
-        ability_mana_cost(ability::FRENZY, 1)
+        world.ability_mana_cost(twin, ability::RAZE_NEAR, 1),
+        ability_mana_cost(ability::RAZE_NEAR, 1)
     );
     assert_eq!(
-        world.ability_cooldown(twin, ability::FRENZY, 1),
-        ability_cooldown(ability::FRENZY, 1)
+        world.ability_cooldown(twin, ability::RAZE_NEAR, 1),
+        ability_cooldown(ability::RAZE_NEAR, 1)
     );
 }
 
 #[test]
 fn cost_and_cooldown_rates_scale_what_a_cast_charges_shows_and_sets() {
     let (mut world, hero, _creep) = arena();
-    world.abilities.get_mut(hero).expect("has a book").slots[1].level = 1;
+    world.abilities.get_mut(hero).expect("has a book").slots[0].level = 1;
     let rates = spec(|s| {
         s.mana_cost_rate = 5_000;
         s.cooldown_rate = 6_000;
     });
     apply(&mut world, hero, rates, 10);
-    let base = ability_mana_cost(ability::FRENZY, 1);
-    assert_eq!(base, rules::SYLLA_FRENZY_MANA[0]);
-    assert_eq!(world.ability_mana_cost(hero, ability::FRENZY, 1), base / 2);
+    let base = ability_mana_cost(ability::RAZE_NEAR, 1);
+    assert_eq!(base, rules::RAZE_MANA[0]);
+    assert_eq!(
+        world.ability_mana_cost(hero, ability::RAZE_NEAR, 1),
+        base / 2
+    );
     let view = world.view_full();
     let unit = view
         .units
@@ -401,20 +407,20 @@ fn cost_and_cooldown_rates_scale_what_a_cast_charges_shows_and_sets() {
         .find(|unit| unit.id == wire_id(hero))
         .expect("the hero is in the view");
     assert_eq!(
-        unit.abilities[1].mana_cost,
+        unit.abilities[0].mana_cost,
         base / 2,
         "the projection shows what a cast pays"
     );
     let before = world.mana.get(hero).expect("has mana").mana;
-    assert!(world.begin_ability(hero, AbilitySlot(1), Target::None));
+    assert!(world.begin_ability(hero, AbilitySlot(0), Target::None));
     assert_eq!(
         before - world.mana.get(hero).expect("has mana").mana,
         Fixed::from_int(base / 2),
         "the cast charged the scaled cost"
     );
     assert_eq!(
-        world.abilities.get(hero).map(|book| book.slots[1].cooldown),
-        Some(ability_cooldown(ability::FRENZY, 1) * 3 / 5),
+        world.abilities.get(hero).map(|book| book.slots[0].cooldown),
+        Some(ability_cooldown(ability::RAZE_NEAR, 1) * 3 / 5),
         "and set the scaled cooldown"
     );
 }
@@ -455,7 +461,7 @@ fn a_shared_item_wait_is_scaled_with_the_cooldown_rate() {
     let mut seat = Seat::new(
         SlotId(0),
         Team::Radiant,
-        HeroId(0),
+        HeroId(1),
         rules::STARTING_GOLD,
         rules::STASH_SLOTS,
     );
@@ -555,7 +561,7 @@ fn pudge_with_a_heap() -> (World, Entity) {
         Team::Radiant,
         Vec2::from_ints(7000, 7000),
         SlotId(0),
-        HeroId(1),
+        HeroId(0),
     );
     if let Some(book) = world.abilities.get_mut(pudge) {
         book.slots[2].level = 1;
@@ -609,7 +615,7 @@ fn movement_speed_adds_before_items_and_slows() {
     let (mut world, hero, _creep) = arena();
     hold(&mut world, hero, 0, ITEM_BOOTS);
     apply(&mut world, hero, spec(|s| s.move_speed = 15_000), 10);
-    let carried = rules::HERO_MOVE_SPEED * 3 / 2 + 45;
+    let carried = SHADOW_FIEND.move_speed * 3 / 2 + 45;
     assert_eq!(
         world.stats.get(hero).map(|stats| stats.move_speed.to_int()),
         Some(carried),
@@ -636,7 +642,7 @@ fn max_health_scales_the_raised_base_before_items() {
     let (mut world, hero, _creep) = arena();
     hold(&mut world, hero, 0, ITEM_BRACER);
     apply(&mut world, hero, spec(|s| s.max_hp = 20_000), 10);
-    let expected = rules::HERO_HP * 2 + rules::HP_PER_STRENGTH * 26;
+    let expected = SHADOW_FIEND.max_hp * 2 + rules::HP_PER_STRENGTH * 25;
     assert_eq!(
         world.stats.get(hero).map(|stats| stats.max_hp.to_int()),
         Some(expected),
@@ -649,7 +655,7 @@ fn max_mana_scales_the_raised_base_before_items() {
     let (mut world, hero, _creep) = arena();
     hold(&mut world, hero, 0, ITEM_NULL_TALISMAN);
     apply(&mut world, hero, spec(|s| s.max_mana = 20_000), 10);
-    let expected = rules::HERO_MANA * 2 + rules::MANA_PER_INTELLIGENCE * 24;
+    let expected = SHADOW_FIEND.max_mana * 2 + rules::MANA_PER_INTELLIGENCE * 22;
     assert_eq!(
         world.stats.get(hero).map(|stats| stats.max_mana.to_int()),
         Some(expected),
@@ -749,7 +755,7 @@ fn a_mana_pool_keeps_its_fraction_too() {
     let base = world.stats.get(hero).expect("settled").max_mana;
     world.mana.get_mut(hero).expect("has mana").mana = base / Fixed::from_int(2);
     apply(&mut world, hero, spec(|s| s.max_mana = 20_000), 10);
-    let doubled = Fixed::from_int(rules::HERO_MANA * 2 + rules::MANA_PER_INTELLIGENCE * 18);
+    let doubled = Fixed::from_int(SHADOW_FIEND.max_mana * 2 + rules::MANA_PER_INTELLIGENCE * 16);
     assert_eq!(
         world.stats.get(hero).map(|stats| stats.max_mana),
         Some(doubled),
