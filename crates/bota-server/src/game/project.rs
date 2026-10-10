@@ -148,8 +148,8 @@ impl World {
         let lane = is_lane_creep(kind)
             .then(|| self.lane_ai.get(entity))
             .flatten();
-        let drawn = is_lane_creep(kind) || kind == UnitKind::Tower;
-        let draw_cooldown = if drawn {
+        let own_hero = kind == UnitKind::Hero && (viewer.is_none() || self.own_to(viewer, entity));
+        let draw_cooldown = if own_hero || kind == UnitKind::Tower {
             self.orders.get(entity).map_or(0, |orders| orders.cooldown)
         } else {
             0
@@ -258,7 +258,7 @@ impl World {
             mana: shown(mana.map_or(Fixed::ZERO, |m| m.mana)),
             max_mana: stats.max_mana.to_int(),
             move_speed: stats.move_speed,
-            attack_damage: stats.damage,
+            attack_damage: stats.damage + stats.damage_spread / 2,
             attack_range: stats.attack_range,
             attack_time: after_speed(stats.attack_time, stats.attack_speed),
             attack_point: after_speed(stats.attack_point, stats.attack_speed),

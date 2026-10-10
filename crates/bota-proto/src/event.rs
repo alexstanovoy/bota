@@ -63,8 +63,9 @@ pub enum EventKind {
         /// Whether the killer was on the same team, making this a deny.
         denied: bool,
         /// Gold paid to the seat of the hero that struck last: the bounty
-        /// drawn for this kill, and a flagbearer's bonus on top. Zero for a
-        /// deny, or when no hero struck last.
+        /// drawn for this kill, a flagbearer's bonus and a tower's team
+        /// bounty on top. On a deny only a tower's half team bounty. Zero
+        /// when no hero struck last.
         gold: i32,
     },
     /// A unit's ability took effect.

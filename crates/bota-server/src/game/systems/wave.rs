@@ -3,8 +3,8 @@
 use bota_proto::{Fixed, Team, Vec2};
 
 use crate::game::{
-    CreepRank, Entity, FLAGBEARER_CREEP, MEGA_MELEE_CREEP, MELEE_CREEP, March, Purpose,
-    RANGED_CREEP, SIEGE_CREEP, SUPER_MELEE_CREEP, SUPER_RANGED_CREEP, SUPER_SIEGE_CREEP,
+    CreepRank, Entity, FLAGBEARER_CREEP, MEGA_MELEE_CREEP, MEGA_RANGED_CREEP, MELEE_CREEP, March,
+    Purpose, RANGED_CREEP, SIEGE_CREEP, SUPER_MELEE_CREEP, SUPER_RANGED_CREEP, SUPER_SIEGE_CREEP,
     StructureId, UnitDef, UnitOrder, WavePlan, World, advance_waypoint, creep_spawn_pos, rules,
     spawn_offsets, team_index, wave_at, wave_plan,
 };
@@ -155,7 +155,8 @@ fn wave_ranks(plan: &WavePlan, flag_slot: u32, ranks: [CreepRank; 3]) -> Vec<&'s
     };
     let ranged_def = match ranks[1] {
         CreepRank::Normal => &RANGED_CREEP,
-        CreepRank::Super | CreepRank::Mega => &SUPER_RANGED_CREEP,
+        CreepRank::Super => &SUPER_RANGED_CREEP,
+        CreepRank::Mega => &MEGA_RANGED_CREEP,
     };
     let siege_def = match ranks[2] {
         CreepRank::Normal => &SIEGE_CREEP,

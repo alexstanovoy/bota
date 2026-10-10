@@ -25,8 +25,9 @@ pub struct Growth {
     pub damage: i32,
     /// Half points of armor added, so an odd number is half a point a step.
     pub armor_halves: i32,
-    /// Gold added to the bounty.
-    pub gold: i32,
+    /// Half points of gold added to both ends of the bounty, so an odd
+    /// number is half a gold a step; a part gold left over is not paid.
+    pub gold_halves: i32,
     /// Experience added to the bounty.
     pub xp: i32,
 }
@@ -49,9 +50,12 @@ pub struct UnitDef {
     pub hp_regen: Fixed,
     /// Mana mended each tick.
     pub mana_regen: Fixed,
-    /// Damage one attack deals, before the primary attribute. Zero for
-    /// whatever does not attack.
+    /// The least damage one attack deals, before the primary attribute.
+    /// Zero for whatever does not attack.
     pub damage: i32,
+    /// How much more one attack may deal: each swing adds a whole number
+    /// drawn evenly from `0..=damage_spread`. Zero for a fixed amount.
+    pub damage_spread: i32,
     /// How far it reaches, edge to edge, in world units.
     pub attack_range: i32,
     /// How far it looks for something to attack, in world units.
@@ -59,6 +63,8 @@ pub struct UnitDef {
     /// Milliseconds between the starts of two attacks at
     /// [`rules::BASE_ATTACK_SPEED`].
     pub attack_time: u32,
+    /// The attack speed it has before anything raises it.
+    pub attack_speed: i32,
     /// Milliseconds from the start of an attack to the hit.
     pub attack_point: u32,
     /// Milliseconds after the hit before it may move again.
@@ -98,6 +104,9 @@ pub struct UnitDef {
     pub ancient: bool,
     /// Gold killing it pays.
     pub bounty_gold: GoldRange,
+    /// Gold its fall pays every seat of the side that brought it down, half
+    /// to every seat of both sides on a deny. Zero for whatever pays none.
+    pub bounty_team: i32,
     /// Experience killing it pays.
     pub bounty_xp: i32,
     /// What each level past the first adds.
@@ -115,7 +124,7 @@ const NO_GROWTH: Growth = Growth {
     mana: 0,
     damage: 0,
     armor_halves: 0,
-    gold: 0,
+    gold_halves: 0,
     xp: 0,
 };
 
@@ -129,9 +138,11 @@ const NOTHING: UnitDef = UnitDef {
     hp_regen: Fixed::ZERO,
     mana_regen: Fixed::ZERO,
     damage: 0,
+    damage_spread: 0,
     attack_range: 0,
     acquisition: 0,
     attack_time: 0,
+    attack_speed: rules::BASE_ATTACK_SPEED,
     attack_point: 0,
     attack_backswing: 0,
     projectile_speed: None,
@@ -149,6 +160,7 @@ const NOTHING: UnitDef = UnitDef {
     invulnerable: false,
     ancient: false,
     bounty_gold: GoldRange::ZERO,
+    bounty_team: 0,
     bounty_xp: 0,
     per_level: NO_GROWTH,
     per_upgrade: NO_GROWTH,
@@ -164,6 +176,7 @@ pub const MELEE_CREEP: UnitDef = UnitDef {
     kind: UnitKind::CreepMelee,
     max_hp: rules::MELEE_CREEP_HP,
     damage: rules::MELEE_CREEP_ATTACK_DAMAGE,
+    damage_spread: rules::MELEE_CREEP_DAMAGE_SPREAD,
     attack_range: rules::MELEE_CREEP_ATTACK_RANGE,
     acquisition: rules::MELEE_CREEP_ACQUISITION,
     attack_time: rules::CREEP_ATTACK_TIME,
@@ -181,7 +194,7 @@ pub const MELEE_CREEP: UnitDef = UnitDef {
     per_upgrade: Growth {
         hp: rules::MELEE_UPGRADE_HP,
         damage: rules::MELEE_UPGRADE_DAMAGE,
-        gold: rules::MELEE_UPGRADE_GOLD,
+        gold_halves: 2 * rules::MELEE_UPGRADE_GOLD,
         ..NO_GROWTH
     },
     ..NOTHING
@@ -213,6 +226,7 @@ pub const RANGED_CREEP: UnitDef = UnitDef {
     kind: UnitKind::CreepRanged,
     max_hp: rules::RANGED_CREEP_HP,
     damage: rules::RANGED_CREEP_ATTACK_DAMAGE,
+    damage_spread: rules::RANGED_CREEP_DAMAGE_SPREAD,
     attack_range: rules::RANGED_CREEP_ATTACK_RANGE,
     acquisition: rules::RANGED_CREEP_ACQUISITION,
     attack_point: rules::RANGED_CREEP_ATTACK_POINT,
@@ -225,7 +239,7 @@ pub const RANGED_CREEP: UnitDef = UnitDef {
     per_upgrade: Growth {
         hp: rules::RANGED_UPGRADE_HP,
         damage: rules::RANGED_UPGRADE_DAMAGE,
-        gold: rules::RANGED_UPGRADE_GOLD,
+        gold_halves: 2 * rules::RANGED_UPGRADE_GOLD,
         xp: rules::RANGED_UPGRADE_XP,
         ..NO_GROWTH
     },
@@ -237,16 +251,28 @@ pub const RANGED_CREEP: UnitDef = UnitDef {
 pub const SUPER_MELEE_CREEP: UnitDef = UnitDef {
     max_hp: rules::SUPER_MELEE_HP,
     damage: rules::SUPER_MELEE_ATTACK_DAMAGE,
+    damage_spread: rules::SUPER_MELEE_DAMAGE_SPREAD,
     armor: rules::SUPER_MELEE_ARMOR,
     bounty_gold: rules::SUPER_MELEE_BOUNTY,
     bounty_xp: rules::SUPER_MELEE_XP,
+    per_upgrade: Growth {
+        hp: rules::SUPER_MELEE_UPGRADE_HP,
+        damage: rules::SUPER_MELEE_UPGRADE_DAMAGE,
+        gold_halves: rules::SUPER_MELEE_UPGRADE_GOLD_HALVES,
+        ..NO_GROWTH
+    },
     ..MELEE_CREEP
 };
 
-/// A mega melee creep: a super one swinging faster, once every enemy
-/// barracks has fallen.
+/// A mega melee creep, once every enemy barracks has fallen: a fully
+/// upgraded super one whose bounty alone still grows.
 pub const MEGA_MELEE_CREEP: UnitDef = UnitDef {
-    attack_time: rules::MEGA_MELEE_ATTACK_TIME,
+    max_hp: rules::MEGA_MELEE_HP,
+    damage: rules::MEGA_MELEE_ATTACK_DAMAGE,
+    per_upgrade: Growth {
+        gold_halves: rules::SUPER_MELEE_UPGRADE_GOLD_HALVES,
+        ..NO_GROWTH
+    },
     ..SUPER_MELEE_CREEP
 };
 
@@ -254,10 +280,29 @@ pub const MEGA_MELEE_CREEP: UnitDef = UnitDef {
 pub const SUPER_RANGED_CREEP: UnitDef = UnitDef {
     max_hp: rules::SUPER_RANGED_HP,
     damage: rules::SUPER_RANGED_ATTACK_DAMAGE,
+    damage_spread: rules::SUPER_RANGED_DAMAGE_SPREAD,
     armor: rules::SUPER_RANGED_ARMOR,
     bounty_gold: rules::SUPER_RANGED_BOUNTY,
     bounty_xp: rules::SUPER_RANGED_XP,
+    per_upgrade: Growth {
+        hp: rules::SUPER_RANGED_UPGRADE_HP,
+        damage: rules::SUPER_RANGED_UPGRADE_DAMAGE,
+        gold_halves: 2 * rules::SUPER_RANGED_UPGRADE_GOLD,
+        ..NO_GROWTH
+    },
     ..RANGED_CREEP
+};
+
+/// A mega ranged creep, once every enemy barracks has fallen: a fully
+/// upgraded super one whose bounty alone still grows.
+pub const MEGA_RANGED_CREEP: UnitDef = UnitDef {
+    max_hp: rules::MEGA_RANGED_HP,
+    damage: rules::MEGA_RANGED_ATTACK_DAMAGE,
+    per_upgrade: Growth {
+        gold_halves: 2 * rules::SUPER_RANGED_UPGRADE_GOLD,
+        ..NO_GROWTH
+    },
+    ..SUPER_RANGED_CREEP
 };
 
 /// A siege creep. Takes no upgrades.
@@ -265,6 +310,7 @@ pub const SIEGE_CREEP: UnitDef = UnitDef {
     kind: UnitKind::CreepSiege,
     max_hp: rules::SIEGE_CREEP_HP,
     damage: rules::SIEGE_CREEP_ATTACK_DAMAGE,
+    damage_spread: rules::SIEGE_CREEP_DAMAGE_SPREAD,
     attack_range: rules::SIEGE_CREEP_ATTACK_RANGE,
     acquisition: rules::SIEGE_CREEP_ACQUISITION,
     attack_time: rules::SIEGE_CREEP_ATTACK_TIME,
@@ -345,8 +391,8 @@ pub const PUDGE: UnitDef = UnitDef {
     ..HERO
 };
 
-/// Shadow Fiend: fragile and long-ranged, at Dota 7.41f's numbers. The attack
-/// damage is the middle of Dota's 16 to 22.
+/// Shadow Fiend: fragile and long-ranged, at Dota 7.41f's numbers, 16 to 22
+/// base attack damage among them.
 pub const SHADOW_FIEND: UnitDef = UnitDef {
     attributes: Attributes {
         strength: Fixed::from_int(19),
@@ -357,7 +403,8 @@ pub const SHADOW_FIEND: UnitDef = UnitDef {
     max_hp: 120,
     max_mana: 75,
     mana_regen: Fixed::from_ratio(3, 10 * rules::TICKS_PER_SECOND as i32),
-    damage: 19,
+    damage: 16,
+    damage_spread: 6,
     attack_range: 525,
     acquisition: 800,
     attack_time: 1600,
@@ -381,6 +428,7 @@ pub const SHADOW_FIEND: UnitDef = UnitDef {
 /// A super siege creep: the same wagon hitting harder.
 pub const SUPER_SIEGE_CREEP: UnitDef = UnitDef {
     damage: rules::SUPER_SIEGE_ATTACK_DAMAGE,
+    damage_spread: rules::SUPER_SIEGE_DAMAGE_SPREAD,
     ..SIEGE_CREEP
 };
 
@@ -522,18 +570,21 @@ const fn tower_of(index: usize) -> UnitDef {
         true_sight: rules::TOWER_ATTACK_RANGE,
         max_hp: rules::TOWER_TIER_HP[index],
         damage: rules::TOWER_TIER_DAMAGE[index],
+        damage_spread: rules::TOWER_DAMAGE_SPREAD,
         attack_range: rules::TOWER_ATTACK_RANGE,
         acquisition: rules::TOWER_ATTACK_RANGE,
         attack_time: rules::TOWER_ATTACK_TIME,
+        attack_speed: rules::TOWER_ATTACK_SPEED,
         attack_point: rules::TOWER_ATTACK_POINT,
         attack_backswing: rules::TOWER_ATTACK_BACKSWING,
         projectile_speed: Some(rules::TOWER_PROJECTILE_SPEED),
         armor: rules::TOWER_TIER_ARMOR[index],
-        turn_rate: rules::TURN_RATE_BRADS,
+        turn_rate: rules::TOWER_TURN_RATE_BRADS,
         vision: rules::TOWER_VISION,
         collision: rules::TOWER_COLLISION,
         bound: rules::TOWER_BOUND,
-        bounty_gold: GoldRange::exactly(rules::TOWER_TIER_BOUNTY[index]),
+        bounty_gold: rules::TOWER_TIER_BOUNTY[index],
+        bounty_team: rules::TOWER_TIER_TEAM_BOUNTY[index],
         ..NOTHING
     }
 }

@@ -141,7 +141,8 @@ pub struct UnitView {
     pub max_mana: i32,
     /// Movement speed in world units per second.
     pub move_speed: Fixed,
-    /// Attack damage per hit, before the target's armor.
+    /// Attack damage per hit, before the target's armor: the middle of the
+    /// range a swing draws from, rounded down.
     pub attack_damage: i32,
     /// Attack range in world units, edge to edge of the [`bound`](Self::bound)s.
     pub attack_range: Fixed,
@@ -223,8 +224,10 @@ pub struct AggroView {
     /// nothing else is within its acquisition range. Full while the target
     /// is within reach; zero when it is set on nobody.
     pub chase_left: u32,
-    /// Ticks before an enemy hero's attack order may draw this lane creep or
-    /// tower again. Zero when the next one does.
+    /// For a hero, told to its own side only: ticks before its attack order
+    /// at an enemy hero may draw lane creeps again. For a tower: ticks before
+    /// an enemy hero's attack order may draw it again. Zero when the next one
+    /// does, and always zero for anything else.
     pub draw_cooldown: u32,
     /// Whether this neutral walks back to its camp and takes nothing on.
     pub returning: bool,

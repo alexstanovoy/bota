@@ -33,7 +33,8 @@ impl World {
     /// your own is a deny: it pays no gold, and only a denied lane creep
     /// gives the other side [`rules::DENIED_XP_PCT`] of its experience.
     /// A flagbearer not denied also pays its bonus, see
-    /// [`World::pledge_flag_bonus`].
+    /// [`World::pledge_flag_bonus`], and a tower its team bounty, see
+    /// [`World::pay_team_bounty`].
     ///
     /// A hero's head is priced by its streak, which ends with it, and its
     /// death costs it its net worth over [`rules::DEATH_GOLD_LOSS_SHARE`],
@@ -54,6 +55,7 @@ impl World {
                 Bounty {
                     gold: GoldRange::exactly(World::hero_bounty(i32::from(seat.streak))),
                     bonus: 0,
+                    team: 0,
                     xp: World::hero_kill_xp(seat.xp, i32::from(seat.streak), i32::from(seat.level)),
                 }
             }
@@ -91,16 +93,19 @@ impl World {
                 self.seats[index].net_worth += paid;
             }
         }
+        let striker_seat = killer.and_then(|k| self.seat_of(k));
         if !denied && bounty.bonus > 0 {
-            let killer_seat = killer.and_then(|k| self.seat_of(k));
-            paid += self.pay_flag_bonus(at, other_side(side), bounty.bonus, killer_seat);
+            paid += self.pay_flag_bonus(at, other_side(side), bounty.bonus, striker_seat);
+        }
+        if bounty.team > 0 {
+            paid += self.pay_team_bounty(side, denied, bounty.team, striker_seat);
         }
         if denied {
             if self.kind.get(fallen).copied().is_some_and(is_lane_creep) {
                 let xp = bounty.xp * rules::DENIED_XP_PCT / 100;
                 self.grant_xp_around(at, other_side(side), xp, None, events);
             }
-            return 0;
+            return paid;
         }
         let Some(earners) = killer_side else {
             return paid;
@@ -108,6 +113,33 @@ impl World {
         let killer_seat = fallen_seat.and_then(|_| killer.and_then(|entity| self.seat_of(entity)));
         self.grant_xp_around(at, earners, bounty.xp, killer_seat, events);
         paid
+    }
+
+    /// Pays a fallen building's team bounty: `team` to every seat of the side
+    /// that brought it down, living or not, or on a deny half of it to every
+    /// seat of both sides, each through its hero's gold income. Answers what
+    /// the striker's seat was paid.
+    fn pay_team_bounty(
+        &mut self,
+        side: Team,
+        denied: bool,
+        team: i32,
+        striker_seat: Option<usize>,
+    ) -> i32 {
+        let share = if denied { team / 2 } else { team };
+        let mut to_striker = 0;
+        for index in 0..self.seats.len() {
+            if !denied && self.seats[index].team != other_side(side) {
+                continue;
+            }
+            let paid = self.bounty_after(self.seats[index].unit, share);
+            self.seats[index].gold += paid;
+            self.seats[index].net_worth += paid;
+            if striker_seat == Some(index) {
+                to_striker = paid;
+            }
+        }
+        to_striker
     }
 
     /// Sets a flagbearer's bonus: [`rules::FLAGBEARER_BONUS_GOLD`] and a

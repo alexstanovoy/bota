@@ -40,6 +40,7 @@ pub(super) fn stats() -> Stats {
         mana_cost_rate_bp: rules::NOMINAL_BP,
         move_speed: Fixed::ZERO,
         turn_rate: 0,
+        damage_spread: 0,
         damage_to_creeps: 0,
         vision: Fixed::ZERO,
         true_sight: Fixed::ZERO,
@@ -288,6 +289,7 @@ pub(super) fn hero_past_an_enemy(order: UnitOrder) -> (World, Entity, Entity) {
         Orders {
             current: order,
             cooldown: 0,
+            release_cooldown: 0,
             pending: None,
             immediate: None,
         },

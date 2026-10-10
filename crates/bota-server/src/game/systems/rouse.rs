@@ -36,23 +36,12 @@ impl World {
         self.rouse_with(orderer, call);
     }
 
-    /// Wakes the creeps onto whoever aimed a spell at an enemy hero.
-    ///
-    /// A spell answers the same as a swing, less the letting go: at an enemy
-    /// hero it calls them on, at an enemy creep it is a spell like any other
-    /// and moves nobody, and at one of your own it is not their business at
-    /// all.
-    pub fn rouse_by_cast(&mut self, orderer: Entity, mark: Entity) {
-        let Some(side) = self.team.get(orderer).copied() else {
-            return;
-        };
-        if self.call_of(side, mark) != Some(Call::On) {
-            return;
-        }
-        self.rouse_with(orderer, Call::On);
-    }
-
     /// Puts a call out to everything that can hear it.
+    ///
+    /// A call on reaches the lane creeps only when the orderer's own
+    /// [`rules::ORDER_AGGRO_COOLDOWN_TICKS`] has run out, and starts it again
+    /// whether or not a creep was near to hear it. Letting go waits on
+    /// nothing, and towers keep their own wait.
     fn rouse_with(&mut self, orderer: Entity, call: Call) {
         if self.kind.get(orderer) != Some(&UnitKind::Hero) {
             return;
@@ -63,16 +52,36 @@ impl World {
         ) else {
             return;
         };
+        let creeps_hear = match call {
+            Call::On => self.start_draw_cooldown(orderer),
+            Call::Off => true,
+        };
         for entity in self.entities.iter().collect::<Vec<_>>() {
             if self.team.get(entity).copied() == Some(side) || !self.can_attack(entity) {
                 continue;
             }
             if self.lane_ai.get(entity).is_some() {
-                self.rouse_creep(entity, orderer, at, call);
+                if creeps_hear {
+                    self.rouse_creep(entity, orderer, at, call);
+                }
             } else if self.kind.get(entity) == Some(&UnitKind::Tower) {
                 self.rouse_tower(entity, orderer, call);
             }
         }
+    }
+
+    /// Starts a hero's wait before its attack orders may draw lane creeps
+    /// again, unless one is already running. Answers whether it was free to
+    /// draw them.
+    fn start_draw_cooldown(&mut self, hero: Entity) -> bool {
+        let Some(orders) = self.orders.get_mut(hero) else {
+            return false;
+        };
+        if orders.cooldown > 0 {
+            return false;
+        }
+        orders.cooldown = rules::ORDER_AGGRO_COOLDOWN_TICKS;
+        true
     }
 
     /// Draws the lane creeps around a hero that begins a swing at a hero
@@ -80,12 +89,13 @@ impl World {
     ///
     /// Every lane creep not of the swinger's side within
     /// [`rules::HERO_AGGRO_RANGE`] that sees it and may be called on yet
-    /// takes it as its target, unless an attack order holds the creep or its
-    /// cooldown still runs. Nothing is held and no cooldown starts: the
-    /// creep goes back to its own ranking the tick after.
+    /// takes it as its target, unless an attack order holds the creep or the
+    /// swinger's own order wait still runs. Nothing is held and no wait
+    /// starts: the creep goes back to its own ranking the tick after.
     pub fn rouse_by_swing(&mut self, swinger: Entity, mark: Entity) {
         if self.kind.get(swinger) != Some(&UnitKind::Hero)
             || self.kind.get(mark) != Some(&UnitKind::Hero)
+            || self.orders.get(swinger).is_some_and(|o| o.cooldown > 0)
         {
             return;
         }
@@ -107,10 +117,8 @@ impl World {
                 .transform
                 .get(creep)
                 .is_some_and(|t| t.pos.within(at, reach));
-            let cooling = self.orders.get(creep).is_some_and(|o| o.cooldown > 0);
             if theirs == side
                 || !near
-                || cooling
                 || self.tick < ai.keep_until
                 || !self.can_attack(creep)
                 || !self.can_see(theirs, swinger)
@@ -158,32 +166,35 @@ impl World {
     /// One tower's answer, when the orderer is in its reach.
     ///
     /// Called on, it takes the orderer as its target unless an earlier call
-    /// is still cooling down; called off, it drops the orderer if that is its
-    /// target, cooldown or not.
+    /// is still cooling down, and starts that wait again. Called off, it
+    /// drops the orderer if that is its target, at most once every
+    /// [`rules::TOWER_RELEASE_COOLDOWN_TICKS`].
     fn rouse_tower(&mut self, tower: Entity, orderer: Entity, call: Call) {
         if !self.in_reach(tower, orderer) {
             return;
         }
+        let Some(orders) = self.orders.get(tower).copied() else {
+            return;
+        };
         match call {
             Call::On => {
-                if self
-                    .orders
-                    .get(tower)
-                    .is_some_and(|orders| orders.cooldown > 0)
-                {
+                if orders.cooldown > 0 {
                     return;
                 }
                 self.set_target(tower, orderer);
+                if let Some(orders) = self.orders.get_mut(tower) {
+                    orders.cooldown = rules::ORDER_AGGRO_COOLDOWN_TICKS;
+                }
             }
             Call::Off => {
-                if self.target_of(tower) != Some(orderer) {
+                if orders.release_cooldown > 0 || self.target_of(tower) != Some(orderer) {
                     return;
                 }
                 self.target.remove(tower);
+                if let Some(orders) = self.orders.get_mut(tower) {
+                    orders.release_cooldown = rules::TOWER_RELEASE_COOLDOWN_TICKS;
+                }
             }
-        }
-        if let Some(orders) = self.orders.get_mut(tower) {
-            orders.cooldown = rules::ORDER_AGGRO_COOLDOWN_TICKS;
         }
     }
 

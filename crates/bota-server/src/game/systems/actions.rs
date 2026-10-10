@@ -14,8 +14,8 @@ use super::hitting::entity_slot;
 use crate::game::{
     Action, ActionPhase, ActionState, BEATS_PER_TICK, Chance, Entity, Event, Hit, HitEffect,
     PendingCast, Projectile, Purpose, Ratio, Stats, Target, Visibility, World, ability,
-    ability_def, attack_gain, beats, cross, facing_gap, facing_towards, is_creep, is_structure,
-    rules, wire_id,
+    ability_def, attack_class_pct, attack_gain, beats, cross, facing_gap, facing_towards, is_creep,
+    is_structure, rules, wire_id,
 };
 
 /// What one swing deals, rolled when it lands.
@@ -635,6 +635,7 @@ impl World {
         self.expose(attacker, on);
         // What is carried against creeps is worth nothing against anything else.
         let damage = stats.damage
+            + self.roll_damage(stats.damage_spread)
             + if self.kind.get(on).copied().is_some_and(is_creep) {
                 stats.damage_to_creeps
             } else {
@@ -644,16 +645,22 @@ impl World {
             Some(pct) => (damage * pct / 100, true),
             None => (damage, false),
         };
+        let class_pct = match (self.kind.get(attacker), self.kind.get(on)) {
+            (Some(&from), Some(&to)) => attack_class_pct(from, to),
+            _ => 100,
+        };
         let swing = Swing {
-            damage,
+            damage: damage * class_pct / 100,
             crit,
-            pierce: self.roll_pierce(attacker, on, stats),
+            pierce: self
+                .roll_pierce(attacker, on, stats)
+                .map(|bonus| bonus * class_pct / 100),
             physical_amp_bp: stats.damage_amp_bp(DamageKind::Physical),
             magical_amp_bp: stats.damage_amp_bp(DamageKind::Magical),
         };
         match stats.projectile_speed {
             None => self.strike_home(attacker, on, swing),
-            Some(speed) => self.throw_at(attacker, on, swing, speed, !stats.flies),
+            Some(speed) => self.throw_at(attacker, on, swing, speed),
         }
     }
 
@@ -688,14 +695,7 @@ impl World {
 
     /// A ranged swing's missile, thrown from where the attacker stands and
     /// seen by its side from the throw.
-    fn throw_at(
-        &mut self,
-        attacker: Entity,
-        on: Entity,
-        swing: Swing,
-        speed: Fixed,
-        can_miss_uphill: bool,
-    ) {
+    fn throw_at(&mut self, attacker: Entity, on: Entity, swing: Swing, speed: Fixed) {
         let Some(at) = self.transform.get(attacker).copied() else {
             return;
         };
@@ -717,7 +717,7 @@ impl World {
                 damage_amp_bp: swing.physical_amp_bp,
                 ability: None,
                 launch_tier: self.ground.tier(at.pos),
-                can_miss_uphill,
+                can_miss_uphill: true,
                 crit: swing.crit,
                 pierces: swing.pierce.is_some(),
                 pierce_damage: swing.pierce.unwrap_or(0),
@@ -727,6 +727,17 @@ impl World {
                 bounced: Vec::new(),
             },
         );
+    }
+
+    /// What a swing adds to its least damage: a whole number drawn evenly
+    /// from `0..=spread` on the match's damage stream. A spread of zero draws
+    /// nothing.
+    fn roll_damage(&mut self, spread: i32) -> i32 {
+        if spread <= 0 {
+            return 0;
+        }
+        let span = u32::try_from(spread + 1).expect("a damage spread fits a u32");
+        self.rng.global(Purpose::DamageRoll).below(span) as i32
     }
 
     /// Whether a swing is a critical strike, and then what it is worth as a

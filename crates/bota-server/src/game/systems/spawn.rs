@@ -42,12 +42,13 @@ impl World {
         if def.max_mana > 0 {
             self.mana.insert(entity, Mana { mana: Fixed::ZERO });
         }
-        if def.bounty_gold.max > 0 || def.bounty_xp > 0 {
+        if def.bounty_gold.max > 0 || def.bounty_xp > 0 || def.bounty_team > 0 {
             self.bounty.insert(
                 entity,
                 Bounty {
                     gold: def.bounty_gold,
                     bonus: 0,
+                    team: def.bounty_team,
                     xp: def.bounty_xp,
                 },
             );
@@ -139,6 +140,7 @@ impl World {
             Orders {
                 current: UnitOrder::Idle,
                 cooldown: 0,
+                release_cooldown: 0,
                 pending: None,
                 immediate: None,
             },
@@ -232,7 +234,7 @@ impl World {
         self.upgrades.insert(entity, Upgrades(upgrades));
         let steps = i32::try_from(upgrades).expect("upgrade count fits an i32");
         if let Some(bounty) = self.bounty.get_mut(entity) {
-            bounty.gold = bounty.gold.raised(def.per_upgrade.gold * steps);
+            bounty.gold = bounty.gold.raised(def.per_upgrade.gold_halves * steps / 2);
             bounty.xp += def.per_upgrade.xp * steps;
         }
     }
@@ -253,6 +255,7 @@ impl World {
             Place::Tower { lane, tier } => {
                 self.lane.insert(entity, Lane(lane));
                 self.tier.insert(entity, Tier(tier));
+                self.give_orders(entity);
             }
             Place::Barracks { lane, ranged } => {
                 self.lane.insert(entity, Lane(lane));
@@ -367,7 +370,7 @@ impl World {
         if def.damage > 0 {
             self.give_action(entity);
         }
-        if def.move_speed > 0 {
+        if def.move_speed > 0 || def.kind == bota_proto::UnitKind::Tower {
             self.give_orders(entity);
         }
         if matches!(

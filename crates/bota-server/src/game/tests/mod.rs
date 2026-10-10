@@ -1,4 +1,5 @@
 mod aggro_view;
+mod attack_classes;
 mod attacks;
 mod auras;
 mod bounty;
@@ -21,6 +22,7 @@ mod shop;
 mod stats;
 mod support;
 mod target_retention;
+mod towers;
 mod vision;
 mod wards;
 mod waves;

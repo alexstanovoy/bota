@@ -2,8 +2,9 @@
 
 use crate::game::{
     Def, FLAGBEARER_CREEP, HERO, Health, ITEM_BAND, ITEM_BELT, ITEM_BOOTS, ITEM_GLOVES, ITEM_ROBE,
-    ITEMS, Level, MELEE_CREEP, Mana, ModifierKind, Modifiers, RANGED_CREEP, Stats, UnitOrder,
-    Upgrades, World, attack_gain, map_of, rules,
+    ITEMS, Level, MEGA_MELEE_CREEP, MEGA_RANGED_CREEP, MELEE_CREEP, Mana, ModifierKind, Modifiers,
+    RANGED_CREEP, SUPER_MELEE_CREEP, SUPER_RANGED_CREEP, Stats, UnitDef, UnitOrder, Upgrades,
+    World, attack_gain, map_of, rules,
 };
 use bota_proto::{DamageKind, Fixed, MapId, Team, UnitKind, Vec2};
 
@@ -486,5 +487,38 @@ fn shadow_fiend_stands_at_dota_numbers_from_the_first_level_to_the_last() {
         assert_eq!(shown.magic_resist, Fixed::from_ratio(1, 4));
         assert_eq!(shown.move_speed, Fixed::from_int(305));
         assert_eq!(shown.attack_range, Fixed::from_int(525));
+    }
+}
+
+/// A creep kind, its health, its damage range and its gold range.
+type Row = (&'static UnitDef, i32, (i32, i32), (i32, i32));
+
+#[test]
+fn super_and_mega_creeps_match_the_table_at_fifteen_minutes() {
+    // Liquipedia, Lane Creeps, the upgrade table's 15:00 row (two upgrades):
+    // health, damage range, gold range. Mega creeps grow only their bounty;
+    // a super or mega melee creep's 1.5 gold a step is paid in whole gold.
+    let rows: [Row; 4] = [
+        (&SUPER_MELEE_CREEP, 738, (40, 48), (23, 29)),
+        (&MEGA_MELEE_CREEP, 1270, (96, 104), (23, 29)),
+        (&SUPER_RANGED_CREEP, 511, (47, 52), (31, 37)),
+        (&MEGA_RANGED_CREEP, 1015, (131, 136), (31, 37)),
+    ];
+    for (def, hp, damage, gold) in rows {
+        let mut world = World::new();
+        let creep = world.spawn_creep(def, Team::Dire, Vec2::from_ints(5000, 5000), 0, 2);
+        world.settle();
+        let stats = world.stats.get(creep).expect("settled");
+        let bounty = world.bounty.get(creep).expect("it pays").gold;
+        assert_eq!(
+            (
+                stats.max_hp,
+                (stats.damage, stats.damage + stats.damage_spread),
+                (bounty.min, bounty.max)
+            ),
+            (Fixed::from_int(hp), damage, gold),
+            "{:?} of {hp} health",
+            def.kind
+        );
     }
 }

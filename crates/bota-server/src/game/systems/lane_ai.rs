@@ -143,6 +143,7 @@ impl World {
         for entity in entities.iter().copied() {
             if let Some(orders) = self.orders.get_mut(entity) {
                 orders.cooldown = orders.cooldown.saturating_sub(1);
+                orders.release_cooldown = orders.release_cooldown.saturating_sub(1);
             }
             if !self.can_attack(entity) {
                 continue;
@@ -309,28 +310,15 @@ impl World {
     /// everyone else first and takes the one who gave the order only when there
     /// is nobody else.
     ///
-    /// One creep is pulled at most once every
-    /// [`rules::ORDER_AGGRO_COOLDOWN_TICKS`]; orders in between pass it by.
-    /// Being let go waits on nothing, but neither pulling nor letting go
-    /// breaks a hold that is still running.
+    /// Neither pulling nor letting go breaks a hold that is still running;
+    /// how often a hero may pull is the orderer's wait, kept where the call
+    /// goes out.
     pub fn provoke(&mut self, creep: Entity, orderer: Entity, at_own: bool) {
         let Some(mut ai) = self.lane_ai.get(creep).copied() else {
             return;
         };
         if self.tick < ai.keep_until {
             return;
-        }
-        if !at_own {
-            if self
-                .orders
-                .get(creep)
-                .is_some_and(|orders| orders.cooldown > 0)
-            {
-                return;
-            }
-            if let Some(orders) = self.orders.get_mut(creep) {
-                orders.cooldown = rules::ORDER_AGGRO_COOLDOWN_TICKS;
-            }
         }
         ai.roused_by = Some(orderer);
         ai.roused_at_own = at_own;

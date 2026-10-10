@@ -46,9 +46,13 @@ pub enum UnitOrder {
 pub struct Orders {
     /// What it is doing.
     pub current: UnitOrder,
-    /// Ticks before an enemy hero's attack order may draw it again. Zero
-    /// when it answers the next one.
+    /// For a hero: ticks before its attack order at an enemy hero may draw
+    /// lane creeps again. For a tower: ticks before an enemy hero's attack
+    /// order may draw it again. Zero when the next one does.
     pub cooldown: u32,
+    /// For a tower: ticks before an attack order at an ally of the hero it
+    /// shoots may take it off that hero again. Zero when the next one may.
+    pub release_cooldown: u32,
     /// A cast ordered and not yet begun. Any order to the body takes it
     /// away.
     pub pending: Option<PendingCast>,

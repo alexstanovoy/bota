@@ -448,8 +448,10 @@ pub const RESPAWN_SECONDS: [u32; 25] = [
 
 /// Melee creep health.
 pub const MELEE_CREEP_HP: i32 = 550;
-/// Melee creep attack damage, the midpoint of 19 to 23.
-pub const MELEE_CREEP_ATTACK_DAMAGE: i32 = 21;
+/// Least attack damage of a melee creep's swing, of 19 to 23.
+pub const MELEE_CREEP_ATTACK_DAMAGE: i32 = 19;
+/// How much more a melee creep's swing may deal.
+pub const MELEE_CREEP_DAMAGE_SPREAD: i32 = 4;
 /// Melee creep attack range.
 pub const MELEE_CREEP_ATTACK_RANGE: i32 = 100;
 /// How far a melee creep looks for something to attack.
@@ -471,8 +473,10 @@ pub const MELEE_CREEP_HP_REGEN: Fixed = Fixed::from_ratio(1, 2 * TICKS_PER_SECON
 
 /// Ranged creep health.
 pub const RANGED_CREEP_HP: i32 = 300;
-/// Ranged creep attack damage, the midpoint of 21 to 26.
-pub const RANGED_CREEP_ATTACK_DAMAGE: i32 = 23;
+/// Least attack damage of a ranged creep's swing, of 21 to 26.
+pub const RANGED_CREEP_ATTACK_DAMAGE: i32 = 21;
+/// How much more a ranged creep's swing may deal.
+pub const RANGED_CREEP_DAMAGE_SPREAD: i32 = 5;
 /// Ranged creep attack range.
 pub const RANGED_CREEP_ATTACK_RANGE: i32 = 500;
 /// How far a ranged creep looks for something to attack.
@@ -495,8 +499,10 @@ pub const RANGED_CREEP_HP_REGEN: Fixed = Fixed::from_ratio(2, TICKS_PER_SECOND a
 
 /// Siege creep health.
 pub const SIEGE_CREEP_HP: i32 = 935;
-/// Siege creep attack damage, the midpoint of 35 to 46.
-pub const SIEGE_CREEP_ATTACK_DAMAGE: i32 = 40;
+/// Least attack damage of a siege creep's swing, of 35 to 46.
+pub const SIEGE_CREEP_ATTACK_DAMAGE: i32 = 35;
+/// How much more a siege creep's swing may deal.
+pub const SIEGE_CREEP_DAMAGE_SPREAD: i32 = 11;
 /// Siege creep attack range.
 pub const SIEGE_CREEP_ATTACK_RANGE: i32 = 690;
 /// How far a siege creep looks for something to attack.
@@ -533,8 +539,10 @@ pub const CREEP_VISION: i32 = 750;
 
 /// Super melee creep health.
 pub const SUPER_MELEE_HP: i32 = 700;
-/// Super melee creep attack damage, the midpoint of 41 to 49.
-pub const SUPER_MELEE_ATTACK_DAMAGE: i32 = 45;
+/// Least attack damage of a super melee creep's swing, of 36 to 44.
+pub const SUPER_MELEE_ATTACK_DAMAGE: i32 = 36;
+/// How much more a super melee creep's swing may deal.
+pub const SUPER_MELEE_DAMAGE_SPREAD: i32 = 8;
 /// Super melee creep armor.
 pub const SUPER_MELEE_ARMOR: i32 = 3;
 /// Super melee creep gold bounty.
@@ -543,35 +551,75 @@ pub const SUPER_MELEE_BOUNTY: GoldRange = GoldRange::new(20, 26);
 pub const SUPER_MELEE_XP: i32 = 25;
 /// Super ranged creep health.
 pub const SUPER_RANGED_HP: i32 = 475;
-/// Super ranged creep attack damage, the midpoint of 46 to 51.
-pub const SUPER_RANGED_ATTACK_DAMAGE: i32 = 48;
+/// Least attack damage of a super ranged creep's swing, of 41 to 46.
+pub const SUPER_RANGED_ATTACK_DAMAGE: i32 = 41;
+/// How much more a super ranged creep's swing may deal.
+pub const SUPER_RANGED_DAMAGE_SPREAD: i32 = 5;
 /// Super ranged creep armor.
 pub const SUPER_RANGED_ARMOR: i32 = 1;
 /// Super ranged creep gold bounty.
 pub const SUPER_RANGED_BOUNTY: GoldRange = GoldRange::new(19, 25);
 /// Super ranged creep experience.
 pub const SUPER_RANGED_XP: i32 = 22;
-/// Super siege creep attack damage, the midpoint of 51 to 62.
-pub const SUPER_SIEGE_ATTACK_DAMAGE: i32 = 56;
-/// Milliseconds between mega melee creep attack starts.
-pub const MEGA_MELEE_ATTACK_TIME: u32 = 900;
+/// Least attack damage of a super siege creep's swing, of 51 to 62.
+pub const SUPER_SIEGE_ATTACK_DAMAGE: i32 = 51;
+/// How much more a super siege creep's swing may deal.
+pub const SUPER_SIEGE_DAMAGE_SPREAD: i32 = 11;
+/// Health one upgrade adds to a super melee creep.
+pub const SUPER_MELEE_UPGRADE_HP: i32 = 19;
+/// Attack damage one upgrade adds to a super melee creep.
+pub const SUPER_MELEE_UPGRADE_DAMAGE: i32 = 2;
+/// Half gold one upgrade adds to a super or mega melee creep's bounty.
+pub const SUPER_MELEE_UPGRADE_GOLD_HALVES: i32 = 3;
+/// Health one upgrade adds to a super ranged creep.
+pub const SUPER_RANGED_UPGRADE_HP: i32 = 18;
+/// Attack damage one upgrade adds to a super ranged creep.
+pub const SUPER_RANGED_UPGRADE_DAMAGE: i32 = 3;
+/// Gold one upgrade adds to a super or mega ranged creep's bounty.
+pub const SUPER_RANGED_UPGRADE_GOLD: i32 = 6;
+/// Mega melee creep health.
+pub const MEGA_MELEE_HP: i32 = 1270;
+/// Least attack damage of a mega melee creep's swing, of 96 to 104.
+pub const MEGA_MELEE_ATTACK_DAMAGE: i32 = 96;
+/// Mega ranged creep health.
+pub const MEGA_RANGED_HP: i32 = 1015;
+/// Least attack damage of a mega ranged creep's swing, of 131 to 136.
+pub const MEGA_RANGED_ATTACK_DAMAGE: i32 = 131;
 
 // Buildings.
 
 /// Tower health, indexed by tier minus one.
-pub const TOWER_TIER_HP: [i32; 4] = [1800, 2000, 2200, 2600];
-/// Tower attack damage, indexed by tier minus one.
-pub const TOWER_TIER_DAMAGE: [i32; 4] = [110, 128, 144, 152];
+pub const TOWER_TIER_HP: [i32; 4] = [1800, 2500, 2500, 2600];
+/// Least attack damage of a tower's shot, indexed by tier minus one: 88 to
+/// 92 at tier one, 170 to 174 above it.
+pub const TOWER_TIER_DAMAGE: [i32; 4] = [88, 170, 170, 170];
+/// How much more a tower's shot may deal.
+pub const TOWER_DAMAGE_SPREAD: i32 = 4;
 /// Tower armor, indexed by tier minus one.
-pub const TOWER_TIER_ARMOR: [i32; 4] = [12, 14, 15, 21];
-/// Gold paid to the killer of a tower, indexed by tier minus one.
-pub const TOWER_TIER_BOUNTY: [i32; 4] = [200, 250, 300, 350];
+pub const TOWER_TIER_ARMOR: [i32; 4] = [12, 16, 16, 21];
+/// A tower's attack speed.
+pub const TOWER_ATTACK_SPEED: i32 = 110;
+/// How fast a tower turns, in brads per tick: a `MovementTurnRate` of 1.
+pub const TOWER_TURN_RATE_BRADS: u16 = 11_590;
+/// Gold paid to the hero that strikes a tower down, on top of its team
+/// bounty, indexed by tier minus one.
+pub const TOWER_TIER_BOUNTY: [GoldRange; 4] = [
+    GoldRange::new(110, 130),
+    GoldRange::new(130, 150),
+    GoldRange::new(150, 170),
+    GoldRange::new(170, 190),
+];
+/// Gold a tower's fall pays every seat of the side that brought it down,
+/// indexed by tier minus one; a deny pays half of it to every seat of both
+/// sides.
+pub const TOWER_TIER_TEAM_BOUNTY: [i32; 4] = [90, 110, 125, 145];
 /// Tower attack range.
 pub const TOWER_ATTACK_RANGE: i32 = 700;
-/// Milliseconds between tower attack starts.
-pub const TOWER_ATTACK_TIME: u32 = 966;
-/// Milliseconds from tower attack start to the projectile leaving.
-pub const TOWER_ATTACK_POINT: u32 = 200;
+/// Milliseconds between tower attack starts at [`BASE_ATTACK_SPEED`].
+pub const TOWER_ATTACK_TIME: u32 = 900;
+/// Milliseconds from tower attack start to the projectile leaving, at
+/// [`BASE_ATTACK_SPEED`].
+pub const TOWER_ATTACK_POINT: u32 = 600;
 /// Tower attack projectile speed, world units per second.
 pub const TOWER_PROJECTILE_SPEED: i32 = 750;
 /// How far a tower's protection reaches.
@@ -675,6 +723,9 @@ pub const AGGRO_TIE_RANGE: i32 = 100;
 /// Ticks before an attack order may re-aim the same creep or tower again,
 /// 3 seconds.
 pub const ORDER_AGGRO_COOLDOWN_TICKS: u32 = 90;
+/// Ticks before an order at an ally may take a tower off the orderer again,
+/// 2.5 seconds.
+pub const TOWER_RELEASE_COOLDOWN_TICKS: u32 = 75;
 /// Ticks a creep handed a target by an attack order keeps it before the
 /// ordinary ranking may take it back, 2.3 seconds.
 pub const ORDER_AGGRO_HOLD_TICKS: u32 = 69;
@@ -717,8 +768,9 @@ pub const SEPARATION_STEP: i32 = 4;
 pub const HERO_ATTACK_BACKSWING: u32 = 400;
 /// Milliseconds a creep recovers after a swing.
 pub const CREEP_ATTACK_BACKSWING: u32 = 500;
-/// Milliseconds a tower recovers after a shot.
-pub const TOWER_ATTACK_BACKSWING: u32 = 133;
+/// Milliseconds a tower recovers after a shot, at [`BASE_ATTACK_SPEED`]:
+/// the rest of its cycle, the next shot cutting the 0.4 s animation short.
+pub const TOWER_ATTACK_BACKSWING: u32 = TOWER_ATTACK_TIME - TOWER_ATTACK_POINT;
 /// Milliseconds the fountain recovers after a shot.
 pub const FOUNTAIN_ATTACK_BACKSWING: u32 = 66;
 /// How fast a unit turns, in brads per tick: a `MovementTurnRate` of 0.5,

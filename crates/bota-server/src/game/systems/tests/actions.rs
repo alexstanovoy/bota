@@ -13,6 +13,7 @@ const fn pace(attack_time: u32, attack_point: u32, attack_backswing: u32) -> Uni
         attack_point,
         attack_backswing,
         damage: 1,
+        damage_spread: 0,
         ..MELEE_CREEP
     }
 }

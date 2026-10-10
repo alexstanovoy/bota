@@ -343,18 +343,45 @@ fn a_second_click_inside_the_wait_pulls_nothing() {
     stop_click(&mut world);
     held_in_place(&mut world, theirs, rules::ORDER_AGGRO_HOLD_TICKS + 2);
     assert_eq!(world.target_of(theirs), Some(ours), "it let go");
-    assert!(
-        world
-            .orders
-            .get(theirs)
-            .is_some_and(|orders| orders.cooldown > 0),
-        "and the wait before it answers again still runs"
-    );
-    attack_click(&mut world, theirs);
+    attack_click(&mut world, foe);
     assert_eq!(
         world.target_of(theirs),
         Some(ours),
         "so a second click inside that wait pulls nothing"
+    );
+}
+
+#[test]
+fn the_wait_is_the_heros_and_starts_with_no_creep_near() {
+    // Liquipedia: the 3 s cooldown always triggers, even with no creeps
+    // nearby, and each hero keeps its own.
+    let (mut world, hero, theirs, ours, foe) = a_lane_with_a_hero(700);
+    attack_click(&mut world, foe);
+    assert_eq!(world.target_of(theirs), Some(ours), "too far to hear it");
+    stop_click(&mut world);
+    let near = Vec2::from_ints(5000 + 700 - 300, 5000);
+    let walk_in = |world: &mut World| {
+        if let Some(at) = world.transform.get_mut(hero) {
+            at.pos = near;
+        }
+    };
+    walk_in(&mut world);
+    attack_click(&mut world, foe);
+    assert_eq!(
+        world.target_of(theirs),
+        Some(ours),
+        "near now, but the far click started the hero's wait"
+    );
+    stop_click(&mut world);
+    for _ in 0..rules::ORDER_AGGRO_COOLDOWN_TICKS {
+        world.step();
+        walk_in(&mut world);
+    }
+    attack_click(&mut world, foe);
+    assert_eq!(
+        world.target_of(theirs),
+        Some(hero),
+        "once it has run out, the next click pulls"
     );
 }
 
@@ -404,8 +431,9 @@ fn a_hold_is_not_broken_by_clicking_your_own() {
 }
 
 #[test]
-fn a_spell_answers_the_way_a_swing_does_and_never_lets_go() {
-    // At an enemy hero it calls them on.
+fn a_spell_at_a_hero_draws_nobody() {
+    // Liquipedia, Lane Creeps: the creeps' protective behaviour reacts on
+    // attacks and completely ignores ability casts.
     let (mut world, hero, theirs, ours, foe) = a_lane_with_a_hero(300);
     assert_eq!(
         world.target_of(theirs),
@@ -415,26 +443,14 @@ fn a_spell_answers_the_way_a_swing_does_and_never_lets_go() {
     cast_at(&mut world, foe);
     assert_eq!(
         world.target_of(theirs),
-        Some(hero),
-        "a spell at an enemy hero calls them on"
-    );
-    // At an enemy creep it moves nobody.
-    let (mut world, _hero, theirs, ours, _foe) = a_lane_with_a_hero(300);
-    cast_at(&mut world, theirs);
-    assert_eq!(
-        world.target_of(theirs),
         Some(ours),
-        "a spell at an enemy creep is a spell like any other"
+        "a spell at an enemy hero calls nobody on"
     );
-    // At one of your own it is not their business: what holds them holds.
-    let (mut world, hero, theirs, ours, foe) = a_lane_with_a_hero(300);
-    cast_at(&mut world, foe);
-    assert_eq!(world.target_of(theirs), Some(hero), "called on");
-    cast_at(&mut world, ours);
+    attack_click(&mut world, foe);
     assert_eq!(
         world.target_of(theirs),
         Some(hero),
-        "and a spell at one of your own does not let them go"
+        "and leaves the hero's order wait unspent"
     );
 }
 

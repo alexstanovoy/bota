@@ -299,10 +299,11 @@ fn a_fallen_barracks_turns_the_waves_against_it_super_and_all_of_them_mega() {
         .iter()
         .find(|e| world.kind.get(**e) == Some(&UnitKind::CreepMelee))
         .expect("a melee creep spawned");
+    let stats = world.stats.get(*mega_melee).expect("settled");
     assert_eq!(
-        world.stats.get(*mega_melee).expect("settled").attack_time,
-        rules::MEGA_MELEE_ATTACK_TIME,
-        "a mega melee swings faster than a super one"
+        (stats.max_hp, stats.damage, stats.attack_time),
+        (Fixed::from_int(1270), 96, rules::CREEP_ATTACK_TIME),
+        "a mega melee is a fully grown super one, swinging at the plain pace"
     );
 }
 

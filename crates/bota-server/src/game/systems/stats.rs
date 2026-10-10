@@ -352,7 +352,7 @@ fn raised(kind: &UnitDef, levels: i32, steps: i32) -> Stats {
         mana: g.mana * levels + per.mana * steps,
         damage: g.damage * levels + per.damage * steps,
         armor_halves: g.armor_halves * levels + per.armor_halves * steps,
-        gold: g.gold * levels + per.gold * steps,
+        gold_halves: g.gold_halves * levels + per.gold_halves * steps,
         xp: g.xp * levels + per.xp * steps,
     };
     let up = gained(&kind.per_level, &kind.per_upgrade);
@@ -364,11 +364,12 @@ fn raised(kind: &UnitDef, levels: i32, steps: i32) -> Stats {
         hp_regen: kind.hp_regen,
         mana_regen: kind.mana_regen,
         damage: kind.damage + up.damage,
+        damage_spread: kind.damage_spread,
         damage_to_creeps: 0,
         attack_range: Fixed::from_int(kind.attack_range),
         acquisition: Fixed::from_int(kind.acquisition),
         attack_time: kind.attack_time,
-        attack_speed: rules::BASE_ATTACK_SPEED,
+        attack_speed: kind.attack_speed,
         attack_point: kind.attack_point,
         attack_backswing: kind.attack_backswing,
         projectile_speed: kind.projectile_speed.map(Fixed::from_int),
