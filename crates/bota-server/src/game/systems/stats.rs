@@ -5,7 +5,7 @@ use bota_proto::{Attributes, Fixed, ModifierSpec};
 use crate::game::{
     AbilityBook, AppliedModifiers, Carried, Def, EntityAllocator, Feast, FeastPhase, Growth,
     Health, Inventory, Level, MAX_COMBINED_MODIFIER_SCALE, Mana, ModifierKind, Modifiers, Ratio,
-    StackKind, Stacks, Stats, Table, UnitDef, Upgrades, ability, carried_bonus, rules,
+    StackKind, Stacks, Stats, Table, Talent, UnitDef, Upgrades, ability, carried_bonus, rules,
 };
 
 /// What working out stats reads and writes.
@@ -100,7 +100,10 @@ fn derive_stats_impl<const APPLIED: bool>(cx: StatsCx<'_>) {
             add_modifiers(&mut now, on_it);
         }
         if let Some(feast) = feast.get(entity) {
-            add_feast(&mut now, feast);
+            let talented = abilities
+                .get(entity)
+                .is_some_and(|book| book.has_talent(Talent::FeastAttackSpeed));
+            add_feast(&mut now, feast, talented);
         }
         let before = stats.get(entity).copied();
         if let Some(hp) = health.get_mut(entity) {
@@ -128,13 +131,17 @@ fn soul_damage(souls: u32, hero_level: i32) -> i32 {
     souls * tenths / 10
 }
 
-/// Adds the haste of a feast that is running.
-fn add_feast(now: &mut Stats, feast: &Feast) {
+/// Adds the haste of a feast that is running, the talent's attack speed
+/// with it when its caster has learned it.
+fn add_feast(now: &mut Stats, feast: &Feast, talented: bool) {
     if feast.phase != FeastPhase::Feasting {
         return;
     }
     let level = usize::from(feast.level);
     now.attack_speed += rules::FEAST_ATTACK_SPEED[level];
+    if talented {
+        now.attack_speed += rules::TALENT_FEAST_ATTACK_SPEED;
+    }
     now.move_speed = scaled(now.move_speed, 100 + rules::FEAST_MOVE_PCT[level]);
 }
 

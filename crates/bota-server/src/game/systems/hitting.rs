@@ -3,8 +3,8 @@
 use bota_proto::{DamageKind, Fixed, Team, UnitKind, Vec2};
 
 use crate::game::{
-    Chance, Entity, Health, Hit, HitEffect, MatchRng, Modifier, ModifierKind, Modifiers, Purpose,
-    Ratio, Stats, Table, Transform, is_structure, rules, wire_id,
+    Chance, Entity, Fear, Health, Hit, HitEffect, MatchRng, Modifier, ModifierKind, Modifiers,
+    Purpose, Ratio, Stats, Table, Transform, is_structure, rules, wire_id,
 };
 
 use super::modifiers::resisted_ticks;
@@ -184,14 +184,15 @@ pub(crate) fn entity_slot<T>(
 
 /// Pre-mitigation damage including the current valid same-caster stack count.
 fn stacked_damage(blow: Hit, on_it: Option<&Modifiers>) -> i32 {
-    let HitEffect::Shadowraze { level } = blow.effect else {
+    let HitEffect::Shadowraze { stack_damage } = blow.effect else {
         return blow.amount;
     };
     assert_eq!(blow.kind, DamageKind::Magical);
-    assert!(usize::from(level) < rules::RAZE_STACK_DAMAGE.len());
+    assert!(stack_damage > 0);
+    assert!(stack_damage <= rules::RAZE_STACK_DAMAGE[3] + rules::TALENT_RAZE_STACK_DAMAGE);
     let caster = blow.source.expect("a Shadowraze hit has a caster");
     let stacks = on_it.map_or(0, |on_it| on_it.raze_stacks(caster));
-    blow.amount + i32::from(stacks) * rules::RAZE_STACK_DAMAGE[usize::from(level)]
+    blow.amount + i32::from(stacks) * stack_damage
 }
 
 /// Pre-mitigation damage, amplified only when `AMPLIFIED`.
@@ -236,16 +237,26 @@ fn apply_hit_effect(blow: Hit, stats: &Table<Stats>, modifiers: &mut Table<Modif
                 on_it.stack_raze(caster);
             }
         }
-        HitEffect::Requiem { level } => frighten(blow, usize::from(level), stats, modifiers),
+        HitEffect::Requiem { level, fear } => {
+            frighten(blow, usize::from(level), fear, stats, modifiers);
+        }
     }
 }
 
 /// Lays a requiem line's fear, slow and torn magic resistance on what it
 /// burnt, each lengthened by the line's share and shortened by the target's
 /// status resistance.
-fn frighten(blow: Hit, level: usize, stats: &Table<Stats>, modifiers: &mut Table<Modifiers>) {
+fn frighten(
+    blow: Hit,
+    level: usize,
+    fear: Fear,
+    stats: &Table<Stats>,
+    modifiers: &mut Table<Modifiers>,
+) {
     assert_eq!(blow.kind, DamageKind::Magical);
     assert!(level < rules::REQUIEM_SLOW_PCT.len());
+    assert!(fear.line > 0);
+    assert!(fear.most >= fear.line);
     let Some(on_it) = modifiers.get_mut(blow.target) else {
         return;
     };
@@ -258,14 +269,14 @@ fn frighten(blow: Hit, level: usize, stats: &Table<Stats>, modifiers: &mut Table
         },
         ModifierKind::Feared,
     ] {
-        let ticks = resisted_ticks(stats, blow.target, kind, rules::REQUIEM_LINE_TICKS);
+        let ticks = resisted_ticks(stats, blow.target, kind, fear.line);
         on_it.extend(
             Modifier {
                 kind,
                 source: blow.source,
                 ticks_left: Some(ticks),
             },
-            rules::REQUIEM_HOLD_MAX_TICKS,
+            fear.most,
         );
     }
 }

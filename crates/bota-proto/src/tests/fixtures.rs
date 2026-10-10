@@ -197,6 +197,11 @@ pub fn world_view(creeps: u32) -> WorldView {
             events: all_events().into_iter().take(2).collect(),
         }],
         stock: vec![stock_view()],
+        talents: vec![TalentView {
+            slot: SlotId(0),
+            learned: Talents::default().with(TalentSlot(1)),
+            learnable: Talents::default().with(TalentSlot(2)).with(TalentSlot(3)),
+        }],
     }
 }
 
@@ -331,6 +336,9 @@ pub fn all_orders() -> Vec<Order> {
         Order::Learn {
             slot: AbilitySlot(2),
         },
+        Order::LearnTalent {
+            talent: TalentSlot(7),
+        },
     ];
     orders.extend(item_orders());
     orders.extend(cheat_orders());
@@ -419,6 +427,7 @@ pub fn empty_world_view() -> WorldView {
         order_delays: Vec::new(),
         skipped_ticks: Vec::new(),
         stock: Vec::new(),
+        talents: Vec::new(),
     }
 }
 

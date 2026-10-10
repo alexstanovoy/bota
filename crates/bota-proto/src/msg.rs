@@ -159,6 +159,10 @@ pub enum RejectReason {
     BadCheat,
     /// The shop has none of the item left until it restocks.
     OutOfStock,
+    /// No skill point is left, the hero's tree has no such talent, its tier
+    /// has not opened at the hero's level, or the talent or its tier is
+    /// already taken.
+    CannotLearn,
 }
 
 /// Final numbers for one seat.

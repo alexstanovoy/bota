@@ -3,7 +3,7 @@
 //! A plan is the abilities in the order points are spent on them, one entry
 //! per point. The place of an entry is the hero level that point is spent at.
 
-use bota_proto::{AbilityId, AbilitySlot, HeroId};
+use bota_proto::{AbilityId, AbilitySlot, HeroId, TalentSlot};
 
 use crate::{
     BOUNCE, CRIT, FEAST_OF_SOULS, FRENZY, Field, PRESENCE, RAZE_NEAR, REQUIEM, SHADOW_FIEND, SYLLA,
@@ -38,6 +38,36 @@ pub fn plan_of(hero: HeroId) -> &'static [AbilityId] {
         SYLLA => &SYLLA_PLAN,
         _ => &[],
     }
+}
+
+/// Shadow Fiend's talents, one a tier: the raze stack damage, the
+/// presence's armor, the souls held and the razes' attack damage. Each is
+/// worth something every fight; the feast's and the requiem's are worth
+/// something only while they run.
+pub const FIEND_TALENTS: [TalentSlot; 4] =
+    [TalentSlot(1), TalentSlot(3), TalentSlot(5), TalentSlot(6)];
+
+/// The talents a hero takes, one a tier. Empty for one without a tree.
+pub fn talents_of(hero: HeroId) -> &'static [TalentSlot] {
+    match hero {
+        SHADOW_FIEND => &FIEND_TALENTS,
+        _ => &[],
+    }
+}
+
+/// The talent a waiting skill point should go into: the first of the hero's
+/// picks the view says a point could go into now. A talent comes before an
+/// ability, since a tier opens on a level an ability does not wait on.
+pub fn next_talent(field: &Field) -> Option<TalentSlot> {
+    let own = field
+        .view
+        .talents
+        .iter()
+        .find(|talents| talents.slot == field.seat.slot)?;
+    talents_of(field.hero)
+        .iter()
+        .copied()
+        .find(|pick| own.learnable.has(*pick))
 }
 
 /// The slot a waiting skill point should go into.

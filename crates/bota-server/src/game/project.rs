@@ -2,7 +2,7 @@
 
 use bota_proto::{
     AbilityView, AggroView, EffectId, EffectView, Fixed, PlayerView, ProjectileView, StatusFlags,
-    SwingView, Team, UnitKind, UnitView, WorldView,
+    SwingView, TalentSlot, TalentView, Talents, Team, UnitKind, UnitView, WorldView,
 };
 
 use crate::game::{
@@ -61,6 +61,7 @@ impl World {
                 && entry.target.is_none_or(carried)
                 && entry.swing.is_none_or(|swing| carried(swing.target))
         }));
+        let talents = self.project_talents(viewer, &units);
         WorldView {
             tick: self.tick,
             viewer,
@@ -110,6 +111,7 @@ impl World {
             order_delays: Vec::new(),
             skipped_ticks: Vec::new(),
             stock: self.project_stock(viewer),
+            talents,
         }
     }
 
@@ -126,6 +128,46 @@ impl World {
                     .and_then(|def| def.stock)
                     .map_or(0, |rule| rule.max),
                 restock_left: held.restock_left,
+            })
+            .collect()
+    }
+
+    /// The talents of every seat whose hero has a tree that a viewer is told
+    /// of: its own side's, standing or fallen, and another side's while the
+    /// hero is among the units it is told of. What a point could go into is
+    /// told to the seat's own side alone.
+    fn project_talents(&self, viewer: Option<Team>, units: &[UnitView]) -> Vec<TalentView> {
+        self.seats
+            .iter()
+            .filter_map(|seat| {
+                let book = match seat.unit {
+                    Some(unit) => self.abilities.get(unit),
+                    None => seat.kept.as_ref().map(|kept| &kept.book),
+                }?;
+                book.tree?;
+                let own = viewer.is_none_or(|team| team == seat.team);
+                let carried = seat.unit.is_some_and(|unit| {
+                    units
+                        .binary_search_by_key(&wire_id(unit), |shown| shown.id)
+                        .is_ok()
+                });
+                if !own && !carried {
+                    return None;
+                }
+                let learnable = seat.unit.filter(|unit| own && self.alive(*unit)).map_or(
+                    Talents::default(),
+                    |unit| {
+                        (0..TalentSlot::COUNT)
+                            .map(TalentSlot)
+                            .filter(|slot| self.can_learn_talent(unit, *slot))
+                            .fold(Talents::default(), Talents::with)
+                    },
+                );
+                Some(TalentView {
+                    slot: seat.slot,
+                    learned: book.talents,
+                    learnable,
+                })
             })
             .collect()
     }

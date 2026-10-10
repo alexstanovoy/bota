@@ -75,11 +75,14 @@ impl World {
         let Some(unit) = self.driven_by(cmd.slot, cmd.unit) else {
             return;
         };
-        // Learning, the bag, the shop, cheats and immediate casts interrupt
+        // Learning, talents, the bag, the shop, cheats and immediate casts interrupt
         // nothing the body is doing.
         match cmd.order {
             Order::Learn { slot } => {
                 self.learn(unit, usize::from(slot.0));
+            }
+            Order::LearnTalent { talent } => {
+                self.learn_talent(unit, talent);
             }
             Order::Swap { from, to } => {
                 self.move_item(cmd.slot, unit, usize::from(from.0), usize::from(to.0));
@@ -186,6 +189,7 @@ impl World {
             }
             Order::Take { .. }
             | Order::Learn { .. }
+            | Order::LearnTalent { .. }
             | Order::Swap { .. }
             | Order::Sell { .. }
             | Order::Buy { .. }
@@ -303,6 +307,13 @@ impl World {
             }
             Order::Use { slot, target } => self.check_use(unit, seat, usize::from(slot.0), target),
             Order::Cheat { cheat } => self.check_cheat(unit, cheat),
+            Order::LearnTalent { talent } => {
+                if self.can_learn_talent(unit, *talent) {
+                    Ok(())
+                } else {
+                    Err(RejectReason::CannotLearn)
+                }
+            }
             _ => Ok(()),
         }
     }

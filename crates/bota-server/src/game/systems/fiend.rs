@@ -4,8 +4,9 @@
 use bota_proto::{AbilityId, Angle, DamageKind, Fixed, Team};
 
 use crate::game::{
-    Hit, HitEffect, Modifier, ModifierKind, RequiemLine, StackKind, Transform, World, ability,
-    heading_of, hero_def, is_structure, leaves_a_death, move_towards, per_tick, point_along, rules,
+    Fear, Hit, HitEffect, Modifier, ModifierKind, RequiemLine, StackKind, Talent, Transform, World,
+    ability, attack_class_pct, heading_of, hero_def, is_structure, leaves_a_death, move_towards,
+    per_tick, point_along, rules,
 };
 
 use crate::engine::Entity;
@@ -47,6 +48,13 @@ impl World {
         let souls = self.souls_of(caster).min(rules::SOULS_HELD_MAX);
         let amount = rules::RAZE_DAMAGE[level] + rules::RAZE_DAMAGE_PER_SOUL * souls as i32;
         let damage_amp_bp = self.outgoing_damage_amp_bp(Some(caster), DamageKind::Magical);
+        let stack_damage = rules::RAZE_STACK_DAMAGE[level]
+            + if self.has_talent(caster, Talent::RazeStackDamage) {
+                rules::TALENT_RAZE_STACK_DAMAGE
+            } else {
+                0
+            };
+        let swings = self.has_talent(caster, Talent::RazeAttackDamage);
         for mark in struck {
             self.hits.push_back(Hit {
                 source: Some(caster),
@@ -57,12 +65,42 @@ impl World {
                 crit: false,
                 attack: false,
                 pierces: false,
-                effect: HitEffect::Shadowraze { level: level as u8 },
+                effect: HitEffect::Shadowraze { stack_damage },
             });
+            if swings {
+                self.raze_strikes(caster, mark);
+            }
         }
         let which = AbilityId(ability::RAZE_NEAR.0 + reach as u16);
         self.spawn_mark(which, caster, at, rules::MARK_TICKS);
         true
+    }
+
+    /// The attack damage a raze with the level-25 talent deals besides its
+    /// burn: a swing's damage, rolled as a swing rolls it and weighed by the
+    /// attack classes, as physical damage that never misses. No attack
+    /// modifier rides with it: no crit, no pierce, nothing against creeps
+    /// only.
+    fn raze_strikes(&mut self, caster: Entity, mark: Entity) {
+        let Some(stats) = self.stats.get(caster).copied() else {
+            return;
+        };
+        let damage = stats.damage + self.roll_damage(stats.damage_spread);
+        let class_pct = match (self.kind.get(caster), self.kind.get(mark)) {
+            (Some(&from), Some(&to)) => attack_class_pct(from, to),
+            _ => 100,
+        };
+        self.hits.push_back(Hit {
+            source: Some(caster),
+            target: mark,
+            amount: damage * class_pct / 100,
+            kind: DamageKind::Physical,
+            damage_amp_bp: stats.damage_amp_bp(DamageKind::Physical),
+            crit: false,
+            attack: false,
+            pierces: false,
+            effect: HitEffect::None,
+        });
     }
 
     /// Lets the gathered souls go as lines flying out of the caster, one to
@@ -103,6 +141,17 @@ impl World {
             return false;
         };
         let damage_amp_bp = self.outgoing_damage_amp_bp(Some(caster), DamageKind::Magical);
+        let fear = if self.has_talent(caster, Talent::RequiemFear) {
+            Fear {
+                line: rules::REQUIEM_LINE_TICKS + rules::TALENT_REQUIEM_LINE_TICKS,
+                most: rules::REQUIEM_HOLD_MAX_TICKS + rules::TALENT_REQUIEM_HOLD_TICKS,
+            }
+        } else {
+            Fear {
+                line: rules::REQUIEM_LINE_TICKS,
+                most: rules::REQUIEM_HOLD_MAX_TICKS,
+            }
+        };
         for nth in 0..lines {
             let facing = Angle {
                 brads: (nth * 65536 / lines) as u16,
@@ -133,6 +182,7 @@ impl World {
                     damage_amp_bp,
                     level: level as u8,
                     frightens,
+                    fear,
                     struck: Vec::new(),
                 },
             );
@@ -202,7 +252,10 @@ impl World {
             attack: false,
             pierces: false,
             effect: if line.frightens {
-                HitEffect::Requiem { level: line.level }
+                HitEffect::Requiem {
+                    level: line.level,
+                    fear: line.fear,
+                }
             } else {
                 HitEffect::None
             },
@@ -260,6 +313,12 @@ impl World {
                 continue;
             };
             let reach = rules::units(rules::PRESENCE_RADIUS);
+            let armor = rules::PRESENCE_ARMOR[usize::from(level - 1)]
+                + if self.has_talent(carrier, Talent::PresenceArmor) {
+                    rules::TALENT_PRESENCE_ARMOR
+                } else {
+                    Fixed::ZERO
+                };
             let struck: Vec<Entity> = self
                 .entities
                 .iter()
@@ -274,9 +333,7 @@ impl World {
                 self.put_modifier(
                     mark,
                     Modifier {
-                        kind: ModifierKind::ArmorBroken {
-                            armor: rules::PRESENCE_ARMOR[usize::from(level - 1)],
-                        },
+                        kind: ModifierKind::ArmorBroken { armor },
                         source: Some(carrier),
                         ticks_left: Some(rules::PRESENCE_LINGER_TICKS),
                     },
@@ -308,7 +365,7 @@ impl World {
     /// Hands the soul of what has fallen to whoever brought it down.
     ///
     /// Only a killer that gathers souls takes any, and only up to
-    /// [`rules::NECRO_SOUL_CAP`]; a count a feast has carried past it stays
+    /// [`World::soul_cap`]; a count a feast has carried past it stays
     /// where it is. A hero is worth [`rules::SOULS_PER_HERO`], anything else
     /// [`rules::SOULS_PER_UNIT`]; a structure or a ward is worth nothing.
     pub fn feed_souls(&mut self, fallen: Entity, killer: Option<Entity>) {
@@ -345,14 +402,24 @@ impl World {
             .is_some_and(|def| def.innate == Some(ability::NECROMASTERY))
     }
 
-    /// How many souls an entity may gather from kills. Zero for one that
-    /// gathers none.
+    /// How many souls an entity may gather from kills, its talent included.
+    /// Zero for one that gathers none.
     pub fn soul_cap(&self, entity: Entity) -> u32 {
-        if self.gathers_souls(entity) {
-            rules::NECRO_SOUL_CAP
-        } else {
+        if !self.gathers_souls(entity) {
             0
+        } else if self.has_talent(entity, Talent::NecroSoulCap) {
+            rules::NECRO_SOUL_CAP + rules::TALENT_NECRO_SOUL_CAP
+        } else {
+            rules::NECRO_SOUL_CAP
         }
+    }
+
+    /// Whether an entity has learned a talent. A fallen hero's book is on
+    /// its seat and answers nothing here.
+    pub fn has_talent(&self, entity: Entity, talent: Talent) -> bool {
+        self.abilities
+            .get(entity)
+            .is_some_and(|book| book.has_talent(talent))
     }
 
     /// Souls an entity holds right now, those a feast has taken included.

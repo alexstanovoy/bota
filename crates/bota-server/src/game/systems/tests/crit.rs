@@ -41,6 +41,8 @@ fn striker_at_the_anvil(level: u8) -> (World, Entity, Entity) {
                 level,
                 cooldown: 0,
             }],
+            tree: None,
+            talents: bota_proto::Talents::default(),
         },
     );
     at_the_anvil(world, striker)

@@ -2,7 +2,7 @@
 //!
 //! There is no order queue.
 
-use crate::{AbilitySlot, EntityId, ItemId, ItemSlot, Vec2};
+use crate::{AbilitySlot, EntityId, ItemId, ItemSlot, TalentSlot, Vec2};
 use serde::{Deserialize, Serialize};
 
 /// Where an order is aimed.
@@ -271,5 +271,17 @@ pub enum Order {
     Cheat {
         /// Which one.
         cheat: Cheat,
+    },
+    /// Spend a skill point on a talent of the hero's tree. Interrupts nothing
+    /// the body is doing.
+    ///
+    /// A tier opens at its hero level and takes one of its two talents; the
+    /// other opens at levels 27 to 30, a tier a level. A talent is never
+    /// unlearned. Refused with
+    /// [`RejectReason::CannotLearn`](crate::RejectReason::CannotLearn)
+    /// otherwise.
+    LearnTalent {
+        /// Which talent.
+        talent: TalentSlot,
     },
 }

@@ -2,7 +2,7 @@
 
 use bota_proto::{AbilityId, HeroId};
 
-use crate::game::{HERO, PUDGE, SHADOW_FIEND, UnitDef, ability};
+use crate::game::{HERO, PUDGE, SHADOW_FIEND, SHADOW_FIEND_TALENTS, TalentTree, UnitDef, ability};
 
 /// One hero: what it is made of and what it can do.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -17,6 +17,9 @@ pub struct HeroDef {
     /// The innate ability it carries from its first level in no slot, never
     /// learned. Absent for a hero with none.
     pub innate: Option<AbilityId>,
+    /// The talents it may learn. Absent for a hero with none: only Shadow
+    /// Fiend, the one hero at Dota's numbers, has a tree.
+    pub talents: Option<&'static TalentTree>,
 }
 
 /// Every hero, indexed by [`HeroId`].
@@ -31,6 +34,7 @@ pub const HEROES: [HeroDef; 3] = [
             ability::VOLLEY,
         ],
         innate: None,
+        talents: None,
     },
     HeroDef {
         name: "Pudge",
@@ -42,6 +46,7 @@ pub const HEROES: [HeroDef; 3] = [
             ability::DISMEMBER,
         ],
         innate: None,
+        talents: None,
     },
     HeroDef {
         name: "Shadow Fiend",
@@ -55,6 +60,7 @@ pub const HEROES: [HeroDef; 3] = [
             ability::REQUIEM,
         ],
         innate: Some(ability::NECROMASTERY),
+        talents: Some(&SHADOW_FIEND_TALENTS),
     },
 ];
 

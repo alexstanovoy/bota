@@ -91,6 +91,29 @@ impl EffectId {
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct AbilitySlot(pub u8);
 
+/// One of a hero's eight talents, as Dota's talent tree draws them.
+///
+/// Tier `n / 2` opens at hero level 10, 15, 20 and 25; an even slot is the
+/// left of its tier, an odd one the right. What each slot of a hero is comes
+/// with the hero, not over the wire. A hero without talents has no slots.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct TalentSlot(pub u8);
+
+impl TalentSlot {
+    /// Slots in a whole tree.
+    pub const COUNT: u8 = 8;
+
+    /// Which tier it belongs to, from zero for the level-10 tier.
+    pub const fn tier(self) -> u8 {
+        self.0 / 2
+    }
+
+    /// The other talent of its tier.
+    pub const fn other(self) -> TalentSlot {
+        TalentSlot(self.0 ^ 1)
+    }
+}
+
 /// One of a hero's fifteen item slots.
 ///
 /// Slots 0-5 are the inventory, where items work; 6-8 the backpack, where
