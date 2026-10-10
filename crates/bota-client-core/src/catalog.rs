@@ -74,8 +74,8 @@ pub struct HeroFace {
     /// where the base grows by level and the panel cannot tell it.
     pub base_damage: Option<i32>,
     /// How much more than the least a swing may deal: each swing draws
-    /// evenly from `0..=damage_spread` (Dota's damage range). The wire
-    /// carries only the middle of the range.
+    /// evenly from `0..=damage_spread` (Dota's damage range, bota's
+    /// `UnitDef::damage_spread`). The wire carries only the middle.
     pub damage_spread: i32,
 }
 
@@ -683,13 +683,13 @@ pub const HEROES: [HeroFace; 3] = [
     HeroFace {
         id: 1,
         name: "Pudge",
-        base_damage: Some(21),
+        base_damage: None,
         damage_spread: 0,
     },
     HeroFace {
         id: 2,
         name: "Shadow Fiend",
-        // Dota 7.41f: 16 to 22, agility on top.
+        // Dota 7.41f, as bota rolls it: 16 to 22, agility on top.
         base_damage: Some(16),
         damage_spread: 6,
     },
@@ -787,12 +787,26 @@ pub struct DamageRange {
     pub bonus: i32,
 }
 
+/// How much more than the least a swing of a unit that is not a hero may
+/// deal, by kind (Dota 7.41f, as bota rolls it). The wire tells only the
+/// middle of the range, and not a lane creep's rank: super and mega creeps
+/// draw from a wider range than these. Neutrals show one number.
+fn kind_spread(kind: bota_proto::UnitKind) -> i32 {
+    use bota_proto::UnitKind;
+    match kind {
+        UnitKind::CreepMelee | UnitKind::CreepFlagbearer => 4,
+        UnitKind::CreepRanged => 5,
+        UnitKind::CreepSiege => 11,
+        UnitKind::Tower => 4,
+        _ => 0,
+    }
+}
+
 /// Splits the middle of a unit's damage range, as the view tells it, into
-/// the range a swing draws from and the bonus on top. Heroes the catalog
-/// knows get their spread; everything else shows one number.
+/// the range a swing draws from and the bonus on top.
 pub fn damage_range(unit: &bota_proto::UnitView) -> DamageRange {
     let face = unit.hero.and_then(|h| hero(h.0));
-    let spread = face.map_or(0, |f| f.damage_spread);
+    let spread = face.map_or_else(|| kind_spread(unit.kind), |f| f.damage_spread);
     let primary = |a: bota_proto::Attribute| {
         let at = &unit.attributes;
         let value = match a {
