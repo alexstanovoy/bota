@@ -91,8 +91,8 @@ fn a_pool_stands_up_full_and_is_only_capped_after() {
     world.step();
     assert_eq!(
         world.health.get(creep).map(|h| h.hp),
-        Some(Fixed::from_int(100)),
-        "what it has left is left alone"
+        Some(Fixed::from_int(100) + rules::MELEE_CREEP_HP_REGEN),
+        "what it has left is left alone but for its own mending"
     );
     world.health.insert(
         creep,
@@ -155,7 +155,7 @@ fn upgrades_raise_a_creep_and_carry_its_health_with_them() {
 }
 
 #[test]
-fn a_flag_carrier_takes_no_upgrades() {
+fn a_flag_carrier_takes_the_melee_upgrades() {
     let mut world = World::new();
     let ranged = world.spawn();
     world.def.insert(ranged, Def(&RANGED_CREEP));
@@ -172,8 +172,10 @@ fn a_flag_carrier_takes_no_upgrades() {
     );
     assert_eq!(
         world.stats.get(flag).map(|s| s.max_hp),
-        Some(Fixed::from_int(rules::MELEE_CREEP_HP)),
-        "upgrades pass a flag carrier by"
+        Some(Fixed::from_int(
+            rules::MELEE_CREEP_HP + 3 * rules::MELEE_UPGRADE_HP
+        )),
+        "a flag carrier grows as a melee creep does"
     );
 }
 
@@ -227,8 +229,8 @@ fn mending_adds_to_what_a_kind_regenerates() {
     world.step();
     assert_eq!(
         world.stats.get(creep).map(|s| s.hp_regen),
-        Some(Fixed::from_ratio(25, 100)),
-        "a creep mends nothing of its own, so this is all of it"
+        Some(rules::MELEE_CREEP_HP_REGEN + Fixed::from_ratio(25, 100)),
+        "on top of the half point a second a melee creep mends"
     );
 }
 

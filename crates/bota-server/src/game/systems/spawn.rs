@@ -42,11 +42,12 @@ impl World {
         if def.max_mana > 0 {
             self.mana.insert(entity, Mana { mana: Fixed::ZERO });
         }
-        if def.bounty_gold > 0 || def.bounty_xp > 0 {
+        if def.bounty_gold.max > 0 || def.bounty_xp > 0 {
             self.bounty.insert(
                 entity,
                 Bounty {
                     gold: def.bounty_gold,
+                    bonus: 0,
                     xp: def.bounty_xp,
                 },
             );
@@ -179,7 +180,10 @@ impl World {
         self.give_action(entity);
         self.give_orders(entity);
         self.lane.insert(entity, Lane(lane));
-        self.upgrades.insert(entity, Upgrades(upgrades));
+        self.set_upgrades(entity, def, upgrades);
+        if def.kind == bota_proto::UnitKind::CreepFlagbearer {
+            self.pledge_flag_bonus(entity);
+        }
         self.march.insert(entity, March { next: 0 });
         self.lane_ai.insert(
             entity,
@@ -206,7 +210,7 @@ impl World {
         self.give_hull(entity, def);
         self.give_action(entity);
         self.give_orders(entity);
-        self.upgrades.insert(entity, Upgrades(upgrades));
+        self.set_upgrades(entity, def, upgrades);
         self.camp_home.insert(entity, CampHome { camp, home: pos });
         self.neutral_ai.insert(
             entity,
@@ -220,6 +224,17 @@ impl World {
             },
         );
         entity
+    }
+
+    /// Records how many upgrade intervals a creep spawned after, and raises
+    /// what killing it pays by as many of its kind's steps.
+    fn set_upgrades(&mut self, entity: Entity, def: &UnitDef, upgrades: u32) {
+        self.upgrades.insert(entity, Upgrades(upgrades));
+        let steps = i32::try_from(upgrades).expect("upgrade count fits an i32");
+        if let Some(bounty) = self.bounty.get_mut(entity) {
+            bounty.gold = bounty.gold.raised(def.per_upgrade.gold * steps);
+            bounty.xp += def.per_upgrade.xp * steps;
+        }
     }
 
     /// Puts a building on the map at its place.

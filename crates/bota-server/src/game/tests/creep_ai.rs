@@ -314,7 +314,7 @@ fn a_creep_too_far_off_pays_the_order_no_mind() {
 }
 
 #[test]
-fn the_hold_lets_go_after_two_and_a_third_seconds() {
+fn the_hold_lets_go_after_two_point_three_seconds() {
     let (mut world, hero, theirs, ours, foe) = a_lane_with_a_hero(300);
     attack_click(&mut world, foe);
     assert_eq!(world.target_of(theirs), Some(hero));
@@ -474,4 +474,111 @@ fn the_jungle_pays_a_courier_no_mind_but_the_other_side_does_not() {
         "a creep of the other side does"
     );
     assert_eq!(world.target_of(creep), Some(courier), "and goes for it");
+}
+
+/// A cliff on the plain map: a spot on low ground, one on higher ground
+/// 256 to 384 straight off it, and two more spots on the same low ground
+/// 64 and 192 further from the cliff.
+fn a_cliff(world: &World) -> (Vec2, Vec2, Vec2, Vec2) {
+    let ground = &world.ground;
+    let centre = |x: usize, y: usize| {
+        Vec2::from_ints(
+            x as i32 * rules::GRID_CELL_SIZE + rules::GRID_CELL_SIZE / 2,
+            y as i32 * rules::GRID_CELL_SIZE + rules::GRID_CELL_SIZE / 2,
+        )
+    };
+    let cells = crate::game::TERRAIN_CELLS as i64;
+    for y in 8..cells - 8 {
+        for x in 8..cells - 8 {
+            for (dx, dy) in [(1, 0), (-1, 0), (0, 1), (0, -1)] {
+                for far in 4..=6 {
+                    let at = |k: i64| ((x + dx * k) as usize, (y + dy * k) as usize);
+                    let [low, high, near, back] = [at(0), at(far), at(-1), at(-3)];
+                    let walkable = [low, high, near, back]
+                        .iter()
+                        .all(|&(cx, cy)| ground.cell_walkable(cx, cy));
+                    let tier = |(cx, cy)| ground.tier(centre(cx, cy));
+                    if walkable
+                        && tier(high) > tier(low)
+                        && tier(near) == tier(low)
+                        && tier(back) == tier(low)
+                    {
+                        let spot = |(cx, cy)| centre(cx, cy);
+                        return (spot(low), spot(high), spot(near), spot(back));
+                    }
+                }
+            }
+        }
+    }
+    panic!("the plain map has a cliff");
+}
+
+/// A seated Radiant archer on top of a cliff and, below it, a Dire lane
+/// creep fighting a Radiant one with a Dire hero beside them; the clock past
+/// the early-aggro rule and one tick run.
+fn a_lane_under_a_cliff() -> (World, Entity, Entity, Entity, Entity) {
+    let mut world = World::new();
+    world.tick = rules::FREE_AGGRO_TICK;
+    let (low, high, near, back) = a_cliff(&world);
+    let hero = seated_hero(&mut world, high, HeroId(0));
+    world.set_order(hero, UnitOrder::Stand);
+    let theirs = thinking_creep_of(&mut world, Team::Dire, low);
+    let ours = world.spawn_unit(&MELEE_CREEP, Team::Radiant, near);
+    let foe = world.spawn_hero(Team::Dire, back, SlotId(1), HeroId(0));
+    world.set_order(foe, UnitOrder::Stand);
+    world.settle();
+    world.step();
+    assert!(
+        !world.can_see(Team::Dire, hero),
+        "the archer stands in the fog of the low ground"
+    );
+    assert_eq!(world.target_of(theirs), Some(ours), "the creeps fight");
+    (world, hero, theirs, ours, foe)
+}
+
+#[test]
+fn a_click_from_high_ground_pulls_the_creeps_into_the_fog_after_it() {
+    let (mut world, hero, theirs, _ours, foe) = a_lane_under_a_cliff();
+    attack_click(&mut world, foe);
+    for _ in 0..rules::ORDER_AGGRO_HOLD_TICKS - 1 {
+        assert_eq!(
+            world.target_of(theirs),
+            Some(hero),
+            "tick {}: the hold chases the archer, seen or not",
+            world.tick
+        );
+        world.step();
+    }
+    assert!(
+        world.exposure.get(hero).is_some(),
+        "the archer has struck by now"
+    );
+}
+
+#[test]
+fn every_swing_from_high_ground_pulls_the_creeps_that_see_it() {
+    let (mut world, hero, theirs, ours, foe) = a_lane_under_a_cliff();
+    // No click: an order set in place calls nobody on, so only the swings do.
+    let last_seen = world.transform.get(foe).expect("standing").pos;
+    world.set_order(
+        hero,
+        UnitOrder::Attack {
+            target: foe,
+            last_seen,
+        },
+    );
+    let mut pulled = false;
+    for _ in 0..4 * rules::TICKS_PER_SECOND {
+        let shown = world.can_see(Team::Dire, hero);
+        world.step();
+        let onto = world.target_of(theirs);
+        if !shown {
+            assert_eq!(onto, Some(ours), "a swing from the fog pulls nobody");
+        }
+        pulled |= onto == Some(hero);
+    }
+    assert!(
+        pulled,
+        "once its first strike shows it, the next swing pulls the creep"
+    );
 }

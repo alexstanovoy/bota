@@ -9,6 +9,8 @@ pub enum Reach {
     All,
     /// Heroes and nothing else.
     Heroes,
+    /// Everything of its own side but heroes, structures and wards.
+    Units,
 }
 
 /// One effect handed out by standing near something.

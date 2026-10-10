@@ -1,6 +1,7 @@
 mod aggro_view;
 mod attacks;
 mod auras;
+mod bounty;
 mod cast;
 mod courier;
 mod creep_ai;

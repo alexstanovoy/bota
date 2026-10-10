@@ -6,7 +6,7 @@
 
 use bota_proto::{Attributes, Fixed, Vec2};
 
-use crate::game::Ratio;
+use crate::game::{GoldRange, Ratio};
 
 /// Simulation ticks per second of game time.
 pub const TICKS_PER_SECOND: u32 = 30;
@@ -329,7 +329,7 @@ pub const RANGED_UPGRADE_HP: i32 = 12;
 /// Attack damage one upgrade adds to a ranged creep.
 pub const RANGED_UPGRADE_DAMAGE: i32 = 2;
 /// Gold bounty one upgrade adds to a ranged creep.
-pub const RANGED_UPGRADE_GOLD: i32 = 6;
+pub const RANGED_UPGRADE_GOLD: i32 = 3;
 /// Experience one upgrade adds to a ranged creep.
 pub const RANGED_UPGRADE_XP: i32 = 8;
 /// World units between neighbours in a wave's rank: two melee bodies and
@@ -339,6 +339,17 @@ pub const WAVE_SPAWN_SPACING: i32 = 2 * MELEE_CREEP_COLLISION + STEER_MARGIN;
 pub const WAVE_SPAWN_RANK: i32 = 96;
 /// Flagbearer magic resistance, percent.
 pub const FLAGBEARER_MAGIC_RESIST_PCT: i32 = 40;
+/// Flagbearer experience.
+pub const FLAGBEARER_XP: i32 = 60;
+/// Gold a flagbearer's fall pays on top of its own bounty, before the share
+/// of that bounty [`FLAGBEARER_BONUS_BOUNTY_PCT`] adds.
+pub const FLAGBEARER_BONUS_GOLD: i32 = 10;
+/// Share of a flagbearer's own bounty, drawn when it spawns, that its fall
+/// pays on top, percent.
+pub const FLAGBEARER_BONUS_BOUNTY_PCT: i32 = 100;
+/// How far from a fallen flagbearer an enemy hero stands to be paid its
+/// bonus.
+pub const FLAGBEARER_BONUS_RADIUS: i32 = 1500;
 
 // What the three attributes are worth to whatever holds attributes.
 
@@ -451,10 +462,12 @@ pub const MELEE_CREEP_COLLISION: i32 = 36;
 pub const MELEE_CREEP_BOUND: i32 = 16;
 /// Milliseconds from a melee creep's attack start to the hit.
 pub const MELEE_CREEP_ATTACK_POINT: u32 = 466;
-/// Melee creep gold bounty, the midpoint of 34 to 39.
-pub const MELEE_CREEP_BOUNTY: i32 = 36;
+/// Melee creep gold bounty.
+pub const MELEE_CREEP_BOUNTY: GoldRange = GoldRange::new(34, 39);
 /// Melee creep experience.
 pub const MELEE_CREEP_XP: i32 = 57;
+/// Health per tick a melee creep mends; half a point a second.
+pub const MELEE_CREEP_HP_REGEN: Fixed = Fixed::from_ratio(1, 2 * TICKS_PER_SECOND as i32);
 
 /// Ranged creep health.
 pub const RANGED_CREEP_HP: i32 = 300;
@@ -473,10 +486,12 @@ pub const RANGED_CREEP_BOUND: i32 = 8;
 pub const RANGED_CREEP_ATTACK_POINT: u32 = 500;
 /// Ranged creep attack projectile speed, world units per second.
 pub const RANGED_CREEP_PROJECTILE_SPEED: i32 = 900;
-/// Ranged creep gold bounty, the midpoint of 43 to 52.
-pub const RANGED_CREEP_BOUNTY: i32 = 47;
+/// Ranged creep gold bounty.
+pub const RANGED_CREEP_BOUNTY: GoldRange = GoldRange::new(43, 52);
 /// Ranged creep experience.
 pub const RANGED_CREEP_XP: i32 = 69;
+/// Health per tick a ranged creep mends; two points a second.
+pub const RANGED_CREEP_HP_REGEN: Fixed = Fixed::from_ratio(2, TICKS_PER_SECOND as i32);
 
 /// Siege creep health.
 pub const SIEGE_CREEP_HP: i32 = 935;
@@ -501,8 +516,8 @@ pub const SIEGE_CREEP_ATTACK_TIME: u32 = 3000;
 pub const SIEGE_CREEP_ATTACK_POINT: u32 = 700;
 /// Siege creep attack projectile speed, world units per second.
 pub const SIEGE_CREEP_PROJECTILE_SPEED: i32 = 1100;
-/// Siege creep gold bounty, the midpoint of 59 to 72.
-pub const SIEGE_CREEP_BOUNTY: i32 = 65;
+/// Siege creep gold bounty.
+pub const SIEGE_CREEP_BOUNTY: GoldRange = GoldRange::new(59, 72);
 /// Siege creep experience.
 pub const SIEGE_CREEP_XP: i32 = 88;
 
@@ -522,8 +537,8 @@ pub const SUPER_MELEE_HP: i32 = 700;
 pub const SUPER_MELEE_ATTACK_DAMAGE: i32 = 45;
 /// Super melee creep armor.
 pub const SUPER_MELEE_ARMOR: i32 = 3;
-/// Super melee creep gold bounty, the midpoint of 20 to 26.
-pub const SUPER_MELEE_BOUNTY: i32 = 23;
+/// Super melee creep gold bounty.
+pub const SUPER_MELEE_BOUNTY: GoldRange = GoldRange::new(20, 26);
 /// Super melee creep experience.
 pub const SUPER_MELEE_XP: i32 = 25;
 /// Super ranged creep health.
@@ -532,8 +547,8 @@ pub const SUPER_RANGED_HP: i32 = 475;
 pub const SUPER_RANGED_ATTACK_DAMAGE: i32 = 48;
 /// Super ranged creep armor.
 pub const SUPER_RANGED_ARMOR: i32 = 1;
-/// Super ranged creep gold bounty, the midpoint of 19 to 25.
-pub const SUPER_RANGED_BOUNTY: i32 = 22;
+/// Super ranged creep gold bounty.
+pub const SUPER_RANGED_BOUNTY: GoldRange = GoldRange::new(19, 25);
 /// Super ranged creep experience.
 pub const SUPER_RANGED_XP: i32 = 22;
 /// Super siege creep attack damage, the midpoint of 51 to 62.
@@ -575,6 +590,11 @@ pub const FLAGBEARER_AURA_RADIUS: i32 = 700;
 /// Health a flagbearer's inspiration mends, in hundredths of a point a
 /// second.
 pub const FLAGBEARER_AURA_REGEN: i32 = 300;
+/// Magic resistance a flagbearer's inspiration grants for each upgrade
+/// interval the flagbearer spawned after, percent.
+pub const FLAGBEARER_AURA_MAGIC_RESIST_PCT: i32 = 4;
+/// Upgrade intervals the inspiration's magic resistance grows for at most.
+pub const FLAGBEARER_AURA_MAGIC_RESIST_CAP: u32 = 15;
 /// Tower collision size, the Dota tower hull.
 pub const TOWER_COLLISION: i32 = 144;
 /// Tower bound radius, the Dota tower hull.
@@ -656,8 +676,11 @@ pub const AGGRO_TIE_RANGE: i32 = 100;
 /// 3 seconds.
 pub const ORDER_AGGRO_COOLDOWN_TICKS: u32 = 90;
 /// Ticks a creep handed a target by an attack order keeps it before the
-/// ordinary ranking may take it back, 2.33 seconds.
-pub const ORDER_AGGRO_HOLD_TICKS: u32 = 70;
+/// ordinary ranking may take it back, 2.3 seconds.
+pub const ORDER_AGGRO_HOLD_TICKS: u32 = 69;
+/// How near a hero must stand to a lane creep for its attack order or its
+/// swing at a hero to draw the creep.
+pub const HERO_AGGRO_RANGE: i32 = 500;
 /// Tick from which an attack order may draw any lane creep.
 pub const FREE_AGGRO_TICK: u32 = FIRST_WAVE_TICK + 5 * 60 * TICKS_PER_SECOND;
 /// How close to its own tier-one tower a lane creep may be aggroed before
@@ -666,6 +689,14 @@ pub const EARLY_AGGRO_TOWER_RANGE: i32 = 1500;
 /// Ticks a lane creep keeps a target that left its attack range while
 /// nothing else is in its acquisition range, 2.3 seconds.
 pub const CREEP_CHASE_TICKS: u32 = 69;
+/// Radius of the sight an attack or a spell at a unit shows the side struck,
+/// around where the attacker stood.
+pub const STRIKE_REVEAL_RADIUS: i32 = 150;
+/// Ticks that sight lasts, two seconds.
+pub const STRIKE_REVEAL_TICKS: u32 = 2 * TICKS_PER_SECOND;
+/// How near a spell's target must stand to its caster for the cast to show
+/// the caster.
+pub const CAST_REVEAL_RANGE: i32 = 1800;
 /// Room a route keeps past the walker's own collision size, in world units.
 pub const STEER_MARGIN: i32 = 8;
 /// The collision size a lane route keeps clear of every obstacle: the widest

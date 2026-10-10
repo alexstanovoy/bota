@@ -222,8 +222,14 @@ fn add_modifiers(now: &mut Stats, on_it: &Modifiers) {
                 now.armor += Fixed::from_int(armor);
                 now.hp_regen += per_second(hp_per_second);
             }
-            ModifierKind::Inspired { hp_per_second } => {
+            ModifierKind::Inspired {
+                hp_per_second,
+                magic_resist_pct,
+            } => {
                 now.hp_regen += per_second(hp_per_second);
+                let let_through =
+                    (rules::NOMINAL_BP - now.magic_resist_bp) * (100 - magic_resist_pct) / 100;
+                now.magic_resist_bp = rules::NOMINAL_BP - let_through;
             }
             ModifierKind::Shielded => now.invulnerable = true,
             ModifierKind::Phased => now.phased = true,

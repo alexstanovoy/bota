@@ -14,6 +14,7 @@ const GUARDED_EFFECT: ModifierKind = ModifierKind::Guarded {
 /// A flagbearer's inspiration.
 const INSPIRED_EFFECT: ModifierKind = ModifierKind::Inspired {
     hp_per_second: rules::FLAGBEARER_AURA_REGEN,
+    magic_resist_pct: 0,
 };
 
 #[test]
@@ -97,7 +98,7 @@ fn a_tower_guards_only_the_heroes_of_its_own_side_that_stand_by_it() {
 }
 
 #[test]
-fn a_flagbearer_inspires_everyone_of_its_own_side_around_it() {
+fn a_flagbearer_inspires_the_creeps_of_its_own_side_around_it() {
     let mut world = World::new();
     world.spawn_unit(
         &FLAGBEARER_CREEP,
@@ -122,11 +123,38 @@ fn a_flagbearer_inspires_everyone_of_its_own_side_around_it() {
     let inspired = |unit| carries(&world, unit, INSPIRED_EFFECT);
     assert!(inspired(creep), "inside the reach");
     assert!(!inspired(far), "outside it");
-    assert!(
-        inspired(hero),
-        "it inspires its own heroes as readily as its own creeps"
-    );
+    assert!(!inspired(hero), "never a hero, since 7.40");
     assert!(!inspired(theirs), "and its own side only");
+}
+
+#[test]
+fn a_flagbearer_spawned_later_lends_its_creeps_more_magic_resistance() {
+    // Three upgrade intervals in, the inspiration is worth 12 %, and it
+    // multiplies with what the creep already shrugs off.
+    for (steps, pct) in [(0, 0), (3, 12), (40, 60)] {
+        let mut world = World::new();
+        let flag = world.spawn_creep(
+            &FLAGBEARER_CREEP,
+            Team::Radiant,
+            Vec2::from_ints(5000, 5000),
+            0,
+            steps,
+        );
+        let creep = world.spawn_unit(&MELEE_CREEP, Team::Radiant, Vec2::from_ints(5300, 5000));
+        world.settle();
+        world.step();
+        assert_eq!(
+            world.stats.get(creep).map(|s| s.magic_resist_bp),
+            Some(pct * 100),
+            "{steps} intervals: the creep beside it"
+        );
+        let own = rules::FLAGBEARER_MAGIC_RESIST_PCT;
+        assert_eq!(
+            world.stats.get(flag).map(|s| s.magic_resist_bp),
+            Some(10_000 - (100 - own) * (100 - pct)),
+            "{steps} intervals: the flagbearer itself, multiplied"
+        );
+    }
 }
 
 #[test]

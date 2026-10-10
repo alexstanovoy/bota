@@ -69,10 +69,13 @@ pub enum ModifierKind {
         /// Health mended, in hundredths of a point a second.
         hp_per_second: i32,
     },
-    /// Mends faster for marching beside the one carrying the flag.
+    /// Mends faster and shrugs off more magic for marching beside the one
+    /// carrying the flag.
     Inspired {
         /// Health mended, in hundredths of a point a second.
         hp_per_second: i32,
+        /// Magic resistance, percent, multiplying with what is already there.
+        magic_resist_pct: i32,
     },
     /// Losing health over time to whoever put it on.
     Burning {
@@ -109,6 +112,27 @@ pub struct Modifier {
     pub source: Option<Entity>,
     /// Ticks before it lifts. Absent for one that does not lift on its own.
     pub ticks_left: Option<u32>,
+}
+
+impl ModifierKind {
+    /// What an aura of this kind hands out from a source that spawned after
+    /// `steps` upgrade intervals. Only the flagbearer's inspiration grows.
+    pub fn grown(self, steps: u32) -> ModifierKind {
+        match self {
+            ModifierKind::Inspired {
+                hp_per_second,
+                magic_resist_pct,
+            } => {
+                let steps = steps.min(rules::FLAGBEARER_AURA_MAGIC_RESIST_CAP) as i32;
+                ModifierKind::Inspired {
+                    hp_per_second,
+                    magic_resist_pct: magic_resist_pct
+                        + rules::FLAGBEARER_AURA_MAGIC_RESIST_PCT * steps,
+                }
+            }
+            other => other,
+        }
+    }
 }
 
 /// Everything on an entity right now. Present on every unit; empty when

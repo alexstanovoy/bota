@@ -638,7 +638,7 @@ pub const EFFECTS: [EffectFace; 21] = [
     EffectFace {
         id: 14,
         name: "Inspired",
-        blurb: "Health mended, for marching beside the one carrying the flag.",
+        blurb: "Health mended and magic shrugged off, for marching beside the one carrying the flag.",
     },
     EffectFace {
         id: 15,

@@ -129,6 +129,12 @@ impl World {
     /// structure never takes on the jungle, and a lane creep takes on only the
     /// neutrals of a pull camp.
     pub fn hostile(&self, seeker: Entity, target: Entity) -> bool {
+        self.can_see_of(seeker, target) && self.hostile_unseen(seeker, target)
+    }
+
+    /// Whether one entity would attack another of its own accord were it
+    /// seen: [`hostile`](World::hostile) less the sight.
+    pub fn hostile_unseen(&self, seeker: Entity, target: Entity) -> bool {
         let (Some(mine), Some(theirs)) = (
             self.team.get(seeker).copied(),
             self.team.get(target).copied(),
@@ -136,9 +142,6 @@ impl World {
             return false;
         };
         if mine == theirs || !self.alive(target) {
-            return false;
-        }
-        if !self.can_see(mine, target) {
             return false;
         }
         if self.stats.get(target).is_some_and(|s| s.invulnerable) {

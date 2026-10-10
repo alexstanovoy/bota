@@ -885,6 +885,7 @@ fn an_aura_hands_out_a_slow_through_the_same_resistance() {
         team: &world.team,
         kind: &world.kind,
         auras: &world.auras,
+        upgrades: &world.upgrades,
         stats: &world.stats,
         modifiers: &mut world.modifiers,
         spots: &mut Spots::default(),

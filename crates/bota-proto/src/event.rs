@@ -62,7 +62,8 @@ pub enum EventKind {
         killer: Option<EntityId>,
         /// Whether the killer was on the same team, making this a deny.
         denied: bool,
-        /// Gold paid to the seat of the hero that struck last. Zero for a
+        /// Gold paid to the seat of the hero that struck last: the bounty
+        /// drawn for this kill, and a flagbearer's bonus on top. Zero for a
         /// deny, or when no hero struck last.
         gold: i32,
     },

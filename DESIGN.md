@@ -151,13 +151,14 @@ root.set_stream(match_id);
 let mut seed = [0u8; 32];
 root.fill_bytes(&mut seed);
 
-// one stream per purpose — crits, evasion, pierce, camp rosters, flagbearers
+// one stream per purpose — crits, evasion, pierce, camp rosters, flagbearers,
+// bounties
 rng.global(Purpose::Wave)
 rng.for_unit(Purpose::Crit, unit, source)
 ```
 
 Streams are separated by purpose (`Purpose`: `Crit`, `Evasion`, `NeutralSpawn`, `Wave`,
-`Pierce`) so that a new draw in one place does not shift generation anywhere else. A
+`Pierce`, `Bounty`) so that a new draw in one place does not shift generation anywhere else. A
 per-unit stream is keyed by `(purpose, slot index, source)` packed into the 64-bit
 ChaCha8 stream id — purpose in the top bits, slot index in the middle, a source
 byte to separate several sources of chance of one purpose on the same unit (the
@@ -803,19 +804,28 @@ Both are Dota's, and the numbers are the wiki's rather than anybody's memory. A 
 and 3 at every tier above it — so both figures are tables indexed by tier, not the flat
 numbers a first reading of them gives. It reaches **allied heroes only**; Dota adds
 creep-heroes and illusions, of which this game has neither. A **flagbearer**'s
-inspiration reaches 700, mends 3 a second, and reaches **everyone of its own side**,
-heroes counted in. Both linger half a second, which is what the `ticks` on an `Aura`
+inspiration reaches 700, mends 3 a second, and reaches the **non-hero units of its own
+side** — no heroes since 7.40, and no wards or buildings — adding 4 % magic resistance
+for every upgrade interval the flagbearer spawned after, at most 15. Both linger half a second, which is what the `ticks` on an `Aura`
 buys, and neither stacks, because `Modifiers::put` keeps one modifier of a kind.
 
-`Aura` has a `Reach` because the fountain and the flagbearer hand out to the whole of
-their own side and the tower to its heroes alone. `Guarded` and `Inspired`
+`Aura` has a `Reach` because the fountain hands out to the whole of its own side, the
+tower to its heroes alone and the flagbearer to everything but heroes. The magic
+resistance that grows with the bearer's upgrades is not a second aura or a per-entity
+copy of the static one: `ModifierKind::grown` turns the def's base effect into what a
+bearer of so many intervals hands out, at the one place auras are handed out, so the
+`Aura` table stays `'static` and nothing else learns about upgrades. `Guarded` and `Inspired`
 are separate kinds even though a body could carry both, because naming them apart is what
 lets a client tell a tower's doing from a flagbearer's, and what keeps the bot from
 reading either as the mending a salve puts on.
 
-What a flagbearer's death pays the enemy heroes around it is **not** implemented: in
-Dota the bounty reaches 1200 and pays every enemy hero in it once, on top of whatever the
-killer earns.
+What a flagbearer's death pays the enemy heroes around it follows 7.40: the bonus is set
+as it spawns — ten and one draw of its own gold range, kept on its `Bounty` — and a
+death that is not a deny pays it to every enemy hero within 1500 and to the killer
+wherever it stands, each through its own gold income. Drawing it at spawn is Dota's
+order, and it is why the spawn, not the kill, spends that draw of the bounty stream. The
+killer's share rides in the `Died` event's `gold` with its own bounty; the others' is
+read off their seats.
 
 Two more places fall short of the wiki, and neither is reachable on the maps as they
 stand. Several auras are not meant to stack, and they do not — but which one holds is
@@ -1132,6 +1142,42 @@ W, A, S and D pan only for a seat with no hero to give orders to. Once there
 is one, those letters are orders — A is attack-move, S is stop — and the
 arrows are what is left to drive the camera by hand.
 
+### Gold drawn per kill
+
+A lane creep's or a neutral's gold is a `GoldRange`, and each kill that pays it draws
+one whole number evenly from it on `Purpose::Bounty`, a match-global stream of its own:
+the order kills happen in is already deterministic, and a stream of its own leaves every
+other purpose's sequence where it was. A range of one amount — a tower, a barracks, a
+hero's head — draws nothing, so only what Dota randomises spends draws. Upgrades move
+both ends of the range (and add their experience) once, as the creep spawns, which is
+also when Dota fixes them. The midpoints the ranges replace paid ranged creeps 47
+against a mean of 47.5, and paid a flagbearer and every upgraded creep as if it had
+never been upgraded: `Growth::gold` and `Growth::xp` were computed and dropped.
+
+### Strike sight and creeps drawn from the fog
+
+An attack that strikes, and a spell that goes off at a unit within 1800, shows the side
+struck at a 150-radius circle around the striker for two seconds (Dota's caster vision).
+The circle is an `Exposure` on the striker — one `ExposureCell` per side, so striking
+again moves it rather than piling circles up — and the sight pass reads each live cell
+as one more viewer of that side. A viewer is the one thing sight already knows how to
+answer, so the view, the creeps' targeting and `can_see_point` all see the striker
+without being told about strikes. A strike made while the last circle still shows sees
+past height and trees, as Dota upgrades a repeated cell to flying sight. The circle
+starts showing at the next sight pass, the tick after the strike, and shows for
+`STRIKE_REVEAL_TICKS` passes.
+
+Creeps answer a hero going for a hero in two ways (CREEPS.md §1.5). An attack order
+draws them whether or not they see the orderer, and the hold it puts on them is kept
+through the fog: `select_target` keeps a held target that is only out of sight
+(`hostile_unseen`), and the creep walks at where it stands until the hold runs out or
+the strike shows it. A swing begun at a hero draws the creeps within 500 that see the
+swinger, holding nobody. Liquipedia does not say what a creep that cannot see the
+swinger does; drawing it would hand it a target that the very next tick's ranking
+drops as unseen, so gating on sight says the same thing without the churn. Together
+with strike sight, an archer on high ground draws nobody with its first swing, is shown
+by its first strike, and draws the creeps with every swing after.
+
 ### Looking at what is not there
 
 Two different things are not there, and they are answered in two different
@@ -1390,8 +1436,8 @@ so the two agree.
 
 **The lane is held by talking to the creeps, not by standing somewhere.** An attack order
 does something to everybody who is not the one giving it, whether the attack ever
-happens or not: aimed at an enemy hero it calls every enemy creep within its own
-acquisition of the orderer onto him for `ORDER_AGGRO_HOLD_TICKS`, and aimed at one of
+happens or not: aimed at an enemy hero it calls every enemy creep within
+`HERO_AGGRO_RANGE` (500) of the orderer onto him for `ORDER_AGGRO_HOLD_TICKS`, and aimed at one of
 your own it makes them pick again with him put last. `pull` uses the first when the wave
 has been pushed more than `PULL_DRIFT` past where it should meet: standing behind its
 own line, the hero is a spot their creeps must walk past that line to reach, and the

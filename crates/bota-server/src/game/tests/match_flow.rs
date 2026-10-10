@@ -1,8 +1,8 @@
 //! How a match ends, kills, experience, gold and respawns.
 
 use crate::game::{
-    Entity, Event, HERO, ITEM_BOOTS, ITEM_QUELLING_BLADE, Level, MAPS, MELEE_CREEP, Seat,
-    UnitOrder, World, ancient_of, hero_spawn_pos, map_of, rules, wire_id,
+    Entity, HERO, ITEM_BOOTS, ITEM_QUELLING_BLADE, Level, MAPS, MELEE_CREEP, UnitOrder, World,
+    ancient_of, hero_spawn_pos, map_of, rules, wire_id,
 };
 use bota_proto::{EventKind, Fixed, HeroId, ItemId, MapId, SlotId, Team, Vec2};
 
@@ -74,7 +74,11 @@ fn a_kill_pays_the_one_who_struck_last_and_feeds_the_side() {
     world.health.insert(prey, health(0));
     let mut events = Vec::new();
     world.bury(vec![(prey, Some(hero))], &mut events);
-    assert_eq!(world.seats[0].gold, rules::MELEE_CREEP_BOUNTY);
+    let paid = world.seats[0].gold;
+    assert!(
+        (rules::MELEE_CREEP_BOUNTY.min..=rules::MELEE_CREEP_BOUNTY.max).contains(&paid),
+        "paid {paid}, out of the melee creep's range"
+    );
     assert_eq!(world.seats[0].last_hits, 1);
     assert_eq!(world.seats[0].xp, rules::MELEE_CREEP_XP);
 }
@@ -365,23 +369,6 @@ fn a_heros_blows_on_enemy_heroes_and_structures_are_counted_in_the_final_stats()
         stats.slots[1].structure_damage, 0,
         "the foe hit no building"
     );
-}
-
-/// A hero of the plain kind sat in a fresh seat of a side with no gold.
-fn seat_hero(world: &mut World, slot: u8, team: Team, at: Vec2) -> Entity {
-    let hero = world.spawn_hero(team, at, SlotId(slot), HeroId(0));
-    let mut seat = Seat::new(SlotId(slot), team, HeroId(0), 0, rules::STASH_SLOTS);
-    seat.unit = Some(hero);
-    world.seats.push(seat);
-    hero
-}
-
-/// What the death the events tell of paid its killer.
-fn paid(events: &[Event]) -> Option<i32> {
-    events.iter().find_map(|event| match event.kind {
-        EventKind::Died { gold, .. } => Some(gold),
-        _ => None,
-    })
 }
 
 /// The match hero at the seventh level with its second ability learned.

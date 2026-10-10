@@ -6,7 +6,7 @@
 use bota_proto::{Attributes, Fixed, UnitKind};
 
 use crate::game::rules;
-use crate::game::{Growth, UnitDef};
+use crate::game::{GoldRange, Growth, UnitDef};
 
 /// One kind of neutral creep.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -128,7 +128,7 @@ const NEUTRAL_BASE: UnitDef = UnitDef {
     bound: rules::NEUTRAL_BOUND,
     invulnerable: false,
     ancient: false,
-    bounty_gold: 0,
+    bounty_gold: GoldRange::ZERO,
     bounty_xp: 0,
     per_level: Growth {
         attributes: Attributes::ZERO,
@@ -164,7 +164,7 @@ pub const NEUTRALS: [UnitDef; 36] = [
         move_speed: 290,
         turn_rate: rules::FAST_TURN_RATE_BRADS,
         ancient: false,
-        bounty_gold: 4,
+        bounty_gold: GoldRange::new(3, 5),
         bounty_xp: 14,
         ..NEUTRAL_BASE
     },
@@ -182,7 +182,7 @@ pub const NEUTRALS: [UnitDef; 36] = [
         move_speed: 270,
         turn_rate: rules::FAST_TURN_RATE_BRADS,
         ancient: false,
-        bounty_gold: 13,
+        bounty_gold: GoldRange::new(12, 14),
         bounty_xp: 17,
         ..NEUTRAL_BASE
     },
@@ -200,7 +200,7 @@ pub const NEUTRALS: [UnitDef; 36] = [
         move_speed: 330,
         turn_rate: rules::FAST_TURN_RATE_BRADS,
         ancient: false,
-        bounty_gold: 20,
+        bounty_gold: GoldRange::new(19, 21),
         bounty_xp: 30,
         ..NEUTRAL_BASE
     },
@@ -218,7 +218,7 @@ pub const NEUTRALS: [UnitDef; 36] = [
         move_speed: 270,
         turn_rate: rules::FAST_TURN_RATE_BRADS,
         ancient: false,
-        bounty_gold: 19,
+        bounty_gold: GoldRange::new(18, 20),
         bounty_xp: 28,
         ..NEUTRAL_BASE
     },
@@ -237,7 +237,7 @@ pub const NEUTRALS: [UnitDef; 36] = [
         move_speed: 290,
         turn_rate: rules::FAST_TURN_RATE_BRADS,
         ancient: false,
-        bounty_gold: 19,
+        bounty_gold: GoldRange::new(18, 20),
         bounty_xp: 28,
         ..NEUTRAL_BASE
     },
@@ -256,7 +256,7 @@ pub const NEUTRALS: [UnitDef; 36] = [
         move_speed: 270,
         turn_rate: rules::FAST_TURN_RATE_BRADS,
         ancient: false,
-        bounty_gold: 17,
+        bounty_gold: GoldRange::new(16, 18),
         bounty_xp: 30,
         ..NEUTRAL_BASE
     },
@@ -274,7 +274,7 @@ pub const NEUTRALS: [UnitDef; 36] = [
         move_speed: 350,
         turn_rate: rules::FAST_TURN_RATE_BRADS,
         ancient: false,
-        bounty_gold: 17,
+        bounty_gold: GoldRange::new(16, 18),
         bounty_xp: 26,
         ..NEUTRAL_BASE
     },
@@ -292,7 +292,7 @@ pub const NEUTRALS: [UnitDef; 36] = [
         move_speed: 320,
         turn_rate: rules::FAST_TURN_RATE_BRADS,
         ancient: false,
-        bounty_gold: 24,
+        bounty_gold: GoldRange::new(23, 25),
         bounty_xp: 42,
         ..NEUTRAL_BASE
     },
@@ -311,7 +311,7 @@ pub const NEUTRALS: [UnitDef; 36] = [
         move_speed: 280,
         turn_rate: rules::FAST_TURN_RATE_BRADS,
         ancient: false,
-        bounty_gold: 15,
+        bounty_gold: GoldRange::new(14, 16),
         bounty_xp: 26,
         ..NEUTRAL_BASE
     },
@@ -330,7 +330,7 @@ pub const NEUTRALS: [UnitDef; 36] = [
         move_speed: 310,
         turn_rate: rules::FAST_TURN_RATE_BRADS,
         ancient: false,
-        bounty_gold: 26,
+        bounty_gold: GoldRange::new(25, 27),
         bounty_xp: 42,
         ..NEUTRAL_BASE
     },
@@ -348,7 +348,7 @@ pub const NEUTRALS: [UnitDef; 36] = [
         move_speed: 320,
         turn_rate: rules::FAST_TURN_RATE_BRADS,
         ancient: false,
-        bounty_gold: 17,
+        bounty_gold: GoldRange::new(16, 18),
         bounty_xp: 32,
         ..NEUTRAL_BASE
     },
@@ -366,7 +366,7 @@ pub const NEUTRALS: [UnitDef; 36] = [
         move_speed: 320,
         turn_rate: rules::FAST_TURN_RATE_BRADS,
         ancient: false,
-        bounty_gold: 57,
+        bounty_gold: GoldRange::new(54, 60),
         bounty_xp: 90,
         ..NEUTRAL_BASE
     },
@@ -384,7 +384,7 @@ pub const NEUTRALS: [UnitDef; 36] = [
         move_speed: 350,
         turn_rate: rules::FAST_TURN_RATE_BRADS,
         ancient: false,
-        bounty_gold: 20,
+        bounty_gold: GoldRange::new(18, 22),
         bounty_xp: 40,
         ..NEUTRAL_BASE
     },
@@ -402,7 +402,7 @@ pub const NEUTRALS: [UnitDef; 36] = [
         move_speed: 350,
         turn_rate: rules::FAST_TURN_RATE_BRADS,
         ancient: false,
-        bounty_gold: 33,
+        bounty_gold: GoldRange::new(32, 34),
         bounty_xp: 60,
         ..NEUTRAL_BASE
     },
@@ -420,7 +420,7 @@ pub const NEUTRALS: [UnitDef; 36] = [
         move_speed: 300,
         turn_rate: rules::FAST_TURN_RATE_BRADS,
         ancient: false,
-        bounty_gold: 13,
+        bounty_gold: GoldRange::new(12, 14),
         bounty_xp: 24,
         ..NEUTRAL_BASE
     },
@@ -438,7 +438,7 @@ pub const NEUTRALS: [UnitDef; 36] = [
         move_speed: 270,
         turn_rate: rules::FAST_TURN_RATE_BRADS,
         ancient: false,
-        bounty_gold: 20,
+        bounty_gold: GoldRange::new(18, 22),
         bounty_xp: 46,
         ..NEUTRAL_BASE
     },
@@ -456,7 +456,7 @@ pub const NEUTRALS: [UnitDef; 36] = [
         move_speed: 290,
         turn_rate: rules::FAST_TURN_RATE_BRADS,
         ancient: false,
-        bounty_gold: 63,
+        bounty_gold: GoldRange::new(60, 66),
         bounty_xp: 90,
         ..NEUTRAL_BASE
     },
@@ -474,7 +474,7 @@ pub const NEUTRALS: [UnitDef; 36] = [
         move_speed: 270,
         turn_rate: rules::FAST_TURN_RATE_BRADS,
         ancient: false,
-        bounty_gold: 24,
+        bounty_gold: GoldRange::new(22, 26),
         bounty_xp: 32,
         ..NEUTRAL_BASE
     },
@@ -492,7 +492,7 @@ pub const NEUTRALS: [UnitDef; 36] = [
         move_speed: 270,
         turn_rate: rules::FAST_TURN_RATE_BRADS,
         ancient: false,
-        bounty_gold: 30,
+        bounty_gold: GoldRange::new(28, 32),
         bounty_xp: 48,
         ..NEUTRAL_BASE
     },
@@ -510,7 +510,7 @@ pub const NEUTRALS: [UnitDef; 36] = [
         move_speed: 310,
         turn_rate: 5795,
         ancient: false,
-        bounty_gold: 20,
+        bounty_gold: GoldRange::new(19, 21),
         bounty_xp: 32,
         ..NEUTRAL_BASE
     },
@@ -528,7 +528,7 @@ pub const NEUTRALS: [UnitDef; 36] = [
         move_speed: 310,
         turn_rate: 5795,
         ancient: false,
-        bounty_gold: 8,
+        bounty_gold: GoldRange::new(6, 10),
         bounty_xp: 18,
         ..NEUTRAL_BASE
     },
@@ -546,7 +546,7 @@ pub const NEUTRALS: [UnitDef; 36] = [
         move_speed: 320,
         turn_rate: rules::FAST_TURN_RATE_BRADS,
         ancient: false,
-        bounty_gold: 34,
+        bounty_gold: GoldRange::new(30, 38),
         bounty_xp: 66,
         ..NEUTRAL_BASE
     },
@@ -564,7 +564,7 @@ pub const NEUTRALS: [UnitDef; 36] = [
         move_speed: 320,
         turn_rate: rules::FAST_TURN_RATE_BRADS,
         ancient: false,
-        bounty_gold: 64,
+        bounty_gold: GoldRange::new(62, 66),
         bounty_xp: 90,
         ..NEUTRAL_BASE
     },
@@ -582,7 +582,7 @@ pub const NEUTRALS: [UnitDef; 36] = [
         move_speed: 300,
         turn_rate: rules::FAST_TURN_RATE_BRADS,
         ancient: false,
-        bounty_gold: 17,
+        bounty_gold: GoldRange::new(16, 18),
         bounty_xp: 26,
         ..NEUTRAL_BASE
     },
@@ -600,7 +600,7 @@ pub const NEUTRALS: [UnitDef; 36] = [
         move_speed: 320,
         turn_rate: rules::FAST_TURN_RATE_BRADS,
         ancient: false,
-        bounty_gold: 61,
+        bounty_gold: GoldRange::new(58, 64),
         bounty_xp: 90,
         ..NEUTRAL_BASE
     },
@@ -618,7 +618,7 @@ pub const NEUTRALS: [UnitDef; 36] = [
         move_speed: 270,
         turn_rate: rules::FAST_TURN_RATE_BRADS,
         ancient: false,
-        bounty_gold: 18,
+        bounty_gold: GoldRange::new(17, 19),
         bounty_xp: 42,
         ..NEUTRAL_BASE
     },
@@ -636,7 +636,7 @@ pub const NEUTRALS: [UnitDef; 36] = [
         move_speed: 300,
         turn_rate: rules::FAST_TURN_RATE_BRADS,
         ancient: false,
-        bounty_gold: 43,
+        bounty_gold: GoldRange::new(40, 46),
         bounty_xp: 90,
         ..NEUTRAL_BASE
     },
@@ -654,7 +654,7 @@ pub const NEUTRALS: [UnitDef; 36] = [
         move_speed: 310,
         turn_rate: 5795,
         ancient: false,
-        bounty_gold: 49,
+        bounty_gold: GoldRange::new(48, 50),
         bounty_xp: 76,
         ..NEUTRAL_BASE
     },
@@ -672,7 +672,7 @@ pub const NEUTRALS: [UnitDef; 36] = [
         move_speed: 350,
         turn_rate: rules::FAST_TURN_RATE_BRADS,
         ancient: true,
-        bounty_gold: 40,
+        bounty_gold: GoldRange::new(37, 43),
         bounty_xp: 95,
         ..NEUTRAL_BASE
     },
@@ -690,7 +690,7 @@ pub const NEUTRALS: [UnitDef; 36] = [
         move_speed: 300,
         turn_rate: rules::FAST_TURN_RATE_BRADS,
         ancient: true,
-        bounty_gold: 78,
+        bounty_gold: GoldRange::new(76, 80),
         bounty_xp: 124,
         ..NEUTRAL_BASE
     },
@@ -708,7 +708,7 @@ pub const NEUTRALS: [UnitDef; 36] = [
         move_speed: 270,
         turn_rate: 5795,
         ancient: true,
-        bounty_gold: 40,
+        bounty_gold: GoldRange::new(37, 43),
         bounty_xp: 95,
         ..NEUTRAL_BASE
     },
@@ -726,7 +726,7 @@ pub const NEUTRALS: [UnitDef; 36] = [
         move_speed: 270,
         turn_rate: 5795,
         ancient: true,
-        bounty_gold: 78,
+        bounty_gold: GoldRange::new(76, 80),
         bounty_xp: 124,
         ..NEUTRAL_BASE
     },
@@ -745,7 +745,7 @@ pub const NEUTRALS: [UnitDef; 36] = [
         move_speed: 270,
         turn_rate: 5795,
         ancient: true,
-        bounty_gold: 45,
+        bounty_gold: GoldRange::new(42, 49),
         bounty_xp: 95,
         ..NEUTRAL_BASE
     },
@@ -764,7 +764,7 @@ pub const NEUTRALS: [UnitDef; 36] = [
         move_speed: 270,
         turn_rate: rules::FAST_TURN_RATE_BRADS,
         ancient: true,
-        bounty_gold: 78,
+        bounty_gold: GoldRange::new(76, 80),
         bounty_xp: 124,
         ..NEUTRAL_BASE
     },
@@ -782,7 +782,7 @@ pub const NEUTRALS: [UnitDef; 36] = [
         move_speed: 300,
         turn_rate: 5795,
         ancient: true,
-        bounty_gold: 40,
+        bounty_gold: GoldRange::new(37, 43),
         bounty_xp: 95,
         ..NEUTRAL_BASE
     },
@@ -801,7 +801,7 @@ pub const NEUTRALS: [UnitDef; 36] = [
         move_speed: 290,
         turn_rate: rules::FAST_TURN_RATE_BRADS,
         ancient: true,
-        bounty_gold: 78,
+        bounty_gold: GoldRange::new(76, 80),
         bounty_xp: 124,
         ..NEUTRAL_BASE
     },

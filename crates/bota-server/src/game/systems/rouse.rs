@@ -1,12 +1,13 @@
-//! What an attack order does to everybody who is not the one giving it.
+//! What a hero going for a hero does to everybody who is not the one doing it.
 //!
-//! The order alone does it, whether the attack ever happens or not, and only
+//! An attack order does it, whether the attack ever happens or not, and only
 //! a hero's order does it. Only an order at an enemy hero calls creeps and
 //! towers on, and only an order at *another* of your own calls them off; an
 //! order at any other enemy moves nobody, and one a hero aims at itself is
-//! nobody's business but its own.
+//! nobody's business but its own. Every swing a hero begins at a hero calls
+//! the lane creeps that see it on as well, more weakly: it holds nobody.
 
-use bota_proto::{Fixed, Team, UnitKind, Vec2};
+use bota_proto::{Team, UnitKind, Vec2};
 
 use crate::game::{Entity, World, is_lane_creep, rules};
 
@@ -74,6 +75,55 @@ impl World {
         }
     }
 
+    /// Draws the lane creeps around a hero that begins a swing at a hero
+    /// onto the swinger.
+    ///
+    /// Every lane creep not of the swinger's side within
+    /// [`rules::HERO_AGGRO_RANGE`] that sees it and may be called on yet
+    /// takes it as its target, unless an attack order holds the creep or its
+    /// cooldown still runs. Nothing is held and no cooldown starts: the
+    /// creep goes back to its own ranking the tick after.
+    pub fn rouse_by_swing(&mut self, swinger: Entity, mark: Entity) {
+        if self.kind.get(swinger) != Some(&UnitKind::Hero)
+            || self.kind.get(mark) != Some(&UnitKind::Hero)
+        {
+            return;
+        }
+        let (Some(side), Some(at)) = (
+            self.team.get(swinger).copied(),
+            self.transform.get(swinger).map(|t| t.pos),
+        ) else {
+            return;
+        };
+        let reach = rules::units(rules::HERO_AGGRO_RANGE);
+        for creep in self.entities.iter().collect::<Vec<_>>() {
+            let Some(mut ai) = self.lane_ai.get(creep).copied() else {
+                continue;
+            };
+            let Some(theirs) = self.team.get(creep).copied() else {
+                continue;
+            };
+            let near = self
+                .transform
+                .get(creep)
+                .is_some_and(|t| t.pos.within(at, reach));
+            let cooling = self.orders.get(creep).is_some_and(|o| o.cooldown > 0);
+            if theirs == side
+                || !near
+                || cooling
+                || self.tick < ai.keep_until
+                || !self.can_attack(creep)
+                || !self.can_see(theirs, swinger)
+                || !self.aggroable_yet(creep)
+            {
+                continue;
+            }
+            ai.roused_by = Some(swinger);
+            ai.roused_at_own = false;
+            self.lane_ai.insert(creep, ai);
+        }
+    }
+
     /// Which way an order at this mark calls, if it calls at all.
     fn call_of(&self, side: Team, mark: Entity) -> Option<Call> {
         let their_side = self.team.get(mark).copied()?;
@@ -86,12 +136,10 @@ impl World {
         None
     }
 
-    /// One creep's answer: it must be near enough to have seen the order given.
+    /// One creep's answer: the orderer must stand within
+    /// [`rules::HERO_AGGRO_RANGE`] of it, seen or not.
     fn rouse_creep(&mut self, creep: Entity, orderer: Entity, at: Vec2, call: Call) {
-        let reach = self
-            .stats
-            .get(creep)
-            .map_or(Fixed::ZERO, |stats| stats.acquisition);
+        let reach = rules::units(rules::HERO_AGGRO_RANGE);
         if !self
             .transform
             .get(creep)

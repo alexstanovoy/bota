@@ -1,6 +1,6 @@
 # Creeps — the Dota reference
 
-The Dota 2 **7.41e** rules (Summer Scrub, August 2026) for lane and neutral creeps
+The Dota 2 **7.41f** rules for lane and neutral creeps
 that the simulation follows: the numbers, the behaviour, and where they came from.
 What of it is not modelled yet is listed at the end.
 
@@ -16,6 +16,11 @@ the mechanics wiki. Nothing is guessed except where it says **[approximation]**.
 | Dota 2 Wiki, *Lane Creeps* | spawn schedule, wave composition, upgrade table, aggro rules, target priority, chase and return behaviour |
 | Dota 2 Wiki, *Neutral Creeps* | camp categories, spawn rule, aggro radii, guard distance, leash timers, lane-creep interaction |
 | Valve Developer Community, *BoundsHullName Size Reference* | hull radii |
+| Liquipedia, *Lane Creeps* (oldid 2401399, read 2026-10-10) | 7.41 lane creep table, upgrade table, bounty rule, both kinds of hero aggro, chase rules |
+| Liquipedia, *Flagbearer Creep* (oldid 2364908) | 7.40/7.41 flagbearer: experience 60, melee upgrades, Inspiration Aura reach and magic resistance, the bonus bounty |
+| Liquipedia, *Vision* § Caster Vision | the sight an attack or a targeted spell shows the side struck |
+| Liquipedia, *Evasion* § Uphill Miss Chance; Valve 7.41 notes | the 25 % uphill miss still stands |
+| Valve patch notes 7.39, 7.40, 7.41 (dota2.com datafeed) | melee upgrade gold 1 → 0 → 1, ranged 6 → 3; flagbearer changes; flagbearer XP 57 → 60 |
 
 ---
 
@@ -43,7 +48,15 @@ apart by a larger collision size, per kind in `rules.rs`.
 | Hull radius | **16** | **16** | **8** | **16** |
 | Vision, day = night | 750 | 750 | 750 | 750 |
 | Gold bounty | 34–39 | 34–39 | 43–52 | 59–72 |
-| XP bounty | 57 | 57 | 69 | 88 |
+| XP bounty | 57 | 60 | 69 | 88 |
+
+**Gold is drawn per kill**: the last hitter is paid a whole number drawn evenly
+from the creep's current range — both ends moved up by its upgrades — at the
+moment it falls. Liquipedia says "a random value between min and max" and no
+source names the distribution; even is **[approximation]**, the engine's
+`RandomInt`. A deny pays no gold (since 7.26b) and gives the other side 50 % of
+the experience. Experience is split evenly among the killer side's heroes
+within 1500.
 
 Attack modifiers, for the record — see *Not yet modelled* for which of these ship now:
 
@@ -52,9 +65,14 @@ Attack modifiers, for the record — see *Not yet modelled* for which of these s
   **−50 %** to heavy targets.
 - `creep_siege` — siege: **+150 %** to buildings; incoming **−50 %** from
   heroes, **−30 %** from basic sources, **−40 %** from player-controlled units.
-- `flagbearer_creep_aura_effect` — 700 radius, +3 health regen to allies;
-  +10 gold and +3 XP area bounty within 1200 on death by an enemy player;
-  magic resistance grows +4 % per 7.5-minute interval, capped at 15 intervals.
+- **Inspiration Aura** (flagbearer, 7.40) — 700 radius, 0.5 s linger, allied
+  **non-hero** units only (creeps; no heroes, wards or buildings): +3 health
+  regen and +4 % magic resistance per upgrade interval the flagbearer spawned
+  after, at most 15 (60 %), multiplying with what the unit has.
+- **Bonus bounty** (flagbearer, 7.40) — as it spawns it draws once from its own
+  gold range; on a death that is not a deny it pays 10 + that draw to every
+  enemy hero within **1500**, and to the killing hero wherever it stands, on
+  top of the killer's own bounty. No bonus experience.
 
 ### 1.2 Spawning
 
@@ -73,10 +91,13 @@ Attack modifiers, for the record — see *Not yet modelled* for which of these s
 Every **7:30**, applied to *newly spawned* creeps, **30 times maximum**
 (fully upgraded at 225:00):
 
-- melee: +12 health, +1 attack damage, +1 gold
-- ranged: +12 health, +2 attack damage, +6 gold, +8 XP
+- melee and flagbearer: +12 health, +1 attack damage, +1 gold (melee gold
+  0 in 7.39, 1 again since 7.40; the flagbearer follows the melee upgrade
+  since 7.40, though one line of Liquipedia's *Lane Creeps* still says it does not)
+- ranged: +12 health, +2 attack damage, +3 gold (6 before 7.39), +8 XP
 - siege: no periodic upgrade
-- flagbearer: no upgrade
+- the gold and experience steps have no cap in Dota; bota counts at most 30
+  intervals for everything, which differs only past 225:00
 
 ### 1.4 Lane creep behaviour
 
@@ -133,9 +154,11 @@ entering a siege creep's attack range takes it off its current target at once.
 **Order aggro.** An attack order alone aggroes or de-aggroes, whether the
 attack happens or not and however far the ordered target is:
 
-- attack order on an enemy hero → that hero's *enemy* creeps within **their
-  own acquisition range** of the ordering hero **switch their target to that
-  hero outright**. Not a re-ranking: the ordering hero wins even with a closer
+- attack order on an enemy hero → that hero's *enemy* creeps within **500**
+  of the ordering hero **switch their target to that hero outright**, seen or
+  not: a creep that cannot see the hero (fog, high ground) chases its position
+  for the whole hold and strikes once it sees it. Liquipedia gives 500; the
+  Dota 2 Wiki words it as each creep's acquisition range (600 for ranged). Not a re-ranking: the ordering hero wins even with a closer
   creep standing right next to them, which is what makes the pull work at all.
 - attack order on an allied unit → the same creeps put that hero **last**,
   however close it stands: anyone else in acquisition range is taken first,
@@ -144,13 +167,33 @@ attack happens or not and however far the ordered target is:
   the same tick, so the creep is never left standing with no target.
 - an attack order on an enemy **creep** is a last hit and moves nobody
 - **3 s cooldown** per creep on both
-- the switch **holds for 2.33 s** (`ORDER_AGGRO_HOLD_TICKS`, 70 ticks) —
-  **[approximation]**: Valve publishes the 3 s cooldown but no hold duration —
-  and this hold is
+- the switch **holds for 2.3 s** (`ORDER_AGGRO_HOLD_TICKS`, 69 ticks, the
+  figure Liquipedia gives), and this hold is
   the only thing that makes a hero target stick at all. When it runs out the
   creep weighs its options again; the ordering hero can still win that on
   §1.5's tie-break while it keeps swinging at the creep's own side, which is
   why shedding a wave takes either distance or a click at an ally.
+
+**Swing aggro.** Every attack a hero *begins* on a hero — clicked or chosen on
+its own — draws the lane creeps of the other side within **500** of the
+attacker onto it. It starts no cooldown and holds nobody: the creep goes back to
+its own ranking the next tick, so in practice it pulls only a creep with
+nothing else in its attack range. It never overrides a running order hold or
+cooldown. Liquipedia does not say whether a creep that cannot see the attacker
+is drawn; bota draws only creeps whose side sees it **[approximation]**. An
+attack from the fog therefore draws nobody until its first strike has shown the
+attacker (below), and from then on every swing does.
+
+**Strike sight** (Dota's *caster vision*). When an attack strikes — the melee
+blow or the missile leaving, at the attack point — or a spell goes off at a
+unit within 1800, the side struck at is shown a **150**-radius circle around
+where the striker stands, for **2 s**. One circle per striker and side:
+striking again moves it and starts its time afresh, and a strike while the last
+circle still shows makes it see past height and trees (flying sight). This is
+what shows an attacker on high ground or in the fog to the side it hits.
+Missiles show nothing of their own.
+
+The 25 % **uphill miss** of a ranged attack still stands in 7.41.
 
 Towers are outside this spec and keep Dota's own tower rule: a dive draws the
 tower outright rather than through the tie band, and an order at an ally sheds
@@ -390,10 +433,13 @@ barracks and fountains are 144, the Ancients 299 (Radiant) and 374 (Dire).
 
 ## Not yet modelled
 
-1. **Attack classes.** `creep_irresolute`, `creep_piercing` and `creep_siege`
-   (§1.1) are not applied: mitigation reads only the damage kind, so creep damage
-   against heroes and buildings, and damage into siege creeps, is off by exactly
-   those percentages.
+1. **Attack classes.** Since 7.31 Dota multiplies attack damage by class:
+   Runty (melee, flagbearer) ×0.75 to heroes and ×0.7 to Reinforced;
+   Piercing (ranged) ×1.5 to non-heroes, ×0.5 to heroes, ×0.35 to
+   Reinforced; Reinforced (siege creeps and buildings) takes ×0.5 from heroes
+   and deals ×2.5 to Reinforced. Mitigation reads only the damage kind, so
+   creep damage against heroes and buildings, hero damage against buildings,
+   and damage into siege creeps are off by exactly those factors.
 2. **No per-swing damage roll.** A unit has one damage number, so the 19–23 style
    ranges collapse to one value.
 3. **No day and night.** Neutrals never sleep, their aggro range is always 240,
@@ -410,8 +456,14 @@ barracks and fountains are 144, the Ancients 299 (Radiant) and 374 (Dire).
 8. **No invisibility, untargetability or disarm.** The flee on damage from an
    invisible unit and the untargetable rules of §1.6, and the disarm rule of
    §1.4, have nothing to act on.
-9. **No lane creep regeneration.** The 0.5 and 2 health a second of §1.1 are
-   not applied; lane creeps regenerate nothing.
-10. **The flagbearer is its aura and its magic resistance alone.** The area
-    bounty on its death and the magic resistance it gains over time (§1.1) are
-    not applied.
+9. **Order aggro cools down per creep.** Liquipedia keeps the 3 s cooldown on
+   the ordering hero (it starts even with no creep near); bota keeps it on
+   each creep drawn.
+10. **Spells draw creeps.** `rouse_by_cast` answers a unit-target spell at an
+    enemy hero like an attack order; Liquipedia says lane creeps ignore casts.
+11. **Super and mega creeps** carry pre-7.41 numbers: Liquipedia lists super
+    melee 36–44 damage, super ranged 41–46, mega melee 1270 health and 96–104
+    damage, mega ranged 1015 and 131–136; bota has 41–49, 46–51 and mega as a
+    faster-swinging super.
+12. **Flying attackers never miss uphill.** 7.41 lets units with free movement
+    miss uphill too.
