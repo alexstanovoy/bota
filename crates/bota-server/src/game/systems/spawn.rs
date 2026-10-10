@@ -295,6 +295,8 @@ impl World {
                     cooldown: 0,
                 })
                 .collect(),
+                tree: None,
+                talents: bota_proto::Talents::default(),
             },
         );
         self.errand.insert(entity, Errand::None);

@@ -82,6 +82,8 @@ fn parts_in(held: &[(usize, ItemStack)], parts: &[ItemId]) -> Option<Spent> {
 pub fn hero_kit(hero: HeroId) -> AbilityBook {
     let carried = hero_def(hero).map_or(&[] as &[AbilityId], |def| def.abilities);
     AbilityBook {
+        tree: hero_def(hero).and_then(|def| def.talents),
+        talents: bota_proto::Talents::default(),
         slots: carried
             .iter()
             .map(|id| AbilityState {
@@ -1154,7 +1156,39 @@ impl World {
         true
     }
 
-    /// Skill points an entity has spent.
+    /// Spends an ability point on a talent of an entity's tree, when
+    /// [`World::can_learn_talent`] allows it.
+    pub fn learn_talent(&mut self, entity: Entity, slot: bota_proto::TalentSlot) -> bool {
+        if !self.can_learn_talent(entity, slot) {
+            return false;
+        }
+        let Some(book) = self.abilities.get_mut(entity) else {
+            return false;
+        };
+        book.talents = book.talents.with(slot);
+        true
+    }
+
+    /// Whether a point could go into a talent right now: the entity's tree
+    /// has it, neither it nor (below [`rules::TALENT_SECOND_LEVELS`]) the
+    /// other of its tier is taken, a point is unspent, and the hero level
+    /// has reached the one it opens at.
+    pub fn can_learn_talent(&self, entity: Entity, slot: bota_proto::TalentSlot) -> bool {
+        let Some(book) = self.abilities.get(entity) else {
+            return false;
+        };
+        if book.tree.is_none() || slot.0 >= bota_proto::TalentSlot::COUNT {
+            return false;
+        }
+        if book.talents.has(slot) {
+            return false;
+        }
+        let hero_level = self.level.get(entity).map_or(0, |level| level.0);
+        self.points_spent(entity) < hero_level
+            && hero_level >= crate::game::talent_floor(slot, book.talents)
+    }
+
+    /// Skill points an entity has spent, talents included.
     ///
     /// Slots sharing a learn group were paid for together, so the group
     /// counts once.
@@ -1162,16 +1196,19 @@ impl World {
         let Some(book) = self.abilities.get(entity) else {
             return 0;
         };
-        book.slots
-            .iter()
-            .enumerate()
-            .filter(|(at, held)| {
-                let group = learn_group(held.id);
-                !book.slots[..*at]
-                    .iter()
-                    .any(|other| learn_group(other.id) == group)
-            })
-            .map(|(_, held)| held.level)
-            .sum()
+        let talents = book.talents.bits.count_ones() as u8;
+        talents
+            + book
+                .slots
+                .iter()
+                .enumerate()
+                .filter(|(at, held)| {
+                    let group = learn_group(held.id);
+                    !book.slots[..*at]
+                        .iter()
+                        .any(|other| learn_group(other.id) == group)
+                })
+                .map(|(_, held)| held.level)
+                .sum::<u8>()
     }
 }

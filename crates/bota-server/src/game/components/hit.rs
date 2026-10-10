@@ -35,19 +35,26 @@ pub struct Hit {
 pub enum HitEffect {
     /// Nothing.
     None,
-    /// Adds [`rules::RAZE_STACK_DAMAGE`] per Shadowraze stack the source
-    /// already holds on the target, and stacks one more on a target that
-    /// takes damage and survives. `level` is the ability level, from zero.
+    /// Adds `stack_damage` per Shadowraze stack the source already holds on
+    /// the target, and stacks one more on a target that takes damage and
+    /// survives. `stack_damage` is the cast level's
+    /// [`rules::RAZE_STACK_DAMAGE`] and the caster's talent, as the raze went
+    /// off.
     ///
     /// [`rules::RAZE_STACK_DAMAGE`]: crate::game::rules::RAZE_STACK_DAMAGE
-    Shadowraze { level: u8 },
+    Shadowraze { stack_damage: i32 },
     /// Frightens, slows and tears the magic resistance of a target that
-    /// takes damage and survives, for
-    /// [`rules::REQUIEM_LINE_TICKS`] more, up to
-    /// [`rules::REQUIEM_HOLD_MAX_TICKS`]. `level` is the requiem's, from
-    /// zero.
-    ///
-    /// [`rules::REQUIEM_LINE_TICKS`]: crate::game::rules::REQUIEM_LINE_TICKS
-    /// [`rules::REQUIEM_HOLD_MAX_TICKS`]: crate::game::rules::REQUIEM_HOLD_MAX_TICKS
-    Requiem { level: u8 },
+    /// takes damage and survives, for `fear.line` ticks more, up to
+    /// `fear.most`. `level` is the requiem's, from zero.
+    Requiem { level: u8, fear: Fear },
+}
+
+/// How long a requiem line holds what it burns: ticks a line adds, and the
+/// most it may hold in all. Set as the requiem is let go, talents included.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Fear {
+    /// Ticks one line adds.
+    pub line: u32,
+    /// The most ticks the hold reaches.
+    pub most: u32,
 }

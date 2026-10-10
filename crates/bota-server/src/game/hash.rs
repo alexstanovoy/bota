@@ -162,6 +162,9 @@ impl World {
         if let Some(bag) = self.inventory.get(entity) {
             hash_bag(fnv, bag);
         }
+        if let Some(book) = self.abilities.get(entity) {
+            fnv.u8(book.talents.bits);
+        }
         fnv.some(self.loot.get(entity).is_some());
         if let Some(loot) = self.loot.get(entity) {
             hash_stack(fnv, &loot.0);
@@ -320,6 +323,8 @@ fn hash_requiem_line(fnv: &mut Fnv, line: &RequiemLine) {
     hash_damage_amp(fnv, line.damage_amp_bp);
     fnv.u8(line.level);
     fnv.some(line.frightens);
+    fnv.u32(line.fear.line);
+    fnv.u32(line.fear.most);
     fnv.u32(line.struck.len() as u32);
     for crossed in &line.struck {
         fnv.entity(*crossed);
@@ -376,6 +381,7 @@ fn hash_seat(fnv: &mut Fnv, seat: &Seat) {
             fnv.u8(slot.level);
             fnv.u32(slot.cooldown);
         }
+        fnv.u8(kept.book.talents.bits);
         hash_bag(fnv, &kept.bag);
         hash_stacks(fnv, &kept.stacks);
     }
@@ -430,13 +436,15 @@ fn hash_hit(fnv: &mut Fnv, hit: &Hit) {
     fnv.some(hit.pierces);
     match hit.effect {
         HitEffect::None => fnv.u8(0),
-        HitEffect::Requiem { level } => {
+        HitEffect::Requiem { level, fear } => {
             fnv.u8(2);
             fnv.u8(level);
+            fnv.u32(fear.line);
+            fnv.u32(fear.most);
         }
-        HitEffect::Shadowraze { level } => {
+        HitEffect::Shadowraze { stack_damage } => {
             fnv.u8(1);
-            fnv.u8(level);
+            fnv.i32(stack_damage);
         }
     }
 }

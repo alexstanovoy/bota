@@ -4,10 +4,13 @@ use bota_proto::{Attribute, ItemId, SlotId, Team};
 use super::fixtures::*;
 
 #[test]
-fn mechanics_hash_distinguishes_a_pending_raze_from_a_plain_hit_and_other_levels() {
+fn mechanics_hash_distinguishes_a_pending_raze_from_a_plain_hit_and_other_stack_bonuses() {
     for (effect, case) in [
         (HitEffect::None, "an ordinary magical hit"),
-        (HitEffect::Shadowraze { level: 1 }, "another level"),
+        (
+            HitEffect::Shadowraze { stack_damage: 50 },
+            "another stack bonus",
+        ),
     ] {
         let (mut world, caster, _) = fixture();
         assert!(world.cast_raze(caster, 0, 1));

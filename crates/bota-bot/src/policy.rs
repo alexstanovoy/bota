@@ -15,7 +15,7 @@ use crate::{
     RETREAT_HEALTH, RETURN_HEALTH, Role, SALVE, SALVE_HEALS, SALVE_HEALTH, SCROLL, SHADOW_FIEND,
     SHAKE_CREEPS, SHAKE_TICKS, STAND_BEHIND, SYLLA, Stall, Steady, TANGO, TANGO_HEALS,
     TANGO_HEALTH, TANGO_WALK, TOWER_ATTACK_RANGE, TOWER_KEEP_OUT, WORN_SLOTS, after_mitigation,
-    fiend_aim, fiend_spell, next_point, order_by, point_along, span, sylla_spell,
+    fiend_aim, fiend_spell, next_point, next_talent, order_by, point_along, span, sylla_spell,
 };
 
 /// The mending a salve or a tango puts on, as the wire names it.
@@ -186,6 +186,10 @@ impl Playbook {
         {
             self.rung = "held";
             return None;
+        }
+        if let Some(talent) = next_talent(field) {
+            self.rung = "talent";
+            return Some(Ask::learn_talent(talent));
         }
         if let Some(slot) = next_point(field) {
             self.rung = "learn";

@@ -3,6 +3,7 @@
 use bota_proto::{Fixed, Vec2};
 
 use crate::engine::Entity;
+use crate::game::Fear;
 
 /// A soul let go by a requiem, flying straight out of its caster and
 /// burning everything hostile it crosses, each once.
@@ -32,6 +33,8 @@ pub struct RequiemLine {
     /// Whether it frightens, slows and tears the magic resistance of each it
     /// crosses. A requiem let go on its caster's death only burns.
     pub frightens: bool,
+    /// How long it holds what it frightens.
+    pub fear: Fear,
     /// What it has crossed already, never crossed twice.
     pub struck: Vec<Entity>,
 }

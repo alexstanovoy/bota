@@ -252,3 +252,66 @@ fn a_client_built_before_stock_reads_a_snapshot_carrying_it() {
     assert_eq!(old.order_delays, view.order_delays);
     assert_eq!(old.units, view.units);
 }
+
+/// [`WorldView`] as it stood before [`WorldView::talents`].
+#[derive(Deserialize, Debug, PartialEq)]
+struct ViewBeforeTalents {
+    tick: u32,
+    viewer: Option<Team>,
+    units: Vec<UnitView>,
+    projectiles: Vec<ProjectileView>,
+    players: Vec<PlayerView>,
+    felled_trees: Vec<u32>,
+    planted_trees: Vec<Vec2>,
+    loot: Vec<LootView>,
+    aggro: Vec<AggroView>,
+    order_delays: Vec<OrderDelayView>,
+    skipped_ticks: Vec<SkippedTick>,
+    stock: Vec<StockView>,
+}
+
+/// [`ServerMsg`] as a client built before the talents declares it.
+#[derive(Deserialize, Debug, PartialEq)]
+#[allow(
+    clippy::large_enum_variant,
+    reason = "mirrors the old wire shape, which kept the view inline"
+)]
+enum MsgBeforeTalents {
+    Welcome,
+    LobbyState,
+    MatchStart,
+    Snapshot { view: Box<ViewBeforeTalents> },
+}
+
+#[test]
+fn a_client_built_before_talents_reads_a_snapshot_carrying_them() {
+    let view = world_view(24);
+    assert!(!view.talents.is_empty());
+    let frame = encode_frame_to_vec(&ServerMsg::Snapshot { view: view.clone() }).expect("encode");
+    let mut reader = FrameReader::new();
+    reader.push(&frame);
+    let old = reader
+        .next_message::<MsgBeforeTalents>()
+        .expect("decode")
+        .expect("one whole frame was pushed");
+    assert_eq!(reader.buffered(), 0, "the whole frame was consumed");
+    assert_eq!(
+        old,
+        MsgBeforeTalents::Snapshot {
+            view: Box::new(ViewBeforeTalents {
+                tick: view.tick,
+                viewer: view.viewer,
+                units: view.units,
+                projectiles: view.projectiles,
+                players: view.players,
+                felled_trees: view.felled_trees,
+                planted_trees: view.planted_trees,
+                loot: view.loot,
+                aggro: view.aggro,
+                order_delays: view.order_delays,
+                skipped_ticks: view.skipped_ticks,
+                stock: view.stock,
+            }),
+        }
+    );
+}

@@ -1,6 +1,6 @@
 //! What a bot answers a tick with.
 
-use bota_proto::{AbilitySlot, EntityId, ItemId, ItemSlot, Order, Target};
+use bota_proto::{AbilitySlot, EntityId, ItemId, ItemSlot, Order, TalentSlot, Target};
 
 /// One order and the unit it is for.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -59,6 +59,11 @@ impl Ask {
     /// Spend a skill point.
     pub fn learn(slot: AbilitySlot) -> Ask {
         Ask::mine(Order::Learn { slot })
+    }
+
+    /// Spend a skill point on a talent.
+    pub fn learn_talent(talent: TalentSlot) -> Ask {
+        Ask::mine(Order::LearnTalent { talent })
     }
 
     /// Buy an item.

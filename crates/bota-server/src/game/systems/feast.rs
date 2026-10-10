@@ -3,7 +3,7 @@
 
 use bota_proto::UnitKind;
 
-use crate::game::{Feast, FeastPhase, Fed, StackKind, World, is_creep, rules};
+use crate::game::{Feast, FeastPhase, Fed, StackKind, Talent, World, is_creep, rules};
 
 use crate::engine::Entity;
 
@@ -103,12 +103,18 @@ impl World {
             })
             .collect();
         near.sort_by_key(|(creep, apart, _)| (*creep, *apart));
+        let per_hero = rules::FEAST_SOULS_PER_HERO
+            + if self.has_talent(caster, Talent::FeastSoulsPerHero) {
+                rules::TALENT_FEAST_SOULS_PER_HERO
+            } else {
+                0
+            };
         let mut held = self.stacks.get(caster).copied().unwrap_or_default();
         for (creep, _, other) in near.into_iter().take(room.min(rules::FEAST_PER_PERIOD)) {
             let souls = if creep {
                 rules::FEAST_SOULS_PER_UNIT
             } else {
-                rules::FEAST_SOULS_PER_HERO
+                per_hero
             };
             held.gather(StackKind::Souls, souls);
             feast.fed.push(Fed { from: other, souls });

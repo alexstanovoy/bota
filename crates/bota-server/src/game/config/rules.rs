@@ -795,6 +795,16 @@ pub const ABILITY_MAX_LEVEL: u8 = 4;
 pub const ULT_MAX_LEVEL: u8 = 3;
 /// Hero level required for each ultimate level.
 pub const ULT_LEVEL_FLOORS: [u8; 3] = [6, 12, 18];
+/// Hero level each tier of talents opens at, one talent of the two.
+pub const TALENT_LEVELS: [u8; 4] = [10, 15, 20, 25];
+/// Hero level the other talent of each tier opens at.
+pub const TALENT_SECOND_LEVELS: [u8; 4] = [27, 28, 29, 30];
+
+const _: () = {
+    assert!(TALENT_LEVELS.len() * 2 == bota_proto::TalentSlot::COUNT as usize);
+    assert!(TALENT_SECOND_LEVELS[3] <= HERO_MAX_LEVEL);
+    assert!(TALENT_LEVELS[3] < TALENT_SECOND_LEVELS[0]);
+};
 
 /// Fog blocker nodes further apart than this belong to different walls of
 /// the same named group, not to one span.
@@ -964,7 +974,7 @@ const _: () = {
     assert!(
         RAZE_DAMAGE[3]
             + RAZE_DAMAGE_PER_SOUL * SOULS_HELD_MAX as i32
-            + RAZE_STACK_DAMAGE[3] * (RAZE_MAX_STACKS as i32)
+            + (RAZE_STACK_DAMAGE[3] + TALENT_RAZE_STACK_DAMAGE) * (RAZE_MAX_STACKS as i32)
             < 32768
     );
 };
@@ -1070,9 +1080,31 @@ pub const FEAST_LINGER_TICKS: u32 = 8 * TICKS_PER_SECOND;
 pub const FEAST_MANA: [i32; 4] = [60, 65, 70, 75];
 /// Ticks between two feasts.
 pub const FEAST_COOLDOWN: [u32; 4] = [21 * TICKS_PER_SECOND; 4];
+/// Attack speed the level-10 talent adds to a feast.
+pub const TALENT_FEAST_ATTACK_SPEED: i32 = 30;
+/// Raze damage a stack the level-10 talent adds.
+pub const TALENT_RAZE_STACK_DAMAGE: i32 = 30;
+/// Souls a feast takes from a hero on top, with the level-15 talent.
+pub const TALENT_FEAST_SOULS_PER_HERO: u32 = 2;
+/// Armor the presence takes on top, with the level-15 talent: 1.5 since
+/// 7.41f.
+pub const TALENT_PRESENCE_ARMOR: Fixed = Fixed::from_ratio(3, 2);
+/// Ticks of fear, slow and torn resistance a requiem line adds on top, with
+/// the level-20 talent: 0.2 seconds.
+pub const TALENT_REQUIEM_LINE_TICKS: u32 = 6;
+/// Ticks the requiem's hold may reach on top, with the level-20 talent: the
+/// 0.45 seconds that bring 2.15 to 2.6.
+pub const TALENT_REQUIEM_HOLD_TICKS: u32 = 13;
+/// Souls the necromastery holds on top, with the level-20 talent.
+pub const TALENT_NECRO_SOUL_CAP: u32 = 5;
+/// Percent of its length a cast point lasts while a feast runs, with the
+/// level-25 talent.
+pub const TALENT_FEAST_CAST_POINT_PCT: u32 = 70;
 /// Souls a Shadow Fiend can hold at once: the cap and every soul the
-/// largest feast can take on top of it.
-pub const SOULS_HELD_MAX: u32 = NECRO_SOUL_CAP + FEAST_TARGETS[3] as u32 * FEAST_SOULS_PER_HERO;
+/// largest feast can take on top of it, talents included.
+pub const SOULS_HELD_MAX: u32 = NECRO_SOUL_CAP
+    + TALENT_NECRO_SOUL_CAP
+    + FEAST_TARGETS[3] as u32 * (FEAST_SOULS_PER_HERO + TALENT_FEAST_SOULS_PER_HERO);
 
 const _: () = {
     assert!(GRENADE_DEBUFF_TICKS > 5 * TICKS_PER_SECOND);
@@ -1081,6 +1113,10 @@ const _: () = {
     assert!(FEAST_PER_PERIOD > 0);
     assert!(FEAST_TARGETS[3] >= FEAST_TARGETS[0]);
     assert!(REQUIEM_HOLD_MAX_TICKS >= REQUIEM_LINE_TICKS);
+    assert!(REQUIEM_LINE_TICKS + TALENT_REQUIEM_LINE_TICKS == 24);
+    assert!(REQUIEM_HOLD_MAX_TICKS + TALENT_REQUIEM_HOLD_TICKS == 78);
+    assert!(TALENT_FEAST_CAST_POINT_PCT > 0);
+    assert!(TALENT_FEAST_CAST_POINT_PCT <= 100);
 };
 
 /// Ticks between the beats of anything that burns over time.

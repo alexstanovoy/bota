@@ -1,11 +1,11 @@
 //! Where the skill points go.
 
-use bota_proto::{AbilityId, AbilitySlot, HeroId, SlotId, Team, Vec2};
+use bota_proto::{AbilityId, AbilitySlot, HeroId, SlotId, TalentSlot, Team, Vec2};
 
 use crate::tests::fixtures;
 use crate::{
-    BOUNCE, CRIT, FEAST_OF_SOULS, FIEND_PLAN, Field, RAZE_FAR, RAZE_MID, RAZE_NEAR, REQUIEM, Role,
-    SHADOW_FIEND, SYLLA, SYLLA_PLAN, VOLLEY, next_point,
+    BOUNCE, CRIT, FEAST_OF_SOULS, FIEND_PLAN, FIEND_TALENTS, Field, RAZE_FAR, RAZE_MID, RAZE_NEAR,
+    REQUIEM, Role, SHADOW_FIEND, SYLLA, SYLLA_PLAN, VOLLEY, next_point, next_talent,
 };
 
 /// Shadow Fiend's book, with the razes all standing at one level.
@@ -129,4 +129,25 @@ fn an_ultimate_is_never_asked_for_before_its_level() {
             );
         }
     }
+}
+
+#[test]
+fn a_fiend_takes_its_planned_talent_once_the_tier_opens_and_before_an_ability() {
+    let mut view = field_with(fiend_book(4, 4, 1, true), SHADOW_FIEND);
+    view.talents = vec![bota_proto::TalentView {
+        slot: SlotId(0),
+        learned: bota_proto::Talents::default(),
+        learnable: bota_proto::Talents::default()
+            .with(TalentSlot(0))
+            .with(TalentSlot(1)),
+    }];
+    let field = Field::of(&view, SlotId(0), Role::Mid).expect("a seat in the view");
+    assert_eq!(next_talent(&field), Some(FIEND_TALENTS[0]));
+    view.talents[0].learnable = bota_proto::Talents::default().with(TalentSlot(0));
+    let field = Field::of(&view, SlotId(0), Role::Mid).expect("a seat in the view");
+    assert_eq!(
+        next_talent(&field),
+        None,
+        "the other side of the tier is not taken"
+    );
 }

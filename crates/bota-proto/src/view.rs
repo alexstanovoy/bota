@@ -2,7 +2,7 @@
 
 use crate::{
     AbilityId, Aim, Angle, Attribute, Attributes, EffectId, EntityId, EventKind, Fixed, HeroId,
-    ItemId, SlotId, Team, UnitKind, Vec2,
+    ItemId, SlotId, TalentSlot, Team, UnitKind, Vec2,
 };
 use serde::{Deserialize, Serialize};
 
@@ -334,6 +334,42 @@ pub struct StockView {
     pub restock_left: u32,
 }
 
+/// A set of a hero's talent slots: bit `n` holds [`TalentSlot`]`(n)`.
+#[derive(
+    Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash,
+)]
+pub struct Talents {
+    /// The raw bits.
+    pub bits: u8,
+}
+
+impl Talents {
+    /// Whether the set holds a slot.
+    pub const fn has(self, slot: TalentSlot) -> bool {
+        slot.0 < TalentSlot::COUNT && self.bits & (1 << slot.0) != 0
+    }
+
+    /// The set with a slot added.
+    pub const fn with(self, slot: TalentSlot) -> Talents {
+        assert!(slot.0 < TalentSlot::COUNT);
+        Talents {
+            bits: self.bits | (1 << slot.0),
+        }
+    }
+}
+
+/// The talents of one seat's hero.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct TalentView {
+    /// Which seat.
+    pub slot: SlotId,
+    /// The talents it has learned.
+    pub learned: Talents,
+    /// The talents a skill point could go into right now. Empty for a seat
+    /// of the other side and for a hero that is down.
+    pub learnable: Talents,
+}
+
 /// Everything one team is allowed to know, as of one tick.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct WorldView {
@@ -372,6 +408,11 @@ pub struct WorldView {
     pub skipped_ticks: Vec<SkippedTick>,
     /// What the shop has left of each item sold from a limited stock, for
     /// the viewing side, or for both sides in a view of everything; sorted
-    /// by [`Team`], then by [`ItemId`]. Last on the wire.
+    /// by [`Team`], then by [`ItemId`].
     pub stock: Vec<StockView>,
+    /// The talents of every seat of the viewing side whose hero has a tree,
+    /// fallen or standing, and of every other seat whose hero is one of
+    /// [`units`](Self::units); every seat with a tree in a view of
+    /// everything. Sorted by [`SlotId`]. Last on the wire.
+    pub talents: Vec<TalentView>,
 }

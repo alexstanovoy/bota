@@ -12,10 +12,10 @@ use bota_proto::{Aim, DamageKind, Fixed, ItemSlot, Team, Vec2};
 use super::hitting::entity_slot;
 
 use crate::game::{
-    Action, ActionPhase, ActionState, BEATS_PER_TICK, Chance, Entity, Event, Hit, HitEffect,
-    PendingCast, Projectile, Purpose, Ratio, Stats, Target, Visibility, World, ability,
-    ability_def, attack_class_pct, attack_gain, beats, cross, facing_gap, facing_towards, is_creep,
-    is_structure, rules, wire_id,
+    Action, ActionPhase, ActionState, BEATS_PER_TICK, Chance, Entity, Event, FeastPhase, Hit,
+    HitEffect, PendingCast, Projectile, Purpose, Ratio, Stats, Talent, Target, Visibility, World,
+    ability, ability_def, attack_class_pct, attack_gain, beats, cross, facing_gap, facing_towards,
+    is_creep, is_structure, rules, wire_id,
 };
 
 /// What one swing deals, rolled when it lands.
@@ -557,23 +557,36 @@ impl World {
 
     /// How long a cast holds the body. Absent when the slot holds nothing.
     fn timing_of(&self, entity: Entity, what: PendingCast) -> Option<Timing> {
-        match what {
+        let (point, backswing, duration) = match what {
             PendingCast::Ability { slot, .. } => {
                 let def = ability_def(self.ability_in(entity, slot))?;
-                Some(Timing {
-                    point: def.point,
-                    backswing: def.backswing,
-                    duration: def.duration,
-                })
+                (def.point, def.backswing, def.duration)
             }
             PendingCast::Item { slot, .. } => {
                 let def = self.item_def_in(entity, usize::from(slot.0))?;
-                Some(Timing {
-                    point: def.point,
-                    backswing: def.backswing,
-                    duration: def.duration,
-                })
+                (def.point, def.backswing, def.duration)
             }
+        };
+        Some(Timing {
+            point: self.cast_point_of(entity, point),
+            backswing,
+            duration,
+        })
+    }
+
+    /// Milliseconds a cast point lasts for an entity: its own length, or
+    /// [`rules::TALENT_FEAST_CAST_POINT_PCT`] of it while a feast runs on one
+    /// that has learned the level-25 talent. Read every tick of the point, so
+    /// a feast ending inside it lengthens what is left.
+    fn cast_point_of(&self, entity: Entity, point: u32) -> u32 {
+        let feasting = self
+            .feast
+            .get(entity)
+            .is_some_and(|feast| feast.phase == FeastPhase::Feasting);
+        if feasting && self.has_talent(entity, Talent::FeastCastSpeed) {
+            point * rules::TALENT_FEAST_CAST_POINT_PCT / 100
+        } else {
+            point
         }
     }
 
@@ -732,7 +745,7 @@ impl World {
     /// What a swing adds to its least damage: a whole number drawn evenly
     /// from `0..=spread` on the match's damage stream. A spread of zero draws
     /// nothing.
-    fn roll_damage(&mut self, spread: i32) -> i32 {
+    pub(crate) fn roll_damage(&mut self, spread: i32) -> i32 {
         if spread <= 0 {
             return 0;
         }
