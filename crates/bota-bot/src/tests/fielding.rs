@@ -10,7 +10,7 @@ const MID: Vec2 = Vec2::from_ints(8700, 8800);
 fn field_of(units: Vec<bota_proto::UnitView>, me: Option<u32>) -> bota_proto::WorldView {
     let mut all = fixtures::fountains();
     all.extend(units);
-    let seat = fixtures::seat(SlotId(0), Team::Radiant, HeroId(2), me.map(fixtures::id));
+    let seat = fixtures::seat(SlotId(0), Team::Radiant, HeroId(1), me.map(fixtures::id));
     fixtures::tick(1000, all, vec![seat])
 }
 

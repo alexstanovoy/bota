@@ -4,8 +4,8 @@ use super::support::{a_spec, spec};
 use crate::game::{
     AppliedModifier, AppliedModifiers, AppliedOrigin, Command, Def, Entity, MAX_SPAWN_MODIFIERS,
     MAX_SPAWN_TARGETS, MELEE_CREEP, MatchConfig, MatchConfigError, ModifierDuration, Place,
-    RANGED_CREEP, SpawnCategory, SpawnModifier, SpawnModifierError, SpawnSelector, SpawnTarget,
-    World, rules, tower_def,
+    RANGED_CREEP, SHADOW_FIEND, SpawnCategory, SpawnModifier, SpawnModifierError, SpawnSelector,
+    SpawnTarget, World, rules, tower_def,
 };
 use bota_proto::{
     Cheat, DamageKind, Fixed, HeroId, MAX_MODIFIER_TICKS, MapId, ModifierSpec, Order, Pick, SlotId,
@@ -32,7 +32,7 @@ fn config(cheats: bool, rules: Vec<SpawnModifier>) -> MatchConfig {
         picks: vec![Pick {
             slot: SlotId(0),
             team: Team::Radiant,
-            hero: HeroId(0),
+            hero: HeroId(1),
         }],
         map: MapId(0),
         tick_rate: 30,
@@ -52,7 +52,7 @@ fn arena(rules: Vec<SpawnModifier>) -> (World, Entity, Entity) {
         Team::Radiant,
         Vec2::from_ints(7000, 7000),
         SlotId(0),
-        HeroId(0),
+        HeroId(1),
     );
     let creep = world.spawn_unit(&MELEE_CREEP, Team::Dire, Vec2::from_ints(2000, 2000));
     world.spawn_modifiers = rules;
@@ -124,7 +124,7 @@ fn a_hero_starts_with_a_match_setup_modifier() {
     assert!(cfg.validate().is_ok());
     let (world, hero) = a_match(false, vec![hp_rule(20_000)]);
     let stats = world.stats.get(hero).expect("settled");
-    let expected = rules::HERO_HP * 2 + rules::HP_PER_STRENGTH * 20;
+    let expected = SHADOW_FIEND.max_hp * 2 + rules::HP_PER_STRENGTH * 19;
     assert_eq!(stats.max_hp.to_int(), expected);
     assert_eq!(
         world.health.get(hero).map(|health| health.hp),
@@ -152,7 +152,7 @@ fn a_hero_on_the_other_side_is_left_alone() {
     assert_eq!(
         world.stats.get(hero).map(|stats| stats.max_hp),
         Some(Fixed::from_int(
-            rules::HERO_HP + rules::HP_PER_STRENGTH * 20
+            SHADOW_FIEND.max_hp + rules::HP_PER_STRENGTH * 19
         )),
         "the hero is untouched"
     );
@@ -277,12 +277,12 @@ fn several_rules_add_their_scales_once() {
     let stats = world.stats.get(hero).expect("settled");
     assert_eq!(
         stats.move_speed.to_int(),
-        rules::HERO_MOVE_SPEED * 13 / 10,
+        SHADOW_FIEND.move_speed * 13 / 10,
         "deltas add: 10% and 20% make 30%, not 32%"
     );
     assert_eq!(
         stats.max_hp.to_int(),
-        rules::HERO_HP * 15 / 10 + rules::HP_PER_STRENGTH * 20,
+        SHADOW_FIEND.max_hp * 15 / 10 + rules::HP_PER_STRENGTH * 19,
         "the two quarter shares make one half"
     );
 }
@@ -302,7 +302,7 @@ fn a_ticks_rule_lifts_after_its_ticks() {
     world.step();
     assert_eq!(
         world.stats.get(hero).map(|stats| stats.max_hp.to_int()),
-        Some(rules::HERO_HP + rules::HP_PER_STRENGTH * 20),
+        Some(SHADOW_FIEND.max_hp + rules::HP_PER_STRENGTH * 19),
         "and the maximum is back"
     );
 }
@@ -311,7 +311,7 @@ fn a_ticks_rule_lifts_after_its_ticks() {
 fn a_respawned_hero_is_seeded_afresh_and_stands_full_at_its_maximum() {
     for scale in [20_000, 5_000] {
         let (mut world, hero) = a_match(false, vec![hp_rule(scale)]);
-        let full = rules::HERO_HP * scale / 10_000 + rules::HP_PER_STRENGTH * 20;
+        let full = SHADOW_FIEND.max_hp * scale / 10_000 + rules::HP_PER_STRENGTH * 19;
         let max_hp = |world: &World, hero| world.stats.get(hero).map(|stats| stats.max_hp);
         assert_eq!(max_hp(&world, hero), Some(Fixed::from_int(full)), "{scale}");
         world.push_hit(None, hero, 1_000_000, DamageKind::Pure);

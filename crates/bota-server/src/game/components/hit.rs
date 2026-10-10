@@ -19,8 +19,6 @@ pub struct Hit {
     /// Outgoing amplification captured when the blow was made, in basis
     /// points where 10_000 is nominal.
     pub damage_amp_bp: i32,
-    /// Whether it was a critical strike.
-    pub crit: bool,
     /// Whether it is a swing of the attacker's weapon. Only such a blow can
     /// be evaded.
     pub attack: bool,

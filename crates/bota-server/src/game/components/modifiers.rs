@@ -9,7 +9,9 @@ use crate::game::rules;
 /// One kind of modifier, with what there is of it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ModifierKind {
-    /// Attacks come faster.
+    /// Attacks come faster. Only a test pins a swing rate with it, so that a
+    /// block of rolls fits a short run.
+    #[cfg(test)]
     Haste {
         /// Attack speed added.
         speed: i32,

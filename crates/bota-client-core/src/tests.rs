@@ -30,7 +30,7 @@ fn the_console_turns_a_typed_line_into_a_cheat_order() {
 #[test]
 fn every_catalog_entry_is_named_and_found_by_its_own_id() {
     use crate::catalog::{ABILITIES, EFFECTS, HEROES, ITEMS, ability, effect, hero, item};
-    let groups: [Vec<(u16, &str, Option<&str>)>; 4] = [
+    let groups: [Vec<(u16, &str, Option<&str>)>; 3] = [
         ABILITIES
             .iter()
             .map(|f| (f.id, f.name, ability(f.id).map(|x| x.name)))
@@ -38,10 +38,6 @@ fn every_catalog_entry_is_named_and_found_by_its_own_id() {
         ITEMS
             .iter()
             .map(|f| (f.id, f.name, item(f.id).map(|x| x.name)))
-            .collect(),
-        EFFECTS
-            .iter()
-            .map(|f| (f.id, f.name, effect(f.id).map(|x| x.name)))
             .collect(),
         HEROES
             .iter()
@@ -55,9 +51,14 @@ fn every_catalog_entry_is_named_and_found_by_its_own_id() {
             assert!(!name.is_empty(), "entry {id} has a name");
         }
     }
+    for face in EFFECTS {
+        assert_eq!(effect(face.id).map(|x| x.name), Some(face.name));
+        assert!(!face.name.is_empty(), "effect {} has a name", face.id);
+    }
+    assert!(effect(0).is_none(), "the retired effect is gone");
     assert!(ability(ABILITIES.len() as u16).is_none());
     assert!(item(u16::MAX).is_none());
-    assert!(effect(EFFECTS.len() as u16).is_none());
+    assert!(effect(u16::MAX).is_none());
     assert!(hero(HEROES.len() as u16).is_none());
 }
 

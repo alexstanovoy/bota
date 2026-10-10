@@ -48,8 +48,6 @@ pub struct World {
     pub planner: crate::game::Planner,
     /// Uphill miss sequences, indexed by attacker's entity slot.
     pub uphill_miss: Vec<Option<crate::game::PseudoRandom25>>,
-    /// Critical strike sequences, indexed by attacker's entity slot.
-    pub crit: Vec<Option<crate::game::Chance>>,
     /// Evasion sequences, indexed by target's entity slot.
     pub evasion: Vec<Option<crate::game::Chance>>,
     /// Pierce sequences, indexed by attacker's entity slot.
@@ -68,9 +66,6 @@ pub struct World {
     pub landed: VecDeque<Landed>,
     /// Attacks that missed this tick, for whatever answers to them.
     pub missed: VecDeque<Missed>,
-    /// Missiles that arrived with a bounce still in them, beside what they
-    /// arrived on.
-    pub bounced: VecDeque<(Entity, Entity)>,
     /// What abilities and items told of this tick. Drained by the tick.
     pub events: Vec<crate::game::Event>,
     /// The walked route of every lane, by team then lane, on the ground as
@@ -220,7 +215,6 @@ impl World {
             clearance: crate::game::Clearance::open(),
             planner: crate::game::Planner::new(),
             uphill_miss: Vec::new(),
-            crit: Vec::new(),
             evasion: Vec::new(),
             pierce: Vec::new(),
             camp_last: Vec::new(),
@@ -230,7 +224,6 @@ impl World {
             hits: VecDeque::new(),
             landed: VecDeque::new(),
             missed: VecDeque::new(),
-            bounced: VecDeque::new(),
             events: Vec::new(),
             lane_routes: None,
             entities: EntityAllocator::new(),
@@ -353,7 +346,6 @@ impl World {
             amount,
             kind,
             damage_amp_bp,
-            crit: false,
             attack: false,
             pierces: false,
             effect: crate::game::HitEffect::None,
@@ -688,8 +680,7 @@ impl World {
         self.refresh_sight();
     }
 
-    /// Attack orders tended, pools regenerated, actions run, missiles flown
-    /// and bounced; what they told of goes into the tick's events.
+    /// Attack orders tended, pools regenerated, actions run, missiles flown; what they told of goes into the tick's events.
     fn step_actions(&mut self, events: &mut Vec<crate::game::Event>) {
         let _profile = self.scope(Phase::Actions);
         self.tend_attack_orders();
@@ -712,10 +703,8 @@ impl World {
             rng: &self.rng,
             uphill_miss: &mut self.uphill_miss,
             hits: &mut self.hits,
-            bounced: &mut self.bounced,
             missed: &mut self.missed,
         });
-        self.bounce_missiles();
         events.append(&mut self.events);
     }
 

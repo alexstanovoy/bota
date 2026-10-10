@@ -36,8 +36,6 @@ pub struct Landed {
     pub amount: i32,
     /// Which reduction applied.
     pub kind: DamageKind,
-    /// Whether the blow was a critical strike.
-    pub crit: bool,
     /// Where it happened.
     pub at: Vec2,
     /// The side that took it.
@@ -140,7 +138,6 @@ pub fn hitting_system<const AMPLIFIED: bool>(cx: HitCx<'_>) {
             target: blow.target,
             amount: applied,
             kind: blow.kind,
-            crit: blow.crit,
             at: transform.get(blow.target).map_or(Vec2::ZERO, |t| t.pos),
             side: team.get(blow.target).copied().unwrap_or(Team::Neutral),
             fatal,

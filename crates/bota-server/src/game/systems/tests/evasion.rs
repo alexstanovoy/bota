@@ -46,7 +46,7 @@ fn attacker_at_a_hero(attacker: &'static UnitDef, held: &[u16]) -> (World, Entit
         Team::Dire,
         Vec2::from_ints(5100, 5000),
         SlotId(0),
-        HeroId(1),
+        HeroId(0),
     );
     for (slot, item) in held.iter().enumerate() {
         hold(&mut world, mark, slot, *item);

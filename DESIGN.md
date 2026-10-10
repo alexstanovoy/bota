@@ -150,20 +150,20 @@ root.set_stream(match_id);
 let mut seed = [0u8; 32];
 root.fill_bytes(&mut seed);
 
-// one stream per purpose — crits, evasion, pierce, camp rosters, flagbearers,
+// one stream per purpose — evasion, pierce, camp rosters, flagbearers,
 // bounties
 rng.global(Purpose::Wave)
-rng.for_unit(Purpose::Crit, unit, source)
+rng.for_unit(Purpose::Pierce, unit, source)
 ```
 
-Streams are separated by purpose (`Purpose`: `Crit`, `Evasion`, `NeutralSpawn`, `Wave`,
+Streams are separated by purpose (`Purpose`: `Evasion`, `NeutralSpawn`, `Wave`,
 `Pierce`, `Bounty`, `DamageRoll`) so that a new draw in one place does not shift generation anywhere else. A
 per-unit stream is keyed by `(purpose, slot index, source)` packed into the 64-bit
 ChaCha8 stream id — purpose in the top bits, slot index in the middle, a source
 byte to separate several sources of chance of one purpose on the same unit (the
 evasion a unit rolls as a target and the uphill miss it rolls as an attacker). The key
 uses the slot index rather than the full `EntityId`, so the stream id space stays
-bounded. The world keeps each slot's opened crit, evasion and pierce `Chance` for as
+bounded. The world keeps each slot's opened evasion and pierce `Chance` for as
 long as the match runs, so a unit reusing a freed slot continues that slot's hidden
 sequence, which no observer can distinguish from a fresh one.
 
@@ -247,18 +247,18 @@ streams drive a match, and the world hash and the encoded view and event streams
 both sides every 1500 ticks, plus the final stats, must match the recorded values. A
 deliberate rule change re-records them with the ignored `print_pins` test.
 
-### Chances (crits, evasion, pierce)
+### Chances (evasion, pierce)
 
-The requirements conflict: an exact 30% rate **and** no way to predict the next crit.
+The requirements conflict: an exact 30% rate **and** no way to predict the next pierce.
 A simple accumulator (`acc += 0.30`, firing at `acc >= 1`) gives the first but not the
-second: it is periodic, an observer sees crits in damage events and reconstructs the
+second: it is periodic, an observer sees pierces in damage events and reconstructs the
 whole phase after one or two observations.
 
 The solution is exact counting per block with a hidden order inside the block. A chance
 is declared as a fraction:
 
 ```rust
-pub struct Ratio { num: u8, den: u8 }     // rules.rs: SYLLA_CRIT_CHANCE, one per level
+pub struct Ratio { num: u8, den: u8 }     // item.rs: the pierce share of an item
 
 pub struct Chance {
     stream: Stream,   // this source's own hidden ChaCha8 stream
@@ -283,18 +283,18 @@ impl Chance {
 
 - The rate is exactly `num/den` per block. Balance constants are declared as fractions,
   `den <= 64` (the width of the mask).
-- The order comes from a ChaCha8 stream: observing past crits says nothing about the
+- The order comes from a ChaCha8 stream: observing past pierces says nothing about the
   next block. A replay reproduces bit-for-bit — the stream is deterministic, just
   unreachable from outside.
 - Every source starts mid-block at an offset drawn from the same stream, so block
   boundaries are not known to an observer.
 
-Residual leak: within a block the opponent can count (saw 3 crits in 6 hits — knows the
+Residual leak: within a block the opponent can count (saw 3 pierces in 6 swings — knows the
 next 4 are clean). Unavoidable for any scheme with an exact rate. The alternative is
 giving up the exact rate for a plain hidden PRNG, which contradicts the determinism
 requirement.
 
-When the chance changes (a crit buff), the current block finishes under the old
+When the chance changes (a pierce item picked up), the current block finishes under the old
 fraction; the new one takes effect from the next block.
 
 The PRNG is also used where an exact rate is meaningless: which roster a camp fills
@@ -322,7 +322,7 @@ Server-only, never reaches `WorldView`:
   with next).
 
 It also follows that client-side prediction covers only movement and animation. Damage
-numbers and the fact of a crit arrive as events from the server.
+numbers arrive as events from the server.
 
 Two further channels are closed by rule, because a reward-driven bot will find and
 exploit any leak a human reviewer shrugs off:
@@ -456,7 +456,7 @@ exploit any leak a human reviewer shrugs off:
   the waypoint of its new route nearest to it, so a wave does not walk round
   the empty ground a fallen tower stood on. A found path keeps only the corners
   the grid line cannot skip.
-- Heroes: Sylla, Pudge and Shadow Fiend (below). Levels 1–30 on the game's own
+- Heroes: Pudge and Shadow Fiend (below). Levels 1–30 on the game's own
   experience table and respawn times, taken from the wiki in September 2026.
 - Economy: passive gold 1/sec, last hits, a hero kill bounty priced by the
   victim's streak, a hero's head worth in experience a base, thirteen percent
@@ -486,7 +486,7 @@ exploit any leak a human reviewer shrugs off:
   and the interval between two attacks is the kind's own interval scaled by it.
   A percentage taken off the interval directly was rejected: percentages off an
   interval do not add up — two sources of twenty percent are not forty — so item
-  bonuses and Frenzy could not share a footing. The bounds are Dota's, 20 to 700.
+  bonuses and buffs could not share a footing. The bounds are Dota's, 20 to 700.
 - Items are built from components. Every built item's price is exactly the sum
   of its parts, with the difference carried by an ordinary catalog entry — a
   recipe — rather than by a number on the item, so there is one rule for what a
@@ -775,14 +775,7 @@ order to the body breaks it off before anything is spent, as in Dota. An
 `immediate` ability (Feast of Souls, Dota's `DOTA_ABILITY_BEHAVIOR_IMMEDIATE`) has no
 cast point, backswing or duration, and ordering it breaks nothing off: it goes off
 beside a swing or another cast point. Cooldowns tick in the upkeep before actions run, so a fresh cooldown
-surfaces at its full value. Sylla's kit: slot 0 a critical strike
-passive fed by the hidden per-unit `Chance` stream (the stream is keyed by the
-entity slot, so respawning continues the sequence); slot 1 an attack speed
-self-buff for its duration; slot 2 a magical
-projectile that bounces to the closest unhit enemy in range, never a structure;
-slot 3 an ultimate volley launching an attack projectile at every enemy unit in
-its radius. A crit rolls once at windup completion and rides the projectile,
-reported only in the `Damaged` event.
+surfaces at its full value.
 
 Shadow Fiend carries Dota 7.41f's six slots: three razes, Feast of Souls, Presence of
 the Dark Lord and Requiem of Souls; the slot row is per-hero data, so squeezing him
@@ -882,7 +875,6 @@ Hero roadmap (added as data + ability implementations; the engine does not chang
 
 | Hero | Type | Abilities |
 |---|---|---|
-| Sylla | ranged carry | crit passive / attack speed buff / bouncing projectile / ult: multishot |
 | Krag | melee tank | stun dash / cleave passive / armor aura / ult: shield + damage return |
 | Vex | ranged nuker | nuke / slowing AoE / mana passive / ult: AoE burst |
 | Grum | melee initiator | hook / DoT aura / slow / ult: AoE stun |
@@ -1159,7 +1151,7 @@ never been upgraded: `Growth::gold` and `Growth::xp` were computed and dropped.
 A swing's damage is drawn the same way on `Purpose::DamageRoll`, at the moment it
 strikes: the least damage the stats carry plus an even draw from `0..=damage_spread`.
 The view keeps telling the middle of the range, so `UnitView::attack_damage` means what
-it meant when every swing dealt that middle. Sylla and Pudge keep a fixed damage: neither
+it meant when every swing dealt that middle. Pudge keeps a fixed damage: he
 is Dota's hero of today.
 
 ### Strike sight and creeps drawn from the fog
@@ -1383,7 +1375,7 @@ stats:       derive stats, guard structures
 targeting
 movement:    jungle, march lanes, walk, push apart
 visibility
-actions:     attack orders, regen, actions, missiles, bounces
+actions:     attack orders, regen, actions, missiles
 damage:      hits, break on blows, rouse camps, credit damage, events and misses,
              bury (deaths and the victor)
 then:        applied modifiers count down
@@ -1436,8 +1428,7 @@ the same way.
 **What an ability is comes off the wire; what it does does not.** `AbilityView` carries
 the level, the wait, the cost, the reach and how a cast is aimed, so nothing mirrors the
 ability table by hand. What an ability *means* does not cross the wire, so there is a
-file per hero: `fiend.rs` decides when a raze is worth its mana and `sylla.rs` when a
-bolt is. `MatchInfo` carries the shop, so `Stall` reads costs and components off it and
+file per hero: `fiend.rs` decides when a raze is worth its mana. `MatchInfo` carries the shop, so `Stall` reads costs and components off it and
 only the item and ability **numbers** the bot uses are written out in `numbers.rs`,
 because a salve and a ward are one shape on the wire.
 Which talents a hero takes is in `study.rs` beside its points: Shadow Fiend takes
@@ -1687,8 +1678,8 @@ the server has nothing left to do.
 | 5 | ✅ `World` ticks | entities and component tables, units, movement, orders, creeps, towers, Ancient; `rng.rs` with streams and Ratio/Chance |
 | 6 | ✅ combat | attacks, projectiles, damage, deaths, gold/xp, victory |
 | 7 | ✅ server networking | lobby, both tick modes, snapshot broadcast, replay recording |
-| 8 | ✅ `bota-bot` and `bota-client` | SDK + bot, bot-vs-bot match: the client — macroquad: map, units, HP bars, orders, lobby, spectating, replay playback (since split into `bota-client-core` and drawn by dbota outside the repository); the bot — the `Bot` seam and `play`, a deterministic playbook for Shadow Fiend and Sylla, lockstep acks, two of it playing a match through to an Ancient |
-| 9 | 🔄 heroes and determinism test | Done: abilities, levels, items, shop; Sylla, Pudge and Shadow Fiend; whole-match fingerprints pinned on every map. Not yet: runs on musl/wasm32; a mirror test that a diagonally mirrored match ends in the mirrored outcome |
+| 8 | ✅ `bota-bot` and `bota-client` | SDK + bot, bot-vs-bot match: the client — macroquad: map, units, HP bars, orders, lobby, spectating, replay playback (since split into `bota-client-core` and drawn by dbota outside the repository); the bot — the `Bot` seam and `play`, a deterministic playbook for Shadow Fiend, lockstep acks, two of it playing a match through to an Ancient |
+| 9 | 🔄 heroes and determinism test | Done: abilities, levels, items, shop; Pudge and Shadow Fiend; whole-match fingerprints pinned on every map. Not yet: runs on musl/wasm32; a mirror test that a diagonally mirrored match ends in the mirrored outcome |
 
 ## Map2: mid-only play on the full Dota map
 
@@ -2130,7 +2121,7 @@ magic damage lands amplified as in Dota. Damage amplification scales a blow befo
 Shadowraze stack bonus, by the dealer's field for the damage kind; a blow with no
 source is left alone, and pure damage stays unmitigated but still scales. The outgoing
 scale is captured when a blow or its carrier is created (attacks, projectiles, hooks,
-requiem lines), as a crit is, so nothing that happens to the source afterwards changes
+requiem lines), so nothing that happens to the source afterwards changes
 a hit in flight. Status resistance scales the ticks of `Stunned`, `Feared`, `Slowed`, `MagicBroken` and `BloodGrenade`
 wherever they are put on, down to one tick, and never touches buffs; time already held
 is not shortened again when a disable is extended. A hold renewed every tick of a

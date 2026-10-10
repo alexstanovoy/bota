@@ -23,12 +23,12 @@ fn two_fiends(apart: i32) -> (World, Entity, Entity) {
             Pick {
                 slot: SlotId(0),
                 team: Team::Radiant,
-                hero: HeroId(2),
+                hero: HeroId(1),
             },
             Pick {
                 slot: SlotId(1),
                 team: Team::Dire,
-                hero: HeroId(2),
+                hero: HeroId(1),
             },
         ],
         ..config()

@@ -3,7 +3,7 @@
 //! [`Bot`] and [`play`] are the seam: whatever holds a seat is handed one tick
 //! at a time and answers with at most one [`Ask`]. [`Playbook`] is the bot this
 //! crate ships: a ladder of wants walked top to bottom, with spellwork for
-//! Shadow Fiend and for Sylla. Nothing in it is drawn at random.
+//! Shadow Fiend. Nothing in it is drawn at random.
 
 mod aim;
 mod ask;
@@ -18,7 +18,6 @@ mod numbers;
 mod policy;
 mod shop;
 mod study;
-mod sylla;
 mod want;
 
 pub use aim::*;
@@ -34,7 +33,6 @@ pub use numbers::*;
 pub use policy::*;
 pub use shop::*;
 pub use study::*;
-pub use sylla::*;
 pub use want::*;
 
 #[cfg(test)]

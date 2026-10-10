@@ -184,8 +184,6 @@ pub fn refusal(reason: RejectReason) -> &'static str {
 pub enum FloaterKind {
     /// Health taken off by a plain blow.
     Damage,
-    /// Health taken off by a critical strike.
-    Crit,
     /// Health taken off by magic.
     Magic,
     /// An attack that missed.

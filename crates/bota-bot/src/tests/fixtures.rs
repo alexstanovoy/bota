@@ -40,7 +40,7 @@ pub fn hero(idx: u32, team: Team, pos: Vec2) -> UnitView {
         statuses: StatusFlags { bits: 0 },
         attributes: Attributes::all(20),
         primary: Some(Attribute::Agility),
-        hero: Some(HeroId(2)),
+        hero: Some(HeroId(1)),
         owner: Some(SlotId(0)),
         level: 1,
         abilities: Vec::new(),
@@ -217,7 +217,7 @@ pub fn started(shop: Vec<ShopEntry>, trees: Vec<Vec2>) -> MatchInfo {
         picks: vec![Pick {
             slot: SlotId(0),
             team: Team::Radiant,
-            hero: HeroId(2),
+            hero: HeroId(1),
         }],
         shop,
         fountains: [Vec2::from_ints(1760, 2278), Vec2::from_ints(16624, 16064)],

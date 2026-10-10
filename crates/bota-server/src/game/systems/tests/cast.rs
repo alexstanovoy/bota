@@ -16,7 +16,7 @@ fn pudge_and_a_mark() -> (World, Entity, Entity) {
         Team::Radiant,
         Vec2::from_ints(5000, 5000),
         SlotId(0),
-        HeroId(1),
+        HeroId(0),
     );
     let mark = world.spawn_unit(&MELEE_CREEP, Team::Dire, Vec2::from_ints(5100, 5000));
     if let Some(book) = world.abilities.get_mut(pudge) {
@@ -25,7 +25,7 @@ fn pudge_and_a_mark() -> (World, Entity, Entity) {
     world.seats.push(Seat::new(
         SlotId(0),
         Team::Radiant,
-        HeroId(1),
+        HeroId(0),
         0,
         rules::STASH_SLOTS,
     ));
@@ -36,27 +36,27 @@ fn pudge_and_a_mark() -> (World, Entity, Entity) {
     (world, pudge, mark)
 }
 
-/// Sylla with the frenzy learned, set on an anvil in reach and two ticks
-/// into a swing at it.
-fn sylla_mid_swing() -> (World, Entity) {
+/// Shadow Fiend with the feast learned, set on an anvil in reach and two
+/// ticks into a swing at it.
+fn fiend_mid_swing() -> (World, Entity) {
     let mut world = World::new();
-    let sylla = world.spawn_hero(
+    let fiend = world.spawn_hero(
         Team::Radiant,
         Vec2::from_ints(5000, 5000),
         SlotId(0),
-        HeroId(0),
+        HeroId(1),
     );
     let anvil = world.spawn_unit(&ANVIL, Team::Dire, Vec2::from_ints(5100, 5000));
-    world.level.insert(sylla, Level(rules::HERO_MAX_LEVEL));
+    world.level.insert(fiend, Level(rules::HERO_MAX_LEVEL));
     world.settle();
-    world.fill_pools(sylla);
-    assert!(world.learn(sylla, 1), "the frenzy is learned");
-    world.set_target(sylla, anvil);
+    world.fill_pools(fiend);
+    assert!(world.learn(fiend, 3), "the feast is learned");
+    world.set_target(fiend, anvil);
     world.step();
     world.step();
     assert!(
         matches!(
-            world.action.get(sylla).map(|action| action.state),
+            world.action.get(fiend).map(|action| action.state),
             Some(ActionState::Attack {
                 phase: ActionPhase::Before { .. },
                 ..
@@ -64,7 +64,7 @@ fn sylla_mid_swing() -> (World, Entity) {
         ),
         "two ticks in, the swing is under way"
     );
-    (world, sylla)
+    (world, fiend)
 }
 
 /// Orders the seat's Pudge to dismember the mark.
@@ -109,24 +109,24 @@ fn dismember_parts(world: &World, pudge: Entity, mark: Entity) -> [bool; 3] {
 
 #[test]
 fn a_cast_that_holds_the_body_for_no_time_goes_off_mid_swing_on_the_tick_it_is_ordered() {
-    let (mut world, sylla) = sylla_mid_swing();
-    let full = world.mana.get(sylla).expect("has mana").mana;
+    let (mut world, fiend) = fiend_mid_swing();
+    let full = world.mana.get(fiend).expect("has mana").mana;
     world.order_cast(
-        sylla,
+        fiend,
         PendingCast::Ability {
-            slot: AbilitySlot(1),
+            slot: AbilitySlot(3),
             target: Target::None,
         },
     );
     world.step();
     assert!(
-        world.mana.get(sylla).expect("has mana").mana < full,
+        world.mana.get(fiend).expect("has mana").mana < full,
         "it went off that very tick"
     );
-    assert_eq!(world.pending_cast(sylla), None, "and is not owed any more");
+    assert_eq!(world.pending_cast(fiend), None, "and is not owed any more");
     assert!(
         matches!(
-            world.action.get(sylla).map(|action| action.state),
+            world.action.get(fiend).map(|action| action.state),
             Some(ActionState::Attack { .. })
         ),
         "while the swing goes on as if nothing happened"

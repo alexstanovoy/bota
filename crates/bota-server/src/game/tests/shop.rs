@@ -1,9 +1,9 @@
 //! Buying, selling, the stash and items on the ground.
 
 use crate::game::{
-    BAG_SLOTS, Entity, HERO, ITEM_BELT, ITEM_BOOTS, ITEM_CIRCLET, ITEM_GLOVES, ITEM_IRON_BRANCH,
-    ITEM_POWER_TREADS, ITEM_RECIPE_WRAITH_BAND, ITEM_SLIPPERS, ITEM_WRAITH_BAND, ItemStack, Seat,
-    World, fountain_pos, rules, wire_id,
+    BAG_SLOTS, Entity, ITEM_BELT, ITEM_BOOTS, ITEM_CIRCLET, ITEM_GLOVES, ITEM_IRON_BRANCH,
+    ITEM_POWER_TREADS, ITEM_RECIPE_WRAITH_BAND, ITEM_SLIPPERS, ITEM_WRAITH_BAND, ItemStack,
+    SHADOW_FIEND, Seat, World, fountain_pos, rules, wire_id,
 };
 use bota_proto::{
     EventKind, Fixed, HeroId, ItemId, ItemSlot, Order, RejectReason, SlotId, Target, Team, Vec2,
@@ -68,7 +68,7 @@ fn what_waits_in_the_stash_can_be_taken_into_the_bag() {
     world.step();
     assert_eq!(
         world.stats.get(hero).map(|s| s.move_speed),
-        Some(Fixed::from_int(HERO.move_speed + 45)),
+        Some(Fixed::from_int(SHADOW_FIEND.move_speed + 45)),
         "and it works at once, being no backpack it came from"
     );
 }
@@ -89,7 +89,7 @@ fn the_backpack_takes_from_the_stash_too() {
     world.step();
     assert_eq!(
         world.stats.get(hero).map(|s| s.move_speed),
-        Some(Fixed::from_int(HERO.move_speed)),
+        Some(Fixed::from_int(SHADOW_FIEND.move_speed)),
         "carried inert, it adds nothing"
     );
     // Out of the pocket into the inventory, it waits before it works.
@@ -97,7 +97,7 @@ fn the_backpack_takes_from_the_stash_too() {
     world.step();
     assert_eq!(
         world.stats.get(hero).map(|s| s.move_speed),
-        Some(Fixed::from_int(HERO.move_speed)),
+        Some(Fixed::from_int(SHADOW_FIEND.move_speed)),
         "just out of the pocket it is still inert"
     );
     for _ in 0..rules::BACKPACK_MUTE_TICKS {
@@ -105,7 +105,7 @@ fn the_backpack_takes_from_the_stash_too() {
     }
     assert_eq!(
         world.stats.get(hero).map(|s| s.move_speed),
-        Some(Fixed::from_int(HERO.move_speed + 45)),
+        Some(Fixed::from_int(SHADOW_FIEND.move_speed + 45)),
         "and works once the wait is out"
     );
 }
@@ -412,12 +412,12 @@ fn an_enemy_may_take_what_lies_on_the_ground_but_never_sell_it() {
         Team::Dire,
         mid + Vec2::from_ints(100, 0),
         SlotId(1),
-        HeroId(0),
+        HeroId(1),
     );
     world.seats.push(Seat::new(
         SlotId(1),
         Team::Dire,
-        HeroId(0),
+        HeroId(1),
         0,
         rules::STASH_SLOTS,
     ));

@@ -598,7 +598,7 @@ fn a_hero_among_trees_too_close_for_the_route_margin_still_walks_home() {
             x: Fixed { raw: x },
             y: Fixed { raw: y },
         };
-        let hero = world.spawn_hero(team, start, SlotId(0), HeroId(2));
+        let hero = world.spawn_hero(team, start, SlotId(0), HeroId(1));
         world.settle();
         let home = map.fountains[usize::from(team == Team::Dire)];
         world.set_order(hero, UnitOrder::Move { pos: home });

@@ -14,8 +14,8 @@ struct Args {
     /// The name the lobby shows.
     #[arg(long, default_value = "bot")]
     name: String,
-    /// Which hero to ask for: 0 Sylla, 1 Pudge, 2 Shadow Fiend.
-    #[arg(long, default_value_t = 2)]
+    /// Which hero to ask for: 0 Pudge, 1 Shadow Fiend.
+    #[arg(long, default_value_t = 1)]
     hero: u16,
     /// What the seat is there to do, one to five.
     #[arg(long, default_value_t = 2)]

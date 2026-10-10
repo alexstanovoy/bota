@@ -378,8 +378,7 @@ pub const MIN_ATTACK_SPEED: i32 = 20;
 /// Fastest a unit may be brought to swing.
 pub const MAX_ATTACK_SPEED: i32 = 700;
 
-// Hero stats: Sylla's, and what any other hero keeps where it names none of
-// its own.
+// Hero stats: what a hero keeps where it names none of its own.
 
 /// Hero health at level one, before strength.
 pub const HERO_HP: i32 = 180;
@@ -809,48 +808,6 @@ const _: () = {
 /// Fog blocker nodes further apart than this belong to different walls of
 /// the same named group, not to one span.
 pub const FOW_BLOCKER_SPAN: i32 = 600;
-
-// Sylla: crit passive / attack speed buff / bouncing projectile / multishot.
-
-/// Chance of a critical strike per crit level.
-pub const SYLLA_CRIT_CHANCE: [Ratio; 4] = [
-    Ratio::new(1, 5),
-    Ratio::new(1, 4),
-    Ratio::new(3, 10),
-    Ratio::new(7, 20),
-];
-/// Critical strike damage per crit level, percent of a normal hit.
-pub const SYLLA_CRIT_MULT_PCT: [i32; 4] = [175, 200, 225, 250];
-/// Frenzy mana cost per level.
-pub const SYLLA_FRENZY_MANA: [i32; 4] = [30, 40, 50, 60];
-/// Frenzy cooldown per level, ticks.
-pub const SYLLA_FRENZY_COOLDOWN: [u32; 4] = [450, 420, 390, 360];
-/// Attack speed Frenzy adds per level.
-pub const SYLLA_FRENZY_ATTACK_SPEED: [i32; 4] = [25, 39, 56, 79];
-/// Frenzy duration, ticks.
-pub const SYLLA_FRENZY_TICKS: u32 = 180;
-/// Bounce mana cost per level.
-pub const SYLLA_BOUNCE_MANA: [i32; 4] = [90, 100, 110, 120];
-/// Bounce cooldown per level, ticks.
-pub const SYLLA_BOUNCE_COOLDOWN: [u32; 4] = [300, 270, 240, 210];
-/// Bounce magical damage per hit per level.
-pub const SYLLA_BOUNCE_DAMAGE: [i32; 4] = [70, 140, 210, 280];
-/// Bounce extra targets after the first, per level.
-pub const SYLLA_BOUNCE_COUNT: [u8; 4] = [2, 4, 6, 8];
-/// Cast range of the bounce.
-pub const SYLLA_BOUNCE_CAST_RANGE: i32 = 550;
-/// How far the bounce jumps between targets.
-pub const SYLLA_BOUNCE_RANGE: i32 = 500;
-/// Bounce projectile speed, world units per second.
-pub const SYLLA_BOUNCE_SPEED: i32 = 900;
-/// Multishot mana cost per level.
-pub const SYLLA_MULTI_MANA: [i32; 3] = [100, 150, 200];
-/// Multishot cooldown per level, ticks.
-pub const SYLLA_MULTI_COOLDOWN: [u32; 3] = [2100, 1800, 1500];
-/// Multishot damage per level, percent of attack damage.
-pub const SYLLA_MULTI_DMG_PCT: [i32; 3] = [80, 100, 120];
-/// Radius the multishot volley covers.
-pub const SYLLA_MULTI_RADIUS: i32 = 700;
 
 // Items and the shop.
 

@@ -2,7 +2,6 @@ mod actions;
 mod applied;
 mod cast;
 mod cheats;
-mod crit;
 mod evasion;
 mod pierce;
 mod raze;

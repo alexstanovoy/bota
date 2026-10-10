@@ -4,7 +4,7 @@ use crate::game::{
     BLINK_RANGE, Command, Event, HERO, ITEM_BLINK_DAGGER, ITEM_BOOTS, ITEM_CLARITY,
     ITEM_HEALING_SALVE, ITEM_IRON_BRANCH, ITEM_PHASE_BOOTS, ITEM_POWER_TREADS, ITEM_QUELLING_BLADE,
     ITEM_TANGO, ITEM_TOWN_PORTAL_SCROLL, ITEMS, ItemStack, MELEE_CREEP, Mana, ModifierKind,
-    SALVE_TICKS, UnitOrder, World, map_of, rules, tree_positions, wire_id,
+    SALVE_TICKS, SHADOW_FIEND, UnitOrder, World, map_of, rules, tree_positions, wire_id,
 };
 use bota_proto::{
     AbilitySlot, Attribute, DamageKind, EventKind, Fixed, HeroId, ItemId, ItemSlot, MapId, Order,
@@ -28,7 +28,7 @@ fn a_salve_puts_mending_on_whoever_drinks_it_and_runs_out() {
         "the last charge takes the stack with it"
     );
     world.step();
-    let plain = HERO.hp_regen + rules::HP_REGEN_PER_STRENGTH * HERO.attributes.strength;
+    let plain = HERO.hp_regen + rules::HP_REGEN_PER_STRENGTH * SHADOW_FIEND.attributes.strength;
     assert!(
         world.stats.get(hero).expect("settled").hp_regen > plain,
         "it mends faster while the salve holds"
@@ -365,7 +365,7 @@ fn a_quelling_blade_is_worth_something_against_a_creep_and_nothing_against_a_her
         Team::Dire,
         Vec2::from_ints(5000, 5100),
         SlotId(1),
-        HeroId(0),
+        HeroId(1),
     );
     world.settle();
     world.step();
@@ -439,7 +439,7 @@ fn a_hero_hit_loses_its_drink_but_never_what_a_tree_bought() {
         Team::Dire,
         Vec2::from_ints(7000, 7000),
         SlotId(1),
-        HeroId(0),
+        HeroId(1),
     );
     let creep = world.spawn_unit(&MELEE_CREEP, Team::Dire, Vec2::from_ints(7000, 7000));
     world.settle();
@@ -514,7 +514,7 @@ fn what_an_item_is_set_to_is_worth_points_of_that_attribute() {
 #[test]
 fn treads_switched_round_the_wheel_mend_nothing() {
     let mut world = World::new();
-    let hero = seated_hero(&mut world, Vec2::from_ints(5000, 5000), HeroId(0));
+    let hero = seated_hero(&mut world, Vec2::from_ints(5000, 5000), HeroId(1));
     world.inventory.get_mut(hero).expect("has a bag").slots[0] = Some(ItemStack {
         mode: Some(Attribute::Strength),
         ..fresh_stack(ITEM_POWER_TREADS, 0)

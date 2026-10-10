@@ -258,19 +258,19 @@ fn a_flesh_heap_keeps_every_enemy_hero_that_falls_near_it_and_nothing_else() {
         Team::Dire,
         Vec2::from_ints(5300, 5000),
         SlotId(1),
-        HeroId(0),
+        HeroId(1),
     );
     let friend = world.spawn_hero(
         Team::Radiant,
         Vec2::from_ints(5000, 5300),
         SlotId(2),
-        HeroId(0),
+        HeroId(1),
     );
     let far = world.spawn_hero(
         Team::Dire,
         Vec2::from_ints(5000 + rules::FLESH_HEAP_RANGE + 200, 5000),
         SlotId(3),
-        HeroId(0),
+        HeroId(1),
     );
     let tower = world.spawn_unit(tower_def(1), Team::Dire, Vec2::from_ints(5200, 5000));
     world.settle();
@@ -346,7 +346,7 @@ fn a_flesh_heap_outlives_the_death_of_the_one_carrying_it() {
         Team::Dire,
         Vec2::from_ints(5100, 5200),
         SlotId(1),
-        HeroId(0),
+        HeroId(1),
     );
     world.settle();
     world.step();
@@ -373,7 +373,7 @@ fn a_lone_pudge() -> (World, Entity) {
         Team::Radiant,
         Vec2::from_ints(5000, 5000),
         SlotId(0),
-        HeroId(1),
+        HeroId(0),
     );
     world.settle();
     world.step();

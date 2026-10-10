@@ -9,8 +9,8 @@ use bota_proto::{HeroId, ItemId, ItemView, MatchInfo, ShopEntry, Target};
 use crate::{
     Ask, BELT, BOOTS, BRANCH, BROADSWORD, CIRCLET, CLARITY, COURIER_BATCH, COURIER_PATIENCE,
     DELIVER, ERRAND_TICKS, FIGHT_RANGE, Field, GAUNTLETS, GLOVES, MAGIC_STICK, MANTLE,
-    QUARTERSTAFF, RECIPE_BRACER, RECIPE_MAGIC_WAND, RECIPE_NULL_TALISMAN, RECIPE_WRAITH_BAND,
-    SAGES_MASK, SALVE, SCROLL, SHADOW_FIEND, SLIPPERS, SPARE_SLOTS, SYLLA, TAKE_STASH, TANGO,
+    RECIPE_BRACER, RECIPE_MAGIC_WAND, RECIPE_NULL_TALISMAN, SAGES_MASK, SALVE, SCROLL,
+    SHADOW_FIEND, SPARE_SLOTS, TAKE_STASH, TANGO,
 };
 
 /// The shop as the match described it.
@@ -146,26 +146,6 @@ pub const FIEND_GOODS: [ItemId; 16] = [
     BROADSWORD,
 ];
 
-/// Sylla's list: a band for the agility, a wand, treads, then plain damage.
-pub const SYLLA_GOODS: [ItemId; 16] = [
-    TANGO,
-    CLARITY,
-    SCROLL,
-    BRANCH,
-    BRANCH,
-    CIRCLET,
-    SLIPPERS,
-    RECIPE_WRAITH_BAND,
-    SALVE,
-    BOOTS,
-    MAGIC_STICK,
-    RECIPE_MAGIC_WAND,
-    GLOVES,
-    BELT,
-    BROADSWORD,
-    QUARTERSTAFF,
-];
-
 /// What a hero with no list of its own buys.
 pub const PLAIN_GOODS: [ItemId; 14] = [
     TANGO,
@@ -188,7 +168,6 @@ pub const PLAIN_GOODS: [ItemId; 14] = [
 pub fn shopping_list(hero: HeroId) -> &'static [ItemId] {
     match hero {
         SHADOW_FIEND => &FIEND_GOODS,
-        SYLLA => &SYLLA_GOODS,
         _ => &PLAIN_GOODS,
     }
 }

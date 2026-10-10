@@ -18,7 +18,7 @@ pub(super) fn fixture() -> (World, Entity, Entity) {
 }
 
 pub(super) fn hero(world: &mut World, side: Team, pos: Vec2, slot: SlotId) -> Entity {
-    let entity = world.spawn_hero(side, pos, slot, HeroId(2));
+    let entity = world.spawn_hero(side, pos, slot, HeroId(1));
     prepare(world, entity, pos);
     entity
 }
@@ -83,7 +83,7 @@ fn stats() -> Stats {
 
 /// Puts `unit` in a new seat at `slot` holding `gold`.
 pub(super) fn seat(world: &mut World, slot: SlotId, team: Team, unit: Entity, gold: i32) {
-    let mut seat = Seat::new(slot, team, HeroId(2), gold, rules::STASH_SLOTS);
+    let mut seat = Seat::new(slot, team, HeroId(1), gold, rules::STASH_SLOTS);
     seat.unit = Some(unit);
     world.seats.push(seat);
 }

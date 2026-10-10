@@ -22,12 +22,12 @@ fn two_fiends_at(level: u8) -> World {
         Pick {
             slot: SlotId(0),
             team: Team::Radiant,
-            hero: HeroId(2),
+            hero: HeroId(1),
         },
         Pick {
             slot: SlotId(1),
             team: Team::Dire,
-            hero: HeroId(2),
+            hero: HeroId(1),
         },
     ];
     let mut world = World::for_match(&cfg, cfg.rng());
@@ -142,7 +142,9 @@ fn the_other_talent_of_a_tier_opens_at_twenty_seven() {
 
 #[test]
 fn a_hero_without_a_tree_learns_none() {
-    let (mut world, _hero) = a_hero_with_gold(0);
+    let mut cfg = config();
+    cfg.picks[0].hero = HeroId(0);
+    let mut world = World::for_match(&cfg, cfg.rng());
     let xp = rules::XP_THRESHOLDS[24];
     world.grant_xp(0, xp, &mut Vec::new());
     world.step();

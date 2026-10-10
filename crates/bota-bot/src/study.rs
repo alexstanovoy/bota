@@ -5,10 +5,7 @@
 
 use bota_proto::{AbilityId, AbilitySlot, HeroId, TalentSlot};
 
-use crate::{
-    BOUNCE, CRIT, FEAST_OF_SOULS, FRENZY, Field, PRESENCE, RAZE_NEAR, REQUIEM, SHADOW_FIEND, SYLLA,
-    VOLLEY,
-};
+use crate::{FEAST_OF_SOULS, Field, PRESENCE, RAZE_NEAR, REQUIEM, SHADOW_FIEND};
 
 /// Shadow Fiend's points: the razes first, the feast beside them, the
 /// requiem when it opens at hero level 6; its later levels come through the
@@ -25,17 +22,10 @@ pub const FIEND_PLAN: [AbilityId; 9] = [
     PRESENCE,
 ];
 
-/// Sylla's points: the bolt first, the crit beside it, the volley when it
-/// opens at hero level 6; its later levels come through the fallback.
-pub const SYLLA_PLAN: [AbilityId; 10] = [
-    BOUNCE, CRIT, BOUNCE, CRIT, BOUNCE, VOLLEY, BOUNCE, CRIT, FRENZY, FRENZY,
-];
-
 /// The plan a hero follows. Empty for one the bot has no plan for.
 pub fn plan_of(hero: HeroId) -> &'static [AbilityId] {
     match hero {
         SHADOW_FIEND => &FIEND_PLAN,
-        SYLLA => &SYLLA_PLAN,
         _ => &[],
     }
 }

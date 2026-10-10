@@ -14,7 +14,7 @@ const DECISION_TICKS: u32 = 3;
 /// Identity and seed of the skirmish.
 const MATCH_ID: u64 = 11;
 /// The Shadow Fiend.
-const SHADOW_FIEND: HeroId = HeroId(2);
+const SHADOW_FIEND: HeroId = HeroId(1);
 /// Half the side of the square the heroes fight about, in world units.
 const SPREAD: u32 = 500;
 

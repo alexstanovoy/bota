@@ -98,7 +98,7 @@ pub(super) fn config() -> MatchConfig {
         picks: vec![Pick {
             slot: SlotId(0),
             team: Team::Radiant,
-            hero: HeroId(0),
+            hero: HeroId(1),
         }],
         map: MapId(1),
         tick_rate: 30,
@@ -144,16 +144,11 @@ pub(super) fn world_with_projectile_uphill_state(launch_tier: u8, can_miss_uphil
             damage: 1,
             kind: DamageKind::Physical,
             damage_amp_bp: rules::NOMINAL_BP,
-            ability: None,
             launch_tier,
             can_miss_uphill,
-            crit: false,
             pierces: false,
             pierce_damage: 0,
             pierce_amp_bp: rules::NOMINAL_BP,
-            bounces_left: 0,
-            bounce_range: 0,
-            bounced: Vec::new(),
         },
     );
     world
@@ -166,7 +161,7 @@ pub(super) fn thinking_creep(world: &mut World, at: Vec2) -> Entity {
 
 /// A Radiant hero of the plain kind for seat 0, unseated.
 pub(super) fn hero_at(world: &mut World, at: Vec2) -> Entity {
-    world.spawn_hero(Team::Radiant, at, SlotId(0), HeroId(0))
+    world.spawn_hero(Team::Radiant, at, SlotId(0), HeroId(1))
 }
 
 /// A Radiant hero of one kind sat in a fresh seat 0 with no gold.
@@ -180,8 +175,8 @@ pub(super) fn seated_hero(world: &mut World, at: Vec2, hero: HeroId) -> Entity {
 
 /// A hero of the plain kind sat in a fresh seat of a side with no gold.
 pub(super) fn seat_hero(world: &mut World, slot: u8, team: Team, at: Vec2) -> Entity {
-    let hero = world.spawn_hero(team, at, SlotId(slot), HeroId(0));
-    let mut seat = Seat::new(SlotId(slot), team, HeroId(0), 0, rules::STASH_SLOTS);
+    let hero = world.spawn_hero(team, at, SlotId(slot), HeroId(1));
+    let mut seat = Seat::new(SlotId(slot), team, HeroId(1), 0, rules::STASH_SLOTS);
     seat.unit = Some(hero);
     world.seats.push(seat);
     hero
@@ -248,7 +243,7 @@ pub(super) fn duel(gap: i32) -> (World, Entity, Entity) {
 /// `apart` east of it.
 pub(super) fn hero_ordered_at_an_enemy(apart: i32) -> (World, Entity, Entity) {
     let mut world = World::new();
-    let hero = seated_hero(&mut world, Vec2::from_ints(5000, 5000), HeroId(0));
+    let hero = seated_hero(&mut world, Vec2::from_ints(5000, 5000), HeroId(1));
     let mark = world.spawn_unit(
         &MELEE_CREEP,
         Team::Dire,
@@ -281,7 +276,7 @@ pub(super) fn hero_following_an_enemy(apart: i32) -> (World, Entity, Entity) {
 /// A seated hero holding `order`, and a Dire creep 400 east of it.
 pub(super) fn hero_past_an_enemy(order: UnitOrder) -> (World, Entity, Entity) {
     let mut world = World::new();
-    let hero = seated_hero(&mut world, Vec2::from_ints(5000, 5000), HeroId(0));
+    let hero = seated_hero(&mut world, Vec2::from_ints(5000, 5000), HeroId(1));
     let enemy = world.spawn_unit(&MELEE_CREEP, Team::Dire, Vec2::from_ints(5400, 5000));
     world.settle();
     world.orders.insert(
@@ -300,7 +295,7 @@ pub(super) fn hero_past_an_enemy(order: UnitOrder) -> (World, Entity, Entity) {
 /// A hero of a side and one of its own creeps beside it.
 pub(super) fn hero_and_own_creep() -> (World, Entity, Entity) {
     let mut world = World::new();
-    let hero = seated_hero(&mut world, Vec2::from_ints(5000, 5000), HeroId(0));
+    let hero = seated_hero(&mut world, Vec2::from_ints(5000, 5000), HeroId(1));
     let own = world.spawn_unit(&MELEE_CREEP, Team::Radiant, Vec2::from_ints(5100, 5000));
     world.settle();
     world.fill_pools(hero);
@@ -327,7 +322,7 @@ pub(super) fn a_lane_with_a_hero(apart: i32) -> (World, Entity, Entity, Entity, 
         Team::Dire,
         Vec2::from_ints(5000 + apart + 200, 5000),
         SlotId(1),
-        HeroId(0),
+        HeroId(1),
     );
     world.set_order(foe, UnitOrder::Stand);
     world.settle();
@@ -504,7 +499,7 @@ pub(super) fn a_hero_by_the_trees(item: u16, charges: u8) -> (World, Entity, Vec
         })
         .expect("some tree has open ground beside it");
     let stand = tree + Vec2::from_ints(120, 0);
-    let hero = seated_hero(&mut world, stand, HeroId(0));
+    let hero = seated_hero(&mut world, stand, HeroId(1));
     hand_item(&mut world, hero, item, charges);
     world.settle();
     world.step();
@@ -568,7 +563,7 @@ pub(super) fn put_on(world: &mut World, entity: Entity, kind: ModifierKind, tick
 /// tick on.
 pub(super) fn pudge_and_a_mark(apart: i32) -> (World, Entity, Entity) {
     let mut world = World::new();
-    let pudge = seated_hero(&mut world, Vec2::from_ints(5000, 5000), HeroId(1));
+    let pudge = seated_hero(&mut world, Vec2::from_ints(5000, 5000), HeroId(0));
     let mark = world.spawn_unit(
         &MELEE_CREEP,
         Team::Dire,
@@ -661,14 +656,14 @@ pub(super) fn a_camp_at(world: &mut World, at: Vec2) -> Vec<Entity> {
     beasts
 }
 
-/// Casts seat 0's third ability (Sylla's bounce) at somebody, the way a
+/// Casts seat 0's fourth ability (Pudge's dismember) at somebody, the way a
 /// player does.
 pub(super) fn cast_at(world: &mut World, mark: Entity) {
     world.advance(&[Command {
         slot: SlotId(0),
         unit: None,
         order: Order::Cast {
-            slot: AbilitySlot(2),
+            slot: AbilitySlot(3),
             target: Target::Unit(wire_id(mark)),
         },
     }]);
@@ -798,7 +793,7 @@ pub(super) fn stand_a_wall(world: &mut World, at: Vec2, radius: Fixed) {
 /// one and a Dire creep `apart` east of him, one tick on.
 pub(super) fn fiend_and_a_mark(apart: i32) -> (World, Entity, Entity) {
     let mut world = World::new();
-    let fiend = seated_hero(&mut world, Vec2::from_ints(5000, 5000), HeroId(2));
+    let fiend = seated_hero(&mut world, Vec2::from_ints(5000, 5000), HeroId(1));
     let mark = world.spawn_unit(
         &MELEE_CREEP,
         Team::Dire,
@@ -1086,16 +1081,11 @@ pub(super) fn manual_projectile_damage(
                 damage: 1,
                 kind: DamageKind::Physical,
                 damage_amp_bp: rules::NOMINAL_BP,
-                ability: None,
                 launch_tier,
                 can_miss_uphill: true,
-                crit: false,
                 pierces,
                 pierce_damage: 0,
                 pierce_amp_bp: rules::NOMINAL_BP,
-                bounces_left: 0,
-                bounce_range: 0,
-                bounced: Vec::new(),
             },
         );
     }

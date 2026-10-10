@@ -4,8 +4,8 @@ use bota_proto::{AbilityId, AbilitySlot, HeroId, SlotId, TalentSlot, Team, Vec2}
 
 use crate::tests::fixtures;
 use crate::{
-    BOUNCE, CRIT, FEAST_OF_SOULS, FIEND_PLAN, FIEND_TALENTS, Field, RAZE_FAR, RAZE_MID, RAZE_NEAR,
-    REQUIEM, Role, SHADOW_FIEND, SYLLA, SYLLA_PLAN, VOLLEY, next_point, next_talent,
+    FEAST_OF_SOULS, FIEND_PLAN, FIEND_TALENTS, Field, RAZE_FAR, RAZE_MID, RAZE_NEAR, REQUIEM, Role,
+    SHADOW_FIEND, next_point, next_talent,
 };
 
 /// Shadow Fiend's book, with the razes all standing at one level.
@@ -82,35 +82,11 @@ fn a_point_the_plan_has_nowhere_for_still_goes_somewhere() {
 }
 
 #[test]
-fn sylla_starts_with_the_bolt() {
-    let book = vec![
-        {
-            let mut one = fixtures::ability(CRIT, 0, 0);
-            one.can_level = true;
-            one
-        },
-        fixtures::ability(crate::FRENZY, 0, 0),
-        {
-            let mut one = fixtures::ability(BOUNCE, 0, 550);
-            one.can_level = true;
-            one
-        },
-        fixtures::ability(VOLLEY, 0, 700),
-    ];
-    let view = field_with(book, SYLLA);
-    let field = Field::of(&view, SlotId(0), Role::Mid).expect("a seat in the view");
-    assert_eq!(next_point(&field), Some(AbilitySlot(2)));
-}
-
-#[test]
 fn no_plan_asks_for_more_of_an_ability_than_it_holds() {
     let counted = |plan: &[AbilityId], id: AbilityId| plan.iter().filter(|had| **had == id).count();
     assert!(counted(&FIEND_PLAN, RAZE_NEAR) <= 4);
     assert!(counted(&FIEND_PLAN, FEAST_OF_SOULS) <= 4);
     assert!(counted(&FIEND_PLAN, REQUIEM) <= 3);
-    assert!(counted(&SYLLA_PLAN, BOUNCE) <= 4);
-    assert!(counted(&SYLLA_PLAN, CRIT) <= 4);
-    assert!(counted(&SYLLA_PLAN, VOLLEY) <= 3);
 }
 
 #[test]
@@ -118,16 +94,15 @@ fn an_ultimate_is_never_asked_for_before_its_level() {
     // The n-th point is spent at hero level n; the server opens ultimate
     // levels at hero levels 6, 12 and 18.
     const ULT_LEVEL_FLOORS: [u8; 3] = [6, 12, 18];
-    for (plan, ult) in [(&FIEND_PLAN[..], REQUIEM), (&SYLLA_PLAN[..], VOLLEY)] {
-        let asked: Vec<usize> = (0..plan.len()).filter(|at| plan[*at] == ult).collect();
-        for (had, at) in asked.iter().enumerate() {
-            assert!(
-                at + 1 >= usize::from(ULT_LEVEL_FLOORS[had]),
-                "ultimate level {} is asked for at point {}",
-                had + 1,
-                at + 1
-            );
-        }
+    let (plan, ult) = (&FIEND_PLAN[..], REQUIEM);
+    let asked: Vec<usize> = (0..plan.len()).filter(|at| plan[*at] == ult).collect();
+    for (had, at) in asked.iter().enumerate() {
+        assert!(
+            at + 1 >= usize::from(ULT_LEVEL_FLOORS[had]),
+            "ultimate level {} is asked for at point {}",
+            had + 1,
+            at + 1
+        );
     }
 }
 

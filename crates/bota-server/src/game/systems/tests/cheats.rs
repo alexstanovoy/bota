@@ -18,7 +18,7 @@ fn config(cheats: bool) -> MatchConfig {
         picks: vec![Pick {
             slot: SlotId(0),
             team: Team::Radiant,
-            hero: HeroId(0),
+            hero: HeroId(1),
         }],
         map: MapId(1),
         tick_rate: 30,
@@ -380,7 +380,7 @@ fn an_unbounded_cheat_is_turned_away_even_when_it_skips_the_gate() {
 fn a_kept_kit_is_projected_after_the_body_falls() {
     let (mut world, hero) = cheating_world();
     if let Some(book) = world.abilities.get_mut(hero) {
-        book.slots[1].level = 1;
+        book.slots[0].level = 1;
     }
     let stack = ItemStack::bought(ItemId(ITEM_BUTTERFLY), SlotId(0), world.tick)
         .expect("the Butterfly is sold");
@@ -393,8 +393,8 @@ fn a_kept_kit_is_projected_after_the_body_falls() {
         .find(|unit| unit.id == wire_id(hero))
         .expect("the hero is in the view");
     assert_eq!(
-        unit.abilities[1].mana_cost,
-        ability_mana_cost(ability::FRENZY, 1) / 2,
+        unit.abilities[0].mana_cost,
+        ability_mana_cost(ability::RAZE_NEAR, 1) / 2,
         "the living view carries the rate"
     );
     assert_eq!(
@@ -412,8 +412,8 @@ fn a_kept_kit_is_projected_after_the_body_falls() {
         .expect("the seat is in the view");
     let kit = seat.kit.as_ref().expect("the kit outlives the body");
     assert_eq!(
-        kit.abilities[1].mana_cost,
-        ability_mana_cost(ability::FRENZY, 1),
+        kit.abilities[0].mana_cost,
+        ability_mana_cost(ability::RAZE_NEAR, 1),
         "the modifier fell with the body, so the kept kit is nominal"
     );
     assert_eq!(kit.items[0].as_ref().map(|item| item.mana_cost), Some(0));
@@ -443,7 +443,7 @@ fn two_seat_config() -> MatchConfig {
     cfg.picks.push(Pick {
         slot: SlotId(1),
         team: Team::Dire,
-        hero: HeroId(0),
+        hero: HeroId(1),
     });
     cfg
 }
@@ -507,12 +507,12 @@ fn gold_income_leaves_starting_passive_and_refunded_gold_alone() {
 fn a_scaled_mana_cost_is_what_the_cast_checks_and_spends() {
     let (mut world, hero) = cheating_world();
     if let Some(book) = world.abilities.get_mut(hero) {
-        book.slots[1].level = 1;
+        book.slots[0].level = 1;
     }
-    let full = ability_mana_cost(ability::FRENZY, 1);
+    let full = ability_mana_cost(ability::RAZE_NEAR, 1);
     cheat_modifier(&mut world, spec(|s| s.mana_cost_rate = 5_000), 100);
     let cast = Order::Cast {
-        slot: AbilitySlot(1),
+        slot: AbilitySlot(0),
         target: Target::None,
     };
     world.mana.get_mut(hero).expect("has mana").mana = Fixed::from_int(full / 2);
@@ -521,14 +521,14 @@ fn a_scaled_mana_cost_is_what_the_cast_checks_and_spends() {
         Ok(()),
         "the scaled cost is affordable"
     );
-    assert!(world.begin_ability(hero, AbilitySlot(1), Target::None));
+    assert!(world.begin_ability(hero, AbilitySlot(0), Target::None));
     assert_eq!(
         world.mana.get(hero).map(|mana| mana.mana),
         Some(Fixed::ZERO),
         "and it was the scaled cost that went"
     );
     if let Some(book) = world.abilities.get_mut(hero) {
-        book.slots[1].cooldown = 0;
+        book.slots[0].cooldown = 0;
     }
     world.mana.get_mut(hero).expect("has mana").mana = Fixed::from_int(full / 2 - 1);
     assert_eq!(

@@ -190,12 +190,12 @@ fn match_config() -> MatchConfig {
             Pick {
                 slot: SlotId(0),
                 team: Team::Radiant,
-                hero: HeroId(0),
+                hero: HeroId(1),
             },
             Pick {
                 slot: SlotId(1),
                 team: Team::Dire,
-                hero: HeroId(0),
+                hero: HeroId(1),
             },
         ],
         map: DUMMY_MAP,

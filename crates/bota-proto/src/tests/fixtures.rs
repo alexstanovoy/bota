@@ -276,7 +276,7 @@ pub fn lobby_slot() -> LobbySlot {
     LobbySlot {
         slot: SlotId(0),
         team: Team::Radiant,
-        name: "sylla-fan".to_string(),
+        name: "fan".to_string(),
         role: Some(Role::Bot),
         hero: Some(HeroId(0)),
         ready: true,
@@ -439,14 +439,12 @@ pub fn all_events() -> Vec<EventKind> {
             target: entity(100),
             amount: 54,
             kind: DamageKind::Physical,
-            crit: true,
         },
         EventKind::Damaged {
             source: None,
             target: entity(7),
             amount: 300,
             kind: DamageKind::Pure,
-            crit: false,
         },
         EventKind::Missed {
             source: Some(entity(7)),

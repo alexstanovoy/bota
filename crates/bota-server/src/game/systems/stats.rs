@@ -192,7 +192,6 @@ fn add_heap(now: &mut Stats, gathered: &Stacks, book: Option<&AbilityBook>) {
 fn add_modifiers(now: &mut Stats, on_it: &Modifiers) {
     for held in on_it.active() {
         match held.kind {
-            ModifierKind::Haste { speed } => now.attack_speed += speed,
             ModifierKind::Mending { per_tick, .. } => {
                 now.hp_regen += Fixed::from_ratio(per_tick, 100);
             }
@@ -209,6 +208,8 @@ fn add_modifiers(now: &mut Stats, on_it: &Modifiers) {
             ModifierKind::Slowed { pct } => {
                 now.move_speed = scaled(now.move_speed, (100 - pct).clamp(0, 100));
             }
+            #[cfg(test)]
+            ModifierKind::Haste { speed } => now.attack_speed += speed,
             ModifierKind::BloodGrenade { .. } => {
                 now.move_speed = scaled(now.move_speed, 100 - rules::GRENADE_SLOW_PCT);
             }

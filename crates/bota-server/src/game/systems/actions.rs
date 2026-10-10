@@ -14,7 +14,7 @@ use super::hitting::entity_slot;
 use crate::game::{
     Action, ActionPhase, ActionState, BEATS_PER_TICK, Chance, Entity, Event, FeastPhase, Hit,
     HitEffect, PendingCast, Projectile, Purpose, Ratio, Stats, Talent, Target, Visibility, World,
-    ability, ability_def, attack_class_pct, attack_gain, beats, cross, facing_gap, facing_towards,
+    ability_def, attack_class_pct, attack_gain, beats, cross, facing_gap, facing_towards,
     is_creep, is_structure, rules, wire_id,
 };
 
@@ -23,8 +23,6 @@ use crate::game::{
 struct Swing {
     /// Its physical damage.
     damage: i32,
-    /// Whether it is a critical strike.
-    crit: bool,
     /// The magical damage piercing with it, when it pierces.
     pierce: Option<i32>,
     /// Physical amplification, in basis points.
@@ -654,17 +652,12 @@ impl World {
             } else {
                 0
             };
-        let (damage, crit) = match self.roll_crit(attacker) {
-            Some(pct) => (damage * pct / 100, true),
-            None => (damage, false),
-        };
         let class_pct = match (self.kind.get(attacker), self.kind.get(on)) {
             (Some(&from), Some(&to)) => attack_class_pct(from, to),
             _ => 100,
         };
         let swing = Swing {
             damage: damage * class_pct / 100,
-            crit,
             pierce: self
                 .roll_pierce(attacker, on, stats)
                 .map(|bonus| bonus * class_pct / 100),
@@ -686,7 +679,6 @@ impl World {
             amount: swing.damage,
             kind: DamageKind::Physical,
             damage_amp_bp: swing.physical_amp_bp,
-            crit: swing.crit,
             attack: true,
             pierces: swing.pierce.is_some(),
             effect: HitEffect::None,
@@ -698,7 +690,6 @@ impl World {
                 amount: bonus,
                 kind: DamageKind::Magical,
                 damage_amp_bp: swing.magical_amp_bp,
-                crit: false,
                 attack: false,
                 pierces: false,
                 effect: HitEffect::None,
@@ -728,16 +719,11 @@ impl World {
                 damage: swing.damage,
                 kind: DamageKind::Physical,
                 damage_amp_bp: swing.physical_amp_bp,
-                ability: None,
                 launch_tier: self.ground.tier(at.pos),
                 can_miss_uphill: true,
-                crit: swing.crit,
                 pierces: swing.pierce.is_some(),
                 pierce_damage: swing.pierce.unwrap_or(0),
                 pierce_amp_bp: swing.magical_amp_bp,
-                bounces_left: 0,
-                bounce_range: 0,
-                bounced: Vec::new(),
             },
         );
     }
@@ -751,25 +737,6 @@ impl World {
         }
         let span = u32::try_from(spread + 1).expect("a damage spread fits a u32");
         self.rng.global(Purpose::DamageRoll).below(span) as i32
-    }
-
-    /// Whether a swing is a critical strike, and then what it is worth as a
-    /// percentage of a plain one. Absent for a swing that is not one.
-    ///
-    /// Only an attacker that has learned the crit ever rolls; the rate is
-    /// the learned level's and is held exactly over every block of rolls.
-    fn roll_crit(&mut self, attacker: Entity) -> Option<i32> {
-        let level = self.carried_level(attacker, ability::CRIT);
-        if level == 0 {
-            return None;
-        }
-        let at = usize::from(level - 1);
-        let ratio = rules::SYLLA_CRIT_CHANCE[at];
-        let rng = &self.rng;
-        let chance = entity_slot(&mut self.crit, attacker, || {
-            Chance::new(rng.for_unit(Purpose::Crit, wire_id(attacker), 0), ratio)
-        });
-        chance.roll(ratio).then_some(rules::SYLLA_CRIT_MULT_PCT[at])
     }
 
     /// Whether a swing pierces, and then the magical damage it lands

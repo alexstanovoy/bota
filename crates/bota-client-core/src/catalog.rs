@@ -80,129 +80,105 @@ pub struct HeroFace {
 }
 
 /// Every ability, in id order.
-pub const ABILITIES: [AbilityFace; 21] = [
+pub const ABILITIES: [AbilityFace; 17] = [
     AbilityFace {
         id: 0,
-        name: "Crit",
-        blurb: "Passive. 20/25/30/35% chance to strike for 175/200/225/250% damage.",
-        art: Art::Missile,
-    },
-    AbilityFace {
-        id: 1,
-        name: "Frenzy",
-        blurb: "No target. +25/39/56/79% attack speed for 6 s. 30/40/50/60 mana.",
-        art: Art::Missile,
-    },
-    AbilityFace {
-        id: 2,
-        name: "Bounce",
-        blurb: "Enemy target, range 550. 70/140/210/280 magic damage, then jumps to the 2/4/6/8 nearest new enemies.",
-        art: Art::Missile,
-    },
-    AbilityFace {
-        id: 3,
-        name: "Volley",
-        blurb: "Ultimate, no target. Strikes every enemy within 700 at once for 80/100/120% of attack damage, as physical damage.",
-        art: Art::Missile,
-    },
-    AbilityFace {
-        id: 4,
         name: "Hook",
         blurb: "Point target, range 1300. Catches the first unit in its way, drags it back and deals 90/180/270/360 pure damage.",
         art: Art::Link,
     },
     AbilityFace {
-        id: 5,
+        id: 1,
         name: "Rot",
         blurb: "Toggle. Burns every enemy within 250 for 30/60/90/120 a second and slows it 10/15/20/25%. It burns its owner for the same, but never kills its owner.",
         art: Art::Cloud { radius: 250 },
     },
     AbilityFace {
-        id: 6,
+        id: 2,
         name: "Heap",
         blurb: "Passive. 12/14/16/18% magic resistance on top of your own, and +1.5/2/2.5/3 strength for every enemy hero that dies within 450 of you, whoever brought it down. Stacks are kept through your own death.",
         art: Art::Missile,
     },
     AbilityFace {
-        id: 7,
+        id: 3,
         name: "Dismem",
         blurb: "Ultimate, enemy target, range 200. Holds it for 3 s, eating it and healing you.",
         art: Art::Hold,
     },
     AbilityFace {
-        id: 8,
+        id: 4,
         name: "Burst",
         blurb: "No target. The courier flies 50% faster for 6 s. 120 s wait.",
         art: Art::Missile,
     },
     AbilityFace {
-        id: 9,
+        id: 5,
         name: "Return",
         blurb: "No target. The courier puts what it holds back in the stash, then goes home.",
         art: Art::Missile,
     },
     AbilityFace {
-        id: 10,
+        id: 6,
         name: "Stash",
         blurb: "No target. The courier takes what waits in your stash and carries it to you.",
         art: Art::Missile,
     },
     AbilityFace {
-        id: 11,
+        id: 7,
         name: "Give",
         blurb: "No target. The courier carries what it holds to you, then goes home.",
         art: Art::Missile,
     },
     AbilityFace {
-        id: 12,
+        id: 8,
         name: "Shield",
         blurb: "No target. Nothing gets through to the courier for 2 s. 200 s wait.",
         art: Art::Missile,
     },
     AbilityFace {
-        id: 13,
+        id: 9,
         name: "Raze 1",
         blurb: "No target, 0.55 s cast point. Burns every enemy but a building within 250 of a spot 200 ahead of where you face for 85/150/215/280 magic damage, plus 2 per soul held and 35/50/65/80 per prior same-caster stack. Each damaging hit refreshes all stacks for 6 s. One point levels all three razes. 75 mana, 9 s wait.",
         art: Art::Burst { radius: 250 },
     },
     AbilityFace {
-        id: 14,
+        id: 10,
         name: "Raze 2",
         blurb: "No target, 0.55 s cast point. Burns every enemy but a building within 250 of a spot 450 ahead of where you face for 85/150/215/280 magic damage, plus 2 per soul held and 35/50/65/80 per prior same-caster stack. Each damaging hit refreshes all stacks for 6 s. One point levels all three razes. 75 mana, 9 s wait.",
         art: Art::Burst { radius: 250 },
     },
     AbilityFace {
-        id: 15,
+        id: 11,
         name: "Raze 3",
         blurb: "No target, 0.55 s cast point. Burns every enemy but a building within 250 of a spot 700 ahead of where you face for 85/150/215/280 magic damage, plus 2 per soul held and 35/50/65/80 per prior same-caster stack. Each damaging hit refreshes all stacks for 6 s. One point levels all three razes. 75 mana, 9 s wait.",
         art: Art::Burst { radius: 250 },
     },
     AbilityFace {
-        id: 16,
+        id: 12,
         name: "Requiem",
         blurb: "Ultimate, no target, 1.67 s cast point. Lets a line fly out for every soul held, up to 20, out to 1000. Each line burns every enemy but a building it crosses for 80/120/160 magic damage, and every hit adds 0.6 s of fear, a 20/25/30% slow and 5/10/15% less magic resistance, up to 2.15 s. What stands close is crossed by many lines. The souls are kept. On your death, half the souls you keep fly out as lines that only burn.",
         art: Art::Soul,
     },
     AbilityFace {
-        id: 17,
+        id: 13,
         name: "Necro",
         blurb: "Innate. A soul is kept of everything you bring down, four for a hero, each worth 1 attack damage and 0.8 more every 6 levels. Holds up to 20; a death lets 30% of them go.",
         art: Art::Missile,
     },
     AbilityFace {
-        id: 18,
+        id: 14,
         name: "Presence",
         blurb: "Passive. Enemies within 1200 that see you wear 2.5/4/5.5/7 less armor.",
         art: Art::Missile,
     },
     AbilityFace {
-        id: 19,
+        id: 15,
         name: "Feast",
         blurb: "No target, goes off beside whatever you are doing. For 8 s: +35/50/65/80 attack speed and +4/6/8/10% movement speed, and every 0.5 s souls from two enemies within 600 you have not fed on yet, heroes first: 3 a hero, 1 a creep, from up to 4/6/8/10 enemies. Then the souls of those still standing go; the rest stay 8 s past the cap. 60/65/70/75 mana, 21 s wait.",
         art: Art::Missile,
     },
     AbilityFace {
-        id: 20,
+        id: 16,
         name: "Grenade",
         blurb: "A Blood Grenade in flight, at 1100 a second, bursting 300 wide where it lands.",
         art: Art::Missile,
@@ -537,14 +513,9 @@ pub const ITEMS: [ItemFace; 54] = [
     },
 ];
 
-/// Every timed effect, in id order.
-pub const EFFECTS: [EffectFace; 22] = [
-    EffectFace {
-        id: 0,
-        name: "Frenzy",
-        blurb: "Attack speed increased.",
-        harmful: false,
-    },
+/// Every timed effect, in id order. The ids are the wire's, so there is a
+/// gap where a retired effect stood.
+pub const EFFECTS: [EffectFace; 21] = [
     EffectFace {
         id: 1,
         name: "Mending",
@@ -674,21 +645,15 @@ pub const EFFECTS: [EffectFace; 22] = [
 ];
 
 /// Every hero that can be picked, in id order.
-pub const HEROES: [HeroFace; 3] = [
+pub const HEROES: [HeroFace; 2] = [
     HeroFace {
         id: 0,
-        name: "Sylla",
-        base_damage: None,
-        damage_spread: 0,
-    },
-    HeroFace {
-        id: 1,
         name: "Pudge",
         base_damage: None,
         damage_spread: 0,
     },
     HeroFace {
-        id: 2,
+        id: 1,
         name: "Shadow Fiend",
         // Dota 7.41f, as bota rolls it: 16 to 22, agility on top.
         base_damage: Some(16),
@@ -769,7 +734,7 @@ pub fn item(id: u16) -> Option<&'static ItemFace> {
 
 /// The effect of that id, or nothing for one the catalog does not hold.
 pub fn effect(id: u16) -> Option<&'static EffectFace> {
-    EFFECTS.get(usize::from(id))
+    EFFECTS.iter().find(|face| face.id == id)
 }
 
 /// The hero of that id, or nothing for one the catalog does not hold.
