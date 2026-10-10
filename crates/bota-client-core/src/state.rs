@@ -205,8 +205,11 @@ pub struct Floater {
     pub text: String,
     /// What it tells of.
     pub kind: FloaterKind,
-    /// World position it rises from.
+    /// World position it rises from: where its unit stood when it was set
+    /// off.
     pub world: (f32, f32),
+    /// The unit it tells of, for a front end to keep it over that unit.
+    pub unit: EntityId,
     /// Seconds since it appeared.
     pub age: f32,
 }

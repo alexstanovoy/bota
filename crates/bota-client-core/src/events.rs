@@ -219,6 +219,7 @@ impl App {
                 text,
                 kind,
                 world,
+                unit,
                 age: 0.0,
             });
         }
