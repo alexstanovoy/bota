@@ -1,7 +1,0 @@
-<svg width="100%" viewBox="0 0 680 260" role="img" xmlns="http://www.w3.org/2000/svg"><title>Broadsword</title><desc>Rectangular icon: a long straight sword with a crossguard</desc>
-<rect x="220" y="50" width="240" height="160" fill="#221d20"/>
-<path d="M330 76 L350 76 L350 156 L340 172 L330 156 Z" fill="#9aa3ad"/>
-<path d="M330 76 L340 76 L340 172 L330 156 Z" fill="#d5dde4" opacity="0.6"/>
-<rect x="302" y="156" width="76" height="12" rx="4" fill="#d9b56a"/>
-<rect x="332" y="168" width="16" height="26" rx="5" fill="#6b4a2c"/>
-</svg>

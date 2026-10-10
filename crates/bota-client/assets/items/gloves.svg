@@ -1,6 +1,0 @@
-<svg width="100%" viewBox="0 0 680 260" role="img" xmlns="http://www.w3.org/2000/svg"><title>Gloves of Haste</title><desc>Rectangular icon: a leather glove trailing three speed lines</desc>
-<rect x="220" y="50" width="240" height="160" fill="#241d1a"/>
-<path d="M318 168 L318 116 C318 108 330 108 330 116 L330 132 L338 132 L338 108 C338 100 350 100 350 108 L350 132 L358 132 L358 114 C358 106 370 106 370 114 L370 168 Z" fill="#8b5a2b"/>
-<rect x="314" y="164" width="60" height="14" rx="5" fill="#5d3c1c"/>
-<path d="M300 106 L272 106 M300 126 L266 126 M300 146 L276 146" stroke="#d9b56a" stroke-width="5" stroke-linecap="round" opacity="0.85"/>
-</svg>

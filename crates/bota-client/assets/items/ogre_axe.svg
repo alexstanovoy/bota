@@ -1,7 +1,0 @@
-<svg width="100%" viewBox="0 0 680 260" role="img" xmlns="http://www.w3.org/2000/svg"><title>Ogre Axe</title><desc>Rectangular icon: a heavy single-bladed axe on a wooden haft</desc>
-<rect x="220" y="50" width="240" height="160" fill="#2a1e1c"/>
-<path d="M336 82 L348 82 L348 180 L336 180 Z" fill="#6b4a2c"/>
-<path d="M348 92 C386 98 400 118 396 140 C392 158 372 166 348 164 Z" fill="#9aa3ad"/>
-<path d="M348 92 C386 98 400 118 396 140 L370 132 C372 116 362 102 348 98 Z" fill="#c6ced6" opacity="0.6"/>
-<circle cx="342" cy="176" r="8" fill="#b4483c"/>
-</svg>
