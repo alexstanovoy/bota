@@ -273,7 +273,7 @@ fn ranged_attacks_miss_uphill_and_say_so_but_never_on_level_ground() {
 }
 
 #[test]
-fn buildings_and_flying_attackers_are_exempt_from_uphill_misses() {
+fn buildings_never_evade_uphill_but_flying_attackers_miss_too() {
     let ground = Ground::of(map_of(MapId(0)));
     let (source, level, uphill) = nearby_elevations(&ground);
     let building_level =
@@ -293,7 +293,12 @@ fn buildings_and_flying_attackers_are_exempt_from_uphill_misses() {
         &UPHILL_TEST_TARGET,
     );
     assert_eq!(building_uphill, building_level, "buildings do not evade");
-    assert_eq!(flying_uphill, flying_level, "flying attacks do not miss");
+    // 7.41: "Units with free movement now can miss their attacks when
+    // attacking uphill targets."
+    assert!(
+        flying_uphill < flying_level,
+        "flying attacks miss uphill too"
+    );
 }
 
 #[test]

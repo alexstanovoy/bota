@@ -210,7 +210,8 @@ circle still shows makes it see past height and trees (flying sight). This is
 what shows an attacker on high ground or in the fog to the side it hits.
 Missiles show nothing of their own.
 
-The 25 % **uphill miss** of a ranged attack still stands in 7.41.
+The 25 % **uphill miss** of a ranged attack still stands in 7.41, and since
+7.41 a flying attacker misses uphill too.
 
 Towers are outside this spec and keep Dota's own tower rule: a dive draws the
 tower outright rather than through the tie band, and an order at an ally sheds
@@ -470,5 +471,3 @@ barracks and fountains are 144, the Ancients 299 (Radiant) and 374 (Dire).
    melee 36–44 damage, super ranged 41–46, mega melee 1270 health and 96–104
    damage, mega ranged 1015 and 131–136; bota has 41–49, 46–51 and mega as a
    faster-swinging super.
-9. **Flying attackers never miss uphill.** 7.41 lets units with free movement
-   miss uphill too.

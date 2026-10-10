@@ -659,7 +659,7 @@ impl World {
         };
         match stats.projectile_speed {
             None => self.strike_home(attacker, on, swing),
-            Some(speed) => self.throw_at(attacker, on, swing, speed, !stats.flies),
+            Some(speed) => self.throw_at(attacker, on, swing, speed),
         }
     }
 
@@ -694,14 +694,7 @@ impl World {
 
     /// A ranged swing's missile, thrown from where the attacker stands and
     /// seen by its side from the throw.
-    fn throw_at(
-        &mut self,
-        attacker: Entity,
-        on: Entity,
-        swing: Swing,
-        speed: Fixed,
-        can_miss_uphill: bool,
-    ) {
+    fn throw_at(&mut self, attacker: Entity, on: Entity, swing: Swing, speed: Fixed) {
         let Some(at) = self.transform.get(attacker).copied() else {
             return;
         };
@@ -723,7 +716,7 @@ impl World {
                 damage_amp_bp: swing.physical_amp_bp,
                 ability: None,
                 launch_tier: self.ground.tier(at.pos),
-                can_miss_uphill,
+                can_miss_uphill: true,
                 crit: swing.crit,
                 pierces: swing.pierce.is_some(),
                 pierce_damage: swing.pierce.unwrap_or(0),
