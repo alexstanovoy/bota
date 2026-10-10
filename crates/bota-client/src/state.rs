@@ -549,7 +549,13 @@ impl App {
         if let (Some(slot), Some(view)) = (self.my_slot, self.view.as_ref()) {
             self.note_order(slot, unit, view.tick, order);
         }
-        self.source.send(&ClientMsg::Order { seq, unit, order });
+        let seen = self.view.as_ref().map(|view| view.tick);
+        self.source.send(&ClientMsg::Order {
+            seq,
+            unit,
+            order,
+            seen,
+        });
     }
 
     /// Remembers one seat's order for the overlay, replacing its last one.

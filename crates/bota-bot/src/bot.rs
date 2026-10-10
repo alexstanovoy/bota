@@ -111,7 +111,7 @@ pub fn play_on(
                     .cloned();
                 if let Some(ask) = bot.on_tick(&view) {
                     out.ordered += 1;
-                    link.order(ask)?;
+                    link.order(ask, view.tick)?;
                 }
                 if lockstep {
                     link.done_thinking(view.tick)?;

@@ -11,7 +11,9 @@ use bota_proto::{
     TickMode, WorldView, encode_frame_to_vec,
 };
 
-use crate::game::{Command, Event, EventVisibility, MatchConfig, World};
+use crate::game::{
+    Command, DelayLine, Event, EventVisibility, MatchConfig, OrderDelay, RefusedOrder, World,
+};
 use crate::lobby::Roster;
 use crate::net::{Connection, NetEvent, accept_loop};
 use crate::replay::ReplayWriter;
@@ -41,6 +43,9 @@ pub struct ServerOpts {
     pub dummy_seat: bool,
     /// Lockstep: how many tick-lengths to wait for a straggler.
     pub ack_timeout_ticks: u32,
+    /// How late the seats' orders take effect: nothing for no delay, one for
+    /// every seat, or one per seat in slot order.
+    pub order_delays: Vec<OrderDelay>,
 }
 
 /// Runs one match on an already-bound listener and returns when it ends.
@@ -76,10 +81,10 @@ struct Server {
     next_player: u32,
 }
 
-/// What the seats sent during one tick of the match.
+/// What the seats sent during the match.
 struct Inbox {
-    /// The latest valid order of each seat, indexed by slot.
-    orders: Vec<Option<Command>>,
+    /// The valid orders of each seat on their way.
+    line: DelayLine,
     /// The latest tick each seat acknowledged, indexed by slot.
     acked: Vec<u32>,
 }
@@ -261,15 +266,18 @@ impl Server {
         };
         let seats = self.roster.seats.len();
         let mut inbox = Inbox {
-            orders: vec![None; seats],
+            line: DelayLine::new(&cfg, &self.opts.order_delays)
+                .expect("the command line checked the order delays"),
             acked: vec![0; seats],
         };
+        let mut refused = Vec::new();
         loop {
             self.gather_input(&world, &cfg, &mut inbox, &pace);
             if self.roster.seats.iter().all(|s| s.player.is_none()) {
                 break; // every seat is empty
             }
-            let cmds: Vec<Command> = inbox.orders.iter_mut().filter_map(Option::take).collect();
+            let cmds: Vec<Command> = inbox.line.release(&world, &mut refused);
+            self.refuse(&mut refused);
             let taken: Vec<SlotOrder> = cmds
                 .iter()
                 .map(|c| SlotOrder {
@@ -283,7 +291,7 @@ impl Server {
                 orders: taken.clone(),
             });
             let events = world.advance(&cmds);
-            self.publish_tick(&world, &events, &taken, &mut replay);
+            self.publish_tick(&world, &inbox.line, &events, &taken, &mut replay);
             if let Some(winner) = world.victor() {
                 let over = ServerMsg::MatchOver {
                     winner,
@@ -305,14 +313,21 @@ impl Server {
     fn publish_tick(
         &self,
         world: &World,
+        line: &DelayLine,
         events: &[Event],
         taken: &[SlotOrder],
         replay: &mut ReplayWriter,
     ) {
-        let full = world.view_full();
+        let mut full = world.view_full();
+        full.order_delays = line.views(None);
         let full_frame = snapshot_frame(full.clone());
-        let radiant_frame = snapshot_frame(world.view(Team::Radiant));
-        let dire_frame = snapshot_frame(world.view(Team::Dire));
+        let side_frame = |team| {
+            let mut view = world.view(team);
+            view.order_delays = line.views(Some(team));
+            snapshot_frame(view)
+        };
+        let radiant_frame = side_frame(Team::Radiant);
+        let dire_frame = side_frame(Team::Dire);
         replay.record(&ReplayRecord::Msg(ServerMsg::Snapshot { view: full }));
         for conn in &self.conns {
             let (eyes, viewing) = self.sight_of(conn.id);
@@ -421,19 +436,19 @@ impl Server {
             ClientMsg::Hello { role, name } => {
                 self.greet(id, role, name, Some(cfg));
             }
-            ClientMsg::Order { seq, unit, order } => {
+            ClientMsg::Order {
+                seq,
+                unit,
+                order,
+                seen,
+            } => {
                 let Some(slot) = self.roster.seat_of(id).map(|s| s.slot) else {
                     return;
                 };
-                match world.validate_order(slot, unit, &order) {
-                    Ok(()) => {
-                        inbox.orders[usize::from(slot.0)] = Some(Command { slot, unit, order })
-                    }
-                    Err(reason) => {
-                        if let Some(conn) = self.conn(id) {
-                            conn.send(&ServerMsg::OrderRejected { seq, reason });
-                        }
-                    }
+                if let Err(reason) = inbox.line.give(world, slot, seq, unit, order, seen)
+                    && let Some(conn) = self.conn(id)
+                {
+                    conn.send(&ServerMsg::OrderRejected { seq, reason });
                 }
             }
             ClientMsg::Ack { tick } => {
@@ -450,6 +465,24 @@ impl Server {
                 }
             }
             ClientMsg::PickHero { .. } | ClientMsg::SetReady(_) => {}
+        }
+    }
+
+    /// Tells each seat of its orders that no longer held when their tick came.
+    fn refuse(&self, refused: &mut Vec<RefusedOrder>) {
+        for refusal in refused.drain(..) {
+            let holder = self
+                .roster
+                .seats
+                .iter()
+                .find(|seat| seat.slot == refusal.slot)
+                .and_then(|seat| seat.player);
+            if let Some(conn) = holder.and_then(|id| self.conn(id)) {
+                conn.send(&ServerMsg::OrderRejected {
+                    seq: refusal.seq,
+                    reason: refusal.reason,
+                });
+            }
         }
     }
 

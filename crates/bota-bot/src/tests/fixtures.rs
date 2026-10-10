@@ -195,6 +195,7 @@ pub fn tick(at: u32, units: Vec<UnitView>, players: Vec<PlayerView>) -> WorldVie
         planted_trees: Vec::new(),
         loot: Vec::new(),
         aggro: Vec::new(),
+        order_delays: Vec::new(),
     }
 }
 

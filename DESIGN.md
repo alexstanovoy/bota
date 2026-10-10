@@ -916,7 +916,8 @@ enum ClientMsg {
     Hello { role: Role, name: String },    // Role: Player|Bot|Spectator
     PickHero { hero: HeroId },
     SetReady(bool),
-    Order { seq: u32, unit: Option<EntityId>, order: Order },  // unit: None is the hero
+    Order { seq: u32, unit: Option<EntityId>, order: Order,    // unit: None is the hero
+            seen: Option<u32> },                               // tick of the view it was given on
     Ack { tick: u32 },                     // lockstep: "I am ready for the tick"
     ViewAs { seat: Option<SlotId> },       // spectator: watch through one seat's eyes
 }
@@ -1259,13 +1260,44 @@ not tolerate it.
   as it needs, the match reproduces bit-for-bit. `--ack-timeout-ticks` guards against a
   hung bot (empty order).
 
+### Order delay
+
+An order given on the view of tick `T` takes effect on tick `T + 1` at the earliest.
+Over a network it lands later: the round trip, the wait for the next tick boundary and
+the client's own thinking add `d` ticks. Dota runs 30 ticks a second and its players
+see 20-120 ms of ping, so `d` is 0-4 ticks there, more on a bad line. Lockstep alone
+has `d = 0`, so a bot trained and measured in lockstep would only ever meet the delay
+when it plays for real.
+
+- `--order-delay-ticks` holds every order of a seat back by a fixed number of ticks;
+  `--order-jitter-ticks` adds `0..=j` more per order, drawn from a stream of its own
+  per seat (`MatchRng::for_order_delay`) that no simulation stream shares. Each takes
+  one value for every seat or one per seat. Base and jitter together stay within
+  `MAX_ORDER_DELAY_TICKS` (30, a second). Both work in either mode; in realtime they
+  add to the network's own.
+- Orders never overtake one another, as on one TCP stream: an order drawn earlier
+  than the one before it waits for it, and a later one due on the same tick
+  replaces it, as two orders inside one tick always have.
+- An order is validated when it arrives and again on the tick it takes effect; one
+  that no longer holds then is answered with `OrderRejected` on that tick. With no
+  delay both checks see the same world, so the match is the one it always was.
+- The delay line lives outside `World`: the world still takes the tick's commands,
+  the replay records them on the tick they took effect, and neither fingerprints nor
+  replays change.
+- A client says which view an order was given on (`Order::seen`); the server tells
+  each side, in `WorldView::order_delays`, how late each of its seats' latest such
+  order took effect beyond `T + 1`. One number serves both modes: in lockstep it is
+  the configured delay, in realtime whatever the line and the client cost. An order
+  without `seen` measures nothing.
+
 ## Server algorithm
 
 ```
 main:
   parse args (--port, --mode realtime|lockstep, --tick-rate, --players,
               --replay out.brp, --map, --seed, --ack-timeout-ticks, --cheats,
-              --immortal-structures, --immortal-heroes, --dummy-seat)
+              --immortal-structures, --immortal-heroes, --dummy-seat,
+              --order-delay-ticks, --order-jitter-ticks)
   listen TCP; the accept thread queues connections
   state = Lobby
 
@@ -1282,11 +1314,14 @@ Playing (simulation thread):
     lockstep: until every seat has acked the tick (or the ack timeout)
     each Order, on arrival: PlayerId → SlotId through Roster, then
       world.validate_order(slot, unit, &order)
-        Ok  → replaces the seat's pending order
+        Ok  → onto the seat's delay line, due on tick + 1 + its delay; replaces
+              an order due on the same tick
         Err → OrderRejected { seq, reason }
-    // 2. the pending orders, in slot order, become Commands and go into the replay
+    // 2. the orders due on the next tick are validated again, in slot order,
+    //    become Commands and go into the replay; one that fails → OrderRejected
     // 3. events = world.advance(&cmds)
-    // 4. broadcast: a seat gets its team's view; a spectator the fogless view, or a
+    // 4. broadcast: a seat gets its team's view, with its seats' measured order
+    //    delays; a spectator the fogless view, or a
     //    seat's view and that seat's Orders after ViewAs; events go out by
     //    Event.visible_to. The fogless frames and all events go into the replay
     // 5. if let Some(winner) = world.victor() { broadcast MatchOver; break }

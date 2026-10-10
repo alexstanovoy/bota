@@ -79,14 +79,16 @@ impl Link {
         self.stream.write_all(&frame)
     }
 
-    /// Sends one ask under the next sequence number.
-    pub fn order(&mut self, ask: Ask) -> std::io::Result<()> {
+    /// Sends one ask, given on the view of tick `seen`, under the next
+    /// sequence number.
+    pub fn order(&mut self, ask: Ask, seen: u32) -> std::io::Result<()> {
         self.seq += 1;
         let seq = self.seq;
         self.send(&ClientMsg::Order {
             seq,
             unit: ask.unit,
             order: ask.order,
+            seen: Some(seen),
         })
     }
 

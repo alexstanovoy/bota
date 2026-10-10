@@ -231,6 +231,10 @@ pub enum ClientMsg {
         unit: Option<EntityId>,
         /// What to do.
         order: Order,
+        /// The tick of the view the order was given on. Absent when the
+        /// sender does not say; the server measures no delay from it then.
+        /// Last on the wire.
+        seen: Option<u32>,
     },
     /// Declare that this participant has finished thinking about a tick.
     ///
