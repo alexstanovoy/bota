@@ -67,6 +67,13 @@ pub struct HeroFace {
     pub id: u16,
     /// Its name, for the roster and the panel.
     pub name: &'static str,
+    /// The least base attack damage of a swing, before attributes; absent
+    /// where the base grows by level and the panel cannot tell it.
+    pub base_damage: Option<i32>,
+    /// How much more than the least a swing may deal: each swing draws
+    /// evenly from `0..=damage_spread` (Dota's damage range). The wire
+    /// carries only the middle of the range.
+    pub damage_spread: i32,
 }
 
 /// Every ability, in id order.
@@ -646,14 +653,21 @@ pub const HEROES: [HeroFace; 3] = [
     HeroFace {
         id: 0,
         name: "Sylla",
+        base_damage: None,
+        damage_spread: 0,
     },
     HeroFace {
         id: 1,
         name: "Pudge",
+        base_damage: Some(21),
+        damage_spread: 0,
     },
     HeroFace {
         id: 2,
         name: "Shadow Fiend",
+        // Dota 7.41f: 16 to 22, agility on top.
+        base_damage: Some(16),
+        damage_spread: 6,
     },
 ];
 
@@ -736,4 +750,42 @@ pub fn effect(id: u16) -> Option<&'static EffectFace> {
 /// The hero of that id, or nothing for one the catalog does not hold.
 pub fn hero(id: u16) -> Option<&'static HeroFace> {
     HEROES.get(usize::from(id))
+}
+
+/// A unit's attack damage the way Dota's panel shows it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct DamageRange {
+    /// The least and the most a swing deals without bonuses: the base
+    /// range plus the primary attribute.
+    pub min: i32,
+    pub max: i32,
+    /// What items and effects add on top of that, shown apart.
+    pub bonus: i32,
+}
+
+/// Splits the middle of a unit's damage range, as the view tells it, into
+/// the range a swing draws from and the bonus on top. Heroes the catalog
+/// knows get their spread; everything else shows one number.
+pub fn damage_range(unit: &bota_proto::UnitView) -> DamageRange {
+    let face = unit.hero.and_then(|h| hero(h.0));
+    let spread = face.map_or(0, |f| f.damage_spread);
+    let primary = |a: bota_proto::Attribute| {
+        let at = &unit.attributes;
+        let value = match a {
+            bota_proto::Attribute::Strength => at.strength,
+            bota_proto::Attribute::Agility => at.agility,
+            bota_proto::Attribute::Intelligence => at.intelligence,
+        };
+        value.to_f32().floor() as i32
+    };
+    let base_middle = face
+        .and_then(|f| f.base_damage)
+        .map(|least| least + spread / 2 + unit.primary.map_or(0, primary));
+    let bonus = base_middle.map_or(0, |b| (unit.attack_damage - b).max(0));
+    let min = unit.attack_damage - bonus - spread / 2;
+    DamageRange {
+        min,
+        max: min + spread,
+        bonus,
+    }
 }
