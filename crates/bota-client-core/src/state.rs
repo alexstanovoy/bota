@@ -434,6 +434,14 @@ impl App {
         }
     }
 
+    /// The name the player of a seat gave in the lobby, if any.
+    pub fn player_name(&self, slot: SlotId) -> Option<&str> {
+        self.names
+            .iter()
+            .find(|(s, _)| *s == slot)
+            .map(|(_, name)| name.as_str())
+    }
+
     /// The display name of a seat.
     ///
     /// A seat that sent no name, as in a replay, is called by its hero and
@@ -464,6 +472,20 @@ impl App {
     }
 
     /// Our hero's unit id, while it is alive and known.
+    /// How late the seat's latest applied order took effect, in
+    /// milliseconds past the earliest tick it could have: the server's
+    /// measure of the round trip, as Dota's ping.
+    pub fn order_delay_ms(&self) -> Option<u32> {
+        let slot = self.my_slot?;
+        let delay = self
+            .view
+            .as_ref()?
+            .order_delays
+            .iter()
+            .find(|d| d.slot == slot)?;
+        Some(delay.ticks * 1000 / u32::from(self.tick_rate.max(1)))
+    }
+
     pub fn my_hero(&self) -> Option<EntityId> {
         let slot = self.my_slot?;
         let view = self.view.as_ref()?;
