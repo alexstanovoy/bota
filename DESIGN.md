@@ -3,8 +3,6 @@
 A simplified Dota 2 in Rust for AI bots and humans. Fully deterministic simulation,
 server authority, minimal dependencies.
 
-Code conventions — `CLAUDE.md`.
-
 ## Key decisions
 
 | Decision | Choice | Rationale |
@@ -905,8 +903,8 @@ without the active half is a slot with nothing in it.
 Frame: `u32 len (LE) | postcard payload`. The message kind is the postcard enum tag
 inside the payload. TCP, `TCP_NODELAY`.
 
-Until the first release there is no versioning and no compatibility (see
-`CLAUDE.md`); version and fingerprint fields appear with the first release, when there
+Until the first release there is no versioning and no compatibility;
+version and fingerprint fields appear with the first release, when there
 is something to be compatible with.
 
 ### Client → server
