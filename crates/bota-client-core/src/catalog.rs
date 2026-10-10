@@ -776,6 +776,66 @@ pub fn hero(id: u16) -> Option<&'static HeroFace> {
     HEROES.get(usize::from(id))
 }
 
+/// One talent of a hero's tree, as the talent panel shows it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct TalentFace {
+    /// What it gives, short, as Dota's tree writes it.
+    pub name: &'static str,
+    /// What it does, for the hover popup.
+    pub blurb: &'static str,
+}
+
+/// Hero level each tier of talents opens at, one talent of the two; the
+/// other of a tier opens at [`TALENT_SECOND_LEVELS`].
+pub const TALENT_LEVELS: [u8; 4] = [10, 15, 20, 25];
+/// Hero level the other talent of each tier opens at.
+pub const TALENT_SECOND_LEVELS: [u8; 4] = [27, 28, 29, 30];
+
+/// Shadow Fiend's tree at Dota 7.41f, by talent slot: the left of each tier
+/// first, the level-10 tier first.
+const SHADOW_FIEND_TALENTS: [TalentFace; 8] = [
+    TalentFace {
+        name: "+30 Feast of Souls Attack Speed",
+        blurb: "A feast gives 30 more attack speed.",
+    },
+    TalentFace {
+        name: "+30 Shadowraze Stack Damage",
+        blurb: "Each stack of a raze's mark adds 30 more magic damage.",
+    },
+    TalentFace {
+        name: "+2 Feast of Souls Souls per Hero",
+        blurb: "A feast takes 2 more souls from every enemy hero.",
+    },
+    TalentFace {
+        name: "+1.5 Presence Armor Reduction",
+        blurb: "The presence takes 1.5 more armor from enemies near you.",
+    },
+    TalentFace {
+        name: "+0.2s Requiem Fear per Line",
+        blurb: "Every requiem line fears, slows and tears 0.2 s longer, up to 0.45 s more in all.",
+    },
+    TalentFace {
+        name: "+5 Necromastery Max Souls",
+        blurb: "Hold 5 more souls from kills.",
+    },
+    TalentFace {
+        name: "Shadowraze Applies Attack Damage",
+        blurb: "A raze also deals your attack damage, as physical damage.",
+    },
+    TalentFace {
+        name: "-30% Cast Point during Feast",
+        blurb: "While a feast runs, cast points last 70% of their length.",
+    },
+];
+
+/// A hero's talent tree by talent slot, if it has one.
+pub fn talents(hero: u16) -> Option<&'static [TalentFace; 8]> {
+    match hero {
+        2 => Some(&SHADOW_FIEND_TALENTS),
+        _ => None,
+    }
+}
+
 /// A unit's attack damage the way Dota's panel shows it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct DamageRange {
