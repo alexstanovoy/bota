@@ -18,6 +18,8 @@ the mechanics wiki. Nothing is guessed except where it says **[approximation]**.
 | Valve Developer Community, *BoundsHullName Size Reference* | hull radii |
 | Liquipedia, *Lane Creeps* (oldid 2401399, read 2026-10-10) | 7.41 lane creep table, upgrade table, bounty rule, both kinds of hero aggro, chase rules |
 | Liquipedia, *Flagbearer Creep* (oldid 2364908) | 7.40/7.41 flagbearer: experience 60, melee upgrades, Inspiration Aura reach and magic resistance, the bonus bounty |
+| Liquipedia, *Vision* § Caster Vision | the sight an attack or a targeted spell shows the side struck |
+| Liquipedia, *Evasion* § Uphill Miss Chance; Valve 7.41 notes | the 25 % uphill miss still stands |
 | Valve patch notes 7.39, 7.40, 7.41 (dota2.com datafeed) | melee upgrade gold 1 → 0 → 1, ranged 6 → 3; flagbearer changes; flagbearer XP 57 → 60 |
 
 ---
@@ -170,6 +172,17 @@ attack happens or not and however far the ordered target is:
   creep weighs its options again; the ordering hero can still win that on
   §1.5's tie-break while it keeps swinging at the creep's own side, which is
   why shedding a wave takes either distance or a click at an ally.
+
+**Strike sight** (Dota's *caster vision*). When an attack strikes — the melee
+blow or the missile leaving, at the attack point — or a spell goes off at a
+unit within 1800, the side struck at is shown a **150**-radius circle around
+where the striker stands, for **2 s**. One circle per striker and side:
+striking again moves it and starts its time afresh, and a strike while the last
+circle still shows makes it see past height and trees (flying sight). This is
+what shows an attacker on high ground or in the fog to the side it hits.
+Missiles show nothing of their own.
+
+The 25 % **uphill miss** of a ranged attack still stands in 7.41.
 
 Towers are outside this spec and keep Dota's own tower rule: a dive draws the
 tower outright rather than through the tie band, and an order at an ally sheds

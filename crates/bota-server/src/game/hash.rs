@@ -4,9 +4,10 @@
 
 use crate::engine::Fnv;
 use crate::game::{
-    Action, ActionPhase, ActionState, AppliedModifiers, AppliedOrigin, Entity, Hit, HitEffect,
-    Hook, Inventory, ItemStack, ModifierDuration, ModifierKind, Modifiers, Motion, Projectile,
-    RequiemLine, Seat, SpawnCategory, SpawnModifier, SpawnTarget, Stacks, Target, World,
+    Action, ActionPhase, ActionState, AppliedModifiers, AppliedOrigin, Entity, Exposure, Hit,
+    HitEffect, Hook, Inventory, ItemStack, ModifierDuration, ModifierKind, Modifiers, Motion,
+    Projectile, RequiemLine, Seat, SpawnCategory, SpawnModifier, SpawnTarget, Stacks, Target,
+    World,
 };
 
 impl World {
@@ -125,6 +126,16 @@ impl World {
             fnv.u32(plan.at as u32);
             fnv.u32(plan.from);
             fnv.u32(plan.laid);
+        }
+        if let Some(Exposure(cells)) = self.exposure.get(entity) {
+            for cell in cells {
+                fnv.some(cell.is_some());
+                if let Some(cell) = cell {
+                    fnv.vec2(cell.at);
+                    fnv.u32(cell.until);
+                    fnv.some(cell.flying);
+                }
+            }
         }
     }
 

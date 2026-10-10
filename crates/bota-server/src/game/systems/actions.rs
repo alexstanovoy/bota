@@ -631,6 +631,7 @@ impl World {
 
     /// Leaves what a swing that came due turns into.
     fn strike(&mut self, attacker: Entity, on: Entity, stats: &Stats) {
+        self.expose(attacker, on);
         // What is carried against creeps is worth nothing against anything else.
         let damage = stats.damage
             + if self.kind.get(on).copied().is_some_and(is_creep) {

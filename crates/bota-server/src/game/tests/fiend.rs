@@ -1,8 +1,8 @@
 //! Shadow Fiend: the razes, the souls, the presence and the requiem.
 
 use crate::game::{
-    ActionState, Entity, Event, ModifierKind, StackKind, World, ability, isqrt64, rules, tower_def,
-    wire_id,
+    ActionState, Entity, Event, ModifierKind, StackKind, UnitOrder, World, ability, isqrt64, rules,
+    tower_def, wire_id,
 };
 use bota_proto::{
     DamageKind, EffectId, EventKind, Fixed, HeroId, Order, SlotId, StatusFlags, Target, Team, Vec2,
@@ -294,6 +294,8 @@ fn a_soul_is_worth_one_damage_and_point_eight_more_every_six_levels() {
 fn the_presence_wears_down_the_armor_of_enemies_that_see_its_carrier() {
     // He stands on high ground, which the creep 400 east of him is below.
     let (mut world, fiend, below) = fiend_and_a_mark(400);
+    // Standing, he strikes nothing, and a strike would show him.
+    world.set_order(fiend, UnitOrder::Stand);
     let out = a_creep_at(
         &mut world,
         Team::Dire,

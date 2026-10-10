@@ -1,6 +1,6 @@
 //! Who can see what.
 
-use bota_proto::Team;
+use bota_proto::{Team, Vec2};
 
 /// Which sides see an entity right now, one bit a side. Worked out afresh by
 /// [`visibility_system`](crate::game::visibility_system); a value put in by
@@ -42,3 +42,21 @@ impl Visibility {
         self.0
     }
 }
+
+/// Sight an entity showed one side by striking at it: a small circle around
+/// where it stood, lasting a while.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ExposureCell {
+    /// Where the striker stood when it struck.
+    pub at: Vec2,
+    /// The last tick the circle shows.
+    pub until: u32,
+    /// Whether it sees past height and trees: a strike made while the last
+    /// one still showed.
+    pub flying: bool,
+}
+
+/// What an entity has shown each side by striking at it, indexed by the
+/// side shown. At most one circle a side.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Exposure(pub [Option<ExposureCell>; 3]);

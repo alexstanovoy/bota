@@ -1154,6 +1154,19 @@ also when Dota fixes them. The midpoints the ranges replace paid ranged creeps 4
 against a mean of 47.5, and paid a flagbearer and every upgraded creep as if it had
 never been upgraded: `Growth::gold` and `Growth::xp` were computed and dropped.
 
+### Strike sight
+
+An attack that strikes, and a spell that goes off at a unit within 1800, shows the side
+struck at a 150-radius circle around the striker for two seconds (Dota's caster vision).
+The circle is an `Exposure` on the striker — one `ExposureCell` per side, so striking
+again moves it rather than piling circles up — and the sight pass reads each live cell
+as one more viewer of that side. A viewer is the one thing sight already knows how to
+answer, so the view, the creeps' targeting and `can_see_point` all see the striker
+without being told about strikes. A strike made while the last circle still shows sees
+past height and trees, as Dota upgrades a repeated cell to flying sight. The circle
+starts showing at the next sight pass, the tick after the strike, and shows for
+`STRIKE_REVEAL_TICKS` passes.
+
 ### Looking at what is not there
 
 Two different things are not there, and they are answered in two different

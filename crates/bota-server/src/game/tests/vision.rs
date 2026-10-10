@@ -172,3 +172,63 @@ fn a_missile_is_seen_from_the_tick_it_is_thrown() {
         "its own side has it"
     );
 }
+
+/// A Dire archer that cannot walk and swings once every five seconds,
+/// reaching far enough to strike down a cliff.
+const CLIFF_ARCHER: crate::game::UnitDef = crate::game::UnitDef {
+    max_hp: 8_000,
+    attack_range: 700,
+    attack_time: 5_000,
+    move_speed: 0,
+    ..RANGED_CREEP
+};
+
+#[test]
+fn a_strike_from_high_ground_shows_the_striker_to_the_side_struck_for_two_seconds() {
+    let mut world = World::new();
+    let (low, _, high) = nearby_elevations(&world.ground);
+    let archer = world.spawn_unit(&CLIFF_ARCHER, Team::Dire, high);
+    let mark = world.spawn_unit(&UPHILL_TEST_TARGET, Team::Radiant, low);
+    world.settle();
+    world.fill_pools(mark);
+    let shown = |world: &World| {
+        let listed = world
+            .view(Team::Radiant)
+            .units
+            .iter()
+            .any(|unit| unit.id == wire_id(archer));
+        assert_eq!(
+            listed,
+            world.can_see(Team::Radiant, archer),
+            "the view tells exactly what the side sees"
+        );
+        listed
+    };
+    assert!(!shown(&world), "from below, high ground is fog");
+    let struck = (0..60)
+        .find(|_| {
+            world.step();
+            world.exposure.get(archer).is_some()
+        })
+        .map(|_| world.tick)
+        .expect("the archer strikes within two seconds");
+    assert!(
+        !shown(&world),
+        "the strike shows from the next sight pass on"
+    );
+    for _ in 0..rules::STRIKE_REVEAL_TICKS {
+        world.step();
+        assert!(
+            shown(&world),
+            "tick {}: still shown {} ticks after the strike",
+            world.tick,
+            world.tick - struck
+        );
+    }
+    world.step();
+    assert!(!shown(&world), "and gone after two seconds");
+    assert!(
+        world.can_see(Team::Dire, mark),
+        "the striker's own sight is its own business"
+    );
+}

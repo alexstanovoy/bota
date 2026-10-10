@@ -54,6 +54,7 @@ impl World {
         if !(def.on_cast)(self, entity, target) {
             return false;
         }
+        self.expose_caster(entity, target);
         self.charge_nearby_items(entity);
         if let Some(mana) = self.mana.get_mut(entity) {
             mana.mana -= Fixed::from_int(cost);

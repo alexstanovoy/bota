@@ -6,12 +6,12 @@ use bota_proto::{HeroId, SlotId, Team, UnitKind};
 
 use crate::game::{
     AbilityBook, Action, AppliedModifiers, AuraCx, Auras, Bounty, CampHome, Candidates, Def,
-    Entity, EntityAllocator, Errand, Expiry, Forest, Handling, Health, Hit, HitCx, Hook, Hull,
-    Inventory, Landed, Lane, LaneAi, Level, Loot, Mana, March, Mark, Missed, MissileCx, Modifier,
-    Modifiers, Motion, NeutralAi, Orders, Place, Plan, Projectile, Rax, RequiemLine, Route, Seat,
-    SightCx, SightScratch, SpawnModifier, Spots, Stacks, Stats, StatsCx, Table, Target, Tier,
-    Transform, UnitOrder, Upgrades, Visibility, aura_system, derive_stats, hitting_system,
-    missile_system, regenerate, visibility_system,
+    Entity, EntityAllocator, Errand, Expiry, Exposure, Forest, Handling, Health, Hit, HitCx, Hook,
+    Hull, Inventory, Landed, Lane, LaneAi, Level, Loot, Mana, March, Mark, Missed, MissileCx,
+    Modifier, Modifiers, Motion, NeutralAi, Orders, Place, Plan, Projectile, Rax, RequiemLine,
+    Route, Seat, SightCx, SightScratch, SpawnModifier, Spots, Stacks, Stats, StatsCx, Table,
+    Target, Tier, Transform, UnitOrder, Upgrades, Visibility, aura_system, derive_stats,
+    hitting_system, missile_system, regenerate, visibility_system,
 };
 use crate::profile::{Phase, ScopeGuard};
 
@@ -186,6 +186,8 @@ pub struct World {
 
     /// Which sides see each entity, worked out afresh every tick.
     pub visibility: Table<Visibility>,
+    /// Sight each entity showed the sides it struck at.
+    pub exposure: Table<Exposure>,
 
     /// Missiles in flight.
     pub projectile: Table<Projectile>,
@@ -277,6 +279,7 @@ impl World {
             loot: Table::new(),
             handling: Table::new(),
             visibility: Table::new(),
+            exposure: Table::new(),
             projectile: Table::new(),
         }
     }
@@ -643,6 +646,8 @@ impl World {
             stats: &self.stats,
             ground: &self.ground,
             sight_block: &self.sight_block,
+            exposure: &self.exposure,
+            tick: self.tick,
             visibility: &mut self.visibility,
             sight: &mut self.sight_scratch,
         });

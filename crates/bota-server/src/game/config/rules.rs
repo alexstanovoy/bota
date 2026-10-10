@@ -686,6 +686,14 @@ pub const EARLY_AGGRO_TOWER_RANGE: i32 = 1500;
 /// Ticks a lane creep keeps a target that left its attack range while
 /// nothing else is in its acquisition range, 2.3 seconds.
 pub const CREEP_CHASE_TICKS: u32 = 69;
+/// Radius of the sight an attack or a spell at a unit shows the side struck,
+/// around where the attacker stood.
+pub const STRIKE_REVEAL_RADIUS: i32 = 150;
+/// Ticks that sight lasts, two seconds.
+pub const STRIKE_REVEAL_TICKS: u32 = 2 * TICKS_PER_SECOND;
+/// How near a spell's target must stand to its caster for the cast to show
+/// the caster.
+pub const CAST_REVEAL_RANGE: i32 = 1800;
 /// Room a route keeps past the walker's own collision size, in world units.
 pub const STEER_MARGIN: i32 = 8;
 /// The collision size a lane route keeps clear of every obstacle: the widest

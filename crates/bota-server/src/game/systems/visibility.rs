@@ -1,10 +1,10 @@
 //! Working out who sees what.
 
-use bota_proto::{Fixed, Team, UnitKind, Vec2};
+use bota_proto::{Fixed, Target, Team, UnitKind, Vec2};
 
 use crate::game::{
-    CellGrid, Entity, EntityAllocator, EventVisibility, Ground, Spots, Stats, Table, Transform,
-    Visibility, World, is_structure, sight_clear,
+    CellGrid, Entity, EntityAllocator, EventVisibility, Exposure, ExposureCell, Ground, Spots,
+    Stats, Table, Transform, Visibility, World, is_structure, rules, sight_clear,
 };
 
 /// What working out sight reads and writes.
@@ -19,6 +19,10 @@ pub struct SightCx<'a> {
     pub ground: &'a Ground,
     /// Which cells stop a sight line.
     pub sight_block: &'a CellGrid,
+    /// Sight strikes showed the sides struck at.
+    pub exposure: &'a Table<Exposure>,
+    /// The tick being worked out, for which of that sight still shows.
+    pub tick: u32,
     /// Where the answer goes.
     pub visibility: &'a mut Table<Visibility>,
     /// Reused buffers the tables are read into.
@@ -82,14 +86,18 @@ struct SightViewer {
     true_sight: Fixed,
     /// The height it stands at.
     tier: u8,
+    /// Whether it sees past height and trees.
+    flying: bool,
 }
 
 /// Rewrites who sees each entity that has a row of sight.
 ///
 /// A side always sees its own, and both sides see every building. Past
 /// that, a side sees what one of its viewers has in range, on ground no
-/// higher than its own, along an open sight line. What hides is seen by the
-/// other side only where that side's true sight also reaches it.
+/// higher than its own, along an open sight line. A strike shows the side
+/// struck at a circle around the striker the same way, see
+/// [`World::expose`]. What hides is seen by the other side only where that
+/// side's true sight also reaches it.
 pub fn visibility_system(cx: SightCx<'_>) {
     let SightCx {
         entities,
@@ -99,6 +107,8 @@ pub fn visibility_system(cx: SightCx<'_>) {
         stats,
         ground,
         sight_block,
+        exposure,
+        tick,
         visibility,
         sight,
     } = cx;
@@ -119,6 +129,7 @@ pub fn visibility_system(cx: SightCx<'_>) {
         });
     }
     sight.gather_viewers();
+    sight.gather_exposures(exposure, tick, ground);
     sight.reset_rows();
     sight.trace(ground, sight_block);
     sight.hide();
@@ -145,12 +156,30 @@ impl SightScratch {
                 vision: row.vision,
                 true_sight: row.true_sight,
                 tier: row.tier,
+                flying: false,
             };
             if row.vision > Fixed::ZERO {
                 self.viewers.push(viewer);
             }
             if row.true_sight > Fixed::ZERO {
                 self.true_viewers.push(viewer);
+            }
+        }
+    }
+
+    /// Every circle a strike still shows, as a viewer of the side struck at.
+    fn gather_exposures(&mut self, exposure: &Table<Exposure>, tick: u32, ground: &Ground) {
+        for row in &self.rows {
+            let Some(Exposure(cells)) = exposure.get(row.entity) else {
+                continue;
+            };
+            for (side, cell) in [Team::Radiant, Team::Dire, Team::Neutral]
+                .into_iter()
+                .zip(cells)
+            {
+                if let Some(cell) = cell.filter(|cell| tick <= cell.until) {
+                    self.viewers.push(exposure_viewer(side, cell, ground));
+                }
             }
         }
     }
@@ -191,11 +220,11 @@ impl SightScratch {
                 };
                 if seen.by(viewer.side)
                     || !viewer.from.within(at, viewer.vision)
-                    || viewer.tier < row.tier
+                    || (!viewer.flying && viewer.tier < row.tier)
                 {
                     continue;
                 }
-                if sight_clear(ground, sight_block, viewer.from, viewer.tier, at) {
+                if viewer.flying || sight_clear(ground, sight_block, viewer.from, viewer.tier, at) {
                     seen.add(viewer.side);
                 }
             }
@@ -227,28 +256,109 @@ impl SightScratch {
     }
 }
 
+/// The viewer a strike's circle stands for.
+fn exposure_viewer(side: Team, cell: ExposureCell, ground: &Ground) -> SightViewer {
+    SightViewer {
+        side,
+        from: cell.at,
+        vision: rules::units(rules::STRIKE_REVEAL_RADIUS),
+        true_sight: Fixed::ZERO,
+        tier: ground.tier(cell.at),
+        flying: cell.flying,
+    }
+}
+
 impl World {
+    /// Shows the side a strike was aimed at a circle of
+    /// [`rules::STRIKE_REVEAL_RADIUS`] around where the striker stands, for
+    /// [`rules::STRIKE_REVEAL_TICKS`] from the next sight pass on.
+    ///
+    /// A striker shows each side one circle at most: striking again moves
+    /// it, starts its time afresh, and, while the last one still showed,
+    /// makes it see past height and trees. A strike at one's own side shows
+    /// nothing.
+    pub fn expose(&mut self, striker: Entity, on: Entity) {
+        let (Some(mine), Some(theirs)) =
+            (self.team.get(striker).copied(), self.team.get(on).copied())
+        else {
+            return;
+        };
+        let Some(at) = self.transform.get(striker).map(|t| t.pos) else {
+            return;
+        };
+        if mine == theirs {
+            return;
+        }
+        let tick = self.tick;
+        let mut exposure = self.exposure.get(striker).copied().unwrap_or_default();
+        let cell = &mut exposure.0[theirs as usize];
+        let flying = cell.is_some_and(|cell| tick <= cell.until);
+        *cell = Some(ExposureCell {
+            at,
+            until: tick + rules::STRIKE_REVEAL_TICKS,
+            flying,
+        });
+        self.exposure.insert(striker, exposure);
+    }
+
+    /// Shows a caster to the side of the unit its spell went off at, when
+    /// that unit stands within [`rules::CAST_REVEAL_RANGE`] of it.
+    pub fn expose_caster(&mut self, caster: Entity, target: Target) {
+        let Target::Unit(id) = target else {
+            return;
+        };
+        let Some(mark) = self.of_wire(id) else {
+            return;
+        };
+        let (Some(from), Some(to)) = (self.transform.get(caster), self.transform.get(mark)) else {
+            return;
+        };
+        if from
+            .pos
+            .within(to.pos, rules::units(rules::CAST_REVEAL_RANGE))
+        {
+            self.expose(caster, mark);
+        }
+    }
+
     /// Whether a side sees a point on the map, worked out live from its
-    /// viewers' ordinary sight.
+    /// viewers' ordinary sight and the circles strikes showed it.
     pub fn can_see_point(&self, team: Team, at: Vec2) -> bool {
         let target_tier = self.ground.tier(at);
-        self.entities.iter().any(|entity| {
-            if self.team.get(entity) != Some(&team) {
-                return false;
-            }
-            let (Some(from), Some(radius)) = (
-                self.transform.get(entity).map(|t| t.pos),
-                self.stats.get(entity).map(|s| s.vision),
-            ) else {
+        let exposed = self.entities.iter().any(|entity| {
+            let Some(Some(cell)) = self.exposure.get(entity).map(|e| e.0[team as usize]) else {
                 return false;
             };
-            if radius <= Fixed::ZERO || !from.within(at, radius) {
+            if self.tick > cell.until
+                || !cell
+                    .at
+                    .within(at, rules::units(rules::STRIKE_REVEAL_RADIUS))
+            {
                 return false;
             }
-            let viewer_tier = self.ground.tier(from);
-            viewer_tier >= target_tier
-                && sight_clear(&self.ground, &self.sight_block, from, viewer_tier, at)
-        })
+            let tier = self.ground.tier(cell.at);
+            cell.flying
+                || (tier >= target_tier
+                    && sight_clear(&self.ground, &self.sight_block, cell.at, tier, at))
+        });
+        exposed
+            || self.entities.iter().any(|entity| {
+                if self.team.get(entity) != Some(&team) {
+                    return false;
+                }
+                let (Some(from), Some(radius)) = (
+                    self.transform.get(entity).map(|t| t.pos),
+                    self.stats.get(entity).map(|s| s.vision),
+                ) else {
+                    return false;
+                };
+                if radius <= Fixed::ZERO || !from.within(at, radius) {
+                    return false;
+                }
+                let viewer_tier = self.ground.tier(from);
+                viewer_tier >= target_tier
+                    && sight_clear(&self.ground, &self.sight_block, from, viewer_tier, at)
+            })
     }
 
     /// Whether a side sees an entity, from what was worked out this tick.
