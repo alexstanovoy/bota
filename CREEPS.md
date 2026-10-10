@@ -1,6 +1,6 @@
 # Creeps — the Dota reference
 
-The Dota 2 **7.41e** rules (Summer Scrub, August 2026) for lane and neutral creeps
+The Dota 2 **7.41f** rules for lane and neutral creeps
 that the simulation follows: the numbers, the behaviour, and where they came from.
 What of it is not modelled yet is listed at the end.
 
@@ -16,6 +16,9 @@ the mechanics wiki. Nothing is guessed except where it says **[approximation]**.
 | Dota 2 Wiki, *Lane Creeps* | spawn schedule, wave composition, upgrade table, aggro rules, target priority, chase and return behaviour |
 | Dota 2 Wiki, *Neutral Creeps* | camp categories, spawn rule, aggro radii, guard distance, leash timers, lane-creep interaction |
 | Valve Developer Community, *BoundsHullName Size Reference* | hull radii |
+| Liquipedia, *Lane Creeps* (oldid 2401399, read 2026-10-10) | 7.41 lane creep table, upgrade table, bounty rule, both kinds of hero aggro, chase rules |
+| Liquipedia, *Flagbearer Creep* (oldid 2364908) | 7.40/7.41 flagbearer: experience 60, melee upgrades, Inspiration Aura reach and magic resistance, the bonus bounty |
+| Valve patch notes 7.39, 7.40, 7.41 (dota2.com datafeed) | melee upgrade gold 1 → 0 → 1, ranged 6 → 3; flagbearer changes; flagbearer XP 57 → 60 |
 
 ---
 
@@ -43,7 +46,15 @@ apart by a larger collision size, per kind in `rules.rs`.
 | Hull radius | **16** | **16** | **8** | **16** |
 | Vision, day = night | 750 | 750 | 750 | 750 |
 | Gold bounty | 34–39 | 34–39 | 43–52 | 59–72 |
-| XP bounty | 57 | 57 | 69 | 88 |
+| XP bounty | 57 | 60 | 69 | 88 |
+
+**Gold is drawn per kill**: the last hitter is paid a whole number drawn evenly
+from the creep's current range — both ends moved up by its upgrades — at the
+moment it falls. Liquipedia says "a random value between min and max" and no
+source names the distribution; even is **[approximation]**, the engine's
+`RandomInt`. A deny pays no gold (since 7.26b) and gives the other side 50 % of
+the experience. Experience is split evenly among the killer side's heroes
+within 1500.
 
 Attack modifiers, for the record — see *Not yet modelled* for which of these ship now:
 
@@ -52,9 +63,14 @@ Attack modifiers, for the record — see *Not yet modelled* for which of these s
   **−50 %** to heavy targets.
 - `creep_siege` — siege: **+150 %** to buildings; incoming **−50 %** from
   heroes, **−30 %** from basic sources, **−40 %** from player-controlled units.
-- `flagbearer_creep_aura_effect` — 700 radius, +3 health regen to allies;
-  +10 gold and +3 XP area bounty within 1200 on death by an enemy player;
-  magic resistance grows +4 % per 7.5-minute interval, capped at 15 intervals.
+- **Inspiration Aura** (flagbearer, 7.40) — 700 radius, 0.5 s linger, allied
+  **non-hero** units only (creeps; no heroes, wards or buildings): +3 health
+  regen and +4 % magic resistance per upgrade interval the flagbearer spawned
+  after, at most 15 (60 %), multiplying with what the unit has.
+- **Bonus bounty** (flagbearer, 7.40) — as it spawns it draws once from its own
+  gold range; on a death that is not a deny it pays 10 + that draw to every
+  enemy hero within **1500**, and to the killing hero wherever it stands, on
+  top of the killer's own bounty. No bonus experience.
 
 ### 1.2 Spawning
 
@@ -73,10 +89,13 @@ Attack modifiers, for the record — see *Not yet modelled* for which of these s
 Every **7:30**, applied to *newly spawned* creeps, **30 times maximum**
 (fully upgraded at 225:00):
 
-- melee: +12 health, +1 attack damage, +1 gold
-- ranged: +12 health, +2 attack damage, +6 gold, +8 XP
+- melee and flagbearer: +12 health, +1 attack damage, +1 gold (melee gold
+  0 in 7.39, 1 again since 7.40; the flagbearer follows the melee upgrade
+  since 7.40, though one line of Liquipedia's *Lane Creeps* still says it does not)
+- ranged: +12 health, +2 attack damage, +3 gold (6 before 7.39), +8 XP
 - siege: no periodic upgrade
-- flagbearer: no upgrade
+- the gold and experience steps have no cap in Dota; bota counts at most 30
+  intervals for everything, which differs only past 225:00
 
 ### 1.4 Lane creep behaviour
 
@@ -390,10 +409,13 @@ barracks and fountains are 144, the Ancients 299 (Radiant) and 374 (Dire).
 
 ## Not yet modelled
 
-1. **Attack classes.** `creep_irresolute`, `creep_piercing` and `creep_siege`
-   (§1.1) are not applied: mitigation reads only the damage kind, so creep damage
-   against heroes and buildings, and damage into siege creeps, is off by exactly
-   those percentages.
+1. **Attack classes.** Since 7.31 Dota multiplies attack damage by class:
+   Runty (melee, flagbearer) ×0.75 to heroes and ×0.7 to Reinforced;
+   Piercing (ranged) ×1.5 to non-heroes, ×0.5 to heroes, ×0.35 to
+   Reinforced; Reinforced (siege creeps and buildings) takes ×0.5 from heroes
+   and deals ×2.5 to Reinforced. Mitigation reads only the damage kind, so
+   creep damage against heroes and buildings, hero damage against buildings,
+   and damage into siege creeps are off by exactly those factors.
 2. **No per-swing damage roll.** A unit has one damage number, so the 19–23 style
    ranges collapse to one value.
 3. **No day and night.** Neutrals never sleep, their aggro range is always 240,
@@ -410,8 +432,9 @@ barracks and fountains are 144, the Ancients 299 (Radiant) and 374 (Dire).
 8. **No invisibility, untargetability or disarm.** The flee on damage from an
    invisible unit and the untargetable rules of §1.6, and the disarm rule of
    §1.4, have nothing to act on.
-9. **No lane creep regeneration.** The 0.5 and 2 health a second of §1.1 are
-   not applied; lane creeps regenerate nothing.
-10. **The flagbearer is its aura and its magic resistance alone.** The area
-    bounty on its death and the magic resistance it gains over time (§1.1) are
-    not applied.
+9. **Super and mega creeps** carry pre-7.41 numbers: Liquipedia lists super
+    melee 36–44 damage, super ranged 41–46, mega melee 1270 health and 96–104
+    damage, mega ranged 1015 and 131–136; bota has 41–49, 46–51 and mega as a
+    faster-swinging super.
+10. **Flying attackers never miss uphill.** 7.41 lets units with free movement
+    miss uphill too.

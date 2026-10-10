@@ -599,6 +599,7 @@ impl World {
             team: &self.team,
             kind: &self.kind,
             auras: &self.auras,
+            upgrades: &self.upgrades,
             stats: &self.stats,
             modifiers: &mut self.modifiers,
             spots: &mut self.aura_spots,

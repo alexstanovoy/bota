@@ -9,7 +9,7 @@
 use bota_proto::{Attribute, Attributes, Fixed, Team, UnitKind};
 
 use crate::game::rules;
-use crate::game::{Aura, ModifierKind, Reach};
+use crate::game::{Aura, GoldRange, ModifierKind, Reach};
 
 /// What an entity gains for each step of whatever raises it: a level past the
 /// first, or an upgrade interval.
@@ -97,7 +97,7 @@ pub struct UnitDef {
     /// Whether it counts as ancient.
     pub ancient: bool,
     /// Gold killing it pays.
-    pub bounty_gold: i32,
+    pub bounty_gold: GoldRange,
     /// Experience killing it pays.
     pub bounty_xp: i32,
     /// What each level past the first adds.
@@ -148,7 +148,7 @@ const NOTHING: UnitDef = UnitDef {
     bound: 0,
     invulnerable: false,
     ancient: false,
-    bounty_gold: 0,
+    bounty_gold: GoldRange::ZERO,
     bounty_xp: 0,
     per_level: NO_GROWTH,
     per_upgrade: NO_GROWTH,
@@ -177,6 +177,7 @@ pub const MELEE_CREEP: UnitDef = UnitDef {
     bound: rules::MELEE_CREEP_BOUND,
     bounty_gold: rules::MELEE_CREEP_BOUNTY,
     bounty_xp: rules::MELEE_CREEP_XP,
+    hp_regen: rules::MELEE_CREEP_HP_REGEN,
     per_upgrade: Growth {
         hp: rules::MELEE_UPGRADE_HP,
         damage: rules::MELEE_UPGRADE_DAMAGE,
@@ -186,24 +187,24 @@ pub const MELEE_CREEP: UnitDef = UnitDef {
     ..NOTHING
 };
 
-/// What a flagbearer mends in everyone marching with it.
-///
-/// Everyone of its own side, heroes counted in.
+/// What a flagbearer mends in the creeps marching with it, and the magic
+/// resistance it grows into with the upgrade intervals it spawned after.
 const FLAGBEARER_AURAS: [Aura; 1] = [Aura {
     kind: ModifierKind::Inspired {
         hp_per_second: rules::FLAGBEARER_AURA_REGEN,
+        magic_resist_pct: 0,
     },
     radius: rules::FLAGBEARER_AURA_RADIUS,
-    reaches: Reach::All,
+    reaches: Reach::Units,
     ticks: rules::AURA_LINGER_TICKS,
 }];
 
-/// A melee lane creep carrying the flag. Takes no upgrades.
+/// A melee lane creep carrying the flag. Upgrades as a melee creep does.
 pub const FLAGBEARER_CREEP: UnitDef = UnitDef {
     kind: UnitKind::CreepFlagbearer,
     magic_resist_pct: rules::FLAGBEARER_MAGIC_RESIST_PCT,
+    bounty_xp: rules::FLAGBEARER_XP,
     auras: &FLAGBEARER_AURAS,
-    per_upgrade: NO_GROWTH,
     ..MELEE_CREEP
 };
 
@@ -220,6 +221,7 @@ pub const RANGED_CREEP: UnitDef = UnitDef {
     bound: rules::RANGED_CREEP_BOUND,
     bounty_gold: rules::RANGED_CREEP_BOUNTY,
     bounty_xp: rules::RANGED_CREEP_XP,
+    hp_regen: rules::RANGED_CREEP_HP_REGEN,
     per_upgrade: Growth {
         hp: rules::RANGED_UPGRADE_HP,
         damage: rules::RANGED_UPGRADE_DAMAGE,
@@ -274,6 +276,7 @@ pub const SIEGE_CREEP: UnitDef = UnitDef {
     bound: rules::SIEGE_CREEP_BOUND,
     bounty_gold: rules::SIEGE_CREEP_BOUNTY,
     bounty_xp: rules::SIEGE_CREEP_XP,
+    hp_regen: Fixed::ZERO,
     per_upgrade: NO_GROWTH,
     ..MELEE_CREEP
 };
@@ -390,7 +393,7 @@ pub const BARRACKS_MELEE: UnitDef = UnitDef {
     vision: rules::RAX_VISION,
     collision: rules::RAX_COLLISION,
     bound: rules::RAX_BOUND,
-    bounty_gold: rules::RAX_MELEE_BOUNTY,
+    bounty_gold: GoldRange::exactly(rules::RAX_MELEE_BOUNTY),
     ..NOTHING
 };
 
@@ -402,7 +405,7 @@ pub const BARRACKS_RANGED: UnitDef = UnitDef {
     vision: rules::RAX_VISION,
     collision: rules::RAX_COLLISION,
     bound: rules::RAX_BOUND,
-    bounty_gold: rules::RAX_RANGED_BOUNTY,
+    bounty_gold: GoldRange::exactly(rules::RAX_RANGED_BOUNTY),
     ..NOTHING
 };
 
@@ -530,7 +533,7 @@ const fn tower_of(index: usize) -> UnitDef {
         vision: rules::TOWER_VISION,
         collision: rules::TOWER_COLLISION,
         bound: rules::TOWER_BOUND,
-        bounty_gold: rules::TOWER_TIER_BOUNTY[index],
+        bounty_gold: GoldRange::exactly(rules::TOWER_TIER_BOUNTY[index]),
         ..NOTHING
     }
 }

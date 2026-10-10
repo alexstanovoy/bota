@@ -4,7 +4,7 @@ use bota_proto::{Team, UnitKind};
 
 use crate::game::{
     Auras, Entity, EntityAllocator, Modifier, Modifiers, Reach, Spots, Stats, Table, Transform,
-    rules,
+    Upgrades, is_structure, rules,
 };
 
 use super::modifiers::resisted_ticks;
@@ -14,9 +14,11 @@ pub struct AuraCx<'a> {
     pub entities: &'a EntityAllocator,
     pub transform: &'a Table<Transform>,
     pub team: &'a Table<Team>,
-    /// For the auras that reach only heroes.
+    /// For the auras that reach only some kinds.
     pub kind: &'a Table<UnitKind>,
     pub auras: &'a Table<Auras>,
+    /// Upgrade intervals each source spawned after, for the auras that grow.
+    pub upgrades: &'a Table<Upgrades>,
     /// Status resistance, for the timed effects an aura may hand out.
     pub stats: &'a Table<Stats>,
     /// Where a handed-out effect lands.
@@ -37,6 +39,7 @@ pub fn aura_system(cx: AuraCx<'_>) {
         team,
         kind,
         auras,
+        upgrades,
         stats,
         modifiers,
         spots,
@@ -58,7 +61,9 @@ pub fn aura_system(cx: AuraCx<'_>) {
         ) else {
             continue;
         };
+        let steps = upgrades.get(source).map_or(0, |Upgrades(steps)| *steps);
         for aura in handed {
+            let handed_kind = aura.kind.grown(steps);
             let reach = rules::units(aura.radius);
             for entity in spots.around(from, i64::from(reach.raw).abs()) {
                 if team.get(entity).copied() != Some(side) {
@@ -67,6 +72,9 @@ pub fn aura_system(cx: AuraCx<'_>) {
                 let wanted = match aura.reaches {
                     Reach::All => true,
                     Reach::Heroes => kind.get(entity).copied() == Some(UnitKind::Hero),
+                    Reach::Units => kind.get(entity).copied().is_some_and(|kind| {
+                        kind != UnitKind::Hero && kind != UnitKind::Ward && !is_structure(kind)
+                    }),
                 };
                 if !wanted {
                     continue;
@@ -79,9 +87,9 @@ pub fn aura_system(cx: AuraCx<'_>) {
                 }
                 if let Some(on_it) = modifiers.get_mut(entity) {
                     on_it.put(Modifier {
-                        kind: aura.kind,
+                        kind: handed_kind,
                         source: Some(source),
-                        ticks_left: Some(resisted_ticks(stats, entity, aura.kind, aura.ticks)),
+                        ticks_left: Some(resisted_ticks(stats, entity, handed_kind, aura.ticks)),
                     });
                 }
             }

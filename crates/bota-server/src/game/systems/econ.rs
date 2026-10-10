@@ -3,8 +3,8 @@
 use bota_proto::{EventKind, Team, UnitKind, Vec2};
 
 use crate::game::{
-    Bounty, Entity, Event, EventVisibility, Landed, Level, World, hero_spawn_pos, is_lane_creep,
-    is_structure, rules, wire_id,
+    Bounty, Entity, Event, EventVisibility, GoldRange, Landed, Level, Purpose, World,
+    hero_spawn_pos, is_lane_creep, is_structure, rules, wire_id,
 };
 
 use super::fight::other_side;
@@ -26,11 +26,14 @@ impl World {
 
     /// Pays for one entity brought down, and says how much gold that paid.
     ///
-    /// Gold goes to the seat whose hero struck last; experience is shared
+    /// Gold goes to the seat whose hero struck last, drawn evenly from the
+    /// fallen's [`GoldRange`] at that moment; experience is shared
     /// among the killer side's living heroes within [`rules::XP_RADIUS`], and
     /// the killer of a hero shares wherever it stands. Bringing down one of
     /// your own is a deny: it pays no gold, and only a denied lane creep
     /// gives the other side [`rules::DENIED_XP_PCT`] of its experience.
+    /// A flagbearer not denied also pays its bonus, see
+    /// [`World::pledge_flag_bonus`].
     ///
     /// A hero's head is priced by its streak, which ends with it, and its
     /// death costs it its net worth over [`rules::DEATH_GOLD_LOSS_SHARE`],
@@ -49,7 +52,8 @@ impl World {
             Some(index) => {
                 let seat = &self.seats[index];
                 Bounty {
-                    gold: World::hero_bounty(i32::from(seat.streak)),
+                    gold: GoldRange::exactly(World::hero_bounty(i32::from(seat.streak))),
+                    bonus: 0,
                     xp: World::hero_kill_xp(seat.xp, i32::from(seat.streak), i32::from(seat.level)),
                 }
             }
@@ -81,10 +85,15 @@ impl World {
                 } else {
                     self.seats[index].last_hits += 1;
                 }
-                paid = self.bounty_after(killer, bounty.gold);
+                let gold = self.roll_gold(bounty.gold);
+                paid = self.bounty_after(killer, gold);
                 self.seats[index].gold += paid;
                 self.seats[index].net_worth += paid;
             }
+        }
+        if !denied && bounty.bonus > 0 {
+            let killer_seat = killer.and_then(|k| self.seat_of(k));
+            paid += self.pay_flag_bonus(at, other_side(side), bounty.bonus, killer_seat);
         }
         if denied {
             if self.kind.get(fallen).copied().is_some_and(is_lane_creep) {
@@ -99,6 +108,70 @@ impl World {
         let killer_seat = fallen_seat.and_then(|_| killer.and_then(|entity| self.seat_of(entity)));
         self.grant_xp_around(at, earners, bounty.xp, killer_seat, events);
         paid
+    }
+
+    /// Sets a flagbearer's bonus: [`rules::FLAGBEARER_BONUS_GOLD`] and a
+    /// share of one draw of its own gold range, drawn as it spawns.
+    pub(super) fn pledge_flag_bonus(&mut self, flagbearer: Entity) {
+        let Some(range) = self.bounty.get(flagbearer).map(|bounty| bounty.gold) else {
+            return;
+        };
+        let drawn = self.roll_gold(range);
+        if let Some(bounty) = self.bounty.get_mut(flagbearer) {
+            bounty.bonus =
+                rules::FLAGBEARER_BONUS_GOLD + drawn * rules::FLAGBEARER_BONUS_BOUNTY_PCT / 100;
+        }
+    }
+
+    /// Pays a fallen flagbearer's bonus to every seat of the earning side
+    /// whose living hero stands within [`rules::FLAGBEARER_BONUS_RADIUS`],
+    /// and to the killer's seat wherever it stands, each scaled by its own
+    /// hero's gold income. Answers what the killer's seat was paid.
+    fn pay_flag_bonus(
+        &mut self,
+        at: Vec2,
+        earners: Team,
+        bonus: i32,
+        killer_seat: Option<usize>,
+    ) -> i32 {
+        let radius = rules::units(rules::FLAGBEARER_BONUS_RADIUS);
+        let mut to_killer = 0;
+        for index in 0..self.seats.len() {
+            let seat = &self.seats[index];
+            if seat.team != earners {
+                continue;
+            }
+            let Some(unit) = seat.unit else {
+                continue;
+            };
+            let near = self.alive(unit)
+                && self
+                    .transform
+                    .get(unit)
+                    .is_some_and(|t| t.pos.within(at, radius));
+            if !near && killer_seat != Some(index) {
+                continue;
+            }
+            let paid = self.bounty_after(Some(unit), bonus);
+            self.seats[index].gold += paid;
+            self.seats[index].net_worth += paid;
+            if killer_seat == Some(index) {
+                to_killer = paid;
+            }
+        }
+        to_killer
+    }
+
+    /// One payout of a gold range, drawn evenly from it on the match's
+    /// bounty stream. A range of one amount draws nothing.
+    fn roll_gold(&mut self, range: GoldRange) -> i32 {
+        if range.min == range.max {
+            return range.min;
+        }
+        let span = u32::try_from(range.max - range.min + 1).expect("a bounty range is ordered");
+        let rolled = range.min + self.rng.global(Purpose::Bounty).below(span) as i32;
+        debug_assert!((range.min..=range.max).contains(&rolled));
+        rolled
     }
 
     /// Adds blows a seat's hero landed on enemy heroes and structures to

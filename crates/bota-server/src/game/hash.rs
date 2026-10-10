@@ -464,7 +464,14 @@ fn hash_modifier_kind(fnv: &mut Fnv, kind: ModifierKind) {
             fnv.i32(armor);
             fnv.i32(hp_per_second);
         }
-        ModifierKind::Inspired { hp_per_second } => hash_tagged(fnv, 13, hp_per_second),
+        ModifierKind::Inspired {
+            hp_per_second,
+            magic_resist_pct,
+        } => {
+            fnv.u8(13);
+            fnv.i32(hp_per_second);
+            fnv.i32(magic_resist_pct);
+        }
         ModifierKind::ArmorBroken { armor } => hash_tagged(fnv, 10, armor.raw),
         ModifierKind::MagicBroken { pct } => hash_tagged(fnv, 16, pct),
         ModifierKind::Burning {

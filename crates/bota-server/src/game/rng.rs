@@ -18,9 +18,11 @@ pub enum Purpose {
     Wave = 5,
     /// Pierce ordering.
     Pierce = 6,
+    /// What each kill paying a gold range pays.
+    Bounty = 7,
 }
 
-const PURPOSE_COUNT: usize = Purpose::Pierce as usize + 1;
+const PURPOSE_COUNT: usize = Purpose::Bounty as usize + 1;
 
 /// The root of all hidden randomness in one match, reproducible from the
 /// pair of a server key and a match id.

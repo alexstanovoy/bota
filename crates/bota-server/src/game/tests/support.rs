@@ -177,6 +177,23 @@ pub(super) fn seated_hero(world: &mut World, at: Vec2, hero: HeroId) -> Entity {
     unit
 }
 
+/// A hero of the plain kind sat in a fresh seat of a side with no gold.
+pub(super) fn seat_hero(world: &mut World, slot: u8, team: Team, at: Vec2) -> Entity {
+    let hero = world.spawn_hero(team, at, SlotId(slot), HeroId(0));
+    let mut seat = Seat::new(SlotId(slot), team, HeroId(0), 0, rules::STASH_SLOTS);
+    seat.unit = Some(hero);
+    world.seats.push(seat);
+    hero
+}
+
+/// What the death the events tell of paid its killer.
+pub(super) fn paid(events: &[Event]) -> Option<i32> {
+    events.iter().find_map(|event| match event.kind {
+        EventKind::Died { gold, .. } => Some(gold),
+        _ => None,
+    })
+}
+
 /// A hero that has learned one ability to its first level, with mana to spend.
 pub(super) fn caster(world: &mut World, at: Vec2, slot: usize) -> Entity {
     let hero = hero_at(world, at);
