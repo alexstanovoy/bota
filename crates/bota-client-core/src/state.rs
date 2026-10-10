@@ -2,7 +2,8 @@
 
 use bota_proto::{
     ClientMsg, EntityId, HeroId, LobbySlot, MatchInfo, MatchStats, Order, PlayerId, RejectReason,
-    ServerMsg, ShopEntry, SlotId, StockView, Team, TickMode, UnitKind, UnitView, Vec2, WorldView,
+    ServerMsg, ShopEntry, SlotId, StockView, TalentSlot, TalentView, Team, TickMode, UnitKind,
+    UnitView, Vec2, WorldView,
 };
 
 use crate::derive::Derived;
@@ -447,6 +448,24 @@ impl App {
             .iter()
             .find(|s| s.team == team && s.item.0 == item)
             .copied()
+    }
+
+    /// The talents of a seat's hero as the view tells them: learned, and
+    /// for one's own side what a skill point could go into.
+    pub fn talents_of(&self, slot: SlotId) -> Option<TalentView> {
+        self.view
+            .as_ref()?
+            .talents
+            .iter()
+            .find(|t| t.slot == slot)
+            .copied()
+    }
+
+    /// Spends a skill point of one's hero on a talent of its tree.
+    pub fn learn_talent(&mut self, talent: u8) {
+        self.send_order(Order::LearnTalent {
+            talent: TalentSlot(talent),
+        });
     }
 
     /// The name the player of a seat gave in the lobby, if any.

@@ -804,7 +804,7 @@ const SHADOW_FIEND_TALENTS: [TalentFace; 8] = [
         blurb: "Each stack of a raze's mark adds 30 more magic damage.",
     },
     TalentFace {
-        name: "+2 Feast of Souls Souls per Hero",
+        name: "+2 Feast of Souls Souls Per Hero",
         blurb: "A feast takes 2 more souls from every enemy hero.",
     },
     TalentFace {
@@ -812,7 +812,7 @@ const SHADOW_FIEND_TALENTS: [TalentFace; 8] = [
         blurb: "The presence takes 1.5 more armor from enemies near you.",
     },
     TalentFace {
-        name: "+0.2s Requiem Fear per Line",
+        name: "+0.2s Requiem Fear per Line (max +0.45s)",
         blurb: "Every requiem line fears, slows and tears 0.2 s longer, up to 0.45 s more in all.",
     },
     TalentFace {
@@ -824,7 +824,7 @@ const SHADOW_FIEND_TALENTS: [TalentFace; 8] = [
         blurb: "A raze also deals your attack damage, as physical damage.",
     },
     TalentFace {
-        name: "-30% Cast Point during Feast",
+        name: "Feast of Souls Grants +30% Cast Speed",
         blurb: "While a feast runs, cast points last 70% of their length.",
     },
 ];
