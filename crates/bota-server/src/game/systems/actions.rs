@@ -14,8 +14,8 @@ use super::hitting::entity_slot;
 use crate::game::{
     Action, ActionPhase, ActionState, BEATS_PER_TICK, Chance, Entity, Event, Hit, HitEffect,
     PendingCast, Projectile, Purpose, Ratio, Stats, Target, Visibility, World, ability,
-    ability_def, attack_gain, beats, cross, facing_gap, facing_towards, is_creep, is_structure,
-    rules, wire_id,
+    ability_def, attack_class_pct, attack_gain, beats, cross, facing_gap, facing_towards, is_creep,
+    is_structure, rules, wire_id,
 };
 
 /// What one swing deals, rolled when it lands.
@@ -644,10 +644,16 @@ impl World {
             Some(pct) => (damage * pct / 100, true),
             None => (damage, false),
         };
+        let class_pct = match (self.kind.get(attacker), self.kind.get(on)) {
+            (Some(&from), Some(&to)) => attack_class_pct(from, to),
+            _ => 100,
+        };
         let swing = Swing {
-            damage,
+            damage: damage * class_pct / 100,
             crit,
-            pierce: self.roll_pierce(attacker, on, stats),
+            pierce: self
+                .roll_pierce(attacker, on, stats)
+                .map(|bonus| bonus * class_pct / 100),
             physical_amp_bp: stats.damage_amp_bp(DamageKind::Physical),
             magical_amp_bp: stats.damage_amp_bp(DamageKind::Magical),
         };

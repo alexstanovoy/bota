@@ -58,13 +58,25 @@ source names the distribution; even is **[approximation]**, the engine's
 the experience. Experience is split evenly among the killer side's heroes
 within 1500.
 
-Attack modifiers, for the record — see *Not yet modelled* for which of these ship now:
+**Attack classes** (since 7.31; Liquipedia *Attack Damage*, *Buildings*,
+*Siege Creep*). Every attack is multiplied by a factor set by what swings and
+what it hits, before armor, crits and the magical pierce included:
 
-- `creep_irresolute` — melee and flagbearer: **−25 %** damage to heroes.
-- `creep_piercing` — ranged: **+50 %** to creeps, **−50 %** to heroes,
-  **−50 %** to heavy targets.
-- `creep_siege` — siege: **+150 %** to buildings; incoming **−50 %** from
-  heroes, **−30 %** from basic sources, **−40 %** from player-controlled units.
+| Attacker \ target | hero | other unit | Reinforced (siege creep, building) |
+|---|---|---|---|
+| Runty — melee, flagbearer | ×0.75 | ×1 | ×0.7 |
+| Piercing — ranged | ×0.5 | ×1.5 | ×0.35 |
+| Reinforced — siege creep, tower, fountain | ×1 | ×1 | ×2.5 |
+| hero | ×1 | ×1 | ×0.5 |
+| neutrals, everything else (no class) | ×1 | ×1 | ×1 |
+
+"Other unit" is every non-hero that is not Reinforced: lane and neutral
+creeps, couriers, wards. Spells are not attacks and take no factor. **This
+shifts the balance bota had before**: creeps hurt heroes a quarter (melee) or
+half (ranged) less, ranged creeps kill creeps half again as fast, heroes take
+towers down at half the old speed, and towers and siege creeps shred siege
+creeps and buildings.
+
 - **Inspiration Aura** (flagbearer, 7.40) — 700 radius, 0.5 s linger, allied
   **non-hero** units only (creeps; no heroes, wards or buildings): +3 health
   regen and +4 % magic resistance per upgrade interval the flagbearer spawned
@@ -433,37 +445,30 @@ barracks and fountains are 144, the Ancients 299 (Radiant) and 374 (Dire).
 
 ## Not yet modelled
 
-1. **Attack classes.** Since 7.31 Dota multiplies attack damage by class:
-   Runty (melee, flagbearer) ×0.75 to heroes and ×0.7 to Reinforced;
-   Piercing (ranged) ×1.5 to non-heroes, ×0.5 to heroes, ×0.35 to
-   Reinforced; Reinforced (siege creeps and buildings) takes ×0.5 from heroes
-   and deals ×2.5 to Reinforced. Mitigation reads only the damage kind, so
-   creep damage against heroes and buildings, hero damage against buildings,
-   and damage into siege creeps are off by exactly those factors.
-2. **No per-swing damage roll.** A unit has one damage number, so the 19–23 style
+1. **No per-swing damage roll.** A unit has one damage number, so the 19–23 style
    ranges collapse to one value.
-3. **No day and night.** Neutrals never sleep, their aggro range is always 240,
+2. **No day and night.** Neutrals never sleep, their aggro range is always 240,
    and each uses its day vision.
-4. **Neutral abilities are inert.** Stats and rosters are real; auras, stuns,
+3. **Neutral abilities are inert.** Stats and rosters are real; auras, stuns,
    heals and the golem split are not.
-5. **`AGGRO_TIE_RANGE`** is an approximation of "about equally close" (§1.5).
+4. **`AGGRO_TIE_RANGE`** is an approximation of "about equally close" (§1.5).
    Valve has never published the real rule.
-6. **No flooded camps.** §1.6.5 needs a river that knows which camps it covers
+5. **No flooded camps.** §1.6.5 needs a river that knows which camps it covers
    and a 5-minute promotion clock. The camp table carries a `flooded` flag that
    nothing reads.
-7. **Neutral upgrades land at spawn only.** A neutral carries the upgrades of
+6. **Neutral upgrades land at spawn only.** A neutral carries the upgrades of
    the tick it spawned on, and an upgrade adds no attack speed (§1.6).
-8. **No invisibility, untargetability or disarm.** The flee on damage from an
+7. **No invisibility, untargetability or disarm.** The flee on damage from an
    invisible unit and the untargetable rules of §1.6, and the disarm rule of
    §1.4, have nothing to act on.
-9. **Order aggro cools down per creep.** Liquipedia keeps the 3 s cooldown on
+8. **Order aggro cools down per creep.** Liquipedia keeps the 3 s cooldown on
    the ordering hero (it starts even with no creep near); bota keeps it on
    each creep drawn.
-10. **Spells draw creeps.** `rouse_by_cast` answers a unit-target spell at an
-    enemy hero like an attack order; Liquipedia says lane creeps ignore casts.
-11. **Super and mega creeps** carry pre-7.41 numbers: Liquipedia lists super
+9. **Spells draw creeps.** `rouse_by_cast` answers a unit-target spell at an
+   enemy hero like an attack order; Liquipedia says lane creeps ignore casts.
+10. **Super and mega creeps** carry pre-7.41 numbers: Liquipedia lists super
     melee 36–44 damage, super ranged 41–46, mega melee 1270 health and 96–104
     damage, mega ranged 1015 and 131–136; bota has 41–49, 46–51 and mega as a
     faster-swinging super.
-12. **Flying attackers never miss uphill.** 7.41 lets units with free movement
+11. **Flying attackers never miss uphill.** 7.41 lets units with free movement
     miss uphill too.

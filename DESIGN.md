@@ -1179,6 +1179,16 @@ drops as unseen, so gating on sight says the same thing without the churn. Toget
 with strike sight, an archer on high ground draws nobody with its first swing, is shown
 by its first strike, and draws the creeps with every swing after.
 
+### Attack classes
+
+Dota's attack classes (CREEPS.md §1.1) are a factor on the swing, taken in `strike`
+when the blow or the missile is made: the attacker and the target are both known there,
+a missile carries the result, and a crit and the magical pierce riding on the swing are
+scaled with it, as Dota scales every conditional attack bonus. The class is read off the
+`UnitKind`, not stored on the `UnitDef`: every kind maps to exactly one class (super and
+mega creeps share their kinds' classes), so a table field would be a second place to
+keep the same fact. Spells take no factor.
+
 ### Looking at what is not there
 
 Two different things are not there, and they are answered in two different

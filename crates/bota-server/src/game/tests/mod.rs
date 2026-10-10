@@ -1,4 +1,5 @@
 mod aggro_view;
+mod attack_classes;
 mod attacks;
 mod auras;
 mod bounty;

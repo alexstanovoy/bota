@@ -1,4 +1,5 @@
 pub mod ability;
+mod attack_class;
 mod blockers;
 mod camp;
 mod hero;
@@ -17,6 +18,7 @@ mod unit_neutral;
 mod wave;
 
 pub use ability::*;
+pub use attack_class::*;
 pub use blockers::*;
 pub use camp::*;
 pub use hero::*;
