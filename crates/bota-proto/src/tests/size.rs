@@ -57,6 +57,7 @@ fn an_order_stays_small() {
             seq: 12345,
             unit: None,
             order,
+            seen: Some(u32::MAX),
         };
         let len = encoded_len(&msg);
         assert!(len <= budget, "order encoded to {len} bytes: {msg:?}");
@@ -92,9 +93,10 @@ fn the_widest_cheat_order_fits_its_budget() {
                 ticks: MAX_MODIFIER_TICKS,
             },
         },
+        seen: Some(u32::MAX),
     };
     let len = encoded_len(&msg);
-    assert_eq!(len, 70, "the widest cheat order is pinned");
+    assert_eq!(len, 76, "the widest cheat order is pinned");
 }
 
 #[test]

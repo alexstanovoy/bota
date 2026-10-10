@@ -5,6 +5,7 @@ mod bounty;
 mod cast;
 mod courier;
 mod creep_ai;
+mod delay;
 mod determinism;
 mod feast;
 mod fiend;

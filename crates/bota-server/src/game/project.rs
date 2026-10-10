@@ -107,6 +107,7 @@ impl World {
             planted_trees: self.trees.planted().iter().map(|tree| tree.at).collect(),
             loot,
             aggro,
+            order_delays: Vec::new(),
         }
     }
 

@@ -295,6 +295,17 @@ pub struct PlayerView {
     pub respawn_left: u32,
 }
 
+/// How late one seat's orders take effect, as the server measured it.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct OrderDelayView {
+    /// Which seat.
+    pub slot: SlotId,
+    /// Ticks the latest applied order of this seat that named its view took
+    /// effect after the earliest tick it could have: zero for an order given on
+    /// the view of tick `T` that took effect on tick `T + 1`.
+    pub ticks: u32,
+}
+
 /// Everything one team is allowed to know, as of one tick.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct WorldView {
@@ -321,6 +332,10 @@ pub struct WorldView {
     /// [`EntityId`].
     pub loot: Vec<LootView>,
     /// Whom the units fight, at most one entry a unit of
-    /// [`units`](Self::units), sorted by [`EntityId`]. Last on the wire.
+    /// [`units`](Self::units), sorted by [`EntityId`].
     pub aggro: Vec<AggroView>,
+    /// The order delay of every seat this view is through whose applied
+    /// orders named the view they were given on, sorted by [`SlotId`]. Empty
+    /// until such an order takes effect. Last on the wire.
+    pub order_delays: Vec<OrderDelayView>,
 }

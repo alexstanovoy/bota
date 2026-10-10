@@ -36,6 +36,7 @@ pub fn snapshot(tick: u32) -> ReplayRecord {
             projectiles: Vec::new(),
             loot: Vec::new(),
             aggro: Vec::new(),
+            order_delays: Vec::new(),
             felled_trees: Vec::new(),
             planted_trees: Vec::new(),
         },

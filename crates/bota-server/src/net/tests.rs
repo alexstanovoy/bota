@@ -10,6 +10,7 @@ use bota_proto::{
     Team, Vec2, WorldView, encode_frame_to_vec,
 };
 
+use crate::game::OrderDelay;
 use crate::game_loop::{ServerOpts, run};
 
 struct TestClient {
@@ -92,6 +93,7 @@ fn realtime(seed: u64) -> ServerOpts {
         immortal_structures: false,
         immortal_heroes: false,
         dummy_seat: false,
+        order_delays: Vec::new(),
     }
 }
 
@@ -102,6 +104,7 @@ fn move_order(seq: u32, x: i32, y: i32) -> ClientMsg {
         order: Order::Move {
             target: Target::Pos(Vec2::from_ints(x, y)),
         },
+        seen: None,
     }
 }
 
@@ -152,6 +155,7 @@ fn a_realtime_match_reaches_two_clients() {
         order: Order::Buy {
             item: bota_proto::ItemId(999),
         },
+        seen: None,
     });
     let (seq, reason) = c1.recv_until(|msg| match msg {
         ServerMsg::OrderRejected { seq, reason } => Some((seq, reason)),
@@ -271,4 +275,52 @@ fn a_dummy_seat_lets_one_client_start_a_match_alone() {
     assert_eq!(client.recv_until(match_start_picks), 2);
     let view = client.recv_until(|msg| snapshot(msg).filter(|view| view.tick > 1));
     assert_eq!(view.players.len(), 2);
+}
+
+#[test]
+fn a_delayed_order_takes_effect_late_and_its_delay_is_told() {
+    const DELAY: u32 = 3;
+    let mut opts = realtime(12);
+    opts.mode = bota_proto::TickMode::Lockstep;
+    opts.ack_timeout_ticks = 600;
+    opts.dummy_seat = true;
+    opts.order_delays = vec![OrderDelay {
+        base: DELAY,
+        jitter: 0,
+    }];
+    let addr = start_server(opts);
+    let (mut client, slot) = join_as_bot(addr, "late");
+    let slot = slot.expect("a seat");
+    let hero_of = |view: &WorldView| {
+        let unit = view.players.iter().find(|p| p.slot == slot)?.unit?;
+        let hero = view.units.iter().find(|u| u.id == unit)?;
+        Some((hero.pos, hero.facing))
+    };
+    let first = client.recv_until(snapshot);
+    let at_rest = hero_of(&first).expect("the hero stands");
+    client.send(&ClientMsg::Order {
+        seq: 1,
+        unit: None,
+        order: Order::Move {
+            target: Target::Pos(Vec2::from_ints(-2000, 3000)),
+        },
+        seen: Some(first.tick),
+    });
+    client.send(&ClientMsg::Ack { tick: first.tick });
+    let due = first.tick + 1 + DELAY;
+    loop {
+        let view = client.recv_until(snapshot);
+        client.send(&ClientMsg::Ack { tick: view.tick });
+        if view.tick < due {
+            assert_eq!(hero_of(&view), Some(at_rest), "tick {}", view.tick);
+            assert!(view.order_delays.is_empty());
+            continue;
+        }
+        assert_ne!(hero_of(&view), Some(at_rest));
+        assert_eq!(
+            view.order_delays,
+            vec![bota_proto::OrderDelayView { slot, ticks: DELAY }]
+        );
+        return;
+    }
 }

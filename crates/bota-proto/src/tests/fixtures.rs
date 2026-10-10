@@ -188,6 +188,10 @@ pub fn world_view(creeps: u32) -> WorldView {
         planted_trees: Vec::new(),
         loot: vec![loot_view()],
         aggro: (0..creeps).map(|i| aggro_view(100 + i)).collect(),
+        order_delays: vec![OrderDelayView {
+            slot: SlotId(0),
+            ticks: 3,
+        }],
     }
 }
 
@@ -396,6 +400,7 @@ pub fn empty_world_view() -> WorldView {
         planted_trees: Vec::new(),
         loot: Vec::new(),
         aggro: Vec::new(),
+        order_delays: Vec::new(),
     }
 }
 
@@ -466,6 +471,7 @@ pub fn all_client_msgs() -> Vec<ClientMsg> {
             order: Order::Attack {
                 target: Target::Unit(entity(7)),
             },
+            seen: Some(5399),
         },
         ClientMsg::Ack { tick: 5400 },
         ClientMsg::ViewAs {
