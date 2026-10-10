@@ -196,6 +196,18 @@ pub fn world_view(creeps: u32) -> WorldView {
             tick: 5398,
             events: all_events().into_iter().take(2).collect(),
         }],
+        stock: vec![stock_view()],
+    }
+}
+
+/// A shop down to one of three, the next due in a minute.
+pub fn stock_view() -> StockView {
+    StockView {
+        team: Team::Radiant,
+        item: ItemId(53),
+        left: 1,
+        max: 3,
+        restock_left: 1800,
     }
 }
 
@@ -406,6 +418,7 @@ pub fn empty_world_view() -> WorldView {
         aggro: Vec::new(),
         order_delays: Vec::new(),
         skipped_ticks: Vec::new(),
+        stock: Vec::new(),
     }
 }
 

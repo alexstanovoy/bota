@@ -606,6 +606,7 @@ fn a_tick(tick: u32, units: Vec<UnitView>, players: Vec<PlayerView>) -> WorldVie
         aggro: Vec::new(),
         order_delays: Vec::new(),
         skipped_ticks: Vec::new(),
+        stock: Vec::new(),
     }
 }
 

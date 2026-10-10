@@ -146,5 +146,6 @@ fn reject_reasons_are_tagged_in_declaration_order() {
         RejectReason::NotInBag,
         RejectReason::NoCheats,
         RejectReason::BadCheat,
+        RejectReason::OutOfStock,
     ]);
 }

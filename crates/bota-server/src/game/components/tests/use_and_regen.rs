@@ -6,7 +6,7 @@ use super::fixtures::*;
 
 #[test]
 fn catalog_appends_numeric_mango_with_one_charge_and_self_aim() {
-    assert_eq!(crate::game::ITEMS.len(), 52);
+    assert_eq!(crate::game::ITEMS.len(), 54);
     let def = item_def(MANGO).expect("Mango must exist at item id 42");
     assert_eq!(def.cost, 65);
     assert_eq!(def.charges, 1);

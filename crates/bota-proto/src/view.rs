@@ -319,6 +319,21 @@ pub struct SkippedTick {
     pub events: Vec<EventKind>,
 }
 
+/// What one side's shop has left of an item sold from a limited stock.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct StockView {
+    /// Whose shop.
+    pub team: Team,
+    /// Which item.
+    pub item: ItemId,
+    /// How many may be bought right now. Zero refuses a purchase.
+    pub left: u8,
+    /// How many the shop holds at most.
+    pub max: u8,
+    /// Ticks until the shop gains one more. Zero while it holds `max`.
+    pub restock_left: u32,
+}
+
 /// Everything one team is allowed to know, as of one tick.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct WorldView {
@@ -354,6 +369,9 @@ pub struct WorldView {
     /// Every tick after the previous snapshot the receiver was sent and before
     /// this one, oldest first, each with its events: a receiver too slow for
     /// every snapshot is sent the latest one. Empty when none was skipped.
-    /// Last on the wire.
     pub skipped_ticks: Vec<SkippedTick>,
+    /// What the shop has left of each item sold from a limited stock, for
+    /// the viewing side, or for both sides in a view of everything; sorted
+    /// by [`Team`], then by [`ItemId`]. Last on the wire.
+    pub stock: Vec<StockView>,
 }

@@ -72,7 +72,7 @@ pub struct HeroFace {
 }
 
 /// Every ability, in id order.
-pub const ABILITIES: [AbilityFace; 20] = [
+pub const ABILITIES: [AbilityFace; 21] = [
     AbilityFace {
         id: 0,
         name: "Crit",
@@ -193,10 +193,16 @@ pub const ABILITIES: [AbilityFace; 20] = [
         blurb: "No target, goes off beside whatever you are doing. For 8 s: +35/50/65/80 attack speed and +4/6/8/10% movement speed, and every 0.5 s souls from two enemies within 600 you have not fed on yet, heroes first: 3 a hero, 1 a creep, from up to 4/6/8/10 enemies. Then the souls of those still standing go; the rest stay 8 s past the cap. 60/65/70/75 mana, 21 s wait.",
         art: Art::Missile,
     },
+    AbilityFace {
+        id: 20,
+        name: "Grenade",
+        blurb: "A Blood Grenade in flight, at 1100 a second, bursting 300 wide where it lands.",
+        art: Art::Missile,
+    },
 ];
 
 /// Every item the shop sells, in id order.
-pub const ITEMS: [ItemFace; 52] = [
+pub const ITEMS: [ItemFace; 54] = [
     ItemFace {
         id: 0,
         name: "Boots",
@@ -561,10 +567,24 @@ pub const ITEMS: [ItemFace; 52] = [
         blurb: "+50 attack damage, +50 attack speed, +50 attack range in melee hands. 80% of attacks pierce: they cannot miss and deal 70 bonus magical damage. Not against buildings. Of several pierces carried, only the best counts.",
         icon: include_bytes!("../assets/items/monkey_king_bar.svg"),
     },
+    ItemFace {
+        id: 52,
+        name: "Lace",
+        stats: "+15 MS",
+        blurb: "+15 movement speed, on top of boots. Of several laces carried, only one counts.",
+        icon: include_bytes!("../assets/items/wind_lace.svg"),
+    },
+    ItemFace {
+        id: 53,
+        name: "Grenade",
+        stats: "+50 HP",
+        blurb: "+50 health. Thrown at a spot within 900, 0.2 s cast point, costs 75 health but never the last point: enemy heroes and creeps within 300 of where it lands take 50 magic damage, then 15 every second for 5 s, slowed 15%. Stacks two to a slot. The shop holds three at most, two at the start, one more every 3 min. 10 s wait.",
+        icon: include_bytes!("../assets/items/blood_grenade.svg"),
+    },
 ];
 
 /// Every timed effect, in id order.
-pub const EFFECTS: [EffectFace; 21] = [
+pub const EFFECTS: [EffectFace; 22] = [
     EffectFace {
         id: 0,
         name: "Frenzy",
@@ -669,6 +689,11 @@ pub const EFFECTS: [EffectFace; 21] = [
         id: 20,
         name: "Fed",
         blurb: "Souls a feast took from enemies since fallen, kept past the cap until it runs out.",
+    },
+    EffectFace {
+        id: 21,
+        name: "Grenade",
+        blurb: "Slowed 15% and losing 15 health to magic every second, from a Blood Grenade.",
     },
 ];
 

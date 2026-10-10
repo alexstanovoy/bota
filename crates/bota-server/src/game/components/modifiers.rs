@@ -101,6 +101,13 @@ pub enum ModifierKind {
     /// Runs from whoever put it on, and neither swings nor casts, until it
     /// lifts.
     Feared,
+    /// Walks slower by [`rules::GRENADE_SLOW_PCT`] percent, and takes
+    /// [`rules::GRENADE_DAMAGE_PER_SECOND`] magical damage from whoever put it
+    /// on every whole second after `since`.
+    BloodGrenade {
+        /// The tick the first Blood Grenade of the run landed.
+        since: u32,
+    },
 }
 
 /// One modifier on an entity.

@@ -1,0 +1,10 @@
+<svg width="100%" viewBox="0 0 680 260" role="img" xmlns="http://www.w3.org/2000/svg">
+  <title>Blood Grenade</title>
+  <rect x="220" y="50" width="240" height="160" fill="#2a1a1c"/>
+  <rect x="328" y="70" width="24" height="20" rx="3" fill="#7a6a5a"/>
+  <path d="M352 76 Q378 66 388 86" fill="none" stroke="#b8a888" stroke-width="5" stroke-linecap="round"/>
+  <circle cx="340" cy="140" r="52" fill="#8f1d24"/>
+  <circle cx="340" cy="140" r="52" fill="none" stroke="#4d0f14" stroke-width="5"/>
+  <path d="M296 140 C310 150 370 150 384 140 C380 170 360 190 340 190 C320 190 300 170 296 140Z" fill="#c22b33"/>
+  <ellipse cx="320" cy="118" rx="10" ry="16" transform="rotate(30 320 118)" fill="#e4646b" opacity="0.8"/>
+</svg>

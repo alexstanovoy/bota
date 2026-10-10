@@ -80,6 +80,10 @@ impl EffectId {
     /// the souls held past the cap are lost, `stacks` the souls it took from
     /// enemies that have died since.
     pub const FEAST_LINGER: EffectId = EffectId(20);
+    /// A Blood Grenade's debuff: `ticks_left` until it lifts. The unit is
+    /// slowed and loses health on every whole second since the first one
+    /// landed.
+    pub const BLOOD_GRENADE: EffectId = EffectId(21);
 }
 
 /// An index into a unit's ability slots, as listed in

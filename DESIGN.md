@@ -1969,6 +1969,47 @@ burn.
 - The souls effect (11) may count up to fifty while a feast runs or lingers.
 - Raze stacks (effect 15) last at most 180 ticks.
 
+## Wind Lace, Blood Grenade and the shop's stock at Dota 7.41f
+
+The numbers are Dota 7.41f's, read in October 2026 from the official item data
+(`https://www.dota2.com/datafeed/itemdata?language=english&item_id=1123` for the
+grenade, `244` for the lace, `29` for the boots), the item KV file
+`scripts/npc/items.txt` of `dotabuff/d2vpkr` (client 6957, 2026-10-09: stock, stack and
+behaviour fields the datafeed does not carry), the official patch notes 7.33–7.41f from
+the same datafeed (the grenade was added in 7.33, cheapened and restocked in 7.34; the
+lace went to 225 gold and +15 in 7.38), and Liquipedia's Blood Grenade and Movement
+Speed pages for the mechanics neither states.
+
+| | Dota 7.41f | bota |
+|---|---|---|
+| Wind Lace | 225 gold, +15 movement speed | the same |
+| Blood Grenade cost, passive | 50 gold, +50 health | the same, per slot |
+| Use | point, 900 range, 0.2 s cast point, 75 health (set, never lethal), 10 s cooldown | the same |
+| Projectile | 1100 a second to the spot | the same, `ProjectileView` with `AbilityId(20)` |
+| Burst | 300 radius, enemy heroes and basic units: debuff, then 50 magical | enemy heroes and creeps |
+| Debuff | 15% slow, 15 magical every second from 1 s after, five times, 5 s; a second grenade refreshes the time and keeps the beat | the same, `EffectId(21)` |
+| Stacking | two to a slot, one charge a purchase, not shareable | two to a slot |
+| Stock | two at the start, three at most, one more every 180 s, per side | the same |
+
+- Boots and Wind Lace stack, but neither stacks with itself: Dota keeps flat movement
+  speed in groups, the boots group (Boots of Speed, Power Treads, Phase Boots, ...) and
+  the Wind Lace group each count only their fastest member, and the groups add. Before
+  this, bota summed every carried bonus, so two Boots of Speed gave +90. `Carried` keeps
+  the two groups apart (`move_speed`, `lace_speed`), each the best of its kind.
+- The grenade's debuff is its own modifier kind rather than a `Slowed` beside a
+  `Burning`: `Burning` beats on the world's 0.1 s clock and a second `Slowed` replaces
+  whatever slow is on, while the grenade beats on whole seconds from its own landing and
+  must not replace a stronger slow. It holds `5 s + 1 tick`: modifier time runs down in
+  upkeep before the effects phase deals the beat, so the fifth beat at exactly 5 s needs
+  the extra tick to land. Status resistance shortens it like any slow.
+- The burst picks its targets as a raze does: hostile, seen, centre within the radius.
+- The health cost sets health after the use went off, down to one point at the least,
+  and is not damage: it breaks no drink and feeds no kill.
+- Stock is per side, on `World::shop_stock`, ticked in upkeep. A shelf that is full does
+  not run its clock; buying from a full shelf starts it. The wire carries the viewer's
+  shelves as `WorldView::stock` (tail-appended), and a purchase from an empty shelf is
+  refused with `RejectReason::OutOfStock`. A sold grenade does not go back on the shelf.
+
 ## Applied unit modifiers and the general stats behind them
 
 A modifier is a bounded stat change that a cheat or trusted match setup puts on a unit;
@@ -2025,7 +2066,7 @@ Shadowraze stack bonus, by the dealer's field for the damage kind; a blow with n
 source is left alone, and pure damage stays unmitigated but still scales. The outgoing
 scale is captured when a blow or its carrier is created (attacks, projectiles, hooks,
 requiem lines), as a crit is, so nothing that happens to the source afterwards changes
-a hit in flight. Status resistance scales the ticks of `Stunned`, `Feared`, `Slowed` and `MagicBroken`
+a hit in flight. Status resistance scales the ticks of `Stunned`, `Feared`, `Slowed`, `MagicBroken` and `BloodGrenade`
 wherever they are put on, down to one tick, and never touches buffs; time already held
 is not shortened again when a disable is extended. A hold renewed every tick of a
 channel (Dismember, the hook's drag) has its ticks shortened too, but its length is the
