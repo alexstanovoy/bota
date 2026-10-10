@@ -2,8 +2,8 @@
 //! target, swung for real.
 
 use crate::game::{
-    HERO, MELEE_CREEP, NEUTRALS, NeutralKind, RANGED_CREEP, SHADOW_FIEND, SIEGE_CREEP, TOWERS,
-    UnitDef, World,
+    HERO, MEGA_MELEE_CREEP, MELEE_CREEP, NEUTRALS, NeutralKind, RANGED_CREEP, SHADOW_FIEND,
+    SIEGE_CREEP, SUPER_MELEE_CREEP, TOWERS, UnitDef, World,
 };
 use bota_proto::{Attributes, Team, UnitKind, Vec2};
 
@@ -115,6 +115,52 @@ fn every_swing_draws_its_damage_evenly_from_the_range() {
         assert!(
             (mean_x10 - (low + high) * 5).abs() <= 3,
             "{label}: mean {mean_x10} tenths"
+        );
+    }
+}
+
+#[test]
+fn the_view_tells_the_range_every_swing_really_draws_from() {
+    // A hero, a lane creep, a super one, a mega one (a fixed hit) and a tower.
+    let attackers: [&'static UnitDef; 5] = [
+        &SHADOW_FIEND,
+        &MELEE_CREEP,
+        &SUPER_MELEE_CREEP,
+        &MEGA_MELEE_CREEP,
+        &TOWERS[0],
+    ];
+    for attacker in attackers {
+        let mut world = World::new();
+        let from = world.spawn_unit(attacker, Team::Radiant, Vec2::from_ints(1500, 1500));
+        let on = world.spawn_unit(&CREEP_DUMMY, Team::Dire, Vec2::from_ints(1610, 1500));
+        world.settle();
+        let unit = world
+            .view_full()
+            .units
+            .into_iter()
+            .find(|unit| unit.id == crate::game::wire_id(from))
+            .expect("the attacker is in the view");
+        let taken: Vec<i32> = (0..200)
+            .map(|_| {
+                world.fill_pools(on);
+                one_swing_takes(&mut world, from, on)
+            })
+            .collect();
+        let label = format!("{:?}", attacker.kind);
+        assert_eq!(
+            taken.iter().min(),
+            Some(&unit.attack_damage_min),
+            "{label}: the least"
+        );
+        assert_eq!(
+            taken.iter().max(),
+            Some(&unit.attack_damage_max),
+            "{label}: the most"
+        );
+        assert_eq!(
+            unit.attack_damage,
+            (unit.attack_damage_min + unit.attack_damage_max) / 2,
+            "{label}: the middle"
         );
     }
 }

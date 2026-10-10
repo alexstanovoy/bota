@@ -321,6 +321,8 @@ impl World {
             max_mana: stats.max_mana.to_int(),
             move_speed: stats.move_speed,
             attack_damage: stats.damage + stats.damage_spread / 2,
+            attack_damage_min: stats.damage,
+            attack_damage_max: stats.damage + stats.damage_spread,
             attack_range: stats.attack_range,
             attack_time: after_speed(stats.attack_time, stats.attack_speed),
             attack_point: after_speed(stats.attack_point, stats.attack_speed),

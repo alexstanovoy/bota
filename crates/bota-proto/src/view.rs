@@ -190,6 +190,12 @@ pub struct UnitView {
     pub items: Vec<Option<ItemView>>,
     /// Effects currently on the unit, timed and counted alike.
     pub effects: Vec<EffectView>,
+    /// The least damage a swing draws, before the target's armor and attack
+    /// class: the base range's floor with every bonus added.
+    pub attack_damage_min: i32,
+    /// The most damage a swing draws, on the same terms. `attack_damage` is
+    /// the middle of the two, rounded down.
+    pub attack_damage_max: i32,
 }
 
 /// A swing under way that has not struck yet.

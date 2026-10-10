@@ -14,8 +14,8 @@ use super::hitting::entity_slot;
 use crate::game::{
     Action, ActionPhase, ActionState, BEATS_PER_TICK, Chance, Entity, Event, FeastPhase, Hit,
     HitEffect, PendingCast, Projectile, Purpose, Ratio, Stats, Talent, Target, Visibility, World,
-    ability_def, attack_class_pct, attack_gain, beats, cross, facing_gap, facing_towards,
-    is_creep, is_structure, rules, wire_id,
+    ability_def, attack_class_pct, attack_gain, beats, cross, facing_gap, facing_towards, is_creep,
+    is_structure, rules, wire_id,
 };
 
 /// What one swing deals, rolled when it lands.

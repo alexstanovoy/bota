@@ -73,10 +73,6 @@ pub struct HeroFace {
     /// The least base attack damage of a swing, before attributes; absent
     /// where the base grows by level and the panel cannot tell it.
     pub base_damage: Option<i32>,
-    /// How much more than the least a swing may deal: each swing draws
-    /// evenly from `0..=damage_spread` (Dota's damage range, bota's
-    /// `UnitDef::damage_spread`). The wire carries only the middle.
-    pub damage_spread: i32,
 }
 
 /// Every ability, in id order.
@@ -650,14 +646,12 @@ pub const HEROES: [HeroFace; 2] = [
         id: 0,
         name: "Pudge",
         base_damage: None,
-        damage_spread: 0,
     },
     HeroFace {
         id: 1,
         name: "Shadow Fiend",
         // Dota 7.41f, as bota rolls it: 16 to 22, agility on top.
         base_damage: Some(16),
-        damage_spread: 6,
     },
 ];
 
@@ -813,26 +807,9 @@ pub struct DamageRange {
     pub bonus: i32,
 }
 
-/// How much more than the least a swing of a unit that is not a hero may
-/// deal, by kind (Dota 7.41f, as bota rolls it). The wire tells only the
-/// middle of the range, and not a lane creep's rank: super and mega creeps
-/// draw from a wider range than these. Neutrals show one number.
-fn kind_spread(kind: bota_proto::UnitKind) -> i32 {
-    use bota_proto::UnitKind;
-    match kind {
-        UnitKind::CreepMelee | UnitKind::CreepFlagbearer => 4,
-        UnitKind::CreepRanged => 5,
-        UnitKind::CreepSiege => 11,
-        UnitKind::Tower => 4,
-        _ => 0,
-    }
-}
-
-/// Splits the middle of a unit's damage range, as the view tells it, into
-/// the range a swing draws from and the bonus on top.
+/// Splits the range a swing draws from, as the view tells it, into the base
+/// range and the bonus on top.
 pub fn damage_range(unit: &bota_proto::UnitView) -> DamageRange {
-    let face = unit.hero.and_then(|h| hero(h.0));
-    let spread = face.map_or_else(|| kind_spread(unit.kind), |f| f.damage_spread);
     let primary = |a: bota_proto::Attribute| {
         let at = &unit.attributes;
         let value = match a {
@@ -842,14 +819,15 @@ pub fn damage_range(unit: &bota_proto::UnitView) -> DamageRange {
         };
         value.to_f32().floor() as i32
     };
-    let base_middle = face
-        .and_then(|f| f.base_damage)
-        .map(|least| least + spread / 2 + unit.primary.map_or(0, primary));
-    let bonus = base_middle.map_or(0, |b| (unit.attack_damage - b).max(0));
-    let min = unit.attack_damage - bonus - spread / 2;
+    let base_least = unit
+        .hero
+        .and_then(|h| hero(h.0))
+        .and_then(|face| face.base_damage)
+        .map(|least| least + unit.primary.map_or(0, primary));
+    let bonus = base_least.map_or(0, |base| (unit.attack_damage_min - base).max(0));
     DamageRange {
-        min,
-        max: min + spread,
+        min: unit.attack_damage_min - bonus,
+        max: unit.attack_damage_max - bonus,
         bonus,
     }
 }
