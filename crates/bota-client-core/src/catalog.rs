@@ -669,6 +669,7 @@ pub const EFFECTS: [EffectFace; 22] = [
         id: 21,
         name: "Grenade",
         blurb: "Slowed 15% and losing 15 health to magic every second, from a Blood Grenade.",
+        harmful: true,
     },
 ];
 

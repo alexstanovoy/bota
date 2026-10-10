@@ -2,7 +2,7 @@
 
 use bota_proto::{
     ClientMsg, EntityId, HeroId, LobbySlot, MatchInfo, MatchStats, Order, PlayerId, RejectReason,
-    ServerMsg, ShopEntry, SlotId, Team, TickMode, UnitKind, UnitView, Vec2, WorldView,
+    ServerMsg, ShopEntry, SlotId, StockView, Team, TickMode, UnitKind, UnitView, Vec2, WorldView,
 };
 
 use crate::derive::Derived;
@@ -435,6 +435,18 @@ impl App {
             pov: None,
             quick_buy: None,
         }
+    }
+
+    /// What one's side's shop has left of an item sold from a limited
+    /// stock; absent for an item without one.
+    pub fn stock_of(&self, item: u16) -> Option<StockView> {
+        let team = self.my_team().or_else(|| self.fog_team())?;
+        self.view
+            .as_ref()?
+            .stock
+            .iter()
+            .find(|s| s.team == team && s.item.0 == item)
+            .copied()
     }
 
     /// The name the player of a seat gave in the lobby, if any.
