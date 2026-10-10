@@ -26,6 +26,9 @@ pub struct World {
     pub tick: u32,
     /// A place per player.
     pub seats: Vec<Seat>,
+    /// What each side's shop has left of every item sold from a limited
+    /// stock, by side, then in catalog order.
+    pub shop_stock: Vec<crate::game::ShopStock>,
     /// The completed result; `Team::Neutral` denotes a Map2 draw.
     pub winner: Option<Team>,
     /// Whether cheat orders are honoured.
@@ -123,6 +126,8 @@ pub struct World {
     pub mark: Table<Mark>,
     /// The line of a requiem each entity that is one is flying.
     pub requiem_line: Table<RequiemLine>,
+    /// The Blood Grenade each entity that is one is flying.
+    pub grenade: Table<crate::game::Grenade>,
     /// What each entity has gathered and keeps.
     pub stacks: Table<Stacks>,
     /// The feast of souls each entity that cast one has on it.
@@ -205,6 +210,7 @@ impl World {
         World {
             tick: 0,
             seats: Vec::new(),
+            shop_stock: crate::game::fresh_stock(),
             winner: None,
             cheats: false,
             immortal_structures: false,
@@ -250,6 +256,7 @@ impl World {
             hook: Table::new(),
             mark: Table::new(),
             requiem_line: Table::new(),
+            grenade: Table::new(),
             stacks: Table::new(),
             feast: Table::new(),
             errand: Table::new(),
@@ -569,8 +576,8 @@ impl World {
         events
     }
 
-    /// Waves, camps, cooldowns, item builds, gold, respawns, couriers, item
-    /// errands, sales and what runs out.
+    /// Waves, camps, cooldowns, item builds, gold, shop stock, respawns,
+    /// couriers, item errands, sales and what runs out.
     fn step_upkeep(&mut self) {
         let _profile = self.scope(Phase::Upkeep);
         self.spawn_waves();
@@ -578,6 +585,7 @@ impl World {
         self.tick_gear();
         self.assemble_bags();
         self.passive_gold();
+        self.restock_shops();
         self.tick_respawns();
         self.tick_couriers();
         self.tick_handling();
@@ -585,12 +593,14 @@ impl World {
         self.tick_expiries();
     }
 
-    /// Modifiers, hooks, requiem lines, the forest, presence and auras.
+    /// Modifiers, hooks, requiem lines, grenades, the forest, presence and
+    /// auras.
     fn step_effects(&mut self) {
         let _profile = self.scope(Phase::Effects);
         self.tick_modifiers();
         self.tick_hooks();
         self.tick_requiem_lines();
+        self.tick_grenades();
         self.tick_feasts();
         if self.trees.tick(self.tick) {
             self.lay_sight_block();

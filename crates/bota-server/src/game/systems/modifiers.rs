@@ -20,6 +20,7 @@ pub fn resisted_ticks(stats: &Table<Stats>, on: Entity, kind: ModifierKind, tick
             | ModifierKind::Feared
             | ModifierKind::Slowed { .. }
             | ModifierKind::MagicBroken { .. }
+            | ModifierKind::BloodGrenade { .. }
     ) {
         return ticks;
     }
@@ -102,8 +103,8 @@ impl World {
     }
 
     /// Does every modifier's work for the tick: what burns takes health on
-    /// the beat, and the rot puts its burn and slow on everything standing in
-    /// it. Their time runs down in [`World::tick_gear`].
+    /// the beat, a Blood Grenade's debuff on every whole second of its own,
+    /// and the rot puts its burn and slow on everything standing in it. Their time runs down in [`World::tick_gear`].
     ///
     /// A burn that is not lethal stops one short of the last point.
     pub fn tick_modifiers(&mut self) {
@@ -139,6 +140,20 @@ impl World {
                         }
                     }
                     ModifierKind::Rot { level } => self.rot(entity, level),
+                    ModifierKind::BloodGrenade { since } => {
+                        let since_then = self.tick.saturating_sub(since);
+                        if since_then > 0
+                            && since_then.is_multiple_of(rules::TICKS_PER_SECOND)
+                            && self.alive(entity)
+                        {
+                            self.push_hit(
+                                modifier.source,
+                                entity,
+                                rules::GRENADE_DAMAGE_PER_SECOND,
+                                DamageKind::Magical,
+                            );
+                        }
+                    }
                     _ => {}
                 }
             }

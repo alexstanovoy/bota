@@ -850,6 +850,19 @@ pub const TREE_REGROW_TICKS: u32 = 5 * 60 * TICKS_PER_SECOND;
 pub const PLANTED_TREE_TICKS: u32 = 40 * TICKS_PER_SECOND;
 /// Ticks a hero waits between scrolls, whichever scroll it holds.
 pub const SCROLL_WAIT_TICKS: u32 = 2100;
+/// World units a second a Blood Grenade flies.
+pub const GRENADE_SPEED: i32 = 1100;
+/// How far from where a Blood Grenade lands it reaches, in world units.
+pub const GRENADE_RADIUS: i32 = 300;
+/// Magical damage a Blood Grenade lands on each it reaches.
+pub const GRENADE_IMPACT_DAMAGE: i32 = 50;
+/// Magical damage its debuff lands on every whole second.
+pub const GRENADE_DAMAGE_PER_SECOND: i32 = 15;
+/// Percent a Blood Grenade's debuff takes off movement speed.
+pub const GRENADE_SLOW_PCT: i32 = 15;
+/// Ticks a Blood Grenade's debuff lasts: five seconds and the tick of its
+/// fifth beat, so the beat lands before it lifts.
+pub const GRENADE_DEBUFF_TICKS: u32 = 5 * TICKS_PER_SECOND + 1;
 
 // The courier.
 
@@ -1062,6 +1075,8 @@ pub const FEAST_COOLDOWN: [u32; 4] = [21 * TICKS_PER_SECOND; 4];
 pub const SOULS_HELD_MAX: u32 = NECRO_SOUL_CAP + FEAST_TARGETS[3] as u32 * FEAST_SOULS_PER_HERO;
 
 const _: () = {
+    assert!(GRENADE_DEBUFF_TICKS > 5 * TICKS_PER_SECOND);
+    assert!(GRENADE_SLOW_PCT > 0 && GRENADE_SLOW_PCT < 100);
     assert!(FEAST_TICKS.is_multiple_of(FEAST_PERIOD_TICKS));
     assert!(FEAST_PER_PERIOD > 0);
     assert!(FEAST_TARGETS[3] >= FEAST_TARGETS[0]);

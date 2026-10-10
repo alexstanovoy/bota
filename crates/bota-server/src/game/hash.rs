@@ -39,6 +39,12 @@ impl World {
         for seat in self.seats.iter() {
             hash_seat(&mut fnv, seat);
         }
+        for held in self.shop_stock.iter() {
+            fnv.team(held.team);
+            fnv.u32(u32::from(held.item.0));
+            fnv.u8(held.left);
+            fnv.u32(held.restock_left);
+        }
         if !self.spawn_modifiers.is_empty() {
             assert!(self.spawn_modifiers.len() <= crate::game::MAX_SPAWN_MODIFIERS);
             fnv.u8(1);
@@ -169,6 +175,11 @@ impl World {
         }
         if let Some(line) = self.requiem_line.get(entity) {
             hash_requiem_line(fnv, line);
+        }
+        if let Some(shot) = self.grenade.get(entity) {
+            fnv.entity(shot.owner);
+            fnv.vec2(shot.aim);
+            hash_damage_amp(fnv, shot.damage_amp_bp);
         }
         if let Some(ai) = self.neutral_ai.get(entity) {
             fnv.some(ai.awake);
@@ -504,6 +515,10 @@ fn hash_modifier_kind(fnv: &mut Fnv, kind: ModifierKind) {
             fnv.u8(level);
         }
         ModifierKind::Feared => fnv.u8(15),
+        ModifierKind::BloodGrenade { since } => {
+            fnv.u8(17);
+            fnv.u32(since);
+        }
     }
 }
 

@@ -109,7 +109,25 @@ impl World {
             aggro,
             order_delays: Vec::new(),
             skipped_ticks: Vec::new(),
+            stock: self.project_stock(viewer),
         }
+    }
+
+    /// What the shops of the viewer's side, or of every side, have left.
+    fn project_stock(&self, viewer: Option<Team>) -> Vec<bota_proto::StockView> {
+        self.shop_stock
+            .iter()
+            .filter(|held| viewer.is_none_or(|team| team == held.team))
+            .map(|held| bota_proto::StockView {
+                team: held.team,
+                item: held.item,
+                left: held.left,
+                max: crate::game::item_def(held.item)
+                    .and_then(|def| def.stock)
+                    .map_or(0, |rule| rule.max),
+                restock_left: held.restock_left,
+            })
+            .collect()
     }
 
     /// Whether a viewer sees an entity. `None` sees everything.
@@ -201,8 +219,8 @@ impl World {
         Some((target, left.div_ceil(gain).max(1)))
     }
 
-    /// One missile, hook, mark or line of a requiem, or nothing when the
-    /// entity is none of them.
+    /// One missile, hook, mark, line of a requiem or Blood Grenade, or
+    /// nothing when the entity is none of them.
     fn project_projectile(&self, entity: Entity) -> Option<ProjectileView> {
         let ability = if let Some(shot) = self.projectile.get(entity) {
             shot.ability
@@ -212,6 +230,8 @@ impl World {
             Some(crate::game::ability::REQUIEM)
         } else if self.hook.get(entity).is_some() {
             Some(crate::game::ability::MEAT_HOOK)
+        } else if self.grenade.get(entity).is_some() {
+            Some(crate::game::ability::THROW_GRENADE)
         } else {
             return None;
         };
@@ -378,6 +398,7 @@ fn effect_id(kind: ModifierKind) -> u16 {
         ModifierKind::Shadowraze { .. } => EFFECT_SHADOWRAZE,
         ModifierKind::Rot { .. } => 16,
         ModifierKind::Feared => 17,
+        ModifierKind::BloodGrenade { .. } => EffectId::BLOOD_GRENADE.0,
     }
 }
 
@@ -462,6 +483,7 @@ impl World {
                 ModifierKind::Slowed { .. } => StatusFlags::SLOWED,
                 ModifierKind::Burning { .. } => StatusFlags::DOT,
                 ModifierKind::Feared => StatusFlags::FEARED,
+                ModifierKind::BloodGrenade { .. } => StatusFlags::SLOWED | StatusFlags::DOT,
                 _ => 0,
             };
         }

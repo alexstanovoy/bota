@@ -173,6 +173,7 @@ pub fn refusal(reason: RejectReason) -> &'static str {
         Why::NotInBag => "not carried in the bag",
         Why::NoCheats => "cheats are off in this match",
         Why::BadCheat => "the cheat is out of bounds",
+        Why::OutOfStock => "the shop has none left",
     }
 }
 

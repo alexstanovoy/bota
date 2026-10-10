@@ -308,7 +308,8 @@ impl World {
     }
 
     /// Whether a seat may buy an item: one that exists, with gold enough
-    /// for what it lacks of it and room for what it buys.
+    /// for what it lacks of it, room for what it buys, and some left on its
+    /// side's shelf.
     fn check_buy(&self, seat: &Seat, item: bota_proto::ItemId) -> Result<(), RejectReason> {
         if item_def(item).is_none() {
             return Err(RejectReason::UnknownItem);
@@ -321,6 +322,9 @@ impl World {
         }
         if !plan.fits {
             return Err(RejectReason::InventoryFull);
+        }
+        if !self.in_stock(seat.team, item) {
+            return Err(RejectReason::OutOfStock);
         }
         Ok(())
     }

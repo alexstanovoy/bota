@@ -207,3 +207,48 @@ fn a_client_built_before_skipped_ticks_reads_a_snapshot_carrying_them() {
         }
     );
 }
+
+/// [`WorldView`] as it stood before [`WorldView::stock`].
+#[derive(Deserialize, Debug, PartialEq)]
+struct ViewBeforeStock {
+    tick: u32,
+    viewer: Option<Team>,
+    units: Vec<UnitView>,
+    projectiles: Vec<ProjectileView>,
+    players: Vec<PlayerView>,
+    felled_trees: Vec<u32>,
+    planted_trees: Vec<Vec2>,
+    loot: Vec<LootView>,
+    aggro: Vec<AggroView>,
+    order_delays: Vec<OrderDelayView>,
+    skipped_ticks: Vec<SkippedTick>,
+}
+
+/// [`ServerMsg`] as a client built before the stock declares it.
+#[derive(Deserialize, Debug, PartialEq)]
+enum MsgBeforeStock {
+    Welcome,
+    LobbyState,
+    MatchStart,
+    Snapshot { view: Box<ViewBeforeStock> },
+}
+
+#[test]
+fn a_client_built_before_stock_reads_a_snapshot_carrying_it() {
+    let view = world_view(3);
+    assert!(!view.stock.is_empty());
+    let frame = encode_frame_to_vec(&ServerMsg::Snapshot { view: view.clone() }).expect("encode");
+    let mut reader = FrameReader::new();
+    reader.push(&frame);
+    let old = reader
+        .next_message::<MsgBeforeStock>()
+        .expect("decode")
+        .expect("one whole frame was pushed");
+    assert_eq!(reader.buffered(), 0, "the whole frame was consumed");
+    let MsgBeforeStock::Snapshot { view: old } = old else {
+        panic!("a snapshot decodes as a snapshot");
+    };
+    assert_eq!(old.skipped_ticks, view.skipped_ticks);
+    assert_eq!(old.order_delays, view.order_delays);
+    assert_eq!(old.units, view.units);
+}

@@ -96,7 +96,8 @@ pub fn hero_kit(hero: HeroId) -> AbilityBook {
 /// What a whole inventory adds.
 ///
 /// Only what sits in the inventory proper counts; what is in the backpack is
-/// carried inert, and so is a muted stack.
+/// carried inert, and so is a muted stack. Of the boots carried only the
+/// fastest counts, and of the laces only the fastest, the two added up.
 pub fn carried_bonus(inventory: &Inventory) -> Carried {
     let mut total = Carried::default();
     for stack in inventory
@@ -112,7 +113,8 @@ pub fn carried_bonus(inventory: &Inventory) -> Carried {
             continue;
         };
         total.attributes += def.carried.attributes;
-        total.move_speed += def.carried.move_speed;
+        total.move_speed = total.move_speed.max(def.carried.move_speed);
+        total.lace_speed = total.lace_speed.max(def.carried.lace_speed);
         total.damage += def.carried.damage;
         total.attack_speed += def.carried.attack_speed;
         total.armor += def.carried.armor;
@@ -294,6 +296,9 @@ impl World {
         let Some(unit) = self.seats[index].unit else {
             return false;
         };
+        if !self.in_stock(self.seats[index].team, item) {
+            return false;
+        }
         if item_def(item).is_some_and(|def| def.stack_limit > 0) {
             return self.buy_stackable(index, unit, item, events);
         }
@@ -379,11 +384,13 @@ impl World {
         true
     }
 
-    /// Pays for a completed purchase and emits its team-visible event.
+    /// Pays for a completed purchase, takes it off the shelf, and emits its
+    /// team-visible event.
     fn finish_purchase(&mut self, seat: usize, item: ItemId, price: i32, events: &mut Vec<Event>) {
         assert!(price >= 0);
         assert!(self.seats[seat].gold >= price);
         self.seats[seat].gold -= price;
+        self.take_from_stock(self.seats[seat].team, item);
         events.push(Event {
             kind: EventKind::ItemBought {
                 slot: self.seats[seat].slot,
@@ -526,6 +533,11 @@ impl World {
             && let Some(pool) = self.mana.get_mut(entity)
         {
             pool.mana -= Fixed::from_int(cost);
+        }
+        if def.health_cost > 0
+            && let Some(pool) = self.health.get_mut(entity)
+        {
+            pool.hp = (pool.hp - Fixed::from_int(def.health_cost)).max(Fixed::ONE);
         }
         let cooldown = self.item_cooldown(entity, stack.id);
         if def.shared_wait {

@@ -157,6 +157,8 @@ pub enum RejectReason {
     NoCheats,
     /// The cheat payload is the wrong shape or outside its bounds.
     BadCheat,
+    /// The shop has none of the item left until it restocks.
+    OutOfStock,
 }
 
 /// Final numbers for one seat.
@@ -333,6 +335,10 @@ pub enum ServerMsg {
 /// A replay file is a sequence of frames, framed exactly like the socket, each
 /// carrying one record.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+#[expect(
+    clippy::large_enum_variant,
+    reason = "a reader holds one record at a time, and every replay reader matches on the unboxed message"
+)]
 pub enum ReplayRecord {
     /// A message of the fogless spectator stream.
     Msg(ServerMsg),

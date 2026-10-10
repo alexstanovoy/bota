@@ -20,8 +20,11 @@ pub enum Pool {
 pub struct Carried {
     /// Attributes added.
     pub attributes: Attributes,
-    /// Movement speed added.
+    /// Movement speed added by boots. Of several carried, the best counts.
     pub move_speed: i32,
+    /// Movement speed added by a Wind Lace. Of several carried, the best
+    /// counts, on top of the boots.
+    pub lace_speed: i32,
     /// Attack damage added.
     pub damage: i32,
     /// Attack speed added.
@@ -59,6 +62,7 @@ pub struct Carried {
 const NOTHING: Carried = Carried {
     attributes: Attributes::ZERO,
     move_speed: 0,
+    lace_speed: 0,
     damage: 0,
     attack_speed: 0,
     armor: Fixed::ZERO,
@@ -224,6 +228,21 @@ fn mango(world: &mut World, user: Entity, _: usize, target: Target) -> bool {
     world.replenish_mana(user, target, MANGO_MANA)
 }
 
+fn grenade(world: &mut World, user: Entity, _: usize, target: Target) -> bool {
+    world.throw_grenade(user, target)
+}
+
+/// How a shop keeps an item it sells from a limited stock, per side.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Stock {
+    /// How many it holds when the match starts.
+    pub initial: u8,
+    /// How many it holds at most.
+    pub max: u8,
+    /// Ticks it takes to gain one more while it holds fewer than `max`.
+    pub restock_ticks: u32,
+}
+
 /// One entry of the catalog.
 #[derive(Clone, Copy, Debug)]
 pub struct ItemDef {
@@ -246,6 +265,10 @@ pub struct ItemDef {
     pub shared_wait: bool,
     /// Mana using it costs.
     pub mana_cost: i32,
+    /// Health using it costs, never the last point.
+    pub health_cost: i32,
+    /// How each side's shop keeps it. Absent for one sold without limit.
+    pub stock: Option<Stock>,
     /// Ticks of waiting a blow from a hero or a tower puts on it.
     /// Zero for one that answers to no blow.
     pub breaks_on_damage: u32,
@@ -293,6 +316,8 @@ const PLAIN: ItemDef = ItemDef {
     cooldown: 0,
     shared_wait: false,
     mana_cost: 0,
+    health_cost: 0,
+    stock: None,
     breaks_on_damage: 0,
     mode: None,
     mode_bonus: 0,
@@ -415,6 +440,10 @@ pub const ITEM_BLITZ_KNUCKLES: u16 = 49;
 pub const ITEM_RECIPE_MONKEY_KING_BAR: u16 = 50;
 /// Monkey King Bar.
 pub const ITEM_MONKEY_KING_BAR: u16 = 51;
+/// Wind Lace.
+pub const ITEM_WIND_LACE: u16 = 52;
+/// Blood Grenade.
+pub const ITEM_BLOOD_GRENADE: u16 = 53;
 
 /// Gold per Mango charge, bought one at a time.
 pub const MANGO_COST: i32 = 65;
@@ -430,7 +459,14 @@ pub const BLINK_RANGE: i32 = 1200;
 /// raw a tick.
 pub const MANGO_HP_REGEN: Fixed = Fixed::from_ratio(2, 5 * rules::TICKS_PER_SECOND as i32);
 
+/// Ticks a Blood Grenade waits between throws.
+pub const GRENADE_COOLDOWN: u32 = 10 * rules::TICKS_PER_SECOND;
+/// How far a Blood Grenade is thrown, in world units.
+pub const GRENADE_RANGE: i32 = 900;
+
 const _: () = {
+    assert!(GRENADE_COOLDOWN > 0);
+    assert!(GRENADE_RANGE > rules::GRENADE_RADIUS);
     assert!(MANGO_COST > 0);
     assert!(MANGO_STACK_MAX > 1);
     assert!(MANGO_MANA > 0);
@@ -486,7 +522,7 @@ const MKB_PARTS: [ItemId; 4] = [
 ];
 
 /// The catalog, indexed by [`ItemId`].
-pub const ITEMS: [ItemDef; 52] = [
+pub const ITEMS: [ItemDef; 54] = [
     // Boots of Speed.
     ItemDef {
         cost: 500,
@@ -969,7 +1005,55 @@ pub const ITEMS: [ItemDef; 52] = [
         },
         ..PLAIN
     },
+    // Wind Lace.
+    ItemDef {
+        cost: 225,
+        carried: Carried {
+            lace_speed: 15,
+            ..NOTHING
+        },
+        ..PLAIN
+    },
+    // Blood Grenade.
+    ItemDef {
+        cost: 50,
+        charges: 1,
+        stack_limit: 2,
+        cooldown: GRENADE_COOLDOWN,
+        health_cost: 75,
+        stock: Some(Stock {
+            initial: 2,
+            max: 3,
+            restock_ticks: 180 * rules::TICKS_PER_SECOND,
+        }),
+        carried: Carried { hp: 50, ..NOTHING },
+        aim: Some(Aim::Point),
+        range: GRENADE_RANGE,
+        spends: Spends::One,
+        point: 200,
+        on_use: grenade,
+        ..PLAIN
+    },
 ];
+
+const _: () = {
+    // A stocked item is bought whole, and is no part of a build.
+    let mut at = 0;
+    while at < ITEMS.len() {
+        if let Some(stock) = ITEMS[at].stock {
+            assert!(ITEMS[at].components.is_empty());
+            assert!(stock.initial <= stock.max);
+            assert!(stock.max > 0);
+            assert!(stock.restock_ticks > 0);
+        }
+        let mut part = 0;
+        while part < ITEMS[at].components.len() {
+            assert!(ITEMS[ITEMS[at].components[part].0 as usize].stock.is_none());
+            part += 1;
+        }
+        at += 1;
+    }
+};
 
 /// What one item is, or nothing if no such item exists.
 pub fn item_def(id: ItemId) -> Option<&'static ItemDef> {

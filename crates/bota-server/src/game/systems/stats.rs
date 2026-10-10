@@ -149,7 +149,7 @@ fn add_carried(now: &mut Stats, carried: &Carried) {
     now.damage_to_creeps += carried.damage_to_creeps;
     now.attack_speed += carried.attack_speed;
     now.armor += carried.armor;
-    now.move_speed += Fixed::from_int(carried.move_speed);
+    now.move_speed += Fixed::from_int(carried.move_speed + carried.lace_speed);
     now.evasion = carried.evasion;
     now.pierce = carried.pierce;
     now.pierce_damage = carried.pierce_damage;
@@ -201,6 +201,9 @@ fn add_modifiers(now: &mut Stats, on_it: &Modifiers) {
             }
             ModifierKind::Slowed { pct } => {
                 now.move_speed = scaled(now.move_speed, (100 - pct).clamp(0, 100));
+            }
+            ModifierKind::BloodGrenade { .. } => {
+                now.move_speed = scaled(now.move_speed, 100 - rules::GRENADE_SLOW_PCT);
             }
             ModifierKind::Hastened { pct } => {
                 now.move_speed = scaled(now.move_speed, 100 + pct.max(0));

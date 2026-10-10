@@ -339,6 +339,7 @@ fn bulky_snapshot(tick: u32) -> Vec<u8> {
         aggro: Vec::new(),
         order_delays: Vec::new(),
         skipped_ticks: Vec::new(),
+        stock: Vec::new(),
     };
     encode_frame_to_vec(&ServerMsg::Snapshot { view }).expect("under the frame limit")
 }

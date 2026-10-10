@@ -136,5 +136,5 @@ fn an_empty_view_costs_almost_nothing() {
         view: empty_world_view(),
     };
     let len = encoded_len(&msg);
-    assert!(len <= 16, "an empty snapshot cost {len} bytes");
+    assert!(len <= 17, "an empty snapshot cost {len} bytes");
 }

@@ -215,9 +215,11 @@ pub const PRESENCE: AbilityId = AbilityId(18);
 /// Shadow Fiend's feast of souls: attacks and steps come faster for a while,
 /// and souls are taken from the enemies near him.
 pub const FEAST_OF_SOULS: AbilityId = AbilityId(19);
+/// A Blood Grenade's throw: what names one in flight. Sits in no slot.
+pub const THROW_GRENADE: AbilityId = AbilityId(20);
 
 /// Every ability, indexed by [`AbilityId`].
-pub const ABILITIES: [AbilityDef; 20] = [
+pub const ABILITIES: [AbilityDef; 21] = [
     AbilityDef {
         name: "Crit",
         max_level: rules::ABILITY_MAX_LEVEL,
@@ -410,6 +412,10 @@ pub const ABILITIES: [AbilityDef; 20] = [
         cooldown: &rules::FEAST_COOLDOWN,
         range: rules::FEAST_RADIUS,
         on_cast: feast,
+        ..PLAIN
+    },
+    AbilityDef {
+        name: "Throw Grenade",
         ..PLAIN
     },
 ];
