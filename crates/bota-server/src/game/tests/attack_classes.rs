@@ -2,8 +2,8 @@
 //! target, swung for real.
 
 use crate::game::{
-    HERO, MELEE_CREEP, NEUTRALS, NeutralKind, RANGED_CREEP, SHADOW_FIEND, SIEGE_CREEP, UnitDef,
-    World, tower_def,
+    HERO, MELEE_CREEP, NEUTRALS, NeutralKind, RANGED_CREEP, SHADOW_FIEND, SIEGE_CREEP, TOWERS,
+    UnitDef, World,
 };
 use bota_proto::{Attributes, Team, UnitKind, Vec2};
 
@@ -41,6 +41,7 @@ const MELEE: UnitDef = steady(&MELEE_CREEP);
 const RANGED: UnitDef = steady(&RANGED_CREEP);
 const SIEGE: UnitDef = steady(&SIEGE_CREEP);
 const KOBOLD: UnitDef = steady(&NEUTRALS[NeutralKind::Kobold as usize]);
+const TOWER: UnitDef = steady(&TOWERS[0]);
 
 /// What one swing of `attacker` takes off a dummy of each kind, against
 /// what the swing is worth.
@@ -56,7 +57,6 @@ fn swing_at(attacker: &'static UnitDef, target: &'static UnitDef) -> (i32, i32) 
 
 #[test]
 fn every_attack_class_lands_its_share_on_every_kind() {
-    let tower = tower_def(1);
     // Percent of a swing that lands on: hero, creep, siege creep, tower,
     // neutral. Liquipedia, Attack Damage: Runty 0.75 to heroes and 0.7 to
     // Reinforced; Piercing 0.5, 1.5 and 0.35; Reinforced 2.5 to Reinforced;
@@ -65,7 +65,7 @@ fn every_attack_class_lands_its_share_on_every_kind() {
         (&MELEE, [75, 100, 70, 70, 100]),
         (&RANGED, [50, 150, 35, 35, 150]),
         (&SIEGE, [100, 100, 250, 250, 100]),
-        (tower, [100, 100, 250, 250, 100]),
+        (&TOWER, [100, 100, 250, 250, 100]),
         (&HERO, [100, 100, 50, 50, 100]),
         (&KOBOLD, [100, 100, 100, 100, 100]),
     ];

@@ -22,6 +22,7 @@ mod shop;
 mod stats;
 mod support;
 mod target_retention;
+mod towers;
 mod vision;
 mod wards;
 mod waves;

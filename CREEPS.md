@@ -462,6 +462,23 @@ state at all. See *Not yet modelled*.
 bota takes structure sizes from the map rather than from these hulls: towers,
 barracks and fountains are 144, the Ancients 299 (Radiant) and 374 (Dire).
 
+## 2. Towers
+
+Liquipedia, *Tower (Tier 1)* to *(Tier 4)* and *Buildings* (read 2026-10-10).
+
+| Tier | Health | Armour | Attack damage |
+|---|---|---|---|
+| 1 | 1800 | 12 | 88–92 |
+| 2 | 2500 | 16 | 170–174 |
+| 3 | 2500 | 16 | 170–174 |
+| 4 | 2600 | 21 | 170–174 |
+
+Every tier: Reinforced (§1.1), attack speed **110** on a **0.9 s** base, so a
+shot every 0.818 s; attack point 0.6 s at base speed (0.545 s at 110), the
+next shot cutting the 0.4 s backswing short; range and acquisition 700;
+missile 750; turn rate 1; vision 1900 by day. Damage is drawn per shot, as a
+creep's is. Tier 4's armour from standing barracks is not modelled.
+
 ---
 
 ## Not yet modelled

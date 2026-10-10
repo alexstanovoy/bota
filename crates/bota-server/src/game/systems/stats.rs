@@ -369,7 +369,7 @@ fn raised(kind: &UnitDef, levels: i32, steps: i32) -> Stats {
         attack_range: Fixed::from_int(kind.attack_range),
         acquisition: Fixed::from_int(kind.acquisition),
         attack_time: kind.attack_time,
-        attack_speed: rules::BASE_ATTACK_SPEED,
+        attack_speed: kind.attack_speed,
         attack_point: kind.attack_point,
         attack_backswing: kind.attack_backswing,
         projectile_speed: kind.projectile_speed.map(Fixed::from_int),

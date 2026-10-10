@@ -63,6 +63,8 @@ pub struct UnitDef {
     /// Milliseconds between the starts of two attacks at
     /// [`rules::BASE_ATTACK_SPEED`].
     pub attack_time: u32,
+    /// The attack speed it has before anything raises it.
+    pub attack_speed: i32,
     /// Milliseconds from the start of an attack to the hit.
     pub attack_point: u32,
     /// Milliseconds after the hit before it may move again.
@@ -137,6 +139,7 @@ const NOTHING: UnitDef = UnitDef {
     attack_range: 0,
     acquisition: 0,
     attack_time: 0,
+    attack_speed: rules::BASE_ATTACK_SPEED,
     attack_point: 0,
     attack_backswing: 0,
     projectile_speed: None,
@@ -563,14 +566,16 @@ const fn tower_of(index: usize) -> UnitDef {
         true_sight: rules::TOWER_ATTACK_RANGE,
         max_hp: rules::TOWER_TIER_HP[index],
         damage: rules::TOWER_TIER_DAMAGE[index],
+        damage_spread: rules::TOWER_DAMAGE_SPREAD,
         attack_range: rules::TOWER_ATTACK_RANGE,
         acquisition: rules::TOWER_ATTACK_RANGE,
         attack_time: rules::TOWER_ATTACK_TIME,
+        attack_speed: rules::TOWER_ATTACK_SPEED,
         attack_point: rules::TOWER_ATTACK_POINT,
         attack_backswing: rules::TOWER_ATTACK_BACKSWING,
         projectile_speed: Some(rules::TOWER_PROJECTILE_SPEED),
         armor: rules::TOWER_TIER_ARMOR[index],
-        turn_rate: rules::TURN_RATE_BRADS,
+        turn_rate: rules::TOWER_TURN_RATE_BRADS,
         vision: rules::TOWER_VISION,
         collision: rules::TOWER_COLLISION,
         bound: rules::TOWER_BOUND,

@@ -117,6 +117,7 @@ const NEUTRAL_BASE: UnitDef = UnitDef {
     attack_range: 0,
     acquisition: 0,
     attack_time: 0,
+    attack_speed: rules::BASE_ATTACK_SPEED,
     attack_point: 0,
     attack_backswing: 0,
     projectile_speed: None,

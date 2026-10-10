@@ -589,19 +589,27 @@ pub const MEGA_RANGED_ATTACK_DAMAGE: i32 = 131;
 // Buildings.
 
 /// Tower health, indexed by tier minus one.
-pub const TOWER_TIER_HP: [i32; 4] = [1800, 2000, 2200, 2600];
-/// Tower attack damage, indexed by tier minus one.
-pub const TOWER_TIER_DAMAGE: [i32; 4] = [110, 128, 144, 152];
+pub const TOWER_TIER_HP: [i32; 4] = [1800, 2500, 2500, 2600];
+/// Least attack damage of a tower's shot, indexed by tier minus one: 88 to
+/// 92 at tier one, 170 to 174 above it.
+pub const TOWER_TIER_DAMAGE: [i32; 4] = [88, 170, 170, 170];
+/// How much more a tower's shot may deal.
+pub const TOWER_DAMAGE_SPREAD: i32 = 4;
 /// Tower armor, indexed by tier minus one.
-pub const TOWER_TIER_ARMOR: [i32; 4] = [12, 14, 15, 21];
+pub const TOWER_TIER_ARMOR: [i32; 4] = [12, 16, 16, 21];
+/// A tower's attack speed.
+pub const TOWER_ATTACK_SPEED: i32 = 110;
+/// How fast a tower turns, in brads per tick: a `MovementTurnRate` of 1.
+pub const TOWER_TURN_RATE_BRADS: u16 = 11_590;
 /// Gold paid to the killer of a tower, indexed by tier minus one.
 pub const TOWER_TIER_BOUNTY: [i32; 4] = [200, 250, 300, 350];
 /// Tower attack range.
 pub const TOWER_ATTACK_RANGE: i32 = 700;
-/// Milliseconds between tower attack starts.
-pub const TOWER_ATTACK_TIME: u32 = 966;
-/// Milliseconds from tower attack start to the projectile leaving.
-pub const TOWER_ATTACK_POINT: u32 = 200;
+/// Milliseconds between tower attack starts at [`BASE_ATTACK_SPEED`].
+pub const TOWER_ATTACK_TIME: u32 = 900;
+/// Milliseconds from tower attack start to the projectile leaving, at
+/// [`BASE_ATTACK_SPEED`].
+pub const TOWER_ATTACK_POINT: u32 = 600;
 /// Tower attack projectile speed, world units per second.
 pub const TOWER_PROJECTILE_SPEED: i32 = 750;
 /// How far a tower's protection reaches.
@@ -747,8 +755,9 @@ pub const SEPARATION_STEP: i32 = 4;
 pub const HERO_ATTACK_BACKSWING: u32 = 400;
 /// Milliseconds a creep recovers after a swing.
 pub const CREEP_ATTACK_BACKSWING: u32 = 500;
-/// Milliseconds a tower recovers after a shot.
-pub const TOWER_ATTACK_BACKSWING: u32 = 133;
+/// Milliseconds a tower recovers after a shot, at [`BASE_ATTACK_SPEED`]:
+/// the rest of its cycle, the next shot cutting the 0.4 s animation short.
+pub const TOWER_ATTACK_BACKSWING: u32 = TOWER_ATTACK_TIME - TOWER_ATTACK_POINT;
 /// Milliseconds the fountain recovers after a shot.
 pub const FOUNTAIN_ATTACK_BACKSWING: u32 = 66;
 /// How fast a unit turns, in brads per tick: a `MovementTurnRate` of 0.5,
