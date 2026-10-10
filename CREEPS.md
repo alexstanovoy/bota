@@ -154,9 +154,11 @@ entering a siege creep's attack range takes it off its current target at once.
 **Order aggro.** An attack order alone aggroes or de-aggroes, whether the
 attack happens or not and however far the ordered target is:
 
-- attack order on an enemy hero → that hero's *enemy* creeps within **their
-  own acquisition range** of the ordering hero **switch their target to that
-  hero outright**. Not a re-ranking: the ordering hero wins even with a closer
+- attack order on an enemy hero → that hero's *enemy* creeps within **500**
+  of the ordering hero **switch their target to that hero outright**, seen or
+  not: a creep that cannot see the hero (fog, high ground) chases its position
+  for the whole hold and strikes once it sees it. Liquipedia gives 500; the
+  Dota 2 Wiki words it as each creep's acquisition range (600 for ranged). Not a re-ranking: the ordering hero wins even with a closer
   creep standing right next to them, which is what makes the pull work at all.
 - attack order on an allied unit → the same creeps put that hero **last**,
   however close it stands: anyone else in acquisition range is taken first,
@@ -165,13 +167,22 @@ attack happens or not and however far the ordered target is:
   the same tick, so the creep is never left standing with no target.
 - an attack order on an enemy **creep** is a last hit and moves nobody
 - **3 s cooldown** per creep on both
-- the switch **holds for 2.33 s** (`ORDER_AGGRO_HOLD_TICKS`, 70 ticks) —
-  **[approximation]**: Valve publishes the 3 s cooldown but no hold duration —
-  and this hold is
+- the switch **holds for 2.3 s** (`ORDER_AGGRO_HOLD_TICKS`, 69 ticks, the
+  figure Liquipedia gives), and this hold is
   the only thing that makes a hero target stick at all. When it runs out the
   creep weighs its options again; the ordering hero can still win that on
   §1.5's tie-break while it keeps swinging at the creep's own side, which is
   why shedding a wave takes either distance or a click at an ally.
+
+**Swing aggro.** Every attack a hero *begins* on a hero — clicked or chosen on
+its own — draws the lane creeps of the other side within **500** of the
+attacker onto it. It starts no cooldown and holds nobody: the creep goes back to
+its own ranking the next tick, so in practice it pulls only a creep with
+nothing else in its attack range. It never overrides a running order hold or
+cooldown. Liquipedia does not say whether a creep that cannot see the attacker
+is drawn; bota draws only creeps whose side sees it **[approximation]**. An
+attack from the fog therefore draws nobody until its first strike has shown the
+attacker (below), and from then on every swing does.
 
 **Strike sight** (Dota's *caster vision*). When an attack strikes — the melee
 blow or the missile leaving, at the attack point — or a spell goes off at a
@@ -445,9 +456,14 @@ barracks and fountains are 144, the Ancients 299 (Radiant) and 374 (Dire).
 8. **No invisibility, untargetability or disarm.** The flee on damage from an
    invisible unit and the untargetable rules of §1.6, and the disarm rule of
    §1.4, have nothing to act on.
-9. **Super and mega creeps** carry pre-7.41 numbers: Liquipedia lists super
+9. **Order aggro cools down per creep.** Liquipedia keeps the 3 s cooldown on
+   the ordering hero (it starts even with no creep near); bota keeps it on
+   each creep drawn.
+10. **Spells draw creeps.** `rouse_by_cast` answers a unit-target spell at an
+    enemy hero like an attack order; Liquipedia says lane creeps ignore casts.
+11. **Super and mega creeps** carry pre-7.41 numbers: Liquipedia lists super
     melee 36–44 damage, super ranged 41–46, mega melee 1270 health and 96–104
     damage, mega ranged 1015 and 131–136; bota has 41–49, 46–51 and mega as a
     faster-swinging super.
-10. **Flying attackers never miss uphill.** 7.41 lets units with free movement
+12. **Flying attackers never miss uphill.** 7.41 lets units with free movement
     miss uphill too.

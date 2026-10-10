@@ -334,7 +334,7 @@ pub(super) fn a_lane_with_a_hero(apart: i32) -> (World, Entity, Entity, Entity, 
 }
 
 /// A creep of a side with a mind of its own.
-fn thinking_creep_of(world: &mut World, team: Team, at: Vec2) -> Entity {
+pub(super) fn thinking_creep_of(world: &mut World, team: Team, at: Vec2) -> Entity {
     let creep = world.spawn_unit(&MELEE_CREEP, team, at);
     world.lane_ai.insert(
         creep,

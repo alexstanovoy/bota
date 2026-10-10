@@ -676,8 +676,11 @@ pub const AGGRO_TIE_RANGE: i32 = 100;
 /// 3 seconds.
 pub const ORDER_AGGRO_COOLDOWN_TICKS: u32 = 90;
 /// Ticks a creep handed a target by an attack order keeps it before the
-/// ordinary ranking may take it back, 2.33 seconds.
-pub const ORDER_AGGRO_HOLD_TICKS: u32 = 70;
+/// ordinary ranking may take it back, 2.3 seconds.
+pub const ORDER_AGGRO_HOLD_TICKS: u32 = 69;
+/// How near a hero must stand to a lane creep for its attack order or its
+/// swing at a hero to draw the creep.
+pub const HERO_AGGRO_RANGE: i32 = 500;
 /// Tick from which an attack order may draw any lane creep.
 pub const FREE_AGGRO_TICK: u32 = FIRST_WAVE_TICK + 5 * 60 * TICKS_PER_SECOND;
 /// How close to its own tier-one tower a lane creep may be aggroed before

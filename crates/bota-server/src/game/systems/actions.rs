@@ -354,6 +354,7 @@ impl World {
                             target: on,
                             phase: ActionPhase::Before { progress: carry },
                         };
+                        self.rouse_by_swing(entity, on);
                         action.attack_cooldown = len.saturating_sub(carry);
                         carry = carry.saturating_sub(len);
                         continue;

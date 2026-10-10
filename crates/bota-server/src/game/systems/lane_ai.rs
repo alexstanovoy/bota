@@ -82,7 +82,8 @@ impl World {
     /// Nothing held, or something held that may no longer be taken on, means
     /// taking the best within acquisition; one that may not is kept only
     /// while its hold lasts and there is nothing else. Something held is kept
-    /// while its hold lasts. Past that, one within attack range is kept
+    /// while its hold lasts, and one held that is merely out of sight is
+    /// chased into the fog for as long. Past that, one within attack range is kept
     /// unless something of a better class is within attack range too; one
     /// out of it gives way to the best within acquisition, and is kept only
     /// when there is none and its chase has not run out.
@@ -100,6 +101,9 @@ impl World {
         let Some(held) = self.target_of(seeker) else {
             return self.best_valid_in_range(seeker, acquisition, candidates);
         };
+        if keeping && self.hostile_unseen(seeker, held) {
+            return Some(held);
+        }
         if !self.hostile(seeker, held) {
             return self
                 .best_valid_in_range(seeker, acquisition, candidates)

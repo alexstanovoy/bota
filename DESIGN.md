@@ -1154,7 +1154,7 @@ also when Dota fixes them. The midpoints the ranges replace paid ranged creeps 4
 against a mean of 47.5, and paid a flagbearer and every upgraded creep as if it had
 never been upgraded: `Growth::gold` and `Growth::xp` were computed and dropped.
 
-### Strike sight
+### Strike sight and creeps drawn from the fog
 
 An attack that strikes, and a spell that goes off at a unit within 1800, shows the side
 struck at a 150-radius circle around the striker for two seconds (Dota's caster vision).
@@ -1166,6 +1166,17 @@ without being told about strikes. A strike made while the last circle still show
 past height and trees, as Dota upgrades a repeated cell to flying sight. The circle
 starts showing at the next sight pass, the tick after the strike, and shows for
 `STRIKE_REVEAL_TICKS` passes.
+
+Creeps answer a hero going for a hero in two ways (CREEPS.md §1.5). An attack order
+draws them whether or not they see the orderer, and the hold it puts on them is kept
+through the fog: `select_target` keeps a held target that is only out of sight
+(`hostile_unseen`), and the creep walks at where it stands until the hold runs out or
+the strike shows it. A swing begun at a hero draws the creeps within 500 that see the
+swinger, holding nobody. Liquipedia does not say what a creep that cannot see the
+swinger does; drawing it would hand it a target that the very next tick's ranking
+drops as unseen, so gating on sight says the same thing without the churn. Together
+with strike sight, an archer on high ground draws nobody with its first swing, is shown
+by its first strike, and draws the creeps with every swing after.
 
 ### Looking at what is not there
 
@@ -1425,8 +1436,8 @@ so the two agree.
 
 **The lane is held by talking to the creeps, not by standing somewhere.** An attack order
 does something to everybody who is not the one giving it, whether the attack ever
-happens or not: aimed at an enemy hero it calls every enemy creep within its own
-acquisition of the orderer onto him for `ORDER_AGGRO_HOLD_TICKS`, and aimed at one of
+happens or not: aimed at an enemy hero it calls every enemy creep within
+`HERO_AGGRO_RANGE` (500) of the orderer onto him for `ORDER_AGGRO_HOLD_TICKS`, and aimed at one of
 your own it makes them pick again with him put last. `pull` uses the first when the wave
 has been pushed more than `PULL_DRIFT` past where it should meet: standing behind its
 own line, the hero is a spot their creeps must walk past that line to reach, and the
