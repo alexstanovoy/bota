@@ -1,8 +1,0 @@
-<svg width="100%" viewBox="0 0 680 260" role="img" xmlns="http://www.w3.org/2000/svg"><title>Blink Dagger</title><desc>Rectangular icon: a short dagger with a spark of light above its point</desc>
-<rect x="220" y="50" width="240" height="160" fill="#1d2230"/>
-<path d="M334 78 L348 78 L348 148 L341 160 L334 148 Z" fill="#9aa3ad"/>
-<path d="M334 78 L341 78 L341 160 L334 148 Z" fill="#d5dde4" opacity="0.6"/>
-<rect x="316" y="148" width="50" height="10" rx="4" fill="#d9b56a"/>
-<rect x="335" y="158" width="12" height="26" rx="4" fill="#6b4a2c"/>
-<path d="M341 60 L345 74 L359 78 L345 82 L341 96 L337 82 L323 78 L337 74 Z" fill="#7fd4e8"/>
-</svg>

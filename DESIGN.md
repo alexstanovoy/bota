@@ -7,7 +7,7 @@ server authority, minimal dependencies.
 
 | Decision | Choice | Rationale |
 |---|---|---|
-| Client rendering | macroquad | one direct dependency, 2D + text out of the box, Linux/Win/macOS/WASM |
+| Client | `bota-client-core` here, drawn by dbota outside the repository | the logic every front end shares stays with the wire it reads; the drawing (Bevy, Dota's assets) is no business of the simulator |
 | Tick mode | Realtime **and** Lockstep | humans play in realtime, bots are debugged/trained in reproducible lockstep |
 | v0.1 scope | 1v1, three lanes, a handful of heroes | a vertical slice of the whole stack on minimal content |
 | Transport | TCP + length-prefixed frames | no tokio: a thread per client + a simulation thread + mpsc |
@@ -25,7 +25,7 @@ bota/
 ├── crates/
 │   ├── bota-proto/          # shared vocabulary + codec. deps: serde, postcard
 │   ├── bota-server/         # simulation + networking + lobby. deps: proto, rand_chacha, rustc-hash, clap
-│   ├── bota-client/         # macroquad: rendering, input, spectating. deps: proto, macroquad, resvg, clap
+│   ├── bota-client-core/    # every front end's logic, no drawing: connection, replay, world picture, orders. deps: proto
 │   └── bota-bot/            # the rule bot and the seam a bot plays through. deps: proto, clap
 ```
 
@@ -1687,7 +1687,7 @@ the server has nothing left to do.
 | 5 | ✅ `World` ticks | entities and component tables, units, movement, orders, creeps, towers, Ancient; `rng.rs` with streams and Ratio/Chance |
 | 6 | ✅ combat | attacks, projectiles, damage, deaths, gold/xp, victory |
 | 7 | ✅ server networking | lobby, both tick modes, snapshot broadcast, replay recording |
-| 8 | ✅ `bota-bot` and `bota-client` | SDK + bot, bot-vs-bot match: the client — macroquad: map, units, HP bars, orders, lobby, spectating, replay playback; the bot — the `Bot` seam and `play`, a deterministic playbook for Shadow Fiend and Sylla, lockstep acks, two of it playing a match through to an Ancient |
+| 8 | ✅ `bota-bot` and `bota-client` | SDK + bot, bot-vs-bot match: the client — macroquad: map, units, HP bars, orders, lobby, spectating, replay playback (since split into `bota-client-core` and drawn by dbota outside the repository); the bot — the `Bot` seam and `play`, a deterministic playbook for Shadow Fiend and Sylla, lockstep acks, two of it playing a match through to an Ancient |
 | 9 | 🔄 heroes and determinism test | Done: abilities, levels, items, shop; Sylla, Pudge and Shadow Fiend; whole-match fingerprints pinned on every map. Not yet: runs on musl/wasm32; a mirror test that a diagonally mirrored match ends in the mirrored outcome |
 
 ## Map2: mid-only play on the full Dota map

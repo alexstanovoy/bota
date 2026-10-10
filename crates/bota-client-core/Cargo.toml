@@ -1,10 +1,7 @@
 [package]
-name = "bota-client"
+name = "bota-client-core"
 version.workspace = true
 edition.workspace = true
 
 [dependencies]
 bota-proto = { workspace = true }
-clap = { version = "4.6.6", features = ["derive"] }
-macroquad = "0.4"
-resvg = "0.48.1"

@@ -7,7 +7,7 @@ use bota_proto::{Cheat, ItemId, Order};
 ///
 /// Commands: `gold [amount]`, `lvlup [count]`, `refresh`, `item <id or
 /// name>`.
-pub fn parse(line: &str) -> Result<Order, String> {
+pub fn parse_console(line: &str) -> Result<Order, String> {
     let mut words = line.trim().trim_start_matches('-').split_whitespace();
     let Some(word) = words.next() else {
         return Err("nothing typed".to_string());

@@ -1,8 +1,0 @@
-<svg width="100%" viewBox="0 0 680 260" role="img" xmlns="http://www.w3.org/2000/svg"><title>Magic Wand</title><desc>Rectangular icon: a slim wand tipped with a bright star</desc>
-<rect x="220" y="50" width="240" height="160" fill="#1d2230"/>
-<path d="M298 178 L364 100" fill="none" stroke="#6b4a2c" stroke-width="12" stroke-linecap="round"/>
-<path d="M304 172 L322 152" fill="none" stroke="#d9b56a" stroke-width="13" stroke-linecap="round"/>
-<path d="M372 68 L380 90 L402 98 L380 106 L372 128 L364 106 L342 98 L364 90 Z" fill="#c98cf0"/>
-<circle cx="372" cy="98" r="8" fill="#ffffff"/>
-<circle cx="370" cy="96" r="2" fill="#ffffff" opacity="0.45"/>
-</svg>

@@ -1,9 +1,0 @@
-<svg width="100%" viewBox="0 0 680 260" role="img" xmlns="http://www.w3.org/2000/svg">
-  <title>Wind Lace</title>
-  <rect x="220" y="50" width="240" height="160" fill="#1d2a33"/>
-  <path d="M262 150 C292 96 344 182 380 118 C396 90 420 96 428 112" fill="none" stroke="#cfe6f2" stroke-width="9" stroke-linecap="round"/>
-  <path d="M262 150 C292 96 344 182 380 118" fill="none" stroke="#7fb5d6" stroke-width="3" stroke-linecap="round"/>
-  <path d="M268 112 C300 92 330 98 352 88" fill="none" stroke="#9fd0ea" stroke-width="4" stroke-linecap="round" opacity="0.7"/>
-  <path d="M300 178 C330 168 360 176 392 160" fill="none" stroke="#9fd0ea" stroke-width="4" stroke-linecap="round" opacity="0.7"/>
-  <circle cx="428" cy="112" r="6" fill="#e8f4fa"/>
-</svg>

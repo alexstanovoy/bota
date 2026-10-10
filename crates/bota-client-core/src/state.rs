@@ -1,14 +1,15 @@
 //! Everything the client knows, and how server messages change it.
 
 use bota_proto::{
-    ClientMsg, EntityId, EventKind, HeroId, LobbySlot, MatchInfo, MatchStats, Order, PlayerId,
-    RejectReason, ServerMsg, ShopEntry, SlotId, Team, TickMode, UnitKind, UnitView, Vec2,
-    WorldView,
+    ClientMsg, EntityId, HeroId, LobbySlot, MatchInfo, MatchStats, Order, PlayerId, RejectReason,
+    ServerMsg, ShopEntry, SlotId, StockView, TalentSlot, TalentView, Team, TickMode, UnitKind,
+    UnitView, Vec2, WorldView,
 };
 
-use crate::camera::{Camera, MAP_SIZE};
+use crate::derive::Derived;
 use crate::net::Net;
 use crate::replay_play::ReplayPlayer;
+use crate::smooth::Smooth;
 
 /// Where messages come from: a socket or a file.
 pub enum Source {
@@ -185,10 +186,18 @@ pub enum FloaterKind {
     Damage,
     /// Health taken off by a critical strike.
     Crit,
+    /// Health taken off by magic.
+    Magic,
     /// An attack that missed.
     Miss,
     /// A level gained.
     Level,
+    /// Gold won off a kill.
+    Gold,
+    /// A creep denied.
+    Deny,
+    /// Health mended.
+    Heal,
 }
 
 /// A number or word floating off a unit.
@@ -197,10 +206,65 @@ pub struct Floater {
     pub text: String,
     /// What it tells of.
     pub kind: FloaterKind,
-    /// World position it rises from.
+    /// World position it rises from: where its unit stood when it was set
+    /// off.
     pub world: (f32, f32),
+    /// The unit it tells of, for a front end to keep it over that unit.
+    pub unit: EntityId,
     /// Seconds since it appeared.
     pub age: f32,
+}
+
+/// Seconds a floater rises before it is gone.
+pub const FLOATER_LIFE: f32 = 1.3;
+/// Floaters in flight at most; the oldest give way.
+const MAX_FLOATERS: usize = 96;
+/// Kill feed lines kept at most.
+const MAX_FEED: usize = 8;
+/// Cues waiting for the front end at most; more are dropped.
+const MAX_CUES: usize = 64;
+
+/// Something worth a sound or a flourish, told by the events of a tick.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CueKind {
+    /// A hero lets an attack go.
+    Attack,
+    /// The watched hero's attack lands.
+    Hit,
+    /// The watched hero lands the killing blow on a creep.
+    LastHit,
+    /// The watched hero denies an allied creep.
+    Deny,
+    /// A raze goes off.
+    Raze,
+    /// A requiem goes off.
+    Requiem,
+    /// The watched hero is low on health.
+    LowHp,
+    /// One's own seat buys an item.
+    Buy,
+    /// The watched hero gains a level.
+    LevelUp,
+    /// A tower strikes the watched hero.
+    TowerShot,
+    /// A hero falls.
+    HeroDeath,
+    /// The watched hero brings an enemy hero down.
+    HeroKill,
+    /// An order of this seat was turned down.
+    Refused,
+}
+
+/// A cue: what, how loud from 0 to 1, and where in the world it happens;
+/// absent for one that belongs to the watched hero itself.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Cue {
+    /// What it is.
+    pub kind: CueKind,
+    /// Loudness before distance, 0 to 1.
+    pub gain: f32,
+    /// World position it comes from.
+    pub at: Option<(f32, f32)>,
 }
 
 /// One line of the kill feed.
@@ -266,8 +330,6 @@ pub struct App {
     /// The last state seen of every unit a seat owns, and the tick it was
     /// seen on. Kept by [`remember`].
     pub seen: Vec<(u32, UnitView)>,
-    /// The eye.
-    pub camera: Camera,
     /// Sequence number of the next order.
     pub seq: u32,
     /// Whether the next left click is an attack-move.
@@ -307,6 +369,18 @@ pub struct App {
     pub over: Option<(Team, MatchStats)>,
     /// Set when the window should close.
     pub quit: bool,
+    /// The clock between snapshots.
+    pub smooth: Smooth,
+    /// What successive snapshots tell that one alone does not.
+    pub derived: Derived,
+    /// Cues waiting for the front end, drained by it every frame.
+    pub cues: Vec<Cue>,
+    /// Seconds before the next low-health cue may come.
+    pub heartbeat: f32,
+    /// The seat a replay is watched as, as if it were playing.
+    pub pov: Option<SlotId>,
+    /// The item the quick-buy intent works towards.
+    pub quick_buy: Option<u16>,
 }
 
 impl App {
@@ -337,7 +411,6 @@ impl App {
             view: None,
             prev_view: None,
             seen: Vec::new(),
-            camera: Camera::over(MAP_SIZE / 2.0, MAP_SIZE / 2.0),
             seq: 0,
             attack_move_armed: false,
             selected: None,
@@ -356,16 +429,69 @@ impl App {
             console: None,
             over: None,
             quit: false,
+            smooth: Smooth::new(),
+            derived: Derived::default(),
+            cues: Vec::new(),
+            heartbeat: 0.0,
+            pov: None,
+            quick_buy: None,
         }
     }
 
-    /// The display name of a seat.
-    pub fn seat_name(&self, slot: SlotId) -> String {
+    /// What one's side's shop has left of an item sold from a limited
+    /// stock; absent for an item without one.
+    pub fn stock_of(&self, item: u16) -> Option<StockView> {
+        let team = self.my_team().or_else(|| self.fog_team())?;
+        self.view
+            .as_ref()?
+            .stock
+            .iter()
+            .find(|s| s.team == team && s.item.0 == item)
+            .copied()
+    }
+
+    /// The talents of a seat's hero as the view tells them: learned, and
+    /// for one's own side what a skill point could go into.
+    pub fn talents_of(&self, slot: SlotId) -> Option<TalentView> {
+        self.view
+            .as_ref()?
+            .talents
+            .iter()
+            .find(|t| t.slot == slot)
+            .copied()
+    }
+
+    /// Spends a skill point of one's hero on a talent of its tree.
+    pub fn learn_talent(&mut self, talent: u8) {
+        self.send_order(Order::LearnTalent {
+            talent: TalentSlot(talent),
+        });
+    }
+
+    /// The name the player of a seat gave in the lobby, if any.
+    pub fn player_name(&self, slot: SlotId) -> Option<&str> {
         self.names
             .iter()
             .find(|(s, _)| *s == slot)
-            .map(|(_, n)| n.clone())
-            .unwrap_or_else(|| format!("seat {}", slot.0))
+            .map(|(_, name)| name.as_str())
+    }
+
+    /// The display name of a seat.
+    ///
+    /// A seat that sent no name, as in a replay, is called by its hero and
+    /// its side, and by its number before the match tells either.
+    pub fn seat_name(&self, slot: SlotId) -> String {
+        if let Some((_, name)) = self.names.iter().find(|(s, _)| *s == slot) {
+            return name.clone();
+        }
+        let seat = self
+            .view
+            .as_ref()
+            .and_then(|view| view.players.iter().find(|p| p.slot == slot));
+        match seat.and_then(|p| Some((crate::catalog::hero(p.hero.0)?, p.team))) {
+            Some((hero, team)) => format!("{} ({team:?})", hero.name),
+            None => format!("seat {}", slot.0),
+        }
     }
 
     /// What is known of a unit: its live state, or the last one seen of it
@@ -380,6 +506,20 @@ impl App {
     }
 
     /// Our hero's unit id, while it is alive and known.
+    /// How late the seat's latest applied order took effect, in
+    /// milliseconds past the earliest tick it could have: the server's
+    /// measure of the round trip, as Dota's ping.
+    pub fn order_delay_ms(&self) -> Option<u32> {
+        let slot = self.my_slot?;
+        let delay = self
+            .view
+            .as_ref()?
+            .order_delays
+            .iter()
+            .find(|d| d.slot == slot)?;
+        Some(delay.ticks * 1000 / u32::from(self.tick_rate.max(1)))
+    }
+
     pub fn my_hero(&self) -> Option<EntityId> {
         let slot = self.my_slot?;
         let view = self.view.as_ref()?;
@@ -592,10 +732,10 @@ impl App {
                 mode,
             } => {
                 self.me = Some(player_id);
-                self.my_slot = slot;
+                self.my_slot = slot.or(self.pov);
                 self.tick_rate = tick_rate;
                 self.mode = Some(mode);
-                if slot.is_some() && !self.picked {
+                if slot.is_some() && !self.picked && self.pov.is_none() {
                     self.picked = true;
                     self.source.send(&ClientMsg::PickHero { hero: HeroId(0) });
                 }
@@ -619,12 +759,19 @@ impl App {
                     self.source.send(&ClientMsg::Ack { tick: view.tick });
                 }
                 remember(&mut self.seen, &view);
+                // The events of snapshots the server skipped for a slow
+                // client, so no popup, sound or feed line is lost.
                 for skipped in std::mem::take(&mut view.skipped_ticks) {
                     for event in skipped.events {
                         self.absorb_event(event);
                     }
                 }
+                self.smooth.snapshot();
                 self.prev_view = self.view.replace(view);
+                if let Some(view) = &self.view {
+                    self.derived.snapshot(view);
+                }
+                self.launch_cues();
             }
             ServerMsg::Events { events, .. } => {
                 for event in events {
@@ -633,6 +780,7 @@ impl App {
             }
             ServerMsg::OrderRejected { seq, reason } => {
                 self.reject = Some((refusal(reason).to_string(), 2.5));
+                self.cue(CueKind::Refused, 0.8, None);
                 // The slot that earned it lights up.
                 self.refused = self
                     .aimed_from
@@ -679,91 +827,6 @@ impl App {
         self.phase = Phase::Playing;
     }
 
-    fn absorb_event(&mut self, event: EventKind) {
-        match event {
-            EventKind::Damaged {
-                target,
-                amount,
-                crit,
-                ..
-            } => {
-                if crit {
-                    self.float(target, format!("{amount}!"), FloaterKind::Crit);
-                } else {
-                    self.float(target, format!("{amount}"), FloaterKind::Damage);
-                }
-            }
-            EventKind::Missed { target, .. } => {
-                self.float(target, "miss".to_string(), FloaterKind::Miss);
-            }
-            EventKind::Died {
-                unit, killer, gold, ..
-            } => {
-                if let Some(text) = self.death_line(unit, killer, gold) {
-                    self.feed.push(FeedLine { text, age: 0.0 });
-                }
-            }
-            EventKind::StructureDestroyed { team, .. } => {
-                self.feed.push(FeedLine {
-                    text: format!("a {team:?} structure has fallen"),
-                    age: 0.0,
-                });
-            }
-            EventKind::LevelUp { unit, level } => {
-                self.float(unit, format!("level {level}"), FloaterKind::Level);
-            }
-            EventKind::Healed { .. }
-            | EventKind::AbilityCast { .. }
-            | EventKind::ItemBought { .. } => {}
-        }
-    }
-
-    /// Sets a floater off a unit, if it is still to be found.
-    fn float(&mut self, unit: EntityId, text: String, kind: FloaterKind) {
-        if let Some(u) = self.freshest(unit) {
-            let world = (u.pos.x.to_f32(), u.pos.y.to_f32());
-            self.floaters.push(Floater {
-                text,
-                kind,
-                world,
-                age: 0.0,
-            });
-        }
-    }
-
-    /// The kill feed line of a death. Only a hero's death has one.
-    fn death_line(&self, unit: EntityId, killer: Option<EntityId>, gold: i32) -> Option<String> {
-        let victim = self.freshest(unit)?;
-        if victim.kind != UnitKind::Hero {
-            return None;
-        }
-        let victim = match victim.owner {
-            Some(slot) => self.seat_name(slot),
-            None => format!("a {:?} hero", victim.team),
-        };
-        let by = killer
-            .and_then(|k| self.freshest(k))
-            .map(|k| match (k.kind, k.owner) {
-                (UnitKind::Hero, Some(slot)) => self.seat_name(slot),
-                (UnitKind::Tower, _) => format!("the {:?} tower", k.team),
-                (UnitKind::Fountain, _) => format!("the {:?} fountain", k.team),
-                (kind, _) => format!("a {:?} {kind:?}", k.team),
-            });
-        Some(match by {
-            Some(by) if gold > 0 => format!("{victim} was slain by {by} for {gold} gold"),
-            Some(by) => format!("{victim} was slain by {by}"),
-            None => format!("{victim} died"),
-        })
-    }
-
-    /// A unit as the freshest view that still has it shows it.
-    fn freshest(&self, id: EntityId) -> Option<&UnitView> {
-        [self.view.as_ref(), self.prev_view.as_ref()]
-            .into_iter()
-            .flatten()
-            .find_map(|view| view.units.iter().find(|u| u.id == id))
-    }
-
     /// Notices a dead socket once and says so.
     pub fn check_connection(&mut self) {
         if self.lost || self.over.is_some() {
@@ -780,12 +843,49 @@ impl App {
         }
     }
 
+    /// One frame of the client: takes in whatever arrived, moves the
+    /// clock between snapshots on, and ages the transient effects.
+    pub fn pump(&mut self, dt: f32) {
+        self.smooth.advance(dt);
+        let msgs = self.source.poll(dt);
+        for msg in msgs {
+            self.handle(msg);
+        }
+        self.check_connection();
+        self.tick_effects(dt);
+        self.heartbeat_cue(dt);
+        if let Some(view) = &self.view {
+            self.derived.trail(view, dt);
+            if let Some(target) = self.quick_buy
+                && let Some(p) = view.players.iter().find(|p| Some(p.slot) == self.my_slot)
+                && crate::shop::held_items(view, p).contains(&bota_proto::ItemId(target))
+            {
+                self.quick_buy = None;
+            }
+        }
+    }
+
+    /// Asks the front end for a cue, dropped when too many wait.
+    pub fn cue(&mut self, kind: CueKind, gain: f32, at: Option<(f32, f32)>) {
+        if self.cues.len() < MAX_CUES {
+            self.cues.push(Cue { kind, gain, at });
+        }
+    }
+
     /// Ages and expires the transient effects.
     pub fn tick_effects(&mut self, dt: f32) {
         for f in &mut self.floaters {
             f.age += dt;
         }
-        self.floaters.retain(|f| f.age < 1.2);
+        self.floaters.retain(|f| f.age < FLOATER_LIFE);
+        if self.floaters.len() > MAX_FLOATERS {
+            let extra = self.floaters.len() - MAX_FLOATERS;
+            self.floaters.drain(..extra);
+        }
+        if self.feed.len() > MAX_FEED {
+            let extra = self.feed.len() - MAX_FEED;
+            self.feed.drain(..extra);
+        }
         for l in &mut self.feed {
             l.age += dt;
         }

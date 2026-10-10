@@ -1,7 +1,0 @@
-<svg width="100%" viewBox="0 0 680 260" role="img" xmlns="http://www.w3.org/2000/svg"><title>Circlet</title><desc>Rectangular icon: a thin gold band with a small gem at its crown</desc>
-<rect x="220" y="50" width="240" height="160" fill="#1d2230"/>
-<path d="M286 148 C300 112 380 112 394 148" fill="none" stroke="#d9b56a" stroke-width="9" stroke-linecap="round"/>
-<path d="M286 148 C300 118 380 118 394 148" fill="none" stroke="#f0dca4" stroke-width="3" stroke-linecap="round" opacity="0.7"/>
-<circle cx="340" cy="116" r="13" fill="#7fd4e8"/>
-<circle cx="336" cy="112" r="4" fill="#ffffff" opacity="0.45"/>
-</svg>
