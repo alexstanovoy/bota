@@ -58,6 +58,9 @@ pub struct EffectFace {
     pub name: &'static str,
     /// What it does, for the hover popup.
     pub blurb: &'static str,
+    /// Whether it hurts whoever wears it: a debuff, drawn apart from the
+    /// buffs.
+    pub harmful: bool,
 }
 
 /// One hero, as the client shows it.
@@ -540,106 +543,127 @@ pub const EFFECTS: [EffectFace; 22] = [
         id: 0,
         name: "Frenzy",
         blurb: "Attack speed increased.",
+        harmful: false,
     },
     EffectFace {
         id: 1,
         name: "Mending",
         blurb: "Regenerating health.",
+        harmful: false,
     },
     EffectFace {
         id: 2,
         name: "Clarity",
         blurb: "Regenerating mana.",
+        harmful: false,
     },
     EffectFace {
         id: 3,
         name: "Fountain",
         blurb: "Regenerating health and mana for standing in the fountain.",
+        harmful: false,
     },
     EffectFace {
         id: 4,
         name: "Held",
         blurb: "Cannot move, attack or cast.",
+        harmful: true,
     },
     EffectFace {
         id: 5,
         name: "Slowed",
         blurb: "Movement speed reduced.",
+        harmful: true,
     },
     EffectFace {
         id: 6,
         name: "Burning",
         blurb: "Losing health over time.",
+        harmful: true,
     },
     EffectFace {
         id: 7,
         name: "Hastened",
         blurb: "Movement speed increased.",
+        harmful: false,
     },
     EffectFace {
         id: 8,
         name: "Shielded",
         blurb: "Nothing gets through.",
+        harmful: false,
     },
     EffectFace {
         id: 9,
         name: "Phased",
         blurb: "Walking through the bodies in the way.",
+        harmful: false,
     },
     EffectFace {
         id: 10,
         name: "Heap",
         blurb: "Strength kept from every enemy hero that died nearby.",
+        harmful: false,
     },
     EffectFace {
         id: 11,
         name: "Souls",
         blurb: "Attack damage from every unit brought down.",
+        harmful: false,
     },
     EffectFace {
         id: 12,
         name: "Presence",
         blurb: "Armor worn down by a dark presence nearby.",
+        harmful: true,
     },
     EffectFace {
         id: 13,
         name: "Guarded",
         blurb: "Armor and health mended, for standing by a tower of your own.",
+        harmful: false,
     },
     EffectFace {
         id: 14,
         name: "Inspired",
         blurb: "Health mended and magic shrugged off, for marching beside the one carrying the flag.",
+        harmful: false,
     },
     EffectFace {
         id: 15,
         name: "Razed",
         blurb: "Shadowrazes from the same caster deal 35/50/65/80 more magic damage per stack. Each damaging hit refreshes all stacks for 6 s; up to 255 stacks.",
+        harmful: true,
     },
     EffectFace {
         id: 16,
         name: "Rot",
         blurb: "The rot is on. It is never listed on a unit: the toggle shows on the ability.",
+        harmful: false,
     },
     EffectFace {
         id: 17,
         name: "Feared",
         blurb: "Running from whoever put the fear on. Cannot attack or cast.",
+        harmful: true,
     },
     EffectFace {
         id: 18,
         name: "Torn",
         blurb: "Magic resistance torn by a requiem.",
+        harmful: true,
     },
     EffectFace {
         id: 19,
         name: "Feast",
         blurb: "Attacking and moving faster while taking souls from enemies nearby; counts the souls taken.",
+        harmful: false,
     },
     EffectFace {
         id: 20,
         name: "Fed",
         blurb: "Souls a feast took from enemies since fallen, kept past the cap until it runs out.",
+        harmful: false,
     },
     EffectFace {
         id: 21,
