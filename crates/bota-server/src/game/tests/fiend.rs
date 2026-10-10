@@ -331,17 +331,18 @@ fn the_presence_wears_down_the_armor_of_enemies_that_see_its_carrier() {
 #[test]
 fn armor_the_presence_takes_below_zero_lets_his_swings_land_harder() {
     // A melee creep's 2 armor less the fourth level's 7 is -5: Dota's
-    // 2 - 1 / (1 + 0.06 * 5) of a swing comes through.
-    for (presence, taken) in [(0, 44 * 100 / 112), (4, 44 * 160 / 130)] {
+    // 2 - 1 / (1 + 0.06 * 5) of a swing comes through. A swing is 41 to 47:
+    // 16 to 22 base and 25 agility.
+    for (presence, over, under) in [(0, 100, 112), (4, 160, 130)] {
         let (mut world, fiend, mark) = fiend_and_a_mark(-400);
         if let Some(book) = world.abilities.get_mut(fiend) {
             book.slots[4].level = presence;
         }
         world.step();
-        assert_eq!(
-            one_swing_takes(&mut world, fiend, mark),
-            taken,
-            "presence at level {presence}"
+        let taken = one_swing_takes(&mut world, fiend, mark);
+        assert!(
+            (41 * over / under..=47 * over / under).contains(&taken),
+            "presence at level {presence}: {taken}"
         );
     }
 }

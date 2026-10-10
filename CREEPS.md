@@ -58,6 +58,13 @@ source names the distribution; even is **[approximation]**, the engine's
 the experience. Experience is split evenly among the killer side's heroes
 within 1500.
 
+**Damage is drawn per swing**: every attack draws its base damage evenly from
+the unit's range (19–23 for a melee creep), then adds its bonuses. Heroes roll
+the same way on their base damage (Shadow Fiend 16–22). Liquipedia, *Attack
+Damage*: "every time an attack is issued, a random value between the minimum
+and maximum is chosen". The view's `attack_damage` is the middle of the range,
+rounded down.
+
 **Attack classes** (since 7.31; Liquipedia *Attack Damage*, *Buildings*,
 *Siege Creep*). Every attack is multiplied by a factor set by what swings and
 what it hits, before armor, crits and the magical pierce included:
@@ -451,23 +458,21 @@ barracks and fountains are 144, the Ancients 299 (Radiant) and 374 (Dire).
 
 ## Not yet modelled
 
-1. **No per-swing damage roll.** A unit has one damage number, so the 19–23 style
-   ranges collapse to one value.
-2. **No day and night.** Neutrals never sleep, their aggro range is always 240,
+1. **No day and night.** Neutrals never sleep, their aggro range is always 240,
    and each uses its day vision.
-3. **Neutral abilities are inert.** Stats and rosters are real; auras, stuns,
+2. **Neutral abilities are inert.** Stats and rosters are real; auras, stuns,
    heals and the golem split are not.
-4. **`AGGRO_TIE_RANGE`** is an approximation of "about equally close" (§1.5).
+3. **`AGGRO_TIE_RANGE`** is an approximation of "about equally close" (§1.5).
    Valve has never published the real rule.
-5. **No flooded camps.** §1.6.5 needs a river that knows which camps it covers
+4. **No flooded camps.** §1.6.5 needs a river that knows which camps it covers
    and a 5-minute promotion clock. The camp table carries a `flooded` flag that
    nothing reads.
-6. **Neutral upgrades land at spawn only.** A neutral carries the upgrades of
+5. **Neutral upgrades land at spawn only.** A neutral carries the upgrades of
    the tick it spawned on, and an upgrade adds no attack speed (§1.6).
-7. **No invisibility, untargetability or disarm.** The flee on damage from an
+6. **No invisibility, untargetability or disarm.** The flee on damage from an
    invisible unit and the untargetable rules of §1.6, and the disarm rule of
    §1.4, have nothing to act on.
-8. **Super and mega creeps** carry pre-7.41 numbers: Liquipedia lists super
+7. **Super and mega creeps** carry pre-7.41 numbers: Liquipedia lists super
    melee 36–44 damage, super ranged 41–46, mega melee 1270 health and 96–104
    damage, mega ranged 1015 and 131–136; bota has 41–49, 46–51 and mega as a
    faster-swinging super.

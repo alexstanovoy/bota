@@ -364,6 +364,7 @@ fn raised(kind: &UnitDef, levels: i32, steps: i32) -> Stats {
         hp_regen: kind.hp_regen,
         mana_regen: kind.mana_regen,
         damage: kind.damage + up.damage,
+        damage_spread: kind.damage_spread,
         damage_to_creeps: 0,
         attack_range: Fixed::from_int(kind.attack_range),
         acquisition: Fixed::from_int(kind.acquisition),

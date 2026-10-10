@@ -20,9 +20,11 @@ pub enum Purpose {
     Pierce = 6,
     /// What each kill paying a gold range pays.
     Bounty = 7,
+    /// What each swing with a damage range deals.
+    DamageRoll = 8,
 }
 
-const PURPOSE_COUNT: usize = Purpose::Bounty as usize + 1;
+const PURPOSE_COUNT: usize = Purpose::DamageRoll as usize + 1;
 
 /// The root of all hidden randomness in one match, reproducible from the
 /// pair of a server key and a match id.

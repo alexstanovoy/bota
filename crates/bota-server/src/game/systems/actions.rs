@@ -635,6 +635,7 @@ impl World {
         self.expose(attacker, on);
         // What is carried against creeps is worth nothing against anything else.
         let damage = stats.damage
+            + self.roll_damage(stats.damage_spread)
             + if self.kind.get(on).copied().is_some_and(is_creep) {
                 stats.damage_to_creeps
             } else {
@@ -726,6 +727,17 @@ impl World {
                 bounced: Vec::new(),
             },
         );
+    }
+
+    /// What a swing adds to its least damage: a whole number drawn evenly
+    /// from `0..=spread` on the match's damage stream. A spread of zero draws
+    /// nothing.
+    fn roll_damage(&mut self, spread: i32) -> i32 {
+        if spread <= 0 {
+            return 0;
+        }
+        let span = u32::try_from(spread + 1).expect("a damage spread fits a u32");
+        self.rng.global(Purpose::DamageRoll).below(span) as i32
     }
 
     /// Whether a swing is a critical strike, and then what it is worth as a

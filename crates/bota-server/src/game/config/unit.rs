@@ -49,9 +49,12 @@ pub struct UnitDef {
     pub hp_regen: Fixed,
     /// Mana mended each tick.
     pub mana_regen: Fixed,
-    /// Damage one attack deals, before the primary attribute. Zero for
-    /// whatever does not attack.
+    /// The least damage one attack deals, before the primary attribute.
+    /// Zero for whatever does not attack.
     pub damage: i32,
+    /// How much more one attack may deal: each swing adds a whole number
+    /// drawn evenly from `0..=damage_spread`. Zero for a fixed amount.
+    pub damage_spread: i32,
     /// How far it reaches, edge to edge, in world units.
     pub attack_range: i32,
     /// How far it looks for something to attack, in world units.
@@ -129,6 +132,7 @@ const NOTHING: UnitDef = UnitDef {
     hp_regen: Fixed::ZERO,
     mana_regen: Fixed::ZERO,
     damage: 0,
+    damage_spread: 0,
     attack_range: 0,
     acquisition: 0,
     attack_time: 0,
@@ -164,6 +168,7 @@ pub const MELEE_CREEP: UnitDef = UnitDef {
     kind: UnitKind::CreepMelee,
     max_hp: rules::MELEE_CREEP_HP,
     damage: rules::MELEE_CREEP_ATTACK_DAMAGE,
+    damage_spread: rules::MELEE_CREEP_DAMAGE_SPREAD,
     attack_range: rules::MELEE_CREEP_ATTACK_RANGE,
     acquisition: rules::MELEE_CREEP_ACQUISITION,
     attack_time: rules::CREEP_ATTACK_TIME,
@@ -213,6 +218,7 @@ pub const RANGED_CREEP: UnitDef = UnitDef {
     kind: UnitKind::CreepRanged,
     max_hp: rules::RANGED_CREEP_HP,
     damage: rules::RANGED_CREEP_ATTACK_DAMAGE,
+    damage_spread: rules::RANGED_CREEP_DAMAGE_SPREAD,
     attack_range: rules::RANGED_CREEP_ATTACK_RANGE,
     acquisition: rules::RANGED_CREEP_ACQUISITION,
     attack_point: rules::RANGED_CREEP_ATTACK_POINT,
@@ -237,6 +243,7 @@ pub const RANGED_CREEP: UnitDef = UnitDef {
 pub const SUPER_MELEE_CREEP: UnitDef = UnitDef {
     max_hp: rules::SUPER_MELEE_HP,
     damage: rules::SUPER_MELEE_ATTACK_DAMAGE,
+    damage_spread: rules::SUPER_MELEE_DAMAGE_SPREAD,
     armor: rules::SUPER_MELEE_ARMOR,
     bounty_gold: rules::SUPER_MELEE_BOUNTY,
     bounty_xp: rules::SUPER_MELEE_XP,
@@ -254,6 +261,7 @@ pub const MEGA_MELEE_CREEP: UnitDef = UnitDef {
 pub const SUPER_RANGED_CREEP: UnitDef = UnitDef {
     max_hp: rules::SUPER_RANGED_HP,
     damage: rules::SUPER_RANGED_ATTACK_DAMAGE,
+    damage_spread: rules::SUPER_RANGED_DAMAGE_SPREAD,
     armor: rules::SUPER_RANGED_ARMOR,
     bounty_gold: rules::SUPER_RANGED_BOUNTY,
     bounty_xp: rules::SUPER_RANGED_XP,
@@ -265,6 +273,7 @@ pub const SIEGE_CREEP: UnitDef = UnitDef {
     kind: UnitKind::CreepSiege,
     max_hp: rules::SIEGE_CREEP_HP,
     damage: rules::SIEGE_CREEP_ATTACK_DAMAGE,
+    damage_spread: rules::SIEGE_CREEP_DAMAGE_SPREAD,
     attack_range: rules::SIEGE_CREEP_ATTACK_RANGE,
     acquisition: rules::SIEGE_CREEP_ACQUISITION,
     attack_time: rules::SIEGE_CREEP_ATTACK_TIME,
@@ -345,8 +354,8 @@ pub const PUDGE: UnitDef = UnitDef {
     ..HERO
 };
 
-/// Shadow Fiend: fragile and long-ranged, at Dota 7.41f's numbers. The attack
-/// damage is the middle of Dota's 16 to 22.
+/// Shadow Fiend: fragile and long-ranged, at Dota 7.41f's numbers, 16 to 22
+/// base attack damage among them.
 pub const SHADOW_FIEND: UnitDef = UnitDef {
     attributes: Attributes {
         strength: Fixed::from_int(19),
@@ -357,7 +366,8 @@ pub const SHADOW_FIEND: UnitDef = UnitDef {
     max_hp: 120,
     max_mana: 75,
     mana_regen: Fixed::from_ratio(3, 10 * rules::TICKS_PER_SECOND as i32),
-    damage: 19,
+    damage: 16,
+    damage_spread: 6,
     attack_range: 525,
     acquisition: 800,
     attack_time: 1600,
@@ -381,6 +391,7 @@ pub const SHADOW_FIEND: UnitDef = UnitDef {
 /// A super siege creep: the same wagon hitting harder.
 pub const SUPER_SIEGE_CREEP: UnitDef = UnitDef {
     damage: rules::SUPER_SIEGE_ATTACK_DAMAGE,
+    damage_spread: rules::SUPER_SIEGE_DAMAGE_SPREAD,
     ..SIEGE_CREEP
 };
 

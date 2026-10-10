@@ -2,7 +2,8 @@
 //! target, swung for real.
 
 use crate::game::{
-    HERO, MELEE_CREEP, NeutralKind, RANGED_CREEP, SIEGE_CREEP, UnitDef, World, tower_def,
+    HERO, MELEE_CREEP, NEUTRALS, NeutralKind, RANGED_CREEP, SHADOW_FIEND, SIEGE_CREEP, UnitDef,
+    World, tower_def,
 };
 use bota_proto::{Attributes, Team, UnitKind, Vec2};
 
@@ -28,6 +29,19 @@ const SIEGE_DUMMY: UnitDef = dummy(UnitKind::CreepSiege);
 const TOWER_DUMMY: UnitDef = dummy(UnitKind::Tower);
 const NEUTRAL_DUMMY: UnitDef = dummy(UnitKind::CreepNeutral);
 
+/// An attacker of a kind whose every swing is worth the same.
+const fn steady(def: &UnitDef) -> UnitDef {
+    UnitDef {
+        damage_spread: 0,
+        ..*def
+    }
+}
+
+const MELEE: UnitDef = steady(&MELEE_CREEP);
+const RANGED: UnitDef = steady(&RANGED_CREEP);
+const SIEGE: UnitDef = steady(&SIEGE_CREEP);
+const KOBOLD: UnitDef = steady(&NEUTRALS[NeutralKind::Kobold as usize]);
+
 /// What one swing of `attacker` takes off a dummy of each kind, against
 /// what the swing is worth.
 fn swing_at(attacker: &'static UnitDef, target: &'static UnitDef) -> (i32, i32) {
@@ -43,18 +57,17 @@ fn swing_at(attacker: &'static UnitDef, target: &'static UnitDef) -> (i32, i32) 
 #[test]
 fn every_attack_class_lands_its_share_on_every_kind() {
     let tower = tower_def(1);
-    let kobold = NeutralKind::Kobold.def();
     // Percent of a swing that lands on: hero, creep, siege creep, tower,
     // neutral. Liquipedia, Attack Damage: Runty 0.75 to heroes and 0.7 to
     // Reinforced; Piercing 0.5, 1.5 and 0.35; Reinforced 2.5 to Reinforced;
     // a hero 0.5 to Reinforced; the jungle and the rest have no class.
     let table: [(&'static UnitDef, [i32; 5]); 6] = [
-        (&MELEE_CREEP, [75, 100, 70, 70, 100]),
-        (&RANGED_CREEP, [50, 150, 35, 35, 150]),
-        (&SIEGE_CREEP, [100, 100, 250, 250, 100]),
+        (&MELEE, [75, 100, 70, 70, 100]),
+        (&RANGED, [50, 150, 35, 35, 150]),
+        (&SIEGE, [100, 100, 250, 250, 100]),
         (tower, [100, 100, 250, 250, 100]),
         (&HERO, [100, 100, 50, 50, 100]),
-        (kobold, [100, 100, 100, 100, 100]),
+        (&KOBOLD, [100, 100, 100, 100, 100]),
     ];
     let targets = [
         &HERO_DUMMY,
@@ -74,5 +87,34 @@ fn every_attack_class_lands_its_share_on_every_kind() {
                 target.kind
             );
         }
+    }
+}
+
+#[test]
+fn every_swing_draws_its_damage_evenly_from_the_range() {
+    // Liquipedia, Attack Damage: "every time an attack is issued, a random
+    // value between the minimum and maximum is chosen". A melee creep swings
+    // 19 to 23; Shadow Fiend 16 to 22 base, and his 25 agility on top.
+    for (attacker, low, high) in [(&MELEE_CREEP, 19, 23), (&SHADOW_FIEND, 41, 47)] {
+        // In a corner of the plain map, where no wave ever walks by.
+        let mut world = World::new();
+        let from = world.spawn_unit(attacker, Team::Radiant, Vec2::from_ints(1500, 1500));
+        let on = world.spawn_unit(&CREEP_DUMMY, Team::Dire, Vec2::from_ints(1610, 1500));
+        world.settle();
+        let swings = 300;
+        let taken: Vec<i32> = (0..swings)
+            .map(|_| {
+                world.fill_pools(on);
+                one_swing_takes(&mut world, from, on)
+            })
+            .collect();
+        let label = format!("{:?}", attacker.kind);
+        assert_eq!(taken.iter().min(), Some(&low), "{label}: the least");
+        assert_eq!(taken.iter().max(), Some(&high), "{label}: the most");
+        let mean_x10 = taken.iter().sum::<i32>() * 10 / swings;
+        assert!(
+            (mean_x10 - (low + high) * 5).abs() <= 3,
+            "{label}: mean {mean_x10} tenths"
+        );
     }
 }

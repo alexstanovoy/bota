@@ -113,6 +113,7 @@ const NEUTRAL_BASE: UnitDef = UnitDef {
     hp_regen: Fixed::ZERO,
     mana_regen: Fixed::ZERO,
     damage: 0,
+    damage_spread: 0,
     attack_range: 0,
     acquisition: 0,
     attack_time: 0,
@@ -154,6 +155,7 @@ pub const NEUTRALS: [UnitDef; 36] = [
         vision: 1400,
         max_hp: 240,
         damage: 15,
+        damage_spread: 1,
         attack_range: 100,
         acquisition: 500,
         attack_time: 2000,
@@ -172,6 +174,7 @@ pub const NEUTRALS: [UnitDef; 36] = [
     UnitDef {
         max_hp: 325,
         damage: 22,
+        damage_spread: 1,
         attack_range: 100,
         acquisition: 500,
         attack_time: 2000,
@@ -189,7 +192,8 @@ pub const NEUTRALS: [UnitDef; 36] = [
     // KoboldTaskmaster
     UnitDef {
         max_hp: 400,
-        damage: 25,
+        damage: 24,
+        damage_spread: 2,
         attack_range: 110,
         acquisition: 500,
         attack_time: 2000,
@@ -207,7 +211,8 @@ pub const NEUTRALS: [UnitDef; 36] = [
     // ForestTrollBerserker
     UnitDef {
         max_hp: 500,
-        damage: 32,
+        damage: 28,
+        damage_spread: 9,
         attack_range: 500,
         acquisition: 300,
         attack_time: 2000,
@@ -226,7 +231,8 @@ pub const NEUTRALS: [UnitDef; 36] = [
     UnitDef {
         vision: 1400,
         max_hp: 450,
-        damage: 31,
+        damage: 28,
+        damage_spread: 6,
         attack_range: 600,
         acquisition: 300,
         attack_time: 2000,
@@ -245,7 +251,8 @@ pub const NEUTRALS: [UnitDef; 36] = [
     UnitDef {
         vision: 400,
         max_hp: 400,
-        damage: 26,
+        damage: 25,
+        damage_spread: 2,
         attack_range: 500,
         acquisition: 800,
         attack_time: 2000,
@@ -264,6 +271,7 @@ pub const NEUTRALS: [UnitDef; 36] = [
     UnitDef {
         max_hp: 400,
         damage: 14,
+        damage_spread: 1,
         attack_range: 100,
         acquisition: 500,
         attack_time: 2000,
@@ -281,7 +289,8 @@ pub const NEUTRALS: [UnitDef; 36] = [
     // Ghost
     UnitDef {
         max_hp: 500,
-        damage: 40,
+        damage: 38,
+        damage_spread: 5,
         attack_range: 400,
         acquisition: 300,
         attack_time: 2000,
@@ -300,7 +309,8 @@ pub const NEUTRALS: [UnitDef; 36] = [
     UnitDef {
         vision: 1200,
         max_hp: 400,
-        damage: 31,
+        damage: 28,
+        damage_spread: 6,
         attack_range: 300,
         acquisition: 300,
         attack_time: 2000,
@@ -319,7 +329,8 @@ pub const NEUTRALS: [UnitDef; 36] = [
     UnitDef {
         vision: 1800,
         max_hp: 500,
-        damage: 33,
+        damage: 30,
+        damage_spread: 6,
         attack_range: 450,
         acquisition: 300,
         attack_time: 2000,
@@ -337,7 +348,8 @@ pub const NEUTRALS: [UnitDef; 36] = [
     // CentaurOutrunner
     UnitDef {
         max_hp: 350,
-        damage: 19,
+        damage: 18,
+        damage_spread: 2,
         attack_range: 100,
         acquisition: 500,
         attack_time: 2000,
@@ -355,7 +367,8 @@ pub const NEUTRALS: [UnitDef; 36] = [
     // CentaurKhan
     UnitDef {
         max_hp: 1100,
-        damage: 52,
+        damage: 49,
+        damage_spread: 6,
         attack_range: 100,
         acquisition: 500,
         attack_time: 2000,
@@ -373,7 +386,8 @@ pub const NEUTRALS: [UnitDef; 36] = [
     // GiantWolf
     UnitDef {
         max_hp: 500,
-        damage: 16,
+        damage: 15,
+        damage_spread: 2,
         attack_range: 90,
         acquisition: 500,
         attack_time: 2000,
@@ -391,7 +405,8 @@ pub const NEUTRALS: [UnitDef; 36] = [
     // AlphaWolf
     UnitDef {
         max_hp: 600,
-        damage: 28,
+        damage: 27,
+        damage_spread: 2,
         attack_range: 90,
         acquisition: 500,
         attack_time: 2000,
@@ -409,7 +424,8 @@ pub const NEUTRALS: [UnitDef; 36] = [
     // SatyrTrickster
     UnitDef {
         max_hp: 300,
-        damage: 11,
+        damage: 10,
+        damage_spread: 2,
         attack_range: 280,
         acquisition: 280,
         attack_time: 2000,
@@ -427,7 +443,8 @@ pub const NEUTRALS: [UnitDef; 36] = [
     // SatyrSoulstealer
     UnitDef {
         max_hp: 600,
-        damage: 22,
+        damage: 21,
+        damage_spread: 2,
         attack_range: 100,
         acquisition: 300,
         attack_time: 2000,
@@ -445,7 +462,8 @@ pub const NEUTRALS: [UnitDef; 36] = [
     // SatyrHellcaller
     UnitDef {
         max_hp: 1100,
-        damage: 52,
+        damage: 49,
+        damage_spread: 6,
         attack_range: 100,
         acquisition: 300,
         attack_time: 2000,
@@ -463,7 +481,8 @@ pub const NEUTRALS: [UnitDef; 36] = [
     // OgreMauler
     UnitDef {
         max_hp: 800,
-        damage: 23,
+        damage: 22,
+        damage_spread: 2,
         attack_range: 100,
         acquisition: 500,
         attack_time: 2000,
@@ -481,7 +500,8 @@ pub const NEUTRALS: [UnitDef; 36] = [
     // OgreMagi
     UnitDef {
         max_hp: 600,
-        damage: 19,
+        damage: 18,
+        damage_spread: 2,
         attack_range: 100,
         acquisition: 500,
         attack_time: 2000,
@@ -499,7 +519,8 @@ pub const NEUTRALS: [UnitDef; 36] = [
     // MudGolem
     UnitDef {
         max_hp: 750,
-        damage: 25,
+        damage: 24,
+        damage_spread: 2,
         attack_range: 100,
         acquisition: 500,
         attack_time: 2000,
@@ -517,7 +538,8 @@ pub const NEUTRALS: [UnitDef; 36] = [
     // MudGolemSplit
     UnitDef {
         max_hp: 250,
-        damage: 12,
+        damage: 10,
+        damage_spread: 4,
         attack_range: 100,
         acquisition: 500,
         attack_time: 2000,
@@ -535,7 +557,8 @@ pub const NEUTRALS: [UnitDef; 36] = [
     // PolarFurbolgChampion
     UnitDef {
         max_hp: 700,
-        damage: 41,
+        damage: 39,
+        damage_spread: 5,
         attack_range: 100,
         acquisition: 500,
         attack_time: 2000,
@@ -553,7 +576,8 @@ pub const NEUTRALS: [UnitDef; 36] = [
     // PolarFurbolgUrsaWarrior
     UnitDef {
         max_hp: 950,
-        damage: 52,
+        damage: 49,
+        damage_spread: 6,
         attack_range: 100,
         acquisition: 500,
         attack_time: 2000,
@@ -571,7 +595,8 @@ pub const NEUTRALS: [UnitDef; 36] = [
     // Wildkin
     UnitDef {
         max_hp: 350,
-        damage: 19,
+        damage: 18,
+        damage_spread: 2,
         attack_range: 128,
         acquisition: 500,
         attack_time: 2000,
@@ -589,7 +614,8 @@ pub const NEUTRALS: [UnitDef; 36] = [
     // EnragedWildkin
     UnitDef {
         max_hp: 950,
-        damage: 53,
+        damage: 50,
+        damage_spread: 6,
         attack_range: 128,
         acquisition: 500,
         attack_time: 2000,
@@ -607,7 +633,8 @@ pub const NEUTRALS: [UnitDef; 36] = [
     // DarkTroll
     UnitDef {
         max_hp: 500,
-        damage: 25,
+        damage: 24,
+        damage_spread: 3,
         attack_range: 250,
         acquisition: 250,
         attack_time: 2000,
@@ -625,7 +652,8 @@ pub const NEUTRALS: [UnitDef; 36] = [
     // DarkTrollWarlord
     UnitDef {
         max_hp: 1100,
-        damage: 42,
+        damage: 40,
+        damage_spread: 5,
         attack_range: 250,
         acquisition: 250,
         attack_time: 2000,
@@ -643,7 +671,8 @@ pub const NEUTRALS: [UnitDef; 36] = [
     // WarpineRaider
     UnitDef {
         max_hp: 850,
-        damage: 40,
+        damage: 39,
+        damage_spread: 2,
         attack_range: 100,
         acquisition: 500,
         attack_time: 2000,
@@ -661,7 +690,8 @@ pub const NEUTRALS: [UnitDef; 36] = [
     // BlackDrake
     UnitDef {
         max_hp: 950,
-        damage: 21,
+        damage: 20,
+        damage_spread: 2,
         attack_range: 300,
         acquisition: 300,
         attack_time: 2000,
@@ -679,7 +709,8 @@ pub const NEUTRALS: [UnitDef; 36] = [
     // BlackDragon
     UnitDef {
         max_hp: 2000,
-        damage: 65,
+        damage: 62,
+        damage_spread: 6,
         attack_range: 300,
         acquisition: 300,
         attack_time: 2000,
@@ -697,7 +728,8 @@ pub const NEUTRALS: [UnitDef; 36] = [
     // RockGolem
     UnitDef {
         max_hp: 800,
-        damage: 23,
+        damage: 22,
+        damage_spread: 2,
         attack_range: 100,
         acquisition: 500,
         attack_time: 2000,
@@ -715,7 +747,8 @@ pub const NEUTRALS: [UnitDef; 36] = [
     // GraniteGolem
     UnitDef {
         max_hp: 1500,
-        damage: 82,
+        damage: 80,
+        damage_spread: 4,
         attack_range: 128,
         acquisition: 500,
         attack_time: 2000,
@@ -734,7 +767,8 @@ pub const NEUTRALS: [UnitDef; 36] = [
     UnitDef {
         vision: 1400,
         max_hp: 800,
-        damage: 33,
+        damage: 32,
+        damage_spread: 2,
         attack_range: 300,
         acquisition: 800,
         attack_time: 1800,
@@ -753,7 +787,8 @@ pub const NEUTRALS: [UnitDef; 36] = [
     UnitDef {
         vision: 1400,
         max_hp: 1700,
-        damage: 62,
+        damage: 60,
+        damage_spread: 5,
         attack_range: 300,
         acquisition: 300,
         attack_time: 2000,
@@ -771,7 +806,8 @@ pub const NEUTRALS: [UnitDef; 36] = [
     // FrostbittenGolem
     UnitDef {
         max_hp: 900,
-        damage: 30,
+        damage: 29,
+        damage_spread: 2,
         attack_range: 100,
         acquisition: 500,
         attack_time: 2000,
@@ -790,7 +826,8 @@ pub const NEUTRALS: [UnitDef; 36] = [
     UnitDef {
         vision: 1400,
         max_hp: 1500,
-        damage: 60,
+        damage: 58,
+        damage_spread: 4,
         attack_range: 500,
         acquisition: 500,
         attack_time: 2000,

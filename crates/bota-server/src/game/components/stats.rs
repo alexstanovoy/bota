@@ -24,8 +24,11 @@ pub struct Stats {
     pub hp_regen: Fixed,
     /// Mana mended each tick.
     pub mana_regen: Fixed,
-    /// Damage one attack deals.
+    /// The least damage one attack deals.
     pub damage: i32,
+    /// How much more one attack may deal, drawn evenly from `0..=` this on
+    /// every swing.
+    pub damage_spread: i32,
     /// Attack damage added against a creep and nothing else.
     pub damage_to_creeps: i32,
     /// How far it reaches, edge to edge.

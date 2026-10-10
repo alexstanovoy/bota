@@ -448,8 +448,10 @@ pub const RESPAWN_SECONDS: [u32; 25] = [
 
 /// Melee creep health.
 pub const MELEE_CREEP_HP: i32 = 550;
-/// Melee creep attack damage, the midpoint of 19 to 23.
-pub const MELEE_CREEP_ATTACK_DAMAGE: i32 = 21;
+/// Least attack damage of a melee creep's swing, of 19 to 23.
+pub const MELEE_CREEP_ATTACK_DAMAGE: i32 = 19;
+/// How much more a melee creep's swing may deal.
+pub const MELEE_CREEP_DAMAGE_SPREAD: i32 = 4;
 /// Melee creep attack range.
 pub const MELEE_CREEP_ATTACK_RANGE: i32 = 100;
 /// How far a melee creep looks for something to attack.
@@ -471,8 +473,10 @@ pub const MELEE_CREEP_HP_REGEN: Fixed = Fixed::from_ratio(1, 2 * TICKS_PER_SECON
 
 /// Ranged creep health.
 pub const RANGED_CREEP_HP: i32 = 300;
-/// Ranged creep attack damage, the midpoint of 21 to 26.
-pub const RANGED_CREEP_ATTACK_DAMAGE: i32 = 23;
+/// Least attack damage of a ranged creep's swing, of 21 to 26.
+pub const RANGED_CREEP_ATTACK_DAMAGE: i32 = 21;
+/// How much more a ranged creep's swing may deal.
+pub const RANGED_CREEP_DAMAGE_SPREAD: i32 = 5;
 /// Ranged creep attack range.
 pub const RANGED_CREEP_ATTACK_RANGE: i32 = 500;
 /// How far a ranged creep looks for something to attack.
@@ -495,8 +499,10 @@ pub const RANGED_CREEP_HP_REGEN: Fixed = Fixed::from_ratio(2, TICKS_PER_SECOND a
 
 /// Siege creep health.
 pub const SIEGE_CREEP_HP: i32 = 935;
-/// Siege creep attack damage, the midpoint of 35 to 46.
-pub const SIEGE_CREEP_ATTACK_DAMAGE: i32 = 40;
+/// Least attack damage of a siege creep's swing, of 35 to 46.
+pub const SIEGE_CREEP_ATTACK_DAMAGE: i32 = 35;
+/// How much more a siege creep's swing may deal.
+pub const SIEGE_CREEP_DAMAGE_SPREAD: i32 = 11;
 /// Siege creep attack range.
 pub const SIEGE_CREEP_ATTACK_RANGE: i32 = 690;
 /// How far a siege creep looks for something to attack.
@@ -533,8 +539,10 @@ pub const CREEP_VISION: i32 = 750;
 
 /// Super melee creep health.
 pub const SUPER_MELEE_HP: i32 = 700;
-/// Super melee creep attack damage, the midpoint of 41 to 49.
-pub const SUPER_MELEE_ATTACK_DAMAGE: i32 = 45;
+/// Least attack damage of a super melee creep's swing, of 41 to 49.
+pub const SUPER_MELEE_ATTACK_DAMAGE: i32 = 41;
+/// How much more a super melee creep's swing may deal.
+pub const SUPER_MELEE_DAMAGE_SPREAD: i32 = 8;
 /// Super melee creep armor.
 pub const SUPER_MELEE_ARMOR: i32 = 3;
 /// Super melee creep gold bounty.
@@ -543,16 +551,20 @@ pub const SUPER_MELEE_BOUNTY: GoldRange = GoldRange::new(20, 26);
 pub const SUPER_MELEE_XP: i32 = 25;
 /// Super ranged creep health.
 pub const SUPER_RANGED_HP: i32 = 475;
-/// Super ranged creep attack damage, the midpoint of 46 to 51.
-pub const SUPER_RANGED_ATTACK_DAMAGE: i32 = 48;
+/// Least attack damage of a super ranged creep's swing, of 46 to 51.
+pub const SUPER_RANGED_ATTACK_DAMAGE: i32 = 46;
+/// How much more a super ranged creep's swing may deal.
+pub const SUPER_RANGED_DAMAGE_SPREAD: i32 = 5;
 /// Super ranged creep armor.
 pub const SUPER_RANGED_ARMOR: i32 = 1;
 /// Super ranged creep gold bounty.
 pub const SUPER_RANGED_BOUNTY: GoldRange = GoldRange::new(19, 25);
 /// Super ranged creep experience.
 pub const SUPER_RANGED_XP: i32 = 22;
-/// Super siege creep attack damage, the midpoint of 51 to 62.
-pub const SUPER_SIEGE_ATTACK_DAMAGE: i32 = 56;
+/// Least attack damage of a super siege creep's swing, of 51 to 62.
+pub const SUPER_SIEGE_ATTACK_DAMAGE: i32 = 51;
+/// How much more a super siege creep's swing may deal.
+pub const SUPER_SIEGE_DAMAGE_SPREAD: i32 = 11;
 /// Milliseconds between mega melee creep attack starts.
 pub const MEGA_MELEE_ATTACK_TIME: u32 = 900;
 

@@ -158,7 +158,7 @@ rng.for_unit(Purpose::Crit, unit, source)
 ```
 
 Streams are separated by purpose (`Purpose`: `Crit`, `Evasion`, `NeutralSpawn`, `Wave`,
-`Pierce`, `Bounty`) so that a new draw in one place does not shift generation anywhere else. A
+`Pierce`, `Bounty`, `DamageRoll`) so that a new draw in one place does not shift generation anywhere else. A
 per-unit stream is keyed by `(purpose, slot index, source)` packed into the 64-bit
 ChaCha8 stream id — purpose in the top bits, slot index in the middle, a source
 byte to separate several sources of chance of one purpose on the same unit (the
@@ -1154,6 +1154,12 @@ both ends of the range (and add their experience) once, as the creep spawns, whi
 also when Dota fixes them. The midpoints the ranges replace paid ranged creeps 47
 against a mean of 47.5, and paid a flagbearer and every upgraded creep as if it had
 never been upgraded: `Growth::gold` and `Growth::xp` were computed and dropped.
+
+A swing's damage is drawn the same way on `Purpose::DamageRoll`, at the moment it
+strikes: the least damage the stats carry plus an even draw from `0..=damage_spread`.
+The view keeps telling the middle of the range, so `UnitView::attack_damage` means what
+it meant when every swing dealt that middle. Sylla and Pudge keep a fixed damage: neither
+is Dota's hero of today.
 
 ### Strike sight and creeps drawn from the fog
 

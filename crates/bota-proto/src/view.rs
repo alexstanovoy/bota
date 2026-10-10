@@ -141,7 +141,8 @@ pub struct UnitView {
     pub max_mana: i32,
     /// Movement speed in world units per second.
     pub move_speed: Fixed,
-    /// Attack damage per hit, before the target's armor.
+    /// Attack damage per hit, before the target's armor: the middle of the
+    /// range a swing draws from, rounded down.
     pub attack_damage: i32,
     /// Attack range in world units, edge to edge of the [`bound`](Self::bound)s.
     pub attack_range: Fixed,
