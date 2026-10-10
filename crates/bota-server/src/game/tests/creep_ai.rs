@@ -431,8 +431,9 @@ fn a_hold_is_not_broken_by_clicking_your_own() {
 }
 
 #[test]
-fn a_spell_answers_the_way_a_swing_does_and_never_lets_go() {
-    // At an enemy hero it calls them on.
+fn a_spell_at_a_hero_draws_nobody() {
+    // Liquipedia, Lane Creeps: the creeps' protective behaviour reacts on
+    // attacks and completely ignores ability casts.
     let (mut world, hero, theirs, ours, foe) = a_lane_with_a_hero(300);
     assert_eq!(
         world.target_of(theirs),
@@ -442,26 +443,14 @@ fn a_spell_answers_the_way_a_swing_does_and_never_lets_go() {
     cast_at(&mut world, foe);
     assert_eq!(
         world.target_of(theirs),
-        Some(hero),
-        "a spell at an enemy hero calls them on"
-    );
-    // At an enemy creep it moves nobody.
-    let (mut world, _hero, theirs, ours, _foe) = a_lane_with_a_hero(300);
-    cast_at(&mut world, theirs);
-    assert_eq!(
-        world.target_of(theirs),
         Some(ours),
-        "a spell at an enemy creep is a spell like any other"
+        "a spell at an enemy hero calls nobody on"
     );
-    // At one of your own it is not their business: what holds them holds.
-    let (mut world, hero, theirs, ours, foe) = a_lane_with_a_hero(300);
-    cast_at(&mut world, foe);
-    assert_eq!(world.target_of(theirs), Some(hero), "called on");
-    cast_at(&mut world, ours);
+    attack_click(&mut world, foe);
     assert_eq!(
         world.target_of(theirs),
         Some(hero),
-        "and a spell at one of your own does not let them go"
+        "and leaves the hero's order wait unspent"
     );
 }
 

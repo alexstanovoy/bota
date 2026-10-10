@@ -202,15 +202,10 @@ impl World {
             .map_or(bota_proto::Vec2::ZERO, |t| t.pos)
     }
 
-    /// Orders a cast. A spell aimed at somebody is as plain to the creeps as
-    /// a swing at them; an aimed cast takes the body over, so what it was
-    /// doing is not returned to, while a cast at oneself leaves its order be.
+    /// Orders a cast. A spell draws neither creeps nor towers, whoever it
+    /// is aimed at; an aimed cast takes the body over, so what it was doing
+    /// is not returned to, while a cast at oneself leaves its order be.
     fn take_cast(&mut self, unit: Entity, slot: bota_proto::AbilitySlot, target: Target) {
-        if let Target::Unit(target) = target
-            && let Some(mark) = self.of_wire(target)
-        {
-            self.rouse_by_cast(unit, mark);
-        }
         let aimed = crate::game::ability_def(self.ability_in(unit, slot))
             .is_some_and(|def| def.aim != Aim::Own);
         if aimed {

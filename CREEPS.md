@@ -178,6 +178,8 @@ attack happens or not and however far the ordered target is:
   Last, not struck off — with nobody else in range the hero is taken again in
   the same tick, so the creep is never left standing with no target.
 - an attack order on an enemy **creep** is a last hit and moves nobody
+- a **spell** moves nobody, whoever it is aimed at: creeps and towers react to
+  attacks alone (Liquipedia, *Lane Creeps* and *Buildings*)
 - **3 s cooldown on the ordering hero**: an order at an enemy hero draws
   creeps only when that hero's own cooldown has run out, and starts it again
   whether or not a creep was near to hear it, so a click from far away spends
@@ -464,11 +466,9 @@ barracks and fountains are 144, the Ancients 299 (Radiant) and 374 (Dire).
 7. **No invisibility, untargetability or disarm.** The flee on damage from an
    invisible unit and the untargetable rules of §1.6, and the disarm rule of
    §1.4, have nothing to act on.
-8. **Spells draw creeps.** `rouse_by_cast` answers a unit-target spell at an
-   enemy hero like an attack order; Liquipedia says lane creeps ignore casts.
-9. **Super and mega creeps** carry pre-7.41 numbers: Liquipedia lists super
+8. **Super and mega creeps** carry pre-7.41 numbers: Liquipedia lists super
    melee 36–44 damage, super ranged 41–46, mega melee 1270 health and 96–104
    damage, mega ranged 1015 and 131–136; bota has 41–49, 46–51 and mega as a
    faster-swinging super.
-10. **Flying attackers never miss uphill.** 7.41 lets units with free movement
-    miss uphill too.
+9. **Flying attackers never miss uphill.** 7.41 lets units with free movement
+   miss uphill too.

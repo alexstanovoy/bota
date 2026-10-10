@@ -36,22 +36,6 @@ impl World {
         self.rouse_with(orderer, call);
     }
 
-    /// Wakes the creeps onto whoever aimed a spell at an enemy hero.
-    ///
-    /// A spell answers the same as a swing, less the letting go: at an enemy
-    /// hero it calls them on, at an enemy creep it is a spell like any other
-    /// and moves nobody, and at one of your own it is not their business at
-    /// all.
-    pub fn rouse_by_cast(&mut self, orderer: Entity, mark: Entity) {
-        let Some(side) = self.team.get(orderer).copied() else {
-            return;
-        };
-        if self.call_of(side, mark) != Some(Call::On) {
-            return;
-        }
-        self.rouse_with(orderer, Call::On);
-    }
-
     /// Puts a call out to everything that can hear it.
     ///
     /// A call on reaches the lane creeps only when the orderer's own
