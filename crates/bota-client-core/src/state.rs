@@ -435,12 +435,21 @@ impl App {
     }
 
     /// The display name of a seat.
+    ///
+    /// A seat that sent no name, as in a replay, is called by its hero and
+    /// its side, and by its number before the match tells either.
     pub fn seat_name(&self, slot: SlotId) -> String {
-        self.names
-            .iter()
-            .find(|(s, _)| *s == slot)
-            .map(|(_, n)| n.clone())
-            .unwrap_or_else(|| format!("seat {}", slot.0))
+        if let Some((_, name)) = self.names.iter().find(|(s, _)| *s == slot) {
+            return name.clone();
+        }
+        let seat = self
+            .view
+            .as_ref()
+            .and_then(|view| view.players.iter().find(|p| p.slot == slot));
+        match seat.and_then(|p| Some((crate::catalog::hero(p.hero.0)?, p.team))) {
+            Some((hero, team)) => format!("{} ({team:?})", hero.name),
+            None => format!("seat {}", slot.0),
+        }
     }
 
     /// What is known of a unit: its live state, or the last one seen of it
