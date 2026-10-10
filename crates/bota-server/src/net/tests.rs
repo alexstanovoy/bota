@@ -6,8 +6,8 @@ use std::thread;
 use std::time::Duration;
 
 use bota_proto::{
-    ClientMsg, FrameReader, HeroId, Order, RejectReason, ReplayRecord, Role, ServerMsg, Target,
-    Team, Vec2, WorldView, encode_frame_to_vec,
+    ClientMsg, EventKind, FrameReader, HeroId, Order, RejectReason, ReplayRecord, Role, ServerMsg,
+    Target, Team, Vec2, WorldView, encode_frame_to_vec,
 };
 
 use crate::game::OrderDelay;
@@ -323,4 +323,124 @@ fn a_delayed_order_takes_effect_late_and_its_delay_is_told() {
         );
         return;
     }
+}
+
+/// A snapshot of `tick` some 3.5 MB long, more than the socket buffers hold.
+fn bulky_snapshot(tick: u32) -> Vec<u8> {
+    let view = WorldView {
+        tick,
+        viewer: Some(Team::Radiant),
+        units: Vec::new(),
+        projectiles: Vec::new(),
+        players: Vec::new(),
+        felled_trees: Vec::new(),
+        planted_trees: vec![Vec2::from_ints(7_000, 7_000); 350_000],
+        loot: Vec::new(),
+        aggro: Vec::new(),
+        order_delays: Vec::new(),
+        skipped_ticks: Vec::new(),
+    };
+    encode_frame_to_vec(&ServerMsg::Snapshot { view }).expect("under the frame limit")
+}
+
+#[test]
+fn a_slow_reader_skips_snapshots_but_no_tick_and_no_event() {
+    let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
+    let mut client = TestClient::connect(listener.local_addr().expect("addr"));
+    let (stream, _) = listener.accept().expect("accept");
+    let outbox = crate::net::Outbox::new();
+    let writer = {
+        let outbox = std::sync::Arc::clone(&outbox);
+        thread::spawn(move || outbox.run_writer(stream))
+    };
+    let events = |tick: u32| {
+        vec![EventKind::LevelUp {
+            unit: bota_proto::EntityId {
+                idx: tick,
+                generation: 1,
+            },
+            level: 2,
+        }]
+    };
+    // The writer blocks on the first tick's snapshot while the peer reads nothing, so the
+    // later ticks coalesce into the last one.
+    for tick in 1..=6 {
+        outbox.push_tick(bulky_snapshot(tick), tick, events(tick));
+    }
+    outbox.close();
+    let mut seen = Vec::new();
+    loop {
+        match client.recv() {
+            ServerMsg::Snapshot { view } => seen.push((
+                view.tick,
+                view.skipped_ticks
+                    .into_iter()
+                    .map(|skipped| (skipped.tick, skipped.events))
+                    .collect::<Vec<_>>(),
+            )),
+            ServerMsg::Events { tick, events: told } => {
+                assert_eq!(seen.last().map(|(at, _)| *at), Some(tick));
+                assert_eq!(told, events(tick));
+                if tick == 6 {
+                    break;
+                }
+            }
+            other => panic!("unexpected {other:?}"),
+        }
+    }
+    writer.join().expect("writer");
+    let skipped: Vec<(u32, Vec<EventKind>)> = (2..=5).map(|tick| (tick, events(tick))).collect();
+    assert_eq!(seen, vec![(1, Vec::new()), (6, skipped)]);
+}
+
+/// Reads snapshots and events for `wall`, checking that every tick between two snapshots
+/// is told once, with its events after its own snapshot; returns the last tick, the
+/// pending events tick and how many ticks were skipped.
+fn read_ticks(
+    client: &mut TestClient,
+    (mut last, mut events_tick): (u32, Option<u32>),
+    wall: Duration,
+) -> (u32, Option<u32>, usize) {
+    let mut skipped = 0;
+    let started = std::time::Instant::now();
+    while started.elapsed() < wall {
+        match client.recv() {
+            ServerMsg::Snapshot { view } => {
+                assert_eq!(events_tick, None, "the previous tick's events came");
+                let told: Vec<u32> = view.skipped_ticks.iter().map(|s| s.tick).collect();
+                assert_eq!(told, (last + 1..view.tick).collect::<Vec<_>>());
+                skipped += told.len();
+                last = view.tick;
+                events_tick = Some(view.tick);
+            }
+            ServerMsg::Events { tick, .. } => {
+                assert_eq!(
+                    events_tick.take(),
+                    Some(tick),
+                    "events follow their snapshot"
+                );
+            }
+            _ => {}
+        }
+    }
+    (last, events_tick, skipped)
+}
+
+#[test]
+fn a_reader_that_keeps_up_is_never_skipped_and_a_stalled_one_is_at_once() {
+    let mut opts = realtime(14);
+    opts.tick_rate = 30;
+    opts.map = bota_proto::MapId(2);
+    opts.dummy_seat = true;
+    let addr = start_server(opts);
+    let (mut client, _) = join_as_bot(addr, "lagging");
+    let first = client.recv_until(snapshot).tick;
+    let (last, pending, skipped) =
+        read_ticks(&mut client, (first, Some(first)), Duration::from_secs(2));
+    assert_eq!(skipped, 0, "a reader that keeps up sees every snapshot");
+    assert!(last >= first + 45);
+    // Three seconds of Map2 snapshots outgrow the capped send buffer and the reader's own.
+    thread::sleep(Duration::from_secs(3));
+    let (_, _, skipped) = read_ticks(&mut client, (last, pending), Duration::from_secs(1));
+    assert!(skipped > 0, "a stalled reader is skipped ahead");
 }

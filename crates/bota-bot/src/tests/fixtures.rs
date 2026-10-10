@@ -196,6 +196,7 @@ pub fn tick(at: u32, units: Vec<UnitView>, players: Vec<PlayerView>) -> WorldVie
         loot: Vec::new(),
         aggro: Vec::new(),
         order_delays: Vec::new(),
+        skipped_ticks: Vec::new(),
     }
 }
 

@@ -6,9 +6,13 @@ use std::sync::Arc;
 use std::sync::mpsc::Sender;
 use std::thread;
 
-use bota_proto::{ClientMsg, FrameReader, PlayerId, ServerMsg, encode_frame_to_vec};
+use bota_proto::{ClientMsg, EventKind, FrameReader, PlayerId, ServerMsg, encode_frame_to_vec};
 
 use crate::net::Outbox;
+
+/// The kernel send buffer of one connection, in bytes: about four Map2 snapshots (3.3-3.8 KB
+/// each).
+pub const SEND_BUFFER_BYTES: usize = 16 * 1024;
 
 /// Everything that reaches the server thread from the network.
 pub enum NetEvent {
@@ -33,6 +37,9 @@ impl Connection {
     /// Adopts an accepted stream: spawns its reader and writer threads.
     pub fn spawn(id: PlayerId, stream: TcpStream, events: Sender<NetEvent>) -> Connection {
         let _ = stream.set_nodelay(true);
+        // A failure leaves the kernel's default buffer: the peer then lags longer before it is
+        // skipped ahead, nothing worse.
+        let _ = socket2::SockRef::from(&stream).set_send_buffer_size(SEND_BUFFER_BYTES);
         let outbox = Outbox::new();
         let writer_outbox = Arc::clone(&outbox);
         let writer_stream = stream.try_clone().expect("cloning a tcp stream");
@@ -52,9 +59,10 @@ impl Connection {
         }
     }
 
-    /// Queues a snapshot frame, replacing any still-waiting one.
-    pub fn send_snapshot(&self, frame: Vec<u8>) {
-        self.outbox.push_snapshot(frame);
+    /// Queues a tick, its encoded snapshot frame and the events of it this
+    /// peer may know, replacing any tick still waiting.
+    pub fn send_tick(&self, snapshot: Vec<u8>, tick: u32, events: Vec<EventKind>) {
+        self.outbox.push_tick(snapshot, tick, events);
     }
 
     /// Stops sending and waits for what is queued to reach the socket.

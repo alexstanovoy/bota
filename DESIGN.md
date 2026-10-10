@@ -1260,6 +1260,26 @@ not tolerate it.
   as it needs, the match reproduces bit-for-bit. `--ack-timeout-ticks` guards against a
   hung bot (empty order).
 
+### Slow receivers
+
+A connection's outbox never blocks the simulation. A tick (its snapshot and its events)
+is one coalescible entry: queueing a new tick replaces a tick still waiting, and the
+replaced tick's events ride along in the new snapshot's `WorldView::skipped_ticks`, with
+their own ticks, one entry for every tick skipped. A slow receiver therefore jumps from
+state to state but sees every tick and every event it may know, in order, and a
+snapshot is always followed by its own `Events`. The snapshot frames are encoded once
+per side; only a snapshot that carries skipped ticks is decoded and encoded again, on
+the connection's writer thread. More than `MAX_SKIPPED_TICKS` (900) skipped in a row,
+like an overflowing queue, closes the connection.
+
+The outbox only skips once the kernel stops taking bytes, so each connection's send
+buffer is capped at `SEND_BUFFER_BYTES` (16 KiB, about four 3.3-3.8 KB Map2 snapshots,
+socket2): with Linux's autotuned buffers a stalled reader otherwise trails by tens of
+seconds of queued states before the first skip, which is the opposite of what a realtime
+player needs. The receiver's own buffer still holds what its kernel accepted before the
+stall (128 KiB by default, about a second of Map2 snapshots). A reader keeping up, on
+loopback or a LAN, never fills either and is never skipped.
+
 ### Order delay
 
 An order given on the view of tick `T` takes effect on tick `T + 1` at the earliest.
@@ -1321,7 +1341,8 @@ Playing (simulation thread):
     //    become Commands and go into the replay; one that fails → OrderRejected
     // 3. events = world.advance(&cmds)
     // 4. broadcast: a seat gets its team's view, with its seats' measured order
-    //    delays; a spectator the fogless view, or a
+    //    delays, and its events as one tick (see Slow receivers); a spectator
+    //    the fogless view, or a
     //    seat's view and that seat's Orders after ViewAs; events go out by
     //    Event.visible_to. The fogless frames and all events go into the replay
     // 5. if let Some(winner) = world.victor() { broadcast MatchOver; break }

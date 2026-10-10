@@ -612,11 +612,16 @@ impl App {
                 }
             }
             ServerMsg::MatchStart { info } => self.start_match(&info),
-            ServerMsg::Snapshot { view } => {
+            ServerMsg::Snapshot { mut view } => {
                 if self.mode == Some(TickMode::Lockstep) && self.my_slot.is_some() {
                     self.source.send(&ClientMsg::Ack { tick: view.tick });
                 }
                 remember(&mut self.seen, &view);
+                for skipped in std::mem::take(&mut view.skipped_ticks) {
+                    for event in skipped.events {
+                        self.absorb_event(event);
+                    }
+                }
                 self.prev_view = self.view.replace(view);
             }
             ServerMsg::Events { events, .. } => {

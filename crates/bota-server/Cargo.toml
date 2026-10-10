@@ -12,6 +12,7 @@ bota-proto = { workspace = true }
 rand_chacha = "0.10"
 clap = { version = "4", features = ["derive"] }
 rustc-hash = { version = "2.1.3", default-features = false, features = ["std"] }
+socket2 = { version = "=0.6.5", default-features = false }
 
 [dev-dependencies]
 criterion = { workspace = true }

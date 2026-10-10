@@ -192,6 +192,10 @@ pub fn world_view(creeps: u32) -> WorldView {
             slot: SlotId(0),
             ticks: 3,
         }],
+        skipped_ticks: vec![SkippedTick {
+            tick: 5398,
+            events: all_events().into_iter().take(2).collect(),
+        }],
     }
 }
 
@@ -401,6 +405,7 @@ pub fn empty_world_view() -> WorldView {
         loot: Vec::new(),
         aggro: Vec::new(),
         order_delays: Vec::new(),
+        skipped_ticks: Vec::new(),
     }
 }
 

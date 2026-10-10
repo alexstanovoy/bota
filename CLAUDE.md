@@ -109,6 +109,7 @@ New external dependencies only after discussion. Allowed:
 | `resvg` | `bota-client` | rasterising the item art |
 | `rand_chacha` 0.10 | `bota-server` | PRNG |
 | `rustc-hash` 2.1.3 | `bota-server` | lookup-only integer-key maps |
+| `socket2` 0.6.5 | `bota-server` | a connection's kernel send buffer |
 | `clap` (derive) | every binary | command line arguments |
 | `criterion` 0.8.2 | `bota-server` (dev) | benchmarks |
 

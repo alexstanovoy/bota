@@ -27,7 +27,7 @@ struct ReadBudget {
 
 enum RecordPoll {
     Pending,
-    Record(ReplayRecord),
+    Record(Box<ReplayRecord>),
     Eof,
 }
 
@@ -162,7 +162,7 @@ impl ReplayPlayer {
         for _ in 0..MAX_RECORDS_PER_POLL {
             if self.pending.is_none() {
                 match self.stream.poll_record(&mut budget) {
-                    Ok(RecordPoll::Record(record)) => self.pending = Some(record),
+                    Ok(RecordPoll::Record(record)) => self.pending = Some(*record),
                     Ok(RecordPoll::Pending) => {
                         self.catching_up = true;
                         return due;
@@ -231,7 +231,7 @@ impl ReplayStream {
                     self.payload.clear();
                     self.payload_read = 0;
                     self.records += 1;
-                    return Ok(RecordPoll::Record(record));
+                    return Ok(RecordPoll::Record(Box::new(record)));
                 }
             }
             if budget.bytes == 0 || budget.calls == 0 {
