@@ -22,6 +22,7 @@ mod pudge;
 mod shop;
 mod stats;
 mod support;
+mod talents;
 mod target_retention;
 mod towers;
 mod vision;

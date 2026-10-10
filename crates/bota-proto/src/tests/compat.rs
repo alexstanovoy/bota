@@ -272,6 +272,10 @@ struct ViewBeforeTalents {
 
 /// [`ServerMsg`] as a client built before the talents declares it.
 #[derive(Deserialize, Debug, PartialEq)]
+#[allow(
+    clippy::large_enum_variant,
+    reason = "mirrors the old wire shape, which kept the view inline"
+)]
 enum MsgBeforeTalents {
     Welcome,
     LobbyState,

@@ -101,7 +101,8 @@ server/src/
 │   ├── systems/          one file per system: combat, walking, casting, gear, econ …
 │   └── config/           what the game is made of: ability, blockers, camp, hero,
 │                         item, map, match_config, place, protect, roster, rules,
-│                         spawn_modifier, terrain, trees, unit, unit_neutral, wave
+│                         spawn_modifier, talent, terrain, trees, unit, unit_neutral,
+│                         wave
 ├── net/          conn.rs: accept loop, reader/writer threads; outbox.rs: Outbox
 ├── lobby.rs      Roster (PlayerId ↔ SlotId), seats, picks, readiness
 ├── game_loop.rs  lobby phase, then the tick loop in both modes
@@ -929,6 +930,7 @@ enum Order {
     Swap { from: ItemSlot, to: ItemSlot },
     Learn { slot: AbilitySlot },
     Cheat { cheat: Cheat },                // refused unless the match allows cheats
+    LearnTalent { talent: TalentSlot },    // a skill point into a talent (Shadow Fiend, Talents)
 }
 
 enum Target { None, Pos(Vec2), Unit(EntityId) }
@@ -1422,7 +1424,7 @@ the orders it gave, not the arithmetic behind them.
 
 **The order of the list is the whole of the judgement.** There is one order a tick, so
 which want is asked first is the only priority there is: standing still while stunned,
-feared, channelling or in a cast point, a skill point, a courier errand, the shop, tidying the bag, a
+feared, channelling or in a cast point, a talent, a skill point, a courier errand, the shop, tidying the bag, a
 drink or a wand, the scroll, leaving while hurt, a spell, turning to aim one, a last hit
 or a deny, waiting out a swing already under way, shaking the creeps off, pulling the
 wave back, striking their hero or pushing a building behind the wave, and holding the
@@ -1438,6 +1440,9 @@ file per hero: `fiend.rs` decides when a raze is worth its mana and `sylla.rs` w
 bolt is. `MatchInfo` carries the shop, so `Stall` reads costs and components off it and
 only the item and ability **numbers** the bot uses are written out in `numbers.rs`,
 because a salve and a ward are one shape on the wire.
+Which talents a hero takes is in `study.rs` beside its points: Shadow Fiend takes
+the raze stack damage, the presence's armor, the souls held and the razes' attack
+damage, the first the view says a point could go into, ahead of an ability.
 
 **A raze is aimed by looking, not by pointing.** It lands at its own reach along the line
 the caster already faces, so casting one is two decisions. `fiend_spell` works out where
@@ -1936,11 +1941,10 @@ burn.
 - Agility's attack speed and the primary attribute's damage are whole points, as for
   every hero: 75.4 agility at level 15 is 175 attack speed and 75 damage, not 175.4
   and 75.4.
-- Intelligence's 0.1% magic resistance a point, the Attribute Bonus that levels on its
-  own, talents and Aghanim's Scepter and Shard are not in the game for any hero, so
-  Shadow Fiend has none of them. The talent levels that grant no ability point in
-  Dota change nothing here: without talents fifteen points max his kit by level 18
-  either way.
+- Intelligence's 0.1% magic resistance a point, the Attribute Bonus and Aghanim's
+  Scepter and Shard are not in the game for any hero, so Shadow Fiend has none of them.
+  A point comes every level, as in Dota; what Dota spends on the Attribute Bonus stays
+  unspent here. His talents are in (below).
 - Day and night do not exist: his 800 night vision never applies.
 - Break does not exist, so nothing stops the souls being gathered.
 - The requiem's phase movement in its cast point is not modelled.
@@ -1968,6 +1972,67 @@ burn.
 - `UnitView.magic_resist` may be negative, down to -1, under a requiem.
 - The souls effect (11) may count up to fifty while a feast runs or lingers.
 - Raze stacks (effect 15) last at most 180 ticks.
+
+### Talents
+
+Shadow Fiend's eight talents are Dota 7.41f's. The tree and the sides are Liquipedia's
+Shadow Fiend page, `oldid=2391677` (read October 2026, marked accurate for 7.41c); the
+values are the herodata's special-value bonuses, and the patch notes date the two
+changes since 7.41c: 7.41e took attack modifiers and procs off the level-25 raze
+talent, 7.41f cut the presence talent from +2 to +1.5. Where Liquipedia and the live
+data disagree, the live data wins. No other hero has a tree: the old Pudge and the
+custom Sylla are not at Dota's numbers, so `HeroDef::talents` is `None` for both.
+
+| Level | Left (`TalentSlot` even) | Right (odd) |
+|---|---|---|
+| 10 | 0: +30 Feast of Souls attack speed | 1: +30 Shadowraze damage a stack |
+| 15 | 2: +2 souls a Feast takes from a hero | 3: +1.5 Presence armor reduction |
+| 20 | 4: +0.2 s Requiem fear, slow and tear a line, the most +0.45 s | 5: +5 Necromastery souls held |
+| 25 | 6: a Shadowraze also deals his attack damage | 7: +30% cast speed while a Feast runs |
+
+**Learning.** A talent costs a skill point (`Order::LearnTalent`), as in Dota. A tier
+opens at hero level 10, 15, 20 or 25 and takes one of its two talents; the other opens
+at 27, 28, 29 or 30 (`rules::TALENT_SECOND_LEVELS`); nothing is ever unlearned. A
+tier does not wait on the tier below it, and a talent does not wait to be taken on the
+level that opened it. The tree and what is learned sit on the `AbilityBook`, so they
+go with the book into `Kept` when he falls and come back with it, and
+`World::points_spent` counts them. `World::can_learn_talent` is the one rule: the
+order gate refuses anything else with `RejectReason::CannotLearn`, and the projection
+reads `learnable` from it. Like `Learn`, the order interrupts nothing the body does.
+
+**Effects**, each read where its ability reads its own numbers:
+
+- The stack damage is captured with the raze as it goes off
+  (`HitEffect::Shadowraze { stack_damage }`): 35/50/65/80, +30.
+- The feast's attack speed is read every stats derivation while it runs; the souls a
+  hero is worth to it are read at each gathering: 3, +2.
+- The presence puts its armor break on afresh every tick: 2.5/4/5.5/7, +1.5.
+- The requiem's hold is captured as its lines are let go (`RequiemLine::fear`, then
+  `HitEffect::Requiem { fear }`): 18 ticks a line and 65 at most, with the talent 24
+  and 78 (0.8 s and 2.6 s). A death requiem's lines only burn, as before.
+- The soul cap is `World::soul_cap`: 20, +5; the feast's linger trims to it, and
+  `rules::SOULS_HELD_MAX` (75) is the cap and the largest feast at its largest worth.
+- The raze's attack damage is a second blow on everything the raze burns: his attack
+  damage with a fresh roll on the damage stream, weighed by the attack classes,
+  physical, after his outgoing physical amplification. It carries no attack modifier
+  (no crit, no pierce, no bonus against creeps) and is not an attack, so it is never
+  evaded; Valve does not say whether it can miss, and an evasion roll would be a
+  second hidden stream for one talent.
+- The cast speed scales every cast point of his, abilities' and items' alike, to 70%
+  while a feast runs (`World::cast_point_of`): a raze's 550 ms becomes 385 (12
+  ticks), the requiem's 1670 becomes 1169 (36). The backswing is untouched. It is read
+  every tick of the point, so a feast that ends inside a cast point lengthens what is
+  left; Dota does not say which it does.
+
+**On the wire.** `WorldView::talents` is the last field of the view: a `TalentView
+{ slot, learned, learnable }` for every seat whose hero has a tree that the viewer is
+told of — its own side's always, fallen or standing, and another side's while that
+hero is one of the view's `units`; every seat with a tree in a view of everything.
+Dota shows an enemy's talents to whoever can select him. `learnable` is told to the
+seat's own side only and is empty while the hero is down. `TalentSlot(n)` is tier
+`n / 2`, left when even; the names and numbers are the client's to know, keyed by hero
+and slot, the way the ability names are. The hash covers every book's learned set and
+the captured stack damage and hold.
 
 ## Wind Lace, Blood Grenade and the shop's stock at Dota 7.41f
 
