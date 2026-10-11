@@ -121,7 +121,7 @@ impl App {
             if mine {
                 self.cue(CueKind::Deny, 0.9, None);
             }
-        } else if gold > 0 && (mine || self.my_slot.is_none()) {
+        } else if gold > 0 && mine {
             self.float(unit, format!("+{gold}"), FloaterKind::Gold);
             if mine && !hero {
                 self.cue(CueKind::LastHit, 0.95, Some(at));
@@ -232,16 +232,20 @@ impl App {
             Some(slot) => self.seat_name(slot),
             None => format!("a {:?} hero", victim.team),
         };
-        let by = killer
-            .and_then(|k| self.freshest(k))
-            .map(|k| match (k.kind, k.owner) {
-                (UnitKind::Hero, Some(slot)) => self.seat_name(slot),
-                (UnitKind::Tower, _) => format!("the {:?} tower", k.team),
-                (UnitKind::Fountain, _) => format!("the {:?} fountain", k.team),
-                (kind, _) => format!("a {:?} {kind:?}", k.team),
-            });
+        let killer_unit = killer.and_then(|k| self.freshest(k));
+        // A side's gold is its own secret: told only for one's own side's
+        // kills, never for the enemy's or with no side at all.
+        let ours = self
+            .my_team()
+            .is_some_and(|team| killer_unit.is_some_and(|k| k.team == team));
+        let by = killer_unit.map(|k| match (k.kind, k.owner) {
+            (UnitKind::Hero, Some(slot)) => self.seat_name(slot),
+            (UnitKind::Tower, _) => format!("the {:?} tower", k.team),
+            (UnitKind::Fountain, _) => format!("the {:?} fountain", k.team),
+            (kind, _) => format!("a {:?} {kind:?}", k.team),
+        });
         Some(match by {
-            Some(by) if gold > 0 => format!("{victim} was slain by {by} for {gold} gold"),
+            Some(by) if gold > 0 && ours => format!("{victim} was slain by {by} for {gold} gold"),
             Some(by) => format!("{victim} was slain by {by}"),
             None => format!("{victim} died"),
         })
