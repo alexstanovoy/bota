@@ -13,15 +13,22 @@ pub const CELL: f32 = 64.0;
 
 /// The ground tier under a world position; zero off the map.
 pub fn tier_at(app: &App, x: f32, y: f32) -> u8 {
-    let n = app.terrain_cells;
-    if n == 0 || x < 0.0 || y < 0.0 || app.terrain.len() != n * n {
+    tier_in(app.terrain_cells, &app.terrain, x, y)
+}
+
+fn ground_tier(ground: &FogGround, x: f32, y: f32) -> u8 {
+    tier_in(ground.cells, &ground.terrain, x, y)
+}
+
+fn tier_in(n: usize, terrain: &[u8], x: f32, y: f32) -> u8 {
+    if n == 0 || x < 0.0 || y < 0.0 || terrain.len() != n * n {
         return 0;
     }
     let (cx, cy) = ((x / CELL) as usize, (y / CELL) as usize);
     if cx >= n || cy >= n {
         return 0;
     }
-    app.terrain[cy * n + cx] & 0x1f
+    terrain[cy * n + cx] & 0x1f
 }
 
 /// One viewer lighting the fog: position, vision radius, ground tier.
@@ -38,8 +45,38 @@ struct Viewer {
 /// to it. Leaves `lit` untouched when the terrain is unknown or `lit` is not
 /// one entry per cell.
 pub fn light(app: &App, view: &WorldView, team: Team, lit: &mut [bool]) {
-    let n = app.terrain_cells;
-    if n == 0 || app.terrain.len() != n * n || lit.len() != n * n {
+    light_on(&FogGround::of(app), view, team, lit);
+}
+
+/// What the fog is worked out over: the terrain cells and what in them
+/// blocks sight, owned, to be worked on away from the [`App`] (a front end
+/// lights the fog on another thread).
+#[derive(Clone, Debug, Default)]
+pub struct FogGround {
+    /// Cells a side.
+    pub cells: usize,
+    /// Each cell's ground tier in its low five bits, row-major from the
+    /// south-west.
+    pub terrain: Vec<u8>,
+    /// One bit a cell: whether it blocks sight.
+    pub opaque: Vec<u64>,
+}
+
+impl FogGround {
+    /// The app's ground.
+    pub fn of(app: &App) -> FogGround {
+        FogGround {
+            cells: app.terrain_cells,
+            terrain: app.terrain.clone(),
+            opaque: app.opaque.clone(),
+        }
+    }
+}
+
+/// [`light`] over a [`FogGround`] taken from the app.
+pub fn light_on(ground: &FogGround, view: &WorldView, team: Team, lit: &mut [bool]) {
+    let n = ground.cells;
+    if n == 0 || ground.terrain.len() != n * n || lit.len() != n * n {
         return;
     }
     lit.fill(false);
@@ -53,7 +90,7 @@ pub fn light(app: &App, view: &WorldView, team: Team, lit: &mut [bool]) {
                 x,
                 y,
                 radius: u.vision_radius.to_f32(),
-                tier: tier_at(app, x, y),
+                tier: ground_tier(ground, x, y),
             }
         });
     for v in viewers {
@@ -63,7 +100,7 @@ pub fn light(app: &App, view: &WorldView, team: Team, lit: &mut [bool]) {
         let r1 = (((v.y + v.radius) / CELL).ceil().max(0.0) as usize).min(n - 1);
         for cy in r0..=r1 {
             for cx in c0..=c1 {
-                if !lit[cy * n + cx] && sees(app, &v, cx, cy) {
+                if !lit[cy * n + cx] && sees(ground, &v, cx, cy) {
                     lit[cy * n + cx] = true;
                 }
             }
@@ -72,8 +109,8 @@ pub fn light(app: &App, view: &WorldView, team: Team, lit: &mut [bool]) {
 }
 
 /// Whether one viewer sees one cell.
-fn sees(app: &App, v: &Viewer, cx: usize, cy: usize) -> bool {
-    let n = app.terrain_cells;
+fn sees(app: &FogGround, v: &Viewer, cx: usize, cy: usize) -> bool {
+    let n = app.cells;
     let (px, py) = (cx as f32 * CELL + CELL / 2.0, cy as f32 * CELL + CELL / 2.0);
     let (dx, dy) = (px - v.x, py - v.y);
     if dx * dx + dy * dy > v.radius * v.radius || app.terrain[cy * n + cx] & 0x1f > v.tier {
