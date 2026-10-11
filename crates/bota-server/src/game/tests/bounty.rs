@@ -3,7 +3,8 @@
 //! flagbearer's bonus to the heroes around it.
 
 use crate::game::{FLAGBEARER_CREEP, GoldRange, MELEE_CREEP, RANGED_CREEP, UnitDef, World, rules};
-use bota_proto::{Team, Vec2};
+use crate::game_loop::visible_events;
+use bota_proto::{EventKind, Team, Vec2};
 
 use super::support::*;
 
@@ -115,4 +116,33 @@ fn a_denied_flagbearer_pays_nobody() {
         rules::FLAGBEARER_XP * rules::DENIED_XP_PCT / 100,
         "the other side still learns half"
     );
+}
+
+#[test]
+fn a_kill_in_sight_tells_its_gold_only_to_the_side_that_earned_it() {
+    let mut world = World::new();
+    let killer = seat_hero(&mut world, 0, Team::Radiant, Vec2::from_ints(5000, 5000));
+    seat_hero(&mut world, 1, Team::Dire, Vec2::from_ints(5100, 5000));
+    let prey = world.spawn_creep(&MELEE_CREEP, Team::Dire, Vec2::from_ints(5050, 5000), 0, 0);
+    world.settle();
+    world.health.insert(prey, health(0));
+    let mut events = Vec::new();
+    world.bury(vec![(prey, Some(killer))], &mut events);
+    let earned = paid(&events).expect("a death is told");
+    assert!(earned > 0);
+    let told = |side| {
+        visible_events(&events, side)
+            .into_iter()
+            .find_map(|kind| match kind {
+                EventKind::Died { gold, .. } => Some(gold),
+                _ => None,
+            })
+    };
+    assert_eq!(told(Some(Team::Radiant)), Some(earned), "the earner");
+    assert_eq!(
+        told(Some(Team::Dire)),
+        Some(0),
+        "the victim, who sees the kill"
+    );
+    assert_eq!(told(None), Some(earned), "a full-world stream");
 }

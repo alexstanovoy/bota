@@ -519,14 +519,25 @@ fn snapshot_frame(view: WorldView) -> Vec<u8> {
     encode_frame_to_vec(&ServerMsg::Snapshot { view }).expect("a view always encodes")
 }
 
-/// The kinds of the events a side may see. No side sees all of them.
-fn visible_events(events: &[Event], viewing: Option<Team>) -> Vec<EventKind> {
+/// The kinds of the events a side may see. No side sees all of them, and a
+/// death's gold is told only to the side whose hero earned it: the rest see
+/// zero, so a visible kill never leaks the enemy's income.
+pub(crate) fn visible_events(events: &[Event], viewing: Option<Team>) -> Vec<EventKind> {
     events
         .iter()
         .filter(|e| match (e.visible_to, viewing) {
             (_, None) | (EventVisibility::Everyone, _) => true,
             (EventVisibility::OneTeam(team), Some(mine)) => team == mine,
         })
-        .map(|e| e.kind.clone())
+        .map(|e| match (&e.kind, viewing) {
+            (EventKind::Died { gold, .. }, Some(mine)) if *gold != 0 && e.earner != Some(mine) => {
+                let mut kind = e.kind.clone();
+                if let EventKind::Died { gold, .. } = &mut kind {
+                    *gold = 0;
+                }
+                kind
+            }
+            _ => e.kind.clone(),
+        })
         .collect()
 }

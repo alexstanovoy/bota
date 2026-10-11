@@ -142,4 +142,8 @@ pub struct Event {
     pub kind: EventKind,
     /// Who may know.
     pub visible_to: EventVisibility,
+    /// The side whose hero was paid the gold a `Died` reports; only that
+    /// side is told the amount. `None` for every other event, and for a
+    /// death that paid no hero.
+    pub earner: Option<Team>,
 }
