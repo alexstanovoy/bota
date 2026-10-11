@@ -10,6 +10,7 @@ mod delay;
 mod determinism;
 mod feast;
 mod fiend;
+mod fillers;
 mod grenade;
 mod hash;
 mod ids;

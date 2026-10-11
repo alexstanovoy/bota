@@ -317,6 +317,7 @@ variant UnitKind 8 Barracks
 variant UnitKind 9 Fountain
 variant UnitKind 10 Ward
 variant UnitKind 11 Courier
+variant UnitKind 12 Filler
 field UnitView 0 id: EntityId
 field UnitView 1 kind: UnitKind
 field UnitView 2 team: Team

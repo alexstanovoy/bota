@@ -1761,6 +1761,20 @@ fallen tower, and the final death counts and `MatchStats.duration` tell a life-l
 ending from the cap. A consumer reads `Neutral` as a draw, not as a loss for both
 seats; the client's banner reads `NOBODY WINS`.
 
+## Base fillers
+
+`UnitKind::Filler` (wire id 12) is the decorative statue of a base: seven a side on the Dota
+map (`npc_dota_goodguys_fillers`, `npc_dota_badguys_fillers` in `npc_units.txt`, positions from
+the map's `default_ents.vents`; `MapDef::fillers`, empty on the demo map). 1000 health, no
+regeneration, armor 10, no attack, collision and bound 96 (the filler hull), vision 900 (daytime
+range), always visible like any structure. Killing one pays its killer 68 gold, no experience
+and no team gold; it is deniable under 10% health like other buildings. The map's entities start
+each with `invuln_count 1`, and every tier-three tower killed reduces it, so the first tier
+three of its side to fall opens all fillers (`StructureId::Filler`, `AnyOf` the three tier
+threes). Not modelled, as for every building: the `backdoor_protection_in_base` regeneration
+(900 radius, 15 s, 90 a second) and the shrine heal (`filler_ability`), which the map's fillers
+do not carry as healers.
+
 ## Mango and stacking Shadowraze
 
 The Mango is a chosen bota mechanic, not a claim of parity with the latest Dota patch:

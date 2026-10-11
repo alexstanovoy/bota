@@ -37,6 +37,8 @@ pub struct MapDef {
     /// Barracks as lane, whether ranged, and position; Radiant first. Empty
     /// for a map that runs none.
     pub barracks: [&'static [(u8, bool, Vec2)]; 2],
+    /// Filler statue positions; Radiant first. Empty for a map that has none.
+    pub fillers: [&'static [Vec2]; 2],
     /// Which structures wait on which, and how.
     pub protection: &'static [Protection],
     /// Where waves appear, by team then lane.
@@ -97,6 +99,7 @@ const DOTA: MapDef = MapDef {
     radiant_towers: &rules::RADIANT_TOWERS,
     dire_towers: &rules::DIRE_TOWERS,
     barracks: [&rules::RADIANT_BARRACKS, &rules::DIRE_BARRACKS],
+    fillers: [&rules::RADIANT_FILLERS, &rules::DIRE_FILLERS],
     protection: &crate::game::DOTA_PROTECTION,
     creep_spawns: [rules::RADIANT_CREEP_SPAWNS, rules::DIRE_CREEP_SPAWNS],
     lanes: 3,
@@ -125,6 +128,7 @@ const DEMO: MapDef = MapDef {
     radiant_towers: &rules::DEMO_RADIANT_TOWERS,
     dire_towers: &rules::DEMO_DIRE_TOWERS,
     barracks: [&[], &[]],
+    fillers: [&[], &[]],
     protection: &[],
     creep_spawns: [
         [rules::DEMO_RADIANT_CREEP_SPAWN; 3],

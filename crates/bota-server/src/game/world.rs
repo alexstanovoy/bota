@@ -447,6 +447,9 @@ impl World {
                     },
                 );
             }
+            for pos in map.fillers[index] {
+                world.spawn_building(&crate::game::FILLER, team, *pos, Place::Filler);
+            }
         }
         world.settle();
         world.lay_passability();

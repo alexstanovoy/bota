@@ -20,6 +20,7 @@ impl World {
                     && self.lane.get(entity).map(|l| l.0) == Some(lane)
                     && self.rax.get(entity).map(|r| r.ranged) == Some(ranged)
             }
+            StructureId::Filler => self.kind.get(entity) == Some(&UnitKind::Filler),
             StructureId::Ancient => self.kind.get(entity) == Some(&UnitKind::Ancient),
         }
     }

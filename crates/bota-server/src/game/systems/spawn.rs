@@ -17,6 +17,7 @@ pub enum Place {
     Ancient,
     Tower { lane: u8, tier: u8 },
     Barracks { lane: u8, ranged: bool },
+    Filler,
 }
 
 impl World {
@@ -249,7 +250,7 @@ impl World {
         self.give_hull(entity, def);
         self.give_action(entity);
         match place {
-            Place::Fountain | Place::Ancient => {}
+            Place::Fountain | Place::Ancient | Place::Filler => {}
             Place::Tower { lane, tier } => {
                 self.lane.insert(entity, Lane(lane));
                 self.tier.insert(entity, Tier(tier));
