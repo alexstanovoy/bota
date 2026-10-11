@@ -27,6 +27,8 @@ pub enum StructureId {
         /// Whether it is the one feeding the ranged creeps.
         ranged: bool,
     },
+    /// The fillers.
+    Filler,
     /// The Ancient.
     Ancient,
 }
@@ -92,8 +94,8 @@ const ANY_TIER_THREE: [Until; 3] = [
 ];
 
 /// The Dota rules: each lane opens tower by tower into its barracks, the
-/// tier fours wait on a broken lane, and the Ancient waits on both of them.
-pub const DOTA_PROTECTION: [Protection; 14] = [
+/// tier fours and the fillers wait on a broken lane, and the Ancient waits on both of them.
+pub const DOTA_PROTECTION: [Protection; 15] = [
     MID[0],
     MID[1],
     MID[2],
@@ -108,6 +110,10 @@ pub const DOTA_PROTECTION: [Protection; 14] = [
     BOT[3],
     Protection {
         guarded: tower(rules::LANE_MID, 4),
+        until: Until::AnyOf(&ANY_TIER_THREE),
+    },
+    Protection {
+        guarded: StructureId::Filler,
         until: Until::AnyOf(&ANY_TIER_THREE),
     },
     Protection {

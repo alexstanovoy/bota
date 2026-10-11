@@ -86,6 +86,8 @@ pub(super) fn map_buildings(map: &MapDef) -> usize {
         + map.dire_towers.len()
         + map.barracks[0].len()
         + map.barracks[1].len()
+        + map.fillers[0].len()
+        + map.fillers[1].len()
         + 2
         + map.ancients.iter().flatten().count()
 }

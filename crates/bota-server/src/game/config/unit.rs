@@ -457,6 +457,18 @@ pub const BARRACKS_RANGED: UnitDef = UnitDef {
     ..NOTHING
 };
 
+/// A filler statue: it pays its bounty when it falls and does nothing else.
+pub const FILLER: UnitDef = UnitDef {
+    kind: UnitKind::Filler,
+    max_hp: rules::FILLER_HP,
+    armor: rules::FILLER_ARMOR,
+    vision: rules::FILLER_VISION,
+    collision: rules::FILLER_COLLISION,
+    bound: rules::FILLER_COLLISION,
+    bounty_gold: GoldRange::exactly(rules::FILLER_BOUNTY),
+    ..NOTHING
+};
+
 /// The Radiant Ancient.
 pub const RADIANT_ANCIENT: UnitDef = UnitDef {
     kind: UnitKind::Ancient,
@@ -602,7 +614,11 @@ pub fn tower_def(tier: u8) -> &'static UnitDef {
 pub fn is_structure(kind: UnitKind) -> bool {
     matches!(
         kind,
-        UnitKind::Tower | UnitKind::Ancient | UnitKind::Barracks | UnitKind::Fountain
+        UnitKind::Tower
+            | UnitKind::Ancient
+            | UnitKind::Barracks
+            | UnitKind::Fountain
+            | UnitKind::Filler
     )
 }
 

@@ -163,4 +163,7 @@ pub enum UnitKind {
     Ward,
     /// A courier, one to a seat, that carries what its owner bought.
     Courier,
+    /// A filler: a statue standing in a base that does nothing but pay gold
+    /// when it falls.
+    Filler,
 }

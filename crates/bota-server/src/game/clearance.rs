@@ -621,6 +621,9 @@ fn map_circles(map: &crate::game::MapDef) -> Vec<(Vec2, Fixed)> {
     for &(_, _, at) in map.barracks[0].iter().chain(map.barracks[1]) {
         circles.push((at, rules::units(rules::RAX_COLLISION)));
     }
+    for &at in map.fillers[0].iter().chain(map.fillers[1]) {
+        circles.push((at, rules::units(rules::FILLER_COLLISION)));
+    }
     for at in crate::game::tree_positions(map) {
         circles.push((at, rules::units(rules::TREE_RADIUS)));
     }

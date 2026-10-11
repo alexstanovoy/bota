@@ -205,6 +205,28 @@ pub const DIRE_BARRACKS: [(u8, bool, Vec2); 6] = [
     (LANE_BOT, true, Vec2::from_ints(15280, 12592)),
 ];
 
+/// Radiant fillers, straight from the map (`npc_dota_goodguys_fillers`).
+pub const RADIANT_FILLERS: [Vec2; 7] = [
+    Vec2::from_ints(2626, 5009),
+    Vec2::from_ints(3378, 4924),
+    Vec2::from_ints(3904, 4416),
+    Vec2::from_ints(4434, 3948),
+    Vec2::from_ints(4464, 3136),
+    Vec2::from_ints(3618, 5505),
+    Vec2::from_ints(4951, 4054),
+];
+
+/// Dire fillers, straight from the map (`npc_dota_badguys_fillers`).
+pub const DIRE_FILLERS: [Vec2; 7] = [
+    Vec2::from_ints(15542, 13014),
+    Vec2::from_ints(14737, 13165),
+    Vec2::from_ints(14110, 13586),
+    Vec2::from_ints(13697, 14205),
+    Vec2::from_ints(13627, 14969),
+    Vec2::from_ints(14502, 12590),
+    Vec2::from_ints(13000, 13934),
+];
+
 // The hero demo map, `hero_demo_main`: the same frame as the big map, every
 // landmark the game's own, shifted by half the map.
 
@@ -680,6 +702,17 @@ pub const RAX_COLLISION: i32 = 160;
 pub const RAX_BOUND: i32 = 144;
 /// Barracks fog light radius.
 pub const RAX_VISION: i32 = 900;
+
+/// Filler health.
+pub const FILLER_HP: i32 = 1000;
+/// Filler armor.
+pub const FILLER_ARMOR: i32 = 10;
+/// Gold paid to the killer of a filler.
+pub const FILLER_BOUNTY: i32 = 68;
+/// Filler collision size and bound radius, the Dota filler hull.
+pub const FILLER_COLLISION: i32 = 96;
+/// Filler fog light radius, its daytime vision.
+pub const FILLER_VISION: i32 = 900;
 
 /// Ancient health.
 pub const ANCIENT_HP: i32 = 4500;
