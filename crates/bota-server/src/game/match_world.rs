@@ -6,16 +6,19 @@ use bota_proto::{
 
 use crate::game::{
     BAG_SLOTS, Command, Entity, Event, MatchConfig, MatchRng, PendingCast, Seat, UnitOrder, World,
-    hero_spawn_pos, in_backpack, in_stash, item_def, map_of, rules,
+    hero_spawn_pos, in_backpack, in_stash, in_town_portal, item_def, map_of, rules,
 };
 
 /// Whether an order aims at the kind of thing something takes.
 pub fn aimed_right(aim: Aim, target: &Target) -> bool {
     match aim {
         Aim::Own => matches!(target, Target::None),
-        // A tree and a landing spot are both named by the ground they stand
-        // on; which one was meant is settled where the use is carried out.
-        Aim::Point | Aim::Tree | Aim::Building => matches!(target, Target::Pos(_)),
+        // A tree is named by the ground it stands on; which one was meant is
+        // settled where the use is carried out.
+        Aim::Point | Aim::Tree => matches!(target, Target::Pos(_)),
+        // A building is named by a spot near it, by itself, or, by naming
+        // nothing, the fountain.
+        Aim::Building => true,
         Aim::Unit => matches!(target, Target::Unit(_)),
     }
 }
@@ -46,6 +49,11 @@ impl World {
                 rules::STASH_SLOTS,
             );
             seat.unit = Some(hero);
+            // The scroll every hero starts with comes on a wait.
+            seat.item_clocks.push((
+                bota_proto::ItemId(crate::game::ITEM_TOWN_PORTAL_SCROLL),
+                rules::SCROLL_FIRST_WAIT_TICKS,
+            ));
             world.seats.push(seat);
         }
         for seat in 0..world.seats.len() {
@@ -97,9 +105,17 @@ impl World {
                 self.cheat(cmd.slot, unit, cheat, events);
             }
             Order::Cast { slot, target } if self.is_immediate(unit, slot) => {
+                // It goes off beside a swing or a cast point, but a channel
+                // it does not ignore it breaks, as Dota's immediate casts do.
+                if self.is_channelling(unit) && !self.ignores_channel(unit, &cmd.order) {
+                    self.cancel_action(unit);
+                }
                 if let Some(orders) = self.orders.get_mut(unit) {
                     orders.immediate = Some(PendingCast::Ability { slot, target });
                 }
+            }
+            order if self.is_channelling(unit) && self.ignores_channel(unit, &order) => {
+                self.take_body_order(unit, order);
             }
             order => {
                 self.interrupt(unit, order);
@@ -112,6 +128,19 @@ impl World {
     /// the body is doing.
     fn is_immediate(&self, unit: Entity, slot: bota_proto::AbilitySlot) -> bool {
         crate::game::ability_def(self.ability_in(unit, slot)).is_some_and(|def| def.immediate)
+    }
+
+    /// Whether an order is a cast or a use of something that leaves a
+    /// channel be: Dota's `DOTA_ABILITY_BEHAVIOR_IGNORE_CHANNEL`.
+    fn ignores_channel(&self, unit: Entity, order: &Order) -> bool {
+        match *order {
+            Order::Cast { slot, .. } => crate::game::ability_def(self.ability_in(unit, slot))
+                .is_some_and(|def| def.ignores_channel),
+            Order::Use { slot, .. } => self
+                .item_def_in(unit, usize::from(slot.0))
+                .is_some_and(|def| def.ignores_channel),
+            _ => false,
+        }
     }
 
     /// What an order to the body breaks off: the action under way, as an
@@ -296,14 +325,10 @@ impl World {
             } => self.check_put(unit, seat, usize::from(named.0), target),
             Order::Take { target } => self.check_take(unit, seat, target),
             Order::Swap { from, to } => {
-                let (from, to) = (usize::from(from.0), usize::from(to.0));
-                if from == to || !self.holds(unit, seat, from) {
-                    return Err(RejectReason::EmptySlot);
+                match self.swap_refusal(unit, seat, usize::from(from.0), usize::from(to.0)) {
+                    Some(reason) => Err(reason),
+                    None => Ok(()),
                 }
-                if (in_stash(from) || in_stash(to)) && !self.at_shop(unit) {
-                    return Err(RejectReason::NotAtShop);
-                }
-                Ok(())
             }
             Order::Use { slot, target } => self.check_use(unit, seat, usize::from(slot.0), target),
             Order::Cheat { cheat } => self.check_cheat(unit, cheat),
@@ -386,7 +411,8 @@ impl World {
         if held.cooldown > 0 {
             return Err(RejectReason::OnCooldown);
         }
-        if self.held(unit) || self.feared(unit) || self.is_channelling(unit) {
+        // A channel is no bar: the order breaks it off, as in Dota.
+        if self.held(unit) || self.feared(unit) {
             return Err(RejectReason::Disabled);
         }
         if !aimed_right(def.aim, target) {
@@ -414,11 +440,19 @@ impl World {
         } else {
             self.inventory
                 .get(unit)
-                .and_then(|bag| bag.slots.get(at).copied().flatten())
+                .and_then(|bag| bag.slot(at).copied().flatten())
         };
         let held = held.ok_or(RejectReason::EmptySlot)?;
         if held.owner != seat.slot {
             return Err(RejectReason::NotYourItem);
+        }
+        if held.free_charges > 0 {
+            return Err(RejectReason::Unsellable);
+        }
+        // Nothing is ever carried out of the town portal slot, so it sells
+        // only at the shop and is never marked.
+        if in_town_portal(at) && !self.at_shop(unit) {
+            return Err(RejectReason::NotAtShop);
         }
         Ok(())
     }
@@ -475,7 +509,7 @@ impl World {
         let stack = self
             .inventory
             .get(unit)
-            .and_then(|bag| bag.slots.get(at))
+            .and_then(|bag| bag.slot(at))
             .copied()
             .flatten()
             .ok_or(RejectReason::EmptySlot)?;
@@ -507,11 +541,15 @@ impl World {
         {
             return Err(RejectReason::NotEnoughMana);
         }
-        if self.held(unit) || self.feared(unit) || self.is_channelling(unit) {
+        // A channel is no bar: the order breaks it off, as in Dota.
+        if self.held(unit) || self.feared(unit) {
             return Err(RejectReason::Disabled);
         }
         if def.mana_deficit && !self.can_replenish_mana(unit, *target) {
             return Err(RejectReason::NotReady);
+        }
+        if aim == bota_proto::Aim::Building && self.scroll_destination(unit, *target).is_none() {
+            return Err(RejectReason::WrongTargetKind);
         }
         Ok(())
     }
@@ -552,7 +590,7 @@ impl World {
         }
         self.inventory
             .get(unit)
-            .and_then(|bag| bag.slots.get(slot))
+            .and_then(|bag| bag.slot(slot))
             .is_some_and(|held| held.is_some())
     }
 

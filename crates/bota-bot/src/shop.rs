@@ -60,15 +60,15 @@ impl Stall {
             .sum()
     }
 
-    /// How many of an item the seat owns, wherever it sits: the bag, the
-    /// stash, and whatever the courier is carrying.
+    /// How many of an item the seat owns, wherever it sits: the bag and its
+    /// town portal slot, the stash, and whatever the courier is carrying.
     pub fn how_many_held(&self, field: &Field, wanted: ItemId) -> usize {
-        let bag = field.me.map_or(0, |me| self.how_many_in(&me.items, wanted));
-        let kit = field
-            .seat
-            .kit
-            .as_ref()
-            .map_or(0, |kit| self.how_many_in(&kit.items, wanted));
+        let bag = field.me.map_or(0, |me| {
+            self.how_many_in(&me.items, wanted) + self.how_many_in(&[me.town_portal], wanted)
+        });
+        let kit = field.seat.kit.as_ref().map_or(0, |kit| {
+            self.how_many_in(&kit.items, wanted) + self.how_many_in(&[kit.town_portal], wanted)
+        });
         let stash = field
             .seat
             .stash
@@ -103,7 +103,8 @@ impl Stall {
             if self.how_many_held(field, *item) >= want {
                 continue;
             }
-            if is_consumable(*item) && !room {
+            // A scroll goes in its own slot and wants no room in the bag.
+            if is_consumable(*item) && *item != SCROLL && !room {
                 continue;
             }
             return (field.gold() >= self.cost_of(*item)).then_some(*item);

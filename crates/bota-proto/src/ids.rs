@@ -62,7 +62,9 @@ pub enum Aim {
     Unit,
     /// At the tree standing on the spot it is pointed at.
     Tree,
-    /// At a spot within reach of an allied tower, Ancient or fountain.
+    /// At an allied building: a spot on the ground carries to the building
+    /// nearest it, a building is aimed at itself, and nothing at all aims at
+    /// the fountain (Dota's double tap).
     Building,
 }
 
@@ -114,12 +116,19 @@ impl TalentSlot {
     }
 }
 
-/// One of a hero's fifteen item slots.
+/// One of a hero's sixteen item slots.
 ///
 /// Slots 0-5 are the inventory, where items work; 6-8 the backpack, where
-/// they are carried inert; 9-14 the stash waiting at the home shop.
+/// they are carried inert; 9-14 the stash waiting at the home shop; 15 the
+/// town portal slot, which holds Town Portal Scrolls and nothing else.
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ItemSlot(pub u8);
+
+impl ItemSlot {
+    /// Dota's dedicated town portal slot beside the inventory: scrolls work
+    /// from it and never leave it but to be read.
+    pub const TOWN_PORTAL: ItemSlot = ItemSlot(15);
+}
 
 /// Selects the terrain and building layout a match is played on.
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]

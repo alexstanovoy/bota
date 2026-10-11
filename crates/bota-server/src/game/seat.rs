@@ -1,6 +1,6 @@
 //! A place at the match, and what belongs to a player rather than to a body.
 
-use bota_proto::{HeroId, ItemId, SlotId, Team};
+use bota_proto::{HeroId, ItemId, SlotId, Team, Vec2};
 
 use crate::game::{AbilityBook, Entity, Inventory, Stacks};
 
@@ -13,6 +13,27 @@ pub struct Kept {
     pub bag: Inventory,
     /// What it had gathered.
     pub stacks: Stacks,
+}
+
+/// A Town Portal Scroll being read by a seat's hero, and the sight it
+/// leaves where it lands for a moment after.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Teleport {
+    /// The allied building it carries to.
+    pub building: Entity,
+    /// Where the hero lands.
+    pub landing: Vec2,
+    /// The tick the channel began.
+    pub started: u32,
+    /// The tick it carries, unless broken off first.
+    pub lands: u32,
+    /// Whether the channel is still under way. Once it is not, all that is
+    /// left is the sight at `landing` until `sight_until`.
+    pub live: bool,
+    /// The last tick its side sees around `landing`: while it is live,
+    /// [`crate::game::rules::SCROLL_SIGHT_LINGER_TICKS`] past `lands`; once
+    /// it ended, that long past the end.
+    pub sight_until: u32,
 }
 
 /// One player's place at the match. Everything here outlives the body.
@@ -66,6 +87,8 @@ pub struct Seat {
     /// Damage its hero has dealt to enemy structures, after armor and
     /// resistance.
     pub structure_damage: i32,
+    /// The scroll its hero reads, or read a moment ago.
+    pub teleport: Option<Teleport>,
 }
 
 impl Seat {
@@ -95,6 +118,7 @@ impl Seat {
             denies: 0,
             hero_damage: 0,
             structure_damage: 0,
+            teleport: None,
         }
     }
 }

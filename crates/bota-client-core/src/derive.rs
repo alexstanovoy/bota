@@ -2,7 +2,7 @@
 //! point began, how long a wait of a slot was when it began, and how much
 //! health a unit had a moment ago.
 
-use bota_proto::{EntityId, StatusFlags, WorldView};
+use bota_proto::{EntityId, ItemSlot, StatusFlags, WorldView};
 
 /// Units tracked at most per table; past it the oldest entries give way.
 const MAX_TRACKED: usize = 1024;
@@ -68,7 +68,12 @@ impl Derived {
                 .map(|item| item.map_or(0, |item| item.cooldown_left))
                 .enumerate()
                 .map(|(at, left)| (usize::from(ITEM_WAIT_BASE) + at, left));
-            for (slot, left) in abilities.chain(items).take(128) {
+            // The town portal slot keeps its wire number past the bag and the stash.
+            let scrolls = unit.town_portal.map(|item| {
+                let at = usize::from(ITEM_WAIT_BASE) + usize::from(ItemSlot::TOWN_PORTAL.0);
+                (at, item.cooldown_left)
+            });
+            for (slot, left) in abilities.chain(items).chain(scrolls).take(128) {
                 if left == 0 || seen.len() >= MAX_TRACKED {
                     continue;
                 }

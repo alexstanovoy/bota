@@ -176,6 +176,7 @@ pub fn refusal(reason: RejectReason) -> &'static str {
         Why::BadCheat => "the cheat is out of bounds",
         Why::OutOfStock => "the shop has none left",
         Why::CannotLearn => "that talent cannot be learned now",
+        Why::Unsellable => "a free scroll sells for nothing",
     }
 }
 

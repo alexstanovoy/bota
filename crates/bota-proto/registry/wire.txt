@@ -366,3 +366,13 @@ field WorldView 11 stock: Vec<StockView>
 field WorldView 12 talents: Vec<TalentView>
 field UnitView 32 hp_regen: Fixed
 field UnitView 33 mana_regen: Fixed
+field Kit 2 town_portal: Option<ItemView>
+variant RejectReason 23 Unsellable
+field TeleportView 0 slot: SlotId
+field TeleportView 1 team: Team
+field TeleportView 2 building: EntityId
+field TeleportView 3 destination: Vec2
+field TeleportView 4 ticks_left: u32
+field TeleportView 5 ticks_total: u32
+field UnitView 34 town_portal: Option<ItemView>
+field WorldView 13 teleports: Vec<TeleportView>

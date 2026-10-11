@@ -7,7 +7,7 @@ use bota_proto::{
 
 use crate::game::{
     ActionPhase, ActionState, Entity, FeastPhase, ModifierKind, StackKind, World,
-    ability_mana_cost, attack_gain, beats, is_lane_creep, item_views, rules,
+    ability_mana_cost, attack_gain, beats, is_lane_creep, item_view, item_views, rules,
 };
 use crate::profile::Phase;
 
@@ -86,14 +86,29 @@ impl World {
                     },
                     stash: match viewer {
                         Some(team) if team != seat.team => None,
-                        _ => Some(item_views(&seat.stash, self.mana_cost_rate_of(seat.unit))),
+                        _ => Some(item_views(
+                            &seat.stash,
+                            self.mana_cost_rate_of(seat.unit),
+                            &seat.item_clocks,
+                        )),
                     },
                     // What a fallen body left is told to its own side alone.
                     kit: match viewer {
                         Some(team) if team != seat.team => None,
                         _ => seat.kept.as_ref().map(|kept| bota_proto::Kit {
                             abilities: ability_views(&kept.book, self.mana_cost_rate_of(seat.unit)),
-                            items: item_views(&kept.bag, self.mana_cost_rate_of(seat.unit)),
+                            items: item_views(
+                                &kept.bag,
+                                self.mana_cost_rate_of(seat.unit),
+                                &seat.item_clocks,
+                            ),
+                            town_portal: kept.bag.town_portal.flatten().map(|stack| {
+                                item_view(
+                                    &stack,
+                                    self.mana_cost_rate_of(seat.unit),
+                                    &seat.item_clocks,
+                                )
+                            }),
                         }),
                     },
                     kills: seat.kills,
@@ -112,6 +127,7 @@ impl World {
             skipped_ticks: Vec::new(),
             stock: self.project_stock(viewer),
             talents,
+            teleports: self.teleport_views(),
         }
     }
 
@@ -309,6 +325,12 @@ impl World {
         let stats = self.stats.get(entity)?;
         let health = self.health.get(entity);
         let mana = self.mana.get(entity);
+        // The waits a seat owes on kinds of item show on its hero's stacks.
+        let clocks: &[(bota_proto::ItemId, u32)] = self
+            .seats
+            .iter()
+            .find(|seat| seat.unit == Some(entity))
+            .map_or(&[], |seat| &seat.item_clocks);
         Some(UnitView {
             id: wire_id(entity),
             kind,
@@ -357,9 +379,14 @@ impl World {
                     .collect()
             }),
             items: self.inventory.get(entity).map_or_else(Vec::new, |bag| {
-                item_views(bag, self.mana_cost_rate_of(Some(entity)))
+                item_views(bag, self.mana_cost_rate_of(Some(entity)), clocks)
             }),
             effects: self.effects_on(entity),
+            town_portal: self
+                .inventory
+                .get(entity)
+                .and_then(|bag| bag.town_portal.flatten())
+                .map(|stack| item_view(&stack, self.mana_cost_rate_of(Some(entity)), clocks)),
         })
     }
 }

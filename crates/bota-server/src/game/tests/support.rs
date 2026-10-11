@@ -2,11 +2,11 @@
 
 use crate::game::{
     ActionPhase, ActionState, CampHome, CellGrid, Command, Def, Entity, Errand, Event, Ground,
-    Health, ITEM_BOOTS, ITEM_TANGO, ITEM_TOWN_PORTAL_SCROLL, ITEMS, ItemStack, Lane, LaneAi, Level,
-    MELEE_CREEP, MapDef, MatchConfig, Modifier, ModifierKind, Modifiers, NeutralAi, NeutralKind,
-    Orders, Projectile, RANGED_CREEP, Ratio, Seat, StackKind, Stats, TERRAIN_CELLS, Transform,
-    UnitDef, UnitOrder, World, facing_towards, is_structure, isqrt64, map_of, plan_radius, rules,
-    tree_positions, wire_id,
+    Health, ITEM_BOOTS, ITEM_TANGO, ITEMS, ItemStack, Lane, LaneAi, Level, MELEE_CREEP, MapDef,
+    MatchConfig, Modifier, ModifierKind, Modifiers, NeutralAi, NeutralKind, Orders, Projectile,
+    RANGED_CREEP, Ratio, Seat, StackKind, Stats, TERRAIN_CELLS, Transform, UnitDef, UnitOrder,
+    World, facing_towards, is_structure, isqrt64, map_of, plan_radius, rules, tree_positions,
+    wire_id,
 };
 use bota_proto::{
     AbilitySlot, Angle, Attributes, DamageKind, EventKind, Fixed, HeroId, ItemId, MapId, Order,
@@ -431,15 +431,13 @@ pub(super) fn an_empty_spot(world: &World) -> Vec2 {
     panic!("the map has room somewhere")
 }
 
-/// A match hero moved to [`an_empty_spot`] with a town portal scroll in its
-/// first slot, one tick on.
+/// A match hero moved to [`an_empty_spot`] with the scroll it started with
+/// ready to read, one tick on.
 pub(super) fn a_hero_with_a_scroll() -> (World, Entity) {
     let mut world = World::for_match(&config(), config().rng());
     let hero = world.seats[0].unit.expect("stood up");
     world.transform.get_mut(hero).expect("hero").pos = an_empty_spot(&world);
-    if let Some(bag) = world.inventory.get_mut(hero) {
-        bag.slots[0] = Some(fresh_stack(ITEM_TOWN_PORTAL_SCROLL, 1));
-    }
+    world.seats[0].item_clocks.clear();
     world.step();
     (world, hero)
 }
@@ -625,6 +623,7 @@ pub(super) fn fresh_stack(item: u16, charges: u8) -> ItemStack {
         touched: false,
         owner: SlotId(0),
         for_sale: false,
+        free_charges: 0,
     }
 }
 
@@ -757,6 +756,7 @@ pub(super) fn a_stack_of(item: u16, owner: u8) -> ItemStack {
         touched: true,
         owner: SlotId(owner),
         for_sale: false,
+        free_charges: 0,
     }
 }
 

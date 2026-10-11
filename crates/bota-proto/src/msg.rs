@@ -163,6 +163,9 @@ pub enum RejectReason {
     /// has not opened at the hero's level, or the talent or its tier is
     /// already taken.
     CannotLearn,
+    /// The stack holds a scroll that came for nothing: the one every hero
+    /// starts with or one a death handed out. No shop buys it back.
+    Unsellable,
 }
 
 /// Final numbers for one seat.

@@ -69,6 +69,7 @@ pub fn hero_unit() -> UnitView {
         attack_damage_max: 54,
         hp_regen: Fixed::ZERO,
         mana_regen: Fixed::ZERO,
+        town_portal: Some(item_view(8)),
         attack_range: fixed(550),
         attack_time: 1700,
         attack_point: 500,
@@ -123,6 +124,7 @@ pub fn creep_unit(idx: u32) -> UnitView {
         attack_damage_max: 21,
         hp_regen: Fixed::ZERO,
         mana_regen: Fixed::ZERO,
+        town_portal: None,
         attack_range: fixed(100),
         attack_time: 1000,
         attack_point: 466,
@@ -172,6 +174,7 @@ pub fn player_view(slot: u8) -> PlayerView {
         kit: Some(Kit {
             abilities: vec![ability_view(0)],
             items: vec![Some(item_view(3)), None],
+            town_portal: Some(item_view(8)),
         }),
         kills: 3,
         deaths: 1,
@@ -209,6 +212,14 @@ pub fn world_view(creeps: u32) -> WorldView {
             slot: SlotId(0),
             learned: Talents::default().with(TalentSlot(1)),
             learnable: Talents::default().with(TalentSlot(2)).with(TalentSlot(3)),
+        }],
+        teleports: vec![TeleportView {
+            slot: SlotId(1),
+            team: Team::Dire,
+            building: entity(40),
+            destination: Vec2::from_ints(15000, 14000),
+            ticks_left: 61,
+            ticks_total: 90,
         }],
     }
 }
@@ -436,6 +447,7 @@ pub fn empty_world_view() -> WorldView {
         skipped_ticks: Vec::new(),
         stock: Vec::new(),
         talents: Vec::new(),
+        teleports: Vec::new(),
     }
 }
 

@@ -46,9 +46,6 @@ const PORTAL_STANDOFF: f32 = 300.0;
 /// How far the lane has to be for a scroll to beat walking.
 const PORTAL_WORTH: f32 = 3500.0;
 
-/// Ticks a scroll leaves behind before another may be used.
-const SCROLL_WAIT: u32 = 2100;
-
 /// Health, as a part of the whole, below which a hero does not start
 /// anything with a hero of the other side.
 const HARASS_HEALTH: f32 = 0.6;
@@ -81,8 +78,6 @@ pub struct Playbook {
     swinging_at: Option<Ask>,
     /// The tick that swing was ordered on.
     swinging_since: u32,
-    /// The tick the last scroll was aimed. Absent while none has been.
-    portalled_at: Option<u32>,
     /// The tick the creeps first set out.
     pregame: u32,
     /// The tick the creeps were last shaken off. Absent while none has been.
@@ -113,7 +108,6 @@ impl Playbook {
             pulling_out: false,
             swinging_at: None,
             swinging_since: 0,
-            portalled_at: None,
             pregame: 0,
             shook_at: None,
             pulled_at: None,
@@ -214,7 +208,6 @@ impl Playbook {
         }
         if let Some(back) = self.portal(field) {
             self.rung = "portal";
-            self.portalled_at = Some(self.tick);
             return Some(back);
         }
         if let Some(away) = self.retreat(field) {
@@ -460,11 +453,9 @@ impl Playbook {
 
     /// The scroll: home while pulling out, otherwise to just behind the
     /// frontmost tower the lane still holds, when that is further than
-    /// [`PORTAL_WORTH`] and no enemy hero is within [`FIGHT_RANGE`].
-    ///
-    /// The wait a scroll leaves behind is shared by every scroll a hero holds
-    /// and is not on the wire, where a fresh scroll reads as ready: it is
-    /// counted here from the tick the last one was aimed.
+    /// [`PORTAL_WORTH`] and no enemy hero is within [`FIGHT_RANGE`]. The
+    /// wait every scroll a hero holds shares shows on the one in its town
+    /// portal slot.
     fn portal(&self, field: &Field) -> Option<Ask> {
         if self.tick < self.pregame {
             return None;
@@ -472,18 +463,14 @@ impl Playbook {
         if field.foes_within(FIGHT_RANGE).next().is_some() {
             return None;
         }
-        // The order lands on the tick after it is aimed, and the wait runs
-        // from there.
-        if self
-            .portalled_at
-            .is_some_and(|at| self.tick.saturating_sub(at) <= SCROLL_WAIT)
-        {
-            return None;
-        }
         let me = field.me?;
         let lane = field.lane.as_ref()?;
         let (slot, held) = field.item(SCROLL)?;
-        if held.cooldown_left > 0 || held.mute_left > 0 || held.charges == Some(0) {
+        if held.cooldown_left > 0
+            || held.mute_left > 0
+            || held.charges == Some(0)
+            || me.mana < held.mana_cost
+        {
             return None;
         }
         let going = if self.pulling_out {

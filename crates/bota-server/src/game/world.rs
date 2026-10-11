@@ -2,7 +2,7 @@
 
 use std::collections::VecDeque;
 
-use bota_proto::{HeroId, SlotId, Team, UnitKind};
+use bota_proto::{HeroId, SlotId, Team, UnitKind, Vec2};
 
 use crate::game::{
     AbilityBook, Action, AppliedModifiers, AuraCx, Auras, Bounty, CampHome, Candidates, Def,
@@ -641,6 +641,7 @@ impl World {
 
     /// Who sees what, from where everything stands.
     fn refresh_sight(&mut self) {
+        let scroll_sights: Vec<(Team, Vec2)> = self.teleport_sights().collect();
         visibility_system(SightCx {
             entities: &self.entities,
             transform: &self.transform,
@@ -650,6 +651,7 @@ impl World {
             ground: &self.ground,
             sight_block: &self.sight_block,
             exposure: &self.exposure,
+            scroll_sights: &scroll_sights,
             tick: self.tick,
             visibility: &mut self.visibility,
             sight: &mut self.sight_scratch,
