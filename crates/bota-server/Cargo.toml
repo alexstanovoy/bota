@@ -15,6 +15,7 @@ rustc-hash = { version = "2.1.3", default-features = false, features = ["std"] }
 socket2 = { version = "=0.6.5", default-features = false }
 
 [dev-dependencies]
+bota-client-core = { workspace = true }
 criterion = { workspace = true }
 
 [[bench]]

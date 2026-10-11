@@ -94,7 +94,9 @@ pub struct MatchInfo {
     /// low bits the elevation tier.
     pub terrain_rle: Vec<(u16, u8)>,
     /// `(x, y)` cells of the terrain grid that block sight lines regardless of
-    /// elevation: the map's own trees and its fog blocker walls.
+    /// elevation: the map's own fog blocker walls. Trees block by elevation
+    /// and come and go, so they are not here: a client lays them from
+    /// [`MatchInfo::trees`] and the view's felled and planted trees.
     pub opaque_cells: Vec<(u16, u16)>,
     /// How the server advances ticks.
     pub mode: TickMode,

@@ -233,6 +233,17 @@ pub const DEMO_LANE_CORNERS: [Vec2; 3] = [
 /// Tree trunk collision radius. Also what a click has to land inside to be a
 /// click on that tree, and how near a tree another may not be planted.
 pub const TREE_RADIUS: i32 = 48;
+/// Squared world units around a map tree within which a cell's centre is
+/// shut to sight. Dota's tree vision blocker is a circle of √2 tiles through
+/// the corners of the 2×2-tile square the tree stands on; the cells whose
+/// centres it holds are exactly those four.
+pub const TREE_SIGHT_RADIUS_SQUARED: i64 = 2 * GRID_CELL_SIZE as i64 * GRID_CELL_SIZE as i64;
+/// Tiers above its own ground a tree still blocks a viewer from: Dota's
+/// trees stop ground vision on their level and one level up.
+pub const TREE_SIGHT_TIERS_ABOVE: u8 = 1;
+/// Squared cell distance from a viewer's cell within which it sees a cell
+/// whatever stands between: Dota's 5×5 tiles less the corners.
+pub const NEAR_SIGHT_CELLS_SQUARED: i64 = 5;
 /// Trees of the Dota map this close to a lane centerline are dropped.
 pub const TREE_LANE_CLEAR: i32 = 450;
 /// Tree-free radius around each fountain.

@@ -146,6 +146,7 @@ fn map0_and_map2_passability_terrain_and_sight_match_in_every_cell() {
     let full_field = Clearance::of_map(full.map);
     let mid_field = Clearance::of_map(mid.map);
     assert_eq!(full_field.circles(), mid_field.circles());
+    assert_eq!(mid.sight_block, full.sight_block);
 
     for y in 0..rules::GRID_CELLS {
         for x in 0..rules::GRID_CELLS {
@@ -157,10 +158,6 @@ fn map0_and_map2_passability_terrain_and_sight_match_in_every_cell() {
             assert_eq!(
                 mid.clearance.terrain().cell_open(x, y),
                 full.clearance.terrain().cell_open(x, y)
-            );
-            assert_eq!(
-                mid.sight_block.cell_open(x, y),
-                full.sight_block.cell_open(x, y)
             );
             assert_eq!(
                 mid.ground.cell_walkable(x, y),

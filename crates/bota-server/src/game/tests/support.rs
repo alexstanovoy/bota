@@ -504,9 +504,10 @@ pub(super) fn a_hero_by_the_trees(item: u16, charges: u8) -> (World, Entity, Vec
     (world, hero, tree)
 }
 
-/// Whether the cell a spot falls in still stops a sight line.
+/// Whether the cell a spot falls in still stops a sight line along the
+/// ground there.
 pub(super) fn sight_stopped_at(world: &World, at: Vec2) -> bool {
-    CellGrid::cell_of(at).is_some_and(|(cx, cy)| !world.sight_block.cell_open(cx, cy))
+    CellGrid::cell_of(at).is_some_and(|cell| world.sight_block.stops(cell, world.ground.tier(at)))
 }
 
 /// How long a tango eaten off the tree at a spot mends for.

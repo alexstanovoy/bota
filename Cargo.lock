@@ -110,6 +110,7 @@ dependencies = [
 name = "bota-server"
 version = "0.1.0"
 dependencies = [
+ "bota-client-core",
  "bota-proto",
  "clap",
  "criterion",
