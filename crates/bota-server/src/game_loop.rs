@@ -520,8 +520,9 @@ fn snapshot_frame(view: WorldView) -> Vec<u8> {
 }
 
 /// The kinds of the events a side may see. No side sees all of them, and a
-/// death's gold is told only to the side whose hero earned it: the rest see
-/// zero, so a visible kill never leaks the enemy's income.
+/// death's gold is told only to the side that earned it unless a hero fell:
+/// the other side sees zero, so a visible creep kill never leaks the
+/// enemy's income.
 pub(crate) fn visible_events(events: &[Event], viewing: Option<Team>) -> Vec<EventKind> {
     events
         .iter()
@@ -530,7 +531,9 @@ pub(crate) fn visible_events(events: &[Event], viewing: Option<Team>) -> Vec<Eve
             (EventVisibility::OneTeam(team), Some(mine)) => team == mine,
         })
         .map(|e| match (&e.kind, viewing) {
-            (EventKind::Died { gold, .. }, Some(mine)) if *gold != 0 && e.earner != Some(mine) => {
+            (EventKind::Died { gold, .. }, Some(mine))
+                if *gold != 0 && e.gold_hidden_from == Some(mine) =>
+            {
                 let mut kind = e.kind.clone();
                 if let EventKind::Died { gold, .. } = &mut kind {
                     *gold = 0;

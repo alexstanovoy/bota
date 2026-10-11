@@ -41,7 +41,7 @@ impl World {
                     kind: blow.kind,
                 },
                 visible_to: self.who_may_know(blow.at, blow.side),
-                earner: None,
+                gold_hidden_from: None,
             });
         }
     }
@@ -55,7 +55,7 @@ impl World {
                     target: wire_id(miss.target),
                 },
                 visible_to: self.who_may_know(miss.at, miss.side),
-                earner: None,
+                gold_hidden_from: None,
             });
         }
     }
@@ -128,9 +128,10 @@ impl World {
                 gold: paid,
             },
             visible_to: self.who_may_know(at, side.unwrap_or(Team::Neutral)),
-            earner: killer
-                .filter(|&k| self.seat_of(k).is_some())
-                .and_then(|k| self.team.get(k).copied()),
+            gold_hidden_from: killer
+                .filter(|&k| kind != Some(UnitKind::Hero) && self.seat_of(k).is_some())
+                .and_then(|k| self.team.get(k).copied())
+                .map(other_side),
         });
         let structure = kind.zip(side).filter(|(kind, _)| is_structure(*kind));
         if let Some((kind, side)) = structure {
@@ -140,7 +141,7 @@ impl World {
                     team: side,
                 },
                 visible_to: EventVisibility::Everyone,
-                earner: None,
+                gold_hidden_from: None,
             });
             if self.map.id != MAP2_ID
                 && self.winner.is_none()

@@ -233,11 +233,7 @@ impl App {
             None => format!("a {:?} hero", victim.team),
         };
         let killer_unit = killer.and_then(|k| self.freshest(k));
-        // A side's gold is its own secret: told only for one's own side's
-        // kills, never for the enemy's or with no side at all.
-        let ours = self
-            .my_team()
-            .is_some_and(|team| killer_unit.is_some_and(|k| k.team == team));
+        // The feed only tells hero deaths, whose gold is public as in Dota.
         let by = killer_unit.map(|k| match (k.kind, k.owner) {
             (UnitKind::Hero, Some(slot)) => self.seat_name(slot),
             (UnitKind::Tower, _) => format!("the {:?} tower", k.team),
@@ -245,7 +241,7 @@ impl App {
             (kind, _) => format!("a {:?} {kind:?}", k.team),
         });
         Some(match by {
-            Some(by) if gold > 0 && ours => format!("{victim} was slain by {by} for {gold} gold"),
+            Some(by) if gold > 0 => format!("{victim} was slain by {by} for {gold} gold"),
             Some(by) => format!("{victim} was slain by {by}"),
             None => format!("{victim} died"),
         })

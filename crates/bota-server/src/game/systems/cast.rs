@@ -68,7 +68,7 @@ impl World {
                 ability: ability.id,
             },
             visible_to,
-            earner: None,
+            gold_hidden_from: None,
         });
         true
     }

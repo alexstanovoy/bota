@@ -142,8 +142,8 @@ pub struct Event {
     pub kind: EventKind,
     /// Who may know.
     pub visible_to: EventVisibility,
-    /// The side whose hero was paid the gold a `Died` reports; only that
-    /// side is told the amount. `None` for every other event, and for a
-    /// death that paid no hero.
-    pub earner: Option<Team>,
+    /// The side that must see zero for the gold a `Died` reports: the one
+    /// that did not earn a non-hero kill. A hero kill's gold is public, as in
+    /// Dota's kill feed, so it is `None` there and for every other event.
+    pub gold_hidden_from: Option<Team>,
 }
