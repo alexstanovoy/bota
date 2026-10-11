@@ -642,3 +642,41 @@ fn phase_walks_a_body_through_another() {
         "and then walks through it"
     );
 }
+
+#[test]
+fn the_view_reports_the_regeneration_the_server_applies() {
+    let mut world = World::for_match(&config(), config().rng());
+    let hero = world.seats[0].unit.expect("stood up");
+    let regen = |world: &World| {
+        let unit = world
+            .view(Team::Radiant)
+            .units
+            .into_iter()
+            .find(|seen| seen.id == wire_id(hero))
+            .expect("in sight");
+        (unit.hp_regen, unit.mana_regen)
+    };
+    let served = |world: &World| {
+        let stats = world.stats.get(hero).expect("settled");
+        let per_second = |per_tick: Fixed| per_tick.raw * rules::TICKS_PER_SECOND as i32;
+        (per_second(stats.hp_regen), per_second(stats.mana_regen))
+    };
+    world.step();
+    let (fountain_hp, fountain_mana) = regen(&world);
+    assert_eq!((fountain_hp.raw, fountain_mana.raw), served(&world));
+
+    world.transform.get_mut(hero).expect("hero").pos = Vec2::from_ints(5000, 5000);
+    for _ in 0..=rules::TICKS_PER_SECOND {
+        world.step();
+    }
+    let (plain_hp, plain_mana) = regen(&world);
+    assert_eq!((plain_hp.raw, plain_mana.raw), served(&world));
+    assert!(fountain_hp > plain_hp && fountain_mana > plain_mana);
+
+    hand_item(&mut world, hero, ITEM_HEALING_SALVE, 1);
+    assert!(world.use_item(hero, 0, Target::None, &mut Vec::new()));
+    world.step();
+    let (salved, _) = regen(&world);
+    assert_eq!(salved.raw, served(&world).0);
+    assert!(salved > plain_hp, "the salve shows in the view");
+}

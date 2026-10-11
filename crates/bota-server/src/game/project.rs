@@ -323,6 +323,8 @@ impl World {
             attack_damage: stats.damage + stats.damage_spread / 2,
             attack_damage_min: stats.damage,
             attack_damage_max: stats.damage + stats.damage_spread,
+            hp_regen: per_second_view(stats.hp_regen),
+            mana_regen: per_second_view(stats.mana_regen),
             attack_range: stats.attack_range,
             attack_time: after_speed(stats.attack_time, stats.attack_speed),
             attack_point: after_speed(stats.attack_point, stats.attack_speed),
@@ -543,5 +545,12 @@ impl World {
             }
         }
         bits
+    }
+}
+
+/// A per-tick regeneration as points per second.
+fn per_second_view(per_tick: Fixed) -> Fixed {
+    Fixed {
+        raw: per_tick.raw.saturating_mul(rules::TICKS_PER_SECOND as i32),
     }
 }
