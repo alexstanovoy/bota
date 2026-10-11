@@ -632,3 +632,20 @@ fn the_damage_range_is_the_wires_with_the_bonus_split_off_a_hero() {
     let range = damage_range(&creep);
     assert_eq!((range.min, range.max, range.bonus), (19, 23, 0));
 }
+
+/// The one talent tree is Shadow Fiend's, whatever id the hero list gives him.
+#[test]
+fn the_talent_tree_is_shadow_fiends() {
+    let fiend = crate::HEROES
+        .iter()
+        .find(|h| h.name == "Shadow Fiend")
+        .expect("Shadow Fiend is a hero");
+    assert!(crate::talents(fiend.id).is_some());
+    for other in crate::HEROES.iter().filter(|h| h.id != fiend.id) {
+        assert!(
+            crate::talents(other.id).is_none(),
+            "{} has no tree",
+            other.name
+        );
+    }
+}

@@ -1,7 +1,7 @@
 //! Everything the client knows, and how server messages change it.
 
 use bota_proto::{
-    ClientMsg, EntityId, HeroId, LobbySlot, MatchInfo, MatchStats, Order, PlayerId, RejectReason,
+    ClientMsg, EntityId, LobbySlot, MatchInfo, MatchStats, Order, PlayerId, RejectReason,
     ServerMsg, ShopEntry, SlotId, StockView, TalentSlot, TalentView, Team, TickMode, UnitKind,
     UnitView, Vec2, WorldView,
 };
@@ -342,8 +342,6 @@ pub struct App {
     pub found_my_hero: bool,
     /// Whether readiness has been declared.
     pub ready: bool,
-    /// Whether a hero pick has been sent.
-    pub picked: bool,
     /// The latest order of every seat it is known for: this seat's own in a
     /// live match, whatever the server tells a spectator, everybody's in a
     /// replay.
@@ -416,7 +414,6 @@ impl App {
             tapped: None,
             found_my_hero: false,
             ready: false,
-            picked: false,
             shown_orders: Vec::new(),
             eyes: None,
             floaters: Vec::new(),
@@ -733,10 +730,6 @@ impl App {
                 self.my_slot = slot.or(self.pov);
                 self.tick_rate = tick_rate;
                 self.mode = Some(mode);
-                if slot.is_some() && !self.picked && self.pov.is_none() {
-                    self.picked = true;
-                    self.source.send(&ClientMsg::PickHero { hero: HeroId(0) });
-                }
             }
             ServerMsg::LobbyState { slots } => {
                 self.names = slots

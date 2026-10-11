@@ -791,7 +791,7 @@ const SHADOW_FIEND_TALENTS: [TalentFace; 8] = [
 /// A hero's talent tree by talent slot, if it has one.
 pub fn talents(hero: u16) -> Option<&'static [TalentFace; 8]> {
     match hero {
-        2 => Some(&SHADOW_FIEND_TALENTS),
+        1 => Some(&SHADOW_FIEND_TALENTS),
         _ => None,
     }
 }
