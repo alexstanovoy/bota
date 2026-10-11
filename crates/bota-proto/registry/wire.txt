@@ -364,3 +364,5 @@ field WorldView 9 order_delays: Vec<OrderDelayView>
 field WorldView 10 skipped_ticks: Vec<SkippedTick>
 field WorldView 11 stock: Vec<StockView>
 field WorldView 12 talents: Vec<TalentView>
+field UnitView 32 hp_regen: Fixed
+field UnitView 33 mana_regen: Fixed

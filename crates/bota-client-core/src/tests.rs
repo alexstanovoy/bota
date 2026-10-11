@@ -119,6 +119,8 @@ fn a_unit() -> UnitView {
         attack_damage: 55,
         attack_damage_min: 55,
         attack_damage_max: 55,
+        hp_regen: Fixed::ZERO,
+        mana_regen: Fixed::ZERO,
         attack_range: Fixed::from_int(600),
         attack_time: 1700,
         attack_point: 500,

@@ -16,9 +16,9 @@ const UNITS_1V1: u32 = 25;
 const TICK_RATE: usize = 30;
 
 #[test]
-fn a_hero_stays_under_181_bytes() {
+fn a_hero_stays_under_183_bytes() {
     let len = encoded_len(&hero_unit());
-    assert!(len <= 181, "hero unit grew to {len} bytes");
+    assert!(len <= 183, "hero unit grew to {len} bytes");
 }
 
 #[test]

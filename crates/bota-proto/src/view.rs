@@ -196,6 +196,11 @@ pub struct UnitView {
     /// The most damage a swing draws, on the same terms. `attack_damage` is
     /// the middle of the two, rounded down.
     pub attack_damage_max: i32,
+    /// Health regained each second, all sources summed: base, strength, items,
+    /// auras, consumables and the fountain. Q16.16 points per second.
+    pub hp_regen: Fixed,
+    /// Mana regained each second, on the same terms as `hp_regen`.
+    pub mana_regen: Fixed,
 }
 
 /// A swing under way that has not struck yet.
