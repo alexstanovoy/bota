@@ -415,7 +415,7 @@ fn ability_views(book: &crate::game::AbilityBook, mana_rate_bp: i32) -> Vec<Abil
 }
 
 /// Which effect one kind is on the wire.
-fn stack_effect_id(kind: StackKind) -> u16 {
+pub(crate) fn stack_effect_id(kind: StackKind) -> u16 {
     match kind {
         StackKind::FleshHeap => 10,
         StackKind::Souls => 11,
@@ -423,7 +423,7 @@ fn stack_effect_id(kind: StackKind) -> u16 {
 }
 
 /// The number the wire names a modifier with.
-fn effect_id(kind: ModifierKind) -> u16 {
+pub(crate) fn effect_id(kind: ModifierKind) -> u16 {
     match kind {
         #[cfg(test)]
         ModifierKind::Haste { .. } => 0,

@@ -900,6 +900,33 @@ Until the first release there is no versioning and no compatibility;
 version and fingerprint fields appear with the first release, when there
 is something to be compatible with.
 
+### Append-only ids
+
+Ids and wire positions are append-only, like protobuf field numbers: what
+is removed from the protocol is removed forever, and its number is never
+renumbered or reused. This covers hero, ability, item and effect ids, and
+every position postcard encodes: the variant index of each wire enum
+(`UnitKind`, `Order`, `EventKind`, `RejectReason`, …) and the field order of
+each wire struct and struct variant.
+
+- A new id takes the next number of its space; a new variant or field goes
+  last.
+- Removing a hero, ability, item or effect retires its id: the registry
+  line turns `retired`, and tables indexed by id keep a placeholder in its
+  place. Nothing may name a retired id again.
+- Removing a variant or a field keeps it on the wire as it was, documented
+  as retired: a variant is never produced (a decoder may refuse it), a
+  field is always written as its default.
+
+Two committed registries in `crates/bota-proto/registry/` hold what has been
+assigned: `ids.txt` every id with its name and state, `wire.txt` every
+variant index and field position of the wire types. Both only grow: an
+existing line is never edited or removed, except an id turning `retired`.
+Tests hold the code to them: `bota-proto` traces the wire types and fails
+on any position that changed or disappeared, and on one not yet registered;
+`bota-server` checks its hero, ability, item and effect tables, and
+`bota-client-core` its catalog, against `ids.txt`.
+
 ### Client → server
 
 ```rust

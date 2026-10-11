@@ -649,3 +649,43 @@ fn the_talent_tree_is_shadow_fiends() {
         );
     }
 }
+
+/// The catalog of `space` holds, as `held` and through `found`, exactly the
+/// ids the registry has live.
+fn holds_the_live_ids(
+    space: bota_proto::IdSpace,
+    held: impl Iterator<Item = u16>,
+    found: impl Fn(u16) -> bool,
+) {
+    let mut live: Vec<u16> = bota_proto::registered(space)
+        .filter(|entry| !entry.retired)
+        .map(|entry| entry.id)
+        .collect();
+    live.sort_unstable();
+    let mut held: Vec<u16> = held.collect();
+    held.sort_unstable();
+    assert_eq!(held, live, "the catalog's {space:?} ids are the live ones");
+    for entry in bota_proto::registered(space) {
+        assert_eq!(found(entry.id), !entry.retired, "{space:?} {}", entry.id);
+    }
+}
+
+#[test]
+fn the_catalog_holds_every_live_id_and_no_other() {
+    use crate::catalog::{ABILITIES, EFFECTS, HEROES, ITEMS, ability, effect, hero, item};
+    use bota_proto::IdSpace;
+    holds_the_live_ids(IdSpace::Hero, HEROES.iter().map(|face| face.id), |id| {
+        hero(id).is_some_and(|face| face.id == id)
+    });
+    holds_the_live_ids(
+        IdSpace::Ability,
+        ABILITIES.iter().map(|face| face.id),
+        |id| ability(id).is_some_and(|face| face.id == id),
+    );
+    holds_the_live_ids(IdSpace::Item, ITEMS.iter().map(|face| face.id), |id| {
+        item(id).is_some_and(|face| face.id == id)
+    });
+    holds_the_live_ids(IdSpace::Effect, EFFECTS.iter().map(|face| face.id), |id| {
+        effect(id).is_some_and(|face| face.id == id)
+    });
+}

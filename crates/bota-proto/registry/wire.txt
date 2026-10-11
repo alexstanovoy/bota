@@ -1,0 +1,366 @@
+# Every position on the bota wire: append-only (DESIGN.md, Protocol).
+#
+# One line a position postcard encodes: an enum's variant index, a struct's or
+# struct variant's field order, a tuple's element order. A new variant or field
+# goes last and its lines are appended here. A line is never edited or removed:
+# what leaves the protocol stays on the wire, retired.
+
+newtype AbilityId u16
+newtype AbilitySlot u8
+field AbilityView 0 id: AbilityId
+field AbilityView 1 level: u8
+field AbilityView 2 max_level: u8
+field AbilityView 3 cooldown_left: u32
+field AbilityView 4 mana_cost: i32
+field AbilityView 5 range: i32
+field AbilityView 6 aim: Aim
+field AbilityView 7 passive: bool
+field AbilityView 8 on: bool
+field AbilityView 9 can_level: bool
+field AggroView 0 unit: EntityId
+field AggroView 1 target: Option<EntityId>
+field AggroView 2 swing: Option<SwingView>
+field AggroView 3 hold_left: u32
+field AggroView 4 chase_left: u32
+field AggroView 5 draw_cooldown: u32
+field AggroView 6 returning: bool
+variant Aim 0 Own
+variant Aim 1 Point
+variant Aim 2 Unit
+variant Aim 3 Tree
+variant Aim 4 Building
+field Angle 0 brads: u16
+variant Attribute 0 Strength
+variant Attribute 1 Agility
+variant Attribute 2 Intelligence
+field Attributes 0 strength: Fixed
+field Attributes 1 agility: Fixed
+field Attributes 2 intelligence: Fixed
+variant Cheat 0 Gold {}
+field Cheat::Gold 0 amount: i32
+variant Cheat 1 Levels {}
+field Cheat::Levels 0 count: u8
+variant Cheat 2 Refresh
+variant Cheat 3 Item {}
+field Cheat::Item 0 item: ItemId
+variant Cheat 4 ApplyModifier {}
+field Cheat::ApplyModifier 0 target: Target
+field Cheat::ApplyModifier 1 spec: ModifierSpec
+field Cheat::ApplyModifier 2 ticks: u32
+variant Cheat 5 ClearModifiers {}
+field Cheat::ClearModifiers 0 target: Target
+variant ClientMsg 0 Hello {}
+field ClientMsg::Hello 0 role: Role
+field ClientMsg::Hello 1 name: String
+variant ClientMsg 1 PickHero {}
+field ClientMsg::PickHero 0 hero: HeroId
+variant ClientMsg 2 SetReady(bool)
+variant ClientMsg 3 Order {}
+field ClientMsg::Order 0 seq: u32
+field ClientMsg::Order 1 unit: Option<EntityId>
+field ClientMsg::Order 2 order: Order
+field ClientMsg::Order 3 seen: Option<u32>
+variant ClientMsg 4 Ack {}
+field ClientMsg::Ack 0 tick: u32
+variant ClientMsg 5 ViewAs {}
+field ClientMsg::ViewAs 0 seat: Option<SlotId>
+variant DamageKind 0 Physical
+variant DamageKind 1 Magical
+variant DamageKind 2 Pure
+newtype EffectId u16
+field EffectView 0 id: EffectId
+field EffectView 1 ticks_left: Option<u32>
+field EffectView 2 stacks: Option<u32>
+field EntityId 0 idx: u32
+field EntityId 1 generation: u32
+variant EventKind 0 Damaged {}
+field EventKind::Damaged 0 source: Option<EntityId>
+field EventKind::Damaged 1 target: EntityId
+field EventKind::Damaged 2 amount: i32
+field EventKind::Damaged 3 kind: DamageKind
+variant EventKind 1 Missed {}
+field EventKind::Missed 0 source: Option<EntityId>
+field EventKind::Missed 1 target: EntityId
+variant EventKind 2 Healed {}
+field EventKind::Healed 0 source: Option<EntityId>
+field EventKind::Healed 1 target: EntityId
+field EventKind::Healed 2 amount: i32
+field EventKind::Healed 3 mana: i32
+variant EventKind 3 Died {}
+field EventKind::Died 0 unit: EntityId
+field EventKind::Died 1 killer: Option<EntityId>
+field EventKind::Died 2 denied: bool
+field EventKind::Died 3 gold: i32
+variant EventKind 4 AbilityCast {}
+field EventKind::AbilityCast 0 caster: EntityId
+field EventKind::AbilityCast 1 ability: AbilityId
+variant EventKind 5 LevelUp {}
+field EventKind::LevelUp 0 unit: EntityId
+field EventKind::LevelUp 1 level: u8
+variant EventKind 6 ItemBought {}
+field EventKind::ItemBought 0 slot: SlotId
+field EventKind::ItemBought 1 item: ItemId
+variant EventKind 7 StructureDestroyed {}
+field EventKind::StructureDestroyed 0 unit: EntityId
+field EventKind::StructureDestroyed 1 team: Team
+field Fixed 0 raw: i32
+newtype HeroId u16
+newtype ItemId u16
+newtype ItemSlot u8
+field ItemView 0 id: ItemId
+field ItemView 1 charges: Option<u8>
+field ItemView 2 cooldown_left: u32
+field ItemView 3 mute_left: u32
+field ItemView 4 mode: Option<Attribute>
+field ItemView 5 mana_cost: i32
+field ItemView 6 range: i32
+field ItemView 7 aim: Option<Aim>
+field ItemView 8 for_sale: bool
+field ItemView 9 owner: SlotId
+field Kit 0 abilities: Vec<AbilityView>
+field Kit 1 items: Vec<Option<ItemView>>
+field LobbySlot 0 slot: SlotId
+field LobbySlot 1 team: Team
+field LobbySlot 2 name: String
+field LobbySlot 3 role: Option<Role>
+field LobbySlot 4 hero: Option<HeroId>
+field LobbySlot 5 ready: bool
+field LootView 0 id: EntityId
+field LootView 1 pos: Vec2
+field LootView 2 item: ItemId
+field LootView 3 charges: Option<u8>
+newtype MapId u16
+field MatchInfo 0 match_id: u64
+field MatchInfo 1 map: MapId
+field MatchInfo 2 tick_rate: u16
+field MatchInfo 3 pregame_ticks: u32
+field MatchInfo 4 trees: Vec<Vec2>
+field MatchInfo 5 terrain_cells: u32
+field MatchInfo 6 terrain_rle: Vec<(u16, u8)>
+field MatchInfo 7 opaque_cells: Vec<[u16; 2]>
+field MatchInfo 8 mode: TickMode
+field MatchInfo 9 picks: Vec<Pick>
+field MatchInfo 10 shop: Vec<ShopEntry>
+field MatchInfo 11 fountains: [Vec2; 2]
+field MatchInfo 12 shop_range: i32
+field MatchStats 0 duration: u32
+field MatchStats 1 slots: Vec<SlotStats>
+field ModifierSpec 0 magic_resist: i32
+field ModifierSpec 1 status_resist: i32
+field ModifierSpec 2 physical_damage: i32
+field ModifierSpec 3 magic_damage: i32
+field ModifierSpec 4 pure_damage: i32
+field ModifierSpec 5 cooldown_rate: i32
+field ModifierSpec 6 mana_cost_rate: i32
+field ModifierSpec 7 move_speed: i32
+field ModifierSpec 8 max_hp: i32
+field ModifierSpec 9 max_mana: i32
+field ModifierSpec 10 gold_income: i32
+variant Order 0 Move {}
+field Order::Move 0 target: Target
+variant Order 1 Attack {}
+field Order::Attack 0 target: Target
+variant Order 2 Cast {}
+field Order::Cast 0 slot: AbilitySlot
+field Order::Cast 1 target: Target
+variant Order 3 Use {}
+field Order::Use 0 slot: ItemSlot
+field Order::Use 1 target: Target
+variant Order 4 Put {}
+field Order::Put 0 slot: ItemSlot
+field Order::Put 1 target: Target
+variant Order 5 Take {}
+field Order::Take 0 target: Target
+variant Order 6 Buy {}
+field Order::Buy 0 item: ItemId
+variant Order 7 Sell {}
+field Order::Sell 0 slot: ItemSlot
+variant Order 8 Swap {}
+field Order::Swap 0 from: ItemSlot
+field Order::Swap 1 to: ItemSlot
+variant Order 9 Learn {}
+field Order::Learn 0 slot: AbilitySlot
+variant Order 10 Cheat {}
+field Order::Cheat 0 cheat: Cheat
+variant Order 11 LearnTalent {}
+field Order::LearnTalent 0 talent: TalentSlot
+field OrderDelayView 0 slot: SlotId
+field OrderDelayView 1 ticks: u32
+field Pick 0 slot: SlotId
+field Pick 1 team: Team
+field Pick 2 hero: HeroId
+newtype PlayerId u32
+field PlayerView 0 slot: SlotId
+field PlayerView 1 team: Team
+field PlayerView 2 hero: HeroId
+field PlayerView 3 unit: Option<EntityId>
+field PlayerView 4 level: u8
+field PlayerView 5 xp: i32
+field PlayerView 6 gold: Option<i32>
+field PlayerView 7 stash: Option<Vec<Option<ItemView>>>
+field PlayerView 8 kit: Option<Kit>
+field PlayerView 9 kills: u16
+field PlayerView 10 deaths: u16
+field PlayerView 11 assists: u16
+field PlayerView 12 last_hits: u16
+field PlayerView 13 denies: u16
+field PlayerView 14 respawn_left: u32
+field ProjectileView 0 id: EntityId
+field ProjectileView 1 pos: Vec2
+field ProjectileView 2 facing: Angle
+field ProjectileView 3 team: Team
+field ProjectileView 4 ability: Option<AbilityId>
+variant RejectReason 0 HeroDead
+variant RejectReason 1 UnknownTarget
+variant RejectReason 2 WrongTargetKind
+variant RejectReason 3 OnCooldown
+variant RejectReason 4 NotEnoughMana
+variant RejectReason 5 NotEnoughGold
+variant RejectReason 6 EmptySlot
+variant RejectReason 7 NotCastable
+variant RejectReason 8 NotLearned
+variant RejectReason 9 NoCharges
+variant RejectReason 10 NotReady
+variant RejectReason 11 NotYourUnit
+variant RejectReason 12 UnknownItem
+variant RejectReason 13 NotAtShop
+variant RejectReason 14 InventoryFull
+variant RejectReason 15 Disabled
+variant RejectReason 16 NotYourItem
+variant RejectReason 17 ClosedGround
+variant RejectReason 18 NotInBag
+variant RejectReason 19 NoCheats
+variant RejectReason 20 BadCheat
+variant RejectReason 21 OutOfStock
+variant RejectReason 22 CannotLearn
+variant ReplayRecord 0 Msg(ServerMsg)
+variant ReplayRecord 1 Orders {}
+field ReplayRecord::Orders 0 tick: u32
+field ReplayRecord::Orders 1 orders: Vec<SlotOrder>
+variant Role 0 Player
+variant Role 1 Bot
+variant Role 2 Spectator
+variant ServerMsg 0 Welcome {}
+field ServerMsg::Welcome 0 player_id: PlayerId
+field ServerMsg::Welcome 1 slot: Option<SlotId>
+field ServerMsg::Welcome 2 tick_rate: u16
+field ServerMsg::Welcome 3 mode: TickMode
+variant ServerMsg 1 LobbyState {}
+field ServerMsg::LobbyState 0 slots: Vec<LobbySlot>
+variant ServerMsg 2 MatchStart {}
+field ServerMsg::MatchStart 0 info: MatchInfo
+variant ServerMsg 3 Snapshot {}
+field ServerMsg::Snapshot 0 view: WorldView
+variant ServerMsg 4 Events {}
+field ServerMsg::Events 0 tick: u32
+field ServerMsg::Events 1 events: Vec<EventKind>
+variant ServerMsg 5 OrderRejected {}
+field ServerMsg::OrderRejected 0 seq: u32
+field ServerMsg::OrderRejected 1 reason: RejectReason
+variant ServerMsg 6 Orders {}
+field ServerMsg::Orders 0 tick: u32
+field ServerMsg::Orders 1 orders: Vec<SlotOrder>
+variant ServerMsg 7 MatchOver {}
+field ServerMsg::MatchOver 0 winner: Team
+field ServerMsg::MatchOver 1 stats: MatchStats
+variant ServerMsg 8 ParticipantLeft {}
+field ServerMsg::ParticipantLeft 0 player_id: PlayerId
+field ServerMsg::ParticipantLeft 1 slot: Option<SlotId>
+field ShopEntry 0 id: ItemId
+field ShopEntry 1 cost: i32
+field ShopEntry 2 components: Vec<ItemId>
+field SkippedTick 0 tick: u32
+field SkippedTick 1 events: Vec<EventKind>
+newtype SlotId u8
+field SlotOrder 0 slot: SlotId
+field SlotOrder 1 unit: Option<EntityId>
+field SlotOrder 2 order: Order
+field SlotStats 0 slot: SlotId
+field SlotStats 1 kills: u16
+field SlotStats 2 deaths: u16
+field SlotStats 3 assists: u16
+field SlotStats 4 last_hits: u16
+field SlotStats 5 denies: u16
+field SlotStats 6 net_worth: i32
+field SlotStats 7 hero_damage: i32
+field SlotStats 8 structure_damage: i32
+field StatusFlags 0 bits: u16
+field StockView 0 team: Team
+field StockView 1 item: ItemId
+field StockView 2 left: u8
+field StockView 3 max: u8
+field StockView 4 restock_left: u32
+field SwingView 0 target: EntityId
+field SwingView 1 strike_in: u32
+newtype TalentSlot u8
+field TalentView 0 slot: SlotId
+field TalentView 1 learned: Talents
+field TalentView 2 learnable: Talents
+field Talents 0 bits: u8
+variant Target 0 None
+variant Target 1 Pos(Vec2)
+variant Target 2 Unit(EntityId)
+variant Team 0 Radiant
+variant Team 1 Dire
+variant Team 2 Neutral
+variant TickMode 0 Realtime
+variant TickMode 1 Lockstep
+variant UnitKind 0 Hero
+variant UnitKind 1 CreepMelee
+variant UnitKind 2 CreepFlagbearer
+variant UnitKind 3 CreepRanged
+variant UnitKind 4 CreepSiege
+variant UnitKind 5 CreepNeutral
+variant UnitKind 6 Tower
+variant UnitKind 7 Ancient
+variant UnitKind 8 Barracks
+variant UnitKind 9 Fountain
+variant UnitKind 10 Ward
+variant UnitKind 11 Courier
+field UnitView 0 id: EntityId
+field UnitView 1 kind: UnitKind
+field UnitView 2 team: Team
+field UnitView 3 pos: Vec2
+field UnitView 4 facing: Angle
+field UnitView 5 hp: i32
+field UnitView 6 max_hp: i32
+field UnitView 7 mana: i32
+field UnitView 8 max_mana: i32
+field UnitView 9 move_speed: Fixed
+field UnitView 10 attack_damage: i32
+field UnitView 11 attack_range: Fixed
+field UnitView 12 attack_time: u32
+field UnitView 13 attack_point: u32
+field UnitView 14 attack_speed: i32
+field UnitView 15 armor: Fixed
+field UnitView 16 magic_resist: Fixed
+field UnitView 17 collision: Fixed
+field UnitView 18 bound: Fixed
+field UnitView 19 vision_radius: Fixed
+field UnitView 20 true_sight_radius: Fixed
+field UnitView 21 statuses: StatusFlags
+field UnitView 22 attributes: Attributes
+field UnitView 23 primary: Option<Attribute>
+field UnitView 24 hero: Option<HeroId>
+field UnitView 25 owner: Option<SlotId>
+field UnitView 26 level: u8
+field UnitView 27 abilities: Vec<AbilityView>
+field UnitView 28 items: Vec<Option<ItemView>>
+field UnitView 29 effects: Vec<EffectView>
+field UnitView 30 attack_damage_min: i32
+field UnitView 31 attack_damage_max: i32
+field Vec2 0 x: Fixed
+field Vec2 1 y: Fixed
+field WorldView 0 tick: u32
+field WorldView 1 viewer: Option<Team>
+field WorldView 2 units: Vec<UnitView>
+field WorldView 3 projectiles: Vec<ProjectileView>
+field WorldView 4 players: Vec<PlayerView>
+field WorldView 5 felled_trees: Vec<u32>
+field WorldView 6 planted_trees: Vec<Vec2>
+field WorldView 7 loot: Vec<LootView>
+field WorldView 8 aggro: Vec<AggroView>
+field WorldView 9 order_delays: Vec<OrderDelayView>
+field WorldView 10 skipped_ticks: Vec<SkippedTick>
+field WorldView 11 stock: Vec<StockView>
+field WorldView 12 talents: Vec<TalentView>
