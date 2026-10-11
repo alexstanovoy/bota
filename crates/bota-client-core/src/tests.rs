@@ -622,6 +622,7 @@ fn the_damage_range_is_the_wires_with_the_bonus_split_off_a_hero() {
     // Shadow Fiend: 16 base and 25 agility make 41; 12 of items on top.
     let mut fiend = a_unit();
     fiend.hero = Some(HeroId(1));
+    fiend.level = 1;
     fiend.primary = Some(bota_proto::Attribute::Agility);
     fiend.attributes.agility = Fixed::from_int(25);
     fiend.attack_damage_min = 41 + 12;
