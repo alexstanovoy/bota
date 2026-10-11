@@ -2,8 +2,10 @@
 //! kill, the range raised by the upgrades it spawned after, and a
 //! flagbearer's bonus to the heroes around it.
 
+use crate::game::Entity;
 use crate::game::{FLAGBEARER_CREEP, GoldRange, MELEE_CREEP, RANGED_CREEP, UnitDef, World, rules};
-use bota_proto::{Team, Vec2};
+use crate::game_loop::visible_events;
+use bota_proto::{EventKind, Team, Vec2};
 
 use super::support::*;
 
@@ -115,4 +117,46 @@ fn a_denied_flagbearer_pays_nobody() {
         rules::FLAGBEARER_XP * rules::DENIED_XP_PCT / 100,
         "the other side still learns half"
     );
+}
+
+/// Buries `prey` at zero health under `killer` and answers the gold each
+/// audience is told: the earner's side, the other side, a full-world stream.
+fn told_gold(world: &mut World, prey: Entity, killer: Entity) -> (i32, [Option<i32>; 3]) {
+    world.settle();
+    world.health.insert(prey, health(0));
+    let mut events = Vec::new();
+    world.bury(vec![(prey, Some(killer))], &mut events);
+    let earned = paid(&events).expect("a death is told");
+    assert!(earned > 0);
+    let told = |side| {
+        visible_events(&events, side)
+            .into_iter()
+            .find_map(|kind| match kind {
+                EventKind::Died { gold, .. } => Some(gold),
+                _ => None,
+            })
+    };
+    (
+        earned,
+        [Some(Team::Radiant), Some(Team::Dire), None].map(told),
+    )
+}
+
+#[test]
+fn a_creep_kills_gold_is_told_only_to_the_side_that_earned_it() {
+    let mut world = World::new();
+    let killer = seat_hero(&mut world, 0, Team::Radiant, Vec2::from_ints(5000, 5000));
+    seat_hero(&mut world, 1, Team::Dire, Vec2::from_ints(5100, 5000));
+    let prey = world.spawn_creep(&MELEE_CREEP, Team::Dire, Vec2::from_ints(5050, 5000), 0, 0);
+    let (earned, told) = told_gold(&mut world, prey, killer);
+    assert_eq!(told, [Some(earned), Some(0), Some(earned)]);
+}
+
+#[test]
+fn a_hero_kills_gold_is_public() {
+    let mut world = World::new();
+    let killer = seat_hero(&mut world, 0, Team::Radiant, Vec2::from_ints(5000, 5000));
+    let prey = seat_hero(&mut world, 1, Team::Dire, Vec2::from_ints(5100, 5000));
+    let (earned, told) = told_gold(&mut world, prey, killer);
+    assert_eq!(told, [Some(earned); 3]);
 }

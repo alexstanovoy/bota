@@ -399,6 +399,7 @@ impl World {
                 item,
             },
             visible_to: EventVisibility::OneTeam(self.seats[seat].team),
+            gold_hidden_from: None,
         });
     }
 
@@ -792,6 +793,7 @@ impl World {
                 mana,
             },
             visible_to: self.who_may_know(at, side),
+            gold_hidden_from: None,
         });
     }
 

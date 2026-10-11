@@ -287,6 +287,7 @@ impl World {
                         level,
                     },
                     visible_to: EventVisibility::Everyone,
+                    gold_hidden_from: None,
                 });
             }
         }

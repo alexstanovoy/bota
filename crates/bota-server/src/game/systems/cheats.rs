@@ -106,6 +106,7 @@ impl World {
         events.push(Event {
             kind: EventKind::ItemBought { slot: owner, item },
             visible_to: EventVisibility::OneTeam(self.seats[seat].team),
+            gold_hidden_from: None,
         });
     }
 }
