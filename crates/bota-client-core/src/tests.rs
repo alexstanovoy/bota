@@ -693,3 +693,20 @@ fn the_catalog_holds_every_live_id_and_no_other() {
         effect(id).is_some_and(|face| face.id == id)
     });
 }
+
+/// The damage panel splits Dota's way: a level-1 Shadow Fiend's base range
+/// with his starting agility white, the rest green.
+#[test]
+fn damage_splits_into_base_and_bonus() {
+    let mut fiend = a_unit();
+    fiend.hero = Some(HeroId(1));
+    fiend.level = 1;
+    fiend.primary = Some(bota_proto::Attribute::Agility);
+    // 16-22 base + 25 agility, and 9 from items and souls on top.
+    fiend.attack_damage_min = 50;
+    fiend.attack_damage_max = 56;
+    let d = crate::damage_range(&fiend);
+    assert_eq!((d.min, d.max, d.bonus), (41, 47, 9));
+    fiend.level = 11;
+    assert_eq!(crate::base_attributes(&fiend), Some([46, 61, 38]));
+}
