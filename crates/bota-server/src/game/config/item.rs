@@ -4,7 +4,7 @@
 
 use bota_proto::{Aim, Attribute, Attributes, Fixed, ItemId, ItemView, Target};
 
-use crate::game::{Entity, Inventory, Ratio, World, rules};
+use crate::game::{Entity, Inventory, ItemStack, Ratio, World, rules};
 
 /// Which pool an item mends.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -200,11 +200,19 @@ fn tango(world: &mut World, user: Entity, _: usize, target: Target) -> bool {
 }
 
 fn scroll_reads(world: &mut World, user: Entity, _: usize, target: Target) -> bool {
-    world.may_teleport(user, target, 600)
+    world.begin_teleport(user, target)
 }
 
-fn scroll_carries(world: &mut World, user: Entity, slot: usize, target: Target) {
-    world.teleport_to(user, slot, target);
+fn scroll_holds(world: &mut World, user: Entity, _: usize, _: Target) -> bool {
+    world.teleport_holds(user)
+}
+
+fn scroll_breaks(world: &mut World, user: Entity, _: usize, _: Target) {
+    world.break_teleport(user);
+}
+
+fn scroll_carries(world: &mut World, user: Entity, slot: usize, _: Target) {
+    world.teleport_to(user, slot);
 }
 
 fn treads(world: &mut World, user: Entity, slot: usize, _: Target) -> bool {
@@ -296,6 +304,10 @@ pub struct ItemDef {
     pub duration: u32,
     /// Whether a use wants mana missing, and takes its user as the target.
     pub mana_deficit: bool,
+    /// Whether ordering it while a channel runs leaves the channel be:
+    /// Dota's `DOTA_ABILITY_BEHAVIOR_IGNORE_CHANNEL`. Only an item with no
+    /// cast point, backswing or duration may.
+    pub ignores_channel: bool,
     /// At the moment of use. `false`: nothing happened and nothing is spent.
     pub on_use: UseHook,
     /// Every tick it runs on. `false`: it breaks off.
@@ -330,6 +342,7 @@ const PLAIN: ItemDef = ItemDef {
     backswing: 0,
     duration: 0,
     mana_deficit: false,
+    ignores_channel: false,
     on_use: unused,
     on_during: goes_on,
     on_cancel: nothing,
@@ -611,16 +624,20 @@ pub const ITEMS: [ItemDef; 54] = [
         on_use: tango,
         ..PLAIN
     },
-    // Town Portal Scroll.
+    // Town Portal Scroll: Dota 7.41f `item_tpscroll`. Stacks without limit
+    // in Dota; a stack's charges are a byte here, more than a match buys.
     ItemDef {
         cost: 100,
         charges: 1,
+        stack_limit: u8::MAX,
         cooldown: rules::SCROLL_WAIT_TICKS,
         shared_wait: true,
+        mana_cost: rules::SCROLL_MANA,
         aim: Some(Aim::Building),
-        range: 600,
-        duration: 90,
+        duration: rules::SCROLL_CHANNEL_TICKS,
         on_use: scroll_reads,
+        on_during: scroll_holds,
+        on_cancel: scroll_breaks,
         on_complete: scroll_carries,
         ..PLAIN
     },
@@ -828,6 +845,7 @@ pub const ITEMS: [ItemDef; 54] = [
             ..NOTHING
         },
         aim: Some(Aim::Own),
+        ignores_channel: true,
         on_use: phase,
         ..PLAIN
     },
@@ -1040,6 +1058,10 @@ const _: () = {
     // A stocked item is bought whole, and is no part of a build.
     let mut at = 0;
     while at < ITEMS.len() {
+        let def = &ITEMS[at];
+        assert!(
+            !def.ignores_channel || (def.point == 0 && def.backswing == 0 && def.duration == 0)
+        );
         if let Some(stock) = ITEMS[at].stock {
             assert!(ITEMS[at].components.is_empty());
             assert!(stock.initial <= stock.max);
@@ -1073,33 +1095,46 @@ pub fn shop_entries() -> Vec<bota_proto::ShopEntry> {
         .collect()
 }
 
-/// What a bag looks like on the wire, an empty slot keeping its place.
+/// What a bag looks like on the wire, an empty slot keeping its place; the
+/// town portal slot is [`item_view`]'s alone.
 ///
 /// Mana costs carry the holder's mana cost rate; `mana_rate_bp` is
-/// [`rules::NOMINAL_BP`] for a bag with no body behind it.
-pub fn item_views(bag: &Inventory, mana_rate_bp: i32) -> Vec<Option<ItemView>> {
+/// [`rules::NOMINAL_BP`] for a bag with no body behind it. `clocks` are the
+/// waits its seat owes on kinds of item, which a stack shows as its own.
+pub fn item_views(
+    bag: &Inventory,
+    mana_rate_bp: i32,
+    clocks: &[(ItemId, u32)],
+) -> Vec<Option<ItemView>> {
     bag.slots
         .iter()
-        .map(|slot| {
-            slot.map(|stack| {
-                let def = item_def(stack.id);
-                ItemView {
-                    id: stack.id,
-                    charges: def
-                        .filter(|def| def.charges > 0 || def.cast_charges > 0)
-                        .map(|_| stack.charges),
-                    cooldown_left: stack.cooldown,
-                    mute_left: stack.mute,
-                    mode: stack.mode,
-                    mana_cost: def.map_or(0, |def| {
-                        crate::game::cost_after(def.mana_cost, mana_rate_bp)
-                    }),
-                    range: def.map_or(0, |def| def.range),
-                    aim: def.and_then(|def| def.aim),
-                    for_sale: stack.for_sale,
-                    owner: stack.owner,
-                }
-            })
-        })
+        .map(|slot| slot.map(|stack| item_view(&stack, mana_rate_bp, clocks)))
         .collect()
+}
+
+/// What one stack looks like on the wire, on the terms of [`item_views`].
+pub fn item_view(stack: &ItemStack, mana_rate_bp: i32, clocks: &[(ItemId, u32)]) -> ItemView {
+    let def = item_def(stack.id);
+    let owed = clocks
+        .iter()
+        .filter(|(item, _)| *item == stack.id)
+        .map(|(_, left)| *left)
+        .max()
+        .unwrap_or(0);
+    ItemView {
+        id: stack.id,
+        charges: def
+            .filter(|def| def.charges > 0 || def.cast_charges > 0)
+            .map(|_| stack.charges),
+        cooldown_left: stack.cooldown.max(owed),
+        mute_left: stack.mute,
+        mode: stack.mode,
+        mana_cost: def.map_or(0, |def| {
+            crate::game::cost_after(def.mana_cost, mana_rate_bp)
+        }),
+        range: def.map_or(0, |def| def.range),
+        aim: def.and_then(|def| def.aim),
+        for_sale: stack.for_sale,
+        owner: stack.owner,
+    }
 }

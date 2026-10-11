@@ -7,8 +7,8 @@ use bota_proto::{
 use crate::game::{
     AbilityBook, AbilityState, BAG_SLOTS, Carried, Entity, Event, EventVisibility, ITEMS,
     Inventory, ItemDef, ItemStack, Modifier, ModifierKind, Pool, Spends, Tree, World, ability_def,
-    clamp_to_map, fountain_pos, hero_def, in_backpack, in_inventory, in_stash, item_def,
-    learn_group, level_floor, move_towards, rules, wire_id,
+    clamp_to_map, fountain_pos, hero_def, in_backpack, in_inventory, in_stash, in_town_portal,
+    item_def, learn_group, level_floor, move_towards, rules, wire_id,
 };
 
 /// Missing purchase parts, their total price, and destination capacity.
@@ -171,7 +171,7 @@ impl World {
             for slot in kept.book.slots.iter_mut() {
                 slot.cooldown = slot.cooldown.saturating_sub(1);
             }
-            for stack in kept.bag.slots.iter_mut().flatten() {
+            for stack in kept.bag.every_stack_mut() {
                 stack.cooldown = stack.cooldown.saturating_sub(1);
                 stack.mute = stack.mute.saturating_sub(1);
             }
@@ -184,7 +184,7 @@ impl World {
                 }
             }
             if let Some(bag) = self.inventory.get_mut(entity) {
-                for stack in bag.slots.iter_mut().flatten() {
+                for stack in bag.every_stack_mut() {
                     stack.cooldown = stack.cooldown.saturating_sub(1);
                     stack.mute = stack.mute.saturating_sub(1);
                 }
@@ -199,6 +199,7 @@ impl World {
             }
         }
         self.recycle_entity_snapshot(entities);
+        self.tick_teleports();
     }
 
     /// Builds whatever each hero now holds the parts of.
@@ -272,6 +273,7 @@ impl World {
                 touched: true,
                 owner: slot,
                 for_sale: false,
+                free_charges: 0,
             };
             let Some(bag) = self.inventory.get_mut(unit) else {
                 return false;
@@ -483,7 +485,7 @@ impl World {
 
     /// What sits in one of an entity's item slots.
     pub fn item_def_in(&self, entity: Entity, slot: usize) -> Option<&'static ItemDef> {
-        let stack = self.inventory.get(entity)?.slots.get(slot).copied()??;
+        let stack = self.inventory.get(entity)?.slot(slot).copied()??;
         item_def(stack.id)
     }
 
@@ -502,10 +504,10 @@ impl World {
         let Some(bag) = self.inventory.get(entity) else {
             return false;
         };
-        let Some(Some(stack)) = bag.slots.get(slot).cloned() else {
+        let Some(Some(stack)) = bag.slot(slot).copied() else {
             return false;
         };
-        if slot >= rules::INVENTORY_SLOTS || stack.cooldown > 0 || stack.mute > 0 {
+        if !(in_inventory(slot) || in_town_portal(slot)) || stack.cooldown > 0 || stack.mute > 0 {
             return false;
         }
         let Some(def) = item_def(stack.id) else {
@@ -547,7 +549,7 @@ impl World {
             self.owe_wait(entity, stack.id, cooldown);
         }
         if let Some(bag) = self.inventory.get_mut(entity)
-            && let Some(held) = bag.slots.get_mut(slot)
+            && let Some(held) = bag.slot_mut(slot)
             && let Some(stack) = held
         {
             stack.cooldown = if def.shared_wait { 0 } else { cooldown };
@@ -801,11 +803,11 @@ impl World {
     /// last one goes.
     pub fn spend_charge(&mut self, entity: Entity, slot: usize) {
         if let Some(bag) = self.inventory.get_mut(entity)
-            && let Some(held) = bag.slots.get_mut(slot)
+            && let Some(held) = bag.slot_mut(slot)
             && let Some(stack) = held
         {
             stack.touched = true;
-            stack.charges = stack.charges.saturating_sub(1);
+            stack.spend_one();
             if stack.charges == 0 {
                 *held = None;
             }
@@ -823,12 +825,14 @@ impl World {
         let Some(seat) = self.seats.iter().position(|s| s.slot == slot) else {
             return false;
         };
-        let total = BAG_SLOTS + self.seats[seat].stash.slots.len();
-        if from == to || from >= total || to >= total {
+        if self
+            .swap_refusal(unit, &self.seats[seat], from, to)
+            .is_some()
+        {
             return false;
         }
-        if (in_stash(from) || in_stash(to)) && !self.at_shop(unit) {
-            return false;
+        if in_town_portal(to) {
+            return self.stow_scroll(unit, seat, from);
         }
         if self.slot_of(unit, seat, from).is_none() || self.slot_of(unit, seat, to).is_none() {
             return false;
@@ -863,6 +867,65 @@ impl World {
         true
     }
 
+    /// Why two slots may not swap what they hold, or nothing when they may.
+    ///
+    /// The stash takes part only while the unit stands at its own shop. The
+    /// town portal slot takes a scroll stack from another slot, merging it,
+    /// and gives nothing up: Dota's scrolls never leave it but to be read.
+    pub(crate) fn swap_refusal(
+        &self,
+        unit: Entity,
+        seat: &crate::game::Seat,
+        from: usize,
+        to: usize,
+    ) -> Option<bota_proto::RejectReason> {
+        use bota_proto::RejectReason;
+        let total = BAG_SLOTS + seat.stash.slots.len();
+        let named = |at: usize| at < total || in_town_portal(at);
+        if from == to || !named(from) || !named(to) {
+            return Some(RejectReason::EmptySlot);
+        }
+        let held = if in_stash(from) {
+            seat.stash.slots.get(from - BAG_SLOTS).copied().flatten()
+        } else {
+            self.inventory
+                .get(unit)
+                .and_then(|bag| bag.slot(from).copied().flatten())
+        };
+        let Some(held) = held else {
+            return Some(RejectReason::EmptySlot);
+        };
+        if (in_stash(from) || in_stash(to)) && !self.at_shop(unit) {
+            return Some(RejectReason::NotAtShop);
+        }
+        let has_portal = self
+            .inventory
+            .get(unit)
+            .is_some_and(|bag| bag.town_portal.is_some());
+        if in_town_portal(from) || (in_town_portal(to) && (!has_portal || !held.is_scroll())) {
+            return Some(RejectReason::WrongTargetKind);
+        }
+        None
+    }
+
+    /// Merges a scroll stack from one of a seat's slots into its hero's town
+    /// portal slot, whole or not at all.
+    fn stow_scroll(&mut self, unit: Entity, seat: usize, from: usize) -> bool {
+        let Some(mut moved) = self.take_slot(unit, seat, from) else {
+            return false;
+        };
+        assert!(moved.is_scroll());
+        moved.touched = true;
+        let taken = self
+            .inventory
+            .get_mut(unit)
+            .is_some_and(|bag| bag.receive(moved));
+        if !taken {
+            self.put_slot(unit, seat, from, Some(moved));
+        }
+        taken
+    }
+
     /// Sells what sits in one slot, or marks it to be sold.
     ///
     /// The stash sells from wherever its owner is: it is already at the shop.
@@ -891,7 +954,10 @@ impl World {
         let Some(held) = held else {
             return false;
         };
-        if held.owner != slot {
+        if held.owner != slot || held.free_charges > 0 {
+            return false;
+        }
+        if in_town_portal(at) && !self.at_shop(unit) {
             return false;
         }
         if !in_stash(at) && !self.at_shop(unit) {
@@ -986,15 +1052,7 @@ impl World {
 
     /// Takes whatever sits in one slot of a seat's slots out of it.
     fn take_slot(&mut self, unit: Entity, seat: usize, slot: usize) -> Option<ItemStack> {
-        if in_stash(slot) {
-            self.seats[seat]
-                .stash
-                .slots
-                .get_mut(slot - BAG_SLOTS)?
-                .take()
-        } else {
-            self.inventory.get_mut(unit)?.slots.get_mut(slot)?.take()
-        }
+        self.slot_of(unit, seat, slot)?.take()
     }
 
     /// Lays a stack in one slot, over whatever was there.
@@ -1019,7 +1077,7 @@ impl World {
         if in_stash(slot) {
             self.seats[seat].stash.slots.get_mut(slot - BAG_SLOTS)
         } else {
-            self.inventory.get_mut(unit)?.slots.get_mut(slot)
+            self.inventory.get_mut(unit)?.slot_mut(slot)
         }
     }
 

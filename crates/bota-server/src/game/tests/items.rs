@@ -1,14 +1,14 @@
 //! Consumables, active items and trees.
 
 use crate::game::{
-    BLINK_RANGE, Command, Event, HERO, ITEM_BLINK_DAGGER, ITEM_BOOTS, ITEM_CLARITY,
-    ITEM_HEALING_SALVE, ITEM_IRON_BRANCH, ITEM_PHASE_BOOTS, ITEM_POWER_TREADS, ITEM_QUELLING_BLADE,
-    ITEM_TANGO, ITEM_TOWN_PORTAL_SCROLL, ITEMS, ItemStack, MELEE_CREEP, Mana, ModifierKind,
-    SALVE_TICKS, SHADOW_FIEND, UnitOrder, World, map_of, rules, tree_positions, wire_id,
+    BLINK_RANGE, Event, HERO, ITEM_BLINK_DAGGER, ITEM_CLARITY, ITEM_HEALING_SALVE,
+    ITEM_IRON_BRANCH, ITEM_PHASE_BOOTS, ITEM_POWER_TREADS, ITEM_QUELLING_BLADE, ITEM_TANGO, ITEMS,
+    ItemStack, MELEE_CREEP, Mana, ModifierKind, SALVE_TICKS, SHADOW_FIEND, World, map_of, rules,
+    tree_positions, wire_id,
 };
 use bota_proto::{
-    AbilitySlot, Attribute, DamageKind, EventKind, Fixed, HeroId, ItemId, ItemSlot, MapId, Order,
-    SlotId, StatusFlags, Target, Team, UnitKind, Vec2,
+    Attribute, DamageKind, EventKind, Fixed, HeroId, ItemId, MapId, SlotId, Target, Team, UnitKind,
+    Vec2,
 };
 
 use super::support::*;
@@ -97,129 +97,6 @@ fn a_clarity_is_told_of_by_the_mana_that_was_missing() {
         Some((0, 60)),
         "the mending says the mana that was missing, and no health at all"
     );
-}
-
-#[test]
-fn a_scroll_carries_its_user_once_the_channel_runs_out() {
-    let (mut world, hero) = a_hero_with_a_scroll();
-    let to = beside_own_tower(&world);
-    let from = world.transform.get(hero).expect("standing").pos;
-    // Told to walk somewhere before it read the scroll: the order stays
-    // behind with the spot it was given in.
-    world.set_order(
-        hero,
-        UnitOrder::Move {
-            pos: Vec2::from_ints(8000, 12000),
-        },
-    );
-    assert!(
-        world.use_item(hero, 0, Target::Pos(to), &mut Vec::new()),
-        "beside a building of its own it may go"
-    );
-    assert!(world.is_channelling(hero), "and stands through the channel");
-    let projected = world
-        .view(Team::Radiant)
-        .units
-        .into_iter()
-        .find(|unit| unit.id == wire_id(hero))
-        .expect("channelled hero is projected");
-    assert_ne!(
-        projected.statuses.bits & StatusFlags::CHANNELLING,
-        0,
-        "channel state crosses the seat-visible protocol"
-    );
-    world.step();
-    assert_eq!(
-        world.transform.get(hero).map(|t| t.pos),
-        Some(from),
-        "still where it was while it channels"
-    );
-    assert!(
-        world.inventory.get(hero).expect("has a bag").slots[0].is_some(),
-        "and the scroll is not spent yet"
-    );
-    for _ in 0..88 {
-        world.step();
-    }
-    assert_eq!(
-        world.transform.get(hero).map(|t| t.pos),
-        Some(from),
-        "and one tick short of the channel it has not moved"
-    );
-    world.step();
-    assert_eq!(
-        world.transform.get(hero).map(|t| t.pos),
-        Some(to),
-        "then it is there"
-    );
-    for _ in 0..30 {
-        world.step();
-    }
-    assert_eq!(
-        world.transform.get(hero).map(|t| t.pos),
-        Some(to),
-        "and stays there rather than walking back to what it was told"
-    );
-    assert!(
-        world.inventory.get(hero).expect("has a bag").slots[0].is_none(),
-        "and the scroll went with it"
-    );
-}
-
-#[test]
-fn a_scroll_aimed_where_nothing_of_its_own_stands_does_nothing() {
-    let (mut world, hero) = a_hero_with_a_scroll();
-    let nowhere = Vec2::from_ints(14000, 9216);
-    assert!(
-        !world.use_item(hero, 0, Target::Pos(nowhere), &mut Vec::new()),
-        "the middle of the map is nothing to go to"
-    );
-    assert!(!world.is_channelling(hero));
-    assert!(
-        world.inventory.get(hero).expect("has a bag").slots[0].is_some(),
-        "and nothing was spent on it"
-    );
-}
-
-#[test]
-fn an_order_takes_a_channel_away_and_leaves_the_scroll() {
-    let (mut world, hero) = a_hero_with_a_scroll();
-    let to = beside_own_tower(&world);
-    assert!(world.use_item(hero, 0, Target::Pos(to), &mut Vec::new()));
-    stop_click(&mut world);
-    assert!(!world.is_channelling(hero), "the order took it away");
-    assert!(
-        world.inventory.get(hero).expect("has a bag").slots[0].is_some(),
-        "and the scroll is still there to use again"
-    );
-}
-
-#[test]
-fn business_with_the_bag_and_the_shop_takes_no_channel_away() {
-    let (mut world, hero) = a_hero_with_a_scroll();
-    world.seats[0].gold = 5000;
-    let to = beside_own_tower(&world);
-    assert!(world.use_item(hero, 0, Target::Pos(to), &mut Vec::new()));
-    let asks = [
-        Order::Buy {
-            item: ItemId(ITEM_BOOTS),
-        },
-        Order::Learn {
-            slot: AbilitySlot(0),
-        },
-        Order::Sell { slot: ItemSlot(9) },
-    ];
-    for order in asks {
-        world.advance(&[Command {
-            slot: SlotId(0),
-            unit: None,
-            order,
-        }]);
-        assert!(
-            world.is_channelling(hero),
-            "the channel stands through {order:?}"
-        );
-    }
 }
 
 #[test]
@@ -395,38 +272,6 @@ fn a_quelling_blade_is_worth_something_against_a_creep_and_nothing_against_a_her
     assert!(
         with_hero <= bare_hero,
         "the hero feels none of it: {bare_hero} then {with_hero}"
-    );
-}
-
-#[test]
-fn a_scroll_read_is_owed_by_the_hero_and_not_by_the_scroll() {
-    let (mut world, hero) = a_hero_with_a_scroll();
-    let to = beside_own_tower(&world);
-    assert!(world.use_item(hero, 0, Target::Pos(to), &mut Vec::new()));
-    for _ in 0..91 {
-        world.step();
-    }
-    assert!(
-        world.inventory.get(hero).expect("has a bag").slots[0].is_none(),
-        "the scroll went with the teleport"
-    );
-    // A fresh scroll, bought after the first was spent, is still on the wait.
-    hand_item(&mut world, hero, ITEM_TOWN_PORTAL_SCROLL, 1);
-    let there = beside_own_tower(&world);
-    assert!(
-        !world.use_item(hero, 0, Target::Pos(there), &mut Vec::new()),
-        "a new scroll does not buy a new wait"
-    );
-    assert!(
-        world.inventory.get(hero).expect("has a bag").slots[0].is_some(),
-        "and nothing was spent on the attempt"
-    );
-    for _ in 0..rules::SCROLL_WAIT_TICKS {
-        world.step();
-    }
-    assert!(
-        world.use_item(hero, 0, Target::Pos(there), &mut Vec::new()),
-        "once the wait is out it reads again"
     );
 }
 

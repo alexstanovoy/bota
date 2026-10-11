@@ -21,6 +21,8 @@ pub struct SightCx<'a> {
     pub sight_block: &'a CellGrid,
     /// Sight strikes showed the sides struck at.
     pub exposure: &'a Table<Exposure>,
+    /// Where a Town Portal Scroll shows its side the ground it lands on.
+    pub scroll_sights: &'a [(Team, Vec2)],
     /// The tick being worked out, for which of that sight still shows.
     pub tick: u32,
     /// Where the answer goes.
@@ -108,6 +110,7 @@ pub fn visibility_system(cx: SightCx<'_>) {
         ground,
         sight_block,
         exposure,
+        scroll_sights,
         tick,
         visibility,
         sight,
@@ -130,6 +133,9 @@ pub fn visibility_system(cx: SightCx<'_>) {
     }
     sight.gather_viewers();
     sight.gather_exposures(exposure, tick, ground);
+    for &(side, at) in scroll_sights {
+        sight.viewers.push(scroll_viewer(side, at, ground));
+    }
     sight.reset_rows();
     sight.trace(ground, sight_block);
     sight.hide();
@@ -256,6 +262,19 @@ impl SightScratch {
     }
 }
 
+/// The viewer a scroll's landing sight stands for: flying, so it sees past
+/// height and trees.
+fn scroll_viewer(side: Team, at: Vec2, ground: &Ground) -> SightViewer {
+    SightViewer {
+        side,
+        from: at,
+        vision: rules::units(rules::SCROLL_SIGHT_RADIUS),
+        true_sight: Fixed::ZERO,
+        tier: ground.tier(at),
+        flying: true,
+    }
+}
+
 /// The viewer a strike's circle stands for.
 fn exposure_viewer(side: Team, cell: ExposureCell, ground: &Ground) -> SightViewer {
     SightViewer {
@@ -341,7 +360,11 @@ impl World {
                 || (tier >= target_tier
                     && sight_clear(&self.ground, &self.sight_block, cell.at, tier, at))
         });
+        let landing = self.teleport_sights().any(|(side, from)| {
+            side == team && from.within(at, rules::units(rules::SCROLL_SIGHT_RADIUS))
+        });
         exposed
+            || landing
             || self.entities.iter().any(|entity| {
                 if self.team.get(entity) != Some(&team) {
                     return false;

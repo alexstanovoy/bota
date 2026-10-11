@@ -4,8 +4,8 @@
 use bota_proto::{EventKind, Fixed, Team, UnitKind, Vec2};
 
 use crate::game::{
-    Entity, Event, EventVisibility, Kept, Landed, MAP2_ID, MAP2_TICK_CAP, Missed, UnitOrder, World,
-    is_structure, wire_id,
+    Entity, Event, EventVisibility, ItemStack, Kept, Landed, MAP2_ID, MAP2_TICK_CAP, Missed,
+    UnitOrder, World, is_structure, wire_id,
 };
 
 impl World {
@@ -151,7 +151,16 @@ impl World {
                 self.winner = Some(other_side(side));
             }
         }
-        self.bury_seat(entity);
+        // Dota hands a hero a scroll for every death but one it dealt itself
+        // or one neutral creeps are credited with.
+        let scroll_due = killer.is_some_and(|killer| {
+            killer != entity
+                && self
+                    .team
+                    .get(killer)
+                    .is_some_and(|side| *side != Team::Neutral)
+        });
+        self.bury_seat(entity, scroll_due);
         if let Some(index) = killer.and_then(|k| self.seat_of(k))
             && kind == Some(UnitKind::Hero)
             && !denied
@@ -163,16 +172,21 @@ impl World {
         structure
     }
 
-    fn bury_seat(&mut self, entity: Entity) {
+    fn bury_seat(&mut self, entity: Entity, scroll_due: bool) {
         let mut fallen_hero_team = None;
         for index in 0..self.seats.len() {
             if self.seats[index].unit == Some(entity) {
                 let level = self.seats[index].level;
                 self.let_souls_go(entity);
                 self.requiem_on_death(entity);
+                let mut bag = self.inventory.remove(entity).unwrap_or_default();
+                if scroll_due {
+                    // A town portal slot full to the byte keeps what it has.
+                    bag.receive(ItemStack::free_scroll(self.seats[index].slot, self.tick));
+                }
                 let kept = Kept {
                     book: self.abilities.remove(entity).unwrap_or_default(),
-                    bag: self.inventory.remove(entity).unwrap_or_default(),
+                    bag,
                     stacks: self.stacks.remove(entity).unwrap_or_default(),
                 };
                 self.seats[index].unit = None;

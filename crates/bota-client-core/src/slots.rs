@@ -16,12 +16,17 @@ pub const BAG_SLOTS: u8 = 9;
 /// How many of those are the inventory proper, where items work.
 pub const INVENTORY_SLOTS: u8 = 6;
 
+/// The hero's town portal slot, Dota's own slot for scrolls beside the
+/// inventory.
+pub const TOWN_PORTAL_SLOT: u8 = ItemSlot::TOWN_PORTAL.0;
+
 /// One slot of the bottom panel.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Slot {
     /// An ability slot of whatever is commanded.
     Ability(u8),
-    /// An item slot of this seat: inventory, backpack, then stash.
+    /// An item slot of this seat: inventory, backpack, stash, then the town
+    /// portal slot.
     Item(u8),
 }
 
@@ -68,8 +73,12 @@ impl App {
     /// What sits in one item slot of the panel.
     ///
     /// The bag slots are the commanded unit's, a courier's as readily as the
-    /// hero's. The stash is the seat's own whatever is commanded.
+    /// hero's. The stash is the seat's own whatever is commanded, and the
+    /// town portal slot is a hero's alone.
     pub fn item_in(&self, slot: u8) -> Option<ItemView> {
+        if slot == TOWN_PORTAL_SLOT {
+            return self.slot_unit()?.town_portal;
+        }
         if slot < BAG_SLOTS {
             let unit = self.slot_unit()?;
             unit.items.get(usize::from(slot)).copied().flatten()
@@ -144,12 +153,18 @@ pub fn decide(
     // The backpack and the stash are reached by dragging, not by pressing.
     if let Slot::Item(at) = slot
         && at >= INVENTORY_SLOTS
+        && at != TOWN_PORTAL_SLOT
     {
         return Press::Nothing;
     }
     let Some(aim) = held else {
         return Press::Nothing;
     };
+    // Taken up already, a scroll pressed again goes to the fountain: Dota's
+    // double tap.
+    if aiming == Some(slot) && aim == Some(Aim::Building) {
+        return Press::Send(order_for(slot, Target::None));
+    }
     // Taken up already and aimed at a unit, a second press aims it at the one
     // holding it.
     if aiming == Some(slot) && aim == Some(Aim::Unit) {
@@ -221,7 +236,7 @@ pub fn item_look(item: Option<&ItemView>, at: u8, mana: i32) -> Look {
     Look {
         filled: true,
         learned: true,
-        usable: at < INVENTORY_SLOTS
+        usable: (at < INVENTORY_SLOTS || at == TOWN_PORTAL_SLOT)
             && item.aim.is_some()
             && item.cooldown_left == 0
             && item.charges.is_none_or(|left| left > 0)

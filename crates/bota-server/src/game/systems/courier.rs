@@ -333,20 +333,20 @@ impl World {
     }
 
     /// Moves the stack in one of a unit's bag slots into the first free slot
-    /// of another's bag. False, with nothing moved, when that bag has no
-    /// room; an empty slot passes nothing and answers true.
+    /// of another's bag, a scroll into a hero's town portal slot. False, with
+    /// nothing moved, when that bag has no room; an empty slot passes nothing
+    /// and answers true.
     fn pass_on(&mut self, from: Entity, at: usize, to: Entity) -> bool {
         let Some(stack) = self.held_in_bag(from, at) else {
             return true;
         };
-        let Some(free) = self
+        if !self
             .inventory
             .get_mut(to)
-            .and_then(|bag| bag.slots.iter_mut().find(|slot| slot.is_none()))
-        else {
+            .is_some_and(|bag| bag.stow(stack))
+        {
             return false;
-        };
-        *free = Some(stack);
+        }
         self.take_from_bag(from, at);
         true
     }

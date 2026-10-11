@@ -34,6 +34,7 @@ pub(super) fn mango(charges: u8) -> ItemStack {
         touched: false,
         owner: OWNER,
         for_sale: false,
+        free_charges: 0,
     }
 }
 

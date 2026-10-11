@@ -15,10 +15,12 @@ const UNITS_1V1: u32 = 25;
 /// Ticks per second the server runs at.
 const TICK_RATE: usize = 30;
 
+/// A hero carries a scroll in its town portal slot: 14 bytes over the 183 it
+/// cost without one.
 #[test]
-fn a_hero_stays_under_183_bytes() {
+fn a_hero_stays_under_197_bytes() {
     let len = encoded_len(&hero_unit());
-    assert!(len <= 183, "hero unit grew to {len} bytes");
+    assert!(len <= 197, "hero unit grew to {len} bytes");
 }
 
 #[test]
@@ -136,5 +138,5 @@ fn an_empty_view_costs_almost_nothing() {
         view: empty_world_view(),
     };
     let len = encoded_len(&msg);
-    assert!(len <= 18, "an empty snapshot cost {len} bytes");
+    assert!(len <= 19, "an empty snapshot cost {len} bytes");
 }

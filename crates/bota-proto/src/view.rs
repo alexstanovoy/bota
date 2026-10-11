@@ -201,6 +201,10 @@ pub struct UnitView {
     pub hp_regen: Fixed,
     /// Mana regained each second, on the same terms as `hp_regen`.
     pub mana_regen: Fixed,
+    /// What a hero's town portal slot,
+    /// [`ItemSlot::TOWN_PORTAL`](crate::ItemSlot::TOWN_PORTAL), holds.
+    /// Absent for an empty slot and for anything but a hero.
+    pub town_portal: Option<ItemView>,
 }
 
 /// A swing under way that has not struck yet.
@@ -267,6 +271,8 @@ pub struct Kit {
     pub abilities: Vec<AbilityView>,
     /// The inventory and backpack slots, in slot order.
     pub items: Vec<Option<ItemView>>,
+    /// What the town portal slot holds. Absent when it is empty.
+    pub town_portal: Option<ItemView>,
 }
 
 /// The scoreboard entry for one seat.
@@ -343,6 +349,24 @@ pub struct StockView {
     pub max: u8,
     /// Ticks until the shop gains one more. Zero while it holds `max`.
     pub restock_left: u32,
+}
+
+/// A teleport being channelled, as both sides see its destination.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct TeleportView {
+    /// The seat whose hero channels it; its hero is
+    /// [`PlayerView::unit`] of that seat.
+    pub slot: SlotId,
+    /// The side it brings a hero to.
+    pub team: Team,
+    /// The allied building it was aimed at.
+    pub building: EntityId,
+    /// Where the hero lands when the channel runs out.
+    pub destination: Vec2,
+    /// Ticks until it lands, unless it is broken off first. At least 1.
+    pub ticks_left: u32,
+    /// Ticks the whole channel takes.
+    pub ticks_total: u32,
 }
 
 /// A set of a hero's talent slots: bit `n` holds [`TalentSlot`]`(n)`.
@@ -424,6 +448,10 @@ pub struct WorldView {
     /// The talents of every seat of the viewing side whose hero has a tree,
     /// fallen or standing, and of every other seat whose hero is one of
     /// [`units`](Self::units); every seat with a tree in a view of
-    /// everything. Sorted by [`SlotId`]. Last on the wire.
+    /// everything. Sorted by [`SlotId`].
     pub talents: Vec<TalentView>,
+    /// Every teleport being channelled, whichever side reads it: Dota shows
+    /// a teleport's destination to both sides through the fog. Sorted by
+    /// [`SlotId`]. Last on the wire.
+    pub teleports: Vec<TeleportView>,
 }

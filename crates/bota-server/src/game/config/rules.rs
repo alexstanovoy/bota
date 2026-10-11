@@ -815,8 +815,50 @@ pub const FOW_BLOCKER_SPAN: i32 = 600;
 pub const TREE_REGROW_TICKS: u32 = 5 * 60 * TICKS_PER_SECOND;
 /// Ticks a planted tree stands before it goes on its own, forty seconds.
 pub const PLANTED_TREE_TICKS: u32 = 40 * TICKS_PER_SECOND;
-/// Ticks a hero waits between scrolls, whichever scroll it holds.
-pub const SCROLL_WAIT_TICKS: u32 = 2100;
+/// Ticks a hero waits between scrolls, whichever scroll it holds: Dota
+/// 7.41f `item_tpscroll` `AbilityCooldown` 80.
+pub const SCROLL_WAIT_TICKS: u32 = 80 * TICKS_PER_SECOND;
+/// Ticks a scroll is channelled before it carries: `AbilityChannelTime` 3.
+pub const SCROLL_CHANNEL_TICKS: u32 = 3 * TICKS_PER_SECOND;
+/// Mana reading a scroll costs: `AbilityManaCost` 75.
+pub const SCROLL_MANA: i32 = 75;
+/// The nearest a scroll lands to the centre of the building it carries to:
+/// `minimum_distance` 70.
+pub const SCROLL_MIN_DISTANCE: i32 = 70;
+/// The furthest a scroll lands from the centre of the building it carries
+/// to: `maximum_distance` 800.
+pub const SCROLL_MAX_DISTANCE: i32 = 800;
+/// Radius of the flying sight a scroll shows its side around where it
+/// lands while it is channelled: `vision_radius` 200.
+pub const SCROLL_SIGHT_RADIUS: i32 = 200;
+/// Ticks that sight outlasts the channel, whether it carried or broke off:
+/// Liquipedia's one-second sight.
+pub const SCROLL_SIGHT_LINGER_TICKS: u32 = TICKS_PER_SECOND;
+/// A scroll aimed at nothing carries to the fountain only from at least
+/// this far from it: Liquipedia's self-cast minimum distance 1500.
+pub const SCROLL_FOUNTAIN_MIN_DISTANCE: i32 = 1500;
+/// Dota's pregame, from the heroes coming in to the horn: ninety seconds.
+pub const DOTA_PREGAME_TICKS: u32 = 90 * TICKS_PER_SECOND;
+/// The wait the scroll every hero starts with comes with: 100 seconds from
+/// the heroes coming in (Liquipedia, Town Portal Scroll: initial cooldown
+/// 100). Dota's heroes come in 90 s before the horn and ours
+/// [`PREGAME_TICKS`] before it, so the wait is laid on the game clock: the
+/// first scroll is ready ten seconds past the horn, as in Dota.
+pub const SCROLL_FIRST_WAIT_TICKS: u32 =
+    PREGAME_TICKS + 100 * TICKS_PER_SECOND - DOTA_PREGAME_TICKS;
+/// Steps out from where a scroll was aimed it looks for open ground, a
+/// ring of eight spots to a step.
+pub const SCROLL_LANDING_RINGS: i32 = 8;
+/// World units between those rings.
+pub const SCROLL_LANDING_STEP: i32 = 64;
+
+const _: () = {
+    assert!(SCROLL_MIN_DISTANCE < SCROLL_MAX_DISTANCE);
+    assert!(SCROLL_CHANNEL_TICKS < SCROLL_WAIT_TICKS);
+    assert!(100 * TICKS_PER_SECOND > DOTA_PREGAME_TICKS);
+    assert!(SCROLL_FIRST_WAIT_TICKS > PREGAME_TICKS);
+    assert!(SCROLL_LANDING_RINGS * SCROLL_LANDING_STEP < SCROLL_MAX_DISTANCE);
+};
 /// World units a second a Blood Grenade flies.
 pub const GRENADE_SPEED: i32 = 1100;
 /// How far from where a Blood Grenade lands it reaches, in world units.
@@ -1084,6 +1126,14 @@ pub const INVENTORY_SLOTS: usize = 6;
 pub const BACKPACK_SLOTS: usize = 3;
 /// Stash slots at the home shop.
 pub const STASH_SLOTS: usize = 6;
+/// The number of a hero's town portal slot, after the inventory, the
+/// backpack and the stash: [`bota_proto::ItemSlot::TOWN_PORTAL`].
+pub const TOWN_PORTAL_SLOT: usize = 15;
+
+const _: () = {
+    assert!(TOWN_PORTAL_SLOT == INVENTORY_SLOTS + BACKPACK_SLOTS + STASH_SLOTS);
+    assert!(TOWN_PORTAL_SLOT == bota_proto::ItemSlot::TOWN_PORTAL.0 as usize);
+};
 /// Ticks an item stays muted after leaving the backpack for the inventory.
 pub const BACKPACK_MUTE_TICKS: u32 = 180;
 /// How close to the home fountain the shop, the stash and selling work.

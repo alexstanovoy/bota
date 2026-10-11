@@ -81,7 +81,7 @@ impl World {
             }
         }
         if let Some(bag) = self.inventory.get_mut(unit) {
-            for stack in bag.slots.iter_mut().flatten() {
+            for stack in bag.every_stack_mut() {
                 stack.cooldown = 0;
                 stack.mute = 0;
             }

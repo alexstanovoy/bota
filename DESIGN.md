@@ -508,9 +508,10 @@ exploit any leak a human reviewer shrugs off:
   the hero's location and storage even when the order names its courier; courier
   cargo is neither a component source nor a purchase destination.
 - Items follow the Dota slot topology, engine in `game/systems/gear.rs`. A seat owns
-  fifteen slots: six inventory, where items work; three backpack, where they ride
+  sixteen slots: six inventory, where items work; three backpack, where they ride
   inert — and a stack leaving the backpack for the inventory is muted for six
-  seconds before it works again; six stash. A purchase spends gold anywhere, but lands in the
+  seconds before it works again; six stash; and the town portal slot, which holds
+  Town Portal Scrolls and nothing else (see "Town Portal Scroll at Dota 7.41f"). A purchase spends gold anywhere, but lands in the
   inventory only inside the home shop area (the fountain circle) — bought
   remotely it waits in the stash, and the stash itself opens only at that shop.
   Selling also happens at the shop: half price back, the full price for an
@@ -1449,8 +1450,7 @@ or a deny, waiting out a swing already under way, shaking the creeps off, pullin
 wave back, striking their hero or pushing a building behind the wave, and holding the
 lane. Nothing is drawn at random, and what is remembered between ticks is only what the
 wire does not carry — the attack cycle, recent health, who struck the hero, how long the
-stash has been waiting, the scroll's shared wait — so the same match played twice goes
-the same way.
+stash has been waiting — so the same match played twice goes the same way.
 
 **What an ability is comes off the wire; what it does does not.** `AbilityView` carries
 the level, the wait, the cost, the reach and how a cast is aimed, so nothing mirrors the
@@ -1573,8 +1573,8 @@ until the ticks spent standing where the wave is dying are fewer.
 once required standing in the shop, where the bot no longer went once it had drink and a
 courier. It now carries both ways, home while pulling out and back to just behind the
 frontmost tower its lane holds once mended, and it sits above the walk home, since what
-that walk is for is the thing a scroll does in three seconds. Its shared wait is not on
-the wire, so `Playbook` counts it from the tick the last scroll was aimed.
+that walk is for is the thing a scroll does in three seconds. The bot reads the scroll
+in the town portal slot, its shared wait shown on it, and keeps one on its list.
 
 **Mana was short because nothing was ever bought for it.** A raze costs 75
 against a pool that mends about two a second. Every list carries a clarity, and a
@@ -2042,7 +2042,7 @@ reads `learnable` from it. Like `Learn`, the order interrupts nothing the body d
   every tick of the point, so a feast that ends inside a cast point lengthens what is
   left; Dota does not say which it does.
 
-**On the wire.** `WorldView::talents` is the last field of the view: a `TalentView
+**On the wire.** `WorldView::talents` follows the stock: a `TalentView
 { slot, learned, learnable }` for every seat whose hero has a tree that the viewer is
 told of — its own side's always, fallen or standing, and another side's while that
 hero is one of the view's `units`; every seat with a tree in a view of everything.
@@ -2177,3 +2177,51 @@ bounds, a duration outside `1..=MAX_MODIFIER_TICKS` and a list past
 panics rather than dropping a rule, as does a spawn reached by an unchecked rule. The
 hash covers every rule while the list is non-empty. The server binary does not expose
 the list: the TCP lobby always starts with none, and a setup builds it in process.
+
+## Town Portal Scroll at Dota 7.41f
+
+Sources, in order of precedence: the item KV `item_tpscroll` of `scripts/npc/items.txt`
+(`dotabuff/d2vpkr`, client 6957, 2026-10-09: cost, mana, cooldown, channel time, the
+70/800 distances, the 200 vision radius, `ItemStackable`, the behaviour flags); the
+official patch notes 7.33–7.41f (`dota2.com/datafeed/patchnotes`: the 7.37 teleport
+classification, the 7.41d self-cast and following effect); Liquipedia's Town Portal
+Scroll page and its changelog, read 2026-10-11 (the starting scroll and its 100 s initial
+cooldown, the scroll on death and its exceptions, the dedicated slot, double tap and its
+1500 minimum, the destination mark both teams see, the one-second 200 flying vision,
+"consumes mana, goes into cooldown and does nothing when the channeling is interrupted");
+and the KV behaviour flags of the items and abilities a channel meets
+(`DOTA_ABILITY_BEHAVIOR_IGNORE_CHANNEL` on Phase Boots and Rot, `IMMEDIATE` without it on
+Feast of Souls).
+
+| | Dota 7.41f | bota |
+|---|---|---|
+| Cost, stacking | 100 gold, one charge a purchase, stacks without limit | the same; a stack's charges are a byte, more than any match buys |
+| Mana, cooldown | 75 mana, 80 s, a wait owed by the hero (bought scrolls are on it too) | the same: the seat's item clock, shown on every scroll stack of the seat as `cooldown_left` |
+| Channel | 3 s, cast point 0; mana and cooldown spent as it begins, the scroll on landing | the same |
+| Slot | its own town portal slot beside the inventory; scrolls never leave it but to be read | `ItemSlot::TOWN_PORTAL` (15), after the stash; `UnitView::town_portal`, `Kit::town_portal` |
+| Starting scroll | one, unsellable, 100 s initial cooldown from the heroes coming in (90 s before the horn) | one, unsellable, ready 10 s past the horn (`SCROLL_FIRST_WAIT_TICKS`): the wait is laid on the game clock, since our pregame is 30 s |
+| On death | one free scroll, not for a self-deny nor a kill credited to neutral creeps | the same, into the kept bag's town portal slot |
+| Free scrolls | no gold value, no net worth, spent first; one in a stack makes the stack unsellable | `ItemStack::free_charges`; `RejectReason::Unsellable`; net worth is gold-based and never sees them |
+| Destination | allied buildings; a point carries to the building nearest it and lands at the point within 70–800 of its centre; a building aimed at; double tap the fountain from 1500 away, landing a little toward the Ancient (7.41d) | the same over towers, barracks, the Ancient and the fountain; a point outside the band lands on its nearest edge; a building aimed at lands 70 from its centre toward the side's fountain; double tap (`Target::None`) lands where heroes come in; closed ground takes the nearest open spot on rings of eight, 64 apart |
+| Breaks | stuns, hexes, silences of the channel, forced movement, roots; an order; the building falling. Damage does not | a stun (the hook's drag and Dismember are stuns here), a fear, an order, death, the building falling. Damage does not. Hexes, silences and roots exist in no bota hero yet |
+| Orders while channelling | any order breaks it and is carried out, but an `IGNORE_CHANNEL` use (Phase Boots, Rot) goes off beside it; an `IMMEDIATE` one without the flag (Feast of Souls, Magic Wand) breaks it | the same: casts and uses are no longer refused with `Disabled` while channelling |
+| Seen | the destination is marked in the player's colour for everybody, with a sound; the channeller's own effect where it is seen | `WorldView::teleports`: every channel, seat, side, building, destination and ticks left, to both sides through the fog; the channeller shows `StatusFlags::CHANNELLING` where seen |
+| Vision | 200 flying vision at the destination through the channel, one second past it, landed or not | the same (`teleport_sights`, a flying viewer in the sight pass and in `can_see_point`) |
+| Shop, courier | sold at home; bought away it waits in the stash; a courier or a drag puts it in the slot | the same; a scroll handed or picked up goes into a hero's town portal slot whatever the inventory holds; a stash scroll swaps in and merges |
+
+What is left out, and why:
+
+- **Channel time growing with allies teleporting to the same building** (3/5/5.5/… s
+  within 25 s and 1150): one hero a side and an 80 s cooldown, so a single hero can never
+  meet it on Map2.
+- **Boots of Travel and its shared cooldown**: not in the shop.
+- **Outposts and their 250 maximum distance**: not on our map.
+- **The effect partly following a moved channeller (7.41d)**: drawing only; the channel
+  holds the body still, and forced movement breaks it here.
+- **"Teleport requires Hold/Cancel to stop"**: a client option, off by default in Dota.
+
+`Seat::teleport` holds a channel: the building, the landing spot, when it began and lands,
+and whether it is still live. It outlives its body by the sight's second, so a scroll
+broken by a death still shows its landing that long, and it is hashed with the seat.
+Where it lands is worked out once, as the channel begins, and open ground is looked for
+again on landing, since a body may have come to stand there.

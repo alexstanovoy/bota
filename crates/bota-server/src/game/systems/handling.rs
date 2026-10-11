@@ -123,29 +123,30 @@ impl World {
             self.set_order(unit, UnitOrder::Move { pos: at });
             return false;
         }
-        let has_room = self
-            .inventory
-            .get(to)
-            .is_some_and(|bag| bag.slots.iter().any(|held| held.is_none()));
-        if !has_room {
-            return true;
-        }
         let Some(stack) = self.take_from_bag(unit, slot) else {
             return true;
         };
-        if let Some(bag) = self.inventory.get_mut(to)
-            && let Some(free) = bag.slots.iter_mut().find(|held| held.is_none())
+        let handed = ItemStack {
+            touched: true,
+            ..stack
+        };
+        let taken = self
+            .inventory
+            .get_mut(to)
+            .is_some_and(|bag| bag.stow(handed));
+        if !taken
+            && let Some(held) = self
+                .inventory
+                .get_mut(unit)
+                .and_then(|bag| bag.slot_mut(slot))
         {
-            *free = Some(ItemStack {
-                touched: true,
-                ..stack
-            });
+            *held = Some(stack);
         }
         true
     }
 
     /// Walks a unit over to a ground item and takes it into the first free
-    /// bag slot.
+    /// bag slot, a scroll into a hero's town portal slot.
     fn take_from_ground(&mut self, unit: Entity, loot: Entity) -> bool {
         let Some(Loot(stack)) = self.loot.get(loot).copied() else {
             return true;
@@ -160,16 +161,15 @@ impl World {
             self.set_order(unit, UnitOrder::Move { pos: spot });
             return false;
         }
-        let Some(bag) = self.inventory.get_mut(unit) else {
-            return true;
-        };
-        let Some(free) = bag.slots.iter_mut().find(|held| held.is_none()) else {
-            return true;
-        };
-        *free = Some(ItemStack {
-            touched: true,
-            ..stack
+        let taken = self.inventory.get_mut(unit).is_some_and(|bag| {
+            bag.stow(ItemStack {
+                touched: true,
+                ..stack
+            })
         });
+        if !taken {
+            return true;
+        }
         self.loot.remove(loot);
         self.despawn(loot);
         true
@@ -201,11 +201,11 @@ impl World {
     pub(crate) fn held_in_bag(&self, unit: Entity, slot: usize) -> Option<ItemStack> {
         self.inventory
             .get(unit)
-            .and_then(|bag| bag.slots.get(slot).copied().flatten())
+            .and_then(|bag| bag.slot(slot).copied().flatten())
     }
 
     /// Takes the stack out of one of a unit's own bag slots.
     pub(crate) fn take_from_bag(&mut self, unit: Entity, slot: usize) -> Option<ItemStack> {
-        self.inventory.get_mut(unit)?.slots.get_mut(slot)?.take()
+        self.inventory.get_mut(unit)?.slot_mut(slot)?.take()
     }
 }

@@ -121,6 +121,7 @@ fn a_unit() -> UnitView {
         attack_damage_max: 55,
         hp_regen: Fixed::ZERO,
         mana_regen: Fixed::ZERO,
+        town_portal: None,
         attack_range: Fixed::from_int(600),
         attack_time: 1700,
         attack_point: 500,
@@ -410,6 +411,7 @@ fn a_tick(tick: u32, units: Vec<UnitView>, players: Vec<PlayerView>) -> WorldVie
         skipped_ticks: Vec::new(),
         stock: Vec::new(),
         talents: Vec::new(),
+        teleports: Vec::new(),
     }
 }
 

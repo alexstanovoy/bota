@@ -31,6 +31,7 @@ pub fn hero(idx: u32, team: Team, pos: Vec2) -> UnitView {
         attack_damage_max: 50,
         hp_regen: Fixed::ZERO,
         mana_regen: Fixed::ZERO,
+        town_portal: None,
         attack_range: Fixed::from_int(500),
         attack_time: 1700,
         attack_point: 500,
@@ -71,6 +72,7 @@ pub fn creep(idx: u32, team: Team, pos: Vec2, hp: i32) -> UnitView {
         attack_damage_max: 21,
         hp_regen: Fixed::ZERO,
         mana_regen: Fixed::ZERO,
+        town_portal: None,
         attack_range: Fixed::from_int(100),
         attack_time: 1000,
         attack_point: 466,
@@ -111,6 +113,7 @@ pub fn works(idx: u32, kind: UnitKind, team: Team, pos: Vec2) -> UnitView {
         attack_damage_max: 110,
         hp_regen: Fixed::ZERO,
         mana_regen: Fixed::ZERO,
+        town_portal: None,
         attack_range: Fixed::from_int(700),
         attack_time: 966,
         attack_point: 200,
@@ -211,6 +214,7 @@ pub fn tick(at: u32, units: Vec<UnitView>, players: Vec<PlayerView>) -> WorldVie
         skipped_ticks: Vec::new(),
         stock: Vec::new(),
         talents: Vec::new(),
+        teleports: Vec::new(),
     }
 }
 

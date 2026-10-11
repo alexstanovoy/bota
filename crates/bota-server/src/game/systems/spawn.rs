@@ -161,10 +161,8 @@ impl World {
         self.hero.insert(entity, hero);
         self.level.insert(entity, Level(1));
         self.abilities.insert(entity, hero_kit(hero));
-        self.inventory.insert(
-            entity,
-            Inventory::empty(rules::INVENTORY_SLOTS + rules::BACKPACK_SLOTS),
-        );
+        self.inventory
+            .insert(entity, Inventory::of_hero(slot, self.tick));
         entity
     }
 

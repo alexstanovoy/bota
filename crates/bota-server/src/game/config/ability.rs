@@ -30,6 +30,10 @@ pub struct AbilityDef {
     /// beside a swing or another cast instead of breaking either off. Only
     /// an ability with no cast point, backswing or duration may be.
     pub immediate: bool,
+    /// Whether ordering it while a channel runs leaves the channel be:
+    /// Dota's `DOTA_ABILITY_BEHAVIOR_IGNORE_CHANNEL`. Only an ability with
+    /// no cast point, backswing or duration may.
+    pub ignores_channel: bool,
     /// Mana each level costs.
     pub mana: &'static [i32],
     /// Ticks between casts, by level.
@@ -62,6 +66,7 @@ const PLAIN: AbilityDef = AbilityDef {
     ultimate: false,
     at_an_enemy: false,
     immediate: false,
+    ignores_channel: false,
     mana: &[],
     cooldown: &[],
     range: 0,
@@ -212,6 +217,7 @@ pub const ABILITIES: [AbilityDef; 17] = [
         name: "Rot",
         max_level: rules::ABILITY_MAX_LEVEL,
         passive: false,
+        ignores_channel: true,
         mana: &[0, 0, 0, 0],
         cooldown: &[0, 0, 0, 0],
         range: rules::ROT_RADIUS,
@@ -365,6 +371,9 @@ const _: () = {
     while at < ABILITIES.len() {
         let def = &ABILITIES[at];
         assert!(!def.immediate || (def.point == 0 && def.backswing == 0 && def.duration == 0));
+        assert!(
+            !def.ignores_channel || (def.point == 0 && def.backswing == 0 && def.duration == 0)
+        );
         at += 1;
     }
 };

@@ -374,6 +374,15 @@ fn hash_seat(fnv: &mut Fnv, seat: &Seat) {
         hash_bag(fnv, &kept.bag);
         hash_stacks(fnv, &kept.stacks);
     }
+    fnv.some(seat.teleport.is_some());
+    if let Some(teleport) = seat.teleport {
+        fnv.entity(teleport.building);
+        fnv.vec2(teleport.landing);
+        fnv.u32(teleport.started);
+        fnv.u32(teleport.lands);
+        fnv.some(teleport.live);
+        fnv.u32(teleport.sight_until);
+    }
 }
 
 /// What a cast was aimed at.
@@ -577,7 +586,8 @@ fn hash_modifier_spec(fnv: &mut Fnv, spec: bota_proto::ModifierSpec) {
 
 /// Every slot of a bag, empty ones counted so slots keep their numbers.
 fn hash_bag(fnv: &mut Fnv, bag: &Inventory) {
-    for slot in bag.slots.iter() {
+    fnv.some(bag.town_portal.is_some());
+    for slot in bag.slots.iter().chain(bag.town_portal.iter()) {
         match slot {
             None => fnv.u8(0),
             Some(stack) => {
@@ -598,6 +608,7 @@ fn hash_stack(fnv: &mut Fnv, stack: &ItemStack) {
     fnv.u8(u8::from(stack.touched));
     fnv.u8(stack.owner.0);
     fnv.some(stack.for_sale);
+    fnv.u8(stack.free_charges);
     fnv.some(stack.mode.is_some());
     if let Some(mode) = stack.mode {
         fnv.u8(mode as u8);

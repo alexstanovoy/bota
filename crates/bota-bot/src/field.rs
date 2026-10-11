@@ -181,12 +181,17 @@ impl<'a> Field<'a> {
         self.me.map_or(&[][..], |me| &me.abilities)
     }
 
-    /// One of the hero's working inventory slots, by the item in it.
+    /// One of the hero's working inventory slots, by the item in it, the
+    /// town portal slot first.
     ///
     /// The backpack takes no part: an item there does nothing until it is
     /// moved forward.
     pub fn item(&self, id: ItemId) -> Option<(ItemSlot, &'a ItemView)> {
-        let bag = self.me.map(|me| &me.items)?;
+        let me = self.me?;
+        if let Some(scrolls) = me.town_portal.as_ref().filter(|held| held.id == id) {
+            return Some((ItemSlot::TOWN_PORTAL, scrolls));
+        }
+        let bag = &me.items;
         bag.iter()
             .take(WORN_SLOTS)
             .enumerate()
