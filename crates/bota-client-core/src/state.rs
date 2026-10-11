@@ -312,8 +312,9 @@ pub struct App {
     /// Decoded terrain cells, row-major from the south-west corner: bit 7
     /// walkable, bit 6 water, low bits the elevation tier.
     pub terrain: Vec<u8>,
-    /// One bit per terrain cell: set where a tree or a fog blocker wall
-    /// blocks sight lines.
+    /// One bit per terrain cell: set where a fog blocker wall blocks sight
+    /// lines. Trees are laid over it from the view, see
+    /// [`FogGround::of`](crate::FogGround::of).
     pub opaque: Vec<u64>,
     /// How the server advances ticks.
     pub mode: Option<TickMode>,

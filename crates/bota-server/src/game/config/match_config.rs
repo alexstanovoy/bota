@@ -104,7 +104,7 @@ impl MatchConfig {
             trees: crate::game::tree_positions(crate::game::map_of(self.map)),
             terrain_cells: crate::game::TERRAIN_CELLS as u32,
             terrain_rle: crate::game::Ground::wire_rle(crate::game::map_of(self.map)),
-            opaque_cells: crate::game::sight_block_cells(crate::game::map_of(self.map)),
+            opaque_cells: crate::game::fow_wall_cells(crate::game::map_of(self.map)),
             mode: self.mode,
             picks: self.picks.clone(),
             shop: crate::game::shop_entries(),

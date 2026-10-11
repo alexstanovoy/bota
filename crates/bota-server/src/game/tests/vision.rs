@@ -1,9 +1,10 @@
 //! Who sees what, and what each side is told.
 
 use crate::game::{
-    EventVisibility, Health, MELEE_CREEP, RANGED_CREEP, World, map_of, rules, wire_id,
+    CAMPS, CellGrid, EventVisibility, Health, ITEM_QUELLING_BLADE, MAPS, MELEE_CREEP, MapDef,
+    RANGED_CREEP, World, map_of, rules, wire_id,
 };
-use bota_proto::{Fixed, MapId, Team, UnitKind, Vec2};
+use bota_proto::{Fixed, HeroId, MapId, Target, Team, UnitKind, Vec2};
 
 use super::support::*;
 
@@ -231,4 +232,177 @@ fn a_strike_from_high_ground_shows_the_striker_to_the_side_struck_for_two_second
         world.can_see(Team::Dire, mark),
         "the striker's own sight is its own business"
     );
+}
+
+#[test]
+fn the_dire_mid_tier_two_tower_does_not_see_into_the_camp_behind_its_trees() {
+    let map = map_of(MapId(0));
+    let world = World::on_map(map);
+    let tower = map
+        .dire_towers
+        .iter()
+        .find(|(lane, tier, _)| *lane == rules::LANE_MID && *tier == 2)
+        .map(|(_, _, at)| *at)
+        .expect("Dire has a mid tier-two tower");
+    // neutralcamp_evil_5, in the woods north-west of the tower.
+    let camp = CAMPS
+        .iter()
+        .position(|camp| camp.pos == Vec2::from_ints(10280, 11796))
+        .expect("the camp is on the map");
+    let home = CAMPS[camp].pos;
+    let reach = rules::units(rules::TOWER_VISION);
+    assert!(
+        tower.within(home, reach),
+        "the camp lies inside the tower's sight radius"
+    );
+    // Where its neutrals stand and idle: within two hundred of its spot.
+    let inner = rules::units(200);
+    for dy in (-200..=200).step_by(25) {
+        for dx in (-200..=200).step_by(25) {
+            let at = home + Vec2::from_ints(dx, dy);
+            if at.within(home, inner) {
+                assert!(
+                    !world.can_see_point(Team::Dire, at),
+                    "Dire sees {at:?} in the camp through the trees"
+                );
+            }
+        }
+    }
+    // As far off down the open lane, the tower sees plainly.
+    let lane = tower + Vec2::from_ints(-1211, -897);
+    assert!(tower.within(lane, reach));
+    assert!(
+        world.can_see_point(Team::Dire, lane),
+        "the open lane is in sight"
+    );
+}
+
+/// A row of nine trees two cells apart on open low ground far off the demo
+/// lane, the spacing most of the Dota forest stands at.
+const TREE_ROW: [(i16, i16); 9] = {
+    let mut row = [(0, 0); 9];
+    let mut i = 0;
+    while i < row.len() {
+        row[i] = (2048 + 128 * i as i16, 2048);
+        i += 1;
+    }
+    row
+};
+
+/// The demo map with nothing but [`TREE_ROW`] for a forest.
+static ROW_MAP: MapDef = MapDef {
+    trees: &TREE_ROW,
+    ..MAPS[1]
+};
+
+/// A world on [`ROW_MAP`] with a Radiant hero a quelling blade in hand
+/// south of the row's middle tree, and that tree.
+fn a_hero_below_the_row() -> (World, crate::game::Entity, Vec2) {
+    let mut world = World::on_map(&ROW_MAP);
+    let middle = Vec2::from_ints(2560, 2048);
+    let hero = seated_hero(&mut world, middle + Vec2::from_ints(0, -320), HeroId(1));
+    hand_item(&mut world, hero, ITEM_QUELLING_BLADE, 0);
+    world.settle();
+    (world, hero, middle)
+}
+
+/// A Dire post that never walks.
+const POST: crate::game::UnitDef = crate::game::UnitDef {
+    move_speed: 0,
+    ..MELEE_CREEP
+};
+
+#[test]
+fn a_row_of_trees_two_cells_apart_is_a_closed_wall_to_sight() {
+    let (mut world, hero, middle) = a_hero_below_the_row();
+    let stand = world.transform.get(hero).expect("hero").pos;
+    // Aimed across the row between two trunks, where single-cell trees
+    // left a gap.
+    let across = world.spawn_unit(&POST, Team::Dire, middle + Vec2::from_ints(192, 320));
+    // The same distance along the row's own side, in the open.
+    let beside = world.spawn_unit(&POST, Team::Dire, stand + Vec2::from_ints(-640, 0));
+    world.settle();
+    assert!(world.can_see(Team::Radiant, beside), "open ground is seen");
+    assert!(
+        !world.can_see(Team::Radiant, across),
+        "the row shuts sight between its trunks"
+    );
+}
+
+#[test]
+fn a_felled_tree_opens_a_gap_in_the_row_and_its_regrowth_shuts_it() {
+    let (mut world, hero, middle) = a_hero_below_the_row();
+    let behind = world.spawn_unit(&POST, Team::Dire, middle + Vec2::from_ints(0, 320));
+    world.settle();
+    assert!(
+        !world.can_see(Team::Radiant, behind),
+        "the tree stands between"
+    );
+    assert!(
+        world.use_item(hero, 0, Target::Pos(middle), &mut Vec::new()),
+        "the blade reaches the tree"
+    );
+    world.step();
+    assert!(
+        world.can_see(Team::Radiant, behind),
+        "with the tree down, the gap shows what stands behind it"
+    );
+    for _ in 0..rules::TREE_REGROW_TICKS {
+        world.step();
+    }
+    assert_eq!(world.trees.felled().count(), 0, "the tree grew back");
+    assert!(!world.can_see(Team::Radiant, behind), "and shuts the gap");
+}
+
+#[test]
+fn the_client_pictures_the_servers_sight_cell_for_cell() {
+    use bota_client_core::{App, ReplayPlayer, Source};
+    use bota_proto::ServerMsg;
+    let map = map_of(MapId(0));
+    let mut world = World::on_map(map);
+    // The forest changed: the trees round the camp beside the Dire mid
+    // tier-two tower down, and one put up in the open by the tower.
+    let camp = Vec2::from_ints(10280, 11796);
+    for (index, at) in crate::game::tree_positions(map).into_iter().enumerate() {
+        if at.within(camp, rules::units(500)) {
+            world
+                .trees
+                .fell(crate::game::Tree::Rooted(index), world.tick);
+        }
+    }
+    let tower = Vec2::from_ints(11712, 11328);
+    world
+        .trees
+        .plant(tower + Vec2::from_ints(-400, 0), world.tick + 100);
+    world.lay_sight_block();
+    world.settle();
+    let mut config = config();
+    config.map = MapId(0);
+    let player = ReplayPlayer::from_reader(std::io::Cursor::new(Vec::new()));
+    let mut app = App::new(Source::Replay(Box::new(player)));
+    app.handle(ServerMsg::MatchStart {
+        info: config.info(),
+    });
+    app.handle(ServerMsg::Snapshot {
+        view: world.view(Team::Dire),
+    });
+    let n = app.terrain_cells;
+    let mut lit = vec![false; n * n];
+    let view = app.view.clone().expect("a snapshot came");
+    bota_client_core::light(&app, &view, Team::Dire, &mut lit);
+    let reach = rules::TOWER_VISION / rules::GRID_CELL_SIZE + 1;
+    let (tx, ty) = CellGrid::cell_of(tower).expect("on the map");
+    let mut differ = Vec::new();
+    let mut seen = 0;
+    for cy in ty - reach as usize..=ty + reach as usize {
+        for cx in tx - reach as usize..=tx + reach as usize {
+            let server = world.can_see_point(Team::Dire, CellGrid::cell_center((cx, cy)));
+            seen += usize::from(server);
+            if server != lit[cy * n + cx] {
+                differ.push((cx, cy, server));
+            }
+        }
+    }
+    assert!(seen > 1000, "the tower sees a wide field");
+    assert!(differ.is_empty(), "the client differs at {differ:?}");
 }

@@ -56,8 +56,9 @@ pub struct World {
     pub camp_last: Vec<u8>,
     /// The height of the ground everywhere.
     pub ground: crate::game::Ground,
-    /// Which cells stop a sight line: trees and the map's own walls.
-    pub sight_block: crate::game::CellGrid,
+    /// Which cells stop a sight line: high ground, trees and the map's own
+    /// walls.
+    pub sight_block: crate::game::SightBlock,
     /// The forest as it stands: what is down, and what has been put up.
     pub trees: Forest,
     /// Blows dealt and not yet felt. Filled and emptied inside one tick.
@@ -202,6 +203,8 @@ impl Default for World {
 impl World {
     /// A world at tick zero with nothing in it, on the Dota map.
     pub fn new() -> World {
+        let ground = crate::game::Ground::of(crate::game::map_of(bota_proto::MapId(0)));
+        let sight_block = crate::game::SightBlock::of_ground(&ground);
         World {
             tick: 0,
             seats: Vec::new(),
@@ -218,8 +221,8 @@ impl World {
             evasion: Vec::new(),
             pierce: Vec::new(),
             camp_last: Vec::new(),
-            ground: crate::game::Ground::of(crate::game::map_of(bota_proto::MapId(0))),
-            sight_block: crate::game::CellGrid::open(),
+            ground,
+            sight_block,
             trees: Forest::default(),
             hits: VecDeque::new(),
             landed: VecDeque::new(),
@@ -401,7 +404,7 @@ impl World {
         world.clearance = crate::game::Clearance::of_map(map);
         world.ground = crate::game::Ground::of(map);
         world.trees = Forest::of(map);
-        world.sight_block = crate::game::build_sight_block(map);
+        world.lay_sight_block();
         for (index, team) in [Team::Radiant, Team::Dire].into_iter().enumerate() {
             world.spawn_building(
                 &crate::game::FOUNTAIN,
@@ -516,26 +519,30 @@ impl World {
     /// Lays out afresh which cells stop a sight line, from the forest as it
     /// now stands.
     pub fn lay_sight_block(&mut self) {
-        let mut grid = crate::game::build_fow_walls(self.map);
-        for at in self.standing_trees() {
-            if let Some((cx, cy)) = crate::game::CellGrid::cell_of(at) {
-                grid.close_cell(cx, cy);
-            }
-        }
-        self.sight_block = grid;
+        self.sight_block = crate::game::SightBlock::lay(
+            &self.ground,
+            &crate::game::build_fow_walls(self.map),
+            self.rooted_trees(),
+            self.trees.planted().iter().map(|tree| tree.at),
+        );
     }
 
-    /// Every standing tree: the map's own in [`tree_positions`] order, then
-    /// the planted ones.
+    /// Every standing tree: the map's own, then the planted ones.
+    fn standing_trees(&self) -> impl Iterator<Item = bota_proto::Vec2> + '_ {
+        self.rooted_trees()
+            .chain(self.trees.planted().iter().map(|tree| tree.at))
+    }
+
+    /// Every one of the map's own trees still standing, in
+    /// [`tree_positions`] order.
     ///
     /// [`tree_positions`]: crate::game::tree_positions
-    fn standing_trees(&self) -> impl Iterator<Item = bota_proto::Vec2> + '_ {
+    fn rooted_trees(&self) -> impl Iterator<Item = bota_proto::Vec2> + '_ {
         crate::game::tree_positions(self.map)
             .into_iter()
             .enumerate()
             .filter(|(index, _)| self.trees.rooted_stands(*index))
             .map(|(_, at)| at)
-            .chain(self.trees.planted().iter().map(|tree| tree.at))
     }
 
     /// Brings stats, pools and who sees what into line with what stands.

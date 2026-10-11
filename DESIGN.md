@@ -403,19 +403,38 @@ exploit any leak a human reviewer shrugs off:
   abilities never miss this way. The terrain
   rides in `MatchStart` run-length encoded, and the client bakes it into the
   ground texture for the world and the minimap.
-- Vision is a radius with sight lines walked over the terrain cells. A cell is
-  opaque to a viewer when its ground is higher than the viewer's, when a tree
-  stands on it, or when one of the map's own fog blocker walls crosses it —
-  eleven named walls of `ent_fow_blocker_node` points, imported like
+- Vision is a radius with sight lines walked over the terrain cells, Dota's own
+  fog grid of 64-unit tiles (`fow_server_debug` shows it). A line visits every
+  cell it passes through, by exact integer stepping, and slips between two cells
+  that only touch at a corner it runs through exactly. A cell stops a viewer's
+  line when its ground is higher than the viewer's, when one of the map's own
+  fog blocker walls crosses it, or when a standing tree covers it and the viewer
+  stands at most one tier above the tree's ground — Dota's trees block their own
+  level and the one above, so high ground sees over the forest two levels down.
+  The walls are eleven named walls of `ent_fow_blocker_node` points, imported like
   everything else, which is what seals the river pit even through its
   entrance. A named group holds several separate walls: only nodes within
   the blocker span of each other bridge a segment, so the far-apart jumps
-  inside a group — the two pits share one name — are breaks, not walls. Buildings, water and units block nothing. The viewer's own cell
-  and the target's cell never block, so standing beside a tree does not blind
-  and a treeline's edge stays visible; a target on ground above the viewer is
-  always dark. The opaque cells ride in `MatchStart`, and the client walks
-  the same sight lines from its own units to shade unseen ground in the world
-  view and on the minimap; spectators see everything. The map's
+  inside a group — the two pits share one name — are breaks, not walls. Buildings, water and units block nothing.
+  A map tree stands on a cell corner and covers the cells whose centres lie
+  inside Dota's tree vision blocker, a circle of √2 tiles through the corners
+  of the 2×2-tile square the tree occupies: those four cells. Most of the
+  forest stands two cells apart, so its squares tile into closed walls, where
+  one cell per tree left a gap between every two trunks; a tree an item plants
+  is smaller and covers its own cell. A target within √5 cells of the viewer's
+  cell (5×5 less the corners) is seen whatever stands between, as Dota always
+  shows a unit its nearest tiles; the viewer's own cell and the target's never
+  block, so standing beside a tree does not blind and a treeline's edge stays
+  visible; a target on ground above the viewer is always dark. All of this is
+  one byte a cell, `SightBlock` in `game/vision.rs`: the lowest tier a viewer
+  must stand on to see across — the ground's tier, two above a covering tree's
+  ground, never for a wall. It is laid afresh whenever a tree falls, grows back
+  or is planted, so the per-line cost is one byte compare per cell crossed. The
+  wall cells ride in `MatchStart` as `opaque_cells`; the client lays the trees
+  itself from `MatchStart`'s trees and the view's felled and planted ones, and
+  walks the same lines from its own units to shade unseen ground in the world
+  view and on the minimap; spectators see everything. A server test holds the
+  client's picture equal to the server's sight cell for cell. The map's
   `ent_fow_revealer` points wait for outposts.
 - Trees are imported one for one from the same map: all 2475
   positions — the main entity lump plus the base layers of both sides — live as
@@ -997,8 +1016,9 @@ connection whose event queue overflows is closed instead of buffered without bou
 The vision mask does **not** go over the wire. The server decides which entities a side
 is told of — sight lines in `game/vision.rs`, who sees what each tick in
 `game/systems/visibility.rs` — and the client draws its own fog from what it already
-holds: the terrain and `opaque_cells` from `MatchStart`, and the positions and
-`vision_radius` of its own units, walking the same sight lines.
+holds: the terrain, the trees and the wall cells (`opaque_cells`) from `MatchStart`,
+the felled and planted trees and the positions and `vision_radius` of its own units
+from the view, walking the same sight lines.
 
 There is no shared implementation in `proto`, and that is not an omission. The sides
 need different things: the server — an exact answer to "does this team see this
@@ -1006,7 +1026,11 @@ point", the client — a soft gradient for rendering with fade-out and a memory 
 explored, the bot often nothing at all. Since terrain occludes, the computation is a
 game rule, and rules do not belong in `proto`: the server's copy is the rule, the
 client's a picture of it. Each side keeps its own mask type and grid constants — they
-do not cross the wire and are not needed to read it.
+do not cross the wire and are not needed to read it. The picture copies the rule
+exactly — tree footprints, the near cells and the integer line walk over the wire's
+fixed-point positions — and `the_client_pictures_the_servers_sight_cell_for_cell` in
+`game/tests/vision.rs` (`bota-client-core` is a dev-dependency of the server for it)
+fails the moment the two drift apart.
 
 The client's picture needs every source of vision to be an entity in the view. Wards
 already satisfy this; an ability granting vision without a unit must be modeled as an

@@ -3,8 +3,8 @@
 use bota_proto::{Fixed, Target, Team, UnitKind, Vec2};
 
 use crate::game::{
-    CellGrid, Entity, EntityAllocator, EventVisibility, Exposure, ExposureCell, Ground, Spots,
-    Stats, Table, Transform, Visibility, World, is_structure, rules, sight_clear,
+    Entity, EntityAllocator, EventVisibility, Exposure, ExposureCell, Ground, SightBlock, Spots,
+    Stats, Table, Transform, Visibility, World, is_structure, rules,
 };
 
 /// What working out sight reads and writes.
@@ -18,7 +18,7 @@ pub struct SightCx<'a> {
     /// The height of the ground.
     pub ground: &'a Ground,
     /// Which cells stop a sight line.
-    pub sight_block: &'a CellGrid,
+    pub sight_block: &'a SightBlock,
     /// Sight strikes showed the sides struck at.
     pub exposure: &'a Table<Exposure>,
     /// Where a Town Portal Scroll shows its side the ground it lands on.
@@ -137,7 +137,7 @@ pub fn visibility_system(cx: SightCx<'_>) {
         sight.viewers.push(scroll_viewer(side, at, ground));
     }
     sight.reset_rows();
-    sight.trace(ground, sight_block);
+    sight.trace(sight_block);
     sight.hide();
     for row in &sight.rows {
         let (Some(seen), Some(slot)) = (row.seen, visibility.get_mut(row.entity)) else {
@@ -209,7 +209,7 @@ impl SightScratch {
 
     /// Adds each viewer's side to every row it sees, walking only the rows
     /// within the square its vision spans.
-    fn trace(&mut self, ground: &Ground, sight_block: &CellGrid) {
+    fn trace(&mut self, sight_block: &SightBlock) {
         self.spots.clear();
         for (index, row) in self.rows.iter().enumerate() {
             if let (Some(at), Some(_)) = (row.at, row.seen) {
@@ -230,7 +230,7 @@ impl SightScratch {
                 {
                     continue;
                 }
-                if viewer.flying || sight_clear(ground, sight_block, viewer.from, viewer.tier, at) {
+                if viewer.flying || sight_block.clear(viewer.from, viewer.tier, at) {
                     seen.add(viewer.side);
                 }
             }
@@ -356,9 +356,7 @@ impl World {
                 return false;
             }
             let tier = self.ground.tier(cell.at);
-            cell.flying
-                || (tier >= target_tier
-                    && sight_clear(&self.ground, &self.sight_block, cell.at, tier, at))
+            cell.flying || (tier >= target_tier && self.sight_block.clear(cell.at, tier, at))
         });
         let landing = self.teleport_sights().any(|(side, from)| {
             side == team && from.within(at, rules::units(rules::SCROLL_SIGHT_RADIUS))
@@ -379,8 +377,7 @@ impl World {
                     return false;
                 }
                 let viewer_tier = self.ground.tier(from);
-                viewer_tier >= target_tier
-                    && sight_clear(&self.ground, &self.sight_block, from, viewer_tier, at)
+                viewer_tier >= target_tier && self.sight_block.clear(from, viewer_tier, at)
             })
     }
 
