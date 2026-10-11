@@ -1,0 +1,104 @@
+# Every id ever assigned on the bota wire: append-only (DESIGN.md, Protocol).
+#
+# One line an id: `<space> <id> <live|retired> <name>`. A new id takes the next
+# number of its space and is appended. An id is never renumbered, renamed or
+# reused; one that leaves the game is marked `retired` and stays retired.
+
+hero 0 live Pudge
+hero 1 live Shadow Fiend
+
+ability 0 live Meat Hook
+ability 1 live Rot
+ability 2 live Flesh Heap
+ability 3 live Dismember
+ability 4 live Burst
+ability 5 live Return
+ability 6 live Take Stash
+ability 7 live Deliver
+ability 8 live Shield
+ability 9 live Shadowraze (Near)
+ability 10 live Shadowraze (Mid)
+ability 11 live Shadowraze (Far)
+ability 12 live Requiem of Souls
+ability 13 live Necromastery
+ability 14 live Presence of the Dark Lord
+ability 15 live Feast of Souls
+ability 16 live Throw Grenade
+
+item 0 live Boots of Speed
+item 1 live Clarity
+item 2 live Healing Salve
+item 3 live Iron Branch
+item 4 live Observer Ward
+item 5 live Quelling Blade
+item 6 live Sentry Ward
+item 7 live Tango
+item 8 live Town Portal Scroll
+item 9 live Circlet
+item 10 live Gauntlets of Strength
+item 11 live Slippers of Agility
+item 12 live Mantle of Intelligence
+item 13 live Belt of Strength
+item 14 live Band of Elvenskin
+item 15 live Robe of the Magi
+item 16 live Ogre Axe
+item 17 live Blade of Alacrity
+item 18 live Staff of Wizardry
+item 19 live Gloves of Haste
+item 20 live Blades of Attack
+item 21 live Broadsword
+item 22 live Quarterstaff
+item 23 live Ring of Protection
+item 24 live Chainmail
+item 25 live Ring of Regen
+item 26 live Sage's Mask
+item 27 live Vitality Booster
+item 28 live Energy Booster
+item 29 live Power Treads
+item 30 live Phase Boots
+item 31 live Blink Dagger
+item 32 live Bracer
+item 33 live Wraith Band
+item 34 live Null Talisman
+item 35 live Magic Stick
+item 36 live Magic Wand
+item 37 live Recipe: Phase Boots
+item 38 live Recipe: Bracer
+item 39 live Recipe: Wraith Band
+item 40 live Recipe: Null Talisman
+item 41 live Recipe: Magic Wand
+item 42 live Enchanted Mango
+item 43 live Eaglesong
+item 44 live Claymore
+item 45 live Talisman of Evasion
+item 46 live Butterfly
+item 47 live Javelin
+item 48 live Demon Edge
+item 49 live Blitz Knuckles
+item 50 live Recipe: Monkey King Bar
+item 51 live Monkey King Bar
+item 52 live Wind Lace
+item 53 live Blood Grenade
+
+effect 0 retired Haste
+effect 1 live Mending
+effect 2 live Clarity
+effect 3 live Fountain
+effect 4 live Stunned
+effect 5 live Slowed
+effect 6 live Burning
+effect 7 live Hastened
+effect 8 live Shielded
+effect 9 live Phased
+effect 10 live FleshHeap
+effect 11 live Souls
+effect 12 live ArmorBroken
+effect 13 live Guarded
+effect 14 live Inspired
+effect 15 live Shadowraze
+effect 16 live Rot
+effect 17 live Feared
+effect 18 live MagicBroken
+effect 19 live Feasting
+effect 20 live FeastLinger
+effect 21 live BloodGrenade

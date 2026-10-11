@@ -12,6 +12,7 @@ mod feast;
 mod fiend;
 mod grenade;
 mod hash;
+mod ids;
 mod items;
 mod jungle;
 mod map2;
