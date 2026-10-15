@@ -9,11 +9,11 @@ use bota_proto::{
 use crate::game::{MatchConfig, OrderDelay};
 use crate::local::{LocalMatch, LocalOrder};
 
-fn mid_config() -> MatchConfig {
+pub(super) fn mid_config() -> MatchConfig {
     let pick = |slot, team| Pick {
         slot: SlotId(slot),
         team,
-        hero: HeroId(1),
+        hero: HeroId::SHADOW_FIEND,
     };
     MatchConfig {
         match_id: 5,

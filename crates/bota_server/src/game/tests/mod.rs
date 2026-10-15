@@ -4,6 +4,7 @@ mod attacks;
 mod auras;
 mod bounty;
 mod cast;
+mod client;
 mod courier;
 mod creep_ai;
 mod delay;

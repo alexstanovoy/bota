@@ -1,12 +1,12 @@
 //! Everything the client knows, and how server messages change it.
 
 use bota_proto::{
-    ClientMsg, EntityId, LobbySlot, MatchInfo, MatchStats, Order, PlayerId, RejectReason,
-    ServerMsg, ShopEntry, SlotId, StockView, TalentSlot, TalentView, Team, TickMode, UnitKind,
-    UnitView, Vec2, WorldView,
+    ClientMsg, EntityId, LobbySlot, MatchInfo, MatchStats, Order, PlayerId, ServerMsg, ShopEntry,
+    SlotId, StockView, TalentSlot, TalentView, Team, TickMode, UnitKind, UnitView, Vec2, WorldView,
 };
 
 use crate::net::Net;
+use crate::orders::refusal;
 use crate::ui::derive::Derived;
 use crate::ui::replay::ReplayPlayer;
 use crate::ui::smooth::Smooth;
@@ -146,37 +146,6 @@ pub fn tap_again(last: Option<(Tap, f32)>, what: Tap) -> (bool, Option<(Tap, f32
         (true, None)
     } else {
         (false, Some((what, DOUBLE_TAP)))
-    }
-}
-
-/// What a refusal is called in plain words.
-pub fn refusal(reason: RejectReason) -> &'static str {
-    use RejectReason as Why;
-    match reason {
-        Why::HeroDead => "your hero is not standing",
-        Why::UnknownTarget => "no such target",
-        Why::WrongTargetKind => "not aimed at what it takes",
-        Why::OnCooldown => "still on cooldown",
-        Why::NotEnoughMana => "not enough mana",
-        Why::NotEnoughGold => "not enough gold",
-        Why::EmptySlot => "that slot is empty",
-        Why::NotCastable => "it works on its own",
-        Why::NotLearned => "no points in it yet",
-        Why::NoCharges => "no charges left",
-        Why::NotReady => "it is not working yet",
-        Why::NotYourUnit => "you do not drive that unit",
-        Why::UnknownItem => "the shop does not sell that",
-        Why::NotAtShop => "only at the shop",
-        Why::InventoryFull => "no room for it",
-        Why::Disabled => "you cannot act right now",
-        Why::NotYourItem => "not yours to sell",
-        Why::ClosedGround => "nothing can lie there",
-        Why::NotInBag => "not carried in the bag",
-        Why::NoCheats => "cheats are off in this match",
-        Why::BadCheat => "the cheat is out of bounds",
-        Why::OutOfStock => "the shop has none left",
-        Why::CannotLearn => "that talent cannot be learned now",
-        Why::Unsellable => "a free scroll sells for nothing",
     }
 }
 

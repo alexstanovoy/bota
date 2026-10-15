@@ -8,11 +8,27 @@
 #![forbid(unsafe_code)]
 
 mod catalog;
+mod handshake;
+mod latency;
+mod limits;
+mod match_static;
 mod net;
+mod observer;
+mod orders;
+mod readiness;
+mod session;
 #[cfg(feature = "ui")]
 mod ui;
 
 pub use catalog::*;
+pub use handshake::*;
+pub use latency::*;
+pub use limits::*;
+pub use match_static::*;
 pub use net::*;
+pub use observer::*;
+pub use orders::*;
+pub use readiness::*;
+pub use session::*;
 #[cfg(feature = "ui")]
 pub use ui::*;
