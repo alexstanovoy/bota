@@ -167,6 +167,26 @@ impl LocalMatch {
         self.world.tick
     }
 
+    /// The world, for a scenario to read.
+    pub const fn world(&self) -> &World {
+        &self.world
+    }
+
+    /// The world, for a scenario to arrange before the next step; the seats are
+    /// told of it by [`Self::restate`].
+    pub const fn world_mut(&mut self) -> &mut World {
+        &mut self.world
+    }
+
+    /// Each seat's snapshot of the current tick with no events, as after a
+    /// scenario rearranged the world.
+    pub fn restate(&self) -> Vec<Vec<ServerMsg>> {
+        let mut streams: Vec<Vec<ServerMsg>> =
+            self.seats.iter().map(|_| Vec::with_capacity(3)).collect();
+        self.publish(&mut streams, &[]);
+        streams
+    }
+
     /// Appends the finished tick as each seat sees it.
     fn publish(&self, streams: &mut [Vec<ServerMsg>], events: &[Event]) {
         for (stream, &team) in streams.iter_mut().zip(&self.teams) {
