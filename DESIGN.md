@@ -8,7 +8,7 @@ server authority, minimal dependencies.
 | Decision | Choice | Rationale |
 |---|---|---|
 | Client | `bota_client_core` here, drawn by a front end outside the repository | the logic every front end shares stays with the wire it reads; the drawing (Bevy, Dota's assets) is no business of the simulator |
-| Tick mode | Realtime **and** Lockstep | humans play in realtime, bots are debugged/trained in reproducible lockstep |
+| Tick mode | Realtime **and** Lockstep | humans play in realtime, bots are debugged and measured in reproducible lockstep |
 | v0.1 scope | 1v1, three lanes, a handful of heroes | a vertical slice of the whole stack on minimal content |
 | Transport | TCP + length-prefixed frames | no tokio: a thread per client + a simulation thread + mpsc |
 | Serialization | `serde` + `postcard` | derive instead of hand-written put/get; the format is compact (varint) and stable within 1.x |
@@ -24,14 +24,17 @@ bota/
 ├── Cargo.toml               # workspace, resolver = "3"
 ├── crates/
 │   ├── bota_proto/          # shared vocabulary + codec. deps: serde, postcard
-│   ├── bota_server/         # simulation + networking + lobby. deps: proto, rand_chacha, rustc-hash, clap
-│   └── bota_client_core/    # every front end's logic, no drawing: connection, replay, world picture, orders. deps: proto
+│   ├── bota_core/           # the rules a player may know: definition tables + pure integer/Fixed functions. deps: proto
+│   ├── bota_server/         # simulation + networking + lobby. deps: proto, core, rand_chacha, rustc-hash, clap
+│   └── bota_client_core/    # every front end's logic, no drawing: connection, replay, world picture, orders. deps: proto, core
 ```
 
 ```
         bota_proto
+            ↑
+        bota_core
         ↑       ↑
-   server    client
+   server    client_core
 ```
 
 A bot is a client like the human's front end: a human and a bot see
@@ -43,18 +46,124 @@ The single rule deciding where code lives:
 
 > If it does not cross the wire and is not needed to read the wire — it is not in `proto`.
 
-| In `bota_proto` | In `bota_server` |
-|---|---|
-| `Fixed`, `Angle`, `Vec2`, `EntityId`, `SlotId`, `PlayerId`, `Team`, `HeroId`, `AbilityId`, `ItemId`, `AbilitySlot`, `ItemSlot`, `MapId`, `UnitKind` | `World`, `step`, units, combat, movement, vision, economy |
-| `Order`, `EventKind`, `WorldView`, codec and framing | `Command`, `Event.visible_to`, `MatchRng`, `Stream`, `Chance`, `Ratio` |
-| `MatchInfo`, `ClientMsg`, `ServerMsg`, `ReplayRecord` | `MatchConfig`, balance constants, hero stats, ability implementations |
+| In `bota_proto` | In `bota_core` | In `bota_server` |
+|---|---|---|
+| `Fixed`, `Angle`, `Vec2`, `EntityId`, `SlotId`, `PlayerId`, `Team`, `HeroId`, `AbilityId`, `ItemId`, `EffectId` (and their named constants), `AbilitySlot`, `ItemSlot`, `MapId`, `UnitKind` | `Ratio`, `rules`, the unit-kind, hero, ability and item tables, `MapDef`, pure rule functions | `World`, `step`, units, combat, movement, vision, economy |
+| `Order`, `EventKind`, `WorldView`, codec and framing | `UseSpec`, `Aura`, `ModifierKind`, `UnitDef`, `regen`, `mitigate` | `Command`, `Event.visible_to`, `MatchRng`, `Stream`, `Chance` |
+| `MatchInfo`, `ClientMsg`, `ServerMsg`, `ReplayRecord` | | `MatchConfig`, ability and item hooks, terrain tables, `World`'s use of all of it |
 
-A `bota-core` crate holding the simulation was rejected: "core" has no checkable
-membership criterion, and `seed`, `tick_rate` and `PlayerId` leak into it. With the
-simulation in the server, the client is **structurally** incapable of simulating:
-`World` lives in a crate it does not depend on.
+### Membership criterion for bota_core
+
+> If a player may know it, and it is a table or a pure function of integers and `Fixed`
+> — it is in `core`. If it needs a `World`, a random stream, a clock or I/O — it is not.
+
+What "a player may know" means: the rules of the game as a Dota player knows them
+(what a hero starts with, what an item costs and does, how armor turns into damage, what
+a wave is made of, how much a raze burns). Not what a match hides: a quantity that is
+hidden in play (a spawn modifier's amplification, a gold income, the fog) enters a
+function only as a **parameter**, and a client passes the nominal value; the crate has
+no way to fetch it. The crate holds no `World`, no entity handle, no random stream,
+no I/O, no clock, no `HashMap`/`HashSet` (denied by clippy), no float arithmetic
+(denied by the workspace lint), and `#![forbid(unsafe_code)]`. Every function is
+deterministic.
+
+The checks that make this a criterion rather than a hope: the dependency list (`core`
+depends on `proto` alone), the lints above, and the type of every parameter, which
+names exactly what the function is allowed to see.
+
+An earlier version of this document rejected a `core` crate that would hold the
+*simulation*, because "core" had no checkable membership criterion and `seed`,
+`tick_rate` and `PlayerId` leaked into it. This is not that crate. The simulation (the
+`World`, its tables and systems, the random streams) stays in the server, so a client
+is still structurally incapable of simulating: the state a match hides lives only in a
+crate it does not depend on. What moved is only the part that was never secret and was
+being copied by hand into every client: the numbers and the arithmetic of the rules.
+A client uses them to show what the server will compute (damage ranges, regeneration,
+cooldowns, prices) and to predict, never to decide.
+
+### Patterns
+
+**Definition tables.** What the game is made of is a `const` table in `core`, indexed by
+the wire id, with one row to a thing:
+
+| Table | Row | Lookup |
+|---|---|---|
+| `UNIT_KINDS` | `KindDef`: structure, attack/armor class, target class, bounty, deniable, lane creep … | `kind_def(kind)` |
+| `HEROES` | `HeroDef`: body (`UnitDef`), ability slots, innate ability, talent tree | `hero_def(id)` |
+| `ABILITIES` | `AbilityDef`: aim, levels, mana, cooldown, range, cast point, duration | `ability_def(id)` |
+| `ITEMS` | `ItemDef`: cost, charges, stock, components, `carried`, aim, timing, `UseSpec` | `item_def(id)` |
+
+Code asks a table instead of matching on the id. A new unit kind without a row does not
+compile (`kind_def` is an exhaustive match); a table whose length differs from the id
+registry fails a test.
+
+**Behaviour next to data.** The server keeps what a thing *does* to a world, keyed by
+the same id, in a table of the same length:
+
+- `ABILITY_HOOKS[id]` holds `on_cast`, `on_during`, `on_cancel`, `on_complete`; a const
+  assertion ties its length to `ABILITIES`.
+- An item's use is a `UseSpec` variant with its numbers (`Mend`, `PlantTree`, `Ward`,
+  `Teleport`, `Phase`, `Blink`, `Restore`, `Replenish` …) held in the `ItemDef`; the
+  server dispatches on the variant (`World::use_effect` and its three companions for a
+  use that runs on). A new item that reuses a variant is a table row only.
+
+**Pure rule functions.** Arithmetic that both sides need is a free function in `core`
+over plain values: `mitigate`, `amplify`, `bite`, `regen`, `raze_damage`,
+`hero_kill_xp`, `respawn_wait`, `carried_bonus`, `missing_parts`, `pick_target`,
+`aggroable_yet`, `attributes_at_level`, `cell_tier` … The server calls them from its
+systems; `bota_client_core` calls the same ones to draw what the server will do. The
+two cannot drift, because there is one body. Small ones are `#[inline]`, since a call
+across crates is not inlined without link-time optimisation.
+
+**Hidden quantities are parameters.** `regen(base, carried, attributes, modifiers)`
+takes the modifiers it is told about; a client passes the ones the view shows. A spawn
+modifier's amplification would be a parameter the same way, never a field read from a
+global.
+
+**Newtypes.** Ids, slots, `Fixed`, `Angle` and `Ratio` are distinct types, so a
+`HeroId` is never an `AbilityId` and a raw `u16` never stands for either. Every id the
+code names has a constant in `proto` (`HeroId::SHADOW_FIEND`, `AbilityId::REQUIEM`,
+`ItemId::MANGO`, `EffectId::FEASTING`); a bare number is a review finding.
+
+### Adding a hero, an ability, an item, a unit kind
+
+Ids are append-only (see Protocol, Append-only ids): new things take the next number and
+a line in `crates/bota_proto/registry/ids.txt`, and nothing is renumbered or reused.
+
+- **Unit kind.** Append the `UnitKind` variant in `proto`; add its row in `UNIT_KINDS`
+  (`kind_def`'s match will not compile without it). The server test over every kind
+  checks the rest.
+- **Hero.** Append `HeroId` (constant + registry line); add its `UnitDef` in
+  `core/unit.rs` and its row in `HEROES` (abilities, innate, talents). The id test
+  compares `HEROES` with the registry.
+- **Ability.** Append `AbilityId` (constant + registry line); add the row to `ABILITIES`
+  and `ABILITY_COUNT`, then the row to `ABILITY_HOOKS` in the server with its hooks (a
+  passive uses `INERT`). The const assertion and the id test catch a missing row.
+- **Item.** Append `ItemId` (constant + registry line); add the row to `ITEMS`
+  (and `ITEMS`' length). An item that does something picks a `UseSpec`; one that needs
+  new behaviour adds a variant and its arm in `World::use_effect`. An item built from
+  others lists `components`; the shop table is derived from the rows.
+- Each of them gets a test: the table row is covered by the id test; new behaviour by an
+  end-to-end test in the server that plays it through a `World`.
 
 ### Module layout
+
+```
+core/src/
+├── rules.rs      balance constants in one place
+├── unit.rs       UnitDef, Growth and every unit's definition; unit_neutral.rs, camp.rs, roster.rs
+├── unit_kind.rs  UNIT_KINDS, kind_def, KindDef
+├── hero.rs       HeroDef, HEROES, attributes_at_level, base_damage_least
+├── ability.rs    AbilityDef, ABILITIES, learn_group, level_floor
+├── item.rs       ItemDef, UseSpec, Mend, Carried, carried_bonus; item_table.rs: ITEMS
+├── talent.rs, aura.rs, modifier.rs, attack_class.rs, protect.rs, wave.rs, map.rs, place.rs
+├── damage.rs     amplify, mitigate, bite
+├── fiend.rs      raze, souls, presence, requiem arithmetic
+├── economy.rs    deniable, bounties, respawn, missing_parts
+├── aggro.rs      class order, pick_target, behaviour_rank, aggroable_yet
+├── regen.rs      regen: health and mana per tick, one function
+├── movement.rs, progress.rs, cells.rs, sight.rs, terrain.rs, chance.rs
+```
 
 ```
 proto/src/
@@ -83,32 +192,28 @@ server/src/
 │   ├── match_world.rs    for_match, advance, validate_order, victor, match_stats
 │   ├── project.rs        World → WorldView, with fog and without
 │   ├── hash.rs           world.hash() over the whole state
-│   ├── rng.rs            MatchRng over ChaCha8Rng: streams by purpose, Ratio/Chance
+│   ├── rng.rs            MatchRng over ChaCha8Rng: streams by purpose, Chance
 │   ├── seat.rs           Seat, Kept: what belongs to a player rather than a body
-│   ├── progress.rs       progress inside an action, in beats
-│   ├── movement.rs       isqrt, stepping, turning, facing, distances
-│   ├── cells.rs          one bit per terrain cell, for sight
 │   ├── clearance.rs      the ground as a body meets it: room per node, exact capsule test
 │   ├── path.rs           A* over the walking lattice, corners drawn tight
 │   ├── bodies.rs         where every body stands, by bucket
 │   ├── spots.rs          Spots<T>: points sorted by x, asked by square
 │   ├── local.rs          the next stretch of a walk: A* over spot, facing and tick
-│   ├── vision.rs         fog of war: sight blocks and sight lines
+│   ├── vision.rs         fog of war: sight lines over core's SightBlock
 │   ├── forest.rs         what of the forest is down and what was put up
 │   ├── ground.rs         elevation tiers, water, walkability
 │   ├── components/       one file per component
 │   ├── systems/          one file per system: combat, walking, casting, gear, econ …
-│   └── config/           what the game is made of: ability, blockers, camp, hero,
-│                         item, map, match_config, place, protect, roster, rules,
-│                         spawn_modifier, talent, terrain, trees, unit, unit_neutral,
-│                         wave
+│   └── config/           what only the server needs: ability (hook table), item
+│                         (UseSpec dispatch), blockers, map_terrain, match_config,
+│                         place, spawn_modifier, terrain, trees
 ├── net/          conn.rs: accept loop, reader/writer threads; outbox.rs: Outbox
 ├── lobby.rs      Roster (PlayerId ↔ SlotId), seats, picks, readiness
 ├── game_loop.rs  lobby phase, then the tick loop in both modes
 ├── replay.rs     writes the replay: fogless frames plus per-tick orders
 ├── profile       phase timings of a tick, sampled with the `phase-profile` feature
 └── main.rs       clap arguments
-benches/dummy/    criterion: the dummy tick loop, the trainer skirmish, micro cases
+benches/dummy/    criterion: the dummy tick loop, a Map2 skirmish, micro cases
 ```
 
 No ECS library and no arenas of whole units: an entity is a generational handle from
@@ -127,7 +232,7 @@ pub struct MatchConfig {
     pub match_id: u64, pub master_key: [u8; 32], pub picks: Vec<Pick>,
     pub map: MapId, pub tick_rate: u16, pub mode: TickMode, pub ack_timeout_ticks: u32,
     pub cheats: bool, pub spawn_modifiers: Vec<SpawnModifier>,
-    pub immortal_structures: bool,   // server-only: structures never drop below 1 hp (training, practice)
+    pub immortal_structures: bool,   // server-only: structures never drop below 1 hp (practice)
     pub immortal_heroes: bool,       // server-only: heroes never drop below 1 hp (last-hit practice)
 }
 
@@ -213,7 +318,7 @@ determinism demands exactly one implementation.
    in the workspace lints.
    Float operations themselves are deterministic per IEEE-754, but `sin/cos/sqrt` from
    libm are not — they differ across glibc / musl / macOS / wasm. The client renders in
-   float freely. The bot is also free to think in float: what gets recorded are its
+   float freely. A bot is also free to think in float: what gets recorded are its
    orders, not its reasoning.
 2. Scalars are `Fixed` = Q16.16 in `i32`, multiplication through an intermediate `i64`.
    Range ±32768 units, precision 1/65536. The 18432-unit map keeps squared distances
@@ -223,7 +328,7 @@ determinism demands exactly one implementation.
    far side of the map.
 3. Angles are "brads": `u16`, 65536 = a full turn. There is no trigonometry: facings and
    headings use an integer octant approximation (`facing_towards`, `heading_of` in
-   `game/movement.rs`).
+   `bota_core::movement`).
 4. Distances are compared as squares; where a length itself is needed, `isqrt64`.
 5. Entity iteration is always in ascending slot order (`EntityAllocator::iter`).
    Nothing in the simulation iterates a hash map; `rustc_hash::FxHashMap` is allowed
@@ -323,7 +428,7 @@ Server-only, never reaches `WorldView`:
 It also follows that client-side prediction covers only movement and animation. Damage
 numbers arrive as events from the server.
 
-Two further channels are closed by rule, because a reward-driven bot will find and
+Two further channels are closed by rule, because a bot that optimises a score will find and
 exploit any leak a human reviewer shrugs off:
 
 - A reject reason does not depend on hidden state. A dead target and a fogged one get
@@ -345,7 +450,7 @@ exploit any leak a human reviewer shrugs off:
   imported the same way: one short lane bending through its real path corners,
   a single tier-one tower a side, two fountains, its own 187 trees, its own
   ground — and no Ancients at all, so nothing ends a match there but the
-  clock. A real map rather than an invented training lane is ground the bots'
+  clock. A real map rather than an invented practice lane is ground a bot's
   habits can carry to the big map. Its terrain is baked exactly like the big
   map's: walkability
   from the map's own gridnav, elevation tiers rasterised off its physics mesh
@@ -775,7 +880,7 @@ Every swing ends in a backswing the unit stands through, which is the
 pause a creep makes over its kill before marching on. A hero's order cancels its
 backswing.
 
-Abilities run on a shared engine — the table in `game/config/ability.rs`, casting in
+Abilities run on a shared engine — the table in `bota_core::ability` and its hooks in `game/config/ability.rs`, casting in
 `game/systems/cast.rs`, the body's action in `game/systems/actions.rs`: a row of slots per hero —
 four for most, six for Shadow Fiend, the row is per-hero data — each slot with a
 level and a cooldown, held on the seat like items, so both survive the
@@ -827,7 +932,7 @@ copy of the static one: `ModifierKind::grown` turns the def's base effect into w
 bearer of so many intervals hands out, at the one place auras are handed out, so the
 `Aura` table stays `'static` and nothing else learns about upgrades. `Guarded` and `Inspired`
 are separate kinds even though a body could carry both, because naming them apart is what
-lets a client tell a tower's doing from a flagbearer's, and what keeps the bot from
+lets a client tell a tower's doing from a flagbearer's, and what keeps a bot from
 reading either as the mending a salve puts on.
 
 What a flagbearer's death pays the enemy heroes around it follows 7.40: the bonus is set
@@ -847,8 +952,8 @@ tower's protection is meant to pass an invulnerable hero by only when it is *hid
 nothing here checks that, and no hero in the game can hide.
 
 **An effect id is a wire vocabulary that lives in neither crate.** The server hands them
-out in `project.rs`, the client reads them in `catalog.rs` and the bot names the few it
-weighs in `numbers.rs`, and nothing holds the lists together: a new effect leaves the
+out in `project.rs`, the client reads them in `catalog.rs` and a bot names the few it
+weighs, and nothing holds the lists together: a new effect leaves the
 client drawing `?` chips while every test passes. By the membership rule the ids cross
 the wire and are needed to read it, so they belong in `bota_proto` — which is where the
 next one added should put them.
@@ -1095,8 +1200,8 @@ an empty recording, a torn prefix or payload, an invalid length, a decode failur
 read failure; a failure keeps the record number and byte offset, stops reading, and
 leaves what was decoded on screen under the error. EOF alone invents no match result.
 
-The ignored `both_real_replays_stream_correctly_with_bounded_prefix` test streams the
-files named by `BOTA_REPLAY_NEURAL` and `BOTA_REPLAY_TEACHER` and checks every message
+The ignored `two_real_replays_stream_correctly_with_bounded_prefix` test streams the
+files named by `BOTA_REPLAY_FIRST` and `BOTA_REPLAY_SECOND` and checks every message
 against a sequential reader.
 
 ### What a slot is worth, and who works it out
@@ -1347,7 +1452,7 @@ An order given on the view of tick `T` takes effect on tick `T + 1` at the earli
 Over a network it lands later: the round trip, the wait for the next tick boundary and
 the client's own thinking add `d` ticks. Dota runs 30 ticks a second and its players
 see 20-120 ms of ping, so `d` is 0-4 ticks there, more on a bad line. Lockstep alone
-has `d = 0`, so a bot trained and measured in lockstep would only ever meet the delay
+has `d = 0`, so a bot measured in lockstep would only ever meet the delay
 when it plays for real.
 
 - `--order-delay-ticks` holds every order of a seat back by a fixed number of ticks;
@@ -1470,7 +1575,7 @@ the server has nothing left to do.
 
 ## The tick's hot path
 
-The tick is what a trainer pays for, so it is kept free of passes that walk everything
+The tick is what a bot-versus-bot run pays for, so it is kept free of passes that walk everything
 for every asker. Each shortcut below gives exactly the answer the full scan gave.
 
 - Targeting (`Candidates` in `systems/target.rs`), the sight pass
@@ -1487,7 +1592,7 @@ for every asker. Each shortcut below gives exactly the answer the full scan gave
   do not walk every tree of the map to find the few that are down.
 - A view is projected in one pass over the entities, deciding once per entity whether
   the side is told of it.
-- `trainer/map2_skirmish` in `benches/dummy` measures what a trainer pays per tick:
+- `trainer/map2_skirmish` in `benches/dummy` measures what a bot-versus-bot run pays per tick:
   `advance` and both sides' views.
 
 ## Stages
@@ -1499,7 +1604,7 @@ for every asker. Each shortcut below gives exactly the answer the full scan gave
 | 2 | ✅ codec | serde derive, postcard, framing, `FrameReader` |
 | 3 | ✅ `bota_proto` tests | round-trip of every message, torn stream into `FrameReader`, snapshot size budget, enum tag order |
 | 4 | ✅ `Fixed` arithmetic | Q16.16 ops through an intermediate `i64`, `Vec2`, `distance_squared` in raw Q32.32, tests in debug and release |
-| 5 | ✅ `World` ticks | entities and component tables, units, movement, orders, creeps, towers, Ancient; `rng.rs` with streams and Ratio/Chance |
+| 5 | ✅ `World` ticks | entities and component tables, units, movement, orders, creeps, towers, Ancient; `rng.rs` with streams and Chance (Ratio lives in `bota_core`) |
 | 6 | ✅ combat | attacks, projectiles, damage, deaths, gold/xp, victory |
 | 7 | ✅ server networking | lobby, both tick modes, snapshot broadcast, replay recording |
 | 8 | ✅ `bota-bot` and `bota-client` | SDK + bot, bot-vs-bot match: the client — macroquad: map, units, HP bars, orders, lobby, spectating, replay playback (since split into `bota_client_core` and drawn by a front end outside the repository); the bot — the `Bot` seam and `play`, a deterministic playbook for Shadow Fiend, lockstep acks, two of it playing a match through to an Ancient (`bota-bot` since deleted: a bot is a client of its own) |
@@ -1507,7 +1612,7 @@ for every asker. Each shortcut below gives exactly the answer the full scan gave
 
 ## Map2: mid-only play on the full Dota map
 
-`MapId(2)` (`SKIRMISH` in `game/config/map.rs`) is `DOTA` with its own id, mid-only
+`MapId(2)` (`SKIRMISH` in `bota_core::map`) is `DOTA` with its own id, mid-only
 waves and its own ending; no landmark, tree, camp, terrain or blocker table is
 duplicated. `lanes` stays three: tree clearance and route construction still see every
 lane, and only `wave_lanes` selects mid. Setting `lanes` to one would leave trees on
@@ -1557,7 +1662,7 @@ at Dota 7.41f, below).
 ### Mango
 
 `ItemId::MANGO` is 42. The shop sends it as an ordinary `ShopEntry`, and a carried one
-counts in `ItemView.charges`. Its numbers, in `game/config/item.rs`:
+counts in `ItemView.charges`. Its numbers, in `bota_core::item`:
 
 | Constant | Value |
 |---|---|

@@ -18,9 +18,9 @@ use crate::replay_play::{
 };
 
 #[test]
-#[ignore = "Requires BOTA_REPLAY_NEURAL and BOTA_REPLAY_TEACHER artifact paths."]
-fn both_real_replays_stream_correctly_with_bounded_prefix() {
-    for variable in ["BOTA_REPLAY_NEURAL", "BOTA_REPLAY_TEACHER"] {
+#[ignore = "Requires BOTA_REPLAY_FIRST and BOTA_REPLAY_SECOND replay paths."]
+fn two_real_replays_stream_correctly_with_bounded_prefix() {
+    for variable in ["BOTA_REPLAY_FIRST", "BOTA_REPLAY_SECOND"] {
         let path = std::env::var_os(variable).unwrap_or_else(|| panic!("set {variable}"));
         verify_replay(Path::new(&path));
     }

@@ -1,4 +1,4 @@
-//! A trainer-like Map2 mid skirmish of two Shadow Fiends on a fixed
+//! A Map2 mid skirmish of two Shadow Fiends on a fixed
 //! order stream, each tick advanced, then seen by both sides with their
 //! events.
 

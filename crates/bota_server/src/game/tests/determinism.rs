@@ -179,7 +179,7 @@ fn fold(digest: &mut Fnv, msg: &ServerMsg) {
     }
 }
 
-/// The orders every seat gives this tick, validated as a trainer does, with
+/// The orders every seat gives this tick, validated as a driver does, with
 /// each refusal folded into the digest.
 fn decide(world: &World, drivers: &mut [Driver], digest: &mut Fnv) -> Vec<Command> {
     let mut commands = Vec::new();

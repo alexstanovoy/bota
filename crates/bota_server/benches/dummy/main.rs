@@ -1,4 +1,4 @@
-//! The dummy tick loop, the trainer-like Map2 skirmish and the micro cases
+//! The dummy tick loop, the Map2 skirmish and the micro cases
 //! under them, measured with criterion.
 //!
 //! ```text
@@ -31,7 +31,7 @@ const TICK_WINDOW_DIGESTS: [(u32, u64, u64); 2] = [
     (3000, 0xe7b7_d87b_ea47_1d45, 0x4220_478f_4b92_f0c2),
 ];
 
-/// Ticks of the trainer-like skirmish measured: the pregame and the lane
+/// Ticks of the skirmish measured: the pregame and the lane
 /// phase after it.
 const SKIRMISH_TICKS: u32 = 9_000;
 
@@ -73,7 +73,7 @@ fn tick_loop(c: &mut Criterion) {
     group.finish();
 }
 
-/// Measures the trainer-like tick: a Map2 skirmish advanced and seen by both
+/// Measures the tick: a Map2 skirmish advanced and seen by both
 /// sides every tick.
 fn trainer(c: &mut Criterion) {
     check_skirmish();
