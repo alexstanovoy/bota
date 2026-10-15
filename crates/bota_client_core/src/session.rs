@@ -523,6 +523,11 @@ impl ClientSession {
         Some(ticks * 1000 / u32::from(self.statics.metadata().tick_rate.max(1)))
     }
 
+    /// The tick of the latest events folded in, a skipped tick's included.
+    pub const fn last_event_tick(&self) -> Option<u32> {
+        self.last_event_tick
+    }
+
     /// Ticks the server skipped for this client so far, too slow for every one.
     pub const fn skipped_ticks(&self) -> u32 {
         self.skipped_ticks
