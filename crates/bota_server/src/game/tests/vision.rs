@@ -2,8 +2,8 @@
 
 use bota_core::{CAMPS, CellGrid, MAPS, MELEE_CREEP, RANGED_CREEP, map_of, rules};
 
-use crate::game::{EventVisibility, Health, ITEM_QUELLING_BLADE, World, wire_id};
-use bota_proto::{Fixed, HeroId, MapId, Target, Team, UnitKind, Vec2};
+use crate::game::{EventVisibility, Health, World, wire_id};
+use bota_proto::{Fixed, HeroId, ItemId, MapId, Target, Team, UnitKind, Vec2};
 
 use super::support::*;
 
@@ -299,8 +299,12 @@ static ROW_TERRAIN: crate::game::MapTerrain = crate::game::MapTerrain {
 fn a_hero_below_the_row() -> (World, crate::game::Entity, Vec2) {
     let mut world = World::on_terrain(&MAPS[1], &ROW_TERRAIN);
     let middle = Vec2::from_ints(2560, 2048);
-    let hero = seated_hero(&mut world, middle + Vec2::from_ints(0, -320), HeroId(1));
-    hand_item(&mut world, hero, ITEM_QUELLING_BLADE, 0);
+    let hero = seated_hero(
+        &mut world,
+        middle + Vec2::from_ints(0, -320),
+        HeroId::SHADOW_FIEND,
+    );
+    hand_item(&mut world, hero, ItemId::QUELLING_BLADE, 0);
     world.settle();
     (world, hero, middle)
 }

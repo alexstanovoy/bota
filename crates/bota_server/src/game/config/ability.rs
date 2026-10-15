@@ -96,12 +96,12 @@ fn level_of(world: &World, caster: Entity, id: AbilityId) -> usize {
 }
 
 fn meat_hook(world: &mut World, caster: Entity, target: Target) -> bool {
-    let level = level_of(world, caster, MEAT_HOOK);
+    let level = level_of(world, caster, AbilityId::MEAT_HOOK);
     world.cast_hook(caster, level, target)
 }
 
 fn rot(world: &mut World, caster: Entity, _: Target) -> bool {
-    let level = level_of(world, caster, ROT);
+    let level = level_of(world, caster, AbilityId::ROT);
     world.toggle_rot(caster, level)
 }
 
@@ -138,68 +138,29 @@ fn shield(world: &mut World, courier: Entity, _: Target) -> bool {
 }
 
 fn raze_near(world: &mut World, caster: Entity, _: Target) -> bool {
-    let level = level_of(world, caster, RAZE_NEAR);
+    let level = level_of(world, caster, AbilityId::RAZE_NEAR);
     world.cast_raze(caster, level, 0)
 }
 
 fn raze_mid(world: &mut World, caster: Entity, _: Target) -> bool {
-    let level = level_of(world, caster, RAZE_MID);
+    let level = level_of(world, caster, AbilityId::RAZE_MID);
     world.cast_raze(caster, level, 1)
 }
 
 fn raze_far(world: &mut World, caster: Entity, _: Target) -> bool {
-    let level = level_of(world, caster, RAZE_FAR);
+    let level = level_of(world, caster, AbilityId::RAZE_FAR);
     world.cast_raze(caster, level, 2)
 }
 
 fn requiem(world: &mut World, caster: Entity, _: Target) -> bool {
-    let level = level_of(world, caster, REQUIEM).min(2);
+    let level = level_of(world, caster, AbilityId::REQUIEM).min(2);
     world.cast_requiem(caster, level)
 }
 
 fn feast(world: &mut World, caster: Entity, _: Target) -> bool {
-    let level = level_of(world, caster, FEAST_OF_SOULS);
+    let level = level_of(world, caster, AbilityId::FEAST_OF_SOULS);
     world.cast_feast(caster, level)
 }
-
-/// Pudge's hook.
-pub const MEAT_HOOK: AbilityId = AbilityId(0);
-/// Pudge's rot: a toggle that burns everything near, its owner included.
-pub const ROT: AbilityId = AbilityId(1);
-/// Pudge's flesh heap: what he keeps of every enemy hero that falls near
-/// him.
-pub const FLESH_HEAP: AbilityId = AbilityId(2);
-/// Pudge's dismember: holds one unit and eats it.
-pub const DISMEMBER: AbilityId = AbilityId(3);
-/// A courier's burst of speed.
-pub const BURST: AbilityId = AbilityId(4);
-/// A courier putting back what it carries.
-pub const RETURN_ITEMS: AbilityId = AbilityId(5);
-/// A courier taking what waits in the stash.
-pub const TAKE_STASH: AbilityId = AbilityId(6);
-/// A courier handing over what it carries.
-pub const DELIVER: AbilityId = AbilityId(7);
-/// A courier's shield, which nothing gets through.
-pub const SHIELD: AbilityId = AbilityId(8);
-/// Shadow Fiend's nearest raze.
-pub const RAZE_NEAR: AbilityId = AbilityId(9);
-/// Shadow Fiend's middle raze.
-pub const RAZE_MID: AbilityId = AbilityId(10);
-/// Shadow Fiend's farthest raze.
-pub const RAZE_FAR: AbilityId = AbilityId(11);
-/// Shadow Fiend's requiem: a line for each soul gathered, which it does not
-/// spend.
-pub const REQUIEM: AbilityId = AbilityId(12);
-/// Shadow Fiend's necromastery: a soul kept of everything he brings down.
-/// Innate: it sits in no slot and is never learned.
-pub const NECROMASTERY: AbilityId = AbilityId(13);
-/// Shadow Fiend's presence: enemies standing near him wear less armor.
-pub const PRESENCE: AbilityId = AbilityId(14);
-/// Shadow Fiend's feast of souls: attacks and steps come faster for a while,
-/// and souls are taken from the enemies near him.
-pub const FEAST_OF_SOULS: AbilityId = AbilityId(15);
-/// A Blood Grenade's throw: what names one in flight. Sits in no slot.
-pub const THROW_GRENADE: AbilityId = AbilityId(16);
 
 /// Every ability, indexed by [`AbilityId`].
 pub const ABILITIES: [AbilityDef; 17] = [
@@ -413,7 +374,7 @@ fn pick<T: Copy + Default>(table: &[T], level: u8) -> T {
 /// other ability is a group of itself.
 pub fn learn_group(id: AbilityId) -> AbilityId {
     match id {
-        RAZE_MID | RAZE_FAR => RAZE_NEAR,
+        AbilityId::RAZE_MID | AbilityId::RAZE_FAR => AbilityId::RAZE_NEAR,
         _ => id,
     }
 }

@@ -2,13 +2,10 @@
 
 use bota_core::{MELEE_CREEP, fountain_pos, isqrt64, rules};
 
-use crate::game::{
-    BAG_SLOTS, Command, Entity, Errand, ITEM_BOOTS, ITEM_IRON_BRANCH, ItemStack, UnitOrder, World,
-    ability, wire_id,
-};
+use crate::game::{BAG_SLOTS, Command, Entity, Errand, ItemStack, UnitOrder, World, wire_id};
 use bota_proto::{
-    AbilitySlot, DamageKind, EventKind, Fixed, ItemId, Order, RejectReason, SlotId, Target, Team,
-    Vec2,
+    AbilityId, AbilitySlot, DamageKind, EventKind, Fixed, ItemId, Order, RejectReason, SlotId,
+    Target, Team, Vec2,
 };
 
 use super::support::*;
@@ -60,8 +57,8 @@ fn a_courier_brought_down_comes_back_in_its_own_time() {
 fn a_courier_fetches_the_stash_hands_it_over_and_turns_for_home() {
     let (mut world, hero, courier) = a_match();
     let home = fountain_pos(world.map, Team::Radiant);
-    let boots = ItemId(ITEM_BOOTS);
-    world.seats[0].stash.slots[0] = Some(fresh_stack(ITEM_BOOTS, 0));
+    let boots = ItemId::BOOTS;
+    world.seats[0].stash.slots[0] = Some(fresh_stack(ItemId::BOOTS, 0));
     // Standing at the fountain, it takes what waits there on the next tick.
     assert!(world.courier_take_stash(courier));
     world.step();
@@ -177,8 +174,8 @@ fn a_courier_told_to_go_at_a_unit_follows_it() {
 #[test]
 fn a_courier_at_the_fountain_reaches_the_stash_itself() {
     let (mut world, hero, courier) = a_match();
-    let boots = ItemId(ITEM_BOOTS);
-    world.seats[0].stash.slots[0] = Some(fresh_stack(ITEM_BOOTS, 0));
+    let boots = ItemId::BOOTS;
+    world.seats[0].stash.slots[0] = Some(fresh_stack(ItemId::BOOTS, 0));
     // The hero is out in the lane, so the stash is nothing to it.
     world.transform.get_mut(hero).expect("standing").pos =
         fountain_pos(world.map, Team::Radiant) + Vec2::from_ints(4000, 0);
@@ -211,8 +208,8 @@ fn a_courier_at_the_fountain_reaches_the_stash_itself() {
 #[test]
 fn courier_auxiliary_casts_keep_delivery_tracking_a_moving_owner() {
     for (slot, ability, cooldown) in [
-        (2, ability::BURST, rules::COURIER_BURST_COOLDOWN),
-        (4, ability::SHIELD, rules::COURIER_SHIELD_COOLDOWN),
+        (2, AbilityId::BURST, rules::COURIER_BURST_COOLDOWN),
+        (4, AbilityId::SHIELD, rules::COURIER_SHIELD_COOLDOWN),
     ] {
         let (mut world, hero, courier) = courier_on_delivery();
         let cargo = slot_of(&world, courier, 0);
@@ -242,7 +239,7 @@ fn courier_auxiliary_casts_keep_delivery_tracking_a_moving_owner() {
         );
         world.advance(&[]);
         let stats = world.stats.get(courier).expect("settled");
-        if ability == ability::BURST {
+        if ability == AbilityId::BURST {
             assert_eq!(
                 stats.move_speed,
                 speed * Fixed::from_ratio(100 + rules::COURIER_BURST_PCT, 100)
@@ -315,7 +312,7 @@ fn taking_the_stash_carries_it_on_without_being_asked_twice() {
     let (mut world, hero, courier) = a_match();
     let home = fountain_pos(world.map, Team::Radiant);
     world.transform.get_mut(hero).expect("standing").pos = home + Vec2::from_ints(900, 0);
-    world.seats[0].stash.slots[0] = Some(fresh_stack(ITEM_BOOTS, 0));
+    world.seats[0].stash.slots[0] = Some(fresh_stack(ItemId::BOOTS, 0));
     assert!(world.courier_take_stash(courier));
     step_until(&mut world, 300, |world| held(world, hero) > 0);
     assert!(
@@ -350,7 +347,7 @@ fn an_errand_with_nothing_to_do_sends_the_courier_home() {
 #[test]
 fn a_courier_whose_owner_fell_puts_what_it_carries_back() {
     let (mut world, hero, courier) = a_match();
-    hand_item(&mut world, courier, ITEM_BOOTS, 0);
+    hand_item(&mut world, courier, ItemId::BOOTS, 0);
     world.bury(vec![(hero, None)], &mut Vec::new());
     assert!(world.courier_deliver(courier));
     step_until(&mut world, 300, |world| {
@@ -391,7 +388,8 @@ fn a_shielded_courier_takes_nothing() {
 fn a_courier_keeps_its_load_through_death() {
     let (mut world, _hero) = a_hero_with_gold(0);
     let courier = the_courier(&world);
-    world.inventory.get_mut(courier).expect("carries").slots[0] = Some(a_stack_of(ITEM_BOOTS, 0));
+    world.inventory.get_mut(courier).expect("carries").slots[0] =
+        Some(a_stack_of(ItemId::BOOTS, 0));
     world.bury(vec![(courier, None)], &mut Vec::new());
     assert!(
         world.seats[0]
@@ -411,7 +409,7 @@ fn a_courier_keeps_its_load_through_death() {
 #[test]
 fn a_courier_sent_for_the_stash_carries_on_what_it_already_holds() {
     let (mut world, hero, courier) = a_match();
-    hand_item(&mut world, courier, ITEM_BOOTS, 0);
+    hand_item(&mut world, courier, ItemId::BOOTS, 0);
     let home = fountain_pos(world.map, Team::Radiant);
     world.transform.get_mut(hero).expect("standing").pos = home + Vec2::from_ints(2500, 0);
     // The stash is empty, and the goods still go to the hero, not home.
@@ -419,7 +417,7 @@ fn a_courier_sent_for_the_stash_carries_on_what_it_already_holds() {
     step_until(&mut world, 600, |world| held(world, hero) > 0);
     assert_eq!(
         slot_of(&world, hero, 0).map(|held| held.id),
-        Some(ItemId(ITEM_BOOTS)),
+        Some(ItemId::BOOTS),
         "what it was already carrying reaches its owner"
     );
 }
@@ -429,7 +427,7 @@ fn what_an_owner_has_no_room_for_goes_back_to_the_stash() {
     let (mut world, hero, courier) = a_match();
     let stack = ItemStack {
         charges: 1,
-        ..a_stack_of(ITEM_IRON_BRANCH, 0)
+        ..a_stack_of(ItemId::IRON_BRANCH, 0)
     };
     // Every slot the hero has is taken, so there is nowhere to hand it.
     world

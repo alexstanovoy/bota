@@ -5,11 +5,8 @@ use bota_core::{
     RANGED_CREEP, SUPER_MELEE_CREEP, SUPER_RANGED_CREEP, UnitDef, attack_gain, map_of, rules,
 };
 
-use crate::game::{
-    Def, Health, ITEM_BAND, ITEM_BELT, ITEM_BOOTS, ITEM_GLOVES, ITEM_ROBE, ITEMS, Level, Mana,
-    Modifiers, Stats, UnitOrder, Upgrades, World,
-};
-use bota_proto::{DamageKind, Fixed, MapId, Team, UnitKind, Vec2};
+use crate::game::{Def, Health, ITEMS, Level, Mana, Modifiers, Stats, UnitOrder, Upgrades, World};
+use bota_proto::{DamageKind, Fixed, ItemId, MapId, Team, UnitKind, Vec2};
 
 use super::support::*;
 
@@ -250,7 +247,7 @@ fn what_a_hero_carries_shows_up_in_its_stats() {
         .enumerate()
         .find(|(_, d)| d.carried.damage > 0)
         .expect("some item adds damage");
-    hand_item(&mut world, hero, id as u16, def.charges);
+    hand_item(&mut world, hero, ItemId(id as u16), def.charges);
     world.step();
     assert_eq!(
         world.stats.get(hero).map(|s| s.damage),
@@ -377,7 +374,7 @@ fn what_a_courier_carries_is_worth_nothing_to_the_courier() {
     let courier = the_courier(&world);
     world.step();
     let plain = world.stats.get(courier).expect("settled").move_speed;
-    hand_item(&mut world, courier, ITEM_BOOTS, 0);
+    hand_item(&mut world, courier, ItemId::BOOTS, 0);
     world.step();
     assert_eq!(
         world.stats.get(courier).map(|stats| stats.move_speed),
@@ -391,7 +388,7 @@ fn every_attribute_pays_for_what_it_is_worth() {
     let (mut world, hero) = a_hero_with_gold(0);
     let before = *world.stats.get(hero).expect("settled");
     let six = Fixed::from_int(6);
-    hand_item(&mut world, hero, ITEM_BELT, 0);
+    hand_item(&mut world, hero, ItemId::BELT, 0);
     world.step();
     let with_belt = *world.stats.get(hero).expect("settled");
     assert_eq!(
@@ -409,7 +406,7 @@ fn every_attribute_pays_for_what_it_is_worth() {
         rules::HP_REGEN_PER_STRENGTH * six,
         "and mending"
     );
-    hand_item(&mut world, hero, ITEM_ROBE, 0);
+    hand_item(&mut world, hero, ItemId::ROBE, 0);
     world.step();
     let with_robe = *world.stats.get(hero).expect("settled");
     assert_eq!(
@@ -417,7 +414,7 @@ fn every_attribute_pays_for_what_it_is_worth() {
         Fixed::from_int(rules::MANA_PER_INTELLIGENCE) * six,
         "intelligence is worth mana"
     );
-    hand_item(&mut world, hero, ITEM_BAND, 0);
+    hand_item(&mut world, hero, ItemId::BAND, 0);
     world.step();
     let with_band = *world.stats.get(hero).expect("settled");
     assert_eq!(
@@ -436,7 +433,7 @@ fn every_attribute_pays_for_what_it_is_worth() {
 fn attack_speed_shortens_the_wait_between_attacks() {
     let (mut world, hero) = a_hero_with_gold(0);
     let plain = *world.stats.get(hero).expect("settled");
-    hand_item(&mut world, hero, ITEM_GLOVES, 0);
+    hand_item(&mut world, hero, ItemId::GLOVES, 0);
     world.step();
     let hasted = *world.stats.get(hero).expect("settled");
     assert_eq!(

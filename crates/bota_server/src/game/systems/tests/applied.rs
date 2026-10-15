@@ -3,15 +3,14 @@
 use bota_core::{Aura, MELEE_CREEP, ModifierKind, Reach, SHADOW_FIEND, map_of, rules, tower_def};
 
 use crate::game::{
-    AppliedModifier, AppliedModifiers, AppliedOrigin, AuraCx, Auras, Entity, ITEM_BLINK_DAGGER,
-    ITEM_BOOTS, ITEM_BRACER, ITEM_MAGIC_STICK, ITEM_NULL_TALISMAN, ITEM_PHASE_BOOTS,
-    ITEM_TOWN_PORTAL_SCROLL, ITEMS, MAX_APPLIED_MODIFIERS_PER_UNIT, MAX_COMBINED_MODIFIER_SCALE,
-    Modifier, Place, Seat, Spots, StackKind, Stacks, World, ability, ability_cooldown,
-    ability_mana_cost, aura_system, cooldown_after, cost_after, wire_id,
+    AppliedModifier, AppliedModifiers, AppliedOrigin, AuraCx, Auras, Entity, ITEMS,
+    MAX_APPLIED_MODIFIERS_PER_UNIT, MAX_COMBINED_MODIFIER_SCALE, Modifier, Place, Seat, Spots,
+    StackKind, Stacks, World, ability_cooldown, ability_mana_cost, aura_system, cooldown_after,
+    cost_after, wire_id,
 };
 use bota_proto::{
-    AbilitySlot, DamageKind, Fixed, HeroId, ItemId, MapId, ModifierSpec, SlotId, Target, Team,
-    UnitKind, Vec2,
+    AbilityId, AbilitySlot, DamageKind, Fixed, HeroId, ItemId, MapId, ModifierSpec, SlotId, Target,
+    Team, UnitKind, Vec2,
 };
 
 use super::support::{hold, spec};
@@ -23,7 +22,7 @@ fn arena() -> (World, Entity, Entity) {
         Team::Radiant,
         Vec2::from_ints(7000, 7000),
         SlotId(0),
-        HeroId(1),
+        HeroId::SHADOW_FIEND,
     );
     let creep = world.spawn_unit(&MELEE_CREEP, Team::Dire, Vec2::from_ints(1000, 1000));
     world.settle();
@@ -97,7 +96,7 @@ fn amplified_requiem(ticks: u32) -> (World, Entity, Entity) {
         Team::Radiant,
         Vec2::from_ints(5000, 5000),
         SlotId(0),
-        HeroId(1),
+        HeroId::SHADOW_FIEND,
     );
     let target = world.spawn_unit(&MELEE_CREEP, Team::Dire, Vec2::from_ints(5300, 5000));
     world.settle();
@@ -377,12 +376,12 @@ fn a_nominal_spec_changes_no_stat_cost_or_cooldown() {
     apply(&mut world, twin, ModifierSpec::NOMINAL, 10);
     assert_eq!(plain.stats.get(hero), world.stats.get(twin));
     assert_eq!(
-        world.ability_mana_cost(twin, ability::RAZE_NEAR, 1),
-        ability_mana_cost(ability::RAZE_NEAR, 1)
+        world.ability_mana_cost(twin, AbilityId::RAZE_NEAR, 1),
+        ability_mana_cost(AbilityId::RAZE_NEAR, 1)
     );
     assert_eq!(
-        world.ability_cooldown(twin, ability::RAZE_NEAR, 1),
-        ability_cooldown(ability::RAZE_NEAR, 1)
+        world.ability_cooldown(twin, AbilityId::RAZE_NEAR, 1),
+        ability_cooldown(AbilityId::RAZE_NEAR, 1)
     );
 }
 
@@ -395,10 +394,10 @@ fn cost_and_cooldown_rates_scale_what_a_cast_charges_shows_and_sets() {
         s.cooldown_rate = 6_000;
     });
     apply(&mut world, hero, rates, 10);
-    let base = ability_mana_cost(ability::RAZE_NEAR, 1);
+    let base = ability_mana_cost(AbilityId::RAZE_NEAR, 1);
     assert_eq!(base, rules::RAZE_MANA[0]);
     assert_eq!(
-        world.ability_mana_cost(hero, ability::RAZE_NEAR, 1),
+        world.ability_mana_cost(hero, AbilityId::RAZE_NEAR, 1),
         base / 2
     );
     let view = world.view_full();
@@ -421,7 +420,7 @@ fn cost_and_cooldown_rates_scale_what_a_cast_charges_shows_and_sets() {
     );
     assert_eq!(
         world.abilities.get(hero).map(|book| book.slots[0].cooldown),
-        Some(ability_cooldown(ability::RAZE_NEAR, 1) * 3 / 5),
+        Some(ability_cooldown(AbilityId::RAZE_NEAR, 1) * 3 / 5),
         "and set the scaled cooldown"
     );
 }
@@ -429,7 +428,7 @@ fn cost_and_cooldown_rates_scale_what_a_cast_charges_shows_and_sets() {
 #[test]
 fn cooldown_rate_shortens_what_an_item_use_sets() {
     let (mut world, hero, _creep) = arena();
-    hold(&mut world, hero, 0, ITEM_MAGIC_STICK);
+    hold(&mut world, hero, 0, ItemId::MAGIC_STICK);
     if let Some(stack) = world
         .inventory
         .get_mut(hero)
@@ -439,7 +438,7 @@ fn cooldown_rate_shortens_what_an_item_use_sets() {
     }
     apply(&mut world, hero, spec(|s| s.cooldown_rate = 5_000), 10);
     assert!(world.begin_item(hero, 0, Target::None));
-    let full = ITEMS[usize::from(ITEM_MAGIC_STICK)].cooldown;
+    let full = ITEMS[usize::from(ItemId::MAGIC_STICK.0)].cooldown;
     assert_eq!(
         world
             .inventory
@@ -462,13 +461,13 @@ fn a_shared_item_wait_is_scaled_with_the_cooldown_rate() {
     let mut seat = Seat::new(
         SlotId(0),
         Team::Radiant,
-        HeroId(1),
+        HeroId::SHADOW_FIEND,
         rules::STARTING_GOLD,
         rules::STASH_SLOTS,
     );
     seat.unit = Some(hero);
     world.seats.push(seat);
-    hold(&mut world, hero, 0, ITEM_TOWN_PORTAL_SCROLL);
+    hold(&mut world, hero, 0, ItemId::TOWN_PORTAL_SCROLL);
     apply(&mut world, hero, spec(|s| s.cooldown_rate = 5_000), 10);
     let at = world.transform.get(hero).expect("standing").pos;
     assert!(
@@ -477,10 +476,7 @@ fn a_shared_item_wait_is_scaled_with_the_cooldown_rate() {
     );
     assert_eq!(
         world.seats[0].item_clocks,
-        vec![(
-            ItemId(ITEM_TOWN_PORTAL_SCROLL),
-            rules::SCROLL_WAIT_TICKS / 2
-        )],
+        vec![(ItemId::TOWN_PORTAL_SCROLL, rules::SCROLL_WAIT_TICKS / 2)],
         "the wait on the kind of item is halved"
     );
     assert_eq!(
@@ -497,13 +493,13 @@ fn a_shared_item_wait_is_scaled_with_the_cooldown_rate() {
 #[test]
 fn a_blow_sets_a_muted_item_back_by_the_cooldown_rate() {
     let (mut world, hero, _creep) = arena();
-    hold(&mut world, hero, 0, ITEM_BLINK_DAGGER);
+    hold(&mut world, hero, 0, ItemId::BLINK_DAGGER);
     apply(&mut world, hero, spec(|s| s.cooldown_rate = 5_000), 10);
     let hitter = world.spawn();
     world.kind.insert(hitter, UnitKind::Hero);
     world.push_hit(Some(hitter), hero, 10, DamageKind::Physical);
     world.step();
-    let full = ITEMS[usize::from(ITEM_BLINK_DAGGER)].breaks_on_damage;
+    let full = ITEMS[usize::from(ItemId::BLINK_DAGGER.0)].breaks_on_damage;
     assert_eq!(
         world
             .inventory
@@ -562,7 +558,7 @@ fn pudge_with_a_heap() -> (World, Entity) {
         Team::Radiant,
         Vec2::from_ints(7000, 7000),
         SlotId(0),
-        HeroId(0),
+        HeroId::PUDGE,
     );
     if let Some(book) = world.abilities.get_mut(pudge) {
         book.slots[2].level = 1;
@@ -614,7 +610,7 @@ fn magic_resistance_is_clamped_before_the_flesh_heap_multiplies() {
 #[test]
 fn movement_speed_adds_before_items_and_slows() {
     let (mut world, hero, _creep) = arena();
-    hold(&mut world, hero, 0, ITEM_BOOTS);
+    hold(&mut world, hero, 0, ItemId::BOOTS);
     apply(&mut world, hero, spec(|s| s.move_speed = 15_000), 10);
     let carried = SHADOW_FIEND.move_speed * 3 / 2 + 45;
     assert_eq!(
@@ -641,7 +637,7 @@ fn movement_speed_adds_before_items_and_slows() {
 #[test]
 fn max_health_scales_the_raised_base_before_items() {
     let (mut world, hero, _creep) = arena();
-    hold(&mut world, hero, 0, ITEM_BRACER);
+    hold(&mut world, hero, 0, ItemId::BRACER);
     apply(&mut world, hero, spec(|s| s.max_hp = 20_000), 10);
     let expected = SHADOW_FIEND.max_hp * 2 + rules::HP_PER_STRENGTH * 25;
     assert_eq!(
@@ -654,7 +650,7 @@ fn max_health_scales_the_raised_base_before_items() {
 #[test]
 fn max_mana_scales_the_raised_base_before_items() {
     let (mut world, hero, _creep) = arena();
-    hold(&mut world, hero, 0, ITEM_NULL_TALISMAN);
+    hold(&mut world, hero, 0, ItemId::NULL_TALISMAN);
     apply(&mut world, hero, spec(|s| s.max_mana = 20_000), 10);
     let expected = SHADOW_FIEND.max_mana * 2 + rules::MANA_PER_INTELLIGENCE * 22;
     assert_eq!(
@@ -667,7 +663,7 @@ fn max_mana_scales_the_raised_base_before_items() {
 #[test]
 fn damage_amplification_multiplies_the_whole_damage_before_mitigation() {
     let (mut world, hero, creep) = arena();
-    hold(&mut world, hero, 0, ITEM_PHASE_BOOTS);
+    hold(&mut world, hero, 0, ItemId::PHASE_BOOTS);
     apply(&mut world, hero, spec(|s| s.pure_damage = 15_000), 10);
     let damage = world.stats.get(hero).expect("settled").damage;
     assert!(

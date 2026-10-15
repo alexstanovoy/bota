@@ -4,12 +4,12 @@ use bota_core::{MELEE_CREEP, rules};
 
 use super::support::{a_spec, spec};
 use crate::game::{
-    Command, Entity, Event, ITEM_BUTTERFLY, ITEM_TOWN_PORTAL_SCROLL, ITEMS, ItemStack, MatchConfig,
-    World, ability, ability_mana_cost, wire_id,
+    Command, Entity, Event, ITEMS, ItemStack, MatchConfig, World, ability_mana_cost, wire_id,
 };
 use bota_proto::{
-    AbilitySlot, Cheat, DamageKind, EntityId, EventKind, Fixed, HeroId, ItemId, MAX_MODIFIER_TICKS,
-    MapId, ModifierSpec, Order, Pick, RejectReason, SlotId, Target, Team, TickMode, Vec2,
+    AbilityId, AbilitySlot, Cheat, DamageKind, EntityId, EventKind, Fixed, HeroId, ItemId,
+    MAX_MODIFIER_TICKS, MapId, ModifierSpec, Order, Pick, RejectReason, SlotId, Target, Team,
+    TickMode, Vec2,
 };
 
 /// A one-seat match on the demo map, with or without cheats.
@@ -20,7 +20,7 @@ fn config(cheats: bool) -> MatchConfig {
         picks: vec![Pick {
             slot: SlotId(0),
             team: Team::Radiant,
-            hero: HeroId(1),
+            hero: HeroId::SHADOW_FIEND,
         }],
         map: MapId(1),
         tick_rate: 30,
@@ -117,13 +117,13 @@ fn a_refresh_fills_the_pools_and_clears_every_wait() {
     world.health.get_mut(hero).expect("standing").hp = Fixed::from_int(1);
     world.mana.get_mut(hero).expect("has mana").mana = Fixed::ZERO;
     world.abilities.get_mut(hero).expect("has a book").slots[1].cooldown = 100;
-    let mut scroll = ItemStack::bought(ItemId(ITEM_TOWN_PORTAL_SCROLL), SlotId(0), 0)
-        .expect("the scroll is sold");
+    let mut scroll =
+        ItemStack::bought(ItemId::TOWN_PORTAL_SCROLL, SlotId(0), 0).expect("the scroll is sold");
     (scroll.cooldown, scroll.mute) = (50, 20);
     world.inventory.get_mut(hero).expect("has a bag").slots[0] = Some(scroll);
     world.seats[0]
         .item_clocks
-        .push((ItemId(ITEM_TOWN_PORTAL_SCROLL), 900));
+        .push((ItemId::TOWN_PORTAL_SCROLL, 900));
     cheat(&mut world, Cheat::Refresh);
     let stats = *world.stats.get(hero).expect("settled");
     assert_eq!(world.health.get(hero).map(|h| h.hp), Some(stats.max_hp));
@@ -144,7 +144,7 @@ fn an_item_is_handed_out_for_nothing_and_told_of_as_bought() {
     let events = cheat(
         &mut world,
         Cheat::Item {
-            item: ItemId(ITEM_BUTTERFLY),
+            item: ItemId::BUTTERFLY,
         },
     );
     assert!(
@@ -153,14 +153,14 @@ fn an_item_is_handed_out_for_nothing_and_told_of_as_bought() {
             .get(hero)
             .expect("has a bag")
             .held()
-            .any(|stack| stack.id == ItemId(ITEM_BUTTERFLY)),
+            .any(|stack| stack.id == ItemId::BUTTERFLY),
         "the Butterfly is in the bag"
     );
     assert_eq!(world.seats[0].gold, gold, "and nothing was paid");
     assert!(events.iter().any(|event| matches!(
         event.kind,
         EventKind::ItemBought {
-            item: ItemId(ITEM_BUTTERFLY),
+            item: ItemId::BUTTERFLY,
             ..
         }
     )));
@@ -175,7 +175,7 @@ fn a_match_without_cheats_refuses_every_cheat_and_one_with_them_takes_it() {
         Cheat::Levels { count: 1 },
         Cheat::Refresh,
         Cheat::Item {
-            item: ItemId(ITEM_BUTTERFLY),
+            item: ItemId::BUTTERFLY,
         },
         Cheat::ApplyModifier {
             target: Target::None,
@@ -384,8 +384,8 @@ fn a_kept_kit_is_projected_after_the_body_falls() {
     if let Some(book) = world.abilities.get_mut(hero) {
         book.slots[0].level = 1;
     }
-    let stack = ItemStack::bought(ItemId(ITEM_BUTTERFLY), SlotId(0), world.tick)
-        .expect("the Butterfly is sold");
+    let stack =
+        ItemStack::bought(ItemId::BUTTERFLY, SlotId(0), world.tick).expect("the Butterfly is sold");
     world.inventory.get_mut(hero).expect("has a bag").slots[0] = Some(stack);
     cheat_modifier(&mut world, spec(|s| s.mana_cost_rate = 5_000), 100);
     let live = world.view_full();
@@ -396,7 +396,7 @@ fn a_kept_kit_is_projected_after_the_body_falls() {
         .expect("the hero is in the view");
     assert_eq!(
         unit.abilities[0].mana_cost,
-        ability_mana_cost(ability::RAZE_NEAR, 1) / 2,
+        ability_mana_cost(AbilityId::RAZE_NEAR, 1) / 2,
         "the living view carries the rate"
     );
     assert_eq!(
@@ -415,7 +415,7 @@ fn a_kept_kit_is_projected_after_the_body_falls() {
     let kit = seat.kit.as_ref().expect("the kit outlives the body");
     assert_eq!(
         kit.abilities[0].mana_cost,
-        ability_mana_cost(ability::RAZE_NEAR, 1),
+        ability_mana_cost(AbilityId::RAZE_NEAR, 1),
         "the modifier fell with the body, so the kept kit is nominal"
     );
     assert_eq!(kit.items[0].as_ref().map(|item| item.mana_cost), Some(0));
@@ -445,7 +445,7 @@ fn two_seat_config() -> MatchConfig {
     cfg.picks.push(Pick {
         slot: SlotId(1),
         team: Team::Dire,
-        hero: HeroId(1),
+        hero: HeroId::SHADOW_FIEND,
     });
     cfg
 }
@@ -491,11 +491,11 @@ fn gold_income_leaves_starting_passive_and_refunded_gold_alone() {
         before + 1,
         "passive income is one a period either way"
     );
-    let mut stack = ItemStack::bought(ItemId(ITEM_BUTTERFLY), SlotId(0), world.tick)
-        .expect("the Butterfly is sold");
+    let mut stack =
+        ItemStack::bought(ItemId::BUTTERFLY, SlotId(0), world.tick).expect("the Butterfly is sold");
     stack.touched = true;
     world.inventory.get_mut(hero).expect("has a bag").slots[0] = Some(stack);
-    let price = ITEMS[usize::from(ITEM_BUTTERFLY)].cost;
+    let price = ITEMS[usize::from(ItemId::BUTTERFLY.0)].cost;
     let gold = world.seats[0].gold;
     assert!(world.sell_item(SlotId(0), hero, 0), "it sells at the shop");
     assert_eq!(
@@ -511,7 +511,7 @@ fn a_scaled_mana_cost_is_what_the_cast_checks_and_spends() {
     if let Some(book) = world.abilities.get_mut(hero) {
         book.slots[0].level = 1;
     }
-    let full = ability_mana_cost(ability::RAZE_NEAR, 1);
+    let full = ability_mana_cost(AbilityId::RAZE_NEAR, 1);
     cheat_modifier(&mut world, spec(|s| s.mana_cost_rate = 5_000), 100);
     let cast = Order::Cast {
         slot: AbilitySlot(0),

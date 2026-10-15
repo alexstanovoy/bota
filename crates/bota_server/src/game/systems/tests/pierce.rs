@@ -3,10 +3,8 @@
 
 use bota_core::{Ratio, UnitDef, rules};
 
-use crate::game::{
-    Entity, Event, ITEM_BUTTERFLY, ITEM_JAVELIN, ITEM_MONKEY_KING_BAR, UnitOrder, World, wire_id,
-};
-use bota_proto::{DamageKind, EventKind, Fixed, HeroId, SlotId, Team, UnitKind, Vec2};
+use crate::game::{Entity, Event, UnitOrder, World, wire_id};
+use bota_proto::{DamageKind, EventKind, Fixed, HeroId, ItemId, SlotId, Team, UnitKind, Vec2};
 
 use super::support::{
     ANVIL, assert_exact_blocks, hold, opened, step_until, swinging_at, until_opened,
@@ -21,7 +19,7 @@ const KEEP: UnitDef = UnitDef {
 
 /// A hero of a kind on the Radiant side, holding what it is given and
 /// swinging as fast as it may.
-fn hero_holding(world: &mut World, hero: HeroId, held: &[u16]) -> Entity {
+fn hero_holding(world: &mut World, hero: HeroId, held: &[ItemId]) -> Entity {
     let entity = world.spawn_hero(Team::Radiant, Vec2::from_ints(5000, 5000), SlotId(0), hero);
     for (slot, item) in held.iter().enumerate() {
         hold(world, entity, slot, *item);
@@ -93,7 +91,7 @@ fn swings(world: &mut World, from: Entity, on: Entity, wanted: usize) -> Vec<Tol
 fn a_monkey_king_bar_pierces_exactly_its_share_and_lands_its_bonus() {
     let ratio = Ratio::new(4, 5);
     let mut world = World::new();
-    let pudge = hero_holding(&mut world, HeroId(0), &[ITEM_MONKEY_KING_BAR]);
+    let pudge = hero_holding(&mut world, HeroId::PUDGE, &[ItemId::MONKEY_KING_BAR]);
     let anvil = world.spawn_unit(&ANVIL, Team::Dire, Vec2::from_ints(5100, 5000));
     world.settle();
     world.set_target(pudge, anvil);
@@ -123,14 +121,14 @@ fn a_monkey_king_bar_pierces_exactly_its_share_and_lands_its_bonus() {
 #[test]
 fn a_pierced_swing_is_never_evaded() {
     let mut world = World::new();
-    let pudge = hero_holding(&mut world, HeroId(0), &[ITEM_MONKEY_KING_BAR]);
+    let pudge = hero_holding(&mut world, HeroId::PUDGE, &[ItemId::MONKEY_KING_BAR]);
     let dodger = world.spawn_hero(
         Team::Dire,
         Vec2::from_ints(5100, 5000),
         SlotId(1),
-        HeroId(1),
+        HeroId::SHADOW_FIEND,
     );
-    hold(&mut world, dodger, 0, ITEM_BUTTERFLY);
+    hold(&mut world, dodger, 0, ItemId::BUTTERFLY);
     world.settle();
     world.set_order(dodger, UnitOrder::Stand);
     world.set_target(pudge, dodger);
@@ -164,7 +162,7 @@ fn a_pierced_swing_is_never_evaded() {
 #[test]
 fn a_structure_is_never_pierced() {
     let mut world = World::new();
-    let pudge = hero_holding(&mut world, HeroId(0), &[ITEM_MONKEY_KING_BAR]);
+    let pudge = hero_holding(&mut world, HeroId::PUDGE, &[ItemId::MONKEY_KING_BAR]);
     let keep = world.spawn_unit(&KEEP, Team::Dire, Vec2::from_ints(5100, 5000));
     world.settle();
     world.set_target(pudge, keep);
@@ -183,12 +181,16 @@ fn a_structure_is_never_pierced() {
 #[test]
 fn of_two_pierces_carried_the_better_counts_with_its_own_damage() {
     let mut world = World::new();
-    let both = hero_holding(&mut world, HeroId(0), &[ITEM_JAVELIN, ITEM_MONKEY_KING_BAR]);
+    let both = hero_holding(
+        &mut world,
+        HeroId::PUDGE,
+        &[ItemId::JAVELIN, ItemId::MONKEY_KING_BAR],
+    );
     world.settle();
     let stats = *world.stats.get(both).expect("settled");
     assert_eq!((stats.pierce, stats.pierce_damage), (Ratio::new(4, 5), 70));
     let mut world = World::new();
-    let javelin = hero_holding(&mut world, HeroId(0), &[ITEM_JAVELIN]);
+    let javelin = hero_holding(&mut world, HeroId::PUDGE, &[ItemId::JAVELIN]);
     world.settle();
     let stats = *world.stats.get(javelin).expect("settled");
     assert_eq!((stats.pierce, stats.pierce_damage), (Ratio::new(1, 4), 60));
@@ -197,10 +199,10 @@ fn of_two_pierces_carried_the_better_counts_with_its_own_damage() {
 #[test]
 fn a_monkey_king_bar_reaches_further_in_melee_hands_only() {
     let mut world = World::new();
-    let bare = hero_holding(&mut world, HeroId(0), &[]);
-    let armed = hero_holding(&mut world, HeroId(0), &[ITEM_MONKEY_KING_BAR]);
-    let archer = hero_holding(&mut world, HeroId(1), &[]);
-    let armed_archer = hero_holding(&mut world, HeroId(1), &[ITEM_MONKEY_KING_BAR]);
+    let bare = hero_holding(&mut world, HeroId::PUDGE, &[]);
+    let armed = hero_holding(&mut world, HeroId::PUDGE, &[ItemId::MONKEY_KING_BAR]);
+    let archer = hero_holding(&mut world, HeroId::SHADOW_FIEND, &[]);
+    let armed_archer = hero_holding(&mut world, HeroId::SHADOW_FIEND, &[ItemId::MONKEY_KING_BAR]);
     world.settle();
     let reach = |entity: Entity| world.stats.get(entity).expect("settled").attack_range;
     assert_eq!(reach(armed) - reach(bare), Fixed::from_int(50));

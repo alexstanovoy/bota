@@ -141,7 +141,7 @@ fn an_attack_order_a_hero_aims_at_itself_moves_nobody() {
         Team::Dire,
         Vec2::from_ints(5040, 5000),
         SlotId(0),
-        HeroId(1),
+        HeroId::SHADOW_FIEND,
     );
     // Somebody else for the creep to fall back on, so that a hero put last
     // would show.
@@ -181,7 +181,7 @@ fn a_creep_prefers_a_creep_to_a_hero_that_is_doing_nothing() {
         Team::Dire,
         Vec2::from_ints(5100, 5000),
         SlotId(0),
-        HeroId(1),
+        HeroId::SHADOW_FIEND,
     );
     let other = world.spawn_unit(&MELEE_CREEP, Team::Dire, Vec2::from_ints(5400, 5000));
     world.settle();
@@ -201,7 +201,7 @@ fn a_hero_laying_into_your_side_counts_for_no_more_than_a_creep() {
         Team::Dire,
         Vec2::from_ints(5300, 5000),
         SlotId(0),
-        HeroId(1),
+        HeroId::SHADOW_FIEND,
     );
     let other = world.spawn_unit(&MELEE_CREEP, Team::Dire, Vec2::from_ints(5100, 5000));
     world.settle();
@@ -249,7 +249,7 @@ fn a_hero_putting_out_its_own_is_taken_on_last() {
         Team::Dire,
         Vec2::from_ints(5100, 5000),
         SlotId(0),
-        HeroId(1),
+        HeroId::SHADOW_FIEND,
     );
     world.settle();
     world.set_order(
@@ -535,11 +535,11 @@ fn a_lane_under_a_cliff() -> (World, Entity, Entity, Entity, Entity) {
     let mut world = World::new();
     world.tick = rules::FREE_AGGRO_TICK;
     let (low, high, near, back) = a_cliff(&world);
-    let hero = seated_hero(&mut world, high, HeroId(1));
+    let hero = seated_hero(&mut world, high, HeroId::SHADOW_FIEND);
     world.set_order(hero, UnitOrder::Stand);
     let theirs = thinking_creep_of(&mut world, Team::Dire, low);
     let ours = world.spawn_unit(&MELEE_CREEP, Team::Radiant, near);
-    let foe = world.spawn_hero(Team::Dire, back, SlotId(1), HeroId(1));
+    let foe = world.spawn_hero(Team::Dire, back, SlotId(1), HeroId::SHADOW_FIEND);
     world.set_order(foe, UnitOrder::Stand);
     world.settle();
     world.step();

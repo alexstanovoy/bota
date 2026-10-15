@@ -58,7 +58,7 @@ fn a_point_is_spent_only_when_there_is_one_and_the_level_allows_it() {
         Team::Radiant,
         Vec2::from_ints(5000, 5000),
         SlotId(0),
-        HeroId(0),
+        HeroId::PUDGE,
     );
     world.settle();
     assert!(world.learn(hero, 0), "the first point goes in");
@@ -303,7 +303,7 @@ fn one_point_levels_every_raze_at_once_and_costs_one() {
         Team::Radiant,
         Vec2::from_ints(5000, 5000),
         SlotId(0),
-        HeroId(1),
+        HeroId::SHADOW_FIEND,
     );
     world.settle();
     assert!(world.learn(fiend, 2), "the point goes in");

@@ -2,11 +2,7 @@
 
 use bota_core::{SHADOW_FIEND, fountain_pos, rules};
 
-use crate::game::{
-    BAG_SLOTS, Entity, ITEM_BELT, ITEM_BOOTS, ITEM_CIRCLET, ITEM_GLOVES, ITEM_IRON_BRANCH,
-    ITEM_POWER_TREADS, ITEM_RECIPE_WRAITH_BAND, ITEM_SLIPPERS, ITEM_WRAITH_BAND, ItemStack, Seat,
-    World, wire_id,
-};
+use crate::game::{BAG_SLOTS, Entity, ItemStack, Seat, World, wire_id};
 use bota_proto::{
     EventKind, Fixed, HeroId, ItemId, ItemSlot, Order, RejectReason, SlotId, Target, Team, Vec2,
 };
@@ -17,7 +13,7 @@ use super::support::*;
 fn what_a_hero_bought_is_in_the_view_its_side_is_sent() {
     let mut world = World::for_match(&config(), config().rng());
     let hero = world.seats[0].unit.expect("stood up");
-    let boots = ItemId(ITEM_BOOTS);
+    let boots = ItemId::BOOTS;
     let mut events = Vec::new();
     assert!(
         world.buy(SlotId(0), boots, &mut events),
@@ -121,7 +117,7 @@ fn a_backpack_swap_projects_mute_until_the_exact_boundary() {
         "the stash item moves into the backpack"
     );
     world.inventory.get_mut(hero).expect("has a bag").slots[0] =
-        Some(a_stack_of(ITEM_IRON_BRANCH, 0));
+        Some(a_stack_of(ItemId::IRON_BRANCH, 0));
     assert!(
         world.move_item(SlotId(0), hero, pocket, 0),
         "the backpack item swaps into the inventory"
@@ -166,7 +162,7 @@ fn the_stash_is_out_of_reach_away_from_the_shop() {
 fn the_stash_sells_from_anywhere_and_a_bag_far_out_only_marks() {
     let mut world = World::for_match(&config(), config().rng());
     let hero = world.seats[0].unit.expect("stood up");
-    let stack = a_stack_of(ITEM_BOOTS, 0);
+    let stack = a_stack_of(ItemId::BOOTS, 0);
     world.inventory.get_mut(hero).expect("has a bag").slots[0] = Some(stack);
     world.seats[0].stash.slots[0] = Some(stack);
     // Out in the lane, well away from its own shop.
@@ -199,17 +195,17 @@ fn the_stash_sells_from_anywhere_and_a_bag_far_out_only_marks() {
 
 #[test]
 fn composite_buy_order_pays_missing_cost_and_assembles_owned_parts() {
-    assert_eq!(price_of(ITEM_WRAITH_BAND), 505);
-    assert_eq!(price_of(ITEM_CIRCLET), 155);
+    assert_eq!(price_of(ItemId::WRAITH_BAND), 505);
+    assert_eq!(price_of(ItemId::CIRCLET), 155);
     for location in [0, rules::INVENTORY_SLOTS, BAG_SLOTS] {
         let (mut world, hero) = a_hero_with_gold(349);
-        let circlet = a_stack_of(ITEM_CIRCLET, 0);
+        let circlet = a_stack_of(ItemId::CIRCLET, 0);
         if location == BAG_SLOTS {
             world.seats[0].stash.slots[0] = Some(circlet);
         } else {
             world.inventory.get_mut(hero).expect("bag").slots[location] = Some(circlet);
         }
-        let item = ItemId(ITEM_WRAITH_BAND);
+        let item = ItemId::WRAITH_BAND;
         reject_purchase_without_mutation(&mut world, hero, item, RejectReason::NotEnoughGold);
         world.seats[0].gold = 350;
 
@@ -256,17 +252,17 @@ fn composite_buy_order_requires_room_for_every_missing_part_before_assembly() {
                 .get_mut(hero)
                 .expect("bag")
                 .slots
-                .fill(Some(a_stack_of(ITEM_BOOTS, 0)));
+                .fill(Some(a_stack_of(ItemId::BOOTS, 0)));
         }
-        world.inventory.get_mut(hero).expect("bag").slots[0] = Some(a_stack_of(ITEM_CIRCLET, 0));
+        world.inventory.get_mut(hero).expect("bag").slots[0] = Some(a_stack_of(ItemId::CIRCLET, 0));
         world.seats[0]
             .stash
             .slots
-            .fill(Some(a_stack_of(ITEM_BOOTS, 0)));
+            .fill(Some(a_stack_of(ItemId::BOOTS, 0)));
         if remote {
             world.transform.get_mut(hero).expect("standing").pos = rules::DEMO_LANE_CORNERS[0];
         }
-        let item = ItemId(ITEM_WRAITH_BAND);
+        let item = ItemId::WRAITH_BAND;
         world.seats[0].stash.slots[4] = None;
         reject_purchase_without_mutation(&mut world, hero, item, RejectReason::InventoryFull);
         world.seats[0].stash.slots[5] = None;
@@ -277,15 +273,15 @@ fn composite_buy_order_requires_room_for_every_missing_part_before_assembly() {
         assert_eq!(world.seats[0].gold, 155);
         assert_eq!(
             world.seats[0].stash.slots[4].map(|stack| stack.id),
-            Some(ItemId(ITEM_SLIPPERS))
+            Some(ItemId::SLIPPERS)
         );
         assert_eq!(
             world.seats[0].stash.slots[5].map(|stack| stack.id),
-            Some(ItemId(ITEM_RECIPE_WRAITH_BAND))
+            Some(ItemId::RECIPE_WRAITH_BAND)
         );
         assert_eq!(
             slot_of(&world, hero, 0).map(|stack| stack.id),
-            Some(ItemId(ITEM_CIRCLET))
+            Some(ItemId::CIRCLET)
         );
     }
 }
@@ -295,7 +291,7 @@ fn composite_buy_order_does_not_credit_foreign_or_sale_marked_parts() {
     for in_stash in [false, true] {
         for (owner, for_sale) in [(1, false), (0, true)] {
             let (mut world, hero) = a_hero_with_gold(350);
-            let mut circlet = a_stack_of(ITEM_CIRCLET, owner);
+            let mut circlet = a_stack_of(ItemId::CIRCLET, owner);
             circlet.for_sale = for_sale;
             if in_stash {
                 world.seats[0].stash.slots[0] = Some(circlet);
@@ -306,7 +302,7 @@ fn composite_buy_order_does_not_credit_foreign_or_sale_marked_parts() {
             reject_purchase_without_mutation(
                 &mut world,
                 hero,
-                ItemId(ITEM_WRAITH_BAND),
+                ItemId::WRAITH_BAND,
                 RejectReason::NotEnoughGold,
             );
         }
@@ -316,7 +312,7 @@ fn composite_buy_order_does_not_credit_foreign_or_sale_marked_parts() {
 #[test]
 fn an_item_laid_down_lies_where_it_was_aimed() {
     let (mut world, hero) = a_hero_with_gold(0);
-    hand_item(&mut world, hero, ITEM_BOOTS, 0);
+    hand_item(&mut world, hero, ItemId::BOOTS, 0);
     let from = world.transform.get(hero).expect("stands").pos;
     let spot = from + Vec2::from_ints(100, 0);
     assert!(world.put_item(hero, 0, Target::Pos(spot)));
@@ -337,7 +333,7 @@ fn an_item_laid_down_lies_where_it_was_aimed() {
 #[test]
 fn an_item_aimed_past_reach_walks_its_carrier_in_first() {
     let (mut world, hero) = a_hero_with_gold(0);
-    hand_item(&mut world, hero, ITEM_BOOTS, 0);
+    hand_item(&mut world, hero, ItemId::BOOTS, 0);
     let from = world.transform.get(hero).expect("stands").pos;
     let spot = from + Vec2::from_ints(1000, 1000);
     assert!(world.put_item(hero, 0, Target::Pos(spot)));
@@ -360,7 +356,7 @@ fn an_item_aimed_past_reach_walks_its_carrier_in_first() {
 fn what_is_handed_over_lands_in_the_first_free_slot() {
     let (mut world, hero) = a_hero_with_gold(0);
     let courier = the_courier(&world);
-    hand_item(&mut world, hero, ITEM_BOOTS, 0);
+    hand_item(&mut world, hero, ItemId::BOOTS, 0);
     assert!(world.put_item(hero, 0, Target::Unit(wire_id(courier))));
     world.step();
     assert!(
@@ -369,7 +365,7 @@ fn what_is_handed_over_lands_in_the_first_free_slot() {
     );
     assert_eq!(
         slot_of(&world, courier, 0).map(|stack| stack.id),
-        Some(ItemId(ITEM_BOOTS)),
+        Some(ItemId::BOOTS),
         "and into the courier's"
     );
     // And back again the same way.
@@ -377,7 +373,7 @@ fn what_is_handed_over_lands_in_the_first_free_slot() {
     world.step();
     assert_eq!(
         slot_of(&world, hero, 0).map(|stack| stack.id),
-        Some(ItemId(ITEM_BOOTS)),
+        Some(ItemId::BOOTS),
         "handed back"
     );
     assert!(
@@ -398,8 +394,8 @@ fn a_bag_with_no_room_is_handed_nothing() {
         .get_mut(courier)
         .expect("carries")
         .slots
-        .fill(Some(a_stack_of(ITEM_IRON_BRANCH, 0)));
-    hand_item(&mut world, hero, ITEM_BOOTS, 0);
+        .fill(Some(a_stack_of(ItemId::IRON_BRANCH, 0)));
+    hand_item(&mut world, hero, ItemId::BOOTS, 0);
     assert!(world.put_item(hero, 0, Target::Unit(wire_id(courier))));
     world.step();
     assert!(slot_of(&world, hero, 0).is_some(), "kept where it was");
@@ -414,23 +410,23 @@ fn an_enemy_may_take_what_lies_on_the_ground_but_never_sell_it() {
         Team::Dire,
         mid + Vec2::from_ints(100, 0),
         SlotId(1),
-        HeroId(1),
+        HeroId::SHADOW_FIEND,
     );
     world.seats.push(Seat::new(
         SlotId(1),
         Team::Dire,
-        HeroId(1),
+        HeroId::SHADOW_FIEND,
         0,
         rules::STASH_SLOTS,
     ));
     world.seats[1].unit = Some(enemy);
     world.settle();
-    let lying = world.lay_loot(a_stack_of(ITEM_BOOTS, 0), mid);
+    let lying = world.lay_loot(a_stack_of(ItemId::BOOTS, 0), mid);
     assert!(world.take_item(enemy, wire_id(lying)));
     world.step();
     assert_eq!(
         slot_of(&world, enemy, 0).map(|stack| stack.id),
-        Some(ItemId(ITEM_BOOTS)),
+        Some(ItemId::BOOTS),
         "anybody with a bag may take it"
     );
     assert!(
@@ -453,7 +449,7 @@ fn what_was_muted_stays_muted_across_the_ground() {
     let (mut world, hero) = a_hero_with_gold(0);
     world.inventory.get_mut(hero).expect("has a bag").slots[0] = Some(ItemStack {
         mute: 100,
-        ..a_stack_of(ITEM_BOOTS, 0)
+        ..a_stack_of(ItemId::BOOTS, 0)
     });
     assert!(world.put_item(hero, 0, Target::None));
     world.step();
@@ -470,7 +466,7 @@ fn what_was_muted_stays_muted_across_the_ground() {
 #[test]
 fn selling_away_from_the_shop_marks_the_stack_and_a_second_ask_unmarks_it() {
     let (mut world, hero) = a_hero_with_gold(0);
-    hand_item(&mut world, hero, ITEM_BOOTS, 0);
+    hand_item(&mut world, hero, ItemId::BOOTS, 0);
     world.transform.get_mut(hero).expect("standing").pos = Vec2::from_ints(8000, 8000);
     let before = world.seats[0].gold;
     assert!(
@@ -497,14 +493,14 @@ fn selling_away_from_the_shop_marks_the_stack_and_a_second_ask_unmarks_it() {
 #[test]
 fn a_marked_stack_sells_the_moment_it_reaches_the_shop() {
     let (mut world, hero) = a_hero_with_gold(0);
-    world.inventory.get_mut(hero).expect("has a bag").slots[0] = Some(a_stack_of(ITEM_BOOTS, 0));
+    world.inventory.get_mut(hero).expect("has a bag").slots[0] = Some(a_stack_of(ItemId::BOOTS, 0));
     world.transform.get_mut(hero).expect("standing").pos = Vec2::from_ints(8000, 8000);
     assert!(world.sell_item(SlotId(0), hero, 0), "marked");
     let before = world.seats[0].gold;
     world.transform.get_mut(hero).expect("standing").pos = fountain_pos(world.map, Team::Radiant);
     world.step();
     assert!(slot_of(&world, hero, 0).is_none(), "sold on arrival");
-    let half = price_of(ITEM_BOOTS) * rules::SELL_PCT / 100;
+    let half = price_of(ItemId::BOOTS) * rules::SELL_PCT / 100;
     let gained = world.seats[0].gold - before;
     assert!(
         gained >= half && gained <= half + 1,
@@ -516,12 +512,12 @@ fn a_marked_stack_sells_the_moment_it_reaches_the_shop() {
 fn a_courier_called_empty_still_collects_what_is_marked() {
     let (mut world, hero) = a_hero_with_gold(0);
     let courier = the_courier(&world);
-    world.inventory.get_mut(hero).expect("has a bag").slots[0] = Some(a_stack_of(ITEM_BOOTS, 0));
+    world.inventory.get_mut(hero).expect("has a bag").slots[0] = Some(a_stack_of(ItemId::BOOTS, 0));
     let shop = fountain_pos(world.map, Team::Radiant);
     world.transform.get_mut(hero).expect("standing").pos = shop + Vec2::from_ints(1500, 1500);
     assert!(world.sell_item(SlotId(0), hero, 0), "marked");
     let before = world.seats[0].gold;
-    let half = price_of(ITEM_BOOTS) * rules::SELL_PCT / 100;
+    let half = price_of(ItemId::BOOTS) * rules::SELL_PCT / 100;
     assert!(world.courier_deliver(courier), "called with an empty bag");
     for _ in 0..1500 {
         world.step();
@@ -552,34 +548,34 @@ fn a_marked_part_or_a_borrowed_part_builds_nothing() {
     if let Some(bag) = world.inventory.get_mut(hero) {
         bag.slots[0] = Some(ItemStack {
             for_sale: true,
-            ..a_stack_of(ITEM_BOOTS, 0)
+            ..a_stack_of(ItemId::BOOTS, 0)
         });
-        bag.slots[1] = Some(a_stack_of(ITEM_GLOVES, 0));
-        bag.slots[2] = Some(a_stack_of(ITEM_BELT, 0));
+        bag.slots[1] = Some(a_stack_of(ItemId::GLOVES, 0));
+        bag.slots[2] = Some(a_stack_of(ItemId::BELT, 0));
     }
     world.step();
     assert_eq!(
         slot_of(&world, hero, 0).map(|stack| stack.id),
-        Some(ItemId(ITEM_BOOTS)),
+        Some(ItemId::BOOTS),
         "a part marked for sale does not vanish into a build"
     );
     if let Some(bag) = world.inventory.get_mut(hero) {
-        bag.slots[0] = Some(a_stack_of(ITEM_BOOTS, 0));
-        bag.slots[1] = Some(a_stack_of(ITEM_GLOVES, 1));
+        bag.slots[0] = Some(a_stack_of(ItemId::BOOTS, 0));
+        bag.slots[1] = Some(a_stack_of(ItemId::GLOVES, 1));
     }
     world.step();
     assert_eq!(
         slot_of(&world, hero, 0).map(|stack| stack.id),
-        Some(ItemId(ITEM_BOOTS)),
+        Some(ItemId::BOOTS),
         "nor does a part somebody else bought"
     );
     if let Some(bag) = world.inventory.get_mut(hero) {
-        bag.slots[1] = Some(a_stack_of(ITEM_GLOVES, 0));
+        bag.slots[1] = Some(a_stack_of(ItemId::GLOVES, 0));
     }
     world.step();
     assert_eq!(
         slot_of(&world, hero, 0).map(|stack| stack.id),
-        Some(ItemId(ITEM_POWER_TREADS)),
+        Some(ItemId::POWER_TREADS),
         "whole and owned, the parts come together"
     );
 }
@@ -587,7 +583,7 @@ fn a_marked_part_or_a_borrowed_part_builds_nothing() {
 #[test]
 fn a_later_order_calls_an_item_errand_off() {
     let (mut world, hero) = a_hero_with_gold(0);
-    hand_item(&mut world, hero, ITEM_BOOTS, 0);
+    hand_item(&mut world, hero, ItemId::BOOTS, 0);
     let from = world.transform.get(hero).expect("stands").pos;
     let spot = from + Vec2::from_ints(1000, 1000);
     assert!(world.put_item(hero, 0, Target::Pos(spot)));
@@ -606,11 +602,11 @@ fn a_later_order_calls_an_item_errand_off() {
 fn what_lies_on_the_ground_is_seen_through_the_fog() {
     let (mut world, hero) = a_hero_with_gold(0);
     let beside = world.transform.get(hero).expect("stands").pos;
-    world.lay_loot(a_stack_of(ITEM_BOOTS, 0), beside);
+    world.lay_loot(a_stack_of(ItemId::BOOTS, 0), beside);
     world.step();
     let ours = world.view(Team::Radiant);
     assert_eq!(ours.loot.len(), 1, "lying in our own light");
-    assert_eq!(ours.loot[0].item, ItemId(ITEM_BOOTS));
+    assert_eq!(ours.loot[0].item, ItemId::BOOTS);
     assert_eq!(ours.loot[0].charges, None, "boots hold no charges");
     let theirs = world.view(Team::Dire);
     assert!(theirs.loot.is_empty(), "the far side has no eyes on it");
@@ -619,7 +615,7 @@ fn what_lies_on_the_ground_is_seen_through_the_fog() {
 #[test]
 fn buying_a_second_of_something_buys_a_second_of_it() {
     let (mut world, hero) = a_hero_with_gold(10_000);
-    let branch = ItemId(ITEM_IRON_BRANCH);
+    let branch = ItemId::IRON_BRANCH;
     let mut events = Vec::new();
     for held in 1..=3 {
         let before = world.seats[0].gold;
@@ -629,7 +625,7 @@ fn buying_a_second_of_something_buys_a_second_of_it() {
         );
         assert_eq!(
             before - world.seats[0].gold,
-            price_of(ITEM_IRON_BRANCH),
+            price_of(ItemId::IRON_BRANCH),
             "and paid for it"
         );
         assert_eq!(
@@ -643,7 +639,7 @@ fn buying_a_second_of_something_buys_a_second_of_it() {
 #[test]
 fn buying_a_built_item_a_second_time_buys_its_parts_again() {
     let (mut world, hero) = a_hero_with_gold(10_000);
-    let treads = ItemId(ITEM_POWER_TREADS);
+    let treads = ItemId::POWER_TREADS;
     let mut events = Vec::new();
     assert!(
         world.buy(SlotId(0), treads, &mut events),
@@ -657,7 +653,7 @@ fn buying_a_built_item_a_second_time_buys_its_parts_again() {
     );
     assert_eq!(
         before - world.seats[0].gold,
-        price_of(ITEM_POWER_TREADS),
+        price_of(ItemId::POWER_TREADS),
         "the pair already worn is no part of the new one"
     );
     world.step();

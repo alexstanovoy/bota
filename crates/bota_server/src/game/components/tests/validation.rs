@@ -141,18 +141,18 @@ fn courier_named_buy_order_counts_hero_stack_room_at_shop() {
 fn non_mango_buy_order_uses_missing_cost_and_keeps_empty_slot_validation() {
     let (mut world, hero) = fixture();
     let mut stick = mango(1);
-    stick.id = ItemId(crate::game::ITEM_MAGIC_STICK);
+    stick.id = ItemId::MAGIC_STICK;
     stick.charges = 0;
     put(&mut world, hero, 0, stick);
     world.seats[0].gold = 250;
     let wand = Order::Buy {
-        item: ItemId(crate::game::ITEM_MAGIC_WAND),
+        item: ItemId::MAGIC_WAND,
     };
     assert_eq!(world.validate_order(OWNER, None, &wand), Ok(()));
     fill_storage(&mut world, hero);
     world.inventory.get_mut(hero).unwrap().slots[0] = Some(mango(1));
     let tango = Order::Buy {
-        item: ItemId(crate::game::ITEM_TANGO),
+        item: ItemId::TANGO,
     };
     assert_eq!(
         world.validate_order(OWNER, None, &tango),
@@ -235,8 +235,8 @@ fn use_order_rejects_a_missing_or_empty_mana_pool_as_not_ready() {
 fn use_order_rejects_other_units_positions_and_stale_targets_as_wrong_target_kind() {
     let (mut world, hero) = fixture();
     put(&mut world, hero, 0, mango(3));
-    let ally = world.spawn_hero(Team::Radiant, AWAY, SlotId(1), HeroId(1));
-    let enemy = world.spawn_hero(Team::Dire, AWAY, SlotId(2), HeroId(1));
+    let ally = world.spawn_hero(Team::Radiant, AWAY, SlotId(1), HeroId::SHADOW_FIEND);
+    let enemy = world.spawn_hero(Team::Dire, AWAY, SlotId(2), HeroId::SHADOW_FIEND);
     world.settle();
     let own_position = world.transform.get(hero).unwrap().pos;
     for target in [
@@ -366,7 +366,7 @@ fn use_order_keeps_cooldown_and_disabled_errors_before_mana_readiness() {
 fn non_mango_restore_keeps_none_only_targeting_and_no_deficit_requirement() {
     let (mut world, hero) = fixture();
     let mut stick = mango(3);
-    stick.id = ItemId(crate::game::ITEM_MAGIC_STICK);
+    stick.id = ItemId::MAGIC_STICK;
     put(&mut world, hero, 0, stick);
     world.mana.get_mut(hero).unwrap().mana = world.stats.get(hero).unwrap().max_mana;
     assert_eq!(world.validate_order(OWNER, None, &USE_MANGO), Ok(()));

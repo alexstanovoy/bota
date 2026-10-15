@@ -24,12 +24,12 @@ fn two_fiends_at(level: u8) -> World {
         Pick {
             slot: SlotId(0),
             team: Team::Radiant,
-            hero: HeroId(1),
+            hero: HeroId::SHADOW_FIEND,
         },
         Pick {
             slot: SlotId(1),
             team: Team::Dire,
-            hero: HeroId(1),
+            hero: HeroId::SHADOW_FIEND,
         },
     ];
     let mut world = World::for_match(&cfg, cfg.rng());
@@ -145,7 +145,7 @@ fn the_other_talent_of_a_tier_opens_at_twenty_seven() {
 #[test]
 fn a_hero_without_a_tree_learns_none() {
     let mut cfg = config();
-    cfg.picks[0].hero = HeroId(0);
+    cfg.picks[0].hero = HeroId::PUDGE;
     let mut world = World::for_match(&cfg, cfg.rng());
     let xp = rules::XP_THRESHOLDS[24];
     world.grant_xp(0, xp, &mut Vec::new());
@@ -278,7 +278,7 @@ fn the_feast_souls_talent_takes_five_from_a_hero() {
             Team::Dire,
             Vec2::from_ints(5300, 5000),
             SlotId(1),
-            HeroId(0),
+            HeroId::PUDGE,
         );
         put_on(&mut world, foe, ModifierKind::Stunned, 10_000);
         world.settle();

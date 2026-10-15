@@ -7,7 +7,7 @@ use crate::game::{
     AbilityBook, AbilityState, Action, ActionState, AppliedModifier, AppliedOrigin, Auras, Bounty,
     CampHome, Def, Entity, Errand, Expiry, Health, Hull, Inventory, Lane, LaneAi, Level,
     MAX_SPAWN_MODIFIERS, Mana, March, Mark, Modifiers, Motion, NeutralAi, Orders, Plan, Rax, Route,
-    Tier, Transform, UnitOrder, Upgrades, World, ability, check_spawn_modifier, hero_def, hero_kit,
+    Tier, Transform, UnitOrder, Upgrades, World, check_spawn_modifier, hero_def, hero_kit,
 };
 
 /// Which building of a side one is.
@@ -281,11 +281,11 @@ impl World {
             entity,
             AbilityBook {
                 slots: [
-                    ability::TAKE_STASH,
-                    ability::RETURN_ITEMS,
-                    ability::BURST,
-                    ability::DELIVER,
-                    ability::SHIELD,
+                    AbilityId::TAKE_STASH,
+                    AbilityId::RETURN_ITEMS,
+                    AbilityId::BURST,
+                    AbilityId::DELIVER,
+                    AbilityId::SHIELD,
                 ]
                 .into_iter()
                 .map(|id| AbilityState {

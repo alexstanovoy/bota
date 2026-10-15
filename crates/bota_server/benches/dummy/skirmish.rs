@@ -8,14 +8,14 @@ use bota_proto::{
     WorldView,
 };
 
-use crate::game::{Command, EventVisibility, Fnv, ITEM_MANGO, MatchConfig, World};
+use crate::game::{Command, EventVisibility, Fnv, MatchConfig, World};
 
 /// Ticks between two decisions of a seat.
 const DECISION_TICKS: u32 = 3;
 /// Identity and seed of the skirmish.
 const MATCH_ID: u64 = 11;
 /// The Shadow Fiend.
-const SHADOW_FIEND: HeroId = HeroId(1);
+const SHADOW_FIEND: HeroId = HeroId::SHADOW_FIEND;
 /// Half the side of the square the heroes fight about, in world units.
 const SPREAD: u32 = 500;
 
@@ -110,7 +110,7 @@ impl Skirmish {
                 slot: AbilitySlot((self.draw() % 4) as u8),
             },
             2 => Order::Buy {
-                item: ItemId(ITEM_MANGO),
+                item: ItemId::MANGO,
             },
             _ => {
                 let span = u64::from(SPREAD) * 2 + 1;

@@ -2,8 +2,8 @@
 
 use bota_core::{ModifierKind, rules, tower_def};
 
-use crate::game::{Entity, Modifier, StackKind, Stacks, World, ability, wire_id};
-use bota_proto::{Fixed, HeroId, SlotId, Target, Team, Vec2};
+use crate::game::{Entity, Modifier, StackKind, Stacks, World, wire_id};
+use bota_proto::{AbilityId, Fixed, HeroId, SlotId, Target, Team, Vec2};
 
 use super::support::*;
 
@@ -41,7 +41,7 @@ fn a_hook_that_catches_nothing_comes_back_by_itself_with_its_chain() {
             .view_full()
             .projectiles
             .iter()
-            .filter(|shown| shown.ability == Some(ability::MEAT_HOOK))
+            .filter(|shown| shown.ability == Some(AbilityId::MEAT_HOOK))
             .count()
     };
     assert_eq!(
@@ -132,7 +132,7 @@ fn the_rot_shows_its_cloud_where_its_owner_stands_while_it_is_on() {
     set_level(&mut world, pudge, 1, 1);
     pudge_casts(&mut world, 1, Target::None);
     let cloud = world
-        .mark_of(pudge, ability::ROT)
+        .mark_of(pudge, AbilityId::ROT)
         .expect("switched on, the cloud shows");
     let stood = world.transform.get(pudge).expect("standing").pos;
     assert_eq!(world.transform.get(cloud).map(|t| t.pos), Some(stood));
@@ -148,23 +148,23 @@ fn the_rot_shows_its_cloud_where_its_owner_stands_while_it_is_on() {
             .view_full()
             .projectiles
             .iter()
-            .any(|shown| shown.ability == Some(ability::ROT)),
+            .any(|shown| shown.ability == Some(AbilityId::ROT)),
         "and is in the view"
     );
     pudge_casts(&mut world, 1, Target::None);
     assert_eq!(
-        world.mark_of(pudge, ability::ROT),
+        world.mark_of(pudge, AbilityId::ROT),
         None,
         "switched off, it goes"
     );
     pudge_casts(&mut world, 1, Target::None);
-    assert!(world.mark_of(pudge, ability::ROT).is_some());
+    assert!(world.mark_of(pudge, AbilityId::ROT).is_some());
     world.bury(vec![(pudge, None)], &mut Vec::new());
     assert!(
         world.entities.iter().all(|entity| world
             .mark
             .get(entity)
-            .is_none_or(|shown| shown.ability != ability::ROT)),
+            .is_none_or(|shown| shown.ability != AbilityId::ROT)),
         "and it goes with him when he falls"
     );
 }
@@ -231,7 +231,7 @@ fn a_dismember_shows_its_hold_on_what_it_eats_until_it_lets_go() {
     set_level(&mut world, pudge, 3, 1);
     pudge_casts(&mut world, 3, Target::Unit(wire_id(mark)));
     let shown = world
-        .mark_of(pudge, ability::DISMEMBER)
+        .mark_of(pudge, AbilityId::DISMEMBER)
         .expect("the hold is shown");
     let eaten = world.transform.get(mark).expect("standing").pos;
     assert_eq!(world.transform.get(shown).map(|t| t.pos), Some(eaten));
@@ -244,7 +244,7 @@ fn a_dismember_shows_its_hold_on_what_it_eats_until_it_lets_go() {
     );
     stop_click(&mut world);
     assert_eq!(
-        world.mark_of(pudge, ability::DISMEMBER),
+        world.mark_of(pudge, AbilityId::DISMEMBER),
         None,
         "letting go takes the hold away"
     );
@@ -258,19 +258,19 @@ fn a_flesh_heap_keeps_every_enemy_hero_that_falls_near_it_and_nothing_else() {
         Team::Dire,
         Vec2::from_ints(5300, 5000),
         SlotId(1),
-        HeroId(1),
+        HeroId::SHADOW_FIEND,
     );
     let friend = world.spawn_hero(
         Team::Radiant,
         Vec2::from_ints(5000, 5300),
         SlotId(2),
-        HeroId(1),
+        HeroId::SHADOW_FIEND,
     );
     let far = world.spawn_hero(
         Team::Dire,
         Vec2::from_ints(5000 + rules::FLESH_HEAP_RANGE + 200, 5000),
         SlotId(3),
-        HeroId(1),
+        HeroId::SHADOW_FIEND,
     );
     let tower = world.spawn_unit(tower_def(1), Team::Dire, Vec2::from_ints(5200, 5000));
     world.settle();
@@ -346,7 +346,7 @@ fn a_flesh_heap_outlives_the_death_of_the_one_carrying_it() {
         Team::Dire,
         Vec2::from_ints(5100, 5200),
         SlotId(1),
-        HeroId(1),
+        HeroId::SHADOW_FIEND,
     );
     world.settle();
     world.step();
@@ -373,7 +373,7 @@ fn a_lone_pudge() -> (World, Entity) {
         Team::Radiant,
         Vec2::from_ints(5000, 5000),
         SlotId(0),
-        HeroId(0),
+        HeroId::PUDGE,
     );
     world.settle();
     world.step();

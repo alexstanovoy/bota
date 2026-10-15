@@ -1,12 +1,12 @@
 //! Working out what each entity fights by, from scratch, every tick.
 
 use bota_core::{Growth, ModifierKind, Ratio, Talent, UnitDef, rules};
-use bota_proto::{Attributes, Fixed, ModifierSpec};
+use bota_proto::{AbilityId, Attributes, Fixed, ModifierSpec};
 
 use crate::game::{
     AbilityBook, AppliedModifiers, Carried, Def, EntityAllocator, Feast, FeastPhase, Health,
     Inventory, Level, MAX_COMBINED_MODIFIER_SCALE, Mana, Modifiers, StackKind, Stacks, Stats,
-    Table, Upgrades, ability, carried_bonus,
+    Table, Upgrades, carried_bonus,
 };
 
 /// What working out stats reads and writes.
@@ -173,7 +173,7 @@ fn add_heap(now: &mut Stats, gathered: &Stacks, book: Option<&AbilityBook>) {
     let heap = book.map_or(0, |book| {
         book.slots
             .iter()
-            .find(|slot| slot.id == ability::FLESH_HEAP)
+            .find(|slot| slot.id == AbilityId::FLESH_HEAP)
             .map_or(0, |slot| slot.level)
     });
     let Some(level) = heap.checked_sub(1).map(usize::from) else {

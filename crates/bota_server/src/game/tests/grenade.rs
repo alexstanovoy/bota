@@ -3,13 +3,10 @@
 
 use bota_core::{ModifierKind, rules};
 
-use crate::game::{
-    Entity, Event, ITEM_BLOOD_GRENADE, ITEM_BOOTS, ITEM_WIND_LACE, MatchConfig, World, ability,
-    wire_id,
-};
+use crate::game::{Entity, Event, MatchConfig, World, wire_id};
 use bota_proto::{
-    DamageKind, EffectId, EventKind, Fixed, HeroId, ItemId, ItemSlot, Order, Pick, RejectReason,
-    SlotId, StatusFlags, Target, Team, UnitView, Vec2,
+    AbilityId, DamageKind, EffectId, EventKind, Fixed, HeroId, ItemId, ItemSlot, Order, Pick,
+    RejectReason, SlotId, StatusFlags, Target, Team, UnitView, Vec2,
 };
 
 use super::support::*;
@@ -25,12 +22,12 @@ fn two_fiends(apart: i32) -> (World, Entity, Entity) {
             Pick {
                 slot: SlotId(0),
                 team: Team::Radiant,
-                hero: HeroId(1),
+                hero: HeroId::SHADOW_FIEND,
             },
             Pick {
                 slot: SlotId(1),
                 team: Team::Dire,
-                hero: HeroId(1),
+                hero: HeroId::SHADOW_FIEND,
             },
         ],
         ..config()
@@ -69,19 +66,24 @@ fn magic_blows(events: &[Event], from: Entity, on: Entity) -> usize {
 }
 
 /// A stack of one item for seat 0 in one slot.
-fn carry(world: &mut World, hero: Entity, at: usize, item: u16, charges: u8) {
+fn carry(world: &mut World, hero: Entity, at: usize, item: ItemId, charges: u8) {
     world.inventory.get_mut(hero).expect("bag").slots[at] = Some(fresh_stack(item, charges));
 }
 
 #[test]
 fn boots_and_a_lace_add_up_and_a_second_of_either_adds_nothing() {
-    let cases: [(&[u16], i32); 5] = [
+    let cases: [(&[ItemId], i32); 5] = [
         (&[], BASE_SPEED),
-        (&[ITEM_WIND_LACE], BASE_SPEED + 15),
-        (&[ITEM_BOOTS], BASE_SPEED + 45),
-        (&[ITEM_BOOTS, ITEM_WIND_LACE], BASE_SPEED + 60),
+        (&[ItemId::WIND_LACE], BASE_SPEED + 15),
+        (&[ItemId::BOOTS], BASE_SPEED + 45),
+        (&[ItemId::BOOTS, ItemId::WIND_LACE], BASE_SPEED + 60),
         (
-            &[ITEM_BOOTS, ITEM_BOOTS, ITEM_WIND_LACE, ITEM_WIND_LACE],
+            &[
+                ItemId::BOOTS,
+                ItemId::BOOTS,
+                ItemId::WIND_LACE,
+                ItemId::WIND_LACE,
+            ],
             BASE_SPEED + 60,
         ),
     ];
@@ -102,7 +104,7 @@ fn boots_and_a_lace_add_up_and_a_second_of_either_adds_nothing() {
 #[test]
 fn a_thrown_grenade_flies_bursts_slows_and_burns_five_times_then_lifts() {
     let (mut world, hero, enemy) = two_fiends(500);
-    carry(&mut world, hero, 0, ITEM_BLOOD_GRENADE, 1);
+    carry(&mut world, hero, 0, ItemId::BLOOD_GRENADE, 1);
     world.step();
     let speed = seen(&world, Team::Dire, enemy).move_speed;
     let hp = world.health.get(hero).expect("standing").hp;
@@ -122,7 +124,7 @@ fn a_thrown_grenade_flies_bursts_slows_and_burns_five_times_then_lifts() {
         if view
             .projectiles
             .iter()
-            .any(|shot| shot.ability == Some(ability::THROW_GRENADE))
+            .any(|shot| shot.ability == Some(AbilityId::THROW_GRENADE))
         {
             flew += 1;
         }
@@ -177,7 +179,7 @@ fn a_thrown_grenade_flies_bursts_slows_and_burns_five_times_then_lifts() {
 #[test]
 fn a_grenade_never_takes_its_throwers_last_point_and_misses_what_stands_outside() {
     let (mut world, hero, enemy) = two_fiends(700);
-    carry(&mut world, hero, 0, ITEM_BLOOD_GRENADE, 2);
+    carry(&mut world, hero, 0, ItemId::BLOOD_GRENADE, 2);
     world.health.get_mut(hero).expect("standing").hp = Fixed::from_int(40);
     // Held where it stands, so it does not walk in to swing at the hero.
     put_on(&mut world, enemy, ModifierKind::Stunned, 300);
@@ -216,7 +218,7 @@ fn a_grenade_never_takes_its_throwers_last_point_and_misses_what_stands_outside(
 #[test]
 fn a_side_buys_two_grenades_then_one_more_every_three_minutes() {
     let (mut world, hero) = a_hero_with_gold(5000);
-    let grenade = ItemId(ITEM_BLOOD_GRENADE);
+    let grenade = ItemId::BLOOD_GRENADE;
     let shelf = |world: &World, team: Team| {
         world
             .view(team)

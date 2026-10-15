@@ -33,7 +33,7 @@ fn config(cheats: bool, rules: Vec<SpawnModifier>) -> MatchConfig {
         picks: vec![Pick {
             slot: SlotId(0),
             team: Team::Radiant,
-            hero: HeroId(1),
+            hero: HeroId::SHADOW_FIEND,
         }],
         map: MapId(0),
         tick_rate: 30,
@@ -53,7 +53,7 @@ fn arena(rules: Vec<SpawnModifier>) -> (World, Entity, Entity) {
         Team::Radiant,
         Vec2::from_ints(7000, 7000),
         SlotId(0),
-        HeroId(1),
+        HeroId::SHADOW_FIEND,
     );
     let creep = world.spawn_unit(&MELEE_CREEP, Team::Dire, Vec2::from_ints(2000, 2000));
     world.spawn_modifiers = rules;

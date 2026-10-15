@@ -1,9 +1,9 @@
 //! The rot, the dismember and what the flesh heap keeps.
 
 use bota_core::{ModifierKind, rules};
-use bota_proto::{DamageKind, Target};
+use bota_proto::{AbilityId, DamageKind, Target};
 
-use crate::game::{Modifier, StackKind, World, ability};
+use crate::game::{Modifier, StackKind, World};
 
 use crate::engine::Entity;
 
@@ -31,7 +31,7 @@ impl World {
             },
         );
         if let Some(at) = self.transform.get(caster).map(|t| t.pos) {
-            self.spawn_mark(ability::ROT, caster, at, 0);
+            self.spawn_mark(AbilityId::ROT, caster, at, 0);
         }
         true
     }
@@ -43,7 +43,7 @@ impl World {
                 .0
                 .retain(|held| !matches!(held.kind, ModifierKind::Rot { .. }));
         }
-        if let Some(shown) = self.mark_of(owner, ability::ROT) {
+        if let Some(shown) = self.mark_of(owner, AbilityId::ROT) {
             self.take_mark(shown);
         }
     }
@@ -57,7 +57,7 @@ impl World {
         if !self.hostile(caster, on) || !self.in_range_of(caster, on, rules::DISMEMBER_RANGE) {
             return false;
         }
-        let level = usize::from(self.carried_level(caster, ability::DISMEMBER).max(1) - 1);
+        let level = usize::from(self.carried_level(caster, AbilityId::DISMEMBER).max(1) - 1);
         let amount = rules::DISMEMBER_DAMAGE_PER_SECOND[level] * rules::BURN_PERIOD_TICKS as i32
             / rules::TICKS_PER_SECOND as i32;
         self.put_modifier(
@@ -92,7 +92,7 @@ impl World {
             },
         );
         if let Some(at) = self.transform.get(on).map(|t| t.pos) {
-            self.spawn_mark(ability::DISMEMBER, caster, at, 0);
+            self.spawn_mark(AbilityId::DISMEMBER, caster, at, 0);
         }
         true
     }
@@ -105,7 +105,7 @@ impl World {
         };
         if let (Some(at), Some(shown)) = (
             self.transform.get(on).map(|t| t.pos),
-            self.mark_of(caster, ability::DISMEMBER),
+            self.mark_of(caster, AbilityId::DISMEMBER),
         ) && let Some(transform) = self.transform.get_mut(shown)
         {
             transform.pos = at;
@@ -116,7 +116,7 @@ impl World {
     /// Lets go of what a dismember held: what it put on the mark and on
     /// the one holding it is taken off, and the hold shown on it goes.
     pub fn dismember_lets_go(&mut self, caster: Entity, target: Target) {
-        if let Some(shown) = self.mark_of(caster, ability::DISMEMBER) {
+        if let Some(shown) = self.mark_of(caster, AbilityId::DISMEMBER) {
             self.take_mark(shown);
         }
         if let Some(on) = self.dismember_mark(target) {
@@ -166,7 +166,7 @@ impl World {
             // The fallen is dead by now, so it is its side that is looked at,
             // not whether it could still be fought.
             let enemy = self.team.get(hero).is_some_and(|mine| *mine != theirs);
-            if hero == fallen || self.carried_level(hero, ability::FLESH_HEAP) == 0 || !enemy {
+            if hero == fallen || self.carried_level(hero, AbilityId::FLESH_HEAP) == 0 || !enemy {
                 continue;
             }
             if !self

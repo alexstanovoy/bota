@@ -1,9 +1,9 @@
 //! What is on a unit: putting it on, doing its work each tick, taking it off.
 
 use bota_core::{ModifierKind, kind_def, rules};
-use bota_proto::{DamageKind, Fixed};
+use bota_proto::{AbilityId, DamageKind, Fixed};
 
-use crate::game::{Landed, Modifier, Stats, Table, World, ability, cooldown_after, item_def};
+use crate::game::{Landed, Modifier, Stats, Table, World, cooldown_after, item_def};
 
 use crate::engine::Entity;
 
@@ -182,7 +182,7 @@ impl World {
             return;
         };
         // The cloud shown for it stands where its owner now stands.
-        if let Some(shown) = self.mark_of(owner, ability::ROT)
+        if let Some(shown) = self.mark_of(owner, AbilityId::ROT)
             && let Some(transform) = self.transform.get_mut(shown)
         {
             transform.pos = at;

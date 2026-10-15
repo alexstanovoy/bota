@@ -3,7 +3,7 @@
 use bota_core::rules;
 use bota_proto::{Attribute, ItemId, SlotId};
 
-use crate::game::{ITEM_TOWN_PORTAL_SCROLL, item_def};
+use crate::game::item_def;
 
 /// One item in a slot.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -57,7 +57,7 @@ impl ItemStack {
 
     /// One Town Portal Scroll that came for nothing.
     pub fn free_scroll(owner: SlotId, tick: u32) -> Self {
-        let mut scroll = Self::bought(ItemId(ITEM_TOWN_PORTAL_SCROLL), owner, tick)
+        let mut scroll = Self::bought(ItemId::TOWN_PORTAL_SCROLL, owner, tick)
             .expect("the catalog sells scrolls");
         assert_eq!(scroll.charges, 1);
         scroll.free_charges = 1;
@@ -67,7 +67,7 @@ impl ItemStack {
     /// Whether it is a Town Portal Scroll, the one thing a town portal slot
     /// holds.
     pub fn is_scroll(&self) -> bool {
-        self.id == ItemId(ITEM_TOWN_PORTAL_SCROLL)
+        self.id == ItemId::TOWN_PORTAL_SCROLL
     }
 
     /// Spends one charge, one that came for nothing first.

@@ -77,7 +77,7 @@ fn mango_mana_event_uses_upstream_visibility_and_round_trips_on_the_wire() {
         put(&mut world, hero, 0, mango(1));
         if observed {
             let at = world.transform.get(hero).unwrap().pos;
-            world.spawn_hero(Team::Dire, at, SlotId(1), HeroId(1));
+            world.spawn_hero(Team::Dire, at, SlotId(1), HeroId::SHADOW_FIEND);
         }
         world.settle();
         let mut events = Vec::new();

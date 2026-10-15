@@ -8,7 +8,7 @@ use bota_core::{
 use bota_proto::{AbilityId, Angle, DamageKind, Fixed, Team};
 
 use crate::game::{
-    Fear, Hit, HitEffect, Modifier, RequiemLine, StackKind, Transform, World, ability, hero_def,
+    Fear, Hit, HitEffect, Modifier, RequiemLine, StackKind, Transform, World, hero_def,
 };
 
 use crate::engine::Entity;
@@ -72,7 +72,7 @@ impl World {
                 self.raze_strikes(caster, mark);
             }
         }
-        let which = AbilityId(ability::RAZE_NEAR.0 + reach as u16);
+        let which = AbilityId(AbilityId::RAZE_NEAR.0 + reach as u16);
         self.spawn_mark(which, caster, at, rules::MARK_TICKS);
         true
     }
@@ -118,7 +118,7 @@ impl World {
     /// and the mana say. Its lines only burn. Nothing goes out while the
     /// requiem is unlearned.
     pub fn requiem_on_death(&mut self, fallen: Entity) {
-        let level = self.carried_level(fallen, ability::REQUIEM);
+        let level = self.carried_level(fallen, AbilityId::REQUIEM);
         if level == 0 {
             return;
         }
@@ -305,7 +305,7 @@ impl World {
             .entities
             .iter()
             .filter_map(|entity| {
-                let level = self.carried_level(entity, ability::PRESENCE);
+                let level = self.carried_level(entity, AbilityId::PRESENCE);
                 (level > 0).then_some((entity, level))
             })
             .collect();
@@ -403,7 +403,7 @@ impl World {
         self.hero
             .get(entity)
             .and_then(|hero| hero_def(*hero))
-            .is_some_and(|def| def.innate == Some(ability::NECROMASTERY))
+            .is_some_and(|def| def.innate == Some(AbilityId::NECROMASTERY))
     }
 
     /// How many souls an entity may gather from kills, its talent included.

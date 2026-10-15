@@ -74,7 +74,9 @@ fn join_as_bot(addr: std::net::SocketAddr, name: &str) -> (TestClient, Option<bo
         ServerMsg::Welcome { slot, .. } => Some(slot),
         _ => None,
     });
-    client.send(&ClientMsg::PickHero { hero: HeroId(1) });
+    client.send(&ClientMsg::PickHero {
+        hero: HeroId::SHADOW_FIEND,
+    });
     client.send(&ClientMsg::SetReady(true));
     (client, slot)
 }

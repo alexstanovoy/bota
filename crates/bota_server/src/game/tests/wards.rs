@@ -2,14 +2,14 @@
 
 use bota_core::{OBSERVER_WARD, SENTRY_WARD, map_of, rules};
 
-use crate::game::{ITEM_OBSERVER_WARD, ITEM_SENTRY_WARD, UnitOrder, World, wire_id};
-use bota_proto::{Fixed, HeroId, MapId, SlotId, Target, Team, UnitKind, Vec2};
+use crate::game::{UnitOrder, World, wire_id};
+use bota_proto::{Fixed, HeroId, ItemId, MapId, SlotId, Target, Team, UnitKind, Vec2};
 
 use super::support::*;
 
 #[test]
 fn a_ward_stands_where_it_was_put_and_goes_when_its_time_is_up() {
-    let (mut world, hero, spot) = a_hero_with_a_ward(ITEM_OBSERVER_WARD);
+    let (mut world, hero, spot) = a_hero_with_a_ward(ItemId::OBSERVER_WARD);
     let at = spot + Vec2::from_ints(200, 0);
     assert!(
         world.use_item(hero, 0, Target::Pos(at), &mut Vec::new()),
@@ -43,14 +43,14 @@ fn a_ward_stands_where_it_was_put_and_goes_when_its_time_is_up() {
 
 #[test]
 fn an_observer_is_hidden_from_the_other_side_until_a_sentry_finds_it() {
-    let (mut world, hero, spot) = a_hero_with_a_ward(ITEM_OBSERVER_WARD);
+    let (mut world, hero, spot) = a_hero_with_a_ward(ItemId::OBSERVER_WARD);
     let at = spot + Vec2::from_ints(200, 0);
     assert!(world.use_item(hero, 0, Target::Pos(at), &mut Vec::new()));
     world.step();
     let ward = the_ward(&world);
     assert!(world.can_see(Team::Radiant, ward), "its own side sees it");
     // An enemy hero standing on top of it makes no difference.
-    let theirs = world.spawn_hero(Team::Dire, at, SlotId(1), HeroId(1));
+    let theirs = world.spawn_hero(Team::Dire, at, SlotId(1), HeroId::SHADOW_FIEND);
     world.settle();
     world.step();
     assert!(
@@ -76,7 +76,7 @@ fn an_observer_is_hidden_from_the_other_side_until_a_sentry_finds_it() {
 
 #[test]
 fn a_ward_aimed_out_of_reach_is_not_put_down() {
-    let (mut world, hero, spot) = a_hero_with_a_ward(ITEM_SENTRY_WARD);
+    let (mut world, hero, spot) = a_hero_with_a_ward(ItemId::SENTRY_WARD);
     let far = spot + Vec2::from_ints(2000, 0);
     assert!(
         !world.use_item(hero, 0, Target::Pos(far), &mut Vec::new()),
@@ -109,7 +109,7 @@ fn true_sight_reaches_only_so_far_over_ground_that_is_watched() {
     let ward = world.spawn_unit(&OBSERVER_WARD, Team::Radiant, at);
     // Eyes of their own on the spot, so what is being measured is the reach
     // of the sentry and nothing else.
-    world.spawn_hero(Team::Dire, at, SlotId(1), HeroId(1));
+    world.spawn_hero(Team::Dire, at, SlotId(1), HeroId::SHADOW_FIEND);
     let reach = SENTRY_WARD.true_sight;
     let near = world.spawn_unit(
         &SENTRY_WARD,
@@ -177,7 +177,7 @@ fn a_tower_reveals_what_hides_as_far_as_it_shoots() {
 
 #[test]
 fn a_ward_takes_no_room_and_is_walked_straight_through() {
-    let (mut world, hero, spot) = a_hero_with_a_ward(ITEM_OBSERVER_WARD);
+    let (mut world, hero, spot) = a_hero_with_a_ward(ItemId::OBSERVER_WARD);
     let ahead = spot + Vec2::from_ints(300, 0);
     assert!(world.use_item(hero, 0, Target::Pos(ahead), &mut Vec::new()));
     let ward = the_ward(&world);
@@ -207,7 +207,7 @@ fn a_ward_takes_no_room_and_is_walked_straight_through() {
 
 #[test]
 fn a_ward_cannot_be_put_where_nothing_may_walk() {
-    let (mut world, hero, _spot) = a_hero_with_a_ward(ITEM_SENTRY_WARD);
+    let (mut world, hero, _spot) = a_hero_with_a_ward(ItemId::SENTRY_WARD);
     // Closed ground with open ground to stand on beside it.
     let (stand, wall) = (0..200)
         .flat_map(|x| (0..200).map(move |y| Vec2::from_ints(x * 100, y * 100)))
@@ -231,8 +231,8 @@ fn a_ward_cannot_be_put_where_nothing_may_walk() {
 #[test]
 fn each_ward_stands_up_what_its_own_item_names() {
     for (item, def) in [
-        (ITEM_OBSERVER_WARD, &OBSERVER_WARD),
-        (ITEM_SENTRY_WARD, &SENTRY_WARD),
+        (ItemId::OBSERVER_WARD, &OBSERVER_WARD),
+        (ItemId::SENTRY_WARD, &SENTRY_WARD),
     ] {
         let (mut world, hero, spot) = a_hero_with_a_ward(item);
         let at = spot + Vec2::from_ints(200, 0);
@@ -243,7 +243,8 @@ fn each_ward_stands_up_what_its_own_item_names() {
         assert_eq!(
             stats.true_sight.to_int(),
             def.true_sight,
-            "item {item} stands up what it names"
+            "item {} stands up what it names",
+            item.0
         );
         assert_eq!(
             stats.vision.to_int(),
@@ -268,7 +269,7 @@ fn both_wards_hide_and_each_reveals_the_other_side() {
     // A hero of each side standing right there, so ordinary sight is not what
     // is being measured.
     for (index, side) in [Team::Radiant, Team::Dire].into_iter().enumerate() {
-        world.spawn_hero(side, at, SlotId(index as u8), HeroId(1));
+        world.spawn_hero(side, at, SlotId(index as u8), HeroId::SHADOW_FIEND);
     }
     let theirs = world.spawn_unit(&OBSERVER_WARD, Team::Dire, at);
     world.settle();

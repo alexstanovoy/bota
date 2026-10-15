@@ -117,10 +117,10 @@ fn variant_name(value: &impl std::fmt::Debug) -> String {
 fn every_effect_is_shown_under_its_registered_id() {
     let mut shown: Vec<(u16, String)> = every_modifier()
         .iter()
-        .map(|kind| (effect_id(*kind), variant_name(kind)))
+        .map(|kind| (effect_id(*kind).0, variant_name(kind)))
         .collect();
     for kind in StackKind::ALL {
-        shown.push((stack_effect_id(kind), variant_name(&kind)));
+        shown.push((stack_effect_id(kind).0, variant_name(&kind)));
     }
     shown.push((EffectId::FEASTING.0, "Feasting".to_string()));
     shown.push((EffectId::FEAST_LINGER.0, "FeastLinger".to_string()));

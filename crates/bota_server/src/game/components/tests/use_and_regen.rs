@@ -174,7 +174,7 @@ fn stash_backpack_and_muted_stacks_add_no_passive() {
 fn stick_still_spends_all_charges_and_keeps_its_slot() {
     let (mut world, hero) = fixture();
     let mut stick = mango(3);
-    stick.id = bota_proto::ItemId(crate::game::ITEM_MAGIC_STICK);
+    stick.id = bota_proto::ItemId::MAGIC_STICK;
     put(&mut world, hero, 0, stick);
     assert!(world.use_item(hero, 0, Target::None, &mut Vec::new()));
     assert_eq!(world.mana.get(hero).unwrap().mana, Fixed::from_int(45));

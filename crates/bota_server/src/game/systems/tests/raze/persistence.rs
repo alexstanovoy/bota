@@ -94,7 +94,7 @@ fn mechanics_hash_includes_every_merge_field_of_a_stack_wherever_it_is_kept() {
         ("mode", |stack| stack.mode = Some(Attribute::Agility)),
     ];
     for kept in [Kept::Bag, Kept::Courier, Kept::Ground] {
-        for item in [ItemId(42), ItemId(29)] {
+        for item in [ItemId::MANGO, ItemId::POWER_TREADS] {
             let base = ItemStack::bought(item, SlotId(0), 0).unwrap();
             for (name, change) in changes {
                 let mut changed = base;
@@ -113,7 +113,7 @@ fn mechanics_hash_includes_every_merge_field_of_a_stack_wherever_it_is_kept() {
 #[test]
 fn a_dropped_mango_is_picked_up_with_its_charges_and_ownership() {
     let (mut world, caster, _) = fixture();
-    let mut stack = ItemStack::bought(ItemId(42), SlotId(0), 0).unwrap();
+    let mut stack = ItemStack::bought(ItemId::MANGO, SlotId(0), 0).unwrap();
     (stack.charges, stack.owner, stack.for_sale) = (3, SlotId(1), true);
     let loot = world.lay_loot(stack, ORIGIN);
     let laid = world.loot.get(loot).unwrap().0;

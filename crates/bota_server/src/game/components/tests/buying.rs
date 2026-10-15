@@ -97,7 +97,7 @@ fn purchases_do_not_merge_foreign_owned_or_marked_stacks() {
 #[test]
 fn non_mango_consumable_purchases_still_use_separate_slots() {
     let (mut world, hero) = fixture();
-    let tango = ItemId(crate::game::ITEM_TANGO);
+    let tango = ItemId::TANGO;
     for _ in 0..2 {
         assert!(world.buy(OWNER, tango, &mut Vec::new()));
     }

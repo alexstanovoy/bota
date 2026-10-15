@@ -1,9 +1,9 @@
 //! Throwing a hook, and what it drags back.
 
 use bota_core::{ModifierKind, facing_towards, kind_def, move_towards, per_tick, rules};
-use bota_proto::{DamageKind, Fixed, Target, Vec2};
+use bota_proto::{AbilityId, DamageKind, Fixed, Target, Vec2};
 
-use crate::game::{Hook, Modifier, Transform, World, ability};
+use crate::game::{Hook, Modifier, Transform, World};
 
 use crate::engine::Entity;
 
@@ -31,7 +31,7 @@ impl World {
             },
         );
         self.set_team(hook, side);
-        let links = std::array::from_fn(|_| self.spawn_mark(ability::MEAT_HOOK, caster, from, 0));
+        let links = std::array::from_fn(|_| self.spawn_mark(AbilityId::MEAT_HOOK, caster, from, 0));
         self.hook.insert(
             hook,
             Hook {

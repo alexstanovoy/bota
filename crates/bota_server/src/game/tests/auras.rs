@@ -28,7 +28,7 @@ fn a_fountain_hands_out_mending_to_its_own_side_standing_in_it() {
         Team::Dire,
         world.transform.get(hero).expect("standing").pos,
         SlotId(1),
-        HeroId(1),
+        HeroId::SHADOW_FIEND,
     );
     world.step();
     assert!(
@@ -71,14 +71,14 @@ fn a_tower_guards_only_the_heroes_of_its_own_side_that_stand_by_it() {
             Team::Radiant,
             Vec2::from_ints(5000 + rules::TOWER_AURA_RADIUS + 200, 5000),
             SlotId(1),
-            HeroId(1),
+            HeroId::SHADOW_FIEND,
         );
         let creep = world.spawn_unit(&MELEE_CREEP, Team::Radiant, Vec2::from_ints(5400, 4900));
         let theirs = world.spawn_hero(
             Team::Dire,
             Vec2::from_ints(5400, 5100),
             SlotId(2),
-            HeroId(1),
+            HeroId::SHADOW_FIEND,
         );
         world.settle();
         world.step();
@@ -118,7 +118,7 @@ fn a_flagbearer_inspires_the_creeps_of_its_own_side_around_it() {
         Team::Dire,
         Vec2::from_ints(5300, 4900),
         SlotId(1),
-        HeroId(1),
+        HeroId::SHADOW_FIEND,
     );
     world.settle();
     world.step();
@@ -166,7 +166,7 @@ fn the_fountain_melts_whoever_steps_into_its_reach_and_spares_who_stays_out() {
     cfg.picks = vec![Pick {
         slot: SlotId(0),
         team: Team::Dire,
-        hero: HeroId(0),
+        hero: HeroId::PUDGE,
     }];
     let mut world = World::for_match(&cfg, cfg.rng());
     let hero = world.seats[0].unit.expect("stood up");

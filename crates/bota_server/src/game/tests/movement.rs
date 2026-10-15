@@ -3,10 +3,10 @@
 use bota_core::{CellGrid, MELEE_CREEP, isqrt64, map_of, point_along, rules};
 
 use crate::game::{
-    Clearance, Entity, Ground, HEROES, ITEM_BOOTS, March, UnitOrder, World, circle_stops,
-    find_path, plan_radius,
+    Clearance, Entity, Ground, HEROES, March, UnitOrder, World, circle_stops, find_path,
+    plan_radius,
 };
-use bota_proto::{Fixed, HeroId, MapId, SlotId, Team, Vec2};
+use bota_proto::{Fixed, HeroId, ItemId, MapId, SlotId, Team, Vec2};
 
 use super::support::*;
 
@@ -170,7 +170,7 @@ fn what_flies_goes_straight_over_what_a_walker_goes_round() {
     let courier = the_courier(&world);
     world.transform.get_mut(hero).expect("standing").pos = far;
     world.transform.get_mut(courier).expect("flies").pos = hero_at;
-    hand_item(&mut world, courier, ITEM_BOOTS, 0);
+    hand_item(&mut world, courier, ItemId::BOOTS, 0);
     assert!(world.courier_deliver(courier));
     let delivered = |world: &World| {
         world
@@ -600,7 +600,7 @@ fn a_hero_among_trees_too_close_for_the_route_margin_still_walks_home() {
             x: Fixed { raw: x },
             y: Fixed { raw: y },
         };
-        let hero = world.spawn_hero(team, start, SlotId(0), HeroId(1));
+        let hero = world.spawn_hero(team, start, SlotId(0), HeroId::SHADOW_FIEND);
         world.settle();
         let home = map.fountains[usize::from(team == Team::Dire)];
         world.set_order(hero, UnitOrder::Move { pos: home });

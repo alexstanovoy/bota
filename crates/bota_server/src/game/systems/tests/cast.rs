@@ -17,7 +17,7 @@ fn pudge_and_a_mark() -> (World, Entity, Entity) {
         Team::Radiant,
         Vec2::from_ints(5000, 5000),
         SlotId(0),
-        HeroId(0),
+        HeroId::PUDGE,
     );
     let mark = world.spawn_unit(&MELEE_CREEP, Team::Dire, Vec2::from_ints(5100, 5000));
     if let Some(book) = world.abilities.get_mut(pudge) {
@@ -26,7 +26,7 @@ fn pudge_and_a_mark() -> (World, Entity, Entity) {
     world.seats.push(Seat::new(
         SlotId(0),
         Team::Radiant,
-        HeroId(0),
+        HeroId::PUDGE,
         0,
         rules::STASH_SLOTS,
     ));
@@ -45,7 +45,7 @@ fn fiend_mid_swing() -> (World, Entity) {
         Team::Radiant,
         Vec2::from_ints(5000, 5000),
         SlotId(0),
-        HeroId(1),
+        HeroId::SHADOW_FIEND,
     );
     let anvil = world.spawn_unit(&ANVIL, Team::Dire, Vec2::from_ints(5100, 5000));
     world.level.insert(fiend, Level(rules::HERO_MAX_LEVEL));

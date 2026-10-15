@@ -1,6 +1,6 @@
 //! Orders held back on their way to the simulation.
 
-use crate::game::{DelayLine, ITEM_BOOTS, OrderDelay, RefusedOrder, World};
+use crate::game::{DelayLine, OrderDelay, RefusedOrder, World};
 use bota_proto::{ItemId, Order, OrderDelayView, RejectReason, SlotId, Target, Team, Vec2};
 
 use super::support::*;
@@ -94,7 +94,7 @@ fn an_order_that_no_longer_holds_on_its_tick_is_refused_then() {
     let mut world = World::for_match(&cfg, cfg.rng());
     let mut line = DelayLine::new(&cfg, &[OrderDelay { base: 1, jitter: 0 }]).expect("bounded");
     let boots = Order::Buy {
-        item: ItemId(ITEM_BOOTS),
+        item: ItemId::BOOTS,
     };
     let mut refused = Vec::new();
     for seq in 0..3 {

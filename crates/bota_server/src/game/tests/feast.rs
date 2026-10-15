@@ -20,7 +20,7 @@ fn a_feast_table() -> (World, Entity, Entity, [Entity; 4]) {
         Team::Dire,
         Vec2::from_ints(5300, 5000),
         SlotId(1),
-        HeroId(1),
+        HeroId::SHADOW_FIEND,
     );
     let mid = a_creep_at(&mut world, Team::Dire, Vec2::from_ints(5400, 5000));
     let far = a_creep_at(&mut world, Team::Dire, Vec2::from_ints(5500, 5000));

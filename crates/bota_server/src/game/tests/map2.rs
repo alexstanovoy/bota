@@ -6,8 +6,8 @@ use bota_core::{
 };
 
 use crate::game::{
-    Clearance, Command, Entity, Event, EventVisibility, ITEM_BOOTS, MatchConfig, Seat, World,
-    item_def, lane_routes, terrain_of, tree_positions, wire_id,
+    Clearance, Command, Entity, Event, EventVisibility, MatchConfig, Seat, World, item_def,
+    lane_routes, terrain_of, tree_positions, wire_id,
 };
 use bota_proto::{
     DamageKind, EventKind, Fixed, HeroId, ItemId, MapId, Order, Pick, ReplayRecord, ServerMsg,
@@ -28,12 +28,12 @@ fn config(map: MapId) -> MatchConfig {
             Pick {
                 slot: SlotId(0),
                 team: Team::Radiant,
-                hero: HeroId(1),
+                hero: HeroId::SHADOW_FIEND,
             },
             Pick {
                 slot: SlotId(1),
                 team: Team::Dire,
-                hero: HeroId(1),
+                hero: HeroId::SHADOW_FIEND,
             },
         ],
         map,
@@ -92,7 +92,9 @@ fn late_buy() -> Command {
     Command {
         slot: SlotId(0),
         unit: None,
-        order: Order::Buy { item: ItemId(0) },
+        order: Order::Buy {
+            item: ItemId::BOOTS,
+        },
     }
 }
 
@@ -271,9 +273,19 @@ fn map2_first_hero_death_allows_respawn_and_second_death_loses() {
 fn map2_hero_lives_are_counted_per_side_across_seats() {
     let mut world = match_world(MID_MAP);
     let slot = SlotId(2);
-    let mut teammate = Seat::new(slot, Team::Radiant, HeroId(1), 0, rules::STASH_SLOTS);
-    teammate.unit =
-        Some(world.spawn_hero(Team::Radiant, Vec2::from_ints(5000, 5000), slot, HeroId(1)));
+    let mut teammate = Seat::new(
+        slot,
+        Team::Radiant,
+        HeroId::SHADOW_FIEND,
+        0,
+        rules::STASH_SLOTS,
+    );
+    teammate.unit = Some(world.spawn_hero(
+        Team::Radiant,
+        Vec2::from_ints(5000, 5000),
+        slot,
+        HeroId::SHADOW_FIEND,
+    ));
     teammate.deaths = 1;
     world.seats.push(teammate);
     let victim = world.seats[0].unit.expect("Radiant hero");
@@ -471,7 +483,7 @@ fn map2_cap_tick_completes_orders_gold_waves_and_tower_death_before_drawing() {
     let mut world = match_world(MID_MAP);
     world.tick = TICK_CAP - 1;
     let hero = world.seats[0].unit.expect("Radiant buyer");
-    let boots = ItemId(ITEM_BOOTS);
+    let boots = ItemId::BOOTS;
     let cost = item_def(boots).expect("boots in catalog").cost;
     let gold = world.seats[0].gold;
     let victim = topple(&mut world, Team::Dire);

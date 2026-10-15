@@ -2,8 +2,8 @@
 
 use bota_core::{ModifierKind, attack_gain, beats, kind_def, rules};
 use bota_proto::{
-    AbilityView, AggroView, EffectId, EffectView, Fixed, PlayerView, ProjectileView, StatusFlags,
-    SwingView, TalentSlot, TalentView, Talents, Team, UnitKind, UnitView, WorldView,
+    AbilityId, AbilityView, AggroView, EffectId, EffectView, Fixed, PlayerView, ProjectileView,
+    StatusFlags, SwingView, TalentSlot, TalentView, Talents, Team, UnitKind, UnitView, WorldView,
 };
 
 use crate::game::{
@@ -11,10 +11,6 @@ use crate::game::{
     item_views,
 };
 use crate::profile::Phase;
-
-/// The wire's effect id of Shadowraze: one row per source, carrying its ticks
-/// and stacks.
-pub const EFFECT_SHADOWRAZE: u16 = 15;
 
 /// The handle as it travels on the wire.
 pub fn wire_id(entity: Entity) -> bota_proto::EntityId {
@@ -287,11 +283,11 @@ impl World {
         } else if let Some(mark) = self.mark.get(entity) {
             Some(mark.ability)
         } else if self.requiem_line.get(entity).is_some() {
-            Some(crate::game::ability::REQUIEM)
+            Some(AbilityId::REQUIEM)
         } else if self.hook.get(entity).is_some() {
-            Some(crate::game::ability::MEAT_HOOK)
+            Some(AbilityId::MEAT_HOOK)
         } else if self.grenade.get(entity).is_some() {
-            Some(crate::game::ability::THROW_GRENADE)
+            Some(AbilityId::THROW_GRENADE)
         } else {
             return None;
         };
@@ -446,34 +442,34 @@ fn ability_views(book: &crate::game::AbilityBook, mana_rate_bp: i32) -> Vec<Abil
 }
 
 /// Which effect one kind is on the wire.
-pub(crate) fn stack_effect_id(kind: StackKind) -> u16 {
+pub(crate) fn stack_effect_id(kind: StackKind) -> EffectId {
     match kind {
-        StackKind::FleshHeap => 10,
-        StackKind::Souls => 11,
+        StackKind::FleshHeap => EffectId::FLESH_HEAP,
+        StackKind::Souls => EffectId::SOULS,
     }
 }
 
 /// The number the wire names a modifier with.
-pub(crate) fn effect_id(kind: ModifierKind) -> u16 {
+pub(crate) fn effect_id(kind: ModifierKind) -> EffectId {
     match kind {
-        ModifierKind::Haste { .. } => 0,
-        ModifierKind::Mending { .. } => 1,
-        ModifierKind::Clarity { .. } => 2,
-        ModifierKind::Fountain { .. } => 3,
-        ModifierKind::Stunned => 4,
-        ModifierKind::Shielded => 8,
-        ModifierKind::Slowed { .. } => 5,
-        ModifierKind::Hastened { .. } => 7,
-        ModifierKind::Burning { .. } => 6,
-        ModifierKind::Phased => 9,
-        ModifierKind::ArmorBroken { .. } => 12,
-        ModifierKind::MagicBroken { .. } => EffectId::MAGIC_BROKEN.0,
-        ModifierKind::Guarded { .. } => 13,
-        ModifierKind::Inspired { .. } => 14,
-        ModifierKind::Shadowraze { .. } => EFFECT_SHADOWRAZE,
-        ModifierKind::Rot { .. } => 16,
-        ModifierKind::Feared => 17,
-        ModifierKind::BloodGrenade { .. } => EffectId::BLOOD_GRENADE.0,
+        ModifierKind::Haste { .. } => EffectId::HASTE,
+        ModifierKind::Mending { .. } => EffectId::MENDING,
+        ModifierKind::Clarity { .. } => EffectId::CLARITY,
+        ModifierKind::Fountain { .. } => EffectId::FOUNTAIN,
+        ModifierKind::Stunned => EffectId::STUNNED,
+        ModifierKind::Shielded => EffectId::SHIELDED,
+        ModifierKind::Slowed { .. } => EffectId::SLOWED,
+        ModifierKind::Hastened { .. } => EffectId::HASTENED,
+        ModifierKind::Burning { .. } => EffectId::BURNING,
+        ModifierKind::Phased => EffectId::PHASED,
+        ModifierKind::ArmorBroken { .. } => EffectId::ARMOR_BROKEN,
+        ModifierKind::MagicBroken { .. } => EffectId::MAGIC_BROKEN,
+        ModifierKind::Guarded { .. } => EffectId::GUARDED,
+        ModifierKind::Inspired { .. } => EffectId::INSPIRED,
+        ModifierKind::Shadowraze { .. } => EffectId::SHADOWRAZE,
+        ModifierKind::Rot { .. } => EffectId::ROT,
+        ModifierKind::Feared => EffectId::FEARED,
+        ModifierKind::BloodGrenade { .. } => EffectId::BLOOD_GRENADE,
     }
 }
 
@@ -488,7 +484,7 @@ impl World {
             .flat_map(|on_it| on_it.active())
             .filter(|held| !matches!(held.kind, ModifierKind::Rot { .. }))
             .map(|held| EffectView {
-                id: EffectId(effect_id(held.kind)),
+                id: effect_id(held.kind),
                 ticks_left: held.ticks_left,
                 stacks: match held.kind {
                     ModifierKind::Shadowraze { stacks } => Some(u32::from(stacks)),
@@ -498,7 +494,7 @@ impl World {
             .collect();
         if let Some(gathered) = self.stacks.get(entity) {
             on_it.extend(gathered.held().map(|(kind, many)| EffectView {
-                id: EffectId(stack_effect_id(kind)),
+                id: stack_effect_id(kind),
                 ticks_left: None,
                 stacks: Some(many),
             }));
@@ -519,7 +515,7 @@ impl World {
     /// Whether an entity has a toggle switched on right now.
     fn ability_on(&self, entity: Entity, id: bota_proto::AbilityId) -> bool {
         match id {
-            crate::game::ability::ROT => self.modifiers.get(entity).is_some_and(|on_it| {
+            AbilityId::ROT => self.modifiers.get(entity).is_some_and(|on_it| {
                 on_it
                     .active()
                     .any(|held| matches!(held.kind, ModifierKind::Rot { .. }))

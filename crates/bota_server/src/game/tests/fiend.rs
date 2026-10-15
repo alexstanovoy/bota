@@ -2,9 +2,10 @@
 
 use bota_core::{ModifierKind, isqrt64, rules, tower_def};
 
-use crate::game::{ActionState, Entity, Event, StackKind, UnitOrder, World, ability, wire_id};
+use crate::game::{ActionState, Entity, Event, StackKind, UnitOrder, World, wire_id};
 use bota_proto::{
-    DamageKind, EffectId, EventKind, Fixed, HeroId, Order, SlotId, StatusFlags, Target, Team, Vec2,
+    AbilityId, DamageKind, EffectId, EventKind, Fixed, HeroId, Order, SlotId, StatusFlags, Target,
+    Team, Vec2,
 };
 
 use super::support::*;
@@ -33,7 +34,11 @@ fn the_kit_is_three_razes_the_feast_the_presence_and_the_requiem_with_no_slot_fo
 #[test]
 fn the_necromastery_gathers_from_the_first_level_with_no_point_spent() {
     let mut world = World::new();
-    let fiend = seated_hero(&mut world, Vec2::from_ints(5000, 5000), HeroId(1));
+    let fiend = seated_hero(
+        &mut world,
+        Vec2::from_ints(5000, 5000),
+        HeroId::SHADOW_FIEND,
+    );
     let creep = a_creep_at(&mut world, Team::Dire, Vec2::from_ints(5400, 5000));
     world.settle();
     assert_eq!(world.points_spent(fiend), 0, "nothing learned");
@@ -49,7 +54,7 @@ fn the_necromastery_gathers_from_the_first_level_with_no_point_spent() {
         shown
             .abilities
             .iter()
-            .all(|slot| slot.id != ability::NECROMASTERY),
+            .all(|slot| slot.id != AbilityId::NECROMASTERY),
         "and the necromastery is in no slot"
     );
     assert!(
@@ -115,7 +120,7 @@ fn a_raze_stands_through_its_cast_point_and_lands_when_it_is_over() {
         events.iter().any(|event| matches!(
             event.kind,
             EventKind::AbilityCast {
-                ability: ability::RAZE_NEAR,
+                ability: AbilityId::RAZE_NEAR,
                 ..
             }
         )),
@@ -245,7 +250,7 @@ fn a_hero_brought_down_is_worth_four_souls() {
         Team::Dire,
         Vec2::from_ints(5400, 5000),
         SlotId(1),
-        HeroId(1),
+        HeroId::SHADOW_FIEND,
     );
     world.settle();
     world.bury(vec![(victim, Some(fiend))], &mut Vec::new());
@@ -375,14 +380,16 @@ fn a_raze_leaves_its_mark_where_it_lands_for_whoever_sees_the_spot() {
     let landed = dire
         .projectiles
         .iter()
-        .find(|shown| shown.ability == Some(ability::RAZE_FAR))
+        .find(|shown| shown.ability == Some(AbilityId::RAZE_FAR))
         .expect("the Dire side sees the raze where it landed");
     assert_eq!(
         landed.pos,
         Vec2::from_ints(5000 + rules::RAZE_DISTANCE[2], 5000)
     );
     assert!(
-        dire.units.iter().all(|shown| shown.hero != Some(HeroId(1))),
+        dire.units
+            .iter()
+            .all(|shown| shown.hero != Some(HeroId::SHADOW_FIEND)),
         "and still does not see the fiend"
     );
     for _ in 0..rules::MARK_TICKS {
@@ -393,7 +400,7 @@ fn a_raze_leaves_its_mark_where_it_lands_for_whoever_sees_the_spot() {
             .view_full()
             .projectiles
             .iter()
-            .all(|shown| shown.ability != Some(ability::RAZE_FAR)),
+            .all(|shown| shown.ability != Some(AbilityId::RAZE_FAR)),
         "the mark is gone once its ticks have run"
     );
 }
@@ -408,12 +415,12 @@ fn the_view_carries_what_has_been_gathered_as_a_counted_effect() {
     let shown = view
         .units
         .iter()
-        .find(|u| u.hero == Some(HeroId(1)))
+        .find(|u| u.hero == Some(HeroId::SHADOW_FIEND))
         .expect("he is in the view");
     let souls = shown
         .effects
         .iter()
-        .find(|e| e.id == EffectId(11))
+        .find(|e| e.id == EffectId::SOULS)
         .expect("what is gathered is on him");
     assert_eq!(souls.stacks, Some(rules::SOULS_PER_UNIT));
     assert_eq!(souls.ticks_left, None, "and nothing counts it down");
@@ -430,7 +437,7 @@ fn a_requiem_lets_a_line_fly_for_every_soul_and_a_line_burns_what_it_crosses_onc
             .view_full()
             .projectiles
             .iter()
-            .filter(|shown| shown.ability == Some(ability::REQUIEM))
+            .filter(|shown| shown.ability == Some(AbilityId::REQUIEM))
             .count()
     };
     let_go(&mut world, REQUIEM_SLOT);
@@ -507,7 +514,7 @@ fn a_requiem_line_tears_magic_resistance_by_a_share_of_what_it_keeps_out() {
         Team::Dire,
         Vec2::from_ints(5300, 5000),
         SlotId(1),
-        HeroId(1),
+        HeroId::SHADOW_FIEND,
     );
     world.settle();
     hand_souls(&mut world, fiend, 1);
@@ -623,7 +630,7 @@ fn a_fallen_fiend_lets_half_his_kept_souls_fly_whatever_the_cooldown_and_they_on
         .view_full()
         .projectiles
         .iter()
-        .filter(|shown| shown.ability == Some(ability::REQUIEM))
+        .filter(|shown| shown.ability == Some(AbilityId::REQUIEM))
         .count();
     // Ten held, three lost to the death, half of the seven kept fly.
     assert_eq!(lines, 3);
@@ -651,7 +658,7 @@ fn a_fallen_fiend_with_no_requiem_learned_lets_nothing_fly() {
             .view_full()
             .projectiles
             .iter()
-            .all(|shown| shown.ability != Some(ability::REQUIEM))
+            .all(|shown| shown.ability != Some(AbilityId::REQUIEM))
     );
 }
 

@@ -2,7 +2,8 @@
 
 use bota_core::{hero_spawn_pos, map_of, rules};
 use bota_proto::{
-    Aim, Cheat, MatchStats, Order, RejectReason, SlotId, SlotStats, Target, Team, UnitKind,
+    AbilityId, Aim, Cheat, MatchStats, Order, RejectReason, SlotId, SlotStats, Target, Team,
+    UnitKind,
 };
 
 use crate::game::{
@@ -52,7 +53,7 @@ impl World {
             seat.unit = Some(hero);
             // The scroll every hero starts with comes on a wait.
             seat.item_clocks.push((
-                bota_proto::ItemId(crate::game::ITEM_TOWN_PORTAL_SCROLL),
+                bota_proto::ItemId::TOWN_PORTAL_SCROLL,
                 rules::SCROLL_FIRST_WAIT_TICKS,
             ));
             world.seats.push(seat);
@@ -155,7 +156,7 @@ impl World {
         }
         let keeps_errand = self.kind.get(unit) == Some(&UnitKind::Courier)
             && matches!(order, Order::Cast { slot, target: Target::None }
-                if matches!(self.ability_in(unit, slot), crate::game::ability::BURST | crate::game::ability::SHIELD));
+                if matches!(self.ability_in(unit, slot), AbilityId::BURST | AbilityId::SHIELD));
         if !keeps_errand && let Some(errand) = self.errand.get_mut(unit) {
             *errand = crate::game::Errand::None;
         }

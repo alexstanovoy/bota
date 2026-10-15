@@ -2,7 +2,7 @@
 
 use bota_core::{MAPS, MELEE_CREEP, SHADOW_FIEND, ancient_of, hero_spawn_pos, map_of, rules};
 
-use crate::game::{Entity, ITEM_BOOTS, ITEM_QUELLING_BLADE, Level, UnitOrder, World, wire_id};
+use crate::game::{Entity, Level, UnitOrder, World, wire_id};
 use bota_proto::{EventKind, Fixed, HeroId, ItemId, MapId, SlotId, Team, Vec2};
 
 use super::support::*;
@@ -67,7 +67,11 @@ fn every_map_sits_at_the_place_its_id_names() {
 #[test]
 fn a_kill_pays_the_one_who_struck_last_and_feeds_the_side() {
     let mut world = World::new();
-    let hero = seated_hero(&mut world, Vec2::from_ints(5000, 5000), HeroId(1));
+    let hero = seated_hero(
+        &mut world,
+        Vec2::from_ints(5000, 5000),
+        HeroId::SHADOW_FIEND,
+    );
     let prey = world.spawn_unit(&MELEE_CREEP, Team::Dire, Vec2::from_ints(5050, 5000));
     world.settle();
     world.health.insert(prey, health(0));
@@ -106,7 +110,11 @@ fn living_allied_heroes_nearby_split_a_units_experience_evenly() {
 #[test]
 fn bringing_down_your_own_is_a_deny_that_feeds_only_nearby_enemies() {
     let mut world = World::new();
-    let hero = seated_hero(&mut world, Vec2::from_ints(5_000, 5_000), HeroId(1));
+    let hero = seated_hero(
+        &mut world,
+        Vec2::from_ints(5_000, 5_000),
+        HeroId::SHADOW_FIEND,
+    );
     seat_hero(&mut world, 1, Team::Dire, Vec2::from_ints(5_100, 5_000));
     let own = world.spawn_unit(&MELEE_CREEP, Team::Radiant, Vec2::from_ints(5_050, 5_000));
     world.settle();
@@ -124,7 +132,11 @@ fn bringing_down_your_own_is_a_deny_that_feeds_only_nearby_enemies() {
 #[test]
 fn a_hero_kill_pays_by_the_streak_and_a_death_costs_gold_by_the_level() {
     let mut world = World::new();
-    let hunter = seated_hero(&mut world, Vec2::from_ints(5000, 5000), HeroId(1));
+    let hunter = seated_hero(
+        &mut world,
+        Vec2::from_ints(5000, 5000),
+        HeroId::SHADOW_FIEND,
+    );
     let prey = seat_hero(&mut world, 1, Team::Dire, Vec2::from_ints(5050, 5000));
     world.seats[1].gold = 500;
     world.seats[1].net_worth = 500;
@@ -190,7 +202,11 @@ fn a_death_never_takes_more_gold_than_the_purse_holds() {
 fn a_fallen_hero_comes_back_at_its_fountain() {
     let map = map_of(MapId(1));
     let mut world = World::on_map(map);
-    let hero = seated_hero(&mut world, Vec2::from_ints(9000, 9216), HeroId(1));
+    let hero = seated_hero(
+        &mut world,
+        Vec2::from_ints(9000, 9216),
+        HeroId::SHADOW_FIEND,
+    );
     world.settle();
     world.bury(vec![(hero, None)], &mut Vec::new());
     assert!(world.seats[0].unit.is_none(), "its body is gone");
@@ -231,7 +247,7 @@ fn a_hero_keeps_what_it_learned_and_carried_through_a_death() {
     let (mut world, hero) = a_level_seven_hero();
     let mut events = Vec::new();
     assert!(world.learn(hero, 1));
-    let boots = ItemId(ITEM_BOOTS);
+    let boots = ItemId::BOOTS;
     assert!(world.buy(SlotId(0), boots, &mut events));
     world.bury(vec![(hero, None)], &mut events);
     assert!(
@@ -268,7 +284,7 @@ fn what_a_hero_owes_runs_down_while_it_is_dead() {
     if let Some(book) = world.abilities.get_mut(hero) {
         book.slots[1].cooldown = 300;
     }
-    hand_item(&mut world, hero, ITEM_QUELLING_BLADE, 0);
+    hand_item(&mut world, hero, ItemId::QUELLING_BLADE, 0);
     if let Some(bag) = world.inventory.get_mut(hero)
         && let Some(Some(stack)) = bag.slots.get_mut(0)
     {
@@ -327,7 +343,7 @@ fn a_heros_head_and_its_wait_are_priced_as_the_game_prices_them() {
 fn a_heros_blows_on_enemy_heroes_and_structures_are_counted_in_the_final_stats() {
     let mut world = World::new();
     let at = Vec2::from_ints(5000, 5000);
-    let hero = seated_hero(&mut world, at, HeroId(1));
+    let hero = seated_hero(&mut world, at, HeroId::SHADOW_FIEND);
     let foe = seat_hero(&mut world, 1, Team::Dire, at + Vec2::from_ints(100, 0));
     let ancient = world.spawn_unit(
         ancient_of(Team::Dire),

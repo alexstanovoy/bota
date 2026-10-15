@@ -3,10 +3,7 @@
 
 use bota_core::{ModifierKind, fountain_pos, hero_spawn_pos, rules};
 
-use crate::game::{
-    Command, Entity, ITEM_BOOTS, ITEM_PHASE_BOOTS, ITEM_TOWN_PORTAL_SCROLL, UnitOrder, World,
-    wire_id,
-};
+use crate::game::{Command, Entity, UnitOrder, World, wire_id};
 use bota_proto::{
     AbilitySlot, Fixed, ItemId, ItemSlot, Order, RejectReason, SlotId, StatusFlags, Target, Team,
     UnitKind, Vec2,
@@ -72,7 +69,7 @@ fn every_hero_starts_with_one_free_scroll_ready_ten_seconds_past_the_horn() {
     let mut world = World::for_match(&config(), config().rng());
     let hero = world.seats[0].unit.expect("stood up");
     let scroll = scrolls(&world, hero).expect("the slot holds the starting scroll");
-    assert_eq!(scroll.id, ItemId(ITEM_TOWN_PORTAL_SCROLL));
+    assert_eq!(scroll.id, ItemId::TOWN_PORTAL_SCROLL);
     assert_eq!(scroll.charges, 1);
     assert_eq!(scroll.free_charges, 1, "and that one came for nothing");
     assert_eq!(
@@ -123,7 +120,7 @@ fn a_scroll_spends_mana_and_its_wait_as_it_is_read_and_itself_on_landing() {
         "75 mana went at once: {mana:?} then {after:?}"
     );
     assert!(
-        world.owes_wait(hero, ItemId(ITEM_TOWN_PORTAL_SCROLL)),
+        world.owes_wait(hero, ItemId::TOWN_PORTAL_SCROLL),
         "and the wait began"
     );
     let statuses = world
@@ -179,7 +176,7 @@ fn a_broken_channel_keeps_the_scroll_but_not_the_mana_or_the_wait() {
     );
     assert!(scrolls(&world, hero).is_some(), "the scroll is still there");
     assert!(world.mana.get(hero).expect("has mana").mana < mana);
-    assert!(world.owes_wait(hero, ItemId(ITEM_TOWN_PORTAL_SCROLL)));
+    assert!(world.owes_wait(hero, ItemId::TOWN_PORTAL_SCROLL));
     assert!(
         world.view(Team::Dire).teleports.is_empty(),
         "nobody is shown it any more"
@@ -405,7 +402,7 @@ fn a_scroll_bought_at_the_shop_joins_the_slot_and_one_bought_away_waits_in_the_s
         &mut world,
         None,
         Order::Buy {
-            item: ItemId(ITEM_TOWN_PORTAL_SCROLL),
+            item: ItemId::TOWN_PORTAL_SCROLL,
         },
     );
     let held = scrolls(&world, hero).expect("held");
@@ -416,7 +413,7 @@ fn a_scroll_bought_at_the_shop_joins_the_slot_and_one_bought_away_waits_in_the_s
         &mut world,
         None,
         Order::Buy {
-            item: ItemId(ITEM_TOWN_PORTAL_SCROLL),
+            item: ItemId::TOWN_PORTAL_SCROLL,
         },
     );
     assert_eq!(scrolls(&world, hero).map(|s| s.charges), Some(2));
@@ -431,11 +428,11 @@ fn a_courier_hands_scrolls_into_the_town_portal_slot_whatever_the_inventory_hold
     let (mut world, hero, courier) = courier_on_delivery();
     if let Some(bag) = world.inventory.get_mut(hero) {
         for slot in bag.slots.iter_mut() {
-            *slot = Some(fresh_stack(ITEM_BOOTS, 0));
+            *slot = Some(fresh_stack(ItemId::BOOTS, 0));
         }
     }
     if let Some(bag) = world.inventory.get_mut(courier) {
-        bag.slots[0] = Some(fresh_stack(ITEM_TOWN_PORTAL_SCROLL, 1));
+        bag.slots[0] = Some(fresh_stack(ItemId::TOWN_PORTAL_SCROLL, 1));
     }
     for _ in 0..30 * rules::TICKS_PER_SECOND {
         world.step();
@@ -458,13 +455,13 @@ fn the_town_portal_slot_takes_scrolls_and_gives_nothing_up() {
         world.validate_order(SlotId(0), None, &out),
         Err(RejectReason::WrongTargetKind)
     );
-    world.seats[0].stash.slots[0] = Some(fresh_stack(ITEM_BOOTS, 0));
+    world.seats[0].stash.slots[0] = Some(fresh_stack(ItemId::BOOTS, 0));
     let boots_in = swap(9, ItemSlot::TOWN_PORTAL.0);
     assert_eq!(
         world.validate_order(SlotId(0), None, &boots_in),
         Err(RejectReason::WrongTargetKind)
     );
-    world.seats[0].stash.slots[1] = Some(fresh_stack(ITEM_TOWN_PORTAL_SCROLL, 2));
+    world.seats[0].stash.slots[1] = Some(fresh_stack(ItemId::TOWN_PORTAL_SCROLL, 2));
     advance_validated(&mut world, None, swap(10, ItemSlot::TOWN_PORTAL.0));
     assert_eq!(scrolls(&world, hero).map(|s| s.charges), Some(3));
     assert!(world.seats[0].stash.slots[1].is_none());
@@ -486,7 +483,7 @@ fn a_free_scroll_is_never_bought_back_and_is_spent_first() {
         &mut world,
         None,
         Order::Buy {
-            item: ItemId(ITEM_TOWN_PORTAL_SCROLL),
+            item: ItemId::TOWN_PORTAL_SCROLL,
         },
     );
     world.transform.get_mut(hero).expect("standing").pos = an_empty_spot(&world);
@@ -542,7 +539,7 @@ fn a_cast_breaks_the_channel_and_goes_off() {
 #[test]
 fn phase_boots_leave_the_channel_be_and_a_feast_breaks_it() {
     let (mut world, hero) = a_hero_with_a_scroll();
-    hand_item(&mut world, hero, ITEM_PHASE_BOOTS, 0);
+    hand_item(&mut world, hero, ItemId::PHASE_BOOTS, 0);
     let to = beside_own_tower(&world);
     read_at(&mut world, Target::Pos(to));
     advance_validated(

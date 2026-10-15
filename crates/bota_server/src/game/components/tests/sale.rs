@@ -149,7 +149,7 @@ fn courier_sale_pays_item_owner_not_courier_owner() {
 fn tango_sale_value_is_not_multiplied_by_charges() {
     let (mut world, hero) = fixture();
     let mut tango = mango(3);
-    tango.id = ItemId(crate::game::ITEM_TANGO);
+    tango.id = ItemId::TANGO;
     put(&mut world, hero, 0, tango);
     let before = world.seats[0].gold;
     assert!(world.sell_item(OWNER, hero, 0));

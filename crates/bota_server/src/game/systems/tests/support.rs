@@ -28,8 +28,8 @@ pub(super) fn swinging_at(speed: i32) -> Modifiers {
 }
 
 /// Puts a freshly bought item in one of a hero's slots.
-pub(super) fn hold(world: &mut World, hero: Entity, slot: usize, item: u16) {
-    let stack = ItemStack::bought(ItemId(item), SlotId(0), 0).expect("the item is sold");
+pub(super) fn hold(world: &mut World, hero: Entity, slot: usize, item: ItemId) {
+    let stack = ItemStack::bought(item, SlotId(0), 0).expect("the item is sold");
     world.inventory.get_mut(hero).expect("has a bag").slots[slot] = Some(stack);
 }
 

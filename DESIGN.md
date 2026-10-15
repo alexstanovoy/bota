@@ -1556,7 +1556,7 @@ at Dota 7.41f, below).
 
 ### Mango
 
-`ITEM_MANGO` is 42. The shop sends it as an ordinary `ShopEntry`, and a carried one
+`ItemId::MANGO` is 42. The shop sends it as an ordinary `ShopEntry`, and a carried one
 counts in `ItemView.charges`. Its numbers, in `game/config/item.rs`:
 
 | Constant | Value |

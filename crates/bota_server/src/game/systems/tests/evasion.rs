@@ -3,8 +3,8 @@
 
 use bota_core::{MELEE_CREEP, RANGED_CREEP, Ratio, UnitDef, rules};
 
-use crate::game::{Entity, Event, ITEM_BUTTERFLY, ITEM_TALISMAN_OF_EVASION, World, wire_id};
-use bota_proto::{DamageKind, EventKind, Fixed, HeroId, SlotId, Team, Vec2};
+use crate::game::{Entity, Event, World, wire_id};
+use bota_proto::{DamageKind, EventKind, Fixed, HeroId, ItemId, SlotId, Team, Vec2};
 
 use super::support::{assert_exact_blocks, hold, opened, step_until, swinging_at, until_opened};
 
@@ -38,14 +38,14 @@ const ARCHER: UnitDef = UnitDef {
 
 /// An attacker of a kind set on a hero in reach, the hero holding what it
 /// is given.
-fn attacker_at_a_hero(attacker: &'static UnitDef, held: &[u16]) -> (World, Entity, Entity) {
+fn attacker_at_a_hero(attacker: &'static UnitDef, held: &[ItemId]) -> (World, Entity, Entity) {
     let mut world = World::new();
     let from = world.spawn_unit(attacker, Team::Radiant, Vec2::from_ints(5000, 5000));
     let mark = world.spawn_hero(
         Team::Dire,
         Vec2::from_ints(5100, 5000),
         SlotId(0),
-        HeroId(0),
+        HeroId::PUDGE,
     );
     for (slot, item) in held.iter().enumerate() {
         hold(&mut world, mark, slot, *item);
@@ -84,7 +84,7 @@ fn swings_in(events: &[Event], from: Entity, on: Entity) -> Vec<bool> {
 fn a_butterfly_makes_exactly_its_share_of_melee_and_thrown_swings_miss() {
     let ratio = Ratio::new(7, 20);
     for (attacker, case) in [(&STRIKER, "melee"), (&ARCHER, "thrown")] {
-        let (mut world, from, mark) = attacker_at_a_hero(attacker, &[ITEM_BUTTERFLY]);
+        let (mut world, from, mark) = attacker_at_a_hero(attacker, &[ItemId::BUTTERFLY]);
         assert_eq!(
             world.stats.get(mark).map(|stats| stats.evasion),
             Some(ratio),
@@ -106,7 +106,7 @@ fn a_butterfly_makes_exactly_its_share_of_melee_and_thrown_swings_miss() {
 
 #[test]
 fn what_is_not_an_attack_never_misses() {
-    let (mut world, from, mark) = attacker_at_a_hero(&BYSTANDER, &[ITEM_BUTTERFLY]);
+    let (mut world, from, mark) = attacker_at_a_hero(&BYSTANDER, &[ItemId::BUTTERFLY]);
     let mut blows = Vec::new();
     for _ in 0..40 {
         world.push_hit(Some(from), mark, 10, DamageKind::Magical);
@@ -137,12 +137,12 @@ fn without_evasion_nothing_is_rolled_and_nothing_misses() {
 #[test]
 fn of_two_evasions_carried_the_better_counts() {
     let (world, _from, mark) =
-        attacker_at_a_hero(&STRIKER, &[ITEM_TALISMAN_OF_EVASION, ITEM_BUTTERFLY]);
+        attacker_at_a_hero(&STRIKER, &[ItemId::TALISMAN_OF_EVASION, ItemId::BUTTERFLY]);
     assert_eq!(
         world.stats.get(mark).map(|stats| stats.evasion),
         Some(Ratio::new(7, 20))
     );
-    let (world, _from, mark) = attacker_at_a_hero(&STRIKER, &[ITEM_TALISMAN_OF_EVASION]);
+    let (world, _from, mark) = attacker_at_a_hero(&STRIKER, &[ItemId::TALISMAN_OF_EVASION]);
     assert_eq!(
         world.stats.get(mark).map(|stats| stats.evasion),
         Some(Ratio::new(3, 20))
@@ -153,7 +153,7 @@ fn of_two_evasions_carried_the_better_counts() {
 fn a_butterfly_is_worth_its_agility_damage_and_share_of_the_base_pace() {
     let (world, _from, plain) = attacker_at_a_hero(&STRIKER, &[]);
     let bare = *world.stats.get(plain).expect("settled");
-    let (world, _from, mark) = attacker_at_a_hero(&STRIKER, &[ITEM_BUTTERFLY]);
+    let (world, _from, mark) = attacker_at_a_hero(&STRIKER, &[ItemId::BUTTERFLY]);
     let with = *world.stats.get(mark).expect("settled");
     assert_eq!(
         with.attributes.agility - bare.attributes.agility,

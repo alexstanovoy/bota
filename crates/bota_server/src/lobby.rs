@@ -3,7 +3,7 @@
 use bota_proto::{HeroId, LobbySlot, PlayerId, Role, SlotId, Team};
 
 /// The hero a dummy seat plays: Shadow Fiend.
-pub const DUMMY_HERO: HeroId = HeroId(1);
+pub const DUMMY_HERO: HeroId = HeroId::SHADOW_FIEND;
 
 /// One seat of the match and who currently holds it.
 #[derive(Clone, Debug)]

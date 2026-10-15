@@ -3,8 +3,6 @@
 use bota_core::{PUDGE, SHADOW_FIEND, SHADOW_FIEND_TALENTS, TalentTree, UnitDef};
 use bota_proto::{AbilityId, HeroId};
 
-use crate::game::ability;
-
 /// One hero: what it is made of and what it can do.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct HeroDef {
@@ -29,10 +27,10 @@ pub const HEROES: [HeroDef; 2] = [
         name: "Pudge",
         unit: &PUDGE,
         abilities: &[
-            ability::MEAT_HOOK,
-            ability::ROT,
-            ability::FLESH_HEAP,
-            ability::DISMEMBER,
+            AbilityId::MEAT_HOOK,
+            AbilityId::ROT,
+            AbilityId::FLESH_HEAP,
+            AbilityId::DISMEMBER,
         ],
         innate: None,
         talents: None,
@@ -41,14 +39,14 @@ pub const HEROES: [HeroDef; 2] = [
         name: "Shadow Fiend",
         unit: &SHADOW_FIEND,
         abilities: &[
-            ability::RAZE_NEAR,
-            ability::RAZE_MID,
-            ability::RAZE_FAR,
-            ability::FEAST_OF_SOULS,
-            ability::PRESENCE,
-            ability::REQUIEM,
+            AbilityId::RAZE_NEAR,
+            AbilityId::RAZE_MID,
+            AbilityId::RAZE_FAR,
+            AbilityId::FEAST_OF_SOULS,
+            AbilityId::PRESENCE,
+            AbilityId::REQUIEM,
         ],
-        innate: Some(ability::NECROMASTERY),
+        innate: Some(AbilityId::NECROMASTERY),
         talents: Some(&SHADOW_FIEND_TALENTS),
     },
 ];

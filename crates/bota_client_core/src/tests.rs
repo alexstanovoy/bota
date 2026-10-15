@@ -17,8 +17,18 @@ fn the_console_turns_a_typed_line_into_a_cheat_order() {
         ("gold", Cheat::Gold { amount: 1000 }),
         ("-lvlup 3", Cheat::Levels { count: 3 }),
         ("-refresh", Cheat::Refresh),
-        ("-item Butterfly", Cheat::Item { item: ItemId(46) }),
-        ("-item 42", Cheat::Item { item: ItemId(42) }),
+        (
+            "-item Butterfly",
+            Cheat::Item {
+                item: ItemId::BUTTERFLY,
+            },
+        ),
+        (
+            "-item 42",
+            Cheat::Item {
+                item: ItemId::MANGO,
+            },
+        ),
     ] {
         assert_eq!(parse(line), Ok(Order::Cheat { cheat }), "{line:?}");
     }
@@ -76,22 +86,22 @@ fn a_part_in_hand_comes_off_what_the_shop_asks() {
         entry(29, 1400, &[0, 19, 13]),
     ];
     assert_eq!(
-        crate::catalog::price_for(&shop, ItemId(29), &[]),
+        crate::catalog::price_for(&shop, ItemId::POWER_TREADS, &[]),
         1400,
         "with nothing in hand the whole is asked for"
     );
     assert_eq!(
-        crate::catalog::price_for(&shop, ItemId(29), &[ItemId(0)]),
+        crate::catalog::price_for(&shop, ItemId::POWER_TREADS, &[ItemId::BOOTS]),
         900,
         "the boots already worn are not asked for twice"
     );
     assert_eq!(
-        crate::catalog::price_for(&shop, ItemId(0), &[ItemId(0)]),
+        crate::catalog::price_for(&shop, ItemId::BOOTS, &[ItemId::BOOTS]),
         500,
         "but a second of what is bought whole costs the whole of it"
     );
     assert_eq!(
-        crate::catalog::price_for(&shop, ItemId(29), &[ItemId(29)]),
+        crate::catalog::price_for(&shop, ItemId::POWER_TREADS, &[ItemId::POWER_TREADS]),
         1400,
         "and a second built one is built out of fresh parts"
     );
@@ -135,7 +145,7 @@ fn a_unit() -> UnitView {
         statuses: StatusFlags::default(),
         attributes: Attributes::ZERO,
         primary: None,
-        hero: Some(HeroId(0)),
+        hero: Some(HeroId::PUDGE),
         owner: Some(SlotId(0)),
         level: 4,
         abilities: Vec::new(),
@@ -189,7 +199,7 @@ fn a_press_means_what_its_slot_and_its_state_settle() {
 /// An ability slot with the numbers given.
 fn an_ability(level: u8, cooldown: u32, mana_cost: i32, passive: bool, on: bool) -> AbilityView {
     AbilityView {
-        id: AbilityId(0),
+        id: AbilityId::MEAT_HOOK,
         level,
         max_level: 4,
         cooldown_left: cooldown,
@@ -238,7 +248,7 @@ fn what_keeps_an_ability_from_working_is_told_apart_from_what_it_is() {
 /// An item view with the numbers given.
 fn an_item(charges: Option<u8>, cooldown: u32, mana_cost: i32, aim: Option<Aim>) -> ItemView {
     ItemView {
-        id: ItemId(0),
+        id: ItemId::BOOTS,
         charges,
         cooldown_left: cooldown,
         mute_left: 0,
@@ -317,7 +327,7 @@ fn a_player() -> PlayerView {
     PlayerView {
         slot: SlotId(0),
         team: Team::Radiant,
-        hero: HeroId(0),
+        hero: HeroId::PUDGE,
         unit: None,
         level: 1,
         xp: 0,
@@ -339,7 +349,7 @@ fn a_click_takes_the_ground_item_nearest_the_cursor_and_only_within_reach() {
     let lying_at = |idx: u32, x: i32, y: i32| bota_proto::LootView {
         id: handle(idx),
         pos: Vec2::from_ints(x, y),
-        item: ItemId(0),
+        item: ItemId::BOOTS,
         charges: None,
     };
     let mut view = a_tick(0, Vec::new(), Vec::new());
@@ -550,16 +560,16 @@ fn only_what_the_seat_bought_and_keeps_counts_toward_the_price() {
         generation: 1,
     };
     let kept = ItemView {
-        id: ItemId(0),
+        id: ItemId::BOOTS,
         ..an_item(None, 0, 0, None)
     };
     let sold = ItemView {
-        id: ItemId(19),
+        id: ItemId::GLOVES,
         for_sale: true,
         ..kept
     };
     let found = ItemView {
-        id: ItemId(13),
+        id: ItemId::BELT,
         owner: SlotId(1),
         ..kept
     };
@@ -567,13 +577,13 @@ fn only_what_the_seat_bought_and_keeps_counts_toward_the_price() {
     let mut seat = a_player();
     seat.unit = Some(body.id);
     seat.stash = Some(vec![Some(ItemView {
-        id: ItemId(20),
+        id: ItemId::BLADES_OF_ATTACK,
         ..kept
     })]);
     let view = a_tick(1, vec![body], vec![seat.clone()]);
     assert_eq!(
         crate::shop::held_items(&view, &seat),
-        vec![ItemId(0), ItemId(20)],
+        vec![ItemId::BOOTS, ItemId::BLADES_OF_ATTACK],
         "a part marked for sale or bought by another seat is not spent on a build"
     );
 }
@@ -621,7 +631,7 @@ fn the_damage_range_is_the_wires_with_the_bonus_split_off_a_hero() {
     use crate::catalog::damage_range;
     // Shadow Fiend: 16 base and 25 agility make 41; 12 of items on top.
     let mut fiend = a_unit();
-    fiend.hero = Some(HeroId(1));
+    fiend.hero = Some(HeroId::SHADOW_FIEND);
     fiend.level = 1;
     fiend.primary = Some(bota_proto::Attribute::Agility);
     fiend.attributes.agility = Fixed::from_int(25);
@@ -700,7 +710,7 @@ fn the_catalog_holds_every_live_id_and_no_other() {
 #[test]
 fn damage_splits_into_base_and_bonus() {
     let mut fiend = a_unit();
-    fiend.hero = Some(HeroId(1));
+    fiend.hero = Some(HeroId::SHADOW_FIEND);
     fiend.level = 1;
     fiend.primary = Some(bota_proto::Attribute::Agility);
     // 16-22 base + 25 agility, and 9 from items and souls on top.

@@ -38,7 +38,12 @@ fn mango_mana_enables_a_validated_raze_without_changing_any_strategy() {
     let (mut world, caster, target) = fixture();
     seat(&mut world, SlotId(0), Team::Radiant, caster, 65);
     world.transform.get_mut(caster).unwrap().pos = fountain_pos(world.map, Team::Radiant);
-    order(&mut world, Order::Buy { item: ItemId(42) });
+    order(
+        &mut world,
+        Order::Buy {
+            item: ItemId::MANGO,
+        },
+    );
     world.transform.get_mut(caster).unwrap().pos = ORIGIN;
     world.mana.get_mut(caster).unwrap().mana = Fixed::ZERO;
     let use_mango = Order::Use {

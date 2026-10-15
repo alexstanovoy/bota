@@ -3,15 +3,21 @@ use bota_proto::{Fixed, HeroId, ItemId, SlotId, Target, Team, Vec2};
 
 use crate::game::{BAG_SLOTS, Entity, Inventory, ItemStack, Seat, World};
 
-pub(super) const MANGO: ItemId = ItemId(42);
+pub(super) const MANGO: ItemId = ItemId::MANGO;
 pub(super) const OWNER: SlotId = SlotId(0);
 pub(super) const AWAY: Vec2 = Vec2::from_ints(8000, 8000);
 
 pub(super) fn fixture() -> (World, Entity) {
     let mut world = World::new();
     let home = fountain_pos(world.map, Team::Radiant);
-    let hero = world.spawn_hero(Team::Radiant, home, OWNER, HeroId(1));
-    let mut seat = Seat::new(OWNER, Team::Radiant, HeroId(1), 1000, rules::STASH_SLOTS);
+    let hero = world.spawn_hero(Team::Radiant, home, OWNER, HeroId::SHADOW_FIEND);
+    let mut seat = Seat::new(
+        OWNER,
+        Team::Radiant,
+        HeroId::SHADOW_FIEND,
+        1000,
+        rules::STASH_SLOTS,
+    );
     seat.unit = Some(hero);
     world.seats.push(seat);
     world.settle();
@@ -52,7 +58,7 @@ pub(super) fn held(world: &World, unit: Entity, at: usize) -> ItemStack {
 
 pub(super) fn fill_storage(world: &mut World, hero: Entity) {
     let mut filler = mango(1);
-    filler.id = ItemId(37);
+    filler.id = ItemId::RECIPE_PHASE_BOOTS;
     filler.charges = 0;
     world
         .inventory

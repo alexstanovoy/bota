@@ -350,115 +350,6 @@ const PLAIN: ItemDef = ItemDef {
     on_complete: nothing,
 };
 
-/// Boots of Speed.
-pub const ITEM_BOOTS: u16 = 0;
-/// Clarity.
-pub const ITEM_CLARITY: u16 = 1;
-/// Healing Salve.
-pub const ITEM_HEALING_SALVE: u16 = 2;
-/// Iron Branch.
-pub const ITEM_IRON_BRANCH: u16 = 3;
-/// Observer Ward.
-pub const ITEM_OBSERVER_WARD: u16 = 4;
-/// Quelling Blade.
-pub const ITEM_QUELLING_BLADE: u16 = 5;
-/// Sentry Ward.
-pub const ITEM_SENTRY_WARD: u16 = 6;
-/// Tango.
-pub const ITEM_TANGO: u16 = 7;
-/// Town Portal Scroll.
-pub const ITEM_TOWN_PORTAL_SCROLL: u16 = 8;
-/// Circlet.
-pub const ITEM_CIRCLET: u16 = 9;
-/// Gauntlets of Strength.
-pub const ITEM_GAUNTLETS: u16 = 10;
-/// Slippers of Agility.
-pub const ITEM_SLIPPERS: u16 = 11;
-/// Mantle of Intelligence.
-pub const ITEM_MANTLE: u16 = 12;
-/// Belt of Strength.
-pub const ITEM_BELT: u16 = 13;
-/// Band of Elvenskin.
-pub const ITEM_BAND: u16 = 14;
-/// Robe of the Magi.
-pub const ITEM_ROBE: u16 = 15;
-/// Ogre Axe.
-pub const ITEM_OGRE_AXE: u16 = 16;
-/// Blade of Alacrity.
-pub const ITEM_BLADE_OF_ALACRITY: u16 = 17;
-/// Staff of Wizardry.
-pub const ITEM_STAFF_OF_WIZARDRY: u16 = 18;
-/// Gloves of Haste.
-pub const ITEM_GLOVES: u16 = 19;
-/// Blades of Attack.
-pub const ITEM_BLADES_OF_ATTACK: u16 = 20;
-/// Broadsword.
-pub const ITEM_BROADSWORD: u16 = 21;
-/// Quarterstaff.
-pub const ITEM_QUARTERSTAFF: u16 = 22;
-/// Ring of Protection.
-pub const ITEM_RING_OF_PROTECTION: u16 = 23;
-/// Chainmail.
-pub const ITEM_CHAINMAIL: u16 = 24;
-/// Ring of Regen.
-pub const ITEM_RING_OF_REGEN: u16 = 25;
-/// Sage's Mask.
-pub const ITEM_SAGES_MASK: u16 = 26;
-/// Vitality Booster.
-pub const ITEM_VITALITY_BOOSTER: u16 = 27;
-/// Energy Booster.
-pub const ITEM_ENERGY_BOOSTER: u16 = 28;
-/// Power Treads.
-pub const ITEM_POWER_TREADS: u16 = 29;
-/// Phase Boots.
-pub const ITEM_PHASE_BOOTS: u16 = 30;
-/// Blink Dagger.
-pub const ITEM_BLINK_DAGGER: u16 = 31;
-/// Bracer.
-pub const ITEM_BRACER: u16 = 32;
-/// Wraith Band.
-pub const ITEM_WRAITH_BAND: u16 = 33;
-/// Null Talisman.
-pub const ITEM_NULL_TALISMAN: u16 = 34;
-/// Magic Stick.
-pub const ITEM_MAGIC_STICK: u16 = 35;
-/// Magic Wand.
-pub const ITEM_MAGIC_WAND: u16 = 36;
-/// The recipe Phase Boots are built with.
-pub const ITEM_RECIPE_PHASE_BOOTS: u16 = 37;
-/// The recipe a Bracer is built with.
-pub const ITEM_RECIPE_BRACER: u16 = 38;
-/// The recipe a Wraith Band is built with.
-pub const ITEM_RECIPE_WRAITH_BAND: u16 = 39;
-/// The recipe a Null Talisman is built with.
-pub const ITEM_RECIPE_NULL_TALISMAN: u16 = 40;
-/// The recipe a Magic Wand is built with.
-pub const ITEM_RECIPE_MAGIC_WAND: u16 = 41;
-/// Enchanted Mango.
-pub const ITEM_MANGO: u16 = 42;
-/// Eaglesong.
-pub const ITEM_EAGLESONG: u16 = 43;
-/// Claymore.
-pub const ITEM_CLAYMORE: u16 = 44;
-/// Talisman of Evasion.
-pub const ITEM_TALISMAN_OF_EVASION: u16 = 45;
-/// Butterfly.
-pub const ITEM_BUTTERFLY: u16 = 46;
-/// Javelin.
-pub const ITEM_JAVELIN: u16 = 47;
-/// Demon Edge.
-pub const ITEM_DEMON_EDGE: u16 = 48;
-/// Blitz Knuckles.
-pub const ITEM_BLITZ_KNUCKLES: u16 = 49;
-/// The recipe a Monkey King Bar is built with.
-pub const ITEM_RECIPE_MONKEY_KING_BAR: u16 = 50;
-/// Monkey King Bar.
-pub const ITEM_MONKEY_KING_BAR: u16 = 51;
-/// Wind Lace.
-pub const ITEM_WIND_LACE: u16 = 52;
-/// Blood Grenade.
-pub const ITEM_BLOOD_GRENADE: u16 = 53;
-
 /// Gold per Mango charge, bought one at a time.
 pub const MANGO_COST: i32 = 65;
 /// Maximum Mango charges in one slot.
@@ -488,51 +379,47 @@ const _: () = {
 };
 
 /// What Power Treads are built from.
-const TREADS_PARTS: [ItemId; 3] = [ItemId(ITEM_BOOTS), ItemId(ITEM_GLOVES), ItemId(ITEM_BELT)];
+const TREADS_PARTS: [ItemId; 3] = [ItemId::BOOTS, ItemId::GLOVES, ItemId::BELT];
 /// What Phase Boots are built from.
 const PHASE_PARTS: [ItemId; 4] = [
-    ItemId(ITEM_BOOTS),
-    ItemId(ITEM_BLADES_OF_ATTACK),
-    ItemId(ITEM_BLADES_OF_ATTACK),
-    ItemId(ITEM_RECIPE_PHASE_BOOTS),
+    ItemId::BOOTS,
+    ItemId::BLADES_OF_ATTACK,
+    ItemId::BLADES_OF_ATTACK,
+    ItemId::RECIPE_PHASE_BOOTS,
 ];
 /// What a Bracer is built from.
-const BRACER_PARTS: [ItemId; 3] = [
-    ItemId(ITEM_CIRCLET),
-    ItemId(ITEM_GAUNTLETS),
-    ItemId(ITEM_RECIPE_BRACER),
-];
+const BRACER_PARTS: [ItemId; 3] = [ItemId::CIRCLET, ItemId::GAUNTLETS, ItemId::RECIPE_BRACER];
 /// What a Wraith Band is built from.
 const WRAITH_PARTS: [ItemId; 3] = [
-    ItemId(ITEM_CIRCLET),
-    ItemId(ITEM_SLIPPERS),
-    ItemId(ITEM_RECIPE_WRAITH_BAND),
+    ItemId::CIRCLET,
+    ItemId::SLIPPERS,
+    ItemId::RECIPE_WRAITH_BAND,
 ];
 /// What a Null Talisman is built from.
 const NULL_PARTS: [ItemId; 3] = [
-    ItemId(ITEM_CIRCLET),
-    ItemId(ITEM_MANTLE),
-    ItemId(ITEM_RECIPE_NULL_TALISMAN),
+    ItemId::CIRCLET,
+    ItemId::MANTLE,
+    ItemId::RECIPE_NULL_TALISMAN,
 ];
 /// What a Magic Wand is built from.
 const WAND_PARTS: [ItemId; 4] = [
-    ItemId(ITEM_MAGIC_STICK),
-    ItemId(ITEM_IRON_BRANCH),
-    ItemId(ITEM_IRON_BRANCH),
-    ItemId(ITEM_RECIPE_MAGIC_WAND),
+    ItemId::MAGIC_STICK,
+    ItemId::IRON_BRANCH,
+    ItemId::IRON_BRANCH,
+    ItemId::RECIPE_MAGIC_WAND,
 ];
 /// What a Butterfly is built from.
 const BUTTERFLY_PARTS: [ItemId; 3] = [
-    ItemId(ITEM_EAGLESONG),
-    ItemId(ITEM_CLAYMORE),
-    ItemId(ITEM_TALISMAN_OF_EVASION),
+    ItemId::EAGLESONG,
+    ItemId::CLAYMORE,
+    ItemId::TALISMAN_OF_EVASION,
 ];
 /// What a Monkey King Bar is built from.
 const MKB_PARTS: [ItemId; 4] = [
-    ItemId(ITEM_DEMON_EDGE),
-    ItemId(ITEM_BLITZ_KNUCKLES),
-    ItemId(ITEM_JAVELIN),
-    ItemId(ITEM_RECIPE_MONKEY_KING_BAR),
+    ItemId::DEMON_EDGE,
+    ItemId::BLITZ_KNUCKLES,
+    ItemId::JAVELIN,
+    ItemId::RECIPE_MONKEY_KING_BAR,
 ];
 
 /// The catalog, indexed by [`ItemId`].
