@@ -15,6 +15,13 @@ pub enum CampKind {
     Ancient,
 }
 
+impl CampKind {
+    /// How many sizes there are.
+    pub const COUNT: usize = 4;
+}
+
+const _: () = assert!(CampKind::Ancient as usize + 1 == CampKind::COUNT);
+
 /// One jungle camp.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct CampDef {

@@ -33,11 +33,8 @@ impl AbilityBook {
 
     /// Whether it has learned a talent.
     pub fn has_talent(&self, talent: Talent) -> bool {
-        self.tree.is_some_and(|tree| {
-            tree.iter().enumerate().any(|(at, held)| {
-                *held == talent && self.talents.has(bota_proto::TalentSlot(at as u8))
-            })
-        })
+        self.tree
+            .is_some_and(|tree| bota_core::has_talent(tree, self.talents, talent))
     }
 
     /// Every ability that has been learned.

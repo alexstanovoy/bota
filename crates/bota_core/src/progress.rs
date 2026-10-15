@@ -20,8 +20,14 @@ pub const fn beats(ms: u32) -> u32 {
 /// `MIN_ATTACK_SPEED..=MAX_ATTACK_SPEED`. [`rules::BASE_ATTACK_SPEED`] adds
 /// [`BEATS_PER_TICK`].
 #[inline]
-pub fn attack_gain(attack_speed: i32) -> u32 {
-    let speed = attack_speed.clamp(rules::MIN_ATTACK_SPEED, rules::MAX_ATTACK_SPEED);
+pub const fn attack_gain(attack_speed: i32) -> u32 {
+    let speed = if attack_speed < rules::MIN_ATTACK_SPEED {
+        rules::MIN_ATTACK_SPEED
+    } else if attack_speed > rules::MAX_ATTACK_SPEED {
+        rules::MAX_ATTACK_SPEED
+    } else {
+        attack_speed
+    };
     BEATS_PER_TICK * speed as u32 / rules::BASE_ATTACK_SPEED as u32
 }
 
@@ -41,16 +47,17 @@ pub const fn ms_to_ticks_ceil(ms: u32, tick_rate: u32) -> u32 {
 /// Ticks left of an animation phase `ms` long once `progress` beats of it are
 /// done, at an attack speed: at least one while it is not over.
 #[inline]
-pub fn phase_ticks_left(ms: u32, progress: u32, attack_speed: i32) -> u32 {
+pub const fn phase_ticks_left(ms: u32, progress: u32, attack_speed: i32) -> u32 {
     let left = beats(ms).saturating_sub(progress);
     let gain = attack_gain(attack_speed);
     assert!(gain > 0);
-    left.div_ceil(gain).max(1)
+    let ticks = left.div_ceil(gain);
+    if ticks == 0 { 1 } else { ticks }
 }
 
 /// Ticks between the starts of two attacks of `attack_time` milliseconds at
 /// an attack speed.
 #[inline]
-pub fn attack_interval_ticks(attack_time: u32, attack_speed: i32) -> u32 {
+pub const fn attack_interval_ticks(attack_time: u32, attack_speed: i32) -> u32 {
     phase_ticks_left(attack_time, 0, attack_speed)
 }

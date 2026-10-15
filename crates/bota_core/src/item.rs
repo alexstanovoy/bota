@@ -274,6 +274,27 @@ pub struct ItemDef {
     pub effect: UseSpec,
 }
 
+impl ItemDef {
+    /// What a drink of it mends, if it is drunk.
+    pub const fn mend(&self) -> Option<Mend> {
+        match self.effect {
+            UseSpec::Mend(mend) => Some(mend),
+            _ => None,
+        }
+    }
+
+    /// Health and mana restored per charge, if it restores.
+    pub const fn restore(&self) -> Option<(i32, i32)> {
+        match self.effect {
+            UseSpec::Restore {
+                hp_per_charge,
+                mana_per_charge,
+            } => Some((hp_per_charge, mana_per_charge)),
+            _ => None,
+        }
+    }
+}
+
 /// An item that costs nothing, carries nothing and does nothing, so an entry
 /// names only what sets it apart.
 pub(crate) const PLAIN: ItemDef = ItemDef {

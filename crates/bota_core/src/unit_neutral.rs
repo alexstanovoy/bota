@@ -86,7 +86,7 @@ pub enum NeutralKind {
 
 impl NeutralKind {
     /// The plain form this kind spawns with.
-    pub fn def(self) -> &'static UnitDef {
+    pub const fn def(self) -> &'static UnitDef {
         &NEUTRALS[self as usize]
     }
 }

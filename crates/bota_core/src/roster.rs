@@ -15,6 +15,21 @@ pub struct Roster {
     pub creeps: &'static [NeutralKind],
 }
 
+/// The most creeps any roster puts out.
+pub const MAX_CAMP_CREEPS: usize = 5;
+
+const _: () = {
+    let mut most = 0;
+    let mut at = 0;
+    while at < ROSTERS.len() {
+        if ROSTERS[at].creeps.len() > most {
+            most = ROSTERS[at].creeps.len();
+        }
+        at += 1;
+    }
+    assert!(most == MAX_CAMP_CREEPS);
+};
+
 /// Every roster in the jungle, grouped by camp size.
 pub const ROSTERS: [Roster; 21] = [
     // Kobold Camp

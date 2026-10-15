@@ -601,3 +601,14 @@ pub const TOWERS: [UnitDef; 4] = [tower_of(0), tower_of(1), tower_of(2), tower_o
 pub fn tower_def(tier: u8) -> &'static UnitDef {
     &TOWERS[usize::from(tier.clamp(1, 4)) - 1]
 }
+
+/// The definition of a lane creep kind. Absent for every other kind.
+pub const fn lane_creep_def(kind: UnitKind) -> Option<&'static UnitDef> {
+    match kind {
+        UnitKind::CreepMelee => Some(&MELEE_CREEP),
+        UnitKind::CreepFlagbearer => Some(&FLAGBEARER_CREEP),
+        UnitKind::CreepRanged => Some(&RANGED_CREEP),
+        UnitKind::CreepSiege => Some(&SIEGE_CREEP),
+        _ => None,
+    }
+}

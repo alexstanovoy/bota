@@ -56,3 +56,22 @@ pub fn talent_floor(slot: TalentSlot, learned: Talents) -> u8 {
         rules::TALENT_LEVELS[tier]
     }
 }
+
+/// The slot of a tree that holds a talent.
+pub const fn talent_slot(tree: &TalentTree, talent: Talent) -> Option<TalentSlot> {
+    let mut at = 0;
+    while at < tree.len() {
+        if tree[at] as u8 == talent as u8 {
+            return Some(TalentSlot(at as u8));
+        }
+        at += 1;
+    }
+    None
+}
+
+/// Whether a hero with a tree has learned a talent.
+pub fn has_talent(tree: &TalentTree, learned: Talents, talent: Talent) -> bool {
+    tree.iter()
+        .enumerate()
+        .any(|(at, held)| *held == talent && learned.has(TalentSlot(at as u8)))
+}

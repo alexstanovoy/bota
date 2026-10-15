@@ -171,6 +171,15 @@ pub fn facing_gap(a: Angle, b: Angle) -> u16 {
     angle_delta(a, b).unsigned_abs() as u16
 }
 
+/// Ticks a body turning at a rate takes to face within the angle an attack
+/// allows ([`rules::ATTACK_ANGLE_BRADS`]) of a wanted facing.
+#[inline]
+pub fn aim_ticks(facing: Angle, wanted: Angle, rate: u16) -> u32 {
+    u32::from(facing_gap(facing, wanted))
+        .saturating_sub(u32::from(rules::ATTACK_ANGLE_BRADS))
+        .div_ceil(u32::from(rate).max(1))
+}
+
 /// Ticks a body turning at a rate stands before it may walk off in a new
 /// direction: it walks once within [`rules::TURN_TOLERANCE_BRADS`] of it.
 #[inline]
