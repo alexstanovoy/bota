@@ -1,6 +1,6 @@
 //! The client core, tested without a window or a socket.
 
-use crate::ui::app::{Tap, body_in, known_in, remember, tap_again};
+use crate::ui::app::{App, Tap, tap_again};
 use crate::ui::slots::{Look, Press, Slot, ability_look, decide, item_look, order_for};
 use bota_proto::{
     AbilityId, AbilitySlot, AbilityView, Aim, Angle, Attributes, EntityId, Fixed, HeroId, ItemId,
@@ -443,77 +443,77 @@ fn owned(idx: u32, kind: UnitKind, slot: Option<SlotId>) -> UnitView {
 }
 
 #[test]
-fn only_what_a_seat_owns_is_worth_remembering() {
-    let mut seen = Vec::new();
-    let hero = owned(1, UnitKind::Hero, Some(SlotId(0)));
-    let creep = owned(2, UnitKind::CreepMelee, None);
-    remember(&mut seen, &a_tick(10, vec![hero, creep], Vec::new()));
-    assert_eq!(seen.len(), 1, "the creep is not kept, the hero is");
-    assert_eq!(seen[0].1.kind, UnitKind::Hero);
-}
-
-#[test]
-fn a_unit_is_known_live_first_and_otherwise_as_it_was_and_how_long_ago() {
-    let mut seen = Vec::new();
-    let hero = owned(1, UnitKind::Hero, Some(SlotId(0)));
-    let id = hero.id;
-    remember(&mut seen, &a_tick(10, vec![hero], Vec::new()));
-
-    let now = a_tick(10, Vec::new(), Vec::new());
-    let (held, stale) = known_in(&seen, &now, id).expect("it is remembered");
-    assert_eq!(held.id, id, "the body it was is still there to look at");
-    assert_eq!(stale, 0, "and this tick it is as fresh as the memory");
-
-    let later = a_tick(70, Vec::new(), Vec::new());
-    let (_, stale) = known_in(&seen, &later, id).expect("still remembered");
-    assert_eq!(stale, 60, "sixty ticks later it is sixty ticks old");
-
-    let mut now = owned(1, UnitKind::Hero, Some(SlotId(0)));
-    now.hp = 42;
-    let back = a_tick(90, vec![now], Vec::new());
-    let (held, stale) = known_in(&seen, &back, id).expect("it stands");
-    assert_eq!(held.hp, 42, "the live body wins over the kept one");
-    assert_eq!(stale, 0, "and nothing about it is old");
-}
-
-#[test]
-fn a_seat_with_its_hero_down_is_still_picked_by_the_body_it_left() {
-    let mut seen = Vec::new();
-    let hero = owned(1, UnitKind::Hero, Some(SlotId(0)));
-    let id = hero.id;
-    remember(
-        &mut seen,
-        &a_tick(10, vec![hero], vec![a_seat(SlotId(0), Some(id))]),
-    );
-    let dead = a_tick(60, Vec::new(), vec![a_seat(SlotId(0), None)]);
-    assert_eq!(
-        body_in(&seen, &dead, SlotId(0)),
-        Some(id),
-        "the fallen body is the handle the seat is picked by"
-    );
-    assert_eq!(
-        body_in(&seen, &dead, SlotId(1)),
-        None,
-        "a seat nothing is known of is picked by nothing"
-    );
-}
-
-#[test]
-fn a_hero_that_comes_back_leaves_only_one_body_behind() {
-    let mut seen = Vec::new();
+fn a_seat_is_picked_by_the_body_it_last_stood_in() {
+    let mut app = a_started_app([Vec2::ZERO; 2], 0);
     let first = owned(1, UnitKind::Hero, Some(SlotId(0)));
-    remember(&mut seen, &a_tick(10, vec![first], Vec::new()));
+    let id = first.id;
+    app.handle(snapshot_of(
+        10,
+        vec![first],
+        vec![a_seat(SlotId(0), Some(id))],
+    ));
+    app.handle(snapshot_of(60, Vec::new(), vec![a_seat(SlotId(0), None)]));
+    assert_eq!(
+        app.body_of(SlotId(0)),
+        Some(id),
+        "the fallen body is the handle"
+    );
+    assert_eq!(
+        app.body_of(SlotId(1)),
+        None,
+        "nothing is known of another seat"
+    );
+    let (held, stale) = app.known(id).expect("it is remembered");
+    assert_eq!((held.id, stale), (id, 50), "as it was, fifty ticks ago");
+
     let again = owned(2, UnitKind::Hero, Some(SlotId(0)));
     let fresh = again.id;
-    remember(&mut seen, &a_tick(600, vec![again], Vec::new()));
-    assert_eq!(seen.len(), 1, "the body it left is dropped for the new one");
-    assert_eq!(seen[0].1.id, fresh);
-    let view = a_tick(600, Vec::new(), vec![a_seat(SlotId(0), None)]);
+    app.handle(snapshot_of(
+        600,
+        vec![again],
+        vec![a_seat(SlotId(0), Some(fresh))],
+    ));
+    app.handle(snapshot_of(601, Vec::new(), vec![a_seat(SlotId(0), None)]));
     assert_eq!(
-        body_in(&seen, &view, SlotId(0)),
+        app.body_of(SlotId(0)),
         Some(fresh),
-        "and the seat answers with the one it stood in last"
+        "the seat answers with the body it stood in last"
     );
+}
+
+fn snapshot_of(tick: u32, units: Vec<UnitView>, players: Vec<PlayerView>) -> bota_proto::ServerMsg {
+    bota_proto::ServerMsg::Snapshot {
+        view: a_tick(tick, units, players),
+    }
+}
+
+/// An app watching a replay of a match on an open 128-cell map with these
+/// fountains, a seat for one.
+fn a_started_app(fountains: [Vec2; 2], shop_range: i32) -> App {
+    let mut app = a_silent_app();
+    app.my_slot = Some(SlotId(0));
+    app.handle(bota_proto::ServerMsg::MatchStart {
+        info: bota_proto::MatchInfo {
+            match_id: 1,
+            map: bota_proto::MapId(0),
+            tick_rate: 30,
+            pregame_ticks: 0,
+            trees: Vec::new(),
+            terrain_cells: 128,
+            terrain_rle: vec![(16384, 0x80)],
+            opaque_cells: Vec::new(),
+            mode: bota_proto::TickMode::Lockstep,
+            picks: vec![bota_proto::Pick {
+                slot: SlotId(0),
+                team: Team::Radiant,
+                hero: HeroId::PUDGE,
+            }],
+            shop: Vec::new(),
+            fountains,
+            shop_range,
+        },
+    });
+    app
 }
 
 /// An app that has heard nothing, over an empty recording.
@@ -524,10 +524,10 @@ fn a_silent_app() -> crate::ui::app::App {
 
 #[test]
 fn the_home_shop_is_where_the_match_put_the_fountain() {
-    let mut app = a_silent_app();
-    app.my_slot = Some(SlotId(0));
-    app.fountains = [Vec2::from_ints(3000, 3000), Vec2::from_ints(9000, 9000)];
-    app.shop_range = 1000;
+    let mut app = a_started_app(
+        [Vec2::from_ints(3000, 3000), Vec2::from_ints(9000, 9000)],
+        1000,
+    );
     let mut body = a_unit();
     body.id = EntityId {
         idx: 1,
@@ -536,7 +536,7 @@ fn the_home_shop_is_where_the_match_put_the_fountain() {
     body.pos = Vec2::from_ints(3500, 3000);
     let mut seat = a_player();
     seat.unit = Some(body.id);
-    app.view = Some(a_tick(1, vec![body.clone()], vec![seat]));
+    app.handle(snapshot_of(1, vec![body.clone()], vec![seat]));
     assert!(
         app.at_home_shop(),
         "inside the range of this map's fountain"
@@ -545,7 +545,7 @@ fn the_home_shop_is_where_the_match_put_the_fountain() {
     body.pos = Vec2::from_ints(1760, 2278);
     let mut seat = a_player();
     seat.unit = Some(body.id);
-    app.view = Some(a_tick(2, vec![body], vec![seat]));
+    app.handle(snapshot_of(2, vec![body], vec![seat]));
     assert!(
         !app.at_home_shop(),
         "the main map's fountain means nothing here"

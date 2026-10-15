@@ -381,6 +381,8 @@ fn the_client_pictures_the_servers_sight_cell_for_cell() {
         .trees
         .plant(tower + Vec2::from_ints(-400, 0), world.tick + 100);
     world.lay_sight_block();
+    let home = Vec2::from_ints(1500, 1500);
+    seated_hero(&mut world, home, HeroId::SHADOW_FIEND);
     world.settle();
     let mut config = config();
     config.map = MapId(0);
@@ -392,9 +394,9 @@ fn the_client_pictures_the_servers_sight_cell_for_cell() {
     app.handle(ServerMsg::Snapshot {
         view: world.view(Team::Dire),
     });
-    let n = app.terrain_cells;
+    let n = app.terrain_cells();
     let mut lit = vec![false; n * n];
-    let view = app.view.clone().expect("a snapshot came");
+    let view = app.view().cloned().expect("a snapshot came");
     bota_client_core::light(&app, &view, Team::Dire, &mut lit);
     let reach = rules::TOWER_VISION / rules::GRID_CELL_SIZE + 1;
     let (tx, ty) = CellGrid::cell_of(tower).expect("on the map");

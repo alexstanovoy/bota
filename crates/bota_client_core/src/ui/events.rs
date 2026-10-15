@@ -149,10 +149,10 @@ impl App {
     /// A hero letting an attack go: a plain missile that has just appeared
     /// beside a hero of its side.
     pub(crate) fn launch_cues(&mut self) {
-        let Some(view) = &self.view else {
+        let Some(view) = self.view() else {
             return;
         };
-        let prev = self.prev_view.as_ref();
+        let prev = self.prev_view();
         let ears = self.ears();
         let mut launched = Vec::new();
         for p in view.projectiles.iter().filter(|p| p.ability.is_none()) {
@@ -247,11 +247,8 @@ impl App {
         })
     }
 
-    /// A unit as the freshest view that still has it shows it.
+    /// A unit as last seen, in view or out of it.
     pub fn freshest(&self, id: EntityId) -> Option<&UnitView> {
-        [self.view.as_ref(), self.prev_view.as_ref()]
-            .into_iter()
-            .flatten()
-            .find_map(|view| view.units.iter().find(|u| u.id == id))
+        self.known(id).map(|(unit, _)| unit)
     }
 }

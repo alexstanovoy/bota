@@ -206,7 +206,12 @@ fn stepping_delivers_orders_to_the_app_in_the_same_batch_as_their_events() {
         app.handle(message);
     }
 
-    assert_eq!(app.view.as_ref().unwrap().tick, 1);
+    assert!(
+        !app.lost,
+        "{:?}",
+        app.feed.iter().map(|l| l.text.clone()).collect::<Vec<_>>()
+    );
+    assert_eq!(app.view().unwrap().tick, 1);
     assert_eq!(app.shown_orders.len(), 1);
     assert_eq!(app.shown_orders[0].tick, 1);
     assert_eq!(app.feed.len(), 2);

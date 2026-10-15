@@ -1,11 +1,16 @@
 //! Everything the client knows, and how server messages change it.
 
+use std::sync::Arc;
+
 use bota_proto::{
-    ClientMsg, EntityId, LobbySlot, MatchInfo, MatchStats, Order, PlayerId, ServerMsg, ShopEntry,
-    SlotId, StockView, TalentSlot, TalentView, Team, TickMode, UnitKind, UnitView, Vec2, WorldView,
+    ClientMsg, EntityId, EventKind, LobbySlot, MatchInfo, MatchStats, Order, PlayerId, ServerMsg,
+    ShopEntry, SlotId, StockView, TalentSlot, TalentView, Team, UnitKind, UnitView, Vec2,
+    WorldView,
 };
 
-use crate::orders::refusal;
+use crate::match_static::MatchStatic;
+use crate::orders::{IssuedOrder, refusal};
+use crate::session::{AckPolicy, ClientSession, Ingested, Perspective, SessionOptions};
 use crate::transport::Net;
 use crate::ui::derive::Derived;
 use crate::ui::replay::ReplayPlayer;
@@ -66,57 +71,6 @@ pub enum Pin {
     Hero(SlotId),
     /// One unit, for as long as it stands.
     Unit(EntityId),
-}
-
-/// Keeps the last state of every unit a seat owns, and the tick it was seen.
-///
-/// An entry out of view is dropped once its seat has another unit of the same
-/// kind in view.
-pub fn remember(seen: &mut Vec<(u32, UnitView)>, view: &WorldView) {
-    for unit in view.units.iter().filter(|unit| unit.owner.is_some()) {
-        match seen.iter_mut().find(|(_, held)| held.id == unit.id) {
-            Some(held) => *held = (view.tick, unit.clone()),
-            None => seen.push((view.tick, unit.clone())),
-        }
-    }
-    seen.retain(|(_, held)| {
-        view.units.iter().any(|unit| unit.id == held.id)
-            || !view.units.iter().any(|unit| {
-                unit.owner == held.owner && unit.kind == held.kind && unit.id != held.id
-            })
-    });
-}
-
-/// What is known of a unit, and how many ticks ago that was true.
-pub fn known_in<'a>(
-    seen: &'a [(u32, UnitView)],
-    view: &'a WorldView,
-    id: EntityId,
-) -> Option<(&'a UnitView, u32)> {
-    if let Some(live) = view.units.iter().find(|unit| unit.id == id) {
-        return Some((live, 0));
-    }
-    seen.iter()
-        .find(|(_, held)| held.id == id)
-        .map(|(tick, held)| (held, view.tick.saturating_sub(*tick)))
-}
-
-/// The body a seat last stood in, whether or not it still stands.
-///
-/// A seat with its hero dead has no unit on the wire; this falls back to the
-/// last hero body kept for it.
-pub fn body_in(seen: &[(u32, UnitView)], view: &WorldView, slot: SlotId) -> Option<EntityId> {
-    if let Some(unit) = view
-        .players
-        .iter()
-        .find(|p| p.slot == slot)
-        .and_then(|p| p.unit)
-    {
-        return Some(unit);
-    }
-    seen.iter()
-        .find(|(_, held)| held.owner == Some(slot) && held.kind == UnitKind::Hero)
-        .map(|(_, held)| held.id)
 }
 
 /// What was last reached for, so a second reach for the same thing counts as
@@ -185,6 +139,11 @@ pub struct Floater {
 
 /// Seconds a floater rises before it is gone.
 pub const FLOATER_LIFE: f32 = 1.3;
+/// Ticks a unit out of view stays remembered: sixteen seconds at the usual
+/// rate, long enough to name what just left the view.
+const FORGET_AFTER_TICKS: u32 = 480;
+/// Ticks per second assumed before a match tells its own.
+const DEFAULT_TICK_RATE: u16 = 30;
 /// Floaters in flight at most; the oldest give way.
 const MAX_FLOATERS: usize = 96;
 /// Kill feed lines kept at most.
@@ -253,12 +212,9 @@ pub struct App {
     pub phase: Phase,
     /// Our wire identity, once welcomed.
     pub me: Option<PlayerId>,
-    /// Our seat, if playing.
+    /// The seat this client acts as: the one it was welcomed to, or the one a
+    /// replay is watched as. Absent for a spectator.
     pub my_slot: Option<SlotId>,
-    /// Ticks per second, from Welcome or MatchStart.
-    pub tick_rate: u16,
-    /// Ticks before the game clock reaches zero, from MatchStart.
-    pub pregame_ticks: u32,
     /// The slot taken up and waiting for a click to aim it, if one is.
     pub aiming: Option<crate::ui::slots::Slot>,
     /// An item slot picked up and waiting for the destination click.
@@ -267,40 +223,12 @@ pub struct App {
     pub shop_open: bool,
     /// The catalog row the shop panel starts at.
     pub shop_scroll: usize,
-    /// What the shop sells and asks for it, from MatchStart.
-    pub shop: Vec<ShopEntry>,
-    /// Fountain of each team, Radiant then Dire, from MatchStart.
-    pub fountains: [Vec2; 2],
-    /// World units from its fountain within which a hero is in the home shop,
-    /// from MatchStart.
-    pub shop_range: i32,
-    /// Every tree on the map, from MatchStart.
-    pub trees: Vec<(f32, f32)>,
-    /// Cells per terrain axis, from MatchStart.
-    pub terrain_cells: usize,
-    /// Decoded terrain cells, row-major from the south-west corner: bit 7
-    /// walkable, bit 6 water, low bits the elevation tier.
-    pub terrain: Vec<u8>,
-    /// One bit per terrain cell: set where a fog blocker wall blocks sight
-    /// lines. Trees are laid over it from the view, see
-    /// [`FogGround::of`](crate::ui::fog::FogGround::of).
-    pub opaque: Vec<u64>,
-    /// How the server advances ticks.
-    pub mode: Option<TickMode>,
     /// The lobby as last broadcast.
     pub lobby: Vec<LobbySlot>,
     /// Seat names from the lobby.
     pub names: Vec<(SlotId, String)>,
-    /// The freshest state of the world.
-    pub view: Option<WorldView>,
-    /// The state one snapshot ago, for placing and naming what has just
-    /// left the view.
-    pub prev_view: Option<WorldView>,
-    /// The last state seen of every unit a seat owns, and the tick it was
-    /// seen on. Kept by [`remember`].
-    pub seen: Vec<(u32, UnitView)>,
-    /// Sequence number of the next order.
-    pub seq: u32,
+    /// What this client knows of the match, from its start on.
+    session: Option<ClientSession>,
     /// Whether the next left click is an attack-move.
     pub attack_move_armed: bool,
     /// The unit picked, if one is. Nothing picked means one's own hero.
@@ -359,26 +287,13 @@ impl App {
             phase: Phase::Lobby,
             me: None,
             my_slot: None,
-            tick_rate: 30,
-            pregame_ticks: 0,
             aiming: None,
             held_item: None,
             shop_open: false,
             shop_scroll: 0,
-            shop: Vec::new(),
-            fountains: [Vec2::ZERO; 2],
-            shop_range: 0,
-            trees: Vec::new(),
-            terrain_cells: 0,
-            terrain: Vec::new(),
-            opaque: Vec::new(),
-            mode: None,
             lobby: Vec::new(),
             names: Vec::new(),
-            view: None,
-            prev_view: None,
-            seen: Vec::new(),
-            seq: 0,
+            session: None,
             attack_move_armed: false,
             selected: None,
             pinned: None,
@@ -404,12 +319,79 @@ impl App {
         }
     }
 
+    /// What the client knows of the match, once it has started.
+    pub fn session(&self) -> Option<&ClientSession> {
+        self.session.as_ref()
+    }
+
+    /// What the match fixes at its start, once it has started.
+    pub fn statics(&self) -> Option<&Arc<MatchStatic>> {
+        self.session.as_ref().map(ClientSession::statics)
+    }
+
+    /// The freshest state of the world.
+    pub fn view(&self) -> Option<&WorldView> {
+        self.session.as_ref()?.current()
+    }
+
+    /// The state one snapshot ago, for placing and naming what has just
+    /// left the view.
+    pub fn prev_view(&self) -> Option<&WorldView> {
+        self.session.as_ref()?.previous()
+    }
+
+    /// Ticks per second; a default until the match starts.
+    pub fn tick_rate(&self) -> u16 {
+        self.statics()
+            .map_or(DEFAULT_TICK_RATE, |statics| statics.metadata().tick_rate)
+    }
+
+    /// Ticks before the game clock reaches zero.
+    pub fn pregame_ticks(&self) -> u32 {
+        self.statics()
+            .map_or(0, |statics| statics.metadata().pregame_ticks)
+    }
+
+    /// Cells per terrain axis; zero until the match starts.
+    pub fn terrain_cells(&self) -> usize {
+        self.statics()
+            .map_or(0, |statics| statics.metadata().terrain_cells as usize)
+    }
+
+    /// The decoded terrain cells, row-major from the south-west corner: bit 7
+    /// walkable, bit 6 water, low bits the elevation tier.
+    pub fn terrain(&self) -> &[u8] {
+        self.session.as_ref().map_or(&[], |s| s.statics().terrain())
+    }
+
+    /// Every tree the map starts with.
+    pub fn trees(&self) -> &[Vec2] {
+        self.session.as_ref().map_or(&[], |s| s.statics().trees())
+    }
+
+    /// What the shop sells and asks for it.
+    pub fn shop(&self) -> &[ShopEntry] {
+        self.session.as_ref().map_or(&[], |s| s.statics().shop())
+    }
+
+    /// Sequence number of the latest order given.
+    pub fn seq(&self) -> u32 {
+        self.session
+            .as_ref()
+            .and_then(|session| session.ledger().last_seq())
+            .unwrap_or(0)
+    }
+
+    /// The tick a unit began the cast point it is in, if it is in one.
+    pub fn cast_began(&self, unit: EntityId) -> Option<u32> {
+        self.session.as_ref()?.entity(unit)?.casting_since
+    }
+
     /// What one's side's shop has left of an item sold from a limited
     /// stock; absent for an item without one.
     pub fn stock_of(&self, item: u16) -> Option<StockView> {
         let team = self.my_team().or_else(|| self.fog_team())?;
-        self.view
-            .as_ref()?
+        self.view()?
             .stock
             .iter()
             .find(|s| s.team == team && s.item.0 == item)
@@ -419,8 +401,7 @@ impl App {
     /// The talents of a seat's hero as the view tells them: learned, and
     /// for one's own side what a skill point could go into.
     pub fn talents_of(&self, slot: SlotId) -> Option<TalentView> {
-        self.view
-            .as_ref()?
+        self.view()?
             .talents
             .iter()
             .find(|t| t.slot == slot)
@@ -451,8 +432,7 @@ impl App {
             return name.clone();
         }
         let seat = self
-            .view
-            .as_ref()
+            .view()
             .and_then(|view| view.players.iter().find(|p| p.slot == slot));
         match seat.and_then(|p| Some((crate::catalog::hero(p.hero.0)?, p.team))) {
             Some((hero, team)) => format!("{} ({team:?})", hero.name),
@@ -463,32 +443,27 @@ impl App {
     /// What is known of a unit: its live state, or the last one seen of it
     /// and how many ticks ago that was.
     pub fn known(&self, id: EntityId) -> Option<(&UnitView, u32)> {
-        known_in(&self.seen, self.view.as_ref()?, id)
+        self.session.as_ref()?.known(id)
     }
 
     /// The body a seat last stood in, whether or not it still stands.
     pub fn body_of(&self, slot: SlotId) -> Option<EntityId> {
-        body_in(&self.seen, self.view.as_ref()?, slot)
+        self.session.as_ref()?.body_of(slot)
     }
 
-    /// Our hero's unit id, while it is alive and known.
     /// How late the seat's latest applied order took effect, in
     /// milliseconds past the earliest tick it could have: the server's
     /// measure of the round trip, as Dota's ping.
     pub fn order_delay_ms(&self) -> Option<u32> {
         let slot = self.my_slot?;
-        let delay = self
-            .view
-            .as_ref()?
-            .order_delays
-            .iter()
-            .find(|d| d.slot == slot)?;
-        Some(delay.ticks * 1000 / u32::from(self.tick_rate.max(1)))
+        let delay = self.view()?.order_delays.iter().find(|d| d.slot == slot)?;
+        Some(delay.ticks * 1000 / u32::from(self.tick_rate().max(1)))
     }
 
+    /// Our hero's unit id, while it is alive and known.
     pub fn my_hero(&self) -> Option<EntityId> {
         let slot = self.my_slot?;
-        let view = self.view.as_ref()?;
+        let view = self.view()?;
         view.players.iter().find(|p| p.slot == slot)?.unit
     }
 
@@ -525,7 +500,7 @@ impl App {
 
     /// Which unit the camera is carried by right now, if any still stands.
     pub fn pinned_unit(&self) -> Option<EntityId> {
-        let view = self.view.as_ref()?;
+        let view = self.view()?;
         match self.pinned? {
             Pin::Hero(slot) => view.players.iter().find(|p| p.slot == slot)?.unit,
             Pin::Unit(id) => view.units.iter().find(|u| u.id == id).map(|u| u.id),
@@ -553,7 +528,7 @@ impl App {
 
     /// Our own courier, while one stands.
     pub fn my_courier(&self) -> Option<EntityId> {
-        let view = self.view.as_ref()?;
+        let view = self.view()?;
         let mine = self.my_slot?;
         view.units
             .iter()
@@ -563,7 +538,7 @@ impl App {
 
     /// Whether a unit is one this seat drives.
     pub fn drives(&self, id: EntityId) -> bool {
-        let Some(view) = self.view.as_ref() else {
+        let Some(view) = self.view() else {
             return false;
         };
         view.units
@@ -579,7 +554,7 @@ impl App {
     /// to the hero.
     pub fn ordering_unit(&self) -> Option<EntityId> {
         let id = self.selected?;
-        let view = self.view.as_ref()?;
+        let view = self.view()?;
         let mine = self.my_slot?;
         let unit = view.units.iter().find(|unit| unit.id == id)?;
         (unit.owner == Some(mine) && Some(id) != self.my_hero()).then_some(id)
@@ -588,7 +563,7 @@ impl App {
     /// Which side this player is on, once the match has told us.
     pub fn my_team(&self) -> Option<Team> {
         let slot = self.my_slot?;
-        let view = self.view.as_ref()?;
+        let view = self.view()?;
         view.players.iter().find(|p| p.slot == slot).map(|p| p.team)
     }
 
@@ -608,7 +583,7 @@ impl App {
             return self.my_team();
         }
         // A spectator's fog is whatever eyes the snapshot came through.
-        self.view.as_ref()?.viewer
+        self.view()?.viewer
     }
 
     /// Whether our hero stands within the match's shop range of its own
@@ -617,7 +592,7 @@ impl App {
         let Some(slot) = self.my_slot else {
             return false;
         };
-        let Some(view) = &self.view else {
+        let Some(view) = self.view() else {
             return false;
         };
         let Some(p) = view.players.iter().find(|p| p.slot == slot) else {
@@ -626,21 +601,22 @@ impl App {
         let Some(unit) = p.unit.and_then(|id| view.units.iter().find(|u| u.id == id)) else {
             return false;
         };
+        let statics = self.statics().expect("a view comes with a session");
         let fountain = match p.team {
-            Team::Radiant => self.fountains[0],
-            Team::Dire => self.fountains[1],
+            Team::Radiant => statics.fountains()[0],
+            Team::Dire => statics.fountains()[1],
             Team::Neutral => return false,
         };
         let dx = unit.pos.x.to_f32() - fountain.x.to_f32();
         let dy = unit.pos.y.to_f32() - fountain.y.to_f32();
-        let range = self.shop_range as f32;
+        let range = statics.shop_range() as f32;
         dx * dx + dy * dy <= range * range
     }
 
     /// The seat the bottom panel falls back to: our own, else the first one.
     pub fn default_slot(&self) -> Option<SlotId> {
         self.my_slot
-            .or_else(|| Some(self.view.as_ref()?.players.first()?.slot))
+            .or_else(|| Some(self.view()?.players.first()?.slot))
     }
 
     /// Sends an order with the next sequence number.
@@ -650,19 +626,24 @@ impl App {
     }
 
     /// Sends one order to a named unit, whatever is selected. Absent names
-    /// the seat's hero.
+    /// the seat's hero. An order given before the first snapshot goes
+    /// nowhere.
     pub fn send_order_to(&mut self, unit: Option<EntityId>, order: Order) {
-        self.seq += 1;
-        let seq = self.seq;
-        if let (Some(slot), Some(view)) = (self.my_slot, self.view.as_ref()) {
-            self.note_order(slot, unit, view.tick, order);
+        let Some(Ok(sent)) = self
+            .session
+            .as_mut()
+            .map(|session| session.issue(IssuedOrder { unit, order }))
+        else {
+            return;
+        };
+        if let Some(slot) = self.my_slot {
+            self.note_order(slot, unit, sent.seen, order);
         }
-        let seen = self.view.as_ref().map(|view| view.tick);
         self.source.send(&ClientMsg::Order {
-            seq,
+            seq: sent.seq,
             unit,
             order,
-            seen,
+            seen: Some(sent.seen),
         });
     }
 
@@ -679,7 +660,7 @@ impl App {
 
     /// Which slot of our courier holds one ability.
     pub fn courier_slot(&self, ability: u16) -> Option<u8> {
-        let view = self.view.as_ref()?;
+        let view = self.view()?;
         let courier = self.my_courier()?;
         let unit = view.units.iter().find(|unit| unit.id == courier)?;
         unit.abilities
@@ -692,15 +673,10 @@ impl App {
     pub fn handle(&mut self, msg: ServerMsg) {
         match msg {
             ServerMsg::Welcome {
-                player_id,
-                slot,
-                tick_rate,
-                mode,
+                player_id, slot, ..
             } => {
                 self.me = Some(player_id);
                 self.my_slot = slot.or(self.pov);
-                self.tick_rate = tick_rate;
-                self.mode = Some(mode);
             }
             ServerMsg::LobbyState { slots } => {
                 self.names = slots
@@ -716,31 +692,12 @@ impl App {
                 }
             }
             ServerMsg::MatchStart { info } => self.start_match(&info),
-            ServerMsg::Snapshot { mut view } => {
-                if self.mode == Some(TickMode::Lockstep) && self.my_slot.is_some() {
-                    self.source.send(&ClientMsg::Ack { tick: view.tick });
-                }
-                remember(&mut self.seen, &view);
-                // The events of snapshots the server skipped for a slow
-                // client, so no popup, sound or feed line is lost.
-                for skipped in std::mem::take(&mut view.skipped_ticks) {
-                    for event in skipped.events {
-                        self.absorb_event(event);
-                    }
-                }
-                self.smooth.snapshot();
-                self.prev_view = self.view.replace(view);
-                if let Some(view) = &self.view {
-                    self.derived.snapshot(view);
-                }
-                self.launch_cues();
-            }
-            ServerMsg::Events { events, .. } => {
-                for event in events {
-                    self.absorb_event(event);
-                }
-            }
+            ServerMsg::Snapshot { view } => self.on_snapshot(view),
+            ServerMsg::Events { tick, events } => self.on_events(tick, &events),
             ServerMsg::OrderRejected { seq, reason } => {
+                if let Some(session) = &mut self.session {
+                    session.ingest_rejection(seq, reason);
+                }
                 self.reject = Some((refusal(reason).to_string(), 2.5));
                 self.cue(CueKind::Refused, 0.8, None);
                 // The slot that earned it lights up.
@@ -761,32 +718,76 @@ impl App {
         }
     }
 
+    /// Folds a snapshot into the session, answers the acknowledgement the
+    /// server waits for, and turns what it brought into effects.
+    fn on_snapshot(&mut self, view: WorldView) {
+        let Some(session) = &mut self.session else {
+            return;
+        };
+        let ack = match session.ingest_snapshot(view, &mut ()) {
+            Ok(Ingested::Snapshot { ack, .. }) => ack,
+            Ok(_) => None,
+            Err(error) => return self.fail(&error.to_string()),
+        };
+        if let Some(tick) = ack {
+            self.source.send(&ClientMsg::Ack { tick });
+        }
+        // The events of snapshots the server skipped for a slow client, so
+        // no popup, sound or feed line is lost.
+        let skipped: Vec<EventKind> = session_skipped(self.session.as_ref());
+        for event in skipped {
+            self.absorb_event(event);
+        }
+        self.smooth.snapshot();
+        if let Some(view) = self.session.as_ref().and_then(ClientSession::current) {
+            self.derived.snapshot(view);
+        }
+        self.launch_cues();
+    }
+
+    fn on_events(&mut self, tick: u32, events: &[EventKind]) {
+        let Some(session) = &mut self.session else {
+            return;
+        };
+        if let Err(error) = session.ingest_events(tick, events, &mut ()) {
+            return self.fail(&error.to_string());
+        }
+        for event in events {
+            self.absorb_event(event.clone());
+        }
+    }
+
+    /// The server's stream broke the rules of a match: stop listening.
+    fn fail(&mut self, why: &str) {
+        self.lost = true;
+        self.feed.push(FeedLine {
+            text: format!("the server broke the protocol: {why}"),
+            age: 0.0,
+        });
+    }
+
     /// Takes in what the match is played on and switches to it.
     fn start_match(&mut self, info: &MatchInfo) {
         self.shown_orders.clear();
-        self.tick_rate = info.tick_rate;
-        self.pregame_ticks = info.pregame_ticks;
-        self.shop = info.shop.clone();
-        self.fountains = info.fountains;
-        self.shop_range = info.shop_range;
-        self.trees = info
-            .trees
-            .iter()
-            .map(|t| (t.x.to_f32(), t.y.to_f32()))
-            .collect();
-        self.terrain_cells = info.terrain_cells as usize;
-        self.terrain = info
-            .terrain_rle
-            .iter()
-            .flat_map(|&(n, v)| std::iter::repeat_n(v, usize::from(n)))
-            .collect();
-        let n = self.terrain_cells;
-        self.opaque = vec![0u64; (n * n).div_ceil(64)];
-        for &(cx, cy) in &info.opaque_cells {
-            let idx = usize::from(cy) * n + usize::from(cx);
-            self.opaque[idx / 64] |= 1 << (idx % 64);
+        let perspective = match (&self.source, self.my_slot) {
+            (Source::Live(_), Some(slot)) => Perspective::Seat(slot),
+            _ => Perspective::Spectator,
+        };
+        let options = SessionOptions {
+            perspective,
+            hero: None,
+            ack: AckPolicy::OnSnapshot,
+            forget_after_ticks: FORGET_AFTER_TICKS,
+        };
+        let started =
+            MatchStatic::new(info).and_then(|statics| ClientSession::new(statics, options));
+        match started {
+            Ok(session) => {
+                self.session = Some(session);
+                self.phase = Phase::Playing;
+            }
+            Err(error) => self.fail(&error.to_string()),
         }
-        self.phase = Phase::Playing;
     }
 
     /// Notices a dead socket once and says so.
@@ -816,7 +817,7 @@ impl App {
         self.check_connection();
         self.tick_effects(dt);
         self.heartbeat_cue(dt);
-        if let Some(view) = &self.view {
+        if let Some(view) = self.session.as_ref().and_then(ClientSession::current) {
             self.derived.trail(view, dt);
             if let Some(target) = self.quick_buy
                 && let Some(p) = view.players.iter().find(|p| Some(p.slot) == self.my_slot)
@@ -871,4 +872,17 @@ impl App {
             }
         }
     }
+}
+
+/// The events of the ticks the latest snapshot says the server skipped.
+fn session_skipped(session: Option<&ClientSession>) -> Vec<EventKind> {
+    session
+        .and_then(ClientSession::current)
+        .map(|view| {
+            view.skipped_ticks
+                .iter()
+                .flat_map(|skipped| skipped.events.iter().cloned())
+                .collect()
+        })
+        .unwrap_or_default()
 }

@@ -67,7 +67,7 @@ impl App {
     /// The unit whose ability slots the panel is about.
     pub fn slot_unit(&self) -> Option<&UnitView> {
         let commanded = self.commanded()?;
-        self.view.as_ref()?.units.iter().find(|u| u.id == commanded)
+        self.view()?.units.iter().find(|u| u.id == commanded)
     }
 
     /// What sits in one item slot of the panel.
@@ -83,7 +83,7 @@ impl App {
             let unit = self.slot_unit()?;
             unit.items.get(usize::from(slot)).copied().flatten()
         } else {
-            let view = self.view.as_ref()?;
+            let view = self.view()?;
             let mine = self.my_slot?;
             let player = view.players.iter().find(|p| p.slot == mine)?;
             player

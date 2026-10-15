@@ -84,15 +84,15 @@ impl App {
     pub fn price_of(&self, id: u16) -> (i32, i32) {
         let held = self
             .my_slot
-            .zip(self.view.as_ref())
+            .zip(self.view())
             .and_then(|(slot, view)| {
                 let p = view.players.iter().find(|p| p.slot == slot)?;
                 Some(held_items(view, p))
             })
             .unwrap_or_default();
         (
-            price_for(&self.shop, ItemId(id), &held),
-            whole_price(&self.shop, ItemId(id)),
+            price_for(self.shop(), ItemId(id), &held),
+            whole_price(self.shop(), ItemId(id)),
         )
     }
 
@@ -100,20 +100,20 @@ impl App {
     pub fn missing_for(&self, id: u16) -> Vec<ItemId> {
         let held = self
             .my_slot
-            .zip(self.view.as_ref())
+            .zip(self.view())
             .and_then(|(slot, view)| {
                 let p = view.players.iter().find(|p| p.slot == slot)?;
                 Some(held_items(view, p))
             })
             .unwrap_or_default();
-        missing_parts(&self.shop, ItemId(id), &held)
+        missing_parts(self.shop(), ItemId(id), &held)
     }
 
     /// What the quick-buy intent buys now: the quick-buy item whole when the
     /// gold covers it, else its first missing part the gold covers.
     pub fn quick_buy_next(&self) -> Option<u16> {
         let target = self.quick_buy?;
-        let view = self.view.as_ref()?;
+        let view = self.view()?;
         let p = view.players.iter().find(|p| Some(p.slot) == self.my_slot)?;
         let gold = p.gold.unwrap_or(0);
         if gold >= self.price_of(target).0 {
@@ -121,7 +121,7 @@ impl App {
         }
         self.missing_for(target)
             .into_iter()
-            .find(|part| whole_price(&self.shop, *part) <= gold)
+            .find(|part| whole_price(self.shop(), *part) <= gold)
             .map(|part| part.0)
     }
 }

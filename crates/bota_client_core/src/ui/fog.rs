@@ -14,7 +14,12 @@ pub const CELL: f32 = 64.0;
 
 /// The ground tier under a world position; zero off the map.
 pub fn tier_at(app: &App, x: f32, y: f32) -> u8 {
-    tier_in(app.terrain_cells, &app.terrain, x, y)
+    tier_in(
+        app.terrain_cells(),
+        app.statics().map_or(&[][..], |s| s.terrain()),
+        x,
+        y,
+    )
 }
 
 fn ground_tier(ground: &FogGround, x: f32, y: f32) -> u8 {
@@ -90,21 +95,28 @@ impl FogGround {
     /// latest view has it: the map's trees less the felled ones, and the
     /// planted ones.
     pub fn of(app: &App) -> FogGround {
-        let n = app.terrain_cells;
+        let n = app.terrain_cells();
+        let Some(statics) = app.statics() else {
+            return FogGround::default();
+        };
         let mut ground = FogGround {
             cells: n,
-            terrain: app.terrain.clone(),
-            floor: app.terrain.iter().map(|&cell| cell_tier(cell)).collect(),
+            terrain: statics.terrain().to_vec(),
+            floor: statics
+                .terrain()
+                .iter()
+                .map(|&cell| cell_tier(cell))
+                .collect(),
         };
         if n == 0 || ground.floor.len() != n * n {
             return ground;
         }
-        let (felled, planted) = app.view.as_ref().map_or((&[][..], &[][..]), |view| {
+        let (felled, planted) = app.view().map_or((&[][..], &[][..]), |view| {
             (&view.felled_trees[..], &view.planted_trees[..])
         });
-        for (index, &(x, y)) in app.trees.iter().enumerate() {
+        for (index, tree) in statics.trees().iter().enumerate() {
             if !felled.contains(&(index as u32)) {
-                ground.cover_disc(x, y);
+                ground.cover_disc(tree.x.to_f32(), tree.y.to_f32());
             }
         }
         for at in planted {
@@ -115,11 +127,7 @@ impl FogGround {
             }
         }
         for (idx, floor) in ground.floor.iter_mut().enumerate() {
-            if app
-                .opaque
-                .get(idx / 64)
-                .is_some_and(|w| w & (1 << (idx % 64)) != 0)
-            {
+            if statics.opaque((idx % n, idx / n)) {
                 *floor = u8::MAX;
             }
         }

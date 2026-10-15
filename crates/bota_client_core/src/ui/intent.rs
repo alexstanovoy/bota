@@ -158,8 +158,7 @@ impl App {
             }
             Intent::SelectAt(at) => {
                 let hit = self
-                    .view
-                    .as_ref()
+                    .view()
                     .and_then(|view| unit_under_cursor(view, at, None, false));
                 let again = hit.is_some_and(|id| self.tapped_twice(Tap::Unit(id)));
                 self.choose(hit, again);
@@ -205,7 +204,7 @@ impl App {
         match press(self, slot, ctrl) {
             Press::Send(order) => {
                 self.aiming = None;
-                self.aimed_from = Some((self.seq + 1, slot));
+                self.aimed_from = Some((self.seq() + 1, slot));
                 self.send_order(order);
             }
             Press::Aim(slot) => self.aiming = Some(slot),
@@ -226,14 +225,13 @@ impl App {
             // One's own hero is a target like any other here: a salve is
             // drunk by clicking the one drinking it.
             Some(Aim::Unit) => self
-                .view
-                .as_ref()
+                .view()
                 .and_then(|view| unit_under_cursor(view, at, None, true))
                 .map(Target::Unit),
             Some(Aim::Own) | None => Some(Target::None),
         };
         if let Some(target) = target {
-            self.aimed_from = Some((self.seq + 1, slot));
+            self.aimed_from = Some((self.seq() + 1, slot));
             self.send_order(order_for(slot, target));
         }
     }
@@ -243,7 +241,7 @@ impl App {
     /// the order sticks to it.
     fn attack_at(&mut self, at: (f32, f32)) {
         let me = self.my_hero();
-        let target = self.view.as_ref().and_then(|view| {
+        let target = self.view().and_then(|view| {
             unit_under_cursor(view, at, me, true)
                 .or_else(|| enemy_near_cursor(view, at, self.my_team()))
         });
@@ -258,7 +256,7 @@ impl App {
     /// side's own is followed, an item lying there is picked up, open
     /// ground is walked to. Near an enemy the click still attacks it.
     fn smart(&mut self, at: (f32, f32)) {
-        let Some(view) = &self.view else {
+        let Some(view) = self.view() else {
             self.send_order(Order::Move {
                 target: Target::Pos(world_vec(at)),
             });
@@ -308,8 +306,7 @@ impl App {
         }
         let carrier = self.commanded();
         let target = self
-            .view
-            .as_ref()
+            .view()
             .and_then(|view| unit_under_cursor(view, at, carrier, true))
             .filter(|id| self.takes_a_handover(*id))
             .map(Target::Unit)
@@ -323,8 +320,7 @@ impl App {
     /// Hands a bag item to an allied seat's body wherever it stands.
     fn hand_to(&mut self, slot: u8, seat: SlotId) {
         let ally = self
-            .view
-            .as_ref()
+            .view()
             .and_then(|view| view.players.iter().find(|p| p.slot == seat))
             .is_some_and(|p| Some(p.team) == self.my_team());
         if slot < BAG_SLOTS
@@ -341,7 +337,7 @@ impl App {
     /// Whether a unit is one an item can be handed to: an allied hero or
     /// courier.
     fn takes_a_handover(&self, id: EntityId) -> bool {
-        let Some(view) = &self.view else {
+        let Some(view) = self.view() else {
             return false;
         };
         view.units.iter().find(|u| u.id == id).is_some_and(|u| {
@@ -368,8 +364,7 @@ impl App {
     /// seat in turn.
     fn next_eyes(&mut self) {
         let seats: Vec<SlotId> = self
-            .view
-            .as_ref()
+            .view()
             .map(|view| view.players.iter().map(|player| player.slot).collect())
             .unwrap_or_default();
         let next = |current: Option<SlotId>| match current {

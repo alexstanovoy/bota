@@ -3,7 +3,8 @@ use std::io::{self, Cursor, Read};
 use std::rc::Rc;
 
 use bota_proto::{
-    MapId, MatchInfo, ReplayRecord, ServerMsg, TickMode, Vec2, WorldView, encode_frame_to_vec,
+    HeroId, MapId, MatchInfo, Pick, PlayerView, ReplayRecord, ServerMsg, SlotId, Team, TickMode,
+    Vec2, WorldView, encode_frame_to_vec,
 };
 
 pub fn match_start(tick_rate: u16) -> ReplayRecord {
@@ -14,11 +15,15 @@ pub fn match_start(tick_rate: u16) -> ReplayRecord {
             tick_rate,
             pregame_ticks: 900,
             trees: Vec::new(),
-            terrain_cells: 0,
-            terrain_rle: Vec::new(),
+            terrain_cells: 1,
+            terrain_rle: vec![(1, 0x80)],
             opaque_cells: Vec::new(),
             mode: TickMode::Lockstep,
-            picks: Vec::new(),
+            picks: vec![Pick {
+                slot: SlotId(0),
+                team: Team::Radiant,
+                hero: HeroId::PUDGE,
+            }],
             shop: Vec::new(),
             fountains: [Vec2::ZERO, Vec2::ZERO],
             shop_range: 0,
@@ -32,7 +37,23 @@ pub fn snapshot(tick: u32) -> ReplayRecord {
             tick,
             viewer: None,
             units: Vec::new(),
-            players: Vec::new(),
+            players: vec![PlayerView {
+                slot: SlotId(0),
+                team: Team::Radiant,
+                hero: HeroId::PUDGE,
+                unit: None,
+                level: 1,
+                xp: 0,
+                gold: None,
+                stash: None,
+                kit: None,
+                kills: 0,
+                deaths: 0,
+                assists: 0,
+                last_hits: 0,
+                denies: 0,
+                respawn_left: 0,
+            }],
             projectiles: Vec::new(),
             loot: Vec::new(),
             aggro: Vec::new(),

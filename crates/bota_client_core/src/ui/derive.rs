@@ -1,8 +1,7 @@
-//! What successive snapshots tell that one alone does not: when a cast
-//! point began, how long a wait of a slot was when it began, and how much
-//! health a unit had a moment ago.
+//! What successive snapshots tell that one alone does not: how long a wait
+//! of a slot was when it began, and how much health a unit had a moment ago.
 
-use bota_proto::{EntityId, ItemSlot, StatusFlags, WorldView};
+use bota_proto::{EntityId, ItemSlot, WorldView};
 
 /// Units tracked at most per table; past it the oldest entries give way.
 const MAX_TRACKED: usize = 1024;
@@ -22,8 +21,6 @@ struct Wait {
 /// The facts derived from successive snapshots.
 #[derive(Clone, Debug, Default)]
 pub struct Derived {
-    /// When each unit in the cast point of something began it, by tick.
-    casts: Vec<(EntityId, u32)>,
     /// The full length of every wait of a slot under way.
     waits: Vec<Wait>,
     /// Health each unit is drawn as having a moment ago: it trails the real
@@ -37,25 +34,7 @@ pub const ITEM_WAIT_BASE: u8 = 64;
 impl Derived {
     /// Takes in a new snapshot.
     pub fn snapshot(&mut self, view: &WorldView) {
-        self.note_casts(view);
         self.note_waits(view);
-    }
-
-    fn note_casts(&mut self, view: &WorldView) {
-        let casting = |id: &EntityId| {
-            view.units
-                .binary_search_by_key(id, |u| u.id)
-                .is_ok_and(|at| view.units[at].statuses.bits & StatusFlags::CASTING != 0)
-        };
-        self.casts.retain(|(id, _)| casting(id));
-        for unit in &view.units {
-            if unit.statuses.bits & StatusFlags::CASTING != 0
-                && !self.casts.iter().any(|(id, _)| *id == unit.id)
-                && self.casts.len() < MAX_TRACKED
-            {
-                self.casts.push((unit.id, view.tick));
-            }
-        }
     }
 
     fn note_waits(&mut self, view: &WorldView) {
@@ -95,14 +74,6 @@ impl Derived {
             }
         }
         self.waits = seen;
-    }
-
-    /// The tick a unit began the cast point it is in, if it is in one.
-    pub fn cast_began(&self, unit: EntityId) -> Option<u32> {
-        self.casts
-            .iter()
-            .find(|(id, _)| *id == unit)
-            .map(|(_, t)| *t)
     }
 
     /// How much of a slot's wait is still to run, 0 to 1, given the ticks
