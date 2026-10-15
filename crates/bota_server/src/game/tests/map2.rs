@@ -2,12 +2,12 @@
 
 use bota_core::{
     CellGrid, MAP2_DEATH_LIMIT, MAP2_GAME_TICKS, MAP2_ID, MAP2_TICK_CAP, MAPS, hero_spawn_pos,
-    lane_polyline, lane_route, map_of, rules, wave_plan,
+    item_def, lane_polyline, lane_route, map_of, rules, wave_plan,
 };
 
 use crate::game::{
-    Clearance, Command, Entity, Event, EventVisibility, MatchConfig, Seat, World, item_def,
-    lane_routes, terrain_of, tree_positions, wire_id,
+    Clearance, Command, Entity, Event, EventVisibility, MatchConfig, Seat, World, lane_routes,
+    terrain_of, tree_positions, wire_id,
 };
 use bota_proto::{
     DamageKind, EventKind, Fixed, HeroId, ItemId, MapId, Order, Pick, ReplayRecord, ServerMsg,

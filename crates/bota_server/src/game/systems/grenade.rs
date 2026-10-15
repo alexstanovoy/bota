@@ -2,11 +2,12 @@
 //! it from a stock that refills over time.
 
 use bota_core::{
-    ModifierKind, clamp_to_map, facing_towards, kind_def, move_towards, per_tick, rules,
+    ITEMS, ModifierKind, clamp_to_map, facing_towards, item_def, kind_def, move_towards, per_tick,
+    rules,
 };
 use bota_proto::{DamageKind, ItemId, Target, Team, UnitKind};
 
-use crate::game::{Entity, Grenade, ITEMS, Modifier, ShopStock, Transform, World, item_def};
+use crate::game::{Entity, Grenade, Modifier, ShopStock, Transform, World};
 
 /// Every side's shop as the match starts: each item sold from a limited
 /// stock at its starting count, by side, then in catalog order.

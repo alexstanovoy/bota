@@ -1,12 +1,12 @@
 //! Fixtures and helpers the game tests share.
 
 use bota_core::{
-    CellGrid, MELEE_CREEP, MapDef, ModifierKind, NeutralKind, RANGED_CREEP, Ratio, UnitDef,
+    CellGrid, ITEMS, MELEE_CREEP, MapDef, ModifierKind, NeutralKind, RANGED_CREEP, Ratio, UnitDef,
     facing_towards, isqrt64, kind_def, map_of, rules,
 };
 
 use crate::game::{
-    ActionPhase, ActionState, CampHome, Command, Def, Entity, Errand, Event, Ground, Health, ITEMS,
+    ActionPhase, ActionState, CampHome, Command, Def, Entity, Errand, Event, Ground, Health,
     ItemStack, Lane, LaneAi, Level, MatchConfig, Modifier, Modifiers, NeutralAi, Orders,
     Projectile, Seat, StackKind, Stats, TERRAIN_CELLS, Transform, UnitOrder, World, plan_radius,
     tree_positions, wire_id,

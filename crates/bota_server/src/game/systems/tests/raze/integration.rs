@@ -1,6 +1,6 @@
-use bota_core::{ModifierKind, rules, tower_def};
+use bota_core::{ModifierKind, item_def, rules, tower_def};
 
-use crate::game::{ItemStack, Modifier, Modifiers, World, item_def, wire_id};
+use crate::game::{ItemStack, Modifier, Modifiers, World, wire_id};
 use bota_proto::{
     EffectId, EffectView, Fixed, HeroId, ItemId, LEN_PREFIX, SlotId, Team, WorldView,
     decode_payload, encode_frame_to_vec,

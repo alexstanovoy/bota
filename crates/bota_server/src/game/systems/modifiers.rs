@@ -1,9 +1,9 @@
 //! What is on a unit: putting it on, doing its work each tick, taking it off.
 
-use bota_core::{ModifierKind, kind_def, rules};
+use bota_core::{ModifierKind, item_def, kind_def, rules};
 use bota_proto::{AbilityId, DamageKind, Fixed};
 
-use crate::game::{Landed, Modifier, Stats, Table, World, cooldown_after, item_def};
+use crate::game::{Landed, Modifier, Stats, Table, World, cooldown_after};
 
 use crate::engine::Entity;
 

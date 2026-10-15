@@ -1,8 +1,8 @@
-//! Every ability a hero may carry: what it is called, how it is aimed, what
-//! it asks for, and what it does at each moment of its life.
+//! What every ability does at each moment of its life: a hook table with one
+//! row to each entry of [`bota_core::ABILITIES`].
 
-use bota_core::rules;
-use bota_proto::{AbilityId, Aim, Target};
+use bota_core::ABILITY_COUNT;
+use bota_proto::{AbilityId, Target};
 
 use crate::game::{Entity, World};
 
@@ -11,74 +11,6 @@ pub type CastHook = fn(&mut World, Entity, Target) -> bool;
 
 /// What an ability does when it ends.
 pub type EndHook = fn(&mut World, Entity, Target);
-
-/// One entry of the ability list.
-#[derive(Clone, Copy, Debug)]
-pub struct AbilityDef {
-    /// What it is called.
-    pub name: &'static str,
-    /// How it is aimed.
-    pub aim: Aim,
-    /// Levels it may reach.
-    pub max_level: u8,
-    /// Whether it works on its own and is never cast.
-    pub passive: bool,
-    /// Whether it is the ultimate, which waits on higher hero levels.
-    pub ultimate: bool,
-    /// Whether what it is aimed at has to be something its caster fights.
-    pub at_an_enemy: bool,
-    /// Whether ordering it leaves what the body is doing alone: it goes off
-    /// beside a swing or another cast instead of breaking either off. Only
-    /// an ability with no cast point, backswing or duration may be.
-    pub immediate: bool,
-    /// Whether ordering it while a channel runs leaves the channel be:
-    /// Dota's `DOTA_ABILITY_BEHAVIOR_IGNORE_CHANNEL`. Only an ability with
-    /// no cast point, backswing or duration may.
-    pub ignores_channel: bool,
-    /// Mana each level costs.
-    pub mana: &'static [i32],
-    /// Ticks between casts, by level.
-    pub cooldown: &'static [u32],
-    /// How far it reaches, in world units. Zero for one that reaches nowhere.
-    pub range: i32,
-    /// Milliseconds of cast point. Zero: the effect lands in the same tick.
-    pub point: u32,
-    /// Milliseconds of animation after. Zero: the body is not held.
-    pub backswing: u32,
-    /// Ticks it runs on after the cast. Zero: over at once.
-    pub duration: u32,
-    /// At the cast point. `false`: nothing happened and nothing is spent.
-    pub on_cast: CastHook,
-    /// Every tick it runs on. `false`: it breaks off.
-    pub on_during: CastHook,
-    /// Broken off by an order, a stun, the caster falling, or its own
-    /// `false`.
-    pub on_cancel: EndHook,
-    /// Run to the end of `duration`.
-    pub on_complete: EndHook,
-}
-
-/// Nothing at all, so an entry names only what sets it apart.
-const PLAIN: AbilityDef = AbilityDef {
-    name: "",
-    aim: Aim::Own,
-    max_level: 0,
-    passive: true,
-    ultimate: false,
-    at_an_enemy: false,
-    immediate: false,
-    ignores_channel: false,
-    mana: &[],
-    cooldown: &[],
-    range: 0,
-    point: 0,
-    backswing: 0,
-    duration: 0,
-    on_cast: never,
-    on_during: goes_on,
-    on_cancel: nothing,
-    on_complete: nothing,
-};
 
 fn never(_: &mut World, _: Entity, _: Target) -> bool {
     false
@@ -162,234 +94,111 @@ fn feast(world: &mut World, caster: Entity, _: Target) -> bool {
     world.cast_feast(caster, level)
 }
 
-/// Every ability, indexed by [`AbilityId`].
-pub const ABILITIES: [AbilityDef; 17] = [
-    AbilityDef {
-        name: "Meat Hook",
-        aim: Aim::Point,
-        max_level: rules::ABILITY_MAX_LEVEL,
-        passive: false,
-        mana: &rules::HOOK_MANA,
-        cooldown: &rules::HOOK_COOLDOWN,
-        range: rules::HOOK_RANGE,
+/// What one ability does at each moment of its life.
+#[derive(Clone, Copy)]
+pub struct AbilityHooks {
+    /// At the cast point. `false`: nothing happened and nothing is spent.
+    pub on_cast: CastHook,
+    /// Every tick it runs on. `false`: it breaks off.
+    pub on_during: CastHook,
+    /// Broken off by an order, a stun, the caster falling, or its own
+    /// `false`.
+    pub on_cancel: EndHook,
+    /// Run to the end of its duration.
+    pub on_complete: EndHook,
+}
+
+/// Does nothing at all, so a row names only the moments that do something.
+const INERT: AbilityHooks = AbilityHooks {
+    on_cast: never,
+    on_during: goes_on,
+    on_cancel: nothing,
+    on_complete: nothing,
+};
+
+/// Every ability's hooks, indexed by [`AbilityId`] like
+/// [`bota_core::ABILITIES`].
+pub const ABILITY_HOOKS: [AbilityHooks; ABILITY_COUNT] = [
+    // Meat Hook.
+    AbilityHooks {
         on_cast: meat_hook,
-        ..PLAIN
+        ..INERT
     },
-    AbilityDef {
-        name: "Rot",
-        max_level: rules::ABILITY_MAX_LEVEL,
-        passive: false,
-        ignores_channel: true,
-        mana: &[0, 0, 0, 0],
-        cooldown: &[0, 0, 0, 0],
-        range: rules::ROT_RADIUS,
+    // Rot.
+    AbilityHooks {
         on_cast: rot,
-        ..PLAIN
+        ..INERT
     },
-    AbilityDef {
-        name: "Flesh Heap",
-        max_level: rules::ABILITY_MAX_LEVEL,
-        range: rules::FLESH_HEAP_RANGE,
-        ..PLAIN
-    },
-    AbilityDef {
-        name: "Dismember",
-        aim: Aim::Unit,
-        max_level: rules::ULT_MAX_LEVEL,
-        passive: false,
-        ultimate: true,
-        at_an_enemy: true,
-        mana: &rules::DISMEMBER_MANA,
-        cooldown: &rules::DISMEMBER_COOLDOWN,
-        range: rules::DISMEMBER_RANGE,
-        duration: rules::DISMEMBER_TICKS,
+    // Flesh Heap.
+    INERT,
+    // Dismember.
+    AbilityHooks {
         on_cast: dismember,
         on_during: dismember_holds,
         on_cancel: dismember_lets_go,
         on_complete: dismember_lets_go,
-        ..PLAIN
     },
-    AbilityDef {
-        name: "Burst",
-        max_level: 1,
-        passive: false,
-        mana: &[0],
-        cooldown: &[rules::COURIER_BURST_COOLDOWN],
+    // Burst.
+    AbilityHooks {
         on_cast: burst,
-        ..PLAIN
+        ..INERT
     },
-    AbilityDef {
-        name: "Return",
-        max_level: 1,
-        passive: false,
-        mana: &[0],
-        cooldown: &[0],
+    // Return.
+    AbilityHooks {
         on_cast: return_items,
-        ..PLAIN
+        ..INERT
     },
-    AbilityDef {
-        name: "Take Stash",
-        max_level: 1,
-        passive: false,
-        mana: &[0],
-        cooldown: &[0],
+    // Take Stash.
+    AbilityHooks {
         on_cast: take_stash,
-        ..PLAIN
+        ..INERT
     },
-    AbilityDef {
-        name: "Deliver",
-        max_level: 1,
-        passive: false,
-        mana: &[0],
-        cooldown: &[0],
+    // Deliver.
+    AbilityHooks {
         on_cast: deliver,
-        ..PLAIN
+        ..INERT
     },
-    AbilityDef {
-        name: "Shield",
-        max_level: 1,
-        passive: false,
-        mana: &[0],
-        cooldown: &[rules::COURIER_SHIELD_COOLDOWN],
+    // Shield.
+    AbilityHooks {
         on_cast: shield,
-        ..PLAIN
+        ..INERT
     },
-    AbilityDef {
-        name: "Shadowraze (Near)",
-        max_level: rules::ABILITY_MAX_LEVEL,
-        passive: false,
-        mana: &rules::RAZE_MANA,
-        cooldown: &rules::RAZE_COOLDOWN,
-        range: rules::RAZE_DISTANCE[0],
-        point: rules::RAZE_CAST_POINT_MS,
+    // Shadowraze (Near).
+    AbilityHooks {
         on_cast: raze_near,
-        ..PLAIN
+        ..INERT
     },
-    AbilityDef {
-        name: "Shadowraze (Mid)",
-        max_level: rules::ABILITY_MAX_LEVEL,
-        passive: false,
-        mana: &rules::RAZE_MANA,
-        cooldown: &rules::RAZE_COOLDOWN,
-        range: rules::RAZE_DISTANCE[1],
-        point: rules::RAZE_CAST_POINT_MS,
+    // Shadowraze (Mid).
+    AbilityHooks {
         on_cast: raze_mid,
-        ..PLAIN
+        ..INERT
     },
-    AbilityDef {
-        name: "Shadowraze (Far)",
-        max_level: rules::ABILITY_MAX_LEVEL,
-        passive: false,
-        mana: &rules::RAZE_MANA,
-        cooldown: &rules::RAZE_COOLDOWN,
-        range: rules::RAZE_DISTANCE[2],
-        point: rules::RAZE_CAST_POINT_MS,
+    // Shadowraze (Far).
+    AbilityHooks {
         on_cast: raze_far,
-        ..PLAIN
+        ..INERT
     },
-    AbilityDef {
-        name: "Requiem of Souls",
-        max_level: rules::ULT_MAX_LEVEL,
-        passive: false,
-        ultimate: true,
-        mana: &rules::REQUIEM_MANA,
-        cooldown: &rules::REQUIEM_COOLDOWN,
-        range: rules::REQUIEM_LINE_DISTANCE,
-        point: rules::REQUIEM_CAST_POINT_MS,
-        backswing: rules::REQUIEM_BACKSWING_MS,
+    // Requiem of Souls.
+    AbilityHooks {
         on_cast: requiem,
-        ..PLAIN
+        ..INERT
     },
-    AbilityDef {
-        name: "Necromastery",
-        max_level: 1,
-        ..PLAIN
-    },
-    AbilityDef {
-        name: "Presence of the Dark Lord",
-        max_level: rules::ABILITY_MAX_LEVEL,
-        range: rules::PRESENCE_RADIUS,
-        ..PLAIN
-    },
-    AbilityDef {
-        name: "Feast of Souls",
-        max_level: rules::ABILITY_MAX_LEVEL,
-        passive: false,
-        immediate: true,
-        mana: &rules::FEAST_MANA,
-        cooldown: &rules::FEAST_COOLDOWN,
-        range: rules::FEAST_RADIUS,
+    // Necromastery.
+    INERT,
+    // Presence of the Dark Lord.
+    INERT,
+    // Feast of Souls.
+    AbilityHooks {
         on_cast: feast,
-        ..PLAIN
+        ..INERT
     },
-    AbilityDef {
-        name: "Throw Grenade",
-        ..PLAIN
-    },
+    // Throw Grenade.
+    INERT,
 ];
 
-const _: () = {
-    let mut at = 0;
-    while at < ABILITIES.len() {
-        let def = &ABILITIES[at];
-        assert!(!def.immediate || (def.point == 0 && def.backswing == 0 && def.duration == 0));
-        assert!(
-            !def.ignores_channel || (def.point == 0 && def.backswing == 0 && def.duration == 0)
-        );
-        at += 1;
-    }
-};
+const _: () = assert!(ABILITY_HOOKS.len() == bota_core::ABILITIES.len());
 
-/// What one ability is, or nothing if no such ability exists.
-pub fn ability_def(id: AbilityId) -> Option<&'static AbilityDef> {
-    ABILITIES.get(usize::from(id.0))
-}
-
-/// What one cast costs at a level.
-///
-/// Zero for a slot that holds nothing castable.
-pub fn ability_mana_cost(id: AbilityId, level: u8) -> i32 {
-    ability_def(id).map_or(0, |def| pick(def.mana, level))
-}
-
-/// What one cast puts on the clock at a level.
-pub fn ability_cooldown(id: AbilityId, level: u8) -> u32 {
-    ability_def(id).map_or(0, |def| pick(def.cooldown, level))
-}
-
-/// The entry of a per-level table for a level, the last one standing for
-/// everything past it.
-fn pick<T: Copy + Default>(table: &[T], level: u8) -> T {
-    let level = usize::from(level.max(1) - 1);
-    table
-        .get(level)
-        .copied()
-        .unwrap_or_else(|| table.last().copied().unwrap_or_default())
-}
-
-/// The ability whose level a whole group of slots stands at.
-///
-/// The three razes are one skill worn as three slots: a point into any of
-/// them levels all three, and the group costs points as one ability. Every
-/// other ability is a group of itself.
-pub fn learn_group(id: AbilityId) -> AbilityId {
-    match id {
-        AbilityId::RAZE_MID | AbilityId::RAZE_FAR => AbilityId::RAZE_NEAR,
-        _ => id,
-    }
-}
-
-/// The hero level one more level of an ability waits for.
-///
-/// A basic one opens on every other level from the first; the ultimate waits
-/// on [`rules::ULT_LEVEL_FLOORS`].
-pub fn level_floor(def: &AbilityDef, level: u8) -> u8 {
-    if def.ultimate {
-        rules::ULT_LEVEL_FLOORS
-            .get(usize::from(level))
-            .copied()
-            .unwrap_or(u8::MAX)
-    } else {
-        2 * (level + 1) - 1
-    }
+/// What one ability does, or nothing if no such ability exists.
+pub fn ability_hooks(id: AbilityId) -> Option<&'static AbilityHooks> {
+    ABILITY_HOOKS.get(usize::from(id.0))
 }

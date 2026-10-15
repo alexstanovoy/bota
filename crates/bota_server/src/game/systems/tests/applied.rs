@@ -1,12 +1,14 @@
 //! Applied stat changes: what each is worth and what it ignores.
 
-use bota_core::{Aura, MELEE_CREEP, ModifierKind, Reach, SHADOW_FIEND, map_of, rules, tower_def};
+use bota_core::{
+    Aura, ITEMS, MELEE_CREEP, ModifierKind, Reach, SHADOW_FIEND, ability_cooldown,
+    ability_mana_cost, map_of, rules, tower_def,
+};
 
 use crate::game::{
-    AppliedModifier, AppliedModifiers, AppliedOrigin, AuraCx, Auras, Entity, ITEMS,
+    AppliedModifier, AppliedModifiers, AppliedOrigin, AuraCx, Auras, Entity,
     MAX_APPLIED_MODIFIERS_PER_UNIT, MAX_COMBINED_MODIFIER_SCALE, Modifier, Place, Seat, Spots,
-    StackKind, Stacks, World, ability_cooldown, ability_mana_cost, aura_system, cooldown_after,
-    cost_after, wire_id,
+    StackKind, Stacks, World, aura_system, cooldown_after, cost_after, wire_id,
 };
 use bota_proto::{
     AbilityId, AbilitySlot, DamageKind, Fixed, HeroId, ItemId, MapId, ModifierSpec, SlotId, Target,

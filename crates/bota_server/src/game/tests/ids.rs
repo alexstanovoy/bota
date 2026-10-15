@@ -1,9 +1,9 @@
 //! The ids the server hands out are the ones the protocol's registry holds.
 
-use bota_core::ModifierKind;
+use bota_core::{ABILITIES, HEROES, ITEMS, ModifierKind};
 use bota_proto::{DamageKind, EffectId, Fixed, IdSpace, RegisteredId, registered};
 
-use crate::game::{ABILITIES, HEROES, ITEMS, StackKind, effect_id, stack_effect_id};
+use crate::game::{StackKind, effect_id, stack_effect_id};
 
 /// Each id of `space` the server defines, by `names[id]`, is registered under
 /// that name and live, and every live one is defined. A slot left in `names`

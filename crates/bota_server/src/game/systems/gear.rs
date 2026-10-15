@@ -1,15 +1,16 @@
 //! Items carried and abilities held: what they add, and what they cost.
 
-use bota_core::{ModifierKind, clamp_to_map, fountain_pos, move_towards, rules};
+use bota_core::{
+    Carried, ITEMS, ItemDef, Mend, ModifierKind, Pool, Spends, ability_def, clamp_to_map,
+    fountain_pos, hero_def, item_def, learn_group, level_floor, move_towards, rules,
+};
 use bota_proto::{
     AbilityId, Attribute, EventKind, Fixed, HeroId, ItemId, SlotId, Target, Team, Vec2,
 };
 
 use crate::game::{
-    AbilityBook, AbilityState, BAG_SLOTS, Carried, Entity, Event, EventVisibility, ITEMS,
-    Inventory, ItemDef, ItemStack, Modifier, Pool, Spends, Tree, World, ability_def, hero_def,
-    in_backpack, in_inventory, in_stash, in_town_portal, item_def, learn_group, level_floor,
-    wire_id,
+    AbilityBook, AbilityState, BAG_SLOTS, Entity, Event, EventVisibility, Inventory, ItemStack,
+    Modifier, Tree, World, in_backpack, in_inventory, in_stash, in_town_portal, wire_id,
 };
 
 /// Missing purchase parts, their total price, and destination capacity.
@@ -17,22 +18,6 @@ pub(crate) struct PurchasePlan {
     parts: Vec<ItemId>,
     pub(crate) cost: i32,
     pub(crate) fits: bool,
-}
-
-/// What one drink of an item does.
-pub struct Mend {
-    /// Which pool it mends.
-    pub pool: Pool,
-    /// How much it mends over the whole of it.
-    pub total: i32,
-    /// How long it runs, in ticks.
-    pub ticks: u32,
-    /// How far it reaches, in world units.
-    pub range: i32,
-    /// Whether it takes a tree down to work.
-    pub eats_a_tree: bool,
-    /// Whether a blow puts it out.
-    pub breaks: bool,
 }
 
 /// The slots held that cover a list of parts, one slot to each part.
@@ -532,7 +517,7 @@ impl World {
         {
             return false;
         }
-        if !(def.on_use)(self, entity, slot, target) {
+        if !self.use_effect(entity, slot, def, target) {
             return false;
         }
         if cost > 0

@@ -8,8 +8,8 @@
 //! is aimed at is in reach.
 
 use bota_core::{
-    BEATS_PER_TICK, Ratio, Talent, attack_class_pct, attack_gain, beats, cross, facing_gap,
-    facing_towards, kind_def, rules,
+    BEATS_PER_TICK, Ratio, Talent, ability_def, attack_class_pct, attack_gain, beats, cross,
+    facing_gap, facing_towards, kind_def, rules,
 };
 use bota_proto::{Aim, DamageKind, Fixed, ItemSlot, Team, Vec2};
 
@@ -17,7 +17,7 @@ use super::hitting::entity_slot;
 
 use crate::game::{
     Action, ActionPhase, ActionState, Chance, Entity, Event, FeastPhase, Hit, HitEffect,
-    PendingCast, Projectile, Purpose, Stats, Target, Visibility, World, ability_def, wire_id,
+    PendingCast, Projectile, Purpose, Stats, Target, Visibility, World, ability_hooks, wire_id,
 };
 
 /// What one swing deals, rolled when it lands.
@@ -594,17 +594,17 @@ impl World {
     fn call_during(&mut self, entity: Entity, what: PendingCast) -> bool {
         match what {
             PendingCast::Ability { slot, target } => {
-                let Some(def) = ability_def(self.ability_in(entity, slot)) else {
+                let Some(hooks) = ability_hooks(self.ability_in(entity, slot)) else {
                     return false;
                 };
-                (def.on_during)(self, entity, target)
+                (hooks.on_during)(self, entity, target)
             }
-            PendingCast::Item { slot, target } => {
+            PendingCast::Item { slot, .. } => {
                 let at = usize::from(slot.0);
                 let Some(def) = self.item_def_in(entity, at) else {
                     return false;
                 };
-                (def.on_during)(self, entity, at, target)
+                self.use_goes_on(entity, def)
             }
         }
     }
@@ -613,14 +613,14 @@ impl World {
     fn call_cancel(&mut self, entity: Entity, what: PendingCast) {
         match what {
             PendingCast::Ability { slot, target } => {
-                if let Some(def) = ability_def(self.ability_in(entity, slot)) {
-                    (def.on_cancel)(self, entity, target);
+                if let Some(hooks) = ability_hooks(self.ability_in(entity, slot)) {
+                    (hooks.on_cancel)(self, entity, target);
                 }
             }
-            PendingCast::Item { slot, target } => {
+            PendingCast::Item { slot, .. } => {
                 let at = usize::from(slot.0);
                 if let Some(def) = self.item_def_in(entity, at) {
-                    (def.on_cancel)(self, entity, at, target);
+                    self.use_breaks_off(entity, def);
                 }
             }
         }
@@ -630,14 +630,14 @@ impl World {
     fn call_complete(&mut self, entity: Entity, what: PendingCast) {
         match what {
             PendingCast::Ability { slot, target } => {
-                if let Some(def) = ability_def(self.ability_in(entity, slot)) {
-                    (def.on_complete)(self, entity, target);
+                if let Some(hooks) = ability_hooks(self.ability_in(entity, slot)) {
+                    (hooks.on_complete)(self, entity, target);
                 }
             }
-            PendingCast::Item { slot, target } => {
+            PendingCast::Item { slot, .. } => {
                 let at = usize::from(slot.0);
                 if let Some(def) = self.item_def_in(entity, at) {
-                    (def.on_complete)(self, entity, at, target);
+                    self.use_completes(entity, at, def);
                 }
             }
         }

@@ -1,13 +1,13 @@
 //! The determinism contract: whole matches driven by seeded order streams
 //! replay to pinned world, view and event fingerprints.
 
-use bota_core::{map_of, rules};
+use bota_core::{ITEMS, map_of, rules};
 use bota_proto::{
     AbilitySlot, Aim, HeroId, ItemId, ItemSlot, MapId, Order, Pick, ServerMsg, SlotId, TalentSlot,
     Target, Team, TickMode, UnitKind, UnitView, Vec2, WorldView, encode_frame_to_vec,
 };
 
-use crate::game::{Command, EventVisibility, Fnv, ITEMS, MatchConfig, World};
+use crate::game::{Command, EventVisibility, Fnv, MatchConfig, World};
 
 /// Ticks between two pinned checkpoints.
 const CHECKPOINT_TICKS: u32 = 1_500;

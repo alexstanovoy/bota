@@ -1,14 +1,13 @@
 //! The world as a side is allowed to see it.
 
-use bota_core::{ModifierKind, attack_gain, beats, kind_def, rules};
+use bota_core::{ModifierKind, ability_mana_cost, attack_gain, beats, kind_def, rules};
 use bota_proto::{
     AbilityId, AbilityView, AggroView, EffectId, EffectView, Fixed, PlayerView, ProjectileView,
     StatusFlags, SwingView, TalentSlot, TalentView, Talents, Team, UnitKind, UnitView, WorldView,
 };
 
 use crate::game::{
-    ActionPhase, ActionState, Entity, FeastPhase, StackKind, World, ability_mana_cost, item_view,
-    item_views,
+    ActionPhase, ActionState, Entity, FeastPhase, StackKind, World, item_view, item_views,
 };
 use crate::profile::Phase;
 
@@ -137,7 +136,7 @@ impl World {
                 team: held.team,
                 item: held.item,
                 left: held.left,
-                max: crate::game::item_def(held.item)
+                max: bota_core::item_def(held.item)
                     .and_then(|def| def.stock)
                     .map_or(0, |rule| rule.max),
                 restock_left: held.restock_left,
@@ -305,7 +304,7 @@ impl World {
     fn project_loot(&self, entity: Entity) -> Option<bota_proto::LootView> {
         let crate::game::Loot(stack) = self.loot.get(entity)?;
         let at = self.transform.get(entity)?;
-        let def = crate::game::item_def(stack.id);
+        let def = bota_core::item_def(stack.id);
         Some(bota_proto::LootView {
             id: wire_id(entity),
             pos: at.pos,
@@ -417,7 +416,7 @@ fn ability_view(
     can_level: bool,
     mana_rate_bp: i32,
 ) -> AbilityView {
-    let def = crate::game::ability_def(held.id);
+    let def = bota_core::ability_def(held.id);
     AbilityView {
         id: held.id,
         level: held.level,
@@ -529,13 +528,13 @@ impl World {
     /// The same three conditions [`World::learn`] asks: a point unspent, room
     /// left in the ability, and a hero level high enough for the next one.
     fn can_level(&self, entity: Entity, id: bota_proto::AbilityId, level: u8) -> bool {
-        let Some(def) = crate::game::ability_def(id) else {
+        let Some(def) = bota_core::ability_def(id) else {
             return false;
         };
         let hero_level = self.level.get(entity).map_or(0, |held| held.0);
         level < def.max_level
             && self.points_spent(entity) < hero_level
-            && hero_level >= crate::game::level_floor(def, level)
+            && hero_level >= bota_core::level_floor(def, level)
     }
 
     /// The [`StatusFlags`] bits of a unit: what its modifiers do to it, and

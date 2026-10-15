@@ -1,9 +1,7 @@
 //! What an entity carries.
 
-use bota_core::rules;
+use bota_core::{item_def, rules};
 use bota_proto::{Attribute, ItemId, SlotId};
-
-use crate::game::item_def;
 
 /// One item in a slot.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

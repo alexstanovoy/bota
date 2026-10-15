@@ -719,5 +719,7 @@ fn damage_splits_into_base_and_bonus() {
     let d = crate::damage_range(&fiend);
     assert_eq!((d.min, d.max, d.bonus), (41, 47, 9));
     fiend.level = 11;
-    assert_eq!(crate::base_attributes(&fiend), Some([46, 61, 38]));
+    // Growth is Fixed arithmetic, as the server's own: 19 + 2.7 * 10 stands a
+    // hair under 46, and the server floors it too.
+    assert_eq!(crate::base_attributes(&fiend), Some([45, 60, 37]));
 }

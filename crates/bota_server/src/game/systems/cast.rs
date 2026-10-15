@@ -1,9 +1,9 @@
 //! Casting abilities: what starts one, what it costs, and what each one does.
 
-use bota_core::{fountain_pos, rules};
+use bota_core::{ability_def, fountain_pos, item_def, rules};
 use bota_proto::{AbilityId, AbilitySlot, EventKind, Fixed, Target, Team, UnitKind, Vec2};
 
-use crate::game::{Entity, Event, World, ability_def, item_def, wire_id};
+use crate::game::{Entity, Event, World, ability_hooks, wire_id};
 
 impl World {
     /// Whether an entity stands in its own shop.
@@ -47,7 +47,10 @@ impl World {
             return false;
         }
         let cooldown = self.ability_cooldown(entity, ability.id, ability.level);
-        if !(def.on_cast)(self, entity, target) {
+        let Some(hooks) = ability_hooks(ability.id) else {
+            return false;
+        };
+        if !(hooks.on_cast)(self, entity, target) {
             return false;
         }
         self.expose_caster(entity, target);

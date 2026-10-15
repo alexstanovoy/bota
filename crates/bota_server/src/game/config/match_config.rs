@@ -114,7 +114,7 @@ impl MatchConfig {
             ))),
             mode: self.mode,
             picks: self.picks.clone(),
-            shop: crate::game::shop_entries(),
+            shop: bota_core::shop_entries(),
             fountains: bota_core::map_of(self.map).fountains,
             shop_range: bota_core::rules::SHOP_RANGE,
         }

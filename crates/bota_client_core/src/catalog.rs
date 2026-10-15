@@ -4,7 +4,8 @@
 //! carries. The numbers ride the wire: in the views for what a unit holds and
 //! in the shop table for what a thing costs.
 
-use bota_proto::{AbilityId, EffectId, HeroId, ItemId, ShopEntry};
+use bota_core::{attributes_at_level, base_damage_least, hero_def};
+use bota_proto::{AbilityId, EffectId, Fixed, HeroId, ItemId, ShopEntry};
 
 /// The shape a projectile of an ability is drawn as. Radii are in world units.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -70,15 +71,6 @@ pub struct HeroFace {
     pub id: u16,
     /// Its name, for the roster and the panel.
     pub name: &'static str,
-    /// The least base attack damage of a swing at level 1, before
-    /// attributes.
-    pub base_damage: i32,
-    /// Attack damage the base gains each level after the first.
-    pub damage_per_level: i32,
-    /// Strength, agility and intelligence at level 1, in tenths.
-    pub attributes_tenths: [i32; 3],
-    /// What each level after the first adds to them, in tenths.
-    pub attributes_per_level_tenths: [i32; 3],
 }
 
 /// Every ability, in id order.
@@ -651,21 +643,10 @@ pub const HEROES: [HeroFace; 2] = [
     HeroFace {
         id: HeroId::PUDGE.0,
         name: "Pudge",
-        // bota's Pudge: 21 a level more by one, strength 25 +3.5.
-        base_damage: 21,
-        damage_per_level: 1,
-        attributes_tenths: [250, 140, 140],
-        attributes_per_level_tenths: [35, 15, 16],
     },
     HeroFace {
         id: HeroId::SHADOW_FIEND.0,
         name: "Shadow Fiend",
-        // Dota 7.41f, as bota rolls it: 16 to 22, agility on top;
-        // 19/25/16 +2.7/3.6/2.2.
-        base_damage: 16,
-        damage_per_level: 0,
-        attributes_tenths: [190, 250, 160],
-        attributes_per_level_tenths: [27, 36, 22],
     },
 ];
 
@@ -821,20 +802,12 @@ pub struct DamageRange {
 /// Splits the range a swing draws from, as the view tells it, into the base
 /// range and the bonus on top.
 pub fn damage_range(unit: &bota_proto::UnitView) -> DamageRange {
-    let primary = |a: [i32; 3]| match unit.primary {
-        Some(bota_proto::Attribute::Strength) => a[0],
-        Some(bota_proto::Attribute::Agility) => a[1],
-        Some(bota_proto::Attribute::Intelligence) => a[2],
-        None => 0,
-    };
     // White: the hero's base range and its primary attribute's base (as it
     // starts and grows by level); green: everything else.
-    let base_least = unit.hero.and_then(|h| hero(h.0)).map(|face| {
-        let levels = i32::from(unit.level.max(1)) - 1;
-        face.base_damage
-            + face.damage_per_level * levels
-            + primary(base_attributes(unit).unwrap_or([0; 3]))
-    });
+    let base_least = unit
+        .hero
+        .and_then(hero_def)
+        .map(|hero| base_damage_least(hero.unit, unit.level));
     let bonus = base_least.map_or(0, |base| (unit.attack_damage_min - base).max(0));
     DamageRange {
         min: unit.attack_damage_min - bonus,
@@ -846,9 +819,6 @@ pub fn damage_range(unit: &bota_proto::UnitView) -> DamageRange {
 /// A hero's strength, agility and intelligence of its level alone, before
 /// items, souls, buffs and talents: whole points, as Dota counts them.
 pub fn base_attributes(unit: &bota_proto::UnitView) -> Option<[i32; 3]> {
-    let face = hero(unit.hero?.0)?;
-    let levels = i32::from(unit.level.max(1)) - 1;
-    Some([0, 1, 2].map(|k| {
-        (face.attributes_tenths[k] + face.attributes_per_level_tenths[k] * levels).div_euclid(10)
-    }))
+    let has = attributes_at_level(hero_def(unit.hero?)?.unit, unit.level);
+    Some([has.strength, has.agility, has.intelligence].map(Fixed::to_int))
 }

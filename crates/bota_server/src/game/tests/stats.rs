@@ -1,11 +1,11 @@
 //! Pools, regeneration, and the stats worked out every tick.
 
 use bota_core::{
-    FLAGBEARER_CREEP, HERO, MEGA_MELEE_CREEP, MEGA_RANGED_CREEP, MELEE_CREEP, ModifierKind,
+    FLAGBEARER_CREEP, HERO, ITEMS, MEGA_MELEE_CREEP, MEGA_RANGED_CREEP, MELEE_CREEP, ModifierKind,
     RANGED_CREEP, SUPER_MELEE_CREEP, SUPER_RANGED_CREEP, UnitDef, attack_gain, map_of, rules,
 };
 
-use crate::game::{Def, Health, ITEMS, Level, Mana, Modifiers, Stats, UnitOrder, Upgrades, World};
+use crate::game::{Def, Health, Level, Mana, Modifiers, Stats, UnitOrder, Upgrades, World};
 use bota_proto::{DamageKind, Fixed, ItemId, MapId, Team, UnitKind, Vec2};
 
 use super::support::*;

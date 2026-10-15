@@ -2,14 +2,12 @@
 //! enemies near him, and the requiem the souls feed.
 
 use bota_core::{
-    ModifierKind, Talent, attack_class_pct, heading_of, kind_def, move_towards, per_tick,
+    ModifierKind, Talent, attack_class_pct, heading_of, hero_def, kind_def, move_towards, per_tick,
     point_along, rules,
 };
 use bota_proto::{AbilityId, Angle, DamageKind, Fixed, Team};
 
-use crate::game::{
-    Fear, Hit, HitEffect, Modifier, RequiemLine, StackKind, Transform, World, hero_def,
-};
+use crate::game::{Fear, Hit, HitEffect, Modifier, RequiemLine, StackKind, Transform, World};
 
 use crate::engine::Entity;
 

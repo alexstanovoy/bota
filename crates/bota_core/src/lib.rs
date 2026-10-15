@@ -10,6 +10,7 @@
 
 #![forbid(unsafe_code)]
 
+mod ability;
 mod aggro;
 mod attack_class;
 mod aura;
@@ -17,6 +18,9 @@ mod camp;
 mod cells;
 mod chance;
 mod economy;
+mod hero;
+mod item;
+mod item_table;
 mod map;
 mod modifier;
 mod movement;
@@ -32,6 +36,7 @@ mod unit_kind;
 mod unit_neutral;
 mod wave;
 
+pub use ability::*;
 pub use aggro::*;
 pub use attack_class::*;
 pub use aura::*;
@@ -39,6 +44,9 @@ pub use camp::*;
 pub use cells::*;
 pub use chance::*;
 pub use economy::*;
+pub use hero::*;
+pub use item::*;
+pub use item_table::*;
 pub use map::*;
 pub use modifier::*;
 pub use movement::*;

@@ -1,12 +1,9 @@
 //! Applied stat changes: their countdown and the rates they leave.
 
-use bota_core::rules;
+use bota_core::{ability_cooldown, ability_mana_cost, item_def, rules};
 use bota_proto::{AbilityId, DamageKind, ItemId};
 
-use crate::game::{
-    Entity, MAX_COMBINED_MODIFIER_SCALE, Stats, World, ability_cooldown, ability_mana_cost,
-    item_def,
-};
+use crate::game::{Entity, MAX_COMBINED_MODIFIER_SCALE, Stats, World};
 
 impl World {
     /// Runs every applied stat change one tick down and drops what has run

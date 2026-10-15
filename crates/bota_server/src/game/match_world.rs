@@ -1,6 +1,6 @@
 //! The surface a match runs a world through: what the game loop asks of it.
 
-use bota_core::{hero_spawn_pos, map_of, rules};
+use bota_core::{hero_spawn_pos, item_def, map_of, rules};
 use bota_proto::{
     AbilityId, Aim, Cheat, MatchStats, Order, RejectReason, SlotId, SlotStats, Target, Team,
     UnitKind,
@@ -8,7 +8,7 @@ use bota_proto::{
 
 use crate::game::{
     BAG_SLOTS, Command, Entity, Event, MatchConfig, MatchRng, PendingCast, Seat, UnitOrder, World,
-    in_backpack, in_stash, in_town_portal, item_def,
+    in_backpack, in_stash, in_town_portal,
 };
 
 /// Whether an order aims at the kind of thing something takes.
@@ -129,14 +129,14 @@ impl World {
     /// Whether the ability in one of a unit's slots goes off beside whatever
     /// the body is doing.
     fn is_immediate(&self, unit: Entity, slot: bota_proto::AbilitySlot) -> bool {
-        crate::game::ability_def(self.ability_in(unit, slot)).is_some_and(|def| def.immediate)
+        bota_core::ability_def(self.ability_in(unit, slot)).is_some_and(|def| def.immediate)
     }
 
     /// Whether an order is a cast or a use of something that leaves a
     /// channel be: Dota's `DOTA_ABILITY_BEHAVIOR_IGNORE_CHANNEL`.
     fn ignores_channel(&self, unit: Entity, order: &Order) -> bool {
         match *order {
-            Order::Cast { slot, .. } => crate::game::ability_def(self.ability_in(unit, slot))
+            Order::Cast { slot, .. } => bota_core::ability_def(self.ability_in(unit, slot))
                 .is_some_and(|def| def.ignores_channel),
             Order::Use { slot, .. } => self
                 .item_def_in(unit, usize::from(slot.0))
@@ -241,7 +241,7 @@ impl World {
     /// is aimed at; an aimed cast takes the body over, so what it was doing
     /// is not returned to, while a cast at oneself leaves its order be.
     fn take_cast(&mut self, unit: Entity, slot: bota_proto::AbilitySlot, target: Target) {
-        let aimed = crate::game::ability_def(self.ability_in(unit, slot))
+        let aimed = bota_core::ability_def(self.ability_in(unit, slot))
             .is_some_and(|def| def.aim != Aim::Own);
         if aimed {
             self.set_order(unit, UnitOrder::Idle);
@@ -403,7 +403,7 @@ impl World {
             .and_then(|book| book.slots.get(usize::from(slot.0)))
             .copied()
             .ok_or(RejectReason::EmptySlot)?;
-        let def = crate::game::ability_def(held.id).ok_or(RejectReason::EmptySlot)?;
+        let def = bota_core::ability_def(held.id).ok_or(RejectReason::EmptySlot)?;
         if def.passive {
             return Err(RejectReason::NotCastable);
         }

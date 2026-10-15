@@ -226,7 +226,7 @@ impl Server {
                     }
                     ClientMsg::PickHero { hero } => {
                         // A pick of nobody leaves whatever was picked before.
-                        if crate::game::hero_def(hero).is_some()
+                        if bota_core::hero_def(hero).is_some()
                             && let Some(seat) = self.roster.seat_of_mut(id)
                         {
                             seat.hero = Some(hero);

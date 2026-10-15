@@ -1,10 +1,10 @@
 //! Consumables, active items and trees.
 
-use bota_core::{HERO, MELEE_CREEP, ModifierKind, SHADOW_FIEND, map_of, rules};
-
-use crate::game::{
-    BLINK_RANGE, Event, ITEMS, ItemStack, Mana, SALVE_TICKS, World, tree_positions, wire_id,
+use bota_core::{
+    BLINK_RANGE, HERO, ITEMS, MELEE_CREEP, ModifierKind, SALVE_TICKS, SHADOW_FIEND, map_of, rules,
 };
+
+use crate::game::{Event, ItemStack, Mana, World, tree_positions, wire_id};
 use bota_proto::{
     Attribute, DamageKind, EventKind, Fixed, HeroId, ItemId, MapId, SlotId, Target, Team, UnitKind,
     Vec2,
