@@ -1,58 +1,66 @@
 //! How hard one's next plain attack lands on a unit, for marking what it
 //! would kill.
 
-use bota_proto::{Fixed, UnitKind, UnitView};
+use bota_core::{CarriedItem, attack_class_pct, carried_bonus, kind_def, mitigate, rules};
+use bota_proto::{DamageKind, Fixed, UnitView};
 
-/// Armor points weigh this many hundredths of a hundred in the server's
-/// armor rule.
-const ARMOR_SCALE: i64 = 6;
-/// The id of the Quelling Blade.
-const QUELLING_BLADE: u16 = 5;
-/// Attack damage a Quelling Blade in the inventory adds against creeps.
-const QUELLING_BONUS: i32 = 18;
-/// Inventory slots whose items work, of the nine carried.
-const WORKING_SLOTS: usize = 6;
-
-/// Physical damage left of `amount` after `armor`: `1 / (1 + 0.06 a)` of it
-/// for positive armor, `2 - 1 / (1 + 0.06 |a|)` for negative, rounded down
-/// as the server rounds.
-pub fn after_armor(amount: i32, armor: Fixed) -> i32 {
-    let whole = i64::from(Fixed::ONE.raw);
-    let scaled = ARMOR_SCALE * i64::from(armor.raw).abs();
-    let den = 100 * whole + scaled;
-    let num = if armor < Fixed::ZERO {
-        den + scaled
-    } else {
-        100 * whole
-    };
-    (i64::from(amount) * num / den).clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32
+/// The health one plain attack takes off a target, between the weakest swing
+/// and the strongest.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct HitRange {
+    /// The weakest swing, with no pierce riding on it.
+    pub least: i32,
+    /// The strongest swing, with the pierce it may carry.
+    pub most: i32,
 }
 
 /// Health one plain, uncritical attack of `attacker` takes off `target` as
-/// both stand now.
-pub fn next_hit(attacker: &UnitView, target: &UnitView) -> i32 {
-    let quelling = attacker
-        .items
-        .iter()
-        .take(WORKING_SLOTS)
-        .flatten()
-        .any(|item| item.id.0 == QUELLING_BLADE);
-    let bonus = if quelling && is_creep(target.kind) {
-        QUELLING_BONUS
+/// both stand now, by the server's own rules.
+///
+/// Item bonuses count as the working inventory carries them (a muted stack
+/// and the backpack are inert). The outgoing amplification a
+/// spawn modifier may add is hidden and read as nominal; whether a pierce
+/// lands is a roll, so it only raises `most`.
+pub fn next_hit(attacker: &UnitView, target: &UnitView) -> HitRange {
+    let carried = carried_bonus(
+        attacker
+            .items
+            .iter()
+            .take(rules::INVENTORY_SLOTS)
+            .flatten()
+            .filter(|item| item.mute_left == 0)
+            .map(|item| CarriedItem {
+                id: item.id,
+                charges: item.charges.unwrap_or(0),
+                mode: item.mode,
+            }),
+    );
+    let against = kind_def(target.kind);
+    let creeps = if against.creep {
+        carried.damage_to_creeps
     } else {
         0
     };
-    after_armor(attacker.attack_damage + bonus, target.armor)
+    let class_pct = attack_class_pct(attacker.kind, target.kind);
+    let swing = |damage: i32| {
+        let blow = (damage + creeps) * class_pct / 100;
+        mitigate(blow, DamageKind::Physical, target.armor, 0)
+    };
+    let least = swing(attacker.attack_damage_min);
+    let mut most = swing(attacker.attack_damage_max);
+    if !against.structure && carried.pierce_damage > 0 {
+        let resist = magic_resist_bp(target.magic_resist);
+        most += mitigate(
+            carried.pierce_damage * class_pct / 100,
+            DamageKind::Magical,
+            Fixed::ZERO,
+            resist,
+        );
+    }
+    HitRange { least, most }
 }
 
-/// Whether a kind of unit is a lane or neutral creep.
-pub fn is_creep(kind: UnitKind) -> bool {
-    matches!(
-        kind,
-        UnitKind::CreepMelee
-            | UnitKind::CreepFlagbearer
-            | UnitKind::CreepRanged
-            | UnitKind::CreepSiege
-            | UnitKind::CreepNeutral
-    )
+/// A magic resistance fraction in basis points, as the server holds it.
+fn magic_resist_bp(resist: Fixed) -> i32 {
+    ((i64::from(resist.raw) * i64::from(rules::NOMINAL_BP)) >> 16) as i32
 }

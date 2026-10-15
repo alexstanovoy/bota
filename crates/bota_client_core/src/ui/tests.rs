@@ -615,15 +615,51 @@ fn only_what_the_seat_bought_and_keeps_counts_toward_the_price() {
 }
 
 #[test]
-fn the_next_hit_is_cut_by_armor_as_the_server_cuts_it() {
-    use crate::ui::lasthit::after_armor;
-    // 50 * 100 / (100 + 6 * 2) = 44.6, rounded down.
-    assert_eq!(after_armor(50, Fixed::from_int(2)), 44);
-    assert_eq!(after_armor(50, Fixed::ZERO), 50);
-    // Below zero each point lets more through: 50 * (112 + 12) / 112.
-    assert_eq!(after_armor(50, Fixed::from_int(-2)), 55);
-    // Half points count: 61 * 100 / (100 + 6 * 1.5) = 55.96.
-    assert_eq!(after_armor(61, Fixed::from_ratio(3, 2)), 55);
+fn the_next_hit_is_what_the_server_would_land() {
+    use crate::ui::lasthit::{HitRange, next_hit};
+    let blade = |mute_left| ItemView {
+        id: ItemId::QUELLING_BLADE,
+        mute_left,
+        ..an_item(None, 0, 0, None)
+    };
+    let mut hero = a_unit();
+    hero.attack_damage = 45;
+    hero.attack_damage_min = 40;
+    hero.attack_damage_max = 50;
+    // Two working blades (each adds against creeps), one muted, one in the backpack.
+    hero.items = vec![
+        Some(blade(0)),
+        Some(blade(30)),
+        Some(blade(0)),
+        None,
+        None,
+        None,
+        Some(blade(0)),
+    ];
+    let mut creep = a_unit();
+    creep.kind = UnitKind::CreepMelee;
+    creep.team = Team::Dire;
+    creep.armor = Fixed::from_int(2);
+    // (40 + 36) * 100 / 112 and (50 + 36) * 100 / 112, rounded down.
+    assert_eq!(
+        next_hit(&hero, &creep),
+        HitRange {
+            least: 67,
+            most: 76
+        }
+    );
+
+    // The creep bonus is worth nothing against a tower, which also takes half.
+    let mut tower = creep.clone();
+    tower.kind = UnitKind::Tower;
+    tower.armor = Fixed::ZERO;
+    assert_eq!(
+        next_hit(&hero, &tower),
+        HitRange {
+            least: 20,
+            most: 25
+        }
+    );
 }
 
 #[test]
