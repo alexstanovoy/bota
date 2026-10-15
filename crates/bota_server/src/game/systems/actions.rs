@@ -9,7 +9,7 @@
 
 use bota_core::{
     BEATS_PER_TICK, Ratio, Talent, attack_class_pct, attack_gain, beats, cross, facing_gap,
-    facing_towards, is_creep, is_structure, rules,
+    facing_towards, kind_def, rules,
 };
 use bota_proto::{Aim, DamageKind, Fixed, ItemSlot, Team, Vec2};
 
@@ -649,7 +649,12 @@ impl World {
         // What is carried against creeps is worth nothing against anything else.
         let damage = stats.damage
             + self.roll_damage(stats.damage_spread)
-            + if self.kind.get(on).copied().is_some_and(is_creep) {
+            + if self
+                .kind
+                .get(on)
+                .copied()
+                .is_some_and(|kind| kind_def(kind).creep)
+            {
                 stats.damage_to_creeps
             } else {
                 0
@@ -747,7 +752,13 @@ impl World {
     /// Only an attacker carrying a pierce ever rolls, and a structure is
     /// never pierced; the share is held exactly over every block of rolls.
     fn roll_pierce(&mut self, attacker: Entity, on: Entity, stats: &Stats) -> Option<i32> {
-        if stats.pierce == Ratio::NEVER || self.kind.get(on).copied().is_some_and(is_structure) {
+        if stats.pierce == Ratio::NEVER
+            || self
+                .kind
+                .get(on)
+                .copied()
+                .is_some_and(|kind| kind_def(kind).structure)
+        {
             return None;
         }
         let rng = &self.rng;

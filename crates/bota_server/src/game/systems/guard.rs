@@ -1,6 +1,6 @@
 //! Keeping guarded structures untouchable until what shields them falls.
 
-use bota_core::is_structure;
+use bota_core::kind_def;
 use bota_proto::{Team, UnitKind};
 
 use crate::game::{StructureId, Until, World};
@@ -69,7 +69,7 @@ impl World {
             let Some(kind) = self.kind.get(entity).copied() else {
                 continue;
             };
-            if !is_structure(kind) || self.structure_open(entity) {
+            if !kind_def(kind).structure || self.structure_open(entity) {
                 continue;
             }
             if let Some(stats) = self.stats.get_mut(entity) {

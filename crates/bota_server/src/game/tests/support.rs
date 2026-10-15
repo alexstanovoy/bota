@@ -1,6 +1,6 @@
 //! Fixtures and helpers the game tests share.
 
-use bota_core::{CellGrid, Ratio, facing_towards, is_structure, isqrt64, rules};
+use bota_core::{CellGrid, Ratio, facing_towards, isqrt64, kind_def, rules};
 
 use crate::game::{
     ActionPhase, ActionState, CampHome, Command, Def, Entity, Errand, Event, Ground, Health,
@@ -846,7 +846,11 @@ pub(super) fn structure_at(world: &World, pos: Vec2) -> Entity {
         .iter()
         .find(|e| {
             world.transform.get(*e).is_some_and(|t| t.pos == pos)
-                && world.kind.get(*e).copied().is_some_and(is_structure)
+                && world
+                    .kind
+                    .get(*e)
+                    .copied()
+                    .is_some_and(|kind| kind_def(kind).structure)
         })
         .expect("a structure stands there")
 }

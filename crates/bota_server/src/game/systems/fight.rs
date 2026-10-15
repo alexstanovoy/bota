@@ -1,7 +1,7 @@
 //! Who stands and who is in reach, telling of blows, and clearing away what
 //! has fallen.
 
-use bota_core::is_structure;
+use bota_core::kind_def;
 use bota_proto::{EventKind, Fixed, Team, UnitKind, Vec2};
 
 use crate::game::{
@@ -134,7 +134,7 @@ impl World {
                 .and_then(|k| self.team.get(k).copied())
                 .map(other_side),
         });
-        let structure = kind.zip(side).filter(|(kind, _)| is_structure(*kind));
+        let structure = kind.zip(side).filter(|(kind, _)| kind_def(*kind).structure);
         if let Some((kind, side)) = structure {
             events.push(Event {
                 kind: EventKind::StructureDestroyed {

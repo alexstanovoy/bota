@@ -1,10 +1,10 @@
 //! What creeps and towers choose to fight, and what pulls them.
 
-use bota_core::rules;
+use bota_core::{PriorityOrder, rules};
 
 use crate::game::{
-    CAMPS, CampHome, Entity, MELEE_CREEP, NeutralAi, NeutralKind, PriorityOrder, SIEGE_CREEP,
-    UnitOrder, World, tower_def,
+    CAMPS, CampHome, Entity, MELEE_CREEP, NeutralAi, NeutralKind, SIEGE_CREEP, UnitOrder, World,
+    tower_def,
 };
 use bota_proto::{Fixed, HeroId, SlotId, Team, Vec2};
 

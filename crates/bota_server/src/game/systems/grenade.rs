@@ -1,7 +1,7 @@
 //! The Blood Grenade: thrown at a spot, it bursts there, and the shops sell
 //! it from a stock that refills over time.
 
-use bota_core::{clamp_to_map, facing_towards, is_creep, move_towards, per_tick, rules};
+use bota_core::{clamp_to_map, facing_towards, kind_def, move_towards, per_tick, rules};
 use bota_proto::{DamageKind, ItemId, Target, Team, UnitKind};
 
 use crate::game::{
@@ -161,7 +161,7 @@ impl World {
                         .kind
                         .get(*other)
                         .copied()
-                        .is_some_and(|kind| kind == UnitKind::Hero || is_creep(kind))
+                        .is_some_and(|kind| kind == UnitKind::Hero || kind_def(kind).creep)
                     && self
                         .transform
                         .get(*other)

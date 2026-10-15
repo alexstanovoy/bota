@@ -1,7 +1,7 @@
 //! Teleporting by Town Portal Scroll: where a scroll may carry, the channel
 //! both sides see, and carrying.
 
-use bota_core::{clamp_to_map, point_along, rules};
+use bota_core::{clamp_to_map, kind_def, point_along, rules};
 use bota_proto::{Fixed, Target, Team, UnitKind, Vec2};
 
 use crate::game::{Entity, Teleport, UnitOrder, World, fountain_pos, hero_spawn_pos, wire_id};
@@ -9,16 +9,6 @@ use crate::game::{Entity, Teleport, UnitOrder, World, fountain_pos, hero_spawn_p
 /// Raw [`Fixed`] of one over the square root of two, for the diagonal spots
 /// of a landing ring.
 const DIAGONAL_RAW: i64 = 46_341;
-
-/// Whether a kind of unit is a building a scroll may carry to: Dota's
-/// allied `DOTA_UNIT_TARGET_BUILDING`, which our map has as towers, barracks,
-/// the Ancient and the fountain.
-fn takes_scrolls(kind: UnitKind) -> bool {
-    matches!(
-        kind,
-        UnitKind::Tower | UnitKind::Barracks | UnitKind::Ancient | UnitKind::Fountain
-    )
-}
 
 impl World {
     /// Where a scroll read by `user` at `target` carries: the building and
@@ -66,7 +56,10 @@ impl World {
 
     /// Whether an entity is a standing building of `side` a scroll carries to.
     fn takes_scrolls_of(&self, entity: Entity, side: Team) -> bool {
-        self.kind.get(entity).copied().is_some_and(takes_scrolls)
+        self.kind
+            .get(entity)
+            .copied()
+            .is_some_and(|kind| kind_def(kind).takes_scrolls)
             && self.team.get(entity) == Some(&side)
             && self.alive(entity)
     }

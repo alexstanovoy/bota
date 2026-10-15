@@ -1,7 +1,7 @@
 //! What is on a unit: putting it on, doing its work each tick, taking it off.
 
-use bota_core::rules;
-use bota_proto::{DamageKind, Fixed, UnitKind};
+use bota_core::{kind_def, rules};
+use bota_proto::{DamageKind, Fixed};
 
 use crate::game::{
     Landed, Modifier, ModifierKind, Stats, Table, World, ability, cooldown_after, item_def,
@@ -266,7 +266,7 @@ impl World {
                 .kind
                 .get(from)
                 .copied()
-                .is_some_and(|kind| matches!(kind, UnitKind::Hero | UnitKind::Tower))
+                .is_some_and(|kind| kind_def(kind).breaks_drinks)
             {
                 continue;
             }

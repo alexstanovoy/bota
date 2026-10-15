@@ -1,7 +1,7 @@
 //! Throwing a hook, and what it drags back.
 
-use bota_core::{facing_towards, is_structure, move_towards, per_tick, rules};
-use bota_proto::{DamageKind, Fixed, Target, UnitKind, Vec2};
+use bota_core::{facing_towards, kind_def, move_towards, per_tick, rules};
+use bota_proto::{DamageKind, Fixed, Target, Vec2};
 
 use crate::game::{Hook, Modifier, ModifierKind, Transform, World, ability};
 
@@ -136,7 +136,7 @@ impl World {
             let Some(kind) = self.kind.get(other).copied() else {
                 continue;
             };
-            if is_structure(kind) || kind == UnitKind::Ward {
+            if kind_def(kind).fixed {
                 continue;
             }
             let Some(spot) = self.transform.get(other).map(|t| t.pos) else {

@@ -2,7 +2,7 @@
 
 use std::collections::VecDeque;
 
-use bota_core::{facing_towards, is_structure, move_towards, per_tick};
+use bota_core::{facing_towards, kind_def, move_towards, per_tick};
 use bota_proto::{DamageKind, Fixed, Team, UnitKind, Vec2};
 
 use crate::game::{
@@ -134,7 +134,10 @@ fn misses_uphill(
         .and_then(|source| transform.get(source))
         .map_or(shot.launch_tier, |source| ground.tier(source.pos));
     if !shot.can_miss_uphill
-        || kind.get(shot.target).copied().is_some_and(is_structure)
+        || kind
+            .get(shot.target)
+            .copied()
+            .is_some_and(|kind| kind_def(kind).structure)
         || ground.tier(target_pos) <= source_tier
     {
         return false;

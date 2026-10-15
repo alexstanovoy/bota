@@ -1,6 +1,6 @@
 //! The world as a side is allowed to see it.
 
-use bota_core::{attack_gain, beats, is_lane_creep, rules};
+use bota_core::{attack_gain, beats, kind_def, rules};
 use bota_proto::{
     AbilityView, AggroView, EffectId, EffectView, Fixed, PlayerView, ProjectileView, StatusFlags,
     SwingView, TalentSlot, TalentView, Talents, Team, UnitKind, UnitView, WorldView,
@@ -222,7 +222,8 @@ impl World {
     ) -> Option<AggroView> {
         let held = self.target_of(entity);
         let swing = self.swing_of(entity);
-        let lane = is_lane_creep(kind)
+        let lane = kind_def(kind)
+            .lane_creep
             .then(|| self.lane_ai.get(entity))
             .flatten();
         let own_hero = kind == UnitKind::Hero && (viewer.is_none() || self.own_to(viewer, entity));

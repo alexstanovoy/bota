@@ -7,7 +7,7 @@
 //! nobody's business but its own. Every swing a hero begins at a hero calls
 //! the lane creeps that see it on as well, more weakly: it holds nobody.
 
-use bota_core::{is_lane_creep, rules};
+use bota_core::{kind_def, rules};
 use bota_proto::{Team, UnitKind, Vec2};
 
 use crate::game::{Entity, World};
@@ -219,8 +219,12 @@ impl World {
             let Some(their_side) = self.team.get(other).copied() else {
                 return false;
             };
-            let creepish =
-                self.kind.get(other).copied().is_some_and(is_lane_creep) && their_side != side;
+            let creepish = self
+                .kind
+                .get(other)
+                .copied()
+                .is_some_and(|kind| kind_def(kind).lane_creep)
+                && their_side != side;
             (creepish || their_side == Team::Neutral)
                 && self.alive(other)
                 && self

@@ -1,65 +1,9 @@
 //! Who a unit picks to attack when nobody told it.
 
-use bota_core::{is_lane_creep, is_structure, isqrt64, rules};
+use bota_core::{PriorityOrder, class_rank, deniable, isqrt64, kind_def, rules};
 use bota_proto::{Fixed, Team, UnitKind, Vec2};
 
 use crate::game::{CAMPS, Entity, Spots, UnitOrder, World};
-
-/// The class order a unit ranks its targets by.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum PriorityOrder {
-    /// Heroes and ordinary units, then siege creeps, then buildings, then
-    /// wards. What everything but a siege creep uses.
-    Normal,
-    /// Buildings, then siege creeps, then everything else, then wards.
-    SiegeFirst,
-}
-
-/// The priority class of a target, before the class order is applied.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum TargetClass {
-    /// Anything not in another class, a barracks included.
-    Unit,
-    /// A siege creep.
-    Siege,
-    /// A tower, an ancient or a fountain.
-    Building,
-    /// A ward.
-    Ward,
-}
-
-/// Which class a kind of unit falls in.
-fn class_of(kind: UnitKind) -> TargetClass {
-    match kind {
-        UnitKind::CreepSiege => TargetClass::Siege,
-        UnitKind::Tower | UnitKind::Ancient | UnitKind::Fountain => TargetClass::Building,
-        UnitKind::Ward => TargetClass::Ward,
-        _ => TargetClass::Unit,
-    }
-}
-
-/// Where a kind of unit sits in an order. Lower is taken first.
-pub fn class_rank_of(kind: UnitKind, order: PriorityOrder) -> u8 {
-    class_rank(class_of(kind), order)
-}
-
-/// Where a class sits in an order. Lower is taken first.
-fn class_rank(class: TargetClass, order: PriorityOrder) -> u8 {
-    match order {
-        PriorityOrder::Normal => match class {
-            TargetClass::Unit => 0,
-            TargetClass::Siege => 1,
-            TargetClass::Building => 2,
-            TargetClass::Ward => 3,
-        },
-        PriorityOrder::SiegeFirst => match class {
-            TargetClass::Building => 0,
-            TargetClass::Siege => 1,
-            TargetClass::Unit => 2,
-            TargetClass::Ward => 3,
-        },
-    }
-}
 
 /// Every entity that stands somewhere, by where it stood when laid, for
 /// choosing targets among.
@@ -114,11 +58,9 @@ impl World {
 
     /// The class order a unit ranks targets by.
     pub fn priority_of(&self, entity: Entity) -> PriorityOrder {
-        if self.kind.get(entity) == Some(&UnitKind::CreepSiege) {
-            PriorityOrder::SiegeFirst
-        } else {
-            PriorityOrder::Normal
-        }
+        self.kind
+            .get(entity)
+            .map_or(PriorityOrder::Normal, |kind| kind_def(*kind).priority)
     }
 
     /// Whether one entity attacks another of its own accord.
@@ -151,10 +93,10 @@ impl World {
         }
         if theirs == Team::Neutral {
             let seeker_kind = self.kind.get(seeker).copied();
-            if seeker_kind.is_some_and(is_structure) {
+            if seeker_kind.is_some_and(|kind| kind_def(kind).structure) {
                 return false;
             }
-            if seeker_kind.is_some_and(is_lane_creep) {
+            if seeker_kind.is_some_and(|kind| kind_def(kind).lane_creep) {
                 return self
                     .camp_home
                     .get(target)
@@ -262,7 +204,7 @@ impl World {
             let Some(kind) = self.kind.get(other).copied() else {
                 continue;
             };
-            let class = class_rank(class_of(kind), order);
+            let class = class_rank(kind_def(kind).target_class, order);
             let distance = isqrt64(at.distance_squared(their_at));
             if class < best_class {
                 best_class = class;
@@ -306,20 +248,14 @@ impl World {
     /// building only at [`rules::DENY_BUILDING_HP_PCT`]. Nothing else of your
     /// own goes at all.
     pub fn deniable(&self, entity: Entity) -> bool {
-        let Some(kind) = self.kind.get(entity).copied() else {
+        let (Some(kind), Some(health), Some(stats)) = (
+            self.kind.get(entity).copied(),
+            self.health.get(entity),
+            self.stats.get(entity),
+        ) else {
             return false;
         };
-        let share = if is_lane_creep(kind) {
-            rules::DENY_HP_PCT
-        } else if is_structure(kind) {
-            rules::DENY_BUILDING_HP_PCT
-        } else {
-            return false;
-        };
-        let (Some(health), Some(stats)) = (self.health.get(entity), self.stats.get(entity)) else {
-            return false;
-        };
-        i64::from(health.hp.raw) * 100 < i64::from(stats.max_hp.raw) * i64::from(share)
+        deniable(kind, health.hp, stats.max_hp)
     }
 
     /// Whether the attacker's side sees the other one.

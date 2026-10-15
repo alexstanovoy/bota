@@ -2,8 +2,7 @@
 //! enemies near him, and the requiem the souls feed.
 
 use bota_core::{
-    Talent, attack_class_pct, heading_of, is_structure, leaves_a_death, move_towards, per_tick,
-    point_along, rules,
+    Talent, attack_class_pct, heading_of, kind_def, move_towards, per_tick, point_along, rules,
 };
 use bota_proto::{AbilityId, Angle, DamageKind, Fixed, Team};
 
@@ -265,7 +264,12 @@ impl World {
     /// Whether a raze or a requiem line of one side lands on another entity:
     /// anything hostile to it but a structure.
     fn burns(&self, from: Entity, other: Entity) -> bool {
-        self.hostile(from, other) && !self.kind.get(other).copied().is_some_and(is_structure)
+        self.hostile(from, other)
+            && !self
+                .kind
+                .get(other)
+                .copied()
+                .is_some_and(|kind| kind_def(kind).structure)
     }
 
     /// Takes a line of a requiem out of the world.
@@ -354,7 +358,7 @@ impl World {
             && self
                 .kind
                 .get(other)
-                .is_some_and(|kind| leaves_a_death(*kind))
+                .is_some_and(|kind| kind_def(*kind).leaves_a_death)
             && !self
                 .stats
                 .get(other)
@@ -376,7 +380,7 @@ impl World {
             .kind
             .get(fallen)
             .copied()
-            .is_none_or(|kind| !leaves_a_death(kind))
+            .is_none_or(|kind| !kind_def(kind).leaves_a_death)
         {
             return;
         }

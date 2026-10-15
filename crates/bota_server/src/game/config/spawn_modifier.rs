@@ -1,6 +1,6 @@
 //! Modifiers trusted match setup puts on units as they are stood up.
 
-use bota_core::{is_structure, rules};
+use bota_core::{kind_def, rules};
 use bota_proto::{ModifierSpec, Team, UnitKind, modifier_ticks_bounded};
 
 /// The most rules one match setup may carry.
@@ -90,15 +90,9 @@ impl SpawnCategory {
     pub fn takes(&self, kind: UnitKind) -> bool {
         match self {
             SpawnCategory::Hero => kind == UnitKind::Hero,
-            SpawnCategory::LaneCreep => matches!(
-                kind,
-                UnitKind::CreepMelee
-                    | UnitKind::CreepFlagbearer
-                    | UnitKind::CreepRanged
-                    | UnitKind::CreepSiege
-            ),
+            SpawnCategory::LaneCreep => kind_def(kind).lane_creep,
             SpawnCategory::NeutralCreep => kind == UnitKind::CreepNeutral,
-            SpawnCategory::Structure => is_structure(kind),
+            SpawnCategory::Structure => kind_def(kind).structure,
         }
     }
 }

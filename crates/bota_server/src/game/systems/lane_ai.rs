@@ -1,10 +1,10 @@
 //! Choosing what to attack, and holding to it: one rule for everything that
 //! fights of its own accord.
 
-use bota_core::{isqrt64, rules};
+use bota_core::{PriorityOrder, class_rank, isqrt64, kind_def, rules};
 use bota_proto::{Fixed, Target, UnitKind};
 
-use crate::game::{Candidates, Entity, PriorityOrder, UnitOrder, World, class_rank_of};
+use crate::game::{Candidates, Entity, UnitOrder, World};
 
 use crate::profile::Phase;
 
@@ -332,8 +332,8 @@ impl World {
 
     /// Where a candidate sits by what it is. Lower is taken first.
     fn class_priority(&self, candidate: Entity, order: PriorityOrder) -> u8 {
-        self.kind
-            .get(candidate)
-            .map_or(u8::MAX, |kind| class_rank_of(*kind, order))
+        self.kind.get(candidate).map_or(u8::MAX, |kind| {
+            class_rank(kind_def(*kind).target_class, order)
+        })
     }
 }

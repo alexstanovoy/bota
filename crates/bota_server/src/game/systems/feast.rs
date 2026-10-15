@@ -1,7 +1,7 @@
 //! Shadow Fiend's feast of souls: the haste it puts on him, the souls it
 //! takes from the enemies near him, and what is left of them once it ends.
 
-use bota_core::{Talent, is_creep, rules};
+use bota_core::{Talent, kind_def, rules};
 use bota_proto::UnitKind;
 
 use crate::game::{Feast, FeastPhase, Fed, StackKind, World};
@@ -95,7 +95,7 @@ impl World {
                     && self
                         .kind
                         .get(*other)
-                        .is_some_and(|kind| *kind == UnitKind::Hero || is_creep(*kind))
+                        .is_some_and(|kind| *kind == UnitKind::Hero || kind_def(*kind).creep)
             })
             .filter_map(|other| {
                 let pos = self.transform.get(other)?.pos;

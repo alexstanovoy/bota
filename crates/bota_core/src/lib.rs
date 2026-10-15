@@ -10,9 +10,11 @@
 
 #![forbid(unsafe_code)]
 
+mod aggro;
 mod attack_class;
 mod cells;
 mod chance;
+mod economy;
 mod movement;
 mod progress;
 pub mod rules;
@@ -21,9 +23,11 @@ mod talent;
 mod unit_kind;
 mod wave;
 
+pub use aggro::*;
 pub use attack_class::*;
 pub use cells::*;
 pub use chance::*;
+pub use economy::*;
 pub use movement::*;
 pub use progress::*;
 pub use sight::*;

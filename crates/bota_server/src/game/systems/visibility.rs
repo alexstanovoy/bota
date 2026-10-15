@@ -1,6 +1,6 @@
 //! Working out who sees what.
 
-use bota_core::{SightBlock, is_structure, rules};
+use bota_core::{SightBlock, kind_def, rules};
 use bota_proto::{Fixed, Target, Team, UnitKind, Vec2};
 
 use crate::game::{
@@ -201,7 +201,7 @@ impl SightScratch {
             if let Some(side) = row.team {
                 seen.add(side);
             }
-            if row.kind.is_some_and(is_structure) {
+            if row.kind.is_some_and(|kind| kind_def(kind).always_seen) {
                 seen.add(Team::Radiant);
                 seen.add(Team::Dire);
             }

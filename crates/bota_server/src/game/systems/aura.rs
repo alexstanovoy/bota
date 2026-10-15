@@ -1,6 +1,6 @@
 //! Effects handed out for standing near something.
 
-use bota_core::{is_structure, rules};
+use bota_core::{kind_def, rules};
 use bota_proto::{Team, UnitKind};
 
 use crate::game::{
@@ -73,9 +73,10 @@ pub fn aura_system(cx: AuraCx<'_>) {
                 let wanted = match aura.reaches {
                     Reach::All => true,
                     Reach::Heroes => kind.get(entity).copied() == Some(UnitKind::Hero),
-                    Reach::Units => kind.get(entity).copied().is_some_and(|kind| {
-                        kind != UnitKind::Hero && kind != UnitKind::Ward && !is_structure(kind)
-                    }),
+                    Reach::Units => kind
+                        .get(entity)
+                        .copied()
+                        .is_some_and(|kind| kind != UnitKind::Hero && !kind_def(kind).fixed),
                 };
                 if !wanted {
                     continue;

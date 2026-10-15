@@ -464,7 +464,7 @@ impl World {
             let Some(kind) = self.kind.get(entity).copied() else {
                 continue;
             };
-            if !bota_core::is_structure(kind) || !self.alive(entity) {
+            if !bota_core::kind_def(kind).structure || !self.alive(entity) {
                 continue;
             }
             let (Some(at), Some(hull)) = (self.transform.get(entity), self.hull.get(entity)) else {

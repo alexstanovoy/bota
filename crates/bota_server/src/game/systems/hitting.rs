@@ -1,6 +1,6 @@
 //! Taking blows off the health they landed on.
 
-use bota_core::{Ratio, is_structure, rules};
+use bota_core::{Ratio, kind_def, rules};
 use bota_proto::{DamageKind, Fixed, Team, UnitKind, Vec2};
 
 use crate::game::{
@@ -126,7 +126,8 @@ pub fn hitting_system<const AMPLIFIED: bool>(cx: HitCx<'_>) {
             continue;
         };
         let spared = kind.get(blow.target).is_some_and(|k| {
-            (immortal_structures && is_structure(*k)) || (immortal_heroes && *k == UnitKind::Hero)
+            (immortal_structures && kind_def(*k).structure)
+                || (immortal_heroes && *k == UnitKind::Hero)
         });
         let applied = bite(pool.hp, taken, spared);
         pool.hp -= Fixed::from_int(applied);

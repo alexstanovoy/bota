@@ -1,6 +1,6 @@
 //! What a kill pays, what the clock pays, and getting a hero back on its feet.
 
-use bota_core::{GoldRange, is_lane_creep, is_structure, rules};
+use bota_core::{GoldRange, kind_def, rules};
 use bota_proto::{EventKind, Team, UnitKind, Vec2};
 
 use crate::game::{
@@ -101,7 +101,12 @@ impl World {
             paid += self.pay_team_bounty(side, denied, bounty.team, striker_seat);
         }
         if denied {
-            if self.kind.get(fallen).copied().is_some_and(is_lane_creep) {
+            if self
+                .kind
+                .get(fallen)
+                .copied()
+                .is_some_and(|kind| kind_def(kind).lane_creep)
+            {
                 let xp = bounty.xp * rules::DENIED_XP_PCT / 100;
                 self.grant_xp_around(at, other_side(side), xp, None, events);
             }
@@ -222,7 +227,7 @@ impl World {
             let seat = &mut self.seats[index];
             if kind == UnitKind::Hero {
                 seat.hero_damage = seat.hero_damage.saturating_add(blow.amount);
-            } else if is_structure(kind) {
+            } else if kind_def(kind).structure {
                 seat.structure_damage = seat.structure_damage.saturating_add(blow.amount);
             }
         }

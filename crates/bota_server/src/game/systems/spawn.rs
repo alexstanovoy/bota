@@ -375,13 +375,7 @@ impl World {
         if def.move_speed > 0 || def.kind == bota_proto::UnitKind::Tower {
             self.give_orders(entity);
         }
-        if matches!(
-            def.kind,
-            bota_proto::UnitKind::CreepMelee
-                | bota_proto::UnitKind::CreepFlagbearer
-                | bota_proto::UnitKind::CreepRanged
-                | bota_proto::UnitKind::CreepSiege
-        ) {
+        if bota_core::kind_def(def.kind).lane_creep {
             self.march.insert(entity, March { next: 0 });
         }
         entity
