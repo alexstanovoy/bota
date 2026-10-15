@@ -21,13 +21,61 @@ pub const SHOP_GROUPS: [&str; 7] = [
 /// Which of [`SHOP_GROUPS`] an item is shown in; an item the list does not
 /// know goes last.
 pub fn group_of(id: u16) -> usize {
-    match id {
-        1..=4 | 6..=8 | 42 | 53 => 0,
-        9..=18 | 43 => 1,
-        19..=24 | 44 | 45 | 47..=49 => 2,
-        0 | 5 | 25..=28 | 35 | 52 => 3,
-        29..=34 | 36 | 46 | 51 => 4,
-        37..=41 | 50 => 5,
+    match ItemId(id) {
+        ItemId::CLARITY
+        | ItemId::HEALING_SALVE
+        | ItemId::IRON_BRANCH
+        | ItemId::OBSERVER_WARD
+        | ItemId::SENTRY_WARD
+        | ItemId::TANGO
+        | ItemId::TOWN_PORTAL_SCROLL
+        | ItemId::MANGO
+        | ItemId::BLOOD_GRENADE => 0,
+        ItemId::CIRCLET
+        | ItemId::GAUNTLETS
+        | ItemId::SLIPPERS
+        | ItemId::MANTLE
+        | ItemId::BELT
+        | ItemId::BAND
+        | ItemId::ROBE
+        | ItemId::OGRE_AXE
+        | ItemId::BLADE_OF_ALACRITY
+        | ItemId::STAFF_OF_WIZARDRY
+        | ItemId::EAGLESONG => 1,
+        ItemId::GLOVES
+        | ItemId::BLADES_OF_ATTACK
+        | ItemId::BROADSWORD
+        | ItemId::QUARTERSTAFF
+        | ItemId::RING_OF_PROTECTION
+        | ItemId::CHAINMAIL
+        | ItemId::CLAYMORE
+        | ItemId::TALISMAN_OF_EVASION
+        | ItemId::JAVELIN
+        | ItemId::DEMON_EDGE
+        | ItemId::BLITZ_KNUCKLES => 2,
+        ItemId::BOOTS
+        | ItemId::QUELLING_BLADE
+        | ItemId::RING_OF_REGEN
+        | ItemId::SAGES_MASK
+        | ItemId::VITALITY_BOOSTER
+        | ItemId::ENERGY_BOOSTER
+        | ItemId::MAGIC_STICK
+        | ItemId::WIND_LACE => 3,
+        ItemId::POWER_TREADS
+        | ItemId::PHASE_BOOTS
+        | ItemId::BLINK_DAGGER
+        | ItemId::BRACER
+        | ItemId::WRAITH_BAND
+        | ItemId::NULL_TALISMAN
+        | ItemId::MAGIC_WAND
+        | ItemId::BUTTERFLY
+        | ItemId::MONKEY_KING_BAR => 4,
+        ItemId::RECIPE_PHASE_BOOTS
+        | ItemId::RECIPE_BRACER
+        | ItemId::RECIPE_WRAITH_BAND
+        | ItemId::RECIPE_NULL_TALISMAN
+        | ItemId::RECIPE_MAGIC_WAND
+        | ItemId::RECIPE_MONKEY_KING_BAR => 5,
         _ => 6,
     }
 }
@@ -37,7 +85,7 @@ pub fn group_of(id: u16) -> usize {
 pub fn answers(face: &ItemFace, query: &str) -> bool {
     let query = query.trim().to_ascii_lowercase();
     query.is_empty()
-        || [face.name, face.stats, face.blurb]
+        || [face.name.to_string(), face.stats(), face.blurb()]
             .iter()
             .any(|text| text.to_ascii_lowercase().contains(&query))
 }

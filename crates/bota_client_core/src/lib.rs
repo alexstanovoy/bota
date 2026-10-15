@@ -7,6 +7,7 @@
 
 #![forbid(unsafe_code)]
 
+mod blurb;
 mod catalog;
 mod handshake;
 mod latency;

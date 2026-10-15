@@ -785,3 +785,46 @@ fn damage_splits_into_base_and_bonus() {
     // hair under 46, and the server floors it too.
     assert_eq!(crate::catalog::base_attributes(&fiend), Some([45, 60, 37]));
 }
+
+#[test]
+fn every_blurb_takes_its_numbers_from_the_rules() {
+    use crate::catalog::{ABILITIES, EFFECTS, ITEMS, talents};
+    for template in ABILITIES
+        .iter()
+        .map(|f| f.template)
+        .chain(EFFECTS.iter().map(|f| f.template))
+        .chain(ITEMS.iter().flat_map(|f| [f.template, f.stats_template]))
+    {
+        assert!(
+            !template.chars().any(|c| c.is_ascii_digit()),
+            "{template:?} types a number the rules own"
+        );
+    }
+    // Filling panics on a key nothing answers to, so one pass proves them all.
+    for face in ABILITIES {
+        assert!(!face.blurb().contains('{'), "{}", face.name);
+    }
+    for face in ITEMS {
+        assert!(
+            !face.blurb().is_empty() && !face.stats().contains('{'),
+            "{}",
+            face.name
+        );
+    }
+    for face in EFFECTS {
+        assert!(!face.blurb().contains('{'), "{}", face.name);
+    }
+    let tree = talents(bota_proto::HeroId::SHADOW_FIEND.0).expect("Shadow Fiend has a tree");
+    assert!(
+        tree.iter()
+            .all(|t| !t.name.contains('{') && !t.blurb.contains('{'))
+    );
+    // The numbers are the rules': Quelling's bonus and Hook's reach.
+    let quelling = ITEMS[usize::from(ItemId::QUELLING_BLADE.0)];
+    assert_eq!(quelling.stats(), "+18 creep");
+    assert!(
+        ABILITIES[usize::from(AbilityId::MEAT_HOOK.0)]
+            .blurb()
+            .contains("range 1300")
+    );
+}
