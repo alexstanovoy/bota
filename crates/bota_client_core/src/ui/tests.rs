@@ -508,6 +508,40 @@ fn a_started_app(fountains: [Vec2; 2], shop_range: i32) -> App {
     app
 }
 
+#[test]
+fn a_cast_point_shortens_while_a_feast_runs_on_a_hero_with_the_talent() {
+    let mut app = a_started_app([Vec2::ZERO; 2], 0);
+    let mut fiend = owned(1, UnitKind::Hero, Some(SlotId(0)));
+    fiend.hero = Some(HeroId::SHADOW_FIEND);
+    let id = fiend.id;
+    let seat = vec![a_seat(SlotId(0), Some(id))];
+    let told = bota_proto::TalentView {
+        slot: SlotId(0),
+        learned: bota_proto::Talents::default().with(bota_proto::TalentSlot(7)),
+        learnable: bota_proto::Talents::default(),
+    };
+    let mut view = a_tick(10, vec![fiend.clone()], seat);
+    view.talents = vec![told];
+    app.handle(bota_proto::ServerMsg::Snapshot { view });
+    let raze = AbilityId::RAZE_NEAR;
+    assert_eq!(app.cast_point_secs(&fiend, raze), Some(0.55));
+    fiend.effects.push(bota_proto::EffectView {
+        id: bota_proto::EffectId::FEASTING,
+        ticks_left: None,
+        stacks: None,
+    });
+    assert_eq!(
+        app.cast_point_secs(&fiend, raze),
+        Some(0.385),
+        "the level-25 talent cuts the cast point to 70% while a feast runs"
+    );
+    assert_eq!(
+        app.cast_point_secs(&fiend, AbilityId::MEAT_HOOK),
+        Some(0.0),
+        "the hook has no cast point of its own"
+    );
+}
+
 /// An app that has heard nothing, over an empty recording.
 fn a_silent_app() -> crate::ui::app::App {
     let player = crate::ui::replay::ReplayPlayer::from_reader(std::io::Cursor::new(Vec::new()));

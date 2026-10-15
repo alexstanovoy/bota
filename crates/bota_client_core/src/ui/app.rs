@@ -3,8 +3,9 @@
 use std::sync::Arc;
 
 use bota_proto::{
-    ClientMsg, EntityId, EventKind, LobbySlot, MatchInfo, MatchStats, Order, PlayerId, ServerMsg,
-    SlotId, StockView, TalentSlot, TalentView, Team, UnitKind, UnitView, Vec2, WorldView,
+    AbilityId, ClientMsg, EffectId, EntityId, EventKind, LobbySlot, MatchInfo, MatchStats, Order,
+    PlayerId, ServerMsg, SlotId, StockView, TalentSlot, TalentView, Team, UnitKind, UnitView, Vec2,
+    WorldView,
 };
 
 use crate::match_static::MatchStatic;
@@ -374,6 +375,22 @@ impl App {
             .as_ref()
             .and_then(|session| session.ledger().last_seq())
             .unwrap_or(0)
+    }
+
+    /// Seconds the cast point of an ability lasts for a unit: the rules'
+    /// own, shortened while a feast runs on a unit that learned the talent
+    /// for it.
+    pub fn cast_point_secs(&self, unit: &UnitView, ability: AbilityId) -> Option<f32> {
+        let point = bota_core::ability_def(ability)?.point;
+        let tree = unit.hero.and_then(bota_core::hero_def)?.talents;
+        let learned = self.session.as_ref()?.talents_of(unit.id);
+        let talent = tree.is_some_and(|tree| {
+            tree.iter().enumerate().any(|(at, held)| {
+                *held == bota_core::Talent::FeastCastSpeed && learned.has(TalentSlot(at as u8))
+            })
+        });
+        let feasting = unit.effects.iter().any(|e| e.id == EffectId::FEASTING);
+        Some(bota_core::cast_point_ms(point, feasting && talent) as f32 / 1000.0)
     }
 
     /// The tick a unit began the cast point it is in, if it is in one.
