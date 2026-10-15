@@ -25,6 +25,12 @@ pub trait Transport {
 
     /// Sends one message.
     fn send(&mut self, msg: &ClientMsg) -> std::io::Result<()>;
+
+    /// Time spent waiting on the socket since the last call, for the caller's
+    /// own timing; none for a transport that does not measure it.
+    fn take_receive_wait(&mut self) -> Option<Duration> {
+        None
+    }
 }
 
 /// One framed TCP connection that blocks on every read, up to a timeout.
@@ -56,12 +62,6 @@ impl Link {
             receive_wait: Duration::ZERO,
         })
     }
-
-    /// Time spent waiting on the socket since the last call, for the caller's
-    /// own timing.
-    pub fn take_receive_wait(&mut self) -> Duration {
-        std::mem::take(&mut self.receive_wait)
-    }
 }
 
 impl Transport for Link {
@@ -88,6 +88,10 @@ build client and server from matching commits"
             }
             self.reader.push(&buffer[..read]);
         }
+    }
+
+    fn take_receive_wait(&mut self) -> Option<Duration> {
+        Some(std::mem::take(&mut self.receive_wait))
     }
 
     fn send(&mut self, message: &ClientMsg) -> std::io::Result<()> {

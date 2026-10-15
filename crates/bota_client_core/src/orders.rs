@@ -1,7 +1,7 @@
 //! The orders a client gives: what it asked for, what went out on the wire,
 //! and what stands after the server's answers.
 
-use bota_proto::{EntityId, Order, RejectReason, Target, UnitView};
+use bota_proto::{ClientMsg, EntityId, Order, RejectReason, Target, UnitView};
 
 use crate::session::{ClientSession, SessionError};
 
@@ -48,6 +48,18 @@ pub struct OutgoingOrder {
     /// The tick of the snapshot it was decided on, from which the server
     /// measures the order delay.
     pub seen: u32,
+}
+
+impl OutgoingOrder {
+    /// The message that carries it.
+    pub const fn message(self) -> ClientMsg {
+        ClientMsg::Order {
+            seq: self.seq,
+            unit: self.unit,
+            order: self.order,
+            seen: Some(self.seen),
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
