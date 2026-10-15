@@ -1,12 +1,11 @@
 //! Who stands and who is in reach, telling of blows, and clearing away what
 //! has fallen.
 
-use bota_core::kind_def;
+use bota_core::{MAP2_ID, MAP2_TICK_CAP, kind_def};
 use bota_proto::{EventKind, Fixed, Team, UnitKind, Vec2};
 
 use crate::game::{
-    Entity, Event, EventVisibility, ItemStack, Kept, Landed, MAP2_ID, MAP2_TICK_CAP, Missed,
-    UnitOrder, World, wire_id,
+    Entity, Event, EventVisibility, ItemStack, Kept, Landed, Missed, UnitOrder, World, wire_id,
 };
 
 impl World {

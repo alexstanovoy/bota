@@ -1,12 +1,11 @@
 //! Consumables, active items and trees.
 
-use bota_core::rules;
+use bota_core::{HERO, MELEE_CREEP, ModifierKind, SHADOW_FIEND, map_of, rules};
 
 use crate::game::{
-    BLINK_RANGE, Event, HERO, ITEM_BLINK_DAGGER, ITEM_CLARITY, ITEM_HEALING_SALVE,
-    ITEM_IRON_BRANCH, ITEM_PHASE_BOOTS, ITEM_POWER_TREADS, ITEM_QUELLING_BLADE, ITEM_TANGO, ITEMS,
-    ItemStack, MELEE_CREEP, Mana, ModifierKind, SALVE_TICKS, SHADOW_FIEND, World, map_of,
-    tree_positions, wire_id,
+    BLINK_RANGE, Event, ITEM_BLINK_DAGGER, ITEM_CLARITY, ITEM_HEALING_SALVE, ITEM_IRON_BRANCH,
+    ITEM_PHASE_BOOTS, ITEM_POWER_TREADS, ITEM_QUELLING_BLADE, ITEM_TANGO, ITEMS, ItemStack, Mana,
+    SALVE_TICKS, World, tree_positions, wire_id,
 };
 use bota_proto::{
     Attribute, DamageKind, EventKind, Fixed, HeroId, ItemId, MapId, SlotId, Target, Team, UnitKind,
@@ -306,7 +305,7 @@ fn a_hero_hit_loses_its_drink_but_never_what_a_tree_bought() {
     world.step();
     assert!(!carries(&world, hero, salve), "a hero does");
     // What a tree bought is broken by nothing.
-    let tree = tree_positions(map)
+    let tree = tree_positions(map, crate::game::terrain_of(map))
         .into_iter()
         .find(|at| at.within(Vec2::from_ints(7000, 7000), Fixed::from_int(4000)))
         .expect("the forest reaches here");

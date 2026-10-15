@@ -1,14 +1,13 @@
 //! Applied stat changes: what each is worth and what it ignores.
 
-use bota_core::rules;
+use bota_core::{Aura, MELEE_CREEP, ModifierKind, Reach, SHADOW_FIEND, map_of, rules, tower_def};
 
 use crate::game::{
-    AppliedModifier, AppliedModifiers, AppliedOrigin, Aura, AuraCx, Auras, Entity,
-    ITEM_BLINK_DAGGER, ITEM_BOOTS, ITEM_BRACER, ITEM_MAGIC_STICK, ITEM_NULL_TALISMAN,
-    ITEM_PHASE_BOOTS, ITEM_TOWN_PORTAL_SCROLL, ITEMS, MAX_APPLIED_MODIFIERS_PER_UNIT,
-    MAX_COMBINED_MODIFIER_SCALE, MELEE_CREEP, Modifier, ModifierKind, Place, Reach, SHADOW_FIEND,
-    Seat, Spots, StackKind, Stacks, World, ability, ability_cooldown, ability_mana_cost,
-    aura_system, cooldown_after, cost_after, map_of, tower_def, wire_id,
+    AppliedModifier, AppliedModifiers, AppliedOrigin, AuraCx, Auras, Entity, ITEM_BLINK_DAGGER,
+    ITEM_BOOTS, ITEM_BRACER, ITEM_MAGIC_STICK, ITEM_NULL_TALISMAN, ITEM_PHASE_BOOTS,
+    ITEM_TOWN_PORTAL_SCROLL, ITEMS, MAX_APPLIED_MODIFIERS_PER_UNIT, MAX_COMBINED_MODIFIER_SCALE,
+    Modifier, Place, Seat, Spots, StackKind, Stacks, World, ability, ability_cooldown,
+    ability_mana_cost, aura_system, cooldown_after, cost_after, wire_id,
 };
 use bota_proto::{
     AbilitySlot, DamageKind, Fixed, HeroId, ItemId, MapId, ModifierSpec, SlotId, Target, Team,

@@ -1,9 +1,9 @@
 //! The attack cycle: exact counts at every speed, and the pinned ticks at the
 //! base one.
 
-use bota_core::{attack_gain, beats};
+use bota_core::{MELEE_CREEP, UnitDef, attack_gain, beats};
 
-use crate::game::{ActionState, Entity, MELEE_CREEP, UnitDef, World};
+use crate::game::{ActionState, Entity, World};
 use bota_proto::{Team, Vec2};
 
 use super::support::{ANVIL, swinging_at};

@@ -1,8 +1,8 @@
 //! Shadow Fiend's talents: how a skill point buys one, and what each does.
 
-use bota_core::rules;
+use bota_core::{ModifierKind, rules};
 
-use crate::game::{Command, Entity, Event, Level, ModifierKind, World, wire_id};
+use crate::game::{Command, Entity, Event, Level, World, wire_id};
 use bota_proto::{
     DamageKind, EventKind, Fixed, HeroId, Order, Pick, RejectReason, SlotId, TalentSlot,
     TalentView, Talents, Team, Vec2,

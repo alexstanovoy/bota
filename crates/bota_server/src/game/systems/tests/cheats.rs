@@ -1,11 +1,11 @@
 //! Cheats: what each one does, and that a match without them refuses them.
 
-use bota_core::rules;
+use bota_core::{MELEE_CREEP, rules};
 
 use super::support::{a_spec, spec};
 use crate::game::{
-    Command, Entity, Event, ITEM_BUTTERFLY, ITEM_TOWN_PORTAL_SCROLL, ITEMS, ItemStack, MELEE_CREEP,
-    MatchConfig, World, ability, ability_mana_cost, wire_id,
+    Command, Entity, Event, ITEM_BUTTERFLY, ITEM_TOWN_PORTAL_SCROLL, ITEMS, ItemStack, MatchConfig,
+    World, ability, ability_mana_cost, wire_id,
 };
 use bota_proto::{
     AbilitySlot, Cheat, DamageKind, EntityId, EventKind, Fixed, HeroId, ItemId, MAX_MODIFIER_TICKS,

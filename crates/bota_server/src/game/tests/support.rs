@@ -1,13 +1,15 @@
 //! Fixtures and helpers the game tests share.
 
-use bota_core::{CellGrid, Ratio, facing_towards, isqrt64, kind_def, rules};
+use bota_core::{
+    CellGrid, MELEE_CREEP, MapDef, ModifierKind, NeutralKind, RANGED_CREEP, Ratio, UnitDef,
+    facing_towards, isqrt64, kind_def, map_of, rules,
+};
 
 use crate::game::{
     ActionPhase, ActionState, CampHome, Command, Def, Entity, Errand, Event, Ground, Health,
-    ITEM_BOOTS, ITEM_TANGO, ITEMS, ItemStack, Lane, LaneAi, Level, MELEE_CREEP, MapDef,
-    MatchConfig, Modifier, ModifierKind, Modifiers, NeutralAi, NeutralKind, Orders, Projectile,
-    RANGED_CREEP, Seat, StackKind, Stats, TERRAIN_CELLS, Transform, UnitDef, UnitOrder, World,
-    map_of, plan_radius, tree_positions, wire_id,
+    ITEM_BOOTS, ITEM_TANGO, ITEMS, ItemStack, Lane, LaneAi, Level, MatchConfig, Modifier,
+    Modifiers, NeutralAi, Orders, Projectile, Seat, StackKind, Stats, TERRAIN_CELLS, Transform,
+    UnitOrder, World, plan_radius, tree_positions, wire_id,
 };
 use bota_proto::{
     AbilitySlot, Angle, Attributes, DamageKind, EventKind, Fixed, HeroId, ItemId, MapId, Order,
@@ -492,7 +494,7 @@ pub(super) fn the_ward(world: &World) -> Entity {
 pub(super) fn a_hero_by_the_trees(item: u16, charges: u8) -> (World, Entity, Vec2) {
     let map = map_of(MapId(0));
     let mut world = World::on_map(map);
-    let tree = tree_positions(map)
+    let tree = tree_positions(map, crate::game::terrain_of(map))
         .into_iter()
         .find(|at| {
             world.clearance.stands_clear(*at + Vec2::from_ints(120, 0))

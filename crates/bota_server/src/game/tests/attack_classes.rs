@@ -1,10 +1,12 @@
 //! Dota 7.41f's attack classes: what share of a swing reaches each kind of
 //! target, swung for real.
 
-use crate::game::{
+use bota_core::{
     HERO, MEGA_MELEE_CREEP, MELEE_CREEP, NEUTRALS, NeutralKind, RANGED_CREEP, SHADOW_FIEND,
-    SIEGE_CREEP, SUPER_MELEE_CREEP, TOWERS, UnitDef, World,
+    SIEGE_CREEP, SUPER_MELEE_CREEP, TOWERS, UnitDef,
 };
+
+use crate::game::World;
 use bota_proto::{Attributes, Team, UnitKind, Vec2};
 
 use super::support::*;

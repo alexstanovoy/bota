@@ -101,14 +101,21 @@ impl MatchConfig {
             map: self.map,
             tick_rate: self.tick_rate,
             pregame_ticks: bota_core::rules::PREGAME_TICKS,
-            trees: crate::game::tree_positions(crate::game::map_of(self.map)),
+            trees: crate::game::tree_positions(
+                bota_core::map_of(self.map),
+                crate::game::terrain_of(bota_core::map_of(self.map)),
+            ),
             terrain_cells: crate::game::TERRAIN_CELLS as u32,
-            terrain_rle: crate::game::Ground::wire_rle(crate::game::map_of(self.map)),
-            opaque_cells: crate::game::fow_wall_cells(crate::game::map_of(self.map)),
+            terrain_rle: crate::game::Ground::wire_rle(crate::game::terrain_of(bota_core::map_of(
+                self.map,
+            ))),
+            opaque_cells: crate::game::fow_wall_cells(crate::game::terrain_of(bota_core::map_of(
+                self.map,
+            ))),
             mode: self.mode,
             picks: self.picks.clone(),
             shop: crate::game::shop_entries(),
-            fountains: crate::game::map_of(self.map).fountains,
+            fountains: bota_core::map_of(self.map).fountains,
             shop_range: bota_core::rules::SHOP_RANGE,
         }
     }

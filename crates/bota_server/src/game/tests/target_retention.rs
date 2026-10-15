@@ -1,6 +1,8 @@
 //! Keeping a target in reach against a closer one of the same class.
 
-use crate::game::{Entity, LaneAi, MELEE_CREEP, SIEGE_CREEP, Visibility, World, tower_def};
+use bota_core::{MELEE_CREEP, SIEGE_CREEP, tower_def};
+
+use crate::game::{Entity, LaneAi, Visibility, World};
 use bota_proto::{Fixed, Team, Vec2};
 
 #[test]

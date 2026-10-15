@@ -1,15 +1,15 @@
 //! Items carried and abilities held: what they add, and what they cost.
 
-use bota_core::{clamp_to_map, move_towards, rules};
+use bota_core::{ModifierKind, clamp_to_map, fountain_pos, move_towards, rules};
 use bota_proto::{
     AbilityId, Attribute, EventKind, Fixed, HeroId, ItemId, SlotId, Target, Team, Vec2,
 };
 
 use crate::game::{
     AbilityBook, AbilityState, BAG_SLOTS, Carried, Entity, Event, EventVisibility, ITEMS,
-    Inventory, ItemDef, ItemStack, Modifier, ModifierKind, Pool, Spends, Tree, World, ability_def,
-    fountain_pos, hero_def, in_backpack, in_inventory, in_stash, in_town_portal, item_def,
-    learn_group, level_floor, wire_id,
+    Inventory, ItemDef, ItemStack, Modifier, Pool, Spends, Tree, World, ability_def, hero_def,
+    in_backpack, in_inventory, in_stash, in_town_portal, item_def, learn_group, level_floor,
+    wire_id,
 };
 
 /// Missing purchase parts, their total price, and destination capacity.
@@ -1138,10 +1138,10 @@ impl World {
             Target::Unit(target) => self.transform.get(self.of_wire(target)?)?.pos,
             Target::None => from,
         };
-        let tree = self
-            .trees
-            .nearest(self.map, at, rules::units(rules::TREE_RADIUS))?;
-        let spot = self.trees.spot(self.map, tree)?;
+        let tree =
+            self.trees
+                .nearest(self.map, self.terrain, at, rules::units(rules::TREE_RADIUS))?;
+        let spot = self.trees.spot(self.map, self.terrain, tree)?;
         from.within(spot, rules::units(range)).then_some(tree)
     }
 
@@ -1170,7 +1170,12 @@ impl World {
         // Not on top of a tree already standing there.
         if self
             .trees
-            .nearest(self.map, pos, rules::units(rules::TREE_RADIUS))
+            .nearest(
+                self.map,
+                self.terrain,
+                pos,
+                rules::units(rules::TREE_RADIUS),
+            )
             .is_some()
         {
             return false;

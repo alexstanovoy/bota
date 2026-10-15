@@ -67,7 +67,8 @@ fn fine_movement_phases_keep_independent_sampled_counters() {
 
 #[test]
 fn class_zero_target_retention_performs_no_full_search() {
-    use crate::game::{MELEE_CREEP, World};
+    use crate::game::World;
+    use bota_core::MELEE_CREEP;
     use bota_proto::{Team, Vec2};
 
     let mut world = World::new();

@@ -1,13 +1,13 @@
 //! The surface a match runs a world through: what the game loop asks of it.
 
-use bota_core::rules;
+use bota_core::{hero_spawn_pos, map_of, rules};
 use bota_proto::{
     Aim, Cheat, MatchStats, Order, RejectReason, SlotId, SlotStats, Target, Team, UnitKind,
 };
 
 use crate::game::{
     BAG_SLOTS, Command, Entity, Event, MatchConfig, MatchRng, PendingCast, Seat, UnitOrder, World,
-    hero_spawn_pos, in_backpack, in_stash, in_town_portal, item_def, map_of,
+    in_backpack, in_stash, in_town_portal, item_def,
 };
 
 /// Whether an order aims at the kind of thing something takes.

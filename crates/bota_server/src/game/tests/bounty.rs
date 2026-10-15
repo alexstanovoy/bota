@@ -2,10 +2,10 @@
 //! kill, the range raised by the upgrades it spawned after, and a
 //! flagbearer's bonus to the heroes around it.
 
-use bota_core::{GoldRange, rules};
+use bota_core::{FLAGBEARER_CREEP, GoldRange, MELEE_CREEP, RANGED_CREEP, UnitDef, rules};
 
 use crate::game::Entity;
-use crate::game::{FLAGBEARER_CREEP, MELEE_CREEP, RANGED_CREEP, UnitDef, World};
+use crate::game::World;
 use crate::game_loop::visible_events;
 use bota_proto::{EventKind, Team, Vec2};
 

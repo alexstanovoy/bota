@@ -1,11 +1,10 @@
 //! Pierce: the share of an attacker's swings that go through evasion and
 //! land their bonus, held exactly; a structure is never pierced.
 
-use bota_core::{Ratio, rules};
+use bota_core::{Ratio, UnitDef, rules};
 
 use crate::game::{
-    Entity, Event, ITEM_BUTTERFLY, ITEM_JAVELIN, ITEM_MONKEY_KING_BAR, UnitDef, UnitOrder, World,
-    wire_id,
+    Entity, Event, ITEM_BUTTERFLY, ITEM_JAVELIN, ITEM_MONKEY_KING_BAR, UnitOrder, World, wire_id,
 };
 use bota_proto::{DamageKind, EventKind, Fixed, HeroId, SlotId, Team, UnitKind, Vec2};
 

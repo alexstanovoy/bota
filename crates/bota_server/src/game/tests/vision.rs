@@ -1,11 +1,8 @@
 //! Who sees what, and what each side is told.
 
-use bota_core::{CellGrid, rules};
+use bota_core::{CAMPS, CellGrid, MAPS, MELEE_CREEP, RANGED_CREEP, map_of, rules};
 
-use crate::game::{
-    CAMPS, EventVisibility, Health, ITEM_QUELLING_BLADE, MAPS, MELEE_CREEP, MapDef, RANGED_CREEP,
-    World, map_of, wire_id,
-};
+use crate::game::{EventVisibility, Health, ITEM_QUELLING_BLADE, World, wire_id};
 use bota_proto::{Fixed, HeroId, MapId, Target, Team, UnitKind, Vec2};
 
 use super::support::*;
@@ -178,7 +175,7 @@ fn a_missile_is_seen_from_the_tick_it_is_thrown() {
 
 /// A Dire archer that cannot walk and swings once every five seconds,
 /// reaching far enough to strike down a cliff.
-const CLIFF_ARCHER: crate::game::UnitDef = crate::game::UnitDef {
+const CLIFF_ARCHER: bota_core::UnitDef = bota_core::UnitDef {
     max_hp: 8_000,
     attack_range: 700,
     attack_time: 5_000,
@@ -291,16 +288,16 @@ const TREE_ROW: [(i16, i16); 9] = {
     row
 };
 
-/// The demo map with nothing but [`TREE_ROW`] for a forest.
-static ROW_MAP: MapDef = MapDef {
+/// The demo map's ground with nothing but [`TREE_ROW`] for a forest.
+static ROW_TERRAIN: crate::game::MapTerrain = crate::game::MapTerrain {
     trees: &TREE_ROW,
-    ..MAPS[1]
+    ..crate::game::DEMO_TERRAIN
 };
 
-/// A world on [`ROW_MAP`] with a Radiant hero a quelling blade in hand
+/// A world on the demo map and [`ROW_TERRAIN`] with a Radiant hero a quelling blade in hand
 /// south of the row's middle tree, and that tree.
 fn a_hero_below_the_row() -> (World, crate::game::Entity, Vec2) {
-    let mut world = World::on_map(&ROW_MAP);
+    let mut world = World::on_terrain(&MAPS[1], &ROW_TERRAIN);
     let middle = Vec2::from_ints(2560, 2048);
     let hero = seated_hero(&mut world, middle + Vec2::from_ints(0, -320), HeroId(1));
     hand_item(&mut world, hero, ITEM_QUELLING_BLADE, 0);
@@ -309,7 +306,7 @@ fn a_hero_below_the_row() -> (World, crate::game::Entity, Vec2) {
 }
 
 /// A Dire post that never walks.
-const POST: crate::game::UnitDef = crate::game::UnitDef {
+const POST: bota_core::UnitDef = bota_core::UnitDef {
     move_speed: 0,
     ..MELEE_CREEP
 };
@@ -365,7 +362,10 @@ fn the_client_pictures_the_servers_sight_cell_for_cell() {
     // The forest changed: the trees round the camp beside the Dire mid
     // tier-two tower down, and one put up in the open by the tower.
     let camp = Vec2::from_ints(10280, 11796);
-    for (index, at) in crate::game::tree_positions(map).into_iter().enumerate() {
+    for (index, at) in crate::game::tree_positions(map, crate::game::terrain_of(map))
+        .into_iter()
+        .enumerate()
+    {
         if at.within(camp, rules::units(500)) {
             world
                 .trees

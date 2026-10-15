@@ -3,35 +3,16 @@
 //! Everything here follows from the map alone, so it is the same for every
 //! match played on it.
 
-use bota_core::rules;
+use bota_core::{creep_spawn_pos, lane_polyline, lane_route, rules};
 use bota_proto::{Team, Vec2};
 
-use crate::game::{Clearance, Obstacles, Planner};
-
-/// The fountain position of a team. The jungle's is the map center.
-pub fn fountain_pos(map: &crate::game::MapDef, team: Team) -> Vec2 {
-    match team {
-        Team::Radiant => map.fountains[0],
-        Team::Dire => map.fountains[1],
-        Team::Neutral => Vec2::from_ints(rules::MAP_SIZE / 2, rules::MAP_SIZE / 2),
-    }
-}
-
-/// Where a team's hero appears, beside the fountain rather than inside it.
-pub fn hero_spawn_pos(map: &crate::game::MapDef, team: Team) -> Vec2 {
-    let offset = match team {
-        Team::Radiant => Vec2::from_ints(rules::HERO_SPAWN_OFFSET, rules::HERO_SPAWN_OFFSET),
-        Team::Dire => Vec2::from_ints(-rules::HERO_SPAWN_OFFSET, -rules::HERO_SPAWN_OFFSET),
-        Team::Neutral => Vec2::ZERO,
-    };
-    fountain_pos(map, team) + offset
-}
+use crate::game::{Clearance, MapTerrain, Obstacles, Planner};
 
 /// Every tree on the map: its own forest, with the lane corridors the map
 /// asks for and both spawn pads kept clear.
-pub fn tree_positions(map: &crate::game::MapDef) -> Vec<Vec2> {
+pub fn tree_positions(map: &bota_core::MapDef, terrain: &MapTerrain) -> Vec<Vec2> {
     let lane_clear = {
-        let r = i64::from(rules::units(map.lane_clear).raw);
+        let r = i64::from(rules::units(terrain.lane_clear).raw);
         r * r
     };
     let base_clear = rules::units(rules::TREE_BASE_CLEAR);
@@ -42,7 +23,8 @@ pub fn tree_positions(map: &crate::game::MapDef) -> Vec<Vec2> {
     } else {
         Vec::new()
     };
-    map.trees
+    terrain
+        .trees
         .iter()
         .map(|&(x, y)| Vec2::from_ints(i32::from(x), i32::from(y)))
         .filter(|&pos| {
@@ -61,64 +43,8 @@ pub fn tree_positions(map: &crate::game::MapDef) -> Vec<Vec2> {
         .collect()
 }
 
-/// The physical centerline of a lane, Radiant base first: from the Radiant
-/// Ancient through the lane's corners to the Dire Ancient, and through the
-/// lane's towers too on a map whose lanes run through them.
-///
-/// A side with no Ancient anchors its end at its own wave spawner instead.
-pub fn lane_polyline(map: &crate::game::MapDef, lane: u8) -> Vec<Vec2> {
-    let tower_of = |table: &[(u8, u8, Vec2)], tier: u8| {
-        table
-            .iter()
-            .find(|&&(tl, tt, _)| tl == lane && tt == tier)
-            .map(|&(_, _, pos)| pos)
-    };
-    let anchor =
-        |side: usize| map.ancients[side].unwrap_or(map.creep_spawns[side][usize::from(lane)]);
-    let mut line = vec![anchor(0)];
-    if map.lane_through_towers {
-        for tier in [3u8, 2, 1] {
-            if let Some(pos) = tower_of(map.radiant_towers, tier) {
-                line.push(pos);
-            }
-        }
-    }
-    if let Some(corners) = map.lane_corners.get(usize::from(lane)) {
-        line.extend_from_slice(corners);
-    }
-    if map.lane_through_towers {
-        for tier in [1u8, 2, 3] {
-            if let Some(pos) = tower_of(map.dire_towers, tier) {
-                line.push(pos);
-            }
-        }
-    }
-    line.push(anchor(1));
-    line
-}
-
-/// The waypoints a team's creeps push through on a lane, enemy base last.
-///
-/// Only what lies past the segment of the line nearest the wave's spawner
-/// is kept, so a fresh wave never walks back towards its base first.
-pub fn lane_route(map: &crate::game::MapDef, team: Team, lane: u8) -> Vec<Vec2> {
-    let mut line = lane_polyline(map, lane);
-    if team == Team::Dire {
-        line.reverse();
-    }
-    let spawn = creep_spawn_pos(map, team, lane);
-    let mut nearest = (0usize, i64::MAX);
-    for (at, seg) in line.windows(2).enumerate() {
-        let d = bota_core::segment_distance_squared(spawn, seg[0], seg[1]);
-        if d < nearest.1 {
-            nearest = (at, d);
-        }
-    }
-    line.split_off(nearest.0 + 1)
-}
-
 /// The landmarks a team's creeps march through on a lane, spawner first.
-fn lane_landmarks(map: &crate::game::MapDef, team: Team, lane: u8) -> Vec<Vec2> {
+fn lane_landmarks(map: &bota_core::MapDef, team: Team, lane: u8) -> Vec<Vec2> {
     let mut line = vec![creep_spawn_pos(map, team, lane)];
     line.extend(lane_route(map, team, lane));
     line
@@ -126,7 +52,7 @@ fn lane_landmarks(map: &crate::game::MapDef, team: Team, lane: u8) -> Vec<Vec2> 
 
 /// The walked route of every lane, both sides, indexed by team then lane,
 /// with everything the map starts with standing.
-pub fn lane_routes(map: &'static crate::game::MapDef) -> [[Vec<Vec2>; 3]; 2] {
+pub fn lane_routes(map: &'static bota_core::MapDef) -> [[Vec<Vec2>; 3]; 2] {
     let field = Clearance::of_map(map);
     let mut planner = Planner::new();
     lane_routes_on(map, &field, &mut planner)
@@ -135,7 +61,7 @@ pub fn lane_routes(map: &'static crate::game::MapDef) -> [[Vec<Vec2>; 3]; 2] {
 /// The walked route of every lane, both sides, indexed by team then lane,
 /// on the ground as a field has it.
 pub fn lane_routes_on(
-    map: &crate::game::MapDef,
+    map: &bota_core::MapDef,
     field: &Clearance,
     planner: &mut Planner,
 ) -> [[Vec<Vec2>; 3]; 2] {
@@ -158,7 +84,7 @@ pub fn lane_routes_on(
 /// A stop is the open spot beside its landmark towards the next landmark
 /// for the team's own tower or Ancient, towards the previous one otherwise.
 fn walk_lane(
-    map: &crate::game::MapDef,
+    map: &bota_core::MapDef,
     ob: &Obstacles,
     planner: &mut Planner,
     team: Team,
@@ -193,7 +119,7 @@ fn walk_lane(
 }
 
 /// The team whose tower or Ancient stands at a spot, if one does.
-fn guarded_by(map: &crate::game::MapDef, at: Vec2) -> Option<Team> {
+fn guarded_by(map: &bota_core::MapDef, at: Vec2) -> Option<Team> {
     let stands = |towers: &[(u8, u8, Vec2)]| towers.iter().any(|&(_, _, pos)| pos == at);
     if stands(map.radiant_towers) || map.ancients[0] == Some(at) {
         Some(Team::Radiant)
@@ -201,24 +127,6 @@ fn guarded_by(map: &crate::game::MapDef, at: Vec2) -> Option<Team> {
         Some(Team::Dire)
     } else {
         None
-    }
-}
-
-/// The creep spawn position of a team on a lane. The jungle runs no lanes.
-pub fn creep_spawn_pos(map: &crate::game::MapDef, team: Team, lane: u8) -> Vec2 {
-    match team {
-        Team::Radiant => map.creep_spawns[0][usize::from(lane)],
-        Team::Dire => map.creep_spawns[1][usize::from(lane)],
-        Team::Neutral => Vec2::from_ints(rules::MAP_SIZE / 2, rules::MAP_SIZE / 2),
-    }
-}
-
-/// Where a team sits in the per-team route tables. The jungle marches
-/// nowhere and answers zero.
-pub fn team_index(team: Team) -> usize {
-    match team {
-        Team::Radiant | Team::Neutral => 0,
-        Team::Dire => 1,
     }
 }
 

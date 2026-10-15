@@ -4,7 +4,7 @@
 //! over the same side's already-fallen structures. A structure no rule guards
 //! may be struck from the first tick.
 
-use bota_core::rules;
+use crate::rules;
 
 /// Names structures of one side on the map.
 ///

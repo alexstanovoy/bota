@@ -1,9 +1,9 @@
 //! Towers at Dota 7.41f: what they are made of, how fast they shoot, what
 //! their fall pays and how often they let go.
 
-use bota_core::rules;
+use bota_core::{MELEE_CREEP, UnitDef, rules, tower_def};
 
-use crate::game::{MELEE_CREEP, UnitDef, World, tower_def};
+use crate::game::World;
 use bota_proto::{Fixed, Team, UnitKind, Vec2};
 
 use super::support::*;

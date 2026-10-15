@@ -1,11 +1,8 @@
 //! Shadow Fiend: the razes, the souls, the presence and the requiem.
 
-use bota_core::{isqrt64, rules};
+use bota_core::{ModifierKind, isqrt64, rules, tower_def};
 
-use crate::game::{
-    ActionState, Entity, Event, ModifierKind, StackKind, UnitOrder, World, ability, tower_def,
-    wire_id,
-};
+use crate::game::{ActionState, Entity, Event, StackKind, UnitOrder, World, ability, wire_id};
 use bota_proto::{
     DamageKind, EffectId, EventKind, Fixed, HeroId, Order, SlotId, StatusFlags, Target, Team, Vec2,
 };

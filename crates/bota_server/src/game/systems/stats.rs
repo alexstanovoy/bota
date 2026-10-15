@@ -1,12 +1,12 @@
 //! Working out what each entity fights by, from scratch, every tick.
 
-use bota_core::{Ratio, Talent, rules};
+use bota_core::{Growth, ModifierKind, Ratio, Talent, UnitDef, rules};
 use bota_proto::{Attributes, Fixed, ModifierSpec};
 
 use crate::game::{
-    AbilityBook, AppliedModifiers, Carried, Def, EntityAllocator, Feast, FeastPhase, Growth,
-    Health, Inventory, Level, MAX_COMBINED_MODIFIER_SCALE, Mana, ModifierKind, Modifiers,
-    StackKind, Stacks, Stats, Table, UnitDef, Upgrades, ability, carried_bonus,
+    AbilityBook, AppliedModifiers, Carried, Def, EntityAllocator, Feast, FeastPhase, Health,
+    Inventory, Level, MAX_COMBINED_MODIFIER_SCALE, Mana, Modifiers, StackKind, Stacks, Stats,
+    Table, Upgrades, ability, carried_bonus,
 };
 
 /// What working out stats reads and writes.
@@ -209,7 +209,6 @@ fn add_modifiers(now: &mut Stats, on_it: &Modifiers) {
             ModifierKind::Slowed { pct } => {
                 now.move_speed = scaled(now.move_speed, (100 - pct).clamp(0, 100));
             }
-            #[cfg(test)]
             ModifierKind::Haste { speed } => now.attack_speed += speed,
             ModifierKind::BloodGrenade { .. } => {
                 now.move_speed = scaled(now.move_speed, 100 - rules::GRENADE_SLOW_PCT);

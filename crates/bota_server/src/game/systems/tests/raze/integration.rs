@@ -1,9 +1,6 @@
-use bota_core::rules;
+use bota_core::{ModifierKind, rules, tower_def};
 
-use crate::game::{
-    EFFECT_SHADOWRAZE, ItemStack, Modifier, ModifierKind, Modifiers, World, item_def, tower_def,
-    wire_id,
-};
+use crate::game::{EFFECT_SHADOWRAZE, ItemStack, Modifier, Modifiers, World, item_def, wire_id};
 use bota_proto::{
     EffectId, EffectView, Fixed, HeroId, ItemId, LEN_PREFIX, SlotId, Team, WorldView,
     decode_payload, encode_frame_to_vec,

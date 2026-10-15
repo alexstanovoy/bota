@@ -1,8 +1,8 @@
 //! Couriers: standing them up, sending them on errands, bringing them back.
 
-use bota_core::rules;
+use bota_core::{ModifierKind, fountain_pos, rules};
 
-use crate::game::{Errand, Inventory, Modifier, ModifierKind, UnitOrder, World, fountain_pos};
+use crate::game::{Errand, Inventory, Modifier, UnitOrder, World};
 
 use crate::engine::Entity;
 

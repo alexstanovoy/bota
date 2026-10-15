@@ -2,13 +2,13 @@
 //! order stream, each tick advanced, then seen by both sides with their
 //! events.
 
-use bota_core::rules;
+use bota_core::{MAP2_ID, rules};
 use bota_proto::{
     AbilitySlot, EventKind, HeroId, ItemId, Order, Pick, SlotId, Target, Team, TickMode, Vec2,
     WorldView,
 };
 
-use crate::game::{Command, EventVisibility, Fnv, ITEM_MANGO, MAP2_ID, MatchConfig, World};
+use crate::game::{Command, EventVisibility, Fnv, ITEM_MANGO, MatchConfig, World};
 
 /// Ticks between two decisions of a seat.
 const DECISION_TICKS: u32 = 3;

@@ -1,8 +1,8 @@
 //! Neutral camps.
 
-use bota_core::rules;
+use bota_core::{CAMPS, OBSERVER_WARD, map_of, rules};
 
-use crate::game::{CAMPS, OBSERVER_WARD, World, map_of};
+use crate::game::World;
 use bota_proto::{DamageKind, MapId, Team, Vec2};
 
 use super::support::*;

@@ -1,10 +1,8 @@
 //! Pudge.
 
-use bota_core::rules;
+use bota_core::{ModifierKind, rules, tower_def};
 
-use crate::game::{
-    Entity, Modifier, ModifierKind, StackKind, Stacks, World, ability, tower_def, wire_id,
-};
+use crate::game::{Entity, Modifier, StackKind, Stacks, World, ability, wire_id};
 use bota_proto::{Fixed, HeroId, SlotId, Target, Team, Vec2};
 
 use super::support::*;

@@ -1,10 +1,8 @@
 //! Orders to units, and denying your own.
 
-use bota_core::{isqrt64, rules};
+use bota_core::{MELEE_CREEP, isqrt64, map_of, rules, tower_def};
 
-use crate::game::{
-    Health, ITEM_HEALING_SALVE, MELEE_CREEP, Seat, UnitOrder, World, map_of, tower_def, wire_id,
-};
+use crate::game::{Health, ITEM_HEALING_SALVE, Seat, UnitOrder, World, wire_id};
 use bota_proto::{
     AbilitySlot, DamageKind, Fixed, HeroId, ItemSlot, MapId, Order, RejectReason, SlotId, Target,
     Team, Vec2,

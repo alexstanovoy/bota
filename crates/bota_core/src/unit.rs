@@ -2,14 +2,11 @@
 //!
 //! Every entity that fights points at one of these. The numbers here are the
 //! plain form of its type; level, upgrades, items and whatever is on it are
-//! added by the system that works out [`Stats`].
-//!
-//! [`Stats`]: crate::game::Stats
+//! added by the server as it works out what a unit fights by.
 
-use bota_core::{GoldRange, rules};
 use bota_proto::{Attribute, Attributes, Fixed, Team, UnitKind};
 
-use crate::game::{Aura, ModifierKind, Reach};
+use crate::{Aura, GoldRange, ModifierKind, Reach, rules};
 
 /// What an entity gains for each step of whatever raises it: a level past the
 /// first, or an upgrade interval.
@@ -166,10 +163,6 @@ const NOTHING: UnitDef = UnitDef {
     per_upgrade: NO_GROWTH,
     auras: &[],
 };
-
-/// Which kind of unit an entity is. Points into the table, never a copy.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Def(pub &'static UnitDef);
 
 /// A melee lane creep.
 pub const MELEE_CREEP: UnitDef = UnitDef {

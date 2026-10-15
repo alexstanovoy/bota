@@ -1,9 +1,9 @@
 //! Who a unit picks to attack when nobody told it.
 
-use bota_core::{PriorityOrder, class_rank, deniable, isqrt64, kind_def, rules};
+use bota_core::{CAMPS, PriorityOrder, class_rank, deniable, isqrt64, kind_def, rules};
 use bota_proto::{Fixed, Team, UnitKind, Vec2};
 
-use crate::game::{CAMPS, Entity, Spots, UnitOrder, World};
+use crate::game::{Entity, Spots, UnitOrder, World};
 
 /// Every entity that stands somewhere, by where it stood when laid, for
 /// choosing targets among.

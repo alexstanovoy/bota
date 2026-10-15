@@ -47,8 +47,8 @@ pub struct Clearance {
 
 /// The base field of each map, with everything the map starts with
 /// standing, laid once per process.
-static BASES: [OnceLock<Clearance>; crate::game::MAPS.len()] =
-    [const { OnceLock::new() }; crate::game::MAPS.len()];
+static BASES: [OnceLock<Clearance>; bota_core::MAPS.len()] =
+    [const { OnceLock::new() }; bota_core::MAPS.len()];
 
 impl Clearance {
     /// Open ground everywhere, with nothing standing on it.
@@ -87,7 +87,7 @@ impl Clearance {
 
     /// A map's field with everything it starts with standing: its terrain,
     /// its buildings and its forest.
-    pub fn of_map(map: &'static crate::game::MapDef) -> Clearance {
+    pub fn of_map(map: &'static bota_core::MapDef) -> Clearance {
         BASES[map.index()]
             .get_or_init(|| Clearance::build(terrain_cells(map), map_circles(map)))
             .clone()
@@ -588,8 +588,8 @@ fn each_node_along(from: Vec2, to: Vec2, mut each: impl FnMut((usize, usize)) ->
 }
 
 /// A map's terrain as cells.
-fn terrain_cells(map: &crate::game::MapDef) -> CellGrid {
-    let ground = crate::game::Ground::of(map);
+fn terrain_cells(map: &bota_core::MapDef) -> CellGrid {
+    let ground = crate::game::Ground::of(crate::game::terrain_of(map));
     let mut cells = CellGrid::open();
     for cy in 0..rules::GRID_CELLS {
         for cx in 0..rules::GRID_CELLS {
@@ -603,7 +603,7 @@ fn terrain_cells(map: &crate::game::MapDef) -> CellGrid {
 
 /// Every circle a map starts with: its buildings and its forest, at their
 /// collision sizes.
-fn map_circles(map: &crate::game::MapDef) -> Vec<(Vec2, Fixed)> {
+fn map_circles(map: &bota_core::MapDef) -> Vec<(Vec2, Fixed)> {
     let mut circles = Vec::new();
     for at in map.fountains {
         circles.push((at, rules::units(rules::FOUNTAIN_COLLISION)));
@@ -613,7 +613,7 @@ fn map_circles(map: &crate::game::MapDef) -> Vec<(Vec2, Fixed)> {
         .zip(map.ancients)
     {
         if let Some(at) = at {
-            circles.push((at, rules::units(crate::game::ancient_of(team).collision)));
+            circles.push((at, rules::units(bota_core::ancient_of(team).collision)));
         }
     }
     for &(_, _, at) in map.radiant_towers.iter().chain(map.dire_towers) {
@@ -625,7 +625,7 @@ fn map_circles(map: &crate::game::MapDef) -> Vec<(Vec2, Fixed)> {
     for &at in map.fillers[0].iter().chain(map.fillers[1]) {
         circles.push((at, rules::units(rules::FILLER_COLLISION)));
     }
-    for at in crate::game::tree_positions(map) {
+    for at in crate::game::tree_positions(map, crate::game::terrain_of(map)) {
         circles.push((at, rules::units(rules::TREE_RADIUS)));
     }
     circles

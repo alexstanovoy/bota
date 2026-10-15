@@ -1,13 +1,13 @@
 //! The maps a match may be played on.
 //!
-//! Everything that differs between them lives here: where the buildings
-//! stand, where the lanes run, which camps the jungle holds, the forest and
-//! the ground.
+//! Everything that differs between them and a player may know before the
+//! match lives here: where the buildings stand, where the lanes run and
+//! which camps the jungle holds. The forest and the ground are published
+//! with the match itself.
 
-use bota_core::rules;
 use bota_proto::{MapId, Vec2};
 
-use crate::game::{CampDef, CampKind, Protection, camp};
+use crate::{CampDef, CampKind, Protection, camp, rules};
 
 /// Full Dota geometry with mid-only waves and bounded hero/tower play.
 pub const MAP2_ID: MapId = MapId(2);
@@ -56,16 +56,6 @@ pub struct MapDef {
     pub lane_through_towers: bool,
     /// The jungle camps.
     pub camps: &'static [CampDef],
-    /// The forest, tree by tree. Empty for a map with none.
-    pub trees: &'static [(i16, i16)],
-    /// Trees this close to a lane centerline are dropped, in world units.
-    /// Zero keeps every tree.
-    pub lane_clear: i32,
-    /// The map's own vision blocker walls. Empty for a map with none.
-    pub fow_blockers: &'static [&'static [(i16, i16)]],
-    /// The baked ground, run-length encoded: walkability, elevation tiers
-    /// and water, cell by cell.
-    pub terrain_rle: &'static [(u16, u8)],
     /// Hero deaths on one side that lose it the match. Nought for a map lost
     /// only with a building.
     pub death_limit: u16,
@@ -101,17 +91,13 @@ const DOTA: MapDef = MapDef {
     dire_towers: &rules::DIRE_TOWERS,
     barracks: [&rules::RADIANT_BARRACKS, &rules::DIRE_BARRACKS],
     fillers: [&rules::RADIANT_FILLERS, &rules::DIRE_FILLERS],
-    protection: &crate::game::DOTA_PROTECTION,
+    protection: &crate::DOTA_PROTECTION,
     creep_spawns: [rules::RADIANT_CREEP_SPAWNS, rules::DIRE_CREEP_SPAWNS],
     lanes: 3,
     wave_lanes: &[rules::LANE_MID, rules::LANE_TOP, rules::LANE_BOT],
     lane_corners: DOTA_CORNERS,
     lane_through_towers: true,
-    camps: &crate::game::CAMPS,
-    trees: crate::game::DOTA_TREES,
-    lane_clear: rules::TREE_LANE_CLEAR,
-    fow_blockers: crate::game::FOW_BLOCKERS,
-    terrain_rle: crate::game::TERRAIN_RLE,
+    camps: &crate::CAMPS,
     death_limit: 0,
     tower_ends_it: false,
 };
@@ -140,10 +126,6 @@ const DEMO: MapDef = MapDef {
     lane_corners: DEMO_CORNERS,
     lane_through_towers: false,
     camps: &DEMO_CAMPS,
-    trees: crate::game::DEMO_TREES,
-    lane_clear: 0,
-    fow_blockers: crate::game::DEMO_FOW_BLOCKERS,
-    terrain_rle: crate::game::DEMO_TERRAIN_RLE,
     death_limit: 0,
     tower_ends_it: false,
 };

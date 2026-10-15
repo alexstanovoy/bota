@@ -1,10 +1,8 @@
 //! Casting abilities.
 
-use bota_core::rules;
+use bota_core::{MELEE_CREEP, rules};
 
-use crate::game::{
-    Command, Entity, Level, MELEE_CREEP, Mana, PendingCast, UnitOrder, World, wire_id,
-};
+use crate::game::{Command, Entity, Level, Mana, PendingCast, UnitOrder, World, wire_id};
 use bota_proto::{
     AbilitySlot, DamageKind, EventKind, Fixed, HeroId, Order, RejectReason, SlotId, Target, Team,
     Vec2,

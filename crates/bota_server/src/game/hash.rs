@@ -2,12 +2,13 @@
 //!
 //! Everything the simulation acts on goes in, walked in slot order.
 
+use bota_core::ModifierKind;
+
 use crate::engine::Fnv;
 use crate::game::{
     Action, ActionPhase, ActionState, AppliedModifiers, AppliedOrigin, Entity, Exposure, Hit,
-    HitEffect, Hook, Inventory, ItemStack, ModifierDuration, ModifierKind, Modifiers, Motion,
-    Projectile, RequiemLine, Seat, SpawnCategory, SpawnModifier, SpawnTarget, Stacks, Target,
-    World,
+    HitEffect, Hook, Inventory, ItemStack, ModifierDuration, Modifiers, Motion, Projectile,
+    RequiemLine, Seat, SpawnCategory, SpawnModifier, SpawnTarget, Stacks, Target, World,
 };
 
 impl World {
@@ -460,7 +461,6 @@ fn hash_damage_amp(fnv: &mut Fnv, bp: i32) {
 fn hash_modifier_kind(fnv: &mut Fnv, kind: ModifierKind) {
     match kind {
         ModifierKind::Phased => fnv.u8(9),
-        #[cfg(test)]
         ModifierKind::Haste { speed } => hash_tagged(fnv, 0, speed),
         ModifierKind::Mending { per_tick, breaks } => {
             fnv.u8(1);

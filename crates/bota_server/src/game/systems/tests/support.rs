@@ -2,13 +2,10 @@
 
 use std::fmt::Debug;
 
-use bota_core::{Ratio, rules};
+use bota_core::{MELEE_CREEP, ModifierKind, Ratio, UnitDef, rules};
 use bota_proto::{Fixed, ItemId, ModifierSpec, SlotId};
 
-use crate::game::{
-    Chance, Entity, Event, ItemStack, MELEE_CREEP, Modifier, ModifierKind, Modifiers, UnitDef,
-    World,
-};
+use crate::game::{Chance, Entity, Event, ItemStack, Modifier, Modifiers, World};
 
 /// What takes a strike and never falls: no armor, no mending, no swing back.
 pub(super) const ANVIL: UnitDef = UnitDef {

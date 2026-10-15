@@ -1,9 +1,9 @@
 //! The jungle: filling camps, and what a neutral does once drawn off one.
 
-use bota_core::rules;
+use bota_core::{Roster, rosters_of, rules};
 use bota_proto::{Fixed, UnitKind, Vec2};
 
-use crate::game::{Entity, Landed, Purpose, Roster, UnitOrder, World, rosters_of};
+use crate::game::{Entity, Landed, Purpose, UnitOrder, World};
 
 impl World {
     /// Fills every unblocked camp on the minute mark, with a roster other

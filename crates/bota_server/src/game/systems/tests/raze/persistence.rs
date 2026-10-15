@@ -1,4 +1,6 @@
-use crate::game::{HitEffect, Inventory, ItemStack, ModifierKind, wire_id};
+use bota_core::ModifierKind;
+
+use crate::game::{HitEffect, Inventory, ItemStack, wire_id};
 use bota_proto::{Attribute, ItemId, SlotId, Team};
 
 use super::fixtures::*;

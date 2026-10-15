@@ -1,11 +1,13 @@
 //! Map2 geometry, waves, and end-of-tick match completion.
 
-use bota_core::{CellGrid, rules, wave_plan};
+use bota_core::{
+    CellGrid, MAP2_DEATH_LIMIT, MAP2_GAME_TICKS, MAP2_ID, MAP2_TICK_CAP, MAPS, hero_spawn_pos,
+    lane_polyline, lane_route, map_of, rules, wave_plan,
+};
 
 use crate::game::{
-    Clearance, Command, Entity, Event, EventVisibility, ITEM_BOOTS, MAP2_DEATH_LIMIT,
-    MAP2_GAME_TICKS, MAP2_ID, MAP2_TICK_CAP, MAPS, MatchConfig, Seat, World, hero_spawn_pos,
-    item_def, lane_polyline, lane_route, lane_routes, map_of, tree_positions, wire_id,
+    Clearance, Command, Entity, Event, EventVisibility, ITEM_BOOTS, MatchConfig, Seat, World,
+    item_def, lane_routes, terrain_of, tree_positions, wire_id,
 };
 use bota_proto::{
     DamageKind, EventKind, Fixed, HeroId, ItemId, MapId, Order, Pick, ReplayRecord, ServerMsg,
@@ -124,10 +126,11 @@ fn map0_and_map2_share_every_landmark_lane_route_and_tree() {
     assert_eq!(mid.lane_corners, full.lane_corners);
     assert_eq!(mid.lane_through_towers, full.lane_through_towers);
     assert_eq!(mid.camps, full.camps);
-    assert_eq!(mid.trees, full.trees);
-    assert_eq!(mid.lane_clear, full.lane_clear);
-    assert_eq!(mid.fow_blockers, full.fow_blockers);
-    assert_eq!(mid.terrain_rle, full.terrain_rle);
+    let (mid_ground, full_ground) = (terrain_of(mid), terrain_of(full));
+    assert_eq!(mid_ground.trees, full_ground.trees);
+    assert_eq!(mid_ground.lane_clear, full_ground.lane_clear);
+    assert_eq!(mid_ground.fow_blockers, full_ground.fow_blockers);
+    assert_eq!(mid_ground.terrain_rle, full_ground.terrain_rle);
     assert_eq!(mid.lanes().collect::<Vec<_>>(), vec![0, 1, 2]);
     for lane in [rules::LANE_MID, rules::LANE_TOP, rules::LANE_BOT] {
         assert_eq!(lane_polyline(mid, lane), lane_polyline(full, lane));
@@ -136,8 +139,11 @@ fn map0_and_map2_share_every_landmark_lane_route_and_tree() {
         }
     }
     assert_eq!(lane_routes(mid), lane_routes(full));
-    assert!(!tree_positions(full).is_empty());
-    assert_eq!(tree_positions(mid), tree_positions(full));
+    assert!(!tree_positions(full, crate::game::terrain_of(full)).is_empty());
+    assert_eq!(
+        tree_positions(mid, crate::game::terrain_of(mid)),
+        tree_positions(full, crate::game::terrain_of(full))
+    );
 }
 
 #[test]

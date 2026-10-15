@@ -1,9 +1,9 @@
 //! The base fillers: seven statues a side that pay gold and nothing else,
 //! struck only once a tier three has fallen.
 
-use bota_core::rules;
+use bota_core::{map_of, rules};
 
-use crate::game::{World, map_of};
+use crate::game::World;
 use bota_proto::{MapId, Team, UnitKind, Vec2};
 
 use super::support::*;

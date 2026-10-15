@@ -38,7 +38,9 @@ pub struct World {
     /// Whether heroes keep at least 1 hp and never die.
     pub immortal_heroes: bool,
     /// The map it is played on.
-    pub map: &'static crate::game::MapDef,
+    pub map: &'static bota_core::MapDef,
+    /// The forest and the ground of [`World::map`].
+    pub terrain: &'static crate::game::MapTerrain,
     /// Where every roll of the dice comes from.
     pub rng: crate::game::MatchRng,
     /// The ground as bodies meet it: what stands where, and the room a body
@@ -203,7 +205,9 @@ impl Default for World {
 impl World {
     /// A world at tick zero with nothing in it, on the Dota map.
     pub fn new() -> World {
-        let ground = crate::game::Ground::of(crate::game::map_of(bota_proto::MapId(0)));
+        let ground = crate::game::Ground::of(crate::game::terrain_of(bota_core::map_of(
+            bota_proto::MapId(0),
+        )));
         let sight_block = bota_core::SightBlock::of_ground(&|at| ground.tier(at));
         World {
             tick: 0,
@@ -213,7 +217,8 @@ impl World {
             cheats: false,
             immortal_structures: false,
             immortal_heroes: false,
-            map: crate::game::map_of(bota_proto::MapId(0)),
+            map: bota_core::map_of(bota_proto::MapId(0)),
+            terrain: crate::game::terrain_of(bota_core::map_of(bota_proto::MapId(0))),
             rng: crate::game::MatchRng::new(&[0; 32], 0),
             clearance: crate::game::Clearance::open(),
             planner: crate::game::Planner::new(),
@@ -398,22 +403,31 @@ impl World {
     }
 
     /// A world with a map's buildings standing and their pools full.
-    pub fn on_map(map: &'static crate::game::MapDef) -> World {
+    pub fn on_map(map: &'static bota_core::MapDef) -> World {
+        World::on_terrain(map, crate::game::terrain_of(map))
+    }
+
+    /// [`World::on_map`] with a forest and a ground of its own.
+    pub fn on_terrain(
+        map: &'static bota_core::MapDef,
+        terrain: &'static crate::game::MapTerrain,
+    ) -> World {
         let mut world = World::new();
         world.map = map;
+        world.terrain = terrain;
         world.clearance = crate::game::Clearance::of_map(map);
-        world.ground = crate::game::Ground::of(map);
-        world.trees = Forest::of(map);
+        world.ground = crate::game::Ground::of(terrain);
+        world.trees = Forest::of(map, terrain);
         world.lay_sight_block();
         for (index, team) in [Team::Radiant, Team::Dire].into_iter().enumerate() {
             world.spawn_building(
-                &crate::game::FOUNTAIN,
+                &bota_core::FOUNTAIN,
                 team,
                 map.fountains[index],
                 Place::Fountain,
             );
             if let Some(at) = map.ancients[index] {
-                world.spawn_building(crate::game::ancient_of(team), team, at, Place::Ancient);
+                world.spawn_building(bota_core::ancient_of(team), team, at, Place::Ancient);
             }
             let towers = if index == 0 {
                 map.radiant_towers
@@ -422,7 +436,7 @@ impl World {
             };
             for (lane, tier, pos) in towers {
                 world.spawn_building(
-                    crate::game::tower_def(*tier),
+                    bota_core::tower_def(*tier),
                     team,
                     *pos,
                     Place::Tower {
@@ -433,9 +447,9 @@ impl World {
             }
             for (lane, ranged, pos) in map.barracks[index] {
                 let def = if *ranged {
-                    &crate::game::BARRACKS_RANGED
+                    &bota_core::BARRACKS_RANGED
                 } else {
-                    &crate::game::BARRACKS_MELEE
+                    &bota_core::BARRACKS_MELEE
                 };
                 world.spawn_building(
                     def,
@@ -448,7 +462,7 @@ impl World {
                 );
             }
             for pos in map.fillers[index] {
-                world.spawn_building(&crate::game::FILLER, team, *pos, Place::Filler);
+                world.spawn_building(&bota_core::FILLER, team, *pos, Place::Filler);
             }
         }
         world.settle();
@@ -508,7 +522,7 @@ impl World {
             let Some(march) = self.march.get_mut(entity) else {
                 continue;
             };
-            let route = &routes[crate::game::team_index(team)][usize::from(lane.0)];
+            let route = &routes[bota_core::team_index(team)][usize::from(lane.0)];
             let nearest = route
                 .iter()
                 .enumerate()
@@ -524,7 +538,7 @@ impl World {
     pub fn lay_sight_block(&mut self) {
         self.sight_block = bota_core::SightBlock::lay(
             &|at| self.ground.tier(at),
-            &crate::game::build_fow_walls(self.map),
+            &crate::game::build_fow_walls(self.terrain),
             self.rooted_trees(),
             self.trees.planted().iter().map(|tree| tree.at),
         );
@@ -541,7 +555,7 @@ impl World {
     ///
     /// [`tree_positions`]: crate::game::tree_positions
     fn rooted_trees(&self) -> impl Iterator<Item = bota_proto::Vec2> + '_ {
-        crate::game::tree_positions(self.map)
+        crate::game::tree_positions(self.map, self.terrain)
             .into_iter()
             .enumerate()
             .filter(|(index, _)| self.trees.rooted_stands(*index))

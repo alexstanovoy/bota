@@ -105,7 +105,7 @@ fn parse_map(value: &str) -> Result<u16, String> {
     value
         .parse::<u16>()
         .ok()
-        .filter(|id| bota_server::game::MAPS.iter().any(|map| map.id.0 == *id))
+        .filter(|id| bota_core::MAPS.iter().any(|map| map.id.0 == *id))
         .ok_or_else(|| {
             format!("unsupported map '{value}'; expected 0 (Dota), 1 (demo), or 2 (mid-only Dota)")
         })

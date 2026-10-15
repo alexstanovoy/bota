@@ -16,9 +16,9 @@ pub struct Ground {
 
 impl Ground {
     /// The ground a map stands on, decoded from its baked table.
-    pub fn of(map: &crate::game::MapDef) -> Ground {
+    pub fn of(terrain: &crate::game::MapTerrain) -> Ground {
         let mut cells = Vec::with_capacity(TERRAIN_CELLS * TERRAIN_CELLS);
-        for &(run, value) in map.terrain_rle {
+        for &(run, value) in terrain.terrain_rle {
             cells.extend(std::iter::repeat_n(value, usize::from(run)));
         }
         debug_assert_eq!(cells.len(), TERRAIN_CELLS * TERRAIN_CELLS);
@@ -50,7 +50,7 @@ impl Ground {
     }
 
     /// The wire form of a map's terrain: run-length pairs.
-    pub fn wire_rle(map: &crate::game::MapDef) -> Vec<(u16, u8)> {
-        map.terrain_rle.to_vec()
+    pub fn wire_rle(terrain: &crate::game::MapTerrain) -> Vec<(u16, u8)> {
+        terrain.terrain_rle.to_vec()
     }
 }

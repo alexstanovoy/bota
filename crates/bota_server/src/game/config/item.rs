@@ -174,7 +174,7 @@ fn branch(world: &mut World, user: Entity, _: usize, target: Target) -> bool {
 }
 
 fn observer(world: &mut World, user: Entity, _: usize, target: Target) -> bool {
-    world.stand_ward(user, target, &crate::game::OBSERVER_WARD, 10800, 500)
+    world.stand_ward(user, target, &bota_core::OBSERVER_WARD, 10800, 500)
 }
 
 fn quelling(world: &mut World, user: Entity, _: usize, target: Target) -> bool {
@@ -182,7 +182,7 @@ fn quelling(world: &mut World, user: Entity, _: usize, target: Target) -> bool {
 }
 
 fn sentry(world: &mut World, user: Entity, _: usize, target: Target) -> bool {
-    world.stand_ward(user, target, &crate::game::SENTRY_WARD, 12600, 500)
+    world.stand_ward(user, target, &bota_core::SENTRY_WARD, 12600, 500)
 }
 
 fn tango(world: &mut World, user: Entity, _: usize, target: Target) -> bool {

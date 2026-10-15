@@ -1,10 +1,10 @@
 //! Walking, routes round what stands, and bodies eased apart.
 
-use bota_core::{CellGrid, isqrt64, point_along, rules};
+use bota_core::{CellGrid, MELEE_CREEP, isqrt64, map_of, point_along, rules};
 
 use crate::game::{
-    Clearance, Entity, Ground, HEROES, ITEM_BOOTS, MELEE_CREEP, March, UnitOrder, World,
-    circle_stops, find_path, map_of, plan_radius,
+    Clearance, Entity, Ground, HEROES, ITEM_BOOTS, March, UnitOrder, World, circle_stops,
+    find_path, plan_radius,
 };
 use bota_proto::{Fixed, HeroId, MapId, SlotId, Team, Vec2};
 
@@ -326,7 +326,7 @@ fn a_capsule_is_stopped_by_a_circle_exactly_where_the_circle_stops_it() {
 #[test]
 fn the_demo_lake_is_walled_by_its_shore_and_crossed_at_its_ford() {
     let map = map_of(MapId(1));
-    let ground = Ground::of(map);
+    let ground = Ground::of(crate::game::terrain_of(map));
     let cell = |x: i32, y: i32| {
         (
             (x / rules::GRID_CELL_SIZE) as usize,

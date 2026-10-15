@@ -1,10 +1,10 @@
 //! Teleporting by Town Portal Scroll: where a scroll may carry, the channel
 //! both sides see, and carrying.
 
-use bota_core::{clamp_to_map, kind_def, point_along, rules};
+use bota_core::{clamp_to_map, fountain_pos, hero_spawn_pos, kind_def, point_along, rules};
 use bota_proto::{Fixed, Target, Team, UnitKind, Vec2};
 
-use crate::game::{Entity, Teleport, UnitOrder, World, fountain_pos, hero_spawn_pos, wire_id};
+use crate::game::{Entity, Teleport, UnitOrder, World, wire_id};
 
 /// Raw [`Fixed`] of one over the square root of two, for the diagonal spots
 /// of a landing ring.

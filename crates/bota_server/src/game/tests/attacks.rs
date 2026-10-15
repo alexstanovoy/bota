@@ -1,9 +1,9 @@
 //! The attack cycle and uphill misses.
 
-use bota_core::{attack_gain, rules};
+use bota_core::{MELEE_CREEP, attack_gain, rules};
 
-use crate::game::{ActionState, Command, Ground, Health, MELEE_CREEP, map_of};
-use bota_proto::{Angle, Fixed, MapId, Order, SlotId, Target, Team, Vec2};
+use crate::game::{ActionState, Command, Ground, Health};
+use bota_proto::{Angle, Fixed, Order, SlotId, Target, Team, Vec2};
 
 use super::support::*;
 
@@ -248,7 +248,7 @@ fn an_order_after_a_swing_lands_does_not_hurry_the_next_one() {
 
 #[test]
 fn ranged_attacks_miss_uphill_and_say_so_but_never_on_level_ground() {
-    let ground = Ground::of(map_of(MapId(0)));
+    let ground = Ground::of(&crate::game::DOTA_TERRAIN);
     let (source, level, uphill) = nearby_elevations(&ground);
     let level_damage =
         ranged_damage_after_ticks(source, level, &UPHILL_TEST_ATTACKER, &UPHILL_TEST_TARGET);
@@ -276,7 +276,7 @@ fn ranged_attacks_miss_uphill_and_say_so_but_never_on_level_ground() {
 
 #[test]
 fn buildings_never_evade_uphill_but_flying_attackers_miss_too() {
-    let ground = Ground::of(map_of(MapId(0)));
+    let ground = Ground::of(&crate::game::DOTA_TERRAIN);
     let (source, level, uphill) = nearby_elevations(&ground);
     let building_level =
         ranged_damage_after_ticks(source, level, &UPHILL_TEST_ATTACKER, &UPHILL_TEST_BUILDING);
@@ -305,7 +305,7 @@ fn buildings_never_evade_uphill_but_flying_attackers_miss_too() {
 
 #[test]
 fn uphill_eligibility_uses_attacker_and_target_elevation_at_impact() {
-    let ground = Ground::of(map_of(MapId(0)));
+    let ground = Ground::of(&crate::game::DOTA_TERRAIN);
     let (low, _, high) = nearby_elevations(&ground);
     let low_tier = ground.tier(low);
     let high_tier = ground.tier(high);

@@ -1,7 +1,7 @@
-use bota_core::rules;
+use bota_core::{fountain_pos, rules};
 use bota_proto::{Fixed, HeroId, ItemId, SlotId, Target, Team, Vec2};
 
-use crate::game::{BAG_SLOTS, Entity, Inventory, ItemStack, Seat, World, fountain_pos};
+use crate::game::{BAG_SLOTS, Entity, Inventory, ItemStack, Seat, World};
 
 pub(super) const MANGO: ItemId = ItemId(42);
 pub(super) const OWNER: SlotId = SlotId(0);

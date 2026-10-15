@@ -3,8 +3,8 @@
 //! Generated. Which camp stands where is the map's business; this is only what
 //! it draws from.
 
-use crate::game::CampKind;
-use crate::game::NeutralKind;
+use crate::CampKind;
+use crate::NeutralKind;
 
 /// One camp roster: the creeps a camp of that size may fill with.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

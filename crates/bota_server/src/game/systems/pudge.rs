@@ -1,9 +1,9 @@
 //! The rot, the dismember and what the flesh heap keeps.
 
-use bota_core::rules;
+use bota_core::{ModifierKind, rules};
 use bota_proto::{DamageKind, Target};
 
-use crate::game::{Modifier, ModifierKind, StackKind, World, ability};
+use crate::game::{Modifier, StackKind, World, ability};
 
 use crate::engine::Entity;
 

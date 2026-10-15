@@ -1,13 +1,13 @@
 //! Waves: putting them on the map and walking them down their lane.
 
-use bota_core::{CreepRank, WavePlan, rules, spawn_offsets, wave_at, wave_plan};
+use bota_core::{
+    CreepRank, FLAGBEARER_CREEP, MEGA_MELEE_CREEP, MEGA_RANGED_CREEP, MELEE_CREEP, RANGED_CREEP,
+    SIEGE_CREEP, SUPER_MELEE_CREEP, SUPER_RANGED_CREEP, SUPER_SIEGE_CREEP, StructureId, UnitDef,
+    WavePlan, creep_spawn_pos, rules, spawn_offsets, team_index, wave_at, wave_plan,
+};
 use bota_proto::{Fixed, Team, Vec2};
 
-use crate::game::{
-    Entity, FLAGBEARER_CREEP, MEGA_MELEE_CREEP, MEGA_RANGED_CREEP, MELEE_CREEP, March, Purpose,
-    RANGED_CREEP, SIEGE_CREEP, SUPER_MELEE_CREEP, SUPER_RANGED_CREEP, SUPER_SIEGE_CREEP,
-    StructureId, UnitDef, UnitOrder, World, advance_waypoint, creep_spawn_pos, team_index,
-};
+use crate::game::{Entity, March, Purpose, UnitOrder, World, advance_waypoint};
 
 impl World {
     /// Puts a wave in each enabled lane when the clock calls for one.

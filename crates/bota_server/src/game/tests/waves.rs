@@ -1,11 +1,8 @@
 //! Lane waves, their routes, and the structures that open lanes.
 
-use bota_core::{isqrt64, rules};
+use bota_core::{creep_spawn_pos, isqrt64, lane_polyline, map_of, rules};
 
-use crate::game::{
-    Entity, Lane, UnitOrder, World, creep_spawn_pos, lane_polyline, lane_routes, map_of,
-    plan_radius,
-};
+use crate::game::{Entity, Lane, UnitOrder, World, lane_routes, plan_radius};
 use bota_proto::{Fixed, MapId, Team, UnitKind, Vec2};
 
 use super::support::*;

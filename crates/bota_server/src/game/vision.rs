@@ -5,9 +5,9 @@ use bota_core::{CellGrid, rules};
 use bota_proto::{Fixed, Vec2};
 
 /// The fog blocker walls of a map alone, with no tree and no ground.
-pub fn build_fow_walls(map: &crate::game::MapDef) -> CellGrid {
+pub fn build_fow_walls(terrain: &crate::game::MapTerrain) -> CellGrid {
     let mut grid = CellGrid::open();
-    for wall in map.fow_blockers {
+    for wall in terrain.fow_blockers {
         for seg in wall.windows(2) {
             let a = Vec2::from_ints(i32::from(seg[0].0), i32::from(seg[0].1));
             let b = Vec2::from_ints(i32::from(seg[1].0), i32::from(seg[1].1));
@@ -22,8 +22,8 @@ pub fn build_fow_walls(map: &crate::game::MapDef) -> CellGrid {
 }
 
 /// Every cell a fog blocker wall of a map closes, for the wire.
-pub fn fow_wall_cells(map: &crate::game::MapDef) -> Vec<(u16, u16)> {
-    let grid = build_fow_walls(map);
+pub fn fow_wall_cells(terrain: &crate::game::MapTerrain) -> Vec<(u16, u16)> {
+    let grid = build_fow_walls(terrain);
     let mut out = Vec::new();
     for cy in 0..rules::GRID_CELLS {
         for cx in 0..rules::GRID_CELLS {

@@ -1,8 +1,8 @@
 //! Fountain, tower and flagbearer auras.
 
-use bota_core::rules;
+use bota_core::{FLAGBEARER_CREEP, MELEE_CREEP, ModifierKind, rules, tower_def};
 
-use crate::game::{FLAGBEARER_CREEP, Level, MELEE_CREEP, ModifierKind, World, tower_def};
+use crate::game::{Level, World};
 use bota_proto::{Fixed, HeroId, MapId, Pick, SlotId, Team, Vec2};
 
 use super::support::*;

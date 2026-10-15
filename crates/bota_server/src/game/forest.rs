@@ -40,9 +40,9 @@ pub struct Forest {
 
 impl Forest {
     /// A map's forest with every tree of it standing.
-    pub fn of(map: &'static crate::game::MapDef) -> Forest {
+    pub fn of(map: &bota_core::MapDef, terrain: &crate::game::MapTerrain) -> Forest {
         Forest {
-            back: vec![0; crate::game::tree_positions(map).len()],
+            back: vec![0; crate::game::tree_positions(map, terrain).len()],
             down: Vec::new(),
             planted: Vec::new(),
         }
@@ -64,11 +64,20 @@ impl Forest {
     }
 
     /// Where a tree stands, or nothing if that tree does not.
-    pub fn spot(&self, map: &'static crate::game::MapDef, tree: Tree) -> Option<Vec2> {
+    pub fn spot(
+        &self,
+        map: &bota_core::MapDef,
+        terrain: &crate::game::MapTerrain,
+        tree: Tree,
+    ) -> Option<Vec2> {
         match tree {
             Tree::Rooted(index) => self
                 .rooted_stands(index)
-                .then(|| crate::game::tree_positions(map).get(index).copied())
+                .then(|| {
+                    crate::game::tree_positions(map, terrain)
+                        .get(index)
+                        .copied()
+                })
                 .flatten(),
             Tree::Planted(index) => self.planted.get(index).map(|tree| tree.at),
         }
@@ -78,7 +87,8 @@ impl Forest {
     /// taken before one of the map's own at the same distance.
     pub fn nearest(
         &self,
-        map: &'static crate::game::MapDef,
+        map: &bota_core::MapDef,
+        terrain: &crate::game::MapTerrain,
         at: Vec2,
         reach: bota_proto::Fixed,
     ) -> Option<Tree> {
@@ -89,7 +99,10 @@ impl Forest {
                 best = Some((far, Tree::Planted(index)));
             }
         }
-        for (index, spot) in crate::game::tree_positions(map).into_iter().enumerate() {
+        for (index, spot) in crate::game::tree_positions(map, terrain)
+            .into_iter()
+            .enumerate()
+        {
             if !self.rooted_stands(index) || !spot.within(at, reach) {
                 continue;
             }

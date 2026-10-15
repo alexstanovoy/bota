@@ -1,14 +1,14 @@
 //! The world as a side is allowed to see it.
 
-use bota_core::{attack_gain, beats, kind_def, rules};
+use bota_core::{ModifierKind, attack_gain, beats, kind_def, rules};
 use bota_proto::{
     AbilityView, AggroView, EffectId, EffectView, Fixed, PlayerView, ProjectileView, StatusFlags,
     SwingView, TalentSlot, TalentView, Talents, Team, UnitKind, UnitView, WorldView,
 };
 
 use crate::game::{
-    ActionPhase, ActionState, Entity, FeastPhase, ModifierKind, StackKind, World,
-    ability_mana_cost, item_view, item_views,
+    ActionPhase, ActionState, Entity, FeastPhase, StackKind, World, ability_mana_cost, item_view,
+    item_views,
 };
 use crate::profile::Phase;
 
@@ -456,7 +456,6 @@ pub(crate) fn stack_effect_id(kind: StackKind) -> u16 {
 /// The number the wire names a modifier with.
 pub(crate) fn effect_id(kind: ModifierKind) -> u16 {
     match kind {
-        #[cfg(test)]
         ModifierKind::Haste { .. } => 0,
         ModifierKind::Mending { .. } => 1,
         ModifierKind::Clarity { .. } => 2,
