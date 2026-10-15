@@ -19,7 +19,6 @@ mod tests;
 pub use app::*;
 pub use console::*;
 pub use derive::*;
-pub use events::*;
 pub use intent::*;
 pub use lasthit::*;
 pub use replay::*;

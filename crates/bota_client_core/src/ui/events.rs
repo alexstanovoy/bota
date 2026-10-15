@@ -7,10 +7,6 @@ use crate::ui::app::{App, CueKind, FeedLine, Floater, FloaterKind};
 
 /// Health share under which the low-health cue comes.
 const LOW_HP: f32 = 0.25;
-/// The id of the first of the three razes.
-pub const RAZE_NEAR: u16 = 9;
-/// The id of the requiem.
-pub const REQUIEM: u16 = 12;
 
 impl App {
     /// The hero the cues and the aids are about: one's own, else the hero
@@ -139,9 +135,12 @@ impl App {
     /// An ability taking effect: the cue of a raze or a requiem.
     fn on_cast(&mut self, caster: EntityId, ability: AbilityId) {
         let at = self.spot(caster);
-        if (RAZE_NEAR..RAZE_NEAR + 3).contains(&ability.0) {
+        if matches!(
+            ability,
+            AbilityId::RAZE_NEAR | AbilityId::RAZE_MID | AbilityId::RAZE_FAR
+        ) {
             self.cue(CueKind::Raze, 0.9, at);
-        } else if ability.0 == REQUIEM {
+        } else if ability == AbilityId::REQUIEM {
             self.cue(CueKind::Requiem, 1.0, at);
         }
     }
