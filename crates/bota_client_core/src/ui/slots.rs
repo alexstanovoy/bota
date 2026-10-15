@@ -8,7 +8,7 @@ use bota_proto::{
     AbilitySlot, AbilityView, Aim, EntityId, ItemSlot, ItemView, Order, Target, UnitView,
 };
 
-use crate::state::App;
+use crate::ui::app::App;
 
 /// How many item slots a hero carries on itself: inventory and backpack.
 pub const BAG_SLOTS: u8 = 9;

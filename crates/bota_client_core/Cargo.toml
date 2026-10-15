@@ -6,3 +6,10 @@ edition.workspace = true
 [dependencies]
 bota_core = { workspace = true }
 bota_proto = { workspace = true }
+
+[features]
+default = []
+ui = []
+
+[lints]
+workspace = true

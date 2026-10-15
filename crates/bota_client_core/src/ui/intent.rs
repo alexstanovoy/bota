@@ -7,8 +7,8 @@ use bota_proto::{
     Team, UnitKind, Vec2, WorldView,
 };
 
-use crate::slots::{BAG_SLOTS, Press, Slot, order_for, press};
-use crate::state::{App, Pin, Source, Tap};
+use crate::ui::app::{App, Pin, Source, Tap};
+use crate::ui::slots::{BAG_SLOTS, Press, Slot, order_for, press};
 
 /// Which ability of a courier fetches the stash.
 const TAKE_STASH: u16 = 6;
@@ -178,7 +178,7 @@ impl App {
                 let ready = self.ready;
                 self.source.send(&ClientMsg::SetReady(ready));
             }
-            Intent::Console(line) => match crate::console::parse_console(&line) {
+            Intent::Console(line) => match crate::ui::console::parse_console(&line) {
                 Ok(order) => self.send_order(order),
                 Err(why) => self.reject = Some((why, 2.5)),
             },

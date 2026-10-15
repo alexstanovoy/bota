@@ -3,7 +3,7 @@
 
 use bota_proto::{AbilityId, DamageKind, EntityId, EventKind, UnitKind, UnitView};
 
-use crate::state::{App, CueKind, FeedLine, Floater, FloaterKind};
+use crate::ui::app::{App, CueKind, FeedLine, Floater, FloaterKind};
 
 /// Health share under which the low-health cue comes.
 const LOW_HP: f32 = 0.25;

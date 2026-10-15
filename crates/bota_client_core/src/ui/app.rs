@@ -6,10 +6,10 @@ use bota_proto::{
     UnitView, Vec2, WorldView,
 };
 
-use crate::derive::Derived;
 use crate::net::Net;
-use crate::replay_play::ReplayPlayer;
-use crate::smooth::Smooth;
+use crate::ui::derive::Derived;
+use crate::ui::replay::ReplayPlayer;
+use crate::ui::smooth::Smooth;
 
 /// Where messages come from: a socket or a file.
 pub enum Source {
@@ -291,7 +291,7 @@ pub struct App {
     /// Ticks before the game clock reaches zero, from MatchStart.
     pub pregame_ticks: u32,
     /// The slot taken up and waiting for a click to aim it, if one is.
-    pub aiming: Option<crate::slots::Slot>,
+    pub aiming: Option<crate::ui::slots::Slot>,
     /// An item slot picked up and waiting for the destination click.
     pub held_item: Option<u8>,
     /// Whether the shop panel is open.
@@ -314,7 +314,7 @@ pub struct App {
     pub terrain: Vec<u8>,
     /// One bit per terrain cell: set where a fog blocker wall blocks sight
     /// lines. Trees are laid over it from the view, see
-    /// [`FogGround::of`](crate::FogGround::of).
+    /// [`FogGround::of`](crate::ui::fog::FogGround::of).
     pub opaque: Vec<u64>,
     /// How the server advances ticks.
     pub mode: Option<TickMode>,
@@ -356,9 +356,9 @@ pub struct App {
     pub feed: Vec<FeedLine>,
     /// Which slot the order of a sequence number came from, so a refusal
     /// can be shown on the slot that earned it.
-    pub aimed_from: Option<(u32, crate::slots::Slot)>,
+    pub aimed_from: Option<(u32, crate::ui::slots::Slot)>,
     /// The slot whose order was last refused, and the seconds left on it.
-    pub refused: Option<(crate::slots::Slot, f32)>,
+    pub refused: Option<(crate::ui::slots::Slot, f32)>,
     /// The last rejected order, shown briefly: text and seconds left.
     pub reject: Option<(String, f32)>,
     /// The console line being typed. Absent while it is closed.
@@ -851,7 +851,7 @@ impl App {
             self.derived.trail(view, dt);
             if let Some(target) = self.quick_buy
                 && let Some(p) = view.players.iter().find(|p| Some(p.slot) == self.my_slot)
-                && crate::shop::held_items(view, p).contains(&bota_proto::ItemId(target))
+                && crate::ui::shop::held_items(view, p).contains(&bota_proto::ItemId(target))
             {
                 self.quick_buy = None;
             }

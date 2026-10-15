@@ -5,7 +5,7 @@ use std::rc::Rc;
 use bota_proto::{MAX_PAYLOAD_LEN, ReplayRecord, ServerMsg};
 
 use super::fixtures::{counted, snapshot, wire};
-use crate::replay_play::{MAX_READS_PER_POLL, ReplayPlayer};
+use crate::ui::replay::{MAX_READS_PER_POLL, ReplayPlayer};
 
 fn assert_rejected(bytes: Vec<u8>, kind: io::ErrorKind, detail: &str) {
     let (reader, read, calls) = counted(bytes, 1);

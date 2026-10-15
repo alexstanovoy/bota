@@ -2,34 +2,17 @@
 //! the replay player, the client's picture of the world and how snapshots
 //! and events change it, motion between snapshots, what a key or a click
 //! means as an order, and the derived facts the aids show.
+//!
+//! The `ui` feature adds the float-using, drawing-side parts.
+
+#![forbid(unsafe_code)]
 
 mod catalog;
-mod console;
-mod derive;
-mod events;
-mod fog;
-mod intent;
-mod lasthit;
 mod net;
-mod replay_play;
-mod shop;
-mod slots;
-mod smooth;
-mod state;
-
-#[cfg(test)]
-mod tests;
+#[cfg(feature = "ui")]
+mod ui;
 
 pub use catalog::*;
-pub use console::*;
-pub use derive::*;
-pub use events::*;
-pub use fog::*;
-pub use intent::*;
-pub use lasthit::*;
 pub use net::*;
-pub use replay_play::*;
-pub use shop::*;
-pub use slots::*;
-pub use smooth::*;
-pub use state::*;
+#[cfg(feature = "ui")]
+pub use ui::*;

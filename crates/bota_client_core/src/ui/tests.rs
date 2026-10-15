@@ -1,7 +1,7 @@
 //! The client core, tested without a window or a socket.
 
-use crate::slots::{Look, Press, Slot, ability_look, decide, item_look, order_for};
-use crate::state::{Tap, body_in, known_in, remember, tap_again};
+use crate::ui::app::{Tap, body_in, known_in, remember, tap_again};
+use crate::ui::slots::{Look, Press, Slot, ability_look, decide, item_look, order_for};
 use bota_proto::{
     AbilityId, AbilitySlot, AbilityView, Aim, Angle, Attributes, EntityId, Fixed, HeroId, ItemId,
     ItemView, Order, PlayerView, ShopEntry, SlotId, StatusFlags, Target, Team, UnitKind, UnitView,
@@ -11,7 +11,7 @@ use bota_proto::{
 #[test]
 fn the_console_turns_a_typed_line_into_a_cheat_order() {
     use bota_proto::Cheat;
-    let parse = crate::console::parse_console;
+    let parse = crate::ui::console::parse_console;
     for (line, cheat) in [
         ("-gold 500", Cheat::Gold { amount: 500 }),
         ("gold", Cheat::Gold { amount: 1000 }),
@@ -355,17 +355,17 @@ fn a_click_takes_the_ground_item_nearest_the_cursor_and_only_within_reach() {
     let mut view = a_tick(0, Vec::new(), Vec::new());
     view.loot = vec![lying_at(21, 1000, 1000), lying_at(22, 1040, 1000)];
     assert_eq!(
-        crate::intent::loot_under_cursor(&view, (1010.0, 1000.0)),
+        crate::ui::intent::loot_under_cursor(&view, (1010.0, 1000.0)),
         Some(handle(21)),
         "the nearer of the two"
     );
     assert_eq!(
-        crate::intent::loot_under_cursor(&view, (1044.0, 1000.0)),
+        crate::ui::intent::loot_under_cursor(&view, (1044.0, 1000.0)),
         Some(handle(22)),
         "and the nearer from the other side"
     );
     assert_eq!(
-        crate::intent::loot_under_cursor(&view, (5000.0, 5000.0)),
+        crate::ui::intent::loot_under_cursor(&view, (5000.0, 5000.0)),
         None,
         "far from both, the click is for the ground"
     );
@@ -384,22 +384,22 @@ fn an_attack_click_sticks_only_to_an_enemy_and_only_near() {
     let view = a_tick(100, vec![enemy, own], Vec::new());
     let mine = Some(Team::Radiant);
     assert_eq!(
-        crate::intent::enemy_near_cursor(&view, (7040.0, 7000.0), mine),
+        crate::ui::intent::enemy_near_cursor(&view, (7040.0, 7000.0), mine),
         Some(handle(8)),
         "a click just off the enemy's edge sticks to it"
     );
     assert_eq!(
-        crate::intent::enemy_near_cursor(&view, (7060.0, 7000.0), mine),
+        crate::ui::intent::enemy_near_cursor(&view, (7060.0, 7000.0), mine),
         None,
         "one further off is for the ground"
     );
     assert_eq!(
-        crate::intent::enemy_near_cursor(&view, (7390.0, 7010.0), mine),
+        crate::ui::intent::enemy_near_cursor(&view, (7390.0, 7010.0), mine),
         None,
         "one of this side's own never sticks"
     );
     assert_eq!(
-        crate::intent::enemy_near_cursor(&view, (9000.0, 9000.0), mine),
+        crate::ui::intent::enemy_near_cursor(&view, (9000.0, 9000.0), mine),
         None,
         "far from everybody the click is for the ground"
     );
@@ -517,9 +517,9 @@ fn a_hero_that_comes_back_leaves_only_one_body_behind() {
 }
 
 /// An app that has heard nothing, over an empty recording.
-fn a_silent_app() -> crate::state::App {
-    let player = crate::replay_play::ReplayPlayer::from_reader(std::io::Cursor::new(Vec::new()));
-    crate::state::App::new(crate::state::Source::Replay(Box::new(player)))
+fn a_silent_app() -> crate::ui::app::App {
+    let player = crate::ui::replay::ReplayPlayer::from_reader(std::io::Cursor::new(Vec::new()));
+    crate::ui::app::App::new(crate::ui::app::Source::Replay(Box::new(player)))
 }
 
 #[test]
@@ -582,7 +582,7 @@ fn only_what_the_seat_bought_and_keeps_counts_toward_the_price() {
     })]);
     let view = a_tick(1, vec![body], vec![seat.clone()]);
     assert_eq!(
-        crate::shop::held_items(&view, &seat),
+        crate::ui::shop::held_items(&view, &seat),
         vec![ItemId::BOOTS, ItemId::BLADES_OF_ATTACK],
         "a part marked for sale or bought by another seat is not spent on a build"
     );
@@ -590,7 +590,7 @@ fn only_what_the_seat_bought_and_keeps_counts_toward_the_price() {
 
 #[test]
 fn the_next_hit_is_cut_by_armor_as_the_server_cuts_it() {
-    use crate::lasthit::after_armor;
+    use crate::ui::lasthit::after_armor;
     // 50 * 100 / (100 + 6 * 2) = 44.6, rounded down.
     assert_eq!(after_armor(50, Fixed::from_int(2)), 44);
     assert_eq!(after_armor(50, Fixed::ZERO), 50);
@@ -618,7 +618,7 @@ fn a_unit_is_drawn_between_two_ticks_and_jumps_are_not_drawn_out() {
     walker.pos = Vec2::from_ints(1030, 1000);
     blinker.pos = Vec2::from_ints(2000, 1000);
     let after = a_tick(2, vec![walker, blinker], vec![]);
-    let bodies = crate::smooth::bodies(&after, Some(&before), 0.5);
+    let bodies = crate::ui::smooth::bodies(&after, Some(&before), 0.5);
     assert!((bodies[0].x - 1015.0).abs() < 0.01, "halfway along a step");
     assert!(
         (bodies[1].x - 2000.0).abs() < 0.01,
@@ -651,14 +651,14 @@ fn the_damage_range_is_the_wires_with_the_bonus_split_off_a_hero() {
 /// The one talent tree is Shadow Fiend's, whatever id the hero list gives him.
 #[test]
 fn the_talent_tree_is_shadow_fiends() {
-    let fiend = crate::HEROES
+    let fiend = crate::catalog::HEROES
         .iter()
         .find(|h| h.name == "Shadow Fiend")
         .expect("Shadow Fiend is a hero");
-    assert!(crate::talents(fiend.id).is_some());
-    for other in crate::HEROES.iter().filter(|h| h.id != fiend.id) {
+    assert!(crate::catalog::talents(fiend.id).is_some());
+    for other in crate::catalog::HEROES.iter().filter(|h| h.id != fiend.id) {
         assert!(
-            crate::talents(other.id).is_none(),
+            crate::catalog::talents(other.id).is_none(),
             "{} has no tree",
             other.name
         );
@@ -716,10 +716,10 @@ fn damage_splits_into_base_and_bonus() {
     // 16-22 base + 25 agility, and 9 from items and souls on top.
     fiend.attack_damage_min = 50;
     fiend.attack_damage_max = 56;
-    let d = crate::damage_range(&fiend);
+    let d = crate::catalog::damage_range(&fiend);
     assert_eq!((d.min, d.max, d.bonus), (41, 47, 9));
     fiend.level = 11;
     // Growth is Fixed arithmetic, as the server's own: 19 + 2.7 * 10 stands a
     // hair under 46, and the server floors it too.
-    assert_eq!(crate::base_attributes(&fiend), Some([45, 60, 37]));
+    assert_eq!(crate::catalog::base_attributes(&fiend), Some([45, 60, 37]));
 }

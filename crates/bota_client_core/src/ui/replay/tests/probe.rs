@@ -1,4 +1,5 @@
 //! Opt-in, headless verification of complete replay artifacts.
+#![allow(clippy::disallowed_types)] // a wall-clock probe, not client state
 
 use std::cell::Cell;
 use std::fs::File;
@@ -12,7 +13,7 @@ use bota_proto::{
 };
 
 use super::fixtures::message;
-use crate::replay_play::{
+use crate::ui::replay::{
     MAX_BYTES_PER_POLL, MAX_READS_PER_POLL, MAX_RECORDS_PER_POLL, REPLAY_BUFFER_CAPACITY,
     ReplayPlayer,
 };

@@ -5,7 +5,7 @@ use std::rc::Rc;
 use bota_proto::{LobbySlot, MAX_PAYLOAD_LEN, ReplayRecord, ServerMsg, SlotId, Team};
 
 use super::fixtures::{CountedRead, counted, message, snapshot, wire};
-use crate::replay_play::{
+use crate::ui::replay::{
     MAX_BYTES_PER_POLL, MAX_READS_PER_POLL, MAX_RECORDS_PER_POLL, REPLAY_BUFFER_CAPACITY,
     ReplayPlayer,
 };

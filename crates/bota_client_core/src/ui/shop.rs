@@ -4,7 +4,7 @@
 use bota_proto::{ItemId, PlayerView, WorldView};
 
 use crate::catalog::{ITEMS, ItemFace, missing_parts, price_for, whole_price};
-use crate::state::App;
+use crate::ui::app::App;
 
 /// The groups the shop shows its items in, in order.
 pub const SHOP_GROUPS: [&str; 7] = [

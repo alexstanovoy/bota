@@ -5,8 +5,8 @@ use bota_proto::{
 };
 
 use super::fixtures::{counted, match_start, message, snapshot, wire};
-use crate::replay_play::{MAX_RECORDS_PER_POLL, ReplayPlayer};
-use crate::state::{App, Source};
+use crate::ui::app::{App, Source};
+use crate::ui::replay::{MAX_RECORDS_PER_POLL, ReplayPlayer};
 
 fn started_player(rate: u16, ticks: u32) -> ReplayPlayer {
     let mut records = vec![match_start(rate)];

@@ -7,7 +7,7 @@
 use bota_core::cell_tier;
 use bota_proto::{Team, WorldView};
 
-use crate::state::App;
+use crate::ui::app::App;
 
 /// World units of one terrain cell.
 pub const CELL: f32 = 64.0;
