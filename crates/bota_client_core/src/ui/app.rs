@@ -4,8 +4,7 @@ use std::sync::Arc;
 
 use bota_proto::{
     ClientMsg, EntityId, EventKind, LobbySlot, MatchInfo, MatchStats, Order, PlayerId, ServerMsg,
-    ShopEntry, SlotId, StockView, TalentSlot, TalentView, Team, UnitKind, UnitView, Vec2,
-    WorldView,
+    SlotId, StockView, TalentSlot, TalentView, Team, UnitKind, UnitView, Vec2, WorldView,
 };
 
 use crate::match_static::MatchStatic;
@@ -367,11 +366,6 @@ impl App {
     /// Every tree the map starts with.
     pub fn trees(&self) -> &[Vec2] {
         self.session.as_ref().map_or(&[], |s| s.statics().trees())
-    }
-
-    /// What the shop sells and asks for it.
-    pub fn shop(&self) -> &[ShopEntry] {
-        self.session.as_ref().map_or(&[], |s| s.statics().shop())
     }
 
     /// Sequence number of the latest order given.
@@ -821,7 +815,7 @@ impl App {
             self.derived.trail(view, dt);
             if let Some(target) = self.quick_buy
                 && let Some(p) = view.players.iter().find(|p| Some(p.slot) == self.my_slot)
-                && crate::ui::shop::held_items(view, p).contains(&bota_proto::ItemId(target))
+                && crate::shop::held_items(view, p).contains(&bota_proto::ItemId(target))
             {
                 self.quick_buy = None;
             }

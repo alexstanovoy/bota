@@ -1,11 +1,11 @@
 //! What the client knows about abilities, items, effects and heroes.
 //!
 //! Names, blurbs and art only, one entry to a thing, found by the id the wire
-//! carries. The numbers ride the wire: in the views for what a unit holds and
-//! in the shop table for what a thing costs.
+//! carries. The numbers are the rules': `bota_core` holds what a thing costs
+//! and does, and the views tell what a unit holds.
 
 use bota_core::{attributes_at_level, base_damage_least, hero_def};
-use bota_proto::{AbilityId, EffectId, Fixed, HeroId, ItemId, ShopEntry};
+use bota_proto::{AbilityId, EffectId, Fixed, HeroId, ItemId};
 
 /// The shape a projectile of an ability is drawn as. Radii are in world units.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -649,36 +649,6 @@ pub const HEROES: [HeroFace; 2] = [
         name: "Shadow Fiend",
     },
 ];
-
-/// What one item is built from, by id.
-fn components_of(shop: &[ShopEntry], item: ItemId) -> &[ItemId] {
-    shop.iter()
-        .find(|entry| entry.id == item)
-        .map_or(&[][..], |entry| &entry.components)
-}
-
-/// What the shop asks for one item whole, before anything already in hand.
-pub fn whole_price(shop: &[ShopEntry], item: ItemId) -> i32 {
-    shop.iter()
-        .find(|entry| entry.id == item)
-        .map_or(0, |entry| entry.cost)
-}
-
-/// What the shop asks a seat holding `held` for one item: an item without
-/// parts costs its whole price however many are held; a built one costs the
-/// parts not found in `held`, each spent once.
-pub fn price_for(shop: &[ShopEntry], item: ItemId, held: &[ItemId]) -> i32 {
-    missing_parts(shop, item, held)
-        .iter()
-        .map(|part| whole_price(shop, *part))
-        .sum()
-}
-
-/// The parts bought whole that a seat holding `held` still lacks for one
-/// item, in build order: the item itself when it has no parts.
-pub fn missing_parts(shop: &[ShopEntry], item: ItemId, held: &[ItemId]) -> Vec<ItemId> {
-    bota_core::missing_parts(item, held, |part| components_of(shop, part))
-}
 
 /// The ability of that id, or nothing for one the catalog does not hold.
 pub fn ability(id: u16) -> Option<&'static AbilityFace> {

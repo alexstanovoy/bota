@@ -4,8 +4,8 @@ use crate::ui::app::{App, Tap, tap_again};
 use crate::ui::slots::{Look, Press, Slot, ability_look, decide, item_look, order_for};
 use bota_proto::{
     AbilityId, AbilitySlot, AbilityView, Aim, Angle, Attributes, EntityId, Fixed, HeroId, ItemId,
-    ItemView, Order, PlayerView, ShopEntry, SlotId, StatusFlags, Target, Team, UnitKind, UnitView,
-    Vec2, WorldView,
+    ItemView, Order, PlayerView, SlotId, StatusFlags, Target, Team, UnitKind, UnitView, Vec2,
+    WorldView,
 };
 
 #[test]
@@ -74,35 +74,27 @@ fn every_catalog_entry_is_named_and_found_by_its_own_id() {
 
 #[test]
 fn a_part_in_hand_comes_off_what_the_shop_asks() {
-    let entry = |id: u16, cost: i32, parts: &[u16]| ShopEntry {
-        id: ItemId(id),
-        cost,
-        components: parts.iter().copied().map(ItemId).collect(),
-    };
-    let shop = vec![
-        entry(0, 500, &[]),
-        entry(19, 450, &[]),
-        entry(13, 450, &[]),
-        entry(29, 1400, &[0, 19, 13]),
-    ];
+    use crate::shop::{price_for, whole_price};
+    let parts = [ItemId::BOOTS, ItemId::GLOVES, ItemId::BELT];
+    let built: i32 = parts.iter().map(|part| whole_price(*part)).sum();
     assert_eq!(
-        crate::catalog::price_for(&shop, ItemId::POWER_TREADS, &[]),
-        1400,
-        "with nothing in hand the whole is asked for"
+        price_for(ItemId::POWER_TREADS, &[]),
+        built,
+        "with nothing in hand the parts are asked for"
     );
     assert_eq!(
-        crate::catalog::price_for(&shop, ItemId::POWER_TREADS, &[ItemId::BOOTS]),
-        900,
+        price_for(ItemId::POWER_TREADS, &[ItemId::BOOTS]),
+        built - whole_price(ItemId::BOOTS),
         "the boots already worn are not asked for twice"
     );
     assert_eq!(
-        crate::catalog::price_for(&shop, ItemId::BOOTS, &[ItemId::BOOTS]),
-        500,
+        price_for(ItemId::BOOTS, &[ItemId::BOOTS]),
+        whole_price(ItemId::BOOTS),
         "but a second of what is bought whole costs the whole of it"
     );
     assert_eq!(
-        crate::catalog::price_for(&shop, ItemId::POWER_TREADS, &[ItemId::POWER_TREADS]),
-        1400,
+        price_for(ItemId::POWER_TREADS, &[ItemId::POWER_TREADS]),
+        built,
         "and a second built one is built out of fresh parts"
     );
 }
@@ -582,7 +574,7 @@ fn only_what_the_seat_bought_and_keeps_counts_toward_the_price() {
     })]);
     let view = a_tick(1, vec![body], vec![seat.clone()]);
     assert_eq!(
-        crate::ui::shop::held_items(&view, &seat),
+        crate::shop::held_items(&view, &seat),
         vec![ItemId::BOOTS, ItemId::BLADES_OF_ATTACK],
         "a part marked for sale or bought by another seat is not spent on a build"
     );

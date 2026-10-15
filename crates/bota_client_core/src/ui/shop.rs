@@ -1,9 +1,10 @@
 //! The shop as a player uses it: what a seat holds towards a build, the
 //! groups and the search of the catalog, and the quick-buy item.
 
-use bota_proto::{ItemId, PlayerView, WorldView};
+use bota_proto::ItemId;
 
-use crate::catalog::{ITEMS, ItemFace, missing_parts, price_for, whole_price};
+use crate::catalog::{ITEMS, ItemFace};
+use crate::shop::{held_items, missing_parts, price_for, whole_price};
 use crate::ui::app::App;
 
 /// The groups the shop shows its items in, in order.
@@ -63,22 +64,6 @@ pub fn first_answer(query: &str) -> Option<u16> {
         .find_map(|(_, ids)| ids.first().copied())
 }
 
-/// Every item in a seat's hero's bag and in its stash that the seat bought
-/// and has not marked for sale, for [`price_for`].
-pub fn held_items(view: &WorldView, p: &PlayerView) -> Vec<ItemId> {
-    let bag = p
-        .unit
-        .and_then(|id| view.units.iter().find(|u| u.id == id))
-        .map(|u| u.items.as_slice())
-        .unwrap_or_default();
-    bag.iter()
-        .chain(p.stash.iter().flatten())
-        .flatten()
-        .filter(|item| item.owner == p.slot && !item.for_sale)
-        .map(|item| item.id)
-        .collect()
-}
-
 impl App {
     /// What this seat pays for an item now, and what it costs whole.
     pub fn price_of(&self, id: u16) -> (i32, i32) {
@@ -90,10 +75,7 @@ impl App {
                 Some(held_items(view, p))
             })
             .unwrap_or_default();
-        (
-            price_for(self.shop(), ItemId(id), &held),
-            whole_price(self.shop(), ItemId(id)),
-        )
+        (price_for(ItemId(id), &held), whole_price(ItemId(id)))
     }
 
     /// The parts this seat still lacks for an item, in build order.
@@ -106,7 +88,7 @@ impl App {
                 Some(held_items(view, p))
             })
             .unwrap_or_default();
-        missing_parts(self.shop(), ItemId(id), &held)
+        missing_parts(ItemId(id), &held)
     }
 
     /// What the quick-buy intent buys now: the quick-buy item whole when the
@@ -121,7 +103,7 @@ impl App {
         }
         self.missing_for(target)
             .into_iter()
-            .find(|part| whole_price(self.shop(), *part) <= gold)
+            .find(|part| whole_price(*part) <= gold)
             .map(|part| part.0)
     }
 }
