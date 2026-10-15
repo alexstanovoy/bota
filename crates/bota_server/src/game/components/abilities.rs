@@ -1,8 +1,7 @@
 //! What an entity can cast.
 
+use bota_core::{Talent, TalentTree};
 use bota_proto::{AbilityId, Talents};
-
-use crate::game::{Talent, TalentTree};
 
 /// One ability in a slot.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

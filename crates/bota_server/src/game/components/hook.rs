@@ -1,9 +1,9 @@
 //! A hook in flight.
 
+use bota_core::rules;
 use bota_proto::{Fixed, Vec2};
 
 use crate::engine::Entity;
-use crate::game::rules;
 
 /// A hook thrown out and on its way somewhere.
 ///

@@ -1,11 +1,10 @@
 //! Choosing what to attack, and holding to it: one rule for everything that
 //! fights of its own accord.
 
+use bota_core::{isqrt64, rules};
 use bota_proto::{Fixed, Target, UnitKind};
 
-use crate::game::{
-    Candidates, Entity, PriorityOrder, UnitOrder, World, class_rank_of, isqrt64, rules,
-};
+use crate::game::{Candidates, Entity, PriorityOrder, UnitOrder, World, class_rank_of};
 
 use crate::profile::Phase;
 

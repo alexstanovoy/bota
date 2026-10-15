@@ -30,11 +30,11 @@ pub struct Feast {
     /// Where it stands.
     pub phase: FeastPhase,
     /// Ticks before the phase ends, at most
-    /// [`rules::FEAST_TICKS`](crate::game::rules::FEAST_TICKS) or
-    /// [`rules::FEAST_LINGER_TICKS`](crate::game::rules::FEAST_LINGER_TICKS).
+    /// [`rules::FEAST_TICKS`](bota_core::rules::FEAST_TICKS) or
+    /// [`rules::FEAST_LINGER_TICKS`](bota_core::rules::FEAST_LINGER_TICKS).
     pub ticks_left: u32,
     /// Every enemy fed on, each once, at most
-    /// [`rules::FEAST_TARGETS`](crate::game::rules::FEAST_TARGETS) at its
+    /// [`rules::FEAST_TARGETS`](bota_core::rules::FEAST_TARGETS) at its
     /// level. While lingering, only those that have died.
     pub fed: Vec<Fed>,
 }

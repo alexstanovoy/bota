@@ -1,8 +1,9 @@
 //! The ground: elevation tiers, water and terrain walkability.
 
+use bota_core::rules;
 use bota_proto::Vec2;
 
-use crate::game::{TERRAIN_CELLS, rules};
+use crate::game::TERRAIN_CELLS;
 
 /// The decoded terrain, one byte per passability cell.
 ///

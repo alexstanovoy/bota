@@ -1,10 +1,11 @@
 //! Applied stat changes: their countdown and the rates they leave.
 
+use bota_core::rules;
 use bota_proto::{AbilityId, DamageKind, ItemId};
 
 use crate::game::{
     Entity, MAX_COMBINED_MODIFIER_SCALE, Stats, World, ability_cooldown, ability_mana_cost,
-    item_def, rules,
+    item_def,
 };
 
 impl World {

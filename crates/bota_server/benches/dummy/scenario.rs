@@ -1,11 +1,11 @@
 //! The dummy match the criterion benches play and the fixed inputs of the
 //! micro cases under it.
 
+use bota_core::{isqrt64, rules};
 use bota_proto::{HeroId, MapId, Order, Pick, SlotId, Target, Team, TickMode, Vec2, WorldView};
 
 use crate::game::{
-    Clearance, Command, Entity, Fnv, MapDef, MatchConfig, OBSERVER_WARD, SENTRY_WARD, World,
-    isqrt64, map_of, rules,
+    Clearance, Command, Entity, Fnv, MapDef, MatchConfig, OBSERVER_WARD, SENTRY_WARD, World, map_of,
 };
 
 /// Ticks between two re-issued hero orders.

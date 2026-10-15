@@ -2,9 +2,10 @@
 
 use bota_proto::{Angle, Fixed, Vec2};
 
-use crate::game::rules;
+use crate::rules;
 
 /// Integer square root, rounded down.
+#[inline]
 pub fn isqrt64(n: i64) -> i64 {
     debug_assert!(n >= 0, "no square root of a negative");
     if n <= 0 {
@@ -25,6 +26,7 @@ pub fn isqrt64(n: i64) -> i64 {
 }
 
 /// The distance covered in one tick at a per-second speed.
+#[inline]
 pub fn per_tick(speed: Fixed) -> Fixed {
     Fixed {
         raw: speed.raw / rules::TICKS_PER_SECOND as i32,
@@ -32,6 +34,7 @@ pub fn per_tick(speed: Fixed) -> Fixed {
 }
 
 /// One movement step from `pos` towards `target`, no further than `step`.
+#[inline]
 pub fn move_towards(pos: Vec2, target: Vec2, step: Fixed) -> Vec2 {
     let dx = i64::from(target.x.raw) - i64::from(pos.x.raw);
     let dy = i64::from(target.y.raw) - i64::from(pos.y.raw);
@@ -54,6 +57,7 @@ pub fn move_towards(pos: Vec2, target: Vec2, step: Fixed) -> Vec2 {
 /// The point `distance` away from `from` along the line towards `towards`.
 ///
 /// `from` itself when the two stand on the same spot.
+#[inline]
 pub fn point_along(from: Vec2, towards: Vec2, distance: Fixed) -> Vec2 {
     let dx = i64::from(towards.x.raw) - i64::from(from.x.raw);
     let dy = i64::from(towards.y.raw) - i64::from(from.y.raw);
@@ -77,6 +81,7 @@ pub fn point_along(from: Vec2, towards: Vec2, distance: Fixed) -> Vec2 {
 ///
 /// A piecewise-linear octant approximation: exact on the axes and diagonals,
 /// within a few degrees elsewhere. [`heading_of`] is its inverse.
+#[inline]
 pub fn facing_towards(from: Vec2, to: Vec2) -> Angle {
     let dx = i64::from(to.x.raw) - i64::from(from.x.raw);
     let dy = i64::from(to.y.raw) - i64::from(from.y.raw);
@@ -111,6 +116,7 @@ pub fn facing_towards(from: Vec2, to: Vec2) -> Angle {
 /// The inverse of [`facing_towards`]: the facing from any point towards that
 /// point plus this offset is the angle handed in. Its larger component is
 /// 8192 world units.
+#[inline]
 pub fn heading_of(facing: Angle) -> Vec2 {
     let brads = i32::from(facing.brads);
     let slope = brads % 8192;
@@ -128,6 +134,7 @@ pub fn heading_of(facing: Angle) -> Vec2 {
 }
 
 /// Keeps a position on the map.
+#[inline]
 pub fn clamp_to_map(pos: Vec2) -> Vec2 {
     let max = Fixed::from_int(rules::MAP_SIZE);
     Vec2 {
@@ -143,12 +150,14 @@ pub fn clamp_to_map(pos: Vec2) -> Vec2 {
 /// The shortest signed rotation from one facing to another, in brads.
 ///
 /// An exactly opposite facing turns counter-clockwise.
+#[inline]
 pub fn angle_delta(from: Angle, to: Angle) -> i32 {
     let d = (i32::from(to.brads) - i32::from(from.brads)) & 0xFFFF;
     if d > 32768 { d - 65536 } else { d }
 }
 
 /// One tick of turning from a facing towards another, clamped by the rate.
+#[inline]
 pub fn turn_towards(from: Angle, to: Angle, rate: u16) -> Angle {
     let clamped = angle_delta(from, to).clamp(-i32::from(rate), i32::from(rate));
     Angle {
@@ -157,12 +166,14 @@ pub fn turn_towards(from: Angle, to: Angle, rate: u16) -> Angle {
 }
 
 /// How far a facing is from another, in brads, ignoring direction.
+#[inline]
 pub fn facing_gap(a: Angle, b: Angle) -> u16 {
     angle_delta(a, b).unsigned_abs() as u16
 }
 
 /// Ticks a body turning at a rate stands before it may walk off in a new
 /// direction: it walks once within [`rules::TURN_TOLERANCE_BRADS`] of it.
+#[inline]
 pub fn stall_ticks(facing: Angle, wanted: Angle, rate: u16) -> u32 {
     let gap = u32::from(facing_gap(facing, wanted));
     let tolerance = u32::from(rules::TURN_TOLERANCE_BRADS);
@@ -175,6 +186,7 @@ pub fn stall_ticks(facing: Angle, wanted: Angle, rate: u16) -> u32 {
 
 /// Squared distance from a point to a segment, in the raw units of
 /// [`Vec2::distance_squared`].
+#[inline]
 pub fn segment_distance_squared(p: Vec2, a: Vec2, b: Vec2) -> i64 {
     let apx = i64::from(p.x.raw) - i64::from(a.x.raw);
     let apy = i64::from(p.y.raw) - i64::from(a.y.raw);
@@ -195,6 +207,7 @@ pub fn segment_distance_squared(p: Vec2, a: Vec2, b: Vec2) -> i64 {
 /// Squared distance from a point to an axis-aligned box given by its low
 /// and high corners, in the raw units of [`Vec2::distance_squared`]. Zero
 /// inside the box.
+#[inline]
 pub fn point_box_distance_squared(p: Vec2, lo: Vec2, hi: Vec2) -> i64 {
     let px = i64::from(p.x.raw);
     let py = i64::from(p.y.raw);
@@ -208,6 +221,7 @@ pub fn point_box_distance_squared(p: Vec2, lo: Vec2, hi: Vec2) -> i64 {
 }
 
 /// Whether a segment touches an axis-aligned box.
+#[inline]
 pub fn segment_hits_box(a: Vec2, b: Vec2, lo: Vec2, hi: Vec2) -> bool {
     if a.x.max(b.x) < lo.x || a.x.min(b.x) > hi.x || a.y.max(b.y) < lo.y || a.y.min(b.y) > hi.y {
         return false;
@@ -232,6 +246,7 @@ pub fn segment_hits_box(a: Vec2, b: Vec2, lo: Vec2, hi: Vec2) -> bool {
 
 /// Squared distance from a segment to an axis-aligned box, in the raw units
 /// of [`Vec2::distance_squared`]. Zero where they touch.
+#[inline]
 pub fn segment_box_distance_squared(a: Vec2, b: Vec2, lo: Vec2, hi: Vec2) -> i64 {
     if segment_hits_box(a, b, lo, hi) {
         return 0;

@@ -2,7 +2,7 @@
 
 use bota_proto::Vec2;
 
-use crate::game::{isqrt64, rules};
+use crate::{isqrt64, rules};
 
 /// How strong one kind of a side's lane creeps is, by which enemy barracks
 /// have fallen. Always [`Normal`](CreepRank::Normal) on a map with no
@@ -42,6 +42,7 @@ impl WavePlan {
 }
 
 /// The wave due at a tick, counting from one, if a wave is due at all.
+#[inline]
 pub fn wave_at(tick: u32) -> Option<u32> {
     if tick < rules::FIRST_WAVE_TICK
         || !(tick - rules::FIRST_WAVE_TICK).is_multiple_of(rules::WAVE_PERIOD_TICKS)

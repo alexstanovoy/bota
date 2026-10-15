@@ -1,11 +1,11 @@
 //! The Blood Grenade: thrown at a spot, it bursts there, and the shops sell
 //! it from a stock that refills over time.
 
+use bota_core::{clamp_to_map, facing_towards, is_creep, move_towards, per_tick, rules};
 use bota_proto::{DamageKind, ItemId, Target, Team, UnitKind};
 
 use crate::game::{
-    Entity, Grenade, ITEMS, Modifier, ModifierKind, ShopStock, Transform, World, clamp_to_map,
-    facing_towards, is_creep, item_def, move_towards, per_tick, rules,
+    Entity, Grenade, ITEMS, Modifier, ModifierKind, ShopStock, Transform, World, item_def,
 };
 
 /// Every side's shop as the match starts: each item sold from a limited

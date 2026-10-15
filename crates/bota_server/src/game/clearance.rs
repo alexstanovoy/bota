@@ -4,12 +4,13 @@
 
 use std::sync::OnceLock;
 
+use bota_core::{
+    CellGrid, isqrt64, point_box_distance_squared, rules, segment_box_distance_squared,
+    segment_distance_squared,
+};
 use bota_proto::{Fixed, Vec2};
 
-use crate::game::{
-    CellGrid, bucket_coords, bucket_of, isqrt64, point_box_distance_squared, rules,
-    segment_box_distance_squared, segment_distance_squared,
-};
+use crate::game::{bucket_coords, bucket_of};
 
 const NODES: usize = rules::WALK_CELLS;
 const NODE: i32 = rules::WALK_CELL_SIZE;

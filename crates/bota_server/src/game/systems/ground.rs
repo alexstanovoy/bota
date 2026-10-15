@@ -1,9 +1,10 @@
 //! Walking with other bodies in the way: who stands where, whether a step
 //! runs into anybody, and easing apart what overlaps.
 
+use bota_core::{clamp_to_map, isqrt64, rules};
 use bota_proto::{Fixed, Vec2};
 
-use crate::game::{Body, Entity, World, clamp_to_map, isqrt64, rules};
+use crate::game::{Body, Entity, World};
 
 use crate::profile::Phase;
 

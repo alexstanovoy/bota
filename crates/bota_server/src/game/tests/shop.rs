@@ -1,9 +1,11 @@
 //! Buying, selling, the stash and items on the ground.
 
+use bota_core::rules;
+
 use crate::game::{
     BAG_SLOTS, Entity, ITEM_BELT, ITEM_BOOTS, ITEM_CIRCLET, ITEM_GLOVES, ITEM_IRON_BRANCH,
     ITEM_POWER_TREADS, ITEM_RECIPE_WRAITH_BAND, ITEM_SLIPPERS, ITEM_WRAITH_BAND, ItemStack,
-    SHADOW_FIEND, Seat, World, fountain_pos, rules, wire_id,
+    SHADOW_FIEND, Seat, World, fountain_pos, wire_id,
 };
 use bota_proto::{
     EventKind, Fixed, HeroId, ItemId, ItemSlot, Order, RejectReason, SlotId, Target, Team, Vec2,

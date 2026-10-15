@@ -1,5 +1,6 @@
 //! The world as a side is allowed to see it.
 
+use bota_core::{attack_gain, beats, is_lane_creep, rules};
 use bota_proto::{
     AbilityView, AggroView, EffectId, EffectView, Fixed, PlayerView, ProjectileView, StatusFlags,
     SwingView, TalentSlot, TalentView, Talents, Team, UnitKind, UnitView, WorldView,
@@ -7,7 +8,7 @@ use bota_proto::{
 
 use crate::game::{
     ActionPhase, ActionState, Entity, FeastPhase, ModifierKind, StackKind, World,
-    ability_mana_cost, attack_gain, beats, is_lane_creep, item_view, item_views, rules,
+    ability_mana_cost, item_view, item_views,
 };
 use crate::profile::Phase;
 
@@ -395,10 +396,10 @@ impl World {
 /// clamps it.
 fn after_speed(ms: u32, attack_speed: i32) -> u32 {
     let speed = attack_speed.clamp(
-        crate::game::rules::MIN_ATTACK_SPEED,
-        crate::game::rules::MAX_ATTACK_SPEED,
+        bota_core::rules::MIN_ATTACK_SPEED,
+        bota_core::rules::MAX_ATTACK_SPEED,
     );
-    ms * crate::game::rules::BASE_ATTACK_SPEED as u32 / speed as u32
+    ms * bota_core::rules::BASE_ATTACK_SPEED as u32 / speed as u32
 }
 
 /// A pool as a number to show: anything above zero shows as at least one

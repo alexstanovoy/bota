@@ -1,11 +1,13 @@
 //! Trusted setup modifiers: which spawns they take and how long they hold.
 
+use bota_core::rules;
+
 use super::support::{a_spec, spec};
 use crate::game::{
     AppliedModifier, AppliedModifiers, AppliedOrigin, Command, Def, Entity, MAX_SPAWN_MODIFIERS,
     MAX_SPAWN_TARGETS, MELEE_CREEP, MatchConfig, MatchConfigError, ModifierDuration, Place,
     RANGED_CREEP, SHADOW_FIEND, SpawnCategory, SpawnModifier, SpawnModifierError, SpawnSelector,
-    SpawnTarget, World, rules, tower_def,
+    SpawnTarget, World, tower_def,
 };
 use bota_proto::{
     Cheat, DamageKind, Fixed, HeroId, MAX_MODIFIER_TICKS, MapId, ModifierSpec, Order, Pick, SlotId,

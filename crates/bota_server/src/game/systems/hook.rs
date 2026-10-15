@@ -1,11 +1,9 @@
 //! Throwing a hook, and what it drags back.
 
+use bota_core::{facing_towards, is_structure, move_towards, per_tick, rules};
 use bota_proto::{DamageKind, Fixed, Target, UnitKind, Vec2};
 
-use crate::game::{
-    Hook, Modifier, ModifierKind, Transform, World, ability, facing_towards, is_structure,
-    move_towards, per_tick, rules,
-};
+use crate::game::{Hook, Modifier, ModifierKind, Transform, World, ability};
 
 use crate::engine::Entity;
 

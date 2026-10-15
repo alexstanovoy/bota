@@ -3,7 +3,7 @@
 
 use bota_proto::{TalentSlot, Talents};
 
-use crate::game::rules;
+use crate::rules;
 
 /// One talent: what it changes. The numbers live in [`rules`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

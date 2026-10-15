@@ -1,10 +1,11 @@
 //! Working out who sees what.
 
+use bota_core::{SightBlock, is_structure, rules};
 use bota_proto::{Fixed, Target, Team, UnitKind, Vec2};
 
 use crate::game::{
-    Entity, EntityAllocator, EventVisibility, Exposure, ExposureCell, Ground, SightBlock, Spots,
-    Stats, Table, Transform, Visibility, World, is_structure, rules,
+    Entity, EntityAllocator, EventVisibility, Exposure, ExposureCell, Ground, Spots, Stats, Table,
+    Transform, Visibility, World,
 };
 
 /// What working out sight reads and writes.

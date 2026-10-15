@@ -1,10 +1,9 @@
 //! Who a unit picks to attack when nobody told it.
 
+use bota_core::{is_lane_creep, is_structure, isqrt64, rules};
 use bota_proto::{Fixed, Team, UnitKind, Vec2};
 
-use crate::game::{
-    CAMPS, Entity, Spots, UnitOrder, World, is_lane_creep, is_structure, isqrt64, rules,
-};
+use crate::game::{CAMPS, Entity, Spots, UnitOrder, World};
 
 /// The class order a unit ranks its targets by.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

@@ -1,9 +1,11 @@
 //! Consumables, active items and trees.
 
+use bota_core::rules;
+
 use crate::game::{
     BLINK_RANGE, Event, HERO, ITEM_BLINK_DAGGER, ITEM_CLARITY, ITEM_HEALING_SALVE,
     ITEM_IRON_BRANCH, ITEM_PHASE_BOOTS, ITEM_POWER_TREADS, ITEM_QUELLING_BLADE, ITEM_TANGO, ITEMS,
-    ItemStack, MELEE_CREEP, Mana, ModifierKind, SALVE_TICKS, SHADOW_FIEND, World, map_of, rules,
+    ItemStack, MELEE_CREEP, Mana, ModifierKind, SALVE_TICKS, SHADOW_FIEND, World, map_of,
     tree_positions, wire_id,
 };
 use bota_proto::{

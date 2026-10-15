@@ -10,13 +10,13 @@
 use std::cmp::Reverse;
 use std::collections::BinaryHeap;
 
+use bota_core::{
+    facing_gap, facing_towards, heading_of, isqrt64, move_towards, point_along, rules, stall_ticks,
+};
 use bota_proto::{Angle, Fixed, Vec2};
 use rustc_hash::FxHashMap;
 
-use crate::game::{
-    Obstacles, facing_gap, facing_towards, heading_of, isqrt64, move_towards, point_along, rules,
-    stall_ticks,
-};
+use crate::game::Obstacles;
 
 /// How many headings a stretch may be walked along.
 const HEADINGS: u32 = 16;

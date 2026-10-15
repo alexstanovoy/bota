@@ -1,0 +1,10 @@
+[package]
+name = "bota_core"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+bota_proto = { workspace = true }
+
+[lints]
+workspace = true

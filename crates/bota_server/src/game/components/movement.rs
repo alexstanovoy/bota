@@ -58,7 +58,7 @@ pub struct Motion {
     /// How many times running it has run into a hero within
     /// [`rules::HEED_HERO_TICKS`] of the time before.
     ///
-    /// [`rules::HEED_HERO_TICKS`]: crate::game::rules::HEED_HERO_TICKS
+    /// [`rules::HEED_HERO_TICKS`]: bota_core::rules::HEED_HERO_TICKS
     pub bumps: u32,
 }
 

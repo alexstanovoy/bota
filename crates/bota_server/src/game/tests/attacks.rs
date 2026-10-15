@@ -1,6 +1,8 @@
 //! The attack cycle and uphill misses.
 
-use crate::game::{ActionState, Command, Ground, Health, MELEE_CREEP, attack_gain, map_of, rules};
+use bota_core::{attack_gain, rules};
+
+use crate::game::{ActionState, Command, Ground, Health, MELEE_CREEP, map_of};
 use bota_proto::{Angle, Fixed, MapId, Order, SlotId, Target, Team, Vec2};
 
 use super::support::*;

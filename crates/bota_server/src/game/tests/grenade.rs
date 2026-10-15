@@ -1,9 +1,11 @@
 //! Wind Lace and the Blood Grenade: how fast a hero walks with boots and a
 //! lace, a grenade from the order to its last beat, and the shop's stock.
 
+use bota_core::rules;
+
 use crate::game::{
     Entity, Event, ITEM_BLOOD_GRENADE, ITEM_BOOTS, ITEM_WIND_LACE, MatchConfig, ModifierKind,
-    World, ability, rules, wire_id,
+    World, ability, wire_id,
 };
 use bota_proto::{
     DamageKind, EffectId, EventKind, Fixed, HeroId, ItemId, ItemSlot, Order, Pick, RejectReason,

@@ -90,6 +90,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "bota_core"
+version = "0.1.0"
+dependencies = [
+ "bota_proto",
+]
+
+[[package]]
 name = "bota_proto"
 version = "0.1.0"
 dependencies = [
@@ -103,6 +110,7 @@ name = "bota_server"
 version = "0.1.0"
 dependencies = [
  "bota_client_core",
+ "bota_core",
  "bota_proto",
  "clap",
  "criterion",

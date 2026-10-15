@@ -1,9 +1,10 @@
 //! Every ability a hero may carry: what it is called, how it is aimed, what
 //! it asks for, and what it does at each moment of its life.
 
+use bota_core::rules;
 use bota_proto::{AbilityId, Aim, Target};
 
-use crate::game::{Entity, World, rules};
+use crate::game::{Entity, World};
 
 /// What an ability does at a moment of its life. `false`: it did not happen.
 pub type CastHook = fn(&mut World, Entity, Target) -> bool;

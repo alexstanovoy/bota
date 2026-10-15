@@ -1,8 +1,10 @@
 //! Walking, routes round what stands, and bodies eased apart.
 
+use bota_core::{CellGrid, isqrt64, point_along, rules};
+
 use crate::game::{
-    CellGrid, Clearance, Entity, Ground, HEROES, ITEM_BOOTS, MELEE_CREEP, March, UnitOrder, World,
-    circle_stops, find_path, isqrt64, map_of, plan_radius, point_along, rules,
+    Clearance, Entity, Ground, HEROES, ITEM_BOOTS, MELEE_CREEP, March, UnitOrder, World,
+    circle_stops, find_path, map_of, plan_radius,
 };
 use bota_proto::{Fixed, HeroId, MapId, SlotId, Team, Vec2};
 

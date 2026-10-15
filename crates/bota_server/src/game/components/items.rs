@@ -1,8 +1,9 @@
 //! What an entity carries.
 
+use bota_core::rules;
 use bota_proto::{Attribute, ItemId, SlotId};
 
-use crate::game::{ITEM_TOWN_PORTAL_SCROLL, item_def, rules};
+use crate::game::{ITEM_TOWN_PORTAL_SCROLL, item_def};
 
 /// One item in a slot.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -234,25 +235,24 @@ impl Inventory {
 }
 
 /// Slots a hero carries on itself: the inventory proper and the backpack.
-pub const BAG_SLOTS: usize =
-    crate::game::rules::INVENTORY_SLOTS + crate::game::rules::BACKPACK_SLOTS;
+pub const BAG_SLOTS: usize = bota_core::rules::INVENTORY_SLOTS + bota_core::rules::BACKPACK_SLOTS;
 
 /// Whether a slot number is one of the inventory proper, where items work.
 pub fn in_inventory(slot: usize) -> bool {
-    slot < crate::game::rules::INVENTORY_SLOTS
+    slot < bota_core::rules::INVENTORY_SLOTS
 }
 
 /// Whether a slot number is one of the backpack, where they are carried inert.
 pub fn in_backpack(slot: usize) -> bool {
-    (crate::game::rules::INVENTORY_SLOTS..BAG_SLOTS).contains(&slot)
+    (bota_core::rules::INVENTORY_SLOTS..BAG_SLOTS).contains(&slot)
 }
 
 /// Whether a slot number is one of the stash at the shop.
 pub fn in_stash(slot: usize) -> bool {
-    (BAG_SLOTS..crate::game::rules::TOWN_PORTAL_SLOT).contains(&slot)
+    (BAG_SLOTS..bota_core::rules::TOWN_PORTAL_SLOT).contains(&slot)
 }
 
 /// Whether a slot number is the town portal slot.
 pub fn in_town_portal(slot: usize) -> bool {
-    slot == crate::game::rules::TOWN_PORTAL_SLOT
+    slot == bota_core::rules::TOWN_PORTAL_SLOT
 }

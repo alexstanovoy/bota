@@ -1,4 +1,6 @@
-use crate::game::{Command, Entity, Event, Ratio, Seat, Stats, UnitOrder, World, rules, wire_id};
+use bota_core::{Ratio, rules};
+
+use crate::game::{Command, Entity, Event, Seat, Stats, UnitOrder, World, wire_id};
 use bota_proto::{
     Angle, Attributes, DamageKind, EffectId, EffectView, EventKind, Fixed, HeroId, Order, SlotId,
     Team, Vec2,

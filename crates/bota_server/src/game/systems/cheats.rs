@@ -1,10 +1,11 @@
 //! Shortcuts round the rules, for trying things out in a match that allows
 //! them.
 
+use bota_core::rules;
 use bota_proto::{Cheat, EventKind, ItemId, SlotId, modifier_ticks_bounded};
 
 use crate::game::{
-    AppliedModifier, AppliedOrigin, Entity, Event, EventVisibility, ItemStack, World, rules,
+    AppliedModifier, AppliedOrigin, Entity, Event, EventVisibility, ItemStack, World,
 };
 
 impl World {

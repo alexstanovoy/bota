@@ -1,8 +1,9 @@
 //! Wards: standing them, and taking them away when their time is up.
 
+use bota_core::rules;
 use bota_proto::Target;
 
-use crate::game::{Entity, UnitDef, World, rules};
+use crate::game::{Entity, UnitDef, World};
 
 impl World {
     /// Runs down what stands for a time, and takes away whatever has run out.

@@ -1,8 +1,10 @@
 //! Observer and sentry wards, invisibility and true sight.
 
+use bota_core::rules;
+
 use crate::game::{
     ITEM_OBSERVER_WARD, ITEM_SENTRY_WARD, OBSERVER_WARD, SENTRY_WARD, UnitOrder, World, map_of,
-    rules, wire_id,
+    wire_id,
 };
 use bota_proto::{Fixed, HeroId, MapId, SlotId, Target, Team, UnitKind, Vec2};
 

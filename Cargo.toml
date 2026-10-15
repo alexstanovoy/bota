@@ -2,6 +2,7 @@
 resolver = "3"
 members = [
     "crates/bota_client_core",
+    "crates/bota_core",
     "crates/bota_proto",
     "crates/bota_server",
 ]
@@ -12,6 +13,7 @@ edition = "2024"
 
 [workspace.dependencies]
 bota_client_core = { path = "crates/bota_client_core" }
+bota_core = { path = "crates/bota_core" }
 bota_proto = { path = "crates/bota_proto" }
 bota_server = { path = "crates/bota_server" }
 criterion = { version = "=0.8.2", default-features = false }

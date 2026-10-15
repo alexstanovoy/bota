@@ -1,5 +1,6 @@
 //! Items carried and abilities held: what they add, and what they cost.
 
+use bota_core::{clamp_to_map, move_towards, rules};
 use bota_proto::{
     AbilityId, Attribute, EventKind, Fixed, HeroId, ItemId, SlotId, Target, Team, Vec2,
 };
@@ -7,8 +8,8 @@ use bota_proto::{
 use crate::game::{
     AbilityBook, AbilityState, BAG_SLOTS, Carried, Entity, Event, EventVisibility, ITEMS,
     Inventory, ItemDef, ItemStack, Modifier, ModifierKind, Pool, Spends, Tree, World, ability_def,
-    clamp_to_map, fountain_pos, hero_def, in_backpack, in_inventory, in_stash, in_town_portal,
-    item_def, learn_group, level_floor, move_towards, rules, wire_id,
+    fountain_pos, hero_def, in_backpack, in_inventory, in_stash, in_town_portal, item_def,
+    learn_group, level_floor, wire_id,
 };
 
 /// Missing purchase parts, their total price, and destination capacity.
@@ -1245,7 +1246,7 @@ impl World {
         }
         let hero_level = self.level.get(entity).map_or(0, |level| level.0);
         self.points_spent(entity) < hero_level
-            && hero_level >= crate::game::talent_floor(slot, book.talents)
+            && hero_level >= bota_core::talent_floor(slot, book.talents)
     }
 
     /// Skill points an entity has spent, talents included.

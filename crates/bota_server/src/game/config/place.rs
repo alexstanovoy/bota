@@ -3,9 +3,10 @@
 //! Everything here follows from the map alone, so it is the same for every
 //! match played on it.
 
+use bota_core::rules;
 use bota_proto::{Team, Vec2};
 
-use crate::game::{Clearance, Obstacles, Planner, rules};
+use crate::game::{Clearance, Obstacles, Planner};
 
 /// The fountain position of a team. The jungle's is the map center.
 pub fn fountain_pos(map: &crate::game::MapDef, team: Team) -> Vec2 {
@@ -48,7 +49,7 @@ pub fn tree_positions(map: &crate::game::MapDef) -> Vec<Vec2> {
             for (_, line) in &lanes {
                 let offset = line
                     .windows(2)
-                    .map(|s| crate::game::segment_distance_squared(pos, s[0], s[1]))
+                    .map(|s| bota_core::segment_distance_squared(pos, s[0], s[1]))
                     .min()
                     .expect("a lane has at least one segment");
                 if offset < lane_clear {
@@ -108,7 +109,7 @@ pub fn lane_route(map: &crate::game::MapDef, team: Team, lane: u8) -> Vec<Vec2> 
     let spawn = creep_spawn_pos(map, team, lane);
     let mut nearest = (0usize, i64::MAX);
     for (at, seg) in line.windows(2).enumerate() {
-        let d = crate::game::segment_distance_squared(spawn, seg[0], seg[1]);
+        let d = bota_core::segment_distance_squared(spawn, seg[0], seg[1]);
         if d < nearest.1 {
             nearest = (at, d);
         }

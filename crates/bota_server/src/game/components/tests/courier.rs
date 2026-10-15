@@ -1,6 +1,7 @@
+use bota_core::rules;
 use bota_proto::{Fixed, ItemSlot, Order, RejectReason, Target};
 
-use crate::game::{BAG_SLOTS, Errand, rules, wire_id};
+use crate::game::{BAG_SLOTS, Errand, wire_id};
 
 use super::fixtures::*;
 

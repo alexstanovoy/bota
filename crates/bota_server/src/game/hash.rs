@@ -448,9 +448,9 @@ fn hash_hit(fnv: &mut Fnv, hit: &Hit) {
 
 /// One outgoing amplification; nothing for [`rules::NOMINAL_BP`].
 ///
-/// [`rules::NOMINAL_BP`]: crate::game::rules::NOMINAL_BP
+/// [`rules::NOMINAL_BP`]: bota_core::rules::NOMINAL_BP
 fn hash_damage_amp(fnv: &mut Fnv, bp: i32) {
-    if bp != crate::game::rules::NOMINAL_BP {
+    if bp != bota_core::rules::NOMINAL_BP {
         fnv.u8(1);
         fnv.i32(bp);
     }

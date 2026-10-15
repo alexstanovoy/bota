@@ -8,6 +8,7 @@ default = []
 phase-profile = []
 
 [dependencies]
+bota_core = { workspace = true }
 bota_proto = { workspace = true }
 rand_chacha = "0.10"
 clap = { version = "4", features = ["derive"] }

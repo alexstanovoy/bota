@@ -1,8 +1,7 @@
 //! Modifiers trusted match setup puts on units as they are stood up.
 
+use bota_core::{is_structure, rules};
 use bota_proto::{ModifierSpec, Team, UnitKind, modifier_ticks_bounded};
-
-use crate::game::{is_structure, rules};
 
 /// The most rules one match setup may carry.
 pub const MAX_SPAWN_MODIFIERS: usize = 64;

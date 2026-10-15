@@ -1,0 +1,6 @@
+# Iteration order of std's hash collections is seeded per process: nothing in
+# the rules may depend on it.
+disallowed-types = [
+    { path = "std::collections::HashMap", reason = "iteration order is not deterministic; use a sorted Vec or an array" },
+    { path = "std::collections::HashSet", reason = "iteration order is not deterministic; use a sorted Vec or a bit set" },
+]

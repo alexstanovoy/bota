@@ -4,9 +4,10 @@
 use std::cmp::Reverse;
 use std::collections::BinaryHeap;
 
+use bota_core::{isqrt64, point_along, rules};
 use bota_proto::{Fixed, Vec2};
 
-use crate::game::{Clearance, Obstacles, isqrt64, point_along, rules};
+use crate::game::{Clearance, Obstacles};
 
 const NODES: usize = rules::WALK_CELLS;
 const STRAIGHT: u32 = 100;

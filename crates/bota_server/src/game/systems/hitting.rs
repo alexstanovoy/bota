@@ -1,10 +1,11 @@
 //! Taking blows off the health they landed on.
 
+use bota_core::{Ratio, is_structure, rules};
 use bota_proto::{DamageKind, Fixed, Team, UnitKind, Vec2};
 
 use crate::game::{
     Chance, Entity, Fear, Health, Hit, HitEffect, MatchRng, Modifier, ModifierKind, Modifiers,
-    Purpose, Ratio, Stats, Table, Transform, is_structure, rules, wire_id,
+    Purpose, Stats, Table, Transform, wire_id,
 };
 
 use super::modifiers::resisted_ticks;

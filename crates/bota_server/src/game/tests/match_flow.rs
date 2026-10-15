@@ -1,8 +1,10 @@
 //! How a match ends, kills, experience, gold and respawns.
 
+use bota_core::rules;
+
 use crate::game::{
     Entity, ITEM_BOOTS, ITEM_QUELLING_BLADE, Level, MAPS, MELEE_CREEP, SHADOW_FIEND, UnitOrder,
-    World, ancient_of, hero_spawn_pos, map_of, rules, wire_id,
+    World, ancient_of, hero_spawn_pos, map_of, wire_id,
 };
 use bota_proto::{EventKind, Fixed, HeroId, ItemId, MapId, SlotId, Team, Vec2};
 

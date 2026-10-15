@@ -1,10 +1,11 @@
 //! Item errands: walking an item out of a bag, into another, or off the
 //! ground.
 
+use bota_core::rules;
 use bota_proto::{Angle, EntityId, Target, Vec2};
 
 use crate::game::{
-    BAG_SLOTS, Entity, Handling, ItemStack, Loot, Transform, UnitOrder, Visibility, World, rules,
+    BAG_SLOTS, Entity, Handling, ItemStack, Loot, Transform, UnitOrder, Visibility, World,
 };
 
 impl World {

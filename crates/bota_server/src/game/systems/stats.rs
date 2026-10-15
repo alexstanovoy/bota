@@ -1,11 +1,12 @@
 //! Working out what each entity fights by, from scratch, every tick.
 
+use bota_core::{Ratio, Talent, rules};
 use bota_proto::{Attributes, Fixed, ModifierSpec};
 
 use crate::game::{
     AbilityBook, AppliedModifiers, Carried, Def, EntityAllocator, Feast, FeastPhase, Growth,
-    Health, Inventory, Level, MAX_COMBINED_MODIFIER_SCALE, Mana, ModifierKind, Modifiers, Ratio,
-    StackKind, Stacks, Stats, Table, Talent, UnitDef, Upgrades, ability, carried_bonus, rules,
+    Health, Inventory, Level, MAX_COMBINED_MODIFIER_SCALE, Mana, ModifierKind, Modifiers,
+    StackKind, Stacks, Stats, Table, UnitDef, Upgrades, ability, carried_bonus,
 };
 
 /// What working out stats reads and writes.

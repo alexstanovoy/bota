@@ -1,8 +1,10 @@
 //! Couriers and their errands.
 
+use bota_core::{isqrt64, rules};
+
 use crate::game::{
     BAG_SLOTS, Command, Entity, Errand, ITEM_BOOTS, ITEM_IRON_BRANCH, ItemStack, MELEE_CREEP,
-    UnitOrder, World, ability, fountain_pos, isqrt64, rules, wire_id,
+    UnitOrder, World, ability, fountain_pos, wire_id,
 };
 use bota_proto::{
     AbilitySlot, DamageKind, EventKind, Fixed, ItemId, Order, RejectReason, SlotId, Target, Team,

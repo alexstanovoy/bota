@@ -3,7 +3,7 @@
 
 use bota_proto::UnitKind;
 
-use crate::game::is_structure;
+use crate::is_structure;
 
 /// How a kind of unit's attacks and body answer the class table.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -21,6 +21,7 @@ pub enum AttackClass {
 }
 
 /// The class a kind of unit belongs to.
+#[inline]
 pub fn attack_class_of(kind: UnitKind) -> AttackClass {
     match kind {
         UnitKind::Hero => AttackClass::Hero,
@@ -34,6 +35,7 @@ pub fn attack_class_of(kind: UnitKind) -> AttackClass {
 
 /// Percent of an attack's damage that reaches a target, by the attacker's
 /// kind and the target's.
+#[inline]
 pub fn attack_class_pct(attacker: UnitKind, target: UnitKind) -> i32 {
     let target = attack_class_of(target);
     match (attack_class_of(attacker), target) {

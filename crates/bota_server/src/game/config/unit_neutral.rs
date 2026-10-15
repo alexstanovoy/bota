@@ -3,10 +3,10 @@
 //! Generated. The camp a kind belongs to and what a camp draws are elsewhere;
 //! this is only what one of them is worth.
 
+use bota_core::{GoldRange, rules};
 use bota_proto::{Attributes, Fixed, UnitKind};
 
-use crate::game::rules;
-use crate::game::{GoldRange, Growth, UnitDef};
+use crate::game::{Growth, UnitDef};
 
 /// One kind of neutral creep.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]

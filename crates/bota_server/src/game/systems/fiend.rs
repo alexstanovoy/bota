@@ -1,12 +1,15 @@
 //! The razes, the souls gathered from what falls, the presence worn by the
 //! enemies near him, and the requiem the souls feed.
 
+use bota_core::{
+    Talent, attack_class_pct, heading_of, is_structure, leaves_a_death, move_towards, per_tick,
+    point_along, rules,
+};
 use bota_proto::{AbilityId, Angle, DamageKind, Fixed, Team};
 
 use crate::game::{
-    Fear, Hit, HitEffect, Modifier, ModifierKind, RequiemLine, StackKind, Talent, Transform, World,
-    ability, attack_class_pct, heading_of, hero_def, is_structure, leaves_a_death, move_towards,
-    per_tick, point_along, rules,
+    Fear, Hit, HitEffect, Modifier, ModifierKind, RequiemLine, StackKind, Transform, World,
+    ability, hero_def,
 };
 
 use crate::engine::Entity;

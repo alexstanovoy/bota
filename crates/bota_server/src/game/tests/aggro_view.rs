@@ -1,10 +1,11 @@
 //! What a side is told of whom units fight, read back off the wire.
 
+use bota_core::rules;
 use bota_proto::{
     AggroView, EventKind, FrameReader, ServerMsg, Team, Vec2, WorldView, encode_frame_to_vec,
 };
 
-use crate::game::{Entity, MELEE_CREEP, World, rules, wire_id};
+use crate::game::{Entity, MELEE_CREEP, World, wire_id};
 
 use super::support::*;
 

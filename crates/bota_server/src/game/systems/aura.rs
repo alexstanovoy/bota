@@ -1,10 +1,11 @@
 //! Effects handed out for standing near something.
 
+use bota_core::{is_structure, rules};
 use bota_proto::{Team, UnitKind};
 
 use crate::game::{
     Auras, Entity, EntityAllocator, Modifier, Modifiers, Reach, Spots, Stats, Table, Transform,
-    Upgrades, is_structure, rules,
+    Upgrades,
 };
 
 use super::modifiers::resisted_ticks;

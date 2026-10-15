@@ -6,7 +6,7 @@
 
 use bota_proto::{Attributes, Fixed, Vec2};
 
-use crate::game::{GoldRange, Ratio};
+use crate::{GoldRange, Ratio};
 
 /// Simulation ticks per second of game time.
 pub const TICKS_PER_SECOND: u32 = 30;
@@ -1239,6 +1239,7 @@ pub const DENY_BUILDING_HP_PCT: i32 = 10;
 pub const DENIED_XP_PCT: i32 = 50;
 
 /// A whole number of world units as a [`Fixed`] distance.
+#[inline]
 pub const fn units(n: i32) -> Fixed {
     Fixed::from_int(n)
 }

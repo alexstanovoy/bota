@@ -1,10 +1,10 @@
 //! What a kill pays, what the clock pays, and getting a hero back on its feet.
 
+use bota_core::{GoldRange, is_lane_creep, is_structure, rules};
 use bota_proto::{EventKind, Team, UnitKind, Vec2};
 
 use crate::game::{
-    Bounty, Entity, Event, EventVisibility, GoldRange, Landed, Level, Purpose, World,
-    hero_spawn_pos, is_lane_creep, is_structure, rules, wire_id,
+    Bounty, Entity, Event, EventVisibility, Landed, Level, Purpose, World, hero_spawn_pos, wire_id,
 };
 
 use super::fight::other_side;

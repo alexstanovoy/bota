@@ -6,9 +6,8 @@
 //!
 //! [`tree_positions`]: crate::game::tree_positions
 
+use bota_core::rules;
 use bota_proto::Vec2;
-
-use crate::game::rules;
 
 /// One tree, whichever kind it is.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

@@ -1,8 +1,7 @@
 //! The numbers an entity fights by, worked out afresh every tick.
 
+use bota_core::Ratio;
 use bota_proto::{Attribute, Attributes, DamageKind, Fixed};
-
-use crate::game::Ratio;
 
 /// Everything the type an entity is, its level, its items and what is on it
 /// add up to.
@@ -42,7 +41,7 @@ pub struct Stats {
     /// and twice that is twice the pace. Clamped to
     /// `MIN_ATTACK_SPEED..=MAX_ATTACK_SPEED` where read.
     ///
-    /// [`rules::BASE_ATTACK_SPEED`]: crate::game::rules::BASE_ATTACK_SPEED
+    /// [`rules::BASE_ATTACK_SPEED`]: bota_core::rules::BASE_ATTACK_SPEED
     pub attack_speed: i32,
     /// Milliseconds from the start of an attack to the hit at the base
     /// attack speed.

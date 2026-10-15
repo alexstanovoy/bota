@@ -1,10 +1,10 @@
 //! What has been put on an entity: what it does, who put it, how long it
 //! holds.
 
+use bota_core::rules;
 use bota_proto::{DamageKind, Fixed};
 
 use crate::engine::Entity;
-use crate::game::rules;
 
 /// One kind of modifier, with what there is of it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -83,7 +83,7 @@ pub enum ModifierKind {
     Burning {
         /// Damage each beat of [`rules::BURN_PERIOD_TICKS`].
         ///
-        /// [`rules::BURN_PERIOD_TICKS`]: crate::game::rules::BURN_PERIOD_TICKS
+        /// [`rules::BURN_PERIOD_TICKS`]: bota_core::rules::BURN_PERIOD_TICKS
         amount: i32,
         /// Which reduction the damage answers to.
         kind: DamageKind,

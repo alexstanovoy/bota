@@ -1,9 +1,11 @@
 //! Evasion: the share of attacks at a carrier that miss, held exactly and
 //! told of; what is not an attack never misses.
 
+use bota_core::{Ratio, rules};
+
 use crate::game::{
-    Entity, Event, ITEM_BUTTERFLY, ITEM_TALISMAN_OF_EVASION, MELEE_CREEP, RANGED_CREEP, Ratio,
-    UnitDef, World, rules, wire_id,
+    Entity, Event, ITEM_BUTTERFLY, ITEM_TALISMAN_OF_EVASION, MELEE_CREEP, RANGED_CREEP, UnitDef,
+    World, wire_id,
 };
 use bota_proto::{DamageKind, EventKind, Fixed, HeroId, SlotId, Team, Vec2};
 

@@ -1,8 +1,9 @@
 //! Where every body stands, by bucket, for asking who is near a spot.
 
+use bota_core::rules;
 use bota_proto::{Fixed, Vec2};
 
-use crate::game::{Entity, rules};
+use crate::game::Entity;
 
 const BUCKETS: usize = rules::BUCKETS;
 

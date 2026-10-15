@@ -1,8 +1,10 @@
 //! Who sees what, and what each side is told.
 
+use bota_core::{CellGrid, rules};
+
 use crate::game::{
-    CAMPS, CellGrid, EventVisibility, Health, ITEM_QUELLING_BLADE, MAPS, MELEE_CREEP, MapDef,
-    RANGED_CREEP, World, map_of, rules, wire_id,
+    CAMPS, EventVisibility, Health, ITEM_QUELLING_BLADE, MAPS, MELEE_CREEP, MapDef, RANGED_CREEP,
+    World, map_of, wire_id,
 };
 use bota_proto::{Fixed, HeroId, MapId, Target, Team, UnitKind, Vec2};
 

@@ -2,9 +2,10 @@
 //!
 //! Every entry answers to an [`ItemId`], which is its place in [`ITEMS`].
 
+use bota_core::{Ratio, rules};
 use bota_proto::{Aim, Attribute, Attributes, Fixed, ItemId, ItemView, Target};
 
-use crate::game::{Entity, Inventory, ItemStack, Ratio, World, rules};
+use crate::game::{Entity, Inventory, ItemStack, World};
 
 /// Which pool an item mends.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

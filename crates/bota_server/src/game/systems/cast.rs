@@ -1,8 +1,9 @@
 //! Casting abilities: what starts one, what it costs, and what each one does.
 
+use bota_core::rules;
 use bota_proto::{AbilityId, AbilitySlot, EventKind, Fixed, Target, Team, UnitKind, Vec2};
 
-use crate::game::{Entity, Event, World, ability_def, fountain_pos, item_def, rules, wire_id};
+use crate::game::{Entity, Event, World, ability_def, fountain_pos, item_def, wire_id};
 
 impl World {
     /// Whether an entity stands in its own shop.

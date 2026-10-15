@@ -1,6 +1,8 @@
 //! Shadow Fiend's feast of souls.
 
-use crate::game::{Entity, ModifierKind, World, rules, wire_id};
+use bota_core::rules;
+
+use crate::game::{Entity, ModifierKind, World, wire_id};
 use bota_proto::{EffectId, EffectView, HeroId, SlotId, Team, Vec2};
 
 use super::fiend::{burns_on, cast_through, souls};

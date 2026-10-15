@@ -31,7 +31,7 @@ pub struct Teleport {
     /// left is the sight at `landing` until `sight_until`.
     pub live: bool,
     /// The last tick its side sees around `landing`: while it is live,
-    /// [`crate::game::rules::SCROLL_SIGHT_LINGER_TICKS`] past `lands`; once
+    /// [`bota_core::rules::SCROLL_SIGHT_LINGER_TICKS`] past `lands`; once
     /// it ended, that long past the end.
     pub sight_until: u32,
 }

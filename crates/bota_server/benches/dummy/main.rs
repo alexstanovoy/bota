@@ -7,10 +7,10 @@
 
 use std::hint::black_box;
 
+use bota_core::{isqrt64, per_tick, rules};
 use bota_proto::{Fixed, SlotId, Vec2};
 use bota_server::game::{
-    self, Entity, Fnv, Foreseen, LocalAsk, LocalScratch, Obstacles, World, isqrt64, per_tick,
-    plan_local, rules,
+    self, Entity, Fnv, Foreseen, LocalAsk, LocalScratch, Obstacles, World, plan_local,
 };
 use criterion::measurement::WallTime;
 use criterion::{

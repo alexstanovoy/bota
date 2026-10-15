@@ -1,6 +1,7 @@
+use bota_core::rules;
 use bota_proto::{Aim, Fixed, Target};
 
-use crate::game::{BAG_SLOTS, carried_bonus, item_def, item_views, regenerate, rules};
+use crate::game::{BAG_SLOTS, carried_bonus, item_def, item_views, regenerate};
 
 use super::fixtures::*;
 

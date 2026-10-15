@@ -1,9 +1,11 @@
 //! The Town Portal Scroll at Dota 7.41f: its slot, its numbers, where it
 //! carries, what breaks it, and what both sides are shown.
 
+use bota_core::rules;
+
 use crate::game::{
     Command, Entity, ITEM_BOOTS, ITEM_PHASE_BOOTS, ITEM_TOWN_PORTAL_SCROLL, ModifierKind,
-    UnitOrder, World, fountain_pos, hero_spawn_pos, rules, wire_id,
+    UnitOrder, World, fountain_pos, hero_spawn_pos, wire_id,
 };
 use bota_proto::{
     AbilitySlot, Fixed, ItemId, ItemSlot, Order, RejectReason, SlotId, StatusFlags, Target, Team,

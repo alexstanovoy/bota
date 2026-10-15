@@ -1,8 +1,9 @@
 //! Keeping guarded structures untouchable until what shields them falls.
 
+use bota_core::is_structure;
 use bota_proto::{Team, UnitKind};
 
-use crate::game::{StructureId, Until, World, is_structure};
+use crate::game::{StructureId, Until, World};
 
 use crate::engine::Entity;
 

@@ -1,6 +1,7 @@
+use bota_core::rules;
 use bota_proto::{ItemId, SlotId, Target};
 
-use crate::game::{BAG_SLOTS, rules};
+use crate::game::BAG_SLOTS;
 
 use super::fixtures::*;
 

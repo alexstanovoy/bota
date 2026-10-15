@@ -1,8 +1,9 @@
 //! Every hero that may be picked, and what each one carries.
 
+use bota_core::{SHADOW_FIEND_TALENTS, TalentTree};
 use bota_proto::{AbilityId, HeroId};
 
-use crate::game::{PUDGE, SHADOW_FIEND, SHADOW_FIEND_TALENTS, TalentTree, UnitDef, ability};
+use crate::game::{PUDGE, SHADOW_FIEND, UnitDef, ability};
 
 /// One hero: what it is made of and what it can do.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

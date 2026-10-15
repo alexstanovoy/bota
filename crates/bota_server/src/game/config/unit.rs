@@ -6,10 +6,10 @@
 //!
 //! [`Stats`]: crate::game::Stats
 
+use bota_core::{GoldRange, rules};
 use bota_proto::{Attribute, Attributes, Fixed, Team, UnitKind};
 
-use crate::game::rules;
-use crate::game::{Aura, GoldRange, ModifierKind, Reach};
+use crate::game::{Aura, ModifierKind, Reach};
 
 /// What an entity gains for each step of whatever raises it: a level past the
 /// first, or an upgrade interval.
@@ -607,40 +607,4 @@ pub const TOWERS: [UnitDef; 4] = [tower_of(0), tower_of(1), tower_of(2), tower_o
 /// The plain form of a tower of this tier, counted from one.
 pub fn tower_def(tier: u8) -> &'static UnitDef {
     &TOWERS[usize::from(tier.clamp(1, 4)) - 1]
-}
-
-/// Whether a kind of unit is a building: it stands still, blocks the ground,
-/// and both sides always know where it is.
-pub fn is_structure(kind: UnitKind) -> bool {
-    matches!(
-        kind,
-        UnitKind::Tower
-            | UnitKind::Ancient
-            | UnitKind::Barracks
-            | UnitKind::Fountain
-            | UnitKind::Filler
-    )
-}
-
-/// Whether a kind of unit leaves anything to what is gathered from deaths:
-/// the flesh heap and the souls. A structure or a ward leaves nothing.
-pub fn leaves_a_death(kind: UnitKind) -> bool {
-    !is_structure(kind) && kind != UnitKind::Ward
-}
-
-/// Whether a kind of unit is a lane creep: one of what a wave is made of.
-pub fn is_lane_creep(kind: UnitKind) -> bool {
-    matches!(
-        kind,
-        UnitKind::CreepMelee
-            | UnitKind::CreepFlagbearer
-            | UnitKind::CreepRanged
-            | UnitKind::CreepSiege
-    )
-}
-
-/// Whether a kind of unit is a creep: what a wave is made of, and what the
-/// jungle grows.
-pub fn is_creep(kind: UnitKind) -> bool {
-    is_lane_creep(kind) || kind == UnitKind::CreepNeutral
 }

@@ -1,4 +1,6 @@
-use crate::game::{Action, ActionState, Entity, Event, World, fountain_pos, rules, wire_id};
+use bota_core::rules;
+
+use crate::game::{Action, ActionState, Entity, Event, World, fountain_pos, wire_id};
 use bota_proto::{AbilitySlot, EventKind, Fixed, ItemId, ItemSlot, Order, SlotId, Target, Team};
 
 use super::fixtures::*;

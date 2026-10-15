@@ -2,12 +2,12 @@
 
 use std::collections::VecDeque;
 
+use bota_core::{facing_towards, is_structure, move_towards, per_tick};
 use bota_proto::{DamageKind, Fixed, Team, UnitKind, Vec2};
 
 use crate::game::{
     Entity, EntityAllocator, Ground, Health, Hit, HitEffect, MatchRng, Missed, Projectile,
-    PseudoRandom25, Purpose, Table, Transform, Visibility, facing_towards, is_structure,
-    move_towards, per_tick, wire_id,
+    PseudoRandom25, Purpose, Table, Transform, Visibility, wire_id,
 };
 
 use super::hitting::entity_slot;

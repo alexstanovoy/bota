@@ -1,6 +1,7 @@
+use bota_core::rules;
 use bota_proto::{Fixed, SlotId, Target};
 
-use crate::game::{BAG_SLOTS, carried_bonus, rules};
+use crate::game::{BAG_SLOTS, carried_bonus};
 
 use super::fixtures::*;
 

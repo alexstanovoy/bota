@@ -58,7 +58,7 @@ pub struct World {
     pub ground: crate::game::Ground,
     /// Which cells stop a sight line: high ground, trees and the map's own
     /// walls.
-    pub sight_block: crate::game::SightBlock,
+    pub sight_block: bota_core::SightBlock,
     /// The forest as it stands: what is down, and what has been put up.
     pub trees: Forest,
     /// Blows dealt and not yet felt. Filled and emptied inside one tick.
@@ -204,7 +204,7 @@ impl World {
     /// A world at tick zero with nothing in it, on the Dota map.
     pub fn new() -> World {
         let ground = crate::game::Ground::of(crate::game::map_of(bota_proto::MapId(0)));
-        let sight_block = crate::game::SightBlock::of_ground(&ground);
+        let sight_block = bota_core::SightBlock::of_ground(&|at| ground.tier(at));
         World {
             tick: 0,
             seats: Vec::new(),
@@ -464,7 +464,7 @@ impl World {
             let Some(kind) = self.kind.get(entity).copied() else {
                 continue;
             };
-            if !crate::game::is_structure(kind) || !self.alive(entity) {
+            if !bota_core::is_structure(kind) || !self.alive(entity) {
                 continue;
             }
             let (Some(at), Some(hull)) = (self.transform.get(entity), self.hull.get(entity)) else {
@@ -472,7 +472,7 @@ impl World {
             };
             circles.push((at.pos, hull.collision));
         }
-        let tree_radius = crate::game::rules::units(crate::game::rules::TREE_RADIUS);
+        let tree_radius = bota_core::rules::units(bota_core::rules::TREE_RADIUS);
         circles.extend(self.standing_trees().map(|at| (at, tree_radius)));
         self.clearance.set_circles(circles);
         self.lane_routes = None;
@@ -522,8 +522,8 @@ impl World {
     /// Lays out afresh which cells stop a sight line, from the forest as it
     /// now stands.
     pub fn lay_sight_block(&mut self) {
-        self.sight_block = crate::game::SightBlock::lay(
-            &self.ground,
+        self.sight_block = bota_core::SightBlock::lay(
+            &|at| self.ground.tier(at),
             &crate::game::build_fow_walls(self.map),
             self.rooted_trees(),
             self.trees.planted().iter().map(|tree| tree.at),
@@ -728,7 +728,7 @@ impl World {
         let amplified = self
             .hits
             .iter()
-            .any(|hit| hit.damage_amp_bp != crate::game::rules::NOMINAL_BP);
+            .any(|hit| hit.damage_amp_bp != bota_core::rules::NOMINAL_BP);
         let cx = HitCx {
             hits: &mut self.hits,
             landed: &mut self.landed,

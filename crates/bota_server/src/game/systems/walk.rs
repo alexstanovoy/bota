@@ -1,12 +1,15 @@
 //! Walking: where an entity is going, the route and the plan that take it
 //! there, and the step it takes this tick.
 
+use bota_core::{
+    clamp_to_map, facing_gap, facing_towards, isqrt64, move_towards, per_tick, point_along, rules,
+    turn_towards,
+};
 use bota_proto::{Angle, Fixed, Target, Vec2};
 
 use crate::game::{
     ActionPhase, ActionState, Entity, Foreseen, LocalAsk, LocalScratch, Motion, Obstacles, Plan,
-    Planner, Route, UnitOrder, World, clamp_to_map, facing_gap, facing_towards, isqrt64,
-    move_towards, per_tick, plan_local, plan_radius, point_along, rules, turn_towards,
+    Planner, Route, UnitOrder, World, plan_local, plan_radius,
 };
 
 use crate::profile::Phase;

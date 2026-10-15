@@ -1,8 +1,9 @@
+use bota_core::rules;
 use bota_proto::{
     EntityId, Fixed, HeroId, ItemId, ItemSlot, Order, RejectReason, SlotId, Target, Team,
 };
 
-use crate::game::{BAG_SLOTS, Entity, Modifier, ModifierKind, Modifiers, World, rules, wire_id};
+use crate::game::{BAG_SLOTS, Entity, Modifier, ModifierKind, Modifiers, World, wire_id};
 
 use super::fixtures::*;
 

@@ -39,7 +39,7 @@ pub enum HitEffect {
     /// [`rules::RAZE_STACK_DAMAGE`] and the caster's talent, as the raze went
     /// off.
     ///
-    /// [`rules::RAZE_STACK_DAMAGE`]: crate::game::rules::RAZE_STACK_DAMAGE
+    /// [`rules::RAZE_STACK_DAMAGE`]: bota_core::rules::RAZE_STACK_DAMAGE
     Shadowraze { stack_damage: i32 },
     /// Frightens, slows and tears the magic resistance of a target that
     /// takes damage and survives, for `fear.line` ticks more, up to

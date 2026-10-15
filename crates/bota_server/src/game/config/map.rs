@@ -4,9 +4,10 @@
 //! stand, where the lanes run, which camps the jungle holds, the forest and
 //! the ground.
 
+use bota_core::rules;
 use bota_proto::{MapId, Vec2};
 
-use crate::game::{CampDef, CampKind, Protection, camp, rules};
+use crate::game::{CampDef, CampKind, Protection, camp};
 
 /// Full Dota geometry with mid-only waves and bounded hero/tower play.
 pub const MAP2_ID: MapId = MapId(2);

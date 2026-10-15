@@ -1,9 +1,10 @@
 //! Shadow Fiend's feast of souls: the haste it puts on him, the souls it
 //! takes from the enemies near him, and what is left of them once it ends.
 
+use bota_core::{Talent, is_creep, rules};
 use bota_proto::UnitKind;
 
-use crate::game::{Feast, FeastPhase, Fed, StackKind, Talent, World, is_creep, rules};
+use crate::game::{Feast, FeastPhase, Fed, StackKind, World};
 
 use crate::engine::Entity;
 

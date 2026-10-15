@@ -1,5 +1,6 @@
 //! Putting an entity into the world with everything its kind needs.
 
+use bota_core::rules;
 use bota_proto::{AbilityId, Angle, Fixed, HeroId, SlotId, Team, Vec2};
 
 use crate::game::{
@@ -7,7 +8,7 @@ use crate::game::{
     COURIER, CampHome, Def, Entity, Errand, Expiry, HERO, Health, Hull, Inventory, Lane, LaneAi,
     Level, MAX_SPAWN_MODIFIERS, Mana, March, Mark, Modifiers, Motion, NeutralAi, Orders, Plan, Rax,
     Route, Tier, Transform, UnitDef, UnitOrder, Upgrades, World, ability, check_spawn_modifier,
-    hero_def, hero_kit, rules,
+    hero_def, hero_kit,
 };
 
 /// Which building of a side one is.

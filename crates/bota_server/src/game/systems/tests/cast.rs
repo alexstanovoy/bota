@@ -1,9 +1,11 @@
 //! Casting through the body: what goes off at once, what holds the body,
 //! and how what holds it ends.
 
+use bota_core::rules;
+
 use crate::game::{
     ActionPhase, ActionState, Command, Entity, Level, MELEE_CREEP, Modifier, ModifierKind,
-    PendingCast, Seat, World, rules, wire_id,
+    PendingCast, Seat, World, wire_id,
 };
 use bota_proto::{AbilitySlot, DamageKind, HeroId, Order, SlotId, Target, Team, Vec2};
 

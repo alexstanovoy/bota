@@ -1,10 +1,11 @@
 //! Map2 geometry, waves, and end-of-tick match completion.
 
+use bota_core::{CellGrid, rules, wave_plan};
+
 use crate::game::{
-    CellGrid, Clearance, Command, Entity, Event, EventVisibility, ITEM_BOOTS, MAP2_DEATH_LIMIT,
+    Clearance, Command, Entity, Event, EventVisibility, ITEM_BOOTS, MAP2_DEATH_LIMIT,
     MAP2_GAME_TICKS, MAP2_ID, MAP2_TICK_CAP, MAPS, MatchConfig, Seat, World, hero_spawn_pos,
-    item_def, lane_polyline, lane_route, lane_routes, map_of, rules, tree_positions, wave_plan,
-    wire_id,
+    item_def, lane_polyline, lane_route, lane_routes, map_of, tree_positions, wire_id,
 };
 use bota_proto::{
     DamageKind, EventKind, Fixed, HeroId, ItemId, MapId, Order, Pick, ReplayRecord, ServerMsg,

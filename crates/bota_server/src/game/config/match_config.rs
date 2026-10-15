@@ -100,7 +100,7 @@ impl MatchConfig {
             match_id: self.match_id,
             map: self.map,
             tick_rate: self.tick_rate,
-            pregame_ticks: crate::game::rules::PREGAME_TICKS,
+            pregame_ticks: bota_core::rules::PREGAME_TICKS,
             trees: crate::game::tree_positions(crate::game::map_of(self.map)),
             terrain_cells: crate::game::TERRAIN_CELLS as u32,
             terrain_rle: crate::game::Ground::wire_rle(crate::game::map_of(self.map)),
@@ -109,7 +109,7 @@ impl MatchConfig {
             picks: self.picks.clone(),
             shop: crate::game::shop_entries(),
             fountains: crate::game::map_of(self.map).fountains,
-            shop_range: crate::game::rules::SHOP_RANGE,
+            shop_range: bota_core::rules::SHOP_RANGE,
         }
     }
 }

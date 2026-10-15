@@ -1,5 +1,6 @@
 //! Hidden randomness. Nothing here ever reaches a participant.
 
+use bota_core::Ratio;
 use bota_proto::{EntityId, SlotId};
 use rand_chacha::ChaCha8Rng;
 use rand_chacha::rand_core::{Rng as _, SeedableRng};
@@ -159,53 +160,6 @@ impl PseudoRandom25 {
     /// Draw count and failure streak determining the next outcome.
     pub fn state(&self) -> (u64, u8) {
         (self.stream.draws, self.failures)
-    }
-}
-
-/// An exact rate: `Ratio::new(3, 10)` hits three times in every ten
-/// attempts, not three times on average.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct Ratio {
-    num: u8,
-    den: u8,
-}
-
-impl Ratio {
-    /// Largest denominator a [`Chance`] can carry, set by the width of its mask.
-    pub const MAX_DEN: u8 = 64;
-
-    /// Never hits.
-    pub const NEVER: Ratio = Ratio { num: 0, den: 1 };
-
-    /// `num` hits out of every `den` attempts.
-    ///
-    /// Panics unless `0 < den <= MAX_DEN` and `num <= den`.
-    pub const fn new(num: u8, den: u8) -> Ratio {
-        assert!(den > 0, "a ratio needs a denominator");
-        assert!(den <= Ratio::MAX_DEN, "denominator above MAX_DEN");
-        assert!(num <= den, "more hits than attempts");
-        Ratio { num, den }
-    }
-
-    /// Hits per block.
-    pub const fn num(self) -> u8 {
-        self.num
-    }
-
-    /// Attempts per block.
-    pub const fn den(self) -> u8 {
-        self.den
-    }
-
-    /// Whether it hits more often than another.
-    pub const fn beats(self, other: Ratio) -> bool {
-        (self.num as u16) * (other.den as u16) > (other.num as u16) * (self.den as u16)
-    }
-}
-
-impl Default for Ratio {
-    fn default() -> Ratio {
-        Ratio::NEVER
     }
 }
 

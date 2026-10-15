@@ -7,9 +7,10 @@
 //! nobody's business but its own. Every swing a hero begins at a hero calls
 //! the lane creeps that see it on as well, more weakly: it holds nobody.
 
+use bota_core::{is_lane_creep, rules};
 use bota_proto::{Team, UnitKind, Vec2};
 
-use crate::game::{Entity, World, is_lane_creep, rules};
+use crate::game::{Entity, World};
 
 /// Which way an order moves the bystanders, if it moves them at all.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

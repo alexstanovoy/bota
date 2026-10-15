@@ -7,15 +7,17 @@
 //! and the attacker is looking near enough at it; a cast begins once what it
 //! is aimed at is in reach.
 
+use bota_core::{
+    BEATS_PER_TICK, Ratio, Talent, attack_class_pct, attack_gain, beats, cross, facing_gap,
+    facing_towards, is_creep, is_structure, rules,
+};
 use bota_proto::{Aim, DamageKind, Fixed, ItemSlot, Team, Vec2};
 
 use super::hitting::entity_slot;
 
 use crate::game::{
-    Action, ActionPhase, ActionState, BEATS_PER_TICK, Chance, Entity, Event, FeastPhase, Hit,
-    HitEffect, PendingCast, Projectile, Purpose, Ratio, Stats, Talent, Target, Visibility, World,
-    ability_def, attack_class_pct, attack_gain, beats, cross, facing_gap, facing_towards, is_creep,
-    is_structure, rules, wire_id,
+    Action, ActionPhase, ActionState, Chance, Entity, Event, FeastPhase, Hit, HitEffect,
+    PendingCast, Projectile, Purpose, Stats, Target, Visibility, World, ability_def, wire_id,
 };
 
 /// What one swing deals, rolled when it lands.
