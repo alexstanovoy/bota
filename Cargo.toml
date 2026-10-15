@@ -1,7 +1,6 @@
 [workspace]
 resolver = "3"
 members = [
-    "crates/bota-bot",
     "crates/bota-client-core",
     "crates/bota-proto",
     "crates/bota-server",

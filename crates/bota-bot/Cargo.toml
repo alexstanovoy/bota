@@ -1,8 +1,0 @@
-[package]
-name = "bota-bot"
-version.workspace = true
-edition.workspace = true
-
-[dependencies]
-bota-proto = { workspace = true }
-clap = { version = "4.6.6", features = ["derive"] }

@@ -7,7 +7,7 @@ server authority, minimal dependencies.
 
 | Decision | Choice | Rationale |
 |---|---|---|
-| Client | `bota-client-core` here, drawn by dbota outside the repository | the logic every front end shares stays with the wire it reads; the drawing (Bevy, Dota's assets) is no business of the simulator |
+| Client | `bota-client-core` here, drawn by a front end outside the repository | the logic every front end shares stays with the wire it reads; the drawing (Bevy, Dota's assets) is no business of the simulator |
 | Tick mode | Realtime **and** Lockstep | humans play in realtime, bots are debugged/trained in reproducible lockstep |
 | v0.1 scope | 1v1, three lanes, a handful of heroes | a vertical slice of the whole stack on minimal content |
 | Transport | TCP + length-prefixed frames | no tokio: a thread per client + a simulation thread + mpsc |
@@ -25,17 +25,16 @@ bota/
 ├── crates/
 │   ├── bota-proto/          # shared vocabulary + codec. deps: serde, postcard
 │   ├── bota-server/         # simulation + networking + lobby. deps: proto, rand_chacha, rustc-hash, clap
-│   ├── bota-client-core/    # every front end's logic, no drawing: connection, replay, world picture, orders. deps: proto
-│   └── bota-bot/            # the rule bot and the seam a bot plays through. deps: proto, clap
+│   └── bota-client-core/    # every front end's logic, no drawing: connection, replay, world picture, orders. deps: proto
 ```
 
 ```
         bota-proto
-        ↑    ↑    ↑
-   server  client  bot
+        ↑       ↑
+   server    client
 ```
 
-The bot and the client are symmetric consumers of `proto`: a human and a bot see
+A bot is a client like the human's front end: a human and a bot see
 literally the same `WorldView` type. No asymmetry that could be exploited.
 
 ### Membership criterion for bota-proto
@@ -1433,254 +1432,6 @@ damage:      hits, break on blows, rouse camps, credit damage, events and misses
 then:        applied modifiers count down
 ```
 
-## The tick's hot path
-
-The tick is what a trainer pays for, so it is kept free of passes that walk everything
-for every asker. Each shortcut below gives exactly the answer the full scan gave.
-
-- Targeting (`Candidates` in `systems/target.rs`), the sight pass
-  (`systems/visibility.rs`) and auras (`systems/aura.rs`) sort what stands by x once
-  per pass into a `Spots<T>` (`game/spots.rs`), and each query walks only the square
-  its reach spans, then runs the unchanged exact checks. This is exact because the
-  target answer is the unique minimum of a key that ends in the entity, who sees a row
-  does not depend on the order viewers reach it, and each aura gives each entity its
-  effect once, in source order. Nothing moves between laying the spots and asking
-  them inside one pass.
-- `World::of_wire` resolves a wire handle through `EntityAllocator::resolve` in
-  constant time instead of scanning the live entities.
-- The forest keeps its felled trees in a sorted list of their own, so views and ticks
-  do not walk every tree of the map to find the few that are down.
-- A view is projected in one pass over the entities, deciding once per entity whether
-  the side is told of it.
-- `trainer/map2_skirmish` in `benches/dummy` measures what a trainer pays per tick:
-  `advance` and both sides' views.
-
-## bota-bot
-
-A bot that plays by rules rather than by weights, and the seam anything else would hold
-a seat through. `Bot` is that seam — seated, match started, one tick in and at most one
-`Ask` out, events, refusals, the end — and `play` is the loop that carries it over a
-socket, written once so a second bot does not write it again. `Playbook` is the bot that
-ships: `Field` reads a snapshot into a settled shape, `decide` walks a fixed list of
-wants top to bottom and takes the first that answers. The whole crate is `bota-proto`
-and `clap`. Float is allowed here, as it is in the client: what is recorded of a bot is
-the orders it gave, not the arithmetic behind them.
-
-**The order of the list is the whole of the judgement.** There is one order a tick, so
-which want is asked first is the only priority there is: standing still while stunned,
-feared, channelling or in a cast point, a talent, a skill point, a courier errand, the shop, tidying the bag, a
-drink or a wand, the scroll, leaving while hurt, a spell, turning to aim one, a last hit
-or a deny, waiting out a swing already under way, shaking the creeps off, pulling the
-wave back, striking their hero or pushing a building behind the wave, and holding the
-lane. Nothing is drawn at random, and what is remembered between ticks is only what the
-wire does not carry — the attack cycle, recent health, who struck the hero, how long the
-stash has been waiting — so the same match played twice goes the same way.
-
-**What an ability is comes off the wire; what it does does not.** `AbilityView` carries
-the level, the wait, the cost, the reach and how a cast is aimed, so nothing mirrors the
-ability table by hand. What an ability *means* does not cross the wire, so there is a
-file per hero: `fiend.rs` decides when a raze is worth its mana. `MatchInfo` carries the shop, so `Stall` reads costs and components off it and
-only the item and ability **numbers** the bot uses are written out in `numbers.rs`,
-because a salve and a ward are one shape on the wire.
-Which talents a hero takes is in `study.rs` beside its points: Shadow Fiend takes
-the raze stack damage, the presence's armor, the souls held and the razes' attack
-damage, the first the view says a point could go into, ahead of an ability.
-
-**A raze is aimed by looking, not by pointing.** It lands at its own reach along the line
-the caster already faces, so casting one is two decisions. `fiend_spell` works out where
-each raze would land from the facing in the snapshot — the server's own octant geometry,
-integer for integer, in `aim.rs` — and casts only if something worth burning is standing
-there, counting the souls held and forecasting creep health over the 17-tick cast point.
-`fiend_aim` is the other half: a mark inside the union of the three burns but off
-the line gets a walk towards it, which is how a hero turns. The burns (reaches 200, 450
-and 700, radius 250) overlap, so anything within 950 units can be razed by facing it.
-The feast goes off ahead of a raze whenever an enemy hero stands within its 600, or a
-wave of four creeps does and mana is to spare.
-
-**Buying is sequential, and the list is parts.** The server charges a built item the
-price of the parts the seat does not already hold, and assembles a build the moment its
-parts are in the bag — so the lists name parts, and gold is spent as it arrives rather
-than saved up for the whole. `next_buy` stops at the first thing not owned rather than
-skipping to whatever is affordable: skipping spends on the tail of a list the gold its
-head was saving for. What is already inside a build counts as owned, worked out by
-walking the components the wire gave. Nothing goes on a list that no want reaches for:
-an item no rung ever names is gold and a working slot spent for nothing.
-
-**The consumables sit at the head of every list, and that is the restocking.** A stack
-that is drunk stops being held, so the next walk of the list finds it wanting again and
-buys another. The one exception to stopping at the first thing not owned is a
-consumable with no working slot to go in — what holds that up is room and not gold, so
-it is stepped over. `SPARE_SLOTS` is the working slots kept clear of drink beyond the one
-it takes; at nought a consumable is bought whenever a working slot is free (at one the
-bot stopped restocking once five items were held, and the one scroll spent was never
-replaced). `tidy` moves anything stranded in the backpack forward, since a build lands
-in the lowest slot any of its parts came out of and a part bought with the bag full
-comes out of the backpack.
-
-What follows was found by playing rather than by reading, and each is now a test or a
-named constant.
-
-**An order is an animation cancel.** The holding spot drifts a little every tick, and a
-fresh `Move` every tick threw away the swing already winding up — fifteen ticks of
-wind-up against a want resent every eight. So a walk is ordered only when the spot is
-more than `HOLD_SLACK` off, and a swing already ordered holds the seat silent until it
-lands or `SWING_PATIENCE` runs out. Before these rules the bot took two creeps in nine
-thousand ticks; after them, fifteen.
-
-**Stand at the edge of your own reach.** Reckoned off its own creeps, which walk into the
-enemy wave, the holding spot walked the hero in with them to take blows for nothing. It
-is reckoned off the *nearest of theirs*, at the hero's own reach less `SWING_EDGE`.
-
-**Swing at the worn one, not the near one.** The nearest creep in reach changes whenever
-the wave shuffles, and a swing that keeps changing its mind never lands. A body only ever
-loses health, so the lowest is the same one next tick.
-
-**A wave in another lane is not this hero's business.** Every wave on the map is visible,
-so creeps are filtered to `NEARBY` of the hero — otherwise the bot walks off to stand
-behind another lane's creeps, and "the lane is clear" means nothing.
-
-**A tango is paid for by a tree, and a lane has none.** The forest is cleared for
-`TREE_LANE_CLEAR` (450) either side of a lane's centre, so a hero where it farms never
-has a tree within the 165 a tango reaches; the bot carried its tangoes up the lane and
-walked to the fountain instead. Walking to the tree is now part of eating the tango, and
-only to trees no further up the lane than the hero already stands.
-
-**A mend spent on a walk to the fountain is a mend the fountain was about to make
-free.** A tango gives 115 health over sixteen seconds; the fountain gives 25 a tick for
-nothing. While the hero is pulling out, a mend is spent only if it would carry it back
-over `MENDED_RETURN`, which a salve's 400 does and a tango's 115 usually does not; and a
-hero a mend is already carrying turns round at `MENDED_RETURN` rather than
-`RETURN_HEALTH`. `mind_health` settles the pulling-out flag before the drink is weighed
-so the two agree.
-
-**The lane is held by talking to the creeps, not by standing somewhere.** An attack order
-does something to everybody who is not the one giving it, whether the attack ever
-happens or not: aimed at an enemy hero it calls every enemy creep within
-`HERO_AGGRO_RANGE` (500) of the orderer onto him for `ORDER_AGGRO_HOLD_TICKS`, and aimed at one of
-your own it makes them pick again with him put last. `pull` uses the first when the wave
-has been pushed more than `PULL_DRIFT` past where it should meet: standing behind its
-own line, the hero is a spot their creeps must walk past that line to reach, and the
-fight comes back down the lane with them. Given to one side only, it is worth four and a
-half last hits to that side, at the cost of denies for both. `shake` uses the second
-when `SHAKE_CREEPS` creeps are chewing on the hero, aimed at the nearest unit of its own.
-
-Aimed at the hero itself, the shake was a free aggro drop Dota does not have — a hero is
-on its own side, so `call_of` read a self-click as letting go — and `rouse_bystanders`
-now turns away an order whose mark is the one who gave it. Pointing at a creep costs the
-follow that pointing at a unit always costs, so the tick after a shake the hero is told
-to stand, and that tick must not itself count as a shake, or the hero stands still for
-good. Standing at the edge of its own reach, the bot is rarely under a wave, so `shake`
-seldom fires; it is kept for what it costs, which is a tick.
-
-**A held body is not the seat's to spend a tick on.** `StatusFlags` carries the stun, the
-fear and the channel, so the ladder stops at the top for any of them: an order given
-during a channel is how the channel is thrown away, which the bot was doing to its own
-scroll.
-
-**What limits the last hitting is not the swing.** Shadow Fiend lands about seven swings
-in ten; what it does not do is attempt. Two ways of buying damage into that measured
-worse over five seeds, read on the pair's last hits and denies:
-
-| | pair, last hits and denies |
-|---|---|
-| as it stands | 76.4 |
-| a Quelling Blade for both | 70.8 |
-| a Quelling Blade for one side only | Shadow Fiend 41.8, from 48.0 |
-| standing a hundred and sixty inside reach rather than forty | 67.0 |
-
-Eighteen more damage against creeps widens the window a swing is worth taking in, so the
-bot commits earlier and holds its target through `SWING_PATIENCE` while the creep is
-taken from under it; standing closer buys blows for the reach. Neither is a knob to turn
-until the ticks spent standing where the wave is dying are fewer.
-
-**A scroll is constrained by where it is aimed, not where it is cast from.** The want
-once required standing in the shop, where the bot no longer went once it had drink and a
-courier. It now carries both ways, home while pulling out and back to just behind the
-frontmost tower its lane holds once mended, and it sits above the walk home, since what
-that walk is for is the thing a scroll does in three seconds. The bot reads the scroll
-in the town portal slot, its shared wait shown on it, and keeps one on its list.
-
-**Mana was short because nothing was ever bought for it.** A raze costs 75
-against a pool that mends about two a second. Every list carries a clarity, and a
-wand — twenty charges worth fifteen of each pool — is pressed whenever the pool it fills
-is missing what its charges are worth. Shadow Fiend buys a Sage's Mask rather than a
-Wraith Band: over five seeds the two were a wash on the scoreboard, and the mask costs
-175 to the band's 505 and leaves a working slot for the drink.
-
-A one-in-ten trace misses whether an item is used at all: a cast is one tick and the
-replacement is bought on the next. `Playbook` keeps the name of the rung that answered
-and the trace (`--trace`) prints it; count those over every tick instead.
-
-What it does not do: it will not dive a tower, leave its lane to gank, stack or pull a
-camp, place a ward, or fight for a rune. It takes buildings only by walking up with its
-own wave. Two bots of it play a full match to an Ancient, and the same seed run twice
-gives the same numbers down to the order count.
-
-The two heroes trade places on the scoreboard with almost every change to the ladder,
-and the pair's total farm barely moves: they are the same policy on both sides of one
-lane, so whichever gets a little ahead denies the other and the lead compounds. Read the
-two seats added together, over several seeds; a swing in one of them alone is the lane
-tipping, not the change working.
-
-### The seam
-
-```rust
-pub trait Bot {
-    fn seated(&mut self, slot: Option<SlotId>);
-    fn match_started(&mut self, info: &MatchInfo);
-    fn on_tick(&mut self, view: &WorldView) -> Option<Ask>;
-    fn on_events(&mut self, _tick: u32, _events: &[EventKind]) {}
-    fn on_reject(&mut self, _seq: u32, _reason: RejectReason) {}
-    fn finished(&mut self, _winner: Team, _stats: &MatchStats) {}
-}
-
-pub fn play(bot: &mut dyn Bot, chair: &Chair) -> io::Result<Outcome>;
-pub fn play_on(bot: &mut dyn Bot, link: Link, seated: Seated, chair: &Chair)
-    -> io::Result<Outcome>;
-```
-
-The hero is picked when the connection is made (`Link::join`) rather than returned from
-a callback: picking happens in the lobby, before there is a `MatchInfo` to decide from.
-
-`on_events` earns its place. The attack cycle is not on the wire — a `UnitView` carries
-`attack_time` but not where in the interval a unit stands — so a bot cannot tell
-whether it may swing now or in forty ticks. What is on the wire is every blow that
-lands: one of the bot's own says the cycle began a wind-up ago and comes round again an
-interval after that. Without this the bot orders last hits it cannot take for another
-second and loses them all.
-
-### One order a tick, and saying nothing
-
-The server keeps one order per seat per tick and the last one wins, so a want is a
-single `Ask` and the policy ranks its wants rather than queueing them. Re-sending the
-want already standing is not free: an order cancels the recovery after a swing and calls
-the creeps onto whoever gave it. So `Steady` holds a want equal to the one in hand back
-for `RESEND_TICKS`, and two walks or attack-moves to spots less than `RESEND_DRIFT` apart
-count as one want — otherwise following a moving wave throws away the route the server
-laid every tick.
-
-### The courier
-
-A courier is what makes the shopping list past the first trip worth having: anything
-bought away from the shop falls into a stash the hero cannot reach from the lane. With
-one, the bot buys wherever it stands — and away from the shop only while a courier of its
-own is standing, because gold in hand is worth more than an item in a stash nothing is
-coming for.
-
-The errands are abilities the courier carries, so an order for one names the courier in
-`ClientMsg::Order`'s `unit` and casts the slot the errand sits in, read off the courier
-rather than assumed. That is why the bot answers each tick with an `Ask` — an order and a
-unit — rather than an order alone.
-
-An errand outlives the tick it was given in. Saying it again changes nothing and costs
-the one order the seat has that tick: sent every tick, errands took enough of the hero's
-ticks that it took a quarter more damage. So an errand already under way is not repeated
-for `ERRAND_TICKS`, a safety net for an order that never arrived rather than a schedule.
-A trip waits until `COURIER_BATCH` items have piled up or the first has waited
-`COURIER_PATIENCE` ticks, and is held back entirely while an enemy hero is within
-`FIGHT_RANGE` — a courier walks to where its owner stands, and that is what is being
-shot at.
-
 ### Server-side walking and courier behaviour
 
 An errand answers to what the courier is carrying, not only to what waits in the
@@ -1717,6 +1468,28 @@ loses the message saying who won. The server also waits for its writer threads r
 than exiting from under them, since the last message of a match is queued at the moment
 the server has nothing left to do.
 
+## The tick's hot path
+
+The tick is what a trainer pays for, so it is kept free of passes that walk everything
+for every asker. Each shortcut below gives exactly the answer the full scan gave.
+
+- Targeting (`Candidates` in `systems/target.rs`), the sight pass
+  (`systems/visibility.rs`) and auras (`systems/aura.rs`) sort what stands by x once
+  per pass into a `Spots<T>` (`game/spots.rs`), and each query walks only the square
+  its reach spans, then runs the unchanged exact checks. This is exact because the
+  target answer is the unique minimum of a key that ends in the entity, who sees a row
+  does not depend on the order viewers reach it, and each aura gives each entity its
+  effect once, in source order. Nothing moves between laying the spots and asking
+  them inside one pass.
+- `World::of_wire` resolves a wire handle through `EntityAllocator::resolve` in
+  constant time instead of scanning the live entities.
+- The forest keeps its felled trees in a sorted list of their own, so views and ticks
+  do not walk every tree of the map to find the few that are down.
+- A view is projected in one pass over the entities, deciding once per entity whether
+  the side is told of it.
+- `trainer/map2_skirmish` in `benches/dummy` measures what a trainer pays per tick:
+  `advance` and both sides' views.
+
 ## Stages
 
 | # | Deliverable | Contents |
@@ -1729,7 +1502,7 @@ the server has nothing left to do.
 | 5 | ✅ `World` ticks | entities and component tables, units, movement, orders, creeps, towers, Ancient; `rng.rs` with streams and Ratio/Chance |
 | 6 | ✅ combat | attacks, projectiles, damage, deaths, gold/xp, victory |
 | 7 | ✅ server networking | lobby, both tick modes, snapshot broadcast, replay recording |
-| 8 | ✅ `bota-bot` and `bota-client` | SDK + bot, bot-vs-bot match: the client — macroquad: map, units, HP bars, orders, lobby, spectating, replay playback (since split into `bota-client-core` and drawn by dbota outside the repository); the bot — the `Bot` seam and `play`, a deterministic playbook for Shadow Fiend, lockstep acks, two of it playing a match through to an Ancient |
+| 8 | ✅ `bota-bot` and `bota-client` | SDK + bot, bot-vs-bot match: the client — macroquad: map, units, HP bars, orders, lobby, spectating, replay playback (since split into `bota-client-core` and drawn by a front end outside the repository); the bot — the `Bot` seam and `play`, a deterministic playbook for Shadow Fiend, lockstep acks, two of it playing a match through to an Ancient (`bota-bot` since deleted: a bot is a client of its own) |
 | 9 | 🔄 heroes and determinism test | Done: abilities, levels, items, shop; Pudge and Shadow Fiend; whole-match fingerprints pinned on every map. Not yet: runs on musl/wasm32; a mirror test that a diagonally mirrored match ends in the mirrored outcome |
 
 ## Map2: mid-only play on the full Dota map
