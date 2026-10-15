@@ -11,6 +11,7 @@ pub mod engine;
 pub mod game;
 pub mod game_loop;
 pub mod lobby;
+pub mod local;
 pub mod net;
 pub mod profile;
 pub mod replay;

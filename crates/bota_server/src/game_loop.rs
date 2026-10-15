@@ -339,13 +339,8 @@ impl Server {
         let mut full = world.view_full();
         full.order_delays = line.views(None);
         let full_frame = snapshot_frame(full.clone());
-        let side_frame = |team| {
-            let mut view = world.view(team);
-            view.order_delays = line.views(Some(team));
-            snapshot_frame(view)
-        };
-        let radiant_frame = side_frame(Team::Radiant);
-        let dire_frame = side_frame(Team::Dire);
+        let radiant_frame = snapshot_frame(side_view(world, line, Team::Radiant));
+        let dire_frame = snapshot_frame(side_view(world, line, Team::Dire));
         replay.record(&ReplayRecord::Msg(ServerMsg::Snapshot { view: full }));
         for conn in &self.conns {
             let (eyes, viewing) = self.sight_of(conn.id);
@@ -512,6 +507,13 @@ impl Server {
             .filter(|s| s.player.is_some())
             .all(|s| acked[usize::from(s.slot.0)] >= tick)
     }
+}
+
+/// What one side sees of the world, with the order delays it is told.
+pub(crate) fn side_view(world: &World, line: &DelayLine, team: Team) -> WorldView {
+    let mut view = world.view(team);
+    view.order_delays = line.views(Some(team));
+    view
 }
 
 /// A snapshot as a frame ready to queue.

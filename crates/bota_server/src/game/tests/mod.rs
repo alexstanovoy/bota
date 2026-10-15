@@ -16,6 +16,7 @@ mod hash;
 mod ids;
 mod items;
 mod jungle;
+mod local;
 mod map2;
 mod match_flow;
 mod movement;
