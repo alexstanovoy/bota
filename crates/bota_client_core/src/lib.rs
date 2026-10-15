@@ -16,6 +16,7 @@ mod observer;
 mod orders;
 mod readiness;
 mod session;
+mod sight;
 mod transport;
 #[cfg(feature = "ui")]
 mod ui;
@@ -29,6 +30,7 @@ pub use observer::*;
 pub use orders::*;
 pub use readiness::*;
 pub use session::*;
+pub use sight::*;
 pub use transport::*;
 #[cfg(feature = "ui")]
 pub use ui::*;

@@ -359,8 +359,9 @@ fn a_felled_tree_opens_a_gap_in_the_row_and_its_regrowth_shuts_it() {
 
 #[test]
 fn the_client_pictures_the_servers_sight_cell_for_cell() {
-    use bota_client_core::{App, ReplayPlayer, Source};
-    use bota_proto::ServerMsg;
+    use bota_client_core::{
+        AckPolicy, ClientSession, MatchStatic, Perspective, SessionOptions, SightGround,
+    };
     let map = map_of(MapId(0));
     let mut world = World::on_map(map);
     // The forest changed: the trees round the camp beside the Dire mid
@@ -386,18 +387,25 @@ fn the_client_pictures_the_servers_sight_cell_for_cell() {
     world.settle();
     let mut config = config();
     config.map = MapId(0);
-    let player = ReplayPlayer::from_reader(std::io::Cursor::new(Vec::new()));
-    let mut app = App::new(Source::Replay(Box::new(player)));
-    app.handle(ServerMsg::MatchStart {
-        info: config.info(),
-    });
-    app.handle(ServerMsg::Snapshot {
-        view: world.view(Team::Dire),
-    });
-    let n = app.terrain_cells();
+    let mut session = ClientSession::new(
+        MatchStatic::new(&config.info()).expect("a match"),
+        SessionOptions {
+            perspective: Perspective::Spectator,
+            hero: None,
+            ack: AckPolicy::Never,
+            forget_after_ticks: 480,
+        },
+    )
+    .expect("a session");
+    session
+        .ingest_snapshot(world.view(Team::Dire), &mut ())
+        .expect("a snapshot");
+    let view = session.current().expect("a snapshot came");
+    let ground = SightGround::lay(session.statics(), Some(view)).expect("the sight grid");
+    assert!(ground.fits(view));
+    let n = rules::GRID_CELLS;
     let mut lit = vec![false; n * n];
-    let view = app.view().cloned().expect("a snapshot came");
-    bota_client_core::light(&app, &view, Team::Dire, &mut lit);
+    ground.lit(view, Team::Dire, &mut lit);
     let reach = rules::TOWER_VISION / rules::GRID_CELL_SIZE + 1;
     let (tx, ty) = CellGrid::cell_of(tower).expect("on the map");
     let mut differ = Vec::new();
