@@ -2,7 +2,7 @@
 //! under them, measured with criterion.
 //!
 //! ```text
-//! cargo bench -p bota-server --bench dummy
+//! cargo bench -p bota_server --bench dummy
 //! ```
 
 use std::hint::black_box;

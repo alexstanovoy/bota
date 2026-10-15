@@ -70,7 +70,7 @@ pub struct FogGround {
     pub terrain: Vec<u8>,
     /// One byte a cell: the lowest tier a viewer must stand on for a sight
     /// line to cross it. The server's own rule, `SightBlock` in
-    /// `bota-server`'s `game/vision.rs`, pictured here.
+    /// `bota_server`'s `game/vision.rs`, pictured here.
     pub floor: Vec<u8>,
 }
 

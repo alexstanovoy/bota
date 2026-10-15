@@ -1,5 +1,5 @@
 [package]
-name = "bota-proto"
+name = "bota_proto"
 version.workspace = true
 edition.workspace = true
 

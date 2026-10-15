@@ -72,7 +72,7 @@ fn main() -> std::io::Result<()> {
     let args = Args::parse();
     let order_delays = order_delays(&args).map_err(std::io::Error::other)?;
     let listener = TcpListener::bind(("0.0.0.0", args.port))?;
-    println!("bota-server listening on {}", listener.local_addr()?);
+    println!("bota_server listening on {}", listener.local_addr()?);
     let seed = args.seed.unwrap_or_else(|| {
         SystemTime::now()
             .duration_since(UNIX_EPOCH)

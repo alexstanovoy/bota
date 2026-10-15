@@ -1,6 +1,6 @@
 //! Shared vocabulary and wire format for the bota game protocol.
 //!
-//! Everything `bota-server` and `bota-client-core` exchange is defined
+//! Everything `bota_server` and `bota_client_core` exchange is defined
 //! here. A type belongs in this crate when it crosses the wire, or when it is
 //! needed to read what crosses the wire.
 //!

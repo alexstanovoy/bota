@@ -72,7 +72,7 @@ fn the_wire_layout_only_grows() {
         .collect();
     assert!(
         unregistered.is_empty(),
-        "append these to crates/bota-proto/registry/wire.txt:\n{}",
+        "append these to crates/bota_proto/registry/wire.txt:\n{}",
         unregistered
             .iter()
             .map(|line| line.as_str())

@@ -40,7 +40,7 @@ fn lines_of(pipe: impl Read + Send + 'static) -> mpsc::Receiver<String> {
 }
 
 fn start() -> Server {
-    let mut child = Command::new(env!("CARGO_BIN_EXE_bota-server"))
+    let mut child = Command::new(env!("CARGO_BIN_EXE_bota_server"))
         .args(["--port", "0"])
         .stdin(Stdio::null())
         .stdout(Stdio::piped())

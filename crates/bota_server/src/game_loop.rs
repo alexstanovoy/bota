@@ -136,7 +136,7 @@ impl Server {
             |seat| format!("seat {}", seat.slot.0),
         );
         eprintln!(
-            "bota-server: player {} ({seat}) sent an undecodable message ({error}); closing its connection",
+            "bota_server: player {} ({seat}) sent an undecodable message ({error}); closing its connection",
             id.0
         );
     }

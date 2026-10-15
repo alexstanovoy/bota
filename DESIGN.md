@@ -7,15 +7,15 @@ server authority, minimal dependencies.
 
 | Decision | Choice | Rationale |
 |---|---|---|
-| Client | `bota-client-core` here, drawn by a front end outside the repository | the logic every front end shares stays with the wire it reads; the drawing (Bevy, Dota's assets) is no business of the simulator |
+| Client | `bota_client_core` here, drawn by a front end outside the repository | the logic every front end shares stays with the wire it reads; the drawing (Bevy, Dota's assets) is no business of the simulator |
 | Tick mode | Realtime **and** Lockstep | humans play in realtime, bots are debugged/trained in reproducible lockstep |
 | v0.1 scope | 1v1, three lanes, a handful of heroes | a vertical slice of the whole stack on minimal content |
 | Transport | TCP + length-prefixed frames | no tokio: a thread per client + a simulation thread + mpsc |
 | Serialization | `serde` + `postcard` | derive instead of hand-written put/get; the format is compact (varint) and stable within 1.x |
-| Player networking | full snapshots with fog | a 1v1 snapshot is budgeted at 4 KiB by a `bota-proto` size test, 120 KB/s at 30 Hz at most. Deltas will be needed by 5v5, not earlier |
+| Player networking | full snapshots with fog | a 1v1 snapshot is budgeted at 4 KiB by a `bota_proto` size test, 120 KB/s at 30 Hz at most. Deltas will be needed by 5v5, not earlier |
 | Live spectating | the same snapshots, without fog | client-side simulation is impossible, and that is intentional |
 | Replay | fogless `ServerMsg` stream + all orders | plays back without a server: the client reads frames from a file instead of a socket; coupled to the wire format only, so it survives balance changes; the client still cannot simulate |
-| PRNG | `rand_chacha::ChaCha8Rng` in `bota-server` | value-stable by the crate's contract; `rand::StdRng` is **forbidden** — it is allowed to change its algorithm in a minor release |
+| PRNG | `rand_chacha::ChaCha8Rng` in `bota_server` | value-stable by the crate's contract; `rand::StdRng` is **forbidden** — it is allowed to change its algorithm in a minor release |
 
 ## Structure
 
@@ -23,13 +23,13 @@ server authority, minimal dependencies.
 bota/
 ├── Cargo.toml               # workspace, resolver = "3"
 ├── crates/
-│   ├── bota-proto/          # shared vocabulary + codec. deps: serde, postcard
-│   ├── bota-server/         # simulation + networking + lobby. deps: proto, rand_chacha, rustc-hash, clap
-│   └── bota-client-core/    # every front end's logic, no drawing: connection, replay, world picture, orders. deps: proto
+│   ├── bota_proto/          # shared vocabulary + codec. deps: serde, postcard
+│   ├── bota_server/         # simulation + networking + lobby. deps: proto, rand_chacha, rustc-hash, clap
+│   └── bota_client_core/    # every front end's logic, no drawing: connection, replay, world picture, orders. deps: proto
 ```
 
 ```
-        bota-proto
+        bota_proto
         ↑       ↑
    server    client
 ```
@@ -37,13 +37,13 @@ bota/
 A bot is a client like the human's front end: a human and a bot see
 literally the same `WorldView` type. No asymmetry that could be exploited.
 
-### Membership criterion for bota-proto
+### Membership criterion for bota_proto
 
 The single rule deciding where code lives:
 
 > If it does not cross the wire and is not needed to read the wire — it is not in `proto`.
 
-| In `bota-proto` | In `bota-server` |
+| In `bota_proto` | In `bota_server` |
 |---|---|
 | `Fixed`, `Angle`, `Vec2`, `EntityId`, `SlotId`, `PlayerId`, `Team`, `HeroId`, `AbilityId`, `ItemId`, `AbilitySlot`, `ItemSlot`, `MapId`, `UnitKind` | `World`, `step`, units, combat, movement, vision, economy |
 | `Order`, `EventKind`, `WorldView`, codec and framing | `Command`, `Event.visible_to`, `MatchRng`, `Stream`, `Chance`, `Ratio` |
@@ -209,7 +209,7 @@ determinism demands exactly one implementation.
 
 ## Determinism rules
 
-1. No `f32/f64` in `bota-proto` and `bota-server`: `clippy::float_arithmetic` is denied
+1. No `f32/f64` in `bota_proto` and `bota_server`: `clippy::float_arithmetic` is denied
    in the workspace lints.
    Float operations themselves are deterministic per IEEE-754, but `sin/cos/sqrt` from
    libm are not — they differ across glibc / musl / macOS / wasm. The client renders in
@@ -306,7 +306,7 @@ Players send intents, the server alone computes, and every tick it broadcasts th
 outcome.
 
 Secrecy is a property of the channel, not of the data, so the simulation does not think
-about it. The protection is structural: the types of `bota-proto` are incapable of
+about it. The protection is structural: the types of `bota_proto` are incapable of
 expressing hidden state. `MatchInfo` versus `MatchConfig`, `WorldView` versus `World`.
 A leak becomes a compile error, not a review oversight.
 
@@ -850,7 +850,7 @@ nothing here checks that, and no hero in the game can hide.
 out in `project.rs`, the client reads them in `catalog.rs` and the bot names the few it
 weighs in `numbers.rs`, and nothing holds the lists together: a new effect leaves the
 client drawing `?` chips while every test passes. By the membership rule the ids cross
-the wire and are needed to read it, so they belong in `bota-proto` — which is where the
+the wire and are needed to read it, so they belong in `bota_proto` — which is where the
 next one added should put them.
 
 A soul is taken only from what he brings down himself, which is the killer `bury`
@@ -937,14 +937,14 @@ each wire struct and struct variant.
   as retired: a variant is never produced (a decoder may refuse it), a
   field is always written as its default.
 
-Two committed registries in `crates/bota-proto/registry/` hold what has been
+Two committed registries in `crates/bota_proto/registry/` hold what has been
 assigned: `ids.txt` every id with its name and state, `wire.txt` every
 variant index and field position of the wire types. Both only grow: an
 existing line is never edited or removed, except an id turning `retired`.
-Tests hold the code to them: `bota-proto` traces the wire types and fails
+Tests hold the code to them: `bota_proto` traces the wire types and fails
 on any position that changed or disappeared, and on one not yet registered;
-`bota-server` checks its hero, ability, item and effect tables, and
-`bota-client-core` its catalog, against `ids.txt`.
+`bota_server` checks its hero, ability, item and effect tables, and
+`bota_client_core` its catalog, against `ids.txt`.
 
 ### Client → server
 
@@ -1000,7 +1000,7 @@ enum ServerMsg {
 A Player/Bot receives a whole `WorldView` on every tick, filtered through its team's
 fog. A live Spectator receives the same stream unfiltered. There are no deltas: a
 client can start rendering from any snapshot, so joining mid-match requires nothing
-special. A `bota-proto` size test budgets a 1v1 snapshot of 25 units at 4 KiB;
+special. A `bota_proto` size test budgets a 1v1 snapshot of 25 units at 4 KiB;
 `diff`/`apply` will arrive together with 5v5.
 
 Within a tick the order on the wire is fixed: `Snapshot(t)`, then `Events(t)`. An
@@ -1028,7 +1028,7 @@ client's a picture of it. Each side keeps its own mask type and grid constants �
 do not cross the wire and are not needed to read it. The picture copies the rule
 exactly — tree footprints, the near cells and the integer line walk over the wire's
 fixed-point positions — and `the_client_pictures_the_servers_sight_cell_for_cell` in
-`game/tests/vision.rs` (`bota-client-core` is a dev-dependency of the server for it)
+`game/tests/vision.rs` (`bota_client_core` is a dev-dependency of the server for it)
 fails the moment the two drift apart.
 
 The client's picture needs every source of vision to be an entity in the view. Wards
@@ -1051,7 +1051,7 @@ enum ReplayRecord {
 ```
 
 The server records `MatchStart`, then per tick the fogless `Snapshot`, the `Events`
-and the orders it accepted. `ReplayRecord` lives in `bota-proto`: a replay file is a
+and the orders it accepted. `ReplayRecord` lives in `bota_proto`: a replay file is a
 wire, and the client must read it. Replay mode in the client is reading frames from
 the file instead of the socket; the order records can be skipped, or rendered — which
 is what makes a replay more useful than a live spectator seat when debugging a bot.
@@ -1310,7 +1310,7 @@ The list is the last field of `WorldView`, and `Snapshot { view }` is the last
 thing in its frame, so the list is the tail of the payload. A bot outside this
 repository reads this wire; a decoder that predates the list stops before it,
 and postcard's `from_bytes` leaves trailing bytes unread, so it keeps working
-unchanged. `bota-proto`'s `compat` test decodes a fresh snapshot through the
+unchanged. `bota_proto`'s `compat` test decodes a fresh snapshot through the
 old shape. A decoder that insists on consuming every byte of a frame does
 not tolerate it.
 
@@ -1494,15 +1494,15 @@ for every asker. Each shortcut below gives exactly the answer the full scan gave
 
 | # | Deliverable | Contents |
 |---|---|---|
-| 0 | ✅ workspace builds | Cargo.toml, `bota-proto`, workspace lint policy |
-| 1 | ✅ `bota-proto` types | `Fixed`, `Angle`, `Vec2`, identifiers, `Order`, `EventKind`, `WorldView`, messages |
+| 0 | ✅ workspace builds | Cargo.toml, `bota_proto`, workspace lint policy |
+| 1 | ✅ `bota_proto` types | `Fixed`, `Angle`, `Vec2`, identifiers, `Order`, `EventKind`, `WorldView`, messages |
 | 2 | ✅ codec | serde derive, postcard, framing, `FrameReader` |
-| 3 | ✅ `bota-proto` tests | round-trip of every message, torn stream into `FrameReader`, snapshot size budget, enum tag order |
+| 3 | ✅ `bota_proto` tests | round-trip of every message, torn stream into `FrameReader`, snapshot size budget, enum tag order |
 | 4 | ✅ `Fixed` arithmetic | Q16.16 ops through an intermediate `i64`, `Vec2`, `distance_squared` in raw Q32.32, tests in debug and release |
 | 5 | ✅ `World` ticks | entities and component tables, units, movement, orders, creeps, towers, Ancient; `rng.rs` with streams and Ratio/Chance |
 | 6 | ✅ combat | attacks, projectiles, damage, deaths, gold/xp, victory |
 | 7 | ✅ server networking | lobby, both tick modes, snapshot broadcast, replay recording |
-| 8 | ✅ `bota-bot` and `bota-client` | SDK + bot, bot-vs-bot match: the client — macroquad: map, units, HP bars, orders, lobby, spectating, replay playback (since split into `bota-client-core` and drawn by a front end outside the repository); the bot — the `Bot` seam and `play`, a deterministic playbook for Shadow Fiend, lockstep acks, two of it playing a match through to an Ancient (`bota-bot` since deleted: a bot is a client of its own) |
+| 8 | ✅ `bota-bot` and `bota-client` | SDK + bot, bot-vs-bot match: the client — macroquad: map, units, HP bars, orders, lobby, spectating, replay playback (since split into `bota_client_core` and drawn by a front end outside the repository); the bot — the `Bot` seam and `play`, a deterministic playbook for Shadow Fiend, lockstep acks, two of it playing a match through to an Ancient (`bota-bot` since deleted: a bot is a client of its own) |
 | 9 | 🔄 heroes and determinism test | Done: abilities, levels, items, shop; Pudge and Shadow Fiend; whole-match fingerprints pinned on every map. Not yet: runs on musl/wasm32; a mirror test that a diagonally mirrored match ends in the mirrored outcome |
 
 ## Map2: mid-only play on the full Dota map
@@ -1797,7 +1797,7 @@ burn.
 - `EffectId::MAGIC_BROKEN` (18, `ticks_left`) is a requiem's torn resistance;
   `EffectId::FEASTING` (19, `ticks_left` and `stacks`: souls taken so far) and
   `EffectId::FEAST_LINGER` (20, `ticks_left` until what is past the cap is lost and
-  `stacks`: souls taken from enemies that have died since) are the feast. They are the first effect ids `bota-proto` names.
+  `stacks`: souls taken from enemies that have died since) are the feast. They are the first effect ids `bota_proto` names.
 - `UnitView.magic_resist` may be negative, down to -1, under a requiem.
 - The souls effect (11) may count up to fifty while a feast runs or lingers.
 - Raze stacks (effect 15) last at most 180 ticks.
@@ -1922,7 +1922,7 @@ hundredths of a percentage point for resistances) and a tick count bounded by
 out-of-bounds spec or tick count with `RejectReason::BadCheat`, and `World::cheat`
 refuses anything unbounded that arrived another way. The order size budget is 80 bytes
 for a cheat order and 32 for any other; the widest cheat order measures 70 bytes, and
-the canonical bytes of one spec order are pinned in `bota-proto`.
+the canonical bytes of one spec order are pinned in `bota_proto`.
 
 **Modifiers are folded first and additively.** `derive_stats` folds a unit's specs
 right after the raised base block and before items, attributes, auras, slows and every
