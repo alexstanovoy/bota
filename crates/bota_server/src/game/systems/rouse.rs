@@ -7,7 +7,7 @@
 //! nobody's business but its own. Every swing a hero begins at a hero calls
 //! the lane creeps that see it on as well, more weakly: it holds nobody.
 
-use bota_core::{kind_def, rules};
+use bota_core::{Neighbour, rules};
 use bota_proto::{Team, UnitKind, Vec2};
 
 use crate::game::{Entity, World};
@@ -215,35 +215,13 @@ impl World {
         ) else {
             return false;
         };
-        let busy = self.entities.iter().any(|other| {
-            let Some(their_side) = self.team.get(other).copied() else {
-                return false;
-            };
-            let creepish = self
-                .kind
-                .get(other)
-                .copied()
-                .is_some_and(|kind| kind_def(kind).lane_creep)
-                && their_side != side;
-            (creepish || their_side == Team::Neutral)
-                && self.alive(other)
-                && self
-                    .transform
-                    .get(other)
-                    .is_some_and(|t| at.within(t.pos, reach))
+        let neighbours = self.entities.iter().map(|other| Neighbour {
+            team: self.team.get(other).copied(),
+            kind: self.kind.get(other).copied(),
+            tier: self.tier.get(other).map(|tier| tier.0),
+            pos: self.transform.get(other).map(|t| t.pos),
+            alive: self.alive(other),
         });
-        if busy {
-            return true;
-        }
-        let near_home = rules::units(rules::EARLY_AGGRO_TOWER_RANGE);
-        self.entities.iter().any(|other| {
-            self.kind.get(other) == Some(&UnitKind::Tower)
-                && self.team.get(other).copied() == Some(side)
-                && self.tier.get(other).is_some_and(|tier| tier.0 == 1)
-                && self
-                    .transform
-                    .get(other)
-                    .is_some_and(|t| at.within(t.pos, near_home))
-        })
+        bota_core::aggroable_yet(self.tick, side, at, reach, neighbours)
     }
 }

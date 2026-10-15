@@ -4,6 +4,7 @@
 //! in a fogless replay watched as one seat, hides what that seat would not
 //! see.
 
+use bota_core::cell_tier;
 use bota_proto::{Team, WorldView};
 
 use crate::state::App;
@@ -28,7 +29,7 @@ fn tier_in(n: usize, terrain: &[u8], x: f32, y: f32) -> u8 {
     if cx >= n || cy >= n {
         return 0;
     }
-    terrain[cy * n + cx] & 0x1f
+    cell_tier(terrain[cy * n + cx])
 }
 
 /// One viewer lighting the fog: position, vision radius, ground tier. The
@@ -93,7 +94,7 @@ impl FogGround {
         let mut ground = FogGround {
             cells: n,
             terrain: app.terrain.clone(),
-            floor: app.terrain.iter().map(|cell| cell & 0x1f).collect(),
+            floor: app.terrain.iter().map(|&cell| cell_tier(cell)).collect(),
         };
         if n == 0 || ground.floor.len() != n * n {
             return ground;
@@ -201,7 +202,7 @@ fn sees(ground: &FogGround, v: &Viewer, cx: usize, cy: usize) -> bool {
         cy as i64 * CELL_RAW + CELL_RAW / 2,
     );
     let (dx, dy) = (to.0 - v.at.0, to.1 - v.at.1);
-    if dx * dx + dy * dy > v.reach * v.reach || ground.terrain[cy * n + cx] & 0x1f > v.tier {
+    if dx * dx + dy * dy > v.reach * v.reach || cell_tier(ground.terrain[cy * n + cx]) > v.tier {
         return false;
     }
     if v.at.0 < 0 || v.at.1 < 0 {

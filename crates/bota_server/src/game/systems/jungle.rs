@@ -1,6 +1,6 @@
 //! The jungle: filling camps, and what a neutral does once drawn off one.
 
-use bota_core::{Roster, rosters_of, rules};
+use bota_core::{Roster, jungle_upgrades, neutral_spawn_due, rosters_of, rules};
 use bota_proto::{Fixed, UnitKind, Vec2};
 
 use crate::game::{Entity, Landed, Purpose, UnitOrder, World};
@@ -12,14 +12,11 @@ impl World {
     /// A camp with anything alive that walks, or a ward, standing in its box
     /// puts nothing out.
     pub fn fill_camps(&mut self) {
-        if self.tick < rules::FIRST_NEUTRAL_TICK
-            || !(self.tick - rules::FIRST_NEUTRAL_TICK)
-                .is_multiple_of(rules::NEUTRAL_SPAWN_PERIOD_TICKS)
-        {
+        if !neutral_spawn_due(self.tick) {
             return;
         }
         let box_radius = rules::units(rules::CAMP_BOX_RADIUS);
-        let upgrades = self.jungle_upgrades();
+        let upgrades = jungle_upgrades(self.tick);
         for (index, camp) in self.map.camps.iter().enumerate() {
             if self.anything_in(camp.pos, box_radius) {
                 continue;
@@ -47,12 +44,6 @@ impl World {
             }
         }
         self.settle();
-    }
-
-    /// How many upgrade intervals the jungle carries by now, capped.
-    fn jungle_upgrades(&self) -> u32 {
-        let periods = self.tick / rules::NEUTRAL_UPGRADE_PERIOD_TICKS;
-        periods.min(rules::NEUTRAL_UPGRADE_CAP as u32)
     }
 
     /// Whether anything alive that walks, or a ward, stands inside a circle.

@@ -1,6 +1,6 @@
 //! Cheats: what each one does, and that a match without them refuses them.
 
-use bota_core::{ITEMS, MELEE_CREEP, ability_mana_cost, rules};
+use bota_core::{ITEMS, MELEE_CREEP, ability_mana_cost, hero_bounty, rules};
 
 use super::support::{a_spec, spec};
 use crate::game::{Command, Entity, Event, ItemStack, MatchConfig, World, wire_id};
@@ -455,7 +455,7 @@ fn gold_income_scales_the_bounty_a_kill_pays() {
     let killer = world.seats[0].unit.expect("the killer stands");
     let victim = world.seats[1].unit.expect("the victim stands");
     world.seats[1].streak = 3;
-    let composed = World::hero_bounty(3);
+    let composed = hero_bounty(3);
     cheat_modifier(&mut world, spec(|s| s.gold_income = 15_000), 1_000);
     let before = world.seats[0].gold;
     let net_worth = world.seats[0].net_worth;

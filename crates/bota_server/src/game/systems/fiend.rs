@@ -3,7 +3,8 @@
 
 use bota_core::{
     ModifierKind, Talent, attack_class_pct, heading_of, hero_def, kind_def, move_towards, per_tick,
-    point_along, rules,
+    point_along, presence_armor, raze_damage, raze_landing, raze_stack_damage, requiem_death_lines,
+    requiem_fear_ticks, requiem_line_damage, requiem_lines, requiem_width, rules, soul_cap,
 };
 use bota_proto::{AbilityId, Angle, DamageKind, Fixed, Team};
 
@@ -27,12 +28,7 @@ impl World {
         let Some(from) = self.transform.get(caster).copied() else {
             return false;
         };
-        let ahead = from.pos + heading_of(from.facing);
-        let at = point_along(
-            from.pos,
-            ahead,
-            Fixed::from_int(rules::RAZE_DISTANCE[reach]),
-        );
+        let at = raze_landing(from.pos, from.facing, reach);
         let radius = rules::units(rules::RAZE_RADIUS);
         let struck: Vec<Entity> = self
             .entities
@@ -45,15 +41,10 @@ impl World {
                         .is_some_and(|t| t.pos.within(at, radius))
             })
             .collect();
-        let souls = self.souls_of(caster).min(rules::SOULS_HELD_MAX);
-        let amount = rules::RAZE_DAMAGE[level] + rules::RAZE_DAMAGE_PER_SOUL * souls as i32;
+        let amount = raze_damage(level, self.souls_of(caster));
         let damage_amp_bp = self.outgoing_damage_amp_bp(Some(caster), DamageKind::Magical);
-        let stack_damage = rules::RAZE_STACK_DAMAGE[level]
-            + if self.has_talent(caster, Talent::RazeStackDamage) {
-                rules::TALENT_RAZE_STACK_DAMAGE
-            } else {
-                0
-            };
+        let stack_damage =
+            raze_stack_damage(level, self.has_talent(caster, Talent::RazeStackDamage));
         let swings = self.has_talent(caster, Talent::RazeAttackDamage);
         for mark in struck {
             self.hits.push_back(Hit {
@@ -106,7 +97,7 @@ impl World {
     /// spent; with nothing gathered the cast still happens and nothing goes
     /// out.
     pub fn cast_requiem(&mut self, caster: Entity, level: usize) -> bool {
-        let lines = self.souls_of(caster).min(rules::REQUIEM_LINES_MAX);
+        let lines = requiem_lines(self.souls_of(caster));
         self.release_lines(caster, level, lines, true)
     }
 
@@ -120,9 +111,7 @@ impl World {
         if level == 0 {
             return;
         }
-        let share = rules::REQUIEM_DEATH_LINES;
-        let lines = (self.souls_of(fallen) * u32::from(share.num()) / u32::from(share.den()))
-            .min(rules::REQUIEM_LINES_MAX);
+        let lines = requiem_death_lines(self.souls_of(fallen));
         let level = usize::from(level - 1).min(rules::REQUIEM_LINE_DAMAGE.len() - 1);
         self.release_lines(fallen, level, lines, false);
     }
@@ -139,17 +128,8 @@ impl World {
             return false;
         };
         let damage_amp_bp = self.outgoing_damage_amp_bp(Some(caster), DamageKind::Magical);
-        let fear = if self.has_talent(caster, Talent::RequiemFear) {
-            Fear {
-                line: rules::REQUIEM_LINE_TICKS + rules::TALENT_REQUIEM_LINE_TICKS,
-                most: rules::REQUIEM_HOLD_MAX_TICKS + rules::TALENT_REQUIEM_HOLD_TICKS,
-            }
-        } else {
-            Fear {
-                line: rules::REQUIEM_LINE_TICKS,
-                most: rules::REQUIEM_HOLD_MAX_TICKS,
-            }
-        };
+        let (line, most) = requiem_fear_ticks(self.has_talent(caster, Talent::RequiemFear));
+        let fear = Fear { line, most };
         for nth in 0..lines {
             let facing = Angle {
                 brads: (nth * 65536 / lines) as u16,
@@ -176,7 +156,7 @@ impl World {
                     speed: Fixed::from_int(rules::REQUIEM_LINE_SPEED),
                     travelled: Fixed::ZERO,
                     distance: Fixed::from_int(rules::REQUIEM_LINE_DISTANCE),
-                    damage: rules::REQUIEM_LINE_DAMAGE[level],
+                    damage: requiem_line_damage(level),
                     damage_amp_bp,
                     level: level as u8,
                     frightens,
@@ -315,12 +295,7 @@ impl World {
                 continue;
             };
             let reach = rules::units(rules::PRESENCE_RADIUS);
-            let armor = rules::PRESENCE_ARMOR[usize::from(level - 1)]
-                + if self.has_talent(carrier, Talent::PresenceArmor) {
-                    rules::TALENT_PRESENCE_ARMOR
-                } else {
-                    Fixed::ZERO
-                };
+            let armor = presence_armor(level, self.has_talent(carrier, Talent::PresenceArmor));
             let struck: Vec<Entity> = self
                 .entities
                 .iter()
@@ -407,12 +382,10 @@ impl World {
     /// How many souls an entity may gather from kills, its talent included.
     /// Zero for one that gathers none.
     pub fn soul_cap(&self, entity: Entity) -> u32 {
-        if !self.gathers_souls(entity) {
-            0
-        } else if self.has_talent(entity, Talent::NecroSoulCap) {
-            rules::NECRO_SOUL_CAP + rules::TALENT_NECRO_SOUL_CAP
+        if self.gathers_souls(entity) {
+            soul_cap(self.has_talent(entity, Talent::NecroSoulCap))
         } else {
-            rules::NECRO_SOUL_CAP
+            0
         }
     }
 
@@ -441,17 +414,4 @@ impl World {
                 .map_or(0, |slot| slot.level)
         })
     }
-}
-
-/// How wide a line of the requiem catches once it has flown so far of its
-/// distance: from [`rules::REQUIEM_LINE_WIDTH_START`] out to
-/// [`rules::REQUIEM_LINE_WIDTH_END`], evenly along the way.
-fn requiem_width(travelled: Fixed, distance: Fixed) -> Fixed {
-    let start = Fixed::from_int(rules::REQUIEM_LINE_WIDTH_START);
-    let growth = i64::from(rules::REQUIEM_LINE_WIDTH_END - rules::REQUIEM_LINE_WIDTH_START);
-    if distance.raw <= 0 {
-        return start;
-    }
-    let grown = growth * i64::from(travelled.raw) / i64::from(distance.raw);
-    start + Fixed::from_int(grown as i32)
 }

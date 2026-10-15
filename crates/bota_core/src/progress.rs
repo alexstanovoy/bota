@@ -31,3 +31,26 @@ pub fn attack_gain(attack_speed: i32) -> u32 {
 pub const fn cross(progress: u32, mark: u32) -> Option<u32> {
     progress.checked_sub(mark)
 }
+
+/// Whole ticks that a span of milliseconds takes at a tick rate, rounded up.
+#[inline]
+pub const fn ms_to_ticks_ceil(ms: u32, tick_rate: u32) -> u32 {
+    (ms * tick_rate).div_ceil(1000)
+}
+
+/// Ticks left of an animation phase `ms` long once `progress` beats of it are
+/// done, at an attack speed: at least one while it is not over.
+#[inline]
+pub fn phase_ticks_left(ms: u32, progress: u32, attack_speed: i32) -> u32 {
+    let left = beats(ms).saturating_sub(progress);
+    let gain = attack_gain(attack_speed);
+    assert!(gain > 0);
+    left.div_ceil(gain).max(1)
+}
+
+/// Ticks between the starts of two attacks of `attack_time` milliseconds at
+/// an attack speed.
+#[inline]
+pub fn attack_interval_ticks(attack_time: u32, attack_speed: i32) -> u32 {
+    phase_ticks_left(attack_time, 0, attack_speed)
+}

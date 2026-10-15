@@ -1,7 +1,7 @@
 //! Who stands and who is in reach, telling of blows, and clearing away what
 //! has fallen.
 
-use bota_core::{MAP2_ID, MAP2_TICK_CAP, kind_def};
+use bota_core::{MAP2_ID, MAP2_TICK_CAP, kind_def, respawn_wait};
 use bota_proto::{EventKind, Fixed, Team, UnitKind, Vec2};
 
 use crate::game::{
@@ -192,7 +192,7 @@ impl World {
                 self.seats[index].unit = None;
                 self.seats[index].kept = Some(kept);
                 self.seats[index].deaths += 1;
-                self.seats[index].respawn_left = World::respawn_wait(level);
+                self.seats[index].respawn_left = respawn_wait(level);
                 fallen_hero_team = Some(self.seats[index].team);
             }
             if self.seats[index].courier == Some(entity) {

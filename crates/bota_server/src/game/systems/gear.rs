@@ -1,8 +1,8 @@
 //! Items carried and abilities held: what they add, and what they cost.
 
 use bota_core::{
-    Carried, ITEMS, ItemDef, Mend, ModifierKind, Pool, Spends, ability_def, clamp_to_map,
-    fountain_pos, hero_def, item_def, learn_group, level_floor, move_towards, rules,
+    Carried, CarriedItem, ITEMS, ItemDef, Mend, ModifierKind, Pool, Spends, ability_def,
+    clamp_to_map, fountain_pos, hero_def, item_def, learn_group, level_floor, move_towards, rules,
 };
 use bota_proto::{
     AbilityId, Attribute, EventKind, Fixed, HeroId, ItemId, SlotId, Target, Team, Vec2,
@@ -87,56 +87,19 @@ pub fn hero_kit(hero: HeroId) -> AbilityBook {
 /// carried inert, and so is a muted stack. Of the boots carried only the
 /// fastest counts, and of the laces only the fastest, the two added up.
 pub fn carried_bonus(inventory: &Inventory) -> Carried {
-    let mut total = Carried::default();
-    for stack in inventory
-        .slots
-        .iter()
-        .take(rules::INVENTORY_SLOTS)
-        .flatten()
-    {
-        if stack.mute > 0 {
-            continue;
-        }
-        let Some(def) = item_def(stack.id) else {
-            continue;
-        };
-        total.attributes += def.carried.attributes;
-        total.move_speed = total.move_speed.max(def.carried.move_speed);
-        total.lace_speed = total.lace_speed.max(def.carried.lace_speed);
-        total.damage += def.carried.damage;
-        total.attack_speed += def.carried.attack_speed;
-        total.armor += def.carried.armor;
-        total.hp += def.carried.hp;
-        total.mana += def.carried.mana;
-        let regen_charges = if def.stack_limit > 0 {
-            assert!(stack.charges <= def.stack_limit);
-            i32::from(stack.charges)
-        } else {
-            1
-        };
-        total.hp_regen += def.carried.hp_regen * Fixed::from_int(regen_charges);
-        total.mana_regen += def.carried.mana_regen;
-        total.damage_to_creeps += def.carried.damage_to_creeps;
-        total.base_attack_speed_pct += def.carried.base_attack_speed_pct;
-        if def.carried.evasion.beats(total.evasion) {
-            total.evasion = def.carried.evasion;
-        }
-        if def.carried.pierce.beats(total.pierce) {
-            total.pierce = def.carried.pierce;
-            total.pierce_damage = def.carried.pierce_damage;
-        }
-        total.melee_range += def.carried.melee_range;
-        // What an item is set to is worth points of that attribute alone.
-        if let Some(mode) = stack.mode {
-            let bonus = Fixed::from_int(def.mode_bonus);
-            match mode {
-                Attribute::Strength => total.attributes.strength += bonus,
-                Attribute::Agility => total.attributes.agility += bonus,
-                Attribute::Intelligence => total.attributes.intelligence += bonus,
-            }
-        }
-    }
-    total
+    bota_core::carried_bonus(
+        inventory
+            .slots
+            .iter()
+            .take(rules::INVENTORY_SLOTS)
+            .flatten()
+            .filter(|stack| stack.mute == 0)
+            .map(|stack| CarriedItem {
+                id: stack.id,
+                charges: stack.charges,
+                mode: stack.mode,
+            }),
+    )
 }
 
 impl World {
@@ -400,7 +363,7 @@ impl World {
     /// already waiting in the bag or the stash is spent on the build and so is
     /// bought no second time.
     fn missing_parts(&self, seat: usize, unit: Entity, item: ItemId) -> Vec<ItemId> {
-        let mut held: Vec<ItemId> = self
+        let held: Vec<ItemId> = self
             .inventory
             .get(unit)
             .into_iter()
@@ -409,32 +372,9 @@ impl World {
             .filter(|stack| stack.owner == self.seats[seat].slot && !stack.for_sale)
             .map(|stack| stack.id)
             .collect();
-        let mut wanted = Vec::new();
-        match item_def(item).map_or(&[][..], |def| def.components) {
-            [] => wanted.push(item),
-            parts => {
-                for part in parts {
-                    self.parts_beyond(*part, &mut held, &mut wanted);
-                }
-            }
-        }
-        wanted
-    }
-
-    /// Lays out what one item still costs, spending `held` as it goes.
-    fn parts_beyond(&self, item: ItemId, held: &mut Vec<ItemId>, wanted: &mut Vec<ItemId>) {
-        if let Some(at) = held.iter().position(|id| *id == item) {
-            held.remove(at);
-            return;
-        }
-        let parts = item_def(item).map_or(&[][..], |def| def.components);
-        if parts.is_empty() {
-            wanted.push(item);
-            return;
-        }
-        for part in parts {
-            self.parts_beyond(*part, held, wanted);
-        }
+        bota_core::missing_parts(item, &held, |part| {
+            item_def(part).map_or(&[][..], |def| def.components)
+        })
     }
 
     /// Slots a seat has free for something bought right now.

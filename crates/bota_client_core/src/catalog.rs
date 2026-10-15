@@ -677,38 +677,7 @@ pub fn price_for(shop: &[ShopEntry], item: ItemId, held: &[ItemId]) -> i32 {
 /// The parts bought whole that a seat holding `held` still lacks for one
 /// item, in build order: the item itself when it has no parts.
 pub fn missing_parts(shop: &[ShopEntry], item: ItemId, held: &[ItemId]) -> Vec<ItemId> {
-    let mut spare = held.to_vec();
-    let mut wanted = Vec::new();
-    match components_of(shop, item) {
-        [] => wanted.push(item),
-        parts => {
-            for part in parts {
-                parts_beyond(shop, *part, &mut spare, &mut wanted);
-            }
-        }
-    }
-    wanted
-}
-
-/// Lays out what one part still costs, spending `held` as it goes.
-fn parts_beyond(
-    shop: &[ShopEntry],
-    item: ItemId,
-    held: &mut Vec<ItemId>,
-    wanted: &mut Vec<ItemId>,
-) {
-    if let Some(at) = held.iter().position(|id| *id == item) {
-        held.remove(at);
-        return;
-    }
-    match components_of(shop, item) {
-        [] => wanted.push(item),
-        parts => {
-            for part in parts {
-                parts_beyond(shop, *part, held, wanted);
-            }
-        }
-    }
+    bota_core::missing_parts(item, held, |part| components_of(shop, part))
 }
 
 /// The ability of that id, or nothing for one the catalog does not hold.

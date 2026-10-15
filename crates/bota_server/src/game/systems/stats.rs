@@ -1,6 +1,8 @@
 //! Working out what each entity fights by, from scratch, every tick.
 
-use bota_core::{Carried, Growth, ModifierKind, Ratio, Talent, UnitDef, rules};
+use bota_core::{
+    Carried, Growth, ModifierKind, Ratio, Regen, Talent, UnitDef, regen, rules, soul_damage,
+};
 use bota_proto::{AbilityId, Attributes, Fixed, ModifierSpec};
 
 use crate::game::{
@@ -106,6 +108,22 @@ fn derive_stats_impl<const APPLIED: bool>(cx: StatsCx<'_>) {
                 .is_some_and(|book| book.has_talent(Talent::FeastAttackSpeed));
             add_feast(&mut now, feast, talented);
         }
+        let regen = regen(
+            Regen {
+                hp: kind.hp_regen,
+                mana: kind.mana_regen,
+            },
+            carried.map_or(Regen::NONE, |carried| Regen {
+                hp: carried.hp_regen,
+                mana: carried.mana_regen,
+            }),
+            now.attributes,
+            modifiers
+                .get(entity)
+                .into_iter()
+                .flat_map(|on_it| on_it.active().map(|held| held.kind)),
+        );
+        (now.hp_regen, now.mana_regen) = (regen.hp, regen.mana);
         let before = stats.get(entity).copied();
         if let Some(hp) = health.get_mut(entity) {
             hp.hp = before.map_or(now.max_hp, |before| {
@@ -119,17 +137,6 @@ fn derive_stats_impl<const APPLIED: bool>(cx: StatsCx<'_>) {
         }
         stats.insert(entity, now);
     }
-}
-
-/// Attack damage the souls held are worth at a hero level: tenths of a point
-/// a soul that grow every [`rules::SOUL_DAMAGE_LEVELS`] levels, the sum
-/// rounded down.
-fn soul_damage(souls: u32, hero_level: i32) -> i32 {
-    assert!(hero_level >= 1);
-    let souls = souls.min(rules::SOULS_HELD_MAX) as i32;
-    let tenths = rules::SOUL_DAMAGE_TENTHS
-        + rules::SOUL_DAMAGE_TENTHS_GAIN * (hero_level / rules::SOUL_DAMAGE_LEVELS);
-    souls * tenths / 10
 }
 
 /// Adds the haste of a feast that is running, the talent's attack speed
@@ -151,8 +158,6 @@ fn add_carried(now: &mut Stats, carried: &Carried) {
     now.attributes += carried.attributes;
     now.max_hp += Fixed::from_int(carried.hp);
     now.max_mana += Fixed::from_int(carried.mana);
-    now.hp_regen += carried.hp_regen;
-    now.mana_regen += carried.mana_regen;
     now.damage += carried.damage;
     now.damage_to_creeps += carried.damage_to_creeps;
     now.attack_speed += carried.attack_speed;
@@ -193,19 +198,6 @@ fn add_heap(now: &mut Stats, gathered: &Stacks, book: Option<&AbilityBook>) {
 fn add_modifiers(now: &mut Stats, on_it: &Modifiers) {
     for held in on_it.active() {
         match held.kind {
-            ModifierKind::Mending { per_tick, .. } => {
-                now.hp_regen += Fixed::from_ratio(per_tick, 100);
-            }
-            ModifierKind::Clarity { per_tick, .. } => {
-                now.mana_regen += Fixed::from_ratio(per_tick, 100);
-            }
-            ModifierKind::Fountain {
-                hp_per_tick,
-                mana_per_tick,
-            } => {
-                now.hp_regen += Fixed::from_ratio(hp_per_tick, 100);
-                now.mana_regen += Fixed::from_ratio(mana_per_tick, 100);
-            }
             ModifierKind::Slowed { pct } => {
                 now.move_speed = scaled(now.move_speed, (100 - pct).clamp(0, 100));
             }
@@ -226,25 +218,20 @@ fn add_modifiers(now: &mut Stats, on_it: &Modifiers) {
                     .clamp(rules::MIN_MAGIC_RESIST_BP.into(), rules::NOMINAL_BP.into())
                     as i32;
             }
-            ModifierKind::Guarded {
-                armor,
-                hp_per_second,
-            } => {
-                now.armor += Fixed::from_int(armor);
-                now.hp_regen += per_second(hp_per_second);
-            }
+            ModifierKind::Guarded { armor, .. } => now.armor += Fixed::from_int(armor),
             ModifierKind::Inspired {
-                hp_per_second,
-                magic_resist_pct,
+                magic_resist_pct, ..
             } => {
-                now.hp_regen += per_second(hp_per_second);
                 let let_through =
                     (rules::NOMINAL_BP - now.magic_resist_bp) * (100 - magic_resist_pct) / 100;
                 now.magic_resist_bp = rules::NOMINAL_BP - let_through;
             }
             ModifierKind::Shielded => now.invulnerable = true,
             ModifierKind::Phased => now.phased = true,
-            ModifierKind::Stunned
+            ModifierKind::Mending { .. }
+            | ModifierKind::Clarity { .. }
+            | ModifierKind::Fountain { .. }
+            | ModifierKind::Stunned
             | ModifierKind::Feared
             | ModifierKind::Burning { .. }
             | ModifierKind::Shadowraze { .. }
@@ -339,9 +326,7 @@ fn scaled_bp(value: Fixed, bp: i32) -> Fixed {
 fn from_attributes(now: &mut Stats) {
     let has = now.attributes;
     now.max_hp += Fixed::from_int(rules::HP_PER_STRENGTH) * has.strength;
-    now.hp_regen += rules::HP_REGEN_PER_STRENGTH * has.strength;
     now.max_mana += Fixed::from_int(rules::MANA_PER_INTELLIGENCE) * has.intelligence;
-    now.mana_regen += rules::MANA_REGEN_PER_INTELLIGENCE * has.intelligence;
     now.armor += rules::ARMOR_PER_AGILITY * has.agility;
     now.attack_speed += agility_pace(has);
     if let Some(primary) = now.primary {
@@ -372,8 +357,8 @@ fn raised(kind: &UnitDef, levels: i32, steps: i32) -> Stats {
         primary: kind.primary,
         max_hp: Fixed::from_int(kind.max_hp + up.hp),
         max_mana: Fixed::from_int(kind.max_mana + up.mana),
-        hp_regen: kind.hp_regen,
-        mana_regen: kind.mana_regen,
+        hp_regen: Fixed::ZERO,
+        mana_regen: Fixed::ZERO,
         damage: kind.damage + up.damage,
         damage_spread: kind.damage_spread,
         damage_to_creeps: 0,
@@ -423,11 +408,6 @@ fn follow(held: Fixed, was: Fixed, now: Fixed) -> Fixed {
     Fixed {
         raw: kept.clamp(i64::from(Fixed::EPSILON.raw), i64::from(now.raw)) as i32,
     }
-}
-
-/// Mending per tick, from hundredths of a point a second.
-fn per_second(hundredths: i32) -> Fixed {
-    Fixed::from_ratio(hundredths, 100 * rules::TICKS_PER_SECOND as i32)
 }
 
 /// A speed taken to a percent of itself, worked out in `i64` and clamped

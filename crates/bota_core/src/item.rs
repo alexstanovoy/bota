@@ -347,3 +347,64 @@ pub fn shop_entries() -> Vec<bota_proto::ShopEntry> {
         })
         .collect()
 }
+
+/// One stack of an inventory as far as the sum of what is carried cares.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct CarriedItem {
+    /// Which item it is.
+    pub id: ItemId,
+    /// Charges it holds.
+    pub charges: u8,
+    /// The attribute it is set to, for an item with a mode.
+    pub mode: Option<Attribute>,
+}
+
+/// What the items carried add up to. Pass only the stacks that count: the
+/// inventory proper, none muted.
+///
+/// Of the boots carried only the fastest counts, and of the laces only the
+/// fastest, the two added up.
+pub fn carried_bonus(items: impl Iterator<Item = CarriedItem>) -> Carried {
+    let mut total = Carried::default();
+    for stack in items {
+        let Some(def) = item_def(stack.id) else {
+            continue;
+        };
+        total.attributes += def.carried.attributes;
+        total.move_speed = total.move_speed.max(def.carried.move_speed);
+        total.lace_speed = total.lace_speed.max(def.carried.lace_speed);
+        total.damage += def.carried.damage;
+        total.attack_speed += def.carried.attack_speed;
+        total.armor += def.carried.armor;
+        total.hp += def.carried.hp;
+        total.mana += def.carried.mana;
+        let regen_charges = if def.stack_limit > 0 {
+            assert!(stack.charges <= def.stack_limit);
+            i32::from(stack.charges)
+        } else {
+            1
+        };
+        total.hp_regen += def.carried.hp_regen * Fixed::from_int(regen_charges);
+        total.mana_regen += def.carried.mana_regen;
+        total.damage_to_creeps += def.carried.damage_to_creeps;
+        total.base_attack_speed_pct += def.carried.base_attack_speed_pct;
+        if def.carried.evasion.beats(total.evasion) {
+            total.evasion = def.carried.evasion;
+        }
+        if def.carried.pierce.beats(total.pierce) {
+            total.pierce = def.carried.pierce;
+            total.pierce_damage = def.carried.pierce_damage;
+        }
+        total.melee_range += def.carried.melee_range;
+        // What an item is set to is worth points of that attribute alone.
+        if let Some(mode) = stack.mode {
+            let bonus = Fixed::from_int(def.mode_bonus);
+            match mode {
+                Attribute::Strength => total.attributes.strength += bonus,
+                Attribute::Agility => total.attributes.agility += bonus,
+                Attribute::Intelligence => total.attributes.intelligence += bonus,
+            }
+        }
+    }
+    total
+}

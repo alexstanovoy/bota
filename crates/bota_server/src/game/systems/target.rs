@@ -1,6 +1,6 @@
 //! Who a unit picks to attack when nobody told it.
 
-use bota_core::{CAMPS, PriorityOrder, class_rank, deniable, isqrt64, kind_def, rules};
+use bota_core::{CAMPS, PriorityOrder, class_rank, deniable, isqrt64, kind_def, pick_target};
 use bota_proto::{Fixed, Team, UnitKind, Vec2};
 
 use crate::game::{Entity, Spots, UnitOrder, World};
@@ -118,19 +118,18 @@ impl World {
         else {
             return 1;
         };
-        let their_team = self.team.get(target).copied();
-        let their_kind = self.kind.get(target).copied();
-        match (their_team, their_kind) {
-            (Some(team), Some(UnitKind::Hero)) if team == seeker_team => 0,
-            (Some(team), _) if Some(&team) == self.team.get(candidate) => 2,
-            _ => 1,
-        }
+        bota_core::behaviour_rank(
+            seeker_team,
+            self.team.get(candidate).copied(),
+            self.team.get(target).copied(),
+            self.kind.get(target).copied(),
+        )
     }
 
     /// The target an entity acquires within `range`, or nothing.
     ///
     /// The best class decides first. Inside it the closest candidate sets the
-    /// mark, and everything within [`rules::AGGRO_TIE_RANGE`] of that mark
+    /// mark, and everything within [`bota_core::rules::AGGRO_TIE_RANGE`] of that mark
     /// counts as equally close; among those, what a hero is doing decides,
     /// then the distance itself, then the entity.
     pub fn acquire(
@@ -185,8 +184,6 @@ impl World {
     ) -> Option<Entity> {
         let side = self.team.get(seeker).copied()?;
         let at = self.transform.get(seeker)?.pos;
-        let mut best_class = u8::MAX;
-        let mut nearest = i64::MAX;
         let mut found: Vec<(u8, i64, Entity)> = Vec::new();
         for other in self.near(seeker, at, range, candidates) {
             if other == seeker || Some(other) == skip {
@@ -206,20 +203,9 @@ impl World {
             };
             let class = class_rank(kind_def(kind).target_class, order);
             let distance = isqrt64(at.distance_squared(their_at));
-            if class < best_class {
-                best_class = class;
-                nearest = distance;
-            } else if class == best_class && distance < nearest {
-                nearest = distance;
-            }
             found.push((class, distance, other));
         }
-        let tie = i64::from(rules::units(rules::AGGRO_TIE_RANGE).raw);
-        found
-            .into_iter()
-            .filter(|&(class, distance, _)| class == best_class && distance <= nearest + tie)
-            .min_by_key(|&(_, distance, other)| (self.behaviour_rank(side, other), distance, other))
-            .map(|(_, _, other)| other)
+        pick_target(&found, |other| self.behaviour_rank(side, other))
     }
 
     /// Whether one entity may be attacked by another on an order.

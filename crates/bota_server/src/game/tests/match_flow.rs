@@ -1,6 +1,9 @@
 //! How a match ends, kills, experience, gold and respawns.
 
-use bota_core::{MAPS, MELEE_CREEP, SHADOW_FIEND, ancient_of, hero_spawn_pos, map_of, rules};
+use bota_core::{
+    MAPS, MELEE_CREEP, SHADOW_FIEND, ancient_of, hero_kill_xp, hero_spawn_pos, map_of,
+    respawn_wait, rules,
+};
 
 use crate::game::{Entity, Level, UnitOrder, World, wire_id};
 use bota_proto::{EventKind, Fixed, HeroId, ItemId, MapId, SlotId, Team, Vec2};
@@ -159,7 +162,7 @@ fn a_hero_kill_pays_by_the_streak_and_a_death_costs_gold_by_the_level() {
     assert_eq!(world.seats[0].last_hits, 0, "a hero is not a last hit");
     assert_eq!(
         world.seats[0].xp,
-        World::hero_kill_xp(0, 3, 4),
+        hero_kill_xp(0, 3, 4),
         "experience pays by what the fallen had earned and the streak it wore"
     );
     assert_eq!(
@@ -312,25 +315,16 @@ fn what_a_hero_owes_runs_down_while_it_is_dead() {
 /// and a thousand earned adds a tenth and a bit for the share.
 #[test]
 fn a_heros_head_and_its_wait_are_priced_as_the_game_prices_them() {
-    assert_eq!(World::hero_kill_xp(0, 0, 1), rules::HERO_KILL_XP_BASE);
-    assert_eq!(World::hero_kill_xp(0, 2, 9), rules::HERO_KILL_XP_BASE);
-    assert_eq!(World::hero_kill_xp(0, 3, 4), rules::HERO_KILL_XP_BASE + 55);
-    assert_eq!(
-        World::hero_kill_xp(0, 10, 2),
-        rules::HERO_KILL_XP_BASE + 220
-    );
-    assert_eq!(
-        World::hero_kill_xp(0, 14, 2),
-        rules::HERO_KILL_XP_BASE + 220
-    );
-    assert_eq!(
-        World::hero_kill_xp(1000, 0, 5),
-        rules::HERO_KILL_XP_BASE + 130
-    );
-    assert_eq!(World::respawn_wait(1), 12 * rules::TICKS_PER_SECOND);
-    assert_eq!(World::respawn_wait(12), 44 * rules::TICKS_PER_SECOND);
-    assert_eq!(World::respawn_wait(25), 100 * rules::TICKS_PER_SECOND);
-    assert_eq!(World::respawn_wait(30), 100 * rules::TICKS_PER_SECOND);
+    assert_eq!(hero_kill_xp(0, 0, 1), rules::HERO_KILL_XP_BASE);
+    assert_eq!(hero_kill_xp(0, 2, 9), rules::HERO_KILL_XP_BASE);
+    assert_eq!(hero_kill_xp(0, 3, 4), rules::HERO_KILL_XP_BASE + 55);
+    assert_eq!(hero_kill_xp(0, 10, 2), rules::HERO_KILL_XP_BASE + 220);
+    assert_eq!(hero_kill_xp(0, 14, 2), rules::HERO_KILL_XP_BASE + 220);
+    assert_eq!(hero_kill_xp(1000, 0, 5), rules::HERO_KILL_XP_BASE + 130);
+    assert_eq!(respawn_wait(1), 12 * rules::TICKS_PER_SECOND);
+    assert_eq!(respawn_wait(12), 44 * rules::TICKS_PER_SECOND);
+    assert_eq!(respawn_wait(25), 100 * rules::TICKS_PER_SECOND);
+    assert_eq!(respawn_wait(30), 100 * rules::TICKS_PER_SECOND);
     assert_eq!(
         rules::XP_THRESHOLDS[5],
         2440,

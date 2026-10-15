@@ -128,3 +128,16 @@ pub fn spawn_offsets(plan: &WavePlan, forward: Vec2) -> Vec<Vec2> {
     }
     out
 }
+
+/// Whether the camps fill at a tick: on the minute mark from the first one.
+#[inline]
+pub fn neutral_spawn_due(tick: u32) -> bool {
+    tick >= rules::FIRST_NEUTRAL_TICK
+        && (tick - rules::FIRST_NEUTRAL_TICK).is_multiple_of(rules::NEUTRAL_SPAWN_PERIOD_TICKS)
+}
+
+/// How many upgrade intervals the jungle carries by a tick, capped.
+#[inline]
+pub fn jungle_upgrades(tick: u32) -> u32 {
+    (tick / rules::NEUTRAL_UPGRADE_PERIOD_TICKS).min(rules::NEUTRAL_UPGRADE_CAP as u32)
+}

@@ -1,6 +1,6 @@
 //! The ground: elevation tiers, water and terrain walkability.
 
-use bota_core::rules;
+use bota_core::{cell_is_walkable, cell_is_water, cell_tier, rules};
 use bota_proto::Vec2;
 
 use crate::game::TERRAIN_CELLS;
@@ -36,17 +36,19 @@ impl Ground {
 
     /// The elevation tier under a position; zero off the map.
     pub fn tier(&self, pos: Vec2) -> u8 {
-        self.cell(pos) & 0x1f
+        cell_tier(self.cell(pos))
     }
 
     /// Whether a position lies in river water.
     pub fn water(&self, pos: Vec2) -> bool {
-        self.cell(pos) & 0x40 != 0
+        cell_is_water(self.cell(pos))
     }
 
     /// Whether the terrain itself allows standing on a cell.
     pub fn cell_walkable(&self, cx: usize, cy: usize) -> bool {
-        cx < TERRAIN_CELLS && cy < TERRAIN_CELLS && self.cells[cy * TERRAIN_CELLS + cx] & 0x80 != 0
+        cx < TERRAIN_CELLS
+            && cy < TERRAIN_CELLS
+            && cell_is_walkable(self.cells[cy * TERRAIN_CELLS + cx])
     }
 
     /// The wire form of a map's terrain: run-length pairs.

@@ -8,8 +8,8 @@
 //! is aimed at is in reach.
 
 use bota_core::{
-    BEATS_PER_TICK, Ratio, Talent, ability_def, attack_class_pct, attack_gain, beats, cross,
-    facing_gap, facing_towards, kind_def, rules,
+    BEATS_PER_TICK, Ratio, Talent, ability_def, attack_class_pct, attack_gain, beats,
+    cast_point_ms, cross, facing_gap, facing_towards, kind_def, rules,
 };
 use bota_proto::{Aim, DamageKind, Fixed, ItemSlot, Team, Vec2};
 
@@ -583,11 +583,10 @@ impl World {
             .feast
             .get(entity)
             .is_some_and(|feast| feast.phase == FeastPhase::Feasting);
-        if feasting && self.has_talent(entity, Talent::FeastCastSpeed) {
-            point * rules::TALENT_FEAST_CAST_POINT_PCT / 100
-        } else {
-            point
-        }
+        cast_point_ms(
+            point,
+            feasting && self.has_talent(entity, Talent::FeastCastSpeed),
+        )
     }
 
     /// Whether what runs on still has something to do.

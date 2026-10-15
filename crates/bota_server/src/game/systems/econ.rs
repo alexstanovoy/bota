@@ -1,6 +1,6 @@
 //! What a kill pays, what the clock pays, and getting a hero back on its feet.
 
-use bota_core::{GoldRange, hero_spawn_pos, kind_def, rules};
+use bota_core::{GoldRange, denied_xp, hero_bounty, hero_kill_xp, hero_spawn_pos, kind_def, rules};
 use bota_proto::{EventKind, Team, UnitKind, Vec2};
 
 use crate::game::{Bounty, Entity, Event, EventVisibility, Landed, Level, Purpose, World, wire_id};
@@ -51,10 +51,10 @@ impl World {
             Some(index) => {
                 let seat = &self.seats[index];
                 Bounty {
-                    gold: GoldRange::exactly(World::hero_bounty(i32::from(seat.streak))),
+                    gold: GoldRange::exactly(hero_bounty(i32::from(seat.streak))),
                     bonus: 0,
                     team: 0,
-                    xp: World::hero_kill_xp(seat.xp, i32::from(seat.streak), i32::from(seat.level)),
+                    xp: hero_kill_xp(seat.xp, i32::from(seat.streak), i32::from(seat.level)),
                 }
             }
             None => match self.bounty.get(fallen).copied() {
@@ -105,7 +105,7 @@ impl World {
                 .copied()
                 .is_some_and(|kind| kind_def(kind).lane_creep)
             {
-                let xp = bounty.xp * rules::DENIED_XP_PCT / 100;
+                let xp = denied_xp(bounty.xp);
                 self.grant_xp_around(at, other_side(side), xp, None, events);
             }
             return paid;
@@ -325,30 +325,6 @@ impl World {
             self.seats[index].unit = Some(unit);
             self.settle();
         }
-    }
-
-    /// How long a seat waits before its hero comes back, by its level.
-    pub fn respawn_wait(level: u8) -> u32 {
-        let at = usize::from(level.max(1) - 1).min(rules::RESPAWN_SECONDS.len() - 1);
-        rules::RESPAWN_SECONDS[at] * rules::TICKS_PER_SECOND
-    }
-
-    /// What bringing down a hero pays in experience: a base, a share of what
-    /// the fallen had earned, and a bonus for the streak its death ends.
-    pub fn hero_kill_xp(victim_xp: i32, streak: i32, level: i32) -> i32 {
-        let streak = streak.min(rules::STREAK_XP_CAP);
-        let streak_bonus = if streak < rules::STREAK_XP_FROM {
-            0
-        } else {
-            (5 * streak * streak - 10 * streak + 40) * level / 4
-        };
-        rules::HERO_KILL_XP_BASE + victim_xp * rules::HERO_KILL_XP_SHARE_PCT / 100 + streak_bonus
-    }
-
-    /// What bringing down a hero on a streak of so many pays.
-    pub fn hero_bounty(streak: i32) -> i32 {
-        rules::HERO_KILL_BOUNTY_BASE
-            + rules::HERO_KILL_BOUNTY_PER_STREAK * streak.min(rules::HERO_KILL_STREAK_CAP)
     }
 
     /// Whether an entity is a hero.

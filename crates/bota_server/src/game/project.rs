@@ -1,6 +1,6 @@
 //! The world as a side is allowed to see it.
 
-use bota_core::{ModifierKind, ability_mana_cost, attack_gain, beats, kind_def, rules};
+use bota_core::{ModifierKind, ability_mana_cost, kind_def, phase_ticks_left, rules};
 use bota_proto::{
     AbilityId, AbilityView, AggroView, EffectId, EffectView, Fixed, PlayerView, ProjectileView,
     StatusFlags, SwingView, TalentSlot, TalentView, Talents, Team, UnitKind, UnitView, WorldView,
@@ -268,10 +268,10 @@ impl World {
             return None;
         };
         let stats = self.stats.get(entity)?;
-        let left = beats(stats.attack_point).saturating_sub(progress);
-        let gain = attack_gain(stats.attack_speed);
-        assert!(gain > 0);
-        Some((target, left.div_ceil(gain).max(1)))
+        Some((
+            target,
+            phase_ticks_left(stats.attack_point, progress, stats.attack_speed),
+        ))
     }
 
     /// One missile, hook, mark, line of a requiem or Blood Grenade, or
