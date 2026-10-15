@@ -5,8 +5,8 @@ use bota_proto::{
     SlotId, StockView, TalentSlot, TalentView, Team, TickMode, UnitKind, UnitView, Vec2, WorldView,
 };
 
-use crate::net::Net;
 use crate::orders::refusal;
+use crate::transport::Net;
 use crate::ui::derive::Derived;
 use crate::ui::replay::ReplayPlayer;
 use crate::ui::smooth::Smooth;
