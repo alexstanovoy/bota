@@ -805,8 +805,8 @@ pub const WIDEST_MARCHER: i32 = SIEGE_CREEP_COLLISION;
 pub const WAYPOINT_RADIUS: i32 = 40;
 /// A stored route is laid again once its goal drifted this far.
 pub const REPATH_DRIFT: i32 = 128;
-/// Ticks a marching lane creep stands unable to move before it shoves
-/// through bodies.
+/// Ticks a lane creep walking after a target it lost stands unable to move
+/// before it shoves through bodies. A marching one never shoves.
 pub const MARCH_SHOVE_TICKS: u32 = 30;
 
 /// How far a body may be eased out of another one in a tick, in world

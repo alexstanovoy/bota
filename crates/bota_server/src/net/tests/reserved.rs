@@ -219,6 +219,13 @@ fn a_referee_hears_the_lobby_and_the_end_but_no_ticks_of_a_match_nobody_joined()
         }
     };
     assert!(started);
-    assert_eq!(winner, Team::Neutral, "nobody played: the time cap draws");
+    // Nobody played, so the waves fight on alone: most seeds draw at the time cap, on some a
+    // wave takes a tower first (idle heroes, 40 seeds: 7 do with lane creeps marching straight
+    // against bodies, 4 did before). Either way the match plays to its own end.
+    let cap = bota_core::MAP2_TICK_CAP;
+    match winner {
+        Team::Neutral => assert_eq!(stats.duration, cap, "a draw comes at the time cap"),
+        _ => assert!(stats.duration < cap, "a side wins before the cap"),
+    }
     assert_eq!(stats.slots.len(), 2);
 }
