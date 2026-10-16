@@ -39,6 +39,7 @@ pub fn plan_radius(collision: Fixed) -> Fixed {
 
 /// The scratch an A* search over the lattice works in, kept between
 /// searches so none of them starts by clearing the whole map.
+#[derive(Clone)]
 pub struct Planner {
     /// The cost got to each node at, for nodes stamped with the epoch.
     g: Vec<u32>,

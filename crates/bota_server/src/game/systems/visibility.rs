@@ -33,7 +33,7 @@ pub struct SightCx<'a> {
 }
 
 /// The scratch a pass of sight works in, kept between passes.
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct SightScratch {
     /// One row per live entity.
     rows: Vec<SightRow>,
@@ -54,6 +54,7 @@ impl SightScratch {
 
 /// One entity as the sight system reads it: what it is, where it stands and
 /// which sides see it.
+#[derive(Clone)]
 struct SightRow {
     /// Which entity this is.
     entity: Entity,

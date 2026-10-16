@@ -48,6 +48,7 @@ impl Entity {
 }
 
 /// What is known about one slot.
+#[derive(Clone)]
 struct EntityMeta {
     /// The generation of its current tenant, or of its last one while free.
     generation: Generation,
@@ -59,6 +60,7 @@ struct EntityMeta {
 ///
 /// A freed slot goes back to be handed out again ahead of any slot never yet
 /// used, carrying a raised generation. Iteration runs in slot order.
+#[derive(Clone)]
 pub struct EntityAllocator {
     /// One entry per slot ever handed out, indexed by [`Index`].
     entities: Vec<EntityMeta>,

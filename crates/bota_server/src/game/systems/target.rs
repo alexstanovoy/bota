@@ -7,7 +7,7 @@ use crate::game::{Entity, Spots, UnitOrder, World};
 
 /// Every entity that stands somewhere, by where it stood when laid, for
 /// choosing targets among.
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct Candidates {
     spots: Spots<Entity>,
     /// The largest bound radius of any entity laid, in raw units.

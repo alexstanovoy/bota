@@ -8,6 +8,7 @@ use bota_proto::Vec2;
 /// Answers only for what was pushed before it was last sorted, and says
 /// nothing of distance: a caller asking about a circle checks each item
 /// the square gives back.
+#[derive(Clone)]
 pub struct Spots<T> {
     /// The raw x, the raw y and the item of every row.
     rows: Vec<(i32, i32, T)>,

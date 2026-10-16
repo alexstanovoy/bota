@@ -380,6 +380,52 @@ fn the_published_match_id_gives_away_neither_the_seed_nor_the_key() {
     assert_ne!(played(first), played(next), "neighbouring seeds play apart");
 }
 
+/// A world cloned mid-match plays on exactly as the original does: a fork for what-if play
+/// sees the same match.
+#[test]
+fn a_cloned_world_plays_on_as_the_original() {
+    let pinned = PINS
+        .iter()
+        .find(|pinned| pinned.map == bota_core::MAP2_ID)
+        .expect("a Map2 match is pinned");
+    let cfg = config(pinned);
+    let mut world = World::for_match(&cfg, cfg.rng());
+    let mut drivers: Vec<Driver> = (0..cfg.picks.len() as u64)
+        .map(|slot| Driver {
+            state: ((pinned.seed << 8) | (slot + 1)).wrapping_mul(0x9e37_79b9_7f4a_7c15) | 1,
+        })
+        .collect();
+    let mut digest = Fnv::new();
+    let mut fork = None;
+    while world.tick < DEBUG_TICKS && world.victor().is_none() {
+        if world.tick == DEBUG_TICKS / 2 {
+            fork = Some(world.clone());
+        }
+        let commands = if world.tick.is_multiple_of(DECISION_TICKS) {
+            decide(&world, &mut drivers, &mut digest)
+        } else {
+            Vec::new()
+        };
+        let events = world.advance(&commands);
+        if let Some(fork) = &mut fork {
+            let kinds = |events: &[crate::game::Event]| {
+                events
+                    .iter()
+                    .map(|event| event.kind.clone())
+                    .collect::<Vec<_>>()
+            };
+            assert_eq!(
+                kinds(&fork.advance(&commands)),
+                kinds(&events),
+                "tick {}",
+                world.tick
+            );
+            assert_eq!(fork.hash(), world.hash(), "tick {}", world.tick);
+        }
+    }
+    assert!(fork.is_some(), "the match ran past the fork");
+}
+
 /// Prints the fingerprints of every pinned match, to record pins afresh.
 #[test]
 #[ignore = "records pins"]
