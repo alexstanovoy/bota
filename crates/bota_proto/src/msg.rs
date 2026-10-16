@@ -1,7 +1,8 @@
 //! The messages themselves, and the lobby types they carry.
 
 use crate::{
-    EntityId, EventKind, HeroId, ItemId, MapId, Order, PlayerId, SlotId, Team, Vec2, WorldView,
+    EntityId, EventKind, HeroId, ItemId, MapId, Order, PlayerId, SeatKey, SlotId, Team, Vec2,
+    WorldView,
 };
 use serde::{Deserialize, Serialize};
 
@@ -17,6 +18,9 @@ pub enum Role {
     Bot,
     /// An observer with no seat.
     Spectator,
+    /// A connection that is told the lobby, the start, departures and the end,
+    /// and never a tick.
+    Referee,
 }
 
 /// How the server decides when to advance a tick.
@@ -222,6 +226,8 @@ pub enum ClientMsg {
         role: Role,
         /// Display name for the lobby and the scoreboard.
         name: String,
+        /// The key a server with reserved seats asks for. Last on the wire.
+        key: Option<SeatKey>,
     },
     /// Choose a hero for the seat this connection holds.
     PickHero {

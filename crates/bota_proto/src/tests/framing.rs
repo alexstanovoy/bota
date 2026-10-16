@@ -118,6 +118,7 @@ fn a_truncated_payload_is_malformed_not_a_wait() {
     let msg = ClientMsg::Hello {
         role: Role::Player,
         name: "a fairly long message body".to_string(),
+        key: None,
     };
     let frame = encode_frame_to_vec(&msg).unwrap();
     let payload_len = frame.len() - LEN_PREFIX;
@@ -160,4 +161,15 @@ fn a_frame_is_a_prefix_plus_its_payload() {
         decode_payload::<ClientMsg>(&frame[LEN_PREFIX..]).unwrap(),
         msg
     );
+}
+
+#[test]
+fn a_limited_reader_refuses_a_big_frame_and_hands_out_frames_whole() {
+    let mut reader = FrameReader::with_limit(8);
+    let small = encode_frame_to_vec(&1u16).unwrap();
+    reader.push(&small);
+    assert_eq!(reader.next_frame(), Ok(Some(small)));
+    assert_eq!(reader.next_frame(), Ok(None));
+    reader.push(&9u32.to_le_bytes());
+    assert_eq!(reader.next_frame(), Err(CodecError::TooLarge { len: 9 }));
 }

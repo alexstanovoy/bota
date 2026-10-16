@@ -83,12 +83,23 @@ pub fn decode_payload<T: DeserializeOwned>(payload: &[u8]) -> Result<T, CodecErr
 #[derive(Clone, Debug, Default)]
 pub struct FrameReader {
     buf: Vec<u8>,
+    /// Largest payload this reader accepts; absent means [`MAX_PAYLOAD_LEN`].
+    limit: Option<usize>,
 }
 
 impl FrameReader {
     /// A reader holding no bytes.
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// A reader that refuses payloads above `max_payload` bytes (and in any
+    /// case above [`MAX_PAYLOAD_LEN`]).
+    pub fn with_limit(max_payload: usize) -> Self {
+        Self {
+            buf: Vec::new(),
+            limit: Some(max_payload),
+        }
     }
 
     /// Add bytes that just arrived.
@@ -118,6 +129,20 @@ impl FrameReader {
         Ok(Some(msg))
     }
 
+    /// Take the next complete frame whole, length prefix included and payload
+    /// undecoded, or `None` if one has not fully arrived. A bridge copies
+    /// frames this way without reading them.
+    pub fn next_frame(&mut self) -> Result<Option<Vec<u8>>, CodecError> {
+        let Some(len) = self.peek_len()? else {
+            return Ok(None);
+        };
+        let end = LEN_PREFIX + len;
+        if self.buf.len() < end {
+            return Ok(None);
+        }
+        Ok(Some(self.buf.drain(..end).collect()))
+    }
+
     /// Length of the frame at the front, once its prefix has arrived.
     fn peek_len(&self) -> Result<Option<usize>, CodecError> {
         if self.buf.len() < LEN_PREFIX {
@@ -126,7 +151,11 @@ impl FrameReader {
         let mut prefix = [0u8; LEN_PREFIX];
         prefix.copy_from_slice(&self.buf[..LEN_PREFIX]);
         let len = u32::from_le_bytes(prefix) as usize;
-        if len > MAX_PAYLOAD_LEN {
+        if len
+            > self
+                .limit
+                .map_or(MAX_PAYLOAD_LEN, |l| l.min(MAX_PAYLOAD_LEN))
+        {
             return Err(CodecError::TooLarge { len });
         }
         Ok(Some(len))

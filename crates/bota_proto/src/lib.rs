@@ -9,6 +9,7 @@
 mod attrs;
 mod codec;
 mod event;
+mod fingerprint;
 mod ids;
 mod math;
 mod msg;
@@ -22,6 +23,7 @@ mod tests;
 pub use attrs::*;
 pub use codec::*;
 pub use event::*;
+pub use fingerprint::*;
 pub use ids::*;
 pub use math::*;
 pub use msg::*;

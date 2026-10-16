@@ -507,6 +507,7 @@ pub fn all_client_msgs() -> Vec<ClientMsg> {
         ClientMsg::Hello {
             role: Role::Player,
             name: "player-one".to_string(),
+            key: Some(SeatKey([7; 32])),
         },
         ClientMsg::PickHero { hero: HeroId(0) },
         ClientMsg::SetReady(true),
