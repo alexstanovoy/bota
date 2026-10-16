@@ -69,6 +69,7 @@ fn join_as_bot(addr: std::net::SocketAddr, name: &str) -> (TestClient, Option<bo
     client.send(&ClientMsg::Hello {
         role: Role::Bot,
         name: name.to_string(),
+        key: None,
     });
     let slot = client.recv_until(|msg| match msg {
         ServerMsg::Welcome { slot, .. } => Some(slot),
@@ -88,7 +89,12 @@ fn realtime(seed: u64) -> ServerOpts {
         tick_rate: 60,
         players: 2,
         replay: None,
-        seed,
+        seed: Some(seed),
+        match_id: None,
+        reserved: Vec::new(),
+        referee_key: None,
+        start_after: None,
+        max_connections: None,
         map: bota_proto::MapId(0),
         ack_timeout_ticks: 150,
         cheats: false,
@@ -194,6 +200,7 @@ fn a_spectator_borrows_eyes_and_is_told_the_orders_they_see() {
     watcher.send(&ClientMsg::Hello {
         role: Role::Spectator,
         name: "eye".to_string(),
+        key: None,
     });
     let slot = watcher.recv_until(|msg| match msg {
         ServerMsg::Welcome { slot, .. } => Some(slot),
@@ -449,3 +456,5 @@ fn a_reader_that_keeps_up_is_never_skipped_and_a_stalled_one_is_at_once() {
     let (_, _, skipped) = read_ticks(&mut client, (last, pending), Duration::from_secs(1));
     assert!(skipped > 0, "a stalled reader is skipped ahead");
 }
+
+mod reserved;

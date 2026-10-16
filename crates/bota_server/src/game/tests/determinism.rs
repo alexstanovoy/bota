@@ -146,6 +146,7 @@ fn config(pinned: &Pinned) -> MatchConfig {
     master_key[..8].copy_from_slice(&pinned.seed.to_le_bytes());
     MatchConfig {
         match_id: pinned.seed,
+        stream: pinned.seed,
         master_key,
         picks: pinned
             .heroes

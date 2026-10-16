@@ -183,6 +183,7 @@ fn lerp(from: Vec2, to: Vec2, num: i32, den: i32) -> Vec2 {
 fn match_config() -> MatchConfig {
     MatchConfig {
         match_id: MATCH_ID,
+        stream: MATCH_ID,
         master_key: MASTER_KEY,
         picks: vec![
             Pick {

@@ -18,7 +18,12 @@ fn opts() -> ServerOpts {
         tick_rate: 30,
         players: 2,
         replay: None,
-        seed: 3,
+        seed: Some(3),
+        match_id: None,
+        reserved: Vec::new(),
+        referee_key: None,
+        start_after: None,
+        max_connections: None,
         map: MapId(2),
         cheats: false,
         immortal_structures: false,
@@ -35,7 +40,7 @@ fn a_linked_session_folds_a_lockstep_match_it_acknowledges() {
     let address = listener.local_addr().expect("bound").to_string();
     let server = thread::spawn(move || run(listener, opts()));
     let (mut link, seated) =
-        Link::join(&address, "test", Some(HeroId::SHADOW_FIEND)).expect("a seat");
+        Link::join(&address, "test", Some(HeroId::SHADOW_FIEND), None).expect("a seat");
     let mut session = None;
     let mut last_tick = 0;
     while last_tick < TICKS {

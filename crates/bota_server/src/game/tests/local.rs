@@ -17,6 +17,7 @@ pub(super) fn mid_config() -> MatchConfig {
     };
     MatchConfig {
         match_id: 5,
+        stream: 5,
         master_key: [9; 32],
         picks: vec![pick(0, Team::Radiant), pick(1, Team::Dire)],
         map: MapId(MAP2_ID.0),

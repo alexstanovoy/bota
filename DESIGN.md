@@ -294,7 +294,9 @@ the slot over.
 
 ```rust
 pub struct MatchConfig {
-    pub match_id: u64, pub master_key: [u8; 32], pub picks: Vec<Pick>,
+    pub match_id: u64,               // a public label; no randomness comes from it
+    pub master_key: [u8; 32], pub stream: u64,   // the hidden randomness
+    pub picks: Vec<Pick>,
     pub map: MapId, pub tick_rate: u16, pub mode: TickMode, pub ack_timeout_ticks: u32,
     pub cheats: bool, pub spawn_modifiers: Vec<SpawnModifier>,
     pub immortal_structures: bool,   // server-only: structures never drop below 1 hp (practice)
@@ -308,14 +310,16 @@ impl MatchConfig {
 ```
 
 The match seed is derived with `rand_chacha` itself, no separate hash function needed:
-`master_key` is a 32-byte seed, `match_id` is a stream number. A match is reproducible
-from the pair `(master_key, match_id)`, which is convenient for debugging. Implemented
-in `game/rng.rs`:
+`master_key` is a 32-byte seed, `stream` is a stream number. A match is reproducible
+from the pair `(master_key, stream)`, which is convenient for debugging. The server
+draws both from the operating system unless `--seed` is given, and `--match-id` is a
+separate public label (a fresh random value by default): the public id reveals nothing
+of the hidden stream. Implemented in `game/rng.rs`:
 
 ```rust
-// MatchRng::new(master_key, match_id)
+// MatchRng::new(master_key, stream)
 let mut root = ChaCha8Rng::from_seed(*master_key);
-root.set_stream(match_id);
+root.set_stream(stream);
 let mut seed = [0u8; 32];
 root.fill_bytes(&mut seed);
 
@@ -1124,7 +1128,8 @@ on any position that changed or disappeared, and on one not yet registered;
 
 ```rust
 enum ClientMsg {
-    Hello { role: Role, name: String },    // Role: Player|Bot|Spectator
+    Hello { role: Role, name: String,      // Role: Player|Bot|Spectator|Referee
+            key: Option<SeatKey> },        // what a server with reserved seats asks for
     PickHero { hero: HeroId },
     SetReady(bool),
     Order { seq: u32, unit: Option<EntityId>, order: Order,    // unit: None is the hero
@@ -1151,6 +1156,24 @@ enum Target { None, Pos(Vec2), Unit(EntityId) }
 Casting is one variant, `Cast`, with the target kind expressed by
 `Target`; whether the variant fits the ability is validated by the server
 (`RejectReason::WrongTargetKind`).
+
+### Reserved seats, referee, fingerprint
+
+A server started with reserved seats (`--seat key_hex:name`, comma separated or in
+`BOTA_SEATS`, one per seat in slot order) hands a seat only to a `Hello` carrying that
+seat's `SeatKey` (32 bytes, compared in constant time, never printed). The name shown
+is the reservation's. The same key taken again, before or during the match, closes the
+connection that held the seat and announces its `ParticipantLeft`: a reconnect keeps the
+seat's hero and state, and receives `Welcome`, `MatchStart` and the ticks like a late
+spectator. A `Spectator` with a seat key is locked to that seat's view; `ViewAs` is
+ignored. A `Referee` (key from `--referee-key` / `BOTA_REFEREE_KEY`; none configured,
+none admitted) is told the lobby, the start, departures and the end, and no tick. With
+reserved seats the server does not stop when every seat is empty.
+`--start-after-secs N` ends the lobby phase N seconds after listening at the latest; a
+seat without a pick gets a random hero. `--max-connections N` bounds the connections
+held. `bota_proto::WIRE_FINGERPRINT` is an FNV-1a hash of `registry/wire.txt` and
+`registry/ids.txt`; `bota_server --wire-fingerprint` prints it, so a deployment can
+check that two builds speak the same wire.
 
 There is no chat in the protocol. The server exists for local bot testing; a message
 type that plays no part in the match is not worth its slot in the wire format.
@@ -1552,7 +1575,9 @@ main:
   parse args (--port, --mode realtime|lockstep, --tick-rate, --players,
               --replay out.brp, --map, --seed, --ack-timeout-ticks, --cheats,
               --immortal-structures, --immortal-heroes, --dummy-seat,
-              --order-delay-ticks, --order-jitter-ticks)
+              --order-delay-ticks, --order-jitter-ticks, --match-id, --seat,
+              --referee-key, --start-after-secs, --max-connections,
+              --wire-fingerprint)
   listen TCP; the accept thread queues connections
   state = Lobby
 

@@ -14,6 +14,7 @@ use bota_proto::{
 fn config(cheats: bool) -> MatchConfig {
     MatchConfig {
         match_id: 5,
+        stream: 5,
         master_key: [9; 32],
         picks: vec![Pick {
             slot: SlotId(0),

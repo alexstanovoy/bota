@@ -2,12 +2,14 @@
 
 use std::net::TcpListener;
 use std::path::PathBuf;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::Duration;
 
 use clap::{Parser, ValueEnum};
 
+use bota_proto::SeatKey;
 use bota_server::game::{OrderDelay, check_order_delays};
 use bota_server::game_loop::{ServerOpts, run};
+use bota_server::lobby::ReservedSeat;
 
 #[cfg(test)]
 mod map_cli_tests;
@@ -33,18 +35,45 @@ struct Args {
     /// Ticks per wall-clock second.
     #[arg(long, default_value_t = 30)]
     tick_rate: u16,
-    /// Seats in the match.
-    #[arg(long, default_value_t = 2)]
-    players: u8,
+    /// Seats in the match. Implied by the seat reservations when there are any.
+    #[arg(long)]
+    players: Option<u8>,
     /// Write a replay to this file.
     #[arg(long)]
     replay: Option<PathBuf>,
     /// Which map to play: 0 Dota, 1 hero demo, 2 mid-only Dota (two lives or first tower, fifteen game minutes).
     #[arg(long, default_value_t = 0, value_parser = parse_map)]
     map: u16,
-    /// Seed of the match randomness. A fresh one is drawn when absent.
+    /// Seed of the match randomness. Drawn from the operating system when absent, and then
+    /// known to no one.
     #[arg(long)]
     seed: Option<u64>,
+    /// Public label of the match. A fresh random one when absent; no randomness comes from it.
+    #[arg(long)]
+    match_id: Option<u64>,
+    /// Seats held for key holders, one `key_hex:name` per seat in slot order, comma separated.
+    /// A Hello must then carry a key. Prefer the environment: arguments show in process lists.
+    #[arg(
+        long = "seat",
+        env = "BOTA_SEATS",
+        value_delimiter = ',',
+        hide_env_values = true
+    )]
+    seats: Vec<String>,
+    /// The key a referee's connection presents (64 hex digits): told the lobby, the start,
+    /// departures and the end, and no ticks.
+    #[arg(long, env = "BOTA_REFEREE_KEY", hide_env_values = true)]
+    referee_key: Option<String>,
+    /// With reserved seats, end the lobby phase this many seconds after listening at the latest;
+    /// a seat without a pick then gets a random hero.
+    #[arg(long)]
+    start_after_secs: Option<u64>,
+    /// Most connections held at once.
+    #[arg(long)]
+    max_connections: Option<usize>,
+    /// Print the fingerprint of the wire registries this build speaks and exit.
+    #[arg(long)]
+    wire_fingerprint: bool,
     /// Lockstep: tick-lengths to wait for a straggler before moving on.
     #[arg(long, default_value_t = 150)]
     ack_timeout_ticks: u32,
@@ -70,15 +99,35 @@ struct Args {
 
 fn main() -> std::io::Result<()> {
     let args = Args::parse();
-    let order_delays = order_delays(&args).map_err(std::io::Error::other)?;
+    if args.wire_fingerprint {
+        println!("{:016x}", bota_proto::WIRE_FINGERPRINT);
+        return Ok(());
+    }
+    let reserved = reservations(&args.seats).map_err(std::io::Error::other)?;
+    let referee_key = args
+        .referee_key
+        .as_deref()
+        .map(parse_key)
+        .transpose()
+        .map_err(std::io::Error::other)?;
+    let players = match (args.players, reserved.len()) {
+        (Some(players), 0) => players,
+        (None, 0) => 2,
+        (Some(players), seats) if usize::from(players) != seats => {
+            return Err(std::io::Error::other(format!(
+                "--players {players} contradicts the {seats} reserved seats"
+            )));
+        }
+        (_, seats) if args.dummy_seat || seats > usize::from(u8::MAX) => {
+            return Err(std::io::Error::other(
+                "reserved seats take no dummy seat and at most 255 seats",
+            ));
+        }
+        (_, seats) => seats as u8,
+    };
+    let order_delays = order_delays(&args, players).map_err(std::io::Error::other)?;
     let listener = TcpListener::bind(("0.0.0.0", args.port))?;
     println!("bota_server listening on {}", listener.local_addr()?);
-    let seed = args.seed.unwrap_or_else(|| {
-        SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("the clock sits after 1970")
-            .as_nanos() as u64
-    });
     run(
         listener,
         ServerOpts {
@@ -87,9 +136,14 @@ fn main() -> std::io::Result<()> {
                 Mode::Lockstep => bota_proto::TickMode::Lockstep,
             },
             tick_rate: args.tick_rate,
-            players: args.players,
+            players,
             replay: args.replay,
-            seed,
+            seed: args.seed,
+            match_id: args.match_id,
+            reserved,
+            referee_key,
+            start_after: args.start_after_secs.map(Duration::from_secs),
+            max_connections: args.max_connections,
             map: bota_proto::MapId(args.map),
             ack_timeout_ticks: args.ack_timeout_ticks,
             cheats: args.cheats,
@@ -113,8 +167,8 @@ fn parse_map(value: &str) -> Result<u16, String> {
 
 /// One order delay per seat from the two lists, each holding one value for
 /// every seat or one per seat.
-fn order_delays(args: &Args) -> Result<Vec<OrderDelay>, String> {
-    let seats = usize::from(args.players);
+fn order_delays(args: &Args, players: u8) -> Result<Vec<OrderDelay>, String> {
+    let seats = usize::from(players);
     let per_seat = |values: &[u32], flag: &str| match values.len() {
         1 => Ok(vec![values[0]; seats]),
         n if n == seats => Ok(values.to_vec()),
@@ -131,4 +185,40 @@ fn order_delays(args: &Args) -> Result<Vec<OrderDelay>, String> {
         .collect();
     check_order_delays(&delays, seats).map_err(|error| error.to_string())?;
     Ok(delays)
+}
+
+/// The longest name a reservation may carry, in bytes.
+const MAX_SEAT_NAME_LEN: usize = 64;
+
+/// Seats from `key_hex:name` entries.
+fn reservations(entries: &[String]) -> Result<Vec<ReservedSeat>, String> {
+    entries
+        .iter()
+        .map(|entry| {
+            let (key, name) = entry
+                .split_once(':')
+                .ok_or("a seat reservation reads key_hex:name")?;
+            if name.is_empty() || name.len() > MAX_SEAT_NAME_LEN {
+                return Err(format!("a seat name takes 1 to {MAX_SEAT_NAME_LEN} bytes"));
+            }
+            Ok(ReservedSeat {
+                key: parse_key(key)?,
+                name: name.to_owned(),
+            })
+        })
+        .collect()
+}
+
+/// A key from its 64 hex digits.
+fn parse_key(hex: &str) -> Result<SeatKey, String> {
+    let digits = hex.as_bytes();
+    if digits.len() != 64 {
+        return Err("a key is 64 hex digits".to_owned());
+    }
+    let mut key = [0u8; 32];
+    for (byte, pair) in key.iter_mut().zip(digits.chunks(2)) {
+        let pair = std::str::from_utf8(pair).map_err(|_| "a key is 64 hex digits")?;
+        *byte = u8::from_str_radix(pair, 16).map_err(|_| "a key is 64 hex digits")?;
+    }
+    Ok(SeatKey(key))
 }

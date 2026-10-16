@@ -45,10 +45,13 @@ impl std::error::Error for MatchConfigError {}
 /// leaves the server.
 #[derive(Clone, Debug)]
 pub struct MatchConfig {
-    /// Identifies this match in logs and replay files.
+    /// Identifies this match in logs and replay files. A label only: no
+    /// randomness is derived from it.
     pub match_id: u64,
     /// Server secret the match randomness is derived from.
     pub master_key: [u8; 32],
+    /// Which of the key's streams the match randomness reads. Secret like the key.
+    pub stream: u64,
     /// Every seat and its hero, sorted by slot.
     pub picks: Vec<Pick>,
     /// Which map is being played.
@@ -76,7 +79,7 @@ pub struct MatchConfig {
 impl MatchConfig {
     /// The hidden randomness of this match.
     pub fn rng(&self) -> MatchRng {
-        MatchRng::new(&self.master_key, self.match_id)
+        MatchRng::new(&self.master_key, self.stream)
     }
 
     /// Whether the description may build a match. The spawn modifiers must

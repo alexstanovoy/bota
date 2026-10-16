@@ -99,6 +99,7 @@ pub(super) fn map_buildings(map: &MapDef) -> usize {
 pub(super) fn config() -> MatchConfig {
     MatchConfig {
         match_id: 7,
+        stream: 7,
         master_key: [3; 32],
         picks: vec![Pick {
             slot: SlotId(0),
@@ -1219,6 +1220,7 @@ pub(super) fn wear_down(world: &mut World, unit: Entity, hundredths: i32) {
 pub(super) fn a_match_with_nobody_in_it(match_id: u64, map: MapId) -> World {
     let config = MatchConfig {
         match_id,
+        stream: match_id,
         master_key: [0; 32],
         picks: vec![],
         map,
