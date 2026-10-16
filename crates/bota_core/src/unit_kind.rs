@@ -39,8 +39,9 @@ pub struct KindDef {
     /// A building a town portal scroll may carry to: Dota's allied
     /// `DOTA_UNIT_TARGET_BUILDING`.
     pub takes_scrolls: bool,
-    /// A blow it lands puts out a drink that breaks on damage.
-    pub breaks_drinks: bool,
+    /// Its blows on the other side break what breaks on damage. Read through
+    /// [`breaks_regen`](crate::breaks_regen), the one rule for it.
+    pub(crate) breaks_regen: bool,
 }
 
 /// A kind that is none of the special things, so a row names only what sets
@@ -58,7 +59,7 @@ const PLAIN: KindDef = KindDef {
     priority: PriorityOrder::Normal,
     deny_below_pct: None,
     takes_scrolls: false,
-    breaks_drinks: false,
+    breaks_regen: false,
 };
 
 /// A lane creep of one attack class.
@@ -94,7 +95,7 @@ pub const UNIT_KINDS: [KindDef; 13] = [
     KindDef {
         kind: UnitKind::Hero,
         attack_class: AttackClass::Hero,
-        breaks_drinks: true,
+        breaks_regen: true,
         ..PLAIN
     },
     lane_creep(UnitKind::CreepMelee, AttackClass::Runty),
@@ -110,10 +111,7 @@ pub const UNIT_KINDS: [KindDef; 13] = [
         creep: true,
         ..PLAIN
     },
-    KindDef {
-        breaks_drinks: true,
-        ..building(UnitKind::Tower, TargetClass::Building, true)
-    },
+    building(UnitKind::Tower, TargetClass::Building, true),
     building(UnitKind::Ancient, TargetClass::Building, true),
     building(UnitKind::Barracks, TargetClass::Unit, true),
     building(UnitKind::Fountain, TargetClass::Building, true),

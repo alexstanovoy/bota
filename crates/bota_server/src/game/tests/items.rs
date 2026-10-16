@@ -2,9 +2,10 @@
 
 use bota_core::{
     BLINK_RANGE, HERO, ITEMS, MELEE_CREEP, ModifierKind, SALVE_TICKS, SHADOW_FIEND, map_of, rules,
+    tower_def,
 };
 
-use crate::game::{Event, ItemStack, Mana, World, tree_positions, wire_id};
+use crate::game::{Entity, Event, ItemStack, Mana, World, tree_positions, wire_id};
 use bota_proto::{
     Attribute, DamageKind, EventKind, Fixed, HeroId, ItemId, MapId, SlotId, Target, Team, UnitKind,
     Vec2,
@@ -276,8 +277,98 @@ fn a_quelling_blade_is_worth_something_against_a_creep_and_nothing_against_a_her
     );
 }
 
+/// Dota 7.41f, Healing Salve and Clarity: "If the unit is attacked by an
+/// enemy hero or Roshan, the effect is lost."; Blink Dagger: "cannot be used
+/// for %blink_damage_cooldown% seconds after taking damage from an enemy hero
+/// or Roshan." A tower is neither.
 #[test]
-fn a_hero_hit_loses_its_drink_but_never_what_a_tree_bought() {
+fn a_tower_shot_leaves_the_drinks_running_and_a_blink_ready() {
+    let mut world = World::new();
+    let tower = world.spawn_unit(tower_def(1), Team::Radiant, Vec2::from_ints(5000, 5000));
+    let drinker = a_drinker(&mut world, Vec2::from_ints(5400, 5000));
+    assert!(
+        one_swing_takes(&mut world, tower, drinker) > 0,
+        "the shot lands"
+    );
+    assert_eq!(drinks(&world, drinker), (true, true), "both drinks hold");
+    assert_eq!(blink_wait(&world, drinker), 0, "the blink is ready");
+}
+
+#[test]
+fn an_enemy_heros_swing_or_raze_puts_the_drinks_out_and_sets_a_blink_back() {
+    for raze in [false, true] {
+        let (mut world, fiend, _far_off) = fiend_and_a_mark(3000);
+        let at = Vec2::from_ints(5000 + rules::RAZE_DISTANCE[0], 5000);
+        let drinker = a_drinker(&mut world, at);
+        if raze {
+            let events = super::fiend::cast_through(&mut world, 0, rules::RAZE_CAST_POINT_MS);
+            assert!(
+                !super::fiend::burns_on(&events, drinker).is_empty(),
+                "the raze lands"
+            );
+            assert!(
+                !events.iter().any(|event| matches!(event.kind,
+                    EventKind::Damaged { target, kind: DamageKind::Physical, .. }
+                        if target == wire_id(drinker))),
+                "and nothing else does"
+            );
+        } else {
+            assert!(
+                one_swing_takes(&mut world, fiend, drinker) > 0,
+                "the swing lands"
+            );
+        }
+        assert_eq!(
+            drinks(&world, drinker),
+            (false, false),
+            "raze {raze}: both drinks go out"
+        );
+        assert!(
+            blink_wait(&world, drinker) > 0,
+            "raze {raze}: the blink waits"
+        );
+    }
+}
+
+#[test]
+fn a_creeps_swing_or_ones_own_rot_leaves_the_drinks_running() {
+    let mut world = World::new();
+    let creep = world.spawn_unit(&MELEE_CREEP, Team::Radiant, Vec2::from_ints(5000, 5000));
+    let drinker = a_drinker(&mut world, Vec2::from_ints(5100, 5000));
+    assert!(
+        one_swing_takes(&mut world, creep, drinker) > 0,
+        "the swing lands"
+    );
+    assert_eq!(
+        drinks(&world, drinker),
+        (true, true),
+        "a creep breaks nothing"
+    );
+    assert_eq!(blink_wait(&world, drinker), 0);
+
+    let (mut world, pudge, _far_off) = pudge_and_a_mark(3000);
+    if let Some(book) = world.abilities.get_mut(pudge) {
+        book.slots[1].level = 1;
+    }
+    drink_up(&mut world, pudge);
+    pudge_casts(&mut world, 1, Target::None);
+    let burnt = (0..rules::BURN_PERIOD_TICKS * 2)
+        .flat_map(|_| world.step())
+        .any(|event| {
+            matches!(event.kind, EventKind::Damaged { target, amount, .. }
+                if target == wire_id(pudge) && amount > 0)
+        });
+    assert!(burnt, "the rot burns its owner");
+    assert_eq!(
+        drinks(&world, pudge),
+        (true, true),
+        "his own rot breaks nothing"
+    );
+    assert_eq!(blink_wait(&world, pudge), 0);
+}
+
+#[test]
+fn a_heros_blow_never_puts_out_what_a_tree_bought() {
     let map = map_of(MapId(0));
     let mut world = World::on_map(map);
     let hero = hero_at(&mut world, Vec2::from_ints(7000, 7000));
@@ -287,24 +378,8 @@ fn a_hero_hit_loses_its_drink_but_never_what_a_tree_bought() {
         SlotId(1),
         HeroId::SHADOW_FIEND,
     );
-    let creep = world.spawn_unit(&MELEE_CREEP, Team::Dire, Vec2::from_ints(7000, 7000));
     world.settle();
     world.step();
-    let salve = ModifierKind::Mending {
-        per_tick: 0,
-        breaks: false,
-    };
-    // A creep may hit all day and the drink holds.
-    hand_item(&mut world, hero, ItemId::HEALING_SALVE, 1);
-    assert!(world.use_item(hero, 0, Target::None, &mut Vec::new()));
-    world.push_hit(Some(creep), hero, 10, DamageKind::Physical);
-    world.step();
-    assert!(carries(&world, hero, salve), "a creep does not break it");
-    // A hero's blow puts it out.
-    world.push_hit(Some(theirs), hero, 10, DamageKind::Physical);
-    world.step();
-    assert!(!carries(&world, hero, salve), "a hero does");
-    // What a tree bought is broken by nothing.
     let tree = tree_positions(map, crate::game::terrain_of(map))
         .into_iter()
         .find(|at| at.within(Vec2::from_ints(7000, 7000), Fixed::from_int(4000)))
@@ -314,10 +389,55 @@ fn a_hero_hit_loses_its_drink_but_never_what_a_tree_bought() {
     assert!(world.use_item(hero, 0, Target::Pos(tree), &mut Vec::new()));
     world.push_hit(Some(theirs), hero, 10, DamageKind::Physical);
     world.step();
-    assert!(
-        carries(&world, hero, salve),
+    assert_eq!(
+        drinks(&world, hero),
+        (true, false),
         "a tango holds through a hero's blow"
     );
+}
+
+/// A Dire hero standing at a spot with a Healing Salve and a Clarity running
+/// and a Blink Dagger ready in its second slot.
+fn a_drinker(world: &mut World, at: Vec2) -> Entity {
+    let drinker = world.spawn_hero(Team::Dire, at, SlotId(1), HeroId::SHADOW_FIEND);
+    world.settle();
+    world.step();
+    drink_up(world, drinker);
+    drinker
+}
+
+/// Drinks a Healing Salve and a Clarity and lays a Blink Dagger in the
+/// second slot.
+fn drink_up(world: &mut World, hero: Entity) {
+    for item in [ItemId::HEALING_SALVE, ItemId::CLARITY] {
+        hand_item(world, hero, item, 1);
+        assert!(
+            world.use_item(hero, 0, Target::None, &mut Vec::new()),
+            "drunk"
+        );
+    }
+    if let Some(bag) = world.inventory.get_mut(hero) {
+        bag.slots[1] = Some(fresh_stack(ItemId::BLINK_DAGGER, 0));
+    }
+    assert_eq!(drinks(world, hero), (true, true));
+}
+
+/// Whether a unit mends health and whether it mends mana right now.
+fn drinks(world: &World, unit: Entity) -> (bool, bool) {
+    let health = ModifierKind::Mending {
+        per_tick: 0,
+        breaks: false,
+    };
+    let mana = ModifierKind::Clarity {
+        per_tick: 0,
+        breaks: false,
+    };
+    (carries(world, unit, health), carries(world, unit, mana))
+}
+
+/// What is left of the wait on the Blink Dagger in a hero's second slot.
+fn blink_wait(world: &World, hero: Entity) -> u32 {
+    slot_of(world, hero, 1).expect("a blink dagger").cooldown
 }
 
 #[test]

@@ -710,7 +710,10 @@ exploit any leak a human reviewer shrugs off:
   wheel can only lose a sliver, never gain one; and a pool that held anything
   is kept off zero, so the wheel cannot kill its owner either. Consumables
   drip over their duration (Healing Salve ten seconds, Clarity twenty-five) and
-  spill on any hit from a hero or a tower. Items survive the hero's
+  spill on any damage from an enemy hero, attack or spell; a tower, a creep and
+  one's own side spill nothing (Dota 7.41f: "If the unit is attacked by an
+  enemy hero or Roshan, the effect is lost."). `bota_core::breaks_regen` is
+  that rule, for the server and every client alike. Items survive the hero's
   death on the seat.
 - An item set to an attribute — Power Treads — keeps which one on the stack
   rather than in the catalog, and the wire carries it in `ItemView`, since two
@@ -723,7 +726,8 @@ exploit any leak a human reviewer shrugs off:
   landing spot on closed ground steps back along that line a grid cell at a
   time until it finds open ground: refusing outright would have been simpler,
   but it makes the item unusable at exactly the cliffs it exists to cross.
-  A blow from a hero or a tower sets it back, and that lives in the
+  Damage from an enemy hero sets it back (Dota 7.41f: "after taking damage
+  from an enemy hero or Roshan", the drinks' own rule), and that lives in the
   same place a blow already puts a Salve out, so there is one pass over what a
   blow breaks rather than two.
 - Charges gained from enemy casts — Magic Stick and Wand — are counted where

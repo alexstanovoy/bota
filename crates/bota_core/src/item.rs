@@ -137,7 +137,7 @@ pub struct Mend {
     pub range: i32,
     /// Whether it takes a tree down to work.
     pub eats_a_tree: bool,
-    /// Whether a blow puts it out.
+    /// Whether a blow that [`breaks_regen`](crate::breaks_regen) puts it out.
     pub breaks: bool,
 }
 
@@ -239,8 +239,8 @@ pub struct ItemDef {
     pub health_cost: i32,
     /// How each side's shop keeps it. Absent for one sold without limit.
     pub stock: Option<Stock>,
-    /// Ticks of waiting a blow from a hero or a tower puts on it.
-    /// Zero for one that answers to no blow.
+    /// Ticks of waiting a blow that [`breaks_regen`](crate::breaks_regen)
+    /// puts on it. Zero for one that answers to no blow.
     pub breaks_on_damage: u32,
     /// Which attribute it is set to when bought. Absent for one that is set
     /// to none.

@@ -1,9 +1,9 @@
 //! Health and mana regeneration, one rule for the server that applies it and
 //! for a client that shows it.
 
-use bota_proto::{Attributes, Fixed};
+use bota_proto::{Attributes, Fixed, Team, UnitKind};
 
-use crate::{ModifierKind, rules};
+use crate::{ModifierKind, kind_def, rules};
 
 /// What a unit regenerates each tick.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -69,4 +69,19 @@ pub fn regen(
         total.mana += added.mana;
     }
     total
+}
+
+/// Whether damage a unit of kind `source` on side `source_side` deals to a
+/// unit on side `target_side` breaks what breaks on damage: a running mend
+/// whose [`Mend::breaks`](crate::Mend::breaks) is set, and the wait of an item
+/// with a [`breaks_on_damage`](crate::ItemDef::breaks_on_damage).
+///
+/// Dota 7.41f words it the same for each of them: Healing Salve and Clarity,
+/// "If the unit is attacked by an enemy hero or Roshan, the effect is lost."
+/// (the salve's `break_on_hero_damage`: any damage, attack or spell); Blink
+/// Dagger, "cannot be used ... after taking damage from an enemy hero or
+/// Roshan." A tower, a creep, a ward and one's own side break nothing.
+#[inline]
+pub fn breaks_regen(source: UnitKind, source_side: Team, target_side: Team) -> bool {
+    source_side != target_side && kind_def(source).breaks_regen
 }

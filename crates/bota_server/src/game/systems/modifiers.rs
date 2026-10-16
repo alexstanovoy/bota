@@ -1,7 +1,7 @@
 //! What is on a unit: putting it on, doing its work each tick, taking it off.
 
-use bota_core::{ModifierKind, item_def, kind_def, rules};
-use bota_proto::{AbilityId, DamageKind, Fixed};
+use bota_core::{ModifierKind, breaks_regen, item_def, rules};
+use bota_proto::{AbilityId, DamageKind, Fixed, Team};
 
 use crate::game::{Landed, Modifier, Stats, Table, World, cooldown_after};
 
@@ -251,21 +251,17 @@ impl World {
     }
 
     /// Puts out every drink a blow is enough to break, and sets back every
-    /// item that answers to one.
-    ///
-    /// Only a blow from a hero or a tower breaks anything. A drink that does
-    /// not break and an item with no break cooldown are left alone.
+    /// item that answers to one: the blows [`breaks_regen`] names. A drink
+    /// that does not break and an item with no break cooldown are left alone.
     pub fn break_on_blows(&mut self, felt: &[Landed]) {
         for blow in felt {
-            let Some(from) = blow.source else {
-                continue;
-            };
-            if !self
-                .kind
-                .get(from)
-                .copied()
-                .is_some_and(|kind| kind_def(kind).breaks_drinks)
-            {
+            let breaks = blow.source.is_some_and(|from| {
+                self.kind.get(from).is_some_and(|&kind| {
+                    let side = self.team.get(from).copied().unwrap_or(Team::Neutral);
+                    breaks_regen(kind, side, blow.side)
+                })
+            });
+            if !breaks {
                 continue;
             }
             if let Some(on_it) = self.modifiers.get_mut(blow.target) {

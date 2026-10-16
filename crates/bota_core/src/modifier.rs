@@ -17,14 +17,14 @@ pub enum ModifierKind {
     Mending {
         /// Hundredths of a point a tick.
         per_tick: i32,
-        /// Whether a blow from a hero or a tower puts it out.
+        /// Whether a blow that [`breaks_regen`](crate::breaks_regen) puts it out.
         breaks: bool,
     },
     /// Mana mends faster.
     Clarity {
         /// Hundredths of a point a tick.
         per_tick: i32,
-        /// Whether a blow from a hero or a tower puts it out.
+        /// Whether a blow that [`breaks_regen`](crate::breaks_regen) puts it out.
         breaks: bool,
     },
     /// Health and mana both mend faster, for standing in a fountain.
