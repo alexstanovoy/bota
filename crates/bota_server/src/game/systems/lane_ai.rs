@@ -49,8 +49,9 @@ impl World {
     /// The best thing this entity may take on within a reach.
     ///
     /// Ranked by what it is, then by what it is doing, then by how far off it
-    /// stands. The entity itself breaks a dead tie, so the answer is the same
-    /// on every run.
+    /// stands. A dead tie goes by a rank the match draws for each pair of
+    /// seeker and candidate: the same answer on every run and every tick,
+    /// and no side, spawned into the lower slots, taken first by standing.
     pub fn best_valid_in_range(
         &self,
         seeker: Entity,
@@ -71,6 +72,7 @@ impl World {
                     self.class_priority(*candidate, order),
                     self.threat_priority(seeker, *candidate),
                     far,
+                    self.tie_rank(seeker, *candidate),
                     *candidate,
                 )
             })

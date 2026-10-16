@@ -341,17 +341,50 @@ impl World {
     /// Where a step against a body ends: the step itself with nobody in
     /// the way, else what of it runs along the edge of the body it meets,
     /// and nothing when that is no way at all or meets a second body.
+    ///
+    /// Bodies are met where they stood when the tick began, so every
+    /// marcher steps at once and none walks into a gap another left this
+    /// tick: who moves first would otherwise shape the wave, and the slots
+    /// go to the side spawned first. Two that step into one spot are eased
+    /// apart after.
     fn slide_past(&self, entity: Entity, from: Vec2, next: Vec2, collision: Fixed) -> Option<Vec2> {
         if self.phased(entity) {
             return Some(next);
         }
-        let Some(blocker) = self.body_in_the_way(entity, from, next) else {
+        let Some((centre, radius)) = self.stood_in_the_way(entity, from, next, collision) else {
             return Some(next);
         };
-        let centre = self.transform.get(blocker)?.pos;
-        let reach = collision + self.hull.get(blocker).map_or(Fixed::ZERO, |h| h.collision);
-        let to = slide_along(from, next, centre, reach)?;
-        (to != from && self.body_in_the_way(entity, from, to).is_none()).then_some(to)
+        let to = slide_along(from, next, centre, collision + radius)?;
+        (to != from && self.stood_in_the_way(entity, from, to, collision).is_none()).then_some(to)
+    }
+
+    /// Where the body a step would walk into stood when the tick began, and
+    /// its collision size: the nearest to where the step begins of those
+    /// the step ends inside and nearer their centre. Phased bodies are
+    /// walked through.
+    fn stood_in_the_way(
+        &self,
+        mover: Entity,
+        from: Vec2,
+        next: Vec2,
+        mine: Fixed,
+    ) -> Option<(Vec2, Fixed)> {
+        let mut best: Option<(i64, Vec2, Fixed)> = None;
+        self.bodies.near(next, mine, |body| {
+            if body.entity == mover || self.phased(body.entity) {
+                return;
+            }
+            let least = (mine + body.radius).squared_raw();
+            let ahead = next.distance_squared(body.at);
+            let near = from.distance_squared(body.at);
+            if ahead >= least || ahead >= near {
+                return;
+            }
+            if best.is_none_or(|(had, _, _)| near < had) {
+                best = Some((near, body.at, body.radius));
+            }
+        });
+        best.map(|(_, at, radius)| (at, radius))
     }
 
     /// Where a walker stands and how far it walks this tick, or nothing
