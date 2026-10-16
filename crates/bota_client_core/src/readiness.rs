@@ -1,5 +1,6 @@
 //! Waits the wire does not report, known from the orders given.
 
+use bota_core::rules;
 use bota_proto::{ItemId, ItemSlot, Order};
 
 use crate::latency::OrderLatency;
@@ -8,10 +9,8 @@ use crate::session::ClientSession;
 
 /// Town Portal Scroll item id.
 pub const TOWN_PORTAL_SCROLL: ItemId = ItemId::TOWN_PORTAL_SCROLL;
-/// ControlledUnit-wide Town Portal Scroll wait in ticks: Dota 7.41f's 80 s.
-pub const TOWN_PORTAL_WAIT_TICKS: u32 = 2_400;
 /// Items with a body-wide wait and their wait in ticks.
-pub const SHARED_WAITS: [(ItemId, u32); 1] = [(TOWN_PORTAL_SCROLL, TOWN_PORTAL_WAIT_TICKS)];
+pub const SHARED_WAITS: [(ItemId, u32); 1] = [(TOWN_PORTAL_SCROLL, rules::SCROLL_WAIT_TICKS)];
 /// Recent timers kept per journal so a rejected order's timers can be rolled
 /// back. An evicted timer becomes the base and can no longer be rejected; with
 /// one order outstanding at a time that is never needed.

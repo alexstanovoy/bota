@@ -2,13 +2,10 @@
 
 use std::collections::VecDeque;
 
+use bota_core::rules::MAX_ORDER_DELAY_TICKS;
 use bota_proto::{EntityId, Order, OrderDelayView, RejectReason, SlotId, Team};
 
 use crate::game::{Command, MatchConfig, Stream, World};
-
-/// Most ticks an order may wait past the earliest tick it could take effect
-/// on, base and jitter together.
-pub const MAX_ORDER_DELAY_TICKS: u32 = 30;
 
 /// How late one seat's orders take effect, in ticks past the earliest tick
 /// each one could.

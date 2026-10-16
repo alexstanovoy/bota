@@ -1178,6 +1178,9 @@ const _: () = {
     assert!(TOWN_PORTAL_SLOT == INVENTORY_SLOTS + BACKPACK_SLOTS + STASH_SLOTS);
     assert!(TOWN_PORTAL_SLOT == bota_proto::ItemSlot::TOWN_PORTAL.0 as usize);
 };
+/// Most ticks an order may wait past the earliest tick it could take effect
+/// on, base and jitter together.
+pub const MAX_ORDER_DELAY_TICKS: u32 = 30;
 /// Ticks an item stays muted after leaving the backpack for the inventory.
 pub const BACKPACK_MUTE_TICKS: u32 = 180;
 /// How close to the home fountain the shop, the stash and selling work.
