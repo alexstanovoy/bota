@@ -1,16 +1,20 @@
 //! Waits the wire does not report, known from the orders given.
 
-use bota_core::rules;
-use bota_proto::{ItemId, ItemSlot, Order};
+use bota_core::item_def;
+use bota_proto::{ItemId, Order};
 
 use crate::latency::OrderLatency;
-use crate::orders::{ControlledUnit, IssuedOrder};
+use crate::orders::{ControlledUnit, IssuedOrder, item_in};
 use crate::session::ClientSession;
 
-/// Town Portal Scroll item id.
-pub const TOWN_PORTAL_SCROLL: ItemId = ItemId::TOWN_PORTAL_SCROLL;
-/// Items with a body-wide wait and their wait in ticks.
-pub const SHARED_WAITS: [(ItemId, u32); 1] = [(TOWN_PORTAL_SCROLL, rules::SCROLL_WAIT_TICKS)];
+/// The wait in ticks a use of `item` puts on every item of its kind the body
+/// carries, as the item table says (the Town Portal Scroll's); absent for an
+/// item whose wait is its own, which the wire reports.
+pub fn shared_wait(item: ItemId) -> Option<u32> {
+    item_def(item)
+        .filter(|def| def.shared_wait)
+        .map(|def| def.cooldown)
+}
 /// Recent timers kept per journal so a rejected order's timers can be rolled
 /// back. An evicted timer becomes the base and can no longer be rejected; with
 /// one order outstanding at a time that is never needed.
@@ -122,12 +126,12 @@ impl SharedWaits {
         now: u32,
         latency: OrderLatency,
     ) -> Option<u32> {
-        let (_, wait) = SHARED_WAITS.iter().find(|(shared, _)| *shared == item)?;
+        let wait = shared_wait(item)?;
         Some(self.journals[body.index()].current().map_or(0, |timer| {
             let ready = timer
                 .given_tick
                 .saturating_add(latency.lands())
-                .saturating_add(*wait);
+                .saturating_add(wait);
             ready.saturating_sub(now)
         }))
     }
@@ -146,13 +150,5 @@ pub(crate) fn wait_started_by(
         ControlledUnit::Hero => session.own_hero()?,
         ControlledUnit::Courier => session.own_courier()?,
     };
-    let item = if slot == ItemSlot::TOWN_PORTAL {
-        unit.town_portal
-    } else {
-        unit.items.get(usize::from(slot.0)).copied().flatten()
-    }?;
-    SHARED_WAITS
-        .iter()
-        .any(|(shared, _)| *shared == item.id)
-        .then_some(body)
+    shared_wait(item_in(unit, slot)?.id).map(|_| body)
 }

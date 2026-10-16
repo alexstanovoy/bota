@@ -400,9 +400,10 @@ pub fn carried_bonus(items: impl Iterator<Item = CarriedItem>) -> Carried {
         total.armor += def.carried.armor;
         total.hp += def.carried.hp;
         total.mana += def.carried.mana;
+        // A client passes the charges a view shows; a stream it cannot trust
+        // must not panic it, and the server never exceeds the limit.
         let regen_charges = if def.stack_limit > 0 {
-            assert!(stack.charges <= def.stack_limit);
-            i32::from(stack.charges)
+            i32::from(stack.charges.min(def.stack_limit))
         } else {
             1
         };
