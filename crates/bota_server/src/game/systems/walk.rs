@@ -591,13 +591,17 @@ impl World {
     /// Every body a walker's plan is laid round, and where each will be.
     ///
     /// A hero is foreseen where it stands, and only when it has stood there
-    /// a while or has been run into again and again of late. Nothing is
+    /// a while or has been run into again and again of late. A hero walking
+    /// foresees every other body where it stands now: Dota's pathing takes
+    /// units for obstacles where they are and does not predict where they
+    /// go, so a hero sent into a creep's way walks into it. Nothing is
     /// foreseen for a phased walker, and a phased body is walked through.
     fn foreseen_about(&self, entity: Entity, from: Vec2, step: Fixed) -> Vec<Foreseen<'_>> {
         let mut foreseen = Vec::new();
         if self.phased(entity) {
             return foreseen;
         }
+        let hero_walks = self.hero.get(entity).is_some();
         let now = self.tick;
         let reach = Fixed {
             raw: step.raw.saturating_mul(rules::LOCAL_HORIZON_TICKS as i32),
@@ -624,6 +628,16 @@ impl World {
                         from: 0,
                     });
                 }
+                return;
+            }
+            if hero_walks {
+                foreseen.push(Foreseen {
+                    at,
+                    radius: body.radius,
+                    delta: Vec2::ZERO,
+                    steps: &[],
+                    from: 0,
+                });
                 return;
             }
             let (steps, plan_from) = self

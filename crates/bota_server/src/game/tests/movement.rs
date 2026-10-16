@@ -540,12 +540,18 @@ fn a_hero_pacing_before_a_wave_holds_the_creep_it_covers() {
         let target = creep + point_along(Vec2::ZERO, dir, rules::units(70));
         world.set_order(hero, UnitOrder::Move { pos: target });
         world.step();
-        contacts += world
-            .entities
-            .iter()
+        let hp = world.transform.get(hero).expect("standing").pos;
+        let touch = rules::units(rules::HERO_COLLISION + rules::MELEE_CREEP_COLLISION + 2);
+        contacts += radiant_marchers(&world)
+            .into_iter()
             .filter(|e| {
-                world.march.get(*e).is_some()
-                    && world.motion.get(*e).is_some_and(|m| m.bumped == world.tick)
+                world
+                    .transform
+                    .get(*e)
+                    .expect("standing")
+                    .pos
+                    .within(hp, touch)
+                    && world.motion.get(*e).is_some_and(|m| m.still > 0)
             })
             .count();
     }
@@ -556,7 +562,7 @@ fn a_hero_pacing_before_a_wave_holds_the_creep_it_covers() {
         .expect("the wave stands");
     assert!(
         contacts >= 3,
-        "the creeps ran into the hero: {contacts} contacts"
+        "creeps stood held against the hero: {contacts} creep-ticks"
     );
     assert!(
         held + 150 < free_mean - start_mean,
