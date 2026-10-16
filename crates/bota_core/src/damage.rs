@@ -26,6 +26,17 @@ pub fn bite(hp: Fixed, taken: i32, spared: bool) -> i32 {
     }
 }
 
+/// The basis points of resistance a shown [`Fixed`] fraction stands for: the
+/// inverse of `Fixed::from_ratio(bp, NOMINAL_BP)`, which a unit's view applies.
+#[inline]
+pub const fn magic_resist_bp(shown: Fixed) -> i32 {
+    let raw = shown.raw as i64;
+    let scale = 1i64 << Fixed::FRAC_BITS;
+    let nominal = rules::NOMINAL_BP as i64;
+    let magnitude = (raw.abs() * nominal + scale - 1) / scale;
+    (if raw < 0 { -magnitude } else { magnitude }) as i32
+}
+
 /// Damage after armor or magic resistance.
 #[inline]
 pub fn mitigate(amount: i32, kind: DamageKind, armor: Fixed, magic_resist_bp: i32) -> i32 {
@@ -50,5 +61,18 @@ pub fn mitigate(amount: i32, kind: DamageKind, armor: Fixed, magic_resist_bp: i3
                 .clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32
         }
         DamageKind::Pure => amount,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_shown_resistance_gives_back_its_basis_points() {
+        for bp in -rules::NOMINAL_BP..=rules::NOMINAL_BP {
+            let shown = Fixed::from_ratio(bp, rules::NOMINAL_BP);
+            assert_eq!(magic_resist_bp(shown), bp);
+        }
     }
 }

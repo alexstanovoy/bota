@@ -27,6 +27,20 @@ pub fn hero_spawn_pos(map: &MapDef, team: Team) -> Vec2 {
     fountain_pos(map, team) + offset
 }
 
+/// The tier of the tower of a team standing exactly at a position, if one
+/// does. A tower's health is not a way to tell, it varies by match.
+pub fn tower_tier_at(map: &MapDef, team: Team, pos: Vec2) -> Option<u8> {
+    let table = match team {
+        Team::Radiant => map.radiant_towers,
+        Team::Dire => map.dire_towers,
+        Team::Neutral => return None,
+    };
+    table
+        .iter()
+        .find(|&&(_, _, at)| at == pos)
+        .map(|&(_, tier, _)| tier)
+}
+
 /// The physical centerline of a lane, Radiant base first: from the Radiant
 /// Ancient through the lane's corners to the Dire Ancient, and through the
 /// lane's towers too on a map whose lanes run through them.
@@ -100,5 +114,27 @@ pub fn team_index(team: Team) -> usize {
     match team {
         Team::Radiant | Team::Neutral => 0,
         Team::Dire => 1,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{MAP2_ID, map_of};
+
+    #[test]
+    fn a_tower_is_found_by_where_it_stands() {
+        let map = map_of(MAP2_ID);
+        for &(_, tier, pos) in map.radiant_towers {
+            assert_eq!(tower_tier_at(map, Team::Radiant, pos), Some(tier));
+            assert_eq!(tower_tier_at(map, Team::Dire, pos), None);
+        }
+        for &(_, tier, pos) in map.dire_towers {
+            assert_eq!(tower_tier_at(map, Team::Dire, pos), Some(tier));
+        }
+        assert_eq!(
+            tower_tier_at(map, Team::Radiant, Vec2::from_ints(1, 1)),
+            None
+        );
     }
 }

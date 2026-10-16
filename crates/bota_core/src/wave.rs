@@ -52,6 +52,16 @@ pub fn wave_at(tick: u32) -> Option<u32> {
     Some((tick - rules::FIRST_WAVE_TICK) / rules::WAVE_PERIOD_TICKS + 1)
 }
 
+/// The latest wave due at or before a tick, counting from one; none before
+/// the first.
+#[inline]
+pub const fn latest_wave(tick: u32) -> Option<u32> {
+    if tick < rules::FIRST_WAVE_TICK {
+        return None;
+    }
+    Some((tick - rules::FIRST_WAVE_TICK) / rules::WAVE_PERIOD_TICKS + 1)
+}
+
 /// Upgrades a wave's creeps carry: one per [`rules::WAVE_UPGRADE_PERIOD`]
 /// waves, up to [`rules::WAVE_UPGRADE_CAP`].
 pub fn wave_upgrades(wave: u32) -> u32 {
@@ -140,4 +150,19 @@ pub fn neutral_spawn_due(tick: u32) -> bool {
 #[inline]
 pub fn jungle_upgrades(tick: u32) -> u32 {
     (tick / rules::NEUTRAL_UPGRADE_PERIOD_TICKS).min(rules::NEUTRAL_UPGRADE_CAP as u32)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_latest_wave_is_the_last_one_due() {
+        assert_eq!(latest_wave(rules::FIRST_WAVE_TICK - 1), None);
+        for tick in rules::FIRST_WAVE_TICK..rules::FIRST_WAVE_TICK + 5 * rules::WAVE_PERIOD_TICKS {
+            let latest = latest_wave(tick).unwrap();
+            let due = (rules::FIRST_WAVE_TICK..=tick).rev().find_map(wave_at);
+            assert_eq!(Some(latest), due);
+        }
+    }
 }
