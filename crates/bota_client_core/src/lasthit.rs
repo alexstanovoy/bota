@@ -1,15 +1,19 @@
 //! How hard one's next plain attack lands on a unit, for marking what it
 //! would kill.
 
-use bota_core::{CarriedItem, attack_class_pct, carried_bonus, kind_def, mitigate, rules};
+use bota_core::{
+    CarriedItem, attack_class_pct, carried_bonus, kind_def, magic_resist_bp, mitigate, rules,
+};
 use bota_proto::{DamageKind, Fixed, UnitView};
 
-/// The health one plain attack takes off a target, between the weakest swing
-/// and the strongest.
+/// The health one plain attack takes off a target: the weakest swing, the
+/// shown middle of the damage range, and the strongest.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct HitRange {
     /// The weakest swing, with no pierce riding on it.
     pub least: i32,
+    /// The swing of the shown attack damage, the middle of the range.
+    pub mid: i32,
     /// The strongest swing, with the pierce it may carry.
     pub most: i32,
 }
@@ -22,6 +26,11 @@ pub struct HitRange {
 /// spawn modifier may add is hidden and read as nominal; whether a pierce
 /// lands is a roll, so it only raises `most`.
 pub fn next_hit(attacker: &UnitView, target: &UnitView) -> HitRange {
+    next_hit_against(attacker, target, target.armor)
+}
+
+/// [`next_hit`] on a target that wears `armor` when the blow lands.
+pub fn next_hit_against(attacker: &UnitView, target: &UnitView, armor: Fixed) -> HitRange {
     let carried = carried_bonus(
         attacker
             .items
@@ -44,9 +53,10 @@ pub fn next_hit(attacker: &UnitView, target: &UnitView) -> HitRange {
     let class_pct = attack_class_pct(attacker.kind, target.kind);
     let swing = |damage: i32| {
         let blow = (damage + creeps) * class_pct / 100;
-        mitigate(blow, DamageKind::Physical, target.armor, 0)
+        mitigate(blow, DamageKind::Physical, armor, 0)
     };
     let least = swing(attacker.attack_damage_min);
+    let mid = swing(attacker.attack_damage.max(0));
     let mut most = swing(attacker.attack_damage_max);
     if !against.structure && carried.pierce_damage > 0 {
         let resist = magic_resist_bp(target.magic_resist);
@@ -57,10 +67,5 @@ pub fn next_hit(attacker: &UnitView, target: &UnitView) -> HitRange {
             resist,
         );
     }
-    HitRange { least, most }
-}
-
-/// A magic resistance fraction in basis points, as the server holds it.
-fn magic_resist_bp(resist: Fixed) -> i32 {
-    ((i64::from(resist.raw) * i64::from(rules::NOMINAL_BP)) >> 16) as i32
+    HitRange { least, mid, most }
 }

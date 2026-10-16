@@ -37,6 +37,7 @@
 mod blurb;
 mod catalog;
 mod handshake;
+mod lasthit;
 mod latency;
 mod limits;
 mod match_static;
@@ -56,6 +57,7 @@ mod ui;
 
 pub use catalog::*;
 pub use handshake::*;
+pub use lasthit::*;
 pub use latency::*;
 pub use limits::*;
 pub use match_static::*;

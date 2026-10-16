@@ -5,8 +5,6 @@
 pub const COURIER_ITEM_SLOTS: usize = 6;
 pub const HERO_ITEM_SLOTS: usize = 9;
 pub const STASH_ITEM_SLOTS: usize = 6;
-/// World units covered by one terrain RLE cell.
-pub const TERRAIN_CELL_SIZE: i32 = 64;
 /// Maximum number of seats in one match.
 pub const MAX_SEATS: usize = 10;
 /// Maximum visible units per snapshot and entity records retained.

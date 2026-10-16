@@ -586,7 +586,7 @@ fn only_what_the_seat_bought_and_keeps_counts_toward_the_price() {
 
 #[test]
 fn the_next_hit_is_what_the_server_would_land() {
-    use crate::ui::lasthit::{HitRange, next_hit};
+    use crate::{HitRange, next_hit};
     let blade = |mute_left| ItemView {
         id: ItemId::QUELLING_BLADE,
         mute_left,
@@ -610,11 +610,12 @@ fn the_next_hit_is_what_the_server_would_land() {
     creep.kind = UnitKind::CreepMelee;
     creep.team = Team::Dire;
     creep.armor = Fixed::from_int(2);
-    // (40 + 36) * 100 / 112 and (50 + 36) * 100 / 112, rounded down.
+    // (40 + 36), (45 + 36) and (50 + 36), each times 100 / 112, rounded down.
     assert_eq!(
         next_hit(&hero, &creep),
         HitRange {
             least: 67,
+            mid: 72,
             most: 76
         }
     );
@@ -627,6 +628,7 @@ fn the_next_hit_is_what_the_server_would_land() {
         next_hit(&hero, &tower),
         HitRange {
             least: 20,
+            mid: 22,
             most: 25
         }
     );
