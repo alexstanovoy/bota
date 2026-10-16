@@ -10,6 +10,7 @@ members = [
 [workspace.package]
 version = "0.1.0"
 edition = "2024"
+license = "MIT"
 readme = "README.md"
 keywords = ["game", "simulation", "deterministic", "dota", "bot"]
 categories = ["games", "simulation"]

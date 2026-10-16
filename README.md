@@ -188,3 +188,7 @@ cargo bench -p bota_server --bench dummy
 hash and the encoded view and event streams every 1500 ticks) on every map; a
 deliberate rule change re-records them with the ignored `print_pins` test.
 `bota_server/tests/client.rs` plays a lockstep match through a real socket.
+
+## License
+
+MIT, see [LICENSE](LICENSE).

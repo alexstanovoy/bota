@@ -2,6 +2,7 @@
 name = "bota_client_core"
 version.workspace = true
 edition.workspace = true
+license.workspace = true
 description = "Everything a bota client needs that is not drawing: connection, session, orders."
 readme.workspace = true
 keywords.workspace = true
