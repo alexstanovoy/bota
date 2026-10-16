@@ -60,7 +60,13 @@ The server hosts one lobby and one match, then exits. It listens on `--port`
 | `--mode realtime\|lockstep` | `realtime` runs at `--tick-rate` on the wall clock (default); `lockstep` waits for every seat to acknowledge each tick |
 | `--tick-rate N` | ticks per second, default 30 |
 | `--players N` | seats, default 2 |
-| `--seed N` | seed of the match randomness; drawn from the clock when absent |
+| `--seed N` | seed of the match randomness, for a match that must play again the same; without it the key is drawn from the operating system and known to no one |
+| `--match-id N` | the public label of the match in its start message and replay; drawn when absent, and nothing random comes from it |
+| `--seat KEY_HEX:NAME,...` | reserve the seats, in slot order, for the holders of 64-hex-digit keys (also `BOTA_SEATS`, which keeps the keys out of process lists); a key taken again replaces its holder, also mid-match |
+| `--referee-key KEY_HEX` | admit a referee with this key (also `BOTA_REFEREE_KEY`): told the lobby, the start, departures and the end, never a tick |
+| `--start-after-secs N` | with reserved seats, start this long after listening at the latest; a seat without a pick gets a random hero |
+| `--max-connections N` | most connections held at once |
+| `--wire-fingerprint` | print the fingerprint of the wire registries this build speaks, and exit |
 | `--replay FILE` | write a replay |
 | `--ack-timeout-ticks N` | lockstep: tick-lengths to wait for a straggler, default 150 |
 | `--cheats` | honour cheat orders (gold, levels, items, refreshes) |
@@ -155,10 +161,12 @@ platform. The rules that keep it so:
 - `World::hash()` covers the whole state, hidden state included, so a divergence
   in randomness consumption shows on the tick it happens.
 
-A match is reproducible from `(master_key, match_id)` in `MatchConfig`, or from
-`--seed` on the command line. Hidden state (the seed, random streams, pending
-random outcomes) is never put on the wire; the types in `bota_proto` cannot
-express it.
+A match is reproducible from `(master_key, stream)` in `MatchConfig`, or from
+`--seed` on the command line. The key comes out of the seed through ChaCha8, and
+the public `match_id` is a block of another of the key's streams, so neither the
+label nor the play gives the seed or the key away. Hidden state (the key,
+random streams, pending random outcomes) is never put on the wire; the types in
+`bota_proto` cannot express it.
 
 A replay (`--replay FILE`) is a stream of framed `ReplayRecord`s: the fogless
 spectator messages plus the orders accepted on each tick. It plays back without

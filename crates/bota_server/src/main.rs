@@ -48,7 +48,8 @@ struct Args {
     /// known to no one.
     #[arg(long)]
     seed: Option<u64>,
-    /// Public label of the match. A fresh random one when absent; no randomness comes from it.
+    /// Public label of the match. Drawn from the key when absent (the same for the same seed); no
+    /// randomness comes from it.
     #[arg(long)]
     match_id: Option<u64>,
     /// Seats held for key holders, one `key_hex:name` per seat in slot order, comma separated.

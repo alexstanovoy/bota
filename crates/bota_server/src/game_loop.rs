@@ -10,11 +10,11 @@ use bota_proto::{
     ClientMsg, EventKind, HeroId, MapId, PlayerId, ReplayRecord, Role, SeatKey, ServerMsg, SlotId,
     SlotOrder, Team, TickMode, WorldView, encode_frame_to_vec,
 };
-use rand_chacha::ChaCha8Rng;
-use rand_chacha::rand_core::{Rng as _, SeedableRng};
+use rand_chacha::rand_core::Rng as _;
 
 use crate::game::{
-    Command, DelayLine, Event, EventVisibility, MatchConfig, OrderDelay, RefusedOrder, World,
+    Command, DelayLine, Event, EventVisibility, MatchConfig, MatchSecrets, OrderDelay, RefusedOrder,
+    World,
 };
 use crate::lobby::{ReservedSeat, Roster};
 use crate::net::{Connection, NetEvent, accept_loop};
@@ -34,8 +34,8 @@ pub struct ServerOpts {
     /// Seed of the match randomness. Drawn from the operating system when
     /// absent, and then never known to anyone.
     pub seed: Option<u64>,
-    /// The public label of the match. A fresh random one when absent; no
-    /// randomness is ever derived from it.
+    /// The public label of the match. Absent, one drawn from the key (the same
+    /// for the same seed); no randomness is ever derived from it.
     pub match_id: Option<u64>,
     /// Seats held back for key holders, in slot order. With none, seats go to
     /// whoever asks first.
@@ -68,7 +68,7 @@ pub struct ServerOpts {
 
 /// Runs one match on an already-bound listener and returns when it ends.
 pub fn run(listener: TcpListener, opts: ServerOpts) -> std::io::Result<()> {
-    let secrets = Secrets::draw(opts.seed, opts.match_id)?;
+    let secrets = draw_secrets(opts.seed, opts.match_id)?;
     let (tx, rx) = channel();
     let accept_tx = tx.clone();
     thread::spawn(move || accept_loop(listener, accept_tx));
@@ -94,40 +94,17 @@ pub fn run(listener: TcpListener, opts: ServerOpts) -> std::io::Result<()> {
     Ok(())
 }
 
-/// What the match randomness is made of, and the label it goes by.
-struct Secrets {
-    master_key: [u8; 32],
-    stream: u64,
-    match_id: u64,
-}
-
-impl Secrets {
-    /// From the seed when one was given, else from the operating system.
-    fn draw(seed: Option<u64>, match_id: Option<u64>) -> std::io::Result<Secrets> {
-        let (master_key, stream) = match seed {
-            Some(seed) => {
-                let bytes = seed.to_le_bytes();
-                (std::array::from_fn(|i| bytes[i % bytes.len()]), seed)
-            }
-            None => (os_random()?, u64::from_le_bytes(os_random()?)),
-        };
-        let match_id = match match_id {
-            Some(id) => id,
-            None => u64::from_le_bytes(os_random()?),
-        };
-        Ok(Secrets {
-            master_key,
-            stream,
-            match_id,
-        })
+/// The secrets of the match: from the seed when one was given, else from a
+/// key drawn from the operating system; the label replaced by the one given.
+fn draw_secrets(seed: Option<u64>, match_id: Option<u64>) -> std::io::Result<MatchSecrets> {
+    let mut secrets = match seed {
+        Some(seed) => MatchSecrets::seeded(seed),
+        None => MatchSecrets::of_key(os_random()?),
+    };
+    if let Some(match_id) = match_id {
+        secrets.match_id = match_id;
     }
-
-    /// The stream heroes are drawn from for seats nobody picked for.
-    fn hero_stream(&self) -> ChaCha8Rng {
-        let mut rng = ChaCha8Rng::from_seed(self.master_key);
-        rng.set_stream(!self.stream);
-        rng
-    }
+    Ok(secrets)
 }
 
 fn os_random<const N: usize>() -> std::io::Result<[u8; N]> {
@@ -158,7 +135,7 @@ enum Admission {
 
 struct Server {
     opts: ServerOpts,
-    secrets: Secrets,
+    secrets: MatchSecrets,
     started: Instant,
     referees: Vec<PlayerId>,
     rx: Receiver<NetEvent>,
@@ -732,18 +709,13 @@ pub(crate) fn visible_events(events: &[Event], viewing: Option<Team>) -> Vec<Eve
 
 #[cfg(test)]
 mod tests {
-    use super::Secrets;
+    use super::draw_secrets;
 
     #[test]
-    fn the_randomness_owes_nothing_to_the_public_match_id() {
-        let a = Secrets::draw(None, Some(42)).expect("os randomness");
-        let b = Secrets::draw(None, Some(42)).expect("os randomness");
+    fn an_unseeded_match_draws_a_fresh_key_and_keeps_the_label_given() {
+        let a = draw_secrets(None, Some(42)).expect("os randomness");
+        let b = draw_secrets(None, Some(42)).expect("os randomness");
         assert_eq!((a.match_id, b.match_id), (42, 42));
         assert_ne!(a.master_key, b.master_key);
-        assert_ne!(a.stream, b.stream);
-        assert_ne!(a.stream, 42);
-        let seeded = Secrets::draw(Some(7), None).expect("seeded");
-        assert_eq!(seeded.stream, 7);
-        assert_ne!(seeded.match_id, 7, "the label is its own draw");
     }
 }

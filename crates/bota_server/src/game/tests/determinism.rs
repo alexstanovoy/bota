@@ -7,7 +7,7 @@ use bota_proto::{
     Target, Team, TickMode, UnitKind, UnitView, Vec2, WorldView, encode_frame_to_vec,
 };
 
-use crate::game::{Command, EventVisibility, Fnv, MatchConfig, World};
+use crate::game::{Command, EventVisibility, Fnv, MatchConfig, MatchSecrets, World};
 
 /// Ticks between two pinned checkpoints.
 const CHECKPOINT_TICKS: u32 = 1_500;
@@ -341,6 +341,39 @@ fn map1_matches_replay_their_pinned_fingerprints() {
 #[test]
 fn map2_matches_replay_their_pinned_fingerprints() {
     check(MapId(2));
+}
+
+#[test]
+fn the_published_match_id_gives_away_neither_the_seed_nor_the_key() {
+    const SEED: u64 = 9_000_001;
+    let first = MatchSecrets::seeded(SEED);
+    let next = MatchSecrets::seeded(SEED + 1);
+    assert_eq!(MatchSecrets::seeded(SEED), first, "a seed plays its match again");
+    for (seed, secrets) in [(SEED, first), (SEED + 1, next)] {
+        let label = secrets.match_id.to_le_bytes();
+        assert_ne!(secrets.match_id, seed);
+        // What a client could rebuild from the label: the old scheme's key
+        // (the seed's bytes repeated) and the key of the label as a seed.
+        let repeated: [u8; 32] = std::array::from_fn(|i| label[i % label.len()]);
+        assert_ne!(secrets.master_key, repeated);
+        assert_ne!(
+            secrets.master_key,
+            MatchSecrets::seeded(secrets.match_id).master_key
+        );
+    }
+    let played = |secrets: MatchSecrets| {
+        let pinned = PINS.iter().find(|pinned| pinned.map == bota_core::MAP2_ID);
+        let mut cfg = config(pinned.expect("a pinned map 2 match"));
+        cfg.master_key = secrets.master_key;
+        cfg.stream = secrets.stream;
+        cfg.match_id = secrets.match_id;
+        let mut world = World::for_match(&cfg, cfg.rng());
+        while world.tick < CHECKPOINT_TICKS {
+            world.advance(&[]);
+        }
+        world.hash()
+    };
+    assert_ne!(played(first), played(next), "neighbouring seeds play apart");
 }
 
 /// Prints the fingerprints of every pinned match, to record pins afresh.
