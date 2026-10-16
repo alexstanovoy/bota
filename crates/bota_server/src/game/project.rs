@@ -448,10 +448,11 @@ pub(crate) fn stack_effect_id(kind: StackKind) -> EffectId {
     }
 }
 
-/// The number the wire names a modifier with.
-pub(crate) fn effect_id(kind: ModifierKind) -> EffectId {
-    match kind {
-        ModifierKind::Haste { .. } => EffectId::HASTE,
+/// The number the wire names a modifier with; none for a test's haste, whose
+/// id is retired.
+pub(crate) fn effect_id(kind: ModifierKind) -> Option<EffectId> {
+    Some(match kind {
+        ModifierKind::Haste { .. } => return None,
         ModifierKind::Mending { .. } => EffectId::MENDING,
         ModifierKind::Clarity { .. } => EffectId::CLARITY,
         ModifierKind::Fountain { .. } => EffectId::FOUNTAIN,
@@ -469,7 +470,7 @@ pub(crate) fn effect_id(kind: ModifierKind) -> EffectId {
         ModifierKind::Rot { .. } => EffectId::ROT,
         ModifierKind::Feared => EffectId::FEARED,
         ModifierKind::BloodGrenade { .. } => EffectId::BLOOD_GRENADE,
-    }
+    })
 }
 
 impl World {
@@ -482,13 +483,15 @@ impl World {
             .into_iter()
             .flat_map(|on_it| on_it.active())
             .filter(|held| !matches!(held.kind, ModifierKind::Rot { .. }))
-            .map(|held| EffectView {
-                id: effect_id(held.kind),
-                ticks_left: held.ticks_left,
-                stacks: match held.kind {
-                    ModifierKind::Shadowraze { stacks } => Some(u32::from(stacks)),
-                    _ => None,
-                },
+            .filter_map(|held| {
+                Some(EffectView {
+                    id: effect_id(held.kind)?,
+                    ticks_left: held.ticks_left,
+                    stacks: match held.kind {
+                        ModifierKind::Shadowraze { stacks } => Some(u32::from(stacks)),
+                        _ => None,
+                    },
+                })
             })
             .collect();
         if let Some(gathered) = self.stacks.get(entity) {

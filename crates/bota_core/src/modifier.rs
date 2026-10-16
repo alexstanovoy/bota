@@ -7,8 +7,10 @@ use crate::rules;
 /// One kind of modifier, with what there is of it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ModifierKind {
-    /// Attacks come faster. Nothing in a match hands it out; it pins a swing
-    /// rate where a rate must be set from outside.
+    /// Attacks come faster: scaffolding for a test that must pin a swing rate.
+    /// Nothing in a match hands it out, and it is never shown on the wire (its
+    /// effect id is retired).
+    #[doc(hidden)]
     Haste {
         /// Attack speed added.
         speed: i32,

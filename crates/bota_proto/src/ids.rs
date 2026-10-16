@@ -232,8 +232,6 @@ pub enum Aim {
 pub struct EffectId(pub u16);
 
 impl EffectId {
-    /// Retired: a haste of an older ruleset; nothing shows it.
-    pub const HASTE: EffectId = EffectId(0);
     /// Health mended over time by a Healing Salve.
     pub const MENDING: EffectId = EffectId(1);
     /// Mana mended over time by a Clarity.

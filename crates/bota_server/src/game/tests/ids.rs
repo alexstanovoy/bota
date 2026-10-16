@@ -117,8 +117,13 @@ fn variant_name(value: &impl std::fmt::Debug) -> String {
 fn every_effect_is_shown_under_its_registered_id() {
     let mut shown: Vec<(u16, String)> = every_modifier()
         .iter()
-        .map(|kind| (effect_id(*kind).0, variant_name(kind)))
+        .filter_map(|kind| Some((effect_id(*kind)?.0, variant_name(kind))))
         .collect();
+    assert_eq!(
+        effect_id(ModifierKind::Haste { speed: 0 }),
+        None,
+        "id 0 is retired"
+    );
     for kind in StackKind::ALL {
         shown.push((stack_effect_id(kind).0, variant_name(&kind)));
     }
@@ -131,12 +136,7 @@ fn every_effect_is_shown_under_its_registered_id() {
             .find(|entry| entry.id == *id)
             .unwrap_or_else(|| panic!("effect {id} ({name}) is not in registry/ids.txt"));
         assert_eq!(entry.name, name, "effect {id} changed meaning");
-        // Haste, the only retired effect still in the code, exists only in
-        // tests.
-        assert!(
-            !entry.retired || name == "Haste",
-            "effect {id} ({name}) is retired"
-        );
+        assert!(!entry.retired, "effect {id} ({name}) is retired");
     }
     for entry in registry.iter().filter(|entry| !entry.retired) {
         assert!(

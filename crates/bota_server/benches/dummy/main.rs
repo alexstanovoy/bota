@@ -50,7 +50,7 @@ const TARGETING_DIGEST: u64 = 0x27d4_535d_fb32_7f42;
 /// The spots of the dummy circuit the plan-search case routes to.
 const PLAN_GOALS: [usize; 3] = [2, 4, 6];
 
-criterion_group!(benches, tick_loop, trainer, micro);
+criterion_group!(benches, tick_loop, map2, micro);
 criterion_main!(benches);
 
 /// Measures the whole server tick over fixed windows of the dummy game.
@@ -75,9 +75,9 @@ fn tick_loop(c: &mut Criterion) {
 
 /// Measures the tick: a Map2 skirmish advanced and seen by both
 /// sides every tick.
-fn trainer(c: &mut Criterion) {
+fn map2(c: &mut Criterion) {
     check_skirmish();
-    let mut group = c.benchmark_group("trainer");
+    let mut group = c.benchmark_group("match");
     group.sample_size(10);
     group.throughput(Throughput::Elements(u64::from(SKIRMISH_TICKS)));
     group.bench_function(BenchmarkId::new("map2_skirmish", SKIRMISH_TICKS), |b| {

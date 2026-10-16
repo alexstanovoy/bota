@@ -54,10 +54,3 @@ pub const fn phase_ticks_left(ms: u32, progress: u32, attack_speed: i32) -> u32 
     let ticks = left.div_ceil(gain);
     if ticks == 0 { 1 } else { ticks }
 }
-
-/// Ticks between the starts of two attacks of `attack_time` milliseconds at
-/// an attack speed.
-#[inline]
-pub const fn attack_interval_ticks(attack_time: u32, attack_speed: i32) -> u32 {
-    phase_ticks_left(attack_time, 0, attack_speed)
-}
