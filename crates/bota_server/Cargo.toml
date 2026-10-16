@@ -2,6 +2,10 @@
 name = "bota_server"
 version.workspace = true
 edition.workspace = true
+description = "The bota match server: a deterministic, authoritative simulation of 1v1 Dota-like play."
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
 
 [features]
 default = []
