@@ -198,8 +198,9 @@ impl fmt::Display for SessionError {
             }
             Self::WrongOwnHero { actual, expected } => write!(
                 formatter,
-                "own slot picked HeroId({}), expected HeroId({})",
-                actual.0, expected.0
+                "own slot picked {}, expected {}",
+                Named(*actual),
+                Named(*expected)
             ),
             Self::InvalidOwnTeam(team) => {
                 write!(formatter, "own slot has non-playable team {team:?}")
@@ -350,8 +351,9 @@ impl SessionError {
                 expected,
             } => write!(
                 formatter,
-                "snapshot player SlotId({slot}) HeroId({}) differs from MatchInfo pick HeroId({})",
-                actual.0, expected.0
+                "snapshot player SlotId({slot}) plays {}, differing from MatchInfo pick {}",
+                Named(*actual),
+                Named(*expected)
             ),
             _ => self.fmt_stream(formatter),
         }
@@ -429,8 +431,9 @@ impl SessionError {
                 expected,
             } => write!(
                 formatter,
-                "assigned slot {slot} picked HeroId({}), expected HeroId({})",
-                actual.0, expected.0
+                "assigned slot {slot} picked {}, expected {}",
+                Named(*actual),
+                Named(*expected)
             ),
             Self::Stream(text) => formatter.write_str(text),
             _ => unreachable!("every SessionError variant has a message"),
@@ -439,3 +442,15 @@ impl SessionError {
 }
 
 impl Error for SessionError {}
+
+/// A hero by its name, or by its id when this build does not know it.
+struct Named(HeroId);
+
+impl fmt::Display for Named {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match bota_core::hero_def(self.0) {
+            Some(hero) => formatter.write_str(hero.name),
+            None => write!(formatter, "HeroId({})", self.0.0),
+        }
+    }
+}
