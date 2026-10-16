@@ -85,6 +85,7 @@ impl MatchStatic {
     }
 
     /// Every seat and its hero, sorted by slot.
+    #[inline]
     pub fn roster(&self) -> &[Pick] {
         &self.roster
     }
@@ -98,16 +99,19 @@ impl MatchStatic {
     }
 
     /// Every tree the map starts with.
+    #[inline]
     pub fn trees(&self) -> &[Vec2] {
         &self.trees
     }
 
     /// Run-length encoded terrain, as the server sent it.
+    #[inline]
     pub fn terrain_rle(&self) -> &[(u16, u8)] {
         &self.terrain_rle
     }
 
     /// The terrain cells blocking sight regardless of elevation.
+    #[inline]
     pub fn opaque_cells(&self) -> &[(u16, u16)] {
         &self.opaque_cells
     }
@@ -206,6 +210,7 @@ impl RawExtent {
 }
 
 /// The largest raw coordinate on a map of `cells` terrain cells a side.
+#[inline]
 pub fn map_maximum_raw(cells: u32) -> i64 {
     i64::from(cells)
         .saturating_mul(i64::from(TERRAIN_CELL_SIZE))

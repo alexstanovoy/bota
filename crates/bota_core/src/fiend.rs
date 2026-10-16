@@ -8,6 +8,7 @@ use crate::{heading_of, point_along, rules};
 
 /// Where a raze lands: its own reach from the caster, along the line the
 /// caster faces. `reach` indexes [`rules::RAZE_DISTANCE`].
+#[inline]
 pub fn raze_landing(from: Vec2, facing: Angle, reach: usize) -> Vec2 {
     point_along(
         from,
@@ -18,6 +19,7 @@ pub fn raze_landing(from: Vec2, facing: Angle, reach: usize) -> Vec2 {
 
 /// The burn of a raze at a level, with every soul held (to the most it
 /// counts) adding [`rules::RAZE_DAMAGE_PER_SOUL`].
+#[inline]
 pub fn raze_damage(level: usize, souls: u32) -> i32 {
     rules::RAZE_DAMAGE[level]
         + rules::RAZE_DAMAGE_PER_SOUL * souls.min(rules::SOULS_HELD_MAX) as i32
@@ -25,6 +27,7 @@ pub fn raze_damage(level: usize, souls: u32) -> i32 {
 
 /// What each stack of a raze burns at a level, the level-10 talent
 /// included when `talented`.
+#[inline]
 pub fn raze_stack_damage(level: usize, talented: bool) -> i32 {
     rules::RAZE_STACK_DAMAGE[level]
         + if talented {
@@ -37,6 +40,7 @@ pub fn raze_stack_damage(level: usize, talented: bool) -> i32 {
 /// Attack damage the souls held are worth at a hero level: tenths of a point
 /// a soul that grow every [`rules::SOUL_DAMAGE_LEVELS`] levels, the sum
 /// rounded down.
+#[inline]
 pub fn soul_damage(souls: u32, hero_level: i32) -> i32 {
     assert!(hero_level >= 1);
     let souls = souls.min(rules::SOULS_HELD_MAX) as i32;
@@ -46,6 +50,7 @@ pub fn soul_damage(souls: u32, hero_level: i32) -> i32 {
 }
 
 /// How many souls a hero that gathers them may gather from kills.
+#[inline]
 pub fn soul_cap(talented: bool) -> u32 {
     if talented {
         rules::NECRO_SOUL_CAP + rules::TALENT_NECRO_SOUL_CAP
@@ -56,6 +61,7 @@ pub fn soul_cap(talented: bool) -> u32 {
 
 /// How much armor the presence tears at a level (from one), the talent
 /// included when `talented`.
+#[inline]
 pub fn presence_armor(level: u8, talented: bool) -> Fixed {
     rules::PRESENCE_ARMOR[usize::from(level - 1)]
         + if talented {
@@ -78,6 +84,7 @@ pub fn requiem_death_lines(souls: u32) -> u32 {
 
 /// What one line of a requiem burns at a level counted from zero, the last
 /// level standing for any past it.
+#[inline]
 pub fn requiem_line_damage(level: usize) -> i32 {
     rules::REQUIEM_LINE_DAMAGE[level.min(rules::REQUIEM_LINE_DAMAGE.len() - 1)]
 }

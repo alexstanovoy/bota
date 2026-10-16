@@ -352,6 +352,7 @@ const _: () = {
 };
 
 /// What one item is, or nothing if no such item exists.
+#[inline]
 pub fn item_def(id: ItemId) -> Option<&'static ItemDef> {
     ITEMS.get(usize::from(id.0))
 }

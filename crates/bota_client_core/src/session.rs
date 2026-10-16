@@ -301,6 +301,7 @@ impl ClientSession {
         self.stream.unacked.take()
     }
 
+    #[inline]
     fn strict(&self) -> bool {
         self.owner.is_some()
     }
@@ -375,6 +376,7 @@ impl ClientSession {
         self.last_event_tick = Some(tick);
     }
 
+    #[inline]
     fn own_hero_id(&self) -> Option<EntityId> {
         self.own_player()?.unit
     }
@@ -383,6 +385,7 @@ impl ClientSession {
 /// What the session reads out.
 impl ClientSession {
     /// The match's immutable inputs.
+    #[inline]
     pub fn statics(&self) -> &Arc<MatchStatic> {
         &self.statics
     }
@@ -392,12 +395,14 @@ impl ClientSession {
     }
 
     /// The seat the stream is for, if it is a seat's.
+    #[inline]
     pub fn slot(&self) -> Option<SlotId> {
         self.owner.map(|owner| owner.slot)
     }
 
     /// The side the stream is seen from: a seat's own, or a spectator's
     /// current viewer.
+    #[inline]
     pub fn team(&self) -> Option<Team> {
         match self.owner {
             Some(owner) => Some(owner.team),
@@ -412,11 +417,13 @@ impl ClientSession {
     }
 
     /// The snapshot before the latest.
+    #[inline]
     pub fn previous(&self) -> Option<&WorldView> {
         self.previous.as_ref()
     }
 
     /// Own scoreboard row from the current snapshot.
+    #[inline]
     pub fn own_player(&self) -> Option<&PlayerView> {
         let slot = self.slot()?;
         self.current
@@ -449,6 +456,7 @@ impl ClientSession {
     }
 
     /// The learned talents last told of a tracked hero; empty for an untracked entity.
+    #[inline]
     pub fn talents_of(&self, id: EntityId) -> Talents {
         self.tracks
             .get(id)
@@ -462,12 +470,14 @@ impl ClientSession {
     }
 
     /// All remembered entities, sorted by full opaque handle.
+    #[inline]
     pub fn entities(&self) -> &[EntityTrack] {
         self.tracks.all()
     }
 
     /// What is known of a unit and how many ticks ago that was true: it in
     /// view, else the entity's track, else the body its seat last had.
+    #[inline]
     pub fn known(&self, id: EntityId) -> Option<(&UnitView, u32)> {
         let view = self.current.as_ref()?;
         if let Ok(index) = view.units.binary_search_by_key(&id, |unit| unit.id) {
@@ -491,16 +501,19 @@ impl ClientSession {
     }
 
     /// Recent visible events in stream order.
+    #[inline]
     pub fn recent_events(&self) -> &VecDeque<ObservedEvent> {
         &self.recent_events
     }
 
     /// Live projectiles, sorted by handle.
+    #[inline]
     pub fn missiles(&self) -> &[MissileTrack] {
         self.missiles.missiles()
     }
 
     /// Items on the ground, sorted by handle.
+    #[inline]
     pub fn loot(&self) -> &[LootTrack] {
         self.missiles.loot()
     }

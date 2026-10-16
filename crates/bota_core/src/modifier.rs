@@ -110,6 +110,7 @@ pub enum ModifierKind {
 impl ModifierKind {
     /// What an aura of this kind hands out from a source that spawned after
     /// `steps` upgrade intervals. Only the flagbearer's inspiration grows.
+    #[inline]
     pub fn grown(self, steps: u32) -> ModifierKind {
         match self {
             ModifierKind::Inspired {

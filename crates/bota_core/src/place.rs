@@ -8,6 +8,7 @@ use bota_proto::{Team, Vec2};
 use crate::{MapDef, rules, segment_distance_squared};
 
 /// The fountain position of a team. The jungle's is the map center.
+#[inline]
 pub fn fountain_pos(map: &MapDef, team: Team) -> Vec2 {
     match team {
         Team::Radiant => map.fountains[0],
@@ -83,6 +84,7 @@ pub fn lane_route(map: &MapDef, team: Team, lane: u8) -> Vec<Vec2> {
 }
 
 /// The creep spawn position of a team on a lane. The jungle runs no lanes.
+#[inline]
 pub fn creep_spawn_pos(map: &MapDef, team: Team, lane: u8) -> Vec2 {
     match team {
         Team::Radiant => map.creep_spawns[0][usize::from(lane)],
@@ -93,6 +95,7 @@ pub fn creep_spawn_pos(map: &MapDef, team: Team, lane: u8) -> Vec2 {
 
 /// Where a team sits in the per-team route tables. The jungle marches
 /// nowhere and answers zero.
+#[inline]
 pub fn team_index(team: Team) -> usize {
     match team {
         Team::Radiant | Team::Neutral => 0,

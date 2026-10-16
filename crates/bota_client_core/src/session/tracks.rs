@@ -157,10 +157,12 @@ pub(crate) struct Tracks {
 }
 
 impl Tracks {
+    #[inline]
     pub(crate) fn all(&self) -> &[EntityTrack] {
         &self.entities
     }
 
+    #[inline]
     pub(crate) fn get(&self, id: EntityId) -> Option<&EntityTrack> {
         self.entities
             .binary_search_by_key(&id, |entity| entity.id)

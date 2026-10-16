@@ -598,11 +598,13 @@ const fn tower_of(index: usize) -> UnitDef {
 pub const TOWERS: [UnitDef; 4] = [tower_of(0), tower_of(1), tower_of(2), tower_of(3)];
 
 /// The plain form of a tower of this tier, counted from one.
+#[inline]
 pub fn tower_def(tier: u8) -> &'static UnitDef {
     &TOWERS[usize::from(tier.clamp(1, 4)) - 1]
 }
 
 /// The definition of a lane creep kind. Absent for every other kind.
+#[inline]
 pub const fn lane_creep_def(kind: UnitKind) -> Option<&'static UnitDef> {
     match kind {
         UnitKind::CreepMelee => Some(&MELEE_CREEP),

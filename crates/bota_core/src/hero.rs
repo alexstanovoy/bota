@@ -53,11 +53,13 @@ pub const HEROES: [HeroDef; 2] = [
 ];
 
 /// What one hero is, or nothing if no such hero exists.
+#[inline]
 pub fn hero_def(id: HeroId) -> Option<&'static HeroDef> {
     HEROES.get(usize::from(id.0))
 }
 
 /// A hero's attributes at a level, before items, souls, buffs and talents.
+#[inline]
 pub fn attributes_at_level(unit: &UnitDef, level: u8) -> Attributes {
     let levels = i32::from(level.max(1)) - 1;
     unit.attributes + unit.per_level.attributes.scaled(Fixed::from_int(levels))

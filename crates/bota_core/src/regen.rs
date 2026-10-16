@@ -23,11 +23,13 @@ impl Regen {
 }
 
 /// Health or mana per tick from hundredths of a point per second.
+#[inline]
 fn per_second(hundredths: i32) -> Fixed {
     Fixed::from_ratio(hundredths, 100 * rules::TICKS_PER_SECOND as i32)
 }
 
 /// What one active modifier adds to regeneration.
+#[inline]
 fn from_modifier(kind: ModifierKind) -> Regen {
     let (hp, mana) = match kind {
         ModifierKind::Mending { per_tick, .. } => (Fixed::from_ratio(per_tick, 100), Fixed::ZERO),

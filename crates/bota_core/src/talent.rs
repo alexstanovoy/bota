@@ -47,6 +47,7 @@ pub const SHADOW_FIEND_TALENTS: TalentTree = [
 /// The hero level a talent opens at, given what is learned already: its
 /// tier's level, or, once the other talent of its tier is taken,
 /// [`rules::TALENT_SECOND_LEVELS`].
+#[inline]
 pub fn talent_floor(slot: TalentSlot, learned: Talents) -> u8 {
     assert!(slot.0 < TalentSlot::COUNT);
     let tier = usize::from(slot.tier());
@@ -58,6 +59,7 @@ pub fn talent_floor(slot: TalentSlot, learned: Talents) -> u8 {
 }
 
 /// The slot of a tree that holds a talent.
+#[inline]
 pub const fn talent_slot(tree: &TalentTree, talent: Talent) -> Option<TalentSlot> {
     let mut at = 0;
     while at < tree.len() {
@@ -70,6 +72,7 @@ pub const fn talent_slot(tree: &TalentTree, talent: Talent) -> Option<TalentSlot
 }
 
 /// Whether a hero with a tree has learned a talent.
+#[inline]
 pub fn has_talent(tree: &TalentTree, learned: Talents, talent: Talent) -> bool {
     tree.iter()
         .enumerate()

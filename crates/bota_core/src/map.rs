@@ -140,6 +140,7 @@ const SKIRMISH: MapDef = MapDef {
 };
 
 /// The map a match is played on. An unknown id falls back on the Dota map.
+#[inline]
 pub fn map_of(id: MapId) -> &'static MapDef {
     MAPS.iter().find(|m| m.id == id).unwrap_or(&MAPS[0])
 }

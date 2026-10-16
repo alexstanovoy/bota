@@ -228,6 +228,7 @@ const _: () = {
 };
 
 /// What one ability is, or nothing if no such ability exists.
+#[inline]
 pub fn ability_def(id: AbilityId) -> Option<&'static AbilityDef> {
     ABILITIES.get(usize::from(id.0))
 }
@@ -235,17 +236,20 @@ pub fn ability_def(id: AbilityId) -> Option<&'static AbilityDef> {
 /// What one cast costs at a level.
 ///
 /// Zero for a slot that holds nothing castable.
+#[inline]
 pub fn ability_mana_cost(id: AbilityId, level: u8) -> i32 {
     ability_def(id).map_or(0, |def| pick(def.mana, level))
 }
 
 /// What one cast puts on the clock at a level.
+#[inline]
 pub fn ability_cooldown(id: AbilityId, level: u8) -> u32 {
     ability_def(id).map_or(0, |def| pick(def.cooldown, level))
 }
 
 /// The entry of a per-level table for a level, the last one standing for
 /// everything past it.
+#[inline]
 fn pick<T: Copy + Default>(table: &[T], level: u8) -> T {
     let level = usize::from(level.max(1) - 1);
     table
