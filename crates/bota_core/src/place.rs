@@ -17,6 +17,13 @@ pub fn fountain_pos(map: &MapDef, team: Team) -> Vec2 {
     }
 }
 
+/// Whether a unit of `team` standing at `pos` is in its home shop: within the
+/// shop range of its own fountain.
+#[inline]
+pub fn at_home_shop(map: &MapDef, team: Team, pos: Vec2) -> bool {
+    pos.within(fountain_pos(map, team), rules::units(rules::SHOP_RANGE))
+}
+
 /// Where a team's hero appears, beside the fountain rather than inside it.
 pub fn hero_spawn_pos(map: &MapDef, team: Team) -> Vec2 {
     let offset = match team {
