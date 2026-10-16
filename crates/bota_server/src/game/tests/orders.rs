@@ -2,7 +2,7 @@
 
 use bota_core::{MELEE_CREEP, isqrt64, map_of, rules, tower_def};
 
-use crate::game::{Health, Seat, UnitOrder, World, wire_id};
+use crate::game::{Command, Health, Seat, UnitOrder, World, wire_id};
 use bota_proto::{
     AbilitySlot, DamageKind, Fixed, HeroId, ItemId, ItemSlot, MapId, Order, RejectReason, SlotId,
     Target, Team, Vec2,
@@ -536,5 +536,49 @@ fn walking_at_an_ally_stops_where_the_bodies_meet() {
     assert!(
         drift < rules::units(24).raw,
         "and it stands there rather than circling"
+    );
+}
+
+#[test]
+fn an_attack_order_at_another_breaks_the_windup_off_and_one_at_the_same_lets_it_strike() {
+    let attack = |world: &mut World, mark| {
+        world.advance(&[Command {
+            slot: SlotId(0),
+            unit: None,
+            order: Order::Attack {
+                target: Target::Unit(wire_id(mark)),
+            },
+        }]);
+    };
+    let (mut world, hero, first) = hero_ordered_at_an_enemy(300);
+    let second = world.spawn_unit(&MELEE_CREEP, Team::Dire, Vec2::from_ints(5300, 5100));
+    world.settle();
+    assert_eq!(swinging(&world, hero), Some(first), "the swing began");
+    // The same target again: the windup runs on.
+    attack(&mut world, first);
+    assert_eq!(swinging(&world, hero), Some(first), "kept");
+    // Another target: given up at once, as Dota's animation cancel, and begun at it.
+    attack(&mut world, second);
+    assert_eq!(
+        swinging(&world, hero),
+        Some(second),
+        "begun again at the other"
+    );
+    let first_full = world.health.get(first).expect("standing").hp;
+    let second_full = world.health.get(second).expect("standing").hp;
+    while swinging(&world, hero) == Some(second) {
+        world.advance(&[]);
+    }
+    assert_eq!(
+        world.health.get(first).expect("standing").hp,
+        first_full,
+        "nothing struck the first"
+    );
+    for _ in 0..60 {
+        world.advance(&[]);
+    }
+    assert!(
+        world.health.get(second).expect("standing").hp < second_full,
+        "the blow went to the second"
     );
 }

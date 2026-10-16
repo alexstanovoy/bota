@@ -54,6 +54,7 @@ fn a_non_hero_kills_gold_is_hidden_from_the_other_side() {
     let map = map_of(cfg.map);
     let mut kinds: Vec<(EntityId, UnitKind)> = Vec::new();
     let mut hidden = 0;
+    let mut ordered = false;
     for _ in 0..rules::FIRST_WAVE_TICK + 4000 {
         for stream in &streams {
             for msg in stream {
@@ -96,8 +97,10 @@ fn a_non_hero_kills_gold_is_hidden_from_the_other_side() {
             },
             seen: tick,
         };
+        // Told once: the attack-move runs on, and a fresh order would break each swing off.
+        let first = !std::mem::replace(&mut ordered, true);
         streams = local
-            .step(&[Some(order(0)), Some(order(1))])
+            .step(&[first.then(|| order(0)), first.then(|| order(1))])
             .expect("a step");
         if streams[0]
             .iter()
