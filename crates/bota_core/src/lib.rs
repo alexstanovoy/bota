@@ -5,8 +5,6 @@
 //! rules to what it sees. Nothing here holds a world, an entity handle, a
 //! random stream, a clock or any I/O, so nothing here can reveal hidden
 //! state: a hidden quantity enters a function only as a parameter.
-//!
-//! See `DESIGN.md` for the architecture this follows from.
 
 #![forbid(unsafe_code)]
 

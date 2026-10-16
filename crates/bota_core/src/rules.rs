@@ -986,7 +986,7 @@ pub const DISMEMBER_TICKS: u32 = 90;
 /// Damage the dismember deals a second, by level.
 pub const DISMEMBER_DAMAGE_PER_SECOND: [i32; 3] = [75, 125, 175];
 
-// Shadow Fiend, as of Dota 7.41f (`DESIGN.md`, Shadow Fiend).
+// Shadow Fiend, as of Dota 7.41f.
 
 /// How far in front of the caster a raze lands, in world units, from the
 /// nearest reach to the farthest.

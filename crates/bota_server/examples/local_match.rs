@@ -1,0 +1,99 @@
+//! A bot written against `bota_client_core`, playing a lockstep match
+//! inside this process: two Shadow Fiends, each walking to the other's
+//! fountain, until the match ends.
+//!
+//! ```text
+//! cargo run --release -p bota_server --example local_match
+//! ```
+
+use bota_client_core::{
+    AckPolicy, ClientSession, Ingested, IssuedOrder, MatchStatic, Perspective, SessionOptions,
+};
+use bota_core::{MAP2_ID, map_of};
+use bota_proto::{HeroId, MapId, Order, Pick, ServerMsg, SlotId, Target, Team, TickMode};
+use bota_server::game::{MatchConfig, OrderDelay};
+use bota_server::local::{LocalMatch, LocalOrder};
+
+fn main() {
+    let pick = |slot, team| Pick {
+        slot: SlotId(slot),
+        team,
+        hero: HeroId::SHADOW_FIEND,
+    };
+    let cfg = MatchConfig {
+        match_id: 1,
+        master_key: [7; 32],
+        stream: 1,
+        picks: vec![pick(0, Team::Radiant), pick(1, Team::Dire)],
+        map: MapId(MAP2_ID.0),
+        tick_rate: 30,
+        mode: TickMode::Lockstep,
+        ack_timeout_ticks: 150,
+        cheats: false,
+        spawn_modifiers: Vec::new(),
+        immortal_structures: false,
+        immortal_heroes: false,
+    };
+    let map = map_of(cfg.map);
+    let (mut local, opening) = LocalMatch::new(&cfg, &[OrderDelay::NONE]).expect("a valid match");
+
+    // One session per seat folds what that seat is sent, in order.
+    let mut sessions: Vec<ClientSession> = Vec::new();
+    for (slot, stream) in opening.iter().enumerate() {
+        let ServerMsg::MatchStart { info } = &stream[0] else {
+            unreachable!("a stream starts with MatchStart");
+        };
+        let options = SessionOptions {
+            perspective: Perspective::Seat(SlotId(slot as u8)),
+            hero: Some(HeroId::SHADOW_FIEND),
+            ack: AckPolicy::Never,
+            forget_after_ticks: 480,
+        };
+        let session = ClientSession::new(MatchStatic::new(info).expect("valid terms"), options)
+            .expect("a seat");
+        sessions.push(session);
+    }
+    let mut pending = opening;
+    loop {
+        // Fold what each seat was sent, then decide at most one order per seat.
+        let mut winner = None;
+        let mut orders = Vec::new();
+        for (slot, (session, stream)) in sessions.iter_mut().zip(pending).enumerate() {
+            for message in stream {
+                if let ServerMsg::MatchStart { .. } = message {
+                    continue; // the session was built from it
+                }
+                if let Ingested::Over { winner: won, .. } =
+                    session.ingest(message, &mut ()).expect("folds")
+                {
+                    winner = Some(won);
+                }
+            }
+            let Some(view) = session.current() else {
+                orders.push(None);
+                continue;
+            };
+            // Walk to the enemy fountain, fighting what is met on the way;
+            // the first tick is enough, the order stands.
+            let order = IssuedOrder {
+                unit: None,
+                order: Order::Attack {
+                    target: Target::Pos(map.fountains[1 - slot]),
+                },
+            };
+            let first = view.tick <= 1;
+            let sent = first.then(|| session.issue(order).expect("a snapshot was seen"));
+            orders.push(sent.map(|sent| LocalOrder {
+                seq: sent.seq,
+                unit: sent.unit,
+                order: sent.order,
+                seen: sent.seen,
+            }));
+        }
+        if let Some(winner) = winner {
+            println!("tick {}: match over, winner {winner:?}", local.tick());
+            return;
+        }
+        pending = local.step(&orders).expect("a step");
+    }
+}
