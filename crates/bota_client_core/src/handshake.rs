@@ -1,14 +1,20 @@
 //! The server's welcome and the match start must agree with each other and
 //! with what the client asked for.
 
+#[cfg(not(target_arch = "wasm32"))]
 use std::time::Duration;
 
 use bota_proto::{
-    ClientMsg, HeroId, LobbySlot, MatchInfo, PlayerId, Role, ServerMsg, SlotId, Team, TickMode,
+    ClientMsg, HeroId, LobbySlot, MatchInfo, PlayerId, Role, SeatKey, ServerMsg, SlotId, Team,
+    TickMode,
 };
 
 use crate::session::SessionError;
-use crate::transport::{DEFAULT_IO_TIMEOUT, Link, Transport};
+#[cfg(not(target_arch = "wasm32"))]
+use crate::socket::Link;
+#[cfg(not(target_arch = "wasm32"))]
+use crate::transport::DEFAULT_IO_TIMEOUT;
+use crate::transport::Transport;
 
 const MAX_MESSAGES_BEFORE_WELCOME: usize = 64;
 const MAX_NAME_LEN: usize = 64;
@@ -104,17 +110,20 @@ impl Lobby {
     }
 }
 
-/// Takes a seat: says hello, waits for the welcome, picks `hero` if there is
-/// one to pick, and says ready.
+/// Takes a seat: says hello (with the key a server with reserved seats asks
+/// for), waits for the welcome, picks `hero` if there is one to pick, and says
+/// ready.
 pub fn join(
     transport: &mut impl Transport,
     name: &str,
     hero: Option<HeroId>,
+    key: Option<SeatKey>,
 ) -> std::io::Result<Seated> {
     validate_name(name)?;
     transport.send(&ClientMsg::Hello {
         role: Role::Bot,
         name: name.to_owned(),
+        key,
     })?;
     let seated = wait_for_welcome(transport)?;
     if let Some(hero) = hero {
@@ -155,14 +164,16 @@ fn validate_name(name: &str) -> std::io::Result<()> {
     Ok(())
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 impl Link {
     /// Connects and takes a seat, as [`join`] does.
     pub fn join(
         address: &str,
         name: &str,
         hero: Option<HeroId>,
+        key: Option<SeatKey>,
     ) -> std::io::Result<(Self, Seated)> {
-        Self::join_with_timeout(address, name, hero, DEFAULT_IO_TIMEOUT)
+        Self::join_with_timeout(address, name, hero, key, DEFAULT_IO_TIMEOUT)
     }
 
     /// Connects with one timeout for establishing and using the connection,
@@ -171,11 +182,12 @@ impl Link {
         address: &str,
         name: &str,
         hero: Option<HeroId>,
+        key: Option<SeatKey>,
         timeout: Duration,
     ) -> std::io::Result<(Self, Seated)> {
         validate_name(name)?;
         let mut link = Self::connect(address, timeout)?;
-        let seated = join(&mut link, name, hero)?;
+        let seated = join(&mut link, name, hero, key)?;
         Ok((link, seated))
     }
 }

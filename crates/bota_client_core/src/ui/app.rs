@@ -11,7 +11,7 @@ use bota_proto::{
 use crate::match_static::MatchStatic;
 use crate::orders::{IssuedOrder, refusal};
 use crate::session::{AckPolicy, ClientSession, Ingested, Perspective, SessionOptions};
-use crate::transport::Net;
+use crate::socket::Net;
 use crate::ui::derive::Derived;
 use crate::ui::replay::ReplayPlayer;
 use crate::ui::smooth::Smooth;

@@ -3,6 +3,9 @@
 //! and events change it, motion between snapshots, what a key or a click
 //! means as an order, and the derived facts the aids show.
 //!
+//! The socket transports are left out for `wasm32`, where the embedder supplies a
+//! [`Transport`] of its own.
+//!
 //! The `ui` feature adds the float-using, drawing-side parts.
 
 #![forbid(unsafe_code)]
@@ -19,6 +22,8 @@ mod readiness;
 mod session;
 mod shop;
 mod sight;
+#[cfg(not(target_arch = "wasm32"))]
+mod socket;
 mod transport;
 #[cfg(feature = "ui")]
 mod ui;
@@ -34,6 +39,8 @@ pub use readiness::*;
 pub use session::*;
 pub use shop::*;
 pub use sight::*;
+#[cfg(not(target_arch = "wasm32"))]
+pub use socket::*;
 pub use transport::*;
 #[cfg(feature = "ui")]
 pub use ui::*;
