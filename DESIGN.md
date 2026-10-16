@@ -26,7 +26,7 @@ bota/
 │   ├── bota_proto/          # shared vocabulary + codec. deps: serde, postcard
 │   ├── bota_core/           # the rules a player may know: definition tables + pure integer/Fixed functions. deps: proto
 │   ├── bota_server/         # simulation + networking + lobby. deps: proto, core, rand_chacha, rustc-hash, clap
-│   └── bota_client_core/    # every front end's logic, no drawing: connection, replay, world picture, orders. deps: proto, core
+│   └── bota_client_core/    # every client's logic: connection, the session's picture of the match, orders, replay; drawing-side parts behind the `ui` feature. deps: proto, core
 ```
 
 ```
@@ -146,6 +146,50 @@ a line in `crates/bota_proto/registry/ids.txt`, and nothing is renumbered or reu
 - Each of them gets a test: the table row is covered by the id test; new behaviour by an
   end-to-end test in the server that plays it through a `World`.
 
+### bota_client_core: one picture of the match, kept the same way by every client
+
+A client keeps a state of its own between snapshots: who was seen where and when, the
+casts under way, the projectiles new this tick, the orders it sent and which of them
+were refused, how long its orders take to land, the shared waits it started. Every
+client needs the same state, so it lives in `bota_client_core`, and it is kept by one
+rule for all of them.
+
+**A reducer.** `ClientSession` is a function of `MatchStatic` (the validated
+`MatchInfo`, shared by `Arc`), its options and the messages it was handed, in order:
+`ingest(ServerMsg)` (or `ingest_snapshot` / `ingest_events` / `ingest_rejection`) takes
+a message by value and folds it in; it sends nothing. What a client must send comes
+back as a value: `issue(IssuedOrder)` numbers an order and stamps its `seen` tick into
+an `OutgoingOrder`, and `end_turn()` returns the tick to acknowledge. The caller moves
+the bytes, over a socket (`Transport`, `Link`, `Net`), in-process, or not at all, so the
+same session runs behind a GUI, a bot or a test.
+
+**Two stream disciplines.** `Perspective::Seat` holds a player's stream to the rules
+the server keeps: one `MatchStart`, each snapshot followed by its tick's events, ticks
+strictly increasing, skipped ticks folded event by event so a death inside a gap is not
+lost. `Perspective::Spectator` is lenient where a replay or a switching viewer needs it.
+`AckPolicy` says when a tick is acknowledged: `AfterTurn` (a client that decides per
+tick acknowledges after deciding), `OnSnapshot` (an interactive client), `Never` (the
+caller drives the match itself).
+
+**Observers, not forks.** What a particular client keeps beyond the shared state (its
+own memory, its statistics) hangs on the `Observer` hooks, called at fixed points of
+the fold (`prepare`, `before_snapshot`, `on_events`, `after_snapshot`) with the session
+readable. The shared fold is never copied to add to it.
+
+**Rules through core.** Damage ranges, regeneration, prices and missing parts, cast
+points, sight lines (`SightGround` over core's `SightBlock`, with the trees felled and
+planted since the match began) are core functions fed with what the view shows, never
+a second formula.
+
+**Determinism and size.** The crate denies float arithmetic outside the `ui` feature
+(the drawing side), `HashMap`/`HashSet` and the clock types (`clippy.toml`); tracks are
+sorted `Vec`s joined by id; a snapshot is taken by value, so the steady state allocates
+nothing per tick beyond a newly seen unit. Two sessions given the same stream are
+equal (`ClientSession: PartialEq`), which `game/tests/client.rs` checks against a
+`bota_server::local::LocalMatch`: a lockstep match run in the caller's process,
+publishing each seat's view and events through the network loop's own projection and
+event filter, so an in-process client sees exactly what a connected one would.
+
 ### Module layout
 
 ```
@@ -210,10 +254,29 @@ server/src/
 ├── net/          conn.rs: accept loop, reader/writer threads; outbox.rs: Outbox
 ├── lobby.rs      Roster (PlayerId ↔ SlotId), seats, picks, readiness
 ├── game_loop.rs  lobby phase, then the tick loop in both modes
+├── local.rs      LocalMatch: a lockstep match in the caller's process, told through the same side view and event filter
 ├── replay.rs     writes the replay: fogless frames plus per-tick orders
 ├── profile       phase timings of a tick, sampled with the `phase-profile` feature
 └── main.rs       clap arguments
 benches/dummy/    criterion: the dummy tick loop, a Map2 skirmish, micro cases
+```
+
+```
+client_core/src/
+├── match_static.rs   MatchStatic: the validated MatchInfo, shared by Arc
+├── session.rs        ClientSession (the reducer), Perspective, AckPolicy, Ingested
+│   └── session/      validate, tracks (EntityTrack, last seen), memory (bodies per seat),
+│                     missiles (projectiles and loot by id), error
+├── observer.rs       Observer: hooks at fixed points of the fold
+├── orders.rs         IssuedOrder, OutgoingOrder{seq, unit, order, seen}, OrderLedger
+├── latency.rs        OrderLatency measured from the view's order delays
+├── readiness.rs      SharedWaits: shared item waits a client started
+├── handshake.rs      Lobby, Seated, join, match-term and pick checks
+├── transport.rs      Transport; Link (blocking, timeouts), Net (threaded)
+├── sight.rs          SightGround over core's SightBlock
+├── shop.rs, catalog.rs, blurb.rs   prices from core; names and blurbs filled from core numbers
+└── ui/ (feature)     App, events and feed, smooth motion, intents, slots, console,
+                      replay player, last-hit aid: the float-using, drawing side
 ```
 
 No ECS library and no arenas of whole units: an entity is a generational handle from
