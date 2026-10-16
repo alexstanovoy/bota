@@ -1,0 +1,8 @@
+# The client's state is a function of the messages it was given: no hash
+# order, no clock.
+disallowed-types = [
+    { path = "std::collections::HashMap", reason = "iteration order is not deterministic; use a sorted Vec or an array" },
+    { path = "std::collections::HashSet", reason = "iteration order is not deterministic; use a sorted Vec or a bit set" },
+    { path = "std::time::Instant", reason = "client state must not depend on the clock; take the elapsed time as an argument" },
+    { path = "std::time::SystemTime", reason = "client state must not depend on the clock; take the time as an argument" },
+]

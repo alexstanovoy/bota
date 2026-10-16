@@ -1,0 +1,261 @@
+//! Hidden randomness. Nothing here ever reaches a participant.
+
+use bota_core::Ratio;
+use bota_proto::{EntityId, SlotId};
+use rand_chacha::ChaCha8Rng;
+use rand_chacha::rand_core::{Rng as _, SeedableRng};
+
+/// What a stream feeds. Each purpose draws from a stream of its own.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[repr(u16)]
+pub enum Purpose {
+    /// Evasion and uphill-miss ordering.
+    Evasion = 2,
+    /// Which roster a neutral camp puts out.
+    NeutralSpawn = 4,
+    /// Which melee creep of a wave carries the flag.
+    Wave = 5,
+    /// Pierce ordering.
+    Pierce = 6,
+    /// What each kill paying a gold range pays.
+    Bounty = 7,
+    /// What each swing with a damage range deals.
+    DamageRoll = 8,
+}
+
+const PURPOSE_COUNT: usize = Purpose::DamageRoll as usize + 1;
+
+/// The root of all hidden randomness in one match, reproducible from the
+/// pair of a server key and a match id.
+#[derive(Clone, Debug)]
+pub struct MatchRng {
+    seed: [u8; 32],
+    global: [Stream; PURPOSE_COUNT],
+}
+
+impl MatchRng {
+    /// Derives the randomness of one match.
+    pub fn new(master_key: &[u8; 32], match_id: u64) -> MatchRng {
+        let mut root = ChaCha8Rng::from_seed(*master_key);
+        root.set_stream(match_id);
+        let mut seed = [0u8; 32];
+        root.fill_bytes(&mut seed);
+        let global = std::array::from_fn(|purpose| {
+            open_stream(seed, GLOBAL_BIT | ((purpose as u64) << PURPOSE_SHIFT))
+        });
+        MatchRng { seed, global }
+    }
+
+    /// A stream that belongs to the match as a whole.
+    pub fn global(&mut self, purpose: Purpose) -> &mut Stream {
+        &mut self.global[purpose as usize]
+    }
+
+    /// A fresh stream that belongs to one unit and one of its sources of
+    /// chance. `source` separates several sources on the same unit. Keyed by
+    /// the slot index, not the generation: every occupant of a slot gets the
+    /// same stream.
+    pub fn for_unit(&self, purpose: Purpose, unit: EntityId, source: u8) -> Stream {
+        open_stream(
+            self.seed,
+            ((purpose as u64) << PURPOSE_SHIFT) | ((unit.idx as u64) << UNIT_SHIFT) | source as u64,
+        )
+    }
+
+    /// A fresh stream that holds back one seat's orders in flight. Apart
+    /// from every stream of the simulation itself.
+    pub fn for_order_delay(&self, slot: SlotId) -> Stream {
+        open_stream(self.seed, ORDER_DELAY_BIT | u64::from(slot.0))
+    }
+
+    /// The root seed every stream is derived from.
+    pub fn seed(&self) -> &[u8; 32] {
+        &self.seed
+    }
+
+    /// Draw counts of match-global streams in purpose order.
+    pub fn global_draws(&self) -> impl Iterator<Item = u64> + '_ {
+        self.global.iter().map(|stream| stream.draws)
+    }
+}
+
+fn open_stream(seed: [u8; 32], stream_id: u64) -> Stream {
+    let mut inner = ChaCha8Rng::from_seed(seed);
+    inner.set_stream(stream_id);
+    Stream { inner, draws: 0 }
+}
+
+const GLOBAL_BIT: u64 = 1 << 63;
+const ORDER_DELAY_BIT: u64 = 1 << 62;
+const _: () = assert!(((PURPOSE_COUNT as u64) << PURPOSE_SHIFT) <= ORDER_DELAY_BIT);
+const PURPOSE_SHIFT: u32 = 48;
+const UNIT_SHIFT: u32 = 8;
+
+/// One independent sequence of hidden draws.
+#[derive(Clone, Debug)]
+pub struct Stream {
+    inner: ChaCha8Rng,
+    draws: u64,
+}
+
+impl Stream {
+    /// The next value.
+    pub fn next_u32(&mut self) -> u32 {
+        self.draws = self
+            .draws
+            .checked_add(1)
+            .expect("random draw counter overflow");
+        self.inner.next_u32()
+    }
+
+    /// A value in `0..n`, drawn without bias.
+    ///
+    /// Panics when `n` is zero.
+    pub fn below(&mut self, n: u32) -> u32 {
+        assert!(n > 0, "below(0) has no answer");
+        // Reject the tail that would make low values more likely.
+        let zone = ((1u64 << 32) / n as u64) * n as u64;
+        loop {
+            let v = self.next_u32() as u64;
+            if v < zone {
+                return (v % n as u64) as u32;
+            }
+        }
+    }
+}
+
+/// Dota's pseudo-random distribution for one 25% event source.
+#[derive(Clone, Debug)]
+pub struct PseudoRandom25 {
+    stream: Stream,
+    failures: u8,
+}
+
+impl PseudoRandom25 {
+    /// Starts a sequence with its lowest per-attempt chance.
+    pub fn new(stream: Stream) -> Self {
+        Self {
+            stream,
+            failures: 0,
+        }
+    }
+
+    /// Whether the event occurs on this eligible attempt.
+    pub fn roll(&mut self) -> bool {
+        const BASE_THRESHOLD: u64 = 363_973_103;
+        const DRAW_SPACE: u64 = 1u64 << 32;
+
+        let attempt = u64::from(self.failures) + 1;
+        let threshold = BASE_THRESHOLD * attempt;
+        let occurs = threshold >= DRAW_SPACE || u64::from(self.stream.next_u32()) < threshold;
+        if occurs {
+            self.failures = 0;
+        } else {
+            self.failures = self.failures.saturating_add(1);
+        }
+        debug_assert!(self.failures < 12);
+        occurs
+    }
+
+    /// Draw count and failure streak determining the next outcome.
+    pub fn state(&self) -> (u64, u8) {
+        (self.stream.draws, self.failures)
+    }
+}
+
+/// A source of chance that honours its [`Ratio`] exactly while hiding its order.
+///
+/// Every block of `den` attempts contains exactly `num` hits, placed by a
+/// hidden stream. The first block starts at an offset drawn from the same
+/// stream.
+///
+/// A [`Ratio`] passed to [`roll`](Chance::roll) takes effect at the next block
+/// boundary. The block in progress finishes under the ratio it started with.
+#[derive(Clone, Debug)]
+pub struct Chance {
+    stream: Stream,
+    /// Which attempts of the current block hit, one bit each.
+    mask: u64,
+    /// Position within the current block.
+    idx: u8,
+    /// The ratio the current block was built with.
+    current: Ratio,
+}
+
+impl Chance {
+    /// A source drawing from `stream`, starting mid-block.
+    pub fn new(mut stream: Stream, ratio: Ratio) -> Chance {
+        let mask = Chance::pick(&mut stream, ratio);
+        let idx = stream.below(ratio.den() as u32) as u8;
+        Chance {
+            stream,
+            mask,
+            idx,
+            current: ratio,
+        }
+    }
+
+    /// Whether this attempt hits.
+    pub fn roll(&mut self, ratio: Ratio) -> bool {
+        if self.idx >= self.current.den() {
+            self.current = ratio;
+            self.idx = 0;
+            self.mask = Chance::pick(&mut self.stream, ratio);
+        }
+        let hit = self.mask & (1u64 << self.idx) != 0;
+        self.idx += 1;
+        hit
+    }
+
+    /// The ratio the block in progress was built with.
+    pub fn current(&self) -> Ratio {
+        self.current
+    }
+
+    /// Draw count and position within the block determining the next
+    /// outcome.
+    pub fn state(&self) -> (u64, u8) {
+        (self.stream.draws, self.idx)
+    }
+
+    /// How many attempts of the current block have been spent.
+    ///
+    /// Zero means the next [`roll`](Chance::roll) opens a fresh block.
+    pub fn block_position(&self) -> u8 {
+        if self.idx >= self.current.den() {
+            0
+        } else {
+            self.idx
+        }
+    }
+
+    /// Chooses which `num` of the `den` attempts in a block hit.
+    fn pick(stream: &mut Stream, ratio: Ratio) -> u64 {
+        let den = ratio.den() as usize;
+        let num = ratio.num() as usize;
+        if num == 0 {
+            return 0;
+        }
+        if num == den {
+            return if den == 64 {
+                u64::MAX
+            } else {
+                (1u64 << den) - 1
+            };
+        }
+
+        let mut positions = [0u8; Ratio::MAX_DEN as usize];
+        for (i, p) in positions.iter_mut().enumerate().take(den) {
+            *p = i as u8;
+        }
+
+        // Partial Fisher-Yates: only the first `num` draws are needed.
+        let mut mask = 0u64;
+        for i in 0..num {
+            let j = i + stream.below((den - i) as u32) as usize;
+            positions.swap(i, j);
+            mask |= 1u64 << positions[i];
+        }
+        mask
+    }
+}

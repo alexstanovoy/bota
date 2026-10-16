@@ -1,7 +1,0 @@
-[package]
-name = "bota-client-core"
-version.workspace = true
-edition.workspace = true
-
-[dependencies]
-bota-proto = { workspace = true }

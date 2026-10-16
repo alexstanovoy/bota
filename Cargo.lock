@@ -83,22 +83,22 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f2032f911046de80f0a198e0901378627c33f59ea0ac00e363d481118bd70a53"
 
 [[package]]
-name = "bota-bot"
+name = "bota_client_core"
 version = "0.1.0"
 dependencies = [
- "bota-proto",
- "clap",
+ "bota_core",
+ "bota_proto",
 ]
 
 [[package]]
-name = "bota-client-core"
+name = "bota_core"
 version = "0.1.0"
 dependencies = [
- "bota-proto",
+ "bota_proto",
 ]
 
 [[package]]
-name = "bota-proto"
+name = "bota_proto"
 version = "0.1.0"
 dependencies = [
  "postcard",
@@ -107,11 +107,12 @@ dependencies = [
 ]
 
 [[package]]
-name = "bota-server"
+name = "bota_server"
 version = "0.1.0"
 dependencies = [
- "bota-client-core",
- "bota-proto",
+ "bota_client_core",
+ "bota_core",
+ "bota_proto",
  "clap",
  "criterion",
  "rand_chacha",

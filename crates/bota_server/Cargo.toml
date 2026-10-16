@@ -1,0 +1,28 @@
+[package]
+name = "bota_server"
+version.workspace = true
+edition.workspace = true
+
+[features]
+default = []
+phase-profile = []
+
+[dependencies]
+bota_core = { workspace = true }
+bota_proto = { workspace = true }
+rand_chacha = "0.10"
+clap = { version = "4", features = ["derive"] }
+rustc-hash = { version = "2.1.3", default-features = false, features = ["std"] }
+socket2 = { version = "=0.6.5", default-features = false }
+
+[dev-dependencies]
+bota_client_core = { workspace = true, features = ["ui"] }
+criterion = { workspace = true }
+
+[[bench]]
+name = "dummy"
+path = "benches/dummy/main.rs"
+harness = false
+
+[lints]
+workspace = true

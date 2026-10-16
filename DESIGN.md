@@ -7,15 +7,15 @@ server authority, minimal dependencies.
 
 | Decision | Choice | Rationale |
 |---|---|---|
-| Client | `bota-client-core` here, drawn by dbota outside the repository | the logic every front end shares stays with the wire it reads; the drawing (Bevy, Dota's assets) is no business of the simulator |
-| Tick mode | Realtime **and** Lockstep | humans play in realtime, bots are debugged/trained in reproducible lockstep |
+| Client | `bota_client_core` here, drawn by a front end outside the repository | the logic every front end shares stays with the wire it reads; the drawing (Bevy, Dota's assets) is no business of the simulator |
+| Tick mode | Realtime **and** Lockstep | humans play in realtime, bots are debugged and measured in reproducible lockstep |
 | v0.1 scope | 1v1, three lanes, a handful of heroes | a vertical slice of the whole stack on minimal content |
 | Transport | TCP + length-prefixed frames | no tokio: a thread per client + a simulation thread + mpsc |
 | Serialization | `serde` + `postcard` | derive instead of hand-written put/get; the format is compact (varint) and stable within 1.x |
-| Player networking | full snapshots with fog | a 1v1 snapshot is budgeted at 4 KiB by a `bota-proto` size test, 120 KB/s at 30 Hz at most. Deltas will be needed by 5v5, not earlier |
+| Player networking | full snapshots with fog | a 1v1 snapshot is budgeted at 4 KiB by a `bota_proto` size test, 120 KB/s at 30 Hz at most. Deltas will be needed by 5v5, not earlier |
 | Live spectating | the same snapshots, without fog | client-side simulation is impossible, and that is intentional |
 | Replay | fogless `ServerMsg` stream + all orders | plays back without a server: the client reads frames from a file instead of a socket; coupled to the wire format only, so it survives balance changes; the client still cannot simulate |
-| PRNG | `rand_chacha::ChaCha8Rng` in `bota-server` | value-stable by the crate's contract; `rand::StdRng` is **forbidden** — it is allowed to change its algorithm in a minor release |
+| PRNG | `rand_chacha::ChaCha8Rng` in `bota_server` | value-stable by the crate's contract; `rand::StdRng` is **forbidden** — it is allowed to change its algorithm in a minor release |
 
 ## Structure
 
@@ -23,39 +23,193 @@ server authority, minimal dependencies.
 bota/
 ├── Cargo.toml               # workspace, resolver = "3"
 ├── crates/
-│   ├── bota-proto/          # shared vocabulary + codec. deps: serde, postcard
-│   ├── bota-server/         # simulation + networking + lobby. deps: proto, rand_chacha, rustc-hash, clap
-│   ├── bota-client-core/    # every front end's logic, no drawing: connection, replay, world picture, orders. deps: proto
-│   └── bota-bot/            # the rule bot and the seam a bot plays through. deps: proto, clap
+│   ├── bota_proto/          # shared vocabulary + codec. deps: serde, postcard
+│   ├── bota_core/           # the rules a player may know: definition tables + pure integer/Fixed functions. deps: proto
+│   ├── bota_server/         # simulation + networking + lobby. deps: proto, core, rand_chacha, rustc-hash, clap
+│   └── bota_client_core/    # every client's logic: connection, the session's picture of the match, orders, replay; drawing-side parts behind the `ui` feature. deps: proto, core
 ```
 
 ```
-        bota-proto
-        ↑    ↑    ↑
-   server  client  bot
+        bota_proto
+            ↑
+        bota_core
+        ↑       ↑
+   server    client_core
 ```
 
-The bot and the client are symmetric consumers of `proto`: a human and a bot see
+A bot is a client like the human's front end: a human and a bot see
 literally the same `WorldView` type. No asymmetry that could be exploited.
 
-### Membership criterion for bota-proto
+### Membership criterion for bota_proto
 
 The single rule deciding where code lives:
 
 > If it does not cross the wire and is not needed to read the wire — it is not in `proto`.
 
-| In `bota-proto` | In `bota-server` |
-|---|---|
-| `Fixed`, `Angle`, `Vec2`, `EntityId`, `SlotId`, `PlayerId`, `Team`, `HeroId`, `AbilityId`, `ItemId`, `AbilitySlot`, `ItemSlot`, `MapId`, `UnitKind` | `World`, `step`, units, combat, movement, vision, economy |
-| `Order`, `EventKind`, `WorldView`, codec and framing | `Command`, `Event.visible_to`, `MatchRng`, `Stream`, `Chance`, `Ratio` |
-| `MatchInfo`, `ClientMsg`, `ServerMsg`, `ReplayRecord` | `MatchConfig`, balance constants, hero stats, ability implementations |
+| In `bota_proto` | In `bota_core` | In `bota_server` |
+|---|---|---|
+| `Fixed`, `Angle`, `Vec2`, `EntityId`, `SlotId`, `PlayerId`, `Team`, `HeroId`, `AbilityId`, `ItemId`, `EffectId` (and their named constants), `AbilitySlot`, `ItemSlot`, `MapId`, `UnitKind` | `Ratio`, `rules`, the unit-kind, hero, ability and item tables, `MapDef`, pure rule functions | `World`, `step`, units, combat, movement, vision, economy |
+| `Order`, `EventKind`, `WorldView`, codec and framing | `UseSpec`, `Aura`, `ModifierKind`, `UnitDef`, `regen`, `mitigate` | `Command`, `Event.visible_to`, `MatchRng`, `Stream`, `Chance` |
+| `MatchInfo`, `ClientMsg`, `ServerMsg`, `ReplayRecord` | | `MatchConfig`, ability and item hooks, terrain tables, `World`'s use of all of it |
 
-A `bota-core` crate holding the simulation was rejected: "core" has no checkable
-membership criterion, and `seed`, `tick_rate` and `PlayerId` leak into it. With the
-simulation in the server, the client is **structurally** incapable of simulating:
-`World` lives in a crate it does not depend on.
+### Membership criterion for bota_core
+
+> If a player may know it, and it is a table or a pure function of integers and `Fixed`
+> — it is in `core`. If it needs a `World`, a random stream, a clock or I/O — it is not.
+
+What "a player may know" means: the rules of the game as a Dota player knows them
+(what a hero starts with, what an item costs and does, how armor turns into damage, what
+a wave is made of, how much a raze burns). Not what a match hides: a quantity that is
+hidden in play (a spawn modifier's amplification, a gold income, the fog) enters a
+function only as a **parameter**, and a client passes the nominal value; the crate has
+no way to fetch it. The crate holds no `World`, no entity handle, no random stream,
+no I/O, no clock, no `HashMap`/`HashSet` (denied by clippy), no float arithmetic
+(denied by the workspace lint), and `#![forbid(unsafe_code)]`. Every function is
+deterministic.
+
+The checks that make this a criterion rather than a hope: the dependency list (`core`
+depends on `proto` alone), the lints above, and the type of every parameter, which
+names exactly what the function is allowed to see.
+
+An earlier version of this document rejected a `core` crate that would hold the
+*simulation*, because "core" had no checkable membership criterion and `seed`,
+`tick_rate` and `PlayerId` leaked into it. This is not that crate. The simulation (the
+`World`, its tables and systems, the random streams) stays in the server, so a client
+is still structurally incapable of simulating: the state a match hides lives only in a
+crate it does not depend on. What moved is only the part that was never secret and was
+being copied by hand into every client: the numbers and the arithmetic of the rules.
+A client uses them to show what the server will compute (damage ranges, regeneration,
+cooldowns, prices) and to predict, never to decide.
+
+### Patterns
+
+**Definition tables.** What the game is made of is a `const` table in `core`, indexed by
+the wire id, with one row to a thing:
+
+| Table | Row | Lookup |
+|---|---|---|
+| `UNIT_KINDS` | `KindDef`: structure, attack/armor class, target class, bounty, deniable, lane creep … | `kind_def(kind)` |
+| `HEROES` | `HeroDef`: body (`UnitDef`), ability slots, innate ability, talent tree | `hero_def(id)` |
+| `ABILITIES` | `AbilityDef`: aim, levels, mana, cooldown, range, cast point, duration | `ability_def(id)` |
+| `ITEMS` | `ItemDef`: cost, charges, stock, components, `carried`, aim, timing, `UseSpec` | `item_def(id)` |
+
+Code asks a table instead of matching on the id. A new unit kind without a row does not
+compile (`kind_def` is an exhaustive match); a table whose length differs from the id
+registry fails a test.
+
+**Behaviour next to data.** The server keeps what a thing *does* to a world, keyed by
+the same id, in a table of the same length:
+
+- `ABILITY_HOOKS[id]` holds `on_cast`, `on_during`, `on_cancel`, `on_complete`; a const
+  assertion ties its length to `ABILITIES`.
+- An item's use is a `UseSpec` variant with its numbers (`Mend`, `PlantTree`, `Ward`,
+  `Teleport`, `Phase`, `Blink`, `Restore`, `Replenish` …) held in the `ItemDef`; the
+  server dispatches on the variant (`World::use_effect` and its three companions for a
+  use that runs on). A new item that reuses a variant is a table row only.
+
+**Pure rule functions.** Arithmetic that both sides need is a free function in `core`
+over plain values: `mitigate`, `amplify`, `bite`, `regen`, `raze_damage`,
+`hero_kill_xp`, `respawn_wait`, `carried_bonus`, `missing_parts`, `pick_target`,
+`aggroable_yet`, `attributes_at_level`, `cell_tier`, `ends_standing_order` (what a
+cast, a use or an errand leaves of the move a unit stands on, which the client's order
+ledger follows) … The server calls them from its systems; `bota_client_core` calls
+the same ones to draw what the server will do. The two cannot drift, because there is
+one body. Small ones are `#[inline]`, since a call across crates is not inlined without
+link-time optimisation.
+
+**Hidden quantities are parameters.** `regen(base, carried, attributes, modifiers)`
+takes the modifiers it is told about; a client passes the ones the view shows. A spawn
+modifier's amplification would be a parameter the same way, never a field read from a
+global.
+
+**Newtypes.** Ids, slots, `Fixed`, `Angle` and `Ratio` are distinct types, so a
+`HeroId` is never an `AbilityId` and a raw `u16` never stands for either. Every id the
+code names has a constant in `proto` (`HeroId::SHADOW_FIEND`, `AbilityId::REQUIEM`,
+`ItemId::MANGO`, `EffectId::FEASTING`); a bare number is a review finding.
+
+### Adding a hero, an ability, an item, a unit kind
+
+Ids are append-only (see Protocol, Append-only ids): new things take the next number and
+a line in `crates/bota_proto/registry/ids.txt`, and nothing is renumbered or reused.
+
+- **Unit kind.** Append the `UnitKind` variant in `proto`; add its row in `UNIT_KINDS`
+  (`kind_def`'s match will not compile without it). The server test over every kind
+  checks the rest.
+- **Hero.** Append `HeroId` (constant + registry line); add its `UnitDef` in
+  `core/unit.rs` and its row in `HEROES` (abilities, innate, talents). The id test
+  compares `HEROES` with the registry.
+- **Ability.** Append `AbilityId` (constant + registry line); add the row to `ABILITIES`
+  and `ABILITY_COUNT`, then the row to `ABILITY_HOOKS` in the server with its hooks (a
+  passive uses `INERT`). The const assertion and the id test catch a missing row.
+- **Item.** Append `ItemId` (constant + registry line); add the row to `ITEMS`
+  (and `ITEMS`' length). An item that does something picks a `UseSpec`; one that needs
+  new behaviour adds a variant and its arm in `World::use_effect`. An item built from
+  others lists `components`; the shop table is derived from the rows.
+- Each of them gets a test: the table row is covered by the id test; new behaviour by an
+  end-to-end test in the server that plays it through a `World`.
+
+### bota_client_core: one picture of the match, kept the same way by every client
+
+A client keeps a state of its own between snapshots: who was seen where and when, the
+casts under way, the projectiles new this tick, the orders it sent and which of them
+were refused, how long its orders take to land, the shared waits it started. Every
+client needs the same state, so it lives in `bota_client_core`, and it is kept by one
+rule for all of them.
+
+**A reducer.** `ClientSession` is a function of `MatchStatic` (the validated
+`MatchInfo`, shared by `Arc`), its options and the messages it was handed, in order:
+`ingest(ServerMsg)` (or `ingest_snapshot` / `ingest_events` / `ingest_rejection`) takes
+a message by value and folds it in; it sends nothing. What a client must send comes
+back as a value: `issue(IssuedOrder)` numbers an order and stamps its `seen` tick into
+an `OutgoingOrder`, and `end_turn()` returns the tick to acknowledge. The caller moves
+the bytes, over a socket (`Transport`, `Link`, `Net`), in-process, or not at all, so the
+same session runs behind a GUI, a bot or a test.
+
+**Two stream disciplines.** `Perspective::Seat` holds a player's stream to the rules
+the server keeps: one `MatchStart`, each snapshot followed by its tick's events, ticks
+strictly increasing, skipped ticks folded event by event so a death inside a gap is not
+lost. `Perspective::Spectator` is lenient where a replay or a switching viewer needs it.
+`AckPolicy` says when a tick is acknowledged: `AfterTurn` (a client that decides per
+tick acknowledges after deciding), `OnSnapshot` (an interactive client), `Never` (the
+caller drives the match itself).
+
+**Observers, not forks.** What a particular client keeps beyond the shared state (its
+own memory, its statistics) hangs on the `Observer` hooks, called at fixed points of
+the fold (`prepare`, `before_snapshot`, `on_events`, `after_snapshot`) with the session
+readable. The shared fold is never copied to add to it.
+
+**Rules through core.** Damage ranges, regeneration, prices and missing parts, cast
+points, sight lines (`SightGround` over core's `SightBlock`, with the trees felled and
+planted since the match began) are core functions fed with what the view shows, never
+a second formula.
+
+**Determinism and size.** The crate denies float arithmetic outside the `ui` feature
+(the drawing side), `HashMap`/`HashSet` and the clock types (`clippy.toml`); tracks are
+sorted `Vec`s joined by id; a snapshot is taken by value, so the steady state allocates
+nothing per tick beyond a newly seen unit. Two sessions given the same stream are
+equal (`ClientSession: PartialEq`), which `game/tests/client.rs` checks against a
+`bota_server::local::LocalMatch`: a lockstep match run in the caller's process,
+publishing each seat's view and events through the network loop's own projection and
+event filter, so an in-process client sees exactly what a connected one would.
 
 ### Module layout
+
+```
+core/src/
+├── rules.rs      balance constants in one place
+├── unit.rs       UnitDef, Growth and every unit's definition; unit_neutral.rs, camp.rs, roster.rs
+├── unit_kind.rs  UNIT_KINDS, kind_def, KindDef
+├── hero.rs       HeroDef, HEROES, attributes_at_level, base_damage_least
+├── ability.rs    AbilityDef, ABILITIES, learn_group, level_floor
+├── item.rs       ItemDef, UseSpec, Mend, Carried, carried_bonus; item_table.rs: ITEMS
+├── talent.rs, aura.rs, modifier.rs, attack_class.rs, protect.rs, wave.rs, map.rs, place.rs
+├── damage.rs     amplify, mitigate, bite
+├── fiend.rs      raze, souls, presence, requiem arithmetic
+├── economy.rs    deniable, bounties, respawn, missing_parts
+├── aggro.rs      class order, pick_target, behaviour_rank, aggroable_yet
+├── regen.rs      regen: health and mana per tick, one function
+├── movement.rs, progress.rs, cells.rs, sight.rs, terrain.rs, chance.rs
+```
 
 ```
 proto/src/
@@ -84,32 +238,47 @@ server/src/
 │   ├── match_world.rs    for_match, advance, validate_order, victor, match_stats
 │   ├── project.rs        World → WorldView, with fog and without
 │   ├── hash.rs           world.hash() over the whole state
-│   ├── rng.rs            MatchRng over ChaCha8Rng: streams by purpose, Ratio/Chance
+│   ├── rng.rs            MatchRng over ChaCha8Rng: streams by purpose, Chance
 │   ├── seat.rs           Seat, Kept: what belongs to a player rather than a body
-│   ├── progress.rs       progress inside an action, in beats
-│   ├── movement.rs       isqrt, stepping, turning, facing, distances
-│   ├── cells.rs          one bit per terrain cell, for sight
 │   ├── clearance.rs      the ground as a body meets it: room per node, exact capsule test
 │   ├── path.rs           A* over the walking lattice, corners drawn tight
 │   ├── bodies.rs         where every body stands, by bucket
 │   ├── spots.rs          Spots<T>: points sorted by x, asked by square
 │   ├── local.rs          the next stretch of a walk: A* over spot, facing and tick
-│   ├── vision.rs         fog of war: sight blocks and sight lines
+│   ├── vision.rs         fog of war: sight lines over core's SightBlock
 │   ├── forest.rs         what of the forest is down and what was put up
 │   ├── ground.rs         elevation tiers, water, walkability
 │   ├── components/       one file per component
 │   ├── systems/          one file per system: combat, walking, casting, gear, econ …
-│   └── config/           what the game is made of: ability, blockers, camp, hero,
-│                         item, map, match_config, place, protect, roster, rules,
-│                         spawn_modifier, talent, terrain, trees, unit, unit_neutral,
-│                         wave
+│   └── config/           what only the server needs: ability (hook table), item
+│                         (UseSpec dispatch), blockers, map_terrain, match_config,
+│                         place, spawn_modifier, terrain, trees
 ├── net/          conn.rs: accept loop, reader/writer threads; outbox.rs: Outbox
 ├── lobby.rs      Roster (PlayerId ↔ SlotId), seats, picks, readiness
 ├── game_loop.rs  lobby phase, then the tick loop in both modes
+├── local.rs      LocalMatch: a lockstep match in the caller's process, told through the same side view and event filter
 ├── replay.rs     writes the replay: fogless frames plus per-tick orders
 ├── profile       phase timings of a tick, sampled with the `phase-profile` feature
 └── main.rs       clap arguments
-benches/dummy/    criterion: the dummy tick loop, the trainer skirmish, micro cases
+benches/dummy/    criterion: the dummy tick loop, a Map2 skirmish, micro cases
+```
+
+```
+client_core/src/
+├── match_static.rs   MatchStatic: the validated MatchInfo, shared by Arc
+├── session.rs        ClientSession (the reducer), Perspective, AckPolicy, Ingested
+│   └── session/      validate, tracks (EntityTrack, last seen), memory (bodies per seat),
+│                     missiles (projectiles and loot by id), error
+├── observer.rs       Observer: hooks at fixed points of the fold
+├── orders.rs         IssuedOrder, OutgoingOrder{seq, unit, order, seen}, OrderLedger
+├── latency.rs        OrderLatency measured from the view's order delays
+├── readiness.rs      SharedWaits: shared item waits a client started
+├── handshake.rs      Lobby, Seated, join, match-term and pick checks
+├── transport.rs      Transport; Link (blocking, timeouts), Net (threaded)
+├── sight.rs          SightGround over core's SightBlock
+├── shop.rs, catalog.rs, blurb.rs   prices from core; names and blurbs filled from core numbers
+└── ui/ (feature)     App, events and feed, smooth motion, intents, slots, console,
+                      replay player, last-hit aid: the float-using, drawing side
 ```
 
 No ECS library and no arenas of whole units: an entity is a generational handle from
@@ -128,7 +297,7 @@ pub struct MatchConfig {
     pub match_id: u64, pub master_key: [u8; 32], pub picks: Vec<Pick>,
     pub map: MapId, pub tick_rate: u16, pub mode: TickMode, pub ack_timeout_ticks: u32,
     pub cheats: bool, pub spawn_modifiers: Vec<SpawnModifier>,
-    pub immortal_structures: bool,   // server-only: structures never drop below 1 hp (training, practice)
+    pub immortal_structures: bool,   // server-only: structures never drop below 1 hp (practice)
     pub immortal_heroes: bool,       // server-only: heroes never drop below 1 hp (last-hit practice)
 }
 
@@ -210,11 +379,11 @@ determinism demands exactly one implementation.
 
 ## Determinism rules
 
-1. No `f32/f64` in `bota-proto` and `bota-server`: `clippy::float_arithmetic` is denied
+1. No `f32/f64` in `bota_proto` and `bota_server`: `clippy::float_arithmetic` is denied
    in the workspace lints.
    Float operations themselves are deterministic per IEEE-754, but `sin/cos/sqrt` from
    libm are not — they differ across glibc / musl / macOS / wasm. The client renders in
-   float freely. The bot is also free to think in float: what gets recorded are its
+   float freely. A bot is also free to think in float: what gets recorded are its
    orders, not its reasoning.
 2. Scalars are `Fixed` = Q16.16 in `i32`, multiplication through an intermediate `i64`.
    Range ±32768 units, precision 1/65536. The 18432-unit map keeps squared distances
@@ -224,7 +393,7 @@ determinism demands exactly one implementation.
    far side of the map.
 3. Angles are "brads": `u16`, 65536 = a full turn. There is no trigonometry: facings and
    headings use an integer octant approximation (`facing_towards`, `heading_of` in
-   `game/movement.rs`).
+   `bota_core::movement`).
 4. Distances are compared as squares; where a length itself is needed, `isqrt64`.
 5. Entity iteration is always in ascending slot order (`EntityAllocator::iter`).
    Nothing in the simulation iterates a hash map; `rustc_hash::FxHashMap` is allowed
@@ -307,7 +476,7 @@ Players send intents, the server alone computes, and every tick it broadcasts th
 outcome.
 
 Secrecy is a property of the channel, not of the data, so the simulation does not think
-about it. The protection is structural: the types of `bota-proto` are incapable of
+about it. The protection is structural: the types of `bota_proto` are incapable of
 expressing hidden state. `MatchInfo` versus `MatchConfig`, `WorldView` versus `World`.
 A leak becomes a compile error, not a review oversight.
 
@@ -324,7 +493,7 @@ Server-only, never reaches `WorldView`:
 It also follows that client-side prediction covers only movement and animation. Damage
 numbers arrive as events from the server.
 
-Two further channels are closed by rule, because a reward-driven bot will find and
+Two further channels are closed by rule, because a bot that optimises a score will find and
 exploit any leak a human reviewer shrugs off:
 
 - A reject reason does not depend on hidden state. A dead target and a fogged one get
@@ -346,7 +515,7 @@ exploit any leak a human reviewer shrugs off:
   imported the same way: one short lane bending through its real path corners,
   a single tier-one tower a side, two fountains, its own 187 trees, its own
   ground — and no Ancients at all, so nothing ends a match there but the
-  clock. A real map rather than an invented training lane is ground the bots'
+  clock. A real map rather than an invented practice lane is ground a bot's
   habits can carry to the big map. Its terrain is baked exactly like the big
   map's: walkability
   from the map's own gridnav, elevation tiers rasterised off its physics mesh
@@ -543,7 +712,10 @@ exploit any leak a human reviewer shrugs off:
   wheel can only lose a sliver, never gain one; and a pool that held anything
   is kept off zero, so the wheel cannot kill its owner either. Consumables
   drip over their duration (Healing Salve ten seconds, Clarity twenty-five) and
-  spill on any hit from a hero or a tower. Items survive the hero's
+  spill on any damage from an enemy hero, attack or spell; a tower, a creep and
+  one's own side spill nothing (Dota 7.41f: "If the unit is attacked by an
+  enemy hero or Roshan, the effect is lost."). `bota_core::breaks_regen` is
+  that rule, for the server and every client alike. Items survive the hero's
   death on the seat.
 - An item set to an attribute — Power Treads — keeps which one on the stack
   rather than in the catalog, and the wire carries it in `ItemView`, since two
@@ -556,7 +728,8 @@ exploit any leak a human reviewer shrugs off:
   landing spot on closed ground steps back along that line a grid cell at a
   time until it finds open ground: refusing outright would have been simpler,
   but it makes the item unusable at exactly the cliffs it exists to cross.
-  A blow from a hero or a tower sets it back, and that lives in the
+  Damage from an enemy hero sets it back (Dota 7.41f: "after taking damage
+  from an enemy hero or Roshan", the drinks' own rule), and that lives in the
   same place a blow already puts a Salve out, so there is one pass over what a
   blow breaks rather than two.
 - Charges gained from enemy casts — Magic Stick and Wand — are counted where
@@ -776,7 +949,7 @@ Every swing ends in a backswing the unit stands through, which is the
 pause a creep makes over its kill before marching on. A hero's order cancels its
 backswing.
 
-Abilities run on a shared engine — the table in `game/config/ability.rs`, casting in
+Abilities run on a shared engine — the table in `bota_core::ability` and its hooks in `game/config/ability.rs`, casting in
 `game/systems/cast.rs`, the body's action in `game/systems/actions.rs`: a row of slots per hero —
 four for most, six for Shadow Fiend, the row is per-hero data — each slot with a
 level and a cooldown, held on the seat like items, so both survive the
@@ -828,7 +1001,7 @@ copy of the static one: `ModifierKind::grown` turns the def's base effect into w
 bearer of so many intervals hands out, at the one place auras are handed out, so the
 `Aura` table stays `'static` and nothing else learns about upgrades. `Guarded` and `Inspired`
 are separate kinds even though a body could carry both, because naming them apart is what
-lets a client tell a tower's doing from a flagbearer's, and what keeps the bot from
+lets a client tell a tower's doing from a flagbearer's, and what keeps a bot from
 reading either as the mending a salve puts on.
 
 What a flagbearer's death pays the enemy heroes around it follows 7.40: the bonus is set
@@ -848,10 +1021,10 @@ tower's protection is meant to pass an invulnerable hero by only when it is *hid
 nothing here checks that, and no hero in the game can hide.
 
 **An effect id is a wire vocabulary that lives in neither crate.** The server hands them
-out in `project.rs`, the client reads them in `catalog.rs` and the bot names the few it
-weighs in `numbers.rs`, and nothing holds the lists together: a new effect leaves the
+out in `project.rs`, the client reads them in `catalog.rs` and a bot names the few it
+weighs, and nothing holds the lists together: a new effect leaves the
 client drawing `?` chips while every test passes. By the membership rule the ids cross
-the wire and are needed to read it, so they belong in `bota-proto` — which is where the
+the wire and are needed to read it, so they belong in `bota_proto` — which is where the
 next one added should put them.
 
 A soul is taken only from what he brings down himself, which is the killer `bury`
@@ -938,14 +1111,14 @@ each wire struct and struct variant.
   as retired: a variant is never produced (a decoder may refuse it), a
   field is always written as its default.
 
-Two committed registries in `crates/bota-proto/registry/` hold what has been
+Two committed registries in `crates/bota_proto/registry/` hold what has been
 assigned: `ids.txt` every id with its name and state, `wire.txt` every
 variant index and field position of the wire types. Both only grow: an
 existing line is never edited or removed, except an id turning `retired`.
-Tests hold the code to them: `bota-proto` traces the wire types and fails
+Tests hold the code to them: `bota_proto` traces the wire types and fails
 on any position that changed or disappeared, and on one not yet registered;
-`bota-server` checks its hero, ability, item and effect tables, and
-`bota-client-core` its catalog, against `ids.txt`.
+`bota_server` checks its hero, ability, item and effect tables, and
+`bota_client_core` its catalog, against `ids.txt`.
 
 ### Client → server
 
@@ -1001,7 +1174,7 @@ enum ServerMsg {
 A Player/Bot receives a whole `WorldView` on every tick, filtered through its team's
 fog. A live Spectator receives the same stream unfiltered. There are no deltas: a
 client can start rendering from any snapshot, so joining mid-match requires nothing
-special. A `bota-proto` size test budgets a 1v1 snapshot of 25 units at 4 KiB;
+special. A `bota_proto` size test budgets a 1v1 snapshot of 25 units at 4 KiB;
 `diff`/`apply` will arrive together with 5v5.
 
 Within a tick the order on the wire is fixed: `Snapshot(t)`, then `Events(t)`. An
@@ -1029,7 +1202,7 @@ client's a picture of it. Each side keeps its own mask type and grid constants �
 do not cross the wire and are not needed to read it. The picture copies the rule
 exactly — tree footprints, the near cells and the integer line walk over the wire's
 fixed-point positions — and `the_client_pictures_the_servers_sight_cell_for_cell` in
-`game/tests/vision.rs` (`bota-client-core` is a dev-dependency of the server for it)
+`game/tests/vision.rs` (`bota_client_core` is a dev-dependency of the server for it)
 fails the moment the two drift apart.
 
 The client's picture needs every source of vision to be an entity in the view. Wards
@@ -1052,7 +1225,7 @@ enum ReplayRecord {
 ```
 
 The server records `MatchStart`, then per tick the fogless `Snapshot`, the `Events`
-and the orders it accepted. `ReplayRecord` lives in `bota-proto`: a replay file is a
+and the orders it accepted. `ReplayRecord` lives in `bota_proto`: a replay file is a
 wire, and the client must read it. Replay mode in the client is reading frames from
 the file instead of the socket; the order records can be skipped, or rendered — which
 is what makes a replay more useful than a live spectator seat when debugging a bot.
@@ -1096,8 +1269,8 @@ an empty recording, a torn prefix or payload, an invalid length, a decode failur
 read failure; a failure keeps the record number and byte offset, stops reading, and
 leaves what was decoded on screen under the error. EOF alone invents no match result.
 
-The ignored `both_real_replays_stream_correctly_with_bounded_prefix` test streams the
-files named by `BOTA_REPLAY_NEURAL` and `BOTA_REPLAY_TEACHER` and checks every message
+The ignored `two_real_replays_stream_correctly_with_bounded_prefix` test streams the
+files named by `BOTA_REPLAY_FIRST` and `BOTA_REPLAY_SECOND` and checks every message
 against a sequential reader.
 
 ### What a slot is worth, and who works it out
@@ -1311,7 +1484,7 @@ The list is the last field of `WorldView`, and `Snapshot { view }` is the last
 thing in its frame, so the list is the tail of the payload. A bot outside this
 repository reads this wire; a decoder that predates the list stops before it,
 and postcard's `from_bytes` leaves trailing bytes unread, so it keeps working
-unchanged. `bota-proto`'s `compat` test decodes a fresh snapshot through the
+unchanged. `bota_proto`'s `compat` test decodes a fresh snapshot through the
 old shape. A decoder that insists on consuming every byte of a frame does
 not tolerate it.
 
@@ -1348,7 +1521,7 @@ An order given on the view of tick `T` takes effect on tick `T + 1` at the earli
 Over a network it lands later: the round trip, the wait for the next tick boundary and
 the client's own thinking add `d` ticks. Dota runs 30 ticks a second and its players
 see 20-120 ms of ping, so `d` is 0-4 ticks there, more on a bad line. Lockstep alone
-has `d = 0`, so a bot trained and measured in lockstep would only ever meet the delay
+has `d = 0`, so a bot measured in lockstep would only ever meet the delay
 when it plays for real.
 
 - `--order-delay-ticks` holds every order of a seat back by a fixed number of ticks;
@@ -1433,254 +1606,6 @@ damage:      hits, break on blows, rouse camps, credit damage, events and misses
 then:        applied modifiers count down
 ```
 
-## The tick's hot path
-
-The tick is what a trainer pays for, so it is kept free of passes that walk everything
-for every asker. Each shortcut below gives exactly the answer the full scan gave.
-
-- Targeting (`Candidates` in `systems/target.rs`), the sight pass
-  (`systems/visibility.rs`) and auras (`systems/aura.rs`) sort what stands by x once
-  per pass into a `Spots<T>` (`game/spots.rs`), and each query walks only the square
-  its reach spans, then runs the unchanged exact checks. This is exact because the
-  target answer is the unique minimum of a key that ends in the entity, who sees a row
-  does not depend on the order viewers reach it, and each aura gives each entity its
-  effect once, in source order. Nothing moves between laying the spots and asking
-  them inside one pass.
-- `World::of_wire` resolves a wire handle through `EntityAllocator::resolve` in
-  constant time instead of scanning the live entities.
-- The forest keeps its felled trees in a sorted list of their own, so views and ticks
-  do not walk every tree of the map to find the few that are down.
-- A view is projected in one pass over the entities, deciding once per entity whether
-  the side is told of it.
-- `trainer/map2_skirmish` in `benches/dummy` measures what a trainer pays per tick:
-  `advance` and both sides' views.
-
-## bota-bot
-
-A bot that plays by rules rather than by weights, and the seam anything else would hold
-a seat through. `Bot` is that seam — seated, match started, one tick in and at most one
-`Ask` out, events, refusals, the end — and `play` is the loop that carries it over a
-socket, written once so a second bot does not write it again. `Playbook` is the bot that
-ships: `Field` reads a snapshot into a settled shape, `decide` walks a fixed list of
-wants top to bottom and takes the first that answers. The whole crate is `bota-proto`
-and `clap`. Float is allowed here, as it is in the client: what is recorded of a bot is
-the orders it gave, not the arithmetic behind them.
-
-**The order of the list is the whole of the judgement.** There is one order a tick, so
-which want is asked first is the only priority there is: standing still while stunned,
-feared, channelling or in a cast point, a talent, a skill point, a courier errand, the shop, tidying the bag, a
-drink or a wand, the scroll, leaving while hurt, a spell, turning to aim one, a last hit
-or a deny, waiting out a swing already under way, shaking the creeps off, pulling the
-wave back, striking their hero or pushing a building behind the wave, and holding the
-lane. Nothing is drawn at random, and what is remembered between ticks is only what the
-wire does not carry — the attack cycle, recent health, who struck the hero, how long the
-stash has been waiting — so the same match played twice goes the same way.
-
-**What an ability is comes off the wire; what it does does not.** `AbilityView` carries
-the level, the wait, the cost, the reach and how a cast is aimed, so nothing mirrors the
-ability table by hand. What an ability *means* does not cross the wire, so there is a
-file per hero: `fiend.rs` decides when a raze is worth its mana. `MatchInfo` carries the shop, so `Stall` reads costs and components off it and
-only the item and ability **numbers** the bot uses are written out in `numbers.rs`,
-because a salve and a ward are one shape on the wire.
-Which talents a hero takes is in `study.rs` beside its points: Shadow Fiend takes
-the raze stack damage, the presence's armor, the souls held and the razes' attack
-damage, the first the view says a point could go into, ahead of an ability.
-
-**A raze is aimed by looking, not by pointing.** It lands at its own reach along the line
-the caster already faces, so casting one is two decisions. `fiend_spell` works out where
-each raze would land from the facing in the snapshot — the server's own octant geometry,
-integer for integer, in `aim.rs` — and casts only if something worth burning is standing
-there, counting the souls held and forecasting creep health over the 17-tick cast point.
-`fiend_aim` is the other half: a mark inside the union of the three burns but off
-the line gets a walk towards it, which is how a hero turns. The burns (reaches 200, 450
-and 700, radius 250) overlap, so anything within 950 units can be razed by facing it.
-The feast goes off ahead of a raze whenever an enemy hero stands within its 600, or a
-wave of four creeps does and mana is to spare.
-
-**Buying is sequential, and the list is parts.** The server charges a built item the
-price of the parts the seat does not already hold, and assembles a build the moment its
-parts are in the bag — so the lists name parts, and gold is spent as it arrives rather
-than saved up for the whole. `next_buy` stops at the first thing not owned rather than
-skipping to whatever is affordable: skipping spends on the tail of a list the gold its
-head was saving for. What is already inside a build counts as owned, worked out by
-walking the components the wire gave. Nothing goes on a list that no want reaches for:
-an item no rung ever names is gold and a working slot spent for nothing.
-
-**The consumables sit at the head of every list, and that is the restocking.** A stack
-that is drunk stops being held, so the next walk of the list finds it wanting again and
-buys another. The one exception to stopping at the first thing not owned is a
-consumable with no working slot to go in — what holds that up is room and not gold, so
-it is stepped over. `SPARE_SLOTS` is the working slots kept clear of drink beyond the one
-it takes; at nought a consumable is bought whenever a working slot is free (at one the
-bot stopped restocking once five items were held, and the one scroll spent was never
-replaced). `tidy` moves anything stranded in the backpack forward, since a build lands
-in the lowest slot any of its parts came out of and a part bought with the bag full
-comes out of the backpack.
-
-What follows was found by playing rather than by reading, and each is now a test or a
-named constant.
-
-**An order is an animation cancel.** The holding spot drifts a little every tick, and a
-fresh `Move` every tick threw away the swing already winding up — fifteen ticks of
-wind-up against a want resent every eight. So a walk is ordered only when the spot is
-more than `HOLD_SLACK` off, and a swing already ordered holds the seat silent until it
-lands or `SWING_PATIENCE` runs out. Before these rules the bot took two creeps in nine
-thousand ticks; after them, fifteen.
-
-**Stand at the edge of your own reach.** Reckoned off its own creeps, which walk into the
-enemy wave, the holding spot walked the hero in with them to take blows for nothing. It
-is reckoned off the *nearest of theirs*, at the hero's own reach less `SWING_EDGE`.
-
-**Swing at the worn one, not the near one.** The nearest creep in reach changes whenever
-the wave shuffles, and a swing that keeps changing its mind never lands. A body only ever
-loses health, so the lowest is the same one next tick.
-
-**A wave in another lane is not this hero's business.** Every wave on the map is visible,
-so creeps are filtered to `NEARBY` of the hero — otherwise the bot walks off to stand
-behind another lane's creeps, and "the lane is clear" means nothing.
-
-**A tango is paid for by a tree, and a lane has none.** The forest is cleared for
-`TREE_LANE_CLEAR` (450) either side of a lane's centre, so a hero where it farms never
-has a tree within the 165 a tango reaches; the bot carried its tangoes up the lane and
-walked to the fountain instead. Walking to the tree is now part of eating the tango, and
-only to trees no further up the lane than the hero already stands.
-
-**A mend spent on a walk to the fountain is a mend the fountain was about to make
-free.** A tango gives 115 health over sixteen seconds; the fountain gives 25 a tick for
-nothing. While the hero is pulling out, a mend is spent only if it would carry it back
-over `MENDED_RETURN`, which a salve's 400 does and a tango's 115 usually does not; and a
-hero a mend is already carrying turns round at `MENDED_RETURN` rather than
-`RETURN_HEALTH`. `mind_health` settles the pulling-out flag before the drink is weighed
-so the two agree.
-
-**The lane is held by talking to the creeps, not by standing somewhere.** An attack order
-does something to everybody who is not the one giving it, whether the attack ever
-happens or not: aimed at an enemy hero it calls every enemy creep within
-`HERO_AGGRO_RANGE` (500) of the orderer onto him for `ORDER_AGGRO_HOLD_TICKS`, and aimed at one of
-your own it makes them pick again with him put last. `pull` uses the first when the wave
-has been pushed more than `PULL_DRIFT` past where it should meet: standing behind its
-own line, the hero is a spot their creeps must walk past that line to reach, and the
-fight comes back down the lane with them. Given to one side only, it is worth four and a
-half last hits to that side, at the cost of denies for both. `shake` uses the second
-when `SHAKE_CREEPS` creeps are chewing on the hero, aimed at the nearest unit of its own.
-
-Aimed at the hero itself, the shake was a free aggro drop Dota does not have — a hero is
-on its own side, so `call_of` read a self-click as letting go — and `rouse_bystanders`
-now turns away an order whose mark is the one who gave it. Pointing at a creep costs the
-follow that pointing at a unit always costs, so the tick after a shake the hero is told
-to stand, and that tick must not itself count as a shake, or the hero stands still for
-good. Standing at the edge of its own reach, the bot is rarely under a wave, so `shake`
-seldom fires; it is kept for what it costs, which is a tick.
-
-**A held body is not the seat's to spend a tick on.** `StatusFlags` carries the stun, the
-fear and the channel, so the ladder stops at the top for any of them: an order given
-during a channel is how the channel is thrown away, which the bot was doing to its own
-scroll.
-
-**What limits the last hitting is not the swing.** Shadow Fiend lands about seven swings
-in ten; what it does not do is attempt. Two ways of buying damage into that measured
-worse over five seeds, read on the pair's last hits and denies:
-
-| | pair, last hits and denies |
-|---|---|
-| as it stands | 76.4 |
-| a Quelling Blade for both | 70.8 |
-| a Quelling Blade for one side only | Shadow Fiend 41.8, from 48.0 |
-| standing a hundred and sixty inside reach rather than forty | 67.0 |
-
-Eighteen more damage against creeps widens the window a swing is worth taking in, so the
-bot commits earlier and holds its target through `SWING_PATIENCE` while the creep is
-taken from under it; standing closer buys blows for the reach. Neither is a knob to turn
-until the ticks spent standing where the wave is dying are fewer.
-
-**A scroll is constrained by where it is aimed, not where it is cast from.** The want
-once required standing in the shop, where the bot no longer went once it had drink and a
-courier. It now carries both ways, home while pulling out and back to just behind the
-frontmost tower its lane holds once mended, and it sits above the walk home, since what
-that walk is for is the thing a scroll does in three seconds. The bot reads the scroll
-in the town portal slot, its shared wait shown on it, and keeps one on its list.
-
-**Mana was short because nothing was ever bought for it.** A raze costs 75
-against a pool that mends about two a second. Every list carries a clarity, and a
-wand — twenty charges worth fifteen of each pool — is pressed whenever the pool it fills
-is missing what its charges are worth. Shadow Fiend buys a Sage's Mask rather than a
-Wraith Band: over five seeds the two were a wash on the scoreboard, and the mask costs
-175 to the band's 505 and leaves a working slot for the drink.
-
-A one-in-ten trace misses whether an item is used at all: a cast is one tick and the
-replacement is bought on the next. `Playbook` keeps the name of the rung that answered
-and the trace (`--trace`) prints it; count those over every tick instead.
-
-What it does not do: it will not dive a tower, leave its lane to gank, stack or pull a
-camp, place a ward, or fight for a rune. It takes buildings only by walking up with its
-own wave. Two bots of it play a full match to an Ancient, and the same seed run twice
-gives the same numbers down to the order count.
-
-The two heroes trade places on the scoreboard with almost every change to the ladder,
-and the pair's total farm barely moves: they are the same policy on both sides of one
-lane, so whichever gets a little ahead denies the other and the lead compounds. Read the
-two seats added together, over several seeds; a swing in one of them alone is the lane
-tipping, not the change working.
-
-### The seam
-
-```rust
-pub trait Bot {
-    fn seated(&mut self, slot: Option<SlotId>);
-    fn match_started(&mut self, info: &MatchInfo);
-    fn on_tick(&mut self, view: &WorldView) -> Option<Ask>;
-    fn on_events(&mut self, _tick: u32, _events: &[EventKind]) {}
-    fn on_reject(&mut self, _seq: u32, _reason: RejectReason) {}
-    fn finished(&mut self, _winner: Team, _stats: &MatchStats) {}
-}
-
-pub fn play(bot: &mut dyn Bot, chair: &Chair) -> io::Result<Outcome>;
-pub fn play_on(bot: &mut dyn Bot, link: Link, seated: Seated, chair: &Chair)
-    -> io::Result<Outcome>;
-```
-
-The hero is picked when the connection is made (`Link::join`) rather than returned from
-a callback: picking happens in the lobby, before there is a `MatchInfo` to decide from.
-
-`on_events` earns its place. The attack cycle is not on the wire — a `UnitView` carries
-`attack_time` but not where in the interval a unit stands — so a bot cannot tell
-whether it may swing now or in forty ticks. What is on the wire is every blow that
-lands: one of the bot's own says the cycle began a wind-up ago and comes round again an
-interval after that. Without this the bot orders last hits it cannot take for another
-second and loses them all.
-
-### One order a tick, and saying nothing
-
-The server keeps one order per seat per tick and the last one wins, so a want is a
-single `Ask` and the policy ranks its wants rather than queueing them. Re-sending the
-want already standing is not free: an order cancels the recovery after a swing and calls
-the creeps onto whoever gave it. So `Steady` holds a want equal to the one in hand back
-for `RESEND_TICKS`, and two walks or attack-moves to spots less than `RESEND_DRIFT` apart
-count as one want — otherwise following a moving wave throws away the route the server
-laid every tick.
-
-### The courier
-
-A courier is what makes the shopping list past the first trip worth having: anything
-bought away from the shop falls into a stash the hero cannot reach from the lane. With
-one, the bot buys wherever it stands — and away from the shop only while a courier of its
-own is standing, because gold in hand is worth more than an item in a stash nothing is
-coming for.
-
-The errands are abilities the courier carries, so an order for one names the courier in
-`ClientMsg::Order`'s `unit` and casts the slot the errand sits in, read off the courier
-rather than assumed. That is why the bot answers each tick with an `Ask` — an order and a
-unit — rather than an order alone.
-
-An errand outlives the tick it was given in. Saying it again changes nothing and costs
-the one order the seat has that tick: sent every tick, errands took enough of the hero's
-ticks that it took a quarter more damage. So an errand already under way is not repeated
-for `ERRAND_TICKS`, a safety net for an order that never arrived rather than a schedule.
-A trip waits until `COURIER_BATCH` items have piled up or the first has waited
-`COURIER_PATIENCE` ticks, and is held back entirely while an enemy hero is within
-`FIGHT_RANGE` — a courier walks to where its owner stands, and that is what is being
-shot at.
-
 ### Server-side walking and courier behaviour
 
 An errand answers to what the courier is carrying, not only to what waits in the
@@ -1717,24 +1642,46 @@ loses the message saying who won. The server also waits for its writer threads r
 than exiting from under them, since the last message of a match is queued at the moment
 the server has nothing left to do.
 
+## The tick's hot path
+
+The tick is what a bot-versus-bot run pays for, so it is kept free of passes that walk everything
+for every asker. Each shortcut below gives exactly the answer the full scan gave.
+
+- Targeting (`Candidates` in `systems/target.rs`), the sight pass
+  (`systems/visibility.rs`) and auras (`systems/aura.rs`) sort what stands by x once
+  per pass into a `Spots<T>` (`game/spots.rs`), and each query walks only the square
+  its reach spans, then runs the unchanged exact checks. This is exact because the
+  target answer is the unique minimum of a key that ends in the entity, who sees a row
+  does not depend on the order viewers reach it, and each aura gives each entity its
+  effect once, in source order. Nothing moves between laying the spots and asking
+  them inside one pass.
+- `World::of_wire` resolves a wire handle through `EntityAllocator::resolve` in
+  constant time instead of scanning the live entities.
+- The forest keeps its felled trees in a sorted list of their own, so views and ticks
+  do not walk every tree of the map to find the few that are down.
+- A view is projected in one pass over the entities, deciding once per entity whether
+  the side is told of it.
+- `match/map2_skirmish` in `benches/dummy` measures what a bot-versus-bot run pays per tick:
+  `advance` and both sides' views.
+
 ## Stages
 
 | # | Deliverable | Contents |
 |---|---|---|
-| 0 | ✅ workspace builds | Cargo.toml, `bota-proto`, workspace lint policy |
-| 1 | ✅ `bota-proto` types | `Fixed`, `Angle`, `Vec2`, identifiers, `Order`, `EventKind`, `WorldView`, messages |
+| 0 | ✅ workspace builds | Cargo.toml, `bota_proto`, workspace lint policy |
+| 1 | ✅ `bota_proto` types | `Fixed`, `Angle`, `Vec2`, identifiers, `Order`, `EventKind`, `WorldView`, messages |
 | 2 | ✅ codec | serde derive, postcard, framing, `FrameReader` |
-| 3 | ✅ `bota-proto` tests | round-trip of every message, torn stream into `FrameReader`, snapshot size budget, enum tag order |
+| 3 | ✅ `bota_proto` tests | round-trip of every message, torn stream into `FrameReader`, snapshot size budget, enum tag order |
 | 4 | ✅ `Fixed` arithmetic | Q16.16 ops through an intermediate `i64`, `Vec2`, `distance_squared` in raw Q32.32, tests in debug and release |
-| 5 | ✅ `World` ticks | entities and component tables, units, movement, orders, creeps, towers, Ancient; `rng.rs` with streams and Ratio/Chance |
+| 5 | ✅ `World` ticks | entities and component tables, units, movement, orders, creeps, towers, Ancient; `rng.rs` with streams and Chance (Ratio lives in `bota_core`) |
 | 6 | ✅ combat | attacks, projectiles, damage, deaths, gold/xp, victory |
 | 7 | ✅ server networking | lobby, both tick modes, snapshot broadcast, replay recording |
-| 8 | ✅ `bota-bot` and `bota-client` | SDK + bot, bot-vs-bot match: the client — macroquad: map, units, HP bars, orders, lobby, spectating, replay playback (since split into `bota-client-core` and drawn by dbota outside the repository); the bot — the `Bot` seam and `play`, a deterministic playbook for Shadow Fiend, lockstep acks, two of it playing a match through to an Ancient |
+| 8 | ✅ `bota-bot` and `bota-client` | SDK + bot, bot-vs-bot match: the client — macroquad: map, units, HP bars, orders, lobby, spectating, replay playback (since split into `bota_client_core` and drawn by a front end outside the repository); the bot — the `Bot` seam and `play`, a deterministic playbook for Shadow Fiend, lockstep acks, two of it playing a match through to an Ancient (`bota-bot` since deleted: a bot is a client of its own) |
 | 9 | 🔄 heroes and determinism test | Done: abilities, levels, items, shop; Pudge and Shadow Fiend; whole-match fingerprints pinned on every map. Not yet: runs on musl/wasm32; a mirror test that a diagonally mirrored match ends in the mirrored outcome |
 
 ## Map2: mid-only play on the full Dota map
 
-`MapId(2)` (`SKIRMISH` in `game/config/map.rs`) is `DOTA` with its own id, mid-only
+`MapId(2)` (`SKIRMISH` in `bota_core::map`) is `DOTA` with its own id, mid-only
 waves and its own ending; no landmark, tree, camp, terrain or blocker table is
 duplicated. `lanes` stays three: tree clearance and route construction still see every
 lane, and only `wave_lanes` selects mid. Setting `lanes` to one would leave trees on
@@ -1783,8 +1730,8 @@ at Dota 7.41f, below).
 
 ### Mango
 
-`ITEM_MANGO` is 42. The shop sends it as an ordinary `ShopEntry`, and a carried one
-counts in `ItemView.charges`. Its numbers, in `game/config/item.rs`:
+`ItemId::MANGO` is 42. The shop sends it as an ordinary `ShopEntry`, and a carried one
+counts in `ItemView.charges`. Its numbers, in `bota_core::item`:
 
 | Constant | Value |
 |---|---|
@@ -2024,7 +1971,7 @@ burn.
 - `EffectId::MAGIC_BROKEN` (18, `ticks_left`) is a requiem's torn resistance;
   `EffectId::FEASTING` (19, `ticks_left` and `stacks`: souls taken so far) and
   `EffectId::FEAST_LINGER` (20, `ticks_left` until what is past the cap is lost and
-  `stacks`: souls taken from enemies that have died since) are the feast. They are the first effect ids `bota-proto` names.
+  `stacks`: souls taken from enemies that have died since) are the feast. They are the first effect ids `bota_proto` names.
 - `UnitView.magic_resist` may be negative, down to -1, under a requiem.
 - The souls effect (11) may count up to fifty while a feast runs or lingers.
 - Raze stacks (effect 15) last at most 180 ticks.
@@ -2149,7 +2096,7 @@ hundredths of a percentage point for resistances) and a tick count bounded by
 out-of-bounds spec or tick count with `RejectReason::BadCheat`, and `World::cheat`
 refuses anything unbounded that arrived another way. The order size budget is 80 bytes
 for a cheat order and 32 for any other; the widest cheat order measures 70 bytes, and
-the canonical bytes of one spec order are pinned in `bota-proto`.
+the canonical bytes of one spec order are pinned in `bota_proto`.
 
 **Modifiers are folded first and additively.** `derive_stats` folds a unit's specs
 right after the raised base block and before items, attributes, auras, slows and every

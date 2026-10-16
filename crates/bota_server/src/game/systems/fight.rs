@@ -1,0 +1,261 @@
+//! Who stands and who is in reach, telling of blows, and clearing away what
+//! has fallen.
+
+use bota_core::{MAP2_ID, MAP2_TICK_CAP, kind_def, respawn_wait};
+use bota_proto::{EventKind, Fixed, Team, UnitKind, Vec2};
+
+use crate::game::{
+    Entity, Event, EventVisibility, ItemStack, Kept, Landed, Missed, UnitOrder, World, wire_id,
+};
+
+impl World {
+    /// Whether an entity is still standing.
+    pub fn alive(&self, entity: Entity) -> bool {
+        self.entities.contains(entity)
+            && self.health.get(entity).is_some_and(|h| h.hp > Fixed::ZERO)
+    }
+
+    /// Whether an attacker reaches its target, edge to edge.
+    pub fn in_reach(&self, attacker: Entity, target: Entity) -> bool {
+        let (Some(at), Some(their_at), Some(stats)) = (
+            self.transform.get(attacker),
+            self.transform.get(target),
+            self.stats.get(attacker),
+        ) else {
+            return false;
+        };
+        at.pos.within(
+            their_at.pos,
+            stats.attack_range + self.hulls(attacker, target),
+        )
+    }
+
+    /// Tells each side what it was near enough to feel.
+    pub fn tell_of(&self, felt: &[Landed], events: &mut Vec<Event>) {
+        for blow in felt {
+            events.push(Event {
+                kind: EventKind::Damaged {
+                    source: blow.source.map(wire_id),
+                    target: wire_id(blow.target),
+                    amount: blow.amount,
+                    kind: blow.kind,
+                },
+                visible_to: self.who_may_know(blow.at, blow.side),
+                gold_hidden_from: None,
+            });
+        }
+    }
+
+    /// Tells each side of the attacks it was near enough to see miss.
+    pub fn tell_of_misses(&self, missed: &[Missed], events: &mut Vec<Event>) {
+        for miss in missed {
+            events.push(Event {
+                kind: EventKind::Missed {
+                    source: miss.source.map(wire_id),
+                    target: wire_id(miss.target),
+                },
+                visible_to: self.who_may_know(miss.at, miss.side),
+                gold_hidden_from: None,
+            });
+        }
+    }
+
+    /// Hands on the fights and follows aimed at a fallen entity.
+    ///
+    /// An attack order at it becomes an attack-move to the spot it was last
+    /// seen; a follow becomes a walk to that spot.
+    fn carry_fights_on(&mut self, fallen: Entity) {
+        for follower in self.entities.iter().collect::<Vec<_>>() {
+            match self.orders.get(follower).map(|o| o.current) {
+                Some(UnitOrder::Follow { target, last_seen }) if target == fallen => {
+                    self.set_order(follower, UnitOrder::Move { pos: last_seen });
+                }
+                Some(UnitOrder::Attack { target, last_seen }) if target == fallen => {
+                    self.set_order(follower, UnitOrder::AttackMove { pos: last_seen });
+                }
+                _ => {}
+            }
+        }
+    }
+
+    /// Clears away what has fallen and tells who may know.
+    pub fn bury(&mut self, fallen: Vec<(Entity, Option<Entity>)>, events: &mut Vec<Event>) {
+        let mut structure_fell = false;
+        let mut tower_losses = [false; 2];
+        for (entity, killer) in fallen {
+            if !self.entities.contains(entity) {
+                continue;
+            }
+            if let Some((kind, side)) = self.bury_entity(entity, killer, events) {
+                structure_fell = true;
+                match (kind, side) {
+                    (UnitKind::Tower, Team::Radiant) => tower_losses[0] = true,
+                    (UnitKind::Tower, Team::Dire) => tower_losses[1] = true,
+                    _ => {}
+                }
+            }
+        }
+        if structure_fell {
+            self.lay_passability();
+        }
+        self.finish_map2_tick(tower_losses);
+    }
+
+    fn bury_entity(
+        &mut self,
+        entity: Entity,
+        killer: Option<Entity>,
+        events: &mut Vec<Event>,
+    ) -> Option<(UnitKind, Team)> {
+        assert!(self.entities.contains(entity));
+        self.cancel_action(entity);
+        self.rot_goes_out(entity);
+        self.carry_fights_on(entity);
+        self.feed_flesh_heaps(entity);
+        self.feed_souls(entity, killer);
+        let kind = self.kind.get(entity).copied();
+        let side = self.team.get(entity).copied();
+        let denied = killer
+            .and_then(|k| self.team.get(k).copied())
+            .is_some_and(|theirs| Some(theirs) == side);
+        let paid = self.pay_for(entity, killer, events);
+        let at = self.transform.get(entity).map_or(Vec2::ZERO, |t| t.pos);
+        events.push(Event {
+            kind: EventKind::Died {
+                unit: wire_id(entity),
+                killer: killer.map(wire_id),
+                denied,
+                gold: paid,
+            },
+            visible_to: self.who_may_know(at, side.unwrap_or(Team::Neutral)),
+            gold_hidden_from: killer
+                .filter(|&k| kind != Some(UnitKind::Hero) && self.seat_of(k).is_some())
+                .and_then(|k| self.team.get(k).copied())
+                .map(other_side),
+        });
+        let structure = kind.zip(side).filter(|(kind, _)| kind_def(*kind).structure);
+        if let Some((kind, side)) = structure {
+            events.push(Event {
+                kind: EventKind::StructureDestroyed {
+                    unit: wire_id(entity),
+                    team: side,
+                },
+                visible_to: EventVisibility::Everyone,
+                gold_hidden_from: None,
+            });
+            if self.map.id != MAP2_ID
+                && self.winner.is_none()
+                && (kind == UnitKind::Ancient
+                    || (self.map.tower_ends_it && kind == UnitKind::Tower))
+            {
+                self.winner = Some(other_side(side));
+            }
+        }
+        // Dota hands a hero a scroll for every death but one it dealt itself
+        // or one neutral creeps are credited with.
+        let scroll_due = killer.is_some_and(|killer| {
+            killer != entity
+                && self
+                    .team
+                    .get(killer)
+                    .is_some_and(|side| *side != Team::Neutral)
+        });
+        self.bury_seat(entity, scroll_due);
+        if let Some(index) = killer.and_then(|k| self.seat_of(k))
+            && kind == Some(UnitKind::Hero)
+            && !denied
+        {
+            self.seats[index].kills += 1;
+        }
+        self.despawn(entity);
+        assert!(!self.entities.contains(entity));
+        structure
+    }
+
+    fn bury_seat(&mut self, entity: Entity, scroll_due: bool) {
+        let mut fallen_hero_team = None;
+        for index in 0..self.seats.len() {
+            if self.seats[index].unit == Some(entity) {
+                let level = self.seats[index].level;
+                self.let_souls_go(entity);
+                self.requiem_on_death(entity);
+                let mut bag = self.inventory.remove(entity).unwrap_or_default();
+                if scroll_due {
+                    // A town portal slot full to the byte keeps what it has.
+                    bag.receive(ItemStack::free_scroll(self.seats[index].slot, self.tick));
+                }
+                let kept = Kept {
+                    book: self.abilities.remove(entity).unwrap_or_default(),
+                    bag,
+                    stacks: self.stacks.remove(entity).unwrap_or_default(),
+                };
+                self.seats[index].unit = None;
+                self.seats[index].kept = Some(kept);
+                self.seats[index].deaths += 1;
+                self.seats[index].respawn_left = respawn_wait(level);
+                fallen_hero_team = Some(self.seats[index].team);
+            }
+            if self.seats[index].courier == Some(entity) {
+                self.seats[index].courier_kept = self.inventory.remove(entity);
+            }
+        }
+        if let Some(team) = fallen_hero_team
+            && self.map.id != MAP2_ID
+            && self.map.death_limit > 0
+            && self.winner.is_none()
+        {
+            let deaths = self
+                .seats
+                .iter()
+                .filter(|seat| seat.team == team)
+                .map(|seat| u32::from(seat.deaths))
+                .sum::<u32>();
+            if deaths >= u32::from(self.map.death_limit) {
+                self.winner = Some(other_side(team));
+            }
+        }
+    }
+
+    fn finish_map2_tick(&mut self, tower_losses: [bool; 2]) {
+        if self.map.id != MAP2_ID || self.winner.is_some() {
+            return;
+        }
+        let deaths = |team| {
+            self.seats
+                .iter()
+                .filter(|seat| seat.team == team)
+                .fold(0u16, |total, seat| total.saturating_add(seat.deaths))
+        };
+        let lost = [
+            (self.map.tower_ends_it && tower_losses[0])
+                || (self.map.death_limit > 0 && deaths(Team::Radiant) >= self.map.death_limit),
+            (self.map.tower_ends_it && tower_losses[1])
+                || (self.map.death_limit > 0 && deaths(Team::Dire) >= self.map.death_limit),
+        ];
+        self.winner = match (self.tick >= MAP2_TICK_CAP, lost) {
+            (true, _) | (false, [true, true]) => Some(Team::Neutral),
+            (false, [true, false]) => Some(Team::Dire),
+            (false, [false, true]) => Some(Team::Radiant),
+            (false, [false, false]) => None,
+        };
+    }
+
+    pub(crate) fn map2_finished(&mut self) -> bool {
+        if self.map.id != MAP2_ID {
+            return false;
+        }
+        if self.tick >= MAP2_TICK_CAP {
+            self.winner.get_or_insert(Team::Neutral);
+        }
+        self.winner.is_some()
+    }
+}
+
+/// The side that is not this one.
+pub(super) fn other_side(team: Team) -> Team {
+    match team {
+        Team::Radiant => Team::Dire,
+        Team::Dire => Team::Radiant,
+        Team::Neutral => Team::Neutral,
+    }
+}
