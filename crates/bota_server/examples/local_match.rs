@@ -7,12 +7,12 @@
 //! ```
 
 use bota_client_core::{
-    AckPolicy, ClientSession, Ingested, IssuedOrder, MatchStatic, Perspective, SessionOptions,
+    AckPolicy, ClientSession, Ingested, IssuedOrder, MatchStatic, SessionOptions,
 };
 use bota_core::{MAP2_ID, map_of};
 use bota_proto::{HeroId, MapId, Order, Pick, ServerMsg, SlotId, Target, Team, TickMode};
 use bota_server::game::{MatchConfig, OrderDelay};
-use bota_server::local::{LocalMatch, LocalOrder};
+use bota_server::local::LocalMatch;
 
 fn main() {
     let pick = |slot, team| Pick {
@@ -43,14 +43,19 @@ fn main() {
         let ServerMsg::MatchStart { info } = &stream[0] else {
             unreachable!("a stream starts with MatchStart");
         };
+        // The caller steps the match itself, so nothing is acknowledged.
         let options = SessionOptions {
-            perspective: Perspective::Seat(SlotId(slot as u8)),
-            hero: Some(HeroId::SHADOW_FIEND),
             ack: AckPolicy::Never,
-            forget_after_ticks: 480,
+            ..SessionOptions::default()
         };
-        let session = ClientSession::new(MatchStatic::new(info).expect("valid terms"), options)
-            .expect("a seat");
+        let statics = MatchStatic::new(info).expect("valid terms");
+        let session = ClientSession::seat(
+            statics,
+            SlotId(slot as u8),
+            Some(HeroId::SHADOW_FIEND),
+            options,
+        )
+        .expect("a seat");
         sessions.push(session);
     }
     let mut pending = opening;
@@ -75,20 +80,12 @@ fn main() {
             };
             // Walk to the enemy fountain, fighting what is met on the way;
             // the first tick is enough, the order stands.
-            let order = IssuedOrder {
-                unit: None,
-                order: Order::Attack {
-                    target: Target::Pos(map.fountains[1 - slot]),
-                },
-            };
+            let order = IssuedOrder::hero(Order::Attack {
+                target: Target::Pos(map.fountains[1 - slot]),
+            });
             let first = view.tick <= 1;
             let sent = first.then(|| session.issue(order).expect("a snapshot was seen"));
-            orders.push(sent.map(|sent| LocalOrder {
-                seq: sent.seq,
-                unit: sent.unit,
-                order: sent.order,
-                seen: sent.seen,
-            }));
+            orders.push(sent);
         }
         if let Some(winner) = winner {
             println!("tick {}: match over, winner {winner:?}", local.tick());

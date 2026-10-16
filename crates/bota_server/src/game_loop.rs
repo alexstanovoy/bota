@@ -13,8 +13,8 @@ use bota_proto::{
 use rand_chacha::rand_core::Rng as _;
 
 use crate::game::{
-    Command, DelayLine, Event, EventVisibility, MatchConfig, MatchSecrets, OrderDelay, RefusedOrder,
-    World,
+    Command, DelayLine, Event, EventVisibility, MatchConfig, MatchSecrets, OrderDelay,
+    RefusedOrder, World,
 };
 use crate::lobby::{ReservedSeat, Roster};
 use crate::net::{Connection, NetEvent, accept_loop};

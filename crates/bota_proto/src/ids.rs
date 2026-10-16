@@ -64,6 +64,17 @@ pub enum Team {
     Neutral,
 }
 
+impl Team {
+    /// The side across the map; the jungle's own is nobody's enemy side.
+    pub const fn enemy(self) -> Team {
+        match self {
+            Team::Radiant => Team::Dire,
+            Team::Dire => Team::Radiant,
+            Team::Neutral => Team::Neutral,
+        }
+    }
+}
+
 /// Selects one of the playable heroes.
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct HeroId(pub u16);

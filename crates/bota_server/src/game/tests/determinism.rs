@@ -348,7 +348,11 @@ fn the_published_match_id_gives_away_neither_the_seed_nor_the_key() {
     const SEED: u64 = 9_000_001;
     let first = MatchSecrets::seeded(SEED);
     let next = MatchSecrets::seeded(SEED + 1);
-    assert_eq!(MatchSecrets::seeded(SEED), first, "a seed plays its match again");
+    assert_eq!(
+        MatchSecrets::seeded(SEED),
+        first,
+        "a seed plays its match again"
+    );
     for (seed, secrets) in [(SEED, first), (SEED + 1, next)] {
         let label = secrets.match_id.to_le_bytes();
         assert_ne!(secrets.match_id, seed);

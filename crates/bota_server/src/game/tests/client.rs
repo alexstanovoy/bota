@@ -1,17 +1,17 @@
 //! The client library's session folds what a server sends and nothing else.
 
 use bota_client_core::{
-    AckPolicy, ClientSession, Ingested, IssuedOrder, MatchStatic, Perspective, SessionOptions,
+    AckPolicy, ClientSession, Ingested, IssuedOrder, MatchStatic, SessionOptions,
 };
 use bota_core::{map_of, rules};
 use bota_proto::{
-    AbilitySlot, EntityId, EventKind, Fixed, HeroId, ItemId, ItemSlot, MatchInfo, Order, ServerMsg,
-    SkippedTick, SlotId, Target, Team, UnitKind, Vec2,
+    AbilitySlot, EntityId, EventKind, Fixed, HeroId, ItemId, ItemSlot, MatchInfo, Order,
+    OutgoingOrder, ServerMsg, SkippedTick, SlotId, Target, Team, UnitKind, Vec2,
 };
 
 use super::local::mid_config;
 use crate::game::{OrderDelay, UnitOrder};
-use crate::local::{LocalMatch, LocalOrder};
+use crate::local::LocalMatch;
 
 const TICKS: u32 = rules::FIRST_WAVE_TICK + 4000;
 
@@ -23,7 +23,7 @@ fn play() -> Vec<Vec<ServerMsg>> {
     let (mut local, mut seats) = LocalMatch::new(&cfg, &[OrderDelay::NONE]).expect("a match");
     for _ in 0..TICKS {
         let tick = local.tick();
-        let order = |slot: usize| LocalOrder {
+        let order = |slot: usize| OutgoingOrder {
             seq: tick,
             unit: None,
             order: Order::Attack {
@@ -49,12 +49,11 @@ fn play() -> Vec<Vec<ServerMsg>> {
 
 fn session_for(info: &MatchInfo, slot: u8) -> ClientSession {
     let options = SessionOptions {
-        perspective: Perspective::Seat(SlotId(slot)),
-        hero: Some(HeroId::SHADOW_FIEND),
         ack: AckPolicy::Never,
-        forget_after_ticks: 480,
+        ..SessionOptions::default()
     };
-    ClientSession::new(MatchStatic::new(info).expect("valid terms"), options).expect("a seat")
+    let statics = MatchStatic::new(info).expect("valid terms");
+    ClientSession::seat(statics, SlotId(slot), Some(HeroId::SHADOW_FIEND), options).expect("a seat")
 }
 
 fn info_of(stream: &[ServerMsg]) -> &MatchInfo {
@@ -137,17 +136,7 @@ fn a_refused_order_is_rolled_back_in_the_ledger() {
     let sent = session.issue(issued).expect("a snapshot is held");
     assert_eq!((sent.seq, sent.seen), (1, local.tick()));
     assert!(session.ledger().repeats(issued));
-    let step = local
-        .step(&[
-            Some(LocalOrder {
-                seq: sent.seq,
-                unit: sent.unit,
-                order: sent.order,
-                seen: sent.seen,
-            }),
-            None,
-        ])
-        .expect("a step");
+    let step = local.step(&[Some(sent), None]).expect("a step");
     let mut refused = false;
     for message in step[0].clone() {
         refused |= matches!(
@@ -163,14 +152,9 @@ fn a_refused_order_is_rolled_back_in_the_ledger() {
 /// the session folding every message.
 fn give(local: &mut LocalMatch, session: &mut ClientSession, order: Order, ticks: u32) {
     let sent = session
-        .issue(IssuedOrder { unit: None, order })
+        .issue(IssuedOrder::hero(order))
         .expect("a snapshot is held");
-    let mut first = Some(LocalOrder {
-        seq: sent.seq,
-        unit: sent.unit,
-        order: sent.order,
-        seen: sent.seen,
-    });
+    let mut first = Some(sent);
     for _ in 0..ticks {
         let step = local.step(&[first.take(), None]).expect("a step");
         for message in step.into_iter().next().expect("seat 0") {

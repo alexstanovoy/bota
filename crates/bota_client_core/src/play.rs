@@ -82,19 +82,20 @@ impl<E> From<IngestError<E>> for PlayError<E> {
 /// Plays a joined seat to the end of its match.
 ///
 /// Every tick, once its events are in, `decide` is shown the session and
-/// returns the orders it wants. An order that repeats the one standing is
+/// returns the orders it wants: none, one (an `Option`) or several. An order that repeats the one standing is
 /// not sent again; the rest go out numbered, and the tick is acknowledged.
 /// The observer sees the stream as [`ClientSession::ingest`] folds it.
-pub fn play<T, O, F>(
+pub fn play<T, O, D, I>(
     transport: &mut T,
     seated: Seated,
     observer: &mut O,
-    mut decide: F,
+    mut decide: D,
 ) -> Result<Outcome, PlayError<O::Error>>
 where
     T: Transport,
     O: Observer,
-    F: FnMut(&ClientSession) -> Vec<IssuedOrder>,
+    D: FnMut(&ClientSession) -> I,
+    I: IntoIterator<Item = IssuedOrder>,
 {
     let mut seat = Seat::new(seated, SessionOptions::default());
     let mut rejections = 0u32;
@@ -124,10 +125,10 @@ where
 }
 
 /// Sends what the bot decided on the tick, then the acknowledgement.
-fn take_turn<E>(
+fn take_turn<E, I: IntoIterator<Item = IssuedOrder>>(
     transport: &mut impl Transport,
     session: &mut ClientSession,
-    decide: &mut impl FnMut(&ClientSession) -> Vec<IssuedOrder>,
+    decide: &mut impl FnMut(&ClientSession) -> I,
 ) -> Result<(), PlayError<E>> {
     for order in decide(session) {
         if session.ledger().repeats(order) {
@@ -146,11 +147,11 @@ fn take_turn<E>(
 impl crate::socket::Link {
     /// Connects, takes a seat with `hero` and plays the match to its end, as
     /// [`play`] does.
-    pub fn play(
+    pub fn play<I: IntoIterator<Item = IssuedOrder>>(
         address: &str,
         name: &str,
         hero: HeroId,
-        decide: impl FnMut(&ClientSession) -> Vec<IssuedOrder>,
+        decide: impl FnMut(&ClientSession) -> I,
     ) -> Result<Outcome, PlayError> {
         let (mut link, seated) = Self::join(address, name, hero, None)?;
         play(&mut link, seated, &mut (), decide)

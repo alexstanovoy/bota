@@ -1,5 +1,5 @@
-//! The blocking [`Link`] with timeouts that implements [`Transport`], and a
-//! threaded [`Net`] that never blocks the caller.
+//! The two socket [`Transport`]s: the blocking [`Link`] with timeouts, and a
+//! threaded [`Net`] whose poll never blocks the caller.
 #![allow(clippy::disallowed_types)] // the connect deadline and receive timing read the clock
 
 use std::io::{Read, Write};
@@ -125,11 +125,14 @@ fn io_context(context: &str, error: std::io::Error) -> std::io::Error {
 /// A socket with a reader thread behind it.
 ///
 /// Messages pile up in a channel; [`Net::poll`] hands over whatever has
-/// arrived without ever blocking the render loop.
+/// arrived without ever blocking the render loop, and [`Transport::recv`]
+/// waits for the next one.
 pub struct Net {
     stream: TcpStream,
     inbox: Receiver<ServerMsg>,
     closed: Arc<AtomicBool>,
+    /// Set when the reader met bytes that decode to no message.
+    broken: Arc<AtomicBool>,
 }
 
 impl Net {
@@ -141,6 +144,8 @@ impl Net {
         let (tx, inbox) = channel();
         let closed = Arc::new(AtomicBool::new(false));
         let closed_flag = Arc::clone(&closed);
+        let broken = Arc::new(AtomicBool::new(false));
+        let broken_flag = Arc::clone(&broken);
         thread::spawn(move || {
             let mut reader = FrameReader::new();
             let mut stream = reader_stream;
@@ -160,6 +165,7 @@ impl Net {
                         }
                         Ok(None) => break,
                         Err(_) => {
+                            broken_flag.store(true, Ordering::Relaxed);
                             closed_flag.store(true, Ordering::Relaxed);
                             return;
                         }
@@ -172,6 +178,7 @@ impl Net {
             stream,
             inbox,
             closed,
+            broken,
         })
     }
 
@@ -180,18 +187,33 @@ impl Net {
         self.inbox.try_iter().collect()
     }
 
-    /// Sends one message. A failed send marks the connection closed.
-    pub fn send(&mut self, msg: &ClientMsg) {
-        let Ok(frame) = encode_frame_to_vec(msg) else {
-            return;
-        };
-        if self.stream.write_all(&frame).is_err() {
-            self.closed.store(true, Ordering::Relaxed);
-        }
-    }
-
     /// Whether the server is gone.
     pub fn is_closed(&self) -> bool {
         self.closed.load(Ordering::Relaxed)
+    }
+}
+
+impl Transport for Net {
+    /// Waits for the next message; none once the server closed cleanly.
+    fn recv(&mut self) -> std::io::Result<Option<ServerMsg>> {
+        match self.inbox.recv() {
+            Ok(message) => Ok(Some(message)),
+            Err(_) if self.broken.load(Ordering::Relaxed) => Err(std::io::Error::other(
+                "failed to decode server message; likely a protocol mismatch, build client \
+and server from matching commits",
+            )),
+            Err(_) => Ok(None),
+        }
+    }
+
+    /// Sends one message. A failed send also marks the connection closed.
+    fn send(&mut self, msg: &ClientMsg) -> std::io::Result<()> {
+        let frame = encode_frame_to_vec(msg).map_err(|error| {
+            std::io::Error::other(format!("failed to encode client message: {error}"))
+        })?;
+        self.stream.write_all(&frame).map_err(|error| {
+            self.closed.store(true, Ordering::Relaxed);
+            io_context("failed to send client message", error)
+        })
     }
 }

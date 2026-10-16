@@ -217,6 +217,33 @@ pub struct SlotOrder {
     pub order: Order,
 }
 
+/// An order as a client sends it: the fields of [`ClientMsg::Order`], with the
+/// tick it was decided on always told.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct OutgoingOrder {
+    /// Above every sequence number before it; a rejection carries it back.
+    pub seq: u32,
+    /// Which unit it is for. Absent means the seat's own hero.
+    pub unit: Option<EntityId>,
+    /// What to do.
+    pub order: Order,
+    /// The tick of the snapshot it was decided on, from which the server
+    /// measures the order delay.
+    pub seen: u32,
+}
+
+impl OutgoingOrder {
+    /// The message that carries it.
+    pub const fn message(self) -> ClientMsg {
+        ClientMsg::Order {
+            seq: self.seq,
+            unit: self.unit,
+            order: self.order,
+            seen: Some(self.seen),
+        }
+    }
+}
+
 /// Anything a participant can say to the server.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub enum ClientMsg {

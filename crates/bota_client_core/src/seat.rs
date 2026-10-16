@@ -60,7 +60,9 @@ impl Seat {
         }
         self.before_start += 1;
         if self.before_start > MAX_MESSAGES_BEFORE_MATCH_START {
-            return Err(SessionError::Stream("server sent too many messages before MatchStart").into());
+            return Err(
+                SessionError::Stream("server sent too many messages before MatchStart").into(),
+            );
         }
         let refused = match msg {
             ServerMsg::MatchStart { info } => return Ok(self.start(&info)?),
@@ -102,11 +104,5 @@ impl Seat {
     /// The session, once the match has started, for issuing orders.
     pub const fn session_mut(&mut self) -> Option<&mut ClientSession> {
         self.session.as_mut()
-    }
-
-    /// The session, for a client that keeps it in a state of its own from
-    /// the start on.
-    pub fn into_session(self) -> Option<ClientSession> {
-        self.session
     }
 }

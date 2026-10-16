@@ -2,12 +2,12 @@
 
 use bota_core::{MAP2_ID, map_of, rules};
 use bota_proto::{
-    EntityId, EventKind, HeroId, MapId, Order, Pick, ServerMsg, SlotId, Target, Team, TickMode,
-    UnitKind,
+    EntityId, EventKind, HeroId, MapId, Order, OutgoingOrder, Pick, ServerMsg, SlotId, Target,
+    Team, TickMode, UnitKind,
 };
 
 use crate::game::{MatchConfig, OrderDelay};
-use crate::local::{LocalMatch, LocalOrder};
+use crate::local::LocalMatch;
 
 pub(super) fn mid_config() -> MatchConfig {
     let pick = |slot, team| Pick {
@@ -88,7 +88,7 @@ fn a_non_hero_kills_gold_is_hidden_from_the_other_side() {
             }
         }
         let tick = local.tick();
-        let order = |slot: usize| LocalOrder {
+        let order = |slot: usize| OutgoingOrder {
             seq: tick,
             unit: None,
             order: Order::Attack {

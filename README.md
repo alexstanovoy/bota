@@ -38,9 +38,10 @@ other (the server's tests and examples use the client library).
   creeps, items, abilities), the random streams, the lobby, the TCP loop, the
   replay writer, and `LocalMatch`, a lockstep match run inside the caller's
   process. The binary is `bota_server`.
-- `bota_client_core`: connection and seating (`Link`, `Net`, `join`), and
-  `ClientSession`, the client's picture of the match. The `ui` feature adds the
-  float-using, drawing-side parts, including the replay player. The graphical
+- `bota_client_core`: the bot loop (`Link::play`, `play`, `Seat`), connection
+  and seating (`Link`, `Net`, `join`), and `ClientSession`, the client's
+  picture of the match. The `ui` feature adds the float-using, drawing-side
+  parts, including the replay player. The graphical
   viewer, dbota, is a separate project built on this crate.
 
 ## Build and run the server
@@ -77,24 +78,51 @@ The server hosts one lobby and one match, then exits. It listens on `--port`
 ## Write a bot
 
 A bot is a client like any other and sees the same `WorldView` a human does.
+This one attack-moves at the enemy fountain; it is
+`crates/bota_client_core/examples/attack_move.rs`:
 
-1. Connect and take a seat: `Link::join(address, name, Some(HeroId::SHADOW_FIEND))`
-   returns the connection and a `Seated`. `Link` blocks; `Net` runs the socket
-   on threads and never blocks the caller. Both implement the same framing over
-   the `Transport` trait.
-2. When `ServerMsg::MatchStart { info }` arrives, build a
-   `ClientSession::start(&seated, &info, options)`.
-3. Feed every server message to `session.ingest(message, &mut ())`. It folds
-   snapshots and events into the session and sends nothing. The session keeps
-   the current and previous view, tracks of units seen, projectiles, recent
-   events, standing orders and refusals.
-4. Decide an order and call `session.issue(IssuedOrder { unit, order })`. It
-   numbers the order and returns an `OutgoingOrder`; `outgoing.message()` is the
-   `ClientMsg` to send. `unit: None` drives the hero, `Some(id)` the courier.
-5. In lockstep, call `session.end_turn()` after deciding; it returns the tick to
-   acknowledge once (`ClientMsg::Ack { tick }`).
+```rust
+use bota_client_core::{IssuedOrder, Link, PlayError};
+use bota_core::fountain_pos;
+use bota_proto::{HeroId, Order, Target};
 
-`tests/client.rs` in `bota_server` does this over a real socket.
+fn main() -> Result<(), PlayError> {
+    let outcome = Link::play("127.0.0.1:4455", "attack-move", HeroId::SHADOW_FIEND, |session| {
+        let enemy = fountain_pos(session.map(), session.enemy());
+        let attack = IssuedOrder::hero(Order::Attack { target: Target::Pos(enemy) });
+        session.own_hero().map(|_| attack) // a dead hero takes no orders
+    })?;
+    println!("{outcome:?}");
+    Ok(())
+}
+```
+
+```
+cargo run --release -p bota_server -- --map 2 --mode lockstep --dummy-seat
+cargo run --release -p bota_client_core --example attack_move
+```
+
+Start in lockstep: the server waits for every seat's acknowledgement, so a slow
+bot never misses a tick. In realtime the server skips the ticks a client is
+too slow for. `--dummy-seat` fills the other seat with a hero that never acts.
+
+`Link::play` connects, picks the hero, and calls the closure once per tick
+with the `ClientSession`, the client's picture of the match: the current and
+previous view, tracks of units seen, projectiles, recent events, the orders
+standing after the server's answers. The closure returns the orders it wants
+(an `Option` for one, a `Vec` for several); an order that repeats the one
+standing is not sent again, and the tick is acknowledged. A dead hero takes
+no orders: the server refuses them. `IssuedOrder::courier(id, order)` drives the courier. The
+outcome tells the seat, the winner (`Team::Neutral` for a draw), the last tick
+and how many orders the server refused.
+
+The parts compose for a bot that needs more: `join(transport, name, hero, key)`
+takes a seat over any `Transport` (`Link` blocks with timeouts; `Net` reads on
+a thread), with the key a server with reserved seats asks for; `play(transport,
+seated, observer, decide)` drives it, with an `Observer` hooked into every
+snapshot and event batch; and a `Seat` turns the lobby and `MatchStart` into a
+session for a loop of your own. `bota_server/tests/client.rs` plays the
+example's loop over a real socket to the end of a match.
 
 ### In process: `LocalMatch`
 

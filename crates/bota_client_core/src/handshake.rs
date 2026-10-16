@@ -29,15 +29,14 @@ pub struct Seated {
     /// Simulation ticks per second.
     pub tick_rate: u16,
     pub mode: TickMode,
+    /// The hero the seat picked, when it picked on joining; the match start
+    /// must then give the seat that hero.
+    pub hero: Option<HeroId>,
 }
 
 /// Checks the match start against the welcome and the seat's pick, and
 /// returns the seat's team.
-pub fn check_match(
-    seated: &Seated,
-    info: &MatchInfo,
-    hero: Option<HeroId>,
-) -> Result<Team, SessionError> {
+pub(crate) fn check_match(seated: &Seated, info: &MatchInfo) -> Result<Team, SessionError> {
     if info.tick_rate != seated.tick_rate {
         return Err(SessionError::TickRateMismatch {
             start: info.tick_rate,
@@ -55,7 +54,7 @@ pub fn check_match(
         .iter()
         .find(|pick| pick.slot == seated.slot)
         .ok_or(SessionError::NoPickForSeat(seated.slot.0))?;
-    if let Some(expected) = hero
+    if let Some(expected) = seated.hero
         && pick.hero != expected
     {
         return Err(SessionError::WrongSeatHero {
@@ -106,17 +105,17 @@ impl Lobby {
             slot: self.slot?,
             tick_rate: self.tick_rate,
             mode: self.mode?,
+            hero: None,
         })
     }
 }
 
 /// Takes a seat: says hello (with the key a server with reserved seats asks
-/// for), waits for the welcome, picks `hero` if there is one to pick, and says
-/// ready.
+/// for), waits for the welcome, picks `hero` and says ready.
 pub fn join(
     transport: &mut impl Transport,
     name: &str,
-    hero: Option<HeroId>,
+    hero: HeroId,
     key: Option<SeatKey>,
 ) -> std::io::Result<Seated> {
     validate_name(name)?;
@@ -126,11 +125,12 @@ pub fn join(
         key,
     })?;
     let seated = wait_for_welcome(transport)?;
-    if let Some(hero) = hero {
-        transport.send(&ClientMsg::PickHero { hero })?;
-    }
+    transport.send(&ClientMsg::PickHero { hero })?;
     transport.send(&ClientMsg::SetReady(true))?;
-    Ok(seated)
+    Ok(Seated {
+        hero: Some(hero),
+        ..seated
+    })
 }
 
 fn wait_for_welcome(transport: &mut impl Transport) -> std::io::Result<Seated> {
@@ -170,7 +170,7 @@ impl Link {
     pub fn join(
         address: &str,
         name: &str,
-        hero: Option<HeroId>,
+        hero: HeroId,
         key: Option<SeatKey>,
     ) -> std::io::Result<(Self, Seated)> {
         Self::join_with_timeout(address, name, hero, key, DEFAULT_IO_TIMEOUT)
@@ -181,7 +181,7 @@ impl Link {
     pub fn join_with_timeout(
         address: &str,
         name: &str,
-        hero: Option<HeroId>,
+        hero: HeroId,
         key: Option<SeatKey>,
         timeout: Duration,
     ) -> std::io::Result<(Self, Seated)> {

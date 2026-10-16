@@ -7,23 +7,10 @@
 
 use core::fmt;
 
-use bota_proto::{EntityId, Order, ServerMsg, SlotId, Team, WorldView};
+use bota_proto::{OutgoingOrder, ServerMsg, SlotId, Team, WorldView};
 
 use crate::game::{DelayLine, Event, MatchConfig, OrderDelay, RefusedOrder, World};
 use crate::game_loop::{side_view, visible_events};
-
-/// One seat's order for one step, as its client would send it.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct LocalOrder {
-    /// Sequence number returned with a rejection.
-    pub seq: u32,
-    /// Unit to control, or the seat hero when absent.
-    pub unit: Option<EntityId>,
-    pub order: Order,
-    /// The tick of the latest snapshot the seat decided on: the server
-    /// measures the order delay from it.
-    pub seen: u32,
-}
 
 /// Invalid input or lifecycle use of a local match.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -104,7 +91,7 @@ impl LocalMatch {
     /// draw).
     pub fn step(
         &mut self,
-        orders: &[Option<LocalOrder>],
+        orders: &[Option<OutgoingOrder>],
     ) -> Result<Vec<Vec<ServerMsg>>, LocalError> {
         if self.world.victor().is_some() {
             return Err(LocalError::MatchOver);

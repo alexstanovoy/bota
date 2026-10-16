@@ -436,7 +436,7 @@ fn owned(idx: u32, kind: UnitKind, slot: Option<SlotId>) -> UnitView {
 
 #[test]
 fn a_seat_is_picked_by_the_body_it_last_stood_in() {
-    let mut app = a_started_app([Vec2::ZERO; 2], 0);
+    let mut app = a_started_app();
     let first = owned(1, UnitKind::Hero, Some(SlotId(0)));
     let id = first.id;
     app.handle(snapshot_of(
@@ -481,7 +481,7 @@ fn snapshot_of(tick: u32, units: Vec<UnitView>, players: Vec<PlayerView>) -> bot
 
 /// An app watching a replay of a match on an open 128-cell map with these
 /// fountains, a seat for one.
-fn a_started_app(fountains: [Vec2; 2], shop_range: i32) -> App {
+fn a_started_app() -> App {
     let mut app = a_silent_app();
     app.my_slot = Some(SlotId(0));
     app.handle(bota_proto::ServerMsg::MatchStart {
@@ -501,8 +501,8 @@ fn a_started_app(fountains: [Vec2; 2], shop_range: i32) -> App {
                 hero: HeroId::PUDGE,
             }],
             shop: Vec::new(),
-            fountains,
-            shop_range,
+            fountains: [Vec2::ZERO; 2],
+            shop_range: 0,
         },
     });
     app
@@ -510,7 +510,7 @@ fn a_started_app(fountains: [Vec2; 2], shop_range: i32) -> App {
 
 #[test]
 fn a_cast_point_shortens_while_a_feast_runs_on_a_hero_with_the_talent() {
-    let mut app = a_started_app([Vec2::ZERO; 2], 0);
+    let mut app = a_started_app();
     let mut fiend = owned(1, UnitKind::Hero, Some(SlotId(0)));
     fiend.hero = Some(HeroId::SHADOW_FIEND);
     let id = fiend.id;
@@ -546,36 +546,6 @@ fn a_cast_point_shortens_while_a_feast_runs_on_a_hero_with_the_talent() {
 fn a_silent_app() -> crate::ui::app::App {
     let player = crate::ui::replay::ReplayPlayer::from_reader(std::io::Cursor::new(Vec::new()));
     crate::ui::app::App::new(crate::ui::app::Source::Replay(Box::new(player)))
-}
-
-#[test]
-fn the_home_shop_is_where_the_match_put_the_fountain() {
-    let mut app = a_started_app(
-        [Vec2::from_ints(3000, 3000), Vec2::from_ints(9000, 9000)],
-        1000,
-    );
-    let mut body = a_unit();
-    body.id = EntityId {
-        idx: 1,
-        generation: 1,
-    };
-    body.pos = Vec2::from_ints(3500, 3000);
-    let mut seat = a_player();
-    seat.unit = Some(body.id);
-    app.handle(snapshot_of(1, vec![body.clone()], vec![seat]));
-    assert!(
-        app.at_home_shop(),
-        "inside the range of this map's fountain"
-    );
-
-    body.pos = Vec2::from_ints(1760, 2278);
-    let mut seat = a_player();
-    seat.unit = Some(body.id);
-    app.handle(snapshot_of(2, vec![body], vec![seat]));
-    assert!(
-        !app.at_home_shop(),
-        "the main map's fountain means nothing here"
-    );
 }
 
 #[test]
