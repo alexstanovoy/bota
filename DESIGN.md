@@ -110,10 +110,12 @@ the same id, in a table of the same length:
 **Pure rule functions.** Arithmetic that both sides need is a free function in `core`
 over plain values: `mitigate`, `amplify`, `bite`, `regen`, `raze_damage`,
 `hero_kill_xp`, `respawn_wait`, `carried_bonus`, `missing_parts`, `pick_target`,
-`aggroable_yet`, `attributes_at_level`, `cell_tier` … The server calls them from its
-systems; `bota_client_core` calls the same ones to draw what the server will do. The
-two cannot drift, because there is one body. Small ones are `#[inline]`, since a call
-across crates is not inlined without link-time optimisation.
+`aggroable_yet`, `attributes_at_level`, `cell_tier`, `ends_standing_order` (what a
+cast, a use or an errand leaves of the move a unit stands on, which the client's order
+ledger follows) … The server calls them from its systems; `bota_client_core` calls
+the same ones to draw what the server will do. The two cannot drift, because there is
+one body. Small ones are `#[inline]`, since a call across crates is not inlined without
+link-time optimisation.
 
 **Hidden quantities are parameters.** `regen(base, carried, attributes, modifiers)`
 takes the modifiers it is told about; a client passes the ones the view shows. A spawn
@@ -1659,7 +1661,7 @@ for every asker. Each shortcut below gives exactly the answer the full scan gave
   do not walk every tree of the map to find the few that are down.
 - A view is projected in one pass over the entities, deciding once per entity whether
   the side is told of it.
-- `trainer/map2_skirmish` in `benches/dummy` measures what a bot-versus-bot run pays per tick:
+- `match/map2_skirmish` in `benches/dummy` measures what a bot-versus-bot run pays per tick:
   `advance` and both sides' views.
 
 ## Stages

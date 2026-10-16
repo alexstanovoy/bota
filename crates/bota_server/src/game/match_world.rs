@@ -241,9 +241,8 @@ impl World {
     /// is aimed at; an aimed cast takes the body over, so what it was doing
     /// is not returned to, while a cast at oneself leaves its order be.
     fn take_cast(&mut self, unit: Entity, slot: bota_proto::AbilitySlot, target: Target) {
-        let aimed = bota_core::ability_def(self.ability_in(unit, slot))
-            .is_some_and(|def| def.aim != Aim::Own);
-        if aimed {
+        let order = Order::Cast { slot, target };
+        if bota_core::ends_standing_order(order, Some(self.ability_in(unit, slot)), None) {
             self.set_order(unit, UnitOrder::Idle);
         }
         self.order_cast(unit, PendingCast::Ability { slot, target });

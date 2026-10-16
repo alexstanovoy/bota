@@ -5,11 +5,12 @@ use bota_client_core::{
 };
 use bota_core::{map_of, rules};
 use bota_proto::{
-    EntityId, EventKind, HeroId, MatchInfo, Order, ServerMsg, SkippedTick, SlotId, Target,
+    AbilitySlot, EntityId, EventKind, Fixed, HeroId, ItemId, ItemSlot, MatchInfo, Order, ServerMsg,
+    SkippedTick, SlotId, Target, Team, UnitKind, Vec2,
 };
 
 use super::local::mid_config;
-use crate::game::OrderDelay;
+use crate::game::{OrderDelay, UnitOrder};
 use crate::local::{LocalMatch, LocalOrder};
 
 const TICKS: u32 = rules::FIRST_WAVE_TICK + 4000;
@@ -156,4 +157,109 @@ fn a_refused_order_is_rolled_back_in_the_ledger() {
     }
     assert!(refused, "the server refused an order at nobody");
     assert!(!session.ledger().repeats(issued), "nothing stands any more");
+}
+
+/// Gives seat 0 one order through its session and plays `ticks` ticks on,
+/// the session folding every message.
+fn give(local: &mut LocalMatch, session: &mut ClientSession, order: Order, ticks: u32) {
+    let sent = session
+        .issue(IssuedOrder { unit: None, order })
+        .expect("a snapshot is held");
+    let mut first = Some(LocalOrder {
+        seq: sent.seq,
+        unit: sent.unit,
+        order: sent.order,
+        seen: sent.seen,
+    });
+    for _ in 0..ticks {
+        let step = local.step(&[first.take(), None]).expect("a step");
+        for message in step.into_iter().next().expect("seat 0") {
+            let folded = session.ingest(message, &mut ()).expect("folds");
+            assert!(
+                !matches!(folded, Ingested::Rejected { .. }),
+                "{order:?} refused"
+            );
+        }
+    }
+}
+
+#[test]
+fn the_ledger_keeps_a_standing_walk_exactly_while_the_server_does() {
+    let cfg = mid_config();
+    let (mut local, mut seats) = LocalMatch::new(&cfg, &[OrderDelay::NONE]).expect("a match");
+    let mut session = session_for(info_of(&seats[0]), 0);
+    for message in seats[0].drain(1..) {
+        session.ingest(message, &mut ()).expect("folds");
+    }
+    let hero = local.world().seats[0].unit.expect("a hero");
+    let idle = Order::Move {
+        target: Target::None,
+    };
+    give(
+        &mut local,
+        &mut session,
+        idle,
+        rules::SCROLL_FIRST_WAIT_TICKS,
+    );
+    super::support::hand_item(local.world_mut(), hero, ItemId::HEALING_SALVE, 1);
+    local.world_mut().health.get_mut(hero).expect("health").hp = Fixed::from_int(300);
+    let home = local.world().transform.get(hero).expect("standing").pos;
+    let goal = home + Vec2::from_ints(1_500, 1_500);
+    let walk = Order::Move {
+        target: Target::Pos(goal),
+    };
+    let walks_on = |local: &LocalMatch, session: &ClientSession| {
+        let server = local.world().orders.get(hero).expect("orders").current;
+        let ledger = session
+            .ledger()
+            .standing(None)
+            .map(|(_, issued)| issued.order);
+        (
+            server == UnitOrder::Move { pos: goal },
+            ledger == Some(walk),
+        )
+    };
+    give(&mut local, &mut session, walk, 5);
+    assert_eq!(walks_on(&local, &session), (true, true));
+    let drink = Order::Use {
+        slot: ItemSlot(0),
+        target: Target::Unit(crate::game::wire_id(hero)),
+    };
+    give(&mut local, &mut session, drink, 5);
+    assert!(local.world().inventory.get(hero).expect("a bag").slots[0].is_none());
+    assert_eq!(walks_on(&local, &session), (true, true), "a salve");
+    let near = AbilitySlot(0);
+    give(&mut local, &mut session, Order::Learn { slot: near }, 1);
+    let raze = Order::Cast {
+        slot: near,
+        target: Target::None,
+    };
+    give(&mut local, &mut session, raze, 5);
+    assert_eq!(walks_on(&local, &session), (true, true), "a raze");
+    let world = local.world();
+    let tower = world
+        .entities
+        .iter()
+        .find(|&unit| {
+            world.kind.get(unit) == Some(&UnitKind::Tower)
+                && world.team.get(unit) == Some(&Team::Radiant)
+        })
+        .expect("a tower of its own");
+    let read = Order::Use {
+        slot: ItemSlot::TOWN_PORTAL,
+        target: Target::Unit(crate::game::wire_id(tower)),
+    };
+    give(
+        &mut local,
+        &mut session,
+        read,
+        rules::SCROLL_CHANNEL_TICKS + 2,
+    );
+    let server = local.world().orders.get(hero).expect("orders").current;
+    assert_eq!(server, UnitOrder::Idle, "a scroll's landing ends the walk");
+    assert_eq!(
+        session.ledger().standing(None),
+        None,
+        "and the ledger agrees"
+    );
 }

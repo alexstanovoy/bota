@@ -1,7 +1,7 @@
 //! The orders a client gives: what it asked for, what went out on the wire,
 //! and what stands after the server's answers.
 
-use bota_proto::{ClientMsg, EntityId, Order, RejectReason, Target, UnitView};
+use bota_proto::{ClientMsg, EntityId, ItemSlot, ItemView, Order, RejectReason, Target, UnitView};
 
 use crate::session::{ClientSession, SessionError};
 
@@ -101,16 +101,14 @@ impl OrderLedger {
 
     /// Records an order after it was sent with a strictly increasing sequence.
     ///
-    /// A one-shot that works the body (a cast, a use, a put or a take)
-    /// clears the standing order without itself standing, unless `keeps_body`
-    /// says it leaves the body alone.
+    /// A one-shot that `ends_body` (see [`ends_body`]) clears the standing
+    /// order without itself standing.
     pub fn record(
         &mut self,
         seq: u32,
         issued: IssuedOrder,
-        keeps_body: bool,
+        ends_body: bool,
     ) -> Result<(), SessionError> {
-        let interrupts = works_body(issued.order) && !keeps_body;
         if let Some(previous) = self.last_seq
             && seq <= previous
         {
@@ -129,7 +127,7 @@ impl OrderLedger {
                     issued,
                 }),
             );
-        } else if interrupts {
+        } else if ends_body {
             self.body_mut(issued.unit)
                 .transition(seq, issued.unit, None);
         }
@@ -308,11 +306,36 @@ const fn is_standing(order: Order) -> bool {
     matches!(order, Order::Move { .. } | Order::Attack { .. })
 }
 
-const fn works_body(order: Order) -> bool {
-    matches!(
-        order,
-        Order::Cast { .. } | Order::Use { .. } | Order::Put { .. } | Order::Take { .. }
-    )
+/// The item a unit holds in a slot, the scroll slot included.
+pub(crate) fn item_in(unit: &UnitView, slot: ItemSlot) -> Option<&ItemView> {
+    if slot == ItemSlot::TOWN_PORTAL {
+        unit.town_portal.as_ref()
+    } else {
+        unit.items.get(usize::from(slot.0))?.as_ref()
+    }
+}
+
+/// Whether an order ends its body's standing move or attack by
+/// [`bota_core::ends_standing_order`], reading the ability or item in the slot
+/// it names off the body as the session last saw it.
+pub fn ends_body(session: &ClientSession, issued: IssuedOrder) -> bool {
+    let body = match issued.unit {
+        None => session.own_hero(),
+        Some(id) => session.own_courier().filter(|courier| courier.id == id),
+    };
+    let ability = match issued.order {
+        Order::Cast { slot, .. } => body
+            .and_then(|unit| unit.abilities.get(usize::from(slot.0)))
+            .map(|ability| ability.id),
+        _ => None,
+    };
+    let item = match issued.order {
+        Order::Use { slot, .. } => body
+            .and_then(|unit| item_in(unit, slot))
+            .map(|item| item.id),
+        _ => None,
+    };
+    bota_core::ends_standing_order(issued.order, ability, item)
 }
 
 /// What a refusal is called in plain words.

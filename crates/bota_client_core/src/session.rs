@@ -282,7 +282,8 @@ impl ClientSession {
             .next_seq
             .checked_add(1)
             .ok_or(SessionError::SequenceExhausted)?;
-        self.ledger.record(seq, order, false)?;
+        let ends_body = crate::ends_body(self, order);
+        self.ledger.record(seq, order, ends_body)?;
         if let Some(body) = wait_started_by(self, order) {
             self.waits.start(body, seq, seen);
         }
