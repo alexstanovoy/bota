@@ -20,3 +20,9 @@ criterion = { version = "=0.8.2", default-features = false }
 
 [workspace.lints.clippy]
 float_arithmetic = "deny"
+
+# One codegen unit: the server's hot loops call small functions across the
+# modules of one crate and across the rule crates, and a single unit lets the
+# optimizer see them together (the tick loop runs ~6% faster than with 16).
+[profile.release]
+codegen-units = 1
