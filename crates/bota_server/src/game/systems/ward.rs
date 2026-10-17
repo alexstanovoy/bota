@@ -10,12 +10,11 @@ impl World {
     pub fn tick_expiries(&mut self) {
         let entities = self.take_entity_snapshot();
         for entity in entities.iter().copied() {
-            let Some(mut left) = self.expiry.get(entity).copied() else {
+            let Some(left) = self.expiry.get_mut(entity) else {
                 continue;
             };
             left.ticks_left = left.ticks_left.saturating_sub(1);
             if left.ticks_left > 0 {
-                self.expiry.insert(entity, left);
                 continue;
             }
             self.expiry.remove(entity);

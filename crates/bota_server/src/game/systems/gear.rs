@@ -589,17 +589,20 @@ impl World {
 
     /// Whether whoever holds this entity still owes a wait on a kind of item.
     pub fn owes_wait(&self, entity: Entity, item: ItemId) -> bool {
-        self.seats
-            .iter()
-            .find(|seat| seat.unit == Some(entity))
-            .is_some_and(|seat| seat.item_clocks.iter().any(|(held, _)| *held == item))
+        self.seat_of(entity).is_some_and(|seat| {
+            self.seats[seat]
+                .item_clocks
+                .iter()
+                .any(|(held, _)| *held == item)
+        })
     }
 
     /// Starts the wait a kind of item owes its user.
     fn owe_wait(&mut self, entity: Entity, item: ItemId, ticks: u32) {
-        let Some(seat) = self.seats.iter_mut().find(|seat| seat.unit == Some(entity)) else {
+        let Some(seat) = self.seat_of(entity) else {
             return;
         };
+        let seat = &mut self.seats[seat];
         seat.item_clocks.retain(|(held, _)| *held != item);
         if ticks > 0 {
             seat.item_clocks.push((item, ticks));
@@ -672,25 +675,19 @@ impl World {
     /// Tells of a mend as it begins, worth what `on` is missing of `pool` and
     /// no more than `total`. A mend broken early has still been told in full.
     fn tell_mend(&mut self, user: Entity, on: Entity, pool: Pool, total: i32) {
+        let stats = self.stats.get(on);
+        let missing = match pool {
+            Pool::Health => stats
+                .zip(self.health.get(on))
+                .map_or(0, |(stats, health)| (stats.max_hp - health.hp).to_int()),
+            Pool::Mana => stats
+                .zip(self.mana.get(on))
+                .map_or(0, |(stats, pool)| (stats.max_mana - pool.mana).to_int()),
+        };
+        let mended = total.min(missing.max(0));
         let (amount, mana) = match pool {
-            Pool::Health => {
-                let missing = self
-                    .stats
-                    .get(on)
-                    .zip(self.health.get(on))
-                    .map_or(0, |(stats, health)| (stats.max_hp - health.hp).to_int())
-                    .max(0);
-                (total.min(missing), 0)
-            }
-            Pool::Mana => {
-                let missing = self
-                    .stats
-                    .get(on)
-                    .zip(self.mana.get(on))
-                    .map_or(0, |(stats, pool)| (stats.max_mana - pool.mana).to_int())
-                    .max(0);
-                (0, total.min(missing))
-            }
+            Pool::Health => (mended, 0),
+            Pool::Mana => (0, mended),
         };
         if amount > 0 || mana > 0 {
             self.tell_healed(user, on, amount, mana);

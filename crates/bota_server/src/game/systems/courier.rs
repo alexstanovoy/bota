@@ -74,20 +74,12 @@ impl World {
 
     /// Sends it for what waits in its owner's stash.
     pub fn courier_take_stash(&mut self, courier: Entity) -> bool {
-        if self.seat_of_courier(courier).is_none() {
-            return false;
-        }
-        self.errand.insert(courier, Errand::ToStash);
-        true
+        self.send_courier(courier, Errand::ToStash)
     }
 
     /// Sends it to put back what it holds.
     pub fn courier_return_items(&mut self, courier: Entity) -> bool {
-        if self.seat_of_courier(courier).is_none() {
-            return false;
-        }
-        self.errand.insert(courier, Errand::PutBack);
-        true
+        self.send_courier(courier, Errand::PutBack)
     }
 
     /// Puts a shield on it that nothing gets through.
@@ -108,10 +100,15 @@ impl World {
 
     /// Sends it to its owner with what it holds.
     pub fn courier_deliver(&mut self, courier: Entity) -> bool {
+        self.send_courier(courier, Errand::ToOwner)
+    }
+
+    /// Sends a seat's courier on an errand.
+    fn send_courier(&mut self, courier: Entity, errand: Errand) -> bool {
         if self.seat_of_courier(courier).is_none() {
             return false;
         }
-        self.errand.insert(courier, Errand::ToOwner);
+        self.errand.insert(courier, errand);
         true
     }
 

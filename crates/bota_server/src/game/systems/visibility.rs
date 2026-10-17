@@ -136,7 +136,8 @@ pub fn visibility_system(cx: SightCx<'_>) {
     sight.gather_viewers();
     sight.gather_exposures(exposure, tick, ground);
     for &(side, at) in scroll_sights {
-        sight.viewers.push(scroll_viewer(side, at, ground));
+        let radius = rules::SCROLL_SIGHT_RADIUS;
+        sight.viewers.push(reveal(side, at, radius, true, ground));
     }
     sight.reset_rows();
     sight.trace(sight_block);
@@ -186,7 +187,9 @@ impl SightScratch {
                 .zip(cells)
             {
                 if let Some(cell) = cell.filter(|cell| tick <= cell.until) {
-                    self.viewers.push(exposure_viewer(side, cell, ground));
+                    let radius = rules::STRIKE_REVEAL_RADIUS;
+                    self.viewers
+                        .push(reveal(side, cell.at, radius, cell.flying, ground));
                 }
             }
         }
@@ -264,28 +267,16 @@ impl SightScratch {
     }
 }
 
-/// The viewer a scroll's landing sight stands for: flying, so it sees past
-/// height and trees.
-fn scroll_viewer(side: Team, at: Vec2, ground: &Ground) -> SightViewer {
+/// The viewer a circle of sight shown to a side stands for: a scroll's
+/// landing, which flies, or a strike's circle.
+fn reveal(side: Team, at: Vec2, radius: i32, flying: bool, ground: &Ground) -> SightViewer {
     SightViewer {
         side,
         from: at,
-        vision: rules::units(rules::SCROLL_SIGHT_RADIUS),
+        vision: rules::units(radius),
         true_sight: Fixed::ZERO,
         tier: ground.tier(at),
-        flying: true,
-    }
-}
-
-/// The viewer a strike's circle stands for.
-fn exposure_viewer(side: Team, cell: ExposureCell, ground: &Ground) -> SightViewer {
-    SightViewer {
-        side,
-        from: cell.at,
-        vision: rules::units(rules::STRIKE_REVEAL_RADIUS),
-        true_sight: Fixed::ZERO,
-        tier: ground.tier(cell.at),
-        flying: cell.flying,
+        flying,
     }
 }
 

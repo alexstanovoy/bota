@@ -102,14 +102,9 @@ impl World {
     /// out of it gives way to the best within acquisition, and is kept only
     /// when there is none and its chase has not run out.
     pub fn select_target(&self, seeker: Entity, candidates: &Candidates) -> Option<Entity> {
-        let acquisition = self
-            .stats
-            .get(seeker)
-            .map_or(Fixed::ZERO, |stats| stats.acquisition);
-        let reach = self
-            .stats
-            .get(seeker)
-            .map_or(Fixed::ZERO, |stats| stats.attack_range);
+        let stats = self.stats.get(seeker);
+        let acquisition = stats.map_or(Fixed::ZERO, |stats| stats.acquisition);
+        let reach = stats.map_or(Fixed::ZERO, |stats| stats.attack_range);
         let ai = self.lane_ai.get(seeker).copied();
         let keeping = ai.is_some_and(|ai| self.tick < ai.keep_until);
         let Some(held) = self.target_of(seeker) else {

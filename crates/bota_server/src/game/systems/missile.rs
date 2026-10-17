@@ -85,10 +85,9 @@ pub fn missile_system(cx: MissileCx<'_>) {
                 at: to,
                 side: team.get(shot.target).copied().unwrap_or(Team::Neutral),
             });
-            give_up(missile, entities, projectile, transform, team, visibility);
-            continue;
+        } else {
+            land(&shot, hits);
         }
-        land(&shot, hits);
         give_up(missile, entities, projectile, transform, team, visibility);
     }
 }

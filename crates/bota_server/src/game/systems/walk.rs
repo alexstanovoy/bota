@@ -126,17 +126,12 @@ impl World {
         };
         let chosen = self.target_of(entity).filter(|on| self.alive(*on));
         let ordered = ordered_at.filter(|on| self.alive(*on));
-        match (chosen, ordered) {
-            (Some(on), _) => self
-                .transform
-                .get(on)
-                .map(|at| (at.pos, self.attack_reach(entity, on))),
-            (None, Some(on)) => self
-                .transform
-                .get(on)
-                .map(|at| (at.pos, self.touching_distance(entity, on))),
-            (None, None) => None,
-        }
+        let (on, reach) = match (chosen, ordered) {
+            (Some(on), _) => (on, self.attack_reach(entity, on)),
+            (None, Some(on)) => (on, self.touching_distance(entity, on)),
+            (None, None) => return None,
+        };
+        Some((self.transform.get(on)?.pos, reach))
     }
 
     /// How near an attacker's centre has to come to a target's to strike

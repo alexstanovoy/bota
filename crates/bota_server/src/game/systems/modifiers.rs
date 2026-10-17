@@ -36,29 +36,27 @@ impl World {
     /// Whether an entity is held: it neither walks, nor turns, nor swings,
     /// nor casts until it lifts.
     pub fn held(&self, entity: Entity) -> bool {
-        self.modifiers.get(entity).is_some_and(|on_it| {
-            on_it
-                .active()
-                .any(|held| held.kind == ModifierKind::Stunned)
-        })
+        self.active_modifier(entity, ModifierKind::Stunned)
+            .is_some()
     }
 
     /// Whether an entity is feared: it runs from whoever put the fear on,
     /// and neither swings nor casts until it lifts.
     pub fn feared(&self, entity: Entity) -> bool {
-        self.modifiers
-            .get(entity)
-            .is_some_and(|on_it| on_it.active().any(|held| held.kind == ModifierKind::Feared))
+        self.active_modifier(entity, ModifierKind::Feared).is_some()
     }
 
     /// Whoever a feared entity runs from, while that one is still known.
     pub fn flees_from(&self, entity: Entity) -> Option<Entity> {
-        self.modifiers.get(entity).and_then(|on_it| {
-            on_it
-                .active()
-                .find(|held| held.kind == ModifierKind::Feared)
-                .and_then(|held| held.source)
-        })
+        self.active_modifier(entity, ModifierKind::Feared)?.source
+    }
+
+    /// The first active modifier of exactly this kind on an entity.
+    fn active_modifier(&self, entity: Entity, kind: ModifierKind) -> Option<&Modifier> {
+        self.modifiers
+            .get(entity)?
+            .active()
+            .find(|held| held.kind == kind)
     }
 
     /// Puts a modifier on an entity. One that is not a unit takes nothing.

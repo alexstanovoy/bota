@@ -14,13 +14,10 @@ impl World {
         }
         let entities = self.take_entity_snapshot();
         for entity in entities.iter().copied() {
-            let drop_row = match self.applied.get_mut(entity) {
-                Some(applied) => {
-                    applied.retain(|held| !held.tick());
-                    applied.is_empty()
-                }
-                None => false,
-            };
+            let drop_row = self.applied.get_mut(entity).is_some_and(|applied| {
+                applied.retain(|held| !held.tick());
+                applied.is_empty()
+            });
             if drop_row {
                 self.applied.remove(entity);
             }

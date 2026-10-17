@@ -145,11 +145,11 @@ impl World {
         let Some((building, landing)) = self.scroll_destination(user, target) else {
             return false;
         };
-        let Some(seat) = self.seats.iter_mut().find(|seat| seat.unit == Some(user)) else {
+        let Some(seat) = self.seat_of(user) else {
             return false;
         };
         let lands = self.tick + rules::SCROLL_CHANNEL_TICKS;
-        seat.teleport = Some(Teleport {
+        self.seats[seat].teleport = Some(Teleport {
             building,
             landing,
             started: self.tick,
@@ -171,7 +171,9 @@ impl World {
     /// lingers its second.
     pub fn break_teleport(&mut self, user: Entity) {
         let tick = self.tick;
-        if let Some(teleport) = self.teleport_of_mut(user) {
+        if let Some(seat) = self.seat_of(user)
+            && let Some(teleport) = self.seats[seat].teleport.as_mut()
+        {
             teleport.live = false;
             teleport.sight_until = tick + rules::SCROLL_SIGHT_LINGER_TICKS;
         }
@@ -239,17 +241,6 @@ impl World {
 
     /// The teleport of the seat whose hero `user` is.
     fn teleport_of(&self, user: Entity) -> Option<Teleport> {
-        self.seats
-            .iter()
-            .find(|seat| seat.unit == Some(user))
-            .and_then(|seat| seat.teleport)
-    }
-
-    /// The teleport of the seat whose hero `user` is, to be changed in place.
-    fn teleport_of_mut(&mut self, user: Entity) -> Option<&mut Teleport> {
-        self.seats
-            .iter_mut()
-            .find(|seat| seat.unit == Some(user))
-            .and_then(|seat| seat.teleport.as_mut())
+        self.seats[self.seat_of(user)?].teleport
     }
 }

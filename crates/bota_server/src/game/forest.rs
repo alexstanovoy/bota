@@ -73,12 +73,7 @@ impl Forest {
         match tree {
             Tree::Rooted(index) => self
                 .rooted_stands(index)
-                .then(|| {
-                    crate::game::tree_positions(map, terrain)
-                        .get(index)
-                        .copied()
-                })
-                .flatten(),
+                .then(|| crate::game::tree_positions(map, terrain)[index]),
             Tree::Planted(index) => self.planted.get(index).map(|tree| tree.at),
         }
     }

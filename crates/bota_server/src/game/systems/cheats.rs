@@ -44,13 +44,10 @@ impl World {
             }
             Cheat::ClearModifiers { target } => {
                 if let Ok(mark) = self.cheat_target(unit, target) {
-                    let empty = match self.applied.get_mut(mark) {
-                        Some(applied) => {
-                            applied.retain(|held| held.origin != AppliedOrigin::Cheat);
-                            applied.is_empty()
-                        }
-                        None => false,
-                    };
+                    let empty = self.applied.get_mut(mark).is_some_and(|applied| {
+                        applied.retain(|held| held.origin != AppliedOrigin::Cheat);
+                        applied.is_empty()
+                    });
                     if empty {
                         self.applied.remove(mark);
                     }

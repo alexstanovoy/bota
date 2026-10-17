@@ -60,37 +60,23 @@ impl World {
         let level = usize::from(self.carried_level(caster, AbilityId::DISMEMBER).max(1) - 1);
         let amount = rules::DISMEMBER_DAMAGE_PER_SECOND[level] * rules::BURN_PERIOD_TICKS as i32
             / rules::TICKS_PER_SECOND as i32;
-        self.put_modifier(
-            on,
-            Modifier {
-                kind: ModifierKind::Stunned,
+        let burn = ModifierKind::Burning {
+            amount,
+            kind: DamageKind::Pure,
+            lethal: true,
+        };
+        let mend = ModifierKind::Mending {
+            per_tick: amount * 100 / rules::BURN_PERIOD_TICKS as i32,
+            breaks: false,
+        };
+        for (who, kind) in [(on, ModifierKind::Stunned), (on, burn), (caster, mend)] {
+            let modifier = Modifier {
+                kind,
                 source: Some(caster),
                 ticks_left: None,
-            },
-        );
-        self.put_modifier(
-            on,
-            Modifier {
-                kind: ModifierKind::Burning {
-                    amount,
-                    kind: DamageKind::Pure,
-                    lethal: true,
-                },
-                source: Some(caster),
-                ticks_left: None,
-            },
-        );
-        self.put_modifier(
-            caster,
-            Modifier {
-                kind: ModifierKind::Mending {
-                    per_tick: amount * 100 / rules::BURN_PERIOD_TICKS as i32,
-                    breaks: false,
-                },
-                source: Some(caster),
-                ticks_left: None,
-            },
-        );
+            };
+            self.put_modifier(who, modifier);
+        }
         if let Some(at) = self.transform.get(on).map(|t| t.pos) {
             self.spawn_mark(AbilityId::DISMEMBER, caster, at, 0);
         }

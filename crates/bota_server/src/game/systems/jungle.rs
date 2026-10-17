@@ -21,21 +21,23 @@ impl World {
             if self.anything_in(camp.pos, box_radius) {
                 continue;
             }
-            let choices: Vec<(u8, &Roster)> = rosters_of(camp.kind).collect();
             let last = self.camp_last.get(index).copied().unwrap_or(u8::MAX);
-            let fresh: Vec<&(u8, &Roster)> = choices.iter().filter(|(id, _)| *id != last).collect();
+            let fresh: Vec<(u8, &Roster)> = rosters_of(camp.kind)
+                .filter(|(id, _)| *id != last)
+                .collect();
             if fresh.is_empty() {
                 continue;
             }
-            let taken = fresh[self
+            let pick = self
                 .rng
                 .global(Purpose::NeutralSpawn)
-                .below(fresh.len() as u32) as usize];
-            while self.camp_last.len() <= index {
-                self.camp_last.push(u8::MAX);
+                .below(fresh.len() as u32);
+            let (id, roster) = fresh[pick as usize];
+            if self.camp_last.len() <= index {
+                self.camp_last.resize(index + 1, u8::MAX);
             }
-            self.camp_last[index] = taken.0;
-            let creeps = taken.1.creeps;
+            self.camp_last[index] = id;
+            let creeps = roster.creeps;
             for (slot, kind) in creeps.iter().enumerate() {
                 let across =
                     (slot as i32 - (creeps.len() as i32 - 1) / 2) * rules::CAMP_SPAWN_SPACING;
