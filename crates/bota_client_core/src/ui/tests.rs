@@ -683,28 +683,6 @@ fn a_unit_is_drawn_between_two_ticks_and_jumps_are_not_drawn_out() {
     );
 }
 
-#[test]
-fn the_damage_range_is_the_wires_with_the_bonus_split_off_a_hero() {
-    use crate::catalog::damage_range;
-    // Shadow Fiend: 16 base and 25 agility make 41; 12 of items on top.
-    let mut fiend = a_unit();
-    fiend.hero = Some(HeroId::SHADOW_FIEND);
-    fiend.level = 1;
-    fiend.primary = Some(bota_proto::Attribute::Agility);
-    fiend.attributes.agility = Fixed::from_int(25);
-    fiend.attack_damage_min = 41 + 12;
-    fiend.attack_damage_max = 47 + 12;
-    let range = damage_range(&fiend);
-    assert_eq!((range.min, range.max, range.bonus), (41, 47, 12));
-    // A creep has no base to split: its whole range is the range.
-    let mut creep = a_unit();
-    creep.hero = None;
-    creep.attack_damage_min = 19;
-    creep.attack_damage_max = 23;
-    let range = damage_range(&creep);
-    assert_eq!((range.min, range.max, range.bonus), (19, 23, 0));
-}
-
 /// The one talent tree is Shadow Fiend's, whatever id the hero list gives him.
 #[test]
 fn the_talent_tree_is_shadow_fiends() {
@@ -718,10 +696,8 @@ fn the_talent_tree_is_shadow_fiends() {
     }
 }
 
-/// The catalog of `space` holds, as `held` and through `found`, exactly the
-/// ids the registry has live.
 /// The damage panel splits Dota's way: a level-1 Shadow Fiend's base range
-/// with his starting agility white, the rest green.
+/// with his starting agility white, the rest green; a creep has no base to split.
 #[test]
 fn damage_splits_into_base_and_bonus() {
     let mut fiend = a_unit();
@@ -737,6 +713,12 @@ fn damage_splits_into_base_and_bonus() {
     // Growth is Fixed arithmetic, as the server's own: 19 + 2.7 * 10 stands a
     // hair under 46, and the server floors it too.
     assert_eq!(crate::catalog::base_attributes(&fiend), Some([45, 60, 37]));
+    let mut creep = a_unit();
+    creep.hero = None;
+    creep.attack_damage_min = 19;
+    creep.attack_damage_max = 23;
+    let d = crate::catalog::damage_range(&creep);
+    assert_eq!((d.min, d.max, d.bonus), (19, 23, 0));
 }
 
 #[test]
