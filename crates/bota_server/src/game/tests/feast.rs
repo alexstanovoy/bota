@@ -3,9 +3,8 @@
 use bota_core::{ModifierKind, rules};
 
 use crate::game::{Entity, World, wire_id};
-use bota_proto::{EffectId, EffectView, HeroId, SlotId, Team, Vec2};
+use bota_proto::{EffectId, EffectView, HeroId, SlotId, Target, Team, Vec2};
 
-use super::fiend::{burns_on, cast_through, souls};
 use super::support::*;
 
 const FEAST_SLOT: u8 = 3;
@@ -37,7 +36,7 @@ fn a_feast_table() -> (World, Entity, Entity, [Entity; 4]) {
 fn the_feast_hastens_its_caster_at_once_and_for_eight_seconds() {
     let (mut world, fiend, _hero, _creeps) = a_feast_table();
     let before = *world.stats.get(fiend).expect("settled");
-    let_go(&mut world, FEAST_SLOT);
+    cast(&mut world, FEAST_SLOT, Target::None);
     world.step();
     let during = *world.stats.get(fiend).expect("settled");
     assert_eq!(during.attack_speed, before.attack_speed + 35);
@@ -63,7 +62,7 @@ fn the_feast_hastens_its_caster_at_once_and_for_eight_seconds() {
 #[test]
 fn the_feast_takes_souls_from_two_enemies_every_half_second_heroes_first_up_to_its_level() {
     let (mut world, fiend, _hero, _creeps) = a_feast_table();
-    let_go(&mut world, FEAST_SLOT);
+    cast(&mut world, FEAST_SLOT, Target::None);
     let mut taken = Vec::new();
     for tick in 1..=60 {
         world.step();
@@ -88,7 +87,7 @@ fn the_feast_takes_souls_from_two_enemies_every_half_second_heroes_first_up_to_i
 #[test]
 fn once_the_feast_is_over_the_souls_of_the_living_go_and_the_dead_linger_for_eight_seconds() {
     let (mut world, fiend, _hero, [near, ..]) = a_feast_table();
-    let_go(&mut world, FEAST_SLOT);
+    cast(&mut world, FEAST_SLOT, Target::None);
     for _ in 0..30 {
         world.step();
     }
@@ -124,7 +123,7 @@ fn once_the_feast_is_over_the_souls_of_the_living_go_and_the_dead_linger_for_eig
 fn souls_a_feast_carries_past_the_cap_are_lost_when_the_linger_ends() {
     let (mut world, fiend, hero, _creeps) = a_feast_table();
     hand_souls(&mut world, fiend, rules::NECRO_SOUL_CAP);
-    let_go(&mut world, FEAST_SLOT);
+    cast(&mut world, FEAST_SLOT, Target::None);
     for _ in 0..30 {
         world.step();
     }
@@ -148,7 +147,7 @@ fn souls_a_feast_carries_past_the_cap_are_lost_when_the_linger_ends() {
 #[test]
 fn a_raze_in_a_feast_burns_for_every_soul_the_feast_has_taken() {
     let (mut world, fiend, _hero, [near, ..]) = a_feast_table();
-    let_go(&mut world, FEAST_SLOT);
+    cast(&mut world, FEAST_SLOT, Target::None);
     for _ in 0..15 {
         world.step();
     }
@@ -160,11 +159,11 @@ fn a_raze_in_a_feast_burns_for_every_soul_the_feast_has_taken() {
 #[test]
 fn the_feast_goes_off_beside_a_raze_without_breaking_its_cast_point() {
     let (mut world, fiend, _hero, [near, ..]) = a_feast_table();
-    let_go(&mut world, 0);
+    cast(&mut world, 0, Target::None);
     for _ in 0..5 {
         world.step();
     }
-    let_go(&mut world, FEAST_SLOT);
+    cast(&mut world, FEAST_SLOT, Target::None);
     assert!(feast_effect(&world, fiend).is_some(), "the feast is on");
     let mut burnt = Vec::new();
     for _ in 0..12 {
@@ -181,7 +180,7 @@ fn the_feast_goes_off_beside_a_raze_without_breaking_its_cast_point() {
 fn a_fiend_falling_mid_feast_loses_the_feasts_souls_before_his_share() {
     let (mut world, fiend, _hero, _creeps) = a_feast_table();
     hand_souls(&mut world, fiend, 10);
-    let_go(&mut world, FEAST_SLOT);
+    cast(&mut world, FEAST_SLOT, Target::None);
     for _ in 0..30 {
         world.step();
     }

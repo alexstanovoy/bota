@@ -2,7 +2,7 @@
 
 use bota_core::{ITEMS, MELEE_CREEP, ModifierKind, map_of, rules, tower_def};
 
-use crate::game::{Command, Entity, Event, ItemStack, Mana, World, tree_positions, wire_id};
+use crate::game::{Entity, Event, ItemStack, Mana, World, tree_positions, wire_id};
 use bota_proto::{
     Attribute, DamageKind, EventKind, Fixed, HeroId, ItemId, ItemSlot, MapId, Order, SlotId,
     Target, Team, Vec2,
@@ -269,11 +269,8 @@ fn an_enemy_heros_swing_or_raze_puts_the_drinks_out_and_sets_a_blink_back() {
         let at = Vec2::from_ints(5000 + rules::RAZE_DISTANCE[0], 5000);
         let drinker = a_drinker(&mut world, at);
         if raze {
-            let events = super::fiend::cast_through(&mut world, 0, rules::RAZE_CAST_POINT_MS);
-            assert!(
-                !super::fiend::burns_on(&events, drinker).is_empty(),
-                "the raze lands"
-            );
+            let events = cast_through(&mut world, 0, rules::RAZE_CAST_POINT_MS);
+            assert!(!burns_on(&events, drinker).is_empty(), "the raze lands");
             assert!(
                 !events.iter().any(|event| matches!(event.kind,
                     EventKind::Damaged { target, kind: DamageKind::Physical, .. }
@@ -319,7 +316,7 @@ fn a_creeps_swing_or_ones_own_rot_leaves_the_drinks_running() {
         book.slots[1].level = 1;
     }
     drink_up(&mut world, pudge);
-    pudge_casts(&mut world, 1, Target::None);
+    cast(&mut world, 1, Target::None);
     let burnt = (0..rules::BURN_PERIOD_TICKS * 2)
         .flat_map(|_| world.step())
         .any(|event| {
@@ -468,14 +465,13 @@ fn switching_treads_mid_swing_breaks_nothing_off() {
         world.advance(&[]);
     }
     assert_eq!(swinging(&world, hero), Some(theirs), "mid-swing");
-    world.advance(&[Command {
-        slot: SlotId(0),
-        unit: None,
-        order: Order::Use {
+    seat_order(
+        &mut world,
+        Order::Use {
             slot: ItemSlot(0),
             target: Target::None,
         },
-    }]);
+    );
     assert_eq!(
         slot_of(&world, hero, 0).and_then(|stack| stack.mode),
         Some(Attribute::Intelligence),

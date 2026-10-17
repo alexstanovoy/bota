@@ -1,10 +1,9 @@
-use bota_core::{Ratio, rules};
+use bota_core::rules;
 
-use crate::game::{Command, Entity, Event, Seat, Stats, UnitOrder, World, wire_id};
-use bota_proto::{
-    Angle, Attributes, DamageKind, EffectId, EffectView, EventKind, Fixed, HeroId, Order, SlotId,
-    Team, Vec2,
-};
+use crate::game::tests::support;
+pub(super) use crate::game::tests::support::{advance_validated, burns_on};
+use crate::game::{Entity, Seat, Stats, UnitOrder, World, wire_id};
+use bota_proto::{Angle, EffectId, EffectView, Fixed, HeroId, SlotId, Team, Vec2};
 
 pub(super) const RAZE_EFFECT: EffectId = EffectId::SHADOWRAZE;
 pub(super) const ORIGIN: Vec2 = Vec2::from_ints(5000, 5000);
@@ -47,39 +46,8 @@ fn stats() -> Stats {
     Stats {
         max_hp: Fixed::from_int(30000),
         max_mana: Fixed::from_int(30000),
-        hp_regen: Fixed::ZERO,
-        mana_regen: Fixed::ZERO,
-        damage: 0,
-        attack_range: Fixed::ZERO,
-        acquisition: Fixed::ZERO,
-        attack_time: 1000,
-        attack_speed: 100,
-        attributes: Attributes::ZERO,
-        primary: None,
-        attack_point: 0,
-        attack_backswing: 0,
-        projectile_speed: None,
-        armor: Fixed::ZERO,
-        magic_resist_bp: 0,
-        status_resist_bp: 0,
-        physical_amp_bp: rules::NOMINAL_BP,
-        magic_amp_bp: rules::NOMINAL_BP,
-        pure_amp_bp: rules::NOMINAL_BP,
-        cooldown_rate_bp: rules::NOMINAL_BP,
-        mana_cost_rate_bp: rules::NOMINAL_BP,
-        move_speed: Fixed::ZERO,
-        turn_rate: 0,
-        damage_spread: 0,
-        damage_to_creeps: 0,
         vision: Fixed::from_int(2000),
-        true_sight: Fixed::ZERO,
-        hides: false,
-        flies: false,
-        phased: false,
-        invulnerable: false,
-        evasion: Ratio::NEVER,
-        pierce: Ratio::NEVER,
-        pierce_damage: 0,
+        ..support::stats()
     }
 }
 
@@ -90,16 +58,6 @@ pub(super) fn seat(world: &mut World, slot: SlotId, team: Team, unit: Entity, go
     world.seats.push(seat);
 }
 
-/// Validates an order from seat 0 and runs the tick it lands in.
-pub(super) fn order(world: &mut World, order: Order) -> Vec<Event> {
-    assert_eq!(world.validate_order(SlotId(0), None, &order), Ok(()));
-    world.advance(&[Command {
-        slot: SlotId(0),
-        unit: None,
-        order,
-    }])
-}
-
 pub(super) fn reveal(world: &mut World, entity: Entity) {
     let seen = world.visibility.get_mut(entity).unwrap();
     seen.add(Team::Radiant);
@@ -107,25 +65,10 @@ pub(super) fn reveal(world: &mut World, entity: Entity) {
     seen.add(Team::Neutral);
 }
 
-pub(super) fn damage(events: &[Event], target: Entity) -> Vec<i32> {
-    events
-        .iter()
-        .filter_map(|event| match event.kind {
-            EventKind::Damaged {
-                target: on,
-                amount,
-                kind: DamageKind::Magical,
-                ..
-            } if on == wire_id(target) => Some(amount),
-            _ => None,
-        })
-        .collect()
-}
-
 pub(super) fn land(world: &mut World, caster: Entity, target: Entity, level: usize) -> i32 {
     reveal(world, target);
     assert!(world.cast_raze(caster, level, 1));
-    let amounts = damage(&world.step(), target);
+    let amounts = burns_on(&world.step(), target);
     assert_eq!(amounts.len(), 1);
     amounts[0]
 }

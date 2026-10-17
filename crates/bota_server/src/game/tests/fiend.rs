@@ -2,10 +2,9 @@
 
 use bota_core::{ModifierKind, isqrt64, rules, tower_def};
 
-use crate::game::{ActionState, Entity, Event, StackKind, UnitOrder, World, wire_id};
+use crate::game::{ActionState, Entity, UnitOrder, World, wire_id};
 use bota_proto::{
-    AbilityId, DamageKind, EffectId, EventKind, Fixed, HeroId, Order, SlotId, StatusFlags, Target,
-    Team, Vec2,
+    AbilityId, EffectId, EventKind, Fixed, HeroId, SlotId, StatusFlags, Target, Team, Vec2,
 };
 
 use super::support::*;
@@ -97,7 +96,7 @@ fn a_raze_stands_through_its_cast_point_and_lands_when_it_is_over() {
     let (mut world, fiend, mark) = fiend_and_a_mark(rules::RAZE_DISTANCE[0]);
     let stood = world.transform.get(fiend).expect("standing").pos;
     let mana = world.mana.get(fiend).expect("a pool").mana;
-    let_go(&mut world, RAZE_NEAR_SLOT);
+    cast(&mut world, RAZE_NEAR_SLOT, Target::None);
     let point = ticks_of(rules::RAZE_CAST_POINT_MS);
     assert_eq!(point, 17, "0.55 s at thirty ticks a second, rounded up");
     for tick in 1..point {
@@ -146,7 +145,7 @@ fn a_raze_stands_through_its_cast_point_and_lands_when_it_is_over() {
 fn an_order_to_the_body_in_the_cast_point_breaks_the_raze_off_with_nothing_spent() {
     let (mut world, fiend, mark) = fiend_and_a_mark(rules::RAZE_DISTANCE[0]);
     let mana = world.mana.get(fiend).expect("a pool").mana;
-    let_go(&mut world, RAZE_NEAR_SLOT);
+    cast(&mut world, RAZE_NEAR_SLOT, Target::None);
     for _ in 0..5 {
         world.step();
     }
@@ -440,7 +439,7 @@ fn a_requiem_lets_a_line_fly_for_every_soul_and_a_line_burns_what_it_crosses_onc
             .filter(|shown| shown.ability == Some(AbilityId::REQUIEM))
             .count()
     };
-    let_go(&mut world, REQUIEM_SLOT);
+    cast(&mut world, REQUIEM_SLOT, Target::None);
     for _ in 1..ticks_of(rules::REQUIEM_CAST_POINT_MS) {
         world.step();
         assert_eq!(flying(&world), 0, "nothing flies in the cast point");
@@ -662,39 +661,6 @@ fn a_fallen_fiend_with_no_requiem_learned_lets_nothing_fly() {
     );
 }
 
-/// Casts one of the fiend's slots and runs the world through its cast point:
-/// every event on the way, the tick it goes off included.
-pub(super) fn cast_through(world: &mut World, slot: u8, point_ms: u32) -> Vec<Event> {
-    let mut events = world.advance(&[crate::game::Command {
-        slot: SlotId(0),
-        unit: None,
-        order: Order::Cast {
-            slot: bota_proto::AbilitySlot(slot),
-            target: Target::None,
-        },
-    }]);
-    for _ in 0..ticks_of(point_ms) {
-        events.extend(world.step());
-    }
-    events
-}
-
-/// Magic damage told of on one unit.
-pub(super) fn burns_on(events: &[Event], unit: Entity) -> Vec<i32> {
-    events
-        .iter()
-        .filter_map(|event| match event.kind {
-            EventKind::Damaged {
-                target,
-                amount,
-                kind: DamageKind::Magical,
-                ..
-            } if target == wire_id(unit) => Some(amount),
-            _ => None,
-        })
-        .collect()
-}
-
 /// The statuses a unit shows the whole world.
 fn own_statuses(world: &World, unit: Entity) -> u16 {
     world
@@ -706,7 +672,7 @@ fn own_statuses(world: &World, unit: Entity) -> u16 {
 }
 
 /// Ticks one of a hero's slots waits before it may be cast again.
-pub(super) fn cooldown(world: &World, hero: Entity, slot: u8) -> u32 {
+fn cooldown(world: &World, hero: Entity, slot: u8) -> u32 {
     world
         .abilities
         .get(hero)
@@ -714,14 +680,6 @@ pub(super) fn cooldown(world: &World, hero: Entity, slot: u8) -> u32 {
 }
 
 /// What a unit has left of its health.
-pub(super) fn hp(world: &World, unit: Entity) -> Fixed {
+fn hp(world: &World, unit: Entity) -> Fixed {
     world.health.get(unit).expect("standing").hp
-}
-
-/// Souls a hero holds.
-pub(super) fn souls(world: &World, hero: Entity) -> u32 {
-    world
-        .stacks
-        .get(hero)
-        .map_or(0, |kept| kept.of(StackKind::Souls))
 }

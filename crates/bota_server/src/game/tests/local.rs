@@ -1,33 +1,22 @@
 //! An in-process match tells each seat exactly what a server would.
 
 use bota_core::{MAP2_ID, map_of, rules};
-use bota_proto::{
-    EntityId, EventKind, HeroId, MapId, Order, OutgoingOrder, Pick, ServerMsg, SlotId, Target,
-    Team, TickMode, UnitKind,
-};
+use bota_proto::{EntityId, EventKind, Order, OutgoingOrder, ServerMsg, Target, UnitKind};
 
 use crate::game::{MatchConfig, OrderDelay};
 use crate::local::LocalMatch;
 
+use super::support::{config, fiend_against_fiend};
+
 pub(super) fn mid_config() -> MatchConfig {
-    let pick = |slot, team| Pick {
-        slot: SlotId(slot),
-        team,
-        hero: HeroId::SHADOW_FIEND,
-    };
     MatchConfig {
         match_id: 5,
         stream: 5,
         master_key: [9; 32],
-        picks: vec![pick(0, Team::Radiant), pick(1, Team::Dire)],
-        map: MapId(MAP2_ID.0),
-        tick_rate: 30,
-        mode: TickMode::Lockstep,
+        picks: fiend_against_fiend(),
+        map: MAP2_ID,
         ack_timeout_ticks: 150,
-        cheats: false,
-        spawn_modifiers: Vec::new(),
-        immortal_structures: false,
-        immortal_heroes: false,
+        ..config()
     }
 }
 

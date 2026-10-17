@@ -5,8 +5,8 @@ use bota_core::{ModifierKind, rules};
 
 use crate::game::{Entity, Event, MatchConfig, World, wire_id};
 use bota_proto::{
-    AbilityId, DamageKind, EffectId, EventKind, Fixed, HeroId, ItemId, ItemSlot, Order, Pick,
-    RejectReason, SlotId, StatusFlags, Target, Team, UnitView, Vec2,
+    AbilityId, DamageKind, EffectId, EventKind, Fixed, ItemId, ItemSlot, Order, RejectReason,
+    StatusFlags, Target, Team, UnitView, Vec2,
 };
 
 use super::support::*;
@@ -18,18 +18,7 @@ const BASE_SPEED: i32 = 305;
 /// at an empty spot `apart` units from each other, one tick on.
 fn two_fiends(apart: i32) -> (World, Entity, Entity) {
     let cfg = MatchConfig {
-        picks: vec![
-            Pick {
-                slot: SlotId(0),
-                team: Team::Radiant,
-                hero: HeroId::SHADOW_FIEND,
-            },
-            Pick {
-                slot: SlotId(1),
-                team: Team::Dire,
-                hero: HeroId::SHADOW_FIEND,
-            },
-        ],
+        picks: fiend_against_fiend(),
         ..config()
     };
     let mut world = World::for_match(&cfg, cfg.rng());

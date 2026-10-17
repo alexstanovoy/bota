@@ -27,7 +27,7 @@ mod orders;
 mod pudge;
 mod shop;
 mod stats;
-mod support;
+pub(super) mod support;
 mod talents;
 mod target_retention;
 mod towers;

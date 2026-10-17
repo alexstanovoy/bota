@@ -3,34 +3,20 @@
 
 use bota_core::{MELEE_CREEP, ModifierKind, rules};
 
-use crate::game::{
-    ActionPhase, ActionState, Command, Entity, Level, Modifier, PendingCast, Seat, World, wire_id,
-};
-use bota_proto::{AbilitySlot, DamageKind, HeroId, Order, SlotId, Target, Team, Vec2};
+use crate::game::{ActionPhase, ActionState, Entity, Level, Modifier, PendingCast, World, wire_id};
+use bota_proto::{AbilitySlot, DamageKind, HeroId, SlotId, Target, Team, Vec2};
 
 use super::support::ANVIL;
+use crate::game::tests::support::{cast, seated_hero};
 
 /// Pudge in a seat with the dismember learned, and a mark 100 off.
 fn pudge_and_a_mark() -> (World, Entity, Entity) {
     let mut world = World::new();
-    let pudge = world.spawn_hero(
-        Team::Radiant,
-        Vec2::from_ints(5000, 5000),
-        SlotId(0),
-        HeroId::PUDGE,
-    );
+    let pudge = seated_hero(&mut world, Vec2::from_ints(5000, 5000), HeroId::PUDGE);
     let mark = world.spawn_unit(&MELEE_CREEP, Team::Dire, Vec2::from_ints(5100, 5000));
     if let Some(book) = world.abilities.get_mut(pudge) {
         book.slots[3].level = 1;
     }
-    world.seats.push(Seat::new(
-        SlotId(0),
-        Team::Radiant,
-        HeroId::PUDGE,
-        0,
-        rules::STASH_SLOTS,
-    ));
-    world.seats[0].unit = Some(pudge);
     world.settle();
     world.fill_pools(pudge);
     world.step();
@@ -70,14 +56,7 @@ fn fiend_mid_swing() -> (World, Entity) {
 
 /// Orders the seat's Pudge to dismember the mark.
 fn dismember(world: &mut World, mark: Entity) {
-    world.advance(&[Command {
-        slot: SlotId(0),
-        unit: None,
-        order: Order::Cast {
-            slot: AbilitySlot(3),
-            target: Target::Unit(wire_id(mark)),
-        },
-    }]);
+    cast(world, 3, Target::Unit(wire_id(mark)));
 }
 
 /// Whether an entity carries a modifier of a kind put there by somebody.

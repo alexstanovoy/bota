@@ -2,7 +2,7 @@
 
 use bota_core::{MELEE_CREEP, rules};
 
-use crate::game::{Command, Entity, Level, Mana, PendingCast, UnitOrder, World, wire_id};
+use crate::game::{Entity, Level, Mana, PendingCast, UnitOrder, World, wire_id};
 use bota_proto::{
     AbilitySlot, DamageKind, EventKind, Fixed, HeroId, Order, RejectReason, SlotId, Target, Team,
     Vec2,
@@ -94,13 +94,12 @@ fn a_cast_aimed_out_of_reach_walks_the_caster_in_and_then_goes_off() {
 #[test]
 fn a_later_order_calls_a_held_cast_off() {
     let (mut world, pudge, from, _far) = a_held_hook();
-    world.advance(&[Command {
-        slot: SlotId(0),
-        unit: None,
-        order: Order::Move {
+    seat_order(
+        &mut world,
+        Order::Move {
             target: Target::Pos(Vec2::from_ints(4200, 5000)),
         },
-    }]);
+    );
     assert_eq!(
         world.pending_cast(pudge),
         None,
@@ -129,7 +128,7 @@ fn a_cast_walked_towards_a_target_that_fell_is_given_up_and_costs_nothing() {
             mana: Fixed::from_int(110),
         },
     );
-    pudge_casts(&mut world, 3, Target::Unit(wire_id(mark)));
+    cast(&mut world, 3, Target::Unit(wire_id(mark)));
     assert!(
         world.pending_cast(pudge).is_some(),
         "out of reach the cast is held while the caster walks in"
@@ -169,7 +168,7 @@ fn an_aimed_cast_takes_the_bodys_order_over() {
         "the attack order stands"
     );
     let from = world.transform.get(pudge).expect("standing").pos;
-    throw_hook(&mut world, from + Vec2::from_ints(400, 0));
+    cast(&mut world, 0, Target::Pos(from + Vec2::from_ints(400, 0)));
     assert!(
         matches!(
             world.orders.get(pudge).map(|o| o.current),
@@ -185,7 +184,7 @@ fn a_body_walking_into_a_cast_swings_at_nothing_on_the_way() {
     let full = world.health.get(mark).expect("standing").hp;
     let from = world.transform.get(pudge).expect("standing").pos;
     let far = from + Vec2::from_ints(0, rules::HOOK_RANGE + 900);
-    throw_hook(&mut world, far);
+    cast(&mut world, 0, Target::Pos(far));
     for _ in 0..30 {
         world.step();
         assert_eq!(
@@ -339,7 +338,7 @@ fn a_held_hook() -> (World, Entity, Vec2, Vec2) {
     let (mut world, pudge, _mark) = pudge_and_a_mark(4000);
     let from = world.transform.get(pudge).expect("standing").pos;
     let far = from + Vec2::from_ints(rules::HOOK_RANGE + 900, 0);
-    throw_hook(&mut world, far);
+    cast(&mut world, 0, Target::Pos(far));
     assert!(
         world.pending_cast(pudge).is_some(),
         "out of reach the cast is held rather than dropped"

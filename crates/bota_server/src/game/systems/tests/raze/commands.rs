@@ -24,7 +24,7 @@ fn raze_from(world: &mut World, caster: Entity, slot: u8) -> Vec<Event> {
         slot: AbilitySlot(slot),
         target: Target::None,
     };
-    let mut events = order(world, cast);
+    let mut events = advance_validated(world, None, cast);
     for _ in 0..CAST_POINT_TICKS {
         assert!(world.is_casting(caster), "still in the cast point");
         events.extend(world.step());
@@ -38,8 +38,9 @@ fn mango_mana_enables_a_validated_raze_without_changing_any_strategy() {
     let (mut world, caster, target) = fixture();
     seat(&mut world, SlotId(0), Team::Radiant, caster, 65);
     world.transform.get_mut(caster).unwrap().pos = fountain_pos(world.map, Team::Radiant);
-    order(
+    advance_validated(
         &mut world,
+        None,
         Order::Buy {
             item: ItemId::MANGO,
         },
@@ -50,7 +51,7 @@ fn mango_mana_enables_a_validated_raze_without_changing_any_strategy() {
         slot: ItemSlot(0),
         target: Target::None,
     };
-    let consumed = order(&mut world, use_mango);
+    let consumed = advance_validated(&mut world, None, use_mango);
     assert_eq!(consumed.len(), 1);
     assert_eq!(
         consumed[0].kind,
@@ -64,7 +65,7 @@ fn mango_mana_enables_a_validated_raze_without_changing_any_strategy() {
     assert_eq!(world.mana.get(caster).unwrap().mana, Fixed::from_int(100));
     reveal(&mut world, target);
     let events = raze_from(&mut world, caster, 1);
-    assert_eq!(damage(&events, target), vec![85]);
+    assert_eq!(burns_on(&events, target), vec![85]);
     assert!(
         !events
             .iter()
@@ -82,7 +83,7 @@ fn raze_validated_reach_orders_share_stacks_but_keep_independent_cooldowns() {
     for (slot, expected) in [(0, 85), (1, 120), (2, 155)] {
         reveal(&mut world, target);
         assert_eq!(
-            damage(&raze_from(&mut world, caster, slot), target),
+            burns_on(&raze_from(&mut world, caster, slot), target),
             vec![expected]
         );
     }

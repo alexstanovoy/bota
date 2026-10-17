@@ -32,7 +32,7 @@ fn raze_all_three_reaches_share_stacks_even_when_hits_resolve_together() {
     for reach in 0..3 {
         assert!(world.cast_raze(caster, 0, reach));
     }
-    assert_eq!(damage(&world.step(), target), vec![85, 120, 155]);
+    assert_eq!(burns_on(&world.step(), target), vec![85, 120, 155]);
     assert_eq!(effects(&world, target), vec![effect(3, 180)]);
 }
 

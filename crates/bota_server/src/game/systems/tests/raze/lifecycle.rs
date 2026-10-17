@@ -11,7 +11,7 @@ fn raze_already_queued_before_caster_death_keeps_its_damage_and_old_generation_e
     world.push_hit(None, caster, 1, DamageKind::Pure);
     reveal(&mut world, target);
     assert!(world.cast_raze(caster, 0, 1));
-    assert_eq!(damage(&world.step(), target), vec![120]);
+    assert_eq!(burns_on(&world.step(), target), vec![120]);
     assert!(!world.alive(caster));
     assert_eq!(effects(&world, target), vec![effect(2, 180)]);
     let returned = hero(&mut world, Team::Radiant, ORIGIN, SlotId(0));

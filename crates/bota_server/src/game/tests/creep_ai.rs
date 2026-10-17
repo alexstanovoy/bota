@@ -2,8 +2,8 @@
 
 use bota_core::{CAMPS, MELEE_CREEP, NeutralKind, PriorityOrder, SIEGE_CREEP, rules, tower_def};
 
-use crate::game::{CampHome, Entity, NeutralAi, UnitOrder, World};
-use bota_proto::{Fixed, HeroId, SlotId, Team, Vec2};
+use crate::game::{CampHome, Entity, NeutralAi, UnitOrder, World, wire_id};
+use bota_proto::{Fixed, HeroId, SlotId, Target, Team, Vec2};
 
 use super::support::*;
 
@@ -439,7 +439,7 @@ fn a_spell_at_a_hero_draws_nobody() {
         Some(ours),
         "left alone, creep on creep"
     );
-    cast_at(&mut world, foe);
+    cast(&mut world, 3, Target::Unit(wire_id(foe)));
     assert_eq!(
         world.target_of(theirs),
         Some(ours),

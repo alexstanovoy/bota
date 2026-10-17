@@ -10,11 +10,11 @@ use crate::game::{
     terrain_of, tree_positions, wire_id,
 };
 use bota_proto::{
-    DamageKind, EventKind, Fixed, HeroId, ItemId, MapId, Order, Pick, ReplayRecord, ServerMsg,
-    SlotId, Team, TickMode, UnitKind, Vec2, decode_payload, encode_frame_to_vec,
+    DamageKind, EventKind, Fixed, HeroId, ItemId, MapId, Order, ReplayRecord, ServerMsg, SlotId,
+    Team, TickMode, UnitKind, Vec2, decode_payload, encode_frame_to_vec,
 };
 
-use super::support::advance_validated;
+use super::support::{self, advance_validated, fiend_against_fiend};
 
 const MID_MAP: MapId = MAP2_ID;
 const TICK_CAP: u32 = MAP2_TICK_CAP;
@@ -25,26 +25,10 @@ fn config(map: MapId) -> MatchConfig {
         match_id: 23,
         stream: 23,
         master_key: [17; 32],
-        picks: vec![
-            Pick {
-                slot: SlotId(0),
-                team: Team::Radiant,
-                hero: HeroId::SHADOW_FIEND,
-            },
-            Pick {
-                slot: SlotId(1),
-                team: Team::Dire,
-                hero: HeroId::SHADOW_FIEND,
-            },
-        ],
+        picks: fiend_against_fiend(),
         map,
-        tick_rate: 30,
-        mode: TickMode::Lockstep,
         ack_timeout_ticks: 150,
-        cheats: false,
-        spawn_modifiers: Vec::new(),
-        immortal_structures: false,
-        immortal_heroes: false,
+        ..support::config()
     }
 }
 

@@ -3,7 +3,7 @@
 
 use bota_core::{ModifierKind, fountain_pos, hero_spawn_pos, rules};
 
-use crate::game::{Command, Entity, UnitOrder, World, wire_id};
+use crate::game::{Entity, UnitOrder, World, wire_id};
 use bota_proto::{
     AbilitySlot, Fixed, ItemId, ItemSlot, Order, RejectReason, SlotId, StatusFlags, Target, Team,
     UnitKind, Vec2,
@@ -558,13 +558,6 @@ fn phase_boots_leave_the_channel_be_and_a_feast_breaks_it() {
     if let Some(book) = world.abilities.get_mut(hero) {
         book.slots[3].level = 1;
     }
-    world.advance(&[Command {
-        slot: SlotId(0),
-        unit: None,
-        order: Order::Cast {
-            slot: AbilitySlot(3),
-            target: Target::None,
-        },
-    }]);
+    cast(&mut world, 3, Target::None);
     assert!(!world.is_channelling(hero), "a feast is");
 }

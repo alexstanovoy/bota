@@ -1,6 +1,7 @@
 use bota_core::{fountain_pos, rules};
 use bota_proto::{Fixed, HeroId, ItemId, SlotId, Target, Team, Vec2};
 
+use crate::game::tests::support::fresh_stack;
 use crate::game::{BAG_SLOTS, Entity, Inventory, ItemStack, Seat, World};
 
 pub(super) const MANGO: ItemId = ItemId::MANGO;
@@ -29,20 +30,8 @@ pub(super) fn fixture() -> (World, Entity) {
 }
 
 pub(super) fn mango(charges: u8) -> ItemStack {
-    assert!(charges > 0);
-    assert!(charges <= 3);
-    ItemStack {
-        id: MANGO,
-        charges,
-        cooldown: 0,
-        mute: 0,
-        mode: None,
-        bought_tick: 0,
-        touched: false,
-        owner: OWNER,
-        for_sale: false,
-        free_charges: 0,
-    }
+    assert!((1..=3).contains(&charges));
+    fresh_stack(MANGO, charges)
 }
 
 pub(super) fn put(world: &mut World, unit: Entity, at: usize, stack: ItemStack) {

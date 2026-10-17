@@ -20,7 +20,7 @@ fn raze_miss_neither_applies_nor_refreshes_a_debuff() {
     land(&mut world, caster, target, 0);
     world.transform.get_mut(target).unwrap().pos = Vec2::from_ints(6000, 5000);
     assert!(world.cast_raze(caster, 0, 1));
-    assert!(damage(&world.step(), target).is_empty());
+    assert!(burns_on(&world.step(), target).is_empty());
     assert_eq!(effects(&world, target), vec![effect(1, 179)]);
 }
 
@@ -29,7 +29,7 @@ fn raze_never_damages_or_debuffs_an_ally() {
     let (mut world, caster, target) = fixture();
     world.set_team(target, Team::Radiant);
     assert!(world.cast_raze(caster, 0, 1));
-    assert!(damage(&world.step(), target).is_empty());
+    assert!(burns_on(&world.step(), target).is_empty());
     assert!(effects(&world, target).is_empty());
 }
 
@@ -38,7 +38,7 @@ fn raze_invulnerable_at_cast_time_gets_no_damage_or_debuff() {
     let (mut world, caster, target) = fixture();
     world.stats.get_mut(target).unwrap().invulnerable = true;
     assert!(world.cast_raze(caster, 0, 1));
-    assert!(damage(&world.step(), target).is_empty());
+    assert!(burns_on(&world.step(), target).is_empty());
     assert!(effects(&world, target).is_empty());
 }
 
@@ -47,7 +47,7 @@ fn raze_invulnerability_at_impact_prevents_a_previously_queued_debuff() {
     let (mut world, caster, target) = fixture();
     assert!(world.cast_raze(caster, 0, 1));
     world.stats.get_mut(target).unwrap().invulnerable = true;
-    assert!(damage(&world.step(), target).is_empty());
+    assert!(burns_on(&world.step(), target).is_empty());
     assert!(effects(&world, target).is_empty());
 }
 
@@ -59,7 +59,7 @@ fn raze_shield_applied_before_impact_blocks_damage_without_waiting_for_stats() {
         .modifiers
         .insert(target, held(ModifierKind::Shielded, 30));
     assert!(!world.stats.get(target).unwrap().invulnerable);
-    assert!(damage(&world.step(), target).is_empty());
+    assert!(burns_on(&world.step(), target).is_empty());
     assert!(effects(&world, target).is_empty());
 }
 
@@ -80,7 +80,7 @@ fn raze_existing_debuff_is_not_refreshed_by_a_missed_invulnerable_target() {
     world.stats.get_mut(target).unwrap().invulnerable = true;
     reveal(&mut world, target);
     assert!(world.cast_raze(caster, 0, 1));
-    assert!(damage(&world.step(), target).is_empty());
+    assert!(burns_on(&world.step(), target).is_empty());
     assert_eq!(effects(&world, target), vec![effect(1, 179)]);
 }
 
@@ -89,7 +89,7 @@ fn raze_stacks_do_not_amplify_or_refresh_from_ordinary_magical_damage() {
     let (mut world, caster, target) = fixture();
     land(&mut world, caster, target, 0);
     world.push_hit(Some(caster), target, 90, DamageKind::Magical);
-    assert_eq!(damage(&world.step(), target), vec![90]);
+    assert_eq!(burns_on(&world.step(), target), vec![90]);
     assert_eq!(effects(&world, target), vec![effect(1, 179)]);
 }
 
@@ -119,7 +119,7 @@ fn raze_queued_after_a_lethal_blow_applies_no_debuff() {
     let (mut world, caster, target) = fixture();
     world.push_hit(Some(caster), target, 30000, DamageKind::Pure);
     assert!(world.cast_raze(caster, 0, 1));
-    assert!(damage(&world.step(), target).is_empty());
+    assert!(burns_on(&world.step(), target).is_empty());
     assert!(
         world
             .modifiers
@@ -161,7 +161,7 @@ fn raze_failed_casts_leave_existing_stacks_unmodified() {
         );
         // The order's own tick and the whole cast point after it.
         for _ in 0..18 {
-            assert!(damage(&world.step(), target).is_empty());
+            assert!(burns_on(&world.step(), target).is_empty());
         }
         assert_eq!(effects(&world, target), vec![effect(1, 162)]);
     }

@@ -3,13 +3,12 @@
 
 use bota_core::{ModifierKind, rules};
 
-use crate::game::{Command, Entity, Event, Level, World, wire_id};
+use crate::game::{Entity, Event, Level, World, wire_id};
 use bota_proto::{
-    DamageKind, EventKind, Fixed, HeroId, Order, Pick, RejectReason, SlotId, TalentSlot,
-    TalentView, Talents, Team, Vec2,
+    DamageKind, EventKind, Fixed, HeroId, Order, RejectReason, SlotId, TalentSlot, TalentView,
+    Talents, Target, Team, Vec2,
 };
 
-use super::fiend::{burns_on, cast_through, souls};
 use super::support::*;
 
 const RAZE_NEAR_SLOT: u8 = 0;
@@ -21,18 +20,7 @@ const REQUIEM_SLOT: u8 = 5;
 /// raised to a level through the experience a level takes.
 fn two_fiends_at(level: u8) -> World {
     let mut cfg = config();
-    cfg.picks = vec![
-        Pick {
-            slot: SlotId(0),
-            team: Team::Radiant,
-            hero: HeroId::SHADOW_FIEND,
-        },
-        Pick {
-            slot: SlotId(1),
-            team: Team::Dire,
-            hero: HeroId::SHADOW_FIEND,
-        },
-    ];
+    cfg.picks = fiend_against_fiend();
     let mut world = World::for_match(&cfg, cfg.rng());
     let xp = rules::XP_THRESHOLDS[usize::from(level - 1)];
     world.grant_xp(0, xp, &mut Vec::new());
@@ -47,11 +35,7 @@ fn ask_talent(world: &mut World, slot: u8) -> Result<(), RejectReason> {
         talent: TalentSlot(slot),
     };
     world.validate_order(SlotId(0), None, &order)?;
-    world.advance(&[Command {
-        slot: SlotId(0),
-        unit: None,
-        order,
-    }]);
+    seat_order(world, order);
     Ok(())
 }
 
@@ -142,11 +126,7 @@ fn a_talent_waits_for_no_skill_point() {
 fn ask_attribute_bonus(world: &mut World) -> Result<(), RejectReason> {
     let order = Order::LearnAttributeBonus;
     world.validate_order(SlotId(0), None, &order)?;
-    world.advance(&[Command {
-        slot: SlotId(0),
-        unit: None,
-        order,
-    }]);
+    seat_order(world, order);
     Ok(())
 }
 
@@ -261,14 +241,7 @@ fn learning_a_talent_leaves_a_cast_point_under_way() {
     let hero = world.seats[0].unit.expect("standing");
     world.learn(hero, usize::from(RAZE_NEAR_SLOT));
     world.step();
-    let events = world.advance(&[Command {
-        slot: SlotId(0),
-        unit: None,
-        order: Order::Cast {
-            slot: bota_proto::AbilitySlot(RAZE_NEAR_SLOT),
-            target: bota_proto::Target::None,
-        },
-    }]);
+    let events = cast(&mut world, RAZE_NEAR_SLOT, Target::None);
     assert!(events.is_empty());
     assert_eq!(ask_talent(&mut world, 1), Ok(()));
     let mut cast = false;
@@ -366,7 +339,7 @@ fn the_feast_attack_speed_talent_adds_thirty() {
     for (talent, added) in [(None, 35), (Some(0), 65)] {
         let (mut world, fiend, _mark) = talented_fiend(1500, talent);
         let before = world.stats.get(fiend).expect("settled").attack_speed;
-        let_go(&mut world, FEAST_SLOT);
+        cast(&mut world, FEAST_SLOT, Target::None);
         world.step();
         let during = world.stats.get(fiend).expect("settled").attack_speed;
         assert_eq!(during - before, added, "{talent:?}");
@@ -386,7 +359,7 @@ fn the_feast_souls_talent_takes_five_from_a_hero() {
         put_on(&mut world, foe, ModifierKind::Stunned, 10_000);
         world.settle();
         stop_click(&mut world);
-        let_go(&mut world, FEAST_SLOT);
+        cast(&mut world, FEAST_SLOT, Target::None);
         for _ in 0..rules::FEAST_PERIOD_TICKS {
             world.step();
         }
@@ -468,9 +441,9 @@ fn the_cast_speed_talent_shortens_a_cast_point_while_the_feast_runs() {
     for (talent, feasting, point) in [(None, true, 17), (Some(7), false, 17), (Some(7), true, 12)] {
         let (mut world, _fiend, mark) = talented_fiend(rules::RAZE_DISTANCE[0], talent);
         if feasting {
-            let_go(&mut world, FEAST_SLOT);
+            cast(&mut world, FEAST_SLOT, Target::None);
         }
-        let_go(&mut world, RAZE_NEAR_SLOT);
+        cast(&mut world, RAZE_NEAR_SLOT, Target::None);
         let landed = (1..=20).find(|_| !burns_on(&world.step(), mark).is_empty());
         assert_eq!(landed, Some(point), "{talent:?}, feasting {feasting}");
     }
