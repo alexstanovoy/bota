@@ -76,7 +76,7 @@ impl World {
         for cmd in cmds {
             self.take_order(cmd, &mut events);
         }
-        events.extend(self.step());
+        self.step_into(&mut events);
         events
     }
 

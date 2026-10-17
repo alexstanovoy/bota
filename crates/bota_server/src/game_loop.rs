@@ -511,7 +511,8 @@ impl Server {
     }
 
     /// Sends a finished tick to every connection, each through its own eyes,
-    /// and records it.
+    /// and records it. A view nobody is sent and the replay does not keep is
+    /// never projected.
     fn publish_tick(
         &self,
         world: &World,
@@ -520,20 +521,34 @@ impl Server {
         taken: &[SlotOrder],
         replay: &mut ReplayWriter,
     ) {
-        let mut full = world.view_full();
-        full.order_delays = line.views(None);
-        let full_frame = snapshot_frame(full.clone());
-        let radiant_frame = snapshot_frame(side_view(world, line, Team::Radiant));
-        let dire_frame = snapshot_frame(side_view(world, line, Team::Dire));
-        replay.record(&ReplayRecord::Msg(ServerMsg::Snapshot { view: full }));
-        for conn in self.conns.iter().filter(|c| !self.referees.contains(&c.id)) {
-            let (eyes, viewing) = self.sight_of(conn.id);
-            let frame = match viewing {
-                Some(Team::Radiant) => radiant_frame.clone(),
-                Some(Team::Dire) => dire_frame.clone(),
-                // Seats never sit on the jungle's side.
-                Some(Team::Neutral) | None => full_frame.clone(),
-            };
+        let watchers: Vec<(&Connection, Option<SlotId>, Option<Team>)> = self
+            .conns
+            .iter()
+            .filter(|c| !self.referees.contains(&c.id))
+            .map(|c| {
+                let (eyes, viewing) = self.sight_of(c.id);
+                (c, eyes, viewing)
+            })
+            .collect();
+        let wanted = |sight: usize| watchers.iter().any(|w| sight_index(w.2) == sight);
+        let side_frame = |team: Team| {
+            wanted(sight_index(Some(team))).then(|| snapshot_frame(side_view(world, line, team)))
+        };
+        let mut frames = [side_frame(Team::Radiant), side_frame(Team::Dire), None];
+        if wanted(FULL_SIGHT) || replay.recording() {
+            let mut view = world.view_full();
+            view.order_delays = line.views(None);
+            let full = ServerMsg::Snapshot { view };
+            if wanted(FULL_SIGHT) {
+                frames[FULL_SIGHT] =
+                    Some(encode_frame_to_vec(&full).expect("a view always encodes"));
+            }
+            replay.record(&ReplayRecord::Msg(full));
+        }
+        for (conn, eyes, viewing) in watchers {
+            let frame = frames[sight_index(viewing)]
+                .clone()
+                .expect("every sight a connection has is projected");
             conn.send_tick(frame, world.tick, visible_events(events, viewing));
             // A spectator watching through one seat's eyes is told that
             // seat's orders; nobody else is told any.
@@ -707,6 +722,20 @@ pub(crate) fn side_view(world: &World, line: &DelayLine, team: Team) -> WorldVie
     view.order_delays = line.views(Some(team));
     view
 }
+
+/// The index of the frame [`Server::publish_tick`] sends a connection seeing
+/// as a side: Radiant, Dire, or everything for no side. Seats never sit on
+/// the jungle's side.
+fn sight_index(viewing: Option<Team>) -> usize {
+    match viewing {
+        Some(Team::Radiant) => 0,
+        Some(Team::Dire) => 1,
+        Some(Team::Neutral) | None => FULL_SIGHT,
+    }
+}
+
+/// The frame index of the fogless view.
+const FULL_SIGHT: usize = 2;
 
 /// A snapshot as a frame ready to queue.
 fn snapshot_frame(view: WorldView) -> Vec<u8> {
