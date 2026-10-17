@@ -386,9 +386,10 @@ impl World {
     /// past: the followers of a held lead creep queue up behind it ("the
     /// creeps that follow will block each other", Gaming StackExchange; lane
     /// creeps walk against what blocks them and are stuck, Liquipedia, *Unit
-    /// Size*). It has to stand nearer the aim and within 60 degrees of the
-    /// way there: two marchers heading the same way are never each ahead of
-    /// the other, so two never wait on each other.
+    /// Size*). Further on means nearer the marcher's own aim. Two creeps
+    /// aiming at different spots may each be nearer the other's aim; then
+    /// only the one further along the lane waits, so two never wait on each
+    /// other.
     fn queues_behind(
         &self,
         entity: Entity,
@@ -397,11 +398,38 @@ impl World {
         centre: Vec2,
         aim: Vec2,
     ) -> bool {
-        self.march.get(blocker).is_some()
-            && self.team.get(blocker) == self.team.get(entity)
-            && self.lane.get(blocker) == self.lane.get(entity)
-            && centre.distance_squared(aim) < from.distance_squared(aim)
-            && ahead_within(from, aim, centre, QUEUE_CONE_COS_PERMILLE)
+        if self.march.get(blocker).is_none()
+            || self.team.get(blocker) != self.team.get(entity)
+            || self.lane.get(blocker) != self.lane.get(entity)
+            || centre.distance_squared(aim) >= from.distance_squared(aim)
+        {
+            return false;
+        }
+        let theirs = self
+            .route
+            .get(blocker)
+            .map(|route| route.corners.first().copied().unwrap_or(route.end));
+        let mutual = theirs
+            .is_some_and(|theirs| from.distance_squared(theirs) < centre.distance_squared(theirs));
+        !mutual || self.lane_place(entity, from) < self.lane_place(blocker, centre)
+    }
+
+    /// How far on its lane a marcher standing at a spot is: the waypoint it
+    /// walks at next, then how near it stands to it. Greater is further on;
+    /// a slot breaks a dead tie, so the order is strict.
+    fn lane_place(&self, entity: Entity, at: Vec2) -> (u16, i64, u32) {
+        let next = self.march.get(entity).map_or(0, |march| march.next);
+        let waypoint = self
+            .team
+            .get(entity)
+            .zip(self.lane.get(entity))
+            .and_then(|(team, lane)| {
+                self.lane_routes.as_ref()?[bota_core::team_index(*team)][usize::from(lane.0)]
+                    .get(usize::from(next))
+                    .copied()
+            });
+        let near = waypoint.map_or(0, |waypoint| -at.distance_squared(waypoint));
+        (next, near, entity.index().0)
     }
 
     /// The body a step would walk into, where it stood when the tick began,
@@ -1170,29 +1198,4 @@ fn slide_along(from: Vec2, next: Vec2, centre: Vec2, reach: Fixed) -> Option<Vec
             raw: i32::try_from(i128::from(centre.y.raw) + oy).ok()?,
         },
     })
-}
-
-/// Cosine of the half angle in front of a marcher within which a creep of
-/// its lane is queued behind, in thousandths: 60 degrees.
-const QUEUE_CONE_COS_PERMILLE: i64 = 500;
-
-/// Whether a spot lies in front of a walker heading from one point to
-/// another, within the half angle whose cosine is given in thousandths.
-fn ahead_within(from: Vec2, towards: Vec2, spot: Vec2, cos_permille: i64) -> bool {
-    let (hx, hy) = (
-        i128::from(towards.x.raw) - i128::from(from.x.raw),
-        i128::from(towards.y.raw) - i128::from(from.y.raw),
-    );
-    let (sx, sy) = (
-        i128::from(spot.x.raw) - i128::from(from.x.raw),
-        i128::from(spot.y.raw) - i128::from(from.y.raw),
-    );
-    let dot = hx * sx + hy * sy;
-    if dot <= 0 {
-        return false;
-    }
-    // dot >= cos * |h| * |s|, squared on both sides.
-    let lengths = (hx * hx + hy * hy) * (sx * sx + sy * sy);
-    let cos = i128::from(cos_permille);
-    dot * dot * 1_000_000 >= cos * cos * lengths
 }
