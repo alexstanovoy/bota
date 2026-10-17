@@ -595,10 +595,11 @@ impl World {
         let Some(mode) = stack.mode else {
             return false;
         };
+        // Dota's wheel: strength, intelligence, agility.
         stack.mode = Some(match mode {
-            Attribute::Strength => Attribute::Agility,
-            Attribute::Agility => Attribute::Intelligence,
-            Attribute::Intelligence => Attribute::Strength,
+            Attribute::Strength => Attribute::Intelligence,
+            Attribute::Intelligence => Attribute::Agility,
+            Attribute::Agility => Attribute::Strength,
         });
         true
     }
