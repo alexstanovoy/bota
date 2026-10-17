@@ -119,9 +119,7 @@ fn the_fight_rolls_onto_the_closest_when_the_ordered_target_falls() {
     let (mut world, hero, first) = hero_ordered_at_an_enemy(300);
     let second = world.spawn_unit(&MELEE_CREEP, Team::Dire, Vec2::from_ints(5570, 5150));
     world.settle();
-    for _ in 0..5 {
-        world.step();
-    }
+    run(&mut world, 5);
     // The one it was set on falls to a blow.
     world.push_hit(Some(hero), first, 10_000, DamageKind::Pure);
     world.step();
@@ -144,9 +142,7 @@ fn the_fight_rolls_onto_the_closest_when_the_ordered_target_falls() {
 #[test]
 fn an_attack_order_whose_target_fell_keeps_the_hero_fighting_from_the_spot() {
     let (mut world, hero, mark) = hero_ordered_at_an_enemy(300);
-    for _ in 0..5 {
-        world.step();
-    }
+    run(&mut world, 5);
     world.push_hit(Some(hero), mark, 10_000, DamageKind::Pure);
     world.step();
     assert!(!world.alive(mark), "the blow was fatal");
@@ -157,9 +153,7 @@ fn an_attack_order_whose_target_fell_keeps_the_hero_fighting_from_the_spot() {
         ),
         "the order degrades to fighting from where it fell"
     );
-    for _ in 0..60 {
-        world.step();
-    }
+    run(&mut world, 60);
     assert_eq!(world.target_of(hero), None, "with nobody around it waits");
     // The next one to come into acquisition is taken on unasked.
     let next = world.spawn_unit(&MELEE_CREEP, Team::Dire, Vec2::from_ints(5500, 5100));
@@ -207,9 +201,7 @@ fn a_follow_ends_where_the_one_followed_fell() {
         ),
         "the follow became a walk to where it fell"
     );
-    for _ in 0..180 {
-        world.step();
-    }
+    run(&mut world, 180);
     let stood = world.transform.get(hero).expect("standing").pos;
     assert!(
         stood.within(theirs, Fixed::from_int(400)),
@@ -223,9 +215,7 @@ fn a_hero_told_to_walk_walks_past_what_it_meets() {
         pos: Vec2::from_ints(7000, 5000),
     });
     let was = world.health.get(enemy).expect("standing").hp;
-    for _ in 0..120 {
-        world.step();
-    }
+    run(&mut world, 120);
     assert_eq!(
         world.target_of(hero),
         None,
@@ -249,9 +239,7 @@ fn a_hero_told_to_walk_and_attack_stops_for_what_it_meets() {
         pos: Vec2::from_ints(7000, 5000),
     });
     let was = world.health.get(enemy).expect("standing").hp;
-    for _ in 0..120 {
-        world.step();
-    }
+    run(&mut world, 120);
     assert_eq!(world.target_of(hero), Some(enemy), "it took on what it met");
     assert!(
         world.health.get(enemy).expect("standing").hp < was,
@@ -267,9 +255,7 @@ fn a_hero_holding_comes_round_but_never_leaves_the_spot() {
         at.pos = Vec2::from_ints(5500, 5000);
     }
     let stood = world.transform.get(hero).expect("standing").pos;
-    for _ in 0..60 {
-        world.step();
-    }
+    run(&mut world, 60);
     assert_eq!(
         world.target_of(hero),
         Some(enemy),
@@ -301,9 +287,7 @@ fn a_hero_told_to_stop_stands_and_takes_on_nothing() {
     );
     let stood = world.transform.get(hero).expect("standing").pos;
     let was = world.health.get(enemy).expect("standing").hp;
-    for _ in 0..120 {
-        world.step();
-    }
+    run(&mut world, 120);
     assert_eq!(world.target_of(hero), None, "and takes on nothing more");
     assert_eq!(
         world.health.get(enemy).expect("standing").hp,
@@ -334,9 +318,7 @@ fn one_of_your_own_at_full_health_cannot_be_struck() {
     );
     attack_click(&mut world, own);
     let was = world.health.get(own).expect("standing").hp;
-    for _ in 0..90 {
-        world.step();
-    }
+    run(&mut world, 90);
     assert_eq!(
         world.target_of(hero),
         None,
@@ -365,9 +347,7 @@ fn one_of_your_own_worn_down_far_enough_may_be_put_out() {
     attack_click(&mut world, own);
     assert_eq!(world.target_of(hero), Some(own), "it takes it on");
     let was = world.health.get(own).expect("standing").hp;
-    for _ in 0..90 {
-        world.step();
-    }
+    run(&mut world, 90);
     let now = world
         .health
         .get(own)
@@ -459,9 +439,7 @@ fn an_attack_order_at_one_of_your_own_walks_you_to_it_and_waits() {
     world.fill_pools(ours);
     attack_click(&mut world, ours);
     let start = world.transform.get(hero).expect("standing").pos;
-    for _ in 0..90 {
-        world.step();
-    }
+    run(&mut world, 90);
     let now = world.transform.get(hero).expect("standing").pos;
     assert!(
         now.x > start.x,
@@ -487,9 +465,7 @@ fn an_attack_order_at_one_of_your_own_walks_you_to_it_and_waits() {
     // Worn down past half, it may be put out after all.
     wear_down(&mut world, ours, 40);
     let worn = world.health.get(ours).expect("standing").hp;
-    for _ in 0..120 {
-        world.step();
-    }
+    run(&mut world, 120);
     assert_eq!(
         world.target_of(hero),
         Some(ours),

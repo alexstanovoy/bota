@@ -157,9 +157,7 @@ fn a_tower_lets_go_of_a_hero_at_most_once_every_two_and_a_half_seconds() {
         Some(hero),
         "a second click inside 2.5 s does not"
     );
-    for _ in 0..rules::TOWER_RELEASE_COOLDOWN_TICKS {
-        world.step();
-    }
+    run(&mut world, rules::TOWER_RELEASE_COOLDOWN_TICKS);
     assert_eq!(
         shot_at_then_shed(&mut world),
         Some(own),

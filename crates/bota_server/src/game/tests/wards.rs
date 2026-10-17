@@ -35,9 +35,7 @@ fn a_ward_stands_where_it_was_put_and_goes_when_its_time_is_up() {
         .get(ward)
         .expect("stands for a time")
         .ticks_left;
-    for _ in 0..=left {
-        world.step();
-    }
+    run(&mut world, left + 1);
     assert!(!world.alive(ward), "and when its time is up it is gone");
 }
 

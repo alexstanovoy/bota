@@ -97,9 +97,7 @@ fn the_backpack_takes_from_the_stash_too() {
         Some(Fixed::from_int(SHADOW_FIEND.move_speed)),
         "just out of the pocket it is still inert"
     );
-    for _ in 0..rules::BACKPACK_MUTE_TICKS {
-        world.step();
-    }
+    run(&mut world, rules::BACKPACK_MUTE_TICKS);
     assert_eq!(
         world.stats.get(hero).map(|s| s.move_speed),
         Some(Fixed::from_int(SHADOW_FIEND.move_speed + 45)),
@@ -134,9 +132,7 @@ fn a_backpack_swap_projects_mute_until_the_exact_boundary() {
         "the view carries the exact stack mute"
     );
 
-    for _ in 1..rules::BACKPACK_MUTE_TICKS {
-        world.step();
-    }
+    run(&mut world, rules::BACKPACK_MUTE_TICKS - 1);
     assert_eq!(projected(&world).mute_left, 1, "one tick remains");
     world.step();
     assert_eq!(projected(&world).mute_left, 0, "the boundary is ready");
@@ -322,9 +318,7 @@ fn an_item_aimed_past_reach_walks_its_carrier_in_first() {
     assert!(world.put_item(hero, 0, Target::Pos(spot)));
     world.step();
     assert!(on_the_ground(&world).is_empty(), "too far to lay at once");
-    for _ in 0..300 {
-        world.step();
-    }
+    run(&mut world, 300);
     let lying = on_the_ground(&world);
     assert_eq!(lying.len(), 1, "walked over and laid it");
     assert_eq!(world.transform.get(lying[0]).map(|t| t.pos), Some(spot));
@@ -571,9 +565,7 @@ fn a_later_order_calls_an_item_errand_off() {
     let spot = from + Vec2::from_ints(1000, 1000);
     assert!(world.put_item(hero, 0, Target::Pos(spot)));
     stop_click(&mut world);
-    for _ in 0..200 {
-        world.step();
-    }
+    run(&mut world, 200);
     assert!(on_the_ground(&world).is_empty(), "nothing was laid");
     assert!(
         slot_of(&world, hero, 0).is_some(),

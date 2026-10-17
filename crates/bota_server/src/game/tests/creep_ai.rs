@@ -476,9 +476,7 @@ fn the_jungle_pays_a_courier_no_mind_but_the_other_side_does_not() {
     );
     let creep = world.spawn_unit(&MELEE_CREEP, Team::Dire, at);
     world.settle();
-    for _ in 0..10 {
-        world.step();
-    }
+    run(&mut world, 10);
     assert!(
         !world.hostile(beast, courier),
         "the jungle does not take a courier on"

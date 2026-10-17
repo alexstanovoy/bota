@@ -16,9 +16,7 @@ fn hero_out_of_fountain(hero: HeroId) -> (World, Entity) {
     let mut world = World::for_match(&cfg, cfg.rng());
     let unit = world.seats[0].unit.expect("stood up");
     world.transform.get_mut(unit).expect("standing").pos = Vec2::from_ints(9000, 9216);
-    for _ in 0..=rules::FOUNTAIN_HEAL_LINGER_TICKS {
-        world.step();
-    }
+    run(&mut world, rules::FOUNTAIN_HEAL_LINGER_TICKS + 1);
     (world, unit)
 }
 
@@ -175,9 +173,7 @@ fn phase_boots_build_of_boots_chainmail_and_blades_and_phase_a_ranged_hero_by_te
         walking.to_int() * 110 / 100,
         "ten percent for a ranged hero"
     );
-    for _ in 0..3 * rules::TICKS_PER_SECOND {
-        world.step();
-    }
+    run(&mut world, 3 * rules::TICKS_PER_SECOND);
     assert!(
         !carries(&world, hero, ModifierKind::Phased),
         "for three seconds"
@@ -260,9 +256,7 @@ fn a_healing_salve_mends_thirty_a_second_for_thirteen_seconds() {
             },
         )
     };
-    for _ in 0..13 * rules::TICKS_PER_SECOND - 1 {
-        world.step();
-    }
+    run(&mut world, 13 * rules::TICKS_PER_SECOND - 1);
     assert!(
         mending(&world),
         "still mending just short of thirteen seconds"

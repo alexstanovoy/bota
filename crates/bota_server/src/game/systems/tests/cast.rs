@@ -7,7 +7,7 @@ use crate::game::{ActionPhase, ActionState, Entity, Level, PendingCast, World, w
 use bota_proto::{AbilitySlot, DamageKind, HeroId, SlotId, Target, Team, Vec2};
 
 use super::support::ANVIL;
-use crate::game::tests::support::{cast, put_on, seated_hero};
+use crate::game::tests::support::{cast, put_on, run, seated_hero};
 
 /// Pudge in a seat with the dismember learned, and a mark 100 off.
 fn pudge_and_a_mark() -> (World, Entity, Entity) {
@@ -162,9 +162,7 @@ fn a_stun_on_the_one_holding_or_a_mark_out_of_reach_breaks_a_dismember_off() {
     for (case, break_off) in breaks {
         let (mut world, pudge, mark) = pudge_and_a_mark();
         dismember(&mut world, mark);
-        for _ in 0..10 {
-            world.step();
-        }
+        run(&mut world, 10);
         assert!(world.is_channelling(pudge), "{case}: it holds until then");
         break_off(&mut world, pudge, mark);
         world.step();

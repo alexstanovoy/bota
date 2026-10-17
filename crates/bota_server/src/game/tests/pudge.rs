@@ -109,9 +109,7 @@ fn the_rot_burns_and_slows_what_stands_in_it_and_lifts_when_switched_off() {
         carries(&world, pudge, ModifierKind::Rot { level: 0 }),
         "it is switched on"
     );
-    for _ in 0..rules::BURN_PERIOD_TICKS * 4 {
-        world.step();
-    }
+    run(&mut world, rules::BURN_PERIOD_TICKS * 4);
     assert!(
         world.health.get(mark).expect("standing").hp < full,
         "what stands in it burns"
@@ -125,9 +123,7 @@ fn the_rot_burns_and_slows_what_stands_in_it_and_lifts_when_switched_off() {
         !carries(&world, pudge, ModifierKind::Rot { level: 0 }),
         "it is switched off"
     );
-    for _ in 0..3 {
-        world.step();
-    }
+    run(&mut world, 3);
     assert!(
         !carries(&world, mark, ModifierKind::Slowed { pct: 0 }),
         "and nothing is left slowed"
@@ -192,9 +188,7 @@ fn the_rot_never_kills_the_one_carrying_it() {
         },
     );
     world.health.insert(pudge, health(20));
-    for _ in 0..rules::BURN_PERIOD_TICKS * 40 {
-        world.step();
-    }
+    run(&mut world, rules::BURN_PERIOD_TICKS * 40);
     assert!(
         world.health.get(pudge).expect("standing").hp.to_int() < 20,
         "it does burn its owner"
@@ -216,9 +210,7 @@ fn a_dismember_holds_what_it_eats_and_feeds_the_one_eating() {
     let full = world.health.get(mark).expect("standing").hp;
     cast(&mut world, 3, Target::Unit(wire_id(mark)));
     assert!(world.is_channelling(pudge), "it takes hold");
-    for _ in 0..30 {
-        world.step();
-    }
+    run(&mut world, 30);
     assert!(
         carries(&world, mark, ModifierKind::Stunned),
         "what it holds cannot act"

@@ -56,9 +56,7 @@ fn an_order_to_walk_moves_a_body_and_turns_it_first() {
         Some(start),
         "the first tick is spent coming round"
     );
-    for _ in 0..30 {
-        world.step();
-    }
+    run(&mut world, 30);
     let now = world.transform.get(hero).expect("alive").pos;
     assert!(now.x < start.x, "it walks towards where it was sent");
     // Coming round costs whole ticks, so a turn a little short of the way
@@ -104,9 +102,7 @@ fn two_bodies_on_one_spot_are_eased_apart() {
     let one = world.spawn_unit(&MELEE_CREEP, Team::Radiant, at);
     let other = world.spawn_unit(&MELEE_CREEP, Team::Radiant, at);
     world.settle();
-    for _ in 0..30 {
-        world.step();
-    }
+    run(&mut world, 30);
     let (a, b) = (
         world.transform.get(one).expect("alive").pos,
         world.transform.get(other).expect("alive").pos,
@@ -155,17 +151,13 @@ fn a_creep_that_has_stood_long_enough_shoves_through() {
     }
     world.settle();
     world.set_order(creep, UnitOrder::AttackMove { pos: aim });
-    for _ in 0..rules::MARCH_SHOVE_TICKS - 2 {
-        world.step();
-    }
+    run(&mut world, rules::MARCH_SHOVE_TICKS - 2);
     assert_eq!(
         world.transform.get(creep).map(|t| t.pos),
         Some(at),
         "boxed in, it does not move"
     );
-    for _ in 0..12 {
-        world.step();
-    }
+    run(&mut world, 12);
     assert_ne!(
         world.transform.get(creep).map(|t| t.pos),
         Some(at),
@@ -395,9 +387,7 @@ fn a_walker_goes_round_a_wall_of_bodies_and_a_marcher_is_held_by_it() {
     world.settle();
     let goal = Vec2::from_ints(5900, 6000);
     world.set_order(creep, UnitOrder::AttackMove { pos: goal });
-    for _ in 0..130 {
-        world.step();
-    }
+    run(&mut world, 130);
     let at = world.transform.get(creep).expect("standing").pos;
     assert!(
         at.x < Fixed::from_int(5400),
@@ -433,9 +423,7 @@ fn a_hero_touching_a_tower_and_sent_past_it_goes_round_briskly() {
 #[test]
 fn a_hero_walks_round_a_wave_stood_fighting() {
     let mut world = the_demo_lane_at_its_first_wave();
-    for _ in 0..(12 * rules::TICKS_PER_SECOND) {
-        world.step();
-    }
+    run(&mut world, 12 * rules::TICKS_PER_SECOND);
     let creeps: Vec<Entity> = world
         .entities
         .iter()
@@ -516,19 +504,13 @@ fn a_hero_pacing_before_a_wave_holds_the_creep_it_covers() {
     let ticks = 10 * rules::TICKS_PER_SECOND;
     let mut world = the_demo_lane_at_its_first_wave();
     let route = world.walked_lanes()[0][0].clone();
-    for _ in 0..30 {
-        world.step();
-    }
+    run(&mut world, 30);
     let (start, start_mean) = wave_progress(&world, &route);
-    for _ in 0..ticks {
-        world.step();
-    }
+    run(&mut world, ticks);
     let (_, free_mean) = wave_progress(&world, &route);
     // The same wave again, with a hero set down just ahead of it.
     let mut world = the_demo_lane_at_its_first_wave();
-    for _ in 0..30 {
-        world.step();
-    }
+    run(&mut world, 30);
     let (front, _) = wave_progress(&world, &route);
     let hero = hero_at(&mut world, along_lane(&route, front + 70, 0));
     world.settle();
@@ -639,9 +621,7 @@ fn a_hero_among_trees_too_close_for_the_route_margin_still_walks_home() {
         world.settle();
         let home = map.fountains[usize::from(team == Team::Dire)];
         world.set_order(hero, UnitOrder::Move { pos: home });
-        for _ in 0..(5 * rules::TICKS_PER_SECOND) {
-            world.step();
-        }
+        run(&mut world, 5 * rules::TICKS_PER_SECOND);
         let now = world.transform.get(hero).expect("standing").pos;
         let gained = isqrt64(start.distance_squared(home)) - isqrt64(now.distance_squared(home));
         assert!(
@@ -684,9 +664,7 @@ fn the_followers_of_a_held_lead_creep_queue_behind_it() {
     let touch = rules::HERO_COLLISION + rules::MELEE_CREEP_COLLISION + 1;
     let hero = hero_at(&mut world, point_along(at, aim, rules::units(touch)));
     world.set_order(hero, UnitOrder::Stand);
-    for _ in 0..(2 * rules::TICKS_PER_SECOND) {
-        world.step();
-    }
+    run(&mut world, 2 * rules::TICKS_PER_SECOND);
     let front = progress(&world, lead);
     let followers: Vec<Entity> = radiant_marchers(&world)
         .into_iter()

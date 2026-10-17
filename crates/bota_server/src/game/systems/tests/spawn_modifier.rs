@@ -3,7 +3,7 @@
 use bota_core::{MELEE_CREEP, RANGED_CREEP, SHADOW_FIEND, rules, tower_def};
 
 use super::support::{a_spec, spec};
-use crate::game::tests::support;
+use crate::game::tests::support::{self, run};
 use crate::game::{
     AppliedModifier, AppliedModifiers, AppliedOrigin, Command, Def, Entity, MAX_SPAWN_MODIFIERS,
     MAX_SPAWN_TARGETS, MatchConfig, MatchConfigError, ModifierDuration, Place, SpawnCategory,
@@ -310,9 +310,7 @@ fn a_respawned_hero_is_seeded_afresh_and_stands_full_at_its_maximum() {
         assert!(!world.alive(hero), "the blow was fatal");
         let wait = world.seats[0].respawn_left;
         assert!(wait > 0);
-        for _ in 0..=wait {
-            world.step();
-        }
+        run(&mut world, wait + 1);
         let reborn = world.seats[0].unit.expect("the hero comes back");
         assert_eq!(
             max_hp(&world, reborn),

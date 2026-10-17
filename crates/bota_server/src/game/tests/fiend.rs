@@ -141,9 +141,7 @@ fn an_order_to_the_body_in_the_cast_point_breaks_the_raze_off_with_nothing_spent
     let (mut world, fiend, mark) = fiend_and_a_mark(rules::RAZE_DISTANCE[0]);
     let mana = world.mana.get(fiend).expect("a pool").mana;
     cast(&mut world, RAZE_NEAR_SLOT, Target::None);
-    for _ in 0..5 {
-        world.step();
-    }
+    run(&mut world, 5);
     stop_click(&mut world);
     let mut burnt = Vec::new();
     for _ in 0..30 {
@@ -196,9 +194,7 @@ fn a_raze_or_a_requiem_burns_the_creep_at_a_tower_and_leaves_the_tower_whole() {
         world.step();
         let (was_creep, was_tower) = (hp(&world, creep), hp(&world, tower));
         cast_through(&mut world, slot, point);
-        for _ in 0..ticks {
-            world.step();
-        }
+        run(&mut world, ticks);
         assert!(
             hp(&world, creep) < was_creep,
             "{case}: the creep at the tower feels it"
@@ -299,9 +295,7 @@ fn the_presence_wears_down_the_armor_of_enemies_that_see_its_carrier() {
         Team::Dire,
         Vec2::from_ints(5000 + rules::PRESENCE_RADIUS + 500, 5000),
     );
-    for _ in 0..rules::PRESENCE_LINGER_TICKS {
-        world.step();
-    }
+    run(&mut world, rules::PRESENCE_LINGER_TICKS);
     assert!(
         !world.can_see(Team::Dire, fiend),
         "the Dire side is blind to him"
@@ -386,9 +380,7 @@ fn a_raze_leaves_its_mark_where_it_lands_for_whoever_sees_the_spot() {
             .all(|shown| shown.hero != Some(HeroId::SHADOW_FIEND)),
         "and still does not see the fiend"
     );
-    for _ in 0..rules::MARK_TICKS {
-        world.step();
-    }
+    run(&mut world, rules::MARK_TICKS);
     assert!(
         world
             .view_full()
@@ -511,9 +503,7 @@ fn a_requiem_line_tears_magic_resistance_by_a_share_of_what_it_keeps_out() {
     let resist = |world: &World| shown(world, None, foe).magic_resist;
     assert_eq!(resist(&world), Fixed::from_ratio(1, 4), "a hero's own");
     cast_through(&mut world, REQUIEM_SLOT, rules::REQUIEM_CAST_POINT_MS);
-    for _ in 0..10 {
-        world.step();
-    }
+    run(&mut world, 10);
     // 1 - (1 - 0.25) * 1.05: what came through grows by five percent.
     assert_eq!(resist(&world), Fixed::from_ratio(2125, 10_000));
     let shown = shown(&world, None, foe);

@@ -66,9 +66,7 @@ fn a_swing_lands_on_whoever_it_began_against() {
     // Set on somebody else halfway through.
     world.set_target(attacker, other);
     let was = world.health.get(mark).expect("standing").hp;
-    for _ in 0..ticks_of(rules::MELEE_CREEP_ATTACK_POINT) + 1 {
-        world.step();
-    }
+    run(&mut world, ticks_of(rules::MELEE_CREEP_ATTACK_POINT) + 1);
     assert!(
         world.health.get(mark).expect("standing").hp < was,
         "and landed on the one it began against"

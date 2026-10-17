@@ -49,9 +49,7 @@ fn the_feast_hastens_its_caster_at_once_and_for_eight_seconds() {
         rules::FEAST_COOLDOWN[0] - 1,
         "21 s on the clock from the cast"
     );
-    for _ in 1..rules::FEAST_TICKS {
-        world.step();
-    }
+    run(&mut world, rules::FEAST_TICKS - 1);
     assert_eq!(
         world.stats.get(fiend).expect("settled").attack_speed,
         before.attack_speed,
@@ -88,9 +86,7 @@ fn the_feast_takes_souls_from_two_enemies_every_half_second_heroes_first_up_to_i
 fn once_the_feast_is_over_the_souls_of_the_living_go_and_the_dead_linger_for_eight_seconds() {
     let (mut world, fiend, _hero, [near, ..]) = a_feast_table();
     cast(&mut world, FEAST_SLOT, Target::None);
-    for _ in 0..30 {
-        world.step();
-    }
+    run(&mut world, 30);
     assert_eq!(souls(&world, fiend), 6);
     world.bury(vec![(near, Some(fiend))], &mut Vec::new());
     assert_eq!(
@@ -112,9 +108,7 @@ fn once_the_feast_is_over_the_souls_of_the_living_go_and_the_dead_linger_for_eig
             stacks: Some(1),
         })
     );
-    for _ in 0..rules::FEAST_LINGER_TICKS {
-        world.step();
-    }
+    run(&mut world, rules::FEAST_LINGER_TICKS);
     assert_eq!(feast_effect(&world, fiend), None, "the linger has run out");
     assert_eq!(souls(&world, fiend), 2, "and two are within the cap");
 }
@@ -124,9 +118,7 @@ fn souls_a_feast_carries_past_the_cap_are_lost_when_the_linger_ends() {
     let (mut world, fiend, hero, _creeps) = a_feast_table();
     hand_souls(&mut world, fiend, rules::NECRO_SOUL_CAP);
     cast(&mut world, FEAST_SLOT, Target::None);
-    for _ in 0..30 {
-        world.step();
-    }
+    run(&mut world, 30);
     assert_eq!(souls(&world, fiend), 26, "past the cap while it runs");
     world.bury(vec![(hero, Some(fiend))], &mut Vec::new());
     assert_eq!(souls(&world, fiend), 26, "a kill adds nothing past the cap");
@@ -138,9 +130,7 @@ fn souls_a_feast_carries_past_the_cap_are_lost_when_the_linger_ends() {
         23,
         "the three living creeps' souls go"
     );
-    for _ in 0..rules::FEAST_LINGER_TICKS {
-        world.step();
-    }
+    run(&mut world, rules::FEAST_LINGER_TICKS);
     assert_eq!(souls(&world, fiend), rules::NECRO_SOUL_CAP);
 }
 
@@ -148,9 +138,7 @@ fn souls_a_feast_carries_past_the_cap_are_lost_when_the_linger_ends() {
 fn a_raze_in_a_feast_burns_for_every_soul_the_feast_has_taken() {
     let (mut world, fiend, _hero, [near, ..]) = a_feast_table();
     cast(&mut world, FEAST_SLOT, Target::None);
-    for _ in 0..15 {
-        world.step();
-    }
+    run(&mut world, 15);
     assert_eq!(souls(&world, fiend), 4);
     let events = cast_through(&mut world, 0, rules::RAZE_CAST_POINT_MS);
     assert_eq!(burns_on(&events, near), vec![85 + 2 * 6]);
@@ -160,9 +148,7 @@ fn a_raze_in_a_feast_burns_for_every_soul_the_feast_has_taken() {
 fn the_feast_goes_off_beside_a_raze_without_breaking_its_cast_point() {
     let (mut world, fiend, _hero, [near, ..]) = a_feast_table();
     cast(&mut world, 0, Target::None);
-    for _ in 0..5 {
-        world.step();
-    }
+    run(&mut world, 5);
     cast(&mut world, FEAST_SLOT, Target::None);
     assert!(feast_effect(&world, fiend).is_some(), "the feast is on");
     let mut burnt = Vec::new();
@@ -181,9 +167,7 @@ fn a_fiend_falling_mid_feast_loses_the_feasts_souls_before_his_share() {
     let (mut world, fiend, _hero, _creeps) = a_feast_table();
     hand_souls(&mut world, fiend, 10);
     cast(&mut world, FEAST_SLOT, Target::None);
-    for _ in 0..30 {
-        world.step();
-    }
+    run(&mut world, 30);
     assert_eq!(souls(&world, fiend), 16);
     world.bury(vec![(fiend, None)], &mut Vec::new());
     let back = back_on_its_feet(&mut world);

@@ -114,6 +114,13 @@ pub(crate) fn config() -> MatchConfig {
     }
 }
 
+/// Steps a world `ticks` times.
+pub(crate) fn run(world: &mut World, ticks: u32) {
+    for _ in 0..ticks {
+        world.step();
+    }
+}
+
 /// A match on [`config`] and its one hero, before any tick.
 pub(crate) fn match_hero() -> (World, Entity) {
     let world = World::for_match(&config(), config().rng());
@@ -1006,9 +1013,7 @@ pub(crate) fn ranged_damage_after_ticks(
 ) -> i32 {
     let (mut world, _, mark) = ranged_duel(source, target, attacker_def, target_def);
     let before = world.health.get(mark).expect("target health").hp;
-    for _ in 0..512 {
-        world.step();
-    }
+    run(&mut world, 512);
     let after = world.health.get(mark).expect("target survives").hp;
     (before - after).to_int()
 }
@@ -1147,9 +1152,8 @@ pub(crate) fn along_lane(route: &[Vec2], progress: i64, aside: i64) -> Vec2 {
 
 /// Steps the world through seat 0's respawn wait and hands back its new body.
 pub(crate) fn back_on_its_feet(world: &mut World) -> Entity {
-    for _ in 0..world.seats[0].respawn_left {
-        world.step();
-    }
+    let wait = world.seats[0].respawn_left;
+    run(world, wait);
     world.seats[0].unit.expect("it came back")
 }
 

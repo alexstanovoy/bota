@@ -352,9 +352,7 @@ fn a_felled_tree_opens_a_gap_in_the_row_and_its_regrowth_shuts_it() {
         world.can_see(Team::Radiant, behind),
         "with the tree down, the gap shows what stands behind it"
     );
-    for _ in 0..rules::TREE_REGROW_TICKS {
-        world.step();
-    }
+    run(&mut world, rules::TREE_REGROW_TICKS);
     assert_eq!(world.trees.felled().count(), 0, "the tree grew back");
     assert!(!world.can_see(Team::Radiant, behind), "and shuts the gap");
 }

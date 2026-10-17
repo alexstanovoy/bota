@@ -3,7 +3,7 @@
 use bota_core::{ITEMS, MELEE_CREEP, ability_mana_cost, assist_gold, hero_bounty, rules};
 
 use super::support::{a_spec, spec};
-use crate::game::tests::support::{self, fiend_against_fiend, seat_order, shown};
+use crate::game::tests::support::{self, fiend_against_fiend, run, seat_order, shown};
 use crate::game::{Entity, Event, ItemStack, MatchConfig, World, wire_id};
 use bota_proto::{
     AbilityId, AbilitySlot, Cheat, DamageKind, EntityId, EventKind, Fixed, ItemId,
@@ -397,9 +397,7 @@ fn a_fallen_hero_takes_its_modifier_with_it_and_respawns_clean() {
     assert!(!world.applied.contains(hero), "the body took it with it");
     let wait = world.seats[0].respawn_left;
     assert!(wait > 0);
-    for _ in 0..=wait {
-        world.step();
-    }
+    run(&mut world, wait + 1);
     let reborn = world.seats[0].unit.expect("the hero comes back");
     assert!(!world.applied.contains(reborn), "and starts clean");
 }

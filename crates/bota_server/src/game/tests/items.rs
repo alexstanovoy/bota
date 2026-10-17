@@ -105,9 +105,7 @@ fn a_quelling_blade_takes_a_tree_down_and_the_tree_comes_back() {
         world.inventory.get(hero).expect("has a bag").slots[0].is_some(),
         "the blade itself is not spent on it"
     );
-    for _ in 0..rules::TREE_REGROW_TICKS + 1 {
-        world.step();
-    }
+    run(&mut world, rules::TREE_REGROW_TICKS + 1);
     assert_eq!(world.trees.felled().count(), 0, "in time it comes back");
     assert!(sight_stopped_at(&world, tree), "and stops a look again");
 }
@@ -170,9 +168,7 @@ fn a_branch_puts_a_tree_up_and_eating_that_one_feeds_twice_as_long() {
     let (mut world, hero, tree) = a_hero_by_the_trees(ItemId::IRON_BRANCH, 1);
     let spot = tree + Vec2::from_ints(240, 0);
     assert!(world.use_item(hero, 0, Target::Pos(spot), &mut Vec::new()));
-    for _ in 0..rules::PLANTED_TREE_TICKS + 1 {
-        world.step();
-    }
+    run(&mut world, rules::PLANTED_TREE_TICKS + 1);
     assert!(world.trees.planted().is_empty(), "in time it goes");
     assert!(!sight_stopped_at(&world, spot), "and stops nothing");
 }
@@ -595,9 +591,7 @@ fn the_view_reports_the_regeneration_the_server_applies() {
     assert_eq!((fountain_hp.raw, fountain_mana.raw), served(&world));
 
     world.transform.get_mut(hero).expect("hero").pos = Vec2::from_ints(5000, 5000);
-    for _ in 0..=rules::FOUNTAIN_HEAL_LINGER_TICKS {
-        world.step();
-    }
+    run(&mut world, rules::FOUNTAIN_HEAL_LINGER_TICKS + 1);
     let (plain_hp, plain_mana) = regen(&world);
     assert_eq!((plain_hp.raw, plain_mana.raw), served(&world));
     assert!(fountain_hp > plain_hp && fountain_mana > plain_mana);

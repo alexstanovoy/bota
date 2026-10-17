@@ -360,9 +360,7 @@ fn the_feast_souls_talent_takes_five_from_a_hero() {
         world.settle();
         stop_click(&mut world);
         cast(&mut world, FEAST_SLOT, Target::None);
-        for _ in 0..rules::FEAST_PERIOD_TICKS {
-            world.step();
-        }
+        run(&mut world, rules::FEAST_PERIOD_TICKS);
         assert_eq!(souls(&world, fiend), taken, "{talent:?}");
     }
 }

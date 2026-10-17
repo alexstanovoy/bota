@@ -32,9 +32,7 @@ fn a_courier_brought_down_comes_back_in_its_own_time() {
         world.validate_order(SlotId(0), Some(wire_id(courier)), &burst),
         Err(RejectReason::NotYourUnit)
     );
-    for _ in 0..rules::COURIER_RESPAWN_TICKS {
-        world.step();
-    }
+    run(&mut world, rules::COURIER_RESPAWN_TICKS);
     let back = world.seats[0].courier.expect("it came back");
     assert_ne!(back, courier, "as a new body");
     assert_eq!(world.errand.get(back), Some(&Errand::None));
@@ -154,9 +152,7 @@ fn a_courier_told_to_go_at_a_unit_follows_it() {
             target: Target::Unit(wire_id(mark)),
         },
     }]);
-    for _ in 0..120 {
-        world.step();
-    }
+    run(&mut world, 120);
     let near = |world: &World| {
         let at = world.transform.get(courier).expect("standing").pos;
         let to = world.transform.get(mark).expect("standing").pos;
@@ -165,9 +161,7 @@ fn a_courier_told_to_go_at_a_unit_follows_it() {
     assert!(near(&world), "it went to it");
     // Moved on, it is followed rather than left behind.
     world.transform.get_mut(mark).expect("standing").pos = home + Vec2::from_ints(700, 900);
-    for _ in 0..200 {
-        world.step();
-    }
+    run(&mut world, 200);
     assert!(near(&world), "and it keeps up when the mark moves");
 }
 
@@ -334,9 +328,7 @@ fn an_errand_with_nothing_to_do_sends_the_courier_home() {
         Some(&Errand::GoingHome),
         "with nothing to take it goes home"
     );
-    for _ in 0..400 {
-        world.step();
-    }
+    run(&mut world, 400);
     assert_eq!(
         world.transform.get(courier).map(|at| at.pos),
         Some(home),
@@ -373,9 +365,7 @@ fn a_shielded_courier_takes_nothing() {
         Some(full),
         "nothing gets through while it holds"
     );
-    for _ in 0..rules::COURIER_SHIELD_TICKS {
-        world.step();
-    }
+    run(&mut world, rules::COURIER_SHIELD_TICKS);
     world.push_hit(None, courier, 100, DamageKind::Pure);
     world.step();
     assert!(
@@ -398,9 +388,7 @@ fn a_courier_keeps_its_load_through_death() {
             .is_some_and(|bag| bag.held().count() == 1),
         "the load waits on the seat"
     );
-    for _ in 0..rules::COURIER_RESPAWN_TICKS + 2 {
-        world.step();
-    }
+    run(&mut world, rules::COURIER_RESPAWN_TICKS + 2);
     let back = world.seats[0].courier.expect("stands again");
     assert_ne!(back, courier, "in a new body");
     assert_eq!(held(&world, back), 1, "with the load back aboard");
