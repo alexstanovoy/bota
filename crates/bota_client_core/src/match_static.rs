@@ -200,29 +200,19 @@ pub fn map_maximum_raw(cells: u32) -> i64 {
 
 pub(crate) fn validate_positions(
     field: &'static str,
-    positions: &[Vec2],
+    positions: impl IntoIterator<Item = Vec2>,
     extent: RawExtent,
 ) -> Result<(), SessionError> {
-    for (index, position) in positions.iter().enumerate() {
-        validate_position(field, index, *position, extent)?;
-    }
-    Ok(())
-}
-
-pub(crate) fn validate_position(
-    field: &'static str,
-    index: usize,
-    position: Vec2,
-    extent: RawExtent,
-) -> Result<(), SessionError> {
-    if !extent.contains(position.x.raw) || !extent.contains(position.y.raw) {
-        return Err(SessionError::PositionOutOfMap {
-            field,
-            index,
-            x_raw: position.x.raw,
-            y_raw: position.y.raw,
-            extent,
-        });
+    for (index, position) in positions.into_iter().enumerate() {
+        if !extent.contains(position.x.raw) || !extent.contains(position.y.raw) {
+            return Err(SessionError::PositionOutOfMap {
+                field,
+                index,
+                x_raw: position.x.raw,
+                y_raw: position.y.raw,
+                extent,
+            });
+        }
     }
     Ok(())
 }
@@ -318,7 +308,7 @@ fn validate_static_inputs(info: &MatchInfo) -> Result<(), SessionError> {
     }
     validate_positions(
         "MatchInfo.trees",
-        &info.trees,
+        info.trees.iter().copied(),
         RawExtent::map(info.terrain_cells),
     )?;
     for entry in &info.shop {

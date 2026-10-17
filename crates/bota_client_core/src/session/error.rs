@@ -187,50 +187,43 @@ impl<E: Error + 'static> Error for IngestError<E> {
 }
 
 impl fmt::Display for SessionError {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::ZeroTickRate => formatter.write_str("MatchInfo.tick_rate must be positive"),
-            Self::SeatCount(actual) => write!(
-                formatter,
-                "MatchInfo.picks has {actual} seats; expected 1..={MAX_SEATS}"
-            ),
-            Self::OwnSlotOutOfRange(slot) => write!(
-                formatter,
-                "own SlotId({slot}) is outside supported seats 0..{MAX_SEATS}"
-            ),
-            Self::MissingOwnPick(slot) => {
-                write!(formatter, "MatchInfo.picks has no own SlotId({slot})")
+            Self::ZeroTickRate => f.write_str("MatchInfo.tick_rate must be positive"),
+            Self::SeatCount(n) => {
+                write!(f, "MatchInfo.picks has {n} seats; expected 1..={MAX_SEATS}")
             }
+            Self::OwnSlotOutOfRange(slot) => {
+                write!(
+                    f,
+                    "own SlotId({slot}) is outside supported seats 0..{MAX_SEATS}"
+                )
+            }
+            Self::MissingOwnPick(slot) => write!(f, "MatchInfo.picks has no own SlotId({slot})"),
             Self::WrongOwnHero { actual, expected } => write!(
-                formatter,
+                f,
                 "own slot picked {}, expected {}",
                 Named(*actual),
                 Named(*expected)
             ),
-            Self::InvalidOwnTeam(team) => {
-                write!(formatter, "own slot has non-playable team {team:?}")
+            Self::InvalidOwnTeam(team) => write!(f, "own slot has non-playable team {team:?}"),
+            Self::DuplicatePickSlot(slot) => write!(f, "MatchInfo.picks repeats SlotId({slot})"),
+            Self::PickSlotOutOfRange(slot) => {
+                write!(f, "MatchInfo.picks contains unsupported SlotId({slot})")
             }
-            Self::DuplicatePickSlot(slot) => {
-                write!(formatter, "MatchInfo.picks repeats SlotId({slot})")
-            }
-            Self::PickSlotOutOfRange(slot) => write!(
-                formatter,
-                "MatchInfo.picks contains unsupported SlotId({slot})"
-            ),
             Self::TerrainAxis(cells) => write!(
-                formatter,
+                f,
                 "MatchInfo.terrain_cells is {cells}; expected 1..={MAX_TERRAIN_AXIS}"
             ),
             Self::TerrainCoverage { actual, expected } => write!(
-                formatter,
+                f,
                 "MatchInfo.terrain_rle covers {actual} cells; expected {expected}"
             ),
-            Self::ZeroTerrainRun(index) => write!(
-                formatter,
-                "MatchInfo.terrain_rle entry {index} has zero run length"
-            ),
+            Self::ZeroTerrainRun(index) => {
+                write!(f, "MatchInfo.terrain_rle entry {index} has zero run length")
+            }
             Self::OpaqueCellOutOfRange { x, y, cells } => write!(
-                formatter,
+                f,
                 "MatchInfo.opaque_cells contains ({x}, {y}) outside {cells}x{cells} terrain"
             ),
             Self::PositionOutOfMap {
@@ -240,114 +233,95 @@ impl fmt::Display for SessionError {
                 y_raw,
                 extent,
             } => write!(
-                formatter,
+                f,
                 "{field}[{index}] position raw ({x_raw}, {y_raw}) is outside {}..={}",
                 extent.minimum(),
                 extent.maximum()
             ),
-            _ => self.fmt_snapshot(formatter),
+            _ => self.fmt_snapshot(f),
         }
     }
 }
 
 impl SessionError {
-    fn fmt_snapshot(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt_snapshot(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::WrongViewer(actual, expected) => write!(
-                formatter,
+                f,
                 "snapshot viewer {actual:?} differs from tracker team {expected:?}"
             ),
             Self::SnapshotTick { incoming, current } => write!(
-                formatter,
+                f,
                 "snapshot tick {incoming} does not follow current tick {current}"
             ),
             Self::SkippedTicks { incoming } => write!(
-                formatter,
+                f,
                 "snapshot tick {incoming} tells skipped ticks out of order or outside its gap"
             ),
-            Self::MissingOwnPlayer(slot) => {
-                write!(formatter, "snapshot players has no own SlotId({slot})")
-            }
+            Self::MissingOwnPlayer(slot) => write!(f, "snapshot players has no own SlotId({slot})"),
             Self::MissingOwnGold => {
-                formatter.write_str("own player gold is absent in seat-specific snapshot")
+                f.write_str("own player gold is absent in seat-specific snapshot")
             }
             Self::MissingOwnStash => {
-                formatter.write_str("own player stash is absent in seat-specific snapshot")
+                f.write_str("own player stash is absent in seat-specific snapshot")
             }
-            Self::MissingOwnHero(id) => write!(
-                formatter,
-                "own live hero EntityId({}, {}) is absent from visible units",
-                id.idx, id.generation
-            ),
+            Self::MissingOwnHero(id) => {
+                write!(f, "own live hero {} is absent from visible units", Id(*id))
+            }
             Self::InvalidOwnHero(id) => write!(
-                formatter,
-                "own live hero EntityId({}, {}) has inconsistent kind, team, owner, or hero",
-                id.idx, id.generation
+                f,
+                "own live hero {} has inconsistent kind, team, owner, or hero",
+                Id(*id)
             ),
             Self::AmbiguousOwnHero {
-                scoreboard,
+                scoreboard: Some(scoreboard),
                 visible,
-            } => match scoreboard {
-                Some(scoreboard) => write!(
-                    formatter,
-                    "own slot has visible hero EntityId({}, {}) besides scoreboard hero EntityId({}, {})",
-                    visible.idx, visible.generation, scoreboard.idx, scoreboard.generation
-                ),
-                None => write!(
-                    formatter,
-                    "own slot has visible hero EntityId({}, {}) while scoreboard body is absent",
-                    visible.idx, visible.generation
-                ),
-            },
-            Self::AmbiguousOwnCourier { first, second } => write!(
-                formatter,
-                "own slot has ambiguous couriers EntityId({}, {}) and EntityId({}, {})",
-                first.idx, first.generation, second.idx, second.generation
+            } => write!(
+                f,
+                "own slot has visible hero {} besides scoreboard hero {}",
+                Id(*visible),
+                Id(*scoreboard)
             ),
-            _ => self.fmt_roster(formatter),
+            Self::AmbiguousOwnHero {
+                scoreboard: None,
+                visible,
+            } => write!(
+                f,
+                "own slot has visible hero {} while scoreboard body is absent",
+                Id(*visible)
+            ),
+            Self::AmbiguousOwnCourier { first, second } => write!(
+                f,
+                "own slot has ambiguous couriers {} and {}",
+                Id(*first),
+                Id(*second)
+            ),
+            _ => self.fmt_roster(f),
         }
     }
 
-    fn fmt_roster(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt_roster(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::DuplicateUnit(id) => write!(
-                formatter,
-                "snapshot units repeats EntityId({}, {})",
-                id.idx, id.generation
-            ),
-            Self::DuplicateProjectile(id) => write!(
-                formatter,
-                "snapshot projectiles repeats EntityId({}, {})",
-                id.idx, id.generation
-            ),
-            Self::DuplicateLoot(id) => write!(
-                formatter,
-                "snapshot loot repeats EntityId({}, {})",
-                id.idx, id.generation
-            ),
-            Self::DuplicatePlayer(slot) => {
-                write!(formatter, "snapshot players repeats SlotId({slot})")
-            }
-            Self::UnsortedPlayers => {
-                formatter.write_str("snapshot players are not sorted by SlotId")
-            }
-            Self::UnsortedTalents => formatter.write_str(
+            Self::DuplicateUnit(id) => write!(f, "snapshot units repeats {}", Id(*id)),
+            Self::DuplicateProjectile(id) => write!(f, "snapshot projectiles repeats {}", Id(*id)),
+            Self::DuplicateLoot(id) => write!(f, "snapshot loot repeats {}", Id(*id)),
+            Self::DuplicatePlayer(slot) => write!(f, "snapshot players repeats SlotId({slot})"),
+            Self::UnsortedPlayers => f.write_str("snapshot players are not sorted by SlotId"),
+            Self::UnsortedTalents => f.write_str(
                 "snapshot talents are not strictly sorted by SlotId or name an unknown seat",
             ),
-            Self::MissingRosterPlayer(slot) => write!(
-                formatter,
-                "snapshot players has no MatchInfo pick SlotId({slot})"
-            ),
-            Self::UnknownRosterPlayer(slot) => write!(
-                formatter,
-                "snapshot players contains unknown SlotId({slot})"
-            ),
+            Self::MissingRosterPlayer(slot) => {
+                write!(f, "snapshot players has no MatchInfo pick SlotId({slot})")
+            }
+            Self::UnknownRosterPlayer(slot) => {
+                write!(f, "snapshot players contains unknown SlotId({slot})")
+            }
             Self::WrongRosterTeam {
                 slot,
                 actual,
                 expected,
             } => write!(
-                formatter,
+                f,
                 "snapshot player SlotId({slot}) team {actual:?} differs from MatchInfo pick {expected:?}"
             ),
             Self::WrongRosterHero {
@@ -355,19 +329,19 @@ impl SessionError {
                 actual,
                 expected,
             } => write!(
-                formatter,
+                f,
                 "snapshot player SlotId({slot}) plays {}, differing from MatchInfo pick {}",
                 Named(*actual),
                 Named(*expected)
             ),
-            _ => self.fmt_stream(formatter),
+            _ => self.fmt_stream(f),
         }
     }
 
-    fn fmt_stream(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt_stream(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::RestorationReport { channel, amount } => write!(
-                formatter,
+                f,
                 "Healed {channel} report {amount} is outside 0..={MAX_RESTORATION_REPORT}"
             ),
             Self::LimitExceeded {
@@ -375,74 +349,71 @@ impl SessionError {
                 actual,
                 limit,
             } => {
-                write!(formatter, "{field} has {actual} entries; limit is {limit}")
+                write!(f, "{field} has {actual} entries; limit is {limit}")
             }
-            Self::UnsortedUnits => {
-                formatter.write_str("snapshot units are not sorted by full EntityId")
-            }
+            Self::UnsortedUnits => f.write_str("snapshot units are not sorted by full EntityId"),
             Self::UnsortedAggro => {
-                formatter.write_str("snapshot aggro is not sorted strictly by unit EntityId")
+                f.write_str("snapshot aggro is not sorted strictly by unit EntityId")
             }
             Self::UnknownAggroUnit(id) => write!(
-                formatter,
-                "snapshot aggro names EntityId({}, {}), which is not a visible unit",
-                id.idx, id.generation
+                f,
+                "snapshot aggro names {}, which is not a visible unit",
+                Id(*id)
             ),
-            Self::AggroOutOfRange(id) => write!(
-                formatter,
-                "snapshot aggro of EntityId({}, {}) holds a timer out of range",
-                id.idx, id.generation
-            ),
+            Self::AggroOutOfRange(id) => {
+                write!(
+                    f,
+                    "snapshot aggro of {} holds a timer out of range",
+                    Id(*id)
+                )
+            }
             Self::InvalidFelledTree(index) => write!(
-                formatter,
+                f,
                 "snapshot felled tree index {index} is outside static tree list"
             ),
-            Self::PositionDeltaOverflow(id) => write!(
-                formatter,
-                "position delta for EntityId({}, {}) exceeds Vec2 range",
-                id.idx, id.generation
-            ),
+            Self::PositionDeltaOverflow(id) => {
+                write!(f, "position delta for {} exceeds Vec2 range", Id(*id))
+            }
             Self::EventTickNotIncreasing { incoming, previous } => write!(
-                formatter,
+                f,
                 "event batch tick {incoming} must be greater than last event tick {previous}"
             ),
-            _ => self.fmt_order(formatter),
+            _ => self.fmt_order(f),
         }
     }
 
-    fn fmt_order(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt_order(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::OrderSequence { incoming, previous } => write!(
-                formatter,
+                f,
                 "order sequence {incoming} must be greater than last sent sequence {previous}"
             ),
-            Self::SequenceExhausted => formatter.write_str("order sequence number exhausted"),
-            Self::NoSnapshot => formatter.write_str("no snapshot has been received yet"),
+            Self::SequenceExhausted => f.write_str("order sequence number exhausted"),
+            Self::NoSnapshot => f.write_str("no snapshot has been received yet"),
             Self::TickRateMismatch { start, welcome } => write!(
-                formatter,
+                f,
                 "MatchStart tick rate {start} differs from Welcome tick rate {welcome}"
             ),
             Self::ModeMismatch { start, welcome } => write!(
-                formatter,
+                f,
                 "MatchStart mode {start:?} differs from Welcome mode {welcome:?}"
             ),
-            Self::NoPickForSeat(slot) => write!(
-                formatter,
-                "MatchStart has no hero pick for assigned slot {slot}"
-            ),
+            Self::NoPickForSeat(slot) => {
+                write!(f, "MatchStart has no hero pick for assigned slot {slot}")
+            }
             Self::WrongSeatHero {
                 slot,
                 actual,
                 expected,
             } => write!(
-                formatter,
+                f,
                 "assigned slot {slot} picked {}, expected {}",
                 Named(*actual),
                 Named(*expected)
             ),
-            Self::Stream(text) => formatter.write_str(text),
+            Self::Stream(text) => f.write_str(text),
             Self::WireMismatch { server } => write!(
-                formatter,
+                f,
                 "the server speaks wire {server:016x} and this client {WIRE_FINGERPRINT:016x}; \
                  build both from matching commits"
             ),
@@ -452,6 +423,15 @@ impl SessionError {
 }
 
 impl Error for SessionError {}
+
+/// An entity handle as the messages print it.
+struct Id(EntityId);
+
+impl fmt::Display for Id {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "EntityId({}, {})", self.0.idx, self.0.generation)
+    }
+}
 
 /// A hero by its name, or by its id when this build does not know it.
 struct Named(HeroId);

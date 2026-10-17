@@ -9,9 +9,7 @@ use crate::limits::{
     MAX_SHOP_ITEMS, MAX_SKIPPED_TICKS, MAX_SNAPSHOT_LOOT, MAX_STATIC_TREES, MAX_TRACKED_ENTITIES,
     OWN_ITEM_SLOTS, PROJECTILE_MAP_MARGIN, STASH_ITEM_SLOTS,
 };
-use crate::match_static::{
-    MatchStatic, RawExtent, check_limit, validate_position, validate_positions,
-};
+use crate::match_static::{MatchStatic, RawExtent, check_limit, validate_positions};
 use crate::session::SessionError;
 use crate::session::tracks::{EntityTrack, Owner, pair_tracked};
 
@@ -101,20 +99,21 @@ fn skipped_ticks(expect: &Expect<'_>, view: &WorldView) -> Result<(), SessionErr
 }
 
 fn unique_dynamic_handles(view: &WorldView) -> Result<(), SessionError> {
-    for (index, projectile) in view.projectiles.iter().enumerate() {
-        if view.projectiles[..index]
+    if let Some(id) = first_repeat(&view.projectiles, |p| p.id) {
+        return Err(SessionError::DuplicateProjectile(id));
+    }
+    first_repeat(&view.loot, |l| l.id).map_or(Ok(()), |id| Err(SessionError::DuplicateLoot(id)))
+}
+
+/// The first id that repeats one listed before it.
+fn first_repeat<T>(items: &[T], id: impl Fn(&T) -> EntityId) -> Option<EntityId> {
+    let mut seen = items.iter().enumerate();
+    seen.find_map(|(at, item)| {
+        items[..at]
             .iter()
-            .any(|other| other.id == projectile.id)
-        {
-            return Err(SessionError::DuplicateProjectile(projectile.id));
-        }
-    }
-    for (index, loot) in view.loot.iter().enumerate() {
-        if view.loot[..index].iter().any(|other| other.id == loot.id) {
-            return Err(SessionError::DuplicateLoot(loot.id));
-        }
-    }
-    Ok(())
+            .any(|o| id(o) == id(item))
+            .then(|| id(item))
+    })
 }
 
 fn snapshot_limits(view: &WorldView) -> Result<(), SessionError> {
@@ -394,18 +393,19 @@ pub(crate) fn position_deltas(
 
 fn snapshot_positions(cells: u32, view: &WorldView) -> Result<(), SessionError> {
     let map = RawExtent::map(cells);
-    for (index, unit) in view.units.iter().enumerate() {
-        validate_position("WorldView.units", index, unit.pos, map)?;
-    }
     let flight = map.widened(PROJECTILE_MAP_MARGIN);
-    for (index, projectile) in view.projectiles.iter().enumerate() {
-        validate_position("WorldView.projectiles", index, projectile.pos, flight)?;
-    }
-    validate_positions("WorldView.planted_trees", &view.planted_trees, map)?;
-    for (index, loot) in view.loot.iter().enumerate() {
-        validate_position("WorldView.loot", index, loot.pos, map)?;
-    }
-    Ok(())
+    validate_positions("WorldView.units", view.units.iter().map(|u| u.pos), map)?;
+    validate_positions(
+        "WorldView.projectiles",
+        view.projectiles.iter().map(|p| p.pos),
+        flight,
+    )?;
+    validate_positions(
+        "WorldView.planted_trees",
+        view.planted_trees.iter().copied(),
+        map,
+    )?;
+    validate_positions("WorldView.loot", view.loot.iter().map(|l| l.pos), map)
 }
 
 fn restoration_reports(events: &[EventKind]) -> Result<(), SessionError> {
