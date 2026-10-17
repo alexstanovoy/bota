@@ -2,8 +2,8 @@
 //! would kill.
 
 use bota_core::{
-    CarriedItem, attack_class_pct, carried_bonus, hero_def, kind_def, magic_resist_bp, mitigate,
-    rules,
+    Carried, CarriedItem, attack_class_pct, carried_bonus, hero_def, kind_def, magic_resist_bp,
+    mitigate, rules,
 };
 use bota_proto::{DamageKind, Fixed, UnitView};
 
@@ -17,6 +17,36 @@ pub struct HitRange {
     pub mid: i32,
     /// The strongest swing, with the pierce it may carry.
     pub most: i32,
+}
+
+/// What the items a unit's working inventory carries add: a muted stack and
+/// the backpack are inert.
+pub fn carried_of(unit: &UnitView) -> Carried {
+    carried_bonus(
+        unit.items
+            .iter()
+            .take(rules::INVENTORY_SLOTS)
+            .flatten()
+            .filter(|item| item.mute_left == 0)
+            .map(|item| CarriedItem {
+                id: item.id,
+                charges: item.charges.unwrap_or(0),
+                mode: item.mode,
+            }),
+        unit.hero
+            .and_then(hero_def)
+            .is_some_and(|hero| hero.unit.projectile_speed.is_some()),
+    )
+}
+
+/// `amount` of magical damage after the magic resistance `target` shows.
+pub fn magic_taken(amount: i32, target: &UnitView) -> i32 {
+    mitigate(
+        amount,
+        DamageKind::Magical,
+        Fixed::ZERO,
+        magic_resist_bp(target.magic_resist),
+    )
 }
 
 /// Health one plain, uncritical attack of `attacker` takes off `target` by
@@ -35,23 +65,7 @@ pub fn next_hit_raised(
     armor: Fixed,
     raise: i32,
 ) -> HitRange {
-    let carried = carried_bonus(
-        attacker
-            .items
-            .iter()
-            .take(rules::INVENTORY_SLOTS)
-            .flatten()
-            .filter(|item| item.mute_left == 0)
-            .map(|item| CarriedItem {
-                id: item.id,
-                charges: item.charges.unwrap_or(0),
-                mode: item.mode,
-            }),
-        attacker
-            .hero
-            .and_then(hero_def)
-            .is_some_and(|hero| hero.unit.projectile_speed.is_some()),
-    );
+    let carried = carried_of(attacker);
     let against = kind_def(target.kind);
     let creeps = if against.creep {
         carried.damage_to_creeps
@@ -67,13 +81,7 @@ pub fn next_hit_raised(
     let mid = swing(attacker.attack_damage.max(0) + raise);
     let mut most = swing(attacker.attack_damage_max + raise);
     if !against.structure && carried.pierce_damage > 0 {
-        let resist = magic_resist_bp(target.magic_resist);
-        most += mitigate(
-            carried.pierce_damage * class_pct / 100,
-            DamageKind::Magical,
-            Fixed::ZERO,
-            resist,
-        );
+        most += magic_taken(carried.pierce_damage * class_pct / 100, target);
     }
     HitRange { least, mid, most }
 }
