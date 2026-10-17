@@ -1,7 +1,7 @@
 //! The orders a client gives: what it asked for, what went out on the wire,
 //! and what stands after the server's answers.
 
-use bota_proto::{ClientMsg, EntityId, ItemSlot, ItemView, Order, RejectReason, Target, UnitView};
+use bota_proto::{EntityId, ItemSlot, ItemView, Order, RejectReason, Target, UnitView};
 
 use crate::session::{ClientSession, SessionError};
 
@@ -38,26 +38,17 @@ pub struct IssuedOrder {
     pub order: Order,
 }
 
-/// An order as it goes to the server: the caller transmits it.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct OutgoingOrder {
-    /// Sequence number, above every one before it; a rejection carries it back.
-    pub seq: u32,
-    pub unit: Option<EntityId>,
-    pub order: Order,
-    /// The tick of the snapshot it was decided on, from which the server
-    /// measures the order delay.
-    pub seen: u32,
-}
+impl IssuedOrder {
+    /// An order for the seat's own hero.
+    pub const fn hero(order: Order) -> IssuedOrder {
+        IssuedOrder { unit: None, order }
+    }
 
-impl OutgoingOrder {
-    /// The message that carries it.
-    pub const fn message(self) -> ClientMsg {
-        ClientMsg::Order {
-            seq: self.seq,
-            unit: self.unit,
-            order: self.order,
-            seen: Some(self.seen),
+    /// An order for the seat's courier, the unit `id`.
+    pub const fn courier(id: EntityId, order: Order) -> IssuedOrder {
+        IssuedOrder {
+            unit: Some(id),
+            order,
         }
     }
 }

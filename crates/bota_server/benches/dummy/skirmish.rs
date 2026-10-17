@@ -139,6 +139,7 @@ impl Skirmish {
 fn match_config() -> MatchConfig {
     MatchConfig {
         match_id: MATCH_ID,
+        stream: MATCH_ID,
         master_key: [0x11; 32],
         picks: vec![
             Pick {

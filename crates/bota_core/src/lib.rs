@@ -5,8 +5,6 @@
 //! rules to what it sees. Nothing here holds a world, an entity handle, a
 //! random stream, a clock or any I/O, so nothing here can reveal hidden
 //! state: a hidden quantity enters a function only as a parameter.
-//!
-//! See `DESIGN.md` for the architecture this follows from.
 
 #![forbid(unsafe_code)]
 
@@ -19,8 +17,9 @@ mod cells;
 mod chance;
 mod damage;
 mod economy;
-mod fiend;
+mod effect;
 mod hero;
+pub mod heroes;
 mod item;
 mod item_table;
 mod map;
@@ -50,8 +49,9 @@ pub use cells::*;
 pub use chance::*;
 pub use damage::*;
 pub use economy::*;
-pub use fiend::*;
+pub use effect::*;
 pub use hero::*;
+pub use heroes::*;
 pub use item::*;
 pub use item_table::*;
 pub use map::*;

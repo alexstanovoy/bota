@@ -5,8 +5,6 @@
 pub const COURIER_ITEM_SLOTS: usize = 6;
 pub const HERO_ITEM_SLOTS: usize = 9;
 pub const STASH_ITEM_SLOTS: usize = 6;
-/// World units covered by one terrain RLE cell.
-pub const TERRAIN_CELL_SIZE: i32 = 64;
 /// Maximum number of seats in one match.
 pub const MAX_SEATS: usize = 10;
 /// Maximum visible units per snapshot and entity records retained.
@@ -22,10 +20,18 @@ pub const MAX_SNAPSHOT_LOOT: usize = 4_096;
 pub const PROJECTILE_MAP_MARGIN: i32 = 2_048;
 /// Maximum number of ability slots accepted for any unit.
 pub const MAX_ABILITY_SLOTS: usize = 8;
+
+const _: () = {
+    let mut at = 0;
+    while at < bota_core::HEROES.len() {
+        assert!(bota_core::HEROES[at].abilities.len() <= MAX_ABILITY_SLOTS);
+        at += 1;
+    }
+};
 /// Number of own hero, stash, and courier item slots.
 pub const OWN_ITEM_SLOTS: usize = HERO_ITEM_SLOTS + STASH_ITEM_SLOTS + COURIER_ITEM_SLOTS;
-/// Maximum number of shop entries.
-pub const MAX_SHOP_ITEMS: usize = 64;
+/// Maximum number of shop entries: one for each item there is.
+pub const MAX_SHOP_ITEMS: usize = bota_core::ITEMS.len();
 /// Maximum number of components accepted for one shop entry.
 pub const MAX_SHOP_COMPONENTS: usize = 16;
 /// Maximum number of recent events retained.

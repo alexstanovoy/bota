@@ -1,6 +1,6 @@
 //! Casting abilities: what starts one, what it costs, and what each one does.
 
-use bota_core::{ability_def, fountain_pos, item_def, rules};
+use bota_core::{ability_def, at_home_shop, item_def, rules};
 use bota_proto::{AbilityId, AbilitySlot, EventKind, Fixed, Target, Team, UnitKind, Vec2};
 
 use crate::game::{Entity, Event, World, ability_hooks, wire_id};
@@ -14,10 +14,7 @@ impl World {
         ) else {
             return false;
         };
-        at.within(
-            fountain_pos(self.map, side),
-            rules::units(rules::SHOP_RANGE),
-        )
+        at_home_shop(self.map, side, at)
     }
 
     /// Casts one of an entity's abilities to the moment it has gone off:

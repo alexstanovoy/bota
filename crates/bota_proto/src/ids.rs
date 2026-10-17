@@ -28,6 +28,31 @@ pub struct SlotId(pub u8);
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct PlayerId(pub u32);
 
+/// The secret that entitles its holder to one reserved seat, or to the
+/// referee's connection.
+///
+/// Compared in constant time and never printed.
+#[derive(Serialize, Deserialize, Clone, Copy)]
+pub struct SeatKey(pub [u8; 32]);
+
+impl PartialEq for SeatKey {
+    fn eq(&self, other: &Self) -> bool {
+        let mut diff = 0u8;
+        for (a, b) in self.0.iter().zip(&other.0) {
+            diff |= a ^ b;
+        }
+        std::hint::black_box(diff) == 0
+    }
+}
+
+impl Eq for SeatKey {}
+
+impl core::fmt::Debug for SeatKey {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str("SeatKey(..)")
+    }
+}
+
 /// A side of the map, or nobody's side.
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Team {
@@ -37,6 +62,17 @@ pub enum Team {
     Dire,
     /// The jungle's own: hostile to both sides. No seat plays for it.
     Neutral,
+}
+
+impl Team {
+    /// The side across the map; the jungle's own is nobody's enemy side.
+    pub const fn enemy(self) -> Team {
+        match self {
+            Team::Radiant => Team::Dire,
+            Team::Dire => Team::Radiant,
+            Team::Neutral => Team::Neutral,
+        }
+    }
 }
 
 /// Selects one of the playable heroes.

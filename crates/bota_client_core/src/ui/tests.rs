@@ -39,8 +39,8 @@ fn the_console_turns_a_typed_line_into_a_cheat_order() {
 
 #[test]
 fn every_catalog_entry_is_named_and_found_by_its_own_id() {
-    use crate::catalog::{ABILITIES, EFFECTS, HEROES, ITEMS, ability, effect, hero, item};
-    let groups: [Vec<(u16, &str, Option<&str>)>; 3] = [
+    use crate::catalog::{ABILITIES, EFFECTS, ITEMS, ability, effect, item};
+    let groups: [Vec<(u16, &str, Option<&str>)>; 2] = [
         ABILITIES
             .iter()
             .map(|f| (f.id, f.name, ability(f.id).map(|x| x.name)))
@@ -48,10 +48,6 @@ fn every_catalog_entry_is_named_and_found_by_its_own_id() {
         ITEMS
             .iter()
             .map(|f| (f.id, f.name, item(f.id).map(|x| x.name)))
-            .collect(),
-        HEROES
-            .iter()
-            .map(|f| (f.id, f.name, hero(f.id).map(|x| x.name)))
             .collect(),
     ];
     for group in groups {
@@ -61,15 +57,14 @@ fn every_catalog_entry_is_named_and_found_by_its_own_id() {
             assert!(!name.is_empty(), "entry {id} has a name");
         }
     }
-    for face in EFFECTS {
-        assert_eq!(effect(face.id).map(|x| x.name), Some(face.name));
-        assert!(!face.name.is_empty(), "effect {} has a name", face.id);
+    for (id, face) in EFFECTS.iter().enumerate().skip(1) {
+        assert_eq!(effect(id as u16).map(|x| x.name), Some(face.name));
+        assert!(!face.name.is_empty(), "effect {id} has a name");
     }
     assert!(effect(0).is_none(), "the retired effect is gone");
     assert!(ability(ABILITIES.len() as u16).is_none());
     assert!(item(u16::MAX).is_none());
     assert!(effect(u16::MAX).is_none());
-    assert!(hero(HEROES.len() as u16).is_none());
 }
 
 #[test]
@@ -436,7 +431,7 @@ fn owned(idx: u32, kind: UnitKind, slot: Option<SlotId>) -> UnitView {
 
 #[test]
 fn a_seat_is_picked_by_the_body_it_last_stood_in() {
-    let mut app = a_started_app([Vec2::ZERO; 2], 0);
+    let mut app = a_started_app();
     let first = owned(1, UnitKind::Hero, Some(SlotId(0)));
     let id = first.id;
     app.handle(snapshot_of(
@@ -481,7 +476,7 @@ fn snapshot_of(tick: u32, units: Vec<UnitView>, players: Vec<PlayerView>) -> bot
 
 /// An app watching a replay of a match on an open 128-cell map with these
 /// fountains, a seat for one.
-fn a_started_app(fountains: [Vec2; 2], shop_range: i32) -> App {
+fn a_started_app() -> App {
     let mut app = a_silent_app();
     app.my_slot = Some(SlotId(0));
     app.handle(bota_proto::ServerMsg::MatchStart {
@@ -501,8 +496,8 @@ fn a_started_app(fountains: [Vec2; 2], shop_range: i32) -> App {
                 hero: HeroId::PUDGE,
             }],
             shop: Vec::new(),
-            fountains,
-            shop_range,
+            fountains: [Vec2::ZERO; 2],
+            shop_range: 0,
         },
     });
     app
@@ -510,7 +505,7 @@ fn a_started_app(fountains: [Vec2; 2], shop_range: i32) -> App {
 
 #[test]
 fn a_cast_point_shortens_while_a_feast_runs_on_a_hero_with_the_talent() {
-    let mut app = a_started_app([Vec2::ZERO; 2], 0);
+    let mut app = a_started_app();
     let mut fiend = owned(1, UnitKind::Hero, Some(SlotId(0)));
     fiend.hero = Some(HeroId::SHADOW_FIEND);
     let id = fiend.id;
@@ -546,36 +541,6 @@ fn a_cast_point_shortens_while_a_feast_runs_on_a_hero_with_the_talent() {
 fn a_silent_app() -> crate::ui::app::App {
     let player = crate::ui::replay::ReplayPlayer::from_reader(std::io::Cursor::new(Vec::new()));
     crate::ui::app::App::new(crate::ui::app::Source::Replay(Box::new(player)))
-}
-
-#[test]
-fn the_home_shop_is_where_the_match_put_the_fountain() {
-    let mut app = a_started_app(
-        [Vec2::from_ints(3000, 3000), Vec2::from_ints(9000, 9000)],
-        1000,
-    );
-    let mut body = a_unit();
-    body.id = EntityId {
-        idx: 1,
-        generation: 1,
-    };
-    body.pos = Vec2::from_ints(3500, 3000);
-    let mut seat = a_player();
-    seat.unit = Some(body.id);
-    app.handle(snapshot_of(1, vec![body.clone()], vec![seat]));
-    assert!(
-        app.at_home_shop(),
-        "inside the range of this map's fountain"
-    );
-
-    body.pos = Vec2::from_ints(1760, 2278);
-    let mut seat = a_player();
-    seat.unit = Some(body.id);
-    app.handle(snapshot_of(2, vec![body], vec![seat]));
-    assert!(
-        !app.at_home_shop(),
-        "the main map's fountain means nothing here"
-    );
 }
 
 #[test]
@@ -616,7 +581,7 @@ fn only_what_the_seat_bought_and_keeps_counts_toward_the_price() {
 
 #[test]
 fn the_next_hit_is_what_the_server_would_land() {
-    use crate::ui::lasthit::{HitRange, next_hit};
+    use crate::{HitRange, next_hit};
     let blade = |mute_left| ItemView {
         id: ItemId::QUELLING_BLADE,
         mute_left,
@@ -640,11 +605,12 @@ fn the_next_hit_is_what_the_server_would_land() {
     creep.kind = UnitKind::CreepMelee;
     creep.team = Team::Dire;
     creep.armor = Fixed::from_int(2);
-    // (40 + 36) * 100 / 112 and (50 + 36) * 100 / 112, rounded down.
+    // (40 + 36), (45 + 36) and (50 + 36), each times 100 / 112, rounded down.
     assert_eq!(
         next_hit(&hero, &creep),
         HitRange {
             least: 67,
+            mid: 72,
             most: 76
         }
     );
@@ -657,6 +623,7 @@ fn the_next_hit_is_what_the_server_would_land() {
         next_hit(&hero, &tower),
         HitRange {
             least: 20,
+            mid: 22,
             most: 25
         }
     );
@@ -713,60 +680,18 @@ fn the_damage_range_is_the_wires_with_the_bonus_split_off_a_hero() {
 /// The one talent tree is Shadow Fiend's, whatever id the hero list gives him.
 #[test]
 fn the_talent_tree_is_shadow_fiends() {
-    let fiend = crate::catalog::HEROES
-        .iter()
-        .find(|h| h.name == "Shadow Fiend")
-        .expect("Shadow Fiend is a hero");
-    assert!(crate::catalog::talents(fiend.id).is_some());
-    for other in crate::catalog::HEROES.iter().filter(|h| h.id != fiend.id) {
-        assert!(
-            crate::catalog::talents(other.id).is_none(),
-            "{} has no tree",
-            other.name
+    for (id, hero) in bota_core::HEROES.iter().enumerate() {
+        assert_eq!(
+            crate::catalog::talents(id as u16).is_some(),
+            hero.name == "Shadow Fiend",
+            "{}",
+            hero.name
         );
     }
 }
 
 /// The catalog of `space` holds, as `held` and through `found`, exactly the
 /// ids the registry has live.
-fn holds_the_live_ids(
-    space: bota_proto::IdSpace,
-    held: impl Iterator<Item = u16>,
-    found: impl Fn(u16) -> bool,
-) {
-    let mut live: Vec<u16> = bota_proto::registered(space)
-        .filter(|entry| !entry.retired)
-        .map(|entry| entry.id)
-        .collect();
-    live.sort_unstable();
-    let mut held: Vec<u16> = held.collect();
-    held.sort_unstable();
-    assert_eq!(held, live, "the catalog's {space:?} ids are the live ones");
-    for entry in bota_proto::registered(space) {
-        assert_eq!(found(entry.id), !entry.retired, "{space:?} {}", entry.id);
-    }
-}
-
-#[test]
-fn the_catalog_holds_every_live_id_and_no_other() {
-    use crate::catalog::{ABILITIES, EFFECTS, HEROES, ITEMS, ability, effect, hero, item};
-    use bota_proto::IdSpace;
-    holds_the_live_ids(IdSpace::Hero, HEROES.iter().map(|face| face.id), |id| {
-        hero(id).is_some_and(|face| face.id == id)
-    });
-    holds_the_live_ids(
-        IdSpace::Ability,
-        ABILITIES.iter().map(|face| face.id),
-        |id| ability(id).is_some_and(|face| face.id == id),
-    );
-    holds_the_live_ids(IdSpace::Item, ITEMS.iter().map(|face| face.id), |id| {
-        item(id).is_some_and(|face| face.id == id)
-    });
-    holds_the_live_ids(IdSpace::Effect, EFFECTS.iter().map(|face| face.id), |id| {
-        effect(id).is_some_and(|face| face.id == id)
-    });
-}
-
 /// The damage panel splits Dota's way: a level-1 Shadow Fiend's base range
 /// with his starting agility white, the rest green.
 #[test]

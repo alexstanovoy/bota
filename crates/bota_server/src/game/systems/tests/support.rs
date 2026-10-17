@@ -2,10 +2,10 @@
 
 use std::fmt::Debug;
 
-use bota_core::{MELEE_CREEP, ModifierKind, Ratio, UnitDef, rules};
+use bota_core::{MELEE_CREEP, Ratio, UnitDef};
 use bota_proto::{Fixed, ItemId, ModifierSpec, SlotId};
 
-use crate::game::{Chance, Entity, Event, ItemStack, Modifier, Modifiers, World};
+use crate::game::{Chance, Def, Entity, Event, ItemStack, World};
 
 /// What takes a strike and never falls: no armor, no mending, no swing back.
 pub(super) const ANVIL: UnitDef = UnitDef {
@@ -16,15 +16,16 @@ pub(super) const ANVIL: UnitDef = UnitDef {
     ..MELEE_CREEP
 };
 
-/// A haste that holds a body's attack speed at `speed` for good.
-pub(super) fn swinging_at(speed: i32) -> Modifiers {
-    Modifiers(vec![Modifier {
-        kind: ModifierKind::Haste {
-            speed: speed - rules::BASE_ATTACK_SPEED,
-        },
-        source: None,
-        ticks_left: Some(u32::MAX / 2),
-    }])
+/// Sets how fast a body swings, at `speed` where [`rules::BASE_ATTACK_SPEED`]
+/// is its plain pace, by giving it a body of its own kind at that pace. The
+/// body is leaked: tests make a handful.
+pub(super) fn swing_at(world: &mut World, entity: Entity, speed: i32) {
+    let plain = world.def.get(entity).expect("has a body").0;
+    let quick: &'static UnitDef = Box::leak(Box::new(UnitDef {
+        attack_speed: speed,
+        ..*plain
+    }));
+    world.def.insert(entity, Def(quick));
 }
 
 /// Puts a freshly bought item in one of a hero's slots.

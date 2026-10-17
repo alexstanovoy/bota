@@ -15,9 +15,10 @@ mod validate;
 use std::collections::VecDeque;
 use std::sync::Arc;
 
+use bota_core::{MapDef, map_of};
 use bota_proto::{
-    EntityId, EventKind, HeroId, MatchInfo, MatchStats, PlayerView, RejectReason, ServerMsg,
-    SlotId, Talents, Team, TickMode, UnitView, WorldView,
+    EntityId, EventKind, HeroId, MatchInfo, MatchStats, OutgoingOrder, PlayerView, RejectReason,
+    ServerMsg, SlotId, Talents, Team, TickMode, UnitView, WorldView,
 };
 
 pub use error::{IngestError, SessionError};
@@ -31,24 +32,11 @@ use crate::handshake::{Seated, check_match};
 use crate::limits::{MAX_MESSAGES_WITHOUT_SNAPSHOT, MAX_RECENT_EVENTS};
 use crate::match_static::{MatchStatic, seat_team};
 use crate::observer::{EventSource, Observer};
-use crate::orders::{IssuedOrder, OrderLedger, OutgoingOrder};
+use crate::orders::{IssuedOrder, OrderLedger};
 use crate::readiness::{SharedWaits, wait_started_by};
 use memory::BodyMemory;
 use missiles::Missiles;
 use tracks::{Owner, Tracks};
-
-/// Whose stream a session folds.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Perspective {
-    /// One seat's own stream, held to the server's rules for it: the viewer
-    /// is the seat's side, a snapshot is followed by its tick's events
-    /// before the next, and the match does not end between the two.
-    Seat(SlotId),
-    /// Any viewer, who may change over the stream (a spectator's eyes, a
-    /// replay): a new snapshot completes the tick before it, since a replay
-    /// keeps events only when there are some.
-    Spectator,
-}
 
 /// When a session hands out the acknowledgement a lockstep server waits for.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -62,20 +50,34 @@ pub enum AckPolicy {
     Never,
 }
 
+/// Ticks a unit out of view stays tracked by default: sixteen seconds at the
+/// usual rate, long enough to name what just left the view.
+pub const DEFAULT_FORGET_AFTER_TICKS: u32 = 480;
+
 /// How a session is set up.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct SessionOptions {
-    pub perspective: Perspective,
-    /// The hero a seat must play, when it must play one.
-    pub hero: Option<HeroId>,
     pub ack: AckPolicy,
     /// Ticks an unseen unit stays tracked.
     pub forget_after_ticks: u32,
 }
 
+impl Default for SessionOptions {
+    /// A bot's: it acknowledges each tick once it has decided on it.
+    fn default() -> Self {
+        SessionOptions {
+            ack: AckPolicy::AfterTurn,
+            forget_after_ticks: DEFAULT_FORGET_AFTER_TICKS,
+        }
+    }
+}
+
 /// What one message did to a session.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Ingested {
+    /// The match started: a [`Seat`](crate::Seat) built its session. A
+    /// spectator has no slot, and sees as [`ClientSession::team`] tells.
+    Started { slot: Option<SlotId>, team: Team },
     /// A message that is not part of the match's state: the welcome, the
     /// lobby, the orders told to a spectator, a departure.
     Passed(Box<ServerMsg>),
@@ -111,6 +113,8 @@ pub struct ClientSession {
     statics: Arc<MatchStatic>,
     options: SessionOptions,
     owner: Option<Owner>,
+    /// The hero the seat must play, when it must play one.
+    hero: Option<HeroId>,
     current: Option<WorldView>,
     previous: Option<WorldView>,
     tracks: Tracks,
@@ -126,19 +130,52 @@ pub struct ClientSession {
 }
 
 impl ClientSession {
-    /// A session over a validated match.
-    pub fn new(statics: Arc<MatchStatic>, options: SessionOptions) -> Result<Self, SessionError> {
-        let owner = match options.perspective {
-            Perspective::Seat(slot) => Some(Owner {
-                slot,
-                team: seat_team(&statics, slot, options.hero)?,
-            }),
-            Perspective::Spectator => None,
+    /// The session of one seat's own stream, held to the server's rules for
+    /// it: the viewer is the seat's side, a snapshot is followed by its tick's
+    /// events before the next, and the match does not end between the two.
+    /// With a `hero`, the seat must play it.
+    pub fn seat(
+        statics: Arc<MatchStatic>,
+        slot: SlotId,
+        hero: Option<HeroId>,
+        options: SessionOptions,
+    ) -> Result<Self, SessionError> {
+        let owner = Owner {
+            slot,
+            team: seat_team(&statics, slot, hero)?,
         };
-        Ok(Self {
+        Ok(Self::folding(statics, Some(owner), hero, options))
+    }
+
+    /// The session of a stream any viewer may watch, who may change over it
+    /// (a spectator's eyes, a replay): a new snapshot completes the tick
+    /// before it, since a replay keeps events only when there are some.
+    pub fn spectator(statics: Arc<MatchStatic>, options: SessionOptions) -> Self {
+        Self::folding(statics, None, None, options)
+    }
+
+    /// The session of the seat a welcome assigned, after checking the match
+    /// start against the welcome and the seat's pick.
+    pub fn start(
+        seated: &Seated,
+        info: &MatchInfo,
+        options: SessionOptions,
+    ) -> Result<Self, SessionError> {
+        check_match(seated, info)?;
+        Self::seat(MatchStatic::new(info)?, seated.slot, seated.hero, options)
+    }
+
+    fn folding(
+        statics: Arc<MatchStatic>,
+        owner: Option<Owner>,
+        hero: Option<HeroId>,
+        options: SessionOptions,
+    ) -> Self {
+        Self {
             statics,
             options,
             owner,
+            hero,
             current: None,
             previous: None,
             tracks: Tracks::default(),
@@ -151,20 +188,7 @@ impl ClientSession {
             waits: SharedWaits::new(),
             next_seq: 0,
             stream: StreamState::default(),
-        })
-    }
-
-    /// A session for the seat a welcome assigned, after checking the match
-    /// start against the welcome and the pick. The seat replaces
-    /// `options.perspective`.
-    pub fn start(
-        seated: &Seated,
-        info: &MatchInfo,
-        mut options: SessionOptions,
-    ) -> Result<Self, SessionError> {
-        check_match(seated, info, options.hero)?;
-        options.perspective = Perspective::Seat(seated.slot);
-        Self::new(MatchStatic::new(info)?, options)
+        }
     }
 
     /// Folds one server message in.
@@ -311,7 +335,7 @@ impl ClientSession {
         validate::Expect {
             statics: &self.statics,
             owner: self.owner,
-            hero: self.options.hero,
+            hero: self.hero,
             current_tick: self.current.as_ref().map(|view| view.tick),
             last_event_tick: self.last_event_tick,
         }
@@ -401,10 +425,27 @@ impl ClientSession {
         self.owner.map(|owner| owner.slot)
     }
 
-    /// The side the stream is seen from: a seat's own, or a spectator's
-    /// current viewer.
+    /// The side the stream is seen from: a seat's own, or the side whose eyes
+    /// a spectator watches through; [`Team::Neutral`] for one who sees all.
     #[inline]
-    pub fn team(&self) -> Option<Team> {
+    pub fn team(&self) -> Team {
+        self.viewer().unwrap_or(Team::Neutral)
+    }
+
+    /// The side across the map from [`Self::team`].
+    #[inline]
+    pub fn enemy(&self) -> Team {
+        self.team().enemy()
+    }
+
+    /// The map the match is played on.
+    #[inline]
+    pub fn map(&self) -> &'static MapDef {
+        map_of(self.statics.metadata().map)
+    }
+
+    /// The side whose sight the stream is told; none for one who sees all.
+    fn viewer(&self) -> Option<Team> {
         match self.owner {
             Some(owner) => Some(owner.team),
             None => self.current.as_ref()?.viewer,
@@ -561,7 +602,7 @@ impl ClientSession {
     /// terrain cell or one next to it: the conservative proof that a change
     /// of trees there is one the seat could see.
     pub fn observes_locally(&self, target: bota_proto::Vec2) -> bool {
-        let (Some(view), Some(team)) = (self.current.as_ref(), self.team()) else {
+        let (Some(view), Some(team)) = (self.current.as_ref(), self.viewer()) else {
             return false;
         };
         let Some(target_cell) = self.statics.cell_of(target) else {

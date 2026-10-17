@@ -1,6 +1,6 @@
 //! What a snapshot or an event batch must satisfy before a session folds it.
 
-use bota_core::rules;
+use bota_core::{ms_to_ticks_ceil, rules};
 use bota_proto::{EntityId, EventKind, HeroId, Pick, PlayerView, UnitKind, WorldView};
 
 use crate::limits::{
@@ -170,11 +170,6 @@ fn units(view: &WorldView) -> Result<(), SessionError> {
     Ok(())
 }
 
-/// Whole ticks a span of milliseconds takes, a part tick counted whole.
-const fn ticks_of(milliseconds: u32) -> u32 {
-    (milliseconds as u64 * rules::TICKS_PER_SECOND as u64).div_ceil(1_000) as u32
-}
-
 /// Aggro entries sorted strictly by unit, naming visible units only, their timers within the
 /// rules' bounds and a swing striking within its attacker's attack point.
 fn aggro(view: &WorldView) -> Result<(), SessionError> {
@@ -192,7 +187,7 @@ fn aggro(view: &WorldView) -> Result<(), SessionError> {
         if let Some(target) = entry.target {
             unit_of(target)?;
         }
-        let strike_bound = ticks_of(unit.attack_point) + 1;
+        let strike_bound = ms_to_ticks_ceil(unit.attack_point, rules::TICKS_PER_SECOND) + 1;
         let strikes_in_bounds = entry
             .swing
             .is_none_or(|swing| (1..=strike_bound).contains(&swing.strike_in));

@@ -359,9 +359,7 @@ fn a_felled_tree_opens_a_gap_in_the_row_and_its_regrowth_shuts_it() {
 
 #[test]
 fn the_client_pictures_the_servers_sight_cell_for_cell() {
-    use bota_client_core::{
-        AckPolicy, ClientSession, MatchStatic, Perspective, SessionOptions, SightGround,
-    };
+    use bota_client_core::{AckPolicy, ClientSession, MatchStatic, SessionOptions, SightGround};
     let map = map_of(MapId(0));
     let mut world = World::on_map(map);
     // The forest changed: the trees round the camp beside the Dire mid
@@ -387,16 +385,13 @@ fn the_client_pictures_the_servers_sight_cell_for_cell() {
     world.settle();
     let mut config = config();
     config.map = MapId(0);
-    let mut session = ClientSession::new(
+    let mut session = ClientSession::spectator(
         MatchStatic::new(&config.info()).expect("a match"),
         SessionOptions {
-            perspective: Perspective::Spectator,
-            hero: None,
             ack: AckPolicy::Never,
-            forget_after_ticks: 480,
+            ..SessionOptions::default()
         },
-    )
-    .expect("a session");
+    );
     session
         .ingest_snapshot(world.view(Team::Dire), &mut ())
         .expect("a snapshot");

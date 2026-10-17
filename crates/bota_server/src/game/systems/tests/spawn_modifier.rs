@@ -29,6 +29,7 @@ fn a_rule(spec: ModifierSpec) -> SpawnModifier {
 fn config(cheats: bool, rules: Vec<SpawnModifier>) -> MatchConfig {
     MatchConfig {
         match_id: 21,
+        stream: 21,
         master_key: [5; 32],
         picks: vec![Pick {
             slot: SlotId(0),

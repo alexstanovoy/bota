@@ -6,7 +6,7 @@ use bota_core::{MELEE_CREEP, UnitDef, attack_gain, beats};
 use crate::game::{ActionState, Entity, World};
 use bota_proto::{Team, Vec2};
 
-use super::support::{ANVIL, swinging_at};
+use super::support::{ANVIL, swing_at};
 
 /// A melee attacker worth one point a strike, at a cycle of its own.
 const fn pace(attack_time: u32, attack_point: u32, attack_backswing: u32) -> UnitDef {
@@ -47,7 +47,7 @@ fn duel(attacker: &'static UnitDef, speed: i32) -> (World, Entity, Entity) {
     let at = Vec2::from_ints(5000, 5000);
     let from = world.spawn_unit(attacker, Team::Radiant, at);
     let on = world.spawn_unit(&ANVIL, Team::Dire, Vec2::from_ints(5100, 5000));
-    world.modifiers.insert(from, swinging_at(speed));
+    swing_at(&mut world, from, speed);
     world.settle();
     world.set_target(from, on);
     (world, from, on)

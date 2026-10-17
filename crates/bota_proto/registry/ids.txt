@@ -1,4 +1,4 @@
-# Every id ever assigned on the bota wire: append-only (DESIGN.md, Protocol).
+# Every id ever assigned on the bota wire: append-only.
 #
 # One line an id: `<space> <id> <live|retired> <name>`. A new id takes the next
 # number of its space and is appended. An id is never renumbered, renamed or

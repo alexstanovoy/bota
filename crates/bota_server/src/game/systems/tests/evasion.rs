@@ -6,7 +6,7 @@ use bota_core::{MELEE_CREEP, RANGED_CREEP, Ratio, UnitDef, rules};
 use crate::game::{Entity, Event, World, wire_id};
 use bota_proto::{DamageKind, EventKind, Fixed, HeroId, ItemId, SlotId, Team, Vec2};
 
-use super::support::{assert_exact_blocks, hold, opened, step_until, swinging_at, until_opened};
+use super::support::{assert_exact_blocks, hold, opened, step_until, swing_at, until_opened};
 
 /// A melee attacker worth a point a strike on a short cycle, never landing
 /// two strikes in one tick, never falling and never bringing a hero down.
@@ -50,9 +50,7 @@ fn attacker_at_a_hero(attacker: &'static UnitDef, held: &[ItemId]) -> (World, En
     for (slot, item) in held.iter().enumerate() {
         hold(&mut world, mark, slot, *item);
     }
-    world
-        .modifiers
-        .insert(from, swinging_at(rules::MAX_ATTACK_SPEED));
+    swing_at(&mut world, from, rules::MAX_ATTACK_SPEED);
     world.settle();
     world.fill_pools(mark);
     world.set_target(from, mark);

@@ -115,7 +115,7 @@ pub struct UnitDef {
 }
 
 /// No gain at all.
-const NO_GROWTH: Growth = Growth {
+pub(crate) const NO_GROWTH: Growth = Growth {
     attributes: Attributes::ZERO,
     hp: 0,
     mana: 0,
@@ -126,7 +126,7 @@ const NO_GROWTH: Growth = Growth {
 };
 
 /// Nothing at all, so a definition names only the fields that differ.
-const NOTHING: UnitDef = UnitDef {
+pub(crate) const BARE_UNIT: UnitDef = UnitDef {
     kind: UnitKind::Ward,
     attributes: Attributes::ZERO,
     primary: None,
@@ -190,7 +190,7 @@ pub const MELEE_CREEP: UnitDef = UnitDef {
         gold_halves: 2 * rules::MELEE_UPGRADE_GOLD,
         ..NO_GROWTH
     },
-    ..NOTHING
+    ..BARE_UNIT
 };
 
 /// What a flagbearer mends in the creeps marching with it, and the magic
@@ -350,72 +350,7 @@ pub const HERO: UnitDef = UnitDef {
         damage: rules::HERO_ATTACK_DAMAGE_PER_LEVEL,
         ..NO_GROWTH
     },
-    ..NOTHING
-};
-
-/// Pudge: heavy, slow, and swings by hand.
-pub const PUDGE: UnitDef = UnitDef {
-    attributes: Attributes {
-        strength: Fixed::from_int(25),
-        agility: Fixed::from_int(14),
-        intelligence: Fixed::from_int(14),
-    },
-    primary: Some(Attribute::Strength),
-    max_hp: 150,
-    max_mana: 82,
-    damage: 21,
-    attack_range: 175,
-    attack_time: 1933,
-    attack_point: 500,
-    projectile_speed: None,
-    armor: -1,
-    move_speed: 280,
-    per_level: Growth {
-        attributes: Attributes {
-            strength: Fixed::from_ratio(35, 10),
-            agility: Fixed::from_ratio(15, 10),
-            intelligence: Fixed::from_ratio(16, 10),
-        },
-        hp: 43,
-        mana: 5,
-        damage: 1,
-        ..NO_GROWTH
-    },
-    ..HERO
-};
-
-/// Shadow Fiend: fragile and long-ranged, at Dota 7.41f's numbers, 16 to 22
-/// base attack damage among them.
-pub const SHADOW_FIEND: UnitDef = UnitDef {
-    attributes: Attributes {
-        strength: Fixed::from_int(19),
-        agility: Fixed::from_int(25),
-        intelligence: Fixed::from_int(16),
-    },
-    primary: Some(Attribute::Agility),
-    max_hp: 120,
-    max_mana: 75,
-    mana_regen: Fixed::from_ratio(3, 10 * rules::TICKS_PER_SECOND as i32),
-    damage: 16,
-    damage_spread: 6,
-    attack_range: 525,
-    acquisition: 800,
-    attack_time: 1600,
-    attack_point: 500,
-    attack_backswing: 540,
-    projectile_speed: Some(1200),
-    armor: 0,
-    move_speed: 305,
-    turn_rate: rules::FAST_TURN_RATE_BRADS,
-    per_level: Growth {
-        attributes: Attributes {
-            strength: Fixed::from_ratio(27, 10),
-            agility: Fixed::from_ratio(36, 10),
-            intelligence: Fixed::from_ratio(22, 10),
-        },
-        ..NO_GROWTH
-    },
-    ..HERO
+    ..BARE_UNIT
 };
 
 /// A super siege creep: the same wagon hitting harder.
@@ -435,7 +370,7 @@ pub const BARRACKS_MELEE: UnitDef = UnitDef {
     collision: rules::RAX_COLLISION,
     bound: rules::RAX_BOUND,
     bounty_gold: GoldRange::exactly(rules::RAX_MELEE_BOUNTY),
-    ..NOTHING
+    ..BARE_UNIT
 };
 
 /// A ranged barracks.
@@ -447,7 +382,7 @@ pub const BARRACKS_RANGED: UnitDef = UnitDef {
     collision: rules::RAX_COLLISION,
     bound: rules::RAX_BOUND,
     bounty_gold: GoldRange::exactly(rules::RAX_RANGED_BOUNTY),
-    ..NOTHING
+    ..BARE_UNIT
 };
 
 /// A filler statue: it pays its bounty when it falls and does nothing else.
@@ -459,7 +394,7 @@ pub const FILLER: UnitDef = UnitDef {
     collision: rules::FILLER_COLLISION,
     bound: rules::FILLER_COLLISION,
     bounty_gold: GoldRange::exactly(rules::FILLER_BOUNTY),
-    ..NOTHING
+    ..BARE_UNIT
 };
 
 /// The Radiant Ancient.
@@ -470,7 +405,7 @@ pub const RADIANT_ANCIENT: UnitDef = UnitDef {
     vision: rules::ANCIENT_VISION,
     collision: rules::RADIANT_ANCIENT_COLLISION,
     bound: rules::RADIANT_ANCIENT_BOUND,
-    ..NOTHING
+    ..BARE_UNIT
 };
 
 /// The Dire Ancient: the same building on a wider footprint.
@@ -515,7 +450,7 @@ pub const FOUNTAIN: UnitDef = UnitDef {
     collision: rules::FOUNTAIN_COLLISION,
     bound: rules::FOUNTAIN_BOUND,
     invulnerable: true,
-    ..NOTHING
+    ..BARE_UNIT
 };
 
 /// A courier: it carries, it does not fight, and it flies over everything.
@@ -528,7 +463,7 @@ pub const COURIER: UnitDef = UnitDef {
     move_speed: rules::COURIER_MOVE_SPEED,
     turn_rate: rules::TURN_RATE_BRADS,
     vision: rules::COURIER_VISION,
-    ..NOTHING
+    ..BARE_UNIT
 };
 
 /// An observer ward: it sees far and the other side cannot see it.
@@ -537,7 +472,7 @@ pub const OBSERVER_WARD: UnitDef = UnitDef {
     max_hp: 200,
     vision: 1600,
     hides: true,
-    ..NOTHING
+    ..BARE_UNIT
 };
 
 /// A sentry ward: it sees nothing of itself, and what it gives is true sight.
@@ -547,7 +482,7 @@ pub const SENTRY_WARD: UnitDef = UnitDef {
     vision: 0,
     true_sight: 1050,
     hides: true,
-    ..NOTHING
+    ..BARE_UNIT
 };
 
 /// What a tower of each tier keeps its own heroes in, indexed by tier less
@@ -590,7 +525,7 @@ const fn tower_of(index: usize) -> UnitDef {
         bound: rules::TOWER_BOUND,
         bounty_gold: rules::TOWER_TIER_BOUNTY[index],
         bounty_team: rules::TOWER_TIER_TEAM_BOUNTY[index],
-        ..NOTHING
+        ..BARE_UNIT
     }
 }
 

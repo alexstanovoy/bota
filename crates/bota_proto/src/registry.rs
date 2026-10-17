@@ -2,7 +2,7 @@
 //!
 //! Ids are append-only, like protobuf field numbers: one never changes what
 //! it names and is never reused. One that leaves the game stays in the
-//! registry, retired. See `DESIGN.md`, Protocol.
+//! registry, retired.
 
 /// The spaces ids are drawn from, one numbering each.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]

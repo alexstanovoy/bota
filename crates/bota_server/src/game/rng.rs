@@ -26,7 +26,7 @@ pub enum Purpose {
 const PURPOSE_COUNT: usize = Purpose::DamageRoll as usize + 1;
 
 /// The root of all hidden randomness in one match, reproducible from the
-/// pair of a server key and a match id.
+/// pair of a server key and a stream number.
 #[derive(Clone, Debug)]
 pub struct MatchRng {
     seed: [u8; 32],
@@ -35,9 +35,9 @@ pub struct MatchRng {
 
 impl MatchRng {
     /// Derives the randomness of one match.
-    pub fn new(master_key: &[u8; 32], match_id: u64) -> MatchRng {
+    pub fn new(master_key: &[u8; 32], stream: u64) -> MatchRng {
         let mut root = ChaCha8Rng::from_seed(*master_key);
-        root.set_stream(match_id);
+        root.set_stream(stream);
         let mut seed = [0u8; 32];
         root.fill_bytes(&mut seed);
         let global = std::array::from_fn(|purpose| {

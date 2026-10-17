@@ -108,34 +108,59 @@ fn derive_stats_impl<const APPLIED: bool>(cx: StatsCx<'_>) {
                 .is_some_and(|book| book.has_talent(Talent::FeastAttackSpeed));
             add_feast(&mut now, feast, talented);
         }
-        let regen = regen(
-            Regen {
-                hp: kind.hp_regen,
-                mana: kind.mana_regen,
-            },
-            carried.map_or(Regen::NONE, |carried| Regen {
-                hp: carried.hp_regen,
-                mana: carried.mana_regen,
-            }),
-            now.attributes,
-            modifiers
-                .get(entity)
-                .into_iter()
-                .flat_map(|on_it| on_it.active().map(|held| held.kind)),
-        );
+        let regen = settled_regen(kind, carried, now.attributes, modifiers.get(entity));
         (now.hp_regen, now.mana_regen) = (regen.hp, regen.mana);
-        let before = stats.get(entity).copied();
-        if let Some(hp) = health.get_mut(entity) {
-            hp.hp = before.map_or(now.max_hp, |before| {
-                follow(hp.hp, before.max_hp, now.max_hp)
-            });
-        }
-        if let Some(mp) = mana.get_mut(entity) {
-            mp.mana = before.map_or(now.max_mana, |before| {
-                follow(mp.mana, before.max_mana, now.max_mana)
-            });
-        }
+        follow_pools(
+            stats.get(entity).copied(),
+            &now,
+            health.get_mut(entity),
+            mana.get_mut(entity),
+        );
         stats.insert(entity, now);
+    }
+}
+
+/// Health and mana mended each tick by a unit's kind, what it carries, its
+/// attributes and the modifiers on it.
+fn settled_regen(
+    kind: &UnitDef,
+    carried: Option<Carried>,
+    attributes: Attributes,
+    on_it: Option<&Modifiers>,
+) -> Regen {
+    regen(
+        Regen {
+            hp: kind.hp_regen,
+            mana: kind.mana_regen,
+        },
+        carried.map_or(Regen::NONE, |carried| Regen {
+            hp: carried.hp_regen,
+            mana: carried.mana_regen,
+        }),
+        attributes,
+        on_it
+            .into_iter()
+            .flat_map(|on_it| on_it.active().map(|held| held.kind)),
+    )
+}
+
+/// Moves the pools with their maximums: each keeps its filled fraction, and
+/// a unit with no stats behind it yet stands up full.
+fn follow_pools(
+    before: Option<Stats>,
+    now: &Stats,
+    health: Option<&mut Health>,
+    mana: Option<&mut Mana>,
+) {
+    if let Some(hp) = health {
+        hp.hp = before.map_or(now.max_hp, |before| {
+            follow(hp.hp, before.max_hp, now.max_hp)
+        });
+    }
+    if let Some(mp) = mana {
+        mp.mana = before.map_or(now.max_mana, |before| {
+            follow(mp.mana, before.max_mana, now.max_mana)
+        });
     }
 }
 
@@ -201,7 +226,6 @@ fn add_modifiers(now: &mut Stats, on_it: &Modifiers) {
             ModifierKind::Slowed { pct } => {
                 now.move_speed = scaled(now.move_speed, (100 - pct).clamp(0, 100));
             }
-            ModifierKind::Haste { speed } => now.attack_speed += speed,
             ModifierKind::BloodGrenade { .. } => {
                 now.move_speed = scaled(now.move_speed, 100 - rules::GRENADE_SLOW_PCT);
             }

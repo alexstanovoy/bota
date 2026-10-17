@@ -7,7 +7,7 @@ use bota_proto::{
 };
 
 use crate::game::{
-    ActionPhase, ActionState, Entity, FeastPhase, StackKind, World, item_view, item_views,
+    ActionPhase, ActionState, Entity, FeastPhase, Seat, StackKind, World, item_view, item_views,
 };
 use crate::profile::Phase;
 
@@ -66,54 +66,7 @@ impl World {
             players: self
                 .seats
                 .iter()
-                .map(|seat| PlayerView {
-                    slot: seat.slot,
-                    team: seat.team,
-                    hero: seat.hero,
-                    unit: seat.unit.map(wire_id),
-                    level: seat.level,
-                    xp: seat.xp,
-                    // A side is told its own gold and its own stash, nobody
-                    // else's.
-                    gold: match viewer {
-                        None => Some(seat.gold),
-                        Some(team) if team == seat.team => Some(seat.gold),
-                        Some(_) => None,
-                    },
-                    stash: match viewer {
-                        Some(team) if team != seat.team => None,
-                        _ => Some(item_views(
-                            &seat.stash,
-                            self.mana_cost_rate_of(seat.unit),
-                            &seat.item_clocks,
-                        )),
-                    },
-                    // What a fallen body left is told to its own side alone.
-                    kit: match viewer {
-                        Some(team) if team != seat.team => None,
-                        _ => seat.kept.as_ref().map(|kept| bota_proto::Kit {
-                            abilities: ability_views(&kept.book, self.mana_cost_rate_of(seat.unit)),
-                            items: item_views(
-                                &kept.bag,
-                                self.mana_cost_rate_of(seat.unit),
-                                &seat.item_clocks,
-                            ),
-                            town_portal: kept.bag.town_portal.flatten().map(|stack| {
-                                item_view(
-                                    &stack,
-                                    self.mana_cost_rate_of(seat.unit),
-                                    &seat.item_clocks,
-                                )
-                            }),
-                        }),
-                    },
-                    kills: seat.kills,
-                    deaths: seat.deaths,
-                    assists: seat.assists,
-                    last_hits: seat.last_hits,
-                    denies: seat.denies,
-                    respawn_left: seat.respawn_left,
-                })
+                .map(|seat| self.project_player(viewer, seat))
                 .collect(),
             felled_trees: self.trees.felled().collect(),
             planted_trees: self.trees.planted().iter().map(|tree| tree.at).collect(),
@@ -124,6 +77,54 @@ impl World {
             stock: self.project_stock(viewer),
             talents,
             teleports: self.teleport_views(),
+        }
+    }
+
+    /// One seat as a viewer is told of it.
+    fn project_player(&self, viewer: Option<Team>, seat: &Seat) -> PlayerView {
+        PlayerView {
+            slot: seat.slot,
+            team: seat.team,
+            hero: seat.hero,
+            unit: seat.unit.map(wire_id),
+            level: seat.level,
+            xp: seat.xp,
+            // A side is told its own gold and its own stash, nobody
+            // else's.
+            gold: match viewer {
+                None => Some(seat.gold),
+                Some(team) if team == seat.team => Some(seat.gold),
+                Some(_) => None,
+            },
+            stash: match viewer {
+                Some(team) if team != seat.team => None,
+                _ => Some(item_views(
+                    &seat.stash,
+                    self.mana_cost_rate_of(seat.unit),
+                    &seat.item_clocks,
+                )),
+            },
+            // What a fallen body left is told to its own side alone.
+            kit: match viewer {
+                Some(team) if team != seat.team => None,
+                _ => seat.kept.as_ref().map(|kept| bota_proto::Kit {
+                    abilities: ability_views(&kept.book, self.mana_cost_rate_of(seat.unit)),
+                    items: item_views(
+                        &kept.bag,
+                        self.mana_cost_rate_of(seat.unit),
+                        &seat.item_clocks,
+                    ),
+                    town_portal: kept.bag.town_portal.flatten().map(|stack| {
+                        item_view(&stack, self.mana_cost_rate_of(seat.unit), &seat.item_clocks)
+                    }),
+                }),
+            },
+            kills: seat.kills,
+            deaths: seat.deaths,
+            assists: seat.assists,
+            last_hits: seat.last_hits,
+            denies: seat.denies,
+            respawn_left: seat.respawn_left,
         }
     }
 
@@ -448,31 +449,6 @@ pub(crate) fn stack_effect_id(kind: StackKind) -> EffectId {
     }
 }
 
-/// The number the wire names a modifier with; none for a test's haste, whose
-/// id is retired.
-pub(crate) fn effect_id(kind: ModifierKind) -> Option<EffectId> {
-    Some(match kind {
-        ModifierKind::Haste { .. } => return None,
-        ModifierKind::Mending { .. } => EffectId::MENDING,
-        ModifierKind::Clarity { .. } => EffectId::CLARITY,
-        ModifierKind::Fountain { .. } => EffectId::FOUNTAIN,
-        ModifierKind::Stunned => EffectId::STUNNED,
-        ModifierKind::Shielded => EffectId::SHIELDED,
-        ModifierKind::Slowed { .. } => EffectId::SLOWED,
-        ModifierKind::Hastened { .. } => EffectId::HASTENED,
-        ModifierKind::Burning { .. } => EffectId::BURNING,
-        ModifierKind::Phased => EffectId::PHASED,
-        ModifierKind::ArmorBroken { .. } => EffectId::ARMOR_BROKEN,
-        ModifierKind::MagicBroken { .. } => EffectId::MAGIC_BROKEN,
-        ModifierKind::Guarded { .. } => EffectId::GUARDED,
-        ModifierKind::Inspired { .. } => EffectId::INSPIRED,
-        ModifierKind::Shadowraze { .. } => EffectId::SHADOWRAZE,
-        ModifierKind::Rot { .. } => EffectId::ROT,
-        ModifierKind::Feared => EffectId::FEARED,
-        ModifierKind::BloodGrenade { .. } => EffectId::BLOOD_GRENADE,
-    })
-}
-
 impl World {
     /// Everything showing on one entity: its active modifiers but the rot,
     /// then what it has gathered.
@@ -483,15 +459,13 @@ impl World {
             .into_iter()
             .flat_map(|on_it| on_it.active())
             .filter(|held| !matches!(held.kind, ModifierKind::Rot { .. }))
-            .filter_map(|held| {
-                Some(EffectView {
-                    id: effect_id(held.kind)?,
-                    ticks_left: held.ticks_left,
-                    stacks: match held.kind {
-                        ModifierKind::Shadowraze { stacks } => Some(u32::from(stacks)),
-                        _ => None,
-                    },
-                })
+            .map(|held| EffectView {
+                id: held.kind.effect_id(),
+                ticks_left: held.ticks_left,
+                stacks: match held.kind {
+                    ModifierKind::Shadowraze { stacks } => Some(u32::from(stacks)),
+                    _ => None,
+                },
             })
             .collect();
         if let Some(gathered) = self.stacks.get(entity) {

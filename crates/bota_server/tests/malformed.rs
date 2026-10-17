@@ -81,6 +81,7 @@ fn greet(stream: &mut TcpStream) -> Option<SlotId> {
         &ClientMsg::Hello {
             role: Role::Bot,
             name: "probe".to_string(),
+            key: None,
         },
     );
     let mut reader = FrameReader::new();

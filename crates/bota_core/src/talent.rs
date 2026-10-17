@@ -32,18 +32,6 @@ pub enum Talent {
 /// A hero's whole tree, indexed by [`TalentSlot`].
 pub type TalentTree = [Talent; TalentSlot::COUNT as usize];
 
-/// Shadow Fiend's tree at Dota 7.41f, the left of each tier first.
-pub const SHADOW_FIEND_TALENTS: TalentTree = [
-    Talent::FeastAttackSpeed,
-    Talent::RazeStackDamage,
-    Talent::FeastSoulsPerHero,
-    Talent::PresenceArmor,
-    Talent::RequiemFear,
-    Talent::NecroSoulCap,
-    Talent::RazeAttackDamage,
-    Talent::FeastCastSpeed,
-];
-
 /// The hero level a talent opens at, given what is learned already: its
 /// tier's level, or, once the other talent of its tier is taken,
 /// [`rules::TALENT_SECOND_LEVELS`].

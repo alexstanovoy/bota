@@ -2,16 +2,14 @@
 
 use std::sync::Arc;
 
+use bota_core::{CellGrid, cell_tier, rules};
 use bota_proto::{Fixed, MapId, MatchInfo, Pick, ShopEntry, SlotId, Team, TickMode, Vec2};
 
 use crate::limits::{
     MAX_OPAQUE_CELLS, MAX_SEATS, MAX_SHOP_COMPONENTS, MAX_SHOP_ITEMS, MAX_STATIC_TREES,
-    MAX_TERRAIN_AXIS, MAX_TERRAIN_RUNS, TERRAIN_CELL_SIZE,
+    MAX_TERRAIN_AXIS, MAX_TERRAIN_RUNS,
 };
 use crate::session::SessionError;
-
-/// Bits of a terrain cell that hold its elevation tier.
-const GROUND_TIER_MASK: u8 = 0x1f;
 
 /// The public terms of a match, without its identity.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -149,7 +147,7 @@ impl MatchStatic {
         let axis = self.metadata.terrain_cells as usize;
         cell_xy(axis, position)
             .and_then(|(x, y)| self.terrain.get(y * axis + x))
-            .map_or(0, |cell| cell & GROUND_TIER_MASK)
+            .map_or(0, |&cell| cell_tier(cell))
     }
 
     /// Whether a terrain cell blocks sight regardless of elevation.
@@ -165,12 +163,7 @@ impl MatchStatic {
 }
 
 pub(crate) fn cell_xy(axis: usize, position: Vec2) -> Option<(usize, usize)> {
-    if position.x.raw < 0 || position.y.raw < 0 {
-        return None;
-    }
-    let x = usize::try_from(position.x.to_int() / TERRAIN_CELL_SIZE).ok()?;
-    let y = usize::try_from(position.y.to_int() / TERRAIN_CELL_SIZE).ok()?;
-    (x < axis && y < axis).then_some((x, y))
+    CellGrid::cell_of(position).filter(|&(x, y)| x < axis && y < axis)
 }
 
 /// Inclusive raw fixed-point bounds shared by both axes.
@@ -213,7 +206,7 @@ impl RawExtent {
 #[inline]
 pub fn map_maximum_raw(cells: u32) -> i64 {
     i64::from(cells)
-        .saturating_mul(i64::from(TERRAIN_CELL_SIZE))
+        .saturating_mul(i64::from(rules::GRID_CELL_SIZE))
         .saturating_mul(i64::from(Fixed::ONE.raw))
         .saturating_sub(1)
         .min(i64::from(i32::MAX))

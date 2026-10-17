@@ -4,7 +4,10 @@
 //! carries. The numbers in a blurb are the rules': a template names them and
 //! `bota_core` gives them, and the views tell what a unit holds.
 
-use bota_core::{Talent, ability_def, attributes_at_level, base_damage_least, hero_def, rules};
+use bota_core::{
+    ABILITY_COUNT, EFFECT_COUNT, ITEMS as ITEM_DEFS, Talent, ability_def, attributes_at_level,
+    base_damage_least, effect_def, hero_def, rules,
+};
 use bota_proto::{AbilityId, EffectId, Fixed, HeroId, ItemId, TalentSlot};
 
 use crate::blurb::{Scope, fill};
@@ -76,15 +79,10 @@ impl ItemFace {
 /// One timed effect, as the client shows it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct EffectFace {
-    /// The id it answers to on the wire.
-    pub id: u16,
     /// Short name for the chip.
     pub name: &'static str,
     /// What it does, for the hover popup, as a template.
     pub template: &'static str,
-    /// Whether it hurts whoever wears it: a debuff, drawn apart from the
-    /// buffs.
-    pub harmful: bool,
 }
 
 impl EffectFace {
@@ -94,17 +92,8 @@ impl EffectFace {
     }
 }
 
-/// One hero, as the client shows it.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct HeroFace {
-    /// The id it answers to on the wire.
-    pub id: u16,
-    /// Its name, for the roster and the panel.
-    pub name: &'static str,
-}
-
 /// Every ability, in id order.
-pub const ABILITIES: [AbilityFace; 17] = [
+pub const ABILITIES: [AbilityFace; ABILITY_COUNT] = [
     AbilityFace {
         id: AbilityId::MEAT_HOOK.0,
         name: "Hook",
@@ -193,7 +182,7 @@ pub const ABILITIES: [AbilityFace; 17] = [
 ];
 
 /// Every item the shop sells, in id order.
-pub const ITEMS: [ItemFace; 54] = [
+pub const ITEMS: [ItemFace; ITEM_DEFS.len()] = [
     ItemFace::plain(ItemId::BOOTS.0, "Boots"),
     ItemFace::with(
         ItemId::CLARITY.0,
@@ -370,146 +359,96 @@ pub const ITEMS: [ItemFace; 54] = [
     ),
 ];
 
-/// Every timed effect, in id order. The ids are the wire's, so there is a
-/// gap where a retired effect stood.
-pub const EFFECTS: [EffectFace; 21] = [
+/// Every timed effect, indexed by [`EffectId`]; the slot of a retired one
+/// holds nothing.
+pub const EFFECTS: [EffectFace; EFFECT_COUNT] = [
     EffectFace {
-        id: EffectId::MENDING.0,
+        name: "",
+        template: "",
+    },
+    EffectFace {
         name: "Mending",
         template: "Regenerating health.",
-        harmful: false,
     },
     EffectFace {
-        id: EffectId::CLARITY.0,
         name: "Clarity",
         template: "Regenerating mana.",
-        harmful: false,
     },
     EffectFace {
-        id: EffectId::FOUNTAIN.0,
         name: "Fountain",
         template: "Regenerating health and mana for standing in the fountain.",
-        harmful: false,
     },
     EffectFace {
-        id: EffectId::STUNNED.0,
         name: "Held",
         template: "Cannot move, attack or cast.",
-        harmful: true,
     },
     EffectFace {
-        id: EffectId::SLOWED.0,
         name: "Slowed",
         template: "Movement speed reduced.",
-        harmful: true,
     },
     EffectFace {
-        id: EffectId::BURNING.0,
         name: "Burning",
         template: "Losing health over time.",
-        harmful: true,
     },
     EffectFace {
-        id: EffectId::HASTENED.0,
         name: "Hastened",
         template: "Movement speed increased.",
-        harmful: false,
     },
     EffectFace {
-        id: EffectId::SHIELDED.0,
         name: "Shielded",
         template: "Nothing gets through.",
-        harmful: false,
     },
     EffectFace {
-        id: EffectId::PHASED.0,
         name: "Phased",
         template: "Walking through the bodies in the way.",
-        harmful: false,
     },
     EffectFace {
-        id: EffectId::FLESH_HEAP.0,
         name: "Heap",
         template: "Strength kept from every enemy hero that died nearby.",
-        harmful: false,
     },
     EffectFace {
-        id: EffectId::SOULS.0,
         name: "Souls",
         template: "Attack damage from every unit brought down.",
-        harmful: false,
     },
     EffectFace {
-        id: EffectId::ARMOR_BROKEN.0,
         name: "Presence",
         template: "Armor worn down by a dark presence nearby.",
-        harmful: true,
     },
     EffectFace {
-        id: EffectId::GUARDED.0,
         name: "Guarded",
         template: "Armor and health mended, for standing by a tower of your own.",
-        harmful: false,
     },
     EffectFace {
-        id: EffectId::INSPIRED.0,
         name: "Inspired",
         template: "Health mended and magic shrugged off, for marching beside the one carrying the flag.",
-        harmful: false,
     },
     EffectFace {
-        id: EffectId::SHADOWRAZE.0,
         name: "Razed",
         template: "Shadowrazes from the same caster deal {raze_stack} more magic damage per stack. Each damaging hit refreshes all stacks for {raze_secs} s; up to {raze_max_stacks} stacks.",
-        harmful: true,
     },
     EffectFace {
-        id: EffectId::ROT.0,
         name: "Rot",
         template: "The rot is on. It is never listed on a unit: the toggle shows on the ability.",
-        harmful: false,
     },
     EffectFace {
-        id: EffectId::FEARED.0,
         name: "Feared",
         template: "Running from whoever put the fear on. Cannot attack or cast.",
-        harmful: true,
     },
     EffectFace {
-        id: EffectId::MAGIC_BROKEN.0,
         name: "Torn",
         template: "Magic resistance torn by a requiem.",
-        harmful: true,
     },
     EffectFace {
-        id: EffectId::FEASTING.0,
         name: "Feast",
         template: "Attacking and moving faster while taking souls from enemies nearby; counts the souls taken.",
-        harmful: false,
     },
     EffectFace {
-        id: EffectId::FEAST_LINGER.0,
         name: "Fed",
         template: "Souls a feast took from enemies since fallen, kept past the cap until it runs out.",
-        harmful: false,
     },
     EffectFace {
-        id: EffectId::BLOOD_GRENADE.0,
         name: "Grenade",
         template: "Slowed {grenade_slow}% and losing {grenade_dps} health to magic every second, from a Blood Grenade.",
-        harmful: true,
-    },
-];
-
-/// Every hero that can be picked, in id order.
-pub const HEROES: [HeroFace; 2] = [
-    HeroFace {
-        id: HeroId::PUDGE.0,
-        name: "Pudge",
-    },
-    HeroFace {
-        id: HeroId::SHADOW_FIEND.0,
-        name: "Shadow Fiend",
     },
 ];
 
@@ -525,12 +464,8 @@ pub fn item(id: u16) -> Option<&'static ItemFace> {
 
 /// The effect of that id, or nothing for one the catalog does not hold.
 pub fn effect(id: u16) -> Option<&'static EffectFace> {
-    EFFECTS.iter().find(|face| face.id == id)
-}
-
-/// The hero of that id, or nothing for one the catalog does not hold.
-pub fn hero(id: u16) -> Option<&'static HeroFace> {
-    HEROES.get(usize::from(id))
+    effect_def(EffectId(id))?;
+    EFFECTS.get(usize::from(id))
 }
 
 /// One talent of a hero's tree, as the talent panel shows it.

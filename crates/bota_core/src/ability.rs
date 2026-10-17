@@ -4,6 +4,7 @@
 
 use bota_proto::{AbilityId, Aim};
 
+use crate::heroes::{pudge, shadow_fiend};
 use crate::rules;
 
 /// One entry of the ability list.
@@ -44,7 +45,7 @@ pub struct AbilityDef {
 }
 
 /// Nothing at all, so an entry names only what sets it apart.
-const PLAIN: AbilityDef = AbilityDef {
+pub(crate) const BARE_ABILITY: AbilityDef = AbilityDef {
     name: "",
     aim: Aim::Own,
     max_level: 0,
@@ -67,52 +68,17 @@ pub const ABILITY_COUNT: usize = 17;
 
 /// Every ability, indexed by [`AbilityId`].
 pub const ABILITIES: [AbilityDef; ABILITY_COUNT] = [
-    AbilityDef {
-        name: "Meat Hook",
-        aim: Aim::Point,
-        max_level: rules::ABILITY_MAX_LEVEL,
-        passive: false,
-        mana: &rules::HOOK_MANA,
-        cooldown: &rules::HOOK_COOLDOWN,
-        range: rules::HOOK_RANGE,
-        ..PLAIN
-    },
-    AbilityDef {
-        name: "Rot",
-        max_level: rules::ABILITY_MAX_LEVEL,
-        passive: false,
-        ignores_channel: true,
-        mana: &[0, 0, 0, 0],
-        cooldown: &[0, 0, 0, 0],
-        range: rules::ROT_RADIUS,
-        ..PLAIN
-    },
-    AbilityDef {
-        name: "Flesh Heap",
-        max_level: rules::ABILITY_MAX_LEVEL,
-        range: rules::FLESH_HEAP_RANGE,
-        ..PLAIN
-    },
-    AbilityDef {
-        name: "Dismember",
-        aim: Aim::Unit,
-        max_level: rules::ULT_MAX_LEVEL,
-        passive: false,
-        ultimate: true,
-        at_an_enemy: true,
-        mana: &rules::DISMEMBER_MANA,
-        cooldown: &rules::DISMEMBER_COOLDOWN,
-        range: rules::DISMEMBER_RANGE,
-        duration: rules::DISMEMBER_TICKS,
-        ..PLAIN
-    },
+    pudge::MEAT_HOOK,
+    pudge::ROT,
+    pudge::FLESH_HEAP,
+    pudge::DISMEMBER,
     AbilityDef {
         name: "Burst",
         max_level: 1,
         passive: false,
         mana: &[0],
         cooldown: &[rules::COURIER_BURST_COOLDOWN],
-        ..PLAIN
+        ..BARE_ABILITY
     },
     AbilityDef {
         name: "Return",
@@ -120,7 +86,7 @@ pub const ABILITIES: [AbilityDef; ABILITY_COUNT] = [
         passive: false,
         mana: &[0],
         cooldown: &[0],
-        ..PLAIN
+        ..BARE_ABILITY
     },
     AbilityDef {
         name: "Take Stash",
@@ -128,7 +94,7 @@ pub const ABILITIES: [AbilityDef; ABILITY_COUNT] = [
         passive: false,
         mana: &[0],
         cooldown: &[0],
-        ..PLAIN
+        ..BARE_ABILITY
     },
     AbilityDef {
         name: "Deliver",
@@ -136,7 +102,7 @@ pub const ABILITIES: [AbilityDef; ABILITY_COUNT] = [
         passive: false,
         mana: &[0],
         cooldown: &[0],
-        ..PLAIN
+        ..BARE_ABILITY
     },
     AbilityDef {
         name: "Shield",
@@ -144,74 +110,18 @@ pub const ABILITIES: [AbilityDef; ABILITY_COUNT] = [
         passive: false,
         mana: &[0],
         cooldown: &[rules::COURIER_SHIELD_COOLDOWN],
-        ..PLAIN
+        ..BARE_ABILITY
     },
-    AbilityDef {
-        name: "Shadowraze (Near)",
-        max_level: rules::ABILITY_MAX_LEVEL,
-        passive: false,
-        mana: &rules::RAZE_MANA,
-        cooldown: &rules::RAZE_COOLDOWN,
-        range: rules::RAZE_DISTANCE[0],
-        point: rules::RAZE_CAST_POINT_MS,
-        ..PLAIN
-    },
-    AbilityDef {
-        name: "Shadowraze (Mid)",
-        max_level: rules::ABILITY_MAX_LEVEL,
-        passive: false,
-        mana: &rules::RAZE_MANA,
-        cooldown: &rules::RAZE_COOLDOWN,
-        range: rules::RAZE_DISTANCE[1],
-        point: rules::RAZE_CAST_POINT_MS,
-        ..PLAIN
-    },
-    AbilityDef {
-        name: "Shadowraze (Far)",
-        max_level: rules::ABILITY_MAX_LEVEL,
-        passive: false,
-        mana: &rules::RAZE_MANA,
-        cooldown: &rules::RAZE_COOLDOWN,
-        range: rules::RAZE_DISTANCE[2],
-        point: rules::RAZE_CAST_POINT_MS,
-        ..PLAIN
-    },
-    AbilityDef {
-        name: "Requiem of Souls",
-        max_level: rules::ULT_MAX_LEVEL,
-        passive: false,
-        ultimate: true,
-        mana: &rules::REQUIEM_MANA,
-        cooldown: &rules::REQUIEM_COOLDOWN,
-        range: rules::REQUIEM_LINE_DISTANCE,
-        point: rules::REQUIEM_CAST_POINT_MS,
-        backswing: rules::REQUIEM_BACKSWING_MS,
-        ..PLAIN
-    },
-    AbilityDef {
-        name: "Necromastery",
-        max_level: 1,
-        ..PLAIN
-    },
-    AbilityDef {
-        name: "Presence of the Dark Lord",
-        max_level: rules::ABILITY_MAX_LEVEL,
-        range: rules::PRESENCE_RADIUS,
-        ..PLAIN
-    },
-    AbilityDef {
-        name: "Feast of Souls",
-        max_level: rules::ABILITY_MAX_LEVEL,
-        passive: false,
-        immediate: true,
-        mana: &rules::FEAST_MANA,
-        cooldown: &rules::FEAST_COOLDOWN,
-        range: rules::FEAST_RADIUS,
-        ..PLAIN
-    },
+    shadow_fiend::RAZE_NEAR,
+    shadow_fiend::RAZE_MID,
+    shadow_fiend::RAZE_FAR,
+    shadow_fiend::REQUIEM,
+    shadow_fiend::NECROMASTERY,
+    shadow_fiend::PRESENCE,
+    shadow_fiend::FEAST_OF_SOULS,
     AbilityDef {
         name: "Throw Grenade",
-        ..PLAIN
+        ..BARE_ABILITY
     },
 ];
 

@@ -1,4 +1,4 @@
-# Every position on the bota wire: append-only (DESIGN.md, Protocol).
+# Every position on the bota wire: append-only.
 #
 # One line a position postcard encodes: an enum's variant index, a struct's or
 # struct variant's field order, a tuple's element order. A new variant or field
@@ -377,3 +377,6 @@ field TeleportView 4 ticks_left: u32
 field TeleportView 5 ticks_total: u32
 field UnitView 34 town_portal: Option<ItemView>
 field WorldView 13 teleports: Vec<TeleportView>
+field ClientMsg::Hello 2 key: Option<SeatKey>
+variant Role 3 Referee
+newtype SeatKey [u8; 32]

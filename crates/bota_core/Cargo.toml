@@ -2,6 +2,11 @@
 name = "bota_core"
 version.workspace = true
 edition.workspace = true
+license.workspace = true
+description = "The rules of bota a player may know: definition tables and pure integer functions."
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
 
 [dependencies]
 bota_proto = { workspace = true }

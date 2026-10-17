@@ -1,6 +1,6 @@
 //! Seats, picks, readiness, and the mapping between wire and match identity.
 
-use bota_proto::{HeroId, LobbySlot, PlayerId, Role, SlotId, Team};
+use bota_proto::{HeroId, LobbySlot, PlayerId, Role, SeatKey, SlotId, Team};
 
 /// The hero a dummy seat plays: Shadow Fiend.
 pub const DUMMY_HERO: HeroId = HeroId::SHADOW_FIEND;
@@ -21,6 +21,15 @@ pub struct RosterSeat {
     pub ready: bool,
     /// A seat nobody holds: ready from the start, its hero stays put and never acts.
     pub dummy: bool,
+}
+
+/// A seat held back for whoever presents its key.
+#[derive(Clone, Debug)]
+pub struct ReservedSeat {
+    /// What entitles a connection to the seat.
+    pub key: SeatKey,
+    /// The name whoever holds the seat is shown under.
+    pub name: String,
 }
 
 /// All seats, and the `PlayerId` to `SlotId` mapping.
@@ -63,6 +72,18 @@ impl Roster {
             seat.ready = true;
         }
         roster
+    }
+
+    /// The seat a key is reserved for. Every reservation is compared, so the time
+    /// taken does not tell which one matched.
+    pub fn seat_for_key(&self, reserved: &[ReservedSeat], key: &SeatKey) -> Option<SlotId> {
+        let mut found = None;
+        for (seat, reservation) in self.seats.iter().zip(reserved) {
+            if reservation.key == *key {
+                found = Some(seat.slot);
+            }
+        }
+        found
     }
 
     /// The seat a connection holds.

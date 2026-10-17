@@ -216,6 +216,8 @@ pub struct Stock {
 /// One entry of the catalog.
 #[derive(Clone, Copy, Debug)]
 pub struct ItemDef {
+    /// What it is called.
+    pub name: &'static str,
     /// Price in gold.
     pub cost: i32,
     /// Uses it is bought with. Zero for one that is never used up.
@@ -298,6 +300,7 @@ impl ItemDef {
 /// An item that costs nothing, carries nothing and does nothing, so an entry
 /// names only what sets it apart.
 pub(crate) const PLAIN: ItemDef = ItemDef {
+    name: "",
     cost: 0,
     charges: 0,
     stack_limit: 0,
