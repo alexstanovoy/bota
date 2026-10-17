@@ -130,6 +130,12 @@ pub fn heading_of(facing: Angle) -> Vec2 {
     Vec2::from_ints(dx, dy)
 }
 
+/// The point `distance` from `from` along the heading `facing`.
+#[inline]
+pub fn point_ahead(from: Vec2, facing: Angle, distance: Fixed) -> Vec2 {
+    point_along(from, from + heading_of(facing), distance)
+}
+
 /// Keeps a position on the map.
 #[inline]
 pub fn clamp_to_map(pos: Vec2) -> Vec2 {

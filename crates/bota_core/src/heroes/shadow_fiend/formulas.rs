@@ -4,17 +4,13 @@
 
 use bota_proto::{Angle, Fixed, Vec2};
 
-use crate::{heading_of, point_along, rules};
+use crate::{point_ahead, rules};
 
 /// Where a raze lands: its own reach from the caster, along the line the
 /// caster faces. `reach` indexes [`rules::RAZE_DISTANCE`].
 #[inline]
 pub fn raze_landing(from: Vec2, facing: Angle, reach: usize) -> Vec2 {
-    point_along(
-        from,
-        from + heading_of(facing),
-        Fixed::from_int(rules::RAZE_DISTANCE[reach]),
-    )
+    point_ahead(from, facing, Fixed::from_int(rules::RAZE_DISTANCE[reach]))
 }
 
 /// The burn of a raze at a level, with every soul held (to the most it
@@ -35,6 +31,14 @@ pub fn raze_stack_damage(level: usize, talented: bool) -> i32 {
         } else {
             0
         }
+}
+
+/// What a raze at a level burns with `souls` held on a target that carries
+/// `stacks` of the caster's earlier ones, before any resistance.
+#[inline]
+pub fn raze_burn(level: usize, souls: u32, stacks: i32, talented: bool) -> i32 {
+    raze_damage(level, souls)
+        .saturating_add(raze_stack_damage(level, talented).saturating_mul(stacks))
 }
 
 /// Attack damage the souls held are worth at a hero level: tenths of a point

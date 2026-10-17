@@ -2,8 +2,8 @@
 //! enemies near him, and the requiem the souls feed.
 
 use bota_core::{
-    ModifierKind, Talent, attack_class_pct, heading_of, hero_def, kind_def, move_towards, per_tick,
-    point_along, presence_armor, raze_damage, raze_landing, raze_stack_damage, requiem_death_lines,
+    ModifierKind, Talent, attack_class_pct, hero_def, kind_def, move_towards, per_tick,
+    point_ahead, presence_armor, raze_damage, raze_landing, raze_stack_damage, requiem_death_lines,
     requiem_fear_ticks, requiem_line_damage, requiem_lines, requiem_width, rules, soul_cap,
 };
 use bota_proto::{AbilityId, Angle, DamageKind, Fixed, Team};
@@ -131,9 +131,9 @@ impl World {
             let facing = Angle {
                 brads: (nth * 65536 / lines) as u16,
             };
-            let aim = point_along(
+            let aim = point_ahead(
                 from.pos,
-                from.pos + heading_of(facing),
+                facing,
                 Fixed::from_int(rules::REQUIEM_LINE_DISTANCE),
             );
             let line = self.spawn_placed(from.pos, facing, side);

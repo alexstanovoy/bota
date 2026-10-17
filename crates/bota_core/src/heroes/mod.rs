@@ -33,7 +33,7 @@ pub mod shadow_fiend;
 
 pub use pudge::PUDGE;
 pub use shadow_fiend::{
-    SHADOW_FIEND, SHADOW_FIEND_TALENTS, cast_point_ms, presence_armor, raze_damage, raze_landing,
-    raze_stack_damage, requiem_death_lines, requiem_fear_ticks, requiem_line_damage, requiem_lines,
-    requiem_width, soul_cap, soul_damage,
+    SHADOW_FIEND, SHADOW_FIEND_TALENTS, cast_point_ms, presence_armor, raze_burn, raze_damage,
+    raze_landing, raze_stack_damage, requiem_death_lines, requiem_fear_ticks, requiem_line_damage,
+    requiem_lines, requiem_width, soul_cap, soul_damage,
 };
