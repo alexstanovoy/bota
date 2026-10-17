@@ -19,26 +19,16 @@ pub struct HitRange {
     pub most: i32,
 }
 
-/// Health one plain, uncritical attack of `attacker` takes off `target` as
-/// both stand now, by the server's own rules.
+/// Health one plain, uncritical attack of `attacker` takes off `target` by
+/// the server's own rules, when the target wears `armor` as the blow lands and
+/// the attacker's base damage is `raise` above what its view shows (damage
+/// gained before the blow, such as souls from kills on the way). A raise of
+/// `roll` makes `least` the swing that draws `roll` above the range's floor.
 ///
 /// Item bonuses count as the working inventory carries them (a muted stack
-/// and the backpack are inert). The outgoing amplification a
-/// spawn modifier may add is hidden and read as nominal; whether a pierce
+/// and the backpack are inert). The outgoing amplification a spawn modifier
+/// may add is hidden and read as nominal; whether a pierce
 /// lands is a roll, so it only raises `most`.
-pub fn next_hit(attacker: &UnitView, target: &UnitView) -> HitRange {
-    next_hit_against(attacker, target, target.armor)
-}
-
-/// [`next_hit`] on a target that wears `armor` when the blow lands.
-pub fn next_hit_against(attacker: &UnitView, target: &UnitView, armor: Fixed) -> HitRange {
-    next_hit_raised(attacker, target, armor, 0)
-}
-
-/// [`next_hit_against`] for a swing whose base damage is `raise` above what the
-/// attacker's view shows when it lands: damage the attacker gains before the
-/// blow, such as souls from kills on the way. A raise of `roll` makes `least` the
-/// swing that draws `roll` above the range's floor.
 pub fn next_hit_raised(
     attacker: &UnitView,
     target: &UnitView,

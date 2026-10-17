@@ -419,10 +419,6 @@ impl ClientSession {
         &self.statics
     }
 
-    pub const fn options(&self) -> &SessionOptions {
-        &self.options
-    }
-
     /// The seat the stream is for, if it is a seat's.
     #[inline]
     pub fn slot(&self) -> Option<SlotId> {

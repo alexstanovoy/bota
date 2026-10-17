@@ -35,8 +35,6 @@ pub struct MatchStatic {
     terrain_rle: Vec<(u16, u8)>,
     opaque_cells: Vec<(u16, u16)>,
     terrain: Vec<u8>,
-    /// Static sight blockers as a row-major cell bitset.
-    opaque: Vec<u64>,
     shop: Vec<ShopEntry>,
     fountains: [Vec2; 2],
     shop_range: i32,
@@ -69,7 +67,6 @@ impl MatchStatic {
             terrain_rle: info.terrain_rle.clone(),
             opaque_cells: info.opaque_cells.clone(),
             terrain: decode_terrain(info),
-            opaque: opaque_bits(info),
             shop: info.shop.clone(),
             fountains: info.fountains,
             shop_range: info.shop_range,
@@ -148,17 +145,6 @@ impl MatchStatic {
         cell_xy(axis, position)
             .and_then(|(x, y)| self.terrain.get(y * axis + x))
             .map_or(0, |&cell| cell_tier(cell))
-    }
-
-    /// Whether a terrain cell blocks sight regardless of elevation.
-    #[inline]
-    pub fn opaque(&self, (x, y): (usize, usize)) -> bool {
-        let axis = self.metadata.terrain_cells as usize;
-        if x >= axis || y >= axis {
-            return false;
-        }
-        let index = y * axis + x;
-        self.opaque[index / 64] >> (index % 64) & 1 == 1
     }
 }
 
@@ -355,16 +341,6 @@ fn validate_static_inputs(info: &MatchInfo) -> Result<(), SessionError> {
         }
     }
     Ok(())
-}
-
-fn opaque_bits(info: &MatchInfo) -> Vec<u64> {
-    let axis = info.terrain_cells as usize;
-    let mut bits = vec![0u64; (axis * axis).div_ceil(64)];
-    for &(x, y) in &info.opaque_cells {
-        let index = usize::from(y) * axis + usize::from(x);
-        bits[index / 64] |= 1 << (index % 64);
-    }
-    bits
 }
 
 fn decode_terrain(info: &MatchInfo) -> Vec<u8> {

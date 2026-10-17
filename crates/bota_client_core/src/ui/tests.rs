@@ -596,7 +596,9 @@ fn only_what_the_seat_bought_and_keeps_counts_toward_the_price() {
 
 #[test]
 fn the_next_hit_is_what_the_server_would_land() {
-    use crate::{HitRange, next_hit};
+    use crate::{HitRange, next_hit_raised};
+    let next_hit =
+        |attacker: &UnitView, target: &UnitView| next_hit_raised(attacker, target, target.armor, 0);
     let blade = |mute_left| ItemView {
         id: ItemId::QUELLING_BLADE,
         mute_left,

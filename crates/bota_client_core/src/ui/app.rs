@@ -250,10 +250,6 @@ pub struct App {
     pub aiming: Option<crate::ui::slots::Slot>,
     /// An item slot picked up and waiting for the destination click.
     pub held_item: Option<u8>,
-    /// Whether the shop panel is open.
-    pub shop_open: bool,
-    /// The catalog row the shop panel starts at.
-    pub shop_scroll: usize,
     /// The lobby as last told: our wire identity once welcomed, and the
     /// seats as last broadcast.
     pub lobby: Lobby,
@@ -295,8 +291,6 @@ pub struct App {
     pub console: Option<String>,
     /// The end of the match, once it came.
     pub over: Option<(Team, MatchStats)>,
-    /// Set when the window should close.
-    pub quit: bool,
     /// The clock between snapshots.
     pub smooth: Smooth,
     /// What successive snapshots tell that one alone does not.
@@ -321,8 +315,6 @@ impl App {
             my_slot: None,
             aiming: None,
             held_item: None,
-            shop_open: false,
-            shop_scroll: 0,
             lobby: Lobby::default(),
             names: Vec::new(),
             seat: Seat::watching(SESSION_OPTIONS),
@@ -341,7 +333,6 @@ impl App {
             reject: None,
             console: None,
             over: None,
-            quit: false,
             smooth: Smooth::new(),
             derived: Derived::default(),
             cues: Vec::new(),

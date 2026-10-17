@@ -131,7 +131,8 @@ impl ReplayPlayer {
     }
 
     /// Bytes consumed by the parser, excluding file read-ahead.
-    pub fn bytes_read(&self) -> u64 {
+    #[cfg(test)]
+    pub(crate) fn bytes_read(&self) -> u64 {
         self.stream.offset
     }
 
