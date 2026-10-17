@@ -331,7 +331,7 @@ impl World {
             self.walk_toward(entity, dest, Fixed::ZERO, scratch);
             return;
         }
-        if let Some(to) = self.slide_past(entity, from, next, collision)
+        if let Some(to) = self.slide_past(entity, from, (next, aim), collision)
             && self.clearance.capsule_clear(from, to, collision)
         {
             self.moved(entity, from, to);
@@ -340,26 +340,58 @@ impl World {
 
     /// Where a step against a body ends: the step itself with nobody in
     /// the way, else what of it runs along the edge of the body it meets,
-    /// and nothing when that is no way at all or meets a second body.
+    /// and nothing when that is no way at all, meets a second body, or the
+    /// body is a creep of its own lane further on, which it queues behind.
     ///
     /// Bodies are met where they stood when the tick began, so every
     /// marcher steps at once and none walks into a gap another left this
     /// tick: who moves first would otherwise shape the wave, and the slots
     /// go to the side spawned first. Two that step into one spot are eased
     /// apart after.
-    fn slide_past(&self, entity: Entity, from: Vec2, next: Vec2, collision: Fixed) -> Option<Vec2> {
+    fn slide_past(
+        &self,
+        entity: Entity,
+        from: Vec2,
+        (next, aim): (Vec2, Vec2),
+        collision: Fixed,
+    ) -> Option<Vec2> {
         if self.phased(entity) {
             return Some(next);
         }
-        let Some((centre, radius)) = self.stood_in_the_way(entity, from, next, collision) else {
+        let Some((blocker, centre, radius)) = self.stood_in_the_way(entity, from, next, collision)
+        else {
             return Some(next);
         };
+        if self.queues_behind(entity, blocker, from, centre, aim) {
+            return None;
+        }
         let to = slide_along(from, next, centre, collision + radius)?;
         (to != from && self.stood_in_the_way(entity, from, to, collision).is_none()).then_some(to)
     }
 
-    /// Where the body a step would walk into stood when the tick began, and
-    /// its collision size: the nearest to where the step begins of those
+    /// Whether a marcher that walks into a creep of its own lane, further on
+    /// towards where both are going, stands behind it rather than sliding
+    /// past: the followers of a held lead creep queue up behind it ("the
+    /// creeps that follow will block each other", Gaming StackExchange; lane
+    /// creeps walk against what blocks them and are stuck, Liquipedia, *Unit
+    /// Size*). Nearer the aim is strictly further on, so two never wait on
+    /// each other.
+    fn queues_behind(
+        &self,
+        entity: Entity,
+        blocker: Entity,
+        from: Vec2,
+        centre: Vec2,
+        aim: Vec2,
+    ) -> bool {
+        self.march.get(blocker).is_some()
+            && self.team.get(blocker) == self.team.get(entity)
+            && self.lane.get(blocker) == self.lane.get(entity)
+            && centre.distance_squared(aim) < from.distance_squared(aim)
+    }
+
+    /// The body a step would walk into, where it stood when the tick began,
+    /// and its collision size: the nearest to where the step begins of those
     /// the step ends inside and nearer their centre. Phased bodies are
     /// walked through.
     fn stood_in_the_way(
@@ -368,8 +400,8 @@ impl World {
         from: Vec2,
         next: Vec2,
         mine: Fixed,
-    ) -> Option<(Vec2, Fixed)> {
-        let mut best: Option<(i64, Vec2, Fixed)> = None;
+    ) -> Option<(Entity, Vec2, Fixed)> {
+        let mut best: Option<(i64, Entity, Vec2, Fixed)> = None;
         self.bodies.near(next, mine, |body| {
             if body.entity == mover || self.phased(body.entity) {
                 return;
@@ -380,11 +412,11 @@ impl World {
             if ahead >= least || ahead >= near {
                 return;
             }
-            if best.is_none_or(|(had, _, _)| near < had) {
-                best = Some((near, body.at, body.radius));
+            if best.is_none_or(|(had, _, _, _)| near < had) {
+                best = Some((near, body.entity, body.at, body.radius));
             }
         });
-        best.map(|(_, at, radius)| (at, radius))
+        best.map(|(_, entity, at, radius)| (entity, at, radius))
     }
 
     /// Where a walker stands and how far it walks this tick, or nothing

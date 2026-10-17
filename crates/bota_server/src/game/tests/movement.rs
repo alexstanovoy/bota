@@ -496,10 +496,12 @@ fn marchers_walk_round_a_hero_standing_on_their_lane() {
             );
         }
     }
+    // Past it, or fighting the enemy wave: a ranged creep may stand
+    // shooting from behind it.
     for creep in &creeps {
         let at = world.transform.get(*creep).expect("alive").pos;
         assert!(
-            lane_progress(&route, at) > blocked + 150,
+            lane_progress(&route, at) > blocked + 150 || world.target_of(*creep).is_some(),
             "a creep is held up by the hero at ({},{})",
             at.x.to_int(),
             at.y.to_int()
@@ -645,6 +647,60 @@ fn a_hero_among_trees_too_close_for_the_route_margin_still_walks_home() {
         assert!(
             gained > i64::from(rules::units(500).raw),
             "from {start:?} it walked towards home, not stood at {now:?}"
+        );
+    }
+}
+
+/// Creep blocking in open lane: a hero standing head on before the lead
+/// creep of a wave that has formed its column holds it, and the creeps
+/// behind walk into the held one and queue up behind it rather than slide
+/// round it ("the creeps that follow will block each other").
+#[test]
+fn the_followers_of_a_held_lead_creep_queue_behind_it() {
+    let mut world = World::on_map(map_of(MapId(2)));
+    while world.tick < rules::FIRST_WAVE_TICK {
+        world.step();
+    }
+    let route = world.walked_lanes()[0][0].clone();
+    let progress = |world: &World, e: Entity| {
+        lane_progress(&route, world.transform.get(e).expect("standing").pos)
+    };
+    let lead = loop {
+        world.step();
+        let lead = radiant_marchers(&world)
+            .into_iter()
+            .max_by_key(|e| (progress(&world, *e), *e))
+            .expect("a wave came out");
+        if progress(&world, lead) >= 2500 {
+            break lead;
+        }
+    };
+    let at = world.transform.get(lead).expect("standing").pos;
+    let aim = world
+        .route
+        .get(lead)
+        .map(|route| route.corners.first().copied().unwrap_or(route.end))
+        .expect("a route");
+    let touch = rules::HERO_COLLISION + rules::MELEE_CREEP_COLLISION + 1;
+    let hero = hero_at(&mut world, point_along(at, aim, rules::units(touch)));
+    world.set_order(hero, UnitOrder::Stand);
+    for _ in 0..(2 * rules::TICKS_PER_SECOND) {
+        world.step();
+    }
+    let front = progress(&world, lead);
+    let followers: Vec<Entity> = radiant_marchers(&world)
+        .into_iter()
+        .filter(|e| *e != lead)
+        .collect();
+    assert_eq!(followers.len(), 3, "the wave is whole");
+    for follower in followers {
+        assert!(
+            progress(&world, follower) < front,
+            "a follower slipped past the held lead creep"
+        );
+        assert!(
+            world.motion.get(follower).expect("walks").still >= 15,
+            "a follower is still walking instead of queueing"
         );
     }
 }
