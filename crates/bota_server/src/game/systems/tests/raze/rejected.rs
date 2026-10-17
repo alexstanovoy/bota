@@ -1,6 +1,6 @@
 use bota_core::ModifierKind;
 
-use crate::game::{Action, ActionState, Modifier, Modifiers, PendingCast};
+use crate::game::{Action, ActionState, Entity, Modifier, Modifiers, PendingCast, World};
 use bota_proto::{AbilitySlot, DamageKind, Fixed, Target, Team, Vec2};
 
 use super::fixtures::*;
@@ -15,13 +15,22 @@ fn held(kind: ModifierKind, ticks: u32) -> Modifiers {
 }
 
 #[test]
-fn raze_miss_neither_applies_nor_refreshes_a_debuff() {
-    let (mut world, caster, target) = fixture();
-    land(&mut world, caster, target, 0);
-    world.transform.get_mut(target).unwrap().pos = Vec2::from_ints(6000, 5000);
-    assert!(world.cast_raze(caster, 0, 1));
-    assert!(burns_on(&world.step(), target).is_empty());
-    assert_eq!(effects(&world, target), vec![effect(1, 179)]);
+fn raze_miss_or_invulnerable_target_does_not_refresh_a_debuff() {
+    let misses: [fn(&mut World, Entity); 2] = [
+        |world, target| world.transform.get_mut(target).unwrap().pos = Vec2::from_ints(6000, 5000),
+        |world, target| {
+            world.stats.get_mut(target).unwrap().invulnerable = true;
+            reveal(world, target);
+        },
+    ];
+    for miss in misses {
+        let (mut world, caster, target) = fixture();
+        land(&mut world, caster, target, 0);
+        miss(&mut world, target);
+        assert!(world.cast_raze(caster, 0, 1));
+        assert!(burns_on(&world.step(), target).is_empty());
+        assert_eq!(effects(&world, target), vec![effect(1, 179)]);
+    }
 }
 
 #[test]
@@ -71,17 +80,6 @@ fn raze_expired_shield_does_not_block_damage_or_debuff() {
         .insert(target, held(ModifierKind::Shielded, 1));
     assert_eq!(land(&mut world, caster, target, 0), 85);
     assert_eq!(effects(&world, target), vec![effect(1, 180)]);
-}
-
-#[test]
-fn raze_existing_debuff_is_not_refreshed_by_a_missed_invulnerable_target() {
-    let (mut world, caster, target) = fixture();
-    land(&mut world, caster, target, 0);
-    world.stats.get_mut(target).unwrap().invulnerable = true;
-    reveal(&mut world, target);
-    assert!(world.cast_raze(caster, 0, 1));
-    assert!(burns_on(&world.step(), target).is_empty());
-    assert_eq!(effects(&world, target), vec![effect(1, 179)]);
 }
 
 #[test]
