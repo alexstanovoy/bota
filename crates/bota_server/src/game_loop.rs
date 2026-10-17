@@ -291,10 +291,7 @@ impl Server {
             // Seats are not handed out mid-match to whoever asks.
             Some(Admission::AnySeat) if info.is_some() => None,
             Some(Admission::AnySeat) => self.roster.free_seat_mut().map(|seat| {
-                seat.player = Some(id);
-                seat.name = name;
-                seat.role = Some(role);
-                seat.ready = false;
+                seat.hold(id, name, role);
                 Some(seat.slot)
             }),
             Some(Admission::Seat(slot)) => {
@@ -345,11 +342,7 @@ impl Server {
                 slot: Some(slot),
             });
         }
-        let seat = &mut self.roster.seats[usize::from(slot.0)];
-        seat.player = Some(id);
-        seat.name = name;
-        seat.role = Some(role);
-        seat.ready = false;
+        self.roster.seats[usize::from(slot.0)].hold(id, name, role);
     }
 
     /// Collects seats and picks until everyone is ready, or until the time

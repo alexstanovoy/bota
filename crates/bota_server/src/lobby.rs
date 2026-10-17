@@ -23,6 +23,16 @@ pub struct RosterSeat {
     pub dummy: bool,
 }
 
+impl RosterSeat {
+    /// Hands the seat to a connection, not yet ready; its pick stays.
+    pub fn hold(&mut self, player: PlayerId, name: String, role: Role) {
+        self.player = Some(player);
+        self.name = name;
+        self.role = Some(role);
+        self.ready = false;
+    }
+}
+
 /// A seat held back for whoever presents its key.
 #[derive(Clone, Debug)]
 pub struct ReservedSeat {

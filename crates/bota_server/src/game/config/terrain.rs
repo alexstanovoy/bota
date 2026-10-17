@@ -7897,8 +7897,8 @@ pub const TERRAIN_RLE: &[(u16, u8)] = &[
     (1, 0x04),
 ];
 
-/// Cells per terrain axis; the passability grid uses the same layout.
-pub const TERRAIN_CELLS: usize = 288;
+/// Cells per terrain axis: the layout of [`bota_core::rules::GRID_CELLS`].
+pub const TERRAIN_CELLS: usize = bota_core::rules::GRID_CELLS;
 
 /// Run-length encoded terrain cells of the hero demo map, in the same
 /// frame and format as [`TERRAIN_RLE`].

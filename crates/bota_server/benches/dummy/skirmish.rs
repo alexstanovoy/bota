@@ -3,19 +3,15 @@
 //! events.
 
 use bota_core::{MAP2_ID, rules};
-use bota_proto::{
-    AbilitySlot, EventKind, HeroId, ItemId, Order, Pick, SlotId, Target, Team, TickMode, Vec2,
-    WorldView,
-};
+use bota_proto::{AbilitySlot, EventKind, ItemId, Order, SlotId, Target, Team, Vec2, WorldView};
 
-use crate::game::{Command, EventVisibility, Fnv, MatchConfig, World};
+use crate::game::{Command, EventVisibility, Fnv, World};
+use crate::scenario::two_fiends;
 
 /// Ticks between two decisions of a seat.
 const DECISION_TICKS: u32 = 3;
 /// Identity and seed of the skirmish.
 const MATCH_ID: u64 = 11;
-/// The Shadow Fiend.
-const SHADOW_FIEND: HeroId = HeroId::SHADOW_FIEND;
 /// Half the side of the square the heroes fight about, in world units.
 const SPREAD: u32 = 500;
 
@@ -35,7 +31,7 @@ pub(crate) struct Skirmish {
 impl Skirmish {
     /// The skirmish at tick zero.
     pub(crate) fn build() -> Skirmish {
-        let cfg = match_config();
+        let cfg = two_fiends(MATCH_ID, [0x11; 32], MAP2_ID);
         let world = World::for_match(&cfg, cfg.rng());
         let tower = |towers: &[(u8, u8, Vec2)]| {
             towers
@@ -132,35 +128,6 @@ impl Skirmish {
         self.state ^= self.state >> 7;
         self.state ^= self.state << 17;
         self.state
-    }
-}
-
-/// The configuration of the skirmish.
-fn match_config() -> MatchConfig {
-    MatchConfig {
-        match_id: MATCH_ID,
-        stream: MATCH_ID,
-        master_key: [0x11; 32],
-        picks: vec![
-            Pick {
-                slot: SlotId(0),
-                team: Team::Radiant,
-                hero: SHADOW_FIEND,
-            },
-            Pick {
-                slot: SlotId(1),
-                team: Team::Dire,
-                hero: SHADOW_FIEND,
-            },
-        ],
-        map: MAP2_ID,
-        tick_rate: rules::TICKS_PER_SECOND as u16,
-        mode: TickMode::Lockstep,
-        ack_timeout_ticks: 0,
-        cheats: false,
-        spawn_modifiers: Vec::new(),
-        immortal_structures: false,
-        immortal_heroes: false,
     }
 }
 
