@@ -102,6 +102,9 @@ impl EffectFace {
     }
 }
 
+/// What each of the three razes does.
+const RAZE: &str = "No target, {point} s cast point. Burns every enemy but a building within {raze_radius} of a spot {range} ahead of where you face for {raze_damage} magic damage, plus {raze_soul} per soul held and {raze_stack} per prior same-caster stack. Each damaging hit refreshes all stacks for {raze_secs} s. One point levels all three razes. {mana} mana, {wait} s wait.";
+
 /// Every ability, in id order.
 pub const ABILITIES: [AbilityFace; ABILITY_COUNT] = [
     AbilityFace {
@@ -152,17 +155,17 @@ pub const ABILITIES: [AbilityFace; ABILITY_COUNT] = [
     AbilityFace {
         id: AbilityId::RAZE_NEAR.0,
         name: "Raze 1",
-        template: "No target, {point} s cast point. Burns every enemy but a building within {raze_radius} of a spot {range} ahead of where you face for {raze_damage} magic damage, plus {raze_soul} per soul held and {raze_stack} per prior same-caster stack. Each damaging hit refreshes all stacks for {raze_secs} s. One point levels all three razes. {mana} mana, {wait} s wait.",
+        template: RAZE,
     },
     AbilityFace {
         id: AbilityId::RAZE_MID.0,
         name: "Raze 2",
-        template: "No target, {point} s cast point. Burns every enemy but a building within {raze_radius} of a spot {range} ahead of where you face for {raze_damage} magic damage, plus {raze_soul} per soul held and {raze_stack} per prior same-caster stack. Each damaging hit refreshes all stacks for {raze_secs} s. One point levels all three razes. {mana} mana, {wait} s wait.",
+        template: RAZE,
     },
     AbilityFace {
         id: AbilityId::RAZE_FAR.0,
         name: "Raze 3",
-        template: "No target, {point} s cast point. Burns every enemy but a building within {raze_radius} of a spot {range} ahead of where you face for {raze_damage} magic damage, plus {raze_soul} per soul held and {raze_stack} per prior same-caster stack. Each damaging hit refreshes all stacks for {raze_secs} s. One point levels all three razes. {mana} mana, {wait} s wait.",
+        template: RAZE,
     },
     AbilityFace {
         id: AbilityId::REQUIEM.0,

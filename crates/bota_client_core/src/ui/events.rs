@@ -82,11 +82,11 @@ impl App {
         if !self.involves_hero(source, target) {
             return;
         }
-        let (text, look) = match kind {
-            DamageKind::Physical => (format!("{amount}"), FloaterKind::Damage),
-            _ => (format!("{amount}"), FloaterKind::Magic),
+        let look = match kind {
+            DamageKind::Physical => FloaterKind::Damage,
+            _ => FloaterKind::Magic,
         };
-        self.float(target, text, look);
+        self.float(target, amount.to_string(), look);
         let ears = self.ears();
         if source.is_some() && source == ears && kind == DamageKind::Physical {
             self.cue(CueKind::Hit, 0.55, None);
@@ -119,7 +119,7 @@ impl App {
             }
         } else if gold > 0 && mine {
             self.float(unit, format!("+{gold}"), FloaterKind::Gold);
-            if mine && !hero {
+            if !hero {
                 self.cue(CueKind::LastHit, 0.95, Some(at));
             }
         }

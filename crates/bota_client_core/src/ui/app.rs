@@ -499,10 +499,7 @@ impl App {
     ///
     /// Whatever is picked, if anything is; one's own hero otherwise.
     pub fn commanded(&self) -> Option<EntityId> {
-        match self.selected {
-            Some(id) => Some(id),
-            None => self.my_hero(),
-        }
+        self.selected.or_else(|| self.my_hero())
     }
 
     /// Picks a unit, and pins the camera to it when `again` says the same
@@ -598,10 +595,7 @@ impl App {
     /// Whether the current selection is a unit this seat drives, or nothing
     /// is selected.
     pub fn controls_selection(&self) -> bool {
-        match self.selected {
-            None => true,
-            Some(id) => self.drives(id),
-        }
+        self.selected.is_none_or(|id| self.drives(id))
     }
 
     /// The team whose fog this client lives under. Absent for spectators,
