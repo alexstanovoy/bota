@@ -41,6 +41,7 @@ impl World {
             Until::Down(id) => self.all_down(side, *id),
             Until::AnyOf(each) => each.iter().any(|one| self.condition_met(side, one)),
             Until::AllOf(each) => each.iter().all(|one| self.condition_met(side, one)),
+            Until::Never => false,
         }
     }
 

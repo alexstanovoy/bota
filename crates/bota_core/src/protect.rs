@@ -42,6 +42,8 @@ pub enum Until {
     AnyOf(&'static [Until]),
     /// Every condition holds.
     AllOf(&'static [Until]),
+    /// Nothing lifts the guard: the structure stands invulnerable all match.
+    Never,
 }
 
 /// One rule: what it guards, and what must fall before that may be struck.
@@ -121,3 +123,24 @@ pub const DOTA_PROTECTION: [Protection; 15] = [
         until: Until::Down(tower(rules::LANE_MID, 4)),
     },
 ];
+
+/// Dota's own "1v1 Solo Mid" mode: the Dota rules, and the side lanes'
+/// tier-one towers never open (Liquipedia, *Game Modes*: "side towers are
+/// invulnerable"). Nothing behind them opens either, so only the mid lane
+/// can be broken.
+pub const SOLO_MID_PROTECTION: [Protection; DOTA_PROTECTION.len() + 2] = {
+    const fn never(lane: u8) -> Protection {
+        Protection {
+            guarded: tower(lane, 1),
+            until: Until::Never,
+        }
+    }
+    let mut out = [never(rules::LANE_TOP); DOTA_PROTECTION.len() + 2];
+    let mut at = 0;
+    while at < DOTA_PROTECTION.len() {
+        out[at] = DOTA_PROTECTION[at];
+        at += 1;
+    }
+    out[at + 1] = never(rules::LANE_BOT);
+    out
+};
