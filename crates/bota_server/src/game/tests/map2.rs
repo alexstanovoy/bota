@@ -17,7 +17,7 @@ use bota_proto::{
 use super::support::advance_validated;
 
 const MID_MAP: MapId = MapId(2);
-const TICK_CAP: u32 = 27_900;
+const TICK_CAP: u32 = 36_900;
 const FINAL_WAVE: u32 = (TICK_CAP - rules::FIRST_WAVE_TICK) / rules::WAVE_PERIOD_TICKS + 1;
 
 fn config(map: MapId) -> MatchConfig {
@@ -431,7 +431,7 @@ fn map2_simultaneous_first_hero_deaths_do_not_end_the_match() {
 }
 
 #[test]
-fn map2_cap_draws_at_fifteen_game_minutes_plus_unchanged_pregame() {
+fn map2_cap_draws_at_twenty_game_minutes_plus_unchanged_pregame() {
     let mut world = match_world(MID_MAP);
     world.tick = TICK_CAP - 2;
 
@@ -442,7 +442,7 @@ fn map2_cap_draws_at_fifteen_game_minutes_plus_unchanged_pregame() {
     world.advance(&[]);
     assert_eq!(
         world.tick,
-        rules::PREGAME_TICKS + 15 * 60 * rules::TICKS_PER_SECOND
+        rules::PREGAME_TICKS + 20 * 60 * rules::TICKS_PER_SECOND
     );
     assert_eq!(world.victor(), Some(Team::Neutral));
     assert_eq!(world.match_stats().duration, TICK_CAP);
@@ -466,7 +466,7 @@ fn map2_public_limits_and_wave_selection_match_the_match_contract() {
     assert_eq!(map_of(MID_MAP).id, MID_MAP, "map 2 is its own map");
     assert_eq!(map_of(MID_MAP).index(), 2);
     assert_eq!(MAP2_DEATH_LIMIT, 2);
-    assert_eq!(MAP2_GAME_TICKS, 27_000);
+    assert_eq!(MAP2_GAME_TICKS, 36_000);
     assert_eq!(MAP2_TICK_CAP, TICK_CAP);
     assert_eq!(map_of(MID_MAP).wave_lanes, &[rules::LANE_MID]);
     for map in &MAPS {
