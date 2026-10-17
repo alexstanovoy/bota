@@ -46,51 +46,16 @@ impl World {
         killer: Option<Entity>,
         events: &mut Vec<Event>,
     ) -> i32 {
-        let fallen_seat = self.seat_of(fallen);
-        let bounty = match fallen_seat {
-            Some(index) => {
-                let seat = &self.seats[index];
-                Bounty {
-                    gold: GoldRange::exactly(hero_bounty(i32::from(seat.streak))),
-                    bonus: 0,
-                    team: 0,
-                    xp: hero_kill_xp(seat.xp, i32::from(seat.streak), i32::from(seat.level)),
-                }
-            }
-            None => match self.bounty.get(fallen).copied() {
-                Some(bounty) => bounty,
-                None => return 0,
-            },
+        let Some((bounty, fallen_seat)) = self.price_of_fall(fallen) else {
+            return 0;
         };
-        if let Some(index) = fallen_seat {
-            let seat = &mut self.seats[index];
-            let loss = (seat.net_worth / rules::DEATH_GOLD_LOSS_SHARE).clamp(0, seat.gold);
-            seat.gold -= loss;
-            seat.net_worth -= loss;
-            seat.streak = 0;
-        }
         let Some(side) = self.team.get(fallen).copied() else {
             return 0;
         };
         let at = self.transform.get(fallen).map_or(Vec2::ZERO, |t| t.pos);
         let killer_side = killer.and_then(|k| self.team.get(k).copied());
         let denied = killer_side == Some(side);
-        let mut paid = 0;
-        if let Some(index) = killer.and_then(|k| self.seat_of(k)) {
-            if denied {
-                self.seats[index].denies += 1;
-            } else {
-                if fallen_seat.is_some() {
-                    self.seats[index].streak += 1;
-                } else {
-                    self.seats[index].last_hits += 1;
-                }
-                let gold = self.roll_gold(bounty.gold);
-                paid = self.bounty_after(killer, gold);
-                self.seats[index].gold += paid;
-                self.seats[index].net_worth += paid;
-            }
-        }
+        let mut paid = self.credit_killer(killer, denied, fallen_seat.is_some(), bounty.gold);
         let striker_seat = killer.and_then(|k| self.seat_of(k));
         if !denied && bounty.bonus > 0 {
             paid += self.pay_flag_bonus(at, other_side(side), bounty.bonus, striker_seat);
@@ -115,6 +80,62 @@ impl World {
         };
         let killer_seat = fallen_seat.and_then(|_| killer.and_then(|entity| self.seat_of(entity)));
         self.grant_xp_around(at, earners, bounty.xp, killer_seat, events);
+        paid
+    }
+
+    /// What the fallen is worth, and the seat it was a hero of: a hero's head
+    /// is priced by its streak, and its death costs its seat the share of its
+    /// net worth. Nothing for a fallen that is worth nothing.
+    fn price_of_fall(&mut self, fallen: Entity) -> Option<(Bounty, Option<usize>)> {
+        let fallen_seat = self.seat_of(fallen);
+        let bounty = match fallen_seat {
+            Some(index) => {
+                let seat = &self.seats[index];
+                Bounty {
+                    gold: GoldRange::exactly(hero_bounty(i32::from(seat.streak))),
+                    bonus: 0,
+                    team: 0,
+                    xp: hero_kill_xp(seat.xp, i32::from(seat.streak), i32::from(seat.level)),
+                }
+            }
+            None => self.bounty.get(fallen).copied()?,
+        };
+        if let Some(index) = fallen_seat {
+            let seat = &mut self.seats[index];
+            let loss = (seat.net_worth / rules::DEATH_GOLD_LOSS_SHARE).clamp(0, seat.gold);
+            seat.gold -= loss;
+            seat.net_worth -= loss;
+            seat.streak = 0;
+        }
+        Some((bounty, fallen_seat))
+    }
+
+    /// Credits the seat of the killer: a deny, or a streak step for a hero and
+    /// a last hit for anything else, with the gold drawn from `gold`. Answers
+    /// the gold paid.
+    fn credit_killer(
+        &mut self,
+        killer: Option<Entity>,
+        denied: bool,
+        fallen_was_hero: bool,
+        gold: GoldRange,
+    ) -> i32 {
+        let Some(index) = killer.and_then(|k| self.seat_of(k)) else {
+            return 0;
+        };
+        if denied {
+            self.seats[index].denies += 1;
+            return 0;
+        }
+        if fallen_was_hero {
+            self.seats[index].streak += 1;
+        } else {
+            self.seats[index].last_hits += 1;
+        }
+        let gold = self.roll_gold(gold);
+        let paid = self.bounty_after(killer, gold);
+        self.seats[index].gold += paid;
+        self.seats[index].net_worth += paid;
         paid
     }
 
