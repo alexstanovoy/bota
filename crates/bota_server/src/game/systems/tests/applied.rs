@@ -16,7 +16,7 @@ use bota_proto::{
 };
 
 use super::support::{hold, spec};
-use crate::game::tests::support::{put_on, shown};
+use crate::game::tests::support::{put_on, set_level, shown};
 
 /// A world with a hero and a creep standing well apart.
 fn arena() -> (World, Entity, Entity) {
@@ -511,9 +511,7 @@ fn pudge_with_a_heap() -> (World, Entity) {
         SlotId(0),
         HeroId::PUDGE,
     );
-    if let Some(book) = world.abilities.get_mut(pudge) {
-        book.slots[2].level = 1;
-    }
+    set_level(&mut world, pudge, 2, 1);
     let mut stacks = Stacks::default();
     stacks.set(StackKind::FleshHeap, 10);
     world.stacks.insert(pudge, stacks);

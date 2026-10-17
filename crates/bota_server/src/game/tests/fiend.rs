@@ -327,9 +327,7 @@ fn armor_the_presence_takes_below_zero_lets_his_swings_land_harder() {
     // 16 to 22 base and 25 agility.
     for (presence, over, under) in [(0, 100, 112), (4, 160, 130)] {
         let (mut world, fiend, mark) = fiend_and_a_mark(-400);
-        if let Some(book) = world.abilities.get_mut(fiend) {
-            book.slots[4].level = presence;
-        }
+        set_level(&mut world, fiend, 4, presence);
         world.step();
         let taken = one_swing_takes(&mut world, fiend, mark);
         assert!(
@@ -615,9 +613,7 @@ fn a_fallen_fiend_lets_half_his_kept_souls_fly_whatever_the_cooldown_and_they_on
 fn a_fallen_fiend_with_no_requiem_learned_lets_nothing_fly() {
     let (mut world, fiend, _mark) = fiend_and_a_mark(60);
     hand_souls(&mut world, fiend, 20);
-    if let Some(book) = world.abilities.get_mut(fiend) {
-        book.slots[usize::from(REQUIEM_SLOT)].level = 0;
-    }
+    set_level(&mut world, fiend, usize::from(REQUIEM_SLOT), 0);
     world.bury(vec![(fiend, None)], &mut Vec::new());
     assert!(
         world

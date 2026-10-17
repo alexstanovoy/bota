@@ -397,9 +397,7 @@ fn a_courier_hands_scrolls_into_the_town_portal_slot_whatever_the_inventory_hold
             *slot = Some(fresh_stack(ItemId::BOOTS, 0));
         }
     }
-    if let Some(bag) = world.inventory.get_mut(courier) {
-        bag.slots[0] = Some(fresh_stack(ItemId::TOWN_PORTAL_SCROLL, 1));
-    }
+    hand_item(&mut world, courier, ItemId::TOWN_PORTAL_SCROLL, 1);
     for _ in 0..30 * rules::TICKS_PER_SECOND {
         world.step();
         if scrolls(&world, hero).is_some_and(|stack| stack.charges == 2) {
@@ -476,9 +474,7 @@ fn a_free_scroll_is_never_bought_back_and_is_spent_first() {
 #[test]
 fn a_cast_breaks_the_channel_and_goes_off() {
     let (mut world, hero) = a_hero_with_a_scroll();
-    if let Some(book) = world.abilities.get_mut(hero) {
-        book.slots[0].level = 1;
-    }
+    set_level(&mut world, hero, 0, 1);
     let to = beside_own_tower(&world);
     read_at(&mut world, Target::Pos(to));
     advance_validated(
@@ -517,9 +513,7 @@ fn phase_boots_leave_the_channel_be_and_a_feast_breaks_it() {
         "phasing is no order to the channel"
     );
     assert!(carries(&world, hero, ModifierKind::Phased), "and it phased");
-    if let Some(book) = world.abilities.get_mut(hero) {
-        book.slots[3].level = 1;
-    }
+    set_level(&mut world, hero, 3, 1);
     cast(&mut world, 3, Target::None);
     assert!(!world.is_channelling(hero), "a feast is");
 }

@@ -382,12 +382,6 @@ fn a_lone_pudge() -> (World, Entity) {
     (world, pudge)
 }
 
-fn set_level(world: &mut World, hero: Entity, slot: usize, level: u8) {
-    if let Some(book) = world.abilities.get_mut(hero) {
-        book.slots[slot].level = level;
-    }
-}
-
 fn heap(world: &World, hero: Entity) -> u32 {
     world
         .stacks

@@ -114,6 +114,11 @@ pub(crate) fn config() -> MatchConfig {
     }
 }
 
+/// Sets one of a hero's ability slots to a level.
+pub(crate) fn set_level(world: &mut World, hero: Entity, slot: usize, level: u8) {
+    world.abilities.get_mut(hero).expect("a kit").slots[slot].level = level;
+}
+
 /// Steps a world `ticks` times.
 pub(crate) fn run(world: &mut World, ticks: u32) {
     for _ in 0..ticks {
@@ -517,9 +522,7 @@ pub(crate) fn a_hero_with_a_ward(item: ItemId) -> (World, Entity, Vec2) {
     let (mut world, hero) = match_hero();
     let spot = an_empty_spot(&world);
     world.transform.get_mut(hero).expect("hero").pos = spot;
-    if let Some(bag) = world.inventory.get_mut(hero) {
-        bag.slots[0] = Some(fresh_stack(item, 1));
-    }
+    hand_item(&mut world, hero, item, 1);
     world.step();
     (world, hero, spot)
 }
@@ -616,9 +619,7 @@ pub(crate) fn pudge_and_a_mark(apart: i32) -> (World, Entity, Entity) {
         Team::Dire,
         Vec2::from_ints(5000 + apart, 5000),
     );
-    if let Some(book) = world.abilities.get_mut(pudge) {
-        book.slots[0].level = 1;
-    }
+    set_level(&mut world, pudge, 0, 1);
     world.settle();
     world.step();
     (world, pudge, mark)

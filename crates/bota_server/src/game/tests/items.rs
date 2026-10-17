@@ -308,9 +308,7 @@ fn a_creeps_swing_or_ones_own_rot_leaves_the_drinks_running() {
     assert_eq!(blink_wait(&world, drinker), 0);
 
     let (mut world, pudge, _far_off) = pudge_and_a_mark(3000);
-    if let Some(book) = world.abilities.get_mut(pudge) {
-        book.slots[1].level = 1;
-    }
+    set_level(&mut world, pudge, 1, 1);
     drink_up(&mut world, pudge);
     cast(&mut world, 1, Target::None);
     let burnt = (0..rules::BURN_PERIOD_TICKS * 2)

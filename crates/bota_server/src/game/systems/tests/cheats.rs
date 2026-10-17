@@ -3,7 +3,7 @@
 use bota_core::{ITEMS, MELEE_CREEP, ability_mana_cost, assist_gold, hero_bounty, rules};
 
 use super::support::{a_spec, spec};
-use crate::game::tests::support::{self, fiend_against_fiend, run, seat_order, shown};
+use crate::game::tests::support::{self, fiend_against_fiend, run, seat_order, set_level, shown};
 use crate::game::{Entity, Event, ItemStack, MatchConfig, World, wire_id};
 use bota_proto::{
     AbilityId, AbilitySlot, Cheat, DamageKind, EntityId, EventKind, Fixed, ItemId,
@@ -351,9 +351,7 @@ fn an_unbounded_cheat_is_turned_away_even_when_it_skips_the_gate() {
 #[test]
 fn a_kept_kit_is_projected_after_the_body_falls() {
     let (mut world, hero) = world_with(true);
-    if let Some(book) = world.abilities.get_mut(hero) {
-        book.slots[0].level = 1;
-    }
+    set_level(&mut world, hero, 0, 1);
     let stack =
         ItemStack::bought(ItemId::BUTTERFLY, SlotId(0), world.tick).expect("the Butterfly is sold");
     world.inventory.get_mut(hero).expect("has a bag").slots[0] = Some(stack);
@@ -471,9 +469,7 @@ fn gold_income_leaves_starting_passive_and_refunded_gold_alone() {
 #[test]
 fn a_scaled_mana_cost_is_what_the_cast_checks_and_spends() {
     let (mut world, hero) = world_with(true);
-    if let Some(book) = world.abilities.get_mut(hero) {
-        book.slots[0].level = 1;
-    }
+    set_level(&mut world, hero, 0, 1);
     let full = ability_mana_cost(AbilityId::RAZE_NEAR, 1);
     cheat_modifier(&mut world, spec(|s| s.mana_cost_rate = 5_000), 100);
     let cast = Order::Cast {

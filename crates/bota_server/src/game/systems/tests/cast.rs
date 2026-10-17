@@ -7,16 +7,14 @@ use crate::game::{ActionPhase, ActionState, Entity, Level, PendingCast, World, w
 use bota_proto::{AbilitySlot, DamageKind, HeroId, SlotId, Target, Team, Vec2};
 
 use super::support::ANVIL;
-use crate::game::tests::support::{cast, put_on, run, seated_hero};
+use crate::game::tests::support::{cast, put_on, run, seated_hero, set_level};
 
 /// Pudge in a seat with the dismember learned, and a mark 100 off.
 fn pudge_and_a_mark() -> (World, Entity, Entity) {
     let mut world = World::new();
     let pudge = seated_hero(&mut world, Vec2::from_ints(5000, 5000), HeroId::PUDGE);
     let mark = world.spawn_unit(&MELEE_CREEP, Team::Dire, Vec2::from_ints(5100, 5000));
-    if let Some(book) = world.abilities.get_mut(pudge) {
-        book.slots[3].level = 1;
-    }
+    set_level(&mut world, pudge, 3, 1);
     world.settle();
     world.fill_pools(pudge);
     world.step();

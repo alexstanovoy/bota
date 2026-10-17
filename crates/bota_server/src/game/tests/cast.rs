@@ -119,9 +119,7 @@ fn a_later_order_calls_a_held_cast_off() {
 #[test]
 fn a_cast_walked_towards_a_target_that_fell_is_given_up_and_costs_nothing() {
     let (mut world, pudge, mark) = pudge_and_a_mark(4000);
-    if let Some(book) = world.abilities.get_mut(pudge) {
-        book.slots[3].level = 1;
-    }
+    set_level(&mut world, pudge, 3, 1);
     world.mana.insert(
         pudge,
         Mana {

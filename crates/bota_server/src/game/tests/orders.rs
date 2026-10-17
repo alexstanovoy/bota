@@ -42,9 +42,7 @@ fn a_use_or_cast_at_something_a_side_cannot_see_is_refused_like_a_dead_target() 
     let map = map_of(MapId(1));
     let mut world = World::on_map(map);
     let hero = seated_hero(&mut world, Vec2::from_ints(6800, 9216), HeroId::PUDGE);
-    if let Some(book) = world.abilities.get_mut(hero) {
-        book.slots[3].level = 1;
-    }
+    set_level(&mut world, hero, 3, 1);
     hand_item(&mut world, hero, ItemId::HEALING_SALVE, 1);
     let hidden = world.spawn_unit(&MELEE_CREEP, Team::Dire, Vec2::from_ints(13200, 9216));
     world.settle();
