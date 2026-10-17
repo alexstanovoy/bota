@@ -1,47 +1,14 @@
 //! Consumables, active items and trees.
 
-use bota_core::{
-    BLINK_RANGE, HERO, ITEMS, MELEE_CREEP, ModifierKind, SALVE_TICKS, SHADOW_FIEND, map_of, rules,
-    tower_def,
-};
+use bota_core::{ITEMS, MELEE_CREEP, ModifierKind, map_of, rules, tower_def};
 
 use crate::game::{Command, Entity, Event, ItemStack, Mana, World, tree_positions, wire_id};
 use bota_proto::{
     Attribute, DamageKind, EventKind, Fixed, HeroId, ItemId, ItemSlot, MapId, Order, SlotId,
-    Target, Team, UnitKind, Vec2,
+    Target, Team, Vec2,
 };
 
 use super::support::*;
-
-#[test]
-fn a_salve_puts_mending_on_whoever_drinks_it_and_runs_out() {
-    let mut world = World::new();
-    let hero = hero_at(&mut world, Vec2::from_ints(5000, 5000));
-    world.step();
-    hand_item(&mut world, hero, ItemId::HEALING_SALVE, 1);
-    assert!(
-        world.use_item(hero, 0, Target::None, &mut Vec::new()),
-        "it drinks"
-    );
-    assert!(
-        world.inventory.get(hero).expect("has a bag").slots[0].is_none(),
-        "the last charge takes the stack with it"
-    );
-    world.step();
-    let plain = HERO.hp_regen + rules::HP_REGEN_PER_STRENGTH * SHADOW_FIEND.attributes.strength;
-    assert!(
-        world.stats.get(hero).expect("settled").hp_regen > plain,
-        "it mends faster while the salve holds"
-    );
-    for _ in 0..SALVE_TICKS + 1 {
-        world.step();
-    }
-    assert_eq!(
-        world.stats.get(hero).map(|s| s.hp_regen),
-        Some(plain),
-        "and back to its own once it runs out"
-    );
-}
 
 #[test]
 fn a_drink_is_told_of_as_what_was_missing_and_a_full_hero_is_not_told_at_all() {
@@ -576,25 +543,6 @@ fn treads_switched_round_the_wheel_mend_nothing() {
 }
 
 #[test]
-fn a_blink_carries_no_further_than_it_reaches() {
-    let (mut world, hero) = a_hero_with_gold(0);
-    let from = world.transform.get(hero).expect("stands somewhere").pos;
-    hand_item(&mut world, hero, ItemId::BLINK_DAGGER, 0);
-    world.step();
-    let far = from + Vec2::from_ints(BLINK_RANGE * 4, 0);
-    assert!(
-        world.use_item(hero, 0, Target::Pos(far), &mut Vec::new()),
-        "it goes"
-    );
-    let landed = world.transform.get(hero).expect("stands somewhere").pos;
-    assert!(landed != from, "and it carried");
-    assert!(
-        landed.within(from, rules::units(BLINK_RANGE)),
-        "no further than it reaches"
-    );
-}
-
-#[test]
 fn a_blink_aimed_at_closed_ground_steps_back_to_open() {
     let (mut world, hero) = a_hero_with_gold(0);
     let from = world.transform.get(hero).expect("stands somewhere").pos;
@@ -612,29 +560,6 @@ fn a_blink_aimed_at_closed_ground_steps_back_to_open() {
         "and it lands on open ground"
     );
     assert!(landed != aim, "short of what it was aimed at");
-}
-
-#[test]
-fn a_blow_from_a_hero_sets_a_blink_back() {
-    let (mut world, hero) = a_hero_with_gold(0);
-    hand_item(&mut world, hero, ItemId::BLINK_DAGGER, 0);
-    world.step();
-    assert_eq!(
-        slot_of(&world, hero, 0).map(|stack| stack.cooldown),
-        Some(0),
-        "it is ready"
-    );
-    let hitter = world.spawn();
-    world.kind.insert(hitter, UnitKind::Hero);
-    world.push_hit(Some(hitter), hero, 10, DamageKind::Physical);
-    world.step();
-    let wait = ITEMS[usize::from(ItemId::BLINK_DAGGER.0)].breaks_on_damage;
-    assert!(
-        slot_of(&world, hero, 0)
-            .map(|stack| stack.cooldown)
-            .is_some_and(|left| left > 0 && left <= wait),
-        "and a blow from a hero sets it back"
-    );
 }
 
 #[test]

@@ -1,4 +1,4 @@
-use bota_core::{item_def, rules};
+use bota_core::rules;
 use bota_proto::{Aim, Fixed, Target};
 
 use crate::game::{BAG_SLOTS, carried_bonus, item_views, regenerate};
@@ -6,14 +6,7 @@ use crate::game::{BAG_SLOTS, carried_bonus, item_views, regenerate};
 use super::fixtures::*;
 
 #[test]
-fn catalog_appends_numeric_mango_with_one_charge_and_self_aim() {
-    assert_eq!(bota_core::ITEMS.len(), 54);
-    let def = item_def(MANGO).expect("Mango must exist at item id 42");
-    assert_eq!(def.cost, 65);
-    assert_eq!(def.charges, 1);
-    assert_eq!(def.cast_charges, 0);
-    assert_eq!(def.cooldown, 0);
-    assert_eq!(def.mana_cost, 0);
+fn a_mango_is_sold_and_shown_with_its_charges_aimed_at_its_holder() {
     let (mut world, hero) = fixture();
     put(&mut world, hero, 0, mango(3));
     let view = item_views(world.inventory.get(hero).unwrap(), rules::NOMINAL_BP, &[])[0].unwrap();

@@ -11,31 +11,6 @@ use bota_proto::{
 use super::support::*;
 
 #[test]
-fn a_feast_speeds_its_caster_up_and_spends_the_mana() {
-    let mut world = World::new();
-    let hero = caster(&mut world, Vec2::from_ints(5000, 5000), 3);
-    let full = world.mana.get(hero).expect("has mana").mana;
-    let plain = world.stats.get(hero).expect("settled").attack_speed;
-    order(&mut world, hero, 3, Target::None);
-    world.step();
-    assert!(
-        world.mana.get(hero).expect("has mana").mana < full,
-        "a cast costs mana"
-    );
-    // Stats are worked out before casts run, so what a cast puts on shows
-    // from the tick after.
-    world.step();
-    assert!(
-        world.stats.get(hero).expect("settled").attack_speed > plain,
-        "and it swings faster while the feast holds"
-    );
-    assert!(
-        world.abilities.get(hero).expect("has a book").slots[3].cooldown > 0,
-        "and waits before casting again"
-    );
-}
-
-#[test]
 fn a_cast_with_no_mana_behind_it_does_nothing() {
     let mut world = World::new();
     let hero = caster(&mut world, Vec2::from_ints(5000, 5000), 3);

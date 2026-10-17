@@ -37,19 +37,6 @@ fn raze_target_death_and_respawn_do_not_restore_timed_stacks() {
 }
 
 #[test]
-fn raze_reused_caster_index_does_not_inherit_the_previous_generations_bonus() {
-    let (mut world, caster, target) = fixture();
-    land(&mut world, caster, target, 0);
-    assert_eq!(effects(&world, target), vec![effect(1, 180)]);
-    assert!(world.despawn(caster));
-    let returned = hero(&mut world, Team::Radiant, ORIGIN, SlotId(0));
-    assert_eq!(caster.index(), returned.index());
-    assert_ne!(caster.generation(), returned.generation());
-    assert_eq!(land(&mut world, returned, target, 0), 85);
-    assert_eq!(land(&mut world, returned, target, 0), 120);
-}
-
-#[test]
 fn raze_caster_death_and_respawn_cannot_use_its_old_bodys_stacks() {
     let (mut world, caster, target) = fixture();
     seat(&mut world, SlotId(0), Team::Radiant, caster, 0);

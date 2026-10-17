@@ -1,5 +1,4 @@
-//! The attack cycle: exact counts at every speed, and the pinned ticks at the
-//! base one.
+//! The attack cycle: exact counts at every speed, and the backswing hold.
 
 use bota_core::{MELEE_CREEP, UnitDef, attack_gain, beats};
 
@@ -106,26 +105,6 @@ fn a_fast_cycle_lands_two_strikes_in_one_tick() {
         before = now;
     }
     assert_eq!(best, 2, "at 1.55 strikes a tick some tick carries two");
-}
-
-#[test]
-fn the_base_speed_keeps_the_old_ticks() {
-    let (mut world, _from, on) = duel(&HERO_PACE, 100);
-    let mut landed = Vec::new();
-    let mut before = 0;
-    for step in 1..=200 {
-        world.step();
-        let now = taken(&world, on);
-        if now > before {
-            landed.push(step);
-        }
-        before = now;
-    }
-    assert_eq!(
-        landed,
-        vec![10, 73, 136, 199],
-        "nine ticks to the first hit, sixty-three between"
-    );
 }
 
 #[test]

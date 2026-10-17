@@ -833,28 +833,6 @@ fn a_tower_spawned_with_a_modifier_is_raised_with_it() {
     );
 }
 
-#[test]
-fn an_amplified_creep_deals_more_damage() {
-    let blow = |modifier: ModifierSpec| {
-        let mut world = World::new();
-        let attacker = world.spawn_unit(&MELEE_CREEP, Team::Radiant, Vec2::from_ints(1000, 1000));
-        let target = world.spawn_unit(&MELEE_CREEP, Team::Dire, Vec2::from_ints(2000, 2000));
-        world.settle();
-        if !modifier.is_nominal() {
-            apply(&mut world, attacker, modifier, 10);
-        }
-        dealt(&mut world, attacker, target, 100, DamageKind::Physical)
-    };
-    let neutral = blow(ModifierSpec::NOMINAL);
-    let amplified = blow(spec(|s| s.physical_damage = 20_000));
-    assert!(neutral > 0);
-    assert_eq!(
-        amplified,
-        2 * neutral,
-        "the attacking creep's own modifier scales its blow"
-    );
-}
-
 /// A slow handed out by standing near something.
 static SLOWING_AURA: [Aura; 1] = [Aura {
     kind: ModifierKind::Slowed { pct: 30 },

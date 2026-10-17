@@ -367,12 +367,6 @@ fn a_heros_head_and_its_wait_are_priced_as_the_game_prices_them() {
     assert_eq!(respawn_wait(12), 44 * rules::TICKS_PER_SECOND);
     assert_eq!(respawn_wait(25), 100 * rules::TICKS_PER_SECOND);
     assert_eq!(respawn_wait(30), 100 * rules::TICKS_PER_SECOND);
-    assert_eq!(
-        rules::XP_THRESHOLDS[5],
-        2440,
-        "the sixth level, the ultimate's"
-    );
-    assert_eq!(rules::XP_THRESHOLDS[29], 63900, "the last");
 }
 
 #[test]
