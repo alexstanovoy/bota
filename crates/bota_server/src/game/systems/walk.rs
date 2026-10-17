@@ -305,20 +305,6 @@ impl World {
             self.turn_to(entity, dest);
             return;
         }
-        let (Some(facing), Some(rate)) = (
-            self.transform.get(entity).map(|t| t.facing),
-            self.stats.get(entity).map(|stats| stats.turn_rate),
-        ) else {
-            return;
-        };
-        let wanted = facing_towards(from, aim);
-        let facing = turn_towards(facing, wanted, rate);
-        if let Some(transform) = self.transform.get_mut(entity) {
-            transform.facing = facing;
-        }
-        if facing_gap(facing, wanted) > rules::TURN_TOLERANCE_BRADS {
-            return;
-        }
         // Held against a body it stands, and is not counted stalled: a stall
         // is a planned walk's, which a creep chasing after being held must
         // not start out with.
@@ -331,9 +317,35 @@ impl World {
             self.walk_toward(entity, dest, Fixed::ZERO, scratch);
             return;
         }
-        if let Some(to) = self.slide_past(entity, from, (next, aim), collision)
-            && self.clearance.capsule_clear(from, to, collision)
-        {
+        let to = self
+            .slide_past(entity, from, (next, aim), collision)
+            .filter(|to| self.clearance.capsule_clear(from, *to, collision));
+        let Some(to) = to else {
+            self.turn_to(entity, aim);
+            return;
+        };
+        // A unit walks where it faces: it turns onto the way it steps, a
+        // slide along a body as much as the way to its aim, and sets off
+        // only once it faces within 11.5 degrees of it (Liquipedia, *Turn
+        // Rate*); under way it keeps walking while it comes round.
+        let (Some(facing), Some(rate)) = (
+            self.transform.get(entity).map(|t| t.facing),
+            self.stats.get(entity).map(|stats| stats.turn_rate),
+        ) else {
+            return;
+        };
+        let wanted = facing_towards(from, to);
+        let facing = turn_towards(facing, wanted, rate);
+        if let Some(transform) = self.transform.get_mut(entity) {
+            transform.facing = facing;
+        }
+        let under_way = self.motion.get(entity).is_some_and(|m| m.still <= 1);
+        let tolerance = if under_way {
+            rules::TURN_TOLERANCE_BRADS
+        } else {
+            rules::ATTACK_ANGLE_BRADS
+        };
+        if facing_gap(facing, wanted) <= tolerance {
             self.moved(entity, from, to);
         }
     }
@@ -374,8 +386,9 @@ impl World {
     /// past: the followers of a held lead creep queue up behind it ("the
     /// creeps that follow will block each other", Gaming StackExchange; lane
     /// creeps walk against what blocks them and are stuck, Liquipedia, *Unit
-    /// Size*). Nearer the aim is strictly further on, so two never wait on
-    /// each other.
+    /// Size*). It has to stand nearer the aim and within 60 degrees of the
+    /// way there: two marchers heading the same way are never each ahead of
+    /// the other, so two never wait on each other.
     fn queues_behind(
         &self,
         entity: Entity,
@@ -388,6 +401,7 @@ impl World {
             && self.team.get(blocker) == self.team.get(entity)
             && self.lane.get(blocker) == self.lane.get(entity)
             && centre.distance_squared(aim) < from.distance_squared(aim)
+            && ahead_within(from, aim, centre, QUEUE_CONE_COS_PERMILLE)
     }
 
     /// The body a step would walk into, where it stood when the tick began,
@@ -1156,4 +1170,29 @@ fn slide_along(from: Vec2, next: Vec2, centre: Vec2, reach: Fixed) -> Option<Vec
             raw: i32::try_from(i128::from(centre.y.raw) + oy).ok()?,
         },
     })
+}
+
+/// Cosine of the half angle in front of a marcher within which a creep of
+/// its lane is queued behind, in thousandths: 60 degrees.
+const QUEUE_CONE_COS_PERMILLE: i64 = 500;
+
+/// Whether a spot lies in front of a walker heading from one point to
+/// another, within the half angle whose cosine is given in thousandths.
+fn ahead_within(from: Vec2, towards: Vec2, spot: Vec2, cos_permille: i64) -> bool {
+    let (hx, hy) = (
+        i128::from(towards.x.raw) - i128::from(from.x.raw),
+        i128::from(towards.y.raw) - i128::from(from.y.raw),
+    );
+    let (sx, sy) = (
+        i128::from(spot.x.raw) - i128::from(from.x.raw),
+        i128::from(spot.y.raw) - i128::from(from.y.raw),
+    );
+    let dot = hx * sx + hy * sy;
+    if dot <= 0 {
+        return false;
+    }
+    // dot >= cos * |h| * |s|, squared on both sides.
+    let lengths = (hx * hx + hy * hy) * (sx * sx + sy * sy);
+    let cos = i128::from(cos_permille);
+    dot * dot * 1_000_000 >= cos * cos * lengths
 }
