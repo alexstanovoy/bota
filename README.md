@@ -8,8 +8,7 @@ protocol.
 Current scope: 1v1, the Shadow Fiend and Pudge heroes, the Dota map, and a
 mid-only ruleset on that map, plus replays.
 
-- At Dota 7.41f's numbers (the creeps' tables come from client build 6874, dated by the 7.39 to 7.41
-  patch notes): lane creeps and their waves, neutral creeps and their
+- At Dota 7.41's numbers: lane creeps and their waves, neutral creeps and their
   camps, towers, day and night (every unit's day and night vision, neutral camps
   asleep at night), and Shadow Fiend (his abilities, innate, talents and
   Attribute Bonus) wherever the engine has the mechanic; the economy (passive
@@ -161,7 +160,7 @@ example's loop over a real socket to the end of a match.
 `bota_server::local::LocalMatch` runs a lockstep match in your process with no
 sockets. `step` takes at most one order per seat, advances one tick, and returns
 the messages each seat would have been sent, through the same fog and event
-filters as the network loop. The program below is an excerpt of
+filters as the network loop. The program below is an example in
 `crates/bota_server/examples/local_match.rs`; it plays two scripted heroes to
 the end of a match:
 
