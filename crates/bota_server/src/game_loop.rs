@@ -67,8 +67,15 @@ pub struct ServerOpts {
 }
 
 /// Runs one match on an already-bound listener and returns when it ends.
+/// Fails before the lobby opens when the replay file cannot be created.
 pub fn run(listener: TcpListener, opts: ServerOpts) -> std::io::Result<()> {
     let secrets = draw_secrets(opts.seed, opts.match_id)?;
+    let replay = match &opts.replay {
+        None => ReplayWriter::disabled(),
+        Some(path) => ReplayWriter::create(path).map_err(|error| {
+            std::io::Error::new(error.kind(), format!("replay {}: {error}", path.display()))
+        })?,
+    };
     let (tx, rx) = channel();
     let accept_tx = tx.clone();
     thread::spawn(move || accept_loop(listener, accept_tx));
@@ -90,7 +97,7 @@ pub fn run(listener: TcpListener, opts: ServerOpts) -> std::io::Result<()> {
         started: Instant::now(),
     };
     let cfg = server.lobby_phase();
-    server.match_phase(cfg);
+    server.match_phase(cfg, replay);
     Ok(())
 }
 
@@ -227,8 +234,10 @@ impl Server {
         }
         let id = PlayerId(self.next_player);
         self.next_player += 1;
-        let conn = Connection::spawn(id, stream, self.tx.clone());
-        self.conns.push(conn);
+        match Connection::spawn(id, stream, self.tx.clone()) {
+            Ok(conn) => self.conns.push(conn),
+            Err(error) => eprintln!("bota_server: could not take a connection ({error})"),
+        }
     }
 
     /// What a Hello may have: with reserved seats nothing without the key for
@@ -348,7 +357,11 @@ impl Server {
     /// Collects seats and picks until everyone is ready, or until the time
     /// set for it runs out.
     fn lobby_phase(&mut self) -> MatchConfig {
-        let deadline = self.opts.start_after.map(|after| self.started + after);
+        // A wait too long to reach is no deadline at all.
+        let deadline = self
+            .opts
+            .start_after
+            .and_then(|after| self.started.checked_add(after));
         loop {
             let event = match deadline {
                 None => self.rx.recv().expect("the server holds a sender"),
@@ -438,12 +451,8 @@ impl Server {
     }
 
     /// Runs the match to its end.
-    fn match_phase(&mut self, cfg: MatchConfig) {
+    fn match_phase(&mut self, cfg: MatchConfig, mut replay: ReplayWriter) {
         let mut world = World::for_match(&cfg, cfg.rng());
-        let mut replay = match &self.opts.replay {
-            None => ReplayWriter::disabled(),
-            Some(path) => ReplayWriter::create(path).unwrap_or_else(|_| ReplayWriter::disabled()),
-        };
         replay.record(&ReplayRecord::Msg(ServerMsg::MatchStart {
             info: cfg.info(),
         }));
