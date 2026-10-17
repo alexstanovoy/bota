@@ -299,6 +299,15 @@ impl Shared {
         self.out.lock().expect("net lock")
     }
 
+    /// The server answers on the fresh connection: the redial is over. A
+    /// connection that opened but is not answered (a black hole, a held
+    /// seat) is still being redialed.
+    fn heard_from_server(&self) {
+        let _ = self
+            .state
+            .compare_exchange(REDIALING, UP, Ordering::Relaxed, Ordering::Relaxed);
+    }
+
     fn answer_ping(&self) {
         let mut out = self.lock();
         if write(&mut out.stream, &ClientMsg::Pong).is_err() {
@@ -336,7 +345,6 @@ impl Shared {
         );
         self.lock().rejoin.spent = spent;
         dialed?;
-        self.state.store(UP, Ordering::Relaxed);
         Ok(fresh.expect("redial adopted a stream"))
     }
 }
@@ -389,7 +397,8 @@ impl Net {
         self.shared.state.load(Ordering::Relaxed) == CLOSED
     }
 
-    /// Whether the connection broke and is being dialed again.
+    /// Whether the connection broke and is not yet back: being dialed again,
+    /// or dialed and not yet answered by the server.
     pub fn is_redialing(&self) -> bool {
         self.shared.state.load(Ordering::Relaxed) == REDIALING
     }
@@ -409,11 +418,15 @@ fn read_on(
         let (mut gone, mut held) = (false, false);
         let read = read_messages(&mut stream, |msg| {
             if matches!(msg, ServerMsg::Ping) {
+                shared.heard_from_server();
                 gone = caller_gone(&shared);
                 shared.answer_ping();
                 return !gone;
             }
             held = shared.lock().rejoin.heard(&msg);
+            if !held {
+                shared.heard_from_server();
+            }
             gone = !held && tx.send(Ok(msg)).is_err();
             !gone && !held
         });
