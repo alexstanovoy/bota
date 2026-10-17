@@ -6,7 +6,7 @@ use bota_proto::{
     UnitKind, UnitView, Vec2, WorldView,
 };
 
-use crate::limits::{MAX_RESTORATION_REPORT, MAX_TRACKED_ENTITIES};
+use crate::limits::MAX_TRACKED_ENTITIES;
 
 /// Exact displacement observed between two visible snapshots.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -131,7 +131,6 @@ pub struct EntityTrack {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ObservedEvent {
     pub tick: u32,
-    /// Event visible to this seat.
     pub kind: EventKind,
 }
 
@@ -413,41 +412,27 @@ impl Tracks {
         amount: i32,
         mana: i32,
     ) {
-        assert!((0..=MAX_RESTORATION_REPORT).contains(&amount));
-        assert!((0..=MAX_RESTORATION_REPORT).contains(&mana));
-        if let Some(source) = source
-            && let Some(entity) = self.get_mut(source)
-        {
-            if amount > 0 {
-                entity.last_heal_dealt = Some(HealObservation {
-                    tick,
-                    amount,
-                    counterpart: Some(target),
-                });
-            }
-            if mana > 0 {
-                entity.last_mana_restoration_dealt = Some(ManaRestorationObservation {
-                    tick,
-                    amount: mana,
-                    counterpart: Some(target),
-                });
-            }
+        let heal = |counterpart| {
+            (amount > 0).then_some(HealObservation {
+                tick,
+                amount,
+                counterpart,
+            })
+        };
+        let restore = |counterpart| {
+            (mana > 0).then_some(ManaRestorationObservation {
+                tick,
+                amount: mana,
+                counterpart,
+            })
+        };
+        if let Some(e) = source.and_then(|id| self.get_mut(id)) {
+            e.last_heal_dealt = heal(Some(target)).or(e.last_heal_dealt);
+            e.last_mana_restoration_dealt = restore(Some(target)).or(e.last_mana_restoration_dealt);
         }
-        if let Some(entity) = self.get_mut(target) {
-            if amount > 0 {
-                entity.last_heal_received = Some(HealObservation {
-                    tick,
-                    amount,
-                    counterpart: source,
-                });
-            }
-            if mana > 0 {
-                entity.last_mana_restoration_received = Some(ManaRestorationObservation {
-                    tick,
-                    amount: mana,
-                    counterpart: source,
-                });
-            }
+        if let Some(e) = self.get_mut(target) {
+            e.last_heal_received = heal(source).or(e.last_heal_received);
+            e.last_mana_restoration_received = restore(source).or(e.last_mana_restoration_received);
         }
     }
 }

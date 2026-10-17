@@ -188,7 +188,6 @@ impl Net {
         self.inbox.try_iter().collect()
     }
 
-    /// Whether the server is gone.
     pub fn is_closed(&self) -> bool {
         self.closed.load(Ordering::Relaxed)
     }

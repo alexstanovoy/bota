@@ -14,7 +14,6 @@ pub trait Transport {
     /// Reads the next server message, or no message after a clean close.
     fn recv(&mut self) -> std::io::Result<Option<ServerMsg>>;
 
-    /// Sends one message.
     fn send(&mut self, msg: &ClientMsg) -> std::io::Result<()>;
 
     /// Time spent waiting on the socket since the last call, for the caller's

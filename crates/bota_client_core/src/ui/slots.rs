@@ -83,10 +83,7 @@ impl App {
             let unit = self.slot_unit()?;
             unit.items.get(usize::from(slot)).copied().flatten()
         } else {
-            let view = self.view()?;
-            let mine = self.my_slot?;
-            let player = view.players.iter().find(|p| p.slot == mine)?;
-            player
+            self.player(self.my_slot?)?
                 .stash
                 .as_ref()?
                 .get(usize::from(slot - BAG_SLOTS))
@@ -97,14 +94,7 @@ impl App {
 
     /// How one slot is aimed, and nothing for one that cannot be used at all.
     pub fn aim_in(&self, slot: Slot) -> Option<Aim> {
-        match slot {
-            Slot::Ability(at) => self
-                .slot_unit()?
-                .abilities
-                .get(usize::from(at))
-                .map(|held| held.aim),
-            Slot::Item(at) => self.item_in(at)?.aim,
-        }
+        filled(self, slot).flatten()
     }
 
     /// How far one slot reaches, in world units.

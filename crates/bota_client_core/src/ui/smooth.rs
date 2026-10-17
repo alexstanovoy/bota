@@ -63,11 +63,8 @@ impl Default for Smooth {
 /// A unit as drawn this frame.
 #[derive(Clone, Copy, Debug)]
 pub struct Body<'a> {
-    /// What the latest snapshot says of it.
     pub unit: &'a UnitView,
-    /// Drawn world X.
     pub x: f32,
-    /// Drawn world Y.
     pub y: f32,
     /// Drawn facing, radians counter-clockwise from the world X axis.
     pub facing: f32,
@@ -76,11 +73,8 @@ pub struct Body<'a> {
 /// A missile as drawn this frame, and where it was a tick ago.
 #[derive(Clone, Copy, Debug)]
 pub struct Flight {
-    /// What the latest snapshot says of it.
     pub missile: ProjectileView,
-    /// Drawn world X.
     pub x: f32,
-    /// Drawn world Y.
     pub y: f32,
     /// World X one tick back along its path; its own X when just launched.
     pub tail_x: f32,

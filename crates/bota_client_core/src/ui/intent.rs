@@ -32,40 +32,20 @@ pub enum Intent {
     Hold,
     /// Press a slot, by key or by click; with `ctrl` an ability slot spends a
     /// skill point.
-    Press {
-        /// Which slot.
-        slot: Slot,
-        /// Whether Control is held.
-        ctrl: bool,
-    },
+    Press { slot: Slot, ctrl: bool },
     /// Spend the slot taken up for aiming at a world point.
     Aimed((f32, f32)),
     /// Let go of the slot taken up for aiming.
     CancelAim,
     /// Move an item from one slot to another.
-    Swap {
-        /// From which slot.
-        from: u8,
-        /// To which slot.
-        to: u8,
-    },
+    Swap { from: u8, to: u8 },
     /// Sell an item, or mark it for sale away from the shop.
     Sell(u8),
     /// Put an item out of the bag at a world point: into an allied bag under
     /// it, or onto the ground.
-    PutAt {
-        /// Which slot.
-        slot: u8,
-        /// Where.
-        at: (f32, f32),
-    },
+    PutAt { slot: u8, at: (f32, f32) },
     /// Hand an item to a seat's hero.
-    HandTo {
-        /// Which slot.
-        slot: u8,
-        /// To whom.
-        seat: SlotId,
-    },
+    HandTo { slot: u8, seat: SlotId },
     /// Buy an item.
     Buy(u16),
     /// Buy towards the quick-buy item.
@@ -260,36 +240,30 @@ impl App {
             });
             return;
         };
-        let order = match unit_under_cursor(view, at, self.my_hero(), true) {
-            Some(target) => {
-                let own = view
-                    .units
-                    .iter()
-                    .find(|unit| unit.id == target)
-                    .is_some_and(|unit| Some(unit.team) == self.my_team());
-                if own {
-                    Order::Move {
-                        target: Target::Unit(target),
-                    }
-                } else {
-                    Order::Attack {
-                        target: Target::Unit(target),
-                    }
-                }
+        let order = if let Some(id) = unit_under_cursor(view, at, self.my_hero(), true) {
+            let own = view
+                .units
+                .iter()
+                .find(|unit| unit.id == id)
+                .is_some_and(|unit| Some(unit.team) == self.my_team());
+            let target = Target::Unit(id);
+            if own {
+                Order::Move { target }
+            } else {
+                Order::Attack { target }
             }
-            None => match loot_under_cursor(view, at) {
-                Some(item) => Order::Take {
-                    target: Target::Unit(item),
-                },
-                None => match enemy_near_cursor(view, at, self.my_team()) {
-                    Some(mark) => Order::Attack {
-                        target: Target::Unit(mark),
-                    },
-                    None => Order::Move {
-                        target: Target::Pos(world_vec(at)),
-                    },
-                },
-            },
+        } else if let Some(item) = loot_under_cursor(view, at) {
+            Order::Take {
+                target: Target::Unit(item),
+            }
+        } else if let Some(mark) = enemy_near_cursor(view, at, self.my_team()) {
+            Order::Attack {
+                target: Target::Unit(mark),
+            }
+        } else {
+            Order::Move {
+                target: Target::Pos(world_vec(at)),
+            }
         };
         self.send_order(order);
     }
@@ -318,8 +292,7 @@ impl App {
     /// Hands a bag item to an allied seat's body wherever it stands.
     fn hand_to(&mut self, slot: u8, seat: SlotId) {
         let ally = self
-            .view()
-            .and_then(|view| view.players.iter().find(|p| p.slot == seat))
+            .player(seat)
             .is_some_and(|p| Some(p.team) == self.my_team());
         if slot < BAG_SLOTS
             && ally

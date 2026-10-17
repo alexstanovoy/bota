@@ -120,13 +120,11 @@ impl App {
     /// What this seat holds towards a build, and its hero's primary
     /// attribute.
     fn buyer(&self) -> (Vec<ItemId>, Option<bota_proto::Attribute>) {
-        self.my_slot
-            .zip(self.view())
-            .and_then(|(slot, view)| {
-                let p = view.players.iter().find(|p| p.slot == slot)?;
-                Some((held_items(view, p), primary_of(p)))
-            })
-            .unwrap_or_default()
+        let buyer = || {
+            let p = self.player(self.my_slot?)?;
+            Some((held_items(self.view()?, p), primary_of(p)))
+        };
+        buyer().unwrap_or_default()
     }
 
     /// What this seat pays for an item now, and what it costs whole.
@@ -148,9 +146,7 @@ impl App {
     /// gold covers it, else its first missing part the gold covers.
     pub fn quick_buy_next(&self) -> Option<u16> {
         let target = self.quick_buy?;
-        let view = self.view()?;
-        let p = view.players.iter().find(|p| Some(p.slot) == self.my_slot)?;
-        let gold = p.gold.unwrap_or(0);
+        let gold = self.player(self.my_slot?)?.gold.unwrap_or(0);
         if gold >= self.price_of(target).0 {
             return Some(target);
         }

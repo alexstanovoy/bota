@@ -3,8 +3,8 @@
 use std::sync::Arc;
 
 use bota_proto::{
-    AbilityId, ClientMsg, EffectId, EntityId, EventKind, MatchStats, Order, ServerMsg, SlotId,
-    StockView, TalentSlot, TalentView, Team, UnitKind, UnitView, Vec2, WorldView,
+    AbilityId, ClientMsg, EffectId, EntityId, EventKind, MatchStats, Order, PlayerView, ServerMsg,
+    SlotId, StockView, TalentSlot, TalentView, Team, UnitKind, UnitView, Vec2, WorldView,
 };
 
 use crate::handshake::Lobby;
@@ -26,7 +26,6 @@ pub trait LiveLink {
     fn poll(&mut self) -> Vec<ServerMsg>;
     /// Sends one message upstream; a failure marks the link closed.
     fn send(&mut self, msg: &ClientMsg) -> std::io::Result<()>;
-    /// Whether the server is gone.
     fn is_closed(&self) -> bool;
 }
 
@@ -47,9 +46,7 @@ impl LiveLink for crate::socket::Net {
 
 /// Where messages come from: a live link or a file.
 pub enum Source {
-    /// A live match.
     Live(Box<dyn LiveLink>),
-    /// A recorded one.
     Replay(Box<ReplayPlayer>),
 }
 
@@ -75,13 +72,11 @@ impl Source {
 /// One seat's latest order, kept to be drawn over the world.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ShownOrder {
-    /// Which seat gave it.
     pub slot: SlotId,
     /// Which unit it was for. Absent means the seat's own hero.
     pub unit: Option<EntityId>,
     /// The tick it was given on, which decides how faded it is drawn.
     pub tick: u32,
-    /// The order itself.
     pub order: Order,
 }
 
@@ -155,9 +150,7 @@ pub enum FloaterKind {
 
 /// A number or word floating off a unit.
 pub struct Floater {
-    /// The text shown.
     pub text: String,
-    /// What it tells of.
     pub kind: FloaterKind,
     /// World position it rises from: where its unit stood when it was set
     /// off.
@@ -219,7 +212,6 @@ pub enum CueKind {
 /// absent for one that belongs to the watched hero itself.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Cue {
-    /// What it is.
     pub kind: CueKind,
     /// Loudness before distance, 0 to 1.
     pub gain: f32,
@@ -229,7 +221,6 @@ pub struct Cue {
 
 /// One line of the kill feed.
 pub struct FeedLine {
-    /// The text shown.
     pub text: String,
     /// Seconds since it appeared.
     pub age: f32,
@@ -237,11 +228,9 @@ pub struct FeedLine {
 
 /// The whole client.
 pub struct App {
-    /// Socket or file.
     pub source: Source,
     /// Whether the server hung up on us.
     pub lost: bool,
-    /// Current screen.
     pub phase: Phase,
     /// The seat this client acts as: the one it was welcomed to, or the one a
     /// replay is watched as. Absent for a spectator.
@@ -276,9 +265,7 @@ pub struct App {
     pub shown_orders: Vec<ShownOrder>,
     /// The seat whose eyes a spectator has asked to watch through.
     pub eyes: Option<SlotId>,
-    /// Floaters in flight.
     pub floaters: Vec<Floater>,
-    /// Kill feed lines.
     pub feed: Vec<FeedLine>,
     /// Which slot the order of a sequence number came from, so a refusal
     /// can be shown on the slot that earned it.
@@ -468,10 +455,10 @@ impl App {
         if let Some((_, name)) = self.names.iter().find(|(s, _)| *s == slot) {
             return name.clone();
         }
-        let seat = self
-            .view()
-            .and_then(|view| view.players.iter().find(|p| p.slot == slot));
-        match seat.and_then(|p| Some((bota_core::hero_def(p.hero)?, p.team))) {
+        match self
+            .player(slot)
+            .and_then(|p| Some((bota_core::hero_def(p.hero)?, p.team)))
+        {
             Some((hero, team)) => format!("{} ({team:?})", hero.name),
             None => format!("seat {}", slot.0),
         }
@@ -490,9 +477,12 @@ impl App {
 
     /// Our hero's unit id, while it is alive and known.
     pub fn my_hero(&self) -> Option<EntityId> {
-        let slot = self.my_slot?;
-        let view = self.view()?;
-        view.players.iter().find(|p| p.slot == slot)?.unit
+        self.player(self.my_slot?)?.unit
+    }
+
+    /// A seat's scoreboard row in the current view.
+    pub(crate) fn player(&self, slot: SlotId) -> Option<&PlayerView> {
+        self.view()?.players.iter().find(|p| p.slot == slot)
     }
 
     /// Which unit the slot panel and the keys are about.
@@ -525,10 +515,9 @@ impl App {
 
     /// Which unit the camera is carried by right now, if any still stands.
     pub fn pinned_unit(&self) -> Option<EntityId> {
-        let view = self.view()?;
         match self.pinned? {
-            Pin::Hero(slot) => view.players.iter().find(|p| p.slot == slot)?.unit,
-            Pin::Unit(id) => view.units.iter().find(|u| u.id == id).map(|u| u.id),
+            Pin::Hero(slot) => self.player(slot)?.unit,
+            Pin::Unit(id) => self.view()?.units.iter().find(|u| u.id == id).map(|u| u.id),
         }
     }
 
@@ -587,9 +576,7 @@ impl App {
 
     /// Which side this player is on, once the match has told us.
     pub fn my_team(&self) -> Option<Team> {
-        let slot = self.my_slot?;
-        let view = self.view()?;
-        view.players.iter().find(|p| p.slot == slot).map(|p| p.team)
+        Some(self.player(self.my_slot?)?.team)
     }
 
     /// Whether the current selection is a unit this seat drives, or nothing
@@ -610,19 +597,16 @@ impl App {
 
     /// Whether our hero stands in its home shop.
     pub fn at_home_shop(&self) -> bool {
-        let Some(slot) = self.my_slot else {
-            return false;
+        let at = || {
+            let p = self.player(self.my_slot?)?;
+            let unit = self.view()?.units.iter().find(|u| Some(u.id) == p.unit)?;
+            Some(bota_core::at_home_shop(
+                self.session()?.map(),
+                p.team,
+                unit.pos,
+            ))
         };
-        let (Some(session), Some(view)) = (self.session(), self.view()) else {
-            return false;
-        };
-        let Some(p) = view.players.iter().find(|p| p.slot == slot) else {
-            return false;
-        };
-        let Some(unit) = p.unit.and_then(|id| view.units.iter().find(|u| u.id == id)) else {
-            return false;
-        };
-        bota_core::at_home_shop(session.map(), p.team, unit.pos)
+        at().unwrap_or(false)
     }
 
     /// The seat the bottom panel falls back to: our own, else the first one.
@@ -805,7 +789,7 @@ impl App {
         if let Some(view) = self.seat.session().and_then(ClientSession::current) {
             self.derived.trail(view, dt);
             if let Some(target) = self.quick_buy
-                && let Some(p) = view.players.iter().find(|p| Some(p.slot) == self.my_slot)
+                && let Some(p) = self.my_slot.and_then(|slot| self.player(slot))
                 && crate::shop::held_items(view, p).contains(&bota_proto::ItemId(target))
             {
                 self.quick_buy = None;
@@ -838,23 +822,18 @@ impl App {
             l.age += dt;
         }
         self.feed.retain(|l| l.age < 8.0);
-        if let Some((_, left)) = &mut self.reject {
-            *left -= dt;
-            if *left <= 0.0 {
-                self.reject = None;
-            }
-        }
-        if let Some((_, left)) = &mut self.refused {
-            *left -= dt;
-            if *left <= 0.0 {
-                self.refused = None;
-            }
-        }
-        if let Some((_, left)) = &mut self.tapped {
-            *left -= dt;
-            if *left <= 0.0 {
-                self.tapped = None;
-            }
+        count_down(&mut self.reject, dt);
+        count_down(&mut self.refused, dt);
+        count_down(&mut self.tapped, dt);
+    }
+}
+
+/// Takes `dt` seconds off a timed notice, and clears it once its time is up.
+fn count_down<T>(notice: &mut Option<(T, f32)>, dt: f32) {
+    if let Some((_, left)) = notice {
+        *left -= dt;
+        if *left <= 0.0 {
+            *notice = None;
         }
     }
 }

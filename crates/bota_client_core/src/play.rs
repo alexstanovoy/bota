@@ -16,9 +16,7 @@ use crate::transport::Transport;
 /// How a match ended for the seat that played it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Outcome {
-    /// The seat played.
     pub slot: SlotId,
-    /// Its side.
     pub team: Team,
     /// The side that won; [`Team::Neutral`] for a draw.
     pub winner: Team,

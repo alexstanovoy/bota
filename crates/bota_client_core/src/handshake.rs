@@ -24,7 +24,6 @@ const MAX_NAME_LEN: usize = 64;
 pub struct Seated {
     /// The connection identity assigned by the server.
     pub player: PlayerId,
-    /// The seat assigned.
     pub slot: SlotId,
     /// Simulation ticks per second.
     pub tick_rate: u16,
