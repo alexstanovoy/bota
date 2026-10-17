@@ -214,14 +214,7 @@ impl World {
     /// that spot if it does not.
     fn at_the_stash(&mut self, seat: usize, courier: Entity) -> bool {
         let shop = fountain_pos(self.map, self.seats[seat].team);
-        if self
-            .pos(courier)
-            .is_some_and(|pos| pos.within(shop, rules::units(rules::COURIER_STASH_RANGE)))
-        {
-            return true;
-        }
-        self.set_order(courier, UnitOrder::Move { pos: shop });
-        false
+        self.walk_into_reach(courier, shop, rules::COURIER_STASH_RANGE)
     }
 
     /// Carries what it holds to its owner, hands it over, and takes aboard
@@ -254,11 +247,7 @@ impl World {
         let Some(to) = self.pos(owner) else {
             return false;
         };
-        let near = self
-            .pos(courier)
-            .is_some_and(|pos| pos.within(to, rules::units(rules::COURIER_DELIVER_RANGE)));
-        if !near {
-            self.set_order(courier, UnitOrder::Move { pos: to });
+        if !self.walk_into_reach(courier, to, rules::COURIER_DELIVER_RANGE) {
             return false;
         }
         self.hand_over(courier, owner);
