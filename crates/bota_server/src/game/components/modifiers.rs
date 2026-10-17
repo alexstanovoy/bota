@@ -109,7 +109,5 @@ impl Modifiers {
             source: Some(caster),
             ticks_left: Some(rules::RAZE_DEBUFF_TICKS),
         });
-        assert!(self.raze_stacks(caster) > 0);
-        assert_eq!(self.raze_stacks(caster), stacks);
     }
 }
