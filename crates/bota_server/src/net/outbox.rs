@@ -126,26 +126,22 @@ impl Outbox {
     pub fn run_writer(self: &Arc<Outbox>, mut stream: TcpStream) {
         loop {
             let entry = {
-                let mut state = self.state.lock().expect("outbox lock");
-                loop {
-                    if let Some(entry) = state.queue.pop_front() {
-                        break Some(entry);
-                    }
-                    if state.closed {
-                        break None;
-                    }
-                    state = self.wake.wait(state).expect("outbox lock");
-                }
+                let state = self.state.lock().expect("outbox lock");
+                self.wake
+                    .wait_while(state, |state| state.queue.is_empty() && !state.closed)
+                    .expect("outbox lock")
+                    .queue
+                    .pop_front()
             };
             let Some(entry) = entry else {
                 let _ = stream.shutdown(std::net::Shutdown::Write);
                 return;
             };
             let bytes = match entry {
-                Queued::Frame(bytes) => bytes,
+                Queued::Frame(bytes) => Some(bytes),
                 Queued::Tick(tick) => tick_frames(*tick),
             };
-            if bytes.is_empty() || stream.write_all(&bytes).is_err() {
+            if bytes.is_none_or(|bytes| stream.write_all(&bytes).is_err()) {
                 self.close();
                 return;
             }
@@ -154,32 +150,24 @@ impl Outbox {
 }
 
 /// A tick's snapshot frame, carrying the ticks it replaced, then its events
-/// frame; empty when they would not encode.
-fn tick_frames(queued: QueuedTick) -> Vec<u8> {
-    let QueuedTick {
-        snapshot,
-        tick,
-        events,
-        skipped,
-    } = queued;
-    let mut bytes = if skipped.is_empty() {
-        snapshot
-    } else {
-        let Ok(ServerMsg::Snapshot { mut view }) =
-            decode_payload::<ServerMsg>(snapshot.get(LEN_PREFIX..).unwrap_or_default())
+/// frame; nothing when they would not encode.
+fn tick_frames(queued: QueuedTick) -> Option<Vec<u8>> {
+    let mut bytes = queued.snapshot;
+    if !queued.skipped.is_empty() {
+        let ServerMsg::Snapshot { mut view } =
+            decode_payload::<ServerMsg>(bytes.get(LEN_PREFIX..)?).ok()?
         else {
-            return Vec::new();
+            return None;
         };
         assert!(view.skipped_ticks.is_empty());
-        assert_eq!(view.tick, tick);
-        view.skipped_ticks = skipped;
-        match encode_frame_to_vec(&ServerMsg::Snapshot { view }) {
-            Ok(frame) => frame,
-            Err(_) => return Vec::new(),
-        }
-    };
-    if encode_frame(&ServerMsg::Events { tick, events }, &mut bytes).is_err() {
-        return Vec::new();
+        assert_eq!(view.tick, queued.tick);
+        view.skipped_ticks = queued.skipped;
+        bytes = encode_frame_to_vec(&ServerMsg::Snapshot { view }).ok()?;
     }
-    bytes
+    let events = ServerMsg::Events {
+        tick: queued.tick,
+        events: queued.events,
+    };
+    encode_frame(&events, &mut bytes).ok()?;
+    Some(bytes)
 }
