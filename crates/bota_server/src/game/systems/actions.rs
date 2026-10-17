@@ -778,23 +778,11 @@ impl World {
     /// Whether the target is standing, seen by the attacker's side, and
     /// within `reach` edge to edge.
     fn worth_swinging_at(&self, attacker: Entity, on: Entity, reach: Fixed) -> bool {
-        let standing = self
-            .health
+        self.health
             .get(on)
-            .is_some_and(|health| health.hp > Fixed::ZERO);
-        if !standing {
-            return false;
-        }
-        let Some(side) = self.team.get(attacker).copied() else {
-            return false;
-        };
-        if !self.visibility.get(on).is_some_and(|seen| seen.by(side)) {
-            return false;
-        }
-        let (Some(from), Some(at)) = (self.transform.get(attacker), self.transform.get(on)) else {
-            return false;
-        };
-        from.pos.within(at.pos, reach + self.hulls(attacker, on))
+            .is_some_and(|health| health.hp > Fixed::ZERO)
+            && self.can_see_of(attacker, on)
+            && self.within_reach(attacker, on, reach)
     }
 }
 

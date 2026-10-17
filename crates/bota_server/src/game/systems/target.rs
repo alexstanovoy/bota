@@ -156,13 +156,15 @@ impl World {
 
     /// Whether an entity is a candidate for another at all.
     pub fn reachable(&self, seeker: Entity, range: Fixed, other: Entity) -> bool {
-        let (Some(at), Some(their_at)) = (self.transform.get(seeker), self.transform.get(other))
-        else {
+        self.within_reach(seeker, other, range) && self.hostile(seeker, other)
+    }
+
+    /// Whether two entities stand within `reach` of each other, edge to edge.
+    pub(crate) fn within_reach(&self, one: Entity, other: Entity, reach: Fixed) -> bool {
+        let (Some(here), Some(there)) = (self.pos(one), self.pos(other)) else {
             return false;
         };
-        at.pos
-            .within(their_at.pos, range + self.hulls(seeker, other))
-            && self.hostile(seeker, other)
+        here.within(there, reach + self.hulls(one, other))
     }
 
     /// The bound radii of a pair added together: how far apart their

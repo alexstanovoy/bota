@@ -21,17 +21,9 @@ impl World {
 
     /// Whether an attacker reaches its target, edge to edge.
     pub fn in_reach(&self, attacker: Entity, target: Entity) -> bool {
-        let (Some(at), Some(their_at), Some(stats)) = (
-            self.transform.get(attacker),
-            self.transform.get(target),
-            self.stats.get(attacker),
-        ) else {
-            return false;
-        };
-        at.pos.within(
-            their_at.pos,
-            stats.attack_range + self.hulls(attacker, target),
-        )
+        self.stats
+            .get(attacker)
+            .is_some_and(|stats| self.within_reach(attacker, target, stats.attack_range))
     }
 
     /// Tells each side what it was near enough to feel.

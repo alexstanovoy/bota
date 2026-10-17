@@ -50,7 +50,9 @@ impl World {
         let Some(on) = self.dismember_mark(target) else {
             return false;
         };
-        if !self.hostile(caster, on) || !self.in_range_of(caster, on, rules::DISMEMBER_RANGE) {
+        if !self.hostile(caster, on)
+            || !self.within_reach(caster, on, rules::units(rules::DISMEMBER_RANGE))
+        {
             return false;
         }
         let level = usize::from(self.carried_level(caster, AbilityId::DISMEMBER).max(1) - 1);
@@ -85,7 +87,7 @@ impl World {
         {
             transform.pos = at;
         }
-        self.alive(on) && self.in_range_of(caster, on, rules::DISMEMBER_RANGE)
+        self.alive(on) && self.within_reach(caster, on, rules::units(rules::DISMEMBER_RANGE))
     }
 
     /// Lets go of what a dismember held: what it put on the mark and on
@@ -148,13 +150,5 @@ impl World {
             kept.gather(StackKind::FleshHeap, 1);
             self.stacks.insert(hero, kept);
         }
-    }
-
-    /// Whether one entity stands within a reach of another, edge to edge.
-    fn in_range_of(&self, from: Entity, to: Entity, range: i32) -> bool {
-        let (Some(here), Some(there)) = (self.pos(from), self.pos(to)) else {
-            return false;
-        };
-        here.within(there, rules::units(range) + self.hulls(from, to))
     }
 }
