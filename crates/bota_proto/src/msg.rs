@@ -114,7 +114,7 @@ pub struct MatchInfo {
     pub shop_range: i32,
 }
 
-/// Why the server refused an order.
+/// Why the server refused an order, or a [`ClientMsg::Hello`].
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum RejectReason {
     HeroDead,
@@ -167,6 +167,13 @@ pub enum RejectReason {
     /// The stack holds a scroll that came for nothing: the one every hero
     /// starts with or one a death handed out. No shop buys it back.
     Unsellable,
+    /// A `Hello` admitted to nothing: no key where one is needed, a key no
+    /// seat or role is held for, no open seat, or an unreserved seat asked
+    /// for mid-match without the key that claimed it.
+    NotAdmitted,
+    /// A `Hello` with the right key for a seat a live connection holds. It
+    /// may come back once that connection has ended or been found dead.
+    SeatHeld,
 }
 
 /// Final numbers for one seat.
@@ -293,6 +300,9 @@ pub enum ClientMsg {
         /// whole map.
         seat: Option<SlotId>,
     },
+    /// Answers a [`ServerMsg::Ping`]. Any message shows the connection is
+    /// alive; this one is for a participant with nothing else to say.
+    Pong,
 }
 
 /// Anything the server can say to a participant.
@@ -371,6 +381,16 @@ pub enum ServerMsg {
         /// The [`WIRE_FINGERPRINT`](crate::WIRE_FINGERPRINT) the server was
         /// built with.
         server_fingerprint: u64,
+    },
+    /// Sent about once a second on every connection, whatever else is sent,
+    /// so a client hears from a live server even in a quiet lobby. A
+    /// participant answers with [`ClientMsg::Pong`] (or any other message);
+    /// one that stays silent too long is disconnected.
+    Ping,
+    /// Refuses a [`ClientMsg::Hello`]: the connection closes after it.
+    Refused {
+        /// Why: [`RejectReason::NotAdmitted`] or [`RejectReason::SeatHeld`].
+        reason: RejectReason,
     },
 }
 

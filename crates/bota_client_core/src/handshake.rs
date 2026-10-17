@@ -150,6 +150,10 @@ fn wait_for_welcome(transport: &mut impl Transport) -> std::io::Result<Seated> {
                     server: server_fingerprint,
                 }));
             }
+            ServerMsg::Refused { reason } => {
+                return Err(std::io::Error::other(SessionError::Refused(reason)));
+            }
+            ServerMsg::Ping => transport.send(&ClientMsg::Pong)?,
             _ => {}
         }
     }

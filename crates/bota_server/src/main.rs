@@ -8,7 +8,7 @@ use clap::{Parser, ValueEnum};
 
 use bota_proto::SeatKey;
 use bota_server::game::{OrderDelay, check_order_delays};
-use bota_server::game_loop::{ServerOpts, run};
+use bota_server::game_loop::{DEFAULT_IDLE_TIMEOUT, ServerOpts, run};
 use bota_server::lobby::ReservedSeat;
 
 #[cfg(test)]
@@ -81,6 +81,11 @@ struct Args {
     /// Lockstep: tick-lengths to wait for a straggler before moving on.
     #[arg(long, default_value_t = 150)]
     ack_timeout_ticks: u32,
+    /// Seconds a connection may send nothing (the server pings every second and a client
+    /// answers), or take nothing of what is sent, before it is dropped as dead and its seat
+    /// waits for a reconnect. 0 waits for ever.
+    #[arg(long, default_value_t = DEFAULT_IDLE_TIMEOUT.as_secs())]
+    idle_timeout_secs: u64,
     /// Honour cheat orders: gold, levels, items and refreshes for the asking.
     #[arg(long)]
     cheats: bool,
@@ -154,6 +159,8 @@ fn main() -> std::io::Result<()> {
             max_connections: args.max_connections,
             map: bota_proto::MapId(args.map),
             ack_timeout_ticks: args.ack_timeout_ticks,
+            idle_timeout: (args.idle_timeout_secs > 0)
+                .then(|| Duration::from_secs(args.idle_timeout_secs)),
             cheats: args.cheats,
             immortal_structures: args.immortal_structures,
             immortal_heroes: args.immortal_heroes,

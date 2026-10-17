@@ -36,8 +36,10 @@ impl TestClient {
     fn recv_or_hangup(&mut self) -> Option<ServerMsg> {
         let mut buf = [0u8; 65536];
         loop {
-            if let Some(msg) = self.reader.next_message::<ServerMsg>().expect("decode") {
-                return Some(msg);
+            match self.reader.next_message::<ServerMsg>().expect("decode") {
+                Some(ServerMsg::Ping) => self.send(&ClientMsg::Pong),
+                Some(msg) => return Some(msg),
+                None => {}
             }
             match self.stream.read(&mut buf) {
                 Ok(0) => return None,
@@ -100,9 +102,41 @@ fn running_match() -> (std::net::SocketAddr, TestClient, TestClient) {
     (addr, first, second)
 }
 
+impl TestClient {
+    /// The refusal of a Hello, after which the server hangs up.
+    fn refusal(&mut self) -> RejectReason {
+        let reason = self.recv_until(|msg| match msg {
+            ServerMsg::Welcome { .. } => panic!("welcomed"),
+            ServerMsg::Refused { reason } => Some(reason),
+            _ => None,
+        });
+        self.assert_hung_up();
+        reason
+    }
+}
+
 #[test]
-fn a_returning_key_holder_replaces_its_old_connection_and_keeps_its_hero() {
-    let (addr, mut old, mut other) = running_match();
+fn a_key_holder_takes_its_seat_and_hero_back_only_once_the_live_connection_has_ended() {
+    let (addr, old, mut other) = running_match();
+
+    let mut early = TestClient::connect(addr);
+    early.hello(Role::Bot, Some(KEYS[0]));
+    assert_eq!(early.refusal(), RejectReason::SeatHeld, "the seat is held");
+    let mut wrong = TestClient::connect(addr);
+    wrong.hello(Role::Bot, Some(SeatKey([3; 32])));
+    assert_eq!(wrong.refusal(), RejectReason::NotAdmitted);
+
+    drop(old);
+    let left = other.recv_until(|msg| match msg {
+        ServerMsg::ParticipantLeft { player_id, slot } => Some((player_id, slot)),
+        _ => None,
+    });
+    assert_eq!(
+        left.1,
+        Some(SlotId(0)),
+        "a clean close lets the seat go at once"
+    );
+    assert_ne!(left.0, PlayerId(0));
 
     let mut back = TestClient::connect(addr);
     back.hello(Role::Bot, Some(KEYS[0]));
@@ -111,16 +145,6 @@ fn a_returning_key_holder_replaces_its_old_connection_and_keeps_its_hero() {
     assert_eq!(info.picks[0].hero, HeroId::PUDGE);
     let view = back.recv_until(snapshot);
     assert_eq!(view.viewer, Some(Team::Radiant));
-
-    old.assert_hung_up();
-    let left = other.recv_until(|msg| match msg {
-        ServerMsg::ParticipantLeft { player_id, slot } => Some((player_id, slot)),
-        _ => None,
-    });
-    assert_eq!(left.1, Some(SlotId(0)));
-    assert_ne!(left.0, PlayerId(0));
-    // The replaced connection's own hang-up is not announced a second time.
-    thread::sleep(Duration::from_millis(200));
     back.send(&move_order(1, 1000, 1000));
     let tick = back.recv_until(snapshot).tick;
     assert!(tick > view.tick);
@@ -140,15 +164,11 @@ fn a_missing_wrong_or_foreign_key_gets_no_seat() {
     for (role, key) in attempts {
         let mut client = TestClient::connect(addr);
         client.hello(role, key);
-        let mut told = false;
-        for _ in 0..2000 {
-            match client.recv_or_hangup() {
-                None => break,
-                Some(ServerMsg::Welcome { .. }) => told = true,
-                Some(_) => {}
-            }
-        }
-        assert!(!told, "{role:?} with {key:?} was welcomed");
+        assert_eq!(
+            client.refusal(),
+            RejectReason::NotAdmitted,
+            "{role:?} with {key:?}"
+        );
     }
     // The seats are all still free for their keys.
     let mut client = TestClient::connect(addr);

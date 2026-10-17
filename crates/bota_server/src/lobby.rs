@@ -22,6 +22,9 @@ pub struct RosterSeat {
     pub ready: bool,
     /// A seat nobody holds: ready from the start, its hero stays put and never acts.
     pub dummy: bool,
+    /// The key the holder of an unreserved seat came with, which takes the
+    /// seat back after a lost connection, also mid-match.
+    pub claim: Option<SeatKey>,
 }
 
 impl RosterSeat {
@@ -74,6 +77,7 @@ impl Roster {
                     hero: None,
                     ready: false,
                     dummy: false,
+                    claim: None,
                 })
                 .collect(),
         };
@@ -93,6 +97,18 @@ impl Roster {
         let mut found = None;
         for (seat, reservation) in self.seats.iter().zip(reserved) {
             if reservation.key == *key {
+                found = Some(seat.slot);
+            }
+        }
+        found
+    }
+
+    /// The unreserved seat a key claimed. Every claim is compared, so the
+    /// time taken does not tell which one matched.
+    pub fn seat_for_claim(&self, key: &SeatKey) -> Option<SlotId> {
+        let mut found = None;
+        for seat in &self.seats {
+            if seat.claim.as_ref() == Some(key) {
                 found = Some(seat.slot);
             }
         }

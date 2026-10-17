@@ -681,7 +681,20 @@ impl App {
             }
             Ok(Ingested::Rejected { seq, reason }) => self.on_rejected(seq, reason),
             Ok(Ingested::Over { winner, stats }) => self.over = Some((winner, stats)),
-            Ok(Ingested::Passed(_)) => {}
+            Ok(Ingested::Resumed { resend }) => {
+                for order in resend {
+                    self.source.send(&order.message());
+                }
+                self.feed.push(FeedLine {
+                    text: "reconnected".to_string(),
+                    age: 0.0,
+                });
+            }
+            Ok(Ingested::Passed(msg)) => {
+                if matches!(*msg, ServerMsg::Ping) {
+                    self.source.send(&ClientMsg::Pong);
+                }
+            }
             Err(error) => self.fail(&error.to_string()),
         }
     }

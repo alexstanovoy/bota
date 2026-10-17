@@ -387,3 +387,9 @@ variant Order 12 LearnAttributeBonus
 field TalentView 3 attribute_bonus: u8
 field TalentView 4 attribute_bonus_learnable: bool
 field ShopEntry 3 alternatives: Vec<Vec<ItemId>>
+variant ClientMsg 6 Pong
+variant ServerMsg 10 Ping
+variant RejectReason 24 NotAdmitted
+variant RejectReason 25 SeatHeld
+variant ServerMsg 11 Refused {}
+field ServerMsg::Refused 0 reason: RejectReason

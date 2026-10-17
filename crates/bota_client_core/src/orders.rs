@@ -143,6 +143,14 @@ impl OrderLedger {
             .map(|standing| (standing.sequence, standing.issued))
     }
 
+    /// The orders standing for the hero, then the courier.
+    pub fn standing_orders(&self) -> Vec<IssuedOrder> {
+        self.bodies
+            .iter()
+            .filter_map(|body| body.current.map(|standing| standing.issued))
+            .collect()
+    }
+
     /// The greatest sequence among the standing orders.
     pub fn newest_standing(&self) -> Option<u32> {
         self.bodies
@@ -340,5 +348,7 @@ pub fn refusal(reason: RejectReason) -> &'static str {
         Why::OutOfStock => "the shop has none left",
         Why::CannotLearn => "that talent cannot be learned now",
         Why::Unsellable => "a free scroll sells for nothing",
+        Why::NotAdmitted => "no seat for this client: a wrong key, or none open",
+        Why::SeatHeld => "another live connection holds the seat",
     }
 }

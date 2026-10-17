@@ -7,7 +7,7 @@ use std::thread;
 use bota_client_core::{IssuedOrder, Link};
 use bota_core::fountain_pos;
 use bota_proto::{HeroId, MapId, Order, SlotId, Target, Team, TickMode};
-use bota_server::game_loop::{ServerOpts, run};
+use bota_server::game_loop::{DEFAULT_IDLE_TIMEOUT, ServerOpts, run};
 
 fn opts() -> ServerOpts {
     ServerOpts {
@@ -27,6 +27,7 @@ fn opts() -> ServerOpts {
         immortal_heroes: false,
         dummy_seat: true,
         ack_timeout_ticks: 150,
+        idle_timeout: Some(DEFAULT_IDLE_TIMEOUT),
         order_delays: Vec::new(),
     }
 }

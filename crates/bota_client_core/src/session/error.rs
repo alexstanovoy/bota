@@ -4,7 +4,7 @@ use core::convert::Infallible;
 use core::fmt;
 use std::error::Error;
 
-use bota_proto::{EntityId, HeroId, Team, TickMode, WIRE_FINGERPRINT};
+use bota_proto::{EntityId, HeroId, RejectReason, Team, TickMode, WIRE_FINGERPRINT};
 
 use crate::limits::{MAX_RESTORATION_REPORT, MAX_SEATS, MAX_TERRAIN_AXIS};
 use crate::match_static::RawExtent;
@@ -144,6 +144,8 @@ pub enum SessionError {
         /// The server's [`WIRE_FINGERPRINT`].
         server: u64,
     },
+    /// The server refused the connection's `Hello`.
+    Refused(RejectReason),
 }
 
 /// A session input refused by the session or by the observer it called.
@@ -416,6 +418,11 @@ impl SessionError {
                 f,
                 "the server speaks wire {server:016x} and this client {WIRE_FINGERPRINT:016x}; \
                  build both from matching commits"
+            ),
+            Self::Refused(reason) => write!(
+                f,
+                "the server refused this client: {}",
+                crate::orders::refusal(*reason)
             ),
             _ => unreachable!("every SessionError variant has a message"),
         }

@@ -4,7 +4,7 @@
 use core::convert::Infallible;
 use core::fmt;
 
-use bota_proto::{ClientMsg, SlotId, Team};
+use bota_proto::{ClientMsg, ServerMsg, SlotId, Team};
 
 use crate::handshake::Seated;
 use crate::observer::Observer;
@@ -89,6 +89,11 @@ impl<E> From<IngestError<E>> for PlayError<E> {
 /// hero while it is dead (counted in [`Outcome::unsent_while_dead`]); the
 /// rest go out numbered, and the tick is acknowledged. The observer sees the
 /// stream as [`ClientSession::ingest`] folds it.
+///
+/// A transport that dials again after a break (a [`Link`](crate::Link) does)
+/// hands on the fresh connection's welcome and match start; the seat picks
+/// the match up from them and the standing orders go out again. A ping that
+/// reaches the loop is answered.
 pub fn play<T, O, D, I>(
     transport: &mut T,
     seated: Seated,
@@ -115,10 +120,18 @@ where
                 unsent_while_dead = unsent_while_dead.saturating_add(unsent);
             }
             Ingested::Rejected { .. } => rejections = rejections.saturating_add(1),
+            Ingested::Resumed { resend } => {
+                for order in resend {
+                    transport.send(&order.message())?;
+                }
+            }
+            Ingested::Passed(msg) if matches!(*msg, ServerMsg::Ping) => {
+                transport.send(&ClientMsg::Pong)?;
+            }
             Ingested::Over { winner, .. } => {
                 let session = seat.session().expect("the end comes after the start");
                 return Ok(Outcome {
-                    slot: seated.slot,
+                    slot: session.slot().unwrap_or(seated.slot),
                     team: session.team(),
                     winner,
                     ticks: session.current().map_or(0, |view| view.tick),

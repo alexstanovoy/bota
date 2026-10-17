@@ -12,18 +12,25 @@ use crate::session::{ClientSession, IngestError, Ingested, SessionError, Session
 /// broken.
 pub const MAX_MESSAGES_BEFORE_MATCH_START: usize = 4096;
 
-/// The stream of one connection from the lobby to the end of the match.
+/// The stream of a seat (or a spectator) from the lobby to the end of the
+/// match, over one connection or several.
 ///
 /// Before `MatchStart` it passes lobby messages through and refuses anything
 /// that belongs to a match; `MatchStart` builds the session (checked against
 /// the welcome and the pick for a seat); after it every message goes to
 /// [`ClientSession::ingest`].
+///
+/// A `Welcome` after the start means the client connected again: it must
+/// name the same seat, the next message must be the same match's start, and
+/// that start resumes the session ([`Ingested::Resumed`]).
 #[derive(Clone, Debug)]
 pub struct Seat {
     seated: Option<Seated>,
     options: SessionOptions,
     session: Option<ClientSession>,
     before_start: usize,
+    /// A fresh connection was welcomed and its match start is due.
+    resuming: bool,
 }
 
 impl Seat {
@@ -34,6 +41,7 @@ impl Seat {
             options,
             session: None,
             before_start: 0,
+            resuming: false,
         }
     }
 
@@ -44,6 +52,7 @@ impl Seat {
             options,
             session: None,
             before_start: 0,
+            resuming: false,
         }
     }
 
@@ -55,8 +64,11 @@ impl Seat {
         msg: ServerMsg,
         obs: &mut O,
     ) -> Result<Ingested, IngestError<O::Error>> {
-        if let Some(session) = &mut self.session {
-            return session.ingest(msg, obs);
+        if self.session.is_some() {
+            return self.ingest_started(msg, obs);
+        }
+        if matches!(msg, ServerMsg::Ping) {
+            return Ok(Ingested::Passed(Box::new(msg)));
         }
         self.before_start += 1;
         if self.before_start > MAX_MESSAGES_BEFORE_MATCH_START {
@@ -76,12 +88,55 @@ impl Seat {
                 }
                 .into());
             }
-            other @ (ServerMsg::Welcome { .. }
-            | ServerMsg::LobbyState { .. }
+            ServerMsg::Refused { reason } => return Err(SessionError::Refused(reason).into()),
+            ServerMsg::Welcome {
+                player_id, slot, ..
+            } => {
+                // A welcome on a fresh connection before the start: the seat
+                // it names is the one the match will be checked against.
+                if let (Some(seated), Some(slot)) = (&mut self.seated, slot) {
+                    seated.player = player_id;
+                    seated.slot = slot;
+                }
+                return Ok(Ingested::Passed(Box::new(msg)));
+            }
+            other @ (ServerMsg::LobbyState { .. }
             | ServerMsg::Orders { .. }
-            | ServerMsg::ParticipantLeft { .. }) => return Ok(Ingested::Passed(Box::new(other))),
+            | ServerMsg::ParticipantLeft { .. }
+            | ServerMsg::Ping) => return Ok(Ingested::Passed(Box::new(other))),
         };
         Err(SessionError::Stream(refused).into())
+    }
+
+    /// A message after the start: a fresh connection's welcome and match
+    /// start resume the session; anything else is the session's.
+    fn ingest_started<O: Observer>(
+        &mut self,
+        msg: ServerMsg,
+        obs: &mut O,
+    ) -> Result<Ingested, IngestError<O::Error>> {
+        let session = self.session.as_mut().expect("the match has started");
+        match msg {
+            ServerMsg::Welcome { slot, .. } => {
+                if slot != session.slot() {
+                    return Err(SessionError::Stream(
+                        "server welcomed a reconnect to another seat",
+                    )
+                    .into());
+                }
+                self.resuming = true;
+                Ok(Ingested::Passed(Box::new(msg)))
+            }
+            ServerMsg::MatchStart { info } if self.resuming => {
+                if *MatchStatic::new(&info)? != **session.statics() {
+                    return Err(SessionError::Stream("server resumed another match").into());
+                }
+                self.resuming = false;
+                let resend = session.resume()?;
+                Ok(Ingested::Resumed { resend })
+            }
+            other => session.ingest(other, obs),
+        }
     }
 
     fn start(&mut self, info: &bota_proto::MatchInfo) -> Result<Ingested, SessionError> {

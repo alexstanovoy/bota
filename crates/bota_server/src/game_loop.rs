@@ -7,8 +7,8 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use bota_proto::{
-    ClientMsg, EventKind, HeroId, MapId, PlayerId, ReplayRecord, Role, SeatKey, ServerMsg, SlotId,
-    SlotOrder, Team, TickMode, WIRE_FINGERPRINT, WorldView, encode_frame_to_vec,
+    ClientMsg, EventKind, HeroId, MapId, PlayerId, RejectReason, ReplayRecord, Role, SeatKey,
+    ServerMsg, SlotId, SlotOrder, Team, TickMode, WIRE_FINGERPRINT, WorldView, encode_frame_to_vec,
 };
 use rand_chacha::rand_core::Rng as _;
 
@@ -18,6 +18,12 @@ use crate::game::{
 use crate::lobby::{ReservedSeat, Roster};
 use crate::net::{Connection, NetEvent, accept_loop};
 use crate::replay::ReplayWriter;
+
+/// How long a connection may stay silent before it is dropped as dead, by
+/// default: five pings missed. A seat is not handed to a new connection while
+/// a live one holds it, so this is also how long a player whose line died
+/// silently waits to take the seat back.
+pub const DEFAULT_IDLE_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Everything the command line decides.
 #[derive(Clone, Debug)]
@@ -60,6 +66,9 @@ pub struct ServerOpts {
     pub dummy_seat: bool,
     /// Lockstep: how many tick-lengths to wait for a straggler.
     pub ack_timeout_ticks: u32,
+    /// How long a connection may send nothing, or take nothing of what is
+    /// sent, before it is dropped as dead. Absent waits for ever.
+    pub idle_timeout: Option<Duration>,
     /// How late the seats' orders take effect: nothing for no delay, one for
     /// every seat, or one per seat in slot order.
     pub order_delays: Vec<OrderDelay>,
@@ -185,13 +194,27 @@ impl Server {
         });
     }
 
+    /// Ends a connection the server is done with: what is queued still goes
+    /// out before it hangs up.
     fn drop_conn(&mut self, id: PlayerId) {
-        if let Some(conn) = self.conn(id) {
+        if let Some(conn) = self.forget(id) {
             conn.close();
         }
-        self.conns.retain(|c| c.id != id);
+    }
+
+    /// Ends the connection of a peer that is gone or hopeless.
+    fn lose_conn(&mut self, id: PlayerId) {
+        if let Some(conn) = self.forget(id) {
+            conn.abort();
+        }
+    }
+
+    /// Takes a connection out of every list.
+    fn forget(&mut self, id: PlayerId) -> Option<Connection> {
         self.spectators.retain(|w| w.id != id);
         self.referees.retain(|&p| p != id);
+        let at = self.conns.iter().position(|c| c.id == id)?;
+        Some(self.conns.remove(at))
     }
 
     /// Whether a Hello was accepted from this connection.
@@ -204,16 +227,18 @@ impl Server {
     /// Takes in what the network says: adopts a new stream, lets a departed
     /// peer go and tells the others (the lobby as it now stands, or in a
     /// match who left), and hands a message back. A peer that sent bytes no
-    /// message decodes from is told of to the operator and treated as gone;
-    /// the protocol has no message to answer it with.
+    /// message decodes from is told of to the operator and closed: the
+    /// protocol has no message to answer it with, and dialing again would not
+    /// mend it. A peer gone otherwise is reset. What a connection already
+    /// dropped still said is not heard.
     fn hear(&mut self, event: NetEvent, in_match: bool) -> Option<(PlayerId, ClientMsg)> {
-        let id = match event {
-            NetEvent::Msg(id, msg) => return Some((id, msg)),
+        let (id, broken) = match event {
+            NetEvent::Msg(id, msg) => return self.conn(id).is_some().then_some((id, msg)),
             NetEvent::Connected(stream) => {
                 self.adopt(stream);
                 return None;
             }
-            NetEvent::Disconnected(id) => id,
+            NetEvent::Disconnected(id) => (id, true),
             NetEvent::Malformed(id, error) => {
                 let seat = self.roster.seat_of(id).map_or_else(
                     || "no seat".to_string(),
@@ -223,14 +248,18 @@ impl Server {
                     "bota_server: player {} ({seat}) sent an undecodable message ({error}); closing its connection",
                     id.0
                 );
-                id
+                (id, false)
             }
         };
-        // A connection already replaced or refused was told of then.
+        // A connection already refused or dropped was told of then.
         if self.conn(id).is_some() {
             let slot = self.roster.seat_of(id).map(|s| s.slot);
             self.roster.release(id);
-            self.drop_conn(id);
+            if broken {
+                self.lose_conn(id);
+            } else {
+                self.drop_conn(id);
+            }
             if in_match {
                 self.broadcast(&ServerMsg::ParticipantLeft {
                     player_id: id,
@@ -255,7 +284,7 @@ impl Server {
         }
         let id = PlayerId(self.next_player);
         self.next_player += 1;
-        match Connection::spawn(id, stream, self.tx.clone()) {
+        match Connection::spawn(id, stream, self.tx.clone(), self.opts.idle_timeout) {
             Ok(conn) => self.conns.push(conn),
             Err(error) => eprintln!("bota_server: could not take a connection ({error})"),
         }
@@ -298,8 +327,9 @@ impl Server {
 
     /// A Hello: seats players and bots, registers spectators and referees.
     ///
-    /// Returns whether the peer was accepted. `info` carries the running
-    /// match to a connection joining after the start.
+    /// Returns whether the peer was accepted; one that was not is told why
+    /// ([`ServerMsg::Refused`]) and closed. `info` carries the running match
+    /// to a connection joining after the start.
     fn greet(
         &mut self,
         id: PlayerId,
@@ -316,17 +346,14 @@ impl Server {
             self.refuse_wire(id, wire_fingerprint);
             return false;
         }
-        let slot = match self.admit(role, key.as_ref()) {
-            None => None,
-            // Seats are not handed out mid-match to whoever asks.
-            Some(Admission::AnySeat) if info.is_some() => None,
-            Some(Admission::AnySeat) => self.roster.free_seat_mut().map(|seat| {
-                seat.hold(id, name, role);
-                Some(seat.slot)
-            }),
+        let admitted = match self.admit(role, key.as_ref()) {
+            None => Err(RejectReason::NotAdmitted),
+            Some(Admission::AnySeat) => {
+                self.any_seat(id, role, name, key, info.is_some()).map(Some)
+            }
             Some(Admission::Seat(slot)) => {
-                self.take_seat(id, role, slot);
-                Some(Some(slot))
+                let name = self.opts.reserved[usize::from(slot.0)].name.clone();
+                self.take_seat(id, role, slot, name).map(|()| Some(slot))
             }
             Some(Admission::Watch(eyes)) => {
                 self.spectators.push(Watcher {
@@ -334,16 +361,22 @@ impl Server {
                     eyes,
                     locked: eyes.is_some(),
                 });
-                Some(None)
+                Ok(None)
             }
             Some(Admission::Referee) => {
                 self.referees.push(id);
-                Some(None)
+                Ok(None)
             }
         };
-        let Some(slot) = slot else {
-            self.drop_conn(id);
-            return false;
+        let slot = match admitted {
+            Ok(slot) => slot,
+            Err(reason) => {
+                if let Some(conn) = self.conn(id) {
+                    conn.send(&ServerMsg::Refused { reason });
+                }
+                self.drop_conn(id);
+                return false;
+            }
         };
         if let Some(conn) = self.conn(id) {
             conn.send(&ServerMsg::Welcome {
@@ -359,19 +392,47 @@ impl Server {
         true
     }
 
-    /// Seats a connection in a reserved seat, closing whoever held it: a
-    /// reconnect replaces the old connection.
-    fn take_seat(&mut self, id: PlayerId, role: Role, slot: SlotId) {
-        let at = usize::from(slot.0);
-        let name = self.opts.reserved[at].name.clone();
-        if let Some(old) = self.roster.seats[at].player {
-            self.drop_conn(old);
-            self.broadcast(&ServerMsg::ParticipantLeft {
-                player_id: old,
-                slot: Some(slot),
-            });
+    /// An unreserved seat: the one the key claimed before, else in the lobby
+    /// the first open one, which the key, if any, then claims. Seats are not
+    /// handed out mid-match to whoever asks.
+    fn any_seat(
+        &mut self,
+        id: PlayerId,
+        role: Role,
+        name: String,
+        key: Option<SeatKey>,
+        started: bool,
+    ) -> Result<SlotId, RejectReason> {
+        if let Some(slot) = key.as_ref().and_then(|key| self.roster.seat_for_claim(key)) {
+            return self.take_seat(id, role, slot, name).map(|()| slot);
         }
-        self.roster.seats[at].hold(id, name, role);
+        if started {
+            return Err(RejectReason::NotAdmitted);
+        }
+        let seat = self
+            .roster
+            .free_seat_mut()
+            .ok_or(RejectReason::NotAdmitted)?;
+        seat.hold(id, name, role);
+        seat.claim = key;
+        Ok(seat.slot)
+    }
+
+    /// Seats a connection in a seat its key entitles it to, unless a live
+    /// connection holds it: one that ended, or was found dead, let it go.
+    fn take_seat(
+        &mut self,
+        id: PlayerId,
+        role: Role,
+        slot: SlotId,
+        name: String,
+    ) -> Result<(), RejectReason> {
+        let seat = &mut self.roster.seats[usize::from(slot.0)];
+        if seat.player.is_some() {
+            return Err(RejectReason::SeatHeld);
+        }
+        seat.hold(id, name, role);
+        Ok(())
     }
 
     /// Collects seats and picks until everyone is ready, or until the time
@@ -426,7 +487,10 @@ impl Server {
                         }
                     }
                 }
-                ClientMsg::Order { .. } | ClientMsg::Ack { .. } | ClientMsg::ViewAs { .. } => {}
+                ClientMsg::Order { .. }
+                | ClientMsg::Ack { .. }
+                | ClientMsg::ViewAs { .. }
+                | ClientMsg::Pong => {}
             }
         }
     }
@@ -478,11 +542,9 @@ impl Server {
         let mut refused = Vec::new();
         loop {
             self.gather_input(&world, &cfg, &mut inbox, &pace);
-            // With reserved seats a player may always come back, so an empty
-            // match goes on to its end.
-            if self.opts.reserved.is_empty() && self.roster.seats.iter().all(|s| s.player.is_none())
-            {
-                break; // every seat is empty
+            // A player who may come back keeps an empty match going to its end.
+            if self.roster.seats.iter().all(|s| s.player.is_none()) && !self.returnable() {
+                break; // every seat is empty for good
             }
             let taken = inbox.line.release(&world, &mut refused);
             self.refuse(&mut refused);
@@ -506,6 +568,12 @@ impl Server {
         for conn in &mut self.conns {
             conn.close_and_wait();
         }
+    }
+
+    /// Whether a seat nobody holds may still be taken back: it is reserved, or
+    /// its last holder came with a key.
+    fn returnable(&self) -> bool {
+        !self.opts.reserved.is_empty() || self.roster.seats.iter().any(|s| s.claim.is_some())
     }
 
     /// Sends a finished tick to every connection, each through its own eyes,
@@ -621,7 +689,14 @@ impl Server {
                 key,
                 wire_fingerprint,
             } => {
-                self.greet(id, role, name, key, wire_fingerprint, Some(cfg));
+                // A seat taken mid-match was never shown the tick the match
+                // stands on: lockstep waits for it from the next one.
+                if self.greet(id, role, name, key, wire_fingerprint, Some(cfg))
+                    && let Some(seat) = self.roster.seat_of(id)
+                {
+                    let at = usize::from(seat.slot.0);
+                    inbox.acked[at] = inbox.acked[at].max(world.tick);
+                }
             }
             ClientMsg::Order {
                 seq,
@@ -653,7 +728,7 @@ impl Server {
                     spectator.eyes = eyes;
                 }
             }
-            ClientMsg::PickHero { .. } | ClientMsg::SetReady(_) => {}
+            ClientMsg::PickHero { .. } | ClientMsg::SetReady(_) | ClientMsg::Pong => {}
         }
     }
 

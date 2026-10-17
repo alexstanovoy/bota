@@ -532,6 +532,7 @@ pub fn all_client_msgs() -> Vec<ClientMsg> {
         ClientMsg::ViewAs {
             seat: Some(SlotId(1)),
         },
+        ClientMsg::Pong,
     ]
 }
 
@@ -585,6 +586,10 @@ pub fn all_server_msgs() -> Vec<ServerMsg> {
         ServerMsg::WireMismatch {
             server_fingerprint: WIRE_FINGERPRINT,
         },
+        ServerMsg::Ping,
+        ServerMsg::Refused {
+            reason: RejectReason::SeatHeld,
+        },
     ]
 }
 
@@ -621,6 +626,7 @@ pub fn client_msg_name(msg: &ClientMsg) -> &'static str {
         ClientMsg::Order { .. } => "Order",
         ClientMsg::Ack { .. } => "Ack",
         ClientMsg::ViewAs { .. } => "ViewAs",
+        ClientMsg::Pong => "Pong",
     }
 }
 
@@ -638,5 +644,7 @@ pub fn server_msg_name(msg: &ServerMsg) -> &'static str {
         ServerMsg::ParticipantLeft { .. } => "ParticipantLeft",
         ServerMsg::Orders { .. } => "Orders",
         ServerMsg::WireMismatch { .. } => "WireMismatch",
+        ServerMsg::Ping => "Ping",
+        ServerMsg::Refused { .. } => "Refused",
     }
 }

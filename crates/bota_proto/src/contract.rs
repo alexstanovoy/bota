@@ -89,7 +89,45 @@
 //! its tick. A slow client therefore jumps from state to state but is told
 //! every tick and every event it may know, in order. A connection more than
 //! 900 ticks behind (thirty seconds at 30 a second), or whose queue of other
-//! messages overflows, is closed.
+//! messages overflows, is dropped as dead (below).
+//!
+//! # Connections: liveness and coming back
+//!
+//! The server sends [`ServerMsg::Ping`] on every connection about once a
+//! second, whatever else it sends, so a client that hears nothing for a few
+//! seconds knows its connection is dead, even in a quiet lobby. A client
+//! answers each with [`ClientMsg::Pong`](crate::ClientMsg::Pong); any message
+//! counts. A connection that sends nothing, or takes in nothing of what it is
+//! sent, for the server's idle timeout (five seconds by default) is dropped
+//! as dead, and so is one whose peer closed it or broke it: the seat it held
+//! is free at once. A connection dropped as dead is reset rather than closed:
+//! a clean close means the server ended the connection on purpose (the match
+//! is over, the `Hello` was refused), and a client does not dial again after
+//! one. A connection that has not said `Hello` is told nothing.
+//!
+//! A `Hello` that admits to nothing is answered with
+//! [`ServerMsg::Refused`] and the connection closed:
+//! [`NotAdmitted`](crate::RejectReason::NotAdmitted) for a missing or wrong
+//! key, no open seat, or an unreserved seat asked for mid-match without the
+//! key that claimed it, and [`SeatHeld`](crate::RejectReason::SeatHeld) for
+//! the right key to a seat a live connection holds: a seat never changes
+//! hands while its connection lives.
+//!
+//! A seat's player may connect again at any moment while the match runs and
+//! take the seat back, once its old connection has ended or been found dead,
+//! with its hero and everything the simulation holds for it: with reserved
+//! seats by the seat's key, and without them by the key its first `Hello`
+//! came with, which claimed the seat. A `Hello` without a key takes an
+//! unreserved seat in the lobby only. The new connection is sent `Welcome`
+//! and `MatchStart` again, then every tick from the next one; the ticks
+//! between the two connections are not told.
+//!
+//! A seat nobody holds is absent: its hero is given no orders (the last one
+//! it was given runs its course), and the match neither waits for it nor ends
+//! because of it. In lockstep the server waits for the seats held; a seat
+//! taken back is waited for from the tick after the one it came back on. A
+//! match whose seats are all empty ends early only when none of them may be
+//! taken back.
 //!
 //! # Chances
 //!
@@ -135,3 +173,5 @@
 //! [`ServerMsg::Snapshot`]: crate::ServerMsg::Snapshot
 //! [`ServerMsg::Events`]: crate::ServerMsg::Events
 //! [`ServerMsg::WireMismatch`]: crate::ServerMsg::WireMismatch
+//! [`ServerMsg::Ping`]: crate::ServerMsg::Ping
+//! [`ServerMsg::Refused`]: crate::ServerMsg::Refused

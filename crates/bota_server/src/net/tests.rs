@@ -11,7 +11,7 @@ use bota_proto::{
 };
 
 use crate::game::OrderDelay;
-use crate::game_loop::{ServerOpts, run};
+use crate::game_loop::{DEFAULT_IDLE_TIMEOUT, ServerOpts, run};
 
 struct TestClient {
     stream: TcpStream,
@@ -35,11 +35,14 @@ impl TestClient {
         self.stream.write_all(&frame).expect("send");
     }
 
+    /// The next message; a ping is answered, as every client does, and skipped.
     fn recv(&mut self) -> ServerMsg {
         let mut buf = [0u8; 65536];
         loop {
-            if let Some(msg) = self.reader.next_message::<ServerMsg>().expect("decode") {
-                return msg;
+            match self.reader.next_message::<ServerMsg>().expect("decode") {
+                Some(ServerMsg::Ping) => self.send(&ClientMsg::Pong),
+                Some(msg) => return msg,
+                None => {}
             }
             let n = self.stream.read(&mut buf).expect("read");
             assert!(n > 0, "server hung up while a message was awaited");
@@ -98,6 +101,7 @@ fn realtime(seed: u64) -> ServerOpts {
         max_connections: None,
         map: bota_proto::MapId(0),
         ack_timeout_ticks: 150,
+        idle_timeout: Some(DEFAULT_IDLE_TIMEOUT),
         cheats: false,
         immortal_structures: false,
         immortal_heroes: false,
@@ -431,6 +435,9 @@ fn a_slow_reader_skips_snapshots_but_no_tick_and_no_event() {
     let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
     let mut client = TestClient::connect(listener.local_addr().expect("addr"));
     let (stream, _) = listener.accept().expect("accept");
+    // Held open until the end: closed with the client's pongs unread, the
+    // socket would reset the connection under the client.
+    let held = stream.try_clone().expect("clone");
     let outbox = crate::net::Outbox::new();
     let writer = {
         let outbox = std::sync::Arc::clone(&outbox);
@@ -468,10 +475,12 @@ fn a_slow_reader_skips_snapshots_but_no_tick_and_no_event() {
                     break;
                 }
             }
+            ServerMsg::Ping => {}
             other => panic!("unexpected {other:?}"),
         }
     }
     writer.join().expect("writer");
+    drop(held);
     let skipped: Vec<(u32, Vec<EventKind>)> = (2..=5).map(|tick| (tick, events(tick))).collect();
     assert_eq!(seen, vec![(1, Vec::new()), (6, skipped)]);
 }

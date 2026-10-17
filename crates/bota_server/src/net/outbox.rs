@@ -2,24 +2,29 @@
 
 use std::collections::VecDeque;
 use std::io::Write;
-use std::net::TcpStream;
-use std::sync::{Arc, Condvar, Mutex};
+use std::net::{Shutdown, TcpStream};
+use std::sync::{Arc, Condvar, Mutex, MutexGuard};
+use std::time::{Duration, Instant};
 
 use bota_proto::{
     EventKind, LEN_PREFIX, ServerMsg, SkippedTick, decode_payload, encode_frame,
     encode_frame_to_vec,
 };
 
+/// How often the writer sends [`ServerMsg::Ping`], whatever else it sends.
+pub const PING_INTERVAL: Duration = Duration::from_secs(1);
+
 /// Frames waiting to leave on one connection.
 ///
 /// The simulation thread pushes and never blocks; a writer thread drains onto
-/// the socket at whatever pace the peer accepts. A tick, its snapshot and its
-/// events, is coalescible: queueing a new one replaces any older tick still
-/// waiting, whose events then ride along in the new snapshot's
-/// [`skipped_ticks`](bota_proto::WorldView::skipped_ticks), so a slow consumer
-/// skips states but no events. Everything else is kept in order and never
-/// dropped; a queue that overflows, or a peer that skips more than
-/// [`MAX_SKIPPED_TICKS`] in a row, closes the connection instead.
+/// the socket at whatever pace the peer accepts, and pings the peer every
+/// [`PING_INTERVAL`] so it hears from the server even when nothing happens. A
+/// tick, its snapshot and its events, is coalescible: queueing a new one
+/// replaces any older tick still waiting, whose events then ride along in the
+/// new snapshot's [`skipped_ticks`](bota_proto::WorldView::skipped_ticks), so
+/// a slow consumer skips states but no events. Everything else is kept in
+/// order and never dropped; a queue that overflows, or a peer that skips more
+/// than [`MAX_SKIPPED_TICKS`] in a row, aborts the connection instead.
 pub struct Outbox {
     state: Mutex<OutboxState>,
     wake: Condvar,
@@ -27,7 +32,19 @@ pub struct Outbox {
 
 struct OutboxState {
     queue: VecDeque<Queued>,
+    /// Drain what is queued, then hang up.
     closed: bool,
+    /// Drop what is queued and stop at once: the peer is gone or hopeless.
+    aborted: bool,
+}
+
+/// What the writer does next.
+enum Step {
+    Send(Queued),
+    Ping,
+    /// The queue is drained after a close: hang up.
+    HangUp,
+    Abort,
 }
 
 /// One entry of the queue.
@@ -61,6 +78,7 @@ impl Outbox {
             state: Mutex::new(OutboxState {
                 queue: VecDeque::new(),
                 closed: false,
+                aborted: false,
             }),
             wake: Condvar::new(),
         })
@@ -83,8 +101,8 @@ impl Outbox {
     }
 
     fn enqueue(&self, mut entry: Queued) {
-        let mut state = self.state.lock().expect("outbox lock");
-        if state.closed {
+        let mut state = self.lock();
+        if state.closed || state.aborted {
             return;
         }
         if let Queued::Tick(newer) = &mut entry
@@ -104,12 +122,12 @@ impl Outbox {
                 events: older.events,
             });
             if newer.skipped.len() > MAX_SKIPPED_TICKS {
-                state.closed = true;
+                state.aborted = true;
             }
         }
         state.queue.push_back(entry);
         if state.queue.len() > QUEUE_LIMIT {
-            state.closed = true;
+            state.aborted = true;
         }
         drop(state);
         self.wake.notify_one();
@@ -117,35 +135,76 @@ impl Outbox {
 
     /// Lets the writer drain what is queued, then stop.
     pub fn close(&self) {
-        self.state.lock().expect("outbox lock").closed = true;
+        self.lock().closed = true;
         self.wake.notify_one();
     }
 
-    /// The writer thread body: drains frames onto the socket until the outbox
-    /// closes and empties, or the socket fails.
-    pub fn run_writer(self: &Arc<Outbox>, mut stream: TcpStream) {
+    /// Drops what is queued and stops the writer without a word to the peer.
+    pub fn abort(&self) {
+        let mut state = self.lock();
+        state.aborted = true;
+        state.queue.clear();
+        drop(state);
+        self.wake.notify_one();
+    }
+
+    fn lock(&self) -> MutexGuard<'_, OutboxState> {
+        self.state.lock().expect("outbox lock")
+    }
+
+    /// Waits for the writer's next step: a ping when one is due, else the
+    /// next queued entry.
+    fn next_step(&self, ping_due: Instant) -> Step {
+        let mut state = self.lock();
         loop {
-            let entry = {
-                let state = self.state.lock().expect("outbox lock");
-                self.wake
-                    .wait_while(state, |state| state.queue.is_empty() && !state.closed)
-                    .expect("outbox lock")
-                    .queue
-                    .pop_front()
-            };
-            let Some(entry) = entry else {
-                let _ = stream.shutdown(std::net::Shutdown::Write);
-                return;
-            };
-            let bytes = match entry {
-                Queued::Frame(bytes) => Some(bytes),
-                Queued::Tick(tick) => tick_frames(*tick),
+            if state.aborted {
+                return Step::Abort;
+            }
+            let now = Instant::now();
+            if now >= ping_due {
+                return Step::Ping;
+            }
+            if let Some(entry) = state.queue.pop_front() {
+                return Step::Send(entry);
+            }
+            if state.closed {
+                return Step::HangUp;
+            }
+            state = self
+                .wake
+                .wait_timeout(state, ping_due - now)
+                .expect("outbox lock")
+                .0;
+        }
+    }
+
+    /// The writer thread body: drains frames onto the socket until the outbox
+    /// closes and empties, then hangs up. When the outbox is aborted or the
+    /// socket fails, it shuts the socket's reading side, so the connection's
+    /// reader reports the peer gone.
+    pub fn run_writer(self: &Arc<Outbox>, mut stream: TcpStream) {
+        let ping = encode_frame_to_vec(&ServerMsg::Ping).expect("a ping encodes");
+        let mut ping_due = Instant::now() + PING_INTERVAL;
+        loop {
+            let bytes = match self.next_step(ping_due) {
+                Step::Send(Queued::Frame(bytes)) => Some(bytes),
+                Step::Send(Queued::Tick(tick)) => tick_frames(*tick),
+                Step::Ping => {
+                    ping_due = Instant::now() + PING_INTERVAL;
+                    Some(ping.clone())
+                }
+                Step::HangUp => {
+                    let _ = stream.shutdown(Shutdown::Write);
+                    return;
+                }
+                Step::Abort => break,
             };
             if bytes.is_none_or(|bytes| stream.write_all(&bytes).is_err()) {
-                self.close();
-                return;
+                self.abort();
+                break;
             }
         }
+        let _ = stream.shutdown(Shutdown::Read);
     }
 }
 

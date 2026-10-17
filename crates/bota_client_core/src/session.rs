@@ -95,6 +95,10 @@ pub enum Ingested {
     TickComplete { tick: u32 },
     /// The match is over; a neutral winner is a draw.
     Over { winner: Team, stats: MatchStats },
+    /// A fresh connection picked the match up again (see
+    /// [`Seat`](crate::Seat)): the orders that stood are given again, for the
+    /// caller to send, since the old connection may have lost them.
+    Resumed { resend: Vec<OutgoingOrder> },
 }
 
 /// Where a seat's stream stands in its snapshot-then-events order.
@@ -218,11 +222,32 @@ impl ClientSession {
                 server: server_fingerprint,
             }
             .into()),
+            ServerMsg::Refused { reason } => Err(SessionError::Refused(reason).into()),
             other @ (ServerMsg::Welcome { .. }
             | ServerMsg::LobbyState { .. }
             | ServerMsg::Orders { .. }
-            | ServerMsg::ParticipantLeft { .. }) => Ok(Ingested::Passed(Box::new(other))),
+            | ServerMsg::ParticipantLeft { .. }
+            | ServerMsg::Ping) => Ok(Ingested::Passed(Box::new(other))),
         }
+    }
+
+    /// Picks the match up again on a fresh connection: the stream starts
+    /// over at the next snapshot, whatever tick it brings (the ticks between
+    /// are not told), and the standing orders of the seat's bodies are given
+    /// again with new numbers, for the caller to send. A one-shot order the
+    /// old connection may have lost is not: given twice it would act twice.
+    pub fn resume(&mut self) -> Result<Vec<OutgoingOrder>, SessionError> {
+        self.stream = StreamState::default();
+        if self.owner.is_none() || self.current.is_none() {
+            return Ok(Vec::new());
+        }
+        let hero_down = self.own_hero().is_none();
+        let standing = self.ledger.standing_orders();
+        standing
+            .into_iter()
+            .filter(|order| !(hero_down && order.unit.is_none()))
+            .map(|order| self.issue(order))
+            .collect()
     }
 
     /// Folds one snapshot in, moving it into the session.
@@ -347,7 +372,7 @@ impl ClientSession {
 
     /// Counts a message against the bound on a stream without snapshots.
     fn count_message(&mut self, msg: &ServerMsg) -> Result<(), SessionError> {
-        if !self.strict() {
+        if !self.strict() || matches!(msg, ServerMsg::Ping) {
             return Ok(());
         }
         if matches!(msg, ServerMsg::Snapshot { .. }) {
