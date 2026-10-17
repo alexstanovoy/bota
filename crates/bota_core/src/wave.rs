@@ -61,6 +61,12 @@ pub const fn latest_wave(tick: u32) -> Option<u32> {
     Some((tick - rules::FIRST_WAVE_TICK) / rules::WAVE_PERIOD_TICKS + 1)
 }
 
+/// The tick the given wave, counting from one, walks out at.
+#[inline]
+pub const fn wave_spawn_tick(wave: u32) -> u32 {
+    rules::FIRST_WAVE_TICK + (wave - 1) * rules::WAVE_PERIOD_TICKS
+}
+
 /// Upgrades a wave's creeps carry: one per [`rules::WAVE_UPGRADE_PERIOD`]
 /// waves, up to [`rules::WAVE_UPGRADE_CAP`].
 pub fn wave_upgrades(wave: u32) -> u32 {
@@ -137,6 +143,22 @@ pub fn spawn_offsets(plan: &WavePlan, forward: Vec2) -> Vec<Vec2> {
 pub fn neutral_spawn_due(tick: u32) -> bool {
     tick >= rules::FIRST_NEUTRAL_TICK
         && (tick - rules::FIRST_NEUTRAL_TICK).is_multiple_of(rules::NEUTRAL_SPAWN_PERIOD_TICKS)
+}
+
+/// How many neutral spawns have happened at or before a tick.
+#[inline]
+pub const fn neutral_spawns_through(tick: u32) -> u32 {
+    if tick < rules::FIRST_NEUTRAL_TICK {
+        0
+    } else {
+        (tick - rules::FIRST_NEUTRAL_TICK) / rules::NEUTRAL_SPAWN_PERIOD_TICKS + 1
+    }
+}
+
+/// The first neutral spawn after a tick.
+#[inline]
+pub const fn next_neutral_spawn(tick: u32) -> u32 {
+    rules::FIRST_NEUTRAL_TICK + neutral_spawns_through(tick) * rules::NEUTRAL_SPAWN_PERIOD_TICKS
 }
 
 /// How many upgrade intervals the jungle carries by a tick, capped.

@@ -325,6 +325,11 @@ pub const NEUTRAL_VISION: i32 = 800;
 /// Ticks of pregame: the game clock counts up from minus this, thirty
 /// seconds, and reaches zero when the first wave walks out.
 pub const PREGAME_TICKS: u32 = 30 * TICKS_PER_SECOND;
+/// The tick a game minute begins at, counted from the horn.
+pub const fn tick_at_game_minute(minutes: u32) -> u32 {
+    PREGAME_TICKS + minutes * 60 * TICKS_PER_SECOND
+}
+
 /// Tick of the first creep wave.
 pub const FIRST_WAVE_TICK: u32 = PREGAME_TICKS;
 /// Ticks a daytime or a nighttime lasts: five minutes each, so a whole day
