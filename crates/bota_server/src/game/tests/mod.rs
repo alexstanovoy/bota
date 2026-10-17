@@ -5,6 +5,7 @@ mod auras;
 mod bounty;
 mod cast;
 mod client;
+mod core_rules;
 mod courier;
 mod creep_ai;
 mod delay;
