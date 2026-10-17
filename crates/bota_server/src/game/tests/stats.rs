@@ -367,6 +367,11 @@ fn what_a_courier_carries_is_worth_nothing_to_the_courier() {
 #[test]
 fn every_attribute_pays_for_what_it_is_worth() {
     let (mut world, hero) = a_hero_with_gold(0);
+    // Out of the fountain, whose mending grows with the maxima.
+    world.transform.get_mut(hero).expect("hero").pos = Vec2::from_ints(5000, 5000);
+    for _ in 0..=rules::FOUNTAIN_HEAL_LINGER_TICKS {
+        world.step();
+    }
     let before = *world.stats.get(hero).expect("settled");
     let six = Fixed::from_int(6);
     hand_item(&mut world, hero, ItemId::BELT, 0);

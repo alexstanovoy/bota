@@ -54,8 +54,8 @@ fn every_modifier() -> Vec<ModifierKind> {
             breaks: false,
         },
         ModifierKind::Fountain {
-            hp_per_tick: 0,
-            mana_per_tick: 0,
+            hp_pct: 0,
+            mana_pct: 0,
         },
         ModifierKind::Stunned,
         ModifierKind::Shielded,

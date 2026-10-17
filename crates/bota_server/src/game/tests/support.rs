@@ -397,8 +397,8 @@ pub(super) fn gap_along_lane(world: &World, one: Entity, other: Entity) -> i32 {
 
 /// The effect a fountain hands out.
 pub(super) const FOUNTAIN_EFFECT: ModifierKind = ModifierKind::Fountain {
-    hp_per_tick: rules::FOUNTAIN_HEAL_HP_PER_TICK * 100,
-    mana_per_tick: rules::FOUNTAIN_HEAL_MANA_PER_TICK * 100,
+    hp_pct: rules::FOUNTAIN_HEAL_HP_PCT,
+    mana_pct: rules::FOUNTAIN_HEAL_MANA_PCT,
 };
 
 /// Whether a unit carries an effect of one kind right now, whatever there is

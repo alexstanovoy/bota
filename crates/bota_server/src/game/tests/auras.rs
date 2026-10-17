@@ -35,10 +35,12 @@ fn a_fountain_hands_out_mending_to_its_own_side_standing_in_it() {
         carries(&world, hero, FOUNTAIN_EFFECT),
         "standing in it, the hero carries the effect"
     );
+    let max_hp = world.stats.get(hero).expect("derived").max_hp;
+    let a_tick = max_hp.to_int() * rules::FOUNTAIN_HEAL_HP_PCT / 100 / 30;
+    let hp = world.health.get(hero).expect("alive").hp.to_int();
     assert!(
-        world.health.get(hero).map(|h| h.hp)
-            >= Some(Fixed::from_int(100 + rules::FOUNTAIN_HEAL_HP_PER_TICK)),
-        "and mends by at least what the fountain hands out"
+        (100 + a_tick..=101 + a_tick).contains(&hp),
+        "and mends a twentieth of its maximum a second: {hp} of {max_hp}"
     );
     assert!(
         !carries(&world, theirs, FOUNTAIN_EFFECT),
@@ -51,12 +53,53 @@ fn a_fountain_hands_out_mending_to_its_own_side_standing_in_it() {
         carries(&world, hero, FOUNTAIN_EFFECT),
         "one step out it is still running"
     );
-    for _ in 0..rules::TICKS_PER_SECOND {
+    for _ in 0..rules::FOUNTAIN_HEAL_LINGER_TICKS {
         world.step();
     }
     assert!(
         !carries(&world, hero, FOUNTAIN_EFFECT),
-        "a second later it is gone"
+        "three seconds later it is gone"
+    );
+}
+
+#[test]
+fn the_fountain_fills_a_hero_in_twenty_seconds_not_one() {
+    let mut world = World::for_match(&config(), config().rng());
+    let hero = world.seats[0].unit.expect("stood up");
+    world.health.insert(hero, health(1));
+    world
+        .mana
+        .insert(hero, crate::game::Mana { mana: Fixed::ZERO });
+    let full = |world: &World| {
+        let stats = world.stats.get(hero).expect("derived");
+        (
+            world.health.get(hero).expect("alive").hp >= stats.max_hp,
+            world.mana.get(hero).expect("alive").mana >= stats.max_mana,
+        )
+    };
+    for _ in 0..rules::TICKS_PER_SECOND * 2 {
+        world.step();
+    }
+    assert_eq!(
+        full(&world),
+        (false, false),
+        "two seconds fill neither pool"
+    );
+    for _ in 0..rules::TICKS_PER_SECOND * 15 {
+        world.step();
+    }
+    assert_eq!(
+        full(&world),
+        (false, true),
+        "six percent fills mana in under 17 s"
+    );
+    for _ in 0..rules::TICKS_PER_SECOND * 3 {
+        world.step();
+    }
+    assert_eq!(
+        full(&world),
+        (true, true),
+        "five percent fills health in 20 s"
     );
 }
 

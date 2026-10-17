@@ -471,13 +471,10 @@ fn hash_modifier_kind(fnv: &mut Fnv, kind: ModifierKind) {
             fnv.i32(per_tick);
             fnv.some(breaks);
         }
-        ModifierKind::Fountain {
-            hp_per_tick,
-            mana_per_tick,
-        } => {
+        ModifierKind::Fountain { hp_pct, mana_pct } => {
             fnv.u8(3);
-            fnv.i32(hp_per_tick);
-            fnv.i32(mana_per_tick);
+            fnv.i32(hp_pct);
+            fnv.i32(mana_pct);
         }
         ModifierKind::Stunned => fnv.u8(4),
         ModifierKind::Shielded => fnv.u8(8),

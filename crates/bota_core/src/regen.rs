@@ -28,18 +28,25 @@ fn per_second(hundredths: i32) -> Fixed {
     Fixed::from_ratio(hundredths, 100 * rules::TICKS_PER_SECOND as i32)
 }
 
-/// What one active modifier adds to regeneration.
+/// What mending `pct` percent of `max` a second comes to a tick, rounded
+/// down to the raw unit.
 #[inline]
-fn from_modifier(kind: ModifierKind) -> Regen {
+fn share_a_tick(max: Fixed, pct: i32) -> Fixed {
+    let per_tick = i64::from(max.raw) * i64::from(pct) / (100 * i64::from(rules::TICKS_PER_SECOND));
+    Fixed {
+        raw: i32::try_from(per_tick).expect("a share of a maximum fits"),
+    }
+}
+
+/// What one active modifier adds to regeneration, on pools of `max`.
+#[inline]
+fn from_modifier(kind: ModifierKind, max: Regen) -> Regen {
     let (hp, mana) = match kind {
         ModifierKind::Mending { per_tick, .. } => (Fixed::from_ratio(per_tick, 100), Fixed::ZERO),
         ModifierKind::Clarity { per_tick, .. } => (Fixed::ZERO, Fixed::from_ratio(per_tick, 100)),
-        ModifierKind::Fountain {
-            hp_per_tick,
-            mana_per_tick,
-        } => (
-            Fixed::from_ratio(hp_per_tick, 100),
-            Fixed::from_ratio(mana_per_tick, 100),
+        ModifierKind::Fountain { hp_pct, mana_pct } => (
+            share_a_tick(max.hp, hp_pct),
+            share_a_tick(max.mana, mana_pct),
         ),
         ModifierKind::Guarded { hp_per_second, .. }
         | ModifierKind::Inspired { hp_per_second, .. } => (per_second(hp_per_second), Fixed::ZERO),
@@ -50,11 +57,13 @@ fn from_modifier(kind: ModifierKind) -> Regen {
 
 /// Everything a unit regenerates: its kind's own base, what its items carry
 /// (`carried`), its strength and intelligence at their final worth, and the
-/// active modifiers on it (consumables, the fountain, auras).
+/// active modifiers on it (consumables, the fountain, auras). `max` holds
+/// its maximum health and mana, which the fountain mends a share of.
 pub fn regen(
     base: Regen,
     carried: Regen,
     attributes: Attributes,
+    max: Regen,
     modifiers: impl Iterator<Item = ModifierKind>,
 ) -> Regen {
     let mut total = Regen {
@@ -64,7 +73,7 @@ pub fn regen(
             + rules::MANA_REGEN_PER_INTELLIGENCE * attributes.intelligence,
     };
     for kind in modifiers {
-        let added = from_modifier(kind);
+        let added = from_modifier(kind, max);
         total.hp += added.hp;
         total.mana += added.mana;
     }

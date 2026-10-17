@@ -636,7 +636,7 @@ fn the_view_reports_the_regeneration_the_server_applies() {
     assert_eq!((fountain_hp.raw, fountain_mana.raw), served(&world));
 
     world.transform.get_mut(hero).expect("hero").pos = Vec2::from_ints(5000, 5000);
-    for _ in 0..=rules::TICKS_PER_SECOND {
+    for _ in 0..=rules::FOUNTAIN_HEAL_LINGER_TICKS {
         world.step();
     }
     let (plain_hp, plain_mana) = regen(&world);

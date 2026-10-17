@@ -108,7 +108,11 @@ fn derive_stats_impl<const APPLIED: bool>(cx: StatsCx<'_>) {
                 .is_some_and(|book| book.has_talent(Talent::FeastAttackSpeed));
             add_feast(&mut now, feast, talented);
         }
-        let regen = settled_regen(kind, carried, now.attributes, modifiers.get(entity));
+        let max = Regen {
+            hp: now.max_hp,
+            mana: now.max_mana,
+        };
+        let regen = settled_regen(kind, carried, now.attributes, max, modifiers.get(entity));
         (now.hp_regen, now.mana_regen) = (regen.hp, regen.mana);
         follow_pools(
             stats.get(entity).copied(),
@@ -126,6 +130,7 @@ fn settled_regen(
     kind: &UnitDef,
     carried: Option<Carried>,
     attributes: Attributes,
+    max: Regen,
     on_it: Option<&Modifiers>,
 ) -> Regen {
     regen(
@@ -138,6 +143,7 @@ fn settled_regen(
             mana: carried.mana_regen,
         }),
         attributes,
+        max,
         on_it
             .into_iter()
             .flat_map(|on_it| on_it.active().map(|held| held.kind)),

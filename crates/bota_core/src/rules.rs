@@ -752,10 +752,16 @@ pub const FOUNTAIN_COLLISION: i32 = 144;
 pub const FOUNTAIN_BOUND: i32 = 144;
 /// Fountain fog light radius.
 pub const FOUNTAIN_VISION: i32 = 1800;
-/// Health restored per tick to its own side inside the fountain area.
-pub const FOUNTAIN_HEAL_HP_PER_TICK: i32 = 25;
-/// Mana restored per tick to its own side inside the fountain area.
-pub const FOUNTAIN_HEAL_MANA_PER_TICK: i32 = 15;
+/// Percent of its maximum health the fountain mends a second on its own
+/// side: Dota 7.41f's Rejuvenation Aura, full in twenty seconds
+/// (Liquipedia, *Fountain*, read 2026-10).
+pub const FOUNTAIN_HEAL_HP_PCT: i32 = 5;
+/// Percent of its maximum mana the fountain mends a second on its own side,
+/// full in sixteen and two thirds.
+pub const FOUNTAIN_HEAL_MANA_PCT: i32 = 6;
+/// Ticks the fountain's mending lingers on a unit that steps out: the
+/// aura's three seconds.
+pub const FOUNTAIN_HEAL_LINGER_TICKS: u32 = 3 * TICKS_PER_SECOND;
 /// Radius of the fountain heal area.
 pub const FOUNTAIN_HEAL_RADIUS: i32 = 1200;
 
