@@ -15,10 +15,13 @@ pub struct ReplayWriter {
 }
 
 impl ReplayWriter {
-    /// Creates or truncates the file.
+    /// Creates or truncates the file; an error names the path.
     pub fn create(path: &Path) -> std::io::Result<ReplayWriter> {
+        let file = File::create(path).map_err(|error| {
+            std::io::Error::new(error.kind(), format!("replay {}: {error}", path.display()))
+        })?;
         Ok(ReplayWriter {
-            out: Some(BufWriter::new(File::create(path)?)),
+            out: Some(BufWriter::new(file)),
         })
     }
 

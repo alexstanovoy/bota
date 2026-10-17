@@ -71,9 +71,7 @@ pub fn run(listener: TcpListener, opts: ServerOpts) -> std::io::Result<()> {
     let secrets = draw_secrets(opts.seed, opts.match_id)?;
     let replay = match &opts.replay {
         None => ReplayWriter::disabled(),
-        Some(path) => ReplayWriter::create(path).map_err(|error| {
-            std::io::Error::new(error.kind(), format!("replay {}: {error}", path.display()))
-        })?,
+        Some(path) => ReplayWriter::create(path)?,
     };
     let (tx, rx) = channel();
     let accept_tx = tx.clone();

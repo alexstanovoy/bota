@@ -130,6 +130,10 @@ fn main() -> std::io::Result<()> {
         (_, seats) => seats as u8,
     };
     let order_delays = order_delays(&args, players).map_err(std::io::Error::other)?;
+    // A replay that cannot be written fails before the port is announced.
+    if let Some(path) = &args.replay {
+        bota_server::replay::ReplayWriter::create(path)?;
+    }
     let listener = TcpListener::bind(("0.0.0.0", args.port))?;
     println!("bota_server listening on {}", listener.local_addr()?);
     run(
