@@ -3,11 +3,11 @@
 
 use bota_core::{MELEE_CREEP, ModifierKind, rules};
 
-use crate::game::{ActionPhase, ActionState, Entity, Level, Modifier, PendingCast, World, wire_id};
+use crate::game::{ActionPhase, ActionState, Entity, Level, PendingCast, World, wire_id};
 use bota_proto::{AbilitySlot, DamageKind, HeroId, SlotId, Target, Team, Vec2};
 
 use super::support::ANVIL;
-use crate::game::tests::support::{cast, seated_hero};
+use crate::game::tests::support::{cast, put_on, seated_hero};
 
 /// Pudge in a seat with the dismember learned, and a mark 100 off.
 fn pudge_and_a_mark() -> (World, Entity, Entity) {
@@ -54,13 +54,12 @@ fn fiend_mid_swing() -> (World, Entity) {
     (world, fiend)
 }
 
-/// Orders the seat's Pudge to dismember the mark.
 fn dismember(world: &mut World, mark: Entity) {
     cast(world, 3, Target::Unit(wire_id(mark)));
 }
 
 /// Whether an entity carries a modifier of a kind put there by somebody.
-fn put_on(world: &World, entity: Entity, kind: ModifierKind, by: Entity) -> bool {
+fn carries_from(world: &World, entity: Entity, kind: ModifierKind, by: Entity) -> bool {
     let same = std::mem::discriminant(&kind);
     world.modifiers.get(entity).is_some_and(|on_it| {
         on_it
@@ -81,9 +80,9 @@ fn dismember_parts(world: &World, pudge: Entity, mark: Entity) -> [bool; 3] {
         breaks: false,
     };
     [
-        put_on(world, mark, ModifierKind::Stunned, pudge),
-        put_on(world, mark, burn, pudge),
-        put_on(world, pudge, mend, pudge),
+        carries_from(world, mark, ModifierKind::Stunned, pudge),
+        carries_from(world, mark, burn, pudge),
+        carries_from(world, pudge, mend, pudge),
     ]
 }
 
@@ -154,12 +153,7 @@ type BreakOff = fn(&mut World, Entity, Entity);
 fn a_stun_on_the_one_holding_or_a_mark_out_of_reach_breaks_a_dismember_off() {
     let breaks: [(&str, BreakOff); 2] = [
         ("stunned", |world, pudge, _| {
-            let stun = Modifier {
-                kind: ModifierKind::Stunned,
-                source: None,
-                ticks_left: Some(5),
-            };
-            world.put_modifier(pudge, stun);
+            put_on(world, pudge, ModifierKind::Stunned, 5);
         }),
         ("out of reach", |world, _, mark| {
             world.transform.get_mut(mark).expect("standing").pos = Vec2::from_ints(7000, 5000);

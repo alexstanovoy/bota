@@ -453,8 +453,7 @@ fn what_an_owner_has_no_room_for_goes_back_to_the_stash() {
 
 /// A match world, its hero and its courier, before any tick has run.
 fn a_match() -> (World, Entity, Entity) {
-    let world = World::for_match(&config(), config().rng());
-    let hero = world.seats[0].unit.expect("stood up");
+    let (world, hero) = match_hero();
     let courier = the_courier(&world);
     (world, hero, courier)
 }
@@ -469,7 +468,6 @@ fn step_until(world: &mut World, ticks: u32, done: impl Fn(&World) -> bool) {
     }
 }
 
-/// How many stacks a unit carries.
 fn held(world: &World, unit: Entity) -> usize {
     world.inventory.get(unit).expect("has a bag").held().count()
 }

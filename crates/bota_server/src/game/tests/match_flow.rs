@@ -426,8 +426,7 @@ fn a_heros_blows_on_enemy_heroes_and_structures_are_counted_in_the_final_stats()
 
 /// The match hero at the seventh level with its second ability learned.
 fn a_level_seven_hero() -> (World, Entity) {
-    let mut world = World::for_match(&config(), config().rng());
-    let hero = world.seats[0].unit.expect("stood up");
+    let (mut world, hero) = match_hero();
     world.level.insert(hero, Level(7));
     world.seats[0].level = 7;
     assert!(world.learn(hero, 1));

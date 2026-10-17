@@ -90,13 +90,7 @@ fn expired_auras_are_not_projected_or_counted_as_shadowraze() {
 
     world.tick_gear();
 
-    let view = world.view_full();
-    let unit = view
-        .units
-        .iter()
-        .find(|unit| unit.id == wire_id(target))
-        .unwrap();
-    assert_eq!(unit.effects, vec![effect(1, 179)]);
+    assert_eq!(shown(&world, None, target).effects, vec![effect(1, 179)]);
     assert_eq!(world.modifiers.get(target).unwrap().raze_stacks(caster), 1);
 }
 
@@ -130,12 +124,7 @@ fn tower_and_mango_bonuses_survive_shadowraze_refresh() {
             )
             + item_def(ItemId::MANGO).unwrap().carried.hp_regen
     );
-    let view = world.view_full();
-    let unit = view
-        .units
-        .iter()
-        .find(|unit| unit.id == wire_id(target))
-        .unwrap();
+    let unit = shown(&world, None, target);
     for id in [13, 15] {
         assert_eq!(
             unit.effects

@@ -8,7 +8,7 @@ use bota_core::{
 };
 use bota_proto::{Angle, Fixed, MapId, Team, UnitKind, Vec2};
 
-use crate::game::{Level, UnitOrder, World, wire_id};
+use crate::game::{Level, UnitOrder, World};
 
 use super::support::*;
 
@@ -21,12 +21,7 @@ fn a_heros_view_shows_the_attributes_and_least_damage_the_core_computes_for_its_
         for level in 1..=rules::HERO_MAX_LEVEL {
             world.level.insert(hero, Level(level));
             world.step();
-            let view = world.view_full();
-            let shown = view
-                .units
-                .iter()
-                .find(|unit| unit.id == wire_id(hero))
-                .expect("the hero stands");
+            let shown = shown(&world, None, hero);
             assert_eq!(
                 shown.attributes,
                 attributes_at_level(hero_def.unit, level),

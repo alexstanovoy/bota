@@ -58,12 +58,10 @@ fn raze_projection_exposes_only_existing_effect_fields_on_visible_targets() {
     world.visibility.get_mut(caster).unwrap().clear();
     let visible = world.view(Team::Dire);
     assert!(!visible.units.iter().any(|unit| unit.id == wire_id(caster)));
-    let shown = visible
-        .units
-        .iter()
-        .find(|unit| unit.id == wire_id(target))
-        .unwrap();
-    assert_eq!(shown.effects, vec![effect(1, 180)]);
+    assert_eq!(
+        shown(&world, Some(Team::Dire), target).effects,
+        vec![effect(1, 180)]
+    );
     world.visibility.get_mut(target).unwrap().clear();
     assert!(
         !world

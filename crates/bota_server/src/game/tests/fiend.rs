@@ -43,12 +43,7 @@ fn the_necromastery_gathers_from_the_first_level_with_no_point_spent() {
     assert_eq!(world.points_spent(fiend), 0, "nothing learned");
     world.bury(vec![(creep, Some(fiend))], &mut Vec::new());
     assert_eq!(souls(&world, fiend), rules::SOULS_PER_UNIT);
-    let view = world.view(Team::Radiant);
-    let shown = view
-        .units
-        .iter()
-        .find(|unit| unit.id == wire_id(fiend))
-        .expect("he is in the view");
+    let shown = shown(&world, Some(Team::Radiant), fiend);
     assert!(
         shown
             .abilities
@@ -493,12 +488,7 @@ fn what_stands_at_the_fiend_is_crossed_by_every_line_and_held_the_longest() {
     ] {
         assert_eq!(held(kind), Some(65), "five lines' worth, held 2.15 s");
     }
-    let projected = world
-        .view(Team::Dire)
-        .units
-        .into_iter()
-        .find(|unit| unit.id == wire_id(mark))
-        .expect("the frightened creep is projected");
+    let projected = shown(&world, Some(Team::Dire), mark);
     assert_ne!(
         projected.statuses.bits & StatusFlags::FEARED,
         0,
@@ -518,15 +508,7 @@ fn a_requiem_line_tears_magic_resistance_by_a_share_of_what_it_keeps_out() {
     world.settle();
     hand_souls(&mut world, fiend, 1);
     world.step();
-    let resist = |world: &World| {
-        world
-            .view_full()
-            .units
-            .into_iter()
-            .find(|unit| unit.id == wire_id(foe))
-            .expect("the foe is projected")
-            .magic_resist
-    };
+    let resist = |world: &World| shown(world, None, foe).magic_resist;
     assert_eq!(resist(&world), Fixed::from_ratio(1, 4), "a hero's own");
     cast_through(&mut world, REQUIEM_SLOT, rules::REQUIEM_CAST_POINT_MS);
     for _ in 0..10 {
@@ -534,12 +516,7 @@ fn a_requiem_line_tears_magic_resistance_by_a_share_of_what_it_keeps_out() {
     }
     // 1 - (1 - 0.25) * 1.05: what came through grows by five percent.
     assert_eq!(resist(&world), Fixed::from_ratio(2125, 10_000));
-    let shown = world
-        .view_full()
-        .units
-        .into_iter()
-        .find(|unit| unit.id == wire_id(foe))
-        .expect("the foe is projected");
+    let shown = shown(&world, None, foe);
     assert!(
         shown
             .effects
@@ -671,7 +648,6 @@ fn own_statuses(world: &World, unit: Entity) -> u16 {
         .map_or(0, |shown| shown.statuses.bits)
 }
 
-/// Ticks one of a hero's slots waits before it may be cast again.
 fn cooldown(world: &World, hero: Entity, slot: u8) -> u32 {
     world
         .abilities
@@ -679,7 +655,6 @@ fn cooldown(world: &World, hero: Entity, slot: u8) -> u32 {
         .map_or(0, |book| book.slots[usize::from(slot)].cooldown)
 }
 
-/// What a unit has left of its health.
 fn hp(world: &World, unit: Entity) -> Fixed {
     world.health.get(unit).expect("standing").hp
 }

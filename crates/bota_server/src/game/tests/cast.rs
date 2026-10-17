@@ -248,8 +248,7 @@ fn a_cast_with_no_mana_is_named_and_refused() {
 
 #[test]
 fn a_spell_aimed_at_what_it_cannot_take_is_named_and_refused() {
-    let mut world = World::for_match(&config(), config().rng());
-    let hero = world.seats[0].unit.expect("stood up");
+    let (mut world, hero) = match_hero();
     world.level.insert(hero, Level(rules::HERO_MAX_LEVEL));
     assert!(world.learn(hero, 2), "the bolt is learned");
     let ally = world.spawn_unit(

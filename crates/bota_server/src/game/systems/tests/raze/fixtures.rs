@@ -1,7 +1,7 @@
 use bota_core::rules;
 
 use crate::game::tests::support;
-pub(super) use crate::game::tests::support::{advance_validated, burns_on};
+pub(super) use crate::game::tests::support::{advance_validated, burns_on, shown};
 use crate::game::{Entity, Seat, Stats, UnitOrder, World, wire_id};
 use bota_proto::{Angle, EffectId, EffectView, Fixed, HeroId, SlotId, Team, Vec2};
 

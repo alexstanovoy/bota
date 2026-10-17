@@ -21,8 +21,7 @@ const INSPIRED_EFFECT: ModifierKind = ModifierKind::Inspired {
 
 #[test]
 fn a_fountain_hands_out_mending_to_its_own_side_standing_in_it() {
-    let mut world = World::for_match(&config(), config().rng());
-    let hero = world.seats[0].unit.expect("stood up");
+    let (mut world, hero) = match_hero();
     world.health.insert(hero, health(100));
     let theirs = world.spawn_hero(
         Team::Dire,
@@ -64,8 +63,7 @@ fn a_fountain_hands_out_mending_to_its_own_side_standing_in_it() {
 
 #[test]
 fn the_fountain_fills_a_hero_in_twenty_seconds_not_one() {
-    let mut world = World::for_match(&config(), config().rng());
-    let hero = world.seats[0].unit.expect("stood up");
+    let (mut world, hero) = match_hero();
     world.health.insert(hero, health(1));
     world
         .mana

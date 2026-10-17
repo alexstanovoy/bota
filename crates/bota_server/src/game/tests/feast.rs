@@ -45,7 +45,7 @@ fn the_feast_hastens_its_caster_at_once_and_for_eight_seconds() {
         (i64::from(before.move_speed.raw) * 104 / 100) as i32
     );
     assert_eq!(
-        cooldown_of(&world, fiend),
+        world.abilities.get(fiend).expect("a kit").slots[usize::from(FEAST_SLOT)].cooldown,
         rules::FEAST_COOLDOWN[0] - 1,
         "21 s on the clock from the cast"
     );
@@ -195,7 +195,6 @@ fn a_fiend_falling_mid_feast_loses_the_feasts_souls_before_his_share() {
     assert_eq!(feast_effect(&world, back), None);
 }
 
-/// The feast effect a unit shows, if it shows one.
 fn feast_effect(world: &World, unit: Entity) -> Option<EffectView> {
     world
         .view_full()
@@ -205,12 +204,4 @@ fn feast_effect(world: &World, unit: Entity) -> Option<EffectView> {
         .effects
         .into_iter()
         .find(|effect| [EffectId::FEASTING, EffectId::FEAST_LINGER].contains(&effect.id))
-}
-
-/// Ticks the feast waits before it may be cast again.
-fn cooldown_of(world: &World, fiend: Entity) -> u32 {
-    world
-        .abilities
-        .get(fiend)
-        .map_or(0, |book| book.slots[usize::from(FEAST_SLOT)].cooldown)
 }

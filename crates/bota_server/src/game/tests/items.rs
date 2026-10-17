@@ -580,15 +580,9 @@ fn phase_walks_a_body_through_another() {
 
 #[test]
 fn the_view_reports_the_regeneration_the_server_applies() {
-    let mut world = World::for_match(&config(), config().rng());
-    let hero = world.seats[0].unit.expect("stood up");
+    let (mut world, hero) = match_hero();
     let regen = |world: &World| {
-        let unit = world
-            .view(Team::Radiant)
-            .units
-            .into_iter()
-            .find(|seen| seen.id == wire_id(hero))
-            .expect("in sight");
+        let unit = shown(world, Some(Team::Radiant), hero);
         (unit.hp_regen, unit.mana_regen)
     };
     let served = |world: &World| {

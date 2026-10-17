@@ -3,7 +3,7 @@
 use bota_core::{ITEMS, MELEE_CREEP, ability_mana_cost, assist_gold, hero_bounty, rules};
 
 use super::support::{a_spec, spec};
-use crate::game::tests::support::{self, fiend_against_fiend, seat_order};
+use crate::game::tests::support::{self, fiend_against_fiend, seat_order, shown};
 use crate::game::{Entity, Event, ItemStack, MatchConfig, World, wire_id};
 use bota_proto::{
     AbilityId, AbilitySlot, Cheat, DamageKind, EntityId, EventKind, Fixed, ItemId,
@@ -18,7 +18,6 @@ fn config(cheats: bool) -> MatchConfig {
     }
 }
 
-/// A world with cheats on or off, and its one hero.
 fn world_with(cheats: bool) -> (World, Entity) {
     let cfg = config(cheats);
     let world = World::for_match(&cfg, cfg.rng());
@@ -44,7 +43,6 @@ fn cheat_modifier(world: &mut World, spec: ModifierSpec, ticks: u32) {
     );
 }
 
-/// A modifier order aimed at `target`.
 fn modifier_order(target: Target, spec: ModifierSpec, ticks: u32) -> Order {
     Order::Cheat {
         cheat: Cheat::ApplyModifier {
@@ -360,12 +358,7 @@ fn a_kept_kit_is_projected_after_the_body_falls() {
         ItemStack::bought(ItemId::BUTTERFLY, SlotId(0), world.tick).expect("the Butterfly is sold");
     world.inventory.get_mut(hero).expect("has a bag").slots[0] = Some(stack);
     cheat_modifier(&mut world, spec(|s| s.mana_cost_rate = 5_000), 100);
-    let live = world.view_full();
-    let unit = live
-        .units
-        .iter()
-        .find(|unit| unit.id == wire_id(hero))
-        .expect("the hero is in the view");
+    let unit = shown(&world, None, hero);
     assert_eq!(
         unit.abilities[0].mana_cost,
         ability_mana_cost(AbilityId::RAZE_NEAR, 1) / 2,
@@ -411,17 +404,12 @@ fn a_fallen_hero_takes_its_modifier_with_it_and_respawns_clean() {
     assert!(!world.applied.contains(reborn), "and starts clean");
 }
 
-/// A two-seat match, both seats holding cheats, so a hero can fall.
-fn two_seat_config() -> MatchConfig {
-    MatchConfig {
-        picks: fiend_against_fiend(),
-        ..config(true)
-    }
-}
-
 #[test]
 fn gold_income_scales_the_bounty_a_kill_pays() {
-    let cfg = two_seat_config();
+    let cfg = MatchConfig {
+        picks: fiend_against_fiend(),
+        ..config(true)
+    };
     let mut world = World::for_match(&cfg, cfg.rng());
     let killer = world.seats[0].unit.expect("the killer stands");
     let victim = world.seats[1].unit.expect("the victim stands");

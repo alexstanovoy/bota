@@ -100,7 +100,6 @@ pub(super) fn assert_exact_blocks<T: Debug>(
     }
 }
 
-/// A nominal spec with one change on it.
 pub(super) fn spec(change: impl FnOnce(&mut ModifierSpec)) -> ModifierSpec {
     let mut spec = ModifierSpec::NOMINAL;
     change(&mut spec);

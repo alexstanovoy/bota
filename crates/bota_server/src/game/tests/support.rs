@@ -13,10 +13,9 @@ use crate::game::{
 };
 use bota_proto::{
     AbilitySlot, Angle, Attributes, DamageKind, EventKind, Fixed, HeroId, ItemId, MapId, Order,
-    Pick, RejectReason, SlotId, Target, Team, TickMode, UnitKind, Vec2,
+    Pick, RejectReason, SlotId, Target, Team, TickMode, UnitKind, UnitView, Vec2,
 };
 
-/// A stat block with every field named.
 pub(crate) fn stats() -> Stats {
     Stats {
         max_hp: Fixed::from_int(20),
@@ -57,7 +56,6 @@ pub(crate) fn stats() -> Stats {
     }
 }
 
-/// A pool holding a whole number of points.
 pub(crate) fn health(hp: i32) -> Health {
     Health {
         hp: Fixed::from_int(hp),
@@ -95,7 +93,6 @@ pub(crate) fn map_buildings(map: &MapDef) -> usize {
         + map.ancients.iter().flatten().count()
 }
 
-/// A match config that always names the same numbers.
 pub(crate) fn config() -> MatchConfig {
     MatchConfig {
         match_id: 7,
@@ -115,6 +112,13 @@ pub(crate) fn config() -> MatchConfig {
         immortal_structures: false,
         immortal_heroes: false,
     }
+}
+
+/// A match on [`config`] and its one hero, before any tick.
+pub(crate) fn match_hero() -> (World, Entity) {
+    let world = World::for_match(&config(), config().rng());
+    let hero = world.seats[0].unit.expect("stood up");
+    (world, hero)
 }
 
 /// Shadow Fiend against Shadow Fiend: Radiant in seat 0, Dire in seat 1.
@@ -221,6 +225,15 @@ pub(crate) fn caster(world: &mut World, at: Vec2, slot: usize) -> Entity {
     world.fill_pools(hero);
     assert!(world.learn(hero, slot), "the slot is learned");
     hero
+}
+
+/// A unit as a side's view shows it, or the full view for `None`.
+pub(crate) fn shown(world: &World, side: Option<Team>, unit: Entity) -> UnitView {
+    let view = side.map_or_else(|| world.view_full(), |team| world.view(team));
+    view.units
+        .into_iter()
+        .find(|shown| shown.id == wire_id(unit))
+        .expect("in the view")
 }
 
 /// Who an entity is mid-swing at, if it is mid-swing at all.
@@ -408,7 +421,6 @@ pub(crate) fn gap_along_lane(world: &World, one: Entity, other: Entity) -> i32 {
     (at(one) - at(other)).abs()
 }
 
-/// The effect a fountain hands out.
 pub(crate) const FOUNTAIN_EFFECT: ModifierKind = ModifierKind::Fountain {
     hp_pct: rules::FOUNTAIN_HEAL_HP_PCT,
     mana_pct: rules::FOUNTAIN_HEAL_MANA_PCT,
@@ -425,16 +437,10 @@ pub(crate) fn carries(world: &World, entity: Entity, kind: ModifierKind) -> bool
     })
 }
 
-/// Whether a unit has its rot switched on.
-pub(crate) fn rotting(world: &World, entity: Entity) -> bool {
-    carries(world, entity, ModifierKind::Rot { level: 0 })
-}
-
 /// A match world with its one hero beside its fountain and boots in the
 /// first stash slot.
 pub(crate) fn a_hero_at_the_shop() -> (World, Entity, ItemId) {
-    let mut world = World::for_match(&config(), config().rng());
-    let hero = world.seats[0].unit.expect("stood up");
+    let (mut world, hero) = match_hero();
     let boots = ItemId::BOOTS;
     world.seats[0].stash.slots[0] = Some(fresh_stack(ItemId::BOOTS, 0));
     (world, hero, boots)
@@ -471,8 +477,7 @@ pub(crate) fn an_empty_spot(world: &World) -> Vec2 {
 /// A match hero moved to [`an_empty_spot`] with the scroll it started with
 /// ready to read, one tick on.
 pub(crate) fn a_hero_with_a_scroll() -> (World, Entity) {
-    let mut world = World::for_match(&config(), config().rng());
-    let hero = world.seats[0].unit.expect("stood up");
+    let (mut world, hero) = match_hero();
     world.transform.get_mut(hero).expect("hero").pos = an_empty_spot(&world);
     world.seats[0].item_clocks.clear();
     world.step();
@@ -502,8 +507,7 @@ pub(crate) fn beside_own_tower(world: &World) -> Vec2 {
 /// A match hero moved to [`an_empty_spot`] with one charge of `item` in its
 /// first slot, one tick on.
 pub(crate) fn a_hero_with_a_ward(item: ItemId) -> (World, Entity, Vec2) {
-    let mut world = World::for_match(&config(), config().rng());
-    let hero = world.seats[0].unit.expect("stood up");
+    let (mut world, hero) = match_hero();
     let spot = an_empty_spot(&world);
     world.transform.get_mut(hero).expect("hero").pos = spot;
     if let Some(bag) = world.inventory.get_mut(hero) {
@@ -613,7 +617,6 @@ pub(crate) fn pudge_and_a_mark(apart: i32) -> (World, Entity, Entity) {
     (world, pudge, mark)
 }
 
-/// Whether a hook is out.
 pub(crate) fn hook_flying(world: &World) -> bool {
     world.entities.iter().any(|e| world.hook.get(e).is_some())
 }
@@ -669,7 +672,6 @@ pub(crate) fn a_camp_at(world: &mut World, at: Vec2) -> Vec<Entity> {
     beasts
 }
 
-/// The first seat's courier; panics when it has none.
 pub(crate) fn the_courier(world: &World) -> Entity {
     world.seats[0].courier.expect("a seat has a courier")
 }
@@ -696,8 +698,7 @@ pub(crate) fn courier_on_delivery() -> (World, Entity, Entity) {
 /// A match hero of the plain kind beside its fountain, its seat holding
 /// `gold`, one tick on.
 pub(crate) fn a_hero_with_gold(gold: i32) -> (World, Entity) {
-    let mut world = World::for_match(&config(), config().rng());
-    let hero = world.seats[0].unit.expect("stood up");
+    let (mut world, hero) = match_hero();
     world.seats[0].gold = gold;
     world.settle();
     // A tick past settling, so the fountain's effect is already on.
@@ -705,12 +706,10 @@ pub(crate) fn a_hero_with_gold(gold: i32) -> (World, Entity) {
     (world, hero)
 }
 
-/// What sits in one of a hero's inventory slots.
 pub(crate) fn slot_of(world: &World, hero: Entity, at: usize) -> Option<ItemStack> {
     world.inventory.get(hero).and_then(|bag| bag.slots[at])
 }
 
-/// What one item of the catalog costs.
 pub(crate) fn price_of(item: ItemId) -> i32 {
     ITEMS[usize::from(item.0)].cost
 }
@@ -736,7 +735,6 @@ pub(crate) fn reject_purchase_without_mutation(
     assert!(events.is_empty());
 }
 
-/// Every item lying on the ground.
 pub(crate) fn on_the_ground(world: &World) -> Vec<Entity> {
     world
         .entities
@@ -814,14 +812,12 @@ pub(crate) fn fiend_and_a_mark(apart: i32) -> (World, Entity, Entity) {
     (world, fiend, mark)
 }
 
-/// Stands a creep of one side up at a spot.
 pub(crate) fn a_creep_at(world: &mut World, team: Team, at: Vec2) -> Entity {
     let creep = world.spawn_unit(&MELEE_CREEP, team, at);
     world.settle();
     creep
 }
 
-/// Sets a hero's soul count.
 pub(crate) fn hand_souls(world: &mut World, hero: Entity, many: u32) {
     let mut kept = world.stacks.get(hero).copied().unwrap_or_default();
     kept.set(StackKind::Souls, many);
@@ -1239,7 +1235,6 @@ pub(crate) fn burns_on(events: &[Event], unit: Entity) -> Vec<i32> {
         .collect()
 }
 
-/// Souls a hero holds.
 pub(crate) fn souls(world: &World, hero: Entity) -> u32 {
     world
         .stacks

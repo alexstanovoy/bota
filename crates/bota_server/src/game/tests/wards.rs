@@ -2,7 +2,7 @@
 
 use bota_core::{OBSERVER_WARD, SENTRY_WARD, map_of, rules};
 
-use crate::game::{UnitOrder, World, wire_id};
+use crate::game::{UnitOrder, World};
 use bota_proto::{Fixed, HeroId, ItemId, MapId, SlotId, Target, Team, UnitKind, Vec2};
 
 use super::support::*;
@@ -252,12 +252,7 @@ fn each_ward_stands_up_what_its_own_item_names() {
             "and it sees what it sees in the pregame's night"
         );
         assert_eq!(stats.hides, def.hides, "and hides as it should");
-        let view = world.view(Team::Radiant);
-        let shown = view
-            .units
-            .iter()
-            .find(|unit| unit.id == wire_id(ward))
-            .expect("its own side sees it");
+        let shown = shown(&world, Some(Team::Radiant), ward);
         assert_eq!(shown.true_sight_radius.to_int(), def.true_sight);
     }
 }

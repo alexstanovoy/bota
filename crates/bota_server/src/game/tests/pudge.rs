@@ -105,7 +105,10 @@ fn the_rot_burns_and_slows_what_stands_in_it_and_lifts_when_switched_off() {
     set_level(&mut world, pudge, 1, 1);
     let full = world.health.get(mark).expect("standing").hp;
     cast(&mut world, 1, Target::None);
-    assert!(rotting(&world, pudge), "it is switched on");
+    assert!(
+        carries(&world, pudge, ModifierKind::Rot { level: 0 }),
+        "it is switched on"
+    );
     for _ in 0..rules::BURN_PERIOD_TICKS * 4 {
         world.step();
     }
@@ -118,7 +121,10 @@ fn the_rot_burns_and_slows_what_stands_in_it_and_lifts_when_switched_off() {
         "and is slowed while it stands there"
     );
     cast(&mut world, 1, Target::None);
-    assert!(!rotting(&world, pudge), "it is switched off");
+    assert!(
+        !carries(&world, pudge, ModifierKind::Rot { level: 0 }),
+        "it is switched off"
+    );
     for _ in 0..3 {
         world.step();
     }
@@ -384,14 +390,12 @@ fn a_lone_pudge() -> (World, Entity) {
     (world, pudge)
 }
 
-/// Sets one of a hero's ability slots to a level.
 fn set_level(world: &mut World, hero: Entity, slot: usize, level: u8) {
     if let Some(book) = world.abilities.get_mut(hero) {
         book.slots[slot].level = level;
     }
 }
 
-/// Flesh heap stacks a hero holds.
 fn heap(world: &World, hero: Entity) -> u32 {
     world
         .stacks

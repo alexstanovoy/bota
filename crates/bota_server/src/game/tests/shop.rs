@@ -11,8 +11,7 @@ use super::support::*;
 
 #[test]
 fn what_a_hero_bought_is_in_the_view_its_side_is_sent() {
-    let mut world = World::for_match(&config(), config().rng());
-    let hero = world.seats[0].unit.expect("stood up");
+    let (mut world, hero) = match_hero();
     let boots = ItemId::BOOTS;
     let mut events = Vec::new();
     assert!(
@@ -124,12 +123,7 @@ fn a_backpack_swap_projects_mute_until_the_exact_boundary() {
     );
 
     let projected = |world: &World| {
-        let view = world.view(Team::Radiant);
-        view.units
-            .iter()
-            .find(|unit| unit.id == wire_id(hero))
-            .and_then(|unit| unit.items.first().copied().flatten())
-            .expect("the item is visible to its seat")
+        shown(world, Some(Team::Radiant), hero).items[0].expect("the item is visible to its seat")
     };
     let item = projected(&world);
     assert_eq!(item.id, boots, "the backpack item landed in front");
@@ -150,8 +144,7 @@ fn a_backpack_swap_projects_mute_until_the_exact_boundary() {
 
 #[test]
 fn the_stash_sells_from_anywhere_and_a_bag_far_out_only_marks() {
-    let mut world = World::for_match(&config(), config().rng());
-    let hero = world.seats[0].unit.expect("stood up");
+    let (mut world, hero) = match_hero();
     let stack = a_stack_of(ItemId::BOOTS, 0);
     world.inventory.get_mut(hero).expect("has a bag").slots[0] = Some(stack);
     world.seats[0].stash.slots[0] = Some(stack);
@@ -654,7 +647,6 @@ fn buying_a_built_item_a_second_time_buys_its_parts_again() {
     );
 }
 
-/// How many stacks of one item a hero holds.
 fn count_of(world: &World, hero: Entity, item: ItemId) -> usize {
     world
         .inventory

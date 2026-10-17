@@ -44,7 +44,6 @@ fn refusal(world: &World, target: Target) -> Result<(), RejectReason> {
     )
 }
 
-/// Where the hero stands.
 fn pos(world: &World, hero: Entity) -> Vec2 {
     world.transform.get(hero).expect("standing").pos
 }
@@ -66,8 +65,7 @@ const CHANNEL: u32 = rules::SCROLL_CHANNEL_TICKS;
 
 #[test]
 fn every_hero_starts_with_one_free_scroll_ready_ten_seconds_past_the_horn() {
-    let mut world = World::for_match(&config(), config().rng());
-    let hero = world.seats[0].unit.expect("stood up");
+    let (mut world, hero) = match_hero();
     let scroll = scrolls(&world, hero).expect("the slot holds the starting scroll");
     assert_eq!(scroll.id, ItemId::TOWN_PORTAL_SCROLL);
     assert_eq!(scroll.charges, 1);
@@ -84,12 +82,8 @@ fn every_hero_starts_with_one_free_scroll_ready_ten_seconds_past_the_horn() {
         refusal(&world, Target::Pos(far)),
         Err(RejectReason::OnCooldown)
     );
-    let shown = world
-        .view(Team::Radiant)
-        .units
-        .into_iter()
-        .find(|unit| unit.id == wire_id(hero))
-        .and_then(|unit| unit.town_portal)
+    let shown = shown(&world, Some(Team::Radiant), hero)
+        .town_portal
         .expect("the slot crosses the wire");
     assert_eq!(shown.cooldown_left, 1, "the wait shows on the scroll");
     world.step();
@@ -123,13 +117,7 @@ fn a_scroll_spends_mana_and_its_wait_as_it_is_read_and_itself_on_landing() {
         world.owes_wait(hero, ItemId::TOWN_PORTAL_SCROLL),
         "and the wait began"
     );
-    let statuses = world
-        .view(Team::Radiant)
-        .units
-        .into_iter()
-        .find(|unit| unit.id == wire_id(hero))
-        .expect("projected")
-        .statuses;
+    let statuses = shown(&world, Some(Team::Radiant), hero).statuses;
     assert_ne!(statuses.bits & StatusFlags::CHANNELLING, 0);
     for _ in 1..CHANNEL {
         world.step();

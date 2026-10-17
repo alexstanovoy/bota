@@ -7,8 +7,8 @@ use bota_core::{
 
 use crate::game::{
     AppliedModifier, AppliedModifiers, AppliedOrigin, AuraCx, Auras, Entity,
-    MAX_APPLIED_MODIFIERS_PER_UNIT, MAX_COMBINED_MODIFIER_SCALE, Modifier, Place, Seat, Spots,
-    StackKind, Stacks, World, aura_system, cooldown_after, cost_after, wire_id,
+    MAX_APPLIED_MODIFIERS_PER_UNIT, MAX_COMBINED_MODIFIER_SCALE, Place, Seat, Spots, StackKind,
+    Stacks, World, aura_system, cooldown_after, cost_after,
 };
 use bota_proto::{
     AbilityId, AbilitySlot, DamageKind, Fixed, HeroId, ItemId, MapId, ModifierSpec, SlotId, Target,
@@ -16,6 +16,7 @@ use bota_proto::{
 };
 
 use super::support::{hold, spec};
+use crate::game::tests::support::{put_on, shown};
 
 /// A world with a hero and a creep standing well apart.
 fn arena() -> (World, Entity, Entity) {
@@ -31,7 +32,6 @@ fn arena() -> (World, Entity, Entity) {
     (world, hero, creep)
 }
 
-/// One setup entry in an applied set.
 fn one_applied(spec: ModifierSpec, ticks: u32) -> AppliedModifiers {
     let mut applied = AppliedModifiers::default();
     applied.push(AppliedModifier {
@@ -129,16 +129,6 @@ fn land_requiem(world: &mut World, target: Entity) -> i32 {
     panic!("the line did not reach the creep inside its bounded flight")
 }
 
-/// A stun of `ticks` ticks.
-fn stun(ticks: u32) -> Modifier {
-    Modifier {
-        kind: ModifierKind::Stunned,
-        source: None,
-        ticks_left: Some(ticks),
-    }
-}
-
-/// What a modifier of one kind has left on a unit.
 fn left_on(world: &World, on: Entity, kind: ModifierKind) -> Option<u32> {
     world
         .modifiers
@@ -313,7 +303,7 @@ fn status_resistance_shortens_a_stun_but_never_below_one_tick() {
     for (resist, ticks, left) in [(0, 10, 10), (5_000, 10, 5), (9_000, 3, 1)] {
         let (mut world, hero, _creep) = arena();
         apply(&mut world, hero, spec(|s| s.status_resist = resist), 10);
-        world.put_modifier(hero, stun(ticks));
+        put_on(&mut world, hero, ModifierKind::Stunned, ticks);
         assert_eq!(
             left_on(&world, hero, ModifierKind::Stunned),
             Some(left),
@@ -331,25 +321,11 @@ fn status_resistance_shortens_stuns_fears_and_slows() {
         ModifierKind::Feared,
         ModifierKind::Slowed { pct: 30 },
     ] {
-        world.put_modifier(
-            hero,
-            Modifier {
-                kind,
-                source: None,
-                ticks_left: Some(10),
-            },
-        );
+        put_on(&mut world, hero, kind, 10);
         assert_eq!(left_on(&world, hero, kind), Some(5), "{kind:?}");
         world.take_modifier(hero, kind, None);
     }
-    world.put_modifier(
-        hero,
-        Modifier {
-            kind: ModifierKind::Hastened { pct: 10 },
-            source: None,
-            ticks_left: Some(10),
-        },
-    );
+    put_on(&mut world, hero, ModifierKind::Hastened { pct: 10 }, 10);
     assert_eq!(
         left_on(&world, hero, ModifierKind::Hastened { pct: 10 }),
         Some(10),
@@ -388,12 +364,7 @@ fn cost_and_cooldown_rates_scale_what_a_cast_charges_shows_and_sets() {
         world.ability_mana_cost(hero, AbilityId::RAZE_NEAR, 1),
         base / 2
     );
-    let view = world.view_full();
-    let unit = view
-        .units
-        .iter()
-        .find(|unit| unit.id == wire_id(hero))
-        .expect("the hero is in the view");
+    let unit = shown(&world, None, hero);
     assert_eq!(
         unit.abilities[0].mana_cost,
         base / 2,
@@ -501,15 +472,7 @@ fn a_blow_sets_a_muted_item_back_by_the_cooldown_rate() {
 #[test]
 fn an_applied_modifier_is_not_an_effect_on_the_wire() {
     let (mut world, hero, _creep) = arena();
-    let effects = |world: &World| {
-        world
-            .view_full()
-            .units
-            .into_iter()
-            .find(|unit| unit.id == wire_id(hero))
-            .expect("the hero is in the view")
-            .effects
-    };
+    let effects = |world: &World| shown(world, None, hero).effects;
     let before = effects(&world);
     apply(&mut world, hero, spec(|s| s.status_resist = 1_000), 10);
     assert_eq!(effects(&world), before, "nothing new shows on the unit");
@@ -519,7 +482,7 @@ fn an_applied_modifier_is_not_an_effect_on_the_wire() {
 fn nothing_a_normal_modifier_does_reaches_an_applied_modifier() {
     let (mut world, hero, _creep) = arena();
     apply(&mut world, hero, spec(|s| s.magic_resist = 1_000), 100);
-    world.put_modifier(hero, stun(10));
+    put_on(&mut world, hero, ModifierKind::Stunned, 10);
     world.take_modifier(hero, ModifierKind::Stunned, None);
     if let Some(on_it) = world.modifiers.get_mut(hero) {
         // A purge of everything the modifier system holds.
@@ -606,14 +569,7 @@ fn movement_speed_adds_before_items_and_slows() {
         Some(carried),
         "half again the base, then the boots"
     );
-    world.put_modifier(
-        hero,
-        Modifier {
-            kind: ModifierKind::Slowed { pct: 50 },
-            source: None,
-            ticks_left: Some(10),
-        },
-    );
+    put_on(&mut world, hero, ModifierKind::Slowed { pct: 50 }, 10);
     world.settle();
     assert_eq!(
         world.stats.get(hero).map(|stats| stats.move_speed.to_int()),
@@ -801,13 +757,9 @@ fn a_tower_takes_the_same_maximum_health_modifier() {
         Some(expected),
         "a full tower follows the maximum to full"
     );
-    let view = world.view_full();
     assert_eq!(
-        view.units
-            .iter()
-            .find(|unit| unit.id == wire_id(tower))
-            .map(|unit| unit.max_hp),
-        Some(expected.to_int()),
+        shown(&world, None, tower).max_hp,
+        expected.to_int(),
         "and the projection shows it"
     );
 }

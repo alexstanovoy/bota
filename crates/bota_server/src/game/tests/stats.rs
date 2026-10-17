@@ -246,8 +246,7 @@ fn what_a_hero_carries_shows_up_in_its_stats() {
 
 #[test]
 fn a_held_unit_neither_walks_nor_swings_nor_casts() {
-    let mut world = World::for_match(&config(), config().rng());
-    let hero = world.seats[0].unit.expect("stood up");
+    let (mut world, hero) = match_hero();
     let spot = an_empty_spot(&world);
     world.transform.get_mut(hero).expect("hero").pos = spot;
     let creep = world.spawn_unit(&MELEE_CREEP, Team::Dire, spot + Vec2::from_ints(100, 0));

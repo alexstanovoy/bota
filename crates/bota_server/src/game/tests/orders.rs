@@ -503,8 +503,7 @@ fn an_attack_order_at_one_of_your_own_walks_you_to_it_and_waits() {
 
 #[test]
 fn walking_at_an_ally_stops_where_the_bodies_meet() {
-    let mut world = World::for_match(&config(), config().rng());
-    let hero = world.seats[0].unit.expect("stood up");
+    let (mut world, hero) = match_hero();
     let at = world.transform.get(hero).expect("standing").pos;
     let ally = world.spawn_unit(&MELEE_CREEP, Team::Radiant, at + Vec2::from_ints(600, 0));
     world.settle();
