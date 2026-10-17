@@ -1,4 +1,7 @@
 //! What a creep wave is made of, and how it grows with the clock.
+//!
+//! The spawn schedule, the composition and the upgrades are those of the Dota
+//! 2 Wiki's and Liquipedia's *Lane Creeps* pages, at Dota 7.41.
 
 use bota_proto::Vec2;
 

@@ -164,6 +164,13 @@ pub(crate) const BARE_UNIT: UnitDef = UnitDef {
     auras: &[],
 };
 
+// The lane creeps' numbers are the game's `scripts/npc/npc_units.txt`
+// (client 6874, 2026-07-31) and the creep abilities of its
+// `npc_abilities.txt`, checked against Liquipedia's *Lane Creeps* (oldid
+// 2401399, read 2026-10-10) and *Flagbearer Creep* (oldid 2364908) and dated
+// by Valve's patch notes 7.39 to 7.41; hull radii from the Valve Developer
+// Community's *BoundsHullName Size Reference*.
+
 /// A melee lane creep.
 pub const MELEE_CREEP: UnitDef = UnitDef {
     kind: UnitKind::CreepMelee,
@@ -528,6 +535,9 @@ const fn tower_of(index: usize) -> UnitDef {
         ..BARE_UNIT
     }
 }
+
+// The towers' numbers are Liquipedia's *Tower (Tier 1)* to *(Tier 4)* and
+// *Buildings* (read 2026-10-10).
 
 /// Lane towers, indexed by tier less one.
 pub const TOWERS: [UnitDef; 4] = [tower_of(0), tower_of(1), tower_of(2), tower_of(3)];

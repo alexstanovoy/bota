@@ -1,4 +1,13 @@
 //! Shadow Fiend's numbers, as of Dota 7.41f.
+//!
+//! From the official hero data (dota2.com datafeed, hero 11: base stats,
+//! special values, talents), the game's
+//! `scripts/npc/heroes/npc_dota_hero_nevermore.txt` of client 6933
+//! (2026-09-15: cast points, behaviours, the death requiem's share, the
+//! Necromastery curve), the official patch notes 7.39 to 7.41f, and
+//! Liquipedia's *Shadow Fiend* page for what those leave out (backswings, the
+//! requiem's first line, the feast's gathering). Where they disagree the live
+//! data wins.
 
 use bota_proto::Fixed;
 

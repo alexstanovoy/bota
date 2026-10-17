@@ -17,8 +17,7 @@
 //! fn main() -> Result<(), PlayError> {
 //!     let outcome = Link::play("127.0.0.1:4455", "bot", HeroId::SHADOW_FIEND, |session| {
 //!         let enemy = fountain_pos(session.map(), session.enemy());
-//!         let attack = IssuedOrder::hero(Order::Attack { target: Target::Pos(enemy) });
-//!         session.own_hero().map(|_| attack) // a dead hero takes no orders
+//!         Some(IssuedOrder::hero(Order::Attack { target: Target::Pos(enemy) }))
 //!     })?;
 //!     println!("winner: {:?}", outcome.winner);
 //!     Ok(())

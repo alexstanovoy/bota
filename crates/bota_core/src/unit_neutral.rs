@@ -1,7 +1,13 @@
 //! Every kind of neutral creep, straight out of the shipped unit tables.
 //!
-//! Generated. The camp a kind belongs to and what a camp draws are elsewhere;
-//! this is only what one of them is worth.
+//! Transcribed from the game's `scripts/npc/npc_units.txt`, client 6874
+//! (2026-07-31): health, damage range, armor, magic resistance, base attack
+//! time, attack point, acquisition and attack range, missile speed, move
+//! speed, turn rate, vision and bounty. None of them sets `BoundsHullName`,
+//! and the template they inherit, `npc_dota_units_base`, is hero-sized, so
+//! every neutral has the hero's hull. Their abilities (auras, stuns, heals,
+//! the mud golem's split) are not modelled. The camp a kind belongs to and
+//! what a camp draws are elsewhere; this is only what one of them is worth.
 
 use bota_proto::{Attributes, Fixed, UnitKind};
 

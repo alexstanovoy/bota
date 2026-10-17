@@ -79,13 +79,23 @@ impl ItemFace {
 /// One timed effect, as the client shows it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct EffectFace {
-    /// Short name for the chip.
-    pub name: &'static str,
+    /// The id it answers to on the wire.
+    pub id: u16,
+    /// The chip's name where it is not the rules'
+    /// [`EffectDef::name`](bota_core::EffectDef::name).
+    pub label: Option<&'static str>,
     /// What it does, for the hover popup, as a template.
     pub template: &'static str,
 }
 
 impl EffectFace {
+    /// Short name for the chip; empty for a retired id.
+    pub fn name(&self) -> &'static str {
+        self.label
+            .or_else(|| effect_def(EffectId(self.id)).map(|def| def.name))
+            .unwrap_or_default()
+    }
+
     /// What it does, with the numbers the rules give it.
     pub fn blurb(&self) -> String {
         fill(self.template, Scope::Shared)
@@ -363,91 +373,113 @@ pub const ITEMS: [ItemFace; ITEM_DEFS.len()] = [
 /// holds nothing.
 pub const EFFECTS: [EffectFace; EFFECT_COUNT] = [
     EffectFace {
-        name: "",
+        id: 0,
+        label: None,
         template: "",
     },
     EffectFace {
-        name: "Mending",
+        id: EffectId::MENDING.0,
+        label: None,
         template: "Regenerating health.",
     },
     EffectFace {
-        name: "Clarity",
+        id: EffectId::CLARITY.0,
+        label: None,
         template: "Regenerating mana.",
     },
     EffectFace {
-        name: "Fountain",
+        id: EffectId::FOUNTAIN.0,
+        label: None,
         template: "Regenerating health and mana for standing in the fountain.",
     },
     EffectFace {
-        name: "Held",
+        id: EffectId::STUNNED.0,
+        label: Some("Held"),
         template: "Cannot move, attack or cast.",
     },
     EffectFace {
-        name: "Slowed",
+        id: EffectId::SLOWED.0,
+        label: None,
         template: "Movement speed reduced.",
     },
     EffectFace {
-        name: "Burning",
+        id: EffectId::BURNING.0,
+        label: None,
         template: "Losing health over time.",
     },
     EffectFace {
-        name: "Hastened",
+        id: EffectId::HASTENED.0,
+        label: None,
         template: "Movement speed increased.",
     },
     EffectFace {
-        name: "Shielded",
+        id: EffectId::SHIELDED.0,
+        label: None,
         template: "Nothing gets through.",
     },
     EffectFace {
-        name: "Phased",
+        id: EffectId::PHASED.0,
+        label: None,
         template: "Walking through the bodies in the way.",
     },
     EffectFace {
-        name: "Heap",
+        id: EffectId::FLESH_HEAP.0,
+        label: Some("Heap"),
         template: "Strength kept from every enemy hero that died nearby.",
     },
     EffectFace {
-        name: "Souls",
+        id: EffectId::SOULS.0,
+        label: None,
         template: "Attack damage from every unit brought down.",
     },
     EffectFace {
-        name: "Presence",
+        id: EffectId::ARMOR_BROKEN.0,
+        label: Some("Presence"),
         template: "Armor worn down by a dark presence nearby.",
     },
     EffectFace {
-        name: "Guarded",
+        id: EffectId::GUARDED.0,
+        label: None,
         template: "Armor and health mended, for standing by a tower of your own.",
     },
     EffectFace {
-        name: "Inspired",
+        id: EffectId::INSPIRED.0,
+        label: None,
         template: "Health mended and magic shrugged off, for marching beside the one carrying the flag.",
     },
     EffectFace {
-        name: "Razed",
+        id: EffectId::SHADOWRAZE.0,
+        label: Some("Razed"),
         template: "Shadowrazes from the same caster deal {raze_stack} more magic damage per stack. Each damaging hit refreshes all stacks for {raze_secs} s; up to {raze_max_stacks} stacks.",
     },
     EffectFace {
-        name: "Rot",
+        id: EffectId::ROT.0,
+        label: None,
         template: "The rot is on. It is never listed on a unit: the toggle shows on the ability.",
     },
     EffectFace {
-        name: "Feared",
+        id: EffectId::FEARED.0,
+        label: None,
         template: "Running from whoever put the fear on. Cannot attack or cast.",
     },
     EffectFace {
-        name: "Torn",
+        id: EffectId::MAGIC_BROKEN.0,
+        label: Some("Torn"),
         template: "Magic resistance torn by a requiem.",
     },
     EffectFace {
-        name: "Feast",
+        id: EffectId::FEASTING.0,
+        label: Some("Feast"),
         template: "Attacking and moving faster while taking souls from enemies nearby; counts the souls taken.",
     },
     EffectFace {
-        name: "Fed",
+        id: EffectId::FEAST_LINGER.0,
+        label: Some("Fed"),
         template: "Souls a feast took from enemies since fallen, kept past the cap until it runs out.",
     },
     EffectFace {
-        name: "Grenade",
+        id: EffectId::BLOOD_GRENADE.0,
+        label: Some("Grenade"),
         template: "Slowed {grenade_slow}% and losing {grenade_dps} health to magic every second, from a Blood Grenade.",
     },
 ];

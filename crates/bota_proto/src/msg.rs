@@ -253,8 +253,12 @@ pub enum ClientMsg {
         role: Role,
         /// Display name for the lobby and the scoreboard.
         name: String,
-        /// The key a server with reserved seats asks for. Last on the wire.
+        /// The key a server with reserved seats asks for.
         key: Option<SeatKey>,
+        /// The [`WIRE_FINGERPRINT`](crate::WIRE_FINGERPRINT) the sender was
+        /// built with. A server built with another refuses the connection with
+        /// [`ServerMsg::WireMismatch`]. Last on the wire.
+        wire_fingerprint: u64,
     },
     /// Choose a hero for the seat this connection holds.
     PickHero {
@@ -369,6 +373,14 @@ pub enum ServerMsg {
         /// Which seat it held. Absent for a spectator. The seat stays in the
         /// match and its hero keeps standing there.
         slot: Option<SlotId>,
+    },
+    /// Refuses a [`ClientMsg::Hello`] built with another wire: the
+    /// connection closes after it. The registries only grow, so every build
+    /// that has this message reads it, whatever else differs.
+    WireMismatch {
+        /// The [`WIRE_FINGERPRINT`](crate::WIRE_FINGERPRINT) the server was
+        /// built with.
+        server_fingerprint: u64,
     },
 }
 

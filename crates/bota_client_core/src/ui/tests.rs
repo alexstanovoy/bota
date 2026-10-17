@@ -57,9 +57,22 @@ fn every_catalog_entry_is_named_and_found_by_its_own_id() {
             assert!(!name.is_empty(), "entry {id} has a name");
         }
     }
-    for (id, face) in EFFECTS.iter().enumerate().skip(1) {
-        assert_eq!(effect(id as u16).map(|x| x.name), Some(face.name));
-        assert!(!face.name.is_empty(), "effect {id} has a name");
+    for (index, face) in EFFECTS.iter().enumerate().skip(1) {
+        assert_eq!(usize::from(face.id), index, "{} is in place", face.name());
+        assert_eq!(
+            effect(face.id),
+            Some(face),
+            "{} is found by its id",
+            face.name()
+        );
+        assert!(!face.name().is_empty(), "effect {index} has a name");
+        let rules = bota_core::effect_def(bota_proto::EffectId(face.id)).map(|def| def.name);
+        assert_ne!(
+            face.label,
+            rules,
+            "{} keeps a label only where it differs",
+            face.name()
+        );
     }
     assert!(effect(0).is_none(), "the retired effect is gone");
     assert!(ability(ABILITIES.len() as u16).is_none());
@@ -737,7 +750,7 @@ fn every_blurb_takes_its_numbers_from_the_rules() {
         );
     }
     for face in EFFECTS {
-        assert!(!face.blurb().contains('{'), "{}", face.name);
+        assert!(!face.blurb().contains('{'), "{}", face.name());
     }
     let tree = talents(bota_proto::HeroId::SHADOW_FIEND.0).expect("Shadow Fiend has a tree");
     assert!(

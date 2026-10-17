@@ -1,14 +1,30 @@
 # bota
 
-bota is a deterministic simulator of Dota 2 at patch 7.41f, written in Rust: a
-game server, the wire protocol, the rules shared by both ends of the wire, and a
-client library. It is built for bots and humans to play the same game over the
-same protocol.
+bota is a deterministic simulator of Dota 2, written in Rust: a game server,
+the wire protocol, the rules shared by both ends of the wire, and a client
+library. It is built for bots and humans to play the same game over the same
+protocol.
 
 Current scope: 1v1, the Shadow Fiend and Pudge heroes, the Dota map, and a
-mid-only ruleset on that map, plus replays. Everything a 1v1 mid lane can touch
-(creeps, neutrals, runes, the shop, towers, couriers, talents) follows the
-7.41f numbers; what 1v1 mid never uses is not modelled.
+mid-only ruleset on that map, plus replays.
+
+- At Dota 7.41f's numbers: lane creeps and their waves, neutral creeps and their
+  camps, towers, and Shadow Fiend (his abilities, innate and talents) wherever
+  the engine has the mechanic; also the Town Portal Scroll, Wind Lace and Blood
+  Grenade. The sources are named next to the tables in `bota_core`.
+- Pudge is an older Pudge, not checked against 7.41f: Meat Hook, Rot, Flesh Heap
+  as the 7.28-7.30 passive (magic resistance and a strength stack per enemy hero
+  dying nearby, no Meat Shield) and Dismember; no innate ability, no talents, and
+  one fixed attack damage instead of a range.
+- The shop sells 48 of Dota's items and 6 recipes: consumables, wards, the basic
+  components, boots, the early builds and a few later items.
+
+Not modelled, although a 1v1 mid in Dota uses it: runes of every kind, and with
+them the Bottle; day and night (night vision, neutrals asleep at night); the
+items the shop does not sell (Faerie Fire, Smoke of Deceit, Dust of Appearance,
+neutral items, ...); Aghanim's Scepter and Shard; the Attribute Bonus; the Glyph
+of Fortification; buyback; neutral creeps' abilities and auras; flooded camps;
+backdoor protection.
 
 The simulation is authoritative on the server. A client receives what its side
 can see and sends orders; it cannot run the game itself.
@@ -67,7 +83,7 @@ The server hosts one lobby and one match, then exits. It listens on `--port`
 | `--referee-key KEY_HEX` | admit a referee with this key (also `BOTA_REFEREE_KEY`): told the lobby, the start, departures and the end, never a tick |
 | `--start-after-secs N` | with reserved seats, start this long after listening at the latest; a seat without a pick gets a random hero |
 | `--max-connections N` | most connections held at once |
-| `--wire-fingerprint` | print the fingerprint of the wire registries this build speaks, and exit |
+| `--wire-fingerprint` | print the fingerprint of the wire registries this build speaks, and exit; a client sends its own in its `Hello`, and the server refuses one that differs with `WireMismatch` |
 | `--replay FILE` | write a replay |
 | `--ack-timeout-ticks N` | lockstep: tick-lengths to wait for a straggler, default 150 |
 | `--cheats` | honour cheat orders (gold, levels, items, refreshes) |
@@ -75,9 +91,18 @@ The server hosts one lobby and one match, then exits. It listens on `--port`
 | `--dummy-seat` | the last seat holds a hero that never acts, so one client can practise alone |
 | `--order-delay-ticks`, `--order-jitter-ticks` | delay every order, one value or one per seat; jitter is drawn from a hidden stream of the seed |
 
+The server speaks plain TCP, so seat and referee keys travel in clear text, as
+does everything else. Across a network you do not trust, terminate TLS in front
+of the server (a proxy or a bridge) and let only it reach the port.
+
 ## Write a bot
 
 A bot is a client like any other and sees the same `WorldView` a human does.
+What the server promises beyond the types (what it never tells, why it
+refuses an order, the order delay and the `seen` tick, tick modes and skipped
+ticks, how chances are dealt) is the rustdoc of `bota_proto::contract`:
+`cargo doc -p bota_proto --open`, module `contract`.
+
 This one attack-moves at the enemy fountain; it is
 `crates/bota_client_core/examples/attack_move.rs`:
 
@@ -89,8 +114,7 @@ use bota_proto::{HeroId, Order, Target};
 fn main() -> Result<(), PlayError> {
     let outcome = Link::play("127.0.0.1:4455", "attack-move", HeroId::SHADOW_FIEND, |session| {
         let enemy = fountain_pos(session.map(), session.enemy());
-        let attack = IssuedOrder::hero(Order::Attack { target: Target::Pos(enemy) });
-        session.own_hero().map(|_| attack) // a dead hero takes no orders
+        Some(IssuedOrder::hero(Order::Attack { target: Target::Pos(enemy) }))
     })?;
     println!("{outcome:?}");
     Ok(())
@@ -111,10 +135,12 @@ with the `ClientSession`, the client's picture of the match: the current and
 previous view, tracks of units seen, projectiles, recent events, the orders
 standing after the server's answers. The closure returns the orders it wants
 (an `Option` for one, a `Vec` for several); an order that repeats the one
-standing is not sent again, and the tick is acknowledged. A dead hero takes
-no orders: the server refuses them. `IssuedOrder::courier(id, order)` drives the courier. The
-outcome tells the seat, the winner (`Team::Neutral` for a draw), the last tick
-and how many orders the server refused.
+standing is not sent again, and the tick is acknowledged. While the hero is
+dead its orders are not sent, since the server would refuse them, and are
+counted instead; `IssuedOrder::courier(id, order)` drives the courier, dead
+hero or not. The outcome tells the seat, the winner (`Team::Neutral` for a
+draw), the last tick, how many orders the server refused and how many were
+held back for a dead hero.
 
 The parts compose for a bot that needs more: `join(transport, name, hero, key)`
 takes a seat over any `Transport` (`Link` blocks with timeouts; `Net` reads on
@@ -175,7 +201,11 @@ every wire struct, because postcard encodes variants and fields by position.
   fail on a wire position that changed or disappeared, on one not yet registered,
   and on a hero, ability, item or effect table that disagrees with `ids.txt`.
 
-There is no version negotiation and no compatibility between revisions.
+There is no version negotiation and no compatibility between revisions. A
+client sends `WIRE_FINGERPRINT`, a hash of both registries, in its `Hello`; a
+server built from other registries answers `ServerMsg::WireMismatch` with its
+own and closes the connection, so two builds that disagree fail at the door
+rather than in mid-match.
 
 ## Determinism and replays
 

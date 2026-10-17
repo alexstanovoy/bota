@@ -2,10 +2,12 @@
 //!
 //! Everything `bota_server` and `bota_client_core` exchange is defined
 //! here. A type belongs in this crate when it crosses the wire, or when it is
-//! needed to read what crosses the wire.
+//! needed to read what crosses the wire. What the server promises about the
+//! exchange beyond the types is the [`contract`].
 
 mod attrs;
 mod codec;
+pub mod contract;
 mod event;
 mod fingerprint;
 mod ids;
