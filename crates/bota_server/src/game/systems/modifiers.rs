@@ -204,28 +204,20 @@ impl World {
     /// Burns `other` by `amount` and slows it, for two ticks, from `owner`'s
     /// rot.
     fn rot_on(&mut self, owner: Entity, other: Entity, amount: i32, level: u8) {
-        self.put_modifier(
-            other,
-            Modifier {
-                kind: ModifierKind::Burning {
-                    amount,
-                    kind: DamageKind::Magical,
-                    lethal: true,
-                },
+        let burn = ModifierKind::Burning {
+            amount,
+            kind: DamageKind::Magical,
+            lethal: true,
+        };
+        let pct = rules::ROT_SLOW_PCT[usize::from(level)];
+        for kind in [burn, ModifierKind::Slowed { pct }] {
+            let modifier = Modifier {
+                kind,
                 source: Some(owner),
                 ticks_left: Some(2),
-            },
-        );
-        self.put_modifier(
-            other,
-            Modifier {
-                kind: ModifierKind::Slowed {
-                    pct: rules::ROT_SLOW_PCT[usize::from(level)],
-                },
-                source: Some(owner),
-                ticks_left: Some(2),
-            },
-        );
+            };
+            self.put_modifier(other, modifier);
+        }
     }
 
     /// Puts out every drink a blow is enough to break, and sets back every

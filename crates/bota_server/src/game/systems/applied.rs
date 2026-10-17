@@ -12,8 +12,7 @@ impl World {
         if self.applied.is_empty() {
             return;
         }
-        let entities = self.take_entity_snapshot();
-        for entity in entities.iter().copied() {
+        for entity in self.entities.iter() {
             let drop_row = self.applied.get_mut(entity).is_some_and(|applied| {
                 applied.retain(|held| !held.tick());
                 applied.is_empty()
@@ -22,7 +21,6 @@ impl World {
                 self.applied.remove(entity);
             }
         }
-        self.recycle_entity_snapshot(entities);
     }
 
     /// A bounty after the killing unit's gold income scale.

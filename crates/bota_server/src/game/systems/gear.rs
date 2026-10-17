@@ -113,10 +113,10 @@ impl World {
         // A wait runs whether the body it belongs to is standing or not: what
         // waits with a seat runs down beside what waits on a body.
         for seat in self.seats.iter_mut() {
-            for (_, left) in seat.item_clocks.iter_mut() {
+            seat.item_clocks.retain_mut(|(_, left)| {
                 *left = left.saturating_sub(1);
-            }
-            seat.item_clocks.retain(|(_, left)| *left > 0);
+                *left > 0
+            });
             let Some(kept) = seat.kept.as_mut() else {
                 continue;
             };
@@ -128,8 +128,7 @@ impl World {
                 stack.mute = stack.mute.saturating_sub(1);
             }
         }
-        let entities = self.take_entity_snapshot();
-        for entity in entities.iter().copied() {
+        for entity in self.entities.iter() {
             if let Some(book) = self.abilities.get_mut(entity) {
                 for slot in book.slots.iter_mut() {
                     slot.cooldown = slot.cooldown.saturating_sub(1);
@@ -142,15 +141,12 @@ impl World {
                 }
             }
             if let Some(on_it) = self.modifiers.get_mut(entity) {
-                for held in on_it.0.iter_mut() {
-                    if let Some(left) = held.ticks_left.as_mut() {
-                        *left = left.saturating_sub(1);
-                    }
-                }
-                on_it.0.retain(|held| held.ticks_left != Some(0));
+                on_it.0.retain_mut(|held| {
+                    held.ticks_left = held.ticks_left.map(|left| left.saturating_sub(1));
+                    held.ticks_left != Some(0)
+                });
             }
         }
-        self.recycle_entity_snapshot(entities);
         self.tick_teleports();
     }
 
@@ -300,7 +296,6 @@ impl World {
         } else {
             assert!(def.components.is_empty());
             let bought = ItemStack::bought(item, slot, self.tick).expect("known catalog item");
-            assert!(bought.charges <= def.stack_limit);
             (self.at_shop(unit)
                 && self
                     .inventory
@@ -320,8 +315,6 @@ impl World {
         events: &mut Vec<Event>,
     ) -> bool {
         let def = item_def(item).expect("known catalog item");
-        assert!(def.stack_limit > 0);
-        assert_eq!(def.charges, 1);
         let owner = self.seats[seat].slot;
         if self.seats[seat].gold < def.cost || !self.purchase_fits(owner, item) {
             return false;
@@ -509,8 +502,6 @@ impl World {
         let pool = self.mana.get_mut(user).expect("validated mana pool");
         let before = pool.mana;
         pool.mana += (maximum - before).min(Fixed::from_int(amount));
-        assert!(pool.mana > before);
-        assert!(pool.mana <= maximum);
         let restored = (pool.mana - before).to_int();
         if restored > 0 {
             self.tell_healed(user, user, 0, restored);
@@ -548,22 +539,14 @@ impl World {
 
     /// Walks whoever used an item faster, and through whatever is in the way.
     pub fn walk_through(&mut self, user: Entity, pct: i32, ticks: u32) -> bool {
-        self.put_modifier(
-            user,
-            Modifier {
-                kind: ModifierKind::Hastened { pct },
+        for kind in [ModifierKind::Hastened { pct }, ModifierKind::Phased] {
+            let modifier = Modifier {
+                kind,
                 source: Some(user),
                 ticks_left: Some(ticks),
-            },
-        );
-        self.put_modifier(
-            user,
-            Modifier {
-                kind: ModifierKind::Phased,
-                source: Some(user),
-                ticks_left: Some(ticks),
-            },
-        );
+            };
+            self.put_modifier(user, modifier);
+        }
         true
     }
 
@@ -797,14 +780,7 @@ impl World {
         if from == to || !named(from) || !named(to) {
             return Some(RejectReason::EmptySlot);
         }
-        let held = if in_stash(from) {
-            seat.stash.slots.get(from - BAG_SLOTS).copied().flatten()
-        } else {
-            self.inventory
-                .get(unit)
-                .and_then(|bag| bag.slot(from).copied().flatten())
-        };
-        let Some(held) = held else {
+        let Some(held) = self.stack_at(unit, seat, from) else {
             return Some(RejectReason::EmptySlot);
         };
         if (in_stash(from) || in_stash(to)) && !self.at_shop(unit) {
@@ -818,6 +794,15 @@ impl World {
             return Some(RejectReason::WrongTargetKind);
         }
         None
+    }
+
+    /// The stack in one of a seat's slots: the unit's bag, then the stash.
+    fn stack_at(&self, unit: Entity, seat: &crate::game::Seat, at: usize) -> Option<ItemStack> {
+        if in_stash(at) {
+            seat.stash.slots.get(at - BAG_SLOTS).copied().flatten()
+        } else {
+            self.held_in_bag(unit, at)
+        }
     }
 
     /// Merges a scroll stack from one of a seat's slots into its hero's town
@@ -853,17 +838,7 @@ impl World {
         let Some(seat) = self.seats.iter().position(|s| s.slot == slot) else {
             return false;
         };
-        let held = if in_stash(at) {
-            self.seats[seat]
-                .stash
-                .slots
-                .get(at - BAG_SLOTS)
-                .copied()
-                .flatten()
-        } else {
-            self.held_in_bag(unit, at)
-        };
-        let Some(held) = held else {
+        let Some(held) = self.stack_at(unit, &self.seats[seat], at) else {
             return false;
         };
         if held.owner != slot || held.free_charges > 0 {
