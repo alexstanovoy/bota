@@ -172,8 +172,9 @@ impl Server {
         self.conns.iter().find(|c| c.id == id)
     }
 
+    /// Tells every connection that has said Hello.
     fn broadcast(&self, msg: &ServerMsg) {
-        for conn in &self.conns {
+        for conn in self.conns.iter().filter(|c| self.greeted(c.id)) {
             conn.send(msg);
         }
     }
@@ -523,7 +524,12 @@ impl Server {
         let radiant_frame = snapshot_frame(side_view(world, line, Team::Radiant));
         let dire_frame = snapshot_frame(side_view(world, line, Team::Dire));
         replay.record(&ReplayRecord::Msg(ServerMsg::Snapshot { view: full }));
-        for conn in self.conns.iter().filter(|c| !self.referees.contains(&c.id)) {
+        // A connection that has not said Hello is told nothing, and a referee
+        // no tick.
+        let watching = |id: PlayerId| {
+            self.roster.seat_of(id).is_some() || self.spectators.iter().any(|w| w.id == id)
+        };
+        for conn in self.conns.iter().filter(|c| watching(c.id)) {
             let (eyes, viewing) = self.sight_of(conn.id);
             let frame = match viewing {
                 Some(Team::Radiant) => radiant_frame.clone(),

@@ -332,6 +332,32 @@ fn a_dummy_seat_lets_one_client_start_a_match_alone() {
 }
 
 #[test]
+fn a_connection_that_has_not_said_hello_is_told_no_tick() {
+    let mut opts = realtime(12);
+    opts.map = bota_proto::MapId(2);
+    opts.dummy_seat = true;
+    let addr = start_server(opts);
+    let (mut client, _) = join_as_bot(addr, "seated");
+    client.recv_until(snapshot);
+    let mut silent = TestClient::connect(addr);
+    silent
+        .stream
+        .set_read_timeout(Some(Duration::from_millis(1500)))
+        .expect("timeout");
+    let mut buf = [0u8; 65536];
+    while let Ok(n) = silent.stream.read(&mut buf) {
+        assert!(n > 0, "the server hung up");
+        silent.reader.push(&buf[..n]);
+        while let Some(msg) = silent.reader.next_message::<ServerMsg>().expect("decode") {
+            assert!(
+                !matches!(msg, ServerMsg::Snapshot { .. } | ServerMsg::Events { .. }),
+                "a stranger was told the fogless world"
+            );
+        }
+    }
+}
+
+#[test]
 fn a_delayed_order_takes_effect_late_and_its_delay_is_told() {
     const DELAY: u32 = 3;
     let mut opts = realtime(12);
