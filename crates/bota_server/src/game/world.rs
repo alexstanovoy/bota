@@ -88,6 +88,8 @@ pub struct World {
     pub(crate) candidates: Candidates,
     /// Reused room auras find who stands in them in.
     pub(crate) aura_spots: Spots<Entity>,
+    /// Reused room sleeping neutrals look for what wakes them in.
+    pub(crate) jungle_spots: Spots<Entity>,
 
     /// Where each entity stands.
     pub transform: Table<Transform>,
@@ -241,6 +243,7 @@ impl World {
             sight_scratch: SightScratch::new(),
             candidates: Candidates::default(),
             aura_spots: Spots::default(),
+            jungle_spots: Spots::default(),
             transform: Table::new(),
             hull: Table::new(),
             kind: Table::new(),
