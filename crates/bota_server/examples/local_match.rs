@@ -10,7 +10,7 @@ use bota_client_core::{
     AckPolicy, ClientSession, Ingested, IssuedOrder, MatchStatic, SessionOptions,
 };
 use bota_core::{MAP2_ID, map_of};
-use bota_proto::{HeroId, MapId, Order, Pick, ServerMsg, SlotId, Target, Team, TickMode};
+use bota_proto::{HeroId, Order, Pick, ServerMsg, SlotId, Target, Team, TickMode};
 use bota_server::game::{MatchConfig, OrderDelay};
 use bota_server::local::LocalMatch;
 
@@ -25,7 +25,7 @@ fn main() {
         master_key: [7; 32],
         stream: 1,
         picks: vec![pick(0, Team::Radiant), pick(1, Team::Dire)],
-        map: MapId(MAP2_ID.0),
+        map: MAP2_ID,
         tick_rate: 30,
         mode: TickMode::Lockstep,
         ack_timeout_ticks: 150,

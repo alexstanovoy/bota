@@ -407,15 +407,6 @@ impl Obstacles<'_> {
                 .iter()
                 .all(|&(at, theirs)| !circle_stops(at, theirs, from, to, radius, true))
     }
-
-    /// Whether a body of a collision size standing at a point is clear.
-    pub fn point_clear(&self, at: Vec2, radius: Fixed) -> bool {
-        self.field.point_clear(at, radius)
-            && self
-                .extra
-                .iter()
-                .all(|&(spot, theirs)| !circle_stops(spot, theirs, at, at, radius, false))
-    }
 }
 
 /// Whether a circle stops a body of a collision size walking a segment.
