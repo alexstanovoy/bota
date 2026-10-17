@@ -36,11 +36,11 @@ impl World {
                 if !self.takes_scrolls_of(building, side) {
                     return None;
                 }
-                let at = self.transform.get(building)?.pos;
+                let at = self.pos(building)?;
                 (building, self.scroll_aim(building, at, fountain)?)
             }
             Target::None => {
-                let from = self.transform.get(user)?.pos;
+                let from = self.pos(user)?;
                 if from.within(fountain, rules::units(rules::SCROLL_FOUNTAIN_MIN_DISTANCE)) {
                     return None;
                 }
@@ -72,7 +72,7 @@ impl World {
             if !self.takes_scrolls_of(entity, side) {
                 continue;
             }
-            let Some(at) = self.transform.get(entity).map(|t| t.pos) else {
+            let Some(at) = self.pos(entity) else {
                 continue;
             };
             let far = at.distance_squared(to);
@@ -87,7 +87,7 @@ impl World {
     /// building. A spot on the building's very centre is pushed out towards
     /// the fountain.
     fn scroll_aim(&self, building: Entity, pos: Vec2, fountain: Vec2) -> Option<Vec2> {
-        let centre = self.transform.get(building)?.pos;
+        let centre = self.pos(building)?;
         let near = rules::units(rules::SCROLL_MIN_DISTANCE);
         let far = rules::units(rules::SCROLL_MAX_DISTANCE);
         let aim = if !pos.within(centre, far) {

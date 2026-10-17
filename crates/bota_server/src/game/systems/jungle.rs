@@ -58,10 +58,7 @@ impl World {
                 || self.kind.get(entity) == Some(&UnitKind::Ward);
             blocks
                 && self.alive(entity)
-                && self
-                    .transform
-                    .get(entity)
-                    .is_some_and(|t| t.pos.within(at, radius))
+                && self.pos(entity).is_some_and(|pos| pos.within(at, radius))
         })
     }
 
@@ -82,7 +79,7 @@ impl World {
             let (Some(mut ai), Some(home), Some(at)) = (
                 self.neutral_ai.get(entity).copied(),
                 self.camp_home.get(entity).copied(),
-                self.transform.get(entity).map(|t| t.pos),
+                self.pos(entity),
             ) else {
                 continue;
             };
@@ -123,7 +120,7 @@ impl World {
                 && let Some(target) = self.target_of(entity)
                 && self.alive(target)
             {
-                let Some(their_at) = self.transform.get(target).map(|t| t.pos) else {
+                let Some(their_at) = self.pos(target) else {
                     continue;
                 };
                 self.set_order(entity, UnitOrder::AttackMove { pos: their_at });
@@ -158,15 +155,12 @@ impl World {
     /// only `wakers` within the square about it; anything else asks every
     /// entity. The answer is the same either way: a pure test over a set.
     fn anything_hostile_near(&self, entity: Entity, range: i32, wakers: &Spots<Entity>) -> bool {
-        let Some(at) = self.transform.get(entity).map(|t| t.pos) else {
+        let Some(at) = self.pos(entity) else {
             return false;
         };
         let reach = rules::units(range);
         let hostile = |other: Entity| {
-            self.transform
-                .get(other)
-                .is_some_and(|t| t.pos.within(at, reach))
-                && self.hostile(entity, other)
+            self.pos(other).is_some_and(|pos| pos.within(at, reach)) && self.hostile(entity, other)
         };
         if self.team.get(entity) == Some(&Team::Neutral) {
             wakers.around(at, i64::from(reach.raw).abs()).any(hostile)
@@ -190,10 +184,7 @@ impl World {
             if self.neutral_ai.get(blow.target).is_none() || !self.alive(by) {
                 continue;
             }
-            let (Some(here), Some(there)) = (
-                self.transform.get(blow.target).map(|t| t.pos),
-                self.transform.get(by).map(|t| t.pos),
-            ) else {
+            let (Some(here), Some(there)) = (self.pos(blow.target), self.pos(by)) else {
                 continue;
             };
             if !here.within(there, rules::units(rules::NEUTRAL_DAMAGE_AGGRO_RANGE)) {

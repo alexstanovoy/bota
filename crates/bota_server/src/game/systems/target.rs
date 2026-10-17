@@ -183,13 +183,13 @@ impl World {
         candidates: &Candidates,
     ) -> Option<Entity> {
         let side = self.team.get(seeker).copied()?;
-        let at = self.transform.get(seeker)?.pos;
+        let at = self.pos(seeker)?;
         let mut found: Vec<(u8, i64, Entity)> = Vec::new();
         for other in self.near(seeker, at, range, candidates) {
             if other == seeker || Some(other) == skip {
                 continue;
             }
-            let Some(their_at) = self.transform.get(other).map(|t| t.pos) else {
+            let Some(their_at) = self.pos(other) else {
                 continue;
             };
             if !at.within(their_at, range + self.hulls(seeker, other)) {

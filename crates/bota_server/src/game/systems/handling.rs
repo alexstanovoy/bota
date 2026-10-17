@@ -20,7 +20,7 @@ impl World {
         }
         let errand = match target {
             Target::None => {
-                let Some(pos) = self.transform.get(unit).map(|t| t.pos) else {
+                let Some(pos) = self.pos(unit) else {
                     return false;
                 };
                 Handling::PutAt { slot, pos }
@@ -89,7 +89,7 @@ impl World {
         if self.held_in_bag(unit, slot).is_none() {
             return true;
         }
-        let Some(from) = self.transform.get(unit).map(|t| t.pos) else {
+        let Some(from) = self.pos(unit) else {
             return true;
         };
         if !from.within(pos, rules::units(rules::PUT_ITEM_RANGE)) {
@@ -114,10 +114,7 @@ impl World {
         if !self.alive(to) || self.team.get(to) != self.team.get(unit) {
             return true;
         }
-        let (Some(from), Some(at)) = (
-            self.transform.get(unit).map(|t| t.pos),
-            self.transform.get(to).map(|t| t.pos),
-        ) else {
+        let (Some(from), Some(at)) = (self.pos(unit), self.pos(to)) else {
             return true;
         };
         if !from.within(at, rules::units(rules::PUT_ITEM_RANGE)) {
@@ -152,10 +149,10 @@ impl World {
         let Some(Loot(stack)) = self.loot.get(loot).copied() else {
             return true;
         };
-        let Some(spot) = self.transform.get(loot).map(|t| t.pos) else {
+        let Some(spot) = self.pos(loot) else {
             return true;
         };
-        let Some(from) = self.transform.get(unit).map(|t| t.pos) else {
+        let Some(from) = self.pos(unit) else {
             return true;
         };
         if !from.within(spot, rules::units(rules::TAKE_ITEM_RANGE)) {

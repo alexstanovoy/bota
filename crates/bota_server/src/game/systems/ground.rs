@@ -55,7 +55,7 @@ impl World {
             if body.entity == mover {
                 return;
             }
-            let Some(at) = self.transform.get(body.entity).map(|t| t.pos) else {
+            let Some(at) = self.pos(body.entity) else {
                 return;
             };
             let least = (mine + body.radius).squared_raw();
@@ -128,7 +128,7 @@ impl World {
                 if other.entity == one.entity || self.phased(other.entity) {
                     return;
                 }
-                let Some(there) = self.transform.get(other.entity).map(|t| t.pos) else {
+                let Some(there) = self.pos(other.entity) else {
                     return;
                 };
                 let dx = i64::from(there.x.raw) - i64::from(one.at.x.raw);

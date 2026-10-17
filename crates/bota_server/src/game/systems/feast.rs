@@ -82,7 +82,7 @@ impl World {
     /// has room for more.
     fn gather_feast(&mut self, caster: Entity, feast: &mut Feast) {
         let room = rules::FEAST_TARGETS[usize::from(feast.level)].saturating_sub(feast.fed.len());
-        let Some(at) = self.transform.get(caster).map(|t| t.pos) else {
+        let Some(at) = self.pos(caster) else {
             return;
         };
         let radius = rules::units(rules::FEAST_RADIUS);
@@ -98,7 +98,7 @@ impl World {
                         .is_some_and(|kind| *kind == UnitKind::Hero || kind_def(*kind).creep)
             })
             .filter_map(|other| {
-                let pos = self.transform.get(other)?.pos;
+                let pos = self.pos(other)?;
                 pos.within(at, radius)
                     .then(|| (!self.is_hero(other), pos.distance_squared(at), other))
             })

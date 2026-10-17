@@ -38,10 +38,7 @@ impl World {
         let Target::Pos(pos) = target else {
             return false;
         };
-        let (Some(side), Some(from)) = (
-            self.team.get(user).copied(),
-            self.transform.get(user).map(|t| t.pos),
-        ) else {
+        let (Some(side), Some(from)) = (self.team.get(user).copied(), self.pos(user)) else {
             return false;
         };
         if !from.within(pos, rules::units(range)) || !self.clearance.stands_clear(pos) {

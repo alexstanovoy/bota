@@ -71,7 +71,7 @@ impl World {
         let Some(side) = self.team.get(fallen).copied() else {
             return 0;
         };
-        let at = self.transform.get(fallen).map_or(Vec2::ZERO, |t| t.pos);
+        let at = self.pos(fallen).unwrap_or(Vec2::ZERO);
         let killer_side = killer.and_then(|k| self.team.get(k).copied());
         let denied = killer_side == Some(side);
         let mut paid = self.credit_killer(killer, denied, fallen_seat.is_some(), bounty.gold);
@@ -189,10 +189,7 @@ impl World {
                     && (killer_seat == Some(index)
                         || seat.unit.is_some_and(|unit| {
                             self.alive(unit)
-                                && self
-                                    .transform
-                                    .get(unit)
-                                    .is_some_and(|t| t.pos.within(at, radius))
+                                && self.pos(unit).is_some_and(|pos| pos.within(at, radius))
                         }))
             })
             .collect()
@@ -349,10 +346,7 @@ impl World {
                     && seat.unit.is_some_and(|unit| {
                         self.alive(unit)
                             && (always == Some(index)
-                                || self
-                                    .transform
-                                    .get(unit)
-                                    .is_some_and(|t| t.pos.within(at, radius)))
+                                || self.pos(unit).is_some_and(|pos| pos.within(at, radius)))
                     })
             })
             .collect();

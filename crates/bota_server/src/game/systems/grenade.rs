@@ -89,10 +89,7 @@ impl World {
         let Target::Pos(aim) = target else {
             return false;
         };
-        let (Some(from), Some(side)) = (
-            self.transform.get(user).map(|t| t.pos),
-            self.team.get(user).copied(),
-        ) else {
+        let (Some(from), Some(side)) = (self.pos(user), self.team.get(user).copied()) else {
             return false;
         };
         let aim = clamp_to_map(aim);
@@ -158,9 +155,8 @@ impl World {
                         .copied()
                         .is_some_and(|kind| kind == UnitKind::Hero || kind_def(kind).creep)
                     && self
-                        .transform
-                        .get(*other)
-                        .is_some_and(|t| t.pos.within(shot.aim, reach))
+                        .pos(*other)
+                        .is_some_and(|pos| pos.within(shot.aim, reach))
             })
             .collect();
         for other in struck {

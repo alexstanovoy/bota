@@ -131,7 +131,7 @@ impl World {
             (None, Some(on)) => (on, self.touching_distance(entity, on)),
             (None, None) => return None,
         };
-        Some((self.transform.get(on)?.pos, reach))
+        Some((self.pos(on)?, reach))
     }
 
     /// How near an attacker's centre has to come to a target's to strike
@@ -169,7 +169,7 @@ impl World {
     /// Comes round towards a spot without leaving the one it stands on.
     fn turn_to(&mut self, entity: Entity, dest: Vec2) {
         let (Some(from), Some(rate)) = (
-            self.transform.get(entity).map(|t| t.pos),
+            self.pos(entity),
             self.stats.get(entity).map(|stats| stats.turn_rate),
         ) else {
             return;
@@ -488,7 +488,7 @@ impl World {
     /// when it does not walk: near enough already, it comes round to face
     /// the spot; unable to move, it stands; flying, it goes straight.
     fn walking_pace(&mut self, entity: Entity, dest: Vec2, arrive: Fixed) -> Option<(Vec2, Fixed)> {
-        let from = self.transform.get(entity)?.pos;
+        let from = self.pos(entity)?;
         let stats = self.stats.get(entity).copied()?;
         if from == dest || (arrive > Fixed::ZERO && from.within(dest, arrive)) {
             self.turn_to(entity, dest);
@@ -740,7 +740,7 @@ impl World {
             if body.entity == entity || self.phased(body.entity) {
                 return;
             }
-            let Some(at) = self.transform.get(body.entity).map(|t| t.pos) else {
+            let Some(at) = self.pos(body.entity) else {
                 return;
             };
             let standing = if self.hero.get(body.entity).is_some() {
@@ -780,7 +780,7 @@ impl World {
             if body.entity == entity || body.fixed || body.still < rules::STANDING_TICKS {
                 return;
             }
-            if let Some(at) = self.transform.get(body.entity).map(|t| t.pos) {
+            if let Some(at) = self.pos(body.entity) {
                 out.push((at, body.radius));
             }
         });
@@ -908,10 +908,7 @@ impl World {
 
     /// Runs one entity straight away from another, a step a tick.
     fn flee(&mut self, entity: Entity, from: Entity, scratch: &mut LocalScratch) {
-        let (Some(here), Some(there)) = (
-            self.transform.get(entity).map(|t| t.pos),
-            self.transform.get(from).map(|t| t.pos),
-        ) else {
+        let (Some(here), Some(there)) = (self.pos(entity), self.pos(from)) else {
             return;
         };
         if here == there {

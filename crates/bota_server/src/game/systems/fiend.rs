@@ -35,10 +35,7 @@ impl World {
             .iter()
             .filter(|other| {
                 self.burns(caster, *other)
-                    && self
-                        .transform
-                        .get(*other)
-                        .is_some_and(|t| t.pos.within(at, radius))
+                    && self.pos(*other).is_some_and(|pos| pos.within(at, radius))
             })
             .collect();
         let amount = raze_damage(level, self.souls_of(caster));
@@ -172,7 +169,7 @@ impl World {
             let Some(mut line) = self.requiem_line.get(entity).cloned() else {
                 continue;
             };
-            let Some(at) = self.transform.get(entity).map(|t| t.pos) else {
+            let Some(at) = self.pos(entity) else {
                 self.put_out(entity);
                 continue;
             };
@@ -278,10 +275,8 @@ impl World {
             })
             .collect();
         for (carrier, level) in carriers {
-            let (Some(from), Some(side)) = (
-                self.transform.get(carrier).map(|t| t.pos),
-                self.team.get(carrier).copied(),
-            ) else {
+            let (Some(from), Some(side)) = (self.pos(carrier), self.team.get(carrier).copied())
+            else {
                 continue;
             };
             let reach = rules::units(rules::PRESENCE_RADIUS);
@@ -290,9 +285,7 @@ impl World {
                 .entities
                 .iter()
                 .filter(|other| {
-                    self.transform
-                        .get(*other)
-                        .is_some_and(|t| t.pos.within(from, reach))
+                    self.pos(*other).is_some_and(|pos| pos.within(from, reach))
                         && self.wears_presence(carrier, side, *other)
                 })
                 .collect();

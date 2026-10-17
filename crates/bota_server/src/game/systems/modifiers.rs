@@ -153,10 +153,7 @@ impl World {
             self.rot_goes_out(owner);
             return;
         }
-        let (Some(at), Some(side)) = (
-            self.transform.get(owner).map(|t| t.pos),
-            self.team.get(owner).copied(),
-        ) else {
+        let (Some(at), Some(side)) = (self.pos(owner), self.team.get(owner).copied()) else {
             return;
         };
         // The cloud shown for it stands where its owner now stands.
@@ -173,11 +170,7 @@ impl World {
             if !self.alive(other) || self.hull.get(other).is_none() {
                 continue;
             }
-            if !self
-                .transform
-                .get(other)
-                .is_some_and(|t| t.pos.within(at, reach))
-            {
+            if !self.pos(other).is_some_and(|pos| pos.within(at, reach)) {
                 continue;
             }
             if other == owner {

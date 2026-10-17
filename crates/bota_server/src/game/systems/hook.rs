@@ -13,10 +13,7 @@ impl World {
         let Target::Pos(pos) = target else {
             return false;
         };
-        let (Some(from), Some(side)) = (
-            self.transform.get(caster).map(|t| t.pos),
-            self.team.get(caster).copied(),
-        ) else {
+        let (Some(from), Some(side)) = (self.pos(caster), self.team.get(caster).copied()) else {
             return false;
         };
         let reach = rules::units(rules::HOOK_RANGE);
@@ -64,10 +61,7 @@ impl World {
             let Some(mut hook) = self.hook.get(entity).copied() else {
                 continue;
             };
-            let (Some(at), Some(home)) = (
-                self.transform.get(entity).map(|t| t.pos),
-                self.transform.get(hook.owner).map(|t| t.pos),
-            ) else {
+            let (Some(at), Some(home)) = (self.pos(entity), self.pos(hook.owner)) else {
                 self.let_go(entity);
                 continue;
             };
@@ -131,7 +125,7 @@ impl World {
             if kind_def(kind).fixed {
                 continue;
             }
-            let Some(spot) = self.transform.get(other).map(|t| t.pos) else {
+            let Some(spot) = self.pos(other) else {
                 continue;
             };
             let hulls = self.hull.get(other).map_or(Fixed::ZERO, |hull| hull.bound);

@@ -98,9 +98,7 @@ impl World {
             bota_proto::Target::Pos(pos) => Some(pos),
             bota_proto::Target::Unit(target) => {
                 let on = self.of_wire(target)?;
-                self.alive(on)
-                    .then(|| self.transform.get(on).map(|t| t.pos))
-                    .flatten()
+                self.alive(on).then(|| self.pos(on)).flatten()
             }
             bota_proto::Target::None => None,
         }
@@ -128,10 +126,7 @@ impl World {
             return false;
         };
         let reach = self.cast_reach(entity, pending);
-        let (Some(spot), Some(at)) = (
-            self.cast_spot(pending),
-            self.transform.get(entity).map(|t| t.pos),
-        ) else {
+        let (Some(spot), Some(at)) = (self.cast_spot(pending), self.pos(entity)) else {
             return false;
         };
         reach > 0 && !at.within(spot, rules::units(reach))

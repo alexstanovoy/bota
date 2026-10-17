@@ -215,10 +215,10 @@ impl World {
     /// that spot if it does not.
     fn at_the_stash(&mut self, seat: usize, courier: Entity) -> bool {
         let shop = fountain_pos(self.map, self.seats[seat].team);
-        if self.transform.get(courier).is_some_and(|at| {
-            at.pos
-                .within(shop, rules::units(rules::COURIER_STASH_RANGE))
-        }) {
+        if self
+            .pos(courier)
+            .is_some_and(|pos| pos.within(shop, rules::units(rules::COURIER_STASH_RANGE)))
+        {
             return true;
         }
         self.set_order(courier, UnitOrder::Move { pos: shop });
@@ -252,13 +252,12 @@ impl World {
             self.errand.insert(courier, Errand::GoingHome);
             return false;
         }
-        let Some(to) = self.transform.get(owner).map(|at| at.pos) else {
+        let Some(to) = self.pos(owner) else {
             return false;
         };
-        let near = self.transform.get(courier).is_some_and(|at| {
-            at.pos
-                .within(to, rules::units(rules::COURIER_DELIVER_RANGE))
-        });
+        let near = self
+            .pos(courier)
+            .is_some_and(|pos| pos.within(to, rules::units(rules::COURIER_DELIVER_RANGE)));
         if !near {
             self.set_order(courier, UnitOrder::Move { pos: to });
             return false;
@@ -306,7 +305,7 @@ impl World {
     /// Walks home and stands there.
     fn go_home(&mut self, seat: usize, courier: Entity) -> bool {
         let home = fountain_pos(self.map, self.seats[seat].team);
-        if self.transform.get(courier).is_some_and(|at| at.pos == home) {
+        if self.pos(courier) == Some(home) {
             return true;
         }
         self.set_order(courier, UnitOrder::Move { pos: home });

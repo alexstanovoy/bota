@@ -106,13 +106,13 @@ impl World {
             let Some(mut march) = self.march.get(entity).copied() else {
                 continue;
             };
-            let Some(at) = self.transform.get(entity).map(|t| t.pos) else {
+            let Some(at) = self.pos(entity) else {
                 continue;
             };
             let chasing = self
                 .target_of(entity)
                 .filter(|target| self.alive(*target))
-                .and_then(|target| self.transform.get(target).map(|t| t.pos));
+                .and_then(|target| self.pos(target));
             let ai = self.lane_ai.get(entity).copied();
             let going = chasing.or_else(|| ai.and_then(|ai| ai.last_seen));
             let going = match going {

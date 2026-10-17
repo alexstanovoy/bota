@@ -15,6 +15,11 @@ impl World {
             && self.health.get(entity).is_some_and(|h| h.hp > Fixed::ZERO)
     }
 
+    /// Where an entity stands, if it stands anywhere.
+    pub(crate) fn pos(&self, entity: Entity) -> Option<Vec2> {
+        self.transform.get(entity).map(|t| t.pos)
+    }
+
     /// Whether an attacker reaches its target, edge to edge.
     pub fn in_reach(&self, attacker: Entity, target: Entity) -> bool {
         let (Some(at), Some(their_at), Some(stats)) = (
@@ -119,7 +124,7 @@ impl World {
             .and_then(|k| self.team.get(k).copied())
             .is_some_and(|theirs| Some(theirs) == side);
         let paid = self.pay_for(entity, killer, events);
-        let at = self.transform.get(entity).map_or(Vec2::ZERO, |t| t.pos);
+        let at = self.pos(entity).unwrap_or(Vec2::ZERO);
         events.push(Event {
             kind: EventKind::Died {
                 unit: wire_id(entity),

@@ -295,7 +295,7 @@ impl World {
         else {
             return;
         };
-        let Some(at) = self.transform.get(striker).map(|t| t.pos) else {
+        let Some(at) = self.pos(striker) else {
             return;
         };
         if mine == theirs {
@@ -360,10 +360,9 @@ impl World {
                 if self.team.get(entity) != Some(&team) {
                     return false;
                 }
-                let (Some(from), Some(radius)) = (
-                    self.transform.get(entity).map(|t| t.pos),
-                    self.stats.get(entity).map(|s| s.vision),
-                ) else {
+                let (Some(from), Some(radius)) =
+                    (self.pos(entity), self.stats.get(entity).map(|s| s.vision))
+                else {
                     return false;
                 };
                 if radius <= Fixed::ZERO || !from.within(at, radius) {

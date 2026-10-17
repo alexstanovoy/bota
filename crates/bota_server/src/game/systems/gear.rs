@@ -610,10 +610,7 @@ impl World {
         if !self.alive(on) || self.team.get(on) != self.team.get(user) {
             return false;
         }
-        let (Some(from), Some(at)) = (
-            self.transform.get(user).map(|t| t.pos),
-            self.transform.get(on).map(|t| t.pos),
-        ) else {
+        let (Some(from), Some(at)) = (self.pos(user), self.pos(on)) else {
             return false;
         };
         if !from.within(at, rules::units(range)) {
@@ -675,7 +672,7 @@ impl World {
     /// Tells who may know that `source` mended `on` by `amount` health and
     /// `mana` mana.
     fn tell_healed(&mut self, source: Entity, on: Entity, amount: i32, mana: i32) {
-        let at = self.transform.get(on).map_or(Vec2::ZERO, |t| t.pos);
+        let at = self.pos(on).unwrap_or(Vec2::ZERO);
         let side = self.team.get(on).copied().unwrap_or(Team::Neutral);
         self.events.push(Event {
             kind: EventKind::Healed {
@@ -904,7 +901,7 @@ impl World {
         }
         let entities = self.take_entity_snapshot();
         for holder in entities.iter().copied() {
-            let Some(at_pos) = self.transform.get(holder).map(|t| t.pos) else {
+            let Some(at_pos) = self.pos(holder) else {
                 continue;
             };
             let Some(bag) = self.inventory.get(holder) else {
@@ -973,7 +970,7 @@ impl World {
         let Target::Pos(pos) = target else {
             return false;
         };
-        let Some(from) = self.transform.get(user).map(|t| t.pos) else {
+        let Some(from) = self.pos(user) else {
             return false;
         };
         let aim = clamp_to_map(if from.within(pos, rules::units(range)) {
@@ -1012,10 +1009,10 @@ impl World {
     /// it, and within `range` of the one using the item. Aimed at a unit, the
     /// spot is where the unit stands; aimed at nothing, where the user does.
     fn reach_a_tree(&self, user: Entity, target: Target, range: i32) -> Option<Tree> {
-        let from = self.transform.get(user).map(|t| t.pos)?;
+        let from = self.pos(user)?;
         let at = match target {
             Target::Pos(pos) => pos,
-            Target::Unit(target) => self.transform.get(self.of_wire(target)?)?.pos,
+            Target::Unit(target) => self.pos(self.of_wire(target)?)?,
             Target::None => from,
         };
         let tree =
@@ -1041,7 +1038,7 @@ impl World {
         let Target::Pos(pos) = target else {
             return false;
         };
-        let Some(from) = self.transform.get(user).map(|t| t.pos) else {
+        let Some(from) = self.pos(user) else {
             return false;
         };
         if !from.within(pos, rules::units(range)) || !self.clearance.stands_clear(pos) {
