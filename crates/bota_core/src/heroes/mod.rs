@@ -14,8 +14,9 @@
 //!    the module in this file and in `rules.rs` (`pub use ...::numbers::*`).
 //! 3. Add its `HERO_DEF` to `HEROES` in `hero.rs` and its ability consts to
 //!    `ABILITIES` in `ability.rs`, in id order, and bump `ABILITY_COUNT`.
-//!    A new modifier is a `ModifierKind` variant with its
-//!    [`effect_id`](crate::ModifierKind::effect_id) arm and an `EFFECTS` row.
+//!    A new modifier is a `ModifierKind` variant (`modifier.rs`) with its
+//!    [`effect_id`](crate::ModifierKind::effect_id) arm, and its effect id gets
+//!    an [`EFFECTS`](crate::EFFECTS) row in `effect.rs` (bump `EFFECT_COUNT`).
 //! 4. In `bota_server`: one `ABILITY_HOOKS` row an ability
 //!    (`game/config/ability.rs`), the behaviour in `game/systems/x.rs`
 //!    (named in `systems/mod.rs`), the modifier's `hash.rs` and `stats.rs`
