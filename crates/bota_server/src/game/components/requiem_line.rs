@@ -1,5 +1,3 @@
-//! One line of a requiem in flight.
-
 use bota_proto::{Fixed, Vec2};
 
 use crate::engine::Entity;

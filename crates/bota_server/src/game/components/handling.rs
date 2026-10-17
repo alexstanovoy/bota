@@ -1,5 +1,3 @@
-//! What a unit is walking to do with an item.
-
 use bota_proto::Vec2;
 
 use crate::game::Entity;

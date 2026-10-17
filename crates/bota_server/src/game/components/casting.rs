@@ -1,5 +1,3 @@
-//! A cast ordered and not yet begun.
-
 use bota_proto::{AbilitySlot, ItemSlot, Target};
 
 /// A cast ordered and not yet begun.

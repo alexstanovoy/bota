@@ -1,5 +1,3 @@
-//! What an ability shows where it stands.
-
 use bota_proto::AbilityId;
 
 use crate::engine::Entity;

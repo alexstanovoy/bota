@@ -1,5 +1,3 @@
-//! An item lying on the ground.
-
 use crate::game::ItemStack;
 
 /// The stack an entity that is a ground item holds, whole but marked

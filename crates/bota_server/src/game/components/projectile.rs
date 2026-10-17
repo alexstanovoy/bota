@@ -1,5 +1,3 @@
-//! A missile in flight.
-
 use bota_proto::DamageKind;
 
 use crate::game::Entity;

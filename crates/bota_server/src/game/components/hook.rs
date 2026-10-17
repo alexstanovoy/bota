@@ -1,5 +1,3 @@
-//! A hook in flight.
-
 use bota_core::rules;
 use bota_proto::{Fixed, Vec2};
 
