@@ -42,16 +42,7 @@ pub fn move_towards(pos: Vec2, target: Vec2, step: Fixed) -> Vec2 {
     if dist <= i64::from(step.raw) {
         return target;
     }
-    let sx = dx * i64::from(step.raw) / dist;
-    let sy = dy * i64::from(step.raw) / dist;
-    Vec2 {
-        x: Fixed {
-            raw: pos.x.raw.saturating_add(sx as i32),
-        },
-        y: Fixed {
-            raw: pos.y.raw.saturating_add(sy as i32),
-        },
-    }
+    offset_along(pos, dx, dy, dist, step)
 }
 
 /// The point `distance` away from `from` along the line towards `towards`.
@@ -65,6 +56,12 @@ pub fn point_along(from: Vec2, towards: Vec2, distance: Fixed) -> Vec2 {
     if span == 0 {
         return from;
     }
+    offset_along(from, dx, dy, span, distance)
+}
+
+/// `from` moved `distance` along `(dx, dy)`, whose length is `span > 0`.
+#[inline]
+fn offset_along(from: Vec2, dx: i64, dy: i64, span: i64, distance: Fixed) -> Vec2 {
     let sx = dx * i64::from(distance.raw) / span;
     let sy = dy * i64::from(distance.raw) / span;
     Vec2 {

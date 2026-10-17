@@ -108,10 +108,7 @@ pub fn wave_plan(wave: u32) -> WavePlan {
 /// Melee abreast across the march, siege among them, ranged a rank behind.
 /// `forward` is the direction the wave marches.
 pub fn spawn_offsets(plan: &WavePlan, forward: Vec2) -> Vec<Vec2> {
-    let len = isqrt64(
-        i64::from(forward.x.raw) * i64::from(forward.x.raw)
-            + i64::from(forward.y.raw) * i64::from(forward.y.raw),
-    );
+    let len = isqrt64(forward.length_squared());
     // A wave with nowhere to march lines up along the x axis.
     let (dx, dy, len) = if len == 0 {
         (1i64, 0i64, 1i64)
