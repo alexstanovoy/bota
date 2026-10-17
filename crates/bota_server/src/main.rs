@@ -54,6 +54,8 @@ struct Args {
     match_id: Option<u64>,
     /// Seats held for key holders, one `key_hex:name` per seat in slot order, comma separated.
     /// A Hello must then carry a key. Prefer the environment: arguments show in process lists.
+    /// Keys travel in clear text over plain TCP: across a network you do not trust, terminate
+    /// TLS in front of the server (a proxy or a bridge) and let only it reach the port.
     #[arg(
         long = "seat",
         env = "BOTA_SEATS",
@@ -62,7 +64,7 @@ struct Args {
     )]
     seats: Vec<String>,
     /// The key a referee's connection presents (64 hex digits): told the lobby, the start,
-    /// departures and the end, and no ticks.
+    /// departures and the end, and no ticks. It travels in clear text, as the seat keys do.
     #[arg(long, env = "BOTA_REFEREE_KEY", hide_env_values = true)]
     referee_key: Option<String>,
     /// With reserved seats, end the lobby phase this many seconds after listening at the latest;

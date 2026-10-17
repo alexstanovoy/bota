@@ -91,6 +91,10 @@ The server hosts one lobby and one match, then exits. It listens on `--port`
 | `--dummy-seat` | the last seat holds a hero that never acts, so one client can practise alone |
 | `--order-delay-ticks`, `--order-jitter-ticks` | delay every order, one value or one per seat; jitter is drawn from a hidden stream of the seed |
 
+The server speaks plain TCP, so seat and referee keys travel in clear text, as
+does everything else. Across a network you do not trust, terminate TLS in front
+of the server (a proxy or a bridge) and let only it reach the port.
+
 ## Write a bot
 
 A bot is a client like any other and sees the same `WorldView` a human does.
