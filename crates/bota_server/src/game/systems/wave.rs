@@ -5,7 +5,7 @@ use bota_core::{
     SIEGE_CREEP, SUPER_MELEE_CREEP, SUPER_RANGED_CREEP, SUPER_SIEGE_CREEP, StructureId, UnitDef,
     WavePlan, creep_spawn_pos, rules, spawn_offsets, team_index, wave_at, wave_plan,
 };
-use bota_proto::{Fixed, Team, Vec2};
+use bota_proto::{Team, Vec2};
 
 use crate::game::{Entity, March, Purpose, UnitOrder, World, advance_waypoint};
 
@@ -143,7 +143,7 @@ impl World {
         if route.is_empty() {
             return None;
         }
-        let room = self.hull.get(entity).map_or(Fixed::ZERO, |h| h.collision);
+        let room = self.collision(entity);
         let step = advance_waypoint(&self.clearance, route, usize::from(march.next), at, room);
         march.next = step as u16;
         Some(route[step])

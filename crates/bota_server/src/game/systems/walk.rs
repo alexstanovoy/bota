@@ -148,14 +148,12 @@ impl World {
     /// further apart than the hulls themselves, so what stops here is not
     /// overlapping and is not eased away again by [`World::push_apart`].
     fn touching_distance(&self, one: Entity, other: Entity) -> Fixed {
-        self.hull
-            .get(one)
-            .map_or(Fixed::ZERO, |hull| hull.collision)
-            + self
-                .hull
-                .get(other)
-                .map_or(Fixed::ZERO, |hull| hull.collision)
-            + rules::units(rules::STEER_MARGIN)
+        self.collision(one) + self.collision(other) + rules::units(rules::STEER_MARGIN)
+    }
+
+    /// An entity's collision size; zero for one without a body.
+    pub(super) fn collision(&self, entity: Entity) -> Fixed {
+        self.hull.get(entity).map_or(Fixed::ZERO, |h| h.collision)
     }
 
     /// Stands this tick: whatever stretch of walk it had planned is
@@ -211,7 +209,7 @@ impl World {
         let Some((from, step)) = self.walking_pace(entity, dest, arrive) else {
             return;
         };
-        let collision = self.hull.get(entity).map_or(Fixed::ZERO, |h| h.collision);
+        let collision = self.collision(entity);
         let motion = self.motion.get(entity).copied().unwrap_or_default();
         // Just walked into a body that was itself moving: it stands for
         // the block wait, facing where it was going.
@@ -294,7 +292,7 @@ impl World {
         };
         // Nobody foresees a marcher by a plan: it has none.
         self.stand(entity);
-        let collision = self.hull.get(entity).map_or(Fixed::ZERO, |h| h.collision);
+        let collision = self.collision(entity);
         let (aim, _) = self.lay_route(entity, from, dest, collision, &[]);
         if self.route.get(entity).is_some_and(|route| route.done) || aim == from {
             self.turn_to(entity, dest);
