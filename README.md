@@ -109,8 +109,7 @@ use bota_proto::{HeroId, Order, Target};
 fn main() -> Result<(), PlayError> {
     let outcome = Link::play("127.0.0.1:4455", "attack-move", HeroId::SHADOW_FIEND, |session| {
         let enemy = fountain_pos(session.map(), session.enemy());
-        let attack = IssuedOrder::hero(Order::Attack { target: Target::Pos(enemy) });
-        session.own_hero().map(|_| attack) // a dead hero takes no orders
+        Some(IssuedOrder::hero(Order::Attack { target: Target::Pos(enemy) }))
     })?;
     println!("{outcome:?}");
     Ok(())
@@ -131,10 +130,12 @@ with the `ClientSession`, the client's picture of the match: the current and
 previous view, tracks of units seen, projectiles, recent events, the orders
 standing after the server's answers. The closure returns the orders it wants
 (an `Option` for one, a `Vec` for several); an order that repeats the one
-standing is not sent again, and the tick is acknowledged. A dead hero takes
-no orders: the server refuses them. `IssuedOrder::courier(id, order)` drives the courier. The
-outcome tells the seat, the winner (`Team::Neutral` for a draw), the last tick
-and how many orders the server refused.
+standing is not sent again, and the tick is acknowledged. While the hero is
+dead its orders are not sent, since the server would refuse them, and are
+counted instead; `IssuedOrder::courier(id, order)` drives the courier, dead
+hero or not. The outcome tells the seat, the winner (`Team::Neutral` for a
+draw), the last tick, how many orders the server refused and how many were
+held back for a dead hero.
 
 The parts compose for a bot that needs more: `join(transport, name, hero, key)`
 takes a seat over any `Transport` (`Link` blocks with timeouts; `Net` reads on

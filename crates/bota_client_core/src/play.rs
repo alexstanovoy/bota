@@ -26,6 +26,10 @@ pub struct Outcome {
     pub ticks: u32,
     /// Orders the server refused.
     pub rejections: u32,
+    /// Orders for the hero that were not sent because the hero was dead on
+    /// the tick they were decided: the server refuses every one of them.
+    /// Courier orders go out whatever the hero's state.
+    pub unsent_while_dead: u32,
 }
 
 /// Why a match could not be played to its end.
@@ -82,9 +86,11 @@ impl<E> From<IngestError<E>> for PlayError<E> {
 /// Plays a joined seat to the end of its match.
 ///
 /// Every tick, once its events are in, `decide` is shown the session and
-/// returns the orders it wants: none, one (an `Option`) or several. An order that repeats the one standing is
-/// not sent again; the rest go out numbered, and the tick is acknowledged.
-/// The observer sees the stream as [`ClientSession::ingest`] folds it.
+/// returns the orders it wants: none, one (an `Option`) or several. An order
+/// that repeats the one standing is not sent again, nor is an order for the
+/// hero while it is dead (counted in [`Outcome::unsent_while_dead`]); the
+/// rest go out numbered, and the tick is acknowledged. The observer sees the
+/// stream as [`ClientSession::ingest`] folds it.
 pub fn play<T, O, D, I>(
     transport: &mut T,
     seated: Seated,
@@ -99,6 +105,7 @@ where
 {
     let mut seat = Seat::new(seated, SessionOptions::default());
     let mut rejections = 0u32;
+    let mut unsent_while_dead = 0u32;
     // Each message makes progress: the session bounds the ones without a
     // snapshot, and snapshot ticks only rise.
     loop {
@@ -106,7 +113,8 @@ where
         match seat.ingest(msg, observer)? {
             Ingested::TickComplete { .. } => {
                 let session = seat.session_mut().expect("a tick comes after the start");
-                take_turn(transport, session, &mut decide)?;
+                let unsent = take_turn(transport, session, &mut decide)?;
+                unsent_while_dead = unsent_while_dead.saturating_add(unsent);
             }
             Ingested::Rejected { .. } => rejections = rejections.saturating_add(1),
             Ingested::Over { winner, .. } => {
@@ -117,6 +125,7 @@ where
                     winner,
                     ticks: session.current().map_or(0, |view| view.tick),
                     rejections,
+                    unsent_while_dead,
                 });
             }
             _ => {}
@@ -124,13 +133,20 @@ where
     }
 }
 
-/// Sends what the bot decided on the tick, then the acknowledgement.
+/// Sends what the bot decided on the tick, then the acknowledgement, and
+/// says how many hero orders it held back for a dead hero.
 fn take_turn<E, I: IntoIterator<Item = IssuedOrder>>(
     transport: &mut impl Transport,
     session: &mut ClientSession,
     decide: &mut impl FnMut(&ClientSession) -> I,
-) -> Result<(), PlayError<E>> {
+) -> Result<u32, PlayError<E>> {
+    let hero_down = session.own_hero().is_none();
+    let mut unsent = 0u32;
     for order in decide(session) {
+        if hero_down && order.unit.is_none() {
+            unsent = unsent.saturating_add(1);
+            continue;
+        }
         if session.ledger().repeats(order) {
             continue;
         }
@@ -140,7 +156,7 @@ fn take_turn<E, I: IntoIterator<Item = IssuedOrder>>(
     if let Some(tick) = session.end_turn() {
         transport.send(&ClientMsg::Ack { tick })?;
     }
-    Ok(())
+    Ok(unsent)
 }
 
 #[cfg(not(target_arch = "wasm32"))]

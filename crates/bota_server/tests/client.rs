@@ -38,15 +38,18 @@ fn the_attack_move_bot_plays_a_lockstep_match_to_its_end() {
     let server = thread::spawn(move || run(listener, opts()));
     let outcome = Link::play(&address, "attack-move", HeroId::SHADOW_FIEND, |session| {
         let enemy = fountain_pos(session.map(), session.enemy());
-        let attack = IssuedOrder::hero(Order::Attack {
+        Some(IssuedOrder::hero(Order::Attack {
             target: Target::Pos(enemy),
-        });
-        session.own_hero().map(|_| attack) // a dead hero takes no orders
+        }))
     })
     .expect("the match is played to its end");
     assert_eq!((outcome.slot, outcome.team), (SlotId(0), Team::Radiant));
     assert!(outcome.ticks > 0);
-    assert_eq!(outcome.rejections, 0, "a live hero may always attack-move");
+    assert_eq!(outcome.rejections, 0, "only a live hero is sent orders");
+    assert!(
+        outcome.unsent_while_dead > 0,
+        "the hero fell under the tower and was held back while dead"
+    );
     server
         .join()
         .expect("the server thread")
