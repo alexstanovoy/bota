@@ -51,7 +51,7 @@ impl Link {
             return Err(std::io::Error::other("server I/O timeout must be positive"));
         }
         Ok(Self {
-            stream: open(address, timeout)?,
+            stream: open_tcp(address, timeout, timeout)?,
             address: address.to_owned(),
             timeout,
             redial: Redial::DEFAULT,
@@ -99,7 +99,7 @@ impl Link {
             self.redial,
             &mut spent,
             cause,
-            || open(address, timeout),
+            || open_tcp(address, timeout, timeout),
             |mut stream| {
                 rejoin.greet(&mut stream)?;
                 fresh = Some(stream);
@@ -177,17 +177,22 @@ fn write(stream: &mut TcpStream, message: &ClientMsg) -> std::io::Result<()> {
         .map_err(|error| io_context("failed to send client message", error))
 }
 
-/// Connects with one timeout for establishing and using the connection.
-fn open(address: &str, timeout: Duration) -> std::io::Result<TcpStream> {
-    let stream = connect(address, timeout)?;
+/// Connects within `connect_timeout` and sets the stream up for framed
+/// traffic: no Nagle delay, reads and writes bounded by `io_timeout`.
+pub fn open_tcp(
+    address: &str,
+    connect_timeout: Duration,
+    io_timeout: Duration,
+) -> std::io::Result<TcpStream> {
+    let stream = connect(address, connect_timeout)?;
     stream
         .set_nodelay(true)
         .map_err(|error| io_context("failed to enable TCP_NODELAY", error))?;
     stream
-        .set_read_timeout(Some(timeout))
+        .set_read_timeout(Some(io_timeout))
         .map_err(|error| io_context("failed to set read timeout", error))?;
     stream
-        .set_write_timeout(Some(timeout))
+        .set_write_timeout(Some(io_timeout))
         .map_err(|error| io_context("failed to set write timeout", error))?;
     Ok(stream)
 }
@@ -332,7 +337,7 @@ impl Shared {
             policy,
             &mut spent,
             cause,
-            || open(address, DEFAULT_IO_TIMEOUT),
+            || open_tcp(address, DEFAULT_IO_TIMEOUT, DEFAULT_IO_TIMEOUT),
             |mut stream| {
                 let reader = stream.try_clone()?;
                 let mut out = self.lock();
@@ -358,7 +363,7 @@ impl Net {
 
     /// Connects and starts reading; a break is dialed again by `redial`.
     pub fn connect_with(addr: &str, redial: Redial) -> std::io::Result<Net> {
-        let stream = open(addr, DEFAULT_IO_TIMEOUT)?;
+        let stream = open_tcp(addr, DEFAULT_IO_TIMEOUT, DEFAULT_IO_TIMEOUT)?;
         let reader = stream.try_clone()?;
         let (tx, inbox) = sync_channel(MAX_INBOX);
         let shared = Arc::new(Shared {
