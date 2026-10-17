@@ -243,6 +243,12 @@ fn hash_motion(fnv: &mut Fnv, motion: &Motion) {
     fnv.u32(motion.relaid);
     fnv.u32(motion.bumped);
     fnv.u32(motion.bumps);
+    fnv.some(motion.queued_behind.is_some());
+    if let Some((behind, tick)) = motion.queued_behind {
+        fnv.u32(behind.index().0);
+        fnv.u32(behind.generation().0.get());
+        fnv.u32(tick);
+    }
 }
 
 fn hash_projectile(fnv: &mut Fnv, shot: &Projectile) {
