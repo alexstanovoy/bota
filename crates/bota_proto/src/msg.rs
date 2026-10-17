@@ -245,7 +245,8 @@ pub enum ClientMsg {
     Hello {
         /// Why this connection exists.
         role: Role,
-        /// Display name for the lobby and the scoreboard.
+        /// Display name for the lobby and the scoreboard, cut to 32 bytes
+        /// (see the [`contract`](crate::contract)).
         name: String,
         /// The key a server with reserved seats asks for.
         key: Option<SeatKey>,

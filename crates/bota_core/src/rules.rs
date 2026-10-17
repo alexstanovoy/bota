@@ -987,6 +987,9 @@ const _: () = {
 /// Most ticks an order may wait past the earliest tick it could take effect
 /// on, base and jitter together.
 pub const MAX_ORDER_DELAY_TICKS: u32 = 30;
+/// Longest name a seat holder is shown under, in UTF-8 bytes; a longer one is
+/// cut at the last whole character within it.
+pub const MAX_PLAYER_NAME_BYTES: usize = 32;
 /// Ticks an item stays muted after leaving the backpack for the inventory.
 pub const BACKPACK_MUTE_TICKS: u32 = 180;
 /// How close to the home fountain the shop, the stash and selling work.

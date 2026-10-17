@@ -158,6 +158,23 @@ fn a_client_built_with_another_wire_is_told_so_and_takes_no_seat() {
 }
 
 #[test]
+fn a_long_name_is_shown_cut_at_a_whole_character() {
+    let addr = start_server(realtime(5));
+    // Three bytes a character: 32 bytes hold ten whole ones.
+    let name = "\u{20ac}".repeat(20);
+    let (mut client, slot) = join_as_bot(addr, &name);
+    let shown = client.recv_until(|msg| match msg {
+        ServerMsg::LobbyState { slots } => slots
+            .into_iter()
+            .find(|row| Some(row.slot) == slot && !row.name.is_empty())
+            .map(|row| row.name),
+        _ => None,
+    });
+    assert_eq!(bota_core::rules::MAX_PLAYER_NAME_BYTES, 32);
+    assert_eq!(shown, "\u{20ac}".repeat(10));
+}
+
+#[test]
 fn a_realtime_match_reaches_two_clients() {
     let replay_path = std::env::temp_dir().join("bota-net-test-realtime.brp");
     let mut opts = realtime(7);

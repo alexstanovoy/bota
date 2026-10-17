@@ -117,6 +117,14 @@
 //! [`UnitView::vision_radius`](crate::UnitView::vision_radius), and a client
 //! draws its fog from that.
 //!
+//! # Names
+//!
+//! The name in [`ClientMsg::Hello`](crate::ClientMsg::Hello), and a name a
+//! server reserves a seat under, is shown in
+//! [`ServerMsg::LobbyState`](crate::ServerMsg::LobbyState) cut to
+//! `bota_core::rules::MAX_PLAYER_NAME_BYTES` (32) bytes of UTF-8, at the last
+//! whole character within them. A longer name is not refused.
+//!
 //! # Wire fingerprint
 //!
 //! A client sends [`WIRE_FINGERPRINT`](crate::WIRE_FINGERPRINT) in its
