@@ -3,12 +3,11 @@
 use std::sync::Arc;
 
 use bota_proto::{
-    AbilityId, ClientMsg, EffectId, EntityId, EventKind, LobbySlot, MatchStats, Order, PlayerId,
-    ServerMsg, SlotId, StockView, TalentSlot, TalentView, Team, UnitKind, UnitView, Vec2,
-    WorldView,
+    AbilityId, ClientMsg, EffectId, EntityId, EventKind, MatchStats, Order, ServerMsg, SlotId,
+    StockView, TalentSlot, TalentView, Team, UnitKind, UnitView, Vec2, WorldView,
 };
 
-use crate::handshake::Seated;
+use crate::handshake::Lobby;
 use crate::match_static::MatchStatic;
 use crate::orders::{IssuedOrder, refusal};
 use crate::seat::Seat;
@@ -219,8 +218,6 @@ pub struct App {
     pub lost: bool,
     /// Current screen.
     pub phase: Phase,
-    /// Our wire identity, once welcomed.
-    pub me: Option<PlayerId>,
     /// The seat this client acts as: the one it was welcomed to, or the one a
     /// replay is watched as. Absent for a spectator.
     pub my_slot: Option<SlotId>,
@@ -232,8 +229,9 @@ pub struct App {
     pub shop_open: bool,
     /// The catalog row the shop panel starts at.
     pub shop_scroll: usize,
-    /// The lobby as last broadcast.
-    pub lobby: Vec<LobbySlot>,
+    /// The lobby as last told: our wire identity once welcomed, and the
+    /// seats as last broadcast.
+    pub lobby: Lobby,
     /// Seat names from the lobby.
     pub names: Vec<(SlotId, String)>,
     /// The stream from the lobby on, and what this client knows of the
@@ -295,13 +293,12 @@ impl App {
             source,
             lost: false,
             phase: Phase::Lobby,
-            me: None,
             my_slot: None,
             aiming: None,
             held_item: None,
             shop_open: false,
             shop_scroll: 0,
-            lobby: Vec::new(),
+            lobby: Lobby::default(),
             names: Vec::new(),
             seat: Seat::watching(SESSION_OPTIONS),
             attack_move_armed: false,
@@ -695,24 +692,13 @@ impl App {
     /// What the lobby screen and the overlay take from a message, before the
     /// match and during it.
     fn note_lobby(&mut self, msg: &ServerMsg) {
+        self.lobby.observe(msg);
         match msg {
-            ServerMsg::Welcome {
-                player_id,
-                slot,
-                tick_rate,
-                mode,
-            } => {
-                self.me = Some(*player_id);
+            ServerMsg::Welcome { slot, .. } => {
                 self.my_slot = slot.or(self.pov);
                 let live = matches!(self.source, Source::Live(_));
-                if let (true, Some(slot), None) = (live, *slot, self.seat.session()) {
-                    let seated = Seated {
-                        player: *player_id,
-                        slot,
-                        tick_rate: *tick_rate,
-                        mode: *mode,
-                        hero: None,
-                    };
+                if let (true, Some(seated), None) = (live, self.lobby.seated(), self.seat.session())
+                {
                     self.seat = Seat::new(seated, SESSION_OPTIONS);
                 }
             }
@@ -722,7 +708,6 @@ impl App {
                     .filter(|s| !s.name.is_empty())
                     .map(|s| (s.slot, s.name.clone()))
                     .collect();
-                self.lobby.clone_from(slots);
             }
             ServerMsg::Orders { tick, orders } => {
                 for given in orders {
