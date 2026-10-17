@@ -8,7 +8,8 @@ protocol.
 Current scope: 1v1, the Shadow Fiend and Pudge heroes, the Dota map, and a
 mid-only ruleset on that map, plus replays.
 
-- At Dota 7.41f's numbers: lane creeps and their waves, neutral creeps and their
+- At Dota 7.41f's numbers (the creeps' tables come from client build 6874, dated by the 7.39 to 7.41
+  patch notes): lane creeps and their waves, neutral creeps and their
   camps, towers, day and night (every unit's day and night vision, neutral camps
   asleep at night), and Shadow Fiend (his abilities, innate, talents and
   Attribute Bonus) wherever the engine has the mechanic; the economy (passive
@@ -80,7 +81,7 @@ The server hosts one lobby and one match, then exits. It listens on `--port`
 | `--map N` | `0` the Dota map played to the Ancient (default); `1` a small hero demo map; `2` the mid-only ruleset on the Dota map: a side loses on its second hero death or its first lost tower, and the match is a draw after twenty game minutes |
 | `--mode realtime\|lockstep` | `realtime` runs at `--tick-rate` on the wall clock (default); `lockstep` waits for every seat to acknowledge each tick |
 | `--tick-rate N` | ticks per second, default 30 |
-| `--players N` | seats, default 2 |
+| `--players N` | seats, default 2, or the number of `--seat` reservations when those are given (a different `--players` is an error, and reserved seats take no `--dummy-seat`) |
 | `--seed N` | seed of the match randomness, for a match that must play again the same; without it the key is drawn from the operating system and known to no one |
 | `--match-id N` | the public label of the match in its start message and replay; drawn when absent, and nothing random comes from it |
 | `--seat KEY_HEX:NAME,...` | reserve the seats, in slot order, for the holders of 64-hex-digit keys (also `BOTA_SEATS`, which keeps the keys out of process lists); a key taken again replaces its holder, also mid-match |
@@ -108,7 +109,8 @@ ticks, how chances are dealt) is the rustdoc of `bota_proto::contract`:
 `cargo doc -p bota_proto --open`, module `contract`.
 
 This one attack-moves at the enemy fountain; it is
-`crates/bota_client_core/examples/attack_move.rs`:
+`crates/bota_client_core/examples/attack_move.rs`, which also takes the server's address as
+its first argument:
 
 ```rust
 use bota_client_core::{IssuedOrder, Link, PlayError};
@@ -159,7 +161,7 @@ example's loop over a real socket to the end of a match.
 `bota_server::local::LocalMatch` runs a lockstep match in your process with no
 sockets. `step` takes at most one order per seat, advances one tick, and returns
 the messages each seat would have been sent, through the same fog and event
-filters as the network loop. The complete program below is
+filters as the network loop. The program below is an excerpt of
 `crates/bota_server/examples/local_match.rs`; it plays two scripted heroes to
 the end of a match:
 
@@ -230,7 +232,7 @@ platform. The rules that keep it so:
   the slots up or down by a coin drawn every tick, the blows landing in one tick
   are felt in an order drawn afresh, and a target choice tied on everything else
   goes by a rank hashed from the match seed and the two slots.
-- At most one pending order per seat; a tick's commands are applied in slot order.
+- At most one order per seat takes effect on a tick; a tick's orders are applied in slot order.
 - Only value-stable external primitives: randomness is `ChaCha8Rng`
   (never `StdRng`), and the state hash is FNV-1a, not `DefaultHasher`.
 - Randomness is split into streams by purpose, so a new draw in one place does
@@ -249,7 +251,8 @@ random streams, pending random outcomes) is never put on the wire; the types in
 A replay (`--replay FILE`) is a stream of framed `ReplayRecord`s: the fogless
 spectator messages plus the orders accepted on each tick. It plays back without
 a server; the client reads frames from the file instead of a socket. It contains
-no seed and is not re-simulated, so it survives later rule changes. The player is
+no seed and is not re-simulated, so it survives rule changes that leave the wire alone;
+any wire change, even an appended field, makes older replays undecodable. The player is
 in `bota_client_core` behind the `ui` feature.
 
 ## Tests and benchmarks
@@ -262,6 +265,8 @@ cargo fmt --all --check
 cargo check --target wasm32-unknown-unknown -p bota_client_core -p bota_proto --features bota_client_core/ui
 cargo bench -p bota_server --bench dummy
 ```
+
+The `phase-profile` feature of `bota_server` times the regions of a tick for profiling.
 
 The `wasm32` check keeps the client crates building for a browser: the socket transports are
 desktop-only there, and a browser front end brings its own `LiveLink` for a live match.
