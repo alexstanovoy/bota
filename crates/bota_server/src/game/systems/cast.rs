@@ -1,4 +1,5 @@
-//! Casting abilities: what starts one, what it costs, and what each one does.
+//! Casting abilities: the checks, the cost, and the charges a cast hands
+//! enemy items.
 
 use bota_core::{ability_def, at_home_shop, item_def, rules};
 use bota_proto::{AbilityId, AbilitySlot, EventKind, Fixed, Target, Team, UnitKind, Vec2};

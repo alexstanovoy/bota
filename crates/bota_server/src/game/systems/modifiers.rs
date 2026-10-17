@@ -83,7 +83,8 @@ impl World {
 
     /// Does every modifier's work for the tick: what burns takes health on
     /// the beat, a Blood Grenade's debuff on every whole second of its own,
-    /// and the rot puts its burn and slow on everything standing in it. Their time runs down in [`World::tick_gear`].
+    /// and the rot puts its burn and slow on everything standing in it.
+    /// Their time runs down in [`World::tick_gear`].
     ///
     /// A burn that is not lethal stops one short of the last point.
     pub fn tick_modifiers(&mut self) {
@@ -143,9 +144,8 @@ impl World {
     }
 
     /// Burns and slows every unit of another side with a hull standing in
-    /// one entity's rot.
-    /// Its owner burns by the same amount, never to death, and is not
-    /// slowed.
+    /// one entity's rot. Its owner burns by the same amount, never to death,
+    /// and is not slowed.
     ///
     /// What it does is handed out afresh every tick for two ticks, so walking
     /// out of it or switching it off lifts it. A rot whose owner is dead goes
