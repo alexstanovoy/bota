@@ -2,7 +2,7 @@
 
 use bota_core::{CAMPS, CellGrid, MAPS, MELEE_CREEP, RANGED_CREEP, map_of, rules};
 
-use crate::game::{EventVisibility, Health, World, wire_id};
+use crate::game::{Entity, EventVisibility, Health, World, wire_id};
 use bota_proto::{Fixed, HeroId, ItemId, MapId, Target, Team, UnitKind, Vec2};
 
 use super::support::*;
@@ -236,7 +236,10 @@ fn a_strike_from_high_ground_shows_the_striker_to_the_side_struck_for_two_second
 #[test]
 fn the_dire_mid_tier_two_tower_does_not_see_into_the_camp_behind_its_trees() {
     let map = map_of(MapId(0));
-    let world = World::on_map(map);
+    let mut world = World::on_map(map);
+    // By day, when the tower sees furthest.
+    world.tick = rules::PREGAME_TICKS;
+    world.settle();
     let tower = map
         .dire_towers
         .iter()
@@ -249,7 +252,7 @@ fn the_dire_mid_tier_two_tower_does_not_see_into_the_camp_behind_its_trees() {
         .position(|camp| camp.pos == Vec2::from_ints(10280, 11796))
         .expect("the camp is on the map");
     let home = CAMPS[camp].pos;
-    let reach = rules::units(rules::TOWER_VISION);
+    let reach = rules::units(rules::TOWER_DAY_VISION);
     assert!(
         tower.within(home, reach),
         "the camp lies inside the tower's sight radius"
@@ -401,7 +404,7 @@ fn the_client_pictures_the_servers_sight_cell_for_cell() {
     let n = rules::GRID_CELLS;
     let mut lit = vec![false; n * n];
     ground.lit(view, Team::Dire, &mut lit);
-    let reach = rules::TOWER_VISION / rules::GRID_CELL_SIZE + 1;
+    let reach = rules::TOWER_DAY_VISION / rules::GRID_CELL_SIZE + 1;
     let (tx, ty) = CellGrid::cell_of(tower).expect("on the map");
     let mut differ = Vec::new();
     let mut seen = 0;
@@ -416,4 +419,81 @@ fn the_client_pictures_the_servers_sight_cell_for_cell() {
     }
     assert!(seen > 1000, "the tower sees a wide field");
     assert!(differ.is_empty(), "the client differs at {differ:?}");
+}
+
+/// Whether a side is told of a unit, and how far its own hero sees, as the
+/// side's view of the current tick says.
+fn told_and_hero_sight(world: &World, mark: Entity) -> (bool, i32) {
+    let view = world.view(Team::Radiant);
+    let hero = view
+        .units
+        .iter()
+        .find(|u| u.kind == UnitKind::Hero)
+        .expect("its own hero is always told");
+    let told = view.units.iter().any(|u| u.id == wire_id(mark));
+    (told, hero.vision_radius.to_int())
+}
+
+#[test]
+fn a_heros_sight_is_night_vision_through_the_pregame_and_the_night_and_day_vision_by_day() {
+    let between = (rules::HERO_DAY_VISION + rules::HERO_NIGHT_VISION) / 2;
+    let mut world = World::new();
+    hero_at(&mut world, Vec2::from_ints(1000, 1000));
+    let mark = world.spawn_unit(
+        &MELEE_CREEP,
+        Team::Dire,
+        Vec2::from_ints(1000 + between, 1000),
+    );
+    world.settle();
+    let mut seen = Vec::new();
+    while world.tick < rules::PREGAME_TICKS + 2 * rules::HALF_DAY_TICKS {
+        let (told, sight) = told_and_hero_sight(&world, mark);
+        let night = bota_core::time_of_day(world.tick).night;
+        let sees = if night {
+            rules::HERO_NIGHT_VISION
+        } else {
+            rules::HERO_DAY_VISION
+        };
+        assert_eq!((told, sight), (!night, sees), "on tick {}", world.tick);
+        if seen.last() != Some(&night) {
+            seen.push(night);
+        }
+        world.step();
+    }
+    assert_eq!(
+        seen,
+        [true, false, true],
+        "the pregame is night, the horn breaks the first day, the night falls five minutes on"
+    );
+    let dawn = rules::PREGAME_TICKS + 2 * rules::HALF_DAY_TICKS;
+    assert_eq!(world.tick, dawn);
+    assert!(
+        told_and_hero_sight(&world, mark).0,
+        "and the second dawn opens the fog over it again"
+    );
+}
+
+#[test]
+fn a_tier_one_tower_sees_less_far_by_night_than_the_towers_behind_it() {
+    let mut world = World::on_map(map_of(MapId(0)));
+    world.tick = rules::PREGAME_TICKS + rules::HALF_DAY_TICKS;
+    world.settle();
+    let view = world.view_full();
+    let sight_of = |tier: u8| {
+        let tower = world
+            .entities
+            .iter()
+            .find(|e| world.tier.get(*e).is_some_and(|t| t.0 == tier))
+            .expect("every tier stands");
+        view.units
+            .iter()
+            .find(|u| u.id == wire_id(tower))
+            .expect("every building is told")
+            .vision_radius
+            .to_int()
+    };
+    assert_eq!(sight_of(1), 800);
+    for tier in 2..=4 {
+        assert_eq!(sight_of(tier), 1100, "tier {tier}");
+    }
 }

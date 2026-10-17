@@ -322,7 +322,8 @@ pub const NEUTRAL_SPAWN_PERIOD_TICKS: u32 = 60 * TICKS_PER_SECOND;
 pub const NEUTRAL_COLLISION: i32 = 27;
 /// Neutral creep bound radius, the hero hull's.
 pub const NEUTRAL_BOUND: i32 = 24;
-/// Neutral creep fog light radius.
+/// Neutral creep fog light radius, by day and by night alike unless a kind
+/// says otherwise.
 pub const NEUTRAL_VISION: i32 = 800;
 
 // Creep waves.
@@ -332,6 +333,10 @@ pub const NEUTRAL_VISION: i32 = 800;
 pub const PREGAME_TICKS: u32 = 30 * TICKS_PER_SECOND;
 /// Tick of the first creep wave.
 pub const FIRST_WAVE_TICK: u32 = PREGAME_TICKS;
+/// Ticks a daytime or a nighttime lasts: five minutes each, so a whole day
+/// is ten (Liquipedia, Time of Day, since 7.20). The pregame is night and the
+/// first day breaks at the horn (since 7.28).
+pub const HALF_DAY_TICKS: u32 = 5 * 60 * TICKS_PER_SECOND;
 /// Ticks between creep waves.
 pub const WAVE_PERIOD_TICKS: u32 = 900;
 /// Melee creeps in a wave before the count grows.
@@ -442,8 +447,11 @@ pub const HERO_MAGIC_RESIST_PCT: i32 = 25;
 pub const HERO_COLLISION: i32 = 27;
 /// Hero bound radius, the Dota hero hull.
 pub const HERO_BOUND: i32 = 24;
-/// Hero fog light radius.
-pub const HERO_VISION: i32 = 1800;
+/// Hero fog light radius by day: `npc_dota_hero_base`'s
+/// `VisionDaytimeRange` (client 6957).
+pub const HERO_DAY_VISION: i32 = 1800;
+/// Hero fog light radius by night: its `VisionNighttimeRange`.
+pub const HERO_NIGHT_VISION: i32 = 800;
 /// Hero attributes at level one.
 pub const HERO_ATTRIBUTES: Attributes = Attributes {
     strength: Fixed::from_int(20),
@@ -568,7 +576,7 @@ pub const SIEGE_CREEP_XP: i32 = 88;
 pub const CREEP_MOVE_SPEED: i32 = 325;
 /// Milliseconds between creep attack starts.
 pub const CREEP_ATTACK_TIME: u32 = 1000;
-/// Creep fog light radius.
+/// Lane creep fog light radius, by day and by night alike.
 pub const CREEP_VISION: i32 = 750;
 
 // Super and mega creeps: what a wave grows into once the enemy barracks that
@@ -684,8 +692,11 @@ pub const FLAGBEARER_AURA_MAGIC_RESIST_CAP: u32 = 15;
 pub const TOWER_COLLISION: i32 = 144;
 /// Tower bound radius, the Dota tower hull.
 pub const TOWER_BOUND: i32 = 144;
-/// Tower fog light radius.
-pub const TOWER_VISION: i32 = 1900;
+/// Tower fog light radius by day.
+pub const TOWER_DAY_VISION: i32 = 1900;
+/// Tower fog light radius by night, by tier less one: a tier-one tower sees
+/// 800, the towers behind it 1100 (`npc_units.txt`, client 6957).
+pub const TOWER_NIGHT_VISION: [i32; 4] = [800, 1100, 1100, 1100];
 
 /// Melee barracks health.
 pub const RAX_MELEE_HP: i32 = 2200;
@@ -705,8 +716,10 @@ pub const RAX_RANGED_BOUNTY: i32 = 150;
 pub const RAX_COLLISION: i32 = 160;
 /// Barracks bound radius, the Dota barracks hull.
 pub const RAX_BOUND: i32 = 144;
-/// Barracks fog light radius.
-pub const RAX_VISION: i32 = 900;
+/// Barracks fog light radius by day.
+pub const RAX_DAY_VISION: i32 = 900;
+/// Barracks fog light radius by night.
+pub const RAX_NIGHT_VISION: i32 = 600;
 
 /// Filler health.
 pub const FILLER_HP: i32 = 1000;
@@ -716,8 +729,10 @@ pub const FILLER_ARMOR: i32 = 10;
 pub const FILLER_BOUNTY: i32 = 68;
 /// Filler collision size and bound radius, the Dota filler hull.
 pub const FILLER_COLLISION: i32 = 96;
-/// Filler fog light radius, its daytime vision.
-pub const FILLER_VISION: i32 = 900;
+/// Filler fog light radius by day.
+pub const FILLER_DAY_VISION: i32 = 900;
+/// Filler fog light radius by night.
+pub const FILLER_NIGHT_VISION: i32 = 600;
 
 /// Ancient health.
 pub const ANCIENT_HP: i32 = 4500;
@@ -731,7 +746,7 @@ pub const RADIANT_ANCIENT_BOUND: i32 = 299;
 pub const DIRE_ANCIENT_COLLISION: i32 = 390;
 /// The Dire Ancient's bound radius, its own model's.
 pub const DIRE_ANCIENT_BOUND: i32 = 374;
-/// Ancient fog light radius.
+/// Ancient fog light radius, by day and by night alike.
 pub const ANCIENT_VISION: i32 = 2600;
 
 /// Fountain health. It is never lost: the fountain is invulnerable.
@@ -750,7 +765,7 @@ pub const FOUNTAIN_PROJECTILE_SPEED: i32 = 1400;
 pub const FOUNTAIN_COLLISION: i32 = 144;
 /// Fountain bound radius, the Dota tower hull.
 pub const FOUNTAIN_BOUND: i32 = 144;
-/// Fountain fog light radius.
+/// Fountain fog light radius, by day and by night alike.
 pub const FOUNTAIN_VISION: i32 = 1800;
 /// Percent of its maximum health the fountain mends a second on its own
 /// side: Dota 7.41f's Rejuvenation Aura, full in twenty seconds
@@ -946,7 +961,7 @@ pub const GRENADE_DEBUFF_TICKS: u32 = 5 * TICKS_PER_SECOND + 1;
 pub const COURIER_HP: i32 = 250;
 /// World units a second a courier flies.
 pub const COURIER_MOVE_SPEED: i32 = 380;
-/// How far a courier sees.
+/// How far a courier sees, by day and by night alike.
 pub const COURIER_VISION: i32 = 200;
 /// Ticks a courier waits before it comes back.
 pub const COURIER_RESPAWN_TICKS: u32 = 25 * TICKS_PER_SECOND;

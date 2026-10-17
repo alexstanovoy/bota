@@ -96,6 +96,15 @@
 //! distribution for 25%, and gold bounties and damage ranges are plain draws
 //! from hidden streams.
 //!
+//! # Day and night
+//!
+//! The time of day crosses no wire: it is a pure function of the tick
+//! (`bota_core::time_of_day`), the same for every viewer and every match.
+//! The pregame is night, the first day breaks at the horn and each half of
+//! the day lasts five minutes. What a unit sees by at the moment rides in its
+//! [`UnitView::vision_radius`](crate::UnitView::vision_radius), and a client
+//! draws its fog from that.
+//!
 //! # Wire fingerprint
 //!
 //! A client sends [`WIRE_FINGERPRINT`](crate::WIRE_FINGERPRINT) in its

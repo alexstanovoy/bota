@@ -3,8 +3,11 @@
 //! Transcribed from the game's `scripts/npc/npc_units.txt`, client 6874
 //! (2026-07-31): health, damage range, armor, magic resistance, base attack
 //! time, attack point, acquisition and attack range, missile speed, move
-//! speed, turn rate, vision and bounty. None of them sets `BoundsHullName`,
-//! and the template they inherit, `npc_dota_units_base`, is hero-sized, so
+//! speed, turn rate, vision and bounty; night vision from client 6957
+//! (2026-10-09), where Kobold, Forest Troll High Priest, Harpy Scout, the
+//! thunder lizards and Ice Shaman see 800 by night and the rest as by day.
+//! None of them sets `BoundsHullName`, and the template they inherit,
+//! `npc_dota_units_base`, is hero-sized, so
 //! every neutral has the hero's hull. Their abilities (auras, stuns, heals,
 //! the mud golem's split) are not modelled. The camp a kind belongs to and
 //! what a camp draws are elsewhere; this is only what one of them is worth.
@@ -130,7 +133,8 @@ const NEUTRAL_BASE: UnitDef = UnitDef {
     magic_resist_pct: 0,
     move_speed: 0,
     turn_rate: 0,
-    vision: rules::NEUTRAL_VISION,
+    day_vision: rules::NEUTRAL_VISION,
+    night_vision: rules::NEUTRAL_VISION,
     collision: rules::NEUTRAL_COLLISION,
     bound: rules::NEUTRAL_BOUND,
     invulnerable: false,
@@ -159,7 +163,8 @@ const NEUTRAL_BASE: UnitDef = UnitDef {
 pub const NEUTRALS: [UnitDef; 36] = [
     // Kobold
     UnitDef {
-        vision: 1400,
+        day_vision: 1400,
+        night_vision: 800,
         max_hp: 240,
         damage: 15,
         damage_spread: 1,
@@ -236,7 +241,8 @@ pub const NEUTRALS: [UnitDef; 36] = [
     },
     // ForestTrollHighPriest
     UnitDef {
-        vision: 1400,
+        day_vision: 1400,
+        night_vision: 800,
         max_hp: 450,
         damage: 28,
         damage_spread: 6,
@@ -256,7 +262,8 @@ pub const NEUTRALS: [UnitDef; 36] = [
     },
     // GnollAssassin
     UnitDef {
-        vision: 400,
+        day_vision: 400,
+        night_vision: 400,
         max_hp: 400,
         damage: 25,
         damage_spread: 2,
@@ -314,7 +321,8 @@ pub const NEUTRALS: [UnitDef; 36] = [
     },
     // HarpyScout
     UnitDef {
-        vision: 1200,
+        day_vision: 1200,
+        night_vision: 800,
         max_hp: 400,
         damage: 28,
         damage_spread: 6,
@@ -334,7 +342,8 @@ pub const NEUTRALS: [UnitDef; 36] = [
     },
     // HarpyStorm
     UnitDef {
-        vision: 1800,
+        day_vision: 1800,
+        night_vision: 1800,
         max_hp: 500,
         damage: 30,
         damage_spread: 6,
@@ -772,7 +781,8 @@ pub const NEUTRALS: [UnitDef; 36] = [
     },
     // SmallThunderLizard
     UnitDef {
-        vision: 1400,
+        day_vision: 1400,
+        night_vision: 800,
         max_hp: 800,
         damage: 32,
         damage_spread: 2,
@@ -792,7 +802,8 @@ pub const NEUTRALS: [UnitDef; 36] = [
     },
     // BigThunderLizard
     UnitDef {
-        vision: 1400,
+        day_vision: 1400,
+        night_vision: 800,
         max_hp: 1700,
         damage: 60,
         damage_spread: 5,
@@ -831,7 +842,8 @@ pub const NEUTRALS: [UnitDef; 36] = [
     },
     // IceShaman
     UnitDef {
-        vision: 1400,
+        day_vision: 1400,
+        night_vision: 800,
         max_hp: 1500,
         damage: 58,
         damage_spread: 4,

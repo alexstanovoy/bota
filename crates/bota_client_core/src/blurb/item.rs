@@ -51,7 +51,7 @@ fn use_key(effect: &UseSpec, key: &str) -> Option<String> {
             Pool::Mana => "MP",
         }
         .to_string(),
-        (UseSpec::Ward { unit, .. }, "ward_vision") => unit.vision.to_string(),
+        (UseSpec::Ward { unit, .. }, "ward_vision") => unit.day_vision.to_string(),
         (UseSpec::Phase { pct, .. }, "phase_pct") => pct.to_string(),
         (UseSpec::Phase { ranged_pct, .. }, "phase_ranged_pct") => ranged_pct.to_string(),
         (UseSpec::Phase { ticks, .. }, "phase_secs") => secs(*ticks),

@@ -33,6 +33,8 @@ pub struct StatsCx<'a> {
     pub health: &'a mut Table<Health>,
     /// Mana, which follows its maximum.
     pub mana: &'a mut Table<Mana>,
+    /// Whether it is night, which every unit sees by.
+    pub night: bool,
 }
 
 /// Rewrites every entity's [`Stats`] from the kind of unit it is, how far it
@@ -67,6 +69,7 @@ fn derive_stats_impl<const APPLIED: bool>(cx: StatsCx<'_>) {
         stats,
         health,
         mana,
+        night,
     } = cx;
     for entity in entities.iter() {
         let Some(Def(kind)) = def.get(entity) else {
@@ -74,7 +77,7 @@ fn derive_stats_impl<const APPLIED: bool>(cx: StatsCx<'_>) {
         };
         let levels = level.get(entity).map_or(0, |l| i32::from(l.0.max(1) - 1));
         let steps = upgrades.get(entity).map_or(0, |u| u.0 as i32);
-        let mut now = raised(kind, levels, steps);
+        let mut now = raised(kind, levels, steps, night);
         // Applied changes are folded in first and additively. Items,
         // attributes and every multiplier below land on top of them.
         if APPLIED && let Some(on_it) = applied.get(entity) {
@@ -380,8 +383,9 @@ fn agility_pace(has: Attributes) -> i32 {
     (has.agility * Fixed::from_int(rules::ATTACK_SPEED_PER_AGILITY)).to_int()
 }
 
-/// The plain form of a kind raised by `levels` levels and `steps` upgrades.
-fn raised(kind: &UnitDef, levels: i32, steps: i32) -> Stats {
+/// The plain form of a kind raised by `levels` levels and `steps` upgrades,
+/// seeing by night or by day.
+fn raised(kind: &UnitDef, levels: i32, steps: i32, night: bool) -> Stats {
     let gained = |g: &Growth, per: &Growth| Growth {
         attributes: g.attributes.scaled(Fixed::from_int(levels))
             + per.attributes.scaled(Fixed::from_int(steps)),
@@ -423,7 +427,11 @@ fn raised(kind: &UnitDef, levels: i32, steps: i32) -> Stats {
         pierce_damage: 0,
         move_speed: Fixed::from_int(kind.move_speed),
         turn_rate: kind.turn_rate,
-        vision: Fixed::from_int(kind.vision),
+        vision: Fixed::from_int(if night {
+            kind.night_vision
+        } else {
+            kind.day_vision
+        }),
         true_sight: Fixed::from_int(kind.true_sight),
         hides: kind.hides,
         flies: kind.flies,

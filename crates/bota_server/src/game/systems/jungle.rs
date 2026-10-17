@@ -67,10 +67,12 @@ impl World {
     ///
     /// A neutral gives up when it has been led past its guard distance for
     /// longer than its window, and takes nothing on again until it is back and
-    /// its block has run out.
+    /// its block has run out. At night it sleeps: nothing coming near wakes
+    /// it (Liquipedia, Time of Day: a neutral's aggro range is 0 by night).
     pub fn tick_jungle(&mut self) {
         let guard = rules::units(rules::NEUTRAL_GUARD_DISTANCE);
         let back = rules::units(rules::NEUTRAL_RETURN);
+        let night = bota_core::time_of_day(self.tick).night;
         let entities = self.take_entity_snapshot();
         let mut wakers = std::mem::take(&mut self.jungle_spots);
         let mut laid = false;
@@ -105,9 +107,10 @@ impl World {
                     ai.next_window = rules::NEUTRAL_SHORT_WINDOW;
                 }
             }
-            // Asleep it wakes for what comes right up to it; from further
-            // off nothing but a blow wakes it.
-            if !ai.awake && !ai.going_home && ai.reaggro_block == 0 {
+            // Asleep it wakes by day for what comes right up to it; from
+            // further off, and at night from anywhere, nothing but a blow
+            // wakes it.
+            if !ai.awake && !ai.going_home && ai.reaggro_block == 0 && !night {
                 if !laid {
                     self.lay_wakers(&mut wakers);
                     laid = true;

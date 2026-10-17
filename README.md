@@ -9,13 +9,14 @@ Current scope: 1v1, the Shadow Fiend and Pudge heroes, the Dota map, and a
 mid-only ruleset on that map, plus replays.
 
 - At Dota 7.41f's numbers: lane creeps and their waves, neutral creeps and their
-  camps, towers, and Shadow Fiend (his abilities, innate, talents and Attribute
-  Bonus) wherever the engine has the mechanic; the economy (passive gold, hero
-  kill, First Blood and assist gold, the fountain's mending); the shop's early
-  items (consumables, Quelling Blade, Magic Stick and Wand, the three bands,
-  Power Treads, Phase Boots, Blink Dagger and their parts), the Town Portal
-  Scroll, Wind Lace and Blood Grenade. The sources are named next to the tables
-  in `bota_core`.
+  camps, towers, day and night (every unit's day and night vision, neutral camps
+  asleep at night), and Shadow Fiend (his abilities, innate, talents and
+  Attribute Bonus) wherever the engine has the mechanic; the economy (passive
+  gold, hero kill, First Blood and assist gold, the fountain's mending); the
+  shop's early items (consumables, Quelling Blade, Magic Stick and Wand, the
+  three bands, Power Treads, Phase Boots, Blink Dagger and their parts), the
+  Town Portal Scroll, Wind Lace and Blood Grenade. The sources are named next to
+  the tables in `bota_core`.
 - Pudge is an older Pudge, not checked against 7.41f: Meat Hook, Rot, Flesh Heap
   as the 7.28-7.30 passive (magic resistance and a strength stack per enemy hero
   dying nearby, no Meat Shield) and Dismember; no innate ability, no talents, and
@@ -24,11 +25,10 @@ mid-only ruleset on that map, plus replays.
   components, boots, the early builds and a few later items.
 
 Not modelled, although a 1v1 mid in Dota uses it: runes of every kind, and with
-them the Bottle; day and night (night vision, neutrals asleep at night); the
-items the shop does not sell (Faerie Fire, Smoke of Deceit, Dust of Appearance,
-neutral items, ...); Aghanim's Scepter and Shard; the Glyph of Fortification;
-buyback; neutral creeps' abilities and auras; flooded camps; backdoor
-protection.
+them the Bottle; the items the shop does not sell (Faerie Fire, Smoke of
+Deceit, Dust of Appearance, neutral items, ...); Aghanim's Scepter and Shard;
+the Glyph of Fortification; buyback; neutral creeps' abilities and auras;
+flooded camps; backdoor protection.
 
 The simulation is authoritative on the server. A client receives what its side
 can see and sends orders; it cannot run the game itself.

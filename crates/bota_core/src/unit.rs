@@ -77,8 +77,10 @@ pub struct UnitDef {
     pub move_speed: i32,
     /// Brads per tick it turns.
     pub turn_rate: u16,
-    /// How far it sees, in world units.
-    pub vision: i32,
+    /// How far it sees by day, in world units.
+    pub day_vision: i32,
+    /// How far it sees by night, in world units.
+    pub night_vision: i32,
     /// How far it reveals what hides, in world units. Zero for whatever gives
     /// no true sight.
     pub true_sight: i32,
@@ -147,7 +149,8 @@ pub(crate) const BARE_UNIT: UnitDef = UnitDef {
     magic_resist_pct: 0,
     move_speed: 0,
     turn_rate: 0,
-    vision: 0,
+    day_vision: 0,
+    night_vision: 0,
     true_sight: 0,
     hides: false,
     flies: false,
@@ -185,7 +188,8 @@ pub const MELEE_CREEP: UnitDef = UnitDef {
     armor: rules::MELEE_CREEP_ARMOR,
     move_speed: rules::CREEP_MOVE_SPEED,
     turn_rate: rules::TURN_RATE_BRADS,
-    vision: rules::CREEP_VISION,
+    day_vision: rules::CREEP_VISION,
+    night_vision: rules::CREEP_VISION,
     collision: rules::MELEE_CREEP_COLLISION,
     bound: rules::MELEE_CREEP_BOUND,
     bounty_gold: rules::MELEE_CREEP_BOUNTY,
@@ -347,7 +351,8 @@ pub const HERO: UnitDef = UnitDef {
     magic_resist_pct: rules::HERO_MAGIC_RESIST_PCT,
     move_speed: rules::HERO_MOVE_SPEED,
     turn_rate: rules::TURN_RATE_BRADS,
-    vision: rules::HERO_VISION,
+    day_vision: rules::HERO_DAY_VISION,
+    night_vision: rules::HERO_NIGHT_VISION,
     collision: rules::HERO_COLLISION,
     bound: rules::HERO_BOUND,
     per_level: Growth {
@@ -373,7 +378,8 @@ pub const BARRACKS_MELEE: UnitDef = UnitDef {
     max_hp: rules::RAX_MELEE_HP,
     hp_regen: rules::RAX_MELEE_HP_REGEN,
     armor: rules::RAX_MELEE_ARMOR,
-    vision: rules::RAX_VISION,
+    day_vision: rules::RAX_DAY_VISION,
+    night_vision: rules::RAX_NIGHT_VISION,
     collision: rules::RAX_COLLISION,
     bound: rules::RAX_BOUND,
     bounty_gold: GoldRange::exactly(rules::RAX_MELEE_BOUNTY),
@@ -385,7 +391,8 @@ pub const BARRACKS_RANGED: UnitDef = UnitDef {
     kind: UnitKind::Barracks,
     max_hp: rules::RAX_RANGED_HP,
     armor: rules::RAX_RANGED_ARMOR,
-    vision: rules::RAX_VISION,
+    day_vision: rules::RAX_DAY_VISION,
+    night_vision: rules::RAX_NIGHT_VISION,
     collision: rules::RAX_COLLISION,
     bound: rules::RAX_BOUND,
     bounty_gold: GoldRange::exactly(rules::RAX_RANGED_BOUNTY),
@@ -397,7 +404,8 @@ pub const FILLER: UnitDef = UnitDef {
     kind: UnitKind::Filler,
     max_hp: rules::FILLER_HP,
     armor: rules::FILLER_ARMOR,
-    vision: rules::FILLER_VISION,
+    day_vision: rules::FILLER_DAY_VISION,
+    night_vision: rules::FILLER_NIGHT_VISION,
     collision: rules::FILLER_COLLISION,
     bound: rules::FILLER_COLLISION,
     bounty_gold: GoldRange::exactly(rules::FILLER_BOUNTY),
@@ -409,7 +417,8 @@ pub const RADIANT_ANCIENT: UnitDef = UnitDef {
     kind: UnitKind::Ancient,
     max_hp: rules::ANCIENT_HP,
     armor: rules::ANCIENT_ARMOR,
-    vision: rules::ANCIENT_VISION,
+    day_vision: rules::ANCIENT_VISION,
+    night_vision: rules::ANCIENT_VISION,
     collision: rules::RADIANT_ANCIENT_COLLISION,
     bound: rules::RADIANT_ANCIENT_BOUND,
     ..BARE_UNIT
@@ -453,7 +462,8 @@ pub const FOUNTAIN: UnitDef = UnitDef {
     attack_point: rules::FOUNTAIN_ATTACK_POINT,
     attack_backswing: rules::FOUNTAIN_ATTACK_BACKSWING,
     projectile_speed: Some(rules::FOUNTAIN_PROJECTILE_SPEED),
-    vision: rules::FOUNTAIN_VISION,
+    day_vision: rules::FOUNTAIN_VISION,
+    night_vision: rules::FOUNTAIN_VISION,
     collision: rules::FOUNTAIN_COLLISION,
     bound: rules::FOUNTAIN_BOUND,
     invulnerable: true,
@@ -469,7 +479,8 @@ pub const COURIER: UnitDef = UnitDef {
     max_hp: rules::COURIER_HP,
     move_speed: rules::COURIER_MOVE_SPEED,
     turn_rate: rules::TURN_RATE_BRADS,
-    vision: rules::COURIER_VISION,
+    day_vision: rules::COURIER_VISION,
+    night_vision: rules::COURIER_VISION,
     ..BARE_UNIT
 };
 
@@ -477,7 +488,8 @@ pub const COURIER: UnitDef = UnitDef {
 pub const OBSERVER_WARD: UnitDef = UnitDef {
     kind: UnitKind::Ward,
     max_hp: 200,
-    vision: 1600,
+    day_vision: 1600,
+    night_vision: 1600,
     hides: true,
     ..BARE_UNIT
 };
@@ -486,7 +498,8 @@ pub const OBSERVER_WARD: UnitDef = UnitDef {
 pub const SENTRY_WARD: UnitDef = UnitDef {
     kind: UnitKind::Ward,
     max_hp: 200,
-    vision: 0,
+    day_vision: 0,
+    night_vision: 0,
     true_sight: 1050,
     hides: true,
     ..BARE_UNIT
@@ -527,7 +540,8 @@ const fn tower_of(index: usize) -> UnitDef {
         projectile_speed: Some(rules::TOWER_PROJECTILE_SPEED),
         armor: rules::TOWER_TIER_ARMOR[index],
         turn_rate: rules::TOWER_TURN_RATE_BRADS,
-        vision: rules::TOWER_VISION,
+        day_vision: rules::TOWER_DAY_VISION,
+        night_vision: rules::TOWER_NIGHT_VISION[index],
         collision: rules::TOWER_COLLISION,
         bound: rules::TOWER_BOUND,
         bounty_gold: rules::TOWER_TIER_BOUNTY[index],
