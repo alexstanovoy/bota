@@ -219,8 +219,13 @@ platform. The rules that keep it so:
   where a length is needed. Damage, gold and experience are integers.
 - No wall clock: time is ticks (30 per second).
 - No iteration over hash maps; `HashMap` and `HashSet` are denied by clippy in
-  the rule and client crates. Entities are visited in ascending slot order. Hash
-  maps in the server are used for lookup only, keyed by integers.
+  the rule and client crates. Entities are visited by slot; hash maps in the
+  server are used for lookup only, keyed by integers.
+- No side wins a race inside a tick by being spawned first (slots follow spawn
+  order, and a side's units spawn together): the systems that act in turn take
+  the slots up or down by a coin drawn every tick, the blows landing in one tick
+  are felt in an order drawn afresh, and a target choice tied on everything else
+  goes by a rank hashed from the match seed and the two slots.
 - At most one pending order per seat; a tick's commands are applied in slot order.
 - Only value-stable external primitives: randomness is `ChaCha8Rng`
   (never `StdRng`), and the state hash is FNV-1a, not `DefaultHasher`.

@@ -87,6 +87,7 @@ impl World {
                 .get(entity)
                 .and_then(|o| destination(&o.current))
             {
+                Some(dest) if self.marching(entity) => self.march_toward(entity, dest, scratch),
                 Some(dest) => self.walk_toward(entity, dest, Fixed::ZERO, scratch),
                 None => self.stand(entity),
             },
@@ -271,6 +272,151 @@ impl World {
             return;
         }
         self.follow_plan(&leg);
+    }
+
+    /// Whether a lane creep walks its lane, neither chasing nor looking for
+    /// a target it lost.
+    fn marching(&self, entity: Entity) -> bool {
+        self.march.get(entity).is_some()
+            && self
+                .lane_ai
+                .get(entity)
+                .is_none_or(|ai| ai.last_seen.is_none())
+    }
+
+    /// A lane creep's tick of marching: along its route, which keeps it off
+    /// the ground it cannot walk, and straight against any body in its way.
+    ///
+    /// Dota's lane creeps do not path round the units that block them; they
+    /// walk against them as if they were not there and are stuck until they
+    /// turn or the blocker goes (Liquipedia, *Unit Size*, Collision Size).
+    /// Walking against a body slides along its edge, so a creep met off
+    /// centre passes it, and only one met head on is held: what a creep
+    /// block keeps up by stepping back in front of the creep.
+    fn march_toward(&mut self, entity: Entity, dest: Vec2, scratch: &mut LocalScratch) {
+        let Some((from, step)) = self.walking_pace(entity, dest, Fixed::ZERO) else {
+            return;
+        };
+        // Nobody foresees a marcher by a plan: it has none.
+        self.stand(entity);
+        let collision = self.hull.get(entity).map_or(Fixed::ZERO, |h| h.collision);
+        let (aim, _) = self.lay_route(entity, from, dest, collision, &[]);
+        if self.route.get(entity).is_some_and(|route| route.done) || aim == from {
+            self.turn_to(entity, dest);
+            return;
+        }
+        let (Some(facing), Some(rate)) = (
+            self.transform.get(entity).map(|t| t.facing),
+            self.stats.get(entity).map(|stats| stats.turn_rate),
+        ) else {
+            return;
+        };
+        let wanted = facing_towards(from, aim);
+        let facing = turn_towards(facing, wanted, rate);
+        if let Some(transform) = self.transform.get_mut(entity) {
+            transform.facing = facing;
+        }
+        if facing_gap(facing, wanted) > rules::TURN_TOLERANCE_BRADS {
+            return;
+        }
+        // Held against a body it stands, and is not counted stalled: a stall
+        // is a planned walk's, which a creep chasing after being held must
+        // not start out with.
+        let next = move_towards(from, aim, step);
+        // The ground is the route's to get round, as Dota's lane creeps
+        // path round the map itself: a marcher put off its route by the
+        // bodies it slid along, its way back shut by a structure, walks
+        // that stretch as any walker does.
+        if !self.clearance.capsule_clear(from, next, collision) {
+            self.walk_toward(entity, dest, Fixed::ZERO, scratch);
+            return;
+        }
+        if let Some(to) = self.slide_past(entity, from, (next, aim), collision)
+            && self.clearance.capsule_clear(from, to, collision)
+        {
+            self.moved(entity, from, to);
+        }
+    }
+
+    /// Where a step against a body ends: the step itself with nobody in
+    /// the way, else what of it runs along the edge of the body it meets,
+    /// and nothing when that is no way at all, meets a second body, or the
+    /// body is a creep of its own lane further on, which it queues behind.
+    ///
+    /// Bodies are met where they stood when the tick began, so every
+    /// marcher steps at once and none walks into a gap another left this
+    /// tick: who moves first would otherwise shape the wave, and the slots
+    /// go to the side spawned first. Two that step into one spot are eased
+    /// apart after.
+    fn slide_past(
+        &self,
+        entity: Entity,
+        from: Vec2,
+        (next, aim): (Vec2, Vec2),
+        collision: Fixed,
+    ) -> Option<Vec2> {
+        if self.phased(entity) {
+            return Some(next);
+        }
+        let Some((blocker, centre, radius)) = self.stood_in_the_way(entity, from, next, collision)
+        else {
+            return Some(next);
+        };
+        if self.queues_behind(entity, blocker, from, centre, aim) {
+            return None;
+        }
+        let to = slide_along(from, next, centre, collision + radius)?;
+        (to != from && self.stood_in_the_way(entity, from, to, collision).is_none()).then_some(to)
+    }
+
+    /// Whether a marcher that walks into a creep of its own lane, further on
+    /// towards where both are going, stands behind it rather than sliding
+    /// past: the followers of a held lead creep queue up behind it ("the
+    /// creeps that follow will block each other", Gaming StackExchange; lane
+    /// creeps walk against what blocks them and are stuck, Liquipedia, *Unit
+    /// Size*). Nearer the aim is strictly further on, so two never wait on
+    /// each other.
+    fn queues_behind(
+        &self,
+        entity: Entity,
+        blocker: Entity,
+        from: Vec2,
+        centre: Vec2,
+        aim: Vec2,
+    ) -> bool {
+        self.march.get(blocker).is_some()
+            && self.team.get(blocker) == self.team.get(entity)
+            && self.lane.get(blocker) == self.lane.get(entity)
+            && centre.distance_squared(aim) < from.distance_squared(aim)
+    }
+
+    /// The body a step would walk into, where it stood when the tick began,
+    /// and its collision size: the nearest to where the step begins of those
+    /// the step ends inside and nearer their centre. Phased bodies are
+    /// walked through.
+    fn stood_in_the_way(
+        &self,
+        mover: Entity,
+        from: Vec2,
+        next: Vec2,
+        mine: Fixed,
+    ) -> Option<(Entity, Vec2, Fixed)> {
+        let mut best: Option<(i64, Entity, Vec2, Fixed)> = None;
+        self.bodies.near(next, mine, |body| {
+            if body.entity == mover || self.phased(body.entity) {
+                return;
+            }
+            let least = (mine + body.radius).squared_raw();
+            let ahead = next.distance_squared(body.at);
+            let near = from.distance_squared(body.at);
+            if ahead >= least || ahead >= near {
+                return;
+            }
+            if best.is_none_or(|(had, _, _, _)| near < had) {
+                best = Some((near, body.entity, body.at, body.radius));
+            }
+        });
+        best.map(|(_, entity, at, radius)| (entity, at, radius))
     }
 
     /// Where a walker stands and how far it walks this tick, or nothing
@@ -510,13 +656,17 @@ impl World {
     /// Every body a walker's plan is laid round, and where each will be.
     ///
     /// A hero is foreseen where it stands, and only when it has stood there
-    /// a while or has been run into again and again of late. Nothing is
+    /// a while or has been run into again and again of late. A hero walking
+    /// foresees every other body where it stands now: Dota's pathing takes
+    /// units for obstacles where they are and does not predict where they
+    /// go, so a hero sent into a creep's way walks into it. Nothing is
     /// foreseen for a phased walker, and a phased body is walked through.
     fn foreseen_about(&self, entity: Entity, from: Vec2, step: Fixed) -> Vec<Foreseen<'_>> {
         let mut foreseen = Vec::new();
         if self.phased(entity) {
             return foreseen;
         }
+        let hero_walks = self.hero.get(entity).is_some();
         let now = self.tick;
         let reach = Fixed {
             raw: step.raw.saturating_mul(rules::LOCAL_HORIZON_TICKS as i32),
@@ -543,6 +693,16 @@ impl World {
                         from: 0,
                     });
                 }
+                return;
+            }
+            if hero_walks {
+                foreseen.push(Foreseen {
+                    at,
+                    radius: body.radius,
+                    delta: Vec2::ZERO,
+                    steps: &[],
+                    from: 0,
+                });
                 return;
             }
             let (steps, plan_from) = self
@@ -638,6 +798,13 @@ impl World {
         let rate = self.stats.get(entity).map_or(0, |stats| stats.turn_rate);
         if let Some(transform) = self.transform.get_mut(entity) {
             transform.facing = turn_towards(transform.facing, facing_towards(from, to), rate);
+        }
+        self.moved(entity, from, to);
+    }
+
+    /// Puts a body where its step took it.
+    fn moved(&mut self, entity: Entity, from: Vec2, to: Vec2) {
+        if let Some(transform) = self.transform.get_mut(entity) {
             transform.pos = to;
         }
         if let Some(motion) = self.motion.get_mut(entity) {
@@ -948,4 +1115,45 @@ fn visible_along(
         at = point;
     }
     best.unwrap_or((points[0], points.len() == 1))
+}
+
+/// Where a step from one spot to another ends against a circle it would
+/// enter: the part of the step that runs across the line to the circle's
+/// centre, set back onto the circle's edge. Nothing when no part does,
+/// which is a step straight at the centre.
+fn slide_along(from: Vec2, next: Vec2, centre: Vec2, reach: Fixed) -> Option<Vec2> {
+    let (sx, sy) = (
+        i128::from(next.x.raw) - i128::from(from.x.raw),
+        i128::from(next.y.raw) - i128::from(from.y.raw),
+    );
+    let (nx, ny) = (
+        i128::from(from.x.raw) - i128::from(centre.x.raw),
+        i128::from(from.y.raw) - i128::from(centre.y.raw),
+    );
+    let norm = nx * nx + ny * ny;
+    if norm == 0 {
+        return None;
+    }
+    let inward = (sx * nx + sy * ny).min(0);
+    let (tx, ty) = (sx - nx * inward / norm, sy - ny * inward / norm);
+    if tx == 0 && ty == 0 {
+        return None;
+    }
+    // Off the centre by the tangent stretch, then out to the edge.
+    let (ox, oy) = (nx + tx, ny + ty);
+    let off = i128::from(isqrt64(i64::try_from(ox * ox + oy * oy).ok()?));
+    let edge = i128::from(reach.raw) + 1;
+    let (ox, oy) = if off < edge && off > 0 {
+        (ox * edge / off, oy * edge / off)
+    } else {
+        (ox, oy)
+    };
+    Some(Vec2 {
+        x: Fixed {
+            raw: i32::try_from(i128::from(centre.x.raw) + ox).ok()?,
+        },
+        y: Fixed {
+            raw: i32::try_from(i128::from(centre.y.raw) + oy).ok()?,
+        },
+    })
 }

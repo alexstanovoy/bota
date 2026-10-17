@@ -8,9 +8,9 @@ use crate::game::{
     AbilityBook, Action, AppliedModifiers, AuraCx, Auras, Bounty, CampHome, Candidates, Def,
     Entity, EntityAllocator, Errand, Expiry, Exposure, Forest, Handling, Health, Hit, HitCx, Hook,
     Hull, Inventory, Landed, Lane, LaneAi, Level, Loot, Mana, March, Mark, Missed, MissileCx,
-    Modifier, Modifiers, Motion, NeutralAi, Orders, Place, Plan, Projectile, Rax, RequiemLine,
-    Route, Seat, SightCx, SightScratch, SpawnModifier, Spots, Stacks, Stats, StatsCx, Table,
-    Target, Tier, Transform, UnitOrder, Upgrades, Visibility, aura_system, derive_stats,
+    Modifier, Modifiers, Motion, NeutralAi, Orders, Place, Plan, Projectile, Purpose, Rax,
+    RequiemLine, Route, Seat, SightCx, SightScratch, SpawnModifier, Spots, Stacks, Stats, StatsCx,
+    Table, Target, Tier, Transform, UnitOrder, Upgrades, Visibility, aura_system, derive_stats,
     hitting_system, missile_system, regenerate, visibility_system,
 };
 use crate::profile::{Phase, ScopeGuard};
@@ -79,6 +79,9 @@ pub struct World {
     pub entities: EntityAllocator,
     /// Reused stable entity snapshot for systems that mutate other world tables.
     pub(crate) entity_scratch: Vec<Entity>,
+    /// Whether this tick's systems take the entities from the last slot
+    /// down rather than from the first up. Drawn afresh every tick.
+    pub(crate) backwards: bool,
     /// Reused active-modifier buffer for systems that edit modifiers while
     /// reading them.
     pub(crate) modifier_scratch: Vec<Modifier>,
@@ -239,6 +242,7 @@ impl World {
             lane_routes: None,
             entities: EntityAllocator::new(),
             entity_scratch: Vec::new(),
+            backwards: false,
             modifier_scratch: Vec::new(),
             sight_scratch: SightScratch::new(),
             candidates: Candidates::default(),
@@ -301,11 +305,29 @@ impl World {
         ScopeGuard::new(phase, self.tick, self.entities.len())
     }
 
-    /// Takes a reusable stable snapshot of all entities currently standing.
+    /// Where one entity puts another among those it cannot otherwise tell
+    /// apart: a rank drawn from the match's seed for the pair of slots, the
+    /// same every tick, so ties go to neither side by standing.
+    pub(crate) fn tie_rank(&self, seeker: Entity, candidate: Entity) -> u64 {
+        let seed = self.rng.seed();
+        let mut key = u64::from_le_bytes([
+            seed[0], seed[1], seed[2], seed[3], seed[4], seed[5], seed[6], seed[7],
+        ]);
+        for part in [seeker.index().0, candidate.index().0] {
+            key = mix64(key ^ u64::from(part));
+        }
+        key
+    }
+
+    /// Takes a reusable stable snapshot of all entities currently standing,
+    /// in the order this tick takes them.
     pub(crate) fn take_entity_snapshot(&mut self) -> Vec<Entity> {
         let mut entities = std::mem::take(&mut self.entity_scratch);
         assert!(entities.is_empty());
         entities.extend(self.entities.iter());
+        if self.backwards {
+            entities.reverse();
+        }
         entities
     }
 
@@ -583,6 +605,11 @@ impl World {
         }
         let mut events = Vec::new();
         self.tick += 1;
+        // Who acts first within a tick wins every race decided in it: a
+        // blow, a step into a gap, a target taken. Slots go to the side
+        // spawned first, and in Dota neither side wins by standing, so each
+        // tick takes them up or down the slots by a coin.
+        self.backwards = self.rng.global(Purpose::TickOrder).below(2) == 1;
         let _profile = self.scope(Phase::Tick);
         self.step_upkeep();
         self.step_effects();
@@ -738,11 +765,27 @@ impl World {
         events.append(&mut self.events);
     }
 
+    /// Puts the blows landing this tick in an order drawn afresh.
+    ///
+    /// They were queued in the order their dealers act, which is slot order,
+    /// the side spawned first ahead: whichever blow is felt first takes a
+    /// last hit both sides land in the same tick, and in Dota neither side
+    /// wins such a race by standing.
+    fn shuffle_hits(&mut self) {
+        let hits = self.hits.make_contiguous();
+        let order = self.rng.global(Purpose::HitOrder);
+        for last in (1..hits.len()).rev() {
+            let pick = order.below(u32::try_from(last + 1).unwrap_or(u32::MAX)) as usize;
+            hits.swap(last, pick);
+        }
+    }
+
     /// Blows felt, then what answers to them: drinks and item cooldowns
     /// broken, camps roused, damage credited, events and misses told, the
     /// dead buried.
     fn step_damage(&mut self, events: &mut Vec<crate::game::Event>) {
         let _profile = self.scope(Phase::Damage);
+        self.shuffle_hits();
         let amplified = self
             .hits
             .iter()
@@ -781,4 +824,13 @@ impl World {
             .collect();
         self.bury(fallen, events);
     }
+}
+
+/// SplitMix64's finaliser: every bit of the input moves every bit of the
+/// output. Integer only, the same on every platform.
+fn mix64(mut x: u64) -> u64 {
+    x = x.wrapping_add(0x9e37_79b9_7f4a_7c15);
+    x = (x ^ (x >> 30)).wrapping_mul(0xbf58_476d_1ce4_e5b9);
+    x = (x ^ (x >> 27)).wrapping_mul(0x94d0_49bb_1331_11eb);
+    x ^ (x >> 31)
 }

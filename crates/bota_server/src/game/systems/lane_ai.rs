@@ -49,8 +49,9 @@ impl World {
     /// The best thing this entity may take on within a reach.
     ///
     /// Ranked by what it is, then by what it is doing, then by how far off it
-    /// stands. The entity itself breaks a dead tie, so the answer is the same
-    /// on every run.
+    /// stands. A dead tie goes by a rank the match draws for each pair of
+    /// seeker and candidate: the same answer on every run and every tick,
+    /// and no side, spawned into the lower slots, taken first by standing.
     pub fn best_valid_in_range(
         &self,
         seeker: Entity,
@@ -60,20 +61,34 @@ impl World {
         let order = self.priority_of(seeker);
         let at = self.transform.get(seeker)?.pos;
         let _profile = self.scope(Phase::TargetQuery);
-        self.near(seeker, at, reach, candidates)
-            .filter(|candidate| *candidate != seeker && self.reachable(seeker, reach, *candidate))
-            .min_by_key(|candidate| {
-                let far = self
-                    .transform
-                    .get(*candidate)
-                    .map_or(i64::MAX, |t| isqrt64(at.distance_squared(t.pos)));
-                (
-                    self.class_priority(*candidate, order),
-                    self.threat_priority(seeker, *candidate),
-                    far,
-                    *candidate,
-                )
-            })
+        let mut best: Option<((u8, u8, i64), Entity)> = None;
+        for candidate in self.near(seeker, at, reach, candidates) {
+            if candidate == seeker || !self.reachable(seeker, reach, candidate) {
+                continue;
+            }
+            let far = self
+                .transform
+                .get(candidate)
+                .map_or(i64::MAX, |t| isqrt64(at.distance_squared(t.pos)));
+            let key = (
+                self.class_priority(candidate, order),
+                self.threat_priority(seeker, candidate),
+                far,
+            );
+            // The rank is drawn only for a dead tie, which is rare.
+            let better = best.is_none_or(|(had, held)| match key.cmp(&had) {
+                std::cmp::Ordering::Less => true,
+                std::cmp::Ordering::Equal => {
+                    (self.tie_rank(seeker, candidate), candidate)
+                        < (self.tie_rank(seeker, held), held)
+                }
+                std::cmp::Ordering::Greater => false,
+            });
+            if better {
+                best = Some((key, candidate));
+            }
+        }
+        best.map(|(_, candidate)| candidate)
     }
 
     /// What this entity should be set on this tick.

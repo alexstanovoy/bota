@@ -1,9 +1,9 @@
 //! The attack cycle and uphill misses.
 
-use bota_core::{MELEE_CREEP, attack_gain, rules};
+use bota_core::{MELEE_CREEP, attack_gain, facing_towards, rules};
 
-use crate::game::{ActionState, Command, Ground, Health};
-use bota_proto::{Angle, Fixed, Order, SlotId, Target, Team, Vec2};
+use crate::game::{ActionState, Command, Ground, Health, MatchRng, UnitOrder, World, wire_id};
+use bota_proto::{Angle, EventKind, Fixed, HeroId, Order, SlotId, Target, Team, Vec2};
 
 use super::support::*;
 
@@ -325,4 +325,62 @@ fn uphill_eligibility_uses_attacker_and_target_elevation_at_impact() {
         "the miss rate stays near one quarter"
     );
     assert_eq!(pierced_down, 512, "a shot that pierces never misses uphill");
+}
+
+/// A race set up the same for both sides, two heroes striking a neutral
+/// creep that stands as far from either: the creep turns on one of them, and
+/// one blow is felt first. Neither is settled by which side was spawned into
+/// the lower slots, so over matches each side takes its share of the kills.
+#[test]
+fn neither_side_takes_every_kill_of_an_even_race() {
+    let mut kills = [0u32; 2];
+    for seed in 0..40 {
+        let mut world = World::new();
+        world.rng = MatchRng::new(&[7; 32], seed);
+        let at = Vec2::from_ints(5000, 5000);
+        let mark = world.spawn_unit(&MELEE_CREEP, Team::Neutral, at);
+        let sides = [
+            (Team::Radiant, at - Vec2::from_ints(300, 0)),
+            (Team::Dire, at + Vec2::from_ints(300, 0)),
+        ]
+        .map(|(team, from)| {
+            let hero = world.spawn_hero(team, from, SlotId(0), HeroId::SHADOW_FIEND);
+            if let Some(transform) = world.transform.get_mut(hero) {
+                transform.facing = facing_towards(from, at);
+            }
+            hero
+        });
+        world.settle();
+        world.health.insert(
+            mark,
+            Health {
+                hp: Fixed::from_int(1),
+            },
+        );
+        for hero in sides {
+            world.set_order(
+                hero,
+                UnitOrder::Attack {
+                    target: mark,
+                    last_seen: at,
+                },
+            );
+        }
+        let killer = (0..90)
+            .flat_map(|_| world.step())
+            .find_map(|event| match event.kind {
+                EventKind::Died { unit, killer, .. } if unit == wire_id(mark) => killer,
+                _ => None,
+            })
+            .expect("the mark falls");
+        let side = sides
+            .iter()
+            .position(|hero| wire_id(*hero) == killer)
+            .expect("one of the two struck it");
+        kills[side] += 1;
+    }
+    assert!(
+        kills.iter().all(|won| *won >= 10),
+        "each side takes a fair share of the kills: {kills:?}"
+    );
 }
