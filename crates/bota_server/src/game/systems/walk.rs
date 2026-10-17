@@ -305,20 +305,6 @@ impl World {
             self.turn_to(entity, dest);
             return;
         }
-        let (Some(facing), Some(rate)) = (
-            self.transform.get(entity).map(|t| t.facing),
-            self.stats.get(entity).map(|stats| stats.turn_rate),
-        ) else {
-            return;
-        };
-        let wanted = facing_towards(from, aim);
-        let facing = turn_towards(facing, wanted, rate);
-        if let Some(transform) = self.transform.get_mut(entity) {
-            transform.facing = facing;
-        }
-        if facing_gap(facing, wanted) > rules::TURN_TOLERANCE_BRADS {
-            return;
-        }
         // Held against a body it stands, and is not counted stalled: a stall
         // is a planned walk's, which a creep chasing after being held must
         // not start out with.
@@ -331,9 +317,35 @@ impl World {
             self.walk_toward(entity, dest, Fixed::ZERO, scratch);
             return;
         }
-        if let Some(to) = self.slide_past(entity, from, (next, aim), collision)
-            && self.clearance.capsule_clear(from, to, collision)
-        {
+        let to = self
+            .slide_past(entity, from, (next, aim), collision)
+            .filter(|to| self.clearance.capsule_clear(from, *to, collision));
+        let Some(to) = to else {
+            self.turn_to(entity, aim);
+            return;
+        };
+        // A unit walks where it faces: it turns onto the way it steps, a
+        // slide along a body as much as the way to its aim, and sets off
+        // only once it faces within 11.5 degrees of it (Liquipedia, *Turn
+        // Rate*); under way it keeps walking while it comes round.
+        let (Some(facing), Some(rate)) = (
+            self.transform.get(entity).map(|t| t.facing),
+            self.stats.get(entity).map(|stats| stats.turn_rate),
+        ) else {
+            return;
+        };
+        let wanted = facing_towards(from, to);
+        let facing = turn_towards(facing, wanted, rate);
+        if let Some(transform) = self.transform.get_mut(entity) {
+            transform.facing = facing;
+        }
+        let under_way = self.motion.get(entity).is_some_and(|m| m.still <= 1);
+        let tolerance = if under_way {
+            rules::TURN_TOLERANCE_BRADS
+        } else {
+            rules::ATTACK_ANGLE_BRADS
+        };
+        if facing_gap(facing, wanted) <= tolerance {
             self.moved(entity, from, to);
         }
     }
@@ -374,8 +386,10 @@ impl World {
     /// past: the followers of a held lead creep queue up behind it ("the
     /// creeps that follow will block each other", Gaming StackExchange; lane
     /// creeps walk against what blocks them and are stuck, Liquipedia, *Unit
-    /// Size*). Nearer the aim is strictly further on, so two never wait on
-    /// each other.
+    /// Size*). Further on means nearer the marcher's own aim. Two creeps
+    /// aiming at different spots may each be nearer the other's aim; then
+    /// only the one further along the lane waits, so two never wait on each
+    /// other.
     fn queues_behind(
         &self,
         entity: Entity,
@@ -384,10 +398,38 @@ impl World {
         centre: Vec2,
         aim: Vec2,
     ) -> bool {
-        self.march.get(blocker).is_some()
-            && self.team.get(blocker) == self.team.get(entity)
-            && self.lane.get(blocker) == self.lane.get(entity)
-            && centre.distance_squared(aim) < from.distance_squared(aim)
+        if self.march.get(blocker).is_none()
+            || self.team.get(blocker) != self.team.get(entity)
+            || self.lane.get(blocker) != self.lane.get(entity)
+            || centre.distance_squared(aim) >= from.distance_squared(aim)
+        {
+            return false;
+        }
+        let theirs = self
+            .route
+            .get(blocker)
+            .map(|route| route.corners.first().copied().unwrap_or(route.end));
+        let mutual = theirs
+            .is_some_and(|theirs| from.distance_squared(theirs) < centre.distance_squared(theirs));
+        !mutual || self.lane_place(entity, from) < self.lane_place(blocker, centre)
+    }
+
+    /// How far on its lane a marcher standing at a spot is: the waypoint it
+    /// walks at next, then how near it stands to it. Greater is further on;
+    /// a slot breaks a dead tie, so the order is strict.
+    fn lane_place(&self, entity: Entity, at: Vec2) -> (u16, i64, u32) {
+        let next = self.march.get(entity).map_or(0, |march| march.next);
+        let waypoint = self
+            .team
+            .get(entity)
+            .zip(self.lane.get(entity))
+            .and_then(|(team, lane)| {
+                self.lane_routes.as_ref()?[bota_core::team_index(*team)][usize::from(lane.0)]
+                    .get(usize::from(next))
+                    .copied()
+            });
+        let near = waypoint.map_or(0, |waypoint| -at.distance_squared(waypoint));
+        (next, near, entity.index().0)
     }
 
     /// The body a step would walk into, where it stood when the tick began,
