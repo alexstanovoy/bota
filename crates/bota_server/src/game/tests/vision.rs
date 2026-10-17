@@ -25,7 +25,6 @@ fn a_world_built_on_a_map_stands_its_buildings_full() {
         .expect("a tower stands");
     assert_eq!(tower.hp, rules::TOWER_TIER_HP[0], "built and full");
     assert_eq!(tower.max_hp, rules::TOWER_TIER_HP[0]);
-    // The demo map raises no Ancients at all.
     assert!(
         !view.units.iter().any(|u| u.kind == UnitKind::Ancient),
         "no Ancient stands on the demo map"
