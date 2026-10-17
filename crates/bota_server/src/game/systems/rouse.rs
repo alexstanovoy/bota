@@ -107,7 +107,7 @@ impl World {
             return;
         };
         let reach = rules::units(rules::HERO_AGGRO_RANGE);
-        for creep in self.entities.iter().collect::<Vec<_>>() {
+        for creep in self.entities.iter() {
             let Some(mut ai) = self.lane_ai.get(creep).copied() else {
                 continue;
             };

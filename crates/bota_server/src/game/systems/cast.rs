@@ -89,7 +89,7 @@ impl World {
             return;
         };
         let reach = rules::units(rules::MAGIC_CHARGE_RANGE);
-        for other in self.entities.iter().collect::<Vec<_>>() {
+        for other in self.entities.iter() {
             if self.team.get(other).copied() == Some(side)
                 || self.kind.get(other).copied() != Some(UnitKind::Hero)
                 || !self

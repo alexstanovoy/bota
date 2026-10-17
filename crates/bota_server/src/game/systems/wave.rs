@@ -71,7 +71,14 @@ impl World {
         {
             return [CreepRank::Mega; 3];
         }
-        let down = |ranged: bool| self.all_down(their, StructureId::Barracks { lane, ranged });
+        let melee_down = self.all_down(
+            their,
+            StructureId::Barracks {
+                lane,
+                ranged: false,
+            },
+        );
+        let ranged_down = self.all_down(their, StructureId::Barracks { lane, ranged: true });
         let rank_of = |fallen: bool| {
             if fallen {
                 CreepRank::Super
@@ -80,9 +87,9 @@ impl World {
             }
         };
         [
-            rank_of(down(false)),
-            rank_of(down(true)),
-            rank_of(down(false) && down(true)),
+            rank_of(melee_down),
+            rank_of(ranged_down),
+            rank_of(melee_down && ranged_down),
         ]
     }
 

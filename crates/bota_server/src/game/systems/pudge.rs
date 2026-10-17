@@ -162,7 +162,7 @@ impl World {
             return;
         };
         let reach = rules::units(rules::FLESH_HEAP_RANGE);
-        for hero in self.entities.iter().collect::<Vec<_>>() {
+        for hero in self.entities.iter() {
             // The fallen is dead by now, so it is its side that is looked at,
             // not whether it could still be fought.
             let enemy = self.team.get(hero).is_some_and(|mine| *mine != theirs);

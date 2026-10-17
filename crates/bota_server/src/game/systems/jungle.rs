@@ -197,7 +197,7 @@ impl World {
             if !here.within(there, rules::units(rules::NEUTRAL_DAMAGE_AGGRO_RANGE)) {
                 continue;
             }
-            for beast in self.entities.iter().collect::<Vec<_>>() {
+            for beast in self.entities.iter() {
                 if self.camp_home.get(beast).map(|home| home.camp) != Some(struck.camp) {
                     continue;
                 }
