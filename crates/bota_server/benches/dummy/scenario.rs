@@ -155,7 +155,10 @@ fn stage(map: &'static MapDef) -> Stage {
     let from = map.creep_spawns[0][0];
     let to = map.creep_spawns[1][0];
     let mid = lerp(from, to, 1, 2);
-    let side = Vec2::from_ints(-568, 768);
+    // 600 off the middle: inside a hero's night sight from there, since the
+    // stage is set in the pregame's night, and the two sentries 1200 apart,
+    // further than either's true sight.
+    let side = Vec2::from_ints(-360, 480);
     let west = mid - side;
     let east = mid + side;
     let patrol = vec![

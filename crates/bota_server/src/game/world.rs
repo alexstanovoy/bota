@@ -690,6 +690,7 @@ impl World {
             stats: &mut self.stats,
             health: &mut self.health,
             mana: &mut self.mana,
+            night: bota_core::time_of_day(self.tick).night,
         });
         self.guard_structures();
     }

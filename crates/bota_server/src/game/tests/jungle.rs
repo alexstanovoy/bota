@@ -1,6 +1,6 @@
 //! Neutral camps.
 
-use bota_core::{CAMPS, OBSERVER_WARD, map_of, rules};
+use bota_core::{CAMPS, MELEE_CREEP, OBSERVER_WARD, UnitDef, map_of, rules};
 
 use crate::game::World;
 use bota_proto::{DamageKind, MapId, Team, Vec2};
@@ -108,6 +108,7 @@ fn a_neutral_sleeps_until_something_comes_right_up_to_it() {
         (rules::NEUTRAL_AGGRO_RANGE - 60, true),
     ] {
         let mut world = World::new();
+        world.tick = rules::PREGAME_TICKS;
         let beasts = a_camp_at(&mut world, camp);
         let hero = hero_at(&mut world, camp + Vec2::from_ints(apart, 0));
         world.settle();
@@ -116,9 +117,45 @@ fn a_neutral_sleeps_until_something_comes_right_up_to_it() {
         assert_eq!(
             world.target_of(beasts[0]) == Some(hero),
             wakes,
-            "standing {apart} off, waking should be {wakes}"
+            "standing {apart} off by day, waking should be {wakes}"
         );
     }
+}
+
+#[test]
+fn a_neutral_sleeps_through_the_night_with_an_enemy_at_its_side_and_wakes_at_dawn() {
+    let camp = Vec2::from_ints(5000, 5000);
+    let dawn = rules::PREGAME_TICKS + 2 * rules::HALF_DAY_TICKS;
+    let mut world = World::new();
+    world.tick = dawn - 40;
+    let beasts = a_camp_at(&mut world, camp);
+    // An onlooker that never swings: an idle hero swings at what stands in
+    // its reach, and the blow would wake the camp by itself.
+    const ONLOOKER: UnitDef = UnitDef {
+        acquisition: 0,
+        ..MELEE_CREEP
+    };
+    let onlooker = world.spawn_unit(
+        &ONLOOKER,
+        Team::Radiant,
+        camp + Vec2::from_ints(rules::NEUTRAL_AGGRO_RANGE - 60, 0),
+    );
+    world.settle();
+    while world.tick < dawn - 1 {
+        world.step();
+        assert!(
+            beasts.iter().all(|beast| world.target_of(*beast).is_none()),
+            "asleep at night on tick {}, whoever stands beside it",
+            world.tick
+        );
+    }
+    world.step();
+    world.step();
+    assert_eq!(
+        world.target_of(beasts[0]),
+        Some(onlooker),
+        "the day wakes it to what stands beside it"
+    );
 }
 
 #[test]

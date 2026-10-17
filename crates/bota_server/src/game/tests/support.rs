@@ -1013,7 +1013,8 @@ const UPHILL_TEST_OBSERVER: UnitDef = UnitDef {
     max_hp: 8_000,
     damage: 0,
     move_speed: 0,
-    vision: 2_000,
+    day_vision: 2_000,
+    night_vision: 2_000,
     ..MELEE_CREEP
 };
 

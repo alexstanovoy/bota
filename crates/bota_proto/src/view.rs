@@ -164,8 +164,8 @@ pub struct UnitView {
     /// Bound radius: where its edge is for attack range, cast range and
     /// areas, in world units.
     pub bound: Fixed,
-    /// How far this unit lights the fog for its own team, in world units.
-    /// Zero if it lights none.
+    /// How far this unit lights the fog for its own team at the moment, by
+    /// day or by night, in world units. Zero if it lights none.
     pub vision_radius: Fixed,
     /// How far it reveals what hides. Zero for whatever gives no true sight.
     pub true_sight_radius: Fixed,

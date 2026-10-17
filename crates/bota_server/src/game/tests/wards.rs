@@ -170,8 +170,8 @@ fn a_tower_reveals_what_hides_as_far_as_it_shoots() {
         "and what it could not, it cannot, however far it sees"
     );
     assert!(
-        rules::TOWER_VISION > reach,
-        "the two are not the same reach, or this test proves nothing"
+        rules::TOWER_NIGHT_VISION[0] > reach,
+        "the two are not the same reach even by night, or this test proves nothing"
     );
 }
 
@@ -248,8 +248,8 @@ fn each_ward_stands_up_what_its_own_item_names() {
         );
         assert_eq!(
             stats.vision.to_int(),
-            def.vision,
-            "and it sees what it sees"
+            def.night_vision,
+            "and it sees what it sees in the pregame's night"
         );
         assert_eq!(stats.hides, def.hides, "and hides as it should");
         let view = world.view(Team::Radiant);
