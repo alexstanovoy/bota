@@ -238,20 +238,14 @@ impl Planner {
             nodes.push((at % NODES, at / NODES));
         }
         nodes.reverse();
-        let mut corners: Vec<(usize, usize)> = Vec::new();
-        for i in 2..nodes.len() {
-            let dir = (
-                nodes[i].0 as i32 - nodes[i - 1].0 as i32,
-                nodes[i].1 as i32 - nodes[i - 1].1 as i32,
-            );
-            let prev_dir = (
-                nodes[i - 1].0 as i32 - nodes[i - 2].0 as i32,
-                nodes[i - 1].1 as i32 - nodes[i - 2].1 as i32,
-            );
-            if prev_dir != dir {
-                corners.push(nodes[i - 1]);
-            }
-        }
+        let step = |a: (usize, usize), b: (usize, usize)| {
+            (b.0 as i32 - a.0 as i32, b.1 as i32 - a.1 as i32)
+        };
+        let mut corners: Vec<(usize, usize)> = nodes
+            .windows(3)
+            .filter(|w| step(w[0], w[1]) != step(w[1], w[2]))
+            .map(|w| w[1])
+            .collect();
         corners.push(nodes[nodes.len() - 1]);
         corners
     }

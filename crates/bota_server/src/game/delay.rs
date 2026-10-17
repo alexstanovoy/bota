@@ -27,15 +27,9 @@ impl OrderDelay {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum OrderDelayError {
     /// Base and jitter together exceed [`MAX_ORDER_DELAY_TICKS`].
-    TooLong {
-        base: u32,
-        jitter: u32,
-    },
+    TooLong { base: u32, jitter: u32 },
     /// Neither one delay for every seat nor one per seat.
-    SeatCount {
-        seats: usize,
-        delays: usize,
-    },
+    SeatCount { seats: usize, delays: usize },
 }
 
 impl core::fmt::Display for OrderDelayError {

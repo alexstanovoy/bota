@@ -10,9 +10,7 @@ use crate::game::{
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MatchConfigError {
     /// More spawn modifiers than a match may carry.
-    TooManySpawnModifiers {
-        count: usize,
-    },
+    TooManySpawnModifiers { count: usize },
     /// One spawn modifier is not one a match may carry.
     SpawnModifier {
         at: usize,

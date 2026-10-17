@@ -241,17 +241,10 @@ impl Chance {
             return 0;
         }
         if num == den {
-            return if den == 64 {
-                u64::MAX
-            } else {
-                (1u64 << den) - 1
-            };
+            return u64::MAX >> (64 - den);
         }
-
-        let mut positions = [0u8; Ratio::MAX_DEN as usize];
-        for (i, p) in positions.iter_mut().enumerate().take(den) {
-            *p = i as u8;
-        }
+        // Only the first `den` positions are ever swapped or read.
+        let mut positions: [u8; Ratio::MAX_DEN as usize] = std::array::from_fn(|i| i as u8);
 
         // Partial Fisher-Yates: only the first `num` draws are needed.
         let mut mask = 0u64;

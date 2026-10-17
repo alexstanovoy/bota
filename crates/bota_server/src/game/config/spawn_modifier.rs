@@ -121,9 +121,7 @@ impl ModifierDuration {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SpawnModifierError {
     /// The selector asks to walk too many exact kinds and categories.
-    TooManyTargets {
-        count: usize,
-    },
+    TooManyTargets { count: usize },
     /// The spec does not lie within its bounds.
     UnboundedSpec,
     /// The duration is not one a match may carry.
