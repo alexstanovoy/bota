@@ -55,13 +55,6 @@ impl Fixed {
         self.raw >> Self::FRAC_BITS
     }
 
-    /// The fractional part, always in `0..1`.
-    pub const fn frac(self) -> Fixed {
-        Fixed {
-            raw: self.raw & ((1 << Self::FRAC_BITS) - 1),
-        }
-    }
-
     /// Distance from zero.
     pub const fn abs(self) -> Fixed {
         Fixed::from_i64((self.raw as i64).abs())

@@ -15,12 +15,10 @@ fn wire(msgs: &[ClientMsg]) -> Vec<u8> {
 fn nothing_is_yielded_before_a_whole_frame_arrives() {
     let mut reader = FrameReader::new();
     assert_eq!(reader.next_message::<ClientMsg>().unwrap(), None);
-    assert_eq!(reader.buffered(), 0);
 
     let bytes = wire(&all_client_msgs()[..1]);
     reader.push(&bytes[..LEN_PREFIX]);
     assert_eq!(reader.next_message::<ClientMsg>().unwrap(), None);
-    assert_eq!(reader.buffered(), LEN_PREFIX);
 }
 
 #[test]
@@ -38,7 +36,6 @@ fn one_byte_at_a_time() {
     }
 
     assert_eq!(got, msgs);
-    assert_eq!(reader.buffered(), 0);
 }
 
 #[test]
@@ -55,7 +52,6 @@ fn many_frames_in_one_push() {
     }
 
     assert_eq!(got, msgs);
-    assert_eq!(reader.buffered(), 0);
 }
 
 #[test]
@@ -72,14 +68,13 @@ fn a_trailing_partial_frame_is_kept() {
         got += 1;
     }
     assert_eq!(got, msgs.len() - 1, "the last frame is incomplete");
-    assert!(reader.buffered() > 0, "its bytes must be held, not dropped");
 
     reader.push(&bytes[cut..]);
     assert_eq!(
         reader.next_message::<ClientMsg>().unwrap(),
-        Some(msgs[msgs.len() - 1].clone())
+        Some(msgs[msgs.len() - 1].clone()),
+        "the partial frame's bytes were held, not dropped"
     );
-    assert_eq!(reader.buffered(), 0);
 }
 
 #[test]
@@ -165,12 +160,16 @@ fn a_frame_is_a_prefix_plus_its_payload() {
 }
 
 #[test]
-fn a_limited_reader_refuses_a_big_frame_and_hands_out_frames_whole() {
-    let mut reader = FrameReader::with_limit(8);
+fn frames_are_handed_out_whole_and_an_oversized_one_refused() {
+    let mut reader = FrameReader::new();
     let small = encode_frame_to_vec(&1u16).unwrap();
     reader.push(&small);
     assert_eq!(reader.next_frame(), Ok(Some(small)));
     assert_eq!(reader.next_frame(), Ok(None));
-    reader.push(&9u32.to_le_bytes());
-    assert_eq!(reader.next_frame(), Err(CodecError::TooLarge { len: 9 }));
+    let claimed = MAX_PAYLOAD_LEN + 1;
+    reader.push(&(claimed as u32).to_le_bytes());
+    assert_eq!(
+        reader.next_frame(),
+        Err(CodecError::TooLarge { len: claimed })
+    );
 }

@@ -68,13 +68,6 @@ fn rounding_goes_towards_negative_infinity() {
 }
 
 #[test]
-fn frac_is_always_the_positive_remainder() {
-    assert_eq!(Fixed::from_int(3).frac(), Fixed::ZERO);
-    assert_eq!((Fixed::from_int(3) + QUARTER).frac(), QUARTER);
-    assert_eq!((Fixed::from_int(-3) + QUARTER).frac(), QUARTER);
-}
-
-#[test]
 fn abs_removes_the_sign() {
     assert_eq!(Fixed::from_int(-5).abs(), Fixed::from_int(5));
     assert_eq!(Fixed::from_int(5).abs(), Fixed::from_int(5));

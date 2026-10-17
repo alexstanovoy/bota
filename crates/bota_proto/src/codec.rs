@@ -83,8 +83,6 @@ pub fn decode_payload<T: DeserializeOwned>(payload: &[u8]) -> Result<T, CodecErr
 #[derive(Clone, Debug, Default)]
 pub struct FrameReader {
     buf: Vec<u8>,
-    /// Largest payload this reader accepts; absent means [`MAX_PAYLOAD_LEN`].
-    limit: Option<usize>,
 }
 
 impl FrameReader {
@@ -93,23 +91,9 @@ impl FrameReader {
         Self::default()
     }
 
-    /// A reader that refuses payloads above `max_payload` bytes (and in any
-    /// case above [`MAX_PAYLOAD_LEN`]).
-    pub fn with_limit(max_payload: usize) -> Self {
-        Self {
-            buf: Vec::new(),
-            limit: Some(max_payload),
-        }
-    }
-
     /// Add bytes that just arrived.
     pub fn push(&mut self, bytes: &[u8]) {
         self.buf.extend_from_slice(bytes);
-    }
-
-    /// How many bytes are held but not yet part of a complete frame.
-    pub fn buffered(&self) -> usize {
-        self.buf.len()
     }
 
     /// Take the next complete message, or `None` if one has not fully arrived.
@@ -151,11 +135,7 @@ impl FrameReader {
         let mut prefix = [0u8; LEN_PREFIX];
         prefix.copy_from_slice(&self.buf[..LEN_PREFIX]);
         let len = u32::from_le_bytes(prefix) as usize;
-        if len
-            > self
-                .limit
-                .map_or(MAX_PAYLOAD_LEN, |l| l.min(MAX_PAYLOAD_LEN))
-        {
+        if len > MAX_PAYLOAD_LEN {
             return Err(CodecError::TooLarge { len });
         }
         Ok(Some(len))
