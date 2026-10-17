@@ -174,8 +174,11 @@ pub const ITEMS: [ItemDef; 54] = [
         }),
         ..PLAIN
     },
-    // Town Portal Scroll: Dota 7.41f `item_tpscroll`. Stacks without limit
-    // in Dota; a stack's charges are a byte here, more than a match buys.
+    // Town Portal Scroll: Dota 7.41f `item_tpscroll` of the game's
+    // `scripts/npc/items.txt` (client 6957, 2026-10-09), the official patch
+    // notes 7.33 to 7.41f and Liquipedia's *Town Portal Scroll* (read
+    // 2026-10-11). Stacks without limit in Dota; a stack's charges are a byte
+    // here, more than a match buys.
     ItemDef {
         name: "Town Portal Scroll",
         cost: 100,
@@ -595,6 +598,10 @@ pub const ITEMS: [ItemDef; 54] = [
         },
         ..PLAIN
     },
+    // Wind Lace and Blood Grenade: Dota 7.41f's official item data
+    // (dota2.com datafeed, items 244 and 1123), the game's
+    // `scripts/npc/items.txt` (client 6957, 2026-10-09) for stock and stacks,
+    // and Liquipedia's *Blood Grenade* and *Movement Speed*.
     ItemDef {
         name: "Wind Lace",
         cost: 225,

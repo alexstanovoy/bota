@@ -1,7 +1,12 @@
 //! What each size of jungle camp may fill with.
 //!
-//! Generated. Which camp stands where is the map's business; this is only what
-//! it draws from.
+//! Reconstructed from the per-camp health totals of the Dota 2 Wiki's
+//! *Neutral Creeps* page and checked against the stats in
+//! [`NEUTRALS`](crate::NEUTRALS): every roster sums to its published total
+//! (the Large Golem camp's once Dota's 1.15 health aura is counted) except Thunderhide,
+//! whose two small and one big lizard make 3300 against the wiki's 3400;
+//! which of the two is stale is unsettled. Which camp stands where is the
+//! map's business; this is only what it draws from.
 
 use crate::CampKind;
 use crate::NeutralKind;

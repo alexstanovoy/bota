@@ -1,14 +1,30 @@
 # bota
 
-bota is a deterministic simulator of Dota 2 at patch 7.41f, written in Rust: a
-game server, the wire protocol, the rules shared by both ends of the wire, and a
-client library. It is built for bots and humans to play the same game over the
-same protocol.
+bota is a deterministic simulator of Dota 2, written in Rust: a game server,
+the wire protocol, the rules shared by both ends of the wire, and a client
+library. It is built for bots and humans to play the same game over the same
+protocol.
 
 Current scope: 1v1, the Shadow Fiend and Pudge heroes, the Dota map, and a
-mid-only ruleset on that map, plus replays. Everything a 1v1 mid lane can touch
-(creeps, neutrals, runes, the shop, towers, couriers, talents) follows the
-7.41f numbers; what 1v1 mid never uses is not modelled.
+mid-only ruleset on that map, plus replays.
+
+- At Dota 7.41f's numbers: lane creeps and their waves, neutral creeps and their
+  camps, towers, and Shadow Fiend (his abilities, innate and talents) wherever
+  the engine has the mechanic; also the Town Portal Scroll, Wind Lace and Blood
+  Grenade. The sources are named next to the tables in `bota_core`.
+- Pudge is an older Pudge, not checked against 7.41f: Meat Hook, Rot, Flesh Heap
+  as the 7.28-7.30 passive (magic resistance and a strength stack per enemy hero
+  dying nearby, no Meat Shield) and Dismember; no innate ability, no talents, and
+  one fixed attack damage instead of a range.
+- The shop sells 48 of Dota's items and 6 recipes: consumables, wards, the basic
+  components, boots, the early builds and a few later items.
+
+Not modelled, although a 1v1 mid in Dota uses it: runes of every kind, and with
+them the Bottle; day and night (night vision, neutrals asleep at night); the
+items the shop does not sell (Faerie Fire, Smoke of Deceit, Dust of Appearance,
+neutral items, ...); Aghanim's Scepter and Shard; the Attribute Bonus; the Glyph
+of Fortification; buyback; neutral creeps' abilities and auras; flooded camps;
+backdoor protection.
 
 The simulation is authoritative on the server. A client receives what its side
 can see and sends orders; it cannot run the game itself.
