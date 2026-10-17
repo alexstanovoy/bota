@@ -4,7 +4,7 @@
 use core::convert::Infallible;
 use core::fmt;
 
-use bota_proto::{ClientMsg, HeroId, SlotId, Team};
+use bota_proto::{ClientMsg, SlotId, Team};
 
 use crate::handshake::Seated;
 use crate::observer::Observer;
@@ -166,7 +166,7 @@ impl crate::socket::Link {
     pub fn play<I: IntoIterator<Item = IssuedOrder>>(
         address: &str,
         name: &str,
-        hero: HeroId,
+        hero: bota_proto::HeroId,
         decide: impl FnMut(&ClientSession) -> I,
     ) -> Result<Outcome, PlayError> {
         let (mut link, seated) = Self::join(address, name, hero, None)?;

@@ -14,16 +14,41 @@ use crate::seat::Seat;
 use crate::session::{
     AckPolicy, ClientSession, DEFAULT_FORGET_AFTER_TICKS, Ingested, SessionOptions,
 };
-use crate::socket::Net;
-use crate::transport::Transport;
 use crate::ui::derive::Derived;
 use crate::ui::replay::ReplayPlayer;
 use crate::ui::smooth::Smooth;
 
-/// Where messages come from: a socket or a file.
+/// A live match as the app reads it once a frame: the socket client on a
+/// desktop ([`Net`](crate::Net)), a transport of the embedder's own where
+/// there are no sockets (a browser).
+pub trait LiveLink {
+    /// Everything that arrived since the last call, without waiting.
+    fn poll(&mut self) -> Vec<ServerMsg>;
+    /// Sends one message upstream; a failure marks the link closed.
+    fn send(&mut self, msg: &ClientMsg) -> std::io::Result<()>;
+    /// Whether the server is gone.
+    fn is_closed(&self) -> bool;
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+impl LiveLink for crate::socket::Net {
+    fn poll(&mut self) -> Vec<ServerMsg> {
+        crate::socket::Net::poll(self)
+    }
+
+    fn send(&mut self, msg: &ClientMsg) -> std::io::Result<()> {
+        crate::transport::Transport::send(self, msg)
+    }
+
+    fn is_closed(&self) -> bool {
+        crate::socket::Net::is_closed(self)
+    }
+}
+
+/// Where messages come from: a live link or a file.
 pub enum Source {
     /// A live match.
-    Live(Net),
+    Live(Box<dyn LiveLink>),
     /// A recorded one.
     Replay(Box<ReplayPlayer>),
 }
