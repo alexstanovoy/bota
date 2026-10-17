@@ -1,9 +1,9 @@
 //! The jungle: filling camps, and what a neutral does once drawn off one.
 
 use bota_core::{Roster, jungle_upgrades, neutral_spawn_due, rosters_of, rules};
-use bota_proto::{Fixed, UnitKind, Vec2};
+use bota_proto::{Fixed, Team, UnitKind, Vec2};
 
-use crate::game::{Entity, Landed, Purpose, UnitOrder, World};
+use crate::game::{Entity, Landed, Purpose, Spots, UnitOrder, World};
 
 impl World {
     /// Fills every unblocked camp on the minute mark, with a roster other
@@ -72,6 +72,8 @@ impl World {
         let guard = rules::units(rules::NEUTRAL_GUARD_DISTANCE);
         let back = rules::units(rules::NEUTRAL_RETURN);
         let entities = self.take_entity_snapshot();
+        let mut wakers = std::mem::take(&mut self.jungle_spots);
+        let mut laid = false;
         for entity in entities.iter().copied() {
             let (Some(mut ai), Some(home), Some(at)) = (
                 self.neutral_ai.get(entity).copied(),
@@ -106,7 +108,11 @@ impl World {
             // Asleep it wakes for what comes right up to it; from further
             // off nothing but a blow wakes it.
             if !ai.awake && !ai.going_home && ai.reaggro_block == 0 {
-                ai.awake = self.anything_hostile_near(entity, rules::NEUTRAL_AGGRO_RANGE);
+                if !laid {
+                    self.lay_wakers(&mut wakers);
+                    laid = true;
+                }
+                ai.awake = self.anything_hostile_near(entity, rules::NEUTRAL_AGGRO_RANGE, &wakers);
             }
             if !ai.going_home
                 && let Some(target) = self.target_of(entity)
@@ -119,21 +125,49 @@ impl World {
             }
             self.neutral_ai.insert(entity, ai);
         }
+        wakers.clear();
+        self.jungle_spots = wakers;
         self.recycle_entity_snapshot(entities);
     }
 
+    /// Lays out every live, placed entity of a side other than the neutrals':
+    /// the only ones a neutral would fight. Nothing tick_jungle does moves,
+    /// kills or turns them, so one layout serves the whole pass.
+    fn lay_wakers(&self, wakers: &mut Spots<Entity>) {
+        wakers.clear();
+        for entity in self.entities.iter() {
+            let side = self.team.get(entity).copied();
+            if side.is_none() || side == Some(Team::Neutral) || !self.alive(entity) {
+                continue;
+            }
+            if let Some(transform) = self.transform.get(entity) {
+                wakers.push(transform.pos, entity);
+            }
+        }
+        wakers.sort();
+    }
+
     /// Whether anything this entity would fight stands within a reach of it.
-    fn anything_hostile_near(&self, entity: Entity, range: i32) -> bool {
+    ///
+    /// A neutral fights nothing of its own side and nothing dead, so it asks
+    /// only `wakers` within the square about it; anything else asks every
+    /// entity. The answer is the same either way: a pure test over a set.
+    fn anything_hostile_near(&self, entity: Entity, range: i32, wakers: &Spots<Entity>) -> bool {
         let Some(at) = self.transform.get(entity).map(|t| t.pos) else {
             return false;
         };
         let reach = rules::units(range);
-        self.entities.iter().any(|other| {
+        let hostile = |other: Entity| {
             self.transform
                 .get(other)
                 .is_some_and(|t| t.pos.within(at, reach))
                 && self.hostile(entity, other)
-        })
+        };
+        if self.team.get(entity) == Some(&Team::Neutral) {
+            wakers.around(at, i64::from(reach.raw).abs()).any(hostile)
+        } else {
+            self.entities.iter().any(hostile)
+        }
     }
 
     /// Wakes every neutral of a camp onto whoever struck one of them.
