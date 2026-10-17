@@ -11,8 +11,13 @@ pub fn amplify(amount: i32, bp: i32) -> i32 {
     if bp == rules::NOMINAL_BP {
         return amount;
     }
-    (i64::from(amount) * i64::from(bp) / i64::from(rules::NOMINAL_BP))
-        .clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32
+    saturate(i64::from(amount) * i64::from(bp) / i64::from(rules::NOMINAL_BP))
+}
+
+/// A wide intermediate narrowed to `i32`, saturating at its ends.
+#[inline]
+fn saturate(wide: i64) -> i32 {
+    wide.clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32
 }
 
 /// Health `taken` comes off `hp` as: at most one past what is left, or down to
@@ -52,13 +57,12 @@ pub fn mitigate(amount: i32, kind: DamageKind, armor: Fixed, magic_resist_bp: i3
             } else {
                 100 * whole
             };
-            (i64::from(amount) * num / den).clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32
+            saturate(i64::from(amount) * num / den)
         }
         DamageKind::Magical => {
             let let_through = (rules::NOMINAL_BP - magic_resist_bp)
                 .clamp(0, rules::NOMINAL_BP - rules::MIN_MAGIC_RESIST_BP);
-            (i64::from(amount) * i64::from(let_through) / i64::from(rules::NOMINAL_BP))
-                .clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32
+            saturate(i64::from(amount) * i64::from(let_through) / i64::from(rules::NOMINAL_BP))
         }
         DamageKind::Pure => amount,
     }

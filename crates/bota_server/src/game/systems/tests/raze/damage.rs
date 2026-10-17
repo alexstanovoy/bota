@@ -32,7 +32,7 @@ fn raze_all_three_reaches_share_stacks_even_when_hits_resolve_together() {
     for reach in 0..3 {
         assert!(world.cast_raze(caster, 0, reach));
     }
-    assert_eq!(damage(&world.step(), target), vec![85, 120, 155]);
+    assert_eq!(burns_on(&world.step(), target), vec![85, 120, 155]);
     assert_eq!(effects(&world, target), vec![effect(3, 180)]);
 }
 
@@ -74,28 +74,22 @@ fn raze_outgoing_amplification_multiplies_base_and_prior_stacks_together() {
 }
 
 #[test]
-fn raze_same_team_casters_keep_independent_damage_stacks() {
-    let (mut world, first, target) = fixture();
-    let second = hero(&mut world, Team::Radiant, ORIGIN, SlotId(2));
-    assert_eq!(land(&mut world, first, target, 0), 85);
-    assert_eq!(land(&mut world, second, target, 0), 85);
-    assert_eq!(land(&mut world, first, target, 0), 120);
-    assert_eq!(land(&mut world, second, target, 0), 120);
-    assert_eq!(
-        effects(&world, target),
-        vec![effect(2, 179), effect(2, 180)]
-    );
-}
-
-#[test]
-fn raze_opposing_sides_stack_independently_on_a_neutral_target() {
-    let (mut world, first, target) = fixture();
-    world.set_team(target, Team::Neutral);
-    let second = hero(&mut world, Team::Dire, ORIGIN, SlotId(2));
-    assert_eq!(land(&mut world, first, target, 0), 85);
-    assert_eq!(land(&mut world, second, target, 0), 85);
-    assert_eq!(land(&mut world, first, target, 0), 120);
-    assert_eq!(land(&mut world, second, target, 0), 120);
+fn raze_casters_of_one_side_or_both_sides_on_a_neutral_keep_independent_stacks() {
+    for (second_side, neutral) in [(Team::Radiant, false), (Team::Dire, true)] {
+        let (mut world, first, target) = fixture();
+        if neutral {
+            world.set_team(target, Team::Neutral);
+        }
+        let second = hero(&mut world, second_side, ORIGIN, SlotId(2));
+        for expected in [85, 120] {
+            assert_eq!(land(&mut world, first, target, 0), expected);
+            assert_eq!(land(&mut world, second, target, 0), expected);
+        }
+        assert_eq!(
+            effects(&world, target),
+            vec![effect(2, 179), effect(2, 180)]
+        );
+    }
 }
 
 #[test]

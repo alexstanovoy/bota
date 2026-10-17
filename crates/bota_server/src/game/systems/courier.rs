@@ -43,7 +43,6 @@ impl World {
         }
     }
 
-    /// The seat a courier belongs to, if it belongs to one.
     fn seat_of_courier(&self, courier: Entity) -> Option<usize> {
         self.seats
             .iter()
@@ -61,33 +60,25 @@ impl World {
         }
         self.put_modifier(
             courier,
-            Modifier {
-                kind: ModifierKind::Hastened {
+            Modifier::new(
+                ModifierKind::Hastened {
                     pct: rules::COURIER_BURST_PCT,
                 },
-                source: Some(courier),
-                ticks_left: Some(rules::COURIER_BURST_TICKS),
-            },
+                Some(courier),
+                Some(rules::COURIER_BURST_TICKS),
+            ),
         );
         true
     }
 
     /// Sends it for what waits in its owner's stash.
     pub fn courier_take_stash(&mut self, courier: Entity) -> bool {
-        if self.seat_of_courier(courier).is_none() {
-            return false;
-        }
-        self.errand.insert(courier, Errand::ToStash);
-        true
+        self.send_courier(courier, Errand::ToStash)
     }
 
     /// Sends it to put back what it holds.
     pub fn courier_return_items(&mut self, courier: Entity) -> bool {
-        if self.seat_of_courier(courier).is_none() {
-            return false;
-        }
-        self.errand.insert(courier, Errand::PutBack);
-        true
+        self.send_courier(courier, Errand::PutBack)
     }
 
     /// Puts a shield on it that nothing gets through.
@@ -97,21 +88,26 @@ impl World {
         }
         self.put_modifier(
             courier,
-            Modifier {
-                kind: ModifierKind::Shielded,
-                source: Some(courier),
-                ticks_left: Some(rules::COURIER_SHIELD_TICKS),
-            },
+            Modifier::new(
+                ModifierKind::Shielded,
+                Some(courier),
+                Some(rules::COURIER_SHIELD_TICKS),
+            ),
         );
         true
     }
 
     /// Sends it to its owner with what it holds.
     pub fn courier_deliver(&mut self, courier: Entity) -> bool {
+        self.send_courier(courier, Errand::ToOwner)
+    }
+
+    /// Sends a seat's courier on an errand.
+    fn send_courier(&mut self, courier: Entity, errand: Errand) -> bool {
         if self.seat_of_courier(courier).is_none() {
             return false;
         }
-        self.errand.insert(courier, Errand::ToOwner);
+        self.errand.insert(courier, errand);
         true
     }
 
@@ -174,10 +170,9 @@ impl World {
             let Some(bag) = self.inventory.get_mut(courier) else {
                 break;
             };
-            let Some(free) = bag.slots.iter_mut().find(|slot| slot.is_none()) else {
+            if !bag.stow(stack) {
                 break;
-            };
-            *free = Some(stack);
+            }
             self.seats[seat].stash.slots[at] = None;
             moved = true;
         }
@@ -206,15 +201,9 @@ impl World {
             let Some(stack) = self.held_in_bag(courier, at) else {
                 continue;
             };
-            let Some(free) = self.seats[seat]
-                .stash
-                .slots
-                .iter_mut()
-                .find(|slot| slot.is_none())
-            else {
+            if !self.seats[seat].stash.stow(stack) {
                 break;
-            };
-            *free = Some(stack);
+            }
             self.take_from_bag(courier, at);
         }
         self.errand.insert(courier, Errand::GoingHome);
@@ -225,14 +214,7 @@ impl World {
     /// that spot if it does not.
     fn at_the_stash(&mut self, seat: usize, courier: Entity) -> bool {
         let shop = fountain_pos(self.map, self.seats[seat].team);
-        if self.transform.get(courier).is_some_and(|at| {
-            at.pos
-                .within(shop, rules::units(rules::COURIER_STASH_RANGE))
-        }) {
-            return true;
-        }
-        self.set_order(courier, UnitOrder::Move { pos: shop });
-        false
+        self.walk_into_reach(courier, shop, rules::COURIER_STASH_RANGE)
     }
 
     /// Carries what it holds to its owner, hands it over, and takes aboard
@@ -262,15 +244,10 @@ impl World {
             self.errand.insert(courier, Errand::GoingHome);
             return false;
         }
-        let Some(to) = self.transform.get(owner).map(|at| at.pos) else {
+        let Some(to) = self.pos(owner) else {
             return false;
         };
-        let near = self.transform.get(courier).is_some_and(|at| {
-            at.pos
-                .within(to, rules::units(rules::COURIER_DELIVER_RANGE))
-        });
-        if !near {
-            self.set_order(courier, UnitOrder::Move { pos: to });
+        if !self.walk_into_reach(courier, to, rules::COURIER_DELIVER_RANGE) {
             return false;
         }
         self.hand_over(courier, owner);
@@ -292,7 +269,6 @@ impl World {
         false
     }
 
-    /// Whether a unit's bag holds anything marked for sale.
     fn holds_marked(&self, unit: Entity) -> bool {
         self.inventory
             .get(unit)
@@ -316,7 +292,7 @@ impl World {
     /// Walks home and stands there.
     fn go_home(&mut self, seat: usize, courier: Entity) -> bool {
         let home = fountain_pos(self.map, self.seats[seat].team);
-        if self.transform.get(courier).is_some_and(|at| at.pos == home) {
+        if self.pos(courier) == Some(home) {
             return true;
         }
         self.set_order(courier, UnitOrder::Move { pos: home });

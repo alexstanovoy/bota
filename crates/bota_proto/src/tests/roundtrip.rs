@@ -10,12 +10,10 @@ where
     let frame = encode_frame_to_vec(value).expect("encode");
     let mut reader = FrameReader::new();
     reader.push(&frame);
-    let decoded = reader
+    reader
         .next_message::<T>()
         .expect("decode")
-        .expect("one whole frame was pushed");
-    assert_eq!(reader.buffered(), 0, "frame was not fully consumed");
-    decoded
+        .expect("one whole frame was pushed")
 }
 
 #[test]

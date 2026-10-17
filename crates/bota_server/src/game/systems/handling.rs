@@ -20,7 +20,7 @@ impl World {
         }
         let errand = match target {
             Target::None => {
-                let Some(pos) = self.transform.get(unit).map(|t| t.pos) else {
+                let Some(pos) = self.pos(unit) else {
                     return false;
                 };
                 Handling::PutAt { slot, pos }
@@ -89,11 +89,10 @@ impl World {
         if self.held_in_bag(unit, slot).is_none() {
             return true;
         }
-        let Some(from) = self.transform.get(unit).map(|t| t.pos) else {
+        if self.pos(unit).is_none() {
             return true;
-        };
-        if !from.within(pos, rules::units(rules::PUT_ITEM_RANGE)) {
-            self.set_order(unit, UnitOrder::Move { pos });
+        }
+        if !self.walk_into_reach(unit, pos, rules::PUT_ITEM_RANGE) {
             return false;
         }
         if !self.clearance.stands_clear(pos) {
@@ -114,14 +113,10 @@ impl World {
         if !self.alive(to) || self.team.get(to) != self.team.get(unit) {
             return true;
         }
-        let (Some(from), Some(at)) = (
-            self.transform.get(unit).map(|t| t.pos),
-            self.transform.get(to).map(|t| t.pos),
-        ) else {
+        let (Some(_), Some(at)) = (self.pos(unit), self.pos(to)) else {
             return true;
         };
-        if !from.within(at, rules::units(rules::PUT_ITEM_RANGE)) {
-            self.set_order(unit, UnitOrder::Move { pos: at });
+        if !self.walk_into_reach(unit, at, rules::PUT_ITEM_RANGE) {
             return false;
         }
         let Some(stack) = self.take_from_bag(unit, slot) else {
@@ -152,14 +147,13 @@ impl World {
         let Some(Loot(stack)) = self.loot.get(loot).copied() else {
             return true;
         };
-        let Some(spot) = self.transform.get(loot).map(|t| t.pos) else {
+        let Some(spot) = self.pos(loot) else {
             return true;
         };
-        let Some(from) = self.transform.get(unit).map(|t| t.pos) else {
+        if self.pos(unit).is_none() {
             return true;
-        };
-        if !from.within(spot, rules::units(rules::TAKE_ITEM_RANGE)) {
-            self.set_order(unit, UnitOrder::Move { pos: spot });
+        }
+        if !self.walk_into_reach(unit, spot, rules::TAKE_ITEM_RANGE) {
             return false;
         }
         let taken = self.inventory.get_mut(unit).is_some_and(|bag| {
@@ -174,6 +168,19 @@ impl World {
         self.loot.remove(loot);
         self.despawn(loot);
         true
+    }
+
+    /// Whether a unit stands within `range` of a spot, sending it walking
+    /// there when it does not.
+    pub(super) fn walk_into_reach(&mut self, unit: Entity, to: Vec2, range: i32) -> bool {
+        if self
+            .pos(unit)
+            .is_some_and(|at| at.within(to, rules::units(range)))
+        {
+            return true;
+        }
+        self.set_order(unit, UnitOrder::Move { pos: to });
+        false
     }
 
     /// Stands a ground item up holding a stack.
@@ -205,7 +212,6 @@ impl World {
             .and_then(|bag| bag.slot(slot).copied().flatten())
     }
 
-    /// Takes the stack out of one of a unit's own bag slots.
     pub(crate) fn take_from_bag(&mut self, unit: Entity, slot: usize) -> Option<ItemStack> {
         self.inventory.get_mut(unit)?.slot_mut(slot)?.take()
     }

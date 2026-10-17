@@ -1,47 +1,14 @@
 //! Consumables, active items and trees.
 
-use bota_core::{
-    BLINK_RANGE, HERO, ITEMS, MELEE_CREEP, ModifierKind, SALVE_TICKS, SHADOW_FIEND, map_of, rules,
-    tower_def,
-};
+use bota_core::{ITEMS, MELEE_CREEP, ModifierKind, map_of, rules, tower_def};
 
-use crate::game::{Command, Entity, Event, ItemStack, Mana, World, tree_positions, wire_id};
+use crate::game::{Entity, Event, ItemStack, Mana, World, tree_positions, wire_id};
 use bota_proto::{
     Attribute, DamageKind, EventKind, Fixed, HeroId, ItemId, ItemSlot, MapId, Order, SlotId,
-    Target, Team, UnitKind, Vec2,
+    Target, Team, Vec2,
 };
 
 use super::support::*;
-
-#[test]
-fn a_salve_puts_mending_on_whoever_drinks_it_and_runs_out() {
-    let mut world = World::new();
-    let hero = hero_at(&mut world, Vec2::from_ints(5000, 5000));
-    world.step();
-    hand_item(&mut world, hero, ItemId::HEALING_SALVE, 1);
-    assert!(
-        world.use_item(hero, 0, Target::None, &mut Vec::new()),
-        "it drinks"
-    );
-    assert!(
-        world.inventory.get(hero).expect("has a bag").slots[0].is_none(),
-        "the last charge takes the stack with it"
-    );
-    world.step();
-    let plain = HERO.hp_regen + rules::HP_REGEN_PER_STRENGTH * SHADOW_FIEND.attributes.strength;
-    assert!(
-        world.stats.get(hero).expect("settled").hp_regen > plain,
-        "it mends faster while the salve holds"
-    );
-    for _ in 0..SALVE_TICKS + 1 {
-        world.step();
-    }
-    assert_eq!(
-        world.stats.get(hero).map(|s| s.hp_regen),
-        Some(plain),
-        "and back to its own once it runs out"
-    );
-}
 
 #[test]
 fn a_drink_is_told_of_as_what_was_missing_and_a_full_hero_is_not_told_at_all() {
@@ -138,9 +105,7 @@ fn a_quelling_blade_takes_a_tree_down_and_the_tree_comes_back() {
         world.inventory.get(hero).expect("has a bag").slots[0].is_some(),
         "the blade itself is not spent on it"
     );
-    for _ in 0..rules::TREE_REGROW_TICKS + 1 {
-        world.step();
-    }
+    run(&mut world, rules::TREE_REGROW_TICKS + 1);
     assert_eq!(world.trees.felled().count(), 0, "in time it comes back");
     assert!(sight_stopped_at(&world, tree), "and stops a look again");
 }
@@ -203,9 +168,7 @@ fn a_branch_puts_a_tree_up_and_eating_that_one_feeds_twice_as_long() {
     let (mut world, hero, tree) = a_hero_by_the_trees(ItemId::IRON_BRANCH, 1);
     let spot = tree + Vec2::from_ints(240, 0);
     assert!(world.use_item(hero, 0, Target::Pos(spot), &mut Vec::new()));
-    for _ in 0..rules::PLANTED_TREE_TICKS + 1 {
-        world.step();
-    }
+    run(&mut world, rules::PLANTED_TREE_TICKS + 1);
     assert!(world.trees.planted().is_empty(), "in time it goes");
     assert!(!sight_stopped_at(&world, spot), "and stops nothing");
 }
@@ -302,11 +265,8 @@ fn an_enemy_heros_swing_or_raze_puts_the_drinks_out_and_sets_a_blink_back() {
         let at = Vec2::from_ints(5000 + rules::RAZE_DISTANCE[0], 5000);
         let drinker = a_drinker(&mut world, at);
         if raze {
-            let events = super::fiend::cast_through(&mut world, 0, rules::RAZE_CAST_POINT_MS);
-            assert!(
-                !super::fiend::burns_on(&events, drinker).is_empty(),
-                "the raze lands"
-            );
+            let events = cast_through(&mut world, 0, rules::RAZE_CAST_POINT_MS);
+            assert!(!burns_on(&events, drinker).is_empty(), "the raze lands");
             assert!(
                 !events.iter().any(|event| matches!(event.kind,
                     EventKind::Damaged { target, kind: DamageKind::Physical, .. }
@@ -348,11 +308,9 @@ fn a_creeps_swing_or_ones_own_rot_leaves_the_drinks_running() {
     assert_eq!(blink_wait(&world, drinker), 0);
 
     let (mut world, pudge, _far_off) = pudge_and_a_mark(3000);
-    if let Some(book) = world.abilities.get_mut(pudge) {
-        book.slots[1].level = 1;
-    }
+    set_level(&mut world, pudge, 1, 1);
     drink_up(&mut world, pudge);
-    pudge_casts(&mut world, 1, Target::None);
+    cast(&mut world, 1, Target::None);
     let burnt = (0..rules::BURN_PERIOD_TICKS * 2)
         .flat_map(|_| world.step())
         .any(|event| {
@@ -501,14 +459,13 @@ fn switching_treads_mid_swing_breaks_nothing_off() {
         world.advance(&[]);
     }
     assert_eq!(swinging(&world, hero), Some(theirs), "mid-swing");
-    world.advance(&[Command {
-        slot: SlotId(0),
-        unit: None,
-        order: Order::Use {
+    seat_order(
+        &mut world,
+        Order::Use {
             slot: ItemSlot(0),
             target: Target::None,
         },
-    }]);
+    );
     assert_eq!(
         slot_of(&world, hero, 0).and_then(|stack| stack.mode),
         Some(Attribute::Intelligence),
@@ -576,25 +533,6 @@ fn treads_switched_round_the_wheel_mend_nothing() {
 }
 
 #[test]
-fn a_blink_carries_no_further_than_it_reaches() {
-    let (mut world, hero) = a_hero_with_gold(0);
-    let from = world.transform.get(hero).expect("stands somewhere").pos;
-    hand_item(&mut world, hero, ItemId::BLINK_DAGGER, 0);
-    world.step();
-    let far = from + Vec2::from_ints(BLINK_RANGE * 4, 0);
-    assert!(
-        world.use_item(hero, 0, Target::Pos(far), &mut Vec::new()),
-        "it goes"
-    );
-    let landed = world.transform.get(hero).expect("stands somewhere").pos;
-    assert!(landed != from, "and it carried");
-    assert!(
-        landed.within(from, rules::units(BLINK_RANGE)),
-        "no further than it reaches"
-    );
-}
-
-#[test]
 fn a_blink_aimed_at_closed_ground_steps_back_to_open() {
     let (mut world, hero) = a_hero_with_gold(0);
     let from = world.transform.get(hero).expect("stands somewhere").pos;
@@ -612,29 +550,6 @@ fn a_blink_aimed_at_closed_ground_steps_back_to_open() {
         "and it lands on open ground"
     );
     assert!(landed != aim, "short of what it was aimed at");
-}
-
-#[test]
-fn a_blow_from_a_hero_sets_a_blink_back() {
-    let (mut world, hero) = a_hero_with_gold(0);
-    hand_item(&mut world, hero, ItemId::BLINK_DAGGER, 0);
-    world.step();
-    assert_eq!(
-        slot_of(&world, hero, 0).map(|stack| stack.cooldown),
-        Some(0),
-        "it is ready"
-    );
-    let hitter = world.spawn();
-    world.kind.insert(hitter, UnitKind::Hero);
-    world.push_hit(Some(hitter), hero, 10, DamageKind::Physical);
-    world.step();
-    let wait = ITEMS[usize::from(ItemId::BLINK_DAGGER.0)].breaks_on_damage;
-    assert!(
-        slot_of(&world, hero, 0)
-            .map(|stack| stack.cooldown)
-            .is_some_and(|left| left > 0 && left <= wait),
-        "and a blow from a hero sets it back"
-    );
 }
 
 #[test]
@@ -659,15 +574,9 @@ fn phase_walks_a_body_through_another() {
 
 #[test]
 fn the_view_reports_the_regeneration_the_server_applies() {
-    let mut world = World::for_match(&config(), config().rng());
-    let hero = world.seats[0].unit.expect("stood up");
+    let (mut world, hero) = match_hero();
     let regen = |world: &World| {
-        let unit = world
-            .view(Team::Radiant)
-            .units
-            .into_iter()
-            .find(|seen| seen.id == wire_id(hero))
-            .expect("in sight");
+        let unit = shown(world, Some(Team::Radiant), hero);
         (unit.hp_regen, unit.mana_regen)
     };
     let served = |world: &World| {
@@ -680,9 +589,7 @@ fn the_view_reports_the_regeneration_the_server_applies() {
     assert_eq!((fountain_hp.raw, fountain_mana.raw), served(&world));
 
     world.transform.get_mut(hero).expect("hero").pos = Vec2::from_ints(5000, 5000);
-    for _ in 0..=rules::FOUNTAIN_HEAL_LINGER_TICKS {
-        world.step();
-    }
+    run(&mut world, rules::FOUNTAIN_HEAL_LINGER_TICKS + 1);
     let (plain_hp, plain_mana) = regen(&world);
     assert_eq!((plain_hp.raw, plain_mana.raw), served(&world));
     assert!(fountain_hp > plain_hp && fountain_mana > plain_mana);

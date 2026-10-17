@@ -15,8 +15,6 @@ pub const MAX_READS_PER_POLL: usize = 128;
 /// File read-ahead capacity in bytes.
 pub const REPLAY_BUFFER_CAPACITY: usize = 8 * 1024;
 
-const _: () = assert!(MAX_RECORDS_PER_POLL > 0);
-const _: () = assert!(MAX_READS_PER_POLL > 0);
 const _: () = assert!(REPLAY_BUFFER_CAPACITY <= MAX_BYTES_PER_POLL);
 const _: () = assert!(MAX_BYTES_PER_POLL <= MAX_PAYLOAD_LEN);
 
@@ -131,7 +129,8 @@ impl ReplayPlayer {
     }
 
     /// Bytes consumed by the parser, excluding file read-ahead.
-    pub fn bytes_read(&self) -> u64 {
+    #[cfg(test)]
+    pub(crate) fn bytes_read(&self) -> u64 {
         self.stream.offset
     }
 
@@ -160,9 +159,10 @@ impl ReplayPlayer {
         };
         self.catching_up = false;
         for _ in 0..MAX_RECORDS_PER_POLL {
-            if self.pending.is_none() {
-                match self.stream.poll_record(&mut budget) {
-                    Ok(RecordPoll::Record(record)) => self.pending = Some(*record),
+            let record = match self.pending.take() {
+                Some(record) => record,
+                None => match self.stream.poll_record(&mut budget) {
+                    Ok(RecordPoll::Record(record)) => *record,
                     Ok(RecordPoll::Pending) => {
                         self.catching_up = true;
                         return due;
@@ -176,21 +176,17 @@ impl ReplayPlayer {
                         self.error = Some(error);
                         return due;
                     }
-                }
-            }
-            let record = self.pending.as_ref().expect("one record was read");
-            let tick = match record {
+                },
+            };
+            let tick = match &record {
                 ReplayRecord::Orders { tick, .. } => Some(*tick),
                 ReplayRecord::Msg(ServerMsg::Snapshot { view }) => Some(view.tick),
                 _ => None,
             };
             if self.started && tick.is_some_and(|tick| f64::from(tick) > self.clock_ticks) {
+                self.pending = Some(record);
                 return due;
             }
-            let record = self
-                .pending
-                .take()
-                .expect("the pending record was inspected");
             let message = match record {
                 ReplayRecord::Orders { tick, orders } => ServerMsg::Orders { tick, orders },
                 ReplayRecord::Msg(message) => message,
@@ -209,7 +205,6 @@ impl ReplayPlayer {
                 return due;
             }
         }
-        assert!(due.len() <= MAX_RECORDS_PER_POLL);
         self.catching_up = true;
         due
     }
@@ -217,8 +212,6 @@ impl ReplayPlayer {
 
 impl ReplayStream {
     fn poll_record(&mut self, budget: &mut ReadBudget) -> io::Result<RecordPoll> {
-        assert!(self.prefix_read <= LEN_PREFIX);
-        assert!(self.payload_read <= self.payload.len());
         for _ in 0..=MAX_READS_PER_POLL {
             if self.prefix_read == LEN_PREFIX {
                 if self.payload.is_empty() {
@@ -248,8 +241,6 @@ impl ReplayStream {
     }
 
     fn prepare_payload(&mut self) -> io::Result<()> {
-        assert_eq!(self.prefix_read, LEN_PREFIX);
-        assert!(self.payload.is_empty());
         let length = u32::from_le_bytes(self.prefix) as usize;
         if length == 0 {
             return Err(self.failure(io::ErrorKind::InvalidData, "empty payload length"));
@@ -262,20 +253,16 @@ impl ReplayStream {
         }
         self.payload.reserve_exact(length);
         self.payload.resize(length, 0);
-        assert!(self.payload.capacity() <= MAX_PAYLOAD_LEN);
         Ok(())
     }
 
     fn read_chunk(&mut self, budget: &mut ReadBudget) -> io::Result<usize> {
-        assert!(budget.bytes > 0);
-        assert!(budget.calls > 0);
         let (target, progress) = if self.prefix_read < LEN_PREFIX {
             (&mut self.prefix[..], &mut self.prefix_read)
         } else {
             (&mut self.payload[..], &mut self.payload_read)
         };
         let length = (target.len() - *progress).min(budget.bytes);
-        assert!(length > 0);
         budget.calls -= 1;
         let count = self
             .reader

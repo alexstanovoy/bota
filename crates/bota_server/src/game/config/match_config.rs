@@ -1,6 +1,6 @@
 //! Everything a match is created from.
 
-use bota_proto::{EntityId, EventKind, MapId, MatchInfo, Order, Pick, SlotId, Team, TickMode};
+use bota_proto::{EventKind, MapId, MatchInfo, Pick, Team, TickMode};
 
 use crate::game::{
     MAX_SPAWN_MODIFIERS, MatchRng, SpawnModifier, SpawnModifierError, check_spawn_modifier,
@@ -10,15 +10,10 @@ use crate::game::{
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MatchConfigError {
     /// More spawn modifiers than a match may carry.
-    TooManySpawnModifiers {
-        /// How many were offered.
-        count: usize,
-    },
+    TooManySpawnModifiers { count: usize },
     /// One spawn modifier is not one a match may carry.
     SpawnModifier {
-        /// Where it sits in the list.
         at: usize,
-        /// Why it was refused.
         error: SpawnModifierError,
     },
 }
@@ -99,41 +94,28 @@ impl MatchConfig {
 
     /// The projection onto the wire. Carries no secret.
     pub fn info(&self) -> MatchInfo {
+        let map = bota_core::map_of(self.map);
+        let terrain = crate::game::terrain_of(map);
         MatchInfo {
             match_id: self.match_id,
             map: self.map,
             tick_rate: self.tick_rate,
             pregame_ticks: bota_core::rules::PREGAME_TICKS,
-            trees: crate::game::tree_positions(
-                bota_core::map_of(self.map),
-                crate::game::terrain_of(bota_core::map_of(self.map)),
-            ),
+            trees: crate::game::tree_positions(map, terrain),
             terrain_cells: crate::game::TERRAIN_CELLS as u32,
-            terrain_rle: crate::game::Ground::wire_rle(crate::game::terrain_of(bota_core::map_of(
-                self.map,
-            ))),
-            opaque_cells: crate::game::fow_wall_cells(crate::game::terrain_of(bota_core::map_of(
-                self.map,
-            ))),
+            terrain_rle: crate::game::Ground::wire_rle(terrain),
+            opaque_cells: crate::game::fow_wall_cells(terrain),
             mode: self.mode,
             picks: self.picks.clone(),
             shop: bota_core::shop_entries(),
-            fountains: bota_core::map_of(self.map).fountains,
+            fountains: map.fountains,
             shop_range: bota_core::rules::SHOP_RANGE,
         }
     }
 }
 
-/// One accepted order, translated to a seat.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Command {
-    /// Which seat issued it.
-    pub slot: SlotId,
-    /// Which unit it is for. Absent means that seat's own hero.
-    pub unit: Option<EntityId>,
-    /// What it asks for.
-    pub order: Order,
-}
+/// One accepted order of a seat, as the world takes it and the wire tells it.
+pub type Command = bota_proto::SlotOrder;
 
 /// Who may learn that an event happened. Limits the player streams;
 /// spectators see every event.

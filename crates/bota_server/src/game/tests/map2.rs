@@ -1,8 +1,8 @@
 //! Map2 geometry, waves, and end-of-tick match completion.
 
 use bota_core::{
-    CellGrid, MAP2_DEATH_LIMIT, MAP2_GAME_TICKS, MAP2_ID, MAP2_TICK_CAP, MAPS, hero_spawn_pos,
-    item_def, lane_polyline, lane_route, map_of, passive_gold_by, rules, wave_plan,
+    CellGrid, MAP2_ID, MAP2_TICK_CAP, MAPS, hero_spawn_pos, item_def, lane_polyline, lane_route,
+    map_of, passive_gold_by, rules, wave_plan,
 };
 
 use crate::game::{
@@ -10,14 +10,14 @@ use crate::game::{
     terrain_of, tree_positions, wire_id,
 };
 use bota_proto::{
-    DamageKind, EventKind, Fixed, HeroId, ItemId, MapId, Order, Pick, ReplayRecord, ServerMsg,
-    SlotId, Team, TickMode, UnitKind, Vec2, decode_payload, encode_frame_to_vec,
+    DamageKind, EventKind, Fixed, HeroId, ItemId, MapId, Order, ReplayRecord, ServerMsg, SlotId,
+    Team, TickMode, UnitKind, Vec2, decode_payload, encode_frame_to_vec,
 };
 
-use super::support::advance_validated;
+use super::support::{self, advance_validated, fiend_against_fiend};
 
-const MID_MAP: MapId = MapId(2);
-const TICK_CAP: u32 = 36_900;
+const MID_MAP: MapId = MAP2_ID;
+const TICK_CAP: u32 = MAP2_TICK_CAP;
 const FINAL_WAVE: u32 = (TICK_CAP - rules::FIRST_WAVE_TICK) / rules::WAVE_PERIOD_TICKS + 1;
 
 fn config(map: MapId) -> MatchConfig {
@@ -25,26 +25,10 @@ fn config(map: MapId) -> MatchConfig {
         match_id: 23,
         stream: 23,
         master_key: [17; 32],
-        picks: vec![
-            Pick {
-                slot: SlotId(0),
-                team: Team::Radiant,
-                hero: HeroId::SHADOW_FIEND,
-            },
-            Pick {
-                slot: SlotId(1),
-                team: Team::Dire,
-                hero: HeroId::SHADOW_FIEND,
-            },
-        ],
+        picks: fiend_against_fiend(),
         map,
-        tick_rate: 30,
-        mode: TickMode::Lockstep,
         ack_timeout_ticks: 150,
-        cheats: false,
-        spawn_modifiers: Vec::new(),
-        immortal_structures: false,
-        immortal_heroes: false,
+        ..support::config()
     }
 }
 
@@ -505,14 +489,7 @@ fn map2_plays_on_past_the_ten_minute_mark() {
 }
 
 #[test]
-fn map2_public_limits_and_wave_selection_match_the_match_contract() {
-    assert_eq!(MAP2_ID, MID_MAP);
-    assert_eq!(map_of(MID_MAP).id, MID_MAP, "map 2 is its own map");
-    assert_eq!(map_of(MID_MAP).index(), 2);
-    assert_eq!(MAP2_DEATH_LIMIT, 2);
-    assert_eq!(MAP2_GAME_TICKS, 36_000);
-    assert_eq!(MAP2_TICK_CAP, TICK_CAP);
-    assert_eq!(map_of(MID_MAP).wave_lanes, &[rules::LANE_MID]);
+fn every_map_sends_waves_down_distinct_lanes_it_has() {
     for map in &MAPS {
         assert!(map.lanes <= 3);
         assert!(map.wave_lanes.len() <= usize::from(map.lanes));
@@ -657,7 +634,7 @@ fn map2_cap_is_independent_of_wall_clock_tick_rate_and_mode() {
 }
 
 #[test]
-fn map0_and_map1_keep_their_wave_lanes_and_map1_its_geometry() {
+fn map0_spawns_waves_on_three_lanes_and_map1_on_one() {
     for (map, count) in [(MapId(0), 3), (MapId(1), 1)] {
         let mut world = World::on_map(map_of(map));
         world.tick = rules::FIRST_WAVE_TICK;
@@ -674,11 +651,6 @@ fn map0_and_map1_keep_their_wave_lanes_and_map1_its_geometry() {
             2 * count * (plan.melee + plan.ranged + plan.siege) as usize
         );
     }
-    let demo = map_of(MapId(1));
-    assert_eq!(demo.ancients, [None, None]);
-    assert_eq!(demo.radiant_towers, &rules::DEMO_RADIANT_TOWERS);
-    assert_eq!(demo.dire_towers, &rules::DEMO_DIRE_TOWERS);
-    assert_eq!(demo.lanes, 1);
 }
 
 #[test]

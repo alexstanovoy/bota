@@ -36,11 +36,11 @@ impl World {
                 if !self.takes_scrolls_of(building, side) {
                     return None;
                 }
-                let at = self.transform.get(building)?.pos;
+                let at = self.pos(building)?;
                 (building, self.scroll_aim(building, at, fountain)?)
             }
             Target::None => {
-                let from = self.transform.get(user)?.pos;
+                let from = self.pos(user)?;
                 if from.within(fountain, rules::units(rules::SCROLL_FOUNTAIN_MIN_DISTANCE)) {
                     return None;
                 }
@@ -72,7 +72,7 @@ impl World {
             if !self.takes_scrolls_of(entity, side) {
                 continue;
             }
-            let Some(at) = self.transform.get(entity).map(|t| t.pos) else {
+            let Some(at) = self.pos(entity) else {
                 continue;
             };
             let far = at.distance_squared(to);
@@ -87,7 +87,7 @@ impl World {
     /// building. A spot on the building's very centre is pushed out towards
     /// the fountain.
     fn scroll_aim(&self, building: Entity, pos: Vec2, fountain: Vec2) -> Option<Vec2> {
-        let centre = self.transform.get(building)?.pos;
+        let centre = self.pos(building)?;
         let near = rules::units(rules::SCROLL_MIN_DISTANCE);
         let far = rules::units(rules::SCROLL_MAX_DISTANCE);
         let aim = if !pos.within(centre, far) {
@@ -145,11 +145,11 @@ impl World {
         let Some((building, landing)) = self.scroll_destination(user, target) else {
             return false;
         };
-        let Some(seat) = self.seats.iter_mut().find(|seat| seat.unit == Some(user)) else {
+        let Some(seat) = self.seat_of(user) else {
             return false;
         };
         let lands = self.tick + rules::SCROLL_CHANNEL_TICKS;
-        seat.teleport = Some(Teleport {
+        self.seats[seat].teleport = Some(Teleport {
             building,
             landing,
             started: self.tick,
@@ -171,7 +171,9 @@ impl World {
     /// lingers its second.
     pub fn break_teleport(&mut self, user: Entity) {
         let tick = self.tick;
-        if let Some(teleport) = self.teleport_of_mut(user) {
+        if let Some(seat) = self.seat_of(user)
+            && let Some(teleport) = self.seats[seat].teleport.as_mut()
+        {
             teleport.live = false;
             teleport.sight_until = tick + rules::SCROLL_SIGHT_LINGER_TICKS;
         }
@@ -237,19 +239,7 @@ impl World {
             .collect()
     }
 
-    /// The teleport of the seat whose hero `user` is.
     fn teleport_of(&self, user: Entity) -> Option<Teleport> {
-        self.seats
-            .iter()
-            .find(|seat| seat.unit == Some(user))
-            .and_then(|seat| seat.teleport)
-    }
-
-    /// The teleport of the seat whose hero `user` is, to be changed in place.
-    fn teleport_of_mut(&mut self, user: Entity) -> Option<&mut Teleport> {
-        self.seats
-            .iter_mut()
-            .find(|seat| seat.unit == Some(user))
-            .and_then(|seat| seat.teleport.as_mut())
+        self.seats[self.seat_of(user)?].teleport
     }
 }

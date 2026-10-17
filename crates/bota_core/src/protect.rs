@@ -15,21 +15,16 @@ use crate::rules;
 pub enum StructureId {
     /// The towers of a lane and tier.
     Tower {
-        /// Which lane.
         lane: u8,
-        /// Which tier.
         tier: u8,
     },
     /// The barracks of a lane, melee or ranged.
     Barracks {
-        /// Which lane.
         lane: u8,
         /// Whether it is the one feeding the ranged creeps.
         ranged: bool,
     },
-    /// The fillers.
     Filler,
-    /// The Ancient.
     Ancient,
 }
 

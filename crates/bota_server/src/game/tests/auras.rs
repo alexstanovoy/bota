@@ -21,8 +21,7 @@ const INSPIRED_EFFECT: ModifierKind = ModifierKind::Inspired {
 
 #[test]
 fn a_fountain_hands_out_mending_to_its_own_side_standing_in_it() {
-    let mut world = World::for_match(&config(), config().rng());
-    let hero = world.seats[0].unit.expect("stood up");
+    let (mut world, hero) = match_hero();
     world.health.insert(hero, health(100));
     let theirs = world.spawn_hero(
         Team::Dire,
@@ -53,9 +52,7 @@ fn a_fountain_hands_out_mending_to_its_own_side_standing_in_it() {
         carries(&world, hero, FOUNTAIN_EFFECT),
         "one step out it is still running"
     );
-    for _ in 0..rules::FOUNTAIN_HEAL_LINGER_TICKS {
-        world.step();
-    }
+    run(&mut world, rules::FOUNTAIN_HEAL_LINGER_TICKS);
     assert!(
         !carries(&world, hero, FOUNTAIN_EFFECT),
         "three seconds later it is gone"
@@ -64,8 +61,7 @@ fn a_fountain_hands_out_mending_to_its_own_side_standing_in_it() {
 
 #[test]
 fn the_fountain_fills_a_hero_in_twenty_seconds_not_one() {
-    let mut world = World::for_match(&config(), config().rng());
-    let hero = world.seats[0].unit.expect("stood up");
+    let (mut world, hero) = match_hero();
     world.health.insert(hero, health(1));
     world
         .mana
@@ -77,25 +73,19 @@ fn the_fountain_fills_a_hero_in_twenty_seconds_not_one() {
             world.mana.get(hero).expect("alive").mana >= stats.max_mana,
         )
     };
-    for _ in 0..rules::TICKS_PER_SECOND * 2 {
-        world.step();
-    }
+    run(&mut world, rules::TICKS_PER_SECOND * 2);
     assert_eq!(
         full(&world),
         (false, false),
         "two seconds fill neither pool"
     );
-    for _ in 0..rules::TICKS_PER_SECOND * 15 {
-        world.step();
-    }
+    run(&mut world, rules::TICKS_PER_SECOND * 15);
     assert_eq!(
         full(&world),
         (false, true),
         "six percent fills mana in under 17 s"
     );
-    for _ in 0..rules::TICKS_PER_SECOND * 3 {
-        world.step();
-    }
+    run(&mut world, rules::TICKS_PER_SECOND * 3);
     assert_eq!(
         full(&world),
         (true, true),

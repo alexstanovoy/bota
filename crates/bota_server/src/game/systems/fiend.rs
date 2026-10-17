@@ -8,7 +8,7 @@ use bota_core::{
 };
 use bota_proto::{AbilityId, Angle, DamageKind, Fixed, Team};
 
-use crate::game::{Fear, Hit, HitEffect, Modifier, RequiemLine, StackKind, Transform, World};
+use crate::game::{Fear, Hit, HitEffect, Modifier, RequiemLine, StackKind, World};
 
 use crate::engine::Entity;
 
@@ -35,10 +35,7 @@ impl World {
             .iter()
             .filter(|other| {
                 self.burns(caster, *other)
-                    && self
-                        .transform
-                        .get(*other)
-                        .is_some_and(|t| t.pos.within(at, radius))
+                    && self.pos(*other).is_some_and(|pos| pos.within(at, radius))
             })
             .collect();
         let amount = raze_damage(level, self.souls_of(caster));
@@ -139,15 +136,7 @@ impl World {
                 from.pos + heading_of(facing),
                 Fixed::from_int(rules::REQUIEM_LINE_DISTANCE),
             );
-            let line = self.spawn();
-            self.transform.insert(
-                line,
-                Transform {
-                    pos: from.pos,
-                    facing,
-                },
-            );
-            self.set_team(line, side);
+            let line = self.spawn_placed(from.pos, facing, side);
             self.requiem_line.insert(
                 line,
                 RequiemLine {
@@ -180,7 +169,7 @@ impl World {
             let Some(mut line) = self.requiem_line.get(entity).cloned() else {
                 continue;
             };
-            let Some(at) = self.transform.get(entity).map(|t| t.pos) else {
+            let Some(at) = self.pos(entity) else {
                 self.put_out(entity);
                 continue;
             };
@@ -253,9 +242,7 @@ impl World {
     /// Takes a line of a requiem out of the world.
     fn put_out(&mut self, line: Entity) {
         self.requiem_line.remove(line);
-        self.transform.remove(line);
-        self.team.remove(line);
-        self.despawn(line);
+        self.discard(line);
     }
 
     /// Lets a share of the souls go when the one holding them falls: a
@@ -288,10 +275,8 @@ impl World {
             })
             .collect();
         for (carrier, level) in carriers {
-            let (Some(from), Some(side)) = (
-                self.transform.get(carrier).map(|t| t.pos),
-                self.team.get(carrier).copied(),
-            ) else {
+            let (Some(from), Some(side)) = (self.pos(carrier), self.team.get(carrier).copied())
+            else {
                 continue;
             };
             let reach = rules::units(rules::PRESENCE_RADIUS);
@@ -300,20 +285,18 @@ impl World {
                 .entities
                 .iter()
                 .filter(|other| {
-                    self.transform
-                        .get(*other)
-                        .is_some_and(|t| t.pos.within(from, reach))
+                    self.pos(*other).is_some_and(|pos| pos.within(from, reach))
                         && self.wears_presence(carrier, side, *other)
                 })
                 .collect();
             for mark in struck {
                 self.put_modifier(
                     mark,
-                    Modifier {
-                        kind: ModifierKind::ArmorBroken { armor },
-                        source: Some(carrier),
-                        ticks_left: Some(rules::PRESENCE_LINGER_TICKS),
-                    },
+                    Modifier::new(
+                        ModifierKind::ArmorBroken { armor },
+                        Some(carrier),
+                        Some(rules::PRESENCE_LINGER_TICKS),
+                    ),
                 );
             }
         }

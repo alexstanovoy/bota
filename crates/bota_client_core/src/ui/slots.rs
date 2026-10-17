@@ -11,10 +11,10 @@ use bota_proto::{
 use crate::ui::app::App;
 
 /// How many item slots a hero carries on itself: inventory and backpack.
-pub const BAG_SLOTS: u8 = 9;
+pub const BAG_SLOTS: u8 = crate::limits::HERO_ITEM_SLOTS as u8;
 
 /// How many of those are the inventory proper, where items work.
-pub const INVENTORY_SLOTS: u8 = 6;
+pub const INVENTORY_SLOTS: u8 = bota_core::rules::INVENTORY_SLOTS as u8;
 
 /// The hero's town portal slot, Dota's own slot for scrolls beside the
 /// inventory.
@@ -83,10 +83,7 @@ impl App {
             let unit = self.slot_unit()?;
             unit.items.get(usize::from(slot)).copied().flatten()
         } else {
-            let view = self.view()?;
-            let mine = self.my_slot?;
-            let player = view.players.iter().find(|p| p.slot == mine)?;
-            player
+            self.player(self.my_slot?)?
                 .stash
                 .as_ref()?
                 .get(usize::from(slot - BAG_SLOTS))
@@ -97,14 +94,7 @@ impl App {
 
     /// How one slot is aimed, and nothing for one that cannot be used at all.
     pub fn aim_in(&self, slot: Slot) -> Option<Aim> {
-        match slot {
-            Slot::Ability(at) => self
-                .slot_unit()?
-                .abilities
-                .get(usize::from(at))
-                .map(|held| held.aim),
-            Slot::Item(at) => self.item_in(at)?.aim,
-        }
+        filled(self, slot).flatten()
     }
 
     /// How far one slot reaches, in world units.

@@ -2,7 +2,7 @@
 
 use bota_core::{MELEE_CREEP, attack_gain, facing_towards, rules};
 
-use crate::game::{ActionState, Command, Ground, Health, MatchRng, UnitOrder, World, wire_id};
+use crate::game::{ActionState, Ground, Health, MatchRng, UnitOrder, World, wire_id};
 use bota_proto::{Angle, EventKind, Fixed, HeroId, Order, SlotId, Target, Team, Vec2};
 
 use super::support::*;
@@ -66,9 +66,7 @@ fn a_swing_lands_on_whoever_it_began_against() {
     // Set on somebody else halfway through.
     world.set_target(attacker, other);
     let was = world.health.get(mark).expect("standing").hp;
-    for _ in 0..ticks_of(rules::MELEE_CREEP_ATTACK_POINT) + 1 {
-        world.step();
-    }
+    run(&mut world, ticks_of(rules::MELEE_CREEP_ATTACK_POINT) + 1);
     assert!(
         world.health.get(mark).expect("standing").hp < was,
         "and landed on the one it began against"
@@ -179,13 +177,12 @@ fn a_swing_costs_the_swinger_the_ground_it_stands_on() {
     );
     let before = gap_along_lane(&world, hero, theirs);
     for _ in 0..60 {
-        world.advance(&[Command {
-            slot: SlotId(0),
-            unit: None,
-            order: Order::Move {
+        seat_order(
+            &mut world,
+            Order::Move {
                 target: Target::Pos(Vec2::from_ints(3000, 5000)),
             },
-        }]);
+        );
     }
     let after = gap_along_lane(&world, hero, theirs);
     // The creep is the faster of the two: only the ticks it spends rooted in

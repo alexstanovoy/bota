@@ -44,7 +44,6 @@ pub enum UnitOrder {
 /// attack order may draw it again.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Orders {
-    /// What it is doing.
     pub current: UnitOrder,
     /// For a hero: ticks before its attack order at an enemy hero may draw
     /// lane creeps again. For a tower: ticks before an enemy hero's attack

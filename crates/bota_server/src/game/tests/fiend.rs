@@ -2,10 +2,9 @@
 
 use bota_core::{ModifierKind, isqrt64, rules, tower_def};
 
-use crate::game::{ActionState, Entity, Event, StackKind, UnitOrder, World, wire_id};
+use crate::game::{ActionState, Entity, UnitOrder, World, wire_id};
 use bota_proto::{
-    AbilityId, DamageKind, EffectId, EventKind, Fixed, HeroId, Order, SlotId, StatusFlags, Target,
-    Team, Vec2,
+    AbilityId, EffectId, EventKind, Fixed, HeroId, SlotId, StatusFlags, Target, Team, Vec2,
 };
 
 use super::support::*;
@@ -44,12 +43,7 @@ fn the_necromastery_gathers_from_the_first_level_with_no_point_spent() {
     assert_eq!(world.points_spent(fiend), 0, "nothing learned");
     world.bury(vec![(creep, Some(fiend))], &mut Vec::new());
     assert_eq!(souls(&world, fiend), rules::SOULS_PER_UNIT);
-    let view = world.view(Team::Radiant);
-    let shown = view
-        .units
-        .iter()
-        .find(|unit| unit.id == wire_id(fiend))
-        .expect("he is in the view");
+    let shown = shown(&world, Some(Team::Radiant), fiend);
     assert!(
         shown
             .abilities
@@ -97,7 +91,7 @@ fn a_raze_stands_through_its_cast_point_and_lands_when_it_is_over() {
     let (mut world, fiend, mark) = fiend_and_a_mark(rules::RAZE_DISTANCE[0]);
     let stood = world.transform.get(fiend).expect("standing").pos;
     let mana = world.mana.get(fiend).expect("a pool").mana;
-    let_go(&mut world, RAZE_NEAR_SLOT);
+    cast(&mut world, RAZE_NEAR_SLOT, Target::None);
     let point = ticks_of(rules::RAZE_CAST_POINT_MS);
     assert_eq!(point, 17, "0.55 s at thirty ticks a second, rounded up");
     for tick in 1..point {
@@ -146,10 +140,8 @@ fn a_raze_stands_through_its_cast_point_and_lands_when_it_is_over() {
 fn an_order_to_the_body_in_the_cast_point_breaks_the_raze_off_with_nothing_spent() {
     let (mut world, fiend, mark) = fiend_and_a_mark(rules::RAZE_DISTANCE[0]);
     let mana = world.mana.get(fiend).expect("a pool").mana;
-    let_go(&mut world, RAZE_NEAR_SLOT);
-    for _ in 0..5 {
-        world.step();
-    }
+    cast(&mut world, RAZE_NEAR_SLOT, Target::None);
+    run(&mut world, 5);
     stop_click(&mut world);
     let mut burnt = Vec::new();
     for _ in 0..30 {
@@ -202,9 +194,7 @@ fn a_raze_or_a_requiem_burns_the_creep_at_a_tower_and_leaves_the_tower_whole() {
         world.step();
         let (was_creep, was_tower) = (hp(&world, creep), hp(&world, tower));
         cast_through(&mut world, slot, point);
-        for _ in 0..ticks {
-            world.step();
-        }
+        run(&mut world, ticks);
         assert!(
             hp(&world, creep) < was_creep,
             "{case}: the creep at the tower feels it"
@@ -305,9 +295,7 @@ fn the_presence_wears_down_the_armor_of_enemies_that_see_its_carrier() {
         Team::Dire,
         Vec2::from_ints(5000 + rules::PRESENCE_RADIUS + 500, 5000),
     );
-    for _ in 0..rules::PRESENCE_LINGER_TICKS {
-        world.step();
-    }
+    run(&mut world, rules::PRESENCE_LINGER_TICKS);
     assert!(
         !world.can_see(Team::Dire, fiend),
         "the Dire side is blind to him"
@@ -339,9 +327,7 @@ fn armor_the_presence_takes_below_zero_lets_his_swings_land_harder() {
     // 16 to 22 base and 25 agility.
     for (presence, over, under) in [(0, 100, 112), (4, 160, 130)] {
         let (mut world, fiend, mark) = fiend_and_a_mark(-400);
-        if let Some(book) = world.abilities.get_mut(fiend) {
-            book.slots[4].level = presence;
-        }
+        set_level(&mut world, fiend, 4, presence);
         world.step();
         let taken = one_swing_takes(&mut world, fiend, mark);
         assert!(
@@ -392,9 +378,7 @@ fn a_raze_leaves_its_mark_where_it_lands_for_whoever_sees_the_spot() {
             .all(|shown| shown.hero != Some(HeroId::SHADOW_FIEND)),
         "and still does not see the fiend"
     );
-    for _ in 0..rules::MARK_TICKS {
-        world.step();
-    }
+    run(&mut world, rules::MARK_TICKS);
     assert!(
         world
             .view_full()
@@ -440,7 +424,7 @@ fn a_requiem_lets_a_line_fly_for_every_soul_and_a_line_burns_what_it_crosses_onc
             .filter(|shown| shown.ability == Some(AbilityId::REQUIEM))
             .count()
     };
-    let_go(&mut world, REQUIEM_SLOT);
+    cast(&mut world, REQUIEM_SLOT, Target::None);
     for _ in 1..ticks_of(rules::REQUIEM_CAST_POINT_MS) {
         world.step();
         assert_eq!(flying(&world), 0, "nothing flies in the cast point");
@@ -494,12 +478,7 @@ fn what_stands_at_the_fiend_is_crossed_by_every_line_and_held_the_longest() {
     ] {
         assert_eq!(held(kind), Some(65), "five lines' worth, held 2.15 s");
     }
-    let projected = world
-        .view(Team::Dire)
-        .units
-        .into_iter()
-        .find(|unit| unit.id == wire_id(mark))
-        .expect("the frightened creep is projected");
+    let projected = shown(&world, Some(Team::Dire), mark);
     assert_ne!(
         projected.statuses.bits & StatusFlags::FEARED,
         0,
@@ -519,28 +498,13 @@ fn a_requiem_line_tears_magic_resistance_by_a_share_of_what_it_keeps_out() {
     world.settle();
     hand_souls(&mut world, fiend, 1);
     world.step();
-    let resist = |world: &World| {
-        world
-            .view_full()
-            .units
-            .into_iter()
-            .find(|unit| unit.id == wire_id(foe))
-            .expect("the foe is projected")
-            .magic_resist
-    };
+    let resist = |world: &World| shown(world, None, foe).magic_resist;
     assert_eq!(resist(&world), Fixed::from_ratio(1, 4), "a hero's own");
     cast_through(&mut world, REQUIEM_SLOT, rules::REQUIEM_CAST_POINT_MS);
-    for _ in 0..10 {
-        world.step();
-    }
+    run(&mut world, 10);
     // 1 - (1 - 0.25) * 1.05: what came through grows by five percent.
     assert_eq!(resist(&world), Fixed::from_ratio(2125, 10_000));
-    let shown = world
-        .view_full()
-        .units
-        .into_iter()
-        .find(|unit| unit.id == wire_id(foe))
-        .expect("the foe is projected");
+    let shown = shown(&world, None, foe);
     assert!(
         shown
             .effects
@@ -649,9 +613,7 @@ fn a_fallen_fiend_lets_half_his_kept_souls_fly_whatever_the_cooldown_and_they_on
 fn a_fallen_fiend_with_no_requiem_learned_lets_nothing_fly() {
     let (mut world, fiend, _mark) = fiend_and_a_mark(60);
     hand_souls(&mut world, fiend, 20);
-    if let Some(book) = world.abilities.get_mut(fiend) {
-        book.slots[usize::from(REQUIEM_SLOT)].level = 0;
-    }
+    set_level(&mut world, fiend, usize::from(REQUIEM_SLOT), 0);
     world.bury(vec![(fiend, None)], &mut Vec::new());
     assert!(
         world
@@ -660,39 +622,6 @@ fn a_fallen_fiend_with_no_requiem_learned_lets_nothing_fly() {
             .iter()
             .all(|shown| shown.ability != Some(AbilityId::REQUIEM))
     );
-}
-
-/// Casts one of the fiend's slots and runs the world through its cast point:
-/// every event on the way, the tick it goes off included.
-pub(super) fn cast_through(world: &mut World, slot: u8, point_ms: u32) -> Vec<Event> {
-    let mut events = world.advance(&[crate::game::Command {
-        slot: SlotId(0),
-        unit: None,
-        order: Order::Cast {
-            slot: bota_proto::AbilitySlot(slot),
-            target: Target::None,
-        },
-    }]);
-    for _ in 0..ticks_of(point_ms) {
-        events.extend(world.step());
-    }
-    events
-}
-
-/// Magic damage told of on one unit.
-pub(super) fn burns_on(events: &[Event], unit: Entity) -> Vec<i32> {
-    events
-        .iter()
-        .filter_map(|event| match event.kind {
-            EventKind::Damaged {
-                target,
-                amount,
-                kind: DamageKind::Magical,
-                ..
-            } if target == wire_id(unit) => Some(amount),
-            _ => None,
-        })
-        .collect()
 }
 
 /// The statuses a unit shows the whole world.
@@ -705,23 +634,13 @@ fn own_statuses(world: &World, unit: Entity) -> u16 {
         .map_or(0, |shown| shown.statuses.bits)
 }
 
-/// Ticks one of a hero's slots waits before it may be cast again.
-pub(super) fn cooldown(world: &World, hero: Entity, slot: u8) -> u32 {
+fn cooldown(world: &World, hero: Entity, slot: u8) -> u32 {
     world
         .abilities
         .get(hero)
         .map_or(0, |book| book.slots[usize::from(slot)].cooldown)
 }
 
-/// What a unit has left of its health.
-pub(super) fn hp(world: &World, unit: Entity) -> Fixed {
+fn hp(world: &World, unit: Entity) -> Fixed {
     world.health.get(unit).expect("standing").hp
-}
-
-/// Souls a hero holds.
-pub(super) fn souls(world: &World, hero: Entity) -> u32 {
-    world
-        .stacks
-        .get(hero)
-        .map_or(0, |kept| kept.of(StackKind::Souls))
 }

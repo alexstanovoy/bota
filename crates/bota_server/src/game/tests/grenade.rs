@@ -5,31 +5,19 @@ use bota_core::{ModifierKind, rules};
 
 use crate::game::{Entity, Event, MatchConfig, World, wire_id};
 use bota_proto::{
-    AbilityId, DamageKind, EffectId, EventKind, Fixed, HeroId, ItemId, ItemSlot, Order, Pick,
-    RejectReason, SlotId, StatusFlags, Target, Team, UnitView, Vec2,
+    AbilityId, DamageKind, EffectId, EventKind, Fixed, ItemId, ItemSlot, Order, RejectReason,
+    StatusFlags, Target, Team, Vec2,
 };
 
 use super::support::*;
 
-/// Shadow Fiend's base movement speed.
 const BASE_SPEED: i32 = 305;
 
 /// A match of two Shadow Fiends, Radiant in seat 0 and Dire in seat 1, both
 /// at an empty spot `apart` units from each other, one tick on.
 fn two_fiends(apart: i32) -> (World, Entity, Entity) {
     let cfg = MatchConfig {
-        picks: vec![
-            Pick {
-                slot: SlotId(0),
-                team: Team::Radiant,
-                hero: HeroId::SHADOW_FIEND,
-            },
-            Pick {
-                slot: SlotId(1),
-                team: Team::Dire,
-                hero: HeroId::SHADOW_FIEND,
-            },
-        ],
+        picks: fiend_against_fiend(),
         ..config()
     };
     let mut world = World::for_match(&cfg, cfg.rng());
@@ -44,17 +32,6 @@ fn two_fiends(apart: i32) -> (World, Entity, Entity) {
     (world, ours, theirs)
 }
 
-/// A unit as its own side's view shows it.
-fn seen(world: &World, team: Team, unit: Entity) -> UnitView {
-    world
-        .view(team)
-        .units
-        .into_iter()
-        .find(|seen| seen.id == wire_id(unit))
-        .expect("in sight")
-}
-
-/// Magical blows one unit dealt another among some events.
 fn magic_blows(events: &[Event], from: Entity, on: Entity) -> usize {
     events
         .iter()
@@ -94,7 +71,7 @@ fn boots_and_a_lace_add_up_and_a_second_of_either_adds_nothing() {
         }
         world.step();
         assert_eq!(
-            seen(&world, Team::Radiant, hero).move_speed,
+            shown(&world, Some(Team::Radiant), hero).move_speed,
             Fixed::from_int(speed),
             "carrying {carried:?}"
         );
@@ -106,7 +83,7 @@ fn a_thrown_grenade_flies_bursts_slows_and_burns_five_times_then_lifts() {
     let (mut world, hero, enemy) = two_fiends(500);
     carry(&mut world, hero, 0, ItemId::BLOOD_GRENADE, 1);
     world.step();
-    let speed = seen(&world, Team::Dire, enemy).move_speed;
+    let speed = shown(&world, Some(Team::Dire), enemy).move_speed;
     let hp = world.health.get(hero).expect("standing").hp;
     let aim = world.transform.get(enemy).expect("standing").pos;
     let mut events = advance_validated(
@@ -133,7 +110,7 @@ fn a_thrown_grenade_flies_bursts_slows_and_burns_five_times_then_lifts() {
         }
         events.clear();
         if tick_of_blows.len() == 1 {
-            let them = seen(&world, Team::Radiant, enemy);
+            let them = shown(&world, Some(Team::Radiant), enemy);
             assert_eq!(
                 i64::from(them.move_speed.raw),
                 i64::from(speed.raw) * i64::from(100 - rules::GRENADE_SLOW_PCT) / 100,
@@ -166,7 +143,7 @@ fn a_thrown_grenade_flies_bursts_slows_and_burns_five_times_then_lifts() {
         [30, 60, 90, 120, 150],
         "a beat on every whole second"
     );
-    let them = seen(&world, Team::Radiant, enemy);
+    let them = shown(&world, Some(Team::Radiant), enemy);
     assert_eq!(them.move_speed, speed, "the slow lifts with the debuff");
     assert!(
         !them

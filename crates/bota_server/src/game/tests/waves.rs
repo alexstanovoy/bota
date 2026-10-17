@@ -78,9 +78,7 @@ fn a_creep_off_its_route_rejoins_it_ahead_and_never_walks_back() {
         lane_progress(&route, pos),
         was
     );
-    for _ in 0..90 {
-        world.step();
-    }
+    run(&mut world, 90);
     let now = world.transform.get(creep).expect("alive").pos;
     assert!(
         lane_progress(&route, now) > was,
@@ -103,9 +101,7 @@ fn a_creep_is_sent_one_way_at_a_time() {
     let second = world.orders.get(creep).map(|o| o.current);
     assert_eq!(first, second, "it is not pulled two ways in one breath");
     let was = world.transform.get(creep).expect("alive").pos;
-    for _ in 0..60 {
-        world.step();
-    }
+    run(&mut world, 60);
     let later = world.transform.get(creep).expect("alive").pos;
     assert!(
         !later.within(was, rules::units(40)),

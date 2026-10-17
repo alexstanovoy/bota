@@ -3,7 +3,7 @@
 
 use bota_core::{ModifierKind, fountain_pos, hero_spawn_pos, rules};
 
-use crate::game::{Command, Entity, UnitOrder, World, wire_id};
+use crate::game::{Entity, UnitOrder, World, wire_id};
 use bota_proto::{
     AbilitySlot, Fixed, ItemId, ItemSlot, Order, RejectReason, SlotId, StatusFlags, Target, Team,
     UnitKind, Vec2,
@@ -44,7 +44,6 @@ fn refusal(world: &World, target: Target) -> Result<(), RejectReason> {
     )
 }
 
-/// Where the hero stands.
 fn pos(world: &World, hero: Entity) -> Vec2 {
     world.transform.get(hero).expect("standing").pos
 }
@@ -66,8 +65,7 @@ const CHANNEL: u32 = rules::SCROLL_CHANNEL_TICKS;
 
 #[test]
 fn every_hero_starts_with_one_free_scroll_ready_ten_seconds_past_the_horn() {
-    let mut world = World::for_match(&config(), config().rng());
-    let hero = world.seats[0].unit.expect("stood up");
+    let (mut world, hero) = match_hero();
     let scroll = scrolls(&world, hero).expect("the slot holds the starting scroll");
     assert_eq!(scroll.id, ItemId::TOWN_PORTAL_SCROLL);
     assert_eq!(scroll.charges, 1);
@@ -76,20 +74,14 @@ fn every_hero_starts_with_one_free_scroll_ready_ten_seconds_past_the_horn() {
         rules::SCROLL_FIRST_WAIT_TICKS,
         rules::PREGAME_TICKS + 10 * rules::TICKS_PER_SECOND
     );
-    for _ in 0..rules::SCROLL_FIRST_WAIT_TICKS - 1 {
-        world.step();
-    }
+    run(&mut world, rules::SCROLL_FIRST_WAIT_TICKS - 1);
     let far = Vec2::from_ints(9000, 9000);
     assert_eq!(
         refusal(&world, Target::Pos(far)),
         Err(RejectReason::OnCooldown)
     );
-    let shown = world
-        .view(Team::Radiant)
-        .units
-        .into_iter()
-        .find(|unit| unit.id == wire_id(hero))
-        .and_then(|unit| unit.town_portal)
+    let shown = shown(&world, Some(Team::Radiant), hero)
+        .town_portal
         .expect("the slot crosses the wire");
     assert_eq!(shown.cooldown_left, 1, "the wait shows on the scroll");
     world.step();
@@ -123,17 +115,9 @@ fn a_scroll_spends_mana_and_its_wait_as_it_is_read_and_itself_on_landing() {
         world.owes_wait(hero, ItemId::TOWN_PORTAL_SCROLL),
         "and the wait began"
     );
-    let statuses = world
-        .view(Team::Radiant)
-        .units
-        .into_iter()
-        .find(|unit| unit.id == wire_id(hero))
-        .expect("projected")
-        .statuses;
+    let statuses = shown(&world, Some(Team::Radiant), hero).statuses;
     assert_ne!(statuses.bits & StatusFlags::CHANNELLING, 0);
-    for _ in 1..CHANNEL {
-        world.step();
-    }
+    run(&mut world, CHANNEL - 1);
     assert_eq!(
         pos(&world, hero),
         from,
@@ -143,9 +127,7 @@ fn a_scroll_spends_mana_and_its_wait_as_it_is_read_and_itself_on_landing() {
     world.step();
     assert_eq!(pos(&world, hero), to, "three seconds in it is there");
     assert!(scrolls(&world, hero).is_none(), "and the scroll is spent");
-    for _ in 0..30 {
-        world.step();
-    }
+    run(&mut world, 30);
     assert_eq!(
         pos(&world, hero),
         to,
@@ -190,9 +172,7 @@ fn a_stun_breaks_the_channel() {
     let to = beside_own_tower(&world);
     read_at(&mut world, Target::Pos(to));
     put_on(&mut world, hero, ModifierKind::Stunned, 5);
-    for _ in 0..CHANNEL {
-        world.step();
-    }
+    run(&mut world, CHANNEL);
     assert_eq!(pos(&world, hero), from, "it never went");
     assert!(scrolls(&world, hero).is_some());
 }
@@ -205,9 +185,7 @@ fn damage_does_not_break_the_channel() {
     let biter = thinking_creep_of(&mut world, Team::Dire, beside);
     let hp = world.health.get(hero).expect("alive").hp;
     read_at(&mut world, Target::Pos(to));
-    for _ in 1..CHANNEL {
-        world.step();
-    }
+    run(&mut world, CHANNEL - 1);
     assert!(world.alive(biter));
     assert!(
         world.health.get(hero).expect("alive").hp < hp,
@@ -226,9 +204,7 @@ fn the_channel_breaks_when_its_building_falls() {
     let tower = building(&world, UnitKind::Tower, Team::Radiant);
     let standing = pos(&world, tower);
     fell_at(&mut world, standing);
-    for _ in 0..CHANNEL {
-        world.step();
-    }
+    run(&mut world, CHANNEL);
     assert!(!world.is_channelling(hero));
     assert_eq!(pos(&world, hero), from, "there was nowhere left to go");
     assert!(scrolls(&world, hero).is_some());
@@ -266,9 +242,7 @@ fn a_spot_carries_to_the_nearest_building_and_lands_within_its_band() {
     assert!(landing.within(from_it, rules::units(rules::SCROLL_MAX_DISTANCE + 1)));
     assert!(!landing.within(from_it, rules::units(rules::SCROLL_MIN_DISTANCE - 1)));
     read_at(&mut world, Target::Pos(aim));
-    for _ in 0..CHANNEL {
-        world.step();
-    }
+    run(&mut world, CHANNEL);
     assert_eq!(pos(&world, hero), landing);
 }
 
@@ -282,9 +256,7 @@ fn a_building_named_is_landed_beside_and_an_enemy_one_is_refused() {
         Err(RejectReason::WrongTargetKind)
     );
     read_at(&mut world, Target::Unit(wire_id(ours)));
-    for _ in 0..CHANNEL {
-        world.step();
-    }
+    run(&mut world, CHANNEL);
     let at = pos(&world, hero);
     let centre = pos(&world, ours);
     assert!(at.within(centre, rules::units(rules::SCROLL_MAX_DISTANCE)));
@@ -305,9 +277,7 @@ fn nothing_aimed_carries_to_the_fountain_but_not_from_beside_it() {
     assert!(!away.within(home, rules::units(rules::SCROLL_FOUNTAIN_MIN_DISTANCE)));
     world.transform.get_mut(hero).expect("standing").pos = away;
     read_at(&mut world, Target::None);
-    for _ in 0..CHANNEL {
-        world.step();
-    }
+    run(&mut world, CHANNEL);
     assert_eq!(pos(&world, hero), spawn, "it lands where heroes come in");
 }
 
@@ -328,9 +298,7 @@ fn both_sides_are_shown_where_a_scroll_lands_and_how_long_it_has() {
         shown.building,
         wire_id(building(&world, UnitKind::Tower, Team::Radiant))
     );
-    for _ in 1..CHANNEL {
-        world.step();
-    }
+    run(&mut world, CHANNEL - 1);
     assert_eq!(world.view(Team::Dire).teleports[0].ticks_left, 1);
     world.step();
     assert!(world.view(Team::Dire).teleports.is_empty(), "landed");
@@ -369,9 +337,7 @@ fn a_scroll_shows_its_side_the_ground_it_lands_on_a_moment_past_the_channel() {
         world.step();
         assert!(world.can_see(Team::Radiant, lurker), "and a moment past it");
     }
-    for _ in 0..2 {
-        world.step();
-    }
+    run(&mut world, 2);
     assert!(!world.can_see(Team::Radiant, lurker), "then no more");
 }
 
@@ -431,9 +397,7 @@ fn a_courier_hands_scrolls_into_the_town_portal_slot_whatever_the_inventory_hold
             *slot = Some(fresh_stack(ItemId::BOOTS, 0));
         }
     }
-    if let Some(bag) = world.inventory.get_mut(courier) {
-        bag.slots[0] = Some(fresh_stack(ItemId::TOWN_PORTAL_SCROLL, 1));
-    }
+    hand_item(&mut world, courier, ItemId::TOWN_PORTAL_SCROLL, 1);
     for _ in 0..30 * rules::TICKS_PER_SECOND {
         world.step();
         if scrolls(&world, hero).is_some_and(|stack| stack.charges == 2) {
@@ -489,9 +453,7 @@ fn a_free_scroll_is_never_bought_back_and_is_spent_first() {
     world.transform.get_mut(hero).expect("standing").pos = an_empty_spot(&world);
     let to = beside_own_tower(&world);
     read_at(&mut world, Target::Pos(to));
-    for _ in 0..CHANNEL {
-        world.step();
-    }
+    run(&mut world, CHANNEL);
     let left = scrolls(&world, hero).expect("one left");
     assert_eq!(
         (left.charges, left.free_charges),
@@ -512,9 +474,7 @@ fn a_free_scroll_is_never_bought_back_and_is_spent_first() {
 #[test]
 fn a_cast_breaks_the_channel_and_goes_off() {
     let (mut world, hero) = a_hero_with_a_scroll();
-    if let Some(book) = world.abilities.get_mut(hero) {
-        book.slots[0].level = 1;
-    }
+    set_level(&mut world, hero, 0, 1);
     let to = beside_own_tower(&world);
     read_at(&mut world, Target::Pos(to));
     advance_validated(
@@ -529,9 +489,7 @@ fn a_cast_breaks_the_channel_and_goes_off() {
         !world.is_channelling(hero),
         "the raze took the channel's place"
     );
-    for _ in 0..30 {
-        world.step();
-    }
+    run(&mut world, 30);
     let raze = world.abilities.get(hero).expect("has a book").slots[0];
     assert!(raze.cooldown > 0, "and went off");
 }
@@ -555,16 +513,7 @@ fn phase_boots_leave_the_channel_be_and_a_feast_breaks_it() {
         "phasing is no order to the channel"
     );
     assert!(carries(&world, hero, ModifierKind::Phased), "and it phased");
-    if let Some(book) = world.abilities.get_mut(hero) {
-        book.slots[3].level = 1;
-    }
-    world.advance(&[Command {
-        slot: SlotId(0),
-        unit: None,
-        order: Order::Cast {
-            slot: AbilitySlot(3),
-            target: Target::None,
-        },
-    }]);
+    set_level(&mut world, hero, 3, 1);
+    cast(&mut world, 3, Target::None);
     assert!(!world.is_channelling(hero), "a feast is");
 }

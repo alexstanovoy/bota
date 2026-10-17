@@ -16,38 +16,30 @@ pub fn tree_positions(map: &bota_core::MapDef, terrain: &MapTerrain) -> Vec<Vec2
         r * r
     };
     let base_clear = rules::units(rules::TREE_BASE_CLEAR);
-    let lanes: Vec<(u8, Vec<Vec2>)> = if lane_clear > 0 {
-        map.lanes()
-            .map(|lane| (lane, lane_polyline(map, lane)))
-            .collect()
+    let lanes: Vec<Vec<Vec2>> = if lane_clear > 0 {
+        map.lanes().map(|lane| lane_polyline(map, lane)).collect()
     } else {
         Vec::new()
+    };
+    let off_lanes = |pos: Vec2| {
+        lanes.iter().all(|line| {
+            line.windows(2)
+                .map(|s| bota_core::segment_distance_squared(pos, s[0], s[1]))
+                .min()
+                .expect("a lane has at least one segment")
+                >= lane_clear
+        })
     };
     terrain
         .trees
         .iter()
         .map(|&(x, y)| Vec2::from_ints(i32::from(x), i32::from(y)))
         .filter(|&pos| {
-            for (_, line) in &lanes {
-                let offset = line
-                    .windows(2)
-                    .map(|s| bota_core::segment_distance_squared(pos, s[0], s[1]))
-                    .min()
-                    .expect("a lane has at least one segment");
-                if offset < lane_clear {
-                    return false;
-                }
-            }
-            !pos.within(map.fountains[0], base_clear) && !pos.within(map.fountains[1], base_clear)
+            off_lanes(pos)
+                && !pos.within(map.fountains[0], base_clear)
+                && !pos.within(map.fountains[1], base_clear)
         })
         .collect()
-}
-
-/// The landmarks a team's creeps march through on a lane, spawner first.
-fn lane_landmarks(map: &bota_core::MapDef, team: Team, lane: u8) -> Vec<Vec2> {
-    let mut line = vec![creep_spawn_pos(map, team, lane)];
-    line.extend(lane_route(map, team, lane));
-    line
 }
 
 /// The walked route of every lane, both sides, indexed by team then lane,
@@ -73,9 +65,7 @@ pub fn lane_routes_on(
             walk_lane(map, &ob, planner, team, rules::LANE_BOT),
         ]
     };
-    let radiant = build(Team::Radiant);
-    let dire = build(Team::Dire);
-    [radiant, dire]
+    [build(Team::Radiant), build(Team::Dire)]
 }
 
 /// One lane's walked route: a stop beside each landmark, with a found path
@@ -90,7 +80,9 @@ fn walk_lane(
     team: Team,
     lane: u8,
 ) -> Vec<Vec2> {
-    let marks = lane_landmarks(map, team, lane);
+    // The landmarks the team's creeps march through, spawner first.
+    let mut marks = vec![creep_spawn_pos(map, team, lane)];
+    marks.extend(lane_route(map, team, lane));
     if marks.len() < 2 {
         return Vec::new();
     }

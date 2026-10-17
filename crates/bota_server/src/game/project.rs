@@ -82,6 +82,8 @@ impl World {
 
     /// One seat as a viewer is told of it.
     fn project_player(&self, viewer: Option<Team>, seat: &Seat) -> PlayerView {
+        let mana_rate = self.mana_cost_rate_of(seat.unit);
+        let own = viewer.is_none_or(|team| team == seat.team);
         PlayerView {
             slot: seat.slot,
             team: seat.team,
@@ -89,36 +91,23 @@ impl World {
             unit: seat.unit.map(wire_id),
             level: seat.level,
             xp: seat.xp,
-            // A side is told its own gold and its own stash, nobody
-            // else's.
-            gold: match viewer {
-                None => Some(seat.gold),
-                Some(team) if team == seat.team => Some(seat.gold),
-                Some(_) => None,
-            },
-            stash: match viewer {
-                Some(team) if team != seat.team => None,
-                _ => Some(item_views(
-                    &seat.stash,
-                    self.mana_cost_rate_of(seat.unit),
-                    &seat.item_clocks,
-                )),
-            },
-            // What a fallen body left is told to its own side alone.
-            kit: match viewer {
-                Some(team) if team != seat.team => None,
-                _ => seat.kept.as_ref().map(|kept| bota_proto::Kit {
-                    abilities: ability_views(&kept.book, self.mana_cost_rate_of(seat.unit)),
-                    items: item_views(
-                        &kept.bag,
-                        self.mana_cost_rate_of(seat.unit),
-                        &seat.item_clocks,
-                    ),
-                    town_portal: kept.bag.town_portal.flatten().map(|stack| {
-                        item_view(&stack, self.mana_cost_rate_of(seat.unit), &seat.item_clocks)
-                    }),
+            // A side is told its own gold, stash and what a fallen body
+            // left, nobody else's.
+            gold: own.then_some(seat.gold),
+            stash: own.then(|| item_views(&seat.stash, mana_rate, &seat.item_clocks)),
+            kit: seat
+                .kept
+                .as_ref()
+                .filter(|_| own)
+                .map(|kept| bota_proto::Kit {
+                    abilities: ability_views(&kept.book, mana_rate),
+                    items: item_views(&kept.bag, mana_rate, &seat.item_clocks),
+                    town_portal: kept
+                        .bag
+                        .town_portal
+                        .flatten()
+                        .map(|stack| item_view(&stack, mana_rate, &seat.item_clocks)),
                 }),
-            },
             kills: seat.kills,
             deaths: seat.deaths,
             assists: seat.assists,
@@ -334,6 +323,9 @@ impl World {
             .iter()
             .find(|seat| seat.unit == Some(entity))
             .map_or(&[], |seat| &seat.item_clocks);
+        let mana_rate = self.mana_cost_rate_of(Some(entity));
+        let bag = self.inventory.get(entity);
+        let hull = self.hull.get(entity);
         Some(UnitView {
             id: wire_id(entity),
             kind,
@@ -356,8 +348,8 @@ impl World {
             attack_speed: stats.attack_speed,
             armor: stats.armor,
             magic_resist: Fixed::from_ratio(stats.magic_resist_bp, rules::NOMINAL_BP),
-            collision: self.hull.get(entity).map_or(Fixed::ZERO, |h| h.collision),
-            bound: self.hull.get(entity).map_or(Fixed::ZERO, |h| h.bound),
+            collision: hull.map_or(Fixed::ZERO, |h| h.collision),
+            bound: hull.map_or(Fixed::ZERO, |h| h.bound),
             vision_radius: stats.vision,
             true_sight_radius: stats.true_sight,
             statuses: StatusFlags {
@@ -376,20 +368,16 @@ impl World {
                             ability,
                             self.ability_on(entity, ability.id),
                             self.can_level(entity, ability.id, ability.level),
-                            self.mana_cost_rate_of(Some(entity)),
+                            mana_rate,
                         )
                     })
                     .collect()
             }),
-            items: self.inventory.get(entity).map_or_else(Vec::new, |bag| {
-                item_views(bag, self.mana_cost_rate_of(Some(entity)), clocks)
-            }),
+            items: bag.map_or_else(Vec::new, |bag| item_views(bag, mana_rate, clocks)),
             effects: self.effects_on(entity),
-            town_portal: self
-                .inventory
-                .get(entity)
+            town_portal: bag
                 .and_then(|bag| bag.town_portal.flatten())
-                .map(|stack| item_view(&stack, self.mana_cost_rate_of(Some(entity)), clocks)),
+                .map(|stack| item_view(&stack, mana_rate, clocks)),
         })
     }
 }

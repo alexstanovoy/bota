@@ -72,7 +72,6 @@ pub enum EventKind {
     AbilityCast {
         /// Who cast it.
         caster: EntityId,
-        /// Which ability.
         ability: AbilityId,
     },
     /// A hero gained a level. Not sent for a level gained while it is dead.

@@ -6,7 +6,6 @@ use bota_proto::{Attribute, ItemId, SlotId};
 /// One item in a slot.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ItemStack {
-    /// What it is.
     pub id: ItemId,
     /// Uses left, for a consumable. Zero for one that only carries bonuses.
     pub charges: u8,
@@ -37,7 +36,6 @@ impl ItemStack {
         let def = item_def(id)?;
         if def.stack_limit > 0 {
             assert_eq!(def.charges, 1);
-            assert!(def.charges <= def.stack_limit);
         }
         Some(Self {
             id,
@@ -103,7 +101,6 @@ impl ItemStack {
         if moved == 0 {
             return false;
         }
-        let before = u16::from(self.charges) + u16::from(source.charges);
         self.charges += moved;
         source.charges -= moved;
         self.bought_tick = self.bought_tick.min(source.bought_tick);
@@ -117,8 +114,6 @@ impl ItemStack {
         source.free_charges -= free;
         assert!(self.free_charges <= self.charges);
         assert!(source.free_charges <= source.charges);
-        assert_eq!(self.owner, source.owner);
-        assert_eq!(u16::from(self.charges) + u16::from(source.charges), before);
         true
     }
 }

@@ -5,7 +5,7 @@ use bota_core::{
     SIEGE_CREEP, SUPER_MELEE_CREEP, SUPER_RANGED_CREEP, SUPER_SIEGE_CREEP, StructureId, UnitDef,
     WavePlan, creep_spawn_pos, rules, spawn_offsets, team_index, wave_at, wave_plan,
 };
-use bota_proto::{Fixed, Team, Vec2};
+use bota_proto::{Team, Vec2};
 
 use crate::game::{Entity, March, Purpose, UnitOrder, World, advance_waypoint};
 
@@ -71,7 +71,14 @@ impl World {
         {
             return [CreepRank::Mega; 3];
         }
-        let down = |ranged: bool| self.all_down(their, StructureId::Barracks { lane, ranged });
+        let melee_down = self.all_down(
+            their,
+            StructureId::Barracks {
+                lane,
+                ranged: false,
+            },
+        );
+        let ranged_down = self.all_down(their, StructureId::Barracks { lane, ranged: true });
         let rank_of = |fallen: bool| {
             if fallen {
                 CreepRank::Super
@@ -80,9 +87,9 @@ impl World {
             }
         };
         [
-            rank_of(down(false)),
-            rank_of(down(true)),
-            rank_of(down(false) && down(true)),
+            rank_of(melee_down),
+            rank_of(ranged_down),
+            rank_of(melee_down && ranged_down),
         ]
     }
 
@@ -99,13 +106,13 @@ impl World {
             let Some(mut march) = self.march.get(entity).copied() else {
                 continue;
             };
-            let Some(at) = self.transform.get(entity).map(|t| t.pos) else {
+            let Some(at) = self.pos(entity) else {
                 continue;
             };
             let chasing = self
                 .target_of(entity)
                 .filter(|target| self.alive(*target))
-                .and_then(|target| self.transform.get(target).map(|t| t.pos));
+                .and_then(|target| self.pos(target));
             let ai = self.lane_ai.get(entity).copied();
             let going = chasing.or_else(|| ai.and_then(|ai| ai.last_seen));
             let going = match going {
@@ -136,7 +143,7 @@ impl World {
         if route.is_empty() {
             return None;
         }
-        let room = self.hull.get(entity).map_or(Fixed::ZERO, |h| h.collision);
+        let room = self.collision(entity);
         let step = advance_waypoint(&self.clearance, route, usize::from(march.next), at, room);
         march.next = step as u16;
         Some(route[step])

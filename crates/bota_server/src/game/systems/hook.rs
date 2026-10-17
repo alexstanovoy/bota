@@ -3,7 +3,7 @@
 use bota_core::{ModifierKind, facing_towards, kind_def, move_towards, per_tick, rules};
 use bota_proto::{AbilityId, DamageKind, Fixed, Target, Vec2};
 
-use crate::game::{Hook, Modifier, Transform, World};
+use crate::game::{Hook, Modifier, World};
 
 use crate::engine::Entity;
 
@@ -13,24 +13,13 @@ impl World {
         let Target::Pos(pos) = target else {
             return false;
         };
-        let (Some(from), Some(side)) = (
-            self.transform.get(caster).map(|t| t.pos),
-            self.team.get(caster).copied(),
-        ) else {
+        let (Some(from), Some(side)) = (self.pos(caster), self.team.get(caster).copied()) else {
             return false;
         };
         let reach = rules::units(rules::HOOK_RANGE);
         let aim = move_towards(from, pos, reach);
         let damage_amp_bp = self.outgoing_damage_amp_bp(Some(caster), DamageKind::Pure);
-        let hook = self.spawn();
-        self.transform.insert(
-            hook,
-            Transform {
-                pos: from,
-                facing: facing_towards(from, aim),
-            },
-        );
-        self.set_team(hook, side);
+        let hook = self.spawn_placed(from, facing_towards(from, aim), side);
         let links = std::array::from_fn(|_| self.spawn_mark(AbilityId::MEAT_HOOK, caster, from, 0));
         self.hook.insert(
             hook,
@@ -72,10 +61,7 @@ impl World {
             let Some(mut hook) = self.hook.get(entity).copied() else {
                 continue;
             };
-            let (Some(at), Some(home)) = (
-                self.transform.get(entity).map(|t| t.pos),
-                self.transform.get(hook.owner).map(|t| t.pos),
-            ) else {
+            let (Some(at), Some(home)) = (self.pos(entity), self.pos(hook.owner)) else {
                 self.let_go(entity);
                 continue;
             };
@@ -139,7 +125,7 @@ impl World {
             if kind_def(kind).fixed {
                 continue;
             }
-            let Some(spot) = self.transform.get(other).map(|t| t.pos) else {
+            let Some(spot) = self.pos(other) else {
                 continue;
             };
             let hulls = self.hull.get(other).map_or(Fixed::ZERO, |hull| hull.bound);
@@ -172,11 +158,7 @@ impl World {
         }
         self.put_modifier(
             caught,
-            Modifier {
-                kind: ModifierKind::Stunned,
-                source: Some(hook),
-                ticks_left: Some(2),
-            },
+            Modifier::new(ModifierKind::Stunned, Some(hook), Some(2)),
         );
         self.forget_walk(caught);
     }
@@ -189,8 +171,6 @@ impl World {
             }
         }
         self.hook.remove(hook);
-        self.transform.remove(hook);
-        self.team.remove(hook);
-        self.despawn(hook);
+        self.discard(hook);
     }
 }

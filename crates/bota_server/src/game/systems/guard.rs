@@ -65,8 +65,7 @@ impl World {
     /// Runs right after stats are derived; the guard is worn as
     /// [`Stats::invulnerable`](crate::game::Stats::invulnerable).
     pub fn guard_structures(&mut self) {
-        let entities = self.take_entity_snapshot();
-        for entity in entities.iter().copied() {
+        for entity in self.entities.iter() {
             let Some(kind) = self.kind.get(entity).copied() else {
                 continue;
             };
@@ -77,6 +76,5 @@ impl World {
                 stats.invulnerable = true;
             }
         }
-        self.recycle_entity_snapshot(entities);
     }
 }

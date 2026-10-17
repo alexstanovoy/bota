@@ -87,11 +87,11 @@ pub fn aura_system(cx: AuraCx<'_>) {
                     continue;
                 }
                 if let Some(on_it) = modifiers.get_mut(entity) {
-                    on_it.put(Modifier {
-                        kind: handed_kind,
-                        source: Some(source),
-                        ticks_left: Some(resisted_ticks(stats, entity, handed_kind, aura.ticks)),
-                    });
+                    on_it.put(Modifier::new(
+                        handed_kind,
+                        Some(source),
+                        Some(resisted_ticks(stats, entity, handed_kind, aura.ticks)),
+                    ));
                 }
             }
         }

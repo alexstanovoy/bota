@@ -2,9 +2,13 @@
 //! or reads is capped by one of these, so a corrupt or hostile stream cannot
 //! make it grow without end.
 
-pub const COURIER_ITEM_SLOTS: usize = 6;
-pub const HERO_ITEM_SLOTS: usize = 9;
-pub const STASH_ITEM_SLOTS: usize = 6;
+use bota_core::rules;
+
+/// A courier's bag: an inventory, no backpack.
+pub const COURIER_ITEM_SLOTS: usize = rules::INVENTORY_SLOTS;
+/// A hero's bag: the inventory and the backpack.
+pub const HERO_ITEM_SLOTS: usize = rules::INVENTORY_SLOTS + rules::BACKPACK_SLOTS;
+pub const STASH_ITEM_SLOTS: usize = rules::STASH_SLOTS;
 /// Maximum number of seats in one match.
 pub const MAX_SEATS: usize = 10;
 /// Maximum visible units per snapshot and entity records retained.

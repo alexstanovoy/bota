@@ -23,9 +23,7 @@ fn camps_fill_on_the_minute_and_stay_full() {
     };
     let filled = neutrals(&world);
     assert!(filled > 0, "the jungle put something out");
-    for _ in 0..rules::NEUTRAL_SPAWN_PERIOD_TICKS {
-        world.step();
-    }
+    run(&mut world, rules::NEUTRAL_SPAWN_PERIOD_TICKS);
     assert_eq!(
         neutrals(&world),
         filled,

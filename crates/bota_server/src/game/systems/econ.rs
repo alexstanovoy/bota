@@ -71,7 +71,7 @@ impl World {
         let Some(side) = self.team.get(fallen).copied() else {
             return 0;
         };
-        let at = self.transform.get(fallen).map_or(Vec2::ZERO, |t| t.pos);
+        let at = self.pos(fallen).unwrap_or(Vec2::ZERO);
         let killer_side = killer.and_then(|k| self.team.get(k).copied());
         let denied = killer_side == Some(side);
         let mut paid = self.credit_killer(killer, denied, fallen_seat.is_some(), bounty.gold);
@@ -141,7 +141,6 @@ impl World {
         Some((bounty, fallen_seat, Some(worths)))
     }
 
-    /// The net worth of every seat of a side together.
     fn side_worth(&self, side: Team) -> i64 {
         self.seats
             .iter()
@@ -162,30 +161,50 @@ impl World {
         worths: Worths,
         killer_seat: Option<usize>,
     ) -> i32 {
-        let radius = rules::units(rules::XP_RADIUS);
-        let paid_seats: Vec<usize> = (0..self.seats.len())
-            .filter(|&index| {
-                let seat = &self.seats[index];
-                seat.team == earners
-                    && (killer_seat == Some(index)
-                        || seat.unit.is_some_and(|unit| {
-                            self.alive(unit)
-                                && self
-                                    .transform
-                                    .get(unit)
-                                    .is_some_and(|t| t.pos.within(at, radius))
-                        }))
-            })
-            .collect();
+        let paid_seats = self.seats_near(at, earners, rules::XP_RADIUS, killer_seat);
         let share = assist_gold(
             worths.fallen,
             paid_seats.len(),
             worths.killer_side,
             worths.fallen_side,
         );
+        self.pay_seats(paid_seats, share, killer_seat)
+    }
+
+    /// Every seat of a side whose living hero stands within `radius` of a
+    /// spot, and the killer's seat wherever it stands.
+    fn seats_near(
+        &self,
+        at: Vec2,
+        side: Team,
+        radius: i32,
+        killer_seat: Option<usize>,
+    ) -> Vec<usize> {
+        let radius = rules::units(radius);
+        (0..self.seats.len())
+            .filter(|&index| {
+                let seat = &self.seats[index];
+                seat.team == side
+                    && (killer_seat == Some(index)
+                        || seat.unit.is_some_and(|unit| {
+                            self.alive(unit)
+                                && self.pos(unit).is_some_and(|pos| pos.within(at, radius))
+                        }))
+            })
+            .collect()
+    }
+
+    /// Pays each seat `amount` through its hero's gold income, in order.
+    /// Answers what the killer's seat was paid.
+    fn pay_seats(
+        &mut self,
+        seats: impl IntoIterator<Item = usize>,
+        amount: i32,
+        killer_seat: Option<usize>,
+    ) -> i32 {
         let mut to_killer = 0;
-        for index in paid_seats {
-            let paid = self.bounty_after(self.seats[index].unit, share);
+        for index in seats {
+            let paid = self.bounty_after(self.seats[index].unit, amount);
             self.seats[index].gold += paid;
             self.seats[index].net_worth += paid;
             if killer_seat == Some(index) {
@@ -218,10 +237,7 @@ impl World {
             self.seats[index].last_hits += 1;
         }
         let gold = self.roll_gold(gold);
-        let paid = self.bounty_after(killer, gold);
-        self.seats[index].gold += paid;
-        self.seats[index].net_worth += paid;
-        paid
+        self.pay_seats([index], gold, Some(index))
     }
 
     /// Pays a fallen building's team bounty: `team` to every seat of the side
@@ -236,19 +252,10 @@ impl World {
         striker_seat: Option<usize>,
     ) -> i32 {
         let share = if denied { team / 2 } else { team };
-        let mut to_striker = 0;
-        for index in 0..self.seats.len() {
-            if !denied && self.seats[index].team != other_side(side) {
-                continue;
-            }
-            let paid = self.bounty_after(self.seats[index].unit, share);
-            self.seats[index].gold += paid;
-            self.seats[index].net_worth += paid;
-            if striker_seat == Some(index) {
-                to_striker = paid;
-            }
-        }
-        to_striker
+        let paid: Vec<usize> = (0..self.seats.len())
+            .filter(|&index| denied || self.seats[index].team == other_side(side))
+            .collect();
+        self.pay_seats(paid, share, striker_seat)
     }
 
     /// Sets a flagbearer's bonus: [`rules::FLAGBEARER_BONUS_GOLD`] and a
@@ -275,32 +282,8 @@ impl World {
         bonus: i32,
         killer_seat: Option<usize>,
     ) -> i32 {
-        let radius = rules::units(rules::FLAGBEARER_BONUS_RADIUS);
-        let mut to_killer = 0;
-        for index in 0..self.seats.len() {
-            let seat = &self.seats[index];
-            if seat.team != earners {
-                continue;
-            }
-            let Some(unit) = seat.unit else {
-                continue;
-            };
-            let near = self.alive(unit)
-                && self
-                    .transform
-                    .get(unit)
-                    .is_some_and(|t| t.pos.within(at, radius));
-            if !near && killer_seat != Some(index) {
-                continue;
-            }
-            let paid = self.bounty_after(Some(unit), bonus);
-            self.seats[index].gold += paid;
-            self.seats[index].net_worth += paid;
-            if killer_seat == Some(index) {
-                to_killer = paid;
-            }
-        }
-        to_killer
+        let paid_seats = self.seats_near(at, earners, rules::FLAGBEARER_BONUS_RADIUS, killer_seat);
+        self.pay_seats(paid_seats, bonus, killer_seat)
     }
 
     /// One payout of a gold range, drawn evenly from it on the match's
@@ -337,7 +320,6 @@ impl World {
         }
     }
 
-    /// Which seat drives an entity, if any does.
     pub(super) fn seat_of(&self, entity: Entity) -> Option<usize> {
         self.seats.iter().position(|s| s.unit == Some(entity))
     }
@@ -354,21 +336,8 @@ impl World {
         if amount <= 0 {
             return;
         }
-        let radius = rules::units(rules::XP_RADIUS);
-        let earners: Vec<usize> = (0..self.seats.len())
-            .filter(|&index| {
-                let seat = &self.seats[index];
-                seat.team == team
-                    && seat.unit.is_some_and(|unit| {
-                        self.alive(unit)
-                            && (always == Some(index)
-                                || self
-                                    .transform
-                                    .get(unit)
-                                    .is_some_and(|t| t.pos.within(at, radius)))
-                    })
-            })
-            .collect();
+        let mut earners = self.seats_near(at, team, rules::XP_RADIUS, always);
+        earners.retain(|&index| self.seats[index].unit.is_some_and(|unit| self.alive(unit)));
         if earners.is_empty() {
             return;
         }
@@ -442,7 +411,6 @@ impl World {
         }
     }
 
-    /// Whether an entity is a hero.
     pub fn is_hero(&self, entity: Entity) -> bool {
         self.kind.get(entity) == Some(&UnitKind::Hero)
     }

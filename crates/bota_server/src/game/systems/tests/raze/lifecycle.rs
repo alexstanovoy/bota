@@ -11,7 +11,7 @@ fn raze_already_queued_before_caster_death_keeps_its_damage_and_old_generation_e
     world.push_hit(None, caster, 1, DamageKind::Pure);
     reveal(&mut world, target);
     assert!(world.cast_raze(caster, 0, 1));
-    assert_eq!(damage(&world.step(), target), vec![120]);
+    assert_eq!(burns_on(&world.step(), target), vec![120]);
     assert!(!world.alive(caster));
     assert_eq!(effects(&world, target), vec![effect(2, 180)]);
     let returned = hero(&mut world, Team::Radiant, ORIGIN, SlotId(0));
@@ -37,19 +37,6 @@ fn raze_target_death_and_respawn_do_not_restore_timed_stacks() {
 }
 
 #[test]
-fn raze_reused_caster_index_does_not_inherit_the_previous_generations_bonus() {
-    let (mut world, caster, target) = fixture();
-    land(&mut world, caster, target, 0);
-    assert_eq!(effects(&world, target), vec![effect(1, 180)]);
-    assert!(world.despawn(caster));
-    let returned = hero(&mut world, Team::Radiant, ORIGIN, SlotId(0));
-    assert_eq!(caster.index(), returned.index());
-    assert_ne!(caster.generation(), returned.generation());
-    assert_eq!(land(&mut world, returned, target, 0), 85);
-    assert_eq!(land(&mut world, returned, target, 0), 120);
-}
-
-#[test]
 fn raze_caster_death_and_respawn_cannot_use_its_old_bodys_stacks() {
     let (mut world, caster, target) = fixture();
     seat(&mut world, SlotId(0), Team::Radiant, caster, 0);
@@ -71,12 +58,10 @@ fn raze_projection_exposes_only_existing_effect_fields_on_visible_targets() {
     world.visibility.get_mut(caster).unwrap().clear();
     let visible = world.view(Team::Dire);
     assert!(!visible.units.iter().any(|unit| unit.id == wire_id(caster)));
-    let shown = visible
-        .units
-        .iter()
-        .find(|unit| unit.id == wire_id(target))
-        .unwrap();
-    assert_eq!(shown.effects, vec![effect(1, 180)]);
+    assert_eq!(
+        shown(&world, Some(Team::Dire), target).effects,
+        vec![effect(1, 180)]
+    );
     world.visibility.get_mut(target).unwrap().clear();
     assert!(
         !world

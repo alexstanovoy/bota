@@ -204,11 +204,7 @@ fn bench_capsule(group: &mut BenchmarkGroup<'_, WallTime>) {
 /// Measures the local plan search from a fixed hero ask round fixed bodies.
 fn bench_plan(group: &mut BenchmarkGroup<'_, WallTime>) {
     let dummy = Dummy::build(false);
-    let hero = dummy
-        .world
-        .seat(SlotId(0))
-        .and_then(|seat| seat.unit)
-        .expect("slot 0 has a hero");
+    let hero = scenario::hero_at(&dummy.world, SlotId(0)).expect("slot 0 has a hero");
     let transform = *dummy
         .world
         .transform
@@ -262,7 +258,7 @@ fn bench_targeting(group: &mut BenchmarkGroup<'_, WallTime>) {
     let world = &dummy.world;
     let asks: Vec<(Entity, Fixed)> = [SlotId(0), SlotId(1)]
         .into_iter()
-        .filter_map(|slot| world.seat(slot).and_then(|seat| seat.unit))
+        .filter_map(|slot| scenario::hero_at(world, slot))
         .map(|hero| {
             let reach = world
                 .stats

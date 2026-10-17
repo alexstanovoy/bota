@@ -3,14 +3,15 @@
 use bota_core::{MELEE_CREEP, RANGED_CREEP, SHADOW_FIEND, rules, tower_def};
 
 use super::support::{a_spec, spec};
+use crate::game::tests::support::{self, run};
 use crate::game::{
     AppliedModifier, AppliedModifiers, AppliedOrigin, Command, Def, Entity, MAX_SPAWN_MODIFIERS,
     MAX_SPAWN_TARGETS, MatchConfig, MatchConfigError, ModifierDuration, Place, SpawnCategory,
     SpawnModifier, SpawnModifierError, SpawnSelector, SpawnTarget, World,
 };
 use bota_proto::{
-    Cheat, DamageKind, Fixed, HeroId, MAX_MODIFIER_TICKS, MapId, ModifierSpec, Order, Pick, SlotId,
-    Target, Team, TickMode, UnitKind, Vec2,
+    Cheat, DamageKind, Fixed, HeroId, MAX_MODIFIER_TICKS, MapId, ModifierSpec, Order, SlotId,
+    Target, Team, UnitKind, Vec2,
 };
 
 /// A rule taking everything either side, running until the body falls.
@@ -28,22 +29,10 @@ fn a_rule(spec: ModifierSpec) -> SpawnModifier {
 /// A one-seat match on the full map with the given rules.
 fn config(cheats: bool, rules: Vec<SpawnModifier>) -> MatchConfig {
     MatchConfig {
-        match_id: 21,
-        stream: 21,
-        master_key: [5; 32],
-        picks: vec![Pick {
-            slot: SlotId(0),
-            team: Team::Radiant,
-            hero: HeroId::SHADOW_FIEND,
-        }],
         map: MapId(0),
-        tick_rate: 30,
-        mode: TickMode::Lockstep,
-        ack_timeout_ticks: 30,
         cheats,
         spawn_modifiers: rules,
-        immortal_structures: false,
-        immortal_heroes: false,
+        ..support::config()
     }
 }
 
@@ -321,9 +310,7 @@ fn a_respawned_hero_is_seeded_afresh_and_stands_full_at_its_maximum() {
         assert!(!world.alive(hero), "the blow was fatal");
         let wait = world.seats[0].respawn_left;
         assert!(wait > 0);
-        for _ in 0..=wait {
-            world.step();
-        }
+        run(&mut world, wait + 1);
         let reborn = world.seats[0].unit.expect("the hero comes back");
         assert_eq!(
             max_hp(&world, reborn),

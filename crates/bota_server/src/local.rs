@@ -74,13 +74,7 @@ impl LocalMatch {
             refused: Vec::with_capacity(cfg.picks.len()),
         };
         let start = ServerMsg::MatchStart { info: cfg.info() };
-        let mut streams: Vec<Vec<ServerMsg>> = (0..local.seats.len())
-            .map(|_| {
-                let mut stream = Vec::with_capacity(4);
-                stream.push(start.clone());
-                stream
-            })
-            .collect();
+        let mut streams = vec![vec![start]; local.seats.len()];
         local.publish(&mut streams, &events);
         Ok((local, streams))
     }

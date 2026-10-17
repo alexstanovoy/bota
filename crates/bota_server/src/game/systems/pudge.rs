@@ -24,13 +24,9 @@ impl World {
         }
         self.put_modifier(
             caster,
-            Modifier {
-                kind: ModifierKind::Rot { level: level as u8 },
-                source: Some(caster),
-                ticks_left: None,
-            },
+            Modifier::new(ModifierKind::Rot { level: level as u8 }, Some(caster), None),
         );
-        if let Some(at) = self.transform.get(caster).map(|t| t.pos) {
+        if let Some(at) = self.pos(caster) {
             self.spawn_mark(AbilityId::ROT, caster, at, 0);
         }
         true
@@ -54,44 +50,27 @@ impl World {
         let Some(on) = self.dismember_mark(target) else {
             return false;
         };
-        if !self.hostile(caster, on) || !self.in_range_of(caster, on, rules::DISMEMBER_RANGE) {
+        if !self.hostile(caster, on)
+            || !self.within_reach(caster, on, rules::units(rules::DISMEMBER_RANGE))
+        {
             return false;
         }
         let level = usize::from(self.carried_level(caster, AbilityId::DISMEMBER).max(1) - 1);
         let amount = rules::DISMEMBER_DAMAGE_PER_SECOND[level] * rules::BURN_PERIOD_TICKS as i32
             / rules::TICKS_PER_SECOND as i32;
-        self.put_modifier(
-            on,
-            Modifier {
-                kind: ModifierKind::Stunned,
-                source: Some(caster),
-                ticks_left: None,
-            },
-        );
-        self.put_modifier(
-            on,
-            Modifier {
-                kind: ModifierKind::Burning {
-                    amount,
-                    kind: DamageKind::Pure,
-                    lethal: true,
-                },
-                source: Some(caster),
-                ticks_left: None,
-            },
-        );
-        self.put_modifier(
-            caster,
-            Modifier {
-                kind: ModifierKind::Mending {
-                    per_tick: amount * 100 / rules::BURN_PERIOD_TICKS as i32,
-                    breaks: false,
-                },
-                source: Some(caster),
-                ticks_left: None,
-            },
-        );
-        if let Some(at) = self.transform.get(on).map(|t| t.pos) {
+        let burn = ModifierKind::Burning {
+            amount,
+            kind: DamageKind::Pure,
+            lethal: true,
+        };
+        let mend = ModifierKind::Mending {
+            per_tick: amount * 100 / rules::BURN_PERIOD_TICKS as i32,
+            breaks: false,
+        };
+        for (who, kind) in [(on, ModifierKind::Stunned), (on, burn), (caster, mend)] {
+            self.put_modifier(who, Modifier::new(kind, Some(caster), None));
+        }
+        if let Some(at) = self.pos(on) {
             self.spawn_mark(AbilityId::DISMEMBER, caster, at, 0);
         }
         true
@@ -103,14 +82,12 @@ impl World {
         let Some(on) = self.dismember_mark(target) else {
             return false;
         };
-        if let (Some(at), Some(shown)) = (
-            self.transform.get(on).map(|t| t.pos),
-            self.mark_of(caster, AbilityId::DISMEMBER),
-        ) && let Some(transform) = self.transform.get_mut(shown)
+        if let (Some(at), Some(shown)) = (self.pos(on), self.mark_of(caster, AbilityId::DISMEMBER))
+            && let Some(transform) = self.transform.get_mut(shown)
         {
             transform.pos = at;
         }
-        self.alive(on) && self.in_range_of(caster, on, rules::DISMEMBER_RANGE)
+        self.alive(on) && self.within_reach(caster, on, rules::units(rules::DISMEMBER_RANGE))
     }
 
     /// Lets go of what a dismember held: what it put on the mark and on
@@ -155,41 +132,23 @@ impl World {
         if !self.is_hero(fallen) {
             return;
         }
-        let (Some(at), Some(theirs)) = (
-            self.transform.get(fallen).map(|t| t.pos),
-            self.team.get(fallen).copied(),
-        ) else {
+        let (Some(at), Some(theirs)) = (self.pos(fallen), self.team.get(fallen).copied()) else {
             return;
         };
         let reach = rules::units(rules::FLESH_HEAP_RANGE);
-        for hero in self.entities.iter().collect::<Vec<_>>() {
+        for hero in self.entities.iter() {
             // The fallen is dead by now, so it is its side that is looked at,
             // not whether it could still be fought.
             let enemy = self.team.get(hero).is_some_and(|mine| *mine != theirs);
             if hero == fallen || self.carried_level(hero, AbilityId::FLESH_HEAP) == 0 || !enemy {
                 continue;
             }
-            if !self
-                .transform
-                .get(hero)
-                .is_some_and(|t| t.pos.within(at, reach))
-            {
+            if !self.pos(hero).is_some_and(|pos| pos.within(at, reach)) {
                 continue;
             }
             let mut kept = self.stacks.get(hero).copied().unwrap_or_default();
             kept.gather(StackKind::FleshHeap, 1);
             self.stacks.insert(hero, kept);
         }
-    }
-
-    /// Whether one entity stands within a reach of another, edge to edge.
-    fn in_range_of(&self, from: Entity, to: Entity, range: i32) -> bool {
-        let (Some(here), Some(there)) = (
-            self.transform.get(from).map(|t| t.pos),
-            self.transform.get(to).map(|t| t.pos),
-        ) else {
-            return false;
-        };
-        here.within(there, rules::units(range) + self.hulls(from, to))
     }
 }

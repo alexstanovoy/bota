@@ -7,7 +7,7 @@ use bota_core::{
 };
 use bota_proto::{DamageKind, ItemId, Target, Team, UnitKind};
 
-use crate::game::{Entity, Grenade, Modifier, ShopStock, Transform, World};
+use crate::game::{Entity, Grenade, Modifier, ShopStock, World};
 
 /// Every side's shop as the match starts: each item sold from a limited
 /// stock at its starting count, by side, then in catalog order.
@@ -89,10 +89,7 @@ impl World {
         let Target::Pos(aim) = target else {
             return false;
         };
-        let (Some(from), Some(side)) = (
-            self.transform.get(user).map(|t| t.pos),
-            self.team.get(user).copied(),
-        ) else {
+        let (Some(from), Some(side)) = (self.pos(user), self.team.get(user).copied()) else {
             return false;
         };
         let aim = clamp_to_map(aim);
@@ -101,15 +98,7 @@ impl World {
             return false;
         }
         let damage_amp_bp = self.outgoing_damage_amp_bp(Some(user), DamageKind::Magical);
-        let grenade = self.spawn();
-        self.transform.insert(
-            grenade,
-            Transform {
-                pos: from,
-                facing: facing_towards(from, aim),
-            },
-        );
-        self.set_team(grenade, side);
+        let grenade = self.spawn_placed(from, facing_towards(from, aim), side);
         self.grenade.insert(
             grenade,
             Grenade {
@@ -129,7 +118,8 @@ impl World {
                 continue;
             };
             let Some(at) = self.transform.get_mut(entity) else {
-                self.put_grenade_away(entity);
+                self.grenade.remove(entity);
+                self.discard(entity);
                 continue;
             };
             let next = move_towards(
@@ -140,7 +130,8 @@ impl World {
             at.pos = next;
             if next == shot.aim {
                 self.burst(entity, &shot);
-                self.put_grenade_away(entity);
+                self.grenade.remove(entity);
+                self.discard(entity);
             }
         }
         self.recycle_entity_snapshot(entities);
@@ -164,20 +155,19 @@ impl World {
                         .copied()
                         .is_some_and(|kind| kind == UnitKind::Hero || kind_def(kind).creep)
                     && self
-                        .transform
-                        .get(*other)
-                        .is_some_and(|t| t.pos.within(shot.aim, reach))
+                        .pos(*other)
+                        .is_some_and(|pos| pos.within(shot.aim, reach))
             })
             .collect();
         for other in struck {
             let since = self.grenade_beat(other).unwrap_or(self.tick);
             self.put_modifier(
                 other,
-                Modifier {
-                    kind: ModifierKind::BloodGrenade { since },
-                    source: Some(shot.owner),
-                    ticks_left: Some(rules::GRENADE_DEBUFF_TICKS),
-                },
+                Modifier::new(
+                    ModifierKind::BloodGrenade { since },
+                    Some(shot.owner),
+                    Some(rules::GRENADE_DEBUFF_TICKS),
+                ),
             );
             self.push_hit_with_amp(
                 Some(shot.owner),
@@ -199,13 +189,5 @@ impl World {
                 ModifierKind::BloodGrenade { since } => Some(since),
                 _ => None,
             })
-    }
-
-    /// Takes a Blood Grenade out of the world.
-    fn put_grenade_away(&mut self, grenade: Entity) {
-        self.grenade.remove(grenade);
-        self.transform.remove(grenade);
-        self.team.remove(grenade);
-        self.despawn(grenade);
     }
 }

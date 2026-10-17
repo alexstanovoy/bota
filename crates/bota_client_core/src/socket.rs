@@ -21,6 +21,7 @@ const MAX_RESOLVED_ADDRESSES: usize = 16;
 pub struct Link {
     stream: TcpStream,
     reader: FrameReader,
+    buffer: Box<[u8]>,
     receive_wait: Duration,
 }
 
@@ -43,6 +44,7 @@ impl Link {
         Ok(Self {
             stream,
             reader: FrameReader::new(),
+            buffer: vec![0; READ_BUFFER_LEN].into_boxed_slice(),
             receive_wait: Duration::ZERO,
         })
     }
@@ -62,15 +64,14 @@ build client and server from matching commits"
                     )));
                 }
             }
-            let mut buffer = [0_u8; READ_BUFFER_LEN];
             let started = Instant::now();
-            let read = self.stream.read(&mut buffer);
+            let read = self.stream.read(&mut self.buffer);
             self.receive_wait = self.receive_wait.saturating_add(started.elapsed());
             let read = read.map_err(|error| io_context("failed to read server message", error))?;
             if read == 0 {
                 return Ok(None);
             }
-            self.reader.push(&buffer[..read]);
+            self.reader.push(&self.buffer[..read]);
         }
     }
 
@@ -149,7 +150,7 @@ impl Net {
         thread::spawn(move || {
             let mut reader = FrameReader::new();
             let mut stream = reader_stream;
-            let mut buf = [0u8; 65536];
+            let mut buf = [0u8; READ_BUFFER_LEN];
             loop {
                 let n = match stream.read(&mut buf) {
                     Ok(0) | Err(_) => break,
@@ -187,7 +188,6 @@ impl Net {
         self.inbox.try_iter().collect()
     }
 
-    /// Whether the server is gone.
     pub fn is_closed(&self) -> bool {
         self.closed.load(Ordering::Relaxed)
     }

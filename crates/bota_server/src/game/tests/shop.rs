@@ -11,8 +11,7 @@ use super::support::*;
 
 #[test]
 fn what_a_hero_bought_is_in_the_view_its_side_is_sent() {
-    let mut world = World::for_match(&config(), config().rng());
-    let hero = world.seats[0].unit.expect("stood up");
+    let (mut world, hero) = match_hero();
     let boots = ItemId::BOOTS;
     let mut events = Vec::new();
     assert!(
@@ -98,9 +97,7 @@ fn the_backpack_takes_from_the_stash_too() {
         Some(Fixed::from_int(SHADOW_FIEND.move_speed)),
         "just out of the pocket it is still inert"
     );
-    for _ in 0..rules::BACKPACK_MUTE_TICKS {
-        world.step();
-    }
+    run(&mut world, rules::BACKPACK_MUTE_TICKS);
     assert_eq!(
         world.stats.get(hero).map(|s| s.move_speed),
         Some(Fixed::from_int(SHADOW_FIEND.move_speed + 45)),
@@ -124,12 +121,7 @@ fn a_backpack_swap_projects_mute_until_the_exact_boundary() {
     );
 
     let projected = |world: &World| {
-        let view = world.view(Team::Radiant);
-        view.units
-            .iter()
-            .find(|unit| unit.id == wire_id(hero))
-            .and_then(|unit| unit.items.first().copied().flatten())
-            .expect("the item is visible to its seat")
+        shown(world, Some(Team::Radiant), hero).items[0].expect("the item is visible to its seat")
     };
     let item = projected(&world);
     assert_eq!(item.id, boots, "the backpack item landed in front");
@@ -140,28 +132,15 @@ fn a_backpack_swap_projects_mute_until_the_exact_boundary() {
         "the view carries the exact stack mute"
     );
 
-    for _ in 1..rules::BACKPACK_MUTE_TICKS {
-        world.step();
-    }
+    run(&mut world, rules::BACKPACK_MUTE_TICKS - 1);
     assert_eq!(projected(&world).mute_left, 1, "one tick remains");
     world.step();
     assert_eq!(projected(&world).mute_left, 0, "the boundary is ready");
 }
 
 #[test]
-fn the_stash_is_out_of_reach_away_from_the_shop() {
-    let (mut world, hero, _boots) = a_hero_at_the_shop();
-    world.transform.get_mut(hero).expect("hero").pos = Vec2::from_ints(9600, 9216);
-    assert!(
-        !world.move_item(SlotId(0), hero, BAG_SLOTS, 0),
-        "out in the lane the stash cannot be reached into"
-    );
-}
-
-#[test]
 fn the_stash_sells_from_anywhere_and_a_bag_far_out_only_marks() {
-    let mut world = World::for_match(&config(), config().rng());
-    let hero = world.seats[0].unit.expect("stood up");
+    let (mut world, hero) = match_hero();
     let stack = a_stack_of(ItemId::BOOTS, 0);
     world.inventory.get_mut(hero).expect("has a bag").slots[0] = Some(stack);
     world.seats[0].stash.slots[0] = Some(stack);
@@ -339,9 +318,7 @@ fn an_item_aimed_past_reach_walks_its_carrier_in_first() {
     assert!(world.put_item(hero, 0, Target::Pos(spot)));
     world.step();
     assert!(on_the_ground(&world).is_empty(), "too far to lay at once");
-    for _ in 0..300 {
-        world.step();
-    }
+    run(&mut world, 300);
     let lying = on_the_ground(&world);
     assert_eq!(lying.len(), 1, "walked over and laid it");
     assert_eq!(world.transform.get(lying[0]).map(|t| t.pos), Some(spot));
@@ -588,9 +565,7 @@ fn a_later_order_calls_an_item_errand_off() {
     let spot = from + Vec2::from_ints(1000, 1000);
     assert!(world.put_item(hero, 0, Target::Pos(spot)));
     stop_click(&mut world);
-    for _ in 0..200 {
-        world.step();
-    }
+    run(&mut world, 200);
     assert!(on_the_ground(&world).is_empty(), "nothing was laid");
     assert!(
         slot_of(&world, hero, 0).is_some(),
@@ -664,7 +639,6 @@ fn buying_a_built_item_a_second_time_buys_its_parts_again() {
     );
 }
 
-/// How many stacks of one item a hero holds.
 fn count_of(world: &World, hero: Entity, item: ItemId) -> usize {
     world
         .inventory

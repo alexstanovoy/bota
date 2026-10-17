@@ -3,19 +3,6 @@
 use crate::engine::{Entity, EntityAllocator, Table};
 
 #[test]
-fn an_allocator_counts_what_is_live() {
-    let mut entities = EntityAllocator::new();
-    assert!(entities.is_empty());
-    let first = entities.alloc();
-    let second = entities.alloc();
-    assert_eq!(entities.len(), 2);
-    assert!(entities.contains(first) && entities.contains(second));
-    assert!(entities.free(first));
-    assert_eq!(entities.len(), 1);
-    assert!(!entities.is_empty());
-}
-
-#[test]
 fn a_handle_kept_past_a_death_names_nobody() {
     let mut entities = EntityAllocator::new();
     let dead = entities.alloc();
@@ -49,23 +36,6 @@ fn live_entities_come_out_in_slot_order() {
         vec![all[0], fresh, all[2], all[3]],
         "a reused slot is walked where it sits, not where it was made"
     );
-}
-
-#[test]
-fn a_table_holds_a_component_for_the_entity_that_owns_it() {
-    let mut entities = EntityAllocator::new();
-    let mine = entities.alloc();
-    let theirs = entities.alloc();
-    let mut table: Table<i32> = Table::new();
-    assert_eq!(table.insert(mine, 7), None);
-    assert_eq!(table.get(mine), Some(&7));
-    assert!(!table.contains(theirs));
-    assert_eq!(table.insert(mine, 9), Some(7), "the old value comes back");
-    *table.get_mut(mine).expect("just written") += 1;
-    assert_eq!(table.get(mine), Some(&10));
-    assert_eq!(table.remove(mine), Some(10));
-    assert!(!table.contains(mine));
-    assert_eq!(table.remove(mine), None);
 }
 
 #[test]

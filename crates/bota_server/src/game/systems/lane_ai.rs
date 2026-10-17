@@ -59,7 +59,7 @@ impl World {
         candidates: &Candidates,
     ) -> Option<Entity> {
         let order = self.priority_of(seeker);
-        let at = self.transform.get(seeker)?.pos;
+        let at = self.pos(seeker)?;
         let _profile = self.scope(Phase::TargetQuery);
         let mut best: Option<((u8, u8, i64), Entity)> = None;
         for candidate in self.near(seeker, at, reach, candidates) {
@@ -102,14 +102,9 @@ impl World {
     /// out of it gives way to the best within acquisition, and is kept only
     /// when there is none and its chase has not run out.
     pub fn select_target(&self, seeker: Entity, candidates: &Candidates) -> Option<Entity> {
-        let acquisition = self
-            .stats
-            .get(seeker)
-            .map_or(Fixed::ZERO, |stats| stats.acquisition);
-        let reach = self
-            .stats
-            .get(seeker)
-            .map_or(Fixed::ZERO, |stats| stats.attack_range);
+        let stats = self.stats.get(seeker);
+        let acquisition = stats.map_or(Fixed::ZERO, |stats| stats.acquisition);
+        let reach = stats.map_or(Fixed::ZERO, |stats| stats.attack_range);
         let ai = self.lane_ai.get(seeker).copied();
         let keeping = ai.is_some_and(|ai| self.tick < ai.keep_until);
         let Some(held) = self.target_of(seeker) else {
@@ -215,7 +210,7 @@ impl World {
                 continue;
             }
             if self.can_see_of(entity, target) {
-                if let Some(at) = self.transform.get(target).map(|t| t.pos) {
+                if let Some(at) = self.pos(target) {
                     let kept = if fighting {
                         UnitOrder::Attack {
                             target,
@@ -300,14 +295,14 @@ impl World {
             .map_or(Fixed::ZERO, |stats| stats.attack_range);
         match self.target_of(entity) {
             Some(held) => {
-                ai.last_seen = self.transform.get(held).map(|t| t.pos);
+                ai.last_seen = self.pos(held);
                 if self.reachable(entity, reach, held) {
                     ai.chase_until = self.tick + rules::CREEP_CHASE_TICKS;
                 }
             }
             None => {
                 let radius = rules::units(rules::LANE_WAYPOINT_RADIUS);
-                if let Some(at) = self.transform.get(entity).map(|t| t.pos)
+                if let Some(at) = self.pos(entity)
                     && ai.last_seen.is_some_and(|spot| at.within(spot, radius))
                 {
                     ai.last_seen = None;

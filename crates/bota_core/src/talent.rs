@@ -37,7 +37,6 @@ pub type TalentTree = [Talent; TalentSlot::COUNT as usize];
 /// [`rules::TALENT_SECOND_LEVELS`].
 #[inline]
 pub fn talent_floor(slot: TalentSlot, learned: Talents) -> u8 {
-    assert!(slot.0 < TalentSlot::COUNT);
     let tier = usize::from(slot.tier());
     if learned.has(slot.other()) {
         rules::TALENT_SECOND_LEVELS[tier]
@@ -51,19 +50,6 @@ pub fn talent_floor(slot: TalentSlot, learned: Talents) -> u8 {
 #[inline]
 pub const fn attribute_bonus_floor(level: u8) -> u8 {
     rules::ATTRIBUTE_BONUS_LEVELS_APART * (level + 1)
-}
-
-/// The slot of a tree that holds a talent.
-#[inline]
-pub const fn talent_slot(tree: &TalentTree, talent: Talent) -> Option<TalentSlot> {
-    let mut at = 0;
-    while at < tree.len() {
-        if tree[at] as u8 == talent as u8 {
-            return Some(TalentSlot(at as u8));
-        }
-        at += 1;
-    }
-    None
 }
 
 /// Whether a hero with a tree has learned a talent.

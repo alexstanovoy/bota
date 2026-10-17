@@ -6,7 +6,7 @@ use bota_proto::{
     UnitKind, UnitView, Vec2, WorldView,
 };
 
-use crate::limits::{MAX_RESTORATION_REPORT, MAX_TRACKED_ENTITIES};
+use crate::limits::MAX_TRACKED_ENTITIES;
 
 /// Exact displacement observed between two visible snapshots.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -131,7 +131,6 @@ pub struct EntityTrack {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ObservedEvent {
     pub tick: u32,
-    /// Event visible to this seat.
     pub kind: EventKind,
 }
 
@@ -413,41 +412,27 @@ impl Tracks {
         amount: i32,
         mana: i32,
     ) {
-        assert!((0..=MAX_RESTORATION_REPORT).contains(&amount));
-        assert!((0..=MAX_RESTORATION_REPORT).contains(&mana));
-        if let Some(source) = source
-            && let Some(entity) = self.get_mut(source)
-        {
-            if amount > 0 {
-                entity.last_heal_dealt = Some(HealObservation {
-                    tick,
-                    amount,
-                    counterpart: Some(target),
-                });
-            }
-            if mana > 0 {
-                entity.last_mana_restoration_dealt = Some(ManaRestorationObservation {
-                    tick,
-                    amount: mana,
-                    counterpart: Some(target),
-                });
-            }
+        let heal = |counterpart| {
+            (amount > 0).then_some(HealObservation {
+                tick,
+                amount,
+                counterpart,
+            })
+        };
+        let restore = |counterpart| {
+            (mana > 0).then_some(ManaRestorationObservation {
+                tick,
+                amount: mana,
+                counterpart,
+            })
+        };
+        if let Some(e) = source.and_then(|id| self.get_mut(id)) {
+            e.last_heal_dealt = heal(Some(target)).or(e.last_heal_dealt);
+            e.last_mana_restoration_dealt = restore(Some(target)).or(e.last_mana_restoration_dealt);
         }
-        if let Some(entity) = self.get_mut(target) {
-            if amount > 0 {
-                entity.last_heal_received = Some(HealObservation {
-                    tick,
-                    amount,
-                    counterpart: source,
-                });
-            }
-            if mana > 0 {
-                entity.last_mana_restoration_received = Some(ManaRestorationObservation {
-                    tick,
-                    amount: mana,
-                    counterpart: source,
-                });
-            }
+        if let Some(e) = self.get_mut(target) {
+            e.last_heal_received = heal(source).or(e.last_heal_received);
+            e.last_mana_restoration_received = restore(source).or(e.last_mana_restoration_received);
         }
     }
 }
@@ -529,81 +514,21 @@ fn update_entity(entity: &mut EntityTrack, tick: u32, unit: &UnitView) {
 
 /// Overwrites `target` with `source`, reusing every nested allocation.
 ///
-/// Destructuring keeps this exhaustive: a new `UnitView` field cannot be
-/// forgotten without a compile error.
+/// The struct update copies every other field, so a new field is either
+/// copied or, if it owns memory, a compile error here.
 pub(crate) fn copy_unit_view(target: &mut UnitView, source: &UnitView) {
-    let UnitView {
-        id,
-        kind,
-        team,
-        pos,
-        facing,
-        hp,
-        max_hp,
-        mana,
-        max_mana,
-        move_speed,
-        attack_damage,
-        attack_range,
-        attack_time,
-        attack_point,
-        attack_speed,
-        armor,
-        magic_resist,
-        collision,
-        bound,
-        vision_radius,
-        true_sight_radius,
-        statuses,
-        attributes,
-        primary,
-        hero,
-        owner,
-        level,
+    let mut abilities = std::mem::take(&mut target.abilities);
+    let mut items = std::mem::take(&mut target.items);
+    let mut effects = std::mem::take(&mut target.effects);
+    abilities.clone_from(&source.abilities);
+    items.clone_from(&source.items);
+    effects.clone_from(&source.effects);
+    *target = UnitView {
         abilities,
         items,
         effects,
-        attack_damage_min,
-        attack_damage_max,
-        hp_regen,
-        mana_regen,
-        town_portal,
-    } = source;
-    target.id = *id;
-    target.kind = *kind;
-    target.team = *team;
-    target.pos = *pos;
-    target.facing = *facing;
-    target.hp = *hp;
-    target.max_hp = *max_hp;
-    target.mana = *mana;
-    target.max_mana = *max_mana;
-    target.move_speed = *move_speed;
-    target.attack_damage = *attack_damage;
-    target.attack_damage_min = *attack_damage_min;
-    target.attack_damage_max = *attack_damage_max;
-    target.hp_regen = *hp_regen;
-    target.mana_regen = *mana_regen;
-    target.attack_range = *attack_range;
-    target.attack_time = *attack_time;
-    target.attack_point = *attack_point;
-    target.attack_speed = *attack_speed;
-    target.armor = *armor;
-    target.magic_resist = *magic_resist;
-    target.collision = *collision;
-    target.bound = *bound;
-    target.vision_radius = *vision_radius;
-    target.true_sight_radius = *true_sight_radius;
-    target.statuses = *statuses;
-    target.attributes = *attributes;
-    target.primary = *primary;
-    target.hero = *hero;
-    target.owner = *owner;
-    target.level = *level;
-    target.town_portal = *town_portal;
-    target.abilities.clone_from(abilities);
-    target.items.clone_from(items);
-    target.effects.clone_from(effects);
+        ..*source
+    };
 }
 
 fn snapshot_contains(view: &WorldView, id: EntityId) -> bool {

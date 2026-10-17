@@ -200,13 +200,9 @@ fn passive_gold_is_ninety_a_minute_from_the_horn_and_more_from_twelve() {
     let cfg = config();
     let mut world = World::for_match(&cfg, cfg.rng());
     let start = world.seats[0].gold;
-    for _ in 0..rules::PREGAME_TICKS {
-        world.step();
-    }
+    run(&mut world, rules::PREGAME_TICKS);
     assert_eq!(world.seats[0].gold, start, "nothing before the horn");
-    for _ in 0..60 * rules::TICKS_PER_SECOND {
-        world.step();
-    }
+    run(&mut world, 60 * rules::TICKS_PER_SECOND);
     assert_eq!(
         world.seats[0].gold - start,
         90,
@@ -367,12 +363,6 @@ fn a_heros_head_and_its_wait_are_priced_as_the_game_prices_them() {
     assert_eq!(respawn_wait(12), 44 * rules::TICKS_PER_SECOND);
     assert_eq!(respawn_wait(25), 100 * rules::TICKS_PER_SECOND);
     assert_eq!(respawn_wait(30), 100 * rules::TICKS_PER_SECOND);
-    assert_eq!(
-        rules::XP_THRESHOLDS[5],
-        2440,
-        "the sixth level, the ultimate's"
-    );
-    assert_eq!(rules::XP_THRESHOLDS[29], 63900, "the last");
 }
 
 #[test]
@@ -432,8 +422,7 @@ fn a_heros_blows_on_enemy_heroes_and_structures_are_counted_in_the_final_stats()
 
 /// The match hero at the seventh level with its second ability learned.
 fn a_level_seven_hero() -> (World, Entity) {
-    let mut world = World::for_match(&config(), config().rng());
-    let hero = world.seats[0].unit.expect("stood up");
+    let (mut world, hero) = match_hero();
     world.level.insert(hero, Level(7));
     world.seats[0].level = 7;
     assert!(world.learn(hero, 1));

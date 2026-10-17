@@ -62,6 +62,18 @@ pub(crate) const BARE_ABILITY: AbilityDef = AbilityDef {
     duration: 0,
 };
 
+/// A courier's ability: one level, cast for no mana.
+const fn courier(name: &'static str, cooldown: &'static [u32]) -> AbilityDef {
+    AbilityDef {
+        name,
+        max_level: 1,
+        passive: false,
+        mana: &[0],
+        cooldown,
+        ..BARE_ABILITY
+    }
+}
+
 /// How many abilities the game has: every table indexed by [`AbilityId`] is
 /// this long.
 pub const ABILITY_COUNT: usize = 17;
@@ -72,46 +84,11 @@ pub const ABILITIES: [AbilityDef; ABILITY_COUNT] = [
     pudge::ROT,
     pudge::FLESH_HEAP,
     pudge::DISMEMBER,
-    AbilityDef {
-        name: "Burst",
-        max_level: 1,
-        passive: false,
-        mana: &[0],
-        cooldown: &[rules::COURIER_BURST_COOLDOWN],
-        ..BARE_ABILITY
-    },
-    AbilityDef {
-        name: "Return",
-        max_level: 1,
-        passive: false,
-        mana: &[0],
-        cooldown: &[0],
-        ..BARE_ABILITY
-    },
-    AbilityDef {
-        name: "Take Stash",
-        max_level: 1,
-        passive: false,
-        mana: &[0],
-        cooldown: &[0],
-        ..BARE_ABILITY
-    },
-    AbilityDef {
-        name: "Deliver",
-        max_level: 1,
-        passive: false,
-        mana: &[0],
-        cooldown: &[0],
-        ..BARE_ABILITY
-    },
-    AbilityDef {
-        name: "Shield",
-        max_level: 1,
-        passive: false,
-        mana: &[0],
-        cooldown: &[rules::COURIER_SHIELD_COOLDOWN],
-        ..BARE_ABILITY
-    },
+    courier("Burst", &[rules::COURIER_BURST_COOLDOWN]),
+    courier("Return", &[0]),
+    courier("Take Stash", &[0]),
+    courier("Deliver", &[0]),
+    courier("Shield", &[rules::COURIER_SHIELD_COOLDOWN]),
     shadow_fiend::RAZE_NEAR,
     shadow_fiend::RAZE_MID,
     shadow_fiend::RAZE_FAR,

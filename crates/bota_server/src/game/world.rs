@@ -611,22 +611,27 @@ impl World {
         // tick takes them up or down the slots by a coin.
         self.backwards = self.rng.global(Purpose::TickOrder).below(2) == 1;
         let _profile = self.scope(Phase::Tick);
-        self.step_upkeep();
-        self.step_effects();
-        self.step_stats();
-        self.step_targeting();
-        self.step_movement();
-        self.step_visibility();
-        self.step_actions(&mut events);
-        self.step_damage(&mut events);
+        self.timed(Phase::Upkeep, World::step_upkeep);
+        self.timed(Phase::Effects, World::step_effects);
+        self.timed(Phase::Stats, World::refresh_stats);
+        self.timed(Phase::Targeting, World::tick_targeting);
+        self.timed(Phase::Movement, World::step_movement);
+        self.timed(Phase::Visibility, World::refresh_sight);
+        self.timed(Phase::Actions, |world| world.step_actions(&mut events));
+        self.timed(Phase::Damage, |world| world.step_damage(&mut events));
         self.tick_applied();
         events
+    }
+
+    /// Runs one region of the tick, timed as `phase` for the phase profile.
+    fn timed(&mut self, phase: Phase, run: impl FnOnce(&mut World)) {
+        let _profile = self.scope(phase);
+        run(self);
     }
 
     /// Waves, camps, cooldowns, item builds, gold, shop stock, respawns,
     /// couriers, item errands, sales and what runs out.
     fn step_upkeep(&mut self) {
-        let _profile = self.scope(Phase::Upkeep);
         self.spawn_waves();
         self.fill_camps();
         self.tick_gear();
@@ -643,7 +648,6 @@ impl World {
     /// Modifiers, hooks, requiem lines, grenades, the forest, presence and
     /// auras.
     fn step_effects(&mut self) {
-        let _profile = self.scope(Phase::Effects);
         self.tick_modifiers();
         self.tick_hooks();
         self.tick_requiem_lines();
@@ -665,12 +669,6 @@ impl World {
             modifiers: &mut self.modifiers,
             spots: &mut self.aura_spots,
         });
-    }
-
-    /// Stats worked out afresh, and the structures guarded.
-    fn step_stats(&mut self) {
-        let _profile = self.scope(Phase::Stats);
-        self.refresh_stats();
     }
 
     /// Stats worked out afresh, pools following their maxima, and the
@@ -714,16 +712,9 @@ impl World {
         });
     }
 
-    /// Who everything that fights of its own accord is set on.
-    fn step_targeting(&mut self) {
-        let _profile = self.scope(Phase::Targeting);
-        self.tick_targeting();
-    }
-
     /// Where everything means to go, the steps taken there, and bodies
     /// eased apart.
     fn step_movement(&mut self) {
-        let _profile = self.scope(Phase::Movement);
         let intent = self.scope(Phase::MovementIntent);
         self.tick_jungle();
         self.march_lanes();
@@ -732,15 +723,8 @@ impl World {
         self.push_apart();
     }
 
-    /// Who sees what, from where everything now stands.
-    fn step_visibility(&mut self) {
-        let _profile = self.scope(Phase::Visibility);
-        self.refresh_sight();
-    }
-
     /// Attack orders tended, pools regenerated, actions run, missiles flown; what they told of goes into the tick's events.
     fn step_actions(&mut self, events: &mut Vec<crate::game::Event>) {
-        let _profile = self.scope(Phase::Actions);
         self.tend_attack_orders();
         regenerate(
             &self.entities,
@@ -785,7 +769,6 @@ impl World {
     /// broken, camps roused, damage credited, events and misses told, the
     /// dead buried.
     fn step_damage(&mut self, events: &mut Vec<crate::game::Event>) {
-        let _profile = self.scope(Phase::Damage);
         self.shuffle_hits();
         let amplified = self
             .hits

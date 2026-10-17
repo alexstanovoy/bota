@@ -13,7 +13,6 @@ use crate::engine::Entity;
 /// [`Transform`]: crate::game::Transform
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Grenade {
-    /// Who threw it.
     pub owner: Entity,
     /// Where it lands.
     pub aim: Vec2,
@@ -24,9 +23,7 @@ pub struct Grenade {
 /// What one side's shop has left of one item sold from a limited stock.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ShopStock {
-    /// Whose shop.
     pub team: Team,
-    /// Which item.
     pub item: ItemId,
     /// How many may be bought right now.
     pub left: u8,

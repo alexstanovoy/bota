@@ -45,16 +45,6 @@ pub struct StatsCx<'a> {
 /// is never left empty by the move alone. An entity with no stats behind it
 /// yet has just been stood up, and stands up full.
 pub fn derive_stats(cx: StatsCx<'_>) {
-    if cx.applied.is_empty() {
-        derive_stats_impl::<false>(cx);
-    } else {
-        derive_stats_impl::<true>(cx);
-    }
-}
-
-/// The body of [`derive_stats`], with applied changes compiled out when
-/// no unit carries any.
-fn derive_stats_impl<const APPLIED: bool>(cx: StatsCx<'_>) {
     let StatsCx {
         entities,
         def,
@@ -80,7 +70,7 @@ fn derive_stats_impl<const APPLIED: bool>(cx: StatsCx<'_>) {
         let mut now = raised(kind, levels, steps, night);
         // Applied changes are folded in first and additively. Items,
         // attributes and every multiplier below land on top of them.
-        if APPLIED && let Some(on_it) = applied.get(entity) {
+        if let Some(on_it) = applied.get(entity) {
             fold_applied(&mut now, on_it);
         }
         let ranged = kind.projectile_speed.is_some();
@@ -98,29 +88,15 @@ fn derive_stats_impl<const APPLIED: bool>(cx: StatsCx<'_>) {
         }
         add_heap(&mut now, &gathered, abilities.get(entity));
         from_attributes(&mut now);
-        // A share of the maximum mana, attributes included.
-        if let Some(carried) = carried
-            && carried.mana_pct != 0
-        {
-            now.max_mana += now.max_mana * Fixed::from_ratio(carried.mana_pct, 100);
-        }
-        // A share of the base pace and of what agility adds, and of nothing
-        // else.
-        if let Some(carried) = carried
-            && carried.base_attack_speed_pct != 0
-        {
-            let base = rules::BASE_ATTACK_SPEED + agility_pace(now.attributes);
-            now.attack_speed += base * carried.base_attack_speed_pct / 100;
+        if let Some(carried) = &carried {
+            add_carried_shares(&mut now, carried);
         }
         now.damage += soul_damage(gathered.of(StackKind::Souls), levels + 1);
         if let Some(on_it) = modifiers.get(entity) {
             add_modifiers(&mut now, on_it);
         }
         if let Some(feast) = feast.get(entity) {
-            let talented = abilities
-                .get(entity)
-                .is_some_and(|book| book.has_talent(Talent::FeastAttackSpeed));
-            add_feast(&mut now, feast, talented);
+            add_feast(&mut now, feast, abilities.get(entity));
         }
         let max = Regen {
             hp: now.max_hp,
@@ -186,16 +162,29 @@ fn follow_pools(
 
 /// Adds the haste of a feast that is running, the talent's attack speed
 /// with it when its caster has learned it.
-fn add_feast(now: &mut Stats, feast: &Feast, talented: bool) {
+fn add_feast(now: &mut Stats, feast: &Feast, book: Option<&AbilityBook>) {
     if feast.phase != FeastPhase::Feasting {
         return;
     }
     let level = usize::from(feast.level);
     now.attack_speed += rules::FEAST_ATTACK_SPEED[level];
-    if talented {
+    if book.is_some_and(|book| book.has_talent(Talent::FeastAttackSpeed)) {
         now.attack_speed += rules::TALENT_FEAST_ATTACK_SPEED;
     }
     now.move_speed = scaled(now.move_speed, 100 + rules::FEAST_MOVE_PCT[level]);
+}
+
+/// Adds what the inventory proper carries as shares of what the attributes
+/// already brought: of the maximum mana, and of the base pace and what
+/// agility adds to it, nothing else.
+fn add_carried_shares(now: &mut Stats, carried: &Carried) {
+    if carried.mana_pct != 0 {
+        now.max_mana += now.max_mana * Fixed::from_ratio(carried.mana_pct, 100);
+    }
+    if carried.base_attack_speed_pct != 0 {
+        let base = rules::BASE_ATTACK_SPEED + agility_pace(now.attributes);
+        now.attack_speed += base * carried.base_attack_speed_pct / 100;
+    }
 }
 
 /// Adds what the inventory proper carries.
@@ -290,57 +279,49 @@ fn add_modifiers(now: &mut Stats, on_it: &Modifiers) {
 /// sources never compound. Resistances are added in their own units and
 /// scales as deltas of the nominal.
 fn fold_applied(now: &mut Stats, applied: &AppliedModifiers) {
-    let mut magic_resist: i32 = 0;
-    let mut status_resist: i32 = 0;
-    let mut physical: i32 = 0;
-    let mut magical: i32 = 0;
-    let mut pure: i32 = 0;
-    let mut cooldown: i32 = 0;
-    let mut mana_cost: i32 = 0;
-    let mut move_speed: i32 = 0;
-    let mut max_hp: i32 = 0;
-    let mut max_mana: i32 = 0;
+    let nominal = rules::NOMINAL_BP;
+    let mut sums = [0i32; 10];
     for held in applied.iter() {
         let spec = held.spec;
-        magic_resist = magic_resist.saturating_add(spec.magic_resist);
-        status_resist = status_resist.saturating_add(spec.status_resist);
-        physical = physical.saturating_add(spec.physical_damage - rules::NOMINAL_BP);
-        magical = magical.saturating_add(spec.magic_damage - rules::NOMINAL_BP);
-        pure = pure.saturating_add(spec.pure_damage - rules::NOMINAL_BP);
-        cooldown = cooldown.saturating_add(spec.cooldown_rate - rules::NOMINAL_BP);
-        mana_cost = mana_cost.saturating_add(spec.mana_cost_rate - rules::NOMINAL_BP);
-        move_speed = move_speed.saturating_add(spec.move_speed - rules::NOMINAL_BP);
-        max_hp = max_hp.saturating_add(spec.max_hp - rules::NOMINAL_BP);
-        max_mana = max_mana.saturating_add(spec.max_mana - rules::NOMINAL_BP);
+        let deltas = [
+            spec.magic_resist,
+            spec.status_resist,
+            spec.physical_damage - nominal,
+            spec.magic_damage - nominal,
+            spec.pure_damage - nominal,
+            spec.cooldown_rate - nominal,
+            spec.mana_cost_rate - nominal,
+            spec.move_speed - nominal,
+            spec.max_hp - nominal,
+            spec.max_mana - nominal,
+        ];
+        for (sum, delta) in sums.iter_mut().zip(deltas) {
+            *sum = sum.saturating_add(delta);
+        }
     }
-    now.magic_resist_bp = now
-        .magic_resist_bp
-        .saturating_add(magic_resist)
-        .clamp(0, rules::NOMINAL_BP);
-    now.status_resist_bp = now
-        .status_resist_bp
-        .saturating_add(status_resist)
-        .clamp(0, rules::NOMINAL_BP - 1);
-    now.physical_amp_bp = now
-        .physical_amp_bp
-        .saturating_add(physical)
-        .clamp(0, MAX_COMBINED_MODIFIER_SCALE);
-    now.magic_amp_bp = now
-        .magic_amp_bp
-        .saturating_add(magical)
-        .clamp(0, MAX_COMBINED_MODIFIER_SCALE);
-    now.pure_amp_bp = now
-        .pure_amp_bp
-        .saturating_add(pure)
-        .clamp(0, MAX_COMBINED_MODIFIER_SCALE);
-    now.cooldown_rate_bp = now
-        .cooldown_rate_bp
-        .saturating_add(cooldown)
-        .clamp(1, MAX_COMBINED_MODIFIER_SCALE);
-    now.mana_cost_rate_bp = now
-        .mana_cost_rate_bp
-        .saturating_add(mana_cost)
-        .clamp(1, MAX_COMBINED_MODIFIER_SCALE);
+    let [
+        magic_resist,
+        status_resist,
+        physical,
+        magical,
+        pure,
+        cooldown,
+        mana_cost,
+        move_speed,
+        max_hp,
+        max_mana,
+    ] = sums;
+    let add = |value: i32, delta: i32, least: i32, most: i32| {
+        value.saturating_add(delta).clamp(least, most)
+    };
+    let most = MAX_COMBINED_MODIFIER_SCALE;
+    now.magic_resist_bp = add(now.magic_resist_bp, magic_resist, 0, nominal);
+    now.status_resist_bp = add(now.status_resist_bp, status_resist, 0, nominal - 1);
+    now.physical_amp_bp = add(now.physical_amp_bp, physical, 0, most);
+    now.magic_amp_bp = add(now.magic_amp_bp, magical, 0, most);
+    now.pure_amp_bp = add(now.pure_amp_bp, pure, 0, most);
+    now.cooldown_rate_bp = add(now.cooldown_rate_bp, cooldown, 1, most);
+    now.mana_cost_rate_bp = add(now.mana_cost_rate_bp, mana_cost, 1, most);
     now.move_speed = scaled_bp(now.move_speed, combined_scale(move_speed));
     now.max_hp = scaled_bp(now.max_hp, combined_scale(max_hp));
     now.max_mana = scaled_bp(now.max_mana, combined_scale(max_mana));

@@ -12,86 +12,9 @@ pub type CastHook = fn(&mut World, Entity, Target) -> bool;
 /// What an ability does when it ends.
 pub type EndHook = fn(&mut World, Entity, Target);
 
-fn never(_: &mut World, _: Entity, _: Target) -> bool {
-    false
-}
-
-fn goes_on(_: &mut World, _: Entity, _: Target) -> bool {
-    true
-}
-
-fn nothing(_: &mut World, _: Entity, _: Target) {}
-
 /// Which level of an ability its caster has learned, counted from zero.
 fn level_of(world: &World, caster: Entity, id: AbilityId) -> usize {
     usize::from(world.carried_level(caster, id).max(1) - 1)
-}
-
-fn meat_hook(world: &mut World, caster: Entity, target: Target) -> bool {
-    let level = level_of(world, caster, AbilityId::MEAT_HOOK);
-    world.cast_hook(caster, level, target)
-}
-
-fn rot(world: &mut World, caster: Entity, _: Target) -> bool {
-    let level = level_of(world, caster, AbilityId::ROT);
-    world.toggle_rot(caster, level)
-}
-
-fn dismember(world: &mut World, caster: Entity, target: Target) -> bool {
-    world.dismember_takes_hold(caster, target)
-}
-
-fn dismember_holds(world: &mut World, caster: Entity, target: Target) -> bool {
-    world.dismember_holds(caster, target)
-}
-
-fn dismember_lets_go(world: &mut World, caster: Entity, target: Target) {
-    world.dismember_lets_go(caster, target);
-}
-
-fn burst(world: &mut World, courier: Entity, _: Target) -> bool {
-    world.courier_burst(courier)
-}
-
-fn return_items(world: &mut World, courier: Entity, _: Target) -> bool {
-    world.courier_return_items(courier)
-}
-
-fn take_stash(world: &mut World, courier: Entity, _: Target) -> bool {
-    world.courier_take_stash(courier)
-}
-
-fn deliver(world: &mut World, courier: Entity, _: Target) -> bool {
-    world.courier_deliver(courier)
-}
-
-fn shield(world: &mut World, courier: Entity, _: Target) -> bool {
-    world.courier_shield(courier)
-}
-
-fn raze_near(world: &mut World, caster: Entity, _: Target) -> bool {
-    let level = level_of(world, caster, AbilityId::RAZE_NEAR);
-    world.cast_raze(caster, level, 0)
-}
-
-fn raze_mid(world: &mut World, caster: Entity, _: Target) -> bool {
-    let level = level_of(world, caster, AbilityId::RAZE_MID);
-    world.cast_raze(caster, level, 1)
-}
-
-fn raze_far(world: &mut World, caster: Entity, _: Target) -> bool {
-    let level = level_of(world, caster, AbilityId::RAZE_FAR);
-    world.cast_raze(caster, level, 2)
-}
-
-fn requiem(world: &mut World, caster: Entity, _: Target) -> bool {
-    let level = level_of(world, caster, AbilityId::REQUIEM).min(2);
-    world.cast_requiem(caster, level)
-}
-
-fn feast(world: &mut World, caster: Entity, _: Target) -> bool {
-    let level = level_of(world, caster, AbilityId::FEAST_OF_SOULS);
-    world.cast_feast(caster, level)
 }
 
 /// What one ability does at each moment of its life.
@@ -110,86 +33,91 @@ pub struct AbilityHooks {
 
 /// Does nothing at all, so a row names only the moments that do something.
 const INERT: AbilityHooks = AbilityHooks {
-    on_cast: never,
-    on_during: goes_on,
-    on_cancel: nothing,
-    on_complete: nothing,
+    on_cast: |_, _, _| false,
+    on_during: |_, _, _| true,
+    on_cancel: |_, _, _| {},
+    on_complete: |_, _, _| {},
 };
 
 /// Every ability's hooks, indexed by [`AbilityId`] like
 /// [`bota_core::ABILITIES`].
 pub const ABILITY_HOOKS: [AbilityHooks; ABILITY_COUNT] = [
-    // Meat Hook.
     AbilityHooks {
-        on_cast: meat_hook,
+        on_cast: |world, caster, target| {
+            world.cast_hook(
+                caster,
+                level_of(world, caster, AbilityId::MEAT_HOOK),
+                target,
+            )
+        },
         ..INERT
     },
-    // Rot.
     AbilityHooks {
-        on_cast: rot,
+        on_cast: |world, caster, _| {
+            world.toggle_rot(caster, level_of(world, caster, AbilityId::ROT))
+        },
         ..INERT
     },
     // Flesh Heap.
     INERT,
-    // Dismember.
     AbilityHooks {
-        on_cast: dismember,
-        on_during: dismember_holds,
-        on_cancel: dismember_lets_go,
-        on_complete: dismember_lets_go,
+        on_cast: World::dismember_takes_hold,
+        on_during: World::dismember_holds,
+        on_cancel: World::dismember_lets_go,
+        on_complete: World::dismember_lets_go,
     },
-    // Burst.
     AbilityHooks {
-        on_cast: burst,
+        on_cast: |world, courier, _| world.courier_burst(courier),
         ..INERT
     },
-    // Return.
     AbilityHooks {
-        on_cast: return_items,
+        on_cast: |world, courier, _| world.courier_return_items(courier),
         ..INERT
     },
-    // Take Stash.
     AbilityHooks {
-        on_cast: take_stash,
+        on_cast: |world, courier, _| world.courier_take_stash(courier),
         ..INERT
     },
-    // Deliver.
     AbilityHooks {
-        on_cast: deliver,
+        on_cast: |world, courier, _| world.courier_deliver(courier),
         ..INERT
     },
-    // Shield.
     AbilityHooks {
-        on_cast: shield,
+        on_cast: |world, courier, _| world.courier_shield(courier),
         ..INERT
     },
-    // Shadowraze (Near).
     AbilityHooks {
-        on_cast: raze_near,
+        on_cast: |world, caster, _| {
+            world.cast_raze(caster, level_of(world, caster, AbilityId::RAZE_NEAR), 0)
+        },
         ..INERT
     },
-    // Shadowraze (Mid).
     AbilityHooks {
-        on_cast: raze_mid,
+        on_cast: |world, caster, _| {
+            world.cast_raze(caster, level_of(world, caster, AbilityId::RAZE_MID), 1)
+        },
         ..INERT
     },
-    // Shadowraze (Far).
     AbilityHooks {
-        on_cast: raze_far,
+        on_cast: |world, caster, _| {
+            world.cast_raze(caster, level_of(world, caster, AbilityId::RAZE_FAR), 2)
+        },
         ..INERT
     },
-    // Requiem of Souls.
     AbilityHooks {
-        on_cast: requiem,
+        on_cast: |world, caster, _| {
+            let level = level_of(world, caster, AbilityId::REQUIEM).min(2);
+            world.cast_requiem(caster, level)
+        },
         ..INERT
     },
-    // Necromastery.
+    // Necromastery, Presence of the Dark Lord.
     INERT,
-    // Presence of the Dark Lord.
     INERT,
-    // Feast of Souls.
     AbilityHooks {
-        on_cast: feast,
+        on_cast: |world, caster, _| {
+            world.cast_feast(caster, level_of(world, caster, AbilityId::FEAST_OF_SOULS))
+        },
         ..INERT
     },
     // Throw Grenade.

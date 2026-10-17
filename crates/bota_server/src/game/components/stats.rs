@@ -15,9 +15,7 @@ pub struct Stats {
     pub attributes: Attributes,
     /// Which attribute pays its attack damage. Absent for whatever has none.
     pub primary: Option<Attribute>,
-    /// The most health it can hold.
     pub max_hp: Fixed,
-    /// The most mana it can hold.
     pub max_mana: Fixed,
     /// Health mended each tick.
     pub hp_regen: Fixed,
@@ -51,7 +49,6 @@ pub struct Stats {
     pub attack_backswing: u32,
     /// Speed of the missile it throws. Absent for a melee attack.
     pub projectile_speed: Option<Fixed>,
-    /// Armor, reducing physical damage.
     pub armor: Fixed,
     /// Magic resistance, in basis points where 10_000 keeps everything out,
     /// within `rules::MIN_MAGIC_RESIST_BP..=10_000`. Below zero, magic

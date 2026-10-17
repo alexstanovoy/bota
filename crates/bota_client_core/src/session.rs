@@ -97,7 +97,7 @@ pub enum Ingested {
     Over { winner: Team, stats: MatchStats },
 }
 
-/// The rules of the stream's order, from the perspective.
+/// Where a seat's stream stands in its snapshot-then-events order.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 struct StreamState {
     /// The tick of a snapshot whose events have not come yet.
@@ -185,7 +185,7 @@ impl ClientSession {
             last_event_tick: None,
             skipped_ticks: 0,
             ledger: OrderLedger::default(),
-            waits: SharedWaits::new(),
+            waits: SharedWaits::default(),
             next_seq: 0,
             stream: StreamState::default(),
         }
@@ -419,10 +419,6 @@ impl ClientSession {
         &self.statics
     }
 
-    pub const fn options(&self) -> &SessionOptions {
-        &self.options
-    }
-
     /// The seat the stream is for, if it is a seat's.
     #[inline]
     pub fn slot(&self) -> Option<SlotId> {
@@ -579,7 +575,7 @@ impl ClientSession {
     /// The same delay in milliseconds: the server's measure of the round trip.
     pub fn order_delay_ms(&self) -> Option<u32> {
         let ticks = self.order_delay()?;
-        Some(ticks * 1000 / u32::from(self.statics.metadata().tick_rate.max(1)))
+        Some(ticks.saturating_mul(1000) / u32::from(self.statics.metadata().tick_rate.max(1)))
     }
 
     /// The tick of the latest events folded in, a skipped tick's included.

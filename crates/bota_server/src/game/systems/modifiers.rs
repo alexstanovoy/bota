@@ -36,29 +36,27 @@ impl World {
     /// Whether an entity is held: it neither walks, nor turns, nor swings,
     /// nor casts until it lifts.
     pub fn held(&self, entity: Entity) -> bool {
-        self.modifiers.get(entity).is_some_and(|on_it| {
-            on_it
-                .active()
-                .any(|held| held.kind == ModifierKind::Stunned)
-        })
+        self.active_modifier(entity, ModifierKind::Stunned)
+            .is_some()
     }
 
     /// Whether an entity is feared: it runs from whoever put the fear on,
     /// and neither swings nor casts until it lifts.
     pub fn feared(&self, entity: Entity) -> bool {
-        self.modifiers
-            .get(entity)
-            .is_some_and(|on_it| on_it.active().any(|held| held.kind == ModifierKind::Feared))
+        self.active_modifier(entity, ModifierKind::Feared).is_some()
     }
 
     /// Whoever a feared entity runs from, while that one is still known.
     pub fn flees_from(&self, entity: Entity) -> Option<Entity> {
-        self.modifiers.get(entity).and_then(|on_it| {
-            on_it
-                .active()
-                .find(|held| held.kind == ModifierKind::Feared)
-                .and_then(|held| held.source)
-        })
+        self.active_modifier(entity, ModifierKind::Feared)?.source
+    }
+
+    /// The first active modifier of exactly this kind on an entity.
+    fn active_modifier(&self, entity: Entity, kind: ModifierKind) -> Option<&Modifier> {
+        self.modifiers
+            .get(entity)?
+            .active()
+            .find(|held| held.kind == kind)
     }
 
     /// Puts a modifier on an entity. One that is not a unit takes nothing.
@@ -74,27 +72,6 @@ impl World {
         }
     }
 
-    /// Puts a timed modifier on, adding its time to what the same kind from
-    /// the same source already holds, up to `cap` ticks in all.
-    ///
-    /// The time added is shortened by the target's status resistance; what is
-    /// already held has been shortened once and is not shortened again.
-    pub fn extend_modifier(&mut self, on: Entity, modifier: Modifier, cap: u32) {
-        let more = modifier.ticks_left.map_or(0, |ticks| {
-            resisted_ticks(&self.stats, on, modifier.kind, ticks)
-        });
-        if let Some(on_it) = self.modifiers.get_mut(on) {
-            on_it.extend(
-                Modifier {
-                    ticks_left: Some(more),
-                    ..modifier
-                },
-                cap,
-            );
-        }
-    }
-
-    /// Takes off every modifier of one kind from one source.
     pub fn take_modifier(&mut self, on: Entity, like: ModifierKind, source: Option<Entity>) {
         if let Some(on_it) = self.modifiers.get_mut(on) {
             on_it.take(like, source);
@@ -103,7 +80,8 @@ impl World {
 
     /// Does every modifier's work for the tick: what burns takes health on
     /// the beat, a Blood Grenade's debuff on every whole second of its own,
-    /// and the rot puts its burn and slow on everything standing in it. Their time runs down in [`World::tick_gear`].
+    /// and the rot puts its burn and slow on everything standing in it.
+    /// Their time runs down in [`World::tick_gear`].
     ///
     /// A burn that is not lethal stops one short of the last point.
     pub fn tick_modifiers(&mut self) {
@@ -163,9 +141,8 @@ impl World {
     }
 
     /// Burns and slows every unit of another side with a hull standing in
-    /// one entity's rot.
-    /// Its owner burns by the same amount, never to death, and is not
-    /// slowed.
+    /// one entity's rot. Its owner burns by the same amount, never to death,
+    /// and is not slowed.
     ///
     /// What it does is handed out afresh every tick for two ticks, so walking
     /// out of it or switching it off lifts it. A rot whose owner is dead goes
@@ -175,10 +152,7 @@ impl World {
             self.rot_goes_out(owner);
             return;
         }
-        let (Some(at), Some(side)) = (
-            self.transform.get(owner).map(|t| t.pos),
-            self.team.get(owner).copied(),
-        ) else {
+        let (Some(at), Some(side)) = (self.pos(owner), self.team.get(owner).copied()) else {
             return;
         };
         // The cloud shown for it stands where its owner now stands.
@@ -195,25 +169,21 @@ impl World {
             if !self.alive(other) || self.hull.get(other).is_none() {
                 continue;
             }
-            if !self
-                .transform
-                .get(other)
-                .is_some_and(|t| t.pos.within(at, reach))
-            {
+            if !self.pos(other).is_some_and(|pos| pos.within(at, reach)) {
                 continue;
             }
             if other == owner {
                 self.put_modifier(
                     owner,
-                    Modifier {
-                        kind: ModifierKind::Burning {
+                    Modifier::new(
+                        ModifierKind::Burning {
                             amount,
                             kind: DamageKind::Magical,
                             lethal: false,
                         },
-                        source: None,
-                        ticks_left: Some(2),
-                    },
+                        None,
+                        Some(2),
+                    ),
                 );
                 continue;
             }
@@ -226,28 +196,15 @@ impl World {
     /// Burns `other` by `amount` and slows it, for two ticks, from `owner`'s
     /// rot.
     fn rot_on(&mut self, owner: Entity, other: Entity, amount: i32, level: u8) {
-        self.put_modifier(
-            other,
-            Modifier {
-                kind: ModifierKind::Burning {
-                    amount,
-                    kind: DamageKind::Magical,
-                    lethal: true,
-                },
-                source: Some(owner),
-                ticks_left: Some(2),
-            },
-        );
-        self.put_modifier(
-            other,
-            Modifier {
-                kind: ModifierKind::Slowed {
-                    pct: rules::ROT_SLOW_PCT[usize::from(level)],
-                },
-                source: Some(owner),
-                ticks_left: Some(2),
-            },
-        );
+        let burn = ModifierKind::Burning {
+            amount,
+            kind: DamageKind::Magical,
+            lethal: true,
+        };
+        let pct = rules::ROT_SLOW_PCT[usize::from(level)];
+        for kind in [burn, ModifierKind::Slowed { pct }] {
+            self.put_modifier(other, Modifier::new(kind, Some(owner), Some(2)));
+        }
     }
 
     /// Puts out every drink a blow is enough to break, and sets back every

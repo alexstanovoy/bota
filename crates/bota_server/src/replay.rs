@@ -8,7 +8,8 @@ use bota_proto::{ReplayRecord, encode_frame_to_vec};
 
 /// Appends [`ReplayRecord`] frames to a `.brp` file.
 ///
-/// A write error poisons the writer: recording stops, the match does not.
+/// A write error poisons the writer: recording stops with a line on stderr,
+/// the match goes on.
 pub struct ReplayWriter {
     out: Option<BufWriter<File>>,
 }
@@ -31,19 +32,21 @@ impl ReplayWriter {
         let Some(out) = self.out.as_mut() else {
             return;
         };
-        let ok = encode_frame_to_vec(record)
-            .ok()
-            .and_then(|frame| out.write_all(&frame).ok())
-            .is_some();
-        if !ok {
+        let written = encode_frame_to_vec(record)
+            .map_err(|error| error.to_string())
+            .and_then(|frame| out.write_all(&frame).map_err(|error| error.to_string()));
+        if let Err(error) = written {
+            eprintln!("bota_server: the replay stops here ({error})");
             self.out = None;
         }
     }
 
     /// Flushes everything to disk.
     pub fn finish(mut self) {
-        if let Some(out) = self.out.as_mut() {
-            let _ = out.flush();
+        if let Some(out) = self.out.as_mut()
+            && let Err(error) = out.flush()
+        {
+            eprintln!("bota_server: the replay's end was not written ({error})");
         }
     }
 }

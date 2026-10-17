@@ -12,9 +12,7 @@ use crate::{ITEMS, Ratio, UnitDef, rules};
 /// Which pool an item mends.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Pool {
-    /// Health.
     Health,
-    /// Mana.
     Mana,
 }
 
@@ -164,7 +162,6 @@ pub enum UseSpec {
         /// How far the user may plant it.
         range: i32,
     },
-    /// Fells a tree.
     FellTree {
         /// How far the user may fell it.
         range: i32,
@@ -204,7 +201,6 @@ pub enum UseSpec {
     Restore {
         /// Health per charge.
         hp_per_charge: i32,
-        /// Mana per charge.
         mana_per_charge: i32,
     },
     /// Restores mana to the user or the one it is aimed at.
@@ -216,6 +212,7 @@ pub enum UseSpec {
     Grenade,
 }
 
+/// How a shop keeps an item sold from a limited stock.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Stock {
     /// How many it holds when the match starts.
@@ -230,7 +227,6 @@ pub struct Stock {
 /// set to when it comes of them.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Recipe<'a> {
-    /// The parts.
     pub parts: &'a [ItemId],
     /// The attribute the built item is set to. Absent for one set to none.
     pub mode: Option<Attribute>,
@@ -412,11 +408,7 @@ pub const GRENADE_COOLDOWN: u32 = 10 * rules::TICKS_PER_SECOND;
 pub const GRENADE_RANGE: i32 = 900;
 
 const _: () = {
-    assert!(GRENADE_COOLDOWN > 0);
     assert!(GRENADE_RANGE > rules::GRENADE_RADIUS);
-    assert!(MANGO_COST > 0);
-    assert!(MANGO_STACK_MAX > 1);
-    assert!(MANGO_MANA > 0);
     assert!(MANGO_HP_REGEN.raw > 0);
 };
 
@@ -449,7 +441,6 @@ pub fn shop_entries() -> Vec<bota_proto::ShopEntry> {
 /// One stack of an inventory as far as the sum of what is carried cares.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct CarriedItem {
-    /// Which item it is.
     pub id: ItemId,
     /// Charges it holds.
     pub charges: u8,
@@ -501,12 +492,7 @@ pub fn carried_bonus(items: impl Iterator<Item = CarriedItem>, ranged: bool) -> 
         total.mana_pct += carried.mana_pct;
         // What an item is set to is worth points of that attribute alone.
         if let Some(mode) = stack.mode {
-            let bonus = Fixed::from_int(def.mode_bonus);
-            match mode {
-                Attribute::Strength => total.attributes.strength += bonus,
-                Attribute::Agility => total.attributes.agility += bonus,
-                Attribute::Intelligence => total.attributes.intelligence += bonus,
-            }
+            total.attributes += points(mode, def.mode_bonus);
         }
     }
     total

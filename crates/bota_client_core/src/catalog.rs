@@ -6,9 +6,9 @@
 
 use bota_core::{
     ABILITY_COUNT, EFFECT_COUNT, ITEMS as ITEM_DEFS, Talent, ability_def, attributes_at_level,
-    base_damage_least, effect_def, hero_def, rules,
+    base_damage_least, effect_def, hero_def, talent_floor,
 };
-use bota_proto::{AbilityId, EffectId, Fixed, HeroId, ItemId, TalentSlot};
+use bota_proto::{AbilityId, EffectId, Fixed, HeroId, ItemId, TalentSlot, Talents};
 
 use crate::blurb::{Scope, fill};
 
@@ -89,6 +89,14 @@ pub struct EffectFace {
 }
 
 impl EffectFace {
+    const fn of(id: u16, label: Option<&'static str>, template: &'static str) -> EffectFace {
+        EffectFace {
+            id,
+            label,
+            template,
+        }
+    }
+
     /// Short name for the chip; empty for a retired id.
     pub fn name(&self) -> &'static str {
         self.label
@@ -101,6 +109,9 @@ impl EffectFace {
         fill(self.template, Scope::Shared)
     }
 }
+
+/// What each of the three razes does.
+const RAZE: &str = "No target, {point} s cast point. Burns every enemy but a building within {raze_radius} of a spot {range} ahead of where you face for {raze_damage} magic damage, plus {raze_soul} per soul held and {raze_stack} per prior same-caster stack. Each damaging hit refreshes all stacks for {raze_secs} s. One point levels all three razes. {mana} mana, {wait} s wait.";
 
 /// Every ability, in id order.
 pub const ABILITIES: [AbilityFace; ABILITY_COUNT] = [
@@ -152,17 +163,17 @@ pub const ABILITIES: [AbilityFace; ABILITY_COUNT] = [
     AbilityFace {
         id: AbilityId::RAZE_NEAR.0,
         name: "Raze 1",
-        template: "No target, {point} s cast point. Burns every enemy but a building within {raze_radius} of a spot {range} ahead of where you face for {raze_damage} magic damage, plus {raze_soul} per soul held and {raze_stack} per prior same-caster stack. Each damaging hit refreshes all stacks for {raze_secs} s. One point levels all three razes. {mana} mana, {wait} s wait.",
+        template: RAZE,
     },
     AbilityFace {
         id: AbilityId::RAZE_MID.0,
         name: "Raze 2",
-        template: "No target, {point} s cast point. Burns every enemy but a building within {raze_radius} of a spot {range} ahead of where you face for {raze_damage} magic damage, plus {raze_soul} per soul held and {raze_stack} per prior same-caster stack. Each damaging hit refreshes all stacks for {raze_secs} s. One point levels all three razes. {mana} mana, {wait} s wait.",
+        template: RAZE,
     },
     AbilityFace {
         id: AbilityId::RAZE_FAR.0,
         name: "Raze 3",
-        template: "No target, {point} s cast point. Burns every enemy but a building within {raze_radius} of a spot {range} ahead of where you face for {raze_damage} magic damage, plus {raze_soul} per soul held and {raze_stack} per prior same-caster stack. Each damaging hit refreshes all stacks for {raze_secs} s. One point levels all three razes. {mana} mana, {wait} s wait.",
+        template: RAZE,
     },
     AbilityFace {
         id: AbilityId::REQUIEM.0,
@@ -368,116 +379,88 @@ pub const ITEMS: [ItemFace; ITEM_DEFS.len()] = [
 /// Every timed effect, indexed by [`EffectId`]; the slot of a retired one
 /// holds nothing.
 pub const EFFECTS: [EffectFace; EFFECT_COUNT] = [
-    EffectFace {
-        id: 0,
-        label: None,
-        template: "",
-    },
-    EffectFace {
-        id: EffectId::MENDING.0,
-        label: None,
-        template: "Regenerating health.",
-    },
-    EffectFace {
-        id: EffectId::CLARITY.0,
-        label: None,
-        template: "Regenerating mana.",
-    },
-    EffectFace {
-        id: EffectId::FOUNTAIN.0,
-        label: None,
-        template: "Regenerating health and mana for standing in the fountain.",
-    },
-    EffectFace {
-        id: EffectId::STUNNED.0,
-        label: Some("Held"),
-        template: "Cannot move, attack or cast.",
-    },
-    EffectFace {
-        id: EffectId::SLOWED.0,
-        label: None,
-        template: "Movement speed reduced.",
-    },
-    EffectFace {
-        id: EffectId::BURNING.0,
-        label: None,
-        template: "Losing health over time.",
-    },
-    EffectFace {
-        id: EffectId::HASTENED.0,
-        label: None,
-        template: "Movement speed increased.",
-    },
-    EffectFace {
-        id: EffectId::SHIELDED.0,
-        label: None,
-        template: "Nothing gets through.",
-    },
-    EffectFace {
-        id: EffectId::PHASED.0,
-        label: None,
-        template: "Walking through the bodies in the way.",
-    },
-    EffectFace {
-        id: EffectId::FLESH_HEAP.0,
-        label: Some("Heap"),
-        template: "Strength kept from every enemy hero that died nearby.",
-    },
-    EffectFace {
-        id: EffectId::SOULS.0,
-        label: None,
-        template: "Attack damage from every unit brought down.",
-    },
-    EffectFace {
-        id: EffectId::ARMOR_BROKEN.0,
-        label: Some("Presence"),
-        template: "Armor worn down by a dark presence nearby.",
-    },
-    EffectFace {
-        id: EffectId::GUARDED.0,
-        label: None,
-        template: "Armor and health mended, for standing by a tower of your own.",
-    },
-    EffectFace {
-        id: EffectId::INSPIRED.0,
-        label: None,
-        template: "Health mended and magic shrugged off, for marching beside the one carrying the flag.",
-    },
-    EffectFace {
-        id: EffectId::SHADOWRAZE.0,
-        label: Some("Razed"),
-        template: "Shadowrazes from the same caster deal {raze_stack} more magic damage per stack. Each damaging hit refreshes all stacks for {raze_secs} s; up to {raze_max_stacks} stacks.",
-    },
-    EffectFace {
-        id: EffectId::ROT.0,
-        label: None,
-        template: "The rot is on. It is never listed on a unit: the toggle shows on the ability.",
-    },
-    EffectFace {
-        id: EffectId::FEARED.0,
-        label: None,
-        template: "Running from whoever put the fear on. Cannot attack or cast.",
-    },
-    EffectFace {
-        id: EffectId::MAGIC_BROKEN.0,
-        label: Some("Torn"),
-        template: "Magic resistance torn by a requiem.",
-    },
-    EffectFace {
-        id: EffectId::FEASTING.0,
-        label: Some("Feast"),
-        template: "Attacking and moving faster while taking souls from enemies nearby; counts the souls taken.",
-    },
-    EffectFace {
-        id: EffectId::FEAST_LINGER.0,
-        label: Some("Fed"),
-        template: "Souls a feast took from enemies since fallen, kept past the cap until it runs out.",
-    },
-    EffectFace {
-        id: EffectId::BLOOD_GRENADE.0,
-        label: Some("Grenade"),
-        template: "Slowed {grenade_slow}% and losing {grenade_dps} health to magic every second, from a Blood Grenade.",
-    },
+    EffectFace::of(0, None, ""),
+    EffectFace::of(EffectId::MENDING.0, None, "Regenerating health."),
+    EffectFace::of(EffectId::CLARITY.0, None, "Regenerating mana."),
+    EffectFace::of(
+        EffectId::FOUNTAIN.0,
+        None,
+        "Regenerating health and mana for standing in the fountain.",
+    ),
+    EffectFace::of(
+        EffectId::STUNNED.0,
+        Some("Held"),
+        "Cannot move, attack or cast.",
+    ),
+    EffectFace::of(EffectId::SLOWED.0, None, "Movement speed reduced."),
+    EffectFace::of(EffectId::BURNING.0, None, "Losing health over time."),
+    EffectFace::of(EffectId::HASTENED.0, None, "Movement speed increased."),
+    EffectFace::of(EffectId::SHIELDED.0, None, "Nothing gets through."),
+    EffectFace::of(
+        EffectId::PHASED.0,
+        None,
+        "Walking through the bodies in the way.",
+    ),
+    EffectFace::of(
+        EffectId::FLESH_HEAP.0,
+        Some("Heap"),
+        "Strength kept from every enemy hero that died nearby.",
+    ),
+    EffectFace::of(
+        EffectId::SOULS.0,
+        None,
+        "Attack damage from every unit brought down.",
+    ),
+    EffectFace::of(
+        EffectId::ARMOR_BROKEN.0,
+        Some("Presence"),
+        "Armor worn down by a dark presence nearby.",
+    ),
+    EffectFace::of(
+        EffectId::GUARDED.0,
+        None,
+        "Armor and health mended, for standing by a tower of your own.",
+    ),
+    EffectFace::of(
+        EffectId::INSPIRED.0,
+        None,
+        "Health mended and magic shrugged off, for marching beside the one carrying the flag.",
+    ),
+    EffectFace::of(
+        EffectId::SHADOWRAZE.0,
+        Some("Razed"),
+        "Shadowrazes from the same caster deal {raze_stack} more magic damage per stack. Each damaging hit refreshes all stacks for {raze_secs} s; up to {raze_max_stacks} stacks.",
+    ),
+    EffectFace::of(
+        EffectId::ROT.0,
+        None,
+        "The rot is on. It is never listed on a unit: the toggle shows on the ability.",
+    ),
+    EffectFace::of(
+        EffectId::FEARED.0,
+        None,
+        "Running from whoever put the fear on. Cannot attack or cast.",
+    ),
+    EffectFace::of(
+        EffectId::MAGIC_BROKEN.0,
+        Some("Torn"),
+        "Magic resistance torn by a requiem.",
+    ),
+    EffectFace::of(
+        EffectId::FEASTING.0,
+        Some("Feast"),
+        "Attacking and moving faster while taking souls from enemies nearby; counts the souls taken.",
+    ),
+    EffectFace::of(
+        EffectId::FEAST_LINGER.0,
+        Some("Fed"),
+        "Souls a feast took from enemies since fallen, kept past the cap until it runs out.",
+    ),
+    EffectFace::of(
+        EffectId::BLOOD_GRENADE.0,
+        Some("Grenade"),
+        "Slowed {grenade_slow}% and losing {grenade_dps} health to magic every second, from a Blood Grenade.",
+    ),
 ];
 
 /// The ability of that id, or nothing for one the catalog does not hold.
@@ -508,10 +491,10 @@ pub struct TalentFace {
 /// Hero levels at which the talent in a slot opens: the first of its tier
 /// to be taken, and the other once its tier has one.
 pub fn talent_levels(slot: TalentSlot) -> (u8, u8) {
-    let tier = usize::from(slot.tier());
+    let none = Talents::default();
     (
-        rules::TALENT_LEVELS[tier],
-        rules::TALENT_SECOND_LEVELS[tier],
+        talent_floor(slot, none),
+        talent_floor(slot, none.with(slot.other())),
     )
 }
 

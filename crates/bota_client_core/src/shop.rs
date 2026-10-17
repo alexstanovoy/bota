@@ -1,7 +1,7 @@
 //! What a seat pays for an item and what it still lacks to build one, over
 //! the core's item table.
 
-use bota_core::{hero_def, item_def};
+use bota_core::{hero_def, item_def, missing_parts};
 use bota_proto::{Attribute, ItemId, PlayerView, WorldView};
 
 /// Every item in a seat's hero's bag and in its stash that the seat bought
@@ -39,11 +39,4 @@ pub fn price_for(item: ItemId, held: &[ItemId], primary: Option<Attribute>) -> i
         .iter()
         .map(|part| whole_price(*part))
         .sum()
-}
-
-/// The parts bought whole that a seat holding `held` still lacks for one
-/// item, in build order: the item itself when it has no parts. Of several
-/// recipes the server's pick, [`bota_core::missing_parts`].
-pub fn missing_parts(item: ItemId, held: &[ItemId], primary: Option<Attribute>) -> Vec<ItemId> {
-    bota_core::missing_parts(item, held, primary)
 }

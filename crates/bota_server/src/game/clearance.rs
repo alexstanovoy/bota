@@ -53,20 +53,17 @@ static BASES: [OnceLock<Clearance>; bota_core::MAPS.len()] =
 impl Clearance {
     /// Open ground everywhere, with nothing standing on it.
     pub fn open() -> Clearance {
-        Clearance {
-            terrain: CellGrid::open(),
-            terrain_room: vec![CAP as u8; NODES * NODES],
-            room: vec![CAP as u8; NODES * NODES],
-            circles: Vec::new(),
-            bucket_start: vec![0; BUCKETS * BUCKETS + 1],
-            bucket_items: Vec::new(),
-            widest: 0,
-        }
+        Clearance::with_room(CellGrid::open(), vec![CAP as u8; NODES * NODES])
     }
 
     /// The field of a terrain with nothing standing on it.
     pub fn from_cells(terrain: CellGrid) -> Clearance {
         let terrain_room = terrain_room_of(&terrain);
+        Clearance::with_room(terrain, terrain_room)
+    }
+
+    /// A terrain and the room it leaves, with nothing standing on it.
+    fn with_room(terrain: CellGrid, terrain_room: Vec<u8>) -> Clearance {
         Clearance {
             terrain,
             room: terrain_room.clone(),
@@ -110,29 +107,21 @@ impl Clearance {
         circles.dedup();
         let (mut gone, mut came) = (Vec::new(), Vec::new());
         let (mut i, mut j) = (0, 0);
-        while i < self.circles.len() || j < circles.len() {
+        loop {
             match (self.circles.get(i), circles.get(j)) {
                 (Some(old), Some(new)) if old == new => {
                     i += 1;
                     j += 1;
                 }
-                (Some(old), Some(new)) if old < new => {
-                    gone.push(*old);
-                    i += 1;
-                }
-                (Some(_), Some(new)) => {
+                (old, Some(new)) if old.is_none_or(|old| old > new) => {
                     came.push(*new);
                     j += 1;
                 }
-                (Some(old), None) => {
+                (Some(old), _) => {
                     gone.push(*old);
                     i += 1;
                 }
-                (None, Some(new)) => {
-                    came.push(*new);
-                    j += 1;
-                }
-                (None, None) => break,
+                (None, _) => break,
             }
         }
         self.circles = circles;
@@ -406,15 +395,6 @@ impl Obstacles<'_> {
                 .extra
                 .iter()
                 .all(|&(at, theirs)| !circle_stops(at, theirs, from, to, radius, true))
-    }
-
-    /// Whether a body of a collision size standing at a point is clear.
-    pub fn point_clear(&self, at: Vec2, radius: Fixed) -> bool {
-        self.field.point_clear(at, radius)
-            && self
-                .extra
-                .iter()
-                .all(|&(spot, theirs)| !circle_stops(spot, theirs, at, at, radius, false))
     }
 }
 

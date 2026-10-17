@@ -1,5 +1,3 @@
-//! What a courier is in the middle of doing.
-
 /// The errand a courier is on.
 ///
 /// An errand outlives the tick it was given in: the courier keeps at it until

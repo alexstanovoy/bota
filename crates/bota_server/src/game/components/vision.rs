@@ -12,12 +12,10 @@ impl Visibility {
     /// Seen by nobody.
     pub const NONE: Visibility = Visibility(0);
 
-    /// The bit a side occupies.
     const fn bit(team: Team) -> u8 {
         1 << (team as u8)
     }
 
-    /// Whether a side sees the entity.
     pub fn by(self, team: Team) -> bool {
         self.0 & Visibility::bit(team) != 0
     }
@@ -27,14 +25,8 @@ impl Visibility {
         self.0 |= Visibility::bit(team);
     }
 
-    /// Forgets every side.
     pub fn clear(&mut self) {
         self.0 = 0;
-    }
-
-    /// Whether nobody sees it.
-    pub fn is_empty(self) -> bool {
-        self.0 == 0
     }
 
     /// The bits themselves, for the world fingerprint.

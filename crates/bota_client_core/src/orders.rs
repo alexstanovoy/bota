@@ -237,14 +237,11 @@ pub fn reconcile_directive(
     if !body_alive(session, issued.unit) {
         return None;
     }
-    let target = match issued.order {
-        Order::Attack {
-            target: Target::Unit(target),
-        }
-        | Order::Move {
-            target: Target::Unit(target),
-        } => target,
-        _ => return Some(issued),
+    let (Order::Attack { target: aim } | Order::Move { target: aim }) = &mut issued.order else {
+        return Some(issued);
+    };
+    let Target::Unit(target) = *aim else {
+        return Some(issued);
     };
     // A truncated view cannot prove a visibility loss: the session owns the
     // complete validated snapshot, sorted by full-generation handle.
@@ -266,16 +263,7 @@ pub fn reconcile_directive(
     {
         return None;
     }
-    let position = observed.unit.pos;
-    issued.order = match issued.order {
-        Order::Attack { .. } => Order::Attack {
-            target: Target::Pos(position),
-        },
-        Order::Move { .. } => Order::Move {
-            target: Target::Pos(position),
-        },
-        _ => unreachable!("checked unit-target directive"),
-    };
+    *aim = Target::Pos(observed.unit.pos);
     Some(issued)
 }
 
@@ -314,17 +302,12 @@ pub fn ends_body(session: &ClientSession, issued: IssuedOrder) -> bool {
         None => session.own_hero(),
         Some(id) => session.own_courier().filter(|courier| courier.id == id),
     };
-    let ability = match issued.order {
-        Order::Cast { slot, .. } => body
-            .and_then(|unit| unit.abilities.get(usize::from(slot.0)))
-            .map(|ability| ability.id),
-        _ => None,
-    };
-    let item = match issued.order {
-        Order::Use { slot, .. } => body
-            .and_then(|unit| item_in(unit, slot))
-            .map(|item| item.id),
-        _ => None,
+    let (ability, item) = match (issued.order, body) {
+        (Order::Cast { slot, .. }, Some(unit)) => {
+            (unit.abilities.get(usize::from(slot.0)).map(|a| a.id), None)
+        }
+        (Order::Use { slot, .. }, Some(unit)) => (None, item_in(unit, slot).map(|i| i.id)),
+        _ => (None, None),
     };
     bota_core::ends_standing_order(issued.order, ability, item)
 }

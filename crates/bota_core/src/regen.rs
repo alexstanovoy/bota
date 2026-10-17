@@ -3,7 +3,7 @@
 
 use bota_proto::{Attributes, Fixed, Team, UnitKind};
 
-use crate::{ModifierKind, kind_def, rules};
+use crate::{ModifierKind, hundredths_per_second, kind_def, rules};
 
 /// What a unit regenerates each tick.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -20,12 +20,6 @@ impl Regen {
         hp: Fixed::ZERO,
         mana: Fixed::ZERO,
     };
-}
-
-/// Health or mana per tick from hundredths of a point per second.
-#[inline]
-fn per_second(hundredths: i32) -> Fixed {
-    Fixed::from_ratio(hundredths, 100 * rules::TICKS_PER_SECOND as i32)
 }
 
 /// What mending `pct` percent of `max` a second comes to a tick, rounded
@@ -49,7 +43,9 @@ fn from_modifier(kind: ModifierKind, max: Regen) -> Regen {
             share_a_tick(max.mana, mana_pct),
         ),
         ModifierKind::Guarded { hp_per_second, .. }
-        | ModifierKind::Inspired { hp_per_second, .. } => (per_second(hp_per_second), Fixed::ZERO),
+        | ModifierKind::Inspired { hp_per_second, .. } => {
+            (hundredths_per_second(hp_per_second), Fixed::ZERO)
+        }
         _ => (Fixed::ZERO, Fixed::ZERO),
     };
     Regen { hp, mana }

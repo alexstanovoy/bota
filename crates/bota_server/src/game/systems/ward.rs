@@ -10,12 +10,11 @@ impl World {
     pub fn tick_expiries(&mut self) {
         let entities = self.take_entity_snapshot();
         for entity in entities.iter().copied() {
-            let Some(mut left) = self.expiry.get(entity).copied() else {
+            let Some(left) = self.expiry.get_mut(entity) else {
                 continue;
             };
             left.ticks_left = left.ticks_left.saturating_sub(1);
             if left.ticks_left > 0 {
-                self.expiry.insert(entity, left);
                 continue;
             }
             self.expiry.remove(entity);
@@ -39,10 +38,7 @@ impl World {
         let Target::Pos(pos) = target else {
             return false;
         };
-        let (Some(side), Some(from)) = (
-            self.team.get(user).copied(),
-            self.transform.get(user).map(|t| t.pos),
-        ) else {
+        let (Some(side), Some(from)) = (self.team.get(user).copied(), self.pos(user)) else {
             return false;
         };
         if !from.within(pos, rules::units(range)) || !self.clearance.stands_clear(pos) {

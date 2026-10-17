@@ -113,10 +113,10 @@ impl World {
         // A wait runs whether the body it belongs to is standing or not: what
         // waits with a seat runs down beside what waits on a body.
         for seat in self.seats.iter_mut() {
-            for (_, left) in seat.item_clocks.iter_mut() {
+            seat.item_clocks.retain_mut(|(_, left)| {
                 *left = left.saturating_sub(1);
-            }
-            seat.item_clocks.retain(|(_, left)| *left > 0);
+                *left > 0
+            });
             let Some(kept) = seat.kept.as_mut() else {
                 continue;
             };
@@ -128,8 +128,7 @@ impl World {
                 stack.mute = stack.mute.saturating_sub(1);
             }
         }
-        let entities = self.take_entity_snapshot();
-        for entity in entities.iter().copied() {
+        for entity in self.entities.iter() {
             if let Some(book) = self.abilities.get_mut(entity) {
                 for slot in book.slots.iter_mut() {
                     slot.cooldown = slot.cooldown.saturating_sub(1);
@@ -142,15 +141,12 @@ impl World {
                 }
             }
             if let Some(on_it) = self.modifiers.get_mut(entity) {
-                for held in on_it.0.iter_mut() {
-                    if let Some(left) = held.ticks_left.as_mut() {
-                        *left = left.saturating_sub(1);
-                    }
-                }
-                on_it.0.retain(|held| held.ticks_left != Some(0));
+                on_it.0.retain_mut(|held| {
+                    held.ticks_left = held.ticks_left.map(|left| left.saturating_sub(1));
+                    held.ticks_left != Some(0)
+                });
             }
         }
-        self.recycle_entity_snapshot(entities);
         self.tick_teleports();
     }
 
@@ -159,13 +155,10 @@ impl World {
     /// Run every tick, so a build follows however the last part arrived: a
     /// purchase, a slot moved, or a courier setting one down.
     pub fn assemble_bags(&mut self) {
-        let mut seats = Vec::with_capacity(self.seats.len());
-        seats.extend(
-            self.seats
-                .iter()
-                .filter_map(|seat| seat.unit.map(|unit| (seat.slot, unit))),
-        );
-        for (slot, unit) in seats {
+        for seat in 0..self.seats.len() {
+            let (slot, Some(unit)) = (self.seats[seat].slot, self.seats[seat].unit) else {
+                continue;
+            };
             // One build may hand the next its last part, and each one leaves
             // fewer stacks than it took, so the run ends.
             for _ in 0..BAG_SLOTS {
@@ -276,7 +269,7 @@ impl World {
                     .map(|free| *free = Some(bought))
                     .is_some();
             if !in_hand {
-                assert!(self.put_in_stash(index, bought));
+                assert!(self.seats[index].stash.stow(bought));
             }
         }
         self.finish_purchase(index, item, plan.cost, events);
@@ -303,7 +296,6 @@ impl World {
         } else {
             assert!(def.components.is_empty());
             let bought = ItemStack::bought(item, slot, self.tick).expect("known catalog item");
-            assert!(bought.charges <= def.stack_limit);
             (self.at_shop(unit)
                 && self
                     .inventory
@@ -323,8 +315,6 @@ impl World {
         events: &mut Vec<Event>,
     ) -> bool {
         let def = item_def(item).expect("known catalog item");
-        assert!(def.stack_limit > 0);
-        assert_eq!(def.charges, 1);
         let owner = self.seats[seat].slot;
         if self.seats[seat].gold < def.cost || !self.purchase_fits(owner, item) {
             return false;
@@ -400,27 +390,11 @@ impl World {
         bag + stash
     }
 
-    /// Lays a stack in the first free slot of a seat's stash.
-    fn put_in_stash(&mut self, seat: usize, stack: ItemStack) -> bool {
-        let Some(free) = self.seats[seat]
-            .stash
-            .slots
-            .iter_mut()
-            .find(|slot| slot.is_none())
-        else {
-            return false;
-        };
-        *free = Some(stack);
-        true
-    }
-
-    /// What sits in one of an entity's item slots.
     pub fn item_def_in(&self, entity: Entity, slot: usize) -> Option<&'static ItemDef> {
         let stack = self.inventory.get(entity)?.slot(slot).copied()??;
         item_def(stack.id)
     }
 
-    /// Charges the stack in one of an entity's item slots holds.
     pub fn charges_in(&self, entity: Entity, slot: usize) -> u8 {
         self.held_in_bag(entity, slot)
             .map_or(0, |stack| stack.charges)
@@ -526,8 +500,6 @@ impl World {
         let pool = self.mana.get_mut(user).expect("validated mana pool");
         let before = pool.mana;
         pool.mana += (maximum - before).min(Fixed::from_int(amount));
-        assert!(pool.mana > before);
-        assert!(pool.mana <= maximum);
         let restored = (pool.mana - before).to_int();
         if restored > 0 {
             self.tell_healed(user, user, 0, restored);
@@ -565,22 +537,9 @@ impl World {
 
     /// Walks whoever used an item faster, and through whatever is in the way.
     pub fn walk_through(&mut self, user: Entity, pct: i32, ticks: u32) -> bool {
-        self.put_modifier(
-            user,
-            Modifier {
-                kind: ModifierKind::Hastened { pct },
-                source: Some(user),
-                ticks_left: Some(ticks),
-            },
-        );
-        self.put_modifier(
-            user,
-            Modifier {
-                kind: ModifierKind::Phased,
-                source: Some(user),
-                ticks_left: Some(ticks),
-            },
-        );
+        for kind in [ModifierKind::Hastened { pct }, ModifierKind::Phased] {
+            self.put_modifier(user, Modifier::new(kind, Some(user), Some(ticks)));
+        }
         true
     }
 
@@ -606,17 +565,20 @@ impl World {
 
     /// Whether whoever holds this entity still owes a wait on a kind of item.
     pub fn owes_wait(&self, entity: Entity, item: ItemId) -> bool {
-        self.seats
-            .iter()
-            .find(|seat| seat.unit == Some(entity))
-            .is_some_and(|seat| seat.item_clocks.iter().any(|(held, _)| *held == item))
+        self.seat_of(entity).is_some_and(|seat| {
+            self.seats[seat]
+                .item_clocks
+                .iter()
+                .any(|(held, _)| *held == item)
+        })
     }
 
     /// Starts the wait a kind of item owes its user.
     fn owe_wait(&mut self, entity: Entity, item: ItemId, ticks: u32) {
-        let Some(seat) = self.seats.iter_mut().find(|seat| seat.unit == Some(entity)) else {
+        let Some(seat) = self.seat_of(entity) else {
             return;
         };
+        let seat = &mut self.seats[seat];
         seat.item_clocks.retain(|(held, _)| *held != item);
         if ticks > 0 {
             seat.item_clocks.push((item, ticks));
@@ -646,10 +608,7 @@ impl World {
         if !self.alive(on) || self.team.get(on) != self.team.get(user) {
             return false;
         }
-        let (Some(from), Some(at)) = (
-            self.transform.get(user).map(|t| t.pos),
-            self.transform.get(on).map(|t| t.pos),
-        ) else {
+        let (Some(from), Some(at)) = (self.pos(user), self.pos(on)) else {
             return false;
         };
         if !from.within(at, rules::units(range)) {
@@ -673,14 +632,14 @@ impl World {
         let per_tick = total * 100 / ticks.max(1) as i32;
         self.put_modifier(
             on,
-            Modifier {
-                kind: match pool {
+            Modifier::new(
+                match pool {
                     Pool::Health => ModifierKind::Mending { per_tick, breaks },
                     Pool::Mana => ModifierKind::Clarity { per_tick, breaks },
                 },
-                source: Some(user),
-                ticks_left: Some(ticks),
-            },
+                Some(user),
+                Some(ticks),
+            ),
         );
         self.tell_mend(user, on, pool, total);
         true
@@ -689,25 +648,19 @@ impl World {
     /// Tells of a mend as it begins, worth what `on` is missing of `pool` and
     /// no more than `total`. A mend broken early has still been told in full.
     fn tell_mend(&mut self, user: Entity, on: Entity, pool: Pool, total: i32) {
+        let stats = self.stats.get(on);
+        let missing = match pool {
+            Pool::Health => stats
+                .zip(self.health.get(on))
+                .map_or(0, |(stats, health)| (stats.max_hp - health.hp).to_int()),
+            Pool::Mana => stats
+                .zip(self.mana.get(on))
+                .map_or(0, |(stats, pool)| (stats.max_mana - pool.mana).to_int()),
+        };
+        let mended = total.min(missing.max(0));
         let (amount, mana) = match pool {
-            Pool::Health => {
-                let missing = self
-                    .stats
-                    .get(on)
-                    .zip(self.health.get(on))
-                    .map_or(0, |(stats, health)| (stats.max_hp - health.hp).to_int())
-                    .max(0);
-                (total.min(missing), 0)
-            }
-            Pool::Mana => {
-                let missing = self
-                    .stats
-                    .get(on)
-                    .zip(self.mana.get(on))
-                    .map_or(0, |(stats, pool)| (stats.max_mana - pool.mana).to_int())
-                    .max(0);
-                (0, total.min(missing))
-            }
+            Pool::Health => (mended, 0),
+            Pool::Mana => (0, mended),
         };
         if amount > 0 || mana > 0 {
             self.tell_healed(user, on, amount, mana);
@@ -717,7 +670,7 @@ impl World {
     /// Tells who may know that `source` mended `on` by `amount` health and
     /// `mana` mana.
     fn tell_healed(&mut self, source: Entity, on: Entity, amount: i32, mana: i32) {
-        let at = self.transform.get(on).map_or(Vec2::ZERO, |t| t.pos);
+        let at = self.pos(on).unwrap_or(Vec2::ZERO);
         let side = self.team.get(on).copied().unwrap_or(Team::Neutral);
         self.events.push(Event {
             kind: EventKind::Healed {
@@ -817,14 +770,7 @@ impl World {
         if from == to || !named(from) || !named(to) {
             return Some(RejectReason::EmptySlot);
         }
-        let held = if in_stash(from) {
-            seat.stash.slots.get(from - BAG_SLOTS).copied().flatten()
-        } else {
-            self.inventory
-                .get(unit)
-                .and_then(|bag| bag.slot(from).copied().flatten())
-        };
-        let Some(held) = held else {
+        let Some(held) = self.stack_at(unit, seat, from) else {
             return Some(RejectReason::EmptySlot);
         };
         if (in_stash(from) || in_stash(to)) && !self.at_shop(unit) {
@@ -838,6 +784,15 @@ impl World {
             return Some(RejectReason::WrongTargetKind);
         }
         None
+    }
+
+    /// The stack in one of a seat's slots: the unit's bag, then the stash.
+    fn stack_at(&self, unit: Entity, seat: &crate::game::Seat, at: usize) -> Option<ItemStack> {
+        if in_stash(at) {
+            seat.stash.slots.get(at - BAG_SLOTS).copied().flatten()
+        } else {
+            self.held_in_bag(unit, at)
+        }
     }
 
     /// Merges a scroll stack from one of a seat's slots into its hero's town
@@ -873,17 +828,7 @@ impl World {
         let Some(seat) = self.seats.iter().position(|s| s.slot == slot) else {
             return false;
         };
-        let held = if in_stash(at) {
-            self.seats[seat]
-                .stash
-                .slots
-                .get(at - BAG_SLOTS)
-                .copied()
-                .flatten()
-        } else {
-            self.held_in_bag(unit, at)
-        };
-        let Some(held) = held else {
+        let Some(held) = self.stack_at(unit, &self.seats[seat], at) else {
             return false;
         };
         if held.owner != slot || held.free_charges > 0 {
@@ -911,7 +856,6 @@ impl World {
         true
     }
 
-    /// What selling a stack pays right now.
     fn sale_price(&self, stack: &ItemStack) -> i32 {
         let Some(def) = item_def(stack.id) else {
             return 0;
@@ -954,7 +898,7 @@ impl World {
         }
         let entities = self.take_entity_snapshot();
         for holder in entities.iter().copied() {
-            let Some(at_pos) = self.transform.get(holder).map(|t| t.pos) else {
+            let Some(at_pos) = self.pos(holder) else {
                 continue;
             };
             let Some(bag) = self.inventory.get(holder) else {
@@ -982,7 +926,6 @@ impl World {
         self.recycle_entity_snapshot(entities);
     }
 
-    /// Takes whatever sits in one slot of a seat's slots out of it.
     fn take_slot(&mut self, unit: Entity, seat: usize, slot: usize) -> Option<ItemStack> {
         self.slot_of(unit, seat, slot)?.take()
     }
@@ -994,7 +937,6 @@ impl World {
         }
     }
 
-    /// The stack in one slot, to be changed in place.
     fn slot_mut(&mut self, unit: Entity, seat: usize, slot: usize) -> Option<&mut ItemStack> {
         self.slot_of(unit, seat, slot)?.as_mut()
     }
@@ -1023,7 +965,7 @@ impl World {
         let Target::Pos(pos) = target else {
             return false;
         };
-        let Some(from) = self.transform.get(user).map(|t| t.pos) else {
+        let Some(from) = self.pos(user) else {
             return false;
         };
         let aim = clamp_to_map(if from.within(pos, rules::units(range)) {
@@ -1062,10 +1004,10 @@ impl World {
     /// it, and within `range` of the one using the item. Aimed at a unit, the
     /// spot is where the unit stands; aimed at nothing, where the user does.
     fn reach_a_tree(&self, user: Entity, target: Target, range: i32) -> Option<Tree> {
-        let from = self.transform.get(user).map(|t| t.pos)?;
+        let from = self.pos(user)?;
         let at = match target {
             Target::Pos(pos) => pos,
-            Target::Unit(target) => self.transform.get(self.of_wire(target)?)?.pos,
+            Target::Unit(target) => self.pos(self.of_wire(target)?)?,
             Target::None => from,
         };
         let tree =
@@ -1091,7 +1033,7 @@ impl World {
         let Target::Pos(pos) = target else {
             return false;
         };
-        let Some(from) = self.transform.get(user).map(|t| t.pos) else {
+        let Some(from) = self.pos(user) else {
             return false;
         };
         if !from.within(pos, rules::units(range)) || !self.clearance.stands_clear(pos) {
@@ -1164,14 +1106,11 @@ impl World {
         let Some(book) = self.abilities.get(entity) else {
             return false;
         };
-        if book.tree.is_none() || slot.0 >= bota_proto::TalentSlot::COUNT {
-            return false;
-        }
-        if book.talents.has(slot) {
-            return false;
-        }
         let hero_level = self.level.get(entity).map_or(0, |level| level.0);
-        hero_level >= bota_core::talent_floor(slot, book.talents)
+        book.tree.is_some()
+            && slot.0 < bota_proto::TalentSlot::COUNT
+            && !book.talents.has(slot)
+            && hero_level >= bota_core::talent_floor(slot, book.talents)
     }
 
     /// Spends a skill point on an entity's Attribute Bonus, when

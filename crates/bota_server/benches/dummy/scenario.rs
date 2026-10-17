@@ -7,7 +7,7 @@ use bota_proto::{HeroId, MapId, Order, Pick, SlotId, Target, Team, TickMode, Vec
 use crate::game::{Clearance, Command, Entity, Fnv, MatchConfig, World};
 
 /// Ticks between two re-issued hero orders.
-pub(crate) const PATROL_TICKS: u32 = 45;
+const PATROL_TICKS: u32 = 45;
 /// Ticks run before every measured window.
 pub(crate) const WARMUP_TICKS: u32 = 1_800;
 /// Identity of the dummy match.
@@ -17,11 +17,11 @@ const MASTER_KEY: [u8; 32] = [0x42; 32];
 /// Ticks the dummy wards stand.
 const WARD_TICKS: u32 = 12_600;
 /// The map the dummy is played on.
-pub(crate) const DUMMY_MAP: MapId = MapId(1);
+const DUMMY_MAP: MapId = MapId(1);
 /// The radius the capsule case walks a body at, in world units.
 pub(crate) const CAPSULE_RADIUS: i32 = 8;
 /// Inputs in each fixed micro case.
-pub(crate) const MICRO_OPS: u32 = 1_000_000;
+const MICRO_OPS: u32 = 1_000_000;
 
 /// The dummy game: one world, the script it is driven by and its last views.
 pub(crate) struct Dummy {
@@ -48,7 +48,7 @@ pub(crate) struct Dummy {
 impl Dummy {
     /// Builds the dummy at tick zero.
     pub(crate) fn build(project: bool) -> Dummy {
-        let cfg = match_config();
+        let cfg = two_fiends(MATCH_ID, MASTER_KEY, DUMMY_MAP);
         let mut world = World::for_match(&cfg, cfg.rng());
         let heroes = [
             hero_at(&world, SlotId(0)).expect("slot 0 has a hero"),
@@ -182,25 +182,20 @@ fn lerp(from: Vec2, to: Vec2, num: i32, den: i32) -> Vec2 {
     Vec2::from_ints(x0 + (x1 - x0) * num / den, y0 + (y1 - y0) * num / den)
 }
 
-/// The configuration of the dummy match.
-fn match_config() -> MatchConfig {
+/// A lockstep match of two Shadow Fiends, Radiant in slot 0, keyed by its
+/// label as its stream.
+pub(crate) fn two_fiends(match_id: u64, master_key: [u8; 32], map: MapId) -> MatchConfig {
+    let pick = |slot, team| Pick {
+        slot: SlotId(slot),
+        team,
+        hero: HeroId::SHADOW_FIEND,
+    };
     MatchConfig {
-        match_id: MATCH_ID,
-        stream: MATCH_ID,
-        master_key: MASTER_KEY,
-        picks: vec![
-            Pick {
-                slot: SlotId(0),
-                team: Team::Radiant,
-                hero: HeroId::SHADOW_FIEND,
-            },
-            Pick {
-                slot: SlotId(1),
-                team: Team::Dire,
-                hero: HeroId::SHADOW_FIEND,
-            },
-        ],
-        map: DUMMY_MAP,
+        match_id,
+        stream: match_id,
+        master_key,
+        picks: vec![pick(0, Team::Radiant), pick(1, Team::Dire)],
+        map,
         tick_rate: rules::TICKS_PER_SECOND as u16,
         mode: TickMode::Lockstep,
         ack_timeout_ticks: 0,
@@ -212,7 +207,7 @@ fn match_config() -> MatchConfig {
 }
 
 /// The body of a seat, while one stands.
-fn hero_at(world: &World, slot: SlotId) -> Option<Entity> {
+pub(crate) fn hero_at(world: &World, slot: SlotId) -> Option<Entity> {
     world.seat(slot).and_then(|seat| seat.unit)
 }
 

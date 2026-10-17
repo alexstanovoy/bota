@@ -126,17 +126,12 @@ impl World {
         };
         let chosen = self.target_of(entity).filter(|on| self.alive(*on));
         let ordered = ordered_at.filter(|on| self.alive(*on));
-        match (chosen, ordered) {
-            (Some(on), _) => self
-                .transform
-                .get(on)
-                .map(|at| (at.pos, self.attack_reach(entity, on))),
-            (None, Some(on)) => self
-                .transform
-                .get(on)
-                .map(|at| (at.pos, self.touching_distance(entity, on))),
-            (None, None) => None,
-        }
+        let (on, reach) = match (chosen, ordered) {
+            (Some(on), _) => (on, self.attack_reach(entity, on)),
+            (None, Some(on)) => (on, self.touching_distance(entity, on)),
+            (None, None) => return None,
+        };
+        Some((self.pos(on)?, reach))
     }
 
     /// How near an attacker's centre has to come to a target's to strike
@@ -153,14 +148,12 @@ impl World {
     /// further apart than the hulls themselves, so what stops here is not
     /// overlapping and is not eased away again by [`World::push_apart`].
     fn touching_distance(&self, one: Entity, other: Entity) -> Fixed {
-        self.hull
-            .get(one)
-            .map_or(Fixed::ZERO, |hull| hull.collision)
-            + self
-                .hull
-                .get(other)
-                .map_or(Fixed::ZERO, |hull| hull.collision)
-            + rules::units(rules::STEER_MARGIN)
+        self.collision(one) + self.collision(other) + rules::units(rules::STEER_MARGIN)
+    }
+
+    /// An entity's collision size; zero for one without a body.
+    pub(super) fn collision(&self, entity: Entity) -> Fixed {
+        self.hull.get(entity).map_or(Fixed::ZERO, |h| h.collision)
     }
 
     /// Stands this tick: whatever stretch of walk it had planned is
@@ -174,7 +167,7 @@ impl World {
     /// Comes round towards a spot without leaving the one it stands on.
     fn turn_to(&mut self, entity: Entity, dest: Vec2) {
         let (Some(from), Some(rate)) = (
-            self.transform.get(entity).map(|t| t.pos),
+            self.pos(entity),
             self.stats.get(entity).map(|stats| stats.turn_rate),
         ) else {
             return;
@@ -216,7 +209,7 @@ impl World {
         let Some((from, step)) = self.walking_pace(entity, dest, arrive) else {
             return;
         };
-        let collision = self.hull.get(entity).map_or(Fixed::ZERO, |h| h.collision);
+        let collision = self.collision(entity);
         let motion = self.motion.get(entity).copied().unwrap_or_default();
         // Just walked into a body that was itself moving: it stands for
         // the block wait, facing where it was going.
@@ -299,7 +292,7 @@ impl World {
         };
         // Nobody foresees a marcher by a plan: it has none.
         self.stand(entity);
-        let collision = self.hull.get(entity).map_or(Fixed::ZERO, |h| h.collision);
+        let collision = self.collision(entity);
         let (aim, _) = self.lay_route(entity, from, dest, collision, &[]);
         if self.route.get(entity).is_some_and(|route| route.done) || aim == from {
             self.turn_to(entity, dest);
@@ -493,7 +486,7 @@ impl World {
     /// when it does not walk: near enough already, it comes round to face
     /// the spot; unable to move, it stands; flying, it goes straight.
     fn walking_pace(&mut self, entity: Entity, dest: Vec2, arrive: Fixed) -> Option<(Vec2, Fixed)> {
-        let from = self.transform.get(entity)?.pos;
+        let from = self.pos(entity)?;
         let stats = self.stats.get(entity).copied()?;
         if from == dest || (arrive > Fixed::ZERO && from.within(dest, arrive)) {
             self.turn_to(entity, dest);
@@ -745,45 +738,31 @@ impl World {
             if body.entity == entity || self.phased(body.entity) {
                 return;
             }
-            let Some(at) = self.transform.get(body.entity).map(|t| t.pos) else {
+            let Some(at) = self.pos(body.entity) else {
                 return;
             };
-            if self.hero.get(body.entity).is_some() {
+            let standing = if self.hero.get(body.entity).is_some() {
                 let steady = body.still >= rules::STANDING_TICKS;
                 let bumped = self.motion.get(entity).is_some_and(|mine| {
                     now < mine.bumped + rules::HEED_HERO_TICKS
                         && mine.bumps >= rules::BUMPS_BEFORE_HEED
                 });
-                if steady || bumped {
-                    foreseen.push(Foreseen {
-                        at,
-                        radius: body.radius,
-                        delta: Vec2::ZERO,
-                        steps: &[],
-                        from: 0,
-                    });
+                if !steady && !bumped {
+                    return;
                 }
-                return;
-            }
-            if hero_walks {
-                foreseen.push(Foreseen {
-                    at,
-                    radius: body.radius,
-                    delta: Vec2::ZERO,
-                    steps: &[],
-                    from: 0,
-                });
-                return;
-            }
-            let (steps, plan_from) = self
-                .plan
-                .get(body.entity)
-                .filter(|plan| plan.stands())
-                .map_or((&[][..], 0), |plan| (plan.steps.as_slice(), plan.from));
+                true
+            } else {
+                hero_walks
+            };
+            let (delta, steps, plan_from) = match self.plan.get(body.entity) {
+                _ if standing => (Vec2::ZERO, &[][..], 0),
+                Some(plan) if plan.stands() => (body.delta, plan.steps.as_slice(), plan.from),
+                _ => (body.delta, &[][..], 0),
+            };
             foreseen.push(Foreseen {
                 at,
                 radius: body.radius,
-                delta: body.delta,
+                delta,
                 steps,
                 from: plan_from,
             });
@@ -799,7 +778,7 @@ impl World {
             if body.entity == entity || body.fixed || body.still < rules::STANDING_TICKS {
                 return;
             }
-            if let Some(at) = self.transform.get(body.entity).map(|t| t.pos) {
+            if let Some(at) = self.pos(body.entity) {
                 out.push((at, body.radius));
             }
         });
@@ -872,7 +851,6 @@ impl World {
         self.moved(entity, from, to);
     }
 
-    /// Puts a body where its step took it.
     fn moved(&mut self, entity: Entity, from: Vec2, to: Vec2) {
         if let Some(transform) = self.transform.get_mut(entity) {
             transform.pos = to;
@@ -907,18 +885,15 @@ impl World {
     /// What flies goes straight: closed ground and bodies are nothing to
     /// it. It turns first, like everything else.
     fn fly_toward(&mut self, entity: Entity, dest: Vec2, step: Fixed) {
-        let (Some(from), Some(rate)) = (
-            self.transform.get(entity).map(|t| t.pos),
+        let (Some(at), Some(rate)) = (
+            self.transform.get(entity).copied(),
             self.stats.get(entity).map(|stats| stats.turn_rate),
         ) else {
             return;
         };
+        let from = at.pos;
         let wanted = facing_towards(from, dest);
-        let facing = turn_towards(
-            self.transform.get(entity).expect("looked up above").facing,
-            wanted,
-            rate,
-        );
+        let facing = turn_towards(at.facing, wanted, rate);
         if let Some(transform) = self.transform.get_mut(entity) {
             transform.facing = facing;
         }
@@ -930,10 +905,7 @@ impl World {
 
     /// Runs one entity straight away from another, a step a tick.
     fn flee(&mut self, entity: Entity, from: Entity, scratch: &mut LocalScratch) {
-        let (Some(here), Some(there)) = (
-            self.transform.get(entity).map(|t| t.pos),
-            self.transform.get(from).map(|t| t.pos),
-        ) else {
+        let (Some(here), Some(there)) = (self.pos(entity), self.pos(from)) else {
             return;
         };
         if here == there {
@@ -962,17 +934,13 @@ enum Slid {
 
 /// One walker's tick of walking along its route.
 struct Leg {
-    /// Who walks.
     entity: Entity,
-    /// Where it stands.
     from: Vec2,
-    /// Where it is going.
     dest: Vec2,
     /// How near the destination is near enough.
     arrive: Fixed,
     /// How far it walks in a tick.
     step: Fixed,
-    /// Its collision size.
     collision: Fixed,
     /// The spot it walks at next.
     aim: Vec2,

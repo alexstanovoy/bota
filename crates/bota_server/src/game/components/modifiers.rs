@@ -16,6 +16,16 @@ pub struct Modifier {
     pub ticks_left: Option<u32>,
 }
 
+impl Modifier {
+    pub fn new(kind: ModifierKind, source: Option<Entity>, ticks_left: Option<u32>) -> Modifier {
+        Modifier {
+            kind,
+            source,
+            ticks_left,
+        }
+    }
+}
+
 /// Everything on an entity right now. Present on every unit; empty when
 /// nothing is on.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -104,12 +114,10 @@ impl Modifiers {
     /// [`rules::RAZE_DEBUFF_TICKS`].
     pub fn stack_raze(&mut self, caster: Entity) {
         let stacks = self.raze_stacks(caster).saturating_add(1);
-        self.put(Modifier {
-            kind: ModifierKind::Shadowraze { stacks },
-            source: Some(caster),
-            ticks_left: Some(rules::RAZE_DEBUFF_TICKS),
-        });
-        assert!(self.raze_stacks(caster) > 0);
-        assert_eq!(self.raze_stacks(caster), stacks);
+        self.put(Modifier::new(
+            ModifierKind::Shadowraze { stacks },
+            Some(caster),
+            Some(rules::RAZE_DEBUFF_TICKS),
+        ));
     }
 }

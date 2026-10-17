@@ -17,7 +17,6 @@ use std::collections::VecDeque;
 pub struct Missed {
     /// Who swung. The handle may outlive the body.
     pub source: Option<Entity>,
-    /// Who it was swung at.
     pub target: Entity,
     /// Where it happened.
     pub at: Vec2,
@@ -30,12 +29,10 @@ pub struct Missed {
 pub struct Landed {
     /// Who dealt it. The handle may outlive the body.
     pub source: Option<Entity>,
-    /// Who took it.
     pub target: Entity,
     /// Health taken, after armor and resistance, at most one past what the
     /// target had left.
     pub amount: i32,
-    /// Which reduction applied.
     pub kind: DamageKind,
     /// Where it happened.
     pub at: Vec2,
@@ -111,12 +108,14 @@ pub fn hitting_system<const AMPLIFIED: bool>(cx: HitCx<'_>) {
         if !standing || stat.invulnerable || shielded {
             continue;
         }
+        let at = transform.get(blow.target).map_or(Vec2::ZERO, |t| t.pos);
+        let side = team.get(blow.target).copied().unwrap_or(Team::Neutral);
         if blow.attack && !blow.pierces && evades(blow.target, stat.evasion, rng, evasion) {
             missed.push_back(Missed {
                 source: blow.source,
                 target: blow.target,
-                at: transform.get(blow.target).map_or(Vec2::ZERO, |t| t.pos),
-                side: team.get(blow.target).copied().unwrap_or(Team::Neutral),
+                at,
+                side,
             });
             continue;
         }
@@ -140,8 +139,8 @@ pub fn hitting_system<const AMPLIFIED: bool>(cx: HitCx<'_>) {
             target: blow.target,
             amount: applied,
             kind: blow.kind,
-            at: transform.get(blow.target).map_or(Vec2::ZERO, |t| t.pos),
-            side: team.get(blow.target).copied().unwrap_or(Team::Neutral),
+            at,
+            side,
             fatal,
         });
     }
@@ -250,13 +249,6 @@ fn frighten(
         ModifierKind::Feared,
     ] {
         let ticks = resisted_ticks(stats, blow.target, kind, fear.line);
-        on_it.extend(
-            Modifier {
-                kind,
-                source: blow.source,
-                ticks_left: Some(ticks),
-            },
-            fear.most,
-        );
+        on_it.extend(Modifier::new(kind, blow.source, Some(ticks)), fear.most);
     }
 }

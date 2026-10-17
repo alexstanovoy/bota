@@ -5,8 +5,8 @@
 use std::time::Duration;
 
 use bota_proto::{
-    ClientMsg, HeroId, LobbySlot, MatchInfo, PlayerId, Role, SeatKey, ServerMsg, SlotId, Team,
-    TickMode, WIRE_FINGERPRINT,
+    ClientMsg, HeroId, LobbySlot, MatchInfo, PlayerId, Role, SeatKey, ServerMsg, SlotId, TickMode,
+    WIRE_FINGERPRINT,
 };
 
 use crate::session::SessionError;
@@ -24,7 +24,6 @@ const MAX_NAME_LEN: usize = 64;
 pub struct Seated {
     /// The connection identity assigned by the server.
     pub player: PlayerId,
-    /// The seat assigned.
     pub slot: SlotId,
     /// Simulation ticks per second.
     pub tick_rate: u16,
@@ -34,9 +33,8 @@ pub struct Seated {
     pub hero: Option<HeroId>,
 }
 
-/// Checks the match start against the welcome and the seat's pick, and
-/// returns the seat's team.
-pub(crate) fn check_match(seated: &Seated, info: &MatchInfo) -> Result<Team, SessionError> {
+/// Checks the match start against the welcome and the seat's pick.
+pub(crate) fn check_match(seated: &Seated, info: &MatchInfo) -> Result<(), SessionError> {
     if info.tick_rate != seated.tick_rate {
         return Err(SessionError::TickRateMismatch {
             start: info.tick_rate,
@@ -63,7 +61,7 @@ pub(crate) fn check_match(seated: &Seated, info: &MatchInfo) -> Result<Team, Ses
             expected,
         });
     }
-    Ok(pick.team)
+    Ok(())
 }
 
 /// What the lobby phase has told: who the connection is, its seat, the

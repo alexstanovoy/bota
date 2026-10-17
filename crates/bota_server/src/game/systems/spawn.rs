@@ -122,7 +122,6 @@ impl World {
         );
     }
 
-    /// A body that does things, standing ready.
     fn give_action(&mut self, entity: Entity) {
         self.action.insert(
             entity,
@@ -316,6 +315,21 @@ impl World {
         entity
     }
 
+    /// An entity of a side standing at a spot, with nothing else to it.
+    pub(super) fn spawn_placed(&mut self, pos: Vec2, facing: Angle, side: Team) -> Entity {
+        let entity = self.spawn();
+        self.transform.insert(entity, Transform { pos, facing });
+        self.set_team(entity, side);
+        entity
+    }
+
+    /// Takes an entity [`World::spawn_placed`] stood up out of the world.
+    pub(super) fn discard(&mut self, entity: Entity) {
+        self.transform.remove(entity);
+        self.team.remove(entity);
+        self.despawn(entity);
+    }
+
     /// Leaves an ability's mark at a spot, on the caster's side, for so many
     /// ticks. Zero ticks leaves one that stands until it is taken.
     pub fn spawn_mark(
@@ -325,16 +339,8 @@ impl World {
         pos: Vec2,
         ticks: u32,
     ) -> Entity {
-        let entity = self.spawn();
-        self.transform.insert(
-            entity,
-            Transform {
-                pos,
-                facing: Angle::default(),
-            },
-        );
         let side = self.team.get(owner).copied().unwrap_or(Team::Neutral);
-        self.set_team(entity, side);
+        let entity = self.spawn_placed(pos, Angle::default(), side);
         self.mark.insert(entity, Mark { ability, owner });
         if ticks > 0 {
             self.expiry.insert(entity, Expiry { ticks_left: ticks });
@@ -342,13 +348,10 @@ impl World {
         entity
     }
 
-    /// Takes a mark out of the world.
     pub fn take_mark(&mut self, entity: Entity) {
         self.mark.remove(entity);
         self.expiry.remove(entity);
-        self.transform.remove(entity);
-        self.team.remove(entity);
-        self.despawn(entity);
+        self.discard(entity);
     }
 
     /// The mark one caster's ability is showing, if it is showing one.

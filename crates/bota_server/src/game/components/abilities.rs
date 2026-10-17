@@ -8,7 +8,6 @@ use bota_proto::{AbilityId, Talents};
 /// One ability in a slot.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct AbilityState {
-    /// Which ability sits here.
     pub id: AbilityId,
     /// Level it stands at. Zero until it is learned.
     pub level: u8,
@@ -25,25 +24,17 @@ pub struct AbilityBook {
     pub tree: Option<&'static TalentTree>,
     /// The talents it has learned, by slot of its tree.
     pub talents: Talents,
-    /// Levels of the Attribute Bonus learned.
     pub attribute_bonus: u8,
 }
 
 impl AbilityBook {
-    /// What sits in a slot, if anything does.
     pub fn slot(&self, index: usize) -> Option<&AbilityState> {
         self.slots.get(index)
     }
 
-    /// Whether it has learned a talent.
     pub fn has_talent(&self, talent: Talent) -> bool {
         self.tree
             .is_some_and(|tree| bota_core::has_talent(tree, self.talents, talent))
-    }
-
-    /// Every ability that has been learned.
-    pub fn learned(&self) -> impl Iterator<Item = &AbilityState> {
-        self.slots.iter().filter(|a| a.level > 0)
     }
 
     /// Skill points spent: on abilities and the Attribute Bonus. Talents

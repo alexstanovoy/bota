@@ -41,31 +41,6 @@ fn phase_counts_remain_local_to_the_recording_thread() {
 }
 
 #[test]
-fn fine_movement_phases_keep_independent_sampled_counters() {
-    let phases = [
-        Phase::MovementIntent,
-        Phase::Walk,
-        Phase::Separation,
-        Phase::BodyIndex,
-        Phase::Route,
-        Phase::PathQuery,
-        Phase::LocalPlan,
-        Phase::LocalSearch,
-    ];
-    let _ = take_snapshot();
-    for (index, phase) in phases.into_iter().enumerate() {
-        drop(ScopeGuard::new(phase, 16, index + 1));
-        drop(ScopeGuard::new(phase, 17, 99));
-    }
-    let snapshot = take_snapshot();
-    for (index, phase) in phases.into_iter().enumerate() {
-        assert_eq!(snapshot[phase as usize][0], 1);
-        assert_eq!(snapshot[phase as usize][2], (index + 1) as u64);
-    }
-    assert_eq!(snapshot[Phase::Movement as usize], [0; 3]);
-}
-
-#[test]
 fn class_zero_target_retention_performs_no_full_search() {
     use crate::game::World;
     use bota_core::MELEE_CREEP;

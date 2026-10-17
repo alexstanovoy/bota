@@ -115,24 +115,13 @@ impl ModifierDuration {
             ModifierDuration::Ticks(ticks) => Some(ticks),
         }
     }
-
-    /// Whether the policy is one a match setup may carry.
-    pub fn is_valid(self) -> bool {
-        match self {
-            ModifierDuration::MatchLong => true,
-            ModifierDuration::Ticks(ticks) => modifier_ticks_bounded(ticks),
-        }
-    }
 }
 
 /// Why one spawn modifier was refused.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SpawnModifierError {
     /// The selector asks to walk too many exact kinds and categories.
-    TooManyTargets {
-        /// How many were offered.
-        count: usize,
-    },
+    TooManyTargets { count: usize },
     /// The spec does not lie within its bounds.
     UnboundedSpec,
     /// The duration is not one a match may carry.
@@ -164,7 +153,9 @@ pub fn check_spawn_modifier(rule: &SpawnModifier) -> Result<(), SpawnModifierErr
     if !rule.spec.is_bounded() {
         return Err(SpawnModifierError::UnboundedSpec);
     }
-    if !rule.duration.is_valid() {
+    if let ModifierDuration::Ticks(ticks) = rule.duration
+        && !modifier_ticks_bounded(ticks)
+    {
         return Err(SpawnModifierError::BadDuration);
     }
     Ok(())

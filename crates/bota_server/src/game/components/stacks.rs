@@ -18,10 +18,7 @@ impl StackKind {
 
     /// Where its count sits.
     pub const fn at(self) -> usize {
-        match self {
-            StackKind::FleshHeap => 0,
-            StackKind::Souls => 1,
-        }
+        self as usize
     }
 }
 
@@ -34,12 +31,10 @@ pub struct Stacks {
 }
 
 impl Stacks {
-    /// How many of one kind are held.
     pub const fn of(&self, kind: StackKind) -> u32 {
         self.counts[kind.at()]
     }
 
-    /// Puts more of one kind on.
     pub const fn gather(&mut self, kind: StackKind, many: u32) {
         self.gather_up_to(kind, many, u32::MAX);
     }
@@ -56,7 +51,6 @@ impl Stacks {
         self.counts[at] = if held > cap { cap } else { held };
     }
 
-    /// Sets how many of one kind are held.
     pub const fn set(&mut self, kind: StackKind, many: u32) {
         self.counts[kind.at()] = many;
     }

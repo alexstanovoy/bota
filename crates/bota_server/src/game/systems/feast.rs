@@ -40,26 +40,22 @@ impl World {
             };
             assert!(feast.ticks_left > 0);
             feast.ticks_left -= 1;
-            match feast.phase {
-                FeastPhase::Feasting => {
-                    let ran = rules::FEAST_TICKS - feast.ticks_left;
-                    if feast.ticks_left == 0 {
-                        self.stop_feasting(entity, feast);
-                    } else {
-                        if ran.is_multiple_of(rules::FEAST_PERIOD_TICKS) {
-                            self.gather_feast(entity, &mut feast);
-                        }
-                        self.feast.insert(entity, feast);
-                    }
+            let feasting = feast.phase == FeastPhase::Feasting;
+            if feast.ticks_left == 0 {
+                if feasting {
+                    self.stop_feasting(entity, feast);
+                } else {
+                    self.stop_lingering(entity);
                 }
-                FeastPhase::Lingering => {
-                    if feast.ticks_left == 0 {
-                        self.stop_lingering(entity);
-                    } else {
-                        self.feast.insert(entity, feast);
-                    }
-                }
+                continue;
             }
+            // Ticks run, counted only while feasting: a linger may outlast it.
+            if feasting
+                && (rules::FEAST_TICKS - feast.ticks_left).is_multiple_of(rules::FEAST_PERIOD_TICKS)
+            {
+                self.gather_feast(entity, &mut feast);
+            }
+            self.feast.insert(entity, feast);
         }
         self.recycle_entity_snapshot(entities);
     }
@@ -82,7 +78,7 @@ impl World {
     /// has room for more.
     fn gather_feast(&mut self, caster: Entity, feast: &mut Feast) {
         let room = rules::FEAST_TARGETS[usize::from(feast.level)].saturating_sub(feast.fed.len());
-        let Some(at) = self.transform.get(caster).map(|t| t.pos) else {
+        let Some(at) = self.pos(caster) else {
             return;
         };
         let radius = rules::units(rules::FEAST_RADIUS);
@@ -98,7 +94,7 @@ impl World {
                         .is_some_and(|kind| *kind == UnitKind::Hero || kind_def(*kind).creep)
             })
             .filter_map(|other| {
-                let pos = self.transform.get(other)?.pos;
+                let pos = self.pos(other)?;
                 pos.within(at, radius)
                     .then(|| (!self.is_hero(other), pos.distance_squared(at), other))
             })

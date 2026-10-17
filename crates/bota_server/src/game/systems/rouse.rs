@@ -47,10 +47,7 @@ impl World {
         if self.kind.get(orderer) != Some(&UnitKind::Hero) {
             return;
         }
-        let (Some(side), Some(at)) = (
-            self.team.get(orderer).copied(),
-            self.transform.get(orderer).map(|t| t.pos),
-        ) else {
+        let (Some(side), Some(at)) = (self.team.get(orderer).copied(), self.pos(orderer)) else {
             return;
         };
         let creeps_hear = match call {
@@ -100,24 +97,18 @@ impl World {
         {
             return;
         }
-        let (Some(side), Some(at)) = (
-            self.team.get(swinger).copied(),
-            self.transform.get(swinger).map(|t| t.pos),
-        ) else {
+        let (Some(side), Some(at)) = (self.team.get(swinger).copied(), self.pos(swinger)) else {
             return;
         };
         let reach = rules::units(rules::HERO_AGGRO_RANGE);
-        for creep in self.entities.iter().collect::<Vec<_>>() {
+        for creep in self.entities.iter() {
             let Some(mut ai) = self.lane_ai.get(creep).copied() else {
                 continue;
             };
             let Some(theirs) = self.team.get(creep).copied() else {
                 continue;
             };
-            let near = self
-                .transform
-                .get(creep)
-                .is_some_and(|t| t.pos.within(at, reach));
+            let near = self.pos(creep).is_some_and(|pos| pos.within(at, reach));
             if theirs == side
                 || !near
                 || self.tick < ai.keep_until
@@ -149,11 +140,7 @@ impl World {
     /// [`rules::HERO_AGGRO_RANGE`] of it, seen or not.
     fn rouse_creep(&mut self, creep: Entity, orderer: Entity, at: Vec2, call: Call) {
         let reach = rules::units(rules::HERO_AGGRO_RANGE);
-        if !self
-            .transform
-            .get(creep)
-            .is_some_and(|t| t.pos.within(at, reach))
-        {
+        if !self.pos(creep).is_some_and(|pos| pos.within(at, reach)) {
             return;
         }
         // Being called on is what the early rule holds back; letting go is
@@ -210,7 +197,7 @@ impl World {
         }
         let (Some(side), Some(at), Some(reach)) = (
             self.team.get(creep).copied(),
-            self.transform.get(creep).map(|t| t.pos),
+            self.pos(creep),
             self.stats.get(creep).map(|stats| stats.acquisition),
         ) else {
             return false;
@@ -219,7 +206,7 @@ impl World {
             team: self.team.get(other).copied(),
             kind: self.kind.get(other).copied(),
             tier: self.tier.get(other).map(|tier| tier.0),
-            pos: self.transform.get(other).map(|t| t.pos),
+            pos: self.pos(other),
             alive: self.alive(other),
         });
         bota_core::aggroable_yet(self.tick, side, at, reach, neighbours)

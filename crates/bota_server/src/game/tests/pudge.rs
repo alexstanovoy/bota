@@ -12,7 +12,7 @@ fn a_hook_catches_what_it_flies_into_and_drags_it_home() {
     let (mut world, pudge, mark) = pudge_and_a_mark(600);
     let full = world.health.get(mark).expect("standing").hp;
     let home = world.transform.get(pudge).expect("standing").pos;
-    throw_hook(&mut world, Vec2::from_ints(6000, 5000));
+    cast(&mut world, 0, Target::Pos(Vec2::from_ints(6000, 5000)));
     for _ in 0..120 {
         world.step();
         if !hook_flying(&world) {
@@ -34,7 +34,7 @@ fn a_hook_catches_what_it_flies_into_and_drags_it_home() {
 fn a_hook_that_catches_nothing_comes_back_by_itself_with_its_chain() {
     let (mut world, pudge, _mark) = pudge_and_a_mark(600);
     // Thrown the other way, so it flies out over open ground and returns.
-    throw_hook(&mut world, Vec2::from_ints(4000, 5000));
+    cast(&mut world, 0, Target::Pos(Vec2::from_ints(4000, 5000)));
     world.step();
     let chained = |world: &World| {
         world
@@ -72,7 +72,11 @@ fn a_hook_that_catches_nothing_comes_back_by_itself_with_its_chain() {
 fn a_hook_flies_no_further_than_it_reaches() {
     let (mut world, _pudge, _mark) = pudge_and_a_mark(4000);
     // At the very edge of its reach: further off, the caster walks in first.
-    throw_hook(&mut world, Vec2::from_ints(5000 + rules::HOOK_RANGE, 5000));
+    cast(
+        &mut world,
+        0,
+        Target::Pos(Vec2::from_ints(5000 + rules::HOOK_RANGE, 5000)),
+    );
     let mut furthest = 0;
     for _ in 0..200 {
         world.step();
@@ -100,11 +104,12 @@ fn the_rot_burns_and_slows_what_stands_in_it_and_lifts_when_switched_off() {
     let (mut world, pudge, mark) = pudge_and_a_mark(150);
     set_level(&mut world, pudge, 1, 1);
     let full = world.health.get(mark).expect("standing").hp;
-    pudge_casts(&mut world, 1, Target::None);
-    assert!(rotting(&world, pudge), "it is switched on");
-    for _ in 0..rules::BURN_PERIOD_TICKS * 4 {
-        world.step();
-    }
+    cast(&mut world, 1, Target::None);
+    assert!(
+        carries(&world, pudge, ModifierKind::Rot { level: 0 }),
+        "it is switched on"
+    );
+    run(&mut world, rules::BURN_PERIOD_TICKS * 4);
     assert!(
         world.health.get(mark).expect("standing").hp < full,
         "what stands in it burns"
@@ -113,11 +118,12 @@ fn the_rot_burns_and_slows_what_stands_in_it_and_lifts_when_switched_off() {
         carries(&world, mark, ModifierKind::Slowed { pct: 0 }),
         "and is slowed while it stands there"
     );
-    pudge_casts(&mut world, 1, Target::None);
-    assert!(!rotting(&world, pudge), "it is switched off");
-    for _ in 0..3 {
-        world.step();
-    }
+    cast(&mut world, 1, Target::None);
+    assert!(
+        !carries(&world, pudge, ModifierKind::Rot { level: 0 }),
+        "it is switched off"
+    );
+    run(&mut world, 3);
     assert!(
         !carries(&world, mark, ModifierKind::Slowed { pct: 0 }),
         "and nothing is left slowed"
@@ -130,7 +136,7 @@ fn the_rot_shows_its_cloud_where_its_owner_stands_while_it_is_on() {
     // moved.
     let (mut world, pudge, _mark) = pudge_and_a_mark(2000);
     set_level(&mut world, pudge, 1, 1);
-    pudge_casts(&mut world, 1, Target::None);
+    cast(&mut world, 1, Target::None);
     let cloud = world
         .mark_of(pudge, AbilityId::ROT)
         .expect("switched on, the cloud shows");
@@ -151,13 +157,13 @@ fn the_rot_shows_its_cloud_where_its_owner_stands_while_it_is_on() {
             .any(|shown| shown.ability == Some(AbilityId::ROT)),
         "and is in the view"
     );
-    pudge_casts(&mut world, 1, Target::None);
+    cast(&mut world, 1, Target::None);
     assert_eq!(
         world.mark_of(pudge, AbilityId::ROT),
         None,
         "switched off, it goes"
     );
-    pudge_casts(&mut world, 1, Target::None);
+    cast(&mut world, 1, Target::None);
     assert!(world.mark_of(pudge, AbilityId::ROT).is_some());
     world.bury(vec![(pudge, None)], &mut Vec::new());
     assert!(
@@ -182,9 +188,7 @@ fn the_rot_never_kills_the_one_carrying_it() {
         },
     );
     world.health.insert(pudge, health(20));
-    for _ in 0..rules::BURN_PERIOD_TICKS * 40 {
-        world.step();
-    }
+    run(&mut world, rules::BURN_PERIOD_TICKS * 40);
     assert!(
         world.health.get(pudge).expect("standing").hp.to_int() < 20,
         "it does burn its owner"
@@ -204,11 +208,9 @@ fn a_dismember_holds_what_it_eats_and_feeds_the_one_eating() {
     world.step();
     let hurt = world.health.get(pudge).expect("standing").hp;
     let full = world.health.get(mark).expect("standing").hp;
-    pudge_casts(&mut world, 3, Target::Unit(wire_id(mark)));
+    cast(&mut world, 3, Target::Unit(wire_id(mark)));
     assert!(world.is_channelling(pudge), "it takes hold");
-    for _ in 0..30 {
-        world.step();
-    }
+    run(&mut world, 30);
     assert!(
         carries(&world, mark, ModifierKind::Stunned),
         "what it holds cannot act"
@@ -229,7 +231,7 @@ fn a_dismember_holds_what_it_eats_and_feeds_the_one_eating() {
 fn a_dismember_shows_its_hold_on_what_it_eats_until_it_lets_go() {
     let (mut world, pudge, mark) = pudge_and_a_mark(100);
     set_level(&mut world, pudge, 3, 1);
-    pudge_casts(&mut world, 3, Target::Unit(wire_id(mark)));
+    cast(&mut world, 3, Target::Unit(wire_id(mark)));
     let shown = world
         .mark_of(pudge, AbilityId::DISMEMBER)
         .expect("the hold is shown");
@@ -380,14 +382,6 @@ fn a_lone_pudge() -> (World, Entity) {
     (world, pudge)
 }
 
-/// Sets one of a hero's ability slots to a level.
-fn set_level(world: &mut World, hero: Entity, slot: usize, level: u8) {
-    if let Some(book) = world.abilities.get_mut(hero) {
-        book.slots[slot].level = level;
-    }
-}
-
-/// Flesh heap stacks a hero holds.
 fn heap(world: &World, hero: Entity) -> u32 {
     world
         .stacks

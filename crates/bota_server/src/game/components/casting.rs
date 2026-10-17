@@ -1,5 +1,3 @@
-//! A cast ordered and not yet begun.
-
 use bota_proto::{AbilitySlot, ItemSlot, Target};
 
 /// A cast ordered and not yet begun.
@@ -12,7 +10,6 @@ pub enum PendingCast {
 }
 
 impl PendingCast {
-    /// What it was aimed at.
     pub fn target(self) -> Target {
         match self {
             PendingCast::Ability { target, .. } | PendingCast::Item { target, .. } => target,

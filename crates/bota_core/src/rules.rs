@@ -118,9 +118,7 @@ pub const BODY_INDEX_SLACK: i32 = 32;
 pub const RADIANT_FOUNTAIN_POS: Vec2 = Vec2::from_ints(1760, 2278);
 /// Center of the Dire fountain area.
 pub const DIRE_FOUNTAIN_POS: Vec2 = Vec2::from_ints(16624, 16064);
-/// The Radiant Ancient.
 pub const RADIANT_ANCIENT_POS: Vec2 = Vec2::from_ints(3296, 3864);
-/// The Dire Ancient.
 pub const DIRE_ANCIENT_POS: Vec2 = Vec2::from_ints(14744, 14216);
 /// How far from the fountain center a hero appears, along both axes towards
 /// the map center.
@@ -129,11 +127,7 @@ pub const HERO_SPAWN_OFFSET: i32 = 280;
 // Lanes. Lane 0 is mid across the middle; lane 1 is top, up the west edge
 // and along the north edge; lane 2 is bottom along the south and east.
 
-/// The mid lane.
 pub const LANE_MID: u8 = 0;
-/// Hero deaths on one side that lose a skirmish match.
-pub const SKIRMISH_DEATH_LIMIT: u16 = 2;
-/// The top lane.
 pub const LANE_TOP: u8 = 1;
 /// The bottom lane.
 pub const LANE_BOT: u8 = 2;
@@ -261,15 +255,15 @@ pub const DEMO_LANE_CORNERS: [Vec2; 3] = [
 /// click on that tree, and how near a tree another may not be planted.
 pub const TREE_RADIUS: i32 = 48;
 /// Squared world units around a map tree within which a cell's centre is
-/// shut to sight. Dota's tree vision blocker is a circle of √2 tiles through
-/// the corners of the 2×2-tile square the tree stands on; the cells whose
+/// shut to sight. Dota's tree vision blocker is a circle of sqrt(2) tiles through
+/// the corners of the 2x2-tile square the tree stands on; the cells whose
 /// centres it holds are exactly those four.
 pub const TREE_SIGHT_RADIUS_SQUARED: i64 = 2 * GRID_CELL_SIZE as i64 * GRID_CELL_SIZE as i64;
 /// Tiers above its own ground a tree still blocks a viewer from: Dota's
 /// trees stop ground vision on their level and one level up.
 pub const TREE_SIGHT_TIERS_ABOVE: u8 = 1;
 /// Squared cell distance from a viewer's cell within which it sees a cell
-/// whatever stands between: Dota's 5×5 tiles less the corners.
+/// whatever stands between: Dota's 5x5 tiles less the corners.
 pub const NEAR_SIGHT_CELLS_SQUARED: i64 = 5;
 /// Trees of the Dota map this close to a lane centerline are dropped.
 pub const TREE_LANE_CLEAR: i32 = 450;
@@ -431,7 +425,6 @@ pub const HERO_MANA: i32 = 84;
 pub const HERO_MOVE_SPEED: i32 = 300;
 /// Hero attack damage at level one, before the primary attribute.
 pub const HERO_ATTACK_DAMAGE: i32 = 31;
-/// Hero attack range.
 pub const HERO_ATTACK_RANGE: i32 = 600;
 /// Milliseconds between hero attack starts at [`BASE_ATTACK_SPEED`].
 pub const HERO_ATTACK_TIME: u32 = 2100;
@@ -497,11 +490,9 @@ pub const MELEE_CREEP_HP: i32 = 550;
 pub const MELEE_CREEP_ATTACK_DAMAGE: i32 = 19;
 /// How much more a melee creep's swing may deal.
 pub const MELEE_CREEP_DAMAGE_SPREAD: i32 = 4;
-/// Melee creep attack range.
 pub const MELEE_CREEP_ATTACK_RANGE: i32 = 100;
 /// How far a melee creep looks for something to attack.
 pub const MELEE_CREEP_ACQUISITION: i32 = 500;
-/// Melee creep armor.
 pub const MELEE_CREEP_ARMOR: i32 = 2;
 /// Melee creep collision size, the Dota regular hull.
 pub const MELEE_CREEP_COLLISION: i32 = 36;
@@ -509,7 +500,6 @@ pub const MELEE_CREEP_COLLISION: i32 = 36;
 pub const MELEE_CREEP_BOUND: i32 = 16;
 /// Milliseconds from a melee creep's attack start to the hit.
 pub const MELEE_CREEP_ATTACK_POINT: u32 = 466;
-/// Melee creep gold bounty.
 pub const MELEE_CREEP_BOUNTY: GoldRange = GoldRange::new(34, 39);
 /// Melee creep experience.
 pub const MELEE_CREEP_XP: i32 = 57;
@@ -522,7 +512,6 @@ pub const RANGED_CREEP_HP: i32 = 300;
 pub const RANGED_CREEP_ATTACK_DAMAGE: i32 = 21;
 /// How much more a ranged creep's swing may deal.
 pub const RANGED_CREEP_DAMAGE_SPREAD: i32 = 5;
-/// Ranged creep attack range.
 pub const RANGED_CREEP_ATTACK_RANGE: i32 = 500;
 /// How far a ranged creep looks for something to attack.
 pub const RANGED_CREEP_ACQUISITION: i32 = 600;
@@ -535,7 +524,6 @@ pub const RANGED_CREEP_BOUND: i32 = 8;
 pub const RANGED_CREEP_ATTACK_POINT: u32 = 500;
 /// Ranged creep attack projectile speed, world units per second.
 pub const RANGED_CREEP_PROJECTILE_SPEED: i32 = 900;
-/// Ranged creep gold bounty.
 pub const RANGED_CREEP_BOUNTY: GoldRange = GoldRange::new(43, 52);
 /// Ranged creep experience.
 pub const RANGED_CREEP_XP: i32 = 69;
@@ -548,11 +536,9 @@ pub const SIEGE_CREEP_HP: i32 = 935;
 pub const SIEGE_CREEP_ATTACK_DAMAGE: i32 = 35;
 /// How much more a siege creep's swing may deal.
 pub const SIEGE_CREEP_DAMAGE_SPREAD: i32 = 11;
-/// Siege creep attack range.
 pub const SIEGE_CREEP_ATTACK_RANGE: i32 = 690;
 /// How far a siege creep looks for something to attack.
 pub const SIEGE_CREEP_ACQUISITION: i32 = 800;
-/// Siege creep armor.
 pub const SIEGE_CREEP_ARMOR: i32 = 0;
 /// Siege creep magic resistance, percent.
 pub const SIEGE_CREEP_MAGIC_RESIST_PCT: i32 = 80;
@@ -567,7 +553,6 @@ pub const SIEGE_CREEP_ATTACK_TIME: u32 = 3000;
 pub const SIEGE_CREEP_ATTACK_POINT: u32 = 700;
 /// Siege creep attack projectile speed, world units per second.
 pub const SIEGE_CREEP_PROJECTILE_SPEED: i32 = 1100;
-/// Siege creep gold bounty.
 pub const SIEGE_CREEP_BOUNTY: GoldRange = GoldRange::new(59, 72);
 /// Siege creep experience.
 pub const SIEGE_CREEP_XP: i32 = 88;
@@ -658,7 +643,6 @@ pub const TOWER_TIER_BOUNTY: [GoldRange; 4] = [
 /// indexed by tier minus one; a deny pays half of it to every seat of both
 /// sides.
 pub const TOWER_TIER_TEAM_BOUNTY: [i32; 4] = [90, 110, 125, 145];
-/// Tower attack range.
 pub const TOWER_ATTACK_RANGE: i32 = 700;
 /// Milliseconds between tower attack starts at [`BASE_ATTACK_SPEED`].
 pub const TOWER_ATTACK_TIME: u32 = 900;
@@ -723,7 +707,6 @@ pub const RAX_NIGHT_VISION: i32 = 600;
 
 /// Filler health.
 pub const FILLER_HP: i32 = 1000;
-/// Filler armor.
 pub const FILLER_ARMOR: i32 = 10;
 /// Gold paid to the killer of a filler.
 pub const FILLER_BOUNTY: i32 = 68;
@@ -736,7 +719,6 @@ pub const FILLER_NIGHT_VISION: i32 = 600;
 
 /// Ancient health.
 pub const ANCIENT_HP: i32 = 4500;
-/// Ancient armor.
 pub const ANCIENT_ARMOR: i32 = 13;
 /// The Radiant Ancient's collision size, its own model's.
 pub const RADIANT_ANCIENT_COLLISION: i32 = 315;
@@ -753,7 +735,6 @@ pub const ANCIENT_VISION: i32 = 2600;
 pub const FOUNTAIN_HP: i32 = 500;
 /// Fountain attack damage, the midpoint of 290 to 310.
 pub const FOUNTAIN_ATTACK_DAMAGE: i32 = 300;
-/// Fountain attack range.
 pub const FOUNTAIN_ATTACK_RANGE: i32 = 1200;
 /// Milliseconds between fountain attack starts.
 pub const FOUNTAIN_ATTACK_TIME: u32 = 166;
@@ -872,12 +853,12 @@ pub const TALENT_SECOND_LEVELS: [u8; 4] = [27, 28, 29, 30];
 /// `MaxLevel 7` (`scripts/npc/npc_abilities.txt`, client 6957).
 pub const ATTRIBUTE_BONUS_MAX_LEVEL: u8 = 7;
 /// Attribute Bonus level `k` waits for hero level this many times `k`: 2, 4,
-/// … 14 (`RequiredLevel 2`; Liquipedia, *Attributes*, "the min levels
+/// ... 14 (`RequiredLevel 2`; Liquipedia, *Attributes*, "the min levels
 /// required per level of Attribute Bonus are level 2/4/6/8/10/12/14"; the
 /// 7.38 notes moved it from 6 to 2).
 pub const ATTRIBUTE_BONUS_LEVELS_APART: u8 = 2;
 /// Points of every attribute a level of the Attribute Bonus adds: `value 2
-/// 4 6 … 14`.
+/// 4 6 ... 14`.
 pub const ATTRIBUTE_BONUS_POINTS: i32 = 2;
 
 const _: () = {
@@ -985,10 +966,7 @@ pub const FLEE_LOOKAHEAD: i32 = 600;
 /// Ticks a burst or a ring an ability left is seen on the ground.
 pub const MARK_TICKS: u32 = 15;
 
-const _: () = {
-    assert!(GRENADE_DEBUFF_TICKS > 5 * TICKS_PER_SECOND);
-    assert!(GRENADE_SLOW_PCT > 0 && GRENADE_SLOW_PCT < 100);
-};
+const _: () = assert!(GRENADE_SLOW_PCT > 0 && GRENADE_SLOW_PCT < 100);
 
 /// Ticks between the beats of anything that burns over time.
 pub const BURN_PERIOD_TICKS: u32 = 3;
@@ -1056,12 +1034,12 @@ pub const PASSIVE_GOLD_TENTHS_A_MINUTE: [(u32, i64); 9] = [
 /// it holds.
 pub const DEATH_GOLD_LOSS_SHARE: i32 = 40;
 /// Gold for killing a hero, before its level, its streak and First Blood:
-/// Dota's `125 + 8 × level + streak gold + First Blood` since 7.31
+/// Dota's `125 + 8 * level + streak gold + First Blood` since 7.31
 /// (Liquipedia, *Gold*, "Hero kills" and "Kill Streaks", read 2026-10).
 pub const HERO_KILL_GOLD_BASE: i32 = 125;
 /// Gold for killing a hero, a level of the fallen.
 pub const HERO_KILL_GOLD_PER_LEVEL: i32 = 8;
-/// Gold for ending a streak of 3, 4, … 10 or more kills.
+/// Gold for ending a streak of 3, 4, ... 10 or more kills.
 pub const STREAK_GOLD: [i32; 8] = [60, 100, 150, 210, 280, 360, 450, 550];
 /// The shortest streak whose end pays gold.
 pub const STREAK_GOLD_FROM: i32 = 3;
@@ -1069,7 +1047,7 @@ pub const STREAK_GOLD_FROM: i32 = 3;
 pub const FIRST_BLOOD_GOLD: i32 = 135;
 /// Assist gold every earner of a hero kill is paid before the net worth
 /// factor, in thousandths: `ASSIST_GOLD_FLAT + (ASSIST_GOLD_SHARED +
-/// ASSIST_GOLD_NET_WORTH × the fallen's net worth) / earners`, Dota 7.40's
+/// ASSIST_GOLD_NET_WORTH * the fallen's net worth) / earners`, Dota 7.40's
 /// "15 + ((50 + (VictimNetworth * 0.037)) / NumHeroes)".
 pub const ASSIST_GOLD_FLAT_MILLI: i64 = 15_000;
 /// The part of the assist gold the earners share, in thousandths.

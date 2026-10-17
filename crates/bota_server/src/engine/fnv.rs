@@ -83,6 +83,14 @@ impl Fnv {
         self.u32(value.generation().0.get());
     }
 
+    /// Eats whether a value is there, then the value with `then`.
+    pub fn opt<T>(&mut self, value: Option<T>, then: impl FnOnce(&mut Fnv, T)) {
+        self.some(value.is_some());
+        if let Some(value) = value {
+            then(self, value);
+        }
+    }
+
     /// Eats a kind of unit.
     pub fn kind(&mut self, value: UnitKind) {
         self.u8(value as u8);

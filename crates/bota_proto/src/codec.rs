@@ -83,8 +83,6 @@ pub fn decode_payload<T: DeserializeOwned>(payload: &[u8]) -> Result<T, CodecErr
 #[derive(Clone, Debug, Default)]
 pub struct FrameReader {
     buf: Vec<u8>,
-    /// Largest payload this reader accepts; absent means [`MAX_PAYLOAD_LEN`].
-    limit: Option<usize>,
 }
 
 impl FrameReader {
@@ -93,23 +91,9 @@ impl FrameReader {
         Self::default()
     }
 
-    /// A reader that refuses payloads above `max_payload` bytes (and in any
-    /// case above [`MAX_PAYLOAD_LEN`]).
-    pub fn with_limit(max_payload: usize) -> Self {
-        Self {
-            buf: Vec::new(),
-            limit: Some(max_payload),
-        }
-    }
-
     /// Add bytes that just arrived.
     pub fn push(&mut self, bytes: &[u8]) {
         self.buf.extend_from_slice(bytes);
-    }
-
-    /// How many bytes are held but not yet part of a complete frame.
-    pub fn buffered(&self) -> usize {
-        self.buf.len()
     }
 
     /// Take the next complete message, or `None` if one has not fully arrived.
@@ -117,13 +101,9 @@ impl FrameReader {
     /// After a [`CodecError`] the offending bytes stay at the front, and every
     /// later call returns the same error.
     pub fn next_message<T: DeserializeOwned>(&mut self) -> Result<Option<T>, CodecError> {
-        let Some(len) = self.peek_len()? else {
+        let Some(end) = self.frame_end()? else {
             return Ok(None);
         };
-        let end = LEN_PREFIX + len;
-        if self.buf.len() < end {
-            return Ok(None);
-        }
         let msg = decode_payload(&self.buf[LEN_PREFIX..end])?;
         self.buf.drain(..end);
         Ok(Some(msg))
@@ -133,31 +113,23 @@ impl FrameReader {
     /// undecoded, or `None` if one has not fully arrived. A bridge copies
     /// frames this way without reading them.
     pub fn next_frame(&mut self) -> Result<Option<Vec<u8>>, CodecError> {
-        let Some(len) = self.peek_len()? else {
+        let Some(end) = self.frame_end()? else {
             return Ok(None);
         };
-        let end = LEN_PREFIX + len;
-        if self.buf.len() < end {
-            return Ok(None);
-        }
         Ok(Some(self.buf.drain(..end).collect()))
     }
 
-    /// Length of the frame at the front, once its prefix has arrived.
-    fn peek_len(&self) -> Result<Option<usize>, CodecError> {
-        if self.buf.len() < LEN_PREFIX {
+    /// Where the frame at the front ends, once all of it has arrived. Its
+    /// length is checked as soon as the prefix is in.
+    fn frame_end(&self) -> Result<Option<usize>, CodecError> {
+        let Some(prefix) = self.buf.first_chunk::<LEN_PREFIX>() else {
             return Ok(None);
-        }
-        let mut prefix = [0u8; LEN_PREFIX];
-        prefix.copy_from_slice(&self.buf[..LEN_PREFIX]);
-        let len = u32::from_le_bytes(prefix) as usize;
-        if len
-            > self
-                .limit
-                .map_or(MAX_PAYLOAD_LEN, |l| l.min(MAX_PAYLOAD_LEN))
-        {
+        };
+        let len = u32::from_le_bytes(*prefix) as usize;
+        if len > MAX_PAYLOAD_LEN {
             return Err(CodecError::TooLarge { len });
         }
-        Ok(Some(len))
+        let end = LEN_PREFIX + len;
+        Ok((self.buf.len() >= end).then_some(end))
     }
 }

@@ -17,7 +17,7 @@ use super::hitting::entity_slot;
 
 use crate::game::{
     Action, ActionPhase, ActionState, Chance, Entity, Event, FeastPhase, Hit, HitEffect,
-    PendingCast, Projectile, Purpose, Stats, Target, Visibility, World, ability_hooks, wire_id,
+    PendingCast, Projectile, Purpose, Stats, Target, World, ability_hooks, wire_id,
 };
 
 /// What one swing deals, rolled when it lands.
@@ -43,7 +43,6 @@ struct Timing {
 }
 
 impl Timing {
-    /// Whether it holds the body at all.
     fn instant(self) -> bool {
         self.point == 0 && self.backswing == 0 && self.duration == 0
     }
@@ -59,34 +58,22 @@ impl World {
     /// Whether an entity is standing through an ability or an item that
     /// runs on.
     pub fn is_channelling(&self, entity: Entity) -> bool {
-        matches!(
-            self.action.get(entity).map(|action| action.state),
-            Some(
-                ActionState::CastAbility {
-                    phase: ActionPhase::During { .. },
-                    ..
-                } | ActionState::UseItem {
-                    phase: ActionPhase::During { .. },
-                    ..
-                }
-            )
-        )
+        matches!(self.cast_phase(entity), Some(ActionPhase::During { .. }))
     }
 
     /// Whether an entity stands in the cast point of an ability or an item.
     pub fn is_casting(&self, entity: Entity) -> bool {
-        matches!(
-            self.action.get(entity).map(|action| action.state),
-            Some(
-                ActionState::CastAbility {
-                    phase: ActionPhase::Before { .. },
-                    ..
-                } | ActionState::UseItem {
-                    phase: ActionPhase::Before { .. },
-                    ..
-                }
-            )
-        )
+        matches!(self.cast_phase(entity), Some(ActionPhase::Before { .. }))
+    }
+
+    /// Where the ability or item an entity is casting stands, if any.
+    fn cast_phase(&self, entity: Entity) -> Option<ActionPhase> {
+        match self.action.get(entity)?.state {
+            ActionState::CastAbility { phase, .. } | ActionState::UseItem { phase, .. } => {
+                Some(phase)
+            }
+            ActionState::Ready | ActionState::Attack { .. } => None,
+        }
     }
 
     /// Points an entity at the cast it was ordered to make.
@@ -110,9 +97,7 @@ impl World {
             bota_proto::Target::Pos(pos) => Some(pos),
             bota_proto::Target::Unit(target) => {
                 let on = self.of_wire(target)?;
-                self.alive(on)
-                    .then(|| self.transform.get(on).map(|t| t.pos))
-                    .flatten()
+                self.alive(on).then(|| self.pos(on)).flatten()
             }
             bota_proto::Target::None => None,
         }
@@ -140,10 +125,7 @@ impl World {
             return false;
         };
         let reach = self.cast_reach(entity, pending);
-        let (Some(spot), Some(at)) = (
-            self.cast_spot(pending),
-            self.transform.get(entity).map(|t| t.pos),
-        ) else {
+        let (Some(spot), Some(at)) = (self.cast_spot(pending), self.pos(entity)) else {
             return false;
         };
         reach > 0 && !at.within(spot, rules::units(reach))
@@ -158,7 +140,7 @@ impl World {
         let Some(action) = self.action.get(entity).copied() else {
             return;
         };
-        let cleared = match action.state {
+        match action.state {
             ActionState::Ready
             | ActionState::Attack {
                 phase: ActionPhase::Before { .. } | ActionPhase::During { .. },
@@ -167,17 +149,16 @@ impl World {
             ActionState::Attack {
                 phase: ActionPhase::After { .. },
                 ..
-            } => true,
+            } => {}
             ActionState::CastAbility { phase, .. } | ActionState::UseItem { phase, .. } => {
                 if let ActionPhase::During { .. } = phase
                     && let Some(what) = what_of(action.state)
                 {
                     self.call_cancel(entity, what);
                 }
-                true
             }
-        };
-        if cleared && let Some(action) = self.action.get_mut(entity) {
+        }
+        if let Some(action) = self.action.get_mut(entity) {
             action.state = ActionState::Ready;
         }
     }
@@ -324,7 +305,7 @@ impl World {
                 progress: progress + cast_gain,
             },
         };
-        action.state = with_phase(action.state, phase);
+        action.state = cast_state(what, phase);
         false
     }
 
@@ -428,7 +409,7 @@ impl World {
                     return false;
                 };
                 action.state = if self.begin(entity, what) {
-                    with_phase(action.state, ActionPhase::During { progress: over })
+                    cast_state(what, ActionPhase::During { progress: over })
                 } else {
                     ActionState::Ready
                 };
@@ -438,7 +419,7 @@ impl World {
                     return false;
                 };
                 self.call_complete(entity, what);
-                action.state = with_phase(action.state, ActionPhase::After { progress: over });
+                action.state = cast_state(what, ActionPhase::After { progress: over });
             }
             ActionPhase::After { progress } => {
                 if cross(progress, beats(timing.backswing)).is_none() {
@@ -491,7 +472,7 @@ impl World {
         self.order_cast_off(entity);
         self.occupy(
             entity,
-            with_phase(state_of(pending), ActionPhase::Before { progress: 0 }),
+            cast_state(pending, ActionPhase::Before { progress: 0 }),
         );
         true
     }
@@ -512,7 +493,6 @@ impl World {
         }
     }
 
-    /// Takes away the cast an entity was ordered to make.
     fn order_cast_off(&mut self, entity: Entity) {
         if let Some(orders) = self.orders.get_mut(entity) {
             orders.pending = None;
@@ -542,13 +522,13 @@ impl World {
         let duration = self.item_def_in(entity, slot).map_or(0, |def| def.duration);
         let went = self.begin_item(entity, slot, target);
         if went && duration > 0 {
+            let what = PendingCast::Item {
+                slot: ItemSlot(slot as u8),
+                target,
+            };
             self.occupy(
                 entity,
-                ActionState::UseItem {
-                    target,
-                    slot: ItemSlot(slot as u8),
-                    phase: ActionPhase::During { progress: 0 },
-                },
+                cast_state(what, ActionPhase::During { progress: 0 }),
             );
         }
         events.append(&mut self.events);
@@ -712,10 +692,7 @@ impl World {
         let side = self.team.get(attacker).copied().unwrap_or(Team::Neutral);
         let missile = self.spawn();
         self.transform.insert(missile, at);
-        self.team.insert(missile, side);
-        let mut seen = Visibility::NONE;
-        seen.add(side);
-        self.visibility.insert(missile, seen);
+        self.set_team(missile, side);
         self.projectile.insert(
             missile,
             Projectile {
@@ -801,23 +778,11 @@ impl World {
     /// Whether the target is standing, seen by the attacker's side, and
     /// within `reach` edge to edge.
     fn worth_swinging_at(&self, attacker: Entity, on: Entity, reach: Fixed) -> bool {
-        let standing = self
-            .health
+        self.health
             .get(on)
-            .is_some_and(|health| health.hp > Fixed::ZERO);
-        if !standing {
-            return false;
-        }
-        let Some(side) = self.team.get(attacker).copied() else {
-            return false;
-        };
-        if !self.visibility.get(on).is_some_and(|seen| seen.by(side)) {
-            return false;
-        }
-        let (Some(from), Some(at)) = (self.transform.get(attacker), self.transform.get(on)) else {
-            return false;
-        };
-        from.pos.within(at.pos, reach + self.hulls(attacker, on))
+            .is_some_and(|health| health.hp > Fixed::ZERO)
+            && self.can_see_of(attacker, on)
+            && self.within_reach(attacker, on, reach)
     }
 }
 
@@ -832,37 +797,18 @@ fn what_of(state: ActionState) -> Option<PendingCast> {
     }
 }
 
-/// The state a pending cast takes the body into, at the start of its cast
-/// point.
-fn state_of(pending: PendingCast) -> ActionState {
-    match pending {
+/// The state a cast holds the body in, at a phase.
+fn cast_state(what: PendingCast, phase: ActionPhase) -> ActionState {
+    match what {
         PendingCast::Ability { slot, target } => ActionState::CastAbility {
             target,
             slot,
-            phase: ActionPhase::Before { progress: 0 },
+            phase,
         },
         PendingCast::Item { slot, target } => ActionState::UseItem {
             target,
             slot,
-            phase: ActionPhase::Before { progress: 0 },
-        },
-    }
-}
-
-/// The same action in another phase.
-fn with_phase(state: ActionState, phase: ActionPhase) -> ActionState {
-    match state {
-        ActionState::Attack { target, .. } => ActionState::Attack { target, phase },
-        ActionState::CastAbility { target, slot, .. } => ActionState::CastAbility {
-            target,
-            slot,
             phase,
         },
-        ActionState::UseItem { target, slot, .. } => ActionState::UseItem {
-            target,
-            slot,
-            phase,
-        },
-        ActionState::Ready => ActionState::Ready,
     }
 }

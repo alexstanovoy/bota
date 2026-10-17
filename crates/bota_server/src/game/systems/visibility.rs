@@ -16,7 +16,6 @@ pub struct SightCx<'a> {
     pub kind: &'a Table<UnitKind>,
     /// How far each entity sees.
     pub stats: &'a Table<Stats>,
-    /// The height of the ground.
     pub ground: &'a Ground,
     /// Which cells stop a sight line.
     pub sight_block: &'a SightBlock,
@@ -46,7 +45,6 @@ pub struct SightScratch {
 }
 
 impl SightScratch {
-    /// Scratch that has worked out nothing.
     pub fn new() -> SightScratch {
         SightScratch::default()
     }
@@ -56,21 +54,14 @@ impl SightScratch {
 /// which sides see it.
 #[derive(Clone)]
 struct SightRow {
-    /// Which entity this is.
     entity: Entity,
-    /// Which side it is on.
     team: Option<Team>,
-    /// Where it stands.
     at: Option<Vec2>,
-    /// How far it sees.
     vision: Fixed,
-    /// How far true sight reaches.
     true_sight: Fixed,
-    /// What kind of thing it is.
     kind: Option<UnitKind>,
     /// Whether true sight alone finds it.
     hides: bool,
-    /// The height it stands at.
     tier: u8,
     /// Which sides see it, as the table has it.
     seen: Option<Visibility>,
@@ -80,15 +71,10 @@ struct SightRow {
 /// reaches.
 #[derive(Clone, Copy)]
 struct SightViewer {
-    /// Which side it is on.
     side: Team,
-    /// Where it stands.
     from: Vec2,
-    /// How far it sees.
     vision: Fixed,
-    /// How far true sight reaches.
     true_sight: Fixed,
-    /// The height it stands at.
     tier: u8,
     /// Whether it sees past height and trees.
     flying: bool,
@@ -136,7 +122,8 @@ pub fn visibility_system(cx: SightCx<'_>) {
     sight.gather_viewers();
     sight.gather_exposures(exposure, tick, ground);
     for &(side, at) in scroll_sights {
-        sight.viewers.push(scroll_viewer(side, at, ground));
+        let radius = rules::SCROLL_SIGHT_RADIUS;
+        sight.viewers.push(reveal(side, at, radius, true, ground));
     }
     sight.reset_rows();
     sight.trace(sight_block);
@@ -186,7 +173,9 @@ impl SightScratch {
                 .zip(cells)
             {
                 if let Some(cell) = cell.filter(|cell| tick <= cell.until) {
-                    self.viewers.push(exposure_viewer(side, cell, ground));
+                    let radius = rules::STRIKE_REVEAL_RADIUS;
+                    self.viewers
+                        .push(reveal(side, cell.at, radius, cell.flying, ground));
                 }
             }
         }
@@ -264,28 +253,16 @@ impl SightScratch {
     }
 }
 
-/// The viewer a scroll's landing sight stands for: flying, so it sees past
-/// height and trees.
-fn scroll_viewer(side: Team, at: Vec2, ground: &Ground) -> SightViewer {
+/// The viewer a circle of sight shown to a side stands for: a scroll's
+/// landing, which flies, or a strike's circle.
+fn reveal(side: Team, at: Vec2, radius: i32, flying: bool, ground: &Ground) -> SightViewer {
     SightViewer {
         side,
         from: at,
-        vision: rules::units(rules::SCROLL_SIGHT_RADIUS),
+        vision: rules::units(radius),
         true_sight: Fixed::ZERO,
         tier: ground.tier(at),
-        flying: true,
-    }
-}
-
-/// The viewer a strike's circle stands for.
-fn exposure_viewer(side: Team, cell: ExposureCell, ground: &Ground) -> SightViewer {
-    SightViewer {
-        side,
-        from: cell.at,
-        vision: rules::units(rules::STRIKE_REVEAL_RADIUS),
-        true_sight: Fixed::ZERO,
-        tier: ground.tier(cell.at),
-        flying: cell.flying,
+        flying,
     }
 }
 
@@ -304,7 +281,7 @@ impl World {
         else {
             return;
         };
-        let Some(at) = self.transform.get(striker).map(|t| t.pos) else {
+        let Some(at) = self.pos(striker) else {
             return;
         };
         if mine == theirs {
@@ -369,10 +346,9 @@ impl World {
                 if self.team.get(entity) != Some(&team) {
                     return false;
                 }
-                let (Some(from), Some(radius)) = (
-                    self.transform.get(entity).map(|t| t.pos),
-                    self.stats.get(entity).map(|s| s.vision),
-                ) else {
+                let (Some(from), Some(radius)) =
+                    (self.pos(entity), self.stats.get(entity).map(|s| s.vision))
+                else {
                     return false;
                 };
                 if radius <= Fixed::ZERO || !from.within(at, radius) {

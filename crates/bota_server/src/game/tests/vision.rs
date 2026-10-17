@@ -25,7 +25,6 @@ fn a_world_built_on_a_map_stands_its_buildings_full() {
         .expect("a tower stands");
     assert_eq!(tower.hp, rules::TOWER_TIER_HP[0], "built and full");
     assert_eq!(tower.max_hp, rules::TOWER_TIER_HP[0]);
-    // The demo map raises no Ancients at all.
     assert!(
         !view.units.iter().any(|u| u.kind == UnitKind::Ancient),
         "no Ancient stands on the demo map"
@@ -353,9 +352,7 @@ fn a_felled_tree_opens_a_gap_in_the_row_and_its_regrowth_shuts_it() {
         world.can_see(Team::Radiant, behind),
         "with the tree down, the gap shows what stands behind it"
     );
-    for _ in 0..rules::TREE_REGROW_TICKS {
-        world.step();
-    }
+    run(&mut world, rules::TREE_REGROW_TICKS);
     assert_eq!(world.trees.felled().count(), 0, "the tree grew back");
     assert!(!world.can_see(Team::Radiant, behind), "and shuts the gap");
 }

@@ -21,7 +21,6 @@ pub enum Tree {
 /// A tree put up during the match.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Planted {
-    /// Where it stands.
     pub at: Vec2,
     /// The tick it goes on its own.
     pub until: u32,
@@ -48,7 +47,6 @@ impl Forest {
         }
     }
 
-    /// Whether one of the map's trees is standing.
     pub fn rooted_stands(&self, index: usize) -> bool {
         self.back.get(index).is_some_and(|back| *back == 0)
     }
@@ -73,12 +71,7 @@ impl Forest {
         match tree {
             Tree::Rooted(index) => self
                 .rooted_stands(index)
-                .then(|| {
-                    crate::game::tree_positions(map, terrain)
-                        .get(index)
-                        .copied()
-                })
-                .flatten(),
+                .then(|| crate::game::tree_positions(map, terrain)[index]),
             Tree::Planted(index) => self.planted.get(index).map(|tree| tree.at),
         }
     }
@@ -134,7 +127,6 @@ impl Forest {
         }
     }
 
-    /// Puts a tree up at a spot until a tick.
     pub fn plant(&mut self, at: Vec2, until: u32) {
         self.planted.push(Planted { at, until });
     }

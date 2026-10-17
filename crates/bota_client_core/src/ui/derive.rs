@@ -34,10 +34,6 @@ pub const ITEM_WAIT_BASE: u8 = 64;
 impl Derived {
     /// Takes in a new snapshot.
     pub fn snapshot(&mut self, view: &WorldView) {
-        self.note_waits(view);
-    }
-
-    fn note_waits(&mut self, view: &WorldView) {
         let mut seen = Vec::with_capacity(self.waits.len());
         for unit in view.units.iter().filter(|u| !u.abilities.is_empty()) {
             let abilities = unit.abilities.iter().map(|a| a.cooldown_left).enumerate();

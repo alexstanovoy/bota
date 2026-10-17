@@ -21,21 +21,23 @@ impl World {
             if self.anything_in(camp.pos, box_radius) {
                 continue;
             }
-            let choices: Vec<(u8, &Roster)> = rosters_of(camp.kind).collect();
             let last = self.camp_last.get(index).copied().unwrap_or(u8::MAX);
-            let fresh: Vec<&(u8, &Roster)> = choices.iter().filter(|(id, _)| *id != last).collect();
+            let fresh: Vec<(u8, &Roster)> = rosters_of(camp.kind)
+                .filter(|(id, _)| *id != last)
+                .collect();
             if fresh.is_empty() {
                 continue;
             }
-            let taken = fresh[self
+            let pick = self
                 .rng
                 .global(Purpose::NeutralSpawn)
-                .below(fresh.len() as u32) as usize];
-            while self.camp_last.len() <= index {
-                self.camp_last.push(u8::MAX);
+                .below(fresh.len() as u32);
+            let (id, roster) = fresh[pick as usize];
+            if self.camp_last.len() <= index {
+                self.camp_last.resize(index + 1, u8::MAX);
             }
-            self.camp_last[index] = taken.0;
-            let creeps = taken.1.creeps;
+            self.camp_last[index] = id;
+            let creeps = roster.creeps;
             for (slot, kind) in creeps.iter().enumerate() {
                 let across =
                     (slot as i32 - (creeps.len() as i32 - 1) / 2) * rules::CAMP_SPAWN_SPACING;
@@ -56,10 +58,7 @@ impl World {
                 || self.kind.get(entity) == Some(&UnitKind::Ward);
             blocks
                 && self.alive(entity)
-                && self
-                    .transform
-                    .get(entity)
-                    .is_some_and(|t| t.pos.within(at, radius))
+                && self.pos(entity).is_some_and(|pos| pos.within(at, radius))
         })
     }
 
@@ -80,7 +79,7 @@ impl World {
             let (Some(mut ai), Some(home), Some(at)) = (
                 self.neutral_ai.get(entity).copied(),
                 self.camp_home.get(entity).copied(),
-                self.transform.get(entity).map(|t| t.pos),
+                self.pos(entity),
             ) else {
                 continue;
             };
@@ -121,7 +120,7 @@ impl World {
                 && let Some(target) = self.target_of(entity)
                 && self.alive(target)
             {
-                let Some(their_at) = self.transform.get(target).map(|t| t.pos) else {
+                let Some(their_at) = self.pos(target) else {
                     continue;
                 };
                 self.set_order(entity, UnitOrder::AttackMove { pos: their_at });
@@ -156,15 +155,12 @@ impl World {
     /// only `wakers` within the square about it; anything else asks every
     /// entity. The answer is the same either way: a pure test over a set.
     fn anything_hostile_near(&self, entity: Entity, range: i32, wakers: &Spots<Entity>) -> bool {
-        let Some(at) = self.transform.get(entity).map(|t| t.pos) else {
+        let Some(at) = self.pos(entity) else {
             return false;
         };
         let reach = rules::units(range);
         let hostile = |other: Entity| {
-            self.transform
-                .get(other)
-                .is_some_and(|t| t.pos.within(at, reach))
-                && self.hostile(entity, other)
+            self.pos(other).is_some_and(|pos| pos.within(at, reach)) && self.hostile(entity, other)
         };
         if self.team.get(entity) == Some(&Team::Neutral) {
             wakers.around(at, i64::from(reach.raw).abs()).any(hostile)
@@ -188,16 +184,13 @@ impl World {
             if self.neutral_ai.get(blow.target).is_none() || !self.alive(by) {
                 continue;
             }
-            let (Some(here), Some(there)) = (
-                self.transform.get(blow.target).map(|t| t.pos),
-                self.transform.get(by).map(|t| t.pos),
-            ) else {
+            let (Some(here), Some(there)) = (self.pos(blow.target), self.pos(by)) else {
                 continue;
             };
             if !here.within(there, rules::units(rules::NEUTRAL_DAMAGE_AGGRO_RANGE)) {
                 continue;
             }
-            for beast in self.entities.iter().collect::<Vec<_>>() {
+            for beast in self.entities.iter() {
                 if self.camp_home.get(beast).map(|home| home.camp) != Some(struck.camp) {
                     continue;
                 }

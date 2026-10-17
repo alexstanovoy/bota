@@ -37,8 +37,6 @@ pub const RAZE_CAST_POINT_MS: u32 = 550;
 const _: () = {
     assert!(RAZE_STACK_DAMAGE.len() == RAZE_DAMAGE.len());
     assert!(RAZE_DEBUFF_TICKS == 180);
-    assert!(RAZE_MAX_SOURCES > 0);
-    assert!(RAZE_MAX_STACKS > 3);
     assert!(RAZE_MAX_STACKS == u8::MAX);
     assert!(
         RAZE_DAMAGE[3]

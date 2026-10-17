@@ -10,11 +10,9 @@ use crate::game::Entity;
 pub struct Hit {
     /// Who dealt it. The handle may outlive the body.
     pub source: Option<Entity>,
-    /// Who takes it.
     pub target: Entity,
     /// Before armor and resistance.
     pub amount: i32,
-    /// Which reduction applies.
     pub kind: DamageKind,
     /// Outgoing amplification captured when the blow was made, in basis
     /// points where 10_000 is nominal.

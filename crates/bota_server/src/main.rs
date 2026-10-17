@@ -33,10 +33,10 @@ struct Args {
     #[arg(long, value_enum, default_value_t = Mode::Realtime)]
     mode: Mode,
     /// Ticks per wall-clock second.
-    #[arg(long, default_value_t = 30)]
+    #[arg(long, default_value_t = 30, value_parser = clap::value_parser!(u16).range(1..))]
     tick_rate: u16,
     /// Seats in the match. Implied by the seat reservations when there are any.
-    #[arg(long)]
+    #[arg(long, value_parser = clap::value_parser!(u8).range(1..))]
     players: Option<u8>,
     /// Write a replay to this file.
     #[arg(long)]

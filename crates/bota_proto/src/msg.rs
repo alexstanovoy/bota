@@ -37,9 +37,7 @@ pub enum TickMode {
 /// One seat's hero choice.
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Pick {
-    /// Which seat.
     pub slot: SlotId,
-    /// Which side it plays for.
     pub team: Team,
     /// Which hero it picked.
     pub hero: HeroId,
@@ -50,7 +48,6 @@ pub struct Pick {
 pub struct LobbySlot {
     /// Which seat this row is.
     pub slot: SlotId,
-    /// Which side it plays for.
     pub team: Team,
     /// Display name of whoever holds it. Empty while the seat is open.
     pub name: String,
@@ -65,7 +62,6 @@ pub struct LobbySlot {
 /// What the shop asks for one item.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct ShopEntry {
-    /// Which item.
     pub id: ItemId,
     /// What it costs whole, in gold.
     pub cost: i32,
@@ -121,7 +117,6 @@ pub struct MatchInfo {
 /// Why the server refused an order.
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum RejectReason {
-    /// The hero is dead.
     HeroDead,
     /// The target does not exist, or is not currently visible to this team.
     UnknownTarget,
@@ -129,9 +124,7 @@ pub enum RejectReason {
     WrongTargetKind,
     /// The ability or item is still on cooldown.
     OnCooldown,
-    /// Not enough mana.
     NotEnoughMana,
-    /// Not enough gold.
     NotEnoughGold,
     /// The referenced ability or inventory slot is empty.
     EmptySlot,
@@ -152,7 +145,6 @@ pub enum RejectReason {
     /// Moving an item into or out of the stash requires standing at the
     /// home shop.
     NotAtShop,
-    /// The inventory is full.
     InventoryFull,
     /// The unit is stunned, feared or channelling.
     Disabled,
@@ -180,7 +172,6 @@ pub enum RejectReason {
 /// Final numbers for one seat.
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct SlotStats {
-    /// Which seat.
     pub slot: SlotId,
     /// Kills scored.
     pub kills: u16,
@@ -264,10 +255,7 @@ pub enum ClientMsg {
         wire_fingerprint: u64,
     },
     /// Choose a hero for the seat this connection holds.
-    PickHero {
-        /// Which hero.
-        hero: HeroId,
-    },
+    PickHero { hero: HeroId },
     /// Declare readiness, or withdraw it. The match starts when every seat is
     /// filled, picked and ready.
     SetReady(bool),
@@ -339,7 +327,6 @@ pub enum ServerMsg {
     /// What happened during a tick, filtered to what this team may know.
     /// Sent after every snapshot, including an empty batch, to complete that tick.
     Events {
-        /// Which tick these belong to.
         tick: u32,
         /// The events, in the order the simulation produced them.
         events: Vec<EventKind>,
@@ -362,7 +349,6 @@ pub enum ServerMsg {
         /// The orders, sorted by [`SlotId`].
         orders: Vec<SlotOrder>,
     },
-    /// The match is over.
     MatchOver {
         /// Which side won. [`Team::Neutral`] for a draw.
         winner: Team,

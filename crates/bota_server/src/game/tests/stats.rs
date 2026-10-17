@@ -62,9 +62,7 @@ fn a_pool_regenerates_in_whole_points_up_to_its_maximum_and_not_once_empty() {
                 },
             );
         }
-        for _ in 0..ticks {
-            world.step();
-        }
+        run(&mut world, ticks);
         let left = match pool {
             Pool::Health => world.health.get(body).map(|h| h.hp.to_int()),
             Pool::Mana => world.mana.get(body).map(|m| m.mana.to_int()),
@@ -246,8 +244,7 @@ fn what_a_hero_carries_shows_up_in_its_stats() {
 
 #[test]
 fn a_held_unit_neither_walks_nor_swings_nor_casts() {
-    let mut world = World::for_match(&config(), config().rng());
-    let hero = world.seats[0].unit.expect("stood up");
+    let (mut world, hero) = match_hero();
     let spot = an_empty_spot(&world);
     world.transform.get_mut(hero).expect("hero").pos = spot;
     let creep = world.spawn_unit(&MELEE_CREEP, Team::Dire, spot + Vec2::from_ints(100, 0));
@@ -262,9 +259,7 @@ fn a_held_unit_neither_walks_nor_swings_nor_casts() {
             pos: spot + Vec2::from_ints(1000, 0),
         },
     );
-    for _ in 0..40 {
-        world.step();
-    }
+    run(&mut world, 40);
     assert_eq!(
         world.transform.get(hero).map(|t| t.pos),
         Some(stood),
@@ -276,9 +271,7 @@ fn a_held_unit_neither_walks_nor_swings_nor_casts() {
         "and nothing it stood beside was struck"
     );
     // Once it lifts, the order it was given all along is carried out.
-    for _ in 0..30 {
-        world.step();
-    }
+    run(&mut world, 30);
     assert!(
         world.transform.get(hero).map(|t| t.pos) != Some(stood),
         "and once it lifts the hero goes where it was told"
@@ -318,9 +311,7 @@ fn a_burn_takes_health_on_the_beat_and_may_be_told_to_leave_one() {
         },
         rules::BURN_PERIOD_TICKS * 4,
     );
-    for _ in 0..rules::BURN_PERIOD_TICKS * 4 {
-        world.step();
-    }
+    run(&mut world, rules::BURN_PERIOD_TICKS * 4);
     let left = world.health.get(creep).expect("standing").hp.to_int();
     assert!(
         left <= full - 5 && left >= full - 25,
@@ -338,9 +329,7 @@ fn a_burn_takes_health_on_the_beat_and_may_be_told_to_leave_one() {
         },
         rules::BURN_PERIOD_TICKS * 10,
     );
-    for _ in 0..rules::BURN_PERIOD_TICKS * 10 {
-        world.step();
-    }
+    run(&mut world, rules::BURN_PERIOD_TICKS * 10);
     assert!(world.alive(creep), "it is still standing");
     assert_eq!(
         world.health.get(creep).map(|h| h.hp.to_int()),
@@ -369,9 +358,7 @@ fn every_attribute_pays_for_what_it_is_worth() {
     let (mut world, hero) = a_hero_with_gold(0);
     // Out of the fountain, whose mending grows with the maxima.
     world.transform.get_mut(hero).expect("hero").pos = Vec2::from_ints(5000, 5000);
-    for _ in 0..=rules::FOUNTAIN_HEAL_LINGER_TICKS {
-        world.step();
-    }
+    run(&mut world, rules::FOUNTAIN_HEAL_LINGER_TICKS + 1);
     let before = *world.stats.get(hero).expect("settled");
     let six = Fixed::from_int(6);
     hand_item(&mut world, hero, ItemId::BELT, 0);

@@ -12,7 +12,6 @@ pub struct CellGrid {
 }
 
 impl CellGrid {
-    /// A grid with every cell open.
     pub fn open() -> CellGrid {
         CellGrid {
             bits: vec![u64::MAX; rules::GRID_CELLS * rules::GRID_CELLS / 64],
@@ -52,10 +51,7 @@ impl CellGrid {
     /// Whether a position is on the map and in an open cell.
     #[inline]
     pub fn open_at(&self, pos: Vec2) -> bool {
-        match CellGrid::cell_of(pos) {
-            None => false,
-            Some((cx, cy)) => self.cell_open(cx, cy),
-        }
+        CellGrid::cell_of(pos).is_some_and(|(cx, cy)| self.cell_open(cx, cy))
     }
 
     /// Closes one cell.

@@ -1,4 +1,5 @@
-//! Casting abilities: what starts one, what it costs, and what each one does.
+//! Casting abilities: the checks, the cost, and the charges a cast hands
+//! enemy items.
 
 use bota_core::{ability_def, at_home_shop, item_def, rules};
 use bota_proto::{AbilityId, AbilitySlot, EventKind, Fixed, Target, Team, UnitKind, Vec2};
@@ -8,10 +9,7 @@ use crate::game::{Entity, Event, World, ability_hooks, wire_id};
 impl World {
     /// Whether an entity stands in its own shop.
     pub fn at_shop(&self, entity: Entity) -> bool {
-        let (Some(at), Some(side)) = (
-            self.transform.get(entity).map(|t| t.pos),
-            self.team.get(entity).copied(),
-        ) else {
+        let (Some(at), Some(side)) = (self.pos(entity), self.team.get(entity).copied()) else {
             return false;
         };
         at_home_shop(self.map, side, at)
@@ -60,7 +58,7 @@ impl World {
         {
             ability.cooldown = cooldown;
         }
-        let at = self.transform.get(entity).map_or(Vec2::ZERO, |t| t.pos);
+        let at = self.pos(entity).unwrap_or(Vec2::ZERO);
         let side = self.team.get(entity).copied().unwrap_or(Team::Neutral);
         let visible_to = self.who_may_know(at, side);
         self.events.push(Event {
@@ -82,20 +80,14 @@ impl World {
         if self.kind.get(caster).copied() != Some(UnitKind::Hero) {
             return;
         }
-        let (Some(at), Some(side)) = (
-            self.transform.get(caster).map(|t| t.pos),
-            self.team.get(caster).copied(),
-        ) else {
+        let (Some(at), Some(side)) = (self.pos(caster), self.team.get(caster).copied()) else {
             return;
         };
         let reach = rules::units(rules::MAGIC_CHARGE_RANGE);
-        for other in self.entities.iter().collect::<Vec<_>>() {
+        for other in self.entities.iter() {
             if self.team.get(other).copied() == Some(side)
                 || self.kind.get(other).copied() != Some(UnitKind::Hero)
-                || !self
-                    .transform
-                    .get(other)
-                    .is_some_and(|t| t.pos.within(at, reach))
+                || !self.pos(other).is_some_and(|pos| pos.within(at, reach))
             {
                 continue;
             }

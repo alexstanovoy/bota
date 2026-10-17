@@ -321,41 +321,37 @@ fn try_straight_at_goal(
     if node.far > most {
         return;
     }
-    let mut steps = std::mem::take(&mut scratch.steps);
-    steps.clear();
+    scratch.steps.clear();
     let mut at = node.pos;
-    let mut there = false;
     for _ in 0..2 * PRIM {
         at = move_towards(at, ask.goal, ask.step);
-        steps.push(at);
+        scratch.steps.push(at);
         if at.within(ask.goal, ask.arrive) {
-            there = true;
             break;
         }
     }
-    if there {
-        let angle = facing_towards(node.pos, at);
-        let stall = stall_ticks(node.facing, angle, ask.turn_rate);
-        let ticks = stall + steps.len() as u32;
-        if node.t + ticks <= HORIZON
-            && worth(scratch, at, ANY_HEADING, node.t + ticks)
-            && ob.clear(node.pos, at, ask.radius)
-        {
-            let turned = facing_gap(node.facing, angle) > 0;
-            add_stretch(
-                bodies,
-                ask,
-                scratch,
-                index,
-                angle,
-                ANY_HEADING,
-                stall,
-                &steps,
-                turned,
-            );
-        }
+    if !at.within(ask.goal, ask.arrive) {
+        return;
     }
-    scratch.steps = steps;
+    let angle = facing_towards(node.pos, at);
+    let stall = stall_ticks(node.facing, angle, ask.turn_rate);
+    let ticks = stall + scratch.steps.len() as u32;
+    if node.t + ticks <= HORIZON
+        && worth(scratch, at, ANY_HEADING, node.t + ticks)
+        && ob.clear(node.pos, at, ask.radius)
+    {
+        let turned = facing_gap(node.facing, angle) > 0;
+        add_stretch(
+            bodies,
+            ask,
+            scratch,
+            index,
+            angle,
+            ANY_HEADING,
+            stall,
+            turned,
+        );
+    }
 }
 
 /// One stretch along a heading, the turn onto it stood through first: one
@@ -393,14 +389,10 @@ fn try_heading(
     if !worth(scratch, end, heading, node.t + ticks) || !ob.clear(node.pos, end, ask.radius) {
         return;
     }
-    let mut steps = std::mem::take(&mut scratch.steps);
-    steps.clear();
-    steps.extend((1..=PRIM).map(step_at));
+    scratch.steps.clear();
+    scratch.steps.extend((1..=PRIM).map(step_at));
     let turned = facing_gap(node.facing, angle) > 0;
-    add_stretch(
-        bodies, ask, scratch, index, angle, heading, stall, &steps, turned,
-    );
-    scratch.steps = steps;
+    add_stretch(bodies, ask, scratch, index, angle, heading, stall, turned);
 }
 
 /// One stretch stood still, for a body to pass.
@@ -409,9 +401,8 @@ fn try_waiting(bodies: &[Foreseen], ask: &LocalAsk, scratch: &mut LocalScratch, 
     if node.t + PRIM > HORIZON || !worth(scratch, node.pos, node.heading, node.t + PRIM) {
         return;
     }
-    let mut steps = std::mem::take(&mut scratch.steps);
-    steps.clear();
-    steps.resize(PRIM as usize, node.pos);
+    scratch.steps.clear();
+    scratch.steps.resize(PRIM as usize, node.pos);
     add_stretch(
         bodies,
         ask,
@@ -420,10 +411,8 @@ fn try_waiting(bodies: &[Foreseen], ask: &LocalAsk, scratch: &mut LocalScratch, 
         node.facing,
         node.heading,
         0,
-        &steps,
         false,
     );
-    scratch.steps = steps;
 }
 
 /// Whether a state at a spot, heading and tick is one not got to sooner
@@ -436,7 +425,8 @@ fn worth(scratch: &LocalScratch, pos: Vec2, heading: u32, t: u32) -> bool {
         .is_none_or(|&had| scratch.nodes[had as usize].t > t)
 }
 
-/// Adds the state a stretch ends in, if no body is met on the way.
+/// Adds the state the stretch in `scratch.steps` ends in, if no body is met
+/// on the way.
 #[expect(clippy::too_many_arguments, reason = "one stretch has this many parts")]
 fn add_stretch(
     bodies: &[Foreseen],
@@ -446,10 +436,10 @@ fn add_stretch(
     facing: Angle,
     heading: u32,
     stall: u32,
-    steps: &[Vec2],
     turned: bool,
 ) {
     let node = scratch.nodes[index as usize];
+    let steps = &scratch.steps;
     let end = *steps.last().expect("a stretch has steps");
     let ticks = stall + steps.len() as u32;
     debug_assert!(node.t + ticks <= HORIZON);
@@ -490,7 +480,7 @@ fn add_stretch(
     for _ in 0..stall {
         scratch.trail.push(node.pos);
     }
-    scratch.trail.extend_from_slice(steps);
+    scratch.trail.extend_from_slice(&scratch.steps);
     scratch.nodes.push(next);
     scratch.seen.insert(key_of(&next), at);
     scratch
