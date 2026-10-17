@@ -1,6 +1,6 @@
 //! Everything a match is created from.
 
-use bota_proto::{EntityId, EventKind, MapId, MatchInfo, Order, Pick, SlotId, Team, TickMode};
+use bota_proto::{EventKind, MapId, MatchInfo, Pick, Team, TickMode};
 
 use crate::game::{
     MAX_SPAWN_MODIFIERS, MatchRng, SpawnModifier, SpawnModifierError, check_spawn_modifier,
@@ -119,16 +119,8 @@ impl MatchConfig {
     }
 }
 
-/// One accepted order, translated to a seat.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Command {
-    /// Which seat issued it.
-    pub slot: SlotId,
-    /// Which unit it is for. Absent means that seat's own hero.
-    pub unit: Option<EntityId>,
-    /// What it asks for.
-    pub order: Order,
-}
+/// One accepted order of a seat, as the world takes it and the wire tells it.
+pub type Command = bota_proto::SlotOrder;
 
 /// Who may learn that an event happened. Limits the player streams;
 /// spectators see every event.
