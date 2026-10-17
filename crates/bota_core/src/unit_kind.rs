@@ -13,6 +13,8 @@ use crate::{AttackClass, PriorityOrder, TargetClass, rules};
 pub struct KindDef {
     /// The kind the row is for: its place in [`UNIT_KINDS`].
     pub kind: UnitKind,
+    /// What the kind is called in a panel or a feed.
+    pub name: &'static str,
     /// A building: it stands still and blocks the ground.
     pub structure: bool,
     /// Both sides always know where it is, whatever their vision.
@@ -48,6 +50,7 @@ pub struct KindDef {
 /// it apart.
 const PLAIN: KindDef = KindDef {
     kind: UnitKind::Hero,
+    name: "Hero",
     structure: false,
     always_seen: false,
     lane_creep: false,
@@ -62,9 +65,10 @@ const PLAIN: KindDef = KindDef {
     breaks_regen: false,
 };
 
-const fn lane_creep(kind: UnitKind, attack_class: AttackClass) -> KindDef {
+const fn lane_creep(kind: UnitKind, name: &'static str, attack_class: AttackClass) -> KindDef {
     KindDef {
         kind,
+        name,
         lane_creep: true,
         creep: true,
         attack_class,
@@ -74,9 +78,15 @@ const fn lane_creep(kind: UnitKind, attack_class: AttackClass) -> KindDef {
 }
 
 /// A building, and whether a scroll carries to it.
-const fn building(kind: UnitKind, target_class: TargetClass, takes_scrolls: bool) -> KindDef {
+const fn building(
+    kind: UnitKind,
+    name: &'static str,
+    target_class: TargetClass,
+    takes_scrolls: bool,
+) -> KindDef {
     KindDef {
         kind,
+        name,
         structure: true,
         always_seen: true,
         fixed: true,
@@ -97,25 +107,31 @@ pub const UNIT_KINDS: [KindDef; 13] = [
         breaks_regen: true,
         ..PLAIN
     },
-    lane_creep(UnitKind::CreepMelee, AttackClass::Runty),
-    lane_creep(UnitKind::CreepFlagbearer, AttackClass::Runty),
-    lane_creep(UnitKind::CreepRanged, AttackClass::Piercing),
+    lane_creep(UnitKind::CreepMelee, "Melee Creep", AttackClass::Runty),
+    lane_creep(
+        UnitKind::CreepFlagbearer,
+        "Flagbearer Creep",
+        AttackClass::Runty,
+    ),
+    lane_creep(UnitKind::CreepRanged, "Ranged Creep", AttackClass::Piercing),
     KindDef {
         target_class: TargetClass::Siege,
         priority: PriorityOrder::SiegeFirst,
-        ..lane_creep(UnitKind::CreepSiege, AttackClass::Reinforced)
+        ..lane_creep(UnitKind::CreepSiege, "Siege Creep", AttackClass::Reinforced)
     },
     KindDef {
         kind: UnitKind::CreepNeutral,
+        name: "Neutral Creep",
         creep: true,
         ..PLAIN
     },
-    building(UnitKind::Tower, TargetClass::Building, true),
-    building(UnitKind::Ancient, TargetClass::Building, true),
-    building(UnitKind::Barracks, TargetClass::Unit, true),
-    building(UnitKind::Fountain, TargetClass::Building, true),
+    building(UnitKind::Tower, "Tower", TargetClass::Building, true),
+    building(UnitKind::Ancient, "Ancient", TargetClass::Building, true),
+    building(UnitKind::Barracks, "Barracks", TargetClass::Unit, true),
+    building(UnitKind::Fountain, "Fountain", TargetClass::Building, true),
     KindDef {
         kind: UnitKind::Ward,
+        name: "Ward",
         fixed: true,
         leaves_a_death: false,
         target_class: TargetClass::Ward,
@@ -123,9 +139,10 @@ pub const UNIT_KINDS: [KindDef; 13] = [
     },
     KindDef {
         kind: UnitKind::Courier,
+        name: "Courier",
         ..PLAIN
     },
-    building(UnitKind::Filler, TargetClass::Unit, false),
+    building(UnitKind::Filler, "Filler", TargetClass::Unit, false),
 ];
 
 const _: () = {

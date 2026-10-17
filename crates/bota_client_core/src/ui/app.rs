@@ -3,8 +3,8 @@
 use std::sync::Arc;
 
 use bota_proto::{
-    AbilityId, ClientMsg, EffectId, EntityId, EventKind, MatchStats, Order, PlayerView, ServerMsg,
-    SlotId, StockView, TalentSlot, TalentView, Team, UnitKind, UnitView, Vec2, WorldView,
+    AbilityId, ClientMsg, EntityId, EventKind, MatchStats, Order, PlayerView, ServerMsg, SlotId,
+    StockView, TalentSlot, TalentView, Team, UnitKind, UnitView, Vec2, WorldView,
 };
 
 use crate::handshake::Lobby;
@@ -406,13 +406,11 @@ impl App {
     /// for it.
     pub fn cast_point_secs(&self, unit: &UnitView, ability: AbilityId) -> Option<f32> {
         let point = bota_core::ability_def(ability)?.point;
-        let tree = unit.hero.and_then(bota_core::hero_def)?.talents;
+        // Only a hero's casts are timed here.
+        unit.hero.and_then(bota_core::hero_def)?;
         let learned = self.seat.session()?.talents_of(unit.id);
-        let talent = tree.is_some_and(|tree| {
-            bota_core::has_talent(tree, learned, bota_core::Talent::FeastCastSpeed)
-        });
-        let feasting = unit.effects.iter().any(|e| e.id == EffectId::FEASTING);
-        Some(bota_core::cast_point_ms(point, feasting && talent) as f32 / 1000.0)
+        let quickened = bota_core::feast_quickened(unit, learned);
+        Some(bota_core::cast_point_ms(point, quickened) as f32 / 1000.0)
     }
 
     /// The tick a unit began the cast point it is in, if it is in one.

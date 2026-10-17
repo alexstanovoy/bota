@@ -148,7 +148,8 @@ impl MatchStatic {
     }
 }
 
-pub(crate) fn cell_xy(axis: usize, position: Vec2) -> Option<(usize, usize)> {
+/// The cell a position falls into, if it is on an `axis` by `axis` field.
+pub fn cell_xy(axis: usize, position: Vec2) -> Option<(usize, usize)> {
     CellGrid::cell_of(position).filter(|&(x, y)| x < axis && y < axis)
 }
 
@@ -217,11 +218,8 @@ pub(crate) fn validate_positions(
     Ok(())
 }
 
-pub(crate) fn check_limit(
-    field: &'static str,
-    actual: usize,
-    limit: usize,
-) -> Result<(), SessionError> {
+/// Fails when `actual` of a bounded field exceeds its `limit`.
+pub fn check_limit(field: &'static str, actual: usize, limit: usize) -> Result<(), SessionError> {
     if actual > limit {
         return Err(SessionError::LimitExceeded {
             field,

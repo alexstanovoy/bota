@@ -2,9 +2,10 @@
 //! functions of the numbers a player may know. Which talents a hero has
 //! learned and how many souls it holds are parameters.
 
-use bota_proto::{Angle, Fixed, Vec2};
+use bota_proto::{Angle, EffectId, Fixed, Talents, UnitView, Vec2};
 
-use crate::{point_ahead, rules};
+use super::SHADOW_FIEND_TALENTS;
+use crate::{Talent, has_talent, point_ahead, rules};
 
 /// Where a raze lands: its own reach from the caster, along the line the
 /// caster faces. `reach` indexes [`rules::RAZE_DISTANCE`].
@@ -117,6 +118,16 @@ pub fn requiem_width(travelled: Fixed, distance: Fixed) -> Fixed {
     }
     let grown = growth * i64::from(travelled.raw) / i64::from(distance.raw);
     start + Fixed::from_int(grown as i32)
+}
+
+/// Whether a feast shortens `caster`'s cast points: it feasts and `talents`
+/// hold the level-25 talent.
+pub fn feast_quickened(caster: &UnitView, talents: Talents) -> bool {
+    caster
+        .effects
+        .iter()
+        .any(|effect| effect.id == EffectId::FEASTING)
+        && has_talent(&SHADOW_FIEND_TALENTS, talents, Talent::FeastCastSpeed)
 }
 
 /// Milliseconds a cast point lasts: its own length, or

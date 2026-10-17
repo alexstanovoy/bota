@@ -237,7 +237,7 @@ impl App {
             (UnitKind::Hero, Some(slot)) => self.seat_name(slot),
             (UnitKind::Tower, _) => format!("the {:?} tower", k.team),
             (UnitKind::Fountain, _) => format!("the {:?} fountain", k.team),
-            (kind, _) => format!("a {:?} {kind:?}", k.team),
+            (kind, _) => format!("a {:?} {}", k.team, bota_core::kind_def(kind).name),
         });
         Some(match by {
             Some(by) if gold > 0 => format!("{victim} was slain by {by} for {gold} gold"),
