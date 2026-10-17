@@ -12,7 +12,7 @@
 //!    const per ability, its talent tree if it has one, and `HERO_DEF`),
 //!    `formulas.rs` for pure functions the clients read, and `mod.rs`. Name
 //!    the module in this file and in `rules.rs` (`pub use ...::numbers::*`).
-//! 3. Add its `HERO_DEF` to `HEROES` in `hero.rs` and its ability consts to
+//! 3. Add its `HERO_DEF` to `HEROES` in `hero.rs` (bump its length) and its ability consts to
 //!    `ABILITIES` in `ability.rs`, in id order, and bump `ABILITY_COUNT`.
 //!    A new modifier is a `ModifierKind` variant (`modifier.rs`) with its
 //!    [`effect_id`](crate::ModifierKind::effect_id) arm, and its effect id gets
@@ -23,9 +23,10 @@
 //!    arms, and the end-to-end tests in `game/tests/x.rs`.
 //! 5. Talents also need the `Talent` variants in `talent.rs` and the server
 //!    sites that ask `has_talent`.
-//! 6. For a front end: a short label and blurb for each ability in
-//!    `bota_client_core/src/catalog.rs`, the blurb keys of its numbers, and,
-//!    in a renderer, the ability's art row.
+//! 6. For a front end: a short label and blurb for each ability and an
+//!    `EffectFace` for each effect in `bota_client_core/src/catalog.rs`, the
+//!    blurb keys of its numbers in `blurb/keys.rs`, and, in a renderer, the
+//!    ability's row of its art table.
 
 pub mod pudge;
 pub mod shadow_fiend;
