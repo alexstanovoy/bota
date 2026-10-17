@@ -41,7 +41,7 @@ struct Args {
     /// Write a replay to this file.
     #[arg(long)]
     replay: Option<PathBuf>,
-    /// Which map to play: 0 Dota, 1 hero demo, 2 mid-only Dota (two lives or first tower, fifteen game minutes).
+    /// Which map to play: 0 Dota, 1 hero demo, 2 mid-only Dota (two lives or first tower, twenty game minutes).
     #[arg(long, default_value_t = 0, value_parser = parse_map)]
     map: u16,
     /// Seed of the match randomness. Drawn from the operating system when absent, and then

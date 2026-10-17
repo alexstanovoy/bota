@@ -14,7 +14,7 @@ pub const MAP2_ID: MapId = MapId(2);
 /// Hero lives lost across a side's seats before that side loses Map2.
 pub const MAP2_DEATH_LIMIT: u16 = rules::SKIRMISH_DEATH_LIMIT;
 /// Map2 gameplay duration in simulation ticks, excluding pregame.
-pub const MAP2_GAME_TICKS: u32 = 15 * 60 * rules::TICKS_PER_SECOND;
+pub const MAP2_GAME_TICKS: u32 = 20 * 60 * rules::TICKS_PER_SECOND;
 /// The tick Map2 ends on as a draw when nothing decided it earlier, pregame
 /// included.
 pub const MAP2_TICK_CAP: u32 = rules::PREGAME_TICKS + MAP2_GAME_TICKS;

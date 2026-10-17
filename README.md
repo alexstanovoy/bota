@@ -73,7 +73,7 @@ The server hosts one lobby and one match, then exits. It listens on `--port`
 | Flag | Meaning |
 |---|---|
 | `--port N` | TCP port, default 4455 |
-| `--map N` | `0` the Dota map played to the Ancient (default); `1` a small hero demo map; `2` the mid-only ruleset on the Dota map: a side loses on its second hero death or its first lost tower, and the match is a draw after fifteen game minutes |
+| `--map N` | `0` the Dota map played to the Ancient (default); `1` a small hero demo map; `2` the mid-only ruleset on the Dota map: a side loses on its second hero death or its first lost tower, and the match is a draw after twenty game minutes |
 | `--mode realtime\|lockstep` | `realtime` runs at `--tick-rate` on the wall clock (default); `lockstep` waits for every seat to acknowledge each tick |
 | `--tick-rate N` | ticks per second, default 30 |
 | `--players N` | seats, default 2 |
