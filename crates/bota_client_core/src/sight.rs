@@ -42,12 +42,18 @@ impl SightGround {
         for &(x, y) in statics.opaque_cells() {
             walls.close_cell(usize::from(x), usize::from(y));
         }
+        let mut down = vec![false; statics.trees().len()];
+        for &index in &felled {
+            if let Some(down) = down.get_mut(index as usize) {
+                *down = true;
+            }
+        }
         let standing = statics
             .trees()
             .iter()
-            .enumerate()
-            .filter(|(index, _)| !felled.contains(&(*index as u32)))
-            .map(|(_, at)| *at);
+            .zip(&down)
+            .filter(|(_, down)| !**down)
+            .map(|(at, _)| *at);
         let block = SightBlock::lay(
             &|at| statics.ground_tier(at),
             &walls,
