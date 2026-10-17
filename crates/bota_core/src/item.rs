@@ -492,12 +492,7 @@ pub fn carried_bonus(items: impl Iterator<Item = CarriedItem>, ranged: bool) -> 
         total.mana_pct += carried.mana_pct;
         // What an item is set to is worth points of that attribute alone.
         if let Some(mode) = stack.mode {
-            let bonus = Fixed::from_int(def.mode_bonus);
-            match mode {
-                Attribute::Strength => total.attributes.strength += bonus,
-                Attribute::Agility => total.attributes.agility += bonus,
-                Attribute::Intelligence => total.attributes.intelligence += bonus,
-            }
+            total.attributes += points(mode, def.mode_bonus);
         }
     }
     total

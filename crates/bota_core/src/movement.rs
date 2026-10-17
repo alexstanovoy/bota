@@ -172,22 +172,23 @@ pub fn facing_gap(a: Angle, b: Angle) -> u16 {
 /// allows ([`rules::ATTACK_ANGLE_BRADS`]) of a wanted facing.
 #[inline]
 pub fn aim_ticks(facing: Angle, wanted: Angle, rate: u16) -> u32 {
-    u32::from(facing_gap(facing, wanted))
-        .saturating_sub(u32::from(rules::ATTACK_ANGLE_BRADS))
-        .div_ceil(u32::from(rate).max(1))
+    turn_ticks(facing, wanted, rate, rules::ATTACK_ANGLE_BRADS)
 }
 
 /// Ticks a body turning at a rate stands before it may walk off in a new
 /// direction: it walks once within [`rules::TURN_TOLERANCE_BRADS`] of it.
 #[inline]
 pub fn stall_ticks(facing: Angle, wanted: Angle, rate: u16) -> u32 {
-    let gap = u32::from(facing_gap(facing, wanted));
-    let tolerance = u32::from(rules::TURN_TOLERANCE_BRADS);
-    if gap <= tolerance {
-        return 0;
-    }
-    let rate = u32::from(rate).max(1);
-    (gap - tolerance).div_ceil(rate)
+    turn_ticks(facing, wanted, rate, rules::TURN_TOLERANCE_BRADS)
+}
+
+/// Ticks turning at a rate takes to bring a facing within `tolerance` of a
+/// wanted one.
+#[inline]
+fn turn_ticks(facing: Angle, wanted: Angle, rate: u16, tolerance: u16) -> u32 {
+    u32::from(facing_gap(facing, wanted))
+        .saturating_sub(u32::from(tolerance))
+        .div_ceil(u32::from(rate).max(1))
 }
 
 /// Squared distance from a point to a segment, in the raw units of

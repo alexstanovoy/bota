@@ -51,10 +51,7 @@ impl CellGrid {
     /// Whether a position is on the map and in an open cell.
     #[inline]
     pub fn open_at(&self, pos: Vec2) -> bool {
-        match CellGrid::cell_of(pos) {
-            None => false,
-            Some((cx, cy)) => self.cell_open(cx, cy),
-        }
+        CellGrid::cell_of(pos).is_some_and(|(cx, cy)| self.cell_open(cx, cy))
     }
 
     /// Closes one cell.

@@ -37,7 +37,6 @@ pub type TalentTree = [Talent; TalentSlot::COUNT as usize];
 /// [`rules::TALENT_SECOND_LEVELS`].
 #[inline]
 pub fn talent_floor(slot: TalentSlot, learned: Talents) -> u8 {
-    assert!(slot.0 < TalentSlot::COUNT);
     let tier = usize::from(slot.tier());
     if learned.has(slot.other()) {
         rules::TALENT_SECOND_LEVELS[tier]

@@ -44,13 +44,9 @@ pub fn attributes_at_level(unit: &UnitDef, level: u8) -> Attributes {
 /// pays.
 pub fn base_damage_least(unit: &UnitDef, level: u8) -> i32 {
     let levels = i32::from(level.max(1)) - 1;
-    let grown = unit.damage + unit.per_level.damage * levels;
-    match unit.primary {
-        Some(primary) => {
-            let pays = attributes_at_level(unit, level).of(primary)
-                * Fixed::from_int(rules::DAMAGE_PER_PRIMARY);
-            grown + pays.to_int()
-        }
-        None => grown,
-    }
+    let pays = unit.primary.map_or(0, |primary| {
+        (attributes_at_level(unit, level).of(primary) * Fixed::from_int(rules::DAMAGE_PER_PRIMARY))
+            .to_int()
+    });
+    unit.damage + unit.per_level.damage * levels + pays
 }

@@ -33,21 +33,17 @@ pub struct RegisteredId {
 /// The registry as committed.
 const IDS: &str = include_str!("../registry/ids.txt");
 
-/// Every registered id of every space, in registry order.
+/// Every registered id of `space`, in registry order.
 ///
 /// # Panics
 ///
 /// On a malformed line; the crate's own tests keep the committed registry
 /// well-formed.
-pub fn registered_ids() -> impl Iterator<Item = RegisteredId> {
+pub fn registered(space: IdSpace) -> impl Iterator<Item = RegisteredId> {
     IDS.lines()
         .filter(|line| !line.is_empty() && !line.starts_with('#'))
         .map(|line| parse(line).unwrap_or_else(|| panic!("malformed id registry line {line:?}")))
-}
-
-/// Every registered id of `space`, in registry order.
-pub fn registered(space: IdSpace) -> impl Iterator<Item = RegisteredId> {
-    registered_ids().filter(move |entry| entry.space == space)
+        .filter(move |entry| entry.space == space)
 }
 
 fn parse(line: &'static str) -> Option<RegisteredId> {

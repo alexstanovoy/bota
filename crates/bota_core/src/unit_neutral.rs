@@ -12,8 +12,9 @@
 //! the mud golem's split) are not modelled. The camp a kind belongs to and
 //! what a camp draws are elsewhere; this is only what one of them is worth.
 
-use bota_proto::{Attributes, Fixed, UnitKind};
+use bota_proto::UnitKind;
 
+use crate::unit::{BARE_UNIT, NO_GROWTH};
 use crate::{GoldRange, Growth, UnitDef, rules};
 
 /// One kind of neutral creep.
@@ -102,61 +103,23 @@ impl NeutralKind {
 
 /// What one upgrade interval adds to any neutral.
 const NEUTRAL_GROWTH: Growth = Growth {
-    attributes: Attributes::ZERO,
     hp: rules::NEUTRAL_UPGRADE_HP,
-    mana: 0,
     damage: rules::NEUTRAL_UPGRADE_DAMAGE,
     armor_halves: rules::NEUTRAL_UPGRADE_ARMOR_HALVES,
     gold_halves: 2 * rules::NEUTRAL_UPGRADE_GOLD,
     xp: rules::NEUTRAL_UPGRADE_XP,
+    ..NO_GROWTH
 };
 
 /// What every neutral shares, so a kind names only its own numbers.
 const NEUTRAL_BASE: UnitDef = UnitDef {
     kind: UnitKind::CreepNeutral,
-    attributes: Attributes::ZERO,
-    primary: None,
-    max_hp: 0,
-    max_mana: 0,
-    hp_regen: Fixed::ZERO,
-    mana_regen: Fixed::ZERO,
-    damage: 0,
-    damage_spread: 0,
-    attack_range: 0,
-    acquisition: 0,
-    attack_time: 0,
-    attack_speed: rules::BASE_ATTACK_SPEED,
-    attack_point: 0,
-    attack_backswing: 0,
-    projectile_speed: None,
-    armor: 0,
-    magic_resist_pct: 0,
-    move_speed: 0,
-    turn_rate: 0,
     day_vision: rules::NEUTRAL_VISION,
     night_vision: rules::NEUTRAL_VISION,
     collision: rules::NEUTRAL_COLLISION,
     bound: rules::NEUTRAL_BOUND,
-    invulnerable: false,
-    ancient: false,
-    bounty_gold: GoldRange::ZERO,
-    bounty_team: 0,
-    bounty_xp: 0,
-    per_level: Growth {
-        attributes: Attributes::ZERO,
-        hp: 0,
-        mana: 0,
-        damage: 0,
-        armor_halves: 0,
-        gold_halves: 0,
-        xp: 0,
-    },
     per_upgrade: NEUTRAL_GROWTH,
-    auras: &[],
-    true_sight: 0,
-    hides: false,
-    flies: false,
-    porter: false,
+    ..BARE_UNIT
 };
 
 /// Every kind, in the order of [`NeutralKind`].

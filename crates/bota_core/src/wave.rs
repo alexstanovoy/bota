@@ -47,12 +47,8 @@ impl WavePlan {
 /// The wave due at a tick, counting from one, if a wave is due at all.
 #[inline]
 pub fn wave_at(tick: u32) -> Option<u32> {
-    if tick < rules::FIRST_WAVE_TICK
-        || !(tick - rules::FIRST_WAVE_TICK).is_multiple_of(rules::WAVE_PERIOD_TICKS)
-    {
-        return None;
-    }
-    Some((tick - rules::FIRST_WAVE_TICK) / rules::WAVE_PERIOD_TICKS + 1)
+    latest_wave(tick)
+        .filter(|_| (tick - rules::FIRST_WAVE_TICK).is_multiple_of(rules::WAVE_PERIOD_TICKS))
 }
 
 /// The latest wave due at or before a tick, counting from one; none before
@@ -79,10 +75,7 @@ pub fn wave_plan(wave: u32) -> WavePlan {
             melee = count;
         }
     }
-    let mut ranged = rules::RANGED_PER_WAVE;
-    if wave >= rules::RANGED_GROWTH_WAVE {
-        ranged = rules::RANGED_PER_WAVE + 1;
-    }
+    let ranged = rules::RANGED_PER_WAVE + u32::from(wave >= rules::RANGED_GROWTH_WAVE);
     let siege = if wave < rules::FIRST_SIEGE_WAVE
         || !(wave - rules::FIRST_SIEGE_WAVE).is_multiple_of(rules::SIEGE_WAVE_PERIOD)
     {
