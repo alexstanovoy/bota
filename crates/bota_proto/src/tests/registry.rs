@@ -207,3 +207,193 @@ fn render(format: &Format) -> String {
         Format::Variable(_) => panic!("a type traced incompletely"),
     }
 }
+
+/// Every named id constant is the registered id of the name the registry
+/// gives it, so a constant cannot drift off its line in `registry/ids.txt`.
+#[test]
+fn every_named_id_constant_sits_on_its_registry_line() {
+    let named: [(IdSpace, u16, &str); 94] = [
+        (IdSpace::Hero, HeroId::PUDGE.0, "Pudge"),
+        (IdSpace::Hero, HeroId::SHADOW_FIEND.0, "Shadow Fiend"),
+        (IdSpace::Ability, AbilityId::MEAT_HOOK.0, "Meat Hook"),
+        (IdSpace::Ability, AbilityId::ROT.0, "Rot"),
+        (IdSpace::Ability, AbilityId::FLESH_HEAP.0, "Flesh Heap"),
+        (IdSpace::Ability, AbilityId::DISMEMBER.0, "Dismember"),
+        (IdSpace::Ability, AbilityId::BURST.0, "Burst"),
+        (IdSpace::Ability, AbilityId::RETURN_ITEMS.0, "Return"),
+        (IdSpace::Ability, AbilityId::TAKE_STASH.0, "Take Stash"),
+        (IdSpace::Ability, AbilityId::DELIVER.0, "Deliver"),
+        (IdSpace::Ability, AbilityId::SHIELD.0, "Shield"),
+        (
+            IdSpace::Ability,
+            AbilityId::RAZE_NEAR.0,
+            "Shadowraze (Near)",
+        ),
+        (IdSpace::Ability, AbilityId::RAZE_MID.0, "Shadowraze (Mid)"),
+        (IdSpace::Ability, AbilityId::RAZE_FAR.0, "Shadowraze (Far)"),
+        (IdSpace::Ability, AbilityId::REQUIEM.0, "Requiem of Souls"),
+        (IdSpace::Ability, AbilityId::NECROMASTERY.0, "Necromastery"),
+        (
+            IdSpace::Ability,
+            AbilityId::PRESENCE.0,
+            "Presence of the Dark Lord",
+        ),
+        (
+            IdSpace::Ability,
+            AbilityId::FEAST_OF_SOULS.0,
+            "Feast of Souls",
+        ),
+        (
+            IdSpace::Ability,
+            AbilityId::THROW_GRENADE.0,
+            "Throw Grenade",
+        ),
+        (IdSpace::Item, ItemId::BOOTS.0, "Boots of Speed"),
+        (IdSpace::Item, ItemId::CLARITY.0, "Clarity"),
+        (IdSpace::Item, ItemId::HEALING_SALVE.0, "Healing Salve"),
+        (IdSpace::Item, ItemId::IRON_BRANCH.0, "Iron Branch"),
+        (IdSpace::Item, ItemId::OBSERVER_WARD.0, "Observer Ward"),
+        (IdSpace::Item, ItemId::QUELLING_BLADE.0, "Quelling Blade"),
+        (IdSpace::Item, ItemId::SENTRY_WARD.0, "Sentry Ward"),
+        (IdSpace::Item, ItemId::TANGO.0, "Tango"),
+        (
+            IdSpace::Item,
+            ItemId::TOWN_PORTAL_SCROLL.0,
+            "Town Portal Scroll",
+        ),
+        (IdSpace::Item, ItemId::CIRCLET.0, "Circlet"),
+        (IdSpace::Item, ItemId::GAUNTLETS.0, "Gauntlets of Strength"),
+        (IdSpace::Item, ItemId::SLIPPERS.0, "Slippers of Agility"),
+        (IdSpace::Item, ItemId::MANTLE.0, "Mantle of Intelligence"),
+        (IdSpace::Item, ItemId::BELT.0, "Belt of Strength"),
+        (IdSpace::Item, ItemId::BAND.0, "Band of Elvenskin"),
+        (IdSpace::Item, ItemId::ROBE.0, "Robe of the Magi"),
+        (IdSpace::Item, ItemId::OGRE_AXE.0, "Ogre Axe"),
+        (
+            IdSpace::Item,
+            ItemId::BLADE_OF_ALACRITY.0,
+            "Blade of Alacrity",
+        ),
+        (
+            IdSpace::Item,
+            ItemId::STAFF_OF_WIZARDRY.0,
+            "Staff of Wizardry",
+        ),
+        (IdSpace::Item, ItemId::GLOVES.0, "Gloves of Haste"),
+        (
+            IdSpace::Item,
+            ItemId::BLADES_OF_ATTACK.0,
+            "Blades of Attack",
+        ),
+        (IdSpace::Item, ItemId::BROADSWORD.0, "Broadsword"),
+        (IdSpace::Item, ItemId::QUARTERSTAFF.0, "Quarterstaff"),
+        (
+            IdSpace::Item,
+            ItemId::RING_OF_PROTECTION.0,
+            "Ring of Protection",
+        ),
+        (IdSpace::Item, ItemId::CHAINMAIL.0, "Chainmail"),
+        (IdSpace::Item, ItemId::RING_OF_REGEN.0, "Ring of Regen"),
+        (IdSpace::Item, ItemId::SAGES_MASK.0, "Sage's Mask"),
+        (
+            IdSpace::Item,
+            ItemId::VITALITY_BOOSTER.0,
+            "Vitality Booster",
+        ),
+        (IdSpace::Item, ItemId::ENERGY_BOOSTER.0, "Energy Booster"),
+        (IdSpace::Item, ItemId::POWER_TREADS.0, "Power Treads"),
+        (IdSpace::Item, ItemId::PHASE_BOOTS.0, "Phase Boots"),
+        (IdSpace::Item, ItemId::BLINK_DAGGER.0, "Blink Dagger"),
+        (IdSpace::Item, ItemId::BRACER.0, "Bracer"),
+        (IdSpace::Item, ItemId::WRAITH_BAND.0, "Wraith Band"),
+        (IdSpace::Item, ItemId::NULL_TALISMAN.0, "Null Talisman"),
+        (IdSpace::Item, ItemId::MAGIC_STICK.0, "Magic Stick"),
+        (IdSpace::Item, ItemId::MAGIC_WAND.0, "Magic Wand"),
+        (
+            IdSpace::Item,
+            ItemId::RECIPE_PHASE_BOOTS.0,
+            "Recipe: Phase Boots",
+        ),
+        (IdSpace::Item, ItemId::RECIPE_BRACER.0, "Recipe: Bracer"),
+        (
+            IdSpace::Item,
+            ItemId::RECIPE_WRAITH_BAND.0,
+            "Recipe: Wraith Band",
+        ),
+        (
+            IdSpace::Item,
+            ItemId::RECIPE_NULL_TALISMAN.0,
+            "Recipe: Null Talisman",
+        ),
+        (
+            IdSpace::Item,
+            ItemId::RECIPE_MAGIC_WAND.0,
+            "Recipe: Magic Wand",
+        ),
+        (IdSpace::Item, ItemId::MANGO.0, "Enchanted Mango"),
+        (IdSpace::Item, ItemId::EAGLESONG.0, "Eaglesong"),
+        (IdSpace::Item, ItemId::CLAYMORE.0, "Claymore"),
+        (
+            IdSpace::Item,
+            ItemId::TALISMAN_OF_EVASION.0,
+            "Talisman of Evasion",
+        ),
+        (IdSpace::Item, ItemId::BUTTERFLY.0, "Butterfly"),
+        (IdSpace::Item, ItemId::JAVELIN.0, "Javelin"),
+        (IdSpace::Item, ItemId::DEMON_EDGE.0, "Demon Edge"),
+        (IdSpace::Item, ItemId::BLITZ_KNUCKLES.0, "Blitz Knuckles"),
+        (
+            IdSpace::Item,
+            ItemId::RECIPE_MONKEY_KING_BAR.0,
+            "Recipe: Monkey King Bar",
+        ),
+        (IdSpace::Item, ItemId::MONKEY_KING_BAR.0, "Monkey King Bar"),
+        (IdSpace::Item, ItemId::WIND_LACE.0, "Wind Lace"),
+        (IdSpace::Item, ItemId::BLOOD_GRENADE.0, "Blood Grenade"),
+        (IdSpace::Effect, EffectId::MENDING.0, "Mending"),
+        (IdSpace::Effect, EffectId::CLARITY.0, "Clarity"),
+        (IdSpace::Effect, EffectId::FOUNTAIN.0, "Fountain"),
+        (IdSpace::Effect, EffectId::STUNNED.0, "Stunned"),
+        (IdSpace::Effect, EffectId::SLOWED.0, "Slowed"),
+        (IdSpace::Effect, EffectId::BURNING.0, "Burning"),
+        (IdSpace::Effect, EffectId::HASTENED.0, "Hastened"),
+        (IdSpace::Effect, EffectId::SHIELDED.0, "Shielded"),
+        (IdSpace::Effect, EffectId::PHASED.0, "Phased"),
+        (IdSpace::Effect, EffectId::FLESH_HEAP.0, "FleshHeap"),
+        (IdSpace::Effect, EffectId::SOULS.0, "Souls"),
+        (IdSpace::Effect, EffectId::ARMOR_BROKEN.0, "ArmorBroken"),
+        (IdSpace::Effect, EffectId::GUARDED.0, "Guarded"),
+        (IdSpace::Effect, EffectId::INSPIRED.0, "Inspired"),
+        (IdSpace::Effect, EffectId::SHADOWRAZE.0, "Shadowraze"),
+        (IdSpace::Effect, EffectId::ROT.0, "Rot"),
+        (IdSpace::Effect, EffectId::FEARED.0, "Feared"),
+        (IdSpace::Effect, EffectId::MAGIC_BROKEN.0, "MagicBroken"),
+        (IdSpace::Effect, EffectId::FEASTING.0, "Feasting"),
+        (IdSpace::Effect, EffectId::FEAST_LINGER.0, "FeastLinger"),
+        (IdSpace::Effect, EffectId::BLOOD_GRENADE.0, "BloodGrenade"),
+    ];
+    for (space, id, name) in named {
+        let entry = registered(space)
+            .find(|entry| entry.id == id)
+            .unwrap_or_else(|| panic!("{space:?} {id} is not in registry/ids.txt"));
+        assert_eq!(entry.name, name, "{space:?} {id} names another thing");
+        assert!(!entry.retired, "{space:?} {id} ({name}) is retired");
+    }
+    for space in [
+        IdSpace::Hero,
+        IdSpace::Ability,
+        IdSpace::Item,
+        IdSpace::Effect,
+    ] {
+        for entry in registered(space).filter(|entry| !entry.retired) {
+            assert!(
+                named
+                    .iter()
+                    .any(|(s, id, _)| *s == space && *id == entry.id),
+                "{space:?} {} {} has no named constant",
+                entry.id,
+                entry.name
+            );
+        }
+    }
+}
