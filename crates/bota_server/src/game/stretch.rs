@@ -134,7 +134,7 @@ struct Node {
 }
 
 /// The scratch a local search works in, kept between searches.
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct LocalScratch {
     /// Every state made.
     nodes: Vec<Node>,

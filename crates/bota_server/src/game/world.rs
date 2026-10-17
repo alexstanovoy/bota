@@ -21,6 +21,7 @@ use crate::profile::{Phase, ScopeGuard};
 /// entity the component does not apply to. A system takes the tables it needs
 /// and nothing else; [`World::step`] is the one place the order of a tick is
 /// written down.
+#[derive(Clone)]
 pub struct World {
     /// Ticks since the match began.
     pub tick: u32,

@@ -3,6 +3,7 @@
 use crate::engine::{Entity, Generation};
 
 /// One slot's worth of a component.
+#[derive(Clone)]
 struct Slot<T> {
     /// The generation of the entity the value was written for.
     generation: Generation,
@@ -17,6 +18,7 @@ struct Slot<T> {
 /// walking every entity is [`EntityAllocator::iter`] plus a lookup here.
 ///
 /// [`EntityAllocator::iter`]: crate::engine::EntityAllocator::iter
+#[derive(Clone)]
 pub struct Table<T> {
     /// One entry per slot the table has ever been written for, indexed by
     /// [`Entity::index`]. `None` where nothing was ever written.

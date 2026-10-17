@@ -31,6 +31,19 @@ pub fn next_hit(attacker: &UnitView, target: &UnitView) -> HitRange {
 
 /// [`next_hit`] on a target that wears `armor` when the blow lands.
 pub fn next_hit_against(attacker: &UnitView, target: &UnitView, armor: Fixed) -> HitRange {
+    next_hit_raised(attacker, target, armor, 0)
+}
+
+/// [`next_hit_against`] for a swing whose base damage is `raise` above what the
+/// attacker's view shows when it lands: damage the attacker gains before the
+/// blow, such as souls from kills on the way. A raise of `roll` makes `least` the
+/// swing that draws `roll` above the range's floor.
+pub fn next_hit_raised(
+    attacker: &UnitView,
+    target: &UnitView,
+    armor: Fixed,
+    raise: i32,
+) -> HitRange {
     let carried = carried_bonus(
         attacker
             .items
@@ -55,9 +68,9 @@ pub fn next_hit_against(attacker: &UnitView, target: &UnitView, armor: Fixed) ->
         let blow = (damage + creeps) * class_pct / 100;
         mitigate(blow, DamageKind::Physical, armor, 0)
     };
-    let least = swing(attacker.attack_damage_min);
-    let mid = swing(attacker.attack_damage.max(0));
-    let mut most = swing(attacker.attack_damage_max);
+    let least = swing(attacker.attack_damage_min + raise);
+    let mid = swing(attacker.attack_damage.max(0) + raise);
+    let mut most = swing(attacker.attack_damage_max + raise);
     if !against.structure && carried.pierce_damage > 0 {
         let resist = magic_resist_bp(target.magic_resist);
         most += mitigate(

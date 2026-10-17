@@ -39,6 +39,7 @@ impl fmt::Display for LocalError {
 impl std::error::Error for LocalError {}
 
 /// A synchronous lockstep match, seats in slot order.
+#[derive(Clone)]
 pub struct LocalMatch {
     world: World,
     seats: Vec<SlotId>,

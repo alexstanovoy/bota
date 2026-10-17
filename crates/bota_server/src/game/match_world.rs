@@ -7,8 +7,8 @@ use bota_proto::{
 };
 
 use crate::game::{
-    BAG_SLOTS, Command, Entity, Event, MatchConfig, MatchRng, PendingCast, Seat, UnitOrder, World,
-    in_backpack, in_stash, in_town_portal,
+    ActionPhase, ActionState, BAG_SLOTS, Command, Entity, Event, MatchConfig, MatchRng,
+    PendingCast, Seat, UnitOrder, World, in_backpack, in_stash, in_town_portal, wire_id,
 };
 
 /// Whether an order aims at the kind of thing something takes.
@@ -150,6 +150,7 @@ impl World {
     /// it for a burst or a shield.
     fn interrupt(&mut self, unit: Entity, order: Order) {
         self.cancel_action(unit);
+        self.break_swing_off(unit, order);
         self.handling.remove(unit);
         if let Some(orders) = self.orders.get_mut(unit) {
             orders.pending = None;
@@ -159,6 +160,33 @@ impl World {
                 if matches!(self.ability_in(unit, slot), AbilityId::BURST | AbilityId::SHIELD));
         if !keeps_errand && let Some(errand) = self.errand.get_mut(unit) {
             *errand = crate::game::Errand::None;
+        }
+    }
+
+    /// Breaks off a swing in its windup, at no cost, for a move, a cast, or an attack at
+    /// anything but the swing's own target, as Dota's animation cancel does (Liquipedia, "Attack
+    /// Animation"); an attack order at that target lets it strike.
+    fn break_swing_off(&mut self, unit: Entity, order: Order) {
+        let Some(action) = self.action.get(unit).copied() else {
+            return;
+        };
+        let ActionState::Attack {
+            target,
+            phase: ActionPhase::Before { .. },
+        } = action.state
+        else {
+            return;
+        };
+        let breaks = match order {
+            Order::Attack {
+                target: Target::Unit(named),
+            } => named != wire_id(target),
+            Order::Move { .. } | Order::Attack { .. } | Order::Cast { .. } => true,
+            _ => false,
+        };
+        if breaks && let Some(action) = self.action.get_mut(unit) {
+            action.state = ActionState::Ready;
+            action.attack_cooldown = 0;
         }
     }
 
