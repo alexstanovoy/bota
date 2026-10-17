@@ -83,6 +83,7 @@ impl World {
     /// One seat as a viewer is told of it.
     fn project_player(&self, viewer: Option<Team>, seat: &Seat) -> PlayerView {
         let mana_rate = self.mana_cost_rate_of(seat.unit);
+        let own = viewer.is_none_or(|team| team == seat.team);
         PlayerView {
             slot: seat.slot,
             team: seat.team,
@@ -90,21 +91,15 @@ impl World {
             unit: seat.unit.map(wire_id),
             level: seat.level,
             xp: seat.xp,
-            // A side is told its own gold and its own stash, nobody
-            // else's.
-            gold: match viewer {
-                None => Some(seat.gold),
-                Some(team) if team == seat.team => Some(seat.gold),
-                Some(_) => None,
-            },
-            stash: match viewer {
-                Some(team) if team != seat.team => None,
-                _ => Some(item_views(&seat.stash, mana_rate, &seat.item_clocks)),
-            },
-            // What a fallen body left is told to its own side alone.
-            kit: match viewer {
-                Some(team) if team != seat.team => None,
-                _ => seat.kept.as_ref().map(|kept| bota_proto::Kit {
+            // A side is told its own gold, stash and what a fallen body
+            // left, nobody else's.
+            gold: own.then_some(seat.gold),
+            stash: own.then(|| item_views(&seat.stash, mana_rate, &seat.item_clocks)),
+            kit: seat
+                .kept
+                .as_ref()
+                .filter(|_| own)
+                .map(|kept| bota_proto::Kit {
                     abilities: ability_views(&kept.book, mana_rate),
                     items: item_views(&kept.bag, mana_rate, &seat.item_clocks),
                     town_portal: kept
@@ -113,7 +108,6 @@ impl World {
                         .flatten()
                         .map(|stack| item_view(&stack, mana_rate, &seat.item_clocks)),
                 }),
-            },
             kills: seat.kills,
             deaths: seat.deaths,
             assists: seat.assists,
