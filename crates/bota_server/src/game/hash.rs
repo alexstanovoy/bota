@@ -438,33 +438,21 @@ fn hash_modifier_kind(fnv: &mut Fnv, kind: ModifierKind) {
             fnv.i32(per_tick);
             fnv.some(breaks);
         }
-        ModifierKind::Fountain { hp_pct, mana_pct } => {
-            fnv.u8(3);
-            fnv.i32(hp_pct);
-            fnv.i32(mana_pct);
-        }
+        ModifierKind::Fountain { hp_pct, mana_pct } => hash_tagged(fnv, 3, &[hp_pct, mana_pct]),
         ModifierKind::Stunned => fnv.u8(4),
         ModifierKind::Shielded => fnv.u8(8),
-        ModifierKind::Slowed { pct } => hash_tagged(fnv, 5, pct),
-        ModifierKind::Hastened { pct } => hash_tagged(fnv, 7, pct),
+        ModifierKind::Slowed { pct } => hash_tagged(fnv, 5, &[pct]),
+        ModifierKind::Hastened { pct } => hash_tagged(fnv, 7, &[pct]),
         ModifierKind::Guarded {
             armor,
             hp_per_second,
-        } => {
-            fnv.u8(12);
-            fnv.i32(armor);
-            fnv.i32(hp_per_second);
-        }
+        } => hash_tagged(fnv, 12, &[armor, hp_per_second]),
         ModifierKind::Inspired {
             hp_per_second,
             magic_resist_pct,
-        } => {
-            fnv.u8(13);
-            fnv.i32(hp_per_second);
-            fnv.i32(magic_resist_pct);
-        }
-        ModifierKind::ArmorBroken { armor } => hash_tagged(fnv, 10, armor.raw),
-        ModifierKind::MagicBroken { pct } => hash_tagged(fnv, 16, pct),
+        } => hash_tagged(fnv, 13, &[hp_per_second, magic_resist_pct]),
+        ModifierKind::ArmorBroken { armor } => hash_tagged(fnv, 10, &[armor.raw]),
+        ModifierKind::MagicBroken { pct } => hash_tagged(fnv, 16, &[pct]),
         ModifierKind::Burning {
             amount,
             kind,
@@ -491,10 +479,12 @@ fn hash_modifier_kind(fnv: &mut Fnv, kind: ModifierKind) {
     }
 }
 
-/// A tag and one number.
-fn hash_tagged(fnv: &mut Fnv, tag: u8, value: i32) {
+/// A tag and its numbers.
+fn hash_tagged(fnv: &mut Fnv, tag: u8, values: &[i32]) {
     fnv.u8(tag);
-    fnv.i32(value);
+    for &value in values {
+        fnv.i32(value);
+    }
 }
 
 /// One trusted spawn rule: what it takes, what it puts on, how long.
