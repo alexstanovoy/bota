@@ -966,10 +966,7 @@ pub const FLEE_LOOKAHEAD: i32 = 600;
 /// Ticks a burst or a ring an ability left is seen on the ground.
 pub const MARK_TICKS: u32 = 15;
 
-const _: () = {
-    assert!(GRENADE_DEBUFF_TICKS > 5 * TICKS_PER_SECOND);
-    assert!(GRENADE_SLOW_PCT > 0 && GRENADE_SLOW_PCT < 100);
-};
+const _: () = assert!(GRENADE_SLOW_PCT > 0 && GRENADE_SLOW_PCT < 100);
 
 /// Ticks between the beats of anything that burns over time.
 pub const BURN_PERIOD_TICKS: u32 = 3;

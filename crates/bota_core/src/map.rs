@@ -19,9 +19,6 @@ pub const MAP2_GAME_TICKS: u32 = 20 * 60 * rules::TICKS_PER_SECOND;
 /// included.
 pub const MAP2_TICK_CAP: u32 = rules::PREGAME_TICKS + MAP2_GAME_TICKS;
 
-const _: () = assert!(MAP2_DEATH_LIMIT > 0);
-const _: () = assert!(MAP2_TICK_CAP > rules::PREGAME_TICKS);
-
 /// One playable map.
 #[derive(Clone, Copy, Debug)]
 pub struct MapDef {

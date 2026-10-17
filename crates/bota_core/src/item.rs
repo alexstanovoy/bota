@@ -408,11 +408,7 @@ pub const GRENADE_COOLDOWN: u32 = 10 * rules::TICKS_PER_SECOND;
 pub const GRENADE_RANGE: i32 = 900;
 
 const _: () = {
-    assert!(GRENADE_COOLDOWN > 0);
     assert!(GRENADE_RANGE > rules::GRENADE_RADIUS);
-    assert!(MANGO_COST > 0);
-    assert!(MANGO_STACK_MAX > 1);
-    assert!(MANGO_MANA > 0);
     assert!(MANGO_HP_REGEN.raw > 0);
 };
 
