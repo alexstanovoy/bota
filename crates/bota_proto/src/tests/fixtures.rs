@@ -508,6 +508,7 @@ pub fn all_client_msgs() -> Vec<ClientMsg> {
             role: Role::Player,
             name: "player-one".to_string(),
             key: Some(SeatKey([7; 32])),
+            wire_fingerprint: WIRE_FINGERPRINT,
         },
         ClientMsg::PickHero { hero: HeroId(0) },
         ClientMsg::SetReady(true),
@@ -573,6 +574,9 @@ pub fn all_server_msgs() -> Vec<ServerMsg> {
             tick: 5400,
             orders: vec![slot_order(0), slot_order(1)],
         },
+        ServerMsg::WireMismatch {
+            server_fingerprint: WIRE_FINGERPRINT,
+        },
     ]
 }
 
@@ -625,5 +629,6 @@ pub fn server_msg_name(msg: &ServerMsg) -> &'static str {
         ServerMsg::MatchOver { .. } => "MatchOver",
         ServerMsg::ParticipantLeft { .. } => "ParticipantLeft",
         ServerMsg::Orders { .. } => "Orders",
+        ServerMsg::WireMismatch { .. } => "WireMismatch",
     }
 }

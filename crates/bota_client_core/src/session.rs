@@ -214,6 +214,10 @@ impl ClientSession {
             ServerMsg::MatchStart { .. } => {
                 Err(SessionError::Stream("server sent repeated MatchStart").into())
             }
+            ServerMsg::WireMismatch { server_fingerprint } => Err(SessionError::WireMismatch {
+                server: server_fingerprint,
+            }
+            .into()),
             other @ (ServerMsg::Welcome { .. }
             | ServerMsg::LobbyState { .. }
             | ServerMsg::Orders { .. }

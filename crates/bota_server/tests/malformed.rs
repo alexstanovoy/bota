@@ -8,7 +8,9 @@ use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
 
-use bota_proto::{ClientMsg, FrameReader, Role, ServerMsg, SlotId, encode_frame_to_vec};
+use bota_proto::{
+    ClientMsg, FrameReader, Role, ServerMsg, SlotId, WIRE_FINGERPRINT, encode_frame_to_vec,
+};
 
 const WAIT: Duration = Duration::from_secs(10);
 
@@ -82,6 +84,7 @@ fn greet(stream: &mut TcpStream) -> Option<SlotId> {
             role: Role::Bot,
             name: "probe".to_string(),
             key: None,
+            wire_fingerprint: WIRE_FINGERPRINT,
         },
     );
     let mut reader = FrameReader::new();

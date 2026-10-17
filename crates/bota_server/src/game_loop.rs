@@ -8,7 +8,7 @@ use std::time::{Duration, Instant};
 
 use bota_proto::{
     ClientMsg, EventKind, HeroId, MapId, PlayerId, ReplayRecord, Role, SeatKey, ServerMsg, SlotId,
-    SlotOrder, Team, TickMode, WorldView, encode_frame_to_vec,
+    SlotOrder, Team, TickMode, WIRE_FINGERPRINT, WorldView, encode_frame_to_vec,
 };
 use rand_chacha::rand_core::Rng as _;
 
@@ -251,6 +251,21 @@ impl Server {
         })
     }
 
+    /// Tells a peer built with another wire so, and the operator too, and
+    /// closes its connection.
+    fn refuse_wire(&mut self, id: PlayerId, theirs: u64) {
+        eprintln!(
+            "bota_server: player {} speaks wire {theirs:016x}, this server {WIRE_FINGERPRINT:016x}; closing its connection",
+            id.0
+        );
+        if let Some(conn) = self.conn(id) {
+            conn.send(&ServerMsg::WireMismatch {
+                server_fingerprint: WIRE_FINGERPRINT,
+            });
+        }
+        self.drop_conn(id);
+    }
+
     /// A Hello: seats players and bots, registers spectators and referees.
     ///
     /// Returns whether the peer was accepted. `info` carries the running
@@ -261,10 +276,15 @@ impl Server {
         role: Role,
         name: String,
         key: Option<SeatKey>,
+        wire_fingerprint: u64,
         info: Option<&MatchConfig>,
     ) -> bool {
         if self.greeted(id) {
             return true; // a second Hello changes nothing
+        }
+        if wire_fingerprint != WIRE_FINGERPRINT {
+            self.refuse_wire(id, wire_fingerprint);
+            return false;
         }
         let slot = match self.admit(role, key.as_ref()) {
             None => None,
@@ -363,8 +383,13 @@ impl Server {
                     }
                 }
                 NetEvent::Msg(id, msg) => match msg {
-                    ClientMsg::Hello { role, name, key } => {
-                        if self.greet(id, role, name, key, None) {
+                    ClientMsg::Hello {
+                        role,
+                        name,
+                        key,
+                        wire_fingerprint,
+                    } => {
+                        if self.greet(id, role, name, key, wire_fingerprint, None) {
                             self.broadcast_lobby();
                         }
                     }
@@ -604,8 +629,13 @@ impl Server {
         inbox: &mut Inbox,
     ) {
         match msg {
-            ClientMsg::Hello { role, name, key } => {
-                self.greet(id, role, name, key, Some(cfg));
+            ClientMsg::Hello {
+                role,
+                name,
+                key,
+                wire_fingerprint,
+            } => {
+                self.greet(id, role, name, key, wire_fingerprint, Some(cfg));
             }
             ClientMsg::Order {
                 seq,

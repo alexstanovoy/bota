@@ -70,6 +70,12 @@ impl Seat {
             ServerMsg::Events { .. } => "server sent Events before MatchStart",
             ServerMsg::OrderRejected { .. } => "server rejected an order before MatchStart",
             ServerMsg::MatchOver { .. } => "server sent MatchOver before MatchStart",
+            ServerMsg::WireMismatch { server_fingerprint } => {
+                return Err(SessionError::WireMismatch {
+                    server: server_fingerprint,
+                }
+                .into());
+            }
             other @ (ServerMsg::Welcome { .. }
             | ServerMsg::LobbyState { .. }
             | ServerMsg::Orders { .. }

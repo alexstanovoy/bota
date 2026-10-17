@@ -119,6 +119,7 @@ fn a_truncated_payload_is_malformed_not_a_wait() {
         role: Role::Player,
         name: "a fairly long message body".to_string(),
         key: None,
+        wire_fingerprint: WIRE_FINGERPRINT,
     };
     let frame = encode_frame_to_vec(&msg).unwrap();
     let payload_len = frame.len() - LEN_PREFIX;

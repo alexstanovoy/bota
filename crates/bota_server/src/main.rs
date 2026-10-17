@@ -72,7 +72,8 @@ struct Args {
     /// Most connections held at once.
     #[arg(long)]
     max_connections: Option<usize>,
-    /// Print the fingerprint of the wire registries this build speaks and exit.
+    /// Print the fingerprint of the wire registries this build speaks and exit. Every client
+    /// sends its own in its Hello, and one that differs is refused.
     #[arg(long)]
     wire_fingerprint: bool,
     /// Lockstep: tick-lengths to wait for a straggler before moving on.

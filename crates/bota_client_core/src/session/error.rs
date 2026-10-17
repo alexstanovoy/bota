@@ -4,7 +4,7 @@ use core::convert::Infallible;
 use core::fmt;
 use std::error::Error;
 
-use bota_proto::{EntityId, HeroId, Team, TickMode};
+use bota_proto::{EntityId, HeroId, Team, TickMode, WIRE_FINGERPRINT};
 
 use crate::limits::{MAX_RESTORATION_REPORT, MAX_SEATS, MAX_TERRAIN_AXIS};
 use crate::match_static::RawExtent;
@@ -139,6 +139,11 @@ pub enum SessionError {
     },
     /// The server broke the order of its stream; the text says how.
     Stream(&'static str),
+    /// The server was built with another wire and refused the connection.
+    WireMismatch {
+        /// The server's [`WIRE_FINGERPRINT`].
+        server: u64,
+    },
 }
 
 /// A session input refused by the session or by the observer it called.
@@ -436,6 +441,11 @@ impl SessionError {
                 Named(*expected)
             ),
             Self::Stream(text) => formatter.write_str(text),
+            Self::WireMismatch { server } => write!(
+                formatter,
+                "the server speaks wire {server:016x} and this client {WIRE_FINGERPRINT:016x}; \
+                 build both from matching commits"
+            ),
             _ => unreachable!("every SessionError variant has a message"),
         }
     }

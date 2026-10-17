@@ -380,3 +380,6 @@ field WorldView 13 teleports: Vec<TeleportView>
 field ClientMsg::Hello 2 key: Option<SeatKey>
 variant Role 3 Referee
 newtype SeatKey [u8; 32]
+field ClientMsg::Hello 3 wire_fingerprint: u64
+variant ServerMsg 9 WireMismatch {}
+field ServerMsg::WireMismatch 0 server_fingerprint: u64

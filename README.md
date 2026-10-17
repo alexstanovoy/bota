@@ -83,7 +83,7 @@ The server hosts one lobby and one match, then exits. It listens on `--port`
 | `--referee-key KEY_HEX` | admit a referee with this key (also `BOTA_REFEREE_KEY`): told the lobby, the start, departures and the end, never a tick |
 | `--start-after-secs N` | with reserved seats, start this long after listening at the latest; a seat without a pick gets a random hero |
 | `--max-connections N` | most connections held at once |
-| `--wire-fingerprint` | print the fingerprint of the wire registries this build speaks, and exit |
+| `--wire-fingerprint` | print the fingerprint of the wire registries this build speaks, and exit; a client sends its own in its `Hello`, and the server refuses one that differs with `WireMismatch` |
 | `--replay FILE` | write a replay |
 | `--ack-timeout-ticks N` | lockstep: tick-lengths to wait for a straggler, default 150 |
 | `--cheats` | honour cheat orders (gold, levels, items, refreshes) |
@@ -191,7 +191,11 @@ every wire struct, because postcard encodes variants and fields by position.
   fail on a wire position that changed or disappeared, on one not yet registered,
   and on a hero, ability, item or effect table that disagrees with `ids.txt`.
 
-There is no version negotiation and no compatibility between revisions.
+There is no version negotiation and no compatibility between revisions. A
+client sends `WIRE_FINGERPRINT`, a hash of both registries, in its `Hello`; a
+server built from other registries answers `ServerMsg::WireMismatch` with its
+own and closes the connection, so two builds that disagree fail at the door
+rather than in mid-match.
 
 ## Determinism and replays
 

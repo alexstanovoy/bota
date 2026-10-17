@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use bota_proto::{
     ClientMsg, HeroId, LobbySlot, MatchInfo, PlayerId, Role, SeatKey, ServerMsg, SlotId, Team,
-    TickMode,
+    TickMode, WIRE_FINGERPRINT,
 };
 
 use crate::session::SessionError;
@@ -123,6 +123,7 @@ pub fn join(
         role: Role::Bot,
         name: name.to_owned(),
         key,
+        wire_fingerprint: WIRE_FINGERPRINT,
     })?;
     let seated = wait_for_welcome(transport)?;
     transport.send(&ClientMsg::PickHero { hero })?;
@@ -139,11 +140,19 @@ fn wait_for_welcome(transport: &mut impl Transport) -> std::io::Result<Seated> {
         let message = transport
             .recv()?
             .ok_or_else(|| std::io::Error::other("server closed the connection before Welcome"))?;
-        if matches!(message, ServerMsg::Welcome { .. }) {
-            lobby.observe(&message);
-            return lobby.seated().ok_or_else(|| {
-                std::io::Error::other("server accepted the client without assigning a seat")
-            });
+        match message {
+            ServerMsg::Welcome { .. } => {
+                lobby.observe(&message);
+                return lobby.seated().ok_or_else(|| {
+                    std::io::Error::other("server accepted the client without assigning a seat")
+                });
+            }
+            ServerMsg::WireMismatch { server_fingerprint } => {
+                return Err(std::io::Error::other(SessionError::WireMismatch {
+                    server: server_fingerprint,
+                }));
+            }
+            _ => {}
         }
     }
     Err(std::io::Error::other(format!(

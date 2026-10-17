@@ -4,7 +4,10 @@
 ///
 /// The registries only grow, so two builds with the same fingerprint have
 /// byte-identical registries and with them identical wire layouts and ids. A
-/// peer compares it at connection time instead of failing in mid-match.
+/// client sends it in its [`ClientMsg::Hello`](crate::ClientMsg::Hello), and
+/// the server refuses one that differs from its own with
+/// [`ServerMsg::WireMismatch`](crate::ServerMsg::WireMismatch), so builds
+/// that disagree fail at connection time instead of in mid-match.
 pub const WIRE_FINGERPRINT: u64 = fnv1a(&[
     include_str!("../registry/wire.txt").as_bytes(),
     include_str!("../registry/ids.txt").as_bytes(),

@@ -6,6 +6,7 @@ use std::time::Duration;
 
 use bota_proto::{
     ClientMsg, HeroId, MapId, PlayerId, Role, SeatKey, ServerMsg, SlotId, Team, TickMode,
+    WIRE_FINGERPRINT,
 };
 
 use super::*;
@@ -51,6 +52,7 @@ impl TestClient {
             role,
             name: "ignored".to_owned(),
             key,
+            wire_fingerprint: WIRE_FINGERPRINT,
         });
     }
 

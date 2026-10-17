@@ -7,7 +7,7 @@ use std::time::Duration;
 
 use bota_proto::{
     ClientMsg, EventKind, FrameReader, HeroId, Order, RejectReason, ReplayRecord, Role, ServerMsg,
-    Target, Team, Vec2, WorldView, encode_frame_to_vec,
+    SlotId, Target, Team, Vec2, WIRE_FINGERPRINT, WorldView, encode_frame_to_vec,
 };
 
 use crate::game::OrderDelay;
@@ -64,12 +64,13 @@ fn start_server(opts: ServerOpts) -> std::net::SocketAddr {
     addr
 }
 
-fn join_as_bot(addr: std::net::SocketAddr, name: &str) -> (TestClient, Option<bota_proto::SlotId>) {
+fn join_as_bot(addr: std::net::SocketAddr, name: &str) -> (TestClient, Option<SlotId>) {
     let mut client = TestClient::connect(addr);
     client.send(&ClientMsg::Hello {
         role: Role::Bot,
         name: name.to_string(),
         key: None,
+        wire_fingerprint: WIRE_FINGERPRINT,
     });
     let slot = client.recv_until(|msg| match msg {
         ServerMsg::Welcome { slot, .. } => Some(slot),
@@ -131,6 +132,32 @@ fn match_start_picks(msg: ServerMsg) -> Option<usize> {
 }
 
 #[test]
+fn a_client_built_with_another_wire_is_told_so_and_takes_no_seat() {
+    let addr = start_server(realtime(5));
+    let mut stranger = TestClient::connect(addr);
+    stranger.send(&ClientMsg::Hello {
+        role: Role::Bot,
+        name: "stranger".to_string(),
+        key: None,
+        wire_fingerprint: !WIRE_FINGERPRINT,
+    });
+    assert_eq!(
+        stranger.recv(),
+        ServerMsg::WireMismatch {
+            server_fingerprint: WIRE_FINGERPRINT
+        }
+    );
+    let mut rest = Vec::new();
+    stranger
+        .stream
+        .read_to_end(&mut rest)
+        .expect("the server hangs up");
+    assert!(rest.is_empty(), "nothing follows the refusal");
+    let (_client, slot) = join_as_bot(addr, "native");
+    assert_eq!(slot, Some(SlotId(0)), "the refused peer held no seat");
+}
+
+#[test]
 fn a_realtime_match_reaches_two_clients() {
     let replay_path = std::env::temp_dir().join("bota-net-test-realtime.brp");
     let mut opts = realtime(7);
@@ -139,8 +166,8 @@ fn a_realtime_match_reaches_two_clients() {
 
     let (mut c1, slot1) = join_as_bot(addr, "alpha");
     let (mut c2, slot2) = join_as_bot(addr, "beta");
-    assert_eq!(slot1, Some(bota_proto::SlotId(0)));
-    assert_eq!(slot2, Some(bota_proto::SlotId(1)));
+    assert_eq!(slot1, Some(SlotId(0)));
+    assert_eq!(slot2, Some(SlotId(1)));
     for client in [&mut c1, &mut c2] {
         assert_eq!(client.recv_until(match_start_picks), 2);
     }
@@ -201,6 +228,7 @@ fn a_spectator_borrows_eyes_and_is_told_the_orders_they_see() {
         role: Role::Spectator,
         name: "eye".to_string(),
         key: None,
+        wire_fingerprint: WIRE_FINGERPRINT,
     });
     let slot = watcher.recv_until(|msg| match msg {
         ServerMsg::Welcome { slot, .. } => Some(slot),
@@ -229,7 +257,7 @@ fn a_spectator_borrows_eyes_and_is_told_the_orders_they_see() {
     assert_eq!(told_freely, 0, "watching everything is told no orders");
 
     watcher.send(&ClientMsg::ViewAs {
-        seat: Some(bota_proto::SlotId(1)),
+        seat: Some(SlotId(1)),
     });
     let fogged = watcher.recv_until(|msg| snapshot(msg).filter(|view| view.viewer.is_some()));
     assert_eq!(
@@ -245,7 +273,7 @@ fn a_spectator_borrows_eyes_and_is_told_the_orders_they_see() {
         _ => None,
     });
     assert!(
-        told.iter().all(|given| given.slot == bota_proto::SlotId(1)),
+        told.iter().all(|given| given.slot == SlotId(1)),
         "an order of the side watched: {told:?}"
     );
 }
@@ -280,7 +308,7 @@ fn a_dummy_seat_lets_one_client_start_a_match_alone() {
     opts.dummy_seat = true;
     let addr = start_server(opts);
     let (mut client, slot) = join_as_bot(addr, "alone");
-    assert_eq!(slot, Some(bota_proto::SlotId(0)));
+    assert_eq!(slot, Some(SlotId(0)));
     assert_eq!(client.recv_until(match_start_picks), 2);
     let view = client.recv_until(|msg| snapshot(msg).filter(|view| view.tick > 1));
     assert_eq!(view.players.len(), 2);
