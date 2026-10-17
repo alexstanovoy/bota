@@ -9,6 +9,8 @@ use bota_proto::{
     WIRE_FINGERPRINT,
 };
 
+#[cfg(not(target_arch = "wasm32"))]
+use crate::redial::Redial;
 use crate::session::SessionError;
 #[cfg(not(target_arch = "wasm32"))]
 use crate::socket::Link;
@@ -196,8 +198,21 @@ impl Link {
         key: Option<SeatKey>,
         timeout: Duration,
     ) -> std::io::Result<(Self, Seated)> {
+        Self::join_with_redial(address, name, hero, key, timeout, Redial::DEFAULT)
+    }
+
+    /// Connects with one timeout for establishing and using the connection,
+    /// dialing again after a break by `redial`, and takes a seat.
+    pub fn join_with_redial(
+        address: &str,
+        name: &str,
+        hero: HeroId,
+        key: Option<SeatKey>,
+        timeout: Duration,
+        redial: Redial,
+    ) -> std::io::Result<(Self, Seated)> {
         validate_name(name)?;
-        let mut link = Self::connect(address, timeout)?;
+        let mut link = Self::connect(address, timeout)?.with_redial(redial);
         let seated = join(&mut link, name, hero, key)?;
         Ok((link, seated))
     }
