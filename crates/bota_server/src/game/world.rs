@@ -816,8 +816,8 @@ impl World {
         } else {
             hitting_system::<false>(cx);
         }
-        // Only the hitting and missile systems queue blows and misses, so
-        // the queues are lent out while what answers to them runs.
+        // The queues are lent out while what answers to them runs, and handed
+        // back holding whatever that queued meanwhile, with their memory kept.
         let mut landed = std::mem::take(&mut self.landed);
         let felt = landed.make_contiguous();
         self.break_on_blows(felt);
@@ -832,9 +832,11 @@ impl World {
             .map(|blow| (blow.target, blow.source))
             .collect();
         landed.clear();
+        landed.append(&mut self.landed);
+        self.landed = landed;
         missed.clear();
-        debug_assert!(self.landed.is_empty() && self.missed.is_empty());
-        (self.landed, self.missed) = (landed, missed);
+        missed.append(&mut self.missed);
+        self.missed = missed;
         self.bury(fallen, events);
     }
 }
