@@ -492,24 +492,14 @@ impl ClientSession {
     /// Own scoreboard row from the current snapshot.
     #[inline]
     pub fn own_player(&self) -> Option<&PlayerView> {
-        let slot = self.slot()?;
-        self.current
-            .as_ref()?
-            .players
-            .iter()
-            .find(|player| player.slot == slot)
+        self.current.as_ref()?.player(self.slot()?)
     }
 
     /// Own live hero body from the current snapshot.
     #[inline]
     pub fn own_hero(&self) -> Option<&UnitView> {
         let id = self.own_player()?.unit?;
-        let current = self.current.as_ref()?;
-        let index = current
-            .units
-            .binary_search_by_key(&id, |unit| unit.id)
-            .ok()?;
-        Some(&current.units[index])
+        self.current.as_ref()?.unit(id)
     }
 
     /// Own currently visible courier.
@@ -547,8 +537,8 @@ impl ClientSession {
     #[inline]
     pub fn known(&self, id: EntityId) -> Option<(&UnitView, u32)> {
         let view = self.current.as_ref()?;
-        if let Ok(index) = view.units.binary_search_by_key(&id, |unit| unit.id) {
-            return Some((&view.units[index], 0));
+        if let Some(unit) = view.unit(id) {
+            return Some((unit, 0));
         }
         if let Some(track) = self.tracks.get(id) {
             return Some((&track.unit, view.tick.saturating_sub(track.last_seen_tick)));
@@ -560,9 +550,7 @@ impl ClientSession {
     /// The body a seat last stood in, whether or not it still stands.
     pub fn body_of(&self, slot: SlotId) -> Option<EntityId> {
         let view = self.current.as_ref()?;
-        view.players
-            .iter()
-            .find(|player| player.slot == slot)
+        view.player(slot)
             .and_then(|player| player.unit)
             .or_else(|| self.memory.hero_of(slot))
     }

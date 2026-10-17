@@ -89,8 +89,7 @@ impl Derived {
 
     /// Moves every trailing health towards the real one, `dt` seconds on.
     pub fn trail(&mut self, view: &WorldView, dt: f32) {
-        self.ghosts
-            .retain(|(id, _)| view.units.binary_search_by_key(id, |u| u.id).is_ok());
+        self.ghosts.retain(|(id, _)| view.unit(*id).is_some());
         for unit in &view.units {
             let hp = unit.hp.max(0) as f32;
             let full = self.ghosts.len() >= MAX_TRACKED;

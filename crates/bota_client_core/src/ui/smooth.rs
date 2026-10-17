@@ -105,12 +105,7 @@ pub fn bodies<'a>(view: &'a WorldView, prev: Option<&WorldView>, k: f32) -> Vec<
         .iter()
         .map(|unit| {
             let to = (unit.pos.x.to_f32(), unit.pos.y.to_f32());
-            let before = prev.and_then(|prev| {
-                prev.units
-                    .binary_search_by_key(&unit.id, |u| u.id)
-                    .ok()
-                    .map(|at| &prev.units[at])
-            });
+            let before = prev.and_then(|prev| prev.unit(unit.id));
             match before {
                 Some(old) => {
                     let from = (old.pos.x.to_f32(), old.pos.y.to_f32());

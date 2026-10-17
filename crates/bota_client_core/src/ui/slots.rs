@@ -67,7 +67,7 @@ impl App {
     /// The unit whose ability slots the panel is about.
     pub fn slot_unit(&self) -> Option<&UnitView> {
         let commanded = self.commanded()?;
-        self.view()?.units.iter().find(|u| u.id == commanded)
+        self.view()?.unit(commanded)
     }
 
     /// What sits in one item slot of the panel.

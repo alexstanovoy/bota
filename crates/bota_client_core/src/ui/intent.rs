@@ -242,9 +242,7 @@ impl App {
         };
         let order = if let Some(id) = unit_under_cursor(view, at, self.my_hero(), true) {
             let own = view
-                .units
-                .iter()
-                .find(|unit| unit.id == id)
+                .unit(id)
                 .is_some_and(|unit| Some(unit.team) == self.my_team());
             let target = Target::Unit(id);
             if own {
@@ -311,7 +309,7 @@ impl App {
         let Some(view) = self.view() else {
             return false;
         };
-        view.units.iter().find(|u| u.id == id).is_some_and(|u| {
+        view.unit(id).is_some_and(|u| {
             Some(u.team) == self.my_team() && matches!(u.kind, UnitKind::Hero | UnitKind::Courier)
         })
     }

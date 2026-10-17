@@ -9,7 +9,7 @@ use bota_proto::{Attribute, ItemId, PlayerView, WorldView};
 pub fn held_items(view: &WorldView, p: &PlayerView) -> Vec<ItemId> {
     let bag = p
         .unit
-        .and_then(|id| view.units.iter().find(|u| u.id == id))
+        .and_then(|id| view.unit(id))
         .map(|u| u.items.as_slice())
         .unwrap_or_default();
     bag.iter()

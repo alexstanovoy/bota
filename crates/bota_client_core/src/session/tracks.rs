@@ -222,12 +222,7 @@ impl Tracks {
     /// Hands each seen hero the talents the snapshot tells of its seat.
     fn update_talents(&mut self, view: &WorldView) {
         for told in &view.talents {
-            let Some(hero) = view
-                .players
-                .iter()
-                .find(|player| player.slot == told.slot)
-                .and_then(|player| player.unit)
-            else {
+            let Some(hero) = view.player(told.slot).and_then(|player| player.unit) else {
                 continue;
             };
             if let Ok(index) = self
@@ -264,11 +259,7 @@ impl Tracks {
     }
 
     fn remove_replaced_own_bodies(&mut self, view: &WorldView, owner: Owner) {
-        let own_hero = view
-            .players
-            .iter()
-            .find(|player| player.slot == owner.slot)
-            .and_then(|player| player.unit);
+        let own_hero = view.player(owner.slot).and_then(|player| player.unit);
         let own_courier = view
             .units
             .iter()
@@ -299,14 +290,13 @@ impl Tracks {
             let oldest = self
                 .entities
                 .iter()
-                .filter(|track| !snapshot_contains(view, track.id))
+                .filter(|track| view.unit(track.id).is_none())
                 .map(|track| track.last_seen_tick)
                 .min()
                 .expect("validated visible-unit bound guarantees an invisible eviction cohort");
             let before = self.entities.len();
-            self.entities.retain(|track| {
-                track.last_seen_tick != oldest || snapshot_contains(view, track.id)
-            });
+            self.entities
+                .retain(|track| track.last_seen_tick != oldest || view.unit(track.id).is_some());
             let evicted = before - self.entities.len();
             assert!(evicted > 0);
             required = required.saturating_sub(evicted);
@@ -529,8 +519,4 @@ pub(crate) fn copy_unit_view(target: &mut UnitView, source: &UnitView) {
         effects,
         ..*source
     };
-}
-
-fn snapshot_contains(view: &WorldView, id: EntityId) -> bool {
-    view.units.binary_search_by_key(&id, |unit| unit.id).is_ok()
 }

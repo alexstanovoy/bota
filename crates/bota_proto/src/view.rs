@@ -450,3 +450,17 @@ pub struct WorldView {
     /// [`SlotId`]. Last on the wire.
     pub teleports: Vec<TeleportView>,
 }
+
+impl WorldView {
+    /// The unit with this id, if it is in [`units`](Self::units).
+    pub fn unit(&self, id: EntityId) -> Option<&UnitView> {
+        let at = self.units.binary_search_by_key(&id, |u| u.id).ok()?;
+        self.units.get(at)
+    }
+
+    /// The scoreboard entry of this seat, if it is in [`players`](Self::players).
+    pub fn player(&self, slot: SlotId) -> Option<&PlayerView> {
+        let at = self.players.binary_search_by_key(&slot, |p| p.slot).ok()?;
+        self.players.get(at)
+    }
+}

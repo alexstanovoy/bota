@@ -496,7 +496,7 @@ impl App {
 
     /// A seat's scoreboard row in the current view.
     pub(crate) fn player(&self, slot: SlotId) -> Option<&PlayerView> {
-        self.view()?.players.iter().find(|p| p.slot == slot)
+        self.view()?.player(slot)
     }
 
     /// Which unit the slot panel and the keys are about.
@@ -531,7 +531,7 @@ impl App {
     pub fn pinned_unit(&self) -> Option<EntityId> {
         match self.pinned? {
             Pin::Hero(slot) => self.player(slot)?.unit,
-            Pin::Unit(id) => self.view()?.units.iter().find(|u| u.id == id).map(|u| u.id),
+            Pin::Unit(id) => self.view()?.unit(id).map(|u| u.id),
         }
     }
 
@@ -569,9 +569,7 @@ impl App {
         let Some(view) = self.view() else {
             return false;
         };
-        view.units
-            .iter()
-            .find(|unit| unit.id == id)
+        view.unit(id)
             .is_some_and(|unit| unit.owner.is_some() && unit.owner == self.my_slot)
     }
 
@@ -584,7 +582,7 @@ impl App {
         let id = self.selected?;
         let view = self.view()?;
         let mine = self.my_slot?;
-        let unit = view.units.iter().find(|unit| unit.id == id)?;
+        let unit = view.unit(id)?;
         (unit.owner == Some(mine) && Some(id) != self.my_hero()).then_some(id)
     }
 
@@ -613,7 +611,7 @@ impl App {
     pub fn at_home_shop(&self) -> bool {
         let at = || {
             let p = self.player(self.my_slot?)?;
-            let unit = self.view()?.units.iter().find(|u| Some(u.id) == p.unit)?;
+            let unit = self.view()?.unit(p.unit?)?;
             Some(bota_core::at_home_shop(
                 self.session()?.map(),
                 p.team,
@@ -667,7 +665,7 @@ impl App {
     pub fn courier_slot(&self, ability: u16) -> Option<u8> {
         let view = self.view()?;
         let courier = self.my_courier()?;
-        let unit = view.units.iter().find(|unit| unit.id == courier)?;
+        let unit = view.unit(courier)?;
         unit.abilities
             .iter()
             .position(|held| held.id.0 == ability)

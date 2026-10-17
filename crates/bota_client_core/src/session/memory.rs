@@ -35,9 +35,7 @@ impl BodyMemory {
             }
         }
         self.bodies.retain(|held| {
-            view.units
-                .binary_search_by_key(&held.unit.id, |unit| unit.id)
-                .is_ok()
+            view.unit(held.unit.id).is_some()
                 || !view.units.iter().any(|unit| {
                     unit.owner == held.unit.owner
                         && unit.kind == held.unit.kind

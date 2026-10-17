@@ -172,12 +172,7 @@ fn units(view: &WorldView) -> Result<(), SessionError> {
 /// Aggro entries sorted strictly by unit, naming visible units only, their timers within the
 /// rules' bounds and a swing striking within its attacker's attack point.
 fn aggro(view: &WorldView) -> Result<(), SessionError> {
-    let unit_of = |id: EntityId| {
-        view.units
-            .binary_search_by_key(&id, |unit| unit.id)
-            .map(|index| &view.units[index])
-            .map_err(|_| SessionError::UnknownAggroUnit(id))
-    };
+    let unit_of = |id: EntityId| view.unit(id).ok_or(SessionError::UnknownAggroUnit(id));
     for (index, entry) in view.aggro.iter().enumerate() {
         if index > 0 && view.aggro[index - 1].unit >= entry.unit {
             return Err(SessionError::UnsortedAggro);
@@ -222,11 +217,7 @@ fn players(roster: &[Pick], view: &WorldView) -> Result<(), SessionError> {
             check_limit("Kit.items", kit.items.len(), HERO_ITEM_SLOTS)?;
         }
     }
-    let known = |slot| {
-        view.players
-            .binary_search_by_key(&slot, |player| player.slot)
-            .is_ok()
-    };
+    let known = |slot| view.player(slot).is_some();
     let sorted = view
         .talents
         .windows(2)
@@ -279,11 +270,9 @@ fn felled_trees(static_tree_count: usize, view: &WorldView) -> Result<(), Sessio
 }
 
 fn own_state(owner: Owner, hero: Option<HeroId>, view: &WorldView) -> Result<(), SessionError> {
-    let player_index = view
-        .players
-        .binary_search_by_key(&owner.slot, |player| player.slot)
-        .map_err(|_| SessionError::MissingOwnPlayer(owner.slot.0))?;
-    let player = &view.players[player_index];
+    let player = view
+        .player(owner.slot)
+        .ok_or(SessionError::MissingOwnPlayer(owner.slot.0))?;
     if player.gold.is_none() {
         return Err(SessionError::MissingOwnGold);
     }
@@ -293,12 +282,7 @@ fn own_state(owner: Owner, hero: Option<HeroId>, view: &WorldView) -> Result<(),
         .ok_or(SessionError::MissingOwnStash)?
         .len();
     let body_items = if let Some(id) = player.unit {
-        let unit = view
-            .units
-            .binary_search_by_key(&id, |unit| unit.id)
-            .ok()
-            .map(|index| &view.units[index])
-            .ok_or(SessionError::MissingOwnHero(id))?;
+        let unit = view.unit(id).ok_or(SessionError::MissingOwnHero(id))?;
         if unit.kind != UnitKind::Hero
             || unit.team != owner.team
             || unit.owner != Some(owner.slot)
