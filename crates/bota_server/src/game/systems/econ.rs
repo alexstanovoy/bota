@@ -1,6 +1,9 @@
 //! What a kill pays, what the clock pays, and getting a hero back on its feet.
 
-use bota_core::{GoldRange, denied_xp, hero_bounty, hero_kill_xp, hero_spawn_pos, kind_def, rules};
+use bota_core::{
+    GoldRange, denied_xp, hero_bounty, hero_kill_xp, hero_spawn_pos, kind_def, passive_gold_by,
+    rules,
+};
 use bota_proto::{EventKind, Team, UnitKind, Vec2};
 
 use crate::game::{Bounty, Entity, Event, EventVisibility, Landed, Level, Purpose, World, wire_id};
@@ -8,17 +11,20 @@ use crate::game::{Bounty, Entity, Event, EventVisibility, Landed, Level, Purpose
 use super::fight::other_side;
 
 impl World {
-    /// Hands out the gold that arrives on its own: one every
-    /// [`rules::PASSIVE_GOLD_PERIOD_TICKS`] after the horn, to every seat.
+    /// Hands out the gold that arrives on its own, to every seat: what
+    /// [`passive_gold_by`] owes for this tick of the clock.
     pub fn passive_gold(&mut self) {
-        if self.tick <= rules::PREGAME_TICKS
-            || !(self.tick - rules::PREGAME_TICKS).is_multiple_of(rules::PASSIVE_GOLD_PERIOD_TICKS)
-        {
+        if self.tick <= rules::PREGAME_TICKS {
+            return;
+        }
+        let since = self.tick - rules::PREGAME_TICKS;
+        let due = passive_gold_by(since) - passive_gold_by(since - 1);
+        if due == 0 {
             return;
         }
         for seat in self.seats.iter_mut() {
-            seat.gold += 1;
-            seat.net_worth += 1;
+            seat.gold += due;
+            seat.net_worth += due;
         }
     }
 

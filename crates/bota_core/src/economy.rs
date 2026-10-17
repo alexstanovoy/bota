@@ -22,6 +22,28 @@ pub fn respawn_wait(level: u8) -> u32 {
     rules::RESPAWN_SECONDS[at] * rules::TICKS_PER_SECOND
 }
 
+/// Passive gold paid in all by `ticks` past the horn: each stretch of
+/// [`rules::PASSIVE_GOLD_TENTHS_A_MINUTE`] at its own rate, whole gold only.
+/// A tick pays what this grows by over it, so the pay is a function of the
+/// clock alone and no remainder is carried.
+pub fn passive_gold_by(ticks: u32) -> i32 {
+    let minute = i64::from(60 * rules::TICKS_PER_SECOND);
+    let steps = &rules::PASSIVE_GOLD_TENTHS_A_MINUTE;
+    let mut tenth_ticks = 0;
+    for (at, &(from, tenths)) in steps.iter().enumerate() {
+        let start = i64::from(from) * minute;
+        let end = steps
+            .get(at + 1)
+            .map_or(i64::MAX, |next| i64::from(next.0) * minute);
+        let span = i64::from(ticks).min(end) - start;
+        if span <= 0 {
+            break;
+        }
+        tenth_ticks += tenths * span;
+    }
+    i32::try_from(tenth_ticks / (10 * minute)).expect("passive gold fits an i32")
+}
+
 /// What bringing down a hero pays in experience: a base, a share of what
 /// the fallen had earned, and a bonus for the streak its death ends.
 #[inline]

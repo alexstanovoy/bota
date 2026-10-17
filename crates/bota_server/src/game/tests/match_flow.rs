@@ -2,7 +2,7 @@
 
 use bota_core::{
     MAPS, MELEE_CREEP, SHADOW_FIEND, ancient_of, hero_kill_xp, hero_spawn_pos, map_of,
-    respawn_wait, rules,
+    passive_gold_by, respawn_wait, rules,
 };
 
 use crate::game::{Entity, Level, UnitOrder, World, wire_id};
@@ -179,6 +179,34 @@ fn a_hero_kill_pays_by_the_streak_and_a_death_costs_gold_by_the_level() {
         Some(head),
         "the event says what the kill paid"
     );
+}
+
+#[test]
+fn passive_gold_is_ninety_a_minute_from_the_horn_and_more_from_twelve() {
+    let cfg = config();
+    let mut world = World::for_match(&cfg, cfg.rng());
+    let start = world.seats[0].gold;
+    for _ in 0..rules::PREGAME_TICKS {
+        world.step();
+    }
+    assert_eq!(world.seats[0].gold, start, "nothing before the horn");
+    for _ in 0..60 * rules::TICKS_PER_SECOND {
+        world.step();
+    }
+    assert_eq!(
+        world.seats[0].gold - start,
+        90,
+        "ninety in the first minute"
+    );
+    let minute = 60 * rules::TICKS_PER_SECOND;
+    assert_eq!(passive_gold_by(20), 1, "one gold every 0.67 s");
+    assert_eq!(passive_gold_by(12 * minute), 12 * 90);
+    assert_eq!(
+        passive_gold_by(13 * minute) - passive_gold_by(12 * minute),
+        94,
+        "94.8 a minute from twelve, whole gold only"
+    );
+    assert_eq!(passive_gold_by(15 * minute), 1080 + 3 * 948 / 10);
 }
 
 #[test]

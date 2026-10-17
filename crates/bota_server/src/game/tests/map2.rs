@@ -2,7 +2,7 @@
 
 use bota_core::{
     CellGrid, MAP2_DEATH_LIMIT, MAP2_GAME_TICKS, MAP2_ID, MAP2_TICK_CAP, MAPS, hero_spawn_pos,
-    item_def, lane_polyline, lane_route, map_of, rules, wave_plan,
+    item_def, lane_polyline, lane_route, map_of, passive_gold_by, rules, wave_plan,
 };
 
 use crate::game::{
@@ -499,10 +499,12 @@ fn map2_cap_tick_completes_orders_gold_waves_and_tower_death_before_drawing() {
             .held()
             .any(|stack| stack.id == boots)
     );
-    // A second of passive gold, and the fallen tower's team bounty.
+    // The cap tick's passive gold, and the fallen tower's team bounty.
+    let since = TICK_CAP - rules::PREGAME_TICKS;
+    let passive = passive_gold_by(since) - passive_gold_by(since - 1);
     assert_eq!(
         world.seats[0].gold,
-        gold - cost + 1 + rules::TOWER_TIER_TEAM_BOUNTY[0]
+        gold - cost + passive + rules::TOWER_TIER_TEAM_BOUNTY[0]
     );
     let plan = wave_plan(FINAL_WAVE);
     let creeps = world

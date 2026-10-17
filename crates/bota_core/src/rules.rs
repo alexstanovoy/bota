@@ -1004,8 +1004,21 @@ pub const ARMOR_SCALE: i32 = 6;
 
 /// Gold each seat starts the match with.
 pub const STARTING_GOLD: i32 = 600;
-/// One gold arrives every this many ticks.
-pub const PASSIVE_GOLD_PERIOD_TICKS: u32 = 30;
+/// Passive gold a minute, in tenths of a gold, from each game minute on.
+/// Dota 7.41f pays one reliable gold every 0.67 s from 0:00, 90 a minute,
+/// rising with the clock (Liquipedia and the Dota 2 wiki, *Gold*, "Periodic
+/// Gold", read 2026-10; no patch note from 7.33 to 7.41f changes it).
+pub const PASSIVE_GOLD_TENTHS_A_MINUTE: [(u32, i64); 9] = [
+    (0, 900),
+    (12, 948),
+    (30, 998),
+    (45, 1055),
+    (62, 1128),
+    (87, 1205),
+    (112, 1290),
+    (140, 1390),
+    (175, 1505),
+];
 /// A dying hero loses its net worth divided by this, never more gold than
 /// it holds.
 pub const DEATH_GOLD_LOSS_SHARE: i32 = 40;
