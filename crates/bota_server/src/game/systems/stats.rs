@@ -98,29 +98,15 @@ fn derive_stats_impl<const APPLIED: bool>(cx: StatsCx<'_>) {
         }
         add_heap(&mut now, &gathered, abilities.get(entity));
         from_attributes(&mut now);
-        // A share of the maximum mana, attributes included.
-        if let Some(carried) = carried
-            && carried.mana_pct != 0
-        {
-            now.max_mana += now.max_mana * Fixed::from_ratio(carried.mana_pct, 100);
-        }
-        // A share of the base pace and of what agility adds, and of nothing
-        // else.
-        if let Some(carried) = carried
-            && carried.base_attack_speed_pct != 0
-        {
-            let base = rules::BASE_ATTACK_SPEED + agility_pace(now.attributes);
-            now.attack_speed += base * carried.base_attack_speed_pct / 100;
+        if let Some(carried) = &carried {
+            add_carried_shares(&mut now, carried);
         }
         now.damage += soul_damage(gathered.of(StackKind::Souls), levels + 1);
         if let Some(on_it) = modifiers.get(entity) {
             add_modifiers(&mut now, on_it);
         }
         if let Some(feast) = feast.get(entity) {
-            let talented = abilities
-                .get(entity)
-                .is_some_and(|book| book.has_talent(Talent::FeastAttackSpeed));
-            add_feast(&mut now, feast, talented);
+            add_feast(&mut now, feast, abilities.get(entity));
         }
         let max = Regen {
             hp: now.max_hp,
@@ -186,16 +172,29 @@ fn follow_pools(
 
 /// Adds the haste of a feast that is running, the talent's attack speed
 /// with it when its caster has learned it.
-fn add_feast(now: &mut Stats, feast: &Feast, talented: bool) {
+fn add_feast(now: &mut Stats, feast: &Feast, book: Option<&AbilityBook>) {
     if feast.phase != FeastPhase::Feasting {
         return;
     }
     let level = usize::from(feast.level);
     now.attack_speed += rules::FEAST_ATTACK_SPEED[level];
-    if talented {
+    if book.is_some_and(|book| book.has_talent(Talent::FeastAttackSpeed)) {
         now.attack_speed += rules::TALENT_FEAST_ATTACK_SPEED;
     }
     now.move_speed = scaled(now.move_speed, 100 + rules::FEAST_MOVE_PCT[level]);
+}
+
+/// Adds what the inventory proper carries as shares of what the attributes
+/// already brought: of the maximum mana, and of the base pace and what
+/// agility adds to it, nothing else.
+fn add_carried_shares(now: &mut Stats, carried: &Carried) {
+    if carried.mana_pct != 0 {
+        now.max_mana += now.max_mana * Fixed::from_ratio(carried.mana_pct, 100);
+    }
+    if carried.base_attack_speed_pct != 0 {
+        let base = rules::BASE_ATTACK_SPEED + agility_pace(now.attributes);
+        now.attack_speed += base * carried.base_attack_speed_pct / 100;
+    }
 }
 
 /// Adds what the inventory proper carries.

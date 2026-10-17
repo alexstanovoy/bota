@@ -158,7 +158,7 @@ impl World {
         let Some(action) = self.action.get(entity).copied() else {
             return;
         };
-        let cleared = match action.state {
+        match action.state {
             ActionState::Ready
             | ActionState::Attack {
                 phase: ActionPhase::Before { .. } | ActionPhase::During { .. },
@@ -167,17 +167,16 @@ impl World {
             ActionState::Attack {
                 phase: ActionPhase::After { .. },
                 ..
-            } => true,
+            } => {}
             ActionState::CastAbility { phase, .. } | ActionState::UseItem { phase, .. } => {
                 if let ActionPhase::During { .. } = phase
                     && let Some(what) = what_of(action.state)
                 {
                     self.call_cancel(entity, what);
                 }
-                true
             }
-        };
-        if cleared && let Some(action) = self.action.get_mut(entity) {
+        }
+        if let Some(action) = self.action.get_mut(entity) {
             action.state = ActionState::Ready;
         }
     }
@@ -489,10 +488,7 @@ impl World {
             return false;
         }
         self.order_cast_off(entity);
-        self.occupy(
-            entity,
-            with_phase(state_of(pending), ActionPhase::Before { progress: 0 }),
-        );
+        self.occupy(entity, state_of(pending));
         true
     }
 

@@ -132,10 +132,7 @@ impl World {
     fn overlaps(&self, bodies: &[Body], cap: i64) -> Vec<(i64, i64)> {
         let mut push = vec![(0i64, 0i64); bodies.len()];
         for (i, one) in bodies.iter().enumerate() {
-            if one.fixed {
-                continue;
-            }
-            if self.phased(one.entity) {
+            if one.fixed || self.phased(one.entity) {
                 continue;
             }
             self.bodies.near(one.at, one.radius, |other| {

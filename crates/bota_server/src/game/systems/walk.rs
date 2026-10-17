@@ -907,18 +907,15 @@ impl World {
     /// What flies goes straight: closed ground and bodies are nothing to
     /// it. It turns first, like everything else.
     fn fly_toward(&mut self, entity: Entity, dest: Vec2, step: Fixed) {
-        let (Some(from), Some(rate)) = (
-            self.transform.get(entity).map(|t| t.pos),
+        let (Some(at), Some(rate)) = (
+            self.transform.get(entity).copied(),
             self.stats.get(entity).map(|stats| stats.turn_rate),
         ) else {
             return;
         };
+        let from = at.pos;
         let wanted = facing_towards(from, dest);
-        let facing = turn_towards(
-            self.transform.get(entity).expect("looked up above").facing,
-            wanted,
-            rate,
-        );
+        let facing = turn_towards(at.facing, wanted, rate);
         if let Some(transform) = self.transform.get_mut(entity) {
             transform.facing = facing;
         }

@@ -159,13 +159,10 @@ impl World {
     /// Run every tick, so a build follows however the last part arrived: a
     /// purchase, a slot moved, or a courier setting one down.
     pub fn assemble_bags(&mut self) {
-        let mut seats = Vec::with_capacity(self.seats.len());
-        seats.extend(
-            self.seats
-                .iter()
-                .filter_map(|seat| seat.unit.map(|unit| (seat.slot, unit))),
-        );
-        for (slot, unit) in seats {
+        for seat in 0..self.seats.len() {
+            let (slot, Some(unit)) = (self.seats[seat].slot, self.seats[seat].unit) else {
+                continue;
+            };
             // One build may hand the next its last part, and each one leaves
             // fewer stacks than it took, so the run ends.
             for _ in 0..BAG_SLOTS {
@@ -276,7 +273,7 @@ impl World {
                     .map(|free| *free = Some(bought))
                     .is_some();
             if !in_hand {
-                assert!(self.put_in_stash(index, bought));
+                assert!(self.seats[index].stash.stow(bought));
             }
         }
         self.finish_purchase(index, item, plan.cost, events);
@@ -398,20 +395,6 @@ impl World {
             .get(unit)
             .map_or(0, |bag| bag.slots.iter().filter(|s| s.is_none()).count());
         bag + stash
-    }
-
-    /// Lays a stack in the first free slot of a seat's stash.
-    fn put_in_stash(&mut self, seat: usize, stack: ItemStack) -> bool {
-        let Some(free) = self.seats[seat]
-            .stash
-            .slots
-            .iter_mut()
-            .find(|slot| slot.is_none())
-        else {
-            return false;
-        };
-        *free = Some(stack);
-        true
     }
 
     /// What sits in one of an entity's item slots.

@@ -174,10 +174,9 @@ impl World {
             let Some(bag) = self.inventory.get_mut(courier) else {
                 break;
             };
-            let Some(free) = bag.slots.iter_mut().find(|slot| slot.is_none()) else {
+            if !bag.stow(stack) {
                 break;
-            };
-            *free = Some(stack);
+            }
             self.seats[seat].stash.slots[at] = None;
             moved = true;
         }
@@ -206,15 +205,9 @@ impl World {
             let Some(stack) = self.held_in_bag(courier, at) else {
                 continue;
             };
-            let Some(free) = self.seats[seat]
-                .stash
-                .slots
-                .iter_mut()
-                .find(|slot| slot.is_none())
-            else {
+            if !self.seats[seat].stash.stow(stack) {
                 break;
-            };
-            *free = Some(stack);
+            }
             self.take_from_bag(courier, at);
         }
         self.errand.insert(courier, Errand::GoingHome);
