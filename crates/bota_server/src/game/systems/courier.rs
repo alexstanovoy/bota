@@ -61,13 +61,13 @@ impl World {
         }
         self.put_modifier(
             courier,
-            Modifier {
-                kind: ModifierKind::Hastened {
+            Modifier::new(
+                ModifierKind::Hastened {
                     pct: rules::COURIER_BURST_PCT,
                 },
-                source: Some(courier),
-                ticks_left: Some(rules::COURIER_BURST_TICKS),
-            },
+                Some(courier),
+                Some(rules::COURIER_BURST_TICKS),
+            ),
         );
         true
     }
@@ -89,11 +89,11 @@ impl World {
         }
         self.put_modifier(
             courier,
-            Modifier {
-                kind: ModifierKind::Shielded,
-                source: Some(courier),
-                ticks_left: Some(rules::COURIER_SHIELD_TICKS),
-            },
+            Modifier::new(
+                ModifierKind::Shielded,
+                Some(courier),
+                Some(rules::COURIER_SHIELD_TICKS),
+            ),
         );
         true
     }

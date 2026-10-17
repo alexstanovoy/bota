@@ -24,11 +24,7 @@ impl World {
         }
         self.put_modifier(
             caster,
-            Modifier {
-                kind: ModifierKind::Rot { level: level as u8 },
-                source: Some(caster),
-                ticks_left: None,
-            },
+            Modifier::new(ModifierKind::Rot { level: level as u8 }, Some(caster), None),
         );
         if let Some(at) = self.transform.get(caster).map(|t| t.pos) {
             self.spawn_mark(AbilityId::ROT, caster, at, 0);
@@ -70,12 +66,7 @@ impl World {
             breaks: false,
         };
         for (who, kind) in [(on, ModifierKind::Stunned), (on, burn), (caster, mend)] {
-            let modifier = Modifier {
-                kind,
-                source: Some(caster),
-                ticks_left: None,
-            };
-            self.put_modifier(who, modifier);
+            self.put_modifier(who, Modifier::new(kind, Some(caster), None));
         }
         if let Some(at) = self.transform.get(on).map(|t| t.pos) {
             self.spawn_mark(AbilityId::DISMEMBER, caster, at, 0);

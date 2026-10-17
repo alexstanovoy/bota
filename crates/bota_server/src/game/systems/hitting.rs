@@ -250,13 +250,6 @@ fn frighten(
         ModifierKind::Feared,
     ] {
         let ticks = resisted_ticks(stats, blow.target, kind, fear.line);
-        on_it.extend(
-            Modifier {
-                kind,
-                source: blow.source,
-                ticks_left: Some(ticks),
-            },
-            fear.most,
-        );
+        on_it.extend(Modifier::new(kind, blow.source, Some(ticks)), fear.most);
     }
 }

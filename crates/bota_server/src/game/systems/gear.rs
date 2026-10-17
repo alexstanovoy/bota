@@ -540,12 +540,7 @@ impl World {
     /// Walks whoever used an item faster, and through whatever is in the way.
     pub fn walk_through(&mut self, user: Entity, pct: i32, ticks: u32) -> bool {
         for kind in [ModifierKind::Hastened { pct }, ModifierKind::Phased] {
-            let modifier = Modifier {
-                kind,
-                source: Some(user),
-                ticks_left: Some(ticks),
-            };
-            self.put_modifier(user, modifier);
+            self.put_modifier(user, Modifier::new(kind, Some(user), Some(ticks)));
         }
         true
     }
@@ -642,14 +637,14 @@ impl World {
         let per_tick = total * 100 / ticks.max(1) as i32;
         self.put_modifier(
             on,
-            Modifier {
-                kind: match pool {
+            Modifier::new(
+                match pool {
                     Pool::Health => ModifierKind::Mending { per_tick, breaks },
                     Pool::Mana => ModifierKind::Clarity { per_tick, breaks },
                 },
-                source: Some(user),
-                ticks_left: Some(ticks),
-            },
+                Some(user),
+                Some(ticks),
+            ),
         );
         self.tell_mend(user, on, pool, total);
         true

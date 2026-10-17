@@ -299,11 +299,11 @@ impl World {
             for mark in struck {
                 self.put_modifier(
                     mark,
-                    Modifier {
-                        kind: ModifierKind::ArmorBroken { armor },
-                        source: Some(carrier),
-                        ticks_left: Some(rules::PRESENCE_LINGER_TICKS),
-                    },
+                    Modifier::new(
+                        ModifierKind::ArmorBroken { armor },
+                        Some(carrier),
+                        Some(rules::PRESENCE_LINGER_TICKS),
+                    ),
                 );
             }
         }

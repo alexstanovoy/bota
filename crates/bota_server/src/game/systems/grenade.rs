@@ -167,11 +167,11 @@ impl World {
             let since = self.grenade_beat(other).unwrap_or(self.tick);
             self.put_modifier(
                 other,
-                Modifier {
-                    kind: ModifierKind::BloodGrenade { since },
-                    source: Some(shot.owner),
-                    ticks_left: Some(rules::GRENADE_DEBUFF_TICKS),
-                },
+                Modifier::new(
+                    ModifierKind::BloodGrenade { since },
+                    Some(shot.owner),
+                    Some(rules::GRENADE_DEBUFF_TICKS),
+                ),
             );
             self.push_hit_with_amp(
                 Some(shot.owner),

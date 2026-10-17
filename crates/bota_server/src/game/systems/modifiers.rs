@@ -183,15 +183,15 @@ impl World {
             if other == owner {
                 self.put_modifier(
                     owner,
-                    Modifier {
-                        kind: ModifierKind::Burning {
+                    Modifier::new(
+                        ModifierKind::Burning {
                             amount,
                             kind: DamageKind::Magical,
                             lethal: false,
                         },
-                        source: None,
-                        ticks_left: Some(2),
-                    },
+                        None,
+                        Some(2),
+                    ),
                 );
                 continue;
             }
@@ -211,12 +211,7 @@ impl World {
         };
         let pct = rules::ROT_SLOW_PCT[usize::from(level)];
         for kind in [burn, ModifierKind::Slowed { pct }] {
-            let modifier = Modifier {
-                kind,
-                source: Some(owner),
-                ticks_left: Some(2),
-            };
-            self.put_modifier(other, modifier);
+            self.put_modifier(other, Modifier::new(kind, Some(owner), Some(2)));
         }
     }
 

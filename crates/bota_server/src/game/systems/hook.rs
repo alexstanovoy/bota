@@ -164,11 +164,7 @@ impl World {
         }
         self.put_modifier(
             caught,
-            Modifier {
-                kind: ModifierKind::Stunned,
-                source: Some(hook),
-                ticks_left: Some(2),
-            },
+            Modifier::new(ModifierKind::Stunned, Some(hook), Some(2)),
         );
         self.forget_walk(caught);
     }
