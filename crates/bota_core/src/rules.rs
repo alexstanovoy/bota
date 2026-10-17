@@ -118,9 +118,7 @@ pub const BODY_INDEX_SLACK: i32 = 32;
 pub const RADIANT_FOUNTAIN_POS: Vec2 = Vec2::from_ints(1760, 2278);
 /// Center of the Dire fountain area.
 pub const DIRE_FOUNTAIN_POS: Vec2 = Vec2::from_ints(16624, 16064);
-/// The Radiant Ancient.
 pub const RADIANT_ANCIENT_POS: Vec2 = Vec2::from_ints(3296, 3864);
-/// The Dire Ancient.
 pub const DIRE_ANCIENT_POS: Vec2 = Vec2::from_ints(14744, 14216);
 /// How far from the fountain center a hero appears, along both axes towards
 /// the map center.
@@ -129,9 +127,7 @@ pub const HERO_SPAWN_OFFSET: i32 = 280;
 // Lanes. Lane 0 is mid across the middle; lane 1 is top, up the west edge
 // and along the north edge; lane 2 is bottom along the south and east.
 
-/// The mid lane.
 pub const LANE_MID: u8 = 0;
-/// The top lane.
 pub const LANE_TOP: u8 = 1;
 /// The bottom lane.
 pub const LANE_BOT: u8 = 2;
@@ -429,7 +425,6 @@ pub const HERO_MANA: i32 = 84;
 pub const HERO_MOVE_SPEED: i32 = 300;
 /// Hero attack damage at level one, before the primary attribute.
 pub const HERO_ATTACK_DAMAGE: i32 = 31;
-/// Hero attack range.
 pub const HERO_ATTACK_RANGE: i32 = 600;
 /// Milliseconds between hero attack starts at [`BASE_ATTACK_SPEED`].
 pub const HERO_ATTACK_TIME: u32 = 2100;
@@ -495,11 +490,9 @@ pub const MELEE_CREEP_HP: i32 = 550;
 pub const MELEE_CREEP_ATTACK_DAMAGE: i32 = 19;
 /// How much more a melee creep's swing may deal.
 pub const MELEE_CREEP_DAMAGE_SPREAD: i32 = 4;
-/// Melee creep attack range.
 pub const MELEE_CREEP_ATTACK_RANGE: i32 = 100;
 /// How far a melee creep looks for something to attack.
 pub const MELEE_CREEP_ACQUISITION: i32 = 500;
-/// Melee creep armor.
 pub const MELEE_CREEP_ARMOR: i32 = 2;
 /// Melee creep collision size, the Dota regular hull.
 pub const MELEE_CREEP_COLLISION: i32 = 36;
@@ -507,7 +500,6 @@ pub const MELEE_CREEP_COLLISION: i32 = 36;
 pub const MELEE_CREEP_BOUND: i32 = 16;
 /// Milliseconds from a melee creep's attack start to the hit.
 pub const MELEE_CREEP_ATTACK_POINT: u32 = 466;
-/// Melee creep gold bounty.
 pub const MELEE_CREEP_BOUNTY: GoldRange = GoldRange::new(34, 39);
 /// Melee creep experience.
 pub const MELEE_CREEP_XP: i32 = 57;
@@ -520,7 +512,6 @@ pub const RANGED_CREEP_HP: i32 = 300;
 pub const RANGED_CREEP_ATTACK_DAMAGE: i32 = 21;
 /// How much more a ranged creep's swing may deal.
 pub const RANGED_CREEP_DAMAGE_SPREAD: i32 = 5;
-/// Ranged creep attack range.
 pub const RANGED_CREEP_ATTACK_RANGE: i32 = 500;
 /// How far a ranged creep looks for something to attack.
 pub const RANGED_CREEP_ACQUISITION: i32 = 600;
@@ -533,7 +524,6 @@ pub const RANGED_CREEP_BOUND: i32 = 8;
 pub const RANGED_CREEP_ATTACK_POINT: u32 = 500;
 /// Ranged creep attack projectile speed, world units per second.
 pub const RANGED_CREEP_PROJECTILE_SPEED: i32 = 900;
-/// Ranged creep gold bounty.
 pub const RANGED_CREEP_BOUNTY: GoldRange = GoldRange::new(43, 52);
 /// Ranged creep experience.
 pub const RANGED_CREEP_XP: i32 = 69;
@@ -546,11 +536,9 @@ pub const SIEGE_CREEP_HP: i32 = 935;
 pub const SIEGE_CREEP_ATTACK_DAMAGE: i32 = 35;
 /// How much more a siege creep's swing may deal.
 pub const SIEGE_CREEP_DAMAGE_SPREAD: i32 = 11;
-/// Siege creep attack range.
 pub const SIEGE_CREEP_ATTACK_RANGE: i32 = 690;
 /// How far a siege creep looks for something to attack.
 pub const SIEGE_CREEP_ACQUISITION: i32 = 800;
-/// Siege creep armor.
 pub const SIEGE_CREEP_ARMOR: i32 = 0;
 /// Siege creep magic resistance, percent.
 pub const SIEGE_CREEP_MAGIC_RESIST_PCT: i32 = 80;
@@ -565,7 +553,6 @@ pub const SIEGE_CREEP_ATTACK_TIME: u32 = 3000;
 pub const SIEGE_CREEP_ATTACK_POINT: u32 = 700;
 /// Siege creep attack projectile speed, world units per second.
 pub const SIEGE_CREEP_PROJECTILE_SPEED: i32 = 1100;
-/// Siege creep gold bounty.
 pub const SIEGE_CREEP_BOUNTY: GoldRange = GoldRange::new(59, 72);
 /// Siege creep experience.
 pub const SIEGE_CREEP_XP: i32 = 88;
@@ -656,7 +643,6 @@ pub const TOWER_TIER_BOUNTY: [GoldRange; 4] = [
 /// indexed by tier minus one; a deny pays half of it to every seat of both
 /// sides.
 pub const TOWER_TIER_TEAM_BOUNTY: [i32; 4] = [90, 110, 125, 145];
-/// Tower attack range.
 pub const TOWER_ATTACK_RANGE: i32 = 700;
 /// Milliseconds between tower attack starts at [`BASE_ATTACK_SPEED`].
 pub const TOWER_ATTACK_TIME: u32 = 900;
@@ -721,7 +707,6 @@ pub const RAX_NIGHT_VISION: i32 = 600;
 
 /// Filler health.
 pub const FILLER_HP: i32 = 1000;
-/// Filler armor.
 pub const FILLER_ARMOR: i32 = 10;
 /// Gold paid to the killer of a filler.
 pub const FILLER_BOUNTY: i32 = 68;
@@ -734,7 +719,6 @@ pub const FILLER_NIGHT_VISION: i32 = 600;
 
 /// Ancient health.
 pub const ANCIENT_HP: i32 = 4500;
-/// Ancient armor.
 pub const ANCIENT_ARMOR: i32 = 13;
 /// The Radiant Ancient's collision size, its own model's.
 pub const RADIANT_ANCIENT_COLLISION: i32 = 315;
@@ -751,7 +735,6 @@ pub const ANCIENT_VISION: i32 = 2600;
 pub const FOUNTAIN_HP: i32 = 500;
 /// Fountain attack damage, the midpoint of 290 to 310.
 pub const FOUNTAIN_ATTACK_DAMAGE: i32 = 300;
-/// Fountain attack range.
 pub const FOUNTAIN_ATTACK_RANGE: i32 = 1200;
 /// Milliseconds between fountain attack starts.
 pub const FOUNTAIN_ATTACK_TIME: u32 = 166;

@@ -280,7 +280,6 @@ pub const MEGA_MELEE_CREEP: UnitDef = UnitDef {
     ..SUPER_MELEE_CREEP
 };
 
-/// A super ranged creep.
 pub const SUPER_RANGED_CREEP: UnitDef = UnitDef {
     max_hp: rules::SUPER_RANGED_HP,
     damage: rules::SUPER_RANGED_ATTACK_DAMAGE,
@@ -372,7 +371,6 @@ pub const SUPER_SIEGE_CREEP: UnitDef = UnitDef {
     ..SIEGE_CREEP
 };
 
-/// A melee barracks.
 pub const BARRACKS_MELEE: UnitDef = UnitDef {
     kind: UnitKind::Barracks,
     max_hp: rules::RAX_MELEE_HP,
@@ -386,7 +384,6 @@ pub const BARRACKS_MELEE: UnitDef = UnitDef {
     ..BARE_UNIT
 };
 
-/// A ranged barracks.
 pub const BARRACKS_RANGED: UnitDef = UnitDef {
     kind: UnitKind::Barracks,
     max_hp: rules::RAX_RANGED_HP,
@@ -412,7 +409,6 @@ pub const FILLER: UnitDef = UnitDef {
     ..BARE_UNIT
 };
 
-/// The Radiant Ancient.
 pub const RADIANT_ANCIENT: UnitDef = UnitDef {
     kind: UnitKind::Ancient,
     max_hp: rules::ANCIENT_HP,
@@ -450,7 +446,6 @@ const FOUNTAIN_AURAS: [Aura; 1] = [Aura {
     ticks: rules::FOUNTAIN_HEAL_LINGER_TICKS,
 }];
 
-/// A fountain.
 pub const FOUNTAIN: UnitDef = UnitDef {
     kind: UnitKind::Fountain,
     max_hp: rules::FOUNTAIN_HP,

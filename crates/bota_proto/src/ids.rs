@@ -138,23 +138,14 @@ pub struct ItemId(pub u16);
 impl ItemId {
     /// Boots of Speed.
     pub const BOOTS: ItemId = ItemId(0);
-    /// Clarity.
     pub const CLARITY: ItemId = ItemId(1);
-    /// Healing Salve.
     pub const HEALING_SALVE: ItemId = ItemId(2);
-    /// Iron Branch.
     pub const IRON_BRANCH: ItemId = ItemId(3);
-    /// Observer Ward.
     pub const OBSERVER_WARD: ItemId = ItemId(4);
-    /// Quelling Blade.
     pub const QUELLING_BLADE: ItemId = ItemId(5);
-    /// Sentry Ward.
     pub const SENTRY_WARD: ItemId = ItemId(6);
-    /// Tango.
     pub const TANGO: ItemId = ItemId(7);
-    /// Town Portal Scroll.
     pub const TOWN_PORTAL_SCROLL: ItemId = ItemId(8);
-    /// Circlet.
     pub const CIRCLET: ItemId = ItemId(9);
     /// Gauntlets of Strength.
     pub const GAUNTLETS: ItemId = ItemId(10);
@@ -168,47 +159,28 @@ impl ItemId {
     pub const BAND: ItemId = ItemId(14);
     /// Robe of the Magi.
     pub const ROBE: ItemId = ItemId(15);
-    /// Ogre Axe.
     pub const OGRE_AXE: ItemId = ItemId(16);
-    /// Blade of Alacrity.
     pub const BLADE_OF_ALACRITY: ItemId = ItemId(17);
-    /// Staff of Wizardry.
     pub const STAFF_OF_WIZARDRY: ItemId = ItemId(18);
     /// Gloves of Haste.
     pub const GLOVES: ItemId = ItemId(19);
-    /// Blades of Attack.
     pub const BLADES_OF_ATTACK: ItemId = ItemId(20);
-    /// Broadsword.
     pub const BROADSWORD: ItemId = ItemId(21);
-    /// Quarterstaff.
     pub const QUARTERSTAFF: ItemId = ItemId(22);
-    /// Ring of Protection.
     pub const RING_OF_PROTECTION: ItemId = ItemId(23);
-    /// Chainmail.
     pub const CHAINMAIL: ItemId = ItemId(24);
-    /// Ring of Regen.
     pub const RING_OF_REGEN: ItemId = ItemId(25);
     /// Sage's Mask.
     pub const SAGES_MASK: ItemId = ItemId(26);
-    /// Vitality Booster.
     pub const VITALITY_BOOSTER: ItemId = ItemId(27);
-    /// Energy Booster.
     pub const ENERGY_BOOSTER: ItemId = ItemId(28);
-    /// Power Treads.
     pub const POWER_TREADS: ItemId = ItemId(29);
-    /// Phase Boots.
     pub const PHASE_BOOTS: ItemId = ItemId(30);
-    /// Blink Dagger.
     pub const BLINK_DAGGER: ItemId = ItemId(31);
-    /// Bracer.
     pub const BRACER: ItemId = ItemId(32);
-    /// Wraith Band.
     pub const WRAITH_BAND: ItemId = ItemId(33);
-    /// Null Talisman.
     pub const NULL_TALISMAN: ItemId = ItemId(34);
-    /// Magic Stick.
     pub const MAGIC_STICK: ItemId = ItemId(35);
-    /// Magic Wand.
     pub const MAGIC_WAND: ItemId = ItemId(36);
     /// The recipe a Bracer is built with.
     pub const RECIPE_BRACER: ItemId = ItemId(38);
@@ -220,27 +192,17 @@ impl ItemId {
     pub const RECIPE_MAGIC_WAND: ItemId = ItemId(41);
     /// Enchanted Mango.
     pub const MANGO: ItemId = ItemId(42);
-    /// Eaglesong.
     pub const EAGLESONG: ItemId = ItemId(43);
-    /// Claymore.
     pub const CLAYMORE: ItemId = ItemId(44);
-    /// Talisman of Evasion.
     pub const TALISMAN_OF_EVASION: ItemId = ItemId(45);
-    /// Butterfly.
     pub const BUTTERFLY: ItemId = ItemId(46);
-    /// Javelin.
     pub const JAVELIN: ItemId = ItemId(47);
-    /// Demon Edge.
     pub const DEMON_EDGE: ItemId = ItemId(48);
-    /// Blitz Knuckles.
     pub const BLITZ_KNUCKLES: ItemId = ItemId(49);
     /// The recipe a Monkey King Bar is built with.
     pub const RECIPE_MONKEY_KING_BAR: ItemId = ItemId(50);
-    /// Monkey King Bar.
     pub const MONKEY_KING_BAR: ItemId = ItemId(51);
-    /// Wind Lace.
     pub const WIND_LACE: ItemId = ItemId(52);
-    /// Blood Grenade.
     pub const BLOOD_GRENADE: ItemId = ItemId(53);
 }
 
@@ -251,7 +213,6 @@ pub enum Aim {
     Own,
     /// At a spot on the ground.
     Point,
-    /// At a unit.
     Unit,
     /// At the tree standing on the spot it is pointed at.
     Tree,
@@ -274,11 +235,9 @@ impl EffectId {
     pub const FOUNTAIN: EffectId = EffectId(3);
     /// Unable to act.
     pub const STUNNED: EffectId = EffectId(4);
-    /// Slowed.
     pub const SLOWED: EffectId = EffectId(5);
     /// Burning, losing health.
     pub const BURNING: EffectId = EffectId(6);
-    /// Hastened.
     pub const HASTENED: EffectId = EffectId(7);
     /// Nothing gets through.
     pub const SHIELDED: EffectId = EffectId(8);
@@ -290,9 +249,7 @@ impl EffectId {
     pub const SOULS: EffectId = EffectId(11);
     /// Armor torn.
     pub const ARMOR_BROKEN: EffectId = EffectId(12);
-    /// Guarded.
     pub const GUARDED: EffectId = EffectId(13);
-    /// Inspired.
     pub const INSPIRED: EffectId = EffectId(14);
     /// Shadowraze stacks.
     pub const SHADOWRAZE: EffectId = EffectId(15);
@@ -373,7 +330,6 @@ pub enum UnitKind {
     CreepFlagbearer,
     /// A ranged lane creep.
     CreepRanged,
-    /// A siege creep.
     CreepSiege,
     /// A neutral camp creep.
     CreepNeutral,

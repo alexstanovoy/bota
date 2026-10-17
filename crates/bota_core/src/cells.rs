@@ -12,7 +12,6 @@ pub struct CellGrid {
 }
 
 impl CellGrid {
-    /// A grid with every cell open.
     pub fn open() -> CellGrid {
         CellGrid {
             bits: vec![u64::MAX; rules::GRID_CELLS * rules::GRID_CELLS / 64],

@@ -62,7 +62,6 @@ const PLAIN: KindDef = KindDef {
     breaks_regen: false,
 };
 
-/// A lane creep of one attack class.
 const fn lane_creep(kind: UnitKind, attack_class: AttackClass) -> KindDef {
     KindDef {
         kind,

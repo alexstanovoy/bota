@@ -24,7 +24,6 @@ pub enum TargetClass {
     Siege,
     /// A tower, an ancient or a fountain.
     Building,
-    /// A ward.
     Ward,
 }
 
@@ -94,7 +93,6 @@ pub fn pick_target<K: Ord + Copy>(
 /// called on early. Every part is absent when the unit lacks it.
 #[derive(Clone, Copy, Debug)]
 pub struct Neighbour {
-    /// The side it plays for.
     pub team: Option<Team>,
     /// What it is.
     pub kind: Option<UnitKind>,

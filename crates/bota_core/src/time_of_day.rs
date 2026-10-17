@@ -10,7 +10,6 @@ use crate::rules;
 /// Whether it is night on a tick, and for how much longer.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct TimeOfDay {
-    /// Whether it is night.
     pub night: bool,
     /// Ticks until it turns, at least 1: tick `tick + ticks_left` is the
     /// first of the other.

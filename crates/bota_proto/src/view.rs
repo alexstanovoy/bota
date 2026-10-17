@@ -67,7 +67,6 @@ pub struct AbilityView {
 /// An effect currently on a visible unit.
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct EffectView {
-    /// Which effect it is.
     pub id: EffectId,
     /// Ticks until it wears off. Absent for one that does not run out.
     pub ticks_left: Option<u32>,
@@ -109,7 +108,6 @@ pub struct LootView {
     pub id: EntityId,
     /// Where it lies.
     pub pos: Vec2,
-    /// Which item it is.
     pub item: ItemId,
     /// Charges left. Absent for an item that has no charges at all.
     pub charges: Option<u8>,
@@ -122,9 +120,7 @@ pub struct LootView {
 pub struct UnitView {
     /// Stable handle for this unit.
     pub id: EntityId,
-    /// What kind of unit it is.
     pub kind: UnitKind,
-    /// Which side it belongs to.
     pub team: Team,
     /// Current position.
     pub pos: Vec2,
@@ -154,7 +150,6 @@ pub struct UnitView {
     pub attack_point: u32,
     /// Attack speed, where 100 is the unit's own pace and 200 is twice it.
     pub attack_speed: i32,
-    /// Armor.
     pub armor: Fixed,
     /// Magic resistance as a fraction, where 1.0 is total immunity.
     pub magic_resist: Fixed,
@@ -318,7 +313,6 @@ pub struct PlayerView {
 /// How late one seat's orders take effect, as the server measured it.
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct OrderDelayView {
-    /// Which seat.
     pub slot: SlotId,
     /// Ticks the latest applied order of this seat that named its view took
     /// effect after the earliest tick it could have: zero for an order given on
@@ -330,7 +324,6 @@ pub struct OrderDelayView {
 /// the connection may know.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct SkippedTick {
-    /// Which tick.
     pub tick: u32,
     /// Its events, in the order the simulation produced them.
     pub events: Vec<EventKind>,
@@ -341,7 +334,6 @@ pub struct SkippedTick {
 pub struct StockView {
     /// Whose shop.
     pub team: Team,
-    /// Which item.
     pub item: ItemId,
     /// How many may be bought right now. Zero refuses a purchase.
     pub left: u8,
@@ -396,9 +388,7 @@ impl Talents {
 /// The talents of one seat's hero.
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct TalentView {
-    /// Which seat.
     pub slot: SlotId,
-    /// The talents it has learned.
     pub learned: Talents,
     /// The talents that could be taken right now. Empty for a seat of the
     /// other side and for a hero that is down.

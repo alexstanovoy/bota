@@ -146,10 +146,7 @@ pub enum Cheat {
     Refresh,
     /// An item put into the hero's bag for nothing, or into the stash when
     /// the bag has no room.
-    Item {
-        /// Which item.
-        item: ItemId,
-    },
+    Item { item: ItemId },
     /// A stat change put on one unit for a time, replacing whatever this
     /// cheat put there before.
     ApplyModifier {
@@ -281,10 +278,7 @@ pub enum Order {
     /// unlearned. Refused with
     /// [`RejectReason::CannotLearn`](crate::RejectReason::CannotLearn)
     /// otherwise.
-    LearnTalent {
-        /// Which talent.
-        talent: TalentSlot,
-    },
+    LearnTalent { talent: TalentSlot },
     /// Spend a skill point on the Attribute Bonus of a hero with a talent
     /// tree: two of every attribute a level, seven levels, level `k` from
     /// hero level `2k`. A level up whose point no ability could take puts

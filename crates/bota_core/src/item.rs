@@ -12,9 +12,7 @@ use crate::{ITEMS, Ratio, UnitDef, rules};
 /// Which pool an item mends.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Pool {
-    /// Health.
     Health,
-    /// Mana.
     Mana,
 }
 
@@ -164,7 +162,6 @@ pub enum UseSpec {
         /// How far the user may plant it.
         range: i32,
     },
-    /// Fells a tree.
     FellTree {
         /// How far the user may fell it.
         range: i32,
@@ -204,7 +201,6 @@ pub enum UseSpec {
     Restore {
         /// Health per charge.
         hp_per_charge: i32,
-        /// Mana per charge.
         mana_per_charge: i32,
     },
     /// Restores mana to the user or the one it is aimed at.
@@ -231,7 +227,6 @@ pub struct Stock {
 /// set to when it comes of them.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Recipe<'a> {
-    /// The parts.
     pub parts: &'a [ItemId],
     /// The attribute the built item is set to. Absent for one set to none.
     pub mode: Option<Attribute>,
@@ -450,7 +445,6 @@ pub fn shop_entries() -> Vec<bota_proto::ShopEntry> {
 /// One stack of an inventory as far as the sum of what is carried cares.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct CarriedItem {
-    /// Which item it is.
     pub id: ItemId,
     /// Charges it holds.
     pub charges: u8,
