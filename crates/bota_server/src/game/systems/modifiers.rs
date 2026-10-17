@@ -74,26 +74,6 @@ impl World {
         }
     }
 
-    /// Puts a timed modifier on, adding its time to what the same kind from
-    /// the same source already holds, up to `cap` ticks in all.
-    ///
-    /// The time added is shortened by the target's status resistance; what is
-    /// already held has been shortened once and is not shortened again.
-    pub fn extend_modifier(&mut self, on: Entity, modifier: Modifier, cap: u32) {
-        let more = modifier.ticks_left.map_or(0, |ticks| {
-            resisted_ticks(&self.stats, on, modifier.kind, ticks)
-        });
-        if let Some(on_it) = self.modifiers.get_mut(on) {
-            on_it.extend(
-                Modifier {
-                    ticks_left: Some(more),
-                    ..modifier
-                },
-                cap,
-            );
-        }
-    }
-
     /// Takes off every modifier of one kind from one source.
     pub fn take_modifier(&mut self, on: Entity, like: ModifierKind, source: Option<Entity>) {
         if let Some(on_it) = self.modifiers.get_mut(on) {

@@ -111,16 +111,6 @@ impl Plan {
         self.steps.len().saturating_sub(self.at)
     }
 
-    /// Where the plan has the entity after a tick: the step for that tick,
-    /// the last step past the plan's end, and nothing before its start.
-    pub fn at_tick(&self, tick: u32) -> Option<Vec2> {
-        if self.steps.is_empty() || tick < self.from {
-            return None;
-        }
-        let index = (tick - self.from) as usize;
-        Some(self.steps[index.min(self.steps.len() - 1)])
-    }
-
     /// Forgets the plan.
     pub fn clear(&mut self) {
         self.steps.clear();

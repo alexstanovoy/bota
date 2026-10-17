@@ -41,11 +41,6 @@ impl AbilityBook {
             .is_some_and(|tree| bota_core::has_talent(tree, self.talents, talent))
     }
 
-    /// Every ability that has been learned.
-    pub fn learned(&self) -> impl Iterator<Item = &AbilityState> {
-        self.slots.iter().filter(|a| a.level > 0)
-    }
-
     /// Skill points spent: on abilities and the Attribute Bonus. Talents
     /// are not among them: since Dota 7.40 they are learned with talent
     /// points of their own.

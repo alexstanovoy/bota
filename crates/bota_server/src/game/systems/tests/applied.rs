@@ -358,20 +358,6 @@ fn status_resistance_shortens_stuns_fears_and_slows() {
 }
 
 #[test]
-fn status_resistance_shortens_the_stretch_extended_by_once() {
-    let (mut world, hero, _creep) = arena();
-    apply(&mut world, hero, spec(|s| s.status_resist = 5_000), 10);
-    world.put_modifier(hero, stun(10));
-    assert_eq!(left_on(&world, hero, ModifierKind::Stunned), Some(5));
-    world.extend_modifier(hero, stun(10), 100);
-    assert_eq!(
-        left_on(&world, hero, ModifierKind::Stunned),
-        Some(10),
-        "what is already held is not shortened a second time"
-    );
-}
-
-#[test]
 fn a_nominal_spec_changes_no_stat_cost_or_cooldown() {
     let (plain, hero, _creep) = arena();
     let (mut world, twin, _creep) = arena();
