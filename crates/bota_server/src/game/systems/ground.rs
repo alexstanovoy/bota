@@ -12,6 +12,14 @@ impl World {
     /// Lays the body index out from where everything with a hull stands.
     pub fn lay_bodies(&mut self) {
         let _profile = self.scope(Phase::BodyIndex);
+        let bodies = self.take_bodies();
+        self.bodies.lay(&bodies);
+        self.body_scratch = bodies;
+    }
+
+    /// Every entity with a hull as a body where it stands now, in entity
+    /// order, in the reused body buffer.
+    fn take_bodies(&mut self) -> Vec<Body> {
         let mut bodies = std::mem::take(&mut self.body_scratch);
         bodies.clear();
         for entity in self.entities.iter() {
@@ -32,8 +40,7 @@ impl World {
                 fixed,
             });
         }
-        self.bodies.lay(&bodies);
-        self.body_scratch = bodies;
+        bodies
     }
 
     /// The body a step from one spot to another would walk into, the
@@ -76,25 +83,7 @@ impl World {
     /// the whole correction falls on whatever overlaps it.
     pub fn push_apart(&mut self) {
         let _profile = self.scope(Phase::Separation);
-        let mut bodies = std::mem::take(&mut self.body_scratch);
-        bodies.clear();
-        for entity in self.entities.iter() {
-            let (Some(at), Some(hull)) = (self.transform.get(entity), self.hull.get(entity)) else {
-                continue;
-            };
-            let fixed = self
-                .stats
-                .get(entity)
-                .is_none_or(|stats| stats.move_speed == Fixed::ZERO);
-            bodies.push(Body {
-                entity,
-                at: at.pos,
-                radius: hull.collision,
-                delta: Vec2::ZERO,
-                still: 0,
-                fixed,
-            });
-        }
+        let bodies = self.take_bodies();
         let cap = i64::from(rules::units(rules::SEPARATION_STEP).raw);
         let push = self.overlaps(&bodies, cap);
         for (index, body) in bodies.iter().enumerate() {

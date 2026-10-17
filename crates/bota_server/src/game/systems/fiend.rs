@@ -8,7 +8,7 @@ use bota_core::{
 };
 use bota_proto::{AbilityId, Angle, DamageKind, Fixed, Team};
 
-use crate::game::{Fear, Hit, HitEffect, Modifier, RequiemLine, StackKind, Transform, World};
+use crate::game::{Fear, Hit, HitEffect, Modifier, RequiemLine, StackKind, World};
 
 use crate::engine::Entity;
 
@@ -139,15 +139,7 @@ impl World {
                 from.pos + heading_of(facing),
                 Fixed::from_int(rules::REQUIEM_LINE_DISTANCE),
             );
-            let line = self.spawn();
-            self.transform.insert(
-                line,
-                Transform {
-                    pos: from.pos,
-                    facing,
-                },
-            );
-            self.set_team(line, side);
+            let line = self.spawn_placed(from.pos, facing, side);
             self.requiem_line.insert(
                 line,
                 RequiemLine {
@@ -253,9 +245,7 @@ impl World {
     /// Takes a line of a requiem out of the world.
     fn put_out(&mut self, line: Entity) {
         self.requiem_line.remove(line);
-        self.transform.remove(line);
-        self.team.remove(line);
-        self.despawn(line);
+        self.discard(line);
     }
 
     /// Lets a share of the souls go when the one holding them falls: a

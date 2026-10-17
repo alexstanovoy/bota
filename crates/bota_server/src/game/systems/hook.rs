@@ -3,7 +3,7 @@
 use bota_core::{ModifierKind, facing_towards, kind_def, move_towards, per_tick, rules};
 use bota_proto::{AbilityId, DamageKind, Fixed, Target, Vec2};
 
-use crate::game::{Hook, Modifier, Transform, World};
+use crate::game::{Hook, Modifier, World};
 
 use crate::engine::Entity;
 
@@ -22,15 +22,7 @@ impl World {
         let reach = rules::units(rules::HOOK_RANGE);
         let aim = move_towards(from, pos, reach);
         let damage_amp_bp = self.outgoing_damage_amp_bp(Some(caster), DamageKind::Pure);
-        let hook = self.spawn();
-        self.transform.insert(
-            hook,
-            Transform {
-                pos: from,
-                facing: facing_towards(from, aim),
-            },
-        );
-        self.set_team(hook, side);
+        let hook = self.spawn_placed(from, facing_towards(from, aim), side);
         let links = std::array::from_fn(|_| self.spawn_mark(AbilityId::MEAT_HOOK, caster, from, 0));
         self.hook.insert(
             hook,
@@ -189,8 +181,6 @@ impl World {
             }
         }
         self.hook.remove(hook);
-        self.transform.remove(hook);
-        self.team.remove(hook);
-        self.despawn(hook);
+        self.discard(hook);
     }
 }

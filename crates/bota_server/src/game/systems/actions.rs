@@ -17,7 +17,7 @@ use super::hitting::entity_slot;
 
 use crate::game::{
     Action, ActionPhase, ActionState, Chance, Entity, Event, FeastPhase, Hit, HitEffect,
-    PendingCast, Projectile, Purpose, Stats, Target, Visibility, World, ability_hooks, wire_id,
+    PendingCast, Projectile, Purpose, Stats, Target, World, ability_hooks, wire_id,
 };
 
 /// What one swing deals, rolled when it lands.
@@ -59,34 +59,22 @@ impl World {
     /// Whether an entity is standing through an ability or an item that
     /// runs on.
     pub fn is_channelling(&self, entity: Entity) -> bool {
-        matches!(
-            self.action.get(entity).map(|action| action.state),
-            Some(
-                ActionState::CastAbility {
-                    phase: ActionPhase::During { .. },
-                    ..
-                } | ActionState::UseItem {
-                    phase: ActionPhase::During { .. },
-                    ..
-                }
-            )
-        )
+        matches!(self.cast_phase(entity), Some(ActionPhase::During { .. }))
     }
 
     /// Whether an entity stands in the cast point of an ability or an item.
     pub fn is_casting(&self, entity: Entity) -> bool {
-        matches!(
-            self.action.get(entity).map(|action| action.state),
-            Some(
-                ActionState::CastAbility {
-                    phase: ActionPhase::Before { .. },
-                    ..
-                } | ActionState::UseItem {
-                    phase: ActionPhase::Before { .. },
-                    ..
-                }
-            )
-        )
+        matches!(self.cast_phase(entity), Some(ActionPhase::Before { .. }))
+    }
+
+    /// Where the ability or item an entity is casting stands, if any.
+    fn cast_phase(&self, entity: Entity) -> Option<ActionPhase> {
+        match self.action.get(entity)?.state {
+            ActionState::CastAbility { phase, .. } | ActionState::UseItem { phase, .. } => {
+                Some(phase)
+            }
+            ActionState::Ready | ActionState::Attack { .. } => None,
+        }
     }
 
     /// Points an entity at the cast it was ordered to make.
@@ -323,7 +311,7 @@ impl World {
                 progress: progress + cast_gain,
             },
         };
-        action.state = with_phase(action.state, phase);
+        action.state = cast_state(what, phase);
         false
     }
 
@@ -427,7 +415,7 @@ impl World {
                     return false;
                 };
                 action.state = if self.begin(entity, what) {
-                    with_phase(action.state, ActionPhase::During { progress: over })
+                    cast_state(what, ActionPhase::During { progress: over })
                 } else {
                     ActionState::Ready
                 };
@@ -437,7 +425,7 @@ impl World {
                     return false;
                 };
                 self.call_complete(entity, what);
-                action.state = with_phase(action.state, ActionPhase::After { progress: over });
+                action.state = cast_state(what, ActionPhase::After { progress: over });
             }
             ActionPhase::After { progress } => {
                 if cross(progress, beats(timing.backswing)).is_none() {
@@ -488,7 +476,10 @@ impl World {
             return false;
         }
         self.order_cast_off(entity);
-        self.occupy(entity, state_of(pending));
+        self.occupy(
+            entity,
+            cast_state(pending, ActionPhase::Before { progress: 0 }),
+        );
         true
     }
 
@@ -538,13 +529,13 @@ impl World {
         let duration = self.item_def_in(entity, slot).map_or(0, |def| def.duration);
         let went = self.begin_item(entity, slot, target);
         if went && duration > 0 {
+            let what = PendingCast::Item {
+                slot: ItemSlot(slot as u8),
+                target,
+            };
             self.occupy(
                 entity,
-                ActionState::UseItem {
-                    target,
-                    slot: ItemSlot(slot as u8),
-                    phase: ActionPhase::During { progress: 0 },
-                },
+                cast_state(what, ActionPhase::During { progress: 0 }),
             );
         }
         events.append(&mut self.events);
@@ -708,10 +699,7 @@ impl World {
         let side = self.team.get(attacker).copied().unwrap_or(Team::Neutral);
         let missile = self.spawn();
         self.transform.insert(missile, at);
-        self.team.insert(missile, side);
-        let mut seen = Visibility::NONE;
-        seen.add(side);
-        self.visibility.insert(missile, seen);
+        self.set_team(missile, side);
         self.projectile.insert(
             missile,
             Projectile {
@@ -828,37 +816,18 @@ fn what_of(state: ActionState) -> Option<PendingCast> {
     }
 }
 
-/// The state a pending cast takes the body into, at the start of its cast
-/// point.
-fn state_of(pending: PendingCast) -> ActionState {
-    match pending {
+/// The state a cast holds the body in, at a phase.
+fn cast_state(what: PendingCast, phase: ActionPhase) -> ActionState {
+    match what {
         PendingCast::Ability { slot, target } => ActionState::CastAbility {
             target,
             slot,
-            phase: ActionPhase::Before { progress: 0 },
+            phase,
         },
         PendingCast::Item { slot, target } => ActionState::UseItem {
             target,
             slot,
-            phase: ActionPhase::Before { progress: 0 },
-        },
-    }
-}
-
-/// The same action in another phase.
-fn with_phase(state: ActionState, phase: ActionPhase) -> ActionState {
-    match state {
-        ActionState::Attack { target, .. } => ActionState::Attack { target, phase },
-        ActionState::CastAbility { target, slot, .. } => ActionState::CastAbility {
-            target,
-            slot,
             phase,
         },
-        ActionState::UseItem { target, slot, .. } => ActionState::UseItem {
-            target,
-            slot,
-            phase,
-        },
-        ActionState::Ready => ActionState::Ready,
     }
 }

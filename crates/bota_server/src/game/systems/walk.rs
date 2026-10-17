@@ -748,42 +748,28 @@ impl World {
             let Some(at) = self.transform.get(body.entity).map(|t| t.pos) else {
                 return;
             };
-            if self.hero.get(body.entity).is_some() {
+            let standing = if self.hero.get(body.entity).is_some() {
                 let steady = body.still >= rules::STANDING_TICKS;
                 let bumped = self.motion.get(entity).is_some_and(|mine| {
                     now < mine.bumped + rules::HEED_HERO_TICKS
                         && mine.bumps >= rules::BUMPS_BEFORE_HEED
                 });
-                if steady || bumped {
-                    foreseen.push(Foreseen {
-                        at,
-                        radius: body.radius,
-                        delta: Vec2::ZERO,
-                        steps: &[],
-                        from: 0,
-                    });
+                if !steady && !bumped {
+                    return;
                 }
-                return;
-            }
-            if hero_walks {
-                foreseen.push(Foreseen {
-                    at,
-                    radius: body.radius,
-                    delta: Vec2::ZERO,
-                    steps: &[],
-                    from: 0,
-                });
-                return;
-            }
-            let (steps, plan_from) = self
-                .plan
-                .get(body.entity)
-                .filter(|plan| plan.stands())
-                .map_or((&[][..], 0), |plan| (plan.steps.as_slice(), plan.from));
+                true
+            } else {
+                hero_walks
+            };
+            let (delta, steps, plan_from) = match self.plan.get(body.entity) {
+                _ if standing => (Vec2::ZERO, &[][..], 0),
+                Some(plan) if plan.stands() => (body.delta, plan.steps.as_slice(), plan.from),
+                _ => (body.delta, &[][..], 0),
+            };
             foreseen.push(Foreseen {
                 at,
                 radius: body.radius,
-                delta: body.delta,
+                delta,
                 steps,
                 from: plan_from,
             });
