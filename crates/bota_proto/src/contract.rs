@@ -29,6 +29,18 @@
 //!   The target is dropped: the order does not take it up again when it
 //!   reappears, so the unit's own path gives nothing away.
 //!
+//! # Map 2 (mid-only)
+//!
+//! Map 2 is the full Dota geometry with creep waves on the mid lane only. The
+//! side lanes' tier-one towers are invulnerable and nothing behind them opens
+//! (`bota_core::SOLO_MID_PROTECTION`), so only the mid towers can fall. A side
+//! loses on the tick it loses any tower or its seats' heroes have died
+//! `MAP2_DEATH_LIMIT` (two) times together. When both sides would lose on one
+//! tick, the match is a draw. The match is also a draw at `MAP2_TICK_CAP`, the
+//! 900 pregame ticks plus twenty game minutes (36 900 ticks at the default 30
+//! per second): a loss on that very tick is a draw too. Every other map ends
+//! by its own rules (the Dota map when an Ancient falls).
+//!
 //! # Orders
 //!
 //! At most one order per seat takes effect on a tick, the last one accepted
