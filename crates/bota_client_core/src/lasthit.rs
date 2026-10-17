@@ -2,7 +2,8 @@
 //! would kill.
 
 use bota_core::{
-    CarriedItem, attack_class_pct, carried_bonus, kind_def, magic_resist_bp, mitigate, rules,
+    CarriedItem, attack_class_pct, carried_bonus, hero_def, kind_def, magic_resist_bp, mitigate,
+    rules,
 };
 use bota_proto::{DamageKind, Fixed, UnitView};
 
@@ -56,6 +57,10 @@ pub fn next_hit_raised(
                 charges: item.charges.unwrap_or(0),
                 mode: item.mode,
             }),
+        attacker
+            .hero
+            .and_then(hero_def)
+            .is_some_and(|hero| hero.unit.projectile_speed.is_some()),
     );
     let against = kind_def(target.kind);
     let creeps = if against.creep {

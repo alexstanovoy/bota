@@ -165,6 +165,7 @@ impl World {
         }
         if let Some(book) = self.abilities.get(entity) {
             fnv.u8(book.talents.bits);
+            fnv.u8(book.attribute_bonus);
         }
         fnv.some(self.loot.get(entity).is_some());
         if let Some(loot) = self.loot.get(entity) {
@@ -372,6 +373,7 @@ fn hash_seat(fnv: &mut Fnv, seat: &Seat) {
             fnv.u32(slot.cooldown);
         }
         fnv.u8(kept.book.talents.bits);
+        fnv.u8(kept.book.attribute_bonus);
         hash_bag(fnv, &kept.bag);
         hash_stacks(fnv, &kept.stacks);
     }
@@ -471,13 +473,10 @@ fn hash_modifier_kind(fnv: &mut Fnv, kind: ModifierKind) {
             fnv.i32(per_tick);
             fnv.some(breaks);
         }
-        ModifierKind::Fountain {
-            hp_per_tick,
-            mana_per_tick,
-        } => {
+        ModifierKind::Fountain { hp_pct, mana_pct } => {
             fnv.u8(3);
-            fnv.i32(hp_per_tick);
-            fnv.i32(mana_per_tick);
+            fnv.i32(hp_pct);
+            fnv.i32(mana_pct);
         }
         ModifierKind::Stunned => fnv.u8(4),
         ModifierKind::Shielded => fnv.u8(8),

@@ -2,7 +2,7 @@
 
 use bota_core::{
     CellGrid, MAP2_DEATH_LIMIT, MAP2_GAME_TICKS, MAP2_ID, MAP2_TICK_CAP, MAPS, hero_spawn_pos,
-    item_def, lane_polyline, lane_route, map_of, rules, wave_plan,
+    item_def, lane_polyline, lane_route, map_of, passive_gold_by, rules, wave_plan,
 };
 
 use crate::game::{
@@ -124,7 +124,11 @@ fn map0_and_map2_share_every_landmark_lane_route_and_tree() {
     assert_eq!(mid.radiant_towers, full.radiant_towers);
     assert_eq!(mid.dire_towers, full.dire_towers);
     assert_eq!(mid.barracks, full.barracks);
-    assert_eq!(mid.protection, full.protection);
+    assert_eq!(
+        mid.protection[..full.protection.len()],
+        *full.protection,
+        "Map2 keeps Dota's protection and adds the solo-mid rules"
+    );
     assert_eq!(mid.creep_spawns, full.creep_spawns);
     assert_eq!(mid.lane_corners, full.lane_corners);
     assert_eq!(mid.lane_through_towers, full.lane_through_towers);
@@ -183,10 +187,25 @@ fn map0_and_map2_passability_terrain_and_sight_match_in_every_cell() {
 fn map0_and_map2_initial_worlds_have_identical_buildings_heroes_and_shops() {
     let full = match_world(MapId(0));
     let mid = match_world(MID_MAP);
+    // The one difference: Map2's side tier ones stand invulnerable.
+    let side_tier_ones: Vec<_> = [Team::Radiant, Team::Dire]
+        .into_iter()
+        .flat_map(|team| {
+            [rules::LANE_TOP, rules::LANE_BOT].map(|lane| wire_id(tower(&mid, team, lane)))
+        })
+        .collect();
+    let mortal = |mut view: bota_proto::WorldView| {
+        for unit in &mut view.units {
+            if side_tier_ones.contains(&unit.id) {
+                unit.statuses.bits &= !bota_proto::StatusFlags::INVULNERABLE;
+            }
+        }
+        view
+    };
 
-    assert_eq!(mid.view_full(), full.view_full());
+    assert_eq!(mortal(mid.view_full()), full.view_full());
     for team in [Team::Radiant, Team::Dire] {
-        assert_eq!(mid.view(team), full.view(team));
+        assert_eq!(mortal(mid.view(team)), full.view(team));
         assert_eq!(
             hero_spawn_pos(mid.map, team),
             hero_spawn_pos(full.map, team)
@@ -300,19 +319,44 @@ fn map2_hero_lives_are_counted_per_side_across_seats() {
 }
 
 #[test]
-fn map2_first_tower_loss_on_any_lane_ends_with_public_structure_reason() {
+fn map2_first_mid_tower_loss_ends_with_public_structure_reason() {
     for (loser, winner) in [(Team::Radiant, Team::Dire), (Team::Dire, Team::Radiant)] {
-        for lane in [rules::LANE_MID, rules::LANE_TOP, rules::LANE_BOT] {
+        let mut world = match_world(MID_MAP);
+        let victim = tower(&world, loser, rules::LANE_MID);
+        lethal_hit(&mut world, victim);
+
+        let events = world.advance(&[]);
+
+        assert_eq!(world.victor(), Some(winner));
+        assert_destroyed(&events, victim, loser);
+        assert_eq!(world.seats[0].deaths, 0);
+        assert_eq!(world.seats[1].deaths, 0);
+    }
+}
+
+#[test]
+fn map2_side_tier_ones_stand_invulnerable_as_in_dotas_solo_mid() {
+    for team in [Team::Radiant, Team::Dire] {
+        for lane in [rules::LANE_TOP, rules::LANE_BOT] {
             let mut world = match_world(MID_MAP);
-            let victim = tower(&world, loser, lane);
-            lethal_hit(&mut world, victim);
-
-            let events = world.advance(&[]);
-
-            assert_eq!(world.victor(), Some(winner));
-            assert_destroyed(&events, victim, loser);
-            assert_eq!(world.seats[0].deaths, 0);
-            assert_eq!(world.seats[1].deaths, 0);
+            let victim = tower(&world, team, lane);
+            let hp = world.health.get(victim).expect("standing").hp;
+            for _ in 0..3 {
+                world.push_hit(None, victim, 30_000, DamageKind::Pure);
+                world.advance(&[]);
+            }
+            assert!(world.alive(victim), "{team:?} lane {lane} stands");
+            assert_eq!(
+                world.health.get(victim).expect("standing").hp,
+                hp,
+                "and takes nothing"
+            );
+            assert_eq!(world.victor(), None, "so the match goes on");
+            let mut full = match_world(MapId(0));
+            let same = tower(&full, team, lane);
+            lethal_hit(&mut full, same);
+            full.advance(&[]);
+            assert!(!full.alive(same), "the full map's falls to the same blow");
         }
     }
 }
@@ -499,10 +543,12 @@ fn map2_cap_tick_completes_orders_gold_waves_and_tower_death_before_drawing() {
             .held()
             .any(|stack| stack.id == boots)
     );
-    // A second of passive gold, and the fallen tower's team bounty.
+    // The cap tick's passive gold, and the fallen tower's team bounty.
+    let since = TICK_CAP - rules::PREGAME_TICKS;
+    let passive = passive_gold_by(since) - passive_gold_by(since - 1);
     assert_eq!(
         world.seats[0].gold,
-        gold - cost + 1 + rules::TOWER_TIER_TEAM_BOUNTY[0]
+        gold - cost + passive + rules::TOWER_TIER_TEAM_BOUNTY[0]
     );
     let plan = wave_plan(FINAL_WAVE);
     let creeps = world

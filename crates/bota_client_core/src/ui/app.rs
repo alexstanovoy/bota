@@ -442,7 +442,7 @@ impl App {
     }
 
     /// The talents of a seat's hero as the view tells them: learned, and
-    /// for one's own side what a skill point could go into.
+    /// for one's own side what could be taken; the Attribute Bonus with them.
     pub fn talents_of(&self, slot: SlotId) -> Option<TalentView> {
         self.view()?
             .talents
@@ -451,11 +451,16 @@ impl App {
             .copied()
     }
 
-    /// Spends a skill point of one's hero on a talent of its tree.
+    /// Takes a talent of one's hero's tree; talents spend no skill point.
     pub fn learn_talent(&mut self, talent: u8) {
         self.send_order(Order::LearnTalent {
             talent: TalentSlot(talent),
         });
+    }
+
+    /// Spends a skill point of one's hero on its Attribute Bonus.
+    pub fn learn_attribute_bonus(&mut self) {
+        self.send_order(Order::LearnAttributeBonus);
     }
 
     /// The name the player of a seat gave in the lobby, if any.

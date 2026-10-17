@@ -252,8 +252,9 @@ fn a_quelling_blade_is_worth_something_against_a_creep_and_nothing_against_a_her
     let bare_hero = one_swing_takes(&mut world, hero, theirs);
     hand_item(&mut world, hero, ItemId::QUELLING_BLADE, 0);
     world.step();
+    // A ranged hero's: Shadow Fiend wears the blade's ranged number.
     let blade = ITEMS[usize::from(ItemId::QUELLING_BLADE.0)]
-        .carried
+        .carried_by(true)
         .damage_to_creeps;
     assert_eq!(
         world.stats.get(hero).map(|s| s.damage_to_creeps),
@@ -448,32 +449,31 @@ fn what_an_item_is_set_to_is_worth_points_of_that_attribute() {
     assert!(world.buy(SlotId(0), treads, &mut events), "bought");
     world.step();
     let bonus = Fixed::from_int(ITEMS[usize::from(ItemId::POWER_TREADS.0)].mode_bonus);
-    let on_strength = *world.stats.get(hero).expect("settled");
+    let before = *world.stats.get(hero).expect("settled");
     assert_eq!(
         slot_of(&world, hero, 0).and_then(|stack| stack.mode),
-        Some(Attribute::Strength),
-        "they come set to strength"
+        Some(Attribute::Agility),
+        "bought whole they come of the Band, set to the hero's agility"
     );
     assert!(
         world.use_item(hero, 0, Target::None, &mut Vec::new()),
         "and using them sets them over"
     );
     world.step();
-    let on_agility = *world.stats.get(hero).expect("settled");
+    let after = *world.stats.get(hero).expect("settled");
+    let now = slot_of(&world, hero, 0)
+        .and_then(|stack| stack.mode)
+        .expect("set to one");
+    assert_ne!(now, Attribute::Agility, "to another attribute");
     assert_eq!(
-        slot_of(&world, hero, 0).and_then(|stack| stack.mode),
-        Some(Attribute::Agility),
-        "to the attribute after the one they were on"
+        after.attributes.agility + bonus,
+        before.attributes.agility,
+        "what they were worth in agility is gone"
     );
     assert_eq!(
-        on_agility.attributes.strength + bonus,
-        on_strength.attributes.strength,
-        "what they were worth in strength is gone"
-    );
-    assert_eq!(
-        on_agility.attributes.agility,
-        on_strength.attributes.agility + bonus,
-        "and worth the same in agility instead"
+        after.attributes.of(now),
+        before.attributes.of(now) + bonus,
+        "and worth the same in the new one instead"
     );
 }
 
@@ -636,7 +636,7 @@ fn the_view_reports_the_regeneration_the_server_applies() {
     assert_eq!((fountain_hp.raw, fountain_mana.raw), served(&world));
 
     world.transform.get_mut(hero).expect("hero").pos = Vec2::from_ints(5000, 5000);
-    for _ in 0..=rules::TICKS_PER_SECOND {
+    for _ in 0..=rules::FOUNTAIN_HEAL_LINGER_TICKS {
         world.step();
     }
     let (plain_hp, plain_mana) = regen(&world);

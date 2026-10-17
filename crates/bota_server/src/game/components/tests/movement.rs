@@ -120,14 +120,14 @@ fn backpack_merge_mutes_whole_destination_until_exact_boundary() {
     }
     assert_eq!(held(&world, hero, 0).mute, 1);
     assert_eq!(
-        carried_bonus(world.inventory.get(hero).unwrap()).hp_regen,
+        carried_bonus(world.inventory.get(hero).unwrap(), true).hp_regen,
         Fixed::ZERO
     );
     reject_use(&mut world, hero, 0, Target::None);
     world.tick_gear();
     assert_eq!(held(&world, hero, 0).mute, 0);
     assert_eq!(
-        carried_bonus(world.inventory.get(hero).unwrap())
+        carried_bonus(world.inventory.get(hero).unwrap(), true)
             .hp_regen
             .raw,
         2619

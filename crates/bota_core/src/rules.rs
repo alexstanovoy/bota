@@ -752,10 +752,16 @@ pub const FOUNTAIN_COLLISION: i32 = 144;
 pub const FOUNTAIN_BOUND: i32 = 144;
 /// Fountain fog light radius.
 pub const FOUNTAIN_VISION: i32 = 1800;
-/// Health restored per tick to its own side inside the fountain area.
-pub const FOUNTAIN_HEAL_HP_PER_TICK: i32 = 25;
-/// Mana restored per tick to its own side inside the fountain area.
-pub const FOUNTAIN_HEAL_MANA_PER_TICK: i32 = 15;
+/// Percent of its maximum health the fountain mends a second on its own
+/// side: Dota 7.41f's Rejuvenation Aura, full in twenty seconds
+/// (Liquipedia, *Fountain*, read 2026-10).
+pub const FOUNTAIN_HEAL_HP_PCT: i32 = 5;
+/// Percent of its maximum mana the fountain mends a second on its own side,
+/// full in sixteen and two thirds.
+pub const FOUNTAIN_HEAL_MANA_PCT: i32 = 6;
+/// Ticks the fountain's mending lingers on a unit that steps out: the
+/// aura's three seconds.
+pub const FOUNTAIN_HEAL_LINGER_TICKS: u32 = 3 * TICKS_PER_SECOND;
 /// Radius of the fountain heal area.
 pub const FOUNTAIN_HEAL_RADIUS: i32 = 1200;
 
@@ -847,6 +853,17 @@ pub const ULT_LEVEL_FLOORS: [u8; 3] = [6, 12, 18];
 pub const TALENT_LEVELS: [u8; 4] = [10, 15, 20, 25];
 /// Hero level the other talent of each tier opens at.
 pub const TALENT_SECOND_LEVELS: [u8; 4] = [27, 28, 29, 30];
+/// Levels the Attribute Bonus can reach: `special_bonus_attributes`
+/// `MaxLevel 7` (`scripts/npc/npc_abilities.txt`, client 6957).
+pub const ATTRIBUTE_BONUS_MAX_LEVEL: u8 = 7;
+/// Attribute Bonus level `k` waits for hero level this many times `k`: 2, 4,
+/// … 14 (`RequiredLevel 2`; Liquipedia, *Attributes*, "the min levels
+/// required per level of Attribute Bonus are level 2/4/6/8/10/12/14"; the
+/// 7.38 notes moved it from 6 to 2).
+pub const ATTRIBUTE_BONUS_LEVELS_APART: u8 = 2;
+/// Points of every attribute a level of the Attribute Bonus adds: `value 2
+/// 4 6 … 14`.
+pub const ATTRIBUTE_BONUS_POINTS: i32 = 2;
 
 const _: () = {
     assert!(TALENT_LEVELS.len() * 2 == bota_proto::TalentSlot::COUNT as usize);
@@ -862,8 +879,9 @@ pub const FOW_BLOCKER_SPAN: i32 = 600;
 
 /// Ticks a felled tree takes to come back, five minutes.
 pub const TREE_REGROW_TICKS: u32 = 5 * 60 * TICKS_PER_SECOND;
-/// Ticks a planted tree stands before it goes on its own, forty seconds.
-pub const PLANTED_TREE_TICKS: u32 = 40 * TICKS_PER_SECOND;
+/// Ticks a planted tree stands before it goes on its own: Iron Branch
+/// `tree_duration` 20.
+pub const PLANTED_TREE_TICKS: u32 = 20 * TICKS_PER_SECOND;
 /// Ticks a hero waits between scrolls, whichever scroll it holds: Dota
 /// 7.41f `item_tpscroll` `AbilityCooldown` 80.
 pub const SCROLL_WAIT_TICKS: u32 = 80 * TICKS_PER_SECOND;
@@ -1004,25 +1022,58 @@ pub const ARMOR_SCALE: i32 = 6;
 
 /// Gold each seat starts the match with.
 pub const STARTING_GOLD: i32 = 600;
-/// One gold arrives every this many ticks.
-pub const PASSIVE_GOLD_PERIOD_TICKS: u32 = 30;
+/// Passive gold a minute, in tenths of a gold, from each game minute on.
+/// Dota 7.41f pays one reliable gold every 0.67 s from 0:00, 90 a minute,
+/// rising with the clock (Liquipedia and the Dota 2 wiki, *Gold*, "Periodic
+/// Gold", read 2026-10; no patch note from 7.33 to 7.41f changes it).
+pub const PASSIVE_GOLD_TENTHS_A_MINUTE: [(u32, i64); 9] = [
+    (0, 900),
+    (12, 948),
+    (30, 998),
+    (45, 1055),
+    (62, 1128),
+    (87, 1205),
+    (112, 1290),
+    (140, 1390),
+    (175, 1505),
+];
 /// A dying hero loses its net worth divided by this, never more gold than
 /// it holds.
 pub const DEATH_GOLD_LOSS_SHARE: i32 = 40;
-/// Gold for killing a hero, before the streak bonus.
-pub const HERO_KILL_BOUNTY_BASE: i32 = 200;
-/// Extra gold per kill in the victim's streak.
-pub const HERO_KILL_BOUNTY_PER_STREAK: i32 = 50;
-/// The streak bonus stops growing past this many kills.
-pub const HERO_KILL_STREAK_CAP: i32 = 6;
+/// Gold for killing a hero, before its level, its streak and First Blood:
+/// Dota's `125 + 8 × level + streak gold + First Blood` since 7.31
+/// (Liquipedia, *Gold*, "Hero kills" and "Kill Streaks", read 2026-10).
+pub const HERO_KILL_GOLD_BASE: i32 = 125;
+/// Gold for killing a hero, a level of the fallen.
+pub const HERO_KILL_GOLD_PER_LEVEL: i32 = 8;
+/// Gold for ending a streak of 3, 4, … 10 or more kills.
+pub const STREAK_GOLD: [i32; 8] = [60, 100, 150, 210, 280, 360, 450, 550];
+/// The shortest streak whose end pays gold.
+pub const STREAK_GOLD_FROM: i32 = 3;
+/// Gold the match's first hero kill pays its killer on top.
+pub const FIRST_BLOOD_GOLD: i32 = 135;
+/// Assist gold every earner of a hero kill is paid before the net worth
+/// factor, in thousandths: `ASSIST_GOLD_FLAT + (ASSIST_GOLD_SHARED +
+/// ASSIST_GOLD_NET_WORTH × the fallen's net worth) / earners`, Dota 7.40's
+/// "15 + ((50 + (VictimNetworth * 0.037)) / NumHeroes)".
+pub const ASSIST_GOLD_FLAT_MILLI: i64 = 15_000;
+/// The part of the assist gold the earners share, in thousandths.
+pub const ASSIST_GOLD_SHARED_MILLI: i64 = 50_000;
+/// Thousandths of the fallen hero's net worth the earners share.
+pub const ASSIST_GOLD_NET_WORTH_MILLI: i64 = 37;
 /// Experience for killing a hero, before the share of its own.
 pub const HERO_KILL_XP_BASE: i32 = 100;
 /// Percent of the fallen hero's own experience paid for its head besides.
 pub const HERO_KILL_XP_SHARE_PCT: i32 = 13;
+/// The fallen hero's experience counts up to this much: a head stops
+/// growing at level 25 (Liquipedia, *Experience*).
+pub const HERO_KILL_XP_COUNTED_MAX: i32 = XP_THRESHOLDS[24];
 /// The shortest streak whose end pays experience.
 pub const STREAK_XP_FROM: i32 = 3;
 /// Streaks longer than this pay no more for their end.
 pub const STREAK_XP_CAP: i32 = 10;
+
+const _: () = assert!(STREAK_GOLD.len() as i32 == STREAK_XP_CAP - STREAK_GOLD_FROM + 1);
 /// Radius around a death within which enemy heroes receive experience.
 pub const XP_RADIUS: i32 = 1500;
 

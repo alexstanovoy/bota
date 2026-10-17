@@ -1,5 +1,5 @@
 //! The talents a hero may learn, tier by tier, and the hero levels that open
-//! them.
+//! them; and the Attribute Bonus, which Dota keeps under the talent tree.
 
 use bota_proto::{TalentSlot, Talents};
 
@@ -44,6 +44,13 @@ pub fn talent_floor(slot: TalentSlot, learned: Talents) -> u8 {
     } else {
         rules::TALENT_LEVELS[tier]
     }
+}
+
+/// The hero level the Attribute Bonus waits for to take one more level
+/// above `level`.
+#[inline]
+pub const fn attribute_bonus_floor(level: u8) -> u8 {
+    rules::ATTRIBUTE_BONUS_LEVELS_APART * (level + 1)
 }
 
 /// The slot of a tree that holds a talent.

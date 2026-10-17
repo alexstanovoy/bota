@@ -35,7 +35,10 @@ fn the_tables_keep_their_registered_ids() {
     defined_as_registered(IdSpace::Hero, &heroes);
     let abilities: Vec<_> = ABILITIES.iter().map(|ability| Some(ability.name)).collect();
     defined_as_registered(IdSpace::Ability, &abilities);
-    let items: Vec<_> = ITEMS.iter().map(|item| Some(item.name)).collect();
+    let items: Vec<_> = ITEMS
+        .iter()
+        .map(|item| (!item.retired).then_some(item.name))
+        .collect();
     defined_as_registered(IdSpace::Item, &items);
     let effects: Vec<_> = EFFECTS.iter().map(|effect| Some(effect.name)).collect();
     defined_as_registered(IdSpace::Effect, &effects);
@@ -54,8 +57,8 @@ fn every_modifier() -> Vec<ModifierKind> {
             breaks: false,
         },
         ModifierKind::Fountain {
-            hp_per_tick: 0,
-            mana_per_tick: 0,
+            hp_pct: 0,
+            mana_pct: 0,
         },
         ModifierKind::Stunned,
         ModifierKind::Shielded,

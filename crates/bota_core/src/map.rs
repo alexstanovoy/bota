@@ -130,9 +130,12 @@ const DEMO: MapDef = MapDef {
     tower_ends_it: false,
 };
 
-/// Full Dota geometry with mid-only waves and a hero/tower finish bounded by [`MAP2_TICK_CAP`].
+/// Full Dota geometry with mid-only waves and a hero/tower finish bounded by
+/// [`MAP2_TICK_CAP`]; the side tier ones stand invulnerable as in Dota's
+/// "1v1 Solo Mid", so only a mid tower can end it.
 const SKIRMISH: MapDef = MapDef {
     id: MAP2_ID,
+    protection: &crate::SOLO_MID_PROTECTION,
     wave_lanes: &[rules::LANE_MID],
     death_limit: MAP2_DEATH_LIMIT,
     tower_ends_it: true,

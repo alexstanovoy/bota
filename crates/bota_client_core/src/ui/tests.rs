@@ -86,22 +86,22 @@ fn a_part_in_hand_comes_off_what_the_shop_asks() {
     let parts = [ItemId::BOOTS, ItemId::GLOVES, ItemId::BELT];
     let built: i32 = parts.iter().map(|part| whole_price(*part)).sum();
     assert_eq!(
-        price_for(ItemId::POWER_TREADS, &[]),
+        price_for(ItemId::POWER_TREADS, &[], None),
         built,
         "with nothing in hand the parts are asked for"
     );
     assert_eq!(
-        price_for(ItemId::POWER_TREADS, &[ItemId::BOOTS]),
+        price_for(ItemId::POWER_TREADS, &[ItemId::BOOTS], None),
         built - whole_price(ItemId::BOOTS),
         "the boots already worn are not asked for twice"
     );
     assert_eq!(
-        price_for(ItemId::BOOTS, &[ItemId::BOOTS]),
+        price_for(ItemId::BOOTS, &[ItemId::BOOTS], None),
         whole_price(ItemId::BOOTS),
         "but a second of what is bought whole costs the whole of it"
     );
     assert_eq!(
-        price_for(ItemId::POWER_TREADS, &[ItemId::POWER_TREADS]),
+        price_for(ItemId::POWER_TREADS, &[ItemId::POWER_TREADS], None),
         built,
         "and a second built one is built out of fresh parts"
     );
@@ -527,6 +527,8 @@ fn a_cast_point_shortens_while_a_feast_runs_on_a_hero_with_the_talent() {
         slot: SlotId(0),
         learned: bota_proto::Talents::default().with(bota_proto::TalentSlot(7)),
         learnable: bota_proto::Talents::default(),
+        attribute_bonus: 0,
+        attribute_bonus_learnable: false,
     };
     let mut view = a_tick(10, vec![fiend.clone()], seat);
     view.talents = vec![told];
@@ -618,13 +620,24 @@ fn the_next_hit_is_what_the_server_would_land() {
     creep.kind = UnitKind::CreepMelee;
     creep.team = Team::Dire;
     creep.armor = Fixed::from_int(2);
-    // (40 + 36), (45 + 36) and (50 + 36), each times 100 / 112, rounded down.
+    // (40 + 16), (45 + 16) and (50 + 16), each times 100 / 112, rounded down.
     assert_eq!(
         next_hit(&hero, &creep),
         HitRange {
-            least: 67,
-            mid: 72,
-            most: 76
+            least: 50,
+            mid: 54,
+            most: 58
+        }
+    );
+    // A ranged hero's blade adds 4, not 8: (40 + 8), (45 + 8), (50 + 8).
+    let mut fiend = hero.clone();
+    fiend.hero = Some(bota_proto::HeroId::SHADOW_FIEND);
+    assert_eq!(
+        next_hit(&fiend, &creep),
+        HitRange {
+            least: 42,
+            mid: 47,
+            most: 51
         }
     );
 
@@ -759,7 +772,7 @@ fn every_blurb_takes_its_numbers_from_the_rules() {
     );
     // The numbers are the rules': Quelling's bonus and Hook's reach.
     let quelling = ITEMS[usize::from(ItemId::QUELLING_BLADE.0)];
-    assert_eq!(quelling.stats(), "+18 creep");
+    assert_eq!(quelling.stats(), "+8/4 creep", "melee, then ranged");
     assert!(
         ABILITIES[usize::from(AbilityId::MEAT_HOOK.0)]
             .blurb()

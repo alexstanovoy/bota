@@ -1,8 +1,8 @@
 //! What a seat pays for an item and what it still lacks to build one, over
 //! the core's item table.
 
-use bota_core::item_def;
-use bota_proto::{ItemId, PlayerView, WorldView};
+use bota_core::{hero_def, item_def};
+use bota_proto::{Attribute, ItemId, PlayerView, WorldView};
 
 /// Every item in a seat's hero's bag and in its stash that the seat bought
 /// and has not marked for sale, for [`price_for`].
@@ -20,28 +20,30 @@ pub fn held_items(view: &WorldView, p: &PlayerView) -> Vec<ItemId> {
         .collect()
 }
 
-/// What one item is built from; nothing for one bought whole.
-fn components_of(item: ItemId) -> &'static [ItemId] {
-    item_def(item).map_or(&[], |def| def.components)
-}
-
 /// What the shop asks for one item whole, before anything already in hand.
 pub fn whole_price(item: ItemId) -> i32 {
     item_def(item).map_or(0, |def| def.cost)
 }
 
+/// The primary attribute of a seat's hero, which picks among an item's
+/// recipes of one price.
+pub fn primary_of(p: &PlayerView) -> Option<Attribute> {
+    hero_def(p.hero).and_then(|hero| hero.unit.primary)
+}
+
 /// What the shop asks a seat holding `held` for one item: an item without
 /// parts costs its whole price however many are held; a built one costs the
-/// parts not found in `held`, each spent once.
-pub fn price_for(item: ItemId, held: &[ItemId]) -> i32 {
-    missing_parts(item, held)
+/// parts not found in `held`, each spent once, of its cheapest recipe.
+pub fn price_for(item: ItemId, held: &[ItemId], primary: Option<Attribute>) -> i32 {
+    missing_parts(item, held, primary)
         .iter()
         .map(|part| whole_price(*part))
         .sum()
 }
 
 /// The parts bought whole that a seat holding `held` still lacks for one
-/// item, in build order: the item itself when it has no parts.
-pub fn missing_parts(item: ItemId, held: &[ItemId]) -> Vec<ItemId> {
-    bota_core::missing_parts(item, held, components_of)
+/// item, in build order: the item itself when it has no parts. Of several
+/// recipes the server's pick, [`bota_core::missing_parts`].
+pub fn missing_parts(item: ItemId, held: &[ItemId], primary: Option<Attribute>) -> Vec<ItemId> {
+    bota_core::missing_parts(item, held, primary)
 }

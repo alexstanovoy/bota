@@ -1,6 +1,6 @@
 //! Cheats: what each one does, and that a match without them refuses them.
 
-use bota_core::{ITEMS, MELEE_CREEP, ability_mana_cost, hero_bounty, rules};
+use bota_core::{ITEMS, MELEE_CREEP, ability_mana_cost, assist_gold, hero_bounty, rules};
 
 use super::support::{a_spec, spec};
 use crate::game::{Command, Entity, Event, ItemStack, MatchConfig, World, wire_id};
@@ -456,13 +456,20 @@ fn gold_income_scales_the_bounty_a_kill_pays() {
     let killer = world.seats[0].unit.expect("the killer stands");
     let victim = world.seats[1].unit.expect("the victim stands");
     world.seats[1].streak = 3;
-    let composed = hero_bounty(3);
+    let composed = hero_bounty(1, 3, true);
     cheat_modifier(&mut world, spec(|s| s.gold_income = 15_000), 1_000);
     let before = world.seats[0].gold;
     let net_worth = world.seats[0].net_worth;
+    let assist = assist_gold(
+        world.seats[1].net_worth,
+        1,
+        i64::from(world.seats[0].net_worth),
+        i64::from(world.seats[1].net_worth),
+    );
     world.push_hit(Some(killer), victim, 100_000, DamageKind::Pure);
     let events = world.step();
-    let expected = composed * 15_000 / 10_000;
+    // The head and the killer's assist share, each scaled once.
+    let expected = composed * 15_000 / 10_000 + assist * 15_000 / 10_000;
     assert_eq!(
         world.seats[0].gold,
         before + expected,
@@ -483,12 +490,13 @@ fn gold_income_leaves_starting_passive_and_refunded_gold_alone() {
     let before = world.seats[0].gold;
     cheat_modifier(&mut world, spec(|s| s.gold_income = 20_000), 1_000);
     assert_eq!(world.seats[0].gold, before, "no gold arrives with it");
-    world.tick = rules::PREGAME_TICKS + rules::PASSIVE_GOLD_PERIOD_TICKS;
+    // 90 a minute: the first gold comes two thirds of a second after the horn.
+    world.tick = rules::PREGAME_TICKS + 2 * rules::TICKS_PER_SECOND / 3;
     world.passive_gold();
     assert_eq!(
         world.seats[0].gold,
         before + 1,
-        "passive income is one a period either way"
+        "passive income is the clock's either way"
     );
     let mut stack =
         ItemStack::bought(ItemId::BUTTERFLY, SlotId(0), world.tick).expect("the Butterfly is sold");

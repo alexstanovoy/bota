@@ -641,11 +641,11 @@ fn max_health_scales_the_raised_base_before_items() {
     let (mut world, hero, _creep) = arena();
     hold(&mut world, hero, 0, ItemId::BRACER);
     apply(&mut world, hero, spec(|s| s.max_hp = 20_000), 10);
-    let expected = SHADOW_FIEND.max_hp * 2 + rules::HP_PER_STRENGTH * 25;
+    let expected = SHADOW_FIEND.max_hp * 2 + rules::HP_PER_STRENGTH * 24 + 50;
     assert_eq!(
         world.stats.get(hero).map(|stats| stats.max_hp.to_int()),
         Some(expected),
-        "the base is doubled first, then the bracer's strength pays"
+        "the base is doubled first, then the bracer's strength and health pay"
     );
 }
 

@@ -433,12 +433,12 @@ pub fn ancient_of(team: Team) -> &'static UnitDef {
 /// What a fountain mends on its own side standing in it.
 const FOUNTAIN_AURAS: [Aura; 1] = [Aura {
     kind: ModifierKind::Fountain {
-        hp_per_tick: rules::FOUNTAIN_HEAL_HP_PER_TICK * 100,
-        mana_per_tick: rules::FOUNTAIN_HEAL_MANA_PER_TICK * 100,
+        hp_pct: rules::FOUNTAIN_HEAL_HP_PCT,
+        mana_pct: rules::FOUNTAIN_HEAL_MANA_PCT,
     },
     radius: rules::FOUNTAIN_HEAL_RADIUS,
     reaches: Reach::All,
-    ticks: rules::TICKS_PER_SECOND,
+    ticks: rules::FOUNTAIN_HEAL_LINGER_TICKS,
 }];
 
 /// A fountain.

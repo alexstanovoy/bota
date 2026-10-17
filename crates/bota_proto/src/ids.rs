@@ -210,8 +210,6 @@ impl ItemId {
     pub const MAGIC_STICK: ItemId = ItemId(35);
     /// Magic Wand.
     pub const MAGIC_WAND: ItemId = ItemId(36);
-    /// The recipe Phase Boots are built with.
-    pub const RECIPE_PHASE_BOOTS: ItemId = ItemId(37);
     /// The recipe a Bracer is built with.
     pub const RECIPE_BRACER: ItemId = ItemId(38);
     /// The recipe a Wraith Band is built with.

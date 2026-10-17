@@ -20,8 +20,18 @@ impl World {
             }
             UseSpec::Teleport => self.begin_teleport(user, target),
             UseSpec::SwitchMode => self.switch_mode(user, slot),
-            UseSpec::Phase { pct, ticks } => self.walk_through(user, pct, ticks),
-            UseSpec::Blink { range } => self.blink_to(user, target, range),
+            UseSpec::Phase {
+                pct,
+                ranged_pct,
+                ticks,
+            } => {
+                let ranged = self
+                    .stats
+                    .get(user)
+                    .is_some_and(|stats| stats.projectile_speed.is_some());
+                self.walk_through(user, if ranged { ranged_pct } else { pct }, ticks)
+            }
+            UseSpec::Blink { range, overshoot } => self.blink_to(user, target, range, overshoot),
             UseSpec::Restore {
                 hp_per_charge,
                 mana_per_charge,

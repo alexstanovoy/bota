@@ -23,10 +23,10 @@ pub enum ModifierKind {
     },
     /// Health and mana both mend faster, for standing in a fountain.
     Fountain {
-        /// Hundredths of a point of health a tick.
-        hp_per_tick: i32,
-        /// Hundredths of a point of mana a tick.
-        mana_per_tick: i32,
+        /// Percent of the maximum health mended a second.
+        hp_pct: i32,
+        /// Percent of the maximum mana mended a second.
+        mana_pct: i32,
     },
     /// Cannot act at all: it neither walks, nor turns, nor swings, nor casts.
     Stunned,

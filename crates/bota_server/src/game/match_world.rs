@@ -94,6 +94,9 @@ impl World {
             Order::LearnTalent { talent } => {
                 self.learn_talent(unit, talent);
             }
+            Order::LearnAttributeBonus => {
+                self.learn_attribute_bonus(unit);
+            }
             Order::Swap { from, to } => {
                 self.move_item(cmd.slot, unit, usize::from(from.0), usize::from(to.0));
             }
@@ -249,6 +252,7 @@ impl World {
             Order::Take { .. }
             | Order::Learn { .. }
             | Order::LearnTalent { .. }
+            | Order::LearnAttributeBonus
             | Order::Swap { .. }
             | Order::Sell { .. }
             | Order::Buy { .. }
@@ -363,6 +367,13 @@ impl World {
             Order::Cheat { cheat } => self.check_cheat(unit, cheat),
             Order::LearnTalent { talent } => {
                 if self.can_learn_talent(unit, *talent) {
+                    Ok(())
+                } else {
+                    Err(RejectReason::CannotLearn)
+                }
+            }
+            Order::LearnAttributeBonus => {
+                if self.can_learn_attribute_bonus(unit) {
                     Ok(())
                 } else {
                     Err(RejectReason::CannotLearn)

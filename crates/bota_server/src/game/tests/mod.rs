@@ -16,6 +16,7 @@ mod fillers;
 mod grenade;
 mod hash;
 mod ids;
+mod item_numbers;
 mod items;
 mod jungle;
 mod local;

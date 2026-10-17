@@ -1,4 +1,5 @@
-//! Shadow Fiend's talents: how a skill point buys one, and what each does.
+//! Shadow Fiend's talents and Attribute Bonus: how each is taken, and what
+//! each does.
 
 use bota_core::{ModifierKind, rules};
 
@@ -72,7 +73,7 @@ fn set(slots: &[u8]) -> Talents {
 }
 
 #[test]
-fn a_tier_opens_at_its_level_and_takes_one_talent_of_two_for_a_point() {
+fn a_tier_opens_at_its_level_and_takes_one_talent_of_two_for_no_skill_point() {
     let mut world = two_fiends_at(9);
     assert_eq!(ask_talent(&mut world, 0), Err(RejectReason::CannotLearn));
     assert_eq!(
@@ -88,17 +89,25 @@ fn a_tier_opens_at_its_level_and_takes_one_talent_of_two_for_a_point() {
             slot: SlotId(0),
             learned: Talents::default(),
             learnable: set(&[0, 1]),
+            attribute_bonus: 0,
+            attribute_bonus_learnable: true,
         })
     );
     assert_eq!(ask_talent(&mut world, 2), Err(RejectReason::CannotLearn));
     assert_eq!(ask_talent(&mut world, 1), Ok(()));
-    assert_eq!(world.points_spent(hero), 1, "it costs a point");
+    assert_eq!(
+        world.points_spent(hero),
+        0,
+        "it costs no skill point (7.40)"
+    );
     assert_eq!(
         told(&world, Some(Team::Radiant), 0),
         Some(TalentView {
             slot: SlotId(0),
             learned: set(&[1]),
             learnable: Talents::default(),
+            attribute_bonus: 0,
+            attribute_bonus_learnable: true,
         }),
         "and shuts its tier"
     );
@@ -107,14 +116,101 @@ fn a_tier_opens_at_its_level_and_takes_one_talent_of_two_for_a_point() {
 }
 
 #[test]
-fn a_talent_waits_for_a_point_like_an_ability() {
+fn a_talent_waits_for_no_skill_point() {
     let mut world = two_fiends_at(10);
     let hero = world.seats[0].unit.expect("standing");
     for slot in [0, 3, 4, 5, 0, 3, 4, 0, 3, 4] {
         world.learn(hero, slot);
     }
     assert_eq!(world.points_spent(hero), 10, "every point is in the kit");
-    assert_eq!(ask_talent(&mut world, 0), Err(RejectReason::CannotLearn));
+    assert_eq!(
+        ask_talent(&mut world, 0),
+        Ok(()),
+        "a talent comes with its own point since 7.40"
+    );
+    assert!(
+        world
+            .abilities
+            .get(hero)
+            .expect("a book")
+            .talents
+            .has(TalentSlot(0))
+    );
+}
+
+/// Seat 0 asks for a level of the Attribute Bonus.
+fn ask_attribute_bonus(world: &mut World) -> Result<(), RejectReason> {
+    let order = Order::LearnAttributeBonus;
+    world.validate_order(SlotId(0), None, &order)?;
+    world.advance(&[Command {
+        slot: SlotId(0),
+        unit: None,
+        order,
+    }]);
+    Ok(())
+}
+
+#[test]
+fn the_attribute_bonus_adds_two_of_each_for_a_point_a_level_every_two_levels() {
+    let mut world = two_fiends_at(3);
+    let hero = world.seats[0].unit.expect("standing");
+    let before = world.stats.get(hero).expect("derived").attributes;
+    assert_eq!(ask_attribute_bonus(&mut world), Ok(()));
+    world.step();
+    assert_eq!(
+        world.stats.get(hero).expect("derived").attributes,
+        before + bota_proto::Attributes::all(2),
+        "two of every attribute"
+    );
+    assert_eq!(world.points_spent(hero), 1, "for a skill point");
+    assert_eq!(
+        ask_attribute_bonus(&mut world),
+        Err(RejectReason::CannotLearn),
+        "the second level waits for hero level four"
+    );
+    world.learn(hero, 0);
+    world.learn(hero, 3);
+    world.step();
+    assert_eq!(world.points_spent(hero), 3);
+    world.grant_xp(
+        0,
+        rules::XP_THRESHOLDS[3] - world.seats[0].xp,
+        &mut Vec::new(),
+    );
+    world.step();
+    assert_eq!(ask_attribute_bonus(&mut world), Ok(()), "at four it opens");
+    assert_eq!(
+        told(&world, Some(Team::Radiant), 0).map(|view| view.attribute_bonus),
+        Some(2),
+        "and the view counts it"
+    );
+}
+
+#[test]
+fn the_attribute_bonus_is_taken_on_its_own_when_nothing_else_can_be() {
+    let mut world = two_fiends_at(14);
+    let hero = world.seats[0].unit.expect("standing");
+    // Razes, feast and presence at four and the requiem at two: all of
+    // level fourteen's points, and as far as level fifteen lets them go.
+    for slot in [0, 3, 4, 0, 3, 4, 0, 3, 4, 0, 3, 4, 5, 5] {
+        assert!(world.learn(hero, slot), "slot {slot}");
+    }
+    assert_eq!(
+        world.abilities.get(hero).expect("a book").attribute_bonus,
+        0
+    );
+    world.grant_xp(
+        0,
+        rules::XP_THRESHOLDS[14] - world.seats[0].xp,
+        &mut Vec::new(),
+    );
+    assert_eq!(world.seats[0].level, 15);
+    assert_eq!(
+        world.abilities.get(hero).expect("a book").attribute_bonus,
+        1,
+        "level fifteen's point goes into the bonus by itself"
+    );
+    assert_eq!(world.points_spent(hero), 15);
 }
 
 #[test]
@@ -151,6 +247,11 @@ fn a_hero_without_a_tree_learns_none() {
     world.grant_xp(0, xp, &mut Vec::new());
     world.step();
     assert_eq!(ask_talent(&mut world, 0), Err(RejectReason::CannotLearn));
+    assert_eq!(
+        ask_attribute_bonus(&mut world),
+        Err(RejectReason::CannotLearn),
+        "nor the bonus kept below its tree"
+    );
     assert!(world.view_full().talents.is_empty(), "and shows no tree");
 }
 
@@ -200,6 +301,8 @@ fn the_other_side_sees_learned_talents_while_it_sees_the_hero_and_its_own_throug
             slot: SlotId(0),
             learned: set(&[1]),
             learnable: Talents::default(),
+            attribute_bonus: 0,
+            attribute_bonus_learnable: false,
         }),
         "in sight, what is learned and nothing of what could be"
     );
