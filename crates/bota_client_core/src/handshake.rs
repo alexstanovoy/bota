@@ -5,8 +5,8 @@
 use std::time::Duration;
 
 use bota_proto::{
-    ClientMsg, HeroId, LobbySlot, MatchInfo, PlayerId, Role, SeatKey, ServerMsg, SlotId, TickMode,
-    WIRE_FINGERPRINT,
+    ClientMsg, HeroId, LobbySlot, MAX_CLIENT_NAME_LEN, MatchInfo, PlayerId, Role, SeatKey,
+    ServerMsg, SlotId, TickMode,
 };
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -19,7 +19,6 @@ use crate::transport::DEFAULT_IO_TIMEOUT;
 use crate::transport::Transport;
 
 const MAX_MESSAGES_BEFORE_WELCOME: usize = 64;
-const MAX_NAME_LEN: usize = 64;
 
 /// A seat assigned by the server's welcome.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -118,14 +117,10 @@ pub fn join(
     hero: HeroId,
     key: Option<SeatKey>,
 ) -> std::io::Result<Seated> {
-    validate_name(name)?;
-    transport.send(&ClientMsg::Hello {
-        role: Role::Bot,
-        name: name.to_owned(),
-        key,
-        wire_fingerprint: WIRE_FINGERPRINT,
+    let lobby = greet(transport, Role::Bot, name, key)?;
+    let seated = lobby.seated().ok_or_else(|| {
+        std::io::Error::other("server accepted the client without assigning a seat")
     })?;
-    let seated = wait_for_welcome(transport)?;
     transport.send(&ClientMsg::PickHero { hero })?;
     transport.send(&ClientMsg::SetReady(true))?;
     Ok(Seated {
@@ -134,7 +129,17 @@ pub fn join(
     })
 }
 
-fn wait_for_welcome(transport: &mut impl Transport) -> std::io::Result<Seated> {
+/// Says hello and waits for the welcome, answering pings meanwhile; what the
+/// lobby phase has told so far comes back. A spectator takes no seat, so its
+/// lobby has none.
+pub fn greet(
+    transport: &mut impl Transport,
+    role: Role,
+    name: &str,
+    key: Option<SeatKey>,
+) -> std::io::Result<Lobby> {
+    validate_name(name)?;
+    transport.send(&ClientMsg::hello(role, name, key))?;
     let mut lobby = Lobby::default();
     for _ in 0..MAX_MESSAGES_BEFORE_WELCOME {
         let message = transport
@@ -143,9 +148,7 @@ fn wait_for_welcome(transport: &mut impl Transport) -> std::io::Result<Seated> {
         match message {
             ServerMsg::Welcome { .. } => {
                 lobby.observe(&message);
-                return lobby.seated().ok_or_else(|| {
-                    std::io::Error::other("server accepted the client without assigning a seat")
-                });
+                return Ok(lobby);
             }
             ServerMsg::WireMismatch { server_fingerprint } => {
                 return Err(std::io::Error::other(SessionError::WireMismatch {
@@ -168,9 +171,9 @@ fn validate_name(name: &str) -> std::io::Result<()> {
     if name.is_empty() {
         return Err(std::io::Error::other("client name must not be empty"));
     }
-    if name.len() > MAX_NAME_LEN {
+    if name.len() > MAX_CLIENT_NAME_LEN {
         return Err(std::io::Error::other(format!(
-            "client name is {} bytes; maximum is {MAX_NAME_LEN}",
+            "client name is {} bytes; maximum is {MAX_CLIENT_NAME_LEN}",
             name.len()
         )));
     }

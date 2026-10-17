@@ -6,17 +6,12 @@ use std::net::TcpListener;
 use std::thread;
 use std::time::Duration;
 
-use bota_proto::{ClientMsg, Role, ServerMsg, WIRE_FINGERPRINT, encode_frame_to_vec};
+use bota_proto::{ClientMsg, Role, ServerMsg, encode_frame_to_vec};
 
 use crate::{Net, Redial, Transport};
 
 fn hello() -> ClientMsg {
-    ClientMsg::Hello {
-        role: Role::Bot,
-        name: "net".to_string(),
-        key: None,
-        wire_fingerprint: WIRE_FINGERPRINT,
-    }
+    ClientMsg::hello(Role::Bot, "net", None)
 }
 
 #[test]

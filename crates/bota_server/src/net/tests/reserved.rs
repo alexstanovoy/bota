@@ -6,7 +6,6 @@ use std::time::Duration;
 
 use bota_proto::{
     ClientMsg, HeroId, MapId, PlayerId, Role, SeatKey, ServerMsg, SlotId, Team, TickMode,
-    WIRE_FINGERPRINT,
 };
 
 use super::*;
@@ -50,12 +49,7 @@ impl TestClient {
     }
 
     fn hello(&mut self, role: Role, key: Option<SeatKey>) {
-        self.send(&ClientMsg::Hello {
-            role,
-            name: "ignored".to_owned(),
-            key,
-            wire_fingerprint: WIRE_FINGERPRINT,
-        });
+        self.send(&ClientMsg::hello(role, "ignored", key));
     }
 
     /// Reads on until the server hangs up, within a bound.

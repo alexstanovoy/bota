@@ -8,9 +8,7 @@ use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
 
-use bota_proto::{
-    ClientMsg, FrameReader, Role, ServerMsg, SlotId, WIRE_FINGERPRINT, encode_frame_to_vec,
-};
+use bota_proto::{ClientMsg, FrameReader, Role, ServerMsg, SlotId, encode_frame_to_vec};
 
 const WAIT: Duration = Duration::from_secs(10);
 
@@ -78,15 +76,7 @@ fn send(stream: &mut TcpStream, msg: &ClientMsg) {
 
 /// Waits for the welcome and returns the seat it names.
 fn greet(stream: &mut TcpStream) -> Option<SlotId> {
-    send(
-        stream,
-        &ClientMsg::Hello {
-            role: Role::Bot,
-            name: "probe".to_string(),
-            key: None,
-            wire_fingerprint: WIRE_FINGERPRINT,
-        },
-    );
+    send(stream, &ClientMsg::hello(Role::Bot, "probe", None));
     let mut reader = FrameReader::new();
     let mut buf = [0u8; 4096];
     loop {

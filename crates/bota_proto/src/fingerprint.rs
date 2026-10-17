@@ -13,6 +13,17 @@ pub const WIRE_FINGERPRINT: u64 = fnv1a(&[
     include_str!("../registry/ids.txt").as_bytes(),
 ]);
 
+/// A fingerprint as 16 hex digits, the way `bota_server --wire-fingerprint`
+/// prints it.
+pub fn fingerprint_to_hex(fingerprint: u64) -> String {
+    format!("{fingerprint:016x}")
+}
+
+/// A fingerprint from its hex digits.
+pub fn fingerprint_from_hex(hex: &str) -> Option<u64> {
+    u64::from_str_radix(hex, 16).ok()
+}
+
 const fn fnv1a(parts: &[&[u8]]) -> u64 {
     let mut hash = 0xcbf2_9ce4_8422_2325_u64;
     let mut part = 0;

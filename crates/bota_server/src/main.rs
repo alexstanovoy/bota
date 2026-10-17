@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use clap::{Parser, ValueEnum};
 
-use bota_proto::SeatKey;
+use bota_proto::{MAX_CLIENT_NAME_LEN, SeatKey};
 use bota_server::game::{OrderDelay, check_order_delays};
 use bota_server::game_loop::{DEFAULT_IDLE_TIMEOUT, ServerOpts, run};
 use bota_server::lobby::ReservedSeat;
@@ -109,14 +109,17 @@ struct Args {
 fn main() -> std::io::Result<()> {
     let args = Args::parse();
     if args.wire_fingerprint {
-        println!("{:016x}", bota_proto::WIRE_FINGERPRINT);
+        println!(
+            "{}",
+            bota_proto::fingerprint_to_hex(bota_proto::WIRE_FINGERPRINT)
+        );
         return Ok(());
     }
     let reserved = reservations(&args.seats).map_err(std::io::Error::other)?;
     let referee_key = args
         .referee_key
         .as_deref()
-        .map(parse_key)
+        .map(|hex| SeatKey::from_hex(hex).ok_or("a key is 64 hex digits"))
         .transpose()
         .map_err(std::io::Error::other)?;
     let players = match (args.players, reserved.len()) {
@@ -202,9 +205,6 @@ fn order_delays(args: &Args, players: u8) -> Result<Vec<OrderDelay>, String> {
     Ok(delays)
 }
 
-/// The longest name a reservation may carry, in bytes.
-const MAX_SEAT_NAME_LEN: usize = 64;
-
 /// Seats from `key_hex:name` entries.
 fn reservations(entries: &[String]) -> Result<Vec<ReservedSeat>, String> {
     entries
@@ -213,27 +213,15 @@ fn reservations(entries: &[String]) -> Result<Vec<ReservedSeat>, String> {
             let (key, name) = entry
                 .split_once(':')
                 .ok_or("a seat reservation reads key_hex:name")?;
-            if name.is_empty() || name.len() > MAX_SEAT_NAME_LEN {
-                return Err(format!("a seat name takes 1 to {MAX_SEAT_NAME_LEN} bytes"));
+            if name.is_empty() || name.len() > MAX_CLIENT_NAME_LEN {
+                return Err(format!(
+                    "a seat name takes 1 to {MAX_CLIENT_NAME_LEN} bytes"
+                ));
             }
             Ok(ReservedSeat {
-                key: parse_key(key)?,
+                key: SeatKey::from_hex(key).ok_or("a key is 64 hex digits")?,
                 name: name.to_owned(),
             })
         })
         .collect()
-}
-
-/// A key from its 64 hex digits.
-fn parse_key(hex: &str) -> Result<SeatKey, String> {
-    let digits = hex.as_bytes();
-    if digits.len() != 64 {
-        return Err("a key is 64 hex digits".to_owned());
-    }
-    let mut key = [0u8; 32];
-    for (byte, pair) in key.iter_mut().zip(digits.chunks(2)) {
-        let pair = std::str::from_utf8(pair).map_err(|_| "a key is 64 hex digits")?;
-        *byte = u8::from_str_radix(pair, 16).map_err(|_| "a key is 64 hex digits")?;
-    }
-    Ok(SeatKey(key))
 }

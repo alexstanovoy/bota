@@ -245,6 +245,23 @@ impl OutgoingOrder {
     }
 }
 
+/// The longest name a client may announce in its [`ClientMsg::Hello`], in
+/// bytes. Clients and seat reservations are held to it.
+pub const MAX_CLIENT_NAME_LEN: usize = 64;
+
+impl ClientMsg {
+    /// The first message on a connection, stamped with this build's
+    /// [`WIRE_FINGERPRINT`](crate::WIRE_FINGERPRINT).
+    pub fn hello(role: Role, name: impl Into<String>, key: Option<SeatKey>) -> ClientMsg {
+        ClientMsg::Hello {
+            role,
+            name: name.into(),
+            key,
+            wire_fingerprint: crate::WIRE_FINGERPRINT,
+        }
+    }
+}
+
 /// Anything a participant can say to the server.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub enum ClientMsg {

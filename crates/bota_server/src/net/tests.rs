@@ -69,12 +69,7 @@ fn start_server(opts: ServerOpts) -> std::net::SocketAddr {
 
 fn join_as_bot(addr: std::net::SocketAddr, name: &str) -> (TestClient, Option<SlotId>) {
     let mut client = TestClient::connect(addr);
-    client.send(&ClientMsg::Hello {
-        role: Role::Bot,
-        name: name.to_string(),
-        key: None,
-        wire_fingerprint: WIRE_FINGERPRINT,
-    });
+    client.send(&ClientMsg::hello(Role::Bot, name, None));
     let slot = client.recv_until(|msg| match msg {
         ServerMsg::Welcome { slot, .. } => Some(slot),
         _ => None,
@@ -245,12 +240,7 @@ fn a_spectator_borrows_eyes_and_is_told_the_orders_they_see() {
     let (mut c1, _) = join_as_bot(addr, "alpha");
     let (mut c2, _) = join_as_bot(addr, "beta");
     let mut watcher = TestClient::connect(addr);
-    watcher.send(&ClientMsg::Hello {
-        role: Role::Spectator,
-        name: "eye".to_string(),
-        key: None,
-        wire_fingerprint: WIRE_FINGERPRINT,
-    });
+    watcher.send(&ClientMsg::hello(Role::Spectator, "eye", None));
     let slot = watcher.recv_until(|msg| match msg {
         ServerMsg::Welcome { slot, .. } => Some(slot),
         _ => None,
