@@ -2,7 +2,7 @@
 
 use bota_proto::{Attribute, Fixed, ItemId, UnitKind};
 
-use crate::{item_def, kind_def, rules};
+use crate::{ItemDef, Recipe, item_def, kind_def, rules};
 
 /// Whether one of a side's own units is worn down far enough for that side
 /// to put it out: below its kind's
@@ -128,20 +128,37 @@ pub fn denied_xp(bounty_xp: i32) -> i32 {
 /// primary attribute" (Liquipedia, *Power Treads*). A part's own parts are
 /// its first recipe's.
 pub fn missing_parts(item: ItemId, held: &[ItemId], primary: Option<Attribute>) -> Vec<ItemId> {
-    let Some(def) = item_def(item).filter(|def| !def.components.is_empty()) else {
-        return vec![item];
-    };
+    missing_parts_with(
+        item,
+        held,
+        primary,
+        |id| item_def(id).into_iter().flat_map(ItemDef::recipes),
+        |id| item_def(id).map_or(0, |def| def.cost),
+    )
+}
+
+/// [`missing_parts`] over another statement of the shop, such as the one a
+/// match describes on the wire: `recipes_of` lists an item's recipes, its
+/// components first and none for one bought whole, and `cost_of` its price.
+pub fn missing_parts_with<'a, R>(
+    item: ItemId,
+    held: &[ItemId],
+    primary: Option<Attribute>,
+    recipes_of: impl Fn(ItemId) -> R,
+    cost_of: impl Fn(ItemId) -> i32,
+) -> Vec<ItemId>
+where
+    R: Iterator<Item = Recipe<'a>>,
+{
+    let first_parts = |id: ItemId| recipes_of(id).next().map_or(&[][..], |recipe| recipe.parts);
     let mut best: Option<(i32, bool, Vec<ItemId>)> = None;
-    for recipe in def.recipes() {
+    for recipe in recipes_of(item) {
         let mut spare = held.to_vec();
         let mut wanted = Vec::new();
         for part in recipe.parts {
-            parts_beyond(*part, &mut spare, &mut wanted);
+            parts_beyond(*part, &mut spare, &mut wanted, &first_parts);
         }
-        let cost = wanted
-            .iter()
-            .map(|part| item_def(*part).map_or(0, |def| def.cost))
-            .sum::<i32>();
+        let cost = wanted.iter().map(|part| cost_of(*part)).sum::<i32>();
         let own = recipe.mode.is_some() && recipe.mode == primary;
         let better = best
             .as_ref()
@@ -150,20 +167,25 @@ pub fn missing_parts(item: ItemId, held: &[ItemId], primary: Option<Attribute>) 
             best = Some((cost, own, wanted));
         }
     }
-    best.map_or_else(Vec::new, |(_, _, wanted)| wanted)
+    best.map_or_else(|| vec![item], |(_, _, wanted)| wanted)
 }
 
 /// Lays out what one part still costs, spending `held` as it goes.
-fn parts_beyond(item: ItemId, held: &mut Vec<ItemId>, wanted: &mut Vec<ItemId>) {
+fn parts_beyond<'a>(
+    item: ItemId,
+    held: &mut Vec<ItemId>,
+    wanted: &mut Vec<ItemId>,
+    parts_of: &impl Fn(ItemId) -> &'a [ItemId],
+) {
     if let Some(at) = held.iter().position(|id| *id == item) {
         held.remove(at);
         return;
     }
-    match item_def(item).map_or(&[][..], |def| def.components) {
+    match parts_of(item) {
         [] => wanted.push(item),
         parts => {
             for part in parts {
-                parts_beyond(*part, held, wanted);
+                parts_beyond(*part, held, wanted, parts_of);
             }
         }
     }

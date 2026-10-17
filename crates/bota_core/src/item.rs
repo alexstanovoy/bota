@@ -228,9 +228,9 @@ pub struct Stock {
 /// One set of parts an item is built from, and the attribute the build is
 /// set to when it comes of them.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Recipe {
+pub struct Recipe<'a> {
     /// The parts.
-    pub parts: &'static [ItemId],
+    pub parts: &'a [ItemId],
     /// The attribute the built item is set to. Absent for one set to none.
     pub mode: Option<Attribute>,
 }
@@ -275,7 +275,7 @@ pub struct ItemDef {
     pub components: &'static [ItemId],
     /// Other sets of parts it is built from as well, each setting the build
     /// to an attribute of its own. Empty for one with a single recipe.
-    pub alternatives: &'static [Recipe],
+    pub alternatives: &'static [Recipe<'static>],
     /// What it adds to whoever carries it; health regeneration is per charge when mergeable.
     pub carried: Carried,
     /// What it adds to a carrier with a ranged attack instead. Absent for
@@ -319,7 +319,7 @@ impl ItemDef {
     /// Every set of parts it is built from: its components, set to its
     /// [`mode`](ItemDef::mode), then its alternatives. Nothing for one that
     /// is bought whole.
-    pub fn recipes(&self) -> impl Iterator<Item = Recipe> + '_ {
+    pub fn recipes(&self) -> impl Iterator<Item = Recipe<'static>> + '_ {
         let first = (!self.components.is_empty()).then_some(Recipe {
             parts: self.components,
             mode: self.mode,

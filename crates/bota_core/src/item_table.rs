@@ -17,7 +17,7 @@ use crate::{
 const TREADS_PARTS: [ItemId; 3] = [ItemId::BOOTS, ItemId::GLOVES, ItemId::BELT];
 /// Power Treads' other recipes, `item_recipe_power_treads` requirements 04
 /// and 06: a Robe sets them to intelligence and a Band to agility.
-const TREADS_ALTERNATIVES: [Recipe; 2] = [
+const TREADS_ALTERNATIVES: [Recipe<'static>; 2] = [
     Recipe {
         parts: &[ItemId::BOOTS, ItemId::GLOVES, ItemId::ROBE],
         mode: Some(Attribute::Intelligence),
