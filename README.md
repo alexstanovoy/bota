@@ -148,6 +148,17 @@ for (session, stream) in sessions.iter_mut().zip(streams) {
 }
 ```
 
+## Adding a hero, an ability or an item
+
+Every hero lives in its own module, `crates/bota_core/src/heroes/<hero>/`: its numbers, its body,
+its abilities, its talents and the pure functions clients read. The step-by-step list (registry
+lines, the module, one row in `HEROES` and `ABILITIES`, the server's hook row and system, the
+tests, the front-end labels) is the rustdoc of `bota_core::heroes`:
+`cargo doc -p bota_core --open`, module `heroes`. An item is one `ITEMS` row in
+`crates/bota_core/src/item_table.rs` (a `UseSpec` variant picks what using it does; new behaviour
+adds a variant and its arm in the server's `World::use_effect`), and a unit kind is a `UnitKind`
+variant plus its `UNIT_KINDS` row. Ids are append-only (below).
+
 ## Protocol rule: append-only
 
 Ids and wire positions are append-only, like protobuf field numbers. This covers
