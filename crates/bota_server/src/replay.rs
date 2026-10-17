@@ -27,11 +27,6 @@ impl ReplayWriter {
         ReplayWriter { out: None }
     }
 
-    /// Whether records are still written.
-    pub fn recording(&self) -> bool {
-        self.out.is_some()
-    }
-
     /// Appends one record.
     pub fn record(&mut self, record: &ReplayRecord) {
         let Some(out) = self.out.as_mut() else {

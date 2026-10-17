@@ -600,16 +600,10 @@ impl World {
     /// One tick, or no change after Map2 completes. The phases run in the
     /// order written, and applied stat changes run down last.
     pub fn step(&mut self) -> Vec<crate::game::Event> {
-        let mut events = Vec::new();
-        self.step_into(&mut events);
-        events
-    }
-
-    /// [`World::step`], appending what it told of to `events`.
-    pub(crate) fn step_into(&mut self, events: &mut Vec<crate::game::Event>) {
         if self.map2_finished() {
-            return;
+            return Vec::new();
         }
+        let mut events = Vec::new();
         self.tick += 1;
         // Who acts first within a tick wins every race decided in it: a
         // blow, a step into a gap, a target taken. Slots go to the side
@@ -623,9 +617,10 @@ impl World {
         self.step_targeting();
         self.step_movement();
         self.step_visibility();
-        self.step_actions(events);
-        self.step_damage(events);
+        self.step_actions(&mut events);
+        self.step_damage(&mut events);
         self.tick_applied();
+        events
     }
 
     /// Waves, camps, cooldowns, item builds, gold, shop stock, respawns,
@@ -816,27 +811,18 @@ impl World {
         } else {
             hitting_system::<false>(cx);
         }
-        // The queues are lent out while what answers to them runs, and handed
-        // back holding whatever that queued meanwhile, with their memory kept.
-        let mut landed = std::mem::take(&mut self.landed);
-        let felt = landed.make_contiguous();
-        self.break_on_blows(felt);
-        self.rouse_camps(felt);
-        self.credit_damage(felt);
-        self.tell_of(felt, events);
-        let mut missed = std::mem::take(&mut self.missed);
-        self.tell_of_misses(missed.make_contiguous(), events);
+        let felt: Vec<Landed> = self.landed.drain(..).collect();
+        self.break_on_blows(&felt);
+        self.rouse_camps(&felt);
+        self.credit_damage(&felt);
+        self.tell_of(&felt, events);
+        let missed: Vec<Missed> = self.missed.drain(..).collect();
+        self.tell_of_misses(&missed, events);
         let fallen = felt
             .iter()
             .filter(|blow| blow.fatal)
             .map(|blow| (blow.target, blow.source))
             .collect();
-        landed.clear();
-        landed.append(&mut self.landed);
-        self.landed = landed;
-        missed.clear();
-        missed.append(&mut self.missed);
-        self.missed = missed;
         self.bury(fallen, events);
     }
 }
