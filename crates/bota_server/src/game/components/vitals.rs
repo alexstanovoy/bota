@@ -15,6 +15,5 @@ pub struct Health {
 /// Mana an entity has left, held the same way as [`Health`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Mana {
-    /// Mana now.
     pub mana: Fixed,
 }

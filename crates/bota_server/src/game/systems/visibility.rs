@@ -16,7 +16,6 @@ pub struct SightCx<'a> {
     pub kind: &'a Table<UnitKind>,
     /// How far each entity sees.
     pub stats: &'a Table<Stats>,
-    /// The height of the ground.
     pub ground: &'a Ground,
     /// Which cells stop a sight line.
     pub sight_block: &'a SightBlock,
@@ -46,7 +45,6 @@ pub struct SightScratch {
 }
 
 impl SightScratch {
-    /// Scratch that has worked out nothing.
     pub fn new() -> SightScratch {
         SightScratch::default()
     }
@@ -56,21 +54,14 @@ impl SightScratch {
 /// which sides see it.
 #[derive(Clone)]
 struct SightRow {
-    /// Which entity this is.
     entity: Entity,
-    /// Which side it is on.
     team: Option<Team>,
-    /// Where it stands.
     at: Option<Vec2>,
-    /// How far it sees.
     vision: Fixed,
-    /// How far true sight reaches.
     true_sight: Fixed,
-    /// What kind of thing it is.
     kind: Option<UnitKind>,
     /// Whether true sight alone finds it.
     hides: bool,
-    /// The height it stands at.
     tier: u8,
     /// Which sides see it, as the table has it.
     seen: Option<Visibility>,
@@ -80,15 +71,10 @@ struct SightRow {
 /// reaches.
 #[derive(Clone, Copy)]
 struct SightViewer {
-    /// Which side it is on.
     side: Team,
-    /// Where it stands.
     from: Vec2,
-    /// How far it sees.
     vision: Fixed,
-    /// How far true sight reaches.
     true_sight: Fixed,
-    /// The height it stands at.
     tier: u8,
     /// Whether it sees past height and trees.
     flying: bool,

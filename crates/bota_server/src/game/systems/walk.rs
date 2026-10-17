@@ -853,7 +853,6 @@ impl World {
         self.moved(entity, from, to);
     }
 
-    /// Puts a body where its step took it.
     fn moved(&mut self, entity: Entity, from: Vec2, to: Vec2) {
         if let Some(transform) = self.transform.get_mut(entity) {
             transform.pos = to;
@@ -937,17 +936,13 @@ enum Slid {
 
 /// One walker's tick of walking along its route.
 struct Leg {
-    /// Who walks.
     entity: Entity,
-    /// Where it stands.
     from: Vec2,
-    /// Where it is going.
     dest: Vec2,
     /// How near the destination is near enough.
     arrive: Fixed,
     /// How far it walks in a tick.
     step: Fixed,
-    /// Its collision size.
     collision: Fixed,
     /// The spot it walks at next.
     aim: Vec2,

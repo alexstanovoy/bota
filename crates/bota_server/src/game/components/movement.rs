@@ -21,7 +21,6 @@ pub struct Route {
 }
 
 impl Route {
-    /// No route laid.
     pub fn none() -> Route {
         Route {
             corners: Vec::new(),
@@ -88,7 +87,6 @@ pub struct Plan {
 }
 
 impl Plan {
-    /// No plan laid.
     pub fn none() -> Plan {
         Plan {
             steps: Vec::new(),
@@ -111,7 +109,6 @@ impl Plan {
         self.steps.len().saturating_sub(self.at)
     }
 
-    /// Forgets the plan.
     pub fn clear(&mut self) {
         self.steps.clear();
         self.at = 0;

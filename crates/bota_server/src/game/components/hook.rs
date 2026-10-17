@@ -9,7 +9,6 @@ use crate::engine::Entity;
 /// back to whoever threw it, dragging what it caught.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Hook {
-    /// Who threw it.
     pub owner: Entity,
     /// The spot it flies out at.
     pub aim: Vec2,

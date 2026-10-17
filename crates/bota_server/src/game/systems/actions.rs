@@ -43,7 +43,6 @@ struct Timing {
 }
 
 impl Timing {
-    /// Whether it holds the body at all.
     fn instant(self) -> bool {
         self.point == 0 && self.backswing == 0 && self.duration == 0
     }
@@ -494,7 +493,6 @@ impl World {
         }
     }
 
-    /// Takes away the cast an entity was ordered to make.
     fn order_cast_off(&mut self, entity: Entity) {
         if let Some(orders) = self.orders.get_mut(entity) {
             orders.pending = None;

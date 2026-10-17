@@ -56,7 +56,6 @@ impl World {
         candidates.spots.around(at, reach)
     }
 
-    /// The class order a unit ranks targets by.
     pub fn priority_of(&self, entity: Entity) -> PriorityOrder {
         self.kind
             .get(entity)
@@ -186,19 +185,11 @@ impl World {
         let at = self.pos(seeker)?;
         let mut found: Vec<(u8, i64, Entity)> = Vec::new();
         for other in self.near(seeker, at, range, candidates) {
-            if other == seeker || Some(other) == skip {
+            if other == seeker || Some(other) == skip || !self.reachable(seeker, range, other) {
                 continue;
             }
-            let Some(their_at) = self.pos(other) else {
-                continue;
-            };
-            if !at.within(their_at, range + self.hulls(seeker, other)) {
-                continue;
-            }
-            if !self.hostile(seeker, other) {
-                continue;
-            }
-            let Some(kind) = self.kind.get(other).copied() else {
+            let (Some(their_at), Some(kind)) = (self.pos(other), self.kind.get(other).copied())
+            else {
                 continue;
             };
             let class = class_rank(kind_def(kind).target_class, order);

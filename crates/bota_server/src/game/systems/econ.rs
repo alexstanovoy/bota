@@ -141,7 +141,6 @@ impl World {
         Some((bounty, fallen_seat, Some(worths)))
     }
 
-    /// The net worth of every seat of a side together.
     fn side_worth(&self, side: Team) -> i64 {
         self.seats
             .iter()
@@ -321,7 +320,6 @@ impl World {
         }
     }
 
-    /// Which seat drives an entity, if any does.
     pub(super) fn seat_of(&self, entity: Entity) -> Option<usize> {
         self.seats.iter().position(|s| s.unit == Some(entity))
     }
@@ -338,18 +336,8 @@ impl World {
         if amount <= 0 {
             return;
         }
-        let radius = rules::units(rules::XP_RADIUS);
-        let earners: Vec<usize> = (0..self.seats.len())
-            .filter(|&index| {
-                let seat = &self.seats[index];
-                seat.team == team
-                    && seat.unit.is_some_and(|unit| {
-                        self.alive(unit)
-                            && (always == Some(index)
-                                || self.pos(unit).is_some_and(|pos| pos.within(at, radius)))
-                    })
-            })
-            .collect();
+        let mut earners = self.seats_near(at, team, rules::XP_RADIUS, always);
+        earners.retain(|&index| self.seats[index].unit.is_some_and(|unit| self.alive(unit)));
         if earners.is_empty() {
             return;
         }
@@ -423,7 +411,6 @@ impl World {
         }
     }
 
-    /// Whether an entity is a hero.
     pub fn is_hero(&self, entity: Entity) -> bool {
         self.kind.get(entity) == Some(&UnitKind::Hero)
     }

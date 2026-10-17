@@ -15,7 +15,6 @@ impl World {
             && self.health.get(entity).is_some_and(|h| h.hp > Fixed::ZERO)
     }
 
-    /// Where an entity stands, if it stands anywhere.
     pub(crate) fn pos(&self, entity: Entity) -> Option<Vec2> {
         self.transform.get(entity).map(|t| t.pos)
     }

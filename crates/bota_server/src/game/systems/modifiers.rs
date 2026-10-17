@@ -72,7 +72,6 @@ impl World {
         }
     }
 
-    /// Takes off every modifier of one kind from one source.
     pub fn take_modifier(&mut self, on: Entity, like: ModifierKind, source: Option<Entity>) {
         if let Some(on_it) = self.modifiers.get_mut(on) {
             on_it.take(like, source);

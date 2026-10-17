@@ -6,7 +6,6 @@ use bota_proto::{Attribute, ItemId, SlotId};
 /// One item in a slot.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ItemStack {
-    /// What it is.
     pub id: ItemId,
     /// Uses left, for a consumable. Zero for one that only carries bonuses.
     pub charges: u8,

@@ -71,7 +71,6 @@ impl World {
         best.map(|(_, body)| body)
     }
 
-    /// Whether an entity walks through the bodies in its way.
     pub fn phased(&self, entity: Entity) -> bool {
         self.stats.get(entity).is_some_and(|stats| stats.phased)
     }

@@ -12,15 +12,12 @@ use crate::game::Fear;
 /// [`Transform`]: crate::game::Transform
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RequiemLine {
-    /// Who let it go.
     pub owner: Entity,
     /// The spot it flies out to.
     pub aim: Vec2,
     /// World units a second.
     pub speed: Fixed,
-    /// How far it has flown.
     pub travelled: Fixed,
-    /// How far it flies in all.
     pub distance: Fixed,
     /// Damage it lands on each it crosses.
     pub damage: i32,

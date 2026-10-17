@@ -26,7 +26,6 @@ impl<T: Copy + Ord> Spots<T> {
         self.rows.clear();
     }
 
-    /// Adds an item at a point.
     pub fn push(&mut self, at: Vec2, item: T) {
         self.rows.push((at.x.raw, at.y.raw, item));
     }

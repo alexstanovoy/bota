@@ -43,7 +43,6 @@ impl World {
         }
     }
 
-    /// The seat a courier belongs to, if it belongs to one.
     fn seat_of_courier(&self, courier: Entity) -> Option<usize> {
         self.seats
             .iter()
@@ -281,7 +280,6 @@ impl World {
         false
     }
 
-    /// Whether a unit's bag holds anything marked for sale.
     fn holds_marked(&self, unit: Entity) -> bool {
         self.inventory
             .get(unit)

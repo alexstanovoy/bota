@@ -202,7 +202,6 @@ impl World {
             .and_then(|bag| bag.slot(slot).copied().flatten())
     }
 
-    /// Takes the stack out of one of a unit's own bag slots.
     pub(crate) fn take_from_bag(&mut self, unit: Entity, slot: usize) -> Option<ItemStack> {
         self.inventory.get_mut(unit)?.slot_mut(slot)?.take()
     }

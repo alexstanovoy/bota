@@ -10,7 +10,6 @@ const BUCKETS: usize = rules::BUCKETS;
 /// One body as the index has it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Body {
-    /// Which entity it is.
     pub entity: Entity,
     /// Where it stood when the index was laid.
     pub at: Vec2,
@@ -37,7 +36,6 @@ pub struct BodyIndex {
 }
 
 impl BodyIndex {
-    /// An index with nobody in it.
     pub fn empty() -> BodyIndex {
         BodyIndex {
             start: vec![0; BUCKETS * BUCKETS + 1],

@@ -26,7 +26,6 @@ pub struct LaneAi {
 /// Which camp a neutral belongs to and where in it it stands.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct CampHome {
-    /// The camp's number on the map.
     pub camp: u8,
     /// The spot it walks back to.
     pub home: Vec2,

@@ -18,7 +18,6 @@ pub enum FeastPhase {
 pub struct Fed {
     /// Whom they were taken from. The handle may outlive the body.
     pub from: Entity,
-    /// How many were taken.
     pub souls: u32,
 }
 
@@ -27,7 +26,6 @@ pub struct Fed {
 pub struct Feast {
     /// Which level of it was cast, counted from zero.
     pub level: u8,
-    /// Where it stands.
     pub phase: FeastPhase,
     /// Ticks before the phase ends, at most
     /// [`rules::FEAST_TICKS`](bota_core::rules::FEAST_TICKS) or

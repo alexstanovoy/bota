@@ -122,7 +122,6 @@ impl World {
         );
     }
 
-    /// A body that does things, standing ready.
     fn give_action(&mut self, entity: Entity) {
         self.action.insert(
             entity,
@@ -349,7 +348,6 @@ impl World {
         entity
     }
 
-    /// Takes a mark out of the world.
     pub fn take_mark(&mut self, entity: Entity) {
         self.mark.remove(entity);
         self.expiry.remove(entity);

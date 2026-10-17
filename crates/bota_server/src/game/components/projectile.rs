@@ -14,11 +14,8 @@ pub struct Projectile {
     pub speed: bota_proto::Fixed,
     /// Who threw it. The handle may outlive the body.
     pub source: Option<Entity>,
-    /// Who it is aimed at.
     pub target: Entity,
-    /// Damage it lands.
     pub damage: i32,
-    /// Which reduction applies.
     pub kind: DamageKind,
     /// Outgoing amplification of `damage`, captured when it was thrown.
     pub damage_amp_bp: i32,

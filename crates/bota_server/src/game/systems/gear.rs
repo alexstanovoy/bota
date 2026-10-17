@@ -390,13 +390,11 @@ impl World {
         bag + stash
     }
 
-    /// What sits in one of an entity's item slots.
     pub fn item_def_in(&self, entity: Entity, slot: usize) -> Option<&'static ItemDef> {
         let stack = self.inventory.get(entity)?.slot(slot).copied()??;
         item_def(stack.id)
     }
 
-    /// Charges the stack in one of an entity's item slots holds.
     pub fn charges_in(&self, entity: Entity, slot: usize) -> u8 {
         self.held_in_bag(entity, slot)
             .map_or(0, |stack| stack.charges)
@@ -858,7 +856,6 @@ impl World {
         true
     }
 
-    /// What selling a stack pays right now.
     fn sale_price(&self, stack: &ItemStack) -> i32 {
         let Some(def) = item_def(stack.id) else {
             return 0;
@@ -929,7 +926,6 @@ impl World {
         self.recycle_entity_snapshot(entities);
     }
 
-    /// Takes whatever sits in one slot of a seat's slots out of it.
     fn take_slot(&mut self, unit: Entity, seat: usize, slot: usize) -> Option<ItemStack> {
         self.slot_of(unit, seat, slot)?.take()
     }
@@ -941,7 +937,6 @@ impl World {
         }
     }
 
-    /// The stack in one slot, to be changed in place.
     fn slot_mut(&mut self, unit: Entity, seat: usize, slot: usize) -> Option<&mut ItemStack> {
         self.slot_of(unit, seat, slot)?.as_mut()
     }

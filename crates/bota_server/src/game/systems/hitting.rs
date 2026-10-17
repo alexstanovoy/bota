@@ -17,7 +17,6 @@ use std::collections::VecDeque;
 pub struct Missed {
     /// Who swung. The handle may outlive the body.
     pub source: Option<Entity>,
-    /// Who it was swung at.
     pub target: Entity,
     /// Where it happened.
     pub at: Vec2,
@@ -30,12 +29,10 @@ pub struct Missed {
 pub struct Landed {
     /// Who dealt it. The handle may outlive the body.
     pub source: Option<Entity>,
-    /// Who took it.
     pub target: Entity,
     /// Health taken, after armor and resistance, at most one past what the
     /// target had left.
     pub amount: i32,
-    /// Which reduction applied.
     pub kind: DamageKind,
     /// Where it happened.
     pub at: Vec2,

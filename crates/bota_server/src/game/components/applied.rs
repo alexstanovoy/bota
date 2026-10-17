@@ -11,11 +11,9 @@ use crate::game::MAX_APPLIED_MODIFIERS_PER_UNIT;
 /// body takes it away.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct AppliedModifier {
-    /// What it changes.
     pub spec: ModifierSpec,
     /// Ticks before it lifts. Absent for one that runs until the body falls.
     pub ticks_left: Option<u32>,
-    /// Where it came from.
     pub origin: AppliedOrigin,
 }
 
@@ -55,17 +53,14 @@ impl AppliedModifiers {
         self.0.push(applied);
     }
 
-    /// Every entry, in the order it was applied.
     pub fn iter(&self) -> impl Iterator<Item = &AppliedModifier> {
         self.0.iter()
     }
 
-    /// Drops every entry the keeper turns down.
     pub fn retain(&mut self, keep: impl FnMut(&mut AppliedModifier) -> bool) {
         self.0.retain_mut(keep);
     }
 
-    /// Whether nothing is held.
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
     }

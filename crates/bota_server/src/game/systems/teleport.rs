@@ -239,7 +239,6 @@ impl World {
             .collect()
     }
 
-    /// The teleport of the seat whose hero `user` is.
     fn teleport_of(&self, user: Entity) -> Option<Teleport> {
         self.seats[self.seat_of(user)?].teleport
     }
