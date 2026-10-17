@@ -201,7 +201,6 @@ fn add_modifiers(now: &mut Stats, on_it: &Modifiers) {
             ModifierKind::Slowed { pct } => {
                 now.move_speed = scaled(now.move_speed, (100 - pct).clamp(0, 100));
             }
-            ModifierKind::Haste { speed } => now.attack_speed += speed,
             ModifierKind::BloodGrenade { .. } => {
                 now.move_speed = scaled(now.move_speed, 100 - rules::GRENADE_SLOW_PCT);
             }

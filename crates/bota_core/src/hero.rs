@@ -2,7 +2,8 @@
 
 use bota_proto::{AbilityId, Attributes, Fixed, HeroId};
 
-use crate::{PUDGE, SHADOW_FIEND, SHADOW_FIEND_TALENTS, TalentTree, UnitDef, rules};
+use crate::heroes::{pudge, shadow_fiend};
+use crate::{TalentTree, UnitDef, rules};
 
 /// One hero: what it is made of and what it can do.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -23,34 +24,7 @@ pub struct HeroDef {
 }
 
 /// Every hero, indexed by [`HeroId`].
-pub const HEROES: [HeroDef; 2] = [
-    HeroDef {
-        name: "Pudge",
-        unit: &PUDGE,
-        abilities: &[
-            AbilityId::MEAT_HOOK,
-            AbilityId::ROT,
-            AbilityId::FLESH_HEAP,
-            AbilityId::DISMEMBER,
-        ],
-        innate: None,
-        talents: None,
-    },
-    HeroDef {
-        name: "Shadow Fiend",
-        unit: &SHADOW_FIEND,
-        abilities: &[
-            AbilityId::RAZE_NEAR,
-            AbilityId::RAZE_MID,
-            AbilityId::RAZE_FAR,
-            AbilityId::FEAST_OF_SOULS,
-            AbilityId::PRESENCE,
-            AbilityId::REQUIEM,
-        ],
-        innate: Some(AbilityId::NECROMASTERY),
-        talents: Some(&SHADOW_FIEND_TALENTS),
-    },
-];
+pub const HEROES: [HeroDef; 2] = [pudge::HERO_DEF, shadow_fiend::HERO_DEF];
 
 /// What one hero is, or nothing if no such hero exists.
 #[inline]

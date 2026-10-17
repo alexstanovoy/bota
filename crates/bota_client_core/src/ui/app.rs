@@ -455,7 +455,7 @@ impl App {
         let seat = self
             .view()
             .and_then(|view| view.players.iter().find(|p| p.slot == slot));
-        match seat.and_then(|p| Some((crate::catalog::hero(p.hero.0)?, p.team))) {
+        match seat.and_then(|p| Some((bota_core::hero_def(p.hero)?, p.team))) {
             Some((hero, team)) => format!("{} ({team:?})", hero.name),
             None => format!("seat {}", slot.0),
         }

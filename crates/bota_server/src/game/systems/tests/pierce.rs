@@ -7,7 +7,7 @@ use crate::game::{Entity, Event, UnitOrder, World, wire_id};
 use bota_proto::{DamageKind, EventKind, Fixed, HeroId, ItemId, SlotId, Team, UnitKind, Vec2};
 
 use super::support::{
-    ANVIL, assert_exact_blocks, hold, opened, step_until, swinging_at, until_opened,
+    ANVIL, assert_exact_blocks, hold, opened, step_until, swing_at, until_opened,
 };
 
 /// The anvil, standing as a building.
@@ -24,9 +24,7 @@ fn hero_holding(world: &mut World, hero: HeroId, held: &[ItemId]) -> Entity {
     for (slot, item) in held.iter().enumerate() {
         hold(world, entity, slot, *item);
     }
-    world
-        .modifiers
-        .insert(entity, swinging_at(rules::MAX_ATTACK_SPEED));
+    swing_at(world, entity, rules::MAX_ATTACK_SPEED);
     entity
 }
 

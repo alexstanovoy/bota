@@ -1,9 +1,9 @@
 //! The ids the server hands out are the ones the protocol's registry holds.
 
-use bota_core::{ABILITIES, HEROES, ITEMS, ModifierKind};
+use bota_core::{ABILITIES, EFFECTS, HEROES, ITEMS, ModifierKind};
 use bota_proto::{DamageKind, EffectId, Fixed, IdSpace, RegisteredId, registered};
 
-use crate::game::{StackKind, effect_id, stack_effect_id};
+use crate::game::{StackKind, stack_effect_id};
 
 /// Each id of `space` the server defines, by `names[id]`, is registered under
 /// that name and live, and every live one is defined. A slot left in `names`
@@ -30,19 +30,21 @@ fn defined_as_registered(space: IdSpace, names: &[Option<&str>]) {
 }
 
 #[test]
-fn heroes_abilities_and_items_keep_their_registered_ids() {
+fn the_tables_keep_their_registered_ids() {
     let heroes: Vec<_> = HEROES.iter().map(|hero| Some(hero.name)).collect();
     defined_as_registered(IdSpace::Hero, &heroes);
     let abilities: Vec<_> = ABILITIES.iter().map(|ability| Some(ability.name)).collect();
     defined_as_registered(IdSpace::Ability, &abilities);
-    defined_as_registered(IdSpace::Item, &[None; ITEMS.len()]);
+    let items: Vec<_> = ITEMS.iter().map(|item| Some(item.name)).collect();
+    defined_as_registered(IdSpace::Item, &items);
+    let effects: Vec<_> = EFFECTS.iter().map(|effect| Some(effect.name)).collect();
+    defined_as_registered(IdSpace::Effect, &effects);
 }
 
 /// One modifier of every kind. A kind added to the enum fails to compile in
 /// the match below until it is listed here as well.
 fn every_modifier() -> Vec<ModifierKind> {
     let every = vec![
-        ModifierKind::Haste { speed: 0 },
         ModifierKind::Mending {
             per_tick: 0,
             breaks: false,
@@ -82,8 +84,7 @@ fn every_modifier() -> Vec<ModifierKind> {
     ];
     for kind in &every {
         match kind {
-            ModifierKind::Haste { .. }
-            | ModifierKind::Mending { .. }
+            ModifierKind::Mending { .. }
             | ModifierKind::Clarity { .. }
             | ModifierKind::Fountain { .. }
             | ModifierKind::Stunned
@@ -117,13 +118,8 @@ fn variant_name(value: &impl std::fmt::Debug) -> String {
 fn every_effect_is_shown_under_its_registered_id() {
     let mut shown: Vec<(u16, String)> = every_modifier()
         .iter()
-        .filter_map(|kind| Some((effect_id(*kind)?.0, variant_name(kind))))
+        .map(|kind| (kind.effect_id().0, variant_name(kind)))
         .collect();
-    assert_eq!(
-        effect_id(ModifierKind::Haste { speed: 0 }),
-        None,
-        "id 0 is retired"
-    );
     for kind in StackKind::ALL {
         shown.push((stack_effect_id(kind).0, variant_name(&kind)));
     }

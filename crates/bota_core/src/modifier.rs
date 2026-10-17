@@ -1,20 +1,12 @@
 //! What a modifier does to whatever wears it, and how much of it there is.
 
-use bota_proto::{DamageKind, Fixed};
+use bota_proto::{DamageKind, EffectId, Fixed};
 
 use crate::rules;
 
 /// One kind of modifier, with what there is of it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ModifierKind {
-    /// Attacks come faster: scaffolding for a test that must pin a swing rate.
-    /// Nothing in a match hands it out, and it is never shown on the wire (its
-    /// effect id is retired).
-    #[doc(hidden)]
-    Haste {
-        /// Attack speed added.
-        speed: i32,
-    },
     /// Health mends faster.
     Mending {
         /// Hundredths of a point a tick.
@@ -110,6 +102,29 @@ pub enum ModifierKind {
 }
 
 impl ModifierKind {
+    /// The number the wire names this kind of modifier with.
+    pub const fn effect_id(self) -> EffectId {
+        match self {
+            ModifierKind::Mending { .. } => EffectId::MENDING,
+            ModifierKind::Clarity { .. } => EffectId::CLARITY,
+            ModifierKind::Fountain { .. } => EffectId::FOUNTAIN,
+            ModifierKind::Stunned => EffectId::STUNNED,
+            ModifierKind::Shielded => EffectId::SHIELDED,
+            ModifierKind::Slowed { .. } => EffectId::SLOWED,
+            ModifierKind::Hastened { .. } => EffectId::HASTENED,
+            ModifierKind::Burning { .. } => EffectId::BURNING,
+            ModifierKind::Phased => EffectId::PHASED,
+            ModifierKind::ArmorBroken { .. } => EffectId::ARMOR_BROKEN,
+            ModifierKind::MagicBroken { .. } => EffectId::MAGIC_BROKEN,
+            ModifierKind::Guarded { .. } => EffectId::GUARDED,
+            ModifierKind::Inspired { .. } => EffectId::INSPIRED,
+            ModifierKind::Shadowraze { .. } => EffectId::SHADOWRAZE,
+            ModifierKind::Rot { .. } => EffectId::ROT,
+            ModifierKind::Feared => EffectId::FEARED,
+            ModifierKind::BloodGrenade { .. } => EffectId::BLOOD_GRENADE,
+        }
+    }
+
     /// What an aura of this kind hands out from a source that spawned after
     /// `steps` upgrade intervals. Only the flagbearer's inspiration grows.
     #[inline]

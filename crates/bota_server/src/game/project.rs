@@ -448,31 +448,6 @@ pub(crate) fn stack_effect_id(kind: StackKind) -> EffectId {
     }
 }
 
-/// The number the wire names a modifier with; none for a test's haste, whose
-/// id is retired.
-pub(crate) fn effect_id(kind: ModifierKind) -> Option<EffectId> {
-    Some(match kind {
-        ModifierKind::Haste { .. } => return None,
-        ModifierKind::Mending { .. } => EffectId::MENDING,
-        ModifierKind::Clarity { .. } => EffectId::CLARITY,
-        ModifierKind::Fountain { .. } => EffectId::FOUNTAIN,
-        ModifierKind::Stunned => EffectId::STUNNED,
-        ModifierKind::Shielded => EffectId::SHIELDED,
-        ModifierKind::Slowed { .. } => EffectId::SLOWED,
-        ModifierKind::Hastened { .. } => EffectId::HASTENED,
-        ModifierKind::Burning { .. } => EffectId::BURNING,
-        ModifierKind::Phased => EffectId::PHASED,
-        ModifierKind::ArmorBroken { .. } => EffectId::ARMOR_BROKEN,
-        ModifierKind::MagicBroken { .. } => EffectId::MAGIC_BROKEN,
-        ModifierKind::Guarded { .. } => EffectId::GUARDED,
-        ModifierKind::Inspired { .. } => EffectId::INSPIRED,
-        ModifierKind::Shadowraze { .. } => EffectId::SHADOWRAZE,
-        ModifierKind::Rot { .. } => EffectId::ROT,
-        ModifierKind::Feared => EffectId::FEARED,
-        ModifierKind::BloodGrenade { .. } => EffectId::BLOOD_GRENADE,
-    })
-}
-
 impl World {
     /// Everything showing on one entity: its active modifiers but the rot,
     /// then what it has gathered.
@@ -483,15 +458,13 @@ impl World {
             .into_iter()
             .flat_map(|on_it| on_it.active())
             .filter(|held| !matches!(held.kind, ModifierKind::Rot { .. }))
-            .filter_map(|held| {
-                Some(EffectView {
-                    id: effect_id(held.kind)?,
-                    ticks_left: held.ticks_left,
-                    stacks: match held.kind {
-                        ModifierKind::Shadowraze { stacks } => Some(u32::from(stacks)),
-                        _ => None,
-                    },
-                })
+            .map(|held| EffectView {
+                id: held.kind.effect_id(),
+                ticks_left: held.ticks_left,
+                stacks: match held.kind {
+                    ModifierKind::Shadowraze { stacks } => Some(u32::from(stacks)),
+                    _ => None,
+                },
             })
             .collect();
         if let Some(gathered) = self.stacks.get(entity) {

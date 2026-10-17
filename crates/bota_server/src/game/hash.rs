@@ -461,7 +461,6 @@ fn hash_damage_amp(fnv: &mut Fnv, bp: i32) {
 fn hash_modifier_kind(fnv: &mut Fnv, kind: ModifierKind) {
     match kind {
         ModifierKind::Phased => fnv.u8(9),
-        ModifierKind::Haste { speed } => hash_tagged(fnv, 0, speed),
         ModifierKind::Mending { per_tick, breaks } => {
             fnv.u8(1);
             fnv.i32(per_tick);

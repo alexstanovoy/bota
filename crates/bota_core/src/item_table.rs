@@ -54,8 +54,8 @@ const MKB_PARTS: [ItemId; 4] = [
 
 /// The catalog, indexed by [`ItemId`].
 pub const ITEMS: [ItemDef; 54] = [
-    // Boots of Speed.
     ItemDef {
+        name: "Boots of Speed",
         cost: 500,
         carried: Carried {
             move_speed: 45,
@@ -63,8 +63,8 @@ pub const ITEMS: [ItemDef; 54] = [
         },
         ..PLAIN
     },
-    // Clarity.
     ItemDef {
+        name: "Clarity",
         cost: 50,
         charges: 1,
         aim: Some(Aim::Unit),
@@ -80,8 +80,8 @@ pub const ITEMS: [ItemDef; 54] = [
         }),
         ..PLAIN
     },
-    // Healing Salve.
     ItemDef {
+        name: "Healing Salve",
         cost: 110,
         charges: 1,
         aim: Some(Aim::Unit),
@@ -97,8 +97,8 @@ pub const ITEMS: [ItemDef; 54] = [
         }),
         ..PLAIN
     },
-    // Iron Branch.
     ItemDef {
+        name: "Iron Branch",
         cost: 50,
         charges: 1,
         carried: Carried {
@@ -116,8 +116,8 @@ pub const ITEMS: [ItemDef; 54] = [
         },
         ..PLAIN
     },
-    // Observer Ward.
     ItemDef {
+        name: "Observer Ward",
         cost: 100,
         charges: 1,
         aim: Some(Aim::Point),
@@ -130,8 +130,8 @@ pub const ITEMS: [ItemDef; 54] = [
         },
         ..PLAIN
     },
-    // Quelling Blade.
     ItemDef {
+        name: "Quelling Blade",
         cost: 225,
         cooldown: 120,
         carried: Carried {
@@ -143,8 +143,8 @@ pub const ITEMS: [ItemDef; 54] = [
         effect: UseSpec::FellTree { range: 350 },
         ..PLAIN
     },
-    // Sentry Ward.
     ItemDef {
+        name: "Sentry Ward",
         cost: 50,
         charges: 1,
         aim: Some(Aim::Point),
@@ -157,8 +157,8 @@ pub const ITEMS: [ItemDef; 54] = [
         },
         ..PLAIN
     },
-    // Tango.
     ItemDef {
+        name: "Tango",
         cost: 90,
         charges: 3,
         aim: Some(Aim::Tree),
@@ -177,6 +177,7 @@ pub const ITEMS: [ItemDef; 54] = [
     // Town Portal Scroll: Dota 7.41f `item_tpscroll`. Stacks without limit
     // in Dota; a stack's charges are a byte here, more than a match buys.
     ItemDef {
+        name: "Town Portal Scroll",
         cost: 100,
         charges: 1,
         stack_limit: u8::MAX,
@@ -188,8 +189,8 @@ pub const ITEMS: [ItemDef; 54] = [
         effect: UseSpec::Teleport,
         ..PLAIN
     },
-    // Circlet.
     ItemDef {
+        name: "Circlet",
         cost: 155,
         carried: Carried {
             attributes: Attributes::all(2),
@@ -197,8 +198,8 @@ pub const ITEMS: [ItemDef; 54] = [
         },
         ..PLAIN
     },
-    // Gauntlets of Strength.
     ItemDef {
+        name: "Gauntlets of Strength",
         cost: 140,
         carried: Carried {
             attributes: points(Attribute::Strength, 3),
@@ -206,8 +207,8 @@ pub const ITEMS: [ItemDef; 54] = [
         },
         ..PLAIN
     },
-    // Slippers of Agility.
     ItemDef {
+        name: "Slippers of Agility",
         cost: 140,
         carried: Carried {
             attributes: points(Attribute::Agility, 3),
@@ -215,8 +216,8 @@ pub const ITEMS: [ItemDef; 54] = [
         },
         ..PLAIN
     },
-    // Mantle of Intelligence.
     ItemDef {
+        name: "Mantle of Intelligence",
         cost: 140,
         carried: Carried {
             attributes: points(Attribute::Intelligence, 3),
@@ -224,8 +225,8 @@ pub const ITEMS: [ItemDef; 54] = [
         },
         ..PLAIN
     },
-    // Belt of Strength.
     ItemDef {
+        name: "Belt of Strength",
         cost: 450,
         carried: Carried {
             attributes: points(Attribute::Strength, 6),
@@ -233,8 +234,8 @@ pub const ITEMS: [ItemDef; 54] = [
         },
         ..PLAIN
     },
-    // Band of Elvenskin.
     ItemDef {
+        name: "Band of Elvenskin",
         cost: 450,
         carried: Carried {
             attributes: points(Attribute::Agility, 6),
@@ -242,8 +243,8 @@ pub const ITEMS: [ItemDef; 54] = [
         },
         ..PLAIN
     },
-    // Robe of the Magi.
     ItemDef {
+        name: "Robe of the Magi",
         cost: 450,
         carried: Carried {
             attributes: points(Attribute::Intelligence, 6),
@@ -251,8 +252,8 @@ pub const ITEMS: [ItemDef; 54] = [
         },
         ..PLAIN
     },
-    // Ogre Axe.
     ItemDef {
+        name: "Ogre Axe",
         cost: 1000,
         carried: Carried {
             attributes: points(Attribute::Strength, 10),
@@ -260,8 +261,8 @@ pub const ITEMS: [ItemDef; 54] = [
         },
         ..PLAIN
     },
-    // Blade of Alacrity.
     ItemDef {
+        name: "Blade of Alacrity",
         cost: 1000,
         carried: Carried {
             attributes: points(Attribute::Agility, 10),
@@ -269,8 +270,8 @@ pub const ITEMS: [ItemDef; 54] = [
         },
         ..PLAIN
     },
-    // Staff of Wizardry.
     ItemDef {
+        name: "Staff of Wizardry",
         cost: 1000,
         carried: Carried {
             attributes: points(Attribute::Intelligence, 10),
@@ -278,8 +279,8 @@ pub const ITEMS: [ItemDef; 54] = [
         },
         ..PLAIN
     },
-    // Gloves of Haste.
     ItemDef {
+        name: "Gloves of Haste",
         cost: 450,
         carried: Carried {
             attack_speed: 20,
@@ -287,8 +288,8 @@ pub const ITEMS: [ItemDef; 54] = [
         },
         ..PLAIN
     },
-    // Blades of Attack.
     ItemDef {
+        name: "Blades of Attack",
         cost: 450,
         carried: Carried {
             damage: 9,
@@ -296,8 +297,8 @@ pub const ITEMS: [ItemDef; 54] = [
         },
         ..PLAIN
     },
-    // Broadsword.
     ItemDef {
+        name: "Broadsword",
         cost: 1000,
         carried: Carried {
             damage: 18,
@@ -305,8 +306,8 @@ pub const ITEMS: [ItemDef; 54] = [
         },
         ..PLAIN
     },
-    // Quarterstaff.
     ItemDef {
+        name: "Quarterstaff",
         cost: 875,
         carried: Carried {
             damage: 10,
@@ -315,8 +316,8 @@ pub const ITEMS: [ItemDef; 54] = [
         },
         ..PLAIN
     },
-    // Ring of Protection.
     ItemDef {
+        name: "Ring of Protection",
         cost: 175,
         carried: Carried {
             armor: Fixed::from_int(2),
@@ -324,8 +325,8 @@ pub const ITEMS: [ItemDef; 54] = [
         },
         ..PLAIN
     },
-    // Chainmail.
     ItemDef {
+        name: "Chainmail",
         cost: 550,
         carried: Carried {
             armor: Fixed::from_int(5),
@@ -333,8 +334,8 @@ pub const ITEMS: [ItemDef; 54] = [
         },
         ..PLAIN
     },
-    // Ring of Regen.
     ItemDef {
+        name: "Ring of Regen",
         cost: 175,
         carried: Carried {
             hp_regen: per_second(2),
@@ -342,8 +343,8 @@ pub const ITEMS: [ItemDef; 54] = [
         },
         ..PLAIN
     },
-    // Sage's Mask.
     ItemDef {
+        name: "Sage's Mask",
         cost: 175,
         carried: Carried {
             mana_regen: per_second(1),
@@ -351,14 +352,14 @@ pub const ITEMS: [ItemDef; 54] = [
         },
         ..PLAIN
     },
-    // Vitality Booster.
     ItemDef {
+        name: "Vitality Booster",
         cost: 1000,
         carried: Carried { hp: 250, ..NOTHING },
         ..PLAIN
     },
-    // Energy Booster.
     ItemDef {
+        name: "Energy Booster",
         cost: 900,
         carried: Carried {
             mana: 250,
@@ -366,8 +367,8 @@ pub const ITEMS: [ItemDef; 54] = [
         },
         ..PLAIN
     },
-    // Power Treads.
     ItemDef {
+        name: "Power Treads",
         cost: 1400,
         mode: Some(Attribute::Strength),
         mode_bonus: 10,
@@ -381,8 +382,8 @@ pub const ITEMS: [ItemDef; 54] = [
         effect: UseSpec::SwitchMode,
         ..PLAIN
     },
-    // Phase Boots.
     ItemDef {
+        name: "Phase Boots",
         cost: 1500,
         cooldown: 240,
         components: &PHASE_PARTS,
@@ -396,8 +397,8 @@ pub const ITEMS: [ItemDef; 54] = [
         effect: UseSpec::Phase { pct: 20, ticks: 93 },
         ..PLAIN
     },
-    // Blink Dagger.
     ItemDef {
+        name: "Blink Dagger",
         cost: 2250,
         cooldown: 450,
         breaks_on_damage: 90,
@@ -406,8 +407,8 @@ pub const ITEMS: [ItemDef; 54] = [
         effect: UseSpec::Blink { range: BLINK_RANGE },
         ..PLAIN
     },
-    // Bracer.
     ItemDef {
+        name: "Bracer",
         cost: 505,
         components: &BRACER_PARTS,
         carried: Carried {
@@ -416,8 +417,8 @@ pub const ITEMS: [ItemDef; 54] = [
         },
         ..PLAIN
     },
-    // Wraith Band.
     ItemDef {
+        name: "Wraith Band",
         cost: 505,
         components: &WRAITH_PARTS,
         carried: Carried {
@@ -426,8 +427,8 @@ pub const ITEMS: [ItemDef; 54] = [
         },
         ..PLAIN
     },
-    // Null Talisman.
     ItemDef {
+        name: "Null Talisman",
         cost: 505,
         components: &NULL_PARTS,
         carried: Carried {
@@ -436,8 +437,8 @@ pub const ITEMS: [ItemDef; 54] = [
         },
         ..PLAIN
     },
-    // Magic Stick.
     ItemDef {
+        name: "Magic Stick",
         cost: 200,
         cast_charges: 10,
         cooldown: 390,
@@ -449,8 +450,8 @@ pub const ITEMS: [ItemDef; 54] = [
         },
         ..PLAIN
     },
-    // Magic Wand.
     ItemDef {
+        name: "Magic Wand",
         cost: 450,
         cast_charges: 20,
         cooldown: 390,
@@ -467,18 +468,33 @@ pub const ITEMS: [ItemDef; 54] = [
         },
         ..PLAIN
     },
-    // The recipe Phase Boots are built with.
-    ItemDef { cost: 100, ..PLAIN },
-    // The recipe a Bracer is built with.
-    ItemDef { cost: 210, ..PLAIN },
-    // The recipe a Wraith Band is built with.
-    ItemDef { cost: 210, ..PLAIN },
-    // The recipe a Null Talisman is built with.
-    ItemDef { cost: 210, ..PLAIN },
-    // The recipe a Magic Wand is built with.
-    ItemDef { cost: 150, ..PLAIN },
-    // Enchanted Mango.
     ItemDef {
+        name: "Recipe: Phase Boots",
+        cost: 100,
+        ..PLAIN
+    },
+    ItemDef {
+        name: "Recipe: Bracer",
+        cost: 210,
+        ..PLAIN
+    },
+    ItemDef {
+        name: "Recipe: Wraith Band",
+        cost: 210,
+        ..PLAIN
+    },
+    ItemDef {
+        name: "Recipe: Null Talisman",
+        cost: 210,
+        ..PLAIN
+    },
+    ItemDef {
+        name: "Recipe: Magic Wand",
+        cost: 150,
+        ..PLAIN
+    },
+    ItemDef {
+        name: "Enchanted Mango",
         cost: MANGO_COST,
         charges: 1,
         stack_limit: MANGO_STACK_MAX,
@@ -492,8 +508,8 @@ pub const ITEMS: [ItemDef; 54] = [
         effect: UseSpec::Replenish { mana: MANGO_MANA },
         ..PLAIN
     },
-    // Eaglesong.
     ItemDef {
+        name: "Eaglesong",
         cost: 2800,
         carried: Carried {
             attributes: points(Attribute::Agility, 25),
@@ -501,8 +517,8 @@ pub const ITEMS: [ItemDef; 54] = [
         },
         ..PLAIN
     },
-    // Claymore.
     ItemDef {
+        name: "Claymore",
         cost: 1350,
         carried: Carried {
             damage: 20,
@@ -510,8 +526,8 @@ pub const ITEMS: [ItemDef; 54] = [
         },
         ..PLAIN
     },
-    // Talisman of Evasion.
     ItemDef {
+        name: "Talisman of Evasion",
         cost: 1300,
         carried: Carried {
             evasion: Ratio::new(3, 20),
@@ -519,8 +535,8 @@ pub const ITEMS: [ItemDef; 54] = [
         },
         ..PLAIN
     },
-    // Butterfly.
     ItemDef {
+        name: "Butterfly",
         cost: 5450,
         components: &BUTTERFLY_PARTS,
         carried: Carried {
@@ -532,8 +548,8 @@ pub const ITEMS: [ItemDef; 54] = [
         },
         ..PLAIN
     },
-    // Javelin.
     ItemDef {
+        name: "Javelin",
         cost: 900,
         carried: Carried {
             pierce: Ratio::new(1, 4),
@@ -542,8 +558,8 @@ pub const ITEMS: [ItemDef; 54] = [
         },
         ..PLAIN
     },
-    // Demon Edge.
     ItemDef {
+        name: "Demon Edge",
         cost: 2200,
         carried: Carried {
             damage: 40,
@@ -551,8 +567,8 @@ pub const ITEMS: [ItemDef; 54] = [
         },
         ..PLAIN
     },
-    // Blitz Knuckles.
     ItemDef {
+        name: "Blitz Knuckles",
         cost: 1000,
         carried: Carried {
             attack_speed: 35,
@@ -560,10 +576,13 @@ pub const ITEMS: [ItemDef; 54] = [
         },
         ..PLAIN
     },
-    // The recipe a Monkey King Bar is built with.
-    ItemDef { cost: 900, ..PLAIN },
-    // Monkey King Bar.
     ItemDef {
+        name: "Recipe: Monkey King Bar",
+        cost: 900,
+        ..PLAIN
+    },
+    ItemDef {
+        name: "Monkey King Bar",
         cost: 5000,
         components: &MKB_PARTS,
         carried: Carried {
@@ -576,8 +595,8 @@ pub const ITEMS: [ItemDef; 54] = [
         },
         ..PLAIN
     },
-    // Wind Lace.
     ItemDef {
+        name: "Wind Lace",
         cost: 225,
         carried: Carried {
             lace_speed: 15,
@@ -585,8 +604,8 @@ pub const ITEMS: [ItemDef; 54] = [
         },
         ..PLAIN
     },
-    // Blood Grenade.
     ItemDef {
+        name: "Blood Grenade",
         cost: 50,
         charges: 1,
         stack_limit: 2,

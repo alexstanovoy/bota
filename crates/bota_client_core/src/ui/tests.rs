@@ -39,8 +39,8 @@ fn the_console_turns_a_typed_line_into_a_cheat_order() {
 
 #[test]
 fn every_catalog_entry_is_named_and_found_by_its_own_id() {
-    use crate::catalog::{ABILITIES, EFFECTS, HEROES, ITEMS, ability, effect, hero, item};
-    let groups: [Vec<(u16, &str, Option<&str>)>; 3] = [
+    use crate::catalog::{ABILITIES, EFFECTS, ITEMS, ability, effect, item};
+    let groups: [Vec<(u16, &str, Option<&str>)>; 2] = [
         ABILITIES
             .iter()
             .map(|f| (f.id, f.name, ability(f.id).map(|x| x.name)))
@@ -48,10 +48,6 @@ fn every_catalog_entry_is_named_and_found_by_its_own_id() {
         ITEMS
             .iter()
             .map(|f| (f.id, f.name, item(f.id).map(|x| x.name)))
-            .collect(),
-        HEROES
-            .iter()
-            .map(|f| (f.id, f.name, hero(f.id).map(|x| x.name)))
             .collect(),
     ];
     for group in groups {
@@ -61,15 +57,14 @@ fn every_catalog_entry_is_named_and_found_by_its_own_id() {
             assert!(!name.is_empty(), "entry {id} has a name");
         }
     }
-    for face in EFFECTS {
-        assert_eq!(effect(face.id).map(|x| x.name), Some(face.name));
-        assert!(!face.name.is_empty(), "effect {} has a name", face.id);
+    for (id, face) in EFFECTS.iter().enumerate().skip(1) {
+        assert_eq!(effect(id as u16).map(|x| x.name), Some(face.name));
+        assert!(!face.name.is_empty(), "effect {id} has a name");
     }
     assert!(effect(0).is_none(), "the retired effect is gone");
     assert!(ability(ABILITIES.len() as u16).is_none());
     assert!(item(u16::MAX).is_none());
     assert!(effect(u16::MAX).is_none());
-    assert!(hero(HEROES.len() as u16).is_none());
 }
 
 #[test]
@@ -685,60 +680,18 @@ fn the_damage_range_is_the_wires_with_the_bonus_split_off_a_hero() {
 /// The one talent tree is Shadow Fiend's, whatever id the hero list gives him.
 #[test]
 fn the_talent_tree_is_shadow_fiends() {
-    let fiend = crate::catalog::HEROES
-        .iter()
-        .find(|h| h.name == "Shadow Fiend")
-        .expect("Shadow Fiend is a hero");
-    assert!(crate::catalog::talents(fiend.id).is_some());
-    for other in crate::catalog::HEROES.iter().filter(|h| h.id != fiend.id) {
-        assert!(
-            crate::catalog::talents(other.id).is_none(),
-            "{} has no tree",
-            other.name
+    for (id, hero) in bota_core::HEROES.iter().enumerate() {
+        assert_eq!(
+            crate::catalog::talents(id as u16).is_some(),
+            hero.name == "Shadow Fiend",
+            "{}",
+            hero.name
         );
     }
 }
 
 /// The catalog of `space` holds, as `held` and through `found`, exactly the
 /// ids the registry has live.
-fn holds_the_live_ids(
-    space: bota_proto::IdSpace,
-    held: impl Iterator<Item = u16>,
-    found: impl Fn(u16) -> bool,
-) {
-    let mut live: Vec<u16> = bota_proto::registered(space)
-        .filter(|entry| !entry.retired)
-        .map(|entry| entry.id)
-        .collect();
-    live.sort_unstable();
-    let mut held: Vec<u16> = held.collect();
-    held.sort_unstable();
-    assert_eq!(held, live, "the catalog's {space:?} ids are the live ones");
-    for entry in bota_proto::registered(space) {
-        assert_eq!(found(entry.id), !entry.retired, "{space:?} {}", entry.id);
-    }
-}
-
-#[test]
-fn the_catalog_holds_every_live_id_and_no_other() {
-    use crate::catalog::{ABILITIES, EFFECTS, HEROES, ITEMS, ability, effect, hero, item};
-    use bota_proto::IdSpace;
-    holds_the_live_ids(IdSpace::Hero, HEROES.iter().map(|face| face.id), |id| {
-        hero(id).is_some_and(|face| face.id == id)
-    });
-    holds_the_live_ids(
-        IdSpace::Ability,
-        ABILITIES.iter().map(|face| face.id),
-        |id| ability(id).is_some_and(|face| face.id == id),
-    );
-    holds_the_live_ids(IdSpace::Item, ITEMS.iter().map(|face| face.id), |id| {
-        item(id).is_some_and(|face| face.id == id)
-    });
-    holds_the_live_ids(IdSpace::Effect, EFFECTS.iter().map(|face| face.id), |id| {
-        effect(id).is_some_and(|face| face.id == id)
-    });
-}
-
 /// The damage panel splits Dota's way: a level-1 Shadow Fiend's base range
 /// with his starting agility white, the rest green.
 #[test]

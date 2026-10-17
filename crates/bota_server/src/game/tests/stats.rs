@@ -5,7 +5,7 @@ use bota_core::{
     RANGED_CREEP, SUPER_MELEE_CREEP, SUPER_RANGED_CREEP, UnitDef, attack_gain, map_of, rules,
 };
 
-use crate::game::{Def, Health, Level, Mana, Modifiers, Stats, UnitOrder, Upgrades, World};
+use crate::game::{Def, Health, Level, Mana, Stats, UnitOrder, Upgrades, World};
 use bota_proto::{DamageKind, Fixed, ItemId, MapId, Team, UnitKind, Vec2};
 
 use super::support::*;
@@ -196,25 +196,6 @@ fn levels_raise_a_hero() {
         world.stats.get(hero).map(|s| s.max_hp),
         Some(body_at(3)),
         "three levels past the first"
-    );
-}
-
-#[test]
-fn haste_shortens_the_wait_between_attacks_while_it_lasts() {
-    let mut world = World::new();
-    let creep = plain_creep(&mut world);
-    put_on(&mut world, creep, ModifierKind::Haste { speed: 40 }, 5);
-    world.step();
-    assert_eq!(
-        world.stats.get(creep).map(|s| s.attack_speed),
-        Some(rules::BASE_ATTACK_SPEED + 40)
-    );
-    world.modifiers.insert(creep, Modifiers(Vec::new()));
-    world.step();
-    assert_eq!(
-        world.stats.get(creep).map(|s| s.attack_speed),
-        Some(rules::BASE_ATTACK_SPEED),
-        "what is worked out afresh forgets what has lifted"
     );
 }
 
