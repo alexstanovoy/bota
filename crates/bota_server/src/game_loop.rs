@@ -363,17 +363,16 @@ impl Server {
     /// Seats a connection in a reserved seat, closing whoever held it: a
     /// reconnect replaces the old connection.
     fn take_seat(&mut self, id: PlayerId, role: Role, slot: SlotId) {
-        let reservation = &self.opts.reserved[usize::from(slot.0)];
-        let name = reservation.name.clone();
-        let old = self.roster.seats[usize::from(slot.0)].player;
-        if let Some(old) = old {
+        let at = usize::from(slot.0);
+        let name = self.opts.reserved[at].name.clone();
+        if let Some(old) = self.roster.seats[at].player {
             self.drop_conn(old);
             self.broadcast(&ServerMsg::ParticipantLeft {
                 player_id: old,
                 slot: Some(slot),
             });
         }
-        self.roster.seats[usize::from(slot.0)].hold(id, name, role);
+        self.roster.seats[at].hold(id, name, role);
     }
 
     /// Collects seats and picks until everyone is ready, or until the time
@@ -463,21 +462,19 @@ impl Server {
     /// Runs the match to its end.
     fn match_phase(&mut self, cfg: MatchConfig, mut replay: ReplayWriter) {
         let mut world = World::for_match(&cfg, cfg.rng());
-        replay.record(&ReplayRecord::Msg(ServerMsg::MatchStart {
-            info: cfg.info(),
-        }));
-        self.broadcast(&ServerMsg::MatchStart { info: cfg.info() });
+        let start = ServerMsg::MatchStart { info: cfg.info() };
+        self.broadcast(&start);
+        replay.record(&ReplayRecord::Msg(start));
         let period = Duration::from_nanos(1_000_000_000 / u64::from(self.opts.tick_rate.max(1)));
         let pace = Pace {
             started: Instant::now(),
             period,
             ack_timeout: period * self.opts.ack_timeout_ticks.max(1),
         };
-        let seats = self.roster.seats.len();
         let mut inbox = Inbox {
             line: DelayLine::new(&cfg, &self.opts.order_delays)
                 .expect("the command line checked the order delays"),
-            acked: vec![0; seats],
+            acked: vec![0; self.roster.seats.len()],
         };
         let mut refused = Vec::new();
         loop {
@@ -575,13 +572,9 @@ impl Server {
             .iter()
             .find(|w| w.id == id)
             .and_then(|w| w.eyes);
-        let team = eyes.and_then(|slot| {
-            self.roster
-                .seats
-                .iter()
-                .find(|s| s.slot == slot)
-                .map(|s| s.team)
-        });
+        // Seats stand in slot order.
+        let team = eyes.and_then(|slot| self.roster.seats.get(usize::from(slot.0)));
+        let team = team.map(|seat| seat.team);
         (eyes, team)
     }
 
@@ -663,12 +656,8 @@ impl Server {
     /// Tells each seat of its orders that no longer held when their tick came.
     fn refuse(&self, refused: &mut Vec<RefusedOrder>) {
         for refusal in refused.drain(..) {
-            let holder = self
-                .roster
-                .seats
-                .iter()
-                .find(|seat| seat.slot == refusal.slot)
-                .and_then(|seat| seat.player);
+            let seat = self.roster.seats.get(usize::from(refusal.slot.0));
+            let holder = seat.and_then(|seat| seat.player);
             if let Some(conn) = holder.and_then(|id| self.conn(id)) {
                 conn.send(&ServerMsg::OrderRejected {
                     seq: refusal.seq,
