@@ -16,10 +16,7 @@ impl World {
     pub fn hash(&self) -> u64 {
         let mut fnv = Fnv::new();
         fnv.u32(self.tick);
-        fnv.some(self.winner.is_some());
-        if let Some(winner) = self.winner {
-            fnv.team(winner);
-        }
+        fnv.opt(self.winner, Fnv::team);
         self.hash_randomness(&mut fnv);
         fnv.u32(self.hits.len() as u32);
         for hit in &self.hits {
@@ -121,10 +118,7 @@ impl World {
         }
         if let Some(route) = self.route.get(entity) {
             fnv.u32(route.corners.len() as u32);
-            fnv.some(route.goal.is_some());
-            if let Some(goal) = route.goal {
-                fnv.vec2(goal);
-            }
+            fnv.opt(route.goal, Fnv::vec2);
             fnv.vec2(route.end);
             fnv.some(route.done);
         }
@@ -167,10 +161,7 @@ impl World {
             fnv.u8(book.talents.bits);
             fnv.u8(book.attribute_bonus);
         }
-        fnv.some(self.loot.get(entity).is_some());
-        if let Some(loot) = self.loot.get(entity) {
-            hash_stack(fnv, &loot.0);
-        }
+        fnv.opt(self.loot.get(entity), |fnv, loot| hash_stack(fnv, &loot.0));
         if let Some(hook) = self.hook.get(entity) {
             hash_hook(fnv, hook);
         }
@@ -188,10 +179,7 @@ impl World {
         }
         if let Some(ai) = self.neutral_ai.get(entity) {
             fnv.some(ai.awake);
-            fnv.some(ai.roused_by.is_some());
-            if let Some(by) = ai.roused_by {
-                fnv.entity(by);
-            }
+            fnv.opt(ai.roused_by, Fnv::entity);
         }
         if let Some(gathered) = self.stacks.get(entity) {
             hash_stacks(fnv, gathered);
@@ -216,23 +204,21 @@ fn hash_action(fnv: &mut Fnv, action: &Action) {
             target,
             slot,
             phase,
-        } => {
-            fnv.u8(2);
-            hash_aim(fnv, target);
-            fnv.u8(slot.0);
-            hash_phase(fnv, phase);
-        }
+        } => hash_cast(fnv, 2, target, slot.0, phase),
         ActionState::UseItem {
             target,
             slot,
             phase,
-        } => {
-            fnv.u8(3);
-            hash_aim(fnv, target);
-            fnv.u8(slot.0);
-            hash_phase(fnv, phase);
-        }
+        } => hash_cast(fnv, 3, target, slot.0, phase),
     }
+}
+
+/// A cast of an ability or a use of an item, told apart by `tag`.
+fn hash_cast(fnv: &mut Fnv, tag: u8, target: bota_proto::Target, slot: u8, phase: ActionPhase) {
+    fnv.u8(tag);
+    hash_aim(fnv, target);
+    fnv.u8(slot);
+    hash_phase(fnv, phase);
 }
 
 fn hash_motion(fnv: &mut Fnv, motion: &Motion) {
@@ -243,20 +229,15 @@ fn hash_motion(fnv: &mut Fnv, motion: &Motion) {
     fnv.u32(motion.relaid);
     fnv.u32(motion.bumped);
     fnv.u32(motion.bumps);
-    fnv.some(motion.queued_behind.is_some());
-    if let Some((behind, tick)) = motion.queued_behind {
-        fnv.u32(behind.index().0);
-        fnv.u32(behind.generation().0.get());
+    fnv.opt(motion.queued_behind, |fnv, (behind, tick)| {
+        fnv.entity(behind);
         fnv.u32(tick);
-    }
+    });
 }
 
 fn hash_projectile(fnv: &mut Fnv, shot: &Projectile) {
     fnv.fixed(shot.speed);
-    fnv.some(shot.source.is_some());
-    if let Some(source) = shot.source {
-        fnv.entity(source);
-    }
+    fnv.opt(shot.source, Fnv::entity);
     fnv.entity(shot.target);
     fnv.i32(shot.damage);
     fnv.u8(shot.kind as u8);
@@ -272,10 +253,7 @@ fn hash_modifiers(fnv: &mut Fnv, on_it: &Modifiers) {
     fnv.u32(on_it.0.len() as u32);
     for held in on_it.0.iter() {
         hash_modifier_kind(fnv, held.kind);
-        fnv.some(held.source.is_some());
-        if let Some(source) = held.source {
-            fnv.entity(source);
-        }
+        fnv.opt(held.source, Fnv::entity);
         fnv.some(held.ticks_left.is_some());
         fnv.u32(held.ticks_left.unwrap_or(0));
     }
@@ -300,10 +278,7 @@ fn hash_hook(fnv: &mut Fnv, hook: &Hook) {
     fnv.vec2(hook.aim);
     fnv.fixed(hook.reach_left);
     hash_damage_amp(fnv, hook.damage_amp_bp);
-    fnv.some(hook.caught.is_some());
-    if let Some(caught) = hook.caught {
-        fnv.entity(caught);
-    }
+    fnv.opt(hook.caught, Fnv::entity);
     fnv.some(hook.returning);
     for link in hook.links {
         fnv.entity(link);
@@ -362,15 +337,9 @@ fn hash_seat(fnv: &mut Fnv, seat: &Seat) {
         fnv.u32(u32::from(item.0));
         fnv.u32(*left);
     }
-    fnv.some(seat.courier.is_some());
-    if let Some(courier) = seat.courier {
-        fnv.entity(courier);
-    }
+    fnv.opt(seat.courier, Fnv::entity);
     fnv.u32(seat.courier_left);
-    fnv.some(seat.courier_kept.is_some());
-    if let Some(bag) = &seat.courier_kept {
-        hash_bag(fnv, bag);
-    }
+    fnv.opt(seat.courier_kept.as_ref(), hash_bag);
     fnv.some(seat.kept.is_some());
     if let Some(kept) = &seat.kept {
         for slot in kept.book.slots.iter() {
@@ -412,28 +381,18 @@ fn hash_aim(fnv: &mut Fnv, target: bota_proto::Target) {
 
 /// Which phase an action stands in and how far into it.
 fn hash_phase(fnv: &mut Fnv, phase: ActionPhase) {
-    match phase {
-        ActionPhase::Before { progress } => {
-            fnv.u8(0);
-            fnv.u32(progress);
-        }
-        ActionPhase::During { progress } => {
-            fnv.u8(1);
-            fnv.u32(progress);
-        }
-        ActionPhase::After { progress } => {
-            fnv.u8(2);
-            fnv.u32(progress);
-        }
-    }
+    let (tag, progress) = match phase {
+        ActionPhase::Before { progress } => (0, progress),
+        ActionPhase::During { progress } => (1, progress),
+        ActionPhase::After { progress } => (2, progress),
+    };
+    fnv.u8(tag);
+    fnv.u32(progress);
 }
 
 /// A queued blow and its pending modifier before resolution.
 fn hash_hit(fnv: &mut Fnv, hit: &Hit) {
-    fnv.some(hit.source.is_some());
-    if let Some(source) = hit.source {
-        fnv.entity(source);
-    }
+    fnv.opt(hit.source, Fnv::entity);
     fnv.entity(hit.target);
     fnv.i32(hit.amount);
     fnv.u8(hit.kind as u8);
@@ -541,10 +500,7 @@ fn hash_tagged(fnv: &mut Fnv, tag: u8, value: i32) {
 /// One trusted spawn rule: what it takes, what it puts on, how long.
 fn hash_spawn_modifier(fnv: &mut Fnv, rule: &SpawnModifier) {
     assert!(rule.select.targets.len() <= crate::game::MAX_SPAWN_TARGETS);
-    fnv.some(rule.select.team.is_some());
-    if let Some(team) = rule.select.team {
-        fnv.team(team);
-    }
+    fnv.opt(rule.select.team, Fnv::team);
     fnv.u32(rule.select.targets.len() as u32);
     for target in &rule.select.targets {
         match target {
@@ -613,8 +569,5 @@ fn hash_stack(fnv: &mut Fnv, stack: &ItemStack) {
     fnv.u8(stack.owner.0);
     fnv.some(stack.for_sale);
     fnv.u8(stack.free_charges);
-    fnv.some(stack.mode.is_some());
-    if let Some(mode) = stack.mode {
-        fnv.u8(mode as u8);
-    }
+    fnv.opt(stack.mode, |fnv, mode| fnv.u8(mode as u8));
 }
