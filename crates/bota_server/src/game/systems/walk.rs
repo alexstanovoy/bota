@@ -317,12 +317,26 @@ impl World {
             self.walk_toward(entity, dest, Fixed::ZERO, scratch);
             return;
         }
-        let to = self
-            .slide_past(entity, from, (next, aim), collision)
-            .filter(|to| self.clearance.capsule_clear(from, *to, collision));
-        let Some(to) = to else {
-            self.turn_to(entity, aim);
-            return;
+        let slid = self.slide_past(entity, from, (next, aim), collision);
+        let queued = match slid {
+            Slid::Queued(blocker) => Some((blocker, self.tick)),
+            _ => None,
+        };
+        if let Some(motion) = self.motion.get_mut(entity) {
+            motion.queued_behind = queued;
+        }
+        let to = match slid {
+            Slid::Step(to) if self.clearance.capsule_clear(from, to, collision) => to,
+            // Wedged against its own wave, it finds its way out as any
+            // walker does, or the two stand locked for good.
+            Slid::Wedged => {
+                self.walk_toward(entity, dest, Fixed::ZERO, scratch);
+                return;
+            }
+            Slid::Step(_) | Slid::Queued(_) | Slid::Stand => {
+                self.turn_to(entity, aim);
+                return;
+            }
         };
         // A unit walks where it faces: it turns onto the way it steps, a
         // slide along a body as much as the way to its aim, and sets off
@@ -350,10 +364,11 @@ impl World {
         }
     }
 
-    /// Where a step against a body ends: the step itself with nobody in
-    /// the way, else what of it runs along the edge of the body it meets,
-    /// and nothing when that is no way at all, meets a second body, or the
-    /// body is a creep of its own lane further on, which it queues behind.
+    /// What a step against a body comes to: the step itself with nobody in
+    /// the way, else what of it runs along the edge of the body it meets;
+    /// it queues behind a creep of its own lane further on, stands against a
+    /// body it cannot slide past, and is wedged when that body is a creep of
+    /// its own lane it does not queue behind.
     ///
     /// Bodies are met where they stood when the tick began, so every
     /// marcher steps at once and none walks into a gap another left this
@@ -366,19 +381,33 @@ impl World {
         from: Vec2,
         (next, aim): (Vec2, Vec2),
         collision: Fixed,
-    ) -> Option<Vec2> {
+    ) -> Slid {
         if self.phased(entity) {
-            return Some(next);
+            return Slid::Step(next);
         }
         let Some((blocker, centre, radius)) = self.stood_in_the_way(entity, from, next, collision)
         else {
-            return Some(next);
+            return Slid::Step(next);
         };
         if self.queues_behind(entity, blocker, from, centre, aim) {
-            return None;
+            return Slid::Queued(blocker);
         }
-        let to = slide_along(from, next, centre, collision + radius)?;
-        (to != from && self.stood_in_the_way(entity, from, to, collision).is_none()).then_some(to)
+        match slide_along(from, next, centre, collision + radius) {
+            Some(to)
+                if to != from && self.stood_in_the_way(entity, from, to, collision).is_none() =>
+            {
+                Slid::Step(to)
+            }
+            // Refused by a creep of its own lane it does not wait behind,
+            // which may wait behind it: standing would lock the two.
+            _ if self.team.get(blocker) == self.team.get(entity)
+                && self.lane.get(blocker) == self.lane.get(entity)
+                && self.march.get(blocker).is_some() =>
+            {
+                Slid::Wedged
+            }
+            _ => Slid::Stand,
+        }
     }
 
     /// Whether a marcher that walks into a creep of its own lane, further on
@@ -386,10 +415,7 @@ impl World {
     /// past: the followers of a held lead creep queue up behind it ("the
     /// creeps that follow will block each other", Gaming StackExchange; lane
     /// creeps walk against what blocks them and are stuck, Liquipedia, *Unit
-    /// Size*). Further on means nearer the marcher's own aim. Two creeps
-    /// aiming at different spots may each be nearer the other's aim; then
-    /// only the one further along the lane waits, so two never wait on each
-    /// other.
+    /// Size*). Further on means nearer the marcher's own aim.
     fn queues_behind(
         &self,
         entity: Entity,
@@ -405,13 +431,15 @@ impl World {
         {
             return false;
         }
-        let theirs = self
-            .route
+        // Each nearer the other's aim, the two would wait on each other for
+        // good: when the other stood queued behind this one last tick, only
+        // the one further along the lane waits.
+        let waits_on_me = self
+            .motion
             .get(blocker)
-            .map(|route| route.corners.first().copied().unwrap_or(route.end));
-        let mutual = theirs
-            .is_some_and(|theirs| from.distance_squared(theirs) < centre.distance_squared(theirs));
-        !mutual || self.lane_place(entity, from) < self.lane_place(blocker, centre)
+            .and_then(|motion| motion.queued_behind)
+            .is_some_and(|(behind, tick)| behind == entity && tick + 1 == self.tick);
+        !waits_on_me || self.lane_place(entity, from) < self.lane_place(blocker, centre)
     }
 
     /// How far on its lane a marcher standing at a spot is: the waypoint it
@@ -918,6 +946,18 @@ impl World {
         ));
         self.walk_toward(entity, away, Fixed::ZERO, scratch);
     }
+}
+
+/// What a marcher's step against the bodies about it comes to.
+enum Slid {
+    /// It steps here: straight on, or along the body it met.
+    Step(Vec2),
+    /// It stands queued behind this creep of its own lane.
+    Queued(Entity),
+    /// It stands, held by a body.
+    Stand,
+    /// A creep of its own lane it does not queue behind refuses every step.
+    Wedged,
 }
 
 /// One walker's tick of walking along its route.

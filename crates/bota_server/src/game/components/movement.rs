@@ -1,5 +1,6 @@
 //! What an entity keeps while it is walking somewhere.
 
+use crate::game::Entity;
 use bota_proto::{Fixed, Vec2};
 
 /// The route an entity walks: the corners of a way found round what stands
@@ -60,6 +61,8 @@ pub struct Motion {
     ///
     /// [`rules::HEED_HERO_TICKS`]: bota_core::rules::HEED_HERO_TICKS
     pub bumps: u32,
+    /// The creep of its own lane it stood queued behind, and the tick.
+    pub queued_behind: Option<(Entity, u32)>,
 }
 
 /// The next stretch of an entity's walk, tick by tick.
