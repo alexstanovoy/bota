@@ -255,8 +255,12 @@ cargo test --all
 cargo test --all --release
 cargo clippy --all-targets -- -D warnings
 cargo fmt --all --check
+cargo check --target wasm32-unknown-unknown -p bota_client_core -p bota_proto --features bota_client_core/ui
 cargo bench -p bota_server --bench dummy
 ```
+
+The `wasm32` check keeps the client crates building for a browser: the socket transports are
+desktop-only there, and a browser front end brings its own `LiveLink` for a live match.
 
 `bota_server/src/game/tests/determinism.rs` pins whole-match fingerprints (world
 hash and the encoded view and event streams every 1500 ticks) on every map; a
