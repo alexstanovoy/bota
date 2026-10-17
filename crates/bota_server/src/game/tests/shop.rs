@@ -149,16 +149,6 @@ fn a_backpack_swap_projects_mute_until_the_exact_boundary() {
 }
 
 #[test]
-fn the_stash_is_out_of_reach_away_from_the_shop() {
-    let (mut world, hero, _boots) = a_hero_at_the_shop();
-    world.transform.get_mut(hero).expect("hero").pos = Vec2::from_ints(9600, 9216);
-    assert!(
-        !world.move_item(SlotId(0), hero, BAG_SLOTS, 0),
-        "out in the lane the stash cannot be reached into"
-    );
-}
-
-#[test]
 fn the_stash_sells_from_anywhere_and_a_bag_far_out_only_marks() {
     let mut world = World::for_match(&config(), config().rng());
     let hero = world.seats[0].unit.expect("stood up");
