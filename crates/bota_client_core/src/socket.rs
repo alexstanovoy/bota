@@ -10,7 +10,7 @@ use std::sync::mpsc::{Receiver, channel};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use bota_proto::{ClientMsg, FrameReader, ServerMsg, encode_frame_to_vec};
+use bota_proto::{ClientMsg, CodecError, FrameReader, ServerMsg, encode_frame_to_vec};
 
 use crate::transport::Transport;
 
@@ -57,12 +57,7 @@ impl Transport for Link {
             match self.reader.next_message::<ServerMsg>() {
                 Ok(Some(message)) => return Ok(Some(message)),
                 Ok(None) => {}
-                Err(error) => {
-                    return Err(std::io::Error::other(format!(
-                        "failed to decode server message: {error}; likely a protocol mismatch, \
-build client and server from matching commits"
-                    )));
-                }
+                Err(error) => return Err(undecodable(error)),
             }
             let started = Instant::now();
             let read = self.stream.read(&mut self.buffer);
@@ -119,6 +114,13 @@ fn connect(address: &str, timeout: Duration) -> std::io::Result<TcpStream> {
     )))
 }
 
+fn undecodable(error: CodecError) -> std::io::Error {
+    std::io::Error::other(format!(
+        "failed to decode server message: {error}; likely a protocol mismatch, build client and \
+server from matching commits"
+    ))
+}
+
 fn io_context(context: &str, error: std::io::Error) -> std::io::Error {
     std::io::Error::new(error.kind(), format!("{context}: {error}"))
 }
@@ -130,10 +132,11 @@ fn io_context(context: &str, error: std::io::Error) -> std::io::Error {
 /// waits for the next one.
 pub struct Net {
     stream: TcpStream,
-    inbox: Receiver<ServerMsg>,
+    /// What the reader read, then the error that stopped it, if one did.
+    inbox: Receiver<std::io::Result<ServerMsg>>,
     closed: Arc<AtomicBool>,
-    /// Set when the reader met bytes that decode to no message.
-    broken: Arc<AtomicBool>,
+    /// The error [`Net::poll`] met, kept for the next [`Transport::recv`].
+    failure: Option<std::io::Error>,
 }
 
 impl Net {
@@ -141,37 +144,13 @@ impl Net {
     pub fn connect(addr: &str) -> std::io::Result<Net> {
         let stream = TcpStream::connect(addr)?;
         stream.set_nodelay(true)?;
-        let reader_stream = stream.try_clone()?;
+        let mut reader_stream = stream.try_clone()?;
         let (tx, inbox) = channel();
         let closed = Arc::new(AtomicBool::new(false));
         let closed_flag = Arc::clone(&closed);
-        let broken = Arc::new(AtomicBool::new(false));
-        let broken_flag = Arc::clone(&broken);
         thread::spawn(move || {
-            let mut reader = FrameReader::new();
-            let mut stream = reader_stream;
-            let mut buf = [0u8; READ_BUFFER_LEN];
-            loop {
-                let n = match stream.read(&mut buf) {
-                    Ok(0) | Err(_) => break,
-                    Ok(n) => n,
-                };
-                reader.push(&buf[..n]);
-                loop {
-                    match reader.next_message::<ServerMsg>() {
-                        Ok(Some(msg)) => {
-                            if tx.send(msg).is_err() {
-                                return;
-                            }
-                        }
-                        Ok(None) => break,
-                        Err(_) => {
-                            broken_flag.store(true, Ordering::Relaxed);
-                            closed_flag.store(true, Ordering::Relaxed);
-                            return;
-                        }
-                    }
-                }
+            if let Err(error) = read_messages(&mut reader_stream, |msg| tx.send(Ok(msg)).is_ok()) {
+                let _ = tx.send(Err(error));
             }
             closed_flag.store(true, Ordering::Relaxed);
         });
@@ -179,13 +158,20 @@ impl Net {
             stream,
             inbox,
             closed,
-            broken,
+            failure: None,
         })
     }
 
     /// Everything that arrived since the last poll.
     pub fn poll(&mut self) -> Vec<ServerMsg> {
-        self.inbox.try_iter().collect()
+        let mut messages = Vec::new();
+        for next in self.inbox.try_iter() {
+            match next {
+                Ok(msg) => messages.push(msg),
+                Err(error) => self.failure = Some(error),
+            }
+        }
+        messages
     }
 
     pub fn is_closed(&self) -> bool {
@@ -193,15 +179,39 @@ impl Net {
     }
 }
 
+/// Hands every message read to `take` until the server closes cleanly or
+/// `take` declines one; a read or decode failure is the error.
+fn read_messages(
+    stream: &mut TcpStream,
+    mut take: impl FnMut(ServerMsg) -> bool,
+) -> std::io::Result<()> {
+    let mut reader = FrameReader::new();
+    let mut buf = [0u8; READ_BUFFER_LEN];
+    loop {
+        let n = match stream.read(&mut buf) {
+            Ok(0) => return Ok(()),
+            Ok(n) => n,
+            Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(error) => return Err(io_context("failed to read server message", error)),
+        };
+        reader.push(&buf[..n]);
+        while let Some(msg) = reader.next_message::<ServerMsg>().map_err(undecodable)? {
+            if !take(msg) {
+                return Ok(());
+            }
+        }
+    }
+}
+
 impl Transport for Net {
-    /// Waits for the next message; none once the server closed cleanly.
+    /// Waits for the next message; none once the server closed cleanly, and
+    /// the error once reading failed.
     fn recv(&mut self) -> std::io::Result<Option<ServerMsg>> {
+        if let Some(error) = self.failure.take() {
+            return Err(error);
+        }
         match self.inbox.recv() {
-            Ok(message) => Ok(Some(message)),
-            Err(_) if self.broken.load(Ordering::Relaxed) => Err(std::io::Error::other(
-                "failed to decode server message; likely a protocol mismatch, build client \
-and server from matching commits",
-            )),
+            Ok(next) => next.map(Some),
             Err(_) => Ok(None),
         }
     }
@@ -217,3 +227,6 @@ and server from matching commits",
         })
     }
 }
+
+#[cfg(test)]
+mod tests;
