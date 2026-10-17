@@ -97,7 +97,7 @@ pub enum Ingested {
     Over { winner: Team, stats: MatchStats },
 }
 
-/// The rules of the stream's order, from the perspective.
+/// Where a seat's stream stands in its snapshot-then-events order.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 struct StreamState {
     /// The tick of a snapshot whose events have not come yet.
