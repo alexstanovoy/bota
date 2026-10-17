@@ -212,6 +212,8 @@ pub fn world_view(creeps: u32) -> WorldView {
             slot: SlotId(0),
             learned: Talents::default().with(TalentSlot(1)),
             learnable: Talents::default().with(TalentSlot(2)).with(TalentSlot(3)),
+            attribute_bonus: 2,
+            attribute_bonus_learnable: true,
         }],
         teleports: vec![TeleportView {
             slot: SlotId(1),
@@ -358,6 +360,7 @@ pub fn all_orders() -> Vec<Order> {
         Order::LearnTalent {
             talent: TalentSlot(7),
         },
+        Order::LearnAttributeBonus,
     ];
     orders.extend(item_orders());
     orders.extend(cheat_orders());

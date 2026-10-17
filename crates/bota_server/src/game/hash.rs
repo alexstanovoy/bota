@@ -165,6 +165,7 @@ impl World {
         }
         if let Some(book) = self.abilities.get(entity) {
             fnv.u8(book.talents.bits);
+            fnv.u8(book.attribute_bonus);
         }
         fnv.some(self.loot.get(entity).is_some());
         if let Some(loot) = self.loot.get(entity) {
@@ -372,6 +373,7 @@ fn hash_seat(fnv: &mut Fnv, seat: &Seat) {
             fnv.u32(slot.cooldown);
         }
         fnv.u8(kept.book.talents.bits);
+        fnv.u8(kept.book.attribute_bonus);
         hash_bag(fnv, &kept.bag);
         hash_stacks(fnv, &kept.stacks);
     }

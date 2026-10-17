@@ -176,10 +176,15 @@ impl World {
                             .fold(Talents::default(), Talents::with)
                     },
                 );
+                let attribute_bonus_learnable = seat.unit.is_some_and(|unit| {
+                    own && self.alive(unit) && self.can_learn_attribute_bonus(unit)
+                });
                 Some(TalentView {
                     slot: seat.slot,
                     learned: book.talents,
                     learnable,
+                    attribute_bonus: book.attribute_bonus,
+                    attribute_bonus_learnable,
                 })
             })
             .collect()

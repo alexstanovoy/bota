@@ -272,7 +272,8 @@ pub enum Order {
         /// Which one.
         cheat: Cheat,
     },
-    /// Spend a skill point on a talent of the hero's tree. Interrupts nothing
+    /// Take a talent of the hero's tree. Talents spend no skill point: each
+    /// opening level brings a talent point of its own. Interrupts nothing
     /// the body is doing.
     ///
     /// A tier opens at its hero level and takes one of its two talents; the
@@ -284,4 +285,11 @@ pub enum Order {
         /// Which talent.
         talent: TalentSlot,
     },
+    /// Spend a skill point on the Attribute Bonus of a hero with a talent
+    /// tree: two of every attribute a level, seven levels, level `k` from
+    /// hero level `2k`. A level up whose point no ability could take puts
+    /// it there by itself. Interrupts nothing the body is doing. Refused
+    /// with [`RejectReason::CannotLearn`](crate::RejectReason::CannotLearn)
+    /// otherwise.
+    LearnAttributeBonus,
 }

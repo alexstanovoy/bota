@@ -22,9 +22,9 @@ mid-only ruleset on that map, plus replays.
 Not modelled, although a 1v1 mid in Dota uses it: runes of every kind, and with
 them the Bottle; day and night (night vision, neutrals asleep at night); the
 items the shop does not sell (Faerie Fire, Smoke of Deceit, Dust of Appearance,
-neutral items, ...); Aghanim's Scepter and Shard; the Attribute Bonus; the Glyph
-of Fortification; buyback; neutral creeps' abilities and auras; flooded camps;
-backdoor protection.
+neutral items, ...); Aghanim's Scepter and Shard; the Glyph of Fortification;
+buyback; neutral creeps' abilities and auras; flooded camps; backdoor
+protection.
 
 The simulation is authoritative on the server. A client receives what its side
 can see and sends orders; it cannot run the game itself.

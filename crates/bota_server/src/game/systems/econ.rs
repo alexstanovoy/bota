@@ -378,7 +378,9 @@ impl World {
         }
     }
 
-    /// Adds experience to a seat, taking its hero up the levels it passes.
+    /// Adds experience to a seat, taking its hero up the levels it passes; a
+    /// level's point goes into the Attribute Bonus by itself when nothing
+    /// else could take it ([`crate::game::AbilityBook::auto_attribute_bonus`]).
     pub fn grant_xp(&mut self, seat: usize, amount: i32, events: &mut Vec<Event>) {
         self.seats[seat].xp += amount;
         while self.seats[seat].level < rules::HERO_MAX_LEVEL {
@@ -388,6 +390,13 @@ impl World {
             }
             self.seats[seat].level += 1;
             let level = self.seats[seat].level;
+            let book = match self.seats[seat].unit {
+                Some(unit) => self.abilities.get_mut(unit),
+                None => self.seats[seat].kept.as_mut().map(|kept| &mut kept.book),
+            };
+            if let Some(book) = book {
+                book.auto_attribute_bonus(level);
+            }
             if let Some(unit) = self.seats[seat].unit {
                 self.level.insert(unit, Level(level));
                 events.push(Event {

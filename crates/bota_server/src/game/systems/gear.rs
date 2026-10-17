@@ -1,8 +1,8 @@
 //! Items carried and abilities held: what they add, and what they cost.
 
 use bota_core::{
-    Carried, CarriedItem, ITEMS, ItemDef, Mend, ModifierKind, Pool, Spends, ability_def,
-    clamp_to_map, fountain_pos, hero_def, item_def, learn_group, level_floor, move_towards, rules,
+    Carried, CarriedItem, ITEMS, ItemDef, Mend, ModifierKind, Pool, Spends, clamp_to_map,
+    fountain_pos, hero_def, item_def, learn_group, move_towards, rules,
 };
 use bota_proto::{
     AbilityId, Attribute, EventKind, Fixed, HeroId, ItemId, SlotId, Target, Team, Vec2,
@@ -70,6 +70,7 @@ pub fn hero_kit(hero: HeroId) -> AbilityBook {
     AbilityBook {
         tree: hero_def(hero).and_then(|def| def.talents),
         talents: bota_proto::Talents::default(),
+        attribute_bonus: 0,
         slots: carried
             .iter()
             .map(|id| AbilityState {
@@ -1119,26 +1120,14 @@ impl World {
     /// goes past its own cap. A point into a slot that shares its level with
     /// others (the razes) levels every slot of the group at once.
     pub fn learn(&mut self, entity: Entity, slot: usize) -> bool {
-        let Some(book) = self.abilities.get(entity) else {
-            return false;
-        };
-        let Some(ability) = book.slots.get(slot).copied() else {
-            return false;
-        };
-        let Some(def) = ability_def(ability.id) else {
-            return false;
-        };
-        if ability.level >= def.max_level {
-            return false;
-        }
         let hero_level = self.level.get(entity).map_or(1, |level| level.0);
-        if self.points_spent(entity) >= hero_level || hero_level < level_floor(def, ability.level) {
-            return false;
-        }
-        let group = learn_group(ability.id);
         let Some(book) = self.abilities.get_mut(entity) else {
             return false;
         };
+        if !book.can_raise(slot, hero_level) {
+            return false;
+        }
+        let group = learn_group(book.slots[slot].id);
         for held in &mut book.slots {
             if learn_group(held.id) == group {
                 held.level += 1;
@@ -1147,8 +1136,8 @@ impl World {
         true
     }
 
-    /// Spends an ability point on a talent of an entity's tree, when
-    /// [`World::can_learn_talent`] allows it.
+    /// Takes a talent of an entity's tree, when [`World::can_learn_talent`]
+    /// allows it.
     pub fn learn_talent(&mut self, entity: Entity, slot: bota_proto::TalentSlot) -> bool {
         if !self.can_learn_talent(entity, slot) {
             return false;
@@ -1160,10 +1149,13 @@ impl World {
         true
     }
 
-    /// Whether a point could go into a talent right now: the entity's tree
-    /// has it, neither it nor (below [`rules::TALENT_SECOND_LEVELS`]) the
-    /// other of its tier is taken, a point is unspent, and the hero level
-    /// has reached the one it opens at.
+    /// Whether a talent could be taken right now: the entity's tree has it,
+    /// neither it nor (below [`rules::TALENT_SECOND_LEVELS`]) the other of
+    /// its tier is taken, and the hero level has reached the one it opens
+    /// at. Since Dota 7.40 a talent spends no skill point: "talents are
+    /// learned by using their own talent points available at levels 10, 15,
+    /// 20, 25, 27, 28, 29, and 30", so the opening levels are the whole
+    /// count and no point counter is kept.
     pub fn can_learn_talent(&self, entity: Entity, slot: bota_proto::TalentSlot) -> bool {
         let Some(book) = self.abilities.get(entity) else {
             return false;
@@ -1175,31 +1167,31 @@ impl World {
             return false;
         }
         let hero_level = self.level.get(entity).map_or(0, |level| level.0);
-        self.points_spent(entity) < hero_level
-            && hero_level >= bota_core::talent_floor(slot, book.talents)
+        hero_level >= bota_core::talent_floor(slot, book.talents)
     }
 
-    /// Skill points an entity has spent, talents included.
-    ///
-    /// Slots sharing a learn group were paid for together, so the group
-    /// counts once.
+    /// Spends a skill point on an entity's Attribute Bonus, when
+    /// [`World::can_learn_attribute_bonus`] allows it.
+    pub fn learn_attribute_bonus(&mut self, entity: Entity) -> bool {
+        let hero_level = self.level.get(entity).map_or(0, |level| level.0);
+        self.abilities
+            .get_mut(entity)
+            .is_some_and(|book| book.learn_attribute_bonus(hero_level))
+    }
+
+    /// Whether a skill point could go into an entity's Attribute Bonus
+    /// right now, see [`AbilityBook::can_learn_attribute_bonus`].
+    pub fn can_learn_attribute_bonus(&self, entity: Entity) -> bool {
+        let hero_level = self.level.get(entity).map_or(0, |level| level.0);
+        self.abilities
+            .get(entity)
+            .is_some_and(|book| book.can_learn_attribute_bonus(hero_level))
+    }
+
+    /// Skill points an entity has spent, see [`AbilityBook::points_spent`].
     pub fn points_spent(&self, entity: Entity) -> u8 {
-        let Some(book) = self.abilities.get(entity) else {
-            return 0;
-        };
-        let talents = book.talents.bits.count_ones() as u8;
-        talents
-            + book
-                .slots
-                .iter()
-                .enumerate()
-                .filter(|(at, held)| {
-                    let group = learn_group(held.id);
-                    !book.slots[..*at]
-                        .iter()
-                        .any(|other| learn_group(other.id) == group)
-                })
-                .map(|(_, held)| held.level)
-                .sum::<u8>()
+        self.abilities
+            .get(entity)
+            .map_or(0, AbilityBook::points_spent)
     }
 }

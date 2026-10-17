@@ -88,6 +88,10 @@ fn derive_stats_impl<const APPLIED: bool>(cx: StatsCx<'_>) {
             add_carried(&mut now, &carried);
         }
         let gathered = stacks.get(entity).copied().unwrap_or_default();
+        if let Some(book) = abilities.get(entity) {
+            now.attributes +=
+                Attributes::all(rules::ATTRIBUTE_BONUS_POINTS * i32::from(book.attribute_bonus));
+        }
         add_heap(&mut now, &gathered, abilities.get(entity));
         from_attributes(&mut now);
         // A share of the base pace and of what agility adds, and of nothing

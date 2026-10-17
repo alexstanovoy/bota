@@ -400,9 +400,14 @@ pub struct TalentView {
     pub slot: SlotId,
     /// The talents it has learned.
     pub learned: Talents,
-    /// The talents a skill point could go into right now. Empty for a seat
-    /// of the other side and for a hero that is down.
+    /// The talents that could be taken right now. Empty for a seat of the
+    /// other side and for a hero that is down.
     pub learnable: Talents,
+    /// Levels of the Attribute Bonus learned, up to seven.
+    pub attribute_bonus: u8,
+    /// Whether a skill point could go into the Attribute Bonus right now.
+    /// False for a seat of the other side and for a hero that is down.
+    pub attribute_bonus_learnable: bool,
 }
 
 /// Everything one team is allowed to know, as of one tick.

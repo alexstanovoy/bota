@@ -853,6 +853,17 @@ pub const ULT_LEVEL_FLOORS: [u8; 3] = [6, 12, 18];
 pub const TALENT_LEVELS: [u8; 4] = [10, 15, 20, 25];
 /// Hero level the other talent of each tier opens at.
 pub const TALENT_SECOND_LEVELS: [u8; 4] = [27, 28, 29, 30];
+/// Levels the Attribute Bonus can reach: `special_bonus_attributes`
+/// `MaxLevel 7` (`scripts/npc/npc_abilities.txt`, client 6957).
+pub const ATTRIBUTE_BONUS_MAX_LEVEL: u8 = 7;
+/// Attribute Bonus level `k` waits for hero level this many times `k`: 2, 4,
+/// … 14 (`RequiredLevel 2`; Liquipedia, *Attributes*, "the min levels
+/// required per level of Attribute Bonus are level 2/4/6/8/10/12/14"; the
+/// 7.38 notes moved it from 6 to 2).
+pub const ATTRIBUTE_BONUS_LEVELS_APART: u8 = 2;
+/// Points of every attribute a level of the Attribute Bonus adds: `value 2
+/// 4 6 … 14`.
+pub const ATTRIBUTE_BONUS_POINTS: i32 = 2;
 
 const _: () = {
     assert!(TALENT_LEVELS.len() * 2 == bota_proto::TalentSlot::COUNT as usize);

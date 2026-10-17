@@ -527,6 +527,8 @@ fn a_cast_point_shortens_while_a_feast_runs_on_a_hero_with_the_talent() {
         slot: SlotId(0),
         learned: bota_proto::Talents::default().with(bota_proto::TalentSlot(7)),
         learnable: bota_proto::Talents::default(),
+        attribute_bonus: 0,
+        attribute_bonus_learnable: false,
     };
     let mut view = a_tick(10, vec![fiend.clone()], seat);
     view.talents = vec![told];
