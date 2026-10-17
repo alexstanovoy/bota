@@ -44,6 +44,8 @@ mod observer;
 mod orders;
 mod play;
 mod readiness;
+#[cfg(not(target_arch = "wasm32"))]
+mod redial;
 mod seat;
 mod session;
 mod shop;
@@ -65,6 +67,8 @@ pub use observer::*;
 pub use orders::*;
 pub use play::*;
 pub use readiness::*;
+#[cfg(not(target_arch = "wasm32"))]
+pub use redial::Redial;
 pub use seat::*;
 pub use session::*;
 pub use shop::*;

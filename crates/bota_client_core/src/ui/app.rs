@@ -27,6 +27,11 @@ pub trait LiveLink {
     /// Sends one message upstream; a failure marks the link closed.
     fn send(&mut self, msg: &ClientMsg) -> std::io::Result<()>;
     fn is_closed(&self) -> bool;
+    /// Whether the connection broke and is being made again; the app keeps
+    /// going meanwhile.
+    fn is_redialing(&self) -> bool {
+        false
+    }
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -41,6 +46,10 @@ impl LiveLink for crate::socket::Net {
 
     fn is_closed(&self) -> bool {
         crate::socket::Net::is_closed(self)
+    }
+
+    fn is_redialing(&self) -> bool {
+        crate::socket::Net::is_redialing(self)
     }
 }
 
@@ -57,6 +66,11 @@ impl Source {
             Source::Live(net) => net.poll(),
             Source::Replay(player) => player.poll(dt),
         }
+    }
+
+    /// Whether a live link is being made again after it broke.
+    pub fn is_redialing(&self) -> bool {
+        matches!(self, Source::Live(net) if net.is_redialing())
     }
 
     /// Sends upstream. A replay swallows everything.

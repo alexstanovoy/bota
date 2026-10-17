@@ -83,7 +83,8 @@ The server hosts one lobby and one match, then exits. It listens on `--port`
 | `--players N` | seats, default 2, or the number of `--seat` reservations when those are given (a different `--players` is an error, and reserved seats take no `--dummy-seat`) |
 | `--seed N` | seed of the match randomness, for a match that must play again the same; without it the key is drawn from the operating system and known to no one |
 | `--match-id N` | the public label of the match in its start message and replay; drawn when absent, and nothing random comes from it |
-| `--seat KEY_HEX:NAME,...` | reserve the seats, in slot order, for the holders of 64-hex-digit keys (also `BOTA_SEATS`, which keeps the keys out of process lists); a key taken again replaces its holder, also mid-match |
+| `--seat KEY_HEX:NAME,...` | reserve the seats, in slot order, for the holders of 64-hex-digit keys (also `BOTA_SEATS`, which keeps the keys out of process lists); a key may take its seat again, also mid-match, once the connection that held it has ended or been found dead; while it lives the newcomer is refused (`SeatHeld`) |
+| `--idle-timeout-secs N` | drop a connection that sends nothing, or takes in nothing, for this long (default 5; the server pings every second and clients answer), freeing its seat for a reconnect; `0` never drops one |
 | `--referee-key KEY_HEX` | admit a referee with this key (also `BOTA_REFEREE_KEY`): told the lobby, the start, departures and the end, never a tick |
 | `--start-after-secs N` | with reserved seats, start this long after listening at the latest; a seat without a pick gets a random hero |
 | `--max-connections N` | most connections held at once |
@@ -146,6 +147,16 @@ counted instead; `IssuedOrder::courier(id, order)` drives the courier, dead
 hero or not. The outcome tells the seat, the winner (`Team::Neutral` for a
 draw), the last tick, how many orders the server refused and how many were
 held back for a dead hero.
+
+The socket transports answer the server's pings and dial again when the
+connection breaks (an error, five seconds of silence, a reset), by a `Redial`
+policy (`Link::with_redial`, `Net::connect_with`; `Redial::OFF` makes a break
+an error). The server gives the seat back to the key the first `Hello` came
+with (the transport draws one when the caller gives none) once the old
+connection has ended or been found dead (until then it refuses the newcomer
+with `SeatHeld`, and the transport tries again), the session picks
+the match up from the next snapshot, and the standing move or attack orders
+go out again. A player who leaves is absent, not beaten: the match goes on.
 
 The parts compose for a bot that needs more: `join(transport, name, hero, key)`
 takes a seat over any `Transport` (`Link` blocks with timeouts; `Net` reads on
@@ -273,7 +284,9 @@ desktop-only there, and a browser front end brings its own `LiveLink` for a live
 `bota_server/src/game/tests/determinism.rs` pins whole-match fingerprints (world
 hash and the encoded view and event streams every 1500 ticks) on every map; a
 deliberate rule change re-records them with the ignored `print_pins` test.
-`bota_server/tests/client.rs` plays a lockstep match through a real socket.
+`bota_server/tests/client.rs` plays a lockstep match through a real socket, and
+`bota_server/tests/bad_links.rs` plays through an in-process proxy that delays,
+jitters, caps, stalls, black-holes and resets the line.
 
 ## License
 

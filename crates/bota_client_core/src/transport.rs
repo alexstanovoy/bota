@@ -6,8 +6,10 @@ use std::time::Duration;
 
 use bota_proto::{ClientMsg, ServerMsg};
 
-/// How long a blocking link waits on the server before giving up, by default.
-pub const DEFAULT_IO_TIMEOUT: Duration = Duration::from_secs(300);
+/// How long a socket transport waits on the server before it takes the
+/// connection for broken, by default. The server pings every second, so five
+/// seconds of silence is a dead link, not a quiet lobby.
+pub const DEFAULT_IO_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// A framed connection to a match server.
 pub trait Transport {

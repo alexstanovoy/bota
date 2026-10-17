@@ -12,6 +12,9 @@ categories.workspace = true
 bota_core = { workspace = true }
 bota_proto = { workspace = true }
 
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+getrandom = "0.4"
+
 [features]
 default = []
 ui = []
