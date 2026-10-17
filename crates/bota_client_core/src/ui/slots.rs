@@ -11,10 +11,10 @@ use bota_proto::{
 use crate::ui::app::App;
 
 /// How many item slots a hero carries on itself: inventory and backpack.
-pub const BAG_SLOTS: u8 = 9;
+pub const BAG_SLOTS: u8 = crate::limits::HERO_ITEM_SLOTS as u8;
 
 /// How many of those are the inventory proper, where items work.
-pub const INVENTORY_SLOTS: u8 = 6;
+pub const INVENTORY_SLOTS: u8 = bota_core::rules::INVENTORY_SLOTS as u8;
 
 /// The hero's town portal slot, Dota's own slot for scrolls beside the
 /// inventory.

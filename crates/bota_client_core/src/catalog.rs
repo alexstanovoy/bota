@@ -6,9 +6,9 @@
 
 use bota_core::{
     ABILITY_COUNT, EFFECT_COUNT, ITEMS as ITEM_DEFS, Talent, ability_def, attributes_at_level,
-    base_damage_least, effect_def, hero_def, rules,
+    base_damage_least, effect_def, hero_def, talent_floor,
 };
-use bota_proto::{AbilityId, EffectId, Fixed, HeroId, ItemId, TalentSlot};
+use bota_proto::{AbilityId, EffectId, Fixed, HeroId, ItemId, TalentSlot, Talents};
 
 use crate::blurb::{Scope, fill};
 
@@ -508,10 +508,10 @@ pub struct TalentFace {
 /// Hero levels at which the talent in a slot opens: the first of its tier
 /// to be taken, and the other once its tier has one.
 pub fn talent_levels(slot: TalentSlot) -> (u8, u8) {
-    let tier = usize::from(slot.tier());
+    let none = Talents::default();
     (
-        rules::TALENT_LEVELS[tier],
-        rules::TALENT_SECOND_LEVELS[tier],
+        talent_floor(slot, none),
+        talent_floor(slot, none.with(slot.other())),
     )
 }
 

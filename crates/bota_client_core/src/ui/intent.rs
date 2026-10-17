@@ -3,15 +3,13 @@
 //! hands it to [`App::act`]; world positions are in world units.
 
 use bota_proto::{
-    AbilitySlot, Aim, ClientMsg, EntityId, Fixed, HeroId, ItemId, ItemSlot, Order, SlotId, Target,
-    Team, UnitKind, Vec2, WorldView,
+    AbilityId, AbilitySlot, Aim, ClientMsg, EntityId, Fixed, HeroId, ItemId, ItemSlot, Order,
+    SlotId, Target, Team, UnitKind, Vec2, WorldView,
 };
 
 use crate::ui::app::{App, Pin, Source, Tap};
 use crate::ui::slots::{BAG_SLOTS, Press, Slot, order_for, press};
 
-/// Which ability of a courier fetches the stash.
-const TAKE_STASH: u16 = 6;
 /// How far past a body's edge an attack click still sticks to it, in world
 /// units.
 const ATTACK_SNAP: f32 = 25.0;
@@ -348,7 +346,7 @@ impl App {
     /// Sends the courier for what waits in the stash.
     fn courier_deliver(&mut self) {
         if let Some(courier) = self.my_courier()
-            && let Some(slot) = self.courier_slot(TAKE_STASH)
+            && let Some(slot) = self.courier_slot(AbilityId::TAKE_STASH.0)
         {
             self.send_order_to(
                 Some(courier),

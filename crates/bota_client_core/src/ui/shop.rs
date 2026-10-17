@@ -4,7 +4,9 @@
 use bota_proto::ItemId;
 
 use crate::catalog::{ITEMS, ItemFace};
-use crate::shop::{held_items, missing_parts, price_for, primary_of, whole_price};
+use bota_core::missing_parts;
+
+use crate::shop::{held_items, price_for, primary_of, whole_price};
 use crate::ui::app::App;
 
 /// The groups the shop shows its items in, in order.

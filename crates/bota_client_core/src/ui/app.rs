@@ -176,7 +176,7 @@ const SESSION_OPTIONS: SessionOptions = SessionOptions {
     forget_after_ticks: DEFAULT_FORGET_AFTER_TICKS,
 };
 /// Ticks per second assumed before a match tells its own.
-const DEFAULT_TICK_RATE: u16 = 30;
+const DEFAULT_TICK_RATE: u16 = bota_core::rules::TICKS_PER_SECOND as u16;
 /// Floaters in flight at most; the oldest give way.
 const MAX_FLOATERS: usize = 96;
 /// Kill feed lines kept at most.
@@ -408,9 +408,7 @@ impl App {
         let tree = unit.hero.and_then(bota_core::hero_def)?.talents;
         let learned = self.seat.session()?.talents_of(unit.id);
         let talent = tree.is_some_and(|tree| {
-            tree.iter().enumerate().any(|(at, held)| {
-                *held == bota_core::Talent::FeastCastSpeed && learned.has(TalentSlot(at as u8))
-            })
+            bota_core::has_talent(tree, learned, bota_core::Talent::FeastCastSpeed)
         });
         let feasting = unit.effects.iter().any(|e| e.id == EffectId::FEASTING);
         Some(bota_core::cast_point_ms(point, feasting && talent) as f32 / 1000.0)
