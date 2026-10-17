@@ -86,22 +86,22 @@ fn a_part_in_hand_comes_off_what_the_shop_asks() {
     let parts = [ItemId::BOOTS, ItemId::GLOVES, ItemId::BELT];
     let built: i32 = parts.iter().map(|part| whole_price(*part)).sum();
     assert_eq!(
-        price_for(ItemId::POWER_TREADS, &[]),
+        price_for(ItemId::POWER_TREADS, &[], None),
         built,
         "with nothing in hand the parts are asked for"
     );
     assert_eq!(
-        price_for(ItemId::POWER_TREADS, &[ItemId::BOOTS]),
+        price_for(ItemId::POWER_TREADS, &[ItemId::BOOTS], None),
         built - whole_price(ItemId::BOOTS),
         "the boots already worn are not asked for twice"
     );
     assert_eq!(
-        price_for(ItemId::BOOTS, &[ItemId::BOOTS]),
+        price_for(ItemId::BOOTS, &[ItemId::BOOTS], None),
         whole_price(ItemId::BOOTS),
         "but a second of what is bought whole costs the whole of it"
     );
     assert_eq!(
-        price_for(ItemId::POWER_TREADS, &[ItemId::POWER_TREADS]),
+        price_for(ItemId::POWER_TREADS, &[ItemId::POWER_TREADS], None),
         built,
         "and a second built one is built out of fresh parts"
     );

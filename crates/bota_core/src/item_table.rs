@@ -9,12 +9,24 @@ use bota_proto::{Aim, Attribute, Attributes, Fixed, ItemId};
 use crate::{
     BLINK_OVERSHOOT_RANGE, BLINK_RANGE, Carried, GRENADE_COOLDOWN, GRENADE_RANGE, ItemDef,
     MANGO_COST, MANGO_HP_REGEN, MANGO_MANA, MANGO_STACK_MAX, Mend, NOTHING, OBSERVER_WARD, PLAIN,
-    Pool, Ratio, SALVE_HEAL, SALVE_TICKS, SENTRY_WARD, Spends, Stock, UseSpec,
+    Pool, Ratio, Recipe, SALVE_HEAL, SALVE_TICKS, SENTRY_WARD, Spends, Stock, UseSpec,
     hundredths_per_second, per_second, points, points_with, rules,
 };
 
-/// What Power Treads are built from.
+/// What Power Treads are built from first, set to strength.
 const TREADS_PARTS: [ItemId; 3] = [ItemId::BOOTS, ItemId::GLOVES, ItemId::BELT];
+/// Power Treads' other recipes, `item_recipe_power_treads` requirements 04
+/// and 06: a Robe sets them to intelligence and a Band to agility.
+const TREADS_ALTERNATIVES: [Recipe; 2] = [
+    Recipe {
+        parts: &[ItemId::BOOTS, ItemId::GLOVES, ItemId::ROBE],
+        mode: Some(Attribute::Intelligence),
+    },
+    Recipe {
+        parts: &[ItemId::BOOTS, ItemId::GLOVES, ItemId::BAND],
+        mode: Some(Attribute::Agility),
+    },
+];
 /// What Phase Boots are built from: `item_recipe_phase_boots` costs
 /// nothing and asks for Boots, Chainmail and Blades of Attack alone.
 const PHASE_PARTS: [ItemId; 3] = [ItemId::BOOTS, ItemId::CHAINMAIL, ItemId::BLADES_OF_ATTACK];
@@ -379,6 +391,7 @@ pub const ITEMS: [ItemDef; 54] = [
         mode: Some(Attribute::Strength),
         mode_bonus: 10,
         components: &TREADS_PARTS,
+        alternatives: &TREADS_ALTERNATIVES,
         carried: Carried {
             move_speed: 55,
             attack_speed: 25,
@@ -685,6 +698,14 @@ const _: () = {
             assert!(!held.retired);
             part += 1;
         }
+        // Every other recipe costs what the first does, and only a built
+        // item has one.
+        let mut other = 0;
+        while other < def.alternatives.len() {
+            assert!(!def.components.is_empty());
+            assert!(parts_cost(def.alternatives[other].parts) == parts_cost(def.components));
+            other += 1;
+        }
         // A retired entry costs, builds and carries nothing.
         if def.retired {
             assert!(def.cost == 0 && def.components.is_empty() && def.ranged.is_none());
@@ -692,3 +713,14 @@ const _: () = {
         at += 1;
     }
 };
+
+/// What a set of parts costs together.
+const fn parts_cost(parts: &[ItemId]) -> i32 {
+    let mut sum = 0;
+    let mut at = 0;
+    while at < parts.len() {
+        sum += ITEMS[parts[at].0 as usize].cost;
+        at += 1;
+    }
+    sum
+}

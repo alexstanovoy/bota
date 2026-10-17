@@ -261,7 +261,7 @@ pub const ITEMS: [ItemFace; ITEM_DEFS.len()] = [
         ItemId::POWER_TREADS.0,
         "Treads",
         "{short}",
-        "{carried}, +{mode_bonus} to the attribute it is set to. Using them sets them to the next one.",
+        "{carried}, +{mode_bonus} to the attribute it is set to. Built of Boots, Gloves and a Belt, Robe or Band, which sets it. Using them sets them to the next one.",
     ),
     ItemFace::with(
         ItemId::PHASE_BOOTS.0,

@@ -449,32 +449,31 @@ fn what_an_item_is_set_to_is_worth_points_of_that_attribute() {
     assert!(world.buy(SlotId(0), treads, &mut events), "bought");
     world.step();
     let bonus = Fixed::from_int(ITEMS[usize::from(ItemId::POWER_TREADS.0)].mode_bonus);
-    let on_strength = *world.stats.get(hero).expect("settled");
+    let before = *world.stats.get(hero).expect("settled");
     assert_eq!(
         slot_of(&world, hero, 0).and_then(|stack| stack.mode),
-        Some(Attribute::Strength),
-        "they come set to strength"
+        Some(Attribute::Agility),
+        "bought whole they come of the Band, set to the hero's agility"
     );
     assert!(
         world.use_item(hero, 0, Target::None, &mut Vec::new()),
         "and using them sets them over"
     );
     world.step();
-    let on_agility = *world.stats.get(hero).expect("settled");
+    let after = *world.stats.get(hero).expect("settled");
+    let now = slot_of(&world, hero, 0)
+        .and_then(|stack| stack.mode)
+        .expect("set to one");
+    assert_ne!(now, Attribute::Agility, "to another attribute");
     assert_eq!(
-        slot_of(&world, hero, 0).and_then(|stack| stack.mode),
-        Some(Attribute::Agility),
-        "to the attribute after the one they were on"
+        after.attributes.agility + bonus,
+        before.attributes.agility,
+        "what they were worth in agility is gone"
     );
     assert_eq!(
-        on_agility.attributes.strength + bonus,
-        on_strength.attributes.strength,
-        "what they were worth in strength is gone"
-    );
-    assert_eq!(
-        on_agility.attributes.agility,
-        on_strength.attributes.agility + bonus,
-        "and worth the same in agility instead"
+        after.attributes.of(now),
+        before.attributes.of(now) + bonus,
+        "and worth the same in the new one instead"
     );
 }
 

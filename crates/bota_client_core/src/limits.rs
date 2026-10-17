@@ -34,6 +34,8 @@ pub const OWN_ITEM_SLOTS: usize = HERO_ITEM_SLOTS + STASH_ITEM_SLOTS + COURIER_I
 pub const MAX_SHOP_ITEMS: usize = bota_core::ITEMS.len();
 /// Maximum number of components accepted for one shop entry.
 pub const MAX_SHOP_COMPONENTS: usize = 16;
+/// Most other recipes one shop entry may list.
+pub const MAX_SHOP_RECIPES: usize = 8;
 /// Maximum number of recent events retained.
 pub const MAX_RECENT_EVENTS: usize = 64;
 /// Maximum events accepted per batch, equal to half the wire payload byte cap.

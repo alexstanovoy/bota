@@ -4,7 +4,7 @@
 use bota_proto::ItemId;
 
 use crate::catalog::{ITEMS, ItemFace};
-use crate::shop::{held_items, missing_parts, price_for, whole_price};
+use crate::shop::{held_items, missing_parts, price_for, primary_of, whole_price};
 use crate::ui::app::App;
 
 /// The groups the shop shows its items in, in order.
@@ -115,30 +115,31 @@ pub fn first_answer(query: &str) -> Option<u16> {
 }
 
 impl App {
-    /// What this seat pays for an item now, and what it costs whole.
-    pub fn price_of(&self, id: u16) -> (i32, i32) {
-        let held = self
-            .my_slot
+    /// What this seat holds towards a build, and its hero's primary
+    /// attribute.
+    fn buyer(&self) -> (Vec<ItemId>, Option<bota_proto::Attribute>) {
+        self.my_slot
             .zip(self.view())
             .and_then(|(slot, view)| {
                 let p = view.players.iter().find(|p| p.slot == slot)?;
-                Some(held_items(view, p))
+                Some((held_items(view, p), primary_of(p)))
             })
-            .unwrap_or_default();
-        (price_for(ItemId(id), &held), whole_price(ItemId(id)))
+            .unwrap_or_default()
+    }
+
+    /// What this seat pays for an item now, and what it costs whole.
+    pub fn price_of(&self, id: u16) -> (i32, i32) {
+        let (held, primary) = self.buyer();
+        (
+            price_for(ItemId(id), &held, primary),
+            whole_price(ItemId(id)),
+        )
     }
 
     /// The parts this seat still lacks for an item, in build order.
     pub fn missing_for(&self, id: u16) -> Vec<ItemId> {
-        let held = self
-            .my_slot
-            .zip(self.view())
-            .and_then(|(slot, view)| {
-                let p = view.players.iter().find(|p| p.slot == slot)?;
-                Some(held_items(view, p))
-            })
-            .unwrap_or_default();
-        missing_parts(ItemId(id), &held)
+        let (held, primary) = self.buyer();
+        missing_parts(ItemId(id), &held, primary)
     }
 
     /// What the quick-buy intent buys now: the quick-buy item whole when the

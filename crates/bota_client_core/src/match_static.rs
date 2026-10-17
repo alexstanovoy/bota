@@ -6,8 +6,8 @@ use bota_core::{CellGrid, cell_tier, rules};
 use bota_proto::{Fixed, MapId, MatchInfo, Pick, ShopEntry, SlotId, Team, TickMode, Vec2};
 
 use crate::limits::{
-    MAX_OPAQUE_CELLS, MAX_SEATS, MAX_SHOP_COMPONENTS, MAX_SHOP_ITEMS, MAX_STATIC_TREES,
-    MAX_TERRAIN_AXIS, MAX_TERRAIN_RUNS,
+    MAX_OPAQUE_CELLS, MAX_SEATS, MAX_SHOP_COMPONENTS, MAX_SHOP_ITEMS, MAX_SHOP_RECIPES,
+    MAX_STATIC_TREES, MAX_TERRAIN_AXIS, MAX_TERRAIN_RUNS,
 };
 use crate::session::SessionError;
 
@@ -341,6 +341,18 @@ fn validate_static_inputs(info: &MatchInfo) -> Result<(), SessionError> {
             entry.components.len(),
             MAX_SHOP_COMPONENTS,
         )?;
+        check_limit(
+            "ShopEntry.alternatives",
+            entry.alternatives.len(),
+            MAX_SHOP_RECIPES,
+        )?;
+        for parts in &entry.alternatives {
+            check_limit(
+                "ShopEntry.alternatives parts",
+                parts.len(),
+                MAX_SHOP_COMPONENTS,
+            )?;
+        }
     }
     Ok(())
 }

@@ -4,7 +4,7 @@
 use bota_core::{BLINK_OVERSHOOT_RANGE, ModifierKind, rules};
 
 use crate::game::{Entity, Stats, World};
-use bota_proto::{Attributes, Fixed, HeroId, ItemId, SlotId, Target, Vec2};
+use bota_proto::{Attribute, Attributes, Fixed, HeroId, ItemId, SlotId, Target, Vec2};
 
 use super::support::*;
 
@@ -181,6 +181,48 @@ fn phase_boots_build_of_boots_chainmail_and_blades_and_phase_a_ranged_hero_by_te
     assert!(
         !carries(&world, hero, ModifierKind::Phased),
         "for three seconds"
+    );
+}
+
+#[test]
+fn power_treads_build_of_any_of_three_parts_set_to_its_attribute() {
+    for (part, mode) in [
+        (ItemId::BELT, Attribute::Strength),
+        (ItemId::ROBE, Attribute::Intelligence),
+        (ItemId::BAND, Attribute::Agility),
+    ] {
+        let (mut world, hero) = hero_out_of_fountain(HeroId::SHADOW_FIEND);
+        let bag = world.inventory.get_mut(hero).expect("a bag");
+        for (at, held) in [ItemId::BOOTS, ItemId::GLOVES, part]
+            .into_iter()
+            .enumerate()
+        {
+            bag.slots[at] = Some(fresh_stack(held, 0));
+        }
+        world.step();
+        let built = slot_of(&world, hero, 0).expect("built");
+        assert_eq!((built.id, built.mode), (ItemId::POWER_TREADS, Some(mode)));
+    }
+    // Bought whole, the shop picks the cheapest recipe, then the one of the
+    // hero's own attribute: Shadow Fiend's Band.
+    let (mut world, hero) = a_hero_with_gold(10_000);
+    assert!(world.buy(SlotId(0), ItemId::POWER_TREADS, &mut Vec::new()));
+    world.step();
+    let built = slot_of(&world, hero, 0).expect("built");
+    assert_eq!(
+        (built.id, built.mode),
+        (ItemId::POWER_TREADS, Some(Attribute::Agility))
+    );
+    // A Robe in hand makes the Robe's the cheapest.
+    let (mut world, hero) = a_hero_with_gold(10_000);
+    world.inventory.get_mut(hero).expect("a bag").slots[0] = Some(fresh_stack(ItemId::ROBE, 0));
+    assert!(world.buy(SlotId(0), ItemId::POWER_TREADS, &mut Vec::new()));
+    assert_eq!(10_000 - world.seats[0].gold, 950, "boots and gloves only");
+    world.step();
+    let built = slot_of(&world, hero, 0).expect("built");
+    assert_eq!(
+        (built.id, built.mode),
+        (ItemId::POWER_TREADS, Some(Attribute::Intelligence))
     );
 }
 

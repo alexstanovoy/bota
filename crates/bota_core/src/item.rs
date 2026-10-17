@@ -225,6 +225,16 @@ pub struct Stock {
     pub restock_ticks: u32,
 }
 
+/// One set of parts an item is built from, and the attribute the build is
+/// set to when it comes of them.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Recipe {
+    /// The parts.
+    pub parts: &'static [ItemId],
+    /// The attribute the built item is set to. Absent for one set to none.
+    pub mode: Option<Attribute>,
+}
+
 /// One entry of the catalog.
 #[derive(Clone, Copy, Debug)]
 pub struct ItemDef {
@@ -263,6 +273,9 @@ pub struct ItemDef {
     pub mode_bonus: i32,
     /// What it is built from. Empty for one that is bought whole.
     pub components: &'static [ItemId],
+    /// Other sets of parts it is built from as well, each setting the build
+    /// to an attribute of its own. Empty for one with a single recipe.
+    pub alternatives: &'static [Recipe],
     /// What it adds to whoever carries it; health regeneration is per charge when mergeable.
     pub carried: Carried,
     /// What it adds to a carrier with a ranged attack instead. Absent for
@@ -303,6 +316,17 @@ impl ItemDef {
         }
     }
 
+    /// Every set of parts it is built from: its components, set to its
+    /// [`mode`](ItemDef::mode), then its alternatives. Nothing for one that
+    /// is bought whole.
+    pub fn recipes(&self) -> impl Iterator<Item = Recipe> + '_ {
+        let first = (!self.components.is_empty()).then_some(Recipe {
+            parts: self.components,
+            mode: self.mode,
+        });
+        first.into_iter().chain(self.alternatives.iter().copied())
+    }
+
     /// What a drink of it mends, if it is drunk.
     pub const fn mend(&self) -> Option<Mend> {
         match self.effect {
@@ -340,6 +364,7 @@ pub(crate) const PLAIN: ItemDef = ItemDef {
     mode: None,
     mode_bonus: 0,
     components: &[],
+    alternatives: &[],
     carried: NOTHING,
     ranged: None,
     retired: false,
@@ -405,6 +430,11 @@ pub fn shop_entries() -> Vec<bota_proto::ShopEntry> {
             id: ItemId(index as u16),
             cost: def.cost,
             components: def.components.to_vec(),
+            alternatives: def
+                .alternatives
+                .iter()
+                .map(|recipe| recipe.parts.to_vec())
+                .collect(),
         })
         .collect()
 }

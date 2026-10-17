@@ -271,11 +271,16 @@ pub fn match_info() -> MatchInfo {
                 id: ItemId(0),
                 cost: 500,
                 components: Vec::new(),
+                alternatives: Vec::new(),
             },
             ShopEntry {
                 id: ItemId(29),
                 cost: 1400,
                 components: vec![ItemId(0), ItemId(19), ItemId(13)],
+                alternatives: vec![
+                    vec![ItemId(0), ItemId(19), ItemId(15)],
+                    vec![ItemId(0), ItemId(19), ItemId(14)],
+                ],
             },
         ],
         picks: vec![

@@ -176,7 +176,9 @@ impl World {
         }
     }
 
-    /// Builds the first item in the catalog whose parts an entity all holds.
+    /// Builds the first item in the catalog whose parts an entity all holds,
+    /// of the first of its recipes they cover, set to that recipe's
+    /// attribute.
     ///
     /// Only what a unit carries itself takes part: the stash is at the shop
     /// and builds nothing. A part somebody else bought and a part marked for
@@ -196,10 +198,10 @@ impl World {
             .filter(|(_, stack)| stack.owner == slot && !stack.for_sale)
             .collect();
         for (index, def) in ITEMS.iter().enumerate() {
-            if def.components.is_empty() {
-                continue;
-            }
-            let Some(spent) = parts_in(&held, def.components) else {
+            let Some((spent, mode)) = def
+                .recipes()
+                .find_map(|recipe| parts_in(&held, recipe.parts).map(|spent| (spent, recipe.mode)))
+            else {
                 continue;
             };
             let landing = spent.min().expect("a build has parts");
@@ -220,7 +222,7 @@ impl World {
                 },
                 cooldown: 0,
                 mute: 0,
-                mode: def.mode,
+                mode,
                 bought_tick: self.tick,
                 touched: true,
                 owner: slot,
@@ -364,7 +366,8 @@ impl World {
     /// with the parts it lacks, each of those asked the same question in turn,
     /// so a part that is itself built is bought as its own parts. A part
     /// already waiting in the bag or the stash is spent on the build and so is
-    /// bought no second time.
+    /// bought no second time. Of several recipes the cheapest is bought, see
+    /// [`bota_core::missing_parts`].
     fn missing_parts(&self, seat: usize, unit: Entity, item: ItemId) -> Vec<ItemId> {
         let held: Vec<ItemId> = self
             .inventory
@@ -375,9 +378,8 @@ impl World {
             .filter(|stack| stack.owner == self.seats[seat].slot && !stack.for_sale)
             .map(|stack| stack.id)
             .collect();
-        bota_core::missing_parts(item, &held, |part| {
-            item_def(part).map_or(&[][..], |def| def.components)
-        })
+        let primary = self.def.get(unit).and_then(|kind| kind.0.primary);
+        bota_core::missing_parts(item, &held, primary)
     }
 
     /// Slots a seat has free for something bought right now.

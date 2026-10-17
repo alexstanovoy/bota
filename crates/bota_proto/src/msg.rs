@@ -71,6 +71,9 @@ pub struct ShopEntry {
     pub cost: i32,
     /// What it is built from. Empty for one bought whole.
     pub components: Vec<ItemId>,
+    /// Other sets of parts it is built from as well. Empty for one with a
+    /// single recipe.
+    pub alternatives: Vec<Vec<ItemId>>,
 }
 
 /// The public description of a match.

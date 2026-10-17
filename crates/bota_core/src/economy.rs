@@ -1,8 +1,8 @@
 //! What a death pays and what may be put out by its own side.
 
-use bota_proto::{Fixed, ItemId, UnitKind};
+use bota_proto::{Attribute, Fixed, ItemId, UnitKind};
 
-use crate::{kind_def, rules};
+use crate::{item_def, kind_def, rules};
 
 /// Whether one of a side's own units is worn down far enough for that side
 /// to put it out: below its kind's
@@ -119,42 +119,51 @@ pub fn denied_xp(bounty_xp: i32) -> i32 {
 /// An item without parts is itself the answer, so asking for a second one buys
 /// a second one. One that is built answers with the parts it lacks, each of
 /// those asked the same question in turn; a part already held is spent on the
-/// build and so is bought no second time. `components_of` names what an item
-/// is built from, empty for one bought whole.
-pub fn missing_parts<'a>(
-    item: ItemId,
-    held: &[ItemId],
-    components_of: impl Fn(ItemId) -> &'a [ItemId],
-) -> Vec<ItemId> {
-    let mut spare = held.to_vec();
-    let mut wanted = Vec::new();
-    match components_of(item) {
-        [] => wanted.push(item),
-        parts => {
-            for part in parts {
-                parts_beyond(*part, &mut spare, &mut wanted, &components_of);
-            }
+/// build and so is bought no second time.
+///
+/// Of an item's several recipes the one that costs least given what is held
+/// is bought, and among equals the one set to the buyer's `primary`
+/// attribute, then the first: Dota's quick-buy "evaluating which of the 3
+/// recipes would be the cheapest", its components "based on the hero's
+/// primary attribute" (Liquipedia, *Power Treads*). A part's own parts are
+/// its first recipe's.
+pub fn missing_parts(item: ItemId, held: &[ItemId], primary: Option<Attribute>) -> Vec<ItemId> {
+    let Some(def) = item_def(item).filter(|def| !def.components.is_empty()) else {
+        return vec![item];
+    };
+    let mut best: Option<(i32, bool, Vec<ItemId>)> = None;
+    for recipe in def.recipes() {
+        let mut spare = held.to_vec();
+        let mut wanted = Vec::new();
+        for part in recipe.parts {
+            parts_beyond(*part, &mut spare, &mut wanted);
+        }
+        let cost = wanted
+            .iter()
+            .map(|part| item_def(*part).map_or(0, |def| def.cost))
+            .sum::<i32>();
+        let own = recipe.mode.is_some() && recipe.mode == primary;
+        let better = best
+            .as_ref()
+            .is_none_or(|(least, was_own, _)| cost < *least || (cost == *least && own && !was_own));
+        if better {
+            best = Some((cost, own, wanted));
         }
     }
-    wanted
+    best.map_or_else(Vec::new, |(_, _, wanted)| wanted)
 }
 
 /// Lays out what one part still costs, spending `held` as it goes.
-fn parts_beyond<'a>(
-    item: ItemId,
-    held: &mut Vec<ItemId>,
-    wanted: &mut Vec<ItemId>,
-    components_of: &impl Fn(ItemId) -> &'a [ItemId],
-) {
+fn parts_beyond(item: ItemId, held: &mut Vec<ItemId>, wanted: &mut Vec<ItemId>) {
     if let Some(at) = held.iter().position(|id| *id == item) {
         held.remove(at);
         return;
     }
-    match components_of(item) {
+    match item_def(item).map_or(&[][..], |def| def.components) {
         [] => wanted.push(item),
         parts => {
             for part in parts {
-                parts_beyond(*part, held, wanted, components_of);
+                parts_beyond(*part, held, wanted);
             }
         }
     }
@@ -164,29 +173,22 @@ fn parts_beyond<'a>(
 mod tests {
     use bota_proto::ItemId;
 
-    use crate::{ITEMS, missing_parts};
-
-    fn parts_of(item: ItemId) -> &'static [ItemId] {
-        ITEMS[usize::from(item.0)].components
-    }
+    use crate::missing_parts;
 
     #[test]
     fn a_held_part_is_spent_once_on_the_build() {
         let held = [ItemId::BOOTS];
         assert_eq!(
-            missing_parts(ItemId::PHASE_BOOTS, &held, parts_of),
+            missing_parts(ItemId::PHASE_BOOTS, &held, None),
             [ItemId::CHAINMAIL, ItemId::BLADES_OF_ATTACK]
         );
-        assert_eq!(
-            missing_parts(ItemId::BOOTS, &held, parts_of),
-            [ItemId::BOOTS]
-        );
+        assert_eq!(missing_parts(ItemId::BOOTS, &held, None), [ItemId::BOOTS]);
     }
 
     #[test]
     fn only_the_parts_not_held_are_bought() {
         let held = [ItemId::CIRCLET];
-        let wanted = missing_parts(ItemId::BRACER, &held, parts_of);
+        let wanted = missing_parts(ItemId::BRACER, &held, None);
         assert_eq!(wanted, [ItemId::GAUNTLETS, ItemId::RECIPE_BRACER]);
     }
 }
