@@ -36,28 +36,7 @@ fn main() {
     };
     let map = map_of(cfg.map);
     let (mut local, opening) = LocalMatch::new(&cfg, &[OrderDelay::NONE]).expect("a valid match");
-
-    // One session per seat folds what that seat is sent, in order.
-    let mut sessions: Vec<ClientSession> = Vec::new();
-    for (slot, stream) in opening.iter().enumerate() {
-        let ServerMsg::MatchStart { info } = &stream[0] else {
-            unreachable!("a stream starts with MatchStart");
-        };
-        // The caller steps the match itself, so nothing is acknowledged.
-        let options = SessionOptions {
-            ack: AckPolicy::Never,
-            ..SessionOptions::default()
-        };
-        let statics = MatchStatic::new(info).expect("valid terms");
-        let session = ClientSession::seat(
-            statics,
-            SlotId(slot as u8),
-            Some(HeroId::SHADOW_FIEND),
-            options,
-        )
-        .expect("a seat");
-        sessions.push(session);
-    }
+    let mut sessions = sessions(&opening);
     let mut pending = opening;
     loop {
         // Fold what each seat was sent, then decide at most one order per seat.
@@ -93,4 +72,30 @@ fn main() {
         }
         pending = local.step(&orders).expect("a step");
     }
+}
+
+/// One session per seat, built from its stream's `MatchStart`, to fold what
+/// that seat is sent, in order.
+fn sessions(opening: &[Vec<ServerMsg>]) -> Vec<ClientSession> {
+    let mut sessions = Vec::new();
+    for (slot, stream) in opening.iter().enumerate() {
+        let ServerMsg::MatchStart { info } = &stream[0] else {
+            unreachable!("a stream starts with MatchStart");
+        };
+        // The caller steps the match itself, so nothing is acknowledged.
+        let options = SessionOptions {
+            ack: AckPolicy::Never,
+            ..SessionOptions::default()
+        };
+        let statics = MatchStatic::new(info).expect("valid terms");
+        let session = ClientSession::seat(
+            statics,
+            SlotId(slot as u8),
+            Some(HeroId::SHADOW_FIEND),
+            options,
+        )
+        .expect("a seat");
+        sessions.push(session);
+    }
+    sessions
 }
