@@ -51,6 +51,7 @@ mod shop;
 mod sight;
 #[cfg(not(target_arch = "wasm32"))]
 mod socket;
+mod timer_journal;
 mod transport;
 #[cfg(feature = "ui")]
 mod ui;
@@ -71,6 +72,7 @@ pub use shop::*;
 pub use sight::*;
 #[cfg(not(target_arch = "wasm32"))]
 pub use socket::*;
+pub use timer_journal::*;
 pub use transport::*;
 #[cfg(feature = "ui")]
 pub use ui::*;
