@@ -620,13 +620,24 @@ fn the_next_hit_is_what_the_server_would_land() {
     creep.kind = UnitKind::CreepMelee;
     creep.team = Team::Dire;
     creep.armor = Fixed::from_int(2);
-    // (40 + 36), (45 + 36) and (50 + 36), each times 100 / 112, rounded down.
+    // (40 + 16), (45 + 16) and (50 + 16), each times 100 / 112, rounded down.
     assert_eq!(
         next_hit(&hero, &creep),
         HitRange {
-            least: 67,
-            mid: 72,
-            most: 76
+            least: 50,
+            mid: 54,
+            most: 58
+        }
+    );
+    // A ranged hero's blade adds 4, not 8: (40 + 8), (45 + 8), (50 + 8).
+    let mut fiend = hero.clone();
+    fiend.hero = Some(bota_proto::HeroId::SHADOW_FIEND);
+    assert_eq!(
+        next_hit(&fiend, &creep),
+        HitRange {
+            least: 42,
+            mid: 47,
+            most: 51
         }
     );
 
@@ -761,7 +772,7 @@ fn every_blurb_takes_its_numbers_from_the_rules() {
     );
     // The numbers are the rules': Quelling's bonus and Hook's reach.
     let quelling = ITEMS[usize::from(ItemId::QUELLING_BLADE.0)];
-    assert_eq!(quelling.stats(), "+18 creep");
+    assert_eq!(quelling.stats(), "+8/4 creep", "melee, then ranged");
     assert!(
         ABILITIES[usize::from(AbilityId::MEAT_HOOK.0)]
             .blurb()

@@ -879,8 +879,9 @@ pub const FOW_BLOCKER_SPAN: i32 = 600;
 
 /// Ticks a felled tree takes to come back, five minutes.
 pub const TREE_REGROW_TICKS: u32 = 5 * 60 * TICKS_PER_SECOND;
-/// Ticks a planted tree stands before it goes on its own, forty seconds.
-pub const PLANTED_TREE_TICKS: u32 = 40 * TICKS_PER_SECOND;
+/// Ticks a planted tree stands before it goes on its own: Iron Branch
+/// `tree_duration` 20.
+pub const PLANTED_TREE_TICKS: u32 = 20 * TICKS_PER_SECOND;
 /// Ticks a hero waits between scrolls, whichever scroll it holds: Dota
 /// 7.41f `item_tpscroll` `AbilityCooldown` 80.
 pub const SCROLL_WAIT_TICKS: u32 = 80 * TICKS_PER_SECOND;

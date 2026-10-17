@@ -267,13 +267,13 @@ pub const ITEMS: [ItemFace; ITEM_DEFS.len()] = [
         ItemId::PHASE_BOOTS.0,
         "Phase",
         "{short}",
-        "{carried}. Walks {phase_pct}% faster and through bodies for {phase_secs} s. {wait} s wait.",
+        "{carried}. Walks {phase_pct}% faster ({phase_ranged_pct}% for a ranged hero) and through bodies for {phase_secs} s. {wait} s wait.",
     ),
     ItemFace::with(
         ItemId::BLINK_DAGGER.0,
         "Blink",
         "{blink_range} jump",
-        "Carries you to a point up to {blink_range} away. {wait} s wait, and damage from an enemy hero leaves it at least {break_secs} s from ready.",
+        "Carries you to a point up to {blink_range} away, or {blink_overshoot} toward one further. {wait} s wait, and damage from an enemy hero leaves it at least {break_secs} s from ready.",
     ),
     ItemFace::plain(ItemId::BRACER.0, "Bracer"),
     ItemFace::plain(ItemId::WRAITH_BAND.0, "Wraith"),
@@ -290,12 +290,8 @@ pub const ITEMS: [ItemFace; ITEM_DEFS.len()] = [
         "{short}",
         "{carried}. Gains a charge from every enemy cast within {magic_range}, up to {cast_charges}. {wait} s wait.",
     ),
-    ItemFace::with(
-        ItemId::RECIPE_PHASE_BOOTS.0,
-        "Rcp Phase",
-        "recipe",
-        "{builds}",
-    ),
+    // Retired: the recipe Phase Boots were built with.
+    ItemFace::with(37, "Retired", "retired", "No longer in the game."),
     ItemFace::with(ItemId::RECIPE_BRACER.0, "Rcp Bracer", "recipe", "{builds}"),
     ItemFace::with(
         ItemId::RECIPE_WRAITH_BAND.0,

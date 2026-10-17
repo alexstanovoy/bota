@@ -144,7 +144,7 @@ fn non_mango_buy_order_uses_missing_cost_and_keeps_empty_slot_validation() {
     stick.id = ItemId::MAGIC_STICK;
     stick.charges = 0;
     put(&mut world, hero, 0, stick);
-    world.seats[0].gold = 250;
+    world.seats[0].gold = 260;
     let wand = Order::Buy {
         item: ItemId::MAGIC_WAND,
     };

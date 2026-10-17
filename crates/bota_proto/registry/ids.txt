@@ -62,7 +62,7 @@ item 33 live Wraith Band
 item 34 live Null Talisman
 item 35 live Magic Stick
 item 36 live Magic Wand
-item 37 live Recipe: Phase Boots
+item 37 retired Recipe: Phase Boots
 item 38 live Recipe: Bracer
 item 39 live Recipe: Wraith Band
 item 40 live Recipe: Null Talisman

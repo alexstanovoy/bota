@@ -20,7 +20,11 @@ fn catalog_appends_numeric_mango_with_one_charge_and_self_aim() {
     assert_eq!(view.charges, Some(3));
     assert_eq!(view.aim, Some(Aim::Own));
     assert_eq!(view.range, 0);
-    assert_eq!(bota_core::shop_entries()[42].id, MANGO);
+    assert!(
+        bota_core::shop_entries()
+            .iter()
+            .any(|entry| entry.id == MANGO)
+    );
 }
 
 #[test]
@@ -103,11 +107,11 @@ fn separate_stacks_add_the_same_regen_as_combined_charges() {
     let (mut world, hero) = fixture();
     put(&mut world, hero, 0, mango(2));
     put(&mut world, hero, 1, mango(1));
-    let before = carried_bonus(world.inventory.get(hero).unwrap()).hp_regen;
+    let before = carried_bonus(world.inventory.get(hero).unwrap(), true).hp_regen;
     assert_eq!(before.raw, 2619);
     assert!(world.move_item(OWNER, hero, 1, 0));
     assert_eq!(
-        carried_bonus(world.inventory.get(hero).unwrap()).hp_regen,
+        carried_bonus(world.inventory.get(hero).unwrap(), true).hp_regen,
         before
     );
 }
@@ -135,7 +139,7 @@ fn regen_accumulates_exact_raw_health_for_thirty_ticks() {
     let (mut world, hero) = fixture();
     put(&mut world, hero, 0, mango(3));
     world.settle();
-    let base = crate::game::carried_bonus(world.inventory.get(hero).unwrap()).hp_regen;
+    let base = crate::game::carried_bonus(world.inventory.get(hero).unwrap(), true).hp_regen;
     assert_eq!(base.raw, 2619);
     world.stats.get_mut(hero).unwrap().hp_regen = base;
     world.health.get_mut(hero).unwrap().hp = Fixed::ONE;
@@ -165,7 +169,7 @@ fn stash_backpack_and_muted_stacks_add_no_passive() {
     world.settle();
     assert_eq!(world.stats.get(hero).unwrap().hp_regen, base);
     assert_eq!(
-        carried_bonus(world.inventory.get(hero).unwrap()).hp_regen,
+        carried_bonus(world.inventory.get(hero).unwrap(), true).hp_regen,
         Fixed::ZERO
     );
 }
@@ -179,5 +183,5 @@ fn stick_still_spends_all_charges_and_keeps_its_slot() {
     assert!(world.use_item(hero, 0, Target::None, &mut Vec::new()));
     assert_eq!(world.mana.get(hero).unwrap().mana, Fixed::from_int(45));
     assert_eq!(held(&world, hero, 0).charges, 0);
-    assert_eq!(held(&world, hero, 0).cooldown, 390);
+    assert_eq!(held(&world, hero, 0).cooldown, 17 * rules::TICKS_PER_SECOND);
 }

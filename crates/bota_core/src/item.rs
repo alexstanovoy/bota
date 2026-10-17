@@ -59,6 +59,8 @@ pub struct Carried {
     pub pierce_damage: i32,
     /// Attack range added to a melee carrier and to nobody else.
     pub melee_range: i32,
+    /// Percent added to the carrier's maximum mana, attributes included.
+    pub mana_pct: i32,
 }
 
 /// Nothing carried at all, so an entry names only what it adds.
@@ -79,6 +81,7 @@ pub(crate) const NOTHING: Carried = Carried {
     pierce: Ratio::NEVER,
     pierce_damage: 0,
     melee_range: 0,
+    mana_pct: 0,
 };
 
 /// Whole points of one attribute and none of the others.
@@ -111,6 +114,11 @@ pub(crate) const fn points_with(which: Attribute, count: i32, rest: i32) -> Attr
 /// Health or mana per tick, from whole points per second.
 pub(crate) const fn per_second(points: i32) -> Fixed {
     Fixed::from_ratio(points, rules::TICKS_PER_SECOND as i32)
+}
+
+/// Health or mana per tick, from hundredths of a point per second.
+pub(crate) const fn hundredths_per_second(hundredths: i32) -> Fixed {
+    Fixed::from_ratio(hundredths, 100 * rules::TICKS_PER_SECOND as i32)
 }
 
 /// How many charges one use costs.
@@ -177,8 +185,10 @@ pub enum UseSpec {
     SwitchMode,
     /// Lets the user walk through units.
     Phase {
-        /// Movement speed added, percent.
+        /// Movement speed added to a melee user, percent.
         pct: i32,
+        /// Movement speed added to a ranged user, percent.
+        ranged_pct: i32,
         /// How long it lasts.
         ticks: u32,
     },
@@ -186,6 +196,8 @@ pub enum UseSpec {
     Blink {
         /// The farthest it carries.
         range: i32,
+        /// How far it carries along the same line when aimed past `range`.
+        overshoot: i32,
     },
     /// Restores health and mana for every charge held, and spends them all.
     Restore {
@@ -253,6 +265,12 @@ pub struct ItemDef {
     pub components: &'static [ItemId],
     /// What it adds to whoever carries it; health regeneration is per charge when mergeable.
     pub carried: Carried,
+    /// What it adds to a carrier with a ranged attack instead. Absent for
+    /// one that adds the same to every carrier.
+    pub ranged: Option<Carried>,
+    /// Whether the entry is retired: its id keeps its place, but nothing
+    /// sells, builds or carries it any more.
+    pub retired: bool,
     /// How a use of it is aimed. Absent for one that cannot be used.
     pub aim: Option<Aim>,
     /// How far one use reaches, in world units. Zero for one that reaches
@@ -277,6 +295,14 @@ pub struct ItemDef {
 }
 
 impl ItemDef {
+    /// What it adds to a carrier, ranged or not.
+    pub const fn carried_by(&self, ranged: bool) -> &Carried {
+        match &self.ranged {
+            Some(carried) if ranged => carried,
+            _ => &self.carried,
+        }
+    }
+
     /// What a drink of it mends, if it is drunk.
     pub const fn mend(&self) -> Option<Mend> {
         match self.effect {
@@ -315,6 +341,8 @@ pub(crate) const PLAIN: ItemDef = ItemDef {
     mode_bonus: 0,
     components: &[],
     carried: NOTHING,
+    ranged: None,
+    retired: false,
     aim: None,
     range: 0,
     spends: Spends::Nothing,
@@ -332,10 +360,16 @@ pub const MANGO_COST: i32 = 65;
 pub const MANGO_STACK_MAX: u8 = 3;
 /// Mana restored by one Mango charge, capped at the user's maximum.
 pub const MANGO_MANA: i32 = 100;
+/// Health a Healing Salve mends: `health_regen` 30 a second for
+/// `buff_duration` 13 seconds.
+pub const SALVE_HEAL: i32 = 390;
 /// Ticks a Healing Salve mends over.
-pub const SALVE_TICKS: u32 = 300;
+pub const SALVE_TICKS: u32 = 13 * rules::TICKS_PER_SECOND;
 /// How far a Blink Dagger carries, in world units.
 pub const BLINK_RANGE: i32 = 1200;
+/// Where a Blink Dagger aimed past its range lands instead, along the same
+/// line: `blink_range_clamp` 960.
+pub const BLINK_OVERSHOOT_RANGE: i32 = 960;
 /// Health per tick per Mango charge carried: 0.4 a second, truncated to 873
 /// raw a tick.
 pub const MANGO_HP_REGEN: Fixed = Fixed::from_ratio(2, 5 * rules::TICKS_PER_SECOND as i32);
@@ -354,17 +388,19 @@ const _: () = {
     assert!(MANGO_HP_REGEN.raw > 0);
 };
 
-/// What one item is, or nothing if no such item exists.
+/// What one item is, or nothing if no such item exists or it is retired.
 #[inline]
 pub fn item_def(id: ItemId) -> Option<&'static ItemDef> {
-    ITEMS.get(usize::from(id.0))
+    ITEMS.get(usize::from(id.0)).filter(|def| !def.retired)
 }
 
-/// The whole shop as the wire states it, in item id order.
+/// The whole shop as the wire states it, in item id order, retired entries
+/// left out.
 pub fn shop_entries() -> Vec<bota_proto::ShopEntry> {
     ITEMS
         .iter()
         .enumerate()
+        .filter(|(_, def)| !def.retired)
         .map(|(index, def)| bota_proto::ShopEntry {
             id: ItemId(index as u16),
             cost: def.cost,
@@ -384,25 +420,28 @@ pub struct CarriedItem {
     pub mode: Option<Attribute>,
 }
 
-/// What the items carried add up to. Pass only the stacks that count: the
-/// inventory proper, none muted.
+/// What the items carried add up to, for a carrier with a ranged attack
+/// or not: an item with a [`ranged`](ItemDef::ranged) variant adds that to
+/// a ranged one. Pass only the stacks that count: the inventory proper,
+/// none muted.
 ///
 /// Of the boots carried only the fastest counts, and of the laces only the
 /// fastest, the two added up.
-pub fn carried_bonus(items: impl Iterator<Item = CarriedItem>) -> Carried {
+pub fn carried_bonus(items: impl Iterator<Item = CarriedItem>, ranged: bool) -> Carried {
     let mut total = Carried::default();
     for stack in items {
         let Some(def) = item_def(stack.id) else {
             continue;
         };
-        total.attributes += def.carried.attributes;
-        total.move_speed = total.move_speed.max(def.carried.move_speed);
-        total.lace_speed = total.lace_speed.max(def.carried.lace_speed);
-        total.damage += def.carried.damage;
-        total.attack_speed += def.carried.attack_speed;
-        total.armor += def.carried.armor;
-        total.hp += def.carried.hp;
-        total.mana += def.carried.mana;
+        let carried = def.carried_by(ranged);
+        total.attributes += carried.attributes;
+        total.move_speed = total.move_speed.max(carried.move_speed);
+        total.lace_speed = total.lace_speed.max(carried.lace_speed);
+        total.damage += carried.damage;
+        total.attack_speed += carried.attack_speed;
+        total.armor += carried.armor;
+        total.hp += carried.hp;
+        total.mana += carried.mana;
         // A client passes the charges a view shows; a stream it cannot trust
         // must not panic it, and the server never exceeds the limit.
         let regen_charges = if def.stack_limit > 0 {
@@ -410,18 +449,19 @@ pub fn carried_bonus(items: impl Iterator<Item = CarriedItem>) -> Carried {
         } else {
             1
         };
-        total.hp_regen += def.carried.hp_regen * Fixed::from_int(regen_charges);
-        total.mana_regen += def.carried.mana_regen;
-        total.damage_to_creeps += def.carried.damage_to_creeps;
-        total.base_attack_speed_pct += def.carried.base_attack_speed_pct;
-        if def.carried.evasion.beats(total.evasion) {
-            total.evasion = def.carried.evasion;
+        total.hp_regen += carried.hp_regen * Fixed::from_int(regen_charges);
+        total.mana_regen += carried.mana_regen;
+        total.damage_to_creeps += carried.damage_to_creeps;
+        total.base_attack_speed_pct += carried.base_attack_speed_pct;
+        if carried.evasion.beats(total.evasion) {
+            total.evasion = carried.evasion;
         }
-        if def.carried.pierce.beats(total.pierce) {
-            total.pierce = def.carried.pierce;
-            total.pierce_damage = def.carried.pierce_damage;
+        if carried.pierce.beats(total.pierce) {
+            total.pierce = carried.pierce;
+            total.pierce_damage = carried.pierce_damage;
         }
-        total.melee_range += def.carried.melee_range;
+        total.melee_range += carried.melee_range;
+        total.mana_pct += carried.mana_pct;
         // What an item is set to is worth points of that attribute alone.
         if let Some(mode) = stack.mode {
             let bonus = Fixed::from_int(def.mode_bonus);

@@ -19,8 +19,11 @@ pub const SHOP_GROUPS: [&str; 7] = [
 ];
 
 /// Which of [`SHOP_GROUPS`] an item is shown in; an item the list does not
-/// know goes last.
+/// know goes last, and a retired one in none: past the last group.
 pub fn group_of(id: u16) -> usize {
+    if bota_core::item_def(ItemId(id)).is_none() {
+        return SHOP_GROUPS.len();
+    }
     match ItemId(id) {
         ItemId::CLARITY
         | ItemId::HEALING_SALVE
@@ -70,8 +73,7 @@ pub fn group_of(id: u16) -> usize {
         | ItemId::MAGIC_WAND
         | ItemId::BUTTERFLY
         | ItemId::MONKEY_KING_BAR => 4,
-        ItemId::RECIPE_PHASE_BOOTS
-        | ItemId::RECIPE_BRACER
+        ItemId::RECIPE_BRACER
         | ItemId::RECIPE_WRAITH_BAND
         | ItemId::RECIPE_NULL_TALISMAN
         | ItemId::RECIPE_MAGIC_WAND

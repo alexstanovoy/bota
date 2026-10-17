@@ -80,10 +80,11 @@ fn derive_stats_impl<const APPLIED: bool>(cx: StatsCx<'_>) {
         if APPLIED && let Some(on_it) = applied.get(entity) {
             fold_applied(&mut now, on_it);
         }
+        let ranged = kind.projectile_speed.is_some();
         let carried = inventory
             .get(entity)
             .filter(|_| !kind.porter)
-            .map(carried_bonus);
+            .map(|bag| carried_bonus(bag, ranged));
         if let Some(carried) = carried {
             add_carried(&mut now, &carried);
         }
@@ -94,6 +95,12 @@ fn derive_stats_impl<const APPLIED: bool>(cx: StatsCx<'_>) {
         }
         add_heap(&mut now, &gathered, abilities.get(entity));
         from_attributes(&mut now);
+        // A share of the maximum mana, attributes included.
+        if let Some(carried) = carried
+            && carried.mana_pct != 0
+        {
+            now.max_mana += now.max_mana * Fixed::from_ratio(carried.mana_pct, 100);
+        }
         // A share of the base pace and of what agility adds, and of nothing
         // else.
         if let Some(carried) = carried

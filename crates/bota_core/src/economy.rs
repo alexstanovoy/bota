@@ -175,11 +175,7 @@ mod tests {
         let held = [ItemId::BOOTS];
         assert_eq!(
             missing_parts(ItemId::PHASE_BOOTS, &held, parts_of),
-            [
-                ItemId::BLADES_OF_ATTACK,
-                ItemId::BLADES_OF_ATTACK,
-                ItemId::RECIPE_PHASE_BOOTS
-            ]
+            [ItemId::CHAINMAIL, ItemId::BLADES_OF_ATTACK]
         );
         assert_eq!(
             missing_parts(ItemId::BOOTS, &held, parts_of),

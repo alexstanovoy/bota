@@ -1,22 +1,23 @@
 //! The catalog itself: one entry to an item, in the order of the ids.
+//!
+//! Numbers are Dota 7.41f's: the game's `scripts/npc/items.txt` (client
+//! 6957, 2026-10-09) for costs, cooldowns, ranges, recipes and what an item
+//! adds, and Liquipedia where that file says nothing.
 
 use bota_proto::{Aim, Attribute, Attributes, Fixed, ItemId};
 
 use crate::{
-    BLINK_RANGE, Carried, GRENADE_COOLDOWN, GRENADE_RANGE, ItemDef, MANGO_COST, MANGO_HP_REGEN,
-    MANGO_MANA, MANGO_STACK_MAX, Mend, NOTHING, OBSERVER_WARD, PLAIN, Pool, Ratio, SALVE_TICKS,
-    SENTRY_WARD, Spends, Stock, UseSpec, per_second, points, points_with, rules,
+    BLINK_OVERSHOOT_RANGE, BLINK_RANGE, Carried, GRENADE_COOLDOWN, GRENADE_RANGE, ItemDef,
+    MANGO_COST, MANGO_HP_REGEN, MANGO_MANA, MANGO_STACK_MAX, Mend, NOTHING, OBSERVER_WARD, PLAIN,
+    Pool, Ratio, SALVE_HEAL, SALVE_TICKS, SENTRY_WARD, Spends, Stock, UseSpec,
+    hundredths_per_second, per_second, points, points_with, rules,
 };
 
 /// What Power Treads are built from.
 const TREADS_PARTS: [ItemId; 3] = [ItemId::BOOTS, ItemId::GLOVES, ItemId::BELT];
-/// What Phase Boots are built from.
-const PHASE_PARTS: [ItemId; 4] = [
-    ItemId::BOOTS,
-    ItemId::BLADES_OF_ATTACK,
-    ItemId::BLADES_OF_ATTACK,
-    ItemId::RECIPE_PHASE_BOOTS,
-];
+/// What Phase Boots are built from: `item_recipe_phase_boots` costs
+/// nothing and asks for Boots, Chainmail and Blades of Attack alone.
+const PHASE_PARTS: [ItemId; 3] = [ItemId::BOOTS, ItemId::CHAINMAIL, ItemId::BLADES_OF_ATTACK];
 /// What a Bracer is built from.
 const BRACER_PARTS: [ItemId; 3] = [ItemId::CIRCLET, ItemId::GAUNTLETS, ItemId::RECIPE_BRACER];
 /// What a Wraith Band is built from.
@@ -65,7 +66,7 @@ pub const ITEMS: [ItemDef; 54] = [
     },
     ItemDef {
         name: "Clarity",
-        cost: 50,
+        cost: 60,
         charges: 1,
         aim: Some(Aim::Unit),
         range: 250,
@@ -82,14 +83,14 @@ pub const ITEMS: [ItemDef; 54] = [
     },
     ItemDef {
         name: "Healing Salve",
-        cost: 110,
+        cost: 100,
         charges: 1,
         aim: Some(Aim::Unit),
         range: 250,
         spends: Spends::One,
         effect: UseSpec::Mend(Mend {
             pool: Pool::Health,
-            total: 400,
+            total: SALVE_HEAL,
             ticks: SALVE_TICKS,
             range: 250,
             eats_a_tree: false,
@@ -99,20 +100,18 @@ pub const ITEMS: [ItemDef; 54] = [
     },
     ItemDef {
         name: "Iron Branch",
-        cost: 50,
+        cost: 55,
         charges: 1,
         carried: Carried {
-            damage: 1,
-            hp: 30,
-            mana: 15,
+            attributes: Attributes::all(1),
             ..NOTHING
         },
         aim: Some(Aim::Point),
-        range: 350,
+        range: 400,
         spends: Spends::One,
         effect: UseSpec::PlantTree {
             ticks: rules::PLANTED_TREE_TICKS,
-            range: 350,
+            range: 400,
         },
         ..PLAIN
     },
@@ -132,12 +131,16 @@ pub const ITEMS: [ItemDef; 54] = [
     },
     ItemDef {
         name: "Quelling Blade",
-        cost: 225,
+        cost: 100,
         cooldown: 120,
         carried: Carried {
-            damage_to_creeps: 18,
+            damage_to_creeps: 8,
             ..NOTHING
         },
+        ranged: Some(Carried {
+            damage_to_creeps: 4,
+            ..NOTHING
+        }),
         aim: Some(Aim::Tree),
         range: 350,
         effect: UseSpec::FellTree { range: 350 },
@@ -166,8 +169,8 @@ pub const ITEMS: [ItemDef; 54] = [
         spends: Spends::One,
         effect: UseSpec::Mend(Mend {
             pool: Pool::Health,
-            total: 115,
-            ticks: 480,
+            total: 112,
+            ticks: 16 * rules::TICKS_PER_SECOND,
             range: 165,
             eats_a_tree: true,
             breaks: false,
@@ -304,7 +307,7 @@ pub const ITEMS: [ItemDef; 54] = [
         name: "Broadsword",
         cost: 1000,
         carried: Carried {
-            damage: 18,
+            damage: 15,
             ..NOTHING
         },
         ..PLAIN
@@ -330,9 +333,9 @@ pub const ITEMS: [ItemDef; 54] = [
     },
     ItemDef {
         name: "Chainmail",
-        cost: 550,
+        cost: 500,
         carried: Carried {
-            armor: Fixed::from_int(5),
+            armor: Fixed::from_int(4),
             ..NOTHING
         },
         ..PLAIN
@@ -341,7 +344,7 @@ pub const ITEMS: [ItemDef; 54] = [
         name: "Ring of Regen",
         cost: 175,
         carried: Carried {
-            hp_regen: per_second(2),
+            hp_regen: hundredths_per_second(125),
             ..NOTHING
         },
         ..PLAIN
@@ -350,7 +353,7 @@ pub const ITEMS: [ItemDef; 54] = [
         name: "Sage's Mask",
         cost: 175,
         carried: Carried {
-            mana_regen: per_second(1),
+            mana_regen: hundredths_per_second(70),
             ..NOTHING
         },
         ..PLAIN
@@ -363,7 +366,7 @@ pub const ITEMS: [ItemDef; 54] = [
     },
     ItemDef {
         name: "Energy Booster",
-        cost: 900,
+        cost: 800,
         carried: Carried {
             mana: 250,
             ..NOTHING
@@ -377,27 +380,43 @@ pub const ITEMS: [ItemDef; 54] = [
         mode_bonus: 10,
         components: &TREADS_PARTS,
         carried: Carried {
-            move_speed: 45,
+            move_speed: 55,
             attack_speed: 25,
             ..NOTHING
         },
+        ranged: Some(Carried {
+            move_speed: 45,
+            attack_speed: 25,
+            ..NOTHING
+        }),
         aim: Some(Aim::Own),
         effect: UseSpec::SwitchMode,
         ..PLAIN
     },
     ItemDef {
         name: "Phase Boots",
-        cost: 1500,
+        cost: 1450,
         cooldown: 240,
         components: &PHASE_PARTS,
         carried: Carried {
-            move_speed: 45,
+            move_speed: 50,
             damage: 18,
+            armor: Fixed::from_int(4),
             ..NOTHING
         },
+        ranged: Some(Carried {
+            move_speed: 50,
+            damage: 12,
+            armor: Fixed::from_int(4),
+            ..NOTHING
+        }),
         aim: Some(Aim::Own),
         ignores_channel: true,
-        effect: UseSpec::Phase { pct: 20, ticks: 93 },
+        effect: UseSpec::Phase {
+            pct: 20,
+            ranged_pct: 10,
+            ticks: 3 * rules::TICKS_PER_SECOND,
+        },
         ..PLAIN
     },
     ItemDef {
@@ -407,7 +426,10 @@ pub const ITEMS: [ItemDef; 54] = [
         breaks_on_damage: 90,
         aim: Some(Aim::Point),
         range: 1200,
-        effect: UseSpec::Blink { range: BLINK_RANGE },
+        effect: UseSpec::Blink {
+            range: BLINK_RANGE,
+            overshoot: BLINK_OVERSHOOT_RANGE,
+        },
         ..PLAIN
     },
     ItemDef {
@@ -415,7 +437,9 @@ pub const ITEMS: [ItemDef; 54] = [
         cost: 505,
         components: &BRACER_PARTS,
         carried: Carried {
-            attributes: points_with(Attribute::Strength, 6, 3),
+            attributes: points_with(Attribute::Strength, 5, 2),
+            hp: 50,
+            hp_regen: hundredths_per_second(75),
             ..NOTHING
         },
         ..PLAIN
@@ -425,7 +449,9 @@ pub const ITEMS: [ItemDef; 54] = [
         cost: 505,
         components: &WRAITH_PARTS,
         carried: Carried {
-            attributes: points_with(Attribute::Agility, 6, 3),
+            attributes: points_with(Attribute::Agility, 5, 2),
+            attack_speed: 6,
+            armor: Fixed::from_ratio(7, 4),
             ..NOTHING
         },
         ..PLAIN
@@ -435,7 +461,9 @@ pub const ITEMS: [ItemDef; 54] = [
         cost: 505,
         components: &NULL_PARTS,
         carried: Carried {
-            attributes: points_with(Attribute::Intelligence, 6, 3),
+            attributes: points_with(Attribute::Intelligence, 5, 2),
+            mana_regen: per_second(1),
+            mana_pct: 3,
             ..NOTHING
         },
         ..PLAIN
@@ -444,7 +472,7 @@ pub const ITEMS: [ItemDef; 54] = [
         name: "Magic Stick",
         cost: 200,
         cast_charges: 10,
-        cooldown: 390,
+        cooldown: 17 * rules::TICKS_PER_SECOND,
         aim: Some(Aim::Own),
         spends: Spends::All,
         effect: UseSpec::Restore {
@@ -455,9 +483,9 @@ pub const ITEMS: [ItemDef; 54] = [
     },
     ItemDef {
         name: "Magic Wand",
-        cost: 450,
+        cost: 460,
         cast_charges: 20,
-        cooldown: 390,
+        cooldown: 15 * rules::TICKS_PER_SECOND,
         components: &WAND_PARTS,
         carried: Carried {
             attributes: Attributes::all(3),
@@ -471,9 +499,11 @@ pub const ITEMS: [ItemDef; 54] = [
         },
         ..PLAIN
     },
+    // Retired: Phase Boots build of their parts alone since Dota made the
+    // recipe free. The id keeps its place.
     ItemDef {
         name: "Recipe: Phase Boots",
-        cost: 100,
+        retired: true,
         ..PLAIN
     },
     ItemDef {
@@ -649,8 +679,15 @@ const _: () = {
         }
         let mut part = 0;
         while part < ITEMS[at].components.len() {
-            assert!(ITEMS[ITEMS[at].components[part].0 as usize].stock.is_none());
+            let held = &ITEMS[ITEMS[at].components[part].0 as usize];
+            assert!(held.stock.is_none());
+            // Nothing is built of a retired entry.
+            assert!(!held.retired);
             part += 1;
+        }
+        // A retired entry costs, builds and carries nothing.
+        if def.retired {
+            assert!(def.cost == 0 && def.components.is_empty() && def.ranged.is_none());
         }
         at += 1;
     }

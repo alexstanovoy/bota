@@ -41,12 +41,13 @@ fn number<T: std::str::FromStr>(word: Option<&str>, usual: T) -> Result<T, Strin
 /// An item by its id or by the name the catalog shows, case aside.
 fn item_named(word: &str) -> Result<ItemId, String> {
     if let Ok(id) = word.parse::<u16>() {
-        return crate::catalog::item(id)
+        return bota_core::item_def(ItemId(id))
             .map(|_| ItemId(id))
             .ok_or_else(|| format!("no item {id}"));
     }
     crate::catalog::ITEMS
         .iter()
+        .filter(|face| bota_core::item_def(ItemId(face.id)).is_some())
         .find(|face| face.name.eq_ignore_ascii_case(word))
         .map(|face| ItemId(face.id))
         .ok_or_else(|| format!("no item called '{word}'"))

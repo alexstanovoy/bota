@@ -252,8 +252,9 @@ fn a_quelling_blade_is_worth_something_against_a_creep_and_nothing_against_a_her
     let bare_hero = one_swing_takes(&mut world, hero, theirs);
     hand_item(&mut world, hero, ItemId::QUELLING_BLADE, 0);
     world.step();
+    // A ranged hero's: Shadow Fiend wears the blade's ranged number.
     let blade = ITEMS[usize::from(ItemId::QUELLING_BLADE.0)]
-        .carried
+        .carried_by(true)
         .damage_to_creeps;
     assert_eq!(
         world.stats.get(hero).map(|s| s.damage_to_creeps),

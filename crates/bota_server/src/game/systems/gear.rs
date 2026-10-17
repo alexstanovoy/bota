@@ -86,8 +86,9 @@ pub fn hero_kit(hero: HeroId) -> AbilityBook {
 ///
 /// Only what sits in the inventory proper counts; what is in the backpack is
 /// carried inert, and so is a muted stack. Of the boots carried only the
-/// fastest counts, and of the laces only the fastest, the two added up.
-pub fn carried_bonus(inventory: &Inventory) -> Carried {
+/// fastest counts, and of the laces only the fastest, the two added up. A
+/// `ranged` carrier wears what an item adds to one.
+pub fn carried_bonus(inventory: &Inventory, ranged: bool) -> Carried {
     bota_core::carried_bonus(
         inventory
             .slots
@@ -100,6 +101,7 @@ pub fn carried_bonus(inventory: &Inventory) -> Carried {
                 charges: stack.charges,
                 mode: stack.mode,
             }),
+        ranged,
     )
 }
 
@@ -1010,22 +1012,21 @@ impl World {
 
     /// Carries whoever used an item to a point.
     ///
-    /// Aimed further off than it carries, it carries as far as it does along
-    /// the same line. A landing spot on closed ground steps back along that
-    /// line until it finds open ground, and the blink fails when it finds
-    /// none.
-    pub fn blink_to(&mut self, user: Entity, target: Target, range: i32) -> bool {
+    /// Aimed further off than `range`, it carries `overshoot` along the same
+    /// line, as Dota's dagger lands short of its range when clicked past it.
+    /// A landing spot on closed ground steps back along that line until it
+    /// finds open ground, and the blink fails when it finds none.
+    pub fn blink_to(&mut self, user: Entity, target: Target, range: i32, overshoot: i32) -> bool {
         let Target::Pos(pos) = target else {
             return false;
         };
         let Some(from) = self.transform.get(user).map(|t| t.pos) else {
             return false;
         };
-        let reach = rules::units(range);
-        let aim = clamp_to_map(if from.within(pos, reach) {
+        let aim = clamp_to_map(if from.within(pos, rules::units(range)) {
             pos
         } else {
-            move_towards(from, pos, reach)
+            move_towards(from, pos, rules::units(overshoot))
         });
         let Some(landing) = self.open_ground_back(from, aim) else {
             return false;

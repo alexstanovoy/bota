@@ -58,7 +58,7 @@ pub(super) fn held(world: &World, unit: Entity, at: usize) -> ItemStack {
 
 pub(super) fn fill_storage(world: &mut World, hero: Entity) {
     let mut filler = mango(1);
-    filler.id = ItemId::RECIPE_PHASE_BOOTS;
+    filler.id = ItemId::RECIPE_MONKEY_KING_BAR;
     filler.charges = 0;
     world
         .inventory

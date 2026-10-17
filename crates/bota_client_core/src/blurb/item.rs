@@ -1,6 +1,6 @@
 //! The item keys of a template: price, uses and what an item carries.
 
-use bota_core::{ITEMS, ItemDef, Pool, Ratio, UseSpec, item_def, rules};
+use bota_core::{Carried, ITEMS, ItemDef, Pool, Ratio, UseSpec, item_def, rules};
 use bota_proto::{Attributes, Fixed, ItemId};
 
 use super::{fixed, per_second, percent, secs, secs_ms};
@@ -53,8 +53,10 @@ fn use_key(effect: &UseSpec, key: &str) -> Option<String> {
         .to_string(),
         (UseSpec::Ward { unit, .. }, "ward_vision") => unit.vision.to_string(),
         (UseSpec::Phase { pct, .. }, "phase_pct") => pct.to_string(),
+        (UseSpec::Phase { ranged_pct, .. }, "phase_ranged_pct") => ranged_pct.to_string(),
         (UseSpec::Phase { ticks, .. }, "phase_secs") => secs(*ticks),
-        (UseSpec::Blink { range }, "blink_range") => range.to_string(),
+        (UseSpec::Blink { range, .. }, "blink_range") => range.to_string(),
+        (UseSpec::Blink { overshoot, .. }, "blink_overshoot") => overshoot.to_string(),
         (UseSpec::Restore { hp_per_charge, .. }, "restore") => hp_per_charge.to_string(),
         (UseSpec::Replenish { mana }, "replenish") => mana.to_string(),
         _ => return None,
@@ -78,28 +80,53 @@ fn attribute_parts(has: Attributes) -> Vec<(&'static str, &'static str, i32)> {
     parts
 }
 
+/// The whole-number bonuses an item adds, each with what it is called long
+/// and its short shape; boots and laces together in the short list.
+fn plain_numbers(c: &Carried) -> [(i32, &'static str, &'static str); 9] {
+    [
+        (c.move_speed, "movement speed", "+{} MS"),
+        (c.lace_speed, "movement speed", "+{} MS"),
+        (c.hp, "maximum health", "+{} HP"),
+        (c.mana, "maximum mana", "+{} MP"),
+        (c.damage, "attack damage", "+{} DMG"),
+        (c.attack_speed, "attack speed", "+{} AS"),
+        (
+            c.base_attack_speed_pct,
+            "% base attack speed",
+            "+{}% base AS",
+        ),
+        (
+            c.damage_to_creeps,
+            "attack damage against creeps",
+            "+{} creep",
+        ),
+        (c.melee_range, "attack range in melee hands", "+{} range"),
+    ]
+}
+
 /// What an item adds to its carrier, as a clause list: "+6 strength, +3
-/// agility".
+/// agility"; a number a ranged carrier gets otherwise follows in brackets.
 pub(crate) fn carried_long(def: &ItemDef) -> String {
     let c = &def.carried;
     let mut parts: Vec<String> = attribute_parts(c.attributes)
         .into_iter()
         .map(|(long, _, n)| format!("+{n} {long}"))
         .collect();
-    let plain = [
-        (c.move_speed, "movement speed"),
-        (c.lace_speed, "movement speed"),
-        (c.hp, "maximum health"),
-        (c.mana, "maximum mana"),
-        (c.damage, "attack damage"),
-        (c.attack_speed, "attack speed"),
-        (c.base_attack_speed_pct, "% base attack speed"),
-        (c.damage_to_creeps, "attack damage against creeps"),
-        (c.melee_range, "attack range in melee hands"),
-    ];
-    for (n, what) in plain.into_iter().filter(|(n, _)| *n != 0) {
+    let ranged = plain_numbers(def.carried_by(true));
+    for ((n, what, _), (r, _, _)) in plain_numbers(c).into_iter().zip(ranged) {
+        if n == 0 {
+            continue;
+        }
         let gap = if what.starts_with('%') { "" } else { " " };
-        parts.push(format!("+{n}{gap}{what}"));
+        let aside = if r == n {
+            String::new()
+        } else {
+            format!(" (+{r} ranged)")
+        };
+        parts.push(format!("+{n}{gap}{what}{aside}"));
+    }
+    if c.mana_pct != 0 {
+        parts.push(format!("+{}% maximum mana", c.mana_pct));
     }
     if c.armor != Fixed::ZERO {
         parts.push(format!("+{} armor", fixed(c.armor)));
@@ -113,25 +140,40 @@ pub(crate) fn carried_long(def: &ItemDef) -> String {
     parts.join(", ")
 }
 
-/// The same in a few characters, for a shop row: "+6 STR +3 AGI".
+/// The same in a few characters, for a shop row: "+6 STR +3 AGI"; a number
+/// a ranged carrier gets otherwise follows a slash.
 pub(crate) fn carried_short(def: &ItemDef) -> String {
     let c = &def.carried;
     let mut parts: Vec<String> = attribute_parts(c.attributes)
         .into_iter()
         .map(|(_, short, n)| format!("+{n} {short}"))
         .collect();
-    let plain = [
-        (c.move_speed + c.lace_speed, "+{} MS"),
-        (c.hp, "+{} HP"),
-        (c.mana, "+{} MP"),
-        (c.damage, "+{} DMG"),
-        (c.attack_speed, "+{} AS"),
-        (c.base_attack_speed_pct, "+{}% base AS"),
-        (c.damage_to_creeps, "+{} creep"),
-        (c.melee_range, "+{} range"),
-    ];
-    for (n, shape) in plain.into_iter().filter(|(n, _)| *n != 0) {
-        parts.push(shape.replace("{}", &n.to_string()));
+    let ranged = def.carried_by(true);
+    let melee = plain_numbers(c);
+    let other = plain_numbers(ranged);
+    // Boots and a lace show as one movement speed.
+    let speed = (
+        c.move_speed + c.lace_speed,
+        ranged.move_speed + ranged.lace_speed,
+    );
+    let rest = melee
+        .into_iter()
+        .zip(other)
+        .skip(2)
+        .map(|((n, _, shape), (r, _, _))| (n, r, shape));
+    for (n, r, shape) in std::iter::once((speed.0, speed.1, "+{} MS")).chain(rest) {
+        if n == 0 {
+            continue;
+        }
+        let shown = if r == n {
+            n.to_string()
+        } else {
+            format!("{n}/{r}")
+        };
+        parts.push(shape.replace("{}", &shown));
+    }
+    if c.mana_pct != 0 {
+        parts.push(format!("+{}% MP", c.mana_pct));
     }
     for (rate, unit) in [(c.hp_regen, "HP/s"), (c.mana_regen, "MP/s")] {
         if rate != Fixed::ZERO {
