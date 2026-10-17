@@ -98,6 +98,11 @@ of the server (a proxy or a bridge) and let only it reach the port.
 ## Write a bot
 
 A bot is a client like any other and sees the same `WorldView` a human does.
+What the server promises beyond the types (what it never tells, why it
+refuses an order, the order delay and the `seen` tick, tick modes and skipped
+ticks, how chances are dealt) is the rustdoc of `bota_proto::contract`:
+`cargo doc -p bota_proto --open`, module `contract`.
+
 This one attack-moves at the enemy fountain; it is
 `crates/bota_client_core/examples/attack_move.rs`:
 
