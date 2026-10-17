@@ -185,7 +185,7 @@ impl ClientSession {
             last_event_tick: None,
             skipped_ticks: 0,
             ledger: OrderLedger::default(),
-            waits: SharedWaits::new(),
+            waits: SharedWaits::default(),
             next_seq: 0,
             stream: StreamState::default(),
         }

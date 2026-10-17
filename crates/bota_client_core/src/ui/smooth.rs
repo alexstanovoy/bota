@@ -23,14 +23,6 @@ pub struct Smooth {
 }
 
 impl Smooth {
-    /// A clock that has timed nothing yet.
-    pub fn new() -> Smooth {
-        Smooth {
-            since: 0.0,
-            interval: FIRST_INTERVAL,
-        }
-    }
-
     /// Notes that a snapshot came in.
     ///
     /// Snapshots that come in together, as after a stall or in a fast
@@ -55,8 +47,12 @@ impl Smooth {
 }
 
 impl Default for Smooth {
+    /// A clock that has timed nothing yet.
     fn default() -> Smooth {
-        Smooth::new()
+        Smooth {
+            since: 0.0,
+            interval: FIRST_INTERVAL,
+        }
     }
 }
 

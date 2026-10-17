@@ -320,7 +320,7 @@ impl App {
             reject: None,
             console: None,
             over: None,
-            smooth: Smooth::new(),
+            smooth: Smooth::default(),
             derived: Derived::default(),
             cues: Vec::new(),
             heartbeat: 0.0,

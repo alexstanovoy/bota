@@ -18,24 +18,12 @@ pub fn shared_wait(item: ItemId) -> Option<u32> {
 }
 /// Waits shared by all of a body's copies of an item, which the wire does not
 /// report: kept from the orders the session gave.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct SharedWaits {
     journals: [TimerJournal<u32>; 2],
 }
 
-impl Default for SharedWaits {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl SharedWaits {
-    pub const fn new() -> Self {
-        Self {
-            journals: [TimerJournal::new(); 2],
-        }
-    }
-
     /// Starts the wait the order with `sequence`, given on the snapshot of
     /// `given_tick`, put on `body`.
     pub(crate) fn start(&mut self, body: ControlledUnit, sequence: u32, given_tick: u32) {
