@@ -87,6 +87,17 @@ impl World {
         };
         // Learning, talents, the bag, the shop, cheats and immediate casts interrupt
         // nothing the body is doing.
+        if let Some(cast) = self.immediate_cast(unit, cmd.order) {
+            // It goes off beside a swing or a cast point, but a channel it
+            // does not ignore it breaks, as Dota's immediate casts do.
+            if self.is_channelling(unit) && !self.ignores_channel(unit, &cmd.order) {
+                self.cancel_action(unit);
+            }
+            if let Some(orders) = self.orders.get_mut(unit) {
+                orders.immediate = Some(cast);
+            }
+            return;
+        }
         match cmd.order {
             Order::Learn { slot } => {
                 self.learn(unit, usize::from(slot.0));
@@ -109,16 +120,6 @@ impl World {
             Order::Cheat { cheat } => {
                 self.cheat(cmd.slot, unit, cheat, events);
             }
-            Order::Cast { slot, target } if self.is_immediate(unit, slot) => {
-                // It goes off beside a swing or a cast point, but a channel
-                // it does not ignore it breaks, as Dota's immediate casts do.
-                if self.is_channelling(unit) && !self.ignores_channel(unit, &cmd.order) {
-                    self.cancel_action(unit);
-                }
-                if let Some(orders) = self.orders.get_mut(unit) {
-                    orders.immediate = Some(PendingCast::Ability { slot, target });
-                }
-            }
             order if self.is_channelling(unit) && self.ignores_channel(unit, &order) => {
                 self.take_body_order(unit, order);
             }
@@ -129,10 +130,19 @@ impl World {
         }
     }
 
-    /// Whether the ability in one of a unit's slots goes off beside whatever
-    /// the body is doing.
-    fn is_immediate(&self, unit: Entity, slot: bota_proto::AbilitySlot) -> bool {
-        bota_core::ability_def(self.ability_in(unit, slot)).is_some_and(|def| def.immediate)
+    /// The cast an order makes when what it casts or uses goes off beside
+    /// whatever the body is doing: Dota's `DOTA_ABILITY_BEHAVIOR_IMMEDIATE`.
+    fn immediate_cast(&self, unit: Entity, order: Order) -> Option<PendingCast> {
+        match order {
+            Order::Cast { slot, target } => bota_core::ability_def(self.ability_in(unit, slot))
+                .filter(|def| def.immediate)
+                .map(|_| PendingCast::Ability { slot, target }),
+            Order::Use { slot, target } => self
+                .item_def_in(unit, usize::from(slot.0))
+                .filter(|def| def.immediate)
+                .map(|_| PendingCast::Item { slot, target }),
+            _ => None,
+        }
     }
 
     /// Whether an order is a cast or a use of something that leaves a

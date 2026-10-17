@@ -403,6 +403,7 @@ pub const ITEMS: [ItemDef; 54] = [
             ..NOTHING
         }),
         aim: Some(Aim::Own),
+        immediate: true,
         effect: UseSpec::SwitchMode,
         ..PLAIN
     },
@@ -681,9 +682,9 @@ const _: () = {
     let mut at = 0;
     while at < ITEMS.len() {
         let def = &ITEMS[at];
-        assert!(
-            !def.ignores_channel || (def.point == 0 && def.backswing == 0 && def.duration == 0)
-        );
+        let instant = def.point == 0 && def.backswing == 0 && def.duration == 0;
+        assert!(!def.ignores_channel || instant);
+        assert!(!def.immediate || instant);
         if let Some(stock) = ITEMS[at].stock {
             assert!(ITEMS[at].components.is_empty());
             assert!(stock.initial <= stock.max);

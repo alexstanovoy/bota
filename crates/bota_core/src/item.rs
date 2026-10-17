@@ -181,7 +181,8 @@ pub enum UseSpec {
     /// Reads a teleport to a building. Channels for the entry's `duration`
     /// and is owed one wait per user when the entry's `shared_wait` is set.
     Teleport,
-    /// Switches the attribute the item is set to.
+    /// Switches the attribute the item is set to, round Dota's wheel:
+    /// strength, intelligence, agility.
     SwitchMode,
     /// Lets the user walk through units.
     Phase {
@@ -299,6 +300,11 @@ pub struct ItemDef {
     pub duration: u32,
     /// Whether a use wants mana missing, and takes its user as the target.
     pub mana_deficit: bool,
+    /// Whether a use goes off beside whatever the body is doing and breaks
+    /// none of it off: Dota's `DOTA_ABILITY_BEHAVIOR_IMMEDIATE`. A channel it
+    /// does not ignore it still breaks. Only an item with no cast point,
+    /// backswing or duration may.
+    pub immediate: bool,
     /// Whether ordering it while a channel runs leaves the channel be:
     /// Dota's `DOTA_ABILITY_BEHAVIOR_IGNORE_CHANNEL`. Only an item with no
     /// cast point, backswing or duration may.
@@ -375,6 +381,7 @@ pub(crate) const PLAIN: ItemDef = ItemDef {
     backswing: 0,
     duration: 0,
     mana_deficit: false,
+    immediate: false,
     ignores_channel: false,
     effect: UseSpec::None,
 };

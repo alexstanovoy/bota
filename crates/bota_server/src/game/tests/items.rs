@@ -5,10 +5,10 @@ use bota_core::{
     tower_def,
 };
 
-use crate::game::{Entity, Event, ItemStack, Mana, World, tree_positions, wire_id};
+use crate::game::{Command, Entity, Event, ItemStack, Mana, World, tree_positions, wire_id};
 use bota_proto::{
-    Attribute, DamageKind, EventKind, Fixed, HeroId, ItemId, MapId, SlotId, Target, Team, UnitKind,
-    Vec2,
+    Attribute, DamageKind, EventKind, Fixed, HeroId, ItemId, ItemSlot, MapId, Order, SlotId,
+    Target, Team, UnitKind, Vec2,
 };
 
 use super::support::*;
@@ -460,20 +460,64 @@ fn what_an_item_is_set_to_is_worth_points_of_that_attribute() {
         "and using them sets them over"
     );
     world.step();
-    let after = *world.stats.get(hero).expect("settled");
-    let now = slot_of(&world, hero, 0)
-        .and_then(|stack| stack.mode)
-        .expect("set to one");
-    assert_ne!(now, Attribute::Agility, "to another attribute");
+    let on_strength = *world.stats.get(hero).expect("settled");
     assert_eq!(
-        after.attributes.agility + bonus,
+        slot_of(&world, hero, 0).and_then(|stack| stack.mode),
+        Some(Attribute::Strength),
+        "to the attribute after the one they were on: Dota's wheel goes strength, \
+         intelligence, agility, and from agility back to strength"
+    );
+    assert_eq!(
+        on_strength.attributes.agility + bonus,
         before.attributes.agility,
         "what they were worth in agility is gone"
     );
     assert_eq!(
-        after.attributes.of(now),
-        before.attributes.of(now) + bonus,
-        "and worth the same in the new one instead"
+        on_strength.attributes.strength,
+        before.attributes.strength + bonus,
+        "and worth the same in strength instead"
+    );
+    assert!(world.use_item(hero, 0, Target::None, &mut Vec::new()));
+    assert_eq!(
+        slot_of(&world, hero, 0).and_then(|stack| stack.mode),
+        Some(Attribute::Intelligence),
+        "then to intelligence"
+    );
+}
+
+#[test]
+fn switching_treads_mid_swing_breaks_nothing_off() {
+    let (mut world, hero, theirs, _ours, _foe) = a_lane_with_a_hero(150);
+    world.inventory.get_mut(hero).expect("has a bag").slots[0] = Some(ItemStack {
+        mode: Some(Attribute::Strength),
+        ..fresh_stack(ItemId::POWER_TREADS, 0)
+    });
+    world.settle();
+    attack_click(&mut world, theirs);
+    for _ in 0..60 {
+        if swinging(&world, hero).is_some() {
+            break;
+        }
+        world.advance(&[]);
+    }
+    assert_eq!(swinging(&world, hero), Some(theirs), "mid-swing");
+    world.advance(&[Command {
+        slot: SlotId(0),
+        unit: None,
+        order: Order::Use {
+            slot: ItemSlot(0),
+            target: Target::None,
+        },
+    }]);
+    assert_eq!(
+        slot_of(&world, hero, 0).and_then(|stack| stack.mode),
+        Some(Attribute::Intelligence),
+        "the switch went off at once"
+    );
+    assert_eq!(
+        swinging(&world, hero),
+        Some(theirs),
+        "beside the swing, which goes on: Dota's immediate item"
     );
 }
 
