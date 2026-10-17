@@ -45,7 +45,8 @@ pub fn passive_gold_by(ticks: u32) -> i32 {
 }
 
 /// What bringing down a hero pays in experience: a base, a share of what
-/// the fallen had earned, and a bonus for the streak its death ends.
+/// the fallen had earned up to [`rules::HERO_KILL_XP_COUNTED_MAX`], and a
+/// bonus for the streak its death ends.
 #[inline]
 pub fn hero_kill_xp(victim_xp: i32, streak: i32, level: i32) -> i32 {
     let streak = streak.min(rules::STREAK_XP_CAP);
@@ -54,14 +55,55 @@ pub fn hero_kill_xp(victim_xp: i32, streak: i32, level: i32) -> i32 {
     } else {
         (5 * streak * streak - 10 * streak + 40) * level / 4
     };
-    rules::HERO_KILL_XP_BASE + victim_xp * rules::HERO_KILL_XP_SHARE_PCT / 100 + streak_bonus
+    let counted = victim_xp.min(rules::HERO_KILL_XP_COUNTED_MAX);
+    rules::HERO_KILL_XP_BASE + counted * rules::HERO_KILL_XP_SHARE_PCT / 100 + streak_bonus
 }
 
-/// What bringing down a hero on a streak of so many pays.
+/// What the killer of a hero of `level` on a streak of `streak` is paid
+/// besides assist gold: Dota's base, a price a level, the gold for ending
+/// the streak, and [`rules::FIRST_BLOOD_GOLD`] on the match's first hero
+/// kill.
 #[inline]
-pub fn hero_bounty(streak: i32) -> i32 {
-    rules::HERO_KILL_BOUNTY_BASE
-        + rules::HERO_KILL_BOUNTY_PER_STREAK * streak.min(rules::HERO_KILL_STREAK_CAP)
+pub fn hero_bounty(level: i32, streak: i32, first_blood: bool) -> i32 {
+    let ended = streak.min(rules::STREAK_XP_CAP) - rules::STREAK_GOLD_FROM;
+    let streak_gold = usize::try_from(ended).map_or(0, |at| rules::STREAK_GOLD[at]);
+    let first = if first_blood {
+        rules::FIRST_BLOOD_GOLD
+    } else {
+        0
+    };
+    rules::HERO_KILL_GOLD_BASE + rules::HERO_KILL_GOLD_PER_LEVEL * level + streak_gold + first
+}
+
+/// What each of `earners` heroes is paid in assist gold for a hero worth
+/// `fallen_worth`, by Dota 7.40's `15 + (50 + 0.037 × worth) / earners`,
+/// rounded down, times the net worth factor of the earning side.
+///
+/// Liquipedia (*Gold*, "Assists") gives the factor as the fallen side's net
+/// worth over the earning side's, which grows without bound for a
+/// far-behind earner; the Dota 2 wiki gives it piecewise, `1 − gap /
+/// leading worth` for the leading side and `1 + gap / leading worth` for
+/// the trailing one, between zero and two. The two agree for a side that
+/// leads; this takes the bounded form for one that trails.
+pub fn assist_gold(fallen_worth: i32, earners: usize, earning_side: i64, fallen_side: i64) -> i32 {
+    if earners == 0 {
+        return 0;
+    }
+    let earners = i64::try_from(earners).expect("seats are few");
+    let base = rules::ASSIST_GOLD_FLAT_MILLI
+        + (rules::ASSIST_GOLD_SHARED_MILLI
+            + rules::ASSIST_GOLD_NET_WORTH_MILLI * i64::from(fallen_worth.max(0)))
+            / earners;
+    let (earning_side, fallen_side) = (earning_side.max(0), fallen_side.max(0));
+    let leading = earning_side.max(fallen_side);
+    let milli = if leading == 0 {
+        base
+    } else if earning_side >= fallen_side {
+        base * fallen_side / leading
+    } else {
+        base * (2 * leading - earning_side) / leading
+    };
+    i32::try_from(milli / 1000).expect("assist gold fits an i32")
 }
 
 /// The experience a lane creep denied by its own side pays the other side.

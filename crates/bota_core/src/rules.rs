@@ -1022,20 +1022,40 @@ pub const PASSIVE_GOLD_TENTHS_A_MINUTE: [(u32, i64); 9] = [
 /// A dying hero loses its net worth divided by this, never more gold than
 /// it holds.
 pub const DEATH_GOLD_LOSS_SHARE: i32 = 40;
-/// Gold for killing a hero, before the streak bonus.
-pub const HERO_KILL_BOUNTY_BASE: i32 = 200;
-/// Extra gold per kill in the victim's streak.
-pub const HERO_KILL_BOUNTY_PER_STREAK: i32 = 50;
-/// The streak bonus stops growing past this many kills.
-pub const HERO_KILL_STREAK_CAP: i32 = 6;
+/// Gold for killing a hero, before its level, its streak and First Blood:
+/// Dota's `125 + 8 × level + streak gold + First Blood` since 7.31
+/// (Liquipedia, *Gold*, "Hero kills" and "Kill Streaks", read 2026-10).
+pub const HERO_KILL_GOLD_BASE: i32 = 125;
+/// Gold for killing a hero, a level of the fallen.
+pub const HERO_KILL_GOLD_PER_LEVEL: i32 = 8;
+/// Gold for ending a streak of 3, 4, … 10 or more kills.
+pub const STREAK_GOLD: [i32; 8] = [60, 100, 150, 210, 280, 360, 450, 550];
+/// The shortest streak whose end pays gold.
+pub const STREAK_GOLD_FROM: i32 = 3;
+/// Gold the match's first hero kill pays its killer on top.
+pub const FIRST_BLOOD_GOLD: i32 = 135;
+/// Assist gold every earner of a hero kill is paid before the net worth
+/// factor, in thousandths: `ASSIST_GOLD_FLAT + (ASSIST_GOLD_SHARED +
+/// ASSIST_GOLD_NET_WORTH × the fallen's net worth) / earners`, Dota 7.40's
+/// "15 + ((50 + (VictimNetworth * 0.037)) / NumHeroes)".
+pub const ASSIST_GOLD_FLAT_MILLI: i64 = 15_000;
+/// The part of the assist gold the earners share, in thousandths.
+pub const ASSIST_GOLD_SHARED_MILLI: i64 = 50_000;
+/// Thousandths of the fallen hero's net worth the earners share.
+pub const ASSIST_GOLD_NET_WORTH_MILLI: i64 = 37;
 /// Experience for killing a hero, before the share of its own.
 pub const HERO_KILL_XP_BASE: i32 = 100;
 /// Percent of the fallen hero's own experience paid for its head besides.
 pub const HERO_KILL_XP_SHARE_PCT: i32 = 13;
+/// The fallen hero's experience counts up to this much: a head stops
+/// growing at level 25 (Liquipedia, *Experience*).
+pub const HERO_KILL_XP_COUNTED_MAX: i32 = XP_THRESHOLDS[24];
 /// The shortest streak whose end pays experience.
 pub const STREAK_XP_FROM: i32 = 3;
 /// Streaks longer than this pay no more for their end.
 pub const STREAK_XP_CAP: i32 = 10;
+
+const _: () = assert!(STREAK_GOLD.len() as i32 == STREAK_XP_CAP - STREAK_GOLD_FROM + 1);
 /// Radius around a death within which enemy heroes receive experience.
 pub const XP_RADIUS: i32 = 1500;
 

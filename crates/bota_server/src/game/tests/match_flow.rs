@@ -133,7 +133,7 @@ fn bringing_down_your_own_is_a_deny_that_feeds_only_nearby_enemies() {
 }
 
 #[test]
-fn a_hero_kill_pays_by_the_streak_and_a_death_costs_gold_by_the_level() {
+fn a_hero_kill_pays_dotas_bounty_first_blood_and_assist_gold() {
     let mut world = World::new();
     let hunter = seated_hero(
         &mut world,
@@ -141,6 +141,7 @@ fn a_hero_kill_pays_by_the_streak_and_a_death_costs_gold_by_the_level() {
         HeroId::SHADOW_FIEND,
     );
     let prey = seat_hero(&mut world, 1, Team::Dire, Vec2::from_ints(5050, 5000));
+    world.seats[0].net_worth = 500;
     world.seats[1].gold = 500;
     world.seats[1].net_worth = 500;
     world.seats[1].level = 4;
@@ -149,11 +150,10 @@ fn a_hero_kill_pays_by_the_streak_and_a_death_costs_gold_by_the_level() {
     let mut events = Vec::new();
     world.bury(vec![(prey, Some(hunter))], &mut events);
 
-    let head = rules::HERO_KILL_BOUNTY_BASE + 3 * rules::HERO_KILL_BOUNTY_PER_STREAK;
-    assert_eq!(
-        world.seats[0].gold, head,
-        "the head is priced by the streak it wore"
-    );
+    // 125 + 8 × level 4 + 60 for a streak of three + 135 First Blood, and
+    // 15 + 50 + 0.037 × 500 assist gold at even net worth, rounded down.
+    let head = 125 + 32 + 60 + 135 + 83;
+    assert_eq!(world.seats[0].gold, head, "Dota 7.41f's head and assist");
     assert_eq!(world.seats[0].kills, 1);
     assert_eq!(
         world.seats[0].streak, 1,
@@ -179,6 +179,20 @@ fn a_hero_kill_pays_by_the_streak_and_a_death_costs_gold_by_the_level() {
         Some(head),
         "the event says what the kill paid"
     );
+
+    // The second head pays no First Blood: a level-one hero on no streak
+    // is 125 + 8 and 15 + 50 + 0.037 × its 1000, the killer side leading
+    // 1435 to 1000 and paid 1000/1435 of it.
+    let prey = seat_hero(&mut world, 2, Team::Dire, Vec2::from_ints(5050, 5000));
+    world.seats[2].net_worth = 1000;
+    world.seats[2].level = 1;
+    world.seats[1].net_worth = 0;
+    world.seats[0].net_worth = 1435;
+    world.settle();
+    let before = world.seats[0].gold;
+    world.bury(vec![(prey, Some(hunter))], &mut Vec::new());
+    let assist = (15_000 + 50_000 + 37 * 1000) * 1000 / 1435 / 1000;
+    assert_eq!(world.seats[0].gold - before, 133 + assist);
 }
 
 #[test]
@@ -359,6 +373,13 @@ fn a_heros_head_and_its_wait_are_priced_as_the_game_prices_them() {
         "the sixth level, the ultimate's"
     );
     assert_eq!(rules::XP_THRESHOLDS[29], 63900, "the last");
+}
+
+#[test]
+fn a_heads_experience_stops_growing_at_level_twenty_five() {
+    // Liquipedia, Experience: 100 + 0.13 × 34400 at level 25 and above.
+    assert_eq!(hero_kill_xp(34_400, 0, 25), 4572);
+    assert_eq!(hero_kill_xp(60_000, 0, 29), 4572);
 }
 
 #[test]

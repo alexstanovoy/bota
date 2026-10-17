@@ -1,14 +1,25 @@
 //! What a kill pays, what the clock pays, and getting a hero back on its feet.
 
 use bota_core::{
-    GoldRange, denied_xp, hero_bounty, hero_kill_xp, hero_spawn_pos, kind_def, passive_gold_by,
-    rules,
+    GoldRange, assist_gold, denied_xp, hero_bounty, hero_kill_xp, hero_spawn_pos, kind_def,
+    passive_gold_by, rules,
 };
 use bota_proto::{EventKind, Team, UnitKind, Vec2};
 
 use crate::game::{Bounty, Entity, Event, EventVisibility, Landed, Level, Purpose, World, wire_id};
 
 use super::fight::other_side;
+
+/// Net worths around a hero's fall, before it moved any gold.
+#[derive(Clone, Copy, Debug)]
+struct Worths {
+    /// The fallen hero's own.
+    fallen: i32,
+    /// Its side's, its own included.
+    fallen_side: i64,
+    /// The side that brought it down.
+    killer_side: i64,
+}
 
 impl World {
     /// Hands out the gold that arrives on its own, to every seat: what
@@ -40,9 +51,11 @@ impl World {
     /// [`World::pledge_flag_bonus`], and a tower its team bounty, see
     /// [`World::pay_team_bounty`].
     ///
-    /// A hero's head is priced by its streak, which ends with it, and its
-    /// death costs it its net worth over [`rules::DEATH_GOLD_LOSS_SHARE`],
-    /// whoever struck the blow, and never more than it holds.
+    /// A hero's head is priced by its level and its streak, which ends with
+    /// it, and First Blood; a hero brought down by an enemy hero also pays
+    /// assist gold, see [`World::pay_assist_gold`]. Its death costs it its
+    /// net worth over [`rules::DEATH_GOLD_LOSS_SHARE`], whoever struck the
+    /// blow, and never more than it holds.
     ///
     /// The killing unit's gold income modifier scales the bounty once, after
     /// the bounty is composed and before it is credited.
@@ -52,7 +65,7 @@ impl World {
         killer: Option<Entity>,
         events: &mut Vec<Event>,
     ) -> i32 {
-        let Some((bounty, fallen_seat)) = self.price_of_fall(fallen) else {
+        let Some((bounty, fallen_seat, worths)) = self.price_of_fall(fallen) else {
             return 0;
         };
         let Some(side) = self.team.get(fallen).copied() else {
@@ -63,6 +76,12 @@ impl World {
         let denied = killer_side == Some(side);
         let mut paid = self.credit_killer(killer, denied, fallen_seat.is_some(), bounty.gold);
         let striker_seat = killer.and_then(|k| self.seat_of(k));
+        if let Some(worths) = worths
+            && !denied
+            && striker_seat.is_some()
+        {
+            paid += self.pay_assist_gold(at, other_side(side), worths, striker_seat);
+        }
         if !denied && bounty.bonus > 0 {
             paid += self.pay_flag_bonus(at, other_side(side), bounty.bonus, striker_seat);
         }
@@ -89,31 +108,91 @@ impl World {
         paid
     }
 
-    /// What the fallen is worth, and the seat it was a hero of: a hero's head
-    /// is priced by its streak, and its death costs its seat the share of its
-    /// net worth. Nothing for a fallen that is worth nothing.
-    fn price_of_fall(&mut self, fallen: Entity) -> Option<(Bounty, Option<usize>)> {
+    /// What the fallen is worth, the seat it was a hero of and the net
+    /// worths around a hero's fall as they stood before the death moved any
+    /// gold: a hero's head is priced by its level and streak and by whether
+    /// it is the match's first, and its death costs its seat the share of
+    /// its net worth. Nothing for a fallen that is worth nothing.
+    fn price_of_fall(&mut self, fallen: Entity) -> Option<(Bounty, Option<usize>, Option<Worths>)> {
         let fallen_seat = self.seat_of(fallen);
-        let bounty = match fallen_seat {
-            Some(index) => {
-                let seat = &self.seats[index];
-                Bounty {
-                    gold: GoldRange::exactly(hero_bounty(i32::from(seat.streak))),
-                    bonus: 0,
-                    team: 0,
-                    xp: hero_kill_xp(seat.xp, i32::from(seat.streak), i32::from(seat.level)),
-                }
-            }
-            None => self.bounty.get(fallen).copied()?,
+        let Some(index) = fallen_seat else {
+            let bounty = self.bounty.get(fallen).copied()?;
+            return Some((bounty, None, None));
         };
-        if let Some(index) = fallen_seat {
-            let seat = &mut self.seats[index];
-            let loss = (seat.net_worth / rules::DEATH_GOLD_LOSS_SHARE).clamp(0, seat.gold);
-            seat.gold -= loss;
-            seat.net_worth -= loss;
-            seat.streak = 0;
+        let first_blood = self.seats.iter().all(|seat| seat.kills == 0);
+        let seat = &self.seats[index];
+        let (level, streak) = (i32::from(seat.level), i32::from(seat.streak));
+        let bounty = Bounty {
+            gold: GoldRange::exactly(hero_bounty(level, streak, first_blood)),
+            bonus: 0,
+            team: 0,
+            xp: hero_kill_xp(seat.xp, streak, level),
+        };
+        let worths = Worths {
+            fallen: seat.net_worth,
+            fallen_side: self.side_worth(seat.team),
+            killer_side: self.side_worth(other_side(seat.team)),
+        };
+        let seat = &mut self.seats[index];
+        let loss = (seat.net_worth / rules::DEATH_GOLD_LOSS_SHARE).clamp(0, seat.gold);
+        seat.gold -= loss;
+        seat.net_worth -= loss;
+        seat.streak = 0;
+        Some((bounty, fallen_seat, Some(worths)))
+    }
+
+    /// The net worth of every seat of a side together.
+    fn side_worth(&self, side: Team) -> i64 {
+        self.seats
+            .iter()
+            .filter(|seat| seat.team == side)
+            .map(|seat| i64::from(seat.net_worth))
+            .sum()
+    }
+
+    /// Pays the assist gold of a hero an enemy hero brought down to every
+    /// seat of the earning side whose living hero stands within
+    /// [`rules::XP_RADIUS`] of the fall, and to the killer's seat wherever
+    /// it stands, each through its own hero's gold income: the same
+    /// [`assist_gold`] to each. Answers what the killer's seat was paid.
+    fn pay_assist_gold(
+        &mut self,
+        at: Vec2,
+        earners: Team,
+        worths: Worths,
+        killer_seat: Option<usize>,
+    ) -> i32 {
+        let radius = rules::units(rules::XP_RADIUS);
+        let paid_seats: Vec<usize> = (0..self.seats.len())
+            .filter(|&index| {
+                let seat = &self.seats[index];
+                seat.team == earners
+                    && (killer_seat == Some(index)
+                        || seat.unit.is_some_and(|unit| {
+                            self.alive(unit)
+                                && self
+                                    .transform
+                                    .get(unit)
+                                    .is_some_and(|t| t.pos.within(at, radius))
+                        }))
+            })
+            .collect();
+        let share = assist_gold(
+            worths.fallen,
+            paid_seats.len(),
+            worths.killer_side,
+            worths.fallen_side,
+        );
+        let mut to_killer = 0;
+        for index in paid_seats {
+            let paid = self.bounty_after(self.seats[index].unit, share);
+            self.seats[index].gold += paid;
+            self.seats[index].net_worth += paid;
+            if killer_seat == Some(index) {
+                to_killer = paid;
+            }
         }
-        Some((bounty, fallen_seat))
+        to_killer
     }
 
     /// Credits the seat of the killer: a deny, or a streak step for a hero and
