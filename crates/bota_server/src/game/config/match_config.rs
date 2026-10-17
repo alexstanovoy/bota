@@ -11,14 +11,11 @@ use crate::game::{
 pub enum MatchConfigError {
     /// More spawn modifiers than a match may carry.
     TooManySpawnModifiers {
-        /// How many were offered.
         count: usize,
     },
     /// One spawn modifier is not one a match may carry.
     SpawnModifier {
-        /// Where it sits in the list.
         at: usize,
-        /// Why it was refused.
         error: SpawnModifierError,
     },
 }

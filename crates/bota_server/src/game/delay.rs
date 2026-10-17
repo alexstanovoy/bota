@@ -28,16 +28,12 @@ impl OrderDelay {
 pub enum OrderDelayError {
     /// Base and jitter together exceed [`MAX_ORDER_DELAY_TICKS`].
     TooLong {
-        /// The base offered.
         base: u32,
-        /// The jitter offered.
         jitter: u32,
     },
     /// Neither one delay for every seat nor one per seat.
     SeatCount {
-        /// Seats in the match.
         seats: usize,
-        /// Delays offered.
         delays: usize,
     },
 }
@@ -83,11 +79,8 @@ pub fn check_order_delays(delays: &[OrderDelay], seats: usize) -> Result<(), Ord
 /// An order that did not take effect when its tick came.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct RefusedOrder {
-    /// Which seat gave it.
     pub slot: SlotId,
-    /// The sequence number it was given with.
     pub seq: u32,
-    /// Why it was refused.
     pub reason: RejectReason,
 }
 
