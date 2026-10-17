@@ -216,6 +216,7 @@ pub enum UseSpec {
     Grenade,
 }
 
+/// How a shop keeps an item sold from a limited stock.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Stock {
     /// How many it holds when the match starts.

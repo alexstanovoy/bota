@@ -259,15 +259,15 @@ pub const DEMO_LANE_CORNERS: [Vec2; 3] = [
 /// click on that tree, and how near a tree another may not be planted.
 pub const TREE_RADIUS: i32 = 48;
 /// Squared world units around a map tree within which a cell's centre is
-/// shut to sight. Dota's tree vision blocker is a circle of √2 tiles through
-/// the corners of the 2×2-tile square the tree stands on; the cells whose
+/// shut to sight. Dota's tree vision blocker is a circle of sqrt(2) tiles through
+/// the corners of the 2x2-tile square the tree stands on; the cells whose
 /// centres it holds are exactly those four.
 pub const TREE_SIGHT_RADIUS_SQUARED: i64 = 2 * GRID_CELL_SIZE as i64 * GRID_CELL_SIZE as i64;
 /// Tiers above its own ground a tree still blocks a viewer from: Dota's
 /// trees stop ground vision on their level and one level up.
 pub const TREE_SIGHT_TIERS_ABOVE: u8 = 1;
 /// Squared cell distance from a viewer's cell within which it sees a cell
-/// whatever stands between: Dota's 5×5 tiles less the corners.
+/// whatever stands between: Dota's 5x5 tiles less the corners.
 pub const NEAR_SIGHT_CELLS_SQUARED: i64 = 5;
 /// Trees of the Dota map this close to a lane centerline are dropped.
 pub const TREE_LANE_CLEAR: i32 = 450;
@@ -870,12 +870,12 @@ pub const TALENT_SECOND_LEVELS: [u8; 4] = [27, 28, 29, 30];
 /// `MaxLevel 7` (`scripts/npc/npc_abilities.txt`, client 6957).
 pub const ATTRIBUTE_BONUS_MAX_LEVEL: u8 = 7;
 /// Attribute Bonus level `k` waits for hero level this many times `k`: 2, 4,
-/// … 14 (`RequiredLevel 2`; Liquipedia, *Attributes*, "the min levels
+/// ... 14 (`RequiredLevel 2`; Liquipedia, *Attributes*, "the min levels
 /// required per level of Attribute Bonus are level 2/4/6/8/10/12/14"; the
 /// 7.38 notes moved it from 6 to 2).
 pub const ATTRIBUTE_BONUS_LEVELS_APART: u8 = 2;
 /// Points of every attribute a level of the Attribute Bonus adds: `value 2
-/// 4 6 … 14`.
+/// 4 6 ... 14`.
 pub const ATTRIBUTE_BONUS_POINTS: i32 = 2;
 
 const _: () = {
@@ -1054,12 +1054,12 @@ pub const PASSIVE_GOLD_TENTHS_A_MINUTE: [(u32, i64); 9] = [
 /// it holds.
 pub const DEATH_GOLD_LOSS_SHARE: i32 = 40;
 /// Gold for killing a hero, before its level, its streak and First Blood:
-/// Dota's `125 + 8 × level + streak gold + First Blood` since 7.31
+/// Dota's `125 + 8 * level + streak gold + First Blood` since 7.31
 /// (Liquipedia, *Gold*, "Hero kills" and "Kill Streaks", read 2026-10).
 pub const HERO_KILL_GOLD_BASE: i32 = 125;
 /// Gold for killing a hero, a level of the fallen.
 pub const HERO_KILL_GOLD_PER_LEVEL: i32 = 8;
-/// Gold for ending a streak of 3, 4, … 10 or more kills.
+/// Gold for ending a streak of 3, 4, ... 10 or more kills.
 pub const STREAK_GOLD: [i32; 8] = [60, 100, 150, 210, 280, 360, 450, 550];
 /// The shortest streak whose end pays gold.
 pub const STREAK_GOLD_FROM: i32 = 3;
@@ -1067,7 +1067,7 @@ pub const STREAK_GOLD_FROM: i32 = 3;
 pub const FIRST_BLOOD_GOLD: i32 = 135;
 /// Assist gold every earner of a hero kill is paid before the net worth
 /// factor, in thousandths: `ASSIST_GOLD_FLAT + (ASSIST_GOLD_SHARED +
-/// ASSIST_GOLD_NET_WORTH × the fallen's net worth) / earners`, Dota 7.40's
+/// ASSIST_GOLD_NET_WORTH * the fallen's net worth) / earners`, Dota 7.40's
 /// "15 + ((50 + (VictimNetworth * 0.037)) / NumHeroes)".
 pub const ASSIST_GOLD_FLAT_MILLI: i64 = 15_000;
 /// The part of the assist gold the earners share, in thousandths.

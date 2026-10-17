@@ -41,7 +41,7 @@ impl SightBlock {
     /// `rooted` and the trees items put up in `planted`.
     ///
     /// A map tree covers every cell whose centre lies within
-    /// `TREE_SIGHT_RADIUS_SQUARED` of it: the 2×2 cells of the square it
+    /// `TREE_SIGHT_RADIUS_SQUARED` of it: the 2x2 cells of the square it
     /// stands on, so a row of trees two cells apart is a closed wall. A
     /// planted tree, smaller, covers the one cell it stands in.
     pub fn lay(

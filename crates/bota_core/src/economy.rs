@@ -76,12 +76,12 @@ pub fn hero_bounty(level: i32, streak: i32, first_blood: bool) -> i32 {
 }
 
 /// What each of `earners` heroes is paid in assist gold for a hero worth
-/// `fallen_worth`, by Dota 7.40's `15 + (50 + 0.037 × worth) / earners`,
+/// `fallen_worth`, by Dota 7.40's `15 + (50 + 0.037 * worth) / earners`,
 /// rounded down, times the net worth factor of the earning side.
 ///
 /// Liquipedia (*Gold*, "Assists") gives the factor as the fallen side's net
 /// worth over the earning side's, which grows without bound for a
-/// far-behind earner; the Dota 2 wiki gives it piecewise, `1 − gap /
+/// far-behind earner; the Dota 2 wiki gives it piecewise, `1 - gap /
 /// leading worth` for the leading side and `1 + gap / leading worth` for
 /// the trailing one, between zero and two. The two agree for a side that
 /// leads; this takes the bounded form for one that trails.

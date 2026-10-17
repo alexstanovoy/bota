@@ -15,8 +15,7 @@ const UNITS_1V1: u32 = 25;
 /// Ticks per second the server runs at.
 const TICK_RATE: usize = 30;
 
-/// A hero carries a scroll in its town portal slot: 14 bytes over the 183 it
-/// cost without one.
+/// A hero with a scroll in its town portal slot.
 #[test]
 fn a_hero_stays_under_197_bytes() {
     let len = encoded_len(&hero_unit());
