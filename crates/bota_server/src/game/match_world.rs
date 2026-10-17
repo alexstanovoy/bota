@@ -367,28 +367,19 @@ impl World {
                 target,
             } => self.check_put(unit, seat, usize::from(named.0), target),
             Order::Take { target } => self.check_take(unit, seat, target),
-            Order::Swap { from, to } => {
-                match self.swap_refusal(unit, seat, usize::from(from.0), usize::from(to.0)) {
-                    Some(reason) => Err(reason),
-                    None => Ok(()),
-                }
-            }
+            Order::Swap { from, to } => self
+                .swap_refusal(unit, seat, usize::from(from.0), usize::from(to.0))
+                .map_or(Ok(()), Err),
             Order::Use { slot, target } => self.check_use(unit, seat, usize::from(slot.0), target),
             Order::Cheat { cheat } => self.check_cheat(unit, cheat),
-            Order::LearnTalent { talent } => {
-                if self.can_learn_talent(unit, *talent) {
-                    Ok(())
-                } else {
-                    Err(RejectReason::CannotLearn)
-                }
-            }
-            Order::LearnAttributeBonus => {
-                if self.can_learn_attribute_bonus(unit) {
-                    Ok(())
-                } else {
-                    Err(RejectReason::CannotLearn)
-                }
-            }
+            Order::LearnTalent { talent } => self
+                .can_learn_talent(unit, *talent)
+                .then_some(())
+                .ok_or(RejectReason::CannotLearn),
+            Order::LearnAttributeBonus => self
+                .can_learn_attribute_bonus(unit)
+                .then_some(())
+                .ok_or(RejectReason::CannotLearn),
             _ => Ok(()),
         }
     }
@@ -524,13 +515,11 @@ impl World {
         }
         match target {
             Target::None => Ok(()),
-            Target::Pos(pos) => {
-                if self.clearance.stands_clear(*pos) {
-                    Ok(())
-                } else {
-                    Err(RejectReason::ClosedGround)
-                }
-            }
+            Target::Pos(pos) => self
+                .clearance
+                .stands_clear(*pos)
+                .then_some(())
+                .ok_or(RejectReason::ClosedGround),
             Target::Unit(target) => {
                 let to = self.seen_by(seat, *target)?;
                 if to == unit
