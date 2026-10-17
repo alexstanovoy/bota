@@ -1106,14 +1106,11 @@ impl World {
         let Some(book) = self.abilities.get(entity) else {
             return false;
         };
-        if book.tree.is_none() || slot.0 >= bota_proto::TalentSlot::COUNT {
-            return false;
-        }
-        if book.talents.has(slot) {
-            return false;
-        }
         let hero_level = self.level.get(entity).map_or(0, |level| level.0);
-        hero_level >= bota_core::talent_floor(slot, book.talents)
+        book.tree.is_some()
+            && slot.0 < bota_proto::TalentSlot::COUNT
+            && !book.talents.has(slot)
+            && hero_level >= bota_core::talent_floor(slot, book.talents)
     }
 
     /// Spends a skill point on an entity's Attribute Bonus, when

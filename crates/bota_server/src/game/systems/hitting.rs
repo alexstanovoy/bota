@@ -108,12 +108,14 @@ pub fn hitting_system<const AMPLIFIED: bool>(cx: HitCx<'_>) {
         if !standing || stat.invulnerable || shielded {
             continue;
         }
+        let at = transform.get(blow.target).map_or(Vec2::ZERO, |t| t.pos);
+        let side = team.get(blow.target).copied().unwrap_or(Team::Neutral);
         if blow.attack && !blow.pierces && evades(blow.target, stat.evasion, rng, evasion) {
             missed.push_back(Missed {
                 source: blow.source,
                 target: blow.target,
-                at: transform.get(blow.target).map_or(Vec2::ZERO, |t| t.pos),
-                side: team.get(blow.target).copied().unwrap_or(Team::Neutral),
+                at,
+                side,
             });
             continue;
         }
@@ -137,8 +139,8 @@ pub fn hitting_system<const AMPLIFIED: bool>(cx: HitCx<'_>) {
             target: blow.target,
             amount: applied,
             kind: blow.kind,
-            at: transform.get(blow.target).map_or(Vec2::ZERO, |t| t.pos),
-            side: team.get(blow.target).copied().unwrap_or(Team::Neutral),
+            at,
+            side,
             fatal,
         });
     }

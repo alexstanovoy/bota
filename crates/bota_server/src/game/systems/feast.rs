@@ -40,26 +40,22 @@ impl World {
             };
             assert!(feast.ticks_left > 0);
             feast.ticks_left -= 1;
-            match feast.phase {
-                FeastPhase::Feasting => {
-                    let ran = rules::FEAST_TICKS - feast.ticks_left;
-                    if feast.ticks_left == 0 {
-                        self.stop_feasting(entity, feast);
-                    } else {
-                        if ran.is_multiple_of(rules::FEAST_PERIOD_TICKS) {
-                            self.gather_feast(entity, &mut feast);
-                        }
-                        self.feast.insert(entity, feast);
-                    }
+            let feasting = feast.phase == FeastPhase::Feasting;
+            if feast.ticks_left == 0 {
+                if feasting {
+                    self.stop_feasting(entity, feast);
+                } else {
+                    self.stop_lingering(entity);
                 }
-                FeastPhase::Lingering => {
-                    if feast.ticks_left == 0 {
-                        self.stop_lingering(entity);
-                    } else {
-                        self.feast.insert(entity, feast);
-                    }
-                }
+                continue;
             }
+            // Ticks run, counted only while feasting: a linger may outlast it.
+            if feasting
+                && (rules::FEAST_TICKS - feast.ticks_left).is_multiple_of(rules::FEAST_PERIOD_TICKS)
+            {
+                self.gather_feast(entity, &mut feast);
+            }
+            self.feast.insert(entity, feast);
         }
         self.recycle_entity_snapshot(entities);
     }

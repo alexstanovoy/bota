@@ -45,16 +45,6 @@ pub struct StatsCx<'a> {
 /// is never left empty by the move alone. An entity with no stats behind it
 /// yet has just been stood up, and stands up full.
 pub fn derive_stats(cx: StatsCx<'_>) {
-    if cx.applied.is_empty() {
-        derive_stats_impl::<false>(cx);
-    } else {
-        derive_stats_impl::<true>(cx);
-    }
-}
-
-/// The body of [`derive_stats`], with applied changes compiled out when
-/// no unit carries any.
-fn derive_stats_impl<const APPLIED: bool>(cx: StatsCx<'_>) {
     let StatsCx {
         entities,
         def,
@@ -80,7 +70,7 @@ fn derive_stats_impl<const APPLIED: bool>(cx: StatsCx<'_>) {
         let mut now = raised(kind, levels, steps, night);
         // Applied changes are folded in first and additively. Items,
         // attributes and every multiplier below land on top of them.
-        if APPLIED && let Some(on_it) = applied.get(entity) {
+        if let Some(on_it) = applied.get(entity) {
             fold_applied(&mut now, on_it);
         }
         let ranged = kind.projectile_speed.is_some();
