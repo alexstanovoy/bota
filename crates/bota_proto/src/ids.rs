@@ -304,6 +304,9 @@ impl EffectId {
     pub const DISARMED: EffectId = EffectId(23);
     /// Its passives do nothing.
     pub const BROKEN: EffectId = EffectId(24);
+    /// Under its side's Glyph of Fortification (`modifier_fountain_glyph`):
+    /// takes no damage for `ticks_left` ticks.
+    pub const FORTIFIED: EffectId = EffectId(56);
 }
 
 /// An index into a unit's ability slots, as listed in

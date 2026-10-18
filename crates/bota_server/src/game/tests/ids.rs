@@ -140,6 +140,7 @@ fn every_effect_is_shown_under_its_registered_id() {
     }
     shown.push((EffectId::FEASTING.0, "Feasting".to_string()));
     shown.push((EffectId::FEAST_LINGER.0, "FeastLinger".to_string()));
+    shown.push((EffectId::FORTIFIED.0, "Fortified".to_string()));
     for entry in &NEUTRAL_ABILITIES {
         let Some(effect) = spell_effect(entry.ability) else {
             continue;

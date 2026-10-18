@@ -196,6 +196,7 @@ effect 52 live Rally
 effect 53 live Tempest
 effect 54 live WaterBubble
 effect 55 live Purge
+effect 56 live Fortified
 
 neutral 0 live Kobold
 neutral 1 live Kobold Soldier

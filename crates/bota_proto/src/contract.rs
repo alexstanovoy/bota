@@ -81,6 +81,17 @@
 //! lockstep the configured delay, in realtime whatever the line and the
 //! client's own thinking cost. An order without `seen` measures nothing.
 //!
+//! # What a side is told of the other's Glyph
+//!
+//! Dota shows a Glyph of Fortification on every building and creep one sees,
+//! and its announcer tells both teams when one is used. So a unit in a view
+//! wears the [`EffectId::FORTIFIED`](crate::EffectId::FORTIFIED) buff, with
+//! the ticks its cover has left, whatever its side, only for units the view
+//! holds (what the fog hides is not told), and
+//! [`WorldView::glyphs`](crate::WorldView::glyphs) holds both sides'
+//! entries. The other side's entry has `ready_in` zero always: that its Glyph
+//! is active is public, when it may be used again is not.
+//!
 //! # Tick modes and slow receivers
 //!
 //! In [`TickMode::Realtime`](crate::TickMode::Realtime) ticks follow the wall

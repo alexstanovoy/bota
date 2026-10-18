@@ -346,12 +346,15 @@ pub struct StockView {
     pub restock_left: u32,
 }
 
-/// One side's Glyph of Fortification.
+/// One side's Glyph of Fortification. A side is told its own in full; of the
+/// other side's it is told only that it is active, `ready_in` being zero, so
+/// the other side's cooldown stays hidden.
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct GlyphView {
     /// The side whose Glyph it is.
     pub team: Team,
-    /// Ticks until the side may activate it; zero when it is ready.
+    /// Ticks until the side may activate it; zero when it is ready, and
+    /// always zero in the other side's view.
     pub ready_in: u32,
     /// Ticks its structures still take no damage for; zero when it is not
     /// active.
@@ -464,8 +467,9 @@ pub struct WorldView {
     /// a teleport's destination to both sides through the fog. Sorted by
     /// [`SlotId`].
     pub teleports: Vec<TeleportView>,
-    /// The Glyph of Fortification of the viewing side, or of both sides in a
-    /// view of everything, sorted by [`Team`]. Last on the wire.
+    /// The Glyph of Fortification of both sides, sorted by [`Team`]: the
+    /// viewing side's in full, the other's without its cooldown. Last on the
+    /// wire.
     pub glyphs: Vec<GlyphView>,
 }
 

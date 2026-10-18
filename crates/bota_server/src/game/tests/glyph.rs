@@ -4,8 +4,11 @@
 //! tier two tower and melee barracks fall.
 
 use bota_core::{MELEE_CREEP, UnitDef, map_of, rules, tower_def};
-use bota_proto::{DamageKind, Fixed, MapId, Order, RejectReason, SlotId, Team, Vec2};
+use bota_proto::{
+    DamageKind, EffectId, Fixed, GlyphView, MapId, Order, RejectReason, SlotId, Team, Vec2,
+};
 
+use crate::game::project::wire_id;
 use crate::game::{Entity, Hit, HitEffect, Place, World};
 
 use super::support::*;
@@ -72,14 +75,21 @@ fn the_glyph_protects_structures_seven_seconds_and_creeps_three_then_recharges()
         "structures take nothing"
     );
     assert_eq!(pure_blow(&mut world, enemy, creep), 0, "nor do lane creeps");
-    let dire = world.view(Team::Dire).glyphs;
-    assert!(
-        dire.iter()
-            .all(|g| g.team == Team::Dire && g.active_for == 0)
-    );
     let mine = world.view(Team::Radiant).glyphs;
-    assert_eq!(mine.len(), 1);
+    assert_eq!(mine.len(), 2);
     assert!(mine[0].active_for > 0 && mine[0].ready_in > 0);
+    assert_eq!((mine[1].team, mine[1].active_for), (Team::Dire, 0));
+    let theirs = world.view(Team::Dire).glyphs;
+    assert!(theirs[0].active_for > 0, "the enemy sees it is active");
+    assert_eq!(
+        theirs[0],
+        GlyphView {
+            team: Team::Radiant,
+            ready_in: 0,
+            active_for: mine[0].active_for,
+        },
+        "and nothing of its cooldown"
+    );
 
     run_to(&mut world, used + rules::GLYPH_CREEP_TICKS + 2);
     assert_eq!(
@@ -266,4 +276,66 @@ fn a_glyphed_creep_tanks_the_tower_for_a_diving_hero_until_the_hero_hits_a_hero(
         world.step();
     }
     assert_eq!(tower_at(&world, tower), Some(diver));
+}
+
+#[test]
+fn the_enemy_sees_a_glyph_on_what_it_sees_and_nothing_on_what_the_fog_hides() {
+    let mut world = World::on_map(map_of(MapId(0)));
+    seat_hero(&mut world, 0, Team::Radiant, Vec2::from_ints(3000, 3000));
+    let at = rules::RADIANT_TOWERS[0].2;
+    let near = |dx: i32| Vec2::from_ints(at.x.to_int() + dx, at.y.to_int());
+    seat_hero(&mut world, 1, Team::Dire, near(1500));
+    let tower = structure_at(&world, at);
+    let hidden = world.spawn_unit(&TARGET, Team::Radiant, Vec2::from_ints(1000, 1000));
+    let seen = world.spawn_unit(&TARGET, Team::Radiant, near(1450));
+    world.settle();
+    run_to(&mut world, rules::GLYPH_FIRST_USE_TICKS);
+    // The buff's remaining ticks on a unit the Dire view holds: nothing for
+    // a unit it is not told of.
+    let buff = |world: &World, entity: Entity| {
+        world
+            .view(Team::Dire)
+            .units
+            .iter()
+            .find(|u| u.id == wire_id(entity))
+            .map(|u| {
+                u.effects
+                    .iter()
+                    .find(|e| e.id == EffectId::FORTIFIED)
+                    .and_then(|e| e.ticks_left)
+            })
+    };
+    for entity in [tower, seen] {
+        assert_eq!(buff(&world, entity), Some(None), "before the Glyph");
+    }
+    seat_order(&mut world, Order::Glyph);
+    // The order took effect on the tick the step just ran.
+    let used = world.tick - 1;
+    assert_eq!(
+        buff(&world, tower),
+        Some(Some(used + rules::GLYPH_STRUCTURE_TICKS - world.tick)),
+        "a building it sees, with its seven seconds counting down"
+    );
+    assert_eq!(
+        buff(&world, seen),
+        Some(Some(used + rules::GLYPH_CREEP_TICKS - world.tick)),
+        "a creep it sees, with its three"
+    );
+    assert_eq!(
+        buff(&world, hidden),
+        None,
+        "a creep in the fog is not there"
+    );
+    let after = used + rules::GLYPH_CREEP_TICKS + 2;
+    run_to(&mut world, after);
+    assert_eq!(
+        buff(&world, seen),
+        Some(None),
+        "the creeps' three seconds are over"
+    );
+    assert_eq!(
+        buff(&world, tower),
+        Some(Some(used + rules::GLYPH_STRUCTURE_TICKS - world.tick)),
+        "the building's are not"
+    );
 }

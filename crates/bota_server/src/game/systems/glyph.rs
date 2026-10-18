@@ -3,7 +3,7 @@
 //! serves the whole side.
 
 use bota_core::{attack_class_pct, kind_def, rules};
-use bota_proto::{GlyphView, RejectReason, SlotId, Team, UnitKind};
+use bota_proto::{EffectId, EffectView, GlyphView, RejectReason, SlotId, Team, UnitKind};
 
 use crate::engine::Entity;
 use crate::game::{GLYPH_MELEE_RAX, GLYPH_TIER_ONE, GLYPH_TIER_TWO, Stats, World};
@@ -103,21 +103,44 @@ impl World {
         }
     }
 
-    /// The Glyphs a viewer is told of: its side's, or both in a view of
-    /// everything.
+    /// The Glyphs a viewer is told of: both sides', the other side's without
+    /// its cooldown (Dota's announcer tells both teams when a Glyph is used).
     pub(crate) fn glyph_views(&self, viewer: Option<Team>) -> Vec<GlyphView> {
         [Team::Radiant, Team::Dire]
             .into_iter()
-            .filter(|&team| viewer.is_none_or(|seen| seen == team))
             .filter_map(|team| {
                 let glyph = self.glyphs[glyph_index(team)?];
+                let own = viewer.is_none_or(|seen| seen == team);
                 Some(GlyphView {
                     team,
-                    ready_in: glyph.ready_at.saturating_sub(self.tick),
+                    ready_in: if own {
+                        glyph.ready_at.saturating_sub(self.tick)
+                    } else {
+                        0
+                    },
                     active_for: glyph.structures_until.saturating_sub(self.tick),
                 })
             })
             .collect()
+    }
+
+    /// The buff a unit under its side's Glyph wears, with the ticks its
+    /// cover has left.
+    pub(crate) fn fortified_effect(&self, entity: Entity) -> Option<EffectView> {
+        if !self.stats.get(entity)?.glyph {
+            return None;
+        }
+        let glyph = self.glyphs[glyph_index(*self.team.get(entity)?)?];
+        let until = if kind_def(*self.kind.get(entity)?).structure {
+            glyph.structures_until
+        } else {
+            glyph.creeps_until
+        };
+        Some(EffectView {
+            id: EffectId::FORTIFIED,
+            ticks_left: Some(until.saturating_sub(self.tick)),
+            stacks: None,
+        })
     }
 
     /// The enemies a tower under its side's Glyph shoots besides its target:

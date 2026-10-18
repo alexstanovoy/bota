@@ -470,6 +470,7 @@ impl World {
                 stacks: Some(many),
             }));
         }
+        on_it.extend(self.fortified_effect(entity));
         if let Some(feast) = self.feast.get(entity) {
             on_it.push(EffectView {
                 id: match feast.phase {
