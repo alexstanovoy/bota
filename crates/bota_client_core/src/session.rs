@@ -29,11 +29,12 @@ pub use tracks::{
 };
 
 use crate::handshake::{Seated, check_match};
+use crate::latency::OrderLatency;
 use crate::limits::{MAX_MESSAGES_WITHOUT_SNAPSHOT, MAX_RECENT_EVENTS};
 use crate::match_static::{MatchStatic, seat_team};
 use crate::observer::{EventSource, Observer};
 use crate::orders::{IssuedOrder, OrderLedger};
-use crate::readiness::{SharedWaits, wait_started_by};
+use crate::readiness::{LocalWaits, wait_started_by};
 use memory::BodyMemory;
 use missiles::Missiles;
 use tracks::{Owner, Tracks};
@@ -128,7 +129,7 @@ pub struct ClientSession {
     last_event_tick: Option<u32>,
     skipped_ticks: u32,
     ledger: OrderLedger,
-    waits: SharedWaits,
+    waits: LocalWaits,
     next_seq: u32,
     stream: StreamState,
 }
@@ -189,7 +190,7 @@ impl ClientSession {
             last_event_tick: None,
             skipped_ticks: 0,
             ledger: OrderLedger::default(),
-            waits: SharedWaits::default(),
+            waits: LocalWaits::default(),
             next_seq: 0,
             stream: StreamState::default(),
         }
@@ -340,6 +341,8 @@ impl ClientSession {
         if let Some(body) = wait_started_by(self, order) {
             self.waits.start(body, seq, seen);
         }
+        self.waits
+            .start_mutes(seq, order, seen, OrderLatency::measured(self));
         self.next_seq = seq;
         Ok(OutgoingOrder {
             seq,
@@ -607,7 +610,7 @@ impl ClientSession {
     }
 
     /// The waits the orders given started.
-    pub const fn waits(&self) -> &SharedWaits {
+    pub const fn waits(&self) -> &LocalWaits {
         &self.waits
     }
 
