@@ -203,7 +203,7 @@ fn the_fountain_melts_whoever_steps_into_its_reach_and_spares_who_stays_out() {
     }];
     let mut world = World::for_match(&cfg, cfg.rng());
     let hero = world.seats[0].unit.expect("stood up");
-    world.level.insert(hero, Level(10));
+    world.level.insert(hero, Level(20));
     world.settle();
     world.fill_pools(hero);
     let hold = |world: &mut World, at, ticks| {
@@ -225,7 +225,7 @@ fn the_fountain_melts_whoever_steps_into_its_reach_and_spares_who_stays_out() {
         full,
         "out of reach the fountain leaves it be"
     );
-    // A hero of the tenth level is torn apart within seconds. The reading
+    // A hero of the twentieth level is torn apart within seconds. The reading
     // starts once the first missiles have begun to land.
     let inside = rules::RADIANT_FOUNTAIN_POS + Vec2::from_ints(1000, 0);
     hold(&mut world, inside, 30);

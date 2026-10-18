@@ -79,6 +79,17 @@ pub enum ModifierKind {
         /// Whether it may take the last point of health.
         lethal: bool,
     },
+    /// Held by a dismember: bites at the beats [`crate::dismember_bite_tick`]
+    /// names for as long as it runs, for the caster's level in it.
+    Dismembered {
+        /// The dismember's level, counted from zero.
+        level: u8,
+    },
+    /// Takes `amount` off every blow that reaches it.
+    MeatShield {
+        /// Damage taken off each blow.
+        amount: i32,
+    },
     /// Additional damage from subsequent Shadowrazes by whoever put it on.
     Shadowraze {
         /// Successful hits held, in `1..=rules::RAZE_MAX_STACKS`.
@@ -143,6 +154,8 @@ impl ModifierKind {
                 Some(effect) => effect,
                 None => panic!("a spell without a modifier left one"),
             },
+            ModifierKind::Dismembered { .. } => EffectId::DISMEMBERED,
+            ModifierKind::MeatShield { .. } => EffectId::MEAT_SHIELD,
         }
     }
 

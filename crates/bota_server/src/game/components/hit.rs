@@ -48,6 +48,8 @@ pub enum HitEffect {
     Stun { ticks: u32 },
     /// Roots a target that survives for `ticks`, the same way.
     Root { ticks: u32 },
+    /// Heals the source by the health the blow took, one bite of a dismember.
+    Dismember,
 }
 
 impl HitEffect {

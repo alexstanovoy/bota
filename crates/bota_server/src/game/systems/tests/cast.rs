@@ -4,7 +4,7 @@
 use bota_core::{MELEE_CREEP, ModifierKind, rules};
 
 use crate::game::{ActionPhase, ActionState, Entity, Level, PendingCast, World, wire_id};
-use bota_proto::{AbilitySlot, DamageKind, HeroId, SlotId, Target, Team, Vec2};
+use bota_proto::{AbilitySlot, HeroId, SlotId, Target, Team, Vec2};
 
 use super::support::ANVIL;
 use crate::game::tests::support::{cast, put_on, run, seated_hero, set_level};
@@ -52,8 +52,15 @@ fn fiend_mid_swing() -> (World, Entity) {
     (world, fiend)
 }
 
+/// Orders a dismember and steps until its cast point is over and it holds.
 fn dismember(world: &mut World, mark: Entity) {
     cast(world, 3, Target::Unit(wire_id(mark)));
+    for _ in 0..rules::DISMEMBER_CAST_POINT_MS / 30 + 2 {
+        if dismember_parts(world, world.seats[0].unit.expect("seated"), mark)[0] {
+            return;
+        }
+        world.step();
+    }
 }
 
 /// Whether an entity carries a modifier of a kind put there by somebody.
@@ -66,21 +73,11 @@ fn carries_from(world: &World, entity: Entity, kind: ModifierKind, by: Entity) -
     })
 }
 
-/// Which of the stun, the burn and the mending a dismember puts on are on.
-fn dismember_parts(world: &World, pudge: Entity, mark: Entity) -> [bool; 3] {
-    let burn = ModifierKind::Burning {
-        amount: 0,
-        kind: DamageKind::Pure,
-        lethal: true,
-    };
-    let mend = ModifierKind::Mending {
-        per_tick: 0,
-        breaks: false,
-    };
+/// Which of the stun and the hold a dismember puts on the mark are on.
+fn dismember_parts(world: &World, pudge: Entity, mark: Entity) -> [bool; 2] {
     [
         carries_from(world, mark, ModifierKind::Stunned, pudge),
-        carries_from(world, mark, burn, pudge),
-        carries_from(world, pudge, mend, pudge),
+        carries_from(world, mark, ModifierKind::Dismembered { level: 0 }, pudge),
     ]
 }
 
@@ -116,11 +113,11 @@ fn a_dismember_holds_for_exactly_its_ticks_and_then_lets_go() {
     dismember(&mut world, mark);
     assert!(
         world.is_channelling(pudge),
-        "it takes hold on the tick it is ordered"
+        "it takes hold once its cast point is over"
     );
     assert_eq!(
         dismember_parts(&world, pudge, mark),
-        [true; 3],
+        [true; 2],
         "and puts on all of it"
     );
     for tick in 1..rules::DISMEMBER_TICKS {
@@ -128,7 +125,7 @@ fn a_dismember_holds_for_exactly_its_ticks_and_then_lets_go() {
         assert!(world.is_channelling(pudge), "still holding {tick} ticks in");
         assert_eq!(
             dismember_parts(&world, pudge, mark),
-            [true; 3],
+            [true; 2],
             "{tick} ticks in"
         );
     }
@@ -139,7 +136,7 @@ fn a_dismember_holds_for_exactly_its_ticks_and_then_lets_go() {
     );
     assert_eq!(
         dismember_parts(&world, pudge, mark),
-        [false; 3],
+        [false; 2],
         "and takes off everything it put on"
     );
 }
@@ -167,7 +164,7 @@ fn a_stun_on_the_one_holding_or_a_mark_out_of_reach_breaks_a_dismember_off() {
         assert!(!world.is_channelling(pudge), "{case}: it lets go");
         assert_eq!(
             dismember_parts(&world, pudge, mark),
-            [false; 3],
+            [false; 2],
             "{case}: and takes off everything it put on"
         );
     }

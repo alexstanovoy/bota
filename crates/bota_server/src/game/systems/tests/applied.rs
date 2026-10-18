@@ -8,7 +8,7 @@ use bota_core::{
 use crate::game::{
     AppliedModifier, AppliedModifiers, AppliedOrigin, AuraCx, Auras, Entity,
     MAX_APPLIED_MODIFIERS_PER_UNIT, MAX_COMBINED_MODIFIER_SCALE, Place, Seat, Spots, StackKind,
-    Stacks, World, aura_system, cooldown_after, cost_after,
+    World, aura_system, cooldown_after, cost_after,
 };
 use bota_proto::{
     AbilityId, AbilitySlot, DamageKind, Fixed, HeroId, ItemId, MapId, ModifierSpec, SlotId, Target,
@@ -16,7 +16,7 @@ use bota_proto::{
 };
 
 use super::support::{hold, spec};
-use crate::game::tests::support::{put_on, set_level, shown};
+use crate::game::tests::support::{put_on, shown};
 
 /// A world with a hero and a creep standing well apart.
 fn arena() -> (World, Entity, Entity) {
@@ -502,55 +502,17 @@ fn nothing_a_normal_modifier_does_reaches_an_applied_modifier() {
     );
 }
 
-/// A Pudge with Flesh Heap learned and stacks in the heap.
-fn pudge_with_a_heap() -> (World, Entity) {
-    let mut world = World::new();
-    let pudge = world.spawn_hero(
-        Team::Radiant,
-        Vec2::from_ints(7000, 7000),
-        SlotId(0),
-        HeroId::PUDGE,
-    );
-    set_level(&mut world, pudge, 2, 1);
-    let mut stacks = Stacks::default();
-    stacks.set(StackKind::FleshHeap, 10);
-    world.stacks.insert(pudge, stacks);
-    world.settle();
-    (world, pudge)
-}
-
 #[test]
-fn magic_resistance_adds_before_the_flesh_heap_multiplies() {
-    let (mut world, pudge) = pudge_with_a_heap();
-    let base = world.stats.get(pudge).expect("settled").magic_resist_bp;
-    apply(&mut world, pudge, spec(|s| s.magic_resist = 5_000), 10);
-    let before_heap = (rules::HERO_MAGIC_RESIST_PCT * 100 + 5_000).clamp(0, rules::NOMINAL_BP);
-    let kept =
-        (rules::NOMINAL_BP - before_heap) * (100 - rules::FLESH_HEAP_MAGIC_RESIST_PCT[0]) / 100;
-    let folded_first = rules::NOMINAL_BP - kept;
-    assert_eq!(
-        world.stats.get(pudge).map(|stats| stats.magic_resist_bp),
-        Some(folded_first),
-        "the heap multiplies what the modifier added"
-    );
-    assert!(
-        folded_first < base + 5_000,
-        "adding after the heap would give {}, which would let the modifier dodge it",
-        base + 5_000
-    );
-}
-
-#[test]
-fn magic_resistance_is_clamped_before_the_flesh_heap_multiplies() {
-    let (mut world, pudge) = pudge_with_a_heap();
+fn magic_resistance_is_clamped_at_immunity() {
+    let (mut world, hero, _creep) = arena();
     apply(
         &mut world,
-        pudge,
+        hero,
         spec(|s| s.magic_resist = ModifierSpec::MAX_RESIST),
         10,
     );
     assert_eq!(
-        world.stats.get(pudge).map(|stats| stats.magic_resist_bp),
+        world.stats.get(hero).map(|stats| stats.magic_resist_bp),
         Some(rules::NOMINAL_BP),
         "the added delta is clamped at immunity and stays there"
     );

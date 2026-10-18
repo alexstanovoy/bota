@@ -1,9 +1,9 @@
-//! The rot, the dismember and what the flesh heap keeps.
+//! The rot, the dismember, the meat shield and what the flesh heap keeps.
 
-use bota_core::{ModifierKind, rules};
-use bota_proto::{AbilityId, DamageKind, Target};
+use bota_core::{ModifierKind, dismember_bite_damage, hero_def, move_towards, per_tick, rules};
+use bota_proto::{AbilityId, DamageKind, Fixed, Target};
 
-use crate::game::{Modifier, StackKind, World};
+use crate::game::{HitEffect, Modifier, StackKind, World};
 
 use crate::engine::Entity;
 
@@ -44,8 +44,9 @@ impl World {
         }
     }
 
-    /// Takes hold of one unit within reach: it stands stunned and burning
-    /// for as long as it is held, and the one holding it mends by as much.
+    /// Takes hold of one unit within reach: it stands stunned, bitten as it
+    /// is taken and at every beat of the channel after, and the one holding
+    /// it mends by as much as the bites take.
     pub fn dismember_takes_hold(&mut self, caster: Entity, target: Target) -> bool {
         let Some(on) = self.dismember_mark(target) else {
             return false;
@@ -56,23 +57,67 @@ impl World {
             return false;
         }
         let level = usize::from(self.carried_level(caster, AbilityId::DISMEMBER).max(1) - 1);
-        let amount = rules::DISMEMBER_DAMAGE_PER_SECOND[level] * rules::BURN_PERIOD_TICKS as i32
-            / rules::TICKS_PER_SECOND as i32;
-        let burn = ModifierKind::Burning {
-            amount,
-            kind: DamageKind::Pure,
-            lethal: true,
-        };
-        let mend = ModifierKind::Mending {
-            per_tick: amount * 100 / rules::BURN_PERIOD_TICKS as i32,
-            breaks: false,
-        };
-        for (who, kind) in [(on, ModifierKind::Stunned), (on, burn), (caster, mend)] {
-            self.put_modifier(who, Modifier::new(kind, Some(caster), None));
-        }
+        self.put_modifier(on, Modifier::new(ModifierKind::Stunned, Some(caster), None));
+        let held = ModifierKind::Dismembered { level: level as u8 };
+        self.put_modifier(
+            on,
+            Modifier::new(held, Some(caster), Some(rules::DISMEMBER_TICKS)),
+        );
+        self.dismember_bites(caster, on, level);
         if let Some(at) = self.pos(on) {
             self.spawn_mark(AbilityId::DISMEMBER, caster, at, 0);
         }
+        true
+    }
+
+    /// One bite of a dismember: magic damage by the holder's strength, which
+    /// heals the holder by what it takes.
+    pub fn dismember_bites(&mut self, caster: Entity, on: Entity, level: usize) {
+        let strength = self
+            .stats
+            .get(caster)
+            .map_or(Fixed::ZERO, |stats| stats.attributes.strength);
+        let amount = dismember_bite_damage(level, strength);
+        self.push_hit_with_effect(
+            Some(caster),
+            on,
+            amount,
+            DamageKind::Magical,
+            HitEffect::Dismember,
+        );
+    }
+
+    /// Pulls what a dismember holds towards its holder, no nearer than
+    /// [`rules::DISMEMBER_PULL_LIMIT`] between their centers.
+    fn dismember_pulls(&mut self, caster: Entity, on: Entity) {
+        let (Some(me), Some(them)) = (self.pos(caster), self.pos(on)) else {
+            return;
+        };
+        let limit = rules::units(rules::DISMEMBER_PULL_LIMIT);
+        if them.within(me, limit) {
+            return;
+        }
+        let mut next = move_towards(
+            them,
+            me,
+            per_tick(rules::units(rules::DISMEMBER_PULL_SPEED)),
+        );
+        if next.within(me, limit) {
+            next = move_towards(me, them, limit);
+        }
+        if let Some(transform) = self.transform.get_mut(on) {
+            transform.pos = next;
+        }
+        self.forget_walk(on);
+    }
+
+    /// Puts a meat shield on its caster for the level's time.
+    pub fn cast_meat_shield(&mut self, caster: Entity, level: usize) -> bool {
+        let block = ModifierKind::MeatShield {
+            amount: rules::MEAT_SHIELD_BLOCK[level],
+        };
+        let ticks = rules::MEAT_SHIELD_TICKS[level];
+        self.put_modifier(caster, Modifier::new(block, Some(caster), Some(ticks)));
         true
     }
 
@@ -82,6 +127,7 @@ impl World {
         let Some(on) = self.dismember_mark(target) else {
             return false;
         };
+        self.dismember_pulls(caster, on);
         if let (Some(at), Some(shown)) = (self.pos(on), self.mark_of(caster, AbilityId::DISMEMBER))
             && let Some(transform) = self.transform.get_mut(shown)
         {
@@ -98,24 +144,8 @@ impl World {
         }
         if let Some(on) = self.dismember_mark(target) {
             self.take_modifier(on, ModifierKind::Stunned, Some(caster));
-            self.take_modifier(
-                on,
-                ModifierKind::Burning {
-                    amount: 0,
-                    kind: DamageKind::Pure,
-                    lethal: true,
-                },
-                Some(caster),
-            );
+            self.take_modifier(on, ModifierKind::Dismembered { level: 0 }, Some(caster));
         }
-        self.take_modifier(
-            caster,
-            ModifierKind::Mending {
-                per_tick: 0,
-                breaks: false,
-            },
-            Some(caster),
-        );
     }
 
     /// The unit a dismember is aimed at, while it is one.
@@ -124,6 +154,14 @@ impl World {
             return None;
         };
         self.of_wire(target)
+    }
+
+    /// Whether an entity is a hero whose innate is the flesh heap.
+    fn keeps_flesh_heap(&self, entity: Entity) -> bool {
+        self.hero
+            .get(entity)
+            .and_then(|hero| hero_def(*hero))
+            .is_some_and(|def| def.innate == Some(AbilityId::FLESH_HEAP))
     }
 
     /// Feeds the flesh heap of every hero standing near an enemy hero's
@@ -140,7 +178,7 @@ impl World {
             // The fallen is dead by now, so it is its side that is looked at,
             // not whether it could still be fought.
             let enemy = self.team.get(hero).is_some_and(|mine| *mine != theirs);
-            if hero == fallen || self.carried_level(hero, AbilityId::FLESH_HEAP) == 0 || !enemy {
+            if hero == fallen || !self.keeps_flesh_heap(hero) || !enemy {
                 continue;
             }
             if !self.pos(hero).is_some_and(|pos| pos.within(at, reach)) {

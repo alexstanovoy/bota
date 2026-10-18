@@ -5,9 +5,9 @@
 //! `bota_core` gives them, and the views tell what a unit holds.
 
 use bota_core::{
-    EFFECT_COUNT, EFFECTS as EFFECT_DEFS, FIRST_NEUTRAL_ABILITY, ITEMS as ITEM_DEFS,
-    NEUTRAL_ABILITIES, Talent, ability_def, attributes_at_level, base_damage_least, effect_def,
-    hero_def, talent_floor,
+    EFFECT_COUNT, EFFECTS as EFFECT_DEFS, FIRST_LATE_ABILITY, FIRST_NEUTRAL_ABILITY,
+    ITEMS as ITEM_DEFS, NEUTRAL_ABILITIES, Talent, ability_def, attributes_at_level,
+    base_damage_least, effect_def, hero_def, talent_floor,
 };
 use bota_proto::{AbilityId, EffectId, Fixed, HeroId, ItemId, TalentSlot, Talents};
 
@@ -119,7 +119,7 @@ pub const ABILITIES: [AbilityFace; FIRST_NEUTRAL_ABILITY as usize] = [
     AbilityFace {
         id: AbilityId::MEAT_HOOK.0,
         name: "Hook",
-        template: "Point target, range {range}. Catches the first unit in its way, drags it back and deals {hook_damage} pure damage.",
+        template: "Point target, range {range}, {point} s cast point. Catches the first unit in its way, drags it back and deals {hook_damage} pure damage.",
     },
     AbilityFace {
         id: AbilityId::ROT.0,
@@ -129,12 +129,12 @@ pub const ABILITIES: [AbilityFace; FIRST_NEUTRAL_ABILITY as usize] = [
     AbilityFace {
         id: AbilityId::FLESH_HEAP.0,
         name: "Heap",
-        template: "Passive. {heap_resist}% magic resistance on top of your own, and +{heap_strength} strength for every enemy hero that dies within {range} of you, whoever brought it down. Stacks are kept through your own death.",
+        template: "Innate. +{heap_strength} strength for every enemy hero that dies within {range} of you, whoever brought it down. Stacks are kept through your own death.",
     },
     AbilityFace {
         id: AbilityId::DISMEMBER.0,
         name: "Dismem",
-        template: "Ultimate, enemy target, range {range}. Holds it for {duration} s, eating it and healing you.",
+        template: "Ultimate, enemy target, range {range}, {point} s cast point. Holds it stunned for {duration} s and pulls it {dismember_pull} a second to {dismember_limit} from you. Bites {dismember_bites} times, the first as it takes hold, for {dismember_damage} magic damage a second plus {dismember_strength} per point of your strength, and heals you for what each bite takes. {mana} mana, {wait} s wait.",
     },
     AbilityFace {
         id: AbilityId::BURST.0,
@@ -464,12 +464,25 @@ pub const EFFECTS: [EffectFace; FIRST_SPELL_EFFECT] = [
     ),
 ];
 
+/// The abilities added after the neutrals', from [`FIRST_LATE_ABILITY`].
+const LATE_FACES: [AbilityFace; 1] = [AbilityFace {
+    id: AbilityId::MEAT_SHIELD.0,
+    name: "Shield",
+    template: "No target. Every blow that reaches you loses {meat_block} damage, after armor and resistance, for {meat_secs} s. {mana} mana, {wait} s wait.",
+}];
+
 /// The ability of that id, or nothing for one the catalog does not hold.
 pub fn ability(id: u16) -> Option<&'static AbilityFace> {
-    ABILITIES.get(usize::from(id)).or_else(|| {
-        let at = id.checked_sub(FIRST_NEUTRAL_ABILITY)?;
-        NEUTRAL_FACES.get(usize::from(at))
-    })
+    ABILITIES
+        .get(usize::from(id))
+        .or_else(|| {
+            let at = id.checked_sub(FIRST_NEUTRAL_ABILITY)?;
+            NEUTRAL_FACES.get(usize::from(at))
+        })
+        .or_else(|| {
+            let at = id.checked_sub(FIRST_LATE_ABILITY)?;
+            LATE_FACES.get(usize::from(at))
+        })
 }
 
 /// Every neutral's ability, as its rules name it.
@@ -504,6 +517,17 @@ const SPELL_EFFECT_FACES: [EffectFace; EFFECT_COUNT - FIRST_SPELL_EFFECT] = {
         faces[at] = EffectFace::of((FIRST_SPELL_EFFECT + at) as u16, None, "");
         at += 1;
     }
+    // The heroes' effects added after the neutrals' have their own words.
+    faces[EffectId::MEAT_SHIELD.0 as usize - FIRST_SPELL_EFFECT] = EffectFace::of(
+        EffectId::MEAT_SHIELD.0,
+        Some("Meat Shield"),
+        "Every blow loses the damage shown, after armor and resistance.",
+    );
+    faces[EffectId::DISMEMBERED.0 as usize - FIRST_SPELL_EFFECT] = EffectFace::of(
+        EffectId::DISMEMBERED.0,
+        Some("Held"),
+        "Held stunned and bitten by a dismember, pulled towards whoever holds it.",
+    );
     faces
 };
 

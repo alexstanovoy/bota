@@ -395,6 +395,38 @@ impl World {
         kind: bota_proto::DamageKind,
         damage_amp_bp: i32,
     ) {
+        self.push_hit_amplified(
+            source,
+            target,
+            amount,
+            kind,
+            damage_amp_bp,
+            crate::game::HitEffect::None,
+        );
+    }
+
+    /// Lays a blow on the queue with an effect on top of its damage.
+    pub fn push_hit_with_effect(
+        &mut self,
+        source: Option<Entity>,
+        target: Entity,
+        amount: i32,
+        kind: bota_proto::DamageKind,
+        effect: crate::game::HitEffect,
+    ) {
+        let damage_amp_bp = self.outgoing_damage_amp_bp(source, kind);
+        self.push_hit_amplified(source, target, amount, kind, damage_amp_bp, effect);
+    }
+
+    fn push_hit_amplified(
+        &mut self,
+        source: Option<Entity>,
+        target: Entity,
+        amount: i32,
+        kind: bota_proto::DamageKind,
+        damage_amp_bp: i32,
+        effect: crate::game::HitEffect,
+    ) {
         self.hits.push_back(Hit {
             source,
             target,
@@ -403,7 +435,7 @@ impl World {
             damage_amp_bp,
             attack: false,
             pierces: false,
-            effect: crate::game::HitEffect::None,
+            effect,
         });
     }
 

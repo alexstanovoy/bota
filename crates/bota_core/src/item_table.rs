@@ -2,7 +2,10 @@
 //!
 //! Numbers are Dota 7.41f's: the game's `scripts/npc/items.txt` (client
 //! 6957, 2026-10-09) for costs, cooldowns, ranges, recipes and what an item
-//! adds, and Liquipedia where that file says nothing.
+//! adds, and Liquipedia where that file says nothing. A shop's stock is the
+//! file's `ItemStockInitial`, `ItemStockMax` and `ItemStockTime`, kept for every
+//! item that has one; the wards cost nothing and wait one second between
+//! plantings.
 
 use bota_proto::{Aim, Attribute, Attributes, Fixed, ItemId};
 
@@ -91,6 +94,11 @@ pub const ITEMS: [ItemDef; 54] = [
             eats_a_tree: false,
             breaks: true,
         }),
+        stock: Some(Stock {
+            initial: 5,
+            max: 5,
+            restock_ticks: 120 * rules::TICKS_PER_SECOND,
+        }),
         ..PLAIN
     },
     ItemDef {
@@ -107,6 +115,11 @@ pub const ITEMS: [ItemDef; 54] = [
             range: 250,
             eats_a_tree: false,
             breaks: true,
+        }),
+        stock: Some(Stock {
+            initial: 5,
+            max: 5,
+            restock_ticks: 120 * rules::TICKS_PER_SECOND,
         }),
         ..PLAIN
     },
@@ -129,7 +142,7 @@ pub const ITEMS: [ItemDef; 54] = [
     },
     ItemDef {
         name: "Observer Ward",
-        cost: 100,
+        cost: 0,
         charges: 1,
         aim: Some(Aim::Point),
         range: 500,
@@ -139,6 +152,12 @@ pub const ITEMS: [ItemDef; 54] = [
             ticks: 10800,
             range: 500,
         },
+        cooldown: 30,
+        stock: Some(Stock {
+            initial: 2,
+            max: 4,
+            restock_ticks: 135 * rules::TICKS_PER_SECOND,
+        }),
         ..PLAIN
     },
     ItemDef {
@@ -170,6 +189,12 @@ pub const ITEMS: [ItemDef; 54] = [
             ticks: 12600,
             range: 500,
         },
+        cooldown: 30,
+        stock: Some(Stock {
+            initial: 3,
+            max: 8,
+            restock_ticks: 70 * rules::TICKS_PER_SECOND,
+        }),
         ..PLAIN
     },
     ItemDef {
@@ -186,6 +211,11 @@ pub const ITEMS: [ItemDef; 54] = [
             range: 165,
             eats_a_tree: true,
             breaks: false,
+        }),
+        stock: Some(Stock {
+            initial: 10,
+            max: 10,
+            restock_ticks: 120 * rules::TICKS_PER_SECOND,
         }),
         ..PLAIN
     },
@@ -553,6 +583,11 @@ pub const ITEMS: [ItemDef; 54] = [
         spends: Spends::One,
         mana_deficit: true,
         effect: UseSpec::Replenish { mana: MANGO_MANA },
+        stock: Some(Stock {
+            initial: 4,
+            max: 4,
+            restock_ticks: 120 * rules::TICKS_PER_SECOND,
+        }),
         ..PLAIN
     },
     ItemDef {

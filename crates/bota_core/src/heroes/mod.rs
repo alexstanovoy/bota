@@ -31,7 +31,7 @@
 pub mod pudge;
 pub mod shadow_fiend;
 
-pub use pudge::PUDGE;
+pub use pudge::{PUDGE, dismember_bite_damage, dismember_bite_tick};
 pub use shadow_fiend::{
     SHADOW_FIEND, SHADOW_FIEND_TALENTS, cast_point_ms, feast_quickened, presence_armor, raze_burn,
     raze_damage, raze_landing, raze_stack_damage, requiem_death_lines, requiem_fear_ticks,

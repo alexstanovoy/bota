@@ -442,6 +442,7 @@ fn hash_hit(fnv: &mut Fnv, hit: &Hit) {
 fn hash_hit_effect(fnv: &mut Fnv, effect: HitEffect) {
     match effect {
         HitEffect::None => fnv.u8(0),
+        HitEffect::Dismember => fnv.u8(3),
         HitEffect::Requiem { level, fear } => {
             fnv.u8(2);
             fnv.u8(level);
@@ -538,6 +539,11 @@ fn hash_modifier_kind(fnv: &mut Fnv, kind: ModifierKind) {
             fnv.u8(level);
             fnv.u32(u32::from(amount));
         }
+        ModifierKind::Dismembered { level } => {
+            fnv.u8(22);
+            fnv.u8(level);
+        }
+        ModifierKind::MeatShield { amount } => hash_tagged(fnv, 23, &[amount]),
     }
 }
 

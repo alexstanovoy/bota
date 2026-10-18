@@ -157,6 +157,8 @@ impl AbilityId {
     pub const FEAST_OF_SOULS: AbilityId = AbilityId(15);
     /// A Blood Grenade's throw: what names one in flight. Sits in no slot.
     pub const THROW_GRENADE: AbilityId = AbilityId(16);
+    /// Pudge's meat shield: damage taken is cut by a fixed amount for a while.
+    pub const MEAT_SHIELD: AbilityId = AbilityId(77);
 }
 
 /// Selects one purchasable item.
@@ -307,6 +309,11 @@ impl EffectId {
     /// Under its side's Glyph of Fortification (`modifier_fountain_glyph`):
     /// takes no damage for `ticks_left` ticks.
     pub const FORTIFIED: EffectId = EffectId(56);
+    /// A meat shield's block: `ticks_left` until it lifts, `stacks` the damage
+    /// it takes off every blow.
+    pub const MEAT_SHIELD: EffectId = EffectId(57);
+    /// Held by a dismember: `ticks_left` until it lets go.
+    pub const DISMEMBERED: EffectId = EffectId(58);
 }
 
 /// An index into a unit's ability slots, as listed in

@@ -76,10 +76,11 @@ const fn courier(name: &'static str, cooldown: &'static [u32]) -> AbilityDef {
 
 /// How many abilities the game has: every table indexed by [`AbilityId`] is
 /// this long.
-pub const ABILITY_COUNT: usize = HERO_ABILITIES.len() + NEUTRAL_ABILITIES.len();
+pub const ABILITY_COUNT: usize =
+    HERO_ABILITIES.len() + NEUTRAL_ABILITIES.len() + LATE_ABILITIES.len();
 
 /// Every ability, indexed by [`AbilityId`]: the heroes' and the couriers',
-/// then the neutrals'.
+/// then the neutrals', then the heroes' that were added after them.
 pub const ABILITIES: [AbilityDef; ABILITY_COUNT] = {
     let mut every = [BARE_ABILITY; ABILITY_COUNT];
     let mut at = 0;
@@ -87,8 +88,12 @@ pub const ABILITIES: [AbilityDef; ABILITY_COUNT] = {
         every[at] = HERO_ABILITIES[at];
         at += 1;
     }
-    while at < ABILITY_COUNT {
+    while at < FIRST_LATE_ABILITY as usize {
         every[at] = NEUTRAL_ABILITIES[at - HERO_ABILITIES.len()].def;
+        at += 1;
+    }
+    while at < ABILITY_COUNT {
+        every[at] = LATE_ABILITIES[at - FIRST_LATE_ABILITY as usize];
         at += 1;
     }
     every
@@ -119,6 +124,15 @@ const HERO_ABILITIES: [AbilityDef; 17] = [
         ..BARE_ABILITY
     },
 ];
+
+/// The [`AbilityId`] of the first ability added after the neutrals'.
+pub const FIRST_LATE_ABILITY: u16 = FIRST_NEUTRAL_ABILITY + NEUTRAL_ABILITIES.len() as u16;
+
+/// Hero abilities added after the neutrals' ids were handed out: ids are
+/// append-only, so they follow them.
+const LATE_ABILITIES: [AbilityDef; 1] = [pudge::MEAT_SHIELD];
+
+const _: () = assert!(FIRST_LATE_ABILITY == AbilityId::MEAT_SHIELD.0);
 
 const _: () = {
     let mut at = 0;

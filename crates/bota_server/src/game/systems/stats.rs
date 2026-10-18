@@ -4,7 +4,7 @@ use bota_core::{
     Buff, Carried, Growth, ModifierKind, NeutralAbility, Ratio, Regen, Stat, Talent, UnitDef,
     regen, rules, soul_damage, spell_buff,
 };
-use bota_proto::{AbilityId, Attributes, Fixed, ModifierSpec};
+use bota_proto::{Attributes, Fixed, ModifierSpec};
 
 use crate::game::{
     AbilityBook, AppliedModifiers, Def, EntityAllocator, Feast, FeastPhase, Health, Inventory,
@@ -100,7 +100,7 @@ pub fn derive_stats(cx: StatsCx<'_>) {
                 Attributes::all(rules::ATTRIBUTE_BONUS_POINTS * i32::from(book.attribute_bonus));
         }
         if !broken {
-            add_heap(&mut now, &gathered, abilities.get(entity));
+            add_heap(&mut now, &gathered);
         }
         from_attributes(&mut now);
         let base_armor =
@@ -226,25 +226,11 @@ fn add_carried(now: &mut Stats, carried: &Carried) {
     }
 }
 
-/// What the flesh heap has kept, worth strength by the heap's level once
-/// the heap is learned at all; the heap's magic resistance multiplies with
-/// what is already there.
-fn add_heap(now: &mut Stats, gathered: &Stacks, book: Option<&AbilityBook>) {
-    let heap = book.map_or(0, |book| {
-        book.slots
-            .iter()
-            .find(|slot| slot.id == AbilityId::FLESH_HEAP)
-            .map_or(0, |slot| slot.level)
-    });
-    let Some(level) = heap.checked_sub(1).map(usize::from) else {
-        return;
-    };
+/// What the flesh heap has kept, worth strength by the stack. Only a hero
+/// whose innate it is keeps any.
+fn add_heap(now: &mut Stats, gathered: &Stacks) {
     let kept = gathered.of(StackKind::FleshHeap) as i32;
-    now.attributes.strength += rules::FLESH_HEAP_STRENGTH_PER_STACK[level] * Fixed::from_int(kept);
-    let let_through = (rules::NOMINAL_BP - now.magic_resist_bp)
-        * (100 - rules::FLESH_HEAP_MAGIC_RESIST_PCT[level])
-        / 100;
-    now.magic_resist_bp = rules::NOMINAL_BP - let_through;
+    now.attributes.strength += rules::FLESH_HEAP_STRENGTH_PER_STACK * Fixed::from_int(kept);
 }
 
 /// Adds what every active modifier on a unit is worth to its stats. What
@@ -301,6 +287,8 @@ fn add_modifiers(now: &mut Stats, on_it: &Modifiers, base_armor: Fixed, hero: bo
             | ModifierKind::Stunned
             | ModifierKind::Feared
             | ModifierKind::Burning { .. }
+            | ModifierKind::Dismembered { .. }
+            | ModifierKind::MeatShield { .. }
             | ModifierKind::Shadowraze { .. }
             | ModifierKind::Rot { .. }
             | ModifierKind::Rooted

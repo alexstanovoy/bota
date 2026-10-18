@@ -3,7 +3,7 @@
 //! [`bota_core::ABILITIES`]. A neutral's ability is data its mechanics read
 //! ([`World::cast_spell`](crate::game::World::cast_spell)).
 
-use bota_core::{FIRST_NEUTRAL_ABILITY, NeutralAbility};
+use bota_core::{FIRST_LATE_ABILITY, FIRST_NEUTRAL_ABILITY, NeutralAbility};
 use bota_proto::{AbilityId, Target};
 
 use crate::game::{Entity, World};
@@ -60,7 +60,7 @@ pub const ABILITY_HOOKS: [AbilityHooks; FIRST_NEUTRAL_ABILITY as usize] = [
         },
         ..INERT
     },
-    // Flesh Heap.
+    // Flesh Heap, an innate.
     INERT,
     AbilityHooks {
         on_cast: World::dismember_takes_hold,
@@ -126,6 +126,15 @@ pub const ABILITY_HOOKS: [AbilityHooks; FIRST_NEUTRAL_ABILITY as usize] = [
     INERT,
 ];
 
+/// The hooks of the abilities added after the neutrals', from
+/// [`FIRST_LATE_ABILITY`].
+const LATE_HOOKS: [AbilityHooks; 1] = [AbilityHooks {
+    on_cast: |world, caster, _| {
+        world.cast_meat_shield(caster, level_of(world, caster, AbilityId::MEAT_SHIELD))
+    },
+    ..INERT
+}];
+
 /// What one ability does, or nothing if no such ability exists. A neutral's
 /// goes off through its mechanics, before any hook: what is left to a hook
 /// is to run on and end, which none of them does.
@@ -133,4 +142,8 @@ pub fn ability_hooks(id: AbilityId) -> Option<&'static AbilityHooks> {
     ABILITY_HOOKS
         .get(usize::from(id.0))
         .or_else(|| NeutralAbility::of(id).map(|_| &INERT))
+        .or_else(|| {
+            let at = id.0.checked_sub(FIRST_LATE_ABILITY)?;
+            LATE_HOOKS.get(usize::from(at))
+        })
 }

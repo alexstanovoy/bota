@@ -139,6 +139,7 @@ pub fn hitting_system<const AMPLIFIED: bool>(cx: HitCx<'_>) {
                 taken = soak(on_it, taken);
             }
         }
+        taken = blocked(taken, modifiers.get(blow.target));
         let Some(pool) = health.get_mut(blow.target) else {
             continue;
         };
@@ -149,6 +150,9 @@ pub fn hitting_system<const AMPLIFIED: bool>(cx: HitCx<'_>) {
         let applied = bite(pool.hp, taken, spared);
         pool.hp -= Fixed::from_int(applied);
         let fatal = pool.hp <= Fixed::ZERO;
+        if blow.effect == HitEffect::Dismember {
+            heal_source(blow.source, applied, health, stats);
+        }
         if !fatal && (applied > 0 || blow.effect.holds()) {
             apply_hit_effect(blow, stats, modifiers);
         }
@@ -173,6 +177,42 @@ fn more_magic(taken: i32, extra_pct: i32) -> i32 {
     }
     let scaled = i64::from(taken) * i64::from((100 + extra_pct).max(0)) / 100;
     scaled.clamp(0, i64::from(i32::MAX)) as i32
+}
+
+/// What is left of a blow's damage once what the target wears takes a fixed
+/// amount off it, after armor and resistance.
+fn blocked(taken: i32, on_it: Option<&Modifiers>) -> i32 {
+    if taken == 0 {
+        return 0;
+    }
+    let block: i32 = on_it.map_or(0, |on_it| {
+        on_it
+            .active()
+            .map(|held| match held.kind {
+                ModifierKind::MeatShield { amount } => amount,
+                _ => 0,
+            })
+            .sum()
+    });
+    (taken - block).max(0)
+}
+
+/// Mends the source of a blow by the health it took, never past its maximum.
+fn heal_source(
+    source: Option<Entity>,
+    amount: i32,
+    health: &mut Table<Health>,
+    stats: &Table<Stats>,
+) {
+    let (Some(source), true) = (source, amount > 0) else {
+        return;
+    };
+    let (Some(pool), Some(stat)) = (health.get_mut(source), stats.get(source)) else {
+        return;
+    };
+    if pool.hp > Fixed::ZERO {
+        pool.hp = (pool.hp + Fixed::from_int(amount)).min(stat.max_hp);
+    }
 }
 
 /// Whether an attack at a target is evaded: the target's share of misses,
@@ -236,7 +276,7 @@ fn dealt<const AMPLIFIED: bool>(blow: Hit, on_it: Option<&Modifiers>) -> i32 {
 /// Applies a damaging hit's modifier to a surviving target.
 fn apply_hit_effect(blow: Hit, stats: &Table<Stats>, modifiers: &mut Table<Modifiers>) {
     match blow.effect {
-        HitEffect::None => {}
+        HitEffect::None | HitEffect::Dismember => {}
         HitEffect::Shadowraze { .. } => {
             assert_eq!(blow.kind, DamageKind::Magical);
             assert!(blow.amount > 0);

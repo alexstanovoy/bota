@@ -725,9 +725,9 @@ fn a_cast_point_shortens_while_a_feast_runs_on_a_hero_with_the_talent() {
         "the level-25 talent cuts the cast point to 70% while a feast runs"
     );
     assert_eq!(
-        app.cast_point_secs(&fiend, AbilityId::MEAT_HOOK),
+        app.cast_point_secs(&fiend, AbilityId::ROT),
         Some(0.0),
-        "the hook has no cast point of its own"
+        "the rot has no cast point of its own"
     );
 }
 

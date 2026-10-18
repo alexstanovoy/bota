@@ -459,6 +459,7 @@ impl World {
                 ticks_left: held.ticks_left,
                 stacks: match held.kind {
                     ModifierKind::Shadowraze { stacks } => Some(u32::from(stacks)),
+                    ModifierKind::MeatShield { amount } => Some(amount as u32),
                     _ => None,
                 },
             })
@@ -524,7 +525,7 @@ impl World {
                 ModifierKind::Stunned => StatusFlags::STUNNED,
                 ModifierKind::Shielded => StatusFlags::MAGIC_IMMUNE,
                 ModifierKind::Slowed { .. } => StatusFlags::SLOWED,
-                ModifierKind::Burning { .. } => StatusFlags::DOT,
+                ModifierKind::Burning { .. } | ModifierKind::Dismembered { .. } => StatusFlags::DOT,
                 ModifierKind::Feared => StatusFlags::FEARED,
                 ModifierKind::BloodGrenade { .. } => StatusFlags::SLOWED | StatusFlags::DOT,
                 _ => 0,

@@ -1,6 +1,8 @@
 //! What is on a unit: putting it on, doing its work each tick, taking it off.
 
-use bota_core::{ModifierKind, Stat, breaks_regen, item_def, rules, spell_buff};
+use bota_core::{
+    ModifierKind, Stat, breaks_regen, dismember_bite_tick, item_def, rules, spell_buff,
+};
 use bota_proto::{AbilityId, DamageKind, Fixed, Team};
 
 use crate::game::{Landed, Modifier, Stats, Table, World, cooldown_after};
@@ -157,6 +159,16 @@ impl World {
                         level,
                         amount,
                     } => self.spell_pulse(entity, modifier, (ability, level, amount)),
+                    ModifierKind::Dismembered { level } => {
+                        let held_for = rules::DISMEMBER_TICKS - modifier.ticks_left.unwrap_or(0);
+                        let bites = 1..rules::DISMEMBER_BITES;
+                        if bites.map(dismember_bite_tick).any(|tick| tick == held_for)
+                            && let Some(holder) = modifier.source
+                            && self.alive(entity)
+                        {
+                            self.dismember_bites(holder, entity, usize::from(level));
+                        }
+                    }
                     ModifierKind::BloodGrenade { since } => {
                         let since_then = self.tick.saturating_sub(since);
                         if since_then > 0

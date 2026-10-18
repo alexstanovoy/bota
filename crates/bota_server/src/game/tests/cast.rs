@@ -225,12 +225,13 @@ fn a_cast_with_no_mana_is_named_and_refused() {
         Err(RejectReason::NotLearned),
         "a slot with no points in it says so"
     );
+    let (fiend_world, _fiend, _mark) = fiend_and_a_mark(600);
     let passive = Order::Cast {
-        slot: AbilitySlot(2),
+        slot: AbilitySlot(4),
         target: Target::None,
     };
     assert_eq!(
-        world.validate_order(SlotId(0), None, &passive),
+        fiend_world.validate_order(SlotId(0), None, &passive),
         Err(RejectReason::NotCastable),
         "and a passive says that instead"
     );

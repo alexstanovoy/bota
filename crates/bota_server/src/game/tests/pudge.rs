@@ -13,6 +13,7 @@ fn a_hook_catches_what_it_flies_into_and_drags_it_home() {
     let full = world.health.get(mark).expect("standing").hp;
     let home = world.transform.get(pudge).expect("standing").pos;
     cast(&mut world, 0, Target::Pos(Vec2::from_ints(6000, 5000)));
+    until_the_hook_flies(&mut world);
     for _ in 0..120 {
         world.step();
         if !hook_flying(&world) {
@@ -35,7 +36,7 @@ fn a_hook_that_catches_nothing_comes_back_by_itself_with_its_chain() {
     let (mut world, pudge, _mark) = pudge_and_a_mark(600);
     // Thrown the other way, so it flies out over open ground and returns.
     cast(&mut world, 0, Target::Pos(Vec2::from_ints(4000, 5000)));
-    world.step();
+    until_the_hook_flies(&mut world);
     let chained = |world: &World| {
         world
             .view_full()
@@ -208,7 +209,7 @@ fn a_dismember_holds_what_it_eats_and_feeds_the_one_eating() {
     world.step();
     let hurt = world.health.get(pudge).expect("standing").hp;
     let full = world.health.get(mark).expect("standing").hp;
-    cast(&mut world, 3, Target::Unit(wire_id(mark)));
+    dismember(&mut world, mark);
     assert!(world.is_channelling(pudge), "it takes hold");
     run(&mut world, 30);
     assert!(
@@ -231,7 +232,7 @@ fn a_dismember_holds_what_it_eats_and_feeds_the_one_eating() {
 fn a_dismember_shows_its_hold_on_what_it_eats_until_it_lets_go() {
     let (mut world, pudge, mark) = pudge_and_a_mark(100);
     set_level(&mut world, pudge, 3, 1);
-    cast(&mut world, 3, Target::Unit(wire_id(mark)));
+    dismember(&mut world, mark);
     let shown = world
         .mark_of(pudge, AbilityId::DISMEMBER)
         .expect("the hold is shown");
@@ -255,7 +256,6 @@ fn a_dismember_shows_its_hold_on_what_it_eats_until_it_lets_go() {
 #[test]
 fn a_flesh_heap_keeps_every_enemy_hero_that_falls_near_it_and_nothing_else() {
     let (mut world, pudge, mark) = pudge_and_a_mark(200);
-    set_level(&mut world, pudge, 2, 1);
     let foe = world.spawn_hero(
         Team::Dire,
         Vec2::from_ints(5300, 5000),
@@ -305,45 +305,33 @@ fn a_flesh_heap_keeps_every_enemy_hero_that_falls_near_it_and_nothing_else() {
     );
     assert_eq!(
         world.stats.get(pudge).map(|s| s.attributes.strength),
-        Some(bare + rules::FLESH_HEAP_STRENGTH_PER_STACK[0]),
-        "and one stack is worth its strength at the heap's first level"
+        Some(bare + rules::FLESH_HEAP_STRENGTH_PER_STACK),
+        "and one stack is worth its strength"
     );
 }
 
-/// More strength a stack at each level, and magic resistance that multiplies
-/// with the hero's own rather than adding to it.
+/// A stack is worth two strength flat, whatever the hero's level, and the heap
+/// leaves magic resistance alone.
 #[test]
-fn a_thicker_heap_is_worth_more_a_stack_and_turns_more_magic() {
+fn a_stack_of_the_heap_is_worth_two_strength_and_nothing_else() {
     let (mut world, pudge) = a_lone_pudge();
     let bare = world.stats.get(pudge).expect("settled").attributes.strength;
-    assert_eq!(
-        world.stats.get(pudge).map(|s| s.magic_resist_bp),
-        Some(rules::HERO_MAGIC_RESIST_PCT * 100),
-        "unlearned, the heap thickens nothing"
-    );
-    set_level(&mut world, pudge, 2, 4);
+    let resist = world.stats.get(pudge).map(|s| s.magic_resist_bp);
     let mut kept = Stacks::default();
     kept.gather(StackKind::FleshHeap, 3);
     world.stacks.insert(pudge, kept);
     world.step();
     assert_eq!(
         world.stats.get(pudge).map(|s| s.attributes.strength),
-        Some(bare + Fixed::from_int(9)),
-        "three stacks at the fourth level are worth three strength each"
+        Some(bare + Fixed::from_int(6)),
+        "three stacks are worth two strength each"
     );
-    let base = rules::HERO_MAGIC_RESIST_PCT;
-    let heap = rules::FLESH_HEAP_MAGIC_RESIST_PCT[3];
-    assert_eq!(
-        world.stats.get(pudge).map(|s| s.magic_resist_bp),
-        Some(rules::NOMINAL_BP - (rules::NOMINAL_BP - 100 * base) * (100 - heap) / 100),
-        "and the resistance multiplies with the hero's own"
-    );
+    assert_eq!(world.stats.get(pudge).map(|s| s.magic_resist_bp), resist);
 }
 
 #[test]
 fn a_flesh_heap_outlives_the_death_of_the_one_carrying_it() {
     let (mut world, pudge, _mark) = pudge_and_a_mark(200);
-    set_level(&mut world, pudge, 2, 1);
     let foe = world.spawn_hero(
         Team::Dire,
         Vec2::from_ints(5100, 5200),
@@ -363,9 +351,39 @@ fn a_flesh_heap_outlives_the_death_of_the_one_carrying_it() {
     assert_eq!(heap(&world, back), 1, "and what it kept comes back with it");
     assert_eq!(
         world.stats.get(back).map(|s| s.attributes.strength),
-        Some(bare + rules::FLESH_HEAP_STRENGTH_PER_STACK[0]),
+        Some(bare + rules::FLESH_HEAP_STRENGTH_PER_STACK),
         "worth as much strength as it was before"
     );
+}
+
+/// Steps until the hook has left Pudge: its cast point is over.
+fn until_the_hook_flies(world: &mut World) {
+    for _ in 0..rules::HOOK_CAST_POINT_MS / 30 + 2 {
+        if hook_flying(world) {
+            return;
+        }
+        world.step();
+    }
+    assert!(hook_flying(world), "the hook leaves after its cast point");
+}
+
+/// Orders a dismember and steps until its cast point is over and it holds.
+fn dismember(world: &mut World, mark: Entity) {
+    cast(world, 3, Target::Unit(wire_id(mark)));
+    for _ in 0..rules::DISMEMBER_CAST_POINT_MS / 30 + 2 {
+        if mark_is_held(world, mark) {
+            return;
+        }
+        world.step();
+    }
+    assert!(
+        mark_is_held(world, mark),
+        "it takes hold after its cast point"
+    );
+}
+
+fn mark_is_held(world: &World, mark: Entity) -> bool {
+    carries(world, mark, ModifierKind::Stunned)
 }
 
 /// Pudge alone on an empty world at (5000, 5000), settled and one tick on.
@@ -387,4 +405,129 @@ fn heap(world: &World, hero: Entity) -> u32 {
         .stacks
         .get(hero)
         .map_or(0, |kept| kept.of(StackKind::FleshHeap))
+}
+
+#[test]
+fn a_hook_costs_120_mana_waits_18_seconds_and_deals_150_pure_damage_at_its_first_level() {
+    let (mut world, pudge, mark) = pudge_and_a_mark(600);
+    let full = world.health.get(mark).expect("standing").hp.to_int();
+    world.fill_pools(pudge);
+    let mana = world.mana.get(pudge).expect("has mana").mana;
+    cast(&mut world, 0, Target::Pos(Vec2::from_ints(5600, 5000)));
+    until_the_hook_flies(&mut world);
+    assert_eq!(
+        mana - world.mana.get(pudge).expect("has mana").mana,
+        Fixed::from_int(120),
+        "the hook costs 120 mana"
+    );
+    for _ in 0..200 {
+        world.step();
+        if !hook_flying(&world) {
+            break;
+        }
+    }
+    assert_eq!(
+        world.health.get(mark).expect("standing").hp.to_int(),
+        full - 150,
+        "an enemy takes 150, whatever armor it wears"
+    );
+    let waiting = world.abilities.get(pudge).expect("a kit").slots[0].cooldown;
+    assert!(
+        (540 - 40..=540).contains(&waiting),
+        "and the next hook is 18 seconds off, less the flight: {waiting} ticks"
+    );
+}
+
+/// The dismember bites six times, the first as it takes hold: each bite is
+/// the level's damage a second and 0.3 a point of strength, over 2.75 seconds
+/// shared six ways, and the one holding mends by what each takes. It pulls
+/// what it holds to 125 units away at 75 a second.
+#[test]
+fn a_dismember_bites_six_times_by_strength_pulls_and_heals_by_what_it_takes() {
+    let (mut world, pudge, mark) = pudge_and_a_mark(190);
+    set_level(&mut world, pudge, 3, 1);
+    world.fill_pools(pudge);
+    world.health.insert(pudge, health(300));
+    world.step();
+    let strength = world.stats.get(pudge).expect("settled").attributes.strength;
+    let bite = bota_core::dismember_bite_damage(0, strength);
+    assert_eq!(
+        bite,
+        ((Fixed::from_int(80) + strength * Fixed::from_ratio(3, 10))
+            * Fixed::from_ratio(2750, 6000))
+        .to_int(),
+        "a bite is the second's damage over 2.75 seconds in six"
+    );
+    let start = world.health.get(pudge).expect("standing").hp.to_int();
+    let mut left = world.health.get(mark).expect("standing").hp.to_int();
+    let mut bites = Vec::new();
+    cast(&mut world, 3, Target::Unit(wire_id(mark)));
+    for tick in 0..rules::DISMEMBER_TICKS + 5 {
+        let now = world.health.get(mark).expect("standing").hp.to_int();
+        // Its own regeneration may give back a point between two readings.
+        if left - now >= bite - 1 {
+            assert!(left - now <= bite, "each bite takes the same");
+            bites.push(tick);
+        }
+        left = now;
+        world.step();
+    }
+    assert_eq!(
+        bites.len(),
+        rules::DISMEMBER_BITES as usize,
+        "it bites six times in all"
+    );
+    assert_eq!(
+        bites[0],
+        ticks_of(rules::DISMEMBER_CAST_POINT_MS),
+        "the first as it takes hold, once the cast point is over"
+    );
+    let gaps: Vec<u32> = bites.windows(2).map(|pair| pair[1] - pair[0]).collect();
+    assert_eq!(gaps, [14, 14, 14, 13, 14], "evenly over 2.75 seconds");
+    let healed = world.health.get(pudge).expect("standing").hp.to_int() - start;
+    let regen = world.stats.get(pudge).expect("settled").hp_regen
+        * Fixed::from_int((rules::DISMEMBER_TICKS + 5) as i32);
+    assert!(
+        (bite * 6..=bite * 6 + regen.to_int() + 1).contains(&healed),
+        "and the one eating mends by all of it, his own regeneration aside: {healed}"
+    );
+    let apart = world.transform.get(mark).expect("standing").pos
+        - world.transform.get(pudge).expect("standing").pos;
+    assert!(
+        (124..=126).contains(&apart.x.to_int()),
+        "what it held was pulled in to 125: {apart:?}"
+    );
+}
+
+#[test]
+fn a_meat_shield_takes_its_block_off_every_blow_for_four_seconds() {
+    let (mut world, pudge, _mark) = pudge_and_a_mark(2000);
+    set_level(&mut world, pudge, 2, 1);
+    world.fill_pools(pudge);
+    let mana = world.mana.get(pudge).expect("has mana").mana;
+    cast(&mut world, 2, Target::None);
+    world.step();
+    let spent = mana - world.mana.get(pudge).expect("has mana").mana;
+    assert!(
+        (64..=65).contains(&spent.to_int()),
+        "it costs 65 mana, less a tick of regeneration: {spent}"
+    );
+    let hp = |world: &World| world.health.get(pudge).expect("standing").hp.to_int();
+    let before = hp(&world);
+    world.push_hit(None, pudge, 30, bota_proto::DamageKind::Pure);
+    world.push_hit(None, pudge, 5, bota_proto::DamageKind::Pure);
+    world.step();
+    assert_eq!(
+        before - hp(&world),
+        30 - 8,
+        "every blow loses 8: a blow of 30 costs 22 and one of 5 costs nothing"
+    );
+    run(&mut world, 4 * rules::TICKS_PER_SECOND);
+    let before = hp(&world);
+    world.push_hit(None, pudge, 30, bota_proto::DamageKind::Pure);
+    world.step();
+    assert!(
+        before - hp(&world) >= 29,
+        "and after four seconds it is gone (a point of regeneration aside)"
+    );
 }

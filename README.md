@@ -19,12 +19,16 @@ mid-only ruleset on that map, plus replays.
   three bands, Power Treads, Phase Boots, Blink Dagger and their parts), the
   Town Portal Scroll, Wind Lace and Blood Grenade. The sources are named next to
   the tables in `bota_core`.
-- Pudge is an older Pudge, not checked against 7.41f: Meat Hook, Rot, Flesh Heap
-  as the 7.28-7.30 passive (magic resistance and a strength stack per enemy hero
-  dying nearby, no Meat Shield) and Dismember; no innate ability, no talents, and
-  one fixed attack damage instead of a range.
+- Pudge at 7.41f: Meat Hook, Rot, Meat Shield and Dismember, and Flesh Heap as
+  his innate (two strength for every enemy hero dying within 450); no talents,
+  no Aghanim's upgrades. The hook is simulated without its follow-through
+  (Pudge is not rooted, disarmed or muted while it flies), its vision, its
+  instant kill of creeps and its rune mana refund; the dismember without its
+  true sight and vision.
 - The shop sells 48 of Dota's items and 5 recipes: consumables, wards, the basic
-  components, boots, the early builds and a few later items.
+  components, boots, the early builds and a few later items. An item with a
+  limited stock (the wards, Clarity, Healing Salve, Tango, Enchanted Mango,
+  Blood Grenade) is stocked and restocked per side as in Dota.
 
 Not modelled, although a 1v1 mid in Dota uses it: runes of every kind, and with
 them the Bottle; the items the shop does not sell (Faerie Fire, Smoke of
