@@ -312,7 +312,8 @@ fn order_ids(order: &mut Order, visit: &mut dyn FnMut(&mut EntityId)) {
         | Order::Swap { .. }
         | Order::Learn { .. }
         | Order::LearnTalent { .. }
-        | Order::LearnAttributeBonus => return,
+        | Order::LearnAttributeBonus
+        | Order::Glyph => return,
     };
     if let Target::Unit(id) = target {
         visit(id);

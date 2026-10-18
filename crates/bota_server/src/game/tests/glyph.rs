@@ -198,3 +198,72 @@ fn a_glyphed_tower_of_tier_two_and_above_shoots_five_more_targets_a_tier_one_doe
     assert_eq!(missiles_of_a_volley(4, true, 8), 6);
     assert_eq!(missiles_of_a_volley(1, true, 8), 1);
 }
+
+/// The tower's current target and the missiles in the air at one entity.
+fn tower_at(world: &World, tower: Entity) -> Option<Entity> {
+    world.target.get(tower).map(|t| t.0)
+}
+
+fn missiles_at(world: &World, tower: Entity, on: Entity) -> usize {
+    world
+        .entities
+        .iter()
+        .filter(|&e| {
+            world
+                .projectile
+                .get(e)
+                .is_some_and(|shot| shot.source == Some(tower) && shot.target == on)
+        })
+        .count()
+}
+
+#[test]
+fn a_glyphed_creep_tanks_the_tower_for_a_diving_hero_until_the_hero_hits_a_hero() {
+    let mut world = World::new();
+    let at = Vec2::from_ints(5000, 5000);
+    let tower = world.spawn_building(
+        tower_def(1),
+        Team::Dire,
+        at,
+        Place::Tower { lane: 1, tier: 1 },
+    );
+    let creep = world.spawn_unit(&TARGET, Team::Radiant, Vec2::from_ints(4500, 5000));
+    let diver = seat_hero(&mut world, 0, Team::Radiant, Vec2::from_ints(4400, 5000));
+    let foe = seat_hero(&mut world, 1, Team::Dire, Vec2::from_ints(4700, 5300));
+    world.settle();
+    world.fill_pools(creep);
+    world.fill_pools(diver);
+    // The creep is the first target in reach.
+    world.glyphs[0].creeps_until = 100_000;
+    world.glyphs[0].structures_until = 100_000;
+    let (creep_hp, diver_hp) = (
+        world.health.get(creep).expect("up").hp,
+        world.health.get(diver).expect("up").hp,
+    );
+    let mut shots = 0;
+    for _ in 0..150 {
+        world.step();
+        shots += missiles_at(&world, tower, creep);
+        assert_ne!(
+            tower_at(&world, tower),
+            Some(diver),
+            "no aggro on the diver"
+        );
+    }
+    assert!(shots > 0, "the tower keeps shooting the covered creep");
+    assert_eq!(tower_at(&world, tower), Some(creep));
+    assert_eq!(
+        world.health.get(creep).expect("up").hp,
+        creep_hp,
+        "and it does no harm"
+    );
+    assert_eq!(world.health.get(diver).expect("up").hp, diver_hp);
+
+    // The diver hits the enemy hero under the tower: Dota's aggro rule
+    // draws the tower onto it as usual.
+    attack_click(&mut world, foe);
+    for _ in 0..30 {
+        world.step();
+    }
+    assert_eq!(tower_at(&world, tower), Some(diver));
+}
