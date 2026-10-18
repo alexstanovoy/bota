@@ -95,6 +95,8 @@ pub struct Stats {
     pub phased: bool,
     /// Whether damage passes it by.
     pub invulnerable: bool,
+    /// Whether backdoor protection holds on it: it takes less damage.
+    pub backdoor: bool,
 }
 
 impl Stats {

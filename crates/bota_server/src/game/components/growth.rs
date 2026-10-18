@@ -26,6 +26,18 @@ pub struct Rax {
     pub ranged: bool,
 }
 
+/// A structure's backdoor protection: the quiet that lets it hold, and the
+/// health enemy blows took from it under protection that it still mends.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Backdoor {
+    /// Ticks since an enemy lane creep last came within reach. Kept only by
+    /// the structures that watch for creeps, a tier two tower and the Ancient;
+    /// the rest read the Ancient's.
+    pub quiet_ticks: u32,
+    /// Health still to mend.
+    pub owed: bota_proto::Fixed,
+}
+
 /// What killing an entity pays.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Bounty {

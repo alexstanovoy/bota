@@ -418,6 +418,7 @@ fn raised(kind: &UnitDef, levels: i32, steps: i32, night: bool) -> Stats {
         flies: kind.flies,
         phased: false,
         invulnerable: kind.invulnerable,
+        backdoor: false,
     }
 }
 

@@ -249,15 +249,20 @@ impl World {
         self.give_hull(entity, def);
         self.give_action(entity);
         match place {
-            Place::Fountain | Place::Ancient | Place::Filler => {}
+            Place::Fountain => {}
+            Place::Ancient | Place::Filler => self.give_backdoor(entity),
             Place::Tower { lane, tier } => {
                 self.lane.insert(entity, Lane(lane));
                 self.tier.insert(entity, Tier(tier));
                 self.give_orders(entity);
+                if tier >= 2 {
+                    self.give_backdoor(entity);
+                }
             }
             Place::Barracks { lane, ranged } => {
                 self.lane.insert(entity, Lane(lane));
                 self.rax.insert(entity, Rax { ranged });
+                self.give_backdoor(entity);
             }
         }
         entity

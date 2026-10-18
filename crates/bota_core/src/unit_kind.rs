@@ -4,16 +4,18 @@
 //! instead of matching on the kind, so a new kind is one proto variant and
 //! one row.
 
-use bota_proto::UnitKind;
+use bota_proto::{Team, UnitKind};
 
-use crate::{AttackClass, PriorityOrder, TargetClass, rules};
+use crate::{AttackClass, PriorityOrder, TargetClass, rules, unit};
 
 /// The row of one kind of unit.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct KindDef {
     /// The kind the row is for: its place in [`UNIT_KINDS`].
     pub kind: UnitKind,
-    /// What the kind is called in a panel or a feed.
+    /// What the kind is called in a panel or a feed, where the game names
+    /// every unit of it alike; see [`unit_name`] for the kinds it names by
+    /// more than the kind.
     pub name: &'static str,
     /// A building: it stands still and blocks the ground.
     pub structure: bool,
@@ -126,7 +128,12 @@ pub const UNIT_KINDS: [KindDef; 13] = [
         ..PLAIN
     },
     building(UnitKind::Tower, "Tower", TargetClass::Building, true),
-    building(UnitKind::Ancient, "Ancient", TargetClass::Building, true),
+    building(
+        UnitKind::Ancient,
+        "The Ancient",
+        TargetClass::Building,
+        true,
+    ),
     building(UnitKind::Barracks, "Barracks", TargetClass::Unit, true),
     building(UnitKind::Fountain, "Fountain", TargetClass::Building, true),
     KindDef {
@@ -142,7 +149,7 @@ pub const UNIT_KINDS: [KindDef; 13] = [
         name: "Courier",
         ..PLAIN
     },
-    building(UnitKind::Filler, "Filler", TargetClass::Unit, false),
+    building(UnitKind::Filler, "Building", TargetClass::Unit, false),
 ];
 
 const _: () = {
@@ -177,4 +184,17 @@ const fn row(kind: UnitKind) -> usize {
 #[inline]
 pub const fn kind_def(kind: UnitKind) -> &'static KindDef {
     &UNIT_KINDS[row(kind)]
+}
+
+/// What the game calls one unit, from its kind, its side and its maximum
+/// health: the barracks that feeds the ranged creeps is told from the one
+/// that feeds the melee by its health, and each Ancient is its side's own.
+pub fn unit_name(kind: UnitKind, team: Team, max_hp: i32) -> &'static str {
+    match (kind, team) {
+        (UnitKind::Ancient, Team::Radiant) => "Radiant's Ancient",
+        (UnitKind::Ancient, Team::Dire) => "Dire's Ancient",
+        (UnitKind::Barracks, _) if max_hp == unit::BARRACKS_RANGED.max_hp => "Ranged Barracks",
+        (UnitKind::Barracks, _) => "Melee Barracks",
+        _ => kind_def(kind).name,
+    }
 }

@@ -380,7 +380,8 @@ pub const BARRACKS_MELEE: UnitDef = UnitDef {
     night_vision: rules::RAX_NIGHT_VISION,
     collision: rules::RAX_COLLISION,
     bound: rules::RAX_BOUND,
-    bounty_gold: GoldRange::exactly(rules::RAX_MELEE_BOUNTY),
+    bounty_gold: rules::RAX_BOUNTY,
+    bounty_team: rules::RAX_MELEE_TEAM_BOUNTY,
     ..BARE_UNIT
 };
 
@@ -392,7 +393,8 @@ pub const BARRACKS_RANGED: UnitDef = UnitDef {
     night_vision: rules::RAX_NIGHT_VISION,
     collision: rules::RAX_COLLISION,
     bound: rules::RAX_BOUND,
-    bounty_gold: GoldRange::exactly(rules::RAX_RANGED_BOUNTY),
+    bounty_gold: rules::RAX_BOUNTY,
+    bounty_team: rules::RAX_RANGED_TEAM_BOUNTY,
     ..BARE_UNIT
 };
 
@@ -404,7 +406,7 @@ pub const FILLER: UnitDef = UnitDef {
     day_vision: rules::FILLER_DAY_VISION,
     night_vision: rules::FILLER_NIGHT_VISION,
     collision: rules::FILLER_COLLISION,
-    bound: rules::FILLER_COLLISION,
+    bound: rules::FILLER_BOUND,
     bounty_gold: GoldRange::exactly(rules::FILLER_BOUNTY),
     ..BARE_UNIT
 };
@@ -412,6 +414,7 @@ pub const FILLER: UnitDef = UnitDef {
 pub const RADIANT_ANCIENT: UnitDef = UnitDef {
     kind: UnitKind::Ancient,
     max_hp: rules::ANCIENT_HP,
+    hp_regen: rules::ANCIENT_HP_REGEN,
     armor: rules::ANCIENT_ARMOR,
     day_vision: rules::ANCIENT_VISION,
     night_vision: rules::ANCIENT_VISION,
@@ -545,8 +548,10 @@ const fn tower_of(index: usize) -> UnitDef {
     }
 }
 
-// The towers' numbers are Liquipedia's *Tower (Tier 1)* to *(Tier 4)* and
-// *Buildings* (read 2026-10-10).
+// The buildings' numbers are the game's `npc_units.txt` (client 6957,
+// 2026-10-09) where it holds them; the bounties and the Ancient's collision
+// are Liquipedia's *Tower (Tier 1)* to *(Tier 4)*, *Melee Barracks* and
+// *Ancient* (read 2026-10-18).
 
 /// Lane towers, indexed by tier less one.
 pub const TOWERS: [UnitDef; 4] = [tower_of(0), tower_of(1), tower_of(2), tower_of(3)];

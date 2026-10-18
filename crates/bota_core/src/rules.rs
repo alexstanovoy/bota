@@ -687,6 +687,20 @@ pub const TOWER_DAY_VISION: i32 = 1900;
 /// 800, the towers behind it 1100 (`npc_units.txt`, client 6957).
 pub const TOWER_NIGHT_VISION: [i32; 4] = [800, 1100, 1100, 1100];
 
+/// Percent of its damage a structure under backdoor protection takes.
+pub const BACKDOOR_DAMAGE_PCT: i32 = 50;
+/// Health a structure under backdoor protection mends a second, but only of
+/// what enemy blows took from it while it was protected.
+pub const BACKDOOR_HEAL_PER_SECOND: i32 = 180;
+/// Ticks without an enemy lane creep in reach before backdoor protection
+/// holds again: fifteen seconds and the half second the aura lingers.
+pub const BACKDOOR_REACTIVATION_TICKS: u32 = 15 * TICKS_PER_SECOND + AURA_LINGER_TICKS;
+/// How far a tier two tower looks for enemy lane creeps; it guards itself.
+pub const BACKDOOR_TOWER_RADIUS: i32 = 900;
+/// How far an Ancient looks for enemy lane creeps; it guards every tower of
+/// tier three and four, barracks and filler of its side, and itself.
+pub const BACKDOOR_BASE_RADIUS: i32 = 4000;
+
 /// Melee barracks health.
 pub const RAX_MELEE_HP: i32 = 2200;
 /// Melee barracks armor.
@@ -697,10 +711,15 @@ pub const RAX_MELEE_HP_REGEN: Fixed = Fixed::from_ratio(5, TICKS_PER_SECOND as i
 pub const RAX_RANGED_HP: i32 = 1300;
 /// Ranged barracks armor.
 pub const RAX_RANGED_ARMOR: i32 = 9;
-/// Gold paid to the killer of a melee barracks.
-pub const RAX_MELEE_BOUNTY: i32 = 225;
-/// Gold paid to the killer of a ranged barracks.
-pub const RAX_RANGED_BOUNTY: i32 = 150;
+/// Gold paid to the hero that strikes a barracks down, on top of its team
+/// bounty.
+pub const RAX_BOUNTY: GoldRange = GoldRange::new(90, 135);
+/// Gold a melee barracks' fall pays every seat of the side that brought it
+/// down.
+pub const RAX_MELEE_TEAM_BOUNTY: i32 = 155;
+/// Gold a ranged barracks' fall pays every seat of the side that brought it
+/// down.
+pub const RAX_RANGED_TEAM_BOUNTY: i32 = 90;
 /// Barracks collision size, the Dota barracks hull.
 pub const RAX_COLLISION: i32 = 160;
 /// Barracks bound radius, the Dota barracks hull.
@@ -715,8 +734,10 @@ pub const FILLER_HP: i32 = 1000;
 pub const FILLER_ARMOR: i32 = 10;
 /// Gold paid to the killer of a filler.
 pub const FILLER_BOUNTY: i32 = 68;
-/// Filler collision size and bound radius, the Dota filler hull.
-pub const FILLER_COLLISION: i32 = 96;
+/// Filler collision size, the Dota filler hull.
+pub const FILLER_COLLISION: i32 = 112;
+/// Filler bound radius, the Dota filler hull.
+pub const FILLER_BOUND: i32 = 96;
 /// Filler fog light radius by day.
 pub const FILLER_DAY_VISION: i32 = 900;
 /// Filler fog light radius by night.
@@ -724,7 +745,10 @@ pub const FILLER_NIGHT_VISION: i32 = 600;
 
 /// Ancient health.
 pub const ANCIENT_HP: i32 = 4500;
-pub const ANCIENT_ARMOR: i32 = 13;
+/// Health per tick the Ancient mends; twelve a second.
+pub const ANCIENT_HP_REGEN: Fixed = Fixed::from_ratio(12, TICKS_PER_SECOND as i32);
+/// Ancient armor (`npc_dota_goodguys_fort`).
+pub const ANCIENT_ARMOR: i32 = 23;
 /// The Radiant Ancient's collision size, its own model's.
 pub const RADIANT_ANCIENT_COLLISION: i32 = 315;
 /// The Radiant Ancient's bound radius, its own model's.

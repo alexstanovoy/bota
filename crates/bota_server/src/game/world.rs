@@ -5,9 +5,9 @@ use std::collections::VecDeque;
 use bota_proto::{HeroId, SlotId, Team, UnitKind, Vec2};
 
 use crate::game::{
-    AbilityBook, Action, AppliedModifiers, AuraCx, Auras, Bounty, CampHome, Candidates, Def,
-    Entity, EntityAllocator, Errand, Expiry, Exposure, Forest, Handling, Health, Hit, HitCx, Hook,
-    Hull, Inventory, Landed, Lane, LaneAi, Level, Loot, Mana, March, Mark, Missed, MissileCx,
+    AbilityBook, Action, AppliedModifiers, AuraCx, Auras, Backdoor, Bounty, CampHome, Candidates,
+    Def, Entity, EntityAllocator, Errand, Expiry, Exposure, Forest, Handling, Health, Hit, HitCx,
+    Hook, Hull, Inventory, Landed, Lane, LaneAi, Level, Loot, Mana, March, Mark, Missed, MissileCx,
     Modifier, Modifiers, Motion, NeutralAi, Orders, Place, Plan, Projectile, Purpose, Rax,
     RequiemLine, Route, Seat, SightCx, SightScratch, SpawnModifier, Spots, Stacks, Stats, StatsCx,
     Table, Target, Tier, Transform, UnitOrder, Upgrades, Visibility, aura_system, derive_stats,
@@ -178,6 +178,8 @@ pub struct World {
     pub lane: Table<Lane>,
     /// Which of its lane's two barracks a building is.
     pub rax: Table<Rax>,
+    /// Backdoor protection of the structures that have it.
+    pub backdoor: Table<Backdoor>,
     /// What killing an entity pays.
     pub bounty: Table<Bounty>,
     /// Which seat owns an entity.
@@ -287,6 +289,7 @@ impl World {
             camp_home: Table::new(),
             lane: Table::new(),
             rax: Table::new(),
+            backdoor: Table::new(),
             bounty: Table::new(),
             owner: Table::new(),
             hero: Table::new(),
@@ -658,6 +661,7 @@ impl World {
             self.lay_passability();
         }
         self.spread_presence();
+        self.tick_backdoor();
         aura_system(AuraCx {
             entities: &self.entities,
             transform: &self.transform,
@@ -691,6 +695,7 @@ impl World {
             night: bota_core::time_of_day(self.tick).night,
         });
         self.guard_structures();
+        self.mark_backdoor();
     }
 
     /// Who sees what, from where everything stands.
@@ -797,6 +802,7 @@ impl World {
         let felt: Vec<Landed> = self.landed.drain(..).collect();
         self.break_on_blows(&felt);
         self.rouse_camps(&felt);
+        self.owe_backdoor(&felt);
         self.credit_damage(&felt);
         self.tell_of(&felt, events);
         let missed: Vec<Missed> = self.missed.drain(..).collect();

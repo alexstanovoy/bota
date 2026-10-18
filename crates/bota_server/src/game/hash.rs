@@ -101,6 +101,10 @@ impl World {
         if let Some(health) = self.health.get(entity) {
             fnv.fixed(health.hp);
         }
+        if let Some(backdoor) = self.backdoor.get(entity) {
+            fnv.u32(backdoor.quiet_ticks);
+            fnv.fixed(backdoor.owed);
+        }
         if let Some(mana) = self.mana.get(entity) {
             fnv.fixed(mana.mana);
         }
