@@ -13,3 +13,4 @@ pub mod local;
 pub mod net;
 pub mod profile;
 pub mod replay;
+pub mod spectators;

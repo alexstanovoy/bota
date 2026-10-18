@@ -393,3 +393,5 @@ variant RejectReason 24 NotAdmitted
 variant RejectReason 25 SeatHeld
 variant ServerMsg 11 Refused {}
 field ServerMsg::Refused 0 reason: RejectReason
+field MatchReport 0 picks: Vec<Pick>
+field MatchReport 1 stats: MatchStats

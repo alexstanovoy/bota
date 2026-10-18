@@ -114,10 +114,27 @@
 //! over [`MAX_CLIENT_PAYLOAD_LEN`](crate::MAX_CLIENT_PAYLOAD_LEN), a payload
 //! that decodes to no message, or more messages than its allowance: a rate
 //! the server sets (a thousand a second by default, two seconds' worth of
-//! burst) and four more for every tick it is sent. A seat's key lets at most
-//! a bounded number of spectators (seven by default) watch through it at
-//! once; one more is refused as
-//! [`NotAdmitted`](crate::RejectReason::NotAdmitted).
+//! burst) and four more for every tick it is sent.
+//!
+//! # Spectators and picks
+//!
+//! A spectator that comes with a seat's key (reserved, or the key that
+//! claimed an unreserved seat) watches live through that seat's eyes and is
+//! told its orders ([`ServerMsg::Orders`]); at most a bounded number (seven
+//! by default) at once per seat, one more is refused as
+//! [`NotAdmitted`](crate::RejectReason::NotAdmitted). Nobody else is told an
+//! order live. A spectator without a key is refused unless the server lets
+//! anyone watch: live (the whole map, or a side's fog through
+//! [`ViewAs`](crate::ClientMsg::ViewAs), never an order), or a set number of
+//! seconds of game time late, where the whole map comes with every seat's
+//! orders, as late. When the match is over a late spectator is shown its
+//! last tick at once, then the result.
+//!
+//! A seat picks only among the heroes the server allows (every hero unless
+//! it says otherwise); a seat without a pick when the lobby runs out of time
+//! is given one of them. A pick is final once the seat was ready with it,
+//! even if it withdraws its readiness: nobody waits for the others' picks to
+//! change their own.
 //!
 //! A `Hello` that admits to nothing is answered with
 //! [`ServerMsg::Refused`] and the connection closed:
@@ -140,8 +157,10 @@
 //! it was given runs its course), and the match neither waits for it nor ends
 //! because of it. In lockstep the server waits for the seats held; a seat
 //! taken back is waited for from the tick after the one it came back on. A
-//! match whose seats are all empty ends early only when none of them may be
-//! taken back.
+//! match whose seats are all empty ends early, abandoned and without a
+//! result, only when none of them may be taken back, or when the server was
+//! told to give up on a match that stood empty a set time; a server may also
+//! abandon a match whose lobby ran out of time with no seat held.
 //!
 //! # Chances
 //!
@@ -193,3 +212,4 @@
 //! [`ServerMsg::WireMismatch`]: crate::ServerMsg::WireMismatch
 //! [`ServerMsg::Ping`]: crate::ServerMsg::Ping
 //! [`ServerMsg::Refused`]: crate::ServerMsg::Refused
+//! [`ServerMsg::Orders`]: crate::ServerMsg::Orders

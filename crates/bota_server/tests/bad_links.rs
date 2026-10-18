@@ -21,6 +21,7 @@ use bota_core::fountain_pos;
 use bota_proto::{HeroId, MapId, Order, ServerMsg, SlotId, Target, TickMode};
 use bota_server::game_loop::{DEFAULT_IDLE_TIMEOUT, DEFAULT_SPECTATORS_PER_SEAT, ServerOpts, run};
 use bota_server::net::{DEFAULT_MESSAGES_PER_SEC, Listeners};
+use bota_server::spectators::Spectators;
 use proxy::{Dir, Line, Proxy};
 use wire::{Wire, endpoint};
 
@@ -46,6 +47,10 @@ fn opts(mode: TickMode, tick_rate: u16) -> ServerOpts {
         order_delays: Vec::new(),
         messages_per_sec: DEFAULT_MESSAGES_PER_SEC,
         max_spectators_per_seat: DEFAULT_SPECTATORS_PER_SEAT,
+        spectators: Spectators::Off,
+        heroes: None,
+        abandon_unjoined: false,
+        empty_after: None,
     }
 }
 

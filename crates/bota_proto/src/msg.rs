@@ -207,6 +207,16 @@ pub struct MatchStats {
     pub slots: Vec<SlotStats>,
 }
 
+/// What a server that runs one match for a launcher reports when the match
+/// is over: postcard bytes, hex-encoded on its `RESULT` line.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+pub struct MatchReport {
+    /// Every seat and the hero it played, sorted by [`SlotId`].
+    pub picks: Vec<Pick>,
+    /// The final numbers, as [`ServerMsg::MatchOver`] told them.
+    pub stats: MatchStats,
+}
+
 /// One accepted order, as it is told to whoever may know of it.
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct SlotOrder {
@@ -275,7 +285,9 @@ pub enum ClientMsg {
         /// [`ServerMsg::WireMismatch`]. Last on the wire.
         wire_fingerprint: u64,
     },
-    /// Choose a hero for the seat this connection holds.
+    /// Choose a hero for the seat this connection holds. A hero the server
+    /// does not allow, or any pick once the seat was ready with one, changes
+    /// nothing (see the [`contract`](crate::contract)).
     PickHero { hero: HeroId },
     /// Declare readiness, or withdraw it. The match starts when every seat is
     /// filled, picked and ready.
@@ -305,9 +317,9 @@ pub enum ClientMsg {
     },
     /// Choose whose eyes a spectator watches through.
     ///
-    /// A seat sets the fog of the snapshots to its side's and brings that
-    /// seat's own orders; absent watches everything and is told none.
-    /// Ignored for a seated participant.
+    /// A seat sets the fog of the snapshots to its side's; absent watches
+    /// everything. Borrowed eyes are never told orders. Ignored for a seated
+    /// participant and for a spectator whose key fixed its eyes.
     ViewAs {
         /// Which seat to watch as. Absent, or a seat not in the match, for the
         /// whole map.
@@ -365,8 +377,10 @@ pub enum ServerMsg {
     /// The orders accepted on one tick, as far as the receiver may know
     /// them.
     ///
-    /// Sent only to a spectator watching through one seat's eyes, and
-    /// carries that seat's orders alone.
+    /// Sent live only to a spectator whose seat key fixed its eyes, carrying
+    /// that seat's orders alone; and late, with every seat's orders, to a
+    /// late spectator watching the whole map (see the
+    /// [`contract`](crate::contract)).
     Orders {
         /// Which tick they were applied on.
         tick: u32,

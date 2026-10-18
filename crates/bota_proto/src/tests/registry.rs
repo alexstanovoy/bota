@@ -80,14 +80,16 @@ fn the_wire_layout_only_grows() {
     );
 }
 
-/// Every type reachable from the three things that cross the wire, each enum
-/// traced on its own so that no variant goes unseen.
+/// Every type reachable from the things that cross the wire, the report a
+/// launcher reads among them, each enum traced on its own so that no variant
+/// goes unseen.
 fn trace_wire() -> Registry {
     let mut tracer = Tracer::new(TracerConfig::default());
     let mut enums = HashSet::new();
     trace::<ClientMsg>(&mut tracer, &mut enums);
     trace::<ServerMsg>(&mut tracer, &mut enums);
     trace::<ReplayRecord>(&mut tracer, &mut enums);
+    trace::<MatchReport>(&mut tracer, &mut enums);
     trace::<Order>(&mut tracer, &mut enums);
     trace::<Target>(&mut tracer, &mut enums);
     trace::<Cheat>(&mut tracer, &mut enums);

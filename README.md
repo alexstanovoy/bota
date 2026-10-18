@@ -77,6 +77,7 @@ The server hosts one lobby and one match, then exits. It listens on `--port`
 | Flag | Meaning |
 |---|---|
 | `--port N` | TCP port, default 4455 |
+| `--bind ADDR` | address every listener binds to, default `0.0.0.0`; `127.0.0.1` keeps the server to this machine |
 | `--ws-port N` | with the `websocket` feature, also listen for WebSocket connections on this port (see below) |
 | `--tls-cert PEM`, `--tls-key PEM` | with `--ws-port`: the certificate chain (leaf first) and private key; the WebSocket port then speaks TLS 1.3 (`wss://`) |
 | `--map N` | `0` the Dota map played to the Ancient (default); `1` a small hero demo map; `2` the mid-only ruleset on the Dota map: a side loses on its second hero death or its first lost tower, and the match is a draw after twenty game minutes |
@@ -85,11 +86,15 @@ The server hosts one lobby and one match, then exits. It listens on `--port`
 | `--players N` | seats, default 2, or the number of `--seat` reservations when those are given (a different `--players` is an error, and reserved seats take no `--dummy-seat`) |
 | `--seed N` | seed of the match randomness, for a match that must play again the same; without it the key is drawn from the operating system and known to no one |
 | `--match-id N` | the public label of the match in its start message and replay; drawn when absent, and nothing random comes from it |
-| `--seat KEY_HEX:NAME,...` | reserve the seats, in slot order, for the holders of 64-hex-digit keys (also `BOTA_SEATS`, which keeps the keys out of process lists); a key may take its seat again, also mid-match, once the connection that held it has ended or been found dead; while it lives the newcomer is refused (`SeatHeld`) |
+| `--seat KEY_HEX:TEAM:NAME,...` | reserve the seats, in slot order, for the holders of 64-hex-digit keys, each on team `0` (Radiant) or `1` (Dire); `KEY_HEX:NAME` puts even slots on Radiant and odd ones on Dire (also `BOTA_SEATS`, which keeps the keys out of process lists); a key may take its seat again, also mid-match, once the connection that held it has ended or been found dead; while it lives the newcomer is refused (`SeatHeld`) |
 | `--idle-timeout-secs N` | drop a connection that sends nothing, or takes in nothing, for this long (default 5; the server pings every second and clients answer), freeing its seat for a reconnect; `0` never drops one |
 | `--referee-key KEY_HEX` | admit a referee with this key (also `BOTA_REFEREE_KEY`): told the lobby, the start, departures and the end, never a tick |
 | `--start-after-secs N` | with reserved seats, start this long after listening at the latest; a seat without a pick gets a random hero |
-| `--max-connections N` | most connections held at once; one that says no `Hello` within 10 s is closed |
+| `--abandon-unjoined` | when the lobby runs out of time (`--start-after-secs`, or 60 s without it) with no seat held, exit with code 3 instead of playing |
+| `--empty-after-secs N` | exit with code 3 once every seat has been empty for N seconds; without it an empty match whose seats may be taken back plays on to its end |
+| `--heroes ID,...` | the heroes a seat may pick (and a seat without a pick is given); every hero when absent. A pick is final once the seat was ready with it |
+| `--spectators off\|delayed=SECS\|open` | who may watch without a seat's key: nobody (default); everyone, SECS seconds of game time late, as Dota's `tv_delay`; everyone, live (for local tools: it shows the whole map). A seat's key always watches its seat live, and only it is told that seat's orders live |
+| `--max-connections N` | most connections held at once, default 64; one that says no `Hello` within 10 s is closed |
 | `--messages-per-sec N` | messages one connection may send a second (default 1000), besides four for every tick it is sent and a burst of two seconds' worth; a peer that sends more is cut off |
 | `--max-spectators-per-seat N` | spectators that may watch through one reserved seat's key at once, default 7 |
 | `--wire-fingerprint` | print the fingerprint of the wire registries this build speaks, and exit; a client sends its own in its `Hello`, and the server refuses one that differs with `WireMismatch` |
@@ -99,6 +104,15 @@ The server hosts one lobby and one match, then exits. It listens on `--port`
 | `--immortal-structures`, `--immortal-heroes` | structures or heroes take damage but never fall, for practice |
 | `--dummy-seat` | the last seat holds a hero that never acts, so one client can practise alone |
 | `--order-delay-ticks`, `--order-jitter-ticks` | delay every order, one value or one per seat; jitter is drawn from a hidden stream of the seed |
+
+Under a launcher (a matchmaking service starting one server per match) the
+standard output is the contract: after the `listening on` lines the server
+prints `READY` once players may connect, and at the end of a match one line
+`RESULT winner=0|1|draw duration_ms=N report=HEX` (the winning team, the game
+time the match lasted, and a `bota_proto::MatchReport` as hex postcard bytes)
+before it exits with code 0. A match nobody played (`--abandon-unjoined`,
+`--empty-after-secs`, or every seat empty with none to come back) prints no
+`RESULT` and exits with code 3. Any other exit is a failure.
 
 Plain TCP on `--port` is always there and is the default. Built with the
 `websocket` feature (`cargo build --release -p bota_server --features websocket`),

@@ -21,10 +21,12 @@ fn reserved(seed: u64) -> ServerOpts {
         ReservedSeat {
             key: KEYS[0],
             name: "zero".to_owned(),
+            team: Team::Radiant,
         },
         ReservedSeat {
             key: KEYS[1],
             name: "one".to_owned(),
+            team: Team::Dire,
         },
     ];
     opts.referee_key = Some(REFEREE);
@@ -33,7 +35,7 @@ fn reserved(seed: u64) -> ServerOpts {
 
 impl TestClient {
     /// The next message, or none once the server hung up.
-    fn recv_or_hangup(&mut self) -> Option<ServerMsg> {
+    pub(super) fn recv_or_hangup(&mut self) -> Option<ServerMsg> {
         let mut buf = [0u8; 65536];
         loop {
             match self.reader.next_message::<ServerMsg>().expect("decode") {
@@ -49,12 +51,12 @@ impl TestClient {
         }
     }
 
-    fn hello(&mut self, role: Role, key: Option<SeatKey>) {
+    pub(super) fn hello(&mut self, role: Role, key: Option<SeatKey>) {
         self.send(&ClientMsg::hello(role, "ignored", key));
     }
 
     /// Reads on until the server hangs up, within a bound.
-    fn assert_hung_up(&mut self) {
+    pub(super) fn assert_hung_up(&mut self) {
         for _ in 0..2000 {
             if self.recv_or_hangup().is_none() {
                 return;
@@ -63,14 +65,14 @@ impl TestClient {
         panic!("the connection was not closed");
     }
 
-    fn welcome(&mut self) -> Option<SlotId> {
+    pub(super) fn welcome(&mut self) -> Option<SlotId> {
         self.recv_until(|msg| match msg {
             ServerMsg::Welcome { slot, .. } => Some(slot),
             _ => None,
         })
     }
 
-    fn match_start(&mut self) -> bota_proto::MatchInfo {
+    pub(super) fn match_start(&mut self) -> bota_proto::MatchInfo {
         self.recv_until(|msg| match msg {
             ServerMsg::MatchStart { info } => Some(info),
             _ => None,
@@ -99,7 +101,7 @@ fn running_match(wire: Wire) -> (String, TestClient, TestClient) {
 
 impl TestClient {
     /// The refusal of a Hello, after which the server hangs up.
-    fn refusal(&mut self) -> RejectReason {
+    pub(super) fn refusal(&mut self) -> RejectReason {
         let reason = self.recv_until(|msg| match msg {
             ServerMsg::Welcome { .. } => panic!("welcomed"),
             ServerMsg::Refused { reason } => Some(reason),

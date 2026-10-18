@@ -1,18 +1,28 @@
 //! Command line entry point of the server.
 
-use std::net::TcpListener;
+use std::net::{IpAddr, Ipv4Addr, TcpListener};
 use std::num::NonZeroU32;
 use std::path::PathBuf;
+use std::process::ExitCode;
 use std::time::Duration;
 
 use clap::{Parser, ValueEnum};
 
 use bota_core::rules;
-use bota_proto::SeatKey;
+use bota_proto::{HeroId, SeatKey, Team, encode_frame_to_vec};
 use bota_server::game::{OrderDelay, check_order_delays};
-use bota_server::game_loop::{DEFAULT_IDLE_TIMEOUT, DEFAULT_SPECTATORS_PER_SEAT, ServerOpts, run};
+use bota_server::game_loop::{
+    DEFAULT_IDLE_TIMEOUT, DEFAULT_SPECTATORS_PER_SEAT, MatchEnd, ServerOpts, check_opts, run,
+};
 use bota_server::lobby::ReservedSeat;
 use bota_server::net::{DEFAULT_MESSAGES_PER_SEC, Listeners};
+use bota_server::spectators::Spectators;
+
+/// The exit code of a match nobody played: no result, nothing to rate.
+const EXIT_ABANDONED: u8 = 3;
+
+/// Connections held at once unless the command line says otherwise.
+const DEFAULT_MAX_CONNECTIONS: usize = 64;
 
 #[cfg(test)]
 mod map_cli_tests;
@@ -32,6 +42,9 @@ struct Args {
     /// Port to listen on.
     #[arg(long, default_value_t = 4455)]
     port: u16,
+    /// Address every listener binds to: 127.0.0.1 keeps the server to this machine.
+    #[arg(long, default_value_t = IpAddr::V4(Ipv4Addr::UNSPECIFIED))]
+    bind: IpAddr,
     /// Also listen for WebSocket connections on this port: one binary message per frame, and
     /// everything else as on the TCP port. Plain ws:// without --tls-cert and --tls-key, for
     /// local use; wss:// (TLS 1.3) with them.
@@ -69,7 +82,8 @@ struct Args {
     /// randomness comes from it.
     #[arg(long)]
     match_id: Option<u64>,
-    /// Seats held for key holders, one `key_hex:name` per seat in slot order, comma separated.
+    /// Seats held for key holders, one `key_hex:team:name` (team 0 Radiant, 1 Dire) or
+    /// `key_hex:name` (even slots Radiant, odd Dire) per seat in slot order, comma separated.
     /// A Hello must then carry a key. Prefer the environment: arguments show in process lists.
     /// Keys travel in clear text over plain TCP and ws://: across a network you do not trust,
     /// let clients reach the server only over wss:// (or TLS in front of it).
@@ -88,9 +102,26 @@ struct Args {
     /// a seat without a pick then gets a random hero.
     #[arg(long)]
     start_after_secs: Option<u64>,
-    /// Most connections held at once.
+    /// When the lobby phase runs out of time (--start-after-secs, or 60 s without it) with no
+    /// seat held, exit with code 3 instead of playing the match: nobody came.
     #[arg(long)]
-    max_connections: Option<usize>,
+    abandon_unjoined: bool,
+    /// Exit with code 3 once every seat has been empty this many seconds during the match;
+    /// without it an empty match whose seats may be taken back plays on to its end.
+    #[arg(long, value_parser = clap::value_parser!(u64).range(1..))]
+    empty_after_secs: Option<u64>,
+    /// Who may watch without a seat's key: off; delayed=SECS, everything that many seconds of
+    /// game time late (as Dota's tv_delay); open, everything live (local tools only). A seat's
+    /// key always watches its seat live, and only it is told that seat's orders live.
+    #[arg(long, default_value_t = Spectators::Off)]
+    spectators: Spectators,
+    /// The heroes a seat may pick, by id, comma separated; a seat without a pick is given one of
+    /// them. Every hero when absent.
+    #[arg(long, value_delimiter = ',')]
+    heroes: Option<Vec<u16>>,
+    /// Most connections held at once.
+    #[arg(long, default_value_t = DEFAULT_MAX_CONNECTIONS)]
+    max_connections: usize,
     /// Print the fingerprint of the wire registries this build speaks and exit. Every client
     /// sends its own in its Hello, and one that differs is refused.
     #[arg(long)]
@@ -130,15 +161,64 @@ struct Args {
     order_jitter_ticks: Vec<u32>,
 }
 
-fn main() -> std::io::Result<()> {
+fn main() -> ExitCode {
     let args = Args::parse();
     if args.wire_fingerprint {
         println!(
             "{}",
             bota_proto::fingerprint_to_hex(bota_proto::WIRE_FINGERPRINT)
         );
-        return Ok(());
+        return ExitCode::SUCCESS;
     }
+    let tick_rate = args.tick_rate;
+    match serve(args) {
+        Ok(MatchEnd::Over { winner, report }) => {
+            println!("{}", result_line(winner, &report, tick_rate));
+            ExitCode::SUCCESS
+        }
+        Ok(MatchEnd::Abandoned) => ExitCode::from(EXIT_ABANDONED),
+        Err(error) => {
+            eprintln!("bota_server: {error}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+/// Listens, says `READY`, and plays the match.
+fn serve(args: Args) -> std::io::Result<MatchEnd> {
+    let opts = server_opts(&args)?;
+    // Contradicting options fail before READY, never after.
+    check_opts(&opts).map_err(std::io::Error::other)?;
+    // A replay that cannot be written fails before the port is announced.
+    if let Some(path) = &opts.replay {
+        bota_server::replay::ReplayWriter::create(path)?;
+    }
+    let listeners = listen(&args)?;
+    println!("READY");
+    run(listeners, opts)
+}
+
+/// The line a launcher reads the result from: the winning team (0 Radiant,
+/// 1 Dire) or a draw, the game time the match lasted, and the
+/// [`bota_proto::MatchReport`] as hex postcard bytes.
+fn result_line(winner: Team, report: &bota_proto::MatchReport, tick_rate: u16) -> String {
+    let winner = match winner {
+        Team::Radiant => "0",
+        Team::Dire => "1",
+        Team::Neutral => "draw",
+    };
+    let ms = u64::from(report.stats.duration) * 1000 / u64::from(tick_rate);
+    let duration_ms = u32::try_from(ms).unwrap_or(u32::MAX);
+    let frame = encode_frame_to_vec(report).expect("a report encodes");
+    let hex: String = frame[bota_proto::LEN_PREFIX..]
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect();
+    format!("RESULT winner={winner} duration_ms={duration_ms} report={hex}")
+}
+
+/// The server's options from the command line.
+fn server_opts(args: &Args) -> std::io::Result<ServerOpts> {
     let reserved = reservations(&args.seats).map_err(std::io::Error::other)?;
     let referee_key = args
         .referee_key
@@ -161,47 +241,45 @@ fn main() -> std::io::Result<()> {
         }
         (_, seats) => seats as u8,
     };
-    let order_delays = order_delays(&args, players).map_err(std::io::Error::other)?;
-    // A replay that cannot be written fails before the port is announced.
-    if let Some(path) = &args.replay {
-        bota_server::replay::ReplayWriter::create(path)?;
-    }
-    let listeners = listen(&args)?;
-    run(
-        listeners,
-        ServerOpts {
-            mode: match args.mode {
-                Mode::Realtime => bota_proto::TickMode::Realtime,
-                Mode::Lockstep => bota_proto::TickMode::Lockstep,
-            },
-            tick_rate: args.tick_rate,
-            players,
-            replay: args.replay,
-            seed: args.seed,
-            match_id: args.match_id,
-            reserved,
-            referee_key,
-            start_after: args.start_after_secs.map(Duration::from_secs),
-            max_connections: args.max_connections,
-            map: bota_proto::MapId(args.map),
-            ack_timeout_ticks: args.ack_timeout_ticks,
-            idle_timeout: (args.idle_timeout_secs > 0)
-                .then(|| Duration::from_secs(args.idle_timeout_secs)),
-            cheats: args.cheats,
-            immortal_structures: args.immortal_structures,
-            immortal_heroes: args.immortal_heroes,
-            dummy_seat: args.dummy_seat,
-            order_delays,
-            messages_per_sec: args.messages_per_sec,
-            max_spectators_per_seat: args.max_spectators_per_seat,
+    Ok(ServerOpts {
+        mode: match args.mode {
+            Mode::Realtime => bota_proto::TickMode::Realtime,
+            Mode::Lockstep => bota_proto::TickMode::Lockstep,
         },
-    )
+        tick_rate: args.tick_rate,
+        players,
+        replay: args.replay.clone(),
+        seed: args.seed,
+        match_id: args.match_id,
+        reserved,
+        referee_key,
+        start_after: args.start_after_secs.map(Duration::from_secs),
+        max_connections: Some(args.max_connections),
+        map: bota_proto::MapId(args.map),
+        ack_timeout_ticks: args.ack_timeout_ticks,
+        idle_timeout: (args.idle_timeout_secs > 0)
+            .then(|| Duration::from_secs(args.idle_timeout_secs)),
+        cheats: args.cheats,
+        immortal_structures: args.immortal_structures,
+        immortal_heroes: args.immortal_heroes,
+        dummy_seat: args.dummy_seat,
+        order_delays: order_delays(args, players).map_err(std::io::Error::other)?,
+        messages_per_sec: args.messages_per_sec,
+        max_spectators_per_seat: args.max_spectators_per_seat,
+        spectators: args.spectators,
+        heroes: args
+            .heroes
+            .as_ref()
+            .map(|ids| ids.iter().copied().map(HeroId).collect()),
+        abandon_unjoined: args.abandon_unjoined,
+        empty_after: args.empty_after_secs.map(Duration::from_secs),
+    })
 }
 
 /// Binds every listener the command line asks for, then announces each, the
 /// TCP one first.
 fn listen(args: &Args) -> std::io::Result<Listeners> {
-    let tcp = TcpListener::bind(("0.0.0.0", args.port))?;
+    let tcp = TcpListener::bind((args.bind, args.port))?;
     #[cfg(feature = "websocket")]
     if let Some(port) = args.ws_port {
         let tls = match (&args.tls_cert, &args.tls_key) {
@@ -209,7 +287,7 @@ fn listen(args: &Args) -> std::io::Result<Listeners> {
             _ => None,
         };
         let scheme = if tls.is_some() { "wss" } else { "ws" };
-        let ws = TcpListener::bind(("0.0.0.0", port))?;
+        let ws = TcpListener::bind((args.bind, port))?;
         println!("bota_server listening on {}", tcp.local_addr()?);
         println!("bota_server listening on {scheme}://{}", ws.local_addr()?);
         let ws = bota_server::net::WsListener::new(ws, tls);
@@ -251,24 +329,41 @@ fn order_delays(args: &Args, players: u8) -> Result<Vec<OrderDelay>, String> {
     Ok(delays)
 }
 
-/// Seats from `key_hex:name` entries.
+/// Seats from `key_hex:team:name` or `key_hex:name` entries. A middle field
+/// that is a team index (`0` or `1`) makes the three-field form, so a
+/// two-field name may not start with one followed by a colon.
 fn reservations(entries: &[String]) -> Result<Vec<ReservedSeat>, String> {
-    entries
+    let seats: Vec<ReservedSeat> = entries
         .iter()
-        .map(|entry| {
-            let (key, name) = entry
-                .split_once(':')
-                .ok_or("a seat reservation reads key_hex:name")?;
-            if name.is_empty() || name.len() > rules::MAX_ANNOUNCED_NAME_BYTES {
-                return Err(format!(
-                    "a seat name takes 1 to {} bytes",
-                    rules::MAX_ANNOUNCED_NAME_BYTES
-                ));
-            }
-            Ok(ReservedSeat {
-                key: SeatKey::from_hex(key).ok_or("a key is 64 hex digits")?,
-                name: name.to_owned(),
-            })
-        })
-        .collect()
+        .enumerate()
+        .map(|(slot, entry)| reservation(slot, entry))
+        .collect::<Result<_, _>>()?;
+    let sides = [Team::Radiant, Team::Dire].map(|team| seats.iter().any(|s| s.team == team));
+    if seats.len() > 1 && sides.contains(&false) {
+        return Err("reserved seats leave a side empty".to_owned());
+    }
+    Ok(seats)
+}
+
+fn reservation(slot: usize, entry: &str) -> Result<ReservedSeat, String> {
+    let (key, rest) = entry
+        .split_once(':')
+        .ok_or("a seat reservation reads key_hex:team:name or key_hex:name")?;
+    let (team, name) = match rest.split_once(':') {
+        Some(("0", name)) => (Team::Radiant, name),
+        Some(("1", name)) => (Team::Dire, name),
+        _ if slot.is_multiple_of(2) => (Team::Radiant, rest),
+        _ => (Team::Dire, rest),
+    };
+    if name.is_empty() || name.len() > rules::MAX_ANNOUNCED_NAME_BYTES {
+        return Err(format!(
+            "a seat name takes 1 to {} bytes",
+            rules::MAX_ANNOUNCED_NAME_BYTES
+        ));
+    }
+    Ok(ReservedSeat {
+        key: SeatKey::from_hex(key).ok_or("a key is 64 hex digits")?,
+        name: name.to_owned(),
+        team,
+    })
 }

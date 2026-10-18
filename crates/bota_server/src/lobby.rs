@@ -20,6 +20,10 @@ pub struct RosterSeat {
     /// Absent until picked.
     pub hero: Option<HeroId>,
     pub ready: bool,
+    /// Whether the pick is final: it was made, or stood, while the seat was
+    /// ready. It stays so when readiness is withdrawn or the holder changes,
+    /// so the last to ready cannot wait for the others' picks and switch.
+    pub pick_locked: bool,
     /// A seat nobody holds: ready from the start, its hero stays put and never acts.
     pub dummy: bool,
     /// The key the holder of an unreserved seat came with, which takes the
@@ -46,6 +50,8 @@ pub struct ReservedSeat {
     pub key: SeatKey,
     /// The name whoever holds the seat is shown under.
     pub name: String,
+    /// The side the seat plays on.
+    pub team: Team,
 }
 
 /// All seats, and the `PlayerId` to `SlotId` mapping.
@@ -61,6 +67,8 @@ pub struct Roster {
 impl Roster {
     /// An empty roster: even slots are Radiant, odd are Dire. With `dummy`
     /// the last seat is a ready dummy playing [`DUMMY_HERO`].
+    ///
+    /// [`Roster::reserved`] seats each reservation on its own side instead.
     pub fn new(players: u8, dummy: bool) -> Roster {
         let mut roster = Roster {
             seats: (0..players)
@@ -76,6 +84,7 @@ impl Roster {
                     role: None,
                     hero: None,
                     ready: false,
+                    pick_locked: false,
                     dummy: false,
                     claim: None,
                 })
@@ -87,8 +96,24 @@ impl Roster {
             seat.role = Some(Role::Bot);
             seat.hero = Some(DUMMY_HERO);
             seat.ready = true;
+            seat.pick_locked = true;
         }
         roster
+    }
+
+    /// An empty roster of reserved seats, each on its reservation's side.
+    pub fn reserved(reserved: &[ReservedSeat]) -> Roster {
+        let players = u8::try_from(reserved.len()).expect("at most 255 reserved seats");
+        let mut roster = Roster::new(players, false);
+        for (seat, reservation) in roster.seats.iter_mut().zip(reserved) {
+            seat.team = reservation.team;
+        }
+        roster
+    }
+
+    /// Whether any seat is held by a connection.
+    pub fn anyone_seated(&self) -> bool {
+        self.seats.iter().any(|s| s.player.is_some())
     }
 
     /// The seat a key is reserved for. Every reservation is compared, so the time

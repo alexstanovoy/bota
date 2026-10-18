@@ -19,6 +19,7 @@ use crate::game_loop::{
     DEFAULT_IDLE_TIMEOUT, DEFAULT_SPECTATORS_PER_SEAT, HELLO_DEADLINE, ServerOpts, run,
 };
 use crate::net::{DEFAULT_MESSAGES_PER_SEC, Listeners};
+use crate::spectators::Spectators;
 use wire::{Wire, dial};
 
 struct TestClient {
@@ -141,6 +142,10 @@ fn realtime(seed: u64) -> ServerOpts {
         order_delays: Vec::new(),
         messages_per_sec: DEFAULT_MESSAGES_PER_SEC,
         max_spectators_per_seat: DEFAULT_SPECTATORS_PER_SEAT,
+        spectators: Spectators::Off,
+        heroes: None,
+        abandon_unjoined: false,
+        empty_after: None,
     }
 }
 
@@ -271,61 +276,6 @@ fn a_realtime_match_reaches_two_clients() {
         }
     }
     panic!("the replay never became readable");
-}
-
-#[test]
-fn a_spectator_borrows_eyes_and_is_told_the_orders_they_see() {
-    let addr = start_server(realtime(9));
-    let (mut c1, _) = join_as_bot(addr, "alpha");
-    let (mut c2, _) = join_as_bot(addr, "beta");
-    let mut watcher = TestClient::connect(addr);
-    watcher.send(&ClientMsg::hello(Role::Spectator, "eye", None));
-    let slot = watcher.recv_until(|msg| match msg {
-        ServerMsg::Welcome { slot, .. } => Some(slot),
-        _ => None,
-    });
-    assert_eq!(slot, None, "a spectator takes no seat");
-    let first = watcher.recv_until(snapshot);
-    assert_eq!(
-        first.viewer, None,
-        "everything, before any eyes are asked for"
-    );
-
-    // An order given while nobody's eyes are borrowed is told to no spectator.
-    c1.send(&move_order(1, 1000, 1000));
-    let mut told_freely = 0u32;
-    for _ in 0..3 {
-        watcher.recv_until(|msg| match msg {
-            ServerMsg::Orders { .. } => {
-                told_freely += 1;
-                None
-            }
-            ServerMsg::Snapshot { .. } => Some(()),
-            _ => None,
-        });
-    }
-    assert_eq!(told_freely, 0, "watching everything is told no orders");
-
-    watcher.send(&ClientMsg::ViewAs {
-        seat: Some(SlotId(1)),
-    });
-    let fogged = watcher.recv_until(|msg| snapshot(msg).filter(|view| view.viewer.is_some()));
-    assert_eq!(
-        fogged.viewer,
-        Some(Team::Dire),
-        "the snapshots come through the chosen eyes"
-    );
-
-    // Through one side's eyes, only that side's orders are told.
-    c2.send(&move_order(1, 15000, 15000));
-    let told = watcher.recv_until(|msg| match msg {
-        ServerMsg::Orders { orders, .. } => Some(orders),
-        _ => None,
-    });
-    assert!(
-        told.iter().all(|given| given.slot == SlotId(1)),
-        "an order of the side watched: {told:?}"
-    );
 }
 
 #[test]
@@ -597,4 +547,6 @@ fn a_reader_that_keeps_up_is_never_skipped_and_a_stalled_one_is_at_once() {
     assert!(skipped > 0, "a stalled reader is skipped ahead");
 }
 
+mod picks;
 mod reserved;
+mod spectators;
