@@ -532,6 +532,41 @@ fn a_seat_told_teleporting_twice_breaks_the_stream() {
     assert!(app.lost, "the client stops listening");
 }
 
+/// A view's numbers at their extremes are checked and shown without
+/// overflowing: an attack point of u32::MAX milliseconds under a swing, and
+/// a last hit by an attacker of i32::MAX damage.
+#[test]
+fn a_view_of_extreme_numbers_is_taken_in_without_overflow() {
+    let mut app = a_started_app();
+    let mut striker = owned(1, UnitKind::CreepMelee, None);
+    striker.attack_point = u32::MAX;
+    striker.attack_damage_min = i32::MAX;
+    striker.attack_damage = i32::MAX;
+    striker.attack_damage_max = i32::MAX;
+    let target = owned(2, UnitKind::CreepMelee, None);
+    let mut view = a_tick(
+        10,
+        vec![striker.clone(), target.clone()],
+        vec![a_seat(SlotId(0), None)],
+    );
+    view.aggro = vec![bota_proto::AggroView {
+        unit: striker.id,
+        target: Some(target.id),
+        swing: Some(bota_proto::SwingView {
+            target: target.id,
+            strike_in: u32::MAX,
+        }),
+        hold_left: 0,
+        chase_left: 0,
+        draw_cooldown: 0,
+        returning: false,
+    }];
+    app.handle(bota_proto::ServerMsg::Snapshot { view });
+    assert!(app.lost, "a swing that far out is refused, not overflowed");
+    let hit = crate::next_hit_raised(&striker, &target, Fixed::ZERO, i32::MAX);
+    assert!(hit.least <= hit.most);
+}
+
 fn snapshot_of(tick: u32, units: Vec<UnitView>, players: Vec<PlayerView>) -> bota_proto::ServerMsg {
     bota_proto::ServerMsg::Snapshot {
         view: a_tick(tick, units, players),

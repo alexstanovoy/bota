@@ -74,14 +74,16 @@ pub fn next_hit_raised(
     };
     let class_pct = attack_class_pct(attacker.kind, target.kind);
     let swing = |damage: i32| {
-        let blow = (damage + creeps) * class_pct / 100;
+        // Saturating: the attacker's numbers are a peer's word.
+        let blow = damage.saturating_add(creeps).saturating_mul(class_pct) / 100;
         mitigate(blow, DamageKind::Physical, armor, 0)
     };
-    let least = swing(attacker.attack_damage_min + raise);
-    let mid = swing(attacker.attack_damage.max(0) + raise);
-    let mut most = swing(attacker.attack_damage_max + raise);
+    let least = swing(attacker.attack_damage_min.saturating_add(raise));
+    let mid = swing(attacker.attack_damage.max(0).saturating_add(raise));
+    let mut most = swing(attacker.attack_damage_max.saturating_add(raise));
     if !against.structure && carried.pierce_damage > 0 {
-        most += magic_taken(carried.pierce_damage * class_pct / 100, target);
+        let pierce = carried.pierce_damage.saturating_mul(class_pct) / 100;
+        most = most.saturating_add(magic_taken(pierce, target));
     }
     HitRange { least, mid, most }
 }
