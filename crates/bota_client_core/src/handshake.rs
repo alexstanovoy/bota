@@ -14,7 +14,7 @@ use bota_proto::{
 use crate::redial::Redial;
 use crate::session::SessionError;
 #[cfg(not(target_arch = "wasm32"))]
-use crate::socket::Link;
+use crate::socket::{Endpoint, Link};
 #[cfg(not(target_arch = "wasm32"))]
 use crate::transport::DEFAULT_IO_TIMEOUT;
 use crate::transport::Transport;
@@ -216,8 +216,21 @@ impl Link {
         timeout: Duration,
         redial: Redial,
     ) -> std::io::Result<(Self, Seated)> {
+        let endpoint = Endpoint::parse(address)?;
+        Self::join_at(endpoint, name, hero, key, timeout, redial)
+    }
+
+    /// Connects to `endpoint`, as [`Link::join_with_redial`] does.
+    pub fn join_at(
+        endpoint: Endpoint,
+        name: &str,
+        hero: HeroId,
+        key: Option<SeatKey>,
+        timeout: Duration,
+        redial: Redial,
+    ) -> std::io::Result<(Self, Seated)> {
         validate_name(name)?;
-        let mut link = Self::connect(address, timeout)?.with_redial(redial);
+        let mut link = Self::open(endpoint, timeout)?.with_redial(redial);
         let seated = join(&mut link, name, hero, key)?;
         Ok((link, seated))
     }

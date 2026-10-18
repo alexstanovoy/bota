@@ -180,7 +180,24 @@ impl crate::socket::Link {
         hero: bota_proto::HeroId,
         decide: impl FnMut(&ClientSession) -> I,
     ) -> Result<Outcome, PlayError> {
-        let (mut link, seated) = Self::join(address, name, hero, None)?;
+        Self::play_at(crate::socket::Endpoint::parse(address)?, name, hero, decide)
+    }
+
+    /// Connects to `endpoint` and plays, as [`Link::play`] does.
+    pub fn play_at<I: IntoIterator<Item = IssuedOrder>>(
+        endpoint: crate::socket::Endpoint,
+        name: &str,
+        hero: bota_proto::HeroId,
+        decide: impl FnMut(&ClientSession) -> I,
+    ) -> Result<Outcome, PlayError> {
+        let (mut link, seated) = Self::join_at(
+            endpoint,
+            name,
+            hero,
+            None,
+            crate::transport::DEFAULT_IO_TIMEOUT,
+            crate::redial::Redial::DEFAULT,
+        )?;
         play(&mut link, seated, &mut (), decide)
     }
 }

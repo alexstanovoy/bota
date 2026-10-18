@@ -2,12 +2,11 @@
 //! transports: when to try, and what a fresh connection must say again.
 
 use std::collections::VecDeque;
-use std::io::Write;
-use std::net::TcpStream;
 use std::thread;
 use std::time::Duration;
 
-use bota_proto::{ClientMsg, RejectReason, Role, SeatKey, ServerMsg, encode_frame};
+use crate::socket::FrameSink;
+use bota_proto::{ClientMsg, RejectReason, Role, SeatKey, ServerMsg, encode_frame_to_vec};
 
 /// How a socket transport dials the server again after its connection broke
 /// (an error, a timeout, a reset; never a clean close by the server).
@@ -158,13 +157,15 @@ impl Rejoin {
     }
 
     /// Says everything again on a fresh connection.
-    pub fn greet(&mut self, stream: &mut TcpStream) -> std::io::Result<()> {
-        let mut bytes = Vec::new();
+    pub fn greet(&mut self, stream: &mut dyn FrameSink) -> std::io::Result<()> {
         let greeting = [&self.hello, &self.pick, &self.ready, &self.eyes];
-        for msg in greeting.into_iter().flatten().chain(&self.unsent) {
-            encode_frame(msg, &mut bytes).map_err(std::io::Error::other)?;
-        }
-        stream.write_all(&bytes)?;
+        let frames = greeting
+            .into_iter()
+            .flatten()
+            .chain(&self.unsent)
+            .map(|msg| encode_frame_to_vec(msg).map_err(std::io::Error::other))
+            .collect::<std::io::Result<Vec<_>>>()?;
+        stream.send_frames(&frames)?;
         self.unsent.clear();
         self.rejoining = true;
         Ok(())
@@ -184,12 +185,12 @@ pub(crate) fn seat_held() -> std::io::Error {
 /// break, handing each fresh stream to `adopt` (which greets the server on
 /// it) until one is adopted; the error says why the connection broke and why
 /// it could not be made again.
-pub(crate) fn redial(
+pub(crate) fn redial<S>(
     policy: Redial,
     spent: &mut u32,
     cause: std::io::Error,
-    mut dial: impl FnMut() -> std::io::Result<TcpStream>,
-    mut adopt: impl FnMut(TcpStream) -> std::io::Result<()>,
+    mut dial: impl FnMut() -> std::io::Result<S>,
+    mut adopt: impl FnMut(S) -> std::io::Result<()>,
 ) -> std::io::Result<()> {
     let mut last = None;
     while *spent < policy.attempts {

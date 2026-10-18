@@ -14,14 +14,15 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use bota_client_core::{
-    ClientSession, Ingested, IssuedOrder, Link, Outcome, Seat, SessionOptions, Transport,
+    ClientSession, DEFAULT_IO_TIMEOUT, Endpoint, Ingested, IssuedOrder, Link, Outcome, Redial,
+    Seat, Seated, SessionOptions, Transport,
 };
 use bota_core::fountain_pos;
 use bota_proto::{HeroId, MapId, Order, ServerMsg, SlotId, Target, TickMode};
 use bota_server::game_loop::{DEFAULT_IDLE_TIMEOUT, DEFAULT_SPECTATORS_PER_SEAT, ServerOpts, run};
 use bota_server::net::{DEFAULT_MESSAGES_PER_SEC, Listeners};
 use proxy::{Dir, Line, Proxy};
-use wire::{Wire, dial};
+use wire::{Wire, endpoint};
 
 fn opts(mode: TickMode, tick_rate: u16) -> ServerOpts {
     ServerOpts {
@@ -92,10 +93,23 @@ fn attack_move(session: &ClientSession) -> Option<IssuedOrder> {
     }))
 }
 
+/// Takes a seat at `address`, giving up on a silent server after `timeout`.
+fn join_seat(address: Endpoint, name: &str, timeout: Duration) -> (Link, Seated) {
+    Link::join_at(
+        address,
+        name,
+        HeroId::SHADOW_FIEND,
+        None,
+        timeout,
+        Redial::DEFAULT,
+    )
+    .expect("a seat")
+}
+
 /// Plays the attack-move bot to the end of the match on its own thread.
-fn play(address: String, name: &'static str) -> thread::JoinHandle<Outcome> {
+fn play(address: Endpoint, name: &'static str) -> thread::JoinHandle<Outcome> {
     thread::spawn(move || {
-        Link::play(&address, name, HeroId::SHADOW_FIEND, attack_move)
+        Link::play_at(address, name, HeroId::SHADOW_FIEND, attack_move)
             .expect("the match is played to its end")
     })
 }
@@ -118,8 +132,8 @@ fn a_match_over_slow_jittery_capped_and_stalling_lines_plays_to_its_normal_end(w
             ..Line::default()
         },
     );
-    let a = play(dial(wire, &far.addr()), "far");
-    let b = play(dial(wire, &stalling.addr()), "stalling");
+    let a = play(endpoint(wire, &far.addr()), "far");
+    let b = play(endpoint(wire, &stalling.addr()), "stalling");
     // A TCP stall of a lossy line: two seconds without a byte, now and then.
     while !b.is_finished() {
         thread::sleep(Duration::from_secs(3));
@@ -155,9 +169,9 @@ fn a_dropped_connection_comes_back_to_the_same_seat_and_hero_and_lockstep_waits_
     let line = Proxy::start(server);
     let (cut_at, cut) = mpsc::channel();
     let (seen_tx, seen) = mpsc::channel();
-    let address = dial(wire, &line.addr());
+    let address = endpoint(wire, &line.addr());
     let dropped = thread::spawn(move || {
-        Link::play(&address, "dropped", HeroId::SHADOW_FIEND, |session| {
+        Link::play_at(address, "dropped", HeroId::SHADOW_FIEND, |session| {
             let tick = session.current().map_or(0, |view| view.tick);
             if tick == 1500 {
                 let _ = cut_at.send(());
@@ -171,10 +185,10 @@ fn a_dropped_connection_comes_back_to_the_same_seat_and_hero_and_lockstep_waits_
         })
         .expect("the match is played to its end")
     });
-    let steady_address = dial(wire, &server.to_string());
+    let steady_address = endpoint(wire, &server.to_string());
     let steady = thread::spawn(move || {
         let (mut last, mut longest) = (None::<Instant>, Duration::ZERO);
-        let outcome = Link::play(&steady_address, "steady", HeroId::SHADOW_FIEND, |session| {
+        let outcome = Link::play_at(steady_address, "steady", HeroId::SHADOW_FIEND, |session| {
             longest = longest.max(last.map_or(Duration::ZERO, |last| last.elapsed()));
             last = Some(Instant::now());
             attack_move(session)
@@ -239,18 +253,17 @@ fn wait_for(limit: Duration, what: &str, mut done: impl FnMut() -> bool) {
 fn a_stalled_client_slows_neither_the_tick_nor_the_other_player(wire: Wire) {
     let server = serve(opts(TickMode::Realtime, 30), wire);
     let line = Proxy::start(server);
-    let join = |address: String, name: &'static str| {
+    let join = |address: Endpoint, name: &'static str| {
         let reading = Arc::new(Reading::default());
         let shared = Arc::clone(&reading);
         let ticks = thread::spawn(move || {
-            let (mut link, _) =
-                Link::join(&address, name, HeroId::SHADOW_FIEND, None).expect("a seat");
+            let (mut link, _) = join_seat(address, name, DEFAULT_IO_TIMEOUT);
             read_ticks(&mut link, &shared)
         });
         (reading, ticks)
     };
-    let (stalled_reading, stalled) = join(dial(wire, &line.addr()), "stalled");
-    let (steady_reading, steady) = join(dial(wire, &server.to_string()), "steady");
+    let (stalled_reading, stalled) = join(endpoint(wire, &line.addr()), "stalled");
+    let (steady_reading, steady) = join(endpoint(wire, &server.to_string()), "steady");
     let tick = |reading: &Reading| reading.last_tick.load(Ordering::SeqCst);
     wait_for(
         Duration::from_secs(30),
@@ -310,11 +323,9 @@ fn a_half_open_connection_is_released_and_its_client_comes_back(wire: Wire) {
     opts.idle_timeout = Some(idle);
     let server = serve(opts, wire);
     let line = Proxy::start(server);
-    let address = dial(wire, &line.addr());
+    let address = endpoint(wire, &line.addr());
     let returning = thread::spawn(move || {
-        let (mut link, seated) =
-            Link::join_with_timeout(&address, "returning", HeroId::SHADOW_FIEND, None, idle)
-                .expect("a seat");
+        let (mut link, seated) = join_seat(address, "returning", idle);
         let mut seat = Seat::new(seated, SessionOptions::default());
         let (mut resumed, mut after) = (None, 0);
         while after < 30 {
@@ -330,13 +341,11 @@ fn a_half_open_connection_is_released_and_its_client_comes_back(wire: Wire) {
         }
         (seated.slot, resumed.expect("the session resumed"))
     });
-    let (mut watcher, _) = Link::join(
-        &dial(wire, &server.to_string()),
+    let (mut watcher, _) = join_seat(
+        endpoint(wire, &server.to_string()),
         "watcher",
-        HeroId::SHADOW_FIEND,
-        None,
-    )
-    .expect("a seat");
+        DEFAULT_IO_TIMEOUT,
+    );
     // The match runs, so both seats are held, before the line goes dark.
     while !matches!(
         watcher.recv().expect("the watcher's link holds"),

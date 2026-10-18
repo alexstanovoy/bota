@@ -24,8 +24,11 @@
 //! }
 //! ```
 //!
-//! The socket transports are left out for `wasm32`, where the embedder supplies a
-//! [`Transport`] of its own.
+//! The socket transports speak TCP (`host:port`, the default) and, with the
+//! `websocket` feature, `ws://` and `wss://` (see [`Endpoint`]); one binary
+//! WebSocket message carries one frame. They are left out for `wasm32`, where
+//! the embedder supplies a [`Transport`] of its own, or with the `web` feature
+//! the browser's WebSocket as a `LiveLink` ([`WebSocketLink`]).
 //!
 //! The `ui` feature adds the float-using, drawing-side parts of a front end:
 //! the app state, motion between snapshots, what a key or a click means as an
@@ -56,6 +59,10 @@ mod timer_journal;
 mod transport;
 #[cfg(feature = "ui")]
 mod ui;
+#[cfg(all(target_arch = "wasm32", feature = "web"))]
+mod web;
+#[cfg(any(feature = "websocket", all(target_arch = "wasm32", feature = "web")))]
+mod ws_frame;
 
 pub use catalog::*;
 pub use handshake::*;
@@ -79,3 +86,5 @@ pub use timer_journal::*;
 pub use transport::*;
 #[cfg(feature = "ui")]
 pub use ui::*;
+#[cfg(all(target_arch = "wasm32", feature = "web"))]
+pub use web::WebSocketLink;

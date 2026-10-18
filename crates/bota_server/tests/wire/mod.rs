@@ -51,6 +51,24 @@ pub enum Wire {
     Wss,
 }
 
+/// Where a client reaches `target`, which speaks `wire`, by the client
+/// library's own transport.
+pub fn endpoint(wire: Wire, target: &str) -> bota_client_core::Endpoint {
+    let endpoint = |text: &str| bota_client_core::Endpoint::parse(text).expect("an endpoint");
+    match wire {
+        Wire::Tcp => endpoint(target),
+        #[cfg(feature = "websocket")]
+        Wire::Ws => endpoint(&format!("ws://{target}")),
+        #[cfg(feature = "websocket")]
+        Wire::Wss => {
+            let port = target.rsplit(':').next().expect("a port");
+            let pem = std::fs::read_to_string(CERT).expect("the test certificate");
+            let tls = bota_client_core::TlsConfig::trust_pem(&pem).expect("a trusted cert");
+            endpoint(&format!("wss://localhost:{port}")).with_tls(tls)
+        }
+    }
+}
+
 /// The address a TCP client dials to reach `target`, which speaks `wire`:
 /// the server's own port, or a proxy in front of it.
 pub fn dial(wire: Wire, target: &str) -> String {
