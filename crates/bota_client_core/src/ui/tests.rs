@@ -380,40 +380,6 @@ fn a_click_takes_the_ground_item_nearest_the_cursor_and_only_within_reach() {
     );
 }
 
-#[test]
-fn an_attack_click_sticks_only_to_an_enemy_and_only_near() {
-    let handle = |idx: u32| EntityId { idx, generation: 1 };
-    let mut enemy = a_unit();
-    enemy.id = handle(8);
-    enemy.team = Team::Dire;
-    enemy.pos = Vec2::from_ints(7000, 7000);
-    let mut own = a_unit();
-    own.id = handle(9);
-    own.pos = Vec2::from_ints(7400, 7000);
-    let view = a_tick(100, vec![enemy, own], Vec::new());
-    let mine = Some(Team::Radiant);
-    assert_eq!(
-        crate::ui::intent::enemy_near_cursor(&view, (7040.0, 7000.0), mine),
-        Some(handle(8)),
-        "a click just off the enemy's edge sticks to it"
-    );
-    assert_eq!(
-        crate::ui::intent::enemy_near_cursor(&view, (7060.0, 7000.0), mine),
-        None,
-        "one further off is for the ground"
-    );
-    assert_eq!(
-        crate::ui::intent::enemy_near_cursor(&view, (7390.0, 7010.0), mine),
-        None,
-        "one of this side's own never sticks"
-    );
-    assert_eq!(
-        crate::ui::intent::enemy_near_cursor(&view, (9000.0, 9000.0), mine),
-        None,
-        "far from everybody the click is for the ground"
-    );
-}
-
 /// A tick holding these units and these seats.
 fn a_tick(tick: u32, units: Vec<UnitView>, players: Vec<PlayerView>) -> WorldView {
     WorldView {
@@ -940,5 +906,42 @@ fn every_blurb_takes_its_numbers_from_the_rules() {
         ABILITIES[usize::from(AbilityId::MEAT_HOOK.0)]
             .blurb()
             .contains("range 1300")
+    );
+}
+
+#[test]
+fn a_unit_ability_aimed_at_no_unit_refuses_and_stays_taken_up() {
+    use crate::ui::intent::Intent;
+    let mut app = a_started_app();
+    let mut hero = owned(1, UnitKind::Hero, Some(SlotId(0)));
+    hero.abilities = vec![an_ability(1, 0, 0, false, false)];
+    let target = EntityId {
+        idx: 2,
+        generation: 1,
+    };
+    app.handle(snapshot_of(
+        1,
+        vec![hero.clone()],
+        vec![a_seat(SlotId(0), Some(hero.id))],
+    ));
+    app.aiming = Some(Slot::Ability(0));
+    app.act(Intent::Aimed {
+        at: (10.0, 10.0),
+        unit: None,
+    });
+    assert_eq!(app.aiming, Some(Slot::Ability(0)), "the mode is kept");
+    assert!(app.reject.is_some(), "and the player is told");
+    assert!(app.shown_orders.is_empty(), "no order goes out");
+    app.act(Intent::Aimed {
+        at: (10.0, 10.0),
+        unit: Some(target),
+    });
+    assert_eq!(app.aiming, None);
+    assert_eq!(
+        app.shown_orders.last().map(|shown| shown.order),
+        Some(Order::Cast {
+            slot: AbilitySlot(0),
+            target: Target::Unit(target)
+        })
     );
 }

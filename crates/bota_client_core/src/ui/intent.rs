@@ -4,24 +4,27 @@
 
 use bota_proto::{
     AbilityId, AbilitySlot, Aim, ClientMsg, EntityId, Fixed, HeroId, ItemId, ItemSlot, Order,
-    SlotId, Target, Team, UnitKind, Vec2, WorldView,
+    SlotId, Target, UnitKind, Vec2, WorldView,
 };
 
 use crate::ui::app::{App, Pin, Source, Tap};
 use crate::ui::slots::{BAG_SLOTS, Press, Slot, order_for, press};
 
-/// How far past a body's edge an attack click still sticks to it, in world
-/// units.
-const ATTACK_SNAP: f32 = 25.0;
-
 /// One thing a player means.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Intent {
-    /// The smart click at a world point: attack an enemy, follow a friend,
+    /// The smart click at a world point, on the unit the front end found
+    /// there (the front end alone decides what a cursor points at): attack an enemy, follow a friend,
     /// pick up an item, or walk there.
-    Smart((f32, f32)),
+    Smart {
+        at: (f32, f32),
+        unit: Option<EntityId>,
+    },
     /// An armed attack-move click at a world point.
-    AttackAt((f32, f32)),
+    AttackAt {
+        at: (f32, f32),
+        unit: Option<EntityId>,
+    },
     /// Walk to a world point, whatever is there.
     MoveTo((f32, f32)),
     /// Attack-move to a world point, whatever is there.
@@ -34,7 +37,10 @@ pub enum Intent {
     /// skill point.
     Press { slot: Slot, ctrl: bool },
     /// Spend the slot taken up for aiming at a world point.
-    Aimed((f32, f32)),
+    Aimed {
+        at: (f32, f32),
+        unit: Option<EntityId>,
+    },
     /// Let go of the slot taken up for aiming.
     CancelAim,
     /// Move an item from one slot to another.
@@ -43,7 +49,11 @@ pub enum Intent {
     Sell(u8),
     /// Put an item out of the bag at a world point: into an allied bag under
     /// it, or onto the ground.
-    PutAt { slot: u8, at: (f32, f32) },
+    PutAt {
+        slot: u8,
+        at: (f32, f32),
+        unit: Option<EntityId>,
+    },
     /// Hand an item to a seat's hero.
     HandTo { slot: u8, seat: SlotId },
     /// Buy an item.
@@ -59,7 +69,7 @@ pub enum Intent {
     /// Pick one's own courier; twice in a row pins the camera to it.
     SelectCourier,
     /// Pick whatever is at a world point, or nothing; twice pins.
-    SelectAt((f32, f32)),
+    SelectUnit(Option<EntityId>),
     /// Pick a seat's body; twice pins.
     SelectSeat(SlotId),
     /// Watch through the next eyes: a live spectator asks the server, a
@@ -85,8 +95,8 @@ impl App {
     /// Acts on what the player means.
     pub fn act(&mut self, intent: Intent) {
         match intent {
-            Intent::Smart(at) => self.smart(at),
-            Intent::AttackAt(at) => self.attack_at(at),
+            Intent::Smart { at, unit } => self.smart(at, unit),
+            Intent::AttackAt { at, unit } => self.attack_at(at, unit),
             Intent::MoveTo(at) => self.send_order(Order::Move {
                 target: Target::Pos(world_vec(at)),
             }),
@@ -100,7 +110,7 @@ impl App {
                 target: Target::None,
             }),
             Intent::Press { slot, ctrl } => self.press_slot(slot, ctrl),
-            Intent::Aimed(at) => self.spend_aim(at),
+            Intent::Aimed { at, unit } => self.spend_aim(at, unit),
             Intent::CancelAim => self.aiming = None,
             Intent::Swap { from, to } => self.send_order(Order::Swap {
                 from: ItemSlot(from),
@@ -109,7 +119,7 @@ impl App {
             Intent::Sell(slot) => self.send_order(Order::Sell {
                 slot: ItemSlot(slot),
             }),
-            Intent::PutAt { slot, at } => self.put_at(slot, at),
+            Intent::PutAt { slot, at, unit } => self.put_at(slot, at, unit),
             Intent::HandTo { slot, seat } => self.hand_to(slot, seat),
             Intent::Buy(item) if self.in_tactical_phase() => self.queue_buy(item),
             Intent::Unqueue(item) => self.unqueue_buy(item),
@@ -138,10 +148,7 @@ impl App {
                     self.choose(Some(courier), again);
                 }
             }
-            Intent::SelectAt(at) => {
-                let hit = self
-                    .view()
-                    .and_then(|view| unit_under_cursor(view, at, None, false));
+            Intent::SelectUnit(hit) => {
                 let again = hit.is_some_and(|id| self.tapped_twice(Tap::Unit(id)));
                 self.choose(hit, again);
             }
@@ -194,57 +201,53 @@ impl App {
         }
     }
 
-    /// Sends the order of the slot taken up at what a click at a world point
-    /// landed on, and lets go of the slot.
-    fn spend_aim(&mut self, at: (f32, f32)) {
-        let Some(slot) = self.aiming.take() else {
+    /// Sends the order of the slot taken up at what a click landed on, and
+    /// lets go of the slot. A slot aimed at a unit that the click found none
+    /// for refuses and stays taken up.
+    fn spend_aim(&mut self, at: (f32, f32), unit: Option<EntityId>) {
+        let Some(slot) = self.aiming else {
             return;
         };
         let target = match self.aim_in(slot) {
             // A tree and a landing spot are both named by the ground under
             // the cursor; which one was meant is the server's to settle.
-            Some(Aim::Point | Aim::Tree | Aim::Building) => Some(Target::Pos(world_vec(at))),
+            Some(Aim::Point | Aim::Tree | Aim::Building) => Target::Pos(world_vec(at)),
             // One's own hero is a target like any other here: a salve is
             // drunk by clicking the one drinking it.
-            Some(Aim::Unit) => self
-                .view()
-                .and_then(|view| unit_under_cursor(view, at, None, true))
-                .map(Target::Unit),
-            Some(Aim::Own) | None => Some(Target::None),
+            Some(Aim::Unit) => match unit {
+                Some(id) => Target::Unit(id),
+                None => {
+                    self.reject = Some(("invalid target".to_string(), 2.5));
+                    return;
+                }
+            },
+            Some(Aim::Own) | None => Target::None,
         };
-        if let Some(target) = target {
-            self.aimed_from = Some((self.seq() + 1, slot));
-            self.send_order(order_for(slot, target));
-        }
+        self.aiming = None;
+        self.aimed_from = Some((self.seq() + 1, slot));
+        self.send_order(order_for(slot, target));
     }
 
-    /// An armed attack-move click. A unit under the cursor takes the attack
-    /// order itself: on an ally this is the aggro-drop click. Near an enemy
-    /// the order sticks to it.
-    fn attack_at(&mut self, at: (f32, f32)) {
-        let me = self.my_hero();
-        let target = self.view().and_then(|view| {
-            unit_under_cursor(view, at, me, true)
-                .or_else(|| enemy_near_cursor(view, at, self.my_team()))
-        });
-        let target = match target {
+    /// An armed attack-move click. A unit the front end found takes the
+    /// attack order itself: on an ally this is the aggro-drop click.
+    fn attack_at(&mut self, at: (f32, f32), unit: Option<EntityId>) {
+        let target = match unit {
             Some(target) => Target::Unit(target),
             None => Target::Pos(world_vec(at)),
         };
         self.send_order(Order::Attack { target });
     }
 
-    /// A smart click: an enemy under the cursor is attacked, one of this
-    /// side's own is followed, an item lying there is picked up, open
-    /// ground is walked to. Near an enemy the click still attacks it.
-    fn smart(&mut self, at: (f32, f32)) {
+    /// A smart click: an enemy found is attacked, one of this side's own is
+    /// followed, an item lying there is picked up, open ground is walked to.
+    fn smart(&mut self, at: (f32, f32), unit: Option<EntityId>) {
         let Some(view) = self.view() else {
             self.send_order(Order::Move {
                 target: Target::Pos(world_vec(at)),
             });
             return;
         };
-        let order = if let Some(id) = unit_under_cursor(view, at, self.my_hero(), true) {
+        let order = if let Some(id) = unit {
             let own = view
                 .unit(id)
                 .is_some_and(|unit| Some(unit.team) == self.my_team());
@@ -258,10 +261,6 @@ impl App {
             Order::Take {
                 target: Target::Unit(item),
             }
-        } else if let Some(mark) = enemy_near_cursor(view, at, self.my_team()) {
-            Order::Attack {
-                target: Target::Unit(mark),
-            }
         } else {
             Order::Move {
                 target: Target::Pos(world_vec(at)),
@@ -274,15 +273,13 @@ impl App {
     /// it: the courier lays its own load out the way the hero does. Its own
     /// body under the cursor reads as the ground at its feet. What the stash
     /// holds stays put.
-    fn put_at(&mut self, slot: u8, at: (f32, f32)) {
+    fn put_at(&mut self, slot: u8, at: (f32, f32), unit: Option<EntityId>) {
         if slot >= BAG_SLOTS {
             return;
         }
         let carrier = self.commanded();
-        let target = self
-            .view()
-            .and_then(|view| unit_under_cursor(view, at, carrier, true))
-            .filter(|id| self.takes_a_handover(*id))
+        let target = unit
+            .filter(|id| Some(*id) != carrier && self.takes_a_handover(*id))
             .map(Target::Unit)
             .unwrap_or(Target::Pos(world_vec(at)));
         self.send_order(Order::Put {
@@ -372,42 +369,6 @@ pub fn loot_under_cursor(view: &WorldView, (wx, wy): (f32, f32)) -> Option<Entit
         wy,
         view.loot.iter().map(|lying| (lying.id, lying.pos, 35.0)),
     )
-}
-
-/// The clickable unit nearest a world point, if it is close enough.
-///
-/// `exclude` names a unit that never matches. `for_orders` skips fountains,
-/// which selection still picks.
-pub fn unit_under_cursor(
-    view: &WorldView,
-    (wx, wy): (f32, f32),
-    exclude: Option<EntityId>,
-    for_orders: bool,
-) -> Option<EntityId> {
-    let clickable = view
-        .units
-        .iter()
-        .filter(|u| Some(u.id) != exclude && !(for_orders && u.kind == UnitKind::Fountain))
-        .map(|u| (u.id, u.pos, u.collision.to_f32().max(20.0) + 15.0));
-    nearest(wx, wy, clickable)
-}
-
-/// The enemy nearest a world point within the attack snap, if one is that
-/// near.
-///
-/// Fountains never stick. An order at one of this side's own (a follow, an
-/// aggro drop or a deny) takes a click on the body itself.
-pub fn enemy_near_cursor(
-    view: &WorldView,
-    (wx, wy): (f32, f32),
-    mine: Option<Team>,
-) -> Option<EntityId> {
-    let enemies = view
-        .units
-        .iter()
-        .filter(|u| u.kind != UnitKind::Fountain && Some(u.team) != mine)
-        .map(|u| (u.id, u.pos, u.collision.to_f32() + ATTACK_SNAP));
-    nearest(wx, wy, enemies)
 }
 
 /// The candidate nearest a world point among those within their own reach of
