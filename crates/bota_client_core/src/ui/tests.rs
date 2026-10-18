@@ -75,7 +75,15 @@ fn every_catalog_entry_is_named_and_found_by_its_own_id() {
         );
     }
     assert!(effect(0).is_none(), "the retired effect is gone");
-    assert!(ability(ABILITIES.len() as u16).is_none());
+    // Ids are append-only and lookups go by id: every ability the rules have is
+    // found under its own id, the neutrals' after the heroes' included, and
+    // none past the last is.
+    for id in 0..bota_core::ABILITY_COUNT as u16 {
+        let face = ability(id).unwrap_or_else(|| panic!("ability {id} is found"));
+        assert_eq!(face.id, id, "ability {id} is found by its own id");
+        assert!(!face.name.is_empty(), "ability {id} has a name");
+    }
+    assert!(ability(bota_core::ABILITY_COUNT as u16).is_none());
     assert!(item(u16::MAX).is_none());
     assert!(effect(u16::MAX).is_none());
 }
