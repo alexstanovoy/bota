@@ -48,6 +48,7 @@ bota_proto            wire vocabulary and codec           deps: serde, postcard
 bota_core             rules a player may know             deps: bota_proto
 bota_server           simulation, network, lobby, CLI     deps: bota_proto, bota_core
 bota_client_core      logic every client shares           deps: bota_proto, bota_core
+bota_radovid          optional helper, see below          deps: bota_client_core, bota_proto, radovid
 ```
 
 Dependencies point one way: `bota_proto` <- `bota_core` <- `bota_server` and
@@ -71,6 +72,11 @@ other (the server's tests and examples use the client library).
   picture of the match. The `ui` feature adds the float-using, drawing-side
   parts, including the replay player. The graphical
   viewer, dbota, is a separate project built on this crate.
+- `bota_radovid`: a helper for writers of clients and bots, to find games through a
+  radovid service (matchmaking, lobbies, game-entry tickets). bota itself does not need
+  it: nothing else in this workspace depends on it, it is outside the default members,
+  and everything in it is behind its `radovid` feature (off by default; `native` or
+  `web` imply it). Cargo still reads radovid's manifests to lock the workspace.
 
 ## Run the server
 

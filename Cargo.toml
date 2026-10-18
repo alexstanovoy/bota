@@ -7,6 +7,13 @@ members = [
     "crates/bota_radovid",
     "crates/bota_server",
 ]
+# bota_radovid is a helper for client writers and stays out of a plain cargo build and test.
+default-members = [
+    "crates/bota_client_core",
+    "crates/bota_core",
+    "crates/bota_proto",
+    "crates/bota_server",
+]
 
 [workspace.package]
 version = "0.1.0"

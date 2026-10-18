@@ -219,6 +219,7 @@ dependencies = [
  "js-sys",
  "radovid",
  "radovid_client",
+ "radovid_proto",
  "tokio",
 ]
 

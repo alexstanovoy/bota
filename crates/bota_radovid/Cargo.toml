@@ -11,24 +11,34 @@ categories.workspace = true
 [dependencies]
 bota_client_core = { workspace = true }
 bota_proto = { workspace = true }
-# radovid has no public remote yet, hence the path; it becomes a git dependency pinned by revision once it does.
-radovid_client = { path = "../../../radovid/crates/radovid_client", default-features = false }
+# radovid has no public remote yet, hence the paths; they become git dependencies pinned by revision once it has.
+# Optional: a build without the `radovid` feature compiles none of it (Cargo still reads the manifests to lock).
+radovid_client = { path = "../../../radovid/crates/radovid_client", default-features = false, optional = true }
+radovid_proto = { path = "../../../radovid/crates/radovid_proto", optional = true }
+# The real service, for the end-to-end tests only (feature `e2e`).
+radovid = { path = "../../../radovid/crates/radovid", optional = true }
+tokio = { version = "1.53.3", features = ["rt-multi-thread"], optional = true }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 js-sys = { version = "0.3", optional = true }
 
 [features]
-default = ["native"]
+default = []
+# Everything of this crate: without it the crate is empty and no radovid code is compiled.
+radovid = ["dep:radovid_client", "dep:radovid_proto"]
 # Threads and sockets: the control connection on a thread of its own, game links over TCP, ws:// and wss://.
-native = ["radovid_client/native", "bota_client_core/websocket"]
+native = ["radovid", "radovid_client?/native", "bota_client_core/websocket"]
 # The browser's WebSocket for both connections; wasm32 only.
-web = ["radovid_client/web", "bota_client_core/web", "dep:js-sys"]
+web = ["radovid", "radovid_client?/web", "bota_client_core/web", "dep:js-sys"]
+# The end-to-end tests: radovid started in-process, launching the real bota_server.
+e2e = ["native", "dep:radovid", "dep:tokio"]
+
+[[test]]
+name = "matchmaking"
+required-features = ["e2e"]
 
 [dev-dependencies]
 bota_core = { workspace = true }
-# The real service, started in-process; its launcher runs the real bota_server.
-radovid = { path = "../../../radovid/crates/radovid" }
-tokio = { version = "1.53.3", features = ["rt-multi-thread"] }
 
 [lints]
 workspace = true

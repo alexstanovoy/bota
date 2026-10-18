@@ -1,4 +1,5 @@
-//! The bota side of a radovid client.
+//! The bota side of a radovid client: a helper to find games through a radovid service.
+//! bota itself does not need it, and no other bota crate depends on it.
 //!
 //! radovid knows no game: it keeps accounts, queues, lobbies and ratings, and
 //! hands a match's players a URL and a ticket. This crate adds what is bota's:
@@ -13,8 +14,13 @@
 //!   in the browser, all with the handoff's ticket as the seat key;
 //! - [`decode_report`], the picks and numbers of a finished match.
 //!
+//! The whole crate is behind the `radovid` feature (implied by `native` and `web`); without
+//! it the crate is empty and compiles no radovid code.
+//!
 //! One account may hold several games at once (see [`Limits`]): a client keeps
 //! one control connection and one game link per match.
+
+#![cfg(feature = "radovid")]
 
 mod client;
 mod clock;
