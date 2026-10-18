@@ -69,6 +69,14 @@ pub fn encode_frame_to_vec<T: Serialize + ?Sized>(msg: &T) -> Result<Vec<u8>, Co
     Ok(out)
 }
 
+/// The length of a message's payload, without encoding it.
+pub fn payload_len<T: Serialize + ?Sized>(msg: &T) -> Result<usize, CodecError> {
+    Ok(postcard::serialize_with_flavor(
+        msg,
+        postcard::ser_flavors::Size::default(),
+    )?)
+}
+
 /// Decode one message from a frame payload, with the length prefix removed.
 pub fn decode_payload<T: DeserializeOwned>(payload: &[u8]) -> Result<T, CodecError> {
     Ok(postcard::from_bytes(payload)?)

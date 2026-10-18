@@ -12,7 +12,7 @@ mod ws;
 use std::io::ErrorKind;
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::mpsc::{Receiver, SyncSender, sync_channel};
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::thread;
 use std::time::Duration;
 
@@ -31,6 +31,16 @@ pub use ws::TlsConfig;
 /// Messages the threaded reader holds for its caller at most. Past them it
 /// stops reading, and the server skips ticks for it as for any slow reader.
 const MAX_INBOX: usize = 1024;
+/// Payload bytes of the messages the threaded reader holds at most, past
+/// which it stops reading as well. A decoded message takes up to some
+/// sixteen times its payload, and a payload may be 4 MiB: counted in
+/// messages alone, what waits for a caller that stalled could be gigabytes.
+const MAX_INBOX_BYTES: usize = 16 * 1024 * 1024;
+/// How often a reader waiting for room looks whether its caller is gone.
+const INBOX_RECHECK: Duration = Duration::from_millis(100);
+
+/// What the reader hands its caller, with the payload bytes it holds.
+type Inbound = (std::io::Result<ServerMsg>, usize);
 
 /// One framed connection that blocks on every read, up to a timeout.
 ///
@@ -179,7 +189,7 @@ fn may_redial(policy: Redial, rejoin: &Rejoin, cause: &std::io::Error) -> bool {
 pub struct Net {
     shared: Arc<Shared>,
     /// What the reader read, then the error that stopped it, if one did.
-    inbox: Receiver<std::io::Result<ServerMsg>>,
+    inbox: Receiver<Inbound>,
     /// The error [`Net::poll`] met, kept for the next [`Transport::recv`].
     failure: Option<std::io::Error>,
 }
@@ -193,6 +203,10 @@ const CLOSED: u8 = 2;
 struct Shared {
     out: Mutex<Outgoing>,
     state: AtomicU8,
+    /// Payload bytes of the messages in the inbox.
+    held: Mutex<usize>,
+    /// Signalled when the caller takes messages out of the inbox.
+    taken: Condvar,
 }
 
 struct Outgoing {
@@ -234,6 +248,34 @@ impl Shared {
     /// The server answers on the fresh connection: the redial is over. A
     /// connection that opened but is not answered (a black hole, a held
     /// seat) is still being redialed.
+    /// Queues a message for the caller once the inbox has room for its bytes
+    /// (an empty inbox takes any one); false when the caller is gone.
+    fn hand_over(self: &Arc<Self>, tx: &SyncSender<Inbound>, msg: ServerMsg) -> bool {
+        let bytes = bota_proto::payload_len(&msg).unwrap_or(bota_proto::MAX_PAYLOAD_LEN);
+        let mut held = self.held.lock().expect("inbox lock");
+        while *held > 0 && *held + bytes > MAX_INBOX_BYTES {
+            if Arc::strong_count(self) == 1 {
+                return false;
+            }
+            held = self
+                .taken
+                .wait_timeout(held, INBOX_RECHECK)
+                .expect("inbox lock")
+                .0;
+        }
+        *held += bytes;
+        drop(held);
+        tx.send((Ok(msg), bytes)).is_ok()
+    }
+
+    /// The caller took messages of `bytes` payload bytes out of the inbox.
+    fn release(&self, bytes: usize) {
+        if bytes > 0 {
+            *self.held.lock().expect("inbox lock") -= bytes;
+            self.taken.notify_one();
+        }
+    }
+
     fn heard_from_server(&self) {
         let _ = self
             .state
@@ -312,6 +354,8 @@ impl Net {
                 broken: false,
             }),
             state: AtomicU8::new(UP),
+            held: Mutex::new(0),
+            taken: Condvar::new(),
         });
         let thread_shared = Arc::clone(&shared);
         thread::spawn(move || read_on(thread_shared, &endpoint, reader, &tx));
@@ -325,7 +369,8 @@ impl Net {
     /// Everything that arrived since the last poll.
     pub fn poll(&mut self) -> Vec<ServerMsg> {
         let mut messages = Vec::new();
-        for next in self.inbox.try_iter() {
+        for (next, bytes) in self.inbox.try_iter() {
+            self.shared.release(bytes);
             match next {
                 Ok(msg) => messages.push(msg),
                 Err(error) => self.failure = Some(error),
@@ -353,7 +398,7 @@ fn read_on(
     shared: Arc<Shared>,
     endpoint: &Endpoint,
     mut stream: Box<dyn FrameSource>,
-    tx: &SyncSender<std::io::Result<ServerMsg>>,
+    tx: &SyncSender<Inbound>,
 ) {
     let caller_gone = |shared: &Arc<Shared>| Arc::strong_count(shared) == 1;
     loop {
@@ -369,7 +414,7 @@ fn read_on(
             if !held {
                 shared.heard_from_server();
             }
-            gone = !held && tx.send(Ok(msg)).is_err();
+            gone = !held && !shared.hand_over(tx, msg);
             !gone && !held
         });
         let broken = std::mem::take(&mut shared.lock().broken);
@@ -385,7 +430,7 @@ fn read_on(
         match shared.reconnect(endpoint, cause) {
             Ok(fresh) => stream = fresh,
             Err(error) => {
-                let _ = tx.send(Err(error));
+                let _ = tx.send((Err(error), 0));
                 break;
             }
         }
@@ -415,7 +460,10 @@ impl Transport for Net {
             return Err(error);
         }
         match self.inbox.recv() {
-            Ok(next) => next.map(Some),
+            Ok((next, bytes)) => {
+                self.shared.release(bytes);
+                next.map(Some)
+            }
             Err(_) => Ok(None),
         }
     }

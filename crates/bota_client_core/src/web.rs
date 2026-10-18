@@ -19,10 +19,15 @@ use crate::ws_frame::decode;
 /// Messages held for the app at most; past them the link closes, since a
 /// browser socket cannot be told to stop reading.
 const MAX_INBOX: usize = 1024;
+/// Message bytes held for the app at most, past which the link closes as
+/// well: a decoded message takes up to some sixteen times its bytes.
+const MAX_INBOX_BYTES: usize = 16 * 1024 * 1024;
 
 #[derive(Default)]
 struct Shared {
     inbox: VecDeque<ServerMsg>,
+    /// Bytes of the messages in the inbox, as they came.
+    held: usize,
     /// Frames sent before the socket opened.
     unopened: Vec<Vec<u8>>,
     open: bool,
@@ -64,11 +69,14 @@ impl WebSocketLink {
             let (shared, socket) = (Rc::clone(&shared), socket.clone());
             Closure::<dyn FnMut(MessageEvent)>::new(move |event: MessageEvent| {
                 let mut shared = shared.borrow_mut();
-                let message = event
+                let bytes = event
                     .data()
                     .dyn_into::<js_sys::ArrayBuffer>()
+                    .map(|buffer| Uint8Array::new(&buffer).to_vec());
+                let size = bytes.as_ref().map_or(0, Vec::len);
+                let message = bytes
                     .map_err(|_| std::io::Error::other("a text message"))
-                    .and_then(|buffer| decode(&Uint8Array::new(&buffer).to_vec()));
+                    .and_then(|bytes| decode(&bytes));
                 match message {
                     Ok(ServerMsg::Ping) => {
                         let pong = encode_frame_to_vec(&ClientMsg::Pong).unwrap_or_default();
@@ -76,8 +84,12 @@ impl WebSocketLink {
                             shared.closed = true;
                         }
                     }
-                    Ok(message) if shared.inbox.len() < MAX_INBOX => {
-                        shared.inbox.push_back(message)
+                    Ok(message)
+                        if shared.inbox.len() < MAX_INBOX
+                            && shared.held + size <= MAX_INBOX_BYTES =>
+                    {
+                        shared.held += size;
+                        shared.inbox.push_back(message);
                     }
                     _ => {
                         shared.closed = true;
@@ -115,7 +127,9 @@ fn js_error(error: wasm_bindgen::JsValue) -> std::io::Error {
 
 impl LiveLink for WebSocketLink {
     fn poll(&mut self) -> Vec<ServerMsg> {
-        self.shared.borrow_mut().inbox.drain(..).collect()
+        let mut shared = self.shared.borrow_mut();
+        shared.held = 0;
+        shared.inbox.drain(..).collect()
     }
 
     fn send(&mut self, msg: &ClientMsg) -> std::io::Result<()> {

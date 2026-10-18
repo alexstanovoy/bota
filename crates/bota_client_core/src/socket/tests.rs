@@ -71,3 +71,45 @@ fn a_redial_lasts_until_the_server_answers_on_the_fresh_connection() {
     assert!(!net.is_redialing(), "the server answered");
     server.join().expect("the server side ends");
 }
+
+/// A server that floods a caller who stalled: the reader stops taking bytes
+/// once the inbox holds its bound of payload, so the server's writes stall
+/// too. It took a thousand messages whatever their size, and a decoded
+/// message can take sixteen times its payload.
+#[test]
+fn a_stalled_caller_holds_a_bounded_inbox_of_a_flooding_server() {
+    use bota_proto::{LobbySlot, SlotId, Team};
+    let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
+    let addr = listener.local_addr().expect("addr").to_string();
+    let slot = LobbySlot {
+        slot: SlotId(0),
+        team: Team::Radiant,
+        name: "x".repeat(64 * 1024),
+        role: None,
+        hero: None,
+        ready: false,
+    };
+    let frame = encode_frame_to_vec(&ServerMsg::LobbyState {
+        slots: vec![slot],
+        same_heroes: true,
+        pick: bota_proto::PickPhase::Waiting,
+    })
+    .expect("encode");
+    let server = thread::spawn(move || {
+        let (mut peer, _) = listener.accept().expect("accept");
+        peer.set_write_timeout(Some(Duration::from_secs(2)))
+            .expect("timeout");
+        let mut written = 0usize;
+        while written < 1024 * frame.len() && peer.write_all(&frame).is_ok() {
+            written += frame.len();
+        }
+        written
+    });
+    let net = Net::connect_with(&addr, Redial::OFF).expect("connect");
+    let written = server.join().expect("the server side ends");
+    drop(net);
+    assert!(
+        written < 40 * 1024 * 1024,
+        "{written} bytes were taken in for a caller that read none"
+    );
+}
