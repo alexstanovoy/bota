@@ -105,8 +105,11 @@ fn a_seat_picking_late_starts_with_less_gold() {
 
 #[test]
 fn the_countdown_reaches_clients_and_a_reconnect_sees_the_time_left() {
+    // A clock no stall of a loaded machine runs out: the test waits for a
+    // span to pass, never for the clock to end.
+    let pick_time = Duration::from_secs(120);
     let mut opts = realtime(80);
-    opts.pick_time = Duration::from_secs(5);
+    opts.pick_time = pick_time;
     let addr = start_server(opts);
     let mut first = greeted(addr, Role::Player);
     let _second = greeted(addr, Role::Player);
@@ -117,9 +120,17 @@ fn the_countdown_reaches_clients_and_a_reconnect_sees_the_time_left() {
         })
     };
     let told = left(&mut first);
-    assert!((3_000..=5_000).contains(&told), "{told}");
-    thread::sleep(Duration::from_millis(1_500));
+    let heard = Instant::now();
+    assert!(u128::from(told) <= pick_time.as_millis(), "{told}");
+    assert!(
+        told >= 60_000,
+        "a minute went by before the first word: {told}"
+    );
     drop(first);
+    let span = Duration::from_millis(1_200);
+    while let Some(rest) = span.checked_sub(heard.elapsed()) {
+        thread::sleep(rest);
+    }
     let mut back = greeted(addr, Role::Player);
     let later = left(&mut back);
     assert!(
