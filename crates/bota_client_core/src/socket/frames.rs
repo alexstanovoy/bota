@@ -5,7 +5,9 @@
 use std::io::ErrorKind;
 use std::time::Duration;
 
-use bota_proto::{ClientMsg, CodecError, ServerMsg, encode_frame_to_vec};
+use bota_proto::{
+    ClientMsg, CodecError, LEN_PREFIX, MAX_CLIENT_PAYLOAD_LEN, ServerMsg, encode_frame_to_vec,
+};
 
 use super::tcp::TcpFrames;
 #[cfg(feature = "websocket")]
@@ -49,6 +51,16 @@ pub(crate) fn send_message(
     let frame = encode_frame_to_vec(message).map_err(|error| {
         std::io::Error::other(format!("failed to encode client message: {error}"))
     })?;
+    // The server closes a connection whose client frame is longer than this.
+    if frame.len() > LEN_PREFIX + MAX_CLIENT_PAYLOAD_LEN {
+        return Err(std::io::Error::new(
+            ErrorKind::InvalidInput,
+            format!(
+                "client message of {} bytes is over the limit",
+                frame.len() - LEN_PREFIX
+            ),
+        ));
+    }
     sink.send_frames(&[frame])
         .map_err(|error| io_context("failed to send client message", error))
 }

@@ -5,7 +5,7 @@ use std::io::{BufReader, ErrorKind};
 use std::net::TcpStream;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::{Receiver, SyncSender, TryRecvError, sync_channel};
+use std::sync::mpsc::{Receiver, SyncSender, TryRecvError, TrySendError, sync_channel};
 use std::time::{Duration, Instant};
 
 use bota_proto::{LEN_PREFIX, MAX_PAYLOAD_LEN, ServerMsg};
@@ -294,17 +294,23 @@ struct WsSink {
 impl FrameSink for WsSink {
     fn send_frames(&mut self, frames: &[Vec<u8>]) -> std::io::Result<()> {
         for frame in frames {
-            self.queue
-                .try_send(frame.clone())
-                .map_err(|error| match error {
-                    std::sync::mpsc::TrySendError::Full(_) => std::io::Error::new(
+            match self.queue.try_send(frame.clone()) {
+                Ok(()) => {}
+                Err(TrySendError::Full(_)) => {
+                    return Err(std::io::Error::new(
                         ErrorKind::TimedOut,
                         "the connection is not taking frames",
-                    ),
-                    std::sync::mpsc::TrySendError::Disconnected(_) => {
-                        std::io::Error::new(ErrorKind::BrokenPipe, "the connection has ended")
-                    }
-                })?;
+                    ));
+                }
+                // As on TCP, what is sent after the server's clean close goes nowhere, unheard.
+                Err(TrySendError::Disconnected(_)) if self.ended.load(Ordering::Relaxed) => {}
+                Err(TrySendError::Disconnected(_)) => {
+                    return Err(std::io::Error::new(
+                        ErrorKind::BrokenPipe,
+                        "the connection has ended",
+                    ));
+                }
+            }
         }
         Ok(())
     }

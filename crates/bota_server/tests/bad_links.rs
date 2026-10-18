@@ -14,8 +14,8 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use bota_client_core::{
-    ClientSession, DEFAULT_IO_TIMEOUT, Endpoint, Ingested, IssuedOrder, Link, Outcome, Redial,
-    Seat, Seated, SessionOptions, Transport,
+    ClientSession, DEFAULT_IO_TIMEOUT, Endpoint, Ingested, IssuedOrder, Link, Net, Outcome, Redial,
+    Seat, Seated, SessionOptions, Transport, join,
 };
 use bota_core::fountain_pos;
 use bota_proto::{HeroId, MapId, Order, ServerMsg, SlotId, Target, TickMode};
@@ -83,6 +83,7 @@ over_every_wire!(
     a_dropped_connection_comes_back_to_the_same_seat_and_hero_and_lockstep_waits_for_neither,
     a_stalled_client_slows_neither_the_tick_nor_the_other_player,
     a_half_open_connection_is_released_and_its_client_comes_back,
+    a_threaded_net_plays_through_a_reset_and_comes_back_to_its_seat,
 );
 
 /// The bot of the `attack_move` example.
@@ -377,4 +378,35 @@ fn a_half_open_connection_is_released_and_its_client_comes_back(wire: Wire) {
         "the client came back {back:?} after the hole, the seat freed after {released:?}"
     );
     assert_eq!(line.accepted(), 2);
+}
+
+fn a_threaded_net_plays_through_a_reset_and_comes_back_to_its_seat(wire: Wire) {
+    let mut opts = opts(TickMode::Lockstep, 30);
+    opts.ack_timeout_ticks = 900;
+    let server = serve(opts, wire);
+    let line = Proxy::start(server);
+    let address = endpoint(wire, &line.addr());
+    let (cut_at, cut) = mpsc::channel();
+    let threaded = thread::spawn(move || {
+        let mut net = Net::open(address, Redial::DEFAULT).expect("connect");
+        let seated = join(&mut net, "threaded", HeroId::SHADOW_FIEND, None).expect("a seat");
+        let mut decide = |session: &ClientSession| {
+            if session.current().is_some_and(|view| view.tick == 1500) {
+                let _ = cut_at.send(());
+            }
+            attack_move(session)
+        };
+        bota_client_core::play(&mut net, seated, &mut (), &mut decide)
+            .expect("the match is played to its end")
+    });
+    let steady = play(endpoint(wire, &server.to_string()), "steady");
+    cut.recv().expect("tick 1500 came");
+    line.reset();
+    let (threaded, steady) = (
+        threaded.join().expect("threaded"),
+        steady.join().expect("steady"),
+    );
+    assert!(line.accepted() >= 2, "the seat dialed again");
+    assert_eq!(threaded.winner, steady.winner);
+    assert!(threaded.ticks > 1600, "the seat played on");
 }
