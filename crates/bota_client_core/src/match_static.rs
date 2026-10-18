@@ -2,8 +2,10 @@
 
 use std::sync::Arc;
 
-use bota_core::{CellGrid, cell_tier, rules};
-use bota_proto::{Fixed, MapId, MatchInfo, Pick, ShopEntry, SlotId, Team, TickMode, Vec2};
+use bota_core::{CellGrid, Recipe, cell_tier, missing_parts_with, rules};
+use bota_proto::{
+    Attribute, Fixed, ItemId, MapId, MatchInfo, Pick, ShopEntry, SlotId, Team, TickMode, Vec2,
+};
 
 use crate::limits::{
     MAX_OPAQUE_CELLS, MAX_SEATS, MAX_SHOP_COMPONENTS, MAX_SHOP_ITEMS, MAX_SHOP_RECIPES,
@@ -119,6 +121,36 @@ impl MatchStatic {
     /// Everything the shop sells.
     pub fn shop(&self) -> &[ShopEntry] {
         &self.shop
+    }
+
+    /// What the shop sells under `id`.
+    pub fn entry(&self, id: ItemId) -> Option<&ShopEntry> {
+        self.shop.iter().find(|entry| entry.id == id)
+    }
+
+    /// The parts of `item` a seat holding `held` still has to buy at this
+    /// match's shop, by [`missing_parts_with`]: its cheapest recipe, the one
+    /// set to `primary` first among equals.
+    pub fn missing_parts(
+        &self,
+        item: ItemId,
+        held: &[ItemId],
+        primary: Option<Attribute>,
+    ) -> Vec<ItemId> {
+        let recipes_of = |id: ItemId| {
+            let entry = self.entry(id);
+            let first = entry
+                .filter(|entry| !entry.components.is_empty())
+                .map(|entry| &entry.components[..]);
+            let others = entry.into_iter().flat_map(|entry| &entry.alternatives);
+            first
+                .into_iter()
+                .chain(others.map(|parts| &parts[..]))
+                .map(|parts| Recipe { parts, mode: None })
+        };
+        missing_parts_with(item, held, primary, recipes_of, |id| {
+            self.entry(id).map_or(0, |entry| entry.cost)
+        })
     }
 
     /// Fountain of each team, Radiant then Dire.
@@ -328,6 +360,40 @@ fn validate_static_inputs(info: &MatchInfo) -> Result<(), SessionError> {
             )?;
         }
     }
+    validate_recipes(&info.shop)
+}
+
+/// Every item once, every part of a recipe sold, and no item built from itself.
+fn validate_recipes(shop: &[ShopEntry]) -> Result<(), SessionError> {
+    if (1..shop.len()).any(|at| shop[..at].iter().any(|other| other.id == shop[at].id)) {
+        return Err(SessionError::InvalidShop("repeats an item"));
+    }
+    let mut colors = [0u8; MAX_SHOP_ITEMS];
+    (0..shop.len()).try_for_each(|root| visit_recipes(shop, root, &mut colors))
+}
+
+/// Depth first over recipe parts, `colors` 1 on the path and 2 once done; the
+/// depth is at most the shop's size.
+fn visit_recipes(shop: &[ShopEntry], at: usize, colors: &mut [u8]) -> Result<(), SessionError> {
+    match colors[at] {
+        1 => return Err(SessionError::InvalidShop("has a cyclic recipe")),
+        2 => return Ok(()),
+        _ => {}
+    }
+    colors[at] = 1;
+    let entry = &shop[at];
+    for part in entry
+        .components
+        .iter()
+        .chain(entry.alternatives.iter().flatten())
+    {
+        let next = shop
+            .iter()
+            .position(|other| other.id == *part)
+            .ok_or(SessionError::InvalidShop("names a part it does not sell"))?;
+        visit_recipes(shop, next, colors)?;
+    }
+    colors[at] = 2;
     Ok(())
 }
 

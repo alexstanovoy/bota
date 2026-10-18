@@ -43,6 +43,9 @@ pub enum SessionError {
     TerrainCoverage { actual: u64, expected: u64 },
     /// A terrain run had zero length.
     ZeroTerrainRun(usize),
+    /// The shop repeats an item, names a part it does not sell, or builds an
+    /// item from itself.
+    InvalidShop(&'static str),
     /// An opaque cell was outside the terrain grid.
     OpaqueCellOutOfRange { x: u16, y: u16, cells: u32 },
     /// A geometry input was outside its allowed fixed-point extent.
@@ -224,6 +227,7 @@ impl fmt::Display for SessionError {
             Self::ZeroTerrainRun(index) => {
                 write!(f, "MatchInfo.terrain_rle entry {index} has zero run length")
             }
+            Self::InvalidShop(why) => write!(f, "MatchInfo.shop {why}"),
             Self::OpaqueCellOutOfRange { x, y, cells } => write!(
                 f,
                 "MatchInfo.opaque_cells contains ({x}, {y}) outside {cells}x{cells} terrain"
