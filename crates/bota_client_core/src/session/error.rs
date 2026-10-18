@@ -96,6 +96,8 @@ pub enum SessionError {
     MissingRosterPlayer(u8),
     /// A scoreboard row did not occur in the match roster.
     UnknownRosterPlayer(u8),
+    /// A unit was owned by a seat the match roster does not have.
+    UnknownUnitOwner { unit: EntityId, slot: u8 },
     /// A scoreboard row had a team different from the match roster.
     WrongRosterTeam {
         slot: u8,
@@ -321,6 +323,13 @@ impl SessionError {
             }
             Self::UnknownRosterPlayer(slot) => {
                 write!(f, "snapshot players contains unknown SlotId({slot})")
+            }
+            Self::UnknownUnitOwner { unit, slot } => {
+                write!(
+                    f,
+                    "snapshot unit {} is owned by unknown SlotId({slot})",
+                    Id(*unit)
+                )
             }
             Self::WrongRosterTeam {
                 slot,

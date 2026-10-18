@@ -40,6 +40,9 @@ pub const MAX_SHOP_ITEMS: usize = bota_core::ITEMS.len();
 pub const MAX_SHOP_COMPONENTS: usize = 16;
 /// Most other recipes one shop entry may list.
 pub const MAX_SHOP_RECIPES: usize = 8;
+/// Most items one shop entry's first recipe lays out, itself and the parts of
+/// its parts included.
+pub const MAX_RECIPE_TREE: usize = 64;
 /// Maximum number of recent events retained.
 pub const MAX_RECENT_EVENTS: usize = 64;
 /// Maximum events accepted per batch, equal to half the wire payload byte cap.

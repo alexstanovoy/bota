@@ -8,8 +8,8 @@ use bota_proto::{
 };
 
 use crate::limits::{
-    MAX_OPAQUE_CELLS, MAX_SEATS, MAX_SHOP_COMPONENTS, MAX_SHOP_ITEMS, MAX_SHOP_RECIPES,
-    MAX_STATIC_TREES, MAX_TERRAIN_AXIS, MAX_TERRAIN_RUNS,
+    MAX_OPAQUE_CELLS, MAX_RECIPE_TREE, MAX_SEATS, MAX_SHOP_COMPONENTS, MAX_SHOP_ITEMS,
+    MAX_SHOP_RECIPES, MAX_STATIC_TREES, MAX_TERRAIN_AXIS, MAX_TERRAIN_RUNS,
 };
 use crate::session::SessionError;
 
@@ -363,18 +363,28 @@ fn validate_static_inputs(info: &MatchInfo) -> Result<(), SessionError> {
     validate_recipes(&info.shop)
 }
 
-/// Every item once, every part of a recipe sold, and no item built from itself.
+/// Every item once, every part of a recipe sold, no item built from itself,
+/// and no recipe tree past [`MAX_RECIPE_TREE`]: a client lays a tree out
+/// whole, and a shop of items each made of many of the next would make that
+/// exponential.
 fn validate_recipes(shop: &[ShopEntry]) -> Result<(), SessionError> {
     if (1..shop.len()).any(|at| shop[..at].iter().any(|other| other.id == shop[at].id)) {
         return Err(SessionError::InvalidShop("repeats an item"));
     }
     let mut colors = [0u8; MAX_SHOP_ITEMS];
-    (0..shop.len()).try_for_each(|root| visit_recipes(shop, root, &mut colors))
+    let mut trees = [0usize; MAX_SHOP_ITEMS];
+    (0..shop.len()).try_for_each(|root| visit_recipes(shop, root, &mut colors, &mut trees))
 }
 
 /// Depth first over recipe parts, `colors` 1 on the path and 2 once done; the
-/// depth is at most the shop's size.
-fn visit_recipes(shop: &[ShopEntry], at: usize, colors: &mut [u8]) -> Result<(), SessionError> {
+/// depth is at most the shop's size. `trees` holds, once an item is done,
+/// the items its first recipe lays out, itself included.
+fn visit_recipes(
+    shop: &[ShopEntry],
+    at: usize,
+    colors: &mut [u8],
+    trees: &mut [usize],
+) -> Result<(), SessionError> {
     match colors[at] {
         1 => return Err(SessionError::InvalidShop("has a cyclic recipe")),
         2 => return Ok(()),
@@ -382,17 +392,26 @@ fn visit_recipes(shop: &[ShopEntry], at: usize, colors: &mut [u8]) -> Result<(),
     }
     colors[at] = 1;
     let entry = &shop[at];
-    for part in entry
+    let mut tree = 1;
+    for (index, part) in entry
         .components
         .iter()
         .chain(entry.alternatives.iter().flatten())
+        .enumerate()
     {
         let next = shop
             .iter()
             .position(|other| other.id == *part)
             .ok_or(SessionError::InvalidShop("names a part it does not sell"))?;
-        visit_recipes(shop, next, colors)?;
+        visit_recipes(shop, next, colors, trees)?;
+        if index < entry.components.len() {
+            tree += trees[next];
+        }
+        if tree > MAX_RECIPE_TREE {
+            return Err(SessionError::InvalidShop("has a recipe tree too large"));
+        }
     }
+    trees[at] = tree;
     colors[at] = 2;
     Ok(())
 }
@@ -406,3 +425,6 @@ fn decode_terrain(info: &MatchInfo) -> Vec<u8> {
     debug_assert_eq!(terrain.len(), axis * axis);
     terrain
 }
+
+#[cfg(test)]
+mod tests;

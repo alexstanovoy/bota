@@ -41,7 +41,7 @@ pub(crate) fn snapshot(expect: &Expect<'_>, view: &WorldView) -> Result<(), Sess
     snapshot_limits(view)?;
     skipped_ticks(expect, view)?;
     snapshot_positions(expect.statics.metadata().terrain_cells, view)?;
-    units(view)?;
+    units(expect.statics.roster(), view)?;
     aggro(view)?;
     unique_dynamic_handles(view)?;
     players(expect.statics.roster(), view)?;
@@ -148,7 +148,9 @@ fn snapshot_limits(view: &WorldView) -> Result<(), SessionError> {
     Ok(())
 }
 
-fn units(view: &WorldView) -> Result<(), SessionError> {
+/// Units sorted strictly by id, bounded, and owned by nobody or a seat of
+/// the roster: what a client remembers is kept per seat.
+fn units(roster: &[Pick], view: &WorldView) -> Result<(), SessionError> {
     for (index, unit) in view.units.iter().enumerate() {
         if index > 0 {
             if view.units[index - 1].id == unit.id {
@@ -165,6 +167,16 @@ fn units(view: &WorldView) -> Result<(), SessionError> {
         )?;
         check_limit("UnitView.items", unit.items.len(), HERO_ITEM_SLOTS)?;
         check_limit("UnitView.effects", unit.effects.len(), MAX_EFFECTS_PER_UNIT)?;
+        if let Some(slot) = unit.owner
+            && roster
+                .binary_search_by_key(&slot, |pick| pick.slot)
+                .is_err()
+        {
+            return Err(SessionError::UnknownUnitOwner {
+                unit: unit.id,
+                slot: slot.0,
+            });
+        }
     }
     Ok(())
 }

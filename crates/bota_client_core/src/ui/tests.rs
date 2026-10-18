@@ -483,6 +483,32 @@ fn a_seat_is_picked_by_the_body_it_last_stood_in() {
     );
 }
 
+/// A hostile stream shows one seat a thousand heroes, then none of them:
+/// the client remembers one body for the seat, not a thousand (it kept every
+/// one, and a stream rotating seats and kinds grew it without bound).
+#[test]
+fn a_seat_shown_many_bodies_then_none_is_remembered_by_one() {
+    let mut app = a_started_app();
+    let bodies: Vec<UnitView> = (1..=1000)
+        .map(|idx| owned(idx, UnitKind::Hero, Some(SlotId(0))))
+        .collect();
+    let ids: Vec<EntityId> = bodies.iter().map(|body| body.id).collect();
+    app.handle(snapshot_of(10, bodies, vec![a_seat(SlotId(0), None)]));
+    app.handle(snapshot_of(2000, Vec::new(), vec![a_seat(SlotId(0), None)]));
+    assert!(!app.lost, "the stream holds");
+    let remembered = ids.iter().filter(|id| app.known(**id).is_some()).count();
+    assert_eq!(remembered, 1, "one body for the seat");
+}
+
+/// A unit owned by a seat the match does not have breaks the stream.
+#[test]
+fn a_unit_owned_by_a_seat_outside_the_match_breaks_the_stream() {
+    let mut app = a_started_app();
+    let stray = owned(1, UnitKind::Hero, Some(SlotId(7)));
+    app.handle(snapshot_of(10, vec![stray], vec![a_seat(SlotId(0), None)]));
+    assert!(app.lost, "the client stops listening");
+}
+
 fn snapshot_of(tick: u32, units: Vec<UnitView>, players: Vec<PlayerView>) -> bota_proto::ServerMsg {
     bota_proto::ServerMsg::Snapshot {
         view: a_tick(tick, units, players),

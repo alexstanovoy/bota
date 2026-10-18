@@ -12,9 +12,10 @@ pub(crate) struct Remembered {
     pub unit: UnitView,
 }
 
-/// Owned units out of view: at most a hero and a courier a seat.
+/// Owned units out of view: at most one a seat and kind.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub(crate) struct BodyMemory {
+    /// Sorted by id.
     bodies: Vec<Remembered>,
 }
 
@@ -22,30 +23,66 @@ impl BodyMemory {
     /// Takes in a snapshot: refreshes every owned unit in view and drops the
     /// remembered bodies their seat has replaced.
     pub(crate) fn fold(&mut self, view: &WorldView) {
-        for unit in view.units.iter().filter(|unit| unit.owner.is_some()) {
-            match self.bodies.iter_mut().find(|held| held.unit.id == unit.id) {
-                Some(held) => {
-                    held.tick = view.tick;
-                    copy_unit_view(&mut held.unit, unit);
+        let owned = || view.units.iter().filter(|unit| unit.owner.is_some());
+        let mut shown: Vec<(Option<SlotId>, UnitKind)> =
+            owned().map(|unit| (unit.owner, unit.kind)).collect();
+        shown.sort_unstable();
+        shown.dedup();
+        self.bodies.retain(|held| {
+            view.unit(held.unit.id).is_some()
+                || shown
+                    .binary_search(&(held.unit.owner, held.unit.kind))
+                    .is_err()
+        });
+        // Sorted by id, as the view's units are, so each is found by search.
+        self.bodies.sort_unstable_by_key(|held| held.unit.id);
+        let known = self.bodies.len();
+        for unit in owned() {
+            match self.bodies[..known].binary_search_by_key(&unit.id, |held| held.unit.id) {
+                Ok(at) => {
+                    self.bodies[at].tick = view.tick;
+                    copy_unit_view(&mut self.bodies[at].unit, unit);
                 }
-                None => self.bodies.push(Remembered {
+                Err(_) => self.bodies.push(Remembered {
                     tick: view.tick,
                     unit: unit.clone(),
                 }),
             }
         }
-        self.bodies.retain(|held| {
-            view.unit(held.unit.id).is_some()
-                || !view.units.iter().any(|unit| {
-                    unit.owner == held.unit.owner
-                        && unit.kind == held.unit.kind
-                        && unit.id != held.unit.id
-                })
+        self.bodies.sort_unstable_by_key(|held| held.unit.id);
+        self.keep_latest_unseen(view);
+    }
+
+    /// Of the bodies out of view, keeps one a seat and kind: the one seen
+    /// last. A stream that shows a seat many bodies of a kind, then none,
+    /// would otherwise leave every one of them remembered.
+    fn keep_latest_unseen(&mut self, view: &WorldView) {
+        let mut unseen: Vec<usize> = (0..self.bodies.len())
+            .filter(|&at| view.unit(self.bodies[at].unit.id).is_none())
+            .collect();
+        let key = |at: &usize| {
+            let held = &self.bodies[*at];
+            (held.unit.owner, held.unit.kind, held.tick, held.unit.id)
+        };
+        unseen.sort_unstable_by_key(key);
+        let mut stale = vec![false; self.bodies.len()];
+        for pair in unseen.windows(2) {
+            let (older, newer) = (&self.bodies[pair[0]].unit, &self.bodies[pair[1]].unit);
+            stale[pair[0]] = older.owner == newer.owner && older.kind == newer.kind;
+        }
+        let mut at = 0;
+        self.bodies.retain(|_| {
+            at += 1;
+            !stale[at - 1]
         });
     }
 
     pub(crate) fn get(&self, id: EntityId) -> Option<&Remembered> {
-        self.bodies.iter().find(|held| held.unit.id == id)
+        let at = self
+            .bodies
+            .binary_search_by_key(&id, |held| held.unit.id)
+            .ok()?;
+        self.bodies.get(at)
     }
 
     /// The hero body last kept for a seat.

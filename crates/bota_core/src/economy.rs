@@ -158,7 +158,10 @@ where
         for part in recipe.parts {
             parts_beyond(*part, &mut spare, &mut wanted, &first_parts);
         }
-        let cost = wanted.iter().map(|part| cost_of(*part)).sum::<i32>();
+        // Saturating: the costs may come from a peer's statement of the shop.
+        let cost = wanted
+            .iter()
+            .fold(0i32, |sum, part| sum.saturating_add(cost_of(*part)));
         let own = recipe.mode.is_some() && recipe.mode == primary;
         let better = best
             .as_ref()
