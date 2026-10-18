@@ -103,7 +103,7 @@ fn land(shot: &Projectile, hits: &mut VecDeque<Hit>) {
         damage_amp_bp: shot.damage_amp_bp,
         attack: true,
         pierces: shot.pierces,
-        effect: HitEffect::None,
+        effect: shot.effect,
     });
     if shot.pierce_damage > 0 {
         hits.push_back(Hit {

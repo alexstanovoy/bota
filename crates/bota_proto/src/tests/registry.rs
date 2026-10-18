@@ -20,6 +20,7 @@ fn every_id_space_is_numbered_densely_once() {
         IdSpace::Ability,
         IdSpace::Item,
         IdSpace::Effect,
+        IdSpace::Neutral,
     ] {
         let entries: Vec<RegisteredId> = registered(space).collect();
         let mut ids: Vec<u16> = entries.iter().map(|entry| entry.id).collect();
@@ -214,7 +215,7 @@ fn render(format: &Format) -> String {
 /// gives it, so a constant cannot drift off its line in `registry/ids.txt`.
 #[test]
 fn every_named_id_constant_sits_on_its_registry_line() {
-    let named: [(IdSpace, u16, &str); 93] = [
+    let named: [(IdSpace, u16, &str); 96] = [
         (IdSpace::Hero, HeroId::PUDGE.0, "Pudge"),
         (IdSpace::Hero, HeroId::SHADOW_FIEND.0, "Shadow Fiend"),
         (IdSpace::Ability, AbilityId::MEAT_HOOK.0, "Meat Hook"),
@@ -368,6 +369,9 @@ fn every_named_id_constant_sits_on_its_registry_line() {
         (IdSpace::Effect, EffectId::FEASTING.0, "Feasting"),
         (IdSpace::Effect, EffectId::FEAST_LINGER.0, "FeastLinger"),
         (IdSpace::Effect, EffectId::BLOOD_GRENADE.0, "BloodGrenade"),
+        (IdSpace::Effect, EffectId::ROOTED.0, "Rooted"),
+        (IdSpace::Effect, EffectId::DISARMED.0, "Disarmed"),
+        (IdSpace::Effect, EffectId::BROKEN.0, "Broken"),
     ];
     for (space, id, name) in named {
         let entry = registered(space)
@@ -376,12 +380,10 @@ fn every_named_id_constant_sits_on_its_registry_line() {
         assert_eq!(entry.name, name, "{space:?} {id} names another thing");
         assert!(!entry.retired, "{space:?} {id} ({name}) is retired");
     }
-    for space in [
-        IdSpace::Hero,
-        IdSpace::Ability,
-        IdSpace::Item,
-        IdSpace::Effect,
-    ] {
+    // The neutrals, their abilities and the effects their spells leave are
+    // named by the tables that define them, not by constants here: the
+    // server's registry test holds those tables to the registry.
+    for space in [IdSpace::Hero, IdSpace::Item] {
         for entry in registered(space).filter(|entry| !entry.retired) {
             assert!(
                 named

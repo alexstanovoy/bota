@@ -11,6 +11,15 @@ pub struct Level(pub u8);
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Upgrades(pub u32);
 
+/// Health and attack damage a creep was raised with at its spawn, on top of
+/// its kind's own: a summon whose strength is its spell's level, not its
+/// kind's.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct StatBonus {
+    pub max_hp: i32,
+    pub damage: i32,
+}
+
 /// Which tier a building is, from one up.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Tier(pub u8);

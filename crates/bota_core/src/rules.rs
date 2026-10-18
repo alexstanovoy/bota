@@ -270,8 +270,6 @@ pub const TREE_LANE_CLEAR: i32 = 450;
 /// Tree-free radius around each fountain.
 pub const TREE_BASE_CLEAR: i32 = 500;
 
-/// Any unit inside this radius of a camp center blocks its spawn.
-pub const CAMP_BOX_RADIUS: i32 = 300;
 /// A neutral wakes when a hostile unit comes this close to it.
 pub const NEUTRAL_AGGRO_RANGE: i32 = 240;
 /// A neutral's camp wakes when one of it is struck by something within
@@ -299,6 +297,22 @@ pub const NEUTRAL_UPGRADE_HP: i32 = 30;
 pub const NEUTRAL_UPGRADE_ARMOR_HALVES: i32 = 1;
 /// Attack damage one upgrade adds to a neutral.
 pub const NEUTRAL_UPGRADE_DAMAGE: i32 = 3;
+/// Attack speed one neutral upgrade interval adds.
+pub const NEUTRAL_UPGRADE_ATTACK_SPEED: i32 = 5;
+/// Ticks between the levels a neutral spawns its abilities at: Dota's
+/// `neutral_upgrade` ability upgrade interval, 900 s.
+pub const NEUTRAL_ABILITY_LEVEL_PERIOD_TICKS: u32 = 900 * TICKS_PER_SECOND;
+/// Ticks between the evolutions of a flooded camp: one creep every five
+/// minutes from the horn.
+pub const FLOODED_EVOLUTION_PERIOD_TICKS: u32 = 5 * 60 * TICKS_PER_SECOND;
+/// How far a neutral camp's aura reaches, whatever its ability says: the
+/// game shrinks every aura of a neutral it does not hand to a player to
+/// this (Liquipedia, the creeps' auras: "Neutral Aura: 800").
+pub const NEUTRAL_AURA_RADIUS: i32 = 800;
+/// How long the count of blows a Steal Weapon has landed on one enemy lasts
+/// after the last of them. The game's files give no figure; it is longer
+/// than a fight's gap between two blows and shorter than the ability's wait.
+pub const STRIKE_COUNTER_TICKS: u32 = 5 * TICKS_PER_SECOND;
 /// Gold bounty one upgrade adds to a neutral.
 pub const NEUTRAL_UPGRADE_GOLD: i32 = 1;
 /// Experience one upgrade adds to a neutral.

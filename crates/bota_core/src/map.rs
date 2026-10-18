@@ -69,8 +69,22 @@ const DEMO_CORNERS: &[&[Vec2]] = &[&rules::DEMO_LANE_CORNERS];
 /// The demo map's two camps, in the wooded pockets either side of the
 /// lane, both pullable.
 const DEMO_CAMPS: [CampDef; 2] = [
-    camp(Vec2::from_ints(8992, 7968), CampKind::Small, true, false),
-    camp(Vec2::from_ints(8864, 9952), CampKind::Small, true, false),
+    camp(
+        Vec2::from_ints(8992, 7968),
+        CampKind::Small,
+        true,
+        6,
+        0,
+        camp::spawn_box(8692, 7668, 9292, 8268),
+    ),
+    camp(
+        Vec2::from_ints(8864, 9952),
+        CampKind::Small,
+        true,
+        6,
+        0,
+        camp::spawn_box(8564, 9652, 9164, 10252),
+    ),
 ];
 
 /// Every map, indexed by [`MapId`].

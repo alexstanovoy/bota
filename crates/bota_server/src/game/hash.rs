@@ -6,8 +6,8 @@ use bota_core::ModifierKind;
 
 use crate::engine::Fnv;
 use crate::game::{
-    Action, ActionPhase, ActionState, AppliedModifiers, AppliedOrigin, Entity, Exposure, Hit,
-    HitEffect, Hook, Inventory, ItemStack, ModifierDuration, Modifiers, Motion, Projectile,
+    Action, ActionPhase, ActionState, AppliedModifiers, AppliedOrigin, Chain, Entity, Exposure,
+    Hit, HitEffect, Hook, Inventory, ItemStack, ModifierDuration, Modifiers, Motion, Projectile,
     RequiemLine, Seat, SpawnCategory, SpawnModifier, SpawnTarget, Stacks, Target, World,
 };
 
@@ -77,7 +77,7 @@ impl World {
                 fnv.u8(failures);
             }
         }
-        for stream in [&self.evasion, &self.pierce] {
+        for stream in [&self.evasion, &self.pierce, &self.crit] {
             fnv.u32(stream.len() as u32);
             for chance in stream {
                 fnv.some(chance.is_some());
@@ -191,6 +191,19 @@ impl World {
             fnv.some(ai.awake);
             fnv.opt(ai.roused_by, Fnv::entity);
         }
+        if let Some(chain) = self.chain.get(entity) {
+            hash_chain(fnv, chain);
+        }
+        if let Some(push) = self.push.get(entity) {
+            fnv.entity(push.source);
+            fnv.vec2(push.aim);
+            fnv.fixed(push.speed);
+            fnv.vec2(push.clear);
+        }
+        if let Some(bonus) = self.stat_bonus.get(entity) {
+            fnv.i32(bonus.max_hp);
+            fnv.i32(bonus.damage);
+        }
         if let Some(gathered) = self.stacks.get(entity) {
             hash_stacks(fnv, gathered);
         }
@@ -257,6 +270,7 @@ fn hash_projectile(fnv: &mut Fnv, shot: &Projectile) {
     fnv.some(shot.pierces);
     fnv.i32(shot.pierce_damage);
     hash_damage_amp(fnv, shot.pierce_amp_bp);
+    hash_hit_effect(fnv, shot.effect);
 }
 
 fn hash_modifiers(fnv: &mut Fnv, on_it: &Modifiers) {
@@ -293,6 +307,18 @@ fn hash_hook(fnv: &mut Fnv, hook: &Hook) {
     for link in hook.links {
         fnv.entity(link);
     }
+}
+
+fn hash_chain(fnv: &mut Fnv, chain: &Chain) {
+    fnv.entity(chain.source);
+    fnv.vec2(chain.at);
+    fnv.u32(chain.struck.len() as u32);
+    fnv.u8(chain.leaps_left);
+    fnv.i32(chain.damage);
+    fnv.i32(chain.keep_pct);
+    fnv.fixed(chain.radius);
+    fnv.u32(chain.delay);
+    fnv.u32(chain.wait);
 }
 
 fn hash_requiem_line(fnv: &mut Fnv, line: &RequiemLine) {
@@ -409,7 +435,12 @@ fn hash_hit(fnv: &mut Fnv, hit: &Hit) {
     hash_damage_amp(fnv, hit.damage_amp_bp);
     fnv.some(hit.attack);
     fnv.some(hit.pierces);
-    match hit.effect {
+    hash_hit_effect(fnv, hit.effect);
+}
+
+/// What a blow does besides its damage.
+fn hash_hit_effect(fnv: &mut Fnv, effect: HitEffect) {
+    match effect {
         HitEffect::None => fnv.u8(0),
         HitEffect::Requiem { level, fear } => {
             fnv.u8(2);
@@ -420,6 +451,14 @@ fn hash_hit(fnv: &mut Fnv, hit: &Hit) {
         HitEffect::Shadowraze { stack_damage } => {
             fnv.u8(1);
             fnv.i32(stack_damage);
+        }
+        HitEffect::Stun { ticks } => {
+            fnv.u8(3);
+            fnv.u32(ticks);
+        }
+        HitEffect::Root { ticks } => {
+            fnv.u8(4);
+            fnv.u32(ticks);
         }
     }
 }
@@ -485,6 +524,19 @@ fn hash_modifier_kind(fnv: &mut Fnv, kind: ModifierKind) {
         ModifierKind::BloodGrenade { since } => {
             fnv.u8(17);
             fnv.u32(since);
+        }
+        ModifierKind::Rooted => fnv.u8(18),
+        ModifierKind::Disarmed => fnv.u8(19),
+        ModifierKind::Broken => fnv.u8(20),
+        ModifierKind::Spell {
+            ability,
+            level,
+            amount,
+        } => {
+            fnv.u8(21);
+            fnv.u32(u32::from(ability.id().0));
+            fnv.u8(level);
+            fnv.u32(u32::from(amount));
         }
     }
 }

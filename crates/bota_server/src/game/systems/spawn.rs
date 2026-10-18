@@ -1,6 +1,6 @@
 //! Putting an entity into the world with everything its kind needs.
 
-use bota_core::{COURIER, HERO, UnitDef, hero_def, rules};
+use bota_core::{COURIER, HERO, NeutralKind, UnitDef, hero_def, neutral_ability_level, rules};
 use bota_proto::{AbilityId, Angle, Fixed, HeroId, SlotId, Team, Vec2};
 
 use crate::game::{
@@ -198,19 +198,45 @@ impl World {
         entity
     }
 
-    /// Puts a neutral on the map at its camp, asleep.
+    /// Puts a neutral on the map at its camp, asleep, with its abilities at
+    /// the level a neutral spawned now holds them at.
     pub fn spawn_neutral(
         &mut self,
-        def: &'static UnitDef,
+        kind: NeutralKind,
         pos: Vec2,
         camp: u8,
         upgrades: u32,
     ) -> Entity {
+        let def = kind.def();
         let entity = self.spawn_body(def, Team::Neutral, pos);
-        self.give_hull(entity, def);
-        self.give_action(entity);
+        if def.collision > 0 {
+            self.give_hull(entity, def);
+        }
+        if def.damage > 0 {
+            self.give_action(entity);
+        }
         self.give_orders(entity);
         self.set_upgrades(entity, def, upgrades);
+        self.neutral.insert(entity, kind);
+        let level = neutral_ability_level(self.tick);
+        self.abilities.insert(
+            entity,
+            AbilityBook {
+                slots: kind
+                    .neutral()
+                    .abilities
+                    .iter()
+                    .map(|ability| AbilityState {
+                        id: ability.id(),
+                        level,
+                        cooldown: 0,
+                    })
+                    .collect(),
+                tree: None,
+                talents: bota_proto::Talents::default(),
+                attribute_bonus: 0,
+            },
+        );
         self.camp_home.insert(entity, CampHome { camp, home: pos });
         self.neutral_ai.insert(
             entity,
@@ -226,14 +252,16 @@ impl World {
         entity
     }
 
-    /// Records how many upgrade intervals a creep spawned after, and raises
-    /// what killing it pays by as many of its kind's steps.
-    fn set_upgrades(&mut self, entity: Entity, def: &UnitDef, upgrades: u32) {
+    /// Records how many upgrade intervals a creep stands after, and sets
+    /// what killing it pays to its kind's bounty raised by as many steps.
+    pub(crate) fn set_upgrades(&mut self, entity: Entity, def: &UnitDef, upgrades: u32) {
         self.upgrades.insert(entity, Upgrades(upgrades));
         let steps = i32::try_from(upgrades).expect("upgrade count fits an i32");
         if let Some(bounty) = self.bounty.get_mut(entity) {
-            bounty.gold = bounty.gold.raised(def.per_upgrade.gold_halves * steps / 2);
-            bounty.xp += def.per_upgrade.xp * steps;
+            bounty.gold = def
+                .bounty_gold
+                .raised(def.per_upgrade.gold_halves * steps / 2);
+            bounty.xp = def.bounty_xp + def.per_upgrade.xp * steps;
         }
     }
 

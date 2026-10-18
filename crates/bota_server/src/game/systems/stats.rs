@@ -1,14 +1,15 @@
 //! Working out what each entity fights by, from scratch, every tick.
 
 use bota_core::{
-    Carried, Growth, ModifierKind, Ratio, Regen, Talent, UnitDef, regen, rules, soul_damage,
+    Buff, Carried, Growth, ModifierKind, NeutralAbility, Ratio, Regen, Stat, Talent, UnitDef,
+    regen, rules, soul_damage, spell_buff,
 };
 use bota_proto::{AbilityId, Attributes, Fixed, ModifierSpec};
 
 use crate::game::{
     AbilityBook, AppliedModifiers, Def, EntityAllocator, Feast, FeastPhase, Health, Inventory,
-    Level, MAX_COMBINED_MODIFIER_SCALE, Mana, Modifiers, StackKind, Stacks, Stats, Table, Upgrades,
-    carried_bonus,
+    Level, MAX_COMBINED_MODIFIER_SCALE, Mana, Modifiers, StackKind, Stacks, StatBonus, Stats,
+    Table, Upgrades, carried_bonus,
 };
 
 /// What working out stats reads and writes.
@@ -18,6 +19,8 @@ pub struct StatsCx<'a> {
     pub level: &'a Table<Level>,
     /// Upgrade intervals a creep spawned after.
     pub upgrades: &'a Table<Upgrades>,
+    /// Health and damage a creep was raised with beyond its kind.
+    pub bonus: &'a Table<StatBonus>,
     pub inventory: &'a Table<Inventory>,
     pub modifiers: &'a Table<Modifiers>,
     pub applied: &'a Table<AppliedModifiers>,
@@ -50,6 +53,7 @@ pub fn derive_stats(cx: StatsCx<'_>) {
         def,
         level,
         upgrades,
+        bonus,
         inventory,
         modifiers,
         applied,
@@ -68,6 +72,15 @@ pub fn derive_stats(cx: StatsCx<'_>) {
         let levels = level.get(entity).map_or(0, |l| i32::from(l.0.max(1) - 1));
         let steps = upgrades.get(entity).map_or(0, |u| u.0 as i32);
         let mut now = raised(kind, levels, steps, night);
+        if let Some(bonus) = bonus.get(entity) {
+            now.max_hp += Fixed::from_int(bonus.max_hp);
+            now.damage += bonus.damage;
+        }
+        // A broken unit's own passives do nothing: what it has gathered
+        // is worth nothing while it lasts.
+        let broken = modifiers
+            .get(entity)
+            .is_some_and(|on_it| on_it.active().any(|held| held.kind == ModifierKind::Broken));
         // Applied changes are folded in first and additively. Items,
         // attributes and every multiplier below land on top of them.
         if let Some(on_it) = applied.get(entity) {
@@ -86,14 +99,22 @@ pub fn derive_stats(cx: StatsCx<'_>) {
             now.attributes +=
                 Attributes::all(rules::ATTRIBUTE_BONUS_POINTS * i32::from(book.attribute_bonus));
         }
-        add_heap(&mut now, &gathered, abilities.get(entity));
+        if !broken {
+            add_heap(&mut now, &gathered, abilities.get(entity));
+        }
         from_attributes(&mut now);
+        let base_armor =
+            Fixed::from_ratio(kind.armor * 2 + kind.per_upgrade.armor_halves * steps, 2)
+                + rules::ARMOR_PER_AGILITY * now.attributes.agility;
         if let Some(carried) = &carried {
             add_carried_shares(&mut now, carried);
         }
-        now.damage += soul_damage(gathered.of(StackKind::Souls), levels + 1);
+        if !broken {
+            now.damage += soul_damage(gathered.of(StackKind::Souls), levels + 1);
+        }
         if let Some(on_it) = modifiers.get(entity) {
-            add_modifiers(&mut now, on_it);
+            let hero = kind.kind == bota_proto::UnitKind::Hero;
+            add_modifiers(&mut now, on_it, base_armor, hero);
         }
         if let Some(feast) = feast.get(entity) {
             add_feast(&mut now, feast, abilities.get(entity));
@@ -228,10 +249,23 @@ fn add_heap(now: &mut Stats, gathered: &Stacks, book: Option<&AbilityBook>) {
 
 /// Adds what every active modifier on a unit is worth to its stats. What
 /// holds a unit still, what burns it and what it hands out are read where
-/// they are acted on, not here.
-fn add_modifiers(now: &mut Stats, on_it: &Modifiers) {
+/// they are acted on, not here. `base_armor` is what a share of its base
+/// armor is taken of.
+fn add_modifiers(now: &mut Stats, on_it: &Modifiers, base_armor: Fixed, hero: bool) {
     for held in on_it.active() {
         match held.kind {
+            ModifierKind::Spell {
+                ability: NeutralAbility::Purge,
+                amount,
+                ..
+            } => {
+                now.move_speed = scaled(now.move_speed, 100 - i32::from(amount).min(100));
+            }
+            ModifierKind::Spell { ability, level, .. } => {
+                if let Some(buff) = spell_buff(ability) {
+                    add_buff(now, &buff, level, base_armor, hero);
+                }
+            }
             ModifierKind::Slowed { pct } => {
                 now.move_speed = scaled(now.move_speed, (100 - pct).clamp(0, 100));
             }
@@ -268,9 +302,43 @@ fn add_modifiers(now: &mut Stats, on_it: &Modifiers) {
             | ModifierKind::Feared
             | ModifierKind::Burning { .. }
             | ModifierKind::Shadowraze { .. }
-            | ModifierKind::Rot { .. } => {}
+            | ModifierKind::Rot { .. }
+            | ModifierKind::Rooted
+            | ModifierKind::Disarmed
+            | ModifierKind::Broken => {}
         }
     }
+}
+
+/// What a spell's buff is worth at a level: everything of it but what it
+/// does to regeneration, which [`bota_core::regen`] reads.
+fn add_buff(now: &mut Stats, buff: &Buff, level: u8, base_armor: Fixed, hero: bool) {
+    let of = |stat| buff.get(stat, level);
+    now.move_speed = scaled(now.move_speed, (100 + of(Stat::MovePct)).max(0));
+    now.attack_speed += of(Stat::AttackSpeed);
+    now.armor += Fixed::from_int(of(Stat::Armor));
+    now.armor += base_armor * Fixed::from_ratio(of(Stat::BaseArmorPct), 100);
+    let resist = of(if hero {
+        Stat::MagicResistPct
+    } else {
+        Stat::MagicResistCreepPct
+    });
+    if resist != 0 {
+        let let_through = (rules::NOMINAL_BP - now.magic_resist_bp) * (100 - resist) / 100;
+        now.magic_resist_bp = rules::NOMINAL_BP - let_through;
+    }
+    now.damage += now.damage * of(Stat::DamagePct) / 100 + of(Stat::Damage);
+    let outgoing = of(Stat::OutgoingPct) * rules::NOMINAL_BP / 100;
+    now.physical_amp_bp += outgoing;
+    now.magic_amp_bp += outgoing;
+    now.pure_amp_bp += outgoing;
+    now.lifesteal_pct += of(Stat::LifestealPct);
+    if of(Stat::MaxHpPct) != 0 {
+        now.max_hp = scaled(now.max_hp, 100 + of(Stat::MaxHpPct));
+    }
+    now.magic_taken_pct += of(Stat::MagicTakenPct);
+    now.cooldown_rate_bp -= of(Stat::CooldownPct) * rules::NOMINAL_BP / 100;
+    now.accuracy_pct += of(Stat::AccuracyPct);
 }
 
 /// Folds everything applied to a unit into a freshly raised stat block.
@@ -374,6 +442,7 @@ fn raised(kind: &UnitDef, levels: i32, steps: i32, night: bool) -> Stats {
         mana: g.mana * levels + per.mana * steps,
         damage: g.damage * levels + per.damage * steps,
         armor_halves: g.armor_halves * levels + per.armor_halves * steps,
+        attack_speed: g.attack_speed * levels + per.attack_speed * steps,
         gold_halves: g.gold_halves * levels + per.gold_halves * steps,
         xp: g.xp * levels + per.xp * steps,
     };
@@ -391,7 +460,7 @@ fn raised(kind: &UnitDef, levels: i32, steps: i32, night: bool) -> Stats {
         attack_range: Fixed::from_int(kind.attack_range),
         acquisition: Fixed::from_int(kind.acquisition),
         attack_time: kind.attack_time,
-        attack_speed: kind.attack_speed,
+        attack_speed: kind.attack_speed + up.attack_speed,
         attack_point: kind.attack_point,
         attack_backswing: kind.attack_backswing,
         projectile_speed: kind.projectile_speed.map(Fixed::from_int),
@@ -406,6 +475,9 @@ fn raised(kind: &UnitDef, levels: i32, steps: i32, night: bool) -> Stats {
         evasion: Ratio::NEVER,
         pierce: Ratio::NEVER,
         pierce_damage: 0,
+        lifesteal_pct: 0,
+        magic_taken_pct: 0,
+        accuracy_pct: 0,
         move_speed: Fixed::from_int(kind.move_speed),
         turn_rate: kind.turn_rate,
         vision: Fixed::from_int(if night {

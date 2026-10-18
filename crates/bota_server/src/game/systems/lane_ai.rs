@@ -240,12 +240,16 @@ impl World {
     /// What this entity should be set on, everything else it carries taken
     /// into account.
     ///
-    /// A neutral walking home or asleep takes nothing on, and one whose camp
+    /// A neutral walking home, asleep or disarmed takes nothing on, and one whose camp
     /// was struck takes whoever struck it. A creep just roused by an attack
     /// order takes whoever it was roused at, unless the order was aimed at one
     /// of the orderer's own, in which case the orderer goes last.
     fn chosen_target(&mut self, entity: Entity, candidates: &Candidates) -> Option<Entity> {
         if self.neutral_ai.get(entity).is_some_and(|ai| ai.going_home) {
+            return None;
+        }
+        // A disarmed neutral cannot be aggroed.
+        if self.neutral.get(entity).is_some() && self.disarmed(entity) {
             return None;
         }
         if let Some(mut ai) = self.neutral_ai.get(entity).copied()

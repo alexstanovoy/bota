@@ -2,8 +2,8 @@
 //! target, swung for real.
 
 use bota_core::{
-    HERO, MEGA_MELEE_CREEP, MELEE_CREEP, NEUTRALS, NeutralKind, RANGED_CREEP, SHADOW_FIEND,
-    SIEGE_CREEP, SUPER_MELEE_CREEP, TOWERS, UnitDef,
+    HERO, MEGA_MELEE_CREEP, MELEE_CREEP, NeutralKind, RANGED_CREEP, SHADOW_FIEND, SIEGE_CREEP,
+    SUPER_MELEE_CREEP, TOWERS, UnitDef,
 };
 
 use crate::game::World;
@@ -42,7 +42,7 @@ const fn steady(def: &UnitDef) -> UnitDef {
 const MELEE: UnitDef = steady(&MELEE_CREEP);
 const RANGED: UnitDef = steady(&RANGED_CREEP);
 const SIEGE: UnitDef = steady(&SIEGE_CREEP);
-const KOBOLD: UnitDef = steady(&NEUTRALS[NeutralKind::Kobold as usize]);
+const KOBOLD: UnitDef = steady(NeutralKind::Kobold.def());
 const TOWER: UnitDef = steady(&TOWERS[0]);
 
 /// What one swing of `attacker` takes off a dummy of each kind, against

@@ -1,15 +1,13 @@
 //! What each size of jungle camp may fill with.
 //!
-//! Reconstructed from the per-camp health totals of the Dota 2 Wiki's
-//! *Neutral Creeps* page and checked against the stats in
-//! [`NEUTRALS`](crate::NEUTRALS): every roster sums to its published total
-//! (the Large Golem camp's once Dota's 1.15 health aura is counted) except Thunderhide,
-//! whose two small and one big lizard make 3300 against the wiki's 3400;
-//! which of the two is stale is unsettled. Which camp stands where is the
-//! map's business; this is only what it draws from.
+//! The dry camps' rosters are Liquipedia's camp articles (read 2026-10-18),
+//! in the order of its *Neutral Creeps* tables: a camp whose map entry draws
+//! from fewer rosters than its size has takes the first ones. A flooded
+//! camp's creeps are not drawn: they evolve with the clock, as
+//! [`flooded_creeps`] works out. Which camp stands where is the map's
+//! business; this is only what it draws from.
 
-use crate::CampKind;
-use crate::NeutralKind;
+use crate::{CampDef, CampKind, NeutralKind, rules};
 
 /// One camp roster: the creeps a camp of that size may fill with.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -36,7 +34,7 @@ const _: () = {
 };
 
 /// Every roster in the jungle, grouped by camp size.
-pub const ROSTERS: [Roster; 21] = [
+pub const ROSTERS: [Roster; 22] = [
     // Kobold Camp
     Roster {
         kind: CampKind::Small,
@@ -216,13 +214,87 @@ pub const ROSTERS: [Roster; 21] = [
             NeutralKind::IceShaman,
         ],
     },
+    // Prowler Camp
+    Roster {
+        kind: CampKind::Ancient,
+        creeps: &[
+            NeutralKind::ProwlerAcolyte,
+            NeutralKind::ProwlerAcolyte,
+            NeutralKind::ProwlerShaman,
+        ],
+    },
 ];
 
-/// The rosters a camp of this size draws from, with their numbers.
-pub fn rosters_of(kind: CampKind) -> impl Iterator<Item = (u8, &'static Roster)> {
+/// The rosters a dry camp draws from, with their numbers: the first
+/// [`CampDef::rosters`] of its size.
+pub fn rosters_of(camp: &CampDef) -> impl Iterator<Item = (u8, &'static Roster)> {
     ROSTERS
         .iter()
         .enumerate()
-        .filter(move |(_, roster)| roster.kind == kind)
+        .filter(move |(_, roster)| roster.kind == camp.kind)
+        .take(usize::from(camp.rosters))
         .map(|(index, roster)| (index as u8, roster))
+}
+
+/// The creeps a flooded camp is made of: three, each climbing one rung of
+/// its line at a time.
+pub const FLOODED_CREEPS: usize = 3;
+
+/// The rungs a flooded camp's creeps climb, by its place in the camp: two
+/// Pollywogs become Boglets, Croakers and Ancient Croakers, the third a
+/// Marshmage Apprentice, a Marshmage and an Ancient Marshmage.
+const FLOODED_LINES: [[NeutralKind; 4]; FLOODED_CREEPS] = [
+    [
+        NeutralKind::Tadpole,
+        NeutralKind::Froglet,
+        NeutralKind::GrownFrog,
+        NeutralKind::AncientFrog,
+    ],
+    [
+        NeutralKind::Tadpole,
+        NeutralKind::Froglet,
+        NeutralKind::GrownFrog,
+        NeutralKind::AncientFrog,
+    ],
+    [
+        NeutralKind::Tadpole,
+        NeutralKind::FrogletMage,
+        NeutralKind::GrownFrogMage,
+        NeutralKind::AncientFrogMage,
+    ],
+];
+
+/// How many creeps of a flooded camp have evolved by `tick`: one every
+/// [`rules::FLOODED_EVOLUTION_PERIOD_TICKS`] from the horn, three to each
+/// whole size it may grow by.
+pub const fn flooded_evolutions(camp: &CampDef, tick: u32) -> u32 {
+    let since = tick.saturating_sub(rules::tick_at_game_minute(0));
+    let done = since / rules::FLOODED_EVOLUTION_PERIOD_TICKS;
+    let most = camp.evolutions as u32 * FLOODED_CREEPS as u32;
+    if done < most { done } else { most }
+}
+
+/// What a flooded camp puts out after `evolutions` evolutions: each one
+/// takes the next creep, in camp order, a rung up its line. A small camp
+/// starts on the first rung, a medium one on the second.
+pub const fn flooded_creeps(camp: &CampDef, evolutions: u32) -> [NeutralKind; FLOODED_CREEPS] {
+    let start = match camp.kind {
+        CampKind::Small => 0,
+        CampKind::Medium => 1,
+        CampKind::Large => 2,
+        CampKind::Ancient => 3,
+    };
+    let whole = evolutions / FLOODED_CREEPS as u32;
+    let part = evolutions % FLOODED_CREEPS as u32;
+    let mut creeps = [NeutralKind::Tadpole; FLOODED_CREEPS];
+    let mut at = 0;
+    while at < FLOODED_CREEPS {
+        let mut rung = start + whole as usize + if (at as u32) < part { 1 } else { 0 };
+        if rung > 3 {
+            rung = 3;
+        }
+        creeps[at] = FLOODED_LINES[at][rung];
+        at += 1;
+    }
+    creeps
 }

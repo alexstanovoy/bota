@@ -24,10 +24,14 @@ pub enum AttackClass {
 /// kind and the target's.
 #[inline]
 pub fn attack_class_pct(attacker: UnitKind, target: UnitKind) -> i32 {
-    match (
-        kind_def(attacker).attack_class,
-        kind_def(target).attack_class,
-    ) {
+    class_pct(kind_def(attacker).attack_class, target)
+}
+
+/// The same for an attacker whose class is not its kind's: a neutral with
+/// the Piercing ability attacks as [`AttackClass::Piercing`].
+#[inline]
+pub fn class_pct(attacker: AttackClass, target: UnitKind) -> i32 {
+    match (attacker, kind_def(target).attack_class) {
         (AttackClass::Runty, AttackClass::Hero) => 75,
         (AttackClass::Runty, AttackClass::Reinforced) => 70,
         (AttackClass::Piercing, AttackClass::Hero) => 50,

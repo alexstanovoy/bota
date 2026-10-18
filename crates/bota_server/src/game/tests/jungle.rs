@@ -1,9 +1,11 @@
 //! Neutral camps.
 
-use bota_core::{CAMPS, MELEE_CREEP, OBSERVER_WARD, UnitDef, map_of, rules};
+use bota_core::{
+    CAMPS, COURIER, MELEE_CREEP, OBSERVER_WARD, SENTRY_WARD, SIEGE_CREEP, UnitDef, map_of, rules,
+};
 
 use crate::game::World;
-use bota_proto::{DamageKind, MapId, Team, Vec2};
+use bota_proto::{DamageKind, Fixed, ItemId, MapId, Team, Vec2};
 
 use super::support::*;
 
@@ -77,25 +79,164 @@ fn a_neutral_led_too_far_gives_up_and_walks_home() {
     );
 }
 
-#[test]
-fn a_ward_in_a_camp_keeps_it_empty() {
+/// What the map's first dry camp holds after its first fill, with one thing
+/// put into the world beforehand.
+fn first_fill_with(put: impl FnOnce(&mut World)) -> usize {
     let map = map_of(MapId(0));
     let mut world = World::on_map(map);
-    let camp = CAMPS[0].pos;
-    world.spawn_unit(&OBSERVER_WARD, Team::Radiant, camp);
+    put(&mut world);
     world.settle();
     while world.tick < rules::FIRST_NEUTRAL_TICK + 1 {
         world.step();
     }
-    let box_radius = rules::units(rules::CAMP_BOX_RADIUS);
-    let filled = world.entities.iter().any(|entity| {
-        world.team.get(entity) == Some(&Team::Neutral)
-            && world
-                .transform
-                .get(entity)
-                .is_some_and(|t| t.pos.within(camp, box_radius))
+    beasts_of(&world, CAMP)
+}
+
+/// A way to put a unit at a point.
+type Blocker = fn(&mut World, Vec2);
+
+/// The dry camp the box tests use.
+const CAMP: usize = 1;
+
+fn beasts_of(world: &World, camp: usize) -> usize {
+    world
+        .entities
+        .iter()
+        .filter(|e| {
+            world
+                .camp_home
+                .get(*e)
+                .is_some_and(|h| usize::from(h.camp) == camp)
+        })
+        .count()
+}
+
+fn inside() -> Vec2 {
+    let b = CAMPS[CAMP].spawn_box;
+    Vec2::from_ints(
+        (b.min.x.to_int() + b.max.x.to_int()) / 2,
+        (b.min.y.to_int() + b.max.y.to_int()) / 2,
+    )
+}
+
+#[test]
+fn an_empty_box_fills_and_what_stands_in_it_keeps_it_empty() {
+    assert!(first_fill_with(|_| {}) > 0, "an empty box fills");
+    let blockers: [(&str, Blocker); 6] = [
+        ("an observer ward", |w, at| {
+            w.spawn_unit(&OBSERVER_WARD, Team::Radiant, at);
+        }),
+        ("a sentry ward", |w, at| {
+            w.spawn_unit(&SENTRY_WARD, Team::Dire, at);
+        }),
+        ("a hero", |w, at| {
+            hero_at(w, at);
+        }),
+        ("a lane creep", |w, at| {
+            w.spawn_unit(&MELEE_CREEP, Team::Dire, at);
+        }),
+        ("a siege creep that does not move", |w, at| {
+            let siege = w.spawn_unit(&SIEGE_CREEP, Team::Dire, at);
+            w.settle();
+            w.stats.get_mut(siege).expect("stats").move_speed = Fixed::ZERO;
+        }),
+        ("a rooted hero", |w, at| {
+            let hero = hero_at(w, at);
+            w.settle();
+            w.stats.get_mut(hero).expect("stats").move_speed = Fixed::ZERO;
+        }),
+    ];
+    for (name, put) in blockers {
+        let beasts = first_fill_with(|world| put(world, inside()));
+        assert_eq!(beasts, 0, "{name} in the box keeps the camp empty");
+    }
+}
+
+#[test]
+fn a_dead_hero_a_courier_and_loot_do_not_block() {
+    let dead = first_fill_with(|world| {
+        let hero = hero_at(world, inside());
+        world.settle();
+        world.health.get_mut(hero).expect("health").hp = Fixed::ZERO;
     });
-    assert!(!filled, "a ward standing in the box keeps the camp empty");
+    assert!(dead > 0, "a dead hero does not keep the camp empty");
+    let courier = first_fill_with(|world| {
+        world.spawn_unit(&COURIER, Team::Radiant, inside());
+    });
+    assert!(courier > 0, "a courier does not");
+    let loot = first_fill_with(|world| {
+        world.lay_loot(a_stack_of(ItemId::IRON_BRANCH, 0), inside());
+    });
+    assert!(loot > 0, "an item on the ground does not");
+}
+
+#[test]
+fn a_ward_blocks_to_the_edge_of_the_box_and_not_past_it() {
+    let b = CAMPS[CAMP].spawn_box;
+    let mid_y = (b.min.y.to_int() + b.max.y.to_int()) / 2;
+    let cases = [
+        (b.max.x.to_int(), mid_y, true),
+        (b.max.x.to_int() + 1, mid_y, false),
+        (b.min.x.to_int(), mid_y, true),
+        (b.min.x.to_int() - 1, mid_y, false),
+        (b.min.x.to_int() + 1, b.max.y.to_int(), true),
+        (b.min.x.to_int() + 1, b.max.y.to_int() + 1, false),
+        (b.min.x.to_int() + 1, b.min.y.to_int(), true),
+        (b.min.x.to_int() + 1, b.min.y.to_int() - 1, false),
+    ];
+    for (x, y, blocks) in cases {
+        let beasts = first_fill_with(|world| {
+            world.spawn_unit(&OBSERVER_WARD, Team::Radiant, Vec2::from_ints(x, y));
+        });
+        assert_eq!(
+            beasts == 0,
+            blocks,
+            "a ward at ({x}, {y}) against the box {b:?}"
+        );
+    }
+}
+
+#[test]
+fn pulling_a_camp_out_of_its_box_before_the_minute_stacks_it() {
+    let map = map_of(MapId(0));
+    let mut world = World::on_map(map);
+    while world.tick < rules::FIRST_NEUTRAL_TICK + 1 {
+        world.step();
+    }
+    let first = beasts_of(&world, CAMP);
+    assert!(first > 0);
+    let b = CAMPS[CAMP].spawn_box;
+    let out = Vec2::from_ints(b.max.x.to_int() + 200, b.max.y.to_int() + 200);
+    let mine: Vec<_> = world
+        .entities
+        .iter()
+        .filter(|e| {
+            world
+                .camp_home
+                .get(*e)
+                .is_some_and(|h| usize::from(h.camp) == CAMP)
+        })
+        .collect();
+    // Held in the box, one stays and the camp stays closed.
+    for beast in &mine[1..] {
+        world.transform.get_mut(*beast).expect("stands").pos = out;
+    }
+    while world.tick < rules::FIRST_NEUTRAL_TICK + rules::NEUTRAL_SPAWN_PERIOD_TICKS {
+        world.step();
+        for beast in &mine[1..] {
+            world.transform.get_mut(*beast).expect("stands").pos = out;
+        }
+    }
+    assert_eq!(beasts_of(&world, CAMP), first, "one left inside blocks it");
+    // All of them out, the next minute puts a second camp beside them.
+    world.transform.get_mut(mine[0]).expect("stands").pos = out;
+    while world.tick < rules::FIRST_NEUTRAL_TICK + 2 * rules::NEUTRAL_SPAWN_PERIOD_TICKS {
+        world.step();
+        for beast in &mine {
+            world.transform.get_mut(*beast).expect("stands").pos = out;
+        }
+    }
+    assert!(beasts_of(&world, CAMP) > first, "an empty box stacks");
 }
 
 #[test]

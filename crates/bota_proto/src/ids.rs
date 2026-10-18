@@ -108,6 +108,12 @@ impl HeroId {
     pub const SHADOW_FIEND: HeroId = HeroId(1);
 }
 
+/// Selects one kind of neutral creep: what it is called, how it looks and
+/// what it can do. Neutral creeps are [`UnitKind::CreepNeutral`]; this tells
+/// them apart.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct NeutralId(pub u16);
+
 /// Selects one specific ability, independent of which hero owns it.
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct AbilityId(pub u16);
@@ -292,6 +298,12 @@ impl EffectId {
     /// slowed and loses health on every whole second since the first one
     /// landed.
     pub const BLOOD_GRENADE: EffectId = EffectId(21);
+    /// Cannot walk.
+    pub const ROOTED: EffectId = EffectId(22);
+    /// Cannot attack.
+    pub const DISARMED: EffectId = EffectId(23);
+    /// Its passives do nothing.
+    pub const BROKEN: EffectId = EffectId(24);
 }
 
 /// An index into a unit's ability slots, as listed in

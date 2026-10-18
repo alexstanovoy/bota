@@ -8,8 +8,10 @@ protocol.
 Current scope: 1v1, the Shadow Fiend and Pudge heroes, the Dota map, and a
 mid-only ruleset on that map, plus replays.
 
-- At Dota 7.41's numbers: lane creeps and their waves, neutral creeps and their
-  camps, towers, day and night (every unit's day and night vision, neutral camps
+- At Dota 7.41's numbers: lane creeps and their waves, every neutral creep the
+  game spawns, with its abilities and the conditions the neutral AI casts them
+  on, and the camps that draw them (the flooded camps' amphibians evolving with
+  the clock), towers, day and night (every unit's day and night vision, neutral camps
   asleep at night), and Shadow Fiend (his abilities, innate, talents and
   Attribute Bonus) wherever the engine has the mechanic; the economy (passive
   gold, hero kill, First Blood and assist gold, the fountain's mending); the
@@ -27,8 +29,10 @@ mid-only ruleset on that map, plus replays.
 Not modelled, although a 1v1 mid in Dota uses it: runes of every kind, and with
 them the Bottle; the items the shop does not sell (Faerie Fire, Smoke of
 Deceit, Dust of Appearance, neutral items, ...); Aghanim's Scepter and Shard;
-the Glyph of Fortification; buyback; neutral creeps' abilities and auras;
-flooded camps; backdoor protection.
+the Glyph of Fortification; buyback; backdoor protection; streams. The
+neutral abilities that only a player commanding a neutral would use (Heal,
+Vex, Mana Burn, Shockwave, Ice Armor, Seed Shot, Fireball, Icefire Bomb, Take
+Off) are shown and never go off, as the neutral AI never casts them.
 
 The simulation is authoritative on the server. A client receives what its side
 can see and sends orders; it cannot run the game itself.

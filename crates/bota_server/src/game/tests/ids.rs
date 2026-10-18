@@ -1,6 +1,9 @@
 //! The ids the server hands out are the ones the protocol's registry holds.
 
-use bota_core::{ABILITIES, EFFECTS, HEROES, ITEMS, ModifierKind};
+use bota_core::{
+    ABILITIES, EFFECTS, HEROES, ITEMS, ModifierKind, NEUTRAL_ABILITIES, NEUTRALS, effect_def,
+    spell_effect,
+};
 use bota_proto::{DamageKind, EffectId, Fixed, IdSpace, RegisteredId, registered};
 
 use crate::game::{StackKind, stack_effect_id};
@@ -42,6 +45,8 @@ fn the_tables_keep_their_registered_ids() {
     defined_as_registered(IdSpace::Item, &items);
     let effects: Vec<_> = EFFECTS.iter().map(|effect| Some(effect.name)).collect();
     defined_as_registered(IdSpace::Effect, &effects);
+    let neutrals: Vec<_> = NEUTRALS.iter().map(|neutral| Some(neutral.name)).collect();
+    defined_as_registered(IdSpace::Neutral, &neutrals);
 }
 
 /// One modifier of every kind. A kind added to the enum fails to compile in
@@ -84,6 +89,9 @@ fn every_modifier() -> Vec<ModifierKind> {
         ModifierKind::Rot { level: 0 },
         ModifierKind::Feared,
         ModifierKind::BloodGrenade { since: 0 },
+        ModifierKind::Rooted,
+        ModifierKind::Disarmed,
+        ModifierKind::Broken,
     ];
     for kind in &every {
         match kind {
@@ -103,7 +111,11 @@ fn every_modifier() -> Vec<ModifierKind> {
             | ModifierKind::Shadowraze { .. }
             | ModifierKind::Rot { .. }
             | ModifierKind::Feared
-            | ModifierKind::BloodGrenade { .. } => {}
+            | ModifierKind::BloodGrenade { .. }
+            | ModifierKind::Rooted
+            | ModifierKind::Disarmed
+            | ModifierKind::Broken
+            | ModifierKind::Spell { .. } => {}
         }
     }
     every
@@ -128,6 +140,13 @@ fn every_effect_is_shown_under_its_registered_id() {
     }
     shown.push((EffectId::FEASTING.0, "Feasting".to_string()));
     shown.push((EffectId::FEAST_LINGER.0, "FeastLinger".to_string()));
+    for entry in &NEUTRAL_ABILITIES {
+        let Some(effect) = spell_effect(entry.ability) else {
+            continue;
+        };
+        let def = effect_def(effect).expect("a spell's effect is live");
+        shown.push((effect.0, def.name.to_string()));
+    }
     let registry: Vec<RegisteredId> = registered(IdSpace::Effect).collect();
     for (id, name) in &shown {
         let entry = registry

@@ -108,6 +108,7 @@ impl World {
         self.cancel_action(entity);
         self.rot_goes_out(entity);
         self.carry_fights_on(entity);
+        self.death_throes(entity);
         self.feed_flesh_heaps(entity);
         self.feed_souls(entity, killer);
         let kind = self.kind.get(entity).copied();

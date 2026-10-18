@@ -25,9 +25,15 @@ pub enum Purpose {
     HitOrder = 9,
     /// Which way a tick takes its entities: up or down the slots.
     TickOrder = 10,
+    /// Which swings an accuracy aura lets through evasion.
+    Accuracy = 11,
+    /// Critical strike ordering.
+    Crit = 12,
+    /// Whether a neutral answers the death of one of its camp with a cast.
+    NeutralCast = 13,
 }
 
-const PURPOSE_COUNT: usize = Purpose::TickOrder as usize + 1;
+const PURPOSE_COUNT: usize = Purpose::NeutralCast as usize + 1;
 
 /// The root of all hidden randomness in one match, reproducible from the
 /// pair of a server key and a stream number.

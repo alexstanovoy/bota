@@ -15,6 +15,8 @@ pub enum IdSpace {
     Item,
     /// [`EffectId`](crate::EffectId)s.
     Effect,
+    /// [`NeutralId`](crate::NeutralId)s.
+    Neutral,
 }
 
 /// One id as the registry has it.
@@ -53,6 +55,7 @@ fn parse(line: &'static str) -> Option<RegisteredId> {
         "ability" => IdSpace::Ability,
         "item" => IdSpace::Item,
         "effect" => IdSpace::Effect,
+        "neutral" => IdSpace::Neutral,
         _ => return None,
     };
     let id = words.next()?.parse().ok()?;

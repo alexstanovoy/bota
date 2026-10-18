@@ -13,44 +13,53 @@ pub struct EffectDef {
     /// Whether the id is out of use for good: kept so that no other effect
     /// takes its number.
     pub retired: bool,
+    /// Whether a basic dispel takes it off.
+    pub dispellable: bool,
 }
 
 /// How many effect ids the protocol has ever handed out, retired ones
 /// included: every table indexed by [`EffectId`] is this long.
-pub const EFFECT_COUNT: usize = 22;
+pub const EFFECT_COUNT: usize = EFFECTS.len();
 
 const fn buff(name: &'static str) -> EffectDef {
     EffectDef {
         name,
         harmful: false,
         retired: false,
+        dispellable: false,
     }
 }
 
 const fn debuff(name: &'static str) -> EffectDef {
     EffectDef {
-        name,
         harmful: true,
-        retired: false,
+        ..buff(name)
+    }
+}
+
+/// A buff a basic dispel takes off.
+const fn fleeting(name: &'static str) -> EffectDef {
+    EffectDef {
+        dispellable: true,
+        ..buff(name)
     }
 }
 
 /// Every effect, indexed by [`EffectId`].
-pub const EFFECTS: [EffectDef; EFFECT_COUNT] = [
+pub const EFFECTS: [EffectDef; 56] = [
     EffectDef {
-        name: "Haste",
-        harmful: false,
         retired: true,
+        ..buff("Haste")
     },
-    buff("Mending"),
-    buff("Clarity"),
+    fleeting("Mending"),
+    fleeting("Clarity"),
     buff("Fountain"),
     debuff("Stunned"),
     debuff("Slowed"),
     debuff("Burning"),
-    buff("Hastened"),
+    fleeting("Hastened"),
     buff("Shielded"),
-    buff("Phased"),
+    fleeting("Phased"),
     buff("FleshHeap"),
     buff("Souls"),
     debuff("ArmorBroken"),
@@ -60,9 +69,43 @@ pub const EFFECTS: [EffectDef; EFFECT_COUNT] = [
     buff("Rot"),
     debuff("Feared"),
     debuff("MagicBroken"),
-    buff("Feasting"),
+    fleeting("Feasting"),
     buff("FeastLinger"),
     debuff("BloodGrenade"),
+    debuff("Rooted"),
+    debuff("Disarmed"),
+    debuff("Broken"),
+    debuff("StealWeapon"),
+    buff("SpeedAura"),
+    debuff("EnvenomedWeapon"),
+    debuff("FrostAttack"),
+    buff("CloakAura"),
+    debuff("Intimidate"),
+    buff("PackleadersAura"),
+    buff("ManaAura"),
+    buff("UnholyAura"),
+    debuff("ShardSplit"),
+    buff("SwiftnessAura"),
+    fleeting("DeathThroeRush"),
+    debuff("ThunderClap"),
+    fleeting("DeathThroePower"),
+    buff("ToughnessAura"),
+    debuff("MagicAmplificationAura"),
+    buff("DragonhideAura"),
+    debuff("WeakeningAura"),
+    buff("GraniteAura"),
+    buff("WarDrumsAura"),
+    debuff("Slam"),
+    fleeting("Frenzy"),
+    buff("TimeWarpAura"),
+    buff("ProwlerAura"),
+    debuff("Desecrate"),
+    debuff("Petrify"),
+    buff("RiverbornAura"),
+    buff("Rally"),
+    debuff("Tempest"),
+    fleeting("WaterBubble"),
+    debuff("Purge"),
 ];
 
 /// What one effect is, or nothing if the id is retired or was never handed

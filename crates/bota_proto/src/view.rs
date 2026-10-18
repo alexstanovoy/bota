@@ -2,7 +2,7 @@
 
 use crate::{
     AbilityId, Aim, Angle, Attribute, Attributes, EffectId, EntityId, EventKind, Fixed, HeroId,
-    ItemId, SlotId, TalentSlot, Team, UnitKind, Vec2,
+    ItemId, NeutralId, SlotId, TalentSlot, Team, UnitKind, Vec2,
 };
 use serde::{Deserialize, Serialize};
 
@@ -200,6 +200,9 @@ pub struct UnitView {
     /// [`ItemSlot::TOWN_PORTAL`](crate::ItemSlot::TOWN_PORTAL), holds.
     /// Absent for an empty slot and for anything but a hero.
     pub town_portal: Option<ItemView>,
+    /// Which neutral creep this is, when `kind` is
+    /// [`UnitKind::CreepNeutral`].
+    pub neutral: Option<NeutralId>,
 }
 
 /// A swing under way that has not struck yet.

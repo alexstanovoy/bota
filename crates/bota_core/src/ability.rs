@@ -5,7 +5,7 @@
 use bota_proto::{AbilityId, Aim};
 
 use crate::heroes::{pudge, shadow_fiend};
-use crate::rules;
+use crate::{FIRST_NEUTRAL_ABILITY, NEUTRAL_ABILITIES, rules};
 
 /// One entry of the ability list.
 #[derive(Clone, Copy, Debug)]
@@ -76,10 +76,28 @@ const fn courier(name: &'static str, cooldown: &'static [u32]) -> AbilityDef {
 
 /// How many abilities the game has: every table indexed by [`AbilityId`] is
 /// this long.
-pub const ABILITY_COUNT: usize = 17;
+pub const ABILITY_COUNT: usize = HERO_ABILITIES.len() + NEUTRAL_ABILITIES.len();
 
-/// Every ability, indexed by [`AbilityId`].
-pub const ABILITIES: [AbilityDef; ABILITY_COUNT] = [
+/// Every ability, indexed by [`AbilityId`]: the heroes' and the couriers',
+/// then the neutrals'.
+pub const ABILITIES: [AbilityDef; ABILITY_COUNT] = {
+    let mut every = [BARE_ABILITY; ABILITY_COUNT];
+    let mut at = 0;
+    while at < HERO_ABILITIES.len() {
+        every[at] = HERO_ABILITIES[at];
+        at += 1;
+    }
+    while at < ABILITY_COUNT {
+        every[at] = NEUTRAL_ABILITIES[at - HERO_ABILITIES.len()].def;
+        at += 1;
+    }
+    every
+};
+
+const _: () = assert!(HERO_ABILITIES.len() == FIRST_NEUTRAL_ABILITY as usize);
+
+/// The abilities of the heroes and the couriers, from id zero.
+const HERO_ABILITIES: [AbilityDef; 17] = [
     pudge::MEAT_HOOK,
     pudge::ROT,
     pudge::FLESH_HEAP,

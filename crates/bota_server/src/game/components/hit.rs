@@ -43,6 +43,19 @@ pub enum HitEffect {
     /// takes damage and survives, for `fear.line` ticks more, up to
     /// `fear.most`. `level` is the requiem's, from zero.
     Requiem { level: u8, fear: Fear },
+    /// Stuns a target that survives for `ticks`, whether or not the blow
+    /// took any health: a neutral's bolt that does no damage still holds.
+    Stun { ticks: u32 },
+    /// Roots a target that survives for `ticks`, the same way.
+    Root { ticks: u32 },
+}
+
+impl HitEffect {
+    /// Whether it lands on a target that survives a blow taking nothing off
+    /// it.
+    pub const fn holds(self) -> bool {
+        matches!(self, HitEffect::Stun { .. } | HitEffect::Root { .. })
+    }
 }
 
 /// How long a requiem line holds what it burns: ticks a line adds, and the

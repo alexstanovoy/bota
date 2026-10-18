@@ -462,7 +462,7 @@ fn the_jungle_pays_a_courier_no_mind_but_the_other_side_does_not() {
     let beast = world.spawn_unit(NeutralKind::Kobold.def(), Team::Neutral, at);
     world
         .camp_home
-        .insert(beast, CampHome { camp: 0, home: at });
+        .insert(beast, CampHome { camp: 1, home: at });
     world.neutral_ai.insert(
         beast,
         NeutralAi {

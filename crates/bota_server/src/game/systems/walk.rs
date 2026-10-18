@@ -37,11 +37,13 @@ impl World {
     /// One entity's tick of walking.
     ///
     /// Feared, it runs from whoever put the fear on. Held or channelling it
-    /// stands; mid-swing, or casting, it stands and comes round to what it
-    /// acts on. A cast aimed further off than it reaches walks it in. Past
-    /// that, what it is set on decides: in reach it stands and comes round
-    /// to it, out of reach it walks at it. Only with nothing to fight does
-    /// it walk where it was told.
+    /// stands, and so does a disarmed neutral; rooted, it stands too but
+    /// comes round to what it is set on, to swing at it. Mid-swing, or
+    /// casting, it stands and comes round to what it acts on. A cast aimed
+    /// further off than it reaches walks it in. Past that, what it is set on
+    /// decides: in reach it stands and comes round to it, out of reach it
+    /// walks at it. Only with nothing to fight does it walk where it was
+    /// told.
     fn walk_one(&mut self, entity: Entity, scratch: &mut LocalScratch) {
         if self.feared(entity) {
             match self.flees_from(entity) {
@@ -51,6 +53,22 @@ impl World {
             return;
         }
         if self.held(entity) || self.is_channelling(entity) {
+            self.stand(entity);
+            return;
+        }
+        if self.disarmed(entity) && self.neutral.get(entity).is_some() {
+            self.stand(entity);
+            return;
+        }
+        if self.rooted(entity) {
+            // Rooted, it still comes round to what it is set on, to swing.
+            if let Some(at) = self
+                .target_of(entity)
+                .and_then(|on| self.transform.get(on))
+                .map(|t| t.pos)
+            {
+                self.turn_to(entity, at);
+            }
             self.stand(entity);
             return;
         }

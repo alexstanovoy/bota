@@ -1,11 +1,33 @@
 //! What is on a unit: putting it on, doing its work each tick, taking it off.
 
-use bota_core::{ModifierKind, breaks_regen, item_def, rules};
+use bota_core::{ModifierKind, Stat, breaks_regen, item_def, rules, spell_buff};
 use bota_proto::{AbilityId, DamageKind, Fixed, Team};
 
 use crate::game::{Landed, Modifier, Stats, Table, World, cooldown_after};
 
 use crate::engine::Entity;
+
+/// Whether a modifier is a disable or slow that status resistance shortens.
+/// A neutral's spell counts when it slows the bearer. Dota shortens roots,
+/// disarms and breaks like stuns.
+fn shortened_by_resistance(kind: ModifierKind) -> bool {
+    match kind {
+        ModifierKind::Spell { ability, level, .. } => {
+            spell_buff(ability).is_some_and(|buff| buff.get(Stat::MovePct, level) < 0)
+        }
+        _ => matches!(
+            kind,
+            ModifierKind::Stunned
+                | ModifierKind::Feared
+                | ModifierKind::Slowed { .. }
+                | ModifierKind::MagicBroken { .. }
+                | ModifierKind::BloodGrenade { .. }
+                | ModifierKind::Rooted
+                | ModifierKind::Disarmed
+                | ModifierKind::Broken
+        ),
+    }
+}
 
 /// How long a disable or slow holds on an entity after its status
 /// resistance. Every other kind is left as it is.
@@ -13,14 +35,7 @@ use crate::engine::Entity;
 /// Every timed disable and slow passes here, whatever hands it out: an
 /// ability, an item or an aura.
 pub fn resisted_ticks(stats: &Table<Stats>, on: Entity, kind: ModifierKind, ticks: u32) -> u32 {
-    if !matches!(
-        kind,
-        ModifierKind::Stunned
-            | ModifierKind::Feared
-            | ModifierKind::Slowed { .. }
-            | ModifierKind::MagicBroken { .. }
-            | ModifierKind::BloodGrenade { .. }
-    ) {
+    if !shortened_by_resistance(kind) {
         return ticks;
     }
     let resist = stats
@@ -38,6 +53,26 @@ impl World {
     pub fn held(&self, entity: Entity) -> bool {
         self.active_modifier(entity, ModifierKind::Stunned)
             .is_some()
+    }
+
+    /// Whether an entity is rooted: it cannot walk, nor turn to walk, but
+    /// still swings and casts.
+    pub fn rooted(&self, entity: Entity) -> bool {
+        self.active_modifier(entity, ModifierKind::Rooted).is_some()
+    }
+
+    /// Whether an entity is disarmed: it cannot begin a swing. A neutral
+    /// that is takes nothing on, stands still and casts nothing.
+    pub fn disarmed(&self, entity: Entity) -> bool {
+        self.active_modifier(entity, ModifierKind::Disarmed)
+            .is_some()
+    }
+
+    /// Whether an entity is broken: its own passives do nothing. What it
+    /// hands out, the blows it lays strikes on and the throes of its death
+    /// stop; what others put on it works as before.
+    pub fn broken(&self, entity: Entity) -> bool {
+        self.active_modifier(entity, ModifierKind::Broken).is_some()
     }
 
     /// Whether an entity is feared: it runs from whoever put the fear on,
@@ -117,6 +152,11 @@ impl World {
                         }
                     }
                     ModifierKind::Rot { level } => self.rot(entity, level),
+                    ModifierKind::Spell {
+                        ability,
+                        level,
+                        amount,
+                    } => self.spell_pulse(entity, modifier, (ability, level, amount)),
                     ModifierKind::BloodGrenade { since } => {
                         let since_then = self.tick.saturating_sub(since);
                         if since_then > 0

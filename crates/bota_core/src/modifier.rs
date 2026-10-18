@@ -2,7 +2,7 @@
 
 use bota_proto::{DamageKind, EffectId, Fixed};
 
-use crate::rules;
+use crate::{Act, Buff, NeutralAbility, Spell, Strike, Then, Throe, WATER_BUBBLE_EFFECT, rules};
 
 /// One kind of modifier, with what there is of it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -99,6 +99,20 @@ pub enum ModifierKind {
         /// The tick the first Blood Grenade of the run landed.
         since: u32,
     },
+    /// Cannot walk; it may still swing and cast.
+    Rooted,
+    /// Cannot swing.
+    Disarmed,
+    /// Its passives do nothing, its auras included.
+    Broken,
+    /// What a neutral's spell left, at the level it was cast at. `amount`
+    /// is the spell's own count: the blows a Steal Weapon has counted, the
+    /// magical damage a bubble has left to soak.
+    Spell {
+        ability: NeutralAbility,
+        level: u8,
+        amount: u16,
+    },
 }
 
 impl ModifierKind {
@@ -122,6 +136,13 @@ impl ModifierKind {
             ModifierKind::Rot { .. } => EffectId::ROT,
             ModifierKind::Feared => EffectId::FEARED,
             ModifierKind::BloodGrenade { .. } => EffectId::BLOOD_GRENADE,
+            ModifierKind::Rooted => EffectId::ROOTED,
+            ModifierKind::Disarmed => EffectId::DISARMED,
+            ModifierKind::Broken => EffectId::BROKEN,
+            ModifierKind::Spell { ability, .. } => match spell_effect(ability) {
+                Some(effect) => effect,
+                None => panic!("a spell without a modifier left one"),
+            },
         }
     }
 
@@ -143,5 +164,54 @@ impl ModifierKind {
             }
             other => other,
         }
+    }
+}
+
+/// The effect a spell's own modifier shows, if the spell leaves one.
+pub const fn spell_effect(ability: NeutralAbility) -> Option<EffectId> {
+    match *ability.spell() {
+        Spell::Aura(aura) => Some(aura.effect),
+        Spell::Storm { effect, .. }
+        | Spell::Strike(Strike::Lay { effect, .. })
+        | Spell::Strike(Strike::Petrify { effect, .. })
+        | Spell::Throe(Throe::Rouse { effect, .. })
+        | Spell::Throe(Throe::Split { effect, .. }) => Some(effect),
+        Spell::Strike(Strike::Disarm { counter, .. }) => Some(counter),
+        Spell::Cast { act, .. } => match act {
+            Act::Stomp {
+                then: Then::Wear { effect, .. },
+                ..
+            }
+            | Act::Enrage { effect, .. } => Some(effect),
+            Act::Bubble { .. } => Some(WATER_BUBBLE_EFFECT),
+            Act::Purge { .. } => Some(crate::PURGE_EFFECT),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+/// What a spell's own modifier does to the stats of whatever wears it, if
+/// the spell's modifier does anything to them. A purge's slow is the
+/// modifier's own `amount`, falling as it wears off.
+pub const fn spell_buff(ability: NeutralAbility) -> Option<Buff> {
+    match *ability.spell() {
+        Spell::Aura(aura) => Some(aura.buff),
+        Spell::Storm { buff, .. }
+        | Spell::Strike(Strike::Lay { buff, .. })
+        | Spell::Throe(Throe::Rouse { buff, .. }) => Some(buff),
+        Spell::Throe(Throe::Split { slow_pct, .. }) => {
+            Some(Buff::of(crate::Stat::MovePct, [-slow_pct; 4]))
+        }
+        Spell::Cast {
+            act:
+                Act::Stomp {
+                    then: Then::Wear { buff, .. },
+                    ..
+                }
+                | Act::Enrage { buff, .. },
+            ..
+        } => Some(buff),
+        _ => None,
     }
 }

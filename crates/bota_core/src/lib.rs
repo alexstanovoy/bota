@@ -9,6 +9,7 @@
 #![forbid(unsafe_code)]
 
 mod ability;
+mod ability_neutral;
 mod aggro;
 mod attack_class;
 mod aura;
@@ -42,6 +43,7 @@ mod unit_neutral;
 mod wave;
 
 pub use ability::*;
+pub use ability_neutral::*;
 pub use aggro::*;
 pub use attack_class::*;
 pub use aura::*;

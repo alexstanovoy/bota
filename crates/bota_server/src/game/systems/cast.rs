@@ -1,7 +1,7 @@
 //! Casting abilities: the checks, the cost, and the charges a cast hands
 //! enemy items.
 
-use bota_core::{ability_def, at_home_shop, item_def, rules};
+use bota_core::{NeutralAbility, ability_def, at_home_shop, item_def, rules};
 use bota_proto::{AbilityId, AbilitySlot, EventKind, Fixed, Target, Team, UnitKind, Vec2};
 
 use crate::game::{Entity, Event, World, ability_hooks, wire_id};
@@ -42,10 +42,13 @@ impl World {
             return false;
         }
         let cooldown = self.ability_cooldown(entity, ability.id, ability.level);
-        let Some(hooks) = ability_hooks(ability.id) else {
-            return false;
+        let gone_off = match NeutralAbility::of(ability.id) {
+            Some(spell) => self.cast_spell(entity, spell, ability.level, target),
+            None => {
+                ability_hooks(ability.id).is_some_and(|hooks| (hooks.on_cast)(self, entity, target))
+            }
         };
-        if !(hooks.on_cast)(self, entity, target) {
+        if !gone_off {
             return false;
         }
         self.expose_caster(entity, target);

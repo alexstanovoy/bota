@@ -164,7 +164,8 @@ pub const fn next_neutral_spawn(tick: u32) -> u32 {
 /// How many upgrade intervals the jungle carries by a tick, capped.
 #[inline]
 pub fn jungle_upgrades(tick: u32) -> u32 {
-    (tick / rules::NEUTRAL_UPGRADE_PERIOD_TICKS).min(rules::NEUTRAL_UPGRADE_CAP as u32)
+    let since = tick.saturating_sub(rules::tick_at_game_minute(0));
+    (since / rules::NEUTRAL_UPGRADE_PERIOD_TICKS).min(rules::NEUTRAL_UPGRADE_CAP as u32)
 }
 
 #[cfg(test)]

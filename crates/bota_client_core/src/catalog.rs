@@ -5,8 +5,9 @@
 //! `bota_core` gives them, and the views tell what a unit holds.
 
 use bota_core::{
-    ABILITY_COUNT, EFFECT_COUNT, ITEMS as ITEM_DEFS, Talent, ability_def, attributes_at_level,
-    base_damage_least, effect_def, hero_def, talent_floor,
+    EFFECT_COUNT, EFFECTS as EFFECT_DEFS, FIRST_NEUTRAL_ABILITY, ITEMS as ITEM_DEFS,
+    NEUTRAL_ABILITIES, Talent, ability_def, attributes_at_level, base_damage_least, effect_def,
+    hero_def, talent_floor,
 };
 use bota_proto::{AbilityId, EffectId, Fixed, HeroId, ItemId, TalentSlot, Talents};
 
@@ -114,7 +115,7 @@ impl EffectFace {
 const RAZE: &str = "No target, {point} s cast point. Burns every enemy but a building within {raze_radius} of a spot {range} ahead of where you face for {raze_damage} magic damage, plus {raze_soul} per soul held and {raze_stack} per prior same-caster stack. Each damaging hit refreshes all stacks for {raze_secs} s. One point levels all three razes. {mana} mana, {wait} s wait.";
 
 /// Every ability, in id order.
-pub const ABILITIES: [AbilityFace; ABILITY_COUNT] = [
+pub const ABILITIES: [AbilityFace; FIRST_NEUTRAL_ABILITY as usize] = [
     AbilityFace {
         id: AbilityId::MEAT_HOOK.0,
         name: "Hook",
@@ -378,7 +379,7 @@ pub const ITEMS: [ItemFace; ITEM_DEFS.len()] = [
 
 /// Every timed effect, indexed by [`EffectId`]; the slot of a retired one
 /// holds nothing.
-pub const EFFECTS: [EffectFace; EFFECT_COUNT] = [
+pub const EFFECTS: [EffectFace; FIRST_SPELL_EFFECT] = [
     EffectFace::of(0, None, ""),
     EffectFace::of(EffectId::MENDING.0, None, "Regenerating health."),
     EffectFace::of(EffectId::CLARITY.0, None, "Regenerating mana."),
@@ -465,8 +466,46 @@ pub const EFFECTS: [EffectFace; EFFECT_COUNT] = [
 
 /// The ability of that id, or nothing for one the catalog does not hold.
 pub fn ability(id: u16) -> Option<&'static AbilityFace> {
-    ABILITIES.get(usize::from(id))
+    ABILITIES.get(usize::from(id)).or_else(|| {
+        let at = id.checked_sub(FIRST_NEUTRAL_ABILITY)?;
+        NEUTRAL_FACES.get(usize::from(at))
+    })
 }
+
+/// Every neutral's ability, as its rules name it.
+const NEUTRAL_FACES: [AbilityFace; NEUTRAL_ABILITIES.len()] = {
+    let mut faces = [AbilityFace {
+        id: 0,
+        name: "",
+        template: "",
+    }; NEUTRAL_ABILITIES.len()];
+    let mut at = 0;
+    while at < faces.len() {
+        faces[at] = AbilityFace {
+            id: FIRST_NEUTRAL_ABILITY + at as u16,
+            name: NEUTRAL_ABILITIES[at].def.name,
+            template: "",
+        };
+        at += 1;
+    }
+    faces
+};
+
+/// The first effect a neutral's spell leaves: from it on, every effect is
+/// shown by its rules name.
+const FIRST_SPELL_EFFECT: usize = EffectId::ROOTED.0 as usize;
+
+/// Every effect from [`FIRST_SPELL_EFFECT`] on.
+const SPELL_EFFECT_FACES: [EffectFace; EFFECT_COUNT - FIRST_SPELL_EFFECT] = {
+    let mut faces = [EffectFace::of(0, None, ""); EFFECT_COUNT - FIRST_SPELL_EFFECT];
+    let mut at = 0;
+    while at < faces.len() {
+        assert!(!EFFECT_DEFS[FIRST_SPELL_EFFECT + at].retired);
+        faces[at] = EffectFace::of((FIRST_SPELL_EFFECT + at) as u16, None, "");
+        at += 1;
+    }
+    faces
+};
 
 /// The item of that id, or nothing for one the catalog does not hold.
 pub fn item(id: u16) -> Option<&'static ItemFace> {
@@ -476,7 +515,10 @@ pub fn item(id: u16) -> Option<&'static ItemFace> {
 /// The effect of that id, or nothing for one the catalog does not hold.
 pub fn effect(id: u16) -> Option<&'static EffectFace> {
     effect_def(EffectId(id))?;
-    EFFECTS.get(usize::from(id))
+    EFFECTS.get(usize::from(id)).or_else(|| {
+        let at = usize::from(id).checked_sub(FIRST_SPELL_EFFECT)?;
+        SPELL_EFFECT_FACES.get(at)
+    })
 }
 
 /// One talent of a hero's tree, as the talent panel shows it.

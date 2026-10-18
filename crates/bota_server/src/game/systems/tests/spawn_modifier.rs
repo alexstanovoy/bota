@@ -184,10 +184,15 @@ fn camp_creeps_are_seeded_on_every_fill() {
     world.tick = rules::FIRST_NEUTRAL_TICK;
     world.fill_camps();
     let first = doubled(&world, UnitKind::CreepNeutral, "the first fill");
-    for entity in &first {
-        world.push_hit(None, *entity, 1_000_000, DamageKind::Pure);
+    // A golem falls into shards, which fall in their turn.
+    for _ in 0..2 {
+        for entity in world.entities.iter().collect::<Vec<_>>() {
+            if world.kind.get(entity) == Some(&UnitKind::CreepNeutral) {
+                world.push_hit(None, entity, 1_000_000, DamageKind::Pure);
+            }
+        }
+        world.step();
     }
-    world.step();
     assert!(
         world
             .entities

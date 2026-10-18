@@ -1,7 +1,9 @@
-//! What every ability does at each moment of its life: a hook table with one
-//! row to each entry of [`bota_core::ABILITIES`].
+//! What every hero's and courier's ability does at each moment of its life:
+//! a hook table with one row to each of their entries of
+//! [`bota_core::ABILITIES`]. A neutral's ability is data its mechanics read
+//! ([`World::cast_spell`](crate::game::World::cast_spell)).
 
-use bota_core::ABILITY_COUNT;
+use bota_core::{FIRST_NEUTRAL_ABILITY, NeutralAbility};
 use bota_proto::{AbilityId, Target};
 
 use crate::game::{Entity, World};
@@ -39,9 +41,9 @@ const INERT: AbilityHooks = AbilityHooks {
     on_complete: |_, _, _| {},
 };
 
-/// Every ability's hooks, indexed by [`AbilityId`] like
+/// Every hero's and courier's ability's hooks, indexed by [`AbilityId`] like
 /// [`bota_core::ABILITIES`].
-pub const ABILITY_HOOKS: [AbilityHooks; ABILITY_COUNT] = [
+pub const ABILITY_HOOKS: [AbilityHooks; FIRST_NEUTRAL_ABILITY as usize] = [
     AbilityHooks {
         on_cast: |world, caster, target| {
             world.cast_hook(
@@ -124,9 +126,11 @@ pub const ABILITY_HOOKS: [AbilityHooks; ABILITY_COUNT] = [
     INERT,
 ];
 
-const _: () = assert!(ABILITY_HOOKS.len() == bota_core::ABILITIES.len());
-
-/// What one ability does, or nothing if no such ability exists.
+/// What one ability does, or nothing if no such ability exists. A neutral's
+/// goes off through its mechanics, before any hook: what is left to a hook
+/// is to run on and end, which none of them does.
 pub fn ability_hooks(id: AbilityId) -> Option<&'static AbilityHooks> {
-    ABILITY_HOOKS.get(usize::from(id.0))
+    ABILITY_HOOKS
+        .get(usize::from(id.0))
+        .or_else(|| NeutralAbility::of(id).map(|_| &INERT))
 }

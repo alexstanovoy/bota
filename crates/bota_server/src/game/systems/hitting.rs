@@ -8,6 +8,7 @@ use crate::game::{
     Table, Transform, wire_id,
 };
 
+use super::bubble::soak;
 use super::modifiers::resisted_ticks;
 
 use std::collections::VecDeque;
@@ -40,6 +41,12 @@ pub struct Landed {
     pub side: Team,
     /// Whether it brought the target down.
     pub fatal: bool,
+    /// Whether it was a swing of the source's weapon, rather than a spell,
+    /// a burn or the magic riding with a swing.
+    pub attack: bool,
+    /// The blow as it was dealt, before amplification, armor and
+    /// resistance: what a splash takes its share of.
+    pub dealt: i32,
 }
 
 /// What resolving blows reads and writes.
@@ -126,6 +133,12 @@ pub fn hitting_system<const AMPLIFIED: bool>(cx: HitCx<'_>) {
         } else if stat.backdoor {
             taken = taken * rules::BACKDOOR_DAMAGE_PCT / 100;
         }
+        if blow.kind == DamageKind::Magical {
+            taken = more_magic(taken, stat.magic_taken_pct);
+            if let Some(on_it) = modifiers.get_mut(blow.target) {
+                taken = soak(on_it, taken);
+            }
+        }
         let Some(pool) = health.get_mut(blow.target) else {
             continue;
         };
@@ -136,7 +149,7 @@ pub fn hitting_system<const AMPLIFIED: bool>(cx: HitCx<'_>) {
         let applied = bite(pool.hp, taken, spared);
         pool.hp -= Fixed::from_int(applied);
         let fatal = pool.hp <= Fixed::ZERO;
-        if applied > 0 && !fatal {
+        if !fatal && (applied > 0 || blow.effect.holds()) {
             apply_hit_effect(blow, stats, modifiers);
         }
         landed.push_back(Landed {
@@ -147,8 +160,19 @@ pub fn hitting_system<const AMPLIFIED: bool>(cx: HitCx<'_>) {
             at,
             side,
             fatal,
+            attack: blow.attack,
+            dealt: blow.amount,
         });
     }
+}
+
+/// Magical damage after the extra a target takes, in percent.
+fn more_magic(taken: i32, extra_pct: i32) -> i32 {
+    if extra_pct == 0 {
+        return taken;
+    }
+    let scaled = i64::from(taken) * i64::from((100 + extra_pct).max(0)) / 100;
+    scaled.clamp(0, i64::from(i32::MAX)) as i32
 }
 
 /// Whether an attack at a target is evaded: the target's share of misses,
@@ -224,6 +248,8 @@ fn apply_hit_effect(blow: Hit, stats: &Table<Stats>, modifiers: &mut Table<Modif
         HitEffect::Requiem { level, fear } => {
             frighten(blow, usize::from(level), fear, stats, modifiers);
         }
+        HitEffect::Stun { ticks } => hold(blow, ModifierKind::Stunned, ticks, stats, modifiers),
+        HitEffect::Root { ticks } => hold(blow, ModifierKind::Rooted, ticks, stats, modifiers),
     }
 }
 
@@ -255,5 +281,19 @@ fn frighten(
     ] {
         let ticks = resisted_ticks(stats, blow.target, kind, fear.line);
         on_it.extend(Modifier::new(kind, blow.source, Some(ticks)), fear.most);
+    }
+}
+
+/// Lays a disable on what a blow struck, shortened by its status resistance.
+fn hold(
+    blow: Hit,
+    kind: ModifierKind,
+    ticks: u32,
+    stats: &Table<Stats>,
+    modifiers: &mut Table<Modifiers>,
+) {
+    let ticks = resisted_ticks(stats, blow.target, kind, ticks);
+    if let Some(on_it) = modifiers.get_mut(blow.target) {
+        on_it.put(Modifier::new(kind, blow.source, Some(ticks)));
     }
 }

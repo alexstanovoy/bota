@@ -7,7 +7,7 @@ use bota_core::{
 
 use crate::game::{
     ActionPhase, ActionState, CampHome, Command, Def, Entity, Errand, Event, Ground, Health,
-    ItemStack, Lane, LaneAi, Level, MatchConfig, Modifier, Modifiers, NeutralAi, Orders,
+    HitEffect, ItemStack, Lane, LaneAi, Level, MatchConfig, Modifier, Modifiers, NeutralAi, Orders,
     Projectile, Seat, StackKind, Stats, TERRAIN_CELLS, Transform, UnitOrder, World, plan_radius,
     tree_positions, wire_id,
 };
@@ -55,6 +55,9 @@ pub(crate) fn stats() -> Stats {
         evasion: Ratio::NEVER,
         pierce: Ratio::NEVER,
         pierce_damage: 0,
+        lifesteal_pct: 0,
+        magic_taken_pct: 0,
+        accuracy_pct: 0,
     }
 }
 
@@ -183,6 +186,7 @@ pub(crate) fn world_with_projectile_uphill_state(launch_tier: u8, can_miss_uphil
             pierces: false,
             pierce_damage: 0,
             pierce_amp_bp: rules::NOMINAL_BP,
+            effect: HitEffect::None,
         },
     );
     world
@@ -665,7 +669,7 @@ pub(crate) fn a_camp_at(world: &mut World, at: Vec2) -> Vec<Entity> {
         );
         world
             .camp_home
-            .insert(beast, CampHome { camp: 0, home: at });
+            .insert(beast, CampHome { camp: 1, home: at });
         world.neutral_ai.insert(
             beast,
             NeutralAi {
@@ -1088,6 +1092,7 @@ pub(crate) fn manual_projectile_damage(
                 pierces,
                 pierce_damage: 0,
                 pierce_amp_bp: rules::NOMINAL_BP,
+                effect: HitEffect::None,
             },
         );
     }

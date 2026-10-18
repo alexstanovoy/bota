@@ -1,7 +1,7 @@
 //! What has been put on an entity: what it does, who put it, how long it
 //! holds.
 
-use bota_core::{ModifierKind, rules};
+use bota_core::{ModifierKind, NeutralAbility, rules, spell_effect};
 
 use crate::engine::Entity;
 
@@ -38,12 +38,21 @@ impl Modifiers {
     }
 
     /// Replaces the same kind; Shadowraze replaces only the same source's
-    /// record.
+    /// record, and a neutral's spell the same spell (the same source's, for
+    /// those [`per_source`](bota_core::NeutralAbility::per_source) keeps
+    /// apart).
     pub fn put(&mut self, modifier: Modifier) {
         let same = std::mem::discriminant(&modifier.kind);
         self.0.retain(|held| match (held.kind, modifier.kind) {
             (ModifierKind::Shadowraze { .. }, ModifierKind::Shadowraze { .. }) => {
                 held.ticks_left != Some(0) && held.source != modifier.source
+            }
+            // One spell's modifier replaces another that shows the same
+            // effect (the three Water Bubbles are one modifier), save that a
+            // stacking aura or strike keeps one from each source.
+            (ModifierKind::Spell { ability: had, .. }, ModifierKind::Spell { ability, .. }) => {
+                spell_effect(had) != spell_effect(ability)
+                    || (ability.per_source() && held.source != modifier.source)
             }
             _ => std::mem::discriminant(&held.kind) != same,
         });
@@ -97,6 +106,15 @@ impl Modifiers {
         let same = std::mem::discriminant(&like);
         self.0
             .retain(|held| std::mem::discriminant(&held.kind) != same || held.source != source);
+    }
+
+    /// The active modifier a neutral's spell left, from `source` when the
+    /// spell keeps its sources apart.
+    pub fn spell(&self, ability: NeutralAbility, source: Option<Entity>) -> Option<&Modifier> {
+        self.active().find(|held| {
+            matches!(held.kind, ModifierKind::Spell { ability: it, .. } if it == ability)
+                && (!ability.per_source() || held.source == source)
+        })
     }
 
     /// Active Shadowraze hits held for this exact caster generation; zero

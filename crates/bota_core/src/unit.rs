@@ -22,6 +22,8 @@ pub struct Growth {
     pub damage: i32,
     /// Half points of armor added, so an odd number is half a point a step.
     pub armor_halves: i32,
+    /// Attack speed added.
+    pub attack_speed: i32,
     /// Half points of gold added to both ends of the bounty, so an odd
     /// number is half a gold a step; a part gold left over is not paid.
     pub gold_halves: i32,
@@ -123,6 +125,7 @@ pub(crate) const NO_GROWTH: Growth = Growth {
     mana: 0,
     damage: 0,
     armor_halves: 0,
+    attack_speed: 0,
     gold_halves: 0,
     xp: 0,
 };

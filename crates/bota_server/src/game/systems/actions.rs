@@ -8,8 +8,8 @@
 //! is aimed at is in reach.
 
 use bota_core::{
-    BEATS_PER_TICK, Ratio, Talent, ability_def, attack_class_pct, attack_gain, beats,
-    cast_point_ms, cross, facing_gap, facing_towards, kind_def, rules,
+    BEATS_PER_TICK, Ratio, Talent, ability_def, attack_gain, beats, cast_point_ms, cross,
+    facing_gap, facing_towards, kind_def, rules,
 };
 use bota_proto::{Aim, DamageKind, Fixed, ItemSlot, Team, Vec2};
 
@@ -25,6 +25,8 @@ use crate::game::{
 struct Swing {
     /// Its physical damage.
     damage: i32,
+    /// Whether it goes through evasion for an accuracy aura's sake.
+    accurate: bool,
     /// The magical damage piercing with it, when it pierces.
     pierce: Option<i32>,
     /// Physical amplification, in basis points.
@@ -327,6 +329,7 @@ impl World {
                 ActionState::Ready => {
                     if action.attack_cooldown == 0
                         && !held
+                        && !self.disarmed(entity)
                         && stats.damage > 0
                         && let Some(Target(on)) = self.target.get(entity).copied()
                         && self.may_swing(entity, on, stats)
@@ -638,12 +641,11 @@ impl World {
             } else {
                 0
             };
-        let class_pct = match (self.kind.get(attacker), self.kind.get(on)) {
-            (Some(&from), Some(&to)) => attack_class_pct(from, to),
-            _ => 100,
-        };
+        let class_pct = self.class_pct_of(attacker, on);
+        let boost = self.boost_of(attacker, stats);
         let swing = Swing {
-            damage: damage * class_pct / 100,
+            damage: damage * boost.crit_pct / 100 * class_pct / 100,
+            accurate: boost.accurate,
             pierce: self
                 .roll_pierce(attacker, on, stats)
                 .map(|bonus| bonus * class_pct / 100),
@@ -676,7 +678,7 @@ impl World {
             kind: DamageKind::Physical,
             damage_amp_bp: swing.physical_amp_bp,
             attack: true,
-            pierces: swing.pierce.is_some(),
+            pierces: swing.pierce.is_some() || swing.accurate,
             effect: HitEffect::None,
         });
         if let Some(bonus) = swing.pierce {
@@ -714,9 +716,10 @@ impl World {
                 damage_amp_bp: swing.physical_amp_bp,
                 launch_tier: self.ground.tier(at.pos),
                 can_miss_uphill: true,
-                pierces: swing.pierce.is_some(),
+                pierces: swing.pierce.is_some() || swing.accurate,
                 pierce_damage: swing.pierce.unwrap_or(0),
                 pierce_amp_bp: swing.magical_amp_bp,
+                effect: HitEffect::None,
             },
         );
     }

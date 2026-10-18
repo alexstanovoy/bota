@@ -65,6 +65,19 @@ impl Ratio {
         Ratio { num, den }
     }
 
+    /// `pct` hits out of every hundred attempts, in lowest terms.
+    ///
+    /// Panics unless `pct` is within `0..=100` and its lowest terms fit
+    /// [`Ratio::MAX_DEN`]: 20 does (one in five), 43 does not.
+    pub const fn percent(pct: u8) -> Ratio {
+        assert!(pct <= 100, "a percentage is at most a hundred");
+        let (mut a, mut b) = (pct, 100u8);
+        while a != 0 {
+            (a, b) = (b % a, a);
+        }
+        Ratio::new(pct / b, 100 / b)
+    }
+
     /// Hits per block.
     #[inline]
     pub const fn num(self) -> u8 {

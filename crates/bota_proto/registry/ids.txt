@@ -24,6 +24,66 @@ ability 13 live Necromastery
 ability 14 live Presence of the Dark Lord
 ability 15 live Feast of Souls
 ability 16 live Throw Grenade
+ability 17 live Prospecting Aura
+ability 18 live Neutral Upgrade
+ability 19 live Steal Weapon
+ability 20 live Speed Aura
+ability 21 live Break
+ability 22 live Piercing
+ability 23 live Heal
+ability 24 live Heal Amplification Aura
+ability 25 live Envenomed Weapon
+ability 26 live Vex
+ability 27 live Frost Attack
+ability 28 live Take Off
+ability 29 live Chain Lightning
+ability 30 live Cloak Aura
+ability 31 live War Stomp
+ability 32 live Intimidate
+ability 33 live Critical Strike
+ability 34 live Packleader's Aura
+ability 35 live Purge
+ability 36 live Mana Burn
+ability 37 live Mana Aura
+ability 38 live Shockwave
+ability 39 live Unholy Aura
+ability 40 live Ogre Smash!
+ability 41 live Ice Armor
+ability 42 live Hurl Boulder
+ability 43 live Shard Split
+ability 44 live Swiftness Aura
+ability 45 live Death Throe: Rush
+ability 46 live Thunder Clap
+ability 47 live Death Throe: Power
+ability 48 live Tornado
+ability 49 live Hurricane
+ability 50 live Toughness Aura
+ability 51 live Ensnare
+ability 52 live Raise Dead
+ability 53 live Seed Shot
+ability 54 live Magic Amplification Aura
+ability 55 live Fireball
+ability 56 live Splash Attack
+ability 57 live Dragonhide Aura
+ability 58 live Weakening Aura
+ability 59 live Granite Aura
+ability 60 live War Drums Aura
+ability 61 live Slam
+ability 62 live Frenzy
+ability 63 live Time Warp Aura
+ability 64 live Icefire Bomb
+ability 65 live Prowler Aura
+ability 66 live Desecrate
+ability 67 live Petrify
+ability 68 live Riverborn Aura
+ability 69 live Arm of the Deep
+ability 70 live Tendrils of the Deep
+ability 71 live Congregations of the Deep
+ability 72 live Water Bubble (Small)
+ability 73 live Water Bubble (Medium)
+ability 74 live Water Bubble (Large)
+ability 75 live Rally
+ability 76 live Tempest
 
 item 0 live Boots of Speed
 item 1 live Clarity
@@ -102,3 +162,85 @@ effect 18 live MagicBroken
 effect 19 live Feasting
 effect 20 live FeastLinger
 effect 21 live BloodGrenade
+effect 22 live Rooted
+effect 23 live Disarmed
+effect 24 live Broken
+effect 25 live StealWeapon
+effect 26 live SpeedAura
+effect 27 live EnvenomedWeapon
+effect 28 live FrostAttack
+effect 29 live CloakAura
+effect 30 live Intimidate
+effect 31 live PackleadersAura
+effect 32 live ManaAura
+effect 33 live UnholyAura
+effect 34 live ShardSplit
+effect 35 live SwiftnessAura
+effect 36 live DeathThroeRush
+effect 37 live ThunderClap
+effect 38 live DeathThroePower
+effect 39 live ToughnessAura
+effect 40 live MagicAmplificationAura
+effect 41 live DragonhideAura
+effect 42 live WeakeningAura
+effect 43 live GraniteAura
+effect 44 live WarDrumsAura
+effect 45 live Slam
+effect 46 live Frenzy
+effect 47 live TimeWarpAura
+effect 48 live ProwlerAura
+effect 49 live Desecrate
+effect 50 live Petrify
+effect 51 live RiverbornAura
+effect 52 live Rally
+effect 53 live Tempest
+effect 54 live WaterBubble
+effect 55 live Purge
+
+neutral 0 live Kobold
+neutral 1 live Kobold Soldier
+neutral 2 live Kobold Foreman
+neutral 3 live Hill Troll Berserker
+neutral 4 live Hill Troll Priest
+neutral 5 live Vhoul Assassin
+neutral 6 live Fell Spirit
+neutral 7 live Ghost
+neutral 8 live Harpy Scout
+neutral 9 live Harpy Stormcrafter
+neutral 10 live Centaur Courser
+neutral 11 live Centaur Conqueror
+neutral 12 live Giant Wolf
+neutral 13 live Alpha Wolf
+neutral 14 live Satyr Banisher
+neutral 15 live Satyr Mindstealer
+neutral 16 live Satyr Tormenter
+neutral 17 live Ogre Bruiser
+neutral 18 live Ogre Frostmage
+neutral 19 live Mud Golem
+neutral 20 live Shard Golem
+neutral 21 live Hellbear
+neutral 22 live Hellbear Smasher
+neutral 23 live Wildwing
+neutral 24 live Wildwing Ripper
+neutral 25 live Hill Troll
+neutral 26 live Dark Troll Summoner
+neutral 27 live Warpine Raider
+neutral 28 live Ancient Black Drake
+neutral 29 live Ancient Black Dragon
+neutral 30 live Ancient Rock Golem
+neutral 31 live Ancient Granite Golem
+neutral 32 live Ancient Rumblehide
+neutral 33 live Ancient Thunderhide
+neutral 34 live Ancient Frostbitten Golem
+neutral 35 live Ancient Ice Shaman
+neutral 36 live Ancient Prowler Acolyte
+neutral 37 live Ancient Prowler Shaman
+neutral 38 live Pollywog
+neutral 39 live Boglet
+neutral 40 live Croaker
+neutral 41 live Ancient Croaker
+neutral 42 live Marshmage Apprentice
+neutral 43 live Marshmage
+neutral 44 live Ancient Marshmage
+neutral 45 live Skeleton Warrior
+neutral 46 live Tornado

@@ -379,6 +379,7 @@ impl World {
             town_portal: bag
                 .and_then(|bag| bag.town_portal.flatten())
                 .map(|stack| item_view(&stack, mana_rate, clocks)),
+            neutral: self.neutral.get(entity).map(|kind| kind.id()),
         })
     }
 }

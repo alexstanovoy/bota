@@ -55,6 +55,8 @@ pub struct World {
     pub evasion: Vec<Option<crate::game::Chance>>,
     /// Pierce sequences, indexed by attacker's entity slot.
     pub pierce: Vec<Option<crate::game::Chance>>,
+    /// Critical strike sequences, indexed by attacker's entity slot.
+    pub crit: Vec<Option<crate::game::Chance>>,
     /// Which roster each camp put out last, so it never draws twice running.
     pub camp_last: Vec<u8>,
     /// The height of the ground everywhere.
@@ -114,6 +116,8 @@ pub struct World {
     pub level: Table<Level>,
     /// Upgrade intervals a creep spawned after.
     pub upgrades: Table<Upgrades>,
+    /// What a creep was raised with at its spawn beyond its kind.
+    pub stat_bonus: Table<crate::game::StatBonus>,
     /// Building tiers.
     pub tier: Table<Tier>,
     /// The numbers each entity fights by, worked out afresh every tick.
@@ -130,6 +134,10 @@ pub struct World {
     pub mark: Table<Mark>,
     /// The line of a requiem each entity that is one is flying.
     pub requiem_line: Table<RequiemLine>,
+    /// The chain of damage each entity that is one is leaping along.
+    pub chain: Table<crate::game::Chain>,
+    /// The push each entity being carried is under.
+    pub push: Table<crate::game::Push>,
     /// The Blood Grenade each entity that is one is flying.
     pub grenade: Table<crate::game::Grenade>,
     /// What each entity has gathered and keeps.
@@ -173,6 +181,8 @@ pub struct World {
     pub neutral_ai: Table<NeutralAi>,
     /// Which camp a neutral belongs to.
     pub camp_home: Table<CampHome>,
+    /// Which kind of neutral each neutral is.
+    pub neutral: Table<bota_core::NeutralKind>,
 
     /// Which lane an entity belongs to.
     pub lane: Table<Lane>,
@@ -235,6 +245,7 @@ impl World {
             uphill_miss: Vec::new(),
             evasion: Vec::new(),
             pierce: Vec::new(),
+            crit: Vec::new(),
             camp_last: Vec::new(),
             ground,
             sight_block,
@@ -261,6 +272,7 @@ impl World {
             def: Table::new(),
             level: Table::new(),
             upgrades: Table::new(),
+            stat_bonus: Table::new(),
             tier: Table::new(),
             stats: Table::new(),
             modifiers: Table::new(),
@@ -269,6 +281,8 @@ impl World {
             hook: Table::new(),
             mark: Table::new(),
             requiem_line: Table::new(),
+            chain: Table::new(),
+            push: Table::new(),
             grenade: Table::new(),
             stacks: Table::new(),
             feast: Table::new(),
@@ -289,6 +303,7 @@ impl World {
             lane_ai: Table::new(),
             neutral_ai: Table::new(),
             camp_home: Table::new(),
+            neutral: Table::new(),
             lane: Table::new(),
             rax: Table::new(),
             glyphs: [Glyph::fresh(); 2],
@@ -676,6 +691,7 @@ impl World {
             modifiers: &mut self.modifiers,
             spots: &mut self.aura_spots,
         });
+        self.tick_spell_auras();
     }
 
     /// Stats worked out afresh, pools following their maxima, and the
@@ -686,6 +702,7 @@ impl World {
             def: &self.def,
             level: &self.level,
             upgrades: &self.upgrades,
+            bonus: &self.stat_bonus,
             inventory: &self.inventory,
             modifiers: &self.modifiers,
             applied: &self.applied,
@@ -726,6 +743,7 @@ impl World {
     fn step_movement(&mut self) {
         let intent = self.scope(Phase::MovementIntent);
         self.tick_jungle();
+        self.tick_neutral_spells();
         self.march_lanes();
         drop(intent);
         self.walk_bodies();
@@ -778,6 +796,33 @@ impl World {
     /// broken, camps roused, damage credited, events and misses told, the
     /// dead buried.
     fn step_damage(&mut self, events: &mut Vec<crate::game::Event>) {
+        let mut felt = self.feel_hits();
+        // What the blows that landed set off (a splash, a poison's first
+        // beat) is felt in the same tick.
+        self.land_strikes(&felt);
+        if !self.hits.is_empty() {
+            felt.extend(self.feel_hits());
+        }
+        self.burst_bubbles();
+        self.break_on_blows(&felt);
+        self.rouse_camps(&felt);
+        self.owe_backdoor(&felt);
+        self.credit_damage(&felt);
+        self.tell_of(&felt, events);
+        let missed: Vec<Missed> = self.missed.drain(..).collect();
+        self.tell_of_misses(&missed, events);
+        let fallen: Vec<(Entity, Option<Entity>)> = felt
+            .iter()
+            .filter(|blow| blow.fatal)
+            .map(|blow| (blow.target, blow.source))
+            .collect();
+        self.avenge(&fallen);
+        self.bury(fallen, events);
+    }
+
+    /// Puts the waiting blows in an order drawn afresh and takes them off
+    /// the health they land on; answers the ones that were felt.
+    fn feel_hits(&mut self) -> Vec<Landed> {
         self.shuffle_hits();
         let amplified = self
             .hits
@@ -803,20 +848,7 @@ impl World {
         } else {
             hitting_system::<false>(cx);
         }
-        let felt: Vec<Landed> = self.landed.drain(..).collect();
-        self.break_on_blows(&felt);
-        self.rouse_camps(&felt);
-        self.owe_backdoor(&felt);
-        self.credit_damage(&felt);
-        self.tell_of(&felt, events);
-        let missed: Vec<Missed> = self.missed.drain(..).collect();
-        self.tell_of_misses(&missed, events);
-        let fallen = felt
-            .iter()
-            .filter(|blow| blow.fatal)
-            .map(|blow| (blow.target, blow.source))
-            .collect();
-        self.bury(fallen, events);
+        self.landed.drain(..).collect()
     }
 }
 

@@ -1,6 +1,6 @@
 use bota_proto::DamageKind;
 
-use crate::game::Entity;
+use crate::game::{Entity, HitEffect};
 
 /// A missile on its way to somebody.
 ///
@@ -30,4 +30,6 @@ pub struct Projectile {
     pub pierce_damage: i32,
     /// Outgoing amplification of `pierce_damage`, captured when thrown.
     pub pierce_amp_bp: i32,
+    /// What its blow does besides its damage.
+    pub effect: HitEffect,
 }
