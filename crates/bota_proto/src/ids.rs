@@ -5,13 +5,15 @@ use serde::{Deserialize, Serialize};
 /// A handle to an entity in the world: a unit, a projectile or an item on the
 /// ground.
 ///
-/// Generational: a handle to a dead entity never becomes valid again.
-/// Meaningful only within the match that issued it.
+/// A handle to a dead entity never becomes valid again. Meaningful only within
+/// the match that issued it and, in a view through one side's eyes, only to
+/// that side (see the [`contract`](crate::contract)).
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct EntityId {
-    /// Slot index into the entity arena.
+    /// The side's own count, or in a view of everything the simulation's slot.
     pub idx: u32,
-    /// Generation counter, bumped every time the slot is reused.
+    /// Zero in a side's own handles; in a view of everything, the slot's
+    /// generation, bumped every time the slot is reused and never zero.
     pub generation: u32,
 }
 

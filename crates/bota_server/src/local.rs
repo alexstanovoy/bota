@@ -9,8 +9,10 @@ use core::fmt;
 
 use bota_proto::{OutgoingOrder, ServerMsg, SlotId, Team, WorldView};
 
-use crate::game::{DelayLine, Event, MatchConfig, OrderDelay, RefusedOrder, World};
-use crate::game_loop::{side_view, visible_events};
+use crate::game::{
+    DelayLine, Entity, Event, Handles, MatchConfig, OrderDelay, RefusedOrder, World,
+};
+use crate::game_loop::{side_events, side_view};
 
 /// Invalid input or lifecycle use of a local match.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -49,6 +51,8 @@ pub struct LocalMatch {
     line: DelayLine,
     /// Orders refused on the tick they came due; drained every step.
     refused: Vec<RefusedOrder>,
+    /// What each side calls the entities it is told of.
+    handles: Handles,
 }
 
 impl LocalMatch {
@@ -65,13 +69,15 @@ impl LocalMatch {
         cfg.validate().map_err(|e| refused(&e))?;
         let line = DelayLine::new(cfg, delays).map_err(|e| refused(&e))?;
         let mut world = World::for_match(cfg, cfg.rng());
+        let handles = Handles::new(cfg, &world);
         let events = world.advance(&[]);
-        let local = Self {
+        let mut local = Self {
             world,
             seats: cfg.picks.iter().map(|pick| pick.slot).collect(),
             teams: cfg.picks.iter().map(|pick| pick.team).collect(),
             line,
             refused: Vec::with_capacity(cfg.picks.len()),
+            handles,
         };
         let start = ServerMsg::MatchStart { info: cfg.info() };
         let mut streams = vec![vec![start]; local.seats.len()];
@@ -99,10 +105,12 @@ impl LocalMatch {
         }
         let mut streams: Vec<Vec<ServerMsg>> =
             orders.iter().map(|_| Vec::with_capacity(4)).collect();
-        for ((stream, &slot), order) in streams.iter_mut().zip(&self.seats).zip(orders) {
+        let seats = streams.iter_mut().zip(self.seats.iter().zip(&self.teams));
+        for ((stream, (&slot, &team)), order) in seats.zip(orders) {
             let Some(order) = order else {
                 continue;
             };
+            let (unit, order_given) = self.handles.heard(team, order.unit, order.order);
             debug_assert!(
                 order.seen <= self.world.tick,
                 "a seat cannot have seen the future"
@@ -111,8 +119,8 @@ impl LocalMatch {
                 &self.world,
                 slot,
                 order.seq,
-                order.unit,
-                order.order,
+                unit,
+                order_given,
                 Some(order.seen),
             );
             if let Err(reason) = given {
@@ -160,9 +168,16 @@ impl LocalMatch {
         &mut self.world
     }
 
+    /// The handle a seat's connection knows an entity by, once the seat was
+    /// told of it.
+    pub fn handle_of(&self, seat: usize, entity: Entity) -> Option<bota_proto::EntityId> {
+        let team = *self.teams.get(seat)?;
+        self.handles.name_of(team, crate::game::wire_id(entity))
+    }
+
     /// Each seat's snapshot of the current tick with no events, as after a
     /// scenario rearranged the world.
-    pub fn restate(&self) -> Vec<Vec<ServerMsg>> {
+    pub fn restate(&mut self) -> Vec<Vec<ServerMsg>> {
         let mut streams: Vec<Vec<ServerMsg>> =
             self.seats.iter().map(|_| Vec::with_capacity(3)).collect();
         self.publish(&mut streams, &[]);
@@ -170,13 +185,13 @@ impl LocalMatch {
     }
 
     /// Appends the finished tick as each seat sees it.
-    fn publish(&self, streams: &mut [Vec<ServerMsg>], events: &[Event]) {
+    fn publish(&mut self, streams: &mut [Vec<ServerMsg>], events: &[Event]) {
         for (stream, &team) in streams.iter_mut().zip(&self.teams) {
-            let view: WorldView = side_view(&self.world, &self.line, team);
+            let view: WorldView = side_view(&self.world, &self.line, &mut self.handles, team);
             stream.push(ServerMsg::Snapshot { view });
             stream.push(ServerMsg::Events {
                 tick: self.world.tick,
-                events: visible_events(events, Some(team)),
+                events: side_events(events, &mut self.handles, team, self.world.tick),
             });
         }
         if let Some(winner) = self.world.victor() {

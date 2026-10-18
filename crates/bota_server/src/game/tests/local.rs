@@ -1,7 +1,7 @@
 //! An in-process match tells each seat exactly what a server would.
 
 use bota_core::{MAP2_ID, map_of, rules};
-use bota_proto::{EntityId, EventKind, Order, OutgoingOrder, ServerMsg, Target, UnitKind};
+use bota_proto::{EntityId, EventKind, Order, OutgoingOrder, ServerMsg, Target, Team};
 
 use crate::game::{MatchConfig, OrderDelay};
 use crate::local::LocalMatch;
@@ -20,20 +20,44 @@ pub(super) fn mid_config() -> MatchConfig {
     }
 }
 
-/// The gold each seat was told for one death, when it was told of it.
-fn told_gold(streams: &[Vec<ServerMsg>], unit: EntityId) -> [Option<i32>; 2] {
-    let gold = |stream: &Vec<ServerMsg>| {
-        stream.iter().find_map(|msg| match msg {
-            ServerMsg::Events { events, .. } => events.iter().find_map(|kind| match kind {
-                EventKind::Died {
-                    unit: dead, gold, ..
-                } if *dead == unit => Some(*gold),
-                _ => None,
-            }),
-            _ => None,
-        })
-    };
-    [gold(&streams[0]), gold(&streams[1])]
+/// The non-hero deaths a seat is told the other side's hero struck last,
+/// with the gold it is told each paid, across one step's messages.
+fn enemy_kills_told(stream: &[ServerMsg]) -> Vec<i32> {
+    let mut told = Vec::new();
+    let mut heroes: Vec<(EntityId, Team)> = Vec::new();
+    let mut viewer = None;
+    for msg in stream {
+        match msg {
+            ServerMsg::Snapshot { view } => {
+                viewer = view.viewer;
+                heroes = view
+                    .players
+                    .iter()
+                    .filter_map(|player| Some((player.unit?, player.team)))
+                    .collect();
+            }
+            ServerMsg::Events { events, .. } => {
+                for kind in events {
+                    let EventKind::Died {
+                        unit,
+                        killer: Some(killer),
+                        gold,
+                        ..
+                    } = kind
+                    else {
+                        continue;
+                    };
+                    let team_of = |id| heroes.iter().find(|(hero, _)| *hero == id).map(|h| h.1);
+                    let by_enemy = team_of(*killer).is_some_and(|team| Some(team) != viewer);
+                    if by_enemy && team_of(*unit).is_none() {
+                        told.push(*gold);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    told
 }
 
 #[test]
@@ -41,40 +65,13 @@ fn a_non_hero_kills_gold_is_hidden_from_the_other_side() {
     let cfg = mid_config();
     let (mut local, mut streams) = LocalMatch::new(&cfg, &[OrderDelay::NONE]).expect("a match");
     let map = map_of(cfg.map);
-    let mut kinds: Vec<(EntityId, UnitKind)> = Vec::new();
     let mut hidden = 0;
     let mut ordered = false;
     for _ in 0..rules::FIRST_WAVE_TICK + 4000 {
         for stream in &streams {
-            for msg in stream {
-                if let ServerMsg::Snapshot { view } = msg {
-                    kinds.extend(view.units.iter().map(|u| (u.id, u.kind)));
-                }
-            }
-        }
-        for msg in streams.iter().flatten() {
-            let ServerMsg::Events { events, .. } = msg else {
-                continue;
-            };
-            for kind in events {
-                let EventKind::Died {
-                    unit,
-                    killer: Some(killer),
-                    ..
-                } = kind
-                else {
-                    continue;
-                };
-                let kind_of = |id| kinds.iter().rev().find(|(i, _)| *i == id).map(|k| k.1);
-                if kind_of(*unit) == Some(UnitKind::Hero)
-                    || kind_of(*killer) != Some(UnitKind::Hero)
-                {
-                    continue;
-                }
-                if let [Some(a), Some(b)] = told_gold(&streams, *unit) {
-                    assert!(a == 0 || b == 0, "both sides were told {a} and {b}");
-                    hidden += usize::from(a != b);
-                }
+            for gold in enemy_kills_told(stream) {
+                assert_eq!(gold, 0, "a side was told the other's creep gold");
+                hidden += 1;
             }
         }
         let tick = local.tick();
@@ -98,5 +95,5 @@ fn a_non_hero_kills_gold_is_hidden_from_the_other_side() {
             break;
         }
     }
-    assert!(hidden > 0, "no creep kill was seen by both sides");
+    assert!(hidden > 0, "no creep kill by the other hero was seen");
 }

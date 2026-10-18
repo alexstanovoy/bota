@@ -207,7 +207,7 @@ fn the_ledger_keeps_a_standing_walk_exactly_while_the_server_does() {
     assert_eq!(walks_on(&local, &session), (true, true));
     let drink = Order::Use {
         slot: ItemSlot(0),
-        target: Target::Unit(crate::game::wire_id(hero)),
+        target: Target::Unit(local.handle_of(0, hero).expect("its own hero")),
     };
     give(&mut local, &mut session, drink, 5);
     assert!(local.world().inventory.get(hero).expect("a bag").slots[0].is_none());
@@ -231,7 +231,7 @@ fn the_ledger_keeps_a_standing_walk_exactly_while_the_server_does() {
         .expect("a tower of its own");
     let read = Order::Use {
         slot: ItemSlot::TOWN_PORTAL,
-        target: Target::Unit(crate::game::wire_id(tower)),
+        target: Target::Unit(local.handle_of(0, tower).expect("its own tower")),
     };
     give(
         &mut local,

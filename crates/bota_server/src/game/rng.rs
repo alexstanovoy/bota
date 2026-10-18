@@ -1,7 +1,7 @@
 //! Hidden randomness. Nothing here ever reaches a participant.
 
 use bota_core::Ratio;
-use bota_proto::{EntityId, SlotId};
+use bota_proto::{EntityId, SlotId, Team};
 use rand_chacha::ChaCha8Rng;
 use rand_chacha::rand_core::{Rng as _, SeedableRng};
 
@@ -72,6 +72,13 @@ impl MatchRng {
         open_stream(self.seed, ORDER_DELAY_BIT | u64::from(slot.0))
     }
 
+    /// A fresh stream that orders the names one side is given for the
+    /// entities it is told of first on the same tick. Apart from every
+    /// stream of the simulation itself.
+    pub fn for_handles(&self, team: Team) -> Stream {
+        open_stream(self.seed, HANDLES_BIT | team as u64)
+    }
+
     /// The root seed every stream is derived from.
     pub fn seed(&self) -> &[u8; 32] {
         &self.seed
@@ -91,7 +98,8 @@ fn open_stream(seed: [u8; 32], stream_id: u64) -> Stream {
 
 const GLOBAL_BIT: u64 = 1 << 63;
 const ORDER_DELAY_BIT: u64 = 1 << 62;
-const _: () = assert!(((PURPOSE_COUNT as u64) << PURPOSE_SHIFT) <= ORDER_DELAY_BIT);
+const HANDLES_BIT: u64 = 1 << 61;
+const _: () = assert!(((PURPOSE_COUNT as u64) << PURPOSE_SHIFT) <= HANDLES_BIT);
 const PURPOSE_SHIFT: u32 = 48;
 const UNIT_SHIFT: u32 = 8;
 

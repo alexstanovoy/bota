@@ -13,7 +13,8 @@ use bota_proto::{
 use rand_chacha::rand_core::Rng as _;
 
 use crate::game::{
-    DelayLine, Event, EventVisibility, MatchConfig, MatchSecrets, OrderDelay, RefusedOrder, World,
+    DelayLine, Event, EventVisibility, Handles, MatchConfig, MatchSecrets, OrderDelay,
+    RefusedOrder, World,
 };
 use crate::lobby::{ReservedSeat, Roster};
 use crate::net::{Connection, FrameStream, Listeners, NetEvent};
@@ -256,6 +257,16 @@ struct Inbox {
     line: DelayLine,
     /// The latest tick each seat acknowledged, indexed by slot.
     acked: Vec<u32>,
+    /// What each side calls the entities it is told of.
+    handles: Handles,
+}
+
+/// What a finished tick tells beyond the world itself.
+struct Told<'a> {
+    line: &'a DelayLine,
+    handles: &'a mut Handles,
+    events: &'a [Event],
+    taken: &'a [SlotOrder],
 }
 
 /// The wall-clock timing of the tick loop.
@@ -759,6 +770,7 @@ impl Server {
             line: DelayLine::new(&cfg, &self.opts.order_delays)
                 .expect("the command line checked the order delays"),
             acked: vec![0; self.roster.seats.len()],
+            handles: Handles::new(&cfg, &world),
         };
         let mut refused = Vec::new();
         let mut empty_since = None;
@@ -775,8 +787,13 @@ impl Server {
                 orders: taken.clone(),
             });
             let events = world.advance(&taken);
-            let held = self.publish_tick(&world, &inbox.line, &events, &taken, &mut replay);
-            if let Some(held) = held {
+            let told = Told {
+                line: &inbox.line,
+                handles: &mut inbox.handles,
+                events: &events,
+                taken: &taken,
+            };
+            if let Some(held) = self.publish_tick(&world, told, &mut replay) {
                 self.feed_late(held);
             }
             if let Some(winner) = world.victor() {
@@ -869,21 +886,28 @@ impl Server {
     }
 
     /// Sends a finished tick to every connection watching live, each through
-    /// its own eyes, and records it. Returns the tick for the late
-    /// spectators when they may watch.
+    /// its own eyes and in its side's names, and records it. Returns the tick
+    /// for the late spectators when they may watch.
     fn publish_tick(
         &self,
         world: &World,
-        line: &DelayLine,
-        events: &[Event],
-        taken: &[SlotOrder],
+        told: Told,
         replay: &mut ReplayWriter,
     ) -> Option<HeldTick> {
+        let Told {
+            line,
+            handles,
+            events,
+            taken,
+        } = told;
         let mut full = world.view_full();
         full.order_delays = line.views(None);
         let full_frame = snapshot_frame(full.clone());
-        let radiant_frame = snapshot_frame(side_view(world, line, Team::Radiant));
-        let dire_frame = snapshot_frame(side_view(world, line, Team::Dire));
+        let full_events = visible_events(events, None);
+        let sides = [Team::Radiant, Team::Dire].map(|team| {
+            let frame = snapshot_frame(side_view(world, line, handles, team));
+            (team, frame, side_events(events, handles, team, world.tick))
+        });
         replay.record(&ReplayRecord::Msg(ServerMsg::Snapshot { view: full }));
         // A connection that has not said Hello is told nothing, a referee no
         // tick, and a late spectator only what the delayed feed shows it.
@@ -896,19 +920,14 @@ impl Server {
         let locked = |id: PlayerId| self.spectators.iter().any(|w| w.id == id && w.locked);
         for conn in self.conns.iter().filter(|c| watching(c.id)) {
             let (eyes, viewing) = self.sight_of(conn.id);
-            let frame = match viewing {
-                Some(Team::Radiant) => radiant_frame.clone(),
-                Some(Team::Dire) => dire_frame.clone(),
-                // Seats never sit on the jungle's side.
-                Some(Team::Neutral) | None => full_frame.clone(),
-            };
-            conn.send_tick(frame, world.tick, visible_events(events, viewing));
-            if let Some(eyes) = eyes.filter(|_| locked(conn.id)) {
-                let told: Vec<SlotOrder> = taken
-                    .iter()
-                    .filter(|given| given.slot == eyes)
-                    .copied()
-                    .collect();
+            // Seats never sit on the jungle's side.
+            let side = sides.iter().find(|(team, ..)| Some(*team) == viewing);
+            match side {
+                Some((_, frame, told)) => conn.send_tick(frame.clone(), world.tick, told.clone()),
+                None => conn.send_tick(full_frame.clone(), world.tick, full_events.clone()),
+            }
+            if let (Some(eyes), Some(team)) = (eyes.filter(|_| locked(conn.id)), viewing) {
+                let told = seat_orders(taken, eyes, (handles, team), world.tick);
                 if !told.is_empty() {
                     conn.send(&ServerMsg::Orders {
                         tick: world.tick,
@@ -924,11 +943,16 @@ impl Server {
             }));
         }
         self.delayed.as_ref()?;
+        // Late spectators watching the whole map are told the simulation's
+        // handles, those with a side's fog that side's names, as live.
+        let [
+            (_, radiant_frame, radiant_events),
+            (_, dire_frame, dire_events),
+        ] = sides;
         Some(HeldTick {
             tick: world.tick,
             frames: [full_frame, radiant_frame, dire_frame],
-            events: [None, Some(Team::Radiant), Some(Team::Dire)]
-                .map(|viewing| visible_events(events, viewing)),
+            events: [full_events, radiant_events, dire_events],
             orders: taken.to_vec(),
         })
     }
@@ -1008,9 +1032,10 @@ impl Server {
                 order,
                 seen,
             } => {
-                let Some(slot) = self.roster.seat_of(id).map(|s| s.slot) else {
+                let Some((slot, team)) = self.roster.seat_of(id).map(|s| (s.slot, s.team)) else {
                     return;
                 };
+                let (unit, order) = inbox.handles.heard(team, unit, order);
                 if let Err(reason) = inbox.line.give(world, slot, seq, unit, order, seen)
                     && let Some(conn) = self.conn(id)
                 {
@@ -1060,11 +1085,47 @@ impl Server {
     }
 }
 
-/// What one side sees of the world, with the order delays it is told.
-pub(crate) fn side_view(world: &World, line: &DelayLine, team: Team) -> WorldView {
+/// What one side sees of the world, in its own names, with the order delays
+/// it is told.
+pub(crate) fn side_view(
+    world: &World,
+    line: &DelayLine,
+    handles: &mut Handles,
+    team: Team,
+) -> WorldView {
     let mut view = world.view(team);
     view.order_delays = line.views(Some(team));
+    handles.tell_view(world, &mut view);
     view
+}
+
+/// The orders of one seat taken on a tick, in the names of the side shown
+/// them.
+fn seat_orders(
+    taken: &[SlotOrder],
+    seat: SlotId,
+    (handles, team): (&mut Handles, Team),
+    tick: u32,
+) -> Vec<SlotOrder> {
+    let mut told: Vec<SlotOrder> = taken
+        .iter()
+        .filter(|given| given.slot == seat)
+        .copied()
+        .collect();
+    handles.tell_orders(team, tick, &mut told);
+    told
+}
+
+/// The events one side is told of on a tick, in its own names.
+pub(crate) fn side_events(
+    events: &[Event],
+    handles: &mut Handles,
+    team: Team,
+    tick: u32,
+) -> Vec<EventKind> {
+    let mut told = visible_events(events, Some(team));
+    handles.tell_events(team, tick, &mut told);
+    told
 }
 
 /// A snapshot as a frame ready to queue.

@@ -13,9 +13,22 @@
 //! it is not told, so a client draws its own fog from the terrain and its own
 //! units; the server alone decides which units a view holds.
 //!
-//! Two further channels are closed by rule, since a bot that optimises a
+//! Three further channels are closed by rule, since a bot that optimises a
 //! score finds any leak a human would shrug off:
 //!
+//! - **An [`EntityId`](crate::EntityId) a side is told is that side's own
+//!   name.** The simulation's handles come from one allocator for the whole
+//!   world, so their slots and generations would count what the other side
+//!   spawns in the fog. A view through a side's eyes, the events and the
+//!   orders it is told name each entity by a handle given the first time the
+//!   side is told of it: `idx` counts up from zero, `generation` is zero, and
+//!   a handle is never given twice. Of the handles first given on one tick,
+//!   those of what the match was set up with (the map's buildings, the picks'
+//!   heroes and couriers) come first in the setup's own order, the rest in an
+//!   order drawn from a hidden stream. The side's orders name units
+//!   the same way. The other side knows the same unit by another handle; a
+//!   view of everything, and the replay, carry the simulation's own handles,
+//!   whose generation is never zero.
 //! - **A reject reason does not depend on hidden state.** An order aimed at a
 //!   unit the side cannot see is refused with
 //!   [`UnknownTarget`](crate::RejectReason::UnknownTarget), exactly as one

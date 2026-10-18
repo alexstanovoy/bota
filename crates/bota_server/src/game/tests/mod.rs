@@ -14,6 +14,7 @@ mod feast;
 mod fiend;
 mod fillers;
 mod grenade;
+mod handles;
 mod hash;
 mod ids;
 mod item_numbers;

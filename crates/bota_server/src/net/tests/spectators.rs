@@ -113,12 +113,21 @@ fn the_key_that_claimed_a_seat_watches_it_live_with_its_orders() {
         seat: Some(SlotId(1)),
     });
     assert_eq!(watcher.recv_until(snapshot).viewer, Some(Team::Radiant));
-    c1.send(&move_order(1, 1000, 1000));
+    // The seat names a unit as its side does, and so is it told on.
+    let seen = c1.recv_until(snapshot);
+    let target = Target::Unit(seen.units.last().expect("a unit of its own").id);
+    c1.send(&ClientMsg::Order {
+        seq: 1,
+        unit: None,
+        order: Order::Move { target },
+        seen: None,
+    });
     let told = watcher.recv_until(|msg| match msg {
         ServerMsg::Orders { orders, .. } => Some(orders),
         _ => None,
     });
     assert!(told.iter().all(|given| given.slot == SlotId(0)), "{told:?}");
+    assert_eq!(told[0].order, Order::Move { target });
 }
 
 /// Plays a lockstep match by hand: both seats acknowledge every tick up to
