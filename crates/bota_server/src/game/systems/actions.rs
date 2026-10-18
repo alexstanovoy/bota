@@ -652,7 +652,17 @@ impl World {
         };
         match stats.projectile_speed {
             None => self.strike_home(attacker, on, swing),
-            Some(speed) => self.throw_at(attacker, on, swing, speed),
+            Some(speed) => {
+                self.throw_at(attacker, on, swing, speed);
+                for extra in self.multishot_targets(attacker, on, stats) {
+                    let share = self.class_pct_on(attacker, extra);
+                    let shot = Swing {
+                        damage: damage * share / 100,
+                        ..swing
+                    };
+                    self.throw_at(attacker, extra, shot, speed);
+                }
+            }
         }
     }
 

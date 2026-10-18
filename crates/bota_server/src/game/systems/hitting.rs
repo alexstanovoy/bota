@@ -121,7 +121,9 @@ pub fn hitting_system<const AMPLIFIED: bool>(cx: HitCx<'_>) {
         }
         let amount = dealt::<AMPLIFIED>(blow, on_it);
         let mut taken = mitigate(amount, blow.kind, stat.armor, stat.magic_resist_bp);
-        if stat.backdoor {
+        if stat.glyph {
+            taken = 0;
+        } else if stat.backdoor {
             taken = taken * rules::BACKDOOR_DAMAGE_PCT / 100;
         }
         let Some(pool) = health.get_mut(blow.target) else {

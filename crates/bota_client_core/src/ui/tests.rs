@@ -422,6 +422,7 @@ fn a_tick(tick: u32, units: Vec<UnitView>, players: Vec<PlayerView>) -> WorldVie
         stock: Vec::new(),
         talents: Vec::new(),
         teleports: Vec::new(),
+        glyphs: Vec::new(),
     }
 }
 

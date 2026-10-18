@@ -10,6 +10,7 @@ mod feast;
 mod fiend;
 mod fight;
 mod gear;
+mod glyph;
 mod grenade;
 mod ground;
 mod guard;

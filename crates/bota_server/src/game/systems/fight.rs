@@ -82,6 +82,7 @@ impl World {
             if !self.entities.contains(entity) {
                 continue;
             }
+            self.refresh_glyph_for(entity);
             if let Some((kind, side)) = self.bury_entity(entity, killer, events) {
                 structure_fell = true;
                 match (kind, side) {

@@ -15,6 +15,7 @@ mod determinism;
 mod feast;
 mod fiend;
 mod fillers;
+mod glyph;
 mod grenade;
 mod handles;
 mod hash;

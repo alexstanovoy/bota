@@ -343,6 +343,18 @@ pub struct StockView {
     pub restock_left: u32,
 }
 
+/// One side's Glyph of Fortification.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct GlyphView {
+    /// The side whose Glyph it is.
+    pub team: Team,
+    /// Ticks until the side may activate it; zero when it is ready.
+    pub ready_in: u32,
+    /// Ticks its structures still take no damage for; zero when it is not
+    /// active.
+    pub active_for: u32,
+}
+
 /// A teleport being channelled, as both sides see its destination.
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct TeleportView {
@@ -447,8 +459,11 @@ pub struct WorldView {
     pub talents: Vec<TalentView>,
     /// Every teleport being channelled, whichever side reads it: Dota shows
     /// a teleport's destination to both sides through the fog. Sorted by
-    /// [`SlotId`]. Last on the wire.
+    /// [`SlotId`].
     pub teleports: Vec<TeleportView>,
+    /// The Glyph of Fortification of the viewing side, or of both sides in a
+    /// view of everything, sorted by [`Team`]. Last on the wire.
+    pub glyphs: Vec<GlyphView>,
 }
 
 impl WorldView {

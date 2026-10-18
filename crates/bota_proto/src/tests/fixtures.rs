@@ -223,6 +223,11 @@ pub fn world_view(creeps: u32) -> WorldView {
             ticks_left: 61,
             ticks_total: 90,
         }],
+        glyphs: vec![GlyphView {
+            team: Team::Dire,
+            ready_in: 9000,
+            active_for: 120,
+        }],
     }
 }
 
@@ -366,6 +371,7 @@ pub fn all_orders() -> Vec<Order> {
             talent: TalentSlot(7),
         },
         Order::LearnAttributeBonus,
+        Order::Glyph,
     ];
     orders.extend(item_orders());
     orders.extend(cheat_orders());
@@ -456,6 +462,7 @@ pub fn empty_world_view() -> WorldView {
         stock: Vec::new(),
         talents: Vec::new(),
         teleports: Vec::new(),
+        glyphs: Vec::new(),
     }
 }
 

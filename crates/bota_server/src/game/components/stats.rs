@@ -97,6 +97,9 @@ pub struct Stats {
     pub invulnerable: bool,
     /// Whether backdoor protection holds on it: it takes less damage.
     pub backdoor: bool,
+    /// Whether the side's Glyph of Fortification holds on it: damage does
+    /// nothing to it.
+    pub glyph: bool,
 }
 
 impl Stats {

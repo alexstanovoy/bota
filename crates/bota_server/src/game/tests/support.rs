@@ -51,6 +51,7 @@ pub(crate) fn stats() -> Stats {
         phased: false,
         invulnerable: false,
         backdoor: false,
+        glyph: false,
         evasion: Ratio::NEVER,
         pierce: Ratio::NEVER,
         pierce_damage: 0,

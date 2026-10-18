@@ -77,6 +77,7 @@ impl World {
             stock: self.project_stock(viewer),
             talents,
             teleports: self.teleport_views(),
+            glyphs: self.glyph_views(viewer),
         }
     }
 

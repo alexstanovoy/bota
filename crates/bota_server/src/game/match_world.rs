@@ -82,6 +82,10 @@ impl World {
 
     /// Hands one order to the body of the seat that gave it.
     fn take_order(&mut self, cmd: &Command, events: &mut Vec<Event>) {
+        if cmd.order == Order::Glyph {
+            self.use_glyph(cmd.slot);
+            return;
+        }
         let Some(unit) = self.driven_by(cmd.slot, cmd.unit) else {
             return;
         };
@@ -263,6 +267,7 @@ impl World {
             | Order::Learn { .. }
             | Order::LearnTalent { .. }
             | Order::LearnAttributeBonus
+            | Order::Glyph
             | Order::Swap { .. }
             | Order::Sell { .. }
             | Order::Buy { .. }
@@ -335,6 +340,9 @@ impl World {
         named: Option<bota_proto::EntityId>,
         order: &Order,
     ) -> Result<(), RejectReason> {
+        if *order == Order::Glyph {
+            return self.check_glyph(slot);
+        }
         let Some(seat) = self.seat(slot) else {
             return Err(RejectReason::HeroDead);
         };

@@ -701,6 +701,26 @@ pub const BACKDOOR_TOWER_RADIUS: i32 = 900;
 /// tier three and four, barracks and filler of its side, and itself.
 pub const BACKDOOR_BASE_RADIUS: i32 = 4000;
 
+/// Seconds past the horn before a side may first use its Glyph of
+/// Fortification (Liquipedia, *Glyph of Fortification*: an initial
+/// cooldown of 180).
+pub const GLYPH_FIRST_USE_TICKS: u32 = PREGAME_TICKS + 180 * TICKS_PER_SECOND;
+/// Cooldown of a Glyph of Fortification, shared by a whole side: 300 seconds.
+pub const GLYPH_COOLDOWN_TICKS: u32 = 300 * TICKS_PER_SECOND;
+/// How long a Glyph keeps a side's structures from taking damage: 7 seconds
+/// (`abilities_english.txt`, `fountain_glyph_duration_structures`).
+pub const GLYPH_STRUCTURE_TICKS: u32 = 7 * TICKS_PER_SECOND;
+/// How long a Glyph keeps a side's lane creeps from taking damage: 3
+/// seconds (`fountain_glyph_duration_creeps`).
+pub const GLYPH_CREEP_TICKS: u32 = 3 * TICKS_PER_SECOND;
+/// Extra targets a tower of tier two and above shoots at with each shot
+/// while its side's Glyph holds (`fountain_glyph_multishot_targets`).
+pub const GLYPH_MULTISHOT_TARGETS: usize = 5;
+/// Ticks after a side's first tier one tower, first tier two tower and first
+/// melee barracks fall before its Glyph is ready again: the cooldown is set
+/// to one second.
+pub const GLYPH_REFRESH_TICKS: u32 = TICKS_PER_SECOND;
+
 /// Melee barracks health.
 pub const RAX_MELEE_HP: i32 = 2200;
 /// Melee barracks armor.

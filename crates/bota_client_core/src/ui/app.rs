@@ -451,6 +451,20 @@ impl App {
         self.send_order(Order::LearnAttributeBonus);
     }
 
+    /// Activates the Glyph of Fortification of one's side.
+    pub fn activate_glyph(&mut self) {
+        self.send_order(Order::Glyph);
+    }
+
+    /// The Glyph of Fortification of one's side, or of the side the panel
+    /// shows when one has none.
+    pub fn glyph(&self) -> Option<bota_proto::GlyphView> {
+        let team = self
+            .my_team()
+            .or_else(|| Some(self.player(self.panel_slot()?)?.team))?;
+        self.view()?.glyphs.iter().find(|g| g.team == team).copied()
+    }
+
     /// The name the player of a seat gave in the lobby, if any.
     pub fn player_name(&self, slot: SlotId) -> Option<&str> {
         self.names

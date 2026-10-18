@@ -6,12 +6,12 @@ use bota_proto::{HeroId, SlotId, Team, UnitKind, Vec2};
 
 use crate::game::{
     AbilityBook, Action, AppliedModifiers, AuraCx, Auras, Backdoor, Bounty, CampHome, Candidates,
-    Def, Entity, EntityAllocator, Errand, Expiry, Exposure, Forest, Handling, Health, Hit, HitCx,
-    Hook, Hull, Inventory, Landed, Lane, LaneAi, Level, Loot, Mana, March, Mark, Missed, MissileCx,
-    Modifier, Modifiers, Motion, NeutralAi, Orders, Place, Plan, Projectile, Purpose, Rax,
-    RequiemLine, Route, Seat, SightCx, SightScratch, SpawnModifier, Spots, Stacks, Stats, StatsCx,
-    Table, Target, Tier, Transform, UnitOrder, Upgrades, Visibility, aura_system, derive_stats,
-    hitting_system, missile_system, regenerate, visibility_system,
+    Def, Entity, EntityAllocator, Errand, Expiry, Exposure, Forest, Glyph, Handling, Health, Hit,
+    HitCx, Hook, Hull, Inventory, Landed, Lane, LaneAi, Level, Loot, Mana, March, Mark, Missed,
+    MissileCx, Modifier, Modifiers, Motion, NeutralAi, Orders, Place, Plan, Projectile, Purpose,
+    Rax, RequiemLine, Route, Seat, SightCx, SightScratch, SpawnModifier, Spots, Stacks, Stats,
+    StatsCx, Table, Target, Tier, Transform, UnitOrder, Upgrades, Visibility, aura_system,
+    derive_stats, hitting_system, missile_system, regenerate, visibility_system,
 };
 use crate::profile::{Phase, ScopeGuard};
 
@@ -178,6 +178,8 @@ pub struct World {
     pub lane: Table<Lane>,
     /// Which of its lane's two barracks a building is.
     pub rax: Table<Rax>,
+    /// Each side's Glyph of Fortification: Radiant's, then Dire's.
+    pub glyphs: [Glyph; 2],
     /// Backdoor protection of the structures that have it.
     pub backdoor: Table<Backdoor>,
     /// What killing an entity pays.
@@ -289,6 +291,7 @@ impl World {
             camp_home: Table::new(),
             lane: Table::new(),
             rax: Table::new(),
+            glyphs: [Glyph::fresh(); 2],
             backdoor: Table::new(),
             bounty: Table::new(),
             owner: Table::new(),
@@ -696,6 +699,7 @@ impl World {
         });
         self.guard_structures();
         self.mark_backdoor();
+        self.mark_glyph();
     }
 
     /// Who sees what, from where everything stands.

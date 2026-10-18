@@ -34,6 +34,12 @@ impl World {
             fnv.vec2(tree.at);
             fnv.u32(tree.until);
         }
+        for glyph in &self.glyphs {
+            fnv.u32(glyph.ready_at);
+            fnv.u32(glyph.structures_until);
+            fnv.u32(glyph.creeps_until);
+            fnv.u8(glyph.refreshed);
+        }
         for seat in self.seats.iter() {
             hash_seat(&mut fnv, seat);
         }

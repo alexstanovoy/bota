@@ -62,6 +62,7 @@ pub fn snapshot(tick: u32) -> ReplayRecord {
             stock: Vec::new(),
             talents: Vec::new(),
             teleports: Vec::new(),
+            glyphs: Vec::new(),
             felled_trees: Vec::new(),
             planted_trees: Vec::new(),
         },

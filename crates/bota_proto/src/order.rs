@@ -286,4 +286,12 @@ pub enum Order {
     /// with [`RejectReason::CannotLearn`](crate::RejectReason::CannotLearn)
     /// otherwise.
     LearnAttributeBonus,
+    /// Activate the side's Glyph of Fortification: its structures take no
+    /// damage for seven seconds, its lane creeps for three, and its towers
+    /// of tier two and above shoot five more targets with each shot. One
+    /// cooldown serves the whole side, so any seat's order spends it.
+    /// Needs no body: a seat whose hero lies dead may give it. Refused with
+    /// [`RejectReason::OnCooldown`](crate::RejectReason::OnCooldown) while
+    /// the Glyph recharges.
+    Glyph,
 }
