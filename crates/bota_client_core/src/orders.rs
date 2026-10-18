@@ -151,14 +151,6 @@ impl OrderLedger {
             .collect()
     }
 
-    /// The greatest sequence among the standing orders.
-    pub fn newest_standing(&self) -> Option<u32> {
-        self.bodies
-            .iter()
-            .filter_map(|body| body.current.map(|standing| standing.sequence))
-            .max()
-    }
-
     /// The last sequence recorded, standing or not.
     pub const fn last_seq(&self) -> Option<u32> {
         self.last_seq
