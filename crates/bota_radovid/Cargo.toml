@@ -1,0 +1,34 @@
+[package]
+name = "bota_radovid"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "The bota side of a radovid client: matchmaking state, and the way into a game with a ticket."
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+bota_client_core = { workspace = true }
+bota_proto = { workspace = true }
+# radovid has no public remote yet, hence the path; it becomes a git dependency pinned by revision once it does.
+radovid_client = { path = "../../../radovid/crates/radovid_client", default-features = false }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+js-sys = { version = "0.3", optional = true }
+
+[features]
+default = ["native"]
+# Threads and sockets: the control connection on a thread of its own, game links over TCP, ws:// and wss://.
+native = ["radovid_client/native", "bota_client_core/websocket"]
+# The browser's WebSocket for both connections; wasm32 only.
+web = ["radovid_client/web", "bota_client_core/web", "dep:js-sys"]
+
+[dev-dependencies]
+bota_core = { workspace = true }
+# The real service, started in-process; its launcher runs the real bota_server.
+radovid = { path = "../../../radovid/crates/radovid" }
+tokio = { version = "1.53.3", features = ["rt-multi-thread"] }
+
+[lints]
+workspace = true

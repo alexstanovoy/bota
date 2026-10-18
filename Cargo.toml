@@ -4,6 +4,7 @@ members = [
     "crates/bota_client_core",
     "crates/bota_core",
     "crates/bota_proto",
+    "crates/bota_radovid",
     "crates/bota_server",
 ]
 
@@ -19,6 +20,7 @@ categories = ["games", "simulation"]
 bota_client_core = { path = "crates/bota_client_core" }
 bota_core = { path = "crates/bota_core" }
 bota_proto = { path = "crates/bota_proto" }
+bota_radovid = { path = "crates/bota_radovid" }
 bota_server = { path = "crates/bota_server" }
 criterion = { version = "=0.8.2", default-features = false }
 
