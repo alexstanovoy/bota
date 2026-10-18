@@ -6,7 +6,10 @@
 //! front of the server: it takes each client connection and carries every
 //! frame as one binary message, a clean close on as a clean close and a
 //! broken connection on as a reset, both ways. Whatever stands between the
-//! adapter and the server (a bad line) works on the WebSocket's bytes.
+//! adapter and the server (a bad line) works on the WebSocket's bytes. A test
+//! that drives the client library asks for an [`endpoint`] instead and needs
+//! no adapter.
+#![allow(dead_code)] // each test binary uses a part of this shared module
 
 /// Runs each named test, a function of a [`Wire`] in the calling module,
 /// over every wire this build speaks.
