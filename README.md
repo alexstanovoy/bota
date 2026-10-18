@@ -77,6 +77,8 @@ The server hosts one lobby and one match, then exits. It listens on `--port`
 | Flag | Meaning |
 |---|---|
 | `--port N` | TCP port, default 4455 |
+| `--ws-port N` | with the `websocket` feature, also listen for WebSocket connections on this port (see below) |
+| `--tls-cert PEM`, `--tls-key PEM` | with `--ws-port`: the certificate chain (leaf first) and private key; the WebSocket port then speaks TLS 1.3 (`wss://`) |
 | `--map N` | `0` the Dota map played to the Ancient (default); `1` a small hero demo map; `2` the mid-only ruleset on the Dota map: a side loses on its second hero death or its first lost tower, and the match is a draw after twenty game minutes |
 | `--mode realtime\|lockstep` | `realtime` runs at `--tick-rate` on the wall clock (default); `lockstep` waits for every seat to acknowledge each tick |
 | `--tick-rate N` | ticks per second, default 30 |
@@ -88,6 +90,8 @@ The server hosts one lobby and one match, then exits. It listens on `--port`
 | `--referee-key KEY_HEX` | admit a referee with this key (also `BOTA_REFEREE_KEY`): told the lobby, the start, departures and the end, never a tick |
 | `--start-after-secs N` | with reserved seats, start this long after listening at the latest; a seat without a pick gets a random hero |
 | `--max-connections N` | most connections held at once; one that says no `Hello` within 10 s is closed |
+| `--messages-per-sec N` | messages one connection may send a second (default 1000), besides four for every tick it is sent and a burst of two seconds' worth; a peer that sends more is cut off |
+| `--max-spectators-per-seat N` | spectators that may watch through one reserved seat's key at once, default 7 |
 | `--wire-fingerprint` | print the fingerprint of the wire registries this build speaks, and exit; a client sends its own in its `Hello`, and the server refuses one that differs with `WireMismatch` |
 | `--replay FILE` | write a replay |
 | `--ack-timeout-ticks N` | lockstep: tick-lengths to wait for a straggler, default 150 |
@@ -96,9 +100,21 @@ The server hosts one lobby and one match, then exits. It listens on `--port`
 | `--dummy-seat` | the last seat holds a hero that never acts, so one client can practise alone |
 | `--order-delay-ticks`, `--order-jitter-ticks` | delay every order, one value or one per seat; jitter is drawn from a hidden stream of the seed |
 
-The server speaks plain TCP, so seat and referee keys travel in clear text, as
-does everything else. Across a network you do not trust, terminate TLS in front
-of the server (a proxy or a bridge) and let only it reach the port.
+Plain TCP on `--port` is always there and is the default. Built with the
+`websocket` feature (`cargo build --release -p bota_server --features websocket`),
+the server also listens on `--ws-port`: every binary message is one frame, length
+prefix included, and everything else (`Hello`, keys, pings, the idle timeout,
+coming back, refusals) is the same as on TCP. A text message, or a message whose
+prefix disagrees with its size, closes the connection. The request path and
+`Origin` are not looked at: the seat key is what admits. Over either transport a
+client frame is at most `bota_proto::MAX_CLIENT_PAYLOAD_LEN` bytes of payload,
+refused on its announced length before it is read.
+
+Over plain TCP and `ws://` seat and referee keys travel in clear text, as does
+everything else; `ws://` is meant for a browser page on the same machine. Across
+a network you do not trust, give the WebSocket port a certificate (`--tls-cert`,
+`--tls-key`; for example from Let's Encrypt, which the server does not fetch
+itself) and let clients in only through `wss://`.
 
 ## Write a bot
 
@@ -271,6 +287,8 @@ in `bota_client_core` behind the `ui` feature.
 cargo test --all
 cargo test --all --release
 cargo clippy --all-targets -- -D warnings
+cargo test -p bota_server --features websocket
+cargo clippy -p bota_server --all-targets --features websocket -- -D warnings
 cargo fmt --all --check
 cargo check --target wasm32-unknown-unknown -p bota_client_core -p bota_proto --features bota_client_core/ui
 cargo bench -p bota_server --bench dummy
@@ -286,7 +304,10 @@ hash and the encoded view and event streams every 1500 ticks) on every map; a
 deliberate rule change re-records them with the ignored `print_pins` test.
 `bota_server/tests/client.rs` plays a lockstep match through a real socket, and
 `bota_server/tests/bad_links.rs` plays through an in-process proxy that delays,
-jitters, caps, stalls, black-holes and resets the line.
+jitters, caps, stalls, black-holes and resets the line. With
+`cargo test -p bota_server --features websocket` those, the reconnect tests and
+the hostile-peer tests (`tests/malformed.rs`) also run over `ws://` and `wss://`,
+the latter with the self-signed test certificate in `bota_server/tests/tls`.
 
 ## License
 

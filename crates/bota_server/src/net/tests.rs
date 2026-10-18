@@ -1,5 +1,9 @@
 //! The server speaks the protocol end to end over a real socket.
 
+#[macro_use]
+#[path = "../../tests/wire/mod.rs"]
+mod wire;
+
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::thread;
@@ -11,7 +15,11 @@ use bota_proto::{
 };
 
 use crate::game::OrderDelay;
-use crate::game_loop::{DEFAULT_IDLE_TIMEOUT, HELLO_DEADLINE, ServerOpts, run};
+use crate::game_loop::{
+    DEFAULT_IDLE_TIMEOUT, DEFAULT_SPECTATORS_PER_SEAT, HELLO_DEADLINE, ServerOpts, run,
+};
+use crate::net::{DEFAULT_MESSAGES_PER_SEC, Listeners};
+use wire::{Wire, dial};
 
 struct TestClient {
     stream: TcpStream,
@@ -19,7 +27,7 @@ struct TestClient {
 }
 
 impl TestClient {
-    fn connect(addr: std::net::SocketAddr) -> TestClient {
+    fn connect(addr: impl std::net::ToSocketAddrs) -> TestClient {
         let stream = TcpStream::connect(addr).expect("connect");
         stream
             .set_read_timeout(Some(Duration::from_secs(10)))
@@ -67,6 +75,35 @@ fn start_server(opts: ServerOpts) -> std::net::SocketAddr {
     addr
 }
 
+/// Starts a server on free ports and returns where a TCP client dials it
+/// over `wire`.
+fn serve_over(opts: ServerOpts, wire: Wire) -> String {
+    let tcp = TcpListener::bind("127.0.0.1:0").expect("bind");
+    let (listeners, addr): (Listeners, _) = match wire {
+        Wire::Tcp => {
+            let addr = tcp.local_addr().expect("addr");
+            (tcp.into(), addr)
+        }
+        #[cfg(feature = "websocket")]
+        Wire::Ws | Wire::Wss => {
+            use crate::net::{Tls, WsListener};
+            use std::path::Path;
+            let ws = TcpListener::bind("127.0.0.1:0").expect("bind");
+            let addr = ws.local_addr().expect("addr");
+            let tls = (wire == Wire::Wss).then(|| {
+                Tls::from_pem_files(Path::new(wire::CERT), Path::new(wire::KEY))
+                    .expect("the test TLS")
+            });
+            (
+                Listeners::with_websocket(tcp, WsListener::new(ws, tls)),
+                addr,
+            )
+        }
+    };
+    thread::spawn(move || run(listeners, opts));
+    dial(wire, &addr.to_string())
+}
+
 fn join_as_bot(addr: std::net::SocketAddr, name: &str) -> (TestClient, Option<SlotId>) {
     let mut client = TestClient::connect(addr);
     client.send(&ClientMsg::hello(Role::Bot, name, None));
@@ -102,6 +139,8 @@ fn realtime(seed: u64) -> ServerOpts {
         immortal_heroes: false,
         dummy_seat: false,
         order_delays: Vec::new(),
+        messages_per_sec: DEFAULT_MESSAGES_PER_SEC,
+        max_spectators_per_seat: DEFAULT_SPECTATORS_PER_SEAT,
     }
 }
 
@@ -462,7 +501,7 @@ fn a_slow_reader_skips_snapshots_but_no_tick_and_no_event() {
     let outbox = crate::net::Outbox::new();
     let writer = {
         let outbox = std::sync::Arc::clone(&outbox);
-        thread::spawn(move || outbox.run_writer(stream))
+        thread::spawn(move || outbox.run_writer(Box::new(stream)))
     };
     let events = |tick: u32| {
         vec![EventKind::LevelUp {

@@ -5,7 +5,8 @@ use std::io::Read;
 use std::time::Duration;
 
 use bota_proto::{
-    ClientMsg, HeroId, MapId, PlayerId, Role, SeatKey, ServerMsg, SlotId, Team, TickMode,
+    ClientMsg, HeroId, MapId, PlayerId, RejectReason, Role, SeatKey, ServerMsg, SlotId, Team,
+    TickMode,
 };
 
 use super::*;
@@ -78,11 +79,11 @@ impl TestClient {
 }
 
 /// Both seats taken by their keys, picked, ready, and the match running.
-fn running_match() -> (std::net::SocketAddr, TestClient, TestClient) {
-    let addr = start_server(reserved(5));
+fn running_match(wire: Wire) -> (String, TestClient, TestClient) {
+    let addr = serve_over(reserved(5), wire);
     let mut clients = Vec::new();
     for (key, hero) in KEYS.iter().zip([HeroId::PUDGE, HeroId::SHADOW_FIEND]) {
-        let mut client = TestClient::connect(addr);
+        let mut client = TestClient::connect(addr.as_str());
         client.hello(Role::Bot, Some(*key));
         client.welcome();
         client.send(&ClientMsg::PickHero { hero });
@@ -109,9 +110,14 @@ impl TestClient {
     }
 }
 
-#[test]
-fn a_key_holder_takes_its_seat_and_hero_back_only_once_the_live_connection_has_ended() {
-    let (addr, old, mut other) = running_match();
+over_every_wire!(
+    a_key_holder_takes_its_seat_and_hero_back_only_once_the_live_connection_has_ended,
+    a_seat_key_admits_only_so_many_spectators_at_once,
+);
+
+fn a_key_holder_takes_its_seat_and_hero_back_only_once_the_live_connection_has_ended(wire: Wire) {
+    let (addr, old, mut other) = running_match(wire);
+    let addr = addr.as_str();
 
     let mut early = TestClient::connect(addr);
     early.hello(Role::Bot, Some(KEYS[0]));
@@ -172,7 +178,8 @@ fn a_missing_wrong_or_foreign_key_gets_no_seat() {
 
 #[test]
 fn a_spectator_with_a_seat_key_sees_that_seat_only() {
-    let (addr, mut first, mut second) = running_match();
+    let (addr, mut first, mut second) = running_match(Wire::Tcp);
+    let addr = addr.as_str();
     let mut watcher = TestClient::connect(addr);
     watcher.hello(Role::Spectator, Some(KEYS[0]));
     assert_eq!(watcher.welcome(), None);
@@ -197,6 +204,39 @@ fn a_spectator_with_a_seat_key_sees_that_seat_only() {
     assert!(seen.iter().all(|given| given.slot == SlotId(0)));
     let view = watcher.recv_until(snapshot);
     assert_eq!(view.viewer, Some(Team::Radiant));
+}
+
+fn a_seat_key_admits_only_so_many_spectators_at_once(wire: Wire) {
+    let mut opts = reserved(9);
+    opts.max_spectators_per_seat = 2;
+    let addr = serve_over(opts, wire);
+    let addr = addr.as_str();
+    let watch = |key: SeatKey| {
+        let mut client = TestClient::connect(addr);
+        client.hello(Role::Spectator, Some(key));
+        client
+    };
+    let mut first = watch(KEYS[0]);
+    assert_eq!(first.welcome(), None);
+    let mut second = watch(KEYS[0]);
+    assert_eq!(second.welcome(), None);
+    assert_eq!(watch(KEYS[0]).refusal(), RejectReason::NotAdmitted);
+    assert_eq!(watch(KEYS[1]).welcome(), None, "each seat counts its own");
+    let mut player = TestClient::connect(addr);
+    player.hello(Role::Bot, Some(KEYS[0]));
+    assert_eq!(
+        player.welcome(),
+        Some(SlotId(0)),
+        "the seat itself is not one"
+    );
+
+    drop(first);
+    // The player is told the lobby on its own arrival, then once the departure is heard.
+    for _ in 0..2 {
+        player.recv_until(|msg| matches!(msg, ServerMsg::LobbyState { .. }).then_some(()));
+    }
+    let mut third = watch(KEYS[0]);
+    assert_eq!(third.welcome(), None);
 }
 
 #[test]

@@ -1,8 +1,11 @@
 //! The server and the client library over bad lines: high latency and
 //! jitter, a bandwidth cap, stalls, resets and a black hole, made by an
-//! in-process proxy between them.
+//! in-process proxy between them. Every test runs over TCP, and with the
+//! `websocket` feature over a WebSocket, plain and over TLS.
 
 mod proxy;
+#[macro_use]
+mod wire;
 
 use std::net::{SocketAddr, TcpListener};
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
@@ -15,8 +18,10 @@ use bota_client_core::{
 };
 use bota_core::fountain_pos;
 use bota_proto::{HeroId, MapId, Order, ServerMsg, SlotId, Target, TickMode};
-use bota_server::game_loop::{DEFAULT_IDLE_TIMEOUT, ServerOpts, run};
+use bota_server::game_loop::{DEFAULT_IDLE_TIMEOUT, DEFAULT_SPECTATORS_PER_SEAT, ServerOpts, run};
+use bota_server::net::{DEFAULT_MESSAGES_PER_SEC, Listeners};
 use proxy::{Dir, Line, Proxy};
+use wire::{Wire, dial};
 
 fn opts(mode: TickMode, tick_rate: u16) -> ServerOpts {
     ServerOpts {
@@ -38,16 +43,46 @@ fn opts(mode: TickMode, tick_rate: u16) -> ServerOpts {
         ack_timeout_ticks: 150,
         idle_timeout: Some(DEFAULT_IDLE_TIMEOUT),
         order_delays: Vec::new(),
+        messages_per_sec: DEFAULT_MESSAGES_PER_SEC,
+        max_spectators_per_seat: DEFAULT_SPECTATORS_PER_SEAT,
     }
 }
 
-/// Starts a server on a free port; the match runs on its own thread.
-fn serve(opts: ServerOpts) -> SocketAddr {
-    let listener = TcpListener::bind("127.0.0.1:0").expect("a port");
-    let addr = listener.local_addr().expect("bound");
-    thread::spawn(move || run(listener, opts));
+/// Starts a server on free ports, the match on its own thread, and returns
+/// the address that speaks `wire`.
+fn serve(opts: ServerOpts, wire: Wire) -> SocketAddr {
+    let (listeners, addr) = listen(wire);
+    thread::spawn(move || run(listeners, opts));
     addr
 }
+
+fn listen(wire: Wire) -> (Listeners, SocketAddr) {
+    let tcp = TcpListener::bind("127.0.0.1:0").expect("a port");
+    let tcp_addr = tcp.local_addr().expect("bound");
+    match wire {
+        Wire::Tcp => (tcp.into(), tcp_addr),
+        #[cfg(feature = "websocket")]
+        Wire::Ws | Wire::Wss => {
+            use bota_server::net::{Tls, WsListener};
+            use std::path::Path;
+            let ws = TcpListener::bind("127.0.0.1:0").expect("a port");
+            let ws_addr = ws.local_addr().expect("bound");
+            let tls = (wire == Wire::Wss).then(|| {
+                Tls::from_pem_files(Path::new(wire::CERT), Path::new(wire::KEY))
+                    .expect("the test TLS")
+            });
+            let ws = WsListener::new(ws, tls);
+            (Listeners::with_websocket(tcp, ws), ws_addr)
+        }
+    }
+}
+
+over_every_wire!(
+    a_match_over_slow_jittery_capped_and_stalling_lines_plays_to_its_normal_end,
+    a_dropped_connection_comes_back_to_the_same_seat_and_hero_and_lockstep_waits_for_neither,
+    a_stalled_client_slows_neither_the_tick_nor_the_other_player,
+    a_half_open_connection_is_released_and_its_client_comes_back,
+);
 
 /// The bot of the `attack_move` example.
 fn attack_move(session: &ClientSession) -> Option<IssuedOrder> {
@@ -65,9 +100,8 @@ fn play(address: String, name: &'static str) -> thread::JoinHandle<Outcome> {
     })
 }
 
-#[test]
-fn a_match_over_slow_jittery_capped_and_stalling_lines_plays_to_its_normal_end() {
-    let server = serve(opts(TickMode::Realtime, 120));
+fn a_match_over_slow_jittery_capped_and_stalling_lines_plays_to_its_normal_end(wire: Wire) {
+    let server = serve(opts(TickMode::Realtime, 120), wire);
     let far = Proxy::start(server);
     let line = Line {
         latency: Duration::from_millis(150),
@@ -84,8 +118,8 @@ fn a_match_over_slow_jittery_capped_and_stalling_lines_plays_to_its_normal_end()
             ..Line::default()
         },
     );
-    let a = play(far.addr(), "far");
-    let b = play(stalling.addr(), "stalling");
+    let a = play(dial(wire, &far.addr()), "far");
+    let b = play(dial(wire, &stalling.addr()), "stalling");
     // A TCP stall of a lossy line: two seconds without a byte, now and then.
     while !b.is_finished() {
         thread::sleep(Duration::from_secs(3));
@@ -111,16 +145,17 @@ struct Sight {
     hero: Option<HeroId>,
 }
 
-#[test]
-fn a_dropped_connection_comes_back_to_the_same_seat_and_hero_and_lockstep_waits_for_neither() {
+fn a_dropped_connection_comes_back_to_the_same_seat_and_hero_and_lockstep_waits_for_neither(
+    wire: Wire,
+) {
     let mut opts = opts(TickMode::Lockstep, 30);
     // Long enough that a seat waited for in vain would show as a stall.
     opts.ack_timeout_ticks = 900;
-    let server = serve(opts);
+    let server = serve(opts, wire);
     let line = Proxy::start(server);
     let (cut_at, cut) = mpsc::channel();
     let (seen_tx, seen) = mpsc::channel();
-    let address = line.addr();
+    let address = dial(wire, &line.addr());
     let dropped = thread::spawn(move || {
         Link::play(&address, "dropped", HeroId::SHADOW_FIEND, |session| {
             let tick = session.current().map_or(0, |view| view.tick);
@@ -136,18 +171,14 @@ fn a_dropped_connection_comes_back_to_the_same_seat_and_hero_and_lockstep_waits_
         })
         .expect("the match is played to its end")
     });
+    let steady_address = dial(wire, &server.to_string());
     let steady = thread::spawn(move || {
         let (mut last, mut longest) = (None::<Instant>, Duration::ZERO);
-        let outcome = Link::play(
-            &server.to_string(),
-            "steady",
-            HeroId::SHADOW_FIEND,
-            |session| {
-                longest = longest.max(last.map_or(Duration::ZERO, |last| last.elapsed()));
-                last = Some(Instant::now());
-                attack_move(session)
-            },
-        )
+        let outcome = Link::play(&steady_address, "steady", HeroId::SHADOW_FIEND, |session| {
+            longest = longest.max(last.map_or(Duration::ZERO, |last| last.elapsed()));
+            last = Some(Instant::now());
+            attack_move(session)
+        })
         .expect("the match is played to its end");
         (outcome, longest)
     });
@@ -205,9 +236,8 @@ fn wait_for(limit: Duration, what: &str, mut done: impl FnMut() -> bool) {
     }
 }
 
-#[test]
-fn a_stalled_client_slows_neither_the_tick_nor_the_other_player() {
-    let server = serve(opts(TickMode::Realtime, 30));
+fn a_stalled_client_slows_neither_the_tick_nor_the_other_player(wire: Wire) {
+    let server = serve(opts(TickMode::Realtime, 30), wire);
     let line = Proxy::start(server);
     let join = |address: String, name: &'static str| {
         let reading = Arc::new(Reading::default());
@@ -219,8 +249,8 @@ fn a_stalled_client_slows_neither_the_tick_nor_the_other_player() {
         });
         (reading, ticks)
     };
-    let (stalled_reading, stalled) = join(line.addr(), "stalled");
-    let (steady_reading, steady) = join(server.to_string(), "steady");
+    let (stalled_reading, stalled) = join(dial(wire, &line.addr()), "stalled");
+    let (steady_reading, steady) = join(dial(wire, &server.to_string()), "steady");
     let tick = |reading: &Reading| reading.last_tick.load(Ordering::SeqCst);
     wait_for(
         Duration::from_secs(30),
@@ -274,14 +304,13 @@ fn a_stalled_client_slows_neither_the_tick_nor_the_other_player() {
     );
 }
 
-#[test]
-fn a_half_open_connection_is_released_and_its_client_comes_back() {
+fn a_half_open_connection_is_released_and_its_client_comes_back(wire: Wire) {
     let mut opts = opts(TickMode::Realtime, 30);
     let idle = Duration::from_secs(2);
     opts.idle_timeout = Some(idle);
-    let server = serve(opts);
+    let server = serve(opts, wire);
     let line = Proxy::start(server);
-    let address = line.addr();
+    let address = dial(wire, &line.addr());
     let returning = thread::spawn(move || {
         let (mut link, seated) =
             Link::join_with_timeout(&address, "returning", HeroId::SHADOW_FIEND, None, idle)
@@ -301,8 +330,13 @@ fn a_half_open_connection_is_released_and_its_client_comes_back() {
         }
         (seated.slot, resumed.expect("the session resumed"))
     });
-    let (mut watcher, _) =
-        Link::join(&server.to_string(), "watcher", HeroId::SHADOW_FIEND, None).expect("a seat");
+    let (mut watcher, _) = Link::join(
+        &dial(wire, &server.to_string()),
+        "watcher",
+        HeroId::SHADOW_FIEND,
+        None,
+    )
+    .expect("a seat");
     // The match runs, so both seats are held, before the line goes dark.
     while !matches!(
         watcher.recv().expect("the watcher's link holds"),

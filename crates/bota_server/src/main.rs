@@ -1,6 +1,7 @@
 //! Command line entry point of the server.
 
 use std::net::TcpListener;
+use std::num::NonZeroU32;
 use std::path::PathBuf;
 use std::time::Duration;
 
@@ -9,8 +10,9 @@ use clap::{Parser, ValueEnum};
 use bota_core::rules;
 use bota_proto::SeatKey;
 use bota_server::game::{OrderDelay, check_order_delays};
-use bota_server::game_loop::{DEFAULT_IDLE_TIMEOUT, ServerOpts, run};
+use bota_server::game_loop::{DEFAULT_IDLE_TIMEOUT, DEFAULT_SPECTATORS_PER_SEAT, ServerOpts, run};
 use bota_server::lobby::ReservedSeat;
+use bota_server::net::{DEFAULT_MESSAGES_PER_SEC, Listeners};
 
 #[cfg(test)]
 mod map_cli_tests;
@@ -30,6 +32,20 @@ struct Args {
     /// Port to listen on.
     #[arg(long, default_value_t = 4455)]
     port: u16,
+    /// Also listen for WebSocket connections on this port: one binary message per frame, and
+    /// everything else as on the TCP port. Plain ws:// without --tls-cert and --tls-key, for
+    /// local use; wss:// (TLS 1.3) with them.
+    #[cfg(feature = "websocket")]
+    #[arg(long)]
+    ws_port: Option<u16>,
+    /// PEM certificate chain of the WebSocket listener, leaf first.
+    #[cfg(feature = "websocket")]
+    #[arg(long, requires_all = ["ws_port", "tls_key"])]
+    tls_cert: Option<PathBuf>,
+    /// PEM private key of the WebSocket listener's certificate.
+    #[cfg(feature = "websocket")]
+    #[arg(long, requires_all = ["ws_port", "tls_cert"])]
+    tls_key: Option<PathBuf>,
     /// How ticks advance.
     #[arg(long, value_enum, default_value_t = Mode::Realtime)]
     mode: Mode,
@@ -55,8 +71,8 @@ struct Args {
     match_id: Option<u64>,
     /// Seats held for key holders, one `key_hex:name` per seat in slot order, comma separated.
     /// A Hello must then carry a key. Prefer the environment: arguments show in process lists.
-    /// Keys travel in clear text over plain TCP: across a network you do not trust, terminate
-    /// TLS in front of the server (a proxy or a bridge) and let only it reach the port.
+    /// Keys travel in clear text over plain TCP and ws://: across a network you do not trust,
+    /// let clients reach the server only over wss:// (or TLS in front of it).
     #[arg(
         long = "seat",
         env = "BOTA_SEATS",
@@ -87,6 +103,13 @@ struct Args {
     /// waits for a reconnect. 0 waits for ever.
     #[arg(long, default_value_t = DEFAULT_IDLE_TIMEOUT.as_secs())]
     idle_timeout_secs: u64,
+    /// Messages one connection may send a second, besides four for every tick it is sent and
+    /// a burst of two seconds' worth; a peer that sends more is cut off.
+    #[arg(long, default_value_t = DEFAULT_MESSAGES_PER_SEC)]
+    messages_per_sec: NonZeroU32,
+    /// Spectators that may watch through one reserved seat's key at once.
+    #[arg(long, default_value_t = DEFAULT_SPECTATORS_PER_SEAT)]
+    max_spectators_per_seat: usize,
     /// Honour cheat orders: gold, levels, items and refreshes for the asking.
     #[arg(long)]
     cheats: bool,
@@ -143,10 +166,9 @@ fn main() -> std::io::Result<()> {
     if let Some(path) = &args.replay {
         bota_server::replay::ReplayWriter::create(path)?;
     }
-    let listener = TcpListener::bind(("0.0.0.0", args.port))?;
-    println!("bota_server listening on {}", listener.local_addr()?);
+    let listeners = listen(&args)?;
     run(
-        listener,
+        listeners,
         ServerOpts {
             mode: match args.mode {
                 Mode::Realtime => bota_proto::TickMode::Realtime,
@@ -170,8 +192,31 @@ fn main() -> std::io::Result<()> {
             immortal_heroes: args.immortal_heroes,
             dummy_seat: args.dummy_seat,
             order_delays,
+            messages_per_sec: args.messages_per_sec,
+            max_spectators_per_seat: args.max_spectators_per_seat,
         },
     )
+}
+
+/// Binds every listener the command line asks for, then announces each, the
+/// TCP one first.
+fn listen(args: &Args) -> std::io::Result<Listeners> {
+    let tcp = TcpListener::bind(("0.0.0.0", args.port))?;
+    #[cfg(feature = "websocket")]
+    if let Some(port) = args.ws_port {
+        let tls = match (&args.tls_cert, &args.tls_key) {
+            (Some(cert), Some(key)) => Some(bota_server::net::Tls::from_pem_files(cert, key)?),
+            _ => None,
+        };
+        let scheme = if tls.is_some() { "wss" } else { "ws" };
+        let ws = TcpListener::bind(("0.0.0.0", port))?;
+        println!("bota_server listening on {}", tcp.local_addr()?);
+        println!("bota_server listening on {scheme}://{}", ws.local_addr()?);
+        let ws = bota_server::net::WsListener::new(ws, tls);
+        return Ok(Listeners::with_websocket(tcp, ws));
+    }
+    println!("bota_server listening on {}", tcp.local_addr()?);
+    Ok(tcp.into())
 }
 
 fn parse_map(value: &str) -> Result<u16, String> {

@@ -106,6 +106,19 @@
 //! one. A connection that has not said `Hello` is told nothing, and one that
 //! has not said it within ten seconds is closed.
 //!
+//! A connection is a TCP stream of frames, or a WebSocket (plain or over TLS)
+//! on a port of its own, where every binary message is exactly one frame,
+//! length prefix included; everything above is the same on both. A server
+//! closes a connection that sends what is no frame (a text message, a
+//! message whose prefix disagrees with its size), a frame whose payload is
+//! over [`MAX_CLIENT_PAYLOAD_LEN`](crate::MAX_CLIENT_PAYLOAD_LEN), a payload
+//! that decodes to no message, or more messages than its allowance: a rate
+//! the server sets (a thousand a second by default, two seconds' worth of
+//! burst) and four more for every tick it is sent. A seat's key lets at most
+//! a bounded number of spectators (seven by default) watch through it at
+//! once; one more is refused as
+//! [`NotAdmitted`](crate::RejectReason::NotAdmitted).
+//!
 //! A `Hello` that admits to nothing is answered with
 //! [`ServerMsg::Refused`] and the connection closed:
 //! [`NotAdmitted`](crate::RejectReason::NotAdmitted) for a missing or wrong

@@ -11,6 +11,14 @@ categories.workspace = true
 [features]
 default = []
 phase-profile = []
+# A WebSocket listener (plain or TLS 1.3) beside the TCP one: `--ws-port`, `--tls-cert`, `--tls-key`.
+websocket = [
+    "dep:futures-util",
+    "dep:rustls",
+    "dep:tokio",
+    "dep:tokio-rustls",
+    "dep:tokio-tungstenite",
+]
 
 [dependencies]
 bota_core = { workspace = true }
@@ -20,6 +28,11 @@ clap = { version = "4", features = ["derive", "env"] }
 getrandom = "0.4"
 rustc-hash = { version = "2.1.3", default-features = false, features = ["std"] }
 socket2 = { version = "=0.6.5", default-features = false }
+futures-util = { version = "0.3.34", default-features = false, features = ["sink", "std"], optional = true }
+rustls = { version = "0.23.46", default-features = false, features = ["ring", "std"], optional = true }
+tokio = { version = "1.53.3", default-features = false, features = ["net", "rt", "sync", "time"], optional = true }
+tokio-rustls = { version = "0.26.6", default-features = false, features = ["ring"], optional = true }
+tokio-tungstenite = { version = "0.30.0", default-features = false, features = ["handshake"], optional = true }
 
 [dev-dependencies]
 bota_client_core = { workspace = true }

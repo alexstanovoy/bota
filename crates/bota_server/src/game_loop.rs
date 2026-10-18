@@ -1,9 +1,8 @@
 //! The server: lobby phase, then the tick loop in either mode.
 
-use std::net::TcpListener;
+use std::num::NonZeroU32;
 use std::path::PathBuf;
 use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender, channel};
-use std::thread;
 use std::time::{Duration, Instant};
 
 use bota_proto::{
@@ -16,7 +15,7 @@ use crate::game::{
     DelayLine, Event, EventVisibility, MatchConfig, MatchSecrets, OrderDelay, RefusedOrder, World,
 };
 use crate::lobby::{ReservedSeat, Roster};
-use crate::net::{Connection, NetEvent, accept_loop};
+use crate::net::{Connection, FrameStream, Listeners, NetEvent};
 use crate::replay::ReplayWriter;
 
 /// How long a connection may stay silent before it is dropped as dead, by
@@ -29,6 +28,9 @@ pub const DEFAULT_IDLE_TIMEOUT: Duration = Duration::from_secs(5);
 /// go: a stranger answering pings would otherwise hold one of the server's
 /// connections for ever.
 pub const HELLO_DEADLINE: Duration = Duration::from_secs(10);
+
+/// Spectators that may watch through one seat's key at once, by default.
+pub const DEFAULT_SPECTATORS_PER_SEAT: usize = 7;
 
 /// Everything the command line decides.
 #[derive(Clone, Debug)]
@@ -77,19 +79,25 @@ pub struct ServerOpts {
     /// How late the seats' orders take effect: nothing for no delay, one for
     /// every seat, or one per seat in slot order.
     pub order_delays: Vec<OrderDelay>,
+    /// Messages a connection may send a second, on top of a few for every
+    /// tick it is sent (see [`Allowance`](crate::net::Allowance)); a peer that
+    /// sends more is cut off.
+    pub messages_per_sec: NonZeroU32,
+    /// Spectators that may watch through one reserved seat's key at once.
+    pub max_spectators_per_seat: usize,
 }
 
-/// Runs one match on an already-bound listener and returns when it ends.
-/// Fails before the lobby opens when the replay file cannot be created.
-pub fn run(listener: TcpListener, opts: ServerOpts) -> std::io::Result<()> {
+/// Runs one match on already-bound listeners and returns when it ends.
+/// Fails before the lobby opens when the replay file cannot be created or
+/// the listeners cannot be started.
+pub fn run(listeners: impl Into<Listeners>, opts: ServerOpts) -> std::io::Result<()> {
     let secrets = draw_secrets(opts.seed, opts.match_id)?;
     let replay = match &opts.replay {
         None => ReplayWriter::disabled(),
         Some(path) => ReplayWriter::create(path)?,
     };
     let (tx, rx) = channel();
-    let accept_tx = tx.clone();
-    thread::spawn(move || accept_loop(listener, accept_tx));
+    listeners.into().start(&tx)?;
     let seats = match opts.reserved.len() {
         0 => opts.players,
         reserved => u8::try_from(reserved).map_err(|_| std::io::Error::other("too many seats"))?,
@@ -231,10 +239,9 @@ impl Server {
 
     /// Takes in what the network says: adopts a new stream, lets a departed
     /// peer go and tells the others (the lobby as it now stands, or in a
-    /// match who left), and hands a message back. A peer that sent bytes no
-    /// message decodes from is told of to the operator and closed: the
-    /// protocol has no message to answer it with, and dialing again would not
-    /// mend it. A peer gone otherwise is reset. What a connection already
+    /// match who left), and hands a message back. A peer that broke the
+    /// protocol is told of to the operator and closed: the protocol has no
+    /// message to answer it with, and dialing again would not mend it. A peer gone otherwise is reset. What a connection already
     /// dropped still said is not heard.
     fn hear(&mut self, event: NetEvent, in_match: bool) -> Option<(PlayerId, ClientMsg)> {
         let (id, broken) = match event {
@@ -244,13 +251,13 @@ impl Server {
                 return None;
             }
             NetEvent::Disconnected(id) => (id, true),
-            NetEvent::Malformed(id, error) => {
+            NetEvent::Breached(id, breach) => {
                 let seat = self.roster.seat_of(id).map_or_else(
                     || "no seat".to_string(),
                     |seat| format!("seat {}", seat.slot.0),
                 );
                 eprintln!(
-                    "bota_server: player {} ({seat}) sent an undecodable message ({error}); closing its connection",
+                    "bota_server: player {} ({seat}) {breach}; closing its connection",
                     id.0
                 );
                 (id, false)
@@ -302,7 +309,7 @@ impl Server {
 
     /// Accepts a fresh stream and hands out a `PlayerId`, unless the server
     /// holds as many connections as it may.
-    fn adopt(&mut self, stream: std::net::TcpStream) {
+    fn adopt(&mut self, stream: Box<dyn FrameStream>) {
         if self
             .opts
             .max_connections
@@ -312,7 +319,14 @@ impl Server {
         }
         let id = PlayerId(self.next_player);
         self.next_player += 1;
-        match Connection::spawn(id, stream, self.tx.clone(), self.opts.idle_timeout) {
+        let spawned = Connection::spawn(
+            id,
+            stream,
+            self.tx.clone(),
+            self.opts.idle_timeout,
+            self.opts.messages_per_sec,
+        );
+        match spawned {
             Ok(conn) => self.conns.push(conn),
             Err(error) => eprintln!("bota_server: could not take a connection ({error})"),
         }
@@ -383,14 +397,7 @@ impl Server {
                 let name = self.opts.reserved[usize::from(slot.0)].name.clone();
                 self.take_seat(id, role, slot, name).map(|()| Some(slot))
             }
-            Some(Admission::Watch(eyes)) => {
-                self.spectators.push(Watcher {
-                    id,
-                    eyes,
-                    locked: eyes.is_some(),
-                });
-                Ok(None)
-            }
+            Some(Admission::Watch(eyes)) => self.watch(id, eyes).map(|()| None),
             Some(Admission::Referee) => {
                 self.referees.push(id);
                 Ok(None)
@@ -444,6 +451,27 @@ impl Server {
         seat.hold(id, name, role);
         seat.claim = key;
         Ok(seat.slot)
+    }
+
+    /// Registers a spectator, looking through a seat if its key named one,
+    /// unless that seat's key already admitted as many as it may.
+    fn watch(&mut self, id: PlayerId, eyes: Option<SlotId>) -> Result<(), RejectReason> {
+        if let Some(slot) = eyes {
+            let watching = self
+                .spectators
+                .iter()
+                .filter(|w| w.locked && w.eyes == Some(slot))
+                .count();
+            if watching >= self.opts.max_spectators_per_seat {
+                return Err(RejectReason::NotAdmitted);
+            }
+        }
+        self.spectators.push(Watcher {
+            id,
+            eyes,
+            locked: eyes.is_some(),
+        });
+        Ok(())
     }
 
     /// Seats a connection in a seat its key entitles it to, unless a live

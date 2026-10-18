@@ -1,8 +1,6 @@
 //! The outgoing side of one connection.
 
 use std::collections::VecDeque;
-use std::io::Write;
-use std::net::{Shutdown, TcpStream};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
@@ -10,6 +8,8 @@ use bota_proto::{
     EventKind, LEN_PREFIX, ServerMsg, SkippedTick, decode_payload, encode_frame,
     encode_frame_to_vec,
 };
+
+use crate::net::FrameSink;
 
 /// How often the writer sends [`ServerMsg::Ping`], whatever else it sends.
 pub const PING_INTERVAL: Duration = Duration::from_secs(1);
@@ -178,11 +178,11 @@ impl Outbox {
         }
     }
 
-    /// The writer thread body: drains frames onto the socket until the outbox
+    /// The writer thread body: drains frames into the sink until the outbox
     /// closes and empties, then hangs up. When the outbox is aborted or the
-    /// socket fails, it shuts the socket's reading side, so the connection's
-    /// reader reports the peer gone.
-    pub fn run_writer(self: &Arc<Outbox>, mut stream: TcpStream) {
+    /// sink fails, it shuts the connection's reading side, so the
+    /// connection's reader reports the peer gone.
+    pub fn run_writer(self: &Arc<Outbox>, mut sink: Box<dyn FrameSink>) {
         let ping = encode_frame_to_vec(&ServerMsg::Ping).expect("a ping encodes");
         let mut ping_due = Instant::now() + PING_INTERVAL;
         loop {
@@ -194,17 +194,17 @@ impl Outbox {
                     Some(ping.clone())
                 }
                 Step::HangUp => {
-                    let _ = stream.shutdown(Shutdown::Write);
+                    sink.hang_up();
                     return;
                 }
                 Step::Abort => break,
             };
-            if bytes.is_none_or(|bytes| stream.write_all(&bytes).is_err()) {
+            if bytes.is_none_or(|bytes| sink.send_frames(bytes).is_err()) {
                 self.abort();
                 break;
             }
         }
-        let _ = stream.shutdown(Shutdown::Read);
+        sink.shut_read();
     }
 }
 
