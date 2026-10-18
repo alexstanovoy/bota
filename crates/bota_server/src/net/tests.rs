@@ -340,16 +340,19 @@ fn a_connection_that_has_not_said_hello_is_told_no_tick() {
     let mut opts = realtime(12);
     opts.map = bota_proto::MapId(2);
     opts.dummy_seat = true;
+    // The stranger never answers a ping; what it is told is the point here, not how long it is
+    // kept.
+    opts.idle_timeout = None;
     let addr = start_server(opts);
     let (mut client, _) = join_as_bot(addr, "seated");
     client.recv_until(snapshot);
     let mut silent = TestClient::connect(addr);
-    silent
-        .stream
-        .set_read_timeout(Some(Duration::from_millis(1500)))
-        .expect("timeout");
+    // Its writer pings it once a second and sends whatever is queued between two pings, so two
+    // pings mean a second of ticks would have reached it, had it been sent any.
+    let mut pings = 0;
     let mut buf = [0u8; 65536];
-    while let Ok(n) = silent.stream.read(&mut buf) {
+    while pings < 2 {
+        let n = silent.stream.read(&mut buf).expect("the server pings");
         assert!(n > 0, "the server hung up");
         silent.reader.push(&buf[..n]);
         while let Some(msg) = silent.reader.next_message::<ServerMsg>().expect("decode") {
@@ -357,6 +360,7 @@ fn a_connection_that_has_not_said_hello_is_told_no_tick() {
                 !matches!(msg, ServerMsg::Snapshot { .. } | ServerMsg::Events { .. }),
                 "a stranger was told the fogless world"
             );
+            pings += usize::from(msg == ServerMsg::Ping);
         }
     }
 }

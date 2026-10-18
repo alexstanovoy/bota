@@ -22,6 +22,8 @@ use std::time::{Duration, Instant};
 const POLL: Duration = Duration::from_millis(5);
 /// Bytes a pump reads at once.
 const CHUNK: usize = 8 * 1024;
+/// The receive buffer of each proxied socket, in bytes.
+const RECV_BUFFER: usize = 64 * 1024;
 /// Chunks held in flight per direction; past them the pump stops reading.
 const IN_FLIGHT: usize = 256;
 
@@ -130,6 +132,9 @@ fn connect(
     for stream in [&client, &upstream] {
         let _ = stream.set_nodelay(true);
         let _ = stream.set_read_timeout(Some(POLL));
+        // A fixed, small receive buffer: a stalled pump's backpressure reaches the sender within
+        // a few snapshots, however large the kernel would let the buffer grow.
+        let _ = socket2::SockRef::from(stream).set_recv_buffer_size(RECV_BUFFER);
     }
     let ends = [
         (Dir::Up, client.try_clone(), upstream.try_clone()),
