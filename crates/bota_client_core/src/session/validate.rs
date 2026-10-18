@@ -127,6 +127,7 @@ fn snapshot_limits(view: &WorldView) -> Result<(), SessionError> {
     check_limit("WorldView.aggro", view.aggro.len(), view.units.len())?;
     check_limit("WorldView.order_delays", view.order_delays.len(), MAX_SEATS)?;
     check_limit("WorldView.talents", view.talents.len(), MAX_SEATS)?;
+    check_limit("WorldView.teleports", view.teleports.len(), MAX_SEATS)?;
     check_limit(
         "WorldView.skipped_ticks",
         view.skipped_ticks.len(),
@@ -236,6 +237,13 @@ fn players(roster: &[Pick], view: &WorldView) -> Result<(), SessionError> {
         .all(|pair| pair[0].slot < pair[1].slot);
     if !sorted || !view.talents.iter().all(|told| known(told.slot)) {
         return Err(SessionError::UnsortedTalents);
+    }
+    // A seat channels one scroll at a time.
+    let one_each = view.teleports.iter().enumerate().all(|(at, told)| {
+        known(told.slot) && view.teleports[..at].iter().all(|o| o.slot != told.slot)
+    });
+    if !one_each {
+        return Err(SessionError::InvalidTeleports);
     }
     roster_rows(roster, &view.players)
 }
@@ -401,7 +409,12 @@ fn snapshot_positions(cells: u32, view: &WorldView) -> Result<(), SessionError> 
         view.planted_trees.iter().copied(),
         map,
     )?;
-    validate_positions("WorldView.loot", view.loot.iter().map(|l| l.pos), map)
+    validate_positions("WorldView.loot", view.loot.iter().map(|l| l.pos), map)?;
+    validate_positions(
+        "WorldView.teleports",
+        view.teleports.iter().map(|t| t.destination),
+        map,
+    )
 }
 
 fn restoration_reports(events: &[EventKind]) -> Result<(), SessionError> {

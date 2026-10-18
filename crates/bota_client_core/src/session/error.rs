@@ -98,6 +98,8 @@ pub enum SessionError {
     UnknownRosterPlayer(u8),
     /// A unit was owned by a seat the match roster does not have.
     UnknownUnitOwner { unit: EntityId, slot: u8 },
+    /// Teleports named a seat with no scoreboard row, or one seat twice.
+    InvalidTeleports,
     /// A scoreboard row had a team different from the match roster.
     WrongRosterTeam {
         slot: u8,
@@ -323,6 +325,9 @@ impl SessionError {
             }
             Self::UnknownRosterPlayer(slot) => {
                 write!(f, "snapshot players contains unknown SlotId({slot})")
+            }
+            Self::InvalidTeleports => {
+                f.write_str("snapshot teleports name an unknown seat or one seat twice")
             }
             Self::UnknownUnitOwner { unit, slot } => {
                 write!(

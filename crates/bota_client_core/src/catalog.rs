@@ -613,10 +613,11 @@ pub fn damage_range(unit: &bota_proto::UnitView) -> DamageRange {
         .hero
         .and_then(hero_def)
         .map(|hero| base_damage_least(hero.unit, unit.level));
-    let bonus = base_least.map_or(0, |base| (unit.attack_damage_min - base).max(0));
+    // Saturating: the view is a peer's word.
+    let bonus = base_least.map_or(0, |base| unit.attack_damage_min.saturating_sub(base).max(0));
     DamageRange {
-        min: unit.attack_damage_min - bonus,
-        max: unit.attack_damage_max - bonus,
+        min: unit.attack_damage_min.saturating_sub(bonus),
+        max: unit.attack_damage_max.saturating_sub(bonus),
         bonus,
     }
 }

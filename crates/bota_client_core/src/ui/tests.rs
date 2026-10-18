@@ -509,6 +509,29 @@ fn a_unit_owned_by_a_seat_outside_the_match_breaks_the_stream() {
     assert!(app.lost, "the client stops listening");
 }
 
+/// Teleports are a seat's one channel each: a stream telling one seat's many
+/// breaks, as a front end draws and sounds every one each frame against
+/// every other.
+#[test]
+fn a_seat_told_teleporting_twice_breaks_the_stream() {
+    let mut app = a_started_app();
+    let teleport = bota_proto::TeleportView {
+        slot: SlotId(0),
+        team: Team::Radiant,
+        building: EntityId {
+            idx: 9,
+            generation: 1,
+        },
+        destination: Vec2::ZERO,
+        ticks_left: 30,
+        ticks_total: 90,
+    };
+    let mut view = a_tick(10, Vec::new(), vec![a_seat(SlotId(0), None)]);
+    view.teleports = vec![teleport; 2];
+    app.handle(bota_proto::ServerMsg::Snapshot { view });
+    assert!(app.lost, "the client stops listening");
+}
+
 fn snapshot_of(tick: u32, units: Vec<UnitView>, players: Vec<PlayerView>) -> bota_proto::ServerMsg {
     bota_proto::ServerMsg::Snapshot {
         view: a_tick(tick, units, players),
