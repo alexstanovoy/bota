@@ -245,10 +245,6 @@ impl OutgoingOrder {
     }
 }
 
-/// The longest name a client may announce in its [`ClientMsg::Hello`], in
-/// bytes. Clients and seat reservations are held to it.
-pub const MAX_CLIENT_NAME_LEN: usize = 64;
-
 impl ClientMsg {
     /// The first message on a connection, stamped with this build's
     /// [`WIRE_FINGERPRINT`](crate::WIRE_FINGERPRINT).

@@ -160,8 +160,12 @@
 //! The name in [`ClientMsg::Hello`](crate::ClientMsg::Hello), and a name a
 //! server reserves a seat under, is shown in
 //! [`ServerMsg::LobbyState`](crate::ServerMsg::LobbyState) cut to
-//! `bota_core::rules::MAX_PLAYER_NAME_BYTES` (32) bytes of UTF-8, at the last
-//! whole character within them. A longer name is not refused.
+//! `bota_core::rules::MAX_SHOWN_NAME_BYTES` (32) bytes of UTF-8, at the last
+//! whole character within them. The server does not refuse a longer hello
+//! name. The two input bounds are
+//! `bota_core::rules::MAX_ANNOUNCED_NAME_BYTES` (64): the client library
+//! refuses to announce a longer name, and the server refuses a seat
+//! reservation under one.
 //!
 //! # Wire fingerprint
 //!

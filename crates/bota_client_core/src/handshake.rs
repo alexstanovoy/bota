@@ -4,9 +4,10 @@
 #[cfg(not(target_arch = "wasm32"))]
 use std::time::Duration;
 
+use bota_core::rules;
+
 use bota_proto::{
-    ClientMsg, HeroId, LobbySlot, MAX_CLIENT_NAME_LEN, MatchInfo, PlayerId, Role, SeatKey,
-    ServerMsg, SlotId, TickMode,
+    ClientMsg, HeroId, LobbySlot, MatchInfo, PlayerId, Role, SeatKey, ServerMsg, SlotId, TickMode,
 };
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -171,10 +172,11 @@ fn validate_name(name: &str) -> std::io::Result<()> {
     if name.is_empty() {
         return Err(std::io::Error::other("client name must not be empty"));
     }
-    if name.len() > MAX_CLIENT_NAME_LEN {
+    if name.len() > rules::MAX_ANNOUNCED_NAME_BYTES {
         return Err(std::io::Error::other(format!(
-            "client name is {} bytes; maximum is {MAX_CLIENT_NAME_LEN}",
-            name.len()
+            "client name is {} bytes; maximum is {}",
+            name.len(),
+            rules::MAX_ANNOUNCED_NAME_BYTES
         )));
     }
     Ok(())

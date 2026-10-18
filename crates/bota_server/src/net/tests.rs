@@ -169,7 +169,7 @@ fn a_long_name_is_shown_cut_at_a_whole_character() {
             .map(|row| row.name),
         _ => None,
     });
-    assert_eq!(bota_core::rules::MAX_PLAYER_NAME_BYTES, 32);
+    assert_eq!(bota_core::rules::MAX_SHOWN_NAME_BYTES, 32);
     assert_eq!(shown, "\u{20ac}".repeat(10));
 }
 

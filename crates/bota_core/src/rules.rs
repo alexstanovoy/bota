@@ -994,7 +994,11 @@ const _: () = {
 pub const MAX_ORDER_DELAY_TICKS: u32 = 30;
 /// Longest name a seat holder is shown under, in UTF-8 bytes; a longer one is
 /// cut at the last whole character within it.
-pub const MAX_PLAYER_NAME_BYTES: usize = 32;
+pub const MAX_SHOWN_NAME_BYTES: usize = 32;
+/// Longest name, in bytes, the client library announces in a hello and the
+/// server takes a seat reservation under; a longer one is refused there. The
+/// server cuts what it shows to [`MAX_SHOWN_NAME_BYTES`].
+pub const MAX_ANNOUNCED_NAME_BYTES: usize = 64;
 /// Ticks an item stays muted after leaving the backpack for the inventory.
 pub const BACKPACK_MUTE_TICKS: u32 = 180;
 /// How close to the home fountain the shop, the stash and selling work.

@@ -6,7 +6,8 @@ use std::time::Duration;
 
 use clap::{Parser, ValueEnum};
 
-use bota_proto::{MAX_CLIENT_NAME_LEN, SeatKey};
+use bota_core::rules;
+use bota_proto::SeatKey;
 use bota_server::game::{OrderDelay, check_order_delays};
 use bota_server::game_loop::{DEFAULT_IDLE_TIMEOUT, ServerOpts, run};
 use bota_server::lobby::ReservedSeat;
@@ -213,9 +214,10 @@ fn reservations(entries: &[String]) -> Result<Vec<ReservedSeat>, String> {
             let (key, name) = entry
                 .split_once(':')
                 .ok_or("a seat reservation reads key_hex:name")?;
-            if name.is_empty() || name.len() > MAX_CLIENT_NAME_LEN {
+            if name.is_empty() || name.len() > rules::MAX_ANNOUNCED_NAME_BYTES {
                 return Err(format!(
-                    "a seat name takes 1 to {MAX_CLIENT_NAME_LEN} bytes"
+                    "a seat name takes 1 to {} bytes",
+                    rules::MAX_ANNOUNCED_NAME_BYTES
                 ));
             }
             Ok(ReservedSeat {

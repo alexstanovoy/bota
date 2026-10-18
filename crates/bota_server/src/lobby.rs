@@ -29,9 +29,9 @@ pub struct RosterSeat {
 
 impl RosterSeat {
     /// Hands the seat to a connection, not yet ready; its pick stays. The
-    /// name is cut to [`rules::MAX_PLAYER_NAME_BYTES`].
+    /// name is cut to [`rules::MAX_SHOWN_NAME_BYTES`].
     pub fn hold(&mut self, player: PlayerId, mut name: String, role: Role) {
-        name.truncate(name.floor_char_boundary(rules::MAX_PLAYER_NAME_BYTES));
+        name.truncate(name.floor_char_boundary(rules::MAX_SHOWN_NAME_BYTES));
         self.player = Some(player);
         self.name = name;
         self.role = Some(role);
