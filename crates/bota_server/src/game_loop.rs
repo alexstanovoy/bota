@@ -2,7 +2,7 @@
 
 use std::net::TcpListener;
 use std::path::PathBuf;
-use std::sync::mpsc::{Receiver, Sender, channel};
+use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender, channel};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -24,6 +24,11 @@ use crate::replay::ReplayWriter;
 /// a live one holds it, so this is also how long a player whose line died
 /// silently waits to take the seat back.
 pub const DEFAULT_IDLE_TIMEOUT: Duration = Duration::from_secs(5);
+
+/// How long a connection has to say Hello. One that has not by then is let
+/// go: a stranger answering pings would otherwise hold one of the server's
+/// connections for ever.
+pub const HELLO_DEADLINE: Duration = Duration::from_secs(10);
 
 /// Everything the command line decides.
 #[derive(Clone, Debug)]
@@ -272,6 +277,29 @@ impl Server {
         None
     }
 
+    /// Lets go of every connection that has not said Hello within
+    /// [`HELLO_DEADLINE`].
+    fn drop_strangers(&mut self) {
+        let late: Vec<PlayerId> = self
+            .conns
+            .iter()
+            .filter(|c| c.opened.elapsed() >= HELLO_DEADLINE && !self.greeted(c.id))
+            .map(|c| c.id)
+            .collect();
+        for id in late {
+            self.drop_conn(id);
+        }
+    }
+
+    /// When the next connection still without a Hello runs out of time.
+    fn next_stranger_deadline(&self) -> Option<Instant> {
+        self.conns
+            .iter()
+            .filter(|c| !self.greeted(c.id))
+            .map(|c| c.opened + HELLO_DEADLINE)
+            .min()
+    }
+
     /// Accepts a fresh stream and hands out a `PlayerId`, unless the server
     /// holds as many connections as it may.
     fn adopt(&mut self, stream: std::net::TcpStream) {
@@ -444,14 +472,7 @@ impl Server {
             .start_after
             .and_then(|after| self.started.checked_add(after));
         loop {
-            let event = match deadline {
-                None => self.rx.recv().ok(),
-                Some(deadline) => self
-                    .rx
-                    .recv_timeout(deadline.saturating_duration_since(Instant::now()))
-                    .ok(),
-            };
-            let Some(event) = event else {
+            let Some(event) = self.lobby_event(deadline) else {
                 self.draw_missing_picks();
                 return self.build_config();
             };
@@ -491,6 +512,33 @@ impl Server {
                 | ClientMsg::Ack { .. }
                 | ClientMsg::ViewAs { .. }
                 | ClientMsg::Pong => {}
+            }
+        }
+    }
+
+    /// The next thing the network says in the lobby, or nothing once the
+    /// lobby's time is up. Connections that never said Hello are let go
+    /// meanwhile.
+    fn lobby_event(&mut self, deadline: Option<Instant>) -> Option<NetEvent> {
+        loop {
+            self.drop_strangers();
+            if deadline.is_some_and(|deadline| Instant::now() >= deadline) {
+                return None;
+            }
+            let wake = deadline
+                .into_iter()
+                .chain(self.next_stranger_deadline())
+                .min();
+            let Some(wake) = wake else {
+                return self.rx.recv().ok();
+            };
+            match self
+                .rx
+                .recv_timeout(wake.saturating_duration_since(Instant::now()))
+            {
+                Ok(event) => return Some(event),
+                Err(RecvTimeoutError::Timeout) => {}
+                Err(RecvTimeoutError::Disconnected) => return None,
             }
         }
     }
@@ -652,6 +700,7 @@ impl Server {
 
     /// Waits out the tick according to the mode, handling messages meanwhile.
     fn gather_input(&mut self, world: &World, cfg: &MatchConfig, inbox: &mut Inbox, pace: &Pace) {
+        self.drop_strangers();
         let deadline = match self.opts.mode {
             TickMode::Realtime => pace.started + pace.period * (world.tick + 1),
             TickMode::Lockstep => Instant::now() + pace.ack_timeout,

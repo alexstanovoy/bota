@@ -3,7 +3,7 @@
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use bota_proto::{
     ClientMsg, EventKind, FrameReader, HeroId, Order, RejectReason, ReplayRecord, Role, ServerMsg,
@@ -11,7 +11,7 @@ use bota_proto::{
 };
 
 use crate::game::OrderDelay;
-use crate::game_loop::{DEFAULT_IDLE_TIMEOUT, ServerOpts, run};
+use crate::game_loop::{DEFAULT_IDLE_TIMEOUT, HELLO_DEADLINE, ServerOpts, run};
 
 struct TestClient {
     stream: TcpStream,
@@ -353,6 +353,33 @@ fn a_connection_that_has_not_said_hello_is_told_no_tick() {
             pings += usize::from(msg == ServerMsg::Ping);
         }
     }
+}
+
+#[test]
+fn a_stranger_that_never_says_hello_is_let_go_and_frees_its_place() {
+    let mut opts = realtime(13);
+    opts.max_connections = Some(1);
+    let addr = start_server(opts);
+    let mut stranger = TestClient::connect(addr);
+    let started = Instant::now();
+    // It answers every ping, as a live client does, and never says Hello.
+    let pong = encode_frame_to_vec(&ClientMsg::Pong).expect("encode");
+    let mut buf = [0u8; 65536];
+    while let Ok(n @ 1..) = stranger.stream.read(&mut buf) {
+        assert!(
+            started.elapsed() < HELLO_DEADLINE + Duration::from_secs(5),
+            "the stranger is kept"
+        );
+        stranger.reader.push(&buf[..n]);
+        while let Some(msg) = stranger.reader.next_message::<ServerMsg>().expect("decode") {
+            if msg == ServerMsg::Ping {
+                let _ = stranger.stream.write_all(&pong);
+            }
+        }
+    }
+    assert!(started.elapsed() >= HELLO_DEADLINE - Duration::from_secs(1));
+    let (_seated, slot) = join_as_bot(addr, "late");
+    assert_eq!(slot, Some(SlotId(0)));
 }
 
 #[test]

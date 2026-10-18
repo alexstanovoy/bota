@@ -5,7 +5,7 @@ use std::net::{Shutdown, TcpStream};
 use std::sync::Arc;
 use std::sync::mpsc::Sender;
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use bota_proto::{
     ClientMsg, CodecError, EventKind, FrameReader, PlayerId, ServerMsg, encode_frame_to_vec,
@@ -34,6 +34,8 @@ pub enum NetEvent {
 pub struct Connection {
     /// Wire identity of the peer.
     pub id: PlayerId,
+    /// When it was adopted, for the deadline of its Hello.
+    pub opened: Instant,
     /// Kept to abort the connection from the server thread.
     stream: TcpStream,
     outbox: Arc<Outbox>,
@@ -68,6 +70,7 @@ impl Connection {
             thread::Builder::new().spawn(move || writer_outbox.run_writer(writer_stream))?;
         let connection = Connection {
             id,
+            opened: Instant::now(),
             stream,
             outbox,
             writer: Some(writer),

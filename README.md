@@ -87,7 +87,7 @@ The server hosts one lobby and one match, then exits. It listens on `--port`
 | `--idle-timeout-secs N` | drop a connection that sends nothing, or takes in nothing, for this long (default 5; the server pings every second and clients answer), freeing its seat for a reconnect; `0` never drops one |
 | `--referee-key KEY_HEX` | admit a referee with this key (also `BOTA_REFEREE_KEY`): told the lobby, the start, departures and the end, never a tick |
 | `--start-after-secs N` | with reserved seats, start this long after listening at the latest; a seat without a pick gets a random hero |
-| `--max-connections N` | most connections held at once |
+| `--max-connections N` | most connections held at once; one that says no `Hello` within 10 s is closed |
 | `--wire-fingerprint` | print the fingerprint of the wire registries this build speaks, and exit; a client sends its own in its `Hello`, and the server refuses one that differs with `WireMismatch` |
 | `--replay FILE` | write a replay |
 | `--ack-timeout-ticks N` | lockstep: tick-lengths to wait for a straggler, default 150 |

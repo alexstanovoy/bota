@@ -103,7 +103,8 @@
 //! is free at once. A connection dropped as dead is reset rather than closed:
 //! a clean close means the server ended the connection on purpose (the match
 //! is over, the `Hello` was refused), and a client does not dial again after
-//! one. A connection that has not said `Hello` is told nothing.
+//! one. A connection that has not said `Hello` is told nothing, and one that
+//! has not said it within ten seconds is closed.
 //!
 //! A `Hello` that admits to nothing is answered with
 //! [`ServerMsg::Refused`] and the connection closed:
