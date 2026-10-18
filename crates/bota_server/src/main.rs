@@ -1,6 +1,6 @@
 //! Command line entry point of the server.
 
-use std::net::{IpAddr, Ipv4Addr, TcpListener};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, TcpListener};
 use std::num::NonZeroU32;
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -36,15 +36,34 @@ enum Mode {
     Lockstep,
 }
 
+/// The environment variables that carry keys: an argument would show in every
+/// process listing, so keys are taken from nowhere else.
+const SEATS_VAR: &str = "BOTA_SEATS";
+const REFEREE_VAR: &str = "BOTA_REFEREE_KEY";
+
 /// bota match server: one lobby, one match, then exit.
 #[derive(Parser, Debug)]
+#[command(
+    after_help = "Keys come from the environment only (an argument shows in process lists):
+  BOTA_SEATS        reserve the seats, in slot order: key_hex:team:name or key_hex:name, comma
+                    separated (team 0 Radiant, 1 Dire; key_hex is 64 hex digits). A Hello must
+                    then carry a key, and a key may take its seat again after a disconnect.
+  BOTA_REFEREE_KEY  admit a referee with this key: told the lobby, the start, departures and
+                    the end, never a tick."
+)]
 struct Args {
     /// Port to listen on.
     #[arg(long, default_value_t = 4455)]
     port: u16,
-    /// Address every listener binds to: 127.0.0.1 keeps the server to this machine.
-    #[arg(long, default_value_t = IpAddr::V4(Ipv4Addr::UNSPECIFIED))]
+    /// Address every listener binds to. Loopback keeps the server to this machine; any other
+    /// address needs a certificate on the WebSocket port (--tls-cert, --tls-key), and then the
+    /// plain TCP port stays on loopback, or --insecure-plaintext.
+    #[arg(long, default_value_t = IpAddr::V4(Ipv4Addr::LOCALHOST))]
     bind: IpAddr,
+    /// Let plain text (TCP, ws://) listen on a --bind other machines reach. Keys and orders then
+    /// cross the network in clear: only for a network you trust.
+    #[arg(long)]
+    insecure_plaintext: bool,
     /// Also listen for WebSocket connections on this port: one binary message per frame, and
     /// everything else as on the TCP port. Plain ws:// without --tls-cert and --tls-key, for
     /// local use; wss:// (TLS 1.3) with them.
@@ -82,21 +101,11 @@ struct Args {
     /// randomness comes from it.
     #[arg(long)]
     match_id: Option<u64>,
-    /// Seats held for key holders, one `key_hex:team:name` (team 0 Radiant, 1 Dire) or
-    /// `key_hex:name` (even slots Radiant, odd Dire) per seat in slot order, comma separated.
-    /// A Hello must then carry a key. Prefer the environment: arguments show in process lists.
-    /// Keys travel in clear text over plain TCP and ws://: across a network you do not trust,
-    /// let clients reach the server only over wss:// (or TLS in front of it).
-    #[arg(
-        long = "seat",
-        env = "BOTA_SEATS",
-        value_delimiter = ',',
-        hide_env_values = true
-    )]
+    /// Seat reservations, from `BOTA_SEATS` only.
+    #[arg(skip)]
     seats: Vec<String>,
-    /// The key a referee's connection presents (64 hex digits): told the lobby, the start,
-    /// departures and the end, and no ticks. It travels in clear text, as the seat keys do.
-    #[arg(long, env = "BOTA_REFEREE_KEY", hide_env_values = true)]
+    /// The referee's key, from `BOTA_REFEREE_KEY` only.
+    #[arg(skip)]
     referee_key: Option<String>,
     /// With reserved seats, end the lobby phase this many seconds after listening at the latest;
     /// a seat without a pick then gets a random hero.
@@ -162,7 +171,7 @@ struct Args {
 }
 
 fn main() -> ExitCode {
-    let args = Args::parse();
+    let mut args = Args::parse();
     if args.wire_fingerprint {
         println!(
             "{}",
@@ -171,6 +180,17 @@ fn main() -> ExitCode {
         return ExitCode::SUCCESS;
     }
     let tick_rate = args.tick_rate;
+    let keys = secret_env(SEATS_VAR).and_then(|seats| Ok((seats, secret_env(REFEREE_VAR)?)));
+    match keys {
+        Ok((seats, referee_key)) => {
+            args.seats = seats.map_or_else(Vec::new, |s| s.split(',').map(str::to_owned).collect());
+            args.referee_key = referee_key;
+        }
+        Err(error) => {
+            eprintln!("bota_server: {error}");
+            return ExitCode::FAILURE;
+        }
+    }
     match serve(args) {
         Ok(MatchEnd::Over { winner, report }) => {
             println!("{}", result_line(winner, &report, tick_rate));
@@ -196,6 +216,15 @@ fn serve(args: Args) -> std::io::Result<MatchEnd> {
     let listeners = listen(&args)?;
     println!("READY");
     run(listeners, opts)
+}
+
+/// A variable of the environment; absent when unset or empty.
+fn secret_env(name: &str) -> Result<Option<String>, String> {
+    match std::env::var(name) {
+        Ok(value) => Ok(Some(value).filter(|value| !value.is_empty())),
+        Err(std::env::VarError::NotPresent) => Ok(None),
+        Err(std::env::VarError::NotUnicode(_)) => Err(format!("{name} is not UTF-8")),
+    }
 }
 
 /// The line a launcher reads the result from: the winning team (0 Radiant,
@@ -279,7 +308,16 @@ fn server_opts(args: &Args) -> std::io::Result<ServerOpts> {
 /// Binds every listener the command line asks for, then announces each, the
 /// TCP one first.
 fn listen(args: &Args) -> std::io::Result<Listeners> {
-    let tcp = TcpListener::bind((args.bind, args.port))?;
+    #[cfg(feature = "websocket")]
+    let tls = args.tls_cert.is_some();
+    #[cfg(not(feature = "websocket"))]
+    let tls = false;
+    let plain =
+        plain_bind(args.bind, tls, args.insecure_plaintext).map_err(std::io::Error::other)?;
+    if !plain.is_loopback() {
+        eprintln!("bota_server: plain text on {plain}: keys and orders cross the network in clear");
+    }
+    let tcp = TcpListener::bind((plain, args.port))?;
     #[cfg(feature = "websocket")]
     if let Some(port) = args.ws_port {
         let tls = match (&args.tls_cert, &args.tls_key) {
@@ -295,6 +333,26 @@ fn listen(args: &Args) -> std::io::Result<Listeners> {
     }
     println!("bota_server listening on {}", tcp.local_addr()?);
     Ok(tcp.into())
+}
+
+/// Where the plain-text listeners bind: `--bind` when it is loopback or plain
+/// text was allowed there; loopback when the WebSocket port has a certificate,
+/// so that only TLS leaves the machine; refused otherwise.
+fn plain_bind(bind: IpAddr, tls: bool, insecure_plaintext: bool) -> Result<IpAddr, String> {
+    if bind.is_loopback() || insecure_plaintext {
+        return Ok(bind);
+    }
+    if tls {
+        return Ok(match bind {
+            IpAddr::V4(_) => Ipv4Addr::LOCALHOST.into(),
+            IpAddr::V6(_) => Ipv6Addr::LOCALHOST.into(),
+        });
+    }
+    Err(format!(
+        "--bind {bind} lets other machines in, and without a certificate keys and orders would \
+cross the network in clear: give the WebSocket port --tls-cert and --tls-key, or pass \
+--insecure-plaintext for a network you trust"
+    ))
 }
 
 fn parse_map(value: &str) -> Result<u16, String> {
