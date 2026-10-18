@@ -5,7 +5,7 @@ use std::io::{BufReader, ErrorKind};
 use std::net::TcpStream;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::{Receiver, SyncSender, TryRecvError, TrySendError, sync_channel};
+use std::sync::mpsc::{Receiver, SyncSender, TrySendError, sync_channel};
 use std::time::{Duration, Instant};
 
 use bota_proto::{LEN_PREFIX, MAX_PAYLOAD_LEN, ServerMsg};
@@ -150,7 +150,7 @@ fn ws_error(error: tungstenite::Error) -> std::io::Error {
 
 /// What one WebSocket read ended with.
 enum Read {
-    Message(ServerMsg),
+    Message(Box<ServerMsg>),
     /// Nothing to hand on yet (a WebSocket-level ping, pong).
     Nothing,
     Closed,
@@ -159,7 +159,9 @@ enum Read {
 fn read_one(ws: &mut Ws) -> std::io::Result<Read> {
     use tungstenite::Error;
     match ws.read() {
-        Ok(Message::Binary(bytes)) => crate::ws_frame::decode(&bytes).map(Read::Message),
+        Ok(Message::Binary(bytes)) => {
+            crate::ws_frame::decode(&bytes).map(|message| Read::Message(Box::new(message)))
+        }
         Ok(Message::Close(_)) | Err(Error::ConnectionClosed | Error::AlreadyClosed) => {
             Ok(Read::Closed)
         }
@@ -186,7 +188,7 @@ impl FrameSource for WsFrames {
             let read = read_one(&mut self.ws);
             self.wait = self.wait.saturating_add(started.elapsed());
             match read? {
-                Read::Message(message) => return Ok(Some(message)),
+                Read::Message(message) => return Ok(Some(*message)),
                 Read::Closed => return Ok(None),
                 Read::Nothing => {}
             }
@@ -259,14 +261,11 @@ impl FrameSource for WsSource {
             if self.aborted.load(Ordering::Relaxed) {
                 return Ok(None);
             }
-            let queued = std::iter::from_fn(|| match self.outgoing.try_recv() {
-                Ok(frame) => Some(frame),
-                Err(TryRecvError::Empty | TryRecvError::Disconnected) => None,
-            });
+            let queued = std::iter::from_fn(|| self.outgoing.try_recv().ok());
             write_frames(&mut self.ws, queued)
                 .map_err(|error| io_context("failed to send client message", error))?;
             match read_one(&mut self.ws) {
-                Ok(Read::Message(message)) => return Ok(Some(message)),
+                Ok(Read::Message(message)) => return Ok(Some(*message)),
                 Ok(Read::Closed) => {
                     self.ended.store(true, Ordering::Relaxed);
                     return Ok(None);

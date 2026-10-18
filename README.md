@@ -291,13 +291,16 @@ cargo test -p bota_server --features websocket
 cargo clippy -p bota_server --all-targets --features websocket -- -D warnings
 cargo fmt --all --check
 cargo check --target wasm32-unknown-unknown -p bota_client_core -p bota_proto --features bota_client_core/ui
+cargo check --target wasm32-unknown-unknown -p bota_client_core --features bota_client_core/web
 cargo bench -p bota_server --bench dummy
 ```
 
 The `phase-profile` feature of `bota_server` times the regions of a tick for profiling.
 
 The `wasm32` check keeps the client crates building for a browser: the socket transports are
-desktop-only there, and a browser front end brings its own `LiveLink` for a live match.
+desktop-only there; with the `web` feature `WebSocketLink` is the browser's WebSocket as a
+`LiveLink` for a live match. On desktop, `Link` and `Net` dial `host:port` (TCP, the default) or,
+with the `websocket` feature, `ws://` and `wss://` URLs (one binary message per frame).
 
 `bota_server/src/game/tests/determinism.rs` pins whole-match fingerprints (world
 hash and the encoded view and event streams every 1500 ticks) on every map; a
