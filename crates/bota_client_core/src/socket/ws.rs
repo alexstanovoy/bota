@@ -23,6 +23,11 @@ type Ws = WebSocket<MaybeTlsStream<TcpStream>>;
 
 /// How often a threaded reader looks at its outgoing queue.
 const POLL: Duration = Duration::from_millis(1);
+/// The same on a connection that has been quiet for [`QUIET`]: a first send
+/// after a pause waits this long at most, and an idle connection wakes
+/// twenty times less.
+const QUIET_POLL: Duration = Duration::from_millis(20);
+const QUIET: Duration = Duration::from_millis(200);
 /// Frames waiting to go out on a threaded connection at most.
 const MAX_OUTGOING: usize = 4096;
 
@@ -234,6 +239,8 @@ impl FrameStream for WsFrames {
             aborted: Arc::clone(&aborted),
             ended: Arc::clone(&ended),
             io_timeout,
+            active: Instant::now(),
+            polling: POLL,
         };
         let sink = WsSink {
             queue,
@@ -252,6 +259,28 @@ struct WsSource {
     ended: Arc<AtomicBool>,
     /// Silence from the server this long is a dead link.
     io_timeout: Duration,
+    /// When a frame last went out or came in.
+    active: Instant,
+    /// The socket's current read timeout.
+    polling: Duration,
+}
+
+impl WsSource {
+    /// Waits long for the socket only while nothing has been going on.
+    fn pace(&mut self) -> std::io::Result<()> {
+        let wanted = if self.active.elapsed() < QUIET {
+            POLL
+        } else {
+            QUIET_POLL
+        };
+        if wanted != self.polling
+            && let Some(stream) = socket(&self.ws)
+        {
+            stream.set_read_timeout(Some(wanted))?;
+            self.polling = wanted;
+        }
+        Ok(())
+    }
 }
 
 impl FrameSource for WsSource {
@@ -261,11 +290,18 @@ impl FrameSource for WsSource {
             if self.aborted.load(Ordering::Relaxed) {
                 return Ok(None);
             }
-            let queued = std::iter::from_fn(|| self.outgoing.try_recv().ok());
-            write_frames(&mut self.ws, queued)
-                .map_err(|error| io_context("failed to send client message", error))?;
+            let queued: Vec<_> = std::iter::from_fn(|| self.outgoing.try_recv().ok()).collect();
+            if !queued.is_empty() {
+                self.active = Instant::now();
+                write_frames(&mut self.ws, queued.into_iter())
+                    .map_err(|error| io_context("failed to send client message", error))?;
+            }
+            self.pace()?;
             match read_one(&mut self.ws) {
-                Ok(Read::Message(message)) => return Ok(Some(*message)),
+                Ok(Read::Message(message)) => {
+                    self.active = Instant::now();
+                    return Ok(Some(*message));
+                }
                 Ok(Read::Closed) => {
                     self.ended.store(true, Ordering::Relaxed);
                     return Ok(None);
