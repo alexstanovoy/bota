@@ -148,6 +148,12 @@ impl Outbox {
         self.wake.notify_one();
     }
 
+    /// Whether nothing waits for the writer: it has taken all there was.
+    #[cfg(test)]
+    pub fn is_empty(&self) -> bool {
+        self.lock().queue.is_empty()
+    }
+
     fn lock(&self) -> MutexGuard<'_, OutboxState> {
         self.state.lock().expect("outbox lock")
     }

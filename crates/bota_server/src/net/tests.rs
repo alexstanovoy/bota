@@ -445,6 +445,14 @@ fn a_slow_reader_skips_snapshots_but_no_tick_and_no_event() {
     let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
     let mut client = TestClient::connect(listener.local_addr().expect("addr"));
     let (stream, _) = listener.accept().expect("accept");
+    // Buffers far below one snapshot, whatever the kernel would grow them to:
+    // a writer that took a snapshot is held there while the peer reads nothing.
+    socket2::SockRef::from(&stream)
+        .set_send_buffer_size(crate::net::SEND_BUFFER_BYTES)
+        .expect("send buffer");
+    socket2::SockRef::from(&client.stream)
+        .set_recv_buffer_size(64 * 1024)
+        .expect("receive buffer");
     // Held open until the end: closed with the client's pongs unread, the
     // socket would reset the connection under the client.
     let held = stream.try_clone().expect("clone");
@@ -462,9 +470,15 @@ fn a_slow_reader_skips_snapshots_but_no_tick_and_no_event() {
             level: 2,
         }]
     };
-    // The writer blocks on the first tick's snapshot while the peer reads nothing, so the
-    // later ticks coalesce into the last one.
-    for tick in 1..=6 {
+    // The writer takes the first tick's snapshot and blocks on it while the peer reads
+    // nothing, so the later ticks coalesce into the last one.
+    outbox.push_tick(bulky_snapshot(1), 1, events(1));
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while !outbox.is_empty() {
+        assert!(Instant::now() < deadline, "the writer takes the first tick");
+        thread::sleep(Duration::from_millis(5));
+    }
+    for tick in 2..=6 {
         outbox.push_tick(bulky_snapshot(tick), tick, events(tick));
     }
     outbox.close();
@@ -495,17 +509,16 @@ fn a_slow_reader_skips_snapshots_but_no_tick_and_no_event() {
     assert_eq!(seen, vec![(1, Vec::new()), (6, skipped)]);
 }
 
-/// Reads snapshots and events for `wall`, checking that every tick between two snapshots
-/// is told once, with its events after its own snapshot; returns the last tick, the
-/// pending events tick and how many ticks were skipped.
+/// Reads snapshots and events up to the snapshot of tick `until`, checking that every
+/// tick between two snapshots is told once, with its events after its own snapshot;
+/// returns the last tick, the pending events tick and how many ticks were skipped.
 fn read_ticks(
     client: &mut TestClient,
     (mut last, mut events_tick): (u32, Option<u32>),
-    wall: Duration,
+    until: u32,
 ) -> (u32, Option<u32>, usize) {
     let mut skipped = 0;
-    let started = std::time::Instant::now();
-    while started.elapsed() < wall {
+    while last < until {
         match client.recv() {
             ServerMsg::Snapshot { view } => {
                 assert_eq!(events_tick, None, "the previous tick's events came");
@@ -531,19 +544,33 @@ fn read_ticks(
 #[test]
 fn a_reader_that_keeps_up_is_never_skipped_and_a_stalled_one_is_at_once() {
     let mut opts = realtime(14);
-    opts.tick_rate = 30;
+    // A tick every 100 ms: a reader that keeps up stays inside one tick however
+    // loaded the machine is.
+    opts.tick_rate = 10;
     opts.map = bota_proto::MapId(2);
-    opts.dummy_seat = true;
+    // The stall below outlasts the default; liveness is not under test here.
+    opts.idle_timeout = Some(Duration::from_secs(30));
     let addr = start_server(opts);
-    let (mut client, _) = join_as_bot(addr, "lagging");
-    let first = client.recv_until(snapshot).tick;
-    let (last, pending, skipped) =
-        read_ticks(&mut client, (first, Some(first)), Duration::from_secs(2));
+    let mut lagging = TestClient::connect(addr);
+    // A small receive buffer: a stalled reader's backlog outgrows the buffers
+    // in a few dozen snapshots.
+    socket2::SockRef::from(&lagging.stream)
+        .set_recv_buffer_size(16 * 1024)
+        .expect("receive buffer");
+    lagging.send(&ClientMsg::hello(Role::Bot, "lagging", None));
+    lagging.send(&ClientMsg::PickHero {
+        hero: HeroId::SHADOW_FIEND,
+    });
+    lagging.send(&ClientMsg::SetReady(true));
+    // The other seat reads all along and tells the time.
+    let (mut clock, _) = join_as_bot(addr, "clock");
+    let first = lagging.recv_until(snapshot).tick;
+    let (last, pending, skipped) = read_ticks(&mut lagging, (first, Some(first)), first + 20);
     assert_eq!(skipped, 0, "a reader that keeps up sees every snapshot");
-    assert!(last >= first + 45);
-    // Three seconds of Map2 snapshots outgrow the capped send buffer and the reader's own.
-    thread::sleep(Duration::from_secs(3));
-    let (_, _, skipped) = read_ticks(&mut client, (last, pending), Duration::from_secs(1));
+    // Sixty ticks go by while the lagging reader reads nothing.
+    let stalled_at = clock.recv_until(snapshot).tick;
+    while clock.recv_until(snapshot).tick < stalled_at + 60 {}
+    let (_, _, skipped) = read_ticks(&mut lagging, (last, pending), stalled_at + 60);
     assert!(skipped > 0, "a stalled reader is skipped ahead");
 }
 
