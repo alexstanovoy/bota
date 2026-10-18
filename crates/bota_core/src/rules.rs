@@ -1085,6 +1085,24 @@ pub const ARMOR_SCALE: i32 = 6;
 
 /// Gold each seat starts the match with.
 pub const STARTING_GOLD: i32 = 600;
+/// Seconds of hero selection: Dota's default (Liquipedia, *Game Modes*: All
+/// Pick has 75 "instead of the default 60"; Solo Mid and Mid Only set none
+/// of their own).
+pub const PICK_SECS: u64 = 60;
+/// Seconds past the selection time after which a seat still without a hero
+/// is given a random one (Liquipedia, *Game Modes*, Ranked All Pick: "if a
+/// player fails to pick a hero and loses gold for more than 30 seconds,
+/// they are assigned a random hero").
+pub const PICK_PENALTY_SECS: u64 = 30;
+/// Seconds of tactical phase after the picks: Dota's "thirty seconds of
+/// guaranteed strategy time to make final preparations and item purchases"
+/// (dota2.com/700/pregame).
+pub const TACTICAL_SECS: u64 = 30;
+/// Gold a seat loses from its starting gold for every whole second it picks
+/// after the selection time (Liquipedia, *Game Modes*, All Pick: "players
+/// lose 2 gold per second if they haven't picked a hero after the selection
+/// timer runs out").
+pub const PICK_PENALTY_GOLD_PER_SEC: i32 = 2;
 /// Passive gold a minute, in tenths of a gold, from each game minute on.
 /// Dota 7.41f pays one reliable gold every 0.67 s from 0:00, 90 a minute,
 /// rising with the clock (Liquipedia and the Dota 2 wiki, *Gold*, "Periodic

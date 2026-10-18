@@ -149,6 +149,35 @@
 //! even if it withdraws its readiness: nobody waits for the others' picks to
 //! change their own.
 //!
+//! # Before the match
+//!
+//! Once every seat is held the selection clock runs (`--pick-secs`, Dota's
+//! 60 s): [`LobbyState::pick`](crate::ServerMsg::LobbyState) says how many
+//! milliseconds are left when it is sent, and is sent again whenever the
+//! lobby changes, to a reconnecting client too, which counts down from the
+//! time it was told. A seat that has picked and been ready with its pick is
+//! locked in; when all are, or the time is out, every pick is final. Past the
+//! time a seat without a hero loses two starting gold for every whole second
+//! it keeps the others waiting, and after thirty seconds is given a hero drawn
+//! from the match seed among the allowed ones that are free (the drawing is
+//! the server's, so replays agree). A hero some seat holds is refused to the
+//! others when `LobbyState::same_heroes` is false; Dota's 1v1 Solo Mid and
+//! Mid Only allow it, so it is true by default.
+//!
+//! Then comes the tactical phase (Dota's strategy time, `--tactical-secs`,
+//! 30 s): the heroes are known and the seats plan their start; the match
+//! begins when it ends. The kind of player decides whether it is held: a
+//! player is a human ([`Role::Player`](crate::Role::Player)) or a bot
+//! ([`Role::Bot`](crate::Role::Bot)), declared in `Hello` and shown to
+//! everyone in [`LobbySlot::role`](crate::LobbySlot); when every seat is
+//! held by a bot there is no tactical phase and the match begins as the last
+//! pick is final. A reserved seat may name its kind (`BOTA_SEATS`'s last
+//! field): the reservation knows what the account is, so a `Hello` of the
+//! other role is refused as
+//! [`NotAdmitted`](crate::RejectReason::NotAdmitted) rather than believed,
+//! which keeps a human from passing as a bot to skip the phase, and the
+//! other way round. Without a named kind the declared role stands.
+//!
 //! A `Hello` that admits to nothing is answered with
 //! [`ServerMsg::Refused`] and the connection closed:
 //! [`NotAdmitted`](crate::RejectReason::NotAdmitted) for a missing or wrong

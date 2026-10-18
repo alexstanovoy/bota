@@ -402,3 +402,12 @@ field WorldView 14 glyphs: Vec<GlyphView>
 field GlyphView 0 team: Team
 field GlyphView 1 ready_in: u32
 field GlyphView 2 active_for: u32
+variant PickPhase 0 Waiting
+variant PickPhase 1 Selecting {}
+field PickPhase::Selecting 0 left_ms: u32
+variant PickPhase 2 Late {}
+field PickPhase::Late 0 left_ms: u32
+variant PickPhase 3 Tactical {}
+field PickPhase::Tactical 0 left_ms: u32
+field ServerMsg::LobbyState 1 same_heroes: bool
+field ServerMsg::LobbyState 2 pick: PickPhase

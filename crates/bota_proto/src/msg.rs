@@ -59,6 +59,35 @@ pub struct LobbySlot {
     pub ready: bool,
 }
 
+/// Where the hero selection stands (see the [`contract`](crate::contract)).
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum PickPhase {
+    /// The clock has not started: not every seat has been held yet.
+    #[default]
+    Waiting,
+    /// The selection time is running.
+    Selecting {
+        /// Milliseconds until it runs out, as the server saw it when it sent
+        /// this.
+        left_ms: u32,
+    },
+    /// The selection time ran out: a seat still without a hero loses starting
+    /// gold for every second until it picks.
+    Late {
+        /// Milliseconds until a seat still without a hero is given a random
+        /// one, as the server saw it when it sent this.
+        left_ms: u32,
+    },
+    /// Every hero is picked and final: the tactical phase, in which the
+    /// seats plan their start (the shop is theirs to browse) before the match
+    /// begins.
+    Tactical {
+        /// Milliseconds until the match begins, as the server saw it when it
+        /// sent this.
+        left_ms: u32,
+    },
+}
+
 /// What the shop asks for one item.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct ShopEntry {
@@ -348,6 +377,12 @@ pub enum ServerMsg {
     LobbyState {
         /// Every seat, sorted by [`SlotId`].
         slots: Vec<LobbySlot>,
+        /// Whether two seats may pick the same hero. When not, a hero some
+        /// seat holds is refused to the others.
+        same_heroes: bool,
+        /// The state of the selection clock at the moment of sending. Last
+        /// on the wire.
+        pick: PickPhase,
     },
     /// The match has begun.
     MatchStart {

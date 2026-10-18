@@ -24,6 +24,9 @@ pub struct RosterSeat {
     /// ready. It stays so when readiness is withdrawn or the holder changes,
     /// so the last to ready cannot wait for the others' picks and switch.
     pub pick_locked: bool,
+    /// Whole seconds the seat picked after the selection time ran out; it
+    /// starts the match with that much penalty gold less.
+    pub late_secs: u32,
     /// A seat nobody holds: ready from the start, its hero stays put and never acts.
     pub dummy: bool,
     /// The key the holder of an unreserved seat came with, which takes the
@@ -52,6 +55,9 @@ pub struct ReservedSeat {
     pub name: String,
     /// The side the seat plays on.
     pub team: Team,
+    /// The kind of player the seat is for: [`Role::Bot`] or [`Role::Player`]
+    /// (a human). A `Hello` of the other role is refused. Absent admits both.
+    pub kind: Option<Role>,
 }
 
 /// All seats, and the `PlayerId` to `SlotId` mapping.
@@ -85,6 +91,7 @@ impl Roster {
                     hero: None,
                     ready: false,
                     pick_locked: false,
+                    late_secs: 0,
                     dummy: false,
                     claim: None,
                 })
@@ -167,11 +174,39 @@ impl Roster {
         }
     }
 
-    /// Whether every seat is held, picked and ready.
-    pub fn all_ready(&self) -> bool {
+    /// Whether every seat is held (a dummy needs no holder).
+    pub fn all_held(&self) -> bool {
+        self.seats.iter().all(|s| s.dummy || s.player.is_some())
+    }
+
+    /// Whether every seat has a hero.
+    pub fn all_picked(&self) -> bool {
+        self.seats.iter().all(|s| s.hero.is_some())
+    }
+
+    /// Whether any seat holds this hero.
+    pub fn holds(&self, hero: HeroId) -> bool {
+        self.seats.iter().any(|s| s.hero == Some(hero))
+    }
+
+    /// Whether another seat than `player`'s holds this hero.
+    pub fn taken_by_other(&self, player: PlayerId, hero: HeroId) -> bool {
         self.seats
             .iter()
-            .all(|s| (s.dummy || s.player.is_some()) && s.hero.is_some() && s.ready)
+            .any(|s| s.hero == Some(hero) && s.player != Some(player))
+    }
+
+    /// Whether every seat is held, picked and ready with its pick.
+    pub fn all_locked_in(&self) -> bool {
+        self.all_held() && self.all_picked() && self.seats.iter().all(|s| s.ready)
+    }
+
+    /// Whether every seat is a dummy or held by a bot: a game of bots alone
+    /// has no tactical phase.
+    pub fn only_bots(&self) -> bool {
+        self.seats
+            .iter()
+            .all(|s| s.dummy || s.role == Some(Role::Bot))
     }
 
     /// The lobby as the wire sees it.

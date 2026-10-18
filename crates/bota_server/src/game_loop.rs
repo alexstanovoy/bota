@@ -5,6 +5,7 @@ use std::path::PathBuf;
 use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender, channel};
 use std::time::{Duration, Instant};
 
+use bota_core::rules;
 use bota_proto::{
     ClientMsg, EventKind, HeroId, MapId, MatchReport, PlayerId, RejectReason, ReplayRecord, Role,
     SeatKey, ServerMsg, SlotId, SlotOrder, Team, TickMode, WIRE_FINGERPRINT, WorldView,
@@ -18,6 +19,7 @@ use crate::game::{
 };
 use crate::lobby::{ReservedSeat, Roster};
 use crate::net::{Connection, FrameStream, Listeners, NetEvent};
+use crate::pick_clock::PickClock;
 use crate::replay::ReplayWriter;
 use crate::spectators::{DelayedFeed, HeldTick, MAX_DELAYED_TICKS, Spectators, sight};
 
@@ -103,7 +105,25 @@ pub struct ServerOpts {
     pub abandon_unjoined: bool,
     /// End the match unplayed once every seat has been empty this long.
     pub empty_after: Option<Duration>,
+    /// How long the seats have to pick once all are held; Dota's default is
+    /// [`rules::PICK_SECS`](bota_core::rules::PICK_SECS). Past it a seat
+    /// without a hero loses starting gold until it picks, and is given a
+    /// random one after the penalty phase.
+    pub pick_time: Duration,
+    /// How long past the pick time a seat without a hero may lose gold before
+    /// it is given one: [`rules::PICK_PENALTY_SECS`].
+    pub pick_penalty_time: Duration,
+    /// How long the tactical phase lasts once every seat has picked, when a
+    /// human plays: Dota's [`rules::TACTICAL_SECS`](bota_core::rules::TACTICAL_SECS).
+    pub tactical_time: Duration,
+    /// Whether two seats may pick the same hero (Dota's 1v1 Solo Mid and Mid
+    /// Only allow it). When not, a hero some seat holds is refused to the
+    /// others, and a drawn hero is never one that is held.
+    pub same_heroes: bool,
 }
+
+/// The longest pick time that can be asked for.
+pub const MAX_PICK_TIME: Duration = Duration::from_secs(24 * 60 * 60);
 
 /// How a match ended.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -153,6 +173,7 @@ pub fn run(listeners: impl Into<Listeners>, opts: ServerOpts) -> std::io::Result
         next_player: 1,
         started: Instant::now(),
         delayed,
+        pick_clock: PickClock::Waiting,
     };
     let Some(cfg) = server.lobby_phase() else {
         server.close_all();
@@ -166,6 +187,28 @@ pub fn run(listeners: impl Into<Listeners>, opts: ServerOpts) -> std::io::Result
 pub fn check_opts(opts: &ServerOpts) -> Result<(), String> {
     if opts.reserved.len() > usize::from(u8::MAX) {
         return Err("at most 255 reserved seats".to_owned());
+    }
+    if opts.pick_time > MAX_PICK_TIME
+        || opts.pick_penalty_time > MAX_PICK_TIME
+        || opts.tactical_time > MAX_PICK_TIME
+    {
+        return Err(format!(
+            "the pick and tactical times are at most {} s",
+            MAX_PICK_TIME.as_secs()
+        ));
+    }
+    let seats = match opts.reserved.len() {
+        0 => usize::from(opts.players),
+        n => n,
+    };
+    let offered = opts
+        .heroes
+        .as_ref()
+        .map_or(bota_core::HEROES.len(), Vec::len);
+    if !opts.same_heroes && offered < seats {
+        return Err(format!(
+            "{seats} seats cannot each pick another hero out of {offered}"
+        ));
     }
     if let Some(heroes) = &opts.heroes {
         if heroes.is_empty() {
@@ -249,6 +292,8 @@ struct Server {
     next_player: u32,
     /// The ticks held back for late spectators, when they may watch.
     delayed: Option<DelayedFeed>,
+    /// The hero selection clock; runs in the lobby phase only.
+    pick_clock: PickClock,
 }
 
 /// What the seats sent during the match.
@@ -294,6 +339,8 @@ impl Server {
     fn broadcast_lobby(&self) {
         self.broadcast(&ServerMsg::LobbyState {
             slots: self.roster.lobby_slots(),
+            same_heroes: self.opts.same_heroes,
+            pick: self.pick_clock.phase(Instant::now()),
         });
     }
 
@@ -434,7 +481,11 @@ impl Server {
             Role::Player | Role::Bot if self.opts.reserved.is_empty() => Some(Admission::AnySeat),
             Role::Player | Role::Bot => {
                 let slot = self.roster.seat_for_key(&self.opts.reserved, key?)?;
-                Some(Admission::Seat(slot))
+                let kind = self.opts.reserved[usize::from(slot.0)].kind;
+                // The reservation knows what the account is; a client that says
+                // otherwise would bend the tactical phase rule, so it is refused.
+                kind.is_none_or(|kind| kind == role)
+                    .then_some(Admission::Seat(slot))
             }
         }
     }
@@ -620,7 +671,14 @@ impl Server {
             .then(|| self.opts.start_after.unwrap_or(UNJOINED_AFTER))
             .and_then(|after| started.checked_add(after));
         loop {
-            let deadline = start_by.into_iter().chain(abandon_by).min();
+            if self.run_pick_clock(Instant::now()) {
+                return Some(self.build_config());
+            }
+            let deadline = start_by
+                .into_iter()
+                .chain(abandon_by)
+                .chain(self.pick_clock.due())
+                .min();
             let Some(event) = self.lobby_event(deadline) else {
                 let now = Instant::now();
                 if abandon_by.is_some_and(|by| now >= by) {
@@ -631,21 +689,19 @@ impl Server {
                     abandon_by = None;
                 }
                 if start_by.is_some_and(|by| now >= by) {
-                    self.draw_missing_picks();
+                    self.draw_missing_picks(self.pick_clock.late_secs(now));
                     return Some(self.build_config());
                 }
                 continue;
             };
-            if let Some((id, msg)) = self.hear(event, false)
-                && self.lobby_message(id, msg)
-            {
-                return Some(self.build_config());
+            if let Some((id, msg)) = self.hear(event, false) {
+                self.lobby_message(id, msg);
             }
         }
     }
 
-    /// One message in the lobby; true once every seat is ready.
-    fn lobby_message(&mut self, id: PlayerId, msg: ClientMsg) -> bool {
+    /// One message in the lobby.
+    fn lobby_message(&mut self, id: PlayerId, msg: ClientMsg) {
         match msg {
             ClientMsg::Hello {
                 role,
@@ -660,13 +716,19 @@ impl Server {
             ClientMsg::PickHero { hero } => {
                 // A pick of nobody, of a hero not allowed or after the pick
                 // was locked leaves whatever was picked before.
-                let allowed = self.allows(hero);
+                let allowed = self.allows(hero)
+                    && (self.opts.same_heroes || !self.roster.taken_by_other(id, hero));
+                let now = Instant::now();
+                let clock = self.pick_clock;
                 if let Some(seat) = self.roster.seat_of_mut(id)
                     && allowed
                     && !seat.pick_locked
                 {
+                    if seat.hero.is_none() {
+                        seat.late_secs = clock.late_secs(now);
+                    }
                     seat.hero = Some(hero);
-                    seat.pick_locked = seat.ready;
+                    seat.pick_locked = seat.ready || clock.is_past_selection();
                     self.broadcast_lobby();
                 }
             }
@@ -675,7 +737,6 @@ impl Server {
                     seat.ready = ready;
                     seat.pick_locked |= ready && seat.hero.is_some();
                     self.broadcast_lobby();
-                    return self.roster.all_ready();
                 }
             }
             ClientMsg::Order { .. }
@@ -683,7 +744,6 @@ impl Server {
             | ClientMsg::ViewAs { .. }
             | ClientMsg::Pong => {}
         }
-        false
     }
 
     /// Whether a seat may pick this hero.
@@ -723,17 +783,89 @@ impl Server {
         }
     }
 
-    /// Gives every seat still without a pick a random hero, as Dota does for
-    /// a player who picks nothing.
-    fn draw_missing_picks(&mut self) {
-        let mut rng = self.secrets.hero_stream();
+    /// Starts, advances and ends the clock before the match as the time
+    /// passes and the seats lock in; true once the match is to begin.
+    fn run_pick_clock(&mut self, now: Instant) -> bool {
+        let before = self.pick_clock;
+        let start = loop {
+            match self.pick_clock {
+                PickClock::Waiting if self.roster.all_held() => {
+                    self.pick_clock = PickClock::start(now, self.opts.pick_time);
+                }
+                PickClock::Selecting { .. } | PickClock::Late { .. }
+                    if self.roster.all_locked_in() =>
+                {
+                    self.begin_tactical(now);
+                }
+                PickClock::Selecting { ends } if now >= ends => {
+                    for seat in &mut self.roster.seats {
+                        seat.pick_locked |= seat.hero.is_some();
+                    }
+                    if self.roster.all_picked() {
+                        self.begin_tactical(now);
+                    } else {
+                        self.pick_clock = PickClock::run_out(ends, self.opts.pick_penalty_time);
+                    }
+                }
+                PickClock::Late { ends, .. } if now >= ends => {
+                    let late = self
+                        .pick_clock
+                        .late_secs(self.pick_clock.due().unwrap_or(now));
+                    self.draw_missing_picks(late);
+                    self.begin_tactical(now);
+                }
+                PickClock::Tactical { ends } if now >= ends || self.roster.only_bots() => {
+                    break true;
+                }
+                _ => break false,
+            }
+        };
+        if self.pick_clock != before && !start {
+            self.broadcast_lobby();
+        }
+        start
+    }
+
+    /// Every pick is final: the tactical phase begins.
+    fn begin_tactical(&mut self, now: Instant) {
         for seat in &mut self.roster.seats {
+            seat.pick_locked = true;
+        }
+        self.pick_clock = PickClock::Tactical {
+            ends: now + self.opts.tactical_time,
+        };
+    }
+
+    /// Gives every seat still without a pick a random one of the heroes it
+    /// may pick, as Dota does for a player who picks nothing, locked, and
+    /// ready when somebody holds the seat. Each seat reads one draw whether
+    /// it needs it or not, so a seat's hero does not depend on the others'
+    /// picks.
+    fn draw_missing_picks(&mut self, late_secs: u32) {
+        let mut rng = self.secrets.hero_stream();
+        for at in 0..self.roster.seats.len() {
             let draw = rng.next_u32() as usize;
-            let hero = match &self.opts.heroes {
-                None => HeroId((draw % bota_core::HEROES.len()) as u16),
-                Some(heroes) => heroes[draw % heroes.len()],
-            };
-            seat.hero.get_or_insert(hero);
+            if self.roster.seats[at].hero.is_some() {
+                continue;
+            }
+            let free: Vec<HeroId> = self
+                .allowed_heroes()
+                .into_iter()
+                .filter(|h| self.opts.same_heroes || !self.roster.holds(*h))
+                .collect();
+            let seat = &mut self.roster.seats[at];
+            seat.hero = Some(free[draw % free.len()]);
+            seat.pick_locked = true;
+            seat.late_secs = late_secs;
+            seat.ready = seat.player.is_some();
+        }
+    }
+
+    /// The heroes a seat may pick.
+    fn allowed_heroes(&self) -> Vec<HeroId> {
+        match &self.opts.heroes {
+            None => (0..bota_core::HEROES.len() as u16).map(HeroId).collect(),
+            Some(heroes) => heroes.clone(),
         }
     }
 
@@ -751,6 +883,18 @@ impl Server {
             immortal_structures: self.opts.immortal_structures,
             immortal_heroes: self.opts.immortal_heroes,
             spawn_modifiers: Vec::new(),
+            starting_gold_lost: self
+                .roster
+                .seats
+                .iter()
+                .filter(|s| s.late_secs > 0)
+                .map(|s| {
+                    (
+                        s.slot,
+                        s.late_secs as i32 * rules::PICK_PENALTY_GOLD_PER_SEC,
+                    )
+                })
+                .collect(),
         }
     }
 

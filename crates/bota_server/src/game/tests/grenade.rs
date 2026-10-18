@@ -17,6 +17,7 @@ const BASE_SPEED: i32 = 305;
 /// at an empty spot `apart` units from each other, one tick on.
 fn two_fiends(apart: i32) -> (World, Entity, Entity) {
     let cfg = MatchConfig {
+        starting_gold_lost: Vec::new(),
         picks: fiend_against_fiend(),
         ..config()
     };

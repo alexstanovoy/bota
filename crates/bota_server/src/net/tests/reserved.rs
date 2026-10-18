@@ -19,11 +19,13 @@ fn reserved(seed: u64) -> ServerOpts {
     let mut opts = realtime(seed);
     opts.reserved = vec![
         ReservedSeat {
+            kind: None,
             key: KEYS[0],
             name: "zero".to_owned(),
             team: Team::Radiant,
         },
         ReservedSeat {
+            kind: None,
             key: KEYS[1],
             name: "one".to_owned(),
             team: Team::Dire,

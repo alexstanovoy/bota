@@ -10,6 +10,7 @@ use super::support::{config, fiend_against_fiend};
 
 pub(super) fn mid_config() -> MatchConfig {
     MatchConfig {
+        starting_gold_lost: Vec::new(),
         match_id: 5,
         stream: 5,
         master_key: [9; 32],

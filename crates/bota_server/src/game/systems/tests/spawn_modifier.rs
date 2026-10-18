@@ -29,6 +29,7 @@ fn a_rule(spec: ModifierSpec) -> SpawnModifier {
 /// A one-seat match on the full map with the given rules.
 fn config(cheats: bool, rules: Vec<SpawnModifier>) -> MatchConfig {
     MatchConfig {
+        starting_gold_lost: Vec::new(),
         map: MapId(0),
         cheats,
         spawn_modifiers: rules,

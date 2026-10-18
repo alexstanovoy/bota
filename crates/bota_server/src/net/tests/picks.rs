@@ -14,7 +14,7 @@ fn first_seat_until(
     let mut seen = Vec::new();
     loop {
         let slot = client.recv_until(|msg| match msg {
-            ServerMsg::LobbyState { mut slots } => Some(slots.remove(0)),
+            ServerMsg::LobbyState { mut slots, .. } => Some(slots.remove(0)),
             _ => None,
         });
         let last = done(&slot);
@@ -95,6 +95,7 @@ fn a_seat_without_a_pick_is_given_an_allowed_hero() {
             .iter()
             .zip([Team::Radiant, Team::Dire])
             .map(|(key, team)| ReservedSeat {
+                kind: None,
                 key: *key,
                 name: "absent".to_owned(),
                 team,

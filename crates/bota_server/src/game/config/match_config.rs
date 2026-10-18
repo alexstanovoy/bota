@@ -69,12 +69,23 @@ pub struct MatchConfig {
     /// Whether heroes keep at least 1 hp: they take damage as usual but never
     /// die, so no match ends by hero deaths.
     pub immortal_heroes: bool,
+    /// Starting gold a seat loses for picking after the selection time.
+    pub starting_gold_lost: Vec<(bota_proto::SlotId, i32)>,
 }
 
 impl MatchConfig {
     /// The hidden randomness of this match.
     pub fn rng(&self) -> MatchRng {
         MatchRng::new(&self.master_key, self.stream)
+    }
+
+    /// The starting gold a seat lost to a late pick.
+    pub fn gold_lost_by(&self, slot: bota_proto::SlotId) -> i32 {
+        self.starting_gold_lost
+            .iter()
+            .filter(|(lost, _)| *lost == slot)
+            .map(|(_, gold)| gold)
+            .sum()
     }
 
     /// Whether the description may build a match. The spawn modifiers must

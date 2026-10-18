@@ -7,7 +7,11 @@ use crate::catalog::{ITEMS, ItemFace};
 use bota_core::missing_parts;
 
 use crate::shop::{held_items, price_for, primary_of, whole_price};
-use crate::ui::app::App;
+use crate::ui::app::{App, Phase};
+
+fn hero_primary(hero: bota_proto::HeroId) -> Option<bota_proto::Attribute> {
+    bota_core::hero_def(hero).and_then(|def| def.unit.primary)
+}
 
 /// The groups the shop shows its items in, in order.
 pub const SHOP_GROUPS: [&str; 7] = [
@@ -118,13 +122,74 @@ pub fn first_answer(query: &str) -> Option<u16> {
 
 impl App {
     /// What this seat holds towards a build, and its hero's primary
-    /// attribute.
+    /// attribute. In the tactical phase it holds what it has queued.
     fn buyer(&self) -> (Vec<ItemId>, Option<bota_proto::Attribute>) {
         let buyer = || {
             let p = self.player(self.my_slot?)?;
             Some((held_items(self.view()?, p), primary_of(p)))
         };
+        if self.in_tactical_phase() {
+            let held = self.queued_buys.iter().map(|id| ItemId(*id)).collect();
+            return (held, self.picked_hero().and_then(hero_primary));
+        }
         buyer().unwrap_or_default()
+    }
+
+    /// Whether the picks are final and the match has not begun: the shop is
+    /// open for choosing what to buy once it does.
+    pub fn in_tactical_phase(&self) -> bool {
+        self.phase == Phase::Lobby
+            && self.my_slot.is_some()
+            && matches!(self.lobby.pick, bota_proto::PickPhase::Tactical { .. })
+    }
+
+    /// The hero this seat has picked, as the lobby tells it.
+    fn picked_hero(&self) -> Option<bota_proto::HeroId> {
+        let slot = self.my_slot?;
+        self.lobby.slots.iter().find(|s| s.slot == slot)?.hero
+    }
+
+    /// Gold left of the starting gold once the queued items are paid for.
+    pub fn gold_after_queue(&self) -> i32 {
+        let mut held: Vec<ItemId> = Vec::new();
+        let primary = self.picked_hero().and_then(hero_primary);
+        let mut spent = 0;
+        for id in &self.queued_buys {
+            spent += price_for(ItemId(*id), &held, primary);
+            held.push(ItemId(*id));
+        }
+        bota_core::rules::STARTING_GOLD - spent
+    }
+
+    /// Chooses an item to buy once the match begins, if the starting gold
+    /// still covers it after the others.
+    pub fn queue_buy(&mut self, item: u16) {
+        if self.price_of(item).0 > self.gold_after_queue() {
+            self.reject = Some((
+                crate::refusal(bota_proto::RejectReason::NotEnoughGold).to_string(),
+                2.5,
+            ));
+            return;
+        }
+        self.queued_buys.push(item);
+    }
+
+    /// Takes the last choice of an item off the queue.
+    pub fn unqueue_buy(&mut self, item: u16) {
+        if let Some(at) = self.queued_buys.iter().rposition(|queued| *queued == item) {
+            self.queued_buys.remove(at);
+        }
+    }
+
+    /// Sends the first queued item as a buy order: a tick takes one order a
+    /// seat, so the rest wait for the next snapshots. A refusal is shown as
+    /// any other and the rest go on.
+    pub fn send_next_queued_buy(&mut self) {
+        if self.queued_buys.is_empty() || self.view().is_none() {
+            return;
+        }
+        let item = self.queued_buys.remove(0);
+        self.send_order(bota_proto::Order::Buy { item: ItemId(item) });
     }
 
     /// What this seat pays for an item now, and what it costs whole.

@@ -13,6 +13,7 @@ use bota_proto::{
 /// A one-seat match on the demo map, with or without cheats.
 fn config(cheats: bool) -> MatchConfig {
     MatchConfig {
+        starting_gold_lost: Vec::new(),
         cheats,
         ..support::config()
     }
@@ -403,6 +404,7 @@ fn a_fallen_hero_takes_its_modifier_with_it_and_respawns_clean() {
 #[test]
 fn gold_income_scales_the_bounty_a_kill_pays() {
     let cfg = MatchConfig {
+        starting_gold_lost: Vec::new(),
         picks: fiend_against_fiend(),
         ..config(true)
     };

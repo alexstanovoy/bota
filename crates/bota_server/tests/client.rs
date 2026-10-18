@@ -3,6 +3,7 @@
 
 use std::net::TcpListener;
 use std::thread;
+use std::time::Duration;
 
 use bota_client_core::{IssuedOrder, Link};
 use bota_core::fountain_pos;
@@ -13,6 +14,10 @@ use bota_server::spectators::Spectators;
 
 fn opts() -> ServerOpts {
     ServerOpts {
+        pick_time: Duration::from_secs(bota_core::rules::PICK_SECS),
+        pick_penalty_time: Duration::from_secs(bota_core::rules::PICK_PENALTY_SECS),
+        tactical_time: Duration::ZERO,
+        same_heroes: true,
         mode: TickMode::Lockstep,
         tick_rate: 30,
         players: 2,

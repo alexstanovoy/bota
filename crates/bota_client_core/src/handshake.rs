@@ -7,7 +7,8 @@ use std::time::Duration;
 use bota_core::rules;
 
 use bota_proto::{
-    ClientMsg, HeroId, LobbySlot, MatchInfo, PlayerId, Role, SeatKey, ServerMsg, SlotId, TickMode,
+    ClientMsg, HeroId, LobbySlot, MatchInfo, PickPhase, PlayerId, Role, SeatKey, ServerMsg, SlotId,
+    TickMode,
 };
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -76,6 +77,10 @@ pub struct Lobby {
     pub tick_rate: u16,
     pub mode: Option<TickMode>,
     pub slots: Vec<LobbySlot>,
+    /// Whether two seats may pick the same hero.
+    pub same_heroes: bool,
+    /// The selection clock as last told, with the message that told it.
+    pub pick: PickPhase,
 }
 
 impl Lobby {
@@ -93,7 +98,15 @@ impl Lobby {
                 self.tick_rate = *tick_rate;
                 self.mode = Some(*mode);
             }
-            ServerMsg::LobbyState { slots } => self.slots.clone_from(slots),
+            ServerMsg::LobbyState {
+                slots,
+                same_heroes,
+                pick,
+            } => {
+                self.slots.clone_from(slots);
+                self.same_heroes = *same_heroes;
+                self.pick = *pick;
+            }
             _ => {}
         }
     }

@@ -47,7 +47,7 @@ impl World {
                 pick.slot,
                 pick.team,
                 pick.hero,
-                rules::STARTING_GOLD,
+                rules::STARTING_GOLD - cfg.gold_lost_by(pick.slot),
                 rules::STASH_SLOTS,
             );
             seat.unit = Some(hero);

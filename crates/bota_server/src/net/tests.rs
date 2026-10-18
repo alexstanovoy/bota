@@ -122,6 +122,10 @@ fn join_as_bot(addr: std::net::SocketAddr, name: &str) -> (TestClient, Option<Sl
 /// A realtime two-seat match on Map0 with every option off.
 fn realtime(seed: u64) -> ServerOpts {
     ServerOpts {
+        pick_time: Duration::from_secs(bota_core::rules::PICK_SECS),
+        pick_penalty_time: Duration::from_secs(bota_core::rules::PICK_PENALTY_SECS),
+        tactical_time: Duration::ZERO,
+        same_heroes: true,
         mode: bota_proto::TickMode::Realtime,
         tick_rate: 60,
         players: 2,
@@ -207,7 +211,7 @@ fn a_long_name_is_shown_cut_at_a_whole_character() {
     let name = "\u{20ac}".repeat(20);
     let (mut client, slot) = join_as_bot(addr, &name);
     let shown = client.recv_until(|msg| match msg {
-        ServerMsg::LobbyState { slots } => slots
+        ServerMsg::LobbyState { slots, .. } => slots
             .into_iter()
             .find(|row| Some(row.slot) == slot && !row.name.is_empty())
             .map(|row| row.name),
@@ -575,6 +579,7 @@ fn a_reader_that_keeps_up_is_never_skipped_and_a_stalled_one_is_at_once() {
     assert!(skipped > 0, "a stalled reader is skipped ahead");
 }
 
+mod pick_clock;
 mod picks;
 mod reserved;
 mod spectators;

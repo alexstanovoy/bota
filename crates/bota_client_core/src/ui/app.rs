@@ -304,6 +304,9 @@ pub struct App {
     pub pov: Option<SlotId>,
     /// The item the quick-buy intent works towards.
     pub quick_buy: Option<u16>,
+    /// Items chosen in the tactical phase, before the match exists: sent as
+    /// buy orders, one a tick, once it has begun.
+    pub queued_buys: Vec<u16>,
 }
 
 impl App {
@@ -340,6 +343,7 @@ impl App {
             heartbeat: 0.0,
             pov: None,
             quick_buy: None,
+            queued_buys: Vec::new(),
         }
     }
 
@@ -736,7 +740,7 @@ impl App {
                     self.seat = Seat::new(seated, SESSION_OPTIONS);
                 }
             }
-            ServerMsg::LobbyState { slots } => {
+            ServerMsg::LobbyState { slots, .. } => {
                 self.names = slots
                     .iter()
                     .filter(|s| !s.name.is_empty())
@@ -771,6 +775,7 @@ impl App {
             self.absorb_event(event);
         }
         self.smooth.snapshot();
+        self.send_next_queued_buy();
         if let Some(view) = self.seat.session().and_then(ClientSession::current) {
             self.derived.snapshot(view);
         }

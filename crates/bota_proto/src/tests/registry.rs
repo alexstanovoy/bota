@@ -99,6 +99,7 @@ fn trace_wire() -> Registry {
     trace::<DamageKind>(&mut tracer, &mut enums);
     trace::<Role>(&mut tracer, &mut enums);
     trace::<TickMode>(&mut tracer, &mut enums);
+    trace::<PickPhase>(&mut tracer, &mut enums);
     trace::<Team>(&mut tracer, &mut enums);
     trace::<Aim>(&mut tracer, &mut enums);
     trace::<UnitKind>(&mut tracer, &mut enums);

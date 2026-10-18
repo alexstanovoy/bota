@@ -2,7 +2,7 @@ use std::cell::Cell;
 use std::io::{self, Cursor, Read};
 use std::rc::Rc;
 
-use bota_proto::{LobbySlot, MAX_PAYLOAD_LEN, ReplayRecord, ServerMsg, SlotId, Team};
+use bota_proto::{LobbySlot, MAX_PAYLOAD_LEN, PickPhase, ReplayRecord, ServerMsg, SlotId, Team};
 
 use super::fixtures::{CountedRead, counted, message, snapshot, wire};
 use crate::ui::replay::{
@@ -115,9 +115,11 @@ fn maximum_payload_record() -> ReplayRecord {
             hero: None,
             ready: false,
         }],
+        same_heroes: true,
+        pick: PickPhase::Waiting,
     });
     let length = wire(&[record.clone()]).len() - 4;
-    let ReplayRecord::Msg(ServerMsg::LobbyState { slots }) = &mut record else {
+    let ReplayRecord::Msg(ServerMsg::LobbyState { slots, .. }) = &mut record else {
         unreachable!()
     };
     slots[0]

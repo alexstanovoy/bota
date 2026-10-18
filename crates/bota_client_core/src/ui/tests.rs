@@ -494,7 +494,13 @@ fn snapshot_of(tick: u32, units: Vec<UnitView>, players: Vec<PlayerView>) -> bot
 fn a_started_app() -> App {
     let mut app = a_silent_app();
     app.my_slot = Some(SlotId(0));
-    app.handle(bota_proto::ServerMsg::MatchStart {
+    app.handle(a_match_start());
+    app
+}
+
+/// The start of that match.
+fn a_match_start() -> bota_proto::ServerMsg {
+    bota_proto::ServerMsg::MatchStart {
         info: bota_proto::MatchInfo {
             match_id: 1,
             map: bota_proto::MapId(0),
@@ -514,8 +520,54 @@ fn a_started_app() -> App {
             fountains: [Vec2::ZERO; 2],
             shop_range: 0,
         },
+    }
+}
+
+#[test]
+fn items_chosen_in_the_tactical_phase_are_bought_one_a_tick_once_the_match_begins() {
+    use crate::ui::intent::Intent;
+    let mut app = a_silent_app();
+    app.my_slot = Some(SlotId(0));
+    app.handle(bota_proto::ServerMsg::LobbyState {
+        slots: vec![bota_proto::LobbySlot {
+            slot: SlotId(0),
+            team: Team::Radiant,
+            name: "me".to_string(),
+            role: Some(bota_proto::Role::Player),
+            hero: Some(HeroId::PUDGE),
+            ready: true,
+        }],
+        same_heroes: true,
+        pick: bota_proto::PickPhase::Tactical { left_ms: 20_000 },
     });
-    app
+    assert!(app.in_tactical_phase());
+    app.act(Intent::Buy(ItemId::MANGO.0));
+    app.act(Intent::Buy(ItemId::CLARITY.0));
+    app.act(Intent::Buy(ItemId::BUTTERFLY.0));
+    assert_eq!(
+        app.queued_buys,
+        vec![ItemId::MANGO.0, ItemId::CLARITY.0],
+        "what the starting gold cannot pay is refused, not queued"
+    );
+    assert!(app.reject.is_some());
+    assert!(app.gold_after_queue() < bota_core::rules::STARTING_GOLD);
+    app.handle(a_match_start());
+    let sent = |app: &App| app.shown_orders.last().map(|shown| shown.order);
+    app.handle(snapshot_of(1, Vec::new(), vec![a_seat(SlotId(0), None)]));
+    assert_eq!(
+        sent(&app),
+        Some(Order::Buy {
+            item: ItemId::MANGO
+        })
+    );
+    app.handle(snapshot_of(2, Vec::new(), vec![a_seat(SlotId(0), None)]));
+    assert_eq!(
+        sent(&app),
+        Some(Order::Buy {
+            item: ItemId::CLARITY
+        })
+    );
+    assert!(app.queued_buys.is_empty());
 }
 
 #[test]

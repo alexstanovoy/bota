@@ -9,7 +9,7 @@ use std::time::Duration;
 use clap::{Parser, ValueEnum};
 
 use bota_core::rules;
-use bota_proto::{HeroId, SeatKey, Team, encode_frame_to_vec};
+use bota_proto::{HeroId, Role, SeatKey, Team, encode_frame_to_vec};
 use bota_server::game::{OrderDelay, check_order_delays};
 use bota_server::game_loop::{
     DEFAULT_IDLE_TIMEOUT, DEFAULT_SPECTATORS_PER_SEAT, MatchEnd, ServerOpts, check_opts, run,
@@ -45,9 +45,10 @@ const REFEREE_VAR: &str = "BOTA_REFEREE_KEY";
 #[derive(Parser, Debug)]
 #[command(
     after_help = "Keys come from the environment only (an argument shows in process lists):
-  BOTA_SEATS        reserve the seats, in slot order: key_hex:team:name or key_hex:name, comma
-                    separated (team 0 Radiant, 1 Dire; key_hex is 64 hex digits). A Hello must
-                    then carry a key, and a key may take its seat again after a disconnect.
+  BOTA_SEATS        reserve the seats, in slot order: key_hex:team:name[:kind] or key_hex:name,
+                    comma separated (team 0 Radiant, 1 Dire; key_hex is 64 hex digits; kind bot
+                    or human admits only that kind of player to the seat). A Hello must then
+                    carry a key, and a key may take its seat again after a disconnect.
   BOTA_REFEREE_KEY  admit a referee with this key: told the lobby, the start, departures and
                     the end, never a tick."
 )]
@@ -128,6 +129,19 @@ struct Args {
     /// them. Every hero when absent.
     #[arg(long, value_delimiter = ',')]
     heroes: Option<Vec<u16>>,
+    /// Seconds the seats have to pick once all are held (Dota's default). After that a seat
+    /// without a hero loses 2 starting gold per second until it picks, and is given a random
+    /// allowed hero after 30 more seconds.
+    #[arg(long, default_value_t = bota_core::rules::PICK_SECS)]
+    pick_secs: u64,
+    /// Seconds of tactical phase after the picks (Dota's default): the seats plan their start
+    /// before the match begins. A match of bots alone has none.
+    #[arg(long, default_value_t = bota_core::rules::TACTICAL_SECS)]
+    tactical_secs: u64,
+    /// Whether two seats may pick the same hero (Dota's 1v1 Solo Mid and Mid Only allow it).
+    /// With `false`, a hero some seat holds is refused to the others.
+    #[arg(long, default_value_t = true, action = clap::ArgAction::Set)]
+    same_heroes_allowed: bool,
     /// Most connections held at once.
     #[arg(long, default_value_t = DEFAULT_MAX_CONNECTIONS)]
     max_connections: usize,
@@ -302,6 +316,10 @@ fn server_opts(args: &Args) -> std::io::Result<ServerOpts> {
             .map(|ids| ids.iter().copied().map(HeroId).collect()),
         abandon_unjoined: args.abandon_unjoined,
         empty_after: args.empty_after_secs.map(Duration::from_secs),
+        pick_time: Duration::from_secs(args.pick_secs),
+        pick_penalty_time: Duration::from_secs(bota_core::rules::PICK_PENALTY_SECS),
+        tactical_time: Duration::from_secs(args.tactical_secs),
+        same_heroes: args.same_heroes_allowed,
     })
 }
 
@@ -387,9 +405,10 @@ fn order_delays(args: &Args, players: u8) -> Result<Vec<OrderDelay>, String> {
     Ok(delays)
 }
 
-/// Seats from `key_hex:team:name` or `key_hex:name` entries. A middle field
-/// that is a team index (`0` or `1`) makes the three-field form, so a
-/// two-field name may not start with one followed by a colon.
+/// Seats from `key_hex:team:name[:kind]` or `key_hex:name` entries. A middle
+/// field that is a team index (`0` or `1`) makes the team form, so a two-field
+/// name may not start with one followed by a colon; in the team form a last
+/// field `bot` or `human` states the kind of player the seat is for.
 fn reservations(entries: &[String]) -> Result<Vec<ReservedSeat>, String> {
     let seats: Vec<ReservedSeat> = entries
         .iter()
@@ -408,11 +427,20 @@ fn reservation(slot: usize, entry: &str) -> Result<ReservedSeat, String> {
         .split_once(':')
         .ok_or("a seat reservation reads key_hex:team:name or key_hex:name")?;
     let (team, name) = match rest.split_once(':') {
-        Some(("0", name)) => (Team::Radiant, name),
-        Some(("1", name)) => (Team::Dire, name),
-        _ if slot.is_multiple_of(2) => (Team::Radiant, rest),
-        _ => (Team::Dire, rest),
+        Some(("0", name)) => (Some(Team::Radiant), name),
+        Some(("1", name)) => (Some(Team::Dire), name),
+        _ => (None, rest),
     };
+    let (kind, name) = match name.rsplit_once(':') {
+        Some((name, "bot")) if team.is_some() => (Some(Role::Bot), name),
+        Some((name, "human")) if team.is_some() => (Some(Role::Player), name),
+        _ => (None, name),
+    };
+    let team = team.unwrap_or(if slot.is_multiple_of(2) {
+        Team::Radiant
+    } else {
+        Team::Dire
+    });
     if name.is_empty() || name.len() > rules::MAX_ANNOUNCED_NAME_BYTES {
         return Err(format!(
             "a seat name takes 1 to {} bytes",
@@ -423,5 +451,6 @@ fn reservation(slot: usize, entry: &str) -> Result<ReservedSeat, String> {
         key: SeatKey::from_hex(key).ok_or("a key is 64 hex digits")?,
         name: name.to_owned(),
         team,
+        kind,
     })
 }

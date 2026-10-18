@@ -11,6 +11,7 @@ pub mod game_loop;
 pub mod lobby;
 pub mod local;
 pub mod net;
+pub mod pick_clock;
 pub mod profile;
 pub mod replay;
 pub mod spectators;

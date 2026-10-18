@@ -27,6 +27,10 @@ use wire::{Wire, endpoint};
 
 fn opts(mode: TickMode, tick_rate: u16) -> ServerOpts {
     ServerOpts {
+        pick_time: Duration::from_secs(bota_core::rules::PICK_SECS),
+        pick_penalty_time: Duration::from_secs(bota_core::rules::PICK_PENALTY_SECS),
+        tactical_time: Duration::ZERO,
+        same_heroes: true,
         mode,
         tick_rate,
         players: 2,

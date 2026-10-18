@@ -48,6 +48,8 @@ pub enum Intent {
     HandTo { slot: u8, seat: SlotId },
     /// Buy an item.
     Buy(u16),
+    /// Take an item chosen in the tactical phase off the queue again.
+    Unqueue(u16),
     /// Buy towards the quick-buy item.
     QuickBuy,
     /// Send the courier for what waits in the stash.
@@ -109,6 +111,8 @@ impl App {
             }),
             Intent::PutAt { slot, at } => self.put_at(slot, at),
             Intent::HandTo { slot, seat } => self.hand_to(slot, seat),
+            Intent::Buy(item) if self.in_tactical_phase() => self.queue_buy(item),
+            Intent::Unqueue(item) => self.unqueue_buy(item),
             Intent::Buy(item) => self.send_order(Order::Buy { item: ItemId(item) }),
             Intent::QuickBuy => {
                 if let Some(item) = self.quick_buy_next() {

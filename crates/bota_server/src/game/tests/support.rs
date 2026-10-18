@@ -100,6 +100,7 @@ pub(crate) fn map_buildings(map: &MapDef) -> usize {
 
 pub(crate) fn config() -> MatchConfig {
     MatchConfig {
+        starting_gold_lost: Vec::new(),
         match_id: 7,
         stream: 7,
         master_key: [3; 32],
@@ -1187,6 +1188,7 @@ pub(crate) fn wear_down(world: &mut World, unit: Entity, hundredths: i32) {
 /// A realtime match on a map with nobody seated.
 pub(crate) fn a_match_with_nobody_in_it(match_id: u64, map: MapId) -> World {
     let config = MatchConfig {
+        starting_gold_lost: Vec::new(),
         match_id,
         stream: match_id,
         master_key: [0; 32],

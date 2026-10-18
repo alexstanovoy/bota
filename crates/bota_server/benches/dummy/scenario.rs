@@ -191,6 +191,7 @@ pub(crate) fn two_fiends(match_id: u64, master_key: [u8; 32], map: MapId) -> Mat
         hero: HeroId::SHADOW_FIEND,
     };
     MatchConfig {
+        starting_gold_lost: Vec::new(),
         match_id,
         stream: match_id,
         master_key,

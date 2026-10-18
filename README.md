@@ -93,6 +93,9 @@ the plain TCP port stays on loopback) or `--insecure-plaintext`.
 | `--ack-timeout-ticks N` | `150` | lockstep: tick-lengths to wait for a straggler | |
 | `--players N` | `2`, or the seats in `BOTA_SEATS` | seats | |
 | `--heroes ID,...` | all | heroes a seat may pick (and is given without a pick); a pick is final once ready | a ruleset limits heroes |
+| `--pick-secs N` | `60` | seconds the seats have to pick once all are held, default 60 (Dota's default hero selection time). Past it a seat without a hero loses 2 starting gold per second until it picks, and after 30 more seconds is given a random allowed hero drawn from the match seed; clients are told the time left (`LobbyState.pick`), also those who reconnect | |
+| `--tactical-secs N` | `30` | seconds of tactical phase after every seat has locked in its pick, default 30 (Dota's strategy time); a match of bots alone has none | |
+| `--same-heroes-allowed true\|false` | `true` | whether two seats may pick the same hero, default `true` as in Dota's 1v1 Solo Mid and Mid Only; with `false` a hero some seat holds is refused to the others (and never drawn for them) | |
 | `--start-after-secs N` | none | with reserved seats: start this long after listening; a seat without a pick gets a random hero | under a launcher |
 | `--abandon-unjoined` | off | lobby out of time (`--start-after-secs`, or 60 s) with no seat held: exit 3 | under a launcher |
 | `--empty-after-secs N` | none | every seat empty this long during the match: exit 3 | under a launcher |
@@ -114,7 +117,7 @@ Keys never come from arguments, which every process listing shows; only the envi
 
 | Variable | What it is |
 |---|---|
-| `BOTA_SEATS` | `key_hex:team:name,...` (or `key_hex:name`, even slots Radiant), in slot order, keys 64 hex digits, team `0` Radiant or `1` Dire: only these keys take seats; a key may take its seat again once its old connection is gone (until then `SeatHeld`) |
+| `BOTA_SEATS` | `key_hex:team:name[:kind],...` (or `key_hex:name`, even slots Radiant; kind `bot` or `human` admits only that kind of player to the seat, others are refused), in slot order, keys 64 hex digits, team `0` Radiant or `1` Dire: only these keys take seats; a key may take its seat again once its old connection is gone (until then `SeatHeld`) |
 | `BOTA_REFEREE_KEY` | a referee's key: told the lobby, the start, departures and the end, never a tick |
 
 Over plain TCP and `ws://` keys travel in clear; over `wss://` only inside TLS. The
