@@ -1,0 +1,64 @@
+# Coverage-guided fuzz targets for everything bota reads from a peer or a
+# file. A workspace of its own: the fuzzer's flags and libFuzzer stay out of
+# the main build. `fuzz.sh` builds and runs them on stable Rust.
+[package]
+name = "bota_fuzz"
+version = "0.0.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+bota_client_core = { path = "../crates/bota_client_core", features = ["ui"] }
+bota_core = { path = "../crates/bota_core" }
+bota_proto = { path = "../crates/bota_proto" }
+bota_server = { path = "../crates/bota_server" }
+libfuzzer-sys = "0.4"
+serde = "1"
+signal-hook = "0.3"
+
+[workspace]
+members = ["."]
+
+[profile.release]
+debug = 1
+debug-assertions = true
+overflow-checks = true
+
+[[bin]]
+name = "proto_decode"
+path = "fuzz_targets/proto_decode.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "client_stream"
+path = "fuzz_targets/client_stream.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "client_replay"
+path = "fuzz_targets/client_replay.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "server_orders"
+path = "fuzz_targets/server_orders.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "server_session"
+path = "fuzz_targets/server_session.rs"
+test = false
+doc = false
+bench = false
