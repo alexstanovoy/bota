@@ -186,6 +186,12 @@ pub const fn kind_def(kind: UnitKind) -> &'static KindDef {
     &UNIT_KINDS[row(kind)]
 }
 
+/// Whether a unit is the barracks that feeds the ranged creeps, told from
+/// the melee one by its maximum health.
+pub fn is_ranged_barracks(kind: UnitKind, max_hp: i32) -> bool {
+    kind == UnitKind::Barracks && max_hp == unit::BARRACKS_RANGED.max_hp
+}
+
 /// What the game calls one unit, from its kind, its side and its maximum
 /// health: the barracks that feeds the ranged creeps is told from the one
 /// that feeds the melee by its health, and each Ancient is its side's own.
@@ -193,7 +199,7 @@ pub fn unit_name(kind: UnitKind, team: Team, max_hp: i32) -> &'static str {
     match (kind, team) {
         (UnitKind::Ancient, Team::Radiant) => "Radiant's Ancient",
         (UnitKind::Ancient, Team::Dire) => "Dire's Ancient",
-        (UnitKind::Barracks, _) if max_hp == unit::BARRACKS_RANGED.max_hp => "Ranged Barracks",
+        (UnitKind::Barracks, _) if is_ranged_barracks(kind, max_hp) => "Ranged Barracks",
         (UnitKind::Barracks, _) => "Melee Barracks",
         _ => kind_def(kind).name,
     }
