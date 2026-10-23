@@ -190,6 +190,8 @@ const MAX_FLOATERS: usize = 96;
 const MAX_FEED: usize = 8;
 /// Cues waiting for the front end at most; more are dropped.
 const MAX_CUES: usize = 64;
+/// Teleport ends waiting for the front end at most; more are dropped.
+pub(crate) const MAX_TELEPORT_ENDS: usize = 64;
 
 /// Something worth a sound or a flourish, told by the events of a tick.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -231,6 +233,15 @@ pub struct Cue {
     pub gain: f32,
     /// World position it comes from.
     pub at: Option<(f32, f32)>,
+}
+
+/// A teleport that ended, as the server told it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct TeleportEnd {
+    /// The seat whose hero channelled it.
+    pub slot: SlotId,
+    /// Whether the hero arrived; false when the channel was broken off.
+    pub landed: bool,
 }
 
 /// One line of the kill feed.
@@ -301,6 +312,9 @@ pub struct App {
     pub derived: Derived,
     /// Cues waiting for the front end, drained by it every frame.
     pub cues: Vec<Cue>,
+    /// Teleports that ended, waiting for the front end, drained by it every
+    /// frame.
+    pub teleport_ends: Vec<TeleportEnd>,
     /// Seconds before the next low-health cue may come.
     pub heartbeat: f32,
     /// The seat a replay is watched as, as if it were playing.
@@ -344,6 +358,7 @@ impl App {
             smooth: Smooth::default(),
             derived: Derived::default(),
             cues: Vec::new(),
+            teleport_ends: Vec::new(),
             heartbeat: 0.0,
             pov: None,
             quick_buy: None,

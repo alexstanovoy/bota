@@ -535,6 +535,10 @@ pub fn all_events() -> Vec<EventKind> {
             unit: entity(200),
             team: Team::Dire,
         },
+        EventKind::Teleported {
+            slot: SlotId(1),
+            landed: true,
+        },
     ]
 }
 

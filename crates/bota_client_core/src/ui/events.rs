@@ -3,7 +3,9 @@
 
 use bota_proto::{AbilityId, DamageKind, EntityId, EventKind, UnitKind, UnitView};
 
-use crate::ui::app::{App, CueKind, FeedLine, Floater, FloaterKind};
+use crate::ui::app::{
+    App, CueKind, FeedLine, Floater, FloaterKind, MAX_TELEPORT_ENDS, TeleportEnd,
+};
 
 /// Health share under which the low-health cue comes.
 const LOW_HP: f32 = 0.25;
@@ -65,6 +67,11 @@ impl App {
             EventKind::Healed { target, amount, .. } => {
                 if amount > 0 && self.is_hero(target) {
                     self.float(target, format!("+{amount}"), FloaterKind::Heal);
+                }
+            }
+            EventKind::Teleported { slot, landed } => {
+                if self.teleport_ends.len() < MAX_TELEPORT_ENDS {
+                    self.teleport_ends.push(TeleportEnd { slot, landed });
                 }
             }
         }

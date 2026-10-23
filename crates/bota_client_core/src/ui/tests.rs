@@ -1,11 +1,11 @@
 //! The client core, tested without a window or a socket.
 
-use crate::ui::app::{App, Tap, tap_again};
+use crate::ui::app::{App, Tap, TeleportEnd, tap_again};
 use crate::ui::slots::{Look, Press, Slot, ability_look, decide, item_look, order_for};
 use bota_proto::{
-    AbilityId, AbilitySlot, AbilityView, Aim, Angle, Attributes, EntityId, Fixed, HeroId, ItemId,
-    ItemView, Order, PlayerView, SlotId, StatusFlags, Target, Team, UnitKind, UnitView, Vec2,
-    WorldView,
+    AbilityId, AbilitySlot, AbilityView, Aim, Angle, Attributes, EntityId, EventKind, Fixed,
+    HeroId, ItemId, ItemView, Order, PlayerView, SlotId, StatusFlags, Target, Team, UnitKind,
+    UnitView, Vec2, WorldView,
 };
 
 #[test]
@@ -942,5 +942,25 @@ fn a_unit_ability_aimed_at_no_unit_refuses_and_stays_taken_up() {
             slot: AbilitySlot(0),
             target: Target::Unit(target)
         })
+    );
+}
+
+#[test]
+fn the_front_end_is_handed_the_teleports_that_ended_as_the_server_told() {
+    let mut app = a_started_app();
+    app.handle(snapshot_of(1, Vec::new(), vec![a_seat(SlotId(0), None)]));
+    app.handle(bota_proto::ServerMsg::Events {
+        tick: 1,
+        events: vec![EventKind::Teleported {
+            slot: SlotId(0),
+            landed: true,
+        }],
+    });
+    assert_eq!(
+        app.teleport_ends,
+        [TeleportEnd {
+            slot: SlotId(0),
+            landed: true
+        }]
     );
 }

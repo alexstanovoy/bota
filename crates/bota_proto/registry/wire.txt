@@ -425,3 +425,6 @@ field UnitView 37 queue: Vec<Order>
 variant RejectReason 26 QueueFull
 field UnitView 38 status_resist: Fixed
 field UnitView 39 evasion: Fixed
+variant EventKind 8 Teleported {}
+field EventKind::Teleported 0 slot: SlotId
+field EventKind::Teleported 1 landed: bool

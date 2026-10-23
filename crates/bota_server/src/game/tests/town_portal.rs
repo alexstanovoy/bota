@@ -3,10 +3,11 @@
 
 use bota_core::{ModifierKind, fountain_pos, hero_spawn_pos, rules};
 
-use crate::game::{Entity, UnitOrder, World, wire_id};
+use crate::game::{Entity, Event, UnitOrder, World, wire_id};
+use crate::game_loop::visible_events;
 use bota_proto::{
-    AbilitySlot, Fixed, ItemId, ItemSlot, Order, RejectReason, SlotId, StatusFlags, Target, Team,
-    UnitKind, Vec2,
+    AbilitySlot, DamageKind, EventKind, Fixed, ItemId, ItemSlot, Order, RejectReason, SlotId,
+    StatusFlags, Target, Team, UnitKind, Vec2,
 };
 
 use super::support::*;
@@ -516,4 +517,126 @@ fn phase_boots_leave_the_channel_be_and_a_feast_breaks_it() {
     set_level(&mut world, hero, 3, 1);
     cast(&mut world, 3, Target::None);
     assert!(!world.is_channelling(hero), "a feast is");
+}
+
+/// The teleports each side was told ended in a tick's events, Radiant's
+/// first: seat and whether the hero landed.
+fn ends_told(events: &[Event]) -> [Vec<(SlotId, bool)>; 2] {
+    [Team::Radiant, Team::Dire].map(|side| {
+        visible_events(events, Some(side))
+            .into_iter()
+            .filter_map(|kind| match kind {
+                EventKind::Teleported { slot, landed } => Some((slot, landed)),
+                _ => None,
+            })
+            .collect()
+    })
+}
+
+/// The ways a channel breaks before it lands.
+#[derive(Clone, Copy, Debug)]
+enum Break {
+    /// The hero is ordered to stop.
+    Order,
+    /// The hero is stunned.
+    Stun,
+    /// The building it was aimed at falls.
+    Building,
+    /// The hero is killed.
+    Death,
+}
+
+/// Breaks seat 0's channel one way, and answers the events of the tick it
+/// breaks on.
+fn break_channel(world: &mut World, hero: Entity, how: Break) -> Vec<Event> {
+    match how {
+        Break::Order => seat_order(
+            world,
+            Order::Move {
+                target: Target::None,
+            },
+        ),
+        Break::Stun => {
+            put_on(world, hero, ModifierKind::Stunned, 5);
+            world.advance(&[])
+        }
+        Break::Building => {
+            let tower = building(world, UnitKind::Tower, Team::Radiant);
+            let standing = structure_at(world, pos(world, tower));
+            world.bury(vec![(standing, None)], &mut Vec::new());
+            world.advance(&[])
+        }
+        Break::Death => {
+            world.push_hit(None, hero, 100_000, DamageKind::Pure);
+            world.advance(&[])
+        }
+    }
+}
+
+#[test]
+fn a_channel_that_runs_out_is_told_to_both_sides_as_landed_on_the_tick_it_lands() {
+    let (mut world, hero) = a_hero_with_a_scroll();
+    let to = beside_own_tower(&world);
+    read_at(&mut world, Target::Pos(to));
+    for _ in 1..CHANNEL {
+        assert_eq!(
+            ends_told(&world.advance(&[])),
+            [vec![], vec![]],
+            "still under way"
+        );
+    }
+    let events = world.advance(&[]);
+    assert_eq!(
+        ends_told(&events),
+        [vec![(SlotId(0), true)], vec![(SlotId(0), true)]]
+    );
+    assert!(
+        world.view(Team::Dire).teleports.is_empty(),
+        "the views drop it on the same tick"
+    );
+    assert_eq!(pos(&world, hero), to);
+}
+
+#[test]
+fn a_channel_broken_off_is_told_to_both_sides_as_not_landed_once_on_the_tick_it_breaks() {
+    for how in [Break::Order, Break::Stun, Break::Building, Break::Death] {
+        let (mut world, hero) = a_hero_with_a_scroll();
+        let to = beside_own_tower(&world);
+        read_at(&mut world, Target::Pos(to));
+        run(&mut world, 5);
+        let events = break_channel(&mut world, hero, how);
+        assert_eq!(
+            ends_told(&events),
+            [vec![(SlotId(0), false)], vec![(SlotId(0), false)]],
+            "{how:?}"
+        );
+        assert!(world.view(Team::Dire).teleports.is_empty(), "{how:?}");
+        for _ in 0..CHANNEL {
+            assert_eq!(
+                ends_told(&world.advance(&[])),
+                [vec![], vec![]],
+                "{how:?}: not told again"
+            );
+        }
+    }
+}
+
+#[test]
+fn a_channel_with_no_open_ground_to_land_on_is_told_as_not_landed_and_keeps_its_scroll() {
+    let (mut world, hero) = a_hero_with_a_scroll();
+    let from = pos(&world, hero);
+    let to = beside_own_tower(&world);
+    read_at(&mut world, Target::Pos(to));
+    run(&mut world, 5);
+    stand_a_wall(&mut world, to, rules::units(1000));
+    for _ in 0..CHANNEL - 6 {
+        assert_eq!(ends_told(&world.advance(&[])), [vec![], vec![]]);
+    }
+    let events = world.advance(&[]);
+    assert_eq!(
+        ends_told(&events),
+        [vec![(SlotId(0), false)], vec![(SlotId(0), false)]]
+    );
+    assert_eq!(pos(&world, hero), from, "the hero never went");
+    assert!(scrolls(&world, hero).is_some(), "and kept its scroll");
 }

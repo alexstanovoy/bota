@@ -96,6 +96,15 @@ pub enum EventKind {
         /// Which team lost it.
         team: Team,
     },
+    /// A teleport channel ended, told on the tick it did and to both sides, as
+    /// its [`TeleportView`](crate::TeleportView) is.
+    Teleported {
+        /// The seat whose hero channelled it.
+        slot: SlotId,
+        /// Whether the hero arrived. False when the channel was broken off or
+        /// found no ground to land on.
+        landed: bool,
+    },
 }
 
 impl EventKind {
@@ -115,7 +124,7 @@ impl EventKind {
             EventKind::AbilityCast { caster: unit, .. }
             | EventKind::LevelUp { unit, .. }
             | EventKind::StructureDestroyed { unit, .. } => visit(unit),
-            EventKind::ItemBought { .. } => {}
+            EventKind::ItemBought { .. } | EventKind::Teleported { .. } => {}
         }
     }
 }

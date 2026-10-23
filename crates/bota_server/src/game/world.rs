@@ -836,7 +836,8 @@ impl World {
 
     /// Blows felt, then what answers to them: drinks and item cooldowns
     /// broken, camps roused, damage credited, events and misses told, the
-    /// dead buried.
+    /// dead buried, and what their fall told of (a channel it broke off) put
+    /// into the tick's events with the rest.
     fn step_damage(&mut self, events: &mut Vec<crate::game::Event>) {
         let mut felt = self.feel_hits();
         // What the blows that landed set off (a splash, a poison's first
@@ -860,6 +861,7 @@ impl World {
             .collect();
         self.avenge(&fallen);
         self.bury(fallen, events);
+        events.append(&mut self.events);
     }
 
     /// Puts the waiting blows in an order drawn afresh and takes them off

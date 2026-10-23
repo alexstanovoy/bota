@@ -243,3 +243,67 @@ fn the_ledger_keeps_a_standing_walk_exactly_while_the_server_does() {
         "and the ledger agrees"
     );
 }
+
+/// A map-2 match and a session of seat 0 holding everything it was first sent.
+fn seated() -> (LocalMatch, ClientSession) {
+    let cfg = mid_config();
+    let (local, mut seats) = LocalMatch::new(&cfg, &[OrderDelay::NONE]).expect("a match");
+    let mut session = session_for(info_of(&seats[0]), 0);
+    for message in seats[0].drain(1..) {
+        session.ingest(message, &mut ()).expect("folds");
+    }
+    (local, session)
+}
+
+/// Whether the session's journal holds an event.
+fn told(session: &ClientSession, wanted: &EventKind) -> bool {
+    session
+        .recent_events()
+        .iter()
+        .any(|event| &event.kind == wanted)
+}
+
+/// Seat 0 reads its scroll at its own tower and plays `ticks` ticks on.
+fn read_scroll_and_play(local: &mut LocalMatch, session: &mut ClientSession, ticks: u32) {
+    local.world_mut().seats[0].item_clocks.clear();
+    let world = local.world();
+    let tower = world
+        .entities
+        .iter()
+        .find(|&unit| {
+            world.kind.get(unit) == Some(&UnitKind::Tower)
+                && world.team.get(unit) == Some(&Team::Radiant)
+        })
+        .expect("a tower of its own");
+    let read = Order::Use {
+        slot: ItemSlot::TOWN_PORTAL,
+        target: Target::Unit(local.handle_of(0, tower).expect("its own tower")),
+    };
+    give(local, session, read, ticks);
+}
+
+#[test]
+fn a_session_is_told_a_scroll_it_read_landed() {
+    let (mut local, mut session) = seated();
+    read_scroll_and_play(&mut local, &mut session, rules::SCROLL_CHANNEL_TICKS + 1);
+    let landed = EventKind::Teleported {
+        slot: SlotId(0),
+        landed: true,
+    };
+    assert!(told(&session, &landed));
+}
+
+#[test]
+fn a_session_is_told_a_scroll_it_read_was_broken_off() {
+    let (mut local, mut session) = seated();
+    read_scroll_and_play(&mut local, &mut session, 10);
+    let stop = Order::Move {
+        target: Target::None,
+    };
+    give(&mut local, &mut session, stop, 1);
+    let broken = EventKind::Teleported {
+        slot: SlotId(0),
+        landed: false,
+    };
+    assert!(told(&session, &broken));
+}

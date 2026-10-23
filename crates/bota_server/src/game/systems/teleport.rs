@@ -1,10 +1,10 @@
 //! Teleporting by Town Portal Scroll: where a scroll may carry, the channel
-//! both sides see, and carrying.
+//! both sides see, how it ends, and carrying.
 
 use bota_core::{clamp_to_map, fountain_pos, hero_spawn_pos, kind_def, point_along, rules};
-use bota_proto::{Fixed, Target, Team, UnitKind, Vec2};
+use bota_proto::{EventKind, Fixed, Target, Team, UnitKind, Vec2};
 
-use crate::game::{Entity, Teleport, UnitOrder, World, wire_id};
+use crate::game::{Entity, Event, EventVisibility, Teleport, UnitOrder, World, wire_id};
 
 /// Raw [`Fixed`] of one over the square root of two, for the diagonal spots
 /// of a landing ring.
@@ -168,26 +168,23 @@ impl World {
     }
 
     /// Ends a channel without carrying: the sight where it would have landed
-    /// lingers its second.
+    /// lingers its second, and both sides are told it was broken off.
     pub fn break_teleport(&mut self, user: Entity) {
-        let tick = self.tick;
-        if let Some(seat) = self.seat_of(user)
-            && let Some(teleport) = self.seats[seat].teleport.as_mut()
-        {
-            teleport.live = false;
-            teleport.sight_until = tick + rules::SCROLL_SIGHT_LINGER_TICKS;
-        }
+        self.end_teleport(user, false);
     }
 
     /// Carries a hero to where its scroll lands, leaves it standing idle
     /// there, and spends the scroll. Open ground is looked for again around
-    /// the landing spot, since something may have come to stand on it.
+    /// the landing spot, since something may have come to stand on it; where
+    /// there is none the hero stays, with its scroll, and the channel is told
+    /// as one that did not land.
     pub fn teleport_to(&mut self, user: Entity, slot: usize) {
         let Some(teleport) = self.teleport_of(user).filter(|teleport| teleport.live) else {
             return;
         };
-        self.break_teleport(user);
-        let Some(landing) = self.open_landing(teleport.landing) else {
+        let landing = self.open_landing(teleport.landing);
+        self.end_teleport(user, landing.is_some());
+        let Some(landing) = landing else {
             return;
         };
         if let Some(at) = self.transform.get_mut(user) {
@@ -196,6 +193,29 @@ impl World {
         self.forget_walk(user);
         self.set_order(user, UnitOrder::Idle);
         self.spend_charge(user, slot);
+    }
+
+    /// Ends a channel under way, telling both sides on this tick whether the
+    /// hero `landed`, as the [`bota_proto::TeleportView`] they were shown
+    /// disappears. The sight where it lands lingers its second.
+    fn end_teleport(&mut self, user: Entity, landed: bool) {
+        let tick = self.tick;
+        let Some(seat) = self.seat_of(user) else {
+            return;
+        };
+        let Some(teleport) = self.seats[seat].teleport.as_mut().filter(|t| t.live) else {
+            return;
+        };
+        teleport.live = false;
+        teleport.sight_until = tick + rules::SCROLL_SIGHT_LINGER_TICKS;
+        self.events.push(Event {
+            kind: EventKind::Teleported {
+                slot: self.seats[seat].slot,
+                landed,
+            },
+            visible_to: EventVisibility::Everyone,
+            gold_hidden_from: None,
+        });
     }
 
     /// Forgets every teleport whose sight has run out.

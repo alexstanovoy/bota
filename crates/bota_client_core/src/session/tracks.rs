@@ -350,12 +350,13 @@ impl Tracks {
                 }
             }
             // A miss is not damage and carries no health, mana or death facts; casts are
-            // recorded before any same-tick damage.
+            // recorded before any same-tick damage. A teleport's end names no entity.
             EventKind::Missed { .. }
             | EventKind::AbilityCast { .. }
             | EventKind::LevelUp { .. }
             | EventKind::ItemBought { .. }
-            | EventKind::StructureDestroyed { .. } => {}
+            | EventKind::StructureDestroyed { .. }
+            | EventKind::Teleported { .. } => {}
         }
     }
 
