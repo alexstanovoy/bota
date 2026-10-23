@@ -5,7 +5,7 @@
 use bota_proto::{AbilityId, Aim};
 
 use crate::heroes::{pudge, shadow_fiend};
-use crate::{FIRST_NEUTRAL_ABILITY, NEUTRAL_ABILITIES, rules};
+use crate::{Aura, FIRST_NEUTRAL_ABILITY, NEUTRAL_ABILITIES, rules};
 
 /// One entry of the ability list.
 #[derive(Clone, Copy, Debug)]
@@ -46,6 +46,10 @@ pub struct AbilityDef {
     /// `DOTA_ABILITY_BEHAVIOR_TOGGLE`. It is on while its caster wears a
     /// modifier it put on him.
     pub toggle: bool,
+    /// What its passive hands out to the units standing near its carrier:
+    /// Dota's `DOTA_ABILITY_BEHAVIOR_AURA`. Absent for one that hands out
+    /// nothing.
+    pub aura: Option<Aura>,
     /// Whether the entry is retired: its id keeps its place, but nothing
     /// carries it and the wire never names it again.
     pub retired: bool,
@@ -68,6 +72,7 @@ pub(crate) const BARE_ABILITY: AbilityDef = AbilityDef {
     backswing: 0,
     duration: 0,
     toggle: false,
+    aura: None,
     retired: false,
 };
 

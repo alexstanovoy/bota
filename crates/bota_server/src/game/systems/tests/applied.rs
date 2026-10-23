@@ -1,14 +1,13 @@
 //! Applied stat changes: what each is worth and what it ignores.
 
 use bota_core::{
-    Aura, ITEMS, MELEE_CREEP, ModifierKind, Reach, SHADOW_FIEND, ability_cooldown,
-    ability_mana_cost, map_of, rules, tower_def,
+    Aura, AuraModifier, ITEMS, MELEE_CREEP, ModifierKind, Reach, SHADOW_FIEND, UnitDef, Whom,
+    ability_cooldown, ability_mana_cost, map_of, rules, tower_def,
 };
 
 use crate::game::{
-    AppliedModifier, AppliedModifiers, AppliedOrigin, AuraCx, Auras, Entity,
-    MAX_APPLIED_MODIFIERS_PER_UNIT, MAX_COMBINED_MODIFIER_SCALE, Place, Seat, Spots, World,
-    aura_system, cooldown_after, cost_after,
+    AppliedModifier, AppliedModifiers, AppliedOrigin, Entity, MAX_APPLIED_MODIFIERS_PER_UNIT,
+    MAX_COMBINED_MODIFIER_SCALE, Place, Seat, World, cooldown_after, cost_after,
 };
 use bota_proto::{
     AbilityId, AbilitySlot, DamageKind, Fixed, HeroId, ItemId, MapId, ModifierSpec, SlotId, Target,
@@ -754,32 +753,28 @@ fn a_tower_spawned_with_a_modifier_is_raised_with_it() {
     );
 }
 
-/// A slow handed out by standing near something.
-static SLOWING_AURA: [Aura; 1] = [Aura {
-    kind: ModifierKind::Slowed { pct: 30 },
-    radius: 400,
-    reaches: Reach::All,
-    ticks: 10,
-}];
+/// A creep handing out a slow to its own side standing near it.
+static SLOWING_CREEP: UnitDef = UnitDef {
+    auras: &[Aura {
+        whom: Whom::Allies,
+        reaches: Reach::All,
+        radius: 400,
+        linger: 10,
+        breakable: false,
+        seen_only: false,
+        water: false,
+        modifier: AuraModifier::Kind(ModifierKind::Slowed { pct: 30 }),
+    }],
+    ..MELEE_CREEP
+};
 
 #[test]
 fn an_aura_hands_out_a_slow_through_the_same_resistance() {
     let (mut world, hero, _creep) = arena();
-    let source = world.spawn_unit(&MELEE_CREEP, Team::Radiant, Vec2::from_ints(7100, 7000));
+    world.spawn_unit(&SLOWING_CREEP, Team::Radiant, Vec2::from_ints(7100, 7000));
     let plain = world.spawn_unit(&MELEE_CREEP, Team::Radiant, Vec2::from_ints(7200, 7000));
-    world.auras.insert(source, Auras(&SLOWING_AURA));
     apply(&mut world, hero, spec(|s| s.status_resist = 5_000), 10);
-    aura_system(AuraCx {
-        entities: &world.entities,
-        transform: &world.transform,
-        team: &world.team,
-        kind: &world.kind,
-        auras: &world.auras,
-        upgrades: &world.upgrades,
-        stats: &world.stats,
-        modifiers: &mut world.modifiers,
-        spots: &mut Spots::default(),
-    });
+    world.tick_auras();
     assert_eq!(
         left_on(&world, hero, ModifierKind::Slowed { pct: 30 }),
         Some(5),

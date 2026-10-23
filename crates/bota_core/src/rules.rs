@@ -660,8 +660,9 @@ pub const TOWER_AURA_ARMOR: [i32; 4] = [3, 5, 5, 5];
 /// Health a tower's protection mends, in hundredths of a point a second,
 /// indexed by tier less one.
 pub const TOWER_AURA_REGEN: [i32; 4] = [100, 300, 300, 300];
-/// Ticks a tower's or flagbearer's aura holds once handed out, which is how
-/// long it lingers after walking out of one.
+/// Ticks an aura's modifier holds once handed out, which is how long it
+/// lingers after walking out of one: Dota's half second, the fountain's
+/// excepted.
 pub const AURA_LINGER_TICKS: u32 = TICKS_PER_SECOND / 2;
 /// How far a flagbearer's inspiration reaches.
 pub const FLAGBEARER_AURA_RADIUS: i32 = 700;

@@ -16,7 +16,7 @@
 
 use bota_proto::{AbilityId, Aim, DamageKind, EffectId};
 
-use crate::{AbilityDef, BARE_ABILITY, NeutralKind, rules};
+use crate::{AbilityDef, Aura, AuraModifier, BARE_ABILITY, NeutralKind, Reach, Whom, rules};
 
 /// One neutral ability. Its place after [`FIRST_NEUTRAL_ABILITY`] is its
 /// [`AbilityId`]: append-only.
@@ -235,18 +235,11 @@ const fn chill(move_pct: Lv, attack_speed: Lv) -> Buff {
     Buff::two(Stat::MovePct, move_pct, Stat::AttackSpeed, attack_speed)
 }
 
-/// Whom an aura reaches.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Whom {
-    /// Every unit of its side, itself included: no building, no ward.
-    Allies,
-    /// Every unit of every other side: no building, no ward.
-    Enemies,
-}
-
 /// A handed-out effect, its reach and its modifier.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct AuraSpell {
+    /// Its bearer's side or the others: living units of it, no building,
+    /// no ward.
     pub whom: Whom,
     /// How far it reaches, in world units, before the neutral cap.
     pub radius: i32,
@@ -496,6 +489,35 @@ pub enum Spell {
     },
 }
 
+impl Spell {
+    /// The aura a passive of `ability` is, for one that hands its modifier
+    /// out to the units near its bearer: an aura or a storm. Each reaches
+    /// living units only, lingers [`rules::AURA_LINGER_TICKS`], and is
+    /// silenced by a Break, as Dota's `IsBreakable` neutral auras are.
+    const fn aura(&self, ability: NeutralAbility) -> Option<Aura> {
+        let (whom, radius, water) = match *self {
+            Spell::Aura(AuraSpell {
+                whom,
+                radius,
+                water,
+                ..
+            }) => (whom, radius, water),
+            Spell::Storm { radius, .. } => (Whom::Enemies, radius, false),
+            _ => return None,
+        };
+        Some(Aura {
+            whom,
+            reaches: Reach::Living,
+            radius,
+            linger: rules::AURA_LINGER_TICKS,
+            breakable: true,
+            seen_only: false,
+            water,
+            modifier: AuraModifier::Spell(ability),
+        })
+    }
+}
+
 /// One entry: the ability as any ability is, and what it does.
 #[derive(Clone, Copy, Debug)]
 pub struct NeutralAbilityDef {
@@ -565,10 +587,14 @@ const fn secs(seconds: u32) -> u32 {
     seconds * rules::TICKS_PER_SECOND
 }
 
+/// One entry, its ability carrying the aura its spell is, if it is one.
 const fn entry(ability: NeutralAbility, def: AbilityDef, spell: Spell) -> NeutralAbilityDef {
     NeutralAbilityDef {
         ability,
-        def,
+        def: AbilityDef {
+            aura: spell.aura(ability),
+            ..def
+        },
         spell,
     }
 }

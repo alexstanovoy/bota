@@ -1,15 +1,14 @@
-//! The razes, the souls gathered from what falls, the presence worn by the
-//! enemies near him, and the requiem the souls feed.
+//! The razes, the souls gathered from what falls, and the requiem the souls
+//! feed. His presence is an aura ([`World::tick_auras`]).
 
 use bota_core::{
     ModifierKind, SHADOW_FIEND_RAZES, Talent, attack_class_pct, hero_def, kind_def, move_towards,
-    per_tick, point_ahead, presence_armor, raze_damage, raze_landing, raze_stack_damage,
-    requiem_death_lines, requiem_fear_ticks, requiem_line_damage, requiem_lines, requiem_width,
-    rules, soul_cap,
+    per_tick, point_ahead, raze_damage, raze_landing, raze_stack_damage, requiem_death_lines,
+    requiem_fear_ticks, requiem_line_damage, requiem_lines, requiem_width, rules, soul_cap,
 };
-use bota_proto::{AbilityId, Angle, DamageKind, Fixed, Inflictor, Team};
+use bota_proto::{AbilityId, Angle, DamageKind, Fixed, Inflictor};
 
-use crate::game::{Fear, Hit, HitEffect, Modifier, RequiemLine, World};
+use crate::game::{Fear, Hit, HitEffect, RequiemLine, World};
 
 use crate::engine::Entity;
 
@@ -259,72 +258,6 @@ impl World {
         self.end_feast(fallen);
         let held = self.souls_of(fallen);
         self.set_souls(fallen, held - held * rules::SOULS_LOST_ON_DEATH_PCT / 100);
-    }
-
-    /// Lays the presence on every enemy standing near its carriers that
-    /// sees the carrier.
-    ///
-    /// Standing in it puts the armor break on afresh every tick; walking out
-    /// leaves it to run out on its own. A structure, a ward or what damage
-    /// passes by wears none. A broken carrier lays none: the presence is a
-    /// passive, and a break turns passives off.
-    pub fn spread_presence(&mut self) {
-        let carriers: Vec<(Entity, u8)> = self
-            .entities
-            .iter()
-            .filter(|&entity| !self.broken(entity))
-            .filter_map(|entity| {
-                let level = self.carried_level(entity, AbilityId::PRESENCE);
-                (level > 0).then_some((entity, level))
-            })
-            .collect();
-        for (carrier, level) in carriers {
-            let (Some(from), Some(side)) = (self.pos(carrier), self.team.get(carrier).copied())
-            else {
-                continue;
-            };
-            let reach = rules::units(rules::PRESENCE_RADIUS);
-            let armor = presence_armor(level, self.has_talent(carrier, Talent::PresenceArmor));
-            let struck: Vec<Entity> = self
-                .entities
-                .iter()
-                .filter(|other| {
-                    self.pos(*other).is_some_and(|pos| pos.within(from, reach))
-                        && self.wears_presence(carrier, side, *other)
-                })
-                .collect();
-            for mark in struck {
-                self.put_modifier(
-                    mark,
-                    Modifier::new(
-                        ModifierKind::ArmorBroken { armor },
-                        Some(carrier),
-                        Some(Inflictor::Ability(AbilityId::PRESENCE)),
-                        Some(rules::PRESENCE_LINGER_TICKS),
-                    ),
-                );
-            }
-        }
-    }
-
-    /// Whether one entity wears the presence of a carrier of a side: a
-    /// standing enemy that leaves a death, that damage reaches, and whose
-    /// side sees the carrier.
-    fn wears_presence(&self, carrier: Entity, side: Team, other: Entity) -> bool {
-        let Some(theirs) = self.team.get(other).copied() else {
-            return false;
-        };
-        theirs != side
-            && self.alive(other)
-            && self
-                .kind
-                .get(other)
-                .is_some_and(|kind| kind_def(*kind).leaves_a_death)
-            && !self
-                .stats
-                .get(other)
-                .is_some_and(|stats| stats.invulnerable)
-            && self.can_see(theirs, carrier)
     }
 
     /// Hands the soul of what has fallen to whoever brought it down.

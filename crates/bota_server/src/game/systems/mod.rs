@@ -30,7 +30,6 @@ mod regen;
 mod rouse;
 mod spawn;
 mod spell;
-mod spell_aura;
 mod spell_call;
 mod spell_strike;
 mod spell_tick;

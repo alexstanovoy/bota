@@ -7,7 +7,7 @@ use bota_core::{
 use bota_proto::{AbilityId, Angle, Fixed, HeroId, Inflictor, SlotId, Team, Vec2};
 
 use crate::game::{
-    AbilityBook, AbilityState, Action, ActionState, AppliedModifier, AppliedOrigin, Auras, Bounty,
+    AbilityBook, AbilityState, Action, ActionState, AppliedModifier, AppliedOrigin, Bounty,
     CampHome, Def, Entity, Errand, Expiry, Health, Hull, Inventory, Lane, LaneAi, Level,
     MAX_SPAWN_MODIFIERS, Mana, March, Mark, Modifier, Modifiers, Motion, NeutralAi, Orders, Plan,
     Rax, Route, Tier, Transform, UnitOrder, Upgrades, World, check_spawn_modifier, hero_kit,
@@ -56,9 +56,6 @@ impl World {
                     xp: def.bounty_xp,
                 },
             );
-        }
-        if !def.auras.is_empty() {
-            self.auras.insert(entity, Auras(def.auras));
         }
         self.apply_spawn_modifiers(entity);
         entity

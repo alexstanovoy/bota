@@ -174,6 +174,22 @@ impl Modifiers {
         })
     }
 
+    /// Whether what is on already outranks a fresh modifier an aura hands
+    /// out, which then stays off: a higher level of the same spell (from the
+    /// same source, for one that keeps its sources apart) that holds at
+    /// least as long. Only a neutral's spell carries the level it came at,
+    /// so every other aura's modifier is put on afresh by whichever source
+    /// reaches it last.
+    pub fn outranks(&self, fresh: &Modifier) -> bool {
+        let ModifierKind::Spell { ability, level, .. } = fresh.kind else {
+            return false;
+        };
+        self.spell(ability, fresh.source).is_some_and(|held| {
+            matches!(held.kind, ModifierKind::Spell { level: had, .. } if had > level)
+                && held.ticks_left >= fresh.ticks_left
+        })
+    }
+
     /// Active Shadowraze hits held for this exact caster generation; zero
     /// when absent.
     pub fn raze_stacks(&self, caster: Entity) -> u8 {

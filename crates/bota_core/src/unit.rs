@@ -6,7 +6,7 @@
 
 use bota_proto::{AbilityId, Attribute, Attributes, Fixed, Team, UnitKind};
 
-use crate::{Aura, GoldRange, ModifierKind, Reach, rules};
+use crate::{Aura, AuraModifier, GoldRange, ModifierKind, Reach, Whom, rules};
 
 /// What an entity gains for each step of whatever raises it: a level past the
 /// first, or an upgrade interval.
@@ -128,7 +128,7 @@ pub struct UnitDef {
     pub per_level: Growth,
     /// What each upgrade interval adds.
     pub per_upgrade: Growth,
-    /// What it hands out to its own side for standing near it.
+    /// The auras it carries of its own, beside those of its abilities.
     pub auras: &'static [Aura],
     /// Its backdoor protection. Absent for whatever has none.
     pub backdoor: Option<BackdoorWatch>,
@@ -225,15 +225,20 @@ pub const MELEE_CREEP: UnitDef = UnitDef {
 };
 
 /// What a flagbearer mends in the creeps marching with it, and the magic
-/// resistance it grows into with the upgrade intervals it spawned after.
+/// resistance it grows into with the upgrade intervals it spawned after:
+/// Dota's `flagbearer_creep_aura_effect`.
 const FLAGBEARER_AURAS: [Aura; 1] = [Aura {
-    kind: ModifierKind::Inspired {
+    whom: Whom::Allies,
+    reaches: Reach::Units,
+    radius: rules::FLAGBEARER_AURA_RADIUS,
+    linger: rules::AURA_LINGER_TICKS,
+    breakable: false,
+    seen_only: false,
+    water: false,
+    modifier: AuraModifier::Kind(ModifierKind::Inspired {
         hp_per_second: rules::FLAGBEARER_AURA_REGEN,
         magic_resist_pct: 0,
-    },
-    radius: rules::FLAGBEARER_AURA_RADIUS,
-    reaches: Reach::Units,
-    ticks: rules::AURA_LINGER_TICKS,
+    }),
 }];
 
 /// A melee lane creep carrying the flag. Upgrades as a melee creep does.
@@ -464,15 +469,20 @@ pub fn ancient_of(team: Team) -> &'static UnitDef {
     }
 }
 
-/// What a fountain mends on its own side standing in it.
+/// What a fountain mends on its own side standing in it: Dota's
+/// `modifier_fountain_aura`, a building's.
 const FOUNTAIN_AURAS: [Aura; 1] = [Aura {
-    kind: ModifierKind::Fountain {
+    whom: Whom::Allies,
+    reaches: Reach::All,
+    radius: rules::FOUNTAIN_HEAL_RADIUS,
+    linger: rules::FOUNTAIN_HEAL_LINGER_TICKS,
+    breakable: false,
+    seen_only: false,
+    water: false,
+    modifier: AuraModifier::Kind(ModifierKind::Fountain {
         hp_pct: rules::FOUNTAIN_HEAL_HP_PCT,
         mana_pct: rules::FOUNTAIN_HEAL_MANA_PCT,
-    },
-    radius: rules::FOUNTAIN_HEAL_RADIUS,
-    reaches: Reach::All,
-    ticks: rules::FOUNTAIN_HEAL_LINGER_TICKS,
+    }),
 }];
 
 pub const FOUNTAIN: UnitDef = UnitDef {
@@ -542,16 +552,20 @@ pub const SENTRY_WARD: UnitDef = UnitDef {
 /// one.
 const TOWER_AURAS: [[Aura; 1]; 4] = [tower_aura(0), tower_aura(1), tower_aura(2), tower_aura(3)];
 
-/// One tier's protection.
+/// One tier's protection: Dota's `modifier_tower_aura`, a building's.
 const fn tower_aura(index: usize) -> [Aura; 1] {
     [Aura {
-        kind: ModifierKind::Guarded {
+        whom: Whom::Allies,
+        reaches: Reach::Heroes,
+        radius: rules::TOWER_AURA_RADIUS,
+        linger: rules::AURA_LINGER_TICKS,
+        breakable: false,
+        seen_only: false,
+        water: false,
+        modifier: AuraModifier::Kind(ModifierKind::Guarded {
             armor: rules::TOWER_AURA_ARMOR[index],
             hp_per_second: rules::TOWER_AURA_REGEN[index],
-        },
-        radius: rules::TOWER_AURA_RADIUS,
-        reaches: Reach::Heroes,
-        ticks: rules::AURA_LINGER_TICKS,
+        }),
     }]
 }
 

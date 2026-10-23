@@ -5,13 +5,13 @@ use std::collections::VecDeque;
 use bota_proto::{HeroId, Inflictor, SlotId, Team, UnitKind, Vec2};
 
 use crate::game::{
-    AbilityBook, Action, AppliedModifiers, AuraCx, Auras, Backdoor, Bounty, CampHome, Candidates,
+    AbilityBook, Action, AppliedModifiers, AuraScratch, Backdoor, Bounty, CampHome, Candidates,
     Def, Entity, EntityAllocator, Errand, Expiry, Exposure, Forest, Glyph, Handling, Health, Hit,
     HitCx, Hook, Hull, Inventory, Landed, Lane, LaneAi, Level, Loot, Mana, March, Mark, Missed,
     MissileCx, Modifier, Modifiers, Motion, NeutralAi, Orders, Place, Plan, Projectile, Purpose,
     Rax, RequiemLine, Route, Seat, SightCx, SightScratch, SpawnModifier, Spots, Stats, StatsCx,
-    Table, Target, Tier, Transform, UnitOrder, Upgrades, Visibility, aura_system, derive_stats,
-    hitting_system, missile_system, regenerate, visibility_system,
+    Table, Target, Tier, Transform, UnitOrder, Upgrades, Visibility, derive_stats, hitting_system,
+    missile_system, regenerate, visibility_system,
 };
 use crate::profile::{Phase, ScopeGuard};
 
@@ -101,8 +101,8 @@ pub struct World {
     pub(crate) sight_scratch: SightScratch,
     /// Reused room targets are chosen among.
     pub(crate) candidates: Candidates,
-    /// Reused room auras find who stands in them in.
-    pub(crate) aura_spots: Spots<Entity>,
+    /// Reused room auras are handed out in.
+    pub(crate) aura_scratch: AuraScratch,
     /// Reused room sleeping neutrals look for what wakes them in.
     pub(crate) jungle_spots: Spots<Entity>,
 
@@ -156,8 +156,6 @@ pub struct World {
     pub errand: Table<Errand>,
     /// How long each entity that stands for a time has left.
     pub expiry: Table<Expiry>,
-    /// What each entity hands out to those standing near it.
-    pub auras: Table<Auras>,
 
     /// The route each walker is on.
     pub route: Table<Route>,
@@ -275,7 +273,7 @@ impl World {
             lapsed_lives: Vec::new(),
             sight_scratch: SightScratch::new(),
             candidates: Candidates::default(),
-            aura_spots: Spots::default(),
+            aura_scratch: AuraScratch::default(),
             jungle_spots: Spots::default(),
             transform: Table::new(),
             hull: Table::new(),
@@ -301,7 +299,6 @@ impl World {
             feast: Table::new(),
             errand: Table::new(),
             expiry: Table::new(),
-            auras: Table::new(),
             route: Table::new(),
             plan: Table::new(),
             motion: Table::new(),
@@ -719,8 +716,8 @@ impl World {
         self.tick_expiries();
     }
 
-    /// Modifiers, hooks, requiem lines, grenades, the forest, presence and
-    /// auras.
+    /// Modifiers, hooks, requiem lines, grenades, the forest, backdoor
+    /// protection and auras.
     fn step_effects(&mut self) {
         self.tick_modifiers();
         self.tick_hooks();
@@ -731,20 +728,8 @@ impl World {
             self.lay_sight_block();
             self.lay_passability();
         }
-        self.spread_presence();
         self.tick_backdoor();
-        aura_system(AuraCx {
-            entities: &self.entities,
-            transform: &self.transform,
-            team: &self.team,
-            kind: &self.kind,
-            auras: &self.auras,
-            upgrades: &self.upgrades,
-            stats: &self.stats,
-            modifiers: &mut self.modifiers,
-            spots: &mut self.aura_spots,
-        });
-        self.tick_spell_auras();
+        self.tick_auras();
     }
 
     /// Stats worked out afresh, pools following their maxima, and the

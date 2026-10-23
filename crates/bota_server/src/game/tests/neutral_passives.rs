@@ -159,6 +159,37 @@ fn two_equal_auras_on_one_unit_name_the_later_bearer_whatever_the_ticks_coin() {
 }
 
 #[test]
+fn of_two_foremen_the_higher_level_holds_whichever_reaches_last() {
+    let mut world = day();
+    let stronger = world.spawn_neutral(NeutralKind::KoboldTaskmaster, at(0), 0, 0);
+    let weaker = world.spawn_neutral(NeutralKind::KoboldTaskmaster, at(100), 0, 0);
+    let kobold = world.spawn_neutral(NeutralKind::Kobold, at(50), 0, 0);
+    // The first foreman holds its aura at the second level, as one that
+    // spawned after the fifteenth minute does; the other reaches the kobold
+    // later in every tick.
+    if let Some(book) = world.abilities.get_mut(stronger) {
+        book.slots.iter_mut().for_each(|slot| slot.level = 2);
+    }
+    world.settle();
+    run(&mut world, 3);
+    let held = world
+        .modifiers
+        .get(kobold)
+        .and_then(|on_it| on_it.spell(NeutralAbility::SpeedAura, None))
+        .map(|held| (held.kind, held.source));
+    let second = ModifierKind::Spell {
+        ability: NeutralAbility::SpeedAura,
+        level: 2,
+        amount: 0,
+    };
+    assert_eq!(
+        held,
+        Some((second, Some(stronger))),
+        "the second level stays on, not {weaker:?}'s first"
+    );
+}
+
+#[test]
 fn a_broken_bearer_hands_nothing_out() {
     let mut world = day();
     let foreman = world.spawn_neutral(NeutralKind::KoboldTaskmaster, at(0), 0, 0);

@@ -4,13 +4,16 @@
 use bota_proto::{AbilityId, Attribute, Attributes, Fixed};
 
 use super::numbers::{
-    FEAST_COOLDOWN, FEAST_MANA, FEAST_RADIUS, PRESENCE_RADIUS, RAZE_CAST_POINT_MS, RAZE_COOLDOWN,
-    RAZE_DISTANCE, RAZE_MANA, REQUIEM_BACKSWING_MS, REQUIEM_CAST_POINT_MS, REQUIEM_COOLDOWN,
-    REQUIEM_LINE_DISTANCE, REQUIEM_MANA,
+    FEAST_COOLDOWN, FEAST_MANA, FEAST_RADIUS, PRESENCE_LINGER_TICKS, PRESENCE_RADIUS,
+    RAZE_CAST_POINT_MS, RAZE_COOLDOWN, RAZE_DISTANCE, RAZE_MANA, REQUIEM_BACKSWING_MS,
+    REQUIEM_CAST_POINT_MS, REQUIEM_COOLDOWN, REQUIEM_LINE_DISTANCE, REQUIEM_MANA,
 };
 use crate::ability::BARE_ABILITY;
 use crate::unit::NO_GROWTH;
-use crate::{AbilityDef, Growth, HERO, HeroDef, Talent, TalentTree, UnitDef, rules};
+use crate::{
+    AbilityDef, Aura, AuraModifier, Growth, HERO, HeroDef, Reach, Talent, TalentTree, UnitDef,
+    Whom, rules,
+};
 
 /// Shadow Fiend: fragile and long-ranged, at Dota 7.41f's numbers, 16 to 22
 /// base attack damage among them.
@@ -123,10 +126,23 @@ pub const NECROMASTERY: AbilityDef = AbilityDef {
     ..BARE_ABILITY
 };
 
+/// Dota's `nevermore_dark_lord`: a passive aura on the enemies, breakable,
+/// that tears their armor by its level. Only an enemy whose side sees him
+/// wears it.
 pub const PRESENCE: AbilityDef = AbilityDef {
     name: "Presence of the Dark Lord",
     max_level: rules::ABILITY_MAX_LEVEL,
     range: PRESENCE_RADIUS,
+    aura: Some(Aura {
+        whom: Whom::Enemies,
+        reaches: Reach::Living,
+        radius: PRESENCE_RADIUS,
+        linger: PRESENCE_LINGER_TICKS,
+        breakable: true,
+        seen_only: true,
+        water: false,
+        modifier: AuraModifier::ArmorBroken,
+    }),
     ..BARE_ABILITY
 };
 
