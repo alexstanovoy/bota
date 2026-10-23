@@ -24,7 +24,10 @@ struct Storm {
 impl World {
     /// Hands out every neutral aura and storm for the tick, on the layout
     /// of where everything stands that [`aura_system`](crate::game::aura_system)
-    /// just laid.
+    /// just laid, bearer by bearer in slot order, as the other auras go out:
+    /// the neutrals' auras are no race between the sides, so the tick's coin
+    /// has no say in which of two equal bearers is named on what they hand
+    /// out.
     ///
     /// Each spell puts its modifier on afresh every tick and lingers
     /// [`rules::AURA_LINGER_TICKS`] after the unit leaves. A broken bearer
@@ -33,13 +36,14 @@ impl World {
     pub fn tick_spell_auras(&mut self) {
         let spots = std::mem::take(&mut self.aura_spots);
         let mut near = Vec::new();
-        let entities = self.take_entity_snapshot();
-        for source in entities.iter().copied() {
-            if self.neutral.get(source).is_some() && !self.broken(source) {
-                self.hand_out_spells(source, &spots, &mut near);
-            }
+        let bearers: Vec<Entity> = self
+            .entities
+            .iter()
+            .filter(|&source| self.neutral.get(source).is_some() && !self.broken(source))
+            .collect();
+        for source in bearers {
+            self.hand_out_spells(source, &spots, &mut near);
         }
-        self.recycle_entity_snapshot(entities);
         self.aura_spots = spots;
     }
 

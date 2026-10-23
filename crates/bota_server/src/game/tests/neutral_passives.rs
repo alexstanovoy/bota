@@ -132,6 +132,33 @@ fn an_aura_reaches_allies_as_far_as_a_neutral_camp_aura_does_and_never_stacks() 
 }
 
 #[test]
+fn two_equal_auras_on_one_unit_name_the_later_bearer_whatever_the_ticks_coin() {
+    let mut world = day();
+    let first = world.spawn_neutral(NeutralKind::KoboldTaskmaster, at(0), 0, 0);
+    let later = world.spawn_neutral(NeutralKind::KoboldTaskmaster, at(100), 0, 0);
+    let kobold = world.spawn_neutral(NeutralKind::Kobold, at(50), 0, 0);
+    world.settle();
+    let mut coins = [false; 2];
+    let mut named = Vec::new();
+    for _ in 0..12 {
+        world.step();
+        coins[usize::from(world.backwards)] = true;
+        named.push(
+            world
+                .modifiers
+                .get(kobold)
+                .and_then(|on_it| on_it.spell(NeutralAbility::SpeedAura, None))
+                .and_then(|held| held.source),
+        );
+    }
+    assert_eq!(coins, [true, true], "the coin fell both ways");
+    assert!(
+        named.iter().all(|source| *source == Some(later)),
+        "the later foreman in slot order every tick, never {first:?}: {named:?}"
+    );
+}
+
+#[test]
 fn a_broken_bearer_hands_nothing_out() {
     let mut world = day();
     let foreman = world.spawn_neutral(NeutralKind::KoboldTaskmaster, at(0), 0, 0);
