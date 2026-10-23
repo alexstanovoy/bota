@@ -8,9 +8,8 @@ use bota_core::{
 use bota_proto::{Attributes, Fixed, ModifierSpec};
 
 use crate::game::{
-    AbilityBook, AppliedModifiers, Def, EntityAllocator, Feast, FeastPhase, Health, Inventory,
-    Level, MAX_COMBINED_MODIFIER_SCALE, Mana, Modifiers, StatBonus, Stats, Table, Upgrades,
-    carried_bonus,
+    AbilityBook, AppliedModifiers, Def, EntityAllocator, Health, Inventory, Level,
+    MAX_COMBINED_MODIFIER_SCALE, Mana, Modifiers, StatBonus, Stats, Table, Upgrades, carried_bonus,
 };
 
 /// What working out stats reads and writes.
@@ -27,8 +26,6 @@ pub struct StatsCx<'a> {
     pub applied: &'a Table<AppliedModifiers>,
     /// What each entity has learned, for what its passives are worth.
     pub abilities: &'a Table<AbilityBook>,
-    /// The feast each entity has on it, for its haste.
-    pub feast: &'a Table<Feast>,
     /// Where the answer goes.
     pub stats: &'a mut Table<Stats>,
     /// Health, which follows its maximum.
@@ -57,7 +54,6 @@ pub fn derive_stats(cx: StatsCx<'_>) {
         modifiers,
         applied,
         abilities,
-        feast,
         stats,
         health,
         mana,
@@ -116,8 +112,8 @@ pub fn derive_stats(cx: StatsCx<'_>) {
             let hero = kind.kind == bota_proto::UnitKind::Hero;
             add_modifiers(&mut now, on_it, base_armor, hero);
         }
-        if let Some(feast) = feast.get(entity) {
-            add_feast(&mut now, feast, abilities.get(entity));
+        if let Some(on_it) = modifiers.get(entity) {
+            add_feast(&mut now, on_it, abilities.get(entity));
         }
         let max = Regen {
             hp: now.max_hp,
@@ -183,11 +179,13 @@ fn follow_pools(
 
 /// Adds the haste of a feast that is running, the talent's attack speed
 /// with it when its caster has learned it.
-fn add_feast(now: &mut Stats, feast: &Feast, book: Option<&AbilityBook>) {
-    if feast.phase != FeastPhase::Feasting {
+fn add_feast(now: &mut Stats, on_it: &Modifiers, book: Option<&AbilityBook>) {
+    let Some(level) = on_it.active().find_map(|held| match held.kind {
+        ModifierKind::Feasting { level, .. } => Some(usize::from(level)),
+        _ => None,
+    }) else {
         return;
-    }
-    let level = usize::from(feast.level);
+    };
     now.attack_speed += rules::FEAST_ATTACK_SPEED[level];
     if book.is_some_and(|book| book.has_talent(Talent::FeastAttackSpeed)) {
         now.attack_speed += rules::TALENT_FEAST_ATTACK_SPEED;
@@ -297,7 +295,9 @@ fn add_modifiers(now: &mut Stats, on_it: &Modifiers, base_armor: Fixed, hero: bo
             | ModifierKind::Broken
             | ModifierKind::BackdoorProtection
             | ModifierKind::FleshHeap { .. }
-            | ModifierKind::Souls { .. } => {}
+            | ModifierKind::Souls { .. }
+            | ModifierKind::Feasting { .. }
+            | ModifierKind::FeastLinger { .. } => {}
         }
     }
 }

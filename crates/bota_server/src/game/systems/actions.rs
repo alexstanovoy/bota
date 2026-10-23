@@ -8,16 +8,16 @@
 //! is aimed at is in reach.
 
 use bota_core::{
-    BEATS_PER_TICK, Ratio, Talent, ability_def, attack_gain, beats, cast_point_ms, cross,
-    facing_gap, facing_towards, kind_def, rules,
+    BEATS_PER_TICK, ModifierKind, Ratio, Talent, ability_def, attack_gain, beats, cast_point_ms,
+    cross, facing_gap, facing_towards, kind_def, rules,
 };
 use bota_proto::{Aim, DamageKind, Fixed, ItemSlot, Team, Vec2};
 
 use super::hitting::entity_slot;
 
 use crate::game::{
-    Action, ActionPhase, ActionState, Chance, Entity, Event, FeastPhase, Hit, HitEffect,
-    PendingCast, Projectile, Purpose, Stats, Target, World, ability_hooks, wire_id,
+    Action, ActionPhase, ActionState, Chance, Entity, Event, Hit, HitEffect, PendingCast,
+    Projectile, Purpose, Stats, Target, World, ability_hooks, wire_id,
 };
 
 /// What one swing deals, rolled when it lands.
@@ -562,10 +562,11 @@ impl World {
     /// that has learned the level-25 talent. Read every tick of the point, so
     /// a feast ending inside it lengthens what is left.
     pub(crate) fn cast_point_of(&self, entity: Entity, point: u32) -> u32 {
-        let feasting = self
-            .feast
-            .get(entity)
-            .is_some_and(|feast| feast.phase == FeastPhase::Feasting);
+        let feasting = self.modifiers.get(entity).is_some_and(|on_it| {
+            on_it
+                .active()
+                .any(|held| matches!(held.kind, ModifierKind::Feasting { .. }))
+        });
         cast_point_ms(
             point,
             feasting && self.has_talent(entity, Talent::FeastCastSpeed),

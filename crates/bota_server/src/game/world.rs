@@ -748,7 +748,6 @@ impl World {
             modifiers: &self.modifiers,
             applied: &self.applied,
             abilities: &self.abilities,
-            feast: &self.feast,
             stats: &mut self.stats,
             health: &mut self.health,
             mana: &mut self.mana,

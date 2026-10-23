@@ -349,9 +349,7 @@ fn hash_requiem_line(fnv: &mut Fnv, line: &RequiemLine) {
 }
 
 fn hash_feast(fnv: &mut Fnv, feast: &crate::game::Feast) {
-    fnv.u8(feast.level);
     fnv.u8(feast.phase as u8);
-    fnv.u32(feast.ticks_left);
     fnv.u32(feast.fed.len() as u32);
     for fed in &feast.fed {
         fnv.entity(fed.from);
@@ -540,6 +538,15 @@ fn hash_modifier_kind(fnv: &mut Fnv, kind: ModifierKind) {
         ModifierKind::Souls { count } => {
             fnv.u8(27);
             fnv.u32(count);
+        }
+        ModifierKind::Feasting { level, souls } => {
+            fnv.u8(28);
+            fnv.u8(level);
+            fnv.u32(u32::from(souls));
+        }
+        ModifierKind::FeastLinger { souls } => {
+            fnv.u8(29);
+            fnv.u32(u32::from(souls));
         }
         ModifierKind::Spell {
             ability,

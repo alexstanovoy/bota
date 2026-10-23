@@ -96,6 +96,8 @@ fn every_modifier() -> Vec<ModifierKind> {
         ModifierKind::Fortified,
         ModifierKind::FleshHeap { count: 1 },
         ModifierKind::Souls { count: 1 },
+        ModifierKind::Feasting { level: 0, souls: 0 },
+        ModifierKind::FeastLinger { souls: 1 },
     ];
     for kind in &every {
         match kind {
@@ -123,6 +125,8 @@ fn every_modifier() -> Vec<ModifierKind> {
             | ModifierKind::Fortified
             | ModifierKind::FleshHeap { .. }
             | ModifierKind::Souls { .. }
+            | ModifierKind::Feasting { .. }
+            | ModifierKind::FeastLinger { .. }
             | ModifierKind::Spell { .. } => {}
             ModifierKind::Dismembered { .. } | ModifierKind::MeatShield { .. } => {}
         }
@@ -144,8 +148,6 @@ fn every_effect_is_shown_under_its_registered_id() {
         .iter()
         .map(|kind| (kind.effect_id().0, variant_name(kind)))
         .collect();
-    shown.push((EffectId::FEASTING.0, "Feasting".to_string()));
-    shown.push((EffectId::FEAST_LINGER.0, "FeastLinger".to_string()));
     shown.push((EffectId::FORTIFIED.0, "Fortified".to_string()));
     shown.push((EffectId::ILLUSION.0, "Illusion".to_string()));
     for entry in &NEUTRAL_ABILITIES {

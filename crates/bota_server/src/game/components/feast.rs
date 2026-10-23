@@ -1,9 +1,11 @@
-//! A feast of souls on its caster: how far it has run and whom it has fed
-//! on.
+//! A feast of souls on its caster: whom it has fed on. How long it runs, its
+//! level and the souls it shows are its modifiers', `ModifierKind::Feasting`
+//! while it runs and `ModifierKind::FeastLinger` once it is over.
 
 use crate::engine::Entity;
 
-/// Where a feast stands.
+/// Which of its two modifiers a feast is on, so that its end is acted on
+/// when that modifier lifts, however it lifts.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum FeastPhase {
     /// Hastening its caster and taking souls from the enemies near him.
@@ -24,13 +26,7 @@ pub struct Fed {
 /// A feast of souls on the one who cast it. Gone once it has run out.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Feast {
-    /// Which level of it was cast, counted from zero.
-    pub level: u8,
     pub phase: FeastPhase,
-    /// Ticks before the phase ends, at most
-    /// [`rules::FEAST_TICKS`](bota_core::rules::FEAST_TICKS) or
-    /// [`rules::FEAST_LINGER_TICKS`](bota_core::rules::FEAST_LINGER_TICKS).
-    pub ticks_left: u32,
     /// Every enemy fed on, each once, at most
     /// [`rules::FEAST_TARGETS`](bota_core::rules::FEAST_TARGETS) at its
     /// level. While lingering, only those that have died.

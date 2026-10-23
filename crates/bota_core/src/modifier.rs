@@ -128,6 +128,21 @@ pub enum ModifierKind {
         /// Souls held.
         count: u32,
     },
+    /// A feast of souls under way on its caster: he attacks and walks faster,
+    /// and souls are taken from the enemies near him. Dota's basic dispel
+    /// ends it.
+    Feasting {
+        /// The level it was cast at, counted from zero.
+        level: u8,
+        /// Souls it has taken so far.
+        souls: u16,
+    },
+    /// What a feast left once it ended: the souls it took from enemies that
+    /// have died since, held past the cap until it runs out.
+    FeastLinger {
+        /// Souls held past the cap.
+        souls: u16,
+    },
     /// A building's backdoor protection, worn while it holds: it takes
     /// [`rules::BACKDOOR_DAMAGE_PCT`] percent of the damage that reaches it
     /// and mends what enemy blows took.
@@ -174,6 +189,8 @@ impl ModifierKind {
             ModifierKind::Fortified => EffectId::FORTIFIED,
             ModifierKind::FleshHeap { .. } => EffectId::FLESH_HEAP,
             ModifierKind::Souls { .. } => EffectId::SOULS,
+            ModifierKind::Feasting { .. } => EffectId::FEASTING,
+            ModifierKind::FeastLinger { .. } => EffectId::FEAST_LINGER,
             ModifierKind::Spell { ability, .. } => match spell_effect(ability) {
                 Some(effect) => effect,
                 None => panic!("a spell without a modifier left one"),
@@ -199,6 +216,9 @@ impl ModifierKind {
             ModifierKind::Shadowraze { stacks } => Some(stacks as u32),
             ModifierKind::MeatShield { amount } => Some(amount as u32),
             ModifierKind::FleshHeap { count } | ModifierKind::Souls { count } => Some(count),
+            ModifierKind::Feasting { souls, .. } | ModifierKind::FeastLinger { souls } => {
+                Some(souls as u32)
+            }
             _ => None,
         }
     }

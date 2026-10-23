@@ -7,9 +7,7 @@ use bota_proto::{
     UnitView, WorldView,
 };
 
-use crate::game::{
-    ActionPhase, ActionState, Entity, FeastPhase, Seat, World, item_view, item_views,
-};
+use crate::game::{ActionPhase, ActionState, Entity, Seat, World, item_view, item_views};
 use crate::profile::Phase;
 
 /// The handle as it travels on the wire.
@@ -528,7 +526,8 @@ fn ability_views(book: &crate::game::AbilityBook, mana_rate_bp: i32) -> Vec<Abil
 }
 
 impl World {
-    /// Everything showing on one entity: its active modifiers but the rot.
+    /// Everything showing on one entity: its active modifiers but the rot,
+    /// and whether it is an illusion.
     fn effects_on(&self, entity: Entity) -> Vec<EffectView> {
         let mut on_it: Vec<EffectView> = self
             .modifiers
@@ -547,16 +546,6 @@ impl World {
                 id: EffectId::ILLUSION,
                 ticks_left: None,
                 stacks: None,
-            });
-        }
-        if let Some(feast) = self.feast.get(entity) {
-            on_it.push(EffectView {
-                id: match feast.phase {
-                    FeastPhase::Feasting => EffectId::FEASTING,
-                    FeastPhase::Lingering => EffectId::FEAST_LINGER,
-                },
-                ticks_left: Some(feast.ticks_left),
-                stacks: Some(feast.souls()),
             });
         }
         on_it

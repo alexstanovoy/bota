@@ -2,7 +2,7 @@
 //! when Dota's neutral AI does, and each spell does what it should.
 
 use bota_core::{ModifierKind, NeutralAbility, NeutralKind, Spell, rules, ticks_of_ms};
-use bota_proto::{DamageKind, EventKind, Fixed, HeroId, SlotId, Team, Vec2};
+use bota_proto::{DamageKind, EffectId, EventKind, Fixed, HeroId, SlotId, Team, Vec2};
 
 use crate::game::{Entity, MatchRng, UnitOrder, World, wire_id};
 
@@ -370,6 +370,33 @@ fn the_banisher_purges_a_hero_wearing_a_buff_and_the_slow_falls() {
     run(&mut world, rules::TICKS_PER_SECOND * 2 + 3);
     let (_, later) = spell_on(&world, hero, NeutralAbility::Purge).expect("still slowed");
     assert_eq!(later, 30, "10% off each second");
+}
+
+#[test]
+fn the_banisher_purges_a_feasting_fiend_and_his_feast_ends() {
+    // Dota's Feast of Souls is basic-dispellable (SPELL_DISPELLABLE_YES): a
+    // feasting hero is one a purge goes for, and the purge ends the feast.
+    let mut world = day();
+    let satyr = world.spawn_neutral(NeutralKind::SatyrTrickster, CAMP, 1, 0);
+    let fiend = bystander(&mut world, CAMP + Vec2::from_ints(120, 0));
+    world.settle();
+    let plain = world.stats.get(fiend).expect("derived").attack_speed;
+    assert!(world.cast_feast(fiend, 0));
+    rouse(&mut world, satyr, fiend);
+    assert!(
+        until_cast(&mut world, satyr, NeutralAbility::Purge, 120),
+        "the satyr purges the feasting fiend"
+    );
+    world.step();
+    let shown = shown(&world, None, fiend);
+    assert!(
+        shown
+            .effects
+            .iter()
+            .all(|effect| effect.id != EffectId::FEASTING),
+        "the feast is off him"
+    );
+    assert_eq!(shown.attack_speed, plain, "and so is its haste");
 }
 
 #[test]
