@@ -33,7 +33,7 @@ mid-only ruleset on that map, plus replays.
 Not modelled, although a 1v1 mid in Dota uses it: runes of every kind, and with
 them the Bottle; the items the shop does not sell (Faerie Fire, Smoke of
 Deceit, Dust of Appearance, neutral items, ...); Aghanim's Scepter and Shard;
-the Glyph of Fortification; buyback; backdoor protection; streams. The
+buyback; streams. The
 neutral abilities that only a player commanding a neutral would use (Heal,
 Vex, Mana Burn, Shockwave, Ice Armor, Seed Shot, Fireball, Icefire Bomb, Take
 Off) are shown and never go off, as the neutral AI never casts them.
