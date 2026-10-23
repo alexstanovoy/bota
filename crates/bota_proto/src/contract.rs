@@ -343,11 +343,12 @@
 //!
 //! A client sends its build's wire fingerprint in its
 //! [`ClientMsg::Hello`](crate::ClientMsg::Hello): `bota_core::WIRE_FINGERPRINT`,
-//! which folds two digests into one number. The
+//! which folds two numbers into one. The
 //! [`REGISTRY_DIGEST`](crate::REGISTRY_DIGEST) names the wire layout and the
-//! ids; `bota_core::RULES_DIGEST` names the rules a client checks its orders
+//! ids; `bota_core::RULES_VERSION` names the rules a client checks its orders
 //! against and predicts with (the tables and the integer functions of
-//! `bota_core`, every source file of it). A server built with another
+//! `bota_core`), bumped with every change to what they decide and held to
+//! that by a test over their code. A server built with another
 //! fingerprint answers [`ServerMsg::WireMismatch`] with its own and closes the
 //! connection, before anything else could be misread: a server whose
 //! balance moved (a new patch's numbers, a changed table) and a client

@@ -5,7 +5,7 @@
 /// The registries only grow, so two builds with the same digest have
 /// byte-identical registries and with them identical wire layouts and ids.
 /// It is one half of the wire fingerprint a [`ClientMsg::Hello`] carries and
-/// a [`ReplayHeader`] names; the other half is the digest of the rules a
+/// a [`ReplayHeader`] names; the other half is the version of the rules a
 /// client checks its orders against, which this crate does not hold (see the
 /// [`contract`](crate::contract)).
 ///

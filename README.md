@@ -272,9 +272,11 @@ every wire struct, because postcard encodes variants and fields by position.
 
 There is no version negotiation and no compatibility between revisions. A
 client sends `bota_core::WIRE_FINGERPRINT` in its `Hello`: a hash of both
-registries (`bota_proto::REGISTRY_DIGEST`) and of the rules a client checks its
-orders against (`bota_core::RULES_DIGEST`, over every source file of
-`bota_core`). A server of another fingerprint answers `ServerMsg::WireMismatch`
+registries (`bota_proto::REGISTRY_DIGEST`) and of the version of the rules a
+client checks its orders against (`bota_core::RULES_VERSION`, bumped with every
+change to what `bota_core` decides; a test over its code, comments and layout
+aside, fails until a change is either versioned or declared to decide nothing
+new). A server of another fingerprint answers `ServerMsg::WireMismatch`
 with its own and closes the connection, so two builds that disagree, a balance
 change alone included, fail at the door rather than in mid-match.
 

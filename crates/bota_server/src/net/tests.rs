@@ -228,10 +228,10 @@ fn match_start_picks(msg: ServerMsg) -> Option<usize> {
 /// (a balance change), is refused before it could misread anything.
 #[test]
 fn a_client_built_with_another_wire_or_other_rules_is_told_so_and_takes_no_seat() {
-    use bota_core::{RULES_DIGEST, WIRE_FINGERPRINT};
+    use bota_core::{RULES_VERSION, WIRE_FINGERPRINT};
     let other_rules = bota_proto::fnv1a(&[
         &bota_proto::REGISTRY_DIGEST.to_le_bytes(),
-        &(RULES_DIGEST ^ 1).to_le_bytes(),
+        &(RULES_VERSION + 1).to_le_bytes(),
     ]);
     let addr = start_server(realtime(5));
     for theirs in [!WIRE_FINGERPRINT, other_rules] {
