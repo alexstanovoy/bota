@@ -16,9 +16,9 @@ struct Pin {
 }
 
 const PIN: Pin = Pin {
-    version: 1,
-    literals: 0x01ec_8663_d999_8241,
-    code: 0xba41_0821_76c8_eca5,
+    version: 2,
+    literals: 0x488b_8050_590b_f811,
+    code: 0xc41c_5305_00cc_9556,
 };
 
 /// A changed number or string is a changed rule: the version must move. Any
@@ -30,7 +30,7 @@ fn the_rules_version_moves_with_the_rules() {
     assert!(
         now.literals == PIN.literals || RULES_VERSION > PIN.version,
         "a number or a string of the rules changed: bump RULES_VERSION in fingerprint.rs, then \
-         set PIN in this test to {now:#x?}"
+         set PIN in this test to {now:x?}"
     );
     assert_eq!(
         now, PIN,
