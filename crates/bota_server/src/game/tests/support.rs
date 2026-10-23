@@ -1253,3 +1253,13 @@ pub(crate) fn burns_on(events: &[Event], unit: Entity) -> Vec<i32> {
 pub(crate) fn souls(world: &World, hero: Entity) -> u32 {
     world.souls_of(hero)
 }
+
+/// Ticks a unit that stands for a while has left, from its timed life.
+pub(crate) fn life_left(world: &World, unit: Entity) -> Option<u32> {
+    world
+        .modifiers
+        .get(unit)?
+        .active()
+        .find(|held| held.kind == ModifierKind::TimedLife)?
+        .ticks_left
+}

@@ -210,11 +210,7 @@ fn the_summoner_raises_skeletons_below_half_its_health() {
                 (250, 12 + 3 * 2),
                 "the level's own, rallied"
             );
-            let left = world
-                .expiry
-                .get(skeleton)
-                .expect("they live a while")
-                .ticks_left;
+            let left = life_left(&world, skeleton).expect("they live a while");
             assert!(left > ticks_of_ms(34_000) && left <= ticks_of_ms(35_000));
             assert_eq!(world.camp_home.get(skeleton).map(|home| home.camp), Some(1));
         }
@@ -496,11 +492,7 @@ fn a_ripper_dying_in_a_camp_sometimes_has_the_wildwing_raise_a_tornado() {
             .find(|unit| world.neutral.get(*unit) == Some(&NeutralKind::WildkinTornado));
         if let Some(tornado) = tornado {
             raised += 1;
-            let left = world
-                .expiry
-                .get(tornado)
-                .expect("it stands a while")
-                .ticks_left;
+            let left = life_left(&world, tornado).expect("it stands a while");
             assert!(left > ticks_of_ms(14_000));
             assert!(
                 world

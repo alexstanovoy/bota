@@ -8,8 +8,13 @@ use crate::game::{Entity, World};
 impl World {
     /// Runs down what stands for a time, and takes away whatever has run out.
     pub fn tick_expiries(&mut self) {
+        let lapsed = std::mem::take(&mut self.lapsed_lives);
         let entities = self.take_entity_snapshot();
         for entity in entities.iter().copied() {
+            if lapsed.contains(&entity) {
+                self.despawn(entity);
+                continue;
+            }
             let Some(left) = self.expiry.get_mut(entity) else {
                 continue;
             };

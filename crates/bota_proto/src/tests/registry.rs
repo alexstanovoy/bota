@@ -265,7 +265,7 @@ fn render(format: &Format) -> String {
 /// gives it, so a constant cannot drift off its line in `registry/ids.txt`.
 #[test]
 fn every_named_id_constant_sits_on_its_registry_line() {
-    let named: [(IdSpace, u16, &str); 101] = [
+    let named: [(IdSpace, u16, &str); 102] = [
         (IdSpace::Hero, HeroId::PUDGE.0, "Pudge"),
         (IdSpace::Hero, HeroId::SHADOW_FIEND.0, "Shadow Fiend"),
         (IdSpace::Ability, AbilityId::MEAT_HOOK.0, "Meat Hook"),
@@ -431,6 +431,7 @@ fn every_named_id_constant_sits_on_its_registry_line() {
             EffectId::BACKDOOR_PROTECTION.0,
             "BackdoorProtection",
         ),
+        (IdSpace::Effect, EffectId::TIMED_LIFE.0, "TimedLife"),
     ];
     for (space, id, name) in named {
         let entry = registered(space)

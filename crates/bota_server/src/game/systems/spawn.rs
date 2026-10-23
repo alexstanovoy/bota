@@ -1,13 +1,15 @@
 //! Putting an entity into the world with everything its kind needs.
 
-use bota_core::{COURIER, HERO, NeutralKind, UnitDef, hero_def, neutral_ability_level, rules};
+use bota_core::{
+    COURIER, HERO, ModifierKind, NeutralKind, UnitDef, hero_def, neutral_ability_level, rules,
+};
 use bota_proto::{AbilityId, Angle, Fixed, HeroId, SlotId, Team, Vec2};
 
 use crate::game::{
     AbilityBook, AbilityState, Action, ActionState, AppliedModifier, AppliedOrigin, Auras, Bounty,
     CampHome, Def, Entity, Errand, Expiry, Health, Hull, Inventory, Lane, LaneAi, Level,
-    MAX_SPAWN_MODIFIERS, Mana, March, Mark, Modifiers, Motion, NeutralAi, Orders, Plan, Rax, Route,
-    Tier, Transform, UnitOrder, Upgrades, World, check_spawn_modifier, hero_kit,
+    MAX_SPAWN_MODIFIERS, Mana, March, Mark, Modifier, Modifiers, Motion, NeutralAi, Orders, Plan,
+    Rax, Route, Tier, Transform, UnitOrder, Upgrades, World, check_spawn_modifier, hero_kit,
 };
 
 /// Which building of a side one is.
@@ -340,8 +342,17 @@ impl World {
         ticks: u32,
     ) -> Entity {
         let entity = self.spawn_body(def, team, pos);
-        self.expiry.insert(entity, Expiry { ticks_left: ticks });
+        self.give_timed_life(entity, ticks);
         entity
+    }
+
+    /// Gives a unit a life of so many ticks, as Dota's `modifier_kill`: it is
+    /// gone once the modifier runs out.
+    pub(crate) fn give_timed_life(&mut self, unit: Entity, ticks: u32) {
+        self.put_modifier(
+            unit,
+            Modifier::new(ModifierKind::TimedLife, None, Some(ticks)),
+        );
     }
 
     /// An entity of a side standing at a spot, with nothing else to it.

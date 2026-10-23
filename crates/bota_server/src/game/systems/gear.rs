@@ -141,10 +141,16 @@ impl World {
                 }
             }
             if let Some(on_it) = self.modifiers.get_mut(entity) {
+                let mut lapsed = false;
                 on_it.0.retain_mut(|held| {
                     held.ticks_left = held.ticks_left.map(|left| left.saturating_sub(1));
-                    held.ticks_left != Some(0)
+                    let over = held.ticks_left == Some(0);
+                    lapsed |= over && held.kind == ModifierKind::TimedLife;
+                    !over
                 });
+                if lapsed {
+                    self.lapsed_lives.push(entity);
+                }
             }
         }
         self.tick_teleports();

@@ -143,6 +143,9 @@ pub enum ModifierKind {
         /// Souls held past the cap.
         souls: u16,
     },
+    /// A unit that stands for a while, as Dota's `modifier_kill`: it is gone
+    /// when this runs out.
+    TimedLife,
     /// A building's backdoor protection, worn while it holds: it takes
     /// [`rules::BACKDOOR_DAMAGE_PCT`] percent of the damage that reaches it
     /// and mends what enemy blows took.
@@ -186,6 +189,7 @@ impl ModifierKind {
             ModifierKind::Disarmed => EffectId::DISARMED,
             ModifierKind::Broken => EffectId::BROKEN,
             ModifierKind::BackdoorProtection => EffectId::BACKDOOR_PROTECTION,
+            ModifierKind::TimedLife => EffectId::TIMED_LIFE,
             ModifierKind::Fortified => EffectId::FORTIFIED,
             ModifierKind::FleshHeap { .. } => EffectId::FLESH_HEAP,
             ModifierKind::Souls { .. } => EffectId::SOULS,

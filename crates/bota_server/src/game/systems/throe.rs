@@ -6,7 +6,7 @@ use bota_core::{
 };
 use bota_proto::Vec2;
 
-use crate::game::{Entity, Expiry, Modifier, StatBonus, World};
+use crate::game::{Entity, Modifier, StatBonus, World};
 
 impl World {
     /// Lets every death throe of a neutral that is dying go off, from where
@@ -99,12 +99,7 @@ impl World {
                 level,
                 (at_level(&hp, level), at_level(&damage, level)),
             );
-            self.expiry.insert(
-                shard,
-                Expiry {
-                    ticks_left: ticks_of_ms(life_ms),
-                },
-            );
+            self.give_timed_life(shard, ticks_of_ms(life_ms));
         }
         let reach = rules::units(radius);
         let slow = ModifierKind::Spell {

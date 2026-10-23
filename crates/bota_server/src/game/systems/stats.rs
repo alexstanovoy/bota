@@ -294,6 +294,7 @@ fn add_modifiers(now: &mut Stats, on_it: &Modifiers, base_armor: Fixed, hero: bo
             | ModifierKind::Disarmed
             | ModifierKind::Broken
             | ModifierKind::BackdoorProtection
+            | ModifierKind::TimedLife
             | ModifierKind::FleshHeap { .. }
             | ModifierKind::Souls { .. }
             | ModifierKind::Feasting { .. }

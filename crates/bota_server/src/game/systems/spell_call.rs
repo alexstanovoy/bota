@@ -7,7 +7,7 @@ use bota_core::{
 };
 use bota_proto::{Angle, Target, Vec2};
 
-use crate::game::{CampHome, Expiry, Modifier, Push, StatBonus, World};
+use crate::game::{CampHome, Modifier, Push, StatBonus, World};
 
 use super::spell::Cast;
 
@@ -61,12 +61,7 @@ impl World {
                     damage: at_level(&damage, cast.level) - kind.def().damage,
                 },
             );
-            self.expiry.insert(
-                unit,
-                Expiry {
-                    ticks_left: ticks_of_ms(life_ms),
-                },
-            );
+            self.give_timed_life(unit, ticks_of_ms(life_ms));
         }
         self.settle();
         true
@@ -84,7 +79,7 @@ impl World {
         };
         let ticks = ticks_of_ms(life_ms);
         let unit = self.spawn_neutral(kind, clamp_to_map(at), home.camp, 0);
-        self.expiry.insert(unit, Expiry { ticks_left: ticks });
+        self.give_timed_life(unit, ticks);
         self.put_modifier(
             unit,
             Modifier::new(ModifierKind::Shielded, None, Some(ticks)),

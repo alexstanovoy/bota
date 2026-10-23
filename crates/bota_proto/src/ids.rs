@@ -322,6 +322,9 @@ impl EffectId {
     /// own side alone: the other side sees it as the hero (see the
     /// [`contract`](crate::contract)).
     pub const ILLUSION: EffectId = EffectId(60);
+    /// A unit that stands for a while, a ward or what a spell called up
+    /// (`modifier_kill`): `ticks_left` until it is gone.
+    pub const TIMED_LIFE: EffectId = EffectId(61);
 }
 
 /// An index into a unit's ability slots, as listed in

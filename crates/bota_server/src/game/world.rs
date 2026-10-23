@@ -91,6 +91,9 @@ pub struct World {
     /// Reused active-modifier buffer for systems that edit modifiers while
     /// reading them.
     pub(crate) modifier_scratch: Vec<Modifier>,
+    /// Units whose timed life ran out this tick, for the expiry pass to take
+    /// away. Filled and emptied inside one tick.
+    pub(crate) lapsed_lives: Vec<Entity>,
     /// Reused buffers the sight system reads the world into.
     pub(crate) sight_scratch: SightScratch,
     /// Reused room targets are chosen among.
@@ -266,6 +269,7 @@ impl World {
             entity_scratch: Vec::new(),
             backwards: false,
             modifier_scratch: Vec::new(),
+            lapsed_lives: Vec::new(),
             sight_scratch: SightScratch::new(),
             candidates: Candidates::default(),
             aura_spots: Spots::default(),

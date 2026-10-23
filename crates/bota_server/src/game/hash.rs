@@ -531,6 +531,7 @@ fn hash_modifier_kind(fnv: &mut Fnv, kind: ModifierKind) {
         ModifierKind::Broken => fnv.u8(20),
         ModifierKind::BackdoorProtection => fnv.u8(24),
         ModifierKind::Fortified => fnv.u8(25),
+        ModifierKind::TimedLife => fnv.u8(30),
         ModifierKind::FleshHeap { count } => {
             fnv.u8(26);
             fnv.u32(count);

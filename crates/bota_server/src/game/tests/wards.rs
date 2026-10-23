@@ -3,7 +3,7 @@
 use bota_core::{OBSERVER_WARD, SENTRY_WARD, map_of, rules};
 
 use crate::game::{UnitOrder, World};
-use bota_proto::{Fixed, HeroId, ItemId, MapId, SlotId, Target, Team, UnitKind, Vec2};
+use bota_proto::{EffectId, Fixed, HeroId, ItemId, MapId, SlotId, Target, Team, UnitKind, Vec2};
 
 use super::support::*;
 
@@ -30,11 +30,14 @@ fn a_ward_stands_where_it_was_put_and_goes_when_its_time_is_up() {
         world.stats.get(ward).map(|s| s.vision) > Some(Fixed::ZERO),
         "an observer sees"
     );
-    let left = world
-        .expiry
-        .get(ward)
-        .expect("stands for a time")
-        .ticks_left;
+    let left = life_left(&world, ward).expect("stands for a time");
+    assert!(
+        shown(&world, Some(Team::Radiant), ward)
+            .effects
+            .iter()
+            .any(|effect| effect.id == EffectId::TIMED_LIFE && effect.ticks_left == Some(left)),
+        "its side sees how long it stands, as Dota's ward shows"
+    );
     run(&mut world, left + 1);
     assert!(!world.alive(ward), "and when its time is up it is gone");
 }

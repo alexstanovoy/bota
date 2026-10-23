@@ -453,12 +453,7 @@ fn a_dying_mud_golem_splits_into_shards_that_walk_home_and_slow_the_hero() {
             world.stats.get(*shard).expect("derived").max_hp,
             Fixed::from_int(250)
         );
-        assert!(
-            world
-                .expiry
-                .get(*shard)
-                .is_some_and(|left| left.ticks_left > 59 * 30)
-        );
+        assert!(life_left(&world, *shard).is_some_and(|left| left > 59 * 30));
     }
     assert!(
         wears(&world, hero, NeutralAbility::ShardSplit),

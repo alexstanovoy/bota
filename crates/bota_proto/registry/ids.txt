@@ -202,6 +202,7 @@ effect 57 live MeatShield
 effect 58 live Dismembered
 effect 59 live BackdoorProtection
 effect 60 live Illusion
+effect 61 live TimedLife
 
 neutral 0 live Kobold
 neutral 1 live Kobold Soldier
