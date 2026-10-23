@@ -17,6 +17,9 @@ const REFEREE: SeatKey = SeatKey([9; 32]);
 
 fn reserved(seed: u64) -> ServerOpts {
     let mut opts = realtime(seed);
+    // The clients here sit unread while the test works on another; with wall-clock idleness they
+    // would be let go (and their seats with them) whenever the machine is too busy to get to them.
+    opts.idle_timeout = None;
     opts.reserved = vec![
         ReservedSeat {
             kind: None,
