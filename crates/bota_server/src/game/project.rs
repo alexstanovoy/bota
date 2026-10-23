@@ -1,6 +1,6 @@
 //! The world as a side is allowed to see it.
 
-use bota_core::{ModifierKind, ability_mana_cost, effect_def, kind_def, phase_ticks_left, rules};
+use bota_core::{ability_mana_cost, effect_def, kind_def, phase_ticks_left, rules};
 use bota_proto::{
     AbilityId, AbilityView, AggroView, CastView, EffectView, Fixed, Inflictor, PlayerView,
     ProjectileView, StatusFlags, SwingView, TalentSlot, TalentView, Talents, Team, UnitKind,
@@ -686,8 +686,9 @@ impl World {
             })
     }
 
-    /// The [`StatusFlags`] bits of a unit: what its modifiers do to it, and
-    /// whether it hides, cannot be hurt or channels.
+    /// The [`StatusFlags`] bits of a unit: what each of its modifiers does to
+    /// it ([`ModifierKind::statuses`]), and whether it hides, cannot be hurt
+    /// or channels.
     fn statuses_of(&self, entity: Entity, stats: &crate::game::Stats) -> u16 {
         let mut bits = 0;
         for held in self
@@ -696,18 +697,7 @@ impl World {
             .into_iter()
             .flat_map(|on_it| on_it.active())
         {
-            bits |= match held.kind {
-                ModifierKind::Stunned => StatusFlags::STUNNED,
-                ModifierKind::Shielded => StatusFlags::MAGIC_IMMUNE,
-                ModifierKind::Slowed { .. } => StatusFlags::SLOWED,
-                ModifierKind::Burning { .. }
-                | ModifierKind::Dismembered { .. }
-                | ModifierKind::Rot { .. } => StatusFlags::DOT,
-                ModifierKind::Rotting { .. } => StatusFlags::SLOWED | StatusFlags::DOT,
-                ModifierKind::Feared => StatusFlags::FEARED,
-                ModifierKind::BloodGrenade { .. } => StatusFlags::SLOWED | StatusFlags::DOT,
-                _ => 0,
-            };
+            bits |= held.kind.statuses();
         }
         for (set, flag) in [
             (stats.hides, StatusFlags::INVISIBLE),

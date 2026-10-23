@@ -2,7 +2,7 @@
 //! real camps against a hero.
 
 use bota_core::{CAMPS, ModifierKind, NeutralAbility, NeutralKind, mitigate, rules};
-use bota_proto::{DamageKind, EventKind, Fixed, ItemId, Team, Vec2};
+use bota_proto::{DamageKind, EventKind, Fixed, ItemId, StatusFlags, Team, Vec2};
 
 use crate::game::{Entity, Modifier, UnitOrder, World, wire_id};
 
@@ -769,6 +769,11 @@ fn a_gnoll_poison_ticks_every_second_and_cuts_regeneration() {
             .windows(2)
             .all(|pair| pair[1] - pair[0] == rules::TICKS_PER_SECOND)
     );
+    assert_ne!(
+        shown(&world, Some(Team::Radiant), hero).statuses.bits & StatusFlags::DOT,
+        0,
+        "a view tells the poison as damage over time, as a burn's"
+    );
 }
 
 #[test]
@@ -781,6 +786,11 @@ fn a_ghost_chills_whoever_it_strikes() {
     let _ = blows(&mut world, 120, ghost, hero);
     assert!(wears(&world, hero, NeutralAbility::FrostAttack));
     assert!(speed(&world, hero) < free * Fixed::from_ratio(80, 100));
+    assert_ne!(
+        shown(&world, Some(Team::Radiant), hero).statuses.bits & StatusFlags::SLOWED,
+        0,
+        "a view tells the chill as a slow, as a rot's"
+    );
 }
 
 #[test]

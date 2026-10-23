@@ -1,6 +1,6 @@
 //! What a modifier does to whatever wears it, and how much of it there is.
 
-use bota_proto::{DamageKind, EffectId, Fixed};
+use bota_proto::{DamageKind, EffectId, Fixed, StatusFlags};
 
 use crate::{Act, Buff, NeutralAbility, Spell, Strike, Then, Throe, WATER_BUBBLE_EFFECT, rules};
 
@@ -253,6 +253,29 @@ impl ModifierKind {
         ModifierKind::NeutralUpgrade { count }
     }
 
+    /// The [`StatusFlags`] bits it sets on whatever wears it: what holds,
+    /// slows, burns or frightens it and what keeps magic off it. A neutral's
+    /// spell sets what its own modifier does ([`spell_statuses`]).
+    pub fn statuses(self) -> u16 {
+        match self {
+            ModifierKind::Stunned => StatusFlags::STUNNED,
+            ModifierKind::Shielded => StatusFlags::MAGIC_IMMUNE,
+            ModifierKind::Slowed { .. } => StatusFlags::SLOWED,
+            ModifierKind::Burning { .. }
+            | ModifierKind::Dismembered { .. }
+            | ModifierKind::Rot { .. } => StatusFlags::DOT,
+            ModifierKind::Rotting { .. } => StatusFlags::SLOWED | StatusFlags::DOT,
+            ModifierKind::Feared => StatusFlags::FEARED,
+            ModifierKind::BloodGrenade { .. } => StatusFlags::SLOWED | StatusFlags::DOT,
+            ModifierKind::Spell {
+                ability,
+                level,
+                amount,
+            } => spell_statuses(ability, level, amount),
+            _ => 0,
+        }
+    }
+
     /// The count the wire shows beside it, for a kind that keeps one.
     pub const fn stacks(self) -> Option<u32> {
         match self {
@@ -365,6 +388,30 @@ pub const fn spell_effect(ability: NeutralAbility) -> Option<EffectId> {
         },
         _ => None,
     }
+}
+
+/// The [`StatusFlags`] bits a neutral spell's own modifier sets at `level`:
+/// SLOWED for a buff that takes movement speed (a purge's while its falling
+/// `amount` holds), DOT for a strike that burns on its beat or a storm.
+pub fn spell_statuses(ability: NeutralAbility, level: u8, amount: u16) -> u16 {
+    let slows = match ability {
+        NeutralAbility::Purge => amount > 0,
+        _ => spell_buff(ability).is_some_and(|buff| buff.get(crate::Stat::MovePct, level) < 0),
+    };
+    let burns = match *ability.spell() {
+        Spell::Strike(Strike::Lay { dps, .. }) => crate::at_level(&dps, level) > 0,
+        Spell::Strike(Strike::Petrify { dps, .. }) => dps > 0,
+        Spell::Storm { .. } => true,
+        _ => false,
+    };
+    let mut bits = 0;
+    if slows {
+        bits |= StatusFlags::SLOWED;
+    }
+    if burns {
+        bits |= StatusFlags::DOT;
+    }
+    bits
 }
 
 /// What a spell's own modifier does to the stats of whatever wears it, if

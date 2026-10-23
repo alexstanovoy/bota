@@ -2,7 +2,9 @@
 //! when Dota's neutral AI does, and each spell does what it should.
 
 use bota_core::{ModifierKind, NeutralAbility, NeutralKind, Spell, rules, ticks_of_ms};
-use bota_proto::{DamageKind, EffectId, EventKind, Fixed, HeroId, Inflictor, SlotId, Team, Vec2};
+use bota_proto::{
+    DamageKind, EffectId, EventKind, Fixed, HeroId, Inflictor, SlotId, StatusFlags, Team, Vec2,
+};
 
 use crate::game::{Entity, MatchRng, UnitOrder, World, wire_id};
 
@@ -144,6 +146,13 @@ fn the_hellbear_smasher_slows_what_its_clap_catches() {
         "the clap slows: {after:?} against {before:?}"
     );
     assert!(spell_on(&world, heroes[1], NeutralAbility::ThunderClap).is_some());
+    for hero in heroes {
+        assert_ne!(
+            shown(&world, Some(Team::Radiant), hero).statuses.bits & StatusFlags::SLOWED,
+            0,
+            "a view tells the clap's slow"
+        );
+    }
 }
 
 #[test]
