@@ -4,7 +4,7 @@
 //! plain form of its type; level, upgrades, items and whatever is on it are
 //! added by the server as it works out what a unit fights by.
 
-use bota_proto::{Attribute, Attributes, Fixed, Team, UnitKind};
+use bota_proto::{AbilityId, Attribute, Attributes, Fixed, Team, UnitKind};
 
 use crate::{Aura, GoldRange, ModifierKind, Reach, rules};
 
@@ -507,6 +507,15 @@ pub const COURIER: UnitDef = UnitDef {
     night_vision: rules::COURIER_VISION,
     ..BARE_UNIT
 };
+
+/// The slots a courier carries, in the order they are shown: Dota's `Ability1..` of its unit.
+pub const COURIER_ABILITIES: [AbilityId; 5] = [
+    AbilityId::TAKE_STASH,
+    AbilityId::RETURN_ITEMS,
+    AbilityId::BURST,
+    AbilityId::DELIVER,
+    AbilityId::SHIELD,
+];
 
 /// An observer ward: it sees far and the other side cannot see it.
 pub const OBSERVER_WARD: UnitDef = UnitDef {

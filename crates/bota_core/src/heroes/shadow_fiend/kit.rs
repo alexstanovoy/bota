@@ -58,15 +58,25 @@ pub const SHADOW_FIEND_TALENTS: TalentTree = [
     Talent::FeastCastSpeed,
 ];
 
+/// The three razes by reach, nearest first, in the order of
+/// [`RAZE_DISTANCE`] they land by.
+pub const SHADOW_FIEND_RAZES: [AbilityId; 3] = [
+    AbilityId::RAZE_NEAR,
+    AbilityId::RAZE_MID,
+    AbilityId::RAZE_FAR,
+];
+
+const _: () = assert!(SHADOW_FIEND_RAZES.len() == RAZE_DISTANCE.len());
+
 /// Shadow Fiend's hero row: the one hero at Dota's numbers, with a talent
 /// tree and the necromastery as his innate.
 pub const HERO_DEF: HeroDef = HeroDef {
     name: "Shadow Fiend",
     unit: &SHADOW_FIEND,
     abilities: &[
-        AbilityId::RAZE_NEAR,
-        AbilityId::RAZE_MID,
-        AbilityId::RAZE_FAR,
+        SHADOW_FIEND_RAZES[0],
+        SHADOW_FIEND_RAZES[1],
+        SHADOW_FIEND_RAZES[2],
         AbilityId::FEAST_OF_SOULS,
         AbilityId::PRESENCE,
         AbilityId::REQUIEM,

@@ -1,7 +1,7 @@
 //! Putting an entity into the world with everything its kind needs.
 
 use bota_core::{
-    COURIER, HERO, ModifierKind, NeutralAbility, NeutralKind, UnitDef, hero_def,
+    COURIER, COURIER_ABILITIES, HERO, ModifierKind, NeutralAbility, NeutralKind, UnitDef, hero_def,
     neutral_ability_level, rules,
 };
 use bota_proto::{AbilityId, Angle, Fixed, HeroId, SlotId, Team, Vec2};
@@ -333,20 +333,14 @@ impl World {
         self.abilities.insert(
             entity,
             AbilityBook {
-                slots: [
-                    AbilityId::TAKE_STASH,
-                    AbilityId::RETURN_ITEMS,
-                    AbilityId::BURST,
-                    AbilityId::DELIVER,
-                    AbilityId::SHIELD,
-                ]
-                .into_iter()
-                .map(|id| AbilityState {
-                    id,
-                    level: 1,
-                    cooldown: 0,
-                })
-                .collect(),
+                slots: COURIER_ABILITIES
+                    .into_iter()
+                    .map(|id| AbilityState {
+                        id,
+                        level: 1,
+                        cooldown: 0,
+                    })
+                    .collect(),
                 tree: None,
                 talents: bota_proto::Talents::default(),
                 attribute_bonus: 0,

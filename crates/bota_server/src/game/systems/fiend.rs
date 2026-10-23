@@ -2,9 +2,10 @@
 //! enemies near him, and the requiem the souls feed.
 
 use bota_core::{
-    ModifierKind, Talent, attack_class_pct, hero_def, kind_def, move_towards, per_tick,
-    point_ahead, presence_armor, raze_damage, raze_landing, raze_stack_damage, requiem_death_lines,
-    requiem_fear_ticks, requiem_line_damage, requiem_lines, requiem_width, rules, soul_cap,
+    ModifierKind, SHADOW_FIEND_RAZES, Talent, attack_class_pct, hero_def, kind_def, move_towards,
+    per_tick, point_ahead, presence_armor, raze_damage, raze_landing, raze_stack_damage,
+    requiem_death_lines, requiem_fear_ticks, requiem_line_damage, requiem_lines, requiem_width,
+    rules, soul_cap,
 };
 use bota_proto::{AbilityId, Angle, DamageKind, Fixed, Team};
 
@@ -58,8 +59,7 @@ impl World {
                 self.raze_strikes(caster, mark);
             }
         }
-        let which = AbilityId(AbilityId::RAZE_NEAR.0 + reach as u16);
-        self.spawn_mark(which, caster, at, rules::MARK_TICKS);
+        self.spawn_mark(SHADOW_FIEND_RAZES[reach], caster, at, rules::MARK_TICKS);
         true
     }
 
