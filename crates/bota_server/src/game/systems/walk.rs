@@ -349,10 +349,14 @@ impl World {
                 return;
             }
         };
-        // A unit walks where it faces: it turns onto the way it steps, a
-        // slide along a body as much as the way to its aim, and sets off
-        // only once it faces within 11.5 degrees of it (Liquipedia, *Turn
-        // Rate*); under way it keeps walking while it comes round.
+        self.step_turning(entity, from, to);
+    }
+
+    /// A step a unit takes facing it: it turns onto the way it steps, a
+    /// slide along a body as much as the way to its aim, and sets off only
+    /// once it faces within 11.5 degrees of it (Liquipedia, *Turn Rate*);
+    /// under way it keeps walking while it comes round.
+    fn step_turning(&mut self, entity: Entity, from: Vec2, to: Vec2) {
         let (Some(facing), Some(rate)) = (
             self.transform.get(entity).map(|t| t.facing),
             self.stats.get(entity).map(|stats| stats.turn_rate),
@@ -373,6 +377,37 @@ impl World {
         if facing_gap(facing, wanted) <= tolerance {
             self.moved(entity, from, to);
         }
+    }
+
+    /// A hero whose plan a body cuts, or who has no plan through the bodies
+    /// about it, walks on at `toward` as a player's unit does in Dota: into
+    /// the body that blocks it and along its edge ([`slide_along`]),
+    /// rather than standing until the bodies move. Answers whether it took
+    /// a step or came round for one; it stands when the slide is cut too.
+    fn slide_on(&mut self, leg: &Leg, toward: Vec2) -> bool {
+        let (entity, from, collision) = (leg.entity, leg.from, leg.collision);
+        if self.hero.get(entity).is_none() {
+            return false;
+        }
+        let next = move_towards(from, toward, leg.step);
+        let to = match self.stood_in_the_way(entity, from, next, collision) {
+            None => Some(next),
+            Some((_, centre, radius)) => slide_along(from, next, centre, collision + radius),
+        };
+        let Some(to) = to.filter(|to| {
+            *to != from
+                && self
+                    .stood_in_the_way(entity, from, *to, collision)
+                    .is_none()
+                && self.clearance.capsule_clear(from, *to, collision)
+        }) else {
+            return false;
+        };
+        if let Some(plan) = self.plan.get_mut(entity) {
+            plan.clear();
+        }
+        self.step_turning(entity, from, to);
+        true
     }
 
     /// What a step against a body comes to: the step itself with nobody in
@@ -651,6 +686,9 @@ impl World {
             && !self.phased(entity)
             && let Some(blocker) = self.body_in_the_way(entity, from, target)
         {
+            if self.slide_on(leg, target) {
+                return;
+            }
             self.blocked_by(entity, blocker);
             self.turn_to(entity, target);
             self.stall(entity, leg.dest);
@@ -692,11 +730,12 @@ impl World {
     }
 
     /// A walker that goes nowhere this tick: shoving into what is in its way
-    /// when it has stood stalled long enough, else stalled.
+    /// when it has stood stalled long enough, a hero sliding on along the
+    /// bodies about it ([`World::slide_on`]), else stalled.
     fn shove_or_stall(&mut self, leg: &Leg) {
         if leg.shoving {
             self.shove(leg.entity, leg.from, leg.aim, leg.step, leg.collision);
-        } else {
+        } else if !self.slide_on(leg, leg.aim) {
             self.stall(leg.entity, leg.dest);
         }
     }

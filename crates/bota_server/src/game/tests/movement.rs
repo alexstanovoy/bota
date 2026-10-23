@@ -1,6 +1,6 @@
 //! Walking, routes round what stands, and bodies eased apart.
 
-use bota_core::{CellGrid, HEROES, MELEE_CREEP, isqrt64, map_of, point_along, rules};
+use bota_core::{CellGrid, HEROES, MELEE_CREEP, RANGED_CREEP, isqrt64, map_of, point_along, rules};
 
 use crate::game::{
     Clearance, Entity, Ground, LaneAi, March, UnitOrder, World, circle_stops, find_path,
@@ -680,5 +680,51 @@ fn the_followers_of_a_held_lead_creep_queue_behind_it() {
             world.motion.get(follower).expect("walks").still >= 15,
             "a follower is still walking instead of queueing"
         );
+    }
+}
+
+/// A hero pressed against its outer tower while its own wave marches past it, sent on down the
+/// lane with the wave or back up against it, walks on sliding along the creeps it meets, as a
+/// player's unit does in Dota, instead of standing until the whole wave has gone by. The spot,
+/// the tower and the creeps are those of a hero seen stuck in a match.
+#[test]
+fn a_hero_in_its_marching_wave_by_its_tower_walks_on() {
+    for (goal, within) in [
+        (Vec2::from_ints(9515, 9624), 60),
+        (Vec2::from_ints(10300, 10200), 70),
+    ] {
+        let mut world = World::on_map(map_of(MapId(2)));
+        let hero = world.spawn_hero(
+            Team::Dire,
+            Vec2::from_ints(9899, 9790),
+            SlotId(1),
+            HeroId::SHADOW_FIEND,
+        );
+        for (def, x, y) in [
+            (&MELEE_CREEP, 9874, 9700),
+            (&MELEE_CREEP, 9946, 9745),
+            (&MELEE_CREEP, 9796, 9666),
+            (&RANGED_CREEP, 10023, 9817),
+            (&MELEE_CREEP, 10100, 9900),
+            (&MELEE_CREEP, 10160, 9960),
+        ] {
+            world.spawn_creep(def, Team::Dire, Vec2::from_ints(x, y), rules::LANE_MID, 0);
+        }
+        world.settle();
+        world.set_order(hero, UnitOrder::Move { pos: goal });
+        let mut still = 0;
+        let mut took = None;
+        for tick in 1..=within {
+            let before = world.transform.get(hero).expect("standing").pos;
+            world.step();
+            let at = world.transform.get(hero).expect("standing").pos;
+            still += u32::from(before == at);
+            if at.within(goal, rules::units(50)) {
+                took = Some(tick);
+                break;
+            }
+        }
+        assert!(took.is_some(), "to {goal:?} within {within} ticks");
+        assert!(still <= 10, "stood {still} ticks on the way to {goal:?}");
     }
 }
