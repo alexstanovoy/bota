@@ -143,6 +143,8 @@ fn a_unit() -> UnitView {
         neutral: None,
         cast: None,
         queue: Vec::new(),
+        status_resist: Fixed::ZERO,
+        evasion: Fixed::ZERO,
         attack_range: Fixed::from_int(600),
         attack_time: 1700,
         attack_point: 500,

@@ -423,3 +423,5 @@ field ClientMsg::Order 4 queue: bool
 field SlotOrder 3 queue: bool
 field UnitView 37 queue: Vec<Order>
 variant RejectReason 26 QueueFull
+field UnitView 38 status_resist: Fixed
+field UnitView 39 evasion: Fixed

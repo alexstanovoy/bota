@@ -495,9 +495,20 @@ fn nothing_a_normal_modifier_does_reaches_an_applied_modifier() {
         world.applied.contains(hero),
         "only the countdown may take it away"
     );
+    let int = world
+        .stats
+        .get(hero)
+        .expect("settled")
+        .attributes
+        .intelligence;
+    let base = 2_500
+        + bota_core::intelligence_magic_resist_bp(bota_proto::Attributes {
+            intelligence: int,
+            ..bota_proto::Attributes::ZERO
+        });
     assert_eq!(
         world.stats.get(hero).map(|stats| stats.magic_resist_bp),
-        Some(3_500),
+        Some(base + 1_000),
         "and its stat still applies"
     );
 }

@@ -561,11 +561,14 @@ fn a_requiem_line_tears_magic_resistance_by_a_share_of_what_it_keeps_out() {
     hand_souls(&mut world, fiend, 1);
     world.step();
     let resist = |world: &World| shown(world, None, foe).magic_resist;
-    assert_eq!(resist(&world), Fixed::from_ratio(1, 4), "a hero's own");
+    let own = world.stats.get(foe).expect("settled").magic_resist_bp;
+    assert!(own > 2_500, "a hero's quarter and its intelligence's");
+    assert_eq!(resist(&world), Fixed::from_ratio(own, rules::NOMINAL_BP));
     cast_through(&mut world, REQUIEM_SLOT, rules::REQUIEM_CAST_POINT_MS);
     run(&mut world, 10);
-    // 1 - (1 - 0.25) * 1.05: what came through grows by five percent.
-    assert_eq!(resist(&world), Fixed::from_ratio(2125, 10_000));
+    // 1 - (1 - own) * 1.05: what came through grows by five percent.
+    let torn = rules::NOMINAL_BP - (rules::NOMINAL_BP - own) * 105 / 100;
+    assert_eq!(resist(&world), Fixed::from_ratio(torn, rules::NOMINAL_BP));
     let shown = shown(&world, None, foe);
     assert!(
         shown

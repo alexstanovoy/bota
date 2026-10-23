@@ -457,7 +457,13 @@ fn shadow_fiend_stands_at_dota_numbers_from_the_first_level_to_the_last() {
             armor,
             "level {level} armor"
         );
-        assert_eq!(shown.magic_resist, Fixed::from_ratio(1, 4));
+        // A quarter, and a thousandth for each point of intelligence.
+        let int = (shown.attributes.intelligence * Fixed::from_int(10)).to_int();
+        assert_eq!(
+            shown.magic_resist,
+            Fixed::from_ratio(2_500 + int, rules::NOMINAL_BP),
+            "level {level} magic resistance"
+        );
         assert_eq!(shown.move_speed, Fixed::from_int(305));
         assert_eq!(shown.attack_range, Fixed::from_int(525));
     }
@@ -553,5 +559,119 @@ fn a_branch_is_white_damage_and_green_attributes_blades_are_green_damage() {
         (with_blades.min, with_blades.bonus),
         (with_branch.min, blades),
         "flat damage is green"
+    );
+}
+
+/// Dota's panel and stats tooltip as the client core splits a hero's view.
+fn split_of(world: &World, hero: crate::game::Entity) -> bota_client_core::StatSplit {
+    bota_client_core::stat_split(&shown(world, Some(Team::Radiant), hero)).expect("a hero")
+}
+
+/// Intelligence adds 0.1% magic resistance a point to the hero's base, as
+/// Dota 7.41's does (its stats tooltip calls the sum Base Magic
+/// Resistance): the view tells it, it keeps magic damage out, and the panel
+/// draws it white, a Robe's intelligence too.
+#[test]
+fn intelligence_adds_base_magic_resistance() {
+    let mut world = World::new();
+    let hero = hero_at(&mut world, Vec2::from_ints(5000, 5000));
+    world.step();
+    let kind = bota_core::hero_def(bota_proto::HeroId::SHADOW_FIEND)
+        .expect("a hero")
+        .unit;
+    let expected = |world: &World| {
+        let int = world
+            .stats
+            .get(hero)
+            .expect("settled")
+            .attributes
+            .intelligence;
+        let bp = kind.magic_resist_pct * 100 + (int * Fixed::from_int(10)).to_int();
+        Fixed::from_ratio(bp, rules::NOMINAL_BP)
+    };
+    let bare = shown(&world, Some(Team::Radiant), hero);
+    assert!(bare.attributes.intelligence > Fixed::ZERO);
+    assert_eq!(bare.magic_resist, expected(&world), "base and intelligence");
+    assert_eq!(split_of(&world, hero).magic_resist.bonus, Fixed::ZERO);
+    let through = |world: &World| {
+        let bp = world.stats.get(hero).expect("settled").magic_resist_bp;
+        bota_core::mitigate(10_000, DamageKind::Magical, Fixed::ZERO, bp)
+    };
+    let before = through(&world);
+    hand_item(&mut world, hero, ItemId::ROBE, 0);
+    world.step();
+    let robed = shown(&world, Some(Team::Radiant), hero);
+    assert!(
+        robed.magic_resist > bare.magic_resist,
+        "a Robe's intelligence resists"
+    );
+    assert_eq!(robed.magic_resist, expected(&world));
+    assert!(
+        through(&world) < before,
+        "and less magic damage gets through"
+    );
+    assert_eq!(
+        split_of(&world, hero).magic_resist.bonus,
+        Fixed::ZERO,
+        "all of it white, as Dota's base"
+    );
+}
+
+/// Evasion carried is in the view, all of it green on the panel: a hero has
+/// none of its own.
+#[test]
+fn evasion_carried_is_shown_green() {
+    let mut world = World::new();
+    let hero = hero_at(&mut world, Vec2::from_ints(5000, 5000));
+    world.step();
+    assert_eq!(
+        shown(&world, Some(Team::Radiant), hero).evasion,
+        Fixed::ZERO
+    );
+    hand_item(&mut world, hero, ItemId::TALISMAN_OF_EVASION, 0);
+    world.step();
+    let talisman = ITEMS[usize::from(ItemId::TALISMAN_OF_EVASION.0)]
+        .carried
+        .evasion;
+    let share = Fixed::from_ratio(i32::from(talisman.num()), i32::from(talisman.den()));
+    assert!(share > Fixed::ZERO);
+    assert_eq!(shown(&world, Some(Team::Radiant), hero).evasion, share);
+    let split = split_of(&world, hero).evasion;
+    assert_eq!(split.base, Fixed::ZERO);
+    assert_eq!(split.bonus, share * Fixed::from_int(100), "percent, green");
+}
+
+/// Status resistance applied to a hero is in the view, all of it green on
+/// the panel: a hero has none of its own.
+#[test]
+fn applied_status_resistance_is_shown_green() {
+    use crate::game::{AppliedModifier, AppliedModifiers, AppliedOrigin};
+    let mut world = World::new();
+    let hero = hero_at(&mut world, Vec2::from_ints(5000, 5000));
+    world.step();
+    assert_eq!(
+        shown(&world, Some(Team::Radiant), hero).status_resist,
+        Fixed::ZERO
+    );
+    let mut applied = AppliedModifiers::default();
+    applied.push(AppliedModifier {
+        spec: bota_proto::ModifierSpec {
+            status_resist: 2_000,
+            ..bota_proto::ModifierSpec::NOMINAL
+        },
+        ticks_left: None,
+        origin: AppliedOrigin::Setup,
+    });
+    world.applied.insert(hero, applied);
+    world.step();
+    let fifth = Fixed::from_ratio(1, 5);
+    assert_eq!(
+        shown(&world, Some(Team::Radiant), hero).status_resist,
+        fifth
+    );
+    let split = split_of(&world, hero).status_resist;
+    assert_eq!(
+        (split.base, split.bonus),
+        (Fixed::ZERO, fifth * Fixed::from_int(100))
     );
 }

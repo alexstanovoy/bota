@@ -423,6 +423,11 @@ pub const MANA_PER_INTELLIGENCE: i32 = 12;
 pub const MANA_REGEN_PER_INTELLIGENCE: Fixed = Fixed::from_ratio(1, 20 * TICKS_PER_SECOND as i32);
 /// Attack damage one point of the primary attribute adds.
 pub const DAMAGE_PER_PRIMARY: i32 = 1;
+/// Magic resistance one point of intelligence adds, in basis points: 0.1%,
+/// added to the unit's base resistance before anything that multiplies it
+/// (Dota 7.41, "Each point of Intelligence grants ... 0.1% Magic
+/// Resistance"; its stats tooltip calls the sum Base Magic Resistance).
+pub const MAGIC_RESIST_BP_PER_INTELLIGENCE: i32 = 10;
 
 // Attack speed. A unit swings at its own pace at [`BASE_ATTACK_SPEED`], and
 // twice that pace at twice the number.

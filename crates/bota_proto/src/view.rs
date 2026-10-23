@@ -209,8 +209,14 @@ pub struct UnitView {
     /// The orders waiting in its queue, the next to be taken up first, as
     /// they were given: told to its own side alone, empty for the other
     /// side's units and for a unit with nothing queued. At most
-    /// `bota_core::rules::MAX_QUEUED_ORDERS`. Last on the wire.
+    /// `bota_core::rules::MAX_QUEUED_ORDERS`.
     pub queue: Vec<Order>,
+    /// Status resistance as a fraction: the share taken off the durations
+    /// of stuns, fears and slows put on it.
+    pub status_resist: Fixed,
+    /// Evasion as a fraction: the share of attacks at it that miss. Last on
+    /// the wire.
+    pub evasion: Fixed,
 }
 
 /// A cast in its cast point.

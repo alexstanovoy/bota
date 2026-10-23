@@ -2,7 +2,8 @@
 
 use bota_core::{
     Buff, Carried, Growth, ModifierKind, NeutralAbility, Ratio, Regen, Stat, Talent, UnitDef,
-    agility_armor, agility_attack_speed, primary_damage, regen, rules, soul_damage, spell_buff,
+    agility_armor, agility_attack_speed, intelligence_magic_resist_bp, primary_damage, regen,
+    rules, soul_damage, spell_buff,
 };
 use bota_proto::{Attributes, Fixed, ModifierSpec};
 
@@ -373,7 +374,9 @@ fn fold_applied(now: &mut Stats, applied: &AppliedModifiers) {
         value.saturating_add(delta).clamp(least, most)
     };
     let most = MAX_COMBINED_MODIFIER_SCALE;
-    now.magic_resist_bp = add(now.magic_resist_bp, magic_resist, 0, nominal);
+    // Held to its bounds once intelligence is in (`from_attributes`): what
+    // is applied adds to the base resistance the attribute adds to.
+    now.magic_resist_bp = now.magic_resist_bp.saturating_add(magic_resist);
     now.status_resist_bp = add(now.status_resist_bp, status_resist, 0, nominal - 1);
     now.physical_amp_bp = add(now.physical_amp_bp, physical, 0, most);
     now.magic_amp_bp = add(now.magic_amp_bp, magical, 0, most);
@@ -410,6 +413,12 @@ fn from_attributes(now: &mut Stats) {
     let has = now.attributes;
     now.max_hp += Fixed::from_int(rules::HP_PER_STRENGTH) * has.strength;
     now.max_mana += Fixed::from_int(rules::MANA_PER_INTELLIGENCE) * has.intelligence;
+    // Into the base resistance, which what multiplies resistance reads; the
+    // base with what is applied to it is held between none and all.
+    now.magic_resist_bp = now
+        .magic_resist_bp
+        .saturating_add(intelligence_magic_resist_bp(has))
+        .clamp(0, rules::NOMINAL_BP);
     now.armor += agility_armor(has);
     now.attack_speed += agility_attack_speed(has);
     now.damage += primary_damage(has, now.primary);

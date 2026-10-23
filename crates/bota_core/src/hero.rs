@@ -61,6 +61,11 @@ pub fn primary_damage(has: Attributes, primary: Option<Attribute>) -> i32 {
     })
 }
 
+/// The magic resistance intelligence is worth, in basis points.
+pub fn intelligence_magic_resist_bp(has: Attributes) -> i32 {
+    (has.intelligence * Fixed::from_int(rules::MAGIC_RESIST_BP_PER_INTELLIGENCE)).to_int()
+}
+
 /// The armor agility is worth.
 pub fn agility_armor(has: Attributes) -> Fixed {
     rules::ARMOR_PER_AGILITY * has.agility

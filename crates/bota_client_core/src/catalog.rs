@@ -7,8 +7,8 @@
 use bota_core::{
     EFFECT_COUNT, EFFECTS as EFFECT_DEFS, FIRST_LATE_ABILITY, FIRST_NEUTRAL_ABILITY,
     ITEMS as ITEM_DEFS, NEUTRAL_ABILITIES, Talent, ability_def, agility_armor,
-    agility_attack_speed, attribute_regen, attributes_at_level, effect_def, hero_def, talent_floor,
-    white_damage_least,
+    agility_attack_speed, attribute_regen, attributes_at_level, effect_def, hero_def,
+    intelligence_magic_resist_bp, talent_floor, white_damage_least,
 };
 use bota_proto::{AbilityId, EffectId, Fixed, HeroId, ItemId, TalentSlot, Talents};
 
@@ -689,6 +689,12 @@ impl Split<Fixed> {
 /// worked out of it.
 const MOST_ATTRIBUTE: i32 = 10_000;
 
+/// A fraction from the view as a percent, held to the range of a percent
+/// either way.
+fn percent(fraction: Fixed) -> Fixed {
+    fraction.clamp(-Fixed::ONE, Fixed::ONE) * Fixed::from_int(100)
+}
+
 /// A Q16.16 number, widened, to the nearest whole, held to `i32`.
 fn rounded(raw: i64) -> i32 {
     let half = 1i64 << (Fixed::FRAC_BITS - 1);
@@ -715,8 +721,13 @@ pub struct StatSplit {
     /// Health and mana mended a second.
     pub hp_regen: Split<Fixed>,
     pub mana_regen: Split<Fixed>,
-    /// Magic resistance, percent.
-    pub magic_resist: Split<i32>,
+    /// Magic resistance, percent: white the hero's base with what its
+    /// intelligence adds to it, as Dota's Base Magic Resistance.
+    pub magic_resist: Split<Fixed>,
+    /// Status resistance and evasion, percent: a hero has none of its own,
+    /// so all of either is green.
+    pub status_resist: Split<Fixed>,
+    pub evasion: Split<Fixed>,
     /// Strength, agility, intelligence in whole points: white what the
     /// hero's level gives, green what anything else does.
     pub attributes: [Split<i32>; 3],
@@ -743,10 +754,16 @@ pub fn stat_split(unit: &bota_proto::UnitView) -> Option<StatSplit> {
         attack_range: Split::whole(kind.attack_range, whole(unit.attack_range)),
         hp_regen: Split::fixed((kind.hp_regen + paid.hp) * a_second, unit.hp_regen),
         mana_regen: Split::fixed((kind.mana_regen + paid.mana) * a_second, unit.mana_regen),
-        magic_resist: Split::whole(
-            kind.magic_resist_pct,
-            rounded(i64::from(unit.magic_resist.raw) * 100),
+        // Worked out as the server's view is, so that none is told green.
+        magic_resist: Split::fixed(
+            percent(Fixed::from_ratio(
+                kind.magic_resist_pct * 100 + intelligence_magic_resist_bp(has),
+                bota_core::rules::NOMINAL_BP,
+            )),
+            percent(unit.magic_resist),
         ),
+        status_resist: Split::fixed(Fixed::ZERO, percent(unit.status_resist)),
+        evasion: Split::fixed(Fixed::ZERO, percent(unit.evasion)),
         attributes: [0, 1, 2].map(|k| Split::whole(level[k].min(total[k]), total[k])),
     })
 }
