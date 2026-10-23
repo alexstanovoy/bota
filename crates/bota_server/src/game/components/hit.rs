@@ -25,6 +25,9 @@ pub struct Hit {
     pub attack: bool,
     /// Whether it goes through evasion.
     pub pierces: bool,
+    /// Whether it was thrown at a target on higher ground, which adds
+    /// Dota's 25% uphill miss to what the target evades with.
+    pub uphill: bool,
     /// What else the blow does.
     pub effect: HitEffect,
 }

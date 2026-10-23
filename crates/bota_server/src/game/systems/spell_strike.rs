@@ -52,9 +52,8 @@ impl World {
                 launch_tier: self.ground.tier(from.pos),
                 can_miss_uphill: false,
                 pierces: true,
-                pierce_damage: 0,
+                pierced: Vec::new(),
                 pierce_amp_bp: rules::NOMINAL_BP,
-                pierce_by: None,
                 effect: if root {
                     HitEffect::Root { ticks }
                 } else {

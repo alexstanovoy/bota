@@ -55,6 +55,7 @@ impl World {
                 damage_amp_bp,
                 attack: false,
                 pierces: false,
+                uphill: false,
                 effect: HitEffect::Shadowraze { stack_damage },
             });
             if swings {
@@ -88,6 +89,7 @@ impl World {
             damage_amp_bp: stats.damage_amp_bp(DamageKind::Physical),
             attack: false,
             pierces: false,
+            uphill: false,
             effect: HitEffect::None,
         });
     }
@@ -103,7 +105,7 @@ impl World {
 
     /// The requiem a fallen Shadow Fiend lets go where he fell, once his
     /// death has taken its share of the souls: a line for every
-    /// [`rules::REQUIEM_DEATH_LINES`] of what is left, whatever the cooldown
+    /// [`rules::REQUIEM_DEATH_LINES_PCT`] percent of what is left, whatever the cooldown
     /// and the mana say. Its lines only burn. Nothing goes out while the
     /// requiem is unlearned.
     pub fn requiem_on_death(&mut self, fallen: Entity) {
@@ -221,6 +223,7 @@ impl World {
             damage_amp_bp: line.damage_amp_bp,
             attack: false,
             pierces: false,
+            uphill: false,
             effect: if line.frightens {
                 HitEffect::Requiem {
                     level: line.level,

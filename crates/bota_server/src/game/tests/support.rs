@@ -1,7 +1,7 @@
 //! Fixtures and helpers the game tests share.
 
 use bota_core::{
-    CellGrid, ITEMS, MELEE_CREEP, MapDef, ModifierKind, NeutralKind, RANGED_CREEP, Ratio, UnitDef,
+    CellGrid, ITEMS, MELEE_CREEP, MapDef, ModifierKind, NeutralKind, Odds, RANGED_CREEP, UnitDef,
     facing_towards, isqrt64, kind_def, map_of, rules,
 };
 
@@ -51,13 +51,10 @@ pub(crate) fn stats() -> Stats {
         phased: false,
         invulnerable: false,
         glyph: false,
-        evasion: Ratio::NEVER,
-        pierce: Ratio::NEVER,
-        pierce_damage: 0,
-        pierce_item: None,
+        evasion: Odds::NEVER,
         lifesteal_pct: 0,
         magic_taken_pct: 0,
-        accuracy_pct: 0,
+        accuracy: Odds::NEVER,
     }
 }
 
@@ -188,9 +185,8 @@ pub(crate) fn world_with_projectile_uphill_state(launch_tier: u8, can_miss_uphil
             launch_tier,
             can_miss_uphill,
             pierces: false,
-            pierce_damage: 0,
+            pierced: Vec::new(),
             pierce_amp_bp: rules::NOMINAL_BP,
-            pierce_by: None,
             effect: HitEffect::None,
         },
     );
@@ -1089,9 +1085,8 @@ pub(crate) fn manual_projectile_damage(
                 launch_tier,
                 can_miss_uphill: true,
                 pierces,
-                pierce_damage: 0,
+                pierced: Vec::new(),
                 pierce_amp_bp: rules::NOMINAL_BP,
-                pierce_by: None,
                 effect: HitEffect::None,
             },
         );

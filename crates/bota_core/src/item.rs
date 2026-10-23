@@ -7,7 +7,7 @@
 
 use bota_proto::{Aim, Attribute, Attributes, Fixed, ItemId};
 
-use crate::{ITEMS, Ratio, UnitDef, rules};
+use crate::{ITEMS, Odds, UnitDef, rules};
 
 /// Which pool an item mends.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -46,18 +46,19 @@ pub struct Carried {
     /// Attack speed from items and from what is on the carrier is left
     /// alone.
     pub base_attack_speed_pct: i32,
-    /// Share of attacks at the carrier that miss. Of several carried, the
-    /// best counts.
-    pub evasion: Ratio,
-    /// Share of the carrier's attacks that pierce: go through evasion and an
-    /// uphill miss, and land bonus magical damage. Of several carried, the
-    /// best counts, with its own damage.
-    pub pierce: Ratio,
+    /// Chance an attack at the carrier misses. Several carried stack as
+    /// Dota's evasion does, each taking its share of what the others let
+    /// through ([`Odds::or`]).
+    pub evasion: Odds,
+    /// Chance an attack of the carrier pierces: goes through evasion and an
+    /// uphill miss, and lands bonus magical damage. Every item carried rolls
+    /// its own ([`carried_pierces`]); a carrier's total holds none.
+    pub pierce: Odds,
     /// Magical damage a pierce lands alongside the attack.
     pub pierce_damage: i32,
-    /// The item whose pierce counts, on what a carrier holds in all
-    /// ([`carried_bonus`]); absent in an item's own row.
-    pub pierce_item: Option<ItemId>,
+    /// Whether several of this item carried pierce as one: Dota's Monkey
+    /// King Bar.
+    pub pierce_unique: bool,
     /// Attack range added to a melee carrier and to nobody else.
     pub melee_range: i32,
     /// Percent added to the carrier's maximum mana, attributes included.
@@ -78,10 +79,10 @@ pub(crate) const NOTHING: Carried = Carried {
     mana_regen: Fixed::ZERO,
     damage_to_creeps: 0,
     base_attack_speed_pct: 0,
-    evasion: Ratio::NEVER,
-    pierce: Ratio::NEVER,
+    evasion: Odds::NEVER,
+    pierce: Odds::NEVER,
     pierce_damage: 0,
-    pierce_item: None,
+    pierce_unique: false,
     melee_range: 0,
     mana_pct: 0,
 };
@@ -452,6 +453,44 @@ pub struct CarriedItem {
     pub mode: Option<Attribute>,
 }
 
+/// One pierce a carrier rolls on each of its attacks.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Pierce {
+    /// Its chance.
+    pub chance: Odds,
+    /// The magical damage it lands.
+    pub damage: i32,
+    /// The item it is.
+    pub item: ItemId,
+}
+
+/// The pierces carried items roll, each with where it was given: as Dota's
+/// Javelin-based items, every item that pierces rolls its own and several
+/// may land on one attack, but several of an item that pierces alone (the
+/// Monkey King Bar) roll once. Pass only the stacks that count: the
+/// inventory proper, none muted.
+pub fn carried_pierces(
+    items: impl IntoIterator<Item = (usize, ItemId)>,
+    ranged: bool,
+) -> impl Iterator<Item = (usize, Pierce)> {
+    let mut seen: Vec<ItemId> = Vec::new();
+    items.into_iter().filter_map(move |(at, id)| {
+        let carried = item_def(id)?.carried_by(ranged);
+        if carried.pierce == Odds::NEVER || (carried.pierce_unique && seen.contains(&id)) {
+            return None;
+        }
+        seen.push(id);
+        Some((
+            at,
+            Pierce {
+                chance: carried.pierce,
+                damage: carried.pierce_damage,
+                item: id,
+            },
+        ))
+    })
+}
+
 /// What the items carried add up to, for a carrier with a ranged attack
 /// or not: an item with a [`ranged`](ItemDef::ranged) variant adds that to
 /// a ranged one. Pass only the stacks that count: the inventory proper,
@@ -485,14 +524,7 @@ pub fn carried_bonus(items: impl Iterator<Item = CarriedItem>, ranged: bool) -> 
         total.mana_regen += carried.mana_regen;
         total.damage_to_creeps += carried.damage_to_creeps;
         total.base_attack_speed_pct += carried.base_attack_speed_pct;
-        if carried.evasion.beats(total.evasion) {
-            total.evasion = carried.evasion;
-        }
-        if carried.pierce.beats(total.pierce) {
-            total.pierce = carried.pierce;
-            total.pierce_damage = carried.pierce_damage;
-            total.pierce_item = Some(stack.id);
-        }
+        total.evasion = total.evasion.or(carried.evasion);
         total.melee_range += carried.melee_range;
         total.mana_pct += carried.mana_pct;
         // What an item is set to is worth points of that attribute alone.

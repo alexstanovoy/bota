@@ -11,8 +11,8 @@ use bota_proto::{Aim, Attribute, Attributes, Fixed, ItemId};
 
 use crate::{
     BLINK_OVERSHOOT_RANGE, BLINK_RANGE, Carried, GRENADE_COOLDOWN, GRENADE_RANGE, ItemDef,
-    MANGO_COST, MANGO_HP_REGEN, MANGO_MANA, MANGO_STACK_MAX, Mend, NOTHING, OBSERVER_WARD, PLAIN,
-    Pool, Ratio, Recipe, SALVE_HEAL, SALVE_TICKS, SENTRY_WARD, Spends, Stock, UseSpec,
+    MANGO_COST, MANGO_HP_REGEN, MANGO_MANA, MANGO_STACK_MAX, Mend, NOTHING, OBSERVER_WARD, Odds,
+    PLAIN, Pool, Recipe, SALVE_HEAL, SALVE_TICKS, SENTRY_WARD, Spends, Stock, UseSpec,
     hundredths_per_second, per_second, points, points_with, rules,
 };
 
@@ -612,7 +612,7 @@ pub const ITEMS: [ItemDef; 54] = [
         name: "Talisman of Evasion",
         cost: 1300,
         carried: Carried {
-            evasion: Ratio::new(3, 20),
+            evasion: Odds::percent(15),
             ..NOTHING
         },
         ..PLAIN
@@ -625,7 +625,7 @@ pub const ITEMS: [ItemDef; 54] = [
             attributes: points(Attribute::Agility, 30),
             damage: 30,
             base_attack_speed_pct: 20,
-            evasion: Ratio::new(7, 20),
+            evasion: Odds::percent(35),
             ..NOTHING
         },
         ..PLAIN
@@ -634,7 +634,7 @@ pub const ITEMS: [ItemDef; 54] = [
         name: "Javelin",
         cost: 900,
         carried: Carried {
-            pierce: Ratio::new(1, 4),
+            pierce: Odds::percent(25),
             pierce_damage: 60,
             ..NOTHING
         },
@@ -671,8 +671,9 @@ pub const ITEMS: [ItemDef; 54] = [
             damage: 50,
             attack_speed: 50,
             melee_range: 50,
-            pierce: Ratio::new(4, 5),
+            pierce: Odds::percent(80),
             pierce_damage: 70,
+            pierce_unique: true,
             ..NOTHING
         },
         ..PLAIN

@@ -2,7 +2,7 @@
 
 use bota_core::{requiem_fear_ticks, rules};
 
-use super::{Scope, fixed, nums, percent, secs, secs_ms, slash, tenths};
+use super::{Scope, fixed, nums, secs, secs_ms, slash, tenths};
 
 /// The value of a key in a scope, if either knows it.
 pub(super) fn value(scope: Scope, key: &str) -> Option<String> {
@@ -55,7 +55,7 @@ fn shared(key: &str) -> Option<String> {
         "requiem_hold" => secs(requiem_fear_ticks(false).1),
         "requiem_slow" => nums(&rules::REQUIEM_SLOW_PCT),
         "requiem_break" => nums(&rules::REQUIEM_MAGIC_BREAK_PCT),
-        "requiem_death_pct" => percent(rules::REQUIEM_DEATH_LINES),
+        "requiem_death_pct" => rules::REQUIEM_DEATH_LINES_PCT.to_string(),
         "souls_hero" => rules::SOULS_PER_HERO.to_string(),
         "soul_damage" => tenths(rules::SOUL_DAMAGE_TENTHS),
         "soul_gain" => tenths(rules::SOUL_DAMAGE_TENTHS_GAIN),

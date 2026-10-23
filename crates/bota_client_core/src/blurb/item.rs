@@ -1,6 +1,6 @@
 //! The item keys of a template: price, uses and what an item carries.
 
-use bota_core::{Carried, ITEMS, ItemDef, Pool, Ratio, UseSpec, item_def, rules};
+use bota_core::{Carried, ITEMS, ItemDef, Odds, Pool, UseSpec, item_def, rules};
 use bota_proto::{Attributes, Fixed, ItemId};
 
 use super::{fixed, per_second, percent, secs, secs_ms};
@@ -184,7 +184,7 @@ pub(crate) fn carried_short(def: &ItemDef) -> String {
         parts.push(format!("+{} ARM", fixed(c.armor)));
     }
     for (share, what) in [(c.evasion, "eva"), (c.pierce, "pierce")] {
-        if share != Ratio::NEVER {
+        if share != Odds::NEVER {
             parts.push(format!("{}% {what}", percent(share)));
         }
     }

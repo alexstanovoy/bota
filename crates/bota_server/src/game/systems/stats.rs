@@ -1,7 +1,7 @@
 //! Working out what each entity fights by, from scratch, every tick.
 
 use bota_core::{
-    Buff, Carried, Growth, ModifierKind, NeutralAbility, Ratio, Regen, Stat, Talent, UnitDef,
+    Buff, Carried, Growth, ModifierKind, NeutralAbility, Odds, Regen, Stat, Talent, UnitDef,
     agility_armor, agility_attack_speed, intelligence_magic_resist_bp, primary_damage, regen,
     rules, soul_damage, spell_buff,
 };
@@ -221,9 +221,6 @@ fn add_carried(now: &mut Stats, carried: &Carried) {
     now.armor += carried.armor;
     now.move_speed += Fixed::from_int(carried.move_speed + carried.lace_speed);
     now.evasion = carried.evasion;
-    now.pierce = carried.pierce;
-    now.pierce_damage = carried.pierce_damage;
-    now.pierce_item = carried.pierce_item;
     if now.projectile_speed.is_none() {
         now.attack_range += Fixed::from_int(carried.melee_range);
     }
@@ -341,7 +338,8 @@ fn add_buff(now: &mut Stats, buff: &Buff, level: u8, base_armor: Fixed, hero: bo
     }
     now.magic_taken_pct += of(Stat::MagicTakenPct);
     now.cooldown_rate_bp -= of(Stat::CooldownPct) * rules::NOMINAL_BP / 100;
-    now.accuracy_pct += of(Stat::AccuracyPct);
+    let accuracy = u8::try_from(of(Stat::AccuracyPct).clamp(0, 100)).unwrap_or(0);
+    now.accuracy = now.accuracy.or(Odds::percent(accuracy));
 }
 
 /// Folds everything applied to a unit into a freshly raised stat block.
@@ -476,13 +474,10 @@ fn raised(kind: &UnitDef, levels: i32, steps: i32, night: bool) -> Stats {
         pure_amp_bp: rules::NOMINAL_BP,
         cooldown_rate_bp: rules::NOMINAL_BP,
         mana_cost_rate_bp: rules::NOMINAL_BP,
-        evasion: Ratio::NEVER,
-        pierce: Ratio::NEVER,
-        pierce_damage: 0,
-        pierce_item: None,
+        evasion: Odds::NEVER,
         lifesteal_pct: 0,
         magic_taken_pct: 0,
-        accuracy_pct: 0,
+        accuracy: Odds::NEVER,
         move_speed: Fixed::from_int(kind.move_speed),
         turn_rate: kind.turn_rate,
         vision: Fixed::from_int(if night {

@@ -438,10 +438,7 @@ impl World {
             armor: stats.armor,
             magic_resist: Fixed::from_ratio(stats.magic_resist_bp, rules::NOMINAL_BP),
             status_resist: Fixed::from_ratio(stats.status_resist_bp, rules::NOMINAL_BP),
-            evasion: Fixed::from_ratio(
-                i32::from(stats.evasion.num()),
-                i32::from(stats.evasion.den()),
-            ),
+            evasion: stats.evasion.fraction(),
             seen_by: self.seen_by_sides(viewer, entity, true),
             collision: hull.map_or(Fixed::ZERO, |h| h.collision),
             bound: hull.map_or(Fixed::ZERO, |h| h.bound),

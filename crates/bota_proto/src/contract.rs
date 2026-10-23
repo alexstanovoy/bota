@@ -318,20 +318,24 @@
 //!
 //! # Chances
 //!
-//! Evasion and pierce must hit at an exact rate and still be unpredictable. A
-//! chance is a fraction `num / den` with `den` at most 64, dealt in blocks of
-//! `den` attempts: exactly `num` of each block hit, at places drawn from a
-//! hidden stream of the source's own, and each source starts at a hidden
-//! place inside its first block. Seeing past hits says nothing about the
-//! next block. A changed chance (an item picked up) takes effect at the next
-//! block.
+//! Every chance of an attack rolls as Dota rolls it, with its pseudo-random
+//! distribution: the `n`-th attempt since a source's last hit hits with `n`
+//! times a step worked out from the chance, so runs of misses are short and
+//! over many attempts the source hits at its chance. Each source draws from
+//! a hidden stream of its own and keeps its run of misses when its chance
+//! changes.
 //!
-//! The residual leak is inside a block: an opponent who counts may know that
-//! the rest of a block is clean (three pierces seen in six swings of a three
-//! in ten). Every scheme with an exact rate has it; the alternative is giving
-//! the exact rate up. The uphill miss follows Dota's pseudo-random
-//! distribution for 25%, and gold bounties and damage ranges are plain draws
-//! from hidden streams.
+//! What sources there are and how they stack follows Dota as well. A unit's
+//! evasions (its items, and the uphill miss of a ranged attack thrown up at
+//! it) stack diminishingly, each letting through its share of what the
+//! others do: `1 - (1 - a)(1 - b)`, rolled at once on the target's sequence.
+//! Accuracy stacks the same way and rolls on the attacker's. Each pierce an
+//! attacker carries rolls its own, and several may land on one attack, but
+//! several Monkey King Bars pierce as one. Critical strikes roll from the
+//! strongest down and stop at the first that hits; one that did not roll
+//! keeps its run. An opponent who counts attempts learns what Dota players
+//! learn, how long a run has gone. Gold bounties and damage ranges are plain
+//! draws from hidden streams.
 //!
 //! # Day and night
 //!

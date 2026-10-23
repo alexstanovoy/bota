@@ -1,6 +1,6 @@
 //! The world fingerprint and the match randomness it covers.
 
-use crate::game::{MatchRng, PseudoRandom25, Purpose, World};
+use crate::game::{MatchRng, PseudoRandom, Purpose, World};
 use bota_proto::{EntityId, Fixed, Team, Vec2};
 
 use super::support::*;
@@ -28,7 +28,7 @@ fn world_hash_changes_when_hidden_random_state_advances() {
 }
 
 #[test]
-fn world_hash_changes_when_uphill_prd_state_advances() {
+fn world_hash_changes_when_an_evasion_sequence_advances() {
     let mut world = World::new();
     let stream = world.rng.for_unit(
         Purpose::Evasion,
@@ -36,12 +36,15 @@ fn world_hash_changes_when_uphill_prd_state_advances() {
             idx: 0,
             generation: 1,
         },
-        0,
+        1,
     );
-    world.uphill_miss.push(Some(PseudoRandom25::new(stream)));
+    world.evasion.push(Some(PseudoRandom::new(stream)));
     let before = world.hash();
 
-    world.uphill_miss[0].as_mut().expect("chance").roll();
+    world.evasion[0]
+        .as_mut()
+        .expect("sequence")
+        .roll(bota_core::rules::UPHILL_MISS);
 
     assert_ne!(world.hash(), before);
 }

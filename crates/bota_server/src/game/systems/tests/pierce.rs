@@ -1,14 +1,13 @@
-//! Pierce: the share of an attacker's swings that go through evasion and
-//! land their bonus, held exactly; a structure is never pierced.
+//! Pierce: the chance an attacker's swing goes through evasion and lands
+//! its bonus, rolled with Dota's pseudo-random distribution, every pierce
+//! carried on its own; a structure is never pierced.
 
-use bota_core::{Ratio, UnitDef, rules};
+use bota_core::{Odds, UnitDef, carried_pierces, rules};
 
 use crate::game::{Entity, Event, UnitOrder, World, wire_id};
 use bota_proto::{DamageKind, EventKind, Fixed, HeroId, ItemId, SlotId, Team, UnitKind, Vec2};
 
-use super::support::{
-    ANVIL, assert_exact_blocks, hold, opened, step_until, swing_at, until_opened,
-};
+use super::support::{ANVIL, assert_dota_runs, hold, opened_rolls, step_until, swing_at};
 
 /// The anvil, standing as a building.
 const KEEP: UnitDef = UnitDef {
@@ -29,14 +28,14 @@ fn hero_holding(world: &mut World, hero: HeroId, held: &[ItemId]) -> Entity {
 }
 
 /// What one tick told of one entity's attacks at another.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 struct Told {
     /// Physical blows that landed.
     landed: usize,
     /// Attacks that missed.
     missed: usize,
-    /// What the magical bonus a pierce landed took off, if one did.
-    bonus: Option<i32>,
+    /// What each magical bonus a pierce landed took off.
+    bonuses: Vec<i32>,
 }
 
 /// What a tick's events told of one entity's attacks at another.
@@ -52,7 +51,7 @@ fn told_in(events: &[Event], from: Entity, on: Entity) -> Told {
                 ..
             } if source == Some(wire_id(from)) && target == wire_id(on) => match kind {
                 DamageKind::Physical => told.landed += 1,
-                DamageKind::Magical => told.bonus = Some(amount),
+                DamageKind::Magical => told.bonuses.push(amount),
                 DamageKind::Pure => {}
             },
             EventKind::Missed { source, target }
@@ -86,32 +85,25 @@ fn swings(world: &mut World, from: Entity, on: Entity, wanted: usize) -> Vec<Tol
 }
 
 #[test]
-fn a_monkey_king_bar_pierces_exactly_its_share_and_lands_its_bonus() {
-    let ratio = Ratio::new(4, 5);
+fn a_monkey_king_bar_pierces_its_share_in_dotas_runs_and_lands_its_bonus() {
     let mut world = World::new();
     let pudge = hero_holding(&mut world, HeroId::PUDGE, &[ItemId::MONKEY_KING_BAR]);
     let anvil = world.spawn_unit(&ANVIL, Team::Dire, Vec2::from_ints(5100, 5000));
     world.settle();
     world.set_target(pudge, anvil);
-    let told = |events: &[Event]| swing_in(events, pudge, anvil);
-    let (mut seen, first) =
-        until_opened(&mut world, 40, told, |world| opened(&world.pierce, pudge));
-    assert_eq!(
-        seen.len(),
-        1,
-        "the first swing was told of the tick it rolled"
+    let seen = swings(&mut world, pudge, anvil, 200);
+    // Dota's 80% steps three quarters: a swing after one that did not
+    // pierce always does.
+    assert_dota_runs(
+        &seen,
+        Odds::percent(80),
+        |told| !told.bonuses.is_empty(),
+        "the bar",
     );
-    step_until(
-        &mut world,
-        &mut seen,
-        first + 5 * usize::from(ratio.den()),
-        told,
-    );
-    assert_exact_blocks(&seen, first, ratio, |told| told.bonus.is_some(), "the bar");
     for told in &seen {
         assert_eq!(told.landed, 1, "every swing landed: {told:?}");
-        if let Some(bonus) = told.bonus {
-            assert_eq!(bonus, 70, "the bonus is the bar's, against no resistance");
+        for bonus in &told.bonuses {
+            assert_eq!(*bonus, 70, "the bonus is the bar's, against no resistance");
         }
     }
 }
@@ -141,7 +133,7 @@ fn a_pierced_swing_is_never_evaded() {
     }
     assert_eq!(seen.len(), 40, "forty swings were told of");
     for told in &seen {
-        if told.bonus.is_some() {
+        if !told.bonuses.is_empty() {
             assert_eq!(
                 (told.landed, told.missed),
                 (1, 0),
@@ -149,7 +141,7 @@ fn a_pierced_swing_is_never_evaded() {
             );
         }
     }
-    let unpierced = seen.iter().filter(|told| told.bonus.is_none()).count();
+    let unpierced = seen.iter().filter(|told| told.bonuses.is_empty()).count();
     let missed = seen.iter().filter(|told| told.missed > 0).count();
     assert!(
         missed <= unpierced,
@@ -167,31 +159,63 @@ fn a_structure_is_never_pierced() {
     let seen = swings(&mut world, pudge, keep, 20);
     assert_eq!(seen.len(), 20, "twenty swings were told of");
     assert!(
-        seen.iter().all(|told| told.bonus.is_none()),
+        seen.iter().all(|told| told.bonuses.is_empty()),
         "none of them pierced"
     );
     assert!(
-        opened(&world.pierce, pudge).is_none(),
+        opened_rolls(&world.pierce, pudge).is_none(),
         "and no stream was opened"
     );
 }
 
 #[test]
-fn of_two_pierces_carried_the_better_counts_with_its_own_damage() {
+fn every_pierce_carried_rolls_its_own_and_several_bars_pierce_as_one() {
+    // Dota: Javelin-based items stack, and several may land on one attack,
+    // but several Monkey King Bars pierce as one.
+    let rolled = |items: &[ItemId]| {
+        carried_pierces(items.iter().copied().enumerate(), false)
+            .map(|(at, pierce)| (at, pierce.item, pierce.damage))
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(
+        rolled(&[ItemId::JAVELIN, ItemId::MONKEY_KING_BAR]),
+        [(0, ItemId::JAVELIN, 60), (1, ItemId::MONKEY_KING_BAR, 70)]
+    );
+    assert_eq!(
+        rolled(&[ItemId::JAVELIN, ItemId::JAVELIN]),
+        [(0, ItemId::JAVELIN, 60), (1, ItemId::JAVELIN, 60)]
+    );
+    assert_eq!(
+        rolled(&[ItemId::MONKEY_KING_BAR, ItemId::MONKEY_KING_BAR]),
+        [(0, ItemId::MONKEY_KING_BAR, 70)]
+    );
     let mut world = World::new();
     let both = hero_holding(
         &mut world,
         HeroId::PUDGE,
         &[ItemId::JAVELIN, ItemId::MONKEY_KING_BAR],
     );
+    let anvil = world.spawn_unit(&ANVIL, Team::Dire, Vec2::from_ints(5100, 5000));
     world.settle();
-    let stats = *world.stats.get(both).expect("settled");
-    assert_eq!((stats.pierce, stats.pierce_damage), (Ratio::new(4, 5), 70));
-    let mut world = World::new();
-    let javelin = hero_holding(&mut world, HeroId::PUDGE, &[ItemId::JAVELIN]);
-    world.settle();
-    let stats = *world.stats.get(javelin).expect("settled");
-    assert_eq!((stats.pierce, stats.pierce_damage), (Ratio::new(1, 4), 60));
+    world.set_target(both, anvil);
+    let seen = swings(&mut world, both, anvil, 200);
+    assert!(
+        seen.iter()
+            .any(|told| told.bonuses.contains(&60) && told.bonuses.contains(&70)),
+        "the Javelin and the bar land together on some swing"
+    );
+    assert_dota_runs(
+        &seen,
+        Odds::percent(25),
+        |told| told.bonuses.contains(&60),
+        "the javelin",
+    );
+    assert_dota_runs(
+        &seen,
+        Odds::percent(80),
+        |told| told.bonuses.contains(&70),
+        "the bar",
+    );
 }
 
 #[test]

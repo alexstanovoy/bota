@@ -3,14 +3,12 @@
 use std::collections::VecDeque;
 
 use bota_core::{facing_towards, kind_def, move_towards, per_tick};
-use bota_proto::{DamageKind, Fixed, Team, UnitKind, Vec2};
+use bota_proto::{DamageKind, Fixed, Inflictor, Team, UnitKind, Vec2};
 
 use crate::game::{
-    Entity, EntityAllocator, Ground, Health, Hit, HitEffect, MatchRng, Missed, Projectile,
-    PseudoRandom25, Purpose, Table, Transform, Visibility, wire_id,
+    Entity, EntityAllocator, Ground, Health, Hit, HitEffect, Projectile, Table, Transform,
+    Visibility,
 };
-
-use super::hitting::entity_slot;
 
 /// What flight reads and writes.
 pub struct MissileCx<'a> {
@@ -28,20 +26,15 @@ pub struct MissileCx<'a> {
     pub kind: &'a Table<UnitKind>,
     /// Elevation under a missile's source and target when it arrives.
     pub ground: &'a Ground,
-    /// Hidden streams used when an attacker first needs an uphill sequence.
-    pub rng: &'a MatchRng,
-    /// Uphill miss sequence per attacker slot.
-    pub uphill_miss: &'a mut Vec<Option<PseudoRandom25>>,
     /// Where an arriving missile leaves its blow.
     pub hits: &'a mut VecDeque<Hit>,
-    /// Where one that missed uphill is left for whatever answers to it.
-    pub missed: &'a mut VecDeque<Missed>,
 }
 
 /// Moves every missile along and turns the ones that arrive into blows.
 ///
-/// A missile whose target has fallen is given up in the air. One that misses
-/// uphill is given up and left on `missed`.
+/// A missile whose target has fallen is given up in the air. One that
+/// arrives thrown up at higher ground says so on its blow, whose target
+/// evades it with the uphill miss besides its own evasion.
 pub fn missile_system(cx: MissileCx<'_>) {
     let MissileCx {
         entities,
@@ -52,10 +45,7 @@ pub fn missile_system(cx: MissileCx<'_>) {
         health,
         kind,
         ground,
-        rng,
-        uphill_miss,
         hits,
-        missed,
     } = cx;
     for missile in entities.iter().collect::<Vec<_>>() {
         let Some(shot) = projectile.get(missile).cloned() else {
@@ -78,23 +68,15 @@ pub fn missile_system(cx: MissileCx<'_>) {
         if next != to {
             continue;
         }
-        if !shot.pierces && misses_uphill(&shot, to, transform, kind, ground, rng, uphill_miss) {
-            missed.push_back(Missed {
-                source: shot.source,
-                target: shot.target,
-                at: to,
-                side: team.get(shot.target).copied().unwrap_or(Team::Neutral),
-            });
-        } else {
-            land(&shot, hits);
-        }
+        let uphill = !shot.pierces && thrown_uphill(&shot, to, transform, kind, ground);
+        land(&shot, uphill, hits);
         give_up(missile, entities, projectile, transform, team, visibility);
     }
 }
 
 /// Lays the blows a missile that arrived deals: its own, and the magical
-/// pierce riding with it.
-fn land(shot: &Projectile, hits: &mut VecDeque<Hit>) {
+/// damage of each pierce riding with it.
+fn land(shot: &Projectile, uphill: bool, hits: &mut VecDeque<Hit>) {
     hits.push_back(Hit {
         source: shot.source,
         inflictor: shot.inflictor,
@@ -104,52 +86,47 @@ fn land(shot: &Projectile, hits: &mut VecDeque<Hit>) {
         damage_amp_bp: shot.damage_amp_bp,
         attack: true,
         pierces: shot.pierces,
+        uphill,
         effect: shot.effect,
     });
-    if shot.pierce_damage > 0 {
+    for &(damage, item) in &shot.pierced {
         hits.push_back(Hit {
             source: shot.source,
-            inflictor: shot.pierce_by,
+            inflictor: Some(Inflictor::Item(item)),
             target: shot.target,
-            amount: shot.pierce_damage,
+            amount: damage,
             kind: DamageKind::Magical,
             damage_amp_bp: shot.pierce_amp_bp,
             attack: false,
             pierces: false,
+            uphill: false,
             effect: HitEffect::None,
         });
     }
 }
 
-fn misses_uphill(
+/// Whether a missile arriving at `target_pos` was thrown up at higher
+/// ground: its attacker, where it stands now (where it was thrown from once
+/// gone), lower than its target, which is no structure, and the missile one
+/// that can miss so.
+fn thrown_uphill(
     shot: &Projectile,
     target_pos: Vec2,
     transform: &Table<Transform>,
     kind: &Table<UnitKind>,
     ground: &Ground,
-    rng: &MatchRng,
-    uphill_miss: &mut Vec<Option<PseudoRandom25>>,
 ) -> bool {
     let source_tier = shot
         .source
         .and_then(|source| transform.get(source))
         .map_or(shot.launch_tier, |source| ground.tier(source.pos));
-    if !shot.can_miss_uphill
-        || kind
+    shot.can_miss_uphill
+        && shot.source.is_some()
+        && !kind
             .get(shot.target)
             .copied()
             .is_some_and(|kind| kind_def(kind).structure)
-        || ground.tier(target_pos) <= source_tier
-    {
-        return false;
-    }
-    let Some(source) = shot.source else {
-        return false;
-    };
-    let chance = entity_slot(uphill_miss, source, || {
-        PseudoRandom25::new(rng.for_unit(Purpose::Evasion, wire_id(source), 0))
-    });
-    chance.roll()
+        && ground.tier(target_pos) > source_tier
 }
 
 /// Takes a missile out of the air and out of the world.

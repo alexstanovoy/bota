@@ -2,12 +2,12 @@
 //! attack point, and what a blow that landed leaves on its target.
 
 use bota_core::{
-    AttackClass, ModifierKind, NeutralAbility, Ratio, Spell, Strike, ability_cooldown, at_level,
+    AttackClass, ModifierKind, NeutralAbility, Odds, Spell, Strike, ability_cooldown, at_level,
     class_pct, rules, ticks_of_ms,
 };
 use bota_proto::{DamageKind, Inflictor, UnitKind};
 
-use crate::game::{Chance, Entity, Landed, Modifier, Purpose, Stats, World, wire_id};
+use crate::game::{Entity, Landed, Modifier, PseudoRandom, Purpose, Rolls, Stats, World, wire_id};
 
 use super::hitting::entity_slot;
 use super::modifiers::resisted_ticks;
@@ -77,32 +77,48 @@ impl World {
         }
     }
 
-    /// Rolls what a swing of `attacker` adds at its attack point: a
-    /// critical strike, whose chance is held exactly over every run of
-    /// swings like a pierce, and the accuracy an aura gave it.
+    /// Rolls what a swing of `attacker` adds at its attack point, as Dota
+    /// rolls it: the accuracy its auras give it, on a pseudo-random sequence
+    /// of its own, and a critical strike. Its crits roll from the strongest
+    /// down, each on a sequence of its own (its ability's slot), and stop at
+    /// the first that hits: one that did not roll keeps its run.
     pub(super) fn boost_of(&mut self, attacker: Entity, stats: &Stats) -> Boost {
         let mut boost = Boost {
             crit_pct: 100,
             accurate: false,
         };
-        if stats.accuracy_pct > 0 {
-            let pct = u32::try_from(stats.accuracy_pct).unwrap_or(0);
-            boost.accurate = self.rng.global(Purpose::Accuracy).below(100) < pct;
+        if stats.accuracy != Odds::NEVER {
+            let rng = &self.rng;
+            let source = entity_slot(&mut self.accuracy, attacker, || {
+                PseudoRandom::new(rng.for_unit(Purpose::Accuracy, wire_id(attacker), 0))
+            });
+            boost.accurate = source.roll(stats.accuracy);
         }
-        for (_, ability, level) in self.passives(attacker) {
-            if let Spell::Strike(Strike::Crit {
-                chance_pct,
-                mult_pct,
-            }) = *ability.spell()
-            {
-                let ratio = Ratio::percent(u8::try_from(chance_pct).unwrap_or(0));
-                let rng = &self.rng;
-                let chance = entity_slot(&mut self.crit, attacker, || {
-                    Chance::new(rng.for_unit(Purpose::Crit, wire_id(attacker), 0), ratio)
-                });
-                if chance.roll(ratio) {
-                    boost.crit_pct = boost.crit_pct.max(at_level(&mult_pct, level));
+        let mut crits: Vec<(i32, Odds, usize)> = self
+            .passives(attacker)
+            .into_iter()
+            .filter_map(|(slot, ability, level)| match *ability.spell() {
+                Spell::Strike(Strike::Crit {
+                    chance_pct,
+                    mult_pct,
+                }) => {
+                    let chance = u8::try_from(chance_pct.clamp(0, 100)).unwrap_or(0);
+                    Some((at_level(&mult_pct, level), Odds::percent(chance), slot))
                 }
+                _ => None,
+            })
+            .collect();
+        // The strongest first; of two as strong, the earlier slot.
+        crits.sort_by_key(|&(mult, _, slot)| (std::cmp::Reverse(mult), slot));
+        for (mult, odds, slot) in crits {
+            let rng = &self.rng;
+            let rolls = entity_slot(&mut self.crit, attacker, Rolls::default);
+            let source = rolls.at(slot, || {
+                PseudoRandom::new(rng.for_unit(Purpose::Crit, wire_id(attacker), slot as u8))
+            });
+            if source.roll(odds) {
+                boost.crit_pct = mult;
+                break;
             }
         }
         boost

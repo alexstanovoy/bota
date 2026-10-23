@@ -1012,6 +1012,10 @@ const _: () = assert!(GRENADE_SLOW_PCT > 0 && GRENADE_SLOW_PCT < 100);
 
 /// Ticks between the beats of anything that burns over time.
 pub const BURN_PERIOD_TICKS: u32 = 3;
+
+/// The chance a ranged attack thrown at a target on higher ground misses:
+/// one more source of the target's evasion, as Dota counts it.
+pub const UPHILL_MISS: crate::Odds = crate::Odds::percent(25);
 /// Inventory slots, where items work.
 pub const INVENTORY_SLOTS: usize = 6;
 /// Backpack slots, where items are carried inert.

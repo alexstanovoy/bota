@@ -83,8 +83,7 @@ pub fn requiem_lines(souls: u32) -> u32 {
 
 /// The lines a fallen caster's requiem sends for the souls left to him.
 pub fn requiem_death_lines(souls: u32) -> u32 {
-    let share = rules::REQUIEM_DEATH_LINES;
-    (souls * u32::from(share.num()) / u32::from(share.den())).min(rules::REQUIEM_LINES_MAX)
+    (souls * rules::REQUIEM_DEATH_LINES_PCT / 100).min(rules::REQUIEM_LINES_MAX)
 }
 
 /// What one line of a requiem burns at a level counted from zero, the last

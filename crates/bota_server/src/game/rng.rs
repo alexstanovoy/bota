@@ -1,6 +1,6 @@
 //! Hidden randomness. Nothing here ever reaches a participant.
 
-use bota_core::Ratio;
+use bota_core::Odds;
 use bota_proto::{EntityId, SlotId, Team};
 use rand_chacha::ChaCha8Rng;
 use rand_chacha::rand_core::{Rng as _, SeedableRng};
@@ -142,131 +142,71 @@ impl Stream {
     }
 }
 
-/// Dota's pseudo-random distribution for one 25% event source.
-#[derive(Clone, Debug)]
-pub struct PseudoRandom25 {
-    stream: Stream,
-    failures: u8,
-}
-
-impl PseudoRandom25 {
-    /// Starts a sequence with its lowest per-attempt chance.
-    pub fn new(stream: Stream) -> Self {
-        Self {
-            stream,
-            failures: 0,
-        }
-    }
-
-    /// Whether the event occurs on this eligible attempt.
-    pub fn roll(&mut self) -> bool {
-        const BASE_THRESHOLD: u64 = 363_973_103;
-        const DRAW_SPACE: u64 = 1u64 << 32;
-
-        let attempt = u64::from(self.failures) + 1;
-        let threshold = BASE_THRESHOLD * attempt;
-        let occurs = threshold >= DRAW_SPACE || u64::from(self.stream.next_u32()) < threshold;
-        if occurs {
-            self.failures = 0;
-        } else {
-            self.failures = self.failures.saturating_add(1);
-        }
-        debug_assert!(self.failures < 12);
-        occurs
-    }
-
-    /// Draw count and failure streak determining the next outcome.
-    pub fn state(&self) -> (u64, u8) {
-        (self.stream.draws, self.failures)
-    }
-}
-
-/// A source of chance that honours its [`Ratio`] exactly while hiding its order.
+/// One source of chance rolling with Dota's pseudo-random distribution: the
+/// `n`-th attempt since its last hit hits with `n` times the step of its
+/// chance ([`Odds::prd_step`]), so a run of misses grows ever likelier to end
+/// and over many attempts it hits at its chance. Its draws come from a hidden
+/// stream of its own.
 ///
-/// Every block of `den` attempts contains exactly `num` hits, placed by a
-/// hidden stream. The first block starts at an offset drawn from the same
-/// stream.
-///
-/// A [`Ratio`] passed to [`roll`](Chance::roll) takes effect at the next block
-/// boundary. The block in progress finishes under the ratio it started with.
+/// A chance that changes keeps the run of misses so far: the next attempt
+/// rolls with the new chance's step.
 #[derive(Clone, Debug)]
-pub struct Chance {
+pub struct PseudoRandom {
     stream: Stream,
-    /// Which attempts of the current block hit, one bit each.
-    mask: u64,
-    /// Position within the current block.
-    idx: u8,
-    /// The ratio the current block was built with.
-    current: Ratio,
+    /// Attempts missed since the last hit.
+    misses: u32,
+    /// The chance last rolled, and its step.
+    step: (Odds, u64),
 }
 
-impl Chance {
-    /// A source drawing from `stream`, starting mid-block.
-    pub fn new(mut stream: Stream, ratio: Ratio) -> Chance {
-        let mask = Chance::pick(&mut stream, ratio);
-        let idx = stream.below(ratio.den() as u32) as u8;
-        Chance {
+impl PseudoRandom {
+    /// A source drawing from `stream`, as if it had just hit.
+    pub fn new(stream: Stream) -> PseudoRandom {
+        PseudoRandom {
             stream,
-            mask,
-            idx,
-            current: ratio,
+            misses: 0,
+            step: (Odds::NEVER, 0),
         }
     }
 
-    /// Whether this attempt hits.
-    pub fn roll(&mut self, ratio: Ratio) -> bool {
-        if self.idx >= self.current.den() {
-            self.current = ratio;
-            self.idx = 0;
-            self.mask = Chance::pick(&mut self.stream, ratio);
+    /// Whether this attempt hits at `odds`. A chance that never hits rolls
+    /// nothing and leaves the run as it is.
+    pub fn roll(&mut self, odds: Odds) -> bool {
+        if odds == Odds::NEVER {
+            return false;
         }
-        let hit = self.mask & (1u64 << self.idx) != 0;
-        self.idx += 1;
-        hit
+        if self.step.0 != odds {
+            self.step = (odds, odds.prd_step());
+        }
+        const DRAW_SPACE: u64 = 1 << 32;
+        let threshold = self.step.1.saturating_mul(u64::from(self.misses) + 1);
+        let hits = threshold >= DRAW_SPACE || u64::from(self.stream.next_u32()) < threshold;
+        self.misses = if hits { 0 } else { self.misses + 1 };
+        hits
     }
 
-    /// The ratio the block in progress was built with.
-    pub fn current(&self) -> Ratio {
-        self.current
+    /// Draw count and run of misses determining the next outcome.
+    pub fn state(&self) -> (u64, u32) {
+        (self.stream.draws, self.misses)
+    }
+}
+
+/// One entity's sources of one kind of chance, by the place each is given
+/// at: an item's slot, an ability's.
+#[derive(Clone, Debug, Default)]
+pub struct Rolls(Vec<Option<PseudoRandom>>);
+
+impl Rolls {
+    /// The source at a place, opened with `open` the first time it rolls.
+    pub fn at(&mut self, place: usize, open: impl FnOnce() -> PseudoRandom) -> &mut PseudoRandom {
+        if self.0.len() <= place {
+            self.0.resize_with(place + 1, || None);
+        }
+        self.0[place].get_or_insert_with(open)
     }
 
-    /// Draw count and position within the block determining the next
-    /// outcome.
-    pub fn state(&self) -> (u64, u8) {
-        (self.stream.draws, self.idx)
-    }
-
-    /// How many attempts of the current block have been spent.
-    ///
-    /// Zero means the next [`roll`](Chance::roll) opens a fresh block.
-    pub fn block_position(&self) -> u8 {
-        if self.idx >= self.current.den() {
-            0
-        } else {
-            self.idx
-        }
-    }
-
-    /// Chooses which `num` of the `den` attempts in a block hit.
-    fn pick(stream: &mut Stream, ratio: Ratio) -> u64 {
-        let den = ratio.den() as usize;
-        let num = ratio.num() as usize;
-        if num == 0 {
-            return 0;
-        }
-        if num == den {
-            return u64::MAX >> (64 - den);
-        }
-        // Only the first `den` positions are ever swapped or read.
-        let mut positions: [u8; Ratio::MAX_DEN as usize] = std::array::from_fn(|i| i as u8);
-
-        // Partial Fisher-Yates: only the first `num` draws are needed.
-        let mut mask = 0u64;
-        for i in 0..num {
-            let j = i + stream.below((den - i) as u32) as usize;
-            positions.swap(i, j);
-            mask |= 1u64 << positions[i];
-        }
-        mask
+    /// Every source opened, by place.
+    pub fn sources(&self) -> &[Option<PseudoRandom>] {
+        &self.0
     }
 }

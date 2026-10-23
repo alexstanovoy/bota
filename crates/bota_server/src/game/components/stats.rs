@@ -1,6 +1,6 @@
 //! The numbers an entity fights by, worked out afresh every tick.
 
-use bota_core::Ratio;
+use bota_core::Odds;
 use bota_proto::{Attribute, Attributes, DamageKind, Fixed};
 
 /// Everything the type an entity is, its level, its items and what is on it
@@ -72,21 +72,16 @@ pub struct Stats {
     /// Scale on every mana cost it pays, in basis points where 10_000 is
     /// nominal.
     pub mana_cost_rate_bp: i32,
-    /// Share of attacks at it that miss.
-    pub evasion: Ratio,
-    /// Share of its attacks that pierce: go through evasion and an uphill
-    /// miss, and land bonus magical damage.
-    pub pierce: Ratio,
-    /// Magical damage a pierce lands alongside the attack.
-    pub pierce_damage: i32,
-    /// The item its pierce is.
-    pub pierce_item: Option<bota_proto::ItemId>,
+    /// Chance an attack at it misses: every source of it stacked as Dota
+    /// stacks evasion.
+    pub evasion: Odds,
     /// Percent of the damage its attacks deal healed back.
     pub lifesteal_pct: i32,
     /// Percent more magical damage it takes.
     pub magic_taken_pct: i32,
-    /// Percent of its attacks that go through evasion.
-    pub accuracy_pct: i32,
+    /// Chance an attack of its goes through evasion: every source of it
+    /// stacked as Dota stacks accuracy.
+    pub accuracy: Odds,
     /// World units per second on the ground.
     pub move_speed: Fixed,
     /// Brads per tick it turns.

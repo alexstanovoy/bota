@@ -5,7 +5,7 @@
 mod item;
 mod keys;
 
-use bota_core::{AbilityDef, Ratio, rules};
+use bota_core::{AbilityDef, Odds, rules};
 use bota_proto::{Fixed, ItemId};
 
 /// What the keys of a template are read against besides the shared ones.
@@ -95,7 +95,7 @@ pub(crate) fn nums(values: &[i32]) -> String {
     slash(values, |v| v.to_string())
 }
 
-/// A share as whole percent.
-pub(crate) fn percent(ratio: Ratio) -> String {
-    (i32::from(ratio.num()) * 100 / i32::from(ratio.den())).to_string()
+/// A chance as whole percent, rounded down.
+pub(crate) fn percent(odds: Odds) -> String {
+    (odds.get() / (Odds::WHOLE / 100)).to_string()
 }

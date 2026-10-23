@@ -31,6 +31,7 @@ fn blow(world: &mut World, hero: crate::game::Entity, rax: crate::game::Entity) 
         damage_amp_bp: rules::NOMINAL_BP,
         attack: false,
         pierces: false,
+        uphill: false,
         effect: HitEffect::None,
     });
     let before = world.health.get(rax).expect("standing").hp;

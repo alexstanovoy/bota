@@ -1,11 +1,11 @@
 //! Taking blows off the health they landed on.
 
-use bota_core::{ModifierKind, Ratio, amplify, bite, kind_def, mitigate, rules};
+use bota_core::{ModifierKind, Odds, amplify, bite, kind_def, mitigate, rules};
 use bota_proto::{DamageKind, Fixed, Inflictor, Team, UnitKind, Vec2};
 
 use crate::game::{
-    Chance, Entity, Fear, Health, Hit, HitEffect, MatchRng, Modifier, Modifiers, Purpose, Stats,
-    Table, Transform, wire_id,
+    Entity, Fear, Health, Hit, HitEffect, MatchRng, Modifier, Modifiers, PseudoRandom, Purpose,
+    Stats, Table, Transform, wire_id,
 };
 
 use super::bubble::soak;
@@ -73,7 +73,7 @@ pub struct HitCx<'a> {
     /// Hidden streams, for a target's first evasion roll.
     pub rng: &'a MatchRng,
     /// Evasion sequence per target slot.
-    pub evasion: &'a mut Vec<Option<Chance>>,
+    pub evasion: &'a mut Vec<Option<PseudoRandom>>,
     /// Where an attack that was evaded is left for whatever answers to it.
     pub missed: &'a mut VecDeque<Missed>,
 }
@@ -119,7 +119,12 @@ pub fn hitting_system<const AMPLIFIED: bool>(cx: HitCx<'_>) {
         }
         let at = transform.get(blow.target).map_or(Vec2::ZERO, |t| t.pos);
         let side = team.get(blow.target).copied().unwrap_or(Team::Neutral);
-        if blow.attack && !blow.pierces && evades(blow.target, stat.evasion, rng, evasion) {
+        let odds = if blow.uphill {
+            stat.evasion.or(rules::UPHILL_MISS)
+        } else {
+            stat.evasion
+        };
+        if blow.attack && !blow.pierces && evades(blow.target, odds, rng, evasion) {
             missed.push_back(Missed {
                 source: blow.source,
                 target: blow.target,
@@ -223,24 +228,23 @@ fn heal_source(
     }
 }
 
-/// Whether an attack at a target is evaded: the target's share of misses,
-/// held exactly over every block of attacks at it. Nothing is rolled for a
-/// target that evades nothing. The sequence is the target's own, on source
-/// one of the evasion purpose; source zero is the attacker's uphill
-/// sequence.
+/// Whether an attack at a target is evaded at `odds`: what the target
+/// evades with and, thrown uphill, the uphill miss, stacked as Dota stacks
+/// evasion. It rolls on the target's own pseudo-random sequence; nothing is
+/// rolled for an attack that cannot miss.
 pub fn evades(
     target: Entity,
-    ratio: Ratio,
+    odds: Odds,
     rng: &MatchRng,
-    evasion: &mut Vec<Option<Chance>>,
+    evasion: &mut Vec<Option<PseudoRandom>>,
 ) -> bool {
-    if ratio == Ratio::NEVER {
+    if odds == Odds::NEVER {
         return false;
     }
     let chance = entity_slot(evasion, target, || {
-        Chance::new(rng.for_unit(Purpose::Evasion, wire_id(target), 1), ratio)
+        PseudoRandom::new(rng.for_unit(Purpose::Evasion, wire_id(target), 1))
     });
-    chance.roll(ratio)
+    chance.roll(odds)
 }
 
 /// An entity's own entry in a table indexed by entity slot, opened with

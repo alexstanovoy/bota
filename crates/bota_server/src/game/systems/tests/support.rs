@@ -2,10 +2,10 @@
 
 use std::fmt::Debug;
 
-use bota_core::{MELEE_CREEP, Ratio, UnitDef};
+use bota_core::{MELEE_CREEP, Odds, UnitDef};
 use bota_proto::{Fixed, ItemId, ModifierSpec, SlotId};
 
-use crate::game::{Chance, Def, Entity, Event, ItemStack, World};
+use crate::game::{Def, Entity, Event, ItemStack, PseudoRandom, Rolls, World};
 
 /// What takes a strike and never falls: no armor, no mending, no swing back.
 pub(super) const ANVIL: UnitDef = UnitDef {
@@ -34,33 +34,16 @@ pub(super) fn hold(world: &mut World, hero: Entity, slot: usize, item: ItemId) {
     world.inventory.get_mut(hero).expect("has a bag").slots[slot] = Some(stack);
 }
 
-/// The roll stream an entity has opened in one of the world's stream tables.
-pub(super) fn opened(streams: &[Option<Chance>], of: Entity) -> Option<&Chance> {
+/// The pseudo-random sequence an entity has opened in one of the world's
+/// tables of one sequence each.
+pub(super) fn opened(streams: &[Option<PseudoRandom>], of: Entity) -> Option<&PseudoRandom> {
     streams.get(of.index().0 as usize)?.as_ref()
 }
 
-/// Steps until `stream` opens (at most `ticks` steps). Returns what `told`
-/// read off those steps and how many rolls of its first block the opening
-/// roll left, itself included.
-pub(super) fn until_opened<T>(
-    world: &mut World,
-    ticks: usize,
-    told: impl Fn(&[Event]) -> Vec<T>,
-    stream: impl Fn(&World) -> Option<&Chance>,
-) -> (Vec<T>, usize) {
-    let mut seen = Vec::new();
-    for _ in 0..ticks {
-        seen.extend(told(&world.step()));
-        if let Some(chance) = stream(world) {
-            let den = usize::from(chance.current().den());
-            let first = match usize::from(chance.block_position()) {
-                0 => 1,
-                pos => den - (pos - 1),
-            };
-            return (seen, first);
-        }
-    }
-    panic!("no roll within {ticks} ticks")
+/// The pseudo-random sequences an entity has opened in one of the world's
+/// tables of sequences by place.
+pub(super) fn opened_rolls(streams: &[Option<Rolls>], of: Entity) -> Option<&Rolls> {
+    streams.get(of.index().0 as usize)?.as_ref()
 }
 
 /// Steps (at most 800 times) until `seen` holds `wanted` entries of what
@@ -79,25 +62,33 @@ pub(super) fn step_until<T>(
     }
 }
 
-/// Asserts that past the first `first` outcomes come at least five full
-/// blocks, each holding exactly `ratio.num()` hits.
-pub(super) fn assert_exact_blocks<T: Debug>(
+/// Asserts that outcomes rolled at `odds` follow Dota's pseudo-random
+/// distribution: never a longer run without a hit than its step allows,
+/// and over them all a rate within five points of the chance.
+pub(super) fn assert_dota_runs<T: Debug>(
     seen: &[T],
-    first: usize,
-    ratio: Ratio,
+    odds: Odds,
     hit: impl Fn(&T) -> bool,
     case: &str,
 ) {
-    let full = seen[first..].chunks_exact(usize::from(ratio.den()));
-    assert!(full.len() >= 5, "{case}: five full blocks");
-    for (nth, block) in full.enumerate() {
-        let hits = block.iter().filter(|outcome| hit(outcome)).count();
-        assert_eq!(
-            hits,
-            usize::from(ratio.num()),
-            "{case}, block {nth}: {block:?}"
+    assert!(seen.len() >= 100, "{case}: a hundred outcomes or more");
+    let step = odds.prd_step();
+    let longest = ((1u64 << 32).div_ceil(step) - 1) as usize;
+    let mut run = 0;
+    for (nth, outcome) in seen.iter().enumerate() {
+        run = if hit(outcome) { 0 } else { run + 1 };
+        assert!(
+            run <= longest,
+            "{case}: {run} misses running at {nth}, {longest} at most"
         );
     }
+    let hits = seen.iter().filter(|outcome| hit(outcome)).count() as u64;
+    let rate = hits * u64::from(Odds::WHOLE) / seen.len() as u64;
+    assert!(
+        rate.abs_diff(u64::from(odds.get())) <= u64::from(Odds::WHOLE) / 20,
+        "{case}: {hits} of {} at {odds:?}",
+        seen.len()
+    );
 }
 
 pub(super) fn spec(change: impl FnOnce(&mut ModifierSpec)) -> ModifierSpec {

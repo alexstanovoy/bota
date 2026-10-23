@@ -1,12 +1,13 @@
-//! Evasion: the share of attacks at a carrier that miss, held exactly and
-//! told of; what is not an attack never misses.
+//! Evasion: the chance an attack at a carrier misses, rolled with Dota's
+//! pseudo-random distribution and told of, several stacking as Dota stacks
+//! them; what is not an attack never misses.
 
-use bota_core::{MELEE_CREEP, RANGED_CREEP, Ratio, UnitDef, rules};
+use bota_core::{MELEE_CREEP, Odds, RANGED_CREEP, UnitDef, rules};
 
 use crate::game::{Entity, Event, World, wire_id};
 use bota_proto::{DamageKind, EventKind, Fixed, HeroId, ItemId, SlotId, Team, Vec2};
 
-use super::support::{assert_exact_blocks, hold, opened, step_until, swing_at, until_opened};
+use super::support::{assert_dota_runs, hold, opened, step_until, swing_at};
 
 /// A melee attacker worth a point a strike on a short cycle, never landing
 /// two strikes in one tick, never falling and never bringing a hero down.
@@ -79,26 +80,21 @@ fn swings_in(events: &[Event], from: Entity, on: Entity) -> Vec<bool> {
 }
 
 #[test]
-fn a_butterfly_makes_exactly_its_share_of_melee_and_thrown_swings_miss() {
-    let ratio = Ratio::new(7, 20);
+fn a_butterfly_makes_its_share_of_melee_and_thrown_swings_miss_in_dotas_runs() {
+    let odds = Odds::percent(35);
     for (attacker, case) in [(&STRIKER, "melee"), (&ARCHER, "thrown")] {
         let (mut world, from, mark) = attacker_at_a_hero(attacker, &[ItemId::BUTTERFLY]);
         assert_eq!(
             world.stats.get(mark).map(|stats| stats.evasion),
-            Some(ratio),
+            Some(odds),
             "the Butterfly is worth its evasion"
         );
-        let told = |events: &[Event]| swings_in(events, from, mark);
-        let (mut swings, first) =
-            until_opened(&mut world, 40, told, |world| opened(&world.evasion, mark));
-        assert_eq!(swings.len(), 1, "{case}: told of the tick it rolled");
-        step_until(
-            &mut world,
-            &mut swings,
-            first + 5 * usize::from(ratio.den()),
-            told,
-        );
-        assert_exact_blocks(&swings, first, ratio, |landed| !*landed, case);
+        let mut swings = Vec::new();
+        step_until(&mut world, &mut swings, 300, |events| {
+            swings_in(events, from, mark)
+        });
+        assert!(opened(&world.evasion, mark).is_some(), "{case}: it rolled");
+        assert_dota_runs(&swings, odds, |landed| !*landed, case);
     }
 }
 
@@ -133,17 +129,21 @@ fn without_evasion_nothing_is_rolled_and_nothing_misses() {
 }
 
 #[test]
-fn of_two_evasions_carried_the_better_counts() {
-    let (world, _from, mark) =
+fn evasions_carried_stack_as_dota_stacks_them_and_miss_at_what_they_make() {
+    // Each lets through its share of what the others do: 1 - 0.85 * 0.65.
+    let both = Odds::parts(44_750_000);
+    let (mut world, from, mark) =
         attacker_at_a_hero(&STRIKER, &[ItemId::TALISMAN_OF_EVASION, ItemId::BUTTERFLY]);
-    assert_eq!(
-        world.stats.get(mark).map(|stats| stats.evasion),
-        Some(Ratio::new(7, 20))
-    );
+    assert_eq!(world.stats.get(mark).map(|stats| stats.evasion), Some(both));
+    let mut swings = Vec::new();
+    step_until(&mut world, &mut swings, 300, |events| {
+        swings_in(events, from, mark)
+    });
+    assert_dota_runs(&swings, both, |landed| !*landed, "talisman and butterfly");
     let (world, _from, mark) = attacker_at_a_hero(&STRIKER, &[ItemId::TALISMAN_OF_EVASION]);
     assert_eq!(
         world.stats.get(mark).map(|stats| stats.evasion),
-        Some(Ratio::new(3, 20))
+        Some(Odds::percent(15))
     );
 }
 

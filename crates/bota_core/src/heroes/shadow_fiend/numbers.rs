@@ -11,7 +11,6 @@
 
 use bota_proto::Fixed;
 
-use crate::Ratio;
 use crate::rules::TICKS_PER_SECOND;
 
 /// How far in front of the caster a raze lands, in world units, from the
@@ -104,9 +103,9 @@ pub const REQUIEM_HOLD_MAX_TICKS: u32 = 65;
 pub const REQUIEM_CAST_POINT_MS: u32 = 1670;
 /// Milliseconds of the requiem's backswing.
 pub const REQUIEM_BACKSWING_MS: u32 = 900;
-/// Share of the souls kept through a death that the requiem cast on that
+/// Percent of the souls kept through a death that the requiem cast on that
 /// death lets fly as lines, rounded down.
-pub const REQUIEM_DEATH_LINES: Ratio = Ratio::new(1, 2);
+pub const REQUIEM_DEATH_LINES_PCT: u32 = 50;
 /// Mana the requiem costs, by level.
 pub const REQUIEM_MANA: [i32; 3] = [150, 175, 200];
 /// Ticks between requiems, by level.

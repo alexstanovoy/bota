@@ -35,6 +35,7 @@ fn pure_blow(world: &mut World, from: Entity, on: Entity) -> i32 {
         damage_amp_bp: rules::NOMINAL_BP,
         attack: false,
         pierces: false,
+        uphill: false,
         effect: HitEffect::None,
     });
     let before = world.health.get(on).expect("standing").hp;

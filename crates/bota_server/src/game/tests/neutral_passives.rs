@@ -331,7 +331,7 @@ fn a_breaking_blow_breaks_for_three_seconds_and_waits_ten() {
 }
 
 #[test]
-fn the_alpha_wolf_crits_one_blow_in_five() {
+fn the_alpha_wolf_crits_one_blow_in_five_in_dotas_runs() {
     let mut world = day();
     let hero = passive_hero(&mut world, at(0));
     let wolf = awake(&mut world, NeutralKind::AlphaWolf, at(100));
@@ -350,15 +350,17 @@ fn the_alpha_wolf_crits_one_blow_in_five() {
         .collect();
     assert!(strikes.len() >= 25, "enough swings: {}", strikes.len());
     assert!(strikes.iter().any(|crit| *crit), "some blows are doubled");
-    for window in strikes.windows(10) {
+    // Dota's 20% steps 0.0557 of a certainty: the eighteenth swing since
+    // the last crit is sure to be one.
+    for window in strikes.windows(18) {
         assert!(
             window.iter().any(|crit| *crit),
-            "a crit chance held exactly leaves no ten swings without one"
+            "no eighteen swings run without a crit"
         );
     }
     let crits = strikes.iter().filter(|crit| **crit).count();
     assert!(
-        crits * 5 <= strikes.len() + 5 && crits * 5 + 5 >= strikes.len(),
+        crits * 10 >= strikes.len() && crits * 10 <= strikes.len() * 3,
         "about one in five: {crits} of {}",
         strikes.len()
     );

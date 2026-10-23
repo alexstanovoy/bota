@@ -2,8 +2,8 @@
 //! would kill.
 
 use bota_core::{
-    Carried, CarriedItem, attack_class_pct, carried_bonus, hero_def, kind_def, magic_resist_bp,
-    mitigate, rules,
+    Carried, CarriedItem, attack_class_pct, carried_bonus, carried_pierces, hero_def, kind_def,
+    magic_resist_bp, mitigate, rules,
 };
 use bota_proto::{DamageKind, Fixed, UnitView};
 
@@ -33,10 +33,29 @@ pub fn carried_of(unit: &UnitView) -> Carried {
                 charges: item.charges.unwrap_or(0),
                 mode: item.mode,
             }),
-        unit.hero
-            .and_then(hero_def)
-            .is_some_and(|hero| hero.unit.projectile_speed.is_some()),
+        ranged(unit),
     )
+}
+
+/// The items of a unit's working inventory, by slot: a muted stack and the
+/// backpack are inert.
+fn working_items(unit: &UnitView) -> impl Iterator<Item = (usize, bota_proto::ItemId)> + '_ {
+    unit.items
+        .iter()
+        .take(rules::INVENTORY_SLOTS)
+        .enumerate()
+        .filter_map(|(at, item)| {
+            item.filter(|item| item.mute_left == 0)
+                .map(|item| (at, item.id))
+        })
+}
+
+/// Whether a unit is a hero that attacks from range, which some items count
+/// for.
+fn ranged(unit: &UnitView) -> bool {
+    unit.hero
+        .and_then(hero_def)
+        .is_some_and(|hero| hero.unit.projectile_speed.is_some())
 }
 
 /// `amount` of magical damage after the magic resistance `target` shows.
@@ -58,7 +77,8 @@ pub fn magic_taken(amount: i32, target: &UnitView) -> i32 {
 /// Item bonuses count as the working inventory carries them (a muted stack
 /// and the backpack are inert). The outgoing amplification a spawn modifier
 /// may add is hidden and read as nominal; whether a pierce
-/// lands is a roll, so it only raises `most`.
+/// lands is a roll, so the pierces carried, each of which may land, only
+/// raise `most`.
 pub fn next_hit_raised(
     attacker: &UnitView,
     target: &UnitView,
@@ -81,9 +101,14 @@ pub fn next_hit_raised(
     let least = swing(attacker.attack_damage_min.saturating_add(raise));
     let mid = swing(attacker.attack_damage.max(0).saturating_add(raise));
     let mut most = swing(attacker.attack_damage_max.saturating_add(raise));
-    if !against.structure && carried.pierce_damage > 0 {
-        let pierce = carried.pierce_damage.saturating_mul(class_pct) / 100;
-        most = most.saturating_add(magic_taken(pierce, target));
+    if !against.structure {
+        let pierces: i32 = carried_pierces(working_items(attacker), ranged(attacker))
+            .map(|(_, pierce)| pierce.damage)
+            .fold(0, i32::saturating_add);
+        if pierces > 0 {
+            let pierce = pierces.saturating_mul(class_pct) / 100;
+            most = most.saturating_add(magic_taken(pierce, target));
+        }
     }
     HitRange { least, mid, most }
 }

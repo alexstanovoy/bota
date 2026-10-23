@@ -49,14 +49,17 @@ pub struct World {
     pub clearance: crate::game::Clearance,
     /// The scratch routes are searched in.
     pub planner: crate::game::Planner,
-    /// Uphill miss sequences, indexed by attacker's entity slot.
-    pub uphill_miss: Vec<Option<crate::game::PseudoRandom25>>,
-    /// Evasion sequences, indexed by target's entity slot.
-    pub evasion: Vec<Option<crate::game::Chance>>,
-    /// Pierce sequences, indexed by attacker's entity slot.
-    pub pierce: Vec<Option<crate::game::Chance>>,
-    /// Critical strike sequences, indexed by attacker's entity slot.
-    pub crit: Vec<Option<crate::game::Chance>>,
+    /// Evasion sequences, an uphill miss among their sources, indexed by
+    /// target's entity slot.
+    pub evasion: Vec<Option<crate::game::PseudoRandom>>,
+    /// Accuracy sequences, indexed by attacker's entity slot.
+    pub accuracy: Vec<Option<crate::game::PseudoRandom>>,
+    /// Pierce sequences, indexed by attacker's entity slot, by the slot of
+    /// the item that pierces.
+    pub pierce: Vec<Option<crate::game::Rolls>>,
+    /// Critical strike sequences, indexed by attacker's entity slot, by the
+    /// slot of the ability that strikes.
+    pub crit: Vec<Option<crate::game::Rolls>>,
     /// Which roster each camp put out last, so it never draws twice running.
     pub camp_last: Vec<u8>,
     /// The height of the ground everywhere.
@@ -251,8 +254,8 @@ impl World {
             rng: crate::game::MatchRng::new(&[0; 32], 0),
             clearance: crate::game::Clearance::open(),
             planner: crate::game::Planner::new(),
-            uphill_miss: Vec::new(),
             evasion: Vec::new(),
+            accuracy: Vec::new(),
             pierce: Vec::new(),
             crit: Vec::new(),
             camp_last: Vec::new(),
@@ -425,6 +428,7 @@ impl World {
             damage_amp_bp,
             attack: false,
             pierces: false,
+            uphill: false,
             effect: crate::game::HitEffect::None,
         });
     }
@@ -450,6 +454,7 @@ impl World {
             damage_amp_bp,
             attack: false,
             pierces: false,
+            uphill: false,
             effect,
         });
     }
@@ -814,10 +819,7 @@ impl World {
             health: &self.health,
             kind: &self.kind,
             ground: &self.ground,
-            rng: &self.rng,
-            uphill_miss: &mut self.uphill_miss,
             hits: &mut self.hits,
-            missed: &mut self.missed,
         });
         events.append(&mut self.events);
     }

@@ -1,4 +1,4 @@
-use bota_proto::{DamageKind, Inflictor};
+use bota_proto::{DamageKind, Inflictor, ItemId};
 
 use crate::game::{Entity, HitEffect};
 
@@ -27,13 +27,11 @@ pub struct Projectile {
     pub can_miss_uphill: bool,
     /// Whether it goes through evasion and an uphill miss.
     pub pierces: bool,
-    /// Magical damage it lands alongside its own, from a pierce. Zero for
-    /// none.
-    pub pierce_damage: i32,
-    /// Outgoing amplification of `pierce_damage`, captured when thrown.
+    /// The magical damage each pierce that landed adds, and the item that
+    /// pierced. Empty for none.
+    pub pierced: Vec<(i32, ItemId)>,
+    /// Outgoing amplification of what pierced, captured when thrown.
     pub pierce_amp_bp: i32,
-    /// The item that pierces.
-    pub pierce_by: Option<Inflictor>,
     /// What its blow does besides its damage.
     pub effect: HitEffect,
 }

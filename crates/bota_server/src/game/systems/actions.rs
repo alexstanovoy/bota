@@ -8,29 +8,28 @@
 //! is aimed at is in reach.
 
 use bota_core::{
-    BEATS_PER_TICK, ModifierKind, Ratio, Talent, ability_def, attack_gain, beats, cast_point_ms,
-    cross, facing_gap, facing_towards, kind_def, rules,
+    BEATS_PER_TICK, ModifierKind, Talent, ability_def, attack_gain, beats, carried_pierces,
+    cast_point_ms, cross, facing_gap, facing_towards, kind_def, rules,
 };
-use bota_proto::{Aim, DamageKind, Fixed, Inflictor, ItemSlot, Team, Vec2};
+use bota_proto::{Aim, DamageKind, Fixed, Inflictor, ItemId, ItemSlot, Team, Vec2};
 
 use super::hitting::entity_slot;
 
 use crate::game::{
-    Action, ActionPhase, ActionState, Chance, Entity, Event, Hit, HitEffect, PendingCast,
-    Projectile, Purpose, Stats, Target, World, ability_hooks, wire_id,
+    Action, ActionPhase, ActionState, Entity, Event, Hit, HitEffect, PendingCast, Projectile,
+    PseudoRandom, Purpose, Rolls, Stats, Target, World, ability_hooks, wire_id,
 };
 
 /// What one swing deals, rolled when it lands.
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 struct Swing {
     /// Its physical damage.
     damage: i32,
     /// Whether it goes through evasion for an accuracy aura's sake.
     accurate: bool,
-    /// The magical damage piercing with it, when it pierces.
-    pierce: Option<i32>,
-    /// The item that pierces.
-    pierce_by: Option<Inflictor>,
+    /// The magical damage each pierce that landed adds, and the item that
+    /// pierced. Empty for none.
+    pierced: Vec<(i32, ItemId)>,
     /// Physical amplification, in basis points.
     physical_amp_bp: i32,
     /// Magical amplification, in basis points.
@@ -649,22 +648,19 @@ impl World {
         let swing = Swing {
             damage: damage * boost.crit_pct / 100 * class_pct / 100,
             accurate: boost.accurate,
-            pierce: self
-                .roll_pierce(attacker, on, stats)
-                .map(|bonus| bonus * class_pct / 100),
-            pierce_by: stats.pierce_item.map(Inflictor::Item),
+            pierced: self.roll_pierces(attacker, on, stats, class_pct),
             physical_amp_bp: stats.damage_amp_bp(DamageKind::Physical),
             magical_amp_bp: stats.damage_amp_bp(DamageKind::Magical),
         };
         match stats.projectile_speed {
             None => self.strike_home(attacker, on, swing),
             Some(speed) => {
-                self.throw_at(attacker, on, swing, speed);
+                self.throw_at(attacker, on, swing.clone(), speed);
                 for extra in self.multishot_targets(attacker, on, stats) {
                     let share = self.class_pct_on(attacker, extra);
                     let shot = Swing {
                         damage: damage * share / 100,
-                        ..swing
+                        ..swing.clone()
                     };
                     self.throw_at(attacker, extra, shot, speed);
                 }
@@ -673,7 +669,7 @@ impl World {
     }
 
     /// A melee swing's blows, laid where the target stands: the swing
-    /// itself, and the magical pierce riding with it.
+    /// itself, and the magical damage of each pierce riding with it.
     fn strike_home(&mut self, attacker: Entity, on: Entity, swing: Swing) {
         self.hits.push_back(Hit {
             source: Some(attacker),
@@ -683,19 +679,21 @@ impl World {
             kind: DamageKind::Physical,
             damage_amp_bp: swing.physical_amp_bp,
             attack: true,
-            pierces: swing.pierce.is_some() || swing.accurate,
+            pierces: !swing.pierced.is_empty() || swing.accurate,
+            uphill: false,
             effect: HitEffect::None,
         });
-        if let Some(bonus) = swing.pierce {
+        for (bonus, item) in swing.pierced {
             self.hits.push_back(Hit {
                 source: Some(attacker),
-                inflictor: swing.pierce_by,
+                inflictor: Some(Inflictor::Item(item)),
                 target: on,
                 amount: bonus,
                 kind: DamageKind::Magical,
                 damage_amp_bp: swing.magical_amp_bp,
                 attack: false,
                 pierces: false,
+                uphill: false,
                 effect: HitEffect::None,
             });
         }
@@ -723,10 +721,9 @@ impl World {
                 damage_amp_bp: swing.physical_amp_bp,
                 launch_tier: self.ground.tier(at.pos),
                 can_miss_uphill: true,
-                pierces: swing.pierce.is_some() || swing.accurate,
-                pierce_damage: swing.pierce.unwrap_or(0),
+                pierces: !swing.pierced.is_empty() || swing.accurate,
+                pierced: swing.pierced,
                 pierce_amp_bp: swing.magical_amp_bp,
-                pierce_by: swing.pierce_by,
                 effect: HitEffect::None,
             },
         );
@@ -743,29 +740,49 @@ impl World {
         self.rng.global(Purpose::DamageRoll).below(span) as i32
     }
 
-    /// Whether a swing pierces, and then the magical damage it lands
-    /// alongside. Absent for a swing that does not.
-    ///
-    /// Only an attacker carrying a pierce ever rolls, and a structure is
-    /// never pierced; the share is held exactly over every block of rolls.
-    fn roll_pierce(&mut self, attacker: Entity, on: Entity, stats: &Stats) -> Option<i32> {
-        if stats.pierce == Ratio::NEVER
-            || self
-                .kind
-                .get(on)
-                .copied()
-                .is_some_and(|kind| kind_def(kind).structure)
-        {
-            return None;
+    /// The pierces that land on a swing at `on`, each with the magical
+    /// damage it adds by the swing's damage class and the item that pierced:
+    /// every pierce the attacker carries ([`carried_pierces`]) rolls on a
+    /// pseudo-random sequence of its own, its item's slot's, and a
+    /// structure is never pierced.
+    fn roll_pierces(
+        &mut self,
+        attacker: Entity,
+        on: Entity,
+        stats: &Stats,
+        class_pct: i32,
+    ) -> Vec<(i32, ItemId)> {
+        let structure = self
+            .kind
+            .get(on)
+            .copied()
+            .is_some_and(|kind| kind_def(kind).structure);
+        let Some(bag) = self.inventory.get(attacker).filter(|_| !structure) else {
+            return Vec::new();
+        };
+        let carried: Vec<(usize, ItemId)> = bag
+            .slots
+            .iter()
+            .take(rules::INVENTORY_SLOTS)
+            .enumerate()
+            .filter_map(|(at, held)| {
+                held.filter(|stack| stack.mute == 0)
+                    .map(|stack| (at, stack.id))
+            })
+            .collect();
+        let ranged = stats.projectile_speed.is_some();
+        let mut landed = Vec::new();
+        for (at, pierce) in carried_pierces(carried, ranged) {
+            let rng = &self.rng;
+            let rolls = entity_slot(&mut self.pierce, attacker, Rolls::default);
+            let source = rolls.at(at, || {
+                PseudoRandom::new(rng.for_unit(Purpose::Pierce, wire_id(attacker), at as u8))
+            });
+            if source.roll(pierce.chance) {
+                landed.push((pierce.damage * class_pct / 100, pierce.item));
+            }
         }
-        let rng = &self.rng;
-        let chance = entity_slot(&mut self.pierce, attacker, || {
-            Chance::new(
-                rng.for_unit(Purpose::Pierce, wire_id(attacker), 0),
-                stats.pierce,
-            )
-        });
-        chance.roll(stats.pierce).then_some(stats.pierce_damage)
+        landed
     }
 
     /// Whether a swing may begin: the target is standing, seen, in reach, and

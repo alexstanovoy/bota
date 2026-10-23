@@ -618,7 +618,8 @@ fn intelligence_adds_base_magic_resistance() {
 }
 
 /// Evasion carried is in the view, all of it green on the panel: a hero has
-/// none of its own.
+/// none of its own. A second source stacks on the first as Dota stacks
+/// evasion, each taking its share of the attacks the other lets through.
 #[test]
 fn evasion_carried_is_shown_green() {
     let mut world = World::new();
@@ -633,12 +634,20 @@ fn evasion_carried_is_shown_green() {
     let talisman = ITEMS[usize::from(ItemId::TALISMAN_OF_EVASION.0)]
         .carried
         .evasion;
-    let share = Fixed::from_ratio(i32::from(talisman.num()), i32::from(talisman.den()));
+    let share = talisman.fraction();
     assert!(share > Fixed::ZERO);
     assert_eq!(shown(&world, Some(Team::Radiant), hero).evasion, share);
     let split = split_of(&world, hero).evasion;
     assert_eq!(split.base, Fixed::ZERO);
     assert_eq!(split.bonus, share * Fixed::from_int(100), "percent, green");
+
+    world.inventory.get_mut(hero).expect("a bag").slots[1] =
+        Some(super::support::fresh_stack(ItemId::BUTTERFLY, 0));
+    world.step();
+    let butterfly = ITEMS[usize::from(ItemId::BUTTERFLY.0)].carried.evasion;
+    let both = talisman.or(butterfly).fraction();
+    assert!(both > butterfly.fraction() && both < share + butterfly.fraction());
+    assert_eq!(shown(&world, Some(Team::Radiant), hero).evasion, both);
 }
 
 /// Status resistance applied to a hero is in the view, all of it green on

@@ -9,7 +9,7 @@ use crate::engine::Fnv;
 use crate::game::{
     Action, ActionPhase, ActionState, AppliedModifiers, AppliedOrigin, Chain, Entity, Exposure,
     Hit, HitEffect, Hook, Inventory, ItemStack, ModifierDuration, Modifiers, Motion, Projectile,
-    RequiemLine, Seat, SpawnCategory, SpawnModifier, SpawnTarget, Target, World,
+    PseudoRandom, RequiemLine, Seat, SpawnCategory, SpawnModifier, SpawnTarget, Target, World,
 };
 
 impl World {
@@ -68,25 +68,21 @@ impl World {
         for draws in self.rng.global_draws() {
             fnv.u64(draws);
         }
-        fnv.u32(self.uphill_miss.len() as u32);
-        for chance in &self.uphill_miss {
-            fnv.some(chance.is_some());
-            if let Some(chance) = chance {
-                let (draws, failures) = chance.state();
-                fnv.u64(draws);
-                fnv.u8(failures);
+        for sequences in [&self.evasion, &self.accuracy] {
+            fnv.u32(sequences.len() as u32);
+            for source in sequences {
+                hash_pseudo_random(fnv, source.as_ref());
             }
         }
-        for stream in [&self.evasion, &self.pierce, &self.crit] {
-            fnv.u32(stream.len() as u32);
-            for chance in stream {
-                fnv.some(chance.is_some());
-                if let Some(chance) = chance {
-                    let (draws, at) = chance.state();
-                    fnv.u64(draws);
-                    fnv.u8(at);
-                    fnv.u8(chance.current().num());
-                    fnv.u8(chance.current().den());
+        for rolls in [&self.pierce, &self.crit] {
+            fnv.u32(rolls.len() as u32);
+            for sources in rolls {
+                fnv.some(sources.is_some());
+                if let Some(sources) = sources {
+                    fnv.u32(sources.sources().len() as u32);
+                    for source in sources.sources() {
+                        hash_pseudo_random(fnv, source.as_ref());
+                    }
                 }
             }
         }
@@ -267,6 +263,16 @@ fn hash_motion(fnv: &mut Fnv, motion: &Motion) {
     fnv.u32(motion.still);
 }
 
+/// Where one pseudo-random sequence stands, if it was opened.
+fn hash_pseudo_random(fnv: &mut Fnv, source: Option<&PseudoRandom>) {
+    fnv.some(source.is_some());
+    if let Some(source) = source {
+        let (draws, misses) = source.state();
+        fnv.u64(draws);
+        fnv.u32(misses);
+    }
+}
+
 fn hash_projectile(fnv: &mut Fnv, shot: &Projectile) {
     fnv.fixed(shot.speed);
     fnv.opt(shot.source, Fnv::entity);
@@ -278,9 +284,12 @@ fn hash_projectile(fnv: &mut Fnv, shot: &Projectile) {
     fnv.u8(shot.launch_tier);
     fnv.some(shot.can_miss_uphill);
     fnv.some(shot.pierces);
-    fnv.i32(shot.pierce_damage);
+    fnv.u32(shot.pierced.len() as u32);
+    for &(damage, item) in &shot.pierced {
+        fnv.i32(damage);
+        fnv.u32(u32::from(item.0));
+    }
     hash_damage_amp(fnv, shot.pierce_amp_bp);
-    hash_inflictor(fnv, shot.pierce_by);
     hash_hit_effect(fnv, shot.effect);
 }
 
@@ -458,6 +467,7 @@ fn hash_hit(fnv: &mut Fnv, hit: &Hit) {
     hash_damage_amp(fnv, hit.damage_amp_bp);
     fnv.some(hit.attack);
     fnv.some(hit.pierces);
+    fnv.some(hit.uphill);
     hash_hit_effect(fnv, hit.effect);
 }
 
