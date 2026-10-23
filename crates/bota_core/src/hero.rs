@@ -1,6 +1,6 @@
 //! Every hero that may be picked, and what each one carries.
 
-use bota_proto::{AbilityId, Attributes, Fixed, HeroId};
+use bota_proto::{AbilityId, Attribute, Attributes, Fixed, HeroId};
 
 use crate::heroes::{pudge, shadow_fiend};
 use crate::{TalentTree, UnitDef, rules};
@@ -43,10 +43,30 @@ pub fn attributes_at_level(unit: &UnitDef, level: u8) -> Attributes {
 /// buffs: its base, what the levels add and what its primary attribute
 /// pays.
 pub fn base_damage_least(unit: &UnitDef, level: u8) -> i32 {
+    white_damage_least(unit, level, attributes_at_level(unit, level))
+}
+
+/// The least of the damage Dota draws white: the hero's base, what the
+/// levels add, and what its primary attribute pays for every point it
+/// holds, `has`, from items and buffs too. Only flat bonus damage is green.
+pub fn white_damage_least(unit: &UnitDef, level: u8, has: Attributes) -> i32 {
     let levels = i32::from(level.max(1)) - 1;
-    let pays = unit.primary.map_or(0, |primary| {
-        (attributes_at_level(unit, level).of(primary) * Fixed::from_int(rules::DAMAGE_PER_PRIMARY))
-            .to_int()
-    });
-    unit.damage + unit.per_level.damage * levels + pays
+    unit.damage + unit.per_level.damage * levels + primary_damage(has, unit.primary)
+}
+
+/// The attack damage a primary attribute pays: none for a unit without one.
+pub fn primary_damage(has: Attributes, primary: Option<Attribute>) -> i32 {
+    primary.map_or(0, |primary| {
+        (has.of(primary) * Fixed::from_int(rules::DAMAGE_PER_PRIMARY)).to_int()
+    })
+}
+
+/// The armor agility is worth.
+pub fn agility_armor(has: Attributes) -> Fixed {
+    rules::ARMOR_PER_AGILITY * has.agility
+}
+
+/// The attack speed agility is worth.
+pub fn agility_attack_speed(has: Attributes) -> i32 {
+    (has.agility * Fixed::from_int(rules::ATTACK_SPEED_PER_AGILITY)).to_int()
 }

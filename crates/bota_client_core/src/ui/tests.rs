@@ -842,19 +842,14 @@ fn the_talent_tree_is_shadow_fiends() {
     }
 }
 
-/// The damage panel splits Dota's way: a level-1 Shadow Fiend's base range
-/// with his starting agility white, the rest green; a creep has no base to split.
+/// A hero's attributes of its level are floored as the server floors them;
+/// a creep has no base to split its damage by (the hero's split is the
+/// server's E2E test `a_branch_is_white_damage_and_green_attributes_...`).
 #[test]
-fn damage_splits_into_base_and_bonus() {
+fn level_attributes_floor_and_a_creep_does_not_split() {
     let mut fiend = a_unit();
     fiend.hero = Some(HeroId::SHADOW_FIEND);
-    fiend.level = 1;
     fiend.primary = Some(bota_proto::Attribute::Agility);
-    // 16-22 base + 25 agility, and 9 from items and souls on top.
-    fiend.attack_damage_min = 50;
-    fiend.attack_damage_max = 56;
-    let d = crate::catalog::damage_range(&fiend);
-    assert_eq!((d.min, d.max, d.bonus), (41, 47, 9));
     fiend.level = 11;
     // Growth is Fixed arithmetic, as the server's own: 19 + 2.7 * 10 stands a
     // hair under 46, and the server floors it too.

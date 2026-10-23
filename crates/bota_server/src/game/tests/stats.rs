@@ -495,3 +495,63 @@ fn super_and_mega_creeps_match_the_table_at_fifteen_minutes() {
         );
     }
 }
+
+/// The panel splits a hero's numbers as Dota's does: damage is white for the
+/// hero's base and for every point of its primary attribute, from items too,
+/// and green only for flat bonus damage; an attribute is white for what its
+/// level gives and green for the rest. An Iron Branch is one more white point
+/// of Shadow Fiend's damage (and of the attack speed and armor his agility
+/// pays) and one green point of each attribute; Blades of Attack are green
+/// damage.
+#[test]
+fn a_branch_is_white_damage_and_green_attributes_blades_are_green_damage() {
+    use bota_client_core::{damage_range, stat_split};
+    let mut world = World::new();
+    let hero = hero_at(&mut world, Vec2::from_ints(5000, 5000));
+    world.step();
+    let panel = |world: &World| {
+        let unit = shown(world, Some(Team::Radiant), hero);
+        (
+            damage_range(&unit),
+            stat_split(&unit).expect("a hero splits"),
+        )
+    };
+    let (bare, bare_stats) = panel(&world);
+    assert_eq!(bare.bonus, 0, "nothing carried, nothing green");
+    assert!(bare_stats.attributes.iter().all(|a| a.bonus == 0));
+    assert_eq!(bare_stats.attack_speed.bonus, 0);
+    assert_eq!(bare_stats.armor.bonus, Fixed::ZERO);
+    let branch = ITEMS[usize::from(ItemId::IRON_BRANCH.0)].carried;
+    assert_eq!(
+        branch.attributes,
+        bota_proto::Attributes::all(1),
+        "a branch is a point of each"
+    );
+    hand_item(&mut world, hero, ItemId::IRON_BRANCH, 0);
+    world.step();
+    let (with_branch, stats) = panel(&world);
+    assert_eq!(
+        (with_branch.min, with_branch.max, with_branch.bonus),
+        (bare.min + 1, bare.max + 1, 0),
+        "the branch's agility is white damage"
+    );
+    for (now, before) in stats.attributes.iter().zip(&bare_stats.attributes) {
+        assert_eq!((now.base, now.bonus), (before.base, 1), "and a green point");
+    }
+    assert_eq!(stats.attack_speed.base, bare_stats.attack_speed.base + 1);
+    assert_eq!(stats.attack_speed.bonus, 0, "agility's pace is white");
+    assert_eq!(stats.armor.bonus, Fixed::ZERO, "and so is its armor");
+    let blades = ITEMS[usize::from(ItemId::BLADES_OF_ATTACK.0)]
+        .carried
+        .damage;
+    assert!(blades > 0, "blades carry damage");
+    world.inventory.get_mut(hero).expect("has a bag").slots[1] =
+        Some(a_stack_of(ItemId::BLADES_OF_ATTACK, 0));
+    world.step();
+    let (with_blades, _) = panel(&world);
+    assert_eq!(
+        (with_blades.min, with_blades.bonus),
+        (with_branch.min, blades),
+        "flat damage is green"
+    );
+}

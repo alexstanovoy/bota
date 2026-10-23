@@ -58,6 +58,14 @@ fn from_modifier(kind: ModifierKind, max: Regen) -> Regen {
     Regen { hp, mana }
 }
 
+/// What strength and intelligence mend each tick.
+pub fn attribute_regen(attributes: Attributes) -> Regen {
+    Regen {
+        hp: rules::HP_REGEN_PER_STRENGTH * attributes.strength,
+        mana: rules::MANA_REGEN_PER_INTELLIGENCE * attributes.intelligence,
+    }
+}
+
 /// Everything a unit regenerates: its kind's own base, what its items carry
 /// (`carried`), its strength and intelligence at their final worth, and the
 /// active modifiers on it (consumables, the fountain, auras). `max` holds
@@ -69,11 +77,10 @@ pub fn regen(
     max: Regen,
     modifiers: impl Iterator<Item = ModifierKind>,
 ) -> Regen {
+    let paid = attribute_regen(attributes);
     let mut total = Regen {
-        hp: base.hp + carried.hp + rules::HP_REGEN_PER_STRENGTH * attributes.strength,
-        mana: base.mana
-            + carried.mana
-            + rules::MANA_REGEN_PER_INTELLIGENCE * attributes.intelligence,
+        hp: base.hp + carried.hp + paid.hp,
+        mana: base.mana + carried.mana + paid.mana,
     };
     let mut cut_pct = 0;
     for kind in modifiers {

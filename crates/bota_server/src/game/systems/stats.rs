@@ -2,7 +2,7 @@
 
 use bota_core::{
     Buff, Carried, Growth, ModifierKind, NeutralAbility, Ratio, Regen, Stat, Talent, UnitDef,
-    regen, rules, soul_damage, spell_buff,
+    agility_armor, agility_attack_speed, primary_damage, regen, rules, soul_damage, spell_buff,
 };
 use bota_proto::{Attributes, Fixed, ModifierSpec};
 
@@ -105,7 +105,7 @@ pub fn derive_stats(cx: StatsCx<'_>) {
         from_attributes(&mut now);
         let base_armor =
             Fixed::from_ratio(kind.armor * 2 + kind.per_upgrade.armor_halves * steps, 2)
-                + rules::ARMOR_PER_AGILITY * now.attributes.agility;
+                + agility_armor(now.attributes);
         if let Some(carried) = &carried {
             add_carried_shares(&mut now, carried);
         }
@@ -203,7 +203,7 @@ fn add_carried_shares(now: &mut Stats, carried: &Carried) {
         now.max_mana += now.max_mana * Fixed::from_ratio(carried.mana_pct, 100);
     }
     if carried.base_attack_speed_pct != 0 {
-        let base = rules::BASE_ATTACK_SPEED + agility_pace(now.attributes);
+        let base = rules::BASE_ATTACK_SPEED + agility_attack_speed(now.attributes);
         now.attack_speed += base * carried.base_attack_speed_pct / 100;
     }
 }
@@ -410,16 +410,9 @@ fn from_attributes(now: &mut Stats) {
     let has = now.attributes;
     now.max_hp += Fixed::from_int(rules::HP_PER_STRENGTH) * has.strength;
     now.max_mana += Fixed::from_int(rules::MANA_PER_INTELLIGENCE) * has.intelligence;
-    now.armor += rules::ARMOR_PER_AGILITY * has.agility;
-    now.attack_speed += agility_pace(has);
-    if let Some(primary) = now.primary {
-        now.damage += (has.of(primary) * Fixed::from_int(rules::DAMAGE_PER_PRIMARY)).to_int();
-    }
-}
-
-/// Attack speed the agility attribute is worth.
-fn agility_pace(has: Attributes) -> i32 {
-    (has.agility * Fixed::from_int(rules::ATTACK_SPEED_PER_AGILITY)).to_int()
+    now.armor += agility_armor(has);
+    now.attack_speed += agility_attack_speed(has);
+    now.damage += primary_damage(has, now.primary);
 }
 
 /// The plain form of a kind raised by `levels` levels and `steps` upgrades,
