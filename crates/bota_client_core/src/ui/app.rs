@@ -691,7 +691,6 @@ impl App {
     /// Applies one server message: the lobby's to the lobby screen, and every
     /// one to the seat's stream, which builds the session at the start.
     pub fn handle(&mut self, msg: ServerMsg) {
-        self.note_lobby(&msg);
         let events = match &msg {
             ServerMsg::Events { events, .. } => events.clone(),
             _ => Vec::new(),
@@ -722,13 +721,15 @@ impl App {
                 if matches!(*msg, ServerMsg::Ping) {
                     self.source.send(&ClientMsg::Pong);
                 }
+                // Only what the stream accepted reaches the lobby screen.
+                self.note_lobby(&msg);
             }
             Err(error) => self.fail(&error.to_string()),
         }
     }
 
-    /// What the lobby screen and the overlay take from a message, before the
-    /// match and during it.
+    /// What the lobby screen and the overlay take from a message the stream
+    /// passed, before the match and during it.
     fn note_lobby(&mut self, msg: &ServerMsg) {
         self.lobby.observe(msg);
         match msg {

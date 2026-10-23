@@ -1,7 +1,7 @@
 //! What a snapshot or an event batch must satisfy before a session folds it.
 
 use bota_core::rules;
-use bota_proto::{EntityId, EventKind, HeroId, Pick, PlayerView, UnitKind, WorldView};
+use bota_proto::{EntityId, EventKind, HeroId, LobbySlot, Pick, PlayerView, UnitKind, WorldView};
 
 use crate::limits::{
     COURIER_ITEM_SLOTS, HERO_ITEM_SLOTS, MAX_ABILITY_SLOTS, MAX_EFFECTS_PER_UNIT,
@@ -50,6 +50,20 @@ pub(crate) fn snapshot(expect: &Expect<'_>, view: &WorldView) -> Result<(), Sess
         Some(owner) => own_state(owner, expect.hero, view),
         None => Ok(()),
     }
+}
+
+/// A lobby as a server tells it: a row per seat at most, each name within
+/// what a server shows.
+pub(crate) fn lobby(slots: &[LobbySlot]) -> Result<(), SessionError> {
+    check_limit("LobbyState.slots", slots.len(), MAX_SEATS)?;
+    for slot in slots {
+        check_limit(
+            "LobbySlot.name",
+            slot.name.len(),
+            rules::MAX_SHOWN_NAME_BYTES,
+        )?;
+    }
+    Ok(())
 }
 
 /// An event batch: bounded, its restoration reports in range and its tick

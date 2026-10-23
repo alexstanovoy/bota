@@ -100,8 +100,11 @@ impl Seat {
                 }
                 return Ok(Ingested::Passed(Box::new(msg)));
             }
-            other @ (ServerMsg::LobbyState { .. }
-            | ServerMsg::Orders { .. }
+            ServerMsg::LobbyState { ref slots, .. } => {
+                crate::session::validate_lobby(slots)?;
+                return Ok(Ingested::Passed(Box::new(msg)));
+            }
+            other @ (ServerMsg::Orders { .. }
             | ServerMsg::ParticipantLeft { .. }
             | ServerMsg::Ping) => return Ok(Ingested::Passed(Box::new(other))),
         };

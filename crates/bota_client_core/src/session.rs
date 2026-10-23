@@ -27,6 +27,7 @@ pub use tracks::{
     AbilityCastObservation, DamageObservation, DeathObservation, EntityTrack, HealObservation,
     ManaRestorationObservation, ObservedEvent, PossibleAttackLanded, VelocityEstimate,
 };
+pub(crate) use validate::lobby as validate_lobby;
 
 use crate::handshake::{Seated, check_match};
 use crate::latency::OrderLatency;
@@ -224,8 +225,11 @@ impl ClientSession {
             }
             .into()),
             ServerMsg::Refused { reason } => Err(SessionError::Refused(reason).into()),
+            ServerMsg::LobbyState { ref slots, .. } => {
+                validate::lobby(slots)?;
+                Ok(Ingested::Passed(Box::new(msg)))
+            }
             other @ (ServerMsg::Welcome { .. }
-            | ServerMsg::LobbyState { .. }
             | ServerMsg::Orders { .. }
             | ServerMsg::ParticipantLeft { .. }
             | ServerMsg::Ping) => Ok(Ingested::Passed(Box::new(other))),

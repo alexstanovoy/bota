@@ -575,6 +575,39 @@ fn a_view_of_extreme_numbers_is_taken_in_without_overflow() {
     assert!(hit.least <= hit.most);
 }
 
+/// A lobby a server tells is checked before the lobby screen keeps it: more
+/// rows than a match has seats, or a name longer than a server shows, breaks
+/// the stream and is not kept.
+#[test]
+fn a_lobby_past_its_bounds_breaks_the_stream_and_is_not_kept() {
+    let row = |slot: u8, name: String| bota_proto::LobbySlot {
+        slot: SlotId(slot),
+        team: Team::Radiant,
+        name,
+        role: None,
+        hero: None,
+        ready: false,
+    };
+    let state = |slots| bota_proto::ServerMsg::LobbyState {
+        slots,
+        same_heroes: true,
+        pick: bota_proto::PickPhase::Waiting,
+    };
+    let crowded = (0..=crate::MAX_SEATS as u8)
+        .map(|slot| row(slot, "seat".to_owned()))
+        .collect();
+    let long = vec![row(
+        0,
+        "n".repeat(bota_core::rules::MAX_SHOWN_NAME_BYTES + 1),
+    )];
+    for slots in [crowded, long] {
+        let mut app = a_silent_app();
+        app.handle(state(slots));
+        assert!(app.lost, "the client stops listening");
+        assert!(app.lobby.slots.is_empty() && app.names.is_empty());
+    }
+}
+
 fn snapshot_of(tick: u32, units: Vec<UnitView>, players: Vec<PlayerView>) -> bota_proto::ServerMsg {
     bota_proto::ServerMsg::Snapshot {
         view: a_tick(tick, units, players),
