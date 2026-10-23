@@ -1,15 +1,22 @@
 //! Backdoor protection: a structure far from enemy lane creeps takes less
-//! damage and mends what the blows took.
+//! damage and mends what the blows took. Which structures have it, and where
+//! each looks, is their kind of unit's [`BackdoorWatch`]; while it holds, the
+//! structure wears it as a modifier, as Dota's buildings wear
+//! `modifier_backdoor_protection_active`.
 
-use bota_core::{kind_def, rules};
-use bota_proto::{Fixed, Team, UnitKind};
+use bota_core::{BackdoorWatch, ModifierKind, kind_def, rules};
+use bota_proto::{Fixed, Team};
 
 use crate::engine::Entity;
-use crate::game::{Backdoor, Landed, World};
+use crate::game::{Backdoor, Def, Landed, Modifier, World};
 
 impl World {
-    /// Gives a new structure its protection: held from the first tick.
+    /// Gives a new structure the protection its kind of unit carries, held
+    /// from the first tick.
     pub(crate) fn give_backdoor(&mut self, entity: Entity) {
+        if self.backdoor_of(entity).is_none() {
+            return;
+        }
         self.backdoor.insert(
             entity,
             Backdoor {
@@ -19,28 +26,41 @@ impl World {
         );
     }
 
+    /// Where an entity's protection looks for enemy lane creeps, if it has
+    /// any.
+    fn backdoor_of(&self, entity: Entity) -> Option<BackdoorWatch> {
+        self.def.get(entity).and_then(|Def(def)| def.backdoor)
+    }
+
     /// How far a structure looks for enemy lane creeps, if it looks at all:
     /// a tier two tower for itself, an Ancient for its whole side's base.
     fn backdoor_watch(&self, entity: Entity) -> Option<i32> {
-        match self.kind.get(entity)? {
-            UnitKind::Ancient => Some(rules::BACKDOOR_BASE_RADIUS),
-            UnitKind::Tower if self.tier.get(entity).map(|tier| tier.0) == Some(2) => {
-                Some(rules::BACKDOOR_TOWER_RADIUS)
-            }
-            _ => None,
+        match self.backdoor_of(entity)? {
+            BackdoorWatch::Own { radius } | BackdoorWatch::Base { radius } => Some(radius),
+            BackdoorWatch::InBase => None,
         }
     }
 
-    /// The structure whose quiet a protected structure holds by.
+    /// The structure whose quiet a protected structure holds by: itself when
+    /// it looks, else its side's standing base watch.
     fn backdoor_source(&self, entity: Entity) -> Option<Entity> {
-        if self.backdoor_watch(entity) == Some(rules::BACKDOOR_TOWER_RADIUS) {
+        if self.backdoor_watch(entity).is_some() {
             return Some(entity);
         }
         let side = self.team.get(entity).copied()?;
         self.entities.iter().find(|&other| {
-            self.kind.get(other) == Some(&UnitKind::Ancient)
+            matches!(self.backdoor_of(other), Some(BackdoorWatch::Base { .. }))
                 && self.team.get(other).copied() == Some(side)
                 && self.alive(other)
+        })
+    }
+
+    /// Whether a structure wears its protection right now.
+    pub(crate) fn backdoor_on(&self, entity: Entity) -> bool {
+        self.modifiers.get(entity).is_some_and(|on_it| {
+            on_it
+                .active()
+                .any(|held| held.kind == ModifierKind::BackdoorProtection)
         })
     }
 
@@ -115,17 +135,24 @@ impl World {
         }
     }
 
-    /// Wears the protection as [`Stats::backdoor`](crate::game::Stats::backdoor).
-    pub(crate) fn mark_backdoor(&mut self) {
+    /// Puts the protection on every structure it holds on now, untimed, and
+    /// takes it off every one where it has lapsed.
+    pub(crate) fn wear_backdoor(&mut self) {
         let held: Vec<Entity> = self
             .entities
             .iter()
             .filter(|&entity| self.backdoor.get(entity).is_some())
             .collect();
         for entity in held {
-            let holds = self.backdoor_holds(entity);
-            if let Some(stats) = self.stats.get_mut(entity) {
-                stats.backdoor = holds;
+            match (self.backdoor_holds(entity), self.backdoor_on(entity)) {
+                (true, false) => {
+                    self.put_modifier(
+                        entity,
+                        Modifier::new(ModifierKind::BackdoorProtection, None, None),
+                    );
+                }
+                (false, true) => self.take_modifier(entity, ModifierKind::BackdoorProtection, None),
+                _ => {}
             }
         }
     }
@@ -134,7 +161,7 @@ impl World {
     /// theirs to mend.
     pub(crate) fn owe_backdoor(&mut self, felt: &[Landed]) {
         for blow in felt {
-            let protected = !blow.fatal && self.stats.get(blow.target).is_some_and(|s| s.backdoor);
+            let protected = !blow.fatal && self.backdoor_on(blow.target);
             let enemy = blow
                 .source
                 .and_then(|source| self.team.get(source).copied())

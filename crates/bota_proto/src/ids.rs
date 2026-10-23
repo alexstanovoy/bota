@@ -314,6 +314,10 @@ impl EffectId {
     pub const MEAT_SHIELD: EffectId = EffectId(57);
     /// Held by a dismember: `ticks_left` until it lets go.
     pub const DISMEMBERED: EffectId = EffectId(58);
+    /// Backdoor protection holding on a building
+    /// (`modifier_backdoor_protection_active`): it takes less damage and mends
+    /// what enemy blows took, while no enemy lane creep comes near.
+    pub const BACKDOOR_PROTECTION: EffectId = EffectId(59);
 }
 
 /// An index into a unit's ability slots, as listed in

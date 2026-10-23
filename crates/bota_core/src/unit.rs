@@ -31,6 +31,20 @@ pub struct Growth {
     pub xp: i32,
 }
 
+/// Where a building's backdoor protection looks for enemy lane creeps:
+/// Dota's `backdoor_protection` and `backdoor_protection_in_base`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum BackdoorWatch {
+    /// Round itself, out to `radius` world units: a tier two tower's own.
+    Own { radius: i32 },
+    /// Round itself, out to `radius` world units, for its whole base: the
+    /// Ancient's, which every [`InBase`](Self::InBase) building of its side
+    /// holds by.
+    Base { radius: i32 },
+    /// Through its side's [`Base`](Self::Base) watch.
+    InBase,
+}
+
 /// The plain form of one kind of unit.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct UnitDef {
@@ -116,6 +130,8 @@ pub struct UnitDef {
     pub per_upgrade: Growth,
     /// What it hands out to its own side for standing near it.
     pub auras: &'static [Aura],
+    /// Its backdoor protection. Absent for whatever has none.
+    pub backdoor: Option<BackdoorWatch>,
 }
 
 /// No gain at all.
@@ -168,6 +184,7 @@ pub(crate) const BARE_UNIT: UnitDef = UnitDef {
     per_level: NO_GROWTH,
     per_upgrade: NO_GROWTH,
     auras: &[],
+    backdoor: None,
 };
 
 // The lane creeps' numbers are the game's `scripts/npc/npc_units.txt`
@@ -385,6 +402,7 @@ pub const BARRACKS_MELEE: UnitDef = UnitDef {
     bound: rules::RAX_BOUND,
     bounty_gold: rules::RAX_BOUNTY,
     bounty_team: rules::RAX_MELEE_TEAM_BOUNTY,
+    backdoor: Some(BackdoorWatch::InBase),
     ..BARE_UNIT
 };
 
@@ -398,6 +416,7 @@ pub const BARRACKS_RANGED: UnitDef = UnitDef {
     bound: rules::RAX_BOUND,
     bounty_gold: rules::RAX_BOUNTY,
     bounty_team: rules::RAX_RANGED_TEAM_BOUNTY,
+    backdoor: Some(BackdoorWatch::InBase),
     ..BARE_UNIT
 };
 
@@ -411,6 +430,7 @@ pub const FILLER: UnitDef = UnitDef {
     collision: rules::FILLER_COLLISION,
     bound: rules::FILLER_BOUND,
     bounty_gold: GoldRange::exactly(rules::FILLER_BOUNTY),
+    backdoor: Some(BackdoorWatch::InBase),
     ..BARE_UNIT
 };
 
@@ -423,6 +443,9 @@ pub const RADIANT_ANCIENT: UnitDef = UnitDef {
     night_vision: rules::ANCIENT_VISION,
     collision: rules::RADIANT_ANCIENT_COLLISION,
     bound: rules::RADIANT_ANCIENT_BOUND,
+    backdoor: Some(BackdoorWatch::Base {
+        radius: rules::BACKDOOR_BASE_RADIUS,
+    }),
     ..BARE_UNIT
 };
 
@@ -547,6 +570,13 @@ const fn tower_of(index: usize) -> UnitDef {
         bound: rules::TOWER_BOUND,
         bounty_gold: rules::TOWER_TIER_BOUNTY[index],
         bounty_team: rules::TOWER_TIER_TEAM_BOUNTY[index],
+        backdoor: match index {
+            0 => None,
+            1 => Some(BackdoorWatch::Own {
+                radius: rules::BACKDOOR_TOWER_RADIUS,
+            }),
+            _ => Some(BackdoorWatch::InBase),
+        },
         ..BARE_UNIT
     }
 }

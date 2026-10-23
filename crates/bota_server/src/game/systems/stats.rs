@@ -293,7 +293,8 @@ fn add_modifiers(now: &mut Stats, on_it: &Modifiers, base_armor: Fixed, hero: bo
             | ModifierKind::Rot { .. }
             | ModifierKind::Rooted
             | ModifierKind::Disarmed
-            | ModifierKind::Broken => {}
+            | ModifierKind::Broken
+            | ModifierKind::BackdoorProtection => {}
         }
     }
 }
@@ -478,7 +479,6 @@ fn raised(kind: &UnitDef, levels: i32, steps: i32, night: bool) -> Stats {
         flies: kind.flies,
         phased: false,
         invulnerable: kind.invulnerable,
-        backdoor: false,
         glyph: false,
     }
 }

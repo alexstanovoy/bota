@@ -127,10 +127,15 @@ pub fn hitting_system<const AMPLIFIED: bool>(cx: HitCx<'_>) {
             continue;
         }
         let amount = dealt::<AMPLIFIED>(blow, on_it);
+        let protected = on_it.is_some_and(|on_it| {
+            on_it
+                .active()
+                .any(|held| held.kind == ModifierKind::BackdoorProtection)
+        });
         let mut taken = mitigate(amount, blow.kind, stat.armor, stat.magic_resist_bp);
         if stat.glyph {
             taken = 0;
-        } else if stat.backdoor {
+        } else if protected {
             taken = taken * rules::BACKDOOR_DAMAGE_PCT / 100;
         }
         if blow.kind == DamageKind::Magical {

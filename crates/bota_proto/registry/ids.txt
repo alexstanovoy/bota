@@ -200,6 +200,7 @@ effect 55 live Purge
 effect 56 live Fortified
 effect 57 live MeatShield
 effect 58 live Dismembered
+effect 59 live BackdoorProtection
 
 neutral 0 live Kobold
 neutral 1 live Kobold Soldier

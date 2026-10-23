@@ -747,7 +747,7 @@ impl World {
             night: bota_core::time_of_day(self.tick).night,
         });
         self.guard_structures();
-        self.mark_backdoor();
+        self.wear_backdoor();
         self.mark_glyph();
     }
 

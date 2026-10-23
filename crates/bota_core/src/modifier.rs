@@ -116,6 +116,10 @@ pub enum ModifierKind {
     Disarmed,
     /// Its passives do nothing, its auras included.
     Broken,
+    /// A building's backdoor protection, worn while it holds: it takes
+    /// [`rules::BACKDOOR_DAMAGE_PCT`] percent of the damage that reaches it
+    /// and mends what enemy blows took.
+    BackdoorProtection,
     /// What a neutral's spell left, at the level it was cast at. `amount`
     /// is the spell's own count: the blows a Steal Weapon has counted, the
     /// magical damage a bubble has left to soak.
@@ -150,6 +154,7 @@ impl ModifierKind {
             ModifierKind::Rooted => EffectId::ROOTED,
             ModifierKind::Disarmed => EffectId::DISARMED,
             ModifierKind::Broken => EffectId::BROKEN,
+            ModifierKind::BackdoorProtection => EffectId::BACKDOOR_PROTECTION,
             ModifierKind::Spell { ability, .. } => match spell_effect(ability) {
                 Some(effect) => effect,
                 None => panic!("a spell without a modifier left one"),

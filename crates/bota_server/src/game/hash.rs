@@ -529,6 +529,7 @@ fn hash_modifier_kind(fnv: &mut Fnv, kind: ModifierKind) {
         ModifierKind::Rooted => fnv.u8(18),
         ModifierKind::Disarmed => fnv.u8(19),
         ModifierKind::Broken => fnv.u8(20),
+        ModifierKind::BackdoorProtection => fnv.u8(24),
         ModifierKind::Spell {
             ability,
             level,
