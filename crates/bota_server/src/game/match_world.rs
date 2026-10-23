@@ -1,10 +1,7 @@
 //! The surface a match runs a world through: what the game loop asks of it.
 
 use bota_core::{hero_spawn_pos, item_def, map_of, rules};
-use bota_proto::{
-    AbilityId, Aim, Cheat, MatchStats, Order, RejectReason, SlotId, SlotStats, Target, Team,
-    UnitKind,
-};
+use bota_proto::{Aim, Cheat, MatchStats, Order, RejectReason, SlotId, SlotStats, Target, Team};
 
 use crate::game::{
     ActionPhase, ActionState, BAG_SLOTS, Command, Entity, Event, MatchConfig, MatchRng,
@@ -163,8 +160,7 @@ impl World {
     }
 
     /// What an order to the body breaks off: the action under way, as an
-    /// animation cancel, a held cast, and an errand unless a courier keeps
-    /// it for a burst or a shield.
+    /// animation cancel, a held cast, and an errand.
     fn interrupt(&mut self, unit: Entity, order: Order) {
         self.cancel_action(unit);
         self.break_swing_off(unit, order);
@@ -172,10 +168,7 @@ impl World {
         if let Some(orders) = self.orders.get_mut(unit) {
             orders.pending = None;
         }
-        let keeps_errand = self.kind.get(unit) == Some(&UnitKind::Courier)
-            && matches!(order, Order::Cast { slot, target: Target::None }
-                if matches!(self.ability_in(unit, slot), AbilityId::BURST | AbilityId::SHIELD));
-        if !keeps_errand && let Some(errand) = self.errand.get_mut(unit) {
+        if let Some(errand) = self.errand.get_mut(unit) {
             *errand = crate::game::Errand::None;
         }
     }

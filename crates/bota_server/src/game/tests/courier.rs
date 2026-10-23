@@ -261,6 +261,40 @@ fn courier_auxiliary_casts_keep_delivery_tracking_a_moving_owner() {
 }
 
 #[test]
+fn a_burst_or_a_shield_leaves_the_courier_walking_to_what_it_was_told_to_take() {
+    // Dota's courier_burst and courier_shield are immediate casts: they go
+    // off beside whatever the courier is doing and break none of it off.
+    for slot in [2, 4] {
+        let (mut world, _hero, courier) = a_match();
+        world.settle();
+        let from = world.transform.get(courier).expect("standing").pos;
+        let lying = world.lay_loot(a_stack_of(ItemId::BOOTS, 0), from + Vec2::from_ints(600, 0));
+        world.settle();
+        advance_validated(
+            &mut world,
+            Some(courier),
+            Order::Take {
+                target: Target::Unit(wire_id(lying)),
+            },
+        );
+        advance_validated(
+            &mut world,
+            Some(courier),
+            Order::Cast {
+                slot: AbilitySlot(slot),
+                target: Target::None,
+            },
+        );
+        step_until(&mut world, 300, |world| held(world, courier) > 0);
+        assert_eq!(
+            slot_of(&world, courier, 0).map(|stack| stack.id),
+            Some(ItemId::BOOTS),
+            "the cast in slot {slot} left the errand be"
+        );
+    }
+}
+
+#[test]
 fn courier_return_move_and_stop_replace_delivery() {
     for order in [
         Order::Cast {

@@ -107,11 +107,19 @@ const HERO_ABILITIES: [AbilityDef; 17] = [
     pudge::ROT,
     pudge::FLESH_HEAP,
     pudge::DISMEMBER,
-    courier("Burst", &[rules::COURIER_BURST_COOLDOWN]),
+    // Burst and Shield are Dota's DOTA_ABILITY_BEHAVIOR_IMMEDIATE
+    // (`courier_burst`, `courier_shield`): they break off nothing.
+    AbilityDef {
+        immediate: true,
+        ..courier("Burst", &[rules::COURIER_BURST_COOLDOWN])
+    },
     courier("Return", &[0]),
     courier("Take Stash", &[0]),
     courier("Deliver", &[0]),
-    courier("Shield", &[rules::COURIER_SHIELD_COOLDOWN]),
+    AbilityDef {
+        immediate: true,
+        ..courier("Shield", &[rules::COURIER_SHIELD_COOLDOWN])
+    },
     shadow_fiend::RAZE_NEAR,
     shadow_fiend::RAZE_MID,
     shadow_fiend::RAZE_FAR,
