@@ -88,6 +88,10 @@ pub struct EffectFace {
     pub label: Option<&'static str>,
     /// What it does, for the hover popup, as a template.
     pub template: &'static str,
+    /// Whether a front end lists it among a unit's buffs and debuffs. Dota
+    /// shows how long a ward or a summoned unit has left on its health bar,
+    /// not as a buff.
+    pub listed: bool,
 }
 
 impl EffectFace {
@@ -96,6 +100,7 @@ impl EffectFace {
             id,
             label,
             template,
+            listed: true,
         }
     }
 
@@ -534,6 +539,14 @@ const SPELL_EFFECT_FACES: [EffectFace; EFFECT_COUNT - FIRST_SPELL_EFFECT] = {
         None,
         "An illusion of the hero. Only its own side can tell it from the hero.",
     );
+    faces[EffectId::TIMED_LIFE.0 as usize - FIRST_SPELL_EFFECT] = EffectFace {
+        listed: false,
+        ..EffectFace::of(
+            EffectId::TIMED_LIFE.0,
+            Some("Time left"),
+            "Gone when its time runs out.",
+        )
+    };
     faces
 };
 
