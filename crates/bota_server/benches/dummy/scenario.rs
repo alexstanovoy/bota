@@ -120,6 +120,8 @@ impl Dummy {
                     order: Order::Move {
                         target: Target::Pos(point),
                     },
+                    queue: false,
+                    seq: 0,
                 });
             }
         }

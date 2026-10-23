@@ -318,6 +318,10 @@ impl EffectId {
     /// (`modifier_backdoor_protection_active`): it takes less damage and mends
     /// what enemy blows took, while no enemy lane creep comes near.
     pub const BACKDOOR_PROTECTION: EffectId = EffectId(59);
+    /// An illusion of a hero (`modifier_illusion`). Told to the illusion's
+    /// own side alone: the other side sees it as the hero (see the
+    /// [`contract`](crate::contract)).
+    pub const ILLUSION: EffectId = EffectId(60);
 }
 
 /// An index into a unit's ability slots, as listed in

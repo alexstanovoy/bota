@@ -36,12 +36,18 @@ pub struct IssuedOrder {
     /// `None` selects the own hero; `Some` selects the current courier.
     pub unit: Option<EntityId>,
     pub order: Order,
+    /// Whether it waits its turn in the unit's queue (Dota's Shift).
+    pub queue: bool,
 }
 
 impl IssuedOrder {
     /// An order for the seat's own hero.
     pub const fn hero(order: Order) -> IssuedOrder {
-        IssuedOrder { unit: None, order }
+        IssuedOrder {
+            unit: None,
+            order,
+            queue: false,
+        }
     }
 
     /// An order for the seat's courier, the unit `id`.
@@ -49,7 +55,22 @@ impl IssuedOrder {
         IssuedOrder {
             unit: Some(id),
             order,
+            queue: false,
         }
+    }
+
+    /// The same order, queued behind what the unit does and has queued.
+    pub const fn queued(self) -> IssuedOrder {
+        IssuedOrder {
+            queue: true,
+            ..self
+        }
+    }
+
+    /// Whether it goes into its unit's queue: given queued, and of the
+    /// orders that queue.
+    pub const fn waits(&self) -> bool {
+        self.queue && self.order.queues()
     }
 }
 
@@ -69,6 +90,10 @@ struct BodyRollback {
 struct BodyOrders {
     current: Option<SentBodyOrder>,
     rollback: Option<BodyRollback>,
+    /// Whether orders were queued behind `current` since it was given: the
+    /// server's queue then holds more than the ledger knows, so the
+    /// standing order is neither left unsent as a repeat nor given again.
+    queued: bool,
 }
 
 /// Constant-size record of the standing order of each body, so a repeat can
@@ -83,9 +108,11 @@ impl OrderLedger {
     /// Whether the order repeats the standing one of its body exactly. Only
     /// moves and attacks stand; anything else is a one-shot.
     pub fn repeats(&self, issued: IssuedOrder) -> bool {
+        let body = self.body(issued.unit);
         is_standing(issued.order)
-            && self
-                .body(issued.unit)
+            && !issued.queue
+            && !body.queued
+            && body
                 .current
                 .is_some_and(|standing| standing.issued == issued)
     }
@@ -109,7 +136,9 @@ impl OrderLedger {
             });
         }
         self.last_seq = Some(seq);
-        if is_standing(issued.order) {
+        if issued.waits() {
+            self.body_mut(issued.unit).queued = true;
+        } else if is_standing(issued.order) {
             self.body_mut(issued.unit).transition(
                 seq,
                 issued.unit,
@@ -143,10 +172,13 @@ impl OrderLedger {
             .map(|standing| (standing.sequence, standing.issued))
     }
 
-    /// The orders standing for the hero, then the courier.
+    /// The orders standing for the hero, then the courier, but for a body
+    /// with orders queued behind its own: given again, it would empty the
+    /// queue the server holds.
     pub fn standing_orders(&self) -> Vec<IssuedOrder> {
         self.bodies
             .iter()
+            .filter(|body| !body.queued)
             .filter_map(|body| body.current.map(|standing| standing.issued))
             .collect()
     }
@@ -200,6 +232,7 @@ impl BodyOrders {
             previous: self.current,
         });
         self.current = current;
+        self.queued = false;
     }
 
     fn reject(&mut self, sequence: u32) -> bool {
@@ -337,5 +370,6 @@ pub fn refusal(reason: RejectReason) -> &'static str {
         Why::Unsellable => "a free scroll sells for nothing",
         Why::NotAdmitted => "no seat for this client: a wrong key, or none open",
         Why::SeatHeld => "another live connection holds the seat",
+        Why::QueueFull => "too many orders queued",
     }
 }

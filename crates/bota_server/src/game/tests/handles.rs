@@ -72,8 +72,9 @@ fn play(busy: bool) -> Seen {
             unit: None,
             order,
             seen: tick,
+            queue: false,
         });
-        streams = local.step(&[None, dire]).expect("a step");
+        streams = local.step(&[&[], dire.as_slice()]).expect("a step");
     }
     seen
 }

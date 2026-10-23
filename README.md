@@ -37,6 +37,9 @@ buyback; streams. The
 neutral abilities that only a player commanding a neutral would use (Heal,
 Vex, Mana Burn, Shockwave, Ice Armor, Seed Shot, Fireball, Icefire Bomb, Take
 Off) are shown and never go off, as the neutral AI never casts them.
+Orders: a cast or a use ordered unqueued during another's cast point, or
+while stunned, breaks the first off or is refused, where Dota (since 7.06)
+queues it behind the cast in hand; given queued, it waits as in Dota.
 
 The simulation is authoritative on the server. A client receives what its side
 can see and sends orders; it cannot run the game itself.
@@ -216,7 +219,7 @@ example's loop over a real socket to the end of a match.
 ### In process: `LocalMatch`
 
 `bota_server::local::LocalMatch` runs a lockstep match in your process with no
-sockets. `step` takes at most one order per seat, advances one tick, and returns
+sockets. `step` takes each seat's orders, advances one tick, and returns
 the messages each seat would have been sent, through the same fog and event
 filters as the network loop. The program below is an example in
 `crates/bota_server/examples/local_match.rs`; it plays two scripted heroes to
@@ -289,7 +292,9 @@ platform. The rules that keep it so:
   the slots up or down by a coin drawn every tick, the blows landing in one tick
   are felt in an order drawn afresh, and a target choice tied on everything else
   goes by a rank hashed from the match seed and the two slots.
-- At most one order per seat takes effect on a tick; a tick's orders are applied in slot order.
+- A tick's orders are applied seat by seat in slot order, each seat's in the order it gave
+  them; a unit takes at most one unqueued order a tick, and its queued orders are taken up
+  one after another as Dota's Shift-queue does (the contract's "Orders").
 - Only value-stable external primitives: randomness is `ChaCha8Rng`
   (never `StdRng`), and the state hash is FNV-1a, not `DefaultHasher`.
 - Randomness is split into streams by purpose, so a new draw in one place does

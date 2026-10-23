@@ -263,6 +263,9 @@ pub struct App {
     seat: Seat,
     /// Whether the next left click is an attack-move.
     pub attack_move_armed: bool,
+    /// Whether the orders given now wait their turn in the unit's queue: the
+    /// front end holds it while the player holds Shift, as in Dota.
+    pub queueing: bool,
     /// The unit picked, if one is. Nothing picked means one's own hero.
     pub selected: Option<EntityId>,
     /// What the camera is pinned to. Nothing means a free camera.
@@ -323,6 +326,7 @@ impl App {
             names: Vec::new(),
             seat: Seat::watching(SESSION_OPTIONS),
             attack_move_armed: false,
+            queueing: false,
             selected: None,
             pinned: None,
             tapped: None,
@@ -649,15 +653,16 @@ impl App {
         self.send_order_to(unit, order);
     }
 
-    /// Sends one order to a named unit, whatever is selected. Absent names
-    /// the seat's hero. An order given before the first snapshot goes
-    /// nowhere.
+    /// Sends one order to a named unit, whatever is selected, queued while
+    /// [`App::queueing`]. Absent names the seat's hero. An order given before
+    /// the first snapshot goes nowhere.
     pub fn send_order_to(&mut self, unit: Option<EntityId>, order: Order) {
-        let Some(Ok(sent)) = self
-            .seat
-            .session_mut()
-            .map(|session| session.issue(IssuedOrder { unit, order }))
-        else {
+        let issued = IssuedOrder {
+            unit,
+            order,
+            queue: self.queueing,
+        };
+        let Some(Ok(sent)) = self.seat.session_mut().map(|session| session.issue(issued)) else {
             return;
         };
         if let Some(slot) = self.my_slot {

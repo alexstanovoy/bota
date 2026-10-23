@@ -1,6 +1,9 @@
 //! What a participant asks the units of its seat to do.
 //!
-//! There is no order queue.
+//! Every unit a seat drives takes orders of its own, and keeps a queue of
+//! orders to take up one after another, as Dota's Shift-queue: see
+//! [`ClientMsg::Order::queue`](crate::ClientMsg::Order) and the
+//! [`contract`](crate::contract).
 
 use crate::{AbilitySlot, EntityId, ItemId, ItemSlot, TalentSlot, Vec2};
 use serde::{Deserialize, Serialize};
@@ -294,4 +297,61 @@ pub enum Order {
     /// [`RejectReason::OnCooldown`](crate::RejectReason::OnCooldown) while
     /// the Glyph recharges.
     Glyph,
+}
+
+impl Order {
+    /// Whether the order waits its turn in its unit's queue when it is given
+    /// queued: what the body carries out (a move, an attack, a cast, a use,
+    /// laying an item down or taking one up). Learning, talents, buying,
+    /// selling, swapping, cheats and the Glyph are carried out at once,
+    /// queued or not, and leave the queue as it is.
+    pub const fn queues(&self) -> bool {
+        match self {
+            Order::Move { .. }
+            | Order::Attack { .. }
+            | Order::Cast { .. }
+            | Order::Use { .. }
+            | Order::Put { .. }
+            | Order::Take { .. } => true,
+            Order::Buy { .. }
+            | Order::Sell { .. }
+            | Order::Swap { .. }
+            | Order::Learn { .. }
+            | Order::Cheat { .. }
+            | Order::LearnTalent { .. }
+            | Order::LearnAttributeBonus
+            | Order::Glyph => false,
+        }
+    }
+
+    /// Calls `visit` on the entity handle the order names, if it names one:
+    /// the one walk that puts a side's names into an order, and takes them
+    /// out again.
+    pub fn visit_ids(&mut self, visit: &mut dyn FnMut(&mut EntityId)) {
+        let target = match self {
+            Order::Move { target }
+            | Order::Attack { target }
+            | Order::Cast { target, .. }
+            | Order::Use { target, .. }
+            | Order::Put { target, .. }
+            | Order::Take { target }
+            | Order::Cheat {
+                cheat: Cheat::ApplyModifier { target, .. } | Cheat::ClearModifiers { target },
+            } => target,
+            Order::Cheat {
+                cheat:
+                    Cheat::Gold { .. } | Cheat::Levels { .. } | Cheat::Refresh | Cheat::Item { .. },
+            }
+            | Order::Buy { .. }
+            | Order::Sell { .. }
+            | Order::Swap { .. }
+            | Order::Learn { .. }
+            | Order::LearnTalent { .. }
+            | Order::LearnAttributeBonus
+            | Order::Glyph => return,
+        };
+        if let Target::Unit(id) = target {
+            visit(id);
+        }
+    }
 }

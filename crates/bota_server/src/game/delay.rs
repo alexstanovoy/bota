@@ -2,8 +2,8 @@
 
 use std::collections::VecDeque;
 
-use bota_core::rules::MAX_ORDER_DELAY_TICKS;
-use bota_proto::{EntityId, Order, OrderDelayView, RejectReason, SlotId, Team};
+use bota_core::rules::{MAX_ORDER_DELAY_TICKS, MAX_ORDERS_PER_TICK};
+use bota_proto::{EntityId, OrderDelayView, RejectReason, SlotId, Team};
 
 use crate::game::{Command, MatchConfig, Stream, World};
 
@@ -83,9 +83,10 @@ pub struct RefusedOrder {
 struct HeldOrder {
     /// The tick it takes effect on.
     due: u32,
-    seq: u32,
-    unit: Option<EntityId>,
-    order: Order,
+    /// The unit it is for, as the world named it when it was given; nothing
+    /// for an order that needs no body.
+    key: Option<EntityId>,
+    cmd: Command,
     /// The tick of the view it was given on, as its sender said.
     seen: Option<u32>,
 }
@@ -97,10 +98,13 @@ struct SeatLine {
     team: Team,
     delay: OrderDelay,
     stream: Stream,
-    /// Due ticks strictly increase from front to back: orders never overtake
-    /// one another, and a later order due on the same tick replaces the
-    /// earlier one.
+    /// Due ticks never decrease from front to back: orders never overtake
+    /// one another. Those due on one tick stand in the order given.
     held: VecDeque<HeldOrder>,
+    /// The tick the world stood on when the seat last gave an order, and
+    /// the tick that order was due: every order given while the world
+    /// stands on one tick is due together.
+    burst: Option<(u32, u32)>,
     /// The delay the latest applied order that named its view took effect
     /// with. Absent until one does.
     measured: Option<u32>,
@@ -136,6 +140,7 @@ impl DelayLine {
                 },
                 stream: rng.for_order_delay(pick.slot),
                 held: VecDeque::with_capacity(MAX_ORDER_DELAY_TICKS as usize + 1),
+                burst: None,
                 measured: None,
             })
             .collect::<Vec<_>>();
@@ -144,74 +149,65 @@ impl DelayLine {
     }
 
     /// Validates an order a seat gives while `world` stands on its tick and,
-    /// when it is valid, sends it on its way.
+    /// when it is valid, sends it on its way. An unqueued order replaces the
+    /// orders for its unit due on the same tick.
     pub fn give(
         &mut self,
         world: &World,
-        slot: SlotId,
-        seq: u32,
-        unit: Option<EntityId>,
-        order: Order,
+        cmd: Command,
         seen: Option<u32>,
     ) -> Result<(), RejectReason> {
-        world.validate_order(slot, unit, &order)?;
-        let Some(line) = self.seats.iter_mut().find(|line| line.slot == slot) else {
+        world.check_order(cmd.slot, cmd.unit, &cmd.order, cmd.queue)?;
+        let Some(line) = self.seats.iter_mut().find(|line| line.slot == cmd.slot) else {
             return Err(RejectReason::NotYourUnit);
         };
-        let jitter = match line.delay.jitter {
-            0 => 0,
-            jitter => line.stream.below(jitter + 1),
-        };
-        let earliest = world.tick + 1 + line.delay.base + jitter;
-        let due = line
-            .held
-            .back()
-            .map_or(earliest, |last| earliest.max(last.due));
-        if line.held.back().is_some_and(|last| last.due == due) {
-            line.held.pop_back();
+        let due = line.due_of(world.tick);
+        line.burst = Some((world.tick, due));
+        let key = world.order_key(cmd.slot, cmd.unit, &cmd.order);
+        if !cmd.queued() {
+            line.held
+                .retain(|held| !(held.due == due && held.key == key));
+        }
+        if line.held.iter().filter(|held| held.due == due).count() >= MAX_ORDERS_PER_TICK {
+            return Err(RejectReason::QueueFull);
         }
         line.held.push_back(HeldOrder {
             due,
-            seq,
-            unit,
-            order,
+            key,
+            cmd,
             seen,
         });
-        assert!(line.held.len() <= MAX_ORDER_DELAY_TICKS as usize + 1);
+        assert!(line.held.len() <= (MAX_ORDER_DELAY_TICKS as usize + 1) * MAX_ORDERS_PER_TICK);
         Ok(())
     }
 
     /// The orders that take effect on the tick after the one `world` stands
-    /// on, at most one per seat in slot order, validated again. Those no
-    /// longer valid are appended to `refused`.
+    /// on, seat by seat in slot order and each seat's in the order given,
+    /// validated again. Those no longer valid are appended to `refused`.
     pub fn release(&mut self, world: &World, refused: &mut Vec<RefusedOrder>) -> Vec<Command> {
         let next = world.tick + 1;
         let mut commands = Vec::with_capacity(self.seats.len());
         for line in &mut self.seats {
-            let Some(front) = line.held.front() else {
-                continue;
-            };
-            assert!(front.due >= next, "an order outlived its tick");
-            if front.due != next {
-                continue;
-            }
-            let held = line.held.pop_front().expect("the front was just seen");
-            match world.validate_order(line.slot, held.unit, &held.order) {
-                Ok(()) => {
-                    commands.push(Command {
-                        slot: line.slot,
-                        unit: held.unit,
-                        order: held.order,
-                    });
-                    if let Some(seen) = held.seen.filter(|&seen| seen < next) {
-                        line.measured = Some(next - 1 - seen);
-                    }
+            while let Some(front) = line.held.front() {
+                assert!(front.due >= next, "an order outlived its tick");
+                if front.due != next {
+                    break;
                 }
-                Err(reason) => refused.push(RefusedOrder {
-                    slot: line.slot,
-                    seq: held.seq,
-                    reason,
-                }),
+                let held = line.held.pop_front().expect("the front was just seen");
+                let cmd = held.cmd;
+                match world.check_order(cmd.slot, cmd.unit, &cmd.order, cmd.queue) {
+                    Ok(()) => {
+                        commands.push(cmd);
+                        if let Some(seen) = held.seen.filter(|&seen| seen < next) {
+                            line.measured = Some(next - 1 - seen);
+                        }
+                    }
+                    Err(reason) => refused.push(RefusedOrder {
+                        slot: line.slot,
+                        seq: cmd.seq,
+                        reason,
+                    }),
+                }
             }
         }
         commands
@@ -230,5 +226,26 @@ impl DelayLine {
                 })
             })
             .collect()
+    }
+}
+
+impl SeatLine {
+    /// The tick an order given while the world stands on `tick` is due: the
+    /// one of the burst it belongs to, or the earliest the seat's delay and a
+    /// fresh jitter allow, never before the orders given earlier.
+    fn due_of(&mut self, tick: u32) -> u32 {
+        if let Some((given, due)) = self.burst
+            && given == tick
+        {
+            return due;
+        }
+        let jitter = match self.delay.jitter {
+            0 => 0,
+            jitter => self.stream.below(jitter + 1),
+        };
+        let earliest = tick + 1 + self.delay.base + jitter;
+        self.held
+            .back()
+            .map_or(earliest, |last| earliest.max(last.due))
     }
 }

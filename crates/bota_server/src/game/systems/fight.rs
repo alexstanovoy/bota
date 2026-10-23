@@ -59,10 +59,17 @@ impl World {
     /// Hands on the fights and follows aimed at a fallen entity.
     ///
     /// An attack order at it becomes an attack-move to the spot it was last
-    /// seen; a follow becomes a walk to that spot.
+    /// seen; a follow becomes a walk to that spot. A follower with orders
+    /// queued is done with it instead, and takes up the next.
     fn carry_fights_on(&mut self, fallen: Entity) {
         for follower in self.entities.iter().collect::<Vec<_>>() {
+            let queued = self.has_queued(follower);
             match self.orders.get(follower).map(|o| o.current) {
+                Some(UnitOrder::Follow { target, .. } | UnitOrder::Attack { target, .. })
+                    if target == fallen && queued =>
+                {
+                    self.set_order(follower, UnitOrder::Idle);
+                }
                 Some(UnitOrder::Follow { target, last_seen }) if target == fallen => {
                     self.set_order(follower, UnitOrder::Move { pos: last_seen });
                 }

@@ -342,7 +342,10 @@ impl ClientSession {
             .ok_or(SessionError::SequenceExhausted)?;
         let ends_body = crate::ends_body(self, order);
         self.ledger.record(seq, order, ends_body)?;
-        if let Some(body) = wait_started_by(self, order) {
+        // A queued use starts its wait only when its unit takes it up.
+        if !order.waits()
+            && let Some(body) = wait_started_by(self, order)
+        {
             self.waits.start(body, seq, seen);
         }
         self.waits
@@ -353,6 +356,7 @@ impl ClientSession {
             unit: order.unit,
             order: order.order,
             seen,
+            queue: order.queue,
         })
     }
 

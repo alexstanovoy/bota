@@ -113,6 +113,8 @@ fn an_order_goes_to_the_unit_it_names_and_only_to_ones_this_seat_drives() {
         slot: SlotId(0),
         unit: named,
         order: walk,
+        queue: false,
+        seq: 0,
     }]);
     assert!(
         matches!(
@@ -151,6 +153,8 @@ fn a_courier_told_to_go_at_a_unit_follows_it() {
         order: Order::Attack {
             target: Target::Unit(wire_id(mark)),
         },
+        queue: false,
+        seq: 0,
     }]);
     run(&mut world, 120);
     let near = |world: &World| {

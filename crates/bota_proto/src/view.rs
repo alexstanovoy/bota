@@ -2,7 +2,7 @@
 
 use crate::{
     AbilityId, Aim, Angle, Attribute, Attributes, EffectId, EntityId, EventKind, Fixed, HeroId,
-    ItemId, NeutralId, SlotId, TalentSlot, Team, UnitKind, Vec2,
+    ItemId, NeutralId, Order, SlotId, TalentSlot, Team, UnitKind, Vec2,
 };
 use serde::{Deserialize, Serialize};
 
@@ -204,9 +204,13 @@ pub struct UnitView {
     /// [`UnitKind::CreepNeutral`].
     pub neutral: Option<NeutralId>,
     /// The cast point it stands in, as Dota shows its caster's animation:
-    /// present exactly while [`StatusFlags::CASTING`] is set. Last on the
-    /// wire.
+    /// present exactly while [`StatusFlags::CASTING`] is set.
     pub cast: Option<CastView>,
+    /// The orders waiting in its queue, the next to be taken up first, as
+    /// they were given: told to its own side alone, empty for the other
+    /// side's units and for a unit with nothing queued. At most
+    /// `bota_core::rules::MAX_QUEUED_ORDERS`. Last on the wire.
+    pub queue: Vec<Order>,
 }
 
 /// A cast in its cast point.
@@ -309,7 +313,9 @@ pub struct PlayerView {
     pub team: Team,
     /// Which hero was picked. Set even while the hero is dead.
     pub hero: HeroId,
-    /// The hero's unit. Absent while dead.
+    /// The hero's unit. Absent while dead, and for the other side while
+    /// illusions of the hero stand, so that it cannot tell the hero from
+    /// them (see the [`contract`](crate::contract)).
     pub unit: Option<EntityId>,
     /// Hero level.
     pub level: u8,
@@ -504,6 +510,9 @@ impl WorldView {
     pub fn visit_ids(&mut self, visit: &mut dyn FnMut(&mut EntityId)) {
         for unit in &mut self.units {
             visit(&mut unit.id);
+            for order in &mut unit.queue {
+                order.visit_ids(visit);
+            }
         }
         for shot in &mut self.projectiles {
             visit(&mut shot.id);

@@ -157,6 +157,8 @@ pub(crate) fn advance_validated(
         slot: SlotId(0),
         unit: unit.map(wire_id),
         order,
+        queue: false,
+        seq: 0,
     };
     assert_eq!(
         world.validate_order(command.slot, command.unit, &command.order),
@@ -410,6 +412,8 @@ pub(crate) fn seat_order(world: &mut World, order: Order) -> Vec<Event> {
         slot: SlotId(0),
         unit: None,
         order,
+        queue: false,
+        seq: 0,
     }])
 }
 

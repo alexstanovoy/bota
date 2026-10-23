@@ -64,8 +64,9 @@ impl World {
 
     /// One tick of the match: every command taken in the order given, then
     /// [`World::step`]. A completed Map2 ignores commands and advances no
-    /// further.
+    /// further. What it refused is left in [`World::refused`].
     pub fn advance(&mut self, cmds: &[Command]) -> Vec<Event> {
+        self.refused.clear();
         if self.map2_finished() {
             return Vec::new();
         }
@@ -77,7 +78,8 @@ impl World {
         events
     }
 
-    /// Hands one order to the body of the seat that gave it.
+    /// Hands one order to the unit it is for: into its queue when it is
+    /// queued behind something, else to be carried out now.
     fn take_order(&mut self, cmd: &Command, events: &mut Vec<Event>) {
         if cmd.order == Order::Glyph {
             self.use_glyph(cmd.slot);
@@ -86,12 +88,32 @@ impl World {
         let Some(unit) = self.driven_by(cmd.slot, cmd.unit) else {
             return;
         };
+        if cmd.queued() && !self.free_to_take_up(unit) {
+            self.enqueue(unit, cmd);
+            return;
+        }
+        // An order to the body given unqueued replaces the queue; what goes
+        // off beside the body, and what needs no body, leaves it be.
+        if cmd.order.queues() && self.immediate_cast(unit, cmd.order).is_none() {
+            self.queue.remove(unit);
+        }
+        self.carry_out(cmd.slot, unit, cmd.order, events);
+    }
+
+    /// Carries one order out on a unit of the seat that gave it.
+    pub(crate) fn carry_out(
+        &mut self,
+        seat: SlotId,
+        unit: Entity,
+        order: Order,
+        events: &mut Vec<Event>,
+    ) {
         // Learning, talents, the bag, the shop, cheats and immediate casts interrupt
         // nothing the body is doing.
-        if let Some(cast) = self.immediate_cast(unit, cmd.order) {
+        if let Some(cast) = self.immediate_cast(unit, order) {
             // It goes off beside a swing or a cast point, but a channel it
             // does not ignore it breaks, as Dota's immediate casts do.
-            if self.is_channelling(unit) && !self.ignores_channel(unit, &cmd.order) {
+            if self.is_channelling(unit) && !self.ignores_channel(unit, &order) {
                 self.cancel_action(unit);
             }
             if let Some(orders) = self.orders.get_mut(unit) {
@@ -99,7 +121,7 @@ impl World {
             }
             return;
         }
-        match cmd.order {
+        match order {
             Order::Learn { slot } => {
                 self.learn(unit, usize::from(slot.0));
             }
@@ -110,16 +132,16 @@ impl World {
                 self.learn_attribute_bonus(unit);
             }
             Order::Swap { from, to } => {
-                self.move_item(cmd.slot, unit, usize::from(from.0), usize::from(to.0));
+                self.move_item(seat, unit, usize::from(from.0), usize::from(to.0));
             }
             Order::Sell { slot: at } => {
-                self.sell_item(cmd.slot, unit, usize::from(at.0));
+                self.sell_item(seat, unit, usize::from(at.0));
             }
             Order::Buy { item } => {
-                self.buy(cmd.slot, item, events);
+                self.buy(seat, item, events);
             }
             Order::Cheat { cheat } => {
-                self.cheat(cmd.slot, unit, cheat, events);
+                self.cheat(seat, unit, cheat, events);
             }
             order if self.is_channelling(unit) && self.ignores_channel(unit, &order) => {
                 self.take_body_order(unit, order);
@@ -383,6 +405,44 @@ impl World {
                 .ok_or(RejectReason::CannotLearn),
             _ => Ok(()),
         }
+    }
+
+    /// Whether a seat may issue an order, queued or not: as
+    /// [`World::validate_order`], and a queued order needs room in its
+    /// unit's queue.
+    pub fn check_order(
+        &self,
+        slot: SlotId,
+        named: Option<bota_proto::EntityId>,
+        order: &Order,
+        queue: bool,
+    ) -> Result<(), RejectReason> {
+        self.validate_order(slot, named, order)?;
+        let full = queue
+            && order.queues()
+            && self
+                .driven_by(slot, named)
+                .and_then(|unit| self.queue.get(unit))
+                .is_some_and(crate::game::OrderQueue::is_full);
+        if full {
+            return Err(RejectReason::QueueFull);
+        }
+        Ok(())
+    }
+
+    /// The unit an order of a seat is for, in the simulation's handles, or
+    /// nothing for an order that needs no body: on one tick, a later
+    /// unqueued order replaces the earlier ones of the same key.
+    pub fn order_key(
+        &self,
+        slot: SlotId,
+        named: Option<bota_proto::EntityId>,
+        order: &Order,
+    ) -> Option<bota_proto::EntityId> {
+        if *order == Order::Glyph {
+            return None;
+        }
+        self.driven_by(slot, named).map(wire_id)
     }
 
     /// Whether a seat may buy an item: one that exists, with gold enough

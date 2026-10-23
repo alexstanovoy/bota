@@ -161,6 +161,7 @@ fn move_order(seq: u32, x: i32, y: i32) -> ClientMsg {
             target: Target::Pos(Vec2::from_ints(x, y)),
         },
         seen: None,
+        queue: false,
     }
 }
 
@@ -255,6 +256,7 @@ fn a_realtime_match_reaches_two_clients() {
             item: bota_proto::ItemId(999),
         },
         seen: None,
+        queue: false,
     });
     let (seq, reason) = c1.recv_until(|msg| match msg {
         ServerMsg::OrderRejected { seq, reason } => Some((seq, reason)),
@@ -409,6 +411,7 @@ fn a_delayed_order_takes_effect_late_and_its_delay_is_told() {
             target: Target::Pos(Vec2::from_ints(-2000, 3000)),
         },
         seen: Some(first.tick),
+        queue: false,
     });
     client.send(&ClientMsg::Ack { tick: first.tick });
     let due = first.tick + 1 + DELAY;

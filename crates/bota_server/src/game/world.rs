@@ -74,6 +74,10 @@ pub struct World {
     pub missed: VecDeque<Missed>,
     /// What abilities and items told of this tick. Drained by the tick.
     pub events: Vec<crate::game::Event>,
+    /// The orders refused in the last [`World::advance`]: a queued order
+    /// with no room left in its unit's queue, or one that no longer held
+    /// when its unit took it up. Emptied as the next one begins.
+    pub refused: Vec<crate::game::RefusedOrder>,
     /// The walked route of every lane, by team then lane, on the ground as
     /// it stood when laid. None since the ground last changed.
     pub lane_routes: Option<[[Vec<bota_proto::Vec2>; 3]; 2]>,
@@ -170,6 +174,8 @@ pub struct World {
 
     /// The order each entity is following.
     pub orders: Table<Orders>,
+    /// The orders each entity has queued behind the one it follows.
+    pub queue: Table<crate::game::OrderQueue>,
     /// Who each entity is set on. Absent when it is set on nobody.
     pub target: Table<Target>,
     /// What each entity is doing.
@@ -198,6 +204,8 @@ pub struct World {
     pub owner: Table<SlotId>,
     /// Which hero a hero entity is.
     pub hero: Table<HeroId>,
+    /// Which hero each entity that is an illusion shows as.
+    pub illusion: Table<crate::game::Illusion>,
     /// What each entity carries.
     pub inventory: Table<Inventory>,
     /// What each entity can cast.
@@ -254,6 +262,7 @@ impl World {
             landed: VecDeque::new(),
             missed: VecDeque::new(),
             events: Vec::new(),
+            refused: Vec::new(),
             lane_routes: None,
             entities: EntityAllocator::new(),
             entity_scratch: Vec::new(),
@@ -298,6 +307,7 @@ impl World {
             extra_scratch: Vec::new(),
             march: Table::new(),
             orders: Table::new(),
+            queue: Table::new(),
             target: Table::new(),
             action: Table::new(),
             lane_ai: Table::new(),
@@ -311,6 +321,7 @@ impl World {
             bounty: Table::new(),
             owner: Table::new(),
             hero: Table::new(),
+            illusion: Table::new(),
             inventory: Table::new(),
             abilities: Table::new(),
             loot: Table::new(),
@@ -658,6 +669,7 @@ impl World {
         }
         let mut events = Vec::new();
         self.tick += 1;
+        self.take_up_queues(&mut events);
         // Who acts first within a tick wins every race decided in it: a
         // blow, a step into a gap, a target taken. Slots go to the side
         // spawned first, and in Dota neither side wins by standing, so each

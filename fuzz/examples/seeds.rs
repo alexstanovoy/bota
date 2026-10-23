@@ -26,6 +26,8 @@ fn order(seq: u32, order: Order) -> ClientMsg {
         unit: None,
         order,
         seen: Some(seq),
+        // Every other order queued, so the corpus reaches the queues.
+        queue: seq % 2 == 0,
     }
 }
 

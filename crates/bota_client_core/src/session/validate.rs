@@ -186,6 +186,7 @@ fn units(roster: &[Pick], view: &WorldView) -> Result<(), SessionError> {
         )?;
         check_limit("UnitView.items", unit.items.len(), HERO_ITEM_SLOTS)?;
         check_limit("UnitView.effects", unit.effects.len(), MAX_EFFECTS_PER_UNIT)?;
+        check_limit("UnitView.queue", unit.queue.len(), rules::MAX_QUEUED_ORDERS)?;
         if let Some(slot) = unit.owner
             && roster
                 .binary_search_by_key(&slot, |pick| pick.slot)

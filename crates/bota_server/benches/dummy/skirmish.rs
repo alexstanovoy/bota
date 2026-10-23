@@ -70,6 +70,8 @@ impl Skirmish {
                         slot,
                         unit: None,
                         order,
+                        queue: false,
+                        seq: 0,
                     });
                 }
             }

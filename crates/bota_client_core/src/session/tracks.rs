@@ -510,13 +510,16 @@ pub(crate) fn copy_unit_view(target: &mut UnitView, source: &UnitView) {
     let mut abilities = std::mem::take(&mut target.abilities);
     let mut items = std::mem::take(&mut target.items);
     let mut effects = std::mem::take(&mut target.effects);
+    let mut queue = std::mem::take(&mut target.queue);
     abilities.clone_from(&source.abilities);
     items.clone_from(&source.items);
     effects.clone_from(&source.effects);
+    queue.clone_from(&source.queue);
     *target = UnitView {
         abilities,
         items,
         effects,
+        queue,
         ..*source
     };
 }

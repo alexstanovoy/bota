@@ -43,7 +43,7 @@ impl World {
             if !(seen || self.own_to(viewer, entity)) {
                 continue;
             }
-            if let Some(unit) = self.project_unit(entity) {
+            if let Some(unit) = self.told_unit(viewer, entity) {
                 aggro.extend(self.project_aggro(viewer, entity, unit.kind));
                 units.push(unit);
             }
@@ -63,6 +63,7 @@ impl World {
             shot.source.is_none_or(carried) && shot.target.is_none_or(carried)
         }));
         let talents = self.project_talents(viewer, &units);
+        let disguised = self.disguised();
         WorldView {
             tick: self.tick,
             viewer,
@@ -71,7 +72,7 @@ impl World {
             players: self
                 .seats
                 .iter()
-                .map(|seat| self.project_player(viewer, seat))
+                .map(|seat| self.project_player(viewer, seat, &disguised))
                 .collect(),
             felled_trees: self.trees.felled().collect(),
             planted_trees: self.trees.planted().iter().map(|tree| tree.at).collect(),
@@ -86,15 +87,36 @@ impl World {
         }
     }
 
-    /// One seat as a viewer is told of it.
-    fn project_player(&self, viewer: Option<Team>, seat: &Seat) -> PlayerView {
+    /// Every hero with illusions of it standing.
+    fn disguised(&self) -> Vec<Entity> {
+        let mut heroes: Vec<Entity> = self
+            .entities
+            .iter()
+            .filter_map(|entity| self.illusion.get(entity).map(|illusion| illusion.of))
+            .collect();
+        heroes.sort_unstable();
+        heroes.dedup();
+        heroes
+    }
+
+    /// One seat as a viewer is told of it. Which unit is the hero is kept
+    /// from the other side while illusions of it stand.
+    fn project_player(
+        &self,
+        viewer: Option<Team>,
+        seat: &Seat,
+        disguised: &[Entity],
+    ) -> PlayerView {
         let mana_rate = self.mana_cost_rate_of(seat.unit);
         let own = viewer.is_none_or(|team| team == seat.team);
         PlayerView {
             slot: seat.slot,
             team: seat.team,
             hero: seat.hero,
-            unit: seat.unit.map(wire_id),
+            unit: seat
+                .unit
+                .filter(|unit| own || !disguised.contains(unit))
+                .map(wire_id),
             level: seat.level,
             xp: seat.xp,
             // A side is told its own gold, stash and what a fallen body
@@ -155,9 +177,10 @@ impl World {
                 book.tree?;
                 let own = viewer.is_none_or(|team| team == seat.team);
                 let carried = seat.unit.is_some_and(|unit| {
-                    units
-                        .binary_search_by_key(&wire_id(unit), |shown| shown.id)
-                        .is_ok()
+                    units.iter().any(|shown| {
+                        self.of_wire(shown.id)
+                            .is_some_and(|entity| self.shows_as(entity) == unit)
+                    })
                 });
                 if !own && !carried {
                     return None;
@@ -320,6 +343,31 @@ impl World {
         })
     }
 
+    /// The hero an entity shows as: the one it is an illusion of, or
+    /// itself.
+    fn shows_as(&self, entity: Entity) -> Entity {
+        self.illusion
+            .get(entity)
+            .map_or(entity, |illusion| illusion.of)
+    }
+
+    /// One unit as a viewer is told of it: its queue to its own side alone,
+    /// and an illusion to the other side as its hero (see the contract).
+    fn told_unit(&self, viewer: Option<Team>, entity: Entity) -> Option<UnitView> {
+        let mut unit = self.project_unit(entity)?;
+        if viewer.is_none_or(|team| team == unit.team) {
+            return Some(unit);
+        }
+        unit.queue.clear();
+        unit.effects.retain(|effect| !own_side_only(effect.id));
+        if let Some(illusion) = self.illusion.get(entity)
+            && let Some(hero) = self.project_unit(illusion.of)
+        {
+            wear_sheet(&mut unit, hero);
+        }
+        Some(unit)
+    }
+
     /// One unit, or nothing when the entity is not one.
     fn project_unit(&self, entity: Entity) -> Option<UnitView> {
         let kind = *self.kind.get(entity)?;
@@ -390,8 +438,36 @@ impl World {
                 .map(|stack| item_view(&stack, mana_rate, clocks)),
             neutral: self.neutral.get(entity).map(|kind| kind.id()),
             cast: self.cast_of(entity),
+            queue: self.queue.get(entity).map_or_else(Vec::new, |queue| {
+                queue.iter().map(|queued| queued.order).collect()
+            }),
         })
     }
+}
+
+/// Whether an effect is told to the side of the unit wearing it alone.
+const fn own_side_only(id: EffectId) -> bool {
+    matches!(id, EffectId::ILLUSION)
+}
+
+/// Puts a hero's sheet on the view of an illusion of it: everything that
+/// says what the hero is and holds, leaving the illusion's own body (where
+/// it stands and faces, its health, statuses, effects, cast and queue).
+fn wear_sheet(illusion: &mut UnitView, hero: UnitView) {
+    let body = UnitView {
+        id: illusion.id,
+        team: illusion.team,
+        pos: illusion.pos,
+        facing: illusion.facing,
+        hp: illusion.hp,
+        max_hp: illusion.max_hp,
+        statuses: illusion.statuses,
+        effects: core::mem::take(&mut illusion.effects),
+        cast: illusion.cast,
+        queue: core::mem::take(&mut illusion.queue),
+        ..hero
+    };
+    *illusion = body;
 }
 
 /// Milliseconds of animation at an attack speed, clamped as the cycle
@@ -480,6 +556,13 @@ impl World {
                 ticks_left: None,
                 stacks: Some(many),
             }));
+        }
+        if self.illusion.contains(entity) {
+            on_it.push(EffectView {
+                id: EffectId::ILLUSION,
+                ticks_left: None,
+                stacks: None,
+            });
         }
         if let Some(feast) = self.feast.get(entity) {
             on_it.push(EffectView {

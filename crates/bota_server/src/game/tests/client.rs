@@ -30,10 +30,9 @@ fn play() -> Vec<Vec<ServerMsg>> {
                 target: Target::Pos(map.fountains[1 - slot]),
             },
             seen: tick,
+            queue: false,
         };
-        let step = local
-            .step(&[Some(order(0)), Some(order(1))])
-            .expect("a step");
+        let step = local.step(&[&[order(0)], &[order(1)]]).expect("a step");
         let over = step[0]
             .iter()
             .any(|message| matches!(message, ServerMsg::MatchOver { .. }));
@@ -127,16 +126,13 @@ fn a_refused_order_is_rolled_back_in_the_ledger() {
         idx: 9_000,
         generation: 1,
     };
-    let issued = IssuedOrder {
-        unit: None,
-        order: Order::Attack {
-            target: Target::Unit(nowhere),
-        },
-    };
+    let issued = IssuedOrder::hero(Order::Attack {
+        target: Target::Unit(nowhere),
+    });
     let sent = session.issue(issued).expect("a snapshot is held");
     assert_eq!((sent.seq, sent.seen), (1, local.tick()));
     assert!(session.ledger().repeats(issued));
-    let step = local.step(&[Some(sent), None]).expect("a step");
+    let step = local.step(&[&[sent], &[]]).expect("a step");
     let mut refused = false;
     for message in step[0].clone() {
         refused |= matches!(
@@ -156,7 +152,7 @@ fn give(local: &mut LocalMatch, session: &mut ClientSession, order: Order, ticks
         .expect("a snapshot is held");
     let mut first = Some(sent);
     for _ in 0..ticks {
-        let step = local.step(&[first.take(), None]).expect("a step");
+        let step = local.step(&[first.take().as_slice(), &[]]).expect("a step");
         for message in step.into_iter().next().expect("seat 0") {
             let folded = session.ingest(message, &mut ()).expect("folds");
             assert!(

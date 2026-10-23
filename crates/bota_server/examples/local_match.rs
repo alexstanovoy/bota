@@ -10,7 +10,7 @@ use bota_client_core::{
     AckPolicy, ClientSession, Ingested, IssuedOrder, MatchStatic, SessionOptions,
 };
 use bota_core::{MAP2_ID, map_of};
-use bota_proto::{HeroId, Order, Pick, ServerMsg, SlotId, Target, Team, TickMode};
+use bota_proto::{HeroId, Order, OutgoingOrder, Pick, ServerMsg, SlotId, Target, Team, TickMode};
 use bota_server::game::{MatchConfig, OrderDelay};
 use bota_server::local::LocalMatch;
 
@@ -40,7 +40,8 @@ fn main() {
     let mut sessions = sessions(&opening);
     let mut pending = opening;
     loop {
-        // Fold what each seat was sent, then decide at most one order per seat.
+        // Fold what each seat was sent, then decide at most one order per seat:
+        // the example's heroes need no more.
         let mut winner = None;
         let mut orders = Vec::new();
         for (slot, (session, stream)) in sessions.iter_mut().zip(pending).enumerate() {
@@ -71,7 +72,8 @@ fn main() {
             println!("tick {}: match over, winner {winner:?}", local.tick());
             return;
         }
-        pending = local.step(&orders).expect("a step");
+        let given: Vec<&[OutgoingOrder]> = orders.iter().map(Option::as_slice).collect();
+        pending = local.step(&given).expect("a step");
     }
 }
 

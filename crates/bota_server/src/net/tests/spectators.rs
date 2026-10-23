@@ -121,6 +121,7 @@ fn the_key_that_claimed_a_seat_watches_it_live_with_its_orders() {
         unit: None,
         order: Order::Move { target },
         seen: None,
+        queue: false,
     });
     let told = watcher.recv_until(|msg| match msg {
         ServerMsg::Orders { orders, .. } => Some(orders),

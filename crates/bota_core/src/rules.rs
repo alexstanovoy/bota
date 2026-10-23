@@ -1050,6 +1050,12 @@ const _: () = {
 /// Most ticks an order may wait past the earliest tick it could take effect
 /// on, base and jitter together.
 pub const MAX_ORDER_DELAY_TICKS: u32 = 30;
+/// Most orders one unit holds queued (Dota's Shift-queue) behind the one it
+/// carries out.
+pub const MAX_QUEUED_ORDERS: usize = 32;
+/// Most orders of one seat that may take effect on one tick, its units and
+/// queued orders together.
+pub const MAX_ORDERS_PER_TICK: usize = 64;
 /// Longest name a seat holder is shown under, in UTF-8 bytes; a longer one is
 /// cut at the last whole character within it.
 pub const MAX_SHOWN_NAME_BYTES: usize = 32;

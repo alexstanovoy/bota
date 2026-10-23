@@ -529,6 +529,11 @@ const SPELL_EFFECT_FACES: [EffectFace; EFFECT_COUNT - FIRST_SPELL_EFFECT] = {
         Some("Held"),
         "Held stunned and bitten by a dismember, pulled towards whoever holds it.",
     );
+    faces[EffectId::ILLUSION.0 as usize - FIRST_SPELL_EFFECT] = EffectFace::of(
+        EffectId::ILLUSION.0,
+        None,
+        "An illusion of the hero. Only its own side can tell it from the hero.",
+    );
     faces
 };
 

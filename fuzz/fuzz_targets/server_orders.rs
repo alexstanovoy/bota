@@ -9,7 +9,7 @@ use bota_proto::{
     HeroId, MapId, Pick, ReplayRecord, ServerMsg, SlotId, Team, TickMode, decode_payload,
     encode_frame_to_vec,
 };
-use bota_server::game::{DelayLine, MatchConfig, OrderDelay, World};
+use bota_server::game::{Command, DelayLine, MatchConfig, OrderDelay, World};
 use std::sync::{Mutex, OnceLock};
 
 use libfuzzer_sys::fuzz_target;
@@ -92,7 +92,14 @@ fuzz_target!(|data: &[u8]| {
         for given in orders {
             seq = seq.wrapping_add(1);
             let seen = Some(tick.min(world.tick));
-            let _ = line.give(&world, given.slot, seq, given.unit, given.order, seen);
+            let cmd = Command {
+                slot: given.slot,
+                unit: given.unit,
+                order: given.order,
+                queue: given.queue,
+                seq,
+            };
+            let _ = line.give(&world, cmd, seen);
         }
         let ticks = tick
             .saturating_sub(world.tick)

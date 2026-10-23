@@ -81,6 +81,8 @@ fn late_buy() -> Command {
         order: Order::Buy {
             item: ItemId::BOOTS,
         },
+        queue: false,
+        seq: 0,
     }
 }
 

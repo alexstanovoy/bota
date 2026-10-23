@@ -125,8 +125,39 @@ impl MatchConfig {
     }
 }
 
-/// One accepted order of a seat, as the world takes it and the wire tells it.
-pub type Command = bota_proto::SlotOrder;
+/// One accepted order of a seat, as the world takes it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Command {
+    /// Which seat gave it.
+    pub slot: bota_proto::SlotId,
+    /// Which unit it is for, in the simulation's handles. Absent means the
+    /// seat's own hero.
+    pub unit: Option<bota_proto::EntityId>,
+    /// The order itself, in the simulation's handles.
+    pub order: bota_proto::Order,
+    /// Whether it waits its turn in the unit's queue.
+    pub queue: bool,
+    /// The number its seat gave it, to answer a refusal with.
+    pub seq: u32,
+}
+
+impl Command {
+    /// The order as the wire tells it.
+    pub const fn told(&self) -> bota_proto::SlotOrder {
+        bota_proto::SlotOrder {
+            slot: self.slot,
+            unit: self.unit,
+            order: self.order,
+            queue: self.queue,
+        }
+    }
+
+    /// Whether it goes into its unit's queue rather than replace it: given
+    /// queued, and of the orders that queue.
+    pub const fn queued(&self) -> bool {
+        self.queue && self.order.queues()
+    }
+}
 
 /// Who may learn that an event happened. Limits the player streams;
 /// spectators see every event.

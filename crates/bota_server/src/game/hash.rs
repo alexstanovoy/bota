@@ -137,6 +137,19 @@ impl World {
             fnv.u32(plan.from);
             fnv.u32(plan.laid);
         }
+        if let Some(queue) = self.queue.get(entity).filter(|queue| !queue.is_empty()) {
+            let mut bytes = Vec::new();
+            for queued in queue.iter() {
+                bytes.clear();
+                bota_proto::encode_frame(&queued.order, &mut bytes)
+                    .expect("an order always encodes");
+                bytes.iter().for_each(|byte| fnv.u8(*byte));
+            }
+        }
+        if let Some(illusion) = self.illusion.get(entity) {
+            fnv.entity(illusion.of);
+            fnv.u32(illusion.made);
+        }
         if let Some(Exposure(cells)) = self.exposure.get(entity) {
             for cell in cells {
                 fnv.some(cell.is_some());

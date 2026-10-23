@@ -25,8 +25,9 @@
 //!   a handle is never given twice. Of the handles first given on one tick,
 //!   those of what the match was set up with (the map's buildings, the picks'
 //!   heroes and couriers) come first in the setup's own order, the rest in an
-//!   order drawn from a hidden stream. The side's orders name units
-//!   the same way. The other side knows the same unit by another handle; a
+//!   order drawn from a hidden stream; a hero with illusions of it standing
+//!   counts among the rest (see [Illusions](#illusions)). The side's orders
+//!   name units the same way. The other side knows the same unit by another handle; a
 //!   view of everything, and the replay, carry the simulation's own handles,
 //!   whose generation is never zero.
 //! - **A reject reason does not depend on hidden state.** An order aimed at a
@@ -56,23 +57,66 @@
 //!
 //! # Orders
 //!
-//! At most one order per seat takes effect on a tick, the last one accepted
-//! for that tick, whichever unit it names: a later one replaces an earlier one
-//! without an answer. An order is checked when it arrives and again on the
-//! tick it takes effect; failing either is answered with
-//! [`ServerMsg::OrderRejected`](crate::ServerMsg::OrderRejected) carrying its
-//! `seq`. A seat whose hero is dead is refused every order for the hero with
-//! [`HeroDead`](crate::RejectReason::HeroDead); its courier still takes
-//! orders.
+//! A seat orders any unit it drives ([`UnitView::owner`](crate::UnitView)):
+//! its hero, its courier, and later its summons and illusions, each by its
+//! handle, or the hero by naming none. Every unit takes orders of its own:
+//! an order to the courier and one to the hero on one tick both take effect.
+//!
+//! Each unit keeps a queue, as Dota's Shift-queue. An order given queued
+//! ([`ClientMsg::Order::queue`](crate::ClientMsg::Order)) waits its turn:
+//! the unit takes it up once it is done with the order in hand and with
+//! every order queued before it, and a unit with nothing in hand and nothing
+//! queued takes it up at once. An order given unqueued replaces the order in
+//! hand and empties the queue. What [`Order::queues`](crate::Order::queues)
+//! says is carried out at once (learning, talents, the shop, the bag,
+//! cheats, the Glyph) is never queued and leaves the queue be, and so does an
+//! unqueued cast or use of what goes off beside whatever the body does
+//! (Dota's immediate abilities and items); queued, such a cast or use waits
+//! its turn like any other. A unit is done with
+//!
+//! - a move once it stands at the end of its walk, an attack-move once it
+//!   does with nobody left to fight, a stop at once;
+//! - an attack or a follow when its target falls, and then takes up what it
+//!   has queued; with nothing queued it carries on to where the target fell;
+//! - a cast or a use once it went off and its channel and backswing are
+//!   over, or it was dropped; laying an item down or taking one up once that
+//!   is done; a courier's errand once it is over.
+//!
+//! A hold, and an attack or a follow whose target stands, are never done:
+//! what is queued behind them waits for an unqueued order. A stun or a fear
+//! keeps the queue; death empties it. A queue holds at most
+//! `bota_core::rules::MAX_QUEUED_ORDERS`; one more is refused as
+//! [`QueueFull`](crate::RejectReason::QueueFull). Each unit's queue is told to
+//! its own side in [`UnitView::queue`](crate::UnitView), never to the other.
+//!
+//! On one tick a unit takes at most one unqueued order, the last one accepted
+//! for that tick: it replaces, without an answer, the orders for that unit
+//! given before it for the same tick, queued or not. The queued orders given
+//! after it follow it in the order given. A seat's orders that take effect on
+//! one tick, at most `bota_core::rules::MAX_ORDERS_PER_TICK`, are applied
+//! seat by seat in slot order, and each seat's in the order it gave them; the
+//! Glyph, which needs no body, is one more order of the seat, a later Glyph
+//! replacing an earlier one.
+//!
+//! An order is checked when it arrives and again on the tick it takes
+//! effect, and a queued one again when its unit takes it up. Failing any is
+//! answered with [`ServerMsg::OrderRejected`](crate::ServerMsg::OrderRejected)
+//! carrying its `seq`; a queued order refused when it comes up is dropped and
+//! the next one taken up. A seat whose hero is dead is refused every order for
+//! the hero with [`HeroDead`](crate::RejectReason::HeroDead); its courier
+//! still takes orders.
 //!
 //! # Order delay and the `seen` tick
 //!
 //! An order given on the view of tick `T` takes effect on tick `T + 1` at the
 //! earliest. A server may hold every order of a seat back a fixed number of
-//! ticks and add a jitter drawn per order from a hidden stream, together at
-//! most `bota_core::rules::MAX_ORDER_DELAY_TICKS` (thirty, a second), in
-//! either tick mode. Orders never overtake one another: one drawn earlier
-//! than the order before it waits for it, as on one TCP stream.
+//! ticks and add a jitter drawn from a hidden stream, together at most
+//! `bota_core::rules::MAX_ORDER_DELAY_TICKS` (thirty, a second), in either
+//! tick mode. The jitter is drawn once for all the orders a seat gives while
+//! the world stands on one tick, so a burst of them (a hero's and a
+//! courier's, a queue given at once) takes effect together. Orders never
+//! overtake one another: one drawn earlier than the order before it waits
+//! for it, as on one TCP stream.
 //!
 //! A client says which view an order was given on in
 //! [`ClientMsg::Order::seen`](crate::ClientMsg::Order). Each side is told, in
@@ -93,6 +137,43 @@
 //! when the Glyph is used, each with its own time; a creep that spawns later
 //! never wears it, as in Dota. The other side's entry has `ready_in` zero always: that its Glyph
 //! is active is public, when it may be used again is not.
+//!
+//! # Illusions
+//!
+//! A side is told which of its own units are illusions: an illusion wears
+//! [`EffectId::ILLUSION`](crate::EffectId::ILLUSION). The other side cannot
+//! tell a hero from its illusions by anything the protocol says:
+//!
+//! - [`PlayerView::unit`](crate::PlayerView::unit) of the other side's seat
+//!   is absent while illusions of its hero stand. Each of them is a unit of
+//!   kind [`Hero`](crate::UnitKind::Hero) whose `owner` is the seat, as the
+//!   hero is.
+//! - An illusion shows the other side its hero's sheet: kind, hero, owner,
+//!   level, attributes, every stat, abilities, items, mana and regeneration
+//!   are the hero's on that tick. Its body is its own: where it stands and
+//!   faces, its health and maximum health, statuses, effects (less the
+//!   marker, which is told to its own side alone), cast and aggro. What the
+//!   bodies do (the damage an illusion takes and deals, the buffs on it) may
+//!   give it away, as in Dota.
+//! - Handles: once an illusion of a hero is made, the other side's names for
+//!   the hero and for its illusions made before name nothing any more, and
+//!   they are all named afresh in one batch, so no name the hero was known
+//!   by follows it. While illusions of it stand, names given on one tick to
+//!   the hero and to them are ordered by the hidden stream, never by the
+//!   setup. Once the last of them is gone, the hero is named afresh again
+//!   before `PlayerView::unit` names it, so that name says nothing of which
+//!   body it was.
+//! - The other side's seat's [`TalentView`](crate::TalentView) is told while
+//!   the hero or any illusion of it is in the view, and a
+//!   [`LevelUp`](crate::EventKind::LevelUp) of a hero with illusions is told
+//!   to the other side once for the hero and once for every illusion of it,
+//!   in the order of their names.
+//! - An illusion's death is told to everyone, as Dota shows it.
+//!
+//! A view of everything, and the replay, tell all of it as it is. Whatever
+//! makes an illusion also calls off the other side's orders, queued ones
+//! and attacks aimed at the hero, as Dota's illusion makers do, so none of
+//! them follows the hero under its new name.
 //!
 //! # Tick modes and slow receivers
 //!

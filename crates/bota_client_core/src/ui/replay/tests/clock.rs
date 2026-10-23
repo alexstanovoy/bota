@@ -127,6 +127,7 @@ fn tick_records(tick: u32) -> Vec<ReplayRecord> {
                 order: Order::Move {
                     target: Target::None,
                 },
+                queue: false,
             }],
         },
     ]

@@ -83,11 +83,15 @@ fn a_non_hero_kills_gold_is_hidden_from_the_other_side() {
                 target: Target::Pos(map.fountains[1 - slot]),
             },
             seen: tick,
+            queue: false,
         };
         // Told once: the attack-move runs on, and a fresh order would break each swing off.
         let first = !std::mem::replace(&mut ordered, true);
         streams = local
-            .step(&[first.then(|| order(0)), first.then(|| order(1))])
+            .step(&[
+                first.then(|| order(0)).as_slice(),
+                first.then(|| order(1)).as_slice(),
+            ])
             .expect("a step");
         if streams[0]
             .iter()

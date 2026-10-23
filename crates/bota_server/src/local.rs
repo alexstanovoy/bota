@@ -1,7 +1,7 @@
 //! A lockstep match inside the caller's process.
 //!
-//! Every [`LocalMatch::step`] takes at most one order per seat, advances the
-//! world one tick and returns what each seat's connection would have been
+//! Every [`LocalMatch::step`] takes each seat's orders, advances the world
+//! one tick and returns what each seat's connection would have been
 //! sent, through the same side view and event filter the network loop uses:
 //! a seat learns nothing here it would not learn from a server.
 
@@ -10,7 +10,7 @@ use core::fmt;
 use bota_proto::{OutgoingOrder, ServerMsg, SlotId, Team, WorldView};
 
 use crate::game::{
-    DelayLine, Entity, Event, Handles, MatchConfig, OrderDelay, RefusedOrder, World,
+    Command, DelayLine, Entity, Event, Handles, MatchConfig, OrderDelay, RefusedOrder, World,
 };
 use crate::game_loop::{side_events, side_view};
 
@@ -19,7 +19,7 @@ use crate::game_loop::{side_events, side_view};
 pub enum LocalError {
     /// The match description or its order delays were refused.
     Config { message: String },
-    /// The order slice does not hold one entry per seat.
+    /// The orders do not hold one slice per seat.
     OrderCount { expected: usize, got: usize },
     /// The match already sent `MatchOver`.
     MatchOver,
@@ -85,15 +85,12 @@ impl LocalMatch {
         Ok((local, streams))
     }
 
-    /// Gives one optional order per seat to the lines, advances one tick and
-    /// returns each seat's messages for it: rejections of orders given now,
-    /// then of orders that came due and no longer held, the snapshot, the
-    /// events, and `MatchOver` when the match ended (a neutral winner is a
-    /// draw).
-    pub fn step(
-        &mut self,
-        orders: &[Option<OutgoingOrder>],
-    ) -> Result<Vec<Vec<ServerMsg>>, LocalError> {
+    /// Gives each seat's orders, in the order given, to the lines, advances
+    /// one tick and returns each seat's messages for it: rejections of
+    /// orders given now, then of orders that came due or came up in a queue
+    /// and no longer held, the snapshot, the events, and `MatchOver` when the
+    /// match ended (a neutral winner is a draw).
+    pub fn step(&mut self, orders: &[&[OutgoingOrder]]) -> Result<Vec<Vec<ServerMsg>>, LocalError> {
         if self.world.victor().is_some() {
             return Err(LocalError::MatchOver);
         }
@@ -106,31 +103,31 @@ impl LocalMatch {
         let mut streams: Vec<Vec<ServerMsg>> =
             orders.iter().map(|_| Vec::with_capacity(4)).collect();
         let seats = streams.iter_mut().zip(self.seats.iter().zip(&self.teams));
-        for ((stream, (&slot, &team)), order) in seats.zip(orders) {
-            let Some(order) = order else {
-                continue;
-            };
-            let (unit, order_given) = self.handles.heard(team, order.unit, order.order);
-            debug_assert!(
-                order.seen <= self.world.tick,
-                "a seat cannot have seen the future"
-            );
-            let given = self.line.give(
-                &self.world,
-                slot,
-                order.seq,
-                unit,
-                order_given,
-                Some(order.seen),
-            );
-            if let Err(reason) = given {
-                stream.push(ServerMsg::OrderRejected {
+        for ((stream, (&slot, &team)), given) in seats.zip(orders) {
+            for order in given.iter() {
+                let (unit, order_given) = self.handles.heard(team, order.unit, order.order);
+                debug_assert!(
+                    order.seen <= self.world.tick,
+                    "a seat cannot have seen the future"
+                );
+                let cmd = Command {
+                    slot,
+                    unit,
+                    order: order_given,
+                    queue: order.queue,
                     seq: order.seq,
-                    reason,
-                });
+                };
+                if let Err(reason) = self.line.give(&self.world, cmd, Some(order.seen)) {
+                    stream.push(ServerMsg::OrderRejected {
+                        seq: order.seq,
+                        reason,
+                    });
+                }
             }
         }
         let commands = self.line.release(&self.world, &mut self.refused);
+        let events = self.world.advance(&commands);
+        self.refused.append(&mut self.world.refused);
         for refusal in self.refused.drain(..) {
             let seat = self
                 .seats
@@ -142,7 +139,6 @@ impl LocalMatch {
                 reason: refusal.reason,
             });
         }
-        let events = self.world.advance(&commands);
         self.publish(&mut streams, &events);
         Ok(streams)
     }

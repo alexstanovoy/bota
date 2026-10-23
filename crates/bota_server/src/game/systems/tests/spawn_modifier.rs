@@ -551,6 +551,8 @@ fn a_cheat_does_not_take_trusted_setup_off_a_unit() {
         slot: SlotId(0),
         unit: None,
         order: Order::Cheat { cheat },
+        queue: false,
+        seq: 0,
     };
     world.advance(&[cheat(Cheat::ApplyModifier {
         target: Target::None,

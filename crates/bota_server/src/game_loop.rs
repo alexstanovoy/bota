@@ -14,7 +14,7 @@ use bota_proto::{
 use rand_chacha::rand_core::Rng as _;
 
 use crate::game::{
-    DelayLine, Event, EventVisibility, Handles, MatchConfig, MatchSecrets, OrderDelay,
+    Command, DelayLine, Event, EventVisibility, Handles, MatchConfig, MatchSecrets, OrderDelay,
     RefusedOrder, World,
 };
 use crate::lobby::{ReservedSeat, Roster};
@@ -924,13 +924,16 @@ impl Server {
                 eprintln!("bota_server: every seat is empty; the match is abandoned");
                 break MatchEnd::Abandoned;
             }
-            let taken = inbox.line.release(&world, &mut refused);
+            let commands = inbox.line.release(&world, &mut refused);
             self.refuse(&mut refused);
+            let taken: Vec<SlotOrder> = commands.iter().map(Command::told).collect();
             replay.record(&ReplayRecord::Orders {
                 tick: world.tick + 1,
                 orders: taken.clone(),
             });
-            let events = world.advance(&taken);
+            let events = world.advance(&commands);
+            refused.append(&mut world.refused);
+            self.refuse(&mut refused);
             let told = Told {
                 line: &inbox.line,
                 handles: &mut inbox.handles,
@@ -1175,12 +1178,20 @@ impl Server {
                 unit,
                 order,
                 seen,
+                queue,
             } => {
                 let Some((slot, team)) = self.roster.seat_of(id).map(|s| (s.slot, s.team)) else {
                     return;
                 };
                 let (unit, order) = inbox.handles.heard(team, unit, order);
-                if let Err(reason) = inbox.line.give(world, slot, seq, unit, order, seen)
+                let cmd = Command {
+                    slot,
+                    unit,
+                    order,
+                    queue,
+                    seq,
+                };
+                if let Err(reason) = inbox.line.give(world, cmd, seen)
                     && let Some(conn) = self.conn(id)
                 {
                     conn.send(&ServerMsg::OrderRejected { seq, reason });
@@ -1267,9 +1278,48 @@ pub(crate) fn side_events(
     team: Team,
     tick: u32,
 ) -> Vec<EventKind> {
-    let mut told = visible_events(events, Some(team));
+    let told = visible_events(events, Some(team));
+    let (mut told, runs) = disguise_level_ups(told, handles, team);
     handles.tell_events(team, tick, &mut told);
+    // In the side's own names, a hero's level up cannot be told from its
+    // illusions' by where it stands among them.
+    for run in runs {
+        told[run].sort_unstable_by_key(|event| match event {
+            EventKind::LevelUp { unit, .. } => *unit,
+            _ => unreachable!("a run holds level ups alone"),
+        });
+    }
     told
+}
+
+/// The events a side is told with every level up of the other side's hero
+/// told once more for each illusion of it, and where each such run of level
+/// ups stands.
+fn disguise_level_ups(
+    events: Vec<EventKind>,
+    handles: &Handles,
+    team: Team,
+) -> (Vec<EventKind>, Vec<core::ops::Range<usize>>) {
+    let mut told = Vec::with_capacity(events.len());
+    let mut runs = Vec::new();
+    for event in events {
+        let EventKind::LevelUp { unit, level } = event else {
+            told.push(event);
+            continue;
+        };
+        let start = told.len();
+        told.push(event);
+        let illusions = handles.illusions_of(team, unit);
+        told.extend(
+            illusions
+                .iter()
+                .map(|&unit| EventKind::LevelUp { unit, level }),
+        );
+        if !illusions.is_empty() {
+            runs.push(start..told.len());
+        }
+    }
+    (told, runs)
 }
 
 /// A snapshot as a frame ready to queue.

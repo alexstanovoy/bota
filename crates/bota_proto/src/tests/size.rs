@@ -16,12 +16,13 @@ const UNITS_1V1: u32 = 25;
 const TICK_RATE: usize = 30;
 
 /// A hero with a scroll in its town portal slot, in the cast point of a
-/// raze. Before its last four bytes, the cast, is the neutral kind every unit
-/// carries, absent on a hero; a unit casting nothing takes one byte for it.
+/// raze, with a move and an attack queued. Before the cast is the neutral
+/// kind every unit carries, absent on a hero; a unit casting nothing takes one
+/// byte for it, and one with nothing queued one byte for its queue.
 #[test]
-fn a_hero_stays_under_202_bytes() {
+fn a_hero_stays_under_220_bytes() {
     let len = encoded_len(&hero_unit());
-    assert!(len <= 202, "hero unit grew to {len} bytes");
+    assert!(len <= 220, "hero unit grew to {len} bytes");
 }
 
 #[test]
@@ -61,6 +62,7 @@ fn an_order_stays_small() {
             unit: None,
             order,
             seen: Some(u32::MAX),
+            queue: true,
         };
         let len = encoded_len(&msg);
         assert!(len <= budget, "order encoded to {len} bytes: {msg:?}");
@@ -97,9 +99,10 @@ fn the_widest_cheat_order_fits_its_budget() {
             },
         },
         seen: Some(u32::MAX),
+        queue: true,
     };
     let len = encoded_len(&msg);
-    assert_eq!(len, 76, "the widest cheat order is pinned");
+    assert_eq!(len, 77, "the widest cheat order is pinned");
 }
 
 #[test]

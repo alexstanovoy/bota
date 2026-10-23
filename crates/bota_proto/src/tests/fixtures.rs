@@ -75,6 +75,14 @@ pub fn hero_unit() -> UnitView {
             ability: Some(AbilityId(9)),
             goes_off_in: 12,
         }),
+        queue: vec![
+            Order::Move {
+                target: Target::Pos(Vec2::from_ints(5000, 3300)),
+            },
+            Order::Attack {
+                target: Target::Unit(entity(12)),
+            },
+        ],
         attack_range: fixed(550),
         attack_time: 1700,
         attack_point: 500,
@@ -132,6 +140,7 @@ pub fn creep_unit(idx: u32) -> UnitView {
         town_portal: None,
         neutral: None,
         cast: None,
+        queue: Vec::new(),
         attack_range: fixed(100),
         attack_time: 1000,
         attack_point: 466,
@@ -543,6 +552,7 @@ pub fn all_client_msgs() -> Vec<ClientMsg> {
                 target: Target::Unit(entity(7)),
             },
             seen: Some(5399),
+            queue: true,
         },
         ClientMsg::Ack { tick: 5400 },
         ClientMsg::ViewAs {
@@ -560,6 +570,7 @@ pub fn slot_order(slot: u8) -> SlotOrder {
         order: Order::Attack {
             target: Target::Unit(entity(7)),
         },
+        queue: slot % 2 == 1,
     }
 }
 
@@ -627,6 +638,7 @@ pub fn all_replay_records() -> Vec<ReplayRecord> {
                     order: Order::Move {
                         target: Target::None,
                     },
+                    queue: false,
                 },
                 slot_order(1),
             ],

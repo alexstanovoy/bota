@@ -1,9 +1,20 @@
 //! Orders held back on their way to the simulation.
 
-use crate::game::{DelayLine, OrderDelay, RefusedOrder, World};
+use crate::game::{Command, DelayLine, OrderDelay, RefusedOrder, World};
 use bota_proto::{ItemId, Order, OrderDelayView, RejectReason, SlotId, Target, Team, Vec2};
 
 use super::support::*;
+
+/// An order of seat 0 to its hero, given unqueued.
+fn hero_order(seq: u32, order: Order) -> Command {
+    Command {
+        slot: SlotId(0),
+        unit: None,
+        order,
+        queue: false,
+        seq,
+    }
+}
 
 /// A walk whose goal names the order it came from.
 fn walk(seq: u32) -> Order {
@@ -22,10 +33,7 @@ fn play(delay: OrderDelay, ticks: u32) -> Vec<(Option<u32>, Vec<OrderDelayView>)
     let mut ticked = Vec::new();
     for seq in 0..ticks {
         let seen = Some(world.tick);
-        assert_eq!(
-            line.give(&world, SlotId(0), seq, None, walk(seq), seen),
-            Ok(())
-        );
+        assert_eq!(line.give(&world, hero_order(seq, walk(seq)), seen), Ok(()));
         let commands = line.release(&world, &mut refused);
         assert!(refused.is_empty());
         assert!(commands.len() <= 1);
@@ -99,7 +107,7 @@ fn an_order_that_no_longer_holds_on_its_tick_is_refused_then() {
     let mut refused = Vec::new();
     for seq in 0..3 {
         if seq < 2 {
-            let given = line.give(&world, SlotId(0), seq, None, boots, Some(world.tick));
+            let given = line.give(&world, hero_order(seq, boots), Some(world.tick));
             assert_eq!(given, Ok(()), "the gold for one pair is there when given");
         }
         let commands = line.release(&world, &mut refused);

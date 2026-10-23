@@ -207,6 +207,11 @@ pub enum RejectReason {
     /// A `Hello` with the right key for a seat a live connection holds. It
     /// may come back once that connection has ended or been found dead.
     SeatHeld,
+    /// The unit's queue holds `bota_core::rules::MAX_QUEUED_ORDERS` orders
+    /// already, or the seat gave more than
+    /// `bota_core::rules::MAX_ORDERS_PER_TICK` orders that would take effect
+    /// on one tick.
+    QueueFull,
 }
 
 /// Final numbers for one seat.
@@ -259,6 +264,18 @@ pub struct SlotOrder {
     pub unit: Option<EntityId>,
     /// The order itself.
     pub order: Order,
+    /// Whether it was given queued, to wait its turn behind what the unit
+    /// does and has queued. Last on the wire.
+    pub queue: bool,
+}
+
+impl SlotOrder {
+    /// Calls `visit` on every entity handle the order carries: the unit it
+    /// is for and the one it names.
+    pub fn visit_ids(&mut self, visit: &mut dyn FnMut(&mut EntityId)) {
+        self.unit.iter_mut().for_each(&mut *visit);
+        self.order.visit_ids(visit);
+    }
 }
 
 /// An order as a client sends it: the fields of [`ClientMsg::Order`], with the
@@ -274,6 +291,8 @@ pub struct OutgoingOrder {
     /// The tick of the snapshot it was decided on, from which the server
     /// measures the order delay.
     pub seen: u32,
+    /// Whether it waits its turn in the unit's queue (Dota's Shift).
+    pub queue: bool,
 }
 
 impl OutgoingOrder {
@@ -284,6 +303,7 @@ impl OutgoingOrder {
             unit: self.unit,
             order: self.order,
             seen: Some(self.seen),
+            queue: self.queue,
         }
     }
 }
@@ -334,7 +354,9 @@ pub enum ClientMsg {
     SetReady(bool),
     /// Tell one of the units this seat drives what to do.
     ///
-    /// At most one order per seat is applied per tick: the last one accepted.
+    /// Each unit takes at most one order given unqueued per tick, the last
+    /// one accepted, and every queued order given after it (see the
+    /// [`contract`](crate::contract)).
     Order {
         /// Chosen by the sender. A [`ServerMsg::OrderRejected`] names the
         /// order by this.
@@ -345,8 +367,12 @@ pub enum ClientMsg {
         order: Order,
         /// The tick of the view the order was given on. Absent when the
         /// sender does not say; the server measures no delay from it then.
-        /// Last on the wire.
         seen: Option<u32>,
+        /// Whether the order waits its turn behind what the unit does and has
+        /// queued, as Dota's Shift-queue; unqueued, an order that
+        /// [`queues`](Order::queues) replaces the unit's queue. Last on the
+        /// wire.
+        queue: bool,
     },
     /// Declare that this participant has finished thinking about a tick.
     ///
@@ -430,7 +456,8 @@ pub enum ServerMsg {
     Orders {
         /// Which tick they were applied on.
         tick: u32,
-        /// The orders, sorted by [`SlotId`].
+        /// The orders, in the order they were applied: by [`SlotId`], then
+        /// in the order each seat gave them.
         orders: Vec<SlotOrder>,
     },
     MatchOver {
@@ -515,7 +542,8 @@ pub enum ReplayRecord {
     Orders {
         /// Which tick they were applied on.
         tick: u32,
-        /// At most one order per seat, sorted by [`SlotId`].
+        /// The orders, in the order they were applied: by [`SlotId`], then
+        /// in the order each seat gave them.
         orders: Vec<SlotOrder>,
     },
     /// The first record of every replay, and of no other place in it.
