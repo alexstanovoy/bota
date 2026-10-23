@@ -95,6 +95,7 @@ fn every_modifier() -> Vec<ModifierKind> {
         ModifierKind::Dismembered { level: 0 },
         ModifierKind::MeatShield { amount: 8 },
         ModifierKind::BackdoorProtection,
+        ModifierKind::Fortified,
     ];
     for kind in &every {
         match kind {
@@ -119,6 +120,7 @@ fn every_modifier() -> Vec<ModifierKind> {
             | ModifierKind::Disarmed
             | ModifierKind::Broken
             | ModifierKind::BackdoorProtection
+            | ModifierKind::Fortified
             | ModifierKind::Spell { .. } => {}
             ModifierKind::Dismembered { .. } | ModifierKind::MeatShield { .. } => {}
         }

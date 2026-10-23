@@ -120,6 +120,10 @@ pub enum ModifierKind {
     /// [`rules::BACKDOOR_DAMAGE_PCT`] percent of the damage that reaches it
     /// and mends what enemy blows took.
     BackdoorProtection,
+    /// Under its side's Glyph of Fortification (`modifier_fountain_glyph`):
+    /// takes no damage. Put on the structures and lane creeps that stand
+    /// when the Glyph is used, each with its own time.
+    Fortified,
     /// What a neutral's spell left, at the level it was cast at. `amount`
     /// is the spell's own count: the blows a Steal Weapon has counted, the
     /// magical damage a bubble has left to soak.
@@ -155,6 +159,7 @@ impl ModifierKind {
             ModifierKind::Disarmed => EffectId::DISARMED,
             ModifierKind::Broken => EffectId::BROKEN,
             ModifierKind::BackdoorProtection => EffectId::BACKDOOR_PROTECTION,
+            ModifierKind::Fortified => EffectId::FORTIFIED,
             ModifierKind::Spell { ability, .. } => match spell_effect(ability) {
                 Some(effect) => effect,
                 None => panic!("a spell without a modifier left one"),

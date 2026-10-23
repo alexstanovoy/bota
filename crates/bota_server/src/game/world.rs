@@ -748,7 +748,6 @@ impl World {
         });
         self.guard_structures();
         self.wear_backdoor();
-        self.mark_glyph();
     }
 
     /// Who sees what, from where everything stands.

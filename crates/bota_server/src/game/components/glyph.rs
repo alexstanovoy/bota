@@ -15,8 +15,6 @@ pub struct Glyph {
     pub ready_at: u32,
     /// Until this tick its structures take no damage.
     pub structures_until: u32,
-    /// Until this tick its lane creeps take no damage.
-    pub creeps_until: u32,
     /// The refreshes it has had, as the `GLYPH_*` bits: each building falls
     /// to refresh it once.
     pub refreshed: u8,
@@ -28,7 +26,6 @@ impl Glyph {
         Glyph {
             ready_at: bota_core::rules::GLYPH_FIRST_USE_TICKS,
             structures_until: 0,
-            creeps_until: 0,
             refreshed: 0,
         }
     }

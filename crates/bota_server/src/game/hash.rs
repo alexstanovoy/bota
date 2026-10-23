@@ -37,7 +37,6 @@ impl World {
         for glyph in &self.glyphs {
             fnv.u32(glyph.ready_at);
             fnv.u32(glyph.structures_until);
-            fnv.u32(glyph.creeps_until);
             fnv.u8(glyph.refreshed);
         }
         for seat in self.seats.iter() {
@@ -530,6 +529,7 @@ fn hash_modifier_kind(fnv: &mut Fnv, kind: ModifierKind) {
         ModifierKind::Disarmed => fnv.u8(19),
         ModifierKind::Broken => fnv.u8(20),
         ModifierKind::BackdoorProtection => fnv.u8(24),
+        ModifierKind::Fortified => fnv.u8(25),
         ModifierKind::Spell {
             ability,
             level,

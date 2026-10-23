@@ -89,7 +89,9 @@
 //! the ticks its cover has left, whatever its side, only for units the view
 //! holds (what the fog hides is not told), and
 //! [`WorldView::glyphs`](crate::WorldView::glyphs) holds both sides'
-//! entries. The other side's entry has `ready_in` zero always: that its Glyph
+//! entries. The buff is put on the structures and lane creeps that stand
+//! when the Glyph is used, each with its own time; a creep that spawns later
+//! never wears it, as in Dota. The other side's entry has `ready_in` zero always: that its Glyph
 //! is active is public, when it may be used again is not.
 //!
 //! # Tick modes and slow receivers

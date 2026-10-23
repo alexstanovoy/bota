@@ -3,13 +3,13 @@
 //! a tower of tier two and above, a refresh when the first tier one tower,
 //! tier two tower and melee barracks fall.
 
-use bota_core::{MELEE_CREEP, UnitDef, map_of, rules, tower_def};
+use bota_core::{MELEE_CREEP, ModifierKind, UnitDef, map_of, rules, tower_def};
 use bota_proto::{
     DamageKind, EffectId, Fixed, GlyphView, MapId, Order, RejectReason, SlotId, Team, Vec2,
 };
 
 use crate::game::project::wire_id;
-use crate::game::{Entity, Hit, HitEffect, Place, World};
+use crate::game::{Entity, Hit, HitEffect, Modifier, Place, World};
 
 use super::support::*;
 
@@ -244,7 +244,10 @@ fn a_glyphed_creep_tanks_the_tower_for_a_diving_hero_until_the_hero_hits_a_hero(
     world.fill_pools(creep);
     world.fill_pools(diver);
     // The creep is the first target in reach.
-    world.glyphs[0].creeps_until = 100_000;
+    world.put_modifier(
+        creep,
+        Modifier::new(ModifierKind::Fortified, None, Some(100_000)),
+    );
     world.glyphs[0].structures_until = 100_000;
     let (creep_hp, diver_hp) = (
         world.health.get(creep).expect("up").hp,
@@ -337,5 +340,34 @@ fn the_enemy_sees_a_glyph_on_what_it_sees_and_nothing_on_what_the_fog_hides() {
         buff(&world, tower),
         Some(Some(used + rules::GLYPH_STRUCTURE_TICKS - world.tick)),
         "the building's are not"
+    );
+}
+
+#[test]
+fn a_creep_that_spawns_after_the_glyph_does_not_get_it() {
+    let mut world = World::on_map(map_of(MapId(0)));
+    seat_hero(&mut world, 0, Team::Radiant, Vec2::from_ints(3000, 3000));
+    let enemy = seat_hero(&mut world, 1, Team::Dire, Vec2::from_ints(9000, 9000));
+    let before = world.spawn_unit(&TARGET, Team::Radiant, Vec2::from_ints(3300, 3300));
+    world.settle();
+    run_to(&mut world, rules::GLYPH_FIRST_USE_TICKS);
+    seat_order(&mut world, Order::Glyph);
+    let later = world.tick + rules::TICKS_PER_SECOND;
+    run_to(&mut world, later);
+    let after = world.spawn_unit(&TARGET, Team::Radiant, Vec2::from_ints(3400, 3300));
+    world.settle();
+    assert!(
+        world.tick < rules::GLYPH_FIRST_USE_TICKS + rules::GLYPH_CREEP_TICKS,
+        "the wave comes inside the creeps' three seconds"
+    );
+    assert_eq!(
+        pure_blow(&mut world, enemy, before),
+        0,
+        "the earlier wave is covered"
+    );
+    assert_eq!(
+        pure_blow(&mut world, enemy, after),
+        100,
+        "the later one takes damage"
     );
 }

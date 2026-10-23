@@ -281,6 +281,7 @@ fn add_modifiers(now: &mut Stats, on_it: &Modifiers, base_armor: Fixed, hero: bo
             }
             ModifierKind::Shielded => now.invulnerable = true,
             ModifierKind::Phased => now.phased = true,
+            ModifierKind::Fortified => now.glyph = true,
             ModifierKind::Mending { .. }
             | ModifierKind::Clarity { .. }
             | ModifierKind::Fountain { .. }
