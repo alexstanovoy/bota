@@ -122,7 +122,7 @@ pub const ABILITY_HOOKS: [AbilityHooks; FIRST_NEUTRAL_ABILITY as usize] = [
         },
         ..INERT
     },
-    // Throw Grenade.
+    // Retired: Throw Grenade.
     INERT,
 ];
 

@@ -2,21 +2,29 @@
 //! ([`bota_core::ITEMS`]) turned into the change it makes.
 
 use bota_core::{ItemDef, UseSpec, item_def};
-use bota_proto::{ItemId, ItemView, Target};
+use bota_proto::{Inflictor, ItemId, ItemView, Target};
 
 use crate::game::{Entity, Inventory, ItemStack, World};
 
 impl World {
     /// Uses an item at the moment its cast point lands. `false`: nothing
-    /// happened and nothing is spent.
-    pub fn use_effect(&mut self, user: Entity, slot: usize, def: &ItemDef, target: Target) -> bool {
+    /// happened and nothing is spent. What it does names the item as its
+    /// inflictor.
+    pub fn use_effect(
+        &mut self,
+        user: Entity,
+        slot: usize,
+        (item, def): (ItemId, &ItemDef),
+        target: Target,
+    ) -> bool {
+        let with = Inflictor::Item(item);
         match def.effect {
             UseSpec::None => false,
-            UseSpec::Mend(drink) => self.mend_with(user, target, drink),
+            UseSpec::Mend(drink) => self.mend_with(user, target, drink, with),
             UseSpec::PlantTree { ticks, range } => self.plant_a_tree(user, target, ticks, range),
             UseSpec::FellTree { range } => self.fell_a_tree(user, target, range),
             UseSpec::Ward { unit, ticks, range } => {
-                self.stand_ward(user, target, unit, ticks, range)
+                self.stand_ward(user, target, (item, unit), ticks, range)
             }
             UseSpec::Teleport => self.begin_teleport(user, target),
             UseSpec::SwitchMode => self.switch_mode(user, slot),
@@ -29,7 +37,7 @@ impl World {
                     .stats
                     .get(user)
                     .is_some_and(|stats| stats.projectile_speed.is_some());
-                self.walk_through(user, if ranged { ranged_pct } else { pct }, ticks)
+                self.walk_through(user, if ranged { ranged_pct } else { pct }, ticks, with)
             }
             UseSpec::Blink { range, overshoot } => self.blink_to(user, target, range, overshoot),
             UseSpec::Restore {
@@ -37,10 +45,11 @@ impl World {
                 mana_per_charge,
             } => {
                 let charges = i32::from(self.charges_in(user, slot));
-                self.restore_with(user, charges * hp_per_charge, charges * mana_per_charge)
+                let restores = (charges * hp_per_charge, charges * mana_per_charge);
+                self.restore_with(user, restores, with)
             }
-            UseSpec::Replenish { mana } => self.replenish_mana(user, target, mana),
-            UseSpec::Grenade => self.throw_grenade(user, target),
+            UseSpec::Replenish { mana } => self.replenish_mana(user, target, mana, with),
+            UseSpec::Grenade => self.throw_grenade(user, target, item),
         }
     }
 

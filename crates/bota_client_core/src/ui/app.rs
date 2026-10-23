@@ -190,8 +190,8 @@ const MAX_FLOATERS: usize = 96;
 const MAX_FEED: usize = 8;
 /// Cues waiting for the front end at most; more are dropped.
 const MAX_CUES: usize = 64;
-/// Teleport ends waiting for the front end at most; more are dropped.
-pub(crate) const MAX_TELEPORT_ENDS: usize = 64;
+/// Events one pump keeps for the front end at most; more are dropped.
+pub(crate) const MAX_TOLD: usize = 4096;
 
 /// Something worth a sound or a flourish, told by the events of a tick.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -233,15 +233,6 @@ pub struct Cue {
     pub gain: f32,
     /// World position it comes from.
     pub at: Option<(f32, f32)>,
-}
-
-/// A teleport that ended, as the server told it.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct TeleportEnd {
-    /// The seat whose hero channelled it.
-    pub slot: SlotId,
-    /// Whether the hero arrived; false when the channel was broken off.
-    pub landed: bool,
 }
 
 /// One line of the kill feed.
@@ -312,9 +303,11 @@ pub struct App {
     pub derived: Derived,
     /// Cues waiting for the front end, drained by it every frame.
     pub cues: Vec<Cue>,
-    /// Teleports that ended, waiting for the front end, drained by it every
-    /// frame.
-    pub teleport_ends: Vec<TeleportEnd>,
+    /// The events the last [`pump`](App::pump) took in, in order, those of
+    /// snapshots the server skipped included: what a front end draws or
+    /// sounds beyond the cues, as a teleport's end or where a grenade lands.
+    /// Every frame's systems read them.
+    pub told: Vec<EventKind>,
     /// Seconds before the next low-health cue may come.
     pub heartbeat: f32,
     /// The seat a replay is watched as, as if it were playing.
@@ -358,7 +351,7 @@ impl App {
             smooth: Smooth::default(),
             derived: Derived::default(),
             cues: Vec::new(),
-            teleport_ends: Vec::new(),
+            told: Vec::new(),
             heartbeat: 0.0,
             pov: None,
             quick_buy: None,
@@ -841,6 +834,7 @@ impl App {
     /// One frame of the client: takes in whatever arrived, moves the
     /// clock between snapshots on, and ages the transient effects.
     pub fn pump(&mut self, dt: f32) {
+        self.told.clear();
         self.smooth.advance(dt);
         let msgs = self.source.poll(dt);
         for msg in msgs {

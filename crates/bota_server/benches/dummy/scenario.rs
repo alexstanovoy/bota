@@ -57,22 +57,33 @@ impl Dummy {
         let stage = stage(world.map);
         place(&mut world, heroes[0], stage.patrol[0]);
         place(&mut world, heroes[1], stage.patrol[stage.patrol.len() / 2]);
+        // Stood by nobody, with no item: the bench's own.
         let observers = [
-            world.spawn_ward(&OBSERVER_WARD, Team::Radiant, stage.west, WARD_TICKS),
-            world.spawn_ward(&OBSERVER_WARD, Team::Dire, stage.east, WARD_TICKS),
+            world.spawn_ward(
+                &OBSERVER_WARD,
+                (Team::Radiant, stage.west),
+                WARD_TICKS,
+                (None, None),
+            ),
+            world.spawn_ward(
+                &OBSERVER_WARD,
+                (Team::Dire, stage.east),
+                WARD_TICKS,
+                (None, None),
+            ),
         ];
         let sentries = [
             world.spawn_ward(
                 &SENTRY_WARD,
-                Team::Dire,
-                stage.west + Vec2::from_ints(300, 0),
+                (Team::Dire, stage.west + Vec2::from_ints(300, 0)),
                 WARD_TICKS,
+                (None, None),
             ),
             world.spawn_ward(
                 &SENTRY_WARD,
-                Team::Radiant,
-                stage.east + Vec2::from_ints(300, 0),
+                (Team::Radiant, stage.east + Vec2::from_ints(300, 0)),
                 WARD_TICKS,
+                (None, None),
             ),
         ];
         world.settle();

@@ -4,7 +4,7 @@
 use bota_core::{
     ModifierKind, NeutralAbility, NeutralKind, Spell, Throe, at_level, rules, ticks_of_ms,
 };
-use bota_proto::Vec2;
+use bota_proto::{Inflictor, Vec2};
 
 use crate::game::{Entity, Modifier, StatBonus, World};
 
@@ -59,7 +59,12 @@ impl World {
                 && self.living_unit(ally)
                 && self.pos(ally).is_some_and(|pos| pos.within(at, reach))
             {
-                let held = Modifier::new(kind, Some(dead), Some(ticks_of_ms(ms)));
+                let held = Modifier::new(
+                    kind,
+                    Some(dead),
+                    Some(Inflictor::Ability(ability.id())),
+                    Some(ticks_of_ms(ms)),
+                );
                 self.put_modifier(ally, held);
             }
         }
@@ -102,7 +107,11 @@ impl World {
                 level,
                 (at_level(&hp, level), at_level(&damage, level)),
             );
-            self.give_timed_life(shard, ticks_of_ms(life_ms));
+            self.give_timed_life(
+                shard,
+                ticks_of_ms(life_ms),
+                (Some(dead), Some(Inflictor::Ability(ability.id()))),
+            );
         }
         let reach = rules::units(radius);
         let slow = ModifierKind::Spell {
@@ -115,7 +124,12 @@ impl World {
                 && self.living_unit(foe)
                 && self.pos(foe).is_some_and(|pos| pos.within(at, reach))
             {
-                let held = Modifier::new(slow, Some(dead), Some(ticks_of_ms(slow_ms)));
+                let held = Modifier::new(
+                    slow,
+                    Some(dead),
+                    Some(Inflictor::Ability(ability.id())),
+                    Some(ticks_of_ms(slow_ms)),
+                );
                 self.put_modifier(foe, held);
             }
         }

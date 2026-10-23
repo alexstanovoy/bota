@@ -14,6 +14,8 @@ use crate::engine::Entity;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Grenade {
     pub owner: Entity,
+    /// The item it was thrown with.
+    pub item: ItemId,
     /// Where it lands.
     pub aim: Vec2,
     /// Outgoing magical amplification captured when it was thrown.

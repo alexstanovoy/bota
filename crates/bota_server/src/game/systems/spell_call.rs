@@ -5,7 +5,7 @@ use bota_core::{
     Act, ModifierKind, at_level, clamp_to_map, jungle_upgrades, point_ahead, point_along, rules,
     ticks_of_ms,
 };
-use bota_proto::{Angle, Target, Vec2};
+use bota_proto::{Angle, Inflictor, Target, Vec2};
 
 use crate::game::{CampHome, Modifier, Push, StatBonus, World};
 
@@ -61,7 +61,11 @@ impl World {
                     damage: at_level(&damage, cast.level) - kind.def().damage,
                 },
             );
-            self.give_timed_life(unit, ticks_of_ms(life_ms));
+            self.give_timed_life(
+                unit,
+                ticks_of_ms(life_ms),
+                (Some(cast.caster), cast.inflictor()),
+            );
         }
         self.settle();
         true
@@ -79,10 +83,11 @@ impl World {
         };
         let ticks = ticks_of_ms(life_ms);
         let unit = self.spawn_neutral(kind, clamp_to_map(at), home.camp, 0);
-        self.give_timed_life(unit, ticks);
+        let by = (Some(cast.caster), cast.inflictor());
+        self.give_timed_life(unit, ticks, by);
         self.put_modifier(
             unit,
-            Modifier::new(ModifierKind::Shielded, None, Some(ticks)),
+            Modifier::new(ModifierKind::Shielded, by.0, by.1, Some(ticks)),
         );
         self.settle();
         true
@@ -114,6 +119,7 @@ impl World {
             on,
             Push {
                 source: cast.caster,
+                inflictor: Inflictor::Ability(cast.ability.id()),
                 aim,
                 speed: bota_proto::Fixed::from_int(speed),
                 clear: at,

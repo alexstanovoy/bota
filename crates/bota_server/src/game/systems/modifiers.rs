@@ -3,7 +3,7 @@
 use bota_core::{
     ModifierKind, Stat, breaks_regen, dismember_bite_tick, item_def, rules, spell_buff,
 };
-use bota_proto::{AbilityId, DamageKind, Fixed, Team};
+use bota_proto::{AbilityId, DamageKind, Fixed, Inflictor, Team};
 
 use crate::game::{Landed, Modifier, Stats, Table, World, cooldown_after};
 
@@ -150,7 +150,13 @@ impl World {
                         let amount = if lethal { amount } else { amount.min(left - 1) };
                         if amount > 0 && self.health.get(entity).is_some_and(|h| h.hp > Fixed::ZERO)
                         {
-                            self.push_hit(modifier.source, entity, amount, kind);
+                            self.push_hit(
+                                modifier.source,
+                                entity,
+                                amount,
+                                kind,
+                                modifier.inflictor,
+                            );
                         }
                     }
                     ModifierKind::Rot { level } => self.rot(entity, level),
@@ -180,6 +186,7 @@ impl World {
                                 entity,
                                 rules::GRENADE_DAMAGE_PER_SECOND,
                                 DamageKind::Magical,
+                                modifier.inflictor,
                             );
                         }
                     }
@@ -234,6 +241,7 @@ impl World {
                             lethal: false,
                         },
                         None,
+                        Some(Inflictor::Ability(AbilityId::ROT)),
                         Some(2),
                     ),
                 );
@@ -254,8 +262,9 @@ impl World {
             lethal: true,
         };
         let pct = rules::ROT_SLOW_PCT[usize::from(level)];
+        let with = Some(Inflictor::Ability(AbilityId::ROT));
         for kind in [burn, ModifierKind::Slowed { pct }] {
-            self.put_modifier(other, Modifier::new(kind, Some(owner), Some(2)));
+            self.put_modifier(other, Modifier::new(kind, Some(owner), with, Some(2)));
         }
     }
 

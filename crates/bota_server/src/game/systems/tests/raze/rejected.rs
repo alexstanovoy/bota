@@ -7,11 +7,7 @@ use super::fixtures::*;
 
 /// A modifier set holding one sourceless modifier for `ticks`.
 fn held(kind: ModifierKind, ticks: u32) -> Modifiers {
-    Modifiers(vec![Modifier {
-        kind,
-        source: None,
-        ticks_left: Some(ticks),
-    }])
+    Modifiers(vec![Modifier::new(kind, None, None, Some(ticks))])
 }
 
 #[test]
@@ -86,7 +82,7 @@ fn raze_expired_shield_does_not_block_damage_or_debuff() {
 fn raze_stacks_do_not_amplify_or_refresh_from_ordinary_magical_damage() {
     let (mut world, caster, target) = fixture();
     land(&mut world, caster, target, 0);
-    world.push_hit(Some(caster), target, 90, DamageKind::Magical);
+    world.push_hit(Some(caster), target, 90, DamageKind::Magical, None);
     assert_eq!(burns_on(&world.step(), target), vec![90]);
     assert_eq!(effects(&world, target), vec![effect(1, 179)]);
 }
@@ -115,7 +111,7 @@ fn raze_rounding_to_zero_damage_does_not_create_a_first_stack() {
 #[test]
 fn raze_queued_after_a_lethal_blow_applies_no_debuff() {
     let (mut world, caster, target) = fixture();
-    world.push_hit(Some(caster), target, 30000, DamageKind::Pure);
+    world.push_hit(Some(caster), target, 30000, DamageKind::Pure, None);
     assert!(world.cast_raze(caster, 0, 1));
     assert!(burns_on(&world.step(), target).is_empty());
     assert!(

@@ -36,6 +36,7 @@ impl World {
                     target: wire_id(blow.target),
                     amount: blow.amount,
                     kind: blow.kind,
+                    inflictor: blow.inflictor,
                 },
                 visible_to: self.who_may_know(blow.at, blow.side),
                 gold_hidden_from: None,

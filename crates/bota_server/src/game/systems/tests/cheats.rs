@@ -368,7 +368,7 @@ fn a_kept_kit_is_projected_after_the_body_falls() {
         Some(0),
         "and the item's own cost"
     );
-    world.push_hit(None, hero, 1_000_000, DamageKind::Pure);
+    world.push_hit(None, hero, 1_000_000, DamageKind::Pure, None);
     world.step();
     let fallen = world.view_full();
     let seat = fallen
@@ -390,7 +390,7 @@ fn a_fallen_hero_takes_its_modifier_with_it_and_respawns_clean() {
     let (mut world, hero) = world_with(true);
     cheat_modifier(&mut world, a_spec(), 100_000);
     assert!(world.applied.contains(hero));
-    world.push_hit(None, hero, 100_000, DamageKind::Pure);
+    world.push_hit(None, hero, 100_000, DamageKind::Pure, None);
     world.step();
     assert!(!world.alive(hero), "the blow was fatal");
     assert!(!world.applied.contains(hero), "the body took it with it");
@@ -422,7 +422,7 @@ fn gold_income_scales_the_bounty_a_kill_pays() {
         i64::from(world.seats[0].net_worth),
         i64::from(world.seats[1].net_worth),
     );
-    world.push_hit(Some(killer), victim, 100_000, DamageKind::Pure);
+    world.push_hit(Some(killer), victim, 100_000, DamageKind::Pure, None);
     let events = world.step();
     // The head and the killer's assist share, each scaled once.
     let expected = composed * 15_000 / 10_000 + assist * 15_000 / 10_000;

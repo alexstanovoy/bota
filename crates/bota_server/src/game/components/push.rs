@@ -1,4 +1,4 @@
-use bota_proto::{Fixed, Vec2};
+use bota_proto::{Fixed, Inflictor, Vec2};
 
 use crate::engine::Entity;
 
@@ -9,6 +9,8 @@ use crate::engine::Entity;
 pub struct Push {
     /// Who sent it. The handle may outlive the body.
     pub source: Entity,
+    /// The spell that sent it.
+    pub inflictor: Inflictor,
     /// The spot it is carried to.
     pub aim: Vec2,
     /// World units a second.

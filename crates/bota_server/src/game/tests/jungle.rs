@@ -316,7 +316,7 @@ fn a_blow_wakes_a_camp_from_further_than_it_can_see() {
         beasts.iter().all(|beast| world.target_of(*beast).is_none()),
         "and they sleep through it"
     );
-    world.push_hit(Some(hero), beasts[0], 10, DamageKind::Physical);
+    world.push_hit(Some(hero), beasts[0], 10, DamageKind::Physical, None);
     world.step();
     world.step();
     for beast in &beasts {
@@ -334,7 +334,7 @@ fn a_blow_wakes_a_camp_from_further_than_it_can_see() {
         camp + Vec2::from_ints(rules::NEUTRAL_DAMAGE_AGGRO_RANGE + 400, 0),
     );
     world.settle();
-    world.push_hit(Some(far), beasts[0], 10, DamageKind::Physical);
+    world.push_hit(Some(far), beasts[0], 10, DamageKind::Physical, None);
     world.step();
     world.step();
     assert!(

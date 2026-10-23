@@ -79,6 +79,8 @@ pub struct Stats {
     pub pierce: Ratio,
     /// Magical damage a pierce lands alongside the attack.
     pub pierce_damage: i32,
+    /// The item its pierce is.
+    pub pierce_item: Option<bota_proto::ItemId>,
     /// Percent of the damage its attacks deal healed back.
     pub lifesteal_pct: i32,
     /// Percent more magical damage it takes.

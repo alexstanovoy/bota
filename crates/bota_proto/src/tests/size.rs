@@ -16,15 +16,16 @@ const UNITS_1V1: u32 = 25;
 const TICK_RATE: usize = 30;
 
 /// A hero with a scroll in its town portal slot, in the cast point of a
-/// raze, with a move and an attack queued, and some status resistance and
-/// evasion. Before the cast is the neutral kind every unit carries, absent on
-/// a hero; a unit casting nothing takes one byte for it, one with nothing
-/// queued one byte for its queue, and one with no status resistance or
-/// evasion a byte for each (five bytes here).
+/// raze, with a move and an attack queued, some status resistance and
+/// evasion, and under two effects: a mend naming its caster, its item and its
+/// full length, and a count naming its ability. Before the cast is the
+/// neutral kind every unit carries, absent on a hero; a unit casting nothing
+/// takes one byte for it, one with nothing queued one byte for its queue, and
+/// one with no status resistance or evasion a byte for each (five bytes here).
 #[test]
-fn a_hero_stays_under_225_bytes() {
+fn a_hero_stays_under_238_bytes() {
     let len = encoded_len(&hero_unit());
-    assert!(len <= 225, "hero unit grew to {len} bytes");
+    assert!(len <= 238, "hero unit grew to {len} bytes");
 }
 
 #[test]

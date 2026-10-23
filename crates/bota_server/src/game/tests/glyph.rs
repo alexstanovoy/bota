@@ -27,6 +27,7 @@ const TARGET: UnitDef = UnitDef {
 fn pure_blow(world: &mut World, from: Entity, on: Entity) -> i32 {
     world.fill_pools(on);
     world.hits.push_back(Hit {
+        inflictor: None,
         source: Some(from),
         target: on,
         amount: 100,
@@ -246,7 +247,7 @@ fn a_glyphed_creep_tanks_the_tower_for_a_diving_hero_until_the_hero_hits_a_hero(
     // The creep is the first target in reach.
     world.put_modifier(
         creep,
-        Modifier::new(ModifierKind::Fortified, None, Some(100_000)),
+        Modifier::new(ModifierKind::Fortified, None, None, Some(100_000)),
     );
     world.glyphs[0].structures_until = 100_000;
     let (creep_hp, diver_hp) = (

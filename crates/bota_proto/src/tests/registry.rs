@@ -146,6 +146,7 @@ fn trace_wire() -> Registry {
     trace::<EventKind>(&mut tracer, &mut enums);
     trace::<RejectReason>(&mut tracer, &mut enums);
     trace::<DamageKind>(&mut tracer, &mut enums);
+    trace::<Inflictor>(&mut tracer, &mut enums);
     trace::<Role>(&mut tracer, &mut enums);
     trace::<TickMode>(&mut tracer, &mut enums);
     trace::<PickPhase>(&mut tracer, &mut enums);
@@ -265,7 +266,7 @@ fn render(format: &Format) -> String {
 /// gives it, so a constant cannot drift off its line in `registry/ids.txt`.
 #[test]
 fn every_named_id_constant_sits_on_its_registry_line() {
-    let named: [(IdSpace, u16, &str); 103] = [
+    let named: [(IdSpace, u16, &str); 102] = [
         (IdSpace::Hero, HeroId::PUDGE.0, "Pudge"),
         (IdSpace::Hero, HeroId::SHADOW_FIEND.0, "Shadow Fiend"),
         (IdSpace::Ability, AbilityId::MEAT_HOOK.0, "Meat Hook"),
@@ -295,11 +296,6 @@ fn every_named_id_constant_sits_on_its_registry_line() {
             IdSpace::Ability,
             AbilityId::FEAST_OF_SOULS.0,
             "Feast of Souls",
-        ),
-        (
-            IdSpace::Ability,
-            AbilityId::THROW_GRENADE.0,
-            "Throw Grenade",
         ),
         (IdSpace::Ability, AbilityId::MEAT_SHIELD.0, "Meat Shield"),
         (IdSpace::Item, ItemId::BOOTS.0, "Boots of Speed"),

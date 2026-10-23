@@ -1,4 +1,4 @@
-use bota_proto::DamageKind;
+use bota_proto::{DamageKind, Inflictor};
 
 use crate::game::{Entity, HitEffect};
 
@@ -14,6 +14,8 @@ pub struct Projectile {
     pub speed: bota_proto::Fixed,
     /// Who threw it. The handle may outlive the body.
     pub source: Option<Entity>,
+    /// The ability or item it carries. Absent for an attack's missile.
+    pub inflictor: Option<Inflictor>,
     pub target: Entity,
     pub damage: i32,
     pub kind: DamageKind,
@@ -30,6 +32,8 @@ pub struct Projectile {
     pub pierce_damage: i32,
     /// Outgoing amplification of `pierce_damage`, captured when thrown.
     pub pierce_amp_bp: i32,
+    /// The item that pierces.
+    pub pierce_by: Option<Inflictor>,
     /// What its blow does besides its damage.
     pub effect: HitEffect,
 }

@@ -1,6 +1,6 @@
 //! A blow on its way to being felt.
 
-use bota_proto::DamageKind;
+use bota_proto::{DamageKind, Inflictor};
 
 use crate::game::Entity;
 
@@ -10,6 +10,9 @@ use crate::game::Entity;
 pub struct Hit {
     /// Who dealt it. The handle may outlive the body.
     pub source: Option<Entity>,
+    /// The ability or item that dealt it, which also puts on what its
+    /// effect leaves. Absent for an attack's own blow.
+    pub inflictor: Option<Inflictor>,
     pub target: Entity,
     /// Before armor and resistance.
     pub amount: i32,

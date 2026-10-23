@@ -1,5 +1,7 @@
+use bota_core::rules;
+
 use crate::game::wire_id;
-use bota_proto::{DamageKind, Fixed, SlotId, Team};
+use bota_proto::{AbilityId, DamageKind, EffectView, Fixed, Inflictor, SlotId, Team};
 
 use super::fixtures::*;
 
@@ -8,7 +10,7 @@ fn raze_already_queued_before_caster_death_keeps_its_damage_and_old_generation_e
     let (mut world, caster, target) = fixture();
     land(&mut world, caster, target, 0);
     world.health.get_mut(caster).unwrap().hp = Fixed::ONE;
-    world.push_hit(None, caster, 1, DamageKind::Pure);
+    world.push_hit(None, caster, 1, DamageKind::Pure, None);
     reveal(&mut world, target);
     assert!(world.cast_raze(caster, 0, 1));
     assert_eq!(burns_on(&world.step(), target), vec![120]);
@@ -58,9 +60,15 @@ fn raze_projection_exposes_only_existing_effect_fields_on_visible_targets() {
     world.visibility.get_mut(caster).unwrap().clear();
     let visible = world.view(Team::Dire);
     assert!(!visible.units.iter().any(|unit| unit.id == wire_id(caster)));
+    // The record names the raze and its full length, but not the caster
+    // the side does not see.
     assert_eq!(
         shown(&world, Some(Team::Dire), target).effects,
-        vec![effect(1, 180)]
+        vec![EffectView {
+            inflictor: Some(Inflictor::Ability(AbilityId::RAZE_MID)),
+            ticks_total: Some(rules::RAZE_DEBUFF_TICKS),
+            ..effect(1, 180)
+        }]
     );
     world.visibility.get_mut(target).unwrap().clear();
     assert!(

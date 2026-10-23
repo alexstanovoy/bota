@@ -3,9 +3,7 @@
 
 use bota_proto::{AbilityId, DamageKind, EntityId, EventKind, UnitKind, UnitView};
 
-use crate::ui::app::{
-    App, CueKind, FeedLine, Floater, FloaterKind, MAX_TELEPORT_ENDS, TeleportEnd,
-};
+use crate::ui::app::{App, CueKind, FeedLine, Floater, FloaterKind, MAX_TOLD};
 
 /// Health share under which the low-health cue comes.
 const LOW_HP: f32 = 0.25;
@@ -26,14 +24,18 @@ impl App {
             .or(self.selected.filter(|id| hero(*id)))
     }
 
-    /// Takes in one event.
+    /// Takes in one event, and keeps it for the front end.
     pub(crate) fn absorb_event(&mut self, event: EventKind) {
+        if self.told.len() < MAX_TOLD {
+            self.told.push(event.clone());
+        }
         match event {
             EventKind::Damaged {
                 source,
                 target,
                 amount,
                 kind,
+                ..
             } => self.on_damage(source, target, amount, kind),
             EventKind::Missed { source, target } => {
                 if self.involves_hero(source, target) {
@@ -69,11 +71,10 @@ impl App {
                     self.float(target, format!("+{amount}"), FloaterKind::Heal);
                 }
             }
-            EventKind::Teleported { slot, landed } => {
-                if self.teleport_ends.len() < MAX_TELEPORT_ENDS {
-                    self.teleport_ends.push(TeleportEnd { slot, landed });
-                }
-            }
+            // A teleport's end and a burst are the front end's to sound and
+            // draw, from what was told; a burst's blows float their own
+            // numbers.
+            EventKind::Teleported { .. } | EventKind::Landed { .. } => {}
         }
     }
 
@@ -161,7 +162,7 @@ impl App {
         let prev = self.prev_view();
         let ears = self.ears();
         let mut launched = Vec::new();
-        for p in view.projectiles.iter().filter(|p| p.ability.is_none()) {
+        for p in view.projectiles.iter().filter(|p| p.inflictor.is_none()) {
             let old = prev.is_some_and(|prev| {
                 prev.projectiles
                     .binary_search_by_key(&p.id, |q| q.id)

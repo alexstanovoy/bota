@@ -155,8 +155,6 @@ impl AbilityId {
     /// Shadow Fiend's feast of souls: attacks and steps come faster for a while,
     /// and souls are taken from the enemies near him.
     pub const FEAST_OF_SOULS: AbilityId = AbilityId(15);
-    /// A Blood Grenade's throw: what names one in flight. Sits in no slot.
-    pub const THROW_GRENADE: AbilityId = AbilityId(16);
     /// Pudge's meat shield: damage taken is cut by a fixed amount for a while.
     pub const MEAT_SHIELD: AbilityId = AbilityId(77);
 }
@@ -234,6 +232,17 @@ impl ItemId {
     pub const MONKEY_KING_BAR: ItemId = ItemId(51);
     pub const WIND_LACE: ItemId = ItemId(52);
     pub const BLOOD_GRENADE: ItemId = ItemId(53);
+}
+
+/// What did something: the ability or the item a unit used, as Dota's combat
+/// log names the inflictor of a blow. A blow, an effect, a missile or a
+/// landing names one; who used it travels beside it.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum Inflictor {
+    /// An ability: a hero's, a courier's or a neutral's, an innate included.
+    Ability(AbilityId),
+    /// An item, used or carried.
+    Item(ItemId),
 }
 
 /// How something in a slot is aimed when it is used.

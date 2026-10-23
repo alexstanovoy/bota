@@ -55,6 +55,9 @@ pub struct Carried {
     pub pierce: Ratio,
     /// Magical damage a pierce lands alongside the attack.
     pub pierce_damage: i32,
+    /// The item whose pierce counts, on what a carrier holds in all
+    /// ([`carried_bonus`]); absent in an item's own row.
+    pub pierce_item: Option<ItemId>,
     /// Attack range added to a melee carrier and to nobody else.
     pub melee_range: i32,
     /// Percent added to the carrier's maximum mana, attributes included.
@@ -78,6 +81,7 @@ pub(crate) const NOTHING: Carried = Carried {
     evasion: Ratio::NEVER,
     pierce: Ratio::NEVER,
     pierce_damage: 0,
+    pierce_item: None,
     melee_range: 0,
     mana_pct: 0,
 };
@@ -487,6 +491,7 @@ pub fn carried_bonus(items: impl Iterator<Item = CarriedItem>, ranged: bool) -> 
         if carried.pierce.beats(total.pierce) {
             total.pierce = carried.pierce;
             total.pierce_damage = carried.pierce_damage;
+            total.pierce_item = Some(stack.id);
         }
         total.melee_range += carried.melee_range;
         total.mana_pct += carried.mana_pct;

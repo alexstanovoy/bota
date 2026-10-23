@@ -4,8 +4,8 @@ use bota_core::{ITEMS, MELEE_CREEP, ModifierKind, map_of, rules, tower_def};
 
 use crate::game::{Entity, Event, ItemStack, Mana, World, tree_positions, wire_id};
 use bota_proto::{
-    Attribute, DamageKind, EventKind, Fixed, HeroId, ItemId, ItemSlot, MapId, Order, SlotId,
-    Target, Team, Vec2,
+    Attribute, DamageKind, EffectId, EventKind, Fixed, HeroId, Inflictor, ItemId, ItemSlot, MapId,
+    Order, SlotId, Target, Team, Vec2,
 };
 
 use super::support::*;
@@ -41,6 +41,55 @@ fn a_drink_is_told_of_as_what_was_missing_and_a_full_hero_is_not_told_at_all() {
         Some((wire_id(hero), 150)),
         "and the mending is told at what was missing, not the whole drink"
     );
+}
+
+#[test]
+fn a_salve_and_a_tango_mend_alike_and_each_names_its_own_item() {
+    // Dota shows a Healing Salve's and a Tango's mend as two buffs, each with
+    // its item's icon: a view and the mending told name the item.
+    for item in [ItemId::HEALING_SALVE, ItemId::TANGO] {
+        let (mut world, hero, tree) = a_hero_by_the_trees(item, 1);
+        world.health.get_mut(hero).expect("standing").hp -= Fixed::from_int(100);
+        let aim = if item == ItemId::TANGO {
+            Target::Pos(tree)
+        } else {
+            Target::None
+        };
+        let mut events = Vec::new();
+        assert!(
+            world.use_item(hero, 0, aim, &mut events),
+            "item {item:?} is used"
+        );
+        let told = events.iter().find_map(|event| match event.kind {
+            EventKind::Healed { inflictor, .. } => Some(inflictor),
+            _ => None,
+        });
+        assert_eq!(
+            told,
+            Some(Some(Inflictor::Item(item))),
+            "the mending names it"
+        );
+        let mend = shown(&world, Some(Team::Radiant), hero)
+            .effects
+            .into_iter()
+            .find(|effect| effect.id == EffectId::MENDING)
+            .expect("the mend shows");
+        assert_eq!(mend.inflictor, Some(Inflictor::Item(item)), "{item:?}");
+        assert_eq!(mend.caster, Some(wire_id(hero)), "drunk by its bearer");
+        assert!(mend.ticks_total.is_some(), "a mend runs out");
+        assert_eq!(mend.ticks_left, mend.ticks_total, "it has only begun");
+        world.step();
+        let mend = shown(&world, Some(Team::Radiant), hero)
+            .effects
+            .into_iter()
+            .find(|effect| effect.id == EffectId::MENDING)
+            .expect("the mend runs on");
+        assert_eq!(
+            mend.ticks_left.map(|left| left + 1),
+            mend.ticks_total,
+            "its time runs down from the full length, which stays"
+        );
+    }
 }
 
 #[test]
@@ -346,7 +395,7 @@ fn a_heros_blow_never_puts_out_what_a_tree_bought() {
     world.transform.get_mut(hero).expect("hero").pos = tree + Vec2::from_ints(120, 0);
     hand_item(&mut world, hero, ItemId::TANGO, 1);
     assert!(world.use_item(hero, 0, Target::Pos(tree), &mut Vec::new()));
-    world.push_hit(Some(theirs), hero, 10, DamageKind::Physical);
+    world.push_hit(Some(theirs), hero, 10, DamageKind::Physical, None);
     world.step();
     assert_eq!(
         drinks(&world, hero),

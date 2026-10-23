@@ -46,6 +46,7 @@ pub(crate) fn snapshot(expect: &Expect<'_>, view: &WorldView) -> Result<(), Sess
     units(expect.statics.roster(), view)?;
     aggro(view)?;
     casts(view)?;
+    effects(view)?;
     projectiles(view)?;
     unique_dynamic_handles(view)?;
     players(expect.statics.roster(), view)?;
@@ -224,6 +225,27 @@ fn casts(view: &WorldView) -> Result<(), SessionError> {
         let point = (u64::from(point_ms) * u64::from(rules::TICKS_PER_SECOND)).div_ceil(1000);
         if !(1..=point.max(1)).contains(&u64::from(cast.goes_off_in)) {
             return Err(SessionError::CastOutOfRange(unit.id));
+        }
+    }
+    Ok(())
+}
+
+/// Effects naming visible units only as their casters, each running down from its full length.
+fn effects(view: &WorldView) -> Result<(), SessionError> {
+    for unit in &view.units {
+        for effect in &unit.effects {
+            if let Some(caster) = effect.caster {
+                view.unit(caster)
+                    .ok_or(SessionError::UnknownEffectCaster(caster))?;
+            }
+            let runs_down = match (effect.ticks_left, effect.ticks_total) {
+                (None, None) => true,
+                (Some(left), Some(total)) => left <= total,
+                _ => false,
+            };
+            if !runs_down {
+                return Err(SessionError::EffectOutOfRange(unit.id));
+            }
         }
     }
     Ok(())

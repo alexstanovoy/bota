@@ -567,7 +567,7 @@ fn break_channel(world: &mut World, hero: Entity, how: Break) -> Vec<Event> {
             world.advance(&[])
         }
         Break::Death => {
-            world.push_hit(None, hero, 100_000, DamageKind::Pure);
+            world.push_hit(None, hero, 100_000, DamageKind::Pure, None);
             world.advance(&[])
         }
     }

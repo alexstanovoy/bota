@@ -2,7 +2,7 @@
 
 use std::collections::VecDeque;
 
-use bota_proto::{HeroId, SlotId, Team, UnitKind, Vec2};
+use bota_proto::{HeroId, Inflictor, SlotId, Team, UnitKind, Vec2};
 
 use crate::game::{
     AbilityBook, Action, AppliedModifiers, AuraCx, Auras, Backdoor, Bounty, CampHome, Candidates,
@@ -386,16 +386,24 @@ impl World {
         self.target.insert(entity, Target(on));
     }
 
-    /// Lays a blow on the queue, felt and forgotten inside this tick.
+    /// Lays a blow `inflictor` deals on the queue, felt and forgotten inside
+    /// this tick.
     pub fn push_hit(
         &mut self,
         source: Option<Entity>,
         target: Entity,
         amount: i32,
         kind: bota_proto::DamageKind,
+        inflictor: Option<Inflictor>,
     ) {
-        let damage_amp_bp = self.outgoing_damage_amp_bp(source, kind);
-        self.push_hit_with_amp(source, target, amount, kind, damage_amp_bp);
+        self.push_hit_with_effect(
+            source,
+            target,
+            amount,
+            kind,
+            crate::game::HitEffect::None,
+            inflictor,
+        );
     }
 
     /// Leaves a blow carrying amplification captured by an in-flight source.
@@ -406,18 +414,23 @@ impl World {
         amount: i32,
         kind: bota_proto::DamageKind,
         damage_amp_bp: i32,
+        inflictor: Option<Inflictor>,
     ) {
-        self.push_hit_amplified(
+        self.hits.push_back(Hit {
             source,
+            inflictor,
             target,
             amount,
             kind,
             damage_amp_bp,
-            crate::game::HitEffect::None,
-        );
+            attack: false,
+            pierces: false,
+            effect: crate::game::HitEffect::None,
+        });
     }
 
-    /// Lays a blow on the queue with an effect on top of its damage.
+    /// Lays a blow on the queue with an effect on top of its damage, which
+    /// `inflictor` puts on as well.
     pub fn push_hit_with_effect(
         &mut self,
         source: Option<Entity>,
@@ -425,22 +438,12 @@ impl World {
         amount: i32,
         kind: bota_proto::DamageKind,
         effect: crate::game::HitEffect,
+        inflictor: Option<Inflictor>,
     ) {
         let damage_amp_bp = self.outgoing_damage_amp_bp(source, kind);
-        self.push_hit_amplified(source, target, amount, kind, damage_amp_bp, effect);
-    }
-
-    fn push_hit_amplified(
-        &mut self,
-        source: Option<Entity>,
-        target: Entity,
-        amount: i32,
-        kind: bota_proto::DamageKind,
-        damage_amp_bp: i32,
-        effect: crate::game::HitEffect,
-    ) {
         self.hits.push_back(Hit {
             source,
+            inflictor,
             target,
             amount,
             kind,

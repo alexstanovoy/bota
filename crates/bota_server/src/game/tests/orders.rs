@@ -119,7 +119,7 @@ fn the_fight_rolls_onto_the_closest_when_the_ordered_target_falls() {
     world.settle();
     run(&mut world, 5);
     // The one it was set on falls to a blow.
-    world.push_hit(Some(hero), first, 10_000, DamageKind::Pure);
+    world.push_hit(Some(hero), first, 10_000, DamageKind::Pure, None);
     world.step();
     assert!(!world.alive(first), "the blow was fatal");
     assert!(
@@ -141,7 +141,7 @@ fn the_fight_rolls_onto_the_closest_when_the_ordered_target_falls() {
 fn an_attack_order_whose_target_fell_keeps_the_hero_fighting_from_the_spot() {
     let (mut world, hero, mark) = hero_ordered_at_an_enemy(300);
     run(&mut world, 5);
-    world.push_hit(Some(hero), mark, 10_000, DamageKind::Pure);
+    world.push_hit(Some(hero), mark, 10_000, DamageKind::Pure, None);
     world.step();
     assert!(!world.alive(mark), "the blow was fatal");
     assert!(
@@ -189,7 +189,7 @@ fn a_follow_at_an_enemy_closes_and_never_swings() {
 fn a_follow_ends_where_the_one_followed_fell() {
     let (mut world, hero, mark) = hero_following_an_enemy(1000);
     let theirs = world.transform.get(mark).expect("standing").pos;
-    world.push_hit(None, mark, 10_000, DamageKind::Pure);
+    world.push_hit(None, mark, 10_000, DamageKind::Pure, None);
     world.step();
     assert!(!world.alive(mark), "the blow was fatal");
     assert!(

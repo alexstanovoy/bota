@@ -7,7 +7,7 @@ use bota_core::{
     requiem_death_lines, requiem_fear_ticks, requiem_line_damage, requiem_lines, requiem_width,
     rules, soul_cap,
 };
-use bota_proto::{AbilityId, Angle, DamageKind, Fixed, Team};
+use bota_proto::{AbilityId, Angle, DamageKind, Fixed, Inflictor, Team};
 
 use crate::game::{Fear, Hit, HitEffect, Modifier, RequiemLine, World};
 
@@ -44,9 +44,11 @@ impl World {
         let stack_damage =
             raze_stack_damage(level, self.has_talent(caster, Talent::RazeStackDamage));
         let swings = self.has_talent(caster, Talent::RazeAttackDamage);
+        let which = SHADOW_FIEND_RAZES[reach];
         for mark in struck {
             self.hits.push_back(Hit {
                 source: Some(caster),
+                inflictor: Some(Inflictor::Ability(which)),
                 target: mark,
                 amount,
                 kind: DamageKind::Magical,
@@ -56,10 +58,10 @@ impl World {
                 effect: HitEffect::Shadowraze { stack_damage },
             });
             if swings {
-                self.raze_strikes(caster, mark);
+                self.raze_strikes((caster, which), mark);
             }
         }
-        self.spawn_mark(SHADOW_FIEND_RAZES[reach], caster, at, rules::MARK_TICKS);
+        self.spawn_mark(which, caster, at, rules::MARK_TICKS);
         true
     }
 
@@ -68,7 +70,7 @@ impl World {
     /// attack classes, as physical damage that never misses. No attack
     /// modifier rides with it: no crit, no pierce, nothing against creeps
     /// only.
-    fn raze_strikes(&mut self, caster: Entity, mark: Entity) {
+    fn raze_strikes(&mut self, (caster, raze): (Entity, AbilityId), mark: Entity) {
         let Some(stats) = self.stats.get(caster).copied() else {
             return;
         };
@@ -79,6 +81,7 @@ impl World {
         };
         self.hits.push_back(Hit {
             source: Some(caster),
+            inflictor: Some(Inflictor::Ability(raze)),
             target: mark,
             amount: damage * class_pct / 100,
             kind: DamageKind::Physical,
@@ -211,6 +214,7 @@ impl World {
     fn cross(&mut self, line: &RequiemLine, other: Entity) {
         self.hits.push_back(Hit {
             source: Some(line.owner),
+            inflictor: Some(Inflictor::Ability(AbilityId::REQUIEM)),
             target: other,
             amount: line.damage,
             kind: DamageKind::Magical,
@@ -292,6 +296,7 @@ impl World {
                     Modifier::new(
                         ModifierKind::ArmorBroken { armor },
                         Some(carrier),
+                        Some(Inflictor::Ability(AbilityId::PRESENCE)),
                         Some(rules::PRESENCE_LINGER_TICKS),
                     ),
                 );
@@ -388,7 +393,11 @@ impl World {
     /// Sets the souls an entity holds.
     pub(crate) fn set_souls(&mut self, entity: Entity, count: u32) {
         if let Some(on_it) = self.modifiers.get_mut(entity) {
-            on_it.set_count(ModifierKind::souls, count);
+            on_it.set_count(
+                ModifierKind::souls,
+                count,
+                (entity, AbilityId::NECROMASTERY),
+            );
         }
     }
 

@@ -1,4 +1,4 @@
-use bota_proto::{EventKind, Fixed, HeroId, ServerMsg, SlotId, Target, Team};
+use bota_proto::{EventKind, Fixed, HeroId, Inflictor, ItemId, ServerMsg, SlotId, Target, Team};
 
 use crate::game::{EventVisibility, wire_id};
 
@@ -43,6 +43,7 @@ fn mango_reports_actual_whole_mana_once_per_consumed_charge() {
                     target: wire_id(hero),
                     amount: 0,
                     mana: restored.to_int(),
+                    inflictor: Some(Inflictor::Item(ItemId::MANGO)),
                 }
             );
         }

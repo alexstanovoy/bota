@@ -3,7 +3,7 @@
 use bota_core::{ModifierKind, rules, tower_def};
 
 use crate::game::{Entity, Modifier, World, wire_id};
-use bota_proto::{AbilityId, Fixed, HeroId, SlotId, Target, Team, Vec2};
+use bota_proto::{AbilityId, Fixed, HeroId, Inflictor, SlotId, Target, Team, Vec2};
 
 use super::support::*;
 
@@ -42,7 +42,7 @@ fn a_hook_that_catches_nothing_comes_back_by_itself_with_its_chain() {
             .view_full()
             .projectiles
             .iter()
-            .filter(|shown| shown.ability == Some(AbilityId::MEAT_HOOK))
+            .filter(|shown| shown.inflictor == Some(Inflictor::Ability(AbilityId::MEAT_HOOK)))
             .count()
     };
     assert_eq!(
@@ -155,7 +155,7 @@ fn the_rot_shows_its_cloud_where_its_owner_stands_while_it_is_on() {
             .view_full()
             .projectiles
             .iter()
-            .any(|shown| shown.ability == Some(AbilityId::ROT)),
+            .any(|shown| shown.inflictor == Some(Inflictor::Ability(AbilityId::ROT))),
         "and is in the view"
     );
     cast(&mut world, 1, Target::None);
@@ -182,11 +182,7 @@ fn the_rot_never_kills_the_one_carrying_it() {
     set_level(&mut world, pudge, 1, 3);
     world.put_modifier(
         pudge,
-        Modifier {
-            kind: ModifierKind::Rot { level: 3 },
-            source: Some(pudge),
-            ticks_left: None,
-        },
+        Modifier::new(ModifierKind::Rot { level: 3 }, Some(pudge), None, None),
     );
     world.health.insert(pudge, health(20));
     run(&mut world, rules::BURN_PERIOD_TICKS * 40);
@@ -321,7 +317,7 @@ fn a_stack_of_the_heap_is_worth_two_strength_and_nothing_else() {
         .modifiers
         .get_mut(pudge)
         .expect("a hero wears modifiers")
-        .set_count(ModifierKind::flesh_heap, 3);
+        .set_count(ModifierKind::flesh_heap, 3, (pudge, AbilityId::FLESH_HEAP));
     world.step();
     assert_eq!(
         world.stats.get(pudge).map(|s| s.attributes.strength),
@@ -516,8 +512,8 @@ fn a_meat_shield_takes_its_block_off_every_blow_for_four_seconds() {
     );
     let hp = |world: &World| world.health.get(pudge).expect("standing").hp.to_int();
     let before = hp(&world);
-    world.push_hit(None, pudge, 30, bota_proto::DamageKind::Pure);
-    world.push_hit(None, pudge, 5, bota_proto::DamageKind::Pure);
+    world.push_hit(None, pudge, 30, bota_proto::DamageKind::Pure, None);
+    world.push_hit(None, pudge, 5, bota_proto::DamageKind::Pure, None);
     world.step();
     assert_eq!(
         before - hp(&world),
@@ -526,7 +522,7 @@ fn a_meat_shield_takes_its_block_off_every_blow_for_four_seconds() {
     );
     run(&mut world, 4 * rules::TICKS_PER_SECOND);
     let before = hp(&world);
-    world.push_hit(None, pudge, 30, bota_proto::DamageKind::Pure);
+    world.push_hit(None, pudge, 30, bota_proto::DamageKind::Pure, None);
     world.step();
     assert!(
         before - hp(&world) >= 29,

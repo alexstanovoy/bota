@@ -1,6 +1,7 @@
 //! Couriers: standing them up, sending them on errands, bringing them back.
 
 use bota_core::{ModifierKind, fountain_pos, rules};
+use bota_proto::{AbilityId, Inflictor};
 
 use crate::game::{Errand, Inventory, Modifier, UnitOrder, World};
 
@@ -65,6 +66,7 @@ impl World {
                     pct: rules::COURIER_BURST_PCT,
                 },
                 Some(courier),
+                Some(Inflictor::Ability(AbilityId::BURST)),
                 Some(rules::COURIER_BURST_TICKS),
             ),
         );
@@ -91,6 +93,7 @@ impl World {
             Modifier::new(
                 ModifierKind::Shielded,
                 Some(courier),
+                Some(Inflictor::Ability(AbilityId::SHIELD)),
                 Some(rules::COURIER_SHIELD_TICKS),
             ),
         );

@@ -4,7 +4,7 @@ use bota_core::{
     Act, at_level, facing_towards, point_ahead, point_along, rules, segment_distance_squared,
     ticks_of_ms,
 };
-use bota_proto::{Aim, Angle, DamageKind, Fixed, Target, Team, Vec2};
+use bota_proto::{Aim, Angle, DamageKind, Fixed, Inflictor, Target, Team, Vec2};
 
 use crate::game::{Chain, Entity, HitEffect, Projectile, World};
 
@@ -40,6 +40,7 @@ impl World {
             Projectile {
                 speed: Fixed::from_int(speed),
                 source: Some(cast.caster),
+                inflictor: cast.inflictor(),
                 target: on,
                 damage: if self.is_hero(on) {
                     hero_damage
@@ -53,6 +54,7 @@ impl World {
                 pierces: true,
                 pierce_damage: 0,
                 pierce_amp_bp: rules::NOMINAL_BP,
+                pierce_by: None,
                 effect: if root {
                     HitEffect::Root { ticks }
                 } else {
@@ -85,7 +87,13 @@ impl World {
             return false;
         };
         let damage = at_level(&damage, cast.level);
-        self.push_hit(Some(cast.caster), on, damage, DamageKind::Magical);
+        self.push_hit(
+            Some(cast.caster),
+            on,
+            damage,
+            DamageKind::Magical,
+            cast.inflictor(),
+        );
         if targets > 1 {
             let delay = ticks_of_ms(delay_ms).max(1);
             let keep_pct = at_level(&keep_pct, cast.level);
@@ -94,6 +102,7 @@ impl World {
                 marker,
                 Chain {
                     source: cast.caster,
+                    inflictor: Inflictor::Ability(cast.ability.id()),
                     at,
                     struck: vec![on],
                     leaps_left: targets - 1,
@@ -143,7 +152,13 @@ impl World {
             let current = self.health.get(foe).map_or(0, |health| health.hp.to_int());
             let blow = at_level(&damage, cast.level) + current * current_pct / 100;
             self.stun_for(cast, foe, ms);
-            self.push_hit(Some(cast.caster), foe, blow, DamageKind::Magical);
+            self.push_hit(
+                Some(cast.caster),
+                foe,
+                blow,
+                DamageKind::Magical,
+                cast.inflictor(),
+            );
         }
         true
     }
@@ -199,7 +214,13 @@ impl World {
         for foe in struck {
             self.stun_for(cast, foe, ms);
             let blow = at_level(&damage, cast.level);
-            self.push_hit(Some(cast.caster), foe, blow, DamageKind::Magical);
+            self.push_hit(
+                Some(cast.caster),
+                foe,
+                blow,
+                DamageKind::Magical,
+                cast.inflictor(),
+            );
         }
         true
     }

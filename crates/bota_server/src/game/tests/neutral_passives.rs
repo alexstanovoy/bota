@@ -60,7 +60,7 @@ fn worn(world: &World, unit: Entity, ability: NeutralAbility) -> usize {
 
 /// Puts a plain status on a unit for so many ticks.
 fn afflict(world: &mut World, unit: Entity, kind: ModifierKind, ticks: u32) {
-    world.put_modifier(unit, Modifier::new(kind, None, Some(ticks)));
+    world.put_modifier(unit, Modifier::new(kind, None, None, Some(ticks)));
 }
 
 /// The physical and magical blows one unit dealt another over a run, as
@@ -74,6 +74,7 @@ fn blows(world: &mut World, ticks: u32, from: Entity, on: Entity) -> Vec<(u32, i
                 target,
                 amount,
                 kind,
+                ..
             } = event.kind
                 && source == Some(wire_id(from))
                 && target == wire_id(on)
@@ -412,7 +413,7 @@ fn a_hellbears_death_enrages_its_partner_unless_it_was_broken() {
         }
         world.step();
         let quick = world.stats.get(partner).expect("derived").attack_speed;
-        world.push_hit(None, bear, 99_999, DamageKind::Pure);
+        world.push_hit(None, bear, 99_999, DamageKind::Pure, None);
         world.step();
         assert!(!world.alive(bear));
         world.step();
@@ -434,7 +435,7 @@ fn a_dying_mud_golem_splits_into_shards_that_walk_home_and_slow_the_hero() {
     let hero = passive_hero(&mut world, at(700));
     world.transform.get_mut(golem).expect("standing").pos = at(600);
     world.settle();
-    world.push_hit(None, golem, 99_999, DamageKind::Pure);
+    world.push_hit(None, golem, 99_999, DamageKind::Pure, None);
     world.step();
     assert!(!world.alive(golem));
     let shards: Vec<Entity> = world
@@ -496,7 +497,7 @@ fn a_bubble_soaks_magic_and_bursts_into_a_mend() {
     world.health.get_mut(hero).expect("alive").hp = Fixed::from_int(300);
     world.health.get_mut(friend).expect("alive").hp = Fixed::from_int(300);
     // Pure and physical damage are not soaked; magic is.
-    world.push_hit(None, hero, 100, DamageKind::Magical);
+    world.push_hit(None, hero, 100, DamageKind::Magical, None);
     world.step();
     let regen = world.stats.get(hero).expect("derived").hp_regen;
     assert_eq!(
@@ -504,7 +505,7 @@ fn a_bubble_soaks_magic_and_bursts_into_a_mend() {
         Fixed::from_int(300) + regen,
         "the first hundred is soaked"
     );
-    world.push_hit(None, hero, 200, DamageKind::Magical);
+    world.push_hit(None, hero, 200, DamageKind::Magical, None);
     world.step();
     let resist = world.stats.get(hero).expect("derived").magic_resist_bp;
     let first = mitigate(100, DamageKind::Magical, Fixed::ZERO, resist);
@@ -684,7 +685,7 @@ fn a_black_drake_makes_spells_hurt_more() {
         world.fill_pools(hero);
         world.step();
         let before = hp(&world, hero);
-        world.push_hit(None, hero, 200, DamageKind::Magical);
+        world.push_hit(None, hero, 200, DamageKind::Magical, None);
         world.step();
         let regen = world.stats.get(hero).expect("derived").hp_regen;
         before + regen - hp(&world, hero)

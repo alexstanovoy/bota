@@ -1,7 +1,9 @@
 use bota_core::{fountain_pos, rules};
 
 use crate::game::{Action, ActionState, Entity, Event, World, wire_id};
-use bota_proto::{AbilitySlot, EventKind, Fixed, ItemId, ItemSlot, Order, SlotId, Target, Team};
+use bota_proto::{
+    AbilitySlot, EventKind, Fixed, Inflictor, ItemId, ItemSlot, Order, SlotId, Target, Team,
+};
 
 use super::fixtures::*;
 
@@ -60,6 +62,7 @@ fn mango_mana_enables_a_validated_raze_without_changing_any_strategy() {
             target: wire_id(caster),
             amount: 0,
             mana: 100,
+            inflictor: Some(Inflictor::Item(ItemId::MANGO)),
         }
     );
     assert_eq!(world.mana.get(caster).unwrap().mana, Fixed::from_int(100));

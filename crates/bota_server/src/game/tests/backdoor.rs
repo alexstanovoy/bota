@@ -23,6 +23,7 @@ fn shows(world: &World, side: Team, structure: Entity) -> bool {
 fn blow(world: &mut World, hero: crate::game::Entity, rax: crate::game::Entity) -> i32 {
     world.fill_pools(rax);
     world.hits.push_back(Hit {
+        inflictor: None,
         source: Some(hero),
         target: rax,
         amount: 400,

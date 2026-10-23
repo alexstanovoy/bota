@@ -3,6 +3,7 @@
 //! Everything the simulation acts on goes in, walked in slot order.
 
 use bota_core::ModifierKind;
+use bota_proto::Inflictor;
 
 use crate::engine::Fnv;
 use crate::game::{
@@ -196,6 +197,7 @@ impl World {
         }
         if let Some(shot) = self.grenade.get(entity) {
             fnv.entity(shot.owner);
+            fnv.u32(u32::from(shot.item.0));
             fnv.vec2(shot.aim);
             hash_damage_amp(fnv, shot.damage_amp_bp);
         }
@@ -208,6 +210,7 @@ impl World {
         }
         if let Some(push) = self.push.get(entity) {
             fnv.entity(push.source);
+            hash_inflictor(fnv, Some(push.inflictor));
             fnv.vec2(push.aim);
             fnv.fixed(push.speed);
             fnv.vec2(push.clear);
@@ -270,6 +273,7 @@ fn hash_motion(fnv: &mut Fnv, motion: &Motion) {
 fn hash_projectile(fnv: &mut Fnv, shot: &Projectile) {
     fnv.fixed(shot.speed);
     fnv.opt(shot.source, Fnv::entity);
+    hash_inflictor(fnv, shot.inflictor);
     fnv.entity(shot.target);
     fnv.i32(shot.damage);
     fnv.u8(shot.kind as u8);
@@ -279,6 +283,7 @@ fn hash_projectile(fnv: &mut Fnv, shot: &Projectile) {
     fnv.some(shot.pierces);
     fnv.i32(shot.pierce_damage);
     hash_damage_amp(fnv, shot.pierce_amp_bp);
+    hash_inflictor(fnv, shot.pierce_by);
     hash_hit_effect(fnv, shot.effect);
 }
 
@@ -287,8 +292,26 @@ fn hash_modifiers(fnv: &mut Fnv, on_it: &Modifiers) {
     for held in on_it.0.iter() {
         hash_modifier_kind(fnv, held.kind);
         fnv.opt(held.source, Fnv::entity);
+        hash_inflictor(fnv, held.inflictor);
         fnv.some(held.ticks_left.is_some());
         fnv.u32(held.ticks_left.unwrap_or(0));
+        fnv.some(held.ticks_total.is_some());
+        fnv.u32(held.ticks_total.unwrap_or(0));
+    }
+}
+
+/// The ability or item something came from.
+fn hash_inflictor(fnv: &mut Fnv, inflictor: Option<Inflictor>) {
+    match inflictor {
+        None => fnv.u8(0),
+        Some(Inflictor::Ability(id)) => {
+            fnv.u8(1);
+            fnv.u32(u32::from(id.0));
+        }
+        Some(Inflictor::Item(id)) => {
+            fnv.u8(2);
+            fnv.u32(u32::from(id.0));
+        }
     }
 }
 
@@ -320,6 +343,7 @@ fn hash_hook(fnv: &mut Fnv, hook: &Hook) {
 
 fn hash_chain(fnv: &mut Fnv, chain: &Chain) {
     fnv.entity(chain.source);
+    hash_inflictor(fnv, Some(chain.inflictor));
     fnv.vec2(chain.at);
     fnv.u32(chain.struck.len() as u32);
     fnv.u8(chain.leaps_left);
@@ -429,6 +453,7 @@ fn hash_phase(fnv: &mut Fnv, phase: ActionPhase) {
 /// A queued blow and its pending modifier before resolution.
 fn hash_hit(fnv: &mut Fnv, hit: &Hit) {
     fnv.opt(hit.source, Fnv::entity);
+    hash_inflictor(fnv, hit.inflictor);
     fnv.entity(hit.target);
     fnv.i32(hit.amount);
     fnv.u8(hit.kind as u8);

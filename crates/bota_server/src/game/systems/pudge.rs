@@ -1,7 +1,7 @@
 //! The rot, the dismember, the meat shield and what the flesh heap keeps.
 
 use bota_core::{ModifierKind, dismember_bite_damage, hero_def, move_towards, per_tick, rules};
-use bota_proto::{AbilityId, DamageKind, Fixed, Target};
+use bota_proto::{AbilityId, DamageKind, Fixed, Inflictor, Target};
 
 use crate::game::{HitEffect, Modifier, World};
 
@@ -24,7 +24,12 @@ impl World {
         }
         self.put_modifier(
             caster,
-            Modifier::new(ModifierKind::Rot { level: level as u8 }, Some(caster), None),
+            Modifier::new(
+                ModifierKind::Rot { level: level as u8 },
+                Some(caster),
+                Some(Inflictor::Ability(AbilityId::ROT)),
+                None,
+            ),
         );
         if let Some(at) = self.pos(caster) {
             self.spawn_mark(AbilityId::ROT, caster, at, 0);
@@ -57,11 +62,15 @@ impl World {
             return false;
         }
         let level = usize::from(self.carried_level(caster, AbilityId::DISMEMBER).max(1) - 1);
-        self.put_modifier(on, Modifier::new(ModifierKind::Stunned, Some(caster), None));
+        let with = Some(Inflictor::Ability(AbilityId::DISMEMBER));
+        self.put_modifier(
+            on,
+            Modifier::new(ModifierKind::Stunned, Some(caster), with, None),
+        );
         let held = ModifierKind::Dismembered { level: level as u8 };
         self.put_modifier(
             on,
-            Modifier::new(held, Some(caster), Some(rules::DISMEMBER_TICKS)),
+            Modifier::new(held, Some(caster), with, Some(rules::DISMEMBER_TICKS)),
         );
         self.dismember_bites(caster, on, level);
         if let Some(at) = self.pos(on) {
@@ -84,6 +93,7 @@ impl World {
             amount,
             DamageKind::Magical,
             HitEffect::Dismember,
+            Some(Inflictor::Ability(AbilityId::DISMEMBER)),
         );
     }
 
@@ -117,7 +127,11 @@ impl World {
             amount: rules::MEAT_SHIELD_BLOCK[level],
         };
         let ticks = rules::MEAT_SHIELD_TICKS[level];
-        self.put_modifier(caster, Modifier::new(block, Some(caster), Some(ticks)));
+        let with = Some(Inflictor::Ability(AbilityId::MEAT_SHIELD));
+        self.put_modifier(
+            caster,
+            Modifier::new(block, Some(caster), with, Some(ticks)),
+        );
         true
     }
 
@@ -186,7 +200,11 @@ impl World {
             }
             if let Some(on_it) = self.modifiers.get_mut(hero) {
                 let kept = on_it.count_of(ModifierKind::flesh_heap);
-                on_it.set_count(ModifierKind::flesh_heap, kept.saturating_add(1));
+                on_it.set_count(
+                    ModifierKind::flesh_heap,
+                    kept.saturating_add(1),
+                    (hero, AbilityId::FLESH_HEAP),
+                );
             }
         }
     }

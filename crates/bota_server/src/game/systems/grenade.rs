@@ -5,9 +5,9 @@ use bota_core::{
     ITEMS, ModifierKind, clamp_to_map, facing_towards, item_def, kind_def, move_towards, per_tick,
     rules,
 };
-use bota_proto::{DamageKind, ItemId, Target, Team, UnitKind};
+use bota_proto::{DamageKind, EventKind, Inflictor, ItemId, Target, Team, UnitKind};
 
-use crate::game::{Entity, Grenade, Modifier, ShopStock, World};
+use crate::game::{Entity, Event, Grenade, Modifier, ShopStock, World, wire_id};
 
 /// Every side's shop as the match starts: each item sold from a limited
 /// stock at its starting count, by side, then in catalog order.
@@ -84,8 +84,9 @@ impl World {
         }
     }
 
-    /// Throws a Blood Grenade from its user at a spot within its reach.
-    pub fn throw_grenade(&mut self, user: Entity, target: Target) -> bool {
+    /// Throws a Blood Grenade, `item`, from its user at a spot within its
+    /// reach.
+    pub fn throw_grenade(&mut self, user: Entity, target: Target, item: ItemId) -> bool {
         let Target::Pos(aim) = target else {
             return false;
         };
@@ -93,7 +94,7 @@ impl World {
             return false;
         };
         let aim = clamp_to_map(aim);
-        let reach = item_def(ItemId::BLOOD_GRENADE).map_or(0, |def| def.range);
+        let reach = item_def(item).map_or(0, |def| def.range);
         if !self.alive(user) || !from.within(aim, rules::units(reach)) {
             return false;
         }
@@ -103,6 +104,7 @@ impl World {
             grenade,
             Grenade {
                 owner: user,
+                item,
                 aim,
                 damage_amp_bp,
             },
@@ -137,12 +139,24 @@ impl World {
         self.recycle_entity_snapshot(entities);
     }
 
-    /// What a Blood Grenade does where it lands: every enemy hero and creep
-    /// within its radius takes its debuff, then its impact.
+    /// What a Blood Grenade does where it lands: it is told to whoever may
+    /// see the spot, and every enemy hero and creep within its radius takes
+    /// its debuff, then its impact.
     ///
     /// A debuff already on keeps the beat it started with and runs its full
     /// time again.
     fn burst(&mut self, grenade: Entity, shot: &Grenade) {
+        let with = Inflictor::Item(shot.item);
+        let side = self.team.get(grenade).copied().unwrap_or(Team::Neutral);
+        self.events.push(Event {
+            kind: EventKind::Landed {
+                inflictor: with,
+                caster: Some(wire_id(shot.owner)),
+                at: shot.aim,
+            },
+            visible_to: self.who_may_know(shot.aim, side),
+            gold_hidden_from: None,
+        });
         let reach = rules::units(rules::GRENADE_RADIUS);
         let struck: Vec<Entity> = self
             .entities
@@ -166,6 +180,7 @@ impl World {
                 Modifier::new(
                     ModifierKind::BloodGrenade { since },
                     Some(shot.owner),
+                    Some(with),
                     Some(rules::GRENADE_DEBUFF_TICKS),
                 ),
             );
@@ -175,6 +190,7 @@ impl World {
                 rules::GRENADE_IMPACT_DAMAGE,
                 DamageKind::Magical,
                 shot.damage_amp_bp,
+                Some(with),
             );
         }
     }

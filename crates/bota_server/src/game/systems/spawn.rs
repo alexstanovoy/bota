@@ -4,7 +4,7 @@ use bota_core::{
     COURIER, COURIER_ABILITIES, HERO, ModifierKind, NeutralAbility, NeutralKind, UnitDef, hero_def,
     neutral_ability_level, rules,
 };
-use bota_proto::{AbilityId, Angle, Fixed, HeroId, SlotId, Team, Vec2};
+use bota_proto::{AbilityId, Angle, Fixed, HeroId, Inflictor, SlotId, Team, Vec2};
 
 use crate::game::{
     AbilityBook, AbilityState, Action, ActionState, AppliedModifier, AppliedOrigin, Auras, Bounty,
@@ -273,7 +273,11 @@ impl World {
             return;
         }
         if let Some(on_it) = self.modifiers.get_mut(entity) {
-            on_it.set_count(ModifierKind::neutral_upgrade, count);
+            on_it.set_count(
+                ModifierKind::neutral_upgrade,
+                count,
+                (entity, NeutralAbility::NeutralUpgrade.id()),
+            );
         }
         self.raise_bounty(entity, kind.def(), count);
     }
@@ -350,25 +354,32 @@ impl World {
         entity
     }
 
-    /// Stands a ward at a spot for so many ticks.
+    /// Stands a ward at a spot for so many ticks; `by` is who stood it, and
+    /// with what.
     pub fn spawn_ward(
         &mut self,
         def: &'static UnitDef,
-        team: Team,
-        pos: Vec2,
+        (team, pos): (Team, Vec2),
         ticks: u32,
+        by: (Option<Entity>, Option<Inflictor>),
     ) -> Entity {
         let entity = self.spawn_body(def, team, pos);
-        self.give_timed_life(entity, ticks);
+        self.give_timed_life(entity, ticks, by);
         entity
     }
 
     /// Gives a unit a life of so many ticks, as Dota's `modifier_kill`: it is
-    /// gone once the modifier runs out.
-    pub(crate) fn give_timed_life(&mut self, unit: Entity, ticks: u32) {
+    /// gone once the modifier runs out. `by` is who called it up, and with
+    /// what.
+    pub(crate) fn give_timed_life(
+        &mut self,
+        unit: Entity,
+        ticks: u32,
+        (source, inflictor): (Option<Entity>, Option<Inflictor>),
+    ) {
         self.put_modifier(
             unit,
-            Modifier::new(ModifierKind::TimedLife, None, Some(ticks)),
+            Modifier::new(ModifierKind::TimedLife, source, inflictor, Some(ticks)),
         );
     }
 

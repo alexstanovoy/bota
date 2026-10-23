@@ -54,6 +54,7 @@ pub(crate) fn stats() -> Stats {
         evasion: Ratio::NEVER,
         pierce: Ratio::NEVER,
         pierce_damage: 0,
+        pierce_item: None,
         lifesteal_pct: 0,
         magic_taken_pct: 0,
         accuracy_pct: 0,
@@ -179,6 +180,7 @@ pub(crate) fn world_with_projectile_uphill_state(launch_tier: u8, can_miss_uphil
         Projectile {
             speed: Fixed::ONE,
             source: None,
+            inflictor: None,
             target,
             damage: 1,
             kind: DamageKind::Physical,
@@ -188,6 +190,7 @@ pub(crate) fn world_with_projectile_uphill_state(launch_tier: u8, can_miss_uphil
             pierces: false,
             pierce_damage: 0,
             pierce_amp_bp: rules::NOMINAL_BP,
+            pierce_by: None,
             effect: HitEffect::None,
         },
     );
@@ -609,14 +612,7 @@ pub(crate) fn one_swing_takes(world: &mut World, from: Entity, on: Entity) -> i3
 
 /// Puts an effect with no source on a unit for `ticks` ticks.
 pub(crate) fn put_on(world: &mut World, entity: Entity, kind: ModifierKind, ticks: u32) {
-    world.put_modifier(
-        entity,
-        Modifier {
-            kind,
-            source: None,
-            ticks_left: Some(ticks),
-        },
-    );
+    world.put_modifier(entity, Modifier::new(kind, None, None, Some(ticks)));
 }
 
 /// Pudge with his hook learned and a Dire creep `apart` east of him, one
@@ -1085,6 +1081,7 @@ pub(crate) fn manual_projectile_damage(
             Projectile {
                 speed: Fixed::ONE,
                 source: Some(source),
+                inflictor: None,
                 target,
                 damage: 1,
                 kind: DamageKind::Physical,
@@ -1094,6 +1091,7 @@ pub(crate) fn manual_projectile_damage(
                 pierces,
                 pierce_damage: 0,
                 pierce_amp_bp: rules::NOMINAL_BP,
+                pierce_by: None,
                 effect: HitEffect::None,
             },
         );

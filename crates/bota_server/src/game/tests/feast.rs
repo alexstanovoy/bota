@@ -3,7 +3,7 @@
 use bota_core::{ModifierKind, rules};
 
 use crate::game::{Entity, World, wire_id};
-use bota_proto::{EffectId, EffectView, HeroId, SlotId, Target, Team, Vec2};
+use bota_proto::{AbilityId, EffectId, EffectView, HeroId, Inflictor, SlotId, Target, Team, Vec2};
 
 use super::support::*;
 
@@ -78,6 +78,9 @@ fn the_feast_takes_souls_from_two_enemies_every_half_second_heroes_first_up_to_i
             id: EffectId::FEASTING,
             ticks_left: Some(rules::FEAST_TICKS - 60),
             stacks: Some(6),
+            caster: Some(wire_id(fiend)),
+            inflictor: Some(Inflictor::Ability(AbilityId::FEAST_OF_SOULS)),
+            ticks_total: Some(rules::FEAST_TICKS),
         })
     );
 }
@@ -106,6 +109,9 @@ fn once_the_feast_is_over_the_souls_of_the_living_go_and_the_dead_linger_for_eig
             id: EffectId::FEAST_LINGER,
             ticks_left: Some(rules::FEAST_LINGER_TICKS),
             stacks: Some(1),
+            caster: Some(wire_id(fiend)),
+            inflictor: Some(Inflictor::Ability(AbilityId::FEAST_OF_SOULS)),
+            ticks_total: Some(rules::FEAST_LINGER_TICKS),
         })
     );
     run(&mut world, rules::FEAST_LINGER_TICKS);

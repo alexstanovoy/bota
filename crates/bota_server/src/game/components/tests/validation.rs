@@ -345,11 +345,12 @@ fn use_order_keeps_cooldown_and_disabled_errors_before_mana_readiness() {
     world.tick_gear();
     world.modifiers.insert(
         hero,
-        Modifiers(vec![Modifier {
-            kind: ModifierKind::Stunned,
-            source: None,
-            ticks_left: Some(1),
-        }]),
+        Modifiers(vec![Modifier::new(
+            ModifierKind::Stunned,
+            None,
+            None,
+            Some(1),
+        )]),
     );
     assert_eq!(
         world.validate_order(OWNER, None, &USE_MANGO),

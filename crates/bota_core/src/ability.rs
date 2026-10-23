@@ -42,6 +42,9 @@ pub struct AbilityDef {
     pub backswing: u32,
     /// Ticks it runs on after the cast. Zero: over at once.
     pub duration: u32,
+    /// Whether the entry is retired: its id keeps its place, but nothing
+    /// carries it and the wire never names it again.
+    pub retired: bool,
 }
 
 /// Nothing at all, so an entry names only what sets it apart.
@@ -60,6 +63,7 @@ pub(crate) const BARE_ABILITY: AbilityDef = AbilityDef {
     point: 0,
     backswing: 0,
     duration: 0,
+    retired: false,
 };
 
 /// A courier's ability: one level, cast for no mana.
@@ -127,8 +131,11 @@ const HERO_ABILITIES: [AbilityDef; 17] = [
     shadow_fiend::NECROMASTERY,
     shadow_fiend::PRESENCE,
     shadow_fiend::FEAST_OF_SOULS,
+    // Retired: a Blood Grenade in flight named a pseudo-ability; it names
+    // its item now.
     AbilityDef {
         name: "Throw Grenade",
+        retired: true,
         ..BARE_ABILITY
     },
 ];
@@ -154,10 +161,11 @@ const _: () = {
     }
 };
 
-/// What one ability is, or nothing if no such ability exists.
+/// What one ability is, or nothing if no such ability exists or it is
+/// retired.
 #[inline]
 pub fn ability_def(id: AbilityId) -> Option<&'static AbilityDef> {
-    ABILITIES.get(usize::from(id.0))
+    ABILITIES.get(usize::from(id.0)).filter(|def| !def.retired)
 }
 
 /// What one cast costs at a level.

@@ -202,10 +202,11 @@ pub const ABILITIES: [AbilityFace; FIRST_NEUTRAL_ABILITY as usize] = [
         name: "Feast",
         template: "No target, goes off beside whatever you are doing. For {feast_secs} s: +{feast_speed} attack speed and +{feast_move}% movement speed, and every {feast_period} s souls from {feast_per_period} enemies within {range} you have not fed on yet, heroes first: {feast_hero} a hero, {feast_unit} a creep, from up to {feast_targets} enemies. Then the souls of those still standing go; the rest stay {feast_linger} s past the cap. {mana} mana, {wait} s wait.",
     },
+    // Retired: what named a Blood Grenade in flight, which names its item now.
     AbilityFace {
-        id: AbilityId::THROW_GRENADE.0,
-        name: "Grenade",
-        template: "A Blood Grenade in flight, at {grenade_speed} a second, bursting {grenade_radius} wide where it lands.",
+        id: 16,
+        name: "Retired",
+        template: "No longer in the game.",
     },
 ];
 

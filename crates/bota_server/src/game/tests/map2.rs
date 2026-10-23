@@ -63,7 +63,7 @@ fn lethal_hit(world: &mut World, victim: Entity) {
             .expect("settled victim")
             .invulnerable
     );
-    world.push_hit(None, victim, 30_000, DamageKind::Pure);
+    world.push_hit(None, victim, 30_000, DamageKind::Pure, None);
 }
 
 /// Lands a lethal hit on a side's tier-one mid tower and hands it back.
@@ -329,7 +329,7 @@ fn map2_side_tier_ones_stand_invulnerable_as_in_dotas_solo_mid() {
             let victim = tower(&world, team, lane);
             let hp = world.health.get(victim).expect("standing").hp;
             for _ in 0..3 {
-                world.push_hit(None, victim, 30_000, DamageKind::Pure);
+                world.push_hit(None, victim, 30_000, DamageKind::Pure, None);
                 world.advance(&[]);
             }
             assert!(world.alive(victim), "{team:?} lane {lane} stands");
@@ -356,7 +356,7 @@ fn map2_immortal_structures_survive_sustained_attack_and_the_match_goes_on() {
     let victim = tower(&world, Team::Dire, rules::LANE_MID);
     let mut felt = 0;
     for _ in 0..30 {
-        world.push_hit(None, victim, 30_000, DamageKind::Pure);
+        world.push_hit(None, victim, 30_000, DamageKind::Pure, None);
         let events = world.advance(&[]);
         felt += events
             .iter()

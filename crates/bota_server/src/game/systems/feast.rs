@@ -7,11 +7,14 @@
 //! phase on the next tick.
 
 use bota_core::{ModifierKind, Talent, kind_def, rules};
-use bota_proto::UnitKind;
+use bota_proto::{AbilityId, Inflictor, UnitKind};
 
 use crate::game::{Feast, FeastPhase, Fed, Modifier, World};
 
 use crate::engine::Entity;
+
+/// What the feast's modifiers name as their inflictor.
+const FEAST: Option<Inflictor> = Some(Inflictor::Ability(AbilityId::FEAST_OF_SOULS));
 
 impl World {
     /// Starts a feast on the caster at a level counted from zero. A feast
@@ -28,7 +31,7 @@ impl World {
         };
         self.put_modifier(
             caster,
-            Modifier::new(running, Some(caster), Some(rules::FEAST_TICKS)),
+            Modifier::new(running, Some(caster), FEAST, Some(rules::FEAST_TICKS)),
         );
         self.feast.insert(
             caster,
@@ -193,6 +196,7 @@ impl World {
             Modifier::new(
                 ModifierKind::FeastLinger { souls },
                 Some(caster),
+                FEAST,
                 Some(rules::FEAST_LINGER_TICKS),
             ),
         );

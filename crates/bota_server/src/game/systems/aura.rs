@@ -86,10 +86,13 @@ pub fn aura_system(cx: AuraCx<'_>) {
                 {
                     continue;
                 }
+                // A unit's own aura names no ability: bota's units carry
+                // none, where Dota's tower and flagbearer carry the aura's.
                 if let Some(on_it) = modifiers.get_mut(entity) {
                     on_it.put(Modifier::new(
                         handed_kind,
                         Some(source),
+                        None,
                         Some(resisted_ticks(stats, entity, handed_kind, aura.ticks)),
                     ));
                 }

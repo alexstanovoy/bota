@@ -1,7 +1,8 @@
-//! What has been put on an entity: what it does, who put it, how long it
-//! holds.
+//! What has been put on an entity: what it does, who put it on and with
+//! what, how long it holds.
 
 use bota_core::{ModifierKind, NeutralAbility, rules, spell_effect};
+use bota_proto::{AbilityId, Inflictor};
 
 use crate::engine::Entity;
 
@@ -10,18 +11,31 @@ use crate::engine::Entity;
 pub struct Modifier {
     /// What it does, and how much of it there is.
     pub kind: ModifierKind,
-    /// Who put it on. Absent for the world's own.
+    /// Who put it on: the caster, or the bearer of an innate. Absent for the
+    /// world's own.
     pub source: Option<Entity>,
+    /// The ability or item it came from. Absent for one that came from
+    /// neither, as the Glyph's.
+    pub inflictor: Option<Inflictor>,
     /// Ticks before it lifts. Absent for one that does not lift on its own.
     pub ticks_left: Option<u32>,
+    /// Ticks it was put on for, or last renewed for: set as it is put on.
+    pub ticks_total: Option<u32>,
 }
 
 impl Modifier {
-    pub fn new(kind: ModifierKind, source: Option<Entity>, ticks_left: Option<u32>) -> Modifier {
+    pub fn new(
+        kind: ModifierKind,
+        source: Option<Entity>,
+        inflictor: Option<Inflictor>,
+        ticks_left: Option<u32>,
+    ) -> Modifier {
         Modifier {
             kind,
             source,
+            inflictor,
             ticks_left,
+            ticks_total: ticks_left,
         }
     }
 }
@@ -40,8 +54,12 @@ impl Modifiers {
     /// Replaces the same kind; Shadowraze replaces only the same source's
     /// record, and a neutral's spell the same spell (the same source's, for
     /// those [`per_source`](bota_core::NeutralAbility::per_source) keeps
-    /// apart).
+    /// apart). Its time left is its full length from here.
     pub fn put(&mut self, modifier: Modifier) {
+        let modifier = Modifier {
+            ticks_total: modifier.ticks_left,
+            ..modifier
+        };
         let same = std::mem::discriminant(&modifier.kind);
         self.0.retain(|held| match (held.kind, modifier.kind) {
             (ModifierKind::Shadowraze { .. }, ModifierKind::Shadowraze { .. }) => {
@@ -111,9 +129,14 @@ impl Modifiers {
     }
 
     /// Sets the count of a counted kind where it stands in the list: put on
-    /// last, untimed and the bearer's own, when none was on; taken off at
-    /// zero.
-    pub fn set_count(&mut self, of: fn(u32) -> ModifierKind, count: u32) {
+    /// last, untimed, by `bearer` with its innate `ability`, when none was on;
+    /// taken off at zero.
+    pub fn set_count(
+        &mut self,
+        of: fn(u32) -> ModifierKind,
+        count: u32,
+        (bearer, ability): (Entity, AbilityId),
+    ) {
         let like = std::mem::discriminant(&of(0));
         let at = self
             .0
@@ -125,7 +148,12 @@ impl Modifiers {
             }
             (Some(at), _) => self.0[at].kind = of(count),
             (None, 0) => {}
-            (None, _) => self.0.push(Modifier::new(of(count), None, None)),
+            (None, _) => self.0.push(Modifier::new(
+                of(count),
+                Some(bearer),
+                Some(Inflictor::Ability(ability)),
+                None,
+            )),
         }
     }
 
@@ -157,13 +185,14 @@ impl Modifiers {
             .unwrap_or(0)
     }
 
-    /// Adds one successful hit and refreshes its caster's complete stack to
-    /// [`rules::RAZE_DEBUFF_TICKS`].
-    pub fn stack_raze(&mut self, caster: Entity) {
+    /// Adds one successful hit of the raze `inflictor` names and refreshes
+    /// its caster's complete stack to [`rules::RAZE_DEBUFF_TICKS`].
+    pub fn stack_raze(&mut self, caster: Entity, inflictor: Option<Inflictor>) {
         let stacks = self.raze_stacks(caster).saturating_add(1);
         self.put(Modifier::new(
             ModifierKind::Shadowraze { stacks },
             Some(caster),
+            inflictor,
             Some(rules::RAZE_DEBUFF_TICKS),
         ));
     }

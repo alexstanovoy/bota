@@ -97,6 +97,7 @@ pub fn missile_system(cx: MissileCx<'_>) {
 fn land(shot: &Projectile, hits: &mut VecDeque<Hit>) {
     hits.push_back(Hit {
         source: shot.source,
+        inflictor: shot.inflictor,
         target: shot.target,
         amount: shot.damage,
         kind: shot.kind,
@@ -108,6 +109,7 @@ fn land(shot: &Projectile, hits: &mut VecDeque<Hit>) {
     if shot.pierce_damage > 0 {
         hits.push_back(Hit {
             source: shot.source,
+            inflictor: shot.pierce_by,
             target: shot.target,
             amount: shot.pierce_damage,
             kind: DamageKind::Magical,

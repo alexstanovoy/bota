@@ -5,7 +5,7 @@ use bota_core::{
     AttackClass, ModifierKind, NeutralAbility, Ratio, Spell, Strike, ability_cooldown, at_level,
     class_pct, rules, ticks_of_ms,
 };
-use bota_proto::{DamageKind, UnitKind};
+use bota_proto::{DamageKind, Inflictor, UnitKind};
 
 use crate::game::{Chance, Entity, Landed, Modifier, Purpose, Stats, World, wire_id};
 
@@ -29,6 +29,13 @@ struct Proc {
     slot: usize,
     ability: NeutralAbility,
     level: u8,
+}
+
+impl Proc {
+    /// The passive, as what it does names it.
+    fn inflictor(self) -> Option<Inflictor> {
+        Some(Inflictor::Ability(self.ability.id()))
+    }
 }
 
 /// Ticks of a petrify's damage beat: a tenth of a second.
@@ -165,7 +172,12 @@ impl World {
                     let ticks = ticks_of_ms(ms);
                     self.put_modifier(
                         given.on,
-                        Modifier::new(ModifierKind::Broken, Some(given.by), Some(ticks)),
+                        Modifier::new(
+                            ModifierKind::Broken,
+                            Some(given.by),
+                            given.inflictor(),
+                            Some(ticks),
+                        ),
                     );
                 }
             }
@@ -206,6 +218,7 @@ impl World {
                 Modifier::new(
                     ModifierKind::Disarmed,
                     Some(given.by),
+                    given.inflictor(),
                     Some(ticks_of_ms(ms)),
                 ),
             );
@@ -216,7 +229,12 @@ impl World {
             level: given.level,
             amount: counted,
         };
-        let held = Modifier::new(kind, Some(given.by), Some(rules::STRIKE_COUNTER_TICKS));
+        let held = Modifier::new(
+            kind,
+            Some(given.by),
+            given.inflictor(),
+            Some(rules::STRIKE_COUNTER_TICKS),
+        );
         if let Some(on_it) = self.modifiers.get_mut(given.on) {
             on_it.put(held);
         }
@@ -252,7 +270,8 @@ impl World {
             level: given.level,
             amount: phase,
         };
-        self.put_modifier(given.on, Modifier::new(kind, Some(given.by), Some(ticks)));
+        let held = Modifier::new(kind, Some(given.by), given.inflictor(), Some(ticks));
+        self.put_modifier(given.on, held);
     }
 
     /// A blow off its wait, begun below `below_pct` of the bearer's health,
@@ -281,9 +300,15 @@ impl World {
             on_it.put(Modifier::new(
                 ModifierKind::Rooted,
                 Some(given.by),
+                given.inflictor(),
                 Some(ticks),
             ));
-            on_it.put(Modifier::new(burn, Some(given.by), Some(ticks)));
+            on_it.put(Modifier::new(
+                burn,
+                Some(given.by),
+                given.inflictor(),
+                Some(ticks),
+            ));
         }
     }
 
@@ -302,6 +327,7 @@ impl World {
                     other,
                     blow.dealt * pct / 100,
                     DamageKind::Physical,
+                    given.inflictor(),
                 );
             }
         }
@@ -346,14 +372,26 @@ impl World {
                 let damage = at_level(&dps, level);
                 let due = self.tick % rules::TICKS_PER_SECOND == u32::from(amount);
                 if damage > 0 && due && self.alive(on) {
-                    self.push_hit(modifier.source, on, damage, DamageKind::Magical);
+                    self.push_hit(
+                        modifier.source,
+                        on,
+                        damage,
+                        DamageKind::Magical,
+                        modifier.inflictor,
+                    );
                 }
             }
             Strike::Petrify { dps, .. } => {
                 let elapsed = u32::from(amount).saturating_sub(left);
                 if elapsed > 0 && elapsed.is_multiple_of(PETRIFY_BEAT) && self.alive(on) {
                     let damage = dps * PETRIFY_BEAT as i32 / rules::TICKS_PER_SECOND as i32;
-                    self.push_hit(modifier.source, on, damage, DamageKind::Physical);
+                    self.push_hit(
+                        modifier.source,
+                        on,
+                        damage,
+                        DamageKind::Physical,
+                        modifier.inflictor,
+                    );
                 }
             }
             _ => {}

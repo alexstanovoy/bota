@@ -2,7 +2,7 @@
 
 use crate::{
     AbilityId, Aim, Angle, Attribute, Attributes, EffectId, EntityId, EventKind, Fixed, HeroId,
-    ItemId, NeutralId, Order, SlotId, TalentSlot, Team, UnitKind, Vec2,
+    Inflictor, ItemId, NeutralId, Order, SlotId, TalentSlot, Team, UnitKind, Vec2,
 };
 use serde::{Deserialize, Serialize};
 
@@ -65,6 +65,9 @@ pub struct AbilityView {
 }
 
 /// An effect currently on a visible unit.
+///
+/// As in Dota, it shows who put it on and with what while the viewer sees
+/// that unit: the id it names is one of [`WorldView::units`].
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct EffectView {
     pub id: EffectId,
@@ -72,6 +75,15 @@ pub struct EffectView {
     pub ticks_left: Option<u32>,
     /// How many are held. Absent for one that is not counted.
     pub stacks: Option<u32>,
+    /// The unit that put it on, its bearer for an innate. Absent for one no
+    /// unit put on and when that unit is not in the view.
+    pub caster: Option<EntityId>,
+    /// The ability or item it came from. Absent for one that came from
+    /// neither, as the Glyph's.
+    pub inflictor: Option<Inflictor>,
+    /// Ticks it was put on for, or last renewed for: what `ticks_left` counts
+    /// down from. Absent exactly when `ticks_left` is. Last on the wire.
+    pub ticks_total: Option<u32>,
 }
 
 /// One item slot of a visible unit.
@@ -285,15 +297,18 @@ pub struct ProjectileView {
     pub facing: Angle,
     /// Which side launched it.
     pub team: Team,
-    /// Which ability it belongs to. Absent for a plain attack.
+    /// Retired: always absent. [`inflictor`](Self::inflictor) names what let
+    /// it go.
     pub ability: Option<AbilityId>,
     /// Who let it go, or whose ability shows it. Absent when that unit is not
     /// in the view.
     pub source: Option<EntityId>,
     /// Whom it homes on. Absent for one that flies along a line or stands
-    /// where it was put, and when that unit is not in the view. Last on the
-    /// wire.
+    /// where it was put, and when that unit is not in the view.
     pub target: Option<EntityId>,
+    /// The ability or item it belongs to. Absent for a plain attack. Last on
+    /// the wire.
+    pub inflictor: Option<Inflictor>,
 }
 
 /// The abilities and items of a seat whose hero is dead.
@@ -518,6 +533,9 @@ impl WorldView {
             visit(&mut unit.id);
             for order in &mut unit.queue {
                 order.visit_ids(visit);
+            }
+            for effect in &mut unit.effects {
+                effect.caster.iter_mut().for_each(&mut *visit);
             }
         }
         for shot in &mut self.projectiles {

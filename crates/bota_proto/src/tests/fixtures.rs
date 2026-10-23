@@ -112,11 +112,17 @@ pub fn hero_unit() -> UnitView {
                 id: EffectId(0),
                 ticks_left: Some(120),
                 stacks: None,
+                caster: Some(entity(2)),
+                inflictor: Some(Inflictor::Item(ItemId::HEALING_SALVE)),
+                ticks_total: Some(300),
             },
             EffectView {
                 id: EffectId(11),
                 ticks_left: None,
                 stacks: Some(21),
+                caster: None,
+                inflictor: Some(Inflictor::Ability(AbilityId::NECROMASTERY)),
+                ticks_total: None,
             },
         ],
     }
@@ -173,9 +179,10 @@ pub fn projectile() -> ProjectileView {
         pos: Vec2::from_ints(3000, 3000),
         facing: Angle { brads: 32768 },
         team: Team::Radiant,
-        ability: Some(AbilityId(2)),
+        ability: None,
         source: Some(entity(1)),
         target: Some(entity(2)),
+        inflictor: Some(Inflictor::Ability(AbilityId(2))),
     }
 }
 
@@ -496,12 +503,14 @@ pub fn all_events() -> Vec<EventKind> {
             target: entity(100),
             amount: 54,
             kind: DamageKind::Physical,
+            inflictor: None,
         },
         EventKind::Damaged {
             source: None,
             target: entity(7),
             amount: 300,
             kind: DamageKind::Pure,
+            inflictor: Some(Inflictor::Ability(AbilityId::MEAT_HOOK)),
         },
         EventKind::Missed {
             source: Some(entity(7)),
@@ -512,6 +521,7 @@ pub fn all_events() -> Vec<EventKind> {
             target: entity(7),
             amount: 12,
             mana: 40,
+            inflictor: Some(Inflictor::Item(ItemId::TANGO)),
         },
         EventKind::Died {
             unit: entity(100),
@@ -538,6 +548,11 @@ pub fn all_events() -> Vec<EventKind> {
         EventKind::Teleported {
             slot: SlotId(1),
             landed: true,
+        },
+        EventKind::Landed {
+            inflictor: Inflictor::Item(ItemId::BLOOD_GRENADE),
+            caster: Some(entity(7)),
+            at: Vec2::from_ints(1500, -700),
         },
     ]
 }

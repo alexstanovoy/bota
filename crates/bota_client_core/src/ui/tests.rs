@@ -1,6 +1,6 @@
 //! The client core, tested without a window or a socket.
 
-use crate::ui::app::{App, Tap, TeleportEnd, tap_again};
+use crate::ui::app::{App, Tap, tap_again};
 use crate::ui::slots::{Look, Press, Slot, ability_look, decide, item_look, order_for};
 use bota_proto::{
     AbilityId, AbilitySlot, AbilityView, Aim, Angle, Attributes, EntityId, EventKind, Fixed,
@@ -688,6 +688,9 @@ fn a_cast_point_shortens_while_a_feast_runs_on_a_hero_with_the_talent() {
         id: bota_proto::EffectId::FEASTING,
         ticks_left: None,
         stacks: None,
+        caster: None,
+        inflictor: None,
+        ticks_total: None,
     });
     assert_eq!(
         app.cast_point_secs(&fiend, raze),
@@ -946,21 +949,25 @@ fn a_unit_ability_aimed_at_no_unit_refuses_and_stays_taken_up() {
 }
 
 #[test]
-fn the_front_end_is_handed_the_teleports_that_ended_as_the_server_told() {
+fn the_front_end_is_handed_what_the_server_told_until_the_next_pump() {
     let mut app = a_started_app();
     app.handle(snapshot_of(1, Vec::new(), vec![a_seat(SlotId(0), None)]));
-    app.handle(bota_proto::ServerMsg::Events {
-        tick: 1,
-        events: vec![EventKind::Teleported {
+    let told = vec![
+        EventKind::Teleported {
             slot: SlotId(0),
             landed: true,
-        }],
+        },
+        EventKind::Landed {
+            inflictor: bota_proto::Inflictor::Item(bota_proto::ItemId::BLOOD_GRENADE),
+            caster: None,
+            at: bota_proto::Vec2::from_ints(100, 200),
+        },
+    ];
+    app.handle(bota_proto::ServerMsg::Events {
+        tick: 1,
+        events: told.clone(),
     });
-    assert_eq!(
-        app.teleport_ends,
-        [TeleportEnd {
-            slot: SlotId(0),
-            landed: true
-        }]
-    );
+    assert_eq!(app.told, told, "a teleport's end and a landing, in order");
+    app.pump(0.0);
+    assert!(app.told.is_empty(), "each pump starts afresh");
 }

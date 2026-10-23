@@ -428,3 +428,15 @@ field UnitView 39 evasion: Fixed
 variant EventKind 8 Teleported {}
 field EventKind::Teleported 0 slot: SlotId
 field EventKind::Teleported 1 landed: bool
+variant Inflictor 0 Ability(AbilityId)
+variant Inflictor 1 Item(ItemId)
+field EffectView 3 caster: Option<EntityId>
+field EffectView 4 inflictor: Option<Inflictor>
+field EffectView 5 ticks_total: Option<u32>
+field ProjectileView 7 inflictor: Option<Inflictor>
+field EventKind::Damaged 4 inflictor: Option<Inflictor>
+field EventKind::Healed 4 inflictor: Option<Inflictor>
+variant EventKind 9 Landed {}
+field EventKind::Landed 0 inflictor: Inflictor
+field EventKind::Landed 1 caster: Option<EntityId>
+field EventKind::Landed 2 at: Vec2

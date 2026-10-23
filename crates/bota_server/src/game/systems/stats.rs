@@ -223,6 +223,7 @@ fn add_carried(now: &mut Stats, carried: &Carried) {
     now.evasion = carried.evasion;
     now.pierce = carried.pierce;
     now.pierce_damage = carried.pierce_damage;
+    now.pierce_item = carried.pierce_item;
     if now.projectile_speed.is_none() {
         now.attack_range += Fixed::from_int(carried.melee_range);
     }
@@ -474,6 +475,7 @@ fn raised(kind: &UnitDef, levels: i32, steps: i32, night: bool) -> Stats {
         evasion: Ratio::NEVER,
         pierce: Ratio::NEVER,
         pierce_damage: 0,
+        pierce_item: None,
         lifesteal_pct: 0,
         magic_taken_pct: 0,
         accuracy_pct: 0,

@@ -2,7 +2,7 @@
 //! when Dota's neutral AI does, and each spell does what it should.
 
 use bota_core::{ModifierKind, NeutralAbility, NeutralKind, Spell, rules, ticks_of_ms};
-use bota_proto::{DamageKind, EffectId, EventKind, Fixed, HeroId, SlotId, Team, Vec2};
+use bota_proto::{DamageKind, EffectId, EventKind, Fixed, HeroId, Inflictor, SlotId, Team, Vec2};
 
 use crate::game::{Entity, MatchRng, UnitOrder, World, wire_id};
 
@@ -27,7 +27,7 @@ fn bystander(world: &mut World, at: Vec2) -> Entity {
 
 /// Wakes a camp onto a hero, with the blow of a hero that stands by.
 fn rouse(world: &mut World, beast: Entity, by: Entity) {
-    world.push_hit(Some(by), beast, 1, DamageKind::Physical);
+    world.push_hit(Some(by), beast, 1, DamageKind::Physical, None);
     world.step();
 }
 
@@ -172,6 +172,65 @@ fn a_golem_hurls_its_boulder_at_a_unit_under_300_health_and_the_other_waits() {
     assert_eq!(casts, 1, "one boulder, and the other golem waits");
     assert!(stunned, "the boulder stuns on arriving");
     assert!(health_of(&world, hero) < hurt, "and hurts");
+}
+
+#[test]
+fn a_boulder_names_its_spell_and_its_golem_in_flight_in_its_blow_and_on_its_stun() {
+    // Dota's tracking missile, its blow in the combat log and the stun's
+    // buff icon all name the Hurl Boulder, and the stun names the golem.
+    let mut world = day();
+    let golem = world.spawn_neutral(NeutralKind::MudGolem, CAMP, 1, 0);
+    let hero = bystander(&mut world, CAMP + Vec2::from_ints(300, 0));
+    world.settle();
+    set_health_pct(&mut world, hero, 30);
+    rouse(&mut world, golem, hero);
+    let boulder = Some(Inflictor::Ability(NeutralAbility::HurlBoulder.id()));
+    let (mut flew, mut struck) = (false, None);
+    for _ in 0..ticks_of_ms(4500) {
+        let events = world.step();
+        let view = world.view(Team::Radiant);
+        flew |= view.projectiles.iter().any(|shot| {
+            shot.inflictor == boulder
+                && shot.source == Some(wire_id(golem))
+                && shot.target == Some(wire_id(hero))
+                && shot.ability.is_none()
+        });
+        let blow = events.iter().find_map(|event| match event.kind {
+            EventKind::Damaged {
+                source,
+                target,
+                inflictor,
+                ..
+            } if source == Some(wire_id(golem)) && target == wire_id(hero) => Some(inflictor),
+            _ => None,
+        });
+        if let Some(inflictor) = blow.filter(|inflictor| inflictor.is_some()) {
+            let stun = shown(&world, Some(Team::Radiant), hero)
+                .effects
+                .into_iter()
+                .find(|effect| effect.id == EffectId::STUNNED)
+                .expect("the boulder stuns as it hits");
+            struck = Some((inflictor, stun));
+            break;
+        }
+    }
+    assert!(
+        flew,
+        "the boulder in flight names its spell, its golem and the hero"
+    );
+    let (inflictor, stun) = struck.expect("the boulder lands");
+    assert_eq!(inflictor, boulder, "its blow names the spell");
+    assert_eq!(stun.inflictor, boulder, "so does the stun");
+    assert_eq!(
+        stun.caster,
+        Some(wire_id(golem)),
+        "and the stun names the golem"
+    );
+    assert!(stun.ticks_total.is_some_and(|total| total > 0));
+    assert_eq!(
+        stun.ticks_left, stun.ticks_total,
+        "a stun just put on is whole"
+    );
 }
 
 #[test]
@@ -483,7 +542,7 @@ fn a_ripper_dying_in_a_camp_sometimes_has_the_wildwing_raise_a_tornado() {
         let hero = bystander(&mut world, CAMP + Vec2::from_ints(300, 0));
         world.settle();
         rouse(&mut world, wing, hero);
-        world.push_hit(Some(hero), ripper, 100_000, DamageKind::Pure);
+        world.push_hit(Some(hero), ripper, 100_000, DamageKind::Pure, None);
         world.step();
         run(&mut world, 30);
         let tornado = world

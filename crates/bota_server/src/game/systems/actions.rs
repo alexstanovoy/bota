@@ -11,7 +11,7 @@ use bota_core::{
     BEATS_PER_TICK, ModifierKind, Ratio, Talent, ability_def, attack_gain, beats, cast_point_ms,
     cross, facing_gap, facing_towards, kind_def, rules,
 };
-use bota_proto::{Aim, DamageKind, Fixed, ItemSlot, Team, Vec2};
+use bota_proto::{Aim, DamageKind, Fixed, Inflictor, ItemSlot, Team, Vec2};
 
 use super::hitting::entity_slot;
 
@@ -29,6 +29,8 @@ struct Swing {
     accurate: bool,
     /// The magical damage piercing with it, when it pierces.
     pierce: Option<i32>,
+    /// The item that pierces.
+    pierce_by: Option<Inflictor>,
     /// Physical amplification, in basis points.
     physical_amp_bp: i32,
     /// Magical amplification, in basis points.
@@ -650,6 +652,7 @@ impl World {
             pierce: self
                 .roll_pierce(attacker, on, stats)
                 .map(|bonus| bonus * class_pct / 100),
+            pierce_by: stats.pierce_item.map(Inflictor::Item),
             physical_amp_bp: stats.damage_amp_bp(DamageKind::Physical),
             magical_amp_bp: stats.damage_amp_bp(DamageKind::Magical),
         };
@@ -674,6 +677,7 @@ impl World {
     fn strike_home(&mut self, attacker: Entity, on: Entity, swing: Swing) {
         self.hits.push_back(Hit {
             source: Some(attacker),
+            inflictor: None,
             target: on,
             amount: swing.damage,
             kind: DamageKind::Physical,
@@ -685,6 +689,7 @@ impl World {
         if let Some(bonus) = swing.pierce {
             self.hits.push_back(Hit {
                 source: Some(attacker),
+                inflictor: swing.pierce_by,
                 target: on,
                 amount: bonus,
                 kind: DamageKind::Magical,
@@ -711,6 +716,7 @@ impl World {
             Projectile {
                 speed,
                 source: Some(attacker),
+                inflictor: None,
                 target: on,
                 damage: swing.damage,
                 kind: DamageKind::Physical,
@@ -720,6 +726,7 @@ impl World {
                 pierces: swing.pierce.is_some() || swing.accurate,
                 pierce_damage: swing.pierce.unwrap_or(0),
                 pierce_amp_bp: swing.magical_amp_bp,
+                pierce_by: swing.pierce_by,
                 effect: HitEffect::None,
             },
         );

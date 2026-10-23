@@ -103,7 +103,7 @@ fn doubled(world: &World, kind: UnitKind, case: &str) -> Vec<Entity> {
 
 /// Kills the seat's hero and stands it up again at once.
 fn kill_and_respawn(world: &mut World, hero: Entity) -> Entity {
-    world.push_hit(None, hero, 1_000_000, DamageKind::Pure);
+    world.push_hit(None, hero, 1_000_000, DamageKind::Pure, None);
     world.step();
     world.seats[0].respawn_left = 1;
     world.tick_respawns();
@@ -189,7 +189,7 @@ fn camp_creeps_are_seeded_on_every_fill() {
     for _ in 0..2 {
         for entity in world.entities.iter().collect::<Vec<_>>() {
             if world.kind.get(entity) == Some(&UnitKind::CreepNeutral) {
-                world.push_hit(None, entity, 1_000_000, DamageKind::Pure);
+                world.push_hit(None, entity, 1_000_000, DamageKind::Pure, None);
             }
         }
         world.step();
@@ -311,7 +311,7 @@ fn a_respawned_hero_is_seeded_afresh_and_stands_full_at_its_maximum() {
         let full = SHADOW_FIEND.max_hp * scale / 10_000 + rules::HP_PER_STRENGTH * 19;
         let max_hp = |world: &World, hero| world.stats.get(hero).map(|stats| stats.max_hp);
         assert_eq!(max_hp(&world, hero), Some(Fixed::from_int(full)), "{scale}");
-        world.push_hit(None, hero, 1_000_000, DamageKind::Pure);
+        world.push_hit(None, hero, 1_000_000, DamageKind::Pure, None);
         world.step();
         assert!(!world.alive(hero), "the blow was fatal");
         let wait = world.seats[0].respawn_left;

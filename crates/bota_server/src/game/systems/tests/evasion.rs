@@ -107,7 +107,7 @@ fn what_is_not_an_attack_never_misses() {
     let (mut world, from, mark) = attacker_at_a_hero(&BYSTANDER, &[ItemId::BUTTERFLY]);
     let mut blows = Vec::new();
     for _ in 0..40 {
-        world.push_hit(Some(from), mark, 10, DamageKind::Magical);
+        world.push_hit(Some(from), mark, 10, DamageKind::Magical, None);
         blows.extend(swings_in(&world.step(), from, mark));
     }
     assert_eq!(blows.len(), 40, "every blow of the spell was told of");

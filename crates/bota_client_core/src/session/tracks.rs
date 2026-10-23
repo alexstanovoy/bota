@@ -324,12 +324,14 @@ impl Tracks {
                 target,
                 amount,
                 kind,
+                ..
             } => self.update_damage(tick, source, target, amount, kind),
             EventKind::Healed {
                 source,
                 target,
                 amount,
                 mana,
+                ..
             } => {
                 self.update_restoration(tick, source, target, amount, mana);
             }
@@ -350,13 +352,15 @@ impl Tracks {
                 }
             }
             // A miss is not damage and carries no health, mana or death facts; casts are
-            // recorded before any same-tick damage. A teleport's end names no entity.
+            // recorded before any same-tick damage. A teleport's end names no entity, and a
+            // landing is told by the blows it deals.
             EventKind::Missed { .. }
             | EventKind::AbilityCast { .. }
             | EventKind::LevelUp { .. }
             | EventKind::ItemBought { .. }
             | EventKind::StructureDestroyed { .. }
-            | EventKind::Teleported { .. } => {}
+            | EventKind::Teleported { .. }
+            | EventKind::Landed { .. } => {}
         }
     }
 

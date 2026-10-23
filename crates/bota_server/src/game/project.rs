@@ -2,9 +2,9 @@
 
 use bota_core::{ModifierKind, ability_mana_cost, effect_def, kind_def, phase_ticks_left, rules};
 use bota_proto::{
-    AbilityId, AbilityView, AggroView, CastView, EffectId, EffectView, Fixed, PlayerView,
-    ProjectileView, StatusFlags, SwingView, TalentSlot, TalentView, Talents, Team, UnitKind,
-    UnitView, WorldView,
+    AbilityId, AbilityView, AggroView, CastView, EffectId, EffectView, Fixed, Inflictor,
+    PlayerView, ProjectileView, StatusFlags, SwingView, TalentSlot, TalentView, Talents, Team,
+    UnitKind, UnitView, WorldView,
 };
 
 use crate::game::{ActionPhase, ActionState, Entity, Seat, World, item_view, item_views};
@@ -59,6 +59,10 @@ impl World {
         debug_assert!(projectiles.iter().all(|shot| {
             let carried = |id| units.binary_search_by_key(&id, |unit| unit.id).is_ok();
             shot.source.is_none_or(carried) && shot.target.is_none_or(carried)
+        }));
+        debug_assert!(units.iter().flat_map(|unit| &unit.effects).all(|effect| {
+            let carried = |id| units.binary_search_by_key(&id, |unit| unit.id).is_ok();
+            effect.caster.is_none_or(carried)
         }));
         let talents = self.project_talents(viewer, &units);
         let disguised = self.disguised();
@@ -300,17 +304,22 @@ impl World {
     /// nothing when the entity is none of them. Who let it go and whom it
     /// homes on are told while the viewer's units carry them.
     fn project_projectile(&self, viewer: Option<Team>, entity: Entity) -> Option<ProjectileView> {
-        let (ability, source, target) = if let Some(missile) = self.projectile.get(entity) {
-            (None, missile.source, Some(missile.target))
+        let ability = |id| Some(Inflictor::Ability(id));
+        let (inflictor, source, target) = if let Some(missile) = self.projectile.get(entity) {
+            (missile.inflictor, missile.source, Some(missile.target))
         } else if let Some(mark) = self.mark.get(entity) {
-            (Some(mark.ability), Some(mark.owner), None)
+            (ability(mark.ability), Some(mark.owner), None)
         } else if let Some(line) = self.requiem_line.get(entity) {
-            (Some(AbilityId::REQUIEM), Some(line.owner), None)
+            (ability(AbilityId::REQUIEM), Some(line.owner), None)
         } else if let Some(hook) = self.hook.get(entity) {
-            (Some(AbilityId::MEAT_HOOK), Some(hook.owner), None)
+            (ability(AbilityId::MEAT_HOOK), Some(hook.owner), None)
         } else {
             let grenade = self.grenade.get(entity)?;
-            (Some(AbilityId::THROW_GRENADE), Some(grenade.owner), None)
+            (
+                Some(Inflictor::Item(grenade.item)),
+                Some(grenade.owner),
+                None,
+            )
         };
         let at = self.transform.get(entity)?;
         let told =
@@ -320,9 +329,10 @@ impl World {
             pos: at.pos,
             facing: at.facing,
             team: self.team.get(entity).copied().unwrap_or(Team::Neutral),
-            ability,
+            ability: None,
             source: told(source),
             target: told(target),
+            inflictor,
         })
     }
 
@@ -352,14 +362,14 @@ impl World {
     /// One unit as a viewer is told of it: its queue to its own side alone,
     /// and an illusion to the other side as its hero (see the contract).
     fn told_unit(&self, viewer: Option<Team>, entity: Entity) -> Option<UnitView> {
-        let mut unit = self.project_unit(entity)?;
+        let mut unit = self.project_unit(viewer, entity)?;
         if viewer.is_none_or(|team| team == unit.team) {
             return Some(unit);
         }
         unit.queue.clear();
         unit.effects.retain(|effect| !own_side_only(effect.id));
         if let Some(illusion) = self.illusion.get(entity)
-            && let Some(hero) = self.project_unit(illusion.of)
+            && let Some(hero) = self.project_unit(viewer, illusion.of)
         {
             wear_sheet(&mut unit, hero);
         }
@@ -367,7 +377,7 @@ impl World {
     }
 
     /// One unit, or nothing when the entity is not one.
-    fn project_unit(&self, entity: Entity) -> Option<UnitView> {
+    fn project_unit(&self, viewer: Option<Team>, entity: Entity) -> Option<UnitView> {
         let kind = *self.kind.get(entity)?;
         let transform = self.transform.get(entity)?;
         let stats = self.stats.get(entity)?;
@@ -435,7 +445,7 @@ impl World {
                     .collect()
             }),
             items: bag.map_or_else(Vec::new, |bag| item_views(bag, mana_rate, clocks)),
-            effects: self.effects_on(entity),
+            effects: self.effects_on(viewer, entity),
             town_portal: bag
                 .and_then(|bag| bag.town_portal.flatten())
                 .map(|stack| item_view(&stack, mana_rate, clocks)),
@@ -527,8 +537,9 @@ fn ability_views(book: &crate::game::AbilityBook, mana_rate_bp: i32) -> Vec<Abil
 
 impl World {
     /// Everything showing on one entity: its active modifiers but the rot
-    /// and those Dota hides, and whether it is an illusion.
-    fn effects_on(&self, entity: Entity) -> Vec<EffectView> {
+    /// and those Dota hides, each with who put it on, while the viewer's
+    /// units carry that one, and with what; and whether it is an illusion.
+    fn effects_on(&self, viewer: Option<Team>, entity: Entity) -> Vec<EffectView> {
         let mut on_it: Vec<EffectView> = self
             .modifiers
             .get(entity)
@@ -540,6 +551,12 @@ impl World {
                 id: held.kind.effect_id(),
                 ticks_left: held.ticks_left,
                 stacks: held.kind.stacks(),
+                caster: held
+                    .source
+                    .filter(|by| self.carried(viewer, *by))
+                    .map(wire_id),
+                inflictor: held.inflictor,
+                ticks_total: held.ticks_total,
             })
             .collect();
         if self.illusion.contains(entity) {
@@ -547,6 +564,9 @@ impl World {
                 id: EffectId::ILLUSION,
                 ticks_left: None,
                 stacks: None,
+                caster: None,
+                inflictor: None,
+                ticks_total: None,
             });
         }
         on_it

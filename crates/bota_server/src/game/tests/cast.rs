@@ -131,7 +131,7 @@ fn a_cast_walked_towards_a_target_that_fell_is_given_up_and_costs_nothing() {
         world.pending_cast(pudge).is_some(),
         "out of reach the cast is held while the caster walks in"
     );
-    world.push_hit(None, mark, 10_000, DamageKind::Pure);
+    world.push_hit(None, mark, 10_000, DamageKind::Pure, None);
     for _ in 0..3 {
         world.step();
         assert!(

@@ -4,8 +4,8 @@ use bota_core::{ModifierKind, isqrt64, rules, tower_def};
 
 use crate::game::{ActionState, Entity, UnitOrder, World, wire_id};
 use bota_proto::{
-    AbilityId, CastView, EffectId, EventKind, Fixed, HeroId, SlotId, StatusFlags, Target, Team,
-    Vec2,
+    AbilityId, CastView, EffectId, EventKind, Fixed, HeroId, Inflictor, SlotId, StatusFlags,
+    Target, Team, Vec2,
 };
 
 use super::support::*;
@@ -428,7 +428,7 @@ fn a_raze_leaves_its_mark_where_it_lands_for_whoever_sees_the_spot() {
     let landed = dire
         .projectiles
         .iter()
-        .find(|shown| shown.ability == Some(AbilityId::RAZE_FAR))
+        .find(|shown| shown.inflictor == Some(Inflictor::Ability(AbilityId::RAZE_FAR)))
         .expect("the Dire side sees the raze where it landed");
     assert_eq!(
         landed.pos,
@@ -446,7 +446,7 @@ fn a_raze_leaves_its_mark_where_it_lands_for_whoever_sees_the_spot() {
             .view_full()
             .projectiles
             .iter()
-            .all(|shown| shown.ability != Some(AbilityId::RAZE_FAR)),
+            .all(|shown| shown.inflictor != Some(Inflictor::Ability(AbilityId::RAZE_FAR))),
         "the mark is gone once its ticks have run"
     );
 }
@@ -483,7 +483,7 @@ fn a_requiem_lets_a_line_fly_for_every_soul_and_a_line_burns_what_it_crosses_onc
             .view_full()
             .projectiles
             .iter()
-            .filter(|shown| shown.ability == Some(AbilityId::REQUIEM))
+            .filter(|shown| shown.inflictor == Some(Inflictor::Ability(AbilityId::REQUIEM)))
             .count()
     };
     cast(&mut world, REQUIEM_SLOT, Target::None);
@@ -659,7 +659,7 @@ fn a_fallen_fiend_lets_half_his_kept_souls_fly_whatever_the_cooldown_and_they_on
         .view_full()
         .projectiles
         .iter()
-        .filter(|shown| shown.ability == Some(AbilityId::REQUIEM))
+        .filter(|shown| shown.inflictor == Some(Inflictor::Ability(AbilityId::REQUIEM)))
         .count();
     // Ten held, three lost to the death, half of the seven kept fly.
     assert_eq!(lines, 3);
@@ -685,7 +685,7 @@ fn a_fallen_fiend_with_no_requiem_learned_lets_nothing_fly() {
             .view_full()
             .projectiles
             .iter()
-            .all(|shown| shown.ability != Some(AbilityId::REQUIEM))
+            .all(|shown| shown.inflictor != Some(Inflictor::Ability(AbilityId::REQUIEM)))
     );
 }
 

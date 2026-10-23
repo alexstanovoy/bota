@@ -2,7 +2,7 @@
 //!
 //! A team is sent only the events it may know of.
 
-use crate::{AbilityId, EntityId, ItemId, SlotId, Team};
+use crate::{AbilityId, EntityId, Inflictor, ItemId, SlotId, Team, Vec2};
 use serde::{Deserialize, Serialize};
 
 /// How a chunk of damage is reduced before it is applied.
@@ -29,6 +29,9 @@ pub enum EventKind {
         amount: i32,
         /// Which reduction applied.
         kind: DamageKind,
+        /// The ability or item that dealt it. Absent for an attack's own
+        /// blow.
+        inflictor: Option<Inflictor>,
     },
     /// An attack did not land: the target evaded it, or it was thrown
     /// uphill and missed.
@@ -51,6 +54,8 @@ pub enum EventKind {
         amount: i32,
         /// Mana it restores alongside, on the same counting.
         mana: i32,
+        /// The item or ability that mends it.
+        inflictor: Option<Inflictor>,
     },
     /// A unit died.
     Died {
@@ -105,6 +110,18 @@ pub enum EventKind {
         /// found no ground to land on.
         landed: bool,
     },
+    /// Something thrown at a spot came down there and went off, as a Blood
+    /// Grenade bursts. Told to the sides that see the spot, or to the
+    /// thrower's when none does.
+    Landed {
+        /// What was thrown.
+        inflictor: Inflictor,
+        /// Who threw it, told as a blow's dealer is; may name a unit that has
+        /// since died.
+        caster: Option<EntityId>,
+        /// Where it went off.
+        at: Vec2,
+    },
 }
 
 impl EventKind {
@@ -121,6 +138,7 @@ impl EventKind {
                 visit(unit);
                 killer.iter_mut().for_each(visit);
             }
+            EventKind::Landed { caster, .. } => caster.iter_mut().for_each(visit),
             EventKind::AbilityCast { caster: unit, .. }
             | EventKind::LevelUp { unit, .. }
             | EventKind::StructureDestroyed { unit, .. } => visit(unit),

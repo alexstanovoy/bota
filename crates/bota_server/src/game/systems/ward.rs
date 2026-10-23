@@ -1,7 +1,7 @@
 //! Wards: standing them, and taking them away when their time is up.
 
 use bota_core::{UnitDef, rules};
-use bota_proto::Target;
+use bota_proto::{Inflictor, ItemId, Target};
 
 use crate::game::{Entity, World};
 
@@ -36,7 +36,7 @@ impl World {
         &mut self,
         user: Entity,
         target: Target,
-        def: &'static UnitDef,
+        (item, def): (ItemId, &'static UnitDef),
         ticks: u32,
         range: i32,
     ) -> bool {
@@ -49,7 +49,8 @@ impl World {
         if !from.within(pos, rules::units(range)) || !self.clearance.stands_clear(pos) {
             return false;
         }
-        self.spawn_ward(def, side, pos, ticks);
+        let by = (Some(user), Some(Inflictor::Item(item)));
+        self.spawn_ward(def, (side, pos), ticks, by);
         self.settle();
         true
     }

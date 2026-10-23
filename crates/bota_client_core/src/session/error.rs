@@ -123,6 +123,11 @@ pub enum SessionError {
     /// A projectile named a unit, as its source or its target, absent from
     /// the visible units.
     UnknownProjectileUnit(EntityId),
+    /// An effect named a unit, as its caster, absent from the visible units.
+    UnknownEffectCaster(EntityId),
+    /// An effect on this unit had time left without a full length or the
+    /// other way round, or more time left than its full length.
+    EffectOutOfRange(EntityId),
     /// This unit's cast was shown without the casting status or the other way
     /// round, named no ability with a cast point, or went off past it.
     CastOutOfRange(EntityId),
@@ -396,6 +401,16 @@ impl SessionError {
             Self::UnknownProjectileUnit(id) => write!(
                 f,
                 "a snapshot projectile names {}, which is not a visible unit",
+                Id(*id)
+            ),
+            Self::UnknownEffectCaster(id) => write!(
+                f,
+                "a snapshot effect names {} as its caster, which is not a visible unit",
+                Id(*id)
+            ),
+            Self::EffectOutOfRange(id) => write!(
+                f,
+                "an effect on {} has more time left than its full length",
                 Id(*id)
             ),
             Self::CastOutOfRange(id) => write!(

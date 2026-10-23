@@ -23,7 +23,7 @@ ability 12 live Requiem of Souls
 ability 13 live Necromastery
 ability 14 live Presence of the Dark Lord
 ability 15 live Feast of Souls
-ability 16 live Throw Grenade
+ability 16 retired Throw Grenade
 ability 17 live Prospecting Aura
 ability 18 live Neutral Upgrade
 ability 19 live Steal Weapon

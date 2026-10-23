@@ -2,11 +2,14 @@ use bota_core::{ModifierKind, item_def, rules, tower_def};
 
 use crate::game::{ItemStack, Modifier, Modifiers, World, wire_id};
 use bota_proto::{
-    EffectId, EffectView, Fixed, HeroId, ItemId, LEN_PREFIX, SlotId, Team, WorldView,
-    decode_payload, encode_frame_to_vec,
+    AbilityId, EffectId, EffectView, Fixed, HeroId, Inflictor, ItemId, LEN_PREFIX, SlotId, Team,
+    WorldView, decode_payload, encode_frame_to_vec,
 };
 
 use super::fixtures::*;
+
+/// What these records name as the raze that put them on.
+const RAZE: Option<Inflictor> = Some(Inflictor::Ability(AbilityId::RAZE_NEAR));
 
 #[test]
 fn auras_and_shadowraze_project_distinct_ids_and_round_trip_together() {
@@ -19,7 +22,9 @@ fn auras_and_shadowraze_project_distinct_ids_and_round_trip_together() {
             hp_per_second: 100,
         },
         source: None,
+        inflictor: None,
         ticks_left: Some(15),
+        ticks_total: Some(15),
     });
     modifiers.put(Modifier {
         kind: ModifierKind::Inspired {
@@ -27,22 +32,35 @@ fn auras_and_shadowraze_project_distinct_ids_and_round_trip_together() {
             magic_resist_pct: 0,
         },
         source: None,
+        inflictor: None,
         ticks_left: Some(14),
+        ticks_total: Some(14),
     });
-    modifiers.stack_raze(caster);
-    modifiers.stack_raze(caster);
+    modifiers.stack_raze(caster, RAZE);
+    modifiers.stack_raze(caster, RAZE);
     let expected = vec![
         EffectView {
             id: EffectId::GUARDED,
             ticks_left: Some(15),
             stacks: None,
+            caster: None,
+            inflictor: None,
+            ticks_total: Some(15),
         },
         EffectView {
             id: EffectId::INSPIRED,
             ticks_left: Some(14),
             stacks: None,
+            caster: None,
+            inflictor: None,
+            ticks_total: Some(14),
         },
-        effect(2, 180),
+        EffectView {
+            caster: Some(wire_id(caster)),
+            inflictor: RAZE,
+            ticks_total: Some(rules::RAZE_DEBUFF_TICKS),
+            ..effect(2, 180)
+        },
     ];
 
     for view in [
@@ -74,7 +92,9 @@ fn expired_auras_are_not_projected_or_counted_as_shadowraze() {
                     hp_per_second: 100,
                 },
                 source: None,
+                inflictor: None,
                 ticks_left: Some(1),
+                ticks_total: Some(1),
             },
             Modifier {
                 kind: ModifierKind::Inspired {
@@ -82,15 +102,29 @@ fn expired_auras_are_not_projected_or_counted_as_shadowraze() {
                     magic_resist_pct: 0,
                 },
                 source: None,
+                inflictor: None,
                 ticks_left: Some(1),
+                ticks_total: Some(1),
             },
         ]),
     );
-    world.modifiers.get_mut(target).unwrap().stack_raze(caster);
+    world
+        .modifiers
+        .get_mut(target)
+        .unwrap()
+        .stack_raze(caster, RAZE);
 
     world.tick_gear();
 
-    assert_eq!(shown(&world, None, target).effects, vec![effect(1, 179)]);
+    assert_eq!(
+        shown(&world, None, target).effects,
+        vec![EffectView {
+            caster: Some(wire_id(caster)),
+            inflictor: RAZE,
+            ticks_total: Some(rules::RAZE_DEBUFF_TICKS),
+            ..effect(1, 179)
+        }]
+    );
     assert_eq!(world.modifiers.get(target).unwrap().raze_stacks(caster), 1);
 }
 
@@ -105,8 +139,16 @@ fn tower_and_mango_bonuses_survive_shadowraze_refresh() {
     world.inventory.get_mut(target).unwrap().slots[0] =
         ItemStack::bought(ItemId::MANGO, SlotId(1), 0);
     world.step();
-    world.modifiers.get_mut(target).unwrap().stack_raze(caster);
-    world.modifiers.get_mut(target).unwrap().stack_raze(caster);
+    world
+        .modifiers
+        .get_mut(target)
+        .unwrap()
+        .stack_raze(caster, RAZE);
+    world
+        .modifiers
+        .get_mut(target)
+        .unwrap()
+        .stack_raze(caster, RAZE);
 
     world.settle();
 

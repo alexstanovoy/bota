@@ -1,4 +1,4 @@
-use bota_proto::{Fixed, Vec2};
+use bota_proto::{Fixed, Inflictor, Vec2};
 
 use crate::engine::Entity;
 
@@ -12,6 +12,8 @@ use crate::engine::Entity;
 pub struct Chain {
     /// Who cast it. The handle may outlive the body.
     pub source: Entity,
+    /// The spell it is.
+    pub inflictor: Inflictor,
     /// Where the last leap landed, kept for when its target has fallen.
     pub at: Vec2,
     /// Whom it has struck already, never struck twice.

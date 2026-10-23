@@ -3,9 +3,9 @@
 
 use bota_core::{ModifierKind, rules};
 
-use crate::game::{Entity, Event, MatchConfig, World, wire_id};
+use crate::game::{Entity, Event, EventVisibility, MatchConfig, World, wire_id};
 use bota_proto::{
-    AbilityId, CastView, DamageKind, EffectId, EventKind, Fixed, ItemId, ItemSlot, Order,
+    CastView, DamageKind, EffectId, EventKind, Fixed, Inflictor, ItemId, ItemSlot, Order,
     RejectReason, StatusFlags, Target, Team, Vec2,
 };
 
@@ -138,7 +138,7 @@ fn a_thrown_grenade_flies_bursts_slows_and_burns_five_times_then_lifts() {
         if view
             .projectiles
             .iter()
-            .any(|shot| shot.ability == Some(AbilityId::THROW_GRENADE))
+            .any(|shot| shot.inflictor == Some(Inflictor::Item(ItemId::BLOOD_GRENADE)))
         {
             flew += 1;
         }
@@ -188,6 +188,93 @@ fn a_thrown_grenade_flies_bursts_slows_and_burns_five_times_then_lifts() {
             .iter()
             .any(|effect| effect.id == EffectId::BLOOD_GRENADE)
     );
+}
+
+#[test]
+fn a_grenade_names_its_item_in_flight_where_it_lands_in_its_blows_and_on_its_debuff() {
+    // Dota has no Throw Grenade ability: the missile, the burst, the blows and
+    // the debuff are the Blood Grenade item's.
+    let (mut world, hero, enemy) = two_fiends(500);
+    carry(&mut world, hero, 0, ItemId::BLOOD_GRENADE, 1);
+    world.step();
+    let aim = world.transform.get(enemy).expect("standing").pos;
+    let mut events = advance_validated(
+        &mut world,
+        None,
+        Order::Use {
+            slot: ItemSlot(0),
+            target: Target::Pos(aim),
+        },
+    );
+    let grenade = Inflictor::Item(ItemId::BLOOD_GRENADE);
+    let mut flew = false;
+    for _ in 0..30 {
+        flew |= world.view(Team::Dire).projectiles.iter().any(|shot| {
+            shot.inflictor == Some(grenade)
+                && shot.ability.is_none()
+                && shot.source == Some(wire_id(hero))
+        });
+        events.extend(world.advance(&[]));
+    }
+    assert!(flew, "the other side sees the item fly, and who threw it");
+    let landed: Vec<&Event> = events
+        .iter()
+        .filter(|event| matches!(event.kind, EventKind::Landed { .. }))
+        .collect();
+    assert_eq!(landed.len(), 1, "one landing");
+    assert_eq!(
+        landed[0].kind,
+        EventKind::Landed {
+            inflictor: grenade,
+            caster: Some(wire_id(hero)),
+            at: aim,
+        }
+    );
+    assert_eq!(
+        landed[0].visible_to,
+        EventVisibility::Everyone,
+        "both sides see the spot"
+    );
+    let blows: Vec<_> = events
+        .iter()
+        .filter_map(|event| match event.kind {
+            EventKind::Damaged {
+                source,
+                inflictor,
+                kind: DamageKind::Magical,
+                ..
+            } if source == Some(wire_id(hero)) => Some(inflictor),
+            _ => None,
+        })
+        .collect();
+    assert!(!blows.is_empty(), "its impact is told");
+    assert!(
+        blows.iter().all(|by| *by == Some(grenade)),
+        "every burn names the grenade: {blows:?}"
+    );
+    let debuff = shown(&world, Some(Team::Dire), enemy)
+        .effects
+        .into_iter()
+        .find(|effect| effect.id == EffectId::BLOOD_GRENADE)
+        .expect("the debuff shows");
+    assert_eq!(debuff.inflictor, Some(grenade));
+    assert_eq!(debuff.caster, Some(wire_id(hero)));
+    assert_eq!(debuff.ticks_total, Some(rules::GRENADE_DEBUFF_TICKS));
+    // Out of the other side's sight, the thrower is no longer named on it;
+    // the full view still names him.
+    world.transform.get_mut(hero).expect("hero").pos =
+        bota_core::fountain_pos(world.map, Team::Radiant);
+    world.step();
+    let theirs = |side| {
+        shown(&world, side, enemy)
+            .effects
+            .into_iter()
+            .find(|effect| effect.id == EffectId::BLOOD_GRENADE)
+            .expect("the debuff still shows")
+    };
+    assert_eq!(theirs(Some(Team::Dire)).caster, None, "unseen, unnamed");
+    assert_eq!(theirs(None).caster, Some(wire_id(hero)));
+    assert_eq!(theirs(Some(Team::Dire)).inflictor, Some(grenade));
 }
 
 #[test]

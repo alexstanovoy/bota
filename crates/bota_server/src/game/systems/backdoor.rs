@@ -148,7 +148,7 @@ impl World {
                 (true, false) => {
                     self.put_modifier(
                         entity,
-                        Modifier::new(ModifierKind::BackdoorProtection, None, None),
+                        Modifier::new(ModifierKind::BackdoorProtection, None, None, None),
                     );
                 }
                 (false, true) => self.take_modifier(entity, ModifierKind::BackdoorProtection, None),

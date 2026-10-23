@@ -1,7 +1,7 @@
 //! Throwing a hook, and what it drags back.
 
 use bota_core::{ModifierKind, facing_towards, kind_def, move_towards, per_tick, rules};
-use bota_proto::{AbilityId, DamageKind, Fixed, Target, Vec2};
+use bota_proto::{AbilityId, DamageKind, Fixed, Inflictor, Target, Vec2};
 
 use crate::game::{Hook, Modifier, World};
 
@@ -98,6 +98,7 @@ impl World {
                         hook.damage,
                         DamageKind::Pure,
                         hook.damage_amp_bp,
+                        Some(Inflictor::Ability(AbilityId::MEAT_HOOK)),
                     );
                 }
             } else if next == hook.aim || hook.reach_left <= Fixed::ZERO {
@@ -156,9 +157,10 @@ impl World {
         if let Some(at) = self.transform.get_mut(caught) {
             at.pos = to;
         }
+        let with = Some(Inflictor::Ability(AbilityId::MEAT_HOOK));
         self.put_modifier(
             caught,
-            Modifier::new(ModifierKind::Stunned, Some(hook), Some(2)),
+            Modifier::new(ModifierKind::Stunned, Some(hook), with, Some(2)),
         );
         self.forget_walk(caught);
     }

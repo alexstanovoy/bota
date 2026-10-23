@@ -34,7 +34,10 @@ fn defined_as_registered(space: IdSpace, names: &[Option<&str>]) {
 fn the_tables_keep_their_registered_ids() {
     let heroes: Vec<_> = HEROES.iter().map(|hero| Some(hero.name)).collect();
     defined_as_registered(IdSpace::Hero, &heroes);
-    let abilities: Vec<_> = ABILITIES.iter().map(|ability| Some(ability.name)).collect();
+    let abilities: Vec<_> = ABILITIES
+        .iter()
+        .map(|ability| (!ability.retired).then_some(ability.name))
+        .collect();
     defined_as_registered(IdSpace::Ability, &abilities);
     let items: Vec<_> = ITEMS
         .iter()

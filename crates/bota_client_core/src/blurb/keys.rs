@@ -72,7 +72,6 @@ fn shared(key: &str) -> Option<String> {
         "feast_unit" => rules::FEAST_SOULS_PER_UNIT.to_string(),
         "feast_targets" => slash(&rules::FEAST_TARGETS, |n| n.to_string()),
         "feast_linger" => secs(rules::FEAST_LINGER_TICKS),
-        "grenade_speed" => rules::GRENADE_SPEED.to_string(),
         "grenade_radius" => rules::GRENADE_RADIUS.to_string(),
         "grenade_impact" => rules::GRENADE_IMPACT_DAMAGE.to_string(),
         "grenade_dps" => rules::GRENADE_DAMAGE_PER_SECOND.to_string(),

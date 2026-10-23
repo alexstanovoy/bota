@@ -85,7 +85,7 @@ fn apply(world: &mut World, on: Entity, spec: ModifierSpec, ticks: u32) {
 /// Damage one blow of a kind takes off a target, through a whole tick.
 fn dealt(world: &mut World, from: Entity, to: Entity, amount: i32, kind: DamageKind) -> i32 {
     let before = world.health.get(to).expect("standing").hp;
-    world.push_hit(Some(from), to, amount, kind);
+    world.push_hit(Some(from), to, amount, kind, None);
     world.step();
     (before - world.health.get(to).expect("standing").hp).to_int()
 }
@@ -278,7 +278,7 @@ fn a_requiem_line_keeps_its_launch_amplification_after_the_modifier_lifts() {
 #[test]
 fn a_requiem_line_keeps_its_launch_amplification_when_the_source_slot_is_reused() {
     let (mut world, caster, target) = amplified_requiem(100);
-    world.push_hit(None, caster, 1_000_000, DamageKind::Pure);
+    world.push_hit(None, caster, 1_000_000, DamageKind::Pure, None);
     world.step();
     assert!(!world.alive(caster));
     // Near enough for its side to see the creep the line is flying at.
@@ -454,7 +454,7 @@ fn a_blow_sets_a_muted_item_back_by_the_cooldown_rate() {
     apply(&mut world, hero, spec(|s| s.cooldown_rate = 5_000), 10);
     let hitter = world.spawn();
     world.kind.insert(hitter, UnitKind::Hero);
-    world.push_hit(Some(hitter), hero, 10, DamageKind::Physical);
+    world.push_hit(Some(hitter), hero, 10, DamageKind::Physical, None);
     world.step();
     let full = ITEMS[usize::from(ItemId::BLINK_DAGGER.0)].breaks_on_damage;
     assert_eq!(

@@ -73,6 +73,8 @@ pub(super) fn land(world: &mut World, caster: Entity, target: Entity, level: usi
     amounts[0]
 }
 
+/// The raze records on a unit as these tests count them: stacks and time
+/// left, without who put them on and with what.
 pub(super) fn effects(world: &World, target: Entity) -> Vec<EffectView> {
     world
         .view_full()
@@ -82,16 +84,25 @@ pub(super) fn effects(world: &World, target: Entity) -> Vec<EffectView> {
         .map_or_else(Vec::new, |unit| {
             unit.effects
                 .iter()
-                .copied()
                 .filter(|effect| effect.id == RAZE_EFFECT)
+                .map(|effect| EffectView {
+                    caster: None,
+                    inflictor: None,
+                    ticks_total: None,
+                    ..*effect
+                })
                 .collect()
         })
 }
 
+/// A raze record as [`effects`] counts it.
 pub(super) fn effect(stacks: u32, ticks: u32) -> EffectView {
     EffectView {
         id: RAZE_EFFECT,
         ticks_left: Some(ticks),
         stacks: Some(stacks),
+        caster: None,
+        inflictor: None,
+        ticks_total: None,
     }
 }

@@ -5,7 +5,7 @@ use bota_core::{
     fountain_pos, hero_def, item_def, learn_group, move_towards, rules,
 };
 use bota_proto::{
-    AbilityId, Attribute, EventKind, Fixed, HeroId, ItemId, SlotId, Target, Team, Vec2,
+    AbilityId, Attribute, EventKind, Fixed, HeroId, Inflictor, ItemId, SlotId, Target, Team, Vec2,
 };
 
 use crate::game::{
@@ -442,7 +442,7 @@ impl World {
         {
             return false;
         }
-        if !self.use_effect(entity, slot, def, target) {
+        if !self.use_effect(entity, slot, (stack.id, def), target) {
             return false;
         }
         if cost > 0
@@ -493,7 +493,13 @@ impl World {
     }
 
     /// Restores up to `amount` mana immediately; an ineffective use changes nothing.
-    pub fn replenish_mana(&mut self, user: Entity, target: Target, amount: i32) -> bool {
+    pub fn replenish_mana(
+        &mut self,
+        user: Entity,
+        target: Target,
+        amount: i32,
+        with: Inflictor,
+    ) -> bool {
         assert!(amount > 0);
         if !self.can_replenish_mana(user, target) {
             return false;
@@ -508,13 +514,13 @@ impl World {
         pool.mana += (maximum - before).min(Fixed::from_int(amount));
         let restored = (pool.mana - before).to_int();
         if restored > 0 {
-            self.tell_healed(user, user, 0, restored);
+            self.tell_healed((user, with), user, 0, restored);
         }
         true
     }
 
     /// Mends whoever used an item, at once.
-    pub fn restore_with(&mut self, on: Entity, hp: i32, mana: i32) -> bool {
+    pub fn restore_with(&mut self, on: Entity, (hp, mana): (i32, i32), with: Inflictor) -> bool {
         if hp <= 0 && mana <= 0 {
             return false;
         }
@@ -536,15 +542,18 @@ impl World {
             refilled = (pool.mana - before).to_int();
         }
         if restored > 0 || refilled > 0 {
-            self.tell_healed(on, on, restored, refilled);
+            self.tell_healed((on, with), on, restored, refilled);
         }
         true
     }
 
     /// Walks whoever used an item faster, and through whatever is in the way.
-    pub fn walk_through(&mut self, user: Entity, pct: i32, ticks: u32) -> bool {
+    pub fn walk_through(&mut self, user: Entity, pct: i32, ticks: u32, with: Inflictor) -> bool {
         for kind in [ModifierKind::Hastened { pct }, ModifierKind::Phased] {
-            self.put_modifier(user, Modifier::new(kind, Some(user), Some(ticks)));
+            self.put_modifier(
+                user,
+                Modifier::new(kind, Some(user), Some(with), Some(ticks)),
+            );
         }
         true
     }
@@ -595,7 +604,13 @@ impl World {
     ///
     /// It reaches one of its user's own side, standing within `range`. Aimed
     /// at nothing at all, it lands on the one who used it.
-    pub fn mend_with(&mut self, user: Entity, target: Target, drink: Mend) -> bool {
+    pub fn mend_with(
+        &mut self,
+        user: Entity,
+        target: Target,
+        drink: Mend,
+        with: Inflictor,
+    ) -> bool {
         let Mend {
             pool,
             mut total,
@@ -644,16 +659,17 @@ impl World {
                     Pool::Mana => ModifierKind::Clarity { per_tick, breaks },
                 },
                 Some(user),
+                Some(with),
                 Some(ticks),
             ),
         );
-        self.tell_mend(user, on, pool, total);
+        self.tell_mend((user, with), on, pool, total);
         true
     }
 
     /// Tells of a mend as it begins, worth what `on` is missing of `pool` and
     /// no more than `total`. A mend broken early has still been told in full.
-    fn tell_mend(&mut self, user: Entity, on: Entity, pool: Pool, total: i32) {
+    fn tell_mend(&mut self, by: (Entity, Inflictor), on: Entity, pool: Pool, total: i32) {
         let stats = self.stats.get(on);
         let missing = match pool {
             Pool::Health => stats
@@ -669,13 +685,19 @@ impl World {
             Pool::Mana => (0, mended),
         };
         if amount > 0 || mana > 0 {
-            self.tell_healed(user, on, amount, mana);
+            self.tell_healed(by, on, amount, mana);
         }
     }
 
-    /// Tells who may know that `source` mended `on` by `amount` health and
-    /// `mana` mana.
-    fn tell_healed(&mut self, source: Entity, on: Entity, amount: i32, mana: i32) {
+    /// Tells who may know that `source` mended `on` with `inflictor` by
+    /// `amount` health and `mana` mana.
+    fn tell_healed(
+        &mut self,
+        (source, inflictor): (Entity, Inflictor),
+        on: Entity,
+        amount: i32,
+        mana: i32,
+    ) {
         let at = self.pos(on).unwrap_or(Vec2::ZERO);
         let side = self.team.get(on).copied().unwrap_or(Team::Neutral);
         self.events.push(Event {
@@ -684,6 +706,7 @@ impl World {
                 target: wire_id(on),
                 amount,
                 mana,
+                inflictor: Some(inflictor),
             },
             visible_to: self.who_may_know(at, side),
             gold_hidden_from: None,

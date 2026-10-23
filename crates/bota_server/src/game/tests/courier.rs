@@ -396,7 +396,7 @@ fn a_shielded_courier_takes_nothing() {
     let full = world.health.get(courier).expect("standing").hp;
     assert!(world.courier_shield(courier));
     world.step();
-    world.push_hit(None, courier, 100, DamageKind::Pure);
+    world.push_hit(None, courier, 100, DamageKind::Pure, None);
     world.step();
     assert_eq!(
         world.health.get(courier).map(|health| health.hp),
@@ -404,7 +404,7 @@ fn a_shielded_courier_takes_nothing() {
         "nothing gets through while it holds"
     );
     run(&mut world, rules::COURIER_SHIELD_TICKS);
-    world.push_hit(None, courier, 100, DamageKind::Pure);
+    world.push_hit(None, courier, 100, DamageKind::Pure, None);
     world.step();
     assert!(
         world.health.get(courier).expect("standing").hp < full,

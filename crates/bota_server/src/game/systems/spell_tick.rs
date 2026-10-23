@@ -62,7 +62,13 @@ impl World {
         let Some(next) = next else {
             return false;
         };
-        self.push_hit(Some(chain.source), next, chain.damage, DamageKind::Magical);
+        self.push_hit(
+            Some(chain.source),
+            next,
+            chain.damage,
+            DamageKind::Magical,
+            Some(chain.inflictor),
+        );
         chain.struck.push(next);
         chain.at = self.pos(next).unwrap_or(chain.at);
         chain.leaps_left -= 1;
@@ -96,7 +102,12 @@ impl World {
             self.forget_walk(on);
             self.put_modifier(
                 on,
-                crate::game::Modifier::new(ModifierKind::Stunned, Some(push.source), Some(2)),
+                crate::game::Modifier::new(
+                    ModifierKind::Stunned,
+                    Some(push.source),
+                    Some(push.inflictor),
+                    Some(2),
+                ),
             );
             if done {
                 self.push.remove(on);

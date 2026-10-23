@@ -11,7 +11,7 @@ use bota_core::{
     Act, ModifierKind, NeutralAbility, Shared, Spell, Then, at_level, effect_def, rules,
     ticks_of_ms,
 };
-use bota_proto::Target;
+use bota_proto::{Inflictor, Target};
 
 use crate::game::{Entity, Modifier, World};
 
@@ -21,6 +21,13 @@ pub(super) struct Cast {
     pub caster: Entity,
     pub ability: NeutralAbility,
     pub level: u8,
+}
+
+impl Cast {
+    /// The spell, as what it does names it.
+    pub fn inflictor(self) -> Option<Inflictor> {
+        Some(Inflictor::Ability(self.ability.id()))
+    }
 }
 
 impl World {
@@ -69,7 +76,8 @@ impl World {
             amount,
         };
         let ticks = Some(ticks_of_ms(ms));
-        self.put_modifier(on, Modifier::new(kind, Some(cast.caster), ticks));
+        let held = Modifier::new(kind, Some(cast.caster), cast.inflictor(), ticks);
+        self.put_modifier(on, held);
         true
     }
 
@@ -77,7 +85,8 @@ impl World {
     pub(super) fn stun_for(&mut self, cast: Cast, on: Entity, ms: i32) {
         let ticks = Some(ticks_of_ms(ms));
         let kind = ModifierKind::Stunned;
-        self.put_modifier(on, Modifier::new(kind, Some(cast.caster), ticks));
+        let held = Modifier::new(kind, Some(cast.caster), cast.inflictor(), ticks);
+        self.put_modifier(on, held);
     }
 
     /// The unit a cast is aimed at, when it is a foe.
@@ -124,7 +133,7 @@ impl World {
             }
             let damage = at_level(&damage, cast.level);
             if damage > 0 {
-                self.push_hit(Some(cast.caster), foe, damage, kind);
+                self.push_hit(Some(cast.caster), foe, damage, kind, cast.inflictor());
             }
         }
         true

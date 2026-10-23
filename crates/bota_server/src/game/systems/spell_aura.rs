@@ -4,15 +4,16 @@
 use bota_core::{
     AuraSpell, ModifierKind, NeutralAbility, Spell, Whom, isqrt64, rules, ticks_of_ms,
 };
-use bota_proto::{DamageKind, Team};
+use bota_proto::{DamageKind, Inflictor, Team};
 
 use crate::game::{Entity, Modifier, Spots, World};
 
 use super::modifiers::resisted_ticks;
 
-/// A storm's shape, from [`Spell::Storm`].
+/// A storm's shape, from [`Spell::Storm`], and the spell it is.
 #[derive(Clone, Copy)]
 struct Storm {
+    ability: NeutralAbility,
     radius: i32,
     near_radius: i32,
     near_dps: i32,
@@ -77,6 +78,7 @@ impl World {
                     Whom::Enemies,
                     radius,
                     Some(Storm {
+                        ability,
                         radius,
                         near_radius,
                         near_dps,
@@ -142,7 +144,8 @@ impl World {
                 && held.ticks_left >= Some(ticks)
         });
         if !fresher {
-            on_it.put(Modifier::new(kind, Some(source), Some(ticks)));
+            let with = Some(Inflictor::Ability(ability.id()));
+            on_it.put(Modifier::new(kind, Some(source), with, Some(ticks)));
         }
     }
 
@@ -163,6 +166,12 @@ impl World {
             low + (high - low) * (rim - distance).max(0) / (rim - near)
         };
         let amount = dps * i64::from(beat) / i64::from(rules::TICKS_PER_SECOND);
-        self.push_hit(Some(source), target, amount as i32, DamageKind::Magical);
+        self.push_hit(
+            Some(source),
+            target,
+            amount as i32,
+            DamageKind::Magical,
+            Some(Inflictor::Ability(storm.ability.id())),
+        );
     }
 }

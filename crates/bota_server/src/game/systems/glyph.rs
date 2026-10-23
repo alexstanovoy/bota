@@ -69,7 +69,7 @@ impl World {
         for (entity, ticks) in covered {
             self.put_modifier(
                 entity,
-                Modifier::new(ModifierKind::Fortified, None, Some(ticks)),
+                Modifier::new(ModifierKind::Fortified, None, None, Some(ticks)),
             );
         }
     }

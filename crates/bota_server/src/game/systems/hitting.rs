@@ -1,7 +1,7 @@
 //! Taking blows off the health they landed on.
 
 use bota_core::{ModifierKind, Ratio, amplify, bite, kind_def, mitigate, rules};
-use bota_proto::{DamageKind, Fixed, Team, UnitKind, Vec2};
+use bota_proto::{DamageKind, Fixed, Inflictor, Team, UnitKind, Vec2};
 
 use crate::game::{
     Chance, Entity, Fear, Health, Hit, HitEffect, MatchRng, Modifier, Modifiers, Purpose, Stats,
@@ -30,6 +30,8 @@ pub struct Missed {
 pub struct Landed {
     /// Who dealt it. The handle may outlive the body.
     pub source: Option<Entity>,
+    /// The ability or item that dealt it. Absent for an attack's own blow.
+    pub inflictor: Option<Inflictor>,
     pub target: Entity,
     /// Health taken, after armor and resistance, at most one past what the
     /// target had left.
@@ -163,6 +165,7 @@ pub fn hitting_system<const AMPLIFIED: bool>(cx: HitCx<'_>) {
         }
         landed.push_back(Landed {
             source: blow.source,
+            inflictor: blow.inflictor,
             target: blow.target,
             amount: applied,
             kind: blow.kind,
@@ -287,7 +290,7 @@ fn apply_hit_effect(blow: Hit, stats: &Table<Stats>, modifiers: &mut Table<Modif
             assert!(blow.amount > 0);
             let caster = blow.source.expect("a Shadowraze hit has a caster");
             if let Some(on_it) = modifiers.get_mut(blow.target) {
-                on_it.stack_raze(caster);
+                on_it.stack_raze(caster, blow.inflictor);
             }
         }
         HitEffect::Requiem { level, fear } => {
@@ -325,7 +328,10 @@ fn frighten(
         ModifierKind::Feared,
     ] {
         let ticks = resisted_ticks(stats, blow.target, kind, fear.line);
-        on_it.extend(Modifier::new(kind, blow.source, Some(ticks)), fear.most);
+        on_it.extend(
+            Modifier::new(kind, blow.source, blow.inflictor, Some(ticks)),
+            fear.most,
+        );
     }
 }
 
@@ -339,6 +345,11 @@ fn hold(
 ) {
     let ticks = resisted_ticks(stats, blow.target, kind, ticks);
     if let Some(on_it) = modifiers.get_mut(blow.target) {
-        on_it.put(Modifier::new(kind, blow.source, Some(ticks)));
+        on_it.put(Modifier::new(
+            kind,
+            blow.source,
+            blow.inflictor,
+            Some(ticks),
+        ));
     }
 }
