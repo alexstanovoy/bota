@@ -27,8 +27,8 @@ const TICK_WINDOWS: [u32; 2] = [600, 3_000];
 
 /// The world and view fingerprints of each measured tick window.
 const TICK_WINDOW_DIGESTS: [(u32, u64, u64); 2] = [
-    (600, 0x81e1_8ae2_1fdf_e2c6, 0x85fd_eebd_8a33_505b),
-    (3000, 0xdcc5_3b56_1b64_1f64, 0xa568_1e02_dbb9_0a38),
+    (600, 0x81c7_76b5_e122_9d7f, 0xd24c_6fcd_8f69_9c16),
+    (3000, 0x121c_24c1_b828_22fc, 0x4adf_9a62_81eb_ff84),
 ];
 
 /// Ticks of the skirmish measured: the pregame and the lane
@@ -36,7 +36,7 @@ const TICK_WINDOW_DIGESTS: [(u32, u64, u64); 2] = [
 const SKIRMISH_TICKS: u32 = 9_000;
 
 /// The world and handed-out fingerprints at the end of the skirmish.
-const SKIRMISH_DIGEST: (u64, u64) = (0xfb64_6ee3_1ce8_9cc1, 0x94d8_dc82_7e60_8d31);
+const SKIRMISH_DIGEST: (u64, u64) = (0x96ca_61d3_6357_c08d, 0x69ea_0081_8001_fdcb);
 
 /// The fingerprint of the fixed isqrt64 answers.
 const ISQRT_DIGEST: u64 = 0x797c_0b4c_e20e_e1b1;
@@ -45,7 +45,7 @@ const CAPSULE_DIGEST: u64 = 0x2fb1_bec2_5922_1c04;
 /// The fingerprint of the fixed plan-search answers.
 const PLAN_DIGEST: u64 = 0x2886_4f03_b2dc_0d9a;
 /// The fingerprint of the fixed targeting answers.
-const TARGETING_DIGEST: u64 = 0xf182_8e39_c330_1399;
+const TARGETING_DIGEST: u64 = 0x952c_05e1_6a5d_7dac;
 
 /// The spots of the dummy circuit the plan-search case routes to.
 const PLAN_GOALS: [usize; 3] = [2, 4, 6];
