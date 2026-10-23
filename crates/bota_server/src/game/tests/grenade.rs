@@ -5,8 +5,8 @@ use bota_core::{ModifierKind, rules};
 
 use crate::game::{Entity, Event, MatchConfig, World, wire_id};
 use bota_proto::{
-    AbilityId, DamageKind, EffectId, EventKind, Fixed, ItemId, ItemSlot, Order, RejectReason,
-    StatusFlags, Target, Team, Vec2,
+    AbilityId, CastView, DamageKind, EffectId, EventKind, Fixed, ItemId, ItemSlot, Order,
+    RejectReason, StatusFlags, Target, Team, Vec2,
 };
 
 use super::support::*;
@@ -77,6 +77,42 @@ fn boots_and_a_lace_add_up_and_a_second_of_either_adds_nothing() {
             "carrying {carried:?}"
         );
     }
+}
+
+#[test]
+fn a_grenade_in_its_cast_point_shows_a_cast_that_names_no_item() {
+    // Dota's thrower plays a cast animation the other side sees, and it
+    // tells no item.
+    let (mut world, hero, enemy) = two_fiends(500);
+    carry(&mut world, hero, 0, ItemId::BLOOD_GRENADE, 1);
+    world.step();
+    let aim = world.transform.get(enemy).expect("standing").pos;
+    advance_validated(
+        &mut world,
+        None,
+        Order::Use {
+            slot: ItemSlot(0),
+            target: Target::Pos(aim),
+        },
+    );
+    let casting = |world: &World| {
+        shown(world, Some(Team::Dire), hero).statuses.bits & StatusFlags::CASTING != 0
+    };
+    for _ in 0..10 {
+        if casting(&world) {
+            break;
+        }
+        world.step();
+    }
+    assert!(casting(&world), "the thrower stands in the cast point");
+    assert_eq!(
+        shown(&world, Some(Team::Dire), hero).cast,
+        Some(CastView {
+            ability: None,
+            goes_off_in: ticks_of(200),
+        }),
+        "a fifth of a second from its start"
+    );
 }
 
 #[test]

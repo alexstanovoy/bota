@@ -15,12 +15,13 @@ const UNITS_1V1: u32 = 25;
 /// Ticks per second the server runs at.
 const TICK_RATE: usize = 30;
 
-/// A hero with a scroll in its town portal slot. The last byte is the
-/// neutral kind every unit carries, absent on a hero.
+/// A hero with a scroll in its town portal slot, in the cast point of a
+/// raze. Before its last four bytes, the cast, is the neutral kind every unit
+/// carries, absent on a hero; a unit casting nothing takes one byte for it.
 #[test]
-fn a_hero_stays_under_198_bytes() {
+fn a_hero_stays_under_202_bytes() {
     let len = encoded_len(&hero_unit());
-    assert!(len <= 198, "hero unit grew to {len} bytes");
+    assert!(len <= 202, "hero unit grew to {len} bytes");
 }
 
 #[test]

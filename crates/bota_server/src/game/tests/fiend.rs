@@ -4,7 +4,8 @@ use bota_core::{ModifierKind, isqrt64, rules, tower_def};
 
 use crate::game::{ActionState, Entity, UnitOrder, World, wire_id};
 use bota_proto::{
-    AbilityId, EffectId, EventKind, Fixed, HeroId, SlotId, StatusFlags, Target, Team, Vec2,
+    AbilityId, CastView, EffectId, EventKind, Fixed, HeroId, SlotId, StatusFlags, Target, Team,
+    Vec2,
 };
 
 use super::support::*;
@@ -84,6 +85,35 @@ fn a_raze_burns_what_stands_where_it_lands_and_nothing_else() {
         assert!(!burns_on(&events, struck).is_empty(), "{case}: felt");
         assert!(burns_on(&events, spared).is_empty(), "{case}: spared");
     }
+}
+
+#[test]
+fn whoever_sees_a_raze_in_its_cast_point_is_told_which_and_when_it_goes_off() {
+    // Dota shows each raze's own animation to everyone who sees the caster.
+    let (mut world, fiend, _mark) = fiend_and_a_mark(rules::RAZE_DISTANCE[1]);
+    a_creep_at(&mut world, Team::Dire, Vec2::from_ints(4600, 5000));
+    world.step();
+    cast(&mut world, RAZE_MID_SLOT, Target::None);
+    let point = ticks_of(rules::RAZE_CAST_POINT_MS);
+    for went in 0..point {
+        let told = Some(CastView {
+            ability: Some(AbilityId::RAZE_MID),
+            goes_off_in: point - went,
+        });
+        for side in [Team::Radiant, Team::Dire] {
+            assert_eq!(
+                shown(&world, Some(side), fiend).cast,
+                told,
+                "{side:?}, {went} ticks in"
+            );
+        }
+        world.step();
+    }
+    assert_eq!(
+        shown(&world, Some(Team::Dire), fiend).cast,
+        None,
+        "and nothing once it has gone off"
+    );
 }
 
 #[test]

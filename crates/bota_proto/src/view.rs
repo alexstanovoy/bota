@@ -203,6 +203,20 @@ pub struct UnitView {
     /// Which neutral creep this is, when `kind` is
     /// [`UnitKind::CreepNeutral`].
     pub neutral: Option<NeutralId>,
+    /// The cast point it stands in, as Dota shows its caster's animation:
+    /// present exactly while [`StatusFlags::CASTING`] is set. Last on the
+    /// wire.
+    pub cast: Option<CastView>,
+}
+
+/// A cast in its cast point.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct CastView {
+    /// The ability being cast, which has an animation of its own. Absent for
+    /// the use of an item, whose animation tells no item.
+    pub ability: Option<AbilityId>,
+    /// Ticks until it goes off, unless it is broken off first. At least 1.
+    pub goes_off_in: u32,
 }
 
 /// A swing under way that has not struck yet.

@@ -123,6 +123,9 @@ pub enum SessionError {
     /// A projectile named a unit, as its source or its target, absent from
     /// the visible units.
     UnknownProjectileUnit(EntityId),
+    /// This unit's cast was shown without the casting status or the other way
+    /// round, named no ability with a cast point, or went off past it.
+    CastOutOfRange(EntityId),
     /// A tree index did not refer to static match trees.
     InvalidFelledTree(u32),
     /// Position displacement did not fit the wire vector type.
@@ -393,6 +396,11 @@ impl SessionError {
             Self::UnknownProjectileUnit(id) => write!(
                 f,
                 "a snapshot projectile names {}, which is not a visible unit",
+                Id(*id)
+            ),
+            Self::CastOutOfRange(id) => write!(
+                f,
+                "the snapshot cast of {} is out of its ability's cast point",
                 Id(*id)
             ),
             Self::InvalidFelledTree(index) => write!(

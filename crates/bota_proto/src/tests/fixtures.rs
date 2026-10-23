@@ -71,6 +71,10 @@ pub fn hero_unit() -> UnitView {
         mana_regen: Fixed::ZERO,
         town_portal: Some(item_view(8)),
         neutral: None,
+        cast: Some(CastView {
+            ability: Some(AbilityId(9)),
+            goes_off_in: 12,
+        }),
         attack_range: fixed(550),
         attack_time: 1700,
         attack_point: 500,
@@ -127,6 +131,7 @@ pub fn creep_unit(idx: u32) -> UnitView {
         mana_regen: Fixed::ZERO,
         town_portal: None,
         neutral: None,
+        cast: None,
         attack_range: fixed(100),
         attack_time: 1000,
         attack_point: 466,

@@ -1,7 +1,9 @@
 //! What a snapshot or an event batch must satisfy before a session folds it.
 
 use bota_core::rules;
-use bota_proto::{EntityId, EventKind, HeroId, LobbySlot, Pick, PlayerView, UnitKind, WorldView};
+use bota_proto::{
+    EntityId, EventKind, HeroId, LobbySlot, Pick, PlayerView, StatusFlags, UnitKind, WorldView,
+};
 
 use crate::limits::{
     COURIER_ITEM_SLOTS, HERO_ITEM_SLOTS, MAX_ABILITY_SLOTS, MAX_EFFECTS_PER_UNIT,
@@ -43,6 +45,7 @@ pub(crate) fn snapshot(expect: &Expect<'_>, view: &WorldView) -> Result<(), Sess
     snapshot_positions(expect.statics.metadata().terrain_cells, view)?;
     units(expect.statics.roster(), view)?;
     aggro(view)?;
+    casts(view)?;
     projectiles(view)?;
     unique_dynamic_handles(view)?;
     players(expect.statics.roster(), view)?;
@@ -192,6 +195,34 @@ fn units(roster: &[Pick], view: &WorldView) -> Result<(), SessionError> {
                 unit: unit.id,
                 slot: slot.0,
             });
+        }
+    }
+    Ok(())
+}
+
+/// Casts shown exactly while their units cast, going off within the cast point of their ability,
+/// or of the slowest item for the use of an item.
+fn casts(view: &WorldView) -> Result<(), SessionError> {
+    for unit in &view.units {
+        let casting = unit.statuses.bits & StatusFlags::CASTING != 0;
+        if unit.cast.is_some() != casting {
+            return Err(SessionError::CastOutOfRange(unit.id));
+        }
+        let Some(cast) = unit.cast else {
+            continue;
+        };
+        let point_ms = match cast.ability {
+            Some(ability) => bota_core::ability_def(ability).map_or(0, |def| def.point),
+            None => bota_core::ITEMS
+                .iter()
+                .map(|def| def.point)
+                .max()
+                .unwrap_or(0),
+        };
+        // Widened as for a swing: the cast point is the rules' word in milliseconds.
+        let point = (u64::from(point_ms) * u64::from(rules::TICKS_PER_SECOND)).div_ceil(1000);
+        if !(1..=point.max(1)).contains(&u64::from(cast.goes_off_in)) {
+            return Err(SessionError::CastOutOfRange(unit.id));
         }
     }
     Ok(())

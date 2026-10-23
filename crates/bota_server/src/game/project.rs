@@ -2,8 +2,9 @@
 
 use bota_core::{ModifierKind, ability_mana_cost, kind_def, phase_ticks_left, rules};
 use bota_proto::{
-    AbilityId, AbilityView, AggroView, EffectId, EffectView, Fixed, PlayerView, ProjectileView,
-    StatusFlags, SwingView, TalentSlot, TalentView, Talents, Team, UnitKind, UnitView, WorldView,
+    AbilityId, AbilityView, AggroView, CastView, EffectId, EffectView, Fixed, PlayerView,
+    ProjectileView, StatusFlags, SwingView, TalentSlot, TalentView, Talents, Team, UnitKind,
+    UnitView, WorldView,
 };
 
 use crate::game::{
@@ -388,6 +389,7 @@ impl World {
                 .and_then(|bag| bag.town_portal.flatten())
                 .map(|stack| item_view(&stack, mana_rate, clocks)),
             neutral: self.neutral.get(entity).map(|kind| kind.id()),
+            cast: self.cast_of(entity),
         })
     }
 }
@@ -491,6 +493,36 @@ impl World {
             });
         }
         on_it
+    }
+
+    /// The cast point an entity stands in: the ability it casts, none for
+    /// an item, and the ticks before it goes off.
+    fn cast_of(&self, entity: Entity) -> Option<CastView> {
+        let (ability, point, progress) = match self.action.get(entity)?.state {
+            ActionState::CastAbility {
+                slot,
+                phase: ActionPhase::Before { progress },
+                ..
+            } => {
+                let ability = self.ability_in(entity, slot);
+                let point = bota_core::ability_def(ability).map_or(0, |def| def.point);
+                (Some(ability), point, progress)
+            }
+            ActionState::UseItem {
+                slot,
+                phase: ActionPhase::Before { progress },
+                ..
+            } => {
+                let def = self.item_def_in(entity, usize::from(slot.0));
+                (None, def.map_or(0, |def| def.point), progress)
+            }
+            _ => return None,
+        };
+        let point = self.cast_point_of(entity, point);
+        Some(CastView {
+            ability,
+            goes_off_in: phase_ticks_left(point, progress, rules::BASE_ATTACK_SPEED),
+        })
     }
 
     /// Whether an entity has a toggle switched on right now.

@@ -141,6 +141,7 @@ fn a_unit() -> UnitView {
         mana_regen: Fixed::ZERO,
         town_portal: None,
         neutral: None,
+        cast: None,
         attack_range: Fixed::from_int(600),
         attack_time: 1700,
         attack_point: 500,

@@ -561,7 +561,7 @@ impl World {
     /// [`rules::TALENT_FEAST_CAST_POINT_PCT`] of it while a feast runs on one
     /// that has learned the level-25 talent. Read every tick of the point, so
     /// a feast ending inside it lengthens what is left.
-    fn cast_point_of(&self, entity: Entity, point: u32) -> u32 {
+    pub(crate) fn cast_point_of(&self, entity: Entity, point: u32) -> u32 {
         let feasting = self
             .feast
             .get(entity)
