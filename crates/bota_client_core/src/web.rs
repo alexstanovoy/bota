@@ -7,7 +7,7 @@ use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::rc::Rc;
 
-use bota_proto::{ClientMsg, ServerMsg, encode_frame_to_vec};
+use bota_proto::{ClientMsg, ServerMsg, Unpacker, encode_frame_to_vec};
 use js_sys::Uint8Array;
 use wasm_bindgen::JsCast;
 use wasm_bindgen::closure::Closure;
@@ -25,8 +25,10 @@ const MAX_INBOX_BYTES: usize = 16 * 1024 * 1024;
 
 #[derive(Default)]
 struct Shared {
+    /// The connection's compressed parts, unpacked as they come.
+    unpacker: Unpacker,
     inbox: VecDeque<ServerMsg>,
-    /// Bytes of the messages in the inbox, as they came.
+    /// Payload bytes of the messages in the inbox.
     held: usize,
     /// Frames sent before the socket opened.
     unopened: Vec<Vec<u8>>,
@@ -69,32 +71,16 @@ impl WebSocketLink {
             let (shared, socket) = (Rc::clone(&shared), socket.clone());
             Closure::<dyn FnMut(MessageEvent)>::new(move |event: MessageEvent| {
                 let mut shared = shared.borrow_mut();
-                let bytes = event
+                let message = event
                     .data()
                     .dyn_into::<js_sys::ArrayBuffer>()
-                    .map(|buffer| Uint8Array::new(&buffer).to_vec());
-                let size = bytes.as_ref().map_or(0, Vec::len);
-                let message = bytes
+                    .map(|buffer| Uint8Array::new(&buffer).to_vec())
                     .map_err(|_| std::io::Error::other("a text message"))
                     .and_then(|bytes| decode(&bytes));
-                match message {
-                    Ok(ServerMsg::Ping) => {
-                        let pong = encode_frame_to_vec(&ClientMsg::Pong).unwrap_or_default();
-                        if socket.send_with_u8_array(&pong).is_err() {
-                            shared.closed = true;
-                        }
-                    }
-                    Ok(message)
-                        if shared.inbox.len() < MAX_INBOX
-                            && shared.held + size <= MAX_INBOX_BYTES =>
-                    {
-                        shared.held += size;
-                        shared.inbox.push_back(message);
-                    }
-                    _ => {
-                        shared.closed = true;
-                        let _ = socket.close();
-                    }
+                let kept = message.is_ok_and(|message| shared.take(message, &socket));
+                if !kept {
+                    shared.closed = true;
+                    let _ = socket.close();
                 }
             })
         };
@@ -118,6 +104,45 @@ impl WebSocketLink {
             _on_close: on_close,
             _on_error: on_error,
         })
+    }
+}
+
+impl Shared {
+    /// Takes in a message off the socket and every message it unpacks to:
+    /// pings answered, the rest held for the app. False when the stream is
+    /// broken or the app has fallen too far behind: the link closes.
+    fn take(&mut self, message: ServerMsg, socket: &WebSocket) -> bool {
+        let mut next = match self.unpacker.take(message) {
+            Ok(next) => next,
+            Err(_) => return false,
+        };
+        loop {
+            let message = match next.take() {
+                Some(message) => message,
+                None => match self.unpacker.next_message() {
+                    Ok(Some(message)) => message,
+                    Ok(None) => return true,
+                    Err(_) => return false,
+                },
+            };
+            if !self.hold(message, socket) {
+                return false;
+            }
+        }
+    }
+
+    fn hold(&mut self, message: ServerMsg, socket: &WebSocket) -> bool {
+        if matches!(message, ServerMsg::Ping) {
+            let pong = encode_frame_to_vec(&ClientMsg::Pong).unwrap_or_default();
+            return socket.send_with_u8_array(&pong).is_ok();
+        }
+        let size = bota_proto::payload_len(&message).unwrap_or(bota_proto::MAX_PAYLOAD_LEN);
+        if self.inbox.len() >= MAX_INBOX || self.held + size > MAX_INBOX_BYTES {
+            return false;
+        }
+        self.held += size;
+        self.inbox.push_back(message);
+        true
     }
 }
 

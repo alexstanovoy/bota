@@ -38,6 +38,7 @@ fn opts() -> ServerOpts {
         pick_penalty_time: Duration::from_millis(20),
         tactical_time: Duration::ZERO,
         same_heroes: false,
+        chat: bota_server::chat::ChatOpts::DEFAULT,
         mode: TickMode::Realtime,
         tick_rate: 1000,
         players: 2,

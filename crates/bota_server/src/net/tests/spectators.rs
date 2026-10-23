@@ -9,12 +9,12 @@ use super::*;
 use crate::spectators::Spectators;
 
 /// Everything a client is sent for `wait`, pings answered.
-fn drain(client: &mut TestClient, wait: Duration) -> Vec<ServerMsg> {
+pub(super) fn drain(client: &mut TestClient, wait: Duration) -> Vec<ServerMsg> {
     let deadline = Instant::now() + wait;
     let mut messages = Vec::new();
     let mut buf = [0u8; 65536];
     loop {
-        while let Some(msg) = client.reader.next_message::<ServerMsg>().expect("decode") {
+        while let Some(msg) = client.reader.next_message().expect("decode") {
             match msg {
                 ServerMsg::Ping => client.send(&ClientMsg::Pong),
                 msg => messages.push(msg),

@@ -6,10 +6,10 @@ use radovid_client::proto::Handoff;
 /// The label radovid's rulesets carry for bota.
 pub const GAME: &str = "bota";
 
-/// The wire this build speaks: what its Hello names, and what a ruleset must
-/// name to be played with it.
+/// The wire this build speaks, its rules folded in: what its Hello names,
+/// and what a ruleset must name to be played with it.
 pub fn fingerprint() -> u64 {
-    bota_proto::WIRE_FINGERPRINT
+    bota_core::WIRE_FINGERPRINT
 }
 
 /// Whether `handoff` is a match of bota's wire that this build can play.
@@ -55,5 +55,6 @@ pub fn seat_hello(handoff: &Handoff, role: Role) -> std::io::Result<ClientMsg> {
         role,
         seat_name(handoff)?,
         Some(seat_key(handoff)),
+        fingerprint(),
     ))
 }

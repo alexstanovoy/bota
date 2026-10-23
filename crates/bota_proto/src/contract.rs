@@ -328,32 +328,118 @@
 //!
 //! The name in [`ClientMsg::Hello`](crate::ClientMsg::Hello), and a name a
 //! server reserves a seat under, is shown in
-//! [`ServerMsg::LobbyState`](crate::ServerMsg::LobbyState) cut to
-//! `bota_core::rules::MAX_SHOWN_NAME_BYTES` (32) bytes of UTF-8, at the last
-//! whole character within them. The server does not refuse a longer hello
-//! name. The two input bounds are
-//! `bota_core::rules::MAX_ANNOUNCED_NAME_BYTES` (64): the client library
-//! refuses to announce a longer name, and the server refuses a seat
+//! [`ServerMsg::LobbyState`](crate::ServerMsg::LobbyState) (and a
+//! spectator's in its chat lines) cleaned: every character a chat line may
+//! not hold dropped (see Chat below), stacks of combining marks cut,
+//! trimmed, and cut to `bota_core::rules::MAX_SHOWN_NAME_BYTES` (32) bytes of
+//! UTF-8 at the last whole character within them; `?` when nothing is left
+//! (`bota_core::clean_name`). The server does not refuse a hello for its
+//! name. The two input bounds are `bota_core::rules::MAX_ANNOUNCED_NAME_BYTES`
+//! (64) with the chat's character rules (`bota_core::name_fault`): the client
+//! library refuses to announce another name, and the server refuses a seat
 //! reservation under one.
 //!
 //! # Wire fingerprint
 //!
-//! A client sends [`WIRE_FINGERPRINT`](crate::WIRE_FINGERPRINT) in its
-//! [`ClientMsg::Hello`](crate::ClientMsg::Hello). A server built from other
-//! registries answers [`ServerMsg::WireMismatch`] with its own fingerprint and
-//! closes the connection, before anything else could be misread.
+//! A client sends its build's wire fingerprint in its
+//! [`ClientMsg::Hello`](crate::ClientMsg::Hello): `bota_core::WIRE_FINGERPRINT`,
+//! which folds two digests into one number. The
+//! [`REGISTRY_DIGEST`](crate::REGISTRY_DIGEST) names the wire layout and the
+//! ids; `bota_core::RULES_DIGEST` names the rules a client checks its orders
+//! against and predicts with (the tables and the integer functions of
+//! `bota_core`, every source file of it). A server built with another
+//! fingerprint answers [`ServerMsg::WireMismatch`] with its own and closes the
+//! connection, before anything else could be misread: a server whose
+//! balance moved (a new patch's numbers, a changed table) and a client
+//! built before it part at the hello instead of the client failing in
+//! mid-match on an order its stale rules thought legal.
 //!
 //! The registries only grow, but postcard reads by position: a build reads
 //! only what a build of its own fingerprint wrote. So what builds of
 //! different wires must still read of each other never grows: the hello with
 //! its [`Role`](crate::Role), the refusal, and a replay's
 //! [`ReplayHeader`](crate::ReplayHeader). A replay starts with that header,
-//! which names the wire it was recorded with, and a player refuses a replay
-//! of another wire up front, naming both fingerprints.
+//! which names the fingerprint it was recorded with, and a player refuses a
+//! replay of another one up front, naming both fingerprints.
+//!
+//! # Compression
+//!
+//! A replay file is one Zstandard stream (RFC 8878) of its frames, written at
+//! level 3 with a 2 MiB window; a player also takes the frames as they are,
+//! and tells the two apart by the stream's magic number, which no frame
+//! prefix of a replay begins with. A player refuses a stream that asks for a
+//! window above 8 MiB, or that unpacks to more than 1024 times the bytes it
+//! took from the file (one frame aside): a server's replay unpacks some 87
+//! times.
+//!
+//! A connection may ask for its stream to be compressed with
+//! [`ClientMsg::Compress`](crate::ClientMsg::Compress), at any time once it
+//! said `Hello` (a client that sends it right behind the hello has everything
+//! after the welcome compressed). From then on the server sends
+//! everything but chat as [`ServerMsg::Compressed`] parts: one DEFLATE
+//! stream (RFC 1951, raw, its 32 KiB window) per connection whose bytes are
+//! the frames the connection would carry plainly, flushed after each message
+//! or tick, so every part ends on a frame's end and unpacks at once. Chat
+//! ([`ServerMsg::Heard`]) is never compressed: a line an enemy chose must not
+//! share a window with a side's own state, or the size of what follows
+//! would tell whether it guessed some of it. A client refuses a part that
+//! unpacks to more than
+//! [`MAX_UNPACKED_PART_LEN`](crate::MAX_UNPACKED_PART_LEN), a part inside a
+//! part, a plain message inside a frame the parts began, and a part that
+//! breaks the stream; the connection is then useless and closed. A
+//! connection that dials again starts a new stream and asks again.
+//!
+//! # Chat
+//!
+//! Chat is beside the match: a line never reaches the simulation, the order
+//! line, the acknowledgements or a tick's hash, and no bot needs it. A
+//! [`ClientMsg::Say`](crate::ClientMsg::Say) is passed on to its audience as
+//! [`ServerMsg::Heard`], the speaker included, or refused to the speaker
+//! alone with [`ServerMsg::SayRefused`]. Who hears what, as in Dota:
+//!
+//! - A seat (alive or dead) speaks to
+//!   [`All`](crate::Audience::All): every seat and every spectator; or to
+//!   [`Team`](crate::Audience::Team): its side's seats and the spectators
+//!   that came with one of its side's seat keys. A spectator without a key
+//!   never hears a team line, and nothing tells the other side one was said.
+//! - A spectator speaks to [`Spectators`](crate::Audience::Spectators) only,
+//!   and no seat ever hears it. A referee says nothing.
+//! - A server may close chat to the seats, keep them to their own side, or
+//!   close it to spectators (a ladder of bots closes it: chat would be a
+//!   channel between opponents); what it closes is refused as
+//!   [`NotAllowed`](crate::SayRefusal::NotAllowed).
+//! - A line is stamped with the tick its speaker was watching, and each hearer
+//!   hears it once its own feed has reached that tick: a late spectator hears
+//!   a seat's line with the tick it was said on, never before.
+//! - Text is one line of Unicode: trimmed, at most
+//!   `bota_core::rules::MAX_CHAT_BYTES` bytes and
+//!   `bota_core::rules::MAX_CHAT_GRAPHEMES` characters as a reader counts
+//!   them, and free of control, line-break, bidirectional, invisible, tag,
+//!   private-use and noncharacters and of stacks of more than two combining
+//!   marks (`bota_core::chat_text_fault`). A line that breaks this is
+//!   refused as [`Unfit`](crate::SayRefusal::Unfit), never cleaned. Names
+//!   follow the same character rules but are cleaned rather than refused.
+//! - A connection says five lines in a burst and one a second after that, and
+//!   all spectators together ten in a burst and two a second; a line over the
+//!   rate is refused as [`TooFast`](crate::SayRefusal::TooFast), and the
+//!   connection stays. Every line still counts towards the connection's
+//!   message allowance.
+//! - The replay records every line a seat said, in the lobby and the match,
+//!   as [`ReplayRecord::Heard`](crate::ReplayRecord::Heard), where the server
+//!   took it in; team lines too unless the server was told not to. A
+//!   replay of the whole map thus shows both sides' team lines; a player
+//!   showing it through one side's eyes shows everyone's lines and that
+//!   side's own. Spectators' lines are not recorded.
+//! - A client checks every line again and drops, without failing, one that
+//!   could not have been said to it. Chat counts towards none of the bounds
+//!   on messages before the match start or between snapshots.
 //!
 //! [`ServerMsg::Snapshot`]: crate::ServerMsg::Snapshot
 //! [`ServerMsg::Events`]: crate::ServerMsg::Events
 //! [`ServerMsg::WireMismatch`]: crate::ServerMsg::WireMismatch
 //! [`ServerMsg::Ping`]: crate::ServerMsg::Ping
 //! [`ServerMsg::Refused`]: crate::ServerMsg::Refused
+//! [`ServerMsg::Compressed`]: crate::ServerMsg::Compressed
+//! [`ServerMsg::Heard`]: crate::ServerMsg::Heard
+//! [`ServerMsg::SayRefused`]: crate::ServerMsg::SayRefused
 //! [`ServerMsg::Orders`]: crate::ServerMsg::Orders

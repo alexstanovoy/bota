@@ -1,6 +1,5 @@
 //! Seats, picks, readiness, and the mapping between wire and match identity.
 
-use bota_core::rules;
 use bota_proto::{HeroId, LobbySlot, PlayerId, Role, SeatKey, SlotId, Team};
 
 /// The hero a dummy seat plays: Shadow Fiend.
@@ -36,11 +35,11 @@ pub struct RosterSeat {
 
 impl RosterSeat {
     /// Hands the seat to a connection, not yet ready; its pick stays. The
-    /// name is cut to [`rules::MAX_SHOWN_NAME_BYTES`].
-    pub fn hold(&mut self, player: PlayerId, mut name: String, role: Role) {
-        name.truncate(name.floor_char_boundary(rules::MAX_SHOWN_NAME_BYTES));
+    /// name is cleaned and cut to [`bota_core::rules::MAX_SHOWN_NAME_BYTES`]
+    /// ([`bota_core::clean_name`]).
+    pub fn hold(&mut self, player: PlayerId, name: String, role: Role) {
         self.player = Some(player);
-        self.name = name;
+        self.name = bota_core::clean_name(&name);
         self.role = Some(role);
         self.ready = false;
     }

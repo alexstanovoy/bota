@@ -27,6 +27,7 @@ bota_proto = { workspace = true }
 rand_chacha = "0.10"
 clap = { version = "4", features = ["derive", "env"] }
 getrandom = "0.4"
+miniz_oxide = { version = "0.9.1", default-features = false, features = ["with-alloc"] }
 rustc-hash = { version = "2.1.3", default-features = false, features = ["std"] }
 socket2 = { version = "=0.6.5", default-features = false }
 futures-util = { version = "0.3.34", default-features = false, features = ["sink", "std"], optional = true }
@@ -34,6 +35,8 @@ rustls = { version = "0.23.46", default-features = false, features = ["ring", "s
 tokio = { version = "1.53.3", default-features = false, features = ["net", "rt", "sync", "time"], optional = true }
 tokio-rustls = { version = "0.26.6", default-features = false, features = ["ring"], optional = true }
 tokio-tungstenite = { version = "0.30.0", default-features = false, features = ["handshake"], optional = true }
+# Replays are written as one Zstandard stream; players read them with a pure-Rust decoder.
+zstd = { version = "0.13.3", default-features = false }
 
 [dev-dependencies]
 bota_client_core = { workspace = true }

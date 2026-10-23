@@ -5,7 +5,7 @@ use std::collections::VecDeque;
 use std::fmt;
 use std::str::FromStr;
 
-use bota_proto::{EventKind, SlotOrder, Team};
+use bota_proto::{EventKind, Heard, SlotOrder, Team};
 
 /// The longest delay a late spectator may be given, in seconds.
 pub const MAX_DELAY_SECS: u32 = 600;
@@ -80,6 +80,9 @@ pub struct HeldTick {
     pub events: [Vec<EventKind>; 3],
     /// Every order taken on the tick, told with the whole map.
     pub orders: Vec<SlotOrder>,
+    /// The lines said live while the match stood on this tick that late
+    /// spectators hear, in the order they were said.
+    pub heard: Vec<Heard>,
 }
 
 /// Which of a [`HeldTick`]'s three a viewer is shown: everything, or one
@@ -97,6 +100,8 @@ pub fn sight(viewing: Option<Team>) -> usize {
 pub struct DelayedFeed {
     delay: u32,
     held: VecDeque<HeldTick>,
+    /// The newest tick handed out.
+    shown: Option<u32>,
 }
 
 impl DelayedFeed {
@@ -106,6 +111,7 @@ impl DelayedFeed {
         DelayedFeed {
             delay,
             held: VecDeque::new(),
+            shown: None,
         }
     }
 
@@ -121,14 +127,34 @@ impl DelayedFeed {
             .count();
         let due: Vec<HeldTick> = self.held.drain(..due).collect();
         assert!(self.held.len() <= self.delay as usize);
+        self.shown = due.last().map(|held| held.tick).or(self.shown);
         due
+    }
+
+    /// Holds a line back with the newest tick held, the one the match stands
+    /// on; false when no tick is held, and late spectators hear it now.
+    pub fn hold(&mut self, heard: &Heard) -> bool {
+        let Some(newest) = self.held.back_mut() else {
+            return false;
+        };
+        newest.heard.push(heard.clone());
+        true
+    }
+
+    /// The tick late spectators were shown last.
+    pub fn shown(&self) -> Option<u32> {
+        self.shown
     }
 
     /// The newest tick held, the rest dropped: what late spectators are
     /// shown once the match is over and nothing is secret any more.
+    /// The lines held with the ticks dropped come along with it, in order.
     pub fn take_last(&mut self) -> Option<HeldTick> {
-        let last = self.held.pop_back();
-        self.held.clear();
-        last
+        let mut last = self.held.pop_back()?;
+        let mut heard: Vec<Heard> = self.held.drain(..).flat_map(|held| held.heard).collect();
+        heard.append(&mut last.heard);
+        last.heard = heard;
+        self.shown = Some(last.tick);
+        Some(last)
     }
 }

@@ -6,6 +6,7 @@
 //! exchange beyond the types is the [`contract`].
 
 mod attrs;
+mod chat;
 mod codec;
 pub mod contract;
 mod event;
@@ -15,12 +16,14 @@ mod math;
 mod msg;
 mod order;
 mod registry;
+mod unpack;
 mod view;
 
 #[cfg(test)]
 mod tests;
 
 pub use attrs::*;
+pub use chat::*;
 pub use codec::*;
 pub use event::*;
 pub use fingerprint::*;
@@ -29,4 +32,5 @@ pub use math::*;
 pub use msg::*;
 pub use order::*;
 pub use registry::*;
+pub use unpack::*;
 pub use view::*;

@@ -73,6 +73,7 @@ pub(crate) struct Rejoin {
     pick: Option<ClientMsg>,
     ready: Option<ClientMsg>,
     eyes: Option<ClientMsg>,
+    compress: Option<ClientMsg>,
     unsent: VecDeque<ClientMsg>,
     /// The match is over, the server speaks another wire or refused the
     /// client for good: nothing to come back to.
@@ -92,6 +93,7 @@ impl Rejoin {
             pick: None,
             ready: None,
             eyes: None,
+            compress: None,
             unsent: VecDeque::new(),
             finished: false,
             rejoining: false,
@@ -113,7 +115,14 @@ impl Rejoin {
             ClientMsg::PickHero { .. } => &mut self.pick,
             ClientMsg::SetReady(_) => &mut self.ready,
             ClientMsg::ViewAs { .. } => &mut self.eyes,
-            ClientMsg::Order { .. } | ClientMsg::Ack { .. } | ClientMsg::Pong => return msg,
+            ClientMsg::Compress(_) => &mut self.compress,
+            // A line said into a broken connection is lost, as in Dota.
+            ClientMsg::Order { .. }
+            | ClientMsg::Ack { .. }
+            | ClientMsg::Pong
+            | ClientMsg::Say(_) => {
+                return msg;
+            }
         };
         *kept = Some(msg.clone());
         msg
@@ -158,7 +167,13 @@ impl Rejoin {
 
     /// Says everything again on a fresh connection.
     pub fn greet(&mut self, stream: &mut dyn FrameSink) -> std::io::Result<()> {
-        let greeting = [&self.hello, &self.pick, &self.ready, &self.eyes];
+        let greeting = [
+            &self.hello,
+            &self.compress,
+            &self.pick,
+            &self.ready,
+            &self.eyes,
+        ];
         let frames = greeting
             .into_iter()
             .flatten()

@@ -54,6 +54,45 @@ fn fragmented_io_preserves_every_message_for_each_fragment_size() {
     }
 }
 
+/// A replay as a server writes it, one Zstandard stream, plays exactly as
+/// its frames do, read in any fragments, chat lines among them.
+#[test]
+fn a_packed_replay_plays_as_its_frames_do() {
+    use bota_proto::{Audience, Body, Heard, Line, Speaker};
+    use ruzstd::encoding::{CompressionLevel, compress_to_vec};
+    let mut records: Vec<_> = (0..20).map(snapshot).collect();
+    records.insert(
+        3,
+        ReplayRecord::Heard(Heard {
+            tick: Some(2),
+            from: Speaker::Seat(SlotId(1)),
+            line: Line {
+                to: Audience::Team,
+                body: Body::Text("мид 下路 한국어".to_string()),
+            },
+        }),
+    );
+    let packed = compress_to_vec(&wire(&records)[..], CompressionLevel::Fastest);
+    for fragment in [1, 7, 4096] {
+        let (reader, _, _) = counted(packed.clone(), fragment);
+        let mut player = ReplayPlayer::from_reader(reader);
+        let mut received = player.poll(0.0);
+        player.advance_ticks(20.0);
+        for _ in 0..200 {
+            received.extend(player.poll(0.0));
+            if player.finished() {
+                break;
+            }
+        }
+        assert!(player.error().is_none(), "{:?}", player.error());
+        assert!(player.finished(), "fragment {fragment}");
+        assert_eq!(
+            received,
+            records.iter().cloned().map(message).collect::<Vec<_>>()
+        );
+    }
+}
+
 /// A replay of `remaining` bytes: this build's header, then one frame over
 /// and over.
 struct RepeatedRead {

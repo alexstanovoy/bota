@@ -43,7 +43,7 @@ impl TestClient {
     pub(super) fn recv_or_hangup(&mut self) -> Option<ServerMsg> {
         let mut buf = [0u8; 65536];
         loop {
-            match self.reader.next_message::<ServerMsg>().expect("decode") {
+            match self.reader.next_message().expect("decode") {
                 Some(ServerMsg::Ping) => self.send(&ClientMsg::Pong),
                 Some(msg) => return Some(msg),
                 None => {}
@@ -57,7 +57,12 @@ impl TestClient {
     }
 
     pub(super) fn hello(&mut self, role: Role, key: Option<SeatKey>) {
-        self.send(&ClientMsg::hello(role, "ignored", key));
+        self.send(&ClientMsg::hello(
+            role,
+            "ignored",
+            key,
+            bota_core::WIRE_FINGERPRINT,
+        ));
     }
 
     /// Reads on until the server hangs up, within a bound.

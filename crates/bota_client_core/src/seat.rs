@@ -1,7 +1,8 @@
 //! One connection's way into a match: the lobby, the start, then the session.
 
-use bota_proto::ServerMsg;
+use bota_proto::{ServerMsg, SlotId, Team};
 
+use crate::chat::{Hearer, heard_fits};
 use crate::handshake::Seated;
 use crate::match_static::MatchStatic;
 use crate::observer::Observer;
@@ -31,6 +32,8 @@ pub struct Seat {
     before_start: usize,
     /// A fresh connection was welcomed and its match start is due.
     resuming: bool,
+    /// The lobby's seats and their sides, as last told, for checking chat.
+    lobby_seats: Vec<(SlotId, Team)>,
 }
 
 impl Seat {
@@ -42,6 +45,7 @@ impl Seat {
             session: None,
             before_start: 0,
             resuming: false,
+            lobby_seats: Vec::new(),
         }
     }
 
@@ -53,6 +57,7 @@ impl Seat {
             session: None,
             before_start: 0,
             resuming: false,
+            lobby_seats: Vec::new(),
         }
     }
 
@@ -67,8 +72,13 @@ impl Seat {
         if self.session.is_some() {
             return self.ingest_started(msg, obs);
         }
-        if matches!(msg, ServerMsg::Ping) {
-            return Ok(Ingested::Passed(Box::new(msg)));
+        match msg {
+            // Chat flows however long the lobby lasts.
+            ServerMsg::Ping | ServerMsg::SayRefused { .. } => {
+                return Ok(Ingested::Passed(Box::new(msg)));
+            }
+            ServerMsg::Heard(heard) => return Ok(self.lobby_heard(heard)),
+            _ => {}
         }
         self.before_start += 1;
         if self.before_start > MAX_MESSAGES_BEFORE_MATCH_START {
@@ -102,7 +112,14 @@ impl Seat {
             }
             ServerMsg::LobbyState { ref slots, .. } => {
                 crate::session::validate_lobby(slots)?;
+                self.lobby_seats = slots.iter().map(|seat| (seat.slot, seat.team)).collect();
                 return Ok(Ingested::Passed(Box::new(msg)));
+            }
+            ServerMsg::Compressed(_) => {
+                "a compressed part reached the seat: the transport did not unpack it"
+            }
+            ServerMsg::Heard(_) | ServerMsg::SayRefused { .. } => {
+                unreachable!("chat was passed on above")
             }
             other @ (ServerMsg::Orders { .. }
             | ServerMsg::ParticipantLeft { .. }
@@ -139,6 +156,26 @@ impl Seat {
                 Ok(Ingested::Resumed { resend })
             }
             other => session.ingest(other, obs),
+        }
+    }
+
+    /// Passes a lobby line on when this connection could have been told it.
+    fn lobby_heard(&self, heard: bota_proto::Heard) -> Ingested {
+        let mine = self.seated.as_ref().map(|seated| seated.slot);
+        let side = self
+            .lobby_seats
+            .iter()
+            .find(|(slot, _)| Some(*slot) == mine)
+            .map(|(_, team)| *team);
+        let hearer = Hearer {
+            seated: mine.is_some(),
+            side,
+            seats: &self.lobby_seats,
+            tick: None,
+        };
+        match heard_fits(&heard, hearer) {
+            true => Ingested::Passed(Box::new(ServerMsg::Heard(heard))),
+            false => Ingested::Unheard,
         }
     }
 

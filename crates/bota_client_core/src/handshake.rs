@@ -153,7 +153,12 @@ pub fn greet(
     key: Option<SeatKey>,
 ) -> std::io::Result<Lobby> {
     validate_name(name)?;
-    transport.send(&ClientMsg::hello(role, name, key))?;
+    transport.send(&ClientMsg::hello(
+        role,
+        name,
+        key,
+        bota_core::WIRE_FINGERPRINT,
+    ))?;
     let mut lobby = Lobby::default();
     for _ in 0..MAX_MESSAGES_BEFORE_WELCOME {
         let message = transport
@@ -181,18 +186,18 @@ pub fn greet(
     )))
 }
 
+/// A name the server would show as it is (cut to its length): 1 to
+/// [`rules::MAX_ANNOUNCED_NAME_BYTES`] bytes, trimmed, of text that keeps
+/// the chat's character rules ([`bota_core::name_fault`]).
 fn validate_name(name: &str) -> std::io::Result<()> {
-    if name.is_empty() {
-        return Err(std::io::Error::other("client name must not be empty"));
-    }
-    if name.len() > rules::MAX_ANNOUNCED_NAME_BYTES {
-        return Err(std::io::Error::other(format!(
-            "client name is {} bytes; maximum is {}",
-            name.len(),
+    match bota_core::name_fault(name) {
+        None => Ok(()),
+        Some(fault) => Err(std::io::Error::other(format!(
+            "client name {name:?} is unfit ({fault:?}): 1 to {} bytes, trimmed, without \
+control, bidi or invisible characters",
             rules::MAX_ANNOUNCED_NAME_BYTES
-        )));
+        ))),
     }
-    Ok(())
 }
 
 #[cfg(not(target_arch = "wasm32"))]

@@ -10,6 +10,7 @@ use clap::{Parser, ValueEnum};
 
 use bota_core::rules;
 use bota_proto::{HeroId, Role, SeatKey, Team, encode_frame_to_vec};
+use bota_server::chat::{ChatOpts, SeatChat};
 use bota_server::game::{OrderDelay, check_order_delays};
 use bota_server::game_loop::{
     DEFAULT_IDLE_TIMEOUT, DEFAULT_SPECTATORS_PER_SEAT, MatchEnd, ServerOpts, check_opts, run,
@@ -145,8 +146,8 @@ struct Args {
     /// Most connections held at once.
     #[arg(long, default_value_t = DEFAULT_MAX_CONNECTIONS)]
     max_connections: usize,
-    /// Print the fingerprint of the wire registries this build speaks and exit. Every client
-    /// sends its own in its Hello, and one that differs is refused.
+    /// Print the wire fingerprint of this build (its registries and its rules) and exit. Every
+    /// client sends its own in its Hello, and one that differs is refused.
     #[arg(long)]
     wire_fingerprint: bool,
     /// Lockstep: tick-lengths to wait for a straggler before moving on.
@@ -176,6 +177,17 @@ struct Args {
     /// Seat a dummy in the last seat: its hero stays put and never acts, so one player can practise alone.
     #[arg(long)]
     dummy_seat: bool,
+    /// What the seats may say: off (a ladder of bots: chat would be a channel between
+    /// opponents), team (to their own side), all (to their side and to everyone).
+    #[arg(long, default_value_t = ChatOpts::DEFAULT.seats)]
+    chat: SeatChat,
+    /// Whether spectators may talk among themselves; a seat never hears them.
+    #[arg(long, default_value_t = ChatOpts::DEFAULT.spectators, action = clap::ArgAction::Set)]
+    spectator_chat: bool,
+    /// Whether the replay keeps the sides' team lines. Whoever holds the replay of the whole
+    /// map reads both sides' then; a replay seen through one side's eyes shows only its own.
+    #[arg(long, default_value_t = ChatOpts::DEFAULT.replay_team, action = clap::ArgAction::Set)]
+    replay_team_chat: bool,
     /// Ticks every order waits past the earliest tick it could take effect on: one value for every seat, or one per seat in slot order.
     #[arg(long, value_delimiter = ',', default_value = "0")]
     order_delay_ticks: Vec<u32>,
@@ -189,7 +201,7 @@ fn main() -> ExitCode {
     if args.wire_fingerprint {
         println!(
             "{}",
-            bota_proto::fingerprint_to_hex(bota_proto::WIRE_FINGERPRINT)
+            bota_proto::fingerprint_to_hex(bota_core::WIRE_FINGERPRINT)
         );
         return ExitCode::SUCCESS;
     }
@@ -320,6 +332,11 @@ fn server_opts(args: &Args) -> std::io::Result<ServerOpts> {
         pick_penalty_time: Duration::from_secs(bota_core::rules::PICK_PENALTY_SECS),
         tactical_time: Duration::from_secs(args.tactical_secs),
         same_heroes: args.same_heroes_allowed,
+        chat: ChatOpts {
+            seats: args.chat,
+            spectators: args.spectator_chat,
+            replay_team: args.replay_team_chat,
+        },
     })
 }
 
@@ -441,9 +458,9 @@ fn reservation(slot: usize, entry: &str) -> Result<ReservedSeat, String> {
     } else {
         Team::Dire
     });
-    if name.is_empty() || name.len() > rules::MAX_ANNOUNCED_NAME_BYTES {
+    if let Some(fault) = bota_core::name_fault(name) {
         return Err(format!(
-            "a seat name takes 1 to {} bytes",
+            "a seat name takes 1 to {} bytes of text without control, bidi or invisible characters ({fault:?})",
             rules::MAX_ANNOUNCED_NAME_BYTES
         ));
     }

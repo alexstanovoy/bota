@@ -17,8 +17,8 @@ use std::sync::Arc;
 
 use bota_core::{MapDef, map_of};
 use bota_proto::{
-    EntityId, EventKind, HeroId, MatchInfo, MatchStats, OutgoingOrder, PlayerView, RejectReason,
-    ServerMsg, SlotId, Talents, Team, TickMode, UnitView, WorldView,
+    EntityId, EventKind, Heard, HeroId, MatchInfo, MatchStats, OutgoingOrder, PlayerView,
+    RejectReason, ServerMsg, SlotId, Talents, Team, TickMode, UnitView, WorldView,
 };
 
 pub use error::{IngestError, SessionError};
@@ -29,6 +29,7 @@ pub use tracks::{
 };
 pub(crate) use validate::lobby as validate_lobby;
 
+use crate::chat::{Hearer, heard_fits};
 use crate::handshake::{Seated, check_match};
 use crate::latency::OrderLatency;
 use crate::limits::{MAX_MESSAGES_WITHOUT_SNAPSHOT, MAX_RECENT_EVENTS};
@@ -81,8 +82,13 @@ pub enum Ingested {
     /// spectator has no slot, and sees as [`ClientSession::team`] tells.
     Started { slot: Option<SlotId>, team: Team },
     /// A message that is not part of the match's state: the welcome, the
-    /// lobby, the orders told to a spectator, a departure.
+    /// lobby, the orders told to a spectator, a departure, a line of chat
+    /// that fits the hearer ([`heard_fits`](crate::heard_fits)), a refused
+    /// line.
     Passed(Box<ServerMsg>),
+    /// A line of chat that could not have been said to this hearer: dropped,
+    /// never fatal, since chat is not the match.
+    Unheard,
     /// The server refused an order; the session rolled it back.
     Rejected { seq: u32, reason: RejectReason },
     /// A snapshot was folded.
@@ -205,6 +211,11 @@ impl ClientSession {
     ) -> Result<Ingested, IngestError<O::Error>> {
         self.count_message(&msg)?;
         match msg {
+            ServerMsg::Heard(heard) => Ok(self.ingest_heard(heard)),
+            ServerMsg::Compressed(_) => Err(SessionError::Stream(
+                "a compressed part reached the session: the transport did not unpack it",
+            )
+            .into()),
             ServerMsg::Snapshot { view } => self.ingest_snapshot(view, obs),
             ServerMsg::Events { tick, events } => self.ingest_events(tick, &events, obs),
             ServerMsg::OrderRejected { seq, reason } => Ok(self.ingest_rejection(seq, reason)),
@@ -232,7 +243,29 @@ impl ClientSession {
             other @ (ServerMsg::Welcome { .. }
             | ServerMsg::Orders { .. }
             | ServerMsg::ParticipantLeft { .. }
+            | ServerMsg::SayRefused { .. }
             | ServerMsg::Ping) => Ok(Ingested::Passed(Box::new(other))),
+        }
+    }
+
+    /// Passes a line of chat on when this stream's hearer could have been
+    /// told it.
+    fn ingest_heard(&self, heard: Heard) -> Ingested {
+        let seats: Vec<(SlotId, Team)> = self
+            .statics
+            .roster()
+            .iter()
+            .map(|pick| (pick.slot, pick.team))
+            .collect();
+        let hearer = Hearer {
+            seated: self.owner.is_some(),
+            side: self.viewer(),
+            seats: &seats,
+            tick: Some(self.current.as_ref().map_or(0, |view| view.tick)),
+        };
+        match heard_fits(&heard, hearer) {
+            true => Ingested::Passed(Box::new(ServerMsg::Heard(heard))),
+            false => Ingested::Unheard,
         }
     }
 
@@ -383,7 +416,10 @@ impl ClientSession {
 
     /// Counts a message against the bound on a stream without snapshots.
     fn count_message(&mut self, msg: &ServerMsg) -> Result<(), SessionError> {
-        if !self.strict() || matches!(msg, ServerMsg::Ping) {
+        // Chat flows whatever the match does: a long pause full of it is no
+        // broken stream.
+        let chat = matches!(msg, ServerMsg::Heard(_) | ServerMsg::SayRefused { .. });
+        if !self.strict() || chat || matches!(msg, ServerMsg::Ping) {
             return Ok(());
         }
         if matches!(msg, ServerMsg::Snapshot { .. }) {

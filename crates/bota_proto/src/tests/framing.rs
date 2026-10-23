@@ -114,7 +114,7 @@ fn a_truncated_payload_is_malformed_not_a_wait() {
         role: Role::Player,
         name: "a fairly long message body".to_string(),
         key: None,
-        wire_fingerprint: WIRE_FINGERPRINT,
+        wire_fingerprint: REGISTRY_DIGEST,
     };
     let frame = encode_frame_to_vec(&msg).unwrap();
     let payload_len = frame.len() - LEN_PREFIX;
@@ -172,4 +172,32 @@ fn frames_are_handed_out_whole_and_an_oversized_one_refused() {
         reader.next_frame(),
         Err(CodecError::TooLarge { len: claimed })
     );
+}
+
+/// A part that unpacks past what the server ever flushes at once is a
+/// bomb: the stream is refused once it has unpacked that much, whatever it
+/// unpacks to, whole frames of pings included.
+#[test]
+fn a_compressed_part_unpacking_past_its_bound_is_refused() {
+    let ping = encode_frame_to_vec(&ServerMsg::Ping).unwrap();
+    let plain: Vec<u8> = ping
+        .iter()
+        .copied()
+        .cycle()
+        .take(MAX_UNPACKED_PART_LEN + 4 * ping.len())
+        .collect();
+    let part = miniz_oxide::deflate::compress_to_vec(&plain, 9);
+    assert!(part.len() < plain.len() / 500, "{} bytes", part.len());
+    let mut unpacker = Unpacker::new();
+    assert_eq!(unpacker.take(ServerMsg::Compressed(part)), Ok(None));
+    let mut pings = 0;
+    let refused = loop {
+        match unpacker.next_message() {
+            Ok(Some(ServerMsg::Ping)) => pings += 1,
+            Ok(other) => panic!("{other:?}"),
+            Err(error) => break error,
+        }
+    };
+    assert!(matches!(refused, CodecError::Unpacked { len } if len > MAX_UNPACKED_PART_LEN));
+    assert!(pings * ping.len() <= MAX_UNPACKED_PART_LEN);
 }

@@ -6,7 +6,8 @@ use std::io::ErrorKind;
 use std::time::Duration;
 
 use bota_proto::{
-    ClientMsg, CodecError, LEN_PREFIX, MAX_CLIENT_PAYLOAD_LEN, ServerMsg, encode_frame_to_vec,
+    ClientMsg, CodecError, LEN_PREFIX, MAX_CLIENT_PAYLOAD_LEN, ServerMsg, Unpacker,
+    encode_frame_to_vec,
 };
 
 use super::tcp::TcpFrames;
@@ -41,6 +42,82 @@ pub(crate) trait FrameSink: Send {
 /// caller's half.
 pub(crate) trait FrameStream: FrameSource + FrameSink {
     fn split(self: Box<Self>) -> std::io::Result<(Box<dyn FrameSource>, Box<dyn FrameSink>)>;
+}
+
+/// A carrier with the connection's compressed parts unpacked: what every
+/// [`Endpoint`] opens, so a reader sees the server's messages one by one,
+/// whether it asked for compression or not.
+pub(crate) struct Unpacking<S: ?Sized> {
+    unpacker: Unpacker,
+    inner: Box<S>,
+}
+
+/// `carrier` with its compressed parts unpacked.
+fn unpacking(carrier: Box<dyn FrameStream>) -> Box<dyn FrameStream> {
+    Box::new(Unpacking {
+        unpacker: Unpacker::new(),
+        inner: carrier,
+    })
+}
+
+/// The next message: one the parts taken in still hold, else the next off
+/// the wire, unpacked.
+fn next_unpacked(
+    unpacker: &mut Unpacker,
+    inner: &mut (impl FrameSource + ?Sized),
+) -> std::io::Result<Option<ServerMsg>> {
+    loop {
+        if let Some(message) = unpacker.next_message().map_err(undecodable)? {
+            return Ok(Some(message));
+        }
+        let Some(message) = inner.read_message()? else {
+            return Ok(None);
+        };
+        if let Some(message) = unpacker.take(message).map_err(undecodable)? {
+            return Ok(Some(message));
+        }
+    }
+}
+
+impl FrameSource for Unpacking<dyn FrameSource> {
+    fn read_message(&mut self) -> std::io::Result<Option<ServerMsg>> {
+        next_unpacked(&mut self.unpacker, &mut *self.inner)
+    }
+
+    fn take_wait(&mut self) -> Duration {
+        self.inner.take_wait()
+    }
+}
+
+impl FrameSource for Unpacking<dyn FrameStream> {
+    fn read_message(&mut self) -> std::io::Result<Option<ServerMsg>> {
+        next_unpacked(&mut self.unpacker, &mut *self.inner)
+    }
+
+    fn take_wait(&mut self) -> Duration {
+        self.inner.take_wait()
+    }
+}
+
+impl FrameSink for Unpacking<dyn FrameStream> {
+    fn send_frames(&mut self, frames: &[Vec<u8>]) -> std::io::Result<()> {
+        self.inner.send_frames(frames)
+    }
+
+    fn abort(&mut self) {
+        self.inner.abort();
+    }
+}
+
+impl FrameStream for Unpacking<dyn FrameStream> {
+    fn split(self: Box<Self>) -> std::io::Result<(Box<dyn FrameSource>, Box<dyn FrameSink>)> {
+        let (source, sink) = self.inner.split()?;
+        let source = Unpacking {
+            unpacker: self.unpacker,
+            inner: source,
+        };
+        Ok((Box::new(source), sink))
+    }
 }
 
 /// Encodes `message` and sends it as one frame.
@@ -142,19 +219,13 @@ impl Endpoint {
         connect_timeout: Duration,
         io_timeout: Duration,
     ) -> std::io::Result<Box<dyn FrameStream>> {
-        match &self.kind {
-            Kind::Tcp(address) => Ok(Box::new(TcpFrames::open(
-                address,
-                connect_timeout,
-                io_timeout,
-            )?)),
+        let carrier: Box<dyn FrameStream> = match &self.kind {
+            Kind::Tcp(address) => Box::new(TcpFrames::open(address, connect_timeout, io_timeout)?),
             #[cfg(feature = "websocket")]
-            Kind::Ws { url, tls } => Ok(Box::new(WsFrames::open(
-                url,
-                tls,
-                connect_timeout,
-                io_timeout,
-            )?)),
-        }
+            Kind::Ws { url, tls } => {
+                Box::new(WsFrames::open(url, tls, connect_timeout, io_timeout)?)
+            }
+        };
+        Ok(unpacking(carrier))
     }
 }

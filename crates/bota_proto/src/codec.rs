@@ -27,8 +27,15 @@ pub enum CodecError {
         /// The length that was rejected.
         len: usize,
     },
-    /// The payload did not decode into the expected message.
+    /// The payload did not decode into the expected message, or a
+    /// compressed stream was broken.
     Malformed,
+    /// One compressed part unpacked to more than
+    /// [`MAX_UNPACKED_PART_LEN`](crate::MAX_UNPACKED_PART_LEN): a bomb.
+    Unpacked {
+        /// The bytes it had unpacked to when it was refused.
+        len: usize,
+    },
 }
 
 impl core::fmt::Display for CodecError {
@@ -38,6 +45,11 @@ impl core::fmt::Display for CodecError {
                 write!(f, "frame payload of {len} bytes exceeds {MAX_PAYLOAD_LEN}")
             }
             CodecError::Malformed => write!(f, "frame payload did not decode"),
+            CodecError::Unpacked { len } => write!(
+                f,
+                "a compressed part unpacked to {len} bytes, over {}",
+                crate::MAX_UNPACKED_PART_LEN
+            ),
         }
     }
 }
@@ -122,6 +134,11 @@ impl FrameReader {
         let msg = decode_payload(&self.buf[LEN_PREFIX..end])?;
         self.buf.drain(..end);
         Ok(Some(msg))
+    }
+
+    /// Whether no byte waits: every byte pushed belonged to a frame taken.
+    pub fn is_empty(&self) -> bool {
+        self.buf.is_empty()
     }
 
     /// Take the next complete frame whole, length prefix included and payload

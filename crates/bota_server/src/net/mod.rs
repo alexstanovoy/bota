@@ -2,6 +2,7 @@
 
 mod allowance;
 mod conn;
+mod deflate;
 mod listeners;
 mod outbox;
 mod stream;

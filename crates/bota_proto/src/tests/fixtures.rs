@@ -564,7 +564,7 @@ pub fn all_client_msgs() -> Vec<ClientMsg> {
             role: Role::Player,
             name: "player-one".to_string(),
             key: Some(SeatKey([7; 32])),
-            wire_fingerprint: WIRE_FINGERPRINT,
+            wire_fingerprint: REGISTRY_DIGEST,
         },
         ClientMsg::PickHero { hero: HeroId(0) },
         ClientMsg::SetReady(true),
@@ -582,6 +582,11 @@ pub fn all_client_msgs() -> Vec<ClientMsg> {
             seat: Some(SlotId(1)),
         },
         ClientMsg::Pong,
+        ClientMsg::Say(Line {
+            to: Audience::All,
+            body: Body::Text("gg wp 👍".to_string()),
+        }),
+        ClientMsg::Compress(Codec::Deflate),
     ]
 }
 
@@ -636,13 +641,30 @@ pub fn all_server_msgs() -> Vec<ServerMsg> {
             orders: vec![slot_order(0), slot_order(1)],
         },
         ServerMsg::WireMismatch {
-            server_fingerprint: WIRE_FINGERPRINT,
+            server_fingerprint: REGISTRY_DIGEST,
         },
         ServerMsg::Ping,
         ServerMsg::Refused {
             reason: RejectReason::SeatHeld,
         },
+        ServerMsg::Heard(heard()),
+        ServerMsg::SayRefused {
+            reason: SayRefusal::TooFast { retry_in_ms: 700 },
+        },
+        ServerMsg::Compressed(vec![0, 1, 2, 0xff]),
     ]
+}
+
+/// A team line in Cyrillic and CJK, from a seat in the match.
+fn heard() -> Heard {
+    Heard {
+        tick: Some(5400),
+        from: Speaker::Seat(SlotId(1)),
+        line: Line {
+            to: Audience::Team,
+            body: Body::Text("мид 下路 ok".to_string()),
+        },
+    }
 }
 
 /// Every [`ReplayRecord`] variant.
@@ -666,7 +688,15 @@ pub fn all_replay_records() -> Vec<ReplayRecord> {
                 slot_order(1),
             ],
         },
-        ReplayRecord::Header(ReplayHeader::CURRENT),
+        ReplayRecord::Header(ReplayHeader::new(REGISTRY_DIGEST)),
+        ReplayRecord::Heard(Heard {
+            tick: None,
+            from: Speaker::Spectator("watcher".to_string()),
+            line: Line {
+                to: Audience::Spectators,
+                body: Body::Text("glhf".to_string()),
+            },
+        }),
     ]
 }
 
@@ -681,6 +711,8 @@ pub fn client_msg_name(msg: &ClientMsg) -> &'static str {
         ClientMsg::Ack { .. } => "Ack",
         ClientMsg::ViewAs { .. } => "ViewAs",
         ClientMsg::Pong => "Pong",
+        ClientMsg::Say(_) => "Say",
+        ClientMsg::Compress(_) => "Compress",
     }
 }
 
@@ -700,5 +732,8 @@ pub fn server_msg_name(msg: &ServerMsg) -> &'static str {
         ServerMsg::WireMismatch { .. } => "WireMismatch",
         ServerMsg::Ping => "Ping",
         ServerMsg::Refused { .. } => "Refused",
+        ServerMsg::Heard(_) => "Heard",
+        ServerMsg::SayRefused { .. } => "SayRefused",
+        ServerMsg::Compressed(_) => "Compressed",
     }
 }

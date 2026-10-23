@@ -10,6 +10,7 @@ categories.workspace = true
 
 [dependencies]
 bota_client_core = { workspace = true }
+bota_core = { workspace = true }
 bota_proto = { workspace = true }
 # radovid has no public remote yet, hence the paths; they become git dependencies pinned by revision once it has.
 # Optional: a build without the `radovid` feature compiles none of it (Cargo still reads the manifests to lock).

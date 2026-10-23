@@ -38,6 +38,7 @@
 
 mod blurb;
 mod catalog;
+mod chat;
 mod handshake;
 mod lasthit;
 mod latency;
@@ -49,6 +50,7 @@ mod play;
 mod readiness;
 #[cfg(not(target_arch = "wasm32"))]
 mod redial;
+mod replay_file;
 mod seat;
 mod session;
 mod shop;
@@ -65,6 +67,7 @@ mod web;
 mod ws_frame;
 
 pub use catalog::*;
+pub use chat::*;
 pub use handshake::*;
 pub use lasthit::*;
 pub use latency::*;
@@ -76,6 +79,7 @@ pub use play::*;
 pub use readiness::*;
 #[cfg(not(target_arch = "wasm32"))]
 pub use redial::Redial;
+pub use replay_file::*;
 pub use seat::*;
 pub use session::*;
 pub use shop::*;

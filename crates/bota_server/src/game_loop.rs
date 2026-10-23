@@ -5,14 +5,14 @@ use std::path::PathBuf;
 use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender, channel};
 use std::time::{Duration, Instant};
 
-use bota_core::rules;
+use bota_core::{WIRE_FINGERPRINT, rules};
 use bota_proto::{
-    ClientMsg, EventKind, HeroId, MapId, MatchReport, PlayerId, RejectReason, ReplayRecord, Role,
-    SeatKey, ServerMsg, SlotId, SlotOrder, Team, TickMode, WIRE_FINGERPRINT, WorldView,
-    encode_frame_to_vec,
+    ClientMsg, EventKind, Heard, HeroId, MapId, MatchReport, PlayerId, RejectReason, ReplayRecord,
+    Role, SeatKey, ServerMsg, SlotId, SlotOrder, Team, TickMode, WorldView, encode_frame_to_vec,
 };
 use rand_chacha::rand_core::Rng as _;
 
+use crate::chat::{ChatOpts, Rates};
 use crate::game::{
     Command, DelayLine, Event, EventVisibility, Handles, MatchConfig, MatchSecrets, OrderDelay,
     RefusedOrder, World,
@@ -22,6 +22,8 @@ use crate::net::{Connection, FrameStream, Listeners, NetEvent};
 use crate::pick_clock::PickClock;
 use crate::replay::ReplayWriter;
 use crate::spectators::{DelayedFeed, HeldTick, MAX_DELAYED_TICKS, Spectators, sight};
+
+mod chat;
 
 /// How long a connection may stay silent before it is dropped as dead, by
 /// default: five pings missed. A seat is not handed to a new connection while
@@ -120,6 +122,8 @@ pub struct ServerOpts {
     /// Only allow it). When not, a hero some seat holds is refused to the
     /// others, and a drawn hero is never one that is held.
     pub same_heroes: bool,
+    /// Who may talk, and what the replay keeps of it.
+    pub chat: ChatOpts,
 }
 
 /// The longest pick time that can be asked for.
@@ -162,6 +166,9 @@ pub fn run(listeners: impl Into<Listeners>, opts: ServerOpts) -> std::io::Result
         );
     }
     let mut server = Server {
+        rates: Rates::new(Instant::now()),
+        heard: Vec::new(),
+        replay,
         opts,
         secrets,
         rx,
@@ -179,7 +186,7 @@ pub fn run(listeners: impl Into<Listeners>, opts: ServerOpts) -> std::io::Result
         server.close_all();
         return Ok(MatchEnd::Abandoned);
     };
-    Ok(server.match_phase(cfg, replay))
+    Ok(server.match_phase(cfg))
 }
 
 /// What the options must agree on beyond what their types hold; [`run`]
@@ -254,6 +261,8 @@ struct Watcher {
     locked: bool,
     /// Whether it watches from the delayed feed.
     late: bool,
+    /// The name it announced, as a seat's is shown.
+    name: String,
 }
 
 /// How a spectator may watch.
@@ -294,6 +303,12 @@ struct Server {
     delayed: Option<DelayedFeed>,
     /// The hero selection clock; runs in the lobby phase only.
     pick_clock: PickClock,
+    /// What each connection may still say.
+    rates: Rates,
+    /// The lines the replay is yet to be given, in the order taken in.
+    heard: Vec<Heard>,
+    /// Where the lobby's lines go; the match takes it over.
+    replay: ReplayWriter,
 }
 
 /// What the seats sent during the match.
@@ -361,6 +376,7 @@ impl Server {
 
     /// Takes a connection out of every list.
     fn forget(&mut self, id: PlayerId) -> Option<Connection> {
+        self.rates.forget(id);
         self.spectators.retain(|w| w.id != id);
         self.referees.retain(|&p| p != id);
         let at = self.conns.iter().position(|c| c.id == id)?;
@@ -558,7 +574,7 @@ impl Server {
                 let name = self.opts.reserved[usize::from(slot.0)].name.clone();
                 self.take_seat(id, role, slot, name).map(|()| Some(slot))
             }
-            Some(Admission::Watch(watch)) => self.watch(id, watch).map(|()| None),
+            Some(Admission::Watch(watch)) => self.watch(id, watch, &name).map(|()| None),
             Some(Admission::Referee) => {
                 self.referees.push(id);
                 Ok(None)
@@ -616,7 +632,7 @@ impl Server {
 
     /// Registers a spectator, unless the seat its key opens already admitted
     /// as many as it may.
-    fn watch(&mut self, id: PlayerId, watch: Watch) -> Result<(), RejectReason> {
+    fn watch(&mut self, id: PlayerId, watch: Watch, name: &str) -> Result<(), RejectReason> {
         let eyes = match watch {
             Watch::Seat(slot) => Some(slot),
             Watch::Live | Watch::Late => None,
@@ -636,6 +652,7 @@ impl Server {
             eyes,
             locked: eyes.is_some(),
             late: watch == Watch::Late,
+            name: bota_core::clean_name(name),
         });
         Ok(())
     }
@@ -696,6 +713,9 @@ impl Server {
             };
             if let Some((id, msg)) = self.hear(event, false) {
                 self.lobby_message(id, msg);
+                let mut replay = std::mem::replace(&mut self.replay, ReplayWriter::disabled());
+                self.record_heard(&mut replay);
+                self.replay = replay;
             }
         }
     }
@@ -739,6 +759,8 @@ impl Server {
                     self.broadcast_lobby();
                 }
             }
+            ClientMsg::Say(line) => self.say(id, line, None),
+            ClientMsg::Compress(_) => self.compress(id),
             ClientMsg::Order { .. }
             | ClientMsg::Ack { .. }
             | ClientMsg::ViewAs { .. }
@@ -899,7 +921,8 @@ impl Server {
     }
 
     /// Runs the match to its end.
-    fn match_phase(&mut self, cfg: MatchConfig, mut replay: ReplayWriter) -> MatchEnd {
+    fn match_phase(&mut self, cfg: MatchConfig) -> MatchEnd {
+        let mut replay = std::mem::replace(&mut self.replay, ReplayWriter::disabled());
         let mut world = World::for_match(&cfg, cfg.rng());
         let start = ServerMsg::MatchStart { info: cfg.info() };
         self.broadcast(&start);
@@ -920,6 +943,7 @@ impl Server {
         let mut empty_since = None;
         let end = loop {
             self.gather_input(&world, &cfg, &mut inbox, &pace);
+            self.record_heard(&mut replay);
             if self.deserted(&mut empty_since) {
                 eprintln!("bota_server: every seat is empty; the match is abandoned");
                 break MatchEnd::Abandoned;
@@ -1023,6 +1047,9 @@ impl Server {
                     orders: held.orders.clone(),
                 });
             }
+            for heard in &held.heard {
+                conn.send_chat(&ServerMsg::Heard(heard.clone()));
+            }
         }
     }
 
@@ -1101,6 +1128,7 @@ impl Server {
             frames: [full_frame, radiant_frame, dire_frame],
             events: [full_events, radiant_events, dire_events],
             orders: taken.to_vec(),
+            heard: Vec::new(),
         })
     }
 
@@ -1212,6 +1240,8 @@ impl Server {
                     spectator.eyes = eyes;
                 }
             }
+            ClientMsg::Say(line) => self.say(id, line, Some(world.tick)),
+            ClientMsg::Compress(_) => self.compress(id),
             ClientMsg::PickHero { .. } | ClientMsg::SetReady(_) | ClientMsg::Pong => {}
         }
     }

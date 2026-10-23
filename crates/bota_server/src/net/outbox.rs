@@ -10,6 +10,7 @@ use bota_proto::{
 };
 
 use crate::net::FrameSink;
+use crate::net::deflate::Deflater;
 
 /// How often the writer sends [`ServerMsg::Ping`], whatever else it sends.
 pub const PING_INTERVAL: Duration = Duration::from_secs(1);
@@ -25,6 +26,11 @@ pub const PING_INTERVAL: Duration = Duration::from_secs(1);
 /// a slow consumer skips states but no events. Everything else is kept in
 /// order and never dropped; a queue that overflows, or a peer that skips more
 /// than [`MAX_SKIPPED_TICKS`] in a row, aborts the connection instead.
+///
+/// Once the peer asks for compression, everything queued after the request
+/// goes out compressed, pings among it, but chat: a line an enemy chose must
+/// never share a compression window with a side's own state, or the sizes of
+/// what follows it would tell whether it guessed some of that state.
 pub struct Outbox {
     state: Mutex<OutboxState>,
     wake: Condvar,
@@ -53,6 +59,10 @@ enum Queued {
     Frame(Vec<u8>),
     /// A tick: its snapshot frame, its events and the ticks it replaced.
     Tick(Box<QueuedTick>),
+    /// A chat frame, never compressed.
+    Chat(Vec<u8>),
+    /// Compress everything after this.
+    Compress,
 }
 
 struct QueuedTick {
@@ -87,6 +97,16 @@ impl Outbox {
     /// Queues a frame that must arrive.
     pub fn push(&self, bytes: Vec<u8>) {
         self.enqueue(Queued::Frame(bytes));
+    }
+
+    /// Queues a chat frame, which never goes out compressed.
+    pub fn push_chat(&self, bytes: Vec<u8>) {
+        self.enqueue(Queued::Chat(bytes));
+    }
+
+    /// Compresses everything queued after this (chat aside); once is enough.
+    pub fn compress(&self) {
+        self.enqueue(Queued::Compress);
     }
 
     /// Queues a tick, its encoded snapshot and its events, replacing any tick
@@ -191,10 +211,19 @@ impl Outbox {
     pub fn run_writer(self: &Arc<Outbox>, mut sink: Box<dyn FrameSink>) {
         let ping = encode_frame_to_vec(&ServerMsg::Ping).expect("a ping encodes");
         let mut ping_due = Instant::now() + PING_INTERVAL;
+        let mut deflater = None;
         loop {
             let bytes = match self.next_step(ping_due) {
                 Step::Send(Queued::Frame(bytes)) => Some(bytes),
                 Step::Send(Queued::Tick(tick)) => tick_frames(*tick),
+                Step::Send(Queued::Chat(bytes)) => {
+                    send_or_abort(self, &mut *sink, Some(bytes));
+                    continue;
+                }
+                Step::Send(Queued::Compress) => {
+                    deflater.get_or_insert_with(Deflater::new);
+                    continue;
+                }
                 Step::Ping => {
                     ping_due = Instant::now() + PING_INTERVAL;
                     Some(ping.clone())
@@ -205,13 +234,26 @@ impl Outbox {
                 }
                 Step::Abort => break,
             };
-            if bytes.is_none_or(|bytes| sink.send_frames(bytes).is_err()) {
-                self.abort();
+            let bytes = match &mut deflater {
+                Some(deflater) => bytes.and_then(|bytes| deflater.pack(&bytes)),
+                None => bytes,
+            };
+            if !send_or_abort(self, &mut *sink, bytes) {
                 break;
             }
         }
         sink.shut_read();
     }
+}
+
+/// Sends frames, or aborts the outbox when there are none (they would not
+/// encode) or the sink failed; whether they went out.
+fn send_or_abort(outbox: &Outbox, sink: &mut dyn FrameSink, bytes: Option<Vec<u8>>) -> bool {
+    if bytes.is_some_and(|bytes| sink.send_frames(bytes).is_ok()) {
+        return true;
+    }
+    outbox.abort();
+    false
 }
 
 /// A tick's snapshot frame, carrying the ticks it replaced, then its events

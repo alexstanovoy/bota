@@ -440,3 +440,26 @@ variant EventKind 9 Landed {}
 field EventKind::Landed 0 inflictor: Inflictor
 field EventKind::Landed 1 caster: Option<EntityId>
 field EventKind::Landed 2 at: Vec2
+variant ClientMsg 7 Say(Line)
+variant ClientMsg 8 Compress(Codec)
+variant Codec 0 Deflate
+variant ServerMsg 12 Heard(Heard)
+variant ServerMsg 13 SayRefused {}
+field ServerMsg::SayRefused 0 reason: SayRefusal
+variant ServerMsg 14 Compressed(Vec<u8>)
+variant ReplayRecord 3 Heard(Heard)
+field Line 0 to: Audience
+field Line 1 body: Body
+variant Audience 0 All
+variant Audience 1 Team
+variant Audience 2 Spectators
+variant Body 0 Text(String)
+field Heard 0 tick: Option<u32>
+field Heard 1 from: Speaker
+field Heard 2 line: Line
+variant Speaker 0 Seat(SlotId)
+variant Speaker 1 Spectator(String)
+variant SayRefusal 0 TooFast {}
+field SayRefusal::TooFast 0 retry_in_ms: u32
+variant SayRefusal 1 NotAllowed
+variant SayRefusal 2 Unfit

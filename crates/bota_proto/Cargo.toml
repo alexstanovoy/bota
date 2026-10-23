@@ -11,6 +11,8 @@ categories.workspace = true
 [dependencies]
 serde = { version = "1", features = ["derive"] }
 postcard = { version = "1.1", default-features = false, features = ["alloc"] }
+# Unpacking a connection's compressed stream (`Codec::Deflate`), in the browser too.
+miniz_oxide = { version = "0.9.1", default-features = false, features = ["with-alloc"] }
 
 [dev-dependencies]
 serde-reflection = "=0.6.0"

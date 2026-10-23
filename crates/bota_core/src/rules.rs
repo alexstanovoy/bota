@@ -1068,6 +1068,11 @@ pub const MAX_SHOWN_NAME_BYTES: usize = 32;
 /// server takes a seat reservation under; a longer one is refused there. The
 /// server cuts what it shows to [`MAX_SHOWN_NAME_BYTES`].
 pub const MAX_ANNOUNCED_NAME_BYTES: usize = 64;
+/// Longest chat line, in bytes of UTF-8 (`crate::chat_text_fault`).
+pub const MAX_CHAT_BYTES: usize = 512;
+/// Longest chat line in characters as a reader counts them (extended
+/// grapheme clusters).
+pub const MAX_CHAT_GRAPHEMES: usize = 127;
 /// Ticks an item stays muted after leaving the backpack for the inventory.
 pub const BACKPACK_MUTE_TICKS: u32 = 180;
 /// How close to the home fountain the shop, the stash and selling work.

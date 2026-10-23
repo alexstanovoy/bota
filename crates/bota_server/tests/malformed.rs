@@ -115,7 +115,10 @@ fn send(stream: &mut TcpStream, msg: &ClientMsg) {
 
 /// Waits for the welcome and returns the seat it names.
 fn greet(stream: &mut TcpStream) -> Option<SlotId> {
-    send(stream, &ClientMsg::hello(Role::Bot, "probe", None));
+    send(
+        stream,
+        &ClientMsg::hello(Role::Bot, "probe", None, bota_core::WIRE_FINGERPRINT),
+    );
     let mut reader = FrameReader::new();
     let mut buf = [0u8; 4096];
     loop {

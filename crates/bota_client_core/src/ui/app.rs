@@ -14,6 +14,7 @@ use crate::seat::Seat;
 use crate::session::{
     AckPolicy, ClientSession, DEFAULT_FORGET_AFTER_TICKS, Ingested, SessionOptions,
 };
+use crate::ui::chat::Chat;
 use crate::ui::derive::Derived;
 use crate::ui::replay::ReplayPlayer;
 use crate::ui::smooth::Smooth;
@@ -286,6 +287,8 @@ pub struct App {
     pub eyes: Option<SlotId>,
     pub floaters: Vec<Floater>,
     pub feed: Vec<FeedLine>,
+    /// The chat log and this client's last refused line.
+    pub chat: Chat,
     /// Which slot the order of a sequence number came from, so a refusal
     /// can be shown on the slot that earned it.
     pub aimed_from: Option<(u32, crate::ui::slots::Slot)>,
@@ -343,6 +346,7 @@ impl App {
             eyes: None,
             floaters: Vec::new(),
             feed: Vec::new(),
+            chat: Chat::default(),
             aimed_from: None,
             refused: None,
             reject: None,
@@ -736,7 +740,9 @@ impl App {
                 }
                 // Only what the stream accepted reaches the lobby screen.
                 self.note_lobby(&msg);
+                self.note_chat(&msg);
             }
+            Ok(Ingested::Unheard) => {}
             Err(error) => self.fail(&error.to_string()),
         }
     }
@@ -879,6 +885,7 @@ impl App {
             l.age += dt;
         }
         self.feed.retain(|l| l.age < 8.0);
+        self.chat.age(dt);
         count_down(&mut self.reject, dt);
         count_down(&mut self.refused, dt);
         count_down(&mut self.tapped, dt);

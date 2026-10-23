@@ -93,6 +93,18 @@ impl Connection {
         }
     }
 
+    /// Queues a line of chat, which never goes out compressed.
+    pub fn send_chat(&self, msg: &ServerMsg) {
+        if let Ok(frame) = encode_frame_to_vec(msg) {
+            self.outbox.push_chat(frame);
+        }
+    }
+
+    /// Compresses everything sent after this but chat; once is enough.
+    pub fn compress(&self) {
+        self.outbox.compress();
+    }
+
     /// Queues a tick, its encoded snapshot frame and the events of it this
     /// peer may know, replacing any tick still waiting.
     pub fn send_tick(&self, snapshot: Vec<u8>, tick: u32, events: Vec<EventKind>) {

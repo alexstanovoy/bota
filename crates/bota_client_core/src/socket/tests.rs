@@ -11,7 +11,7 @@ use bota_proto::{ClientMsg, Role, ServerMsg, encode_frame_to_vec};
 use crate::{Net, Redial, Transport};
 
 fn hello() -> ClientMsg {
-    ClientMsg::hello(Role::Bot, "net", None)
+    ClientMsg::hello(Role::Bot, "net", None, bota_core::WIRE_FINGERPRINT)
 }
 
 #[test]

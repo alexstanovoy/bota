@@ -971,3 +971,50 @@ fn the_front_end_is_handed_what_the_server_told_until_the_next_pump() {
     app.pump(0.0);
     assert!(app.told.is_empty(), "each pump starts afresh");
 }
+
+/// A replay of the whole map holds both sides' team lines; watched through
+/// a seat's eyes it shows everyone's lines and that side's own only, as the
+/// seat heard them.
+#[test]
+fn a_replay_through_a_seats_eyes_hides_the_other_sides_team_lines() {
+    use bota_proto::{Audience, Body, Heard, Line, LobbySlot, PickPhase, ServerMsg, Speaker};
+    let mut app = a_silent_app();
+    let seat = |slot, team| LobbySlot {
+        slot: SlotId(slot),
+        team,
+        name: format!("seat {slot}"),
+        role: Some(bota_proto::Role::Bot),
+        hero: None,
+        ready: false,
+    };
+    app.handle(ServerMsg::LobbyState {
+        slots: vec![seat(0, Team::Radiant), seat(1, Team::Dire)],
+        same_heroes: true,
+        pick: PickPhase::Waiting,
+    });
+    let line = |slot, to, text: &str| {
+        ServerMsg::Heard(Heard {
+            tick: None,
+            from: Speaker::Seat(SlotId(slot)),
+            line: Line {
+                to,
+                body: Body::Text(text.to_owned()),
+            },
+        })
+    };
+    app.handle(line(0, Audience::Team, "radiant plans"));
+    app.handle(line(1, Audience::Team, "dire plans"));
+    app.handle(line(1, Audience::All, "gg"));
+    let shown = |app: &crate::ui::app::App| -> Vec<String> {
+        app.chat_lines()
+            .map(|line| match &line.heard.line.body {
+                Body::Text(text) => text.clone(),
+            })
+            .collect()
+    };
+    assert_eq!(shown(&app), ["radiant plans", "dire plans", "gg"]);
+    app.pov = Some(SlotId(0));
+    assert_eq!(shown(&app), ["radiant plans", "gg"]);
+    app.pov = Some(SlotId(1));
+    assert_eq!(shown(&app), ["dire plans", "gg"]);
+}

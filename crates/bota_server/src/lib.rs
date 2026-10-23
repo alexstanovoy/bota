@@ -5,6 +5,7 @@
 //! participant is allowed to see leaves through `bota_proto`; everything else,
 //! including the randomness, stays here.
 
+pub mod chat;
 pub mod engine;
 pub mod game;
 pub mod game_loop;

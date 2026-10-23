@@ -2,9 +2,8 @@ use std::cell::Cell;
 use std::io::{self, Cursor, Read};
 use std::rc::Rc;
 
-use bota_proto::{
-    MAX_PAYLOAD_LEN, ReplayHeader, ReplayRecord, ServerMsg, WIRE_FINGERPRINT, fingerprint_to_hex,
-};
+use bota_core::WIRE_FINGERPRINT;
+use bota_proto::{MAX_PAYLOAD_LEN, ReplayHeader, ReplayRecord, ServerMsg, fingerprint_to_hex};
 
 use super::fixtures::{counted, frames, header, snapshot, wire};
 use crate::ui::replay::{MAX_READS_PER_POLL, ReplayPlayer};
@@ -76,13 +75,13 @@ fn a_replay_without_this_builds_header_is_refused_before_any_message() {
     use io::ErrorKind::InvalidData;
     let other_wire = ReplayRecord::Header(ReplayHeader {
         wire_fingerprint: !WIRE_FINGERPRINT,
-        ..ReplayHeader::CURRENT
+        ..ReplayHeader::new(WIRE_FINGERPRINT)
     });
     let not_a_replay = ReplayRecord::Header(ReplayHeader {
         magic: *b"bota.brq",
-        ..ReplayHeader::CURRENT
+        ..ReplayHeader::new(WIRE_FINGERPRINT)
     });
-    let second = ReplayRecord::Header(ReplayHeader::CURRENT);
+    let second = ReplayRecord::Header(ReplayHeader::new(WIRE_FINGERPRINT));
     let cases = [
         (frames(&[snapshot(0)]), 1, 0, NO_HEADER.to_string()),
         (

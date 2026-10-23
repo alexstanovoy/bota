@@ -1,13 +1,16 @@
 //! Streaming a `.brp` file on its recorded clock.
 
 use std::fs::File;
-use std::io::{self, BufReader, Read};
+use std::io::{self, BufReader, Cursor, Read};
 use std::path::Path;
 
+use bota_core::WIRE_FINGERPRINT;
 use bota_proto::{
-    LEN_PREFIX, MAX_PAYLOAD_LEN, ReplayHeader, ReplayRecord, ServerMsg, WIRE_FINGERPRINT,
-    decode_payload, fingerprint_to_hex,
+    LEN_PREFIX, MAX_PAYLOAD_LEN, ReplayHeader, ReplayRecord, ServerMsg, decode_payload,
+    fingerprint_to_hex,
 };
+
+use crate::replay_file::{UnpackedReplay, ZSTD_MAGIC};
 
 /// Maximum decoded records released or inspected in one poll.
 pub const MAX_RECORDS_PER_POLL: usize = 64;
@@ -40,12 +43,16 @@ struct ReplayStream {
     payload_read: usize,
     offset: u64,
     records: u64,
+    /// Whether the file turned out to be a Zstandard stream, now read
+    /// unpacked. A stream inside the stream is not unpacked again.
+    unpacked: bool,
 }
 
 /// Feeds bounded batches of recorded messages out on the recorded clock.
 ///
 /// Snapshots and order records wait for their ticks. Messages between them
-/// retain file order. Order records become [`ServerMsg::Orders`].
+/// retain file order. Order records become [`ServerMsg::Orders`], line records
+/// [`ServerMsg::Heard`].
 pub struct ReplayPlayer {
     stream: ReplayStream,
     pending: Option<ReplayRecord>,
@@ -69,7 +76,9 @@ impl ReplayPlayer {
         Ok(Self::from_reader(File::open(path)?))
     }
 
-    /// Creates a player without consuming any bytes from the reader.
+    /// Creates a player without consuming any bytes from the reader, which
+    /// holds the frames packed as a server writes them
+    /// ([`UnpackedReplay`]), or as they are.
     pub fn from_reader(reader: impl Read + 'static) -> Self {
         Self {
             stream: ReplayStream {
@@ -80,6 +89,7 @@ impl ReplayPlayer {
                 payload_read: 0,
                 offset: 0,
                 records: 0,
+                unpacked: false,
             },
             pending: None,
             error: None,
@@ -184,6 +194,7 @@ impl ReplayPlayer {
             let tick = match &record {
                 ReplayRecord::Orders { tick, .. } => Some(*tick),
                 ReplayRecord::Msg(ServerMsg::Snapshot { view }) => Some(view.tick),
+                ReplayRecord::Heard(heard) => heard.tick,
                 _ => None,
             };
             if self.started && tick.is_some_and(|tick| f64::from(tick) > self.clock_ticks) {
@@ -193,6 +204,7 @@ impl ReplayPlayer {
             let message = match record {
                 ReplayRecord::Orders { tick, orders } => ServerMsg::Orders { tick, orders },
                 ReplayRecord::Msg(message) => message,
+                ReplayRecord::Heard(heard) => ServerMsg::Heard(heard),
                 // The stream takes the one header in before any record comes out.
                 ReplayRecord::Header(_) => continue,
             };
@@ -223,7 +235,9 @@ const NO_HEADER: &str =
 /// header, and no other may be a header.
 fn header_refusal(record: &ReplayRecord, first: bool) -> Option<String> {
     match (record, first) {
-        (ReplayRecord::Header(header), true) if *header == ReplayHeader::CURRENT => None,
+        (ReplayRecord::Header(header), true) if *header == ReplayHeader::new(WIRE_FINGERPRINT) => {
+            None
+        }
         (ReplayRecord::Header(header), true) if header.magic != ReplayHeader::MAGIC => {
             Some("not a bota replay".to_string())
         }
@@ -242,6 +256,10 @@ impl ReplayStream {
     fn poll_record(&mut self, budget: &mut ReadBudget) -> io::Result<RecordPoll> {
         for _ in 0..=MAX_READS_PER_POLL {
             if self.prefix_read == LEN_PREFIX {
+                if self.records == 0 && !self.unpacked && self.prefix == ZSTD_MAGIC {
+                    self.unpack();
+                    continue;
+                }
                 if self.payload.is_empty() {
                     self.prepare_payload()?;
                 }
@@ -279,6 +297,20 @@ impl ReplayStream {
             }
         }
         Ok(RecordPoll::Pending)
+    }
+
+    /// Reads the rest of the file, the magic just read and what was read
+    /// ahead of it put back in front, as the stream it is.
+    fn unpack(&mut self) {
+        let empty: Box<dyn Read> = Box::new(io::empty());
+        let packed = std::mem::replace(&mut self.reader, BufReader::new(empty));
+        let ahead = [&ZSTD_MAGIC[..], packed.buffer()].concat();
+        let file = Cursor::new(ahead).chain(packed.into_inner());
+        self.reader =
+            BufReader::with_capacity(REPLAY_BUFFER_CAPACITY, Box::new(UnpackedReplay::new(file)));
+        self.unpacked = true;
+        self.prefix_read = 0;
+        self.offset = 0;
     }
 
     fn prepare_payload(&mut self) -> io::Result<()> {

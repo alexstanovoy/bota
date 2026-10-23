@@ -17,7 +17,12 @@ fn lobby(msg: ServerMsg) -> Option<(Vec<LobbySlot>, PickPhase)> {
 /// seats go in the order the clients came.
 fn greeted(addr: std::net::SocketAddr, role: Role) -> TestClient {
     let mut client = TestClient::connect(addr);
-    client.send(&ClientMsg::hello(role, "c", None));
+    client.send(&ClientMsg::hello(
+        role,
+        "c",
+        None,
+        bota_core::WIRE_FINGERPRINT,
+    ));
     client.recv_until(|msg| matches!(msg, ServerMsg::Welcome { .. }).then_some(()));
     client
 }
@@ -235,7 +240,12 @@ fn a_reserved_kind_refuses_the_other_kind_of_player() {
         .collect();
     let addr = start_server(opts);
     let mut human = TestClient::connect(addr);
-    human.send(&ClientMsg::hello(Role::Player, "h", Some(key)));
+    human.send(&ClientMsg::hello(
+        Role::Player,
+        "h",
+        Some(key),
+        bota_core::WIRE_FINGERPRINT,
+    ));
     assert_eq!(
         human.recv(),
         ServerMsg::Refused {
@@ -243,6 +253,11 @@ fn a_reserved_kind_refuses_the_other_kind_of_player() {
         }
     );
     let mut bot = TestClient::connect(addr);
-    bot.send(&ClientMsg::hello(Role::Bot, "b", Some(key)));
+    bot.send(&ClientMsg::hello(
+        Role::Bot,
+        "b",
+        Some(key),
+        bota_core::WIRE_FINGERPRINT,
+    ));
     assert!(matches!(bot.recv(), ServerMsg::Welcome { .. }));
 }

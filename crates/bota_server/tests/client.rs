@@ -1,13 +1,14 @@
 //! The client library's bot loop plays a lockstep match against the server
-//! over a real socket, to its end: the loop of the `attack_move` example.
+//! over a real socket, to its end: the loop of the `attack_move` example,
+//! over a compressed link as a bot far from its server would ask for.
 
 use std::net::TcpListener;
 use std::thread;
 use std::time::Duration;
 
-use bota_client_core::{IssuedOrder, Link};
+use bota_client_core::{IssuedOrder, Link, Transport, play};
 use bota_core::fountain_pos;
-use bota_proto::{HeroId, MapId, Order, SlotId, Target, Team, TickMode};
+use bota_proto::{ClientMsg, Codec, HeroId, MapId, Order, SlotId, Target, Team, TickMode};
 use bota_server::game_loop::{DEFAULT_IDLE_TIMEOUT, DEFAULT_SPECTATORS_PER_SEAT, ServerOpts, run};
 use bota_server::net::DEFAULT_MESSAGES_PER_SEC;
 use bota_server::spectators::Spectators;
@@ -18,6 +19,7 @@ fn opts() -> ServerOpts {
         pick_penalty_time: Duration::from_secs(bota_core::rules::PICK_PENALTY_SECS),
         tactical_time: Duration::ZERO,
         same_heroes: true,
+        chat: bota_server::chat::ChatOpts::DEFAULT,
         mode: TickMode::Lockstep,
         tick_rate: 30,
         players: 2,
@@ -50,7 +52,11 @@ fn the_attack_move_bot_plays_a_lockstep_match_to_its_end() {
     let listener = TcpListener::bind("127.0.0.1:0").expect("a port");
     let address = listener.local_addr().expect("bound").to_string();
     let server = thread::spawn(move || run(listener, opts()));
-    let outcome = Link::play(&address, "attack-move", HeroId::SHADOW_FIEND, |session| {
+    let (mut link, seated) =
+        Link::join(&address, "attack-move", HeroId::SHADOW_FIEND, None).expect("a seat");
+    link.send(&ClientMsg::Compress(Codec::Deflate))
+        .expect("the request goes out");
+    let outcome = play(&mut link, seated, &mut (), |session| {
         let enemy = fountain_pos(session.map(), session.enemy());
         Some(IssuedOrder::hero(Order::Attack {
             target: Target::Pos(enemy),

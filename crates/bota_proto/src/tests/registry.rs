@@ -154,6 +154,11 @@ fn trace_wire() -> Registry {
     trace::<Aim>(&mut tracer, &mut enums);
     trace::<UnitKind>(&mut tracer, &mut enums);
     trace::<Attribute>(&mut tracer, &mut enums);
+    trace::<Audience>(&mut tracer, &mut enums);
+    trace::<Body>(&mut tracer, &mut enums);
+    trace::<Speaker>(&mut tracer, &mut enums);
+    trace::<SayRefusal>(&mut tracer, &mut enums);
+    trace::<Codec>(&mut tracer, &mut enums);
     let registry = tracer.registry().expect("every wire type traces whole");
     for (name, container) in &registry {
         if matches!(container, ContainerFormat::Enum(_)) {

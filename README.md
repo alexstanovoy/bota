@@ -119,12 +119,15 @@ the plain TCP port stays on loopback) or `--insecure-plaintext`.
 | `--idle-timeout-secs N` | `5` | silence (the server pings every second) before a connection is dropped and its seat waits for a reconnect; `0` never | slow links |
 | `--seed N` | drawn, known to no one | match randomness; the same seed and orders replay the same match | reproducible tests only: a published seed predicts the match |
 | `--match-id N` | drawn | public label in the start message and replay; no randomness comes from it | under a launcher |
-| `--replay FILE` | none | write a replay (refused before `READY` if it cannot be created) | |
+| `--replay FILE` | none | write a replay, one Zstandard stream (refused before `READY` if it cannot be created) | |
+| `--chat off\|team\|all` | `all` | what the seats may say: nothing, to their side, to their side and everyone | `off` for bot ladders: chat would be a channel between opponents |
+| `--spectator-chat BOOL` | `true` | whether spectators talk among themselves (no seat ever hears them) | |
+| `--replay-team-chat BOOL` | `true` | whether the replay keeps the sides' team lines (a replay of the whole map then shows both sides') | `false` when replays of the whole map go to players |
 | `--order-delay-ticks`, `--order-jitter-ticks` | `0` | delay every order (one value, or one per seat); jitter from a hidden stream | rehearse a remote server |
 | `--cheats` | off | honour cheat orders: gold, levels, items, refreshes | practice |
 | `--immortal-structures`, `--immortal-heroes` | off | damage taken, nothing falls | practice |
 | `--dummy-seat` | off | the last seat is a hero that never acts | practice alone |
-| `--wire-fingerprint` | | print the wire fingerprint (16 hex digits) and exit | a launcher's version probe |
+| `--wire-fingerprint` | | print the wire fingerprint (16 hex digits: registries and rules) and exit | a launcher's version probe |
 
 Keys never come from arguments, which every process listing shows; only the environment:
 
@@ -268,10 +271,12 @@ every wire struct, because postcard encodes variants and fields by position.
   and on a hero, ability, item or effect table that disagrees with `ids.txt`.
 
 There is no version negotiation and no compatibility between revisions. A
-client sends `WIRE_FINGERPRINT`, a hash of both registries, in its `Hello`; a
-server built from other registries answers `ServerMsg::WireMismatch` with its
-own and closes the connection, so two builds that disagree fail at the door
-rather than in mid-match.
+client sends `bota_core::WIRE_FINGERPRINT` in its `Hello`: a hash of both
+registries (`bota_proto::REGISTRY_DIGEST`) and of the rules a client checks its
+orders against (`bota_core::RULES_DIGEST`, over every source file of
+`bota_core`). A server of another fingerprint answers `ServerMsg::WireMismatch`
+with its own and closes the connection, so two builds that disagree, a balance
+change alone included, fail at the door rather than in mid-match.
 
 ## Determinism and replays
 
@@ -310,14 +315,21 @@ label nor the play gives the seed or the key away. Hidden state (the key,
 random streams, pending random outcomes) is never put on the wire; the types in
 `bota_proto` cannot express it.
 
-A replay (`--replay FILE`) is a stream of framed `ReplayRecord`s: a header naming
-the wire fingerprint it was recorded with, then the fogless spectator messages plus
-the orders accepted on each tick. It plays back without a server; the client reads
-frames from the file instead of a socket. It contains no seed and is not re-simulated,
-so it survives rule changes that leave the wire alone; any wire change, even an appended
-field, makes older replays undecodable, and the player refuses one of another wire at its
-header, naming both fingerprints. The player is in `bota_client_core` behind the `ui`
-feature.
+A replay (`--replay FILE`) is a stream of framed `ReplayRecord`s, written as one
+Zstandard stream (a 20-minute match takes some 4.5 MB instead of 400 MB): a header
+naming the wire fingerprint it was recorded with, then the fogless spectator messages,
+the orders accepted on each tick and the seats' chat lines. It plays back without a
+server; the client reads frames from the file instead of a socket. It contains no seed
+and is not re-simulated, but the player refuses one of another fingerprint at its header,
+naming both, as Dota's replays go stale with a patch. The player reads a packed replay
+with a pure-Rust decoder (in the browser too) and bounds what a file may make it hold;
+it also plays the frames unpacked. It is in `bota_client_core` behind the `ui` feature.
+
+Chat is beside the match: lines go to everyone, to a side (and the spectators with that
+side's seat keys) or among spectators, never into the simulation or a tick's hash, and a
+bot needs none of it. A client may ask for its connection to be compressed
+(`ClientMsg::Compress`): everything but chat then comes as parts of one DEFLATE stream.
+`bota_proto::contract` has the rules of both.
 
 ## Tests and benchmarks
 

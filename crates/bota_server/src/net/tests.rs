@@ -11,7 +11,7 @@ use std::time::{Duration, Instant};
 
 use bota_proto::{
     ClientMsg, EventKind, FrameReader, HeroId, Order, RejectReason, ReplayHeader, ReplayRecord,
-    Role, ServerMsg, SlotId, Target, Team, Vec2, WIRE_FINGERPRINT, WorldView, encode_frame_to_vec,
+    Role, ServerMsg, SlotId, Target, Team, Vec2, WorldView, encode_frame_to_vec,
 };
 
 use crate::game::OrderDelay;
@@ -24,7 +24,35 @@ use wire::{Wire, dial};
 
 struct TestClient {
     stream: TcpStream,
-    reader: FrameReader,
+    reader: Inbox,
+}
+
+/// What a test client has read and not yet taken: frames off the socket,
+/// compressed parts unpacked as a client library does.
+#[derive(Default)]
+struct Inbox {
+    frames: FrameReader,
+    unpacker: bota_proto::Unpacker,
+}
+
+impl Inbox {
+    fn push(&mut self, bytes: &[u8]) {
+        self.frames.push(bytes);
+    }
+
+    fn next_message(&mut self) -> Result<Option<ServerMsg>, bota_proto::CodecError> {
+        loop {
+            if let Some(msg) = self.unpacker.next_message()? {
+                return Ok(Some(msg));
+            }
+            let Some(msg) = self.frames.next_message::<ServerMsg>()? else {
+                return Ok(None);
+            };
+            if let Some(msg) = self.unpacker.take(msg)? {
+                return Ok(Some(msg));
+            }
+        }
+    }
 }
 
 impl TestClient {
@@ -35,7 +63,7 @@ impl TestClient {
             .expect("set timeout");
         TestClient {
             stream,
-            reader: FrameReader::new(),
+            reader: Inbox::default(),
         }
     }
 
@@ -48,7 +76,7 @@ impl TestClient {
     fn recv(&mut self) -> ServerMsg {
         let mut buf = [0u8; 65536];
         loop {
-            match self.reader.next_message::<ServerMsg>().expect("decode") {
+            match self.reader.next_message().expect("decode") {
                 Some(ServerMsg::Ping) => self.send(&ClientMsg::Pong),
                 Some(msg) => return msg,
                 None => {}
@@ -67,6 +95,17 @@ impl TestClient {
         }
         panic!("the awaited message never came");
     }
+}
+
+/// A replay file's frames, unpacked; nothing while the server has not
+/// finished writing it.
+fn read_replay(path: &std::path::Path) -> Option<Vec<u8>> {
+    let file = std::fs::File::open(path).ok()?;
+    let mut bytes = Vec::new();
+    bota_client_core::UnpackedReplay::new(file)
+        .read_to_end(&mut bytes)
+        .ok()?;
+    Some(bytes)
 }
 
 fn start_server(opts: ServerOpts) -> std::net::SocketAddr {
@@ -107,7 +146,12 @@ fn serve_over(opts: ServerOpts, wire: Wire) -> String {
 
 fn join_as_bot(addr: std::net::SocketAddr, name: &str) -> (TestClient, Option<SlotId>) {
     let mut client = TestClient::connect(addr);
-    client.send(&ClientMsg::hello(Role::Bot, name, None));
+    client.send(&ClientMsg::hello(
+        Role::Bot,
+        name,
+        None,
+        bota_core::WIRE_FINGERPRINT,
+    ));
     let slot = client.recv_until(|msg| match msg {
         ServerMsg::Welcome { slot, .. } => Some(slot),
         _ => None,
@@ -126,6 +170,7 @@ fn realtime(seed: u64) -> ServerOpts {
         pick_penalty_time: Duration::from_secs(bota_core::rules::PICK_PENALTY_SECS),
         tactical_time: Duration::ZERO,
         same_heroes: true,
+        chat: crate::chat::ChatOpts::DEFAULT,
         mode: bota_proto::TickMode::Realtime,
         tick_rate: 60,
         players: 2,
@@ -179,30 +224,39 @@ fn match_start_picks(msg: ServerMsg) -> Option<usize> {
     }
 }
 
+/// A client of other registries, or of the same registries and other rules
+/// (a balance change), is refused before it could misread anything.
 #[test]
-fn a_client_built_with_another_wire_is_told_so_and_takes_no_seat() {
+fn a_client_built_with_another_wire_or_other_rules_is_told_so_and_takes_no_seat() {
+    use bota_core::{RULES_DIGEST, WIRE_FINGERPRINT};
+    let other_rules = bota_proto::fnv1a(&[
+        &bota_proto::REGISTRY_DIGEST.to_le_bytes(),
+        &(RULES_DIGEST ^ 1).to_le_bytes(),
+    ]);
     let addr = start_server(realtime(5));
-    let mut stranger = TestClient::connect(addr);
-    stranger.send(&ClientMsg::Hello {
-        role: Role::Bot,
-        name: "stranger".to_string(),
-        key: None,
-        wire_fingerprint: !WIRE_FINGERPRINT,
-    });
-    assert_eq!(
-        stranger.recv(),
-        ServerMsg::WireMismatch {
-            server_fingerprint: WIRE_FINGERPRINT
-        }
-    );
-    let mut rest = Vec::new();
-    stranger
-        .stream
-        .read_to_end(&mut rest)
-        .expect("the server hangs up");
-    assert!(rest.is_empty(), "nothing follows the refusal");
+    for theirs in [!WIRE_FINGERPRINT, other_rules] {
+        let mut stranger = TestClient::connect(addr);
+        stranger.send(&ClientMsg::Hello {
+            role: Role::Bot,
+            name: "stranger".to_string(),
+            key: None,
+            wire_fingerprint: theirs,
+        });
+        assert_eq!(
+            stranger.recv(),
+            ServerMsg::WireMismatch {
+                server_fingerprint: WIRE_FINGERPRINT
+            }
+        );
+        let mut rest = Vec::new();
+        stranger
+            .stream
+            .read_to_end(&mut rest)
+            .expect("the server hangs up");
+        assert!(rest.is_empty(), "nothing follows the refusal");
+    }
     let (_client, slot) = join_as_bot(addr, "native");
-    assert_eq!(slot, Some(SlotId(0)), "the refused peer held no seat");
+    assert_eq!(slot, Some(SlotId(0)), "the refused peers held no seat");
 }
 
 #[test]
@@ -273,7 +327,7 @@ fn a_realtime_match_reaches_two_clients() {
     drop(c2);
     for _ in 0..100 {
         thread::sleep(Duration::from_millis(50));
-        let bytes = std::fs::read(&replay_path).unwrap_or_default();
+        let bytes = read_replay(&replay_path).unwrap_or_default();
         let mut reader = FrameReader::new();
         reader.push(&bytes);
         let header = reader.next_message::<ReplayRecord>();
@@ -282,7 +336,9 @@ fn a_realtime_match_reaches_two_clients() {
         {
             assert_eq!(
                 header,
-                Ok(Some(ReplayRecord::Header(ReplayHeader::CURRENT)))
+                Ok(Some(ReplayRecord::Header(ReplayHeader::new(
+                    bota_core::WIRE_FINGERPRINT
+                ))))
             );
             return;
         }
@@ -346,7 +402,7 @@ fn a_connection_that_has_not_said_hello_is_told_no_tick() {
         let n = silent.stream.read(&mut buf).expect("the server pings");
         assert!(n > 0, "the server hung up");
         silent.reader.push(&buf[..n]);
-        while let Some(msg) = silent.reader.next_message::<ServerMsg>().expect("decode") {
+        while let Some(msg) = silent.reader.next_message().expect("decode") {
             assert!(
                 !matches!(msg, ServerMsg::Snapshot { .. } | ServerMsg::Events { .. }),
                 "a stranger was told the fogless world"
@@ -372,7 +428,7 @@ fn a_stranger_that_never_says_hello_is_let_go_and_frees_its_place() {
             "the stranger is kept"
         );
         stranger.reader.push(&buf[..n]);
-        while let Some(msg) = stranger.reader.next_message::<ServerMsg>().expect("decode") {
+        while let Some(msg) = stranger.reader.next_message().expect("decode") {
             if msg == ServerMsg::Ping {
                 let _ = stranger.stream.write_all(&pong);
             }
@@ -571,7 +627,12 @@ fn a_reader_that_keeps_up_is_never_skipped_and_a_stalled_one_is_at_once() {
     socket2::SockRef::from(&lagging.stream)
         .set_recv_buffer_size(16 * 1024)
         .expect("receive buffer");
-    lagging.send(&ClientMsg::hello(Role::Bot, "lagging", None));
+    lagging.send(&ClientMsg::hello(
+        Role::Bot,
+        "lagging",
+        None,
+        bota_core::WIRE_FINGERPRINT,
+    ));
     lagging.send(&ClientMsg::PickHero {
         hero: HeroId::SHADOW_FIEND,
     });
@@ -588,6 +649,7 @@ fn a_reader_that_keeps_up_is_never_skipped_and_a_stalled_one_is_at_once() {
     assert!(skipped > 0, "a stalled reader is skipped ahead");
 }
 
+mod chat;
 mod pick_clock;
 mod picks;
 mod reserved;

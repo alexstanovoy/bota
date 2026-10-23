@@ -1,8 +1,8 @@
 //! The messages themselves, and the lobby types they carry.
 
 use crate::{
-    EntityId, EventKind, HeroId, ItemId, MapId, Order, PlayerId, SeatKey, SlotId, Team, Vec2,
-    WorldView,
+    EntityId, EventKind, Heard, HeroId, ItemId, Line, MapId, Order, PlayerId, SayRefusal, SeatKey,
+    SlotId, Team, Vec2, WorldView,
 };
 use serde::{Deserialize, Serialize};
 
@@ -309,14 +309,21 @@ impl OutgoingOrder {
 }
 
 impl ClientMsg {
-    /// The first message on a connection, stamped with this build's
-    /// [`WIRE_FINGERPRINT`](crate::WIRE_FINGERPRINT).
-    pub fn hello(role: Role, name: impl Into<String>, key: Option<SeatKey>) -> ClientMsg {
+    /// The first message on a connection, stamped with the sender's wire
+    /// fingerprint: `bota_core::WIRE_FINGERPRINT`, which folds the rules a
+    /// client checks its orders against into the
+    /// [`REGISTRY_DIGEST`](crate::REGISTRY_DIGEST).
+    pub fn hello(
+        role: Role,
+        name: impl Into<String>,
+        key: Option<SeatKey>,
+        wire_fingerprint: u64,
+    ) -> ClientMsg {
         ClientMsg::Hello {
             role,
             name: name.into(),
             key,
-            wire_fingerprint: crate::WIRE_FINGERPRINT,
+            wire_fingerprint,
         }
     }
 }
@@ -340,8 +347,9 @@ pub enum ClientMsg {
         name: String,
         /// The key a server with reserved seats asks for.
         key: Option<SeatKey>,
-        /// The [`WIRE_FINGERPRINT`](crate::WIRE_FINGERPRINT) the sender was
-        /// built with. A server built with another refuses the connection with
+        /// The wire fingerprint the sender was built with
+        /// (`bota_core::WIRE_FINGERPRINT`: the registries and the rules). A
+        /// server built with another refuses the connection with
         /// [`ServerMsg::WireMismatch`]. Last on the wire.
         wire_fingerprint: u64,
     },
@@ -394,6 +402,22 @@ pub enum ClientMsg {
     /// Answers a [`ServerMsg::Ping`]. Any message shows the connection is
     /// alive; this one is for a participant with nothing else to say.
     Pong,
+    /// Says a line to an audience. The server passes it on as
+    /// [`ServerMsg::Heard`], to the speaker too, or refuses it with
+    /// [`ServerMsg::SayRefused`] (see the [`contract`](crate::contract)).
+    Say(Line),
+    /// Asks the server to compress what it sends on this connection from now
+    /// on, chat aside, as [`ServerMsg::Compressed`] parts of one stream.
+    /// Allowed once the `Hello` is sent; a second one changes nothing.
+    Compress(Codec),
+}
+
+/// How a connection's stream is compressed.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum Codec {
+    /// Raw DEFLATE (RFC 1951) with its 32 KiB window, flushed with an empty
+    /// stored block after every message or tick the server sends.
+    Deflate,
 }
 
 /// Anything the server can say to a participant.
@@ -480,8 +504,7 @@ pub enum ServerMsg {
     /// hello is: a client with a field added here could not read the refusal
     /// of a server without it.
     WireMismatch {
-        /// The [`WIRE_FINGERPRINT`](crate::WIRE_FINGERPRINT) the server was
-        /// built with.
+        /// The wire fingerprint the server was built with.
         server_fingerprint: u64,
     },
     /// Sent about once a second on every connection, whatever else is sent,
@@ -494,6 +517,16 @@ pub enum ServerMsg {
         /// Why: [`RejectReason::NotAdmitted`] or [`RejectReason::SeatHeld`].
         reason: RejectReason,
     },
+    /// A line said to this connection's audience. Never compressed.
+    Heard(Heard),
+    /// The line this connection said last was not passed on.
+    SayRefused { reason: SayRefusal },
+    /// The next bytes of this connection's compressed stream, once it asked
+    /// for one with [`ClientMsg::Compress`]: they unpack into whole frames of
+    /// server messages, the way the connection itself carries them, and the
+    /// stream is flushed at the end of each part, so a part never ends inside
+    /// a frame of the next (see the [`contract`](crate::contract)).
+    Compressed(Vec<u8>),
 }
 
 /// What a replay file is, and which wire recorded it: its first record.
@@ -507,8 +540,8 @@ pub enum ServerMsg {
 pub struct ReplayHeader {
     /// [`ReplayHeader::MAGIC`]: marks the file as a bota replay.
     pub magic: [u8; 8],
-    /// The [`WIRE_FINGERPRINT`](crate::WIRE_FINGERPRINT) of the build that
-    /// recorded it.
+    /// The wire fingerprint of the build that recorded it
+    /// (`bota_core::WIRE_FINGERPRINT`).
     pub wire_fingerprint: u64,
 }
 
@@ -516,17 +549,23 @@ impl ReplayHeader {
     /// The bytes every replay's header starts with.
     pub const MAGIC: [u8; 8] = *b"bota.brp";
 
-    /// The header this build writes, and the only one it plays.
-    pub const CURRENT: ReplayHeader = ReplayHeader {
-        magic: ReplayHeader::MAGIC,
-        wire_fingerprint: crate::WIRE_FINGERPRINT,
-    };
+    /// The header a build of `wire_fingerprint` writes, and the only one it
+    /// plays.
+    pub const fn new(wire_fingerprint: u64) -> ReplayHeader {
+        ReplayHeader {
+            magic: ReplayHeader::MAGIC,
+            wire_fingerprint,
+        }
+    }
 }
 
 /// One frame of a replay file.
 ///
 /// A replay file is a sequence of frames, framed exactly like the socket, each
-/// carrying one record: a [`ReplayRecord::Header`] first, then the match.
+/// carrying one record: a [`ReplayRecord::Header`] first, then the match. A
+/// server writes the frames as one Zstandard stream (RFC 8878); a player
+/// takes them so or as they are, telling the two apart by their first bytes
+/// (see the [`contract`](crate::contract)).
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(
     target_pointer_width = "64",
@@ -548,4 +587,7 @@ pub enum ReplayRecord {
     },
     /// The first record of every replay, and of no other place in it.
     Header(ReplayHeader),
+    /// A line said in the lobby or the match, recorded as the server took it
+    /// in, among the records of the tick it stood on.
+    Heard(Heard),
 }

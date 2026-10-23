@@ -1,9 +1,10 @@
-//! Every message either side decodes, and the frame reader both clients use:
-//! no input panics, and whatever decodes encodes back to the same message.
+//! Every message either side decodes, the frame reader both clients use, and
+//! the unpacker of a compressed link: no input panics or unpacks past its
+//! bound, and whatever decodes encodes back to the same message.
 #![no_main]
 
 use bota_proto::{
-    ClientMsg, FrameReader, LEN_PREFIX, ReplayRecord, ServerMsg, decode_payload,
+    ClientMsg, FrameReader, LEN_PREFIX, ReplayRecord, ServerMsg, Unpacker, decode_payload,
     encode_frame_to_vec,
 };
 use libfuzzer_sys::fuzz_target;
@@ -29,5 +30,17 @@ fuzz_target!(|data: &[u8]| {
     for piece in bota_fuzz::frames(data) {
         reader.push(piece);
         while let Ok(Some(_)) = reader.next_message::<ServerMsg>() {}
+    }
+    // Every piece a compressed part, until the stream breaks.
+    let mut unpacker = Unpacker::new();
+    for piece in bota_fuzz::frames(data) {
+        if unpacker
+            .take(ServerMsg::Compressed(piece.to_vec()))
+            .is_err()
+        {
+            break;
+        }
+        let unpacked = std::iter::from_fn(|| unpacker.next_message().ok().flatten()).count();
+        assert!(unpacked <= bota_proto::MAX_UNPACKED_PART_LEN / LEN_PREFIX);
     }
 });

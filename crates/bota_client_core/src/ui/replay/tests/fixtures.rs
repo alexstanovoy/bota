@@ -79,7 +79,9 @@ pub fn frames(records: &[ReplayRecord]) -> Vec<u8> {
 
 /// This build's header, framed: what a replay file starts with.
 pub fn header() -> Vec<u8> {
-    frames(&[ReplayRecord::Header(ReplayHeader::CURRENT)])
+    frames(&[ReplayRecord::Header(ReplayHeader::new(
+        bota_core::WIRE_FINGERPRINT,
+    ))])
 }
 
 /// A replay file of the records: this build's header, then the records.
@@ -131,6 +133,7 @@ pub fn message(record: ReplayRecord) -> ServerMsg {
     match record {
         ReplayRecord::Msg(message) => message,
         ReplayRecord::Orders { tick, orders } => ServerMsg::Orders { tick, orders },
+        ReplayRecord::Heard(heard) => ServerMsg::Heard(heard),
         ReplayRecord::Header(_) => panic!("a header is no message"),
     }
 }

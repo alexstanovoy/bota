@@ -4,7 +4,8 @@ use core::convert::Infallible;
 use core::fmt;
 use std::error::Error;
 
-use bota_proto::{EntityId, HeroId, RejectReason, Team, TickMode, WIRE_FINGERPRINT};
+use bota_core::WIRE_FINGERPRINT;
+use bota_proto::{EntityId, HeroId, RejectReason, Team, TickMode};
 
 use crate::limits::{MAX_RESTORATION_REPORT, MAX_SEATS, MAX_TERRAIN_AXIS};
 use crate::match_static::RawExtent;
