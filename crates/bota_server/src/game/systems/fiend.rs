@@ -264,11 +264,13 @@ impl World {
     ///
     /// Standing in it puts the armor break on afresh every tick; walking out
     /// leaves it to run out on its own. A structure, a ward or what damage
-    /// passes by wears none.
+    /// passes by wears none. A broken carrier lays none: the presence is a
+    /// passive, and a break turns passives off.
     pub fn spread_presence(&mut self) {
         let carriers: Vec<(Entity, u8)> = self
             .entities
             .iter()
+            .filter(|&entity| !self.broken(entity))
             .filter_map(|entity| {
                 let level = self.carried_level(entity, AbilityId::PRESENCE);
                 (level > 0).then_some((entity, level))

@@ -321,6 +321,38 @@ fn the_presence_wears_down_the_armor_of_enemies_that_see_its_carrier() {
 }
 
 #[test]
+fn a_broken_fiend_wears_nobody_down_until_the_break_lifts() {
+    // A Hill Troll Berserker's Break turns his passives off, the presence's
+    // aura with them, as Dota's does.
+    let (mut world, fiend, below) = fiend_and_a_mark(400);
+    world.set_order(fiend, UnitOrder::Stand);
+    a_creep_at(&mut world, Team::Dire, Vec2::from_ints(4600, 5000));
+    let out = a_creep_at(
+        &mut world,
+        Team::Dire,
+        Vec2::from_ints(5000 + rules::PRESENCE_RADIUS + 500, 5000),
+    );
+    run(&mut world, 2);
+    let armor = |world: &World, unit| world.stats.get(unit).expect("standing").armor;
+    let torn = armor(&world, out) - Fixed::from_ratio(5, 2);
+    assert_eq!(armor(&world, below), torn, "the presence holds");
+    let broken = 4 * rules::PRESENCE_LINGER_TICKS;
+    put_on(&mut world, fiend, ModifierKind::Broken, broken);
+    run(&mut world, rules::PRESENCE_LINGER_TICKS + 1);
+    assert_eq!(
+        armor(&world, below),
+        armor(&world, out),
+        "broken, he lays nothing, and what he laid runs out"
+    );
+    run(&mut world, broken);
+    assert_eq!(
+        armor(&world, below),
+        torn,
+        "and it is back once the break lifts"
+    );
+}
+
+#[test]
 fn armor_the_presence_takes_below_zero_lets_his_swings_land_harder() {
     // A melee creep's 2 armor less the fourth level's 7 is -5: Dota's
     // 2 - 1 / (1 + 0.06 * 5) of a swing comes through. A swing is 41 to 47:
