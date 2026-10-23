@@ -2,22 +2,29 @@ use std::cell::Cell;
 use std::io::{self, Cursor, Read};
 use std::rc::Rc;
 
-use bota_proto::{MAX_PAYLOAD_LEN, ReplayRecord, ServerMsg};
+use bota_proto::{
+    MAX_PAYLOAD_LEN, ReplayHeader, ReplayRecord, ServerMsg, WIRE_FINGERPRINT, fingerprint_to_hex,
+};
 
-use super::fixtures::{counted, snapshot, wire};
+use super::fixtures::{counted, frames, header, snapshot, wire};
 use crate::ui::replay::{MAX_READS_PER_POLL, ReplayPlayer};
 
+/// The refusal of a first record that is no header this build reads.
+const NO_HEADER: &str =
+    "no replay header this build reads: not a bota replay, or one recorded before replays had one";
+
 fn assert_rejected(bytes: Vec<u8>, kind: io::ErrorKind, detail: &str) {
+    assert_refused_at(bytes, kind, &format!("replay record 1 at byte 0: {detail}"));
+}
+
+fn assert_refused_at(bytes: Vec<u8>, kind: io::ErrorKind, message: &str) {
     let (reader, read, calls) = counted(bytes, 1);
     let mut player = ReplayPlayer::from_reader(reader);
 
     assert!(player.poll(0.0).is_empty());
     let error = player.error().expect("invalid input must be reported");
     assert_eq!(error.kind(), kind);
-    assert_eq!(
-        error.to_string(),
-        format!("replay record 1 at byte 0: {detail}")
-    );
+    assert_eq!(error.to_string(), message);
     assert!(!player.finished());
     assert!(player.paused);
     assert_eq!(player.status(), "error");
@@ -41,11 +48,7 @@ fn every_invalid_framing_is_rejected_with_its_reason() {
             "no replay records in the file".to_string(),
         ),
         (vec![0; 4], InvalidData, "empty payload length".to_string()),
-        (
-            vec![1, 0, 0, 0, 255],
-            InvalidData,
-            "frame payload did not decode".to_string(),
-        ),
+        (vec![1, 0, 0, 0, 255], InvalidData, NO_HEADER.to_string()),
     ];
     for length in 1..4 {
         let detail = format!("truncated length prefix: expected 4 bytes, got {length}");
@@ -55,7 +58,7 @@ fn every_invalid_framing_is_rejected_with_its_reason() {
         let detail = format!("payload length {length} exceeds {MAX_PAYLOAD_LEN} bytes");
         cases.push((length.to_le_bytes().to_vec(), InvalidData, detail));
     }
-    let frame = wire(&[snapshot(0)]);
+    let frame = frames(&[snapshot(0)]);
     let length = frame.len() - 4;
     for received in 0..length {
         let detail = format!("truncated payload: expected {length} bytes, got {received}");
@@ -63,6 +66,51 @@ fn every_invalid_framing_is_rejected_with_its_reason() {
     }
     for (bytes, kind, detail) in cases {
         assert_rejected(bytes, kind, &detail);
+    }
+}
+
+/// A replay is played only behind this build's header: one of another wire
+/// is refused up front with both fingerprints named, before any message.
+#[test]
+fn a_replay_without_this_builds_header_is_refused_before_any_message() {
+    use io::ErrorKind::InvalidData;
+    let other_wire = ReplayRecord::Header(ReplayHeader {
+        wire_fingerprint: !WIRE_FINGERPRINT,
+        ..ReplayHeader::CURRENT
+    });
+    let not_a_replay = ReplayRecord::Header(ReplayHeader {
+        magic: *b"bota.brq",
+        ..ReplayHeader::CURRENT
+    });
+    let second = ReplayRecord::Header(ReplayHeader::CURRENT);
+    let cases = [
+        (frames(&[snapshot(0)]), 1, 0, NO_HEADER.to_string()),
+        (
+            frames(&[other_wire, snapshot(0)]),
+            1,
+            0,
+            format!(
+                "recorded with wire fingerprint {}; this build plays {}",
+                fingerprint_to_hex(!WIRE_FINGERPRINT),
+                fingerprint_to_hex(WIRE_FINGERPRINT)
+            ),
+        ),
+        (
+            frames(&[not_a_replay, snapshot(0)]),
+            1,
+            0,
+            "not a bota replay".to_string(),
+        ),
+        (
+            wire(&[second, snapshot(0)]),
+            2,
+            header().len(),
+            "a second replay header".to_string(),
+        ),
+    ];
+    for (bytes, record, byte, detail) in cases {
+        let message = format!("replay record {record} at byte {byte}: {detail}");
+        assert_refused_at(bytes, InvalidData, &message);
     }
 }
 
@@ -87,7 +135,7 @@ fn deferred_failure_preserves_prior_messages_and_reports_record_and_offset() {
     assert_eq!(
         error.to_string(),
         format!(
-            "replay record 3 at byte {offset}: truncated length prefix: expected 4 bytes, got 2"
+            "replay record 4 at byte {offset}: truncated length prefix: expected 4 bytes, got 2"
         )
     );
     assert!(!player.finished());

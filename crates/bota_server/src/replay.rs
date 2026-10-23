@@ -4,7 +4,7 @@ use std::fs::File;
 use std::io::{BufWriter, Write};
 use std::path::Path;
 
-use bota_proto::{ReplayRecord, encode_frame_to_vec};
+use bota_proto::{ReplayHeader, ReplayRecord, encode_frame_to_vec};
 
 /// Appends [`ReplayRecord`] frames to a `.brp` file.
 ///
@@ -15,14 +15,17 @@ pub struct ReplayWriter {
 }
 
 impl ReplayWriter {
-    /// Creates or truncates the file; an error names the path.
+    /// Creates or truncates the file and starts it with this build's
+    /// [`ReplayHeader`]; an error names the path.
     pub fn create(path: &Path) -> std::io::Result<ReplayWriter> {
         let file = File::create(path).map_err(|error| {
             std::io::Error::new(error.kind(), format!("replay {}: {error}", path.display()))
         })?;
-        Ok(ReplayWriter {
+        let mut writer = ReplayWriter {
             out: Some(BufWriter::new(file)),
-        })
+        };
+        writer.record(&ReplayRecord::Header(ReplayHeader::CURRENT));
+        Ok(writer)
     }
 
     /// A writer that records nothing.

@@ -631,6 +631,7 @@ pub fn all_replay_records() -> Vec<ReplayRecord> {
                 slot_order(1),
             ],
         },
+        ReplayRecord::Header(ReplayHeader::CURRENT),
     ]
 }
 

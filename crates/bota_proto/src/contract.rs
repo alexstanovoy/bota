@@ -260,6 +260,14 @@
 //! registries answers [`ServerMsg::WireMismatch`] with its own fingerprint and
 //! closes the connection, before anything else could be misread.
 //!
+//! The registries only grow, but postcard reads by position: a build reads
+//! only what a build of its own fingerprint wrote. So what builds of
+//! different wires must still read of each other never grows: the hello with
+//! its [`Role`](crate::Role), the refusal, and a replay's
+//! [`ReplayHeader`](crate::ReplayHeader). A replay starts with that header,
+//! which names the wire it was recorded with, and a player refuses a replay
+//! of another wire up front, naming both fingerprints.
+//!
 //! [`ServerMsg::Snapshot`]: crate::ServerMsg::Snapshot
 //! [`ServerMsg::Events`]: crate::ServerMsg::Events
 //! [`ServerMsg::WireMismatch`]: crate::ServerMsg::WireMismatch

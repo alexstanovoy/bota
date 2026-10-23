@@ -416,3 +416,6 @@ field ProjectileView 6 target: Option<EntityId>
 field UnitView 36 cast: Option<CastView>
 field CastView 0 ability: Option<AbilityId>
 field CastView 1 goes_off_in: u32
+variant ReplayRecord 2 Header(ReplayHeader)
+field ReplayHeader 0 magic: [u8; 8]
+field ReplayHeader 1 wire_fingerprint: u64

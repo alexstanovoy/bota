@@ -10,6 +10,10 @@ use serde::{Deserialize, Serialize};
 ///
 /// A player and a bot take a seat and see through its team's fog of war; a
 /// spectator takes none.
+///
+/// Frozen, as [`ClientMsg::Hello`] that carries it: a role no older server
+/// knows would end the connection before the server reads the fingerprint.
+/// Finer kinds of watching come from the key a spectator presents.
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Role {
     /// A human at a client, taking a seat.
@@ -301,6 +305,13 @@ impl ClientMsg {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub enum ClientMsg {
     /// First message on a connection, before anything else is accepted.
+    ///
+    /// Frozen: postcard reads fields by position, so a field added here
+    /// would leave a server without it unable to read the hello of a client
+    /// with it, and the two builds would part without
+    /// [`ServerMsg::WireMismatch`] naming them. What a later build has to
+    /// say first goes into a message of its own after the
+    /// [`ServerMsg::Welcome`].
     Hello {
         /// Why this connection exists.
         role: Role,
@@ -438,7 +449,9 @@ pub enum ServerMsg {
     },
     /// Refuses a [`ClientMsg::Hello`] built with another wire: the
     /// connection closes after it. The registries only grow, so every build
-    /// that has this message reads it, whatever else differs.
+    /// that has this message reads it, whatever else differs. Frozen, as the
+    /// hello is: a client with a field added here could not read the refusal
+    /// of a server without it.
     WireMismatch {
         /// The [`WIRE_FINGERPRINT`](crate::WIRE_FINGERPRINT) the server was
         /// built with.
@@ -456,10 +469,37 @@ pub enum ServerMsg {
     },
 }
 
+/// What a replay file is, and which wire recorded it: its first record.
+///
+/// Frozen: no field is ever added to it, so every build reads the header of
+/// a replay any build wrote, and a player refuses a replay of another wire by
+/// naming both fingerprints rather than failing on some record in its
+/// middle. Whatever a later build has to say about a replay goes into a
+/// record of its own after the header.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct ReplayHeader {
+    /// [`ReplayHeader::MAGIC`]: marks the file as a bota replay.
+    pub magic: [u8; 8],
+    /// The [`WIRE_FINGERPRINT`](crate::WIRE_FINGERPRINT) of the build that
+    /// recorded it.
+    pub wire_fingerprint: u64,
+}
+
+impl ReplayHeader {
+    /// The bytes every replay's header starts with.
+    pub const MAGIC: [u8; 8] = *b"bota.brp";
+
+    /// The header this build writes, and the only one it plays.
+    pub const CURRENT: ReplayHeader = ReplayHeader {
+        magic: ReplayHeader::MAGIC,
+        wire_fingerprint: crate::WIRE_FINGERPRINT,
+    };
+}
+
 /// One frame of a replay file.
 ///
 /// A replay file is a sequence of frames, framed exactly like the socket, each
-/// carrying one record.
+/// carrying one record: a [`ReplayRecord::Header`] first, then the match.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(
     target_pointer_width = "64",
@@ -478,4 +518,6 @@ pub enum ReplayRecord {
         /// At most one order per seat, sorted by [`SlotId`].
         orders: Vec<SlotOrder>,
     },
+    /// The first record of every replay, and of no other place in it.
+    Header(ReplayHeader),
 }

@@ -81,6 +81,55 @@ fn the_wire_layout_only_grows() {
     );
 }
 
+/// What two builds of different wires still read of each other: a client's
+/// hello with its role, the server's refusal of another wire and a replay's
+/// header. Postcard reads by position, so a field or a role appended to them
+/// would make the build without it fail to read the build with it, and two
+/// builds would part on a decoding error instead of naming both fingerprints.
+#[test]
+fn what_builds_of_other_wires_read_of_each_other_never_grows() {
+    let frozen = [
+        "variant ClientMsg 0 Hello {}",
+        "field ClientMsg::Hello 0 role: Role",
+        "field ClientMsg::Hello 1 name: String",
+        "field ClientMsg::Hello 2 key: Option<SeatKey>",
+        "field ClientMsg::Hello 3 wire_fingerprint: u64",
+        "variant Role 0 Player",
+        "variant Role 1 Bot",
+        "variant Role 2 Spectator",
+        "variant Role 3 Referee",
+        "newtype SeatKey [u8; 32]",
+        "variant ServerMsg 9 WireMismatch {}",
+        "field ServerMsg::WireMismatch 0 server_fingerprint: u64",
+        "variant ReplayRecord 2 Header(ReplayHeader)",
+        "field ReplayHeader 0 magic: [u8; 8]",
+        "field ReplayHeader 1 wire_fingerprint: u64",
+    ];
+    let owners = [
+        "ClientMsg::Hello",
+        "Role",
+        "SeatKey",
+        "ServerMsg::WireMismatch",
+        "ReplayHeader",
+    ];
+    let live = layout_lines(&trace_wire());
+    let owned: Vec<&str> = live
+        .iter()
+        .map(String::as_str)
+        .filter(|line| line.split(' ').nth(1).is_some_and(|o| owners.contains(&o)))
+        .collect();
+    let grown: Vec<&str> = owned
+        .iter()
+        .copied()
+        .filter(|line| !frozen.contains(line))
+        .collect();
+    assert!(
+        grown.is_empty(),
+        "the version handshake is frozen; say this in a message of its own instead:\n{}",
+        grown.join("\n")
+    );
+}
+
 /// Every type reachable from the things that cross the wire, the report a
 /// launcher reads among them, each enum traced on its own so that no variant
 /// goes unseen.

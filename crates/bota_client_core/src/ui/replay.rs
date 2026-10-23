@@ -4,7 +4,10 @@ use std::fs::File;
 use std::io::{self, BufReader, Read};
 use std::path::Path;
 
-use bota_proto::{LEN_PREFIX, MAX_PAYLOAD_LEN, ReplayRecord, ServerMsg, decode_payload};
+use bota_proto::{
+    LEN_PREFIX, MAX_PAYLOAD_LEN, ReplayHeader, ReplayRecord, ServerMsg, WIRE_FINGERPRINT,
+    decode_payload, fingerprint_to_hex,
+};
 
 /// Maximum decoded records released or inspected in one poll.
 pub const MAX_RECORDS_PER_POLL: usize = 64;
@@ -190,6 +193,8 @@ impl ReplayPlayer {
             let message = match record {
                 ReplayRecord::Orders { tick, orders } => ServerMsg::Orders { tick, orders },
                 ReplayRecord::Msg(message) => message,
+                // The stream takes the one header in before any record comes out.
+                ReplayRecord::Header(_) => continue,
             };
             if let ServerMsg::MatchStart { info } = &message {
                 self.tick_rate = f64::from(info.tick_rate.max(1));
@@ -210,6 +215,29 @@ impl ReplayPlayer {
     }
 }
 
+/// Why a first record that does not decode is refused.
+const NO_HEADER: &str =
+    "no replay header this build reads: not a bota replay, or one recorded before replays had one";
+
+/// Why a record cannot stand where it does: the first must be this build's
+/// header, and no other may be a header.
+fn header_refusal(record: &ReplayRecord, first: bool) -> Option<String> {
+    match (record, first) {
+        (ReplayRecord::Header(header), true) if *header == ReplayHeader::CURRENT => None,
+        (ReplayRecord::Header(header), true) if header.magic != ReplayHeader::MAGIC => {
+            Some("not a bota replay".to_string())
+        }
+        (ReplayRecord::Header(header), true) => Some(format!(
+            "recorded with wire fingerprint {}; this build plays {}",
+            fingerprint_to_hex(header.wire_fingerprint),
+            fingerprint_to_hex(WIRE_FINGERPRINT)
+        )),
+        (_, true) => Some(NO_HEADER.to_string()),
+        (ReplayRecord::Header(_), false) => Some("a second replay header".to_string()),
+        (_, false) => None,
+    }
+}
+
 impl ReplayStream {
     fn poll_record(&mut self, budget: &mut ReadBudget) -> io::Result<RecordPoll> {
         for _ in 0..=MAX_READS_PER_POLL {
@@ -218,13 +246,26 @@ impl ReplayStream {
                     self.prepare_payload()?;
                 }
                 if self.payload_read == self.payload.len() {
-                    let record = decode_payload(&self.payload)
-                        .map_err(|error| self.failure(io::ErrorKind::InvalidData, error))?;
+                    let first = self.records == 0;
+                    let record = decode_payload(&self.payload).map_err(|error| {
+                        let detail = if first {
+                            NO_HEADER.to_string()
+                        } else {
+                            error.to_string()
+                        };
+                        self.failure(io::ErrorKind::InvalidData, detail)
+                    })?;
+                    if let Some(refusal) = header_refusal(&record, first) {
+                        return Err(self.failure(io::ErrorKind::InvalidData, refusal));
+                    }
                     self.prefix_read = 0;
                     self.payload.clear();
                     self.payload_read = 0;
                     self.records += 1;
-                    return Ok(RecordPoll::Record(Box::new(record)));
+                    // The header says what the file is; the match follows it.
+                    if !first {
+                        return Ok(RecordPoll::Record(Box::new(record)));
+                    }
                 }
             }
             if budget.bytes == 0 || budget.calls == 0 {

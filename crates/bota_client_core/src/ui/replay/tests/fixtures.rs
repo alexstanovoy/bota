@@ -3,8 +3,8 @@ use std::io::{self, Cursor, Read};
 use std::rc::Rc;
 
 use bota_proto::{
-    HeroId, MapId, MatchInfo, Pick, PlayerView, ReplayRecord, ServerMsg, SlotId, Team, TickMode,
-    Vec2, WorldView, encode_frame_to_vec,
+    HeroId, MapId, MatchInfo, Pick, PlayerView, ReplayHeader, ReplayRecord, ServerMsg, SlotId,
+    Team, TickMode, Vec2, WorldView, encode_frame_to_vec,
 };
 
 pub fn match_start(tick_rate: u16) -> ReplayRecord {
@@ -69,11 +69,24 @@ pub fn snapshot(tick: u32) -> ReplayRecord {
     })
 }
 
-pub fn wire(records: &[ReplayRecord]) -> Vec<u8> {
+/// The records framed as they are, with no header in front.
+pub fn frames(records: &[ReplayRecord]) -> Vec<u8> {
     records
         .iter()
         .flat_map(|record| encode_frame_to_vec(record).unwrap())
         .collect()
+}
+
+/// This build's header, framed: what a replay file starts with.
+pub fn header() -> Vec<u8> {
+    frames(&[ReplayRecord::Header(ReplayHeader::CURRENT)])
+}
+
+/// A replay file of the records: this build's header, then the records.
+pub fn wire(records: &[ReplayRecord]) -> Vec<u8> {
+    let mut bytes = header();
+    bytes.extend(frames(records));
+    bytes
 }
 
 pub struct CountedRead {
@@ -118,5 +131,6 @@ pub fn message(record: ReplayRecord) -> ServerMsg {
     match record {
         ReplayRecord::Msg(message) => message,
         ReplayRecord::Orders { tick, orders } => ServerMsg::Orders { tick, orders },
+        ReplayRecord::Header(_) => panic!("a header is no message"),
     }
 }

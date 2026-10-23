@@ -10,8 +10,8 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use bota_proto::{
-    ClientMsg, EventKind, FrameReader, HeroId, Order, RejectReason, ReplayRecord, Role, ServerMsg,
-    SlotId, Target, Team, Vec2, WIRE_FINGERPRINT, WorldView, encode_frame_to_vec,
+    ClientMsg, EventKind, FrameReader, HeroId, Order, RejectReason, ReplayHeader, ReplayRecord,
+    Role, ServerMsg, SlotId, Target, Team, Vec2, WIRE_FINGERPRINT, WorldView, encode_frame_to_vec,
 };
 
 use crate::game::OrderDelay;
@@ -265,7 +265,8 @@ fn a_realtime_match_reaches_two_clients() {
     let later = c1.recv_until(|msg| snapshot(msg).filter(|view| view.tick > first.tick));
     assert!(later.tick > first.tick);
 
-    // Hanging up empties the seats; the server ends the match and flushes.
+    // Hanging up empties the seats; the server ends the match and flushes:
+    // the replay names the wire it was recorded with, then the match.
     drop(c1);
     drop(c2);
     for _ in 0..100 {
@@ -273,9 +274,14 @@ fn a_realtime_match_reaches_two_clients() {
         let bytes = std::fs::read(&replay_path).unwrap_or_default();
         let mut reader = FrameReader::new();
         reader.push(&bytes);
+        let header = reader.next_message::<ReplayRecord>();
         if let Ok(Some(ReplayRecord::Msg(ServerMsg::MatchStart { .. }))) =
             reader.next_message::<ReplayRecord>()
         {
+            assert_eq!(
+                header,
+                Ok(Some(ReplayRecord::Header(ReplayHeader::CURRENT)))
+            );
             return;
         }
     }

@@ -305,12 +305,14 @@ label nor the play gives the seed or the key away. Hidden state (the key,
 random streams, pending random outcomes) is never put on the wire; the types in
 `bota_proto` cannot express it.
 
-A replay (`--replay FILE`) is a stream of framed `ReplayRecord`s: the fogless
-spectator messages plus the orders accepted on each tick. It plays back without
-a server; the client reads frames from the file instead of a socket. It contains
-no seed and is not re-simulated, so it survives rule changes that leave the wire alone;
-any wire change, even an appended field, makes older replays undecodable. The player is
-in `bota_client_core` behind the `ui` feature.
+A replay (`--replay FILE`) is a stream of framed `ReplayRecord`s: a header naming
+the wire fingerprint it was recorded with, then the fogless spectator messages plus
+the orders accepted on each tick. It plays back without a server; the client reads
+frames from the file instead of a socket. It contains no seed and is not re-simulated,
+so it survives rule changes that leave the wire alone; any wire change, even an appended
+field, makes older replays undecodable, and the player refuses one of another wire at its
+header, naming both fingerprints. The player is in `bota_client_core` behind the `ui`
+feature.
 
 ## Tests and benchmarks
 

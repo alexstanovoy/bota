@@ -4,7 +4,7 @@ use std::rc::Rc;
 
 use bota_proto::{LobbySlot, MAX_PAYLOAD_LEN, PickPhase, ReplayRecord, ServerMsg, SlotId, Team};
 
-use super::fixtures::{CountedRead, counted, message, snapshot, wire};
+use super::fixtures::{CountedRead, counted, frames, header, message, snapshot, wire};
 use crate::ui::replay::{
     MAX_BYTES_PER_POLL, MAX_READS_PER_POLL, MAX_RECORDS_PER_POLL, REPLAY_BUFFER_CAPACITY,
     ReplayPlayer,
@@ -54,17 +54,33 @@ fn fragmented_io_preserves_every_message_for_each_fragment_size() {
     }
 }
 
+/// A replay of `remaining` bytes: this build's header, then one frame over
+/// and over.
 struct RepeatedRead {
+    head: Cursor<Vec<u8>>,
     frame: Vec<u8>,
     remaining: u64,
     position: usize,
     bytes: Rc<Cell<usize>>,
 }
 
+impl RepeatedRead {
+    fn new(frame: Vec<u8>, remaining: u64, bytes: Rc<Cell<usize>>) -> RepeatedRead {
+        RepeatedRead {
+            head: Cursor::new(header()),
+            frame,
+            remaining,
+            position: 0,
+            bytes,
+        }
+    }
+}
+
 impl Read for RepeatedRead {
     fn read(&mut self, target: &mut [u8]) -> io::Result<usize> {
         let length = target.len().min(self.remaining as usize);
-        for byte in &mut target[..length] {
+        let from_head = self.head.read(&mut target[..length])?;
+        for byte in &mut target[from_head..length] {
             *byte = self.frame[self.position];
             self.position = (self.position + 1) % self.frame.len();
         }
@@ -76,19 +92,15 @@ impl Read for RepeatedRead {
 
 #[test]
 fn virtual_gigabyte_replays_have_constant_startup_and_per_poll_cost() {
-    let frame = wire(&[snapshot(0)]);
+    let frame = frames(&[snapshot(0)]);
+    let head = header().len() as u64;
     for length in [1024 * 1024, 1024 * 1024 * 1024] {
         let bytes = Rc::new(Cell::new(0));
-        let reader = RepeatedRead {
-            frame: frame.clone(),
-            remaining: length,
-            position: 0,
-            bytes: bytes.clone(),
-        };
+        let reader = RepeatedRead::new(frame.clone(), length, bytes.clone());
         let mut player = ReplayPlayer::from_reader(reader);
         assert_eq!(bytes.get(), 0);
         assert_eq!(player.poll(60.0), vec![message(snapshot(0))]);
-        assert_eq!(player.bytes_read(), frame.len() as u64);
+        assert_eq!(player.bytes_read(), head + frame.len() as u64);
         assert_eq!(bytes.get(), REPLAY_BUFFER_CAPACITY);
         let mut received = 1;
         for _ in 0..20 {
@@ -98,7 +110,10 @@ fn virtual_gigabyte_replays_have_constant_startup_and_per_poll_cost() {
             assert!(batch.len() <= MAX_RECORDS_PER_POLL);
             received += batch.len();
             assert!(player.bytes_read() - before <= MAX_BYTES_PER_POLL as u64);
-            assert_eq!(player.bytes_read() / frame.len() as u64, received as u64);
+            assert_eq!(
+                (player.bytes_read() - head) / frame.len() as u64,
+                received as u64
+            );
             assert!(!player.finished());
             assert!(player.error().is_none());
         }
@@ -118,14 +133,14 @@ fn maximum_payload_record() -> ReplayRecord {
         same_heroes: true,
         pick: PickPhase::Waiting,
     });
-    let length = wire(&[record.clone()]).len() - 4;
+    let length = frames(&[record.clone()]).len() - 4;
     let ReplayRecord::Msg(ServerMsg::LobbyState { slots, .. }) = &mut record else {
         unreachable!()
     };
     slots[0]
         .name
         .extend(std::iter::repeat_n('x', MAX_PAYLOAD_LEN - length));
-    assert_eq!(wire(&[record.clone()]).len(), MAX_PAYLOAD_LEN + 4);
+    assert_eq!(frames(&[record.clone()]).len(), MAX_PAYLOAD_LEN + 4);
     record
 }
 
@@ -204,14 +219,7 @@ fn orders_before_any_snapshot_flow_out_in_bounded_batches() {
         tick: 0,
         orders: Vec::new(),
     };
-    let frame = wire(&[record]);
-    let bytes = Rc::new(Cell::new(0));
-    let reader = RepeatedRead {
-        remaining: 1024 * 1024 * 1024,
-        frame,
-        position: 0,
-        bytes,
-    };
+    let reader = RepeatedRead::new(frames(&[record]), 1024 * 1024 * 1024, Rc::new(Cell::new(0)));
     let mut player = ReplayPlayer::from_reader(reader);
     for _ in 0..100 {
         let batch = player.poll(0.0);
