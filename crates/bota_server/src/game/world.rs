@@ -9,9 +9,9 @@ use crate::game::{
     Def, Entity, EntityAllocator, Errand, Expiry, Exposure, Forest, Glyph, Handling, Health, Hit,
     HitCx, Hook, Hull, Inventory, Landed, Lane, LaneAi, Level, Loot, Mana, March, Mark, Missed,
     MissileCx, Modifier, Modifiers, Motion, NeutralAi, Orders, Place, Plan, Projectile, Purpose,
-    Rax, RequiemLine, Route, Seat, SightCx, SightScratch, SpawnModifier, Spots, Stacks, Stats,
-    StatsCx, Table, Target, Tier, Transform, UnitOrder, Upgrades, Visibility, aura_system,
-    derive_stats, hitting_system, missile_system, regenerate, visibility_system,
+    Rax, RequiemLine, Route, Seat, SightCx, SightScratch, SpawnModifier, Spots, Stats, StatsCx,
+    Table, Target, Tier, Transform, UnitOrder, Upgrades, Visibility, aura_system, derive_stats,
+    hitting_system, missile_system, regenerate, visibility_system,
 };
 use crate::profile::{Phase, ScopeGuard};
 
@@ -144,8 +144,6 @@ pub struct World {
     pub push: Table<crate::game::Push>,
     /// The Blood Grenade each entity that is one is flying.
     pub grenade: Table<crate::game::Grenade>,
-    /// What each entity has gathered and keeps.
-    pub stacks: Table<Stacks>,
     /// The feast of souls each entity that cast one has on it.
     pub feast: Table<crate::game::Feast>,
     /// The errand each courier is on.
@@ -293,7 +291,6 @@ impl World {
             chain: Table::new(),
             push: Table::new(),
             grenade: Table::new(),
-            stacks: Table::new(),
             feast: Table::new(),
             errand: Table::new(),
             expiry: Table::new(),
@@ -751,7 +748,6 @@ impl World {
             modifiers: &self.modifiers,
             applied: &self.applied,
             abilities: &self.abilities,
-            stacks: &self.stacks,
             feast: &self.feast,
             stats: &mut self.stats,
             health: &mut self.health,

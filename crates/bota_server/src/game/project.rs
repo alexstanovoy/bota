@@ -8,7 +8,7 @@ use bota_proto::{
 };
 
 use crate::game::{
-    ActionPhase, ActionState, Entity, FeastPhase, Seat, StackKind, World, item_view, item_views,
+    ActionPhase, ActionState, Entity, FeastPhase, Seat, World, item_view, item_views,
 };
 use crate::profile::Phase;
 
@@ -527,17 +527,8 @@ fn ability_views(book: &crate::game::AbilityBook, mana_rate_bp: i32) -> Vec<Abil
         .collect()
 }
 
-/// Which effect one kind is on the wire.
-pub(crate) fn stack_effect_id(kind: StackKind) -> EffectId {
-    match kind {
-        StackKind::FleshHeap => EffectId::FLESH_HEAP,
-        StackKind::Souls => EffectId::SOULS,
-    }
-}
-
 impl World {
-    /// Everything showing on one entity: its active modifiers but the rot,
-    /// then what it has gathered.
+    /// Everything showing on one entity: its active modifiers but the rot.
     fn effects_on(&self, entity: Entity) -> Vec<EffectView> {
         let mut on_it: Vec<EffectView> = self
             .modifiers
@@ -548,20 +539,9 @@ impl World {
             .map(|held| EffectView {
                 id: held.kind.effect_id(),
                 ticks_left: held.ticks_left,
-                stacks: match held.kind {
-                    ModifierKind::Shadowraze { stacks } => Some(u32::from(stacks)),
-                    ModifierKind::MeatShield { amount } => Some(amount as u32),
-                    _ => None,
-                },
+                stacks: held.kind.stacks(),
             })
             .collect();
-        if let Some(gathered) = self.stacks.get(entity) {
-            on_it.extend(gathered.held().map(|(kind, many)| EffectView {
-                id: stack_effect_id(kind),
-                ticks_left: None,
-                stacks: Some(many),
-            }));
-        }
         if self.illusion.contains(entity) {
             on_it.push(EffectView {
                 id: EffectId::ILLUSION,

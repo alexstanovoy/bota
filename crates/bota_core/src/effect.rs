@@ -15,6 +15,9 @@ pub struct EffectDef {
     pub retired: bool,
     /// Whether a basic dispel takes it off.
     pub dispellable: bool,
+    /// Whether a hero keeps it through death, as Dota keeps a modifier that is
+    /// not removed on death: what it has gathered.
+    pub kept_through_death: bool,
 }
 
 /// How many effect ids the protocol has ever handed out, retired ones
@@ -27,12 +30,21 @@ const fn buff(name: &'static str) -> EffectDef {
         harmful: false,
         retired: false,
         dispellable: false,
+        kept_through_death: false,
     }
 }
 
 const fn debuff(name: &'static str) -> EffectDef {
     EffectDef {
         harmful: true,
+        ..buff(name)
+    }
+}
+
+/// A count of what a hero has gathered, kept through its deaths.
+const fn gathered(name: &'static str) -> EffectDef {
+    EffectDef {
+        kept_through_death: true,
         ..buff(name)
     }
 }
@@ -60,8 +72,8 @@ pub const EFFECTS: [EffectDef; 61] = [
     fleeting("Hastened"),
     buff("Shielded"),
     fleeting("Phased"),
-    buff("FleshHeap"),
-    buff("Souls"),
+    gathered("FleshHeap"),
+    gathered("Souls"),
     debuff("ArmorBroken"),
     buff("Guarded"),
     buff("Inspired"),

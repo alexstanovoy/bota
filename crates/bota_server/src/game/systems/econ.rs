@@ -404,7 +404,9 @@ impl World {
             if let Some(kept) = self.seats[index].kept.take() {
                 self.abilities.insert(unit, kept.book);
                 self.inventory.insert(unit, kept.bag);
-                self.stacks.insert(unit, kept.stacks);
+                for held in kept.modifiers.0 {
+                    self.put_modifier(unit, held);
+                }
             }
             self.seats[index].unit = Some(unit);
             self.settle();

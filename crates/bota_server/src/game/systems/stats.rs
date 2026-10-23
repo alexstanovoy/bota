@@ -9,8 +9,8 @@ use bota_proto::{Attributes, Fixed, ModifierSpec};
 
 use crate::game::{
     AbilityBook, AppliedModifiers, Def, EntityAllocator, Feast, FeastPhase, Health, Inventory,
-    Level, MAX_COMBINED_MODIFIER_SCALE, Mana, Modifiers, StackKind, Stacks, StatBonus, Stats,
-    Table, Upgrades, carried_bonus,
+    Level, MAX_COMBINED_MODIFIER_SCALE, Mana, Modifiers, StatBonus, Stats, Table, Upgrades,
+    carried_bonus,
 };
 
 /// What working out stats reads and writes.
@@ -27,8 +27,6 @@ pub struct StatsCx<'a> {
     pub applied: &'a Table<AppliedModifiers>,
     /// What each entity has learned, for what its passives are worth.
     pub abilities: &'a Table<AbilityBook>,
-    /// What each entity has kept of the deaths around it.
-    pub stacks: &'a Table<Stacks>,
     /// The feast each entity has on it, for its haste.
     pub feast: &'a Table<Feast>,
     /// Where the answer goes.
@@ -59,7 +57,6 @@ pub fn derive_stats(cx: StatsCx<'_>) {
         modifiers,
         applied,
         abilities,
-        stacks,
         feast,
         stats,
         health,
@@ -95,13 +92,15 @@ pub fn derive_stats(cx: StatsCx<'_>) {
         if let Some(carried) = carried {
             add_carried(&mut now, &carried);
         }
-        let gathered = stacks.get(entity).copied().unwrap_or_default();
+        let held = |of: fn(u32) -> ModifierKind| {
+            modifiers.get(entity).map_or(0, |on_it| on_it.count_of(of))
+        };
         if let Some(book) = abilities.get(entity) {
             now.attributes +=
                 Attributes::all(rules::ATTRIBUTE_BONUS_POINTS * i32::from(book.attribute_bonus));
         }
         if !broken {
-            add_heap(&mut now, &gathered);
+            add_heap(&mut now, held(ModifierKind::flesh_heap));
         }
         from_attributes(&mut now);
         let base_armor =
@@ -111,7 +110,7 @@ pub fn derive_stats(cx: StatsCx<'_>) {
             add_carried_shares(&mut now, carried);
         }
         if !broken {
-            now.damage += soul_damage(gathered.of(StackKind::Souls), levels + 1);
+            now.damage += soul_damage(held(ModifierKind::souls), levels + 1);
         }
         if let Some(on_it) = modifiers.get(entity) {
             let hero = kind.kind == bota_proto::UnitKind::Hero;
@@ -229,8 +228,8 @@ fn add_carried(now: &mut Stats, carried: &Carried) {
 
 /// What the flesh heap has kept, worth strength by the stack. Only a hero
 /// whose innate it is keeps any.
-fn add_heap(now: &mut Stats, gathered: &Stacks) {
-    let kept = gathered.of(StackKind::FleshHeap) as i32;
+fn add_heap(now: &mut Stats, kept: u32) {
+    let kept = i32::try_from(kept).unwrap_or(i32::MAX);
     now.attributes.strength += rules::FLESH_HEAP_STRENGTH_PER_STACK * Fixed::from_int(kept);
 }
 
@@ -296,7 +295,9 @@ fn add_modifiers(now: &mut Stats, on_it: &Modifiers, base_armor: Fixed, hero: bo
             | ModifierKind::Rooted
             | ModifierKind::Disarmed
             | ModifierKind::Broken
-            | ModifierKind::BackdoorProtection => {}
+            | ModifierKind::BackdoorProtection
+            | ModifierKind::FleshHeap { .. }
+            | ModifierKind::Souls { .. } => {}
         }
     }
 }

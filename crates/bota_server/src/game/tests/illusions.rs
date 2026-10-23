@@ -12,9 +12,10 @@ use crate::game::{Entity, Illusion, MatchConfig, OrderDelay, UnitOrder, World};
 use crate::local::LocalMatch;
 
 /// A stand-in for what an illusion maker makes: a body of the hero's seat
-/// and kind at `at`, with the hero's level, abilities, items, souls,
-/// modifiers, health and mana, facing as it does and standing still, marked as an illusion of
-/// it, the other side's aims at the hero called off.
+/// and kind at `at`, with the hero's level, abilities, items, modifiers
+/// (its souls among them), health and mana, facing as it does and standing
+/// still, marked as an illusion of it, the other side's aims at the hero
+/// called off.
 fn stand_in_illusion(world: &mut World, hero: Entity, at: Vec2) -> Entity {
     let team = *world.team.get(hero).expect("a side");
     let slot = *world.owner.get(hero).expect("a seat");
@@ -23,7 +24,6 @@ fn stand_in_illusion(world: &mut World, hero: Entity, at: Vec2) -> Entity {
     let level = *world.level.get(hero).expect("a level");
     let book = world.abilities.get(hero).expect("a kit").clone();
     let bag = world.inventory.get(hero).expect("a bag").clone();
-    let souls = world.stacks.get(hero).cloned();
     let modifiers = world.modifiers.get(hero).cloned();
     let health = *world.health.get(hero).expect("health");
     let mana = *world.mana.get(hero).expect("mana");
@@ -31,9 +31,6 @@ fn stand_in_illusion(world: &mut World, hero: Entity, at: Vec2) -> Entity {
     world.level.insert(illusion, level);
     world.abilities.insert(illusion, book);
     world.inventory.insert(illusion, bag);
-    if let Some(souls) = souls {
-        world.stacks.insert(illusion, souls);
-    }
     if let Some(modifiers) = modifiers {
         world.modifiers.insert(illusion, modifiers);
     }

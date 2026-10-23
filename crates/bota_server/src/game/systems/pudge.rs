@@ -3,7 +3,7 @@
 use bota_core::{ModifierKind, dismember_bite_damage, hero_def, move_towards, per_tick, rules};
 use bota_proto::{AbilityId, DamageKind, Fixed, Target};
 
-use crate::game::{HitEffect, Modifier, StackKind, World};
+use crate::game::{HitEffect, Modifier, World};
 
 use crate::engine::Entity;
 
@@ -184,9 +184,10 @@ impl World {
             if !self.pos(hero).is_some_and(|pos| pos.within(at, reach)) {
                 continue;
             }
-            let mut kept = self.stacks.get(hero).copied().unwrap_or_default();
-            kept.gather(StackKind::FleshHeap, 1);
-            self.stacks.insert(hero, kept);
+            if let Some(on_it) = self.modifiers.get_mut(hero) {
+                let kept = on_it.count_of(ModifierKind::flesh_heap);
+                on_it.set_count(ModifierKind::flesh_heap, kept.saturating_add(1));
+            }
         }
     }
 }

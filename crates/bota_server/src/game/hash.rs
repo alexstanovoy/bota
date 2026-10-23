@@ -8,7 +8,7 @@ use crate::engine::Fnv;
 use crate::game::{
     Action, ActionPhase, ActionState, AppliedModifiers, AppliedOrigin, Chain, Entity, Exposure,
     Hit, HitEffect, Hook, Inventory, ItemStack, ModifierDuration, Modifiers, Motion, Projectile,
-    RequiemLine, Seat, SpawnCategory, SpawnModifier, SpawnTarget, Stacks, Target, World,
+    RequiemLine, Seat, SpawnCategory, SpawnModifier, SpawnTarget, Target, World,
 };
 
 impl World {
@@ -216,9 +216,6 @@ impl World {
             fnv.i32(bonus.max_hp);
             fnv.i32(bonus.damage);
         }
-        if let Some(gathered) = self.stacks.get(entity) {
-            hash_stacks(fnv, gathered);
-        }
         if let Some(feast) = self.feast.get(entity) {
             hash_feast(fnv, feast);
         }
@@ -362,13 +359,6 @@ fn hash_feast(fnv: &mut Fnv, feast: &crate::game::Feast) {
     }
 }
 
-fn hash_stacks(fnv: &mut Fnv, gathered: &Stacks) {
-    for (kind, many) in gathered.held() {
-        fnv.u32(kind.at() as u32);
-        fnv.u32(many);
-    }
-}
-
 /// A seat's purse, tallies, stash, item clocks, courier and kept hero state.
 fn hash_seat(fnv: &mut Fnv, seat: &Seat) {
     fnv.u32(u32::from(seat.slot.0));
@@ -398,7 +388,7 @@ fn hash_seat(fnv: &mut Fnv, seat: &Seat) {
         fnv.u8(kept.book.talents.bits);
         fnv.u8(kept.book.attribute_bonus);
         hash_bag(fnv, &kept.bag);
-        hash_stacks(fnv, &kept.stacks);
+        hash_modifiers(fnv, &kept.modifiers);
     }
     fnv.some(seat.teleport.is_some());
     if let Some(teleport) = seat.teleport {
@@ -543,6 +533,14 @@ fn hash_modifier_kind(fnv: &mut Fnv, kind: ModifierKind) {
         ModifierKind::Broken => fnv.u8(20),
         ModifierKind::BackdoorProtection => fnv.u8(24),
         ModifierKind::Fortified => fnv.u8(25),
+        ModifierKind::FleshHeap { count } => {
+            fnv.u8(26);
+            fnv.u32(count);
+        }
+        ModifierKind::Souls { count } => {
+            fnv.u8(27);
+            fnv.u32(count);
+        }
         ModifierKind::Spell {
             ability,
             level,

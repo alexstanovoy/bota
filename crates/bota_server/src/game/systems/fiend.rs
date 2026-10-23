@@ -8,7 +8,7 @@ use bota_core::{
 };
 use bota_proto::{AbilityId, Angle, DamageKind, Fixed, Team};
 
-use crate::game::{Fear, Hit, HitEffect, Modifier, RequiemLine, StackKind, World};
+use crate::game::{Fear, Hit, HitEffect, Modifier, RequiemLine, World};
 
 use crate::engine::Entity;
 
@@ -250,13 +250,8 @@ impl World {
     /// of what is left goes, rounded down.
     pub fn let_souls_go(&mut self, fallen: Entity) {
         self.end_feast(fallen);
-        if let Some(kept) = self.stacks.get_mut(fallen) {
-            let held = kept.of(StackKind::Souls);
-            kept.set(
-                StackKind::Souls,
-                held - held * rules::SOULS_LOST_ON_DEATH_PCT / 100,
-            );
-        }
+        let held = self.souls_of(fallen);
+        self.set_souls(fallen, held - held * rules::SOULS_LOST_ON_DEATH_PCT / 100);
     }
 
     /// Lays the presence on every enemy standing near its carriers that
@@ -350,9 +345,10 @@ impl World {
         } else {
             rules::SOULS_PER_UNIT
         };
-        let mut held = self.stacks.get(killer).copied().unwrap_or_default();
-        held.gather_up_to(StackKind::Souls, worth, self.soul_cap(killer));
-        self.stacks.insert(killer, held);
+        let (held, cap) = (self.souls_of(killer), self.soul_cap(killer));
+        if held < cap {
+            self.set_souls(killer, held.saturating_add(worth).min(cap));
+        }
     }
 
     /// Whether an entity gathers souls at all: it is a hero whose innate is
@@ -384,9 +380,16 @@ impl World {
 
     /// Souls an entity holds right now, those a feast has taken included.
     pub fn souls_of(&self, entity: Entity) -> u32 {
-        self.stacks
+        self.modifiers
             .get(entity)
-            .map_or(0, |kept| kept.of(StackKind::Souls))
+            .map_or(0, |on_it| on_it.count_of(ModifierKind::souls))
+    }
+
+    /// Sets the souls an entity holds.
+    pub(crate) fn set_souls(&mut self, entity: Entity, count: u32) {
+        if let Some(on_it) = self.modifiers.get_mut(entity) {
+            on_it.set_count(ModifierKind::souls, count);
+        }
     }
 
     /// Which level of an ability an entity has learned. Zero for one that

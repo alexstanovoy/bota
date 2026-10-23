@@ -2,7 +2,7 @@
 
 use bota_core::{ModifierKind, rules, tower_def};
 
-use crate::game::{Entity, Modifier, StackKind, Stacks, World, wire_id};
+use crate::game::{Entity, Modifier, World, wire_id};
 use bota_proto::{AbilityId, Fixed, HeroId, SlotId, Target, Team, Vec2};
 
 use super::support::*;
@@ -317,9 +317,11 @@ fn a_stack_of_the_heap_is_worth_two_strength_and_nothing_else() {
     let (mut world, pudge) = a_lone_pudge();
     let bare = world.stats.get(pudge).expect("settled").attributes.strength;
     let resist = world.stats.get(pudge).map(|s| s.magic_resist_bp);
-    let mut kept = Stacks::default();
-    kept.gather(StackKind::FleshHeap, 3);
-    world.stacks.insert(pudge, kept);
+    world
+        .modifiers
+        .get_mut(pudge)
+        .expect("a hero wears modifiers")
+        .set_count(ModifierKind::flesh_heap, 3);
     world.step();
     assert_eq!(
         world.stats.get(pudge).map(|s| s.attributes.strength),
@@ -402,9 +404,9 @@ fn a_lone_pudge() -> (World, Entity) {
 
 fn heap(world: &World, hero: Entity) -> u32 {
     world
-        .stacks
+        .modifiers
         .get(hero)
-        .map_or(0, |kept| kept.of(StackKind::FleshHeap))
+        .map_or(0, |on_it| on_it.count_of(ModifierKind::flesh_heap))
 }
 
 #[test]

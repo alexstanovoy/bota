@@ -2,7 +2,7 @@
 
 use bota_proto::{HeroId, ItemId, SlotId, Team, Vec2};
 
-use crate::game::{AbilityBook, Entity, Inventory, Stacks};
+use crate::game::{AbilityBook, Entity, Inventory, Modifiers};
 
 /// What a fallen hero leaves behind until it stands up again.
 #[derive(Clone, Debug)]
@@ -11,8 +11,8 @@ pub struct Kept {
     pub book: AbilityBook,
     /// What it was carrying.
     pub bag: Inventory,
-    /// What it had gathered.
-    pub stacks: Stacks,
+    /// What it wore that lasts through death: what it had gathered.
+    pub modifiers: Modifiers,
 }
 
 /// A Town Portal Scroll being read by a seat's hero, and the sight it

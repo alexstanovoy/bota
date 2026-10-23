@@ -116,6 +116,18 @@ pub enum ModifierKind {
     Disarmed,
     /// Its passives do nothing, its auras included.
     Broken,
+    /// What the flesh heap has kept: one for every enemy hero that fell near
+    /// its bearer. Kept through death.
+    FleshHeap {
+        /// Heroes kept.
+        count: u32,
+    },
+    /// The souls the necromastery has gathered, those a feast took
+    /// included. Kept through death.
+    Souls {
+        /// Souls held.
+        count: u32,
+    },
     /// A building's backdoor protection, worn while it holds: it takes
     /// [`rules::BACKDOOR_DAMAGE_PCT`] percent of the damage that reaches it
     /// and mends what enemy blows took.
@@ -160,12 +172,34 @@ impl ModifierKind {
             ModifierKind::Broken => EffectId::BROKEN,
             ModifierKind::BackdoorProtection => EffectId::BACKDOOR_PROTECTION,
             ModifierKind::Fortified => EffectId::FORTIFIED,
+            ModifierKind::FleshHeap { .. } => EffectId::FLESH_HEAP,
+            ModifierKind::Souls { .. } => EffectId::SOULS,
             ModifierKind::Spell { ability, .. } => match spell_effect(ability) {
                 Some(effect) => effect,
                 None => panic!("a spell without a modifier left one"),
             },
             ModifierKind::Dismembered { .. } => EffectId::DISMEMBERED,
             ModifierKind::MeatShield { .. } => EffectId::MEAT_SHIELD,
+        }
+    }
+
+    /// The souls the necromastery holds, `count` of them.
+    pub const fn souls(count: u32) -> ModifierKind {
+        ModifierKind::Souls { count }
+    }
+
+    /// The flesh heap keeping `count` heroes.
+    pub const fn flesh_heap(count: u32) -> ModifierKind {
+        ModifierKind::FleshHeap { count }
+    }
+
+    /// The count the wire shows beside it, for a kind that keeps one.
+    pub const fn stacks(self) -> Option<u32> {
+        match self {
+            ModifierKind::Shadowraze { stacks } => Some(stacks as u32),
+            ModifierKind::MeatShield { amount } => Some(amount as u32),
+            ModifierKind::FleshHeap { count } | ModifierKind::Souls { count } => Some(count),
+            _ => None,
         }
     }
 

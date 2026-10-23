@@ -6,8 +6,6 @@ use bota_core::{
 };
 use bota_proto::{DamageKind, EffectId, Fixed, IdSpace, RegisteredId, registered};
 
-use crate::game::{StackKind, stack_effect_id};
-
 /// Each id of `space` the server defines, by `names[id]`, is registered under
 /// that name and live, and every live one is defined. A slot left in `names`
 /// for a retired id is its placeholder.
@@ -96,6 +94,8 @@ fn every_modifier() -> Vec<ModifierKind> {
         ModifierKind::MeatShield { amount: 8 },
         ModifierKind::BackdoorProtection,
         ModifierKind::Fortified,
+        ModifierKind::FleshHeap { count: 1 },
+        ModifierKind::Souls { count: 1 },
     ];
     for kind in &every {
         match kind {
@@ -121,6 +121,8 @@ fn every_modifier() -> Vec<ModifierKind> {
             | ModifierKind::Broken
             | ModifierKind::BackdoorProtection
             | ModifierKind::Fortified
+            | ModifierKind::FleshHeap { .. }
+            | ModifierKind::Souls { .. }
             | ModifierKind::Spell { .. } => {}
             ModifierKind::Dismembered { .. } | ModifierKind::MeatShield { .. } => {}
         }
@@ -142,9 +144,6 @@ fn every_effect_is_shown_under_its_registered_id() {
         .iter()
         .map(|kind| (kind.effect_id().0, variant_name(kind)))
         .collect();
-    for kind in StackKind::ALL {
-        shown.push((stack_effect_id(kind).0, variant_name(&kind)));
-    }
     shown.push((EffectId::FEASTING.0, "Feasting".to_string()));
     shown.push((EffectId::FEAST_LINGER.0, "FeastLinger".to_string()));
     shown.push((EffectId::FORTIFIED.0, "Fortified".to_string()));

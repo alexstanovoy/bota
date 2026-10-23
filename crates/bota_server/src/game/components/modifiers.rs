@@ -100,6 +100,35 @@ impl Modifiers {
         });
     }
 
+    /// The count a counted kind holds, `of` making that kind from a count:
+    /// zero while none is on.
+    pub fn count_of(&self, of: fn(u32) -> ModifierKind) -> u32 {
+        let like = std::mem::discriminant(&of(0));
+        self.active()
+            .find(|held| std::mem::discriminant(&held.kind) == like)
+            .and_then(|held| held.kind.stacks())
+            .unwrap_or(0)
+    }
+
+    /// Sets the count of a counted kind where it stands in the list: put on
+    /// last, untimed and the bearer's own, when none was on; taken off at
+    /// zero.
+    pub fn set_count(&mut self, of: fn(u32) -> ModifierKind, count: u32) {
+        let like = std::mem::discriminant(&of(0));
+        let at = self
+            .0
+            .iter()
+            .position(|held| std::mem::discriminant(&held.kind) == like);
+        match (at, count) {
+            (Some(at), 0) => {
+                self.0.remove(at);
+            }
+            (Some(at), _) => self.0[at].kind = of(count),
+            (None, 0) => {}
+            (None, _) => self.0.push(Modifier::new(of(count), None, None)),
+        }
+    }
+
     /// Takes off every modifier of one kind from one source, whatever there
     /// is of it.
     pub fn take(&mut self, like: ModifierKind, source: Option<Entity>) {

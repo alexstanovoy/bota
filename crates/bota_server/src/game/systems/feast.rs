@@ -4,7 +4,7 @@
 use bota_core::{Talent, kind_def, rules};
 use bota_proto::UnitKind;
 
-use crate::game::{Feast, FeastPhase, Fed, StackKind, World};
+use crate::game::{Feast, FeastPhase, Fed, World};
 
 use crate::engine::Entity;
 
@@ -106,18 +106,18 @@ impl World {
             } else {
                 0
             };
-        let mut held = self.stacks.get(caster).copied().unwrap_or_default();
+        let mut held = self.souls_of(caster);
         for (creep, _, other) in near.into_iter().take(room.min(rules::FEAST_PER_PERIOD)) {
             let souls = if creep {
                 rules::FEAST_SOULS_PER_UNIT
             } else {
                 per_hero
             };
-            held.gather(StackKind::Souls, souls);
+            held = held.saturating_add(souls);
             feast.fed.push(Fed { from: other, souls });
         }
         assert!(feast.fed.len() <= rules::FEAST_TARGETS[usize::from(feast.level)]);
-        self.stacks.insert(caster, held);
+        self.set_souls(caster, held);
     }
 
     /// The feast's haste is over: the souls of the enemies still standing
@@ -130,10 +130,8 @@ impl World {
             .map(|fed| fed.souls)
             .sum();
         feast.fed.retain(|fed| !self.alive(fed.from));
-        if let Some(held) = self.stacks.get_mut(caster) {
-            let left = held.of(StackKind::Souls).saturating_sub(standing);
-            held.set(StackKind::Souls, left);
-        }
+        let left = self.souls_of(caster).saturating_sub(standing);
+        self.set_souls(caster, left);
         if feast.fed.is_empty() {
             self.stop_lingering(caster);
             return;
@@ -146,10 +144,7 @@ impl World {
     /// What lingered is over: no more souls are held than the cap allows.
     fn stop_lingering(&mut self, caster: Entity) {
         self.feast.remove(caster);
-        let cap = self.soul_cap(caster);
-        if let Some(held) = self.stacks.get_mut(caster) {
-            let kept = held.of(StackKind::Souls).min(cap);
-            held.set(StackKind::Souls, kept);
-        }
+        let kept = self.souls_of(caster).min(self.soul_cap(caster));
+        self.set_souls(caster, kept);
     }
 }

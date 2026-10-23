@@ -8,7 +8,7 @@ use bota_core::{
 use crate::game::{
     ActionPhase, ActionState, CampHome, Command, Def, Entity, Errand, Event, Ground, Health,
     HitEffect, ItemStack, Lane, LaneAi, Level, MatchConfig, Modifier, Modifiers, NeutralAi, Orders,
-    Projectile, Seat, StackKind, Stats, TERRAIN_CELLS, Transform, UnitOrder, World, plan_radius,
+    Projectile, Seat, Stats, TERRAIN_CELLS, Transform, UnitOrder, World, plan_radius,
     tree_positions, wire_id,
 };
 use bota_proto::{
@@ -837,9 +837,7 @@ pub(crate) fn a_creep_at(world: &mut World, team: Team, at: Vec2) -> Entity {
 }
 
 pub(crate) fn hand_souls(world: &mut World, hero: Entity, many: u32) {
-    let mut kept = world.stacks.get(hero).copied().unwrap_or_default();
-    kept.set(StackKind::Souls, many);
-    world.stacks.insert(hero, kept);
+    world.set_souls(hero, many);
 }
 
 /// The standing structure at a spot, however it is guarded.
@@ -1253,8 +1251,5 @@ pub(crate) fn burns_on(events: &[Event], unit: Entity) -> Vec<i32> {
 }
 
 pub(crate) fn souls(world: &World, hero: Entity) -> u32 {
-    world
-        .stacks
-        .get(hero)
-        .map_or(0, |kept| kept.of(StackKind::Souls))
+    world.souls_of(hero)
 }

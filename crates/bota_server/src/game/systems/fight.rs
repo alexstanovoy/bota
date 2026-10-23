@@ -1,11 +1,12 @@
 //! Who stands and who is in reach, telling of blows, and clearing away what
 //! has fallen.
 
-use bota_core::{MAP2_ID, MAP2_TICK_CAP, kind_def, respawn_wait};
+use bota_core::{MAP2_ID, MAP2_TICK_CAP, effect_def, kind_def, respawn_wait};
 use bota_proto::{EventKind, Fixed, Team, UnitKind, Vec2};
 
 use crate::game::{
-    Entity, Event, EventVisibility, ItemStack, Kept, Landed, Missed, UnitOrder, World, wire_id,
+    Entity, Event, EventVisibility, ItemStack, Kept, Landed, Missed, Modifiers, UnitOrder, World,
+    wire_id,
 };
 
 impl World {
@@ -177,6 +178,22 @@ impl World {
         structure
     }
 
+    /// What a fallen hero keeps of the modifiers on it until it stands again:
+    /// those Dota does not take off on death.
+    fn kept_through_death(&self, entity: Entity) -> Modifiers {
+        Modifiers(
+            self.modifiers
+                .get(entity)
+                .into_iter()
+                .flat_map(|on_it| on_it.active())
+                .filter(|held| {
+                    effect_def(held.kind.effect_id()).is_some_and(|def| def.kept_through_death)
+                })
+                .copied()
+                .collect(),
+        )
+    }
+
     fn bury_seat(&mut self, entity: Entity, scroll_due: bool) {
         let mut fallen_hero_team = None;
         for index in 0..self.seats.len() {
@@ -192,7 +209,7 @@ impl World {
                 let kept = Kept {
                     book: self.abilities.remove(entity).unwrap_or_default(),
                     bag,
-                    stacks: self.stacks.remove(entity).unwrap_or_default(),
+                    modifiers: self.kept_through_death(entity),
                 };
                 self.seats[index].unit = None;
                 self.seats[index].kept = Some(kept);

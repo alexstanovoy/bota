@@ -7,8 +7,8 @@ use bota_core::{
 
 use crate::game::{
     AppliedModifier, AppliedModifiers, AppliedOrigin, AuraCx, Auras, Entity,
-    MAX_APPLIED_MODIFIERS_PER_UNIT, MAX_COMBINED_MODIFIER_SCALE, Place, Seat, Spots, StackKind,
-    World, aura_system, cooldown_after, cost_after,
+    MAX_APPLIED_MODIFIERS_PER_UNIT, MAX_COMBINED_MODIFIER_SCALE, Place, Seat, Spots, World,
+    aura_system, cooldown_after, cost_after,
 };
 use bota_proto::{
     AbilityId, AbilitySlot, DamageKind, Fixed, HeroId, ItemId, MapId, ModifierSpec, SlotId, Target,
@@ -103,9 +103,7 @@ fn amplified_requiem(ticks: u32) -> (World, Entity, Entity) {
     let target = world.spawn_unit(&MELEE_CREEP, Team::Dire, Vec2::from_ints(5300, 5000));
     world.settle();
     apply(&mut world, caster, spec(|s| s.magic_damage = 20_000), ticks);
-    let mut kept = world.stacks.get(caster).copied().unwrap_or_default();
-    kept.set(StackKind::Souls, 1);
-    world.stacks.insert(caster, kept);
+    world.set_souls(caster, 1);
     assert!(world.cast_requiem(caster, 0));
     let line = world
         .entities
