@@ -43,6 +43,7 @@ pub(crate) fn snapshot(expect: &Expect<'_>, view: &WorldView) -> Result<(), Sess
     snapshot_positions(expect.statics.metadata().terrain_cells, view)?;
     units(expect.statics.roster(), view)?;
     aggro(view)?;
+    projectiles(view)?;
     unique_dynamic_handles(view)?;
     players(expect.statics.roster(), view)?;
     felled_trees(expect.statics.trees().len(), view)?;
@@ -191,6 +192,17 @@ fn units(roster: &[Pick], view: &WorldView) -> Result<(), SessionError> {
                 unit: unit.id,
                 slot: slot.0,
             });
+        }
+    }
+    Ok(())
+}
+
+/// Projectiles naming visible units only, as their sources and their targets.
+fn projectiles(view: &WorldView) -> Result<(), SessionError> {
+    for shot in &view.projectiles {
+        for id in [shot.source, shot.target].into_iter().flatten() {
+            view.unit(id)
+                .ok_or(SessionError::UnknownProjectileUnit(id))?;
         }
     }
     Ok(())

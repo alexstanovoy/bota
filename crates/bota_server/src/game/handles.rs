@@ -253,6 +253,8 @@ fn view_ids(view: &mut WorldView, visit: &mut dyn FnMut(&mut EntityId)) {
     }
     for shot in &mut view.projectiles {
         visit(&mut shot.id);
+        shot.source.iter_mut().for_each(&mut *visit);
+        shot.target.iter_mut().for_each(&mut *visit);
     }
     for player in &mut view.players {
         player.unit.iter_mut().for_each(&mut *visit);

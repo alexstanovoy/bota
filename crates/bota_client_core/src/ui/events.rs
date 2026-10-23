@@ -145,8 +145,8 @@ impl App {
         }
     }
 
-    /// A hero letting an attack go: a plain missile that has just appeared
-    /// beside a hero of its side.
+    /// A hero letting an attack go: a plain missile that has just appeared,
+    /// thrown by a hero.
     pub(crate) fn launch_cues(&mut self) {
         let Some(view) = self.view() else {
             return;
@@ -163,12 +163,8 @@ impl App {
             if old {
                 continue;
             }
-            let near = |u: &&UnitView| {
-                let dx = u.pos.x.to_f32() - p.pos.x.to_f32();
-                let dy = u.pos.y.to_f32() - p.pos.y.to_f32();
-                u.kind == UnitKind::Hero && u.team == p.team && dx * dx + dy * dy < 160.0 * 160.0
-            };
-            if let Some(hero) = view.units.iter().find(near) {
+            let thrower = p.source.and_then(|id| view.unit(id));
+            if let Some(hero) = thrower.filter(|unit| unit.kind == UnitKind::Hero) {
                 let gain = if Some(hero.id) == ears { 0.7 } else { 0.4 };
                 launched.push((gain, (hero.pos.x.to_f32(), hero.pos.y.to_f32())));
             }

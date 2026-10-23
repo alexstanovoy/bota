@@ -411,3 +411,5 @@ variant PickPhase 3 Tactical {}
 field PickPhase::Tactical 0 left_ms: u32
 field ServerMsg::LobbyState 1 same_heroes: bool
 field ServerMsg::LobbyState 2 pick: PickPhase
+field ProjectileView 5 source: Option<EntityId>
+field ProjectileView 6 target: Option<EntityId>

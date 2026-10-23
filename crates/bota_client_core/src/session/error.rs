@@ -120,6 +120,9 @@ pub enum SessionError {
     UnknownAggroUnit(EntityId),
     /// An aggro entry of this unit held a timer past its rule's bound.
     AggroOutOfRange(EntityId),
+    /// A projectile named a unit, as its source or its target, absent from
+    /// the visible units.
+    UnknownProjectileUnit(EntityId),
     /// A tree index did not refer to static match trees.
     InvalidFelledTree(u32),
     /// Position displacement did not fit the wire vector type.
@@ -387,6 +390,11 @@ impl SessionError {
                     Id(*id)
                 )
             }
+            Self::UnknownProjectileUnit(id) => write!(
+                f,
+                "a snapshot projectile names {}, which is not a visible unit",
+                Id(*id)
+            ),
             Self::InvalidFelledTree(index) => write!(
                 f,
                 "snapshot felled tree index {index} is outside static tree list"

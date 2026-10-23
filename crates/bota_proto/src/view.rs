@@ -248,6 +248,9 @@ pub struct AggroView {
 
 /// A missile in flight, or what an ability shows where it stands, that the
 /// viewing team can see or launched itself.
+///
+/// Every id it names is one of [`WorldView::units`]: as in Dota, a missile
+/// shows who let it go and whom it homes on while the viewer sees them.
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct ProjectileView {
     /// Stable handle for this projectile.
@@ -260,6 +263,13 @@ pub struct ProjectileView {
     pub team: Team,
     /// Which ability it belongs to. Absent for a plain attack.
     pub ability: Option<AbilityId>,
+    /// Who let it go, or whose ability shows it. Absent when that unit is not
+    /// in the view.
+    pub source: Option<EntityId>,
+    /// Whom it homes on. Absent for one that flies along a line or stands
+    /// where it was put, and when that unit is not in the view. Last on the
+    /// wire.
+    pub target: Option<EntityId>,
 }
 
 /// The abilities and items of a seat whose hero is dead.

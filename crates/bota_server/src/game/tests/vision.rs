@@ -149,6 +149,45 @@ fn a_ranged_attack_puts_a_missile_where_a_side_can_see_it() {
 }
 
 #[test]
+fn a_missile_names_who_let_it_go_and_whom_it_homes_on_while_the_side_sees_them() {
+    // Dota's tracking missile shows whom it homes on and who let it go.
+    let mut world = World::new();
+    let archer = world.spawn_unit(&RANGED_CREEP, Team::Radiant, Vec2::from_ints(5000, 5000));
+    let mark = world.spawn_unit(&MELEE_CREEP, Team::Dire, Vec2::from_ints(5300, 5000));
+    world.settle();
+    let thrown = (0..40).any(|_| {
+        world.step();
+        !world.view_full().projectiles.is_empty()
+    });
+    assert!(thrown, "the archer lets a missile go");
+    // The other side's sight takes in the missile on the next tick.
+    world.step();
+    for side in [None, Some(Team::Radiant), Some(Team::Dire)] {
+        let view = side.map_or_else(|| world.view_full(), |team| world.view(team));
+        let shot = view.projectiles[0];
+        assert_eq!(shot.source, Some(wire_id(archer)), "{side:?}");
+        assert_eq!(shot.target, Some(wire_id(mark)), "{side:?}");
+    }
+    world.transform.get_mut(archer).expect("standing").pos = Vec2::from_ints(1000, 1000);
+    world.settle();
+    let view = world.view(Team::Dire);
+    assert!(
+        view.unit(wire_id(archer)).is_none(),
+        "the Dire side lost sight of it"
+    );
+    let shot = view.projectiles[0];
+    assert_eq!(
+        shot.source, None,
+        "so the missile does not say who let it go"
+    );
+    assert_eq!(
+        shot.target,
+        Some(wire_id(mark)),
+        "but still whom it homes on"
+    );
+}
+
+#[test]
 fn a_missile_is_seen_from_the_tick_it_is_thrown() {
     let mut world = World::new();
     world.spawn_unit(&RANGED_CREEP, Team::Radiant, Vec2::from_ints(5000, 5000));

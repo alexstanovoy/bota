@@ -46,7 +46,7 @@ impl World {
                 aggro.extend(self.project_aggro(viewer, entity, unit.kind));
                 units.push(unit);
             }
-            projectiles.extend(self.project_projectile(entity));
+            projectiles.extend(self.project_projectile(viewer, entity));
             if seen {
                 loot.extend(self.project_loot(entity));
             }
@@ -56,6 +56,10 @@ impl World {
             carried(entry.unit)
                 && entry.target.is_none_or(carried)
                 && entry.swing.is_none_or(|swing| carried(swing.target))
+        }));
+        debug_assert!(projectiles.iter().all(|shot| {
+            let carried = |id| units.binary_search_by_key(&id, |unit| unit.id).is_ok();
+            shot.source.is_none_or(carried) && shot.target.is_none_or(carried)
         }));
         let talents = self.project_talents(viewer, &units);
         WorldView {
@@ -271,28 +275,32 @@ impl World {
     }
 
     /// One missile, hook, mark, line of a requiem or Blood Grenade, or
-    /// nothing when the entity is none of them.
-    fn project_projectile(&self, entity: Entity) -> Option<ProjectileView> {
-        let ability = if self.projectile.get(entity).is_some() {
-            None
+    /// nothing when the entity is none of them. Who let it go and whom it
+    /// homes on are told while the viewer's units carry them.
+    fn project_projectile(&self, viewer: Option<Team>, entity: Entity) -> Option<ProjectileView> {
+        let (ability, source, target) = if let Some(missile) = self.projectile.get(entity) {
+            (None, missile.source, Some(missile.target))
         } else if let Some(mark) = self.mark.get(entity) {
-            Some(mark.ability)
-        } else if self.requiem_line.get(entity).is_some() {
-            Some(AbilityId::REQUIEM)
-        } else if self.hook.get(entity).is_some() {
-            Some(AbilityId::MEAT_HOOK)
-        } else if self.grenade.get(entity).is_some() {
-            Some(AbilityId::THROW_GRENADE)
+            (Some(mark.ability), Some(mark.owner), None)
+        } else if let Some(line) = self.requiem_line.get(entity) {
+            (Some(AbilityId::REQUIEM), Some(line.owner), None)
+        } else if let Some(hook) = self.hook.get(entity) {
+            (Some(AbilityId::MEAT_HOOK), Some(hook.owner), None)
         } else {
-            return None;
+            let grenade = self.grenade.get(entity)?;
+            (Some(AbilityId::THROW_GRENADE), Some(grenade.owner), None)
         };
         let at = self.transform.get(entity)?;
+        let told =
+            |unit: Option<Entity>| unit.filter(|unit| self.carried(viewer, *unit)).map(wire_id);
         Some(ProjectileView {
             id: wire_id(entity),
             pos: at.pos,
             facing: at.facing,
             team: self.team.get(entity).copied().unwrap_or(Team::Neutral),
             ability,
+            source: told(source),
+            target: told(target),
         })
     }
 

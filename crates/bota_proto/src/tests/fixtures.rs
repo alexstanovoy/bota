@@ -156,6 +156,8 @@ pub fn projectile() -> ProjectileView {
         facing: Angle { brads: 32768 },
         team: Team::Radiant,
         ability: Some(AbilityId(2)),
+        source: Some(entity(1)),
+        target: Some(entity(2)),
     }
 }
 
