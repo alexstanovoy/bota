@@ -97,3 +97,25 @@ pub enum EventKind {
         team: Team,
     },
 }
+
+impl EventKind {
+    /// Calls `visit` on every entity handle the event carries.
+    pub fn visit_ids(&mut self, visit: &mut dyn FnMut(&mut EntityId)) {
+        match self {
+            EventKind::Damaged { source, target, .. }
+            | EventKind::Missed { source, target }
+            | EventKind::Healed { source, target, .. } => {
+                source.iter_mut().for_each(&mut *visit);
+                visit(target);
+            }
+            EventKind::Died { unit, killer, .. } => {
+                visit(unit);
+                killer.iter_mut().for_each(visit);
+            }
+            EventKind::AbilityCast { caster: unit, .. }
+            | EventKind::LevelUp { unit, .. }
+            | EventKind::StructureDestroyed { unit, .. } => visit(unit),
+            EventKind::ItemBought { .. } => {}
+        }
+    }
+}

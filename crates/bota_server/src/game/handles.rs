@@ -112,7 +112,7 @@ impl Handles {
         if view.tick.is_multiple_of(SWEEP_TICKS) {
             side.sweep(world, view.tick);
         }
-        side.rename(view.tick, founding, |visit| view_ids(view, visit));
+        side.rename(view.tick, founding, |visit| view.visit_ids(visit));
         view.units.sort_unstable_by_key(|unit| unit.id);
         view.projectiles.sort_unstable_by_key(|shot| shot.id);
         view.loot.sort_unstable_by_key(|loot| loot.id);
@@ -124,7 +124,7 @@ impl Handles {
         let founding = self.founding;
         if let Some(side) = self.side_mut(team) {
             side.rename(tick, founding, |visit| {
-                events.iter_mut().for_each(|e| event_ids(e, visit))
+                events.iter_mut().for_each(|e| e.visit_ids(visit))
             });
         }
     }
@@ -243,54 +243,6 @@ const fn name(name: u32) -> EntityId {
     EntityId {
         idx: name,
         generation: NAME_GENERATION,
-    }
-}
-
-/// Walks every entity handle a view carries.
-fn view_ids(view: &mut WorldView, visit: &mut dyn FnMut(&mut EntityId)) {
-    for unit in &mut view.units {
-        visit(&mut unit.id);
-    }
-    for shot in &mut view.projectiles {
-        visit(&mut shot.id);
-        shot.source.iter_mut().for_each(&mut *visit);
-        shot.target.iter_mut().for_each(&mut *visit);
-    }
-    for player in &mut view.players {
-        player.unit.iter_mut().for_each(&mut *visit);
-    }
-    for loot in &mut view.loot {
-        visit(&mut loot.id);
-    }
-    for entry in &mut view.aggro {
-        visit(&mut entry.unit);
-        entry.target.iter_mut().for_each(&mut *visit);
-        if let Some(swing) = &mut entry.swing {
-            visit(&mut swing.target);
-        }
-    }
-    for teleport in &mut view.teleports {
-        visit(&mut teleport.building);
-    }
-}
-
-/// Walks every entity handle an event carries.
-fn event_ids(event: &mut EventKind, visit: &mut dyn FnMut(&mut EntityId)) {
-    match event {
-        EventKind::Damaged { source, target, .. }
-        | EventKind::Missed { source, target }
-        | EventKind::Healed { source, target, .. } => {
-            source.iter_mut().for_each(&mut *visit);
-            visit(target);
-        }
-        EventKind::Died { unit, killer, .. } => {
-            visit(unit);
-            killer.iter_mut().for_each(visit);
-        }
-        EventKind::AbilityCast { caster: unit, .. }
-        | EventKind::LevelUp { unit, .. }
-        | EventKind::StructureDestroyed { unit, .. } => visit(unit),
-        EventKind::ItemBought { .. } => {}
     }
 }
 

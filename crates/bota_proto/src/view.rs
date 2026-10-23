@@ -498,6 +498,41 @@ pub struct WorldView {
 }
 
 impl WorldView {
+    /// Calls `visit` on every entity handle the view carries, those of its
+    /// skipped ticks' events included: the one walk that puts a side's own
+    /// names into a view, so a field that adds a handle is walked here.
+    pub fn visit_ids(&mut self, visit: &mut dyn FnMut(&mut EntityId)) {
+        for unit in &mut self.units {
+            visit(&mut unit.id);
+        }
+        for shot in &mut self.projectiles {
+            visit(&mut shot.id);
+            shot.source.iter_mut().for_each(&mut *visit);
+            shot.target.iter_mut().for_each(&mut *visit);
+        }
+        for player in &mut self.players {
+            player.unit.iter_mut().for_each(&mut *visit);
+        }
+        for loot in &mut self.loot {
+            visit(&mut loot.id);
+        }
+        for entry in &mut self.aggro {
+            visit(&mut entry.unit);
+            entry.target.iter_mut().for_each(&mut *visit);
+            if let Some(swing) = &mut entry.swing {
+                visit(&mut swing.target);
+            }
+        }
+        for teleport in &mut self.teleports {
+            visit(&mut teleport.building);
+        }
+        for skipped in &mut self.skipped_ticks {
+            for event in &mut skipped.events {
+                event.visit_ids(visit);
+            }
+        }
+    }
+
     /// The unit with this id, if it is in [`units`](Self::units).
     pub fn unit(&self, id: EntityId) -> Option<&UnitView> {
         let at = self.units.binary_search_by_key(&id, |u| u.id).ok()?;
