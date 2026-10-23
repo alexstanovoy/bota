@@ -77,9 +77,10 @@ impl World {
             .is_some()
     }
 
-    /// Whether an entity is broken: its own passives do nothing. What it
-    /// hands out, the blows it lays strikes on and the throes of its death
-    /// stop; what others put on it works as before.
+    /// Whether an entity is broken: its own passives do nothing. The auras a
+    /// Break silences, the blows it lays strikes on and the throes of its
+    /// death stop; a building's aura and what others put on it work as
+    /// before.
     pub fn broken(&self, entity: Entity) -> bool {
         self.active_modifier(entity, ModifierKind::Broken).is_some()
     }

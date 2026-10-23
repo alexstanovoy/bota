@@ -226,13 +226,13 @@ pub const MELEE_CREEP: UnitDef = UnitDef {
 
 /// What a flagbearer mends in the creeps marching with it, and the magic
 /// resistance it grows into with the upgrade intervals it spawned after:
-/// Dota's `flagbearer_creep_aura_effect`.
+/// Dota's `flagbearer_creep_aura_effect`, a passive a Break silences.
 const FLAGBEARER_AURAS: [Aura; 1] = [Aura {
     whom: Whom::Allies,
     reaches: Reach::Units,
     radius: rules::FLAGBEARER_AURA_RADIUS,
     linger: rules::AURA_LINGER_TICKS,
-    breakable: false,
+    breakable: true,
     seen_only: false,
     water: false,
     modifier: AuraModifier::Kind(ModifierKind::Inspired {

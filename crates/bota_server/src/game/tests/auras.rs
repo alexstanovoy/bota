@@ -163,6 +163,42 @@ fn a_flagbearer_inspires_the_creeps_of_its_own_side_around_it() {
 }
 
 #[test]
+fn a_break_silences_a_flagbearers_inspiration_and_leaves_a_towers_protection() {
+    // Dota's flagbearer_creep_aura_effect is a passive a Break turns off;
+    // a tower's aura is the building's, no ability.
+    let mut world = World::new();
+    let flag = world.spawn_unit(
+        &FLAGBEARER_CREEP,
+        Team::Radiant,
+        Vec2::from_ints(5000, 5000),
+    );
+    let creep = world.spawn_unit(&MELEE_CREEP, Team::Radiant, Vec2::from_ints(5300, 5000));
+    let tower = world.spawn_unit(tower_def(1), Team::Radiant, Vec2::from_ints(8000, 5000));
+    let hero = hero_at(&mut world, Vec2::from_ints(8400, 5000));
+    world.settle();
+    world.step();
+    assert!(carries(&world, creep, INSPIRED_EFFECT), "inspired at first");
+    assert!(carries(&world, hero, GUARDED_EFFECT), "and guarded");
+    let broken = 4 * rules::AURA_LINGER_TICKS;
+    put_on(&mut world, flag, ModifierKind::Broken, broken);
+    put_on(&mut world, tower, ModifierKind::Broken, broken);
+    run(&mut world, rules::AURA_LINGER_TICKS + 1);
+    assert!(
+        !carries(&world, creep, INSPIRED_EFFECT),
+        "broken, the flagbearer inspires nobody, and what it laid runs out"
+    );
+    assert!(
+        carries(&world, hero, GUARDED_EFFECT),
+        "a broken tower guards as before"
+    );
+    run(&mut world, broken);
+    assert!(
+        carries(&world, creep, INSPIRED_EFFECT),
+        "and the inspiration is back once the break lifts"
+    );
+}
+
+#[test]
 fn a_flagbearer_spawned_later_lends_its_creeps_more_magic_resistance() {
     // Three upgrade intervals in, the inspiration is worth 12 %, and it
     // multiplies with what the creep already shrugs off.
