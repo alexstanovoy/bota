@@ -2,9 +2,9 @@
 //! health, regeneration, armor and sight, and the names a player reads.
 
 use bota_core::{map_of, rules, unit_name};
-use bota_proto::{Fixed, MapId, Team, UnitKind};
+use bota_proto::{Fixed, MapId, ModifierSpec, Team, UnitKind};
 
-use crate::game::World;
+use crate::game::{ModifierDuration, SpawnModifier, SpawnSelector, SpawnTarget, World};
 
 #[test]
 fn every_building_stands_as_the_unit_table_has_it() {
@@ -38,8 +38,40 @@ fn every_building_stands_as_the_unit_table_has_it() {
         };
         assert_eq!(stats.armor, Fixed::from_int(armor), "{name}");
         assert_eq!(regen, per_second, "{name}");
-        assert_eq!(unit_name(kind, team, hp), name);
+        let pos = world.transform.get(entity).expect("standing").pos;
+        assert_eq!(unit_name(world.map, kind, team, pos), name);
         seen += 1;
     }
     assert_eq!(seen, 2 + 12 + 14);
+}
+
+#[test]
+fn a_barracks_is_named_by_where_it_stands_whatever_health_the_match_gives_it() {
+    let mut world = World::on_map(map_of(MapId(0)));
+    world.spawn_modifiers = vec![SpawnModifier {
+        select: SpawnSelector {
+            team: None,
+            targets: vec![SpawnTarget::Kind(UnitKind::Barracks)],
+        },
+        spec: ModifierSpec {
+            max_hp: 17_000,
+            ..ModifierSpec::NOMINAL
+        },
+        duration: ModifierDuration::MatchLong,
+    }];
+    world.apply_spawn_modifiers_to_all();
+    world.settle();
+    let view = world.view(Team::Dire);
+    let mut names: Vec<&str> = view
+        .units
+        .iter()
+        .filter(|unit| unit.kind == UnitKind::Barracks)
+        .map(|unit| unit_name(world.map, unit.kind, unit.team, unit.pos))
+        .collect();
+    names.sort_unstable();
+    assert_eq!(
+        names,
+        [["Melee Barracks"; 6], ["Ranged Barracks"; 6]].concat(),
+        "both sides' barracks, read off a view"
+    );
 }

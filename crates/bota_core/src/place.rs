@@ -48,6 +48,21 @@ pub fn tower_tier_at(map: &MapDef, team: Team, pos: Vec2) -> Option<u8> {
         .map(|&(_, tier, _)| tier)
 }
 
+/// Whether the barracks of a team standing exactly at a position, if one
+/// does, is the one that feeds the ranged creeps. A barracks' health is not a
+/// way to tell either, a match may raise it.
+pub fn barracks_ranged_at(map: &MapDef, team: Team, pos: Vec2) -> Option<bool> {
+    let table = match team {
+        Team::Radiant => map.barracks[0],
+        Team::Dire => map.barracks[1],
+        Team::Neutral => return None,
+    };
+    table
+        .iter()
+        .find(|&&(_, _, at)| at == pos)
+        .map(|&(_, ranged, _)| ranged)
+}
+
 /// The physical centerline of a lane, Radiant base first: from the Radiant
 /// Ancient through the lane's corners to the Dire Ancient, and through the
 /// lane's towers too on a map whose lanes run through them.

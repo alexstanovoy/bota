@@ -4,9 +4,9 @@
 //! instead of matching on the kind, so a new kind is one proto variant and
 //! one row.
 
-use bota_proto::{Team, UnitKind};
+use bota_proto::{Team, UnitKind, Vec2};
 
-use crate::{AttackClass, PriorityOrder, TargetClass, rules, unit};
+use crate::{AttackClass, MapDef, PriorityOrder, TargetClass, barracks_ranged_at, rules};
 
 /// The row of one kind of unit.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -186,20 +186,16 @@ pub const fn kind_def(kind: UnitKind) -> &'static KindDef {
     &UNIT_KINDS[row(kind)]
 }
 
-/// Whether a unit is the barracks that feeds the ranged creeps, told from
-/// the melee one by its maximum health.
-pub fn is_ranged_barracks(kind: UnitKind, max_hp: i32) -> bool {
-    kind == UnitKind::Barracks && max_hp == unit::BARRACKS_RANGED.max_hp
-}
-
-/// What the game calls one unit, from its kind, its side and its maximum
-/// health: the barracks that feeds the ranged creeps is told from the one
-/// that feeds the melee by its health, and each Ancient is its side's own.
-pub fn unit_name(kind: UnitKind, team: Team, max_hp: i32) -> &'static str {
+/// What the game calls one unit on a map, from its kind, its side and where
+/// it stands: the barracks that feeds the ranged creeps is the one the map
+/// puts there, and each Ancient is its side's own.
+pub fn unit_name(map: &MapDef, kind: UnitKind, team: Team, pos: Vec2) -> &'static str {
     match (kind, team) {
         (UnitKind::Ancient, Team::Radiant) => "Radiant's Ancient",
         (UnitKind::Ancient, Team::Dire) => "Dire's Ancient",
-        (UnitKind::Barracks, _) if is_ranged_barracks(kind, max_hp) => "Ranged Barracks",
+        (UnitKind::Barracks, _) if barracks_ranged_at(map, team, pos) == Some(true) => {
+            "Ranged Barracks"
+        }
         (UnitKind::Barracks, _) => "Melee Barracks",
         _ => kind_def(kind).name,
     }
