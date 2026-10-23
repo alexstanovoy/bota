@@ -63,8 +63,15 @@ pub fn derive_stats(cx: StatsCx<'_>) {
         let Some(Def(kind)) = def.get(entity) else {
             continue;
         };
+        let held = |of: fn(u32) -> ModifierKind| {
+            modifiers.get(entity).map_or(0, |on_it| on_it.count_of(of))
+        };
         let levels = level.get(entity).map_or(0, |l| i32::from(l.0.max(1) - 1));
-        let steps = upgrades.get(entity).map_or(0, |u| u.0 as i32);
+        // A lane creep's upgrades come with its spawn; a neutral's are its
+        // hidden neutral upgrade.
+        let raised_by =
+            upgrades.get(entity).map_or(0, |u| u.0) + held(ModifierKind::neutral_upgrade);
+        let steps = i32::try_from(raised_by).unwrap_or(i32::MAX);
         let mut now = raised(kind, levels, steps, night);
         if let Some(bonus) = bonus.get(entity) {
             now.max_hp += Fixed::from_int(bonus.max_hp);
@@ -88,9 +95,6 @@ pub fn derive_stats(cx: StatsCx<'_>) {
         if let Some(carried) = carried {
             add_carried(&mut now, &carried);
         }
-        let held = |of: fn(u32) -> ModifierKind| {
-            modifiers.get(entity).map_or(0, |on_it| on_it.count_of(of))
-        };
         if let Some(book) = abilities.get(entity) {
             now.attributes +=
                 Attributes::all(rules::ATTRIBUTE_BONUS_POINTS * i32::from(book.attribute_bonus));
@@ -295,6 +299,7 @@ fn add_modifiers(now: &mut Stats, on_it: &Modifiers, base_armor: Fixed, hero: bo
             | ModifierKind::Broken
             | ModifierKind::BackdoorProtection
             | ModifierKind::TimedLife
+            | ModifierKind::NeutralUpgrade { .. }
             | ModifierKind::FleshHeap { .. }
             | ModifierKind::Souls { .. }
             | ModifierKind::Feasting { .. }

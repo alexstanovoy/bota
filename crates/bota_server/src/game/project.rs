@@ -1,6 +1,6 @@
 //! The world as a side is allowed to see it.
 
-use bota_core::{ModifierKind, ability_mana_cost, kind_def, phase_ticks_left, rules};
+use bota_core::{ModifierKind, ability_mana_cost, effect_def, kind_def, phase_ticks_left, rules};
 use bota_proto::{
     AbilityId, AbilityView, AggroView, CastView, EffectId, EffectView, Fixed, PlayerView,
     ProjectileView, StatusFlags, SwingView, TalentSlot, TalentView, Talents, Team, UnitKind,
@@ -526,8 +526,8 @@ fn ability_views(book: &crate::game::AbilityBook, mana_rate_bp: i32) -> Vec<Abil
 }
 
 impl World {
-    /// Everything showing on one entity: its active modifiers but the rot,
-    /// and whether it is an illusion.
+    /// Everything showing on one entity: its active modifiers but the rot
+    /// and those Dota hides, and whether it is an illusion.
     fn effects_on(&self, entity: Entity) -> Vec<EffectView> {
         let mut on_it: Vec<EffectView> = self
             .modifiers
@@ -535,6 +535,7 @@ impl World {
             .into_iter()
             .flat_map(|on_it| on_it.active())
             .filter(|held| !matches!(held.kind, ModifierKind::Rot { .. }))
+            .filter(|held| effect_def(held.kind.effect_id()).is_none_or(|def| !def.hidden))
             .map(|held| EffectView {
                 id: held.kind.effect_id(),
                 ticks_left: held.ticks_left,

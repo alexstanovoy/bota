@@ -203,6 +203,7 @@ effect 58 live Dismembered
 effect 59 live BackdoorProtection
 effect 60 live Illusion
 effect 61 live TimedLife
+effect 62 live NeutralUpgrade
 
 neutral 0 live Kobold
 neutral 1 live Kobold Soldier

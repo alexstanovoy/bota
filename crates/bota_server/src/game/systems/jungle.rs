@@ -6,7 +6,7 @@ use bota_core::{
 };
 use bota_proto::{Team, UnitKind, Vec2};
 
-use crate::game::{Def, Entity, Landed, Purpose, Spots, UnitOrder, World};
+use crate::game::{Entity, Landed, Purpose, Spots, UnitOrder, World};
 
 impl World {
     /// Fills every unblocked camp on the minute mark: a dry camp with a
@@ -144,12 +144,7 @@ impl World {
         }
         let entities = self.take_entity_snapshot();
         for entity in entities.iter().copied() {
-            let Some(Def(def)) = self.def.get(entity).copied() else {
-                continue;
-            };
-            if self.neutral.get(entity).is_some() {
-                self.set_upgrades(entity, def, now);
-            }
+            self.set_neutral_upgrades(entity, now);
         }
         self.recycle_entity_snapshot(entities);
     }

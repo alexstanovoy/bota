@@ -18,6 +18,9 @@ pub struct EffectDef {
     /// Whether a hero keeps it through death, as Dota keeps a modifier that is
     /// not removed on death: what it has gathered.
     pub kept_through_death: bool,
+    /// Whether no client is ever told of it, as Dota hides a modifier: its
+    /// worth shows only in the stats of whatever wears it.
+    pub hidden: bool,
 }
 
 /// How many effect ids the protocol has ever handed out, retired ones
@@ -31,6 +34,7 @@ const fn buff(name: &'static str) -> EffectDef {
         retired: false,
         dispellable: false,
         kept_through_death: false,
+        hidden: false,
     }
 }
 
@@ -49,6 +53,14 @@ const fn gathered(name: &'static str) -> EffectDef {
     }
 }
 
+/// A modifier no client is told of.
+const fn hidden(name: &'static str) -> EffectDef {
+    EffectDef {
+        hidden: true,
+        ..buff(name)
+    }
+}
+
 /// A buff a basic dispel takes off.
 const fn fleeting(name: &'static str) -> EffectDef {
     EffectDef {
@@ -58,7 +70,7 @@ const fn fleeting(name: &'static str) -> EffectDef {
 }
 
 /// Every effect, indexed by [`EffectId`].
-pub const EFFECTS: [EffectDef; 62] = [
+pub const EFFECTS: [EffectDef; 63] = [
     EffectDef {
         retired: true,
         ..buff("Haste")
@@ -124,6 +136,7 @@ pub const EFFECTS: [EffectDef; 62] = [
     buff("BackdoorProtection"),
     buff("Illusion"),
     buff("TimedLife"),
+    hidden("NeutralUpgrade"),
 ];
 
 /// What one effect is, or nothing if the id is retired or was never handed

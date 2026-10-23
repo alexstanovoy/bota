@@ -89,7 +89,10 @@ impl World {
         ) else {
             return;
         };
-        let steps = self.upgrades.get(dead).map_or(0, |upgrades| upgrades.0);
+        let steps = self
+            .modifiers
+            .get(dead)
+            .map_or(0, |on_it| on_it.count_of(ModifierKind::neutral_upgrade));
         for _ in 0..at_level(&count, level) {
             let shard = self.spawn_neutral(kind, at, home.camp, steps);
             self.shape_shard(

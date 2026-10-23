@@ -325,6 +325,9 @@ impl EffectId {
     /// A unit that stands for a while, a ward or what a spell called up
     /// (`modifier_kill`): `ticks_left` until it is gone.
     pub const TIMED_LIFE: EffectId = EffectId(61);
+    /// Dota's hidden `neutral_upgrade` modifier, which raises a neutral with
+    /// the clock. Never on the wire: its worth shows in the neutral's stats.
+    pub const NEUTRAL_UPGRADE: EffectId = EffectId(62);
 }
 
 /// An index into a unit's ability slots, as listed in

@@ -158,6 +158,10 @@ pub struct NeutralDef {
     pub unit: &'static str,
     /// What it can do, in slot order.
     pub abilities: &'static [NeutralAbility],
+    /// What it carries in no slot: Dota's `neutral_upgrade`, an ability of
+    /// the attribute kind its HUD never shows, whose hidden modifier raises
+    /// the neutral with the clock. Absent for what does not grow.
+    pub innate: Option<NeutralAbility>,
     /// The plain form it spawns with.
     pub def: UnitDef,
 }
@@ -212,6 +216,7 @@ const fn neutral(
         name,
         unit,
         abilities,
+        innate: Some(NeutralAbility::NeutralUpgrade),
         def,
     }
 }
@@ -222,7 +227,7 @@ pub const NEUTRALS: [NeutralDef; 47] = [
         NeutralKind::Kobold,
         "Kobold",
         "npc_dota_neutral_kobold",
-        &[A::ProspectingAura, A::NeutralUpgrade],
+        &[A::ProspectingAura],
         UnitDef {
             max_hp: 240,
             hp_regen: regen(5),
@@ -253,7 +258,7 @@ pub const NEUTRALS: [NeutralDef; 47] = [
         NeutralKind::KoboldTunneler,
         "Kobold Soldier",
         "npc_dota_neutral_kobold_tunneler",
-        &[A::StealWeapon, A::NeutralUpgrade],
+        &[A::StealWeapon],
         UnitDef {
             max_hp: 325,
             hp_regen: regen(5),
@@ -284,7 +289,7 @@ pub const NEUTRALS: [NeutralDef; 47] = [
         NeutralKind::KoboldTaskmaster,
         "Kobold Foreman",
         "npc_dota_neutral_kobold_taskmaster",
-        &[A::SpeedAura, A::NeutralUpgrade],
+        &[A::SpeedAura],
         UnitDef {
             max_hp: 400,
             hp_regen: regen(5),
@@ -315,7 +320,7 @@ pub const NEUTRALS: [NeutralDef; 47] = [
         NeutralKind::ForestTrollBerserker,
         "Hill Troll Berserker",
         "npc_dota_neutral_forest_troll_berserker",
-        &[A::Break, A::Piercing, A::NeutralUpgrade],
+        &[A::Break, A::Piercing],
         UnitDef {
             max_hp: 500,
             hp_regen: regen(5),
@@ -346,12 +351,7 @@ pub const NEUTRALS: [NeutralDef; 47] = [
         NeutralKind::ForestTrollHighPriest,
         "Hill Troll Priest",
         "npc_dota_neutral_forest_troll_high_priest",
-        &[
-            A::Heal,
-            A::HealAmplificationAura,
-            A::Piercing,
-            A::NeutralUpgrade,
-        ],
+        &[A::Heal, A::HealAmplificationAura, A::Piercing],
         UnitDef {
             max_hp: 450,
             hp_regen: regen(5),
@@ -382,7 +382,7 @@ pub const NEUTRALS: [NeutralDef; 47] = [
         NeutralKind::GnollAssassin,
         "Vhoul Assassin",
         "npc_dota_neutral_gnoll_assassin",
-        &[A::EnvenomedWeapon, A::Piercing, A::NeutralUpgrade],
+        &[A::EnvenomedWeapon, A::Piercing],
         UnitDef {
             max_hp: 400,
             hp_regen: regen(5),
@@ -413,7 +413,7 @@ pub const NEUTRALS: [NeutralDef; 47] = [
         NeutralKind::FelBeast,
         "Fell Spirit",
         "npc_dota_neutral_fel_beast",
-        &[A::Vex, A::NeutralUpgrade],
+        &[A::Vex],
         UnitDef {
             max_hp: 400,
             hp_regen: regen(5),
@@ -444,7 +444,7 @@ pub const NEUTRALS: [NeutralDef; 47] = [
         NeutralKind::Ghost,
         "Ghost",
         "npc_dota_neutral_ghost",
-        &[A::FrostAttack, A::Piercing, A::NeutralUpgrade],
+        &[A::FrostAttack, A::Piercing],
         UnitDef {
             max_hp: 500,
             hp_regen: regen(5),
@@ -475,7 +475,7 @@ pub const NEUTRALS: [NeutralDef; 47] = [
         NeutralKind::HarpyScout,
         "Harpy Scout",
         "npc_dota_neutral_harpy_scout",
-        &[A::TakeOff, A::Piercing, A::NeutralUpgrade],
+        &[A::TakeOff, A::Piercing],
         UnitDef {
             max_hp: 400,
             hp_regen: regen(5),
@@ -506,7 +506,7 @@ pub const NEUTRALS: [NeutralDef; 47] = [
         NeutralKind::HarpyStorm,
         "Harpy Stormcrafter",
         "npc_dota_neutral_harpy_storm",
-        &[A::ChainLightning, A::Piercing, A::NeutralUpgrade],
+        &[A::ChainLightning, A::Piercing],
         UnitDef {
             max_hp: 500,
             hp_regen: regen(5),
@@ -537,7 +537,7 @@ pub const NEUTRALS: [NeutralDef; 47] = [
         NeutralKind::CentaurOutrunner,
         "Centaur Courser",
         "npc_dota_neutral_centaur_outrunner",
-        &[A::CloakAura, A::NeutralUpgrade],
+        &[A::CloakAura],
         UnitDef {
             max_hp: 350,
             hp_regen: regen(5),
@@ -568,7 +568,7 @@ pub const NEUTRALS: [NeutralDef; 47] = [
         NeutralKind::CentaurKhan,
         "Centaur Conqueror",
         "npc_dota_neutral_centaur_khan",
-        &[A::WarStomp, A::NeutralUpgrade],
+        &[A::WarStomp],
         UnitDef {
             max_hp: 1100,
             hp_regen: regen(10),
@@ -599,7 +599,7 @@ pub const NEUTRALS: [NeutralDef; 47] = [
         NeutralKind::GiantWolf,
         "Giant Wolf",
         "npc_dota_neutral_giant_wolf",
-        &[A::Intimidate, A::NeutralUpgrade],
+        &[A::Intimidate],
         UnitDef {
             max_hp: 500,
             hp_regen: regen(5),
@@ -630,7 +630,7 @@ pub const NEUTRALS: [NeutralDef; 47] = [
         NeutralKind::AlphaWolf,
         "Alpha Wolf",
         "npc_dota_neutral_alpha_wolf",
-        &[A::CriticalStrike, A::PackleadersAura, A::NeutralUpgrade],
+        &[A::CriticalStrike, A::PackleadersAura],
         UnitDef {
             max_hp: 600,
             hp_regen: regen(5),
@@ -661,7 +661,7 @@ pub const NEUTRALS: [NeutralDef; 47] = [
         NeutralKind::SatyrTrickster,
         "Satyr Banisher",
         "npc_dota_neutral_satyr_trickster",
-        &[A::Purge, A::NeutralUpgrade],
+        &[A::Purge],
         UnitDef {
             max_hp: 300,
             hp_regen: regen(5),
@@ -692,7 +692,7 @@ pub const NEUTRALS: [NeutralDef; 47] = [
         NeutralKind::SatyrSoulstealer,
         "Satyr Mindstealer",
         "npc_dota_neutral_satyr_soulstealer",
-        &[A::ManaBurn, A::ManaAura, A::NeutralUpgrade],
+        &[A::ManaBurn, A::ManaAura],
         UnitDef {
             max_hp: 600,
             hp_regen: regen(5),
@@ -723,7 +723,7 @@ pub const NEUTRALS: [NeutralDef; 47] = [
         NeutralKind::SatyrHellcaller,
         "Satyr Tormenter",
         "npc_dota_neutral_satyr_hellcaller",
-        &[A::Shockwave, A::UnholyAura, A::NeutralUpgrade],
+        &[A::Shockwave, A::UnholyAura],
         UnitDef {
             max_hp: 1100,
             hp_regen: regen(10),
@@ -754,7 +754,7 @@ pub const NEUTRALS: [NeutralDef; 47] = [
         NeutralKind::OgreMauler,
         "Ogre Bruiser",
         "npc_dota_neutral_ogre_mauler",
-        &[A::OgreSmash, A::NeutralUpgrade],
+        &[A::OgreSmash],
         UnitDef {
             max_hp: 800,
             hp_regen: regen(5),
@@ -785,7 +785,7 @@ pub const NEUTRALS: [NeutralDef; 47] = [
         NeutralKind::OgreMagi,
         "Ogre Frostmage",
         "npc_dota_neutral_ogre_magi",
-        &[A::IceArmor, A::NeutralUpgrade],
+        &[A::IceArmor],
         UnitDef {
             max_hp: 600,
             hp_regen: regen(5),
@@ -816,7 +816,7 @@ pub const NEUTRALS: [NeutralDef; 47] = [
         NeutralKind::MudGolem,
         "Mud Golem",
         "npc_dota_neutral_mud_golem",
-        &[A::HurlBoulder, A::ShardSplit, A::NeutralUpgrade],
+        &[A::HurlBoulder, A::ShardSplit],
         UnitDef {
             max_hp: 750,
             hp_regen: regen(5),
@@ -847,7 +847,7 @@ pub const NEUTRALS: [NeutralDef; 47] = [
         NeutralKind::MudGolemSplit,
         "Shard Golem",
         "npc_dota_neutral_mud_golem_split",
-        &[A::HurlBoulder, A::NeutralUpgrade],
+        &[A::HurlBoulder],
         UnitDef {
             max_hp: 250,
             hp_regen: regen(5),
@@ -878,7 +878,7 @@ pub const NEUTRALS: [NeutralDef; 47] = [
         NeutralKind::PolarFurbolgChampion,
         "Hellbear",
         "npc_dota_neutral_polar_furbolg_champion",
-        &[A::SwiftnessAura, A::DeathThroeRush, A::NeutralUpgrade],
+        &[A::SwiftnessAura, A::DeathThroeRush],
         UnitDef {
             max_hp: 700,
             hp_regen: regen(5),
@@ -909,7 +909,7 @@ pub const NEUTRALS: [NeutralDef; 47] = [
         NeutralKind::PolarFurbolgUrsaWarrior,
         "Hellbear Smasher",
         "npc_dota_neutral_polar_furbolg_ursa_warrior",
-        &[A::ThunderClap, A::DeathThroePower, A::NeutralUpgrade],
+        &[A::ThunderClap, A::DeathThroePower],
         UnitDef {
             max_hp: 950,
             hp_regen: regen(10),
@@ -940,7 +940,7 @@ pub const NEUTRALS: [NeutralDef; 47] = [
         NeutralKind::Wildkin,
         "Wildwing",
         "npc_dota_neutral_wildkin",
-        &[A::Tornado, A::NeutralUpgrade],
+        &[A::Tornado],
         UnitDef {
             max_hp: 350,
             hp_regen: regen(5),
@@ -971,7 +971,7 @@ pub const NEUTRALS: [NeutralDef; 47] = [
         NeutralKind::EnragedWildkin,
         "Wildwing Ripper",
         "npc_dota_neutral_enraged_wildkin",
-        &[A::Hurricane, A::ToughnessAura, A::NeutralUpgrade],
+        &[A::Hurricane, A::ToughnessAura],
         UnitDef {
             max_hp: 950,
             hp_regen: regen(5),
@@ -1002,7 +1002,7 @@ pub const NEUTRALS: [NeutralDef; 47] = [
         NeutralKind::DarkTroll,
         "Hill Troll",
         "npc_dota_neutral_dark_troll",
-        &[A::Ensnare, A::Piercing, A::NeutralUpgrade],
+        &[A::Ensnare, A::Piercing],
         UnitDef {
             max_hp: 500,
             hp_regen: regen(5),
@@ -1033,7 +1033,7 @@ pub const NEUTRALS: [NeutralDef; 47] = [
         NeutralKind::DarkTrollWarlord,
         "Dark Troll Summoner",
         "npc_dota_neutral_dark_troll_warlord",
-        &[A::RaiseDead, A::NeutralUpgrade],
+        &[A::RaiseDead],
         UnitDef {
             max_hp: 1100,
             hp_regen: regen(5),
@@ -1064,7 +1064,7 @@ pub const NEUTRALS: [NeutralDef; 47] = [
         NeutralKind::WarpineRaider,
         "Warpine Raider",
         "npc_dota_neutral_warpine_raider",
-        &[A::SeedShot, A::NeutralUpgrade],
+        &[A::SeedShot],
         UnitDef {
             max_hp: 850,
             hp_regen: regen(25),
@@ -1095,7 +1095,7 @@ pub const NEUTRALS: [NeutralDef; 47] = [
         NeutralKind::BlackDrake,
         "Ancient Black Drake",
         "npc_dota_neutral_black_drake",
-        &[A::MagicAmplificationAura, A::NeutralUpgrade],
+        &[A::MagicAmplificationAura],
         UnitDef {
             max_hp: 950,
             hp_regen: regen(5),
@@ -1127,12 +1127,7 @@ pub const NEUTRALS: [NeutralDef; 47] = [
         NeutralKind::BlackDragon,
         "Ancient Black Dragon",
         "npc_dota_neutral_black_dragon",
-        &[
-            A::Fireball,
-            A::SplashAttack,
-            A::DragonhideAura,
-            A::NeutralUpgrade,
-        ],
+        &[A::Fireball, A::SplashAttack, A::DragonhideAura],
         UnitDef {
             max_hp: 2000,
             hp_regen: regen(20),
@@ -1164,7 +1159,7 @@ pub const NEUTRALS: [NeutralDef; 47] = [
         NeutralKind::RockGolem,
         "Ancient Rock Golem",
         "npc_dota_neutral_rock_golem",
-        &[A::WeakeningAura, A::NeutralUpgrade],
+        &[A::WeakeningAura],
         UnitDef {
             max_hp: 800,
             hp_regen: regen(5),
@@ -1196,7 +1191,7 @@ pub const NEUTRALS: [NeutralDef; 47] = [
         NeutralKind::GraniteGolem,
         "Ancient Granite Golem",
         "npc_dota_neutral_granite_golem",
-        &[A::GraniteAura, A::NeutralUpgrade],
+        &[A::GraniteAura],
         UnitDef {
             max_hp: 1500,
             hp_regen: regen(15),
@@ -1228,7 +1223,7 @@ pub const NEUTRALS: [NeutralDef; 47] = [
         NeutralKind::SmallThunderLizard,
         "Ancient Rumblehide",
         "npc_dota_neutral_small_thunder_lizard",
-        &[A::WarDrumsAura, A::NeutralUpgrade],
+        &[A::WarDrumsAura],
         UnitDef {
             max_hp: 800,
             hp_regen: regen(5),
@@ -1260,7 +1255,7 @@ pub const NEUTRALS: [NeutralDef; 47] = [
         NeutralKind::BigThunderLizard,
         "Ancient Thunderhide",
         "npc_dota_neutral_big_thunder_lizard",
-        &[A::Slam, A::Frenzy, A::NeutralUpgrade],
+        &[A::Slam, A::Frenzy],
         UnitDef {
             max_hp: 1700,
             hp_regen: regen(5),
@@ -1292,7 +1287,7 @@ pub const NEUTRALS: [NeutralDef; 47] = [
         NeutralKind::FrostbittenGolem,
         "Ancient Frostbitten Golem",
         "npc_dota_neutral_frostbitten_golem",
-        &[A::TimeWarpAura, A::NeutralUpgrade],
+        &[A::TimeWarpAura],
         UnitDef {
             max_hp: 900,
             hp_regen: regen(20),
@@ -1324,7 +1319,7 @@ pub const NEUTRALS: [NeutralDef; 47] = [
         NeutralKind::IceShaman,
         "Ancient Ice Shaman",
         "npc_dota_neutral_ice_shaman",
-        &[A::IcefireBomb, A::NeutralUpgrade],
+        &[A::IcefireBomb],
         UnitDef {
             max_hp: 1500,
             hp_regen: regen(5),
@@ -1356,7 +1351,7 @@ pub const NEUTRALS: [NeutralDef; 47] = [
         NeutralKind::ProwlerAcolyte,
         "Ancient Prowler Acolyte",
         "npc_dota_neutral_prowler_acolyte",
-        &[A::ProwlerAura, A::NeutralUpgrade],
+        &[A::ProwlerAura],
         UnitDef {
             max_hp: 750,
             hp_regen: regen(5),
@@ -1388,7 +1383,7 @@ pub const NEUTRALS: [NeutralDef; 47] = [
         NeutralKind::ProwlerShaman,
         "Ancient Prowler Shaman",
         "npc_dota_neutral_prowler_shaman",
-        &[A::Desecrate, A::Petrify, A::NeutralUpgrade],
+        &[A::Desecrate, A::Petrify],
         UnitDef {
             max_hp: 1400,
             hp_regen: regen(5),
@@ -1420,7 +1415,7 @@ pub const NEUTRALS: [NeutralDef; 47] = [
         NeutralKind::Tadpole,
         "Pollywog",
         "npc_dota_neutral_tadpole",
-        &[A::RiverbornAura, A::NeutralUpgrade],
+        &[A::RiverbornAura],
         UnitDef {
             max_hp: 400,
             hp_regen: regen(5),
@@ -1451,7 +1446,7 @@ pub const NEUTRALS: [NeutralDef; 47] = [
         NeutralKind::Froglet,
         "Boglet",
         "npc_dota_neutral_froglet",
-        &[A::ArmOfTheDeep, A::RiverbornAura, A::NeutralUpgrade],
+        &[A::ArmOfTheDeep, A::RiverbornAura],
         UnitDef {
             max_hp: 700,
             hp_regen: regen(5),
@@ -1482,7 +1477,7 @@ pub const NEUTRALS: [NeutralDef; 47] = [
         NeutralKind::GrownFrog,
         "Croaker",
         "npc_dota_neutral_grown_frog",
-        &[A::TendrilsOfTheDeep, A::RiverbornAura, A::NeutralUpgrade],
+        &[A::TendrilsOfTheDeep, A::RiverbornAura],
         UnitDef {
             max_hp: 900,
             hp_regen: regen(5),
@@ -1513,11 +1508,7 @@ pub const NEUTRALS: [NeutralDef; 47] = [
         NeutralKind::AncientFrog,
         "Ancient Croaker",
         "npc_dota_neutral_ancient_frog",
-        &[
-            A::CongregationsOfTheDeep,
-            A::RiverbornAura,
-            A::NeutralUpgrade,
-        ],
+        &[A::CongregationsOfTheDeep, A::RiverbornAura],
         UnitDef {
             max_hp: 1250,
             hp_regen: regen(20),
@@ -1549,7 +1540,7 @@ pub const NEUTRALS: [NeutralDef; 47] = [
         NeutralKind::FrogletMage,
         "Marshmage Apprentice",
         "npc_dota_neutral_froglet_mage",
-        &[A::WaterBubbleSmall, A::RiverbornAura, A::NeutralUpgrade],
+        &[A::WaterBubbleSmall, A::RiverbornAura],
         UnitDef {
             max_hp: 700,
             hp_regen: regen(5),
@@ -1580,7 +1571,7 @@ pub const NEUTRALS: [NeutralDef; 47] = [
         NeutralKind::GrownFrogMage,
         "Marshmage",
         "npc_dota_neutral_grown_frog_mage",
-        &[A::WaterBubbleMedium, A::RiverbornAura, A::NeutralUpgrade],
+        &[A::WaterBubbleMedium, A::RiverbornAura],
         UnitDef {
             max_hp: 900,
             hp_regen: regen(5),
@@ -1611,7 +1602,7 @@ pub const NEUTRALS: [NeutralDef; 47] = [
         NeutralKind::AncientFrogMage,
         "Ancient Marshmage",
         "npc_dota_neutral_ancient_frog_mage",
-        &[A::WaterBubbleLarge, A::RiverbornAura, A::NeutralUpgrade],
+        &[A::WaterBubbleLarge, A::RiverbornAura],
         UnitDef {
             max_hp: 1250,
             hp_regen: regen(20),
@@ -1643,7 +1634,7 @@ pub const NEUTRALS: [NeutralDef; 47] = [
         NeutralKind::SkeletonWarrior,
         "Skeleton Warrior",
         "npc_dota_dark_troll_warlord_skeleton_warrior",
-        &[A::Rally, A::NeutralUpgrade],
+        &[A::Rally],
         UnitDef {
             max_hp: 250,
             hp_regen: regen(0),
@@ -1670,28 +1661,31 @@ pub const NEUTRALS: [NeutralDef; 47] = [
             ..NEUTRAL_BASE
         },
     ),
-    neutral(
-        NeutralKind::WildkinTornado,
-        "Tornado",
-        "npc_dota_enraged_wildkin_tornado",
-        &[A::Tempest],
-        UnitDef {
-            max_hp: 500,
-            hp_regen: regen(5),
-            max_mana: 0,
-            mana_regen: regen(0),
-            armor: 0,
-            magic_resist_pct: 0,
-            move_speed: 125,
-            turn_rate: rules::TURN_RATE_BRADS,
-            day_vision: 300,
-            night_vision: 300,
-            flies: true,
-            collision: 0,
-            bound: 0,
-            bounty_gold: GoldRange::new(0, 0),
-            bounty_xp: 0,
-            ..NEUTRAL_BASE
-        },
-    ),
+    NeutralDef {
+        innate: None,
+        ..neutral(
+            NeutralKind::WildkinTornado,
+            "Tornado",
+            "npc_dota_enraged_wildkin_tornado",
+            &[A::Tempest],
+            UnitDef {
+                max_hp: 500,
+                hp_regen: regen(5),
+                max_mana: 0,
+                mana_regen: regen(0),
+                armor: 0,
+                magic_resist_pct: 0,
+                move_speed: 125,
+                turn_rate: rules::TURN_RATE_BRADS,
+                day_vision: 300,
+                night_vision: 300,
+                flies: true,
+                collision: 0,
+                bound: 0,
+                bounty_gold: GoldRange::new(0, 0),
+                bounty_xp: 0,
+                ..NEUTRAL_BASE
+            },
+        )
+    },
 ];

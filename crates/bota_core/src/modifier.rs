@@ -143,6 +143,12 @@ pub enum ModifierKind {
         /// Souls held past the cap.
         souls: u16,
     },
+    /// What the clock has raised a neutral by: Dota's hidden `neutral_upgrade`
+    /// modifier. Each interval adds what the neutral's `per_upgrade` says.
+    NeutralUpgrade {
+        /// Intervals it has been raised by.
+        count: u32,
+    },
     /// A unit that stands for a while, as Dota's `modifier_kill`: it is gone
     /// when this runs out.
     TimedLife,
@@ -191,6 +197,7 @@ impl ModifierKind {
             ModifierKind::BackdoorProtection => EffectId::BACKDOOR_PROTECTION,
             ModifierKind::TimedLife => EffectId::TIMED_LIFE,
             ModifierKind::Fortified => EffectId::FORTIFIED,
+            ModifierKind::NeutralUpgrade { .. } => EffectId::NEUTRAL_UPGRADE,
             ModifierKind::FleshHeap { .. } => EffectId::FLESH_HEAP,
             ModifierKind::Souls { .. } => EffectId::SOULS,
             ModifierKind::Feasting { .. } => EffectId::FEASTING,
@@ -214,12 +221,19 @@ impl ModifierKind {
         ModifierKind::FleshHeap { count }
     }
 
+    /// The neutral upgrade, raised `count` intervals.
+    pub const fn neutral_upgrade(count: u32) -> ModifierKind {
+        ModifierKind::NeutralUpgrade { count }
+    }
+
     /// The count the wire shows beside it, for a kind that keeps one.
     pub const fn stacks(self) -> Option<u32> {
         match self {
             ModifierKind::Shadowraze { stacks } => Some(stacks as u32),
             ModifierKind::MeatShield { amount } => Some(amount as u32),
-            ModifierKind::FleshHeap { count } | ModifierKind::Souls { count } => Some(count),
+            ModifierKind::FleshHeap { count }
+            | ModifierKind::Souls { count }
+            | ModifierKind::NeutralUpgrade { count } => Some(count),
             ModifierKind::Feasting { souls, .. } | ModifierKind::FeastLinger { souls } => {
                 Some(souls as u32)
             }

@@ -1,11 +1,12 @@
 //! Neutral camps.
 
 use bota_core::{
-    CAMPS, COURIER, MELEE_CREEP, OBSERVER_WARD, SENTRY_WARD, SIEGE_CREEP, UnitDef, map_of, rules,
+    CAMPS, COURIER, MELEE_CREEP, NeutralAbility, NeutralKind, OBSERVER_WARD, SENTRY_WARD,
+    SIEGE_CREEP, UnitDef, map_of, rules,
 };
 
 use crate::game::World;
-use bota_proto::{DamageKind, Fixed, ItemId, MapId, Team, Vec2};
+use bota_proto::{DamageKind, EffectId, Fixed, ItemId, MapId, Team, Vec2};
 
 use super::support::*;
 
@@ -339,5 +340,49 @@ fn a_blow_wakes_a_camp_from_further_than_it_can_see() {
     assert!(
         beasts.iter().all(|beast| world.target_of(*beast).is_none()),
         "a blow from beyond its reach wakes nobody"
+    );
+}
+
+#[test]
+fn a_neutral_slots_only_its_own_abilities_and_grows_with_the_clock_unseen() {
+    // Dota's neutral_upgrade is an attribute-kind ability its HUD never
+    // shows, and its modifier is hidden: a neutral's slots hold its own
+    // abilities, and the clock's upgrades show only in its stats.
+    let mut world = World::new();
+    let horn = rules::tick_at_game_minute(0);
+    world.tick = horn + rules::NEUTRAL_UPGRADE_PERIOD_TICKS - 2;
+    let troll = world.spawn_neutral(
+        NeutralKind::ForestTrollBerserker,
+        Vec2::from_ints(5000, 5000),
+        0,
+        0,
+    );
+    world.settle();
+    let before = shown(&world, None, troll);
+    assert_eq!(
+        before
+            .abilities
+            .iter()
+            .map(|slot| slot.id)
+            .collect::<Vec<_>>(),
+        [NeutralAbility::Break.id(), NeutralAbility::Piercing.id()],
+        "its slots are its own"
+    );
+    run(&mut world, 2);
+    let after = shown(&world, None, troll);
+    assert_eq!(
+        (after.max_hp, after.attack_damage_min),
+        (
+            before.max_hp + rules::NEUTRAL_UPGRADE_HP,
+            before.attack_damage_min + rules::NEUTRAL_UPGRADE_DAMAGE
+        ),
+        "the clock's upgrade raised it"
+    );
+    assert!(
+        after
+            .effects
+            .iter()
+            .all(|effect| effect.id != EffectId::NEUTRAL_UPGRADE),
+        "and no view names the upgrade"
     );
 }

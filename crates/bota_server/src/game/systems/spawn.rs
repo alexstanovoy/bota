@@ -1,7 +1,8 @@
 //! Putting an entity into the world with everything its kind needs.
 
 use bota_core::{
-    COURIER, HERO, ModifierKind, NeutralKind, UnitDef, hero_def, neutral_ability_level, rules,
+    COURIER, HERO, ModifierKind, NeutralAbility, NeutralKind, UnitDef, hero_def,
+    neutral_ability_level, rules,
 };
 use bota_proto::{AbilityId, Angle, Fixed, HeroId, SlotId, Team, Vec2};
 
@@ -218,8 +219,8 @@ impl World {
             self.give_action(entity);
         }
         self.give_orders(entity);
-        self.set_upgrades(entity, def, upgrades);
         self.neutral.insert(entity, kind);
+        self.set_neutral_upgrades(entity, upgrades);
         let level = neutral_ability_level(self.tick);
         self.abilities.insert(
             entity,
@@ -258,6 +259,28 @@ impl World {
     /// what killing it pays to its kind's bounty raised by as many steps.
     pub(crate) fn set_upgrades(&mut self, entity: Entity, def: &UnitDef, upgrades: u32) {
         self.upgrades.insert(entity, Upgrades(upgrades));
+        self.raise_bounty(entity, def, upgrades);
+    }
+
+    /// Raises a neutral that grows with the clock by `count` intervals:
+    /// Dota's hidden neutral_upgrade, a modifier no client is told of. One
+    /// that does not grow is left as it is.
+    pub(crate) fn set_neutral_upgrades(&mut self, entity: Entity, count: u32) {
+        let Some(kind) = self.neutral.get(entity).copied() else {
+            return;
+        };
+        if kind.neutral().innate != Some(NeutralAbility::NeutralUpgrade) {
+            return;
+        }
+        if let Some(on_it) = self.modifiers.get_mut(entity) {
+            on_it.set_count(ModifierKind::neutral_upgrade, count);
+        }
+        self.raise_bounty(entity, kind.def(), count);
+    }
+
+    /// What killing a creep pays once it has been raised by `upgrades`
+    /// intervals.
+    fn raise_bounty(&mut self, entity: Entity, def: &UnitDef, upgrades: u32) {
         let steps = i32::try_from(upgrades).expect("upgrade count fits an i32");
         if let Some(bounty) = self.bounty.get_mut(entity) {
             bounty.gold = def
