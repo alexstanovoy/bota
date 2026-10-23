@@ -88,6 +88,7 @@ fn every_modifier() -> Vec<ModifierKind> {
         },
         ModifierKind::Shadowraze { stacks: 1 },
         ModifierKind::Rot { level: 0 },
+        ModifierKind::Rotting { level: 0 },
         ModifierKind::Feared,
         ModifierKind::BloodGrenade { since: 0 },
         ModifierKind::Rooted,
@@ -121,6 +122,7 @@ fn every_modifier() -> Vec<ModifierKind> {
             | ModifierKind::Burning { .. }
             | ModifierKind::Shadowraze { .. }
             | ModifierKind::Rot { .. }
+            | ModifierKind::Rotting { .. }
             | ModifierKind::Feared
             | ModifierKind::BloodGrenade { .. }
             | ModifierKind::Rooted
@@ -151,9 +153,14 @@ fn variant_name(value: &impl std::fmt::Debug) -> String {
 
 #[test]
 fn every_effect_is_shown_under_its_registered_id() {
+    // The enemies in a rot wear the effect its owner does: Dota's one
+    // modifier_pudge_rot.
     let mut shown: Vec<(u16, String)> = every_modifier()
         .iter()
-        .map(|kind| (kind.effect_id().0, variant_name(kind)))
+        .map(|kind| match kind {
+            ModifierKind::Rotting { .. } => (kind.effect_id().0, "Rot".to_string()),
+            _ => (kind.effect_id().0, variant_name(kind)),
+        })
         .collect();
     shown.push((EffectId::FORTIFIED.0, "Fortified".to_string()));
     shown.push((EffectId::ILLUSION.0, "Illusion".to_string()));

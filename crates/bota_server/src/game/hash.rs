@@ -544,6 +544,10 @@ fn hash_modifier_kind(fnv: &mut Fnv, kind: ModifierKind) {
             fnv.u8(14);
             fnv.u8(level);
         }
+        ModifierKind::Rotting { level } => {
+            fnv.u8(32);
+            fnv.u8(level);
+        }
         ModifierKind::Feared => fnv.u8(15),
         ModifierKind::BloodGrenade { since } => {
             fnv.u8(17);

@@ -442,7 +442,7 @@ pub const EFFECTS: [EffectFace; FIRST_SPELL_EFFECT] = [
     EffectFace::of(
         EffectId::ROT.0,
         None,
-        "The rot is on. It is never listed on a unit: the toggle shows on the ability.",
+        "In a rot: {rot_dps} damage a second and slowed {rot_slow}%. Its owner burns as well, but never to death, and is not slowed.",
     ),
     EffectFace::of(
         EffectId::FEARED.0,

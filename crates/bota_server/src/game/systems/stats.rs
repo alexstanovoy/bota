@@ -258,6 +258,10 @@ fn add_modifiers(now: &mut Stats, on_it: &Modifiers, base_armor: Fixed, hero: bo
             ModifierKind::Slowed { pct } => {
                 now.move_speed = scaled(now.move_speed, (100 - pct).clamp(0, 100));
             }
+            ModifierKind::Rotting { level } => {
+                let pct = rules::ROT_SLOW_PCT[usize::from(level)];
+                now.move_speed = scaled(now.move_speed, (100 - pct).clamp(0, 100));
+            }
             ModifierKind::BloodGrenade { .. } => {
                 now.move_speed = scaled(now.move_speed, 100 - rules::GRENADE_SLOW_PCT);
             }

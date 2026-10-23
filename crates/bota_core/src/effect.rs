@@ -90,7 +90,9 @@ pub const EFFECTS: [EffectDef; 63] = [
     buff("Guarded"),
     buff("Inspired"),
     debuff("Shadowraze"),
-    buff("Rot"),
+    // Burns whoever wears it: the enemies in it and, never to death, its
+    // owner.
+    debuff("Rot"),
     debuff("Feared"),
     debuff("MagicBroken"),
     fleeting("Feasting"),

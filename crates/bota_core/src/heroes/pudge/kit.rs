@@ -75,6 +75,7 @@ pub const ROT: AbilityDef = AbilityDef {
     name: "Rot",
     max_level: rules::ABILITY_MAX_LEVEL,
     passive: false,
+    toggle: true,
     ignores_channel: true,
     mana: &[0, 0, 0, 0],
     cooldown: &[0, 0, 0, 0],

@@ -560,16 +560,15 @@ fn ability_views(book: &crate::game::AbilityBook, mana_rate_bp: i32) -> Vec<Abil
 }
 
 impl World {
-    /// Everything showing on one entity: its active modifiers but the rot
-    /// and those Dota hides, each with who put it on, while the viewer's
-    /// units carry that one, and with what; and whether it is an illusion.
+    /// Everything showing on one entity: its active modifiers but those Dota
+    /// hides, each with who put it on, while the viewer's units carry that
+    /// one, and with what; and whether it is an illusion.
     fn effects_on(&self, viewer: Option<Team>, entity: Entity) -> Vec<EffectView> {
         let mut on_it: Vec<EffectView> = self
             .modifiers
             .get(entity)
             .into_iter()
             .flat_map(|on_it| on_it.active())
-            .filter(|held| !matches!(held.kind, ModifierKind::Rot { .. }))
             .filter(|held| effect_def(held.kind.effect_id()).is_none_or(|def| !def.hidden))
             .map(|held| EffectView {
                 id: held.kind.effect_id(),
@@ -626,16 +625,15 @@ impl World {
         })
     }
 
-    /// Whether an entity has a toggle switched on right now.
+    /// Whether an entity has a toggle switched on right now: it wears a
+    /// modifier it put on itself with that ability.
     fn ability_on(&self, entity: Entity, id: bota_proto::AbilityId) -> bool {
-        match id {
-            AbilityId::ROT => self.modifiers.get(entity).is_some_and(|on_it| {
-                on_it
-                    .active()
-                    .any(|held| matches!(held.kind, ModifierKind::Rot { .. }))
-            }),
-            _ => false,
-        }
+        bota_core::ability_def(id).is_some_and(|def| def.toggle)
+            && self.modifiers.get(entity).is_some_and(|on_it| {
+                on_it.active().any(|held| {
+                    held.source == Some(entity) && held.inflictor == Some(Inflictor::Ability(id))
+                })
+            })
     }
 
     /// Whether a skill point could go into one ability right now.
@@ -666,7 +664,10 @@ impl World {
                 ModifierKind::Stunned => StatusFlags::STUNNED,
                 ModifierKind::Shielded => StatusFlags::MAGIC_IMMUNE,
                 ModifierKind::Slowed { .. } => StatusFlags::SLOWED,
-                ModifierKind::Burning { .. } | ModifierKind::Dismembered { .. } => StatusFlags::DOT,
+                ModifierKind::Burning { .. }
+                | ModifierKind::Dismembered { .. }
+                | ModifierKind::Rot { .. } => StatusFlags::DOT,
+                ModifierKind::Rotting { .. } => StatusFlags::SLOWED | StatusFlags::DOT,
                 ModifierKind::Feared => StatusFlags::FEARED,
                 ModifierKind::BloodGrenade { .. } => StatusFlags::SLOWED | StatusFlags::DOT,
                 _ => 0,

@@ -3,7 +3,9 @@
 use bota_core::{ModifierKind, rules, tower_def};
 
 use crate::game::{Entity, Modifier, World, wire_id};
-use bota_proto::{AbilityId, Fixed, HeroId, Inflictor, SlotId, Target, Team, Vec2};
+use bota_proto::{
+    AbilityId, EffectId, Fixed, HeroId, Inflictor, SlotId, StatusFlags, Target, Team, Vec2,
+};
 
 use super::support::*;
 
@@ -116,7 +118,7 @@ fn the_rot_burns_and_slows_what_stands_in_it_and_lifts_when_switched_off() {
         "what stands in it burns"
     );
     assert!(
-        carries(&world, mark, ModifierKind::Slowed { pct: 0 }),
+        carries(&world, mark, ModifierKind::Rotting { level: 0 }),
         "and is slowed while it stands there"
     );
     cast(&mut world, 1, Target::None);
@@ -126,9 +128,74 @@ fn the_rot_burns_and_slows_what_stands_in_it_and_lifts_when_switched_off() {
     );
     run(&mut world, 3);
     assert!(
-        !carries(&world, mark, ModifierKind::Slowed { pct: 0 }),
+        !carries(&world, mark, ModifierKind::Rotting { level: 0 }),
         "and nothing is left slowed"
     );
+}
+
+#[test]
+fn the_rot_shows_as_one_rot_on_its_owner_and_on_what_stands_in_it() {
+    // Dota shows modifier_pudge_rot, "Rot", on Pudge and on the enemies in
+    // it: one icon each, not a burn and a slow, and the toggle is on while
+    // Pudge wears the rot he put on.
+    let (mut world, pudge, mark) = pudge_and_a_mark(150);
+    set_level(&mut world, pudge, 1, 1);
+    cast(&mut world, 1, Target::None);
+    run(&mut world, 2);
+    let rot = Some(Inflictor::Ability(AbilityId::ROT));
+    let view = world.view_full();
+    let shown = |unit| {
+        view.units
+            .iter()
+            .find(|shown| shown.id == wire_id(unit))
+            .expect("in the view")
+    };
+    let own: Vec<_> = shown(pudge)
+        .effects
+        .iter()
+        .filter(|e| e.inflictor == rot)
+        .collect();
+    assert_eq!(own.len(), 1, "one rot on Pudge: {own:?}");
+    assert_eq!(own[0].id, EffectId::ROT);
+    assert_eq!(own[0].caster, Some(wire_id(pudge)));
+    assert_eq!(own[0].ticks_left, None, "a toggle runs until switched off");
+    let theirs: Vec<_> = shown(mark)
+        .effects
+        .iter()
+        .filter(|e| e.inflictor == rot)
+        .collect();
+    assert_eq!(theirs.len(), 1, "one rot on what stands in it: {theirs:?}");
+    assert_eq!(theirs[0].id, EffectId::ROT);
+    assert_eq!(theirs[0].caster, Some(wire_id(pudge)));
+    let bits = shown(mark).statuses.bits;
+    assert_eq!(
+        bits & (StatusFlags::SLOWED | StatusFlags::DOT),
+        StatusFlags::SLOWED | StatusFlags::DOT,
+        "it slows and burns"
+    );
+    assert!(
+        shown(pudge)
+            .abilities
+            .iter()
+            .any(|ability| ability.id == AbilityId::ROT && ability.on),
+        "the toggle shows on"
+    );
+    cast(&mut world, 1, Target::None);
+    run(&mut world, 3);
+    let view = world.view_full();
+    let pudge_view = view
+        .units
+        .iter()
+        .find(|shown| shown.id == wire_id(pudge))
+        .expect("in the view");
+    assert!(
+        pudge_view
+            .abilities
+            .iter()
+            .any(|ability| ability.id == AbilityId::ROT && !ability.on),
+        "and off again"
+    );
+    assert!(pudge_view.effects.iter().all(|e| e.inflictor != rot));
 }
 
 #[test]

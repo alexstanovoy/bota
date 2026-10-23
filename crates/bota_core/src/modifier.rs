@@ -95,9 +95,18 @@ pub enum ModifierKind {
         /// Successful hits held, in `1..=rules::RAZE_MAX_STACKS`.
         stacks: u8,
     },
-    /// The rot, switched on.
+    /// The rot, switched on, as Dota's `modifier_pudge_rot` on its owner: it
+    /// burns him, never to death, and lays [`ModifierKind::Rotting`] on the
+    /// enemies standing in it.
     Rot {
         /// Which level of it is running, counted from zero.
+        level: u8,
+    },
+    /// Standing in an enemy's rot, as Dota's `modifier_pudge_rot` on them:
+    /// burned on the beat by whoever's rot it is, and slowed, by the rot's
+    /// level.
+    Rotting {
+        /// The rot's level, counted from zero.
         level: u8,
     },
     /// Runs from whoever put it on, and neither swings nor casts, until it
@@ -188,7 +197,7 @@ impl ModifierKind {
             ModifierKind::Guarded { .. } => EffectId::GUARDED,
             ModifierKind::Inspired { .. } => EffectId::INSPIRED,
             ModifierKind::Shadowraze { .. } => EffectId::SHADOWRAZE,
-            ModifierKind::Rot { .. } => EffectId::ROT,
+            ModifierKind::Rot { .. } | ModifierKind::Rotting { .. } => EffectId::ROT,
             ModifierKind::Feared => EffectId::FEARED,
             ModifierKind::BloodGrenade { .. } => EffectId::BLOOD_GRENADE,
             ModifierKind::Rooted => EffectId::ROOTED,

@@ -42,6 +42,10 @@ pub struct AbilityDef {
     pub backswing: u32,
     /// Ticks it runs on after the cast. Zero: over at once.
     pub duration: u32,
+    /// Whether a cast switches it on or off: Dota's
+    /// `DOTA_ABILITY_BEHAVIOR_TOGGLE`. It is on while its caster wears a
+    /// modifier it put on him.
+    pub toggle: bool,
     /// Whether the entry is retired: its id keeps its place, but nothing
     /// carries it and the wire never names it again.
     pub retired: bool,
@@ -63,6 +67,7 @@ pub(crate) const BARE_ABILITY: AbilityDef = AbilityDef {
     point: 0,
     backswing: 0,
     duration: 0,
+    toggle: false,
     retired: false,
 };
 

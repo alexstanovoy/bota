@@ -22,6 +22,7 @@ fn shortened_by_resistance(kind: ModifierKind) -> bool {
             ModifierKind::Stunned
                 | ModifierKind::Feared
                 | ModifierKind::Slowed { .. }
+                | ModifierKind::Rotting { .. }
                 | ModifierKind::MagicBroken { .. }
                 | ModifierKind::BloodGrenade { .. }
                 | ModifierKind::Rooted
@@ -47,6 +48,12 @@ pub fn resisted_ticks(stats: &Table<Stats>, on: Entity, kind: ModifierKind, tick
     let kept =
         i64::from(ticks) * i64::from(rules::NOMINAL_BP - resist) / i64::from(rules::NOMINAL_BP);
     kept.max(1) as u32
+}
+
+/// What a rot of a level burns on one beat of [`rules::BURN_PERIOD_TICKS`].
+fn rot_beat(level: u8) -> i32 {
+    rules::ROT_DAMAGE_PER_SECOND[usize::from(level)] * rules::BURN_PERIOD_TICKS as i32
+        / rules::TICKS_PER_SECOND as i32
 }
 
 impl World {
@@ -159,7 +166,18 @@ impl World {
                             );
                         }
                     }
-                    ModifierKind::Rot { level } => self.rot(entity, level),
+                    ModifierKind::Rot { level } => self.rot(entity, level, on_beat),
+                    ModifierKind::Rotting { level } => {
+                        if on_beat && self.alive(entity) {
+                            self.push_hit(
+                                modifier.source,
+                                entity,
+                                rot_beat(level),
+                                DamageKind::Magical,
+                                modifier.inflictor,
+                            );
+                        }
+                    }
                     ModifierKind::Spell {
                         ability,
                         level,
@@ -199,14 +217,13 @@ impl World {
         self.recycle_entity_snapshot(entities);
     }
 
-    /// Burns and slows every unit of another side with a hull standing in
-    /// one entity's rot. Its owner burns by the same amount, never to death,
-    /// and is not slowed.
+    /// Burns its owner on the beat, never to death, and lays the rot on
+    /// every unit of another side with a hull standing in it.
     ///
-    /// What it does is handed out afresh every tick for two ticks, so walking
+    /// What it lays is handed out afresh every tick for two ticks, so walking
     /// out of it or switching it off lifts it. A rot whose owner is dead goes
     /// out.
-    fn rot(&mut self, owner: Entity, level: u8) {
+    fn rot(&mut self, owner: Entity, level: u8, on_beat: bool) {
         if !self.alive(owner) {
             self.rot_goes_out(owner);
             return;
@@ -220,51 +237,27 @@ impl World {
         {
             transform.pos = at;
         }
-        let amount = rules::ROT_DAMAGE_PER_SECOND[usize::from(level)]
-            * rules::BURN_PERIOD_TICKS as i32
-            / rules::TICKS_PER_SECOND as i32;
+        let with = Some(Inflictor::Ability(AbilityId::ROT));
+        let left = self
+            .health
+            .get(owner)
+            .map_or(0, |health| health.hp.to_int());
+        let own = rot_beat(level).min(left - 1);
+        if on_beat && own > 0 {
+            self.push_hit(None, owner, own, DamageKind::Magical, with);
+        }
         let reach = rules::units(rules::ROT_RADIUS);
         for other in self.entities.iter().collect::<Vec<_>>() {
-            if !self.alive(other) || self.hull.get(other).is_none() {
+            if other == owner || !self.alive(other) || self.hull.get(other).is_none() {
                 continue;
             }
             if !self.pos(other).is_some_and(|pos| pos.within(at, reach)) {
                 continue;
             }
-            if other == owner {
-                self.put_modifier(
-                    owner,
-                    Modifier::new(
-                        ModifierKind::Burning {
-                            amount,
-                            kind: DamageKind::Magical,
-                            lethal: false,
-                        },
-                        None,
-                        Some(Inflictor::Ability(AbilityId::ROT)),
-                        Some(2),
-                    ),
-                );
-                continue;
-            }
             if self.team.get(other).copied() != Some(side) {
-                self.rot_on(owner, other, amount, level);
+                let rotting = ModifierKind::Rotting { level };
+                self.put_modifier(other, Modifier::new(rotting, Some(owner), with, Some(2)));
             }
-        }
-    }
-
-    /// Burns `other` by `amount` and slows it, for two ticks, from `owner`'s
-    /// rot.
-    fn rot_on(&mut self, owner: Entity, other: Entity, amount: i32, level: u8) {
-        let burn = ModifierKind::Burning {
-            amount,
-            kind: DamageKind::Magical,
-            lethal: true,
-        };
-        let pct = rules::ROT_SLOW_PCT[usize::from(level)];
-        let with = Some(Inflictor::Ability(AbilityId::ROT));
-        for kind in [burn, ModifierKind::Slowed { pct }] {
-            self.put_modifier(other, Modifier::new(kind, Some(owner), with, Some(2)));
         }
     }
 
