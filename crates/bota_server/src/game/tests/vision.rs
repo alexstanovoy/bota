@@ -983,3 +983,52 @@ fn a_missile_let_go_where_a_side_has_sight_is_shown_on_that_very_tick() {
         "the side whose sight it flies in is shown it as it is let go"
     );
 }
+
+/// What Radiant is told of who brought one of its buildings down, a Dire
+/// unit standing out of its sight by Dire's fountain.
+fn killer_told_of_a_fall(kind: UnitKind, killer_is_hero: bool) -> Option<EntityId> {
+    let map = map_of(MapId(0));
+    let mut world = World::on_map(map);
+    let far = map.fountains[1];
+    let killer = if killer_is_hero {
+        seat_hero(&mut world, 1, Team::Dire, far)
+    } else {
+        world.spawn_unit(&MELEE_CREEP, Team::Dire, far)
+    };
+    world.settle();
+    assert!(
+        !world.can_see(Team::Radiant, killer),
+        "the killer is out of sight"
+    );
+    let building = world
+        .entities
+        .iter()
+        .find(|e| world.kind.get(*e) == Some(&kind) && world.team.get(*e) == Some(&Team::Radiant))
+        .expect("Radiant has one");
+    let mut events = Vec::new();
+    world.bury(vec![(building, Some(killer))], &mut events);
+    crate::game_loop::visible_events(&events, Some(Team::Radiant))
+        .iter()
+        .find_map(|told| match told {
+            EventKind::Died { unit, killer, .. } if *unit == wire_id(building) => Some(*killer),
+            _ => None,
+        })
+        .expect("a building's fall is told to both sides")
+}
+
+#[test]
+fn the_feed_names_the_hero_that_razed_a_barracks_or_a_tower_and_no_other_killer() {
+    assert!(
+        killer_told_of_a_fall(UnitKind::Barracks, true).is_some(),
+        "\"Barracks has been destroyed by\" a player"
+    );
+    assert!(
+        killer_told_of_a_fall(UnitKind::Tower, true).is_some(),
+        "\"destroyed a tower\""
+    );
+    assert_eq!(
+        killer_told_of_a_fall(UnitKind::Tower, false),
+        None,
+        "\"a tower was destroyed by The Dire\": a creep is not named"
+    );
+}

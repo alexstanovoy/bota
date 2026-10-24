@@ -50,8 +50,9 @@ pub struct KindDef {
     /// feed and announcer tell every hero kill and deny, a tower's,
     /// a barracks' and an Ancient's fall and a courier's loss.
     pub death_announced: bool,
-    /// Who brought it down is announced with its fall: the kill feed names
-    /// the killer of a hero and of a tower, but not a courier's.
+    /// Who brought it down is announced with its fall when a hero did: the
+    /// kill feed names the hero that killed a hero, a tower or a barracks
+    /// (and only the side of any other killer), but not a courier's.
     pub killer_announced: bool,
     /// Its blows on the other side break what breaks on damage. Read through
     /// [`breaks_regen`](crate::breaks_regen), the one rule for it.
@@ -154,7 +155,10 @@ pub const UNIT_KINDS: [KindDef; 13] = [
         TargetClass::Building,
         true,
     ),
-    building(UnitKind::Barracks, "Barracks", TargetClass::Unit, true),
+    KindDef {
+        killer_announced: true,
+        ..building(UnitKind::Barracks, "Barracks", TargetClass::Unit, true)
+    },
     building(UnitKind::Fountain, "Fountain", TargetClass::Building, true),
     KindDef {
         kind: UnitKind::Ward,

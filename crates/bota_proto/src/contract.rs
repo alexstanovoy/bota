@@ -63,11 +63,12 @@
 //! to a side that sees the dealer as it happens, and is `None` to the
 //! others.
 //!
-//! Dota's kill feed and announcer make three exceptions, told to both sides
-//! wherever they happen: a hero's fall and its killer, a tower's fall and
-//! its killer, and the fall of a barracks, an Ancient or a courier, without
-//! the killer. [`StructureDestroyed`] is told to both sides, and
-//! [`ItemBought`] to the buyer's side alone.
+//! Dota's kill feed and announcer make exceptions, told to both sides
+//! wherever they happen: the fall of a hero (not of an illusion), a tower, a
+//! barracks, an Ancient or a courier; and of a hero, a tower or a barracks
+//! the killer too when a hero struck last (the feed names a player, and of
+//! any other killer only its side). [`StructureDestroyed`] is told to both
+//! sides, and [`ItemBought`] to the buyer's side alone.
 //!
 //! [`Damaged`]: crate::EventKind::Damaged
 //! [`Missed`]: crate::EventKind::Missed

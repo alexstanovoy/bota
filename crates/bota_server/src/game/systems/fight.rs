@@ -122,7 +122,9 @@ impl World {
     /// that brought it down and whoever sees it fall.
     ///
     /// An illusion's fall is no hero's: Dota's feed tells none, so it is
-    /// told as any unit's is.
+    /// told as any unit's is. The feed names a killer only when a hero (a
+    /// player) struck last; of any other it names the side alone, which
+    /// the fall's own side already knows.
     fn told_of_fall(&self, fallen: Entity, killer: Option<Entity>) -> Told {
         let def = self
             .kind
@@ -136,7 +138,9 @@ impl World {
             } else {
                 self.who_may_know(fallen, killer_side)
             },
-            killer: if def.is_some_and(|def| def.killer_announced) {
+            killer: if def.is_some_and(|def| def.killer_announced)
+                && killer.is_some_and(|killer| self.is_real_hero(killer))
+            {
                 EventVisibility::Everyone
             } else {
                 self.who_may_name(killer)

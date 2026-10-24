@@ -417,4 +417,9 @@ impl World {
     pub fn is_hero(&self, entity: Entity) -> bool {
         self.kind.get(entity) == Some(&UnitKind::Hero)
     }
+
+    /// Whether an entity is a hero and no illusion of one.
+    pub fn is_real_hero(&self, entity: Entity) -> bool {
+        self.is_hero(entity) && !self.illusion.contains(entity)
+    }
 }

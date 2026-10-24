@@ -66,8 +66,9 @@ pub enum EventKind {
         /// The unit that died.
         unit: EntityId,
         /// Who landed the killing blow, if a unit did. `None` to a side that
-        /// does not see the killer, unless the kill feed names it: the
-        /// killer of a hero or of a tower is told to both sides.
+        /// does not see the killer, unless the kill feed names it: a hero
+        /// that brought down a hero, a tower or a barracks is told to both
+        /// sides.
         killer: Option<EntityId>,
         /// Whether the killer was on the same team, making this a deny.
         denied: bool,
