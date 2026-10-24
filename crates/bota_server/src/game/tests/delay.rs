@@ -163,3 +163,39 @@ fn cheats_given_on_one_tick_all_take_effect() {
     assert!(world.creeps_halted);
     assert_eq!(world.seats[0].gold, gold + 100);
 }
+
+/// Purchases given on one tick all go through, and a walk given with them
+/// takes nothing away: buying is no order to a body, so it neither replaces
+/// nor is replaced (a client's choices of the tactical phase all arrive
+/// together when the match begins).
+#[test]
+fn purchases_given_on_one_tick_all_take_effect() {
+    let cfg = config();
+    let mut world = World::for_match(&cfg, cfg.rng());
+    let mut line = DelayLine::new(&cfg, &[]).expect("no delay");
+    let seen = Some(world.tick);
+    let buy = |item| Order::Buy { item };
+    let orders = [
+        buy(ItemId::MANGO),
+        buy(ItemId::MANGO),
+        walk(2),
+        buy(ItemId::CLARITY),
+    ];
+    for (seq, order) in orders.into_iter().enumerate() {
+        assert_eq!(
+            line.give(&world, hero_order(seq as u32, order), seen),
+            Ok(())
+        );
+    }
+    let mut refused = Vec::new();
+    let commands = line.release(&world, &mut refused);
+    assert_eq!(commands.len(), 4, "every one goes through");
+    let gold = world.seats[0].gold;
+    world.advance(&commands);
+    assert!(refused.is_empty(), "{refused:?}");
+    let cost = |item| bota_core::item_def(item).expect("sold").cost;
+    assert_eq!(
+        world.seats[0].gold,
+        gold - 2 * cost(ItemId::MANGO) - cost(ItemId::CLARITY)
+    );
+}

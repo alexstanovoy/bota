@@ -149,8 +149,8 @@ impl DelayLine {
     }
 
     /// Validates an order a seat gives while `world` stands on its tick and,
-    /// when it is valid, sends it on its way. An unqueued order replaces the
-    /// orders for its unit due on the same tick.
+    /// when it is valid, sends it on its way. An unqueued order to a body
+    /// replaces the body's orders due on the same tick.
     pub fn give(
         &mut self,
         world: &World,
@@ -164,13 +164,16 @@ impl DelayLine {
         let due = line.due_of(world.tick);
         line.burst = Some((world.tick, due));
         let key = world.order_key(cmd.slot, cmd.unit, &cmd.order);
-        // An order to a unit given unqueued replaces the one given it on the
-        // same tick; a cheat is no order to a body, and neither replaces
-        // nor is replaced: several cheats on a tick all go through.
-        let cheat = |order: &Order| matches!(order, Order::Cheat { .. });
-        if !cmd.queued() && !cheat(&cmd.order) {
+        // What the body carries out (a move, an attack, a cast...) given
+        // unqueued replaces what was given it on the same tick: the last
+        // command of a tick is what the body does. What is carried out at
+        // once (a purchase, a sale, a swap, learning, a cheat, the Glyph)
+        // is no order to a body, and neither replaces nor is replaced:
+        // several on a tick all go through, as Dota's purchases do.
+        let body = |order: &Order| order.queues();
+        if !cmd.queued() && body(&cmd.order) {
             line.held
-                .retain(|held| !(held.due == due && held.key == key && !cheat(&held.cmd.order)));
+                .retain(|held| !(held.due == due && held.key == key && body(&held.cmd.order)));
         }
         if line.held.iter().filter(|held| held.due == due).count() >= MAX_ORDERS_PER_TICK {
             return Err(RejectReason::QueueFull);
