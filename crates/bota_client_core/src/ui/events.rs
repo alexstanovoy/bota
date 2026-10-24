@@ -29,6 +29,15 @@ impl App {
         if self.told.len() < MAX_TOLD {
             self.told.push(event.clone());
         }
+        let fed = self.feed.len();
+        self.take_in(event.clone());
+        for line in &mut self.feed[fed..] {
+            line.told = Some(event.clone());
+        }
+    }
+
+    /// What one event sets off: its floaters, its feed line, its cues.
+    fn take_in(&mut self, event: EventKind) {
         match event {
             EventKind::Damaged {
                 source,
@@ -50,10 +59,8 @@ impl App {
                 ..
             } => self.on_death(unit, killer, denied, bounty.unwrap_or(0)),
             EventKind::StructureDestroyed { team, .. } => {
-                self.feed.push(FeedLine {
-                    text: format!("a {team:?} structure has fallen"),
-                    age: 0.0,
-                });
+                self.feed
+                    .push(FeedLine::new(format!("a {team:?} structure has fallen")));
             }
             EventKind::LevelUp { unit, level } => {
                 self.float(unit, format!("level {level}"), FloaterKind::Level);
@@ -76,6 +83,21 @@ impl App {
             // draw, from what was told; a burst's blows float their own
             // numbers.
             EventKind::Teleported { .. } | EventKind::Landed { .. } => {}
+            EventKind::Captured { unit, team, .. } => {
+                let text = self.capture_line(unit, team);
+                self.feed.push(FeedLine::new(text));
+            }
+            // `DOTA_HUD_ActivatedRune` is the player, the rune's icon and
+            // `DOTA_HUD_Rune_XP` ("Shrine of Wisdom (200 XP)"); in text the
+            // icon reads as `DOTA_Chat_Rune_XP`'s "activated".
+            EventKind::ShrineActivated { team, xp, by, .. } => {
+                let who = by
+                    .and_then(|hero| self.seat_of_hero(hero))
+                    .map_or_else(|| format!("The {team:?}"), |slot| self.seat_name(slot));
+                self.feed.push(FeedLine::new(format!(
+                    "{who} activated Shrine of Wisdom ({xp} XP)"
+                )));
+            }
         }
     }
 
@@ -125,7 +147,7 @@ impl App {
             |(_, _, kind)| kind == UnitKind::Hero,
         );
         if let Some(text) = self.death_line(unit, killer, gold) {
-            self.feed.push(FeedLine { text, age: 0.0 });
+            self.feed.push(FeedLine::new(text));
         }
         let ears = self.ears();
         let mine = killer.is_some() && killer == ears;
@@ -263,6 +285,26 @@ impl App {
             Some(by) => format!("{victim} was slain by {by}"),
             None => format!("{victim} died"),
         })
+    }
+
+    /// The feed line of a building changing hands, in Dota's words: the
+    /// capturing side's `DOTA_HUD_OutpostCaptured` ("Your team captured
+    /// ..."), the other side's `DOTA_HUD_OutpostLost` ("The enemy team
+    /// captured ...") and a spectator's `DOTA_HUD_OutpostCaptured_Spectator`
+    /// ("... captured by The Radiant"), the building by the name the map
+    /// gives it.
+    fn capture_line(&self, unit: EntityId, team: bota_proto::Team) -> String {
+        let name = match (self.freshest(unit), self.session()) {
+            (Some(seen), Some(session)) => {
+                bota_core::unit_name(session.map(), seen.kind, seen.team, seen.pos)
+            }
+            _ => "Outpost",
+        };
+        match self.my_team() {
+            Some(mine) if mine == team => format!("Your team captured {name}"),
+            Some(_) => format!("The enemy team captured {name}"),
+            None => format!("{name} captured by The {team:?}"),
+        }
     }
 
     /// The seat whose hero a unit is or was, by the bodies the scoreboard

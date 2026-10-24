@@ -49,6 +49,10 @@ impl World {
             fnv.u8(held.left);
             fnv.u32(held.restock_left);
         }
+        if !self.objectives.is_empty() {
+            fnv.u8(2);
+            fnv.u32(u32::from(self.objectives.bits));
+        }
         if !self.spawn_modifiers.is_empty() {
             assert!(self.spawn_modifiers.len() <= crate::game::MAX_SPAWN_MODIFIERS);
             fnv.u8(1);
@@ -222,6 +226,19 @@ impl World {
         }
         if let Some(feast) = self.feast.get(entity) {
             hash_feast(fnv, feast);
+        }
+        if let Some(outpost) = self.outpost.get(entity) {
+            fnv.team(outpost.home);
+        }
+        if let Some(capture) = self.capture.get(entity) {
+            fnv.team(capture.team);
+            fnv.u32(capture.progress);
+        }
+        if let Some(zone) = self.zone.get(entity) {
+            fnv.fixed(zone.radius);
+            fnv.u32(zone.ticks);
+            fnv.opt(zone.side, Fnv::team);
+            fnv.u32(zone.progress);
         }
     }
 }
@@ -643,6 +660,15 @@ fn hash_modifier_kind(fnv: &mut Fnv, kind: ModifierKind) {
             fnv.u8(level);
         }
         ModifierKind::MeatShield { amount } => hash_tagged(fnv, 23, &[amount]),
+        ModifierKind::VisionGrant { side, day, night } => {
+            fnv.u8(39);
+            fnv.team(side);
+            fnv.i32(day);
+            fnv.i32(night);
+        }
+        ModifierKind::LampOff => fnv.u8(40),
+        ModifierKind::CaptureGuard => fnv.u8(41),
+        ModifierKind::ShrineReady => fnv.u8(42),
     }
 }
 

@@ -25,13 +25,23 @@ mid-only ruleset on that map, plus replays.
   (Pudge is not rooted, disarmed or muted while it flies), its vision, its
   instant kill of creeps and its rune mana refund; the dismember without its
   true sight and vision.
+- The map's objectives at 7.41f, as a match rule (`--objectives`; on the Dota
+  map by default, on the mid-only map only when asked): the two Outposts,
+  captured by a six-second channel shared by a side's heroes once one of
+  their home side's tier-two towers has fallen and taken to by scroll; the ten
+  Watchers, lit by a one-second channel for seven minutes of sight for the
+  side (800 by day, 450 by night) and put out for two minutes by the other
+  side; the two Shrines of Wisdom, active every seven minutes from 7:00 and
+  gathered by three seconds standing in them, a contest running the countdown
+  back (200, 500, 800, ... experience). An attack order at an Outpost or a
+  Watcher casts the hero's hidden channel, as a click does in Dota.
 - The shop sells 48 of Dota's items and 5 recipes: consumables, wards, the basic
   components, boots, the early builds and a few later items. An item with a
   limited stock (the wards, Clarity, Healing Salve, Tango, Enchanted Mango,
   Blood Grenade) is stocked and restocked per side as in Dota.
 
 Not modelled, although a 1v1 mid in Dota uses it: runes of every kind, and with
-them the Bottle; the items the shop does not sell (Faerie Fire, Smoke of
+them the Bottle; Roshan and the Tormentors; the items the shop does not sell (Faerie Fire, Smoke of
 Deceit, Dust of Appearance, neutral items, ...); Aghanim's Scepter and Shard;
 buyback; streams. The
 neutral abilities that only a player commanding a neutral would use (Heal,

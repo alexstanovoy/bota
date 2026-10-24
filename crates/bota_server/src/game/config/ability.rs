@@ -42,7 +42,7 @@ const INERT: AbilityHooks = AbilityHooks {
 };
 
 /// The hooks of every hero's and courier's ability, each by its id.
-const HOOKS: [(AbilityId, AbilityHooks); 18] = [
+const HOOKS: [(AbilityId, AbilityHooks); 20] = [
     (
         AbilityId::MEAT_HOOK,
         AbilityHooks {
@@ -82,6 +82,23 @@ const HOOKS: [(AbilityId, AbilityHooks); 18] = [
             on_cast: |world, caster, _| {
                 world.cast_meat_shield(caster, level_of(world, caster, AbilityId::MEAT_SHIELD))
             },
+            ..INERT
+        },
+    ),
+    (
+        AbilityId::CAPTURE,
+        AbilityHooks {
+            on_cast: World::capture_begins,
+            on_during: World::capture_goes_on,
+            on_cancel: World::capture_breaks_off,
+            on_complete: World::capture_completes,
+        },
+    ),
+    (
+        AbilityId::LAMP_USE,
+        AbilityHooks {
+            on_cast: World::lamp_begins,
+            on_complete: World::lamp_completes,
             ..INERT
         },
     ),

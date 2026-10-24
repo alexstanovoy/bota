@@ -1,9 +1,9 @@
 //! Keeping guarded structures untouchable until what shields them falls.
 
-use bota_core::{StructureId, Until, kind_def};
+use bota_core::{ModifierKind, StructureId, Until, kind_def};
 use bota_proto::{Team, UnitKind};
 
-use crate::game::World;
+use crate::game::{Modifier, World};
 
 use crate::engine::Entity;
 
@@ -58,6 +58,37 @@ impl World {
             .iter()
             .filter(|rule| self.names_structure(rule.guarded, entity))
             .all(|rule| self.condition_met(side, &rule.until))
+    }
+
+    /// Puts on each Outpost its capture guard while it holds, and takes it
+    /// off once it no longer does: while its home side holds it and every
+    /// tier-two tower of that side stands ([`bota_core::OUTPOST_OPENS`]).
+    pub(crate) fn wear_capture_guards(&mut self) {
+        if !self.objectives.has(bota_proto::ObjectiveKind::Outposts) {
+            return;
+        }
+        let outposts: Vec<(Entity, Team)> = self
+            .entities
+            .iter()
+            .filter_map(|entity| Some((entity, self.outpost.get(entity)?.home)))
+            .collect();
+        for (outpost, home) in outposts {
+            let holds = self.team.get(outpost) == Some(&home)
+                && !self.condition_met(home, &bota_core::OUTPOST_OPENS);
+            let worn = self.modifiers.get(outpost).is_some_and(|on_it| {
+                on_it
+                    .active()
+                    .any(|held| held.kind == ModifierKind::CaptureGuard)
+            });
+            if holds && !worn {
+                self.put_modifier(
+                    outpost,
+                    Modifier::new(ModifierKind::CaptureGuard, None, None, None),
+                );
+            } else if !holds && worn {
+                self.take_modifier(outpost, ModifierKind::CaptureGuard, None);
+            }
+        }
     }
 
     /// Marks every structure the map still guards untouchable.

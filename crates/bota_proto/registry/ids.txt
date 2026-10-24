@@ -85,6 +85,8 @@ ability 74 live Water Bubble (Large)
 ability 75 live Rally
 ability 76 live Tempest
 ability 77 live Meat Shield
+ability 78 live Capture
+ability 79 live Lamp Use
 
 item 0 live Boots of Speed
 item 1 live Clarity
@@ -208,6 +210,10 @@ effect 63 live Flying
 effect 64 live FountainInvulnerable
 effect 65 live FountainPassive
 effect 66 live FountainDamage
+effect 67 live VisionGrant
+effect 68 live LampOff
+effect 69 live CaptureGuard
+effect 70 live ShrineReady
 
 neutral 0 live Kobold
 neutral 1 live Kobold Soldier

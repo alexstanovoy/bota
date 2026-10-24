@@ -542,3 +542,15 @@ field MatchInfo 14 objectives: ObjectiveSet
 field MatchInfo 15 runes: RuneSet
 field ObjectiveSet 0 bits: u16
 field RuneSet 0 bits: u16
+variant EventKind 10 Captured {}
+field EventKind::Captured 0 unit: EntityId
+field EventKind::Captured 1 team: Team
+field EventKind::Captured 2 by: Option<EntityId>
+variant EventKind 11 ShrineActivated {}
+field EventKind::ShrineActivated 0 unit: EntityId
+field EventKind::ShrineActivated 1 team: Team
+field EventKind::ShrineActivated 2 xp: i32
+field EventKind::ShrineActivated 3 by: Option<EntityId>
+variant UnitKind 13 Outpost
+variant UnitKind 14 Watcher
+variant UnitKind 15 Shrine

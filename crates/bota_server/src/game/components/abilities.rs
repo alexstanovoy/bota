@@ -39,7 +39,7 @@ impl AbilityBook {
 
     /// Skill points spent: on abilities and the Attribute Bonus. Talents
     /// are not among them: since Dota 7.40 they are learned with talent
-    /// points of their own.
+    /// points of their own, nor is an ability a level grants.
     ///
     /// Slots sharing a learn group were paid for together, so the group
     /// counts once.
@@ -49,6 +49,7 @@ impl AbilityBook {
                 .slots
                 .iter()
                 .enumerate()
+                .filter(|(_, held)| ability_def(held.id).is_none_or(|def| def.granted_at.is_none()))
                 .filter(|(at, held)| {
                     let group = learn_group(held.id);
                     !self.slots[..*at]

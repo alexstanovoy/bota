@@ -53,6 +53,7 @@ pub(crate) fn stats() -> Stats {
         spell_immune: false,
         hit_count: None,
         glyph: false,
+        vision_grant: None,
         evasion: Odds::NEVER,
         lifesteal_pct: 0,
         magic_taken_pct: 0,

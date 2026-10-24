@@ -123,9 +123,13 @@ pub fn aggroable_yet(
     let near_home = rules::units(rules::EARLY_AGGRO_TOWER_RANGE);
     let mut at_home = false;
     for other in neighbours {
-        let creepish = other.kind.is_some_and(|kind| kind_def(kind).lane_creep)
+        let lane_creep = other.kind.is_some_and(|kind| kind_def(kind).lane_creep)
             && other.team.is_some_and(|their_side| their_side != side);
-        let busy = (creepish || other.team == Some(Team::Neutral))
+        // A neutral creep, not any unit of the neutral team: a Watcher or a
+        // Shrine by the lane draws nobody.
+        let neutral_creep = other.team == Some(Team::Neutral)
+            && other.kind.is_some_and(|kind| kind_def(kind).creep);
+        let busy = (lane_creep || neutral_creep)
             && other.alive
             && other.pos.is_some_and(|pos| at.within(pos, reach));
         if busy {

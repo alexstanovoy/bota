@@ -83,6 +83,8 @@ struct SightRow {
     tier: u8,
     /// Which sides see it, as the table has it.
     seen: Option<Visibility>,
+    /// The side it sees for besides its own, and how far, on the ground.
+    grant: Option<(Team, Fixed)>,
 }
 
 /// One entity that can see: where from, how far, and how far true sight
@@ -136,6 +138,7 @@ pub fn visibility_system(cx: SightCx<'_>) {
             flying: stats.is_some_and(|s| s.flies),
             tier: at.map_or(0, |at| ground.tier(at)),
             seen: visibility.get(entity).copied(),
+            grant: stats.and_then(|s| s.vision_grant),
         });
     }
     sight.index_rows();
@@ -179,6 +182,18 @@ impl SightScratch {
             }
             if row.true_sight > Fixed::ZERO {
                 self.true_viewers.push(viewer);
+            }
+        }
+        for row in &self.rows {
+            if let (Some((side, vision)), Some(from)) = (row.grant, row.at) {
+                self.viewers.push(SightViewer {
+                    side,
+                    from,
+                    vision,
+                    true_sight: Fixed::ZERO,
+                    tier: row.tier,
+                    flying: false,
+                });
             }
         }
     }
@@ -452,17 +467,22 @@ impl World {
         exposed
             || landing
             || self.entities.iter().any(|entity| {
-                if self.team.get(entity) != Some(&team) {
-                    return false;
-                }
                 let (Some(from), Some(stats)) = (self.pos(entity), self.stats.get(entity)) else {
                     return false;
                 };
-                if stats.vision <= Fixed::ZERO || !from.within(at, stats.vision) {
+                let (reach, flies) = if self.team.get(entity) == Some(&team) {
+                    (stats.vision, stats.flies)
+                } else {
+                    match stats.vision_grant {
+                        Some((side, reach)) if side == team => (reach, false),
+                        _ => return false,
+                    }
+                };
+                if reach <= Fixed::ZERO || !from.within(at, reach) {
                     return false;
                 }
                 let viewer_tier = self.ground.tier(from);
-                stats.flies
+                flies
                     || (viewer_tier >= target_tier && self.sight_block.clear(from, viewer_tier, at))
             })
     }
@@ -514,6 +534,7 @@ impl World {
             flying: stats.is_some_and(|stats| stats.flies),
             tier: at.map_or(0, |at| self.ground.tier(at)),
             seen: None,
+            grant: None,
         };
         let mut seen = Visibility::NONE;
         for team in [Team::Radiant, Team::Dire, Team::Neutral] {

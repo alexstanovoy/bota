@@ -362,7 +362,9 @@ impl Tracks {
             | EventKind::ItemBought { .. }
             | EventKind::StructureDestroyed { .. }
             | EventKind::Teleported { .. }
-            | EventKind::Landed { .. } => {}
+            | EventKind::Landed { .. }
+            | EventKind::Captured { .. }
+            | EventKind::ShrineActivated { .. } => {}
         }
     }
 

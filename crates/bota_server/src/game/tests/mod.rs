@@ -31,6 +31,7 @@ mod match_flow;
 mod movement;
 mod neutral_casts;
 mod neutral_passives;
+mod objectives;
 mod orders;
 mod pudge;
 mod queue;

@@ -1,4 +1,7 @@
-//! What making an illusion of a hero does to the other side's aims.
+//! What making an illusion of a hero, or handing a unit to another side,
+//! does to the aims at it.
+
+use bota_proto::Team;
 
 use crate::game::{Entity, PendingCast, UnitOrder, World, wire_id};
 
@@ -12,17 +15,24 @@ impl World {
         let Some(&side) = self.team.get(hero) else {
             return;
         };
-        let named = wire_id(hero);
+        self.call_off_aims(hero, |team| team != side);
+    }
+
+    /// Calls off every aim at a unit of the units whose side `of` takes: the
+    /// orders and casts waiting on it, whom they are set on, and the queued
+    /// orders that name it.
+    pub(crate) fn call_off_aims(&mut self, mark: Entity, of: impl Fn(Team) -> bool) {
+        let named = wire_id(mark);
         let entities = self.take_entity_snapshot();
         for unit in entities.iter().copied() {
-            if self.team.get(unit).is_none_or(|team| *team == side) {
+            if self.team.get(unit).is_none_or(|team| !of(*team)) {
                 continue;
             }
             if let Some(orders) = self.orders.get_mut(unit) {
                 if matches!(
                     orders.current,
                     UnitOrder::Attack { target, .. } | UnitOrder::Follow { target, .. }
-                        if target == hero
+                        if target == mark
                 ) {
                     orders.current = UnitOrder::Idle;
                 }
@@ -31,7 +41,7 @@ impl World {
                     orders.pending = None;
                 }
             }
-            if self.target_of(unit) == Some(hero) {
+            if self.target_of(unit) == Some(mark) {
                 self.target.remove(unit);
             }
             if let Some(queue) = self.queue.get_mut(unit) {

@@ -110,6 +110,14 @@ fn every_modifier() -> Vec<ModifierKind> {
         ModifierKind::FeastLinger { souls: 1 },
         ModifierKind::FountainPassive,
         ModifierKind::FountainDamage { stacks: 1 },
+        ModifierKind::VisionGrant {
+            side: bota_proto::Team::Radiant,
+            day: 0,
+            night: 0,
+        },
+        ModifierKind::LampOff,
+        ModifierKind::CaptureGuard,
+        ModifierKind::ShrineReady,
     ];
     for kind in &every {
         match kind {
@@ -148,6 +156,10 @@ fn every_modifier() -> Vec<ModifierKind> {
             | ModifierKind::Souls { .. }
             | ModifierKind::Feasting { .. }
             | ModifierKind::FeastLinger { .. }
+            | ModifierKind::VisionGrant { .. }
+            | ModifierKind::LampOff
+            | ModifierKind::CaptureGuard
+            | ModifierKind::ShrineReady
             | ModifierKind::Spell { .. } => {}
             ModifierKind::Dismembered { .. } | ModifierKind::MeatShield { .. } => {}
         }

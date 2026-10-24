@@ -275,7 +275,7 @@ fn render(format: &Format) -> String {
 /// gives it, so a constant cannot drift off its line in `registry/ids.txt`.
 #[test]
 fn every_named_id_constant_sits_on_its_registry_line() {
-    let named: [(IdSpace, u16, &str); 102] = [
+    let named: [(IdSpace, u16, &str); 108] = [
         (IdSpace::Hero, HeroId::PUDGE.0, "Pudge"),
         (IdSpace::Hero, HeroId::SHADOW_FIEND.0, "Shadow Fiend"),
         (IdSpace::Ability, AbilityId::MEAT_HOOK.0, "Meat Hook"),
@@ -307,6 +307,8 @@ fn every_named_id_constant_sits_on_its_registry_line() {
             "Feast of Souls",
         ),
         (IdSpace::Ability, AbilityId::MEAT_SHIELD.0, "Meat Shield"),
+        (IdSpace::Ability, AbilityId::CAPTURE.0, "Capture"),
+        (IdSpace::Ability, AbilityId::LAMP_USE.0, "Lamp Use"),
         (IdSpace::Item, ItemId::BOOTS.0, "Boots of Speed"),
         (IdSpace::Item, ItemId::CLARITY.0, "Clarity"),
         (IdSpace::Item, ItemId::HEALING_SALVE.0, "Healing Salve"),
@@ -442,6 +444,10 @@ fn every_named_id_constant_sits_on_its_registry_line() {
             EffectId::NEUTRAL_UPGRADE.0,
             "NeutralUpgrade",
         ),
+        (IdSpace::Effect, EffectId::VISION_GRANT.0, "VisionGrant"),
+        (IdSpace::Effect, EffectId::LAMP_OFF.0, "LampOff"),
+        (IdSpace::Effect, EffectId::CAPTURE_GUARD.0, "CaptureGuard"),
+        (IdSpace::Effect, EffectId::SHRINE_READY.0, "ShrineReady"),
     ];
     for (space, id, name) in named {
         let entry = registered(space)

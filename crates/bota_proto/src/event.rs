@@ -134,6 +134,26 @@ pub enum EventKind {
         /// Where it went off.
         at: Vec2,
     },
+    /// A building changed hands: an Outpost captured. Told to both sides.
+    Captured {
+        /// Which building.
+        unit: EntityId,
+        /// The side that holds it now.
+        team: Team,
+        /// The hero whose channel took it; `None` to the other side.
+        by: Option<EntityId>,
+    },
+    /// A Shrine of Wisdom was gathered. Told to both sides.
+    ShrineActivated {
+        /// Which shrine.
+        unit: EntityId,
+        /// The side that gathered it.
+        team: Team,
+        /// Experience each of the side's heroes it rewarded was given.
+        xp: i32,
+        /// The gatherer it rewarded; `None` to the other side.
+        by: Option<EntityId>,
+    },
 }
 
 impl EventKind {
@@ -151,6 +171,10 @@ impl EventKind {
                 killer.iter_mut().for_each(visit);
             }
             EventKind::Landed { caster, .. } => caster.iter_mut().for_each(visit),
+            EventKind::Captured { unit, by, .. } | EventKind::ShrineActivated { unit, by, .. } => {
+                visit(unit);
+                by.iter_mut().for_each(visit);
+            }
             EventKind::AbilityCast { caster: unit, .. }
             | EventKind::LevelUp { unit, .. }
             | EventKind::StructureDestroyed { unit, .. } => visit(unit),

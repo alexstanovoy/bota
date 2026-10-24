@@ -43,12 +43,6 @@ impl World {
         }
     }
 
-    fn wears(&self, entity: Entity, kind: ModifierKind) -> bool {
-        self.modifiers
-            .get(entity)
-            .is_some_and(|on_it| on_it.active().any(|held| held.kind == kind))
-    }
-
     fn put_flight(&mut self, courier: Entity) {
         self.put_modifier(
             courier,

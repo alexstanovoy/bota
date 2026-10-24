@@ -213,6 +213,14 @@ pub struct World {
     pub backdoor: Table<Backdoor>,
     /// What killing an entity pays.
     pub bounty: Table<Bounty>,
+    /// Which of the map's objectives the match stands up.
+    pub objectives: bota_proto::ObjectiveSet,
+    /// Each Outpost's home side.
+    pub outpost: Table<crate::game::Outpost>,
+    /// The capture under way at each Outpost being captured.
+    pub capture: Table<crate::game::Capture>,
+    /// The standing-zone countdown of each entity that keeps one.
+    pub zone: Table<crate::game::Zone>,
     /// Which seat owns an entity.
     pub owner: Table<SlotId>,
     /// Which hero a hero entity is.
@@ -312,6 +320,10 @@ impl World {
             push: Table::new(),
             grenade: Table::new(),
             feast: Table::new(),
+            objectives: bota_proto::ObjectiveSet::NONE,
+            outpost: Table::new(),
+            capture: Table::new(),
+            zone: Table::new(),
             errand: Table::new(),
             expiry: Table::new(),
             route: Table::new(),
@@ -720,11 +732,12 @@ impl World {
         run(self);
     }
 
-    /// Waves, camps, cooldowns, item builds, gold, shop stock, respawns,
-    /// couriers, item errands, sales and what runs out.
+    /// Waves, camps, the Shrines, cooldowns, item builds, gold, shop stock,
+    /// respawns, couriers, item errands, sales and what runs out.
     fn step_upkeep(&mut self) {
         self.spawn_waves();
         self.fill_camps();
+        self.tick_shrines();
         self.tick_gear();
         self.assemble_bags();
         self.passive_gold();
@@ -775,6 +788,7 @@ impl World {
         self.guard_structures();
         self.guard_cheated_heroes();
         self.wear_backdoor();
+        self.wear_capture_guards();
     }
 
     /// The tick of the game clock: the tick, moved on by `-startgame`. Every

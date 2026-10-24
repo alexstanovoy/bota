@@ -110,6 +110,13 @@ impl World {
         self.active_modifier(entity, ModifierKind::Feared)?.source
     }
 
+    /// Whether an entity wears an active modifier of exactly this kind.
+    pub(crate) fn wears(&self, entity: Entity, kind: ModifierKind) -> bool {
+        self.modifiers
+            .get(entity)
+            .is_some_and(|on_it| on_it.active().any(|held| held.kind == kind))
+    }
+
     /// The first active modifier of exactly this kind on an entity.
     fn active_modifier(&self, entity: Entity, kind: ModifierKind) -> Option<&Modifier> {
         self.modifiers

@@ -2,10 +2,10 @@
 //! what it asks for. What it does is the server's: it keeps a hook table
 //! with one row to each entry here.
 
-use bota_proto::{AbilityId, Aim};
+use bota_proto::{AbilityId, Aim, UnitKind};
 
 use crate::heroes::{pudge, shadow_fiend};
-use crate::{Aura, NEUTRAL_ABILITIES, rules};
+use crate::{Aura, NEUTRAL_ABILITIES, objective, rules};
 
 /// Whether an ability reaches an enemy that is spell immune: its
 /// `SpellImmunityType` in Dota's ability files, and the extra protection
@@ -19,6 +19,51 @@ pub enum Pierces {
     Yes,
     /// `SPELL_IMMUNITY_ENEMIES_YES`, but a spell-immune courier it does not.
     NotCouriers,
+}
+
+/// Which units an ability aimed at a unit may be aimed at, beyond what
+/// [`AbilityDef::at_an_enemy`] asks: Dota's `AbilityUnitTargetType` and
+/// `AbilityUnitTargetTeam` where they narrow it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct TargetFilter {
+    /// The kinds it may be aimed at, bit `n` the [`UnitKind`] of variant
+    /// index `n`. Zero: any kind.
+    kinds: u32,
+    /// Whether a unit of its caster's own side may be the target.
+    own_side: bool,
+}
+
+impl TargetFilter {
+    /// Any unit at all.
+    pub const ANY: TargetFilter = TargetFilter {
+        kinds: 0,
+        own_side: true,
+    };
+
+    /// Units of these kinds, of the caster's own side too when `own_side`.
+    pub const fn of(kinds: &[UnitKind], own_side: bool) -> TargetFilter {
+        let mut bits = 0;
+        let mut at = 0;
+        while at < kinds.len() {
+            assert!((kinds[at] as u32) < u32::BITS);
+            bits |= 1 << kinds[at] as u32;
+            at += 1;
+        }
+        TargetFilter {
+            kinds: bits,
+            own_side,
+        }
+    }
+
+    /// Whether it narrows the kinds at all.
+    pub const fn any_kind(&self) -> bool {
+        self.kinds == 0
+    }
+
+    /// Whether a unit of a kind, on the caster's side or not, passes.
+    pub const fn takes(&self, kind: UnitKind, own: bool) -> bool {
+        (self.any_kind() || self.kinds & (1 << kind as u32) != 0) && (self.own_side || !own)
+    }
 }
 
 /// One entry of the ability list.
@@ -77,6 +122,13 @@ pub struct AbilityDef {
     /// Whether the entry is retired: its id keeps its place, but nothing
     /// carries it and the wire never names it again.
     pub retired: bool,
+    /// Whether it is Dota's `DOTA_ABILITY_BEHAVIOR_HIDDEN`: never shown in a
+    /// view, never learned and never cast by an order naming its slot. An
+    /// order at a unit whose kind names it as its
+    /// [`interact`](crate::KindDef::interact) casts it.
+    pub hidden: bool,
+    /// Which units it may be aimed at.
+    pub targets: TargetFilter,
 }
 
 /// Nothing at all, so an entry names only what sets it apart.
@@ -102,6 +154,8 @@ pub(crate) const BARE_ABILITY: AbilityDef = AbilityDef {
     aura: None,
     granted_at: None,
     retired: false,
+    hidden: false,
+    targets: TargetFilter::ANY,
 };
 
 /// A courier's ability: one level, cast for no mana, held from its owner's
@@ -147,12 +201,14 @@ pub const ABILITIES: [AbilityDef; ABILITY_COUNT] = {
 };
 
 /// The abilities of the heroes and the couriers, each carrying its id.
-const HERO_ABILITIES: [AbilityDef; 18] = [
+const HERO_ABILITIES: [AbilityDef; 20] = [
     pudge::MEAT_HOOK,
     pudge::ROT,
     pudge::FLESH_HEAP,
     pudge::DISMEMBER,
     pudge::MEAT_SHIELD,
+    objective::CAPTURE,
+    objective::LAMP_USE,
     // Burst and Shield are Dota's DOTA_ABILITY_BEHAVIOR_IMMEDIATE
     // (`courier_burst`, `courier_shield`): they break off nothing.
     AbilityDef {

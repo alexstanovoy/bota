@@ -4,7 +4,7 @@
 //! instead of matching on the kind, so a new kind is one proto variant and
 //! one row.
 
-use bota_proto::{Team, UnitKind, Vec2};
+use bota_proto::{AbilityId, Team, UnitKind, Vec2};
 
 use crate::{AttackClass, MapDef, PriorityOrder, TargetClass, barracks_ranged_at, rules};
 
@@ -60,6 +60,19 @@ pub struct KindDef {
     /// Its blows on the other side break what breaks on damage. Read through
     /// [`breaks_regen`](crate::breaks_regen), the one rule for it.
     pub(crate) breaks_regen: bool,
+    /// Ticks its side's Glyph of Fortification holds on it, put on what
+    /// stands when the Glyph is used: "all friendly buildings and lane
+    /// creeps" (Liquipedia, *Glyph of Fortification*), the base's buildings
+    /// with the fountain and the Effigies, its fillers (Liquipedia, *Map*),
+    /// among them. Absent for a kind the Glyph leaves bare: the neutral
+    /// buildings, "permanently invulnerable" and "immune to any ability"
+    /// (Liquipedia, *Buildings*), an Outpost a side holds included.
+    pub glyphed_for: Option<u32>,
+    /// The hidden ability a hero casts at it when ordered to attack it or to
+    /// move to it, as Dota turns a click on an Outpost or a Watcher into
+    /// `ability_capture` or `ability_lamp_use`. Absent for a kind a click
+    /// only attacks or follows.
+    pub interact: Option<AbilityId>,
 }
 
 /// A kind that is none of the special things, so a row names only what sets
@@ -83,6 +96,8 @@ const PLAIN: KindDef = KindDef {
     death_announced: false,
     killer_announced: false,
     breaks_regen: false,
+    glyphed_for: None,
+    interact: None,
 };
 
 const fn lane_creep(kind: UnitKind, name: &'static str, attack_class: AttackClass) -> KindDef {
@@ -93,6 +108,7 @@ const fn lane_creep(kind: UnitKind, name: &'static str, attack_class: AttackClas
         creep: true,
         attack_class,
         deny_below_pct: Some(rules::DENY_HP_PCT),
+        glyphed_for: Some(rules::GLYPH_CREEP_TICKS),
         ..PLAIN
     }
 }
@@ -117,12 +133,25 @@ const fn building(
         takes_scrolls,
         struck_by_area_spells: false,
         death_announced: true,
+        glyphed_for: Some(rules::GLYPH_STRUCTURE_TICKS),
         ..PLAIN
     }
 }
 
+/// A neutral building of the map's objectives: invulnerable, it never
+/// falls, so nothing denies it and nothing announces its fall, and the
+/// Glyph leaves it bare.
+const fn objective(kind: UnitKind, name: &'static str, takes_scrolls: bool) -> KindDef {
+    KindDef {
+        deny_below_pct: None,
+        death_announced: false,
+        glyphed_for: None,
+        ..building(kind, name, TargetClass::Building, takes_scrolls)
+    }
+}
+
 /// Every kind of unit, indexed by its wire variant.
-pub const UNIT_KINDS: [KindDef; 13] = [
+pub const UNIT_KINDS: [KindDef; 16] = [
     KindDef {
         kind: UnitKind::Hero,
         attack_class: AttackClass::Hero,
@@ -186,6 +215,16 @@ pub const UNIT_KINDS: [KindDef; 13] = [
         death_announced: false,
         ..building(UnitKind::Filler, "Building", TargetClass::Unit, false)
     },
+    // A side teleports to the Outposts it holds [LIQ Outpost].
+    KindDef {
+        interact: Some(AbilityId::CAPTURE),
+        ..objective(UnitKind::Outpost, "Outpost", true)
+    },
+    KindDef {
+        interact: Some(AbilityId::LAMP_USE),
+        ..objective(UnitKind::Watcher, "Watcher", false)
+    },
+    objective(UnitKind::Shrine, "Shrine of Wisdom", false),
 ];
 
 const _: () = {
@@ -212,7 +251,10 @@ const fn row(kind: UnitKind) -> usize {
         | UnitKind::Fountain
         | UnitKind::Ward
         | UnitKind::Courier
-        | UnitKind::Filler => kind as usize,
+        | UnitKind::Filler
+        | UnitKind::Outpost
+        | UnitKind::Watcher
+        | UnitKind::Shrine => kind as usize,
     }
 }
 
@@ -224,7 +266,8 @@ pub const fn kind_def(kind: UnitKind) -> &'static KindDef {
 
 /// What the game calls one unit on a map, from its kind, its side and where
 /// it stands: the barracks that feeds the ranged creeps is the one the map
-/// puts there, and each Ancient is its side's own.
+/// puts there, each Ancient is its side's own, and each Outpost is named by
+/// its place.
 pub fn unit_name(map: &MapDef, kind: UnitKind, team: Team, pos: Vec2) -> &'static str {
     match (kind, team) {
         (UnitKind::Ancient, Team::Radiant) => "Radiant's Ancient",
@@ -233,6 +276,11 @@ pub fn unit_name(map: &MapDef, kind: UnitKind, team: Team, pos: Vec2) -> &'stati
             "Ranged Barracks"
         }
         (UnitKind::Barracks, _) => "Melee Barracks",
+        (UnitKind::Outpost, _) => map
+            .outposts
+            .iter()
+            .find(|outpost| outpost.at == pos)
+            .map_or(kind_def(kind).name, |outpost| outpost.name),
         _ => kind_def(kind).name,
     }
 }

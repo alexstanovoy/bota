@@ -153,7 +153,7 @@ pub const ABILITIES: [AbilityFace; ABILITY_COUNT] = {
 };
 
 /// The faces of every hero's and courier's ability, each by its id.
-const HERO_FACES: [AbilityFace; 18] = [
+const HERO_FACES: [AbilityFace; 20] = [
     AbilityFace {
         id: AbilityId::MEAT_HOOK.0,
         name: "Hook",
@@ -238,6 +238,17 @@ const HERO_FACES: [AbilityFace; 18] = [
         id: AbilityId::MEAT_SHIELD.0,
         name: "Shield",
         template: "No target. Every blow that reaches you loses {meat_block} damage, after armor and resistance, for {meat_secs} s. {mana} mana, {wait} s wait.",
+    },
+    // Hidden: no slot shows them; the cast and the channel name them.
+    AbilityFace {
+        id: AbilityId::CAPTURE.0,
+        name: "Capture",
+        template: "Channels at an Outpost of the other side from within {range}; the Outpost is your side's once your side has channelled for {duration} s, shared among its heroes channelling.",
+    },
+    AbilityFace {
+        id: AbilityId::LAMP_USE.0,
+        name: "Watcher",
+        template: "Channels at a Watcher from within {range} for {duration} s: lights it for your side's sight, or puts out one the other side lit.",
     },
     // Retired: what named a Blood Grenade in flight, which names its item now.
     AbilityFace {

@@ -513,6 +513,7 @@ impl World {
                 book.slots
                     .iter()
                     .enumerate()
+                    .filter(|(_, ability)| slot_shown(ability))
                     .map(|(slot, ability)| {
                         ability_view(
                             ability,
@@ -619,8 +620,15 @@ fn ability_view(
 fn ability_views(book: &crate::game::AbilityBook, mana_rate_bp: i32) -> Vec<AbilityView> {
     book.slots
         .iter()
+        .filter(|held| slot_shown(held))
         .map(|held| ability_view(held, false, false, mana_rate_bp))
         .collect()
+}
+
+/// Whether a view shows a slot: every one but a hidden ability's, which
+/// sits after the shown ones, so a shown slot's index is its slot's.
+fn slot_shown(held: &crate::game::AbilityState) -> bool {
+    bota_core::ability_def(held.id).is_none_or(|def| !def.hidden)
 }
 
 impl World {

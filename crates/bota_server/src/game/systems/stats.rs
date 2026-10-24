@@ -134,6 +134,7 @@ pub fn derive_stats(cx: StatsCx<'_>) {
             hero: kind.kind == bota_proto::UnitKind::Hero,
             illusion,
             sheltered_by_fountain: kind.fountain_shelters,
+            night,
         };
         add_modifiers(&mut now, &mut sums, working(), wearer);
         if let Some(on_it) = modifiers.get(entity) {
@@ -313,6 +314,7 @@ struct Wearer {
     hero: bool,
     illusion: bool,
     sheltered_by_fountain: bool,
+    night: bool,
 }
 
 /// A bonus as a unit keeps it: an illusion keeps none of a bonus of attack
@@ -418,6 +420,10 @@ fn add_modifiers<'a>(
                 now.accuracy = now.accuracy.or(Odds::percent(rules::FOUNTAIN_ACCURACY_PCT));
             }
             ModifierKind::Fortified => now.glyph = true,
+            ModifierKind::VisionGrant { side, day, night } => {
+                let radius = if wearer.night { night } else { day };
+                now.vision_grant = Some((side, Fixed::from_int(radius)));
+            }
             ModifierKind::Mending { .. }
             | ModifierKind::Clarity { .. }
             | ModifierKind::Fountain { .. }
@@ -432,6 +438,9 @@ fn add_modifiers<'a>(
             | ModifierKind::Rooted
             | ModifierKind::Disarmed
             | ModifierKind::Broken
+            | ModifierKind::LampOff
+            | ModifierKind::CaptureGuard
+            | ModifierKind::ShrineReady
             | ModifierKind::BackdoorProtection
             | ModifierKind::TimedLife
             | ModifierKind::Illusion
@@ -638,6 +647,7 @@ fn raised(kind: &UnitDef, levels: i32, steps: i32, night: bool) -> Stats {
         spell_immune: kind.spell_immune,
         hit_count: kind.hit_count,
         glyph: false,
+        vision_grant: None,
     }
 }
 

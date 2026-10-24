@@ -162,7 +162,14 @@ impl World {
         self.owner.insert(entity, slot);
         self.hero.insert(entity, hero);
         self.level.insert(entity, Level(1));
-        self.abilities.insert(entity, hero_kit(hero));
+        let mut book = hero_kit(hero);
+        book.slots
+            .extend(self.interactions().map(|id| AbilityState {
+                id,
+                level: 1,
+                cooldown: 0,
+            }));
+        self.abilities.insert(entity, book);
         self.inventory
             .insert(entity, Inventory::of_hero(slot, self.tick));
         entity
@@ -317,6 +324,19 @@ impl World {
                 self.rax.insert(entity, Rax { ranged });
             }
         }
+        entity
+    }
+
+    /// Puts one of the map's objectives up: a building that stands where it
+    /// is put, takes room and does nothing of its own.
+    pub(crate) fn spawn_objective(
+        &mut self,
+        def: &'static UnitDef,
+        team: Team,
+        pos: Vec2,
+    ) -> Entity {
+        let entity = self.spawn_body(def, team, pos);
+        self.give_hull(entity, def);
         entity
     }
 

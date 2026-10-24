@@ -587,6 +587,17 @@ pub fn all_events() -> Vec<EventKind> {
             caster: Some(entity(7)),
             at: Vec2::from_ints(1500, -700),
         },
+        EventKind::Captured {
+            unit: entity(300),
+            team: Team::Dire,
+            by: Some(entity(7)),
+        },
+        EventKind::ShrineActivated {
+            unit: entity(301),
+            team: Team::Radiant,
+            xp: 500,
+            by: None,
+        },
     ]
 }
 

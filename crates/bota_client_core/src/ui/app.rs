@@ -257,9 +257,25 @@ impl Refused {
 
 /// One line of the kill feed.
 pub struct FeedLine {
+    /// The line in the client's words: Dota's text where it has one.
     pub text: String,
     /// Seconds since it appeared.
     pub age: f32,
+    /// The event the line tells, as the side was told it, for a front end
+    /// to word it with its game's own labels and icons. Absent for a line
+    /// of the client's own: a seat gone, a broken stream.
+    pub told: Option<EventKind>,
+}
+
+impl FeedLine {
+    /// A fresh line telling no event.
+    pub fn new(text: String) -> FeedLine {
+        FeedLine {
+            text,
+            age: 0.0,
+            told: None,
+        }
+    }
 }
 
 /// The whole client.
@@ -794,7 +810,7 @@ impl App {
                 slot: Some(slot), ..
             } => {
                 let text = format!("{} disconnected", self.seat_name(*slot));
-                self.feed.push(FeedLine { text, age: 0.0 });
+                self.feed.push(FeedLine::new(text));
             }
             _ => {}
         }
@@ -832,10 +848,9 @@ impl App {
     /// The server's stream broke the rules of a match: stop listening.
     fn fail(&mut self, why: &str) {
         self.lost = true;
-        self.feed.push(FeedLine {
-            text: format!("the server broke the protocol: {why}"),
-            age: 0.0,
-        });
+        self.feed.push(FeedLine::new(format!(
+            "the server broke the protocol: {why}"
+        )));
     }
 
     /// Notices a dead socket once and says so.
@@ -847,10 +862,8 @@ impl App {
             && net.is_closed()
         {
             self.lost = true;
-            self.feed.push(FeedLine {
-                text: "connection to the server lost".to_string(),
-                age: 0.0,
-            });
+            self.feed
+                .push(FeedLine::new("connection to the server lost".to_string()));
         }
     }
 

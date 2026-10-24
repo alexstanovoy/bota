@@ -1480,6 +1480,9 @@ fn told_as(kind: &mut EventKind, event: &Event, mine: Team) {
         }
         EventKind::Missed { source, .. } if hide_dealer => *source = None,
         EventKind::Landed { caster, .. } if hide_dealer => *caster = None,
+        EventKind::Captured { by, .. } | EventKind::ShrineActivated { by, .. } if hide_dealer => {
+            *by = None
+        }
         EventKind::Died { killer, bounty, .. } => {
             if hide_dealer {
                 *killer = None;

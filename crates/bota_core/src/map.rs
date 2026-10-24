@@ -5,9 +5,11 @@
 //! which camps the jungle holds. The forest and the ground are published
 //! with the match itself.
 
-use bota_proto::{MapId, ObjectiveSet, RuneSet, Vec2};
+use bota_proto::{MapId, ObjectiveKind, ObjectiveSet, RuneSet, Vec2};
 
-use crate::{CampDef, CampKind, Protection, camp, rules};
+use crate::{
+    CampDef, CampKind, OutpostDef, Protection, SIMULATED_OBJECTIVES, camp, objective, rules,
+};
 
 /// Full Dota geometry with mid-only waves and bounded hero/tower play.
 pub const MAP2_ID: MapId = MapId(2);
@@ -18,10 +20,6 @@ pub const MAP2_GAME_TICKS: u32 = 20 * 60 * rules::TICKS_PER_SECOND;
 /// The tick Map2 ends on as a draw when nothing decided it earlier, pregame
 /// included.
 pub const MAP2_TICK_CAP: u32 = rules::PREGAME_TICKS + MAP2_GAME_TICKS;
-
-/// The objectives the simulation stands up and plays: what a match may ask
-/// for. Every other kind is refused until it is simulated.
-pub const SIMULATED_OBJECTIVES: ObjectiveSet = ObjectiveSet::NONE;
 
 /// The kinds of rune the simulation spawns and plays: what a match may ask
 /// for. Every other kind is refused until it is simulated.
@@ -66,6 +64,12 @@ pub struct MapDef {
     pub death_limit: u16,
     /// Whether losing any tower loses the match.
     pub tower_ends_it: bool,
+    /// The Outposts.
+    pub outposts: &'static [OutpostDef],
+    /// Where the Watchers stand.
+    pub watchers: &'static [Vec2],
+    /// Where the Shrines of Wisdom stand.
+    pub shrines: &'static [Vec2],
     /// The objectives a match on this map stands up unless its host says
     /// otherwise.
     pub default_objectives: ObjectiveSet,
@@ -124,6 +128,9 @@ const DOTA: MapDef = MapDef {
     camps: &crate::CAMPS,
     death_limit: 0,
     tower_ends_it: false,
+    outposts: &objective::DOTA_OUTPOSTS,
+    watchers: &objective::DOTA_WATCHERS,
+    shrines: &objective::DOTA_SHRINES,
     default_objectives: SIMULATED_OBJECTIVES,
     default_runes: SIMULATED_RUNES,
 };
@@ -154,6 +161,9 @@ const DEMO: MapDef = MapDef {
     camps: &DEMO_CAMPS,
     death_limit: 0,
     tower_ends_it: false,
+    outposts: &[],
+    watchers: &[],
+    shrines: &[],
     default_objectives: ObjectiveSet::NONE,
     default_runes: RuneSet::NONE,
 };
@@ -189,9 +199,20 @@ impl MapDef {
         0..self.lanes
     }
 
-    /// The objectives the map has the data to stand up: none yet.
+    /// The objectives the map has the data to stand up: those it has a
+    /// place for.
     pub const fn objectives_held(&self) -> ObjectiveSet {
-        ObjectiveSet::NONE
+        let mut held = ObjectiveSet::NONE;
+        if !self.outposts.is_empty() {
+            held = held.with(ObjectiveKind::Outposts);
+        }
+        if !self.watchers.is_empty() {
+            held = held.with(ObjectiveKind::Watchers);
+        }
+        if !self.shrines.is_empty() {
+            held = held.with(ObjectiveKind::Shrines);
+        }
+        held
     }
 
     /// The kinds of rune the map has spots for: none yet.

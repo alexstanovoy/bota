@@ -157,6 +157,14 @@ impl AbilityId {
     pub const FEAST_OF_SOULS: AbilityId = AbilityId(15);
     /// Pudge's meat shield: damage taken is cut by a fixed amount for a while.
     pub const MEAT_SHIELD: AbilityId = AbilityId(77);
+    /// Every hero's hidden `ability_capture`: a channel that takes an Outpost
+    /// for its side. Never shown in a view: an attack order at an Outpost
+    /// casts it.
+    pub const CAPTURE: AbilityId = AbilityId(78);
+    /// Every hero's hidden `ability_lamp_use`: a channel that lights a
+    /// Watcher for its side, or puts out one the other side lit. Never shown
+    /// in a view: an attack order at a Watcher casts it.
+    pub const LAMP_USE: AbilityId = AbilityId(79);
 }
 
 /// Selects one purchasable item.
@@ -373,6 +381,18 @@ impl EffectId {
     /// (`modifier_fountain_fury_swipes_damage_increase`): each shot of it
     /// deals more by the stack.
     pub const FOUNTAIN_DAMAGE: EffectId = EffectId(66);
+    /// Sight given to a side: a Watcher lit for it (`modifier_lamp_on`),
+    /// seeing for the side that lit it while it lasts.
+    pub const VISION_GRANT: EffectId = EffectId(67);
+    /// A Watcher put out by the side that did not light it
+    /// (`modifier_lamp_off`): nobody may light it until it runs out.
+    pub const LAMP_OFF: EffectId = EffectId(68);
+    /// An Outpost the other side may not capture yet
+    /// (`modifier_watch_tower_invulnerable`): until a tier-two tower of its
+    /// home side falls.
+    pub const CAPTURE_GUARD: EffectId = EffectId(69);
+    /// A Shrine of Wisdom holding its experience for whoever gathers it.
+    pub const SHRINE_READY: EffectId = EffectId(70);
 }
 
 /// An index into a unit's ability slots, as listed in
@@ -452,4 +472,13 @@ pub enum UnitKind {
     /// A filler: a statue standing in a base that does nothing but pay gold
     /// when it falls.
     Filler,
+    /// An Outpost (`npc_dota_watch_tower`): an invulnerable building a side
+    /// captures, and teleports to while it holds it.
+    Outpost,
+    /// A Watcher (`npc_dota_lantern`): an invulnerable lantern a hero lights
+    /// for its side's sight.
+    Watcher,
+    /// A Shrine of Wisdom (`npc_dota_xp_fountain`): an invulnerable building
+    /// that gives experience to the side whose hero gathers it.
+    Shrine,
 }

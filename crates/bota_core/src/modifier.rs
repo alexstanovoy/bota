@@ -1,6 +1,6 @@
 //! What a modifier does to whatever wears it, and how much of it there is.
 
-use bota_proto::{DamageKind, EffectId, Fixed, StatusFlags};
+use bota_proto::{DamageKind, EffectId, Fixed, StatusFlags, Team};
 
 use crate::{Act, Buff, NeutralAbility, Spell, Strike, Then, Throe, WATER_BUBBLE_EFFECT, rules};
 
@@ -206,6 +206,28 @@ pub enum ModifierKind {
     /// takes no damage. Put on the structures and lane creeps that stand
     /// when the Glyph is used, each with its own time.
     Fortified,
+    /// Sight given to a side from where the wearer stands, a ground
+    /// viewer of that side as long as it lasts: a Watcher lit by a hero of
+    /// `side` (`modifier_lamp_on`), seeing `day` far by day and `night` by
+    /// night for it.
+    VisionGrant {
+        /// The side it sees for.
+        side: Team,
+        /// How far it sees by day, in world units.
+        day: i32,
+        /// How far it sees by night, in world units.
+        night: i32,
+    },
+    /// A Watcher put out (`modifier_lamp_off`): nobody may light it while
+    /// it lasts.
+    LampOff,
+    /// An Outpost the other side may not capture yet
+    /// (`modifier_watch_tower_invulnerable`), worn while every tier-two tower
+    /// of its home side stands and that side holds it.
+    CaptureGuard,
+    /// A Shrine of Wisdom holding the experience of its last activation for
+    /// whoever gathers it.
+    ShrineReady,
     /// What a neutral's spell left, at the level it was cast at. `amount`
     /// is the spell's own count: the blows a Steal Weapon has counted, the
     /// magical damage a bubble has left to soak.
@@ -249,6 +271,10 @@ impl ModifierKind {
             ModifierKind::Illusion => EffectId::ILLUSION,
             ModifierKind::Fortified => EffectId::FORTIFIED,
             ModifierKind::NeutralUpgrade { .. } => EffectId::NEUTRAL_UPGRADE,
+            ModifierKind::VisionGrant { .. } => EffectId::VISION_GRANT,
+            ModifierKind::LampOff => EffectId::LAMP_OFF,
+            ModifierKind::CaptureGuard => EffectId::CAPTURE_GUARD,
+            ModifierKind::ShrineReady => EffectId::SHRINE_READY,
             ModifierKind::FleshHeap { .. } => EffectId::FLESH_HEAP,
             ModifierKind::Souls { .. } => EffectId::SOULS,
             ModifierKind::Feasting { .. } => EffectId::FEASTING,

@@ -1229,3 +1229,56 @@ fn a_missile_that_looks_as_something_other_than_what_let_it_go_is_refused() {
         assert_eq!(app.lost, lost, "{missile:?}");
     }
 }
+
+#[test]
+fn a_captured_outpost_is_fed_in_dotas_words_and_carries_its_event() {
+    let (mut app, us, theirs) = a_duel_app();
+    // A spot of the test's small terrain: no Outpost of the map stands
+    // there, so it goes by Dota's default name (`DOTA_OutpostName_Default`).
+    let mut outpost = owned(5, UnitKind::Outpost, None);
+    outpost.pos = bota_proto::Vec2::from_ints(3000, 3000);
+    outpost.team = Team::Dire;
+    app.handle(snapshot_of(
+        11,
+        vec![owned(1, UnitKind::Hero, Some(SlotId(0))), outpost.clone()],
+        vec![a_seat(SlotId(0), Some(us)), {
+            let mut enemy = a_seat(SlotId(1), Some(theirs));
+            enemy.team = Team::Dire;
+            enemy.hero = HeroId::SHADOW_FIEND;
+            enemy
+        }],
+    ));
+    assert!(
+        app.freshest(outpost.id).is_some(),
+        "the outpost is in view: {:?}",
+        app.feed.last().map(|line| line.text.clone())
+    );
+    let told = |team| EventKind::Captured {
+        unit: outpost.id,
+        team,
+        by: None,
+    };
+    app.handle(bota_proto::ServerMsg::Events {
+        tick: 11,
+        events: vec![told(Team::Radiant), told(Team::Dire)],
+    });
+    let lines: Vec<(String, Option<EventKind>)> = app
+        .feed
+        .iter()
+        .map(|line| (line.text.clone(), line.told.clone()))
+        .collect();
+    assert_eq!(
+        lines,
+        [
+            (
+                "Your team captured Outpost".to_string(),
+                Some(told(Team::Radiant))
+            ),
+            (
+                "The enemy team captured Outpost".to_string(),
+                Some(told(Team::Dire))
+            ),
+        ],
+        "each line carries the event it tells"
+    );
+}

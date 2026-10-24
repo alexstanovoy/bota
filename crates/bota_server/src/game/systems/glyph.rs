@@ -37,25 +37,17 @@ impl World {
         self.fortify(team);
     }
 
-    /// Puts the Fortified buff on every structure and lane creep of a side
-    /// that stands now, as Dota's Glyph does: a creep that spawns later
-    /// does not get it.
+    /// Puts the Fortified buff on everything of a side that stands now and
+    /// that its kind says the Glyph covers
+    /// ([`bota_core::KindDef::glyphed_for`]: its buildings and its lane
+    /// creeps, not a neutral building it holds), each for its kind's time,
+    /// as Dota's Glyph does: a creep that spawns later does not get it.
     fn fortify(&mut self, team: Team) {
         let covered: Vec<(Entity, u32)> = self
             .entities
             .iter()
             .filter(|&entity| self.team.get(entity) == Some(&team))
-            .filter_map(|entity| {
-                let def = kind_def(*self.kind.get(entity)?);
-                let ticks = if def.structure {
-                    rules::GLYPH_STRUCTURE_TICKS
-                } else if def.lane_creep {
-                    rules::GLYPH_CREEP_TICKS
-                } else {
-                    return None;
-                };
-                Some((entity, ticks))
-            })
+            .filter_map(|entity| Some((entity, kind_def(*self.kind.get(entity)?).glyphed_for?)))
             .collect();
         for (entity, ticks) in covered {
             self.put_modifier(

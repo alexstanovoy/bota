@@ -37,6 +37,7 @@ impl World {
         world.immortal_heroes = cfg.immortal_heroes;
         world.spawn_modifiers = cfg.spawn_modifiers.clone();
         world.apply_spawn_modifiers_to_all();
+        world.stand_up_objectives(cfg.objectives);
         for pick in &cfg.picks {
             let at = hero_spawn_pos(map, pick.team);
             let hero = world.spawn_hero(pick.team, at, pick.slot, pick.hero);
@@ -257,6 +258,17 @@ impl World {
             Order::Attack {
                 target: Target::None,
             } => UnitOrder::Hold,
+            Order::Move {
+                target: Target::Unit(target),
+            }
+            | Order::Attack {
+                target: Target::Unit(target),
+            } if self.interaction_at(unit, target).is_some() => {
+                if let Some(slot) = self.interaction_at(unit, target) {
+                    self.take_cast(unit, slot, Target::Unit(target));
+                }
+                return;
+            }
             Order::Move {
                 target: Target::Unit(target),
             } => {
@@ -509,7 +521,11 @@ impl World {
             .and_then(|book| book.slots.get(usize::from(slot.0)))
             .copied()
             .ok_or(RejectReason::EmptySlot)?;
-        let def = bota_core::ability_def(held.id).ok_or(RejectReason::EmptySlot)?;
+        // A hidden ability is no slot a seat sees: only an order at what it
+        // works on casts it.
+        let def = bota_core::ability_def(held.id)
+            .filter(|def| !def.hidden)
+            .ok_or(RejectReason::EmptySlot)?;
         if def.passive {
             return Err(RejectReason::NotCastable);
         }
@@ -529,6 +545,9 @@ impl World {
         if let Target::Unit(target) = target {
             let mark = self.seen_by(seat, *target)?;
             if def.at_an_enemy && !self.hostile(unit, mark) {
+                return Err(RejectReason::WrongTargetKind);
+            }
+            if !self.aimable(unit, def, mark) {
                 return Err(RejectReason::WrongTargetKind);
             }
         }

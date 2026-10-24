@@ -31,8 +31,15 @@ pub enum Purpose {
     Crit = 12,
     /// Whether a neutral answers the death of one of its camp with a cast.
     NeutralCast = 13,
+    /// Which of the heroes gathering a Shrine of Wisdom it rewards. Drawn
+    /// from the Shrine's own stream of each activation only.
+    Shrine = 14,
 }
 
+/// The purposes with a stream of the match as a whole, whose draws the
+/// world's fingerprint counts: every one up to [`Purpose::NeutralCast`].
+/// One after it draws from the streams of units alone
+/// ([`MatchRng::for_unit`]), which are drawn afresh and keep no count.
 const PURPOSE_COUNT: usize = Purpose::NeutralCast as usize + 1;
 
 /// The root of all hidden randomness in one match, reproducible from the
@@ -58,6 +65,10 @@ impl MatchRng {
 
     /// A stream that belongs to the match as a whole.
     pub fn global(&mut self, purpose: Purpose) -> &mut Stream {
+        assert!(
+            (purpose as usize) < PURPOSE_COUNT,
+            "{purpose:?} draws from the streams of units alone"
+        );
         &mut self.global[purpose as usize]
     }
 

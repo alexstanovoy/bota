@@ -107,6 +107,10 @@ pub struct Stats {
     /// Whether the side's Glyph of Fortification holds on it: damage does
     /// nothing to it.
     pub glyph: bool,
+    /// The side it sees for besides its own, and how far: what a
+    /// [`ModifierKind::VisionGrant`](bota_core::ModifierKind::VisionGrant)
+    /// on it gives.
+    pub vision_grant: Option<(bota_proto::Team, Fixed)>,
 }
 
 impl Stats {
