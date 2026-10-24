@@ -60,7 +60,8 @@ pub struct AbilityView {
     pub passive: bool,
     /// Whether it is a toggle that is currently on.
     pub on: bool,
-    /// Whether a skill point could be spent on it right now.
+    /// Whether a skill point could be spent on it right now. False on a
+    /// unit of another side: its unspent points are its own.
     pub can_level: bool,
 }
 
@@ -107,7 +108,8 @@ pub struct ItemView {
     pub range: i32,
     /// How a use of it is aimed. Absent for one that cannot be used at all.
     pub aim: Option<Aim>,
-    /// Whether it is marked to be sold when it next reaches the shop.
+    /// Whether it is marked to be sold when it next reaches the shop. False
+    /// on a unit of another side.
     pub for_sale: bool,
     /// The seat that bought it.
     pub owner: SlotId,
@@ -280,8 +282,9 @@ pub struct SwingView {
 
 /// Whom a unit in the view fights, and how firmly it holds to that.
 ///
-/// Every id it names is one of [`WorldView::units`]. A unit without an entry
-/// is set on nobody, is not swinging and holds no timer.
+/// Every id it names is one of [`WorldView::units`], and it tells nothing of
+/// a unit the view does not carry: a unit without an entry is set on nobody
+/// the view carries, is not swinging at one and holds no timer on one.
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct AggroView {
     /// The unit this describes.
@@ -293,11 +296,14 @@ pub struct AggroView {
     /// one, and when the swing is at a unit this view does not carry.
     pub swing: Option<SwingView>,
     /// Ticks a lane creep keeps its target whatever else turns up, after an
-    /// enemy hero's attack order drew it. Zero when nothing holds it.
+    /// enemy hero's attack order drew it. Zero when nothing holds it, and
+    /// when `target` is absent: a hold on a unit the view does not carry is
+    /// not told.
     pub hold_left: u32,
     /// Ticks a lane creep keeps chasing its target out of attack range while
     /// nothing else is within its acquisition range. Full while the target
-    /// is within reach; zero when it is set on nobody.
+    /// is within reach; zero when it is set on nobody, and when `target` is
+    /// absent.
     pub chase_left: u32,
     /// For a hero, told to its own side only: ticks before its attack order
     /// at an enemy hero may draw lane creeps again. For a tower: ticks before

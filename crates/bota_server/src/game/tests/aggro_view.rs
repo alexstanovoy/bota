@@ -148,9 +148,11 @@ fn a_target_in_the_fog_is_never_named() {
     assert_eq!(world.target_of(creep), Some(prey), "the chase goes on");
     let radiant = received(&world, Some(Team::Radiant));
     assert!(!radiant.units.iter().any(|unit| unit.id == wire_id(prey)));
-    let entry = told_of(&radiant, creep).expect("a chase is told");
-    assert_eq!(entry.target, None, "whom it chases is not");
-    assert!(entry.chase_left > 0);
+    assert_eq!(
+        told_of(&radiant, creep),
+        None,
+        "nothing of a chase after what the side cannot see is told, nor how long it goes on"
+    );
     let full = received(&world, None);
     assert_eq!(
         told_of(&full, creep).and_then(|entry| entry.target),

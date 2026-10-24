@@ -281,11 +281,15 @@ impl World {
         };
         let returning = kind == UnitKind::CreepNeutral
             && self.neutral_ai.get(entity).is_some_and(|ai| ai.going_home);
-        let hold_left = lane.map_or(0, |ai| ai.keep_until.saturating_sub(self.tick));
-        let chase_left = lane
-            .filter(|_| held.is_some())
-            .map_or(0, |ai| ai.chase_until.saturating_sub(self.tick));
+        // A hold and a chase are on the target: of one the view does not
+        // carry, nothing is told.
         let target = held.filter(|on| self.carried(viewer, *on)).map(wire_id);
+        let (hold_left, chase_left) = lane.filter(|_| target.is_some()).map_or((0, 0), |ai| {
+            (
+                ai.keep_until.saturating_sub(self.tick),
+                ai.chase_until.saturating_sub(self.tick),
+            )
+        });
         let swing = swing
             .filter(|(on, _)| self.carried(viewer, *on))
             .map(|(on, strike_in)| SwingView {
@@ -423,6 +427,7 @@ impl World {
         {
             wear_sheet(&mut unit, hero);
         }
+        keep_to_its_side(&mut unit);
         Some(unit)
     }
 
@@ -524,6 +529,19 @@ fn wear_sheet(illusion: &mut UnitView, hero: UnitView) {
         ..hero
     };
     *illusion = body;
+}
+
+/// Takes off a unit what only its own side is told: whether a skill point
+/// could go into an ability, and which items are marked for sale. Dota
+/// shows another side's abilities with their levels and cooldowns, and its
+/// items, but not its unspent points or its own plans for them.
+fn keep_to_its_side(unit: &mut UnitView) {
+    for ability in &mut unit.abilities {
+        ability.can_level = false;
+    }
+    for item in unit.items.iter_mut().flatten().chain(&mut unit.town_portal) {
+        item.for_sale = false;
+    }
 }
 
 /// Milliseconds of animation at an attack speed, clamped as the cycle

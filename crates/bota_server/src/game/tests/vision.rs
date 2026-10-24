@@ -891,3 +891,31 @@ fn the_scoreboard_shows_an_enemy_hero_as_it_was_last_seen() {
         "seen again, as it is"
     );
 }
+
+#[test]
+fn an_enemy_hero_in_sight_keeps_its_unspent_points_and_its_sale_marks_to_itself() {
+    let mut world = World::new();
+    seat_hero(&mut world, 0, Team::Radiant, Vec2::from_ints(1000, 1000));
+    let enemy = seat_hero(&mut world, 1, Team::Dire, Vec2::from_ints(1300, 1000));
+    world.grant_xp(1, rules::XP_THRESHOLDS[1], &mut Vec::new());
+    if let Some(bag) = world.inventory.get_mut(enemy) {
+        bag.slots[0] = Some(crate::game::ItemStack {
+            for_sale: true,
+            ..fresh_stack(ItemId::IRON_BRANCH, 0)
+        });
+    }
+    world.step();
+    let plans = |side: Option<Team>| {
+        let unit = shown(&world, side, enemy);
+        let points = unit.abilities.iter().any(|ability| ability.can_level);
+        let sale = unit.items.iter().flatten().any(|item| item.for_sale);
+        (points, sale)
+    };
+    assert_eq!(plans(Some(Team::Dire)), (true, true), "its own side knows");
+    assert_eq!(plans(None), (true, true), "and a view of everything");
+    assert_eq!(
+        plans(Some(Team::Radiant)),
+        (false, false),
+        "the other side sees its abilities and items, not its plans for them"
+    );
+}

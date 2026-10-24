@@ -86,6 +86,17 @@
 //! hits and denies (zero). A hero the side sees shows its level in its
 //! [`UnitView`](crate::UnitView) as it is.
 //!
+//! Of a unit of the other side it sees, a side is told what Dota shows of
+//! it (abilities with their levels and cooldowns, items, effects) but not
+//! what is its owner's alone: [`AbilityView::can_level`] and
+//! [`ItemView::for_sale`] are false. [`AggroView`] tells nothing of a unit
+//! the view does not carry: neither whom a unit is set on or swings at, nor
+//! how long it holds or chases such a target.
+//!
+//! [`AbilityView::can_level`]: crate::AbilityView::can_level
+//! [`ItemView::for_sale`]: crate::ItemView::for_sale
+//! [`AggroView`]: crate::AggroView
+//!
 //! # What a side is told of the forest
 //!
 //! Since 2014 Dota shows no tree falling, growing back or being put up where
