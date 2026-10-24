@@ -4,6 +4,12 @@
 # struct variant's field order, a tuple's element order. A new variant or field
 # goes last and its lines are appended here. A line is never edited or removed:
 # what leaves the protocol stays on the wire, retired.
+#
+# Retiring costs what the field costs: an Option, a Vec or a bool retires for
+# one byte a message, a bare value (an EntityId, a Vec2) keeps a placeholder
+# for ever. So a field that may ever be redesigned is an Option or a Vec, and
+# an area that may be redesigned whole sits in a Vec of its own (as
+# WorldView's teleports do), which retires for one byte.
 
 newtype AbilityId u16
 newtype AbilitySlot u8
