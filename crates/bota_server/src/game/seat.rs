@@ -45,11 +45,17 @@ pub struct Teleport {
 pub struct Sighting {
     pub level: u8,
     pub xp: i32,
+    /// The tick it was seen on; none before it ever was.
+    pub at: Option<u32>,
 }
 
 impl Sighting {
-    /// A hero as every match starts it.
-    pub const START: Sighting = Sighting { level: 1, xp: 0 };
+    /// A hero as every match starts it, not yet seen.
+    pub const START: Sighting = Sighting {
+        level: 1,
+        xp: 0,
+        at: None,
+    };
 }
 
 /// One player's place at the match. Everything here outlives the body.

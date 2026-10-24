@@ -23,11 +23,14 @@ const TICK_RATE: usize = 30;
 /// takes one byte for it, one with nothing queued one byte for its queue, and
 /// one with no status resistance or evasion a byte for each (five bytes here).
 /// It is the whole map's view of it, so it says which sides see it (three
-/// bytes; a side's view spends one on its absence).
+/// bytes; a side's view spends one on its absence), and of each ability
+/// whether a point could go into it and of each item whether it is marked
+/// for sale (two bytes each, beside the retired byte; one where a side's view
+/// withholds them).
 #[test]
-fn a_hero_stays_under_241_bytes() {
+fn a_hero_stays_under_257_bytes() {
     let len = encoded_len(&hero_unit());
-    assert!(len <= 241, "hero unit grew to {len} bytes");
+    assert!(len <= 257, "hero unit grew to {len} bytes");
 }
 
 #[test]

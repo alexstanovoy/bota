@@ -115,7 +115,8 @@ pub fn item_view(stack: &ItemStack, mana_rate_bp: i32, clocks: &[(ItemId, u32)])
         }),
         range: def.map_or(0, |def| def.range),
         aim: def.and_then(|def| def.aim),
-        for_sale: stack.for_sale,
+        for_sale: false,
         owner: stack.owner,
+        selling: Some(stack.for_sale),
     }
 }

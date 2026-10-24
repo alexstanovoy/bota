@@ -223,6 +223,7 @@ fn an_ability(level: u8, cooldown: u32, mana_cost: i32, passive: bool, on: bool)
         passive,
         on,
         can_level: false,
+        learnable: Some(false),
     }
 }
 
@@ -272,6 +273,7 @@ fn an_item(charges: Option<u8>, cooldown: u32, mana_cost: i32, aim: Option<Aim>)
         aim,
         for_sale: false,
         owner: SlotId(0),
+        selling: Some(false),
     }
 }
 
@@ -354,6 +356,11 @@ fn a_player() -> PlayerView {
         last_hits: 0,
         denies: 0,
         respawn_left: 0,
+        creep_score: Some(bota_proto::CreepScore {
+            last_hits: 0,
+            denies: 0,
+        }),
+        seen_at: Some(0),
     }
 }
 
@@ -540,6 +547,9 @@ fn a_view_of_extreme_numbers_is_taken_in_without_overflow() {
         chase_left: 0,
         draw_cooldown: 0,
         returning: false,
+        held_for: Some(0),
+        chased_for: Some(0),
+        draw_wait: Some(0),
     }];
     app.handle(bota_proto::ServerMsg::Snapshot { view });
     assert!(app.lost, "a swing that far out is refused, not overflowed");
@@ -725,7 +735,7 @@ fn only_what_the_seat_bought_and_keeps_counts_toward_the_price() {
     };
     let sold = ItemView {
         id: ItemId::GLOVES,
-        for_sale: true,
+        selling: Some(true),
         ..kept
     };
     let found = ItemView {
@@ -1120,4 +1130,34 @@ fn our_kill_of_a_creep_never_in_sight_sounds_its_last_hit() {
         "the gold of a kill in the fog is ours, and sounds"
     );
     assert!(app.feed.is_empty(), "no hero fell");
+}
+
+/// A Radiant view of the duel's two seats, the Dire seat's creep score as
+/// given.
+fn a_radiant_view_scoring_dire(score: Option<bota_proto::CreepScore>) -> bota_proto::ServerMsg {
+    let mut ours = a_seat(SlotId(0), None);
+    ours.team = Team::Radiant;
+    let mut theirs = a_seat(SlotId(1), None);
+    theirs.team = Team::Dire;
+    theirs.hero = HeroId::SHADOW_FIEND;
+    theirs.gold = None;
+    theirs.stash = None;
+    theirs.creep_score = score;
+    theirs.seen_at = None;
+    let mut view = a_tick(20, Vec::new(), vec![ours, theirs]);
+    view.viewer = Some(Team::Radiant);
+    bota_proto::ServerMsg::Snapshot { view }
+}
+
+#[test]
+fn a_side_view_that_tells_the_other_sides_creep_score_is_refused() {
+    let (mut app, _, _) = a_duel_app();
+    app.handle(a_radiant_view_scoring_dire(None));
+    assert!(!app.lost, "withheld, it is absent");
+    let (mut app, _, _) = a_duel_app();
+    app.handle(a_radiant_view_scoring_dire(Some(bota_proto::CreepScore {
+        last_hits: 0,
+        denies: 0,
+    })));
+    assert!(app.lost, "told, even as zero, it breaks the contract");
 }

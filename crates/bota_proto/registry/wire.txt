@@ -481,3 +481,12 @@ variant PingKind 0 Regular
 variant PingKind 1 Danger
 variant PingAt 0 Spot(Vec2)
 variant PingAt 1 Unit(EntityId)
+field AbilityView 10 learnable: Option<bool>
+field AggroView 7 held_for: Option<u32>
+field AggroView 8 chased_for: Option<u32>
+field AggroView 9 draw_wait: Option<u32>
+field CreepScore 0 last_hits: u16
+field CreepScore 1 denies: u16
+field ItemView 10 selling: Option<bool>
+field PlayerView 15 creep_score: Option<CreepScore>
+field PlayerView 16 seen_at: Option<u32>

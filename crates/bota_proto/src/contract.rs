@@ -81,23 +81,36 @@
 //!
 //! # What a side is told of the other side's seats
 //!
+//! What the fog withholds from a side is absent from its view, never a
+//! default it could take for a value: an `Option` that is `None` there and
+//! `Some` in the side's own view and in a view of everything.
+//!
 //! As Dota's scoreboard: of a seat of the other side,
 //! [`PlayerView`](crate::PlayerView) tells the hero's level and experience
-//! as they stood when the viewing side last saw the hero (level one before
-//! it ever did), its kills, deaths, assists and respawn wait as they are,
-//! and neither its gold, stash and fallen hero's kit (absent) nor its last
-//! hits and denies (zero). A hero the side sees shows its level in its
-//! [`UnitView`](crate::UnitView) as it is.
+//! as they stood when the viewing side last saw the hero, and
+//! [`PlayerView::seen_at`] the tick they are as of (absent when it never saw
+//! the hero, its level then one); its kills, deaths, assists and respawn
+//! wait as they are; and neither its gold, stash and fallen hero's kit nor
+//! its [`PlayerView::creep_score`] (all absent). A hero the side sees shows
+//! its level in its [`UnitView`](crate::UnitView) as it is.
 //!
 //! Of a unit of the other side it sees, a side is told what Dota shows of
 //! it (abilities with their levels and cooldowns, items, effects) but not
-//! what is its owner's alone: [`AbilityView::can_level`] and
-//! [`ItemView::for_sale`] are false. [`AggroView`] tells nothing of a unit
-//! the view does not carry: neither whom a unit is set on or swings at, nor
-//! how long it holds or chases such a target.
+//! what is its owner's alone: [`AbilityView::learnable`] and
+//! [`ItemView::selling`] are absent, and so is an enemy hero's
+//! [`AggroView::draw_wait`]. [`AggroView`] tells nothing of a unit the view
+//! does not carry: neither whom a unit is set on or swings at, nor how long
+//! it holds or chases such a target ([`AggroView::held_for`] and
+//! [`AggroView::chased_for`] are absent exactly when the target is). A client
+//! refuses a view that tells any of these to a side it withholds them from.
 //!
-//! [`AbilityView::can_level`]: crate::AbilityView::can_level
-//! [`ItemView::for_sale`]: crate::ItemView::for_sale
+//! [`PlayerView::seen_at`]: crate::PlayerView::seen_at
+//! [`PlayerView::creep_score`]: crate::PlayerView::creep_score
+//! [`AbilityView::learnable`]: crate::AbilityView::learnable
+//! [`ItemView::selling`]: crate::ItemView::selling
+//! [`AggroView::draw_wait`]: crate::AggroView::draw_wait
+//! [`AggroView::held_for`]: crate::AggroView::held_for
+//! [`AggroView::chased_for`]: crate::AggroView::chased_for
 //! [`AggroView`]: crate::AggroView
 //!
 //! # What a side is told of the forest

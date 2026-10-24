@@ -53,6 +53,11 @@ pub fn snapshot(tick: u32) -> ReplayRecord {
                 last_hits: 0,
                 denies: 0,
                 respawn_left: 0,
+                creep_score: Some(bota_proto::CreepScore {
+                    last_hits: 0,
+                    denies: 0,
+                }),
+                seen_at: Some(tick),
             }],
             projectiles: Vec::new(),
             loot: Vec::new(),

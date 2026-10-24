@@ -51,8 +51,8 @@ fn a_draw_is_told_to_both_sides_and_runs_out_on_the_wire() {
             Some(wire_id(ours)),
             "the creep fights the creep"
         );
-        assert_eq!(entry.hold_left, 0, "nothing has drawn it");
-        assert_eq!(entry.draw_cooldown, 0, "the next click draws it");
+        assert_eq!(entry.held_for, Some(0), "nothing has drawn it");
+        assert_eq!(entry.draw_wait, Some(0), "the next click draws it");
     }
     attack_click(&mut world, foe);
     let drawn = told_of(&received(&world, Some(Team::Radiant)), theirs).expect("it fights");
@@ -62,33 +62,34 @@ fn a_draw_is_told_to_both_sides_and_runs_out_on_the_wire() {
         told_of(&received(&world, Some(Team::Dire)), theirs),
         "both sides see the same creep fight the same hero"
     );
-    assert!(0 < drawn.hold_left && drawn.hold_left <= rules::ORDER_AGGRO_HOLD_TICKS);
-    assert_eq!(drawn.draw_cooldown, 0, "a creep keeps no wait of its own");
+    let held = drawn.held_for.expect("a hold on a hero in view is told");
+    assert!(0 < held && held <= rules::ORDER_AGGRO_HOLD_TICKS);
+    assert_eq!(drawn.draw_wait, Some(0), "a creep keeps no wait of its own");
     let wait = |world: &World, side| {
-        told_of(&received(world, Some(side)), hero).map_or(0, |entry| entry.draw_cooldown)
+        told_of(&received(world, Some(side)), hero).and_then(|entry| entry.draw_wait)
     };
-    assert!(drawn.hold_left < wait(&world, Team::Radiant));
-    assert!(wait(&world, Team::Radiant) <= rules::ORDER_AGGRO_COOLDOWN_TICKS);
+    assert!(Some(held) < wait(&world, Team::Radiant));
+    assert!(wait(&world, Team::Radiant) <= Some(rules::ORDER_AGGRO_COOLDOWN_TICKS));
     assert_eq!(
         wait(&world, Team::Dire),
-        0,
-        "the hero's wait is its own side's"
+        None,
+        "the hero's wait is its own side's: withheld from the other"
     );
     stop_click(&mut world);
     let mut last = told_of(&received(&world, Some(Team::Radiant)), theirs).expect("held");
-    while last.hold_left > 0 {
-        let waited = wait(&world, Team::Radiant);
+    while last.held_for > Some(0) {
+        let waited = wait(&world, Team::Radiant).expect("its own side is told");
         assert_eq!(last.target, Some(wire_id(hero)), "the hold keeps the hero");
         step_held(&mut world, theirs);
         let now = told_of(&received(&world, Some(Team::Radiant)), theirs).expect("held");
         assert_eq!(
-            now.hold_left,
-            last.hold_left - 1,
+            now.held_for,
+            last.held_for.map(|held| held - 1),
             "the hold counts down a tick a tick"
         );
         assert_eq!(
             wait(&world, Team::Radiant),
-            waited - 1,
+            Some(waited - 1),
             "so does the hero's wait"
         );
         last = now;

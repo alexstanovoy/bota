@@ -42,6 +42,7 @@ pub(crate) fn snapshot(expect: &Expect<'_>, view: &WorldView) -> Result<(), Sess
     }
     snapshot_limits(view)?;
     seen_by(view)?;
+    withheld(view)?;
     skipped_ticks(expect, view)?;
     snapshot_positions(expect.statics.metadata().terrain_cells, view)?;
     units(expect.statics.roster(), view)?;
@@ -70,6 +71,55 @@ fn seen_by(view: &WorldView) -> Result<(), SessionError> {
             "a side's view says which sides see what",
         )),
         _ => Ok(()),
+    }
+}
+
+/// What a side's view withholds from it is absent there, not a default: the
+/// other side's creep score and gold, its units' unspent points and sale
+/// marks, its heroes' draw waits, and a hold or a chase on a unit the view
+/// does not carry. A view that tells any of them breaks the contract.
+fn withheld(view: &WorldView) -> Result<(), SessionError> {
+    for entry in &view.aggro {
+        if entry.target.is_none() && (entry.held_for.is_some() || entry.chased_for.is_some()) {
+            return Err(SessionError::Stream(
+                "a hold or a chase on nobody in view is told",
+            ));
+        }
+    }
+    let Some(team) = view.viewer else {
+        return Ok(());
+    };
+    let told_of_theirs = view
+        .players
+        .iter()
+        .filter(|player| player.team != team)
+        .any(|player| player.creep_score.is_some() || player.gold.is_some())
+        || view
+            .units
+            .iter()
+            .filter(|unit| unit.team != team)
+            .any(|unit| {
+                unit.abilities
+                    .iter()
+                    .any(|ability| ability.learnable.is_some())
+                    || unit
+                        .items
+                        .iter()
+                        .flatten()
+                        .chain(&unit.town_portal)
+                        .any(|item| item.selling.is_some())
+            })
+        || view.aggro.iter().any(|entry| {
+            entry.draw_wait.is_some()
+                && view
+                    .unit(entry.unit)
+                    .is_some_and(|unit| unit.team != team && unit.kind == UnitKind::Hero)
+        });
+    match told_of_theirs {
+        true => Err(SessionError::Stream(
+            "a side's view tells what the other side keeps to itself",
+        )),
+        false => Ok(()),
     }
 }
 
@@ -300,9 +350,9 @@ fn aggro(view: &WorldView) -> Result<(), SessionError> {
             unit_of(swing.target)?;
         }
         if !strikes_in_bounds
-            || entry.hold_left > rules::ORDER_AGGRO_HOLD_TICKS
-            || entry.draw_cooldown > rules::ORDER_AGGRO_COOLDOWN_TICKS
-            || entry.chase_left > rules::CREEP_CHASE_TICKS
+            || entry.held_for > Some(rules::ORDER_AGGRO_HOLD_TICKS)
+            || entry.draw_wait > Some(rules::ORDER_AGGRO_COOLDOWN_TICKS)
+            || entry.chased_for > Some(rules::CREEP_CHASE_TICKS)
         {
             return Err(SessionError::AggroOutOfRange(entry.unit));
         }

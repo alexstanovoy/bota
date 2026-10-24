@@ -855,37 +855,64 @@ fn the_scoreboard_shows_an_enemy_hero_as_it_was_last_seen() {
         let player = view
             .player(bota_proto::SlotId(1))
             .expect("every seat is scored");
-        (player.level, player.xp, player.last_hits)
+        let score = player.creep_score.map(|score| score.last_hits);
+        (player.level, player.xp, player.seen_at, score)
     };
     world.seats[1].last_hits = 4;
     world.grant_xp(1, rules::XP_THRESHOLDS[1], &mut Vec::new());
     world.step();
+    let seen_on = world.tick;
     let seen = (2, rules::XP_THRESHOLDS[1]);
-    assert_eq!(scored(&world, Some(Team::Radiant)), (seen.0, seen.1, 0));
+    assert_eq!(
+        scored(&world, Some(Team::Radiant)),
+        (seen.0, seen.1, Some(seen_on), None),
+        "seen now, and its creep score withheld"
+    );
     put(&mut world, enemy, Vec2::from_ints(9000, 9000));
     world.grant_xp(1, rules::XP_THRESHOLDS[3], &mut Vec::new());
     world.step();
     assert_eq!(
         scored(&world, Some(Team::Radiant)),
-        (seen.0, seen.1, 0),
-        "out of sight, the level and experience last seen, and no last hits ever"
+        (seen.0, seen.1, Some(seen_on), None),
+        "out of sight, the level and experience as of the tick last seen"
     );
     let now = (4, rules::XP_THRESHOLDS[1] + rules::XP_THRESHOLDS[3]);
+    let tick = Some(world.tick);
     assert_eq!(
         scored(&world, Some(Team::Dire)),
-        (now.0, now.1, 4),
+        (now.0, now.1, tick, Some(4)),
         "its own side"
     );
     assert_eq!(
         scored(&world, None),
-        (now.0, now.1, 4),
+        (now.0, now.1, tick, Some(4)),
         "a view of everything"
     );
     put(&mut world, enemy, Vec2::from_ints(1300, 1000));
     assert_eq!(
         scored(&world, Some(Team::Radiant)),
-        (now.0, now.1, 0),
+        (now.0, now.1, tick, None),
         "seen again, as it is"
+    );
+}
+
+#[test]
+fn a_hero_never_seen_is_scored_as_a_match_starts_it_and_says_so() {
+    let mut world = World::new();
+    seat_hero(&mut world, 0, Team::Radiant, Vec2::from_ints(1000, 1000));
+    seat_hero(&mut world, 1, Team::Dire, Vec2::from_ints(9000, 9000));
+    world.settle();
+    world.grant_xp(1, rules::XP_THRESHOLDS[2], &mut Vec::new());
+    world.step();
+    let player = world
+        .view(Team::Radiant)
+        .player(bota_proto::SlotId(1))
+        .cloned()
+        .expect("scored");
+    assert_eq!(
+        (player.level, player.xp, player.seen_at),
+        (1, 0, None),
+        "never seen: no tick to be as of"
     );
 }
 
@@ -904,16 +931,40 @@ fn an_enemy_hero_in_sight_keeps_its_unspent_points_and_its_sale_marks_to_itself(
     world.step();
     let plans = |side: Option<Team>| {
         let unit = shown(&world, side, enemy);
-        let points = unit.abilities.iter().any(|ability| ability.can_level);
-        let sale = unit.items.iter().flatten().any(|item| item.for_sale);
-        (points, sale)
+        let points = unit
+            .abilities
+            .iter()
+            .find_map(|ability| ability.learnable.filter(|p| *p));
+        let sale = unit
+            .items
+            .iter()
+            .flatten()
+            .find_map(|item| item.selling.filter(|s| *s));
+        let withheld = unit
+            .abilities
+            .iter()
+            .all(|ability| ability.learnable.is_none())
+            && unit
+                .items
+                .iter()
+                .flatten()
+                .all(|item| item.selling.is_none());
+        (points, sale, withheld)
     };
-    assert_eq!(plans(Some(Team::Dire)), (true, true), "its own side knows");
-    assert_eq!(plans(None), (true, true), "and a view of everything");
+    assert_eq!(
+        plans(Some(Team::Dire)),
+        (Some(true), Some(true), false),
+        "its own side knows"
+    );
+    assert_eq!(
+        plans(None),
+        (Some(true), Some(true), false),
+        "and a view of everything"
+    );
     assert_eq!(
         plans(Some(Team::Radiant)),
-        (false, false),
-        "the other side sees its abilities and items, not its plans for them"
+        (None, None, true),
+        "the other side sees its abilities and items, and is told nothing of its plans for them"
     );
 }
 

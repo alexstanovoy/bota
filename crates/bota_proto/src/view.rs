@@ -60,9 +60,12 @@ pub struct AbilityView {
     pub passive: bool,
     /// Whether it is a toggle that is currently on.
     pub on: bool,
-    /// Whether a skill point could be spent on it right now. False on a
-    /// unit of another side: its unspent points are its own.
+    /// Retired: always false. [`learnable`](Self::learnable) tells it, and
+    /// withholds it from another side.
     pub can_level: bool,
+    /// Whether a skill point could be spent on it right now. Absent on a
+    /// unit of another side: its unspent points are its own.
+    pub learnable: Option<bool>,
 }
 
 /// An effect currently on a visible unit.
@@ -108,11 +111,14 @@ pub struct ItemView {
     pub range: i32,
     /// How a use of it is aimed. Absent for one that cannot be used at all.
     pub aim: Option<Aim>,
-    /// Whether it is marked to be sold when it next reaches the shop. False
-    /// on a unit of another side.
+    /// Retired: always false. [`selling`](Self::selling) tells it, and
+    /// withholds it from another side.
     pub for_sale: bool,
     /// The seat that bought it.
     pub owner: SlotId,
+    /// Whether it is marked to be sold when it next reaches the shop. Absent
+    /// on a unit of another side: its owner's plans are its own.
+    pub selling: Option<bool>,
 }
 
 /// An item lying on the ground that the viewing team can see.
@@ -295,23 +301,29 @@ pub struct AggroView {
     /// Its swing in the windup. Absent between swings, in the recovery after
     /// one, and when the swing is at a unit this view does not carry.
     pub swing: Option<SwingView>,
-    /// Ticks a lane creep keeps its target whatever else turns up, after an
-    /// enemy hero's attack order drew it. Zero when nothing holds it, and
-    /// when `target` is absent: a hold on a unit the view does not carry is
-    /// not told.
+    /// Retired: always zero. [`held_for`](Self::held_for) tells it.
     pub hold_left: u32,
-    /// Ticks a lane creep keeps chasing its target out of attack range while
-    /// nothing else is within its acquisition range. Full while the target
-    /// is within reach; zero when it is set on nobody, and when `target` is
-    /// absent.
+    /// Retired: always zero. [`chased_for`](Self::chased_for) tells it.
     pub chase_left: u32,
-    /// For a hero, told to its own side only: ticks before its attack order
-    /// at an enemy hero may draw lane creeps again. For a tower: ticks before
-    /// an enemy hero's attack order may draw it again. Zero when the next one
-    /// does, and always zero for anything else.
+    /// Retired: always zero. [`draw_wait`](Self::draw_wait) tells it.
     pub draw_cooldown: u32,
     /// Whether this neutral walks back to its camp and takes nothing on.
     pub returning: bool,
+    /// Ticks a lane creep keeps its target whatever else turns up, after an
+    /// enemy hero's attack order drew it; zero when nothing holds it.
+    /// Absent exactly when `target` is: a hold on a unit the view does not
+    /// carry is not told.
+    pub held_for: Option<u32>,
+    /// Ticks a lane creep keeps chasing its target out of attack range while
+    /// nothing else is within its acquisition range: full while the target
+    /// is within reach, zero for a unit that chases nothing. Absent exactly
+    /// when `target` is.
+    pub chased_for: Option<u32>,
+    /// For a hero: ticks before its attack order at an enemy hero may draw
+    /// lane creeps again, absent for a hero of another side (its wait is
+    /// its own). For a tower: ticks before an enemy hero's attack order may
+    /// draw it again. Zero when the next one does, and for anything else.
+    pub draw_wait: Option<u32>,
 }
 
 /// A missile in flight, or what an ability shows where it stands, that the
@@ -372,12 +384,11 @@ pub struct PlayerView {
     /// illusions of the hero stand, so that it cannot tell the hero from
     /// them (see the [`contract`](crate::contract)).
     pub unit: Option<EntityId>,
-    /// Hero level. For a seat of the other side, the level its hero had
-    /// when the viewing side last saw it (one before it ever did), as Dota's
-    /// scoreboard shows it.
+    /// Hero level, as of [`seen_at`](Self::seen_at): for a seat of the other
+    /// side the level its hero had when the viewing side last saw it, as
+    /// Dota's scoreboard shows it.
     pub level: u8,
-    /// Experience gathered over the whole match. For a seat of the other
-    /// side, on the terms of `level`.
+    /// Experience gathered over the whole match, on the terms of `level`.
     pub xp: i32,
     /// Unspent gold. Absent for the opposing team.
     pub gold: Option<i32>,
@@ -393,12 +404,29 @@ pub struct PlayerView {
     pub deaths: u16,
     /// Kills assisted.
     pub assists: u16,
-    /// Enemy creeps last hit. Zero for the opposing team.
+    /// Retired: always zero. [`creep_score`](Self::creep_score) tells it.
     pub last_hits: u16,
-    /// Friendly creeps denied. Zero for the opposing team.
+    /// Retired: always zero. [`creep_score`](Self::creep_score) tells it.
     pub denies: u16,
     /// Ticks until respawn. Zero when alive.
     pub respawn_left: u32,
+    /// Its last hits and denies. Absent for the opposing team: Dota's
+    /// scoreboard shows a player's creep score to the player alone.
+    pub creep_score: Option<CreepScore>,
+    /// The tick `level` and `xp` are as of: the view's own tick for a seat of
+    /// the viewing side and in a view of everything; for a seat of the other
+    /// side the tick its hero was last seen, absent when it never was (the
+    /// level is then one and the experience zero).
+    pub seen_at: Option<u32>,
+}
+
+/// A seat's creep score.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct CreepScore {
+    /// Enemy creeps last hit.
+    pub last_hits: u16,
+    /// Friendly creeps denied.
+    pub denies: u16,
 }
 
 /// How late one seat's orders take effect, as the server measured it.

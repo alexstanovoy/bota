@@ -808,6 +808,7 @@ impl World {
                     seat.sighted[side] = crate::game::Sighting {
                         level: seat.level,
                         xp: seat.xp,
+                        at: Some(self.tick),
                     };
                 }
             }

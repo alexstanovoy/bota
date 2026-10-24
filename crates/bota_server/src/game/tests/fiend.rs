@@ -53,7 +53,7 @@ fn the_necromastery_gathers_from_the_first_level_with_no_point_spent() {
         "and the necromastery is in no slot"
     );
     assert!(
-        shown.abilities[usize::from(FEAST_SLOT)].can_level,
+        shown.abilities[usize::from(FEAST_SLOT)].learnable == Some(true),
         "while his first point may go into the feast"
     );
 }

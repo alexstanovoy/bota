@@ -17,7 +17,7 @@ pub fn held_items(view: &WorldView, p: &PlayerView) -> Vec<ItemId> {
     bag.iter()
         .chain(p.stash.iter().flatten())
         .flatten()
-        .filter(|item| item.owner == p.slot && !item.for_sale)
+        .filter(|item| item.owner == p.slot && item.selling != Some(true))
         .map(|item| item.id)
         .collect()
 }

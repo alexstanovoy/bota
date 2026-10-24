@@ -123,6 +123,7 @@ impl World {
             crate::game::Sighting {
                 level: seat.level,
                 xp: seat.xp,
+                at: Some(self.tick),
             }
         } else {
             viewer
@@ -159,9 +160,14 @@ impl World {
             kills: seat.kills,
             deaths: seat.deaths,
             assists: seat.assists,
-            last_hits: if own { seat.last_hits } else { 0 },
-            denies: if own { seat.denies } else { 0 },
+            last_hits: 0,
+            denies: 0,
             respawn_left: seat.respawn_left,
+            creep_score: own.then_some(bota_proto::CreepScore {
+                last_hits: seat.last_hits,
+                denies: seat.denies,
+            }),
+            seen_at: shown.at,
         }
     }
 
@@ -277,23 +283,27 @@ impl World {
             .lane_creep
             .then(|| self.lane_ai.get(entity))
             .flatten();
-        let own_hero = kind == UnitKind::Hero && (viewer.is_none() || self.own_to(viewer, entity));
-        let draw_cooldown = if own_hero || kind == UnitKind::Tower {
-            self.orders.get(entity).map_or(0, |orders| orders.cooldown)
-        } else {
-            0
+        let cooldown = self.orders.get(entity).map_or(0, |orders| orders.cooldown);
+        // A hero's wait is its own side's; a tower's is anyone's to see.
+        let draw_wait = match kind {
+            UnitKind::Hero if viewer.is_none() || self.own_to(viewer, entity) => Some(cooldown),
+            UnitKind::Hero => None,
+            UnitKind::Tower => Some(cooldown),
+            _ => Some(0),
         };
         let returning = kind == UnitKind::CreepNeutral
             && self.neutral_ai.get(entity).is_some_and(|ai| ai.going_home);
         // A hold and a chase are on the target: of one the view does not
         // carry, nothing is told.
         let target = held.filter(|on| self.carried(viewer, *on)).map(wire_id);
-        let (hold_left, chase_left) = lane.filter(|_| target.is_some()).map_or((0, 0), |ai| {
-            (
-                ai.keep_until.saturating_sub(self.tick),
-                ai.chase_until.saturating_sub(self.tick),
-            )
-        });
+        let (held_for, chased_for) = match (target, lane) {
+            (None, _) => (None, None),
+            (Some(_), None) => (Some(0), Some(0)),
+            (Some(_), Some(ai)) => (
+                Some(ai.keep_until.saturating_sub(self.tick)),
+                Some(ai.chase_until.saturating_sub(self.tick)),
+            ),
+        };
         let swing = swing
             .filter(|(on, _)| self.carried(viewer, *on))
             .map(|(on, strike_in)| SwingView {
@@ -302,18 +312,19 @@ impl World {
             });
         let quiet = target.is_none()
             && swing.is_none()
-            && hold_left == 0
-            && chase_left == 0
-            && draw_cooldown == 0
+            && draw_wait.is_none_or(|wait| wait == 0)
             && !returning;
         (!quiet).then(|| AggroView {
             unit: wire_id(entity),
             target,
             swing,
-            hold_left,
-            chase_left,
-            draw_cooldown,
+            hold_left: 0,
+            chase_left: 0,
+            draw_cooldown: 0,
             returning,
+            held_for,
+            chased_for,
+            draw_wait,
         })
     }
 
@@ -541,10 +552,10 @@ fn wear_sheet(illusion: &mut UnitView, hero: UnitView) {
 /// items, but not its unspent points or its own plans for them.
 fn keep_to_its_side(unit: &mut UnitView) {
     for ability in &mut unit.abilities {
-        ability.can_level = false;
+        ability.learnable = None;
     }
     for item in unit.items.iter_mut().flatten().chain(&mut unit.town_portal) {
-        item.for_sale = false;
+        item.selling = None;
     }
 }
 
@@ -587,7 +598,8 @@ fn ability_view(
         aim: def.map_or(bota_proto::Aim::Own, |def| def.aim),
         passive: def.is_some_and(|def| def.passive),
         on,
-        can_level,
+        can_level: false,
+        learnable: Some(can_level),
     }
 }
 

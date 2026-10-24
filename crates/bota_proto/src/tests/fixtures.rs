@@ -24,7 +24,8 @@ pub fn ability_view(slot: u16) -> AbilityView {
         aim: Aim::Unit,
         passive: false,
         on: false,
-        can_level: true,
+        can_level: false,
+        learnable: Some(true),
     }
 }
 
@@ -40,6 +41,7 @@ pub fn item_view(slot: u16) -> ItemView {
         aim: Some(Aim::Point),
         for_sale: false,
         owner: SlotId(0),
+        selling: Some(false),
     }
 }
 
@@ -218,9 +220,14 @@ pub fn player_view(slot: u8) -> PlayerView {
         kills: 3,
         deaths: 1,
         assists: 0,
-        last_hits: 42,
-        denies: 7,
+        last_hits: 0,
+        denies: 0,
         respawn_left: 0,
+        creep_score: Some(CreepScore {
+            last_hits: 42,
+            denies: 7,
+        }),
+        seen_at: Some(1500),
     }
 }
 
@@ -290,10 +297,13 @@ pub fn aggro_view(idx: u32) -> AggroView {
             target: entity(7),
             strike_in: 4,
         }),
-        hold_left: 52,
-        chase_left: 69,
-        draw_cooldown: 72,
+        hold_left: 0,
+        chase_left: 0,
+        draw_cooldown: 0,
         returning: false,
+        held_for: Some(52),
+        chased_for: Some(69),
+        draw_wait: Some(72),
     }
 }
 
