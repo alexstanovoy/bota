@@ -310,15 +310,22 @@ fn both_sides_are_shown_where_a_scroll_lands_and_how_long_it_has() {
 fn a_scroll_shows_its_side_the_ground_it_lands_on_a_moment_past_the_channel() {
     let (mut world, _) = a_hero_with_a_scroll();
     // A spot in reach of a building of its own that its side does not see:
-    // behind trees or up a cliff from everything it has.
+    // behind trees or up a cliff from everything it has, and out of the
+    // fountain's reach, which shoots whatever its side comes to see.
     let tower = building(&world, UnitKind::Tower, Team::Radiant);
     let centre = pos(&world, tower);
+    let fountain = world.map.fountains[0];
+    let out_of_fountain_reach = rules::FOUNTAIN_ATTACK_RANGE
+        + rules::FOUNTAIN_BOUND
+        + rules::MELEE_CREEP_BOUND
+        + rules::ATTACK_RANGE_LEEWAY;
     let hidden = (-7..=7)
         .flat_map(|dx: i32| (-7..=7).map(move |dy: i32| (dx, dy)))
         .map(|(dx, dy)| centre + Vec2::from_ints(dx * 100, dy * 100))
         .find(|spot| {
             world.clearance.stands_clear(*spot)
                 && !spot.within(centre, rules::units(rules::SCROLL_MIN_DISTANCE))
+                && !spot.within(fountain, rules::units(out_of_fountain_reach))
                 && !world.can_see_point(Team::Radiant, *spot)
         });
     let Some(hidden) = hidden else {

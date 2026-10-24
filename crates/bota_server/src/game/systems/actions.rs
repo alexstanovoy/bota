@@ -830,10 +830,15 @@ impl World {
     }
 
     /// Whether a swing may begin: the target is standing, seen, in reach, and
-    /// looked at.
+    /// looked at by an attacker that turns.
     fn may_swing(&self, attacker: Entity, on: Entity, stats: &Stats) -> bool {
         if !self.worth_swinging_at(attacker, on, stats.attack_range) {
             return false;
+        }
+        // What cannot turn has no front to face with: Dota's fountain
+        // (`MovementTurnRate` 0) shoots whatever is in reach on every side.
+        if stats.turn_rate == 0 {
+            return true;
         }
         let (Some(from), Some(at)) = (self.transform.get(attacker), self.transform.get(on)) else {
             return false;

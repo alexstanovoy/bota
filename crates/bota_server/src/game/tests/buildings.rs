@@ -75,3 +75,70 @@ fn a_barracks_is_named_by_where_it_stands_whatever_health_the_match_gives_it() {
         "both sides' barracks, read off a view"
     );
 }
+
+/// A creep that bears no armor and never falls to a few shots.
+static STANDING_TARGET: bota_core::UnitDef = bota_core::UnitDef {
+    max_hp: 30_000,
+    armor: 0,
+    hp_regen: Fixed::ZERO,
+    move_speed: 0,
+    ..bota_core::MELEE_CREEP
+};
+
+/// The ticks, from now, on which a unit loses health over `ticks`.
+fn blows_on(world: &mut World, on: crate::game::Entity, ticks: u32) -> Vec<u32> {
+    let mut blows = Vec::new();
+    for tick in 0..ticks {
+        let before = world.health.get(on).map(|h| h.hp);
+        world.step();
+        if world.health.get(on).map(|h| h.hp) < before {
+            blows.push(tick);
+        }
+    }
+    blows
+}
+
+/// Dota's fountain (`dota_fountain`, 7.41f): `MovementTurnRate` 0, so it
+/// shoots on every side at once, 6.67 shots a second (`AttackRate` 0.15, no
+/// attack point), 1200 far. On the Dota map it faced one way and shot only
+/// what stood in front of it, as if it had to turn to shoot.
+#[test]
+fn the_fountain_shoots_every_enemy_in_its_reach_on_every_side_six_and_two_thirds_times_a_second() {
+    // The Radiant fountain sits in the map's corner: across the quarter its
+    // base opens to, from the river side round to the jungle side.
+    let sides = [(1000, 0), (900, 450), (700, 700), (450, 900), (0, 1000)];
+    for (side, (x, y)) in sides.into_iter().enumerate() {
+        let mut world = World::on_map(map_of(MapId(2)));
+        let at = world.map.fountains[0] + bota_proto::Vec2::from_ints(x, y);
+        let creep = world.spawn_unit(&STANDING_TARGET, Team::Dire, at);
+        world.settle();
+        let blows = blows_on(&mut world, creep, 90);
+        let first = *blows
+            .first()
+            .unwrap_or_else(|| panic!("side {side}: never shot"));
+        assert!(first < 30, "side {side}: first blow on tick {first}");
+        // Every 4.5 ticks at 30 a second: 13 or 14 blows in two seconds.
+        let landed = blows
+            .iter()
+            .filter(|&&t| (first..first + 60).contains(&t))
+            .count();
+        assert!(
+            (13..=14).contains(&landed),
+            "side {side}: {landed} blows in two seconds"
+        );
+    }
+    let mut world = World::on_map(map_of(MapId(2)));
+    let fountain = world.map.fountains[1];
+    let hero = super::support::seat_hero(
+        &mut world,
+        0,
+        Team::Radiant,
+        fountain + bota_proto::Vec2::from_ints(-700, -700),
+    );
+    world.settle();
+    world.fill_pools(hero);
+    assert!(
+        !blows_on(&mut world, hero, 30).is_empty(),
+        "an enemy hero in the Dire fountain's reach is shot"
+    );
+}

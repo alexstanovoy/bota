@@ -789,13 +789,17 @@ pub const ANCIENT_VISION: i32 = 2600;
 
 /// Fountain health. It is never lost: the fountain is invulnerable.
 pub const FOUNTAIN_HP: i32 = 500;
-/// Fountain attack damage, the midpoint of 290 to 310.
+/// Fountain attack damage, the midpoint of `dota_fountain`'s 290 to 310
+/// (`npc_units.txt`, 7.41f).
 pub const FOUNTAIN_ATTACK_DAMAGE: i32 = 300;
+/// Fountain attack and acquisition range: `dota_fountain`'s 1200.
 pub const FOUNTAIN_ATTACK_RANGE: i32 = 1200;
-/// Milliseconds between fountain attack starts.
-pub const FOUNTAIN_ATTACK_TIME: u32 = 166;
-/// Milliseconds from fountain attack start to the shot.
-pub const FOUNTAIN_ATTACK_POINT: u32 = 33;
+/// Milliseconds between fountain attack starts: `dota_fountain`'s
+/// `AttackRate` 0.15 at attack speed 100, 6.67 shots a second.
+pub const FOUNTAIN_ATTACK_TIME: u32 = 150;
+/// Milliseconds from fountain attack start to the shot: none, as
+/// `dota_fountain`'s `AttackAnimationPoint` 0.0.
+pub const FOUNTAIN_ATTACK_POINT: u32 = 0;
 /// Fountain attack projectile speed, world units per second.
 pub const FOUNTAIN_PROJECTILE_SPEED: i32 = 1400;
 /// Fountain collision size, the Dota tower hull.
@@ -874,8 +878,9 @@ pub const CREEP_ATTACK_BACKSWING: u32 = 500;
 /// Milliseconds a tower recovers after a shot, at [`BASE_ATTACK_SPEED`]:
 /// the rest of its cycle, the next shot cutting the 0.4 s animation short.
 pub const TOWER_ATTACK_BACKSWING: u32 = TOWER_ATTACK_TIME - TOWER_ATTACK_POINT;
-/// Milliseconds the fountain recovers after a shot.
-pub const FOUNTAIN_ATTACK_BACKSWING: u32 = 66;
+/// Milliseconds the fountain recovers after a shot: none (Liquipedia,
+/// *Fountain*: attack animation 0+0); its cadence is its attack time alone.
+pub const FOUNTAIN_ATTACK_BACKSWING: u32 = 0;
 /// How fast a unit turns, in brads per tick: a `MovementTurnRate` of 0.5,
 /// read as radians per 0.03 seconds.
 pub const TURN_RATE_BRADS: u16 = 5795;
