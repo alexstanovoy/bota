@@ -119,7 +119,9 @@ fn a_blow_on_a_hidden_ward_is_told_only_to_a_side_whose_true_sight_finds_it() {
         "the hero sees the ground the ward stands on"
     );
     let told_of_blow = |world: &mut World, team| {
+        // A swing: a ward takes nothing from what is no attack.
         world.push_hit(None, ward, 10, bota_proto::DamageKind::Physical, None);
+        world.hits.back_mut().expect("just laid").attack = true;
         let events = world.step();
         crate::game_loop::visible_events(&events, Some(team))
             .iter()

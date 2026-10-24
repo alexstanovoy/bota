@@ -20,11 +20,23 @@ impl World {
         self.transform.get(entity).map(|t| t.pos)
     }
 
-    /// Whether an attacker reaches its target, edge to edge.
+    /// Whether an attacker reaches its target, edge to edge. A melee
+    /// attacker reaches [`rules::WARD_MELEE_RANGE_BONUS`] further at what
+    /// falls to a count of attacks, a ward, as in Dota.
     pub fn in_reach(&self, attacker: Entity, target: Entity) -> bool {
-        self.stats
-            .get(attacker)
-            .is_some_and(|stats| self.within_reach(attacker, target, stats.attack_range))
+        let Some(stats) = self.stats.get(attacker) else {
+            return false;
+        };
+        let counted = self
+            .kind
+            .get(target)
+            .is_some_and(|kind| kind_def(*kind).felled_by_hits.is_some());
+        let bonus = if counted && stats.projectile_speed.is_none() {
+            bota_core::rules::units(bota_core::rules::WARD_MELEE_RANGE_BONUS)
+        } else {
+            Fixed::ZERO
+        };
+        self.within_reach(attacker, target, stats.attack_range + bonus)
     }
 
     /// Tells each side of the blows on what it sees, and on its own; who

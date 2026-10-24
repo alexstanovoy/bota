@@ -298,3 +298,61 @@ fn both_wards_hide_and_each_reveals_the_other_side() {
         "and ours finds theirs"
     );
 }
+
+/// How many of an attacker's swings bring down a Dire observer it stands
+/// beside, a Radiant sentry showing the ward to its side.
+fn swings_to_fell_a_ward(hero: bool) -> usize {
+    let mut world = World::new();
+    let at = Vec2::from_ints(5000, 5000);
+    let ward = world.spawn_ward(&OBSERVER_WARD, (Team::Dire, at), 10_000, (None, None));
+    world.spawn_ward(
+        &SENTRY_WARD,
+        (Team::Radiant, at + Vec2::from_ints(100, 0)),
+        10_000,
+        (None, None),
+    );
+    let attacker = if hero {
+        seated_hero(
+            &mut world,
+            at + Vec2::from_ints(120, 0),
+            HeroId::SHADOW_FIEND,
+        )
+    } else {
+        thinking_creep_of(&mut world, Team::Radiant, at + Vec2::from_ints(120, 0))
+    };
+    world.settle();
+    world.fill_pools(attacker);
+    assert_eq!(shown(&world, None, ward).max_hp, rules::WARD_HP);
+    world.set_order(
+        attacker,
+        UnitOrder::Attack {
+            target: ward,
+            last_seen: at,
+        },
+    );
+    let mut swings = 0;
+    for _ in 0..3_000 {
+        let events = world.step();
+        swings += events
+            .iter()
+            .filter(|event| {
+                matches!(event.kind, bota_proto::EventKind::Damaged { target, .. }
+                    if target == crate::game::wire_id(ward))
+            })
+            .count();
+        if !world.entities.contains(ward) {
+            return swings;
+        }
+    }
+    panic!("the ward never fell");
+}
+
+#[test]
+fn a_ward_falls_to_two_hero_attacks_or_ten_of_anything_else() {
+    assert_eq!(swings_to_fell_a_ward(true), 2, "Dota's hero hit count");
+    assert_eq!(
+        swings_to_fell_a_ward(false),
+        10,
+        "and its non-hero hit count"
+    );
+}

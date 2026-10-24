@@ -535,7 +535,7 @@ pub const COURIER_ABILITIES: [AbilityId; 5] = [
 /// An observer ward: it sees far and the other side cannot see it.
 pub const OBSERVER_WARD: UnitDef = UnitDef {
     kind: UnitKind::Ward,
-    max_hp: 200,
+    max_hp: rules::WARD_HP,
     day_vision: 1600,
     night_vision: 1600,
     hides: true,
@@ -545,7 +545,7 @@ pub const OBSERVER_WARD: UnitDef = UnitDef {
 /// A sentry ward: it sees nothing of itself, and what it gives is true sight.
 pub const SENTRY_WARD: UnitDef = UnitDef {
     kind: UnitKind::Ward,
-    max_hp: 200,
+    max_hp: rules::WARD_HP,
     day_vision: 0,
     night_vision: 0,
     true_sight: 1050,

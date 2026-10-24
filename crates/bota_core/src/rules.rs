@@ -1162,6 +1162,24 @@ pub const XP_RADIUS: i32 = 1500;
 /// this percent of its maximum.
 pub const DENY_HP_PCT: i32 = 50;
 
+/// A ward's health: 7.41f's 100, taken off in equal shares by the attacks
+/// that bring it down.
+pub const WARD_HP: i32 = 100;
+
+/// An allied ward may be attacked when its health is strictly below this
+/// percent of its maximum (Dota 7.41f's ward deny range).
+pub const WARD_DENY_HP_PCT: i32 = 50;
+
+/// Hero attacks that bring a ward down, whatever their damage.
+pub const WARD_HERO_HITS: i32 = 2;
+
+/// Attacks of anything else (a creep, a tower, an illusion) that bring a
+/// ward down.
+pub const WARD_OTHER_HITS: i32 = 10;
+
+/// How much further a melee attacker reaches when it attacks a ward.
+pub const WARD_MELEE_RANGE_BONUS: i32 = 150;
+
 /// A friendly building may be denied when its health is strictly below
 /// this percent of its maximum.
 pub const DENY_BUILDING_HP_PCT: i32 = 10;

@@ -50,6 +50,10 @@ pub struct KindDef {
     /// feed and announcer tell every hero kill and deny, a tower's,
     /// a barracks' and an Ancient's fall and a courier's loss.
     pub death_announced: bool,
+    /// Brought down by a fixed number of attacks rather than by their
+    /// damage, as Dota's wards are: spells pass it by and attacks at it never
+    /// miss. Absent for a kind that takes damage as it is dealt.
+    pub felled_by_hits: Option<HitsToFell>,
     /// Who brought it down is announced with its fall when a hero did: the
     /// kill feed names the hero that killed a hero, a tower or a barracks
     /// (and only the side of any other killer), but not a courier's.
@@ -58,6 +62,26 @@ pub struct KindDef {
     /// [`breaks_regen`](crate::breaks_regen), the one rule for it.
     pub(crate) breaks_regen: bool,
 }
+
+/// How many attacks bring down a unit that falls to a count of them.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct HitsToFell {
+    /// Attacks of a hero, an illusion not among them.
+    pub hero: i32,
+    /// Attacks of anything else.
+    pub other: i32,
+}
+
+impl HitsToFell {
+    /// What one attack takes off a unit of `max_hp` that falls to these
+    /// counts: an equal share, the hero's when a hero struck.
+    pub fn blow(self, max_hp: i32, by_hero: bool) -> i32 {
+        let hits = if by_hero { self.hero } else { self.other };
+        max_hp / hits.max(1)
+    }
+}
+
+const _: () = assert!(rules::WARD_HERO_HITS > 0 && rules::WARD_OTHER_HITS > 0);
 
 /// A kind that is none of the special things, so a row names only what sets
 /// it apart.
@@ -76,6 +100,7 @@ const PLAIN: KindDef = KindDef {
     deny_below_pct: None,
     takes_scrolls: false,
     struck_by_area_spells: true,
+    felled_by_hits: None,
     death_announced: false,
     killer_announced: false,
     breaks_regen: false,
@@ -167,6 +192,11 @@ pub const UNIT_KINDS: [KindDef; 13] = [
         leaves_a_death: false,
         target_class: TargetClass::Ward,
         struck_by_area_spells: false,
+        felled_by_hits: Some(HitsToFell {
+            hero: rules::WARD_HERO_HITS,
+            other: rules::WARD_OTHER_HITS,
+        }),
+        deny_below_pct: Some(rules::WARD_DENY_HP_PCT),
         ..PLAIN
     },
     KindDef {

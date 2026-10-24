@@ -25,8 +25,8 @@ const TICK_WINDOWS: [u32; 2] = [600, 3_000];
 
 /// The world and view fingerprints of each measured tick window.
 const TICK_WINDOW_DIGESTS: [(u32, u64, u64); 2] = [
-    (600, 0x30d2_b524_c304_b9c7, 0x9b55_e8fb_e9b2_ab43),
-    (3000, 0xba83_d2c2_6f5d_13c6, 0xcf73_ecff_7695_99c1),
+    (600, 0x0cc3_f2f3_f091_518c, 0x3a4e_acc8_04ea_c787),
+    (3000, 0x286d_35c5_5dec_010c, 0x9bbb_cb08_003e_3604),
 ];
 
 /// Ticks of the skirmish measured: the pregame and the lane
