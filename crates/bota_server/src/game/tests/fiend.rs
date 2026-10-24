@@ -709,3 +709,33 @@ fn cooldown(world: &World, hero: Entity, slot: u8) -> u32 {
 fn hp(world: &World, unit: Entity) -> Fixed {
     world.health.get(unit).expect("standing").hp
 }
+
+#[test]
+fn a_raze_burns_what_its_side_cannot_see_but_never_a_ward() {
+    let (mut world, _, spot, slot) = fiend_across_a_cliff(true);
+    let creep = world.spawn_unit(&bota_core::MELEE_CREEP, Team::Radiant, spot);
+    let ward = world.spawn_ward(
+        &bota_core::OBSERVER_WARD,
+        (Team::Radiant, spot),
+        1_000,
+        (None, None),
+    );
+    world.settle();
+    assert!(
+        !world.can_see(Team::Dire, creep),
+        "from below, the creep up the cliff is fog"
+    );
+    let hp = |world: &World, unit| world.health.get(unit).expect("standing").hp;
+    let (creep_before, ward_before) = (hp(&world, creep), hp(&world, ward));
+    cast(&mut world, slot, Target::None);
+    let struck = (0..60).any(|_| {
+        world.step();
+        hp(&world, creep) < creep_before
+    });
+    assert!(struck, "an area strikes what stands in it, seen or not");
+    assert_eq!(
+        hp(&world, ward),
+        ward_before,
+        "a ward is brought down by attacks alone"
+    );
+}

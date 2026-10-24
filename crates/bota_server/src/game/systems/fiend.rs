@@ -13,7 +13,8 @@ use crate::game::{Fear, Hit, HitEffect, RequiemLine, World};
 use crate::engine::Entity;
 
 impl World {
-    /// Burns everything hostile but a structure standing where a raze lands.
+    /// Burns everything hostile an area spell strikes standing where a raze
+    /// lands, see [`World::burns`].
     ///
     /// A raze takes no aim: it lands at its own reach from the caster, along
     /// the line the caster faces. `reach` indexes [`rules::RAZE_DISTANCE`].
@@ -163,7 +164,7 @@ impl World {
 
     /// Flies every line of a requiem one tick on.
     ///
-    /// A line burns everything hostile but a structure within its width of
+    /// A line burns everything hostile an area spell strikes within its width of
     /// where it now flies, once each, frightening it as
     /// [`HitEffect::Requiem`] says when the line frightens. It widens as it
     /// goes, and is gone once it has flown its distance.
@@ -235,14 +236,16 @@ impl World {
     }
 
     /// Whether a raze or a requiem line of one side lands on another entity:
-    /// anything hostile to it but a structure.
+    /// anything hostile to it that area spells strike, seen or not. As in
+    /// Dota, an area hits whatever stands in it, in the fog or invisible,
+    /// but never a building or a ward.
     fn burns(&self, from: Entity, other: Entity) -> bool {
-        self.hostile(from, other)
-            && !self
+        self.hostile_unseen(from, other)
+            && self
                 .kind
                 .get(other)
                 .copied()
-                .is_some_and(|kind| kind_def(kind).structure)
+                .is_some_and(|kind| kind_def(kind).struck_by_area_spells)
     }
 
     /// Takes a line of a requiem out of the world.

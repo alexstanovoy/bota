@@ -373,18 +373,71 @@ impl World {
             .is_some_and(|seen| seen.by(team))
     }
 
-    /// Who may learn of something that happened at a point, when one side is
-    /// party to it.
-    ///
-    /// A side is told of what it can see, and always of what involves it.
-    pub fn who_may_know(&self, at: Vec2, involved: Team) -> EventVisibility {
-        let radiant = involved == Team::Radiant || self.can_see_point(Team::Radiant, at);
-        let dire = involved == Team::Dire || self.can_see_point(Team::Dire, at);
-        match (radiant, dire) {
-            (true, true) => EventVisibility::Everyone,
-            (true, false) => EventVisibility::OneTeam(Team::Radiant),
-            (false, true) => EventVisibility::OneTeam(Team::Dire),
-            (false, false) => EventVisibility::OneTeam(involved),
+    /// Whether a side sees a unit at this moment, by the rules of the sight
+    /// pass worked out live: its own side always, and a building always;
+    /// past that, where the side's sight reaches its ground, and, for what
+    /// hides, where the side's true sight reaches it as well. A unit gone
+    /// from the world is known to its own side alone.
+    pub fn sees_now(&self, team: Team, entity: Entity) -> bool {
+        if self.team.get(entity) == Some(&team) {
+            return true;
         }
+        if !self.entities.contains(entity) {
+            return false;
+        }
+        if team != Team::Neutral
+            && self
+                .kind
+                .get(entity)
+                .is_some_and(|kind| kind_def(*kind).always_seen)
+        {
+            return true;
+        }
+        let Some(at) = self.pos(entity) else {
+            return false;
+        };
+        let hides = self.stats.get(entity).is_some_and(|stats| stats.hides);
+        self.can_see_point(team, at) && (!hides || self.true_sight_reaches(team, at))
+    }
+
+    /// Whether some unit of a side reveals what hides at a point.
+    fn true_sight_reaches(&self, team: Team, at: Vec2) -> bool {
+        self.entities.iter().any(|entity| {
+            self.team.get(entity) == Some(&team)
+                && match (self.pos(entity), self.stats.get(entity)) {
+                    (Some(from), Some(stats)) => {
+                        stats.true_sight > Fixed::ZERO && from.within(at, stats.true_sight)
+                    }
+                    _ => false,
+                }
+        })
+    }
+
+    /// Who may learn of what befell a unit: its own side, the side `party`
+    /// when one is party to it (the one that brought it down), and each side
+    /// that sees it as it happens. Seeing the ground it stands on is not
+    /// seeing it: a ward hidden there is told of to nobody else.
+    pub fn who_may_know(&self, subject: Entity, party: Option<Team>) -> EventVisibility {
+        let told = |team| party == Some(team) || self.sees_now(team, subject);
+        EventVisibility::of(told(Team::Radiant), told(Team::Dire))
+    }
+
+    /// Who may learn of what happened at a spot rather than to a unit, as a
+    /// grenade bursting: the sides that see the spot, and always `party`.
+    pub fn who_sees_spot(&self, at: Vec2, party: Team) -> EventVisibility {
+        let told = |team| party == team || self.can_see_point(team, at);
+        EventVisibility::of(told(Team::Radiant), told(Team::Dire))
+    }
+
+    /// Who may be told which unit dealt something: its own side and each
+    /// side that sees it as it happens. Everyone when no unit dealt it.
+    pub fn who_may_name(&self, dealer: Option<Entity>) -> EventVisibility {
+        let Some(dealer) = dealer else {
+            return EventVisibility::Everyone;
+        };
+        EventVisibility::of(
+            self.sees_now(Team::Radiant, dealer),
+            self.sees_now(Team::Dire, dealer),
+        )
     }
 }

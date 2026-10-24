@@ -2,8 +2,8 @@
 
 use bota_core::{CAMPS, CellGrid, MAPS, MELEE_CREEP, RANGED_CREEP, map_of, rules};
 
-use crate::game::{Entity, EventVisibility, Health, World, wire_id};
-use bota_proto::{Fixed, HeroId, ItemId, MapId, Target, Team, UnitKind, Vec2};
+use crate::game::{Entity, Event, Health, World, wire_id};
+use bota_proto::{EntityId, EventKind, Fixed, HeroId, ItemId, MapId, Target, Team, UnitKind, Vec2};
 
 use super::support::*;
 
@@ -103,25 +103,43 @@ fn a_side_sees_what_stands_inside_its_sight() {
 }
 
 #[test]
-fn a_side_is_told_only_of_what_it_could_see() {
-    let map = map_of(MapId(1));
-    let mut world = World::on_map(map);
-    let far = Vec2::from_ints(9600, 12000);
-    assert!(
-        !world.can_see_point(Team::Radiant, far),
-        "nothing of that side stands anywhere near"
+fn a_blow_on_a_hidden_ward_is_told_only_to_a_side_whose_true_sight_finds_it() {
+    let mut world = World::new();
+    let spot = Vec2::from_ints(3000, 3000);
+    hero_at(&mut world, spot + Vec2::from_ints(300, 0));
+    let ward = world.spawn_ward(
+        &bota_core::OBSERVER_WARD,
+        (Team::Dire, spot),
+        1_000,
+        (None, None),
     );
-    assert_eq!(
-        world.who_may_know(far, Team::Dire),
-        EventVisibility::OneTeam(Team::Dire),
-        "only the side party to it is told"
-    );
-    hero_at(&mut world, far);
     world.settle();
-    assert!(world.can_see_point(Team::Radiant, far));
-    assert_eq!(
-        world.who_may_know(far, Team::Dire),
-        EventVisibility::Everyone
+    assert!(
+        world.can_see_point(Team::Radiant, spot),
+        "the hero sees the ground the ward stands on"
+    );
+    let told_of_blow = |world: &mut World, team| {
+        world.push_hit(None, ward, 10, bota_proto::DamageKind::Physical, None);
+        let events = world.step();
+        crate::game_loop::visible_events(&events, Some(team))
+            .iter()
+            .any(|kind| matches!(kind, bota_proto::EventKind::Damaged { target, .. } if *target == wire_id(ward)))
+    };
+    assert!(
+        !told_of_blow(&mut world, Team::Radiant),
+        "seeing the ground is not seeing the ward"
+    );
+    assert!(told_of_blow(&mut world, Team::Dire), "its own side is told");
+    world.spawn_ward(
+        &bota_core::SENTRY_WARD,
+        (Team::Radiant, spot + Vec2::from_ints(200, 0)),
+        1_000,
+        (None, None),
+    );
+    world.settle();
+    assert!(
+        told_of_blow(&mut world, Team::Radiant),
+        "true sight finds it, and the blow is told"
     );
 }
 
@@ -610,5 +628,110 @@ fn a_hero_that_blinks_out_of_sight_is_not_shown_where_it_landed() {
     assert!(
         world.view(Team::Radiant).unit(wire_id(blinker)).is_none(),
         "the night hides the landing from the side it left on the very tick it lands"
+    );
+}
+
+/// Razes from Shadow Fiend on high ground, unseen from below, until what
+/// the raze struck falls; every event of those ticks.
+fn raze_from_the_fog(world: &mut World, fiend: Entity, slot: u8, mark: Entity) -> Vec<Event> {
+    assert!(
+        !world.can_see(Team::Radiant, fiend),
+        "from below, the cliff is fog"
+    );
+    let mut events = cast(world, slot, Target::None);
+    for _ in 0..60 {
+        if !world.entities.contains(mark) {
+            return events;
+        }
+        events.extend(world.step());
+    }
+    panic!("the raze never brought its mark down");
+}
+
+/// What a side is told of a blow on a unit and of its fall: the blow's
+/// dealer, then the killer.
+fn dealers_told(
+    events: &[Event],
+    team: Team,
+    mark: Entity,
+) -> (Option<EntityId>, Option<EntityId>) {
+    let told = crate::game_loop::visible_events(events, Some(team));
+    let source = told.iter().find_map(|kind| match kind {
+        EventKind::Damaged { source, target, .. } if *target == wire_id(mark) => Some(*source),
+        _ => None,
+    });
+    let killer = told.iter().find_map(|kind| match kind {
+        EventKind::Died { killer, unit, .. } if *unit == wire_id(mark) => Some(*killer),
+        _ => None,
+    });
+    (
+        source.expect("the blow is told"),
+        killer.expect("the fall is told"),
+    )
+}
+
+#[test]
+fn a_creep_razed_from_the_fog_never_names_the_fiend_to_its_side() {
+    let (mut world, fiend, spot, slot) = fiend_across_a_cliff(false);
+    let creep = world.spawn_unit(&MELEE_CREEP, Team::Radiant, spot);
+    world.settle();
+    world.health.insert(creep, health(1));
+    let events = raze_from_the_fog(&mut world, fiend, slot, creep);
+    assert_eq!(
+        dealers_told(&events, Team::Radiant, creep),
+        (None, None),
+        "a side that does not see the dealer is told nobody dealt it"
+    );
+    assert_eq!(
+        dealers_told(&events, Team::Dire, creep),
+        (Some(wire_id(fiend)), Some(wire_id(fiend))),
+        "the dealer's own side knows its own"
+    );
+}
+
+#[test]
+fn a_hero_razed_from_the_fog_learns_its_killer_from_the_kill_feed_alone() {
+    let (mut world, fiend, spot, slot) = fiend_across_a_cliff(false);
+    let hero = seat_hero(&mut world, 1, Team::Radiant, spot);
+    world.settle();
+    world.health.insert(hero, health(1));
+    let events = raze_from_the_fog(&mut world, fiend, slot, hero);
+    assert_eq!(
+        dealers_told(&events, Team::Radiant, hero),
+        (None, Some(wire_id(fiend))),
+        "the blow names nobody; the hero's fall is announced with its killer"
+    );
+}
+
+#[test]
+fn a_level_gained_out_of_sight_is_told_to_its_own_side_alone() {
+    let mut world = World::new();
+    seat_hero(&mut world, 0, Team::Radiant, Vec2::from_ints(1000, 1000));
+    let far = seat_hero(&mut world, 1, Team::Dire, Vec2::from_ints(9000, 9000));
+    world.settle();
+    let level_ups = |events: &[Event], team| {
+        crate::game_loop::visible_events(events, Some(team))
+            .iter()
+            .filter(|kind| matches!(kind, EventKind::LevelUp { unit, .. } if *unit == wire_id(far)))
+            .count()
+    };
+    let mut events = Vec::new();
+    world.grant_xp(1, rules::XP_THRESHOLDS[1], &mut events);
+    assert_eq!(level_ups(&events, Team::Dire), 1, "its own side is told");
+    assert_eq!(level_ups(&events, Team::Radiant), 0, "the fog keeps it");
+    if let Some(at) = world.transform.get_mut(far) {
+        at.pos = Vec2::from_ints(1300, 1000);
+    }
+    world.settle();
+    let mut events = Vec::new();
+    world.grant_xp(
+        1,
+        rules::XP_THRESHOLDS[2] - rules::XP_THRESHOLDS[1],
+        &mut events,
+    );
+    assert_eq!(
+        level_ups(&events, Team::Radiant),
+        1,
+        "a level seen gained is told"
     );
 }

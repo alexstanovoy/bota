@@ -1,6 +1,8 @@
 //! Things that happened during one tick.
 //!
-//! A team is sent only the events it may know of.
+//! A team is sent only the events it may know of, as the
+//! [contract](crate::contract) says: those of the units it sees, and of who
+//! dealt them only a dealer it sees.
 
 use crate::{AbilityId, EntityId, Inflictor, ItemId, SlotId, Team, Vec2};
 use serde::{Deserialize, Serialize};
@@ -22,6 +24,7 @@ pub enum EventKind {
     /// A unit took damage.
     Damaged {
         /// Who dealt it, if anyone; may name a unit that has since died.
+        /// `None` to a side that does not see the dealer.
         source: Option<EntityId>,
         /// Who took it.
         target: EntityId,
@@ -36,7 +39,8 @@ pub enum EventKind {
     /// An attack did not land: the target evaded it, or it was thrown
     /// uphill and missed.
     Missed {
-        /// Who swung; may name a unit that has since died.
+        /// Who swung; may name a unit that has since died. `None` to a side
+        /// that does not see the swinger.
         source: Option<EntityId>,
         /// Who it was swung at.
         target: EntityId,
@@ -44,7 +48,7 @@ pub enum EventKind {
     /// A unit was mended by somebody's hand: an item drunk or a charge
     /// spent. Passive regeneration and the fountain are not told of.
     Healed {
-        /// Who mended it.
+        /// Who mended it. `None` to a side that does not see the mender.
         source: Option<EntityId>,
         /// Who was mended.
         target: EntityId,
@@ -61,7 +65,9 @@ pub enum EventKind {
     Died {
         /// The unit that died.
         unit: EntityId,
-        /// Who landed the killing blow, if a unit did.
+        /// Who landed the killing blow, if a unit did. `None` to a side that
+        /// does not see the killer, unless the kill feed names it: the
+        /// killer of a hero or of a tower is told to both sides.
         killer: Option<EntityId>,
         /// Whether the killer was on the same team, making this a deny.
         denied: bool,
@@ -79,7 +85,8 @@ pub enum EventKind {
         caster: EntityId,
         ability: AbilityId,
     },
-    /// A hero gained a level. Not sent for a level gained while it is dead.
+    /// A hero gained a level. Not sent for a level gained while it is dead,
+    /// and told to the other side only when it sees the hero.
     LevelUp {
         /// Which hero.
         unit: EntityId,

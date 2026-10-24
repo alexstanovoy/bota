@@ -14,8 +14,7 @@ use rand_chacha::rand_core::Rng as _;
 
 use crate::chat::{ChatOpts, Rates};
 use crate::game::{
-    Command, DelayLine, Event, EventVisibility, Handles, MatchConfig, MatchSecrets, OrderDelay,
-    RefusedOrder, World,
+    Command, DelayLine, Event, Handles, MatchConfig, MatchSecrets, OrderDelay, RefusedOrder, World,
 };
 use crate::lobby::{ReservedSeat, Roster};
 use crate::net::{Connection, FrameStream, Listeners, NetEvent};
@@ -1364,30 +1363,50 @@ fn snapshot_frame(view: WorldView) -> Vec<u8> {
     encode_frame_to_vec(&ServerMsg::Snapshot { view }).expect("a view always encodes")
 }
 
-/// The kinds of the events a side may see. No side sees all of them, and a
-/// death's gold is told only to the side that earned it unless a hero fell:
-/// the other side sees zero, so a visible creep kill never leaks the
-/// enemy's income.
+/// The kinds of the events a side may see. No side sees all of them; a
+/// dealer the side does not see is told as nobody, and a death's gold is told
+/// only to the side that earned it unless a hero fell: the other side sees
+/// zero, so a visible creep kill never leaks the enemy's income.
 pub(crate) fn visible_events(events: &[Event], viewing: Option<Team>) -> Vec<EventKind> {
     events
         .iter()
-        .filter(|e| match (e.visible_to, viewing) {
-            (_, None) | (EventVisibility::Everyone, _) => true,
-            (EventVisibility::OneTeam(team), Some(mine)) => team == mine,
-        })
-        .map(|e| match (&e.kind, viewing) {
-            (EventKind::Died { gold, .. }, Some(mine))
-                if *gold != 0 && e.gold_hidden_from == Some(mine) =>
-            {
-                let mut kind = e.kind.clone();
-                if let EventKind::Died { gold, .. } = &mut kind {
-                    *gold = 0;
-                }
-                kind
+        .filter(|e| viewing.is_none_or(|mine| e.visible_to.tells(mine)))
+        .map(|e| {
+            let mut kind = e.kind.clone();
+            if let Some(mine) = viewing {
+                told_as(&mut kind, e, mine);
             }
-            _ => e.kind.clone(),
+            kind
         })
         .collect()
+}
+
+/// Blanks what an event tells that one side may not learn from it.
+fn told_as(kind: &mut EventKind, event: &Event, mine: Team) {
+    let hide_dealer = !event.source_told_to.tells(mine);
+    match kind {
+        // What it was dealt with would name what an unseen dealer carries.
+        EventKind::Damaged {
+            source, inflictor, ..
+        }
+        | EventKind::Healed {
+            source, inflictor, ..
+        } if hide_dealer => {
+            *source = None;
+            *inflictor = None;
+        }
+        EventKind::Missed { source, .. } if hide_dealer => *source = None,
+        EventKind::Landed { caster, .. } if hide_dealer => *caster = None,
+        EventKind::Died { killer, gold, .. } => {
+            if hide_dealer {
+                *killer = None;
+            }
+            if event.gold_hidden_from == Some(mine) {
+                *gold = 0;
+            }
+        }
+        _ => {}
+    }
 }
 
 #[cfg(test)]

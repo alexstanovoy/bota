@@ -296,3 +296,21 @@ fn the_hero_is_named_afresh_and_its_old_name_names_nothing() {
         "the hidden stream, not the setup, orders the names"
     );
 }
+
+#[test]
+fn an_illusion_falling_out_of_sight_is_not_announced_as_a_hero_kill() {
+    let mut world = World::new();
+    super::support::seat_hero(&mut world, 0, Team::Radiant, Vec2::from_ints(1000, 1000));
+    let hero = super::support::seat_hero(&mut world, 1, Team::Dire, Vec2::from_ints(9000, 9000));
+    world.settle();
+    let illusion = stand_in_illusion(&mut world, hero, Vec2::from_ints(9200, 9000));
+    let mut events = Vec::new();
+    world.bury(vec![(illusion, None)], &mut events);
+    let fell = |team| {
+        crate::game_loop::visible_events(&events, Some(team))
+            .iter()
+            .any(|kind| matches!(kind, EventKind::Died { unit, .. } if *unit == crate::game::wire_id(illusion)))
+    };
+    assert!(fell(Team::Dire), "its own side is told");
+    assert!(!fell(Team::Radiant), "the feed announces no illusion");
+}

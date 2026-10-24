@@ -2,9 +2,9 @@
 //! enemy items.
 
 use bota_core::{NeutralAbility, ability_def, at_home_shop, item_def, rules};
-use bota_proto::{AbilityId, AbilitySlot, EventKind, Fixed, Target, Team, UnitKind, Vec2};
+use bota_proto::{AbilityId, AbilitySlot, EventKind, Fixed, Target, UnitKind};
 
-use crate::game::{Entity, Event, World, ability_hooks, wire_id};
+use crate::game::{Entity, Event, EventVisibility, World, ability_hooks, wire_id};
 
 impl World {
     /// Whether an entity stands in its own shop.
@@ -61,9 +61,7 @@ impl World {
         {
             ability.cooldown = cooldown;
         }
-        let at = self.pos(entity).unwrap_or(Vec2::ZERO);
-        let side = self.team.get(entity).copied().unwrap_or(Team::Neutral);
-        let visible_to = self.who_may_know(at, side);
+        let visible_to = self.who_may_know(entity, None);
         self.events.push(Event {
             kind: EventKind::AbilityCast {
                 caster: wire_id(entity),
@@ -71,6 +69,7 @@ impl World {
             },
             visible_to,
             gold_hidden_from: None,
+            source_told_to: EventVisibility::Everyone,
         });
         true
     }

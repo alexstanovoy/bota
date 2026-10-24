@@ -19,10 +19,6 @@ pub struct Missed {
     /// Who swung. The handle may outlive the body.
     pub source: Option<Entity>,
     pub target: Entity,
-    /// Where it happened.
-    pub at: Vec2,
-    /// The side it was swung at.
-    pub side: Team,
 }
 
 /// One blow once it has been felt.
@@ -128,8 +124,6 @@ pub fn hitting_system<const AMPLIFIED: bool>(cx: HitCx<'_>) {
             missed.push_back(Missed {
                 source: blow.source,
                 target: blow.target,
-                at,
-                side,
             });
             continue;
         }

@@ -5,7 +5,7 @@
 use bota_core::{MAP2_ID, rules};
 use bota_proto::{AbilitySlot, EventKind, ItemId, Order, SlotId, Target, Team, Vec2, WorldView};
 
-use crate::game::{Command, EventVisibility, Fnv, World};
+use crate::game::{Command, Fnv, World};
 use crate::scenario::two_fiends;
 
 /// Ticks between two decisions of a seat.
@@ -81,10 +81,7 @@ impl Skirmish {
             let view = self.world.view(team);
             let told: Vec<EventKind> = events
                 .iter()
-                .filter(|event| match event.visible_to {
-                    EventVisibility::Everyone => true,
-                    EventVisibility::OneTeam(side) => side == team,
-                })
+                .filter(|event| event.visible_to.tells(team))
                 .map(|event| event.kind.clone())
                 .collect();
             fold(&mut self.digest, &view, told.len());

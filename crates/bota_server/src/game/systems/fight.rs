@@ -27,7 +27,8 @@ impl World {
             .is_some_and(|stats| self.within_reach(attacker, target, stats.attack_range))
     }
 
-    /// Tells each side what it was near enough to feel.
+    /// Tells each side of the blows on what it sees, and on its own; who
+    /// dealt one only to a side that sees the dealer.
     pub fn tell_of(&self, felt: &[Landed], events: &mut Vec<Event>) {
         for blow in felt {
             events.push(Event {
@@ -38,13 +39,15 @@ impl World {
                     kind: blow.kind,
                     inflictor: blow.inflictor,
                 },
-                visible_to: self.who_may_know(blow.at, blow.side),
+                visible_to: self.who_may_know(blow.target, None),
                 gold_hidden_from: None,
+                source_told_to: self.who_may_name(blow.source),
             });
         }
     }
 
-    /// Tells each side of the attacks it was near enough to see miss.
+    /// Tells each side of the attacks it sees miss, on the terms of
+    /// [`World::tell_of`].
     pub fn tell_of_misses(&self, missed: &[Missed], events: &mut Vec<Event>) {
         for miss in missed {
             events.push(Event {
@@ -52,8 +55,9 @@ impl World {
                     source: miss.source.map(wire_id),
                     target: wire_id(miss.target),
                 },
-                visible_to: self.who_may_know(miss.at, miss.side),
+                visible_to: self.who_may_know(miss.target, None),
                 gold_hidden_from: None,
+                source_told_to: self.who_may_name(miss.source),
             });
         }
     }
@@ -85,14 +89,20 @@ impl World {
 
     /// Clears away what has fallen and tells who may know.
     pub fn bury(&mut self, fallen: Vec<(Entity, Option<Entity>)>, events: &mut Vec<Event>) {
+        // Who learns of each fall is worked out before anything is cleared
+        // away: what falls beside another still saw it fall.
+        let told: Vec<Told> = fallen
+            .iter()
+            .map(|&(entity, killer)| self.told_of_fall(entity, killer))
+            .collect();
         let mut structure_fell = false;
         let mut tower_losses = [false; 2];
-        for (entity, killer) in fallen {
+        for ((entity, killer), told) in fallen.into_iter().zip(told) {
             if !self.entities.contains(entity) {
                 continue;
             }
             self.refresh_glyph_for(entity);
-            if let Some((kind, side)) = self.bury_entity(entity, killer, events) {
+            if let Some((kind, side)) = self.bury_entity(entity, killer, told, events) {
                 structure_fell = true;
                 match (kind, side) {
                     (UnitKind::Tower, Team::Radiant) => tower_losses[0] = true,
@@ -107,10 +117,38 @@ impl World {
         self.finish_map2_tick(tower_losses);
     }
 
+    /// Who is told of a fall, and who is told who brought it down: both
+    /// sides of what Dota announces, otherwise the side that fell, the side
+    /// that brought it down and whoever sees it fall.
+    ///
+    /// An illusion's fall is no hero's: Dota's feed tells none, so it is
+    /// told as any unit's is.
+    fn told_of_fall(&self, fallen: Entity, killer: Option<Entity>) -> Told {
+        let def = self
+            .kind
+            .get(fallen)
+            .filter(|_| !self.illusion.contains(fallen))
+            .map(|kind| kind_def(*kind));
+        let killer_side = killer.and_then(|killer| self.team.get(killer).copied());
+        Told {
+            fall: if def.is_some_and(|def| def.death_announced) {
+                EventVisibility::Everyone
+            } else {
+                self.who_may_know(fallen, killer_side)
+            },
+            killer: if def.is_some_and(|def| def.killer_announced) {
+                EventVisibility::Everyone
+            } else {
+                self.who_may_name(killer)
+            },
+        }
+    }
+
     fn bury_entity(
         &mut self,
         entity: Entity,
         killer: Option<Entity>,
+        told: Told,
         events: &mut Vec<Event>,
     ) -> Option<(UnitKind, Team)> {
         assert!(self.entities.contains(entity));
@@ -126,7 +164,6 @@ impl World {
             .and_then(|k| self.team.get(k).copied())
             .is_some_and(|theirs| Some(theirs) == side);
         let paid = self.pay_for(entity, killer, events);
-        let at = self.pos(entity).unwrap_or(Vec2::ZERO);
         events.push(Event {
             kind: EventKind::Died {
                 unit: wire_id(entity),
@@ -134,11 +171,12 @@ impl World {
                 denied,
                 gold: paid,
             },
-            visible_to: self.who_may_know(at, side.unwrap_or(Team::Neutral)),
+            visible_to: told.fall,
             gold_hidden_from: killer
                 .filter(|&k| kind != Some(UnitKind::Hero) && self.seat_of(k).is_some())
                 .and_then(|k| self.team.get(k).copied())
                 .map(other_side),
+            source_told_to: told.killer,
         });
         let structure = kind.zip(side).filter(|(kind, _)| kind_def(*kind).structure);
         if let Some((kind, side)) = structure {
@@ -149,6 +187,7 @@ impl World {
                 },
                 visible_to: EventVisibility::Everyone,
                 gold_hidden_from: None,
+                source_told_to: EventVisibility::Everyone,
             });
             if self.map.id != MAP2_ID
                 && self.winner.is_none()
@@ -286,6 +325,15 @@ impl World {
         }
         self.winner.is_some()
     }
+}
+
+/// Who learns of one fall.
+#[derive(Clone, Copy)]
+struct Told {
+    /// The sides told it fell.
+    fall: EventVisibility,
+    /// The sides told who brought it down.
+    killer: EventVisibility,
 }
 
 /// The side that is not this one.

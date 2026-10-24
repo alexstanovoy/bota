@@ -43,6 +43,16 @@ pub struct KindDef {
     /// A building a town portal scroll may carry to: Dota's allied
     /// `DOTA_UNIT_TARGET_BUILDING`.
     pub takes_scrolls: bool,
+    /// What an area spell aimed at units strikes: Dota's hero and basic unit
+    /// types. Not a building, and not a ward, which only attacks bring down.
+    pub struck_by_area_spells: bool,
+    /// Its fall is announced to both sides wherever it stands: Dota's kill
+    /// feed and announcer tell every hero kill and deny, a tower's,
+    /// a barracks' and an Ancient's fall and a courier's loss.
+    pub death_announced: bool,
+    /// Who brought it down is announced with its fall: the kill feed names
+    /// the killer of a hero and of a tower, but not a courier's.
+    pub killer_announced: bool,
     /// Its blows on the other side break what breaks on damage. Read through
     /// [`breaks_regen`](crate::breaks_regen), the one rule for it.
     pub(crate) breaks_regen: bool,
@@ -64,6 +74,9 @@ const PLAIN: KindDef = KindDef {
     priority: PriorityOrder::Normal,
     deny_below_pct: None,
     takes_scrolls: false,
+    struck_by_area_spells: true,
+    death_announced: false,
+    killer_announced: false,
     breaks_regen: false,
 };
 
@@ -97,6 +110,8 @@ const fn building(
         target_class,
         deny_below_pct: Some(rules::DENY_BUILDING_HP_PCT),
         takes_scrolls,
+        struck_by_area_spells: false,
+        death_announced: true,
         ..PLAIN
     }
 }
@@ -106,6 +121,8 @@ pub const UNIT_KINDS: [KindDef; 13] = [
     KindDef {
         kind: UnitKind::Hero,
         attack_class: AttackClass::Hero,
+        death_announced: true,
+        killer_announced: true,
         breaks_regen: true,
         ..PLAIN
     },
@@ -127,7 +144,10 @@ pub const UNIT_KINDS: [KindDef; 13] = [
         creep: true,
         ..PLAIN
     },
-    building(UnitKind::Tower, "Tower", TargetClass::Building, true),
+    KindDef {
+        killer_announced: true,
+        ..building(UnitKind::Tower, "Tower", TargetClass::Building, true)
+    },
     building(
         UnitKind::Ancient,
         "The Ancient",
@@ -142,14 +162,20 @@ pub const UNIT_KINDS: [KindDef; 13] = [
         fixed: true,
         leaves_a_death: false,
         target_class: TargetClass::Ward,
+        struck_by_area_spells: false,
         ..PLAIN
     },
     KindDef {
         kind: UnitKind::Courier,
         name: "Courier",
+        death_announced: true,
         ..PLAIN
     },
-    building(UnitKind::Filler, "Building", TargetClass::Unit, false),
+    // Dota announces no filler building's fall.
+    KindDef {
+        death_announced: false,
+        ..building(UnitKind::Filler, "Building", TargetClass::Unit, false)
+    },
 ];
 
 const _: () = {

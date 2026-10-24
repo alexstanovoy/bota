@@ -154,8 +154,9 @@ impl World {
                 caster: Some(wire_id(shot.owner)),
                 at: shot.aim,
             },
-            visible_to: self.who_may_know(shot.aim, side),
+            visible_to: self.who_sees_spot(shot.aim, side),
             gold_hidden_from: None,
+            source_told_to: self.who_may_name(Some(shot.owner)),
         });
         let reach = rules::units(rules::GRENADE_RADIUS);
         let struck: Vec<Entity> = self

@@ -822,6 +822,35 @@ pub(crate) fn fiend_and_a_mark(apart: i32) -> (World, Entity, Entity) {
     (world, fiend, mark)
 }
 
+/// Shadow Fiend in Dire's seat 0 with his kit learned and his mana full, on
+/// one side of a cliff (below it when `uphill`), facing a spot on the other
+/// side; with the slot of the raze that lands on that spot.
+pub(crate) fn fiend_across_a_cliff(uphill: bool) -> (World, Entity, Vec2, u8) {
+    let mut world = World::new();
+    let (low, _, high) = nearby_elevations(&world.ground);
+    let (stand, spot) = if uphill { (low, high) } else { (high, low) };
+    let fiend = seat_hero(&mut world, 0, Team::Dire, stand);
+    if let Some(book) = world.abilities.get_mut(fiend) {
+        for held in book.slots.iter_mut() {
+            held.level = 1;
+        }
+    }
+    let facing = facing_towards(stand, spot);
+    if let Some(at) = world.transform.get_mut(fiend) {
+        at.facing = facing;
+    }
+    world.settle();
+    world.fill_pools(fiend);
+    let gap = isqrt64(stand.distance_squared(spot)) / i64::from(Fixed::ONE.raw);
+    let reach = if gap <= 325 { 0 } else { 1 };
+    assert!(
+        bota_core::raze_landing(stand, facing, reach)
+            .within(spot, rules::units(rules::RAZE_RADIUS)),
+        "the raze lands on the spot"
+    );
+    (world, fiend, spot, reach as u8)
+}
+
 pub(crate) fn a_creep_at(world: &mut World, team: Team, at: Vec2) -> Entity {
     let creep = world.spawn_unit(&MELEE_CREEP, team, at);
     world.settle();

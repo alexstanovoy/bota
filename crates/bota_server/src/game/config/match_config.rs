@@ -167,6 +167,30 @@ pub enum EventVisibility {
     Everyone,
     /// One team only.
     OneTeam(Team),
+    /// Neither team: something of the jungle nobody saw.
+    Nobody,
+}
+
+impl EventVisibility {
+    /// The audience of the two teams told: Radiant when `radiant`, Dire
+    /// when `dire`.
+    pub fn of(radiant: bool, dire: bool) -> EventVisibility {
+        match (radiant, dire) {
+            (true, true) => EventVisibility::Everyone,
+            (true, false) => EventVisibility::OneTeam(Team::Radiant),
+            (false, true) => EventVisibility::OneTeam(Team::Dire),
+            (false, false) => EventVisibility::Nobody,
+        }
+    }
+
+    /// Whether a team is among those told.
+    pub fn tells(self, team: Team) -> bool {
+        match self {
+            EventVisibility::Everyone => true,
+            EventVisibility::OneTeam(told) => told == team,
+            EventVisibility::Nobody => false,
+        }
+    }
 }
 
 /// One thing that happened during a tick, with its audience.
@@ -180,4 +204,10 @@ pub struct Event {
     /// that did not earn a non-hero kill. A hero kill's gold is public, as in
     /// Dota's kill feed, so it is `None` there and for every other event.
     pub gold_hidden_from: Option<Team>,
+    /// The teams told who the event names as its dealer: the `source` of a
+    /// `Damaged`, `Missed` or `Healed`, the `killer` of a `Died`. The others
+    /// are told `None`: a team learns who it does not see only from what
+    /// Dota announces, a hero's or a tower's killer. `Everyone` for an event
+    /// that names no dealer.
+    pub source_told_to: EventVisibility,
 }

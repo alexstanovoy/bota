@@ -5,7 +5,7 @@ use bota_core::{
     effect_def, fountain_pos, hero_def, item_def, learn_group, move_towards, rules,
 };
 use bota_proto::{
-    AbilityId, Attribute, EventKind, Fixed, HeroId, Inflictor, ItemId, SlotId, Target, Team, Vec2,
+    AbilityId, Attribute, EventKind, Fixed, HeroId, Inflictor, ItemId, SlotId, Target, Vec2,
 };
 
 use crate::game::{
@@ -351,6 +351,7 @@ impl World {
             },
             visible_to: EventVisibility::OneTeam(self.seats[seat].team),
             gold_hidden_from: None,
+            source_told_to: EventVisibility::Everyone,
         });
     }
 
@@ -709,8 +710,6 @@ impl World {
         amount: i32,
         mana: i32,
     ) {
-        let at = self.pos(on).unwrap_or(Vec2::ZERO);
-        let side = self.team.get(on).copied().unwrap_or(Team::Neutral);
         self.events.push(Event {
             kind: EventKind::Healed {
                 source: Some(wire_id(source)),
@@ -719,8 +718,9 @@ impl World {
                 mana,
                 inflictor: Some(inflictor),
             },
-            visible_to: self.who_may_know(at, side),
+            visible_to: self.who_may_know(on, None),
             gold_hidden_from: None,
+            source_told_to: self.who_may_name(Some(source)),
         });
     }
 

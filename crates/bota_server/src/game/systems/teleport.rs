@@ -215,6 +215,7 @@ impl World {
             },
             visible_to: EventVisibility::Everyone,
             gold_hidden_from: None,
+            source_told_to: EventVisibility::Everyone,
         });
     }
 

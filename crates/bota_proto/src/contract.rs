@@ -49,6 +49,33 @@
 //!   The target is dropped: the order does not take it up again when it
 //!   reappears, so the unit's own path gives nothing away.
 //!
+//! # What a side is told of what happens
+//!
+//! As in Dota, a side learns of what befalls a unit when it sees that unit,
+//! not when it sees the ground the unit stands on: a ward hidden from it is
+//! hidden in the events too. An event is told to the side of the unit it
+//! befalls ([`Damaged`], [`Missed`] and [`Healed`]: the target; [`Died`]:
+//! the unit; [`AbilityCast`]: the caster; [`LevelUp`]: the hero) and to
+//! every side that sees that unit as it happens; a [`Died`] also to the side
+//! of its killer. Who dealt it, the `source` or the `killer`, is told only
+//! to a side that sees the dealer as it happens, and is `None` to the
+//! others.
+//!
+//! Dota's kill feed and announcer make three exceptions, told to both sides
+//! wherever they happen: a hero's fall and its killer, a tower's fall and
+//! its killer, and the fall of a barracks, an Ancient or a courier, without
+//! the killer. [`StructureDestroyed`] is told to both sides, and
+//! [`ItemBought`] to the buyer's side alone.
+//!
+//! [`Damaged`]: crate::EventKind::Damaged
+//! [`Missed`]: crate::EventKind::Missed
+//! [`Healed`]: crate::EventKind::Healed
+//! [`Died`]: crate::EventKind::Died
+//! [`AbilityCast`]: crate::EventKind::AbilityCast
+//! [`LevelUp`]: crate::EventKind::LevelUp
+//! [`StructureDestroyed`]: crate::EventKind::StructureDestroyed
+//! [`ItemBought`]: crate::EventKind::ItemBought
+//!
 //! # Map 2 (mid-only)
 //!
 //! Map 2 is the full Dota geometry with creep waves on the mid lane only. The

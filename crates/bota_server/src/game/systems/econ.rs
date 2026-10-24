@@ -373,8 +373,9 @@ impl World {
                         unit: wire_id(unit),
                         level,
                     },
-                    visible_to: EventVisibility::Everyone,
+                    visible_to: self.who_may_know(unit, None),
                     gold_hidden_from: None,
+                    source_told_to: EventVisibility::Everyone,
                 });
             }
         }
