@@ -122,6 +122,9 @@ pub struct UnitDef {
     pub bound: i32,
     /// Whether damage passes it by.
     pub invulnerable: bool,
+    /// Whether the fountain's Rejuvenation Aura makes it invulnerable while
+    /// it wears the aura's buff, as it does Dota's couriers.
+    pub fountain_shelters: bool,
     /// Whether it is spell immune: an enemy's spell passes it by unless the
     /// spell [`pierces`](crate::AbilityDef::pierces) it.
     pub spell_immune: bool,
@@ -193,6 +196,7 @@ pub(crate) const BARE_UNIT: UnitDef = UnitDef {
     collision: 0,
     bound: 0,
     invulnerable: false,
+    fountain_shelters: false,
     spell_immune: false,
     hit_count: None,
     ancient: false,
@@ -533,6 +537,10 @@ pub const COURIER: UnitDef = UnitDef {
     // "Couriers are spell immune" (Liquipedia, Courier), from the start;
     // their magic resistance is 0%.
     spell_immune: true,
+    // "Couriers are invulnerable while affected by the fountain's
+    // Rejuvenation Aura" (Liquipedia, Courier; Fountain: "Turns couriers
+    // invulnerable while affected by the buff").
+    fountain_shelters: true,
     max_hp: rules::COURIER_HP,
     hit_count: Some(rules::COURIER_HITS),
     move_speed: rules::COURIER_MOVE_SPEED,

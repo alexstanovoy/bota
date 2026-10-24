@@ -117,8 +117,7 @@ pub fn derive_stats(cx: StatsCx<'_>) {
         // pace at once, as Dota works movement speed out.
         let mut pace = Pace::of(modifiers.get(entity));
         if let Some(on_it) = modifiers.get(entity) {
-            let hero = kind.kind == bota_proto::UnitKind::Hero;
-            add_modifiers(&mut now, &mut pace, on_it, base_armor, hero);
+            add_modifiers(&mut now, &mut pace, on_it, base_armor, kind);
         }
         if let Some(on_it) = modifiers.get(entity) {
             add_feast(&mut now, &mut pace, on_it, abilities.get(entity));
@@ -276,8 +275,9 @@ fn add_modifiers(
     pace: &mut Pace,
     on_it: &Modifiers,
     base_armor: Fixed,
-    hero: bool,
+    kind: &UnitDef,
 ) {
+    let hero = kind.kind == bota_proto::UnitKind::Hero;
     for held in on_it.active() {
         match held.kind {
             ModifierKind::Spell {
@@ -317,6 +317,9 @@ fn add_modifiers(
                 now.magic_resist_bp = rules::NOMINAL_BP - let_through;
             }
             ModifierKind::Shielded => now.invulnerable = true,
+            // The Rejuvenation Aura's buff (modifier_fountain_aura_buff)
+            // makes a unit whose row says so invulnerable.
+            ModifierKind::Fountain { .. } if kind.fountain_shelters => now.invulnerable = true,
             ModifierKind::Phased => now.phased = true,
             ModifierKind::Flying => now.flies = true,
             ModifierKind::Fortified => now.glyph = true,

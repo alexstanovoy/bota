@@ -457,7 +457,9 @@ fn a_spell_at_a_hero_draws_nobody() {
 fn the_jungle_pays_a_courier_no_mind_but_the_other_side_does_not() {
     let mut world = World::for_match(&config(), config().rng());
     let courier = the_courier(&world);
-    let at = world.transform.get(courier).expect("standing").pos;
+    // Out of its fountain, whose aura would make it invulnerable.
+    let at = rules::DEMO_LANE_CORNERS[0];
+    world.transform.get_mut(courier).expect("standing").pos = at;
     // A neutral and a creep of the other side, both standing on top of it.
     let beast = world.spawn_unit(NeutralKind::Kobold.def(), Team::Neutral, at);
     world

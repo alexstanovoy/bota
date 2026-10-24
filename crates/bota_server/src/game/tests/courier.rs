@@ -11,7 +11,7 @@ use crate::game::{
 };
 use bota_proto::{
     AbilityId, AbilitySlot, DamageKind, EventKind, Fixed, HeroId, Inflictor, ItemId, Order,
-    RejectReason, SlotId, Target, Team, Vec2,
+    RejectReason, SlotId, StatusFlags, Target, Team, Vec2,
 };
 
 use super::support::*;
@@ -812,5 +812,55 @@ fn a_burst_adds_half_the_pace_and_no_slow_takes_from_it_while_it_holds() {
         pace(&world),
         Some(380 * 70 / 100),
         "slowed again once it lifts"
+    );
+}
+
+#[test]
+fn a_courier_in_its_fountains_rejuvenation_takes_nothing_and_is_hit_again_once_it_lifts() {
+    let (mut world, _, courier) = a_match();
+    world.settle();
+    world.step();
+    let swing = |world: &mut World| {
+        world.hits.push_back(crate::game::Hit {
+            source: None,
+            inflictor: None,
+            target: courier,
+            amount: 1,
+            kind: DamageKind::Physical,
+            damage_amp_bp: rules::NOMINAL_BP,
+            attack: true,
+            striker: Some(bota_core::Striker::Other),
+            pierces: true,
+            uphill: false,
+            effect: crate::game::HitEffect::None,
+        });
+        world.step();
+    };
+    let hp = |world: &World| world.health.get(courier).map(|health| health.hp);
+    assert!(carries(
+        &world,
+        courier,
+        ModifierKind::Fountain {
+            hp_pct: rules::FOUNTAIN_HEAL_HP_PCT,
+            mana_pct: rules::FOUNTAIN_HEAL_MANA_PCT,
+        }
+    ));
+    assert!(
+        shown(&world, Some(Team::Radiant), courier).statuses.bits & StatusFlags::INVULNERABLE != 0,
+        "shown invulnerable by its fountain"
+    );
+    swing(&mut world);
+    assert_eq!(
+        hp(&world),
+        Some(Fixed::from_int(rules::COURIER_HP)),
+        "nothing lands"
+    );
+    world.transform.get_mut(courier).expect("standing").pos = rules::DEMO_LANE_CORNERS[0];
+    run(&mut world, rules::FOUNTAIN_HEAL_LINGER_TICKS + 1);
+    swing(&mut world);
+    assert_eq!(
+        hp(&world),
+        Some(Fixed::from_int(rules::COURIER_HP - 1)),
+        "out of the aura once it has lingered, a blow lands"
     );
 }
