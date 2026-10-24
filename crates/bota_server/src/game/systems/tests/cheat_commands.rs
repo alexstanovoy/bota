@@ -384,6 +384,17 @@ fn an_invulnerable_hero_stays_so_through_death_and_back() {
     assert!(world.stats.get(back).is_some_and(|s| s.invulnerable));
     cheat(&mut world, Cheat::Invulnerable { on: false });
     run(&mut world, 1);
+    assert!(
+        world.stats.get(back).is_some_and(|s| s.invulnerable),
+        "risen at its fountain it stays untouchable until given a command"
+    );
+    seat_order(
+        &mut world,
+        bota_proto::Order::Move {
+            target: bota_proto::Target::None,
+        },
+    );
+    run(&mut world, 1);
     assert!(!world.stats.get(back).is_some_and(|s| s.invulnerable));
 }
 

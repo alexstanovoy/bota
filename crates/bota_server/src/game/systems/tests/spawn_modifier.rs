@@ -103,6 +103,17 @@ fn doubled(world: &World, kind: UnitKind, case: &str) -> Vec<Entity> {
 
 /// Kills the seat's hero and stands it up again at once.
 fn kill_and_respawn(world: &mut World, hero: Entity) -> Entity {
+    // A hero risen at its fountain is untouchable until its player gives it
+    // a command: give it one first.
+    world.advance(&[crate::game::Command {
+        slot: bota_proto::SlotId(0),
+        unit: None,
+        order: bota_proto::Order::Move {
+            target: bota_proto::Target::None,
+        },
+        queue: false,
+        seq: 0,
+    }]);
     world.push_hit(None, hero, 1_000_000, DamageKind::Pure, None);
     world.step();
     world.seats[0].respawn_left = 1;

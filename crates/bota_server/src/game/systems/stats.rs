@@ -403,6 +403,7 @@ fn add_modifiers<'a>(
             }
             ModifierKind::Phased => now.phased = true,
             ModifierKind::Flying => now.flies = true,
+            ModifierKind::FountainInvulnerable => now.invulnerable = true,
             ModifierKind::Fortified => now.glyph = true,
             ModifierKind::Mending { .. }
             | ModifierKind::Clarity { .. }

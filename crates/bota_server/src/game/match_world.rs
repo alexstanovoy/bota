@@ -92,6 +92,22 @@ impl World {
         let Some(unit) = self.driven_by(cmd.slot, cmd.unit) else {
             return;
         };
+        // Any command to a hero risen at its fountain ends its fountain
+        // invulnerability, a queued one too: moving, attacking, casting,
+        // and shop dealings alike ("until the respawning hero is issued a
+        // command", Liquipedia, *Hero (unit type)*). A cheat is no command
+        // to the hero.
+        if !matches!(cmd.order, Order::Cheat { .. })
+            && self
+                .seat(cmd.slot)
+                .is_some_and(|seat| seat.unit == Some(unit))
+        {
+            self.take_modifier(
+                unit,
+                bota_core::ModifierKind::FountainInvulnerable,
+                Some(unit),
+            );
+        }
         if cmd.queued() && !self.free_to_take_up(unit) {
             self.enqueue(unit, cmd);
             return;

@@ -750,6 +750,7 @@ impl World {
         }
         self.tick_backdoor();
         self.tick_auras();
+        self.lift_fountain_invulnerability();
     }
 
     /// Stats worked out afresh, pools following their maxima, and the

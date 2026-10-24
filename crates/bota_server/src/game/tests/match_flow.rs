@@ -1,12 +1,14 @@
 //! How a match ends, kills, experience, gold and respawns.
 
 use bota_core::{
-    MAPS, MELEE_CREEP, SHADOW_FIEND, ancient_of, hero_kill_xp, hero_spawn_pos, map_of,
-    passive_gold_by, respawn_wait, rules,
+    MAPS, MELEE_CREEP, ModifierKind, SHADOW_FIEND, ancient_of, hero_kill_xp, hero_spawn_pos,
+    map_of, passive_gold_by, respawn_wait, rules,
 };
 
 use crate::game::{Entity, Level, UnitOrder, World, wire_id};
-use bota_proto::{EventKind, Fixed, HeroId, ItemId, MapId, SlotId, Team, Vec2};
+use bota_proto::{
+    EventKind, Fixed, HeroId, ItemId, MapId, Order, SlotId, StatusFlags, Target, Team, Vec2,
+};
 
 use super::support::*;
 
@@ -464,4 +466,63 @@ fn a_level_seven_hero() -> (World, Entity) {
     world.seats[0].level = 7;
     assert!(world.learn(hero, 1));
     (world, hero)
+}
+
+/// A hero risen at its fountain is invulnerable and untargetable "until the
+/// respawning hero is issued a command", moving, attacking, casting and shop
+/// dealings alike (Liquipedia, *Hero (unit type)*, Respawning; the fountain's
+/// `modifier_fountain_invulnerability`); the Glyph is the side's, no command
+/// to the hero. It also ends once the fountain's Rejuvenation, which provides
+/// it, no longer holds on the hero.
+#[test]
+fn a_risen_hero_is_untouchable_at_its_fountain_until_it_is_given_a_command() {
+    let risen = |order: Option<Order>| {
+        let (mut world, hero) = match_hero();
+        world.settle();
+        world.bury(vec![(hero, None)], &mut Vec::new());
+        world.seats[0].respawn_left = 1;
+        world.step();
+        let back = world.seats[0].unit.expect("risen");
+        run(&mut world, 30);
+        assert!(
+            carries(&world, back, ModifierKind::FountainInvulnerable),
+            "risen and waiting at its fountain"
+        );
+        assert!(world.stats.get(back).expect("stats").invulnerable);
+        assert!(
+            shown(&world, Some(Team::Radiant), back).statuses.bits & StatusFlags::INVULNERABLE != 0,
+            "shown untouchable"
+        );
+        seat_order(&mut world, Order::Glyph);
+        assert!(
+            carries(&world, back, ModifierKind::FountainInvulnerable),
+            "the Glyph is no command to the hero"
+        );
+        if let Some(order) = order {
+            seat_order(&mut world, order);
+        }
+        (world, back)
+    };
+    for order in [
+        Order::Move {
+            target: Target::Pos(Vec2::from_ints(0, 0)),
+        },
+        Order::Buy {
+            item: ItemId::TANGO,
+        },
+    ] {
+        let (world, back) = risen(Some(order));
+        assert!(
+            !carries(&world, back, ModifierKind::FountainInvulnerable),
+            "{order:?} ends it"
+        );
+        assert!(!world.stats.get(back).expect("stats").invulnerable);
+    }
+    let (mut world, back) = risen(None);
+    world.transform.get_mut(back).expect("standing").pos = hero_spawn_pos(world.map, Team::Dire);
+    run(&mut world, rules::FOUNTAIN_HEAL_LINGER_TICKS + 2);
+    assert!(
+        !carries(&world, back, ModifierKind::FountainInvulnerable),
+        "out of its fountain's reach once the Rejuvenation lifts"
+    );
 }

@@ -38,6 +38,11 @@ pub enum ModifierKind {
     /// past height and trees. Dota's `modifier_courier_flying`, which a
     /// courier wears from its owner's [`rules::COURIER_FLYING_LEVEL`] on.
     Flying,
+    /// Invulnerable and untargetable: a hero risen at its fountain
+    /// (`modifier_fountain_invulnerability`), "until the respawning hero is
+    /// issued a command" (Liquipedia, *Hero (unit type)*, Respawning), and
+    /// while the fountain's Rejuvenation Aura, which provides it, holds on it.
+    FountainInvulnerable,
     /// Walks slower, by `pct` percent of what it would.
     Slowed {
         /// Percent taken off its speed.
@@ -209,6 +214,7 @@ impl ModifierKind {
             ModifierKind::Burning { .. } => EffectId::BURNING,
             ModifierKind::Phased => EffectId::PHASED,
             ModifierKind::Flying => EffectId::FLYING,
+            ModifierKind::FountainInvulnerable => EffectId::FOUNTAIN_INVULNERABLE,
             ModifierKind::ArmorBroken { .. } => EffectId::ARMOR_BROKEN,
             ModifierKind::MagicBroken { .. } => EffectId::MAGIC_BROKEN,
             ModifierKind::Guarded { .. } => EffectId::GUARDED,

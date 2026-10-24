@@ -269,6 +269,17 @@ fn map2_first_hero_death_allows_respawn_and_second_death_loses() {
         world.advance(&[]);
         let second = world.seats[seat].unit.expect("second life respawned");
         assert_ne!(second, first);
+        // Risen at its fountain it is untouchable until its player gives it
+        // a command, as Dota's.
+        world.advance(&[crate::game::Command {
+            slot: world.seats[seat].slot,
+            unit: None,
+            order: bota_proto::Order::Move {
+                target: bota_proto::Target::None,
+            },
+            queue: false,
+            seq: 0,
+        }]);
         lethal_hit(&mut world, second);
         world.advance(&[]);
         assert_eq!(world.seats[seat].deaths, 2);

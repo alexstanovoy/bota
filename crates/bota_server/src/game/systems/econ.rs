@@ -1,12 +1,14 @@
 //! What a kill pays, what the clock pays, and getting a hero back on its feet.
 
 use bota_core::{
-    GoldRange, assist_gold, denied_xp, hero_bounty, hero_kill_xp, hero_spawn_pos, kind_def,
-    passive_gold_by, rules,
+    GoldRange, ModifierKind, assist_gold, denied_xp, hero_bounty, hero_kill_xp, hero_spawn_pos,
+    kind_def, passive_gold_by, rules,
 };
 use bota_proto::{EventKind, Team, UnitKind, Vec2};
 
-use crate::game::{Bounty, Entity, Event, EventVisibility, Landed, Level, Purpose, World, wire_id};
+use crate::game::{
+    Bounty, Entity, Event, EventVisibility, Landed, Level, Modifier, Purpose, World, wire_id,
+};
 
 use super::fight::other_side;
 
@@ -417,6 +419,13 @@ impl World {
                 self.put_modifier(unit, held);
             }
         }
+        // Risen at its fountain, untouchable until its player gives it a
+        // command or the fountain's Rejuvenation no longer holds on it
+        // (Dota's modifier_fountain_invulnerability).
+        self.put_modifier(
+            unit,
+            Modifier::new(ModifierKind::FountainInvulnerable, Some(unit), None, None),
+        );
         self.seats[index].respawn_left = 0;
         self.seats[index].unit = Some(unit);
         self.settle();
@@ -433,6 +442,32 @@ impl World {
     }
 
     /// Whether an entity wears what makes a unit an illusion.
+    /// Takes a risen hero's fountain invulnerability off once the
+    /// Rejuvenation Aura that provides it no longer holds on it: it walked
+    /// out of the fountain's reach and the aura's linger ran out.
+    pub fn lift_fountain_invulnerability(&mut self) {
+        for index in 0..self.seats.len() {
+            let Some(hero) = self.seats[index].unit else {
+                continue;
+            };
+            let Some(on_it) = self.modifiers.get(hero) else {
+                continue;
+            };
+            let (risen, mended) = on_it
+                .0
+                .iter()
+                .fold((false, false), |(risen, mended), held| {
+                    (
+                        risen || held.kind == ModifierKind::FountainInvulnerable,
+                        mended || matches!(held.kind, ModifierKind::Fountain { .. }),
+                    )
+                });
+            if risen && !mended {
+                self.take_modifier(hero, ModifierKind::FountainInvulnerable, Some(hero));
+            }
+        }
+    }
+
     pub fn wears_illusion(&self, entity: Entity) -> bool {
         self.modifiers.get(entity).is_some_and(wears_illusion)
     }

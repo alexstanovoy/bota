@@ -340,6 +340,10 @@ impl EffectId {
     /// A courier risen to flight (`modifier_courier_flying`): it flies over
     /// closed ground and trees and sees as a flyer sees.
     pub const FLYING: EffectId = EffectId(63);
+    /// A hero just risen at its fountain (`modifier_fountain_invulnerability`):
+    /// invulnerable and untargetable until its player gives it a command, or
+    /// until the fountain's Rejuvenation no longer holds on it.
+    pub const FOUNTAIN_INVULNERABLE: EffectId = EffectId(64);
 }
 
 /// An index into a unit's ability slots, as listed in

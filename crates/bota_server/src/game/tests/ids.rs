@@ -70,6 +70,7 @@ fn every_modifier() -> Vec<ModifierKind> {
         ModifierKind::Shielded,
         ModifierKind::Phased,
         ModifierKind::Flying,
+        ModifierKind::FountainInvulnerable,
         ModifierKind::Slowed { pct: 0 },
         ModifierKind::Hastened { pct: 0 },
         ModifierKind::Haste { pct: 0 },
@@ -117,6 +118,7 @@ fn every_modifier() -> Vec<ModifierKind> {
             | ModifierKind::Shielded
             | ModifierKind::Phased
             | ModifierKind::Flying
+            | ModifierKind::FountainInvulnerable
             | ModifierKind::Slowed { .. }
             | ModifierKind::Hastened { .. }
             | ModifierKind::Haste { .. }

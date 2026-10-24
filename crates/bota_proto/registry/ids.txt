@@ -205,6 +205,7 @@ effect 60 live Illusion
 effect 61 live TimedLife
 effect 62 live NeutralUpgrade
 effect 63 live Flying
+effect 64 live FountainInvulnerable
 
 neutral 0 live Kobold
 neutral 1 live Kobold Soldier
