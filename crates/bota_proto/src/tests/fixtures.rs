@@ -611,6 +611,7 @@ pub fn all_client_msgs() -> Vec<ClientMsg> {
             body: Body::Text("gg wp 👍".to_string()),
         }),
         ClientMsg::Compress(Codec::Deflate),
+        ClientMsg::LeaveGame,
         ClientMsg::Say(Line {
             to: Audience::Team,
             body: Body::Ping(Ping {
@@ -744,6 +745,7 @@ pub fn client_msg_name(msg: &ClientMsg) -> &'static str {
         ClientMsg::Pong => "Pong",
         ClientMsg::Say(_) => "Say",
         ClientMsg::Compress(_) => "Compress",
+        ClientMsg::LeaveGame => "LeaveGame",
     }
 }
 

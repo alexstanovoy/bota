@@ -56,6 +56,7 @@ fn opts(mode: TickMode, tick_rate: u16) -> ServerOpts {
         heroes: None,
         abandon_unjoined: false,
         empty_after: None,
+        abandon_after: None,
     }
 }
 

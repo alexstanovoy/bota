@@ -9,7 +9,9 @@ use std::time::Duration;
 use bota_client_core::{IssuedOrder, Link, Transport, play};
 use bota_core::fountain_pos;
 use bota_proto::{ClientMsg, Codec, HeroId, ItemId, MapId, Order, SlotId, Target, Team, TickMode};
-use bota_server::game_loop::{DEFAULT_IDLE_TIMEOUT, DEFAULT_SPECTATORS_PER_SEAT, ServerOpts, run};
+use bota_server::game_loop::{
+    DEFAULT_IDLE_TIMEOUT, DEFAULT_SPECTATORS_PER_SEAT, MatchEnd, ServerOpts, run,
+};
 use bota_server::net::DEFAULT_MESSAGES_PER_SEC;
 use bota_server::spectators::Spectators;
 
@@ -44,6 +46,7 @@ fn opts() -> ServerOpts {
         heroes: None,
         abandon_unjoined: false,
         empty_after: None,
+        abandon_after: None,
     }
 }
 
@@ -95,4 +98,39 @@ fn the_attack_move_bot_plays_a_lockstep_match_to_its_end() {
         .join()
         .expect("the server thread")
         .expect("a clean end");
+}
+
+/// Dota's LEAVE GAME: the seat that leaves a running match loses it at once, and the server names
+/// the leaver; a seat left empty past `abandon_after` does the same.
+#[test]
+fn a_seat_that_leaves_loses_the_match_and_one_empty_too_long_does_too() {
+    for by_message in [true, false] {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("a port");
+        let address = listener.local_addr().expect("bound").to_string();
+        let mut options = opts();
+        options.mode = TickMode::Realtime;
+        options.dummy_seat = false;
+        options.abandon_after = (!by_message).then_some(Duration::from_secs(2));
+        let server = thread::spawn(move || run(listener, options));
+        let (mut stayer, seated) =
+            Link::join(&address, "stays", HeroId::SHADOW_FIEND, None).expect("a seat");
+        let (mut leaver, _) =
+            Link::join(&address, "leaves", HeroId::SHADOW_FIEND, None).expect("a seat");
+        let stays = thread::spawn(move || play(&mut stayer, seated, &mut (), |_| Vec::new()));
+        thread::sleep(Duration::from_secs(4));
+        if by_message {
+            leaver.send(&ClientMsg::LeaveGame).expect("sent");
+        }
+        drop(leaver);
+        let end = server.join().expect("the server thread").expect("an end");
+        let MatchEnd::Over { winner, left, .. } = end else {
+            panic!("the match ends with a result: {end:?}");
+        };
+        assert_eq!(
+            (winner, left),
+            (Team::Radiant, Some(1)),
+            "message: {by_message}"
+        );
+        stays.join().expect("the stayer").expect("it saw the end");
+    }
 }

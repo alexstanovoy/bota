@@ -107,6 +107,9 @@ pub struct ServerOpts {
     pub abandon_unjoined: bool,
     /// End the match unplayed once every seat has been empty this long.
     pub empty_after: Option<Duration>,
+    /// A seat empty this long in a running match abandons it, as Dota's reconnect window runs
+    /// out: its team loses (Dota allows five minutes). Absent: a seat may come back for good.
+    pub abandon_after: Option<Duration>,
     /// How long the seats have to pick once all are held; Dota's default is
     /// [`rules::PICK_SECS`](bota_core::rules::PICK_SECS). Past it a seat
     /// without a hero loses starting gold until it picks, and is given a
@@ -133,7 +136,13 @@ pub const MAX_PICK_TIME: Duration = Duration::from_secs(24 * 60 * 60);
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum MatchEnd {
     /// It was played to a winner or a draw ([`Team::Neutral`]).
-    Over { winner: Team, report: MatchReport },
+    Over {
+        winner: Team,
+        report: MatchReport,
+        /// The slot of a player whose leaving gave the match away; the winner is then
+        /// the other team.
+        left: Option<u8>,
+    },
     /// Nobody played it: no seat was held when the lobby ran out of time, or
     /// every seat was empty for good or for longer than allowed. There is no
     /// result.
@@ -322,6 +331,10 @@ struct Inbox {
     acked: Vec<u32>,
     /// What each side calls the entities it is told of.
     handles: Handles,
+    /// Seats whose holder left the match for good ([`ClientMsg::LeaveGame`]).
+    left: Vec<SlotId>,
+    /// Seats held when the match began, and since when each has been empty.
+    away: Vec<(bool, Option<Instant>)>,
 }
 
 /// What a finished tick tells beyond the world itself.
@@ -768,6 +781,7 @@ impl Server {
             ClientMsg::Say(line) => self.say(id, line, None),
             ClientMsg::Compress(_) => self.compress(id),
             ClientMsg::Order { .. }
+            | ClientMsg::LeaveGame
             | ClientMsg::Ack { .. }
             | ClientMsg::ViewAs { .. }
             | ClientMsg::Pong => {}
@@ -944,6 +958,13 @@ impl Server {
                 .expect("the command line checked the order delays"),
             acked: vec![0; self.roster.seats.len()],
             handles: Handles::new(&cfg, &world),
+            left: Vec::new(),
+            away: self
+                .roster
+                .seats
+                .iter()
+                .map(|s| (s.player.is_some(), None))
+                .collect(),
         };
         let mut refused = Vec::new();
         let mut empty_since = None;
@@ -973,7 +994,11 @@ impl Server {
             if let Some(held) = self.publish_tick(&world, told, &mut replay) {
                 self.feed_late(held);
             }
-            if let Some(winner) = world.victor() {
+            let decided = world
+                .victor()
+                .map(|winner| (winner, None))
+                .or_else(|| self.forfeit(&mut inbox).map(|(w, slot)| (w, Some(slot))));
+            if let Some((winner, left)) = decided {
                 let stats = world.match_stats();
                 let over = ServerMsg::MatchOver {
                     winner,
@@ -986,12 +1011,57 @@ impl Server {
                 break MatchEnd::Over {
                     winner,
                     report: MatchReport { picks, stats },
+                    left: left.map(|slot: SlotId| slot.0),
                 };
             }
         };
         replay.finish();
         self.close_all();
         end
+    }
+
+    /// A team that has left the match for good (every seat it held at the start sent
+    /// `LeaveGame` or stayed empty past [`ServerOpts::abandon_after`]) loses to the other: its
+    /// opponent, and the first seat of it to leave. None when no team, or both, are gone.
+    fn forfeit(&self, inbox: &mut Inbox) -> Option<(Team, SlotId)> {
+        let now = Instant::now();
+        let limit = self.opts.abandon_after;
+        let mut gone = Vec::new();
+        for (seat, (held, since)) in self.roster.seats.iter().zip(&mut inbox.away) {
+            if seat.player.is_some() {
+                *since = None;
+            } else {
+                since.get_or_insert(now);
+            }
+            let timed_out = (*since)
+                .zip(limit)
+                .is_some_and(|(since, limit)| now.duration_since(since) >= limit);
+            if *held && (inbox.left.contains(&seat.slot) || timed_out) {
+                gone.push(seat.slot);
+            }
+        }
+        let team_gone = |team: Team| {
+            let mut held = self
+                .roster
+                .seats
+                .iter()
+                .zip(&inbox.away)
+                .filter(|(seat, (held, _))| *held && seat.team == team)
+                .peekable();
+            held.peek().is_some() && held.all(|(seat, _)| gone.contains(&seat.slot))
+        };
+        let (radiant, dire) = (team_gone(Team::Radiant), team_gone(Team::Dire));
+        let (loser, winner) = match (radiant, dire) {
+            (true, false) => (Team::Radiant, Team::Dire),
+            (false, true) => (Team::Dire, Team::Radiant),
+            _ => return None,
+        };
+        let leaver = self
+            .roster
+            .seats
+            .iter()
+            .find(|s| s.team == loser && gone.contains(&s.slot))?;
+        Some((winner, leaver.slot))
     }
 
     /// Ends every connection once what is queued for it has gone out.
@@ -1248,6 +1318,14 @@ impl Server {
             }
             ClientMsg::Say(line) => self.say(id, line, Some((world, &inbox.handles))),
             ClientMsg::Compress(_) => self.compress(id),
+            ClientMsg::LeaveGame => {
+                if let Some(seat) = self.roster.seat_of(id) {
+                    let slot = seat.slot;
+                    if !inbox.left.contains(&slot) {
+                        inbox.left.push(slot);
+                    }
+                }
+            }
             ClientMsg::PickHero { .. } | ClientMsg::SetReady(_) | ClientMsg::Pong => {}
         }
     }

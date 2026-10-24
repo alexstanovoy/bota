@@ -121,6 +121,11 @@ struct Args {
     /// without it an empty match whose seats may be taken back plays on to its end.
     #[arg(long, value_parser = clap::value_parser!(u64).range(1..))]
     empty_after_secs: Option<u64>,
+    /// A seat empty this long in a running match abandons it and its team loses (Dota lets a
+    /// disconnected player back for five minutes); a player's LEAVE GAME abandons at once. Without
+    /// it a seat may come back for good.
+    #[arg(long, value_parser = clap::value_parser!(u64).range(1..))]
+    abandon_after_secs: Option<u64>,
     /// Who may watch without a seat's key: off; delayed=SECS, everything that many seconds of
     /// game time late (as Dota's tv_delay); open, everything live (local tools only). A seat's
     /// key always watches its seat live, and only it is told that seat's orders live.
@@ -218,8 +223,12 @@ fn main() -> ExitCode {
         }
     }
     match serve(args) {
-        Ok(MatchEnd::Over { winner, report }) => {
-            println!("{}", result_line(winner, &report, tick_rate));
+        Ok(MatchEnd::Over {
+            winner,
+            report,
+            left,
+        }) => {
+            println!("{}", result_line(winner, &report, tick_rate, left));
             ExitCode::SUCCESS
         }
         Ok(MatchEnd::Abandoned) => ExitCode::from(EXIT_ABANDONED),
@@ -256,7 +265,12 @@ fn secret_env(name: &str) -> Result<Option<String>, String> {
 /// The line a launcher reads the result from: the winning team (0 Radiant,
 /// 1 Dire) or a draw, the game time the match lasted, and the
 /// [`bota_proto::MatchReport`] as hex postcard bytes.
-fn result_line(winner: Team, report: &bota_proto::MatchReport, tick_rate: u16) -> String {
+fn result_line(
+    winner: Team,
+    report: &bota_proto::MatchReport,
+    tick_rate: u16,
+    left: Option<u8>,
+) -> String {
     let winner = match winner {
         Team::Radiant => "0",
         Team::Dire => "1",
@@ -269,7 +283,8 @@ fn result_line(winner: Team, report: &bota_proto::MatchReport, tick_rate: u16) -
         .iter()
         .map(|byte| format!("{byte:02x}"))
         .collect();
-    format!("RESULT winner={winner} duration_ms={duration_ms} report={hex}")
+    let left = left.map_or_else(String::new, |slot| format!(" abandoned={slot}"));
+    format!("RESULT winner={winner} duration_ms={duration_ms} report={hex}{left}")
 }
 
 /// The server's options from the command line.
@@ -328,6 +343,7 @@ fn server_opts(args: &Args) -> std::io::Result<ServerOpts> {
             .map(|ids| ids.iter().copied().map(HeroId).collect()),
         abandon_unjoined: args.abandon_unjoined,
         empty_after: args.empty_after_secs.map(Duration::from_secs),
+        abandon_after: args.abandon_after_secs.map(Duration::from_secs),
         pick_time: Duration::from_secs(args.pick_secs),
         pick_penalty_time: Duration::from_secs(bota_core::rules::PICK_PENALTY_SECS),
         tactical_time: Duration::from_secs(args.tactical_secs),

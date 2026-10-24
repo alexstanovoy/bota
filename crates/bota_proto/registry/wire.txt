@@ -448,6 +448,7 @@ field EventKind::Landed 1 caster: Option<EntityId>
 field EventKind::Landed 2 at: Vec2
 variant ClientMsg 7 Say(Line)
 variant ClientMsg 8 Compress(Codec)
+variant ClientMsg 9 LeaveGame
 variant Codec 0 Deflate
 variant ServerMsg 12 Heard(Heard)
 variant ServerMsg 13 SayRefused {}
