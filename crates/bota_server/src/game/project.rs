@@ -619,7 +619,8 @@ fn ability_views(book: &crate::game::AbilityBook, mana_rate_bp: i32) -> Vec<Abil
 impl World {
     /// Everything showing on one entity: its active modifiers but those Dota
     /// hides, each with who put it on, while the viewer's units carry that
-    /// one, and with what.
+    /// one, and with what. One a Break disables shows a count of zero, as
+    /// Dota's HUD shows a broken aura's icon.
     fn effects_on(&self, viewer: Option<Team>, entity: Entity) -> Vec<EffectView> {
         self.modifiers
             .get(entity)
@@ -629,7 +630,11 @@ impl World {
             .map(|held| EffectView {
                 id: held.kind.effect_id(),
                 ticks_left: held.ticks_left,
-                stacks: held.kind.stacks(),
+                stacks: if self.disabled(held) {
+                    Some(0)
+                } else {
+                    held.kind.stacks()
+                },
                 caster: held
                     .source
                     .filter(|by| self.carried(viewer, *by))

@@ -8,7 +8,7 @@ use bota_core::{
 };
 use bota_proto::{AbilityId, DamageKind, Inflictor, Team, UnitKind};
 
-use crate::game::{Def, Entity, Modifier, Spots, Upgrades, World};
+use crate::game::{Def, Entity, Modifier, Spots, Upgrades, World, disabled_in};
 
 use super::modifiers::resisted_ticks;
 
@@ -52,8 +52,10 @@ impl World {
     ///
     /// Each puts its modifier afresh on every unit it reaches, which then
     /// lingers for the aura's [`Aura::linger`] once it stops reaching it. A
-    /// broken carrier hands out none of the auras a Break silences. A storm
-    /// also burns what it reaches, on its beat.
+    /// broken carrier's auras that a Break silences go out as ever, and what
+    /// they put on does nothing while the break holds ([`World::disabled`]).
+    /// A storm also burns what it reaches, on its beat, unless a Break
+    /// silences it.
     pub fn tick_auras(&mut self) {
         let mut scratch = std::mem::take(&mut self.aura_scratch);
         scratch.spots.clear();
@@ -74,12 +76,10 @@ impl World {
     }
 
     /// The auras one unit hands out this tick: its own, then those of the
-    /// abilities it has learned, by slot. A broken one hands out none that a
-    /// Break silences.
+    /// abilities it has learned, by slot.
     fn gather_auras(&self, carrier: Entity, into: &mut Vec<Source>) {
-        let silenced = |aura: &Aura| aura.breakable && self.broken(carrier);
         let own: &'static [Aura] = self.def.get(carrier).map_or(&[], |Def(def)| def.auras);
-        for aura in own.iter().filter(|&aura| !silenced(aura)) {
+        for aura in own {
             into.push(Source {
                 carrier,
                 aura,
@@ -94,14 +94,12 @@ impl World {
             let Some(aura) = ability_def(slot.id).and_then(|def| def.aura.as_ref()) else {
                 continue;
             };
-            if !silenced(aura) {
-                into.push(Source {
-                    carrier,
-                    aura,
-                    ability: Some(slot.id),
-                    level: slot.level,
-                });
-            }
+            into.push(Source {
+                carrier,
+                aura,
+                ability: Some(slot.id),
+                level: slot.level,
+            });
         }
     }
 
@@ -135,7 +133,7 @@ impl World {
             .modifier
             .modifier(level, |talent| self.has_talent(carrier, talent), steps);
         let with = ability.map(Inflictor::Ability);
-        let storm = storm_of(aura);
+        let storm = storm_of(aura).filter(|_| !(aura.breakable && self.broken(carrier)));
         near.clear();
         near.extend(spots.around(from, i64::from(reach.raw).abs()));
         for target in near.iter().copied() {
@@ -146,10 +144,14 @@ impl World {
                 continue;
             }
             let ticks = resisted_ticks(&self.stats, target, kind, aura.linger);
-            let fresh = Modifier::new(kind, Some(carrier), with, Some(ticks));
-            if let Some(on_it) = self.modifiers.get_mut(target)
-                && !on_it.outranks(&fresh)
-            {
+            let fresh = Modifier {
+                breakable: aura.breakable,
+                ..Modifier::new(kind, Some(carrier), with, Some(ticks))
+            };
+            let outranked = self.modifiers.get(target).is_some_and(|on_it| {
+                on_it.outranks(&fresh, |held| disabled_in(&self.modifiers, held))
+            });
+            if !outranked && let Some(on_it) = self.modifiers.get_mut(target) {
                 on_it.put(fresh);
             }
             if let Some(storm) = storm {

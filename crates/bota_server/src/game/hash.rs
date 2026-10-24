@@ -309,6 +309,7 @@ fn hash_modifiers(fnv: &mut Fnv, on_it: &Modifiers) {
         fnv.u32(held.ticks_left.unwrap_or(0));
         fnv.some(held.ticks_total.is_some());
         fnv.u32(held.ticks_total.unwrap_or(0));
+        fnv.some(held.breakable);
     }
 }
 

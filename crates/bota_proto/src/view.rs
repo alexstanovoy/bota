@@ -77,7 +77,9 @@ pub struct EffectView {
     pub id: EffectId,
     /// Ticks until it wears off. Absent for one that does not run out.
     pub ticks_left: Option<u32>,
-    /// How many are held. Absent for one that is not counted.
+    /// How many are held. Absent for one that is not counted. Zero for an
+    /// aura's effect that a Break on its source disables while it holds: it
+    /// stays on and does nothing, its icon showing 0, as in Dota.
     pub stacks: Option<u32>,
     /// The unit that put it on, its bearer for an innate. Absent for one no
     /// unit put on and when that unit is not in the view.

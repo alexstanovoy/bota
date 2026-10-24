@@ -4,8 +4,8 @@ use bota_core::{
     COURIER, FLAGBEARER_CREEP, FOUNTAIN, MELEE_CREEP, ModifierKind, OBSERVER_WARD, rules, tower_def,
 };
 
-use crate::game::{Level, World};
-use bota_proto::{Fixed, HeroId, MapId, Pick, SlotId, Team, Vec2};
+use crate::game::{Level, World, wire_id};
+use bota_proto::{EffectId, Fixed, HeroId, MapId, Pick, SlotId, Team, Vec2};
 
 use super::support::*;
 
@@ -165,39 +165,52 @@ fn a_flagbearer_inspires_the_creeps_of_its_own_side_around_it() {
 }
 
 #[test]
-fn a_break_silences_a_flagbearers_inspiration_and_leaves_a_towers_protection() {
-    // Dota's flagbearer_creep_aura_effect is a passive a Break turns off;
-    // a tower's aura is the building's, no ability.
+fn a_broken_flagbearers_inspiration_stays_on_its_creeps_doing_nothing_and_a_tower_guards_on() {
+    // Dota's flagbearer_creep_aura_effect is a passive a Break disables: "The
+    // aura itself continues to place its buff or debuff on units, but ...
+    // the buff or debuff is disabled for the duration. If the aura has a
+    // status icon in the HUD, they show 0" (Liquipedia, Break). A tower's
+    // aura is the building's, no ability.
     let mut world = World::new();
-    let flag = world.spawn_unit(
-        &FLAGBEARER_CREEP,
-        Team::Radiant,
-        Vec2::from_ints(5000, 5000),
-    );
-    let creep = world.spawn_unit(&MELEE_CREEP, Team::Radiant, Vec2::from_ints(5300, 5000));
-    let tower = world.spawn_unit(tower_def(1), Team::Radiant, Vec2::from_ints(8000, 5000));
-    let hero = hero_at(&mut world, Vec2::from_ints(8400, 5000));
+    let at = |x| Vec2::from_ints(x, 5000);
+    let flag = world.spawn_creep(&FLAGBEARER_CREEP, Team::Radiant, at(5000), 0, 3);
+    let creep = world.spawn_unit(&MELEE_CREEP, Team::Radiant, at(5300));
+    let tower = world.spawn_unit(tower_def(1), Team::Radiant, at(8000));
+    let hero = hero_at(&mut world, at(8400));
     world.settle();
     world.step();
-    assert!(carries(&world, creep, INSPIRED_EFFECT), "inspired at first");
-    assert!(carries(&world, hero, GUARDED_EFFECT), "and guarded");
+    let resist = |world: &World| world.stats.get(creep).map(|s| s.magic_resist_bp);
+    let shown = |world: &World| {
+        world
+            .view(Team::Radiant)
+            .units
+            .iter()
+            .find(|unit| unit.id == wire_id(creep))
+            .and_then(|unit| {
+                unit.effects
+                    .iter()
+                    .find(|effect| effect.id == EffectId::INSPIRED)
+                    .map(|effect| effect.stacks)
+            })
+    };
+    assert_eq!(resist(&world), Some(1200), "inspired at first");
     let broken = 4 * rules::AURA_LINGER_TICKS;
     put_on(&mut world, flag, ModifierKind::Broken, broken);
     put_on(&mut world, tower, ModifierKind::Broken, broken);
     run(&mut world, rules::AURA_LINGER_TICKS + 1);
     assert!(
-        !carries(&world, creep, INSPIRED_EFFECT),
-        "broken, the flagbearer inspires nobody, and what it laid runs out"
+        carries(&world, creep, INSPIRED_EFFECT),
+        "broken, the flagbearer's inspiration stays on"
     );
+    assert_eq!(resist(&world), Some(0), "and lends nothing");
+    assert_eq!(shown(&world), Some(Some(0)), "shown with a zero");
     assert!(
         carries(&world, hero, GUARDED_EFFECT),
         "a broken tower guards as before"
     );
     run(&mut world, broken);
-    assert!(
-        carries(&world, creep, INSPIRED_EFFECT),
-        "and the inspiration is back once the break lifts"
-    );
+    assert_eq!(resist(&world), Some(1200), "back once the break lifts");
+    assert_eq!(shown(&world), Some(None), "and shown as before");
 }
 
 #[test]

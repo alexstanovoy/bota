@@ -9,7 +9,8 @@ use bota_proto::{Attributes, Fixed, ModifierSpec};
 
 use crate::game::{
     AbilityBook, AppliedModifiers, Def, EntityAllocator, Health, Inventory, Level,
-    MAX_COMBINED_MODIFIER_SCALE, Mana, Modifiers, StatBonus, Stats, Table, Upgrades, carried_bonus,
+    MAX_COMBINED_MODIFIER_SCALE, Mana, Modifier, Modifiers, StatBonus, Stats, Table, Upgrades,
+    carried_bonus, disabled_in,
 };
 
 /// What working out stats reads and writes.
@@ -124,18 +125,22 @@ pub fn derive_stats(cx: StatsCx<'_>) {
         if !broken {
             sums.bonus_damage += kept(illusion, soul_damage(held(ModifierKind::souls), levels + 1));
         }
-        // Every percent change of the pace is summed and taken of the flat
-        // pace at once, as Dota works movement speed out.
-        if let Some(on_it) = modifiers.get(entity) {
-            let hero = kind.kind == bota_proto::UnitKind::Hero;
-            let wearer = Wearer {
-                base_armor,
-                hero,
-                illusion,
-                sheltered_by_fountain: kind.fountain_shelters,
-            };
-            add_modifiers(&mut now, &mut sums, on_it, wearer);
-        }
+        // What a breakable aura put on does nothing while its source is
+        // broken.
+        let working = || {
+            modifiers
+                .get(entity)
+                .into_iter()
+                .flat_map(|on_it| on_it.active())
+                .filter(|held| !disabled_in(modifiers, held))
+        };
+        let wearer = Wearer {
+            base_armor,
+            hero: kind.kind == bota_proto::UnitKind::Hero,
+            illusion,
+            sheltered_by_fountain: kind.fountain_shelters,
+        };
+        add_modifiers(&mut now, &mut sums, working(), wearer);
         if let Some(on_it) = modifiers.get(entity) {
             add_feast(&mut now, &mut sums.pace, on_it, abilities.get(entity));
         }
@@ -150,7 +155,8 @@ pub fn derive_stats(cx: StatsCx<'_>) {
             hp: now.max_hp,
             mana: now.max_mana,
         };
-        let regen = settled_regen(kind, carried, now.attributes, max, modifiers.get(entity));
+        let kinds = working().map(|held| held.kind);
+        let regen = settled_regen(kind, carried, now.attributes, max, kinds);
         (now.hp_regen, now.mana_regen) = (regen.hp, regen.mana);
         follow_pools(
             stats.get(entity).copied(),
@@ -191,13 +197,13 @@ impl Pace {
 }
 
 /// Health and mana mended each tick by a unit's kind, what it carries, its
-/// attributes and the modifiers on it.
+/// attributes and the modifiers on it that work.
 fn settled_regen(
     kind: &UnitDef,
     carried: Option<Carried>,
     attributes: Attributes,
     max: Regen,
-    on_it: Option<&Modifiers>,
+    working: impl Iterator<Item = ModifierKind>,
 ) -> Regen {
     regen(
         Regen {
@@ -210,9 +216,7 @@ fn settled_regen(
         }),
         attributes,
         max,
-        on_it
-            .into_iter()
-            .flat_map(|on_it| on_it.active().map(|held| held.kind)),
+        working,
     )
 }
 
@@ -342,13 +346,18 @@ fn add_heap(now: &mut Stats, kept: u32) {
     now.attributes.strength += rules::FLESH_HEAP_STRENGTH_PER_STACK * Fixed::from_int(kept);
 }
 
-/// Adds what every active modifier on a unit is worth to its stats, each
+/// Adds what every working modifier on a unit is worth to its stats, each
 /// percent change of its pace and of its main attack damage, and its flat
 /// bonus damage, to `sums` (a slow taken off, a haste added). What holds a
 /// unit still, what burns it and what it hands out are read where they are
 /// acted on, not here.
-fn add_modifiers(now: &mut Stats, sums: &mut Sums, on_it: &Modifiers, wearer: Wearer) {
-    for held in on_it.active() {
+fn add_modifiers<'a>(
+    now: &mut Stats,
+    sums: &mut Sums,
+    working: impl Iterator<Item = &'a Modifier>,
+    wearer: Wearer,
+) {
+    for held in working {
         match held.kind {
             ModifierKind::Spell {
                 ability: NeutralAbility::Purge,

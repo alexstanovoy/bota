@@ -5,7 +5,7 @@ use bota_core::{
 };
 use bota_proto::{AbilityId, DamageKind, Fixed, Inflictor, Team};
 
-use crate::game::{Landed, Modifier, Stats, Table, World, cooldown_after};
+use crate::game::{Landed, Modifier, Stats, Table, World, cooldown_after, disabled_in};
 
 use crate::engine::Entity;
 
@@ -77,12 +77,18 @@ impl World {
             .is_some()
     }
 
-    /// Whether an entity is broken: its own passives do nothing. The auras a
-    /// Break silences, the blows it lays strikes on and the throes of its
-    /// death stop; a building's aura and what others put on it work as
+    /// Whether an entity is broken: its own passives do nothing. What the
+    /// auras a Break silences put on stays on and does nothing
+    /// ([`World::disabled`]); the blows it lays strikes on and the throes of
+    /// its death stop; a building's aura and what others put on it work as
     /// before.
     pub fn broken(&self, entity: Entity) -> bool {
         self.active_modifier(entity, ModifierKind::Broken).is_some()
+    }
+
+    /// Whether a modifier on a unit is disabled: [`disabled_in`].
+    pub fn disabled(&self, held: &Modifier) -> bool {
+        disabled_in(&self.modifiers, held)
     }
 
     /// Whether an entity is feared: it runs from whoever put the fear on,

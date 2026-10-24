@@ -241,23 +241,22 @@ fn a_break_leaves_the_granite_aura_and_the_tempest_be() {
 }
 
 #[test]
-fn a_broken_bearer_hands_nothing_out() {
+fn a_broken_bearers_aura_stays_on_its_allies_doing_nothing_until_the_break_lifts() {
     let mut world = day();
     let foreman = world.spawn_neutral(NeutralKind::KoboldTaskmaster, at(0), 0, 0);
     let ally = world.spawn_neutral(NeutralKind::Kobold, at(200), 0, 0);
     afflict(&mut world, foreman, ModifierKind::Broken, 600);
     world.settle();
     world.step();
-    assert!(
-        !wears(&world, ally, NeutralAbility::SpeedAura),
-        "its aura is off while it is broken"
-    );
-    run(&mut world, 600);
-    world.step();
+    let base = Fixed::from_int(NeutralKind::Kobold.def().move_speed);
     assert!(
         wears(&world, ally, NeutralAbility::SpeedAura),
-        "and back on once the break lifts"
+        "its aura stays on while it is broken"
     );
+    assert_eq!(speed(&world, ally), base, "and does nothing");
+    run(&mut world, 600);
+    world.step();
+    assert!(speed(&world, ally) > base, "until the break lifts");
 }
 
 #[test]

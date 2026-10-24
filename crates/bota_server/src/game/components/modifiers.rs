@@ -4,7 +4,7 @@
 use bota_core::{ModifierKind, NeutralAbility, rules, spell_effect};
 use bota_proto::{AbilityId, Inflictor};
 
-use crate::engine::Entity;
+use crate::engine::{Entity, Table};
 
 /// One modifier on an entity.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -21,6 +21,9 @@ pub struct Modifier {
     pub ticks_left: Option<u32>,
     /// Ticks it was put on for, or last renewed for: set as it is put on.
     pub ticks_total: Option<u32>,
+    /// Whether a Break on its source disables it while the break holds: what
+    /// a breakable aura put on ([`disabled_in`]).
+    pub breakable: bool,
 }
 
 impl Modifier {
@@ -36,8 +39,25 @@ impl Modifier {
             inflictor,
             ticks_left,
             ticks_total: ticks_left,
+            breakable: false,
         }
     }
+}
+
+/// Whether a modifier is disabled: a breakable aura put it on, and a Break
+/// holds on its source. It stays on and does nothing until the break lifts,
+/// as Dota's: "The aura itself continues to place its buff or debuff on
+/// units, but when Break is applied on the source of the aura, the buff or
+/// debuff is disabled for the duration" (Liquipedia, Break).
+pub fn disabled_in(modifiers: &Table<Modifiers>, held: &Modifier) -> bool {
+    held.breakable
+        && held.source.is_some_and(|source| {
+            modifiers.get(source).is_some_and(|on_it| {
+                on_it
+                    .active()
+                    .any(|other| other.kind == ModifierKind::Broken)
+            })
+        })
 }
 
 /// Whether putting `fresh` on takes `held` off: one of the same kind, save
@@ -187,9 +207,18 @@ impl Modifiers {
     /// carrier later in the slots is named on it and its time is the
     /// freshest. Instances of an aura that stacks (a source's own Dragonhide
     /// or Rally) never meet here: each source keeps its own.
-    pub fn outranks(&self, fresh: &Modifier) -> bool {
-        self.active()
-            .any(|held| replaces(fresh, held) && held.kind.outranks(fresh.kind))
+    ///
+    /// An instance `disabled` says a Break disables ranks below every one
+    /// that works.
+    pub fn outranks(&self, fresh: &Modifier, disabled: impl Fn(&Modifier) -> bool) -> bool {
+        self.active().any(|held| {
+            replaces(fresh, held)
+                && match (disabled(held), disabled(fresh)) {
+                    (false, true) => true,
+                    (true, false) => false,
+                    _ => held.kind.outranks(fresh.kind),
+                }
+        })
     }
 
     /// Active Shadowraze hits held for this exact caster generation; zero
