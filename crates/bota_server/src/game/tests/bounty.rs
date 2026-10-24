@@ -2,7 +2,9 @@
 //! kill, the range raised by the upgrades it spawned after, and a
 //! flagbearer's bonus to the heroes around it.
 
-use bota_core::{FLAGBEARER_CREEP, GoldRange, MELEE_CREEP, RANGED_CREEP, UnitDef, rules};
+use bota_core::{
+    FLAGBEARER_CREEP, GoldRange, MELEE_CREEP, NeutralKind, RANGED_CREEP, UnitDef, rules,
+};
 
 use crate::game::Entity;
 use crate::game::World;
@@ -119,6 +121,36 @@ fn a_denied_flagbearer_pays_nobody() {
         rules::FLAGBEARER_XP * rules::DENIED_XP_PCT / 100,
         "the other side still learns half"
     );
+}
+
+#[test]
+fn a_fallen_neutrals_team_bounty_pays_the_side_that_brought_it_down() {
+    // A neutral's team bounty (Roshan's 135 to each hero of the killing
+    // side, Liquipedia, *Roshan*) goes to the side that brought it down:
+    // no camp creep carries one, so a kobold is given Roshan's.
+    let mut world = World::new();
+    let killer = seat_hero(&mut world, 0, Team::Radiant, Vec2::from_ints(5000, 5000));
+    seat_hero(&mut world, 1, Team::Radiant, Vec2::from_ints(12000, 12000));
+    seat_hero(&mut world, 2, Team::Dire, Vec2::from_ints(5200, 5000));
+    let prey = world.spawn_neutral(NeutralKind::Kobold, Vec2::from_ints(5100, 5000), 0, 0);
+    let team = 135;
+    world.bounty.get_mut(prey).expect("a kobold pays").team = team;
+    let range = world.bounty.get(prey).expect("a kobold pays").gold;
+    world.settle();
+    world.health.insert(prey, health(0));
+    let mut events = Vec::new();
+    world.bury(vec![(prey, Some(killer))], &mut events);
+    let gold: Vec<i32> = world.seats.iter().map(|seat| seat.gold).collect();
+    assert!(
+        (range.min..=range.max).contains(&(gold[0] - team)),
+        "the killer: its last hit and the team bounty: {gold:?}"
+    );
+    assert_eq!(
+        gold[1], team,
+        "an ally anywhere on the map: the team bounty"
+    );
+    assert_eq!(gold[2], 0, "the other side: nothing");
+    assert_eq!(paid(&events), Some(gold[0]), "the event tells the killer's");
 }
 
 /// Buries `prey` at zero health under `killer` and answers the gold each

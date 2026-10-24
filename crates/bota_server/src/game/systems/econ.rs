@@ -88,7 +88,14 @@ impl World {
             paid += self.pay_flag_bonus(at, other_side(side), bounty.bonus, striker_seat);
         }
         if bounty.team > 0 {
-            paid += self.pay_team_bounty(side, denied, bounty.team, striker_seat);
+            // The side that brought it down: a lane building's enemy, and
+            // for a neutral the side of whoever struck the blow.
+            let earners = if side == Team::Neutral {
+                killer_side
+            } else {
+                Some(other_side(side))
+            };
+            paid += self.pay_team_bounty(earners, denied, bounty.team, striker_seat);
         }
         if denied {
             if self
@@ -242,20 +249,20 @@ impl World {
         self.pay_seats([index], gold, Some(index))
     }
 
-    /// Pays a fallen building's team bounty: `team` to every seat of the side
-    /// that brought it down, living or not, or on a deny half of it to every
-    /// seat of both sides, each through its hero's gold income. Answers what
-    /// the striker's seat was paid.
+    /// Pays a fallen unit's team bounty: `team` to every seat of `earners`,
+    /// the side that brought it down, living or not, or on a deny half of it
+    /// to every seat of both sides, each through its hero's gold income.
+    /// Answers what the striker's seat was paid.
     fn pay_team_bounty(
         &mut self,
-        side: Team,
+        earners: Option<Team>,
         denied: bool,
         team: i32,
         striker_seat: Option<usize>,
     ) -> i32 {
         let share = if denied { team / 2 } else { team };
         let paid: Vec<usize> = (0..self.seats.len())
-            .filter(|&index| denied || self.seats[index].team == other_side(side))
+            .filter(|&index| denied || Some(self.seats[index].team) == earners)
             .collect();
         self.pay_seats(paid, share, striker_seat)
     }
