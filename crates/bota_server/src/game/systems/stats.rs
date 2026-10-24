@@ -93,8 +93,12 @@ pub fn derive_stats(cx: StatsCx<'_>) {
             .get(entity)
             .filter(|_| !kind.porter)
             .map(|bag| carried_bonus(bag, ranged));
+        // Every percent change of the pace and of the main attack damage is
+        // summed and taken once, and flat bonus damage is added after, as
+        // Dota works movement speed and attack damage out.
+        let mut sums = Sums::of(modifiers.get(entity));
         if let Some(carried) = carried {
-            add_carried(&mut now, &carried);
+            add_carried(&mut now, &mut sums, &carried);
         }
         if let Some(book) = abilities.get(entity) {
             now.attributes +=
@@ -111,18 +115,23 @@ pub fn derive_stats(cx: StatsCx<'_>) {
             add_carried_shares(&mut now, carried);
         }
         if !broken {
-            now.damage += soul_damage(held(ModifierKind::souls), levels + 1);
+            sums.bonus_damage += soul_damage(held(ModifierKind::souls), levels + 1);
         }
         // Every percent change of the pace is summed and taken of the flat
         // pace at once, as Dota works movement speed out.
-        let mut pace = Pace::of(modifiers.get(entity));
         if let Some(on_it) = modifiers.get(entity) {
-            add_modifiers(&mut now, &mut pace, on_it, base_armor, kind);
+            add_modifiers(&mut now, &mut sums, on_it, base_armor, kind);
         }
         if let Some(on_it) = modifiers.get(entity) {
-            add_feast(&mut now, &mut pace, on_it, abilities.get(entity));
+            add_feast(&mut now, &mut sums.pace, on_it, abilities.get(entity));
         }
-        now.move_speed = paced(now.move_speed, pace.pct, pace_scale_bp, kind.unbounded_pace);
+        now.move_speed = paced(
+            now.move_speed,
+            sums.pace.pct,
+            pace_scale_bp,
+            kind.unbounded_pace,
+        );
+        attack_damage(&mut now, &sums);
         let max = Regen {
             hp: now.max_hp,
             mana: now.max_mana,
@@ -242,12 +251,44 @@ fn add_carried_shares(now: &mut Stats, carried: &Carried) {
     }
 }
 
-/// Adds what the inventory proper carries.
-fn add_carried(now: &mut Stats, carried: &Carried) {
+/// What the modifiers and the items on a unit add up to before they are
+/// taken of what the unit has of its own.
+struct Sums {
+    /// Percent added to the pace; a slow takes off.
+    pace: Pace,
+    /// Percent added to the main attack damage.
+    damage_pct: i32,
+    /// Flat bonus attack damage: the items', the souls', the buffs'.
+    bonus_damage: i32,
+}
+
+impl Sums {
+    fn of(on_it: Option<&Modifiers>) -> Sums {
+        Sums {
+            pace: Pace::of(on_it),
+            damage_pct: 0,
+            bonus_damage: 0,
+        }
+    }
+}
+
+/// The attack damage as Dota adds it up (Liquipedia, *Attack Damage*: the
+/// base and main value times the percent bonus multiplier, plus the flat
+/// bonuses): the main damage, its base and what the primary attribute pays,
+/// is taken once by the sum of every percent bonus, its spread with it, and
+/// every flat bonus comes after.
+fn attack_damage(now: &mut Stats, sums: &Sums) {
+    let main = now.damage;
+    now.damage = main + main * sums.damage_pct / 100 + sums.bonus_damage;
+    now.damage_spread += now.damage_spread * sums.damage_pct / 100;
+}
+
+/// Adds what the inventory proper carries; its flat damage is a bonus.
+fn add_carried(now: &mut Stats, sums: &mut Sums, carried: &Carried) {
     now.attributes += carried.attributes;
     now.max_hp += Fixed::from_int(carried.hp);
     now.max_mana += Fixed::from_int(carried.mana);
-    now.damage += carried.damage;
+    sums.bonus_damage += carried.damage;
     now.damage_to_creeps += carried.damage_to_creeps;
     now.attack_speed += carried.attack_speed;
     now.armor += carried.armor;
@@ -266,13 +307,14 @@ fn add_heap(now: &mut Stats, kept: u32) {
 }
 
 /// Adds what every active modifier on a unit is worth to its stats, each
-/// percent change of its pace to `pace` (a slow taken off, a haste
-/// added). What holds a unit still, what burns it and what it hands out are
-/// read where they are acted on, not here. `base_armor` is what a share of
-/// its base armor is taken of.
+/// percent change of its pace and of its main attack damage, and its flat
+/// bonus damage, to `sums` (a slow taken off, a haste added). What holds a
+/// unit still, what burns it and what it hands out are read where they are
+/// acted on, not here. `base_armor` is what a share of its base armor is
+/// taken of.
 fn add_modifiers(
     now: &mut Stats,
-    pace: &mut Pace,
+    sums: &mut Sums,
     on_it: &Modifiers,
     base_armor: Fixed,
     kind: &UnitDef,
@@ -285,19 +327,22 @@ fn add_modifiers(
                 amount,
                 ..
             } => {
-                pace.change(-i32::from(amount).min(100));
+                sums.pace.change(-i32::from(amount).min(100));
             }
             ModifierKind::Spell { ability, level, .. } => {
                 if let Some(buff) = spell_buff(ability) {
-                    add_buff(now, pace, &buff, level, base_armor, hero);
+                    add_buff(now, sums, &buff, level, base_armor, hero);
                 }
             }
-            ModifierKind::Slowed { pct } => pace.change(-pct.clamp(0, 100)),
+            ModifierKind::Slowed { pct } => sums.pace.change(-pct.clamp(0, 100)),
             ModifierKind::Rotting { level } => {
-                pace.change(-rules::ROT_SLOW_PCT[usize::from(level)].clamp(0, 100));
+                sums.pace
+                    .change(-rules::ROT_SLOW_PCT[usize::from(level)].clamp(0, 100));
             }
-            ModifierKind::BloodGrenade { .. } => pace.change(-rules::GRENADE_SLOW_PCT),
-            ModifierKind::Hastened { pct } | ModifierKind::Haste { pct } => pace.change(pct.max(0)),
+            ModifierKind::BloodGrenade { .. } => sums.pace.change(-rules::GRENADE_SLOW_PCT),
+            ModifierKind::Hastened { pct } | ModifierKind::Haste { pct } => {
+                sums.pace.change(pct.max(0));
+            }
             ModifierKind::ArmorBroken { armor } => {
                 now.armor -= armor;
             }
@@ -352,14 +397,14 @@ fn add_modifiers(
 /// does to regeneration, which [`bota_core::regen`] reads.
 fn add_buff(
     now: &mut Stats,
-    pace: &mut Pace,
+    sums: &mut Sums,
     buff: &Buff,
     level: u8,
     base_armor: Fixed,
     hero: bool,
 ) {
     let of = |stat| buff.get(stat, level);
-    pace.change(of(Stat::MovePct));
+    sums.pace.change(of(Stat::MovePct));
     now.attack_speed += of(Stat::AttackSpeed);
     now.armor += Fixed::from_int(of(Stat::Armor));
     now.armor += base_armor * Fixed::from_ratio(of(Stat::BaseArmorPct), 100);
@@ -372,7 +417,8 @@ fn add_buff(
         let let_through = (rules::NOMINAL_BP - now.magic_resist_bp) * (100 - resist) / 100;
         now.magic_resist_bp = rules::NOMINAL_BP - let_through;
     }
-    now.damage += now.damage * of(Stat::DamagePct) / 100 + of(Stat::Damage);
+    sums.damage_pct += of(Stat::DamagePct);
+    sums.bonus_damage += of(Stat::Damage);
     let outgoing = of(Stat::OutgoingPct) * rules::NOMINAL_BP / 100;
     now.physical_amp_bp += outgoing;
     now.magic_amp_bp += outgoing;

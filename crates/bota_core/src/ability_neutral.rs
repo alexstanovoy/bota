@@ -168,9 +168,10 @@ pub enum Stat {
     MagicResistPct,
     /// The same on anything but a hero.
     MagicResistCreepPct,
-    /// Attack damage, percent of its attack damage.
+    /// Percent of its main attack damage, its base and what its primary
+    /// attribute pays: summed with every other before it is taken.
     DamagePct,
-    /// Flat attack damage.
+    /// Flat bonus attack damage, added after every percent.
     Damage,
     /// Percent of all the damage it deals.
     OutgoingPct,

@@ -238,6 +238,30 @@ fn an_aura_of_the_enemy_side_reaches_the_hero_and_dragonhide_stacks() {
 }
 
 #[test]
+fn packleaders_percent_takes_only_the_main_damage_and_rally_comes_on_top() {
+    // Liquipedia, Attack Damage: the base and main value times the percent
+    // bonus multiplier, plus the flat bonuses. The wolf stands later in the
+    // slots, so its aura goes on after the five ralliers' every tick.
+    let mut world = day();
+    let skeletons: Vec<Entity> = (0..5)
+        .map(|n| world.spawn_neutral(NeutralKind::SkeletonWarrior, at(60 * n), 0, 0))
+        .collect();
+    world.spawn_neutral(NeutralKind::AlphaWolf, at(-100), 0, 0);
+    world.settle();
+    world.step();
+    let def = NeutralKind::SkeletonWarrior.def();
+    let stats = world.stats.get(skeletons[0]).expect("derived");
+    assert_eq!(
+        (stats.damage, stats.damage_spread),
+        (
+            def.damage + def.damage * 20 / 100 + 5 * 2,
+            def.damage_spread + def.damage_spread * 20 / 100
+        ),
+        "a fifth more of its own damage and its range, then two for each rallier"
+    );
+}
+
+#[test]
 fn rally_adds_two_damage_for_every_skeleton_standing_together() {
     let mut world = day();
     let skeletons: Vec<Entity> = (0..3)
