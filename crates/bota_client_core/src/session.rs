@@ -283,7 +283,7 @@ impl ClientSession {
         let standing = self.ledger.standing_orders();
         standing
             .into_iter()
-            .filter(|order| !(hero_down && order.unit.is_none()))
+            .filter(|order| !(hero_down && order.unit.is_none() && order.order.needs_body()))
             .map(|order| self.issue(order))
             .collect()
     }

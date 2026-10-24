@@ -408,6 +408,7 @@ fn hash_seat(fnv: &mut Fnv, seat: &Seat) {
         fnv.u8(kept.book.attribute_bonus);
         hash_bag(fnv, &kept.bag);
         hash_modifiers(fnv, &kept.modifiers);
+        fnv.u32(kept.fell);
     }
     fnv.some(seat.teleport.is_some());
     if let Some(teleport) = seat.teleport {

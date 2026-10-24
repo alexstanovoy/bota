@@ -237,9 +237,10 @@ pub enum Order {
         /// [`RejectReason::WrongTargetKind`](crate::RejectReason::WrongTargetKind).
         target: Target,
     },
-    /// Buy an item, with any of its parts not already held. Needs the hero
-    /// alive. It goes into the hero's bag while at the home shop and there is
-    /// room, into the stash otherwise.
+    /// Buy an item, with any of its parts not already held. It goes into the
+    /// hero's bag while at the home shop and there is room, into the stash
+    /// otherwise. Needs no body: a seat whose hero lies dead buys into the
+    /// stash, what the hero carried counting as held, as in Dota.
     Buy {
         /// What to buy.
         item: ItemId,
@@ -248,7 +249,10 @@ pub enum Order {
     ///
     /// The stash sells from anywhere. A bag away from the shop marks the stack
     /// for sale instead, and a second order on the same slot unmarks it; a
-    /// marked stack is sold once it reaches the shop.
+    /// marked stack is sold once it reaches the shop. While the hero lies
+    /// dead only what was bought since it fell sells, from the stash, as in
+    /// Dota; anything else is refused with
+    /// [`RejectReason::HeroDead`](crate::RejectReason::HeroDead).
     Sell {
         /// Which slot to empty.
         slot: ItemSlot,
@@ -300,6 +304,13 @@ pub enum Order {
 }
 
 impl Order {
+    /// Whether the order needs the hero standing when it names no unit: all
+    /// but buying, selling (from the stash) and the Glyph, which a seat
+    /// whose hero lies dead may still give.
+    pub const fn needs_body(&self) -> bool {
+        !matches!(self, Order::Buy { .. } | Order::Sell { .. } | Order::Glyph)
+    }
+
     /// Whether the order waits its turn in its unit's queue when it is given
     /// queued: what the body carries out (a move, an attack, a cast, a use,
     /// laying an item down or taking one up). Learning, talents, buying,

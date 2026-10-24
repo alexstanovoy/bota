@@ -7,10 +7,12 @@ use bota_proto::{Attribute, ItemId, PlayerView, WorldView};
 /// Every item in a seat's hero's bag and in its stash that the seat bought
 /// and has not marked for sale, for [`price_for`].
 pub fn held_items(view: &WorldView, p: &PlayerView) -> Vec<ItemId> {
+    // While the hero lies dead what it carried counts, as the server buys.
     let bag = p
         .unit
         .and_then(|id| view.unit(id))
         .map(|u| u.items.as_slice())
+        .or_else(|| p.kit.as_ref().map(|kit| kit.items.as_slice()))
         .unwrap_or_default();
     bag.iter()
         .chain(p.stash.iter().flatten())

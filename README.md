@@ -195,9 +195,10 @@ previous view, tracks of units seen, projectiles, recent events, the orders
 standing after the server's answers. The closure returns the orders it wants
 (an `Option` for one, a `Vec` for several); an order that repeats the one
 standing is not sent again, and the tick is acknowledged. While the hero is
-dead its orders are not sent, since the server would refuse them, and are
-counted instead; `IssuedOrder::courier(id, order)` drives the courier, dead
-hero or not. The outcome tells the seat, the winner (`Team::Neutral` for a
+dead its orders that need the body are not sent, since the server would
+refuse them, and are counted instead; buying and selling still go out, as a
+dead Dota hero shops into the stash. `IssuedOrder::courier(id, order)` drives
+the courier, dead hero or not. The outcome tells the seat, the winner (`Team::Neutral` for a
 draw), the last tick, how many orders the server refused and how many were
 held back for a dead hero.
 

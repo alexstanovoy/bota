@@ -103,8 +103,12 @@
 //! answered with [`ServerMsg::OrderRejected`](crate::ServerMsg::OrderRejected)
 //! carrying its `seq`; a queued order refused when it comes up is dropped and
 //! the next one taken up. A seat whose hero is dead is refused every order for
-//! the hero with [`HeroDead`](crate::RejectReason::HeroDead); its courier
-//! still takes orders.
+//! the hero with [`HeroDead`](crate::RejectReason::HeroDead), as in Dota but
+//! for the shop: it may buy (into the stash; what the hero carried when it
+//! fell counts towards a recipe) and sell what it bought since the hero fell
+//! (from the stash), and quick-buy is buying. Its courier still takes orders
+//! and carries the stash as ever. What a body or a courier carried when it
+//! fell sells back at the full price no more.
 //!
 //! # Order delay and the `seen` tick
 //!

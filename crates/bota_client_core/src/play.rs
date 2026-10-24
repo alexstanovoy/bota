@@ -86,7 +86,8 @@ impl<E> From<IngestError<E>> for PlayError<E> {
 /// Every tick, once its events are in, `decide` is shown the session and
 /// returns the orders it wants: none, one (an `Option`) or several. An order
 /// that repeats the one standing is not sent again, nor is an order for the
-/// hero while it is dead (counted in [`Outcome::unsent_while_dead`]); the
+/// hero while it is dead that needs its body (counted in
+/// [`Outcome::unsent_while_dead`]; buying and selling go out); the
 /// rest go out numbered, and the tick is acknowledged. The observer sees the
 /// stream as [`ClientSession::ingest`] folds it.
 ///
@@ -154,7 +155,7 @@ fn take_turn<E, I: IntoIterator<Item = IssuedOrder>>(
     let hero_down = session.own_hero().is_none();
     let mut unsent = 0u32;
     for order in decide(session) {
-        if hero_down && order.unit.is_none() {
+        if hero_down && order.unit.is_none() && order.order.needs_body() {
             unsent = unsent.saturating_add(1);
             continue;
         }

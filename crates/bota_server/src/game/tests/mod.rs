@@ -10,6 +10,7 @@ mod client;
 mod core_rules;
 mod courier;
 mod creep_ai;
+mod dead_shop;
 mod delay;
 mod determinism;
 mod feast;

@@ -13,6 +13,9 @@ pub struct Kept {
     pub bag: Inventory,
     /// What it wore that lasts through death: what it had gathered.
     pub modifiers: Modifiers,
+    /// The tick it fell on: what was bought since may be sold back while it
+    /// is gone, as in Dota.
+    pub fell: u32,
 }
 
 /// A Town Portal Scroll being read by a seat's hero, and the sight it

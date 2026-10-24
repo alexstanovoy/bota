@@ -8,7 +8,7 @@ use std::time::Duration;
 
 use bota_client_core::{IssuedOrder, Link, Transport, play};
 use bota_core::fountain_pos;
-use bota_proto::{ClientMsg, Codec, HeroId, MapId, Order, SlotId, Target, Team, TickMode};
+use bota_proto::{ClientMsg, Codec, HeroId, ItemId, MapId, Order, SlotId, Target, Team, TickMode};
 use bota_server::game_loop::{DEFAULT_IDLE_TIMEOUT, DEFAULT_SPECTATORS_PER_SEAT, ServerOpts, run};
 use bota_server::net::DEFAULT_MESSAGES_PER_SEC;
 use bota_server::spectators::Spectators;
@@ -56,16 +56,37 @@ fn the_attack_move_bot_plays_a_lockstep_match_to_its_end() {
         Link::join(&address, "attack-move", HeroId::SHADOW_FIEND, None).expect("a seat");
     link.send(&ClientMsg::Compress(Codec::Deflate))
         .expect("the request goes out");
+    // While the hero lies dead it still shops, as a Dota player does: one
+    // Tango a death, into the stash.
+    let (mut shopped, mut stashed) = (false, false);
     let outcome = play(&mut link, seated, &mut (), |session| {
         let enemy = fountain_pos(session.map(), session.enemy());
-        Some(IssuedOrder::hero(Order::Attack {
-            target: Target::Pos(enemy),
-        }))
+        let stash = session.own_player().and_then(|me| me.stash.as_ref());
+        stashed |=
+            stash.is_some_and(|stash| stash.iter().flatten().any(|item| item.id == ItemId::TANGO));
+        let dead = session.own_hero().is_none();
+        let buy = dead && !shopped;
+        shopped = dead;
+        [
+            buy.then_some(IssuedOrder::hero(Order::Buy {
+                item: ItemId::TANGO,
+            })),
+            Some(IssuedOrder::hero(Order::Attack {
+                target: Target::Pos(enemy),
+            })),
+        ]
+        .into_iter()
+        .flatten()
+        .collect::<Vec<_>>()
     })
     .expect("the match is played to its end");
+    assert!(stashed, "a Tango bought while dead waits in the stash");
     assert_eq!((outcome.slot, outcome.team), (SlotId(0), Team::Radiant));
     assert!(outcome.ticks > 0);
-    assert_eq!(outcome.rejections, 0, "only a live hero is sent orders");
+    assert_eq!(
+        outcome.rejections, 0,
+        "only a live hero is sent a body's orders; the shop takes a dead one's"
+    );
     assert!(
         outcome.unsent_while_dead > 0,
         "the hero fell under the tower and was held back while dead"

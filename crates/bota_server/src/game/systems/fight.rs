@@ -203,6 +203,12 @@ impl World {
                 self.let_souls_go(entity);
                 self.requiem_on_death(entity);
                 let mut bag = self.inventory.remove(entity).unwrap_or_default();
+                // What a body carried when it fell sells back at the full price
+                // no more (Dota: the sellback timer ends when the carrier dies).
+                bag.slots
+                    .iter_mut()
+                    .flatten()
+                    .for_each(|stack| stack.touched = true);
                 if scroll_due {
                     // A town portal slot full to the byte keeps what it has.
                     bag.receive(ItemStack::free_scroll(self.seats[index].slot, self.tick));
@@ -211,6 +217,7 @@ impl World {
                     book: self.abilities.remove(entity).unwrap_or_default(),
                     bag,
                     modifiers: self.kept_through_death(entity),
+                    fell: self.tick,
                 };
                 self.seats[index].unit = None;
                 self.seats[index].kept = Some(kept);
@@ -219,7 +226,14 @@ impl World {
                 fallen_hero_team = Some(self.seats[index].team);
             }
             if self.seats[index].courier == Some(entity) {
-                self.seats[index].courier_kept = self.inventory.remove(entity);
+                let mut carried = self.inventory.remove(entity);
+                for stack in carried
+                    .iter_mut()
+                    .flat_map(|bag| bag.slots.iter_mut().flatten())
+                {
+                    stack.touched = true;
+                }
+                self.seats[index].courier_kept = carried;
             }
         }
         if let Some(team) = fallen_hero_team

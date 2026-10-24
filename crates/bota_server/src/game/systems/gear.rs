@@ -244,15 +244,14 @@ impl World {
     ///
     /// Mergeable charges fill a compatible stack before taking an empty slot.
     /// At its own shop it goes to the hero's bag, and
-    /// to the stash when that bag is full. Anywhere else it goes to the stash
-    /// and waits there.
+    /// to the stash when that bag is full. Anywhere else, and while the hero
+    /// lies dead, it goes to the stash and waits there (Dota: what is bought
+    /// away from the fountain goes to the stash).
     pub fn buy(&mut self, slot: SlotId, item: ItemId, events: &mut Vec<Event>) -> bool {
         let Some(index) = self.seats.iter().position(|s| s.slot == slot) else {
             return false;
         };
-        let Some(unit) = self.seats[index].unit else {
-            return false;
-        };
+        let unit = self.seats[index].unit;
         if !self.in_stock(self.seats[index].team, item) {
             return false;
         }
@@ -265,12 +264,12 @@ impl World {
         if self.seats[index].gold < plan.cost || !plan.fits {
             return false;
         }
+        let at_home = self.at_home(unit);
         for part in plan.parts {
             let bought = ItemStack::bought(part, slot, self.tick).expect("known catalog component");
-            let in_hand = self.at_shop(unit)
-                && self
-                    .inventory
-                    .get_mut(unit)
+            let in_hand = at_home
+                && unit
+                    .and_then(|unit| self.inventory.get_mut(unit))
                     .and_then(|bag| bag.slots.iter_mut().find(|slot| slot.is_none()))
                     .map(|free| *free = Some(bought))
                     .is_some();
@@ -287,10 +286,11 @@ impl World {
         self.purchase_plan(slot, item).is_some_and(|plan| plan.fits)
     }
 
-    /// Plans a known item's purchase into the seat hero's bag or stash.
+    /// Plans a known item's purchase into the seat hero's bag or stash: the
+    /// stash alone while the hero lies dead.
     pub(crate) fn purchase_plan(&self, slot: SlotId, item: ItemId) -> Option<PurchasePlan> {
         let seat = self.seats.iter().position(|seat| seat.slot == slot)?;
-        let unit = self.seats[seat].unit?;
+        let unit = self.seats[seat].unit;
         let def = item_def(item)?;
         let parts = self.missing_parts(seat, unit, item);
         let cost = parts
@@ -302,10 +302,9 @@ impl World {
         } else {
             assert!(def.components.is_empty());
             let bought = ItemStack::bought(item, slot, self.tick).expect("known catalog item");
-            (self.at_shop(unit)
-                && self
-                    .inventory
-                    .get(unit)
+            (self.at_home(unit)
+                && unit
+                    .and_then(|unit| self.inventory.get(unit))
                     .is_some_and(|bag| bag.receiving_slot(&bought).is_some()))
                 || self.seats[seat].stash.receiving_slot(&bought).is_some()
         };
@@ -316,7 +315,7 @@ impl World {
     fn buy_stackable(
         &mut self,
         seat: usize,
-        unit: Entity,
+        unit: Option<Entity>,
         item: ItemId,
         events: &mut Vec<Event>,
     ) -> bool {
@@ -326,10 +325,9 @@ impl World {
             return false;
         }
         let bought = ItemStack::bought(item, owner, self.tick).expect("known catalog item");
-        let in_hand = self.at_shop(unit)
-            && self
-                .inventory
-                .get_mut(unit)
+        let in_hand = self.at_home(unit)
+            && unit
+                .and_then(|unit| self.inventory.get_mut(unit))
                 .is_some_and(|bag| bag.receive(bought));
         if !in_hand {
             assert!(self.seats[seat].stash.receive(bought));
@@ -364,34 +362,46 @@ impl World {
     /// already waiting in the bag or the stash is spent on the build and so is
     /// bought no second time. Of several recipes the cheapest is bought, see
     /// [`bota_core::missing_parts`].
-    fn missing_parts(&self, seat: usize, unit: Entity, item: ItemId) -> Vec<ItemId> {
-        let held: Vec<ItemId> = self
-            .inventory
-            .get(unit)
+    /// While the hero lies dead, what it carried when it fell counts as held,
+    /// as in Dota.
+    fn missing_parts(&self, seat: usize, unit: Option<Entity>, item: ItemId) -> Vec<ItemId> {
+        let bag = match unit {
+            Some(unit) => self.inventory.get(unit),
+            None => self.seats[seat].kept.as_ref().map(|kept| &kept.bag),
+        };
+        let held: Vec<ItemId> = bag
             .into_iter()
             .flat_map(|bag| bag.slots.iter().take(BAG_SLOTS).flatten())
             .chain(self.seats[seat].stash.slots.iter().flatten())
             .filter(|stack| stack.owner == self.seats[seat].slot && !stack.for_sale)
             .map(|stack| stack.id)
             .collect();
-        let primary = self.def.get(unit).and_then(|kind| kind.0.primary);
+        let primary = match unit {
+            Some(unit) => self.def.get(unit).and_then(|kind| kind.0.primary),
+            None => bota_core::hero_def(self.seats[seat].hero).and_then(|hero| hero.unit.primary),
+        };
         bota_core::missing_parts(item, &held, primary)
     }
 
+    /// Whether a seat's hero stands in its home shop: never while it lies
+    /// dead.
+    fn at_home(&self, unit: Option<Entity>) -> bool {
+        unit.is_some_and(|unit| self.at_shop(unit))
+    }
+
     /// Slots a seat has free for something bought right now.
-    fn free_slots(&self, seat: usize, unit: Entity) -> usize {
+    fn free_slots(&self, seat: usize, unit: Option<Entity>) -> usize {
         let stash = self.seats[seat]
             .stash
             .slots
             .iter()
             .filter(|slot| slot.is_none())
             .count();
-        if !self.at_shop(unit) {
+        if !self.at_home(unit) {
             return stash;
         }
-        let bag = self
-            .inventory
-            .get(unit)
+        let bag = unit
+            .and_then(|unit| self.inventory.get(unit))
             .map_or(0, |bag| bag.slots.iter().filter(|s| s.is_none()).count());
         bag + stash
     }
@@ -883,6 +893,38 @@ impl World {
         let back = self.sale_price(&stack);
         self.seats[seat].gold += back;
         true
+    }
+
+    /// An order of a seat whose hero lies dead: a purchase, into the stash,
+    /// or the sale of a stack bought since the hero fell; nothing else is
+    /// carried out without a body (see [`World::validate_order`]).
+    pub(crate) fn take_order_while_down(
+        &mut self,
+        slot: SlotId,
+        order: bota_proto::Order,
+        events: &mut Vec<Event>,
+    ) {
+        match order {
+            bota_proto::Order::Buy { item } => {
+                self.buy(slot, item, events);
+            }
+            bota_proto::Order::Sell { slot: at } => self.sell_while_down(slot, usize::from(at.0)),
+            _ => {}
+        }
+    }
+
+    fn sell_while_down(&mut self, slot: SlotId, at: usize) {
+        let Some(seat) = self.seats.iter().position(|s| s.slot == slot) else {
+            return;
+        };
+        let Ok(stash_slot) = self.sale_while_down(&self.seats[seat], at) else {
+            return;
+        };
+        let Some(stack) = self.seats[seat].stash.slots[stash_slot].take() else {
+            return;
+        };
+        let back = self.sale_price(&stack);
+        self.seats[seat].gold += back;
     }
 
     fn sale_price(&self, stack: &ItemStack) -> i32 {
