@@ -40,6 +40,24 @@ impl Modifier {
     }
 }
 
+/// Whether putting `fresh` on takes `held` off: one of the same kind, save
+/// that a Shadowraze record leaves the other casters' standing ones, and that
+/// a neutral's spell replaces the one showing the same effect (the three
+/// Water Bubbles are one modifier), but only from its own source for a
+/// stacking aura or a strike.
+fn replaces(fresh: &Modifier, held: &Modifier) -> bool {
+    match (held.kind, fresh.kind) {
+        (ModifierKind::Shadowraze { .. }, ModifierKind::Shadowraze { .. }) => {
+            held.ticks_left == Some(0) || held.source == fresh.source
+        }
+        (ModifierKind::Spell { ability: had, .. }, ModifierKind::Spell { ability, .. }) => {
+            spell_effect(had) == spell_effect(ability)
+                && (!ability.per_source() || held.source == fresh.source)
+        }
+        _ => std::mem::discriminant(&held.kind) == std::mem::discriminant(&fresh.kind),
+    }
+}
+
 /// Everything on an entity right now. Present on every unit; empty when
 /// nothing is on.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -60,20 +78,7 @@ impl Modifiers {
             ticks_total: modifier.ticks_left,
             ..modifier
         };
-        let same = std::mem::discriminant(&modifier.kind);
-        self.0.retain(|held| match (held.kind, modifier.kind) {
-            (ModifierKind::Shadowraze { .. }, ModifierKind::Shadowraze { .. }) => {
-                held.ticks_left != Some(0) && held.source != modifier.source
-            }
-            // One spell's modifier replaces another that shows the same
-            // effect (the three Water Bubbles are one modifier), save that a
-            // stacking aura or strike keeps one from each source.
-            (ModifierKind::Spell { ability: had, .. }, ModifierKind::Spell { ability, .. }) => {
-                spell_effect(had) != spell_effect(ability)
-                    || (ability.per_source() && held.source != modifier.source)
-            }
-            _ => std::mem::discriminant(&held.kind) != same,
-        });
+        self.0.retain(|held| !replaces(&modifier, held));
         if let ModifierKind::Shadowraze { stacks } = modifier.kind {
             assert!(stacks > 0);
             let left = modifier.ticks_left.expect("a Shadowraze record runs out");
@@ -175,19 +180,16 @@ impl Modifiers {
     }
 
     /// Whether what is on already outranks a fresh modifier an aura hands
-    /// out, which then stays off: a higher level of the same spell (from the
-    /// same source, for one that keeps its sources apart) that holds at
-    /// least as long. Only a neutral's spell carries the level it came at,
-    /// so every other aura's modifier is put on afresh by whichever source
-    /// reaches it last.
+    /// out, which then stays off: the one the fresh one would take off is
+    /// the stronger instance of the same aura ([`ModifierKind::outranks`]),
+    /// and it holds while it lasts, the weaker going on once it has run
+    /// out. Of two equal ones the fresh one replaces the other, so the
+    /// carrier later in the slots is named on it and its time is the
+    /// freshest. Instances of an aura that stacks (a source's own Dragonhide
+    /// or Rally) never meet here: each source keeps its own.
     pub fn outranks(&self, fresh: &Modifier) -> bool {
-        let ModifierKind::Spell { ability, level, .. } = fresh.kind else {
-            return false;
-        };
-        self.spell(ability, fresh.source).is_some_and(|held| {
-            matches!(held.kind, ModifierKind::Spell { level: had, .. } if had > level)
-                && held.ticks_left >= fresh.ticks_left
-        })
+        self.active()
+            .any(|held| replaces(fresh, held) && held.kind.outranks(fresh.kind))
     }
 
     /// Active Shadowraze hits held for this exact caster generation; zero

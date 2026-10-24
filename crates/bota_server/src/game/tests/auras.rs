@@ -199,6 +199,51 @@ fn a_break_silences_a_flagbearers_inspiration_and_leaves_a_towers_protection() {
 }
 
 #[test]
+fn of_two_towers_the_stronger_protection_holds() {
+    // "Multiple instances of Tower Protection aura do not stack" (Liquipedia,
+    // Buildings); the stronger applies. The tier one tower stands later in
+    // the slots, so its protection goes on after the tier two's every tick.
+    let mut world = World::new();
+    world.spawn_unit(tower_def(2), Team::Radiant, Vec2::from_ints(5000, 5000));
+    world.spawn_unit(tower_def(1), Team::Radiant, Vec2::from_ints(6600, 5000));
+    let hero = hero_at(&mut world, Vec2::from_ints(5800, 5000));
+    world.settle();
+    world.step();
+    let held = world.modifiers.get(hero).and_then(|on_it| {
+        on_it
+            .active()
+            .find(|held| matches!(held.kind, ModifierKind::Guarded { .. }))
+            .map(|held| held.kind)
+    });
+    assert_eq!(
+        held,
+        Some(ModifierKind::Guarded {
+            armor: rules::TOWER_AURA_ARMOR[1],
+            hp_per_second: rules::TOWER_AURA_REGEN[1],
+        }),
+        "the tier two tower's five armor and three regeneration"
+    );
+}
+
+#[test]
+fn of_two_flagbearers_the_one_lending_more_magic_resistance_holds() {
+    // The one that spawned three intervals in lends 12 %; the fresh one,
+    // later in the slots, would lend nothing.
+    let mut world = World::new();
+    let at = |x| Vec2::from_ints(x, 5000);
+    world.spawn_creep(&FLAGBEARER_CREEP, Team::Radiant, at(5000), 0, 3);
+    world.spawn_creep(&FLAGBEARER_CREEP, Team::Radiant, at(5600), 0, 0);
+    let creep = world.spawn_unit(&MELEE_CREEP, Team::Radiant, at(5300));
+    world.settle();
+    world.step();
+    assert_eq!(
+        world.stats.get(creep).map(|s| s.magic_resist_bp),
+        Some(12 * 100),
+        "the stronger inspiration"
+    );
+}
+
+#[test]
 fn a_flagbearer_spawned_later_lends_its_creeps_more_magic_resistance() {
     // Three upgrade intervals in, the inspiration is worth 12 %, and it
     // multiplies with what the creep already shrugs off.

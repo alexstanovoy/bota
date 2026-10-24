@@ -159,6 +159,33 @@ fn two_equal_auras_on_one_unit_name_the_later_bearer_whatever_the_ticks_coin() {
 }
 
 #[test]
+fn the_stronger_aura_lingers_out_before_the_weaker_takes_over() {
+    let mut world = day();
+    let stronger = world.spawn_neutral(NeutralKind::KoboldTaskmaster, at(0), 0, 0);
+    world.spawn_neutral(NeutralKind::KoboldTaskmaster, at(100), 0, 0);
+    let kobold = world.spawn_neutral(NeutralKind::Kobold, at(50), 0, 0);
+    if let Some(book) = world.abilities.get_mut(stronger) {
+        book.slots.iter_mut().for_each(|slot| slot.level = 2);
+    }
+    world.settle();
+    world.step();
+    let level = |world: &World| match world
+        .modifiers
+        .get(kobold)
+        .and_then(|on_it| on_it.spell(NeutralAbility::SpeedAura, None))
+        .map(|held| held.kind)
+    {
+        Some(ModifierKind::Spell { level, .. }) => Some(level),
+        _ => None,
+    };
+    world.transform.get_mut(stronger).expect("standing").pos = at(4000);
+    world.step();
+    assert_eq!(level(&world), Some(2), "its aura lingers on the kobold");
+    run(&mut world, rules::AURA_LINGER_TICKS);
+    assert_eq!(level(&world), Some(1), "then the other foreman's holds");
+}
+
+#[test]
 fn of_two_foremen_the_higher_level_holds_whichever_reaches_last() {
     let mut world = day();
     let stronger = world.spawn_neutral(NeutralKind::KoboldTaskmaster, at(0), 0, 0);

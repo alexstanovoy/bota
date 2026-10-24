@@ -268,6 +268,60 @@ impl ModifierKind {
         }
     }
 
+    /// Whether, of two instances of one aura on a unit, this one is the
+    /// stronger than `other`. Two instances of one aura do not stack and the
+    /// stronger applies; different auras stack (Liquipedia, *Aura*;
+    /// *Buildings*: "Multiple instances of Tower Protection aura do not
+    /// stack"). The stronger presence tears more armor; a tower's
+    /// protection adds more armor, then more regeneration; a flagbearer's
+    /// inspiration lends more magic resistance, then more regeneration; a
+    /// fountain mends a larger share of health, then of mana; a neutral's
+    /// spell is held at a higher level, which its values grow with. Of two
+    /// equal ones neither is the stronger.
+    pub fn outranks(self, other: ModifierKind) -> bool {
+        match (self, other) {
+            (ModifierKind::ArmorBroken { armor }, ModifierKind::ArmorBroken { armor: theirs }) => {
+                armor > theirs
+            }
+            (
+                ModifierKind::Guarded {
+                    armor,
+                    hp_per_second,
+                },
+                ModifierKind::Guarded {
+                    armor: their_armor,
+                    hp_per_second: their_regen,
+                },
+            ) => (armor, hp_per_second) > (their_armor, their_regen),
+            (
+                ModifierKind::Inspired {
+                    hp_per_second,
+                    magic_resist_pct,
+                },
+                ModifierKind::Inspired {
+                    hp_per_second: their_regen,
+                    magic_resist_pct: their_resist,
+                },
+            ) => (magic_resist_pct, hp_per_second) > (their_resist, their_regen),
+            (
+                ModifierKind::Fountain { hp_pct, mana_pct },
+                ModifierKind::Fountain {
+                    hp_pct: their_hp,
+                    mana_pct: their_mana,
+                },
+            ) => (hp_pct, mana_pct) > (their_hp, their_mana),
+            (
+                ModifierKind::Spell { ability, level, .. },
+                ModifierKind::Spell {
+                    ability: theirs,
+                    level: their_level,
+                    ..
+                },
+            ) => ability == theirs && level > their_level,
+            _ => false,
+        }
+    }
+
     /// What an aura of this kind hands out from a source that spawned after
     /// `steps` upgrade intervals. Only the flagbearer's inspiration grows.
     #[inline]

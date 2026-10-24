@@ -1,6 +1,6 @@
 //! Shadow Fiend: the razes, the souls, the presence and the requiem.
 
-use bota_core::{ModifierKind, isqrt64, rules, tower_def};
+use bota_core::{MELEE_CREEP, ModifierKind, isqrt64, presence_armor, rules, tower_def};
 
 use crate::game::{ActionState, Entity, UnitOrder, World, wire_id};
 use bota_proto::{
@@ -15,6 +15,7 @@ const RAZE_NEAR_SLOT: u8 = 0;
 const RAZE_MID_SLOT: u8 = 1;
 const RAZE_FAR_SLOT: u8 = 2;
 const FEAST_SLOT: u8 = 3;
+const PRESENCE_SLOT: usize = 4;
 const REQUIEM_SLOT: u8 = 5;
 
 #[test]
@@ -379,6 +380,34 @@ fn a_broken_fiend_wears_nobody_down_until_the_break_lifts() {
         armor(&world, below),
         torn,
         "and it is back once the break lifts"
+    );
+}
+
+#[test]
+fn of_two_presences_on_one_enemy_the_one_tearing_more_armor_holds() {
+    // Two instances of one aura do not stack and the stronger applies
+    // (Liquipedia, Aura). The weaker fiend stands later in the slots, so his
+    // presence goes on after the stronger one's every tick.
+    let mut world = World::new();
+    let stronger = hero_at(&mut world, Vec2::from_ints(5000, 5000));
+    let weaker = hero_at(&mut world, Vec2::from_ints(4800, 5000));
+    set_level(&mut world, stronger, PRESENCE_SLOT, 4);
+    set_level(&mut world, weaker, PRESENCE_SLOT, 1);
+    for fiend in [stronger, weaker] {
+        world.set_order(fiend, UnitOrder::Stand);
+    }
+    let creep = a_creep_at(&mut world, Team::Dire, Vec2::from_ints(4600, 5000));
+    run(&mut world, 2);
+    assert!(
+        [stronger, weaker]
+            .iter()
+            .all(|fiend| world.can_see(Team::Dire, *fiend)),
+        "the creep sees both"
+    );
+    assert_eq!(
+        world.stats.get(creep).expect("standing").armor,
+        Fixed::from_int(MELEE_CREEP.armor) - presence_armor(4, false),
+        "the fourth level's seven armor, not the first's two and a half"
     );
 }
 
