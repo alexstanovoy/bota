@@ -1247,7 +1247,7 @@ impl Server {
                     spectator.eyes = eyes;
                 }
             }
-            ClientMsg::Say(line) => self.say(id, line, Some(world.tick)),
+            ClientMsg::Say(line) => self.say(id, line, Some((world, &inbox.handles))),
             ClientMsg::Compress(_) => self.compress(id),
             ClientMsg::PickHero { .. } | ClientMsg::SetReady(_) | ClientMsg::Pong => {}
         }

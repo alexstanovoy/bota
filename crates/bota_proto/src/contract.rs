@@ -417,6 +417,13 @@
 //!   [`Team`](crate::Audience::Team): its side's seats and the spectators
 //!   that came with one of its side's seat keys. A spectator without a key
 //!   never hears a team line, and nothing tells the other side one was said.
+//! - A ping ([`Body::Ping`](crate::Body::Ping)) goes to the speaker's side
+//!   alone, at a spot on the map or at a unit named in the side's own names
+//!   that its view holds at that moment; a ping at a name the side does not
+//!   hold, or that its view does not hold now, is refused as
+//!   [`NotAllowed`](crate::SayRefusal::NotAllowed), exactly as one at a unit
+//!   that died, so a refusal says nothing of the fog. The replay keeps it in
+//!   the simulation's handles.
 //! - A spectator speaks to [`Spectators`](crate::Audience::Spectators) only,
 //!   and no seat ever hears it. A referee says nothing.
 //! - A server may close chat to the seats, keep them to their own side, or

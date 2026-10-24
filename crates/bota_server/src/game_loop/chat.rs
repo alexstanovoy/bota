@@ -6,13 +6,15 @@
 
 use std::time::Instant;
 
-use bota_core::chat_text_fault;
+use bota_core::{chat_text_fault, ping_fault};
 use bota_proto::{
-    Audience, Body, Heard, Line, PlayerId, ReplayRecord, SayRefusal, ServerMsg, Speaker, Team,
+    Audience, Body, Heard, Line, Ping, PingAt, PlayerId, ReplayRecord, SayRefusal, ServerMsg,
+    Speaker, Team,
 };
 
 use super::Server;
 use crate::chat::Talker;
+use crate::game::{Handles, World};
 
 /// When a connection hears a line.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -24,31 +26,77 @@ enum Hearing {
 }
 
 impl Server {
-    /// A line `id` said while the match stood on `tick` (none in the lobby):
-    /// passed on to its audience, the speaker among it, or refused to the
-    /// speaker alone. The text is never logged.
-    pub(super) fn say(&mut self, id: PlayerId, line: Line, tick: Option<u32>) {
+    /// A line `id` said, with the match's world and names (none in the
+    /// lobby): passed on to its audience, the speaker among it, or refused to
+    /// the speaker alone. The text is never logged.
+    pub(super) fn say(&mut self, id: PlayerId, line: Line, live: Option<(&World, &Handles)>) {
         if !self.greeted(id) {
             return;
         }
         let talker = self.talker(id);
-        let taken = self.take_line(id, talker, &line);
-        if let Err(reason) = taken {
-            if let Some(conn) = self.conn(id) {
-                conn.send(&ServerMsg::SayRefused { reason });
+        let recorded = self
+            .take_line(id, talker, &line)
+            .and_then(|()| self.named(id, &line, live));
+        let recorded = match recorded {
+            Ok(recorded) => recorded,
+            Err(reason) => {
+                if let Some(conn) = self.conn(id) {
+                    conn.send(&ServerMsg::SayRefused { reason });
+                }
+                return;
             }
-            return;
-        }
+        };
         let Some((from, late)) = self.speaker(id) else {
             return;
         };
         let tick = match late {
             true => self.delayed.as_ref().and_then(|feed| feed.shown()),
-            false => tick,
+            false => live.map(|(world, _)| world.tick),
         };
-        let heard = Heard { tick, from, line };
+        let heard = Heard {
+            tick,
+            from: from.clone(),
+            line,
+        };
         self.tell(&heard, late);
-        self.keep_for_replay(heard);
+        self.keep_for_replay(Heard {
+            tick,
+            from,
+            line: recorded,
+        });
+    }
+
+    /// The line as the replay keeps it, in the simulation's handles, once a
+    /// unit it pings at is found one the speaker's side holds and its view
+    /// holds now; refused as [`SayRefusal::NotAllowed`] otherwise, as a ping
+    /// at a unit that died or never was is, so a refusal says nothing of the
+    /// fog.
+    fn named(
+        &self,
+        id: PlayerId,
+        line: &Line,
+        live: Option<(&World, &Handles)>,
+    ) -> Result<Line, SayRefusal> {
+        let Body::Ping(Ping {
+            at: PingAt::Unit(_),
+            ..
+        }) = line.body
+        else {
+            return Ok(line.clone());
+        };
+        let team = self.roster.seat_of(id).map(|seat| seat.team);
+        let (Some(team), Some((world, handles))) = (team, live) else {
+            return Err(SayRefusal::NotAllowed);
+        };
+        let mut recorded = line.clone();
+        handles.heard_line(team, &mut recorded);
+        let mut held = false;
+        recorded.visit_ids(&mut |unit| {
+            held = world.of_wire(*unit).is_some_and(|entity| {
+                world.can_see(team, entity) || world.team.get(entity) == Some(&team)
+            });
+        });
+        held.then_some(recorded).ok_or(SayRefusal::NotAllowed)
     }
 
     /// Takes a line of the speaker's rate, then checks it may be said: the
@@ -61,6 +109,10 @@ impl Server {
         match &line.body {
             Body::Text(text) if chat_text_fault(text).is_some() => Err(SayRefusal::Unfit),
             Body::Text(_) => Ok(()),
+            // Pings are for one's own side, and point at the map.
+            Body::Ping(_) if line.to != Audience::Team => Err(SayRefusal::NotAllowed),
+            Body::Ping(ping) if ping_fault(*ping) => Err(SayRefusal::Unfit),
+            Body::Ping(_) => Ok(()),
         }
     }
 

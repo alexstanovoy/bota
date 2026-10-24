@@ -597,6 +597,13 @@ pub fn all_client_msgs() -> Vec<ClientMsg> {
             body: Body::Text("gg wp 👍".to_string()),
         }),
         ClientMsg::Compress(Codec::Deflate),
+        ClientMsg::Say(Line {
+            to: Audience::Team,
+            body: Body::Ping(Ping {
+                kind: PingKind::Danger,
+                at: PingAt::Unit(entity(9)),
+            }),
+        }),
     ]
 }
 

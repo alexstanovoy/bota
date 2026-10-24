@@ -474,3 +474,10 @@ field ProjectileView 8 seen_by: Option<SeenBy>
 field LootView 4 seen_by: Option<SeenBy>
 field SeenBy 0 radiant: bool
 field SeenBy 1 dire: bool
+variant Body 1 Ping(Ping)
+field Ping 0 kind: PingKind
+field Ping 1 at: PingAt
+variant PingKind 0 Regular
+variant PingKind 1 Danger
+variant PingAt 0 Spot(Vec2)
+variant PingAt 1 Unit(EntityId)

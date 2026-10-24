@@ -1011,6 +1011,7 @@ fn a_replay_through_a_seats_eyes_hides_the_other_sides_team_lines() {
         app.chat_lines()
             .map(|line| match &line.heard.line.body {
                 Body::Text(text) => text.clone(),
+                Body::Ping(_) => String::new(),
             })
             .collect()
     };

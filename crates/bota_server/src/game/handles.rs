@@ -199,6 +199,14 @@ impl Handles {
         (unit, order)
     }
 
+    /// A line a seat of a side said, in the simulation's handles: a name the
+    /// side was never given, or no longer holds, names nothing.
+    pub fn heard_line(&self, team: Team, line: &mut bota_proto::Line) {
+        if let Some(side) = self.side(team) {
+            line.visit_ids(&mut |id: &mut EntityId| *id = side.behind(*id));
+        }
+    }
+
     /// The name a side was given for an entity, if it was told of it.
     pub fn name_of(&self, team: Team, entity: EntityId) -> Option<EntityId> {
         let given = self.side(team)?.given.get(&entity)?;

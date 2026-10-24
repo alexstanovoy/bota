@@ -1,7 +1,7 @@
 //! What players and spectators say to each other: never part of the match
 //! (see the [`contract`](crate::contract)).
 
-use crate::SlotId;
+use crate::{EntityId, SlotId, Vec2};
 use serde::{Deserialize, Serialize};
 
 /// Who a line is for.
@@ -24,6 +24,35 @@ pub enum Body {
     /// `bota_core::rules::MAX_CHAT_GRAPHEMES`, without control, bidi or
     /// invisible characters (`bota_core::chat_text_fault`).
     Text(String),
+    /// A mark on the map for the speaker's side: said to
+    /// [`Audience::Team`] only, as Dota's pings are.
+    Ping(Ping),
+}
+
+/// A ping: what kind, and where.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct Ping {
+    pub kind: PingKind,
+    pub at: PingAt,
+}
+
+/// What a ping says, as Dota's Alt+click (a plain ping) and Ctrl+Alt+click
+/// (danger) do.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum PingKind {
+    Regular,
+    Danger,
+}
+
+/// Where a ping points.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum PingAt {
+    /// A spot on the map.
+    Spot(Vec2),
+    /// A unit, by its name in the speaker's side's names: one that side's
+    /// view holds at the moment it is said (see the
+    /// [`contract`](crate::contract)).
+    Unit(EntityId),
 }
 
 /// One thing said: to whom, and what.
@@ -66,4 +95,30 @@ pub enum SayRefusal {
     /// The text breaks the text rules: empty, too long, or holding a
     /// character no line may hold.
     Unfit,
+}
+
+impl Line {
+    /// Calls `visit` on the entity handle the line names, if it names one:
+    /// the walk that puts a side's names into a line and takes them out
+    /// again, as views, events and orders have theirs.
+    pub fn visit_ids(&mut self, visit: &mut dyn FnMut(&mut EntityId)) {
+        match &mut self.body {
+            Body::Ping(Ping {
+                at: PingAt::Unit(unit),
+                ..
+            }) => visit(unit),
+            Body::Ping(Ping {
+                at: PingAt::Spot(_),
+                ..
+            })
+            | Body::Text(_) => {}
+        }
+    }
+}
+
+impl Heard {
+    /// Calls `visit` on the entity handle the line heard names, if any.
+    pub fn visit_ids(&mut self, visit: &mut dyn FnMut(&mut EntityId)) {
+        self.line.visit_ids(visit);
+    }
 }

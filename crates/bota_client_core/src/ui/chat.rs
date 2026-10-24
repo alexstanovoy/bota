@@ -3,9 +3,9 @@
 use std::collections::VecDeque;
 
 use bota_core::TextFault;
-use bota_proto::{Audience, Heard, SayRefusal, ServerMsg, SlotId, Speaker, Team};
+use bota_proto::{Audience, Heard, Ping, SayRefusal, ServerMsg, SlotId, Speaker, Team};
 
-use crate::chat::say;
+use crate::chat::{ping, say};
 use crate::ui::app::{App, Source};
 
 /// Lines the log keeps at most; the oldest give way.
@@ -101,6 +101,12 @@ impl App {
         let message = say(to, text)?;
         self.source.send(&message);
         Ok(())
+    }
+
+    /// Pings for this client's side; the mark shows once the server passes
+    /// it back. A unit is named as this client's view names it.
+    pub fn ping(&mut self, at: Ping) {
+        self.source.send(&ping(at));
     }
 
     /// What a speaker is called: a seat by its name, a spectator by its own.

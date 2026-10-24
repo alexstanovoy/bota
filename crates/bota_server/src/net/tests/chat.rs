@@ -4,7 +4,10 @@
 
 use std::path::PathBuf;
 
-use bota_proto::{Audience, Body, Codec, Heard, Line, ReplayRecord, SayRefusal, SeatKey, Speaker};
+use bota_proto::{
+    Audience, Body, Codec, EntityId, Heard, Line, Ping, PingAt, PingKind, ReplayRecord, SayRefusal,
+    SeatKey, Speaker,
+};
 
 use super::spectators::drain;
 use super::*;
@@ -43,6 +46,7 @@ fn texts(lines: &[Heard]) -> Vec<&str> {
         .iter()
         .map(|heard| match &heard.line.body {
             Body::Text(text) => text.as_str(),
+            Body::Ping(_) => "(ping)",
         })
         .collect()
 }
@@ -394,5 +398,81 @@ fn a_compressed_link_carries_the_match_in_parts_and_chat_plainly() {
     assert!(
         unpacked_bytes > 5 * wire_bytes,
         "{unpacked_bytes} bytes unpacked from {wire_bytes}"
+    );
+}
+
+fn ping(kind: PingKind, at: PingAt) -> ClientMsg {
+    ClientMsg::Say(Line {
+        to: Audience::Team,
+        body: Body::Ping(Ping { kind, at }),
+    })
+}
+
+/// A ping goes to the speaker's side alone, at a spot or at a unit its view
+/// holds, named in its own names; one at a name the side does not hold, or
+/// to everyone, is refused; the replay keeps it in the simulation's handles.
+#[test]
+fn a_ping_reaches_the_speakers_side_at_what_it_sees_and_the_replay_names_it_truly() {
+    let path = std::env::temp_dir().join(format!("bota-ping-{}.brp", std::process::id()));
+    let addr = start_server(chat_match(65, path.clone()));
+    let [mut radiant, mut dire, mut keyed, mut open] = everyone_in(addr);
+    let view = radiant.recv_until(snapshot);
+    let hero = view.players[0].unit.expect("its hero stands");
+    radiant.send(&ping(
+        PingKind::Regular,
+        PingAt::Spot(bota_proto::Vec2::from_ints(9000, 9000)),
+    ));
+    radiant.send(&ping(PingKind::Danger, PingAt::Unit(hero)));
+    let nobody = EntityId {
+        idx: 999_999,
+        generation: 0,
+    };
+    radiant.send(&ping(PingKind::Danger, PingAt::Unit(nobody)));
+    radiant.send(&ClientMsg::Say(Line {
+        to: Audience::All,
+        body: Body::Ping(Ping {
+            kind: PingKind::Regular,
+            at: PingAt::Spot(bota_proto::Vec2::from_ints(100, 100)),
+        }),
+    }));
+    let mut told = Vec::new();
+    read_until(&mut radiant, &mut told, |msg| {
+        matches!(msg, ServerMsg::SayRefused { .. })
+    });
+    read_until(&mut radiant, &mut told, |msg| {
+        matches!(msg, ServerMsg::SayRefused { .. })
+    });
+    told.extend(drain(&mut radiant, Duration::from_millis(300)));
+    let pings = heard(&told);
+    assert_eq!(pings.len(), 2, "{told:?}");
+    assert_eq!(
+        refusals(&told),
+        [SayRefusal::NotAllowed, SayRefusal::NotAllowed]
+    );
+    assert_eq!(heard(&drain(&mut keyed, Duration::from_millis(300))), pings);
+    for other in [&mut dire, &mut open] {
+        assert!(heard(&drain(other, Duration::from_millis(300))).is_empty());
+    }
+    drop((radiant, dire, keyed, open));
+    let kept: Vec<Heard> = replay_records(&path)
+        .into_iter()
+        .filter_map(|record| match record {
+            ReplayRecord::Heard(heard) => Some(heard),
+            _ => None,
+        })
+        .filter(|heard| matches!(heard.line.body, Body::Ping(_)))
+        .collect();
+    let _ = std::fs::remove_file(&path);
+    assert_eq!(kept.len(), 2);
+    let Body::Ping(Ping {
+        at: PingAt::Unit(named),
+        ..
+    }) = kept[1].line.body
+    else {
+        panic!("the second ping is at the hero");
+    };
+    assert_ne!(
+        named.generation, 0,
+        "the replay holds the simulation's handle"
     );
 }

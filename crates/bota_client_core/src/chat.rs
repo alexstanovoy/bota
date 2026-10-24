@@ -2,8 +2,8 @@
 //! out, and every line checked again when it comes in. A line that fails is
 //! dropped, never fatal: chat is not the match.
 
-use bota_core::{TextFault, chat_text_fault, clean_name};
-use bota_proto::{Audience, Body, ClientMsg, Heard, Line, SlotId, Speaker, Team};
+use bota_core::{TextFault, chat_text_fault, clean_name, ping_fault};
+use bota_proto::{Audience, Body, ClientMsg, Heard, Line, Ping, SlotId, Speaker, Team};
 
 /// The message that says `text` to `to`, trimmed, or why it may not be
 /// said: the server would refuse it as
@@ -17,6 +17,14 @@ pub fn say(to: Audience, text: &str) -> Result<ClientMsg, TextFault> {
         to,
         body: Body::Text(text.to_owned()),
     }))
+}
+
+/// The message that pings for one's own side: pings go to the team alone.
+pub fn ping(ping: Ping) -> ClientMsg {
+    ClientMsg::Say(Line {
+        to: Audience::Team,
+        body: Body::Ping(ping),
+    })
 }
 
 /// Who is hearing: what a line must agree with to be believed.
@@ -38,8 +46,11 @@ pub struct Hearer<'a> {
 /// keeps the rules, its speaker is a seat of the match or a spectator under
 /// a clean name, and its audience includes the hearer.
 pub fn heard_fits(heard: &Heard, hearer: Hearer<'_>) -> bool {
-    let Body::Text(text) = &heard.line.body;
-    if chat_text_fault(text).is_some() {
+    let fits = match &heard.line.body {
+        Body::Text(text) => chat_text_fault(text).is_none(),
+        Body::Ping(ping) => heard.line.to == Audience::Team && !ping_fault(*ping),
+    };
+    if !fits {
         return false;
     }
     if heard

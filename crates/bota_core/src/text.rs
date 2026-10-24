@@ -11,6 +11,8 @@
 
 use unicode_segmentation::UnicodeSegmentation;
 
+use bota_proto::{Ping, PingAt};
+
 use crate::rules;
 
 /// Why a text may not be said.
@@ -173,4 +175,16 @@ fn is_combining_diacritic(c: char) -> bool {
         u32::from(c),
         0x0300..=0x036F | 0x1AB0..=0x1AFF | 0x1DC0..=0x1DFF | 0x20D0..=0x20FF | 0xFE20..=0xFE2F
     )
+}
+
+/// Whether a ping points anywhere but at the map: a spot off it. Whether a
+/// unit it names is one the speaker's side may name is the server's to say.
+pub fn ping_fault(ping: Ping) -> bool {
+    match ping.at {
+        PingAt::Spot(at) => {
+            let on = |axis: bota_proto::Fixed| (0..rules::MAP_SIZE).contains(&axis.to_int());
+            !(on(at.x) && on(at.y))
+        }
+        PingAt::Unit(_) => false,
+    }
 }
