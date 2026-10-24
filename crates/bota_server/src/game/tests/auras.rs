@@ -1,6 +1,6 @@
 //! Fountain, tower and flagbearer auras.
 
-use bota_core::{FLAGBEARER_CREEP, MELEE_CREEP, ModifierKind, rules, tower_def};
+use bota_core::{FLAGBEARER_CREEP, FOUNTAIN, MELEE_CREEP, ModifierKind, rules, tower_def};
 
 use crate::game::{Level, World};
 use bota_proto::{Fixed, HeroId, MapId, Pick, SlotId, Team, Vec2};
@@ -195,6 +195,45 @@ fn a_break_silences_a_flagbearers_inspiration_and_leaves_a_towers_protection() {
     assert!(
         carries(&world, creep, INSPIRED_EFFECT),
         "and the inspiration is back once the break lifts"
+    );
+}
+
+#[test]
+fn of_the_auras_only_the_fountains_and_the_towers_reach_the_invulnerable() {
+    // Liquipedia: the Inspiration Aura "Does not affect invulnerable nor
+    // hidden units", the Rejuvenation Aura "Affects invulnerable, but not
+    // hidden units", Tower Protection "Affects invulnerable heroes".
+    let mut world = World::new();
+    let at = |x| Vec2::from_ints(x, 5000);
+    world.spawn_unit(&FLAGBEARER_CREEP, Team::Radiant, at(5000));
+    let creep = world.spawn_unit(&MELEE_CREEP, Team::Radiant, at(5300));
+    world.spawn_unit(tower_def(1), Team::Radiant, at(8000));
+    let guarded = hero_at(&mut world, at(8400));
+    world.spawn_unit(&FOUNTAIN, Team::Radiant, at(11_000));
+    let mended = hero_at(&mut world, at(11_300));
+    for unit in [creep, guarded, mended] {
+        put_on(&mut world, unit, ModifierKind::Shielded, 60);
+    }
+    world.settle();
+    world.step();
+    assert!(
+        world
+            .stats
+            .get(creep)
+            .is_some_and(|stats| stats.invulnerable),
+        "the shield makes it invulnerable"
+    );
+    assert!(
+        !carries(&world, creep, INSPIRED_EFFECT),
+        "the flagbearer passes the invulnerable creep by"
+    );
+    assert!(
+        carries(&world, guarded, GUARDED_EFFECT),
+        "the tower guards the invulnerable hero"
+    );
+    assert!(
+        carries(&world, mended, FOUNTAIN_EFFECT),
+        "and the fountain mends one"
     );
 }
 

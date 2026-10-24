@@ -761,6 +761,7 @@ static SLOWING_CREEP: UnitDef = UnitDef {
         radius: 400,
         linger: 10,
         breakable: false,
+        invulnerable: false,
         seen_only: false,
         water: false,
         modifier: AuraModifier::Kind(ModifierKind::Slowed { pct: 30 }),

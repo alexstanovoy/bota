@@ -18,15 +18,13 @@ pub enum Whom {
 /// Which units of the side it is for an aura reaches.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Reach {
-    /// Every unit, buildings and wards and the invulnerable among them.
+    /// Every unit, buildings and wards among them.
     All,
-    /// Heroes, the invulnerable among them.
+    /// Heroes.
     Heroes,
-    /// Every unit but heroes, buildings and wards, the invulnerable among
-    /// them.
+    /// Every unit but heroes, buildings and wards.
     Units,
-    /// Every unit standing alive that damage reaches: no building, no ward,
-    /// nothing invulnerable.
+    /// Every unit standing alive but buildings and wards.
     Living,
 }
 
@@ -89,6 +87,11 @@ pub struct Aura {
     /// few the game leaves it off (the Granite Aura, the tornado's Tempest).
     /// A building's aura is no ability, and nothing breaks it.
     pub breakable: bool,
+    /// Whether it reaches invulnerable units too. Almost every aura passes
+    /// them by (Liquipedia, *Aura*); the fountain's Rejuvenation ("Affects
+    /// invulnerable, but not hidden units") and the towers' protection
+    /// ("Affects invulnerable heroes") reach them.
+    pub invulnerable: bool,
     /// Whether it reaches only those whose side sees its carrier.
     pub seen_only: bool,
     /// Whether it works only while its carrier stands in the river.

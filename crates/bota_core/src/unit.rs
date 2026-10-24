@@ -255,6 +255,7 @@ const FLAGBEARER_AURAS: [Aura; 1] = [Aura {
     radius: rules::FLAGBEARER_AURA_RADIUS,
     linger: rules::AURA_LINGER_TICKS,
     breakable: true,
+    invulnerable: false,
     seen_only: false,
     water: false,
     modifier: AuraModifier::Kind(ModifierKind::Inspired {
@@ -499,6 +500,7 @@ const FOUNTAIN_AURAS: [Aura; 1] = [Aura {
     radius: rules::FOUNTAIN_HEAL_RADIUS,
     linger: rules::FOUNTAIN_HEAL_LINGER_TICKS,
     breakable: false,
+    invulnerable: true,
     seen_only: false,
     water: false,
     modifier: AuraModifier::Kind(ModifierKind::Fountain {
@@ -602,6 +604,7 @@ const fn tower_aura(index: usize) -> [Aura; 1] {
         radius: rules::TOWER_AURA_RADIUS,
         linger: rules::AURA_LINGER_TICKS,
         breakable: false,
+        invulnerable: true,
         seen_only: false,
         water: false,
         modifier: AuraModifier::Kind(ModifierKind::Guarded {

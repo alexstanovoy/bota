@@ -140,6 +140,7 @@ pub const PRESENCE: AbilityDef = AbilityDef {
         radius: PRESENCE_RADIUS,
         linger: PRESENCE_LINGER_TICKS,
         breakable: true,
+        invulnerable: false,
         seen_only: true,
         water: false,
         modifier: AuraModifier::ArmorBroken,

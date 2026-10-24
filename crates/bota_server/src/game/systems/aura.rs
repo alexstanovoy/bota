@@ -164,8 +164,9 @@ impl World {
     }
 
     /// Whether an aura of a carrier of a side reaches a unit standing within
-    /// its radius: one of the side it is for, of the units it reaches, and,
-    /// for one handed out only to those who see its carrier, whose side does.
+    /// its radius: one of the side it is for, of the units it reaches, not
+    /// invulnerable unless the aura reaches the invulnerable too, and, for
+    /// one handed out only to those who see its carrier, whose side does.
     fn reaches(&self, aura: &Aura, (carrier, side): (Entity, Team), target: Entity) -> bool {
         let Some(theirs) = self.team.get(target).copied() else {
             return false;
@@ -174,8 +175,13 @@ impl World {
             Whom::Allies => theirs == side,
             Whom::Enemies => theirs != side,
         };
+        let invulnerable = self
+            .stats
+            .get(target)
+            .is_some_and(|stats| stats.invulnerable);
         sided
             && self.reach_takes(aura.reaches, target)
+            && (aura.invulnerable || !invulnerable)
             && (!aura.seen_only || self.can_see(theirs, carrier))
     }
 
@@ -188,13 +194,7 @@ impl World {
             Reach::Units => {
                 kind.is_some_and(|kind| kind != UnitKind::Hero && !kind_def(kind).fixed)
             }
-            Reach::Living => {
-                self.living_unit(target)
-                    && !self
-                        .stats
-                        .get(target)
-                        .is_some_and(|stats| stats.invulnerable)
-            }
+            Reach::Living => self.living_unit(target),
         }
     }
 
