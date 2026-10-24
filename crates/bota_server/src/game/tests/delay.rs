@@ -122,3 +122,44 @@ fn an_order_that_no_longer_holds_on_its_tick_is_refused_then() {
         }]
     );
 }
+
+/// Cheats given on one tick all go through, whatever else is given then:
+/// a cheat is no order to a body, so it neither replaces nor is replaced.
+#[test]
+fn cheats_given_on_one_tick_all_take_effect() {
+    let cfg = crate::game::MatchConfig {
+        cheats: true,
+        ..config()
+    };
+    let mut world = World::for_match(&cfg, cfg.rng());
+    let mut line = DelayLine::new(&cfg, &[]).expect("no delay");
+    let seen = Some(world.tick);
+    for (seq, order) in [
+        Order::Cheat {
+            cheat: bota_proto::Cheat::StartGame,
+        },
+        walk(1),
+        Order::Cheat {
+            cheat: bota_proto::Cheat::CreepSpawning { on: false },
+        },
+        Order::Cheat {
+            cheat: bota_proto::Cheat::Gold { amount: 100 },
+        },
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        assert_eq!(
+            line.give(&world, hero_order(seq as u32, order), seen),
+            Ok(())
+        );
+    }
+    let mut refused = Vec::new();
+    let commands = line.release(&world, &mut refused);
+    assert_eq!(commands.len(), 4, "every one goes through");
+    let gold = world.seats[0].gold;
+    world.advance(&commands);
+    assert!(world.clock_shift.game > 0, "the game began");
+    assert!(world.creeps_halted);
+    assert_eq!(world.seats[0].gold, gold + 100);
+}

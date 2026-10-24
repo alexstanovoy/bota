@@ -3,7 +3,7 @@
 use std::collections::VecDeque;
 
 use bota_core::rules::{MAX_ORDER_DELAY_TICKS, MAX_ORDERS_PER_TICK};
-use bota_proto::{EntityId, OrderDelayView, RejectReason, SlotId, Team};
+use bota_proto::{EntityId, Order, OrderDelayView, RejectReason, SlotId, Team};
 
 use crate::game::{Command, MatchConfig, Stream, World};
 
@@ -164,9 +164,13 @@ impl DelayLine {
         let due = line.due_of(world.tick);
         line.burst = Some((world.tick, due));
         let key = world.order_key(cmd.slot, cmd.unit, &cmd.order);
-        if !cmd.queued() {
+        // An order to a unit given unqueued replaces the one given it on the
+        // same tick; a cheat is no order to a body, and neither replaces
+        // nor is replaced: several cheats on a tick all go through.
+        let cheat = |order: &Order| matches!(order, Order::Cheat { .. });
+        if !cmd.queued() && !cheat(&cmd.order) {
             line.held
-                .retain(|held| !(held.due == due && held.key == key));
+                .retain(|held| !(held.due == due && held.key == key && !cheat(&held.cmd.order)));
         }
         if line.held.iter().filter(|held| held.due == due).count() >= MAX_ORDERS_PER_TICK {
             return Err(RejectReason::QueueFull);
