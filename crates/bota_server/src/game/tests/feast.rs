@@ -195,3 +195,34 @@ fn feast_effect(world: &World, unit: Entity) -> Option<EffectView> {
         .into_iter()
         .find(|effect| [EffectId::FEASTING, EffectId::FEAST_LINGER].contains(&effect.id))
 }
+
+#[test]
+fn an_illusion_feeds_no_feast() {
+    let (mut world, fiend, hero, _creeps) = a_feast_table();
+    let real = world.spawn_hero(
+        Team::Dire,
+        Vec2::from_ints(9000, 9000),
+        SlotId(1),
+        HeroId::SHADOW_FIEND,
+    );
+    world.illusion.insert(
+        hero,
+        crate::game::Illusion {
+            of: real,
+            made: world.tick,
+        },
+    );
+    cast(&mut world, FEAST_SLOT, Target::None);
+    let mut taken = Vec::new();
+    for tick in 1..=60 {
+        world.step();
+        if tick % 15 == 0 {
+            taken.push(souls(&world, fiend));
+        }
+    }
+    assert_eq!(
+        taken,
+        vec![2, 3, 3, 3],
+        "the creeps feed it, the illusion standing among them none"
+    );
+}

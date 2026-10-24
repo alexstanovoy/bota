@@ -739,3 +739,29 @@ fn a_raze_burns_what_its_side_cannot_see_but_never_a_ward() {
         "a ward is brought down by attacks alone"
     );
 }
+
+#[test]
+fn a_blood_grenade_bursts_on_what_its_side_cannot_see() {
+    let (mut world, fiend, spot, _) = fiend_across_a_cliff(true);
+    let creep = world.spawn_unit(&bota_core::MELEE_CREEP, Team::Radiant, spot);
+    hand_item(&mut world, fiend, bota_proto::ItemId::BLOOD_GRENADE, 1);
+    world.settle();
+    assert!(
+        !world.can_see(Team::Dire, creep),
+        "from below, the creep up the cliff is fog"
+    );
+    let hp = |world: &World| world.health.get(creep).expect("standing").hp;
+    let before = hp(&world);
+    seat_order(
+        &mut world,
+        bota_proto::Order::Use {
+            slot: bota_proto::ItemSlot(0),
+            target: Target::Pos(spot),
+        },
+    );
+    let struck = (0..90).any(|_| {
+        world.step();
+        hp(&world) < before
+    });
+    assert!(struck, "an area strikes what stands in it, seen or not");
+}

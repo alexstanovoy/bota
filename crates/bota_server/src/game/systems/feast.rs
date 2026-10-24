@@ -122,7 +122,8 @@ impl World {
 
     /// Takes souls from up to [`rules::FEAST_PER_PERIOD`] enemies not fed on
     /// yet, heroes first and the nearest first among them, while the feast
-    /// has room for more.
+    /// has room for more. As in Dota, only what the fiend's side sees feeds
+    /// it, and never an illusion.
     fn gather_feast(&mut self, caster: Entity, mut feast: Feast, level: usize) {
         let room = rules::FEAST_TARGETS[level].saturating_sub(feast.fed.len());
         let Some(at) = self.pos(caster) else {
@@ -134,6 +135,7 @@ impl World {
             .iter()
             .filter(|other| {
                 self.hostile(caster, *other)
+                    && !self.illusion.contains(*other)
                     && feast.fed.iter().all(|fed| fed.from != *other)
                     && self
                         .kind

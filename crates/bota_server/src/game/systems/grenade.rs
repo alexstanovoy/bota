@@ -140,8 +140,9 @@ impl World {
     }
 
     /// What a Blood Grenade does where it lands: it is told to whoever may
-    /// see the spot, and every enemy hero and creep within its radius takes
-    /// its debuff, then its impact.
+    /// see the spot, and every enemy hero and creep within its radius, seen
+    /// or not, takes its debuff, then its impact: as every Dota area, it
+    /// strikes what stands in it.
     ///
     /// A debuff already on keeps the beat it started with and runs its full
     /// time again.
@@ -163,7 +164,7 @@ impl World {
             .entities
             .iter()
             .filter(|other| {
-                self.hostile(grenade, *other)
+                self.hostile_unseen(grenade, *other)
                     && self
                         .kind
                         .get(*other)
