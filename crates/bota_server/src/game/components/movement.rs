@@ -57,6 +57,24 @@ pub struct Motion {
     /// The body that blocks its walk, while it waits on it or lays its way
     /// round it (`rules::UNIT_BLOCKED_WAIT_TICKS`).
     pub blocked: Option<Blocked>,
+    /// The wall it traces round, while its short pather finds no way on.
+    pub trace: Option<Trace>,
+}
+
+/// A walker tracing round what shuts it in, the short pather's
+/// wall-tracing: it keeps the obstacle on one hand until it stands nearer
+/// its goal than where it met it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Trace {
+    /// The way it turns off its aim to find a free step: 1 to its left, -1
+    /// to its right.
+    pub side: i8,
+    /// The spot it walks to.
+    pub goal: Vec2,
+    /// Where it met the wall.
+    pub hit: Vec2,
+    /// Whether it has walked off the spot it met the wall at.
+    pub left_hit: bool,
 }
 
 /// A walker's wait on the body that blocks it.

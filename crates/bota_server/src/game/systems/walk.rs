@@ -2,17 +2,24 @@
 //! there, and the step it takes this tick.
 
 use bota_core::{
-    clamp_to_map, facing_gap, facing_towards, isqrt64, move_towards, per_tick, point_along, rules,
-    turn_towards,
+    clamp_to_map, facing_gap, facing_towards, isqrt64, move_towards, per_tick, point_ahead,
+    point_along, rules, turn_towards,
 };
 use bota_proto::{Angle, Fixed, Target, Vec2};
 
 use crate::game::{
     ActionPhase, ActionState, Blocked, Entity, LocalAsk, LocalScratch, Obstacles, Plan, Planner,
-    Route, UnitOrder, World, plan_local, plan_radius,
+    Route, Trace, UnitOrder, World, plan_local, plan_radius,
 };
 
 use crate::profile::Phase;
+
+/// Headings a wall-tracing walker tries, a sixteenth of a turn apart.
+/// Approximation: Dota's short pather traces walls in continuous space; the
+/// sixteen headings are ours.
+const TRACE_HEADINGS: u16 = 16;
+/// A sixteenth of a turn in brads.
+const TRACE_TURN_BRADS: u16 = 4096;
 
 impl World {
     /// Turns and steps everything that has somewhere to be.
@@ -244,6 +251,9 @@ impl World {
         if let Some(plan) = self.plan.get_mut(entity) {
             plan.clear();
         }
+        if let Some(motion) = self.motion.get_mut(entity) {
+            motion.trace = None;
+        }
     }
 
     /// Walks one entity towards a spot until it stands within a reach of
@@ -296,6 +306,10 @@ impl World {
             .get(entity)
             .and_then(|route| route.goal)
             .unwrap_or(dest);
+        if self.tracing(&leg) {
+            self.trace_on(&leg);
+            return;
+        }
         let stalled = self.motion.get(entity).map_or(0, |motion| motion.stalled);
         // A plan is walked from where it was laid: a body put somewhere
         // else since, by a hook or a slide along a body, has no plan.
@@ -547,7 +561,130 @@ impl World {
             self.turn_to(entity, leg.dest);
             return;
         }
-        self.walk_into(leg, leg.aim);
+        // Short of the end of its route, shut in by the ground and the
+        // stationary bodies about with nobody walking into its way, it
+        // traces round them ([`World::trace_on`]).
+        if met() {
+            self.walk_into(leg, leg.aim);
+            return;
+        }
+        if self.collide(leg, leg.aim) || !self.waits_on_any(entity) && self.begin_trace(leg) {
+            return;
+        }
+        if let Some(plan) = self.plan.get_mut(entity) {
+            plan.clear();
+        }
+        self.stall(entity, leg.dest);
+    }
+
+    /// Whether a walker traces round what shuts it in this tick: it began
+    /// to on its way to this destination and stands no nearer it yet than
+    /// where it met the wall. Nearer, it leaves the wall and walks its
+    /// route again (the leave rule of a wall tracer, Lumelsky and Stepanov's
+    /// Bug2, 1987; Dota's short pather's own is not public).
+    fn tracing(&mut self, leg: &Leg) -> bool {
+        let Some(motion) = self.motion.get_mut(leg.entity) else {
+            return false;
+        };
+        let Some(trace) = motion.trace else {
+            return false;
+        };
+        let far = |at: Vec2| isqrt64(at.distance_squared(leg.dest));
+        let nearer = far(leg.from) + i64::from(leg.step.raw) < far(trace.hit);
+        if trace.goal != leg.dest || nearer {
+            motion.trace = None;
+            return false;
+        }
+        true
+    }
+
+    /// Whether a walker waits on a body that blocks it this tick.
+    fn waits_on_any(&self, entity: Entity) -> bool {
+        self.motion
+            .get(entity)
+            .and_then(|motion| motion.blocked)
+            .is_some_and(|blocked| self.tick < blocked.until)
+    }
+
+    /// A walker shut in begins to trace round the wall, on the hand whose
+    /// free step turns least off its aim (the right on a tie), and takes
+    /// its first step. Answers whether it found a free step at all.
+    fn begin_trace(&mut self, leg: &Leg) -> bool {
+        let turns =
+            |side: i8| (1..TRACE_HEADINGS).find(|&k| self.trace_heading(leg, side, k).is_some());
+        let side = match (turns(1), turns(-1)) {
+            (None, None) => return false,
+            (Some(left), Some(right)) if left < right => 1,
+            (Some(_), None) => 1,
+            _ => -1,
+        };
+        if let Some(motion) = self.motion.get_mut(leg.entity) {
+            motion.trace = Some(Trace {
+                side,
+                goal: leg.dest,
+                hit: leg.from,
+                left_hit: false,
+            });
+        }
+        self.trace_on(leg);
+        true
+    }
+
+    /// One step of a walker tracing round the wall that shuts it in, the
+    /// short pather's wall-tracing (Liquipedia, *Pathfinding*): of the
+    /// headings turned off its aim towards its tracing hand, the first that
+    /// leaves the ground and every body clear, so the wall stays on its
+    /// other hand. Come round to where it met the wall again, the wall
+    /// goes all the way round its goal, and the walk is over as near as it
+    /// got. With no free heading it stands this tick.
+    fn trace_on(&mut self, leg: &Leg) {
+        let entity = leg.entity;
+        let Some(trace) = self.motion.get(entity).and_then(|motion| motion.trace) else {
+            return;
+        };
+        let near_hit = leg
+            .from
+            .within(trace.hit, rules::units(rules::WAYPOINT_RADIUS));
+        if trace.left_hit && near_hit {
+            if let Some(motion) = self.motion.get_mut(entity) {
+                motion.trace = None;
+            }
+            if let Some(route) = self.route.get_mut(entity) {
+                route.done = true;
+            }
+            self.turn_to(entity, leg.dest);
+            return;
+        }
+        if let Some(plan) = self.plan.get_mut(entity) {
+            plan.clear();
+        }
+        let next = (0..TRACE_HEADINGS).find_map(|k| self.trace_heading(leg, trace.side, k));
+        let Some(next) = next else {
+            self.stall(entity, leg.dest);
+            return;
+        };
+        if let Some(motion) = self.motion.get_mut(entity)
+            && let Some(trace) = motion.trace.as_mut()
+        {
+            trace.left_hit |= !near_hit;
+        }
+        self.step_heading(entity, leg.from, next, next);
+    }
+
+    /// The step a tracing walker takes turned `k` sixteenths of a turn off
+    /// its aim towards `side`, if the ground and every body leave it clear.
+    fn trace_heading(&self, leg: &Leg, side: i8, k: u16) -> Option<Vec2> {
+        let aim = facing_towards(leg.from, leg.aim);
+        let turn = (k * TRACE_TURN_BRADS).wrapping_mul(if side > 0 { 1 } else { u16::MAX });
+        let heading = Angle {
+            brads: aim.brads.wrapping_add(turn),
+        };
+        let next = point_ahead(leg.from, heading, leg.step);
+        (self.clearance.capsule_clear(leg.from, next, leg.collision)
+            && self
+                .stood_in_the_way(leg.entity, leg.from, next, leg.collision)
+                .is_none())
+        .then_some(next)
     }
 
     /// Takes the next step of a walker's plan, unless it turns onto the

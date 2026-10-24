@@ -269,6 +269,15 @@ fn hash_motion(fnv: &mut Fnv, motion: &Motion) {
     } else {
         fnv.u8(0);
     }
+    if let Some(trace) = motion.trace {
+        fnv.u8(1);
+        fnv.u8(trace.side as u8);
+        fnv.vec2(trace.goal);
+        fnv.vec2(trace.hit);
+        fnv.u8(u8::from(trace.left_hit));
+    } else {
+        fnv.u8(0);
+    }
 }
 
 /// Where one pseudo-random sequence stands, if it was opened.

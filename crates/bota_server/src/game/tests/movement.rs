@@ -987,3 +987,50 @@ fn a_blocker_tapping_stop_holds_the_wave_as_dota_guides_teach() {
         "tapping holds the wave {mean} units on average, walking {walked}: {gains:?}"
     );
 }
+
+/// A hero pressed against the ground by the mid river, with three enemy creeps standing to fight
+/// it in a row on its other side, sent past them walks out through the way left between the
+/// creeps and the ground, though it is narrower than the walking lattice, and round them: a
+/// standing body is planned round in continuous space, as the short pather traces it
+/// (Liquipedia, *Pathfinding*), not only where the lattice has room. The spots are a hero's
+/// seen standing there for nine seconds in a match.
+#[test]
+fn a_hero_hemmed_in_by_standing_creeps_and_the_ground_walks_out() {
+    let mut world = World::on_map(map_of(MapId(2)));
+    let raw = |x: i32, y: i32| Vec2 {
+        x: Fixed { raw: x },
+        y: Fixed { raw: y },
+    };
+    let hero = world.spawn_hero(
+        Team::Radiant,
+        raw(562_028_139, 547_192_589),
+        SlotId(0),
+        HeroId::SHADOW_FIEND,
+    );
+    let row = [
+        raw(556_034_549, 545_918_891),
+        raw(556_279_858, 555_559_308),
+        raw(558_996_760, 550_790_587),
+    ]
+    .map(|at| world.spawn_unit(&MELEE_CREEP, Team::Dire, at));
+    world.settle();
+    let goal = Vec2::from_ints(8608, 7805);
+    world.set_order(hero, UnitOrder::Move { pos: goal });
+    let mut took = None;
+    for tick in 1..=(10 * rules::TICKS_PER_SECOND) {
+        for creep in row {
+            world.set_order(creep, UnitOrder::Hold);
+        }
+        world.step();
+        if pos_of(&world, hero).within(goal, rules::units(50)) {
+            took = Some(tick);
+            break;
+        }
+    }
+    // Measured: 60 ticks for some 560 units (54 in the open); before the
+    // short pather traced walls, it stood there for good.
+    assert!(
+        took.is_some_and(|t| t <= 6 * rules::TICKS_PER_SECOND),
+        "out and to the spot within six seconds, not {took:?}"
+    );
+}
