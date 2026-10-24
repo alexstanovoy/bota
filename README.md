@@ -97,7 +97,7 @@ the plain TCP port stays on loopback) or `--insecure-plaintext`.
 |---|---|---|---|
 | `--port N` | `4455` | plain TCP port (`0`: any free port, announced on stdout) | several servers share a host |
 | `--bind ADDR` | `127.0.0.1` | address the listeners bind to | players come from other machines |
-| `--ws-port N` | none | WebSocket listener, one binary message per frame (feature `websocket`) | browsers, or TLS |
+| `--ws-port N` | none | WebSocket listener, one binary message per frame (feature `websocket`, on by default; `--no-default-features` drops it) | browsers, or TLS |
 | `--tls-cert PEM`, `--tls-key PEM` | none | certificate chain (leaf first) and key; `--ws-port` then speaks TLS 1.3 (`wss://`) | any `--bind` that is not loopback |
 | `--insecure-plaintext` | off | plain TCP and `ws://` on a non-loopback `--bind`; keys and orders in clear | a network you trust, without a certificate |
 | `--map N` | `0` | `0` the Dota map to the Ancient; `1` a hero demo map; `2` mid only: a side loses on its second hero death or first lost tower, a draw after twenty game minutes | |
