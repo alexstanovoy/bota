@@ -63,6 +63,33 @@ pub const LOCAL_HORIZON_TICKS: u32 = 40;
 pub const LOCAL_EXPANSIONS: u32 = 120;
 /// World units of the lattice two local states are told apart by.
 pub const LOCAL_KEY_CELL: i32 = 32;
+/// Dota's `dota_unit_blocked_angle_threshold` (0.1), read as the cosine,
+/// in thousandths, of the angle between a walker's step and the way to the
+/// body that cuts it within which that body blocks the walk: the walker
+/// waits on it ([`UNIT_BLOCKED_WAIT_TICKS`]) before laying its way round
+/// it. 0.1 is some 84 degrees, the whole front of the walker.
+/// Approximation: the console names the value, not its unit; read as
+/// radians it would leave a 6-degree sliver, and a creep met anywhere off
+/// dead centre would go round a standing blocker at once.
+pub const UNIT_BLOCKED_COS_PERMILLE: i64 = 100;
+/// Dota's `dota_unit_blocked_look_ahead_angle_threshold` (0.7), read the
+/// same way: the body a walker waits on is waited on only while it stands
+/// within some 46 degrees of the way the walker goes; one that stands
+/// beside the way its short pather lays round at once. Approximation as for
+/// [`UNIT_BLOCKED_COS_PERMILLE`], and which of the walker's ways the look
+/// ahead is taken along (here: to the aim of its plan) is not documented.
+pub const UNIT_BLOCKED_LOOK_AHEAD_COS_PERMILLE: i64 = 700;
+/// Dota's `dota_unit_blocked_wait_time`, `_mid` and `_long` (0.15, 0.3 and
+/// 0.4 s) in ticks, rounded up: how long a blocked walker waits before it
+/// lays its way round the body that blocks it, the first time, once that
+/// way was cut by it again, and every time after. A free step ends the
+/// wait. Approximation: the order the three are used in is read from
+/// their names; Dota does not document it.
+pub const UNIT_BLOCKED_WAIT_TICKS: [u32; 3] = [
+    (150 * TICKS_PER_SECOND).div_ceil(1000),
+    (300 * TICKS_PER_SECOND).div_ceil(1000),
+    (400 * TICKS_PER_SECOND).div_ceil(1000),
+];
 /// Ticks after a local plan is laid before it is laid again for coming out
 /// empty or running short.
 pub const REPLAN_MIN_TICKS: u32 = 4;

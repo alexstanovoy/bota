@@ -8,8 +8,8 @@ use bota_core::{
 use bota_proto::{Angle, Fixed, Target, Vec2};
 
 use crate::game::{
-    ActionPhase, ActionState, Entity, LocalAsk, LocalScratch, Obstacles, Plan, Planner, Route,
-    UnitOrder, World, plan_local, plan_radius,
+    ActionPhase, ActionState, Blocked, Entity, LocalAsk, LocalScratch, Obstacles, Plan, Planner,
+    Route, UnitOrder, World, plan_local, plan_radius,
 };
 
 use crate::profile::Phase;
@@ -299,7 +299,8 @@ impl World {
         let stalled = self.motion.get(entity).map_or(0, |motion| motion.stalled);
         // A plan is walked from where it was laid: a body put somewhere
         // else since, by a hook or a slide along a body, has no plan.
-        if plan_stale(self.plan.get(entity), from, step, goal, stalled, self.tick)
+        if (plan_stale(self.plan.get(entity), from, step, goal, stalled, self.tick)
+            || self.wait_over(entity))
             && self.relay_plan(&mut leg, goal, scratch)
         {
             return;
@@ -343,9 +344,12 @@ impl World {
     /// walker meets it, and its step keeps the part that runs along the
     /// body's edge ([`slide_along`]). A creep met head on is held; one met
     /// off centre slides past, the blocked creep that "will try to pass on
-    /// your left/right side" (Gaming StackExchange q/65482). Approximation:
-    /// Dota does not document how a step against a unit resolves; the slide
-    /// keeps the hold a creep block needs.
+    /// your left/right side" (Gaming StackExchange q/65482). A body in front
+    /// of the step ([`rules::UNIT_BLOCKED_COS_PERMILLE`]) blocks the walk,
+    /// and the walker waits on it before its short pather lays its way round
+    /// it ([`World::wait_on`]): a creep blocker stopping in front of a creep
+    /// holds it so long. Approximation: Dota does not document how a step
+    /// against a unit resolves; the slide keeps the hold a creep block needs.
     ///
     /// A step met dead on runs along no edge, and the walker stands this
     /// tick. Standing, it is a stationary unit ([`World::walking`]), which
@@ -359,6 +363,17 @@ impl World {
     fn collide(&mut self, leg: &Leg, toward: Vec2) -> bool {
         let (entity, from, collision) = (leg.entity, leg.from, leg.collision);
         let next = move_towards(from, toward, leg.step);
+        // A body in front of the step blocks the walk, walking or standing:
+        // the walker stands and waits on it, and only then slides along it
+        // or lays its way round it ([`World::wait_on`]). One that waits on
+        // the walker in turn is not waited on: neither would ever move.
+        if let Some((body, centre, _)) = self.stood_in_the_way(entity, from, next, collision)
+            && within_cone(from, next, centre, rules::UNIT_BLOCKED_COS_PERMILLE)
+            && !self.waits_on(body, entity)
+            && self.wait_on(entity, body)
+        {
+            return false;
+        }
         // Slid along one body into another, it slides along that one too,
         // and so on; met by one it slid along already, it is wedged.
         let mut met: Vec<Entity> = Vec::new();
@@ -635,11 +650,28 @@ impl World {
                 .raw
                 .saturating_mul(rules::LOCAL_HORIZON_TICKS as i32),
         } + plan_radius(leg.collision);
+        let blocked = self
+            .motion
+            .get(leg.entity)
+            .and_then(|motion| motion.blocked);
         self.bodies.near(leg.from, reach, |body| {
-            if body.entity == leg.entity
-                || body.fixed
-                || !body.stationary
-                || self.phased(body.entity)
+            if body.entity == leg.entity || body.fixed || self.phased(body.entity) {
+                return;
+            }
+            if !body.stationary {
+                return;
+            }
+            // The standing body it waits on, ahead on its way, is laid round
+            // once the wait is over; one beside its way at once.
+            if let Some(blocked) = blocked
+                && blocked.by == body.entity
+                && self.tick < blocked.until
+                && within_cone(
+                    leg.from,
+                    leg.aim,
+                    body.at,
+                    rules::UNIT_BLOCKED_LOOK_AHEAD_COS_PERMILLE,
+                )
             {
                 return;
             }
@@ -733,6 +765,10 @@ impl World {
     /// Takes a step: the body moves and comes round towards the way it
     /// went.
     fn take_step(&mut self, entity: Entity, from: Vec2, to: Vec2) {
+        // A free step ends a wait on a body that blocked the walk.
+        if let Some(motion) = self.motion.get_mut(entity) {
+            motion.blocked = None;
+        }
         let rate = self.stats.get(entity).map_or(0, |stats| stats.turn_rate);
         if let Some(transform) = self.transform.get_mut(entity) {
             transform.facing = turn_towards(transform.facing, facing_towards(from, to), rate);
@@ -749,6 +785,60 @@ impl World {
             motion.still = 0;
             motion.stalled = 0;
         }
+    }
+
+    /// A walker blocked by `body` waits on it, and answers whether it still
+    /// waits this tick: the first wait when the block
+    /// is new, the next once its way round that body was laid and the body
+    /// cut it again, and the last every time after
+    /// ([`rules::UNIT_BLOCKED_WAIT_TICKS`]). A free step ends the wait
+    /// ([`World::take_step`]).
+    fn wait_on(&mut self, entity: Entity, body: Entity) -> bool {
+        let now = self.tick;
+        let laid = self.plan.get(entity).map(|plan| plan.laid);
+        let Some(motion) = self.motion.get_mut(entity) else {
+            return false;
+        };
+        let wait = |tier: u8| rules::UNIT_BLOCKED_WAIT_TICKS[usize::from(tier)];
+        motion.blocked = Some(match motion.blocked {
+            Some(blocked)
+                if blocked.by == body && laid.is_some_and(|laid| laid >= blocked.until) =>
+            {
+                let tier = (blocked.tier + 1).min(2);
+                Blocked {
+                    by: body,
+                    until: now + wait(tier),
+                    tier,
+                }
+            }
+            Some(blocked) if blocked.by == body => blocked,
+            _ => Blocked {
+                by: body,
+                until: now + wait(0),
+                tier: 0,
+            },
+        });
+        motion.blocked.is_some_and(|blocked| now < blocked.until)
+    }
+
+    /// Whether `entity` waits on `body` this tick.
+    fn waits_on(&self, entity: Entity, body: Entity) -> bool {
+        self.motion
+            .get(entity)
+            .and_then(|motion| motion.blocked)
+            .is_some_and(|blocked| blocked.by == body && self.tick < blocked.until)
+    }
+
+    /// Whether a walker's wait on the body that blocks it is over and it has
+    /// laid no way round that body since.
+    fn wait_over(&self, entity: Entity) -> bool {
+        let laid = self.plan.get(entity).map(|plan| plan.laid);
+        self.motion
+            .get(entity)
+            .and_then(|motion| motion.blocked)
+            .is_some_and(|blocked| {
+                self.tick >= blocked.until && laid.is_none_or(|laid| laid < blocked.until)
+            })
     }
 
     /// A tick stood wanting to move and unable to.
@@ -961,6 +1051,24 @@ fn destination(order: &UnitOrder) -> Option<Vec2> {
         | UnitOrder::Attack { .. }
         | UnitOrder::Follow { .. } => None,
     }
+}
+
+/// Whether `at` lies within the cone round the way from `from` to `toward`
+/// whose cosine, in thousandths, is `cos_permille`.
+fn within_cone(from: Vec2, toward: Vec2, at: Vec2, cos_permille: i64) -> bool {
+    // In 1/256 units: any two points' offsets fit 25 bits, so every product
+    // below stays well inside i128.
+    let offset = |a: Fixed, b: Fixed| (i128::from(a.raw) - i128::from(b.raw)) >> 8;
+    let way = (offset(toward.x, from.x), offset(toward.y, from.y));
+    let to = (offset(at.x, from.x), offset(at.y, from.y));
+    let dot = way.0 * to.0 + way.1 * to.1;
+    if dot <= 0 {
+        return false;
+    }
+    let lengths = (way.0 * way.0 + way.1 * way.1) * (to.0 * to.0 + to.1 * to.1);
+    let cos = i128::from(cos_permille);
+    // dot / (|way| |to|) >= cos / 1000, both sides squared.
+    dot * dot * 1_000_000 >= cos * cos * lengths
 }
 
 /// Whether the laid plan still leads where the route goes and has enough left.

@@ -2,6 +2,8 @@
 
 use bota_proto::{Fixed, Vec2};
 
+use crate::engine::Entity;
+
 /// The route an entity walks: the corners of a way found round what stands
 /// still, to the goal it was laid for.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -52,6 +54,20 @@ pub struct Motion {
     pub stalled: u32,
     /// Ticks running that it has not moved.
     pub still: u32,
+    /// The body that blocks its walk, while it waits on it or lays its way
+    /// round it (`rules::UNIT_BLOCKED_WAIT_TICKS`).
+    pub blocked: Option<Blocked>,
+}
+
+/// A walker's wait on the body that blocks it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Blocked {
+    /// The body in its way.
+    pub by: Entity,
+    /// The tick from which it lays its way round that body.
+    pub until: u32,
+    /// Which of the waits it is on: 0, 1 or 2.
+    pub tier: u8,
 }
 
 /// The next stretch of an entity's walk, tick by tick.

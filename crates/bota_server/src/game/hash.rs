@@ -261,6 +261,14 @@ fn hash_motion(fnv: &mut Fnv, motion: &Motion) {
     fnv.vec2(motion.delta);
     fnv.u32(motion.stalled);
     fnv.u32(motion.still);
+    if let Some(blocked) = motion.blocked {
+        fnv.u8(1);
+        fnv.entity(blocked.by);
+        fnv.u32(blocked.until);
+        fnv.u8(blocked.tier);
+    } else {
+        fnv.u8(0);
+    }
 }
 
 /// Where one pseudo-random sequence stands, if it was opened.

@@ -562,9 +562,10 @@ fn a_wave_walks_round_a_hero_who_stops_before_its_lead_creep() {
             break;
         }
     }
-    // Measured on this map: the lead creep past in 13 ticks (0.43 s), the
-    // wave in 39 (1.3 s). Dota's guides give no number, only that the
-    // blocker must move again "before they can run around you".
+    // Measured on this map: the lead creep past in 16 ticks (0.53 s, its
+    // first blocked wait among them), the wave in 46 (1.5 s). Dota's guides
+    // give no number, only that the blocker must move again "before they
+    // can run around you".
     assert!(
         lead_past.is_some_and(|t| t <= rules::TICKS_PER_SECOND),
         "the lead creep walks round within a second, not {lead_past:?}"
@@ -579,6 +580,10 @@ fn a_wave_walks_round_a_hero_who_stops_before_its_lead_creep() {
 /// creep's lane progress and the tick it first takes an enemy, with a hero
 /// keeping just in front of it the whole way when `block` says so.
 fn first_clash(block: bool) -> (i64, u32) {
+    first_clash_tapping(block, None)
+}
+
+fn first_clash_tapping(block: bool, taps: Option<(u32, u32)>) -> (i64, u32) {
     const LEAD_BY: i32 = 200;
     let (mut world, route, lead) = map2_wave_led_to(300);
     let start = head_on(&world, lead);
@@ -594,7 +599,12 @@ fn first_clash(block: bool) -> (i64, u32) {
             // arriving: a blocker that stops is walked round.
             let lead_at = pos_of(&world, lead_now);
             let ahead = point_along(lead_at, head_on(&world, lead_now), rules::units(LEAD_BY));
-            world.set_order(hero, UnitOrder::Move { pos: ahead });
+            let stopped = taps.is_some_and(|(every, stop)| world.tick % every < stop);
+            if stopped {
+                world.set_order(hero, UnitOrder::Stand);
+            } else {
+                world.set_order(hero, UnitOrder::Move { pos: ahead });
+            }
         }
         world.step();
         if world.target_of(lead).is_some() || world.target_of(lead_now).is_some() {
@@ -608,7 +618,7 @@ fn first_clash(block: bool) -> (i64, u32) {
 /// the creep's line, all the way to the clash, holds that creep to its own
 /// pace: the creep walks against a moving body and is held, as Dota's lane
 /// creeps are (Liquipedia, *Unit Size*), and the waves meet nearer the own
-/// side. Measured: the clash 220 units nearer and 19 ticks (0.63 s) later
+/// side. Measured: the clash 220 units nearer and 20 ticks (0.67 s) later
 /// than an unblocked wave's. A straight walk can do little more, the hero
 /// (310) being only a little slower than the creep (325); a block that weaves
 /// across the creep's line holds it longer.
@@ -642,7 +652,7 @@ fn a_hero_walking_head_on_into_its_wave_gets_through() {
     world.settle();
     world.set_order(hero, UnitOrder::Move { pos: goal });
     let took = ticks_until_near(&mut world, hero, goal, 600);
-    // Measured: 105 ticks for about 1000 units against the whole wave.
+    // Measured: 114 ticks for about 1000 units against the whole wave.
     assert!(
         took.is_some_and(|t| t <= 6 * rules::TICKS_PER_SECOND),
         "through the wave within six seconds, not {took:?}"
@@ -690,8 +700,13 @@ fn a_hero_in_its_marching_wave_by_its_tower_walks_on() {
                 break;
             }
         }
+        // Measured: 12 and 1 ticks stood, the creeps it meets waited on
+        // before it slides along them (Dota's blocked waits).
         assert!(took.is_some(), "to {goal:?} within {within} ticks");
-        assert!(still <= 10, "stood {still} ticks on the way to {goal:?}");
+        assert!(
+            still <= 3 * rules::UNIT_BLOCKED_WAIT_TICKS[0],
+            "stood {still} ticks on the way to {goal:?}"
+        );
     }
 }
 
@@ -740,10 +755,9 @@ fn two_heroes_meeting_between_trees_get_through() {
             }
         }
         // Measured, both heroes, 1100 units each (108 ticks in the open):
-        // 245 and 241 ticks at 70 wide, 597 and 548 at 100, 174 and 174 at
-        // 130. At 100 both back off to go round the long way, see the other
-        // walk off, forget it and come back, a few times over, before one
-        // of them gets through first.
+        // 220 and 114 ticks at 70 wide, 242 and 146 at 100, 249 and 158 at
+        // 130. Neither holds the other for good: a meeting is waited on
+        // (Dota's blocked waits), then walked round.
         assert!(
             through.0.is_some_and(|t| t <= 22 * rules::TICKS_PER_SECOND)
                 && through.1.is_some_and(|t| t <= 22 * rules::TICKS_PER_SECOND),
@@ -797,7 +811,7 @@ fn a_hero_walking_into_the_enemy_wave_gets_through() {
     world.settle();
     world.set_order(hero, UnitOrder::Move { pos: goal });
     let took = ticks_until_near(&mut world, hero, goal, 10 * rules::TICKS_PER_SECOND);
-    // Measured: 105 ticks for about 1000 units.
+    // Measured: 113 ticks for about 1000 units.
     assert!(
         took.is_some_and(|t| t <= 6 * rules::TICKS_PER_SECOND),
         "through the enemy wave within six seconds, not {took:?}"
@@ -849,7 +863,7 @@ fn a_hero_and_a_creep_walking_into_each_other_in_a_fight_get_past() {
             break;
         }
     }
-    // Measured: 24 ticks for 200 units.
+    // Measured: 30 ticks for 200 units.
     assert!(
         took.is_some_and(|t| t <= 2 * rules::TICKS_PER_SECOND),
         "past the creep within two seconds, not {took:?}"
@@ -899,12 +913,13 @@ fn a_hero_sent_into_a_knot_of_standing_creeps_ends_its_walk_beside_it() {
     );
 }
 
-/// A hero walking into the side of a creep that walks across its way slides
-/// along the creep's edge without halting: the slide is the bodies pushing
-/// against each other, not a way the hero turns to, so it keeps facing where
-/// it walks and keeps stepping.
+/// A hero walking into the side of a creep that walks across its way waits
+/// on it the first blocked wait (Dota's `dota_unit_blocked_wait_time`) and
+/// then slides along the creep's edge without halting again: the slide is
+/// the bodies pushing against each other, not a way the hero turns to, so it
+/// keeps facing where it walks and keeps stepping.
 #[test]
-fn a_hero_sliding_along_a_creep_walking_across_its_way_never_halts() {
+fn a_hero_meeting_a_creep_walking_across_its_way_waits_once_and_slides_on() {
     let mut world = World::new();
     let hero = hero_at(&mut world, Vec2::from_ints(5000, 5000));
     let creep = world.spawn_unit(&MELEE_CREEP, Team::Dire, Vec2::from_ints(5150, 4880));
@@ -935,11 +950,40 @@ fn a_hero_sliding_along_a_creep_walking_across_its_way_never_halts() {
             break;
         }
     }
-    // Measured: 8 ticks in contact, none halted (3 of 7 when a slide turned
-    // the hero onto it).
+    // Measured: 6 ticks in contact, 5 of them waited (the first wait), none
+    // halted after it.
     assert!(touching > 0, "the two met");
-    assert_eq!(
-        halted, 0,
+    assert!(
+        halted <= rules::UNIT_BLOCKED_WAIT_TICKS[0],
         "the hero halted {halted} of {touching} ticks in contact"
+    );
+}
+
+/// A blocker that walks just ahead of its first wave's lead creep, on its
+/// line, and taps Stop as Dota's guides teach (for 0.05-0.2 s every
+/// 0.25-0.5 s: dotaforall's creep-block guide, CreepBlocker.lua) holds the
+/// creep each time it is stopped in front of it: the creep waits on a body
+/// that blocks it before it goes round (`dota_unit_blocked_wait_time`,
+/// 0.15 s, then 0.3 and 0.4), and the blocker walks on before that. Over the
+/// guides' rhythms the waves meet on average more than twice as much nearer
+/// the own side as behind a blocker that only walks ahead. Measured: walking
+/// ahead 220 units; tapping, 115-1259 by rhythm, 526 on average, the guides'
+/// "just outside tier 1 range" (some 550-600 units on this lane).
+#[test]
+fn a_blocker_tapping_stop_holds_the_wave_as_dota_guides_teach() {
+    let (free_at, _) = first_clash(false);
+    let (walked_at, _) = first_clash(true);
+    let walked = free_at - walked_at;
+    let mut gains = Vec::new();
+    for every in [8u32, 10, 12, 15] {
+        for stop in [2u32, 3, 4, 5, 6] {
+            let (at, _) = first_clash_tapping(true, Some((every, stop)));
+            gains.push(free_at - at);
+        }
+    }
+    let mean = gains.iter().sum::<i64>() / gains.len() as i64;
+    assert!(
+        mean >= 2 * walked,
+        "tapping holds the wave {mean} units on average, walking {walked}: {gains:?}"
     );
 }
