@@ -682,7 +682,7 @@ impl World {
 
     /// Stats worked out afresh, pools following their maxima, and the
     /// structures guarded.
-    fn refresh_stats(&mut self) {
+    pub(crate) fn refresh_stats(&mut self) {
         let night = self.time_of_day().night;
         derive_stats(StatsCx {
             entities: &self.entities,

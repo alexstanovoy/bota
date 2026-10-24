@@ -496,15 +496,13 @@ fn a_hero_that_dies_with_a_stored_rune_loses_it_when_its_time_is_out() {
     world.health.get_mut(taker).expect("hp").hp = bota_proto::Fixed::from_int(1);
     world.push_hit(None, taker, 100, bota_proto::DamageKind::Pure, None);
     world.step();
-    assert!(world.seats[seat].unit.is_none(), "fallen");
+    assert!(world.seats[seat].dead(), "fallen");
     run(&mut world, BOTTLE_RUNE_TICKS + 5);
     assert!(
-        world.seats[seat].kept.as_ref().is_none_or(|kept| kept
-            .bag
-            .slots
-            .iter()
-            .flatten()
-            .all(|stack| stack.rune.is_none())),
+        world
+            .inventory
+            .get(taker)
+            .is_none_or(|bag| bag.held().all(|stack| stack.rune.is_none())),
         "the rune ran out unused"
     );
 }

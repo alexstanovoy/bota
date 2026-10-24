@@ -31,15 +31,20 @@ fn raze_target_death_and_respawn_do_not_restore_timed_stacks() {
     world.seats[0].respawn_left = 1;
     world.tick_respawns();
     let returned = world.seats[0].unit.unwrap();
-    assert_eq!(target.index(), returned.index());
-    assert_ne!(target.generation(), returned.generation());
+    assert_eq!(returned, target, "the same hero stands again");
     prepare(&mut world, returned, TARGET);
-    assert!(effects(&world, returned).is_empty());
+    assert!(
+        effects(&world, returned).is_empty(),
+        "its stacks fell with it"
+    );
     assert_eq!(land(&mut world, caster, returned, 0), 85);
 }
 
+/// The stacks a raze lays are on the target and hold their time whatever
+/// befalls the caster: a Shadow Fiend that falls and stands again in time,
+/// the one hero all match as Dota's, razes them on.
 #[test]
-fn raze_caster_death_and_respawn_cannot_use_its_old_bodys_stacks() {
+fn a_raze_casters_stacks_outlive_its_death_while_their_time_holds() {
     let (mut world, caster, target) = fixture();
     seat(&mut world, SlotId(0), Team::Radiant, caster, 0);
     land(&mut world, caster, target, 0);
@@ -48,9 +53,12 @@ fn raze_caster_death_and_respawn_cannot_use_its_old_bodys_stacks() {
     world.seats[0].respawn_left = 1;
     world.tick_respawns();
     let returned = world.seats[0].unit.unwrap();
-    assert_ne!(caster, returned);
+    assert_eq!(returned, caster);
     prepare(&mut world, returned, ORIGIN);
-    assert_eq!(land(&mut world, returned, target, 0), 85);
+    assert_eq!(
+        land(&mut world, returned, target, 0),
+        85 + rules::RAZE_STACK_DAMAGE[0]
+    );
 }
 
 #[test]

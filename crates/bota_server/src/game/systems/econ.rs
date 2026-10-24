@@ -373,10 +373,9 @@ impl World {
             }
             self.seats[seat].level += 1;
             let level = self.seats[seat].level;
-            let book = match self.seats[seat].unit {
-                Some(unit) => self.abilities.get_mut(unit),
-                None => self.seats[seat].kept.as_mut().map(|kept| &mut kept.book),
-            };
+            let book = self.seats[seat]
+                .unit
+                .and_then(|unit| self.abilities.get_mut(unit));
             if let Some(book) = book {
                 book.auto_attribute_bonus(level);
             }
@@ -400,46 +399,30 @@ impl World {
     /// fountains.
     pub fn tick_respawns(&mut self) {
         for index in 0..self.seats.len() {
-            if self.seats[index].unit.is_some() {
+            if !self.seats[index].dead() {
                 continue;
             }
-            self.seats[index].respawn_left = self.seats[index].respawn_left.saturating_sub(1);
-            if self.seats[index].respawn_left > 0 {
-                continue;
+            self.seats[index].respawn_left -= 1;
+            if !self.seats[index].dead() {
+                self.respawn(index);
             }
-            self.respawn(index);
         }
     }
 
-    /// Puts a seat's fallen hero back at its fountain now, with what it
-    /// left behind.
+    /// Stands a seat's fallen hero up at its fountain now.
     pub(crate) fn respawn(&mut self, index: usize) {
-        let map = self.map;
-        let (team, slot, hero, level) = (
-            self.seats[index].team,
-            self.seats[index].slot,
-            self.seats[index].hero,
-            self.seats[index].level,
-        );
-        let at = hero_spawn_pos(map, team);
-        let unit = self.spawn_hero(team, at, slot, hero);
-        self.level.insert(unit, Level(level));
-        if let Some(kept) = self.seats[index].kept.take() {
-            self.abilities.insert(unit, kept.book);
-            self.inventory.insert(unit, kept.bag);
-            for held in kept.modifiers.0 {
-                self.put_modifier(unit, held);
-            }
-        }
+        let at = hero_spawn_pos(self.map, self.seats[index].team);
+        self.raise_hero(index, at);
+        let Some(hero) = self.seats[index].unit else {
+            return;
+        };
         // Risen at its fountain, untouchable until its player gives it a
         // command or the fountain's Rejuvenation no longer holds on it
         // (Dota's modifier_fountain_invulnerability).
         self.put_modifier(
-            unit,
-            Modifier::new(ModifierKind::FountainInvulnerable, Some(unit), None, None),
+            hero,
+            Modifier::new(ModifierKind::FountainInvulnerable, Some(hero), None, None),
         );
-        self.seats[index].respawn_left = 0;
-        self.seats[index].unit = Some(unit);
         self.settle();
     }
 

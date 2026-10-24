@@ -156,18 +156,9 @@ impl World {
             gold: own.then_some(seat.gold),
             stash: own.then(|| item_views(&seat.stash, mana_rate, &seat.item_clocks, self.tick)),
             kit: seat
-                .kept
-                .as_ref()
-                .filter(|_| own)
-                .map(|kept| bota_proto::Kit {
-                    abilities: ability_views(&kept.book, mana_rate),
-                    items: item_views(&kept.bag, mana_rate, &seat.item_clocks, self.tick),
-                    town_portal: kept
-                        .bag
-                        .town_portal
-                        .flatten()
-                        .map(|stack| item_view(&stack, mana_rate, &seat.item_clocks, self.tick)),
-                }),
+                .unit
+                .filter(|_| own && seat.dead())
+                .map(|hero| self.kit_of(hero, mana_rate, &seat.item_clocks)),
             kills: seat.kills,
             deaths: seat.deaths,
             assists: seat.assists,
@@ -179,6 +170,28 @@ impl World {
                 denies: seat.denies,
             }),
             seen_at: shown.at,
+        }
+    }
+
+    /// What a dead hero carries and has learned, for its own side's HUD.
+    fn kit_of(
+        &self,
+        hero: Entity,
+        mana_rate: i32,
+        clocks: &[(bota_proto::ItemId, u32)],
+    ) -> bota_proto::Kit {
+        let bag = self.inventory.get(hero);
+        bota_proto::Kit {
+            abilities: self
+                .abilities
+                .get(hero)
+                .map_or_else(Vec::new, |book| ability_views(book, mana_rate)),
+            items: bag.map_or_else(Vec::new, |bag| {
+                item_views(bag, mana_rate, clocks, self.tick)
+            }),
+            town_portal: bag
+                .and_then(|bag| bag.town_portal.flatten())
+                .map(|stack| item_view(&stack, mana_rate, clocks, self.tick)),
         }
     }
 
@@ -223,10 +236,7 @@ impl World {
         self.seats
             .iter()
             .filter_map(|seat| {
-                let book = match seat.unit {
-                    Some(unit) => self.abilities.get(unit),
-                    None => seat.kept.as_ref().map(|kept| &kept.book),
-                }?;
+                let book = seat.unit.and_then(|unit| self.abilities.get(unit))?;
                 book.tree?;
                 let own = viewer.is_none_or(|team| team == seat.team);
                 let carried = seat.unit.is_some_and(|unit| {

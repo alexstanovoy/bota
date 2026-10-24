@@ -158,8 +158,7 @@ pub enum Phase {
 /// What the camera is carried by.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Pin {
-    /// A seat's hero, whichever body it is standing in: a respawned hero is
-    /// a new entity.
+    /// A seat's hero, dead or alive: where it stands while it stands.
     Hero(SlotId),
     /// One unit, for as long as it stands.
     Unit(EntityId),
@@ -679,9 +678,17 @@ impl App {
         self.seat.session()?.body_of(slot)
     }
 
-    /// Our hero's unit id, while it is alive and known.
+    /// Our hero's unit id, the same while it lies dead (see
+    /// [`my_standing_hero`](Self::my_standing_hero)).
     pub fn my_hero(&self) -> Option<EntityId> {
         self.player(self.my_slot?)?.unit
+    }
+
+    /// One's own hero while it stands; nothing while it lies dead (its
+    /// handle, [`my_hero`](Self::my_hero), stays).
+    pub fn my_standing_hero(&self) -> Option<EntityId> {
+        let player = self.player(self.my_slot?)?;
+        player.unit.filter(|_| player.respawn_left == 0)
     }
 
     /// A seat's scoreboard row in the current view.

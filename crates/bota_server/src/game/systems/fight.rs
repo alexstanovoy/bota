@@ -1,12 +1,11 @@
 //! Who stands and who is in reach, telling of blows, and clearing away what
 //! has fallen.
 
-use bota_core::{MAP2_ID, MAP2_TICK_CAP, effect_def, kind_def, respawn_wait};
+use bota_core::{MAP2_ID, MAP2_TICK_CAP, kind_def, respawn_wait};
 use bota_proto::{EventKind, Fixed, Team, UnitKind, Vec2};
 
 use crate::game::{
-    Entity, Event, EventVisibility, ItemStack, Kept, Landed, Missed, Modifiers, UnitOrder, World,
-    wire_id,
+    Entity, Event, EventVisibility, ItemStack, Landed, Missed, UnitOrder, World, wire_id,
 };
 
 impl World {
@@ -229,25 +228,12 @@ impl World {
         {
             self.seats[index].kills += 1;
         }
-        self.despawn(entity);
-        assert!(!self.entities.contains(entity));
+        // A hero lies dead and stands again: the one entity, all match long.
+        if self.seat_of(entity).is_none() {
+            self.despawn(entity);
+            assert!(!self.entities.contains(entity));
+        }
         structure
-    }
-
-    /// What a fallen hero keeps of the modifiers on it until it stands again:
-    /// those Dota does not take off on death.
-    fn kept_through_death(&self, entity: Entity) -> Modifiers {
-        Modifiers(
-            self.modifiers
-                .get(entity)
-                .into_iter()
-                .flat_map(|on_it| on_it.active())
-                .filter(|held| {
-                    effect_def(held.kind.effect_id()).is_some_and(|def| def.kept_through_death)
-                })
-                .copied()
-                .collect(),
-        )
     }
 
     fn bury_seat(&mut self, entity: Entity, scroll_due: bool, by_neutrals: bool) {
@@ -257,28 +243,22 @@ impl World {
                 let level = self.seats[index].level;
                 self.let_souls_go(entity);
                 self.requiem_on_death(entity);
-                let mut bag = self.inventory.remove(entity).unwrap_or_default();
-                // What a body carried when it fell sells back at the full price
-                // no more (Dota: the sellback timer ends when the carrier dies).
-                bag.slots.iter_mut().flatten().for_each(|stack| {
-                    stack.touched = true;
-                    // Nor does a build come apart (Dota: the window ends with its carrier).
-                    stack.disassemble_until = 0;
-                });
-                if scroll_due {
-                    // A town portal slot full to the byte keeps what it has.
-                    bag.receive(ItemStack::free_scroll(self.seats[index].slot, self.tick));
+                if let Some(bag) = self.inventory.get_mut(entity) {
+                    // What a body carried when it fell sells back at the full
+                    // price no more (Dota: the sellback timer ends when the
+                    // carrier dies).
+                    bag.slots.iter_mut().flatten().for_each(|stack| {
+                        stack.touched = true;
+                        // Nor does a build come apart (Dota: the window ends with its carrier).
+                        stack.disassemble_until = 0;
+                    });
+                    if scroll_due {
+                        // A town portal slot full to the byte keeps what it has.
+                        bag.receive(ItemStack::free_scroll(self.seats[index].slot, self.tick));
+                    }
                 }
-                let kept = Kept {
-                    book: self.abilities.remove(entity).unwrap_or_default(),
-                    bag,
-                    modifiers: self.kept_through_death(entity),
-                    fell: self.tick,
-                };
-                self.seats[index].unit = None;
-                self.seats[index].kept = Some(kept);
                 self.seats[index].deaths += 1;
-                self.seats[index].respawn_left = respawn_wait(level, by_neutrals);
+                self.lay_hero_down(index, respawn_wait(level, by_neutrals));
                 fallen_hero_team = Some(self.seats[index].team);
             }
             if self.seats[index].courier == Some(entity) {

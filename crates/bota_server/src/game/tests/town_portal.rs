@@ -389,10 +389,10 @@ fn a_death_hands_out_a_scroll_unless_neutrals_dealt_it() {
         let beside = pos(&world, hero) + Vec2::from_ints(80, 0);
         let killer = a_creep_at(&mut world, killer_team, beside);
         world.bury(vec![(hero, Some(killer))], &mut Vec::new());
-        let kept = world.seats[0]
-            .kept
-            .as_ref()
-            .and_then(|kept| kept.bag.town_portal)
+        let kept = world
+            .inventory
+            .get(hero)
+            .and_then(|bag| bag.town_portal)
             .flatten()
             .expect("the starting scroll is kept");
         assert_eq!(kept.charges, 1 + handed, "a death to {killer_team:?}");

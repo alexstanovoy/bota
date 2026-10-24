@@ -561,7 +561,10 @@ fn own_state(owner: Owner, hero: Option<HeroId>, view: &WorldView) -> Result<(),
         .as_ref()
         .ok_or(SessionError::MissingOwnStash)?
         .len();
-    let body_items = if let Some(id) = player.unit {
+    // A dead hero stands nowhere: its handle stays, its kit tells what it
+    // carries.
+    let dead = player.respawn_left > 0;
+    let body_items = if let Some(id) = player.unit.filter(|_| !dead) {
         let unit = view.unit(id).ok_or(SessionError::MissingOwnHero(id))?;
         if unit.kind != UnitKind::Hero
             || unit.team != owner.team
@@ -572,6 +575,11 @@ fn own_state(owner: Owner, hero: Option<HeroId>, view: &WorldView) -> Result<(),
         }
         unit.items.len()
     } else {
+        if let Some(id) = player.unit
+            && view.unit(id).is_some()
+        {
+            return Err(SessionError::InvalidOwnHero(id));
+        }
         player.kit.as_ref().map_or(0, |kit| kit.items.len())
     };
     own_hero_claims(owner, view, player.unit)?;

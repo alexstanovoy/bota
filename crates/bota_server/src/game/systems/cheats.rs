@@ -12,8 +12,8 @@ use bota_proto::{
 };
 
 use crate::game::{
-    AppliedModifier, AppliedOrigin, Entity, Event, EventVisibility, ItemStack, Seat, UnitOrder,
-    World,
+    AppliedModifier, AppliedOrigin, Entity, Event, EventVisibility, Inventory, ItemStack, Level,
+    Modifiers, Seat, UnitOrder, World, hero_kit,
 };
 
 /// The seats a match may hold at most, cheats' heroes included: as many as
@@ -279,7 +279,8 @@ impl World {
     /// standing one is moved there with its pools full.
     fn respawn_now(&mut self, seat: usize) {
         match self.seats[seat].unit {
-            None => self.respawn(seat),
+            _ if self.seats[seat].dead() => self.respawn(seat),
+            None => {}
             Some(unit) => {
                 let fountain = hero_spawn_pos(self.map, self.seats[seat].team);
                 let at = self.open_landing(fountain).unwrap_or(fountain);
@@ -377,9 +378,6 @@ impl World {
     /// at level one with the starting gold, nothing carried or stashed and
     /// nothing learned.
     fn reset_hero(&mut self, seat: usize) {
-        if let Some(unit) = self.seats[seat].unit.take() {
-            self.despawn(unit);
-        }
         let (slot, team, hero) = (
             self.seats[seat].slot,
             self.seats[seat].team,
@@ -387,6 +385,7 @@ impl World {
         );
         let mut fresh = Seat::new(slot, team, hero, rules::STARTING_GOLD, rules::STASH_SLOTS);
         let old = &self.seats[seat];
+        fresh.unit = old.unit;
         fresh.created = old.created;
         fresh.invulnerable = old.invulnerable;
         fresh.courier = old.courier;
@@ -401,9 +400,24 @@ impl World {
         fresh.structure_damage = old.structure_damage;
         self.seats[seat] = fresh;
         let at = hero_spawn_pos(self.map, team);
-        let unit = self.spawn_hero(team, at, slot, hero);
-        self.seats[seat].unit = Some(unit);
-        self.settle();
+        // The same hero starts over: nothing learned, carried or worn.
+        let Some(unit) = self.seats[seat].unit else {
+            let unit = self.spawn_hero(team, at, slot, hero);
+            self.seats[seat].unit = Some(unit);
+            self.settle();
+            return;
+        };
+        self.level.insert(unit, Level(1));
+        self.abilities.insert(unit, hero_kit(hero));
+        self.inventory
+            .insert(unit, Inventory::of_hero(slot, self.tick));
+        self.modifiers.insert(unit, Modifiers(Vec::new()));
+        if self.transform.contains(unit) {
+            self.move_unit_to(unit, at);
+            self.fill_pools(unit);
+        } else {
+            self.raise_hero(seat, at);
+        }
     }
 
     /// The unit a modifier cheat lands on: the one it names, else the one

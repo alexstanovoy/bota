@@ -466,7 +466,10 @@ pub struct PlayerView {
     pub team: Team,
     /// Which hero was picked. Set even while the hero is dead.
     pub hero: HeroId,
-    /// The hero's unit. Absent while dead, and for the other side while
+    /// The hero's unit: one id from the hero's first standing to the end of
+    /// the match, dead or alive, as Dota's hero is one entity. Dead (while
+    /// [`respawn_left`](Self::respawn_left) is above zero) it stands
+    /// nowhere and is in no view's units. Absent for the other side while
     /// illusions of the hero stand, so that it cannot tell the hero from
     /// them (see the [`contract`](crate::contract)).
     pub unit: Option<EntityId>,
@@ -484,7 +487,7 @@ pub struct PlayerView {
         deserialize_with = "crate::bounded::option_seq::<_, _, { crate::limits::STASH_SLOTS }>"
     )]
     pub stash: Option<Vec<Option<ItemView>>>,
-    /// What the dead hero carried. Absent while the hero stands, and for the
+    /// What the dead hero carries and has learned. Absent while the hero stands, and for the
     /// opposing team.
     pub kit: Option<Kit>,
     /// Kills scored.

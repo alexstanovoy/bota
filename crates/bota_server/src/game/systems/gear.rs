@@ -196,30 +196,16 @@ pub fn carried_bonus(inventory: &Inventory, ranged: bool) -> Carried {
 }
 
 impl World {
-    /// Runs down every ability and item cooldown and every mute, on bodies
-    /// and on what a fallen hero's seat keeps, every seat's item waits, and
-    /// every timed modifier, dropping the modifiers and waits that run out.
+    /// Runs down every ability and item cooldown and every mute, a dead
+    /// hero's too (Dota's keep running while it lies dead), every seat's
+    /// item waits, and every timed modifier, dropping the modifiers and waits
+    /// that run out.
     pub fn tick_gear(&mut self) {
-        // A wait runs whether the body it belongs to is standing or not: what
-        // waits with a seat runs down beside what waits on a body.
         for seat in self.seats.iter_mut() {
             seat.item_clocks.retain_mut(|(_, left)| {
                 *left = left.saturating_sub(1);
                 *left > 0
             });
-            let Some(kept) = seat.kept.as_mut() else {
-                continue;
-            };
-            for slot in kept.book.slots.iter_mut() {
-                slot.cooldown = slot.cooldown.saturating_sub(1);
-            }
-            for stack in kept.bag.every_stack_mut() {
-                stack.cooldown = stack.cooldown.saturating_sub(1);
-                stack.mute = stack.mute.saturating_sub(1);
-            }
-            kept.bag.lapse();
-        }
-        for seat in self.seats.iter_mut() {
             seat.stash.lapse();
         }
         self.lapse_loot();
@@ -300,14 +286,14 @@ impl World {
                 assemble_pool(owner, tick, &mut [bag]);
             }
             let home = self.at_home(self.seats[seat].unit);
+            let dead = self.seats[seat].dead();
             let seat_state = &mut self.seats[seat];
             let stash = &mut seat_state.stash;
-            let hero = match seat_state.unit {
-                Some(unit) => self.inventory.get_mut(unit),
-                None => seat_state.kept.as_mut().map(|kept| &mut kept.bag),
-            };
+            let hero = seat_state
+                .unit
+                .and_then(|unit| self.inventory.get_mut(unit));
             match hero {
-                Some(hero) if home || seat_state.unit.is_none() => {
+                Some(hero) if home || dead => {
                     assemble_pool(owner, tick, &mut [hero, stash]);
                 }
                 Some(hero) => {
@@ -423,13 +409,9 @@ impl World {
     /// already waiting in the bag, the stash or on the courier is spent on the build and so is
     /// bought no second time. Of several recipes the cheapest is bought, see
     /// [`bota_core::missing_parts`].
-    /// While the hero lies dead, what it carried when it fell counts as held,
-    /// as in Dota.
+    /// While the hero lies dead, what it carries counts as held, as in Dota.
     fn missing_parts(&self, seat: usize, unit: Option<Entity>, item: ItemId) -> Vec<ItemId> {
-        let bag = match unit {
-            Some(unit) => self.inventory.get(unit),
-            None => self.seats[seat].kept.as_ref().map(|kept| &kept.bag),
-        };
+        let bag = unit.and_then(|unit| self.inventory.get(unit));
         let held = purchase_pool(
             self.seats[seat].slot,
             bag.into_iter()
@@ -1047,10 +1029,14 @@ impl World {
             bota_proto::Order::Swap { from, to } => self.swap_while_down(slot, from, to),
             bota_proto::Order::Sell { slot: at } => self.sell_while_down(slot, usize::from(at.0)),
             bota_proto::Order::Disassemble { slot: at } => {
-                self.disassemble_item(slot, None, usize::from(at.0));
+                if let Some(hero) = self.seat(slot).and_then(|seat| seat.unit) {
+                    self.disassemble_item(slot, hero, usize::from(at.0));
+                }
             }
             bota_proto::Order::SetCombineLock { slot: at, locked } => {
-                self.set_combine_lock(slot, None, usize::from(at.0), locked);
+                if let Some(hero) = self.seat(slot).and_then(|seat| seat.unit) {
+                    self.set_combine_lock(slot, hero, usize::from(at.0), locked);
+                }
             }
             bota_proto::Order::Cheat { cheat } => self.cheat(slot, None, cheat, events),
             _ => {}
@@ -1069,15 +1055,15 @@ impl World {
             return;
         };
         let (from, to) = (usize::from(from.0), usize::from(to.0));
-        let seat = &mut self.seats[seat];
-        let Some(kept) = seat.kept.as_ref() else {
+        let seat = &self.seats[seat];
+        let Some(hero) = seat.unit else {
             return;
         };
-        if swap_refusal_in(Some(&kept.bag), seat, (from, to), false).is_some() {
+        if swap_refusal_in(self.inventory.get(hero), seat, (from, to), false).is_some() {
             return;
         }
-        if let Some(kept) = seat.kept.as_mut() {
-            kept.bag.swap_slots(from, to);
+        if let Some(bag) = self.inventory.get_mut(hero) {
+            bag.swap_slots(from, to);
         }
     }
 

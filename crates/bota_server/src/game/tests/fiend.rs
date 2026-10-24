@@ -656,7 +656,7 @@ fn souls_outlive_the_death_of_the_one_who_gathered_them_but_for_a_share() {
         let (mut world, fiend, _mark) = fiend_and_a_mark(400);
         hand_souls(&mut world, fiend, held);
         world.bury(vec![(fiend, None)], &mut Vec::new());
-        assert_eq!(world.seats[0].unit, None, "the body is gone");
+        assert!(world.seats[0].dead(), "it lies dead");
         let back = back_on_its_feet(&mut world);
         assert_eq!(souls(&world, back), kept, "{held} held, {kept} come back");
     }

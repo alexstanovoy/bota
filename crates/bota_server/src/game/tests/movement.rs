@@ -5,7 +5,7 @@ use bota_core::{CellGrid, HEROES, MELEE_CREEP, RANGED_CREEP, isqrt64, map_of, po
 use crate::game::{
     Clearance, Entity, Ground, March, UnitOrder, World, circle_stops, find_path, plan_radius,
 };
-use bota_proto::{Fixed, HeroId, ItemId, MapId, Order, SlotId, Target, Team, Vec2};
+use bota_proto::{Fixed, HeroId, ItemId, MapId, Order, SlotId, Target, Team, UnitKind, Vec2};
 
 use super::support::*;
 
@@ -1044,12 +1044,25 @@ fn a_directional_move_walks_on_straight_and_stops_at_a_wall_round_which_a_move_g
         world.settle();
         let hero = world.seats[0].unit.expect("stood up");
         let room = rules::units(60);
-        // Open ground, eighteen hundred units of it due east.
+        // Open ground, eighteen hundred units of it due east, out of every
+        // enemy tower's reach (a hero brought down lies off the map).
+        let towers: Vec<Vec2> = world
+            .entities
+            .iter()
+            .filter(|&unit| world.kind.get(unit) == Some(&UnitKind::Tower))
+            .filter(|&unit| world.team.get(unit) == Some(&Team::Dire))
+            .filter_map(|unit| world.transform.get(unit).map(|t| t.pos))
+            .collect();
         let start = (0..40)
             .flat_map(|row| {
                 (0..40).map(move |col| Vec2::from_ints(1000 + 300 * col, 1000 + 300 * row))
             })
-            .find(|at| world.clearance.capsule_clear(*at, *at + far, room))
+            .find(|at| {
+                world.clearance.capsule_clear(*at, *at + far, room)
+                    && towers
+                        .iter()
+                        .all(|tower| !tower.within(*at + far, rules::units(1500)))
+            })
             .expect("a clear run on the map");
         stand_a_wall(
             &mut world,

@@ -70,7 +70,10 @@ fn absent_optionals_stay_absent() {
     view.unit = None;
     let decoded = roundtrip(&view);
     assert_eq!(decoded.gold, None, "enemy gold must not appear");
-    assert_eq!(decoded.unit, None, "a dead hero must not gain a unit");
+    assert_eq!(
+        decoded.unit, None,
+        "a hero kept from a side must not appear"
+    );
 }
 
 #[test]

@@ -3,21 +3,7 @@
 use bota_proto::{HeroId, ItemId, SlotId, Team, Vec2};
 
 use crate::engine::state_hash;
-use crate::game::{AbilityBook, Entity, Inventory, Modifiers};
-
-/// What a fallen hero leaves behind until it stands up again.
-#[derive(Clone, Debug)]
-pub struct Kept {
-    /// What it had learned.
-    pub book: AbilityBook,
-    /// What it was carrying.
-    pub bag: Inventory,
-    /// What it wore that lasts through death: what it had gathered.
-    pub modifiers: Modifiers,
-    /// The tick it fell on: what was bought since may be sold back while it
-    /// is gone, as in Dota.
-    pub fell: u32,
-}
+use crate::game::{Entity, Inventory};
 
 /// A Town Portal Scroll being read by a seat's hero, and the sight it
 /// leaves where it lands for a moment after.
@@ -70,7 +56,10 @@ pub struct Seat {
     pub team: Team,
     /// Which hero it picked.
     pub hero: HeroId,
-    /// The body it drives, while one stands.
+    /// Its hero: one entity from the first time it stands to the end of the
+    /// match, dead or alive, as Dota's ("After the first spawn, a hero is
+    /// not created again. However, it respawns", Liquipedia, *Hero (unit
+    /// type)*).
     pub unit: Option<Entity>,
     /// Gold in hand.
     pub gold: i32,
@@ -80,12 +69,14 @@ pub struct Seat {
     pub xp: i32,
     /// Level reached.
     pub level: u8,
-    /// Ticks before the body comes back.
+    /// Ticks before its fallen hero stands again; nonzero exactly while it
+    /// lies dead.
     pub respawn_left: u32,
+    /// The tick its hero last fell: what was bought since may be sold back
+    /// while it lies dead, as in Dota.
+    pub fell: u32,
     /// What waits in the stash at the fountain.
     pub stash: Inventory,
-    /// What the body left behind, while it is gone.
-    pub kept: Option<Kept>,
     /// The courier it owns, while one stands.
     pub courier: Option<Entity>,
     /// Ticks before the courier comes back. Zero while one stands.
@@ -137,8 +128,8 @@ impl Seat {
             xp: 0,
             level: 1,
             respawn_left: 0,
+            fell: 0,
             stash: Inventory::stash(stash_slots),
-            kept: None,
             courier: None,
             courier_left: 0,
             courier_kept: None,
@@ -157,14 +148,13 @@ impl Seat {
             invulnerable: false,
         }
     }
+
+    /// Whether its hero lies dead, waiting to stand again.
+    pub fn dead(&self) -> bool {
+        self.respawn_left > 0
+    }
 }
 
-state_hash!(Kept {
-    book,
-    bag,
-    modifiers,
-    fell
-});
 state_hash!(Teleport {
     building,
     landing,
@@ -185,8 +175,8 @@ state_hash!(Seat {
     xp,
     level,
     respawn_left,
+    fell,
     stash,
-    kept,
     courier,
     courier_left,
     courier_kept,

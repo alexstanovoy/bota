@@ -64,6 +64,11 @@ pub(super) fn seat(world: &mut World, slot: SlotId, team: Team, unit: Entity, go
 }
 
 pub(super) fn reveal(world: &mut World, entity: Entity) {
+    if !world.visibility.contains(entity) {
+        world
+            .visibility
+            .insert(entity, crate::game::Visibility::NONE);
+    }
     let seen = world.visibility.get_mut(entity).unwrap();
     seen.add(Team::Radiant);
     seen.add(Team::Dire);

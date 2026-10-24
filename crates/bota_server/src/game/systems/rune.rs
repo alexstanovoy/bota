@@ -445,10 +445,13 @@ impl World {
     pub(crate) fn tick_bottles(&mut self) {
         let beat = self.clock().is_multiple_of(BOTTLE_REFILL_PERIOD_TICKS);
         for index in 0..self.seats.len() {
-            if let Some(hero) = self.seats[index].unit.filter(|&hero| self.alive(hero)) {
+            let Some(hero) = self.seats[index].unit else {
+                continue;
+            };
+            if self.alive(hero) {
                 self.tick_bottles_of(hero, index, beat);
-            } else if let Some(kept) = self.seats[index].kept.as_mut() {
-                for stack in kept.bag.every_stack_mut() {
+            } else if let Some(bag) = self.inventory.get_mut(hero) {
+                for stack in bag.every_stack_mut() {
                     let Some(rune) = stack.rune.as_mut() else {
                         continue;
                     };

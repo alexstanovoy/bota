@@ -253,7 +253,7 @@ fn a_fallen_hero_comes_back_at_its_fountain() {
     );
     world.settle();
     world.bury(vec![(hero, None)], &mut Vec::new());
-    assert!(world.seats[0].unit.is_none(), "its body is gone");
+    assert!(world.seats[0].dead(), "it lies dead");
     assert_eq!(world.seats[0].deaths, 1);
     assert!(world.seats[0].respawn_left > 0);
     let back = back_on_its_feet(&mut world);
@@ -294,11 +294,11 @@ fn a_hero_keeps_what_it_learned_and_carried_through_a_death() {
     let boots = ItemId::BOOTS;
     assert!(world.buy(SlotId(0), boots, &mut events));
     world.bury(vec![(hero, None)], &mut events);
-    assert!(
-        world.seats[0].kept.is_some(),
-        "what it had waits with its seat while the body is gone"
-    );
+    assert!(world.seats[0].dead());
+    assert_eq!(world.seats[0].unit, Some(hero), "the same hero lies dead");
+    assert_eq!(world.pos(hero), None, "and stands nowhere");
     let back = back_on_its_feet(&mut world);
+    assert_eq!(back, hero, "the same hero stands again, as Dota's");
     assert_eq!(world.seats[0].level, 7, "its level is its own");
     assert_eq!(
         world.abilities.get(back).expect("casts").slots[1].level,
@@ -309,10 +309,6 @@ fn a_hero_keeps_what_it_learned_and_carried_through_a_death() {
         slot_of(&world, back, 0).map(|s| s.id),
         Some(boots),
         "and what it carried came back with it"
-    );
-    assert!(
-        world.seats[0].kept.is_none(),
-        "and the seat holds nothing of it any more"
     );
     world.step();
     assert_eq!(
@@ -461,6 +457,54 @@ fn a_heros_blows_on_enemy_heroes_and_structures_are_counted_in_the_final_stats()
 }
 
 /// The match hero at the seventh level with its second ability learned.
+/// Dota's hero is one entity all match ("After the first spawn, a hero is
+/// not created again. However, it respawns", Liquipedia, *Hero (unit
+/// type)*). Dead, it is the unit its seat names, on the wire too; it stands
+/// nowhere, so no view carries it among its units and nothing sees it; it
+/// mends nothing, and its cooldowns keep running.
+#[test]
+fn a_dead_hero_is_the_same_unit_standing_nowhere_mending_nothing_its_cooldowns_running() {
+    let (mut world, hero) = a_level_seven_hero();
+    world.abilities.get_mut(hero).expect("a book").slots[1].cooldown = 300;
+    world.bury(vec![(hero, None)], &mut Vec::new());
+    world.step();
+    for team in [Team::Radiant, Team::Dire] {
+        let view = world.view(team);
+        let seat = view.player(SlotId(0)).expect("the seat");
+        assert_eq!(seat.unit, Some(wire_id(hero)), "{team:?} is told its hero");
+        assert!(seat.respawn_left > 0);
+        assert!(view.units.iter().all(|unit| unit.id != wire_id(hero)));
+        assert_eq!(
+            seat.kit.is_some(),
+            team == Team::Radiant,
+            "its kit, own side alone"
+        );
+    }
+    assert!(!world.can_see(Team::Dire, hero) && world.pos(hero).is_none());
+    let cooldown = |world: &World| world.abilities.get(hero).expect("a book").slots[1].cooldown;
+    let before = cooldown(&world);
+    run(&mut world, 30);
+    assert_eq!(
+        cooldown(&world),
+        before - 30,
+        "its waits run while it lies dead"
+    );
+    assert_eq!(world.health.get(hero).map(|h| h.hp), Some(Fixed::ZERO));
+    assert_eq!(
+        world.mana.get(hero).map(|m| m.mana),
+        Some(Fixed::ZERO),
+        "it mends nothing"
+    );
+    let back = back_on_its_feet(&mut world);
+    assert_eq!(back, hero);
+    let full = world.stats.get(hero).expect("settled");
+    assert_eq!(
+        world.mana.get(hero).map(|m| m.mana),
+        Some(full.max_mana),
+        "it stands up full"
+    );
+}
+
 fn a_level_seven_hero() -> (World, Entity) {
     let (mut world, hero) = match_hero();
     world.level.insert(hero, Level(7));

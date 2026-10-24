@@ -17,29 +17,20 @@ fn local(at: usize) -> usize {
 
 impl World {
     /// The stack in one of a seat's slots: the stash's, else the unit's bag
-    /// or, for a hero that lies dead (`unit` absent), what it carried.
-    fn stack_in(&self, unit: Option<Entity>, seat: &Seat, at: usize) -> Option<ItemStack> {
+    /// (a hero that lies dead carries its own still).
+    fn stack_in(&self, unit: Entity, seat: &Seat, at: usize) -> Option<ItemStack> {
         if in_stash(at) {
             return seat.stash.slots.get(at - BAG_SLOTS).copied().flatten();
         }
-        match unit {
-            Some(unit) => self.held_in_bag(unit, at),
-            None => seat
-                .kept
-                .as_ref()
-                .and_then(|kept| kept.bag.slot(at).copied().flatten()),
-        }
+        self.held_in_bag(unit, at)
     }
 
     /// The bag a slot belongs to, as [`World::stack_in`] reads it.
-    fn bag_in(&mut self, seat: usize, unit: Option<Entity>, at: usize) -> Option<&mut Inventory> {
+    fn bag_in(&mut self, seat: usize, unit: Entity, at: usize) -> Option<&mut Inventory> {
         if in_stash(at) {
             return Some(&mut self.seats[seat].stash);
         }
-        match unit {
-            Some(unit) => self.inventory.get_mut(unit),
-            None => self.seats[seat].kept.as_mut().map(|kept| &mut kept.bag),
-        }
+        self.inventory.get_mut(unit)
     }
 
     /// Why a seat may not take apart what one of its slots holds, or nothing
@@ -47,7 +38,7 @@ impl World {
     /// does; a hero that lies dead is in reach of no shop and needs none.
     pub(crate) fn disassembly_refusal(
         &self,
-        unit: Option<Entity>,
+        unit: Entity,
         seat: &Seat,
         at: usize,
     ) -> Result<(), RejectReason> {
@@ -57,7 +48,7 @@ impl World {
         if held.owner != seat.slot {
             return Err(RejectReason::NotYourItem);
         }
-        if in_stash(at) && unit.is_some_and(|unit| !self.at_shop(unit)) {
+        if in_stash(at) && !seat.dead() && !self.at_shop(unit) {
             return Err(RejectReason::NotAtShop);
         }
         bota_core::disassembly(held.id, held.disassemble_until.saturating_sub(self.tick))
@@ -69,7 +60,7 @@ impl World {
     /// it may.
     pub(crate) fn lock_refusal(
         &self,
-        unit: Option<Entity>,
+        unit: Entity,
         seat: &Seat,
         at: usize,
     ) -> Result<(), RejectReason> {
@@ -88,7 +79,7 @@ impl World {
     /// first goes where the build was, the rest into the bag's free room, and
     /// what has none on the ground where the unit stands (the fountain for a
     /// hero that lies dead).
-    pub fn disassemble_item(&mut self, slot: SlotId, unit: Option<Entity>, at: usize) -> bool {
+    pub fn disassemble_item(&mut self, slot: SlotId, unit: Entity, at: usize) -> bool {
         let Some(seat) = self.seats.iter().position(|s| s.slot == slot) else {
             return false;
         };
@@ -115,7 +106,7 @@ impl World {
                 left.push(part);
             }
         }
-        let spot = match unit.and_then(|unit| self.pos(unit)) {
+        let spot = match self.pos(unit) {
             Some(spot) => spot,
             None => fountain_pos(self.map, self.seats[seat].team),
         };
@@ -178,7 +169,7 @@ impl World {
     pub fn set_combine_lock(
         &mut self,
         slot: SlotId,
-        unit: Option<Entity>,
+        unit: Entity,
         at: usize,
         locked: bool,
     ) -> bool {

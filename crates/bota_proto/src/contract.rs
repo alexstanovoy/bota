@@ -102,6 +102,14 @@
 //! default it could take for a value: an `Option` that is `None` there and
 //! `Some` in the side's own view and in a view of everything.
 //!
+//! A hero is one unit for the whole match, as Dota's: its
+//! [`PlayerView::unit`](crate::PlayerView::unit) names the same id from its
+//! first standing to the end, dead or alive, and events, picks and control
+//! groups keep naming it. Dead, while its seat's `respawn_left` is above
+//! zero, it stands nowhere: no view carries it among its units, and its own
+//! side reads what it carries and has learned in
+//! [`PlayerView::kit`](crate::PlayerView::kit).
+//!
 //! As Dota's scoreboard: of a seat of the other side,
 //! [`PlayerView`](crate::PlayerView) tells the hero's level and experience
 //! as they stood when the viewing side last saw the hero, and

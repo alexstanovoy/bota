@@ -675,7 +675,7 @@ fn raze_from_the_fog(world: &mut World, fiend: Entity, slot: u8, mark: Entity) -
     );
     let mut events = cast(world, slot, Target::None);
     for _ in 0..60 {
-        if !world.entities.contains(mark) {
+        if !world.alive(mark) {
             return events;
         }
         events.extend(world.step());

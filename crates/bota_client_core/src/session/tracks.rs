@@ -198,6 +198,11 @@ impl Tracks {
         let mut fresh = std::mem::take(&mut self.fresh);
         for (index, unit, tracked) in pair_tracked(&mut self.entities, &view.units) {
             match tracked {
+                // A hero is one unit all match: seen again after it fell, it
+                // stood up anew, and its track starts afresh.
+                Some(entity) if entity.last_death.is_some() => {
+                    *entity = new_entity(view.tick, unit);
+                }
                 Some(entity) => update_entity(entity, view.tick, unit),
                 None => fresh.push(index),
             }

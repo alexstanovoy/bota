@@ -87,7 +87,7 @@ fn fell(world: &mut World) {
     let hero = hero(world);
     world.bury(vec![(hero, None)], &mut Vec::new());
     run(world, 1);
-    assert!(world.seats[0].unit.is_none(), "the hero fell");
+    assert!(world.seats[0].dead(), "the hero fell");
 }
 
 #[test]

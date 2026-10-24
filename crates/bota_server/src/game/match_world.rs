@@ -118,7 +118,7 @@ impl World {
             self.use_glyph(cmd.slot);
             return;
         }
-        if cmd.unit.is_none() && self.seat(cmd.slot).is_some_and(|seat| seat.unit.is_none()) {
+        if self.for_dead_hero(cmd.slot, cmd.unit) {
             self.take_order_while_down(cmd.slot, cmd.order, events);
             return;
         }
@@ -196,10 +196,10 @@ impl World {
             }
             Order::SwitchWard { slot } => self.switch_ward(unit, usize::from(slot.0)),
             Order::Disassemble { slot: at } => {
-                self.disassemble_item(seat, Some(unit), usize::from(at.0));
+                self.disassemble_item(seat, unit, usize::from(at.0));
             }
             Order::SetCombineLock { slot: at, locked } => {
-                self.set_combine_lock(seat, Some(unit), usize::from(at.0), locked);
+                self.set_combine_lock(seat, unit, usize::from(at.0), locked);
             }
             Order::Cheat { cheat } => {
                 self.cheat(seat, Some(unit), cheat, events);
@@ -454,6 +454,14 @@ impl World {
         (self.owner.get(unit) == Some(&slot)).then_some(unit)
     }
 
+    /// Whether an order is for a seat's hero while it lies dead: naming
+    /// nobody, or naming the hero itself.
+    fn for_dead_hero(&self, slot: SlotId, named: Option<bota_proto::EntityId>) -> bool {
+        self.seat(slot).is_some_and(|seat| {
+            seat.dead() && named.is_none_or(|named| seat.unit.map(wire_id) == Some(named))
+        })
+    }
+
     /// The seat at a slot, if that slot is in the match.
     pub fn seat(&self, slot: SlotId) -> Option<&Seat> {
         self.seats.iter().find(|s| s.slot == slot)
@@ -476,11 +484,11 @@ impl World {
         let Some(seat) = self.seat(slot) else {
             return Err(RejectReason::HeroDead);
         };
-        if named.is_none() && seat.unit.is_none() {
+        if self.for_dead_hero(slot, named) {
             return self.check_while_down(seat, order);
         }
         // A named unit has to be one this seat drives; naming nobody means
-        // its hero, and a seat with no hero standing drives nothing.
+        // its hero.
         let unit = match named {
             None => seat.unit.ok_or(RejectReason::HeroDead)?,
             Some(named) => self
@@ -505,10 +513,10 @@ impl World {
             Order::Sell { slot: named } => self.check_sale(unit, seat, usize::from(named.0)),
             Order::SwitchWard { slot: named } => self.check_switch(unit, usize::from(named.0)),
             Order::Disassemble { slot: named } => {
-                self.disassembly_refusal(Some(unit), seat, usize::from(named.0))
+                self.disassembly_refusal(unit, seat, usize::from(named.0))
             }
             Order::SetCombineLock { slot: named, .. } => {
-                self.lock_refusal(Some(unit), seat, usize::from(named.0))
+                self.lock_refusal(unit, seat, usize::from(named.0))
             }
             Order::Put {
                 slot: named,
@@ -729,7 +737,7 @@ impl World {
             Order::Buy { item } => self.check_buy(seat, *item),
             // What the hero carried waits with its seat; it stands at no shop.
             Order::Swap { from, to } => crate::game::swap_refusal_in(
-                seat.kept.as_ref().map(|kept| &kept.bag),
+                seat.unit.and_then(|hero| self.inventory.get(hero)),
                 seat,
                 (usize::from(from.0), usize::from(to.0)),
                 false,
@@ -737,10 +745,12 @@ impl World {
             .map_or(Ok(()), Err),
             Order::Sell { slot } => self.sale_while_down(seat, usize::from(slot.0)).map(|_| ()),
             Order::Disassemble { slot } => {
-                self.disassembly_refusal(None, seat, usize::from(slot.0))
+                let hero = seat.unit.ok_or(RejectReason::HeroDead)?;
+                self.disassembly_refusal(hero, seat, usize::from(slot.0))
             }
             Order::SetCombineLock { slot, .. } => {
-                self.lock_refusal(None, seat, usize::from(slot.0))
+                let hero = seat.unit.ok_or(RejectReason::HeroDead)?;
+                self.lock_refusal(hero, seat, usize::from(slot.0))
             }
             Order::Cheat { cheat } => self.check_cheat(seat.slot, None, cheat),
             _ => Err(RejectReason::HeroDead),
@@ -751,7 +761,7 @@ impl World {
     /// a stack of its own bought since the hero fell (Dota: "Items cannot be
     /// sold while dead, unless they were purchased during that death").
     pub(crate) fn sale_while_down(&self, seat: &Seat, at: usize) -> Result<usize, RejectReason> {
-        let fell = seat.kept.as_ref().map_or(self.tick, |kept| kept.fell);
+        let fell = seat.fell;
         if !in_stash(at) {
             return Err(RejectReason::HeroDead);
         }

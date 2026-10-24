@@ -94,7 +94,8 @@ pub enum Ingested {
     /// A snapshot was folded.
     Snapshot {
         tick: u32,
-        /// The seat's hero is another unit than before (it died and came back).
+        /// The seat's hero fell, or stood up again: what was ordered of its
+        /// last body is gone.
         body_changed: bool,
         /// The tick to acknowledge now, under [`AckPolicy::OnSnapshot`].
         ack: Option<u32>,
@@ -326,14 +327,14 @@ impl ClientSession {
                 .map_err(IngestError::Observer)?;
             self.record_events(skipped.tick, &skipped.events);
         }
-        let hero_before = self.own_hero_id();
+        let body_before = self.own_body();
         self.fold_snapshot(&view);
         let tick = view.tick;
         self.skipped_ticks = self
             .skipped_ticks
             .saturating_add(u32::try_from(view.skipped_ticks.len()).unwrap_or(u32::MAX));
         self.previous = self.current.replace(view);
-        let body_changed = self.owner.is_some() && hero_before != self.own_hero_id();
+        let body_changed = self.owner.is_some() && body_before != self.own_body();
         if body_changed {
             self.ledger.clear(None);
         }
@@ -493,8 +494,12 @@ impl ClientSession {
     }
 
     #[inline]
-    fn own_hero_id(&self) -> Option<EntityId> {
-        self.own_player()?.unit
+    /// The own hero's body as its orders know it: its handle, its deaths and
+    /// whether it stands. A hero is one unit all match, so its body changes
+    /// when it falls and when it stands up again.
+    fn own_body(&self) -> Option<(EntityId, u16, bool)> {
+        let player = self.own_player()?;
+        Some((player.unit?, player.deaths, player.respawn_left == 0))
     }
 }
 

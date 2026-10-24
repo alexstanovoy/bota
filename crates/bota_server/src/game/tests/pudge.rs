@@ -432,7 +432,7 @@ fn a_flesh_heap_outlives_the_death_of_the_one_carrying_it() {
     world.step();
     assert_eq!(heap(&world, pudge), 1, "one death has fed it");
     world.bury(vec![(pudge, None)], &mut events);
-    assert_eq!(world.seats[0].unit, None, "the body is gone");
+    assert!(world.seats[0].dead(), "it lies dead");
     let back = back_on_its_feet(&mut world);
     assert_eq!(heap(&world, back), 1, "and what it kept comes back with it");
     assert_eq!(

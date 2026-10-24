@@ -1,8 +1,8 @@
 //! Putting an entity into the world with everything its kind needs.
 
 use bota_core::{
-    COURIER, COURIER_ABILITIES, HERO, ModifierKind, NeutralAbility, NeutralKind, UnitDef, hero_def,
-    neutral_ability_level, rules,
+    COURIER, COURIER_ABILITIES, HERO, ModifierKind, NeutralAbility, NeutralKind, UnitDef,
+    effect_def, hero_def, neutral_ability_level, rules,
 };
 use bota_proto::{AbilityId, Angle, Fixed, HeroId, Inflictor, SlotId, Team, Vec2};
 
@@ -173,6 +173,77 @@ impl World {
         self.inventory
             .insert(entity, Inventory::of_hero(slot, self.tick));
         entity
+    }
+
+    /// Lays a seat's hero down for `wait` ticks: it leaves the map and keeps
+    /// all else, as Dota's dead hero, which is never created again. It stands
+    /// nowhere, so nothing sees it, aims at it, walks round it or reaches it
+    /// with an aura; it acts on nothing and takes no order. Its book, its bag,
+    /// its level and what it gathered stay on it; the modifiers Dota removes on
+    /// death go. Counting the death and paying for it are the caller's: an
+    /// Aegis's rising is a lying down that counts as none.
+    pub(crate) fn lay_hero_down(&mut self, index: usize, wait: u32) {
+        assert!(wait > 0, "a hero lies dead at least a tick");
+        let Some(hero) = self.seats[index].unit else {
+            return;
+        };
+        if let Some(on_it) = self.modifiers.get_mut(hero) {
+            on_it.0.retain(|held| {
+                held.ticks_left != Some(0)
+                    && effect_def(held.kind.effect_id()).is_some_and(|def| def.kept_through_death)
+            });
+        }
+        self.transform.remove(hero);
+        self.hull.remove(hero);
+        self.action.remove(hero);
+        self.orders.remove(hero);
+        self.queue.remove(hero);
+        self.route.remove(hero);
+        self.plan.remove(hero);
+        self.motion.remove(hero);
+        self.target.remove(hero);
+        self.visibility.remove(hero);
+        self.exposure.remove(hero);
+        self.handling.remove(hero);
+        self.applied.remove(hero);
+        self.feast.remove(hero);
+        if let Some(health) = self.health.get_mut(hero) {
+            health.hp = Fixed::ZERO;
+        }
+        if let Some(mana) = self.mana.get_mut(hero) {
+            mana.mana = Fixed::ZERO;
+        }
+        self.seats[index].fell = self.tick;
+        self.seats[index].respawn_left = wait;
+        // Its numbers are those of what it still wears.
+        self.refresh_stats();
+    }
+
+    /// Stands a seat's fallen hero up at `at`, full and fresh, with no order
+    /// in hand: the same entity that fell. Where it stands up and what it
+    /// wears for it are the caller's: the fountain's invulnerability for a
+    /// respawn, nothing for an Aegis's rising.
+    pub(crate) fn raise_hero(&mut self, index: usize, at: Vec2) {
+        let Some(hero) = self.seats[index].unit else {
+            return;
+        };
+        let body = hero_def(self.seats[index].hero).map_or(&HERO, |def| def.unit);
+        self.transform.insert(
+            hero,
+            Transform {
+                pos: at,
+                facing: Angle::default(),
+            },
+        );
+        // Seen by its own side from this moment, as anything stood up is.
+        self.set_team(hero, self.seats[index].team);
+        self.give_hull(hero, body);
+        self.give_action(hero);
+        self.give_orders(hero);
+        self.apply_spawn_modifiers(hero);
+        self.seats[index].respawn_left = 0;
+        self.settle();
+        self.fill_pools(hero);
     }
 
     /// Puts a lane creep on the map, to march its lane from where it stands.

@@ -19,7 +19,7 @@ fn fallen_with_boots() -> World {
     let mut events = Vec::new();
     world.bury(vec![(hero, None)], &mut events);
     world.step();
-    assert!(world.seats[0].unit.is_none(), "the hero lies dead");
+    assert!(world.seats[0].dead(), "the hero lies dead");
     world
 }
 
@@ -64,11 +64,16 @@ fn a_seat_whose_hero_lies_dead_buys_into_the_stash_with_what_the_body_carried_co
     );
     // The parts bought build with the body's boots at once (Dota: the stash
     // combines with the inventory of a hero lying dead).
-    let kept = world.seats[0]
-        .kept
-        .as_ref()
-        .expect("the body's bag is kept");
-    let carried: Vec<ItemId> = kept.bag.held().map(|stack| stack.id).collect();
+    let hero = world.seats[0]
+        .unit
+        .expect("the dead hero is still its seat's");
+    let carried: Vec<ItemId> = world
+        .inventory
+        .get(hero)
+        .expect("the dead hero's bag")
+        .held()
+        .map(|stack| stack.id)
+        .collect();
     assert!(carried.contains(&ItemId::POWER_TREADS), "{carried:?}");
     assert!(!carried.contains(&ItemId::BOOTS));
     // Quick-buy is buying: a single item whole, too.
@@ -143,13 +148,13 @@ fn what_a_body_carried_when_it_fell_sells_back_at_the_full_price_no_more() {
     world.inventory.get_mut(hero).expect("a bag").slots[0] = Some(fresh_stack(ItemId::BOOTS, 0));
     let mut events = Vec::new();
     world.bury(vec![(hero, None)], &mut events);
-    let kept = world.seats[0].kept.as_ref().expect("the fallen body's kit");
-    let boots = kept.bag.slots[0].expect("the boots it carried");
+    let bag = world.inventory.get(hero).expect("the fallen hero's bag");
+    let boots = bag.slots[0].expect("the boots it carried");
     assert!(
         boots.touched,
         "Dota: the sellback timer ends when the carrier dies"
     );
-    assert_eq!(kept.fell, world.tick);
+    assert_eq!(world.seats[0].fell, world.tick);
 }
 
 /// Checked in the Dota 2 client (7.41, 2026-10-24): a dead hero may swap its
@@ -166,9 +171,9 @@ fn a_dead_hero_swaps_what_it_carried_between_its_slots_and_reaches_no_stash() {
     seat_order(&mut world, to_backpack);
     let kept = |world: &World, at: usize| {
         world.seats[0]
-            .kept
-            .as_ref()
-            .and_then(|kept| kept.bag.slots[at])
+            .unit
+            .and_then(|hero| world.inventory.get(hero))
+            .and_then(|bag| bag.slots[at])
             .map(|stack| stack.id)
     };
     assert_eq!(
