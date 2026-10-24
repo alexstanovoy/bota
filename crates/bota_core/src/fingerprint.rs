@@ -12,7 +12,7 @@ use bota_proto::{REGISTRY_DIGEST, fnv1a};
 /// bump. A comment, a reformatting or a refactor that decides nothing
 /// differently renews the pin and leaves the version, so builds that agree on
 /// the rules keep meeting.
-pub const RULES_VERSION: u32 = 43;
+pub const RULES_VERSION: u32 = 44;
 
 /// The wire fingerprint: the [`REGISTRY_DIGEST`] and the [`RULES_VERSION`]
 /// together. A client's `Hello` carries it, a replay's header names it, and

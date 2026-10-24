@@ -526,6 +526,7 @@ pub const FOUNTAIN: UnitDef = UnitDef {
     projectile_speed: Some(rules::FOUNTAIN_PROJECTILE_SPEED),
     day_vision: rules::FOUNTAIN_VISION,
     night_vision: rules::FOUNTAIN_VISION,
+    true_sight: rules::FOUNTAIN_TRUE_SIGHT,
     collision: rules::FOUNTAIN_COLLISION,
     bound: rules::FOUNTAIN_BOUND,
     invulnerable: true,

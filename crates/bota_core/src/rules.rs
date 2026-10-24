@@ -829,6 +829,9 @@ pub const FOUNTAIN_ATTACK_TIME: u32 = 150;
 pub const FOUNTAIN_ATTACK_POINT: u32 = 0;
 /// Fountain attack projectile speed, world units per second.
 pub const FOUNTAIN_PROJECTILE_SPEED: i32 = 1400;
+/// How far the fountain reveals what hides: its True Sight (Liquipedia,
+/// *Fountain*: "Reveal Radius: 1200").
+pub const FOUNTAIN_TRUE_SIGHT: i32 = 1200;
 /// What each stack of the fountain's Fountain Damage adds to its shots
 /// (Liquipedia, *Fountain*: "Attack Damage Bonus per Stack: 3"; no most
 /// stacks). The stack is added before the shot deals its damage.

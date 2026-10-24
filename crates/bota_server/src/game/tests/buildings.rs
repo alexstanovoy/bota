@@ -265,3 +265,34 @@ fn the_fountains_shots_stack_three_more_each_hold_twelve_seconds_and_splash_a_qu
         "the stacks hold 12 s from the last shot"
     );
 }
+
+/// Dota's fountain reveals what hides within 1200 (Liquipedia, *Fountain*:
+/// True Sight, "Reveal Radius: 1200"): an enemy observer ward planted in its
+/// reach is seen by its side and shot down; one beyond is not seen.
+#[test]
+fn the_fountain_sees_a_hidden_ward_in_its_reach_and_shoots_it_down() {
+    let mut world = World::on_map(map_of(MapId(2)));
+    let fountain_at = world.map.fountains[0];
+    let near = fountain_at + bota_proto::Vec2::from_ints(900, 0);
+    let far = fountain_at + bota_proto::Vec2::from_ints(1500, 0);
+    let plant = |world: &mut World, at| {
+        world.spawn_ward(
+            &bota_core::OBSERVER_WARD,
+            (Team::Dire, at),
+            10_000,
+            (None, None),
+        )
+    };
+    let (inside, outside) = (plant(&mut world, near), plant(&mut world, far));
+    world.settle();
+    assert!(world.can_see(Team::Radiant, inside), "true sight finds it");
+    assert!(
+        !world.can_see(Team::Radiant, outside),
+        "beyond 1200 it hides"
+    );
+    for _ in 0..90 {
+        world.step();
+    }
+    assert!(!world.alive(inside), "the fountain shoots it down");
+    assert!(world.alive(outside));
+}
