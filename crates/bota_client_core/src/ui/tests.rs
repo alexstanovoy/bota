@@ -186,9 +186,10 @@ fn a_press_means_what_its_slot_and_its_state_settle() {
         slot: AbilitySlot(2),
     });
     let cases = [
-        // What needs no aim goes at once, and so does a passive.
-        (q, false, own, None, cast.clone()),
-        (q, false, Some(None), None, cast),
+        // What needs no aim goes at once; a passive is nothing to press.
+        (q, false, own, None, cast),
+        (q, false, Some(None), None, Press::Nothing),
+        (salve, false, Some(None), None, Press::Nothing),
         // What is aimed waits for a click.
         (q, false, point, None, Press::Aim(q)),
         // Control levels an ability, and is nothing to an item.
@@ -928,7 +929,7 @@ fn every_blurb_takes_its_numbers_from_the_rules() {
 }
 
 #[test]
-fn a_unit_ability_aimed_at_no_unit_refuses_and_stays_taken_up() {
+fn a_unit_ability_aimed_at_no_unit_stays_taken_up() {
     use crate::ui::intent::Intent;
     let mut app = a_started_app();
     let mut hero = owned(1, UnitKind::Hero, Some(SlotId(0)));
@@ -948,7 +949,10 @@ fn a_unit_ability_aimed_at_no_unit_refuses_and_stays_taken_up() {
         unit: None,
     });
     assert_eq!(app.aiming, Some(Slot::Ability(0)), "the mode is kept");
-    assert!(app.reject.is_some(), "and the player is told");
+    assert!(
+        app.reject.is_none(),
+        "nothing to tell: the cursor still aims"
+    );
     assert!(app.shown_orders.is_empty(), "no order goes out");
     app.act(Intent::Aimed {
         at: (10.0, 10.0),

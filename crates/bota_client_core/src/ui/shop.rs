@@ -165,10 +165,7 @@ impl App {
     /// still covers it after the others.
     pub fn queue_buy(&mut self, item: u16) {
         if self.price_of(item).0 > self.gold_after_queue() {
-            self.reject = Some((
-                crate::refusal(bota_proto::RejectReason::NotEnoughGold).to_string(),
-                2.5,
-            ));
+            self.refuse(bota_proto::RejectReason::NotEnoughGold);
             return;
         }
         self.queued_buys.push(item);

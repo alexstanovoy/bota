@@ -221,8 +221,8 @@ pub enum CueKind {
     HeroDeath,
     /// The watched hero brings an enemy hero down.
     HeroKill,
-    /// An order of this seat was turned down.
-    Refused,
+    /// An order of this seat was turned down, for this reason.
+    Refused(bota_proto::RejectReason),
 }
 
 /// A cue: what, how loud from 0 to 1, and where in the world it happens;
@@ -234,6 +234,25 @@ pub struct Cue {
     pub gain: f32,
     /// World position it comes from.
     pub at: Option<(f32, f32)>,
+}
+
+/// Why an order went nowhere.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Refused {
+    /// A rule of the game, the server's or one the client checks first.
+    Rule(bota_proto::RejectReason),
+    /// A line the client could not read (the console's), in its words.
+    Said(String),
+}
+
+impl Refused {
+    /// The refusal in plain words.
+    pub fn text(&self) -> &str {
+        match self {
+            Refused::Rule(reason) => refusal(*reason),
+            Refused::Said(line) => line,
+        }
+    }
 }
 
 /// One line of the kill feed.
@@ -294,8 +313,9 @@ pub struct App {
     pub aimed_from: Option<(u32, crate::ui::slots::Slot)>,
     /// The slot whose order was last refused, and the seconds left on it.
     pub refused: Option<(crate::ui::slots::Slot, f32)>,
-    /// The last rejected order, shown briefly: text and seconds left.
-    pub reject: Option<(String, f32)>,
+    /// The last rejected order, shown briefly: why, and seconds left. A
+    /// front end words it (or keeps quiet) as its game does.
+    pub reject: Option<(Refused, f32)>,
     /// The console line being typed. Absent while it is closed.
     pub console: Option<String>,
     /// The end of the match, once it came.
@@ -725,14 +745,12 @@ impl App {
             }
             Ok(Ingested::Rejected { seq, reason }) => self.on_rejected(seq, reason),
             Ok(Ingested::Over { winner, stats }) => self.over = Some((winner, stats)),
+            // Back in the match: the RECONNECTING notice going away tells
+            // it, as in Dota; nothing more to say.
             Ok(Ingested::Resumed { resend }) => {
                 for order in resend {
                     self.source.send(&order.message());
                 }
-                self.feed.push(FeedLine {
-                    text: "reconnected".to_string(),
-                    age: 0.0,
-                });
             }
             Ok(Ingested::Passed(msg)) => {
                 if matches!(*msg, ServerMsg::Ping) {
@@ -804,8 +822,7 @@ impl App {
 
     /// Shows a refused order, on the slot that earned it.
     fn on_rejected(&mut self, seq: u32, reason: bota_proto::RejectReason) {
-        self.reject = Some((refusal(reason).to_string(), 2.5));
-        self.cue(CueKind::Refused, 0.8, None);
+        self.refuse(reason);
         self.refused = self
             .aimed_from
             .filter(|(sent, _)| *sent == seq)
@@ -861,6 +878,13 @@ impl App {
     }
 
     /// Asks the front end for a cue, dropped when too many wait.
+    /// Tells of an order turned down by a rule, the server's or one the
+    /// client checks before sending: the notice and its cue.
+    pub fn refuse(&mut self, reason: bota_proto::RejectReason) {
+        self.reject = Some((Refused::Rule(reason), 2.5));
+        self.cue(CueKind::Refused(reason), 0.8, None);
+    }
+
     pub fn cue(&mut self, kind: CueKind, gain: f32, at: Option<(f32, f32)>) {
         if self.cues.len() < MAX_CUES {
             self.cues.push(Cue { kind, gain, at });

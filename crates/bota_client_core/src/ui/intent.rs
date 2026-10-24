@@ -170,7 +170,7 @@ impl App {
             }
             Intent::Console(line) => match crate::commands::parse_console(&line) {
                 Ok(order) => self.send_order(order),
-                Err(why) => self.reject = Some((why, 2.5)),
+                Err(why) => self.reject = Some((crate::ui::app::Refused::Said(why), 2.5)),
             },
             Intent::Cheat(cheat) => self.send_order(bota_proto::Order::Cheat { cheat }),
             other => self.act_on_replay(other),
@@ -206,7 +206,7 @@ impl App {
 
     /// Sends the order of the slot taken up at what a click landed on, and
     /// lets go of the slot. A slot aimed at a unit that the click found none
-    /// for refuses and stays taken up.
+    /// for stays taken up, as Dota's: no order, no word.
     fn spend_aim(&mut self, at: (f32, f32), unit: Option<EntityId>) {
         let Some(slot) = self.aiming else {
             return;
@@ -219,10 +219,7 @@ impl App {
             // drunk by clicking the one drinking it.
             Some(Aim::Unit) => match unit {
                 Some(id) => Target::Unit(id),
-                None => {
-                    self.reject = Some(("invalid target".to_string(), 2.5));
-                    return;
-                }
+                None => return,
             },
             Some(Aim::Own) | None => Target::None,
         };

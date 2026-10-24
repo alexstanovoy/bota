@@ -1,8 +1,10 @@
 //! What sits in a slot of the panel: how pressing it is answered, and how it
 //! is drawn.
 //!
-//! Nothing here asks whether an order would succeed: a press is sent whatever
-//! state the slot is in, and the server names what was wrong with it.
+//! Nothing here asks whether an order would succeed: a press of what can be
+//! used is sent whatever state the slot is in, and the server names what was
+//! wrong with it. What works on its own is never used, so pressing it is
+//! nothing at all, as in Dota.
 
 use bota_proto::{
     AbilitySlot, AbilityView, Aim, EntityId, ItemSlot, ItemView, Order, Target, UnitView,
@@ -37,8 +39,8 @@ pub enum Press {
     Send(Order),
     /// Take the slot up to be aimed; the next click in the world spends it.
     Aim(Slot),
-    /// Nothing to press: the slot holds nothing, or holds it somewhere a
-    /// press cannot reach.
+    /// Nothing to press: the slot holds nothing, holds a passive, or holds
+    /// it somewhere a press cannot reach.
     Nothing,
 }
 
@@ -124,7 +126,7 @@ pub fn press(app: &App, slot: Slot, ctrl: bool) -> Press {
 ///
 /// `held` says whether the slot holds anything and how it is aimed: the outer
 /// answer is whether anything is there, the inner one how it is aimed, absent
-/// for something that is never used. `aiming` is the slot already taken up,
+/// for a passive, which is never used. `aiming` is the slot already taken up,
 /// and `commanded` whoever the panel is about.
 pub fn decide(
     slot: Slot,
@@ -147,27 +149,27 @@ pub fn decide(
     {
         return Press::Nothing;
     }
-    let Some(aim) = held else {
+    // An empty slot, and a passive: Dota answers a press of either with
+    // nothing, no error and no sound.
+    let Some(Some(aim)) = held else {
         return Press::Nothing;
     };
     // Taken up already, a scroll pressed again goes to the fountain: Dota's
     // double tap.
-    if aiming == Some(slot) && aim == Some(Aim::Building) {
+    if aiming == Some(slot) && aim == Aim::Building {
         return Press::Send(order_for(slot, Target::None));
     }
     // Taken up already and aimed at a unit, a second press aims it at the one
     // holding it.
-    if aiming == Some(slot) && aim == Some(Aim::Unit) {
+    if aiming == Some(slot) && aim == Aim::Unit {
         return match commanded {
             Some(target) => Press::Send(order_for(slot, Target::Unit(target))),
             None => Press::Nothing,
         };
     }
     match aim {
-        // What works on its own, and what cannot be used at all, is still
-        // sent: the server is the one that says so.
-        None | Some(Aim::Own) => Press::Send(order_for(slot, Target::None)),
-        Some(Aim::Point | Aim::Unit | Aim::Tree | Aim::Building) => Press::Aim(slot),
+        Aim::Own => Press::Send(order_for(slot, Target::None)),
+        Aim::Point | Aim::Unit | Aim::Tree | Aim::Building => Press::Aim(slot),
     }
 }
 
