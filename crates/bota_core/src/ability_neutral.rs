@@ -522,7 +522,6 @@ impl Spell {
             linger: rules::AURA_LINGER_TICKS,
             breakable,
             invulnerable: false,
-            seen_only: false,
             water,
             modifier: AuraModifier::Spell(ability),
         })

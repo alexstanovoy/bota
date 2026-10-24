@@ -339,8 +339,10 @@ fn a_soul_is_worth_one_damage_and_point_eight_more_every_six_levels() {
     }
 }
 
+/// Dota's presence asks no sight: an enemy within its reach wears it whether
+/// its side sees him or not, and one beyond its reach wears nothing.
 #[test]
-fn the_presence_wears_down_the_armor_of_enemies_that_see_its_carrier() {
+fn the_presence_wears_down_the_armor_of_enemies_whether_they_see_its_carrier_or_not() {
     // He stands on high ground, which the creep 400 east of him is below.
     let (mut world, fiend, below) = fiend_and_a_mark(400);
     // Standing, he strikes nothing, and a strike would show him.
@@ -358,8 +360,8 @@ fn the_presence_wears_down_the_armor_of_enemies_that_see_its_carrier() {
     let armor = |world: &World, unit| world.stats.get(unit).expect("standing").armor;
     assert_eq!(
         armor(&world, below),
-        armor(&world, out),
-        "and what cannot see him wears nothing"
+        armor(&world, out) - Fixed::from_ratio(5, 2),
+        "blind to him, it still wears two and a half armor off at his first level"
     );
     a_creep_at(&mut world, Team::Dire, Vec2::from_ints(4600, 5000));
     world.step();
@@ -371,7 +373,7 @@ fn the_presence_wears_down_the_armor_of_enemies_that_see_its_carrier() {
     assert_eq!(
         armor(&world, below),
         armor(&world, out) - Fixed::from_ratio(5, 2),
-        "for the whole side: two and a half armor at its first level"
+        "and the same once its side sees him"
     );
 }
 

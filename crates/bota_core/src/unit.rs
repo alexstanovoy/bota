@@ -256,7 +256,6 @@ const FLAGBEARER_AURAS: [Aura; 1] = [Aura {
     linger: rules::AURA_LINGER_TICKS,
     breakable: true,
     invulnerable: false,
-    seen_only: false,
     water: false,
     modifier: AuraModifier::Kind(ModifierKind::Inspired {
         hp_per_second: rules::FLAGBEARER_AURA_REGEN,
@@ -502,7 +501,6 @@ const FOUNTAIN_AURAS: [Aura; 1] = [Aura {
     linger: rules::FOUNTAIN_HEAL_LINGER_TICKS,
     breakable: false,
     invulnerable: true,
-    seen_only: false,
     water: false,
     modifier: AuraModifier::Kind(ModifierKind::Fountain {
         hp_pct: rules::FOUNTAIN_HEAL_HP_PCT,
@@ -606,7 +604,6 @@ const fn tower_aura(index: usize) -> [Aura; 1] {
         linger: rules::AURA_LINGER_TICKS,
         breakable: false,
         invulnerable: true,
-        seen_only: false,
         water: false,
         modifier: AuraModifier::Kind(ModifierKind::Guarded {
             armor: rules::TOWER_AURA_ARMOR[index],

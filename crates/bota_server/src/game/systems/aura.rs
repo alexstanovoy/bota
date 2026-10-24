@@ -140,7 +140,7 @@ impl World {
             let Some(there) = self.pos(target).filter(|at| at.within(from, reach)) else {
                 continue;
             };
-            if !self.reaches(aura, (carrier, side), target) {
+            if !self.reaches(aura, side, target) {
                 continue;
             }
             let ticks = resisted_ticks(&self.stats, target, kind, aura.linger);
@@ -167,9 +167,8 @@ impl World {
 
     /// Whether an aura of a carrier of a side reaches a unit standing within
     /// its radius: one of the side it is for, of the units it reaches, not
-    /// invulnerable unless the aura reaches the invulnerable too, and, for
-    /// one handed out only to those who see its carrier, whose side does.
-    fn reaches(&self, aura: &Aura, (carrier, side): (Entity, Team), target: Entity) -> bool {
+    /// invulnerable unless the aura reaches the invulnerable too.
+    fn reaches(&self, aura: &Aura, side: Team, target: Entity) -> bool {
         let Some(theirs) = self.team.get(target).copied() else {
             return false;
         };
@@ -181,10 +180,7 @@ impl World {
             .stats
             .get(target)
             .is_some_and(|stats| stats.invulnerable);
-        sided
-            && self.reach_takes(aura.reaches, target)
-            && (aura.invulnerable || !invulnerable)
-            && (!aura.seen_only || self.can_see(theirs, carrier))
+        sided && self.reach_takes(aura.reaches, target) && (aura.invulnerable || !invulnerable)
     }
 
     /// Whether a unit is of those an aura's [`Reach`] takes.

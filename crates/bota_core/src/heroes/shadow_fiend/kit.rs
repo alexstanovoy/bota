@@ -127,8 +127,8 @@ pub const NECROMASTERY: AbilityDef = AbilityDef {
 };
 
 /// Dota's `nevermore_dark_lord`: a passive aura on the enemies, breakable,
-/// that tears their armor by its level. Only an enemy whose side sees him
-/// wears it.
+/// that tears their armor by its level, whether or not they see him (the
+/// ability asks no sight).
 pub const PRESENCE: AbilityDef = AbilityDef {
     name: "Presence of the Dark Lord",
     max_level: rules::ABILITY_MAX_LEVEL,
@@ -141,7 +141,6 @@ pub const PRESENCE: AbilityDef = AbilityDef {
         linger: PRESENCE_LINGER_TICKS,
         breakable: true,
         invulnerable: false,
-        seen_only: true,
         water: false,
         modifier: AuraModifier::ArmorBroken,
     }),

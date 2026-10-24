@@ -92,8 +92,6 @@ pub struct Aura {
     /// invulnerable, but not hidden units") and the towers' protection
     /// ("Affects invulnerable heroes") reach them.
     pub invulnerable: bool,
-    /// Whether it reaches only those whose side sees its carrier.
-    pub seen_only: bool,
     /// Whether it works only while its carrier stands in the river.
     pub water: bool,
     /// What it puts on.
