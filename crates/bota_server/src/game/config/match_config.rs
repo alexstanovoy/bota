@@ -1,6 +1,6 @@
 //! Everything a match is created from.
 
-use bota_proto::{EventKind, MapId, MatchInfo, Pick, Team, TickMode};
+use bota_proto::{EventKind, MapId, MatchInfo, ObjectiveSet, Pick, RuneSet, Team, TickMode};
 
 use crate::game::{
     MAX_SPAWN_MODIFIERS, MatchRng, SpawnModifier, SpawnModifierError, check_spawn_modifier,
@@ -16,6 +16,10 @@ pub enum MatchConfigError {
         at: usize,
         error: SpawnModifierError,
     },
+    /// Objectives the map holds no data for or the simulation does not play.
+    Objectives { refused: ObjectiveSet, map: MapId },
+    /// Runes the map has no spots for or the simulation does not play.
+    Runes { refused: RuneSet, map: MapId },
 }
 
 impl core::fmt::Display for MatchConfigError {
@@ -28,6 +32,18 @@ impl core::fmt::Display for MatchConfigError {
             MatchConfigError::SpawnModifier { at, error } => {
                 write!(f, "spawn modifier {at} is refused: {error}")
             }
+            MatchConfigError::Objectives { refused, map } => write!(
+                f,
+                "map {} plays no such objectives: {refused} (it plays: {})",
+                map.0,
+                bota_core::map_of(*map).playable_objectives()
+            ),
+            MatchConfigError::Runes { refused, map } => write!(
+                f,
+                "map {} spawns no such runes: {refused} (it spawns: {})",
+                map.0,
+                bota_core::map_of(*map).playable_runes()
+            ),
         }
     }
 }
@@ -71,6 +87,16 @@ pub struct MatchConfig {
     pub immortal_heroes: bool,
     /// Starting gold a seat loses for picking after the selection time.
     pub starting_gold_lost: Vec<(bota_proto::SlotId, i32)>,
+    /// Which of the map's objectives stand: the map's
+    /// [`default_objectives`](bota_core::MapDef::default_objectives) unless
+    /// the host says otherwise, and never one the map does not
+    /// [play](bota_core::MapDef::playable_objectives).
+    pub objectives: ObjectiveSet,
+    /// Which kinds of rune spawn: the map's
+    /// [`default_runes`](bota_core::MapDef::default_runes) unless the host
+    /// says otherwise, and never one the map does not
+    /// [play](bota_core::MapDef::playable_runes).
+    pub runes: RuneSet,
 }
 
 impl MatchConfig {
@@ -89,7 +115,8 @@ impl MatchConfig {
     }
 
     /// Whether the description may build a match. The spawn modifiers must
-    /// fit the bound and every one of them must be valid.
+    /// fit the bound and every one of them must be valid, and the map must
+    /// play every objective and rune asked for.
     pub fn validate(&self) -> Result<(), MatchConfigError> {
         if self.spawn_modifiers.len() > MAX_SPAWN_MODIFIERS {
             return Err(MatchConfigError::TooManySpawnModifiers {
@@ -100,6 +127,7 @@ impl MatchConfig {
             check_spawn_modifier(rule)
                 .map_err(|error| MatchConfigError::SpawnModifier { at, error })?;
         }
+        check_match_rules(self.map, self.objectives, self.runes)?;
         Ok(())
     }
 
@@ -122,8 +150,29 @@ impl MatchConfig {
             fountains: map.fountains,
             shop_range: bota_core::rules::SHOP_RANGE,
             cheats: self.cheats,
+            objectives: self.objectives,
+            runes: self.runes,
         }
     }
+}
+
+/// Whether a map plays the objectives and runes asked of it: every one it
+/// holds the data for and the simulation plays, and no other.
+pub fn check_match_rules(
+    map: MapId,
+    objectives: ObjectiveSet,
+    runes: RuneSet,
+) -> Result<(), MatchConfigError> {
+    let def = bota_core::map_of(map);
+    let refused = objectives.without(def.playable_objectives());
+    if !refused.is_empty() {
+        return Err(MatchConfigError::Objectives { refused, map });
+    }
+    let refused = runes.without(def.playable_runes());
+    if !refused.is_empty() {
+        return Err(MatchConfigError::Runes { refused, map });
+    }
+    Ok(())
 }
 
 /// One accepted order of a seat, as the world takes it.

@@ -176,6 +176,16 @@ struct Args {
     /// Heroes take damage but never die: no hero-death ending, for last-hit practice.
     #[arg(long)]
     immortal_heroes: bool,
+    /// Which of the map's objectives stand: all, none, or names separated by commas (roshan,
+    /// tormentor, watchers, outposts, shrines). The map's default when absent; one the map does
+    /// not play is refused.
+    #[arg(long, value_parser = bota_proto::ObjectiveSet::parse)]
+    objectives: Option<bota_proto::ObjectiveSet>,
+    /// Which kinds of rune spawn: all, none, or names separated by commas (water, bounty, haste,
+    /// amplify_damage, arcane, regeneration, illusion, invisibility, shield). The map's default
+    /// when absent; one the map does not spawn is refused.
+    #[arg(long, value_parser = bota_proto::RuneSet::parse)]
+    runes: Option<bota_proto::RuneSet>,
     /// Seat a dummy in the last seat: its hero stays put and never acts, so one player can practise alone.
     #[arg(long)]
     dummy_seat: bool,
@@ -329,6 +339,8 @@ fn server_opts(args: &Args) -> std::io::Result<ServerOpts> {
         cheats: args.cheats,
         immortal_structures: args.immortal_structures,
         immortal_heroes: args.immortal_heroes,
+        objectives: args.objectives,
+        runes: args.runes,
         dummy_seat: args.dummy_seat,
         order_delays: order_delays(args, players).map_err(std::io::Error::other)?,
         messages_per_sec: args.messages_per_sec,

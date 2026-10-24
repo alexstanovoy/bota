@@ -80,6 +80,10 @@ pub struct ServerOpts {
     pub immortal_structures: bool,
     /// Whether heroes keep at least 1 hp and never die.
     pub immortal_heroes: bool,
+    /// Which of the map's objectives stand. Absent: the map's default.
+    pub objectives: Option<bota_proto::ObjectiveSet>,
+    /// Which kinds of rune spawn. Absent: the map's default.
+    pub runes: Option<bota_proto::RuneSet>,
     /// Whether the last seat is a dummy: a hero that stays put and never acts.
     pub dummy_seat: bool,
     /// Lockstep: how many tick-lengths to wait for a straggler.
@@ -207,6 +211,13 @@ pub fn check_opts(opts: &ServerOpts) -> Result<(), String> {
     if opts.cheats && !opts.reserved.is_empty() {
         return Err("cheats are for a local match: not with reserved seats".to_owned());
     }
+    let map = bota_core::map_of(opts.map);
+    crate::game::check_match_rules(
+        opts.map,
+        opts.objectives.unwrap_or(map.default_objectives),
+        opts.runes.unwrap_or(map.default_runes),
+    )
+    .map_err(|error| error.to_string())?;
     if opts.pick_time > MAX_PICK_TIME
         || opts.pick_penalty_time > MAX_PICK_TIME
         || opts.tactical_time > MAX_PICK_TIME
@@ -926,6 +937,14 @@ impl Server {
             cheats: self.opts.cheats,
             immortal_structures: self.opts.immortal_structures,
             immortal_heroes: self.opts.immortal_heroes,
+            objectives: self
+                .opts
+                .objectives
+                .unwrap_or(bota_core::map_of(self.opts.map).default_objectives),
+            runes: self
+                .opts
+                .runes
+                .unwrap_or(bota_core::map_of(self.opts.map).default_runes),
             spawn_modifiers: Vec::new(),
             starting_gold_lost: self
                 .roster

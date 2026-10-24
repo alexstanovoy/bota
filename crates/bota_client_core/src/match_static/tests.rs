@@ -22,6 +22,8 @@ fn info(shop: Vec<ShopEntry>) -> MatchInfo {
         fountains: [Vec2::ZERO; 2],
         shop_range: 0,
         cheats: false,
+        objectives: bota_proto::ObjectiveSet::NONE,
+        runes: bota_proto::RuneSet::NONE,
     }
 }
 

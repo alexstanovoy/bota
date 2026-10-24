@@ -34,6 +34,8 @@ fn main() {
         spawn_modifiers: Vec::new(),
         immortal_structures: false,
         immortal_heroes: false,
+        objectives: bota_core::map_of(MAP2_ID).default_objectives,
+        runes: bota_core::map_of(MAP2_ID).default_runes,
     };
     let map = map_of(cfg.map);
     let (mut local, opening) = LocalMatch::new(&cfg, &[OrderDelay::NONE]).expect("a valid match");

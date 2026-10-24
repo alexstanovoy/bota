@@ -44,6 +44,8 @@ pub enum SessionError {
     TerrainCoverage { actual: u64, expected: u64 },
     /// A terrain run had zero length.
     ZeroTerrainRun(usize),
+    /// A rule set names a kind there is none of.
+    UnknownRuleKinds { field: &'static str, bits: u16 },
     /// The shop repeats an item, names a part it does not sell, or builds an
     /// item from itself.
     InvalidShop(&'static str),
@@ -242,6 +244,9 @@ impl fmt::Display for SessionError {
             ),
             Self::ZeroTerrainRun(index) => {
                 write!(f, "MatchInfo.terrain_rle entry {index} has zero run length")
+            }
+            Self::UnknownRuleKinds { field, bits } => {
+                write!(f, "{field} names kinds there are none of: bits {bits:#x}")
             }
             Self::InvalidShop(why) => write!(f, "MatchInfo.shop {why}"),
             Self::OpaqueCellOutOfRange { x, y, cells } => write!(

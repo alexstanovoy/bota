@@ -329,6 +329,8 @@ pub fn match_info() -> MatchInfo {
         fountains: [Vec2::from_ints(1760, 2278), Vec2::from_ints(16624, 16064)],
         shop_range: 1000,
         cheats: false,
+        objectives: ObjectiveSet::of(ObjectiveKind::Outposts).with(ObjectiveKind::Shrines),
+        runes: RuneSet::of(RuneKind::Bounty).with(RuneKind::Illusion),
         shop: vec![
             ShopEntry {
                 id: ItemId(0),

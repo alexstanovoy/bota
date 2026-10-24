@@ -47,6 +47,8 @@ fn config(knobs: u8) -> MatchConfig {
         starting_gold_lost: Vec::new(),
         immortal_structures: false,
         immortal_heroes: false,
+        objectives: bota_core::map_of(MapId(if knobs & 1 == 0 { 2 } else { 0 })).default_objectives,
+        runes: bota_core::map_of(MapId(if knobs & 1 == 0 { 2 } else { 0 })).default_runes,
     }
 }
 

@@ -46,6 +46,8 @@ fn opts(mode: TickMode, tick_rate: u16) -> ServerOpts {
         cheats: false,
         immortal_structures: false,
         immortal_heroes: false,
+        objectives: None,
+        runes: None,
         dummy_seat: false,
         ack_timeout_ticks: 150,
         idle_timeout: Some(DEFAULT_IDLE_TIMEOUT),

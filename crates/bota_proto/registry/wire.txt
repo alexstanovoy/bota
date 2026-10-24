@@ -538,3 +538,7 @@ variant ProjectileModel 2 Tower
 variant ProjectileModel 3 Fountain
 variant ProjectileModel 4 Hero(HeroId)
 variant ProjectileModel 5 Neutral(NeutralId)
+field MatchInfo 14 objectives: ObjectiveSet
+field MatchInfo 15 runes: RuneSet
+field ObjectiveSet 0 bits: u16
+field RuneSet 0 bits: u16

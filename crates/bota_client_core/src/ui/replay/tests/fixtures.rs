@@ -28,6 +28,8 @@ pub fn match_start(tick_rate: u16) -> ReplayRecord {
             fountains: [Vec2::ZERO, Vec2::ZERO],
             shop_range: 0,
             cheats: false,
+            objectives: bota_proto::ObjectiveSet::NONE,
+            runes: bota_proto::RuneSet::NONE,
         },
     })
 }

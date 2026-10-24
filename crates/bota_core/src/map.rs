@@ -5,7 +5,7 @@
 //! which camps the jungle holds. The forest and the ground are published
 //! with the match itself.
 
-use bota_proto::{MapId, Vec2};
+use bota_proto::{MapId, ObjectiveSet, RuneSet, Vec2};
 
 use crate::{CampDef, CampKind, Protection, camp, rules};
 
@@ -18,6 +18,14 @@ pub const MAP2_GAME_TICKS: u32 = 20 * 60 * rules::TICKS_PER_SECOND;
 /// The tick Map2 ends on as a draw when nothing decided it earlier, pregame
 /// included.
 pub const MAP2_TICK_CAP: u32 = rules::PREGAME_TICKS + MAP2_GAME_TICKS;
+
+/// The objectives the simulation stands up and plays: what a match may ask
+/// for. Every other kind is refused until it is simulated.
+pub const SIMULATED_OBJECTIVES: ObjectiveSet = ObjectiveSet::NONE;
+
+/// The kinds of rune the simulation spawns and plays: what a match may ask
+/// for. Every other kind is refused until it is simulated.
+pub const SIMULATED_RUNES: RuneSet = RuneSet::NONE;
 
 /// One playable map.
 #[derive(Clone, Copy, Debug)]
@@ -58,6 +66,11 @@ pub struct MapDef {
     pub death_limit: u16,
     /// Whether losing any tower loses the match.
     pub tower_ends_it: bool,
+    /// The objectives a match on this map stands up unless its host says
+    /// otherwise.
+    pub default_objectives: ObjectiveSet,
+    /// The runes a match on this map spawns unless its host says otherwise.
+    pub default_runes: RuneSet,
 }
 
 /// The Dota lanes bend once each on the way round the map; mid runs straight.
@@ -111,6 +124,8 @@ const DOTA: MapDef = MapDef {
     camps: &crate::CAMPS,
     death_limit: 0,
     tower_ends_it: false,
+    default_objectives: SIMULATED_OBJECTIVES,
+    default_runes: SIMULATED_RUNES,
 };
 
 /// The hero demo map: one short lane with a single tower a side, two
@@ -139,17 +154,26 @@ const DEMO: MapDef = MapDef {
     camps: &DEMO_CAMPS,
     death_limit: 0,
     tower_ends_it: false,
+    default_objectives: ObjectiveSet::NONE,
+    default_runes: RuneSet::NONE,
 };
 
 /// Full Dota geometry with mid-only waves and a hero/tower finish bounded by
 /// [`MAP2_TICK_CAP`]; the side tier ones stand invulnerable as in Dota's
 /// "1v1 Solo Mid", so only a mid tower can end it.
+///
+/// It holds every objective of the Dota map, but stands none and spawns no
+/// rune unless its host asks. Dota's Solo Mid plays the whole map: its rules
+/// (`dota_play_1v1_rules_html`) remove none of them and only the first rune;
+/// this map keeps the game it played before they were simulated.
 const SKIRMISH: MapDef = MapDef {
     id: MAP2_ID,
     protection: &crate::SOLO_MID_PROTECTION,
     wave_lanes: &[rules::LANE_MID],
     death_limit: MAP2_DEATH_LIMIT,
     tower_ends_it: true,
+    default_objectives: ObjectiveSet::NONE,
+    default_runes: RuneSet::NONE,
     ..DOTA
 };
 
@@ -163,6 +187,28 @@ impl MapDef {
     /// Every geometric lane, including lanes without creep waves.
     pub fn lanes(&self) -> impl Iterator<Item = u8> {
         0..self.lanes
+    }
+
+    /// The objectives the map has the data to stand up: none yet.
+    pub const fn objectives_held(&self) -> ObjectiveSet {
+        ObjectiveSet::NONE
+    }
+
+    /// The kinds of rune the map has spots for: none yet.
+    pub const fn runes_held(&self) -> RuneSet {
+        RuneSet::NONE
+    }
+
+    /// The objectives a match on this map may stand up: those it holds the
+    /// data for and the simulation plays.
+    pub const fn playable_objectives(&self) -> ObjectiveSet {
+        self.objectives_held().and(SIMULATED_OBJECTIVES)
+    }
+
+    /// The runes a match on this map may spawn: those it has spots for and
+    /// the simulation plays.
+    pub const fn playable_runes(&self) -> RuneSet {
+        self.runes_held().and(SIMULATED_RUNES)
     }
 
     /// This map's place in per-map tables: its id.

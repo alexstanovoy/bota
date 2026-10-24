@@ -187,6 +187,8 @@ fn realtime(seed: u64) -> ServerOpts {
         cheats: false,
         immortal_structures: false,
         immortal_heroes: false,
+        objectives: None,
+        runes: None,
         dummy_seat: false,
         order_delays: Vec::new(),
         messages_per_sec: DEFAULT_MESSAGES_PER_SEC,

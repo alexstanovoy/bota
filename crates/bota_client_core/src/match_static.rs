@@ -4,7 +4,8 @@ use std::sync::Arc;
 
 use bota_core::{CellGrid, Recipe, cell_tier, missing_parts_with, rules};
 use bota_proto::{
-    Attribute, Fixed, ItemId, MapId, MatchInfo, Pick, ShopEntry, SlotId, Team, TickMode, Vec2,
+    Attribute, Fixed, ItemId, MapId, MatchInfo, ObjectiveSet, Pick, RuneSet, ShopEntry, SlotId,
+    Team, TickMode, Vec2,
 };
 
 use crate::limits::{
@@ -27,6 +28,10 @@ pub struct MatchMetadata {
     pub seats: u8,
     /// Whether the match honours cheat orders.
     pub cheats: bool,
+    /// Which of the map's objectives stand.
+    pub objectives: ObjectiveSet,
+    /// Which kinds of rune spawn.
+    pub runes: RuneSet,
 }
 
 /// The validated, immutable inputs of a match: shared by every session of it.
@@ -66,6 +71,8 @@ impl MatchStatic {
                 mode: info.mode,
                 seats: info.picks.len() as u8,
                 cheats: info.cheats,
+                objectives: info.objectives,
+                runes: info.runes,
             },
             roster,
             trees: info.trees.clone(),
@@ -316,6 +323,18 @@ fn validate_static_inputs(info: &MatchInfo) -> Result<(), SessionError> {
         MAX_OPAQUE_CELLS,
     )?;
     check_limit("MatchInfo.shop", info.shop.len(), MAX_SHOP_ITEMS)?;
+    for (field, valid, bits) in [
+        (
+            "MatchInfo.objectives",
+            info.objectives.is_valid(),
+            info.objectives.bits,
+        ),
+        ("MatchInfo.runes", info.runes.is_valid(), info.runes.bits),
+    ] {
+        if !valid {
+            return Err(SessionError::UnknownRuleKinds { field, bits });
+        }
+    }
     if info.terrain_cells == 0 || info.terrain_cells > MAX_TERRAIN_AXIS {
         return Err(SessionError::TerrainAxis(info.terrain_cells));
     }

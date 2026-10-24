@@ -53,6 +53,8 @@ fn opts() -> ServerOpts {
         cheats: true,
         immortal_structures: false,
         immortal_heroes: false,
+        objectives: None,
+        runes: None,
         dummy_seat: false,
         ack_timeout_ticks: 2,
         idle_timeout: Some(Duration::from_secs(5)),

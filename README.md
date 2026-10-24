@@ -126,6 +126,8 @@ the plain TCP port stays on loopback) or `--insecure-plaintext`.
 | `--order-delay-ticks`, `--order-jitter-ticks` | `0` | delay every order (one value, or one per seat); jitter from a hidden stream | rehearse a remote server |
 | `--cheats` | off | honour cheat orders: gold, levels, items, refreshes | practice |
 | `--immortal-structures`, `--immortal-heroes` | off | damage taken, nothing falls | practice |
+| `--objectives LIST` | the map's | which of the map's objectives stand: `all`, `none`, or names separated by commas (`roshan`, `tormentor`, `watchers`, `outposts`, `shrines`); one the map does not play is refused before `READY`. Map 2 stands none unless asked | |
+| `--runes LIST` | the map's | which kinds of rune spawn: `all`, `none`, or names (`water`, `bounty`, `haste`, `amplify_damage`, `arcane`, `regeneration`, `illusion`, `invisibility`, `shield`); one the map does not spawn is refused before `READY`. Map 2 spawns none unless asked | |
 | `--dummy-seat` | off | the last seat is a hero that never acts | practice alone |
 | `--wire-fingerprint` | | print the wire fingerprint (16 hex digits: registries and rules) and exit | a launcher's version probe |
 

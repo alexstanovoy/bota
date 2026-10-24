@@ -217,6 +217,8 @@ pub(crate) fn two_fiends(match_id: u64, master_key: [u8; 32], map: MapId) -> Mat
         spawn_modifiers: Vec::new(),
         immortal_structures: false,
         immortal_heroes: false,
+        objectives: bota_core::map_of(map).default_objectives,
+        runes: bota_core::map_of(map).default_runes,
     }
 }
 

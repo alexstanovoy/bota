@@ -629,6 +629,8 @@ fn a_match_start() -> bota_proto::ServerMsg {
             fountains: [Vec2::ZERO; 2],
             shop_range: 0,
             cheats: false,
+            objectives: bota_proto::ObjectiveSet::NONE,
+            runes: bota_proto::RuneSet::NONE,
         },
     }
 }

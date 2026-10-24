@@ -174,6 +174,8 @@ fn config(pinned: &Pinned) -> MatchConfig {
         spawn_modifiers: Vec::new(),
         immortal_structures: false,
         immortal_heroes: false,
+        objectives: bota_core::map_of(pinned.map).default_objectives,
+        runes: bota_core::map_of(pinned.map).default_runes,
     }
 }
 

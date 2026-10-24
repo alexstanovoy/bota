@@ -1,8 +1,8 @@
 //! The messages themselves, and the lobby types they carry.
 
 use crate::{
-    EntityId, EventKind, Heard, HeroId, ItemId, Line, MapId, Order, PlayerId, SayRefusal, SeatKey,
-    SlotId, Team, Vec2, WorldView,
+    EntityId, EventKind, Heard, HeroId, ItemId, Line, MapId, ObjectiveSet, Order, PlayerId,
+    RuneSet, SayRefusal, SeatKey, SlotId, Team, Vec2, WorldView,
 };
 use serde::{Deserialize, Serialize};
 
@@ -146,9 +146,12 @@ pub struct MatchInfo {
     /// shop, in world units.
     pub shop_range: i32,
     /// Whether the match honours cheat orders, as its host set it: a client
-    /// and a replay tell a cheat match by it, as Dota marks one. Last on the
-    /// wire.
+    /// and a replay tell a cheat match by it, as Dota marks one.
     pub cheats: bool,
+    /// Which of the map's objectives stand in the match.
+    pub objectives: ObjectiveSet,
+    /// Which kinds of rune the match spawns. Last on the wire.
+    pub runes: RuneSet,
 }
 
 /// Why the server refused an order, or a [`ClientMsg::Hello`].
