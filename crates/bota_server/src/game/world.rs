@@ -912,7 +912,6 @@ impl World {
             health: &mut self.health,
             modifiers: &mut self.modifiers,
             kind: &self.kind,
-            illusion: &self.illusion,
             immortal_structures: self.immortal_structures,
             immortal_heroes: self.immortal_heroes,
             rng: &self.rng,

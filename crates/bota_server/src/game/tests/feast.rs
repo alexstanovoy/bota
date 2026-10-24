@@ -212,6 +212,10 @@ fn an_illusion_feeds_no_feast() {
             made: world.tick,
         },
     );
+    world.put_modifier(
+        hero,
+        crate::game::Modifier::new(ModifierKind::Illusion, Some(real), None, Some(10_000)),
+    );
     cast(&mut world, FEAST_SLOT, Target::None);
     let mut taken = Vec::new();
     for tick in 1..=60 {

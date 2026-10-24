@@ -418,8 +418,21 @@ impl World {
         self.kind.get(entity) == Some(&UnitKind::Hero)
     }
 
-    /// Whether an entity is a hero and no illusion of one.
+    /// Whether an entity is a hero and no illusion of one: what wears
+    /// Dota's `modifier_illusion` is a hero to look at alone.
     pub fn is_real_hero(&self, entity: Entity) -> bool {
-        self.is_hero(entity) && !self.illusion.contains(entity)
+        self.is_hero(entity) && !self.wears_illusion(entity)
     }
+
+    /// Whether an entity wears what makes a unit an illusion.
+    pub fn wears_illusion(&self, entity: Entity) -> bool {
+        self.modifiers.get(entity).is_some_and(wears_illusion)
+    }
+}
+
+/// Whether what is on a unit makes it an illusion.
+pub(crate) fn wears_illusion(on_it: &crate::game::Modifiers) -> bool {
+    on_it
+        .active()
+        .any(|held| held.kind == bota_core::ModifierKind::Illusion)
 }

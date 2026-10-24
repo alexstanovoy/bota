@@ -4,8 +4,8 @@ use bota_core::{ModifierKind, Odds, amplify, bite, kind_def, mitigate, rules};
 use bota_proto::{DamageKind, Fixed, Inflictor, Team, UnitKind, Vec2};
 
 use crate::game::{
-    Entity, Fear, Health, Hit, HitEffect, Illusion, MatchRng, Modifier, Modifiers, PseudoRandom,
-    Purpose, Stats, Table, Transform, wire_id,
+    Entity, Fear, Health, Hit, HitEffect, MatchRng, Modifier, Modifiers, PseudoRandom, Purpose,
+    Stats, Table, Transform, wire_id,
 };
 
 use super::bubble::soak;
@@ -62,8 +62,6 @@ pub struct HitCx<'a> {
     /// What is on each entity, read and added to by successful blows.
     pub modifiers: &'a mut Table<Modifiers>,
     pub kind: &'a Table<UnitKind>,
-    /// Which units are illusions, whose attacks are no hero's.
-    pub illusion: &'a Table<Illusion>,
     /// Whether a blow never takes a structure below 1 hp.
     pub immortal_structures: bool,
     /// Whether a blow never takes a hero below 1 hp.
@@ -93,7 +91,6 @@ pub fn hitting_system<const AMPLIFIED: bool>(cx: HitCx<'_>) {
         health,
         modifiers,
         kind,
-        illusion,
         immortal_structures,
         immortal_heroes,
         rng,
@@ -162,7 +159,10 @@ pub fn hitting_system<const AMPLIFIED: bool>(cx: HitCx<'_>) {
         taken = blocked(taken, modifiers.get(blow.target));
         if let Some(hits) = counted {
             let by_hero = blow.source.is_some_and(|source| {
-                kind.get(source) == Some(&UnitKind::Hero) && !illusion.contains(source)
+                kind.get(source) == Some(&UnitKind::Hero)
+                    && !modifiers
+                        .get(source)
+                        .is_some_and(super::econ::wears_illusion)
             });
             taken = hits.blow(stat.max_hp.to_int(), by_hero);
         }

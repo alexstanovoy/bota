@@ -141,7 +141,7 @@ impl World {
         let def = self
             .kind
             .get(fallen)
-            .filter(|_| !self.illusion.contains(fallen))
+            .filter(|_| !self.wears_illusion(fallen))
             .map(|kind| kind_def(*kind));
         let killer_side = killer.and_then(|killer| self.team.get(killer).copied());
         Told {

@@ -135,7 +135,7 @@ impl World {
             .iter()
             .filter(|other| {
                 self.hostile(caster, *other)
-                    && !self.illusion.contains(*other)
+                    && !self.wears_illusion(*other)
                     && feast.fed.iter().all(|fed| fed.from != *other)
                     && self
                         .kind
