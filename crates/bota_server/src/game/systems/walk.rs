@@ -101,17 +101,40 @@ impl World {
         }
     }
 
-    /// Whether an entity is walking this tick: its goal is a walk it has not
-    /// finished, by reaching the spot or by ending its route short of it,
-    /// and it took its last step. A body that is not is stationary, and
-    /// every walker's short pather lays its way round it (Liquipedia,
-    /// *Pathfinding*): one that could not take its last step, pressed
-    /// against others or the ground, stands there as much as one told to.
+    /// Whether an entity is walking this tick: its walk is not over
+    /// ([`World::walk_unfinished`]) and it took its last step. A body that
+    /// is not is stationary, and every walker's short pather lays its way
+    /// round it (Liquipedia, *Pathfinding*): one that could not take its last
+    /// step, pressed against others or the ground, stands there as much as
+    /// one told to.
     pub(super) fn walking(&self, entity: Entity) -> bool {
+        self.walk_unfinished(entity)
+            && self
+                .motion
+                .get(entity)
+                .is_none_or(|motion| motion.stalled == 0)
+    }
+
+    /// Whether an entity with its walk ahead of it stood this tick coming
+    /// round onto its way (Liquipedia, *Turn Rate*), neither stepping nor
+    /// stopped by anything it walked into since its last step.
+    pub fn turning_on_the_spot(&self, entity: Entity) -> bool {
+        self.walk_unfinished(entity)
+            && self
+                .motion
+                .get(entity)
+                .is_some_and(|motion| motion.delta == Vec2::ZERO && motion.stalled == 0)
+    }
+
+    /// Whether an entity's orders still walk it somewhere it has not got to:
+    /// its goal is a walk it has neither finished, by reaching the spot, nor
+    /// ended, by its route coming as near as it gets. A walker held up for
+    /// now still has its walk ahead of it.
+    pub fn walk_unfinished(&self, entity: Entity) -> bool {
         let Some(from) = self.pos(entity) else {
             return false;
         };
-        let walks = match self.walk_goal(entity) {
+        match self.walk_goal(entity) {
             Goal::Flee(_) => true,
             Goal::Stand | Goal::Face(_) => false,
             Goal::Walk(dest, arrive) => {
@@ -122,12 +145,7 @@ impl World {
                         .get(entity)
                         .is_some_and(|route| route.done && route.goal == Some(dest))
             }
-        };
-        walks
-            && self
-                .motion
-                .get(entity)
-                .is_none_or(|motion| motion.stalled == 0)
+        }
     }
 
     /// What an entity mid-action comes round to, when an action roots it:
@@ -289,18 +307,21 @@ impl World {
         self.follow_plan(&leg);
     }
 
-    /// A step a unit takes facing it: it turns onto the way it steps, a
-    /// slide along a body as much as the way to its aim, and sets off only
-    /// once it faces within 11.5 degrees of it (Liquipedia, *Turn Rate*);
-    /// under way it keeps walking while it comes round.
-    fn step_turning(&mut self, entity: Entity, from: Vec2, to: Vec2) {
+    /// A step a unit takes facing the way it walks, `heading`: it turns
+    /// that way and sets off only once it faces within 11.5 degrees of it
+    /// (Liquipedia, *Turn Rate*); under way it keeps walking while it comes
+    /// round. The step lands on `to`: where it walks, or where a body it
+    /// walks into leaves it, slid along that body's edge. A slide is the
+    /// push of the bodies against each other, not a way the walker turns to:
+    /// it keeps facing where it walks.
+    fn step_heading(&mut self, entity: Entity, from: Vec2, heading: Vec2, to: Vec2) {
         let (Some(facing), Some(rate)) = (
             self.transform.get(entity).map(|t| t.facing),
             self.stats.get(entity).map(|stats| stats.turn_rate),
         ) else {
             return;
         };
-        let wanted = facing_towards(from, to);
+        let wanted = facing_towards(from, heading);
         let facing = turn_towards(facing, wanted, rate);
         if let Some(transform) = self.transform.get_mut(entity) {
             transform.facing = facing;
@@ -338,10 +359,21 @@ impl World {
     fn collide(&mut self, leg: &Leg, toward: Vec2) -> bool {
         let (entity, from, collision) = (leg.entity, leg.from, leg.collision);
         let next = move_towards(from, toward, leg.step);
-        let to = match self.stood_in_the_way(entity, from, next, collision) {
-            None => Some(next),
-            Some((_, centre, radius)) => slide_along(from, next, centre, collision + radius),
-        };
+        // Slid along one body into another, it slides along that one too,
+        // and so on; met by one it slid along already, it is wedged.
+        let mut met: Vec<Entity> = Vec::new();
+        let mut to = Some(next);
+        while let Some(step) = to
+            && let Some((body, centre, radius)) =
+                self.stood_in_the_way(entity, from, step, collision)
+        {
+            if met.contains(&body) {
+                to = None;
+                break;
+            }
+            met.push(body);
+            to = slide_along(from, step, centre, collision + radius);
+        }
         let Some(to) = to.filter(|to| {
             *to != from
                 && self
@@ -354,7 +386,7 @@ impl World {
         if let Some(plan) = self.plan.get_mut(entity) {
             plan.clear();
         }
-        self.step_turning(entity, from, to);
+        self.step_heading(entity, from, next, to);
         true
     }
 

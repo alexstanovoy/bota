@@ -898,3 +898,48 @@ fn a_hero_sent_into_a_knot_of_standing_creeps_ends_its_walk_beside_it() {
         "beside the knot, not at {at:?}"
     );
 }
+
+/// A hero walking into the side of a creep that walks across its way slides
+/// along the creep's edge without halting: the slide is the bodies pushing
+/// against each other, not a way the hero turns to, so it keeps facing where
+/// it walks and keeps stepping.
+#[test]
+fn a_hero_sliding_along_a_creep_walking_across_its_way_never_halts() {
+    let mut world = World::new();
+    let hero = hero_at(&mut world, Vec2::from_ints(5000, 5000));
+    let creep = world.spawn_unit(&MELEE_CREEP, Team::Dire, Vec2::from_ints(5150, 4880));
+    world.settle();
+    let goal = Vec2::from_ints(5600, 5000);
+    world.set_order(hero, UnitOrder::Move { pos: goal });
+    world.set_order(
+        creep,
+        UnitOrder::Move {
+            pos: Vec2::from_ints(5150, 5600),
+        },
+    );
+    // Facing the way already, the hero sets off at once.
+    run(&mut world, 2);
+    let (mut touching, mut halted) = (0, 0);
+    for _ in 0..(2 * rules::TICKS_PER_SECOND) {
+        let before = pos_of(&world, hero);
+        world.step();
+        let after = pos_of(&world, hero);
+        let reach = rules::HERO_COLLISION + rules::MELEE_CREEP_COLLISION + 4;
+        if after.within(pos_of(&world, creep), rules::units(reach)) {
+            touching += 1;
+            if after == before {
+                halted += 1;
+            }
+        }
+        if after.within(goal, rules::units(50)) {
+            break;
+        }
+    }
+    // Measured: 8 ticks in contact, none halted (3 of 7 when a slide turned
+    // the hero onto it).
+    assert!(touching > 0, "the two met");
+    assert_eq!(
+        halted, 0,
+        "the hero halted {halted} of {touching} ticks in contact"
+    );
+}

@@ -164,6 +164,16 @@ impl LocalMatch {
         &mut self.world
     }
 
+    /// The hero a seat plays, while it stands.
+    pub fn hero_of(&self, seat: usize) -> Option<Entity> {
+        let slot = *self.seats.get(seat)?;
+        self.world
+            .seats
+            .iter()
+            .find(|held| held.slot == slot)
+            .and_then(|held| held.unit)
+    }
+
     /// The handle a seat's connection knows an entity by, once the seat was
     /// told of it.
     pub fn handle_of(&self, seat: usize, entity: Entity) -> Option<bota_proto::EntityId> {
