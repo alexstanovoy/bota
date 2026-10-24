@@ -85,8 +85,9 @@ pub struct Aura {
     /// Ticks what it puts on holds once put on.
     pub linger: u32,
     /// Whether a Break silences it: Dota's `IsBreakable`, set on the
-    /// passives of abilities, a creep's and a neutral's among them. A
-    /// building's aura is no ability, and nothing breaks it.
+    /// passives of abilities, a creep's and a neutral's among them, but for a
+    /// few the game leaves it off (the Granite Aura, the tornado's Tempest).
+    /// A building's aura is no ability, and nothing breaks it.
     pub breakable: bool,
     /// Whether it reaches only those whose side sees its carrier.
     pub seen_only: bool,

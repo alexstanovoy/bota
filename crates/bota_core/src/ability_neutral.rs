@@ -252,6 +252,9 @@ pub struct AuraSpell {
     pub stacks: bool,
     /// Whether it only works while its bearer stands in the river.
     pub water: bool,
+    /// Whether a Break silences it: the game's `IsBreakable`, which every
+    /// neutral aura has but the Granite Aura.
+    pub breakable: bool,
 }
 
 /// A passive on the bearer's own attacks.
@@ -479,6 +482,9 @@ pub enum Spell {
         period_ms: i32,
         buff: Buff,
         effect: EffectId,
+        /// Whether a Break silences it: the game's `IsBreakable`, which the
+        /// tornado's Tempest has not.
+        breakable: bool,
     },
     Strike(Strike),
     Throe(Throe),
@@ -493,17 +499,20 @@ pub enum Spell {
 impl Spell {
     /// The aura a passive of `ability` is, for one that hands its modifier
     /// out to the units near its bearer: an aura or a storm. Each reaches
-    /// living units only, lingers [`rules::AURA_LINGER_TICKS`], and is
-    /// silenced by a Break, as Dota's `IsBreakable` neutral auras are.
+    /// living units only and lingers [`rules::AURA_LINGER_TICKS`]; a Break
+    /// silences it as its spell's `breakable` says.
     const fn aura(&self, ability: NeutralAbility) -> Option<Aura> {
-        let (whom, radius, water) = match *self {
+        let (whom, radius, water, breakable) = match *self {
             Spell::Aura(AuraSpell {
                 whom,
                 radius,
                 water,
+                breakable,
                 ..
-            }) => (whom, radius, water),
-            Spell::Storm { radius, .. } => (Whom::Enemies, radius, false),
+            }) => (whom, radius, water, breakable),
+            Spell::Storm {
+                radius, breakable, ..
+            } => (Whom::Enemies, radius, false, breakable),
             _ => return None,
         };
         Some(Aura {
@@ -511,7 +520,7 @@ impl Spell {
             reaches: Reach::Living,
             radius,
             linger: rules::AURA_LINGER_TICKS,
-            breakable: true,
+            breakable,
             seen_only: false,
             water,
             modifier: AuraModifier::Spell(ability),
@@ -602,14 +611,23 @@ const fn entry(ability: NeutralAbility, def: AbilityDef, spell: Spell) -> Neutra
 
 /// An aura for its own side.
 const fn allies(radius: i32, buff: Buff, effect: u16) -> Spell {
-    Spell::Aura(AuraSpell {
-        whom: Whom::Allies,
-        radius,
-        buff,
-        effect: EffectId(effect),
-        stacks: false,
-        water: false,
-    })
+    Spell::Aura(AuraSpell::allies(radius, buff, effect))
+}
+
+impl AuraSpell {
+    /// An aura for its own side: one modifier whatever the sources, silenced
+    /// by a Break, working anywhere.
+    const fn allies(radius: i32, buff: Buff, effect: u16) -> AuraSpell {
+        AuraSpell {
+            whom: Whom::Allies,
+            radius,
+            buff,
+            effect: EffectId(effect),
+            stacks: false,
+            water: false,
+            breakable: true,
+        }
+    }
 }
 
 /// Families of casts that hold each other off.
@@ -1156,6 +1174,7 @@ pub const NEUTRAL_ABILITIES: [NeutralAbilityDef; 60] = [
             effect: EffectId(40),
             stacks: false,
             water: false,
+            breakable: true,
         }),
     ),
     entry(
@@ -1190,6 +1209,7 @@ pub const NEUTRAL_ABILITIES: [NeutralAbilityDef; 60] = [
             effect: EffectId(41),
             stacks: true,
             water: false,
+            breakable: true,
         }),
     ),
     entry(
@@ -1202,12 +1222,16 @@ pub const NEUTRAL_ABILITIES: [NeutralAbilityDef; 60] = [
             effect: EffectId(42),
             stacks: false,
             water: false,
+            breakable: true,
         }),
     ),
     entry(
         N::GraniteAura,
         passive("Granite Aura"),
-        allies(1200, Buff::of(Stat::MaxHpPct, lv(16, 17, 18, 19)), 43),
+        Spell::Aura(AuraSpell {
+            breakable: false,
+            ..AuraSpell::allies(1200, Buff::of(Stat::MaxHpPct, lv(16, 17, 18, 19)), 43)
+        }),
     ),
     entry(
         N::WarDrumsAura,
@@ -1347,6 +1371,7 @@ pub const NEUTRAL_ABILITIES: [NeutralAbilityDef; 60] = [
             effect: EffectId(51),
             stacks: false,
             water: true,
+            breakable: true,
         }),
     ),
     entry(
@@ -1503,6 +1528,7 @@ pub const NEUTRAL_ABILITIES: [NeutralAbilityDef; 60] = [
             effect: EffectId(52),
             stacks: true,
             water: false,
+            breakable: true,
         }),
     ),
     entry(
@@ -1516,6 +1542,7 @@ pub const NEUTRAL_ABILITIES: [NeutralAbilityDef; 60] = [
             period_ms: 250,
             buff: chill(all(-15), all(-15)),
             effect: EffectId(53),
+            breakable: false,
         },
     ),
 ];

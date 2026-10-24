@@ -217,6 +217,30 @@ fn of_two_foremen_the_higher_level_holds_whichever_reaches_last() {
 }
 
 #[test]
+fn a_break_leaves_the_granite_aura_and_the_tempest_be() {
+    // Neither has an IsBreakable in the game's files, and Liquipedia's
+    // Break lists both as not disabled by it.
+    let mut world = day();
+    let golem = world.spawn_neutral(NeutralKind::GraniteGolem, at(0), 0, 0);
+    let ally = world.spawn_neutral(NeutralKind::Kobold, at(200), 0, 0);
+    let tornado = world.spawn_neutral(NeutralKind::WildkinTornado, at(3000), 0, 0);
+    let hero = passive_hero(&mut world, at(3100));
+    afflict(&mut world, golem, ModifierKind::Broken, 600);
+    afflict(&mut world, tornado, ModifierKind::Broken, 600);
+    world.settle();
+    world.step();
+    assert!(world.broken(golem) && world.broken(tornado));
+    assert!(
+        wears(&world, ally, NeutralAbility::GraniteAura),
+        "the broken golem's aura holds"
+    );
+    assert!(
+        wears(&world, hero, NeutralAbility::Tempest),
+        "and the broken tornado's storm"
+    );
+}
+
+#[test]
 fn a_broken_bearer_hands_nothing_out() {
     let mut world = day();
     let foreman = world.spawn_neutral(NeutralKind::KoboldTaskmaster, at(0), 0, 0);
