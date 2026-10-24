@@ -91,6 +91,13 @@ impl Searches {
         u32::try_from(self.cooldown_until_ms.saturating_sub(now_ms())).unwrap_or(u32::MAX)
     }
 
+    /// Forgets the searches and waits, which are no longer being told (the link is gone); the
+    /// cooldown after a decline is kept.
+    pub(crate) fn forget_live(&mut self) {
+        self.entries.clear();
+        self.slot_waits.clear();
+    }
+
     /// Takes in what a login says is in flight.
     pub(crate) fn start(&mut self, activities: &Activities) {
         let now = now_ms();

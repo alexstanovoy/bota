@@ -336,12 +336,13 @@ impl Client {
     }
 
     /// Closes the link and keeps the view: the searches, limits, rulesets and account stay
-    /// readable, requests fail with [`ClientError::Closed`] and nothing more is received. For a
+    /// readable (the searches in flight are not: nothing tells them any more), requests fail with [`ClientError::Closed`] and nothing more is received. For a
     /// client that has nothing live to hear and would only hold a socket idle.
     pub fn hang_up(&mut self) {
         if let Some(backend) = self.backend.take() {
             let control = backend.control();
             self.kept = Some((control.rulesets().to_vec(), control.me().cloned()));
+            self.searches.forget_live();
         }
     }
 
