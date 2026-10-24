@@ -241,12 +241,10 @@ fn courier_auxiliary_casts_keep_delivery_tracking_a_moving_owner() {
         world.advance(&[]);
         let stats = world.stats.get(courier).expect("settled");
         if ability == AbilityId::BURST {
-            // Past 550: a courier's pace knows no upper limit.
-            assert_eq!(
-                stats.move_speed,
-                speed * Fixed::from_ratio(100 + rules::COURIER_BURST_PCT, 100)
-            );
-            assert!(stats.move_speed > Fixed::from_int(rules::MAX_MOVE_SPEED));
+            // Still in its fountain's Rejuvenation, which sets its pace
+            // outright: the burst adds nothing there.
+            assert_eq!(speed, Fixed::from_int(rules::COURIER_FOUNTAIN_SPEED));
+            assert_eq!(stats.move_speed, speed);
         } else {
             assert!(stats.invulnerable);
         }
@@ -561,6 +559,13 @@ fn a_match() -> (World, Entity, Entity) {
     (world, hero, courier)
 }
 
+/// Carries a courier out of its fountain's reach and on until the
+/// Rejuvenation it wore there has lingered out: its pace is its own again.
+fn leave_the_fountain(world: &mut World, courier: Entity) {
+    world.transform.get_mut(courier).expect("standing").pos = rules::DEMO_LANE_CORNERS[0];
+    run(world, rules::FOUNTAIN_HEAL_LINGER_TICKS + 1);
+}
+
 /// Steps a world up to `ticks` times, stopping on the tick `done` holds.
 fn step_until(world: &mut World, ticks: u32, done: impl Fn(&World) -> bool) {
     for _ in 0..ticks {
@@ -780,6 +785,7 @@ fn a_burst_adds_half_the_pace_and_no_slow_takes_from_it_while_it_holds() {
     let (mut world, _, _) = a_match();
     world.settle();
     let courier = raise_owner(&mut world, rules::COURIER_BURST_LEVEL);
+    leave_the_fountain(&mut world, courier);
     put_on(&mut world, courier, ModifierKind::Slowed { pct: 30 }, 600);
     world.settle();
     let pace = |world: &World| {
@@ -806,6 +812,10 @@ fn a_burst_adds_half_the_pace_and_no_slow_takes_from_it_while_it_holds() {
         pace(&world),
         Some(570),
         "hasted: 380 and half, slow or no slow"
+    );
+    assert!(
+        pace(&world) > Some(rules::MAX_MOVE_SPEED),
+        "past 550: a courier's pace knows no upper limit"
     );
     run(&mut world, rules::COURIER_BURST_TICKS);
     assert_eq!(
@@ -862,5 +872,55 @@ fn a_courier_in_its_fountains_rejuvenation_takes_nothing_and_is_hit_again_once_i
         hp(&world),
         Some(Fixed::from_int(rules::COURIER_HP - 1)),
         "out of the aura once it has lingered, a blow lands"
+    );
+}
+
+/// Checked in the Dota 2 client (7.41, 2026-10-24): a courier at its fountain
+/// moves at 550 ("courier moves faster" in its Rejuvenation buff), and keeps
+/// it the 3 s the buff lingers after it leaves; then its own pace again.
+#[test]
+fn a_courier_moves_at_550_in_its_fountains_rejuvenation_and_3_s_after_it_leaves() {
+    let (mut world, _, courier) = a_match();
+    world.settle();
+    world.step();
+    let pace = |world: &World| {
+        world
+            .stats
+            .get(courier)
+            .map(|stats| stats.move_speed.to_int())
+    };
+    assert_eq!(
+        pace(&world),
+        Some(rules::COURIER_FOUNTAIN_SPEED),
+        "at its fountain"
+    );
+    let from = world.pos(courier).expect("standing");
+    let away = from + Vec2::from_ints(2000, 0);
+    advance_validated(
+        &mut world,
+        Some(courier),
+        Order::Move {
+            target: Target::Pos(away),
+        },
+    );
+    run(&mut world, rules::TICKS_PER_SECOND);
+    let walked = isqrt64(world.pos(courier).expect("standing").distance_squared(from))
+        / i64::from(Fixed::from_int(1).raw);
+    assert!(
+        (500..=570).contains(&walked),
+        "it walks at 550: {walked} in the order's tick and a second"
+    );
+    world.transform.get_mut(courier).expect("standing").pos = rules::DEMO_LANE_CORNERS[0];
+    run(&mut world, rules::FOUNTAIN_HEAL_LINGER_TICKS - 1);
+    assert_eq!(
+        pace(&world),
+        Some(rules::COURIER_FOUNTAIN_SPEED),
+        "while it lingers"
+    );
+    run(&mut world, 2);
+    assert_eq!(
+        pace(&world),
+        Some(rules::COURIER_MOVE_SPEED),
+        "then its own"
     );
 }

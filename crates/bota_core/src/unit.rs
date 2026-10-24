@@ -122,8 +122,9 @@ pub struct UnitDef {
     pub bound: i32,
     /// Whether damage passes it by.
     pub invulnerable: bool,
-    /// Whether the fountain's Rejuvenation Aura makes it invulnerable while
-    /// it wears the aura's buff, as it does Dota's couriers.
+    /// Whether the fountain's Rejuvenation Aura shelters it while it wears the
+    /// aura's buff, as it does Dota's couriers: invulnerable, and moving at
+    /// [`rules::COURIER_FOUNTAIN_SPEED`].
     pub fountain_shelters: bool,
     /// Whether it is spell immune: an enemy's spell passes it by unless the
     /// spell [`pierces`](crate::AbilityDef::pierces) it.

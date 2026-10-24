@@ -1068,6 +1068,11 @@ pub const COURIER_MOVE_SPEED: i32 = 290;
 /// Liquipedia, Courier, "Movement Speed Gain per Level: 10" (290 at level 1
 /// to 580 at 30).
 pub const COURIER_MOVE_SPEED_PER_LEVEL: i32 = 10;
+/// A courier's pace while its fountain's Rejuvenation Aura holds on it,
+/// whatever else would change it: "courier moves faster", 550, lingering
+/// with the aura's buff 3 s after it leaves (checked in the Dota 2 client,
+/// 7.41, 2026-10-24).
+pub const COURIER_FOUNTAIN_SPEED: i32 = 550;
 /// The owner's level from which a courier flies (`modifier_courier_flying`).
 pub const COURIER_FLYING_LEVEL: u8 = 4;
 /// The owner's level from which a courier may burst.

@@ -139,12 +139,15 @@ pub fn derive_stats(cx: StatsCx<'_>) {
         if let Some(on_it) = modifiers.get(entity) {
             add_feast(&mut now, &mut sums.pace, on_it, abilities.get(entity));
         }
-        now.move_speed = paced(
-            now.move_speed,
-            sums.pace.pct,
-            pace_scale_bp,
-            kind.unbounded_pace,
-        );
+        now.move_speed = match sums.absolute_pace {
+            Some(pace) => Fixed::from_int(pace),
+            None => paced(
+                now.move_speed,
+                sums.pace.pct,
+                pace_scale_bp,
+                kind.unbounded_pace,
+            ),
+        };
         attack_damage(&mut now, &sums);
         let max = Regen {
             hp: now.max_hp,
@@ -269,6 +272,10 @@ fn add_carried_shares(now: &mut Stats, carried: &Carried) {
 struct Sums {
     /// Percent added to the pace; a slow takes off.
     pace: Pace,
+    /// The pace something sets outright, as Dota's
+    /// `MODIFIER_PROPERTY_MOVESPEED_ABSOLUTE`: what else changes the pace
+    /// counts for nothing while it holds.
+    absolute_pace: Option<i32>,
     /// Percent added to the main attack damage.
     damage_pct: i32,
     /// Flat bonus attack damage: the items', the souls', the buffs'.
@@ -279,6 +286,7 @@ impl Sums {
     fn of(on_it: Option<&Modifiers>) -> Sums {
         Sums {
             pace: Pace::of(on_it),
+            absolute_pace: None,
             damage_pct: 0,
             bonus_damage: 0,
         }
@@ -397,9 +405,11 @@ fn add_modifiers<'a>(
             }
             ModifierKind::Shielded => now.invulnerable = true,
             // The Rejuvenation Aura's buff (modifier_fountain_aura_buff)
-            // makes a unit whose row says so invulnerable.
+            // makes a unit whose row says so invulnerable and moves it at an
+            // absolute pace, as Dota's courier at its fountain.
             ModifierKind::Fountain { .. } if wearer.sheltered_by_fountain => {
-                now.invulnerable = true
+                now.invulnerable = true;
+                sums.absolute_pace = Some(rules::COURIER_FOUNTAIN_SPEED);
             }
             ModifierKind::Phased => now.phased = true,
             ModifierKind::Flying => now.flies = true,
