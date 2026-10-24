@@ -215,15 +215,14 @@ impl World {
             }
         }
         // Dota hands a hero a scroll for every death but one it dealt itself
-        // or one neutral creeps are credited with.
-        let scroll_due = killer.is_some_and(|killer| {
-            killer != entity
-                && self
-                    .team
-                    .get(killer)
-                    .is_some_and(|side| *side != Team::Neutral)
-        });
-        self.bury_seat(entity, scroll_due);
+        // or one neutral creeps are credited with, and keeps one neutral
+        // creeps dealt waiting at least its neutral floor.
+        let side_of_killer = killer
+            .filter(|killer| *killer != entity)
+            .and_then(|killer| self.team.get(killer).copied());
+        let scroll_due = side_of_killer.is_some_and(|side| side != Team::Neutral);
+        let by_neutrals = side_of_killer == Some(Team::Neutral);
+        self.bury_seat(entity, scroll_due, by_neutrals);
         if let Some(index) = killer.and_then(|k| self.seat_of(k))
             && kind == Some(UnitKind::Hero)
             && !denied
@@ -251,7 +250,7 @@ impl World {
         )
     }
 
-    fn bury_seat(&mut self, entity: Entity, scroll_due: bool) {
+    fn bury_seat(&mut self, entity: Entity, scroll_due: bool, by_neutrals: bool) {
         let mut fallen_hero_team = None;
         for index in 0..self.seats.len() {
             if self.seats[index].unit == Some(entity) {
@@ -278,7 +277,7 @@ impl World {
                 self.seats[index].unit = None;
                 self.seats[index].kept = Some(kept);
                 self.seats[index].deaths += 1;
-                self.seats[index].respawn_left = respawn_wait(level);
+                self.seats[index].respawn_left = respawn_wait(level, by_neutrals);
                 fallen_hero_team = Some(self.seats[index].team);
             }
             if self.seats[index].courier == Some(entity) {

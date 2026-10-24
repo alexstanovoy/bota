@@ -351,6 +351,43 @@ fn what_a_hero_owes_runs_down_while_it_is_dead() {
 
 /// A streak of three ends for 13.75 experience a level, ten or more for 110,
 /// and a thousand earned adds a tenth and a bit for the share.
+/// Dota keeps a hero that neutral creeps brought down waiting at least 26
+/// seconds (Liquipedia, Death); any other death waits its level's time. Every
+/// side is told how long the fallen hero has left, as Dota shows every hero's
+/// timer to everyone.
+#[test]
+fn a_hero_neutral_creeps_brought_down_waits_at_least_twenty_six_seconds() {
+    for (level, by_neutrals, seconds) in [(1, true, 26), (1, false, 12), (8, true, 30)] {
+        let map = map_of(MapId(1));
+        let mut world = World::on_map(map);
+        let hero = seated_hero(
+            &mut world,
+            Vec2::from_ints(9000, 9216),
+            HeroId::SHADOW_FIEND,
+        );
+        world.seats[0].level = level;
+        let side = if by_neutrals {
+            Team::Neutral
+        } else {
+            Team::Dire
+        };
+        let killer = world.spawn_creep(&MELEE_CREEP, side, Vec2::from_ints(9200, 9216), 0, 0);
+        world.settle();
+        world.bury(vec![(hero, Some(killer))], &mut Vec::new());
+        let wait = seconds * rules::TICKS_PER_SECOND;
+        assert_eq!(world.seats[0].respawn_left, wait, "level {level}, {side:?}");
+        for viewer in [Team::Radiant, Team::Dire] {
+            let told = world
+                .view(viewer)
+                .players
+                .iter()
+                .find(|player| player.slot == world.seats[0].slot)
+                .map(|player| player.respawn_left);
+            assert_eq!(told, Some(wait), "told to {viewer:?}");
+        }
+    }
+}
+
 #[test]
 fn a_heros_head_and_its_wait_are_priced_as_the_game_prices_them() {
     assert_eq!(hero_kill_xp(0, 0, 1), rules::HERO_KILL_XP_BASE);
@@ -359,10 +396,10 @@ fn a_heros_head_and_its_wait_are_priced_as_the_game_prices_them() {
     assert_eq!(hero_kill_xp(0, 10, 2), rules::HERO_KILL_XP_BASE + 220);
     assert_eq!(hero_kill_xp(0, 14, 2), rules::HERO_KILL_XP_BASE + 220);
     assert_eq!(hero_kill_xp(1000, 0, 5), rules::HERO_KILL_XP_BASE + 130);
-    assert_eq!(respawn_wait(1), 12 * rules::TICKS_PER_SECOND);
-    assert_eq!(respawn_wait(12), 44 * rules::TICKS_PER_SECOND);
-    assert_eq!(respawn_wait(25), 100 * rules::TICKS_PER_SECOND);
-    assert_eq!(respawn_wait(30), 100 * rules::TICKS_PER_SECOND);
+    assert_eq!(respawn_wait(1, false), 12 * rules::TICKS_PER_SECOND);
+    assert_eq!(respawn_wait(12, false), 44 * rules::TICKS_PER_SECOND);
+    assert_eq!(respawn_wait(25, false), 100 * rules::TICKS_PER_SECOND);
+    assert_eq!(respawn_wait(30, false), 100 * rules::TICKS_PER_SECOND);
 }
 
 #[test]

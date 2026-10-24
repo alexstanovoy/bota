@@ -482,11 +482,16 @@ pub const XP_THRESHOLDS: [i32; HERO_MAX_LEVEL as usize] = [
     63900,
 ];
 /// Seconds a dead hero waits before respawning, indexed by `level - 1`.
-/// Past the last entry the wait is the last entry's.
+/// Past the last entry the wait is the last entry's (Dota 7.41f, Liquipedia
+/// "Death": 12 s at level 1 up to 100 s from level 25).
 pub const RESPAWN_SECONDS: [u32; 25] = [
     12, 15, 18, 21, 24, 26, 28, 30, 32, 34, 36, 44, 46, 48, 50, 52, 54, 65, 70, 75, 80, 85, 90, 95,
     100,
 ];
+/// The least a hero waits once neutral creeps brought it down, in seconds
+/// (Dota: "dying to neutral creeps sets respawn time to a minimum of 26s",
+/// Liquipedia "Death").
+pub const NEUTRAL_KILL_RESPAWN_SECONDS: u32 = 26;
 
 // Creep stats: melee, ranged, siege.
 
