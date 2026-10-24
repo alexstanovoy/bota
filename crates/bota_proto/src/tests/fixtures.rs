@@ -195,6 +195,7 @@ pub fn projectile() -> ProjectileView {
         target: Some(entity(2)),
         inflictor: Some(Inflictor::Ability(AbilityId(2))),
         seen_by: Some(SeenBy::default()),
+        model: Some(ProjectileModel::Hero(HeroId(1))),
     }
 }
 

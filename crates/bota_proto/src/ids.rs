@@ -245,6 +245,27 @@ pub enum Inflictor {
     Item(ItemId),
 }
 
+/// How an attack's missile looks: Dota's `ProjectileModel` of the kind of
+/// unit that let it go, as the missile itself shows it whoever sees it. A
+/// side's lane creeps, towers and fountain each throw their side's (the
+/// missile's [`team`](crate::ProjectileView::team) tells which); every
+/// upgrade of a creep throws its base unit's.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum ProjectileModel {
+    /// A ranged lane creep's, of any upgrade.
+    RangedCreep,
+    /// A siege creep's, of any upgrade.
+    SiegeCreep,
+    /// A tower's.
+    Tower,
+    /// A fountain's.
+    Fountain,
+    /// A hero's, an illusion's included.
+    Hero(HeroId),
+    /// A neutral creep's.
+    Neutral(NeutralId),
+}
+
 /// How something in a slot is aimed when it is used.
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Aim {

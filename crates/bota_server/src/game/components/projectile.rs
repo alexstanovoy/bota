@@ -1,4 +1,4 @@
-use bota_proto::{DamageKind, Inflictor, ItemId};
+use bota_proto::{DamageKind, Inflictor, ItemId, ProjectileModel};
 
 use crate::game::{Entity, HitEffect};
 
@@ -16,6 +16,9 @@ pub struct Projectile {
     pub source: Option<Entity>,
     /// The ability or item it carries. Absent for an attack's missile.
     pub inflictor: Option<Inflictor>,
+    /// How an attack's missile looks, taken from its thrower when thrown:
+    /// told with the missile, whoever sees the thrower. Absent for a spell's.
+    pub model: Option<ProjectileModel>,
     pub target: Entity,
     pub damage: i32,
     pub kind: DamageKind,

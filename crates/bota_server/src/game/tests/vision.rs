@@ -3,7 +3,10 @@
 use bota_core::{CAMPS, CellGrid, MAPS, MELEE_CREEP, RANGED_CREEP, map_of, rules};
 
 use crate::game::{Entity, Event, Health, World, wire_id};
-use bota_proto::{EntityId, EventKind, Fixed, HeroId, ItemId, MapId, Target, Team, UnitKind, Vec2};
+use bota_proto::{
+    EntityId, EventKind, Fixed, HeroId, ItemId, MapId, ProjectileModel, Target, Team, UnitKind,
+    Vec2,
+};
 
 use super::support::*;
 
@@ -206,6 +209,39 @@ fn a_missile_names_who_let_it_go_and_whom_it_homes_on_while_the_side_sees_them()
         shot.target,
         Some(wire_id(mark)),
         "but still whom it homes on"
+    );
+}
+
+#[test]
+fn a_fogged_attackers_missile_shows_its_look_but_not_who_let_it_go() {
+    // Dota draws a missile out of the fog with its own particle: the
+    // projectile carries its look, never its thrower.
+    let mut world = World::new();
+    let archer = world.spawn_unit(&RANGED_CREEP, Team::Radiant, Vec2::from_ints(5000, 5000));
+    world.spawn_unit(&MELEE_CREEP, Team::Dire, Vec2::from_ints(5300, 5000));
+    world.settle();
+    let thrown = (0..40).any(|_| {
+        world.step();
+        !world.view_full().projectiles.is_empty()
+    });
+    assert!(thrown, "the archer lets a missile go");
+    world.step();
+    world.transform.get_mut(archer).expect("standing").pos = Vec2::from_ints(1000, 1000);
+    world.settle();
+    for side in [None, Some(Team::Radiant), Some(Team::Dire)] {
+        let view = side.map_or_else(|| world.view_full(), |team| world.view(team));
+        let shot = view.projectiles[0];
+        assert_eq!(shot.model, Some(ProjectileModel::RangedCreep), "{side:?}");
+        assert_eq!(shot.team, Team::Radiant, "{side:?}");
+    }
+    let view = world.view(Team::Dire);
+    assert!(
+        view.unit(wire_id(archer)).is_none(),
+        "the Dire side lost sight of the archer"
+    );
+    assert_eq!(
+        view.projectiles[0].source, None,
+        "so its missile shows how it looks but not who let it go"
     );
 }
 

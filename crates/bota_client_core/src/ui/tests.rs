@@ -1187,3 +1187,39 @@ fn a_side_view_that_tells_the_other_sides_glyph_cooldown_is_refused() {
         assert_eq!(app.lost, lost, "{ready_after:?}");
     }
 }
+
+#[test]
+fn a_missile_that_looks_as_something_other_than_what_let_it_go_is_refused() {
+    use bota_proto::{AbilityId, Angle, Inflictor, ProjectileModel, ProjectileView, Vec2};
+    let shot = |team, inflictor, model| ProjectileView {
+        id: EntityId {
+            idx: 40,
+            generation: 0,
+        },
+        pos: Vec2::from_ints(5000, 5000),
+        facing: Angle::default(),
+        team,
+        ability: None,
+        source: None,
+        target: None,
+        inflictor,
+        seen_by: None,
+        model,
+    };
+    let creep = Some(ProjectileModel::RangedCreep);
+    let spell = Some(Inflictor::Ability(AbilityId::REQUIEM));
+    for (missile, lost) in [
+        (shot(Team::Dire, None, creep), false),
+        (shot(Team::Dire, spell, None), false),
+        (shot(Team::Dire, spell, creep), true),
+        (shot(Team::Neutral, None, creep), true),
+    ] {
+        let (mut app, _, _) = a_duel_app();
+        let mut msg = a_radiant_view_scoring_dire(None);
+        if let bota_proto::ServerMsg::Snapshot { view } = &mut msg {
+            view.projectiles = vec![missile];
+        }
+        app.handle(msg);
+        assert_eq!(app.lost, lost, "{missile:?}");
+    }
+}

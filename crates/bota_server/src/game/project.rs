@@ -355,24 +355,24 @@ impl World {
 
     /// One missile, hook, mark, line of a requiem or Blood Grenade, or
     /// nothing when the entity is none of them. Who let it go and whom it
-    /// homes on are told while the viewer's units carry them.
+    /// homes on are told while the viewer's units carry them; how an attack's
+    /// missile looks is told with the missile.
     fn project_projectile(&self, viewer: Option<Team>, entity: Entity) -> Option<ProjectileView> {
         let ability = |id| Some(Inflictor::Ability(id));
-        let (inflictor, source, target) = if let Some(missile) = self.projectile.get(entity) {
-            (missile.inflictor, missile.source, Some(missile.target))
+        let (inflictor, source, target, model) = if let Some(missile) = self.projectile.get(entity)
+        {
+            let target = Some(missile.target);
+            (missile.inflictor, missile.source, target, missile.model)
         } else if let Some(mark) = self.mark.get(entity) {
-            (ability(mark.ability), Some(mark.owner), None)
+            (ability(mark.ability), Some(mark.owner), None, None)
         } else if let Some(line) = self.requiem_line.get(entity) {
-            (ability(AbilityId::REQUIEM), Some(line.owner), None)
+            (ability(AbilityId::REQUIEM), Some(line.owner), None, None)
         } else if let Some(hook) = self.hook.get(entity) {
-            (ability(AbilityId::MEAT_HOOK), Some(hook.owner), None)
+            (ability(AbilityId::MEAT_HOOK), Some(hook.owner), None, None)
         } else {
             let grenade = self.grenade.get(entity)?;
-            (
-                Some(Inflictor::Item(grenade.item)),
-                Some(grenade.owner),
-                None,
-            )
+            let item = Some(Inflictor::Item(grenade.item));
+            (item, Some(grenade.owner), None, None)
         };
         let at = self.transform.get(entity)?;
         let told =
@@ -387,6 +387,7 @@ impl World {
             target: told(target),
             inflictor,
             seen_by: self.seen_by_sides(viewer, entity, true),
+            model,
         })
     }
 

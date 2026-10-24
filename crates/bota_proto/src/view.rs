@@ -2,7 +2,7 @@
 
 use crate::{
     AbilityId, Aim, Angle, Attribute, Attributes, EffectId, EntityId, EventKind, Fixed, HeroId,
-    Inflictor, ItemId, NeutralId, Order, SlotId, TalentSlot, Team, UnitKind, Vec2,
+    Inflictor, ItemId, NeutralId, Order, ProjectileModel, SlotId, TalentSlot, Team, UnitKind, Vec2,
 };
 use serde::{Deserialize, Serialize};
 
@@ -356,8 +356,14 @@ pub struct ProjectileView {
     /// The ability or item it belongs to. Absent for a plain attack.
     pub inflictor: Option<Inflictor>,
     /// Which sides' views hold it. Told only in a view of the whole map;
-    /// absent in a side's view. Last on the wire.
+    /// absent in a side's view.
     pub seen_by: Option<SeenBy>,
+    /// How an attack's missile looks, told to whoever sees the missile, even
+    /// when [`source`](Self::source) is not: no more than the missile shows,
+    /// never who let it go or where. Absent for one an ability or an item
+    /// lets fly ([`inflictor`](Self::inflictor) tells its look). Last on the
+    /// wire.
+    pub model: Option<ProjectileModel>,
 }
 
 /// The abilities and items of a seat whose hero is dead.

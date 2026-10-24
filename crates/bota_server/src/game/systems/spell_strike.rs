@@ -41,6 +41,7 @@ impl World {
                 speed: Fixed::from_int(speed),
                 source: Some(cast.caster),
                 inflictor: cast.inflictor(),
+                model: None,
                 target: on,
                 damage: if self.is_hero(on) {
                     hero_damage

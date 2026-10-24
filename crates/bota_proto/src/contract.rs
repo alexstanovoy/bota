@@ -63,6 +63,14 @@
 //! to a side that sees the dealer as it happens, and is `None` to the
 //! others.
 //!
+//! A missile is told as Dota draws it, to every side whose view holds it: an
+//! attack's missile with its look ([`ProjectileView::model`]: the
+//! `ProjectileModel` of the kind of unit that let it go, of the missile's
+//! side) even when its thrower stands in the fog, as a missile out of the fog
+//! wears its own particle. The look is all it tells of the thrower: who let
+//! it go ([`source`](crate::ProjectileView::source)) only to a side that sees
+//! the thrower, and never where the thrower stands.
+//!
 //! Dota's kill feed and announcer make exceptions, told to both sides
 //! wherever they happen: the fall of a hero (not of an illusion), a tower, a
 //! barracks, an Ancient or a courier; and of a hero, a tower or a barracks
@@ -78,6 +86,7 @@
 //! [`LevelUp`]: crate::EventKind::LevelUp
 //! [`StructureDestroyed`]: crate::EventKind::StructureDestroyed
 //! [`ItemBought`]: crate::EventKind::ItemBought
+//! [`ProjectileView::model`]: crate::ProjectileView::model
 //!
 //! # What a side is told of the other side's seats
 //!

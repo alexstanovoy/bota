@@ -147,6 +147,7 @@ fn trace_wire() -> Registry {
     trace::<RejectReason>(&mut tracer, &mut enums);
     trace::<DamageKind>(&mut tracer, &mut enums);
     trace::<Inflictor>(&mut tracer, &mut enums);
+    trace::<ProjectileModel>(&mut tracer, &mut enums);
     trace::<Role>(&mut tracer, &mut enums);
     trace::<TickMode>(&mut tracer, &mut enums);
     trace::<PickPhase>(&mut tracer, &mut enums);

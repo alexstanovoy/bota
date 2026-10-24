@@ -11,7 +11,9 @@ use bota_core::{
     BEATS_PER_TICK, ModifierKind, Striker, Talent, ability_def, attack_gain, beats,
     carried_pierces, cast_point_ms, cross, facing_gap, facing_towards, kind_def, rules,
 };
-use bota_proto::{Aim, DamageKind, Fixed, Inflictor, ItemId, ItemSlot, Team, Vec2};
+use bota_proto::{
+    Aim, DamageKind, Fixed, Inflictor, ItemId, ItemSlot, ProjectileModel, Team, UnitKind, Vec2,
+};
 
 use super::hitting::entity_slot;
 
@@ -749,6 +751,7 @@ impl World {
             return;
         };
         let side = self.team.get(attacker).copied().unwrap_or(Team::Neutral);
+        let model = self.missile_model(attacker);
         let missile = self.spawn();
         self.transform.insert(missile, at);
         self.set_team(missile, side);
@@ -758,6 +761,7 @@ impl World {
                 speed,
                 source: Some(attacker),
                 inflictor: None,
+                model,
                 target: on,
                 damage: swing.damage,
                 kind: DamageKind::Physical,
@@ -771,6 +775,24 @@ impl World {
                 striker: Some(swing.striker),
             },
         );
+    }
+
+    /// How a ranged swing's missile looks: Dota's `ProjectileModel` of the
+    /// thrower's kind of unit, an illusion's its hero's. None for a unit that
+    /// throws none.
+    fn missile_model(&self, attacker: Entity) -> Option<ProjectileModel> {
+        Some(match *self.kind.get(attacker)? {
+            UnitKind::CreepRanged => ProjectileModel::RangedCreep,
+            UnitKind::CreepSiege => ProjectileModel::SiegeCreep,
+            UnitKind::Tower => ProjectileModel::Tower,
+            UnitKind::Fountain => ProjectileModel::Fountain,
+            UnitKind::Hero => {
+                let shows_as = self.illusion.get(attacker).map_or(attacker, |i| i.of);
+                ProjectileModel::Hero(*self.hero.get(shows_as)?)
+            }
+            UnitKind::CreepNeutral => ProjectileModel::Neutral(self.neutral.get(attacker)?.id()),
+            _ => return None,
+        })
     }
 
     /// What a swing adds to its least damage: a whole number drawn evenly

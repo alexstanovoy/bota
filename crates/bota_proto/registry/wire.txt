@@ -531,3 +531,10 @@ variant CreepSide 2 Neutral
 variant CreepSide 3 All
 field MatchInfo 13 cheats: bool
 field WorldView 15 clock: Option<ClockShift>
+field ProjectileView 9 model: Option<ProjectileModel>
+variant ProjectileModel 0 RangedCreep
+variant ProjectileModel 1 SiegeCreep
+variant ProjectileModel 2 Tower
+variant ProjectileModel 3 Fountain
+variant ProjectileModel 4 Hero(HeroId)
+variant ProjectileModel 5 Neutral(NeutralId)

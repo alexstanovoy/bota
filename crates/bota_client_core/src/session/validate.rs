@@ -2,7 +2,8 @@
 
 use bota_core::rules;
 use bota_proto::{
-    EntityId, EventKind, HeroId, LobbySlot, Pick, PlayerView, StatusFlags, UnitKind, WorldView,
+    EntityId, EventKind, HeroId, LobbySlot, Pick, PlayerView, ProjectileModel, StatusFlags, Team,
+    UnitKind, WorldView,
 };
 
 use crate::limits::{
@@ -339,15 +340,45 @@ fn effects(view: &WorldView) -> Result<(), SessionError> {
     Ok(())
 }
 
-/// Projectiles naming visible units only, as their sources and their targets.
+/// Projectiles naming visible units only, as their sources and their targets,
+/// each looking as no more than it shows: an attack's missile as its
+/// thrower's kind of unit throws, of its side, and a spell's as its
+/// inflictor alone.
 fn projectiles(view: &WorldView) -> Result<(), SessionError> {
     for shot in &view.projectiles {
         for id in [shot.source, shot.target].into_iter().flatten() {
             view.unit(id)
                 .ok_or(SessionError::UnknownProjectileUnit(id))?;
         }
+        let Some(model) = shot.model else {
+            continue;
+        };
+        let of_neutrals = matches!(model, ProjectileModel::Neutral(_));
+        let source = shot.source.and_then(|id| view.unit(id));
+        if shot.inflictor.is_some()
+            || of_neutrals != (shot.team == Team::Neutral)
+            || source.is_some_and(|unit| thrown_by(unit) != Some(model))
+        {
+            return Err(SessionError::Stream(
+                "a missile looks as something other than what let it go",
+            ));
+        }
     }
     Ok(())
+}
+
+/// How a unit's attack missile looks: Dota's `ProjectileModel` of its kind,
+/// an illusion's as its hero's; none for a unit that throws none.
+fn thrown_by(unit: &bota_proto::UnitView) -> Option<ProjectileModel> {
+    Some(match unit.kind {
+        UnitKind::CreepRanged => ProjectileModel::RangedCreep,
+        UnitKind::CreepSiege => ProjectileModel::SiegeCreep,
+        UnitKind::Tower => ProjectileModel::Tower,
+        UnitKind::Fountain => ProjectileModel::Fountain,
+        UnitKind::Hero => ProjectileModel::Hero(unit.hero?),
+        UnitKind::CreepNeutral => ProjectileModel::Neutral(unit.neutral?),
+        _ => return None,
+    })
 }
 
 /// Aggro entries sorted strictly by unit, naming visible units only, their timers within the
