@@ -243,12 +243,31 @@ fn a_seat_key_admits_only_so_many_spectators_at_once(wire: Wire) {
     );
 
     drop(first);
-    // The player is told the lobby on its own arrival, then once the departure is heard.
-    for _ in 0..2 {
-        player.recv_until(|msg| matches!(msg, ServerMsg::LobbyState { .. }).then_some(()));
-    }
-    let mut third = watch(KEYS[0]);
-    assert_eq!(third.welcome(), None);
+    // The player is told nothing of it: players are not told about
+    // spectators. Once the server has heard the departure, a third watcher
+    // takes the place.
+    let admitted = (0..100).any(|_| {
+        let mut third = watch(KEYS[0]);
+        let welcomed = loop {
+            match third.recv_or_hangup() {
+                Some(ServerMsg::Welcome { .. }) => break true,
+                Some(ServerMsg::Refused { .. }) | None => break false,
+                Some(_) => {}
+            }
+        };
+        if !welcomed {
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        welcomed
+    });
+    assert!(admitted, "the departed watcher's place is taken");
+    let told = super::spectators::drain(&mut player, Duration::from_millis(300));
+    assert!(
+        !told
+            .iter()
+            .any(|msg| matches!(msg, ServerMsg::ParticipantLeft { .. })),
+        "{told:?}"
+    );
 }
 
 #[test]

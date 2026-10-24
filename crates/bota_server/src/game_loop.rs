@@ -24,6 +24,7 @@ use crate::replay::ReplayWriter;
 use crate::spectators::{DelayedFeed, HeldTick, MAX_DELAYED_TICKS, Spectators, sight};
 
 mod chat;
+mod participants;
 
 /// How long a connection may stay silent before it is dropped as dead, by
 /// default: five pings missed. A seat is not handed to a new connection while
@@ -178,6 +179,7 @@ pub fn run(listeners: impl Into<Listeners>, opts: ServerOpts) -> std::io::Result
         referees: Vec::new(),
         roster,
         next_player: 1,
+        told: participants::Told::default(),
         started: Instant::now(),
         delayed,
         pick_clock: PickClock::Waiting,
@@ -299,6 +301,8 @@ struct Server {
     spectators: Vec<Watcher>,
     roster: Roster,
     next_player: u32,
+    /// What each greeted connection is called on the wire.
+    told: participants::Told,
     /// The ticks held back for late spectators, when they may watch.
     delayed: Option<DelayedFeed>,
     /// The hero selection clock; runs in the lobby phase only.
@@ -352,11 +356,15 @@ impl Server {
     }
 
     fn broadcast_lobby(&self) {
-        self.broadcast(&ServerMsg::LobbyState {
+        self.broadcast(&self.lobby_state());
+    }
+
+    fn lobby_state(&self) -> ServerMsg {
+        ServerMsg::LobbyState {
             slots: self.roster.lobby_slots(),
             same_heroes: self.opts.same_heroes,
             pick: self.pick_clock.phase(Instant::now()),
-        });
+        }
     }
 
     /// Ends a connection the server is done with: what is queued still goes
@@ -377,6 +385,7 @@ impl Server {
     /// Takes a connection out of every list.
     fn forget(&mut self, id: PlayerId) -> Option<Connection> {
         self.rates.forget(id);
+        self.told.take(id);
         self.spectators.retain(|w| w.id != id);
         self.referees.retain(|&p| p != id);
         let at = self.conns.iter().position(|c| c.id == id)?;
@@ -416,22 +425,19 @@ impl Server {
                 (id, false)
             }
         };
-        // A connection already refused or dropped was told of then.
+        // A connection already refused or dropped was told of then; one that
+        // never said hello is nobody's business.
         if self.conn(id).is_some() {
             let slot = self.roster.seat_of(id).map(|s| s.slot);
+            let told = self.told.take(id);
             self.roster.release(id);
             if broken {
                 self.lose_conn(id);
             } else {
                 self.drop_conn(id);
             }
-            if in_match {
-                self.broadcast(&ServerMsg::ParticipantLeft {
-                    player_id: id,
-                    slot,
-                });
-            } else {
-                self.broadcast_lobby();
+            if let Some(told) = told {
+                self.tell_departure(told, slot, in_match);
             }
         }
         None
@@ -590,9 +596,10 @@ impl Server {
                 return false;
             }
         };
+        let told = self.told.give(id, slot.is_some());
         if let Some(conn) = self.conn(id) {
             conn.send(&ServerMsg::Welcome {
-                player_id: id,
+                player_id: told,
                 slot,
                 tick_rate: self.opts.tick_rate,
                 mode: self.opts.mode,
@@ -730,7 +737,7 @@ impl Server {
                 wire_fingerprint,
             } => {
                 if self.greet(id, role, name, key, wire_fingerprint, None) {
-                    self.broadcast_lobby();
+                    self.lobby_after_hello(id);
                 }
             }
             ClientMsg::PickHero { hero } => {

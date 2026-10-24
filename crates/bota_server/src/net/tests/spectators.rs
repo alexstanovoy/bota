@@ -3,7 +3,7 @@
 
 use std::io::ErrorKind;
 
-use bota_proto::{SeatKey, SlotOrder, Vec2};
+use bota_proto::{PlayerId, SeatKey, SlotOrder, Vec2};
 
 use super::*;
 use crate::spectators::Spectators;
@@ -188,5 +188,83 @@ fn a_late_spectator_is_shown_the_match_that_many_seconds_behind_with_both_seats_
         Order::Move {
             target: Target::Pos(Vec2::from_ints(1000, 1000))
         }
+    );
+}
+
+/// Players are not told about spectators: a seat hears nothing of one
+/// coming or going, in the lobby or the match, and its number counts seats
+/// only; spectators are told a fellow left.
+#[test]
+fn a_seat_is_told_nothing_of_spectators_coming_and_going() {
+    let mut opts = realtime(23);
+    opts.spectators = Spectators::Open;
+    let addr = start_server(opts);
+    let mut early = TestClient::connect(addr);
+    early.hello(Role::Spectator, None);
+    let welcomed = |client: &mut TestClient| {
+        client.recv_until(|msg| match msg {
+            ServerMsg::Welcome { player_id, .. } => Some(player_id),
+            _ => None,
+        })
+    };
+    assert!(welcomed(&mut early).0 > 2, "a watcher is numbered apart");
+    drop(early);
+    let mut first = TestClient::connect(addr);
+    first.hello(Role::Bot, None);
+    assert_eq!(welcomed(&mut first), PlayerId(1), "the first seat is one");
+    drain(&mut first, Duration::from_millis(300));
+    let mut lobby_watcher = TestClient::connect(addr);
+    lobby_watcher.hello(Role::Spectator, None);
+    welcomed(&mut lobby_watcher);
+    drop(lobby_watcher);
+    let told = drain(&mut first, Duration::from_millis(500));
+    assert!(
+        told.is_empty(),
+        "a seat is told nothing of a watcher: {told:?}"
+    );
+
+    first.send(&ClientMsg::PickHero {
+        hero: HeroId::SHADOW_FIEND,
+    });
+    first.send(&ClientMsg::SetReady(true));
+    let mut second = TestClient::connect(addr);
+    second.hello(Role::Bot, None);
+    assert_eq!(welcomed(&mut second), PlayerId(2));
+    second.send(&ClientMsg::PickHero {
+        hero: HeroId::SHADOW_FIEND,
+    });
+    second.send(&ClientMsg::SetReady(true));
+    first.recv_until(snapshot);
+    second.recv_until(snapshot);
+    let mut stays = TestClient::connect(addr);
+    stays.hello(Role::Spectator, None);
+    welcomed(&mut stays);
+    let mut leaves = TestClient::connect(addr);
+    leaves.hello(Role::Spectator, None);
+    let gone = welcomed(&mut leaves);
+    drop(leaves);
+    let left = |messages: &[ServerMsg]| -> Vec<(PlayerId, Option<SlotId>)> {
+        messages
+            .iter()
+            .filter_map(|msg| match msg {
+                ServerMsg::ParticipantLeft { player_id, slot } => Some((*player_id, *slot)),
+                _ => None,
+            })
+            .collect()
+    };
+    assert_eq!(
+        left(&drain(&mut stays, Duration::from_millis(500))),
+        [(gone, None)]
+    );
+    for seat in [&mut first, &mut second] {
+        let told = drain(seat, Duration::from_millis(200));
+        assert!(left(&told).is_empty(), "{:?}", left(&told));
+    }
+    drop(second);
+    let told = drain(&mut first, Duration::from_millis(500));
+    assert_eq!(
+        left(&told),
+        [(PlayerId(2), Some(SlotId(1)))],
+        "a seat's leaving is told"
     );
 }

@@ -425,7 +425,9 @@ pub enum Codec {
 pub enum ServerMsg {
     /// Accepts a [`ClientMsg::Hello`] and states the terms of the match.
     Welcome {
-        /// Handle for this connection.
+        /// Handle for this connection: seats are numbered from one in the
+        /// order they were taken, watchers apart from them, so the number
+        /// says nothing of how many came to watch.
         player_id: PlayerId,
         /// Which seat was assigned. Absent for a spectator.
         slot: Option<SlotId>,
@@ -490,7 +492,9 @@ pub enum ServerMsg {
         /// Final numbers.
         stats: MatchStats,
     },
-    /// A participant's connection ended.
+    /// A participant's connection ended. Every connection is told of a
+    /// seat's; of a spectator's or a referee's only the spectators are, as
+    /// players in Dota are not told about spectators.
     ParticipantLeft {
         /// Which connection.
         player_id: PlayerId,

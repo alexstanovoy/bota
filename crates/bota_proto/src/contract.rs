@@ -237,6 +237,14 @@
 //! orders, as late. When the match is over a late spectator is shown its
 //! last tick at once, then the result.
 //!
+//! As in Dota, players are not told about spectators: a spectator's or a
+//! referee's arrival and departure reach no seat (no
+//! [`ParticipantLeft`](crate::ServerMsg::ParticipantLeft), no lobby sent
+//! again), only the spectators are told a watcher left, and the
+//! [`PlayerId`](crate::PlayerId) a connection is welcomed with counts seats
+//! and watchers apart. That the lobby shows every seat's pick to everyone is
+//! Solo Mid's blind pick; draft modes will tell picks by side.
+//!
 //! A seat picks only among the heroes the server allows (every hero unless
 //! it says otherwise); a seat without a pick when the lobby runs out of time
 //! is given one of them. A pick is final once the seat was ready with it,
