@@ -39,6 +39,19 @@ pub struct Teleport {
     pub sight_until: u32,
 }
 
+/// What a side's scoreboard shows of a seat's hero: as it stood the last
+/// time that side saw it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Sighting {
+    pub level: u8,
+    pub xp: i32,
+}
+
+impl Sighting {
+    /// A hero as every match starts it.
+    pub const START: Sighting = Sighting { level: 1, xp: 0 };
+}
+
 /// One player's place at the match. Everything here outlives the body.
 #[derive(Clone, Debug)]
 pub struct Seat {
@@ -92,6 +105,9 @@ pub struct Seat {
     pub structure_damage: i32,
     /// The scroll its hero reads, or read a moment ago.
     pub teleport: Option<Teleport>,
+    /// Its hero as each side last saw it, Radiant's then Dire's: the level
+    /// and experience the other side's scoreboard shows.
+    pub sighted: [Sighting; 2],
 }
 
 impl Seat {
@@ -122,6 +138,7 @@ impl Seat {
             hero_damage: 0,
             structure_damage: 0,
             teleport: None,
+            sighted: [Sighting::START; 2],
         }
     }
 }

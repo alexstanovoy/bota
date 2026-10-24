@@ -807,6 +807,25 @@ impl World {
             forest: Some(&mut self.trees),
             sight: &mut self.sight_scratch,
         });
+        self.note_sightings();
+    }
+
+    /// Notes on each seat what every side shown its hero now saw of it, for
+    /// that side's scoreboard.
+    fn note_sightings(&mut self) {
+        for seat in &mut self.seats {
+            let Some(seen) = seat.unit.and_then(|unit| self.shown.get(unit)) else {
+                continue;
+            };
+            for team in [Team::Radiant, Team::Dire] {
+                if let (true, Some(side)) = (seen.by(team), bota_core::side_index(team)) {
+                    seat.sighted[side] = crate::game::Sighting {
+                        level: seat.level,
+                        xp: seat.xp,
+                    };
+                }
+            }
+        }
     }
 
     /// Where everything means to go, the steps taken there, and bodies

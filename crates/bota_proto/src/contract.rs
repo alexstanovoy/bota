@@ -76,6 +76,16 @@
 //! [`StructureDestroyed`]: crate::EventKind::StructureDestroyed
 //! [`ItemBought`]: crate::EventKind::ItemBought
 //!
+//! # What a side is told of the other side's seats
+//!
+//! As Dota's scoreboard: of a seat of the other side,
+//! [`PlayerView`](crate::PlayerView) tells the hero's level and experience
+//! as they stood when the viewing side last saw the hero (level one before
+//! it ever did), its kills, deaths, assists and respawn wait as they are,
+//! and neither its gold, stash and fallen hero's kit (absent) nor its last
+//! hits and denies (zero). A hero the side sees shows its level in its
+//! [`UnitView`](crate::UnitView) as it is.
+//!
 //! # What a side is told of the forest
 //!
 //! Since 2014 Dota shows no tree falling, growing back or being put up where

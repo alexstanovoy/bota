@@ -366,9 +366,12 @@ pub struct PlayerView {
     /// illusions of the hero stand, so that it cannot tell the hero from
     /// them (see the [`contract`](crate::contract)).
     pub unit: Option<EntityId>,
-    /// Hero level.
+    /// Hero level. For a seat of the other side, the level its hero had
+    /// when the viewing side last saw it (one before it ever did), as Dota's
+    /// scoreboard shows it.
     pub level: u8,
-    /// Experience gathered over the whole match.
+    /// Experience gathered over the whole match. For a seat of the other
+    /// side, on the terms of `level`.
     pub xp: i32,
     /// Unspent gold. Absent for the opposing team.
     pub gold: Option<i32>,
@@ -384,9 +387,9 @@ pub struct PlayerView {
     pub deaths: u16,
     /// Kills assisted.
     pub assists: u16,
-    /// Enemy creeps last hit.
+    /// Enemy creeps last hit. Zero for the opposing team.
     pub last_hits: u16,
-    /// Friendly creeps denied.
+    /// Friendly creeps denied. Zero for the opposing team.
     pub denies: u16,
     /// Ticks until respawn. Zero when alive.
     pub respawn_left: u32,

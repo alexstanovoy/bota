@@ -846,3 +846,48 @@ fn a_tree_planted_in_the_fog_shows_only_once_the_other_side_looks() {
         "while the other side, gone, still has it standing"
     );
 }
+
+#[test]
+fn the_scoreboard_shows_an_enemy_hero_as_it_was_last_seen() {
+    let mut world = World::new();
+    seat_hero(&mut world, 0, Team::Radiant, Vec2::from_ints(1000, 1000));
+    let enemy = seat_hero(&mut world, 1, Team::Dire, Vec2::from_ints(1300, 1000));
+    world.settle();
+    let scored = |world: &World, side: Option<Team>| {
+        let view = side.map_or_else(|| world.view_full(), |team| world.view(team));
+        let player = view
+            .player(bota_proto::SlotId(1))
+            .expect("every seat is scored");
+        (player.level, player.xp, player.last_hits)
+    };
+    world.seats[1].last_hits = 4;
+    world.grant_xp(1, rules::XP_THRESHOLDS[1], &mut Vec::new());
+    world.step();
+    let seen = (2, rules::XP_THRESHOLDS[1]);
+    assert_eq!(scored(&world, Some(Team::Radiant)), (seen.0, seen.1, 0));
+    put(&mut world, enemy, Vec2::from_ints(9000, 9000));
+    world.grant_xp(1, rules::XP_THRESHOLDS[3], &mut Vec::new());
+    world.step();
+    assert_eq!(
+        scored(&world, Some(Team::Radiant)),
+        (seen.0, seen.1, 0),
+        "out of sight, the level and experience last seen, and no last hits ever"
+    );
+    let now = (4, rules::XP_THRESHOLDS[1] + rules::XP_THRESHOLDS[3]);
+    assert_eq!(
+        scored(&world, Some(Team::Dire)),
+        (now.0, now.1, 4),
+        "its own side"
+    );
+    assert_eq!(
+        scored(&world, None),
+        (now.0, now.1, 4),
+        "a view of everything"
+    );
+    put(&mut world, enemy, Vec2::from_ints(1300, 1000));
+    assert_eq!(
+        scored(&world, Some(Team::Radiant)),
+        (now.0, now.1, 0),
+        "seen again, as it is"
+    );
+}

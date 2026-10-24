@@ -103,7 +103,10 @@ impl World {
     }
 
     /// One seat as a viewer is told of it. Which unit is the hero is kept
-    /// from the other side while illusions of it stand.
+    /// from the other side while illusions of it stand. As Dota's scoreboard
+    /// has it, the other side is told the hero's level and experience as it
+    /// last saw them, and neither its gold nor its last hits and denies; its
+    /// kills, deaths, assists and respawn wait are public.
     fn project_player(
         &self,
         viewer: Option<Team>,
@@ -112,6 +115,16 @@ impl World {
     ) -> PlayerView {
         let mana_rate = self.mana_cost_rate_of(seat.unit);
         let own = viewer.is_none_or(|team| team == seat.team);
+        let shown = if own {
+            crate::game::Sighting {
+                level: seat.level,
+                xp: seat.xp,
+            }
+        } else {
+            viewer
+                .and_then(bota_core::side_index)
+                .map_or(crate::game::Sighting::START, |side| seat.sighted[side])
+        };
         PlayerView {
             slot: seat.slot,
             team: seat.team,
@@ -120,8 +133,8 @@ impl World {
                 .unit
                 .filter(|unit| own || !disguised.contains(unit))
                 .map(wire_id),
-            level: seat.level,
-            xp: seat.xp,
+            level: shown.level,
+            xp: shown.xp,
             // A side is told its own gold, stash and what a fallen body
             // left, nobody else's.
             gold: own.then_some(seat.gold),
@@ -142,8 +155,8 @@ impl World {
             kills: seat.kills,
             deaths: seat.deaths,
             assists: seat.assists,
-            last_hits: seat.last_hits,
-            denies: seat.denies,
+            last_hits: if own { seat.last_hits } else { 0 },
+            denies: if own { seat.denies } else { 0 },
             respawn_left: seat.respawn_left,
         }
     }
