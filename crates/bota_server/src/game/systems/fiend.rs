@@ -272,8 +272,11 @@ impl World {
     ///
     /// Only a killer that gathers souls takes any, and only up to
     /// [`World::soul_cap`]; a count a feast has carried past it stays
-    /// where it is. A hero is worth [`rules::SOULS_PER_HERO`], anything else
-    /// [`rules::SOULS_PER_UNIT`]; a structure or a ward is worth nothing.
+    /// where it is. A hero is worth [`rules::SOULS_PER_HERO`], anything
+    /// else [`rules::SOULS_PER_UNIT`]; a structure or a ward is worth
+    /// nothing. A broken killer takes none: the necromastery "Does not grant
+    /// stacks while disabled by Break. However, their already existing stacks
+    /// still fully work" (Liquipedia, Break).
     pub fn feed_souls(&mut self, fallen: Entity, killer: Option<Entity>) {
         let Some(killer) = killer.filter(|killer| *killer != fallen) else {
             return;
@@ -286,7 +289,7 @@ impl World {
         {
             return;
         }
-        if !self.gathers_souls(killer) {
+        if !self.gathers_souls(killer) || self.broken(killer) {
             return;
         }
         let worth = if self.is_hero(fallen) {

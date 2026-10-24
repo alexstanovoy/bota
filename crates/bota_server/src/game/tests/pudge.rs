@@ -395,6 +395,27 @@ fn a_stack_of_the_heap_is_worth_two_strength_and_nothing_else() {
 }
 
 #[test]
+fn a_break_leaves_the_flesh_heap_whole() {
+    // Liquipedia, Break, among the abilities not disabled by it: "Pudge -
+    // Flesh Heap".
+    let (mut world, pudge) = a_lone_pudge();
+    world
+        .modifiers
+        .get_mut(pudge)
+        .expect("a hero wears modifiers")
+        .set_count(ModifierKind::flesh_heap, 3, (pudge, AbilityId::FLESH_HEAP));
+    world.step();
+    let strength = world.stats.get(pudge).map(|s| s.attributes.strength);
+    put_on(&mut world, pudge, ModifierKind::Broken, 600);
+    world.step();
+    assert_eq!(
+        world.stats.get(pudge).map(|s| s.attributes.strength),
+        strength,
+        "broken, his three stacks are worth their strength on"
+    );
+}
+
+#[test]
 fn a_flesh_heap_outlives_the_death_of_the_one_carrying_it() {
     let (mut world, pudge, _mark) = pudge_and_a_mark(200);
     let foe = world.spawn_hero(

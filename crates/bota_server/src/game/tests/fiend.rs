@@ -265,6 +265,30 @@ fn souls_come_only_from_the_units_the_gatherer_brings_down() {
 }
 
 #[test]
+fn a_broken_fiend_keeps_what_his_souls_are_worth_but_gathers_no_new_one() {
+    // Liquipedia, Break: Necromastery "Does not grant stacks while disabled
+    // by Break. However, their already existing stacks still fully work."
+    let (mut world, fiend, mark) = fiend_and_a_mark(400);
+    hand_souls(&mut world, fiend, 10);
+    world.step();
+    let worth = world.stats.get(fiend).map(|s| s.damage);
+    put_on(&mut world, fiend, ModifierKind::Broken, 600);
+    world.step();
+    assert_eq!(
+        world.stats.get(fiend).map(|s| s.damage),
+        worth,
+        "broken, his ten souls deal their damage on"
+    );
+    let mut events = Vec::new();
+    world.bury(vec![(mark, Some(fiend))], &mut events);
+    assert_eq!(
+        souls(&world, fiend),
+        10,
+        "but the creep he brings down is worth none"
+    );
+}
+
+#[test]
 fn a_hero_brought_down_is_worth_four_souls() {
     let (mut world, fiend, _mark) = fiend_and_a_mark(400);
     let victim = world.spawn_hero(

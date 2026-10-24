@@ -78,14 +78,11 @@ pub fn derive_stats(cx: StatsCx<'_>) {
             now.max_hp += Fixed::from_int(bonus.max_hp);
             now.damage += bonus.damage;
         }
-        // A broken unit's own passives do nothing: what it has gathered
-        // is worth nothing while it lasts.
         let wears = |kind: ModifierKind| {
             modifiers
                 .get(entity)
                 .is_some_and(|on_it| on_it.active().any(|held| held.kind == kind))
         };
-        let broken = wears(ModifierKind::Broken);
         // An illusion takes no bonus attack damage, armor or magic
         // resistance from anything (Liquipedia, Illusions: their innate
         // negation of each, 100%).
@@ -112,9 +109,9 @@ pub fn derive_stats(cx: StatsCx<'_>) {
             now.attributes +=
                 Attributes::all(rules::ATTRIBUTE_BONUS_POINTS * i32::from(book.attribute_bonus));
         }
-        if !broken {
-            add_heap(&mut now, held(ModifierKind::flesh_heap));
-        }
+        // A Break leaves the flesh heap whole, and the souls held work on:
+        // it only stops new souls from being gathered (Liquipedia, Break).
+        add_heap(&mut now, held(ModifierKind::flesh_heap));
         from_attributes(&mut now);
         let base_armor =
             Fixed::from_ratio(kind.armor * 2 + kind.per_upgrade.armor_halves * steps, 2)
@@ -122,9 +119,7 @@ pub fn derive_stats(cx: StatsCx<'_>) {
         if let Some(carried) = &carried {
             add_carried_shares(&mut now, carried);
         }
-        if !broken {
-            sums.bonus_damage += kept(illusion, soul_damage(held(ModifierKind::souls), levels + 1));
-        }
+        sums.bonus_damage += kept(illusion, soul_damage(held(ModifierKind::souls), levels + 1));
         // What a breakable aura put on does nothing while its source is
         // broken.
         let working = || {
