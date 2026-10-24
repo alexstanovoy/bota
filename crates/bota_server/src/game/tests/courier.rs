@@ -238,10 +238,12 @@ fn courier_auxiliary_casts_keep_delivery_tracking_a_moving_owner() {
         world.advance(&[]);
         let stats = world.stats.get(courier).expect("settled");
         if ability == AbilityId::BURST {
+            // Past 550: a courier's pace knows no upper limit.
             assert_eq!(
                 stats.move_speed,
                 speed * Fixed::from_ratio(100 + rules::COURIER_BURST_PCT, 100)
             );
+            assert!(stats.move_speed > Fixed::from_int(rules::MAX_MOVE_SPEED));
         } else {
             assert!(stats.invulnerable);
         }

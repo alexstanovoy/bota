@@ -83,10 +83,11 @@ pub fn derive_stats(cx: StatsCx<'_>) {
             .get(entity)
             .is_some_and(|on_it| on_it.active().any(|held| held.kind == ModifierKind::Broken));
         // Applied changes are folded in first and additively. Items,
-        // attributes and every multiplier below land on top of them.
-        if let Some(on_it) = applied.get(entity) {
-            fold_applied(&mut now, on_it);
-        }
+        // attributes and every multiplier below land on top of them. A
+        // world whose paces are scaled keeps its limits in proportion.
+        let pace_scale_bp = applied
+            .get(entity)
+            .map_or(rules::NOMINAL_BP, |on_it| fold_applied(&mut now, on_it));
         let ranged = kind.projectile_speed.is_some();
         let carried = inventory
             .get(entity)
@@ -112,13 +113,17 @@ pub fn derive_stats(cx: StatsCx<'_>) {
         if !broken {
             now.damage += soul_damage(held(ModifierKind::souls), levels + 1);
         }
+        // Every percent change of the pace is summed and taken of the flat
+        // pace at once, as Dota works movement speed out.
+        let mut pace_pct = 0;
         if let Some(on_it) = modifiers.get(entity) {
             let hero = kind.kind == bota_proto::UnitKind::Hero;
-            add_modifiers(&mut now, on_it, base_armor, hero);
+            add_modifiers(&mut now, &mut pace_pct, on_it, base_armor, hero);
         }
         if let Some(on_it) = modifiers.get(entity) {
-            add_feast(&mut now, on_it, abilities.get(entity));
+            add_feast(&mut now, &mut pace_pct, on_it, abilities.get(entity));
         }
+        now.move_speed = paced(now.move_speed, pace_pct, pace_scale_bp, kind.unbounded_pace);
         let max = Regen {
             hp: now.max_hp,
             mana: now.max_mana,
@@ -182,8 +187,8 @@ fn follow_pools(
 }
 
 /// Adds the haste of a feast that is running, the talent's attack speed
-/// with it when its caster has learned it.
-fn add_feast(now: &mut Stats, on_it: &Modifiers, book: Option<&AbilityBook>) {
+/// with it when its caster has learned it; its pace goes to `pace_pct`.
+fn add_feast(now: &mut Stats, pace_pct: &mut i32, on_it: &Modifiers, book: Option<&AbilityBook>) {
     let Some(level) = on_it.active().find_map(|held| match held.kind {
         ModifierKind::Feasting { level, .. } => Some(usize::from(level)),
         _ => None,
@@ -194,7 +199,7 @@ fn add_feast(now: &mut Stats, on_it: &Modifiers, book: Option<&AbilityBook>) {
     if book.is_some_and(|book| book.has_talent(Talent::FeastAttackSpeed)) {
         now.attack_speed += rules::TALENT_FEAST_ATTACK_SPEED;
     }
-    now.move_speed = scaled(now.move_speed, 100 + rules::FEAST_MOVE_PCT[level]);
+    *pace_pct += rules::FEAST_MOVE_PCT[level];
 }
 
 /// Adds what the inventory proper carries as shares of what the attributes
@@ -233,11 +238,18 @@ fn add_heap(now: &mut Stats, kept: u32) {
     now.attributes.strength += rules::FLESH_HEAP_STRENGTH_PER_STACK * Fixed::from_int(kept);
 }
 
-/// Adds what every active modifier on a unit is worth to its stats. What
-/// holds a unit still, what burns it and what it hands out are read where
-/// they are acted on, not here. `base_armor` is what a share of its base
-/// armor is taken of.
-fn add_modifiers(now: &mut Stats, on_it: &Modifiers, base_armor: Fixed, hero: bool) {
+/// Adds what every active modifier on a unit is worth to its stats, each
+/// percent change of its pace to `pace_pct` (a slow taken off, a haste
+/// added). What holds a unit still, what burns it and what it hands out are
+/// read where they are acted on, not here. `base_armor` is what a share of
+/// its base armor is taken of.
+fn add_modifiers(
+    now: &mut Stats,
+    pace_pct: &mut i32,
+    on_it: &Modifiers,
+    base_armor: Fixed,
+    hero: bool,
+) {
     for held in on_it.active() {
         match held.kind {
             ModifierKind::Spell {
@@ -245,26 +257,19 @@ fn add_modifiers(now: &mut Stats, on_it: &Modifiers, base_armor: Fixed, hero: bo
                 amount,
                 ..
             } => {
-                now.move_speed = scaled(now.move_speed, 100 - i32::from(amount).min(100));
+                *pace_pct -= i32::from(amount).min(100);
             }
             ModifierKind::Spell { ability, level, .. } => {
                 if let Some(buff) = spell_buff(ability) {
-                    add_buff(now, &buff, level, base_armor, hero);
+                    add_buff(now, pace_pct, &buff, level, base_armor, hero);
                 }
             }
-            ModifierKind::Slowed { pct } => {
-                now.move_speed = scaled(now.move_speed, (100 - pct).clamp(0, 100));
-            }
+            ModifierKind::Slowed { pct } => *pace_pct -= pct.clamp(0, 100),
             ModifierKind::Rotting { level } => {
-                let pct = rules::ROT_SLOW_PCT[usize::from(level)];
-                now.move_speed = scaled(now.move_speed, (100 - pct).clamp(0, 100));
+                *pace_pct -= rules::ROT_SLOW_PCT[usize::from(level)].clamp(0, 100);
             }
-            ModifierKind::BloodGrenade { .. } => {
-                now.move_speed = scaled(now.move_speed, 100 - rules::GRENADE_SLOW_PCT);
-            }
-            ModifierKind::Hastened { pct } => {
-                now.move_speed = scaled(now.move_speed, 100 + pct.max(0));
-            }
+            ModifierKind::BloodGrenade { .. } => *pace_pct -= rules::GRENADE_SLOW_PCT,
+            ModifierKind::Hastened { pct } => *pace_pct += pct.max(0),
             ModifierKind::ArmorBroken { armor } => {
                 now.armor -= armor;
             }
@@ -312,9 +317,16 @@ fn add_modifiers(now: &mut Stats, on_it: &Modifiers, base_armor: Fixed, hero: bo
 
 /// What a spell's buff is worth at a level: everything of it but what it
 /// does to regeneration, which [`bota_core::regen`] reads.
-fn add_buff(now: &mut Stats, buff: &Buff, level: u8, base_armor: Fixed, hero: bool) {
+fn add_buff(
+    now: &mut Stats,
+    pace_pct: &mut i32,
+    buff: &Buff,
+    level: u8,
+    base_armor: Fixed,
+    hero: bool,
+) {
     let of = |stat| buff.get(stat, level);
-    now.move_speed = scaled(now.move_speed, (100 + of(Stat::MovePct)).max(0));
+    *pace_pct += of(Stat::MovePct);
     now.attack_speed += of(Stat::AttackSpeed);
     now.armor += Fixed::from_int(of(Stat::Armor));
     now.armor += base_armor * Fixed::from_ratio(of(Stat::BaseArmorPct), 100);
@@ -347,7 +359,7 @@ fn add_buff(now: &mut Stats, buff: &Buff, level: u8, base_armor: Fixed, hero: bo
 /// Every family is summed as a delta first and written once, so several
 /// sources never compound. Resistances are added in their own units and
 /// scales as deltas of the nominal.
-fn fold_applied(now: &mut Stats, applied: &AppliedModifiers) {
+fn fold_applied(now: &mut Stats, applied: &AppliedModifiers) -> i32 {
     let nominal = rules::NOMINAL_BP;
     let mut sums = [0i32; 10];
     for held in applied.iter() {
@@ -393,9 +405,11 @@ fn fold_applied(now: &mut Stats, applied: &AppliedModifiers) {
     now.pure_amp_bp = add(now.pure_amp_bp, pure, 0, most);
     now.cooldown_rate_bp = add(now.cooldown_rate_bp, cooldown, 1, most);
     now.mana_cost_rate_bp = add(now.mana_cost_rate_bp, mana_cost, 1, most);
-    now.move_speed = scaled_bp(now.move_speed, combined_scale(move_speed));
+    let pace_scale = combined_scale(move_speed);
+    now.move_speed = scaled_bp(now.move_speed, pace_scale);
     now.max_hp = scaled_bp(now.max_hp, combined_scale(max_hp));
     now.max_mana = scaled_bp(now.max_mana, combined_scale(max_mana));
+    pace_scale
 }
 
 /// What several additive scale deltas come to, kept inside the bounds one
@@ -510,6 +524,26 @@ fn follow(held: Fixed, was: Fixed, now: Fixed) -> Fixed {
     let kept = i64::from(held.raw) * i64::from(now.raw) / i64::from(was.raw);
     Fixed {
         raw: kept.clamp(i64::from(Fixed::EPSILON.raw), i64::from(now.raw)) as i32,
+    }
+}
+
+/// Movement speed as Dota works it out: the flat pace (the unit's own, its
+/// boots and what else adds whole units) times one plus every percent change
+/// summed, held within [`rules::MIN_MOVE_SPEED`] and
+/// [`rules::MAX_MOVE_SPEED`], both at the pace scale applied to the unit
+/// (nominal unless its world's paces are scaled); a unit whose pace is
+/// `unbounded` (Dota's courier) keeps only the lower limit. A unit with no
+/// pace of its own (a building, a ward) stays still.
+fn paced(flat: Fixed, pct: i32, scale_bp: i32, unbounded: bool) -> Fixed {
+    if flat <= Fixed::ZERO {
+        return flat;
+    }
+    let limit = |speed: i32| scaled_bp(Fixed::from_int(speed), scale_bp);
+    let pace = scaled(flat, (100 + pct).max(0)).max(limit(rules::MIN_MOVE_SPEED));
+    if unbounded {
+        pace
+    } else {
+        pace.min(limit(rules::MAX_MOVE_SPEED))
     }
 }
 

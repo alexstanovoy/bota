@@ -295,6 +295,52 @@ fn a_slow_takes_its_share_of_the_speed() {
     );
 }
 
+/// Slows and hastes are summed and taken of the pace at once, as Dota sums
+/// them: a quarter's slow and a Blood Grenade's leave 60%, where taking one
+/// after the other left 63.75%, and a haste on top adds its share of the
+/// same pace. However slowed or hastened, a unit that moves keeps within
+/// Dota's limits, 100 to 550.
+#[test]
+fn slows_and_hastes_sum_and_a_pace_keeps_within_dota_limits() {
+    let mut world = World::new();
+    let creep = plain_creep(&mut world);
+    world.step();
+    let full = world.stats.get(creep).expect("settled").move_speed;
+    let pace = |world: &World| world.stats.get(creep).expect("settled").move_speed;
+    let share = |pct: i32| Fixed {
+        raw: full.raw * pct / 100,
+    };
+    put_on(&mut world, creep, ModifierKind::Slowed { pct: 25 }, 90);
+    put_on(
+        &mut world,
+        creep,
+        ModifierKind::BloodGrenade { since: 0 },
+        90,
+    );
+    world.step();
+    let slowed = 100 - 25 - rules::GRENADE_SLOW_PCT;
+    assert_eq!(pace(&world), share(slowed), "the slows summed");
+    put_on(&mut world, creep, ModifierKind::Hastened { pct: 30 }, 90);
+    world.step();
+    assert_eq!(pace(&world), share(slowed + 30), "a haste summed with them");
+
+    put_on(&mut world, creep, ModifierKind::Slowed { pct: 100 }, 90);
+    world.step();
+    assert_eq!(
+        pace(&world),
+        Fixed::from_int(rules::MIN_MOVE_SPEED),
+        "no slower than 100"
+    );
+    put_on(&mut world, creep, ModifierKind::Slowed { pct: 0 }, 90);
+    put_on(&mut world, creep, ModifierKind::Hastened { pct: 300 }, 90);
+    world.step();
+    assert_eq!(
+        pace(&world),
+        Fixed::from_int(rules::MAX_MOVE_SPEED),
+        "no faster than 550"
+    );
+}
+
 #[test]
 fn a_burn_takes_health_on_the_beat_and_may_be_told_to_leave_one() {
     let mut world = World::new();

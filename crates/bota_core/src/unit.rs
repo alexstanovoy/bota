@@ -107,6 +107,9 @@ pub struct UnitDef {
     /// Whether it only carries for another: what is in its bag is worth
     /// nothing to it.
     pub porter: bool,
+    /// Whether its pace knows no upper limit, as Dota's courier's does: no
+    /// haste of it stops at [`rules::MAX_MOVE_SPEED`].
+    pub unbounded_pace: bool,
     /// Collision size: how near another body's centre may come, less that
     /// body's own, in world units. Zero for what has no body.
     pub collision: i32,
@@ -174,6 +177,7 @@ pub(crate) const BARE_UNIT: UnitDef = UnitDef {
     hides: false,
     flies: false,
     porter: false,
+    unbounded_pace: false,
     collision: 0,
     bound: 0,
     invulnerable: false,
@@ -509,6 +513,7 @@ pub const COURIER: UnitDef = UnitDef {
     kind: UnitKind::Courier,
     flies: true,
     porter: true,
+    unbounded_pace: true,
     magic_resist_pct: 100,
     max_hp: rules::COURIER_HP,
     move_speed: rules::COURIER_MOVE_SPEED,

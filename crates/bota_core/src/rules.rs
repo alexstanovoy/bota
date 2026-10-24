@@ -424,6 +424,11 @@ pub const HERO_HP: i32 = 180;
 pub const HERO_MANA: i32 = 84;
 /// Hero movement speed, world units per second.
 pub const HERO_MOVE_SPEED: i32 = 300;
+/// The least a unit that moves at all moves, world units per second, however
+/// it is slowed (Dota's movement speed limits: 100 to 550).
+pub const MIN_MOVE_SPEED: i32 = 100;
+/// The most a unit moves, world units per second, however it is hastened.
+pub const MAX_MOVE_SPEED: i32 = 550;
 /// Hero attack damage at level one, before the primary attribute.
 pub const HERO_ATTACK_DAMAGE: i32 = 31;
 pub const HERO_ATTACK_RANGE: i32 = 600;
