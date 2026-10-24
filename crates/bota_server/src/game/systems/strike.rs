@@ -138,6 +138,10 @@ impl World {
                 continue;
             }
             self.lifesteal(by, blow.amount);
+            if self.wears_fountain_passive(by) {
+                let splash = (rules::FOUNTAIN_SPLASH_RADIUS, rules::FOUNTAIN_SPLASH_PCT);
+                self.splash(by, None, blow, splash);
+            }
             for (slot, ability, level) in self.passives(by) {
                 let Spell::Strike(strike) = *ability.spell() else {
                     continue;
@@ -150,7 +154,9 @@ impl World {
                     level,
                 };
                 match strike {
-                    Strike::Splash { radius, pct } => self.splash(given, blow, (radius, pct)),
+                    Strike::Splash { radius, pct } => {
+                        self.splash(by, given.inflictor(), blow, (radius, pct));
+                    }
                     _ if blow.fatal => {}
                     strike => self.lay_strike(given, strike),
                 }
@@ -328,22 +334,30 @@ impl World {
         }
     }
 
-    /// Every other enemy within `radius` of the struck takes `pct` percent
-    /// of the blow as physical damage.
-    fn splash(&mut self, given: Proc, blow: &Landed, (radius, pct): (i32, i32)) {
+    /// Every other enemy of `by` within `radius` of the struck, no building
+    /// and no ward, takes `pct` percent of the blow as physical damage, laid
+    /// to `inflictor`: a neutral's passive, or nothing for the fountain's own
+    /// shot.
+    fn splash(
+        &mut self,
+        by: Entity,
+        inflictor: Option<Inflictor>,
+        blow: &Landed,
+        (radius, pct): (i32, i32),
+    ) {
         let reach = rules::units(radius);
         for other in self.entities.iter().collect::<Vec<_>>() {
-            if other != given.on
-                && self.foes(given.by, other)
+            if other != blow.target
+                && self.foes(by, other)
                 && self.alive(other)
                 && self.pos(other).is_some_and(|at| at.within(blow.at, reach))
             {
                 self.push_hit(
-                    Some(given.by),
+                    Some(by),
                     other,
                     blow.dealt * pct / 100,
                     DamageKind::Physical,
-                    given.inflictor(),
+                    inflictor,
                 );
             }
         }

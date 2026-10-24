@@ -829,6 +829,22 @@ pub const FOUNTAIN_ATTACK_TIME: u32 = 150;
 pub const FOUNTAIN_ATTACK_POINT: u32 = 0;
 /// Fountain attack projectile speed, world units per second.
 pub const FOUNTAIN_PROJECTILE_SPEED: i32 = 1400;
+/// What each stack of the fountain's Fountain Damage adds to its shots
+/// (Liquipedia, *Fountain*: "Attack Damage Bonus per Stack: 3"; no most
+/// stacks). The stack is added before the shot deals its damage.
+pub const FOUNTAIN_STACK_DAMAGE: i32 = 3;
+/// How long the fountain's stacks hold on a unit after its last shot that
+/// landed (Liquipedia, *Fountain*: "Debuff Duration: 12").
+pub const FOUNTAIN_STACK_TICKS: u32 = 12 * TICKS_PER_SECOND;
+/// How far round what a fountain's shot lands on it splashes (Liquipedia,
+/// *Fountain*: "Splash Radius: 250").
+pub const FOUNTAIN_SPLASH_RADIUS: i32 = 250;
+/// The share of a fountain's shot each other enemy in its splash takes, as
+/// physical damage (Liquipedia, *Fountain*: "Splash Damage: 25%").
+pub const FOUNTAIN_SPLASH_PCT: i32 = 25;
+/// The chance a fountain's shot goes through evasion (Liquipedia,
+/// *Fountain*: "Accuracy: 25%").
+pub const FOUNTAIN_ACCURACY_PCT: u8 = 25;
 /// Fountain collision size, the Dota tower hull.
 pub const FOUNTAIN_COLLISION: i32 = 144;
 /// Fountain bound radius, the Dota tower hull.

@@ -108,6 +108,8 @@ fn every_modifier() -> Vec<ModifierKind> {
         ModifierKind::Souls { count: 1 },
         ModifierKind::Feasting { level: 0, souls: 0 },
         ModifierKind::FeastLinger { souls: 1 },
+        ModifierKind::FountainPassive,
+        ModifierKind::FountainDamage { stacks: 1 },
     ];
     for kind in &every {
         match kind {
@@ -119,6 +121,8 @@ fn every_modifier() -> Vec<ModifierKind> {
             | ModifierKind::Phased
             | ModifierKind::Flying
             | ModifierKind::FountainInvulnerable
+            | ModifierKind::FountainPassive
+            | ModifierKind::FountainDamage { .. }
             | ModifierKind::Slowed { .. }
             | ModifierKind::Hastened { .. }
             | ModifierKind::Haste { .. }

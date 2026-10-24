@@ -365,6 +365,14 @@ impl EffectId {
     /// invulnerable and untargetable until its player gives it a command, or
     /// until the fountain's Rejuvenation no longer holds on it.
     pub const FOUNTAIN_INVULNERABLE: EffectId = EffectId(64);
+    /// The fountain's Fountain Damage (`modifier_fountain_passive`): its
+    /// shots stack, splash and see through some evasion. Hidden, as Dota
+    /// hides it: it shows only in what the shots do.
+    pub const FOUNTAIN_PASSIVE: EffectId = EffectId(65);
+    /// What the fountain's shots have stacked on a unit
+    /// (`modifier_fountain_fury_swipes_damage_increase`): each shot of it
+    /// deals more by the stack.
+    pub const FOUNTAIN_DAMAGE: EffectId = EffectId(66);
 }
 
 /// An index into a unit's ability slots, as listed in

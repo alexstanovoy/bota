@@ -232,6 +232,28 @@ impl Modifiers {
             .unwrap_or(0)
     }
 
+    /// The fountain's shots stacked on the unit; zero for none.
+    pub fn fountain_damage_stacks(&self) -> u32 {
+        self.active()
+            .find_map(|held| match held.kind {
+                ModifierKind::FountainDamage { stacks } => Some(stacks),
+                _ => None,
+            })
+            .unwrap_or(0)
+    }
+
+    /// Adds one landed shot of a fountain to its stacks and refreshes them
+    /// all to [`rules::FOUNTAIN_STACK_TICKS`].
+    pub fn stack_fountain_damage(&mut self, fountain: Option<Entity>) {
+        let stacks = self.fountain_damage_stacks().saturating_add(1);
+        self.put(Modifier::new(
+            ModifierKind::FountainDamage { stacks },
+            fountain,
+            None,
+            Some(rules::FOUNTAIN_STACK_TICKS),
+        ));
+    }
+
     /// Adds one successful hit of the raze `inflictor` names and refreshes
     /// its caster's complete stack to [`rules::RAZE_DEBUFF_TICKS`].
     pub fn stack_raze(&mut self, caster: Entity, inflictor: Option<Inflictor>) {

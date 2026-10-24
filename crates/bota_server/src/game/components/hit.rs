@@ -59,6 +59,12 @@ pub enum HitEffect {
     Root { ticks: u32 },
     /// Heals the source by the health the blow took, one bite of a dismember.
     Dismember,
+    /// A shot of the fountain's Fountain Damage: before it deals anything it
+    /// stacks one more [`ModifierKind::FountainDamage`] on a target it did not
+    /// miss, and deals `stack_damage` more by every stack, the new one too.
+    ///
+    /// [`ModifierKind::FountainDamage`]: bota_core::ModifierKind::FountainDamage
+    FountainDamage { stack_damage: i32 },
 }
 
 impl HitEffect {

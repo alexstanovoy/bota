@@ -43,6 +43,22 @@ pub enum ModifierKind {
     /// issued a command" (Liquipedia, *Hero (unit type)*, Respawning), and
     /// while the fountain's Rejuvenation Aura, which provides it, holds on it.
     FountainInvulnerable,
+    /// The fountain's Fountain Damage, as Dota's `modifier_fountain_passive`
+    /// (Liquipedia, *Fountain*): every shot of it first stacks
+    /// [`ModifierKind::FountainDamage`] on what it lands on and deals
+    /// [`rules::FOUNTAIN_STACK_DAMAGE`] more by the stack, splashes
+    /// [`rules::FOUNTAIN_SPLASH_PCT`] percent of itself on every other enemy
+    /// within [`rules::FOUNTAIN_SPLASH_RADIUS`], ward and building aside, and
+    /// [`rules::FOUNTAIN_ACCURACY_PCT`] percent of its shots go through
+    /// evasion.
+    FountainPassive,
+    /// The fountain's shots stacked on a unit, as Dota's
+    /// `modifier_fountain_fury_swipes_damage_increase`: each landed shot adds
+    /// one and refreshes them all to [`rules::FOUNTAIN_STACK_TICKS`].
+    FountainDamage {
+        /// Shots stacked, one at least.
+        stacks: u32,
+    },
     /// Walks slower, by `pct` percent of what it would.
     Slowed {
         /// Percent taken off its speed.
@@ -215,6 +231,8 @@ impl ModifierKind {
             ModifierKind::Phased => EffectId::PHASED,
             ModifierKind::Flying => EffectId::FLYING,
             ModifierKind::FountainInvulnerable => EffectId::FOUNTAIN_INVULNERABLE,
+            ModifierKind::FountainPassive => EffectId::FOUNTAIN_PASSIVE,
+            ModifierKind::FountainDamage { .. } => EffectId::FOUNTAIN_DAMAGE,
             ModifierKind::ArmorBroken { .. } => EffectId::ARMOR_BROKEN,
             ModifierKind::MagicBroken { .. } => EffectId::MAGIC_BROKEN,
             ModifierKind::Guarded { .. } => EffectId::GUARDED,
@@ -297,6 +315,7 @@ impl ModifierKind {
             ModifierKind::Shadowraze { stacks } => Some(stacks as u32),
             ModifierKind::MeatShield { amount } => Some(amount as u32),
             ModifierKind::FleshHeap { count }
+            | ModifierKind::FountainDamage { stacks: count }
             | ModifierKind::Souls { count }
             | ModifierKind::NeutralUpgrade { count } => Some(count),
             ModifierKind::Feasting { souls, .. } | ModifierKind::FeastLinger { souls } => {

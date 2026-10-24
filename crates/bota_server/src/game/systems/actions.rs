@@ -38,6 +38,8 @@ struct Swing {
     physical_amp_bp: i32,
     /// Magical amplification, in basis points.
     magical_amp_bp: i32,
+    /// What its blow does besides its damage.
+    effect: HitEffect,
 }
 
 /// How long an ability or an item holds the body: `point` and `backswing` in
@@ -694,6 +696,7 @@ impl World {
             pierced: self.roll_pierces(attacker, on, stats, class_pct),
             physical_amp_bp: stats.damage_amp_bp(DamageKind::Physical),
             magical_amp_bp: stats.damage_amp_bp(DamageKind::Magical),
+            effect: self.attack_effect(attacker),
         };
         match stats.projectile_speed {
             None => self.strike_home(attacker, on, swing),
@@ -711,6 +714,27 @@ impl World {
         }
     }
 
+    /// What an attacker's swing does besides its damage: a shot of the
+    /// fountain's Fountain Damage stacks, any other swing nothing.
+    fn attack_effect(&self, attacker: Entity) -> HitEffect {
+        if self.wears_fountain_passive(attacker) {
+            HitEffect::FountainDamage {
+                stack_damage: rules::FOUNTAIN_STACK_DAMAGE,
+            }
+        } else {
+            HitEffect::None
+        }
+    }
+
+    /// Whether an entity wears the fountain's Fountain Damage.
+    pub(super) fn wears_fountain_passive(&self, entity: Entity) -> bool {
+        self.modifiers.get(entity).is_some_and(|on_it| {
+            on_it
+                .active()
+                .any(|held| held.kind == ModifierKind::FountainPassive)
+        })
+    }
+
     /// A melee swing's blows, laid where the target stands: the swing
     /// itself, and the magical damage of each pierce riding with it.
     fn strike_home(&mut self, attacker: Entity, on: Entity, swing: Swing) {
@@ -725,7 +749,7 @@ impl World {
             striker: Some(swing.striker),
             pierces: !swing.pierced.is_empty() || swing.accurate,
             uphill: false,
-            effect: HitEffect::None,
+            effect: swing.effect,
         });
         for (bonus, item) in swing.pierced {
             self.hits.push_back(Hit {
@@ -771,7 +795,7 @@ impl World {
                 pierces: !swing.pierced.is_empty() || swing.accurate,
                 pierced: swing.pierced,
                 pierce_amp_bp: swing.magical_amp_bp,
-                effect: HitEffect::None,
+                effect: swing.effect,
                 striker: Some(swing.striker),
             },
         );

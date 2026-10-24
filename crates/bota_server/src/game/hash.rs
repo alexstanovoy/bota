@@ -519,6 +519,10 @@ fn hash_hit_effect(fnv: &mut Fnv, effect: HitEffect) {
             fnv.u8(4);
             fnv.u32(ticks);
         }
+        HitEffect::FountainDamage { stack_damage } => {
+            fnv.u8(5);
+            fnv.i32(stack_damage);
+        }
     }
 }
 
@@ -538,6 +542,11 @@ fn hash_modifier_kind(fnv: &mut Fnv, kind: ModifierKind) {
         ModifierKind::Phased => fnv.u8(9),
         ModifierKind::Flying => fnv.u8(35),
         ModifierKind::FountainInvulnerable => fnv.u8(36),
+        ModifierKind::FountainPassive => fnv.u8(37),
+        ModifierKind::FountainDamage { stacks } => {
+            fnv.u8(38);
+            fnv.u32(stacks);
+        }
         ModifierKind::Mending { per_tick, breaks } => {
             fnv.u8(1);
             fnv.i32(per_tick);

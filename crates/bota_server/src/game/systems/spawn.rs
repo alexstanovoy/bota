@@ -42,7 +42,9 @@ impl World {
             },
         );
         self.health.insert(entity, Health { hp: Fixed::ZERO });
-        self.modifiers.insert(entity, Modifiers(Vec::new()));
+        let innate = def.innate.iter();
+        let worn = innate.map(|&kind| Modifier::new(kind, Some(entity), None, None));
+        self.modifiers.insert(entity, Modifiers(worn.collect()));
         if def.max_mana > 0 {
             self.mana.insert(entity, Mana { mana: Fixed::ZERO });
         }

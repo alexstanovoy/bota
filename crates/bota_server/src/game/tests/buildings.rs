@@ -142,3 +142,126 @@ fn the_fountain_shoots_every_enemy_in_its_reach_on_every_side_six_and_two_thirds
         "an enemy hero in the Dire fountain's reach is shot"
     );
 }
+
+/// The health two units lose on each tick, over `ticks`.
+fn losses(world: &mut World, units: [crate::game::Entity; 2], ticks: u32) -> Vec<[i32; 2]> {
+    let hp = |world: &World, unit| world.health.get(unit).map_or(0, |h| h.hp.to_int());
+    (0..ticks)
+        .map(|_| {
+            let before = units.map(|unit| hp(world, unit));
+            world.step();
+            [0, 1].map(|at| before[at] - hp(world, units[at]))
+        })
+        .collect()
+}
+
+/// Dota's Fountain Damage (`modifier_fountain_passive`; Liquipedia,
+/// *Fountain*): each shot first stacks one more
+/// `modifier_fountain_fury_swipes_damage_increase` on what it lands on, then
+/// deals 3 more by every stack, the new one too; the stacks hold 12 s from
+/// the last shot; a quarter of each shot splashes every other enemy within
+/// 250; and a quarter of its shots go through evasion.
+#[test]
+fn the_fountains_shots_stack_three_more_each_hold_twelve_seconds_and_splash_a_quarter() {
+    let mut world = World::on_map(map_of(MapId(2)));
+    let fountain_at = world.map.fountains[0];
+    let near = fountain_at + bota_proto::Vec2::from_ints(900, 0);
+    let pair = [
+        world.spawn_unit(&STANDING_TARGET, Team::Dire, near),
+        world.spawn_unit(
+            &STANDING_TARGET,
+            Team::Dire,
+            near + bota_proto::Vec2::from_ints(0, 200),
+        ),
+    ];
+    world.settle();
+    let fountain = super::support::structure_at(&world, fountain_at);
+    assert_eq!(
+        world.stats.get(fountain).map(|stats| stats.accuracy),
+        Some(bota_core::Odds::percent(rules::FOUNTAIN_ACCURACY_PCT))
+    );
+    let seen = losses(&mut world, pair, 90);
+    // The one shot at takes every full shot; the other its splash.
+    let shot = usize::from(
+        seen.iter().map(|lost| lost[1]).sum::<i32>() > seen.iter().map(|lost| lost[0]).sum::<i32>(),
+    );
+    let splashed = 1 - shot;
+    let shots: Vec<i32> = seen
+        .iter()
+        .map(|lost| lost[shot])
+        .filter(|&lost| lost > 0)
+        .collect();
+    let splashes: Vec<i32> = seen
+        .iter()
+        .map(|lost| lost[splashed])
+        .filter(|&lost| lost > 0)
+        .collect();
+    assert!(shots.len() >= 10, "{shots:?}");
+    let stacked: Vec<i32> = (1..=shots.len() as i32)
+        .map(|stacks| rules::FOUNTAIN_ATTACK_DAMAGE + stacks * rules::FOUNTAIN_STACK_DAMAGE)
+        .collect();
+    assert_eq!(
+        shots, stacked,
+        "each shot 3 more than the last, the first too"
+    );
+    let quarters: Vec<i32> = stacked
+        .iter()
+        .map(|dealt| dealt * rules::FOUNTAIN_SPLASH_PCT / 100)
+        .collect();
+    assert_eq!(
+        splashes,
+        quarters[..splashes.len()],
+        "a quarter splashes on the other"
+    );
+    assert!(splashes.len() + 1 >= shots.len(), "every shot splashes");
+    let stacks_on = |world: &World, unit| {
+        world
+            .modifiers
+            .get(unit)
+            .map_or(0, |on_it| on_it.fountain_damage_stacks())
+    };
+    assert_eq!(stacks_on(&world, pair[shot]) as usize, shots.len());
+    assert_eq!(
+        stacks_on(&world, pair[splashed]),
+        0,
+        "a splash stacks nothing"
+    );
+    let view = world.view(Team::Dire);
+    let worn = view
+        .units
+        .iter()
+        .find(|unit| unit.id == crate::game::wire_id(pair[shot]))
+        .and_then(|unit| {
+            unit.effects
+                .iter()
+                .find(|e| e.id == bota_proto::EffectId::FOUNTAIN_DAMAGE)
+        })
+        .expect("the stacks are shown");
+    assert_eq!(worn.stacks, Some(shots.len() as u32));
+    assert_eq!(worn.ticks_total, Some(rules::FOUNTAIN_STACK_TICKS));
+    // Carried out of reach, it keeps its stacks 12 s from the last shot.
+    for unit in pair {
+        if let Some(at) = world.transform.get_mut(unit) {
+            at.pos = fountain_at + bota_proto::Vec2::from_ints(3000, 0);
+        }
+    }
+    // The shots already in the air still land; the last of them renews them.
+    let (mut last, mut since) = (stacks_on(&world, pair[shot]), 0);
+    while stacks_on(&world, pair[shot]) > 0 {
+        world.step();
+        since += 1;
+        let now = stacks_on(&world, pair[shot]);
+        if now > last {
+            (last, since) = (now, 0);
+        }
+        assert!(
+            since <= rules::FOUNTAIN_STACK_TICKS,
+            "the stacks outlast 12 s"
+        );
+    }
+    assert_eq!(
+        since,
+        rules::FOUNTAIN_STACK_TICKS,
+        "the stacks hold 12 s from the last shot"
+    );
+}

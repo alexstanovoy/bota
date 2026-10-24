@@ -148,6 +148,10 @@ pub struct UnitDef {
     pub auras: &'static [Aura],
     /// Its backdoor protection. Absent for whatever has none.
     pub backdoor: Option<BackdoorWatch>,
+    /// What its own passives have it wear from the start and for good, as
+    /// Dota's intrinsic modifiers: the fountain's
+    /// [`ModifierKind::FountainPassive`].
+    pub innate: &'static [ModifierKind],
 }
 
 /// No gain at all.
@@ -207,6 +211,7 @@ pub(crate) const BARE_UNIT: UnitDef = UnitDef {
     per_upgrade: NO_GROWTH,
     auras: &[],
     backdoor: None,
+    innate: &[],
 };
 
 // The lane creeps' numbers are the game's `scripts/npc/npc_units.txt`
@@ -524,6 +529,7 @@ pub const FOUNTAIN: UnitDef = UnitDef {
     collision: rules::FOUNTAIN_COLLISION,
     bound: rules::FOUNTAIN_BOUND,
     invulnerable: true,
+    innate: &[ModifierKind::FountainPassive],
     ..BARE_UNIT
 };
 

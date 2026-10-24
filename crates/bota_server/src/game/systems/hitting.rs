@@ -135,6 +135,12 @@ pub fn hitting_system<const AMPLIFIED: bool>(cx: HitCx<'_>) {
             });
             continue;
         }
+        if let HitEffect::FountainDamage { .. } = blow.effect
+            && let Some(on_it) = modifiers.get_mut(blow.target)
+        {
+            on_it.stack_fountain_damage(blow.source);
+        }
+        let dealt = stacked_damage(blow, modifiers.get(blow.target));
         let taken = match stat.hit_count {
             Some(count) => count.taken(blow.striker),
             None => damage_taken::<AMPLIFIED>(blow, &stat, modifiers.get_mut(blow.target)),
@@ -165,7 +171,7 @@ pub fn hitting_system<const AMPLIFIED: bool>(cx: HitCx<'_>) {
             side,
             fatal,
             attack: blow.attack,
-            dealt: blow.amount,
+            dealt,
         });
     }
 }
@@ -278,8 +284,15 @@ pub(crate) fn entity_slot<T>(
     slots[index].get_or_insert_with(open)
 }
 
-/// Pre-mitigation damage including the current valid same-caster stack count.
+/// Pre-mitigation damage including the current valid same-caster stack count:
+/// a Shadowraze's stacks from earlier razes, a fountain's shot's own stacks
+/// with the one it has just added.
 fn stacked_damage(blow: Hit, on_it: Option<&Modifiers>) -> i32 {
+    if let HitEffect::FountainDamage { stack_damage } = blow.effect {
+        let stacks = on_it.map_or(0, Modifiers::fountain_damage_stacks);
+        let bonus = i64::from(stacks) * i64::from(stack_damage);
+        return (i64::from(blow.amount) + bonus).min(i64::from(i32::MAX)) as i32;
+    }
     let HitEffect::Shadowraze { stack_damage } = blow.effect else {
         return blow.amount;
     };
@@ -305,7 +318,8 @@ fn dealt<const AMPLIFIED: bool>(blow: Hit, on_it: Option<&Modifiers>) -> i32 {
 /// Applies a damaging hit's modifier to a surviving target.
 fn apply_hit_effect(blow: Hit, stats: &Table<Stats>, modifiers: &mut Table<Modifiers>) {
     match blow.effect {
-        HitEffect::None | HitEffect::Dismember => {}
+        // A fountain's shot has stacked before it dealt its damage.
+        HitEffect::None | HitEffect::Dismember | HitEffect::FountainDamage { .. } => {}
         HitEffect::Shadowraze { .. } => {
             assert_eq!(blow.kind, DamageKind::Magical);
             assert!(blow.amount > 0);

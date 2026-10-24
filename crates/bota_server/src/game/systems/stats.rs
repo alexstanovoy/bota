@@ -404,10 +404,14 @@ fn add_modifiers<'a>(
             ModifierKind::Phased => now.phased = true,
             ModifierKind::Flying => now.flies = true,
             ModifierKind::FountainInvulnerable => now.invulnerable = true,
+            ModifierKind::FountainPassive => {
+                now.accuracy = now.accuracy.or(Odds::percent(rules::FOUNTAIN_ACCURACY_PCT));
+            }
             ModifierKind::Fortified => now.glyph = true,
             ModifierKind::Mending { .. }
             | ModifierKind::Clarity { .. }
             | ModifierKind::Fountain { .. }
+            | ModifierKind::FountainDamage { .. }
             | ModifierKind::Stunned
             | ModifierKind::Feared
             | ModifierKind::Burning { .. }
