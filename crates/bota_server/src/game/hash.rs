@@ -500,7 +500,7 @@ fn hash_hit(fnv: &mut Fnv, hit: &Hit) {
 fn hash_hit_effect(fnv: &mut Fnv, effect: HitEffect) {
     match effect {
         HitEffect::None => fnv.u8(0),
-        HitEffect::Dismember => fnv.u8(3),
+        HitEffect::Dismember => fnv.u8(6),
         HitEffect::Requiem { level, fear } => {
             fnv.u8(2);
             fnv.u8(level);
