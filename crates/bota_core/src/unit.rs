@@ -541,6 +541,7 @@ pub const COURIER_ABILITIES: [AbilityId; 5] = [
 pub const OBSERVER_WARD: UnitDef = UnitDef {
     kind: UnitKind::Ward,
     max_hp: rules::WARD_HP,
+    hit_count: Some(rules::WARD_HITS),
     day_vision: 1600,
     night_vision: 1600,
     hides: true,
@@ -551,6 +552,7 @@ pub const OBSERVER_WARD: UnitDef = UnitDef {
 pub const SENTRY_WARD: UnitDef = UnitDef {
     kind: UnitKind::Ward,
     max_hp: rules::WARD_HP,
+    hit_count: Some(rules::WARD_HITS),
     day_vision: 0,
     night_vision: 0,
     true_sight: 1050,

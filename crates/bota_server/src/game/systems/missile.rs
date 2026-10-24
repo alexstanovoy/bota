@@ -127,7 +127,7 @@ fn thrown_uphill(
         && !kind.get(shot.target).copied().is_some_and(|kind| {
             // A building is never missed uphill, and an attack at what falls
             // to a count of attacks never misses at all.
-            kind_def(kind).structure || kind_def(kind).felled_by_hits.is_some()
+            kind_def(kind).structure || kind_def(kind).surely_struck
         })
         && ground.tier(target_pos) > source_tier
 }

@@ -115,11 +115,8 @@ pub fn hitting_system<const AMPLIFIED: bool>(cx: HitCx<'_>) {
         }
         let at = transform.get(blow.target).map_or(Vec2::ZERO, |t| t.pos);
         let side = team.get(blow.target).copied().unwrap_or(Team::Neutral);
-        let counted = kind
-            .get(blow.target)
-            .and_then(|kind| kind_def(*kind).felled_by_hits);
-        if counted.is_some() && !blow.attack {
-            // What falls to a count of attacks takes nothing from a spell.
+        if stat.hit_count.is_some() && blow.striker.is_none() {
+            // Health counted in hits takes nothing from what no attack dealt.
             continue;
         }
         let odds = if blow.uphill {
@@ -127,10 +124,10 @@ pub fn hitting_system<const AMPLIFIED: bool>(cx: HitCx<'_>) {
         } else {
             stat.evasion
         };
-        if counted.is_none()
-            && blow.attack
-            && !blow.pierces
-            && evades(blow.target, odds, rng, evasion)
+        let surely_struck = kind
+            .get(blow.target)
+            .is_some_and(|kind| kind_def(*kind).surely_struck);
+        if !surely_struck && blow.attack && !blow.pierces && evades(blow.target, odds, rng, evasion)
         {
             missed.push_back(Missed {
                 source: blow.source,
@@ -141,17 +138,6 @@ pub fn hitting_system<const AMPLIFIED: bool>(cx: HitCx<'_>) {
         let taken = match stat.hit_count {
             Some(count) => count.taken(blow.striker),
             None => damage_taken::<AMPLIFIED>(blow, &stat, modifiers.get_mut(blow.target)),
-        };
-        let taken = if let Some(hits) = counted {
-            let by_hero = blow.source.is_some_and(|source| {
-                kind.get(source) == Some(&UnitKind::Hero)
-                    && !modifiers
-                        .get(source)
-                        .is_some_and(super::econ::wears_illusion)
-            });
-            hits.blow(stat.max_hp.to_int(), by_hero)
-        } else {
-            taken
         };
         let Some(pool) = health.get_mut(blow.target) else {
             continue;

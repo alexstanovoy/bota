@@ -1181,11 +1181,21 @@ pub const WARD_HP: i32 = 100;
 pub const WARD_DENY_HP_PCT: i32 = 50;
 
 /// Hero attacks that bring a ward down, whatever their damage.
-pub const WARD_HERO_HITS: i32 = 2;
+const WARD_HERO_HITS: i32 = 2;
 
 /// Attacks of anything else (a creep, a tower, an illusion) that bring a
 /// ward down.
-pub const WARD_OTHER_HITS: i32 = 10;
+const WARD_OTHER_HITS: i32 = 10;
+
+const _: () = assert!(WARD_HERO_HITS > 0 && WARD_OTHER_HITS > 0);
+
+/// What one attack takes of a ward's health: an equal share, the hero's
+/// when a real hero struck.
+pub const WARD_HITS: crate::HitCount = crate::HitCount {
+    melee_hero: WARD_HP / WARD_HERO_HITS,
+    ranged_hero: WARD_HP / WARD_HERO_HITS,
+    other: WARD_HP / WARD_OTHER_HITS,
+};
 
 /// How much further a melee attacker reaches when it attacks a ward.
 pub const WARD_MELEE_RANGE_BONUS: i32 = 150;

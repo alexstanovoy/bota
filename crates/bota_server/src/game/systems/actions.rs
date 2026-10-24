@@ -647,9 +647,13 @@ impl World {
             };
         let class_pct = self.class_pct_of(attacker, on);
         let boost = self.boost_of(attacker, stats);
-        let striker = self.kind.get(attacker).map_or(Striker::Other, |kind| {
-            Striker::of(*kind, stats.projectile_speed.is_some())
-        });
+        let striker = match self.kind.get(attacker) {
+            // An illusion's attack counts as a creep's.
+            Some(kind) if !self.wears_illusion(attacker) => {
+                Striker::of(*kind, stats.projectile_speed.is_some())
+            }
+            _ => Striker::Other,
+        };
         let swing = Swing {
             striker,
             damage: damage * boost.crit_pct / 100 * class_pct / 100,
