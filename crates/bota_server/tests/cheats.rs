@@ -56,7 +56,6 @@ fn opts(cheats: bool, replay: Option<PathBuf>) -> ServerOpts {
         heroes: None,
         abandon_unjoined: false,
         empty_after: Some(Duration::from_secs(1)),
-        abandon_after: None,
     }
 }
 

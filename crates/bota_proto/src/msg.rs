@@ -415,7 +415,7 @@ pub enum ClientMsg {
     /// Allowed once the `Hello` is sent; a second one changes nothing.
     Compress(Codec),
     /// Leaves the match for good, as Dota's LEAVE GAME: a seat that sends it while the match is
-    /// being played is an abandon, and its team loses at once (the game is then reported as
+    /// being played leaves it, and its team loses at once (the game is then reported as
     /// won by the others, naming the leaver). Once the match is decided it changes nothing.
     /// Ignored in the lobby, where closing the connection frees the seat.
     LeaveGame,

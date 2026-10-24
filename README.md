@@ -112,7 +112,6 @@ the plain TCP port stays on loopback) or `--insecure-plaintext`.
 | `--start-after-secs N` | none | with reserved seats: start this long after listening; a seat without a pick gets a random hero | under a launcher |
 | `--abandon-unjoined` | off | lobby out of time (`--start-after-secs`, or 60 s) with no seat held: exit 3 | under a launcher |
 | `--empty-after-secs N` | none | every seat empty this long during the match: exit 3 | under a launcher |
-| `--abandon-after-secs N` | none | a seat empty this long in a running match abandons it: its team loses (Dota's reconnect window is five minutes); a player's `LeaveGame` abandons at once | under a launcher, 300 |
 | `--spectators off\|delayed=SECS\|open` | `off` | who watches without a key: nobody; everyone SECS of game time late; everyone live (shows the whole map) | tournaments (`delayed`), local tools (`open`) |
 | `--max-spectators-per-seat N` | `7` | spectators through one seat's key at once | |
 | `--max-connections N` | `64` | connections at once; one without `Hello` within 10 s is closed | |
@@ -147,9 +146,9 @@ For a service that starts one server per match:
 
 - stdout: the `bota_server listening on ...` lines, then `READY` once players may connect;
   at the end of a played match one line
-  `RESULT winner=0|1|draw duration_ms=N report=HEX [abandoned=SLOT]` (`HEX` is a
-  `bota_proto::MatchReport` in postcard) and exit code 0. `abandoned=SLOT` names the seat whose
-  player left for good (`LeaveGame`, or `--abandon-after-secs`); the other team won.
+  `RESULT winner=0|1|draw duration_ms=N report=HEX [left=SLOT]` (`HEX` is a
+  `bota_proto::MatchReport` in postcard) and exit code 0. `left=SLOT` names the seat whose
+  player left for good (`LeaveGame`); the other team won. A disconnected seat is waited for.
 - Exit code 3, no `RESULT`: nobody played (`--abandon-unjoined`, `--empty-after-secs`, or
   every seat empty with none to come back). Any other exit is a failure; a refused command
   line exits before `READY`.

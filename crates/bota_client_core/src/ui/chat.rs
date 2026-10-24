@@ -103,8 +103,7 @@ impl App {
         Ok(())
     }
 
-    /// Leaves the match for good, as Dota's LEAVE GAME: the server counts it as an abandon and
-    /// the seat's team loses. Close the connection a moment later, once this has gone out.
+    /// Leaves the match for good, as Dota's LEAVE GAME: the seat's team loses the match. Close the connection a moment later, once this has gone out.
     pub fn leave_game(&mut self) {
         self.source.send(&bota_proto::ClientMsg::LeaveGame);
     }
