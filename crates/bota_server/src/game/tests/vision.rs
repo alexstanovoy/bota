@@ -255,8 +255,8 @@ fn a_strike_from_high_ground_shows_the_striker_to_the_side_struck_for_two_second
             .any(|unit| unit.id == wire_id(archer));
         assert_eq!(
             listed,
-            world.shows(Team::Radiant, archer),
-            "the view tells exactly what the side is shown"
+            world.can_see(Team::Radiant, archer),
+            "the view tells exactly what the side sees"
         );
         listed
     };
@@ -269,17 +269,13 @@ fn a_strike_from_high_ground_shows_the_striker_to_the_side_struck_for_two_second
         .map(|_| world.tick)
         .expect("the archer strikes within two seconds");
     assert!(
-        shown(&world),
-        "the view of the strike's own tick shows it, the tick as it ended"
-    );
-    assert!(
-        !world.can_see(Team::Radiant, archer),
-        "what the tick acted on was worked out before the strike"
+        !shown(&world),
+        "the strike shows from the next sight pass on"
     );
     for _ in 0..rules::STRIKE_REVEAL_TICKS {
         world.step();
         assert!(
-            shown(&world) && world.can_see(Team::Radiant, archer),
+            shown(&world),
             "tick {}: still shown {} ticks after the strike",
             world.tick,
             world.tick - struck
@@ -287,7 +283,6 @@ fn a_strike_from_high_ground_shows_the_striker_to_the_side_struck_for_two_second
     }
     world.step();
     assert!(!shown(&world), "and gone after two seconds");
-    assert!(!world.can_see(Team::Radiant, archer));
     assert!(
         world.can_see(Team::Dire, mark),
         "the striker's own sight is its own business"
@@ -917,5 +912,47 @@ fn an_enemy_hero_in_sight_keeps_its_unspent_points_and_its_sale_marks_to_itself(
         plans(Some(Team::Radiant)),
         (false, false),
         "the other side sees its abilities and items, not its plans for them"
+    );
+}
+
+#[test]
+fn a_hero_that_blinks_into_sight_is_shown_and_may_be_named_on_that_view() {
+    let mut world = World::new();
+    seat_hero(&mut world, 0, Team::Radiant, Vec2::from_ints(1000, 1000));
+    let blinker = seat_hero(&mut world, 1, Team::Dire, Vec2::from_ints(2600, 1000));
+    hand_item(&mut world, blinker, ItemId::BLINK_DAGGER, 0);
+    world.settle();
+    assert!(world.view(Team::Radiant).unit(wire_id(blinker)).is_none());
+    let from = world.pos(blinker);
+    let landing = Vec2::from_ints(1500, 1000);
+    let order = bota_proto::Order::Use {
+        slot: bota_proto::ItemSlot(0),
+        target: Target::Pos(landing),
+    };
+    world.advance(&[crate::game::Command {
+        slot: bota_proto::SlotId(1),
+        unit: None,
+        order,
+        queue: false,
+        seq: 0,
+    }]);
+    for _ in 0..30 {
+        if world.pos(blinker) != from {
+            break;
+        }
+        world.step();
+    }
+    assert_eq!(world.pos(blinker), Some(landing), "it blinked");
+    assert!(
+        world.view(Team::Radiant).unit(wire_id(blinker)).is_some(),
+        "the view of the tick it lands shows it where it landed"
+    );
+    let attack = bota_proto::Order::Attack {
+        target: Target::Unit(wire_id(blinker)),
+    };
+    assert_eq!(
+        world.validate_order(bota_proto::SlotId(0), None, &attack),
+        Ok(()),
+        "and an order given on that view may name it"
     );
 }

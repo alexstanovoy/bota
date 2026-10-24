@@ -11,13 +11,13 @@
 //! types of this crate cannot carry any of it, and a replay holds none of it
 //! either: it is a recording, never simulated again. What a side does not see
 //! it is not told, so a client draws its own fog from the terrain and its own
-//! units; the server alone decides which units a view holds. A view shows
-//! the tick as it ended: who sees what is worked out after everything of
-//! the tick has moved, blinked and struck, so a unit that leaves a side's
-//! sight on a tick is not shown where it went. What units act on within a
-//! tick (whom they take on, what they may aim at) is the sight worked out
-//! after the tick's movement; how views are worked out never changes what
-//! the simulation does.
+//! units; the server alone decides which units a view holds. Who sees what
+//! is worked out once a tick, after its movement; units act on it within
+//! the tick. A view shows the tick as it ended through those eyes: a unit
+//! that moved after them (blinked, was carried, flew) is shown only if they
+//! reach where it now stands, so a unit that leaves a side's sight on a
+//! tick is not shown where it went. Whatever a side's view shows, an order
+//! given on that view may name.
 //!
 //! Three further channels are closed by rule, since a bot that optimises a
 //! score finds any leak a human would shrug off:

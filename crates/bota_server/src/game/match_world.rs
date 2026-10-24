@@ -486,10 +486,11 @@ impl World {
         Ok(())
     }
 
-    /// The entity a seat names on the wire, while its side sees it.
+    /// The entity a seat names on the wire, while its side's view shows it:
+    /// whatever a side was shown it may name, and nothing else.
     fn seen_by(&self, seat: &Seat, named: bota_proto::EntityId) -> Result<Entity, RejectReason> {
         let entity = self.of_wire(named).ok_or(RejectReason::UnknownTarget)?;
-        if !self.can_see(seat.team, entity) {
+        if !self.shows(seat.team, entity) {
             return Err(RejectReason::UnknownTarget);
         }
         Ok(entity)

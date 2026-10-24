@@ -93,7 +93,7 @@ impl Server {
         let mut held = false;
         recorded.visit_ids(&mut |unit| {
             held = world.of_wire(*unit).is_some_and(|entity| {
-                world.can_see(team, entity) || world.team.get(entity) == Some(&team)
+                world.shows(team, entity) || world.team.get(entity) == Some(&team)
             });
         });
         held.then_some(recorded).ok_or(SayRefusal::NotAllowed)

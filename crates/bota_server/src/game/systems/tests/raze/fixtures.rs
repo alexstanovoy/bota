@@ -2,7 +2,7 @@ use bota_core::rules;
 
 use crate::game::tests::support;
 pub(super) use crate::game::tests::support::{advance_validated, burns_on, shown};
-use crate::game::{Entity, Seat, Stats, UnitOrder, Visibility, World, wire_id};
+use crate::game::{Entity, Seat, Stats, UnitOrder, World, wire_id};
 use bota_proto::{Angle, EffectId, EffectView, Fixed, HeroId, SlotId, Team, Vec2};
 
 pub(super) const RAZE_EFFECT: EffectId = EffectId::SHADOWRAZE;
@@ -58,16 +58,11 @@ pub(super) fn seat(world: &mut World, slot: SlotId, team: Team, unit: Entity, go
     world.seats.push(seat);
 }
 
-/// Shows `entity` to every side, both to what the tick acts on and in the
-/// views.
 pub(super) fn reveal(world: &mut World, entity: Entity) {
-    for table in [&mut world.visibility, &mut world.shown] {
-        let mut seen = table.get(entity).copied().unwrap_or(Visibility::NONE);
-        seen.add(Team::Radiant);
-        seen.add(Team::Dire);
-        seen.add(Team::Neutral);
-        table.insert(entity, seen);
-    }
+    let seen = world.visibility.get_mut(entity).unwrap();
+    seen.add(Team::Radiant);
+    seen.add(Team::Dire);
+    seen.add(Team::Neutral);
 }
 
 pub(super) fn land(world: &mut World, caster: Entity, target: Entity, level: usize) -> i32 {

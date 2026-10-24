@@ -219,10 +219,6 @@ pub struct World {
 
     /// Which sides see each entity, worked out afresh every tick.
     pub visibility: Table<Visibility>,
-    /// Which sides each entity is shown to in the views of the tick, worked
-    /// out again once the tick has ended, see [`World::refresh_shown`].
-    /// Nothing the simulation does reads it.
-    pub shown: Table<Visibility>,
     /// Sight each entity showed the sides it struck at.
     pub exposure: Table<Exposure>,
 
@@ -332,7 +328,6 @@ impl World {
             loot: Table::new(),
             handling: Table::new(),
             visibility: Table::new(),
-            shown: Table::new(),
             exposure: Table::new(),
             projectile: Table::new(),
         }
@@ -499,7 +494,6 @@ impl World {
     /// components stay in their tables under the old generation.
     pub fn despawn(&mut self, entity: Entity) -> bool {
         self.visibility.remove(entity);
-        self.shown.remove(entity);
         self.applied.remove(entity);
         self.entities.free(entity)
     }
@@ -672,7 +666,7 @@ impl World {
         let _profile = self.scope(Phase::Settle);
         self.refresh_stats();
         self.refresh_sight();
-        self.refresh_shown();
+        self.note_what_is_shown();
     }
 
     /// One tick, or no change after Map2 completes. The phases run in the
@@ -698,7 +692,7 @@ impl World {
         self.timed(Phase::Visibility, World::refresh_sight);
         self.timed(Phase::Actions, |world| world.step_actions(&mut events));
         self.timed(Phase::Damage, |world| world.step_damage(&mut events));
-        self.timed(Phase::Visibility, World::refresh_shown);
+        self.note_what_is_shown();
         self.tick_applied();
         events
     }
@@ -778,47 +772,38 @@ impl World {
             scroll_sights: &scroll_sights,
             tick: self.tick,
             visibility: &mut self.visibility,
-            forest: None,
             sight: &mut self.sight_scratch,
         });
     }
 
-    /// What each side is shown of the tick as it ended: sight worked out
-    /// again from where everything stands once it has moved, blinked, been
-    /// hooked, struck and fallen, so a unit that leaves a side's sight
-    /// during a tick's actions is not shown where it went. What the tick's
-    /// systems act on is [`World::visibility`], worked out after movement;
-    /// only the views and what the sides remember read this.
-    fn refresh_shown(&mut self) {
-        let scroll_sights: Vec<(Team, Vec2)> = self.teleport_sights().collect();
-        self.shown.clone_from(&self.visibility);
-        visibility_system(SightCx {
-            entities: &self.entities,
-            transform: &self.transform,
-            team: &self.team,
-            kind: &self.kind,
-            stats: &self.stats,
-            ground: &self.ground,
-            sight_block: &self.sight_block,
-            exposure: &self.exposure,
-            scroll_sights: &scroll_sights,
-            tick: self.tick,
-            visibility: &mut self.shown,
-            forest: Some(&mut self.trees),
-            sight: &mut self.sight_scratch,
-        });
+    /// Notes what each side's views show as the tick ended: the forest
+    /// where its eyes reach, and the level of every hero they show, for its
+    /// scoreboard. Read only by the views.
+    fn note_what_is_shown(&mut self) {
+        let sight = &self.sight_scratch;
+        let (ground, sight_block) = (&self.ground, &self.sight_block);
+        for team in [Team::Radiant, Team::Dire] {
+            let sees = |cell| sight.sees_cell(team, cell, ground, sight_block);
+            self.trees.learn(
+                team,
+                |at| bota_core::tree_cells(at).any(sees),
+                |at| bota_core::CellGrid::cell_of(at).is_some_and(sees),
+            );
+        }
         self.note_sightings();
     }
 
     /// Notes on each seat what every side shown its hero now saw of it, for
     /// that side's scoreboard.
     fn note_sightings(&mut self) {
-        for seat in &mut self.seats {
-            let Some(seen) = seat.unit.and_then(|unit| self.shown.get(unit)) else {
+        for index in 0..self.seats.len() {
+            let Some(unit) = self.seats[index].unit else {
                 continue;
             };
             for team in [Team::Radiant, Team::Dire] {
-                if let (true, Some(side)) = (seen.by(team), bota_core::side_index(team)) {
+                let shown = self.shows(team, unit);
+                let seat = &mut self.seats[index];
+                if let (true, Some(side)) = (shown, bota_core::side_index(team)) {
                     seat.sighted[side] = crate::game::Sighting {
                         level: seat.level,
                         xp: seat.xp,

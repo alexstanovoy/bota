@@ -57,7 +57,7 @@ fn raze_caster_death_and_respawn_cannot_use_its_old_bodys_stacks() {
 fn raze_projection_exposes_only_existing_effect_fields_on_visible_targets() {
     let (mut world, caster, target) = fixture();
     land(&mut world, caster, target, 0);
-    world.shown.get_mut(caster).unwrap().clear();
+    world.visibility.get_mut(caster).unwrap().clear();
     let visible = world.view(Team::Dire);
     assert!(!visible.units.iter().any(|unit| unit.id == wire_id(caster)));
     // The record names the raze and its full length, but not the caster
@@ -70,7 +70,7 @@ fn raze_projection_exposes_only_existing_effect_fields_on_visible_targets() {
             ..effect(1, 180)
         }]
     );
-    world.shown.get_mut(target).unwrap().clear();
+    world.visibility.get_mut(target).unwrap().clear();
     assert!(
         !world
             .view(Team::Radiant)

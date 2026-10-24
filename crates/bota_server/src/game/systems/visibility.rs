@@ -1,11 +1,11 @@
 //! Working out who sees what.
 
-use bota_core::{CellGrid, SightBlock, kind_def, rules, tree_cells};
+use bota_core::{CellGrid, SightBlock, kind_def, rules};
 use bota_proto::{Fixed, Target, Team, UnitKind, Vec2};
 
 use crate::game::{
-    Entity, EntityAllocator, EventVisibility, Exposure, ExposureCell, Forest, Ground, Spots, Stats,
-    Table, Transform, Visibility, World,
+    Entity, EntityAllocator, EventVisibility, Exposure, ExposureCell, Ground, Spots, Stats, Table,
+    Transform, Visibility, World,
 };
 
 /// What working out sight reads and writes.
@@ -27,9 +27,6 @@ pub struct SightCx<'a> {
     pub tick: u32,
     /// Where the answer goes.
     pub visibility: &'a mut Table<Visibility>,
-    /// The forest, whose sides learn what stands where they look: given to
-    /// the pass of what the sides are shown, see [`World::shown`].
-    pub forest: Option<&'a mut Forest>,
     /// Reused buffers the tables are read into.
     pub sight: &'a mut SightScratch,
 }
@@ -45,6 +42,9 @@ pub struct SightScratch {
     true_viewers: Vec<SightViewer>,
     /// Every row that stands somewhere and has sight to write, by where.
     spots: Spots<u32>,
+    /// Which row of [`SightScratch::rows`] each entity slot was read into,
+    /// `u32::MAX` for none: the rows are looked up by entity on every view.
+    row_at: Vec<u32>,
 }
 
 impl SightScratch {
@@ -90,8 +90,7 @@ struct SightViewer {
 /// higher than its own, along an open sight line. A strike shows the side
 /// struck at a circle around the striker the same way, see
 /// [`World::expose`]. What hides is seen by the other side only where that
-/// side's true sight also reaches it. Each side learns the forest wherever
-/// it sees a tree's ground, see [`Forest::learn`].
+/// side's true sight also reaches it.
 pub fn visibility_system(cx: SightCx<'_>) {
     let SightCx {
         entities,
@@ -105,7 +104,6 @@ pub fn visibility_system(cx: SightCx<'_>) {
         scroll_sights,
         tick,
         visibility,
-        forest,
         sight,
     } = cx;
     sight.rows.clear();
@@ -124,6 +122,7 @@ pub fn visibility_system(cx: SightCx<'_>) {
             seen: visibility.get(entity).copied(),
         });
     }
+    sight.index_rows();
     sight.gather_viewers();
     sight.gather_exposures(exposure, tick, ground);
     for &(side, at) in scroll_sights {
@@ -138,18 +137,6 @@ pub fn visibility_system(cx: SightCx<'_>) {
             continue;
         };
         *slot = seen;
-    }
-    let Some(forest) = forest else {
-        return;
-    };
-    let sight = &*sight;
-    for team in [Team::Radiant, Team::Dire] {
-        let sees = |cell| sight.sees_cell(team, cell, ground, sight_block);
-        forest.learn(
-            team,
-            |at| tree_cells(at).any(sees),
-            |at| CellGrid::cell_of(at).is_some_and(sees),
-        );
     }
 }
 
@@ -181,7 +168,7 @@ impl SightScratch {
 
     /// Whether a side's sight takes in a cell: one of its viewers reaches the
     /// cell's centre, from ground no lower, over an open line.
-    fn sees_cell(
+    pub(crate) fn sees_cell(
         &self,
         side: Team,
         cell: (usize, usize),
@@ -196,6 +183,54 @@ impl SightScratch {
                 && (viewer.flying
                     || (viewer.tier >= tier && sight_block.clear(viewer.from, viewer.tier, at)))
         })
+    }
+
+    /// The row the last pass read an entity into, if it read one.
+    fn row_of(&self, entity: Entity) -> Option<&SightRow> {
+        let at = *self.row_at.get(entity.index().0 as usize)?;
+        self.rows
+            .get(at as usize)
+            .filter(|row| row.entity == entity)
+    }
+
+    /// Indexes the rows by entity slot, for [`SightScratch::row_of`].
+    fn index_rows(&mut self) {
+        self.row_at.clear();
+        for (at, row) in self.rows.iter().enumerate() {
+            let slot = row.entity.index().0 as usize;
+            if self.row_at.len() <= slot {
+                self.row_at.resize(slot + 1, u32::MAX);
+            }
+            self.row_at[slot] = at as u32;
+        }
+    }
+
+    /// Whether one side sees a row, judged against the viewers of the last
+    /// pass as [`visibility_system`] judges every row: its own side always,
+    /// both sides a building, otherwise a viewer in reach over an open line,
+    /// and for what hides, true sight as well.
+    fn sees_row(&self, team: Team, row: &SightRow, sight_block: &SightBlock) -> bool {
+        if row.team == Some(team) {
+            return true;
+        }
+        if team != Team::Neutral && row.kind.is_some_and(|kind| kind_def(kind).always_seen) {
+            return true;
+        }
+        let Some(at) = row.at else {
+            return false;
+        };
+        let seen = self.viewers.iter().any(|viewer| {
+            viewer.side == team
+                && viewer.from.within(at, viewer.vision)
+                && (viewer.flying
+                    || (viewer.tier >= row.tier && sight_block.clear(viewer.from, viewer.tier, at)))
+        });
+        seen && (!row.hides
+            || row.team.is_none()
+            || self
+                .true_viewers
+                .iter()
+                .any(|viewer| viewer.side == team && viewer.from.within(at, viewer.true_sight)))
     }
 
     /// Every circle a strike still shows, as a viewer of the side struck at.
@@ -305,8 +340,7 @@ fn reveal(side: Team, at: Vec2, radius: i32, flying: bool, ground: &Ground) -> S
 impl World {
     /// Shows the side a strike was aimed at a circle of
     /// [`rules::STRIKE_REVEAL_RADIUS`] around where the striker stands, for
-    /// [`rules::STRIKE_REVEAL_TICKS`] from the next sight pass on. The
-    /// views show it from the end of this tick, once the blow is dealt.
+    /// [`rules::STRIKE_REVEAL_TICKS`] from the next sight pass on.
     ///
     /// A striker shows each side one circle at most: striking again moves
     /// it, starts its time afresh, and, while the last one still showed,
@@ -396,10 +430,37 @@ impl World {
             })
     }
 
-    /// Whether a side's views show an entity, from the sight worked out as
-    /// the tick ended.
+    /// Whether a side's views show an entity: what the tick's sight found,
+    /// for an entity that stands where that sight found it. One that moved
+    /// since (blinked, was carried, flew) is judged where it now stands,
+    /// against the same eyes, so a view never shows a unit where its side
+    /// could not see it. One put into the world since is shown to its own
+    /// side alone until the next pass, as its row of sight says.
     pub fn shows(&self, team: Team, entity: Entity) -> bool {
-        self.shown.get(entity).is_some_and(|seen| seen.by(team))
+        let Some(seen) = self.visibility.get(entity) else {
+            return false;
+        };
+        let at = self.pos(entity);
+        let side = self.team.get(entity).copied();
+        match self.sight_scratch.row_of(entity) {
+            None => seen.by(team),
+            Some(row) if row.at == at && row.team == side => seen.by(team),
+            Some(_) => {
+                let stats = self.stats.get(entity);
+                let row = SightRow {
+                    entity,
+                    team: side,
+                    at,
+                    vision: Fixed::ZERO,
+                    true_sight: Fixed::ZERO,
+                    kind: self.kind.get(entity).copied(),
+                    hides: stats.is_some_and(|stats| stats.hides),
+                    tier: at.map_or(0, |at| self.ground.tier(at)),
+                    seen: Some(*seen),
+                };
+                self.sight_scratch.sees_row(team, &row, &self.sight_block)
+            }
+        }
     }
 
     /// Whether a side sees an entity, from what was worked out this tick.

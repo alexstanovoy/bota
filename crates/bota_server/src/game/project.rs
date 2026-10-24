@@ -115,7 +115,11 @@ impl World {
     ) -> PlayerView {
         let mana_rate = self.mana_cost_rate_of(seat.unit);
         let own = viewer.is_none_or(|team| team == seat.team);
-        let shown = if own {
+        let in_view = seat
+            .unit
+            .zip(viewer)
+            .is_some_and(|(unit, team)| self.shows(team, unit));
+        let shown = if own || in_view {
             crate::game::Sighting {
                 level: seat.level,
                 xp: seat.xp,
