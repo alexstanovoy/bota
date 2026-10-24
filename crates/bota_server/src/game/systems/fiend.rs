@@ -54,6 +54,7 @@ impl World {
                 kind: DamageKind::Magical,
                 damage_amp_bp,
                 attack: false,
+                striker: None,
                 pierces: false,
                 uphill: false,
                 effect: HitEffect::Shadowraze { stack_damage },
@@ -88,6 +89,7 @@ impl World {
             kind: DamageKind::Physical,
             damage_amp_bp: stats.damage_amp_bp(DamageKind::Physical),
             attack: false,
+            striker: None,
             pierces: false,
             uphill: false,
             effect: HitEffect::None,
@@ -222,6 +224,7 @@ impl World {
             kind: DamageKind::Magical,
             damage_amp_bp: line.damage_amp_bp,
             attack: false,
+            striker: None,
             pierces: false,
             uphill: false,
             effect: if line.frightens {

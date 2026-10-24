@@ -30,6 +30,7 @@ fn blow(world: &mut World, hero: crate::game::Entity, rax: crate::game::Entity) 
         kind: DamageKind::Physical,
         damage_amp_bp: rules::NOMINAL_BP,
         attack: false,
+        striker: None,
         pierces: false,
         uphill: false,
         effect: HitEffect::None,

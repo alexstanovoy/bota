@@ -59,6 +59,7 @@ impl World {
                 } else {
                     HitEffect::Stun { ticks }
                 },
+                striker: None,
             },
         );
         true

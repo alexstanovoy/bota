@@ -34,4 +34,7 @@ pub struct Projectile {
     pub pierce_amp_bp: i32,
     /// What its blow does besides its damage.
     pub effect: HitEffect,
+    /// Who threw it, for health counted in hits: set on an attack's missile,
+    /// absent for a spell's.
+    pub striker: Option<bota_core::Striker>,
 }

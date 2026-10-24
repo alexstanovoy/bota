@@ -23,6 +23,9 @@ pub struct Hit {
     /// Whether it is a swing of the attacker's weapon. Only such a blow can
     /// be evaded.
     pub attack: bool,
+    /// Who swung it, for health counted in hits: set on a swing's own blow,
+    /// absent for whatever no swing dealt.
+    pub striker: Option<bota_core::Striker>,
     /// Whether it goes through evasion.
     pub pierces: bool,
     /// Whether it was thrown at a target on higher ground, which adds

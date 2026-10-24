@@ -1,11 +1,15 @@
 //! Couriers and their errands.
 
-use bota_core::{MELEE_CREEP, fountain_pos, isqrt64, rules};
+use bota_core::{
+    MELEE_CREEP, RANGED_CREEP, TOWERS, UnitDef, fountain_pos, hero_def, isqrt64, rules,
+};
 
-use crate::game::{BAG_SLOTS, Command, Entity, Errand, ItemStack, UnitOrder, World, wire_id};
+use crate::game::{
+    BAG_SLOTS, Command, Entity, Errand, Inventory, ItemStack, UnitOrder, World, wire_id,
+};
 use bota_proto::{
-    AbilityId, AbilitySlot, DamageKind, EventKind, Fixed, ItemId, Order, RejectReason, SlotId,
-    Target, Team, Vec2,
+    AbilityId, AbilitySlot, DamageKind, EventKind, Fixed, HeroId, Inflictor, ItemId, Order,
+    RejectReason, SlotId, Target, Team, Vec2,
 };
 
 use super::support::*;
@@ -394,23 +398,65 @@ fn a_courier_whose_owner_fell_puts_what_it_carries_back() {
 #[test]
 fn a_shielded_courier_takes_nothing() {
     let (mut world, _, courier) = a_match();
-    world.step();
+    let away = Vec2::from_ints(5000, 5000);
+    world.transform.get_mut(courier).expect("standing").pos = away;
+    let creep = world.spawn_unit(&MELEE_CREEP, Team::Dire, away + Vec2::from_ints(100, 0));
+    world.settle();
     let full = world.health.get(courier).expect("standing").hp;
     assert!(world.courier_shield(courier));
     world.step();
-    world.push_hit(None, courier, 100, DamageKind::Pure, None);
-    world.step();
+    world.set_target(creep, courier);
+    run(&mut world, rules::COURIER_SHIELD_TICKS - 1);
     assert_eq!(
         world.health.get(courier).map(|health| health.hp),
         Some(full),
         "nothing gets through while it holds"
     );
-    run(&mut world, rules::COURIER_SHIELD_TICKS);
-    world.push_hit(None, courier, 100, DamageKind::Pure, None);
-    world.step();
     assert!(
-        world.health.get(courier).expect("standing").hp < full,
+        blows_to_fell(&mut world, creep, courier) > 0,
         "and once it lifts the courier is a courier again"
+    );
+}
+
+#[test]
+fn a_courier_falls_to_one_melee_hero_swing_two_ranged_hero_missiles_or_six_other_blows() {
+    let pudge = hero_def(HeroId::PUDGE).expect("a hero").unit;
+    let fiend = hero_def(HeroId::SHADOW_FIEND).expect("a hero").unit;
+    for (attacker, blows) in [
+        (pudge, 1),
+        (fiend, 2),
+        (&MELEE_CREEP, 6),
+        (&RANGED_CREEP, 6),
+        (&TOWERS[0], 6),
+    ] {
+        let (mut world, courier, by) = a_courier_and(attacker);
+        assert_eq!(
+            world.stats.get(courier).map(|stats| stats.max_hp),
+            Some(Fixed::from_int(rules::COURIER_HP)),
+            "six hits of health"
+        );
+        assert_eq!(
+            blows_to_fell(&mut world, by, courier),
+            blows,
+            "{:?} brings it down in {blows}",
+            attacker.kind
+        );
+    }
+}
+
+#[test]
+fn a_spell_takes_nothing_of_a_courier_and_neither_does_damage_besides_a_swing() {
+    let (mut world, courier, fiend) =
+        a_courier_and(hero_def(HeroId::SHADOW_FIEND).expect("a hero").unit);
+    let full = world.health.get(courier).expect("standing").hp;
+    let raze = Some(Inflictor::Ability(AbilityId::RAZE_NEAR));
+    world.push_hit(Some(fiend), courier, 1000, DamageKind::Magical, raze);
+    world.push_hit(Some(fiend), courier, 1000, DamageKind::Pure, None);
+    world.step();
+    assert_eq!(
+        world.health.get(courier).map(|health| health.hp),
+        Some(full),
+        "health counted in hits answers to attacks alone"
     );
 }
 
@@ -480,6 +526,38 @@ fn what_an_owner_has_no_room_for_goes_back_to_the_stash() {
 }
 
 /// A match world, its hero and its courier, before any tick has run.
+/// A Radiant courier on open ground and a Dire unit of a kind beside it,
+/// settled and one tick on.
+fn a_courier_and(attacker: &'static UnitDef) -> (World, Entity, Entity) {
+    let mut world = World::new();
+    let at = Vec2::from_ints(5000, 5000);
+    let courier = world.spawn_courier(Team::Radiant, at, SlotId(0), Inventory::empty(6));
+    let by = world.spawn_unit(attacker, Team::Dire, at + Vec2::from_ints(100, 0));
+    world.settle();
+    world.step();
+    (world, courier, by)
+}
+
+/// The blows one unit lands before another falls, swinging at it from where
+/// it stands.
+fn blows_to_fell(world: &mut World, from: Entity, on: Entity) -> u32 {
+    world.set_target(from, on);
+    let mut blows = 0;
+    let mut had = world.health.get(on).expect("standing").hp;
+    for _ in 0..1200 {
+        world.step();
+        let now = world.health.get(on).map_or(Fixed::ZERO, |health| health.hp);
+        if now < had {
+            blows += 1;
+            had = now;
+        }
+        if !world.alive(on) {
+            return blows;
+        }
+    }
+    panic!("it never fell")
+}
+
 fn a_match() -> (World, Entity, Entity) {
     let (world, hero) = match_hero();
     let courier = the_courier(&world);

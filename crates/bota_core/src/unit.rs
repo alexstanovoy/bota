@@ -6,7 +6,7 @@
 
 use bota_proto::{AbilityId, Attribute, Attributes, Fixed, Team, UnitKind};
 
-use crate::{Aura, AuraModifier, GoldRange, ModifierKind, Reach, Whom, rules};
+use crate::{Aura, AuraModifier, GoldRange, HitCount, ModifierKind, Reach, Whom, rules};
 
 /// What an entity gains for each step of whatever raises it: a level past the
 /// first, or an upgrade interval.
@@ -118,6 +118,9 @@ pub struct UnitDef {
     pub bound: i32,
     /// Whether damage passes it by.
     pub invulnerable: bool,
+    /// Its health counted in hits, `max_hp` of them in all: Dota's hits to
+    /// kill. Absent for health that damage takes.
+    pub hit_count: Option<HitCount>,
     /// Whether it counts as ancient.
     pub ancient: bool,
     /// Gold killing it pays.
@@ -181,6 +184,7 @@ pub(crate) const BARE_UNIT: UnitDef = UnitDef {
     collision: 0,
     bound: 0,
     invulnerable: false,
+    hit_count: None,
     ancient: false,
     bounty_gold: GoldRange::ZERO,
     bounty_team: 0,
@@ -516,6 +520,7 @@ pub const COURIER: UnitDef = UnitDef {
     unbounded_pace: true,
     magic_resist_pct: 100,
     max_hp: rules::COURIER_HP,
+    hit_count: Some(rules::COURIER_HITS),
     move_speed: rules::COURIER_MOVE_SPEED,
     turn_rate: rules::TURN_RATE_BRADS,
     day_vision: rules::COURIER_VISION,

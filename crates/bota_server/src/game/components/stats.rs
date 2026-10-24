@@ -98,6 +98,10 @@ pub struct Stats {
     pub phased: bool,
     /// Whether damage passes it by.
     pub invulnerable: bool,
+    /// Its health counted in hits, see [`UnitDef::hit_count`].
+    ///
+    /// [`UnitDef::hit_count`]: bota_core::UnitDef::hit_count
+    pub hit_count: Option<bota_core::HitCount>,
     /// Whether the side's Glyph of Fortification holds on it: damage does
     /// nothing to it.
     pub glyph: bool,

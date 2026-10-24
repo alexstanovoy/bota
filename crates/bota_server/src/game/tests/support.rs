@@ -50,6 +50,7 @@ pub(crate) fn stats() -> Stats {
         flies: false,
         phased: false,
         invulnerable: false,
+        hit_count: None,
         glyph: false,
         evasion: Odds::NEVER,
         lifesteal_pct: 0,
@@ -188,6 +189,7 @@ pub(crate) fn world_with_projectile_uphill_state(launch_tier: u8, can_miss_uphil
             pierced: Vec::new(),
             pierce_amp_bp: rules::NOMINAL_BP,
             effect: HitEffect::None,
+            striker: None,
         },
     );
     world
@@ -1117,6 +1119,7 @@ pub(crate) fn manual_projectile_damage(
                 pierced: Vec::new(),
                 pierce_amp_bp: rules::NOMINAL_BP,
                 effect: HitEffect::None,
+                striker: Some(bota_core::Striker::Other),
             },
         );
     }

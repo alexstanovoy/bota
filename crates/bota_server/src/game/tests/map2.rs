@@ -398,7 +398,7 @@ fn map2_immortal_heroes_survive_lethal_blows_and_no_death_ends_the_match() {
 fn map2_courier_death_does_not_spend_a_hero_life_or_end_the_match() {
     let mut world = match_world(MID_MAP);
     let courier = world.seats[0].courier.expect("Radiant courier");
-    lethal_hit(&mut world, courier);
+    world.bury(vec![(courier, None)], &mut Vec::new());
 
     world.advance(&[]);
 

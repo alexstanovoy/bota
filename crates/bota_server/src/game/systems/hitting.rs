@@ -138,34 +138,21 @@ pub fn hitting_system<const AMPLIFIED: bool>(cx: HitCx<'_>) {
             });
             continue;
         }
-        let amount = dealt::<AMPLIFIED>(blow, on_it);
-        let protected = on_it.is_some_and(|on_it| {
-            on_it
-                .active()
-                .any(|held| held.kind == ModifierKind::BackdoorProtection)
-        });
-        let mut taken = mitigate(amount, blow.kind, stat.armor, stat.magic_resist_bp);
-        if stat.glyph {
-            taken = 0;
-        } else if protected {
-            taken = taken * rules::BACKDOOR_DAMAGE_PCT / 100;
-        }
-        if blow.kind == DamageKind::Magical {
-            taken = more_magic(taken, stat.magic_taken_pct);
-            if let Some(on_it) = modifiers.get_mut(blow.target) {
-                taken = soak(on_it, taken);
-            }
-        }
-        taken = blocked(taken, modifiers.get(blow.target));
-        if let Some(hits) = counted {
+        let taken = match stat.hit_count {
+            Some(count) => count.taken(blow.striker),
+            None => damage_taken::<AMPLIFIED>(blow, &stat, modifiers.get_mut(blow.target)),
+        };
+        let taken = if let Some(hits) = counted {
             let by_hero = blow.source.is_some_and(|source| {
                 kind.get(source) == Some(&UnitKind::Hero)
                     && !modifiers
                         .get(source)
                         .is_some_and(super::econ::wears_illusion)
             });
-            taken = hits.blow(stat.max_hp.to_int(), by_hero);
-        }
+            hits.blow(stat.max_hp.to_int(), by_hero)
+        } else {
+            taken
+        };
         let Some(pool) = health.get_mut(blow.target) else {
             continue;
         };
@@ -195,6 +182,36 @@ pub fn hitting_system<const AMPLIFIED: bool>(cx: HitCx<'_>) {
             dealt: blow.amount,
         });
     }
+}
+
+/// The health a blow takes of a target whose health damage takes: the blow
+/// amplified, then armor or resistance, the Glyph or backdoor protection,
+/// the extra magic it takes and what soaks magic, and what blocks a share of
+/// every blow.
+fn damage_taken<const AMPLIFIED: bool>(
+    blow: Hit,
+    stat: &Stats,
+    mut on_it: Option<&mut Modifiers>,
+) -> i32 {
+    let amount = dealt::<AMPLIFIED>(blow, on_it.as_deref());
+    let protected = on_it.as_deref().is_some_and(|on_it| {
+        on_it
+            .active()
+            .any(|held| held.kind == ModifierKind::BackdoorProtection)
+    });
+    let mut taken = mitigate(amount, blow.kind, stat.armor, stat.magic_resist_bp);
+    if stat.glyph {
+        taken = 0;
+    } else if protected {
+        taken = taken * rules::BACKDOOR_DAMAGE_PCT / 100;
+    }
+    if blow.kind == DamageKind::Magical {
+        taken = more_magic(taken, stat.magic_taken_pct);
+        if let Some(on_it) = on_it.as_deref_mut() {
+            taken = soak(on_it, taken);
+        }
+    }
+    blocked(taken, on_it.as_deref())
 }
 
 /// Magical damage after the extra a target takes, in percent.

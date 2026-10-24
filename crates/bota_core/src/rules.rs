@@ -986,8 +986,18 @@ pub const GRENADE_DEBUFF_TICKS: u32 = 5 * TICKS_PER_SECOND + 1;
 
 // The courier.
 
-/// Health a courier stands up with.
-pub const COURIER_HP: i32 = 250;
+/// Health a courier stands up with, counted in hits: `npc_dota_courier`'s
+/// StatusHealth.
+pub const COURIER_HP: i32 = 6;
+/// What one attack takes of it: a melee hero's swing all six, a ranged
+/// hero's missile three, a creep's or a building's one. Dota 7.35: "Courier
+/// dies after 1 melee hero attack, 2 ranged hero attacks or 6 creep/tower
+/// attacks".
+pub const COURIER_HITS: crate::HitCount = crate::HitCount {
+    melee_hero: 6,
+    ranged_hero: 3,
+    other: 1,
+};
 /// World units a second a courier flies.
 pub const COURIER_MOVE_SPEED: i32 = 380;
 /// How far a courier sees, by day and by night alike.

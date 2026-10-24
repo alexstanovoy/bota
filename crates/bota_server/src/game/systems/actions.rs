@@ -8,8 +8,8 @@
 //! is aimed at is in reach.
 
 use bota_core::{
-    BEATS_PER_TICK, ModifierKind, Talent, ability_def, attack_gain, beats, carried_pierces,
-    cast_point_ms, cross, facing_gap, facing_towards, kind_def, rules,
+    BEATS_PER_TICK, ModifierKind, Striker, Talent, ability_def, attack_gain, beats,
+    carried_pierces, cast_point_ms, cross, facing_gap, facing_towards, kind_def, rules,
 };
 use bota_proto::{Aim, DamageKind, Fixed, Inflictor, ItemId, ItemSlot, Team, Vec2};
 
@@ -23,6 +23,8 @@ use crate::game::{
 /// What one swing deals, rolled when it lands.
 #[derive(Clone)]
 struct Swing {
+    /// Who swings it, for health counted in hits.
+    striker: Striker,
     /// Its physical damage.
     damage: i32,
     /// Whether it goes through evasion for an accuracy aura's sake.
@@ -645,7 +647,11 @@ impl World {
             };
         let class_pct = self.class_pct_of(attacker, on);
         let boost = self.boost_of(attacker, stats);
+        let striker = self.kind.get(attacker).map_or(Striker::Other, |kind| {
+            Striker::of(*kind, stats.projectile_speed.is_some())
+        });
         let swing = Swing {
+            striker,
             damage: damage * boost.crit_pct / 100 * class_pct / 100,
             accurate: boost.accurate,
             pierced: self.roll_pierces(attacker, on, stats, class_pct),
@@ -679,6 +685,7 @@ impl World {
             kind: DamageKind::Physical,
             damage_amp_bp: swing.physical_amp_bp,
             attack: true,
+            striker: Some(swing.striker),
             pierces: !swing.pierced.is_empty() || swing.accurate,
             uphill: false,
             effect: HitEffect::None,
@@ -692,6 +699,7 @@ impl World {
                 kind: DamageKind::Magical,
                 damage_amp_bp: swing.magical_amp_bp,
                 attack: false,
+                striker: None,
                 pierces: false,
                 uphill: false,
                 effect: HitEffect::None,
@@ -725,6 +733,7 @@ impl World {
                 pierced: swing.pierced,
                 pierce_amp_bp: swing.magical_amp_bp,
                 effect: HitEffect::None,
+                striker: Some(swing.striker),
             },
         );
     }

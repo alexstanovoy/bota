@@ -291,6 +291,12 @@ fn hash_projectile(fnv: &mut Fnv, shot: &Projectile) {
     }
     hash_damage_amp(fnv, shot.pierce_amp_bp);
     hash_hit_effect(fnv, shot.effect);
+    fnv.opt(shot.striker, hash_striker);
+}
+
+/// Who swung a blow, for health counted in hits.
+fn hash_striker(fnv: &mut Fnv, striker: bota_core::Striker) {
+    fnv.u8(striker as u8);
 }
 
 fn hash_modifiers(fnv: &mut Fnv, on_it: &Modifiers) {
@@ -466,6 +472,7 @@ fn hash_hit(fnv: &mut Fnv, hit: &Hit) {
     fnv.u8(hit.kind as u8);
     hash_damage_amp(fnv, hit.damage_amp_bp);
     fnv.some(hit.attack);
+    fnv.opt(hit.striker, hash_striker);
     fnv.some(hit.pierces);
     fnv.some(hit.uphill);
     hash_hit_effect(fnv, hit.effect);
