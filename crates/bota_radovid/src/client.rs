@@ -39,7 +39,10 @@ struct Filed {
 /// [`Client::wait`]; everything the service says comes out of
 /// [`Client::poll`], after the client has noted it in its view.
 pub struct Client {
-    backend: Backend,
+    /// The link; none once [`Client::hang_up`] closed it.
+    backend: Option<Backend>,
+    /// What the service said about itself and the account, kept past a hang-up.
+    kept: Option<(Vec<RulesetInfo>, Option<AccountInfo>)>,
     searches: Searches,
     limits: Vec<(Option<RulesetId>, Limits)>,
     filed: Vec<Filed>,
@@ -65,7 +68,8 @@ impl Client {
 
     fn with(backend: Backend) -> Client {
         Client {
-            backend,
+            backend: Some(backend),
+            kept: None,
             searches: Searches::default(),
             limits: Vec::new(),
             filed: Vec::new(),
@@ -93,7 +97,11 @@ impl Client {
                 "too many unanswered requests".to_owned(),
             ));
         }
-        let seq = self.backend.request(msg)?;
+        let seq = self
+            .backend
+            .as_mut()
+            .ok_or(ClientError::Closed)?
+            .request(msg)?;
         if filing {
             self.filed.push(Filed { seq, kind, own });
         }
@@ -179,7 +187,10 @@ impl Client {
     /// before it comes out: the view and the limits are already up to date,
     /// and a proposal has already been accepted if that is automatic.
     pub fn poll(&mut self) -> Result<Option<Incoming>, ClientError> {
-        while let Some(incoming) = self.backend.poll()? {
+        while let Some(incoming) = match self.backend.as_mut() {
+            Some(backend) => backend.poll()?,
+            None => None,
+        } {
             if let Some(shown) = self.note(incoming)? {
                 return Ok(Some(shown));
             }
@@ -305,16 +316,38 @@ impl Client {
 
     /// The rulesets this build can play: those of bota's game and wire.
     pub fn rulesets(&self) -> impl Iterator<Item = &RulesetInfo> {
-        self.backend
-            .control()
-            .rulesets()
+        let known = match (&self.backend, &self.kept) {
+            (Some(backend), _) => backend.control().rulesets(),
+            (None, Some((rulesets, _))) => rulesets,
+            (None, None) => &[],
+        };
+        known
             .iter()
             .filter(|r| r.game == GAME && r.game_fingerprint == fingerprint())
     }
 
     /// The account, once logged in.
     pub fn me(&self) -> Option<&AccountInfo> {
-        self.backend.control().me()
+        match (&self.backend, &self.kept) {
+            (Some(backend), _) => backend.control().me(),
+            (None, Some((_, me))) => me.as_ref(),
+            (None, None) => None,
+        }
+    }
+
+    /// Closes the link and keeps the view: the searches, limits, rulesets and account stay
+    /// readable, requests fail with [`ClientError::Closed`] and nothing more is received. For a
+    /// client that has nothing live to hear and would only hold a socket idle.
+    pub fn hang_up(&mut self) {
+        if let Some(backend) = self.backend.take() {
+            let control = backend.control();
+            self.kept = Some((control.rulesets().to_vec(), control.me().cloned()));
+        }
+    }
+
+    /// Whether [`Client::hang_up`] closed the link.
+    pub fn hung_up(&self) -> bool {
+        self.backend.is_none()
     }
 
     /// The token of the last login, to [`Client::resume`] with.
