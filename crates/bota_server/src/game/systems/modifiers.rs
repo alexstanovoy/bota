@@ -97,6 +97,14 @@ impl World {
         self.active_modifier(entity, ModifierKind::Feared).is_some()
     }
 
+    /// Whether an entity wears what keeps it from taking anybody on of its
+    /// own accord ([`ModifierKind::disables_auto_attack`]).
+    pub fn auto_attack_disabled(&self, entity: Entity) -> bool {
+        self.modifiers
+            .get(entity)
+            .is_some_and(|on_it| on_it.active().any(|held| held.kind.disables_auto_attack()))
+    }
+
     /// Whoever a feared entity runs from, while that one is still known.
     pub fn flees_from(&self, entity: Entity) -> Option<Entity> {
         self.active_modifier(entity, ModifierKind::Feared)?.source

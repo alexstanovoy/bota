@@ -441,7 +441,6 @@ impl World {
         self.is_hero(entity) && !self.wears_illusion(entity)
     }
 
-    /// Whether an entity wears what makes a unit an illusion.
     /// Takes a risen hero's fountain invulnerability off once the
     /// Rejuvenation Aura that provides it no longer holds on it: it walked
     /// out of the fountain's reach and the aura's linger ran out.
@@ -453,21 +452,19 @@ impl World {
             let Some(on_it) = self.modifiers.get(hero) else {
                 continue;
             };
-            let (risen, mended) = on_it
-                .0
-                .iter()
-                .fold((false, false), |(risen, mended), held| {
-                    (
-                        risen || held.kind == ModifierKind::FountainInvulnerable,
-                        mended || matches!(held.kind, ModifierKind::Fountain { .. }),
-                    )
-                });
+            let risen = on_it
+                .active()
+                .any(|held| held.kind == ModifierKind::FountainInvulnerable);
+            let mended = on_it
+                .active()
+                .any(|held| matches!(held.kind, ModifierKind::Fountain { .. }));
             if risen && !mended {
                 self.take_modifier(hero, ModifierKind::FountainInvulnerable, Some(hero));
             }
         }
     }
 
+    /// Whether an entity wears what makes a unit an illusion.
     pub fn wears_illusion(&self, entity: Entity) -> bool {
         self.modifiers.get(entity).is_some_and(wears_illusion)
     }

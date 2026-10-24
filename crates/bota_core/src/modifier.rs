@@ -244,6 +244,15 @@ impl ModifierKind {
         }
     }
 
+    /// Whether whatever wears it takes nobody on of its own accord, as Dota's
+    /// `MODIFIER_PROPERTY_DISABLE_AUTOATTACK`: the fountain invulnerability's
+    /// ("Players with the Fountain Invulnerablility buff will no longer
+    /// auto-attack and break the buff when an enemy is within range", Dota's
+    /// Spring Cleaning 2022).
+    pub const fn disables_auto_attack(self) -> bool {
+        matches!(self, ModifierKind::FountainInvulnerable)
+    }
+
     /// The souls the necromastery holds, `count` of them.
     pub const fn souls(count: u32) -> ModifierKind {
         ModifierKind::Souls { count }

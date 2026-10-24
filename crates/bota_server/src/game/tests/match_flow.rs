@@ -7,7 +7,8 @@ use bota_core::{
 
 use crate::game::{Entity, Level, UnitOrder, World, wire_id};
 use bota_proto::{
-    EventKind, Fixed, HeroId, ItemId, MapId, Order, SlotId, StatusFlags, Target, Team, Vec2,
+    AbilitySlot, EventKind, Fixed, HeroId, ItemId, ItemSlot, MapId, Order, SlotId, StatusFlags,
+    Target, Team, Vec2,
 };
 
 use super::support::*;
@@ -476,9 +477,14 @@ fn a_level_seven_hero() -> (World, Entity) {
 /// it, no longer holds on the hero.
 #[test]
 fn a_risen_hero_is_untouchable_at_its_fountain_until_it_is_given_a_command() {
-    let risen = |order: Option<Order>| {
+    let risen = || {
         let (mut world, hero) = match_hero();
         world.settle();
+        world.step();
+        assert!(
+            !carries(&world, hero, ModifierKind::FountainInvulnerable),
+            "a hero standing at the start does not wear it"
+        );
         world.bury(vec![(hero, None)], &mut Vec::new());
         world.seats[0].respawn_left = 1;
         world.step();
@@ -498,31 +504,111 @@ fn a_risen_hero_is_untouchable_at_its_fountain_until_it_is_given_a_command() {
             carries(&world, back, ModifierKind::FountainInvulnerable),
             "the Glyph is no command to the hero"
         );
-        if let Some(order) = order {
-            seat_order(&mut world, order);
-        }
+        hand_item(&mut world, back, ItemId::IRON_BRANCH, 0);
         (world, back)
     };
-    for order in [
-        Order::Move {
-            target: Target::Pos(Vec2::from_ints(0, 0)),
-        },
-        Order::Buy {
-            item: ItemId::TANGO,
-        },
+    // Shop dealings are named; the swap and the learning are unit orders as
+    // any other ("any regular unit orders").
+    let walk = Order::Move {
+        target: Target::Pos(Vec2::from_ints(0, 0)),
+    };
+    for (order, queue) in [
+        (walk, false),
+        (walk, true),
+        (
+            Order::Buy {
+                item: ItemId::TANGO,
+            },
+            false,
+        ),
+        (Order::Sell { slot: ItemSlot(0) }, false),
+        (
+            Order::Swap {
+                from: ItemSlot(0),
+                to: ItemSlot(1),
+            },
+            false,
+        ),
+        (
+            Order::Learn {
+                slot: AbilitySlot(0),
+            },
+            false,
+        ),
     ] {
-        let (world, back) = risen(Some(order));
+        let (mut world, back) = risen();
+        world.advance(&[crate::game::Command {
+            slot: SlotId(0),
+            unit: None,
+            order,
+            queue,
+            seq: 0,
+        }]);
         assert!(
             !carries(&world, back, ModifierKind::FountainInvulnerable),
-            "{order:?} ends it"
+            "{order:?} (queued: {queue}) ends it"
         );
         assert!(!world.stats.get(back).expect("stats").invulnerable);
     }
-    let (mut world, back) = risen(None);
+    // Carried out of its fountain's reach, it stays untouchable for as long
+    // as the Rejuvenation lingers on it, and not a tick longer.
+    let (mut world, back) = risen();
     world.transform.get_mut(back).expect("standing").pos = hero_spawn_pos(world.map, Team::Dire);
-    run(&mut world, rules::FOUNTAIN_HEAL_LINGER_TICKS + 2);
+    let mut lingered = 0;
+    while carries(&world, back, FOUNTAIN_EFFECT) {
+        assert!(
+            carries(&world, back, ModifierKind::FountainInvulnerable),
+            "untouchable while the Rejuvenation lingers"
+        );
+        world.step();
+        lingered += 1;
+        assert!(lingered <= rules::FOUNTAIN_HEAL_LINGER_TICKS + 1);
+    }
+    assert!(
+        lingered + 1 >= rules::FOUNTAIN_HEAL_LINGER_TICKS,
+        "{lingered}"
+    );
     assert!(
         !carries(&world, back, ModifierKind::FountainInvulnerable),
         "out of its fountain's reach once the Rejuvenation lifts"
+    );
+    assert!(!world.stats.get(back).expect("stats").invulnerable);
+}
+
+/// "Players with the Fountain Invulnerablility buff will no longer
+/// auto-attack and break the buff when an enemy is within range" (Dota,
+/// Spring Cleaning 2022): a risen hero left to itself takes nobody on while
+/// it wears the buff, and does again once the buff is gone.
+#[test]
+fn a_risen_hero_attacks_nobody_of_its_own_accord_while_untouchable() {
+    let (mut world, hero) = match_hero();
+    world.settle();
+    world.bury(vec![(hero, None)], &mut Vec::new());
+    world.seats[0].respawn_left = 1;
+    world.step();
+    let back = world.seats[0].unit.expect("risen");
+    // Out of every tower's and fountain's reach, an enemy beside it, while
+    // the Rejuvenation lingers.
+    let at = an_empty_spot(&world);
+    world.transform.get_mut(back).expect("standing").pos = at;
+    let enemy = world.spawn_unit(&MELEE_CREEP, Team::Dire, at + Vec2::from_ints(150, 0));
+    world.settle();
+    while carries(&world, back, ModifierKind::FountainInvulnerable) {
+        assert_eq!(
+            world.orders.get(back).map(|o| o.current),
+            Some(UnitOrder::Idle)
+        );
+        assert_eq!(
+            world.target_of(back),
+            None,
+            "no auto-attack while untouchable"
+        );
+        world.step();
+    }
+    run(&mut world, 2);
+    assert_eq!(
+        world.target_of(back),
+        Some(enemy),
+        "left to itself, it takes the enemy on once the buff is gone"
     );
 }

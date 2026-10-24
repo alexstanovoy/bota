@@ -143,8 +143,9 @@ impl World {
     ///
     /// What is taken on depends on the order in hand: one told to walk
     /// somewhere, to follow or to stand takes on nothing, one told to attack
-    /// takes on that and nothing else, and one left to itself chooses. Every
-    /// order cooldown runs one tick down here.
+    /// takes on that and nothing else, and one left to itself chooses, unless
+    /// what it wears disables its auto-attack. Every order cooldown runs one
+    /// tick down here.
     pub fn tick_targeting(&mut self) {
         let mut candidates = std::mem::take(&mut self.candidates);
         self.lay_candidates(&mut candidates);
@@ -174,6 +175,11 @@ impl World {
                     continue;
                 }
                 Some(UnitOrder::Move { .. } | UnitOrder::Stand | UnitOrder::Follow { .. }) => {
+                    self.target.remove(entity);
+                    continue;
+                }
+                // Left to itself, what will not auto-attack takes on nobody.
+                Some(UnitOrder::Idle) if self.auto_attack_disabled(entity) => {
                     self.target.remove(entity);
                     continue;
                 }

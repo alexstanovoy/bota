@@ -548,6 +548,11 @@ const SPELL_EFFECT_FACES: [EffectFace; EFFECT_COUNT - FIRST_SPELL_EFFECT] = {
             "Gone when its time runs out.",
         )
     };
+    faces[EffectId::FOUNTAIN_INVULNERABLE.0 as usize - FIRST_SPELL_EFFECT] = EffectFace::of(
+        EffectId::FOUNTAIN_INVULNERABLE.0,
+        Some("Untouchable"),
+        "Risen at its fountain: invulnerable and untargetable, and attacking nobody of its own accord, until given a command or until the fountain's mending wears off.",
+    );
     faces
 };
 
