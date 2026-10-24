@@ -1,6 +1,6 @@
 use bota_core::ModifierKind;
 
-use crate::game::{HitEffect, Inventory, ItemStack, wire_id};
+use crate::game::{HitEffect, ItemStack, wire_id};
 use bota_proto::{Attribute, ItemId, SlotId, Team};
 
 use super::fixtures::*;
@@ -55,12 +55,12 @@ fn mechanics_hash_includes_caster_generation_stack_count_and_ticks() {
     }
 }
 
-/// Where a stack may be kept: in the caster's bag, in the courier's kept bag
-/// or on the ground.
+/// Where a stack may be kept: in the caster's bag, in its seat's stash or on
+/// the ground.
 #[derive(Clone, Copy, Debug)]
 enum Kept {
     Bag,
-    Courier,
+    Stash,
     Ground,
 }
 
@@ -69,11 +69,9 @@ fn hash_keeping(kept: Kept, stack: ItemStack) -> u64 {
     let (mut world, caster, _) = fixture();
     match kept {
         Kept::Bag => world.inventory.get_mut(caster).unwrap().slots[0] = Some(stack),
-        Kept::Courier => {
+        Kept::Stash => {
             seat(&mut world, SlotId(0), Team::Radiant, caster, 0);
-            let mut bag = Inventory::empty(6);
-            bag.slots[0] = Some(stack);
-            world.seats[0].courier_kept = Some(bag);
+            world.seats[0].stash.slots[0] = Some(stack);
         }
         Kept::Ground => {
             world.lay_loot(stack, ORIGIN);
@@ -93,7 +91,7 @@ fn mechanics_hash_includes_every_merge_field_of_a_stack_wherever_it_is_kept() {
         ("sale mark", |stack| stack.for_sale = true),
         ("mode", |stack| stack.mode = Some(Attribute::Agility)),
     ];
-    for kept in [Kept::Bag, Kept::Courier, Kept::Ground] {
+    for kept in [Kept::Bag, Kept::Stash, Kept::Ground] {
         for item in [ItemId::MANGO, ItemId::POWER_TREADS] {
             let base = ItemStack::bought(item, SlotId(0), 0).unwrap();
             for (name, change) in changes {

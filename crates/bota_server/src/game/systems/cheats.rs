@@ -390,7 +390,6 @@ impl World {
         fresh.invulnerable = old.invulnerable;
         fresh.courier = old.courier;
         fresh.courier_left = old.courier_left;
-        fresh.courier_kept = old.courier_kept.clone();
         fresh.kills = old.kills;
         fresh.deaths = old.deaths;
         fresh.assists = old.assists;

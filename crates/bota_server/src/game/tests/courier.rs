@@ -28,20 +28,22 @@ fn a_courier_brought_down_comes_back_in_its_own_time() {
     let mut events = Vec::new();
     world.bury(vec![(courier, None)], &mut events);
     world.step();
-    assert!(world.seats[0].courier.is_none(), "it is gone");
+    assert_eq!(
+        world.seats[0].courier,
+        Some(courier),
+        "the same courier lies dead"
+    );
     assert!(world.seats[0].courier_left > 0, "and a wait has started");
+    assert_eq!(world.pos(courier), None, "standing nowhere");
     assert_eq!(
         world.validate_order(SlotId(0), Some(wire_id(courier)), &deliver),
-        Err(RejectReason::NotYourUnit)
+        Err(RejectReason::HeroDead),
+        "a dead courier takes no order"
     );
     run(&mut world, rules::courier_respawn_ticks(1));
     let back = world.seats[0].courier.expect("it came back");
-    assert_ne!(back, courier, "as a new body");
+    assert_eq!(back, courier, "the same courier, as Dota's");
     assert_eq!(world.errand.get(back), Some(&Errand::None));
-    assert_eq!(
-        world.validate_order(SlotId(0), Some(wire_id(courier)), &deliver),
-        Err(RejectReason::NotYourUnit)
-    );
     assert_eq!(
         world.validate_order(SlotId(0), Some(wire_id(back)), &deliver),
         Ok(())
@@ -504,17 +506,15 @@ fn a_courier_keeps_its_load_through_death() {
     world.inventory.get_mut(courier).expect("carries").slots[0] =
         Some(a_stack_of(ItemId::BOOTS, 0));
     world.bury(vec![(courier, None)], &mut Vec::new());
-    assert!(
-        world.seats[0]
-            .courier_kept
-            .as_ref()
-            .is_some_and(|bag| bag.held().count() == 1),
-        "the load waits on the seat"
+    assert_eq!(
+        held(&world, courier),
+        1,
+        "the load stays aboard the fallen courier"
     );
     run(&mut world, rules::courier_respawn_ticks(1) + 2);
     let back = world.seats[0].courier.expect("stands again");
-    assert_ne!(back, courier, "in a new body");
-    assert_eq!(held(&world, back), 1, "with the load back aboard");
+    assert_eq!(back, courier, "the same courier");
+    assert_eq!(held(&world, back), 1, "with its load");
 }
 
 #[test]

@@ -1,7 +1,7 @@
 //! Who stands and who is in reach, telling of blows, and clearing away what
 //! has fallen.
 
-use bota_core::{MAP2_ID, MAP2_TICK_CAP, kind_def, respawn_wait};
+use bota_core::{MAP2_ID, MAP2_TICK_CAP, kind_def, respawn_wait, rules};
 use bota_proto::{EventKind, Fixed, Team, UnitKind, Vec2};
 
 use crate::game::{
@@ -228,8 +228,9 @@ impl World {
         {
             self.seats[index].kills += 1;
         }
-        // A hero lies dead and stands again: the one entity, all match long.
-        if self.seat_of(entity).is_none() {
+        // A hero or a courier lies dead and stands again: the one entity, all
+        // match long.
+        if self.seat_of(entity).is_none() && self.seat_of_courier(entity).is_none() {
             self.despawn(entity);
             assert!(!self.entities.contains(entity));
         }
@@ -262,15 +263,16 @@ impl World {
                 fallen_hero_team = Some(self.seats[index].team);
             }
             if self.seats[index].courier == Some(entity) {
-                let mut carried = self.inventory.remove(entity);
-                for stack in carried
-                    .iter_mut()
-                    .flat_map(|bag| bag.slots.iter_mut().flatten())
-                {
-                    stack.touched = true;
-                    stack.disassemble_until = 0;
+                // What a courier carried when it fell sells back at the full
+                // price no more, as a hero's, nor does a build come apart.
+                if let Some(bag) = self.inventory.get_mut(entity) {
+                    bag.slots.iter_mut().flatten().for_each(|stack| {
+                        stack.touched = true;
+                        stack.disassemble_until = 0;
+                    });
                 }
-                self.seats[index].courier_kept = carried;
+                let wait = rules::courier_respawn_ticks(self.seats[index].level);
+                self.lay_courier_down(index, wait);
             }
         }
         if let Some(team) = fallen_hero_team

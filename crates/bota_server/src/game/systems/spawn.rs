@@ -176,43 +176,15 @@ impl World {
     }
 
     /// Lays a seat's hero down for `wait` ticks: it leaves the map and keeps
-    /// all else, as Dota's dead hero, which is never created again. It stands
-    /// nowhere, so nothing sees it, aims at it, walks round it or reaches it
-    /// with an aura; it acts on nothing and takes no order. Its book, its bag,
-    /// its level and what it gathered stay on it; the modifiers Dota removes on
-    /// death go. Counting the death and paying for it are the caller's: an
-    /// Aegis's rising is a lying down that counts as none.
+    /// all else, as Dota's dead hero, which is never created again (see
+    /// [`World::leave_the_map`]). Counting the death and paying for it are
+    /// the caller's: an Aegis's rising is a lying down that counts as none.
     pub(crate) fn lay_hero_down(&mut self, index: usize, wait: u32) {
         assert!(wait > 0, "a hero lies dead at least a tick");
         let Some(hero) = self.seats[index].unit else {
             return;
         };
-        if let Some(on_it) = self.modifiers.get_mut(hero) {
-            on_it.0.retain(|held| {
-                held.ticks_left != Some(0)
-                    && effect_def(held.kind.effect_id()).is_some_and(|def| def.kept_through_death)
-            });
-        }
-        self.transform.remove(hero);
-        self.hull.remove(hero);
-        self.action.remove(hero);
-        self.orders.remove(hero);
-        self.queue.remove(hero);
-        self.route.remove(hero);
-        self.plan.remove(hero);
-        self.motion.remove(hero);
-        self.target.remove(hero);
-        self.visibility.remove(hero);
-        self.exposure.remove(hero);
-        self.handling.remove(hero);
-        self.applied.remove(hero);
-        self.feast.remove(hero);
-        if let Some(health) = self.health.get_mut(hero) {
-            health.hp = Fixed::ZERO;
-        }
-        if let Some(mana) = self.mana.get_mut(hero) {
-            mana.mana = Fixed::ZERO;
-        }
+        self.leave_the_map(hero);
         self.seats[index].fell = self.tick;
         self.seats[index].respawn_left = wait;
         // Its numbers are those of what it still wears.
@@ -228,22 +200,90 @@ impl World {
             return;
         };
         let body = hero_def(self.seats[index].hero).map_or(&HERO, |def| def.unit);
+        self.stand_on_the_map(hero, body, at);
+        self.seats[index].respawn_left = 0;
+        self.settle();
+        self.fill_pools(hero);
+    }
+
+    /// Takes a unit that respawns (a hero, a courier) off the map and keeps
+    /// it: it stands nowhere, so nothing sees it, aims at it, walks round it
+    /// or reaches it with an aura; it acts on nothing and takes no order; its
+    /// pools are empty. Its book, its bag, its level and what it gathered stay
+    /// on it; the modifiers Dota removes on death go.
+    fn leave_the_map(&mut self, unit: Entity) {
+        if let Some(on_it) = self.modifiers.get_mut(unit) {
+            on_it.0.retain(|held| {
+                held.ticks_left != Some(0)
+                    && effect_def(held.kind.effect_id()).is_some_and(|def| def.kept_through_death)
+            });
+        }
+        self.transform.remove(unit);
+        self.hull.remove(unit);
+        self.action.remove(unit);
+        self.orders.remove(unit);
+        self.queue.remove(unit);
+        self.route.remove(unit);
+        self.plan.remove(unit);
+        self.motion.remove(unit);
+        self.target.remove(unit);
+        self.visibility.remove(unit);
+        self.exposure.remove(unit);
+        self.handling.remove(unit);
+        self.applied.remove(unit);
+        self.feast.remove(unit);
+        if let Some(health) = self.health.get_mut(unit) {
+            health.hp = Fixed::ZERO;
+        }
+        if let Some(mana) = self.mana.get_mut(unit) {
+            mana.mana = Fixed::ZERO;
+        }
+    }
+
+    /// Puts a unit taken off the map back on it at `at`, as `body` stands:
+    /// seen by its own side from this moment, with a body, ready to act and
+    /// told nothing, its match-setup modifiers put on afresh.
+    fn stand_on_the_map(&mut self, unit: Entity, body: &UnitDef, at: Vec2) {
+        let Some(team) = self.team.get(unit).copied() else {
+            return;
+        };
         self.transform.insert(
-            hero,
+            unit,
             Transform {
                 pos: at,
                 facing: Angle::default(),
             },
         );
-        // Seen by its own side from this moment, as anything stood up is.
-        self.set_team(hero, self.seats[index].team);
-        self.give_hull(hero, body);
-        self.give_action(hero);
-        self.give_orders(hero);
-        self.apply_spawn_modifiers(hero);
-        self.seats[index].respawn_left = 0;
+        self.set_team(unit, team);
+        self.give_hull(unit, body);
+        self.give_action(unit);
+        self.give_orders(unit);
+        self.apply_spawn_modifiers(unit);
+    }
+
+    /// Lays a seat's courier down for `wait` ticks, off the map as a fallen
+    /// hero is: the same courier stands again, with what it carried.
+    pub(crate) fn lay_courier_down(&mut self, index: usize, wait: u32) {
+        assert!(wait > 0, "a courier lies dead at least a tick");
+        let Some(courier) = self.seats[index].courier else {
+            return;
+        };
+        self.leave_the_map(courier);
+        self.seats[index].courier_left = wait;
+    }
+
+    /// Stands a seat's fallen courier up at `at`, full, phased and on no
+    /// errand, as it first stood.
+    pub(crate) fn raise_courier_up(&mut self, index: usize, at: Vec2) {
+        let Some(courier) = self.seats[index].courier else {
+            return;
+        };
+        self.stand_on_the_map(courier, &COURIER, at);
+        self.put_courier_phased(courier);
+        self.errand.insert(courier, Errand::None);
+        self.seats[index].courier_left = 0;
         self.settle();
-        self.fill_pools(hero);
+        self.fill_pools(courier);
     }
 
     /// Puts a lane creep on the map, to march its lane from where it stands.
@@ -439,14 +479,18 @@ impl World {
         book.grant(1);
         self.abilities.insert(entity, book);
         self.level.insert(entity, Level(1));
-        // Phased from the start (Liquipedia, Courier: "The permanent phased
-        // movement is granted by a status buff", `modifier_phased`).
-        self.put_modifier(
-            entity,
-            Modifier::new(ModifierKind::Phased, Some(entity), None, None),
-        );
+        self.put_courier_phased(entity);
         self.errand.insert(entity, Errand::None);
         entity
+    }
+
+    /// Phased from the start (Liquipedia, Courier: "The permanent phased
+    /// movement is granted by a status buff", `modifier_phased`).
+    fn put_courier_phased(&mut self, courier: Entity) {
+        self.put_modifier(
+            courier,
+            Modifier::new(ModifierKind::Phased, Some(courier), None, None),
+        );
     }
 
     /// Raises an entity to a level: what its kind gains a level comes with

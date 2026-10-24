@@ -77,12 +77,12 @@ pub struct Seat {
     pub fell: u32,
     /// What waits in the stash at the fountain.
     pub stash: Inventory,
-    /// The courier it owns, while one stands.
+    /// Its courier: one entity from the first time it stands, dead or alive,
+    /// as Dota's.
     pub courier: Option<Entity>,
-    /// Ticks before the courier comes back. Zero while one stands.
+    /// Ticks before its fallen courier stands again; nonzero exactly while it
+    /// lies dead.
     pub courier_left: u32,
-    /// What the courier carried when it fell, until the next one stands.
-    pub courier_kept: Option<Inventory>,
     /// Ticks owed on a kind of item, whichever stack of it is held next.
     pub item_clocks: Vec<(ItemId, u32)>,
     /// Enemy heroes brought down.
@@ -132,7 +132,6 @@ impl Seat {
             stash: Inventory::stash(stash_slots),
             courier: None,
             courier_left: 0,
-            courier_kept: None,
             item_clocks: Vec::new(),
             kills: 0,
             streak: 0,
@@ -179,7 +178,6 @@ state_hash!(Seat {
     stash,
     courier,
     courier_left,
-    courier_kept,
     item_clocks,
     kills,
     streak,

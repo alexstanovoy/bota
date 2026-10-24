@@ -11,20 +11,27 @@ impl World {
     /// Stands a courier up for one seat by its own fountain, where its
     /// side's heroes stand up: the fountain itself is a building no walker
     /// stands in.
+    /// The first time it is put on the map; after a fall the same courier
+    /// stands again with what it carried, as Dota's ("Only the following
+    /// units can respawn: Heroes, Couriers and Roshan", Liquipedia).
     pub fn stand_up_courier(&mut self, seat: usize) {
         let side = self.seats[seat].team;
         let at = hero_spawn_pos(self.map, side);
-        // What the last courier carried when it fell comes back aboard.
-        let load = self.seats[seat]
-            .courier_kept
-            .take()
-            .unwrap_or_else(|| Inventory::empty(rules::INVENTORY_SLOTS));
-        let courier = self.spawn_courier(side, at, self.seats[seat].slot, load);
+        let courier = match self.seats[seat].courier {
+            Some(courier) => {
+                self.raise_courier_up(seat, at);
+                courier
+            }
+            None => {
+                let load = Inventory::empty(rules::INVENTORY_SLOTS);
+                let courier = self.spawn_courier(side, at, self.seats[seat].slot, load);
+                self.seats[seat].courier = Some(courier);
+                courier
+            }
+        };
         if self.seats[seat].level >= rules::COURIER_FLYING_LEVEL {
             self.put_flight(courier);
         }
-        self.seats[seat].courier = Some(courier);
-        self.seats[seat].courier_left = 0;
         self.raise_courier(seat);
     }
 
@@ -67,30 +74,22 @@ impl World {
         self.disjoint(courier);
     }
 
-    /// Carries every errand one tick on, brings back every courier whose
-    /// wait is out, and starts the wait for every one that has just gone.
+    /// Carries every errand one tick on and brings back every courier whose
+    /// wait is out.
     pub fn tick_couriers(&mut self) {
         self.run_errands();
         for seat in 0..self.seats.len() {
-            match self.seats[seat].courier {
-                Some(courier) if !self.alive(courier) => {
-                    self.seats[seat].courier = None;
-                    self.seats[seat].courier_left =
-                        rules::courier_respawn_ticks(self.seats[seat].level);
-                }
-                Some(_) => continue,
-                None => {}
+            if self.seats[seat].courier_left == 0 {
+                continue;
             }
-            if self.seats[seat].courier_left > 0 {
-                self.seats[seat].courier_left -= 1;
-                if self.seats[seat].courier_left == 0 {
-                    self.stand_up_courier(seat);
-                }
+            self.seats[seat].courier_left -= 1;
+            if self.seats[seat].courier_left == 0 {
+                self.stand_up_courier(seat);
             }
         }
     }
 
-    fn seat_of_courier(&self, courier: Entity) -> Option<usize> {
+    pub(crate) fn seat_of_courier(&self, courier: Entity) -> Option<usize> {
         self.seats
             .iter()
             .position(|seat| seat.courier == Some(courier))
