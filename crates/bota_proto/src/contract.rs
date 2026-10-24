@@ -76,6 +76,17 @@
 //! [`StructureDestroyed`]: crate::EventKind::StructureDestroyed
 //! [`ItemBought`]: crate::EventKind::ItemBought
 //!
+//! # What a side is told of the forest
+//!
+//! Since 2014 Dota shows no tree falling, growing back or being put up where
+//! a side has no sight. Each side keeps the forest as it last saw it:
+//! [`WorldView::felled_trees`](crate::WorldView::felled_trees) and
+//! [`WorldView::planted_trees`](crate::WorldView::planted_trees) change for
+//! a tree only when the side sees the ground it stands on (one of the
+//! cells a map tree covers, the cell a planted one stands in), and then
+//! show it as it is. A tango eaten in the fog leaves the tree standing in
+//! the other side's view until that side looks.
+//!
 //! # Map 2 (mid-only)
 //!
 //! Map 2 is the full Dota geometry with creep waves on the mid lane only. The

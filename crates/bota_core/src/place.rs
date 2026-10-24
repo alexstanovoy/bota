@@ -139,6 +139,16 @@ pub fn team_index(team: Team) -> usize {
     }
 }
 
+/// The place of one of the two sides in a pair kept per side, Radiant's
+/// first; nothing for the jungle, which keeps no such pair.
+pub fn side_index(team: Team) -> Option<usize> {
+    match team {
+        Team::Radiant => Some(0),
+        Team::Dire => Some(1),
+        Team::Neutral => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

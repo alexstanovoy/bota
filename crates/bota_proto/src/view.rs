@@ -514,10 +514,15 @@ pub struct WorldView {
     pub projectiles: Vec<ProjectileView>,
     /// The scoreboard, one entry per seat, sorted by [`SlotId`].
     pub players: Vec<PlayerView>,
-    /// Which of the map's own trees are down right now, as indices into
-    /// [`MatchInfo::trees`](crate::MatchInfo::trees).
+    /// Which of the map's own trees are down, as indices into
+    /// [`MatchInfo::trees`](crate::MatchInfo::trees), ascending: as the
+    /// viewing side last saw them, or right now in a view of everything.
+    /// A tree felled, or grown back, where the side has no sight is told
+    /// once it sees that tree's ground again.
     pub felled_trees: Vec<u32>,
-    /// Where every tree put up during the match stands.
+    /// Where the trees put up during the match stand, on the same terms:
+    /// those the viewing side saw put up and has not seen gone, in the order
+    /// it first saw them; every one standing in a view of everything.
     pub planted_trees: Vec<Vec2>,
     /// Every item lying on the ground currently visible, sorted by
     /// [`EntityId`].

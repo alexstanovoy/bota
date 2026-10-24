@@ -1082,10 +1082,8 @@ impl World {
             Target::Unit(target) => self.pos(self.of_wire(target)?)?,
             Target::None => from,
         };
-        let tree =
-            self.trees
-                .nearest(self.map, self.terrain, at, rules::units(rules::TREE_RADIUS))?;
-        let spot = self.trees.spot(self.map, self.terrain, tree)?;
+        let tree = self.trees.nearest(at, rules::units(rules::TREE_RADIUS))?;
+        let spot = self.trees.spot(tree)?;
         from.within(spot, rules::units(range)).then_some(tree)
     }
 
@@ -1114,12 +1112,7 @@ impl World {
         // Not on top of a tree already standing there.
         if self
             .trees
-            .nearest(
-                self.map,
-                self.terrain,
-                pos,
-                rules::units(rules::TREE_RADIUS),
-            )
+            .nearest(pos, rules::units(rules::TREE_RADIUS))
             .is_some()
         {
             return false;

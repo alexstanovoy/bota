@@ -70,27 +70,10 @@ impl SightBlock {
         block
     }
 
-    /// Raises to `floor` every cell whose centre lies within the tree
-    /// blocker radius of `at`.
+    /// Raises to `floor` every cell a map tree standing at `at` covers.
     fn cover_disc(&mut self, at: Vec2, floor: u8) {
-        let reach = Fixed::from_int(rules::GRID_CELL_SIZE * 2);
-        let low = CellGrid::cell_of(Vec2 {
-            x: (at.x - reach).max(Fixed::ZERO),
-            y: (at.y - reach).max(Fixed::ZERO),
-        });
-        let Some((x0, y0)) = low else {
-            return;
-        };
-        let x1 = (x0 + 4).min(rules::GRID_CELLS - 1);
-        let y1 = (y0 + 4).min(rules::GRID_CELLS - 1);
-        let unit = i64::from(Fixed::ONE.raw);
-        let radius_squared = rules::TREE_SIGHT_RADIUS_SQUARED * unit * unit;
-        for cy in y0..=y1 {
-            for cx in x0..=x1 {
-                if CellGrid::cell_center((cx, cy)).distance_squared(at) <= radius_squared {
-                    self.raise((cx, cy), floor);
-                }
-            }
+        for cell in tree_cells(at) {
+            self.raise(cell, floor);
         }
     }
 
@@ -159,6 +142,25 @@ impl SightBlock {
         }
         true
     }
+}
+
+/// Every cell a map tree standing at `at` covers: each whose centre lies
+/// within the tree blocker radius of it. A side sees the tree when it sees
+/// one of them.
+pub fn tree_cells(at: Vec2) -> impl Iterator<Item = (usize, usize)> {
+    let reach = Fixed::from_int(rules::GRID_CELL_SIZE * 2);
+    let low = CellGrid::cell_of(Vec2 {
+        x: (at.x - reach).max(Fixed::ZERO),
+        y: (at.y - reach).max(Fixed::ZERO),
+    });
+    let (x0, y0) = low.unwrap_or((rules::GRID_CELLS, rules::GRID_CELLS));
+    let x1 = (x0 + 4).min(rules::GRID_CELLS - 1);
+    let y1 = (y0 + 4).min(rules::GRID_CELLS - 1);
+    let unit = i64::from(Fixed::ONE.raw);
+    let radius_squared = rules::TREE_SIGHT_RADIUS_SQUARED * unit * unit;
+    (y0..=y1)
+        .flat_map(move |cy| (x0..=x1).map(move |cx| (cx, cy)))
+        .filter(move |cell| CellGrid::cell_center(*cell).distance_squared(at) <= radius_squared)
 }
 
 /// One axis of a sight line walked cell by cell, in raw fixed units.

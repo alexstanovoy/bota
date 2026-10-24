@@ -735,3 +735,114 @@ fn a_level_gained_out_of_sight_is_told_to_its_own_side_alone() {
         "a level seen gained is told"
     );
 }
+
+/// One of the big map's trees with open ground beside it that no Dire
+/// building sees: its index and where it stands.
+fn a_tree_out_of_dire_sight(world: &World) -> (u32, Vec2) {
+    world
+        .trees
+        .spots()
+        .iter()
+        .enumerate()
+        .find(|(_, at)| {
+            world.clearance.stands_clear(**at + Vec2::from_ints(120, 0))
+                && world.clearance.stands_clear(**at + Vec2::from_ints(240, 0))
+                && !world.can_see_point(Team::Dire, **at + Vec2::from_ints(240, 0))
+        })
+        .map(|(index, at)| (index as u32, *at))
+        .expect("some tree stands in the fog")
+}
+
+/// Seat 0 uses the item in its first slot on a spot, and the world runs
+/// until the forest has changed.
+fn use_on_the_forest(world: &mut World, at: Vec2) {
+    let before = (world.trees.felled().count(), world.trees.planted().len());
+    let order = bota_proto::Order::Use {
+        slot: bota_proto::ItemSlot(0),
+        target: Target::Pos(at),
+    };
+    seat_order(world, order);
+    let changed = (0..60).any(|_| {
+        world.step();
+        (world.trees.felled().count(), world.trees.planted().len()) != before
+    });
+    assert!(changed, "the item took the forest");
+}
+
+/// Puts a unit somewhere else and works sight out afresh.
+fn put(world: &mut World, unit: Entity, at: Vec2) {
+    if let Some(transform) = world.transform.get_mut(unit) {
+        transform.pos = at;
+    }
+    world.settle();
+}
+
+#[test]
+fn a_tree_eaten_in_the_fog_stands_for_the_other_side_until_it_looks() {
+    let mut world = World::on_map(map_of(MapId(0)));
+    let (index, tree) = a_tree_out_of_dire_sight(&world);
+    let eater = seat_hero(&mut world, 0, Team::Radiant, tree + Vec2::from_ints(120, 0));
+    let looker = seat_hero(&mut world, 1, Team::Dire, map_of(MapId(0)).fountains[1]);
+    hand_item(&mut world, eater, ItemId::TANGO, 3);
+    world.settle();
+    let felled = |world: &World, side: Option<Team>| {
+        let view = side.map_or_else(|| world.view_full(), |team| world.view(team));
+        view.felled_trees.contains(&index)
+    };
+    use_on_the_forest(&mut world, tree);
+    assert!(felled(&world, None), "the tree is down");
+    assert!(
+        felled(&world, Some(Team::Radiant)),
+        "the eater's side saw it go"
+    );
+    assert!(
+        !felled(&world, Some(Team::Dire)),
+        "the other side still has it standing"
+    );
+    put(&mut world, looker, tree + Vec2::from_ints(240, 0));
+    assert!(felled(&world, Some(Team::Dire)), "until it looks");
+    put(&mut world, looker, map_of(MapId(0)).fountains[1]);
+    world.tick += rules::TREE_REGROW_TICKS;
+    world.step();
+    assert!(!felled(&world, None), "the tree grew back");
+    assert!(
+        !felled(&world, Some(Team::Radiant)),
+        "where the eater sees it"
+    );
+    assert!(
+        felled(&world, Some(Team::Dire)),
+        "the other side, gone, still has it down"
+    );
+}
+
+#[test]
+fn a_tree_planted_in_the_fog_shows_only_once_the_other_side_looks() {
+    let mut world = World::on_map(map_of(MapId(0)));
+    let (_, tree) = a_tree_out_of_dire_sight(&world);
+    let planter = seat_hero(&mut world, 0, Team::Radiant, tree + Vec2::from_ints(120, 0));
+    let looker = seat_hero(&mut world, 1, Team::Dire, map_of(MapId(0)).fountains[1]);
+    hand_item(&mut world, planter, ItemId::IRON_BRANCH, 1);
+    world.settle();
+    let spot = tree + Vec2::from_ints(240, 0);
+    let planted = |world: &World, side: Option<Team>| {
+        let view = side.map_or_else(|| world.view_full(), |team| world.view(team));
+        view.planted_trees.contains(&spot)
+    };
+    use_on_the_forest(&mut world, spot);
+    assert!(planted(&world, None), "a tree stands");
+    assert!(planted(&world, Some(Team::Radiant)));
+    assert!(!planted(&world, Some(Team::Dire)), "nobody of Dire saw it");
+    put(&mut world, looker, spot + Vec2::from_ints(120, 0));
+    assert!(planted(&world, Some(Team::Dire)), "until one looks");
+    put(&mut world, looker, map_of(MapId(0)).fountains[1]);
+    run(&mut world, rules::PLANTED_TREE_TICKS + 1);
+    assert!(!planted(&world, None), "it went in its time");
+    assert!(
+        !planted(&world, Some(Team::Radiant)),
+        "where the planter saw"
+    );
+    assert!(
+        planted(&world, Some(Team::Dire)),
+        "while the other side, gone, still has it standing"
+    );
+}

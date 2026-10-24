@@ -66,6 +66,7 @@ impl World {
         }));
         let talents = self.project_talents(viewer, &units);
         let disguised = self.disguised();
+        let (felled_trees, planted_trees) = self.project_forest(viewer);
         WorldView {
             tick: self.tick,
             viewer,
@@ -76,8 +77,8 @@ impl World {
                 .iter()
                 .map(|seat| self.project_player(viewer, seat, &disguised))
                 .collect(),
-            felled_trees: self.trees.felled().collect(),
-            planted_trees: self.trees.planted().iter().map(|tree| tree.at).collect(),
+            felled_trees,
+            planted_trees,
             loot,
             aggro,
             order_delays: Vec::new(),
@@ -145,6 +146,22 @@ impl World {
             denies: seat.denies,
             respawn_left: seat.respawn_left,
         }
+    }
+
+    /// The forest as the viewer last saw it, or as it stands: which of the
+    /// map's trees are down, and where the planted ones stand.
+    fn project_forest(&self, viewer: Option<Team>) -> (Vec<u32>, Vec<bota_proto::Vec2>) {
+        let Some(team) = viewer else {
+            return (
+                self.trees.felled().collect(),
+                self.trees.planted().iter().map(|tree| tree.at).collect(),
+            );
+        };
+        self.trees
+            .known(team)
+            .map_or_else(Default::default, |known| {
+                (known.down.clone(), known.planted.clone())
+            })
     }
 
     /// What the shops of the viewer's side, or of every side, have left.

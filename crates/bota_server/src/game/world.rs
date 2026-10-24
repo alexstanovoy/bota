@@ -657,11 +657,12 @@ impl World {
     ///
     /// [`tree_positions`]: crate::game::tree_positions
     fn rooted_trees(&self) -> impl Iterator<Item = bota_proto::Vec2> + '_ {
-        crate::game::tree_positions(self.map, self.terrain)
-            .into_iter()
+        self.trees
+            .spots()
+            .iter()
             .enumerate()
             .filter(|(index, _)| self.trees.rooted_stands(*index))
-            .map(|(_, at)| at)
+            .map(|(_, at)| *at)
     }
 
     /// Brings stats, pools and who sees what into line with what stands.
@@ -777,6 +778,7 @@ impl World {
             scroll_sights: &scroll_sights,
             tick: self.tick,
             visibility: &mut self.visibility,
+            forest: None,
             sight: &mut self.sight_scratch,
         });
     }
@@ -802,6 +804,7 @@ impl World {
             scroll_sights: &scroll_sights,
             tick: self.tick,
             visibility: &mut self.shown,
+            forest: Some(&mut self.trees),
             sight: &mut self.sight_scratch,
         });
     }

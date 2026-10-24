@@ -1,11 +1,11 @@
 //! Working out who sees what.
 
-use bota_core::{SightBlock, kind_def, rules};
+use bota_core::{CellGrid, SightBlock, kind_def, rules, tree_cells};
 use bota_proto::{Fixed, Target, Team, UnitKind, Vec2};
 
 use crate::game::{
-    Entity, EntityAllocator, EventVisibility, Exposure, ExposureCell, Ground, Spots, Stats, Table,
-    Transform, Visibility, World,
+    Entity, EntityAllocator, EventVisibility, Exposure, ExposureCell, Forest, Ground, Spots, Stats,
+    Table, Transform, Visibility, World,
 };
 
 /// What working out sight reads and writes.
@@ -27,6 +27,9 @@ pub struct SightCx<'a> {
     pub tick: u32,
     /// Where the answer goes.
     pub visibility: &'a mut Table<Visibility>,
+    /// The forest, whose sides learn what stands where they look: given to
+    /// the pass of what the sides are shown, see [`World::shown`].
+    pub forest: Option<&'a mut Forest>,
     /// Reused buffers the tables are read into.
     pub sight: &'a mut SightScratch,
 }
@@ -87,7 +90,8 @@ struct SightViewer {
 /// higher than its own, along an open sight line. A strike shows the side
 /// struck at a circle around the striker the same way, see
 /// [`World::expose`]. What hides is seen by the other side only where that
-/// side's true sight also reaches it.
+/// side's true sight also reaches it. Each side learns the forest wherever
+/// it sees a tree's ground, see [`Forest::learn`].
 pub fn visibility_system(cx: SightCx<'_>) {
     let SightCx {
         entities,
@@ -101,6 +105,7 @@ pub fn visibility_system(cx: SightCx<'_>) {
         scroll_sights,
         tick,
         visibility,
+        forest,
         sight,
     } = cx;
     sight.rows.clear();
@@ -134,6 +139,18 @@ pub fn visibility_system(cx: SightCx<'_>) {
         };
         *slot = seen;
     }
+    let Some(forest) = forest else {
+        return;
+    };
+    let sight = &*sight;
+    for team in [Team::Radiant, Team::Dire] {
+        let sees = |cell| sight.sees_cell(team, cell, ground, sight_block);
+        forest.learn(
+            team,
+            |at| tree_cells(at).any(sees),
+            |at| CellGrid::cell_of(at).is_some_and(sees),
+        );
+    }
 }
 
 impl SightScratch {
@@ -160,6 +177,25 @@ impl SightScratch {
                 self.true_viewers.push(viewer);
             }
         }
+    }
+
+    /// Whether a side's sight takes in a cell: one of its viewers reaches the
+    /// cell's centre, from ground no lower, over an open line.
+    fn sees_cell(
+        &self,
+        side: Team,
+        cell: (usize, usize),
+        ground: &Ground,
+        sight_block: &SightBlock,
+    ) -> bool {
+        let at = CellGrid::cell_center(cell);
+        let tier = ground.tier(at);
+        self.viewers.iter().any(|viewer| {
+            viewer.side == side
+                && viewer.from.within(at, viewer.vision)
+                && (viewer.flying
+                    || (viewer.tier >= tier && sight_block.clear(viewer.from, viewer.tier, at)))
+        })
     }
 
     /// Every circle a strike still shows, as a viewer of the side struck at.

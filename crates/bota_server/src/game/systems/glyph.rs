@@ -2,26 +2,17 @@
 //! damage for a while, its towers shoot more targets, and one cooldown
 //! serves the whole side.
 
-use bota_core::{ModifierKind, attack_class_pct, kind_def, rules};
+use bota_core::{ModifierKind, attack_class_pct, kind_def, rules, side_index};
 use bota_proto::{GlyphView, RejectReason, SlotId, Team, UnitKind};
 
 use crate::engine::Entity;
 use crate::game::{GLYPH_MELEE_RAX, GLYPH_TIER_ONE, GLYPH_TIER_TWO, Modifier, Stats, World};
 
-/// The index of a side's Glyph in the world's two.
-pub(crate) fn glyph_index(team: Team) -> Option<usize> {
-    match team {
-        Team::Radiant => Some(0),
-        Team::Dire => Some(1),
-        Team::Neutral => None,
-    }
-}
-
 impl World {
     /// Whether a seat's side may activate its Glyph now.
     pub fn check_glyph(&self, slot: SlotId) -> Result<(), RejectReason> {
         let seat = self.seat(slot).ok_or(RejectReason::HeroDead)?;
-        let index = glyph_index(seat.team).ok_or(RejectReason::NotYourUnit)?;
+        let index = side_index(seat.team).ok_or(RejectReason::NotYourUnit)?;
         if self.tick < self.glyphs[index].ready_at {
             return Err(RejectReason::OnCooldown);
         }
@@ -36,7 +27,7 @@ impl World {
         let Some(team) = self.seat(slot).map(|seat| seat.team) else {
             return;
         };
-        let Some(index) = glyph_index(team) else {
+        let Some(index) = side_index(team) else {
             return;
         };
         let now = self.tick;
@@ -76,7 +67,7 @@ impl World {
 
     /// Whether a side's structures are under its Glyph now.
     pub(crate) fn structures_glyphed(&self, team: Team) -> bool {
-        glyph_index(team).is_some_and(|index| self.tick < self.glyphs[index].structures_until)
+        side_index(team).is_some_and(|index| self.tick < self.glyphs[index].structures_until)
     }
 
     /// Refreshes a side's Glyph when the first tier one tower, the first
@@ -88,7 +79,7 @@ impl World {
         ) else {
             return;
         };
-        let Some(index) = glyph_index(team) else {
+        let Some(index) = side_index(team) else {
             return;
         };
         let bit = match kind {
@@ -116,7 +107,7 @@ impl World {
         [Team::Radiant, Team::Dire]
             .into_iter()
             .filter_map(|team| {
-                let glyph = self.glyphs[glyph_index(team)?];
+                let glyph = self.glyphs[side_index(team)?];
                 let own = viewer.is_none_or(|seen| seen == team);
                 Some(GlyphView {
                     team,
