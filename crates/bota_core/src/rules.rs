@@ -735,10 +735,16 @@ pub const BACKDOOR_TOWER_RADIUS: i32 = 900;
 /// tier three and four, barracks and filler of its side, and itself.
 pub const BACKDOOR_BASE_RADIUS: i32 = 4000;
 
-/// Seconds past the horn before a side may first use its Glyph of
-/// Fortification (Liquipedia, *Glyph of Fortification*: an initial
-/// cooldown of 180).
-pub const GLYPH_FIRST_USE_TICKS: u32 = PREGAME_TICKS + 180 * TICKS_PER_SECOND;
+/// The tick a side may first use its Glyph of Fortification. Dota puts it
+/// on its cooldown from the very first second of the match, pregame
+/// included, showing 4:30 then (checked in the Dota 2 client, 7.41,
+/// 2026-10-24), so it cannot be pressed before then: 270 seconds from the
+/// heroes coming in, which is three minutes past the horn (Liquipedia,
+/// *Glyph of Fortification*: "cannot be used until the 3:00 minute mark").
+/// Dota's heroes come in [`DOTA_PREGAME_TICKS`] before the horn and ours
+/// [`PREGAME_TICKS`] before it, so the wait is laid on the game clock, as
+/// the first scroll's is.
+pub const GLYPH_FIRST_USE_TICKS: u32 = PREGAME_TICKS + 270 * TICKS_PER_SECOND - DOTA_PREGAME_TICKS;
 /// Cooldown of a Glyph of Fortification, shared by a whole side: 300 seconds.
 pub const GLYPH_COOLDOWN_TICKS: u32 = 300 * TICKS_PER_SECOND;
 /// How long a Glyph keeps a side's structures from taking damage: 7 seconds

@@ -60,11 +60,30 @@ fn the_glyph_protects_structures_seven_seconds_and_creeps_three_then_recharges()
     world.settle();
 
     let order = Order::Glyph;
+    // On its wait from the first second, pregame included: three minutes
+    // past the horn, as the Dota 2 client shows it (4:30 from its 90 s
+    // pregame).
+    assert_eq!(rules::GLYPH_FIRST_USE_TICKS, rules::tick_at_game_minute(3));
+    let own_wait = |world: &World| {
+        world
+            .glyph_views(Some(Team::Radiant))
+            .into_iter()
+            .find(|glyph| glyph.team == Team::Radiant)
+            .and_then(|glyph| glyph.ready_after)
+    };
+    assert_eq!(own_wait(&world), Some(rules::GLYPH_FIRST_USE_TICKS));
+    assert_eq!(
+        world.validate_order(SlotId(0), None, &order),
+        Err(RejectReason::OnCooldown),
+        "not in the pregame"
+    );
+    run_to(&mut world, rules::GLYPH_FIRST_USE_TICKS - 1);
     assert_eq!(
         world.validate_order(SlotId(0), None, &order),
         Err(RejectReason::OnCooldown),
         "not before three minutes past the horn"
     );
+    assert_eq!(own_wait(&world), Some(1));
     run_to(&mut world, rules::GLYPH_FIRST_USE_TICKS);
     assert_eq!(world.validate_order(SlotId(0), None, &order), Ok(()));
     assert_eq!(pure_blow(&mut world, enemy, tower), 100);
