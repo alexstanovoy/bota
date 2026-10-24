@@ -48,6 +48,14 @@ pub enum ModifierKind {
         /// Percent added to its speed.
         pct: i32,
     },
+    /// Dota's hasted movement: walks faster by `pct` percent of what it
+    /// would, and no slow takes anything from it while it holds
+    /// (Liquipedia, Courier, Speed Burst: "Grants the Courier hasted
+    /// movement, meaning it cannot be slowed while affected").
+    Haste {
+        /// Percent added to its speed.
+        pct: i32,
+    },
     /// Wears less armor for standing near a dark presence.
     ArmorBroken {
         /// Armor taken off.
@@ -197,7 +205,7 @@ impl ModifierKind {
             ModifierKind::Stunned => EffectId::STUNNED,
             ModifierKind::Shielded => EffectId::SHIELDED,
             ModifierKind::Slowed { .. } => EffectId::SLOWED,
-            ModifierKind::Hastened { .. } => EffectId::HASTENED,
+            ModifierKind::Hastened { .. } | ModifierKind::Haste { .. } => EffectId::HASTENED,
             ModifierKind::Burning { .. } => EffectId::BURNING,
             ModifierKind::Phased => EffectId::PHASED,
             ModifierKind::Flying => EffectId::FLYING,

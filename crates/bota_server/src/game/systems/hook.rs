@@ -113,7 +113,8 @@ impl World {
     ///
     /// The nearest living unit within its radius of the hook, edge counted,
     /// other than the one who threw it. A structure or a ward is never
-    /// caught.
+    /// caught, nor a spell-immune courier (Meat Hook pierces spell immunity,
+    /// but not a courier's).
     fn caught_at(&self, hook: Entity, owner: Entity, at: Vec2, radius: Fixed) -> Option<Entity> {
         let mut best: Option<(i64, Entity)> = None;
         for other in self.entities.iter() {
@@ -123,7 +124,7 @@ impl World {
             let Some(kind) = self.kind.get(other).copied() else {
                 continue;
             };
-            if kind_def(kind).fixed {
+            if kind_def(kind).fixed || !self.spell_reaches(AbilityId::MEAT_HOOK, other) {
                 continue;
             }
             let Some(spot) = self.pos(other) else {

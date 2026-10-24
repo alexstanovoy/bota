@@ -35,7 +35,7 @@ impl World {
             .entities
             .iter()
             .filter(|other| {
-                self.burns(caster, *other)
+                self.burns((caster, SHADOW_FIEND_RAZES[reach]), *other)
                     && self.pos(*other).is_some_and(|pos| pos.within(at, radius))
             })
             .collect();
@@ -193,7 +193,7 @@ impl World {
                 .filter(|other| {
                     *other != entity
                         && !line.struck.contains(other)
-                        && self.burns(entity, *other)
+                        && self.burns((entity, AbilityId::REQUIEM), *other)
                         && self.transform.get(*other).is_some_and(|t| {
                             let hull = self.hull.get(*other).map_or(Fixed::ZERO, |h| h.bound);
                             t.pos.within(next, width + hull)
@@ -238,12 +238,14 @@ impl World {
         });
     }
 
-    /// Whether a raze or a requiem line of one side lands on another entity:
-    /// anything hostile to it that area spells strike, seen or not. As in
-    /// Dota, an area hits whatever stands in it, in the fog or invisible,
-    /// but never a building or a ward.
-    fn burns(&self, from: Entity, other: Entity) -> bool {
+    /// Whether a raze or a requiem line of one side, from what and with
+    /// which ability, lands on another entity: anything hostile to it that
+    /// area spells strike, seen or not, and the ability reaches for spell
+    /// immunity. As in Dota, an area hits whatever stands in it, in the fog or
+    /// invisible, but never a building or a ward.
+    fn burns(&self, (from, with): (Entity, AbilityId), other: Entity) -> bool {
         self.hostile_unseen(from, other)
+            && self.spell_reaches(with, other)
             && self
                 .kind
                 .get(other)

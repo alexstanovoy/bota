@@ -107,14 +107,14 @@ impl World {
         if self.modifiers.get(courier).is_some_and(|on_it| {
             on_it
                 .active()
-                .any(|held| matches!(held.kind, ModifierKind::Hastened { .. }))
+                .any(|held| matches!(held.kind, ModifierKind::Haste { .. }))
         }) {
             return false;
         }
         self.put_modifier(
             courier,
             Modifier::new(
-                ModifierKind::Hastened {
+                ModifierKind::Haste {
                     pct: rules::COURIER_BURST_PCT,
                 },
                 Some(courier),

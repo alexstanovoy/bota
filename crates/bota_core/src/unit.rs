@@ -122,6 +122,9 @@ pub struct UnitDef {
     pub bound: i32,
     /// Whether damage passes it by.
     pub invulnerable: bool,
+    /// Whether it is spell immune: an enemy's spell passes it by unless the
+    /// spell [`pierces`](crate::AbilityDef::pierces) it.
+    pub spell_immune: bool,
     /// Its health counted in hits, `max_hp` of them in all: Dota's hits to
     /// kill. Absent for health that damage takes.
     pub hit_count: Option<HitCount>,
@@ -190,6 +193,7 @@ pub(crate) const BARE_UNIT: UnitDef = UnitDef {
     collision: 0,
     bound: 0,
     invulnerable: false,
+    spell_immune: false,
     hit_count: None,
     ancient: false,
     bounty_gold: GoldRange::ZERO,
@@ -526,7 +530,9 @@ pub const COURIER: UnitDef = UnitDef {
     kind: UnitKind::Courier,
     porter: true,
     unbounded_pace: true,
-    magic_resist_pct: 100,
+    // "Couriers are spell immune" (Liquipedia, Courier), from the start;
+    // their magic resistance is 0%.
+    spell_immune: true,
     max_hp: rules::COURIER_HP,
     hit_count: Some(rules::COURIER_HITS),
     move_speed: rules::COURIER_MOVE_SPEED,

@@ -11,8 +11,8 @@ use super::numbers::{
 use crate::ability::BARE_ABILITY;
 use crate::unit::NO_GROWTH;
 use crate::{
-    AbilityDef, Aura, AuraModifier, Growth, HERO, HeroDef, Reach, Talent, TalentTree, UnitDef,
-    Whom, rules,
+    AbilityDef, Aura, AuraModifier, Growth, HERO, HeroDef, Pierces, Reach, Talent, TalentTree,
+    UnitDef, Whom, rules,
 };
 
 /// Shadow Fiend: fragile and long-ranged, at Dota 7.41f's numbers, 16 to 22
@@ -133,6 +133,7 @@ pub const PRESENCE: AbilityDef = AbilityDef {
     name: "Presence of the Dark Lord",
     max_level: rules::ABILITY_MAX_LEVEL,
     range: PRESENCE_RADIUS,
+    pierces: Pierces::Yes,
     aura: Some(Aura {
         whom: Whom::Enemies,
         reaches: Reach::Living,

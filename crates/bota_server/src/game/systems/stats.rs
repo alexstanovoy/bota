@@ -115,15 +115,15 @@ pub fn derive_stats(cx: StatsCx<'_>) {
         }
         // Every percent change of the pace is summed and taken of the flat
         // pace at once, as Dota works movement speed out.
-        let mut pace_pct = 0;
+        let mut pace = Pace::of(modifiers.get(entity));
         if let Some(on_it) = modifiers.get(entity) {
             let hero = kind.kind == bota_proto::UnitKind::Hero;
-            add_modifiers(&mut now, &mut pace_pct, on_it, base_armor, hero);
+            add_modifiers(&mut now, &mut pace, on_it, base_armor, hero);
         }
         if let Some(on_it) = modifiers.get(entity) {
-            add_feast(&mut now, &mut pace_pct, on_it, abilities.get(entity));
+            add_feast(&mut now, &mut pace, on_it, abilities.get(entity));
         }
-        now.move_speed = paced(now.move_speed, pace_pct, pace_scale_bp, kind.unbounded_pace);
+        now.move_speed = paced(now.move_speed, pace.pct, pace_scale_bp, kind.unbounded_pace);
         let max = Regen {
             hp: now.max_hp,
             mana: now.max_mana,
@@ -137,6 +137,34 @@ pub fn derive_stats(cx: StatsCx<'_>) {
             mana.get_mut(entity),
         );
         stats.insert(entity, now);
+    }
+}
+
+/// The percent changes of a unit's pace, summed as Dota sums them. A unit
+/// under hasted movement ([`ModifierKind::Haste`]) takes none of the slows.
+struct Pace {
+    pct: i32,
+    hasted: bool,
+}
+
+impl Pace {
+    fn of(on_it: Option<&Modifiers>) -> Pace {
+        Pace {
+            pct: 0,
+            hasted: on_it.is_some_and(|on_it| {
+                on_it
+                    .active()
+                    .any(|held| matches!(held.kind, ModifierKind::Haste { .. }))
+            }),
+        }
+    }
+
+    /// One more percent change: a haste added, a slow taken off unless the
+    /// movement is hasted.
+    fn change(&mut self, pct: i32) {
+        if pct >= 0 || !self.hasted {
+            self.pct += pct;
+        }
     }
 }
 
@@ -187,8 +215,8 @@ fn follow_pools(
 }
 
 /// Adds the haste of a feast that is running, the talent's attack speed
-/// with it when its caster has learned it; its pace goes to `pace_pct`.
-fn add_feast(now: &mut Stats, pace_pct: &mut i32, on_it: &Modifiers, book: Option<&AbilityBook>) {
+/// with it when its caster has learned it; its pace goes to `pace`.
+fn add_feast(now: &mut Stats, pace: &mut Pace, on_it: &Modifiers, book: Option<&AbilityBook>) {
     let Some(level) = on_it.active().find_map(|held| match held.kind {
         ModifierKind::Feasting { level, .. } => Some(usize::from(level)),
         _ => None,
@@ -199,7 +227,7 @@ fn add_feast(now: &mut Stats, pace_pct: &mut i32, on_it: &Modifiers, book: Optio
     if book.is_some_and(|book| book.has_talent(Talent::FeastAttackSpeed)) {
         now.attack_speed += rules::TALENT_FEAST_ATTACK_SPEED;
     }
-    *pace_pct += rules::FEAST_MOVE_PCT[level];
+    pace.change(rules::FEAST_MOVE_PCT[level]);
 }
 
 /// Adds what the inventory proper carries as shares of what the attributes
@@ -239,13 +267,13 @@ fn add_heap(now: &mut Stats, kept: u32) {
 }
 
 /// Adds what every active modifier on a unit is worth to its stats, each
-/// percent change of its pace to `pace_pct` (a slow taken off, a haste
+/// percent change of its pace to `pace` (a slow taken off, a haste
 /// added). What holds a unit still, what burns it and what it hands out are
 /// read where they are acted on, not here. `base_armor` is what a share of
 /// its base armor is taken of.
 fn add_modifiers(
     now: &mut Stats,
-    pace_pct: &mut i32,
+    pace: &mut Pace,
     on_it: &Modifiers,
     base_armor: Fixed,
     hero: bool,
@@ -257,19 +285,19 @@ fn add_modifiers(
                 amount,
                 ..
             } => {
-                *pace_pct -= i32::from(amount).min(100);
+                pace.change(-i32::from(amount).min(100));
             }
             ModifierKind::Spell { ability, level, .. } => {
                 if let Some(buff) = spell_buff(ability) {
-                    add_buff(now, pace_pct, &buff, level, base_armor, hero);
+                    add_buff(now, pace, &buff, level, base_armor, hero);
                 }
             }
-            ModifierKind::Slowed { pct } => *pace_pct -= pct.clamp(0, 100),
+            ModifierKind::Slowed { pct } => pace.change(-pct.clamp(0, 100)),
             ModifierKind::Rotting { level } => {
-                *pace_pct -= rules::ROT_SLOW_PCT[usize::from(level)].clamp(0, 100);
+                pace.change(-rules::ROT_SLOW_PCT[usize::from(level)].clamp(0, 100));
             }
-            ModifierKind::BloodGrenade { .. } => *pace_pct -= rules::GRENADE_SLOW_PCT,
-            ModifierKind::Hastened { pct } => *pace_pct += pct.max(0),
+            ModifierKind::BloodGrenade { .. } => pace.change(-rules::GRENADE_SLOW_PCT),
+            ModifierKind::Hastened { pct } | ModifierKind::Haste { pct } => pace.change(pct.max(0)),
             ModifierKind::ArmorBroken { armor } => {
                 now.armor -= armor;
             }
@@ -321,14 +349,14 @@ fn add_modifiers(
 /// does to regeneration, which [`bota_core::regen`] reads.
 fn add_buff(
     now: &mut Stats,
-    pace_pct: &mut i32,
+    pace: &mut Pace,
     buff: &Buff,
     level: u8,
     base_armor: Fixed,
     hero: bool,
 ) {
     let of = |stat| buff.get(stat, level);
-    *pace_pct += of(Stat::MovePct);
+    pace.change(of(Stat::MovePct));
     now.attack_speed += of(Stat::AttackSpeed);
     now.armor += Fixed::from_int(of(Stat::Armor));
     now.armor += base_armor * Fixed::from_ratio(of(Stat::BaseArmorPct), 100);
@@ -508,6 +536,7 @@ fn raised(kind: &UnitDef, levels: i32, steps: i32, night: bool) -> Stats {
         flies: kind.flies,
         phased: false,
         invulnerable: kind.invulnerable,
+        spell_immune: kind.spell_immune,
         hit_count: kind.hit_count,
         glyph: false,
     }

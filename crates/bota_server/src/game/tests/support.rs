@@ -50,6 +50,7 @@ pub(crate) fn stats() -> Stats {
         flies: false,
         phased: false,
         invulnerable: false,
+        spell_immune: false,
         hit_count: None,
         glyph: false,
         evasion: Odds::NEVER,

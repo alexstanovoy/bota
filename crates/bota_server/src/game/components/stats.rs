@@ -98,6 +98,8 @@ pub struct Stats {
     pub phased: bool,
     /// Whether damage passes it by.
     pub invulnerable: bool,
+    /// Whether an enemy's spell passes it by unless the spell pierces it.
+    pub spell_immune: bool,
     /// Its health counted in hits, see [`UnitDef::hit_count`].
     ///
     /// [`UnitDef::hit_count`]: bota_core::UnitDef::hit_count

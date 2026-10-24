@@ -707,6 +707,7 @@ impl World {
         for (set, flag) in [
             (stats.hides, StatusFlags::INVISIBLE),
             (stats.invulnerable, StatusFlags::INVULNERABLE),
+            (stats.spell_immune, StatusFlags::MAGIC_IMMUNE),
             (self.is_channelling(entity), StatusFlags::CHANNELLING),
             (self.is_casting(entity), StatusFlags::CASTING),
         ] {

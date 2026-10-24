@@ -57,6 +57,7 @@ impl World {
             return false;
         };
         if !self.hostile(caster, on)
+            || !self.spell_reaches(AbilityId::DISMEMBER, on)
             || !self.within_reach(caster, on, rules::units(rules::DISMEMBER_RANGE))
         {
             return false;

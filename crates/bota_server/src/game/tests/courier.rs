@@ -1,8 +1,8 @@
 //! Couriers and their errands.
 
 use bota_core::{
-    MELEE_CREEP, RANGED_CREEP, TOWERS, UnitDef, fountain_pos, hero_def, hero_spawn_pos, isqrt64,
-    rules,
+    MELEE_CREEP, ModifierKind, RANGED_CREEP, TOWERS, UnitDef, fountain_pos, hero_def,
+    hero_spawn_pos, isqrt64, rules,
 };
 
 use crate::game::{
@@ -773,4 +773,44 @@ fn a_fallen_courier_pays_every_enemy_25_and_5_a_level_and_waits_45_s_and_5_a_lev
             "level {level}"
         );
     }
+}
+
+#[test]
+fn a_burst_adds_half_the_pace_and_no_slow_takes_from_it_while_it_holds() {
+    let (mut world, _, _) = a_match();
+    world.settle();
+    let courier = raise_owner(&mut world, rules::COURIER_BURST_LEVEL);
+    put_on(&mut world, courier, ModifierKind::Slowed { pct: 30 }, 600);
+    world.settle();
+    let pace = |world: &World| {
+        world
+            .stats
+            .get(courier)
+            .map(|stats| stats.move_speed.to_int())
+    };
+    assert_eq!(
+        pace(&world),
+        Some(380 * 70 / 100),
+        "slowed before the burst"
+    );
+    advance_validated(
+        &mut world,
+        Some(courier),
+        Order::Cast {
+            slot: AbilitySlot(2),
+            target: Target::None,
+        },
+    );
+    world.advance(&[]);
+    assert_eq!(
+        pace(&world),
+        Some(570),
+        "hasted: 380 and half, slow or no slow"
+    );
+    run(&mut world, rules::COURIER_BURST_TICKS);
+    assert_eq!(
+        pace(&world),
+        Some(380 * 70 / 100),
+        "slowed again once it lifts"
+    );
 }

@@ -7,6 +7,20 @@ use bota_proto::{AbilityId, Aim};
 use crate::heroes::{pudge, shadow_fiend};
 use crate::{Aura, FIRST_NEUTRAL_ABILITY, NEUTRAL_ABILITIES, rules};
 
+/// Whether an ability reaches an enemy that is spell immune: its
+/// `SpellImmunityType` in Dota's ability files, and the extra protection
+/// couriers have against a few that pierce (Liquipedia, Courier, "Pierce
+/// Spell Immunity, affect ancient creeps, but can't affect courier").
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Pierces {
+    /// `SPELL_IMMUNITY_ENEMIES_NO`: it passes a spell-immune enemy by.
+    No,
+    /// `SPELL_IMMUNITY_ENEMIES_YES`: it reaches one all the same.
+    Yes,
+    /// `SPELL_IMMUNITY_ENEMIES_YES`, but a spell-immune courier it does not.
+    NotCouriers,
+}
+
 /// One entry of the ability list.
 #[derive(Clone, Copy, Debug)]
 pub struct AbilityDef {
@@ -46,6 +60,8 @@ pub struct AbilityDef {
     /// `DOTA_ABILITY_BEHAVIOR_TOGGLE`. It is on while its caster wears a
     /// modifier it put on him.
     pub toggle: bool,
+    /// Whether it reaches an enemy that is spell immune.
+    pub pierces: Pierces,
     /// What its passive hands out to the units standing near its carrier:
     /// Dota's `DOTA_ABILITY_BEHAVIOR_AURA`. Absent for one that hands out
     /// nothing.
@@ -77,6 +93,7 @@ pub(crate) const BARE_ABILITY: AbilityDef = AbilityDef {
     backswing: 0,
     duration: 0,
     toggle: false,
+    pierces: Pierces::No,
     aura: None,
     granted_at: None,
     retired: false,

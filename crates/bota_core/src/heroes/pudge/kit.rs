@@ -9,7 +9,7 @@ use super::numbers::{
 };
 use crate::ability::BARE_ABILITY;
 use crate::unit::NO_GROWTH;
-use crate::{AbilityDef, Growth, HERO, HeroDef, UnitDef, rules};
+use crate::{AbilityDef, Growth, HERO, HeroDef, Pierces, UnitDef, rules};
 
 /// Pudge: heavy, slow, and swings by hand, at the numbers of the game's
 /// `scripts/npc/heroes/npc_dota_hero_pudge.txt` (client 6957): 45 to 51 base
@@ -68,6 +68,8 @@ pub const MEAT_HOOK: AbilityDef = AbilityDef {
     cooldown: &HOOK_COOLDOWN,
     range: HOOK_RANGE,
     point: HOOK_CAST_POINT_MS,
+    // It pierces spell immunity, but a courier it does not catch.
+    pierces: Pierces::NotCouriers,
     ..BARE_ABILITY
 };
 
@@ -114,5 +116,7 @@ pub const DISMEMBER: AbilityDef = AbilityDef {
     range: DISMEMBER_RANGE,
     point: DISMEMBER_CAST_POINT_MS,
     duration: DISMEMBER_TICKS,
+    // It holds a courier too, whose hits its bites take nothing of.
+    pierces: Pierces::Yes,
     ..BARE_ABILITY
 };

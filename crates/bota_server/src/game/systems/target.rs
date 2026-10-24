@@ -1,7 +1,10 @@
 //! Who a unit picks to attack when nobody told it.
 
-use bota_core::{CAMPS, PriorityOrder, class_rank, deniable, isqrt64, kind_def, pick_target};
-use bota_proto::{Fixed, Team, UnitKind, Vec2};
+use bota_core::{
+    CAMPS, Pierces, PriorityOrder, ability_def, class_rank, deniable, isqrt64, kind_def,
+    pick_target,
+};
+use bota_proto::{AbilityId, Fixed, Team, UnitKind, Vec2};
 
 use crate::game::{Entity, Spots, UnitOrder, World};
 
@@ -70,6 +73,24 @@ impl World {
     /// neutrals of a pull camp.
     pub fn hostile(&self, seeker: Entity, target: Entity) -> bool {
         self.can_see_of(seeker, target) && self.hostile_unseen(seeker, target)
+    }
+
+    /// Whether an ability's effect reaches a unit: one that is not spell
+    /// immune, or one the ability [`pierces`](bota_core::AbilityDef::pierces),
+    /// a courier only when it pierces couriers too.
+    pub(crate) fn spell_reaches(&self, ability: AbilityId, target: Entity) -> bool {
+        if !self
+            .stats
+            .get(target)
+            .is_some_and(|stats| stats.spell_immune)
+        {
+            return true;
+        }
+        match ability_def(ability).map_or(Pierces::No, |def| def.pierces) {
+            Pierces::No => false,
+            Pierces::Yes => true,
+            Pierces::NotCouriers => self.kind.get(target) != Some(&UnitKind::Courier),
+        }
     }
 
     /// Whether one entity would attack another of its own accord were it

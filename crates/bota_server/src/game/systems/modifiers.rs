@@ -255,7 +255,9 @@ impl World {
             if !self.pos(other).is_some_and(|pos| pos.within(at, reach)) {
                 continue;
             }
-            if self.team.get(other).copied() != Some(side) {
+            if self.team.get(other).copied() != Some(side)
+                && self.spell_reaches(AbilityId::ROT, other)
+            {
                 let rotting = ModifierKind::Rotting { level };
                 self.put_modifier(other, Modifier::new(rotting, Some(owner), with, Some(2)));
             }

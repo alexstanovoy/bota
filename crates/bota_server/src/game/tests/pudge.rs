@@ -2,7 +2,7 @@
 
 use bota_core::{ModifierKind, rules, tower_def};
 
-use crate::game::{Entity, Modifier, World, wire_id};
+use crate::game::{Entity, Inventory, Modifier, World, wire_id};
 use bota_proto::{
     AbilityId, EffectId, Fixed, HeroId, Inflictor, SlotId, StatusFlags, Target, Team, Vec2,
 };
@@ -594,5 +594,67 @@ fn a_meat_shield_takes_its_block_off_every_blow_for_four_seconds() {
     assert!(
         before - hp(&world) >= 29,
         "and after four seconds it is gone (a point of regeneration aside)"
+    );
+}
+
+#[test]
+fn a_courier_is_spell_immune_rot_and_hook_pass_it_by_and_only_dismember_holds_it() {
+    let courier_at = Vec2::from_ints(5150, 5000);
+    let enemy_courier = |world: &mut World| {
+        let courier = world.spawn_courier(Team::Dire, courier_at, SlotId(1), Inventory::empty(6));
+        world.settle();
+        courier
+    };
+    // The hook flies through the courier to the creep beyond.
+    let (mut world, _pudge, mark) = pudge_and_a_mark(600);
+    let courier = enemy_courier(&mut world);
+    assert!(
+        shown(&world, Some(Team::Radiant), courier).statuses.bits & StatusFlags::MAGIC_IMMUNE != 0,
+        "shown spell immune"
+    );
+    cast(&mut world, 0, Target::Pos(Vec2::from_ints(6000, 5000)));
+    until_the_hook_flies(&mut world);
+    for _ in 0..120 {
+        world.step();
+        if !hook_flying(&world) {
+            break;
+        }
+    }
+    assert_eq!(
+        world.pos(courier),
+        Some(courier_at),
+        "the hook passed it by"
+    );
+    assert_ne!(
+        world.pos(mark),
+        Some(Vec2::from_ints(5600, 5000)),
+        "and caught what lay beyond"
+    );
+    // The rot neither slows nor burns it.
+    let (mut world, pudge, _) = pudge_and_a_mark(600);
+    let courier = enemy_courier(&mut world);
+    set_level(&mut world, pudge, 1, 1);
+    let pace = world.stats.get(courier).expect("settled").move_speed;
+    cast(&mut world, 1, Target::None);
+    run(&mut world, rules::BURN_PERIOD_TICKS * 4);
+    assert!(!carries(
+        &world,
+        courier,
+        ModifierKind::Rotting { level: 0 }
+    ));
+    assert_eq!(
+        world.stats.get(courier).map(|stats| stats.move_speed),
+        Some(pace)
+    );
+    // The dismember holds it, and its bites take none of its hits.
+    let (mut world, pudge, _) = pudge_and_a_mark(600);
+    let courier = enemy_courier(&mut world);
+    set_level(&mut world, pudge, 3, 1);
+    dismember(&mut world, courier);
+    run(&mut world, rules::DISMEMBER_TICKS / 2);
+    assert!(mark_is_held(&world, courier), "held");
+    assert_eq!(
+        world.health.get(courier).map(|health| health.hp),
+        Some(Fixed::from_int(rules::COURIER_HP))
     );
 }

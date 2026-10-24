@@ -72,6 +72,7 @@ fn every_modifier() -> Vec<ModifierKind> {
         ModifierKind::Flying,
         ModifierKind::Slowed { pct: 0 },
         ModifierKind::Hastened { pct: 0 },
+        ModifierKind::Haste { pct: 0 },
         ModifierKind::ArmorBroken { armor: Fixed::ZERO },
         ModifierKind::MagicBroken { pct: 0 },
         ModifierKind::Guarded {
@@ -118,6 +119,7 @@ fn every_modifier() -> Vec<ModifierKind> {
             | ModifierKind::Flying
             | ModifierKind::Slowed { .. }
             | ModifierKind::Hastened { .. }
+            | ModifierKind::Haste { .. }
             | ModifierKind::ArmorBroken { .. }
             | ModifierKind::MagicBroken { .. }
             | ModifierKind::Guarded { .. }
@@ -158,11 +160,12 @@ fn variant_name(value: &impl std::fmt::Debug) -> String {
 #[test]
 fn every_effect_is_shown_under_its_registered_id() {
     // The enemies in a rot wear the effect its owner does: Dota's one
-    // modifier_pudge_rot.
+    // modifier_pudge_rot. Hasted movement shows as the haste it is.
     let mut shown: Vec<(u16, String)> = every_modifier()
         .iter()
         .map(|kind| match kind {
             ModifierKind::Rotting { .. } => (kind.effect_id().0, "Rot".to_string()),
+            ModifierKind::Haste { .. } => (kind.effect_id().0, "Hastened".to_string()),
             _ => (kind.effect_id().0, variant_name(kind)),
         })
         .collect();

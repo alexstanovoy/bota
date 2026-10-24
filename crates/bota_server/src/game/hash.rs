@@ -534,6 +534,7 @@ fn hash_modifier_kind(fnv: &mut Fnv, kind: ModifierKind) {
         ModifierKind::Shielded => fnv.u8(8),
         ModifierKind::Slowed { pct } => hash_tagged(fnv, 5, &[pct]),
         ModifierKind::Hastened { pct } => hash_tagged(fnv, 7, &[pct]),
+        ModifierKind::Haste { pct } => hash_tagged(fnv, 34, &[pct]),
         ModifierKind::Guarded {
             armor,
             hp_per_second,
