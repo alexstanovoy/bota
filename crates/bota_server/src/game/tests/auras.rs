@@ -1,6 +1,8 @@
 //! Fountain, tower and flagbearer auras.
 
-use bota_core::{FLAGBEARER_CREEP, FOUNTAIN, MELEE_CREEP, ModifierKind, rules, tower_def};
+use bota_core::{
+    COURIER, FLAGBEARER_CREEP, FOUNTAIN, MELEE_CREEP, ModifierKind, OBSERVER_WARD, rules, tower_def,
+};
 
 use crate::game::{Level, World};
 use bota_proto::{Fixed, HeroId, MapId, Pick, SlotId, Team, Vec2};
@@ -196,6 +198,27 @@ fn a_break_silences_a_flagbearers_inspiration_and_leaves_a_towers_protection() {
         carries(&world, creep, INSPIRED_EFFECT),
         "and the inspiration is back once the break lifts"
     );
+}
+
+#[test]
+fn the_fountain_mends_its_heroes_creeps_and_couriers_but_no_building_and_no_ward() {
+    let mut world = World::new();
+    let at = |x| Vec2::from_ints(x, 5000);
+    world.spawn_unit(&FOUNTAIN, Team::Radiant, at(5000));
+    let hero = hero_at(&mut world, at(5300));
+    let creep = world.spawn_unit(&MELEE_CREEP, Team::Radiant, at(5000 + 400));
+    let courier = world.spawn_unit(&COURIER, Team::Radiant, at(5000 + 500));
+    let tower = world.spawn_unit(tower_def(1), Team::Radiant, at(5000 + 800));
+    let ward = world.spawn_unit(&OBSERVER_WARD, Team::Radiant, at(5000 - 600));
+    world.settle();
+    world.step();
+    let mended = |unit| carries(&world, unit, FOUNTAIN_EFFECT);
+    assert!(
+        mended(hero) && mended(creep) && mended(courier),
+        "heroes, creeps and couriers"
+    );
+    assert!(!mended(tower), "no building");
+    assert!(!mended(ward), "and no ward");
 }
 
 #[test]

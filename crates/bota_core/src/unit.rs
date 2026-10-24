@@ -493,10 +493,11 @@ pub fn ancient_of(team: Team) -> &'static UnitDef {
 }
 
 /// What a fountain mends on its own side standing in it: Dota's
-/// `modifier_fountain_aura`, a building's.
+/// `modifier_fountain_aura`, a building's. It mends heroes, creeps and
+/// couriers, the invulnerable among them, but no building and no ward.
 const FOUNTAIN_AURAS: [Aura; 1] = [Aura {
     whom: Whom::Allies,
-    reaches: Reach::All,
+    reaches: Reach::Living,
     radius: rules::FOUNTAIN_HEAL_RADIUS,
     linger: rules::FOUNTAIN_HEAL_LINGER_TICKS,
     breakable: false,
