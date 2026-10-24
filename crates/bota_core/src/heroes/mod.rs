@@ -12,8 +12,9 @@
 //!    const per ability, its talent tree if it has one, and `HERO_DEF`),
 //!    `formulas.rs` for pure functions the clients read, and `mod.rs`. Name
 //!    the module in this file and in `rules.rs` (`pub use ...::numbers::*`).
-//! 3. Add its `HERO_DEF` to `HEROES` in `hero.rs` (bump its length) and its ability consts to
-//!    `ABILITIES` in `ability.rs`, in id order, and bump `ABILITY_COUNT`.
+//! 3. Add its `HERO_DEF` to `HEROES` in `hero.rs` (bump its length) and its ability consts,
+//!    each carrying its registered `id`, to `HERO_ABILITIES` in `ability.rs` (bump its
+//!    length): `ABILITIES` places every entry at its id.
 //!    A new modifier is a `ModifierKind` variant (`modifier.rs`) with its
 //!    [`effect_id`](crate::ModifierKind::effect_id) arm, and its effect id gets
 //!    an [`EFFECTS`](crate::EFFECTS) row in `effect.rs` (bump `EFFECT_COUNT`).

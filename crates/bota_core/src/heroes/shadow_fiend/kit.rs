@@ -90,8 +90,9 @@ pub const HERO_DEF: HeroDef = HeroDef {
 
 /// The three razes are one skill worn as three slots, each landing at its
 /// own reach.
-const fn raze(name: &'static str, reach: usize) -> AbilityDef {
+const fn raze(id: AbilityId, name: &'static str, reach: usize) -> AbilityDef {
     AbilityDef {
+        id,
         name,
         max_level: rules::ABILITY_MAX_LEVEL,
         passive: false,
@@ -103,11 +104,12 @@ const fn raze(name: &'static str, reach: usize) -> AbilityDef {
     }
 }
 
-pub const RAZE_NEAR: AbilityDef = raze("Shadowraze (Near)", 0);
-pub const RAZE_MID: AbilityDef = raze("Shadowraze (Mid)", 1);
-pub const RAZE_FAR: AbilityDef = raze("Shadowraze (Far)", 2);
+pub const RAZE_NEAR: AbilityDef = raze(AbilityId::RAZE_NEAR, "Shadowraze (Near)", 0);
+pub const RAZE_MID: AbilityDef = raze(AbilityId::RAZE_MID, "Shadowraze (Mid)", 1);
+pub const RAZE_FAR: AbilityDef = raze(AbilityId::RAZE_FAR, "Shadowraze (Far)", 2);
 
 pub const REQUIEM: AbilityDef = AbilityDef {
+    id: AbilityId::REQUIEM,
     name: "Requiem of Souls",
     max_level: rules::ULT_MAX_LEVEL,
     passive: false,
@@ -121,6 +123,7 @@ pub const REQUIEM: AbilityDef = AbilityDef {
 };
 
 pub const NECROMASTERY: AbilityDef = AbilityDef {
+    id: AbilityId::NECROMASTERY,
     name: "Necromastery",
     max_level: 1,
     ..BARE_ABILITY
@@ -130,6 +133,7 @@ pub const NECROMASTERY: AbilityDef = AbilityDef {
 /// that tears their armor by its level, whether or not they see him (the
 /// ability asks no sight).
 pub const PRESENCE: AbilityDef = AbilityDef {
+    id: AbilityId::PRESENCE,
     name: "Presence of the Dark Lord",
     max_level: rules::ABILITY_MAX_LEVEL,
     range: PRESENCE_RADIUS,
@@ -148,6 +152,7 @@ pub const PRESENCE: AbilityDef = AbilityDef {
 };
 
 pub const FEAST_OF_SOULS: AbilityDef = AbilityDef {
+    id: AbilityId::FEAST_OF_SOULS,
     name: "Feast of Souls",
     max_level: rules::ABILITY_MAX_LEVEL,
     passive: false,

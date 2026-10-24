@@ -5,10 +5,9 @@
 //! `bota_core` gives them, and the views tell what a unit holds.
 
 use bota_core::{
-    EFFECT_COUNT, EFFECTS as EFFECT_DEFS, FIRST_LATE_ABILITY, FIRST_NEUTRAL_ABILITY,
-    ITEMS as ITEM_DEFS, NEUTRAL_ABILITIES, Talent, ability_def, agility_armor,
-    agility_attack_speed, attribute_regen, attributes_at_level, effect_def, hero_def,
-    intelligence_magic_resist_bp, talent_floor, white_damage_least,
+    ABILITY_COUNT, EFFECT_COUNT, EFFECTS as EFFECT_DEFS, ITEMS as ITEM_DEFS, NEUTRAL_ABILITIES,
+    Talent, ability_def, agility_armor, agility_attack_speed, attribute_regen, attributes_at_level,
+    effect_def, hero_def, intelligence_magic_resist_bp, talent_floor, white_damage_least,
 };
 use bota_proto::{AbilityId, EffectId, Fixed, HeroId, ItemId, TalentSlot, Talents};
 
@@ -120,8 +119,41 @@ impl EffectFace {
 /// What each of the three razes does.
 const RAZE: &str = "No target, {point} s cast point. Burns every enemy but a building within {raze_radius} of a spot {range} ahead of where you face for {raze_damage} magic damage, plus {raze_soul} per soul held and {raze_stack} per prior same-caster stack. Each damaging hit refreshes all stacks for {raze_secs} s. One point levels all three razes. {mana} mana, {wait} s wait.";
 
-/// Every ability, in id order.
-pub const ABILITIES: [AbilityFace; FIRST_NEUTRAL_ABILITY as usize] = [
+/// Every ability, indexed by its id: each face placed at the id it answers
+/// to, a hero's or courier's from [`HERO_FACES`], a neutral's from its rules
+/// entry. Every id the rules have holds exactly one face.
+pub const ABILITIES: [AbilityFace; ABILITY_COUNT] = {
+    let blank = AbilityFace {
+        id: u16::MAX,
+        name: "",
+        template: "",
+    };
+    let mut every = [blank; ABILITY_COUNT];
+    let mut at = 0;
+    while at < HERO_FACES.len() {
+        every[HERO_FACES[at].id as usize] = HERO_FACES[at];
+        at += 1;
+    }
+    let mut at = 0;
+    while at < NEUTRAL_ABILITIES.len() {
+        let def = &NEUTRAL_ABILITIES[at].def;
+        every[def.id.0 as usize] = AbilityFace {
+            id: def.id.0,
+            name: def.name,
+            template: "",
+        };
+        at += 1;
+    }
+    let mut id = 0;
+    while id < ABILITY_COUNT {
+        assert!(every[id].id as usize == id, "one face an ability");
+        id += 1;
+    }
+    every
+};
+
+/// The faces of every hero's and courier's ability, each by its id.
+const HERO_FACES: [AbilityFace; 18] = [
     AbilityFace {
         id: AbilityId::MEAT_HOOK.0,
         name: "Hook",
@@ -201,6 +233,11 @@ pub const ABILITIES: [AbilityFace; FIRST_NEUTRAL_ABILITY as usize] = [
         id: AbilityId::FEAST_OF_SOULS.0,
         name: "Feast",
         template: "No target, goes off beside whatever you are doing. For {feast_secs} s: +{feast_speed} attack speed and +{feast_move}% movement speed, and every {feast_period} s souls from {feast_per_period} enemies within {range} you have not fed on yet, heroes first: {feast_hero} a hero, {feast_unit} a creep, from up to {feast_targets} enemies. Then the souls of those still standing go; the rest stay {feast_linger} s past the cap. {mana} mana, {wait} s wait.",
+    },
+    AbilityFace {
+        id: AbilityId::MEAT_SHIELD.0,
+        name: "Shield",
+        template: "No target. Every blow that reaches you loses {meat_block} damage, after armor and resistance, for {meat_secs} s. {mana} mana, {wait} s wait.",
     },
     // Retired: what named a Blood Grenade in flight, which names its item now.
     AbilityFace {
@@ -471,45 +508,10 @@ pub const EFFECTS: [EffectFace; FIRST_SPELL_EFFECT] = [
     ),
 ];
 
-/// The abilities added after the neutrals', from [`FIRST_LATE_ABILITY`].
-const LATE_FACES: [AbilityFace; 1] = [AbilityFace {
-    id: AbilityId::MEAT_SHIELD.0,
-    name: "Shield",
-    template: "No target. Every blow that reaches you loses {meat_block} damage, after armor and resistance, for {meat_secs} s. {mana} mana, {wait} s wait.",
-}];
-
 /// The ability of that id, or nothing for one the catalog does not hold.
 pub fn ability(id: u16) -> Option<&'static AbilityFace> {
-    ABILITIES
-        .get(usize::from(id))
-        .or_else(|| {
-            let at = id.checked_sub(FIRST_NEUTRAL_ABILITY)?;
-            NEUTRAL_FACES.get(usize::from(at))
-        })
-        .or_else(|| {
-            let at = id.checked_sub(FIRST_LATE_ABILITY)?;
-            LATE_FACES.get(usize::from(at))
-        })
+    ABILITIES.get(usize::from(id))
 }
-
-/// Every neutral's ability, as its rules name it.
-const NEUTRAL_FACES: [AbilityFace; NEUTRAL_ABILITIES.len()] = {
-    let mut faces = [AbilityFace {
-        id: 0,
-        name: "",
-        template: "",
-    }; NEUTRAL_ABILITIES.len()];
-    let mut at = 0;
-    while at < faces.len() {
-        faces[at] = AbilityFace {
-            id: FIRST_NEUTRAL_ABILITY + at as u16,
-            name: NEUTRAL_ABILITIES[at].def.name,
-            template: "",
-        };
-        at += 1;
-    }
-    faces
-};
 
 /// The first effect a neutral's spell leaves: from it on, every effect is
 /// shown by its rules name.

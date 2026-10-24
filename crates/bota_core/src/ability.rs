@@ -5,7 +5,7 @@
 use bota_proto::{AbilityId, Aim};
 
 use crate::heroes::{pudge, shadow_fiend};
-use crate::{Aura, FIRST_NEUTRAL_ABILITY, NEUTRAL_ABILITIES, rules};
+use crate::{Aura, NEUTRAL_ABILITIES, rules};
 
 /// Whether an ability reaches an enemy that is spell immune: its
 /// `SpellImmunityType` in Dota's ability files, and the extra protection
@@ -24,6 +24,9 @@ pub enum Pierces {
 /// One entry of the ability list.
 #[derive(Clone, Copy, Debug)]
 pub struct AbilityDef {
+    /// The id it answers to on the wire: its line of the protocol's id
+    /// registry, which [`ABILITIES`] places it at.
+    pub id: AbilityId,
     /// What it is called.
     pub name: &'static str,
     /// How it is aimed.
@@ -77,7 +80,9 @@ pub struct AbilityDef {
 }
 
 /// Nothing at all, so an entry names only what sets it apart.
+/// Its id is no id: [`ABILITIES`] refuses an entry that names none.
 pub(crate) const BARE_ABILITY: AbilityDef = AbilityDef {
+    id: AbilityId(u16::MAX),
     name: "",
     aim: Aim::Own,
     max_level: 0,
@@ -101,8 +106,9 @@ pub(crate) const BARE_ABILITY: AbilityDef = AbilityDef {
 
 /// A courier's ability: one level, cast for no mana, held from its owner's
 /// first level.
-const fn courier(name: &'static str, cooldown: &'static [u32]) -> AbilityDef {
+const fn courier(id: AbilityId, name: &'static str, cooldown: &'static [u32]) -> AbilityDef {
     AbilityDef {
+        id,
         name,
         max_level: 1,
         passive: false,
@@ -115,51 +121,56 @@ const fn courier(name: &'static str, cooldown: &'static [u32]) -> AbilityDef {
 
 /// How many abilities the game has: every table indexed by [`AbilityId`] is
 /// this long.
-pub const ABILITY_COUNT: usize =
-    HERO_ABILITIES.len() + NEUTRAL_ABILITIES.len() + LATE_ABILITIES.len();
+pub const ABILITY_COUNT: usize = HERO_ABILITIES.len() + NEUTRAL_ABILITIES.len();
 
-/// Every ability, indexed by [`AbilityId`]: the heroes' and the couriers',
-/// then the neutrals', then the heroes' that were added after them.
+/// Every ability, indexed by [`AbilityId`]: each entry placed at the id it
+/// carries, the heroes', the couriers' and the neutrals' alike. Every id
+/// below [`ABILITY_COUNT`] holds exactly one entry.
 pub const ABILITIES: [AbilityDef; ABILITY_COUNT] = {
     let mut every = [BARE_ABILITY; ABILITY_COUNT];
+    let mut placed = [false; ABILITY_COUNT];
     let mut at = 0;
-    while at < HERO_ABILITIES.len() {
-        every[at] = HERO_ABILITIES[at];
-        at += 1;
-    }
-    while at < FIRST_LATE_ABILITY as usize {
-        every[at] = NEUTRAL_ABILITIES[at - HERO_ABILITIES.len()].def;
-        at += 1;
-    }
     while at < ABILITY_COUNT {
-        every[at] = LATE_ABILITIES[at - FIRST_LATE_ABILITY as usize];
+        let def = if at < HERO_ABILITIES.len() {
+            HERO_ABILITIES[at]
+        } else {
+            NEUTRAL_ABILITIES[at - HERO_ABILITIES.len()].def
+        };
+        let id = def.id.0 as usize;
+        assert!(id < ABILITY_COUNT, "an ability id runs past the table");
+        assert!(!placed[id], "two abilities share an id");
+        placed[id] = true;
+        every[id] = def;
         at += 1;
     }
     every
 };
 
-const _: () = assert!(HERO_ABILITIES.len() == FIRST_NEUTRAL_ABILITY as usize);
-
-/// The abilities of the heroes and the couriers, from id zero.
-const HERO_ABILITIES: [AbilityDef; 17] = [
+/// The abilities of the heroes and the couriers, each carrying its id.
+const HERO_ABILITIES: [AbilityDef; 18] = [
     pudge::MEAT_HOOK,
     pudge::ROT,
     pudge::FLESH_HEAP,
     pudge::DISMEMBER,
+    pudge::MEAT_SHIELD,
     // Burst and Shield are Dota's DOTA_ABILITY_BEHAVIOR_IMMEDIATE
     // (`courier_burst`, `courier_shield`): they break off nothing.
     AbilityDef {
         immediate: true,
         granted_at: Some(rules::COURIER_BURST_LEVEL),
-        ..courier("Burst", &[rules::COURIER_BURST_COOLDOWN])
+        ..courier(AbilityId::BURST, "Burst", &[rules::COURIER_BURST_COOLDOWN])
     },
-    courier("Return", &[0]),
-    courier("Take Stash", &[0]),
-    courier("Deliver", &[0]),
+    courier(AbilityId::RETURN_ITEMS, "Return", &[0]),
+    courier(AbilityId::TAKE_STASH, "Take Stash", &[0]),
+    courier(AbilityId::DELIVER, "Deliver", &[0]),
     AbilityDef {
         immediate: true,
         granted_at: Some(rules::COURIER_SHIELD_LEVEL),
-        ..courier("Shield", &[rules::COURIER_SHIELD_COOLDOWN])
+        ..courier(
+            AbilityId::SHIELD,
+            "Shield",
+            &[rules::COURIER_SHIELD_COOLDOWN],
+        )
     },
     shadow_fiend::RAZE_NEAR,
     shadow_fiend::RAZE_MID,
@@ -169,22 +180,14 @@ const HERO_ABILITIES: [AbilityDef; 17] = [
     shadow_fiend::PRESENCE,
     shadow_fiend::FEAST_OF_SOULS,
     // Retired: a Blood Grenade in flight named a pseudo-ability; it names
-    // its item now.
+    // its item now. Its id is never handed out again.
     AbilityDef {
+        id: AbilityId(16),
         name: "Throw Grenade",
         retired: true,
         ..BARE_ABILITY
     },
 ];
-
-/// The [`AbilityId`] of the first ability added after the neutrals'.
-pub const FIRST_LATE_ABILITY: u16 = FIRST_NEUTRAL_ABILITY + NEUTRAL_ABILITIES.len() as u16;
-
-/// Hero abilities added after the neutrals' ids were handed out: ids are
-/// append-only, so they follow them.
-const LATE_ABILITIES: [AbilityDef; 1] = [pudge::MEAT_SHIELD];
-
-const _: () = assert!(FIRST_LATE_ABILITY == AbilityId::MEAT_SHIELD.0);
 
 const _: () = {
     let mut at = 0;

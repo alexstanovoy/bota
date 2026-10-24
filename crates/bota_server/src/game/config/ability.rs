@@ -3,7 +3,7 @@
 //! [`bota_core::ABILITIES`]. A neutral's ability is data its mechanics read
 //! ([`World::cast_spell`](crate::game::World::cast_spell)).
 
-use bota_core::{FIRST_LATE_ABILITY, FIRST_NEUTRAL_ABILITY, NeutralAbility};
+use bota_core::{ABILITY_COUNT, NeutralAbility};
 use bota_proto::{AbilityId, Target};
 
 use crate::game::{Entity, World};
@@ -41,109 +41,167 @@ const INERT: AbilityHooks = AbilityHooks {
     on_complete: |_, _, _| {},
 };
 
-/// Every hero's and courier's ability's hooks, indexed by [`AbilityId`] like
-/// [`bota_core::ABILITIES`].
-pub const ABILITY_HOOKS: [AbilityHooks; FIRST_NEUTRAL_ABILITY as usize] = [
-    AbilityHooks {
-        on_cast: |world, caster, target| {
-            world.cast_hook(
-                caster,
-                level_of(world, caster, AbilityId::MEAT_HOOK),
-                target,
-            )
+/// The hooks of every hero's and courier's ability, each by its id.
+const HOOKS: [(AbilityId, AbilityHooks); 18] = [
+    (
+        AbilityId::MEAT_HOOK,
+        AbilityHooks {
+            on_cast: |world, caster, target| {
+                world.cast_hook(
+                    caster,
+                    level_of(world, caster, AbilityId::MEAT_HOOK),
+                    target,
+                )
+            },
+            ..INERT
         },
-        ..INERT
-    },
-    AbilityHooks {
-        on_cast: |world, caster, _| {
-            world.toggle_rot(caster, level_of(world, caster, AbilityId::ROT))
+    ),
+    (
+        AbilityId::ROT,
+        AbilityHooks {
+            on_cast: |world, caster, _| {
+                world.toggle_rot(caster, level_of(world, caster, AbilityId::ROT))
+            },
+            ..INERT
         },
-        ..INERT
-    },
-    // Flesh Heap, an innate.
-    INERT,
-    AbilityHooks {
-        on_cast: World::dismember_takes_hold,
-        on_during: World::dismember_holds,
-        on_cancel: World::dismember_lets_go,
-        on_complete: World::dismember_lets_go,
-    },
-    AbilityHooks {
-        on_cast: |world, courier, _| world.courier_burst(courier),
-        ..INERT
-    },
-    AbilityHooks {
-        on_cast: |world, courier, _| world.courier_return_items(courier),
-        ..INERT
-    },
-    AbilityHooks {
-        on_cast: |world, courier, _| world.courier_take_stash(courier),
-        ..INERT
-    },
-    AbilityHooks {
-        on_cast: |world, courier, _| world.courier_deliver(courier),
-        ..INERT
-    },
-    AbilityHooks {
-        on_cast: |world, courier, _| world.courier_shield(courier),
-        ..INERT
-    },
-    AbilityHooks {
-        on_cast: |world, caster, _| {
-            world.cast_raze(caster, level_of(world, caster, AbilityId::RAZE_NEAR), 0)
+    ),
+    // An innate.
+    (AbilityId::FLESH_HEAP, INERT),
+    (
+        AbilityId::DISMEMBER,
+        AbilityHooks {
+            on_cast: World::dismember_takes_hold,
+            on_during: World::dismember_holds,
+            on_cancel: World::dismember_lets_go,
+            on_complete: World::dismember_lets_go,
         },
-        ..INERT
-    },
-    AbilityHooks {
-        on_cast: |world, caster, _| {
-            world.cast_raze(caster, level_of(world, caster, AbilityId::RAZE_MID), 1)
+    ),
+    (
+        AbilityId::MEAT_SHIELD,
+        AbilityHooks {
+            on_cast: |world, caster, _| {
+                world.cast_meat_shield(caster, level_of(world, caster, AbilityId::MEAT_SHIELD))
+            },
+            ..INERT
         },
-        ..INERT
-    },
-    AbilityHooks {
-        on_cast: |world, caster, _| {
-            world.cast_raze(caster, level_of(world, caster, AbilityId::RAZE_FAR), 2)
+    ),
+    (
+        AbilityId::BURST,
+        AbilityHooks {
+            on_cast: |world, courier, _| world.courier_burst(courier),
+            ..INERT
         },
-        ..INERT
-    },
-    AbilityHooks {
-        on_cast: |world, caster, _| {
-            let level = level_of(world, caster, AbilityId::REQUIEM).min(2);
-            world.cast_requiem(caster, level)
+    ),
+    (
+        AbilityId::RETURN_ITEMS,
+        AbilityHooks {
+            on_cast: |world, courier, _| world.courier_return_items(courier),
+            ..INERT
         },
-        ..INERT
-    },
-    // Necromastery, Presence of the Dark Lord.
-    INERT,
-    INERT,
-    AbilityHooks {
-        on_cast: |world, caster, _| {
-            world.cast_feast(caster, level_of(world, caster, AbilityId::FEAST_OF_SOULS))
+    ),
+    (
+        AbilityId::TAKE_STASH,
+        AbilityHooks {
+            on_cast: |world, courier, _| world.courier_take_stash(courier),
+            ..INERT
         },
-        ..INERT
-    },
+    ),
+    (
+        AbilityId::DELIVER,
+        AbilityHooks {
+            on_cast: |world, courier, _| world.courier_deliver(courier),
+            ..INERT
+        },
+    ),
+    (
+        AbilityId::SHIELD,
+        AbilityHooks {
+            on_cast: |world, courier, _| world.courier_shield(courier),
+            ..INERT
+        },
+    ),
+    (
+        AbilityId::RAZE_NEAR,
+        AbilityHooks {
+            on_cast: |world, caster, _| {
+                world.cast_raze(caster, level_of(world, caster, AbilityId::RAZE_NEAR), 0)
+            },
+            ..INERT
+        },
+    ),
+    (
+        AbilityId::RAZE_MID,
+        AbilityHooks {
+            on_cast: |world, caster, _| {
+                world.cast_raze(caster, level_of(world, caster, AbilityId::RAZE_MID), 1)
+            },
+            ..INERT
+        },
+    ),
+    (
+        AbilityId::RAZE_FAR,
+        AbilityHooks {
+            on_cast: |world, caster, _| {
+                world.cast_raze(caster, level_of(world, caster, AbilityId::RAZE_FAR), 2)
+            },
+            ..INERT
+        },
+    ),
+    (
+        AbilityId::REQUIEM,
+        AbilityHooks {
+            on_cast: |world, caster, _| {
+                let level = level_of(world, caster, AbilityId::REQUIEM).min(2);
+                world.cast_requiem(caster, level)
+            },
+            ..INERT
+        },
+    ),
+    // Passives.
+    (AbilityId::NECROMASTERY, INERT),
+    (AbilityId::PRESENCE, INERT),
+    (
+        AbilityId::FEAST_OF_SOULS,
+        AbilityHooks {
+            on_cast: |world, caster, _| {
+                world.cast_feast(caster, level_of(world, caster, AbilityId::FEAST_OF_SOULS))
+            },
+            ..INERT
+        },
+    ),
     // Retired: Throw Grenade.
-    INERT,
+    (AbilityId(16), INERT),
 ];
 
-/// The hooks of the abilities added after the neutrals', from
-/// [`FIRST_LATE_ABILITY`].
-const LATE_HOOKS: [AbilityHooks; 1] = [AbilityHooks {
-    on_cast: |world, caster, _| {
-        world.cast_meat_shield(caster, level_of(world, caster, AbilityId::MEAT_SHIELD))
-    },
-    ..INERT
-}];
+/// Every ability's hooks, indexed by [`AbilityId`] like
+/// [`bota_core::ABILITIES`]: a hero's or courier's from [`HOOKS`], a
+/// neutral's inert.
+const ABILITY_HOOKS: [AbilityHooks; ABILITY_COUNT] = {
+    let mut every = [INERT; ABILITY_COUNT];
+    let mut hooked = [false; ABILITY_COUNT];
+    let mut at = 0;
+    while at < HOOKS.len() {
+        let id = HOOKS[at].0.0 as usize;
+        assert!(id < ABILITY_COUNT && !hooked[id], "one row an ability");
+        hooked[id] = true;
+        every[id] = HOOKS[at].1;
+        at += 1;
+    }
+    let mut id = 0;
+    while id < ABILITY_COUNT {
+        let neutral = NeutralAbility::of(AbilityId(id as u16)).is_some();
+        assert!(
+            hooked[id] != neutral,
+            "a row for every ability but a neutral's"
+        );
+        id += 1;
+    }
+    every
+};
 
 /// What one ability does, or nothing if no such ability exists. A neutral's
 /// goes off through its mechanics, before any hook: what is left to a hook
 /// is to run on and end, which none of them does.
 pub fn ability_hooks(id: AbilityId) -> Option<&'static AbilityHooks> {
-    ABILITY_HOOKS
-        .get(usize::from(id.0))
-        .or_else(|| NeutralAbility::of(id).map(|_| &INERT))
-        .or_else(|| {
-            let at = id.0.checked_sub(FIRST_LATE_ABILITY)?;
-            LATE_HOOKS.get(usize::from(at))
-        })
+    ABILITY_HOOKS.get(usize::from(id.0))
 }
