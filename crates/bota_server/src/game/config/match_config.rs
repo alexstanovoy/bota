@@ -121,6 +121,7 @@ impl MatchConfig {
             shop: bota_core::shop_entries(),
             fountains: map.fountains,
             shop_range: bota_core::rules::SHOP_RANGE,
+            cheats: self.cheats,
         }
     }
 }

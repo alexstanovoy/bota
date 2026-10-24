@@ -407,9 +407,30 @@ impl World {
         }
     }
 
+    /// With `-allvision` on, each side sees whatever either side sees.
+    pub(crate) fn share_vision(&mut self) {
+        for entity in self.entities.iter() {
+            if let Some(seen) = self.visibility.get_mut(entity)
+                && (seen.by(Team::Radiant) || seen.by(Team::Dire))
+            {
+                seen.add(Team::Radiant);
+                seen.add(Team::Dire);
+            }
+        }
+    }
+
     /// Whether a side sees a point on the map, worked out live from its
-    /// viewers' ordinary sight and the circles strikes showed it.
+    /// viewers' ordinary sight and the circles strikes showed it; with
+    /// `-allvision` on, either side's.
     pub fn can_see_point(&self, team: Team, at: Vec2) -> bool {
+        if self.all_vision && team != Team::Neutral {
+            return self.side_sees_point(Team::Radiant, at) || self.side_sees_point(Team::Dire, at);
+        }
+        self.side_sees_point(team, at)
+    }
+
+    /// Whether one side's own sight reaches a point.
+    fn side_sees_point(&self, team: Team, at: Vec2) -> bool {
         let target_tier = self.ground.tier(at);
         let exposed = self.entities.iter().any(|entity| {
             let Some(Some(cell)) = self.exposure.get(entity).map(|e| e.0[team as usize]) else {

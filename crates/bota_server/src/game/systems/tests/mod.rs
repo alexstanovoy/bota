@@ -1,6 +1,7 @@
 mod actions;
 mod applied;
 mod cast;
+mod cheat_commands;
 mod cheats;
 mod evasion;
 mod pierce;

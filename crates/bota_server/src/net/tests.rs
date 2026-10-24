@@ -507,6 +507,7 @@ fn bulky_snapshot(tick: u32) -> Vec<u8> {
         talents: Vec::new(),
         teleports: Vec::new(),
         glyphs: Vec::new(),
+        clock: None,
     };
     encode_frame_to_vec(&ServerMsg::Snapshot { view }).expect("under the frame limit")
 }

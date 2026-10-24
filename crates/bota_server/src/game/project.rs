@@ -20,6 +20,11 @@ pub fn wire_id(entity: Entity) -> bota_proto::EntityId {
 
 impl World {
     /// The world through one side's fog of war.
+    /// How far cheats moved the clocks, absent while they never did.
+    fn clock_shift(&self) -> Option<bota_proto::ClockShift> {
+        (self.clock_shift != bota_proto::ClockShift::default()).then_some(self.clock_shift)
+    }
+
     pub fn view(&self, team: Team) -> WorldView {
         self.project(Some(team))
     }
@@ -87,6 +92,7 @@ impl World {
             talents,
             teleports: self.teleport_views(),
             glyphs: self.glyph_views(viewer),
+            clock: self.clock_shift(),
         }
     }
 

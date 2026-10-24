@@ -45,13 +45,21 @@ pub(crate) fn snapshot(expect: &Expect<'_>, view: &WorldView) -> Result<(), Sess
     withheld(view)?;
     skipped_ticks(expect, view)?;
     snapshot_positions(expect.statics.metadata().terrain_cells, view)?;
-    units(expect.statics.roster(), view)?;
+    units(
+        expect.statics.roster(),
+        expect.statics.metadata().cheats,
+        view,
+    )?;
     aggro(view)?;
     casts(view)?;
     effects(view)?;
     projectiles(view)?;
     unique_dynamic_handles(view)?;
-    players(expect.statics.roster(), view)?;
+    players(
+        expect.statics.roster(),
+        expect.statics.metadata().cheats,
+        view,
+    )?;
     felled_trees(expect.statics.trees().len(), view)?;
     match expect.owner {
         Some(owner) => own_state(owner, expect.hero, view),
@@ -247,7 +255,7 @@ fn snapshot_limits(view: &WorldView) -> Result<(), SessionError> {
 
 /// Units sorted strictly by id, bounded, and owned by nobody or a seat of
 /// the roster: what a client remembers is kept per seat.
-fn units(roster: &[Pick], view: &WorldView) -> Result<(), SessionError> {
+fn units(roster: &[Pick], cheats: bool, view: &WorldView) -> Result<(), SessionError> {
     for (index, unit) in view.units.iter().enumerate() {
         if index > 0 {
             if view.units[index - 1].id == unit.id {
@@ -265,10 +273,13 @@ fn units(roster: &[Pick], view: &WorldView) -> Result<(), SessionError> {
         check_limit("UnitView.items", unit.items.len(), HERO_ITEM_SLOTS)?;
         check_limit("UnitView.effects", unit.effects.len(), MAX_EFFECTS_PER_UNIT)?;
         check_limit("UnitView.queue", unit.queue.len(), rules::MAX_QUEUED_ORDERS)?;
+        // A hero a cheat created has a seat of its own, told among the players.
+        let created = |slot| cheats && view.player(slot).is_some();
         if let Some(slot) = unit.owner
             && roster
                 .binary_search_by_key(&slot, |pick| pick.slot)
                 .is_err()
+            && !created(slot)
         {
             return Err(SessionError::UnknownUnitOwner {
                 unit: unit.id,
@@ -371,7 +382,7 @@ fn aggro(view: &WorldView) -> Result<(), SessionError> {
     Ok(())
 }
 
-fn players(roster: &[Pick], view: &WorldView) -> Result<(), SessionError> {
+fn players(roster: &[Pick], cheats: bool, view: &WorldView) -> Result<(), SessionError> {
     for (index, player) in view.players.iter().enumerate() {
         if index > 0 {
             if view.players[index - 1].slot == player.slot {
@@ -404,14 +415,19 @@ fn players(roster: &[Pick], view: &WorldView) -> Result<(), SessionError> {
     if !one_each {
         return Err(SessionError::InvalidTeleports);
     }
-    roster_rows(roster, &view.players)
+    roster_rows(roster, cheats, &view.players)
 }
 
-fn roster_rows(roster: &[Pick], players: &[PlayerView]) -> Result<(), SessionError> {
+/// Every pick of the roster has its row, as picked; a row of a seat the
+/// roster lacks only in a match with cheats on, where `-createhero` gives a
+/// created hero a seat of its own.
+fn roster_rows(roster: &[Pick], cheats: bool, players: &[PlayerView]) -> Result<(), SessionError> {
     for player in players {
-        let index = roster
-            .binary_search_by_key(&player.slot, |pick| pick.slot)
-            .map_err(|_| SessionError::UnknownRosterPlayer(player.slot.0))?;
+        let index = match roster.binary_search_by_key(&player.slot, |pick| pick.slot) {
+            Ok(index) => index,
+            Err(_) if cheats => continue,
+            Err(_) => return Err(SessionError::UnknownRosterPlayer(player.slot.0)),
+        };
         let pick = &roster[index];
         if player.team != pick.team {
             return Err(SessionError::WrongRosterTeam {

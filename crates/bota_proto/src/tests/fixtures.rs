@@ -277,6 +277,10 @@ pub fn world_view(creeps: u32) -> WorldView {
             active_for: 120,
             ready_after: Some(9000),
         }],
+        clock: Some(ClockShift {
+            game: 600,
+            day: 9000,
+        }),
     }
 }
 
@@ -323,6 +327,7 @@ pub fn match_info() -> MatchInfo {
         mode: TickMode::Lockstep,
         fountains: [Vec2::from_ints(1760, 2278), Vec2::from_ints(16624, 16064)],
         shop_range: 1000,
+        cheats: false,
         shop: vec![
             ShopEntry {
                 id: ItemId(0),
@@ -515,6 +520,7 @@ pub fn empty_world_view() -> WorldView {
         talents: Vec::new(),
         teleports: Vec::new(),
         glyphs: Vec::new(),
+        clock: None,
     }
 }
 

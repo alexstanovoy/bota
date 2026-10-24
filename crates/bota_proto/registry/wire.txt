@@ -495,3 +495,39 @@ field EventKind::Died 4 bounty: Option<i32>
 field GlyphView 3 ready_after: Option<u32>
 field TalentView 5 may_learn: Option<Talents>
 field TalentView 6 may_learn_attribute_bonus: Option<bool>
+variant Cheat 6 LevelBots {}
+field Cheat::LevelBots 0 count: u8
+variant Cheat 7 Wtf {}
+field Cheat::Wtf 0 on: bool
+variant Cheat 8 Respawn
+variant Cheat 9 CreateHero {}
+field Cheat::CreateHero 0 hero: HeroId
+field Cheat::CreateHero 1 enemy: bool
+field Cheat::CreateHero 2 at: Vec2
+variant Cheat 10 SpawnCreeps
+variant Cheat 11 CreepSpawning {}
+field Cheat::CreepSpawning 0 on: bool
+variant Cheat 12 SpawnNeutrals
+variant Cheat 13 KillCreeps {}
+field Cheat::KillCreeps 0 which: CreepSide
+variant Cheat 14 StartGame
+variant Cheat 15 AllVision {}
+field Cheat::AllVision 0 on: bool
+variant Cheat 16 Invulnerable {}
+field Cheat::Invulnerable 0 on: bool
+variant Cheat 17 Teleport {}
+field Cheat::Teleport 0 at: Vec2
+variant Cheat 18 ResetHero
+variant Cheat 19 TimeOfDay {}
+field Cheat::TimeOfDay 0 night: bool
+variant Cheat 20 CreateCreeps {}
+field Cheat::CreateCreeps 0 enemy: bool
+field Cheat::CreateCreeps 1 at: Vec2
+field ClockShift 0 game: u32
+field ClockShift 1 day: u32
+variant CreepSide 0 Radiant
+variant CreepSide 1 Dire
+variant CreepSide 2 Neutral
+variant CreepSide 3 All
+field MatchInfo 13 cheats: bool
+field WorldView 15 clock: Option<ClockShift>

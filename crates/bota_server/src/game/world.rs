@@ -34,6 +34,17 @@ pub struct World {
     pub winner: Option<Team>,
     /// Whether cheat orders are honoured.
     pub cheats: bool,
+    /// Whether abilities and items cost no mana and leave no cooldown, for
+    /// every unit (the `-wtf` cheat).
+    pub wtf: bool,
+    /// Whether lane waves and neutral camps keep from spawning on their
+    /// clocks (the `-disablecreepspawn` cheat).
+    pub creeps_halted: bool,
+    /// Whether each side sees what either sees (the `-allvision` cheat).
+    pub all_vision: bool,
+    /// How far cheats moved the game clock and the time of day ahead of the
+    /// tick (`-startgame`, the night toggle).
+    pub clock_shift: bota_proto::ClockShift,
     /// Whether structures keep at least 1 hp and never fall.
     pub immortal_structures: bool,
     /// Whether heroes keep at least 1 hp and never die.
@@ -245,6 +256,10 @@ impl World {
             shop_stock: crate::game::fresh_stock(),
             winner: None,
             cheats: false,
+            wtf: false,
+            creeps_halted: false,
+            all_vision: false,
+            clock_shift: bota_proto::ClockShift::default(),
             immortal_structures: false,
             immortal_heroes: false,
             map: bota_core::map_of(bota_proto::MapId(0)),
@@ -740,6 +755,7 @@ impl World {
     /// Stats worked out afresh, pools following their maxima, and the
     /// structures guarded.
     fn refresh_stats(&mut self) {
+        let night = self.time_of_day().night;
         derive_stats(StatsCx {
             entities: &self.entities,
             def: &self.def,
@@ -753,10 +769,23 @@ impl World {
             stats: &mut self.stats,
             health: &mut self.health,
             mana: &mut self.mana,
-            night: bota_core::time_of_day(self.tick).night,
+            night,
         });
         self.guard_structures();
+        self.guard_cheated_heroes();
         self.wear_backdoor();
+    }
+
+    /// The tick of the game clock: the tick, moved on by `-startgame`. Every
+    /// schedule of the match (waves, camps, the passive gold, the day) runs
+    /// on it.
+    pub fn clock(&self) -> u32 {
+        self.tick.saturating_add(self.clock_shift.game)
+    }
+
+    /// The time of day now, moved on by the night toggle.
+    pub fn time_of_day(&self) -> bota_core::TimeOfDay {
+        bota_core::time_of_day(self.clock().saturating_add(self.clock_shift.day))
     }
 
     /// Who sees what, from where everything stands.
@@ -776,6 +805,9 @@ impl World {
             visibility: &mut self.visibility,
             sight: &mut self.sight_scratch,
         });
+        if self.all_vision {
+            self.share_vision();
+        }
     }
 
     /// Notes what each side's views show as the tick ended: the forest

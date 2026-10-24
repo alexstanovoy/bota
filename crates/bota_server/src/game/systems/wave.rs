@@ -3,18 +3,27 @@
 use bota_core::{
     CreepRank, FLAGBEARER_CREEP, MEGA_MELEE_CREEP, MEGA_RANGED_CREEP, MELEE_CREEP, RANGED_CREEP,
     SIEGE_CREEP, SUPER_MELEE_CREEP, SUPER_RANGED_CREEP, SUPER_SIEGE_CREEP, StructureId, UnitDef,
-    WavePlan, creep_spawn_pos, rules, spawn_offsets, team_index, wave_at, wave_plan,
+    WavePlan, creep_spawn_pos, latest_wave, rules, spawn_offsets, team_index, wave_at, wave_plan,
 };
 use bota_proto::{Team, Vec2};
 
 use crate::game::{Entity, March, Purpose, UnitOrder, World, advance_waypoint};
 
 impl World {
-    /// Puts a wave in each enabled lane when the clock calls for one.
+    /// Puts a wave in each enabled lane when the clock calls for one, unless
+    /// a cheat holds the creeps back.
     pub fn spawn_waves(&mut self) {
-        let Some(wave) = wave_at(self.tick) else {
+        if self.creeps_halted {
+            return;
+        }
+        let Some(wave) = wave_at(self.clock()) else {
             return;
         };
+        self.spawn_wave(wave);
+    }
+
+    /// Puts wave `wave` in each enabled lane now.
+    pub(crate) fn spawn_wave(&mut self, wave: u32) {
         let plan = wave_plan(wave);
         let map = self.map;
         for team in [Team::Radiant, Team::Dire] {
@@ -35,6 +44,44 @@ impl World {
                     self.spawn_creep(def, team, pos, lane, plan.upgrades);
                 }
             }
+        }
+        self.settle();
+    }
+
+    /// Puts a wave of a side's lane creeps, as strong as the wave due now,
+    /// at a spot: they march the lane whose route passes nearest, on from
+    /// its waypoint nearest the spot.
+    pub(crate) fn spawn_wave_at(&mut self, team: Team, at: Vec2) {
+        let side = team_index(team);
+        let lanes = self.map.wave_lanes;
+        let routes = self.walked_lanes();
+        let nearest = lanes
+            .iter()
+            .flat_map(|&lane| {
+                routes[side][usize::from(lane)]
+                    .iter()
+                    .enumerate()
+                    .map(move |(index, waypoint)| (waypoint.distance_squared(at), lane, index))
+            })
+            .min_by_key(|&(distance, lane, index)| (distance, lane, index));
+        let Some((_, lane, index)) = nearest else {
+            return;
+        };
+        let route = &self.walked_lanes()[side][usize::from(lane)];
+        let forward = route.get(index + 1).map_or(Vec2::ZERO, |next| *next - at);
+        let plan = wave_plan(latest_wave(self.clock()).unwrap_or(1));
+        let offsets = spawn_offsets(&plan, forward);
+        let flag_slot = self.flag_slot(plan.melee);
+        let ranks = self.wave_creep_ranks(team, lane);
+        for (place, def) in wave_ranks(&plan, flag_slot, ranks).into_iter().enumerate() {
+            let pos = at + offsets.get(place).copied().unwrap_or(Vec2::ZERO);
+            let creep = self.spawn_creep(def, team, pos, lane, plan.upgrades);
+            self.march.insert(
+                creep,
+                March {
+                    next: u16::try_from(index).unwrap_or(u16::MAX),
+                },
+            );
         }
         self.settle();
     }

@@ -21,6 +21,7 @@ fn info(shop: Vec<ShopEntry>) -> MatchInfo {
         shop,
         fountains: [Vec2::ZERO; 2],
         shop_range: 0,
+        cheats: false,
     }
 }
 

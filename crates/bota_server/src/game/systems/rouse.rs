@@ -192,7 +192,7 @@ impl World {
     /// already has an enemy lane creep or a neutral within its acquisition, or
     /// that stands near one of its own tier-one towers.
     fn aggroable_yet(&self, creep: Entity) -> bool {
-        if self.tick >= rules::FREE_AGGRO_TICK {
+        if self.clock() >= rules::FREE_AGGRO_TICK {
             return true;
         }
         let (Some(side), Some(at), Some(reach)) = (

@@ -18,10 +18,15 @@ impl World {
     /// A camp with a unit standing in its box puts nothing out.
     pub fn fill_camps(&mut self) {
         self.raise_neutrals();
-        if !neutral_spawn_due(self.tick) {
+        if self.creeps_halted || !neutral_spawn_due(self.clock()) {
             return;
         }
-        let upgrades = jungle_upgrades(self.tick);
+        self.fill_camps_now();
+    }
+
+    /// Fills every camp with nothing in its spawn box, now.
+    pub(crate) fn fill_camps_now(&mut self) {
+        let upgrades = jungle_upgrades(self.clock());
         for (index, camp) in self.map.camps.iter().enumerate() {
             let index = u8::try_from(index).expect("a map holds fewer than 256 camps");
             if camp.flooded && self.evolves_now(camp) {
@@ -138,7 +143,7 @@ impl World {
     /// Raises every neutral standing to the upgrades the clock has reached:
     /// Dota's upgrades reach the living, not only those spawned after.
     fn raise_neutrals(&mut self) {
-        let now = jungle_upgrades(self.tick);
+        let now = jungle_upgrades(self.clock());
         if self.tick == 0 || now == jungle_upgrades(self.tick - 1) {
             return;
         }
@@ -175,7 +180,7 @@ impl World {
     pub fn tick_jungle(&mut self) {
         let guard = rules::units(rules::NEUTRAL_GUARD_DISTANCE);
         let back = rules::units(rules::NEUTRAL_RETURN);
-        let night = bota_core::time_of_day(self.tick).night;
+        let night = self.time_of_day().night;
         let entities = self.take_entity_snapshot();
         let mut wakers = std::mem::take(&mut self.jungle_spots);
         let mut laid = false;

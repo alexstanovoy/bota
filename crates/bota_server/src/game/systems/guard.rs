@@ -77,4 +77,17 @@ impl World {
             }
         }
     }
+
+    /// Makes untouchable every hero whose seat a cheat made invulnerable.
+    pub fn guard_cheated_heroes(&mut self) {
+        for index in 0..self.seats.len() {
+            let seat = &self.seats[index];
+            if !seat.invulnerable {
+                continue;
+            }
+            if let Some(stats) = seat.unit.and_then(|unit| self.stats.get_mut(unit)) {
+                stats.invulnerable = true;
+            }
+        }
+    }
 }

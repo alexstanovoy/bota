@@ -27,6 +27,7 @@ pub fn match_start(tick_rate: u16) -> ReplayRecord {
             shop: Vec::new(),
             fountains: [Vec2::ZERO, Vec2::ZERO],
             shop_range: 0,
+            cheats: false,
         },
     })
 }
@@ -68,6 +69,7 @@ pub fn snapshot(tick: u32) -> ReplayRecord {
             talents: Vec::new(),
             teleports: Vec::new(),
             glyphs: Vec::new(),
+            clock: None,
             felled_trees: Vec::new(),
             planted_trees: Vec::new(),
         },

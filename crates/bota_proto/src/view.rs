@@ -600,12 +600,39 @@ pub struct WorldView {
     /// [`SlotId`].
     pub teleports: Vec<TeleportView>,
     /// The Glyph of Fortification of both sides, sorted by [`Team`]: the
-    /// viewing side's in full, the other's without its cooldown. Last on the
-    /// wire.
+    /// viewing side's in full, the other's without its cooldown.
     pub glyphs: Vec<GlyphView>,
+    /// How far cheats moved the clocks, absent while they never did. Last on
+    /// the wire.
+    pub clock: Option<ClockShift>,
+}
+
+/// How far cheats moved the clocks of a match: the game clock (`-startgame`)
+/// and, past it, the time of day (Demo Hero's night toggle). Both only ever
+/// go forward.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub struct ClockShift {
+    /// Ticks the game clock runs ahead of the tick.
+    pub game: u32,
+    /// Ticks the time of day runs ahead of the game clock.
+    pub day: u32,
 }
 
 impl WorldView {
+    /// The tick of the game clock: the view's tick, moved on by
+    /// `-startgame`. The game time a clock shows is this less
+    /// [`MatchInfo::pregame_ticks`](crate::MatchInfo::pregame_ticks).
+    pub fn game_tick(&self) -> u32 {
+        self.tick
+            .saturating_add(self.clock.map_or(0, |shift| shift.game))
+    }
+
+    /// The tick the time of day is read off (`bota_core::time_of_day`).
+    pub fn day_tick(&self) -> u32 {
+        self.game_tick()
+            .saturating_add(self.clock.map_or(0, |shift| shift.day))
+    }
+
     /// Calls `visit` on every entity handle the view carries, those of its
     /// skipped ticks' events included: the one walk that puts a side's own
     /// names into a view, so a field that adds a handle is walked here.

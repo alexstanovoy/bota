@@ -42,7 +42,7 @@ impl World {
                 brads: (first + raised * 65536 / i32::from(count)) as u16,
             };
             let at = point_ahead(from, facing, rules::units(SUMMON_RING));
-            let unit = self.spawn_neutral(kind, at, home.camp, jungle_upgrades(self.tick));
+            let unit = self.spawn_neutral(kind, at, home.camp, jungle_upgrades(self.clock()));
             self.camp_home.insert(
                 unit,
                 CampHome {

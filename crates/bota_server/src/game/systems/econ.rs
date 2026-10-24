@@ -25,10 +25,10 @@ impl World {
     /// Hands out the gold that arrives on its own, to every seat: what
     /// [`passive_gold_by`] owes for this tick of the clock.
     pub fn passive_gold(&mut self) {
-        if self.tick <= rules::PREGAME_TICKS {
+        if self.clock() <= rules::PREGAME_TICKS {
             return;
         }
-        let since = self.tick - rules::PREGAME_TICKS;
+        let since = self.clock() - rules::PREGAME_TICKS;
         let due = passive_gold_by(since) - passive_gold_by(since - 1);
         if due == 0 {
             return;
@@ -385,7 +385,6 @@ impl World {
     /// Runs down every respawn timer and puts the heroes back at their
     /// fountains.
     pub fn tick_respawns(&mut self) {
-        let map = self.map;
         for index in 0..self.seats.len() {
             if self.seats[index].unit.is_some() {
                 continue;
@@ -394,25 +393,33 @@ impl World {
             if self.seats[index].respawn_left > 0 {
                 continue;
             }
-            let (team, slot, hero, level) = (
-                self.seats[index].team,
-                self.seats[index].slot,
-                self.seats[index].hero,
-                self.seats[index].level,
-            );
-            let at = hero_spawn_pos(map, team);
-            let unit = self.spawn_hero(team, at, slot, hero);
-            self.level.insert(unit, Level(level));
-            if let Some(kept) = self.seats[index].kept.take() {
-                self.abilities.insert(unit, kept.book);
-                self.inventory.insert(unit, kept.bag);
-                for held in kept.modifiers.0 {
-                    self.put_modifier(unit, held);
-                }
-            }
-            self.seats[index].unit = Some(unit);
-            self.settle();
+            self.respawn(index);
         }
+    }
+
+    /// Puts a seat's fallen hero back at its fountain now, with what it
+    /// left behind.
+    pub(crate) fn respawn(&mut self, index: usize) {
+        let map = self.map;
+        let (team, slot, hero, level) = (
+            self.seats[index].team,
+            self.seats[index].slot,
+            self.seats[index].hero,
+            self.seats[index].level,
+        );
+        let at = hero_spawn_pos(map, team);
+        let unit = self.spawn_hero(team, at, slot, hero);
+        self.level.insert(unit, Level(level));
+        if let Some(kept) = self.seats[index].kept.take() {
+            self.abilities.insert(unit, kept.book);
+            self.inventory.insert(unit, kept.bag);
+            for held in kept.modifiers.0 {
+                self.put_modifier(unit, held);
+            }
+        }
+        self.seats[index].respawn_left = 0;
+        self.seats[index].unit = Some(unit);
+        self.settle();
     }
 
     pub fn is_hero(&self, entity: Entity) -> bool {

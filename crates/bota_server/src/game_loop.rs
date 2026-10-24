@@ -205,6 +205,11 @@ pub fn check_opts(opts: &ServerOpts) -> Result<(), String> {
     if opts.reserved.len() > usize::from(u8::MAX) {
         return Err("at most 255 reserved seats".to_owned());
     }
+    // Reserved seats are what a matchmaking service launches: its matches
+    // never cheat. Cheats are for a match its host starts for itself.
+    if opts.cheats && !opts.reserved.is_empty() {
+        return Err("cheats are for a local match: not with reserved seats".to_owned());
+    }
     if opts.pick_time > MAX_PICK_TIME
         || opts.pick_penalty_time > MAX_PICK_TIME
         || opts.tactical_time > MAX_PICK_TIME

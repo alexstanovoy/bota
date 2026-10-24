@@ -218,7 +218,7 @@ impl World {
         self.give_orders(entity);
         self.neutral.insert(entity, kind);
         self.set_neutral_upgrades(entity, upgrades);
-        let level = neutral_ability_level(self.tick);
+        let level = neutral_ability_level(self.clock());
         self.abilities.insert(
             entity,
             AbilityBook {

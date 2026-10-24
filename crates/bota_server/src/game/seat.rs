@@ -114,6 +114,11 @@ pub struct Seat {
     /// Its hero as each side last saw it, Radiant's then Dire's: the level
     /// and experience the other side's scoreboard shows.
     pub sighted: [Sighting; 2],
+    /// A seat a cheat created for its hero alone: driven by no player, and
+    /// no death of it counts against its side.
+    pub created: bool,
+    /// Its hero takes no damage (a cheat), dead and back again.
+    pub invulnerable: bool,
 }
 
 impl Seat {
@@ -145,6 +150,8 @@ impl Seat {
             structure_damage: 0,
             teleport: None,
             sighted: [Sighting::START; 2],
+            created: false,
+            invulnerable: false,
         }
     }
 }

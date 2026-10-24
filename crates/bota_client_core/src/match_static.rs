@@ -25,6 +25,8 @@ pub struct MatchMetadata {
     pub terrain_cells: u32,
     pub mode: TickMode,
     pub seats: u8,
+    /// Whether the match honours cheat orders.
+    pub cheats: bool,
 }
 
 /// The validated, immutable inputs of a match: shared by every session of it.
@@ -63,6 +65,7 @@ impl MatchStatic {
                 terrain_cells: info.terrain_cells,
                 mode: info.mode,
                 seats: info.picks.len() as u8,
+                cheats: info.cheats,
             },
             roster,
             trees: info.trees.clone(),

@@ -80,13 +80,20 @@ impl World {
 
     /// A base cooldown after the entity's cooldown rate.
     pub fn cooldown_after_rate(&self, entity: Entity, base: u32) -> u32 {
+        if self.wtf {
+            return 0;
+        }
         let rate = self.rate_of(Some(entity), |stats| stats.cooldown_rate_bp);
         cooldown_after(base, rate)
     }
 
     /// The mana cost rate a unit's projections and charges carry. Nominal
     /// when there is no body or it has no stats.
+    /// Nothing at all under `-wtf`: every mana cost comes to nothing.
     pub(crate) fn mana_cost_rate_of(&self, entity: Option<Entity>) -> i32 {
+        if self.wtf {
+            return 0;
+        }
         self.rate_of(entity, |stats| stats.mana_cost_rate_bp)
     }
 

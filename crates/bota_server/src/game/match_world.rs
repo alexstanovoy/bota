@@ -1,7 +1,7 @@
 //! The surface a match runs a world through: what the game loop asks of it.
 
 use bota_core::{hero_spawn_pos, item_def, map_of, rules};
-use bota_proto::{Aim, Cheat, MatchStats, Order, RejectReason, SlotId, SlotStats, Target, Team};
+use bota_proto::{Aim, MatchStats, Order, RejectReason, SlotId, SlotStats, Target, Team};
 
 use crate::game::{
     ActionPhase, ActionState, BAG_SLOTS, Command, Entity, Event, MatchConfig, MatchRng,
@@ -145,7 +145,7 @@ impl World {
                 self.buy(seat, item, events);
             }
             Order::Cheat { cheat } => {
-                self.cheat(seat, unit, cheat, events);
+                self.cheat(seat, Some(unit), cheat, events);
             }
             order if self.is_channelling(unit) && self.ignores_channel(unit, &order) => {
                 self.take_body_order(unit, order);
@@ -330,24 +330,6 @@ impl World {
         self.seats.iter().find(|s| s.slot == slot)
     }
 
-    /// The unit a cheat names, or why it cannot land there.
-    ///
-    /// Nothing names the unit the cheat was issued for. Only something that
-    /// is a unit can be aimed at; a position names nothing at all.
-    pub fn cheat_target(&self, unit: Entity, target: Target) -> Result<Entity, RejectReason> {
-        match target {
-            Target::None => Ok(unit),
-            Target::Unit(id) => {
-                let mark = self.of_wire(id).ok_or(RejectReason::UnknownTarget)?;
-                if self.def.get(mark).is_none() {
-                    return Err(RejectReason::UnknownTarget);
-                }
-                Ok(mark)
-            }
-            Target::Pos(_) => Err(RejectReason::WrongTargetKind),
-        }
-    }
-
     /// Whether a seat may issue an order right now.
     ///
     /// A seat with no body standing may order nothing, and a target it cannot
@@ -401,7 +383,7 @@ impl World {
                 .swap_refusal(unit, seat, usize::from(from.0), usize::from(to.0))
                 .map_or(Ok(()), Err),
             Order::Use { slot, target } => self.check_use(unit, seat, usize::from(slot.0), target),
-            Order::Cheat { cheat } => self.check_cheat(unit, cheat),
+            Order::Cheat { cheat } => self.check_cheat(slot, Some(unit), cheat),
             Order::LearnTalent { talent } => self
                 .can_learn_talent(unit, *talent)
                 .then_some(())
@@ -574,6 +556,7 @@ impl World {
         match order {
             Order::Buy { item } => self.check_buy(seat, *item),
             Order::Sell { slot } => self.sale_while_down(seat, usize::from(slot.0)).map(|_| ()),
+            Order::Cheat { cheat } => self.check_cheat(seat.slot, None, cheat),
             _ => Err(RejectReason::HeroDead),
         }
     }
@@ -692,31 +675,6 @@ impl World {
         }
         if aim == bota_proto::Aim::Building && self.scroll_destination(unit, *target).is_none() {
             return Err(RejectReason::WrongTargetKind);
-        }
-        Ok(())
-    }
-
-    /// Whether a cheat may be issued: cheats on, and a modifier cheat
-    /// bounded and aimed at a unit.
-    fn check_cheat(&self, unit: Entity, cheat: &Cheat) -> Result<(), RejectReason> {
-        if !self.cheats {
-            return Err(RejectReason::NoCheats);
-        }
-        match cheat {
-            Cheat::ApplyModifier {
-                target,
-                spec,
-                ticks,
-            } => {
-                if !spec.is_bounded() || !bota_proto::modifier_ticks_bounded(*ticks) {
-                    return Err(RejectReason::BadCheat);
-                }
-                self.cheat_target(unit, *target)?;
-            }
-            Cheat::ClearModifiers { target } => {
-                self.cheat_target(unit, *target)?;
-            }
-            _ => {}
         }
         Ok(())
     }

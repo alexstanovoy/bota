@@ -910,6 +910,7 @@ impl World {
                 self.buy(slot, item, events);
             }
             bota_proto::Order::Sell { slot: at } => self.sell_while_down(slot, usize::from(at.0)),
+            bota_proto::Order::Cheat { cheat } => self.cheat(slot, None, cheat, events),
             _ => {}
         }
     }

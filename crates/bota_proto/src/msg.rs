@@ -145,6 +145,10 @@ pub struct MatchInfo {
     /// How close to its own fountain a hero counts as standing in the home
     /// shop, in world units.
     pub shop_range: i32,
+    /// Whether the match honours cheat orders, as its host set it: a client
+    /// and a replay tell a cheat match by it, as Dota marks one. Last on the
+    /// wire.
+    pub cheats: bool,
 }
 
 /// Why the server refused an order, or a [`ClientMsg::Hello`].

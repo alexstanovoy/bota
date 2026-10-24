@@ -344,7 +344,7 @@ fn an_unbounded_cheat_is_turned_away_even_when_it_skips_the_gate() {
             spec,
             ticks,
         };
-        world.cheat(SlotId(0), hero, apply, &mut Vec::new());
+        world.cheat(SlotId(0), Some(hero), apply, &mut Vec::new());
         assert!(!world.applied.contains(hero), "{case}");
     }
 }

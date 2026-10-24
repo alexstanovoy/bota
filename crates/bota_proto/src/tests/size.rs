@@ -150,5 +150,6 @@ fn an_empty_view_costs_almost_nothing() {
         view: empty_world_view(),
     };
     let len = encoded_len(&msg);
-    assert!(len <= 20, "an empty snapshot cost {len} bytes");
+    // The clock shift's absence is its one byte.
+    assert!(len <= 21, "an empty snapshot cost {len} bytes");
 }

@@ -5,7 +5,7 @@
 //! [`ClientMsg::Order::queue`](crate::ClientMsg::Order) and the
 //! [`contract`](crate::contract).
 
-use crate::{AbilitySlot, EntityId, ItemId, ItemSlot, TalentSlot, Vec2};
+use crate::{AbilitySlot, EntityId, HeroId, ItemId, ItemSlot, TalentSlot, Vec2};
 use serde::{Deserialize, Serialize};
 
 /// Where an order is aimed.
@@ -167,6 +167,95 @@ pub enum Cheat {
         /// for.
         target: Target,
     },
+    /// Every hero no player drives (one a cheat created) goes up so many
+    /// levels, to the cap at most (Dota's `-levelbots`).
+    LevelBots {
+        /// How many.
+        count: u8,
+    },
+    /// Abilities and items cost no mana and leave no cooldown, for every
+    /// unit (Dota's `-wtf`, with a refresh), or do again (`-unwtf`).
+    Wtf {
+        /// Whether they are free.
+        on: bool,
+    },
+    /// The seat's hero stands up at its fountain at once with full pools,
+    /// dead or alive (Dota's `-respawn`).
+    Respawn,
+    /// A hero created where told, driven by no player: on the seat's side,
+    /// or the other (Dota's `-createhero NAME [enemy]`).
+    CreateHero {
+        hero: HeroId,
+        /// On the other side.
+        enemy: bool,
+        /// Where it stands up: the open ground nearest this spot.
+        at: Vec2,
+    },
+    /// A wave in every lane for both sides now (Dota's `-spawncreeps`).
+    SpawnCreeps,
+    /// Lane waves and neutral camps spawn on their clocks, or not at all
+    /// (Dota's `-enablecreepspawn` / `-disablecreepspawn`).
+    CreepSpawning {
+        /// Whether they spawn.
+        on: bool,
+    },
+    /// Every neutral camp with nothing in its spawn box fills now (Dota's
+    /// `-spawnneutrals`).
+    SpawnNeutrals,
+    /// Every creep of a kind is taken away, with no bounty and nothing done
+    /// on its death (Dota's `-killcreeps`).
+    KillCreeps {
+        /// Whose.
+        which: CreepSide,
+    },
+    /// The pregame ends now: the game clock jumps to the horn (Dota's
+    /// `-startgame`). Nothing once the game has begun.
+    StartGame,
+    /// Each side sees what either sees (Dota's `-allvision`), or its own
+    /// again (`-normalvision`).
+    AllVision {
+        /// Whether the sides share it.
+        on: bool,
+    },
+    /// The seat's hero takes no damage, dead and back again, until turned
+    /// off (Dota's Demo Hero's Invulnerable).
+    Invulnerable {
+        /// Whether it is.
+        on: bool,
+    },
+    /// The seat's hero moves to the open ground nearest a spot at once
+    /// (Dota's `-teleport`).
+    Teleport {
+        /// Where to.
+        at: Vec2,
+    },
+    /// The seat's hero starts over at its fountain: level one, the starting
+    /// gold, nothing carried or stashed (Dota's Demo Hero's Reset Hero).
+    ResetHero,
+    /// Day breaks or night falls now, the cycle going on from there (Dota's
+    /// Demo Hero's night toggle).
+    TimeOfDay {
+        /// Whether it is night from now on.
+        night: bool,
+    },
+    /// A creep camp's worth of lane creeps of the seat's side, or the
+    /// other's, at a spot, marching the nearest lane from there (Dota's
+    /// Demo Hero's creeps spawned at a spot).
+    CreateCreeps {
+        /// On the other side.
+        enemy: bool,
+        /// Where they stand up.
+        at: Vec2,
+    },
+}
+
+/// Whose creeps a [`Cheat::KillCreeps`] takes away.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum CreepSide {
+    Radiant,
+    Dire,
+    Neutral,
+    All,
 }
 
 /// A single instruction to one unit a seat drives.
@@ -305,10 +394,13 @@ pub enum Order {
 
 impl Order {
     /// Whether the order needs the hero standing when it names no unit: all
-    /// but buying, selling (from the stash) and the Glyph, which a seat
-    /// whose hero lies dead may still give.
+    /// but buying, selling (from the stash), the Glyph and a cheat (as
+    /// Dota's `-respawn`), which a seat whose hero lies dead may still give.
     pub const fn needs_body(&self) -> bool {
-        !matches!(self, Order::Buy { .. } | Order::Sell { .. } | Order::Glyph)
+        !matches!(
+            self,
+            Order::Buy { .. } | Order::Sell { .. } | Order::Glyph | Order::Cheat { .. }
+        )
     }
 
     /// Whether the order waits its turn in its unit's queue when it is given
@@ -351,7 +443,25 @@ impl Order {
             } => target,
             Order::Cheat {
                 cheat:
-                    Cheat::Gold { .. } | Cheat::Levels { .. } | Cheat::Refresh | Cheat::Item { .. },
+                    Cheat::Gold { .. }
+                    | Cheat::Levels { .. }
+                    | Cheat::Refresh
+                    | Cheat::Item { .. }
+                    | Cheat::LevelBots { .. }
+                    | Cheat::Wtf { .. }
+                    | Cheat::Respawn
+                    | Cheat::CreateHero { .. }
+                    | Cheat::SpawnCreeps
+                    | Cheat::CreepSpawning { .. }
+                    | Cheat::SpawnNeutrals
+                    | Cheat::KillCreeps { .. }
+                    | Cheat::StartGame
+                    | Cheat::AllVision { .. }
+                    | Cheat::Invulnerable { .. }
+                    | Cheat::Teleport { .. }
+                    | Cheat::ResetHero
+                    | Cheat::TimeOfDay { .. }
+                    | Cheat::CreateCreeps { .. },
             }
             | Order::Buy { .. }
             | Order::Sell { .. }

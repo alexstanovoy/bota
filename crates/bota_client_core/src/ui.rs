@@ -4,7 +4,6 @@
 
 mod app;
 mod chat;
-mod console;
 mod derive;
 mod events;
 mod intent;
@@ -18,7 +17,6 @@ mod tests;
 
 pub use app::*;
 pub use chat::*;
-pub use console::*;
 pub use derive::*;
 pub use intent::*;
 pub use replay::*;

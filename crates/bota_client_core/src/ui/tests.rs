@@ -11,7 +11,7 @@ use bota_proto::{
 #[test]
 fn the_console_turns_a_typed_line_into_a_cheat_order() {
     use bota_proto::Cheat;
-    let parse = crate::ui::console::parse_console;
+    let parse = crate::commands::parse_console;
     for (line, cheat) in [
         ("-gold 500", Cheat::Gold { amount: 500 }),
         ("gold", Cheat::Gold { amount: 1000 }),
@@ -411,6 +411,7 @@ fn a_tick(tick: u32, units: Vec<UnitView>, players: Vec<PlayerView>) -> WorldVie
         talents: Vec::new(),
         teleports: Vec::new(),
         glyphs: Vec::new(),
+        clock: None,
     }
 }
 
@@ -626,6 +627,7 @@ fn a_match_start() -> bota_proto::ServerMsg {
             shop: Vec::new(),
             fountains: [Vec2::ZERO; 2],
             shop_range: 0,
+            cheats: false,
         },
     }
 }

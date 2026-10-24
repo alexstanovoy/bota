@@ -39,6 +39,7 @@
 mod blurb;
 mod catalog;
 mod chat;
+mod commands;
 mod handshake;
 mod lasthit;
 mod latency;
@@ -68,6 +69,7 @@ mod ws_frame;
 
 pub use catalog::*;
 pub use chat::*;
+pub use commands::*;
 pub use handshake::*;
 pub use lasthit::*;
 pub use latency::*;

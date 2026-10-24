@@ -296,10 +296,11 @@ impl World {
             && self.map.death_limit > 0
             && self.winner.is_none()
         {
+            // A hero a cheat created dies at no cost to its side.
             let deaths = self
                 .seats
                 .iter()
-                .filter(|seat| seat.team == team)
+                .filter(|seat| seat.team == team && !seat.created)
                 .map(|seat| u32::from(seat.deaths))
                 .sum::<u32>();
             if deaths >= u32::from(self.map.death_limit) {
@@ -315,7 +316,7 @@ impl World {
         let deaths = |team| {
             self.seats
                 .iter()
-                .filter(|seat| seat.team == team)
+                .filter(|seat| seat.team == team && !seat.created)
                 .fold(0u16, |total, seat| total.saturating_add(seat.deaths))
         };
         let lost = [
@@ -324,7 +325,7 @@ impl World {
             (self.map.tower_ends_it && tower_losses[1])
                 || (self.map.death_limit > 0 && deaths(Team::Dire) >= self.map.death_limit),
         ];
-        self.winner = match (self.tick >= MAP2_TICK_CAP, lost) {
+        self.winner = match (self.clock() >= MAP2_TICK_CAP, lost) {
             (true, _) | (false, [true, true]) => Some(Team::Neutral),
             (false, [true, false]) => Some(Team::Dire),
             (false, [false, true]) => Some(Team::Radiant),
@@ -336,7 +337,7 @@ impl World {
         if self.map.id != MAP2_ID {
             return false;
         }
-        if self.tick >= MAP2_TICK_CAP {
+        if self.clock() >= MAP2_TICK_CAP {
             self.winner.get_or_insert(Team::Neutral);
         }
         self.winner.is_some()

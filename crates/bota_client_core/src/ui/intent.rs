@@ -81,6 +81,8 @@ pub enum Intent {
     ToggleReady,
     /// Run a console line.
     Console(String),
+    /// Ask for a cheat (honoured only in a match with cheats on).
+    Cheat(bota_proto::Cheat),
     /// Pause or resume a replay.
     TogglePause,
     /// Play a replay twice as fast, up to 16 times.
@@ -166,10 +168,11 @@ impl App {
                 let ready = self.ready;
                 self.source.send(&ClientMsg::SetReady(ready));
             }
-            Intent::Console(line) => match crate::ui::console::parse_console(&line) {
+            Intent::Console(line) => match crate::commands::parse_console(&line) {
                 Ok(order) => self.send_order(order),
                 Err(why) => self.reject = Some((why, 2.5)),
             },
+            Intent::Cheat(cheat) => self.send_order(bota_proto::Order::Cheat { cheat }),
             other => self.act_on_replay(other),
         }
     }
