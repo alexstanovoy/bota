@@ -1021,3 +1021,103 @@ fn a_replay_through_a_seats_eyes_hides_the_other_sides_team_lines() {
     app.pov = Some(SlotId(1));
     assert_eq!(shown(&app), ["dire plans", "gg"]);
 }
+
+/// An app seated in slot 0 (Radiant Pudge) of a match against slot 1 (Dire
+/// Shadow Fiend), shown our hero `idx` 1 standing and the enemy hero `idx`
+/// 2 out of sight but on the scoreboard, as a seat's view tells it.
+fn a_duel_app() -> (App, EntityId, EntityId) {
+    let mut app = a_silent_app();
+    app.my_slot = Some(SlotId(0));
+    let mut start = a_match_start();
+    if let bota_proto::ServerMsg::MatchStart { info } = &mut start {
+        info.picks.push(bota_proto::Pick {
+            slot: SlotId(1),
+            team: Team::Dire,
+            hero: HeroId::SHADOW_FIEND,
+        });
+    }
+    app.handle(start);
+    let ours = owned(1, UnitKind::Hero, Some(SlotId(0)));
+    let theirs = EntityId {
+        idx: 2,
+        generation: 1,
+    };
+    let mut enemy = a_seat(SlotId(1), Some(theirs));
+    enemy.team = Team::Dire;
+    enemy.hero = HeroId::SHADOW_FIEND;
+    let us = ours.id;
+    app.handle(snapshot_of(
+        10,
+        vec![ours],
+        vec![a_seat(SlotId(0), Some(us)), enemy],
+    ));
+    (app, us, theirs)
+}
+
+#[test]
+fn a_hero_slain_in_the_fog_is_fed_by_its_seat_with_its_killer() {
+    let (mut app, us, theirs) = a_duel_app();
+    app.handle(bota_proto::ServerMsg::Events {
+        tick: 10,
+        events: vec![EventKind::Died {
+            unit: theirs,
+            killer: Some(us),
+            denied: false,
+            gold: 200,
+        }],
+    });
+    assert_eq!(
+        app.feed.last().map(|line| line.text.clone()),
+        Some(format!(
+            "{} was slain by {} for 200 gold",
+            app.seat_name(SlotId(1)),
+            app.seat_name(SlotId(0))
+        )),
+        "the feed names the hero never in sight by its seat"
+    );
+}
+
+#[test]
+fn our_hero_slain_from_the_fog_names_the_hero_the_feed_announced() {
+    let (mut app, us, theirs) = a_duel_app();
+    app.handle(bota_proto::ServerMsg::Events {
+        tick: 10,
+        events: vec![EventKind::Died {
+            unit: us,
+            killer: Some(theirs),
+            denied: false,
+            gold: 200,
+        }],
+    });
+    let line = app.feed.last().map(|line| line.text.clone()).expect("fed");
+    assert!(
+        line.contains(&format!("was slain by {}", app.seat_name(SlotId(1)))),
+        "{line}"
+    );
+}
+
+#[test]
+fn our_kill_of_a_creep_never_in_sight_sounds_its_last_hit() {
+    let (mut app, us, _) = a_duel_app();
+    app.cues.clear();
+    app.handle(bota_proto::ServerMsg::Events {
+        tick: 10,
+        events: vec![EventKind::Died {
+            unit: EntityId {
+                idx: 3,
+                generation: 1,
+            },
+            killer: Some(us),
+            denied: false,
+            gold: 40,
+        }],
+    });
+    app.pump(0.0);
+    assert!(
+        app.cues
+            .iter()
+            .any(|cue| cue.kind == crate::ui::app::CueKind::LastHit),
+        "the gold of a kill in the fog is ours, and sounds"
+    );
+    assert!(app.feed.is_empty(), "no hero fell");
+}

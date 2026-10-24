@@ -1,7 +1,7 @@
 //! What the client makes of the events of a tick: floaters, the kill feed,
 //! and cues for the front end.
 
-use bota_proto::{AbilityId, DamageKind, EntityId, EventKind, UnitKind, UnitView};
+use bota_proto::{AbilityId, DamageKind, EntityId, EventKind, SlotId, UnitKind, UnitView};
 
 use crate::ui::app::{App, CueKind, FeedLine, Floater, FloaterKind, MAX_TOLD};
 
@@ -109,12 +109,20 @@ impl App {
 
     /// A unit falling: the gold or the deny mark, the feed line of a hero,
     /// and the cues of it.
+    ///
+    /// A fall is told of a unit never in sight too: a hero's, which Dota's
+    /// feed announces wherever it falls (named by its seat), and a kill of
+    /// this side's own in the fog, whose gold is told: its last hit sounds,
+    /// with no spot to draw a number at.
     fn on_death(&mut self, unit: EntityId, killer: Option<EntityId>, denied: bool, gold: i32) {
-        let Some(victim) = self.freshest(unit) else {
-            return;
-        };
-        let at = (victim.pos.x.to_f32(), victim.pos.y.to_f32());
-        let hero = victim.kind == UnitKind::Hero;
+        let victim = self
+            .freshest(unit)
+            .map(|victim| (victim.pos.x.to_f32(), victim.pos.y.to_f32(), victim.kind));
+        let at = victim.map(|(x, y, _)| (x, y));
+        let hero = victim.map_or_else(
+            || self.seat_of_hero(unit).is_some(),
+            |(_, _, kind)| kind == UnitKind::Hero,
+        );
         if let Some(text) = self.death_line(unit, killer, gold) {
             self.feed.push(FeedLine { text, age: 0.0 });
         }
@@ -126,9 +134,11 @@ impl App {
                 self.cue(CueKind::Deny, 0.9, None);
             }
         } else if gold > 0 && mine {
-            self.float(unit, format!("+{gold}"), FloaterKind::Gold);
+            if victim.is_some() {
+                self.float(unit, format!("+{gold}"), FloaterKind::Gold);
+            }
             if !hero {
-                self.cue(CueKind::LastHit, 0.95, Some(at));
+                self.cue(CueKind::LastHit, 0.95, at);
             }
         }
         if hero {
@@ -136,7 +146,7 @@ impl App {
                 self.cue(CueKind::HeroKill, 1.0, None);
             }
             let gain = if Some(unit) == ears { 1.0 } else { 0.6 };
-            self.cue(CueKind::HeroDeath, gain, Some(at));
+            self.cue(CueKind::HeroDeath, gain, at);
         }
     }
 
@@ -227,27 +237,41 @@ impl App {
 
     /// The kill feed line of a death. Only a hero's death has one.
     fn death_line(&self, unit: EntityId, killer: Option<EntityId>, gold: i32) -> Option<String> {
-        let victim = self.freshest(unit)?;
-        if victim.kind != UnitKind::Hero {
-            return None;
-        }
-        let victim = match victim.owner {
-            Some(slot) => self.seat_name(slot),
-            None => format!("a {:?} hero", victim.team),
+        let victim = match self.freshest(unit) {
+            Some(victim) if victim.kind != UnitKind::Hero => return None,
+            Some(victim) => match victim.owner {
+                Some(slot) => self.seat_name(slot),
+                None => format!("a {:?} hero", victim.team),
+            },
+            None => self.seat_name(self.seat_of_hero(unit)?),
         };
-        let killer_unit = killer.and_then(|k| self.freshest(k));
-        // The feed only tells hero deaths, whose gold is public as in Dota.
-        let by = killer_unit.map(|k| match (k.kind, k.owner) {
-            (UnitKind::Hero, Some(slot)) => self.seat_name(slot),
-            (UnitKind::Tower, _) => format!("the {:?} tower", k.team),
-            (UnitKind::Fountain, _) => format!("the {:?} fountain", k.team),
-            (kind, _) => format!("a {:?} {}", k.team, bota_core::kind_def(kind).name),
+        // The feed only tells hero deaths, whose gold is public as in Dota;
+        // the killer it names may never have been in sight, a hero the feed
+        // named, known by its seat.
+        let by = killer.and_then(|k| match self.freshest(k) {
+            Some(k) => Some(match (k.kind, k.owner) {
+                (UnitKind::Hero, Some(slot)) => self.seat_name(slot),
+                (UnitKind::Tower, _) => format!("the {:?} tower", k.team),
+                (UnitKind::Fountain, _) => format!("the {:?} fountain", k.team),
+                (kind, _) => format!("a {:?} {}", k.team, bota_core::kind_def(kind).name),
+            }),
+            None => self.seat_of_hero(k).map(|slot| self.seat_name(slot)),
         });
         Some(match by {
             Some(by) if gold > 0 => format!("{victim} was slain by {by} for {gold} gold"),
             Some(by) => format!("{victim} was slain by {by}"),
             None => format!("{victim} died"),
         })
+    }
+
+    /// The seat whose hero a unit is or was, by the bodies the scoreboard
+    /// named: a hero is known by its seat even when it was never in sight.
+    fn seat_of_hero(&self, id: EntityId) -> Option<SlotId> {
+        self.view()?
+            .players
+            .iter()
+            .map(|player| player.slot)
+            .find(|slot| self.body_of(*slot) == Some(id))
     }
 
     /// A unit as last seen, in view or out of it.
