@@ -2,9 +2,9 @@
 
 use bota_core::{ModifierKind, ability_mana_cost, effect_def, kind_def, phase_ticks_left, rules};
 use bota_proto::{
-    AbilityId, AbilityView, AggroView, CastView, EffectId, EffectView, Fixed, Inflictor,
-    PlayerView, ProjectileView, StatusFlags, SwingView, TalentSlot, TalentView, Talents, Team,
-    UnitKind, UnitView, WorldView,
+    AbilityId, AbilityView, AggroView, CastView, EffectView, Fixed, Inflictor, PlayerView,
+    ProjectileView, StatusFlags, SwingView, TalentSlot, TalentView, Talents, Team, UnitKind,
+    UnitView, WorldView,
 };
 
 use crate::game::{ActionPhase, ActionState, Entity, Seat, World, item_view, item_views};
@@ -390,7 +390,8 @@ impl World {
             return Some(unit);
         }
         unit.queue.clear();
-        unit.effects.retain(|effect| !own_side_only(effect.id));
+        unit.effects
+            .retain(|effect| effect_def(effect.id).is_none_or(|def| !def.own_side_only));
         if let Some(illusion) = self.illusion.get(entity)
             && let Some(hero) = self.project_unit(viewer, illusion.of)
         {
@@ -479,11 +480,6 @@ impl World {
     }
 }
 
-/// Whether an effect is told to the side of the unit wearing it alone.
-const fn own_side_only(id: EffectId) -> bool {
-    matches!(id, EffectId::ILLUSION)
-}
-
 /// Puts a hero's sheet on the view of an illusion of it: everything that
 /// says what the hero is and holds, leaving the illusion's own body (where
 /// it stands and faces, its health, statuses, effects, cast and queue).
@@ -559,10 +555,9 @@ fn ability_views(book: &crate::game::AbilityBook, mana_rate_bp: i32) -> Vec<Abil
 impl World {
     /// Everything showing on one entity: its active modifiers but those Dota
     /// hides, each with who put it on, while the viewer's units carry that
-    /// one, and with what; and whether it is an illusion.
+    /// one, and with what.
     fn effects_on(&self, viewer: Option<Team>, entity: Entity) -> Vec<EffectView> {
-        let mut on_it: Vec<EffectView> = self
-            .modifiers
+        self.modifiers
             .get(entity)
             .into_iter()
             .flat_map(|on_it| on_it.active())
@@ -578,18 +573,7 @@ impl World {
                 inflictor: held.inflictor,
                 ticks_total: held.ticks_total,
             })
-            .collect();
-        if self.illusion.contains(entity) {
-            on_it.push(EffectView {
-                id: EffectId::ILLUSION,
-                ticks_left: None,
-                stacks: None,
-                caster: None,
-                inflictor: None,
-                ticks_total: None,
-            });
-        }
-        on_it
+            .collect()
     }
 
     /// The cast point an entity stands in: the ability it casts, none for

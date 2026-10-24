@@ -145,8 +145,9 @@
 //! # Illusions
 //!
 //! A side is told which of its own units are illusions: an illusion wears
-//! [`EffectId::ILLUSION`](crate::EffectId::ILLUSION). The other side cannot
-//! tell a hero from its illusions by anything the protocol says:
+//! [`EffectId::ILLUSION`](crate::EffectId::ILLUSION), with the time it has
+//! left and its full length, and is gone when that runs out. The other side
+//! cannot tell a hero from its illusions by anything the protocol says:
 //!
 //! - [`PlayerView::unit`](crate::PlayerView::unit) of the other side's seat
 //!   is absent while illusions of its hero stand. Each of them is a unit of

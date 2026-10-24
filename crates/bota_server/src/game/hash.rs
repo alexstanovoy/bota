@@ -569,6 +569,7 @@ fn hash_modifier_kind(fnv: &mut Fnv, kind: ModifierKind) {
         ModifierKind::BackdoorProtection => fnv.u8(24),
         ModifierKind::Fortified => fnv.u8(25),
         ModifierKind::TimedLife => fnv.u8(30),
+        ModifierKind::Illusion => fnv.u8(33),
         ModifierKind::NeutralUpgrade { count } => {
             fnv.u8(31);
             fnv.u32(count);

@@ -1,6 +1,7 @@
 //! The other side cannot tell a hero from its illusions by anything it is
 //! told; the hero's own side can.
 
+use bota_core::ModifierKind;
 use bota_proto::{
     Cheat, EffectId, EntityId, EventKind, Fixed, Order, OutgoingOrder, RejectReason, ServerMsg,
     SlotId, Target, Team, Vec2, WorldView,
@@ -8,14 +9,17 @@ use bota_proto::{
 
 use super::local::mid_config;
 use super::support::an_empty_spot;
-use crate::game::{Entity, Illusion, MatchConfig, OrderDelay, UnitOrder, World};
+use crate::game::{Entity, Illusion, MatchConfig, Modifier, OrderDelay, UnitOrder, World};
 use crate::local::LocalMatch;
+
+/// How long a stand-in illusion lasts.
+const STAND_IN_TICKS: u32 = 20 * bota_core::rules::TICKS_PER_SECOND;
 
 /// A stand-in for what an illusion maker makes: a body of the hero's seat
 /// and kind at `at`, with the hero's level, abilities, items, modifiers
 /// (its souls among them), health and mana, facing as it does and standing
-/// still, marked as an illusion of it, the other side's aims at the hero
-/// called off.
+/// still, an illusion of it for [`STAND_IN_TICKS`], the other side's aims at
+/// the hero called off.
 fn stand_in_illusion(world: &mut World, hero: Entity, at: Vec2) -> Entity {
     let team = *world.team.get(hero).expect("a side");
     let slot = *world.owner.get(hero).expect("a seat");
@@ -44,6 +48,15 @@ fn stand_in_illusion(world: &mut World, hero: Entity, at: Vec2) -> Entity {
             of: hero,
             made: world.tick,
         },
+    );
+    world.put_modifier(
+        illusion,
+        Modifier::new(
+            ModifierKind::Illusion,
+            Some(hero),
+            None,
+            Some(STAND_IN_TICKS),
+        ),
     );
     world.call_off_aims_at(hero);
     world.settle();
@@ -160,6 +173,42 @@ fn the_other_side_sees_the_same_whichever_body_is_the_hero() {
         .iter()
         .any(|e| e.id == EffectId::ILLUSION);
     assert!(marked, "its own side is told it is an illusion");
+}
+
+/// An illusion lasts as long as what made it says, as Dota's
+/// `modifier_illusion` does: its own side is told the time it has left and
+/// its full length, the other side nothing of it, and when the time runs out
+/// the illusion is gone.
+#[test]
+fn an_illusion_runs_out_and_only_its_own_side_is_told_its_time() {
+    let cfg = mid_config();
+    let (mut local, hero, at) = face_off(&cfg);
+    let illusion = stand_in_illusion(local.world_mut(), hero, at + Vec2::from_ints(200, 0));
+    let step = local.step(&[&[], &[]]).expect("a step");
+    let (own, other) = (view_in(&step[0]), view_in(&step[1]));
+    let mark = own
+        .unit(local.handle_of(0, illusion).expect("its own side knows it"))
+        .expect("its own")
+        .effects
+        .iter()
+        .find(|e| e.id == EffectId::ILLUSION)
+        .copied()
+        .expect("its own side is told it is an illusion");
+    assert_eq!(mark.ticks_total, Some(STAND_IN_TICKS));
+    assert!(mark.ticks_left.is_some_and(|left| left < STAND_IN_TICKS));
+    assert!(
+        other
+            .units
+            .iter()
+            .all(|unit| unit.effects.iter().all(|e| e.id != EffectId::ILLUSION)),
+        "the other side is told nothing of it"
+    );
+
+    for _ in 0..STAND_IN_TICKS {
+        local.step(&[&[], &[]]).expect("a step");
+    }
+    assert!(!local.world().alive(illusion), "the illusion is gone");
+    assert!(local.world().alive(hero), "the hero stands");
 }
 
 #[test]

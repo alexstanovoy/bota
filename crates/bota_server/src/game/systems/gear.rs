@@ -2,7 +2,7 @@
 
 use bota_core::{
     Carried, CarriedItem, ITEMS, ItemDef, Mend, ModifierKind, Pool, Spends, clamp_to_map,
-    fountain_pos, hero_def, item_def, learn_group, move_towards, rules,
+    effect_def, fountain_pos, hero_def, item_def, learn_group, move_towards, rules,
 };
 use bota_proto::{
     AbilityId, Attribute, EventKind, Fixed, HeroId, Inflictor, ItemId, SlotId, Target, Team, Vec2,
@@ -145,7 +145,8 @@ impl World {
                 on_it.0.retain_mut(|held| {
                     held.ticks_left = held.ticks_left.map(|left| left.saturating_sub(1));
                     let over = held.ticks_left == Some(0);
-                    lapsed |= over && held.kind == ModifierKind::TimedLife;
+                    lapsed |= over
+                        && effect_def(held.kind.effect_id()).is_some_and(|def| def.ends_its_wearer);
                     !over
                 });
                 if lapsed {

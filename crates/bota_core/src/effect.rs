@@ -21,6 +21,12 @@ pub struct EffectDef {
     /// Whether no client is ever told of it, as Dota hides a modifier: its
     /// worth shows only in the stats of whatever wears it.
     pub hidden: bool,
+    /// Whether only the side of whatever wears it is told of it, as Dota
+    /// tells the other side nothing of `modifier_illusion`.
+    pub own_side_only: bool,
+    /// Whether whatever wears it is gone when it runs out, as Dota's
+    /// `modifier_kill` and `modifier_illusion` end their units.
+    pub ends_its_wearer: bool,
 }
 
 /// How many effect ids the protocol has ever handed out, retired ones
@@ -35,6 +41,8 @@ const fn buff(name: &'static str) -> EffectDef {
         dispellable: false,
         kept_through_death: false,
         hidden: false,
+        own_side_only: false,
+        ends_its_wearer: false,
     }
 }
 
@@ -136,8 +144,15 @@ pub const EFFECTS: [EffectDef; 63] = [
     buff("MeatShield"),
     debuff("Dismembered"),
     buff("BackdoorProtection"),
-    buff("Illusion"),
-    buff("TimedLife"),
+    EffectDef {
+        own_side_only: true,
+        ends_its_wearer: true,
+        ..buff("Illusion")
+    },
+    EffectDef {
+        ends_its_wearer: true,
+        ..buff("TimedLife")
+    },
     hidden("NeutralUpgrade"),
 ];
 

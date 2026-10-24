@@ -161,6 +161,10 @@ pub enum ModifierKind {
     /// A unit that stands for a while, as Dota's `modifier_kill`: it is gone
     /// when this runs out.
     TimedLife,
+    /// What makes a unit an illusion, as Dota's `modifier_illusion`: put on
+    /// by what made it, for as long as the illusion lasts. The illusion is
+    /// gone when it runs out, and only the illusion's own side is told of it.
+    Illusion,
     /// A building's backdoor protection, worn while it holds: it takes
     /// [`rules::BACKDOOR_DAMAGE_PCT`] percent of the damage that reaches it
     /// and mends what enemy blows took.
@@ -205,6 +209,7 @@ impl ModifierKind {
             ModifierKind::Broken => EffectId::BROKEN,
             ModifierKind::BackdoorProtection => EffectId::BACKDOOR_PROTECTION,
             ModifierKind::TimedLife => EffectId::TIMED_LIFE,
+            ModifierKind::Illusion => EffectId::ILLUSION,
             ModifierKind::Fortified => EffectId::FORTIFIED,
             ModifierKind::NeutralUpgrade { .. } => EffectId::NEUTRAL_UPGRADE,
             ModifierKind::FleshHeap { .. } => EffectId::FLESH_HEAP,

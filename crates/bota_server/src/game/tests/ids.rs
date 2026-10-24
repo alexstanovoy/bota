@@ -99,6 +99,7 @@ fn every_modifier() -> Vec<ModifierKind> {
         ModifierKind::BackdoorProtection,
         ModifierKind::Fortified,
         ModifierKind::TimedLife,
+        ModifierKind::Illusion,
         ModifierKind::NeutralUpgrade { count: 1 },
         ModifierKind::FleshHeap { count: 1 },
         ModifierKind::Souls { count: 1 },
@@ -131,6 +132,7 @@ fn every_modifier() -> Vec<ModifierKind> {
             | ModifierKind::BackdoorProtection
             | ModifierKind::Fortified
             | ModifierKind::TimedLife
+            | ModifierKind::Illusion
             | ModifierKind::NeutralUpgrade { .. }
             | ModifierKind::FleshHeap { .. }
             | ModifierKind::Souls { .. }

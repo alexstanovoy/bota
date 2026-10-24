@@ -306,6 +306,7 @@ fn add_modifiers(
             | ModifierKind::Broken
             | ModifierKind::BackdoorProtection
             | ModifierKind::TimedLife
+            | ModifierKind::Illusion
             | ModifierKind::NeutralUpgrade { .. }
             | ModifierKind::FleshHeap { .. }
             | ModifierKind::Souls { .. }
