@@ -45,6 +45,19 @@ pub struct SightScratch {
     /// Which row of [`SightScratch::rows`] each entity slot was read into,
     /// `u32::MAX` for none: the rows are looked up by entity on every view.
     row_at: Vec<u32>,
+    /// What every entity that moved or came into the world since the pass
+    /// was judged to be seen by where it stood at the tick's end, by entity
+    /// slot: worked out once a tick rather than on every view.
+    judged: Vec<Option<Judged>>,
+}
+
+/// One entity judged afresh against the eyes of the last pass.
+#[derive(Clone, Copy)]
+struct Judged {
+    entity: Entity,
+    at: Option<Vec2>,
+    team: Option<Team>,
+    seen: Visibility,
 }
 
 impl SightScratch {
@@ -123,6 +136,7 @@ pub fn visibility_system(cx: SightCx<'_>) {
         });
     }
     sight.index_rows();
+    sight.judged.clear();
     sight.gather_viewers();
     sight.gather_exposures(exposure, tick, ground);
     for &(side, at) in scroll_sights {
@@ -432,35 +446,90 @@ impl World {
 
     /// Whether a side's views show an entity: what the tick's sight found,
     /// for an entity that stands where that sight found it. One that moved
-    /// since (blinked, was carried, flew) is judged where it now stands,
-    /// against the same eyes, so a view never shows a unit where its side
-    /// could not see it. One put into the world since is shown to its own
-    /// side alone until the next pass, as its row of sight says.
+    /// since (blinked, was carried, flew) or was put into the world since (a
+    /// missile let go, what a fall leaves) is judged where it now stands,
+    /// against the same eyes: a view shows what stands where its side has
+    /// sight, wherever it came from, and never a unit where its side could
+    /// not see it.
     pub fn shows(&self, team: Team, entity: Entity) -> bool {
         let Some(seen) = self.visibility.get(entity) else {
             return false;
         };
         let at = self.pos(entity);
         let side = self.team.get(entity).copied();
-        match self.sight_scratch.row_of(entity) {
-            None => seen.by(team),
-            Some(row) if row.at == at && row.team == side => seen.by(team),
-            Some(_) => {
-                let stats = self.stats.get(entity);
-                let row = SightRow {
-                    entity,
-                    team: side,
-                    at,
-                    vision: Fixed::ZERO,
-                    true_sight: Fixed::ZERO,
-                    kind: self.kind.get(entity).copied(),
-                    hides: stats.is_some_and(|stats| stats.hides),
-                    tier: at.map_or(0, |at| self.ground.tier(at)),
-                    seen: Some(*seen),
-                };
-                self.sight_scratch.sees_row(team, &row, &self.sight_block)
+        let sight = &self.sight_scratch;
+        if sight
+            .row_of(entity)
+            .is_some_and(|row| row.at == at && row.team == side)
+        {
+            return seen.by(team);
+        }
+        let judged = sight
+            .judged
+            .get(entity.index().0 as usize)
+            .copied()
+            .flatten()
+            .filter(|judged| judged.entity == entity && judged.at == at && judged.team == side);
+        match judged {
+            Some(judged) => judged.seen.by(team),
+            None => self.judge(entity, at, side).by(team),
+        }
+    }
+
+    /// The sides that see an entity standing at `at`, judged against the
+    /// eyes of the last pass, see [`World::shows`].
+    fn judge(&self, entity: Entity, at: Option<Vec2>, side: Option<Team>) -> Visibility {
+        let stats = self.stats.get(entity);
+        let row = SightRow {
+            entity,
+            team: side,
+            at,
+            vision: Fixed::ZERO,
+            true_sight: Fixed::ZERO,
+            kind: self.kind.get(entity).copied(),
+            hides: stats.is_some_and(|stats| stats.hides),
+            tier: at.map_or(0, |at| self.ground.tier(at)),
+            seen: None,
+        };
+        let mut seen = Visibility::NONE;
+        for team in [Team::Radiant, Team::Dire, Team::Neutral] {
+            if self.sight_scratch.sees_row(team, &row, &self.sight_block) {
+                seen.add(team);
             }
         }
+        seen
+    }
+
+    /// Judges once every entity that moved or came into the world since the
+    /// tick's pass of sight, for the views and the orders given on them.
+    pub(crate) fn judge_what_moved(&mut self) {
+        let mut judged = std::mem::take(&mut self.sight_scratch.judged);
+        judged.clear();
+        for entity in self.entities.iter() {
+            if self.visibility.get(entity).is_none() {
+                continue;
+            }
+            let at = self.pos(entity);
+            let side = self.team.get(entity).copied();
+            let unmoved = self
+                .sight_scratch
+                .row_of(entity)
+                .is_some_and(|row| row.at == at && row.team == side);
+            if unmoved {
+                continue;
+            }
+            let slot = entity.index().0 as usize;
+            if judged.len() <= slot {
+                judged.resize(slot + 1, None);
+            }
+            judged[slot] = Some(Judged {
+                entity,
+                at,
+                team: side,
+                seen: self.judge(entity, at, side),
+            });
+        }
+        self.sight_scratch.judged = judged;
     }
 
     /// Whether a side sees an entity, from what was worked out this tick.
@@ -470,44 +539,11 @@ impl World {
             .is_some_and(|seen| seen.by(team))
     }
 
-    /// Whether a side sees a unit at this moment, by the rules of the sight
-    /// pass worked out live: its own side always, and a building always;
-    /// past that, where the side's sight reaches its ground, and, for what
-    /// hides, where the side's true sight reaches it as well. A unit gone
-    /// from the world is known to its own side alone.
+    /// Whether a side sees a unit as something befalls it: what its view
+    /// would show of it now, see [`World::shows`]. A unit gone from the
+    /// world is known to its own side alone.
     pub fn sees_now(&self, team: Team, entity: Entity) -> bool {
-        if self.team.get(entity) == Some(&team) {
-            return true;
-        }
-        if !self.entities.contains(entity) {
-            return false;
-        }
-        if team != Team::Neutral
-            && self
-                .kind
-                .get(entity)
-                .is_some_and(|kind| kind_def(*kind).always_seen)
-        {
-            return true;
-        }
-        let Some(at) = self.pos(entity) else {
-            return false;
-        };
-        let hides = self.stats.get(entity).is_some_and(|stats| stats.hides);
-        self.can_see_point(team, at) && (!hides || self.true_sight_reaches(team, at))
-    }
-
-    /// Whether some unit of a side reveals what hides at a point.
-    fn true_sight_reaches(&self, team: Team, at: Vec2) -> bool {
-        self.entities.iter().any(|entity| {
-            self.team.get(entity) == Some(&team)
-                && match (self.pos(entity), self.stats.get(entity)) {
-                    (Some(from), Some(stats)) => {
-                        stats.true_sight > Fixed::ZERO && from.within(at, stats.true_sight)
-                    }
-                    _ => false,
-                }
-        })
+        self.team.get(entity) == Some(&team) || self.shows(team, entity)
     }
 
     /// Who may learn of what befell a unit: its own side, the side `party`

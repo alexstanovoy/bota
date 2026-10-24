@@ -780,6 +780,7 @@ impl World {
     /// where its eyes reach, and the level of every hero they show, for its
     /// scoreboard. Read only by the views.
     fn note_what_is_shown(&mut self) {
+        self.judge_what_moved();
         let sight = &self.sight_scratch;
         let (ground, sight_block) = (&self.ground, &self.sight_block);
         for team in [Team::Radiant, Team::Dire] {

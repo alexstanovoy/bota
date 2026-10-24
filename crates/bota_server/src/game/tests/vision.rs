@@ -956,3 +956,30 @@ fn a_hero_that_blinks_into_sight_is_shown_and_may_be_named_on_that_view() {
         "and an order given on that view may name it"
     );
 }
+
+#[test]
+fn a_missile_let_go_where_a_side_has_sight_is_shown_on_that_very_tick() {
+    let mut world = World::new();
+    hero_at(&mut world, Vec2::from_ints(5000, 5000));
+    world.spawn_unit(&MELEE_CREEP, Team::Radiant, Vec2::from_ints(5100, 5000));
+    let archer = world.spawn_unit(&RANGED_CREEP, Team::Dire, Vec2::from_ints(5500, 5000));
+    world.settle();
+    world.fill_pools(archer);
+    let missile = (0..90)
+        .find_map(|_| {
+            world.step();
+            world.entities.iter().find(|entity| {
+                world.projectile.get(*entity).is_some()
+                    && world.team.get(*entity) == Some(&Team::Dire)
+            })
+        })
+        .expect("the archer lets a missile go");
+    assert!(
+        world
+            .view(Team::Radiant)
+            .projectiles
+            .iter()
+            .any(|shown| shown.id == wire_id(missile)),
+        "the side whose sight it flies in is shown it as it is let go"
+    );
+}

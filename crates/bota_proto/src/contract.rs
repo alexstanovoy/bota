@@ -14,10 +14,12 @@
 //! units; the server alone decides which units a view holds. Who sees what
 //! is worked out once a tick, after its movement; units act on it within
 //! the tick. A view shows the tick as it ended through those eyes: a unit
-//! that moved after them (blinked, was carried, flew) is shown only if they
-//! reach where it now stands, so a unit that leaves a side's sight on a
-//! tick is not shown where it went. Whatever a side's view shows, an order
-//! given on that view may name.
+//! that moved after them (blinked, was carried, flew) or came into the world
+//! after them (a missile let go) is shown when they reach where it now
+//! stands, so a unit that leaves a side's sight on a tick is not shown where
+//! it went, and what arrives in sight is. Whatever a side's view shows, an
+//! order given on that view may name, and an event about a unit is told to
+//! a side whose view would show the unit.
 //!
 //! Three further channels are closed by rule, since a bot that optimises a
 //! score finds any leak a human would shrug off:

@@ -13,6 +13,11 @@ pub(super) fn fixture() -> (World, Entity, Entity) {
     let mut world = World::new();
     let caster = hero(&mut world, Team::Radiant, ORIGIN, SlotId(0));
     let target = hero(&mut world, Team::Dire, TARGET, SlotId(1));
+    // Sight worked out once from where they stand, as the views read it,
+    // and both shown to every side.
+    world.settle();
+    reveal(&mut world, caster);
+    reveal(&mut world, target);
     assert!(world.alive(caster));
     assert!(world.alive(target));
     (world, caster, target)
