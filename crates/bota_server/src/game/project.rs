@@ -47,7 +47,7 @@ impl World {
             }
             projectiles.extend(self.project_projectile(viewer, entity));
             if seen {
-                loot.extend(self.project_loot(entity));
+                loot.extend(self.project_loot(viewer, entity));
             }
         }
         debug_assert!(aggro.iter().all(|entry| {
@@ -333,11 +333,33 @@ impl World {
             source: told(source),
             target: told(target),
             inflictor,
+            seen_by: self.seen_by_sides(viewer, entity, true),
+        })
+    }
+
+    /// Which sides' views hold an entity: told in the view of everything
+    /// alone, from the very rule a side's view is made by. `own_shown` for
+    /// what a side's view holds of its own whether it sees it or not.
+    fn seen_by_sides(
+        &self,
+        viewer: Option<Team>,
+        entity: Entity,
+        own_shown: bool,
+    ) -> Option<bota_proto::SeenBy> {
+        if viewer.is_some() {
+            return None;
+        }
+        let held = |team| {
+            self.viewer_sees(Some(team), entity) || (own_shown && self.own_to(Some(team), entity))
+        };
+        Some(bota_proto::SeenBy {
+            radiant: held(Team::Radiant),
+            dire: held(Team::Dire),
         })
     }
 
     /// One item on the ground, or nothing when the entity is not one.
-    fn project_loot(&self, entity: Entity) -> Option<bota_proto::LootView> {
+    fn project_loot(&self, viewer: Option<Team>, entity: Entity) -> Option<bota_proto::LootView> {
         let crate::game::Loot(stack) = self.loot.get(entity)?;
         let at = self.transform.get(entity)?;
         let def = bota_core::item_def(stack.id);
@@ -348,6 +370,7 @@ impl World {
             charges: def
                 .filter(|def| def.charges > 0 || def.cast_charges > 0)
                 .map(|_| stack.charges),
+            seen_by: self.seen_by_sides(viewer, entity, false),
         })
     }
 
@@ -419,6 +442,7 @@ impl World {
                 i32::from(stats.evasion.num()),
                 i32::from(stats.evasion.den()),
             ),
+            seen_by: self.seen_by_sides(viewer, entity, true),
             collision: hull.map_or(Fixed::ZERO, |h| h.collision),
             bound: hull.map_or(Fixed::ZERO, |h| h.bound),
             vision_radius: stats.vision,

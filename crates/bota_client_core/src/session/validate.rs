@@ -41,6 +41,7 @@ pub(crate) fn snapshot(expect: &Expect<'_>, view: &WorldView) -> Result<(), Sess
         });
     }
     snapshot_limits(view)?;
+    seen_by(view)?;
     skipped_ticks(expect, view)?;
     snapshot_positions(expect.statics.metadata().terrain_cells, view)?;
     units(expect.statics.roster(), view)?;
@@ -54,6 +55,21 @@ pub(crate) fn snapshot(expect: &Expect<'_>, view: &WorldView) -> Result<(), Sess
     match expect.owner {
         Some(owner) => own_state(owner, expect.hero, view),
         None => Ok(()),
+    }
+}
+
+/// Which sides see what is told in a view of the whole map alone: a side's
+/// view that says it breaks the contract (it would tell what the other side
+/// sees).
+fn seen_by(view: &WorldView) -> Result<(), SessionError> {
+    let told = view.units.iter().any(|unit| unit.seen_by.is_some())
+        || view.projectiles.iter().any(|shot| shot.seen_by.is_some())
+        || view.loot.iter().any(|item| item.seen_by.is_some());
+    match view.viewer {
+        Some(_) if told => Err(SessionError::Stream(
+            "a side's view says which sides see what",
+        )),
+        _ => Ok(()),
     }
 }
 

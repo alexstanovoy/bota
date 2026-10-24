@@ -533,3 +533,43 @@ fn a_tier_one_tower_sees_less_far_by_night_than_the_towers_behind_it() {
         assert_eq!(sight_of(tier), 1100, "tier {tier}");
     }
 }
+
+/// The view of everything says which sides see each unit, missile and
+/// ground item exactly as the sides' own views hold them, through a lane
+/// fight in the fog; a side's view never says it.
+#[test]
+fn the_whole_map_says_which_sides_see_what_as_their_views_hold_it() {
+    let config = super::local::mid_config();
+    let mut world = World::for_match(&config, config.rng());
+    let (mut told, mut unseen) = (0, 0);
+    for _ in 0..40 {
+        run(&mut world, 60);
+        let full = world.view_full();
+        let sides = [Team::Radiant, Team::Dire].map(|team| world.view(team));
+        for side in &sides {
+            assert!(side.units.iter().all(|unit| unit.seen_by.is_none()));
+            assert!(side.projectiles.iter().all(|shot| shot.seen_by.is_none()));
+            assert!(side.loot.iter().all(|item| item.seen_by.is_none()));
+        }
+        for (team, side) in [Team::Radiant, Team::Dire].into_iter().zip(&sides) {
+            for unit in &full.units {
+                let seen = unit.seen_by.expect("the whole map says").by(team);
+                assert_eq!(seen, side.units.iter().any(|held| held.id == unit.id));
+                told += 1;
+                unseen += usize::from(!seen);
+            }
+            for shot in &full.projectiles {
+                let seen = shot.seen_by.expect("the whole map says").by(team);
+                assert_eq!(seen, side.projectiles.iter().any(|held| held.id == shot.id));
+            }
+            for item in &full.loot {
+                let seen = item.seen_by.expect("the whole map says").by(team);
+                assert_eq!(seen, side.loot.iter().any(|held| held.id == item.id));
+            }
+        }
+    }
+    assert!(
+        unseen > 0 && unseen < told,
+        "the fog hid some units, not all"
+    );
+}

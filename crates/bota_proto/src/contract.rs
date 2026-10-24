@@ -237,6 +237,12 @@
 //! orders, as late. When the match is over a late spectator is shown its
 //! last tick at once, then the result.
 //!
+//! A view of the whole map (a replay, a fogless spectator) says of every
+//! unit, missile and ground item which sides' views hold it
+//! ([`SeenBy`](crate::SeenBy)): Dota's spectator vision toggle, exact,
+//! with no client working out the fog itself. A side's view never says it:
+//! a side is not told whether the other sees its units.
+//!
 //! As in Dota, players are not told about spectators: a spectator's or a
 //! referee's arrival and departure reach no seat (no
 //! [`ParticipantLeft`](crate::ServerMsg::ParticipantLeft), no lobby sent

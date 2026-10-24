@@ -145,6 +145,7 @@ fn a_unit() -> UnitView {
         queue: Vec::new(),
         status_resist: Fixed::ZERO,
         evasion: Fixed::ZERO,
+        seen_by: None,
         attack_range: Fixed::from_int(600),
         attack_time: 1700,
         attack_point: 500,
@@ -364,6 +365,7 @@ fn a_click_takes_the_ground_item_nearest_the_cursor_and_only_within_reach() {
         pos: Vec2::from_ints(x, y),
         item: ItemId::BOOTS,
         charges: None,
+        seen_by: None,
     };
     let mut view = a_tick(0, Vec::new(), Vec::new());
     view.loot = vec![lying_at(21, 1000, 1000), lying_at(22, 1040, 1000)];

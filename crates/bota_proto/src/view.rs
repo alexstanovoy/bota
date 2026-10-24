@@ -123,6 +123,29 @@ pub struct LootView {
     pub item: ItemId,
     /// Charges left. Absent for an item that has no charges at all.
     pub charges: Option<u8>,
+    /// Which sides see it. Told only in a view of the whole map (a replay,
+    /// a fogless spectator); absent in a side's view. Last on the wire.
+    pub seen_by: Option<SeenBy>,
+}
+
+/// Which sides' views hold something: what Dota's spectator vision toggle
+/// reads. Told only in a view of the whole map, never in a side's view: Dota
+/// does not tell a side whether the other sees its units.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub struct SeenBy {
+    pub radiant: bool,
+    pub dire: bool,
+}
+
+impl SeenBy {
+    /// Whether `team`'s view holds it; the jungle's side views nothing.
+    pub const fn by(self, team: Team) -> bool {
+        match team {
+            Team::Radiant => self.radiant,
+            Team::Dire => self.dire,
+            Team::Neutral => false,
+        }
+    }
 }
 
 /// A unit the viewing team can currently see, or one of its own.
@@ -226,9 +249,12 @@ pub struct UnitView {
     /// Status resistance as a fraction: the share taken off the durations
     /// of stuns, fears and slows put on it.
     pub status_resist: Fixed,
-    /// Evasion as a fraction: the share of attacks at it that miss. Last on
-    /// the wire.
+    /// Evasion as a fraction: the share of attacks at it that miss.
     pub evasion: Fixed,
+    /// Which sides' views hold it: its own side's always, the other's while
+    /// it sees it. Told only in a view of the whole map; absent in a side's
+    /// view. Last on the wire.
+    pub seen_by: Option<SeenBy>,
 }
 
 /// A cast in its cast point.
@@ -306,9 +332,11 @@ pub struct ProjectileView {
     /// Whom it homes on. Absent for one that flies along a line or stands
     /// where it was put, and when that unit is not in the view.
     pub target: Option<EntityId>,
-    /// The ability or item it belongs to. Absent for a plain attack. Last on
-    /// the wire.
+    /// The ability or item it belongs to. Absent for a plain attack.
     pub inflictor: Option<Inflictor>,
+    /// Which sides' views hold it. Told only in a view of the whole map;
+    /// absent in a side's view. Last on the wire.
+    pub seen_by: Option<SeenBy>,
 }
 
 /// The abilities and items of a seat whose hero is dead.

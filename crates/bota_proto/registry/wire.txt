@@ -469,3 +469,8 @@ variant SayRefusal 0 TooFast {}
 field SayRefusal::TooFast 0 retry_in_ms: u32
 variant SayRefusal 1 NotAllowed
 variant SayRefusal 2 Unfit
+field UnitView 40 seen_by: Option<SeenBy>
+field ProjectileView 8 seen_by: Option<SeenBy>
+field LootView 4 seen_by: Option<SeenBy>
+field SeenBy 0 radiant: bool
+field SeenBy 1 dire: bool

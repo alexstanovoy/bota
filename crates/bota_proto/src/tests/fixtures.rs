@@ -49,6 +49,10 @@ pub fn loot_view() -> LootView {
         pos: Vec2::from_ints(6000, 6200),
         item: ItemId(3),
         charges: Some(2),
+        seen_by: Some(SeenBy {
+            radiant: true,
+            dire: false,
+        }),
     }
 }
 
@@ -85,6 +89,10 @@ pub fn hero_unit() -> UnitView {
         ],
         status_resist: Fixed { raw: 6553 },
         evasion: Fixed { raw: 9830 },
+        seen_by: Some(SeenBy {
+            radiant: true,
+            dire: true,
+        }),
         attack_range: fixed(550),
         attack_time: 1700,
         attack_point: 500,
@@ -151,6 +159,7 @@ pub fn creep_unit(idx: u32) -> UnitView {
         queue: Vec::new(),
         status_resist: Fixed::ZERO,
         evasion: Fixed::ZERO,
+        seen_by: None,
         attack_range: fixed(100),
         attack_time: 1000,
         attack_point: 466,
@@ -183,6 +192,7 @@ pub fn projectile() -> ProjectileView {
         source: Some(entity(1)),
         target: Some(entity(2)),
         inflictor: Some(Inflictor::Ability(AbilityId(2))),
+        seen_by: Some(SeenBy::default()),
     }
 }
 
