@@ -1,14 +1,14 @@
 //! The other side cannot tell a hero from its illusions by anything it is
 //! told; the hero's own side can.
 
-use bota_core::ModifierKind;
+use bota_core::{ModifierKind, rules, soul_damage, tower_def};
 use bota_proto::{
     Cheat, EffectId, EntityId, EventKind, Fixed, Order, OutgoingOrder, RejectReason, ServerMsg,
     SlotId, Target, Team, Vec2, WorldView,
 };
 
 use super::local::mid_config;
-use super::support::an_empty_spot;
+use super::support::{an_empty_spot, carries, seated_hero};
 use crate::game::{Entity, Illusion, MatchConfig, Modifier, OrderDelay, UnitOrder, World};
 use crate::local::LocalMatch;
 
@@ -179,6 +179,42 @@ fn the_other_side_sees_the_same_whichever_body_is_the_hero() {
 /// `modifier_illusion` does: its own side is told the time it has left and
 /// its full length, the other side nothing of it, and when the time runs out
 /// the illusion is gone.
+#[test]
+fn an_illusion_by_its_tower_mends_but_takes_none_of_the_bonus_armor_nor_the_souls_damage() {
+    // Liquipedia, Illusions: an illusion negates all of its bonus attack
+    // damage, armor and magic resistance; Buildings: Tower Protection "Only
+    // affects heroes, including illusions".
+    let mut world = World::new();
+    world.spawn_unit(tower_def(1), Team::Radiant, Vec2::from_ints(5000, 5000));
+    let hero = seated_hero(
+        &mut world,
+        Vec2::from_ints(5400, 5000),
+        bota_proto::HeroId::SHADOW_FIEND,
+    );
+    world.set_souls(hero, 10);
+    world.settle();
+    let illusion = stand_in_illusion(&mut world, hero, Vec2::from_ints(5400, 5200));
+    world.step();
+    let guarded = ModifierKind::Guarded {
+        armor: rules::TOWER_AURA_ARMOR[0],
+        hp_per_second: rules::TOWER_AURA_REGEN[0],
+    };
+    assert!(carries(&world, illusion, guarded), "the tower reaches it");
+    let stats = |unit| *world.stats.get(unit).expect("derived");
+    let (real, copy) = (stats(hero), stats(illusion));
+    assert_eq!(
+        copy.armor,
+        real.armor - Fixed::from_int(rules::TOWER_AURA_ARMOR[0]),
+        "its armor without the protection's three"
+    );
+    assert_eq!(
+        real.damage - copy.damage,
+        soul_damage(10, 1),
+        "and its damage without the souls'"
+    );
+    assert_eq!(copy.hp_regen, real.hp_regen, "but the protection mends it");
+}
+
 #[test]
 fn an_illusion_runs_out_and_only_its_own_side_is_told_its_time() {
     let cfg = mid_config();

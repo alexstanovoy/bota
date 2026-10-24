@@ -79,9 +79,16 @@ pub fn derive_stats(cx: StatsCx<'_>) {
         }
         // A broken unit's own passives do nothing: what it has gathered
         // is worth nothing while it lasts.
-        let broken = modifiers
-            .get(entity)
-            .is_some_and(|on_it| on_it.active().any(|held| held.kind == ModifierKind::Broken));
+        let wears = |kind: ModifierKind| {
+            modifiers
+                .get(entity)
+                .is_some_and(|on_it| on_it.active().any(|held| held.kind == kind))
+        };
+        let broken = wears(ModifierKind::Broken);
+        // An illusion takes no bonus attack damage, armor or magic
+        // resistance from anything (Liquipedia, Illusions: their innate
+        // negation of each, 100%).
+        let illusion = wears(ModifierKind::Illusion);
         // Applied changes are folded in first and additively. Items,
         // attributes and every multiplier below land on top of them. A
         // world whose paces are scaled keeps its limits in proportion.
@@ -98,7 +105,7 @@ pub fn derive_stats(cx: StatsCx<'_>) {
         // Dota works movement speed and attack damage out.
         let mut sums = Sums::of(modifiers.get(entity));
         if let Some(carried) = carried {
-            add_carried(&mut now, &mut sums, &carried);
+            add_carried(&mut now, &mut sums, &carried, illusion);
         }
         if let Some(book) = abilities.get(entity) {
             now.attributes +=
@@ -115,12 +122,19 @@ pub fn derive_stats(cx: StatsCx<'_>) {
             add_carried_shares(&mut now, carried);
         }
         if !broken {
-            sums.bonus_damage += soul_damage(held(ModifierKind::souls), levels + 1);
+            sums.bonus_damage += kept(illusion, soul_damage(held(ModifierKind::souls), levels + 1));
         }
         // Every percent change of the pace is summed and taken of the flat
         // pace at once, as Dota works movement speed out.
         if let Some(on_it) = modifiers.get(entity) {
-            add_modifiers(&mut now, &mut sums, on_it, base_armor, kind);
+            let hero = kind.kind == bota_proto::UnitKind::Hero;
+            let wearer = Wearer {
+                base_armor,
+                hero,
+                illusion,
+                sheltered_by_fountain: kind.fountain_shelters,
+            };
+            add_modifiers(&mut now, &mut sums, on_it, wearer);
         }
         if let Some(on_it) = modifiers.get(entity) {
             add_feast(&mut now, &mut sums.pace, on_it, abilities.get(entity));
@@ -283,15 +297,37 @@ fn attack_damage(now: &mut Stats, sums: &Sums) {
     now.damage_spread += now.damage_spread * sums.damage_pct / 100;
 }
 
-/// Adds what the inventory proper carries; its flat damage is a bonus.
-fn add_carried(now: &mut Stats, sums: &mut Sums, carried: &Carried) {
+/// Who wears what is on a unit, as its modifiers read it: `base_armor`, what
+/// a share of its base armor is taken of, whether it is a hero, whether it is
+/// an illusion, and whether the fountain's buff shelters it.
+#[derive(Clone, Copy)]
+struct Wearer {
+    base_armor: Fixed,
+    hero: bool,
+    illusion: bool,
+    sheltered_by_fountain: bool,
+}
+
+/// A bonus as a unit keeps it: an illusion keeps none of a bonus of attack
+/// damage, armor or magic resistance, but every cut of them.
+fn kept<T: Ord + Default>(illusion: bool, bonus: T) -> T {
+    if illusion {
+        bonus.min(T::default())
+    } else {
+        bonus
+    }
+}
+
+/// Adds what the inventory proper carries; its flat damage is a bonus, and
+/// an illusion keeps none of it nor of the armor.
+fn add_carried(now: &mut Stats, sums: &mut Sums, carried: &Carried, illusion: bool) {
     now.attributes += carried.attributes;
     now.max_hp += Fixed::from_int(carried.hp);
     now.max_mana += Fixed::from_int(carried.mana);
-    sums.bonus_damage += carried.damage;
-    now.damage_to_creeps += carried.damage_to_creeps;
+    sums.bonus_damage += kept(illusion, carried.damage);
+    now.damage_to_creeps += kept(illusion, carried.damage_to_creeps);
     now.attack_speed += carried.attack_speed;
-    now.armor += carried.armor;
+    now.armor += kept(illusion, carried.armor);
     now.move_speed += Fixed::from_int(carried.move_speed + carried.lace_speed);
     now.evasion = carried.evasion;
     if now.projectile_speed.is_none() {
@@ -310,16 +346,8 @@ fn add_heap(now: &mut Stats, kept: u32) {
 /// percent change of its pace and of its main attack damage, and its flat
 /// bonus damage, to `sums` (a slow taken off, a haste added). What holds a
 /// unit still, what burns it and what it hands out are read where they are
-/// acted on, not here. `base_armor` is what a share of its base armor is
-/// taken of.
-fn add_modifiers(
-    now: &mut Stats,
-    sums: &mut Sums,
-    on_it: &Modifiers,
-    base_armor: Fixed,
-    kind: &UnitDef,
-) {
-    let hero = kind.kind == bota_proto::UnitKind::Hero;
+/// acted on, not here.
+fn add_modifiers(now: &mut Stats, sums: &mut Sums, on_it: &Modifiers, wearer: Wearer) {
     for held in on_it.active() {
         match held.kind {
             ModifierKind::Spell {
@@ -331,7 +359,7 @@ fn add_modifiers(
             }
             ModifierKind::Spell { ability, level, .. } => {
                 if let Some(buff) = spell_buff(ability) {
-                    add_buff(now, sums, &buff, level, base_armor, hero);
+                    add_buff(now, sums, &buff, level, wearer);
                 }
             }
             ModifierKind::Slowed { pct } => sums.pace.change(-pct.clamp(0, 100)),
@@ -353,18 +381,22 @@ fn add_modifiers(
                     .clamp(rules::MIN_MAGIC_RESIST_BP.into(), rules::NOMINAL_BP.into())
                     as i32;
             }
-            ModifierKind::Guarded { armor, .. } => now.armor += Fixed::from_int(armor),
+            ModifierKind::Guarded { armor, .. } => {
+                now.armor += kept(wearer.illusion, Fixed::from_int(armor));
+            }
             ModifierKind::Inspired {
                 magic_resist_pct, ..
             } => {
-                let let_through =
-                    (rules::NOMINAL_BP - now.magic_resist_bp) * (100 - magic_resist_pct) / 100;
+                let pct = kept(wearer.illusion, magic_resist_pct);
+                let let_through = (rules::NOMINAL_BP - now.magic_resist_bp) * (100 - pct) / 100;
                 now.magic_resist_bp = rules::NOMINAL_BP - let_through;
             }
             ModifierKind::Shielded => now.invulnerable = true,
             // The Rejuvenation Aura's buff (modifier_fountain_aura_buff)
             // makes a unit whose row says so invulnerable.
-            ModifierKind::Fountain { .. } if kind.fountain_shelters => now.invulnerable = true,
+            ModifierKind::Fountain { .. } if wearer.sheltered_by_fountain => {
+                now.invulnerable = true
+            }
             ModifierKind::Phased => now.phased = true,
             ModifierKind::Flying => now.flies = true,
             ModifierKind::Fortified => now.glyph = true,
@@ -395,30 +427,29 @@ fn add_modifiers(
 
 /// What a spell's buff is worth at a level: everything of it but what it
 /// does to regeneration, which [`bota_core::regen`] reads.
-fn add_buff(
-    now: &mut Stats,
-    sums: &mut Sums,
-    buff: &Buff,
-    level: u8,
-    base_armor: Fixed,
-    hero: bool,
-) {
+fn add_buff(now: &mut Stats, sums: &mut Sums, buff: &Buff, level: u8, wearer: Wearer) {
     let of = |stat| buff.get(stat, level);
     sums.pace.change(of(Stat::MovePct));
     now.attack_speed += of(Stat::AttackSpeed);
-    now.armor += Fixed::from_int(of(Stat::Armor));
-    now.armor += base_armor * Fixed::from_ratio(of(Stat::BaseArmorPct), 100);
-    let resist = of(if hero {
-        Stat::MagicResistPct
-    } else {
-        Stat::MagicResistCreepPct
-    });
+    now.armor += kept(wearer.illusion, Fixed::from_int(of(Stat::Armor)));
+    now.armor += kept(
+        wearer.illusion,
+        wearer.base_armor * Fixed::from_ratio(of(Stat::BaseArmorPct), 100),
+    );
+    let resist = kept(
+        wearer.illusion,
+        of(if wearer.hero {
+            Stat::MagicResistPct
+        } else {
+            Stat::MagicResistCreepPct
+        }),
+    );
     if resist != 0 {
         let let_through = (rules::NOMINAL_BP - now.magic_resist_bp) * (100 - resist) / 100;
         now.magic_resist_bp = rules::NOMINAL_BP - let_through;
     }
-    sums.damage_pct += of(Stat::DamagePct);
-    sums.bonus_damage += of(Stat::Damage);
+    sums.damage_pct += kept(wearer.illusion, of(Stat::DamagePct));
+    sums.bonus_damage += kept(wearer.illusion, of(Stat::Damage));
     let outgoing = of(Stat::OutgoingPct) * rules::NOMINAL_BP / 100;
     now.physical_amp_bp += outgoing;
     now.magic_amp_bp += outgoing;
