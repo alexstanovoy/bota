@@ -210,13 +210,9 @@ impl World {
             .collect()
     }
 
-    /// Whether a viewer sees an entity. `None` sees everything.
+    /// Whether a viewer is shown an entity. `None` sees everything.
     fn viewer_sees(&self, viewer: Option<Team>, entity: Entity) -> bool {
-        viewer.is_none_or(|team| {
-            self.visibility
-                .get(entity)
-                .is_some_and(|seen| seen.by(team))
-        })
+        viewer.is_none_or(|team| self.shows(team, entity))
     }
 
     /// Whether an entity is of a viewer's own side.

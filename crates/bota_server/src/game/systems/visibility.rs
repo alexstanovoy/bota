@@ -269,7 +269,8 @@ fn reveal(side: Team, at: Vec2, radius: i32, flying: bool, ground: &Ground) -> S
 impl World {
     /// Shows the side a strike was aimed at a circle of
     /// [`rules::STRIKE_REVEAL_RADIUS`] around where the striker stands, for
-    /// [`rules::STRIKE_REVEAL_TICKS`] from the next sight pass on.
+    /// [`rules::STRIKE_REVEAL_TICKS`] from the next sight pass on. The
+    /// views show it from the end of this tick, once the blow is dealt.
     ///
     /// A striker shows each side one circle at most: striking again moves
     /// it, starts its time afresh, and, while the last one still showed,
@@ -357,6 +358,12 @@ impl World {
                 let viewer_tier = self.ground.tier(from);
                 viewer_tier >= target_tier && self.sight_block.clear(from, viewer_tier, at)
             })
+    }
+
+    /// Whether a side's views show an entity, from the sight worked out as
+    /// the tick ended.
+    pub fn shows(&self, team: Team, entity: Entity) -> bool {
+        self.shown.get(entity).is_some_and(|seen| seen.by(team))
     }
 
     /// Whether a side sees an entity, from what was worked out this tick.

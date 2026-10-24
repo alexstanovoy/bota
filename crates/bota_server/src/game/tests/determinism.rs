@@ -184,12 +184,25 @@ fn fold(digest: &mut Fnv, msg: &ServerMsg) {
     }
 }
 
+/// What a seat's driver decides from.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Eyes {
+    /// Its side's view, through the fog.
+    Side,
+    /// The view of everything, whatever the fog shows: orders that depend
+    /// on the simulation alone, never on what a side is told.
+    All,
+}
+
 /// The orders every seat gives this tick, validated as a driver does, with
 /// each refusal folded into the digest.
-fn decide(world: &World, drivers: &mut [Driver], digest: &mut Fnv) -> Vec<Command> {
+fn decide(world: &World, drivers: &mut [Driver], digest: &mut Fnv, eyes: Eyes) -> Vec<Command> {
     let mut commands = Vec::new();
     for (seat, driver) in world.seats.iter().zip(drivers.iter_mut()) {
-        let view = world.view(seat.team);
+        let view = match eyes {
+            Eyes::Side => world.view(seat.team),
+            Eyes::All => world.view_full(),
+        };
         let owned: Vec<&UnitView> = view
             .units
             .iter()
@@ -230,6 +243,11 @@ fn decide(world: &World, drivers: &mut [Driver], digest: &mut Fnv) -> Vec<Comman
 /// Plays a pinned match to its end or horizon, and answers every
 /// checkpoint and, for a whole match, the digest of its end.
 fn replay(pinned: &Pinned, horizon: u32) -> (Vec<(u32, u64, u64)>, Option<u64>) {
+    replay_with(pinned, horizon, Eyes::Side)
+}
+
+/// [`replay`] with drivers deciding from the given view.
+fn replay_with(pinned: &Pinned, horizon: u32, eyes: Eyes) -> (Vec<(u32, u64, u64)>, Option<u64>) {
     let cfg = config(pinned);
     let mut world = World::for_match(&cfg, cfg.rng());
     let mut drivers: Vec<Driver> = (0..cfg.picks.len() as u64)
@@ -241,7 +259,7 @@ fn replay(pinned: &Pinned, horizon: u32) -> (Vec<(u32, u64, u64)>, Option<u64>) 
     let mut checkpoints = Vec::new();
     while world.tick < horizon && world.victor().is_none() {
         let commands = if world.tick.is_multiple_of(DECISION_TICKS) {
-            decide(&world, &mut drivers, &mut digest)
+            decide(&world, &mut drivers, &mut digest, eyes)
         } else {
             Vec::new()
         };
@@ -408,7 +426,7 @@ fn a_cloned_world_plays_on_as_the_original() {
             fork = Some(world.clone());
         }
         let commands = if world.tick.is_multiple_of(DECISION_TICKS) {
-            decide(&world, &mut drivers, &mut digest)
+            decide(&world, &mut drivers, &mut digest, Eyes::Side)
         } else {
             Vec::new()
         };
@@ -432,6 +450,38 @@ fn a_cloned_world_plays_on_as_the_original() {
     assert!(fork.is_some(), "the match ran past the fork");
 }
 
+/// Ticks the fog-blind replays run: one checkpoint in debug, four in
+/// release.
+const BLIND_TICKS: u32 = if cfg!(debug_assertions) {
+    CHECKPOINT_TICKS
+} else {
+    4 * CHECKPOINT_TICKS
+};
+
+/// The world hashes of every pinned match played by drivers that see
+/// everything, at each checkpoint within [`BLIND_TICKS`].
+fn blind_hashes() -> Vec<Vec<(u32, u64)>> {
+    PINS.iter()
+        .map(|pinned| {
+            replay_with(pinned, BLIND_TICKS, Eyes::All)
+                .0
+                .into_iter()
+                .map(|(tick, world, _)| (tick, world))
+                .collect()
+        })
+        .collect()
+}
+
+/// Prints the world hashes of the fog-blind replays, to record
+/// [`BLIND_PINS`] afresh.
+#[test]
+#[ignore = "records pins"]
+fn print_blind_pins() {
+    for hashes in blind_hashes() {
+        println!("blind {hashes:#018x?}");
+    }
+}
+
 /// Prints the fingerprints of every pinned match, to record pins afresh.
 #[test]
 #[ignore = "records pins"]
@@ -450,6 +500,70 @@ fn print_pins() {
     }
 }
 
+/// What a side is told must never change what the simulation does: driven
+/// by orders that do not depend on the fog, the pinned matches replay to
+/// these world hashes (four checkpoints, one in debug) however the views
+/// are worked out. A change to the rules moves them; a change to what the
+/// sides are shown does not.
+#[test]
+fn what_the_sides_are_shown_never_changes_the_simulation() {
+    for (hashes, pinned) in blind_hashes().iter().zip(BLIND_PINS) {
+        let expected: Vec<_> = pinned
+            .iter()
+            .copied()
+            .filter(|&(tick, _)| tick <= BLIND_TICKS)
+            .collect();
+        assert_eq!(hashes, &expected);
+    }
+}
+
+/// The world hashes [`what_the_sides_are_shown_never_changes_the_simulation`]
+/// holds the fog-blind replays to, one list per pinned match.
+const BLIND_PINS: [&[(u32, u64)]; 7] = [
+    &[
+        (1500, 0xb03a_5dab_eddf_d642),
+        (3000, 0x7434_e256_88d0_a71c),
+        (4500, 0x44b0_5211_fb71_52bc),
+        (6000, 0x2a75_0d11_7e12_2f5d),
+    ],
+    &[
+        (1500, 0xb017_fb35_c53a_955e),
+        (3000, 0x5592_dce8_6538_ac82),
+        (4500, 0xf5a5_13a3_07bc_7a51),
+        (6000, 0x247c_4057_98cb_fecf),
+    ],
+    &[
+        (1500, 0xfcb0_6c20_4ac0_d493),
+        (3000, 0xbae9_13ea_39e8_f245),
+        (4500, 0x28b1_bc96_9a2f_4efe),
+        (6000, 0x5a73_bf7c_d090_69f5),
+    ],
+    &[
+        (1500, 0x37ee_15e8_abf8_8ca3),
+        (3000, 0xd697_9f77_2a4d_f965),
+        (4500, 0xe112_7b7c_fb81_05a2),
+        (6000, 0x47cd_07bc_16ea_366f),
+    ],
+    &[
+        (1500, 0x205b_1f63_eab6_ed4c),
+        (3000, 0x4cad_75d8_764e_92e9),
+        (4500, 0x2ce2_8607_d5b3_7ae2),
+        (6000, 0x6246_46d7_874d_76a8),
+    ],
+    &[
+        (1500, 0xbb2d_66b9_2a43_dfb6),
+        (3000, 0x1d34_734f_4e6b_391e),
+        (4500, 0x8833_5dd7_a332_5f87),
+        (6000, 0x1b5b_2b88_ed61_174c),
+    ],
+    &[
+        (1500, 0xf36b_bbf2_1bd8_ab01),
+        (3000, 0xd89d_96c9_cd4c_06a8),
+        (4500, 0x6ee7_5db4_8782_9cf9),
+        (6000, 0x5d7d_934d_5a54_da89),
+    ],
+];
+
 /// Every pinned match, recorded from the simulation as it stood when the
 /// contract was laid.
 const PINS: [Pinned; 7] = [
@@ -458,128 +572,127 @@ const PINS: [Pinned; 7] = [
         seed: 1,
         heroes: &[1, 0, 1, 1],
         checkpoints: &[
-            (1500, 0xc29c_af6c_5b56_4d2a, 0x1b56_35f7_d7b3_b877),
-            (3000, 0x3a7e_8f11_288a_2d58, 0xa210_34a8_0207_9fa2),
-            (4500, 0x3fac_1d61_8d72_6c20, 0x555c_e63a_19cc_b317),
-            (6000, 0xba7a_e67a_686a_d99b, 0x49fe_28af_0045_1ae6),
-            (7500, 0xa7ca_8528_9b80_4a7b, 0x39de_cc2c_b0a4_42e3),
-            (9000, 0x4382_979c_7da8_1958, 0xc313_3de4_da9c_675a),
-            (10500, 0x3bfa_98e5_a2c7_a733, 0xc29d_c693_ef7f_5f4a),
-            (12000, 0xfb1c_3227_2deb_fe94, 0x644b_d9bd_8b03_65a7),
-            (13500, 0xe212_d05c_4923_501c, 0xc3fa_acc5_34a0_a868),
-            (15000, 0x1455_10d6_8f0d_dc63, 0x75b0_8449_54d5_3d14),
-            (16500, 0x0d4c_d37b_f72e_3392, 0x3210_f070_14fd_3ad3),
-            (18000, 0x7bef_7db1_ad03_3b22, 0x9275_5196_6253_184a),
+            (1500, 0xc29c_af6c_5b56_4d2a, 0xe0d5_2bb0_3216_f04e),
+            (3000, 0x5fb5_fd6d_9dda_ea65, 0xe2f4_af9f_e4be_c640),
+            (4500, 0x6415_fc65_ddf0_b3e0, 0x3cfd_9d5d_0227_0e48),
+            (6000, 0x271c_1f7d_5196_c977, 0x191a_3649_53a1_16ca),
+            (7500, 0x340d_5b79_6468_2442, 0xe236_4816_e880_9b0c),
+            (9000, 0xdbc5_5bc1_7aeb_ed02, 0x1543_2fa7_d913_7685),
+            (10500, 0x941c_3b7f_3187_987b, 0x2e8e_188b_5282_d9ec),
+            (12000, 0x8e74_da41_60fa_a2ab, 0x536b_7370_5024_ed40),
+            (13500, 0xe098_946c_f16a_2318, 0xc786_0018_3b82_2708),
+            (15000, 0x8bf5_5f0c_540c_f6e2, 0xf6ee_3991_c961_ef07),
+            (16500, 0x4dec_5a1d_6e18_89be, 0xcc48_ce60_e801_dfd4),
+            (18000, 0x43a3_ea78_2aed_bc87, 0x6065_174d_060a_d816),
         ],
-        last: 0xaebc_ecaf_6a66_d690,
+        last: 0x55bf_0f29_51f4_a0b8,
     },
     Pinned {
         map: MapId(0),
         seed: 2,
         heroes: &[1, 0, 1, 1],
         checkpoints: &[
-            (1500, 0xbb9a_2ca8_e14b_f4c9, 0x7553_fbe6_5f28_7075),
-            (3000, 0x3036_5378_6447_9606, 0xc0ec_3da8_a4b4_c4a2),
-            (4500, 0x1bc6_955d_4783_aed1, 0x46ab_d6c3_721b_129f),
-            (6000, 0x962c_94bd_dd26_5729, 0x083b_bc55_a272_5210),
-            (7500, 0xfe47_9ff7_261c_2647, 0x93a3_3f57_40f4_7f71),
-            (9000, 0x1019_5a1d_a954_fbc8, 0xca3f_5592_707b_f715),
-            (10500, 0xd7a0_5e90_cf2c_8b72, 0xb3a1_f686_aefa_9e56),
-            (12000, 0x7f4d_5b30_f2b2_b91d, 0xe8e0_7ef8_7faf_dfb9),
-            (13500, 0x51cf_02c2_6f0e_11cd, 0x7a89_b868_7da6_9733),
-            (15000, 0xb33b_2504_7f3f_a35a, 0xbf44_ad1e_7ddf_8ed7),
-            (16500, 0x94c7_77bf_5e31_0295, 0xaa3a_4e3e_686f_3be9),
-            (18000, 0xf977_cba6_9510_9207, 0xab25_0120_2f47_f802),
+            (1500, 0xbb9a_2ca8_e14b_f4c9, 0x3c95_b674_56da_02a2),
+            (3000, 0x3036_5378_6447_9606, 0x1f17_11b2_d311_e8d4),
+            (4500, 0x1bc6_955d_4783_aed1, 0x1772_fcef_1789_873e),
+            (6000, 0x962c_94bd_dd26_5729, 0xb36f_3b41_3c93_9e5b),
+            (7500, 0xfe47_9ff7_261c_2647, 0x5412_1b62_7e71_7416),
+            (9000, 0x5f9c_67bb_03a5_987e, 0xe303_d294_5430_188b),
+            (10500, 0x18bc_ad81_0409_72f5, 0x522c_b5d9_9e77_e6fd),
+            (12000, 0xc5bc_6507_9116_12be, 0xd6c6_59d3_8afc_c786),
+            (13500, 0x04e6_f046_b000_b532, 0xb691_181f_e386_ee35),
+            (15000, 0x480b_b344_d19c_55e8, 0x9c64_c214_9cab_8f7a),
+            (16500, 0x94bb_671a_c53c_f1c8, 0x9a71_f4a0_d0c8_dcde),
+            (18000, 0x2066_c37f_770a_e2d9, 0xdd2e_a360_3844_25dd),
         ],
-        last: 0xa5ba_f7b3_fb03_3b98,
+        last: 0xc32d_a651_0d6a_9a92,
     },
     Pinned {
         map: MapId(1),
         seed: 3,
         heroes: &[1, 0],
         checkpoints: &[
-            (1500, 0xaad1_6bbf_84f9_ac6c, 0xf8ab_6248_9efb_8641),
-            (3000, 0x7284_38fb_1d6e_f674, 0x6a78_937d_26fd_1652),
-            (4500, 0x4b88_5fef_337a_abe6, 0x192c_eba4_2081_f9e3),
-            (6000, 0xa35f_aedb_57c6_fcde, 0xe007_1ebb_5a50_69cf),
-            (7500, 0xbc07_5b87_e76b_e996, 0x4914_50f4_1714_672b),
-            (9000, 0x8aa9_ee45_4eb4_5ad9, 0x099d_f36d_8a77_8f76),
-            (10500, 0x6418_bdd8_44a0_7bcc, 0xa386_3aec_2641_ad8e),
-            (12000, 0x429c_e7e8_1bef_0378, 0x96ca_e724_5252_70d4),
-            (13500, 0x84b9_464b_b301_5f1f, 0x374a_8aa9_7890_a731),
-            (15000, 0xf0ce_19e5_85e7_7908, 0x2e01_46aa_87d8_57f3),
-            (16500, 0x2ad7_9c3d_19dd_986b, 0x4e24_5d5c_68b9_7422),
-            (18000, 0x0766_c112_dfbd_0eb6, 0x0ff1_a96d_3513_67a3),
+            (1500, 0xaad1_6bbf_84f9_ac6c, 0xad1c_25e2_169b_2dde),
+            (3000, 0x7284_38fb_1d6e_f674, 0xe9d1_4706_6ea6_7202),
+            (4500, 0x4b88_5fef_337a_abe6, 0x1807_ed33_8982_6546),
+            (6000, 0xa35f_aedb_57c6_fcde, 0x252b_e951_2f30_cfde),
+            (7500, 0xbc07_5b87_e76b_e996, 0x2d8a_f7af_0e98_0b2f),
+            (9000, 0x8aa9_ee45_4eb4_5ad9, 0xb902_b3bf_bf90_cc99),
+            (10500, 0x2192_c307_e360_9552, 0x29fe_ff42_d537_98fa),
+            (12000, 0x1db6_ea5f_d5f5_5159, 0x631c_f689_e133_e6f5),
+            (13500, 0x22d3_5237_9130_70c1, 0x7662_2521_5bbb_362a),
+            (15000, 0xf949_3f3c_9ac1_1ae0, 0x7bc7_6462_f176_7145),
+            (16500, 0xe4e0_d8f0_e90a_c756, 0x3bd8_4b12_331b_8165),
+            (18000, 0x676c_06cc_dbb2_e948, 0xc0ae_52aa_42af_940f),
         ],
-        last: 0x88fb_66d9_1968_1c5a,
+        last: 0x1e81_4d10_8118_a807,
     },
     Pinned {
         map: MapId(1),
         seed: 4,
         heroes: &[0, 1],
         checkpoints: &[
-            (1500, 0xe302_3c28_9021_704d, 0x46b6_95e5_973b_843a),
-            (3000, 0x6eab_e1f6_b5ef_0566, 0xccb1_a3ec_12fc_68bc),
-            (4500, 0xb290_2a28_590c_9499, 0x8d28_1932_c717_9c97),
-            (6000, 0x8d85_fc23_fe3d_3087, 0x5abf_6fb8_d56b_dfb3),
-            (7500, 0x5b0e_dc4f_9f3c_4e31, 0x1729_f887_55f6_47e0),
-            (9000, 0xa209_c234_e7d5_bd49, 0x9c1d_a611_b553_2f88),
-            (10500, 0xd924_363f_72aa_097c, 0xc12d_2ebb_811a_9cdc),
-            (12000, 0x817b_1246_8141_7c9c, 0x34c9_569e_98f2_638e),
-            (13500, 0xd00a_62f2_1ee2_7865, 0x0a46_3d3d_0636_ab37),
-            (15000, 0x1f0a_a375_d213_6497, 0xf7c2_d0ee_3aa7_642a),
-            (16500, 0xa2fb_b2fa_45d6_77e1, 0x5e8e_633c_bbb6_f18d),
-            (18000, 0xbf00_76cb_b60b_05f6, 0xd5a4_63c1_4e24_41b6),
+            (1500, 0xe302_3c28_9021_704d, 0x4fab_0705_4523_829e),
+            (3000, 0x2e5d_657a_37bb_a0b3, 0xaeac_49b7_140c_527f),
+            (4500, 0xe6d0_1c5b_2b95_4e5b, 0x0b80_f0a2_19e0_85d8),
+            (6000, 0x4465_81ea_f33c_8518, 0x8cfa_b0b0_2fe9_35da),
+            (7500, 0x75f6_24f0_f148_b2f3, 0x2e1a_3f00_798a_1b6c),
+            (9000, 0x1a7e_0401_473d_5907, 0x45ae_2178_4a89_36ef),
+            (10500, 0x4878_7fb8_7eec_f719, 0x7425_1f49_864f_5210),
+            (12000, 0x9702_55c7_95ea_b29b, 0x39bb_7ec4_2a0a_89a6),
+            (13500, 0x1c70_97c0_6cc3_a9cc, 0x5bf2_c846_b1bb_5f61),
+            (15000, 0x1bde_5f3c_6ca7_3fc5, 0x0183_1dd6_6b61_4e19),
+            (16500, 0x48a8_2e16_2106_2d73, 0x776b_a950_d9b2_40cb),
+            (18000, 0x95e9_b0db_9a4e_f02e, 0xfb6d_7c66_1ede_7af4),
         ],
-        last: 0x2fda_2a94_3a61_c0d3,
+        last: 0xd51f_19e1_68e0_7be7,
     },
     Pinned {
         map: MapId(2),
         seed: 5,
         heroes: &[1, 1],
         checkpoints: &[
-            (1500, 0xfdea_e5f3_1e9a_c79a, 0xa3b3_234a_c3f4_be24),
-            (3000, 0xc580_ea2a_6618_4e3f, 0x4872_400f_28a4_22cc),
-            (4500, 0x3e07_d1d7_7eb1_841f, 0x4b43_f9e0_19c3_befb),
-            (6000, 0x7b92_6424_14e4_3205, 0x893d_7a5b_e40a_0c0e),
-            (7500, 0x3ce4_1b9f_b478_f01e, 0xd1d4_e036_d429_0994),
-            (9000, 0x499e_ff06_949e_e863, 0xa21e_3fe4_5e84_6a32),
-            (10500, 0x29a7_79a5_6b21_b5c0, 0xdade_e810_3890_158d),
+            (1500, 0xfdea_e5f3_1e9a_c79a, 0xe596_7071_4a3d_ae13),
+            (3000, 0xc580_ea2a_6618_4e3f, 0xa089_e4c6_7c63_960b),
+            (4500, 0x3e07_d1d7_7eb1_841f, 0x2200_753f_1c93_0a8e),
+            (6000, 0x7b92_6424_14e4_3205, 0x6cae_778b_0f73_a3c4),
+            (7500, 0x3ce4_1b9f_b478_f01e, 0xff2f_3f62_640d_e5a9),
+            (9000, 0x499e_ff06_949e_e863, 0xf6c4_c28d_adf6_8183),
+            (10500, 0x29a7_79a5_6b21_b5c0, 0xe84a_fd00_3d69_9a05),
         ],
-        last: 0x8407_0702_1e00_b236,
+        last: 0x59ef_b983_becc_8060,
     },
     Pinned {
         map: MapId(2),
         seed: 6,
         heroes: &[1, 1],
         checkpoints: &[
-            (1500, 0xbb4a_0f5b_7377_4c88, 0x9814_48a0_ef49_ebd2),
-            (3000, 0x1009_2453_f47f_36d0, 0x7268_2a6d_b468_2113),
-            (4500, 0x5db9_35b2_a22c_adf1, 0xe01c_4d67_e03f_216d),
-            (6000, 0xfa33_95df_e1c4_8c7b, 0x631c_0180_1c12_13f1),
-            (7500, 0x3ad2_7c92_32fe_6131, 0x091a_6bbd_df2e_a917),
-            (9000, 0x142f_17db_31dc_d38e, 0x6686_3a16_9548_f2dc),
-            (10500, 0x7d91_eade_71fc_ac59, 0x1df2_278e_e128_456d),
-            (12000, 0x68e6_4a8e_925f_a40c, 0x3a5c_3221_f94c_cf22),
-            (13500, 0xdd8f_a675_35f9_9393, 0x65e8_9cf9_4fbe_f220),
-            (15000, 0x910a_6b08_a102_a936, 0x7f3c_2b99_c8e6_355b),
-            (16500, 0x4bae_ce5d_1e85_be07, 0x2b79_348d_ee8b_9402),
+            (1500, 0xbb4a_0f5b_7377_4c88, 0x9ef3_c317_a860_5229),
+            (3000, 0x8afe_6406_92af_4658, 0x3827_6366_30b6_dbc7),
+            (4500, 0x81b4_c283_84a2_7d69, 0x802b_68cb_9a64_24e6),
+            (6000, 0x38b9_6d73_f629_ed05, 0x3d92_d678_3fd3_a964),
+            (7500, 0x0fa3_04e0_f413_60cf, 0x3d67_1709_9b99_4860),
+            (9000, 0x5aaa_0e69_de05_27b2, 0x8be1_5f72_9abd_557a),
+            (10500, 0x8955_2319_b0ba_f33a, 0x067f_d30b_45d2_4307),
+            (12000, 0x904b_0491_b0cd_e1f1, 0x88b2_02b7_2d72_0621),
+            (13500, 0xdd14_7766_3ffc_59bf, 0xf2ec_029a_c70b_4b78),
+            (15000, 0x3407_128c_c882_d1eb, 0xd31f_4428_e062_25fd),
         ],
-        last: 0x6729_5ab5_bf3c_5da0,
+        last: 0xa818_66a3_4073_2af9,
     },
     Pinned {
         map: MapId(2),
         seed: 7,
         heroes: &[1, 1],
         checkpoints: &[
-            (1500, 0x93b6_924c_e0e3_5d4e, 0x7f62_e25a_969b_7826),
-            (3000, 0x6fdb_d1fb_51cd_cb67, 0xc6c6_c118_0d50_e7a6),
-            (4500, 0x29b3_a6b3_b2cb_a6db, 0x29e2_5127_df19_a99d),
-            (6000, 0x46c9_fa9d_d78a_1903, 0x1539_de56_29ef_82f9),
-            (7500, 0xc30e_e44a_e293_ab0f, 0x9b4c_0e86_4ce0_ebf0),
-            (9000, 0xce4a_643e_d673_51ba, 0x4ee6_1337_bea1_fb41),
-            (10500, 0x5e7b_1b5c_5d7a_35ed, 0xd4fb_07a6_1487_5e02),
+            (1500, 0x93b6_924c_e0e3_5d4e, 0x313c_22a6_4d24_e469),
+            (3000, 0x6fdb_d1fb_51cd_cb67, 0x01aa_9f1d_1b7c_0202),
+            (4500, 0xb609_984a_6d55_6a43, 0xfe58_9e6c_a74c_cd02),
+            (6000, 0x91c3_8fad_63ff_fd7b, 0xe087_0dd5_a829_f854),
+            (7500, 0x7abf_bfc6_9c90_49b9, 0x68f0_5734_756f_c1fe),
+            (9000, 0xbf01_8669_5bc1_dfb1, 0x1dd9_fa5f_8cfe_7902),
+            (10500, 0xeed4_e5e6_0253_9094, 0x339b_4162_51f3_5677),
         ],
-        last: 0xc641_31b4_c967_20a7,
+        last: 0x3eb0_205c_a7fd_a64a,
     },
 ];

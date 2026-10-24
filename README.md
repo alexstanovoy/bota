@@ -358,6 +358,9 @@ with the `websocket` feature, `ws://` and `wss://` URLs (one binary message per 
 `bota_server/src/game/tests/determinism.rs` pins whole-match fingerprints (world
 hash and the encoded view and event streams every 1500 ticks) on every map; a
 deliberate rule change re-records them with the ignored `print_pins` test.
+The same file replays those matches with drivers that see everything and
+pins their world hashes alone: what the sides are shown never changes what
+the simulation does (`print_blind_pins` re-records them after a rule change).
 `bota_server/tests/client.rs` plays a lockstep match through a real socket, and
 `bota_server/tests/bad_links.rs` plays through an in-process proxy that delays,
 jitters, caps, stalls, black-holes and resets the line. With

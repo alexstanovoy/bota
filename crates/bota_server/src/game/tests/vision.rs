@@ -237,8 +237,8 @@ fn a_strike_from_high_ground_shows_the_striker_to_the_side_struck_for_two_second
             .any(|unit| unit.id == wire_id(archer));
         assert_eq!(
             listed,
-            world.can_see(Team::Radiant, archer),
-            "the view tells exactly what the side sees"
+            world.shows(Team::Radiant, archer),
+            "the view tells exactly what the side is shown"
         );
         listed
     };
@@ -251,13 +251,17 @@ fn a_strike_from_high_ground_shows_the_striker_to_the_side_struck_for_two_second
         .map(|_| world.tick)
         .expect("the archer strikes within two seconds");
     assert!(
-        !shown(&world),
-        "the strike shows from the next sight pass on"
+        shown(&world),
+        "the view of the strike's own tick shows it, the tick as it ended"
+    );
+    assert!(
+        !world.can_see(Team::Radiant, archer),
+        "what the tick acted on was worked out before the strike"
     );
     for _ in 0..rules::STRIKE_REVEAL_TICKS {
         world.step();
         assert!(
-            shown(&world),
+            shown(&world) && world.can_see(Team::Radiant, archer),
             "tick {}: still shown {} ticks after the strike",
             world.tick,
             world.tick - struck
@@ -265,6 +269,7 @@ fn a_strike_from_high_ground_shows_the_striker_to_the_side_struck_for_two_second
     }
     world.step();
     assert!(!shown(&world), "and gone after two seconds");
+    assert!(!world.can_see(Team::Radiant, archer));
     assert!(
         world.can_see(Team::Dire, mark),
         "the striker's own sight is its own business"
@@ -571,5 +576,39 @@ fn the_whole_map_says_which_sides_see_what_as_their_views_hold_it() {
     assert!(
         unseen > 0 && unseen < told,
         "the fog hid some units, not all"
+    );
+}
+
+#[test]
+fn a_hero_that_blinks_out_of_sight_is_not_shown_where_it_landed() {
+    let mut world = World::new();
+    seat_hero(&mut world, 0, Team::Radiant, Vec2::from_ints(1000, 1000));
+    let blinker = seat_hero(&mut world, 1, Team::Dire, Vec2::from_ints(1500, 1000));
+    hand_item(&mut world, blinker, ItemId::BLINK_DAGGER, 0);
+    world.settle();
+    assert!(world.view(Team::Radiant).unit(wire_id(blinker)).is_some());
+    let from = world.pos(blinker);
+    let landing = Vec2::from_ints(2600, 1000);
+    let order = bota_proto::Order::Use {
+        slot: bota_proto::ItemSlot(0),
+        target: Target::Pos(landing),
+    };
+    world.advance(&[crate::game::Command {
+        slot: bota_proto::SlotId(1),
+        unit: None,
+        order,
+        queue: false,
+        seq: 0,
+    }]);
+    for _ in 0..30 {
+        if world.pos(blinker) != from {
+            break;
+        }
+        world.step();
+    }
+    assert_eq!(world.pos(blinker), Some(landing), "it blinked");
+    assert!(
+        world.view(Team::Radiant).unit(wire_id(blinker)).is_none(),
+        "the night hides the landing from the side it left on the very tick it lands"
     );
 }
