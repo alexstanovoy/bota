@@ -469,12 +469,14 @@ pub struct StockView {
 pub struct GlyphView {
     /// The side whose Glyph it is.
     pub team: Team,
-    /// Ticks until the side may activate it; zero when it is ready, and
-    /// always zero in the other side's view.
+    /// Retired: always zero. [`ready_after`](Self::ready_after) tells it.
     pub ready_in: u32,
     /// Ticks its structures still take no damage for; zero when it is not
     /// active.
     pub active_for: u32,
+    /// Ticks until the side may activate it; zero when it is ready. Absent
+    /// in the other side's view: its cooldown is its own.
+    pub ready_after: Option<u32>,
 }
 
 /// A teleport being channelled, as both sides see its destination.
@@ -524,14 +526,20 @@ impl Talents {
 pub struct TalentView {
     pub slot: SlotId,
     pub learned: Talents,
-    /// The talents that could be taken right now. Empty for a seat of the
-    /// other side and for a hero that is down.
+    /// Retired: always empty. [`may_learn`](Self::may_learn) tells it.
     pub learnable: Talents,
     /// Levels of the Attribute Bonus learned, up to seven.
     pub attribute_bonus: u8,
-    /// Whether a skill point could go into the Attribute Bonus right now.
-    /// False for a seat of the other side and for a hero that is down.
+    /// Retired: always false.
+    /// [`may_learn_attribute_bonus`](Self::may_learn_attribute_bonus) tells
+    /// it.
     pub attribute_bonus_learnable: bool,
+    /// The talents that could be taken right now: empty for a hero that is
+    /// down. Absent for a seat of the other side: its points are its own.
+    pub may_learn: Option<Talents>,
+    /// Whether a skill point could go into the Attribute Bonus right now:
+    /// false for a hero that is down. Absent for a seat of the other side.
+    pub may_learn_attribute_bonus: Option<bool>,
 }
 
 /// Everything one team is allowed to know, as of one tick.

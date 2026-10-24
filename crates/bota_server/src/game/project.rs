@@ -242,9 +242,11 @@ impl World {
                 Some(TalentView {
                     slot: seat.slot,
                     learned: book.talents,
-                    learnable,
+                    learnable: Talents::default(),
                     attribute_bonus: book.attribute_bonus,
-                    attribute_bonus_learnable,
+                    attribute_bonus_learnable: false,
+                    may_learn: own.then_some(learnable),
+                    may_learn_attribute_bonus: own.then_some(attribute_bonus_learnable),
                 })
             })
             .collect()

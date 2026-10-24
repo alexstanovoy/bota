@@ -111,12 +111,9 @@ impl World {
                 let own = viewer.is_none_or(|seen| seen == team);
                 Some(GlyphView {
                     team,
-                    ready_in: if own {
-                        glyph.ready_at.saturating_sub(self.tick)
-                    } else {
-                        0
-                    },
+                    ready_in: 0,
                     active_for: glyph.structures_until.saturating_sub(self.tick),
+                    ready_after: own.then(|| glyph.ready_at.saturating_sub(self.tick)),
                 })
             })
             .collect()

@@ -31,7 +31,7 @@ struct Seen {
 
 /// The non-hero deaths a seat is told the other side's hero struck last,
 /// with the gold it is told each paid, across one step's messages.
-fn enemy_kills_told(stream: &[ServerMsg], seen: &mut Seen) -> Vec<i32> {
+fn enemy_kills_told(stream: &[ServerMsg], seen: &mut Seen) -> Vec<Option<i32>> {
     let mut told = Vec::new();
     for msg in stream {
         match msg {
@@ -50,7 +50,7 @@ fn enemy_kills_told(stream: &[ServerMsg], seen: &mut Seen) -> Vec<i32> {
                     let EventKind::Died {
                         unit,
                         killer: Some(killer),
-                        gold,
+                        bounty,
                         ..
                     } = kind
                     else {
@@ -64,7 +64,7 @@ fn enemy_kills_told(stream: &[ServerMsg], seen: &mut Seen) -> Vec<i32> {
                     };
                     let by_enemy = team_of(*killer).is_some_and(|team| Some(team) != seen.viewer);
                     if by_enemy && team_of(*unit).is_none() {
-                        told.push(*gold);
+                        told.push(*bounty);
                     }
                 }
             }
@@ -85,7 +85,7 @@ fn a_non_hero_kills_gold_is_hidden_from_the_other_side() {
     for _ in 0..rules::FIRST_WAVE_TICK + 4000 {
         for (stream, seen) in streams.iter().zip(&mut seen) {
             for gold in enemy_kills_told(stream, seen) {
-                assert_eq!(gold, 0, "a side was told the other's creep gold");
+                assert_eq!(gold, None, "a side was told the other's creep gold");
                 hidden += 1;
             }
         }

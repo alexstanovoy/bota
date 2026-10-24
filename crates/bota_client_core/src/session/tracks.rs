@@ -57,8 +57,9 @@ pub struct DeathObservation {
     /// Entity credited with the kill, when one was reported.
     pub killer: Option<EntityId>,
     pub denied: bool,
-    /// Gold paid directly for the death, as this side was told.
-    pub gold: i32,
+    /// Gold paid directly for the death, as this side was told; absent when
+    /// it was withheld from this side.
+    pub gold: Option<i32>,
 }
 
 /// One observed completed ability cast.
@@ -339,14 +340,15 @@ impl Tracks {
                 unit,
                 killer,
                 denied,
-                gold,
+                bounty,
+                ..
             } => {
                 if let Some(entity) = self.get_mut(unit) {
                     entity.last_death = Some(DeathObservation {
                         tick,
                         killer,
                         denied,
-                        gold,
+                        gold: bounty,
                     });
                     entity.visible = false;
                 }

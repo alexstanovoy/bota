@@ -1365,8 +1365,8 @@ fn snapshot_frame(view: WorldView) -> Vec<u8> {
 
 /// The kinds of the events a side may see. No side sees all of them; a
 /// dealer the side does not see is told as nobody, and a death's gold is told
-/// only to the side that earned it unless a hero fell: the other side sees
-/// zero, so a visible creep kill never leaks the enemy's income.
+/// only to the side that earned it unless a hero fell: the other side is
+/// told none, so a visible creep kill never leaks the enemy's income.
 pub(crate) fn visible_events(events: &[Event], viewing: Option<Team>) -> Vec<EventKind> {
     events
         .iter()
@@ -1397,12 +1397,12 @@ fn told_as(kind: &mut EventKind, event: &Event, mine: Team) {
         }
         EventKind::Missed { source, .. } if hide_dealer => *source = None,
         EventKind::Landed { caster, .. } if hide_dealer => *caster = None,
-        EventKind::Died { killer, gold, .. } => {
+        EventKind::Died { killer, bounty, .. } => {
             if hide_dealer {
                 *killer = None;
             }
             if event.gold_hidden_from == Some(mine) {
-                *gold = 0;
+                *bounty = None;
             }
         }
         _ => {}

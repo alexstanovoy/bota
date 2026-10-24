@@ -257,9 +257,11 @@ pub fn world_view(creeps: u32) -> WorldView {
         talents: vec![TalentView {
             slot: SlotId(0),
             learned: Talents::default().with(TalentSlot(1)),
-            learnable: Talents::default().with(TalentSlot(2)).with(TalentSlot(3)),
+            learnable: Talents::default(),
             attribute_bonus: 2,
-            attribute_bonus_learnable: true,
+            attribute_bonus_learnable: false,
+            may_learn: Some(Talents::default().with(TalentSlot(2)).with(TalentSlot(3))),
+            may_learn_attribute_bonus: Some(true),
         }],
         teleports: vec![TeleportView {
             slot: SlotId(1),
@@ -271,8 +273,9 @@ pub fn world_view(creeps: u32) -> WorldView {
         }],
         glyphs: vec![GlyphView {
             team: Team::Dire,
-            ready_in: 9000,
+            ready_in: 0,
             active_for: 120,
+            ready_after: Some(9000),
         }],
     }
 }
@@ -547,7 +550,8 @@ pub fn all_events() -> Vec<EventKind> {
             unit: entity(100),
             killer: Some(entity(7)),
             denied: false,
-            gold: 43,
+            gold: 0,
+            bounty: Some(43),
         },
         EventKind::AbilityCast {
             caster: entity(7),

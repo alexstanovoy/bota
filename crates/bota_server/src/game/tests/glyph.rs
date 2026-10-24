@@ -79,7 +79,7 @@ fn the_glyph_protects_structures_seven_seconds_and_creeps_three_then_recharges()
     assert_eq!(pure_blow(&mut world, enemy, creep), 0, "nor do lane creeps");
     let mine = world.view(Team::Radiant).glyphs;
     assert_eq!(mine.len(), 2);
-    assert!(mine[0].active_for > 0 && mine[0].ready_in > 0);
+    assert!(mine[0].active_for > 0 && mine[0].ready_after > Some(0));
     assert_eq!((mine[1].team, mine[1].active_for), (Team::Dire, 0));
     let theirs = world.view(Team::Dire).glyphs;
     assert!(theirs[0].active_for > 0, "the enemy sees it is active");
@@ -89,8 +89,9 @@ fn the_glyph_protects_structures_seven_seconds_and_creeps_three_then_recharges()
             team: Team::Radiant,
             ready_in: 0,
             active_for: mine[0].active_for,
+            ready_after: None,
         },
-        "and nothing of its cooldown"
+        "and nothing of its cooldown, which is withheld"
     );
 
     run_to(&mut world, used + rules::GLYPH_CREEP_TICKS + 2);

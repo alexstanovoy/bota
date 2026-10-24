@@ -75,9 +75,10 @@ fn seen_by(view: &WorldView) -> Result<(), SessionError> {
 }
 
 /// What a side's view withholds from it is absent there, not a default: the
-/// other side's creep score and gold, its units' unspent points and sale
-/// marks, its heroes' draw waits, and a hold or a chase on a unit the view
-/// does not carry. A view that tells any of them breaks the contract.
+/// other side's creep score and gold, its Glyph's cooldown, its seats'
+/// open talents, its units' unspent points and sale marks, its heroes' draw
+/// waits, and a hold or a chase on a unit the view does not carry. A view
+/// that tells any of them breaks the contract.
 fn withheld(view: &WorldView) -> Result<(), SessionError> {
     for entry in &view.aggro {
         if entry.target.is_none() && (entry.held_for.is_some() || entry.chased_for.is_some()) {
@@ -94,6 +95,16 @@ fn withheld(view: &WorldView) -> Result<(), SessionError> {
         .iter()
         .filter(|player| player.team != team)
         .any(|player| player.creep_score.is_some() || player.gold.is_some())
+        || view
+            .glyphs
+            .iter()
+            .any(|glyph| glyph.team != team && glyph.ready_after.is_some())
+        || view.talents.iter().any(|talents| {
+            (talents.may_learn.is_some() || talents.may_learn_attribute_bonus.is_some())
+                && view
+                    .player(talents.slot)
+                    .is_some_and(|player| player.team != team)
+        })
         || view
             .units
             .iter()

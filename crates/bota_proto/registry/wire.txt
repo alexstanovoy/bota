@@ -490,3 +490,7 @@ field CreepScore 1 denies: u16
 field ItemView 10 selling: Option<bool>
 field PlayerView 15 creep_score: Option<CreepScore>
 field PlayerView 16 seen_at: Option<u32>
+field EventKind::Died 4 bounty: Option<i32>
+field GlyphView 3 ready_after: Option<u32>
+field TalentView 5 may_learn: Option<Talents>
+field TalentView 6 may_learn_attribute_bonus: Option<bool>

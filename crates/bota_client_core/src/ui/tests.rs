@@ -690,6 +690,8 @@ fn a_cast_point_shortens_while_a_feast_runs_on_a_hero_with_the_talent() {
         learnable: bota_proto::Talents::default(),
         attribute_bonus: 0,
         attribute_bonus_learnable: false,
+        may_learn: Some(bota_proto::Talents::default()),
+        may_learn_attribute_bonus: Some(false),
     };
     let mut view = a_tick(10, vec![fiend.clone()], seat);
     view.talents = vec![told];
@@ -1073,7 +1075,8 @@ fn a_hero_slain_in_the_fog_is_fed_by_its_seat_with_its_killer() {
             unit: theirs,
             killer: Some(us),
             denied: false,
-            gold: 200,
+            gold: 0,
+            bounty: Some(200),
         }],
     });
     assert_eq!(
@@ -1096,7 +1099,8 @@ fn our_hero_slain_from_the_fog_names_the_hero_the_feed_announced() {
             unit: us,
             killer: Some(theirs),
             denied: false,
-            gold: 200,
+            gold: 0,
+            bounty: Some(200),
         }],
     });
     let line = app.feed.last().map(|line| line.text.clone()).expect("fed");
@@ -1119,7 +1123,8 @@ fn our_kill_of_a_creep_never_in_sight_sounds_its_last_hit() {
             },
             killer: Some(us),
             denied: false,
-            gold: 40,
+            gold: 0,
+            bounty: Some(40),
         }],
     });
     app.pump(0.0);
@@ -1160,4 +1165,23 @@ fn a_side_view_that_tells_the_other_sides_creep_score_is_refused() {
         denies: 0,
     })));
     assert!(app.lost, "told, even as zero, it breaks the contract");
+}
+
+#[test]
+fn a_side_view_that_tells_the_other_sides_glyph_cooldown_is_refused() {
+    let glyph = |ready_after| bota_proto::GlyphView {
+        team: Team::Dire,
+        ready_in: 0,
+        active_for: 0,
+        ready_after,
+    };
+    for (ready_after, lost) in [(None, false), (Some(0), true)] {
+        let (mut app, _, _) = a_duel_app();
+        let mut msg = a_radiant_view_scoring_dire(None);
+        if let bota_proto::ServerMsg::Snapshot { view } = &mut msg {
+            view.glyphs = vec![glyph(ready_after)];
+        }
+        app.handle(msg);
+        assert_eq!(app.lost, lost, "{ready_after:?}");
+    }
 }

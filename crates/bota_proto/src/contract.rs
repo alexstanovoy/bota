@@ -101,8 +101,14 @@
 //! [`AggroView::draw_wait`]. [`AggroView`] tells nothing of a unit the view
 //! does not carry: neither whom a unit is set on or swings at, nor how long
 //! it holds or chases such a target ([`AggroView::held_for`] and
-//! [`AggroView::chased_for`] are absent exactly when the target is). A client
-//! refuses a view that tells any of these to a side it withholds them from.
+//! [`AggroView::chased_for`] are absent exactly when the target is). Of
+//! another side's seat, [`TalentView::may_learn`] and
+//! [`TalentView::may_learn_attribute_bonus`] are absent, and of a non-hero
+//! kill it earned, [`Died`]'s `bounty`. A client refuses a view that tells
+//! any of these to a side it withholds them from.
+//!
+//! [`TalentView::may_learn`]: crate::TalentView::may_learn
+//! [`TalentView::may_learn_attribute_bonus`]: crate::TalentView::may_learn_attribute_bonus
 //!
 //! [`PlayerView::seen_at`]: crate::PlayerView::seen_at
 //! [`PlayerView::creep_score`]: crate::PlayerView::creep_score
@@ -220,8 +226,9 @@
 //! [`WorldView::glyphs`](crate::WorldView::glyphs) holds both sides'
 //! entries. The buff is put on the structures and lane creeps that stand
 //! when the Glyph is used, each with its own time; a creep that spawns later
-//! never wears it, as in Dota. The other side's entry has `ready_in` zero always: that its Glyph
-//! is active is public, when it may be used again is not.
+//! never wears it, as in Dota. The other side's entry has no
+//! [`ready_after`](crate::GlyphView::ready_after): that its Glyph is active
+//! is public, when it may be used again is not.
 //!
 //! # Illusions
 //!

@@ -230,7 +230,7 @@ pub(crate) fn seat_hero(world: &mut World, slot: u8, team: Team, at: Vec2) -> En
 /// What the death the events tell of paid its killer.
 pub(crate) fn paid(events: &[Event]) -> Option<i32> {
     events.iter().find_map(|event| match event.kind {
-        EventKind::Died { gold, .. } => Some(gold),
+        EventKind::Died { bounty, .. } => bounty,
         _ => None,
     })
 }

@@ -46,8 +46,9 @@ impl App {
                 unit,
                 killer,
                 denied,
-                gold,
-            } => self.on_death(unit, killer, denied, gold),
+                bounty,
+                ..
+            } => self.on_death(unit, killer, denied, bounty.unwrap_or(0)),
             EventKind::StructureDestroyed { team, .. } => {
                 self.feed.push(FeedLine {
                     text: format!("a {team:?} structure has fallen"),

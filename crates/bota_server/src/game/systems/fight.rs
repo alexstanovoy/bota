@@ -185,7 +185,8 @@ impl World {
                 unit: wire_id(entity),
                 killer: killer.map(wire_id),
                 denied,
-                gold: paid,
+                gold: 0,
+                bounty: Some(paid),
             },
             visible_to: told.fall,
             gold_hidden_from: killer

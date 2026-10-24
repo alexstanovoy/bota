@@ -433,9 +433,9 @@ fn gold_income_scales_the_bounty_a_kill_pays() {
     );
     assert_eq!(world.seats[0].net_worth, net_worth + expected);
     assert!(
-        events
-            .iter()
-            .any(|event| matches!(event.kind, EventKind::Died { gold, .. } if gold == expected)),
+        events.iter().any(
+            |event| matches!(event.kind, EventKind::Died { bounty, .. } if bounty == Some(expected))
+        ),
         "the death tells of what was paid"
     );
 }

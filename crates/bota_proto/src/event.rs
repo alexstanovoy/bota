@@ -72,11 +72,15 @@ pub enum EventKind {
         killer: Option<EntityId>,
         /// Whether the killer was on the same team, making this a deny.
         denied: bool,
+        /// Retired: always zero. `bounty` tells it.
+        gold: i32,
         /// Gold paid to the seat of the hero that struck last: the bounty
         /// drawn for this kill, a flagbearer's bonus and a tower's team
         /// bounty on top. On a deny only a tower's half team bounty. Zero
-        /// when no hero struck last.
-        gold: i32,
+        /// when no hero struck last. Absent to the side that did not earn a
+        /// non-hero kill: another's income is its own. A hero kill's gold
+        /// is public, as Dota's kill feed tells it.
+        bounty: Option<i32>,
     },
     /// A unit's ability took effect.
     ///

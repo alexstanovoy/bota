@@ -61,7 +61,7 @@ fn a_tier_opens_at_its_level_and_takes_one_talent_of_two_for_no_skill_point() {
     let mut world = two_fiends_at(9);
     assert_eq!(ask_talent(&mut world, 0), Err(RejectReason::CannotLearn));
     assert_eq!(
-        told(&world, Some(Team::Radiant), 0).map(|view| view.learnable),
+        told(&world, Some(Team::Radiant), 0).and_then(|view| view.may_learn),
         Some(Talents::default()),
         "nothing is open below level ten"
     );
@@ -72,9 +72,11 @@ fn a_tier_opens_at_its_level_and_takes_one_talent_of_two_for_no_skill_point() {
         Some(TalentView {
             slot: SlotId(0),
             learned: Talents::default(),
-            learnable: set(&[0, 1]),
+            learnable: Talents::default(),
             attribute_bonus: 0,
-            attribute_bonus_learnable: true,
+            attribute_bonus_learnable: false,
+            may_learn: Some(set(&[0, 1])),
+            may_learn_attribute_bonus: Some(true),
         })
     );
     assert_eq!(ask_talent(&mut world, 2), Err(RejectReason::CannotLearn));
@@ -91,7 +93,9 @@ fn a_tier_opens_at_its_level_and_takes_one_talent_of_two_for_no_skill_point() {
             learned: set(&[1]),
             learnable: Talents::default(),
             attribute_bonus: 0,
-            attribute_bonus_learnable: true,
+            attribute_bonus_learnable: false,
+            may_learn: Some(Talents::default()),
+            may_learn_attribute_bonus: Some(true),
         }),
         "and shuts its tier"
     );
@@ -206,7 +210,9 @@ fn the_other_talent_of_a_tier_opens_at_twenty_seven() {
     world.step();
     assert_eq!(world.seats[0].level, 27);
     assert_eq!(
-        told(&world, Some(Team::Radiant), 0).map(|view| view.learnable.has(TalentSlot(1))),
+        told(&world, Some(Team::Radiant), 0)
+            .and_then(|view| view.may_learn)
+            .map(|open| open.has(TalentSlot(1))),
         Some(true)
     );
     assert_eq!(ask_talent(&mut world, 1), Ok(()));
@@ -276,8 +282,10 @@ fn the_other_side_sees_learned_talents_while_it_sees_the_hero_and_its_own_throug
             learnable: Talents::default(),
             attribute_bonus: 0,
             attribute_bonus_learnable: false,
+            may_learn: None,
+            may_learn_attribute_bonus: None,
         }),
-        "in sight, what is learned and nothing of what could be"
+        "in sight, what is learned and nothing of what could be: withheld"
     );
     world.bury(vec![(radiant, Some(dire))], &mut Vec::new());
     world.step();

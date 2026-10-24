@@ -123,7 +123,7 @@ fn a_denied_flagbearer_pays_nobody() {
 
 /// Buries `prey` at zero health under `killer` and answers the gold each
 /// audience is told: the earner's side, the other side, a full-world stream.
-fn told_gold(world: &mut World, prey: Entity, killer: Entity) -> (i32, [Option<i32>; 3]) {
+fn told_gold(world: &mut World, prey: Entity, killer: Entity) -> (i32, [Option<Option<i32>>; 3]) {
     world.settle();
     world.health.insert(prey, health(0));
     let mut events = Vec::new();
@@ -134,7 +134,7 @@ fn told_gold(world: &mut World, prey: Entity, killer: Entity) -> (i32, [Option<i
         visible_events(&events, side)
             .into_iter()
             .find_map(|kind| match kind {
-                EventKind::Died { gold, .. } => Some(gold),
+                EventKind::Died { bounty, .. } => Some(bounty),
                 _ => None,
             })
     };
@@ -151,7 +151,11 @@ fn a_creep_kills_gold_is_told_only_to_the_side_that_earned_it() {
     seat_hero(&mut world, 1, Team::Dire, Vec2::from_ints(5100, 5000));
     let prey = world.spawn_creep(&MELEE_CREEP, Team::Dire, Vec2::from_ints(5050, 5000), 0, 0);
     let (earned, told) = told_gold(&mut world, prey, killer);
-    assert_eq!(told, [Some(earned), Some(0), Some(earned)]);
+    assert_eq!(
+        told,
+        [Some(Some(earned)), Some(None), Some(Some(earned))],
+        "told to the side that earned it and the whole map, withheld from the other"
+    );
 }
 
 #[test]
@@ -160,5 +164,5 @@ fn a_hero_kills_gold_is_public() {
     let killer = seat_hero(&mut world, 0, Team::Radiant, Vec2::from_ints(5000, 5000));
     let prey = seat_hero(&mut world, 1, Team::Dire, Vec2::from_ints(5100, 5000));
     let (earned, told) = told_gold(&mut world, prey, killer);
-    assert_eq!(told, [Some(earned); 3]);
+    assert_eq!(told, [Some(Some(earned)); 3]);
 }
