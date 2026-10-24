@@ -1121,24 +1121,6 @@ pub(crate) fn ticks_until_near(
     None
 }
 
-/// How far along the lane the Radiant wave stands: its front, and all of
-/// it on average.
-pub(crate) fn wave_progress(world: &World, route: &[Vec2]) -> (i64, i64) {
-    let each: Vec<i64> = world
-        .entities
-        .iter()
-        .filter(|e| world.march.get(*e).is_some() && world.team.get(*e) == Some(&Team::Radiant))
-        .map(|e| lane_progress(route, world.transform.get(e).expect("standing").pos))
-        .collect();
-    let front = each.iter().copied().max().unwrap_or(0);
-    let mean = if each.is_empty() {
-        0
-    } else {
-        each.iter().sum::<i64>() / each.len() as i64
-    };
-    (front, mean)
-}
-
 /// The spot a progress along a polyline lands on, shifted sideways.
 pub(crate) fn along_lane(route: &[Vec2], progress: i64, aside: i64) -> Vec2 {
     let mut left = progress;

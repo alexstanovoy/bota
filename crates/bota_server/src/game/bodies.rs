@@ -15,12 +15,12 @@ pub struct Body {
     pub at: Vec2,
     /// Its collision size.
     pub radius: Fixed,
-    /// How far it moved the tick before.
-    pub delta: Vec2,
-    /// Ticks running that it has not moved.
-    pub still: u32,
     /// Whether it never moves at all.
     pub fixed: bool,
+    /// Whether it is not walking this tick ([`crate::game::World::walking`]):
+    /// a stationary unit, which every walker's short pather lays its way
+    /// round.
+    pub stationary: bool,
 }
 
 /// Every body of the world by the bucket it stands in, laid once a tick.
@@ -56,6 +56,16 @@ impl BodyIndex {
         for b in 1..self.start.len() {
             self.start[b] += self.start[b - 1];
         }
+    }
+
+    /// Whether a stationary body of a collision size stood exactly on a spot
+    /// when the index was laid.
+    pub fn stands_still(&self, at: Vec2, radius: Fixed) -> bool {
+        let mut found = false;
+        self.near(at, Fixed::ZERO, |body| {
+            found |= body.stationary && body.at == at && body.radius == radius;
+        });
+        found
     }
 
     /// Every body that stood within a reach of a spot when the index was

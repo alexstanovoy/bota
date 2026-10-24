@@ -102,9 +102,12 @@ impl Planner {
         collision: Fixed,
         budget: u32,
     ) -> Vec<Vec2> {
-        match self.walk_keeping(ob, from, to, plan_radius(collision), budget) {
+        match self.walk_keeping(ob, from, to, plan_radius(collision), collision, budget) {
             (spots, false) => spots,
-            (_, true) => self.walk_keeping(ob, from, to, collision, budget).0,
+            (_, true) => {
+                self.walk_keeping(ob, from, to, collision, collision, budget)
+                    .0
+            }
         }
     }
 
@@ -112,19 +115,25 @@ impl Planner {
     /// [`Planner::find_path`] answers them, and whether the room shuts the
     /// walker in: no node with room at either end, or every node got to
     /// expanded within the budget and none of them the goal.
+    ///
+    /// The walk sets out from a node the body (of collision size `body`)
+    /// gets to in a straight line from where it stands: a node with room
+    /// beyond a row of trees is no start for one standing between them.
     fn walk_keeping(
         &mut self,
         ob: &Obstacles,
         from: Vec2,
         to: Vec2,
         room: Fixed,
+        body: Fixed,
         budget: u32,
     ) -> (Vec<Vec2>, bool) {
         let (Some(start), Some(asked)) = (Clearance::node_of(from), Clearance::node_of(to)) else {
             return (Vec::new(), false);
         };
+        let reached = |node| ob.clear(from, Clearance::node_center(node), body);
         let (Some(start), Some(goal)) = (
-            routable_node(ob, start, room),
+            nearest_node(ob, start, room, reached),
             node_beside(ob, to, from, room).or_else(|| routable_node(ob, asked, room)),
         ) else {
             return (Vec::new(), true);
@@ -327,7 +336,17 @@ fn node_beside(ob: &Obstacles, at: Vec2, toward: Vec2, room: Fixed) -> Option<(u
 /// Ties break on the inner ring, then the lower row, then the lower
 /// column. None when nothing within [`OPEN_SEARCH_NODES`] has room.
 fn routable_node(ob: &Obstacles, node: (usize, usize), room: Fixed) -> Option<(usize, usize)> {
-    if ob.fits(node, room) {
+    nearest_node(ob, node, room, |_| true)
+}
+
+/// [`routable_node`] among the nodes a test lets through.
+fn nearest_node(
+    ob: &Obstacles,
+    node: (usize, usize),
+    room: Fixed,
+    lets: impl Fn((usize, usize)) -> bool,
+) -> Option<(usize, usize)> {
+    if ob.fits(node, room) && lets(node) {
         return Some(node);
     }
     let mut best: Option<(i32, (usize, usize))> = None;
@@ -340,7 +359,8 @@ fn routable_node(ob: &Obstacles, node: (usize, usize), room: Fixed) -> Option<(u
                 if dx.abs() != ring && dy.abs() != ring {
                     continue;
                 }
-                let Some(near) = offset_node(node, dx, dy).filter(|near| ob.fits(*near, room))
+                let Some(near) =
+                    offset_node(node, dx, dy).filter(|near| ob.fits(*near, room) && lets(*near))
                 else {
                     continue;
                 };

@@ -63,8 +63,6 @@ pub const LOCAL_HORIZON_TICKS: u32 = 40;
 pub const LOCAL_EXPANSIONS: u32 = 120;
 /// World units of the lattice two local states are told apart by.
 pub const LOCAL_KEY_CELL: i32 = 32;
-/// Ticks a body's last step is carried forward when it has no plan to read.
-pub const PREDICT_TICKS: u32 = 12;
 /// Ticks after a local plan is laid before it is laid again for coming out
 /// empty or running short.
 pub const REPLAN_MIN_TICKS: u32 = 4;
@@ -77,35 +75,14 @@ pub const STALL_BACKOFF_AFTER: u32 = 30;
 /// A local plan laid to a spot short of the route's end is laid again once
 /// fewer ticks than this are left of it.
 pub const REPLAN_LEFT_TICKS: u32 = 12;
-/// Ticks a body stands after walking into a body that is itself moving.
-pub const BLOCK_WAIT_TICKS: u32 = 8;
-/// Ticks after running into a hero within which running into one again adds
-/// to the count, and for which a body at [`BUMPS_BEFORE_HEED`] plans round
-/// heroes where they stand.
-pub const HEED_HERO_TICKS: u32 = 90;
-/// Heroes a body runs into, each within [`HEED_HERO_TICKS`] of the last,
-/// before it plans round heroes where they stand.
-pub const BUMPS_BEFORE_HEED: u32 = 6;
 /// A local plan is laid again once the route goal it was laid for has
 /// moved this far, in world units.
 pub const PLAN_DRIFT: i32 = 64;
 /// How far beyond one tick's step a body may stand from its plan's next
 /// step and still walk the plan, in world units.
 pub const PLAN_STRAY: i32 = 8;
-/// How far past its own reach over the horizon a walker asks after bodies
-/// when laying a local plan, in world units: what they may cover meanwhile.
-pub const LOCAL_BODIES_PAD: i32 = 600;
-/// How far about a walker the bodies standing still are taken for obstacles
-/// when its route is laid round them, in world units.
-pub const STANDING_REACH: i32 = 800;
-/// Ticks that pass at least between two routes of one body laid round the
-/// bodies standing about it.
-pub const STALL_RELAY_GAP: u32 = 48;
 /// Nodes a route search laid round standing bodies expands at most.
 pub const STALL_PATH_EXPANSIONS: u32 = 600;
-/// Ticks a body has not moved before it counts as standing: a hero is then
-/// planned round where it stands, and any body may be routed round.
-pub const STANDING_TICKS: u32 = 8;
 /// How far the body index is searched past the reach asked, in world units,
 /// for bodies that moved since it was laid.
 pub const BODY_INDEX_SLACK: i32 = 32;
@@ -875,9 +852,6 @@ pub const WIDEST_MARCHER: i32 = SIEGE_CREEP_COLLISION;
 pub const WAYPOINT_RADIUS: i32 = 40;
 /// A stored route is laid again once its goal drifted this far.
 pub const REPATH_DRIFT: i32 = 128;
-/// Ticks a lane creep walking after a target it lost stands unable to move
-/// before it shoves through bodies. A marching one never shoves.
-pub const MARCH_SHOVE_TICKS: u32 = 30;
 
 /// How far a body may be eased out of another one in a tick, in world
 /// units.

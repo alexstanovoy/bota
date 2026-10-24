@@ -3,8 +3,7 @@
 use bota_core::{CellGrid, HEROES, MELEE_CREEP, RANGED_CREEP, isqrt64, map_of, point_along, rules};
 
 use crate::game::{
-    Clearance, Entity, Ground, LaneAi, March, UnitOrder, World, circle_stops, find_path,
-    plan_radius,
+    Clearance, Entity, Ground, March, UnitOrder, World, circle_stops, find_path, plan_radius,
 };
 use bota_proto::{Fixed, HeroId, ItemId, MapId, SlotId, Team, Vec2};
 
@@ -115,53 +114,6 @@ fn two_bodies_on_one_spot_are_eased_apart() {
     assert!(
         apart >= i64::from(hulls.raw),
         "still inside one another: {a:?} {b:?}"
-    );
-}
-
-/// A lane creep walking after what it lost sight of, boxed in by bodies,
-/// shoves through once it has stood long enough.
-#[test]
-fn a_creep_that_has_stood_long_enough_shoves_through() {
-    let mut world = World::new();
-    let at = Vec2::from_ints(5000, 5000);
-    let aim = at + Vec2::from_ints(400, 0);
-    let creep = world.spawn_unit(&MELEE_CREEP, Team::Radiant, at);
-    world.march.insert(creep, March { next: 0 });
-    world.lane_ai.insert(
-        creep,
-        LaneAi {
-            last_seen: Some(aim),
-            keep_until: 0,
-            roused_by: None,
-            roused_at_own: false,
-            chase_until: 0,
-        },
-    );
-    // A hexagon of bodies packed about it, each just clear of it and of
-    // its neighbours, so no step in any direction stays clear of them all.
-    for (dx, dy) in [
-        (72, 0),
-        (36, 63),
-        (-36, 63),
-        (-72, 0),
-        (-36, -63),
-        (36, -63),
-    ] {
-        world.spawn_unit(&MELEE_CREEP, Team::Radiant, at + Vec2::from_ints(dx, dy));
-    }
-    world.settle();
-    world.set_order(creep, UnitOrder::AttackMove { pos: aim });
-    run(&mut world, rules::MARCH_SHOVE_TICKS - 2);
-    assert_eq!(
-        world.transform.get(creep).map(|t| t.pos),
-        Some(at),
-        "boxed in, it does not move"
-    );
-    run(&mut world, 12);
-    assert_ne!(
-        world.transform.get(creep).map(|t| t.pos),
-        Some(at),
-        "but once it has stood long enough it shoves through"
     );
 }
 
@@ -362,11 +314,11 @@ fn the_demo_lake_is_walled_by_its_shore_and_crossed_at_its_ford() {
     }
 }
 
-/// A walker sent through a knot of bodies goes round it; a lane creep
-/// marching into it does not path round it but walks against it and is held
-/// there, as Dota's lane creeps are (Liquipedia, *Unit Size*).
+/// A walker sent through a knot of standing bodies goes round it, a hero
+/// and a marching lane creep alike: stationary units are blockers to every
+/// unit's short pather (Liquipedia, *Pathfinding*).
 #[test]
-fn a_walker_goes_round_a_wall_of_bodies_and_a_marcher_is_held_by_it() {
+fn a_hero_and_a_marcher_go_round_a_wall_of_standing_bodies() {
     let wall = |world: &mut World, x: i32, y: i32| {
         for i in -2..=2i32 {
             world.spawn_unit(&MELEE_CREEP, Team::Radiant, Vec2::from_ints(x, y + i * 40));
@@ -387,20 +339,8 @@ fn a_walker_goes_round_a_wall_of_bodies_and_a_marcher_is_held_by_it() {
     world.settle();
     let goal = Vec2::from_ints(5900, 6000);
     world.set_order(creep, UnitOrder::AttackMove { pos: goal });
-    run(&mut world, 130);
-    let at = world.transform.get(creep).expect("standing").pos;
-    assert!(
-        at.x < Fixed::from_int(5400),
-        "the marcher stands against the wall, not past it: ({},{})",
-        at.x.to_int(),
-        at.y.to_int()
-    );
-    assert!(
-        at.x > Fixed::from_int(5300),
-        "having walked up to it: ({},{})",
-        at.x.to_int(),
-        at.y.to_int()
-    );
+    let took = ticks_until_near(&mut world, creep, goal, 130);
+    assert!(took.is_some(), "the marcher works round the wall");
 }
 
 #[test]
@@ -497,77 +437,6 @@ fn marchers_walk_round_a_hero_standing_on_their_lane() {
     }
 }
 
-/// Creep blocking: a hero pacing just ahead of its own wave's lead creep is
-/// run into, and holds that creep back against a wave left alone.
-#[test]
-fn a_hero_pacing_before_a_wave_holds_the_creep_it_covers() {
-    let ticks = 10 * rules::TICKS_PER_SECOND;
-    let mut world = the_demo_lane_at_its_first_wave();
-    let route = world.walked_lanes()[0][0].clone();
-    run(&mut world, 30);
-    let (start, start_mean) = wave_progress(&world, &route);
-    run(&mut world, ticks);
-    let (_, free_mean) = wave_progress(&world, &route);
-    // The same wave again, with a hero set down just ahead of it.
-    let mut world = the_demo_lane_at_its_first_wave();
-    run(&mut world, 30);
-    let (front, _) = wave_progress(&world, &route);
-    let hero = hero_at(&mut world, along_lane(&route, front + 70, 0));
-    world.settle();
-    let mut contacts = 0;
-    for _ in 0..ticks {
-        // Keep just ahead of the creep furthest up the lane.
-        let hp = world.transform.get(hero).expect("standing").pos;
-        let mine = lane_progress(&route, hp);
-        let creep = lead_creep_at(&world, &route).unwrap_or(hp);
-        let dir = along_lane(&route, mine + 100, 0) - along_lane(&route, mine, 0);
-        let target = creep + point_along(Vec2::ZERO, dir, rules::units(70));
-        world.set_order(hero, UnitOrder::Move { pos: target });
-        world.step();
-        let hp = world.transform.get(hero).expect("standing").pos;
-        let touch = rules::units(rules::HERO_COLLISION + rules::MELEE_CREEP_COLLISION + 2);
-        contacts += radiant_marchers(&world)
-            .into_iter()
-            .filter(|e| {
-                world
-                    .transform
-                    .get(*e)
-                    .expect("standing")
-                    .pos
-                    .within(hp, touch)
-                    && world.motion.get(*e).is_some_and(|m| m.still > 0)
-            })
-            .count();
-    }
-    let held = radiant_marchers(&world)
-        .into_iter()
-        .map(|e| lane_progress(&route, world.transform.get(e).expect("standing").pos) - start)
-        .min()
-        .expect("the wave stands");
-    assert!(
-        contacts >= 3,
-        "creeps stood held against the hero: {contacts} creep-ticks"
-    );
-    assert!(
-        held + 150 < free_mean - start_mean,
-        "the creep it covered is held back: {held} against a free wave's {}",
-        free_mean - start_mean
-    );
-}
-
-/// Where the Radiant lane creep furthest along a route stands.
-fn lead_creep_at(world: &World, route: &[Vec2]) -> Option<Vec2> {
-    let mut lead: Option<(i64, Vec2)> = None;
-    for creep in radiant_marchers(world) {
-        let at = world.transform.get(creep).expect("standing").pos;
-        let progress = lane_progress(route, at);
-        if lead.is_none_or(|(had, _)| progress > had) {
-            lead = Some((progress, at));
-        }
-    }
-    lead.map(|(_, at)| at)
-}
-
 #[test]
 fn every_hero_sent_at_a_tower_from_afar_walks_into_reach_and_strikes() {
     for id in 0..HEROES.len() as u16 {
@@ -631,56 +500,153 @@ fn a_hero_among_trees_too_close_for_the_route_margin_still_walks_home() {
     }
 }
 
-/// Creep blocking in open lane: a hero standing head on before the lead
-/// creep of a wave that has formed its column holds it, and the creeps
-/// behind walk into the held one and queue up behind it rather than slide
-/// round it ("the creeps that follow will block each other").
-#[test]
-fn the_followers_of_a_held_lead_creep_queue_behind_it() {
+/// Map 2's first Radiant wave walked up its lane until its lead creep is
+/// `at` along the lane, with the route and the lead creep.
+fn map2_wave_led_to(at: i64) -> (World, Vec<Vec2>, Entity) {
     let mut world = World::on_map(map_of(MapId(2)));
     while world.tick < rules::FIRST_WAVE_TICK {
         world.step();
     }
     let route = world.walked_lanes()[0][0].clone();
-    let progress = |world: &World, e: Entity| {
-        lane_progress(&route, world.transform.get(e).expect("standing").pos)
-    };
-    let lead = loop {
+    loop {
         world.step();
         let lead = radiant_marchers(&world)
             .into_iter()
-            .max_by_key(|e| (progress(&world, *e), *e))
+            .max_by_key(|e| (lane_progress(&route, pos_of(&world, *e)), *e))
             .expect("a wave came out");
-        if progress(&world, lead) >= 2500 {
-            break lead;
+        if lane_progress(&route, pos_of(&world, lead)) >= at {
+            return (world, route, lead);
         }
-    };
-    let at = world.transform.get(lead).expect("standing").pos;
+    }
+}
+
+fn pos_of(world: &World, entity: Entity) -> Vec2 {
+    world.transform.get(entity).expect("standing").pos
+}
+
+/// The spot just in front of a creep, touching it, the way it walks.
+fn head_on(world: &World, creep: Entity) -> Vec2 {
+    let at = pos_of(world, creep);
     let aim = world
         .route
-        .get(lead)
+        .get(creep)
         .map(|route| route.corners.first().copied().unwrap_or(route.end))
         .expect("a route");
     let touch = rules::HERO_COLLISION + rules::MELEE_CREEP_COLLISION + 1;
-    let hero = hero_at(&mut world, point_along(at, aim, rules::units(touch)));
+    point_along(at, aim, rules::units(touch))
+}
+
+/// A hero that stops dead in front of the lead creep of a marching wave is
+/// a stationary unit, which every walker's short pather lays its way round
+/// (Liquipedia, *Pathfinding*), so the wave walks round it rather than
+/// queueing behind it for good: "stand in front of a creep [and] he will try
+/// to pass on your left/right side" (Gaming StackExchange q/65482).
+#[test]
+fn a_wave_walks_round_a_hero_who_stops_before_its_lead_creep() {
+    let (mut world, route, lead) = map2_wave_led_to(2500);
+    let spot = head_on(&world, lead);
+    let hero = hero_at(&mut world, spot);
     world.set_order(hero, UnitOrder::Stand);
-    run(&mut world, 2 * rules::TICKS_PER_SECOND);
-    let front = progress(&world, lead);
-    let followers: Vec<Entity> = radiant_marchers(&world)
-        .into_iter()
-        .filter(|e| *e != lead)
-        .collect();
-    assert_eq!(followers.len(), 3, "the wave is whole");
-    for follower in followers {
-        assert!(
-            progress(&world, follower) < front,
-            "a follower slipped past the held lead creep"
-        );
-        assert!(
-            world.motion.get(follower).expect("walks").still >= 15,
-            "a follower is still walking instead of queueing"
-        );
+    let blocked = lane_progress(&route, spot);
+    let creeps = radiant_marchers(&world);
+    let mut lead_past = None;
+    let mut all_past = None;
+    for tick in 1..=(5 * rules::TICKS_PER_SECOND) {
+        world.step();
+        let past = |e: &Entity| lane_progress(&route, pos_of(&world, *e)) > blocked + 60;
+        if lead_past.is_none() && past(&lead) {
+            lead_past = Some(tick);
+        }
+        if creeps.iter().all(past) {
+            all_past = Some(tick);
+            break;
+        }
     }
+    // Measured on this map: the lead creep past in 13 ticks (0.43 s), the
+    // wave in 39 (1.3 s). Dota's guides give no number, only that the
+    // blocker must move again "before they can run around you".
+    assert!(
+        lead_past.is_some_and(|t| t <= rules::TICKS_PER_SECOND),
+        "the lead creep walks round within a second, not {lead_past:?}"
+    );
+    assert!(
+        all_past.is_some_and(|t| t <= 3 * rules::TICKS_PER_SECOND),
+        "the wave walks round within three seconds, not {all_past:?}"
+    );
+}
+
+/// Where the first clash of map 2's first waves happens: the Radiant lead
+/// creep's lane progress and the tick it first takes an enemy, with a hero
+/// keeping just in front of it the whole way when `block` says so.
+fn first_clash(block: bool) -> (i64, u32) {
+    const LEAD_BY: i32 = 200;
+    let (mut world, route, lead) = map2_wave_led_to(300);
+    let start = head_on(&world, lead);
+    let hero = block.then(|| hero_at(&mut world, start));
+    world.settle();
+    for _ in 0..(60 * rules::TICKS_PER_SECOND) {
+        let lead_now = radiant_marchers(&world)
+            .into_iter()
+            .max_by_key(|e| (lane_progress(&route, pos_of(&world, *e)), *e))
+            .expect("the wave stands");
+        if let Some(hero) = hero {
+            // Keep walking on just ahead of the lead creep, on its line, never
+            // arriving: a blocker that stops is walked round.
+            let lead_at = pos_of(&world, lead_now);
+            let ahead = point_along(lead_at, head_on(&world, lead_now), rules::units(LEAD_BY));
+            world.set_order(hero, UnitOrder::Move { pos: ahead });
+        }
+        world.step();
+        if world.target_of(lead).is_some() || world.target_of(lead_now).is_some() {
+            return (lane_progress(&route, pos_of(&world, lead_now)), world.tick);
+        }
+    }
+    panic!("the waves never met");
+}
+
+/// A hero that keeps walking just ahead of its first wave's lead creep, on
+/// the creep's line, all the way to the clash, holds that creep to its own
+/// pace: the creep walks against a moving body and is held, as Dota's lane
+/// creeps are (Liquipedia, *Unit Size*), and the waves meet nearer the own
+/// side. Measured: the clash 220 units nearer and 19 ticks (0.63 s) later
+/// than an unblocked wave's. A straight walk can do little more, the hero
+/// (310) being only a little slower than the creep (325); a block that weaves
+/// across the creep's line holds it longer.
+#[test]
+fn a_hero_who_keeps_blocking_delays_the_wave() {
+    let (free_at, free_tick) = first_clash(false);
+    let (held_at, held_tick) = first_clash(true);
+    assert!(
+        held_at + 100 <= free_at,
+        "the clash is nearer the own side: {held_at} against {free_at}"
+    );
+    assert!(
+        held_tick >= free_tick + 10,
+        "and later: tick {held_tick} against {free_tick}"
+    );
+}
+
+/// A hero walking down its lane straight into its own marching wave, dead on
+/// the lead creep's line, gets through: the two meet square and pass each
+/// other on the right.
+#[test]
+fn a_hero_walking_head_on_into_its_wave_gets_through() {
+    let (mut world, route, lead) = map2_wave_led_to(1500);
+    let spot = point_along(
+        head_on(&world, lead),
+        pos_of(&world, lead),
+        rules::units(-400),
+    );
+    let hero = hero_at(&mut world, spot);
+    let goal = along_lane(&route, lane_progress(&route, pos_of(&world, lead)) - 600, 0);
+    world.settle();
+    world.set_order(hero, UnitOrder::Move { pos: goal });
+    let took = ticks_until_near(&mut world, hero, goal, 600);
+    // Measured: 105 ticks for about 1000 units against the whole wave.
+    assert!(
+        took.is_some_and(|t| t <= 6 * rules::TICKS_PER_SECOND),
+        "through the wave within six seconds, not {took:?}"
+    );
 }
 
 /// A hero pressed against its outer tower while its own wave marches past it, sent on down the
@@ -727,4 +693,208 @@ fn a_hero_in_its_marching_wave_by_its_tower_walks_on() {
         assert!(took.is_some(), "to {goal:?} within {within} ticks");
         assert!(still <= 10, "stood {still} ticks on the way to {goal:?}");
     }
+}
+
+/// Two rows of trees along the x axis from 4800 to 5600 about y = 5000,
+/// leaving a way `width` units wide between them.
+fn tree_corridor(world: &mut World, width: i32) {
+    let half = width / 2 + rules::TREE_RADIUS;
+    for x in (4800..=5600).step_by(80) {
+        world.trees.plant(Vec2::from_ints(x, 5000 + half), u32::MAX);
+        world.trees.plant(Vec2::from_ints(x, 5000 - half), u32::MAX);
+    }
+    world.lay_sight_block();
+    world.lay_passability();
+}
+
+/// Two heroes sent through a way between trees from either end meet head on
+/// inside it. Where it has room for both side by side they pass each other.
+/// Where it has not, neither can step on: each stands pressed against the
+/// other, a stationary unit to the other's short pather (Liquipedia,
+/// *Pathfinding*), so they do not push for good but find their way round,
+/// one of them the long way round the trees.
+#[test]
+fn two_heroes_meeting_between_trees_get_through() {
+    let (west, east) = (Vec2::from_ints(4600, 5000), Vec2::from_ints(5800, 5000));
+    for width in [70, 100, 130] {
+        let mut world = World::new();
+        tree_corridor(&mut world, width);
+        let one = hero_at(&mut world, Vec2::from_ints(4700, 5000));
+        let other = world.spawn_hero(
+            Team::Dire,
+            Vec2::from_ints(5700, 5000),
+            SlotId(1),
+            HeroId::SHADOW_FIEND,
+        );
+        world.settle();
+        world.set_order(one, UnitOrder::Move { pos: east });
+        world.set_order(other, UnitOrder::Move { pos: west });
+        let mut through = (None, None);
+        for tick in 1..=(25 * rules::TICKS_PER_SECOND) {
+            world.step();
+            if through.0.is_none() && pos_of(&world, one).within(east, rules::units(50)) {
+                through.0 = Some(tick);
+            }
+            if through.1.is_none() && pos_of(&world, other).within(west, rules::units(50)) {
+                through.1 = Some(tick);
+            }
+        }
+        // Measured, both heroes, 1100 units each (108 ticks in the open):
+        // 245 and 241 ticks at 70 wide, 597 and 548 at 100, 174 and 174 at
+        // 130. At 100 both back off to go round the long way, see the other
+        // walk off, forget it and come back, a few times over, before one
+        // of them gets through first.
+        assert!(
+            through.0.is_some_and(|t| t <= 22 * rules::TICKS_PER_SECOND)
+                && through.1.is_some_and(|t| t <= 22 * rules::TICKS_PER_SECOND),
+            "both through a {width}-wide way, not {through:?}"
+        );
+    }
+}
+
+/// A hero standing in a way between trees too narrow to pass it is walked
+/// round the long way, whether the way is one hull wide or more: the
+/// standing hero closes the way like the trees do, and the short pather
+/// traces round both, keeping them in mind until it is past.
+#[test]
+fn a_hero_standing_in_a_way_between_trees_is_walked_round() {
+    let goal = Vec2::from_ints(5800, 5000);
+    for width in [70, 130] {
+        let mut world = World::new();
+        tree_corridor(&mut world, width);
+        let walker = hero_at(&mut world, Vec2::from_ints(4700, 5000));
+        let stander = world.spawn_hero(
+            Team::Dire,
+            Vec2::from_ints(5200, 5000),
+            SlotId(1),
+            HeroId::SHADOW_FIEND,
+        );
+        world.settle();
+        world.set_order(stander, UnitOrder::Stand);
+        world.set_order(walker, UnitOrder::Move { pos: goal });
+        let took = ticks_until_near(&mut world, walker, goal, 10 * rules::TICKS_PER_SECOND);
+        // Measured: 181 and 183 ticks, in and out again and round.
+        assert!(
+            took.is_some_and(|t| t <= 7 * rules::TICKS_PER_SECOND),
+            "round the stander in a {width}-wide way within seven seconds, not {took:?}"
+        );
+    }
+}
+
+/// A hero walking down the lane straight into the enemy's marching wave gets
+/// through it: the creeps that turn on it stand to strike and are walked
+/// round, those still marching are slid past.
+#[test]
+fn a_hero_walking_into_the_enemy_wave_gets_through() {
+    let (mut world, route, lead) = map2_wave_led_to(1500);
+    let spot = point_along(
+        head_on(&world, lead),
+        pos_of(&world, lead),
+        rules::units(-400),
+    );
+    let hero = world.spawn_hero(Team::Dire, spot, SlotId(1), HeroId::SHADOW_FIEND);
+    let goal = along_lane(&route, lane_progress(&route, pos_of(&world, lead)) - 600, 0);
+    world.settle();
+    world.set_order(hero, UnitOrder::Move { pos: goal });
+    let took = ticks_until_near(&mut world, hero, goal, 10 * rules::TICKS_PER_SECOND);
+    // Measured: 105 ticks for about 1000 units.
+    assert!(
+        took.is_some_and(|t| t <= 6 * rules::TICKS_PER_SECOND),
+        "through the enemy wave within six seconds, not {took:?}"
+    );
+}
+
+/// A hero walking into the creeps of a fight on the lane, head on against a
+/// creep that walks into it from the other side to get at an enemy behind
+/// it, gets past: neither can step on, so each stands, a stationary unit
+/// the other's short pather lays its way round (Liquipedia, *Pathfinding*),
+/// rather than both pushing for good. The spot is a hero's seen pushing
+/// against such a knot in a match for seconds on end.
+#[test]
+fn a_hero_and_a_creep_walking_into_each_other_in_a_fight_get_past() {
+    let mut world = World::on_map(map_of(MapId(2)));
+    let hero = world.spawn_hero(
+        Team::Dire,
+        Vec2::from_ints(8987, 9102),
+        SlotId(0),
+        HeroId::SHADOW_FIEND,
+    );
+    let standing = [
+        (Team::Dire, 9046, 9076),
+        (Team::Dire, 9131, 8996),
+        (Team::Radiant, 9015, 8956),
+    ]
+    .map(|(team, x, y)| world.spawn_unit(&MELEE_CREEP, team, Vec2::from_ints(x, y)));
+    let creep = world.spawn_unit(&MELEE_CREEP, Team::Dire, Vec2::from_ints(9021, 9159));
+    let mark = world.spawn_unit(&MELEE_CREEP, Team::Radiant, Vec2::from_ints(8947, 8992));
+    world.settle();
+    let goal = Vec2::from_ints(9128, 9243);
+    let mut took = None;
+    for tick in 1..=(5 * rules::TICKS_PER_SECOND) {
+        for unit in standing.into_iter().chain([mark]) {
+            world.set_order(unit, UnitOrder::Hold);
+        }
+        let last_seen = pos_of(&world, mark);
+        world.set_order(
+            creep,
+            UnitOrder::Attack {
+                target: mark,
+                last_seen,
+            },
+        );
+        world.set_order(hero, UnitOrder::Move { pos: goal });
+        world.step();
+        if pos_of(&world, hero).within(goal, rules::units(50)) {
+            took = Some(tick);
+            break;
+        }
+    }
+    // Measured: 24 ticks for 200 units.
+    assert!(
+        took.is_some_and(|t| t <= 2 * rules::TICKS_PER_SECOND),
+        "past the creep within two seconds, not {took:?}"
+    );
+}
+
+/// A hero sent to a spot inside a knot of creeps standing to fight walks up
+/// to the knot and ends its walk there, as near as it gets: the creeps are
+/// stationary units, which its short pather takes in like the ground
+/// (Liquipedia, *Pathfinding*), rather than pushing against them for good.
+/// The spots are a hero's seen pushing against such a knot in a match.
+#[test]
+fn a_hero_sent_into_a_knot_of_standing_creeps_ends_its_walk_beside_it() {
+    let mut world = World::on_map(map_of(MapId(2)));
+    let start = Vec2::from_ints(8962, 8914);
+    let hero = world.spawn_hero(Team::Radiant, start, SlotId(0), HeroId::SHADOW_FIEND);
+    let knot = [
+        (Team::Radiant, 8886, 9151),
+        (Team::Radiant, 8899, 9072),
+        (Team::Dire, 9014, 9125),
+        (Team::Dire, 9022, 9045),
+        (Team::Dire, 8988, 8982),
+    ]
+    .map(|(team, x, y)| world.spawn_unit(&MELEE_CREEP, team, Vec2::from_ints(x, y)));
+    world.settle();
+    let goal = Vec2::from_ints(8962, 9114);
+    world.set_order(hero, UnitOrder::Move { pos: goal });
+    let mut over = None;
+    for tick in 1..=(3 * rules::TICKS_PER_SECOND) {
+        for creep in knot {
+            world.set_order(creep, UnitOrder::Hold);
+        }
+        world.step();
+        if over.is_none() && world.route.get(hero).is_some_and(|route| route.done) {
+            over = Some(tick);
+        }
+    }
+    let at = pos_of(&world, hero);
+    // Measured: over in 24 ticks, 76 units from the spot (200 at the start).
+    assert!(
+        over.is_some_and(|t| t <= 2 * rules::TICKS_PER_SECOND),
+        "the walk ends, not {over:?}"
+    );
+    assert!(
+        at.within(goal, rules::units(120)),
+        "beside the knot, not at {at:?}"
+    );
 }

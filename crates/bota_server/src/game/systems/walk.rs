@@ -8,8 +8,8 @@ use bota_core::{
 use bota_proto::{Angle, Fixed, Target, Vec2};
 
 use crate::game::{
-    ActionPhase, ActionState, Entity, Foreseen, LocalAsk, LocalScratch, Motion, Obstacles, Plan,
-    Planner, Route, UnitOrder, World, plan_local, plan_radius,
+    ActionPhase, ActionState, Entity, LocalAsk, LocalScratch, Obstacles, Plan, Planner, Route,
+    UnitOrder, World, plan_local, plan_radius,
 };
 
 use crate::profile::Phase;
@@ -34,7 +34,20 @@ impl World {
         self.local_scratch = scratch;
     }
 
-    /// One entity's tick of walking.
+    /// One entity's tick of walking, as its [`World::walk_goal`] says.
+    fn walk_one(&mut self, entity: Entity, scratch: &mut LocalScratch) {
+        match self.walk_goal(entity) {
+            Goal::Flee(from) => self.flee(entity, from, scratch),
+            Goal::Stand => self.stand(entity),
+            Goal::Face(at) => {
+                self.turn_to(entity, at);
+                self.stand(entity);
+            }
+            Goal::Walk(dest, arrive) => self.walk_toward(entity, dest, arrive, scratch),
+        }
+    }
+
+    /// What an entity's state has it do with its body this tick.
     ///
     /// Feared, it runs from whoever put the fear on. Held or channelling it
     /// stands, and so does a disarmed neutral; rooted, it stands too but
@@ -44,48 +57,31 @@ impl World {
     /// decides: in reach it stands and comes round to it, out of reach it
     /// walks at it. Only with nothing to fight does it walk where it was
     /// told.
-    fn walk_one(&mut self, entity: Entity, scratch: &mut LocalScratch) {
+    fn walk_goal(&self, entity: Entity) -> Goal {
         if self.feared(entity) {
-            match self.flees_from(entity) {
-                Some(from) => self.flee(entity, from, scratch),
-                None => self.stand(entity),
-            }
-            return;
+            return self.flees_from(entity).map_or(Goal::Stand, Goal::Flee);
         }
-        if self.held(entity) || self.is_channelling(entity) {
-            self.stand(entity);
-            return;
+        if self.held(entity)
+            || self.is_channelling(entity)
+            || self.disarmed(entity) && self.neutral.get(entity).is_some()
+        {
+            return Goal::Stand;
         }
-        if self.disarmed(entity) && self.neutral.get(entity).is_some() {
-            self.stand(entity);
-            return;
-        }
+        let set_on = || self.target_of(entity).and_then(|on| self.pos(on));
         if self.rooted(entity) {
-            // Rooted, it still comes round to what it is set on, to swing.
-            if let Some(at) = self
-                .target_of(entity)
-                .and_then(|on| self.transform.get(on))
-                .map(|t| t.pos)
-            {
-                self.turn_to(entity, at);
-            }
-            self.stand(entity);
-            return;
+            return set_on().map_or(Goal::Stand, Goal::Face);
         }
         if let Some(face) = self.acting_on(entity) {
-            if let Some(at) = face.and_then(|on| self.transform.get(on)).map(|t| t.pos) {
-                self.turn_to(entity, at);
-            }
-            self.stand(entity);
-            return;
+            return face
+                .and_then(|on| self.pos(on))
+                .map_or(Goal::Stand, Goal::Face);
         }
         if let Some(pending) = self.pending_cast(entity)
             && let Some(aim) = self.cast_spot(pending)
         {
             let reach = self.cast_reach(entity, pending);
             if reach > 0 {
-                self.walk_toward(entity, aim, rules::units(reach), scratch);
-                return;
+                return Goal::Walk(aim, rules::units(reach));
             }
         }
         let holding = matches!(
@@ -95,21 +91,43 @@ impl World {
         match self.closing_on(entity) {
             // Holding, it comes round to what it is set on but never leaves
             // the spot it was left on.
-            Some((at, _)) if holding => {
-                self.turn_to(entity, at);
-                self.stand(entity);
-            }
-            Some((at, reach)) => self.walk_toward(entity, at, reach, scratch),
-            None => match self
+            Some((at, _)) if holding => Goal::Face(at),
+            Some((at, reach)) => Goal::Walk(at, reach),
+            None => self
                 .orders
                 .get(entity)
                 .and_then(|o| destination(&o.current))
-            {
-                Some(dest) if self.marching(entity) => self.march_toward(entity, dest, scratch),
-                Some(dest) => self.walk_toward(entity, dest, Fixed::ZERO, scratch),
-                None => self.stand(entity),
-            },
+                .map_or(Goal::Stand, |dest| Goal::Walk(dest, Fixed::ZERO)),
         }
+    }
+
+    /// Whether an entity is walking this tick: its goal is a walk it has not
+    /// finished, by reaching the spot or by ending its route short of it,
+    /// and it took its last step. A body that is not is stationary, and
+    /// every walker's short pather lays its way round it (Liquipedia,
+    /// *Pathfinding*): one that could not take its last step, pressed
+    /// against others or the ground, stands there as much as one told to.
+    pub(super) fn walking(&self, entity: Entity) -> bool {
+        let Some(from) = self.pos(entity) else {
+            return false;
+        };
+        let walks = match self.walk_goal(entity) {
+            Goal::Flee(_) => true,
+            Goal::Stand | Goal::Face(_) => false,
+            Goal::Walk(dest, arrive) => {
+                from != dest
+                    && !(arrive > Fixed::ZERO && from.within(dest, arrive))
+                    && !self
+                        .route
+                        .get(entity)
+                        .is_some_and(|route| route.done && route.goal == Some(dest))
+            }
+        };
+        walks
+            && self
+                .motion
+                .get(entity)
+                .is_none_or(|motion| motion.stalled == 0)
     }
 
     /// What an entity mid-action comes round to, when an action roots it:
@@ -211,12 +229,14 @@ impl World {
     }
 
     /// Walks one entity towards a spot until it stands within a reach of
-    /// it, one tick's worth.
+    /// it, one tick's worth, as Dota walks every ground unit (Liquipedia,
+    /// *Pathfinding*): the long pather's route keeps it round the ground and
+    /// the trees, the short pather's plan along it round the stationary
+    /// bodies about it, and a body that moves is met where it is
+    /// ([`World::collide`]).
     ///
     /// Standing near enough already, it only comes round to face the spot.
-    /// What flies goes straight; what walks follows its route round what
-    /// stands still and its plan round what moves, and takes the plan's
-    /// next step unless a body has come to stand in it.
+    /// What flies goes straight.
     fn walk_toward(
         &mut self,
         entity: Entity,
@@ -228,16 +248,6 @@ impl World {
             return;
         };
         let collision = self.collision(entity);
-        let motion = self.motion.get(entity).copied().unwrap_or_default();
-        // Just walked into a body that was itself moving: it stands for
-        // the block wait, facing where it was going.
-        if motion.wait_until > self.tick {
-            self.turn_to(entity, dest);
-            if let Some(motion) = self.motion.get_mut(entity) {
-                motion.stalled = motion.stalled.saturating_add(1);
-            }
-            return;
-        }
         let (aim, last) = self.lay_route(entity, from, dest, collision, &[]);
         if self.route.get(entity).is_some_and(|route| route.done) {
             self.turn_to(entity, dest);
@@ -261,7 +271,6 @@ impl World {
                 aim
             },
             last,
-            shoving: self.march.get(entity).is_some() && motion.stalled >= rules::MARCH_SHOVE_TICKS,
             before_relay: None,
         };
         let goal = self
@@ -269,87 +278,15 @@ impl World {
             .get(entity)
             .and_then(|route| route.goal)
             .unwrap_or(dest);
+        let stalled = self.motion.get(entity).map_or(0, |motion| motion.stalled);
         // A plan is walked from where it was laid: a body put somewhere
-        // else since, by a hook or a shove, has no plan.
-        if plan_stale(
-            self.plan.get(entity),
-            from,
-            step,
-            goal,
-            motion.stalled,
-            self.tick,
-        ) && self.relay_plan(&mut leg, goal, motion, scratch)
+        // else since, by a hook or a slide along a body, has no plan.
+        if plan_stale(self.plan.get(entity), from, step, goal, stalled, self.tick)
+            && self.relay_plan(&mut leg, goal, scratch)
         {
             return;
         }
         self.follow_plan(&leg);
-    }
-
-    /// Whether a lane creep walks its lane, neither chasing nor looking for
-    /// a target it lost.
-    fn marching(&self, entity: Entity) -> bool {
-        self.march.get(entity).is_some()
-            && self
-                .lane_ai
-                .get(entity)
-                .is_none_or(|ai| ai.last_seen.is_none())
-    }
-
-    /// A lane creep's tick of marching: along its route, which keeps it off
-    /// the ground it cannot walk, and straight against any body in its way.
-    ///
-    /// Dota's lane creeps do not path round the units that block them; they
-    /// walk against them as if they were not there and are stuck until they
-    /// turn or the blocker goes (Liquipedia, *Unit Size*, Collision Size).
-    /// Walking against a body slides along its edge, so a creep met off
-    /// centre passes it, and only one met head on is held: what a creep
-    /// block keeps up by stepping back in front of the creep.
-    fn march_toward(&mut self, entity: Entity, dest: Vec2, scratch: &mut LocalScratch) {
-        let Some((from, step)) = self.walking_pace(entity, dest, Fixed::ZERO) else {
-            return;
-        };
-        // Nobody foresees a marcher by a plan: it has none.
-        self.stand(entity);
-        let collision = self.collision(entity);
-        let (aim, _) = self.lay_route(entity, from, dest, collision, &[]);
-        if self.route.get(entity).is_some_and(|route| route.done) || aim == from {
-            self.turn_to(entity, dest);
-            return;
-        }
-        // Held against a body it stands, and is not counted stalled: a stall
-        // is a planned walk's, which a creep chasing after being held must
-        // not start out with.
-        let next = move_towards(from, aim, step);
-        // The ground is the route's to get round, as Dota's lane creeps
-        // path round the map itself: a marcher put off its route by the
-        // bodies it slid along, its way back shut by a structure, walks
-        // that stretch as any walker does.
-        if !self.clearance.capsule_clear(from, next, collision) {
-            self.walk_toward(entity, dest, Fixed::ZERO, scratch);
-            return;
-        }
-        let slid = self.slide_past(entity, from, (next, aim), collision);
-        let queued = match slid {
-            Slid::Queued(blocker) => Some((blocker, self.tick)),
-            _ => None,
-        };
-        if let Some(motion) = self.motion.get_mut(entity) {
-            motion.queued_behind = queued;
-        }
-        let to = match slid {
-            Slid::Step(to) if self.clearance.capsule_clear(from, to, collision) => to,
-            // Wedged against its own wave, it finds its way out as any
-            // walker does, or the two stand locked for good.
-            Slid::Wedged => {
-                self.walk_toward(entity, dest, Fixed::ZERO, scratch);
-                return;
-            }
-            Slid::Step(_) | Slid::Queued(_) | Slid::Stand => {
-                self.turn_to(entity, aim);
-                return;
-            }
-        };
-        self.step_turning(entity, from, to);
     }
 
     /// A step a unit takes facing it: it turns onto the way it steps, a
@@ -379,16 +316,27 @@ impl World {
         }
     }
 
-    /// A hero whose plan a body cuts, or who has no plan through the bodies
-    /// about it, walks on at `toward` as a player's unit does in Dota: into
-    /// the body that blocks it and along its edge ([`slide_along`]),
-    /// rather than standing until the bodies move. Answers whether it took
-    /// a step or came round for one; it stands when the slide is cut too.
-    fn slide_on(&mut self, leg: &Leg, toward: Vec2) -> bool {
+    /// A walker whose step a body cuts, or whose short pather finds no way
+    /// through the bodies about it, walks on at `toward` into the body that
+    /// blocks it: a moving body is no obstacle to the short pather, so the
+    /// walker meets it, and its step keeps the part that runs along the
+    /// body's edge ([`slide_along`]). A creep met head on is held; one met
+    /// off centre slides past, the blocked creep that "will try to pass on
+    /// your left/right side" (Gaming StackExchange q/65482). Approximation:
+    /// Dota does not document how a step against a unit resolves; the slide
+    /// keeps the hold a creep block needs.
+    ///
+    /// A step met dead on runs along no edge, and the walker stands this
+    /// tick. Standing, it is a stationary unit ([`World::walking`]), which
+    /// the other's short pather lays its way round, and the other likewise
+    /// for it: two walking into each other dead on do not push for good.
+    /// Against one walking its way, or a body stepped in front of it, it is
+    /// held while that body keeps it there.
+    ///
+    /// Answers whether it took a step or came round for one; it stands when
+    /// the slide is cut too.
+    fn collide(&mut self, leg: &Leg, toward: Vec2) -> bool {
         let (entity, from, collision) = (leg.entity, leg.from, leg.collision);
-        if self.hero.get(entity).is_none() {
-            return false;
-        }
         let next = move_towards(from, toward, leg.step);
         let to = match self.stood_in_the_way(entity, from, next, collision) {
             None => Some(next),
@@ -408,102 +356,6 @@ impl World {
         }
         self.step_turning(entity, from, to);
         true
-    }
-
-    /// What a step against a body comes to: the step itself with nobody in
-    /// the way, else what of it runs along the edge of the body it meets;
-    /// it queues behind a creep of its own lane further on, stands against a
-    /// body it cannot slide past, and is wedged when that body is a creep of
-    /// its own lane it does not queue behind.
-    ///
-    /// Bodies are met where they stood when the tick began, so every
-    /// marcher steps at once and none walks into a gap another left this
-    /// tick: who moves first would otherwise shape the wave, and the slots
-    /// go to the side spawned first. Two that step into one spot are eased
-    /// apart after.
-    fn slide_past(
-        &self,
-        entity: Entity,
-        from: Vec2,
-        (next, aim): (Vec2, Vec2),
-        collision: Fixed,
-    ) -> Slid {
-        if self.phased(entity) {
-            return Slid::Step(next);
-        }
-        let Some((blocker, centre, radius)) = self.stood_in_the_way(entity, from, next, collision)
-        else {
-            return Slid::Step(next);
-        };
-        if self.queues_behind(entity, blocker, from, centre, aim) {
-            return Slid::Queued(blocker);
-        }
-        match slide_along(from, next, centre, collision + radius) {
-            Some(to)
-                if to != from && self.stood_in_the_way(entity, from, to, collision).is_none() =>
-            {
-                Slid::Step(to)
-            }
-            // Refused by a creep of its own lane it does not wait behind,
-            // which may wait behind it: standing would lock the two.
-            _ if self.team.get(blocker) == self.team.get(entity)
-                && self.lane.get(blocker) == self.lane.get(entity)
-                && self.march.get(blocker).is_some() =>
-            {
-                Slid::Wedged
-            }
-            _ => Slid::Stand,
-        }
-    }
-
-    /// Whether a marcher that walks into a creep of its own lane, further on
-    /// towards where both are going, stands behind it rather than sliding
-    /// past: the followers of a held lead creep queue up behind it ("the
-    /// creeps that follow will block each other", Gaming StackExchange; lane
-    /// creeps walk against what blocks them and are stuck, Liquipedia, *Unit
-    /// Size*). Further on means nearer the marcher's own aim.
-    fn queues_behind(
-        &self,
-        entity: Entity,
-        blocker: Entity,
-        from: Vec2,
-        centre: Vec2,
-        aim: Vec2,
-    ) -> bool {
-        if self.march.get(blocker).is_none()
-            || self.team.get(blocker) != self.team.get(entity)
-            || self.lane.get(blocker) != self.lane.get(entity)
-            || centre.distance_squared(aim) >= from.distance_squared(aim)
-        {
-            return false;
-        }
-        // Each nearer the other's aim, the two would wait on each other for
-        // good: when the other stood queued behind this one last tick, only
-        // the one further along the lane waits.
-        let waits_on_me = self
-            .motion
-            .get(blocker)
-            .and_then(|motion| motion.queued_behind)
-            .is_some_and(|(behind, tick)| behind == entity && tick + 1 == self.tick);
-        !waits_on_me || self.lane_place(entity, from) < self.lane_place(blocker, centre)
-    }
-
-    /// How far on its lane a marcher standing at a spot is: the waypoint it
-    /// walks at next, then how near it stands to it. Greater is further on;
-    /// a slot breaks a dead tie, so the order is strict.
-    fn lane_place(&self, entity: Entity, at: Vec2) -> (u16, i64, u32) {
-        let next = self.march.get(entity).map_or(0, |march| march.next);
-        let waypoint = self
-            .team
-            .get(entity)
-            .zip(self.lane.get(entity))
-            .and_then(|(team, lane)| {
-                self.lane_routes.as_ref()?[bota_core::team_index(*team)][usize::from(lane.0)]
-                    .get(usize::from(next))
-                    .copied()
-            });
-        let near = waypoint.map_or(0, |waypoint| -at.distance_squared(waypoint));
-        (next, near, entity.index().0)
     }
 
     /// The body a step would walk into, where it stood when the tick began,
@@ -558,29 +410,44 @@ impl World {
         Some((from, step))
     }
 
-    /// Lays a walker's plan afresh along its route, round the bodies about
-    /// it, and answers whether that settles its walk this tick.
-    fn relay_plan(
-        &mut self,
-        leg: &mut Leg,
-        goal: Vec2,
-        motion: Motion,
-        scratch: &mut LocalScratch,
-    ) -> bool {
+    /// Lays a walker's plan afresh along its route, round the stationary
+    /// bodies about it, and answers whether that settles its walk this tick.
+    fn relay_plan(&mut self, leg: &mut Leg, goal: Vec2, scratch: &mut LocalScratch) -> bool {
         let (entity, now) = (leg.entity, self.tick);
-        let (mut steps, crowded, mut reached) = self.lay_plan(leg, scratch);
-        // Short of the aim with bodies about, the route is laid round the
-        // bodies standing there as if they were structures.
-        if !reached && crowded && now >= motion.relaid + rules::STALL_RELAY_GAP {
-            match self.relay_round_standing(leg, scratch) {
-                (Some(round), reached_round) if reached_round || round.len() > steps.len() => {
+        let mut stationary = std::mem::take(&mut self.extra_scratch);
+        stationary.clear();
+        self.stationary_about(leg, &mut stationary);
+        let crowded = !stationary.is_empty();
+        let (mut steps, mut reached) = self.lay_plan(leg, &stationary, scratch);
+        // Short of the aim with stationary bodies about, the route itself is
+        // laid round them, as if they were structures: the short pather's
+        // wall-tracing round what stands in the long pather's way.
+        // A route that finds no way nearer the destination round them leads
+        // nowhere, and the walker keeps the one it had.
+        if !reached && crowded {
+            let before = self.route.get(entity).cloned();
+            let (aim, last) =
+                self.lay_route(leg.entity, leg.from, leg.dest, leg.collision, &stationary);
+            let nowhere = self
+                .route
+                .get(entity)
+                .is_some_and(|route| route.corners.is_empty() && route.end == leg.from);
+            if nowhere {
+                if let (Some(slot), Some(before)) = (self.route.get_mut(entity), before) {
+                    *slot = before;
+                }
+            } else {
+                leg.try_relay(aim, last);
+                let (round, reached_round) = self.lay_plan(leg, &stationary, scratch);
+                if reached_round || round.len() > steps.len() {
                     steps = round;
                     reached = reached_round;
+                } else {
+                    leg.undo_relay();
                 }
-                (Some(_), _) => leg.undo_relay(),
-                (None, _) => {}
             }
         }
+        self.extra_scratch = stationary;
         let empty = steps.is_empty();
         self.plan.insert(
             entity,
@@ -597,13 +464,13 @@ impl World {
         if !empty {
             return false;
         }
-        self.walk_nowhere(leg, reached, crowded);
+        self.walk_nowhere(leg, reached);
         true
     }
 
     /// A walker whose fresh plan takes it nowhere: standing on a spot of
-    /// its route already, at the end of its walk, or stuck for now.
-    fn walk_nowhere(&mut self, leg: &Leg, reached: bool, crowded: bool) {
+    /// its route already, at the end of its walk, or blocked for now.
+    fn walk_nowhere(&mut self, leg: &Leg, reached: bool) {
         let entity = leg.entity;
         if reached && !leg.last {
             // Standing on a spot of the route already: the next tick aims
@@ -617,47 +484,28 @@ impl World {
             return;
         }
         // Nothing gets it nearer. At the end of its route with nobody
-        // about, that is the ground's last word and the walk is over; with
-        // bodies about it is stuck for now, and asks again once they have
-        // moved.
-        if leg.last && !crowded {
+        // walking into its way, that is the last word of the ground and the
+        // stationary bodies about, which its short pather took in, and the
+        // walk is over as near as it got; a body walking into its way it
+        // walks into as far as that body lets it.
+        let met = || {
+            let next = move_towards(leg.from, leg.aim, leg.step);
+            self.stood_in_the_way(entity, leg.from, next, leg.collision)
+                .is_some_and(|(_, centre, radius)| !self.bodies.stands_still(centre, radius))
+        };
+        if leg.last && !met() {
             if let Some(route) = self.route.get_mut(entity) {
                 route.done = true;
             }
             self.turn_to(entity, leg.dest);
             return;
         }
-        self.shove_or_stall(leg);
-    }
-
-    /// Lays a walker's route round the bodies standing still about it, and
-    /// its plan along that route, trying the route's new aim on the leg.
-    /// Answers nothing when nobody stands about, else the plan and whether
-    /// it gets to the aim.
-    fn relay_round_standing(
-        &mut self,
-        leg: &mut Leg,
-        scratch: &mut LocalScratch,
-    ) -> (Option<Vec<Vec2>>, bool) {
-        let mut extra = std::mem::take(&mut self.extra_scratch);
-        extra.clear();
-        self.standing_about(leg.entity, leg.from, &mut extra);
-        if extra.is_empty() {
-            self.extra_scratch = extra;
-            return (None, false);
-        }
-        if let Some(motion) = self.motion.get_mut(leg.entity) {
-            motion.relaid = self.tick;
-        }
-        let (aim, last) = self.lay_route(leg.entity, leg.from, leg.dest, leg.collision, &extra);
-        self.extra_scratch = extra;
-        leg.try_relay(aim, last);
-        let (steps, _, reached) = self.lay_plan(leg, scratch);
-        (Some(steps), reached)
+        self.walk_into(leg, leg.aim);
     }
 
     /// Takes the next step of a walker's plan, unless it turns onto the
-    /// next stretch, or a body stands in the step.
+    /// next stretch, or a body stands in the step: a body moving, which the
+    /// short pather does not plan round, is met ([`World::collide`]).
     fn follow_plan(&mut self, leg: &Leg) {
         let (entity, from) = (leg.entity, leg.from);
         let Some(target) = self
@@ -665,7 +513,7 @@ impl World {
             .get(entity)
             .and_then(|plan| plan.steps.get(plan.at).copied())
         else {
-            self.shove_or_stall(leg);
+            self.walk_into(leg, leg.aim);
             return;
         };
         if target == from {
@@ -682,16 +530,8 @@ impl World {
             }
             return;
         }
-        if !leg.shoving
-            && !self.phased(entity)
-            && let Some(blocker) = self.body_in_the_way(entity, from, target)
-        {
-            if self.slide_on(leg, target) {
-                return;
-            }
-            self.blocked_by(entity, blocker);
-            self.turn_to(entity, target);
-            self.stall(entity, leg.dest);
+        if !self.phased(entity) && self.body_in_the_way(entity, from, target).is_some() {
+            self.walk_into(leg, target);
             return;
         }
         self.take_step(entity, from, target);
@@ -700,55 +540,31 @@ impl World {
         }
     }
 
-    /// Whoever stands in a walker's step was not where its plan had them:
-    /// the plan is dropped, a body that is itself moving costs the block
-    /// wait, and a hero run into is counted.
-    fn blocked_by(&mut self, entity: Entity, blocker: Entity) {
-        let now = self.tick;
-        let moving = self
-            .motion
-            .get(blocker)
-            .is_some_and(|theirs| theirs.delta != Vec2::ZERO)
-            || self.plan.get(blocker).is_some_and(|theirs| theirs.stands());
-        let hero = self.hero.get(blocker).is_some();
-        if let Some(motion) = self.motion.get_mut(entity) {
-            if moving {
-                motion.wait_until = now + rules::BLOCK_WAIT_TICKS;
+    /// A walker that walks into what is in its way, at `toward`: as far as
+    /// the body it meets lets it ([`World::collide`]), else it stands this
+    /// tick wanting to move.
+    fn walk_into(&mut self, leg: &Leg, toward: Vec2) {
+        if !self.collide(leg, toward) {
+            if let Some(plan) = self.plan.get_mut(leg.entity) {
+                plan.clear();
             }
-            if hero {
-                motion.bumps = if now < motion.bumped + rules::HEED_HERO_TICKS {
-                    motion.bumps.saturating_add(1)
-                } else {
-                    1
-                };
-                motion.bumped = now;
-            }
-        }
-        if let Some(plan) = self.plan.get_mut(entity) {
-            plan.clear();
-        }
-    }
-
-    /// A walker that goes nowhere this tick: shoving into what is in its way
-    /// when it has stood stalled long enough, a hero sliding on along the
-    /// bodies about it ([`World::slide_on`]), else stalled.
-    fn shove_or_stall(&mut self, leg: &Leg) {
-        if leg.shoving {
-            self.shove(leg.entity, leg.from, leg.aim, leg.step, leg.collision);
-        } else if !self.slide_on(leg, leg.aim) {
             self.stall(leg.entity, leg.dest);
         }
     }
 
     /// Lays the next stretch of a walk: the plan from where the walker
-    /// stands to its aim, round the bodies about it and where they are
-    /// going. Answers whether any body was about to be planned round, and
-    /// whether the plan gets to the aim.
-    fn lay_plan(&self, leg: &Leg, scratch: &mut LocalScratch) -> (Vec<Vec2>, bool, bool) {
+    /// stands to its aim, round the ground and the `stationary` bodies.
+    /// Answers the plan and whether it gets to the aim.
+    fn lay_plan(
+        &self,
+        leg: &Leg,
+        stationary: &[(Vec2, Fixed)],
+        scratch: &mut LocalScratch,
+    ) -> (Vec<Vec2>, bool) {
         let _profile = self.scope(Phase::LocalPlan);
         let ob = Obstacles {
             field: &self.clearance,
-            extra: &[],
+            extra: stationary,
         };
         let ask = LocalAsk {
             from: leg.from,
@@ -766,78 +582,36 @@ impl World {
                 .map_or(0, |stats| stats.turn_rate),
             now: self.tick,
         };
-        let foreseen = self.foreseen_about(leg.entity, leg.from, leg.step);
-        let crowded = !foreseen.is_empty();
         let _search_profile = self.scope(Phase::LocalSearch);
-        let (steps, reached) = plan_local(&ob, &foreseen, &ask, scratch);
-        (steps, crowded, reached)
+        plan_local(&ob, &ask, scratch)
     }
 
-    /// Every body a walker's plan is laid round, and where each will be.
-    ///
-    /// A hero is foreseen where it stands, and only when it has stood there
-    /// a while or has been run into again and again of late. A hero walking
-    /// foresees every other body where it stands now: Dota's pathing takes
-    /// units for obstacles where they are and does not predict where they
-    /// go, so a hero sent into a creep's way walks into it. Nothing is
-    /// foreseen for a phased walker, and a phased body is walked through.
-    fn foreseen_about(&self, entity: Entity, from: Vec2, step: Fixed) -> Vec<Foreseen<'_>> {
-        let mut foreseen = Vec::new();
-        if self.phased(entity) {
-            return foreseen;
+    /// The stationary bodies within a walker's plan's reach, where they
+    /// stand, as circles its short pather lays its way round: a body that
+    /// is not walking ([`World::walking`]) and can move at all (what never
+    /// moves is ground already). A walker that is phased walks through all
+    /// of them, and a phased body is walked through. A body that stands
+    /// stays where it is, so one beyond what the plan's horizon and the
+    /// walker's own room reach cannot touch the plan.
+    fn stationary_about(&self, leg: &Leg, out: &mut Vec<(Vec2, Fixed)>) {
+        if self.phased(leg.entity) {
+            return;
         }
-        let hero_walks = self.hero.get(entity).is_some();
-        let now = self.tick;
         let reach = Fixed {
-            raw: step.raw.saturating_mul(rules::LOCAL_HORIZON_TICKS as i32),
-        } + rules::units(rules::LOCAL_BODIES_PAD);
-        self.bodies.near(from, reach, |body| {
-            if body.entity == entity || self.phased(body.entity) {
+            raw: leg
+                .step
+                .raw
+                .saturating_mul(rules::LOCAL_HORIZON_TICKS as i32),
+        } + plan_radius(leg.collision);
+        self.bodies.near(leg.from, reach, |body| {
+            if body.entity == leg.entity
+                || body.fixed
+                || !body.stationary
+                || self.phased(body.entity)
+            {
                 return;
             }
-            let Some(at) = self.pos(body.entity) else {
-                return;
-            };
-            let standing = if self.hero.get(body.entity).is_some() {
-                let steady = body.still >= rules::STANDING_TICKS;
-                let bumped = self.motion.get(entity).is_some_and(|mine| {
-                    now < mine.bumped + rules::HEED_HERO_TICKS
-                        && mine.bumps >= rules::BUMPS_BEFORE_HEED
-                });
-                if !steady && !bumped {
-                    return;
-                }
-                true
-            } else {
-                hero_walks
-            };
-            let (delta, steps, plan_from) = match self.plan.get(body.entity) {
-                _ if standing => (Vec2::ZERO, &[][..], 0),
-                Some(plan) if plan.stands() => (body.delta, plan.steps.as_slice(), plan.from),
-                _ => (body.delta, &[][..], 0),
-            };
-            foreseen.push(Foreseen {
-                at,
-                radius: body.radius,
-                delta,
-                steps,
-                from: plan_from,
-            });
-        });
-        foreseen
-    }
-
-    /// Every body about a spot that can move but has stood still for
-    /// [`rules::STANDING_TICKS`], as circles a route may be laid round.
-    fn standing_about(&self, entity: Entity, from: Vec2, out: &mut Vec<(Vec2, Fixed)>) {
-        let reach = rules::units(rules::STANDING_REACH);
-        self.bodies.near(from, reach, |body| {
-            if body.entity == entity || body.fixed || body.still < rules::STANDING_TICKS {
-                return;
-            }
-            if let Some(at) = self.pos(body.entity) {
-                out.push((at, body.radius));
-            }
+            out.push((body.at, body.radius));
         });
     }
 
@@ -846,6 +620,13 @@ impl World {
     /// destination that moved a little, its corners dropped as they are
     /// passed, and laid again from where the entity stands when the way
     /// to its next corner is shut.
+    ///
+    /// A route laid round stationary bodies (`extra`) keeps them in mind
+    /// while they stand ([`Route::round`]): its corners are passed and its
+    /// aim taken round them too, as the short pather keeps tracing a wall
+    /// until its way is free. One that walks off is forgotten and the route
+    /// laid again without it; a new destination forgets them all, the long
+    /// pather knowing no units.
     ///
     /// Answers the spot the entity walks at next: as far along the route as
     /// [`rules::LOCAL_REACH`] and a straight line from where it stands
@@ -864,12 +645,30 @@ impl World {
             .route
             .get_mut(entity)
             .map_or_else(Route::none, |route| std::mem::replace(route, Route::none()));
+        let mut round = std::mem::take(&mut route.round);
+        let traced = round.len();
+        round.retain(|&(at, radius)| self.bodies.stands_still(at, radius));
+        let left = round.len() < traced;
+        for circle in extra {
+            if !round.contains(circle) {
+                round.push(*circle);
+            }
+        }
+        let kept = {
+            let ob = Obstacles {
+                field: &self.clearance,
+                extra: &round,
+            };
+            keeps_route(&ob, &mut route, from, dest, room)
+        };
+        if !kept {
+            round.clear();
+        }
         let ob = Obstacles {
             field: &self.clearance,
-            extra,
+            extra: &round,
         };
-        let kept = keeps_route(&ob, &mut route, from, dest, room);
-        let fresh = !kept || !extra.is_empty();
+        let fresh = !kept || left || !extra.is_empty();
         if fresh {
             let _path_profile = self.scope(Phase::PathQuery);
             relay(&mut self.planner, &mut route, &ob, from, dest, collision);
@@ -890,6 +689,7 @@ impl World {
             pass_corners(&ob, &mut route, from, collision);
         }
         let aim = next_aim(&ob, &mut route, from, dest, collision);
+        route.round = round;
         if let Some(slot) = self.route.get_mut(entity) {
             *slot = route;
         } else {
@@ -924,18 +724,6 @@ impl World {
         self.turn_to(entity, dest);
         if let Some(motion) = self.motion.get_mut(entity) {
             motion.stalled = motion.stalled.saturating_add(1);
-        }
-    }
-
-    /// A creep that has stood stalled long enough walks into the bodies in
-    /// its way, straight at its aim, and is eased out of them after. Closed
-    /// ground stops it all the same.
-    fn shove(&mut self, entity: Entity, from: Vec2, aim: Vec2, step: Fixed, collision: Fixed) {
-        let next = move_towards(from, aim, step);
-        if next != from && self.clearance.capsule_clear(from, next, collision) {
-            self.take_step(entity, from, next);
-        } else {
-            self.stall(entity, aim);
         }
     }
 
@@ -977,18 +765,6 @@ impl World {
     }
 }
 
-/// What a marcher's step against the bodies about it comes to.
-enum Slid {
-    /// It steps here: straight on, or along the body it met.
-    Step(Vec2),
-    /// It stands queued behind this creep of its own lane.
-    Queued(Entity),
-    /// It stands, held by a body.
-    Stand,
-    /// A creep of its own lane it does not queue behind refuses every step.
-    Wedged,
-}
-
 /// One walker's tick of walking along its route.
 struct Leg {
     entity: Entity,
@@ -1003,8 +779,6 @@ struct Leg {
     aim: Vec2,
     /// Whether that spot is the route's end.
     last: bool,
-    /// Whether it walks into the bodies in its way.
-    shoving: bool,
     /// The aim and end it had before a route laid round standing bodies
     /// was tried, while one is.
     before_relay: Option<(Vec2, bool)>,
@@ -1263,4 +1037,16 @@ fn slide_along(from: Vec2, next: Vec2, centre: Vec2, reach: Fixed) -> Option<Vec
             raw: i32::try_from(i128::from(centre.y.raw) + oy).ok()?,
         },
     })
+}
+
+/// What an entity's state has it do with its body this tick.
+enum Goal {
+    /// Run from this entity.
+    Flee(Entity),
+    /// Stand where it is.
+    Stand,
+    /// Stand and come round to a spot.
+    Face(Vec2),
+    /// Walk to a spot until within a reach of it.
+    Walk(Vec2, Fixed),
 }

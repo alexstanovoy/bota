@@ -1,11 +1,13 @@
-//! The next stretch of a walk: A* over where a body can be and when, round
-//! what stands still and what is about to move.
+//! The next stretch of a walk, Dota's short pather (Liquipedia,
+//! *Pathfinding*): A* over where a body can be and when, round the ground and
+//! the stationary bodies the walk is asked to keep off, which stand where
+//! they are for the whole plan. Moving bodies are none of its business.
 //!
 //! A state is a spot, the way the body faces and the tick it is there. A
 //! step of the search is a straight stretch along one of sixteen headings
 //! or straight at the goal, the turn onto it paid for first in ticks stood
-//! still, or a stretch stood waiting, or the last stretch straight at the
-//! goal tick by tick. The cost is time.
+//! still, or the last stretch straight at the goal tick by tick. The cost is
+//! time.
 
 use std::cmp::Reverse;
 use std::collections::BinaryHeap;
@@ -31,63 +33,6 @@ const SIDEWAYS_BRADS: u32 = 5 * HEADING_BRADS;
 const PRIM: u32 = rules::LOCAL_PRIM_TICKS;
 /// Ticks a plan reaches, at most.
 const HORIZON: u32 = rules::LOCAL_HORIZON_TICKS;
-
-/// A body near the walker and where it will be.
-#[derive(Clone, Copy, Debug)]
-pub struct Foreseen<'a> {
-    /// Where it stands now.
-    pub at: Vec2,
-    /// Its collision size.
-    pub radius: Fixed,
-    /// How far it moved last tick.
-    pub delta: Vec2,
-    /// Where its own plan has it after each tick from `from` on. Empty for
-    /// a body with no plan to read.
-    pub steps: &'a [Vec2],
-    /// The tick the first of its planned steps is taken on.
-    pub from: u32,
-}
-
-impl Foreseen<'_> {
-    /// Where the body is after a tick: by its plan, held at the plan's end
-    /// once past it; without a plan, or before `from`, its last step carried
-    /// forward for [`rules::PREDICT_TICKS`] and held there.
-    pub fn at_tick(&self, now: u32, tick: u32) -> Vec2 {
-        if !self.steps.is_empty() && tick >= self.from {
-            let index = (tick - self.from) as usize;
-            return self.steps[index.min(self.steps.len() - 1)];
-        }
-        let ahead = i64::from(tick.saturating_sub(now).min(rules::PREDICT_TICKS));
-        Vec2 {
-            x: Fixed {
-                raw: (i64::from(self.at.x.raw) + i64::from(self.delta.x.raw) * ahead)
-                    .clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32,
-            },
-            y: Fixed {
-                raw: (i64::from(self.at.y.raw) + i64::from(self.delta.y.raw) * ahead)
-                    .clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32,
-            },
-        }
-    }
-
-    /// Whether the body is going anywhere.
-    fn moves(&self) -> bool {
-        self.delta != Vec2::ZERO || !self.steps.is_empty()
-    }
-
-    /// How far from where it stands the body gets over the horizon, in raw
-    /// units.
-    fn reach(&self, now: u32) -> i64 {
-        if self.steps.is_empty() {
-            return isqrt64(self.delta.length_squared()) * i64::from(rules::PREDICT_TICKS);
-        }
-        let mut far = 0;
-        for tick in now + 1..=now + HORIZON {
-            far = far.max(self.at.distance_squared(self.at_tick(now, tick)));
-        }
-        isqrt64(far)
-    }
-}
 
 /// What a walk asks of the search.
 #[derive(Clone, Copy, Debug)]
@@ -145,17 +90,6 @@ pub struct LocalScratch {
     heap: BinaryHeap<Reverse<(u32, i64, u32, u32)>>,
     /// The best state at each spot, heading and stretch of time.
     seen: FxHashMap<u64, u32>,
-    /// The squared distance each body must be kept at, in the order of the
-    /// bodies asked about.
-    need: Vec<i64>,
-    /// How far each body may stray from where it stands plus the distance
-    /// it must be kept at, in raw units.
-    reach: Vec<i64>,
-    /// Whether any body asked about is going anywhere.
-    moving: bool,
-    /// Where each body asked about stands after each tick of the horizon, a
-    /// row of [`HORIZON`] per body in the order asked about.
-    foreseen: Vec<Vec2>,
     /// The offset of each tick of a stretch along each of the headings,
     /// heading by heading.
     offsets: Vec<Vec2>,
@@ -172,30 +106,12 @@ impl LocalScratch {
     }
 
     /// Forgets the last search and works out what every stretch tried in
-    /// the next one reads: where each body stands after each tick of the
-    /// horizon, how near it may come, and the offsets of every heading.
-    fn prepare(&mut self, bodies: &[Foreseen], ask: &LocalAsk) {
+    /// the next one reads: the offsets of every heading.
+    fn prepare(&mut self, ask: &LocalAsk) {
         self.nodes.clear();
         self.trail.clear();
         self.heap.clear();
         self.seen.clear();
-        self.need.clear();
-        self.reach.clear();
-        self.moving = false;
-        self.foreseen.clear();
-        for body in bodies {
-            let apart = ask.from.distance_squared(body.at);
-            let need = (ask.radius + body.radius).squared_raw();
-            // A body it already overlaps stops only a step deeper into it.
-            let need = need.min(apart);
-            self.need.push(need);
-            for step in 1..=HORIZON {
-                self.foreseen.push(body.at_tick(ask.now, ask.now + step));
-            }
-            self.reach.push(body.reach(ask.now) + isqrt64(need));
-            self.moving |= body.moves();
-        }
-        debug_assert_eq!(self.foreseen.len(), bodies.len() * HORIZON as usize);
         if self.offsets_step != Some(ask.step.raw) {
             self.offsets.clear();
             for heading in 0..HEADINGS {
@@ -224,16 +140,16 @@ impl LocalScratch {
 /// the horizon and the search budget, else as near as any state got. Empty
 /// when nothing gets it anywhere; empty and there when it is there already
 /// or cannot step.
-pub fn plan_local(
-    ob: &Obstacles,
-    bodies: &[Foreseen],
-    ask: &LocalAsk,
-    scratch: &mut LocalScratch,
-) -> (Vec<Vec2>, bool) {
+pub fn plan_local(ob: &Obstacles, ask: &LocalAsk, scratch: &mut LocalScratch) -> (Vec<Vec2>, bool) {
     if ask.step.raw <= 0 || ask.from.within(ask.goal, ask.arrive) {
         return (Vec::new(), true);
     }
-    scratch.prepare(bodies, ask);
+    // With the straight way to the goal clear, that is the shortest stretch:
+    // the turn onto it stood through, then step by step at it.
+    if ob.clear(ask.from, ask.goal, ask.radius) {
+        return straight_at_goal(ask);
+    }
+    scratch.prepare(ask);
     let (far, left) = goal_gap(ask, ask.from);
     let start = Node {
         pos: ask.from,
@@ -266,7 +182,7 @@ pub fn plan_local(
         if (node.far, node.t) < (best.0, best.1) {
             best = (node.far, node.t, index);
         }
-        expand(ob, bodies, ask, scratch, index, node.pos);
+        expand(ob, ask, scratch, index, node.pos);
     }
     // Short of the goal, a state is walked to only when it is at least two
     // steps nearer the goal than the start.
@@ -277,21 +193,32 @@ pub fn plan_local(
     (walk_back(scratch, best.2), false)
 }
 
-/// Tries every stretch out of one state: straight at the goal, along each
-/// heading within [`SIDEWAYS_BRADS`] of the goal, and, while any body moves,
-/// standing still.
-fn expand(
-    ob: &Obstacles,
-    bodies: &[Foreseen],
-    ask: &LocalAsk,
-    scratch: &mut LocalScratch,
-    index: u32,
-    pos: Vec2,
-) {
-    try_straight_at_goal(ob, bodies, ask, scratch, index);
+/// The plan of a walk straight at the goal over a clear way: the ticks the
+/// turn onto it takes stood where the body is, then a step a tick until near
+/// enough, at most the horizon.
+fn straight_at_goal(ask: &LocalAsk) -> (Vec<Vec2>, bool) {
+    let turn = stall_ticks(
+        ask.facing,
+        facing_towards(ask.from, ask.goal),
+        ask.turn_rate,
+    );
+    let mut steps = vec![ask.from; turn.min(HORIZON) as usize];
+    let mut at = ask.from;
+    while (steps.len() as u32) < HORIZON && !at.within(ask.goal, ask.arrive) {
+        at = move_towards(at, ask.goal, ask.step);
+        steps.push(at);
+    }
+    let reached = at.within(ask.goal, ask.arrive);
+    (steps, reached)
+}
+
+/// Tries every stretch out of one state: straight at the goal, and along each
+/// heading within [`SIDEWAYS_BRADS`] of the goal.
+fn expand(ob: &Obstacles, ask: &LocalAsk, scratch: &mut LocalScratch, index: u32, pos: Vec2) {
+    try_straight_at_goal(ob, ask, scratch, index);
     let at_goal = facing_towards(pos, ask.goal);
     if heading_number(at_goal) == ANY_HEADING {
-        try_heading(ob, bodies, ask, scratch, index, at_goal, ANY_HEADING);
+        try_heading(ob, ask, scratch, index, at_goal, ANY_HEADING);
     }
     for heading in 0..HEADINGS {
         let angle = Angle {
@@ -300,22 +227,13 @@ fn expand(
         if u32::from(facing_gap(angle, at_goal)) > SIDEWAYS_BRADS {
             continue;
         }
-        try_heading(ob, bodies, ask, scratch, index, angle, heading);
-    }
-    if scratch.moving {
-        try_waiting(bodies, ask, scratch, index);
+        try_heading(ob, ask, scratch, index, angle, heading);
     }
 }
 
 /// The last stretch: straight at the goal, tick by tick, until near enough,
 /// when that takes no more than two stretches' worth of ticks.
-fn try_straight_at_goal(
-    ob: &Obstacles,
-    bodies: &[Foreseen],
-    ask: &LocalAsk,
-    scratch: &mut LocalScratch,
-    index: u32,
-) {
+fn try_straight_at_goal(ob: &Obstacles, ask: &LocalAsk, scratch: &mut LocalScratch, index: u32) {
     let node = scratch.nodes[index as usize];
     let most = i64::from(ask.step.raw) * i64::from(2 * PRIM);
     if node.far > most {
@@ -341,16 +259,7 @@ fn try_straight_at_goal(
         && ob.clear(node.pos, at, ask.radius)
     {
         let turned = facing_gap(node.facing, angle) > 0;
-        add_stretch(
-            bodies,
-            ask,
-            scratch,
-            index,
-            angle,
-            ANY_HEADING,
-            stall,
-            turned,
-        );
+        add_stretch(ask, scratch, index, angle, ANY_HEADING, stall, turned);
     }
 }
 
@@ -358,7 +267,6 @@ fn try_straight_at_goal(
 /// of the sixteen, or the way straight at the goal.
 fn try_heading(
     ob: &Obstacles,
-    bodies: &[Foreseen],
     ask: &LocalAsk,
     scratch: &mut LocalScratch,
     index: u32,
@@ -392,27 +300,7 @@ fn try_heading(
     scratch.steps.clear();
     scratch.steps.extend((1..=PRIM).map(step_at));
     let turned = facing_gap(node.facing, angle) > 0;
-    add_stretch(bodies, ask, scratch, index, angle, heading, stall, turned);
-}
-
-/// One stretch stood still, for a body to pass.
-fn try_waiting(bodies: &[Foreseen], ask: &LocalAsk, scratch: &mut LocalScratch, index: u32) {
-    let node = scratch.nodes[index as usize];
-    if node.t + PRIM > HORIZON || !worth(scratch, node.pos, node.heading, node.t + PRIM) {
-        return;
-    }
-    scratch.steps.clear();
-    scratch.steps.resize(PRIM as usize, node.pos);
-    add_stretch(
-        bodies,
-        ask,
-        scratch,
-        index,
-        node.facing,
-        node.heading,
-        0,
-        false,
-    );
+    add_stretch(ask, scratch, index, angle, heading, stall, turned);
 }
 
 /// Whether a state at a spot, heading and tick is one not got to sooner
@@ -425,11 +313,8 @@ fn worth(scratch: &LocalScratch, pos: Vec2, heading: u32, t: u32) -> bool {
         .is_none_or(|&had| scratch.nodes[had as usize].t > t)
 }
 
-/// Adds the state the stretch in `scratch.steps` ends in, if no body is met
-/// on the way.
-#[expect(clippy::too_many_arguments, reason = "one stretch has this many parts")]
+/// Adds the state the stretch in `scratch.steps` ends in.
 fn add_stretch(
-    bodies: &[Foreseen],
     ask: &LocalAsk,
     scratch: &mut LocalScratch,
     index: u32,
@@ -439,31 +324,9 @@ fn add_stretch(
     turned: bool,
 ) {
     let node = scratch.nodes[index as usize];
-    let steps = &scratch.steps;
-    let end = *steps.last().expect("a stretch has steps");
-    let ticks = stall + steps.len() as u32;
+    let end = *scratch.steps.last().expect("a stretch has steps");
+    let ticks = stall + scratch.steps.len() as u32;
     debug_assert!(node.t + ticks <= HORIZON);
-    let far = isqrt64(node.pos.distance_squared(end));
-    for (b, body) in bodies.iter().enumerate() {
-        let need = scratch.need[b];
-        // A body that cannot come near the stretch is not looked at tick
-        // by tick.
-        let span = far + scratch.reach[b];
-        if node.pos.distance_squared(body.at) > span * span {
-            continue;
-        }
-        let row = b * HORIZON as usize;
-        for i in 0..ticks {
-            let mine = if i < stall {
-                node.pos
-            } else {
-                steps[(i - stall) as usize]
-            };
-            if mine.distance_squared(scratch.foreseen[row + node.t as usize + i as usize]) < need {
-                return;
-            }
-        }
-    }
     let (goal_far, left) = goal_gap(ask, end);
     let next = Node {
         pos: end,

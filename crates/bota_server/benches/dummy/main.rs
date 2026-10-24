@@ -9,9 +9,7 @@ use std::hint::black_box;
 
 use bota_core::{isqrt64, per_tick, rules};
 use bota_proto::{Fixed, SlotId, Vec2};
-use bota_server::game::{
-    self, Entity, Fnv, Foreseen, LocalAsk, LocalScratch, Obstacles, World, plan_local,
-};
+use bota_server::game::{self, Entity, Fnv, LocalAsk, LocalScratch, Obstacles, World, plan_local};
 use criterion::measurement::WallTime;
 use criterion::{
     BatchSize, BenchmarkGroup, BenchmarkId, Criterion, Throughput, criterion_group, criterion_main,
@@ -27,8 +25,8 @@ const TICK_WINDOWS: [u32; 2] = [600, 3_000];
 
 /// The world and view fingerprints of each measured tick window.
 const TICK_WINDOW_DIGESTS: [(u32, u64, u64); 2] = [
-    (600, 0x1349_951d_a924_1021, 0xd24c_6fcd_8f69_9c16),
-    (3000, 0x15f7_19ee_4bd9_37df, 0x4adf_9a62_81eb_ff84),
+    (600, 0x464e_bf0a_cf3a_9880, 0xdeba_d6e4_886b_fbd1),
+    (3000, 0x0c41_c310_e070_e233, 0x6434_949a_947c_fba2),
 ];
 
 /// Ticks of the skirmish measured: the pregame and the lane
@@ -36,16 +34,16 @@ const TICK_WINDOW_DIGESTS: [(u32, u64, u64); 2] = [
 const SKIRMISH_TICKS: u32 = 9_000;
 
 /// The world and handed-out fingerprints at the end of the skirmish.
-const SKIRMISH_DIGEST: (u64, u64) = (0x7ff6_cb3a_4c9a_b0f4, 0x69ea_0081_8001_fdcb);
+const SKIRMISH_DIGEST: (u64, u64) = (0xbc58_e990_5e56_c788, 0xcb2d_ca64_35f9_5a06);
 
 /// The fingerprint of the fixed isqrt64 answers.
 const ISQRT_DIGEST: u64 = 0x797c_0b4c_e20e_e1b1;
 /// The fingerprint of the fixed capsule answers.
 const CAPSULE_DIGEST: u64 = 0x2fb1_bec2_5922_1c04;
 /// The fingerprint of the fixed plan-search answers.
-const PLAN_DIGEST: u64 = 0x2886_4f03_b2dc_0d9a;
+const PLAN_DIGEST: u64 = 0x60ca_8886_7460_c051;
 /// The fingerprint of the fixed targeting answers.
-const TARGETING_DIGEST: u64 = 0x952c_05e1_6a5d_7dac;
+const TARGETING_DIGEST: u64 = 0xb21d_2f25_eac0_a48c;
 
 /// The spots of the dummy circuit the plan-search case routes to.
 const PLAN_GOALS: [usize; 3] = [2, 4, 6];
@@ -213,11 +211,11 @@ fn bench_plan(group: &mut BenchmarkGroup<'_, WallTime>) {
     let stats = *dummy.world.stats.get(hero).expect("the hero is settled");
     let hull = *dummy.world.hull.get(hero).expect("the hero has a body");
     let field = scenario::field();
+    let bodies = plan_bodies(transform.pos);
     let ob = Obstacles {
         field: &field,
-        extra: &[],
+        extra: &bodies,
     };
-    let bodies = plan_bodies(transform.pos);
     let asks: Vec<LocalAsk> = PLAN_GOALS
         .iter()
         .map(|&goal| LocalAsk {
@@ -233,7 +231,7 @@ fn bench_plan(group: &mut BenchmarkGroup<'_, WallTime>) {
         .collect();
     let mut scratch = LocalScratch::new();
     assert_eq!(
-        plan_fingerprint(&ob, &bodies, &asks, &mut scratch),
+        plan_fingerprint(&ob, &asks, &mut scratch),
         PLAN_DIGEST,
         "the plan-search answers moved"
     );
@@ -242,9 +240,7 @@ fn bench_plan(group: &mut BenchmarkGroup<'_, WallTime>) {
         b.iter(|| {
             let mut sink = 0u64;
             for ask in &asks {
-                sink ^= black_box(plan_local(&ob, &bodies, ask, &mut scratch))
-                    .0
-                    .len() as u64;
+                sink ^= black_box(plan_local(&ob, ask, &mut scratch)).0.len() as u64;
             }
             black_box(sink)
         });
@@ -302,36 +298,19 @@ fn bench_targeting(group: &mut BenchmarkGroup<'_, WallTime>) {
     });
 }
 
-/// The bodies the plan-search case routes round.
-fn plan_bodies(from: Vec2) -> [Foreseen<'static>; 2] {
+/// The stationary bodies the plan-search case routes round.
+fn plan_bodies(from: Vec2) -> [(Vec2, Fixed); 2] {
     [
-        Foreseen {
-            at: from + Vec2::from_ints(180, 120),
-            radius: Fixed::from_int(24),
-            delta: Vec2::from_ints(6, 0),
-            steps: &[],
-            from: 0,
-        },
-        Foreseen {
-            at: from + Vec2::from_ints(-140, 90),
-            radius: Fixed::from_int(24),
-            delta: Vec2::ZERO,
-            steps: &[],
-            from: 0,
-        },
+        (from + Vec2::from_ints(180, 120), Fixed::from_int(24)),
+        (from + Vec2::from_ints(-140, 90), Fixed::from_int(24)),
     ]
 }
 
 /// The fingerprint of the plan-search answers over the fixed asks.
-fn plan_fingerprint(
-    ob: &Obstacles,
-    bodies: &[Foreseen],
-    asks: &[LocalAsk],
-    scratch: &mut LocalScratch,
-) -> u64 {
+fn plan_fingerprint(ob: &Obstacles, asks: &[LocalAsk], scratch: &mut LocalScratch) -> u64 {
     let mut hash = Fnv::new();
     for ask in asks {
-        let (steps, reached) = plan_local(ob, bodies, ask, scratch);
+        let (steps, reached) = plan_local(ob, ask, scratch);
         hash.some(reached);
         hash.u32(steps.len() as u32);
         for &step in &steps {

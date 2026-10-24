@@ -21,21 +21,29 @@ pub(super) fn mid_config() -> MatchConfig {
     }
 }
 
+/// What a seat has been told of the match so far: its side and every hero
+/// it has seen, a fallen one included.
+#[derive(Default)]
+struct Seen {
+    viewer: Option<Team>,
+    heroes: Vec<(EntityId, Team)>,
+}
+
 /// The non-hero deaths a seat is told the other side's hero struck last,
 /// with the gold it is told each paid, across one step's messages.
-fn enemy_kills_told(stream: &[ServerMsg]) -> Vec<i32> {
+fn enemy_kills_told(stream: &[ServerMsg], seen: &mut Seen) -> Vec<i32> {
     let mut told = Vec::new();
-    let mut heroes: Vec<(EntityId, Team)> = Vec::new();
-    let mut viewer = None;
     for msg in stream {
         match msg {
             ServerMsg::Snapshot { view } => {
-                viewer = view.viewer;
-                heroes = view
-                    .players
-                    .iter()
-                    .filter_map(|player| Some((player.unit?, player.team)))
-                    .collect();
+                seen.viewer = view.viewer;
+                for player in &view.players {
+                    if let Some(unit) = player.unit
+                        && !seen.heroes.iter().any(|(hero, _)| *hero == unit)
+                    {
+                        seen.heroes.push((unit, player.team));
+                    }
+                }
             }
             ServerMsg::Events { events, .. } => {
                 for kind in events {
@@ -48,8 +56,13 @@ fn enemy_kills_told(stream: &[ServerMsg]) -> Vec<i32> {
                     else {
                         continue;
                     };
-                    let team_of = |id| heroes.iter().find(|(hero, _)| *hero == id).map(|h| h.1);
-                    let by_enemy = team_of(*killer).is_some_and(|team| Some(team) != viewer);
+                    let team_of = |id| {
+                        seen.heroes
+                            .iter()
+                            .find(|(hero, _)| *hero == id)
+                            .map(|h| h.1)
+                    };
+                    let by_enemy = team_of(*killer).is_some_and(|team| Some(team) != seen.viewer);
                     if by_enemy && team_of(*unit).is_none() {
                         told.push(*gold);
                     }
@@ -68,9 +81,10 @@ fn a_non_hero_kills_gold_is_hidden_from_the_other_side() {
     let map = map_of(cfg.map);
     let mut hidden = 0;
     let mut ordered = false;
+    let mut seen = [Seen::default(), Seen::default()];
     for _ in 0..rules::FIRST_WAVE_TICK + 4000 {
-        for stream in &streams {
-            for gold in enemy_kills_told(stream) {
+        for (stream, seen) in streams.iter().zip(&mut seen) {
+            for gold in enemy_kills_told(stream, seen) {
                 assert_eq!(gold, 0, "a side was told the other's creep gold");
                 hidden += 1;
             }

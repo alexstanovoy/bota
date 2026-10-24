@@ -131,6 +131,11 @@ impl World {
             fnv.opt(route.goal, Fnv::vec2);
             fnv.vec2(route.end);
             fnv.some(route.done);
+            fnv.u32(route.round.len() as u32);
+            for (at, radius) in &route.round {
+                fnv.vec2(*at);
+                fnv.i32(radius.raw);
+            }
         }
         if let Some(plan) = self.plan.get(entity) {
             fnv.u32(plan.steps.len() as u32);
@@ -260,14 +265,6 @@ fn hash_motion(fnv: &mut Fnv, motion: &Motion) {
     fnv.vec2(motion.delta);
     fnv.u32(motion.stalled);
     fnv.u32(motion.still);
-    fnv.u32(motion.wait_until);
-    fnv.u32(motion.relaid);
-    fnv.u32(motion.bumped);
-    fnv.u32(motion.bumps);
-    fnv.opt(motion.queued_behind, |fnv, (behind, tick)| {
-        fnv.entity(behind);
-        fnv.u32(tick);
-    });
 }
 
 fn hash_projectile(fnv: &mut Fnv, shot: &Projectile) {

@@ -26,7 +26,6 @@ impl World {
             let (Some(hull), Some(at)) = (self.hull.get(entity), self.transform.get(entity)) else {
                 continue;
             };
-            let motion = self.motion.get(entity).copied().unwrap_or_default();
             let fixed = self
                 .stats
                 .get(entity)
@@ -35,9 +34,8 @@ impl World {
                 entity,
                 at: at.pos,
                 radius: hull.collision,
-                delta: motion.delta,
-                still: motion.still,
                 fixed,
+                stationary: !fixed && !self.walking(entity),
             });
         }
         bodies

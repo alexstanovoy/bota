@@ -1,6 +1,5 @@
 //! What an entity keeps while it is walking somewhere.
 
-use crate::game::Entity;
 use bota_proto::{Fixed, Vec2};
 
 /// The route an entity walks: the corners of a way found round what stands
@@ -18,6 +17,11 @@ pub struct Route {
     /// Whether the walk has come as near its goal as it gets: it stands
     /// until the goal moves.
     pub done: bool,
+    /// The stationary bodies the route was laid round, as circles where
+    /// they stand: the short pather's trace round what its long path runs
+    /// into, kept while those bodies stand there. Empty for a route laid
+    /// over the ground alone.
+    pub round: Vec<(Vec2, Fixed)>,
 }
 
 impl Route {
@@ -27,6 +31,7 @@ impl Route {
             goal: None,
             end: Vec2::ZERO,
             done: false,
+            round: Vec::new(),
         }
     }
 }
@@ -47,21 +52,6 @@ pub struct Motion {
     pub stalled: u32,
     /// Ticks running that it has not moved.
     pub still: u32,
-    /// The tick it stands until after walking into a body that was itself
-    /// moving. Zero when it waits on nothing.
-    pub wait_until: u32,
-    /// The tick its route was last laid round the bodies standing about
-    /// it. Zero when it never was.
-    pub relaid: u32,
-    /// The tick it last ran into a hero. Zero when it never did.
-    pub bumped: u32,
-    /// How many times running it has run into a hero within
-    /// [`rules::HEED_HERO_TICKS`] of the time before.
-    ///
-    /// [`rules::HEED_HERO_TICKS`]: bota_core::rules::HEED_HERO_TICKS
-    pub bumps: u32,
-    /// The creep of its own lane it stood queued behind, and the tick.
-    pub queued_behind: Option<(Entity, u32)>,
 }
 
 /// The next stretch of an entity's walk, tick by tick.
