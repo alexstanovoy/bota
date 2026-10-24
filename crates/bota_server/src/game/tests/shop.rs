@@ -490,8 +490,7 @@ fn a_courier_called_empty_still_collects_what_is_marked() {
     let (mut world, hero) = a_hero_with_gold(0);
     let courier = the_courier(&world);
     world.inventory.get_mut(hero).expect("has a bag").slots[0] = Some(a_stack_of(ItemId::BOOTS, 0));
-    let shop = fountain_pos(world.map, Team::Radiant);
-    world.transform.get_mut(hero).expect("standing").pos = shop + Vec2::from_ints(1500, 1500);
+    world.transform.get_mut(hero).expect("standing").pos = rules::DEMO_LANE_CORNERS[0];
     assert!(world.sell_item(SlotId(0), hero, 0), "marked");
     let before = world.seats[0].gold;
     let half = price_of(ItemId::BOOTS) * rules::SELL_PCT / 100;

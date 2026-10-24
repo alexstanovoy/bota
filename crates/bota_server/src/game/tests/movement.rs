@@ -123,7 +123,7 @@ fn what_flies_goes_straight_over_what_a_walker_goes_round() {
     let far = Vec2::from_ints(9000, 9216);
     let mut world = a_world_with_a_wall(hero_at, far);
     let hero = world.seats[0].unit.expect("stood up");
-    let courier = the_courier(&world);
+    let courier = raise_owner(&mut world, rules::COURIER_FLYING_LEVEL);
     world.transform.get_mut(hero).expect("standing").pos = far;
     world.transform.get_mut(courier).expect("flies").pos = hero_at;
     hand_item(&mut world, courier, ItemId::BOOTS, 0);

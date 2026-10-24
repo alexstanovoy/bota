@@ -59,9 +59,9 @@ impl AbilityBook {
                 .sum::<u8>()
     }
 
-    /// Whether a point could raise one slot at a hero level: a point
-    /// unspent, room left in the ability, and the hero level its next level
-    /// waits for.
+    /// Whether a point could raise one slot at a hero level: one a point
+    /// learns at all, a point unspent, room left in the ability, and the
+    /// hero level its next level waits for.
     pub fn can_raise(&self, slot: usize, hero_level: u8) -> bool {
         let Some(ability) = self.slot(slot) else {
             return false;
@@ -69,9 +69,23 @@ impl AbilityBook {
         let Some(def) = ability_def(ability.id) else {
             return false;
         };
-        ability.level < def.max_level
+        def.granted_at.is_none()
+            && ability.level < def.max_level
             && self.points_spent() < hero_level
             && hero_level >= level_floor(def, ability.level)
+    }
+
+    /// Gives every ability its bearer's level opens ([`AbilityDef::granted_at`])
+    /// its one level.
+    ///
+    /// [`AbilityDef::granted_at`]: bota_core::AbilityDef::granted_at
+    pub fn grant(&mut self, level: u8) {
+        for held in &mut self.slots {
+            let opens = ability_def(held.id).and_then(|def| def.granted_at);
+            if opens.is_some_and(|from| level >= from) {
+                held.level = held.level.max(1);
+            }
+        }
     }
 
     /// Whether a point could go into the Attribute Bonus at a hero level:

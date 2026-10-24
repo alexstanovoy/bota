@@ -78,7 +78,7 @@ const fn fleeting(name: &'static str) -> EffectDef {
 }
 
 /// Every effect, indexed by [`EffectId`].
-pub const EFFECTS: [EffectDef; 63] = [
+pub const EFFECTS: [EffectDef; 64] = [
     EffectDef {
         retired: true,
         ..buff("Haste")
@@ -154,6 +154,7 @@ pub const EFFECTS: [EffectDef; 63] = [
         ..buff("TimedLife")
     },
     hidden("NeutralUpgrade"),
+    buff("Flying"),
 ];
 
 /// What one effect is, or nothing if the id is retired or was never handed

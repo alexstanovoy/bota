@@ -327,28 +327,50 @@ impl World {
         load: Inventory,
     ) -> Entity {
         let entity = self.spawn_body(&COURIER, team, pos);
+        self.give_hull(entity, &COURIER);
         self.give_action(entity);
         self.give_orders(entity);
         self.owner.insert(entity, slot);
         self.inventory.insert(entity, load);
-        self.abilities.insert(
+        let mut book = AbilityBook {
+            slots: COURIER_ABILITIES
+                .into_iter()
+                .map(|id| AbilityState {
+                    id,
+                    level: 0,
+                    cooldown: 0,
+                })
+                .collect(),
+            tree: None,
+            talents: bota_proto::Talents::default(),
+            attribute_bonus: 0,
+        };
+        book.grant(1);
+        self.abilities.insert(entity, book);
+        self.level.insert(entity, Level(1));
+        // Phased from the start (Liquipedia, Courier: "The permanent phased
+        // movement is granted by a status buff", `modifier_phased`).
+        self.put_modifier(
             entity,
-            AbilityBook {
-                slots: COURIER_ABILITIES
-                    .into_iter()
-                    .map(|id| AbilityState {
-                        id,
-                        level: 1,
-                        cooldown: 0,
-                    })
-                    .collect(),
-                tree: None,
-                talents: bota_proto::Talents::default(),
-                attribute_bonus: 0,
-            },
+            Modifier::new(ModifierKind::Phased, Some(entity), None, None),
         );
         self.errand.insert(entity, Errand::None);
         entity
+    }
+
+    /// Raises an entity to a level: what its kind gains a level comes with
+    /// it ([`UnitDef::per_level`]), the bounty its fall pays every enemy
+    /// seat and the abilities the level opens among them.
+    pub(crate) fn set_level(&mut self, entity: Entity, level: u8) {
+        self.level.insert(entity, Level(level));
+        if let (Some(Def(def)), Some(bounty)) =
+            (self.def.get(entity).copied(), self.bounty.get_mut(entity))
+        {
+            bounty.team = def.bounty_team + def.per_level.team_gold * (i32::from(level.max(1)) - 1);
+        }
+        if let Some(book) = self.abilities.get_mut(entity) {
+            book.grant(level);
+        }
     }
 
     /// Stands a ward at a spot for so many ticks; `by` is who stood it, and

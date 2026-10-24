@@ -1,6 +1,6 @@
 //! Couriers: standing them up, sending them on errands, bringing them back.
 
-use bota_core::{ModifierKind, fountain_pos, rules};
+use bota_core::{ModifierKind, fountain_pos, hero_spawn_pos, rules};
 use bota_proto::{AbilityId, Inflictor};
 
 use crate::game::{Errand, Inventory, Modifier, UnitOrder, World};
@@ -8,18 +8,69 @@ use crate::game::{Errand, Inventory, Modifier, UnitOrder, World};
 use crate::engine::Entity;
 
 impl World {
-    /// Stands a courier up for one seat at its own fountain.
+    /// Stands a courier up for one seat by its own fountain, where its
+    /// side's heroes stand up: the fountain itself is a building no walker
+    /// stands in.
     pub fn stand_up_courier(&mut self, seat: usize) {
         let side = self.seats[seat].team;
-        let at = fountain_pos(self.map, side);
+        let at = hero_spawn_pos(self.map, side);
         // What the last courier carried when it fell comes back aboard.
         let load = self.seats[seat]
             .courier_kept
             .take()
             .unwrap_or_else(|| Inventory::empty(rules::INVENTORY_SLOTS));
         let courier = self.spawn_courier(side, at, self.seats[seat].slot, load);
+        if self.seats[seat].level >= rules::COURIER_FLYING_LEVEL {
+            self.put_flight(courier);
+        }
         self.seats[seat].courier = Some(courier);
         self.seats[seat].courier_left = 0;
+        self.raise_courier(seat);
+    }
+
+    /// Brings a seat's courier to its owner's level, as Dota's courier
+    /// levels with its owner: the pace and the bounty each level adds, the
+    /// abilities the level opens, and flight from
+    /// [`rules::COURIER_FLYING_LEVEL`] on.
+    pub(crate) fn raise_courier(&mut self, seat: usize) {
+        let Some(courier) = self.seats[seat].courier else {
+            return;
+        };
+        let level = self.seats[seat].level;
+        self.set_level(courier, level);
+        if level >= rules::COURIER_FLYING_LEVEL && !self.wears(courier, ModifierKind::Flying) {
+            self.take_flight(courier);
+        }
+    }
+
+    fn wears(&self, entity: Entity, kind: ModifierKind) -> bool {
+        self.modifiers
+            .get(entity)
+            .is_some_and(|on_it| on_it.active().any(|held| held.kind == kind))
+    }
+
+    fn put_flight(&mut self, courier: Entity) {
+        self.put_modifier(
+            courier,
+            Modifier::new(ModifierKind::Flying, Some(courier), None, None),
+        );
+    }
+
+    /// Puts a walking courier to flight, as Dota's courier gains
+    /// `modifier_courier_flying` at its owner's flying level: the same unit,
+    /// its errand, orders and cooldowns going on, now flying straight.
+    /// Taking flight disjoints every attack aimed at it (Liquipedia, Courier:
+    /// "When the Courier gains the flying modifier, ... disjointing all
+    /// attacks (melee or ranged alike) targeted at the original unit"). A
+    /// courier falling this tick is left to fall, and stands up flying.
+    fn take_flight(&mut self, courier: Entity) {
+        if !self.alive(courier) {
+            return;
+        }
+        self.put_flight(courier);
+        // A walker's route and plan mean nothing to a flyer.
+        self.forget_walk(courier);
+        self.disjoint(courier);
     }
 
     /// Carries every errand one tick on, brings back every courier whose
@@ -30,7 +81,8 @@ impl World {
             match self.seats[seat].courier {
                 Some(courier) if !self.alive(courier) => {
                     self.seats[seat].courier = None;
-                    self.seats[seat].courier_left = rules::COURIER_RESPAWN_TICKS;
+                    self.seats[seat].courier_left =
+                        rules::courier_respawn_ticks(self.seats[seat].level);
                 }
                 Some(_) => continue,
                 None => {}
@@ -292,9 +344,10 @@ impl World {
         }
     }
 
-    /// Walks home and stands there.
+    /// Walks home, to the spot by the fountain it stands up at, and stands
+    /// there.
     fn go_home(&mut self, seat: usize, courier: Entity) -> bool {
-        let home = fountain_pos(self.map, self.seats[seat].team);
+        let home = hero_spawn_pos(self.map, self.seats[seat].team);
         if self.pos(courier) == Some(home) {
             return true;
         }

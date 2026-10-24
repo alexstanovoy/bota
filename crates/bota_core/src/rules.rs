@@ -998,12 +998,44 @@ pub const COURIER_HITS: crate::HitCount = crate::HitCount {
     ranged_hero: 3,
     other: 1,
 };
-/// World units a second a courier flies.
-pub const COURIER_MOVE_SPEED: i32 = 380;
+/// World units a second a courier walks at its owner's first level:
+/// `npc_dota_courier`'s MovementSpeed, on the ground
+/// (`DOTA_UNIT_CAP_MOVE_GROUND`).
+pub const COURIER_MOVE_SPEED: i32 = 290;
+/// World units a second each level of its owner past the first adds:
+/// Liquipedia, Courier, "Movement Speed Gain per Level: 10" (290 at level 1
+/// to 580 at 30).
+pub const COURIER_MOVE_SPEED_PER_LEVEL: i32 = 10;
+/// The owner's level from which a courier flies (`modifier_courier_flying`).
+pub const COURIER_FLYING_LEVEL: u8 = 4;
+/// The owner's level from which a courier may burst.
+pub const COURIER_BURST_LEVEL: u8 = 10;
+/// The owner's level from which a courier may shield itself.
+pub const COURIER_SHIELD_LEVEL: u8 = 20;
 /// How far a courier sees, by day and by night alike.
 pub const COURIER_VISION: i32 = 200;
-/// Ticks a courier waits before it comes back.
-pub const COURIER_RESPAWN_TICKS: u32 = 25 * TICKS_PER_SECOND;
+/// Seconds a courier waits to come back, before its owner's level: "Base
+/// Respawn Time: 45" (Liquipedia, Courier; Dota 7.40).
+pub const COURIER_RESPAWN_SECONDS: u32 = 45;
+/// Seconds each level of its owner adds to the wait: "Respawn Time Increase
+/// per Level: 5", 50 s at level 1 to 195 s at 30.
+pub const COURIER_RESPAWN_SECONDS_PER_LEVEL: u32 = 5;
+/// Gold a courier's fall pays every enemy hero at its owner's first level:
+/// Liquipedia, Courier, "Team Bounty" 25 at level 1.
+pub const COURIER_TEAM_BOUNTY: i32 = 25;
+/// Gold each level of its owner past the first adds to it: "Gold Bounty
+/// Increase per Level: 5", 170 at level 30.
+pub const COURIER_TEAM_BOUNTY_PER_LEVEL: i32 = 5;
+/// The collision size of Dota's small hull (`DOTA_HULL_SIZE_SMALL`), a
+/// courier's.
+pub const COURIER_COLLISION: i32 = RANGED_CREEP_COLLISION;
+/// The bound radius of the small hull.
+pub const COURIER_BOUND: i32 = RANGED_CREEP_BOUND;
+
+/// Ticks a courier waits before it comes back, its owner at `level`.
+pub const fn courier_respawn_ticks(level: u8) -> u32 {
+    (COURIER_RESPAWN_SECONDS + COURIER_RESPAWN_SECONDS_PER_LEVEL * level as u32) * TICKS_PER_SECOND
+}
 /// Percent a burst adds to a courier's speed.
 pub const COURIER_BURST_PCT: i32 = 50;
 /// Ticks a burst lasts.

@@ -50,6 +50,11 @@ pub struct AbilityDef {
     /// Dota's `DOTA_ABILITY_BEHAVIOR_AURA`. Absent for one that hands out
     /// nothing.
     pub aura: Option<Aura>,
+    /// The level of its bearer from which it holds its one level, which no
+    /// point ever buys: Dota's courier abilities, opening with the
+    /// courier's level (Liquipedia, Courier: Speed Burst "Requires hero
+    /// level 10"). Absent for one a point learns.
+    pub granted_at: Option<u8>,
     /// Whether the entry is retired: its id keeps its place, but nothing
     /// carries it and the wire never names it again.
     pub retired: bool,
@@ -73,10 +78,12 @@ pub(crate) const BARE_ABILITY: AbilityDef = AbilityDef {
     duration: 0,
     toggle: false,
     aura: None,
+    granted_at: None,
     retired: false,
 };
 
-/// A courier's ability: one level, cast for no mana.
+/// A courier's ability: one level, cast for no mana, held from its owner's
+/// first level.
 const fn courier(name: &'static str, cooldown: &'static [u32]) -> AbilityDef {
     AbilityDef {
         name,
@@ -84,6 +91,7 @@ const fn courier(name: &'static str, cooldown: &'static [u32]) -> AbilityDef {
         passive: false,
         mana: &[0],
         cooldown,
+        granted_at: Some(1),
         ..BARE_ABILITY
     }
 }
@@ -125,6 +133,7 @@ const HERO_ABILITIES: [AbilityDef; 17] = [
     // (`courier_burst`, `courier_shield`): they break off nothing.
     AbilityDef {
         immediate: true,
+        granted_at: Some(rules::COURIER_BURST_LEVEL),
         ..courier("Burst", &[rules::COURIER_BURST_COOLDOWN])
     },
     courier("Return", &[0]),
@@ -132,6 +141,7 @@ const HERO_ABILITIES: [AbilityDef; 17] = [
     courier("Deliver", &[0]),
     AbilityDef {
         immediate: true,
+        granted_at: Some(rules::COURIER_SHIELD_LEVEL),
         ..courier("Shield", &[rules::COURIER_SHIELD_COOLDOWN])
     },
     shadow_fiend::RAZE_NEAR,

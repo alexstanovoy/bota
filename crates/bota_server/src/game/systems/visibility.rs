@@ -78,6 +78,8 @@ struct SightRow {
     kind: Option<UnitKind>,
     /// Whether true sight alone finds it.
     hides: bool,
+    /// Whether it flies, and sees past height and trees as a flyer does.
+    flying: bool,
     tier: u8,
     /// Which sides see it, as the table has it.
     seen: Option<Visibility>,
@@ -131,6 +133,7 @@ pub fn visibility_system(cx: SightCx<'_>) {
             true_sight: stats.map_or(Fixed::ZERO, |s| s.true_sight),
             kind: kind.get(entity).copied(),
             hides: stats.is_some_and(|s| s.hides),
+            flying: stats.is_some_and(|s| s.flies),
             tier: at.map_or(0, |at| ground.tier(at)),
             seen: visibility.get(entity).copied(),
         });
@@ -169,7 +172,7 @@ impl SightScratch {
                 vision: row.vision,
                 true_sight: row.true_sight,
                 tier: row.tier,
-                flying: false,
+                flying: row.flying,
             };
             if row.vision > Fixed::ZERO {
                 self.viewers.push(viewer);
@@ -431,16 +434,15 @@ impl World {
                 if self.team.get(entity) != Some(&team) {
                     return false;
                 }
-                let (Some(from), Some(radius)) =
-                    (self.pos(entity), self.stats.get(entity).map(|s| s.vision))
-                else {
+                let (Some(from), Some(stats)) = (self.pos(entity), self.stats.get(entity)) else {
                     return false;
                 };
-                if radius <= Fixed::ZERO || !from.within(at, radius) {
+                if stats.vision <= Fixed::ZERO || !from.within(at, stats.vision) {
                     return false;
                 }
                 let viewer_tier = self.ground.tier(from);
-                viewer_tier >= target_tier && self.sight_block.clear(from, viewer_tier, at)
+                stats.flies
+                    || (viewer_tier >= target_tier && self.sight_block.clear(from, viewer_tier, at))
             })
     }
 
@@ -488,6 +490,7 @@ impl World {
             true_sight: Fixed::ZERO,
             kind: self.kind.get(entity).copied(),
             hides: stats.is_some_and(|stats| stats.hides),
+            flying: stats.is_some_and(|stats| stats.flies),
             tier: at.map_or(0, |at| self.ground.tier(at)),
             seen: None,
         };

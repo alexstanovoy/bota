@@ -141,6 +141,37 @@ impl World {
     /// A swing under way is left to the attack cycle, which gives it up on
     /// its own once the target is gone; the recovery after one ends here.
     /// An ability or item that runs on is broken off and told so.
+    /// Dodges every attack aimed at a unit, as Dota disjoints them: each
+    /// attack's missile in the air at it is given up, and each swing at it
+    /// still in its windup is broken off before it lands. A spell's missile
+    /// flies on.
+    pub(crate) fn disjoint(&mut self, unit: Entity) {
+        let entities = self.take_entity_snapshot();
+        for entity in entities.iter().copied() {
+            let aimed = self
+                .projectile
+                .get(entity)
+                .is_some_and(|shot| shot.target == unit && shot.striker.is_some());
+            if aimed {
+                self.projectile.remove(entity);
+                self.discard(entity);
+                continue;
+            }
+            if let Some(action) = self.action.get_mut(entity)
+                && matches!(
+                    action.state,
+                    ActionState::Attack {
+                        target,
+                        phase: ActionPhase::Before { .. },
+                    } if target == unit
+                )
+            {
+                action.state = ActionState::Ready;
+            }
+        }
+        self.recycle_entity_snapshot(entities);
+    }
+
     pub fn cancel_action(&mut self, entity: Entity) {
         let Some(action) = self.action.get(entity).copied() else {
             return;

@@ -502,13 +502,15 @@ impl World {
             owner: self.owner.get(entity).copied(),
             level: self.level.get(entity).map_or(0, |l| l.0),
             abilities: self.abilities.get(entity).map_or_else(Vec::new, |book| {
+                let level = self.level.get(entity).map_or(0, |held| held.0);
                 book.slots
                     .iter()
-                    .map(|ability| {
+                    .enumerate()
+                    .map(|(slot, ability)| {
                         ability_view(
                             ability,
                             self.ability_on(entity, ability.id),
-                            self.can_level(entity, ability.id, ability.level),
+                            book.can_raise(slot, level),
                             mana_rate,
                         )
                     })
@@ -677,20 +679,6 @@ impl World {
                     held.source == Some(entity) && held.inflictor == Some(Inflictor::Ability(id))
                 })
             })
-    }
-
-    /// Whether a skill point could go into one ability right now.
-    ///
-    /// The same three conditions [`World::learn`] asks: a point unspent, room
-    /// left in the ability, and a hero level high enough for the next one.
-    fn can_level(&self, entity: Entity, id: bota_proto::AbilityId, level: u8) -> bool {
-        let Some(def) = bota_core::ability_def(id) else {
-            return false;
-        };
-        let hero_level = self.level.get(entity).map_or(0, |held| held.0);
-        level < def.max_level
-            && self.points_spent(entity) < hero_level
-            && hero_level >= bota_core::level_floor(def, level)
     }
 
     /// The [`StatusFlags`] bits of a unit: what its modifiers do to it, and

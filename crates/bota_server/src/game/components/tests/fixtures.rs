@@ -1,4 +1,4 @@
-use bota_core::{fountain_pos, rules};
+use bota_core::{hero_spawn_pos, rules};
 use bota_proto::{Fixed, HeroId, ItemId, SlotId, Target, Team, Vec2};
 
 use crate::game::tests::support::fresh_stack;
@@ -10,7 +10,7 @@ pub(super) const AWAY: Vec2 = Vec2::from_ints(8000, 8000);
 
 pub(super) fn fixture() -> (World, Entity) {
     let mut world = World::new();
-    let home = fountain_pos(world.map, Team::Radiant);
+    let home = hero_spawn_pos(world.map, Team::Radiant);
     let hero = world.spawn_hero(Team::Radiant, home, OWNER, HeroId::SHADOW_FIEND);
     let mut seat = Seat::new(
         OWNER,

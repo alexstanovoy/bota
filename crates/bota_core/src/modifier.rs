@@ -34,6 +34,10 @@ pub enum ModifierKind {
     Shielded,
     /// Walks through the bodies in its way, and nothing eases it out of one.
     Phased,
+    /// Flies: closed ground, trees and bodies are nothing to it, and it sees
+    /// past height and trees. Dota's `modifier_courier_flying`, which a
+    /// courier wears from its owner's [`rules::COURIER_FLYING_LEVEL`] on.
+    Flying,
     /// Walks slower, by `pct` percent of what it would.
     Slowed {
         /// Percent taken off its speed.
@@ -196,6 +200,7 @@ impl ModifierKind {
             ModifierKind::Hastened { .. } => EffectId::HASTENED,
             ModifierKind::Burning { .. } => EffectId::BURNING,
             ModifierKind::Phased => EffectId::PHASED,
+            ModifierKind::Flying => EffectId::FLYING,
             ModifierKind::ArmorBroken { .. } => EffectId::ARMOR_BROKEN,
             ModifierKind::MagicBroken { .. } => EffectId::MAGIC_BROKEN,
             ModifierKind::Guarded { .. } => EffectId::GUARDED,

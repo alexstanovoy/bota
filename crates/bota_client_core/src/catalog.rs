@@ -145,7 +145,7 @@ pub const ABILITIES: [AbilityFace; FIRST_NEUTRAL_ABILITY as usize] = [
     AbilityFace {
         id: AbilityId::BURST.0,
         name: "Burst",
-        template: "No target. The courier flies {burst_pct}% faster for {burst_secs} s. {wait} s wait.",
+        template: "No target. The courier moves {burst_pct}% faster for {burst_secs} s. {wait} s wait.",
     },
     AbilityFace {
         id: AbilityId::RETURN_ITEMS.0,

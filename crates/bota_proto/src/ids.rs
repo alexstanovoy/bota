@@ -337,6 +337,9 @@ impl EffectId {
     /// Dota's hidden `neutral_upgrade` modifier, which raises a neutral with
     /// the clock. Never on the wire: its worth shows in the neutral's stats.
     pub const NEUTRAL_UPGRADE: EffectId = EffectId(62);
+    /// A courier risen to flight (`modifier_courier_flying`): it flies over
+    /// closed ground and trees and sees as a flyer sees.
+    pub const FLYING: EffectId = EffectId(63);
 }
 
 /// An index into a unit's ability slots, as listed in

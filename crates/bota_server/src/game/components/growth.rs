@@ -2,7 +2,7 @@
 
 use bota_core::GoldRange;
 
-/// A hero's level, from one up.
+/// A hero's level, from one up, and a courier's, its owner's.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Level(pub u8);
 
@@ -57,7 +57,7 @@ pub struct Bounty {
     pub bonus: i32,
     /// Gold its fall pays every seat of the side that brought it down, and
     /// half of it to every seat of both sides on a deny. Zero for all but a
-    /// tower.
+    /// tower and a courier, which is never denied.
     pub team: i32,
     /// Experience shared among those near the kill.
     pub xp: i32,

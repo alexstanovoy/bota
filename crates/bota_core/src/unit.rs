@@ -29,6 +29,10 @@ pub struct Growth {
     pub gold_halves: i32,
     /// Experience added to the bounty.
     pub xp: i32,
+    /// World units a second added to its pace.
+    pub move_speed: i32,
+    /// Gold added to the bounty its fall pays every enemy seat.
+    pub team_gold: i32,
 }
 
 /// Where a building's backdoor protection looks for enemy lane creeps:
@@ -150,6 +154,8 @@ pub(crate) const NO_GROWTH: Growth = Growth {
     attack_speed: 0,
     gold_halves: 0,
     xp: 0,
+    move_speed: 0,
+    team_gold: 0,
 };
 
 /// Nothing at all, so a definition names only the fields that differ.
@@ -512,10 +518,12 @@ pub const FOUNTAIN: UnitDef = UnitDef {
     ..BARE_UNIT
 };
 
-/// A courier: it carries, it does not fight, and it flies over everything.
+/// A courier (`npc_dota_courier`): it carries and does not fight. It walks
+/// and levels with its owner, and flies from [`rules::COURIER_FLYING_LEVEL`]
+/// on (`modifier_courier_flying`); `modifier_courier_passive_bonus` adds to
+/// its pace and its bounty with every level (Liquipedia, Courier).
 pub const COURIER: UnitDef = UnitDef {
     kind: UnitKind::Courier,
-    flies: true,
     porter: true,
     unbounded_pace: true,
     magic_resist_pct: 100,
@@ -525,6 +533,14 @@ pub const COURIER: UnitDef = UnitDef {
     turn_rate: rules::TURN_RATE_BRADS,
     day_vision: rules::COURIER_VISION,
     night_vision: rules::COURIER_VISION,
+    collision: rules::COURIER_COLLISION,
+    bound: rules::COURIER_BOUND,
+    bounty_team: rules::COURIER_TEAM_BOUNTY,
+    per_level: Growth {
+        move_speed: rules::COURIER_MOVE_SPEED_PER_LEVEL,
+        team_gold: rules::COURIER_TEAM_BOUNTY_PER_LEVEL,
+        ..NO_GROWTH
+    },
     ..BARE_UNIT
 };
 

@@ -1,11 +1,13 @@
 //! Couriers and their errands.
 
 use bota_core::{
-    MELEE_CREEP, RANGED_CREEP, TOWERS, UnitDef, fountain_pos, hero_def, isqrt64, rules,
+    MELEE_CREEP, RANGED_CREEP, TOWERS, UnitDef, fountain_pos, hero_def, hero_spawn_pos, isqrt64,
+    rules,
 };
 
 use crate::game::{
-    BAG_SLOTS, Command, Entity, Errand, Inventory, ItemStack, UnitOrder, World, wire_id,
+    BAG_SLOTS, Command, Entity, Errand, Inventory, ItemStack, MatchConfig, UnitOrder, World,
+    wire_id,
 };
 use bota_proto::{
     AbilityId, AbilitySlot, DamageKind, EventKind, Fixed, HeroId, Inflictor, ItemId, Order,
@@ -28,37 +30,33 @@ fn a_courier_brought_down_comes_back_in_its_own_time() {
     world.step();
     assert!(world.seats[0].courier.is_none(), "it is gone");
     assert!(world.seats[0].courier_left > 0, "and a wait has started");
-    let burst = Order::Cast {
-        slot: AbilitySlot(2),
-        target: Target::None,
-    };
     assert_eq!(
-        world.validate_order(SlotId(0), Some(wire_id(courier)), &burst),
+        world.validate_order(SlotId(0), Some(wire_id(courier)), &deliver),
         Err(RejectReason::NotYourUnit)
     );
-    run(&mut world, rules::COURIER_RESPAWN_TICKS);
+    run(&mut world, rules::courier_respawn_ticks(1));
     let back = world.seats[0].courier.expect("it came back");
     assert_ne!(back, courier, "as a new body");
     assert_eq!(world.errand.get(back), Some(&Errand::None));
     assert_eq!(
-        world.validate_order(SlotId(0), Some(wire_id(courier)), &burst),
+        world.validate_order(SlotId(0), Some(wire_id(courier)), &deliver),
         Err(RejectReason::NotYourUnit)
     );
     assert_eq!(
-        world.validate_order(SlotId(0), Some(wire_id(back)), &burst),
+        world.validate_order(SlotId(0), Some(wire_id(back)), &deliver),
         Ok(())
     );
     assert_eq!(
         world.transform.get(back).map(|at| at.pos),
-        Some(fountain_pos(world.map, Team::Radiant)),
-        "at its own fountain"
+        Some(hero_spawn_pos(world.map, Team::Radiant)),
+        "by its own fountain"
     );
 }
 
 #[test]
 fn a_courier_fetches_the_stash_hands_it_over_and_turns_for_home() {
     let (mut world, hero, courier) = a_match();
-    let home = fountain_pos(world.map, Team::Radiant);
+    let home = hero_spawn_pos(world.map, Team::Radiant);
     let boots = ItemId::BOOTS;
     world.seats[0].stash.slots[0] = Some(fresh_stack(ItemId::BOOTS, 0));
     // Standing at the fountain, it takes what waits there on the next tick.
@@ -73,7 +71,7 @@ fn a_courier_fetches_the_stash_hands_it_over_and_turns_for_home() {
         Some(boots),
         "and the courier holds it"
     );
-    world.transform.get_mut(hero).expect("standing").pos = home + Vec2::from_ints(900, 0);
+    world.transform.get_mut(hero).expect("standing").pos = rules::DEMO_LANE_CORNERS[0];
     assert!(world.courier_deliver(courier));
     step_until(&mut world, 400, |world| {
         world.errand.get(courier) == Some(&Errand::None)
@@ -147,7 +145,7 @@ fn an_order_goes_to_the_unit_it_names_and_only_to_ones_this_seat_drives() {
 #[test]
 fn a_courier_told_to_go_at_a_unit_follows_it() {
     let (mut world, _, courier) = a_match();
-    let home = fountain_pos(world.map, Team::Radiant);
+    let home = hero_spawn_pos(world.map, Team::Radiant);
     // Something of its own side standing a way off, that then walks further.
     let mark = world.spawn_unit(&MELEE_CREEP, Team::Radiant, home + Vec2::from_ints(700, 0));
     world.settle();
@@ -213,7 +211,8 @@ fn courier_auxiliary_casts_keep_delivery_tracking_a_moving_owner() {
         (2, AbilityId::BURST, rules::COURIER_BURST_COOLDOWN),
         (4, AbilityId::SHIELD, rules::COURIER_SHIELD_COOLDOWN),
     ] {
-        let (mut world, hero, courier) = courier_on_delivery();
+        let (mut world, hero, _) = courier_on_delivery();
+        let courier = raise_owner(&mut world, rules::COURIER_SHIELD_LEVEL);
         let cargo = slot_of(&world, courier, 0);
         let speed = world.stats.get(courier).expect("settled").move_speed;
         let mana = world.mana.get(courier).map(|pool| pool.mana);
@@ -275,8 +274,9 @@ fn a_burst_or_a_shield_leaves_the_courier_walking_to_what_it_was_told_to_take() 
     // Dota's courier_burst and courier_shield are immediate casts: they go
     // off beside whatever the courier is doing and break none of it off.
     for slot in [2, 4] {
-        let (mut world, _hero, courier) = a_match();
+        let (mut world, _hero, _) = a_match();
         world.settle();
+        let courier = raise_owner(&mut world, rules::COURIER_SHIELD_LEVEL);
         let from = world.transform.get(courier).expect("standing").pos;
         let lying = world.lay_loot(a_stack_of(ItemId::BOOTS, 0), from + Vec2::from_ints(600, 0));
         world.settle();
@@ -348,8 +348,7 @@ fn courier_return_move_and_stop_replace_delivery() {
 #[test]
 fn taking_the_stash_carries_it_on_without_being_asked_twice() {
     let (mut world, hero, courier) = a_match();
-    let home = fountain_pos(world.map, Team::Radiant);
-    world.transform.get_mut(hero).expect("standing").pos = home + Vec2::from_ints(900, 0);
+    world.transform.get_mut(hero).expect("standing").pos = rules::DEMO_LANE_CORNERS[0];
     world.seats[0].stash.slots[0] = Some(fresh_stack(ItemId::BOOTS, 0));
     assert!(world.courier_take_stash(courier));
     step_until(&mut world, 300, |world| held(world, hero) > 0);
@@ -362,8 +361,8 @@ fn taking_the_stash_carries_it_on_without_being_asked_twice() {
 #[test]
 fn an_errand_with_nothing_to_do_sends_the_courier_home() {
     let (mut world, _, courier) = a_match();
-    let home = fountain_pos(world.map, Team::Radiant);
-    world.transform.get_mut(courier).expect("standing").pos = home + Vec2::from_ints(1500, 0);
+    let home = hero_spawn_pos(world.map, Team::Radiant);
+    world.transform.get_mut(courier).expect("standing").pos = rules::DEMO_LANE_CORNERS[0];
     // Nothing in the stash and nothing in its hands.
     assert!(world.courier_take_stash(courier));
     world.step();
@@ -474,7 +473,7 @@ fn a_courier_keeps_its_load_through_death() {
             .is_some_and(|bag| bag.held().count() == 1),
         "the load waits on the seat"
     );
-    run(&mut world, rules::COURIER_RESPAWN_TICKS + 2);
+    run(&mut world, rules::courier_respawn_ticks(1) + 2);
     let back = world.seats[0].courier.expect("stands again");
     assert_ne!(back, courier, "in a new body");
     assert_eq!(held(&world, back), 1, "with the load back aboard");
@@ -484,8 +483,7 @@ fn a_courier_keeps_its_load_through_death() {
 fn a_courier_sent_for_the_stash_carries_on_what_it_already_holds() {
     let (mut world, hero, courier) = a_match();
     hand_item(&mut world, courier, ItemId::BOOTS, 0);
-    let home = fountain_pos(world.map, Team::Radiant);
-    world.transform.get_mut(hero).expect("standing").pos = home + Vec2::from_ints(2500, 0);
+    world.transform.get_mut(hero).expect("standing").pos = rules::DEMO_LANE_CORNERS[0];
     // The stash is empty, and the goods still go to the hero, not home.
     assert!(world.courier_take_stash(courier));
     step_until(&mut world, 600, |world| held(world, hero) > 0);
@@ -511,8 +509,7 @@ fn what_an_owner_has_no_room_for_goes_back_to_the_stash() {
         .slots
         .fill(Some(stack));
     world.inventory.get_mut(courier).expect("carries").slots[0] = Some(stack);
-    let home = fountain_pos(world.map, Team::Radiant);
-    world.transform.get_mut(hero).expect("standing").pos = home + Vec2::from_ints(1500, 0);
+    world.transform.get_mut(hero).expect("standing").pos = rules::DEMO_LANE_CORNERS[1];
     assert!(world.courier_deliver(courier));
     step_until(&mut world, 900, |world| {
         world.seats[0].stash.held().count() > 0
@@ -576,4 +573,204 @@ fn step_until(world: &mut World, ticks: u32, done: impl Fn(&World) -> bool) {
 
 fn held(world: &World, unit: Entity) -> usize {
     world.inventory.get(unit).expect("has a bag").held().count()
+}
+
+#[test]
+fn a_courier_walks_at_290_and_ten_more_a_level_of_its_owner() {
+    let (mut world, _, courier) = a_match();
+    world.settle();
+    let pace = |world: &World, courier| {
+        world
+            .stats
+            .get(courier)
+            .map(|stats| stats.move_speed.to_int())
+    };
+    assert_eq!(pace(&world, courier), Some(290), "Liquipedia's level 1");
+    assert_eq!(shown(&world, Some(Team::Radiant), courier).level, 1);
+    let courier = raise_owner(&mut world, 3);
+    assert_eq!(pace(&world, courier), Some(310));
+    assert!(
+        !world.stats.get(courier).expect("settled").flies,
+        "still on foot"
+    );
+    let courier = raise_owner(&mut world, 10);
+    assert_eq!(pace(&world, courier), Some(380), "Liquipedia's level 10");
+    assert_eq!(
+        shown(&world, Some(Team::Radiant), courier).level,
+        10,
+        "and it shows its owner's level"
+    );
+}
+
+#[test]
+fn a_walking_courier_goes_round_what_closes_the_ground() {
+    let hero_at = Vec2::from_ints(6000, 9216);
+    let far = Vec2::from_ints(9000, 9216);
+    let mut world = a_world_with_a_wall(hero_at, far);
+    let hero = world.seats[0].unit.expect("stood up");
+    let courier = the_courier(&world);
+    world.transform.get_mut(hero).expect("standing").pos = far;
+    world.transform.get_mut(courier).expect("walks").pos = hero_at;
+    world.forget_walk(courier);
+    hand_item(&mut world, courier, ItemId::BOOTS, 0);
+    assert!(world.courier_deliver(courier));
+    let mut widest = 0;
+    for _ in 0..900 {
+        world.step();
+        let now = world.transform.get(courier).expect("walks").pos;
+        assert!(world.clearance.walkable(now), "never on closed ground");
+        widest = widest.max((now.y.raw - hero_at.y.raw).abs());
+        if held(&world, hero) > 0 {
+            break;
+        }
+    }
+    assert!(held(&world, hero) > 0, "it got there");
+    assert!(widest > rules::units(600).raw, "on foot, round the wall");
+}
+
+#[test]
+fn at_the_flying_level_the_courier_takes_flight_and_every_attack_at_it_is_disjointed() {
+    let (mut world, _, courier) = a_match();
+    let away = rules::DEMO_LANE_CORNERS[0];
+    world.transform.get_mut(courier).expect("standing").pos = away;
+    hand_item(&mut world, courier, ItemId::BOOTS, 0);
+    // A tower and a hero: neither marches off on a lane of its own.
+    let archer = world.spawn_unit(&TOWERS[0], Team::Dire, away + Vec2::from_ints(250, 0));
+    world.settle();
+    world.set_target(archer, courier);
+    let in_the_air = |world: &World| {
+        world.entities.iter().any(|e| {
+            world
+                .projectile
+                .get(e)
+                .is_some_and(|shot| shot.target == courier)
+        })
+    };
+    step_until(&mut world, 300, in_the_air);
+    // A melee hero stands up beside it and winds a swing up while the missile
+    // flies.
+    let pudge = hero_def(HeroId::PUDGE).expect("a hero").unit;
+    let brute = world.spawn_unit(pudge, Team::Dire, away - Vec2::from_ints(100, 0));
+    world.settle();
+    world.set_target(brute, courier);
+    step_until(&mut world, 30, |world| {
+        swinging(world, brute) == Some(courier)
+    });
+    assert!(in_the_air(&world), "a missile is in the air");
+    assert_eq!(
+        swinging(&world, brute),
+        Some(courier),
+        "and a swing winds up"
+    );
+    let hp = world.health.get(courier).expect("standing").hp;
+    let flyer = raise_owner(&mut world, rules::COURIER_FLYING_LEVEL);
+    assert_eq!(flyer, courier, "the same courier, its id kept");
+    assert!(!in_the_air(&world), "the missile had nobody to reach");
+    assert_eq!(
+        swinging(&world, brute),
+        None,
+        "and the swing was broken off"
+    );
+    assert_eq!(world.pos(courier), Some(away));
+    assert_eq!(held(&world, courier), 1, "with its load");
+    assert!(world.stats.get(courier).expect("settled").flies);
+    assert!(
+        shown(&world, Some(Team::Radiant), courier)
+            .effects
+            .iter()
+            .any(|effect| effect.id == bota_proto::EffectId::FLYING),
+        "wearing its flight"
+    );
+    world.set_order(archer, UnitOrder::Stand);
+    world.set_order(brute, UnitOrder::Stand);
+    world.step();
+    assert_eq!(
+        world.health.get(courier).map(|health| health.hp),
+        Some(hp),
+        "nothing aimed at it before it took flight landed"
+    );
+}
+
+#[test]
+fn burst_opens_at_owner_level_ten_and_shield_at_twenty_and_no_point_buys_them() {
+    let (mut world, _, _) = a_match();
+    world.settle();
+    let burst = Order::Cast {
+        slot: AbilitySlot(2),
+        target: Target::None,
+    };
+    let shield = Order::Cast {
+        slot: AbilitySlot(4),
+        target: Target::None,
+    };
+    let learn = Order::Learn {
+        slot: AbilitySlot(2),
+    };
+    let at = |world: &World, courier, slot: usize| {
+        shown(world, Some(Team::Radiant), courier).abilities[slot]
+    };
+    let courier = raise_owner(&mut world, 9);
+    for (order, slot) in [(burst, 2), (shield, 4)] {
+        assert_eq!(
+            world.validate_order(SlotId(0), Some(wire_id(courier)), &order),
+            Err(RejectReason::NotLearned)
+        );
+        assert_eq!(at(&world, courier, slot).level, 0, "shown shut");
+        assert!(
+            !at(&world, courier, slot).can_level,
+            "and no point opens it"
+        );
+    }
+    world.advance(&[Command {
+        slot: SlotId(0),
+        unit: Some(wire_id(courier)),
+        order: learn,
+        queue: false,
+        seq: 0,
+    }]);
+    assert_eq!(at(&world, courier, 2).level, 0, "a point bought nothing");
+    let courier = raise_owner(&mut world, rules::COURIER_BURST_LEVEL);
+    assert_eq!(at(&world, courier, 2).level, 1);
+    assert_eq!(
+        world.validate_order(SlotId(0), Some(wire_id(courier)), &burst),
+        Ok(())
+    );
+    assert_eq!(
+        world.validate_order(SlotId(0), Some(wire_id(courier)), &shield),
+        Err(RejectReason::NotLearned)
+    );
+    let courier = raise_owner(&mut world, rules::COURIER_SHIELD_LEVEL);
+    assert_eq!(
+        world.validate_order(SlotId(0), Some(wire_id(courier)), &shield),
+        Ok(())
+    );
+}
+
+#[test]
+fn a_fallen_courier_pays_every_enemy_25_and_5_a_level_and_waits_45_s_and_5_a_level() {
+    for (level, bounty, wait) in [(1, 25, 50), (10, 70, 95)] {
+        let cfg = MatchConfig {
+            starting_gold_lost: Vec::new(),
+            picks: fiend_against_fiend(),
+            ..config()
+        };
+        let mut world = World::for_match(&cfg, cfg.rng());
+        world.settle();
+        let courier = if level > 1 {
+            raise_owner(&mut world, level)
+        } else {
+            the_courier(&world)
+        };
+        let killer = world.seats[1].unit.expect("stood up");
+        let (ours, theirs) = (world.seats[0].gold, world.seats[1].gold);
+        world.bury(vec![(courier, Some(killer))], &mut Vec::new());
+        assert_eq!(world.seats[1].gold - theirs, bounty, "level {level}");
+        assert_eq!(world.seats[0].gold, ours, "its own side is paid nothing");
+        world.step();
+        assert_eq!(
+            world.seats[0].courier_left,
+            wait * rules::TICKS_PER_SECOND - 1,
+            "level {level}"
+        );
+    }
 }

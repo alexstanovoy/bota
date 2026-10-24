@@ -218,7 +218,8 @@ pub struct UnitView {
     pub hero: Option<HeroId>,
     /// Which seat controls it: set for a hero and a courier.
     pub owner: Option<SlotId>,
-    /// Hero level. Zero for units that do not level.
+    /// Its level: a hero's own, a courier's its owner's, which it levels
+    /// with. Zero for units that do not level.
     pub level: u8,
     /// Ability slots, in slot order. Empty for anything but a hero or a
     /// courier.

@@ -290,6 +290,7 @@ fn add_modifiers(
             }
             ModifierKind::Shielded => now.invulnerable = true,
             ModifierKind::Phased => now.phased = true,
+            ModifierKind::Flying => now.flies = true,
             ModifierKind::Fortified => now.glyph = true,
             ModifierKind::Mending { .. }
             | ModifierKind::Clarity { .. }
@@ -462,6 +463,8 @@ fn raised(kind: &UnitDef, levels: i32, steps: i32, night: bool) -> Stats {
         attack_speed: g.attack_speed * levels + per.attack_speed * steps,
         gold_halves: g.gold_halves * levels + per.gold_halves * steps,
         xp: g.xp * levels + per.xp * steps,
+        move_speed: g.move_speed * levels + per.move_speed * steps,
+        team_gold: g.team_gold * levels + per.team_gold * steps,
     };
     let up = gained(&kind.per_level, &kind.per_upgrade);
     Stats {
@@ -493,7 +496,7 @@ fn raised(kind: &UnitDef, levels: i32, steps: i32, night: bool) -> Stats {
         lifesteal_pct: 0,
         magic_taken_pct: 0,
         accuracy: Odds::NEVER,
-        move_speed: Fixed::from_int(kind.move_speed),
+        move_speed: Fixed::from_int(kind.move_speed + up.move_speed),
         turn_rate: kind.turn_rate,
         vision: Fixed::from_int(if night {
             kind.night_vision

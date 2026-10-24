@@ -688,6 +688,16 @@ pub(crate) fn the_courier(world: &World) -> Entity {
     world.seats[0].courier.expect("a seat has a courier")
 }
 
+/// Takes seat 0 to a level, its courier with it, settled; answers the
+/// courier, which from the flying level on is a flyer in the walker's place.
+pub(crate) fn raise_owner(world: &mut World, level: u8) -> Entity {
+    let needed = rules::XP_THRESHOLDS[usize::from(level) - 1] - world.seats[0].xp;
+    world.grant_xp(0, needed, &mut Vec::new());
+    assert_eq!(world.seats[0].level, level);
+    world.settle();
+    the_courier(world)
+}
+
 pub(crate) fn courier_on_delivery() -> (World, Entity, Entity) {
     let (mut world, hero) = a_hero_with_gold(0);
     let courier = the_courier(&world);

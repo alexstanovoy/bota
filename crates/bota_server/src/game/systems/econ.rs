@@ -366,6 +366,7 @@ impl World {
             if let Some(book) = book {
                 book.auto_attribute_bonus(level);
             }
+            self.raise_courier(seat);
             if let Some(unit) = self.seats[seat].unit {
                 self.level.insert(unit, Level(level));
                 events.push(Event {
