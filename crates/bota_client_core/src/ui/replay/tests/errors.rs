@@ -5,25 +5,37 @@ use std::rc::Rc;
 use bota_core::WIRE_FINGERPRINT;
 use bota_proto::{MAX_PAYLOAD_LEN, ReplayHeader, ReplayRecord, ServerMsg, fingerprint_to_hex};
 
-use super::fixtures::{counted, frames, header, snapshot, wire};
-use crate::ui::replay::{MAX_READS_PER_POLL, ReplayPlayer};
-
-/// The refusal of a first record that is no header this build reads.
-const NO_HEADER: &str =
-    "no replay header this build reads: not a bota replay, or one recorded before replays had one";
+use super::fixtures::{counted, frames, snapshot, wire};
+use crate::ui::replay::{MAX_READS_PER_POLL, ReplayPlayer, ReplayRefusal};
 
 fn assert_rejected(bytes: Vec<u8>, kind: io::ErrorKind, detail: &str) {
     assert_refused_at(bytes, kind, &format!("replay record 1 at byte 0: {detail}"));
 }
 
 fn assert_refused_at(bytes: Vec<u8>, kind: io::ErrorKind, message: &str) {
+    assert_failed(bytes, |error| {
+        assert_eq!(error.kind(), kind);
+        assert_eq!(error.to_string(), message);
+    });
+}
+
+/// A replay refused up front: the typed refusal is the error's inner one,
+/// with its developer wording as the message.
+fn assert_refusal(bytes: Vec<u8>, refusal: ReplayRefusal, message: &str) {
+    assert_failed(bytes, |error| {
+        assert_eq!(error.kind(), io::ErrorKind::InvalidData);
+        let inner = error.get_ref().and_then(|inner| inner.downcast_ref());
+        assert_eq!(inner, Some(&refusal));
+        assert_eq!(error.to_string(), message);
+    });
+}
+
+fn assert_failed(bytes: Vec<u8>, check: impl FnOnce(&io::Error)) {
     let (reader, read, calls) = counted(bytes, 1);
     let mut player = ReplayPlayer::from_reader(reader);
 
     assert!(player.poll(0.0).is_empty());
-    let error = player.error().expect("invalid input must be reported");
-    assert_eq!(error.kind(), kind);
-    assert_eq!(error.to_string(), message);
+    check(player.error().expect("invalid input must be reported"));
     assert!(!player.finished());
     assert!(player.paused);
     assert_eq!(player.status(), "error");
@@ -47,7 +59,6 @@ fn every_invalid_framing_is_rejected_with_its_reason() {
             "no replay records in the file".to_string(),
         ),
         (vec![0; 4], InvalidData, "empty payload length".to_string()),
-        (vec![1, 0, 0, 0, 255], InvalidData, NO_HEADER.to_string()),
     ];
     for length in 1..4 {
         let detail = format!("truncated length prefix: expected 4 bytes, got {length}");
@@ -72,7 +83,6 @@ fn every_invalid_framing_is_rejected_with_its_reason() {
 /// is refused up front with both fingerprints named, before any message.
 #[test]
 fn a_replay_without_this_builds_header_is_refused_before_any_message() {
-    use io::ErrorKind::InvalidData;
     let other_wire = ReplayRecord::Header(ReplayHeader {
         wire_fingerprint: !WIRE_FINGERPRINT,
         ..ReplayHeader::new(WIRE_FINGERPRINT)
@@ -83,11 +93,26 @@ fn a_replay_without_this_builds_header_is_refused_before_any_message() {
     });
     let second = ReplayRecord::Header(ReplayHeader::new(WIRE_FINGERPRINT));
     let cases = [
-        (frames(&[snapshot(0)]), 1, 0, NO_HEADER.to_string()),
+        (
+            vec![1, 0, 0, 0, 255],
+            ReplayRefusal::NoHeader,
+            "no replay header this build reads: not a bota replay, or one recorded before \
+             replays had one"
+                .to_string(),
+        ),
+        (
+            frames(&[snapshot(0)]),
+            ReplayRefusal::NoHeader,
+            "no replay header this build reads: not a bota replay, or one recorded before \
+             replays had one"
+                .to_string(),
+        ),
         (
             frames(&[other_wire, snapshot(0)]),
-            1,
-            0,
+            ReplayRefusal::OtherVersion {
+                recorded: !WIRE_FINGERPRINT,
+                plays: WIRE_FINGERPRINT,
+            },
             format!(
                 "recorded with wire fingerprint {}; this build plays {}",
                 fingerprint_to_hex(!WIRE_FINGERPRINT),
@@ -96,20 +121,17 @@ fn a_replay_without_this_builds_header_is_refused_before_any_message() {
         ),
         (
             frames(&[not_a_replay, snapshot(0)]),
-            1,
-            0,
+            ReplayRefusal::NotBota,
             "not a bota replay".to_string(),
         ),
         (
             wire(&[second, snapshot(0)]),
-            2,
-            header().len(),
+            ReplayRefusal::SecondHeader,
             "a second replay header".to_string(),
         ),
     ];
-    for (bytes, record, byte, detail) in cases {
-        let message = format!("replay record {record} at byte {byte}: {detail}");
-        assert_refused_at(bytes, InvalidData, &message);
+    for (bytes, refusal, message) in cases {
+        assert_refusal(bytes, refusal, &message);
     }
 }
 

@@ -227,27 +227,58 @@ impl ReplayPlayer {
     }
 }
 
-/// Why a first record that does not decode is refused.
-const NO_HEADER: &str =
-    "no replay header this build reads: not a bota replay, or one recorded before replays had one";
+/// Why a replay is refused up front. It is the inner error of the
+/// [`io::Error`] the player reports, so a front end can tell the cases
+/// apart with `downcast_ref`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ReplayRefusal {
+    /// The first record is a header of something else.
+    NotBota,
+    /// Recorded with another wire fingerprint than this build plays.
+    OtherVersion { recorded: u64, plays: u64 },
+    /// The first record is no header this build reads.
+    NoHeader,
+    /// A header where only the first record may be one.
+    SecondHeader,
+}
+
+impl std::fmt::Display for ReplayRefusal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::NotBota => f.write_str("not a bota replay"),
+            Self::OtherVersion { recorded, plays } => write!(
+                f,
+                "recorded with wire fingerprint {}; this build plays {}",
+                fingerprint_to_hex(*recorded),
+                fingerprint_to_hex(*plays)
+            ),
+            Self::NoHeader => f.write_str(
+                "no replay header this build reads: not a bota replay, or one recorded before \
+                 replays had one",
+            ),
+            Self::SecondHeader => f.write_str("a second replay header"),
+        }
+    }
+}
+
+impl std::error::Error for ReplayRefusal {}
 
 /// Why a record cannot stand where it does: the first must be this build's
 /// header, and no other may be a header.
-fn header_refusal(record: &ReplayRecord, first: bool) -> Option<String> {
+fn header_refusal(record: &ReplayRecord, first: bool) -> Option<ReplayRefusal> {
     match (record, first) {
         (ReplayRecord::Header(header), true) if *header == ReplayHeader::new(WIRE_FINGERPRINT) => {
             None
         }
         (ReplayRecord::Header(header), true) if header.magic != ReplayHeader::MAGIC => {
-            Some("not a bota replay".to_string())
+            Some(ReplayRefusal::NotBota)
         }
-        (ReplayRecord::Header(header), true) => Some(format!(
-            "recorded with wire fingerprint {}; this build plays {}",
-            fingerprint_to_hex(header.wire_fingerprint),
-            fingerprint_to_hex(WIRE_FINGERPRINT)
-        )),
-        (_, true) => Some(NO_HEADER.to_string()),
-        (ReplayRecord::Header(_), false) => Some("a second replay header".to_string()),
+        (ReplayRecord::Header(header), true) => Some(ReplayRefusal::OtherVersion {
+            recorded: header.wire_fingerprint,
+            plays: WIRE_FINGERPRINT,
+        }),
+        (_, true) => Some(ReplayRefusal::NoHeader),
+        (ReplayRecord::Header(_), false) => Some(ReplayRefusal::SecondHeader),
         (_, false) => None,
     }
 }
@@ -266,15 +297,14 @@ impl ReplayStream {
                 if self.payload_read == self.payload.len() {
                     let first = self.records == 0;
                     let record = decode_payload(&self.payload).map_err(|error| {
-                        let detail = if first {
-                            NO_HEADER.to_string()
+                        if first {
+                            io::Error::new(io::ErrorKind::InvalidData, ReplayRefusal::NoHeader)
                         } else {
-                            error.to_string()
-                        };
-                        self.failure(io::ErrorKind::InvalidData, detail)
+                            self.failure(io::ErrorKind::InvalidData, error)
+                        }
                     })?;
                     if let Some(refusal) = header_refusal(&record, first) {
-                        return Err(self.failure(io::ErrorKind::InvalidData, refusal));
+                        return Err(io::Error::new(io::ErrorKind::InvalidData, refusal));
                     }
                     self.prefix_read = 0;
                     self.payload.clear();
