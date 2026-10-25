@@ -150,17 +150,3 @@ impl App {
         Some(seat.team)
     }
 }
-
-/// How a refusal of one's own line reads.
-pub fn say_refusal(reason: SayRefusal) -> String {
-    match reason {
-        SayRefusal::TooFast { retry_in_ms } => {
-            format!(
-                "You are sending messages too fast; wait {:.1} s",
-                retry_in_ms as f32 / 1000.0
-            )
-        }
-        SayRefusal::NotAllowed => "Nobody here may hear that".to_owned(),
-        SayRefusal::Unfit => "That message cannot be sent".to_owned(),
-    }
-}

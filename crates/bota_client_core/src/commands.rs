@@ -17,8 +17,8 @@ pub trait CommandContext {
     fn cursor(&self) -> Option<Vec2>;
 }
 
-/// The names this crate knows: the catalog's items by name or id, the
-/// heroes by name or id; no cursor.
+/// The names this crate knows: the rules' items by name or id, the heroes
+/// by name or id; no cursor.
 pub struct Plain;
 
 impl CommandContext for Plain {
@@ -26,11 +26,12 @@ impl CommandContext for Plain {
         if let Ok(id) = word.parse::<u16>() {
             return bota_core::item_def(ItemId(id)).map(|_| ItemId(id));
         }
-        crate::catalog::ITEMS
+        let word = word.replace('_', " ");
+        bota_core::ITEMS
             .iter()
-            .filter(|face| bota_core::item_def(ItemId(face.id)).is_some())
-            .find(|face| face.name.eq_ignore_ascii_case(word))
-            .map(|face| ItemId(face.id))
+            .position(|item| !item.retired && item.name.eq_ignore_ascii_case(&word))
+            .and_then(|at| u16::try_from(at).ok())
+            .map(ItemId)
     }
 
     fn hero(&self, word: &str) -> Option<HeroId> {
@@ -50,10 +51,44 @@ impl CommandContext for Plain {
     }
 }
 
+/// Why a typed line is no command; the player's own word is kept as data.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum CommandError {
+    /// Nothing was typed.
+    Empty,
+    /// A switch was given a word that is neither 1 nor 0.
+    NotOnOff(String),
+    /// `item` without the item.
+    NoItemNamed,
+    /// No item is called so.
+    UnknownItem(String),
+    /// `createhero` without the hero.
+    NoHeroNamed,
+    /// No hero is called so.
+    UnknownHero(String),
+    /// A hero's side was given as neither ally nor enemy.
+    NotAllyOrEnemy(String),
+    /// The command wants the spot under the cursor and there is none.
+    NeedsCursor(CursorUse),
+    /// A creep side that is none of radiant, dire, neutral or all.
+    NotCreepSide(String),
+    /// No command is called so.
+    UnknownCommand(String),
+    /// A count or amount that is no number.
+    NotANumber(String),
+}
+
+/// What a command takes the cursor's spot for.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CursorUse {
+    CreateHero,
+    Teleport,
+}
+
 /// Turns one typed line into an order, with this crate's own names. A
 /// leading dash is allowed and ignored, so `-gold 500` and `gold 500` ask
 /// the same.
-pub fn parse_console(line: &str) -> Result<Order, String> {
+pub fn parse_console(line: &str) -> Result<Order, CommandError> {
     parse_command(line, &Plain).map(|cheat| Order::Cheat { cheat })
 }
 
@@ -97,12 +132,12 @@ pub const CHAT_COMMANDS: [&str; 22] = [
 
 /// Turns a typed command into the cheat it asks for: Dota's chat form with
 /// or without its dash, or its console form.
-pub fn parse_command(line: &str, cx: &dyn CommandContext) -> Result<Cheat, String> {
+pub fn parse_command(line: &str, cx: &dyn CommandContext) -> Result<Cheat, CommandError> {
     let line = line.trim();
     let line = line.strip_prefix('-').unwrap_or(line);
     let mut words = line.split_whitespace();
     let Some(first) = words.next() else {
-        return Err("nothing typed".to_string());
+        return Err(CommandError::Empty);
     };
     let first = first.to_ascii_lowercase();
     // `dota_dev hero_level 3` reads as its second word.
@@ -119,7 +154,7 @@ pub fn parse_command(line: &str, cx: &dyn CommandContext) -> Result<Cheat, Strin
     let on = |word: Option<&str>| match word {
         None | Some("1") => Ok(true),
         Some("0") => Ok(false),
-        Some(other) => Err(format!("'{other}' is not 1 or 0")),
+        Some(other) => Err(CommandError::NotOnOff(other.to_string())),
     };
     let cheat = match command.as_str() {
         "gold" | "player_givegold" => Cheat::Gold {
@@ -137,24 +172,26 @@ pub fn parse_command(line: &str, cx: &dyn CommandContext) -> Result<Cheat, Strin
         "refresh" | "hero_refresh" => Cheat::Refresh,
         "respawn" | "hero_respawn" => Cheat::Respawn,
         "item" | "dota_create_item" => {
-            let name = arg.ok_or("which item?")?;
+            let name = arg.ok_or(CommandError::NoItemNamed)?;
             Cheat::Item {
                 item: cx
                     .item(name)
-                    .ok_or_else(|| format!("no item called '{name}'"))?,
+                    .ok_or_else(|| CommandError::UnknownItem(name.to_string()))?,
             }
         }
         "createhero" | "dota_create_unit" => {
-            let name = arg.ok_or("which hero?")?;
+            let name = arg.ok_or(CommandError::NoHeroNamed)?;
             let hero = cx
                 .hero(name)
-                .ok_or_else(|| format!("no hero called '{name}'"))?;
+                .ok_or_else(|| CommandError::UnknownHero(name.to_string()))?;
             let enemy = match rest.get(1).copied() {
                 None | Some("ally") => false,
                 Some("enemy") => true,
-                Some(other) => return Err(format!("'{other}' is not enemy or ally")),
+                Some(other) => return Err(CommandError::NotAllyOrEnemy(other.to_string())),
             };
-            let at = cx.cursor().ok_or("point at the ground to create a hero")?;
+            let at = cx
+                .cursor()
+                .ok_or(CommandError::NeedsCursor(CursorUse::CreateHero))?;
             Cheat::CreateHero { hero, enemy, at }
         }
         "spawncreeps" | "dota_spawn_creeps" => Cheat::SpawnCreeps,
@@ -168,9 +205,7 @@ pub fn parse_command(line: &str, cx: &dyn CommandContext) -> Result<Cheat, Strin
                 Some("radiant") => CreepSide::Radiant,
                 Some("dire") => CreepSide::Dire,
                 Some("neutral") => CreepSide::Neutral,
-                Some(other) => {
-                    return Err(format!("'{other}' is not radiant, dire, neutral or all"));
-                }
+                Some(other) => return Err(CommandError::NotCreepSide(other.to_string())),
             },
         },
         "startgame" | "forcegamestart" => Cheat::StartGame,
@@ -178,21 +213,23 @@ pub fn parse_command(line: &str, cx: &dyn CommandContext) -> Result<Cheat, Strin
         "normalvision" | "dota_all_vision_disable" => Cheat::AllVision { on: false },
         "dota_all_vision" => Cheat::AllVision { on: on(arg)? },
         "teleport" | "hero_teleport" => Cheat::Teleport {
-            at: cx.cursor().ok_or("point at the ground to teleport to")?,
+            at: cx
+                .cursor()
+                .ok_or(CommandError::NeedsCursor(CursorUse::Teleport))?,
         },
         "invulnerable" => Cheat::Invulnerable { on: true },
         "vulnerable" => Cheat::Invulnerable { on: false },
-        other => return Err(format!("unknown command '{other}'")),
+        other => return Err(CommandError::UnknownCommand(other.to_string())),
     };
     Ok(cheat)
 }
 
 /// The number typed after a command, or the usual one when none was.
-fn number<T: std::str::FromStr>(word: Option<&str>, usual: T) -> Result<T, String> {
+fn number<T: std::str::FromStr>(word: Option<&str>, usual: T) -> Result<T, CommandError> {
     match word {
         None => Ok(usual),
         Some(word) => word
             .parse()
-            .map_err(|_| format!("'{word}' is not a number")),
+            .map_err(|_| CommandError::NotANumber(word.to_string())),
     }
 }

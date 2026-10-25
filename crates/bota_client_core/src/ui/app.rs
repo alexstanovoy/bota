@@ -7,9 +7,10 @@ use bota_proto::{
     StockView, TalentSlot, TalentView, Team, UnitKind, UnitView, Vec2, WorldView,
 };
 
+use crate::commands::CommandError;
 use crate::handshake::Lobby;
 use crate::match_static::MatchStatic;
-use crate::orders::{IssuedOrder, refusal};
+use crate::orders::IssuedOrder;
 use crate::seat::Seat;
 use crate::session::{
     AckPolicy, ClientSession, DEFAULT_FORGET_AFTER_TICKS, Ingested, SessionOptions,
@@ -241,18 +242,8 @@ pub struct Cue {
 pub enum Refused {
     /// A rule of the game, the server's or one the client checks first.
     Rule(bota_proto::RejectReason),
-    /// A line the client could not read (the console's), in its words.
-    Said(String),
-}
-
-impl Refused {
-    /// The refusal in plain words.
-    pub fn text(&self) -> &str {
-        match self {
-            Refused::Rule(reason) => refusal(*reason),
-            Refused::Said(line) => line,
-        }
-    }
+    /// A line the client could not read (the console's).
+    Command(CommandError),
 }
 
 /// One line of the kill feed.

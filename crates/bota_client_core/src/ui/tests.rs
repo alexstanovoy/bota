@@ -32,8 +32,22 @@ fn the_console_turns_a_typed_line_into_a_cheat_order() {
     ] {
         assert_eq!(parse(line), Ok(Order::Cheat { cheat }), "{line:?}");
     }
-    for line in ["-fly", "-gold lots", "-item wings", ""] {
-        assert!(parse(line).is_err(), "{line:?} is refused");
+    use crate::commands::{CommandError as Why, CursorUse};
+    for (line, why) in [
+        ("-fly", Why::UnknownCommand("fly".to_string())),
+        ("-gold lots", Why::NotANumber("lots".to_string())),
+        ("-item wings", Why::UnknownItem("wings".to_string())),
+        ("-item", Why::NoItemNamed),
+        ("-createhero", Why::NoHeroNamed),
+        ("-createhero nobody", Why::UnknownHero("nobody".to_string())),
+        ("-createhero 0 foe", Why::NotAllyOrEnemy("foe".to_string())),
+        ("-createhero 0", Why::NeedsCursor(CursorUse::CreateHero)),
+        ("-teleport", Why::NeedsCursor(CursorUse::Teleport)),
+        ("-killcreeps rad", Why::NotCreepSide("rad".to_string())),
+        ("dota_ability_debug 2", Why::NotOnOff("2".to_string())),
+        ("", Why::Empty),
+    ] {
+        assert_eq!(parse(line), Err(why), "{line:?}");
     }
 }
 

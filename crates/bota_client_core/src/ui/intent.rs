@@ -170,7 +170,7 @@ impl App {
             }
             Intent::Console(line) => match crate::commands::parse_console(&line) {
                 Ok(order) => self.send_order(order),
-                Err(why) => self.reject = Some((crate::ui::app::Refused::Said(why), 2.5)),
+                Err(why) => self.reject = Some((crate::ui::app::Refused::Command(why), 2.5)),
             },
             Intent::Cheat(cheat) => self.send_order(bota_proto::Order::Cheat { cheat }),
             other => self.act_on_replay(other),

@@ -474,11 +474,7 @@ impl SessionError {
                 "the server speaks wire {server:016x} and this client {WIRE_FINGERPRINT:016x}; \
                  build both from matching commits"
             ),
-            Self::Refused(reason) => write!(
-                f,
-                "the server refused this client: {}",
-                crate::orders::refusal(*reason)
-            ),
+            Self::Refused(reason) => write!(f, "the server refused this client: {reason:?}"),
             _ => unreachable!("every SessionError variant has a message"),
         }
     }
