@@ -200,11 +200,32 @@ pub fn run(listeners: impl Into<Listeners>, opts: ServerOpts) -> std::io::Result
     Ok(server.match_phase(cfg))
 }
 
+/// Seats a side holds at most: a Dota lobby's team has five slots.
+pub const MAX_SIDE_SEATS: usize = 5;
+
 /// What the options must agree on beyond what their types hold; [`run`]
 /// checks it before anything else.
 pub fn check_opts(opts: &ServerOpts) -> Result<(), String> {
     if opts.reserved.len() > usize::from(u8::MAX) {
         return Err("at most 255 reserved seats".to_owned());
+    }
+    let sides = match opts.reserved.len() {
+        // Unreserved seats alternate, Radiant first.
+        0 => {
+            let seats = usize::from(opts.players);
+            [seats.div_ceil(2), seats / 2]
+        }
+        _ => [Team::Radiant, Team::Dire].map(|side| {
+            opts.reserved
+                .iter()
+                .filter(|seat| seat.team == side)
+                .count()
+        }),
+    };
+    if sides.iter().any(|seats| *seats > MAX_SIDE_SEATS) {
+        return Err(format!(
+            "a side holds at most {MAX_SIDE_SEATS} seats, as a Dota lobby's team does"
+        ));
     }
     // Reserved seats are what a matchmaking service launches: its matches
     // never cheat. Cheats are for a match its host starts for itself.

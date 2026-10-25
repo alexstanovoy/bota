@@ -19,7 +19,7 @@ use bota_proto::{
     SeatKey, ServerMsg, Target, Team, TickMode, UnitKind, Vec2,
 };
 use bota_server::game_loop::{
-    DEFAULT_IDLE_TIMEOUT, DEFAULT_SPECTATORS_PER_SEAT, MatchEnd, ServerOpts, run,
+    DEFAULT_IDLE_TIMEOUT, DEFAULT_SPECTATORS_PER_SEAT, MatchEnd, ServerOpts, check_opts, run,
 };
 use bota_server::lobby::ReservedSeat;
 use bota_server::net::DEFAULT_MESSAGES_PER_SEC;
@@ -435,5 +435,38 @@ fn five_pushing_three_lanes_break_them_in_dotas_order_and_win_by_the_ancient() {
     assert!(
         (2..6).any(|n| hp.get(&n).is_some_and(|hp| *hp >= rules::SUPER_MELEE_HP)),
         "super waves after a lane's barracks: {hp:?}"
+    );
+}
+
+/// A Dota lobby's team holds five slots: a sixth seat on a side is refused before the server
+/// listens, reserved or not, and five a side (or a side empty) is taken.
+#[test]
+fn a_side_holds_at_most_five_seats() {
+    let seats = |radiant: usize, dire: usize| -> Vec<ReservedSeat> {
+        let teams = std::iter::repeat_n(Team::Radiant, radiant)
+            .chain(std::iter::repeat_n(Team::Dire, dire));
+        teams
+            .enumerate()
+            .map(|(i, team)| ReservedSeat {
+                key: SeatKey([i as u8 + 1; 32]),
+                name: format!("seat{i}"),
+                team,
+                kind: None,
+            })
+            .collect()
+    };
+    for (radiant, dire, taken) in [(5, 5, true), (5, 0, true), (6, 4, false), (1, 6, false)] {
+        let checked = check_opts(&opts(0, seats(radiant, dire), None));
+        assert_eq!(checked.is_ok(), taken, "{radiant}v{dire}: {checked:?}");
+    }
+    for (players, taken) in [(10, true), (11, false)] {
+        let checked = check_opts(&opts(players, Vec::new(), None));
+        assert_eq!(checked.is_ok(), taken, "{players} unreserved: {checked:?}");
+    }
+    let listener = TcpListener::bind("127.0.0.1:0").expect("a port");
+    let refused = run(listener, opts(0, seats(6, 0), None));
+    assert!(
+        refused.is_err(),
+        "the server never opens a lobby of six a side"
     );
 }
