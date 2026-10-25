@@ -200,25 +200,21 @@ impl Clearance {
         }
     }
 
-    /// The node a position falls into, if it is on the map.
+    /// The node a position falls into, if it is on the map: the one whose
+    /// centre is nearest, a node's square reaching half a node about it.
     pub fn node_of(pos: Vec2) -> Option<(usize, usize)> {
-        if pos.x.raw < 0 || pos.y.raw < 0 {
+        let on = |v: Fixed| v.raw >= 0 && v.to_int() < rules::MAP_SIZE;
+        if !on(pos.x) || !on(pos.y) {
             return None;
         }
-        let nx = pos.x.to_int() / NODE;
-        let ny = pos.y.to_int() / NODE;
-        if nx >= NODES as i32 || ny >= NODES as i32 {
-            return None;
-        }
-        Some((nx as usize, ny as usize))
+        let node = |v: Fixed| ((v.to_int() + NODE / 2) / NODE) as usize;
+        Some((node(pos.x), node(pos.y)))
     }
 
-    /// The centre of a node.
+    /// The centre of a node: a gridnav cell's centre, corner or the
+    /// midpoint of its edge.
     pub fn node_center(node: (usize, usize)) -> Vec2 {
-        Vec2::from_ints(
-            node.0 as i32 * NODE + NODE / 2,
-            node.1 as i32 * NODE + NODE / 2,
-        )
+        Vec2::from_ints(node.0 as i32 * NODE, node.1 as i32 * NODE)
     }
 
     /// The room at a node's centre, in whole world units.
@@ -428,10 +424,11 @@ fn whole_units(radius: Fixed) -> i32 {
 /// The nodes a square window about a position covers, clamped to the map.
 fn node_window(at: Vec2, reach: i32) -> ((usize, usize), (usize, usize)) {
     let last = NODES as i32 - 1;
-    let x0 = ((at.x.to_int() - reach) / NODE).clamp(0, last);
-    let x1 = ((at.x.to_int() + reach) / NODE).clamp(0, last);
-    let y0 = ((at.y.to_int() - reach) / NODE).clamp(0, last);
-    let y1 = ((at.y.to_int() + reach) / NODE).clamp(0, last);
+    let node = |v: i32| (v + NODE / 2).div_euclid(NODE).clamp(0, last);
+    let x0 = node(at.x.to_int() - reach);
+    let x1 = node(at.x.to_int() + reach);
+    let y0 = node(at.y.to_int() - reach);
+    let y1 = node(at.y.to_int() + reach);
     ((x0 as usize, y0 as usize), (x1 as usize, y1 as usize))
 }
 
@@ -453,60 +450,57 @@ fn splat(room: &mut [u8], at: Vec2, radius: Fixed, lo: (usize, usize), hi: (usiz
     }
 }
 
-/// The squared distance from a node's centre to a closed node square that
-/// stands `k` nodes away along one axis, in whole units.
-fn axis_gap_squared(k: i32) -> u32 {
-    let gap = (NODE * k.abs() - NODE / 2).max(0) as u32;
-    gap * gap
+/// How far a coordinate lies from a span of cells along one axis, the
+/// span's own edges counted as in it, in whole units.
+fn span_gap(at: i32, first: i32, last: i32) -> u32 {
+    let cell = rules::GRID_CELL_SIZE;
+    (cell * first - at).max(at - cell * (last + 1)).max(0) as u32
 }
 
 /// The room at every node with only a terrain standing: the distance from
 /// each node's centre to the nearest closed cell, the map's edge counted as
 /// closed, capped.
 fn terrain_room_of(terrain: &CellGrid) -> Vec<u8> {
-    let cell_nodes = (rules::GRID_CELL_SIZE / NODE) as usize;
-    let closed = |nx: usize, ny: usize| !terrain.cell_open(nx / cell_nodes, ny / cell_nodes);
-    let n = NODES as i32;
-    // Along each row: the squared gap to the nearest closed node in the
-    // row, the edge counted as closed just past either end.
-    let mut rows = vec![0u32; NODES * NODES];
-    for ny in 0..NODES {
+    let cells = rules::GRID_CELLS as i32;
+    let cell_nodes = rules::GRID_CELL_SIZE / NODE;
+    let closed = |cx: i32, cy: i32| !terrain.cell_open(cx as usize, cy as usize);
+    // Along each row of cells: the squared gap from each node column to the
+    // nearest closed cell in the row, the edge counted as closed just past
+    // either end.
+    let mut rows = vec![0u32; rules::GRID_CELLS * NODES];
+    for cy in 0..cells {
+        let row = &mut rows[cy as usize * NODES..][..NODES];
         let mut last = -1;
-        for nx in 0..NODES {
-            if closed(nx, ny) {
-                last = nx as i32;
+        for (nx, slot) in row.iter_mut().enumerate() {
+            let cx = nx as i32 / cell_nodes;
+            if cx < cells && closed(cx, cy) {
+                last = cx;
             }
-            rows[ny * NODES + nx] = axis_gap_squared(nx as i32 - last);
+            let gap = span_gap(nx as i32 * NODE, last, last);
+            *slot = gap * gap;
         }
-        let mut next = n;
-        for nx in (0..NODES).rev() {
-            if closed(nx, ny) {
-                next = nx as i32;
+        let mut next = cells;
+        for (nx, slot) in row.iter_mut().enumerate().rev() {
+            let cx = nx as i32 / cell_nodes + 1;
+            if cx < cells && closed(cx, cy) {
+                next = cx;
             }
-            let slot = &mut rows[ny * NODES + nx];
-            *slot = (*slot).min(axis_gap_squared(next - nx as i32));
+            let gap = span_gap(nx as i32 * NODE, next, next);
+            *slot = (*slot).min(gap * gap);
         }
     }
     // Down each column: the row gaps combined with the gap across rows.
-    let cap = (CAP * CAP) as u32;
-    let mut span = 1;
-    while axis_gap_squared(span) < cap {
-        span += 1;
-    }
+    let span = CAP / rules::GRID_CELL_SIZE + 2;
     let mut room = vec![0u8; NODES * NODES];
-    for nx in 0..NODES {
-        for ny in 0..NODES {
-            let mut best = rows[ny * NODES + nx]
-                .min(axis_gap_squared(ny as i32 + 1))
-                .min(axis_gap_squared(n - ny as i32));
-            for dy in 1..span {
-                let across = axis_gap_squared(dy);
-                if ny >= dy as usize {
-                    best = best.min(rows[(ny - dy as usize) * NODES + nx] + across);
-                }
-                if ny + (dy as usize) < NODES {
-                    best = best.min(rows[(ny + dy as usize) * NODES + nx] + across);
-                }
+    for ny in 0..NODES {
+        let at = ny as i32 * NODE;
+        let own = at / rules::GRID_CELL_SIZE;
+        let edge = span_gap(at, -1, -1).min(span_gap(at, cells, cells));
+        for nx in 0..NODES {
+            let mut best = edge * edge;
+            for cy in (own - span).max(0)..=(own + span).min(cells - 1) {
+                let across = span_gap(at, cy, cy);
+                best = best.min(rows[cy as usize * NODES + nx] + across * across);
             }
             room[ny * NODES + nx] = isqrt64(i64::from(best)).min(i64::from(CAP)) as u8;
         }
@@ -521,10 +515,13 @@ fn each_node_along(from: Vec2, to: Vec2, mut each: impl FnMut((usize, usize)) ->
     let (Some(start), Some(end)) = (Clearance::node_of(from), Clearance::node_of(to)) else {
         return false;
     };
+    // Node squares reach half a node either side of their centres: in
+    // coordinates shifted by that half, node `n` spans `n..n + 1` nodes.
     let size = i64::from(NODE) << Fixed::FRAC_BITS;
-    let (ax, ay) = (i64::from(from.x.raw), i64::from(from.y.raw));
-    let dx = i64::from(to.x.raw) - ax;
-    let dy = i64::from(to.y.raw) - ay;
+    let half = size / 2;
+    let (ax, ay) = (i64::from(from.x.raw) + half, i64::from(from.y.raw) + half);
+    let dx = i64::from(to.x.raw) - i64::from(from.x.raw);
+    let dy = i64::from(to.y.raw) - i64::from(from.y.raw);
     let (mut x, mut y) = (start.0 as i64, start.1 as i64);
     if !each((x as usize, y as usize)) {
         return false;

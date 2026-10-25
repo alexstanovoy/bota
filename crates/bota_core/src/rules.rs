@@ -34,11 +34,16 @@ pub const GRID_CELL_SIZE: i32 = MAP_SIZE / GRID_CELLS as i32;
 
 // The ground as a body meets it.
 
-/// World units covered by one node of the walking lattice, on which routes
-/// are planned and the room a body has is kept.
-pub const WALK_CELL_SIZE: i32 = 32;
-/// Nodes per axis of the walking lattice.
-pub const WALK_CELLS: usize = (MAP_SIZE / WALK_CELL_SIZE) as usize;
+/// World units between neighbouring nodes of the walking lattice, on which
+/// routes are planned and the room a body has is kept: half Dota's gridnav
+/// cell (dota.fgd `@gridnav(64, ...)`), its nodes at every cell's centre
+/// and at the midpoints and corners between them. The long pather's way
+/// through a forest runs through gridnav cell centres: a lane one cell wide
+/// between two trees (which stand on cell corners and close the 128x128
+/// square about them, Liquipedia *Trees*) has its nodes on its middle line.
+pub const WALK_CELL_SIZE: i32 = GRID_CELL_SIZE / 2;
+/// Nodes per axis of the walking lattice, the map's far edge included.
+pub const WALK_CELLS: usize = (MAP_SIZE / WALK_CELL_SIZE) as usize + 1;
 /// The most room a node records, in world units. Everything further from
 /// every obstacle than this reads the same.
 pub const CLEARANCE_CAP: i32 = 96;

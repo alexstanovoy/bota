@@ -16,6 +16,7 @@ mod determinism;
 mod feast;
 mod fiend;
 mod fillers;
+mod forest_paths;
 mod glyph;
 mod grenade;
 mod handles;

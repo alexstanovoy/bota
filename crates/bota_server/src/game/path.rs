@@ -10,6 +10,7 @@ use bota_proto::{Fixed, Vec2};
 use crate::game::{Clearance, Obstacles};
 
 const NODES: usize = rules::WALK_CELLS;
+const NODE_SIZE: i32 = rules::WALK_CELL_SIZE;
 const STRAIGHT: u32 = 100;
 const DIAGONAL: u32 = 141;
 
@@ -116,9 +117,12 @@ impl Planner {
     /// walker in: no node with room at either end, or every node got to
     /// expanded within the budget and none of them the goal.
     ///
-    /// The walk sets out from a node the body (of collision size `body`)
-    /// gets to in a straight line from where it stands: a node with room
-    /// beyond a row of trees is no start for one standing between them.
+    /// The walk sets out from where the body (of collision size `body`)
+    /// stands to a node it gets to in a straight line: the nearest with
+    /// room, and any other with room about the node it stands in. A node
+    /// with room beyond a row of trees is no start for one standing between
+    /// them, and one standing in a gap between two trees steps straight
+    /// out of it, whichever way the lattice's steps would leave it.
     fn walk_keeping(
         &mut self,
         ob: &Obstacles,
@@ -128,12 +132,12 @@ impl Planner {
         body: Fixed,
         budget: u32,
     ) -> (Vec<Vec2>, bool) {
-        let (Some(start), Some(asked)) = (Clearance::node_of(from), Clearance::node_of(to)) else {
+        let (Some(stands), Some(asked)) = (Clearance::node_of(from), Clearance::node_of(to)) else {
             return (Vec::new(), false);
         };
         let reached = |node| ob.clear(from, Clearance::node_center(node), body);
         let (Some(start), Some(goal)) = (
-            nearest_node(ob, start, room, reached),
+            nearest_node(ob, stands, room, reached),
             node_beside(ob, to, from, room).or_else(|| routable_node(ob, asked, room)),
         ) else {
             return (Vec::new(), true);
@@ -141,12 +145,20 @@ impl Planner {
         if start == goal {
             return (Vec::new(), false);
         }
-        let (end, shut) = self.search(ob, start, goal, room, budget);
+        let mut seeds = vec![start];
+        for (dx, dy) in NEIGHBOURS {
+            if let Some(near) = offset_node(stands, dx, dy)
+                .filter(|&near| near != start && ob.fits(near, room) && reached(near))
+            {
+                seeds.push(near);
+            }
+        }
+        let (end, shut) = self.search(ob, from, &seeds, goal, room, budget);
         if end == idx(start) {
             return (Vec::new(), shut);
         }
         let goal = (end % NODES, end / NODES);
-        let corners = self.corners(start, end);
+        let corners = self.corners(end);
         let mut spots: Vec<Vec2> = corners.iter().map(|&c| Clearance::node_center(c)).collect();
         // The walk ends on the spot asked for itself when its own node was
         // got to, or when the spot is in a straight line from the node the
@@ -160,15 +172,18 @@ impl Planner {
         (pull_string(ob, from, spots, room), shut)
     }
 
-    /// Runs A* from a node towards a goal node within a budget of nodes to
-    /// expand, and answers the node the walk ends in: the goal when it was
-    /// got to within the budget, else the node got to that lies nearest it.
-    /// Ties break on node index. Answers too whether every node got to was
-    /// expanded within the budget without getting to the goal.
+    /// Runs A* from where a body stands, through the nodes it sets out from
+    /// (each at the cost of the straight way to it), towards a goal node
+    /// within a budget of nodes to expand, and answers the node the walk
+    /// ends in: the goal when it was got to within the budget, else the node
+    /// got to that lies nearest it. Ties break on node index. Answers too
+    /// whether every node got to was expanded within the budget without
+    /// getting to the goal.
     fn search(
         &mut self,
         ob: &Obstacles,
-        start: (usize, usize),
+        from: Vec2,
+        seeds: &[(usize, usize)],
         goal: (usize, usize),
         room: Fixed,
         budget: u32,
@@ -180,12 +195,21 @@ impl Planner {
         }
         let epoch = self.epoch;
         self.heap.clear();
-        self.g[idx(start)] = 0;
-        self.parent[idx(start)] = u32::MAX;
-        self.stamp[idx(start)] = epoch;
-        self.heap
-            .push(Reverse((heuristic(start, goal), idx(start) as u32)));
-        let mut nearest = (heuristic(start, goal), idx(start));
+        let mut nearest = (u32::MAX, idx(seeds[0]));
+        for &seed in seeds {
+            let i = idx(seed);
+            let leg = isqrt64(from.distance_squared(Clearance::node_center(seed)));
+            let g = (leg * i64::from(STRAIGHT) / i64::from(rules::units(NODE_SIZE).raw)) as u32;
+            if self.stamp[i] == epoch && self.g[i] <= g {
+                continue;
+            }
+            self.g[i] = g;
+            self.parent[i] = u32::MAX;
+            self.stamp[i] = epoch;
+            self.heap
+                .push(Reverse((g + heuristic(seed, goal), i as u32)));
+            nearest = nearest.min((heuristic(seed, goal), i));
+        }
         let mut expanded = 0;
         let mut shut = true;
         while let Some(Reverse((f, at))) = self.heap.pop() {
@@ -237,12 +261,14 @@ impl Planner {
         }
     }
 
-    /// The nodes of the last search's walk from its start to a node where
-    /// the way turns, and the node itself last.
-    fn corners(&self, start: (usize, usize), end: usize) -> Vec<(usize, usize)> {
+    /// The nodes of the last search's walk where the way turns, the node it
+    /// set out from first and the node it ends in last. The first is pulled
+    /// out of the walk ([`pull_string`]) unless the way beyond it is not in a
+    /// straight line from where the body stands.
+    fn corners(&self, end: usize) -> Vec<(usize, usize)> {
         let mut nodes = vec![(end % NODES, end / NODES)];
         let mut at = end;
-        while at != idx(start) {
+        while self.parent[at] != u32::MAX {
             at = self.parent[at] as usize;
             nodes.push((at % NODES, at / NODES));
         }
@@ -250,12 +276,16 @@ impl Planner {
         let step = |a: (usize, usize), b: (usize, usize)| {
             (b.0 as i32 - a.0 as i32, b.1 as i32 - a.1 as i32)
         };
-        let mut corners: Vec<(usize, usize)> = nodes
-            .windows(3)
-            .filter(|w| step(w[0], w[1]) != step(w[1], w[2]))
-            .map(|w| w[1])
-            .collect();
-        corners.push(nodes[nodes.len() - 1]);
+        let mut corners = vec![nodes[0]];
+        corners.extend(
+            nodes
+                .windows(3)
+                .filter(|w| step(w[0], w[1]) != step(w[1], w[2]))
+                .map(|w| w[1]),
+        );
+        if nodes.len() > 1 {
+            corners.push(nodes[nodes.len() - 1]);
+        }
         corners
     }
 }
