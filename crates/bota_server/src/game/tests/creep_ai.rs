@@ -89,19 +89,23 @@ fn a_building_never_shoots_the_jungle_and_a_creep_only_at_a_pull_camp() {
     assert!(world.hostile(hero, beast), "a hero may hit it");
     assert!(
         !world.hostile(creep, beast),
+        "a lane creep leaves a neutral of no camp be"
+    );
+    // Each neutral of a camp has its own spot in the camp's row, beside the camp's centre: it
+    // is the camp it belongs to that counts.
+    let camp_of = |pullable: bool| {
+        let index = CAMPS.iter().position(|c| c.pullable == pullable);
+        let index = index.expect("the map has camps of both kinds");
+        let home = CAMPS[index].pos + Vec2::from_ints(90, 0);
+        let camp = u8::try_from(index).expect("few camps");
+        CampHome { camp, home }
+    };
+    world.camp_home.insert(beast, camp_of(false));
+    assert!(
+        !world.hostile(creep, beast),
         "a lane creep leaves a camp it cannot be pulled to"
     );
-    let pull = CAMPS
-        .iter()
-        .find(|c| c.pullable)
-        .expect("the map marks pull camps");
-    world.camp_home.insert(
-        beast,
-        CampHome {
-            camp: 0,
-            home: pull.pos,
-        },
-    );
+    world.camp_home.insert(beast, camp_of(true));
     assert!(
         world.hostile(creep, beast),
         "at a pull camp it will fight after all"
@@ -541,15 +545,14 @@ fn the_jungle_pays_a_courier_no_mind_but_the_other_side_does_not() {
     world.transform.get_mut(courier).expect("standing").pos = at;
     // A neutral and a creep of the other side, both standing on top of it.
     let beast = world.spawn_unit(NeutralKind::Kobold.def(), Team::Neutral, at);
-    world
-        .camp_home
-        .insert(beast, CampHome { camp: 1, home: at });
+    // Of no camp the map has, so no lane creep is drawn to it: the creep's choice is the courier.
+    let camp = u8::MAX;
+    world.camp_home.insert(beast, CampHome { camp, home: at });
     world.neutral_ai.insert(
         beast,
         NeutralAi {
             leash_left: rules::NEUTRAL_AGGRO_WINDOW,
             reaggro_block: 0,
-            next_window: rules::NEUTRAL_AGGRO_WINDOW,
             going_home: false,
             roused_by: None,
             awake: true,

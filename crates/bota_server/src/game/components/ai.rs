@@ -38,8 +38,6 @@ pub struct NeutralAi {
     pub leash_left: u32,
     /// Ticks before it will take a target again.
     pub reaggro_block: u32,
-    /// Ticks until its next chance to notice anybody.
-    pub next_window: u32,
     /// Whether it is walking home and taking nothing on.
     pub going_home: bool,
     /// Who struck the camp last, until the mind takes it up.

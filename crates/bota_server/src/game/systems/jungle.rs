@@ -173,9 +173,12 @@ impl World {
 
     /// Runs down every neutral's patience and sends home the ones led too far.
     ///
-    /// A neutral gives up when it has been led past its guard distance for
-    /// longer than its window, and takes nothing on again until it is back and
-    /// its block has run out. At night it sleeps: nothing coming near wakes
+    /// A neutral gives up when it has stood past its guard distance for
+    /// longer than its window, which only coming back within that distance
+    /// starts again (Liquipedia, *Neutral Creeps*, Losing Aggro: a blow does
+    /// not; a pulled camp fought by a lane wave turns for home after five
+    /// seconds and the wave follows it in). Walking home it takes nothing on
+    /// and nothing near wakes it until it is back. At night it sleeps: nothing coming near wakes
     /// it (Liquipedia, Time of Day: a neutral's aggro range is 0 by night).
     pub fn tick_jungle(&mut self) {
         let guard = rules::units(rules::NEUTRAL_GUARD_DISTANCE);
@@ -197,7 +200,7 @@ impl World {
                 ai.awake = false;
                 if at.within(home.home, back) {
                     ai.going_home = false;
-                    ai.leash_left = ai.next_window;
+                    ai.leash_left = rules::NEUTRAL_AGGRO_WINDOW;
                     self.set_order(entity, UnitOrder::Idle);
                 } else {
                     self.set_order(entity, UnitOrder::Move { pos: home.home });
@@ -206,13 +209,12 @@ impl World {
                 continue;
             }
             if at.within(home.home, guard) {
-                ai.leash_left = ai.next_window;
+                ai.leash_left = rules::NEUTRAL_AGGRO_WINDOW;
             } else {
                 ai.leash_left = ai.leash_left.saturating_sub(1);
                 if ai.leash_left == 0 {
                     ai.going_home = true;
                     ai.reaggro_block = rules::NEUTRAL_REAGGRO_BLOCK;
-                    ai.next_window = rules::NEUTRAL_SHORT_WINDOW;
                 }
             }
             // Asleep it wakes by day for what comes right up to it; from
@@ -281,9 +283,13 @@ impl World {
     /// Wakes every neutral of a camp onto whoever struck one of them.
     ///
     /// A camp answers as one: what is struck does not answer alone, and what
-    /// is walking home or still blocked from waking is not called back by it.
-    /// A blow wakes them from as far as [`rules::NEUTRAL_DAMAGE_AGGRO_RANGE`],
-    /// seen or not.
+    /// is still blocked from waking is not called back by it. One walking
+    /// home once its block ran out turns back for
+    /// [`rules::NEUTRAL_SHORT_WINDOW`] (Liquipedia, *Neutral Creeps*, Losing
+    /// Aggro). Approximation: Dota gives the full window again once every
+    /// creep of the camp is home; here each creep's own return does. A blow
+    /// wakes them from as far as [`rules::NEUTRAL_DAMAGE_AGGRO_RANGE`], seen
+    /// or not.
     pub fn rouse_camps(&mut self, felt: &[Landed]) {
         for blow in felt {
             let (Some(by), Some(struck)) = (blow.source, self.camp_home.get(blow.target).copied())
@@ -306,12 +312,15 @@ impl World {
                 let Some(mut ai) = self.neutral_ai.get(beast).copied() else {
                     continue;
                 };
-                if ai.going_home || ai.reaggro_block > 0 || !self.alive(beast) {
+                if ai.reaggro_block > 0 || !self.alive(beast) {
                     continue;
+                }
+                if ai.going_home {
+                    ai.going_home = false;
+                    ai.leash_left = rules::NEUTRAL_SHORT_WINDOW;
                 }
                 ai.roused_by = Some(by);
                 ai.awake = true;
-                ai.leash_left = ai.next_window;
                 self.neutral_ai.insert(beast, ai);
             }
         }

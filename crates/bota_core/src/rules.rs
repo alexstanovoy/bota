@@ -290,7 +290,7 @@ pub const NEUTRAL_GUARD_DISTANCE: i32 = 400;
 /// Ticks a neutral may spend beyond its guard distance before it walks
 /// home.
 pub const NEUTRAL_AGGRO_WINDOW: u32 = 5 * TICKS_PER_SECOND;
-/// [`NEUTRAL_AGGRO_WINDOW`] of a neutral that has once been led home.
+/// [`NEUTRAL_AGGRO_WINDOW`] of a neutral struck back from its walk home.
 pub const NEUTRAL_SHORT_WINDOW: u32 = 3 * TICKS_PER_SECOND;
 /// Ticks after a leash break in which nothing wakes a neutral.
 pub const NEUTRAL_REAGGRO_BLOCK: u32 = 3 * TICKS_PER_SECOND;

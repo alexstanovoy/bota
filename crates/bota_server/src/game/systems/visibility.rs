@@ -87,6 +87,14 @@ struct SightRow {
     grant: Option<(Team, Fixed)>,
 }
 
+/// Whether a viewer's sight serves a side: its own, and the neutrals', who
+/// share the vision of both teams (Liquipedia, *Neutral Creeps*, Drawing
+/// Aggro: "Neutral creeps have shared vision with both teams", so whoever
+/// strikes a camp or runs from it through the trees stays in their sight).
+fn serves(viewer: Team, side: Team) -> bool {
+    viewer == side || side == Team::Neutral
+}
+
 /// One entity that can see: where from, how far, and how far true sight
 /// reaches.
 #[derive(Clone, Copy)]
@@ -252,17 +260,16 @@ impl SightScratch {
             return false;
         };
         let seen = self.viewers.iter().any(|viewer| {
-            viewer.side == team
+            serves(viewer.side, team)
                 && viewer.from.within(at, viewer.vision)
                 && (viewer.flying
                     || (viewer.tier >= row.tier && sight_block.clear(viewer.from, viewer.tier, at)))
         });
         seen && (!row.hides
             || row.team.is_none()
-            || self
-                .true_viewers
-                .iter()
-                .any(|viewer| viewer.side == team && viewer.from.within(at, viewer.true_sight)))
+            || self.true_viewers.iter().any(|viewer| {
+                serves(viewer.side, team) && viewer.from.within(at, viewer.true_sight)
+            }))
     }
 
     /// Every circle a strike still shows, as a viewer of the side struck at.
@@ -318,7 +325,7 @@ impl SightScratch {
                 let (Some(at), Some(seen)) = (row.at, row.seen.as_mut()) else {
                     continue;
                 };
-                if seen.by(viewer.side)
+                if (seen.by(viewer.side) && seen.by(Team::Neutral))
                     || !viewer.from.within(at, viewer.vision)
                     || (!viewer.flying && viewer.tier < row.tier)
                 {
@@ -326,6 +333,7 @@ impl SightScratch {
                 }
                 if viewer.flying || sight_block.clear(viewer.from, viewer.tier, at) {
                     seen.add(viewer.side);
+                    seen.add(Team::Neutral);
                 }
             }
         }
@@ -344,11 +352,14 @@ impl SightScratch {
             let mut seen = Visibility::NONE;
             seen.add(side);
             for viewer in &self.true_viewers {
-                if viewer.side != side
-                    && already.by(viewer.side)
-                    && viewer.from.within(at, viewer.true_sight)
-                {
-                    seen.add(viewer.side);
+                for team in [Team::Radiant, Team::Dire, Team::Neutral] {
+                    if team != side
+                        && serves(viewer.side, team)
+                        && already.by(team)
+                        && viewer.from.within(at, viewer.true_sight)
+                    {
+                        seen.add(team);
+                    }
                 }
             }
             row.seen = Some(seen);

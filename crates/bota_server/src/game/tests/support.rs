@@ -680,7 +680,6 @@ pub(crate) fn a_camp_at(world: &mut World, at: Vec2) -> Vec<Entity> {
             NeutralAi {
                 leash_left: rules::NEUTRAL_AGGRO_WINDOW,
                 reaggro_block: 0,
-                next_window: rules::NEUTRAL_AGGRO_WINDOW,
                 going_home: false,
                 roused_by: None,
                 awake: false,

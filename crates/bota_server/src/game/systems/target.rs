@@ -1,8 +1,7 @@
 //! Who a unit picks to attack when nobody told it.
 
 use bota_core::{
-    CAMPS, Pierces, PriorityOrder, ability_def, class_rank, deniable, isqrt64, kind_def,
-    pick_target,
+    Pierces, PriorityOrder, ability_def, class_rank, deniable, isqrt64, kind_def, pick_target,
 };
 use bota_proto::{AbilityId, Fixed, Team, UnitKind, Vec2};
 
@@ -15,11 +14,6 @@ pub struct Candidates {
     spots: Spots<Entity>,
     /// The largest bound radius of any entity laid, in raw units.
     widest: i64,
-}
-
-/// Whether the camp at this spot is one lane creeps will fight.
-pub fn pullable_camp(pos: Vec2) -> bool {
-    CAMPS.iter().any(|camp| camp.pullable && camp.pos == pos)
 }
 
 impl World {
@@ -120,7 +114,8 @@ impl World {
                 return self
                     .camp_home
                     .get(target)
-                    .is_some_and(|home| pullable_camp(home.home));
+                    .and_then(|home| self.map.camps.get(usize::from(home.camp)))
+                    .is_some_and(|camp| camp.pullable);
             }
         }
         true

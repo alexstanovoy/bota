@@ -1,12 +1,12 @@
 //! Neutral camps.
 
 use bota_core::{
-    CAMPS, COURIER, MELEE_CREEP, NeutralAbility, NeutralKind, OBSERVER_WARD, SENTRY_WARD,
+    CAMPS, COURIER, CampKind, MELEE_CREEP, NeutralAbility, NeutralKind, OBSERVER_WARD, SENTRY_WARD,
     SIEGE_CREEP, UnitDef, map_of, rules,
 };
 
-use crate::game::World;
-use bota_proto::{DamageKind, EffectId, Fixed, ItemId, MapId, Team, Vec2};
+use crate::game::{Entity, World, wire_id};
+use bota_proto::{DamageKind, EffectId, Fixed, ItemId, MapId, Order, Target, Team, Vec2};
 
 use super::support::*;
 
@@ -66,18 +66,14 @@ fn a_neutral_led_too_far_gives_up_and_walks_home() {
         world.target.get(beast).is_none(),
         "and it takes nothing on while it walks back"
     );
-    // Home again, it stands, and is led less far the next time.
+    // Home again, it stands, and may be led as far as before.
     if let Some(transform) = world.transform.get_mut(beast) {
         transform.pos = home;
     }
     world.step();
     let ai = world.neutral_ai.get(beast).copied().expect("it has a mind");
     assert!(!ai.going_home, "back home it stands again");
-    assert_eq!(
-        ai.next_window,
-        rules::NEUTRAL_SHORT_WINDOW,
-        "and its patience is short from now on"
-    );
+    assert_eq!(ai.leash_left, rules::NEUTRAL_AGGRO_WINDOW);
 }
 
 /// What the map's first dry camp holds after its first fill, with one thing
@@ -303,18 +299,14 @@ fn a_blow_wakes_a_camp_from_further_than_it_can_see() {
     let mut world = World::new();
     let camp = Vec2::from_ints(5000, 5000);
     let beasts = a_camp_at(&mut world, camp);
-    // Far past anything they could see, but inside the reach of a blow.
+    // Far past what wakes them by coming near, but inside the reach of a blow.
     let apart = rules::NEUTRAL_DAMAGE_AGGRO_RANGE - 100;
     let hero = hero_at(&mut world, camp + Vec2::from_ints(apart, 0));
     world.settle();
     world.step();
     assert!(
-        !world.can_see(Team::Neutral, hero),
-        "they cannot see that far, which is the point"
-    );
-    assert!(
         beasts.iter().all(|beast| world.target_of(*beast).is_none()),
-        "and they sleep through it"
+        "they sleep through a hero that far off"
     );
     world.push_hit(Some(hero), beasts[0], 10, DamageKind::Physical, None);
     world.step();
@@ -385,4 +377,112 @@ fn a_neutral_slots_only_its_own_abilities_and_grows_with_the_clock_unseen() {
             .all(|effect| effect.id != EffectId::NEUTRAL_UPGRADE),
         "and no view names the upgrade"
     );
+}
+
+/// Liquipedia, *Creep pulling*: a hero strikes a pull camp as its lane wave walks past and runs
+/// back to the wave; the neutrals chase it into the creeps' acquisition range, the creeps take
+/// them on (*Creep aggro*: a lane creep fights the neutrals of a camp it can be pulled to) and
+/// follow them home, and the wave is fought out in the jungle. Radiant's safe lane small camp,
+/// pulled by a scripted hero from the horn on, every step an order of its seat.
+#[test]
+fn a_hero_pulls_its_safe_lane_wave_into_the_small_camp() {
+    let mut cfg = config();
+    cfg.map = MapId(0);
+    cfg.objectives = map_of(MapId(0)).default_objectives;
+    cfg.runes = map_of(MapId(0)).default_runes;
+    let mut world = World::for_match(&cfg, cfg.rng());
+    let hero = world.seats[0].unit.expect("stood up");
+    let index = CAMPS
+        .iter()
+        .position(|c| {
+            c.pullable
+                && c.kind == CampKind::Small
+                && c.pos.x > Fixed::from_int(12_000)
+                && c.pos.y < Fixed::from_int(5_000)
+        })
+        .expect("Radiant's safe lane small camp");
+    let camp = &CAMPS[index];
+    let wait = Vec2::from_ints(camp.pos.x.to_int(), camp.spawn_box.min.y.to_int() - 250);
+    seat_order(
+        &mut world,
+        Order::Move {
+            target: Target::Pos(wait),
+        },
+    );
+    let ours = |world: &World, e| {
+        world.team.get(e) == Some(&Team::Radiant)
+            && world.march.get(e).is_some()
+            && world
+                .lane
+                .get(e)
+                .is_some_and(|lane| lane.0 == rules::LANE_BOT)
+    };
+    let beasts = |world: &World| -> Vec<Entity> {
+        world
+            .entities
+            .iter()
+            .filter(|e| {
+                world
+                    .camp_home
+                    .get(*e)
+                    .is_some_and(|h| usize::from(h.camp) == index)
+            })
+            .collect()
+    };
+    let at = |world: &World, e| world.transform.get(e).expect("stands").pos;
+    // Waits out of the camp's box for the first wave out after the camp is filled.
+    while world.tick < rules::FIRST_NEUTRAL_TICK + rules::WAVE_PERIOD_TICKS / 2 {
+        world.step();
+    }
+    let lead = loop {
+        world.step();
+        let near = world
+            .entities
+            .iter()
+            .filter(|e| ours(&world, *e))
+            .find(|e| at(&world, *e).within(at(&world, hero), Fixed::from_int(1300)));
+        if let Some(lead) = near {
+            break lead;
+        }
+        assert!(
+            world.tick < rules::FIRST_NEUTRAL_TICK + 2 * rules::WAVE_PERIOD_TICKS,
+            "no wave came"
+        );
+    };
+    let beast = *beasts(&world)
+        .iter()
+        .min_by_key(|b| at(&world, **b).distance_squared(at(&world, hero)))
+        .expect("the camp is full");
+    attack_click(&mut world, beast);
+    let max_hp = world.stats.get(beast).expect("a beast").max_hp;
+    while world.health.get(beast).is_some_and(|h| h.hp >= max_hp) {
+        world.step();
+        assert!(
+            world.tick < rules::FIRST_NEUTRAL_TICK + 3 * rules::WAVE_PERIOD_TICKS,
+            "never struck"
+        );
+    }
+    // Struck: back to the wave, and along with it.
+    let lead = Target::Unit(wire_id(lead));
+    seat_order(&mut world, Order::Move { target: lead });
+    let (mut fought, mut dragged, mut leashed) = (false, false, false);
+    for _ in 0..20 * rules::TICKS_PER_SECOND {
+        world.step();
+        let wave: Vec<Entity> = world.entities.iter().filter(|e| ours(&world, *e)).collect();
+        let neutrals = beasts(&world);
+        fought |= wave
+            .iter()
+            .any(|c| swinging(&world, *c).is_some_and(|t| neutrals.contains(&t)));
+        dragged |= wave.iter().any(|c| camp.spawn_box.contains(at(&world, *c)));
+        leashed |= fought
+            && neutrals
+                .iter()
+                .any(|b| world.neutral_ai.get(*b).is_some_and(|ai| ai.going_home));
+    }
+    assert!(fought, "the wave takes the neutrals on");
+    assert!(
+        leashed,
+        "the neutrals, fought past their guard distance, turn for home"
+    );
+    assert!(dragged, "and the wave follows them into the camp");
 }
