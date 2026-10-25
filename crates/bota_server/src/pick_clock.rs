@@ -1,6 +1,6 @@
 //! The clock before the match, as Dota keeps it: a selection time, then a
 //! penalty phase in which a seat still without a hero loses starting gold
-//! every second until it picks or is given a random hero, then the tactical
+//! every second until it picks or is given a hero, then the tactical
 //! phase.
 
 use std::time::{Duration, Instant};

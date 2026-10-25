@@ -67,8 +67,8 @@ pub struct ServerOpts {
     /// admitted.
     pub referee_key: Option<SeatKey>,
     /// With reserved seats, the lobby phase ends this long after the server
-    /// starts listening at the latest; a seat still without a pick then gets a
-    /// random hero.
+    /// starts listening at the latest; a seat still without a pick then gets the
+    /// map's default hero or a random one.
     pub start_after: Option<Duration>,
     /// Most connections held at once. Absent for no bound.
     pub max_connections: Option<usize>,
@@ -891,13 +891,15 @@ impl Server {
         };
     }
 
-    /// Gives every seat still without a pick a random one of the heroes it
-    /// may pick, as Dota does for a player who picks nothing, locked, and
-    /// ready when somebody holds the seat. Each seat reads one draw whether
-    /// it needs it or not, so a seat's hero does not depend on the others'
-    /// picks.
+    /// Gives every seat still without a pick the map's default hero
+    /// ([`MapDef::default_hero`](bota_core::MapDef::default_hero)) while it
+    /// may pick it, else a random one of the heroes it may pick, as Dota
+    /// does for a player who picks nothing; locked, and ready when somebody
+    /// holds the seat. Each seat reads one draw whether it needs it or not,
+    /// so a seat's hero does not depend on the others' picks.
     fn draw_missing_picks(&mut self, late_secs: u32) {
         let mut rng = self.secrets.hero_stream();
+        let default = bota_core::map_of(self.opts.map).default_hero;
         for at in 0..self.roster.seats.len() {
             let draw = rng.next_u32() as usize;
             if self.roster.seats[at].hero.is_some() {
@@ -908,8 +910,11 @@ impl Server {
                 .into_iter()
                 .filter(|h| self.opts.same_heroes || !self.roster.holds(*h))
                 .collect();
+            let hero = default
+                .filter(|hero| free.contains(hero))
+                .unwrap_or(free[draw % free.len()]);
             let seat = &mut self.roster.seats[at];
-            seat.hero = Some(free[draw % free.len()]);
+            seat.hero = Some(hero);
             seat.pick_locked = true;
             seat.late_secs = late_secs;
             seat.ready = seat.player.is_some();

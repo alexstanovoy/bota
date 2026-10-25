@@ -2,7 +2,7 @@
 //! ready with it.
 
 use super::*;
-use bota_proto::SeatKey;
+use bota_proto::{MapId, SeatKey};
 
 use crate::lobby::ReservedSeat;
 
@@ -84,34 +84,65 @@ fn a_pick_is_final_once_the_seat_was_ready_with_it() {
     );
 }
 
+/// The heroes two absent seats are given once the lobby runs out of time,
+/// on a map, from a seed, with Pudge and Shadow Fiend allowed.
+fn heroes_given(map: MapId, seed: u64, allowed: Vec<HeroId>) -> Vec<HeroId> {
+    let mut opts = realtime(seed);
+    let keys = [SeatKey([1; 32]), SeatKey([2; 32])];
+    opts.reserved = keys
+        .iter()
+        .zip([Team::Radiant, Team::Dire])
+        .map(|(key, team)| ReservedSeat {
+            kind: None,
+            key: *key,
+            name: "absent".to_owned(),
+            team,
+        })
+        .collect();
+    opts.referee_key = Some(SeatKey([9; 32]));
+    opts.start_after = Some(Duration::from_millis(300));
+    opts.map = map;
+    opts.heroes = Some(allowed);
+    let addr = start_server(opts);
+    let mut referee = TestClient::connect(addr);
+    referee.hello(Role::Referee, Some(SeatKey([9; 32])));
+    referee
+        .match_start()
+        .picks
+        .iter()
+        .map(|pick| pick.hero)
+        .collect()
+}
+
 #[test]
 fn a_seat_without_a_pick_is_given_an_allowed_hero() {
     // Whatever the seed would draw from every hero, a single allowed one is
     // what each seat gets.
     for hero in [HeroId::PUDGE, HeroId::SHADOW_FIEND] {
-        let mut opts = realtime(32);
-        let keys = [SeatKey([1; 32]), SeatKey([2; 32])];
-        opts.reserved = keys
-            .iter()
-            .zip([Team::Radiant, Team::Dire])
-            .map(|(key, team)| ReservedSeat {
-                kind: None,
-                key: *key,
-                name: "absent".to_owned(),
-                team,
-            })
-            .collect();
-        opts.referee_key = Some(SeatKey([9; 32]));
-        opts.start_after = Some(Duration::from_millis(300));
-        opts.heroes = Some(vec![hero]);
-        let addr = start_server(opts);
-        let mut referee = TestClient::connect(addr);
-        referee.hello(Role::Referee, Some(SeatKey([9; 32])));
-        let info = referee.match_start();
-        assert!(
-            info.picks.iter().all(|pick| pick.hero == hero),
-            "{:?}",
-            info.picks
-        );
+        assert_eq!(heroes_given(MapId(0), 32, vec![hero]), [hero, hero]);
     }
+}
+
+/// The mid-only map's 1v1 is a Shadow Fiend mirror: a seat that picks none
+/// plays Shadow Fiend there whatever else is allowed, where the Dota map,
+/// which names no default hero, draws one of the allowed.
+#[test]
+fn a_seat_without_a_pick_plays_the_maps_default_hero() {
+    let both = || vec![HeroId::PUDGE, HeroId::SHADOW_FIEND];
+    let fiend = [HeroId::SHADOW_FIEND; 2];
+    for seed in 33..37 {
+        assert_eq!(heroes_given(MapId(2), seed, both()), fiend, "seed {seed}");
+    }
+    let drawn: Vec<HeroId> = (33..37)
+        .flat_map(|seed| heroes_given(MapId(0), seed, both()))
+        .collect();
+    assert!(
+        drawn.contains(&HeroId::PUDGE),
+        "drawn on the Dota map: {drawn:?}"
+    );
+    // Not allowed, it is not given.
+    assert_eq!(
+        heroes_given(MapId(2), 33, vec![HeroId::PUDGE]),
+        [HeroId::PUDGE; 2]
+    );
 }

@@ -358,7 +358,9 @@
 //!
 //! A seat picks only among the heroes the server allows (every hero unless
 //! it says otherwise); a seat without a pick when the lobby runs out of time
-//! is given one of them. A pick is final once the seat was ready with it,
+//! is given one of them: the map's default hero while it is among them and
+//! free (Shadow Fiend on map 2, whose 1v1 is a Shadow Fiend mirror), else one
+//! drawn as below. A pick is final once the seat was ready with it,
 //! even if it withdraws its readiness: nobody waits for the others' picks to
 //! change their own.
 //!

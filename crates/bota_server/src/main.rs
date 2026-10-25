@@ -110,7 +110,7 @@ struct Args {
     #[arg(skip)]
     referee_key: Option<String>,
     /// With reserved seats, end the lobby phase this many seconds after listening at the latest;
-    /// a seat without a pick then gets a random hero.
+    /// a seat without a pick then gets the map's default hero or a random one.
     #[arg(long)]
     start_after_secs: Option<u64>,
     /// When the lobby phase runs out of time (--start-after-secs, or 60 s without it) with no
@@ -131,8 +131,8 @@ struct Args {
     #[arg(long, value_delimiter = ',')]
     heroes: Option<Vec<u16>>,
     /// Seconds the seats have to pick once all are held (Dota's default). After that a seat
-    /// without a hero loses 2 starting gold per second until it picks, and is given a random
-    /// allowed hero after 30 more seconds.
+    /// without a hero loses 2 starting gold per second until it picks, and is given the map's
+    /// default hero (Shadow Fiend on map 2) or a random allowed hero after 30 more seconds.
     #[arg(long, default_value_t = bota_core::rules::PICK_SECS)]
     pick_secs: u64,
     /// Seconds of tactical phase after the picks (Dota's default): the seats plan their start

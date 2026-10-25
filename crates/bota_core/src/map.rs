@@ -5,7 +5,7 @@
 //! which camps the jungle holds. The forest and the ground are published
 //! with the match itself.
 
-use bota_proto::{MapId, ObjectiveKind, ObjectiveSet, RuneSet, Vec2};
+use bota_proto::{HeroId, MapId, ObjectiveKind, ObjectiveSet, RuneSet, Vec2};
 
 use crate::{
     CampDef, CampKind, OutpostDef, Protection, SIMULATED_OBJECTIVES, camp, objective, rules,
@@ -75,6 +75,10 @@ pub struct MapDef {
     pub default_objectives: ObjectiveSet,
     /// The runes a match on this map spawns unless its host says otherwise.
     pub default_runes: RuneSet,
+    /// The hero a seat that picks none is given, when the match allows it
+    /// and no seat it may not share it with holds it. Absent, such a seat is
+    /// given a random one of those it may pick, as Dota gives one.
+    pub default_hero: Option<HeroId>,
 }
 
 /// The Dota lanes bend once each on the way round the map; mid runs straight.
@@ -133,6 +137,7 @@ const DOTA: MapDef = MapDef {
     shrines: &objective::DOTA_SHRINES,
     default_objectives: SIMULATED_OBJECTIVES,
     default_runes: SIMULATED_RUNES,
+    default_hero: None,
 };
 
 /// The hero demo map: one short lane with a single tower a side, two
@@ -166,6 +171,7 @@ const DEMO: MapDef = MapDef {
     shrines: &[],
     default_objectives: ObjectiveSet::NONE,
     default_runes: RuneSet::NONE,
+    default_hero: None,
 };
 
 /// Full Dota geometry with mid-only waves and a hero/tower finish bounded by
@@ -175,7 +181,8 @@ const DEMO: MapDef = MapDef {
 /// It holds every objective of the Dota map, but stands none and spawns no
 /// rune unless its host asks. Dota's Solo Mid plays the whole map: its rules
 /// (`dota_play_1v1_rules_html`) remove none of them and only the first rune;
-/// this map keeps the game it played before they were simulated.
+/// this map keeps the game it played before they were simulated. Its 1v1
+/// is a Shadow Fiend mirror, so a seat that picks none plays Shadow Fiend.
 const SKIRMISH: MapDef = MapDef {
     id: MAP2_ID,
     protection: &crate::SOLO_MID_PROTECTION,
@@ -184,6 +191,7 @@ const SKIRMISH: MapDef = MapDef {
     tower_ends_it: true,
     default_objectives: ObjectiveSet::NONE,
     default_runes: RuneSet::NONE,
+    default_hero: Some(HeroId::SHADOW_FIEND),
     ..DOTA
 };
 
