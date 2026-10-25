@@ -49,8 +49,11 @@ fn opts() -> ServerOpts {
 
 /// The distance of two points, squared, in whole units.
 fn near(a: Vec2, b: Vec2) -> i64 {
-    let (dx, dy) = ((a.x - b.x).to_f32(), (a.y - b.y).to_f32());
-    (dx * dx + dy * dy) as i64
+    let (dx, dy) = (
+        i64::from((a.x - b.x).to_int()),
+        i64::from((a.y - b.y).to_int()),
+    );
+    dx * dx + dy * dy
 }
 
 #[test]
