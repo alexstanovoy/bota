@@ -68,9 +68,11 @@ fn alone_on(map: MapId) -> (bota_client_core::Outcome, u32) {
             2 => vec![hero(Order::Cheat {
                 cheat: Cheat::StartGame,
             })],
-            _ if decisions % 30 == 0 && session.current().is_some() => vec![hero(Order::Attack {
-                target: Target::Pos(target),
-            })],
+            _ if decisions.is_multiple_of(30) && session.current().is_some() => {
+                vec![hero(Order::Attack {
+                    target: Target::Pos(target),
+                })]
+            }
             _ => Vec::new(),
         }
     })
