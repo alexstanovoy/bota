@@ -757,10 +757,7 @@ impl World {
         self.tick_requiem_lines();
         self.tick_grenades();
         self.tick_feasts();
-        if self.trees.tick(self.tick) {
-            self.lay_sight_block();
-            self.lay_passability();
-        }
+        self.tick_forest();
         self.tick_backdoor();
         self.tick_auras();
         self.lift_fountain_invulnerability();

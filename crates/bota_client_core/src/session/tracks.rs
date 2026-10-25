@@ -355,7 +355,7 @@ impl Tracks {
             }
             // A miss is not damage and carries no health, mana or death facts; casts are
             // recorded before any same-tick damage. A teleport's end names no entity, and a
-            // landing is told by the blows it deals.
+            // landing is told by the blows it deals. A tree is no unit.
             EventKind::Missed { .. }
             | EventKind::AbilityCast { .. }
             | EventKind::LevelUp { .. }
@@ -364,7 +364,9 @@ impl Tracks {
             | EventKind::Teleported { .. }
             | EventKind::Landed { .. }
             | EventKind::Captured { .. }
-            | EventKind::ShrineActivated { .. } => {}
+            | EventKind::ShrineActivated { .. }
+            | EventKind::TreeFelled { .. }
+            | EventKind::TreeGrew { .. } => {}
         }
     }
 

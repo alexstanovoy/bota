@@ -790,18 +790,36 @@ fn a_tree_out_of_dire_sight(world: &World) -> (u32, Vec2) {
 
 /// Seat 0 uses the item in its first slot on a spot, and the world runs
 /// until the forest has changed.
-fn use_on_the_forest(world: &mut World, at: Vec2) {
+fn use_on_the_forest(world: &mut World, at: Vec2) -> Vec<Event> {
     let before = (world.trees.felled().count(), world.trees.planted().len());
     let order = bota_proto::Order::Use {
         slot: bota_proto::ItemSlot(0),
         target: Target::Pos(at),
     };
-    seat_order(world, order);
-    let changed = (0..60).any(|_| {
-        world.step();
-        (world.trees.felled().count(), world.trees.planted().len()) != before
-    });
-    assert!(changed, "the item took the forest");
+    let mut events = seat_order(world, order);
+    for _ in 0..60 {
+        if (world.trees.felled().count(), world.trees.planted().len()) != before {
+            return events;
+        }
+        events = world.step();
+    }
+    panic!("the item took the forest");
+}
+
+/// The tree events of a tick a side is told: where each tree fell, by
+/// whom, and where each grew back.
+fn trees_told(events: &[Event], team: Team) -> (Vec<(Vec2, Option<EntityId>)>, Vec<Vec2>) {
+    let (mut felled, mut grown) = (Vec::new(), Vec::new());
+    for event in events.iter().filter(|event| event.visible_to.tells(team)) {
+        match event.kind {
+            EventKind::TreeFelled { at, by } => {
+                felled.push((at, by.filter(|_| event.source_told_to.tells(team))));
+            }
+            EventKind::TreeGrew { at } => grown.push(at),
+            _ => {}
+        }
+    }
+    (felled, grown)
 }
 
 /// Puts a unit somewhere else and works sight out afresh.
@@ -812,8 +830,15 @@ fn put(world: &mut World, unit: Entity, at: Vec2) {
     world.settle();
 }
 
+/// A Tango eats its tree: the tree is consumed (Liquipedia *Tango*,
+/// Devour: "Consumes a tree"), told as it falls to the side that sees it,
+/// and grows back after Dota's three minutes, though not while a unit stands
+/// within 150 of its spot (Liquipedia *Trees*, Respawn Time), told as it
+/// grows to who sees it. A side that sees neither keeps the forest as it last
+/// saw it until it looks (since 2014 Dota shows no tree falling or growing in
+/// the fog).
 #[test]
-fn a_tree_eaten_in_the_fog_stands_for_the_other_side_until_it_looks() {
+fn a_tango_eats_its_tree_which_grows_back_in_three_minutes_once_nobody_stands_by() {
     let mut world = World::on_map(map_of(MapId(0)));
     let (index, tree) = a_tree_out_of_dire_sight(&world);
     let eater = seat_hero(&mut world, 0, Team::Radiant, tree + Vec2::from_ints(120, 0));
@@ -824,11 +849,23 @@ fn a_tree_eaten_in_the_fog_stands_for_the_other_side_until_it_looks() {
         let view = side.map_or_else(|| world.view_full(), |team| world.view(team));
         view.felled_trees.contains(&index)
     };
-    use_on_the_forest(&mut world, tree);
+    let events = use_on_the_forest(&mut world, tree);
+    let eaten_at = world.tick;
     assert!(felled(&world, None), "the tree is down");
+    let by = Some(wire_id(eater));
+    assert_eq!(
+        trees_told(&events, Team::Radiant),
+        (vec![(tree, by)], vec![]),
+        "the eater's side sees it fall"
+    );
+    assert_eq!(
+        trees_told(&events, Team::Dire),
+        (vec![], vec![]),
+        "the other side is told nothing"
+    );
     assert!(
         felled(&world, Some(Team::Radiant)),
-        "the eater's side saw it go"
+        "the eater's side has it down"
     );
     assert!(
         !felled(&world, Some(Team::Dire)),
@@ -837,13 +874,27 @@ fn a_tree_eaten_in_the_fog_stands_for_the_other_side_until_it_looks() {
     put(&mut world, looker, tree + Vec2::from_ints(240, 0));
     assert!(felled(&world, Some(Team::Dire)), "until it looks");
     put(&mut world, looker, map_of(MapId(0)).fountains[1]);
-    world.tick += rules::TREE_REGROW_TICKS;
-    world.step();
-    assert!(!felled(&world, None), "the tree grew back");
+    world.tick = eaten_at + rules::TREE_REGROW_TICKS;
+    let events = world.step();
     assert!(
-        !felled(&world, Some(Team::Radiant)),
+        felled(&world, None),
+        "the eater stands by it: it does not grow under him"
+    );
+    assert_eq!(trees_told(&events, Team::Radiant), (vec![], vec![]));
+    put(
+        &mut world,
+        eater,
+        tree + Vec2::from_ints(rules::TREE_REGROW_CLEAR + 40, 0),
+    );
+    let events = world.step();
+    assert!(!felled(&world, None), "with nobody by it, it grew back");
+    assert_eq!(
+        trees_told(&events, Team::Radiant),
+        (vec![], vec![tree]),
         "where the eater sees it"
     );
+    assert_eq!(trees_told(&events, Team::Dire), (vec![], vec![]));
+    assert!(!felled(&world, Some(Team::Radiant)), "and has it standing");
     assert!(
         felled(&world, Some(Team::Dire)),
         "the other side, gone, still has it down"

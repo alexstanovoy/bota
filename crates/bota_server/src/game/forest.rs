@@ -186,22 +186,45 @@ impl Forest {
         self.planted.push(Planted { at, until });
     }
 
-    /// Brings back what has waited out its time and takes away what has run
-    /// out of it. Answers whether anything changed.
-    pub fn tick(&mut self, now: u32) -> bool {
-        let before = self.down.len();
-        let back = &mut self.back;
+    /// Brings back what has waited out its time with nobody standing by its
+    /// spot (`crowded` asks of a map tree's spot; one due back while somebody
+    /// is grows once they are gone), and takes away what has run out of it.
+    /// Answers what changed.
+    pub fn tick(&mut self, now: u32, crowded: impl Fn(Vec2) -> bool) -> ForestChange {
+        let mut change = ForestChange::default();
+        let (back, spots) = (&mut self.back, &self.spots);
         self.down.retain(|&index| {
             let back = &mut back[index as usize];
-            if now >= *back {
+            if now >= *back && !crowded(spots[index as usize]) {
                 *back = 0;
+                change.grown.push(index);
             }
             *back > 0
         });
-        let moved = self.down.len() != before;
-        let before = self.planted.len();
-        self.planted.retain(|tree| now < tree.until);
-        moved || self.planted.len() != before
+        self.planted.retain(|tree| {
+            let stands = now < tree.until;
+            if !stands {
+                change.gone.push(tree.at);
+            }
+            stands
+        });
+        change
+    }
+}
+
+/// What one tick of the forest changed.
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct ForestChange {
+    /// The map's trees that grew back, by index, ascending.
+    pub grown: Vec<u32>,
+    /// Where the trees put up that ran out of their time stood.
+    pub gone: Vec<Vec2>,
+}
+
+impl ForestChange {
+    /// Whether anything stands or lies other than before.
+    pub fn any(&self) -> bool {
+        !self.grown.is_empty() || !self.gone.is_empty()
     }
 }
 

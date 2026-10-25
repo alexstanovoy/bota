@@ -988,8 +988,14 @@ pub const FOW_BLOCKER_SPAN: i32 = 600;
 
 // Items and the shop.
 
-/// Ticks a felled tree takes to come back, five minutes.
-pub const TREE_REGROW_TICKS: u32 = 5 * 60 * TICKS_PER_SECOND;
+/// Ticks a felled tree takes to come back, three minutes: patch 7.29 "Tree
+/// respawn interval reduced from 5 to 3 minutes", unchanged since (Liquipedia
+/// *Trees*, Respawn Time).
+pub const TREE_REGROW_TICKS: u32 = 3 * 60 * TICKS_PER_SECOND;
+/// How near a tree's spot a unit standing keeps it from growing back, in
+/// world units: it grows once the unit is out of range, so as not to shut
+/// the unit in (Liquipedia *Trees*, Respawn Time: 150).
+pub const TREE_REGROW_CLEAR: i32 = 150;
 /// Ticks a planted tree stands before it goes on its own: Iron Branch
 /// `tree_duration` 20.
 pub const PLANTED_TREE_TICKS: u32 = 20 * TICKS_PER_SECOND;

@@ -78,10 +78,13 @@ impl App {
                     self.float(target, amount, FloaterKind::Heal);
                 }
             }
-            // A teleport's end and a burst are the front end's to sound and
-            // draw, from what was told; a burst's blows float their own
-            // numbers.
-            EventKind::Teleported { .. } | EventKind::Landed { .. } => {}
+            // A teleport's end, a burst and a tree falling or growing back
+            // are the front end's to sound and draw, from what was told; a
+            // burst's blows float their own numbers.
+            EventKind::Teleported { .. }
+            | EventKind::Landed { .. }
+            | EventKind::TreeFelled { .. }
+            | EventKind::TreeGrew { .. } => {}
             EventKind::Captured { unit, team, .. } => {
                 let building = self
                     .freshest(unit)

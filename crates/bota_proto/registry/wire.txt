@@ -554,3 +554,8 @@ field EventKind::ShrineActivated 3 by: Option<EntityId>
 variant UnitKind 13 Outpost
 variant UnitKind 14 Watcher
 variant UnitKind 15 Shrine
+variant EventKind 12 TreeFelled {}
+field EventKind::TreeFelled 0 at: Vec2
+field EventKind::TreeFelled 1 by: Option<EntityId>
+variant EventKind 13 TreeGrew {}
+field EventKind::TreeGrew 0 at: Vec2

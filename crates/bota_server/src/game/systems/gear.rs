@@ -658,9 +658,7 @@ impl World {
                 ticks *= 2;
                 total *= 2;
             }
-            self.trees.fell(tree, self.tick);
-            self.lay_sight_block();
-            self.lay_passability();
+            self.fell_tree(tree, user);
         }
         let per_tick = total * 100 / ticks.max(1) as i32;
         self.put_modifier(
@@ -1108,9 +1106,7 @@ impl World {
         let Some(tree) = self.reach_a_tree(user, target, range) else {
             return false;
         };
-        self.trees.fell(tree, self.tick);
-        self.lay_sight_block();
-        self.lay_passability();
+        self.fell_tree(tree, user);
         true
     }
 

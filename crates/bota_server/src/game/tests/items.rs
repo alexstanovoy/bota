@@ -154,6 +154,8 @@ fn a_quelling_blade_takes_a_tree_down_and_the_tree_comes_back() {
         world.inventory.get(hero).expect("has a bag").slots[0].is_some(),
         "the blade itself is not spent on it"
     );
+    // Not while the hero stands by its spot.
+    world.transform.get_mut(hero).expect("hero").pos = tree + Vec2::from_ints(400, 0);
     run(&mut world, rules::TREE_REGROW_TICKS + 1);
     assert_eq!(world.trees.felled().count(), 0, "in time it comes back");
     assert!(sight_stopped_at(&world, tree), "and stops a look again");

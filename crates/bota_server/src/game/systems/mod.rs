@@ -40,6 +40,7 @@ mod strike;
 mod target;
 mod teleport;
 mod throe;
+mod trees;
 mod visibility;
 mod walk;
 mod ward;

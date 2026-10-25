@@ -598,6 +598,13 @@ pub fn all_events() -> Vec<EventKind> {
             xp: 500,
             by: None,
         },
+        EventKind::TreeFelled {
+            at: Vec2::from_ints(7104, 8576),
+            by: Some(entity(7)),
+        },
+        EventKind::TreeGrew {
+            at: Vec2::from_ints(7104, 8576),
+        },
     ]
 }
 

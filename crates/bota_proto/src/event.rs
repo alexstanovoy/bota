@@ -154,6 +154,26 @@ pub enum EventKind {
         /// The gatherer it rewarded; `None` to the other side.
         by: Option<EntityId>,
     },
+    /// A tree came down: one of the map's own eaten by a Tango or cut down,
+    /// or one put up felled or run out of its time. Told to the sides that
+    /// see its spot, as the forest a side is shown changes only where it
+    /// looks ([`WorldView::felled_trees`](crate::WorldView::felled_trees)).
+    TreeFelled {
+        /// Where it stood: a spot of
+        /// [`MatchInfo::trees`](crate::MatchInfo::trees) or of
+        /// [`WorldView::planted_trees`](crate::WorldView::planted_trees).
+        at: Vec2,
+        /// Who brought it down, told as a blow's dealer is; `None` for one
+        /// that ran out of its time.
+        by: Option<EntityId>,
+    },
+    /// One of the map's own trees grew back. Told to the sides that see its
+    /// spot.
+    TreeGrew {
+        /// Where it stands: a spot of
+        /// [`MatchInfo::trees`](crate::MatchInfo::trees).
+        at: Vec2,
+    },
 }
 
 impl EventKind {
@@ -170,7 +190,9 @@ impl EventKind {
                 visit(unit);
                 killer.iter_mut().for_each(visit);
             }
-            EventKind::Landed { caster, .. } => caster.iter_mut().for_each(visit),
+            EventKind::Landed { caster, .. } | EventKind::TreeFelled { by: caster, .. } => {
+                caster.iter_mut().for_each(visit)
+            }
             EventKind::Captured { unit, by, .. } | EventKind::ShrineActivated { unit, by, .. } => {
                 visit(unit);
                 by.iter_mut().for_each(visit);
@@ -178,7 +200,9 @@ impl EventKind {
             EventKind::AbilityCast { caster: unit, .. }
             | EventKind::LevelUp { unit, .. }
             | EventKind::StructureDestroyed { unit, .. } => visit(unit),
-            EventKind::ItemBought { .. } | EventKind::Teleported { .. } => {}
+            EventKind::ItemBought { .. }
+            | EventKind::Teleported { .. }
+            | EventKind::TreeGrew { .. } => {}
         }
     }
 }
