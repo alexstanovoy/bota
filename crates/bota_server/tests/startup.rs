@@ -117,6 +117,16 @@ fn keys_are_taken_from_the_environment_never_from_arguments() {
     assert!(!reserved.stderr.contains(&key), "{}", reserved.stderr);
 }
 
+/// A lobby started below its seats has a side nobody sits on: the server takes the seats as they
+/// are.
+#[test]
+fn reserved_seats_may_leave_a_side_empty() {
+    let (one, two) = ("11".repeat(32), "22".repeat(32));
+    let seats = format!("{one}:0:first,{two}:0:second");
+    let started = start(&[], &[("BOTA_SEATS", &seats)]);
+    assert!(started.ready, "{}", started.stderr);
+}
+
 #[cfg(feature = "websocket")]
 #[test]
 fn with_a_certificate_only_tls_leaves_the_machine() {

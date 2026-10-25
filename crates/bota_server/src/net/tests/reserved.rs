@@ -313,3 +313,32 @@ fn a_referee_hears_the_lobby_and_the_end_but_no_ticks_of_a_match_nobody_joined()
     }
     assert_eq!(stats.slots.len(), 2);
 }
+
+/// A lobby started below its seats: one reserved seat on Map2 and nobody against it. The match
+/// begins with that one player, and the empty side is not counted lost: nothing ends it.
+#[test]
+fn a_lone_reserved_seat_plays_on_with_the_other_side_empty() {
+    let mut opts = reserved(22);
+    opts.reserved.truncate(1);
+    opts.referee_key = None;
+    opts.map = MapId(2);
+    let addr = start_server(opts);
+    let mut seat = TestClient::connect(addr);
+    seat.hello(Role::Bot, Some(KEYS[0]));
+    seat.welcome();
+    seat.send(&ClientMsg::PickHero {
+        hero: HeroId::SHADOW_FIEND,
+    });
+    seat.send(&ClientMsg::SetReady(true));
+    let view = seat.recv_until(|msg| snapshot(msg).filter(|view| view.tick > 1));
+    assert_eq!(view.players.len(), 1, "one player, no dummy");
+    // Nothing ends it: a second of play later it still runs.
+    let mut last = view.tick;
+    for _ in 0..40 {
+        match seat.recv_or_hangup() {
+            Some(msg @ ServerMsg::MatchOver { .. }) => panic!("ended after tick {last}: {msg:?}"),
+            Some(msg) => last = snapshot(msg.clone()).map_or(last, |view| view.tick),
+            None => panic!("the server hung up after tick {last}"),
+        }
+    }
+}

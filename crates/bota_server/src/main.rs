@@ -456,10 +456,8 @@ fn reservations(entries: &[String]) -> Result<Vec<ReservedSeat>, String> {
         .enumerate()
         .map(|(slot, entry)| reservation(slot, entry))
         .collect::<Result<_, _>>()?;
-    let sides = [Team::Radiant, Team::Dire].map(|team| seats.iter().any(|s| s.team == team));
-    if seats.len() > 1 && sides.contains(&false) {
-        return Err("reserved seats leave a side empty".to_owned());
-    }
+    // A side may have no seat: a lobby started below its seats plays on with the sides it has, and
+    // the side nobody sits on is never counted lost.
     Ok(seats)
 }
 

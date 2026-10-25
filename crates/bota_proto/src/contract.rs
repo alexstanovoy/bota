@@ -148,7 +148,9 @@
 //! `MAP2_DEATH_LIMIT` (two) times together. When both sides would lose on one
 //! tick, the match is a draw. The match is also a draw at `MAP2_TICK_CAP`, the
 //! 900 pregame ticks plus twenty game minutes (36 900 ticks at the default 30
-//! per second): a loss on that very tick is a draw too. Every other map ends
+//! per second): a loss on that very tick is a draw too. A match may start below its seats (a lobby
+//! of one): a side with no seat has no hero, never loses by lives, and the match ends as the map ends
+//! it, on Map2 by its first tower. Every other map ends
 //! by its own rules (the Dota map when an Ancient falls).
 //!
 //! # Orders
