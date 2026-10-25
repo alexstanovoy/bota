@@ -48,7 +48,7 @@ pub const CAPTURE_RANGE: i32 = 300;
 pub const CAPTURE_TICKS: u32 = 6 * rules::TICKS_PER_SECOND;
 
 /// One Outpost of a map: where it stands, the side it starts with and that
-/// guards it, and what the game calls it.
+/// guards it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct OutpostDef {
     /// Where it stands.
@@ -58,8 +58,6 @@ pub struct OutpostDef {
     /// tier-two towers has fallen [LIQ Buildings, Neutral Buildings; LOC
     /// `DOTA_Tooltip_modifier_watch_tower_invulnerable_Description`].
     pub home: Team,
-    /// What the game calls it (`DOTA_OutpostName_*`).
-    pub name: &'static str,
 }
 
 /// The Dota map's two Outposts [PN 7.38: the corner ones are gone].
@@ -68,13 +66,11 @@ pub const DOTA_OUTPOSTS: [OutpostDef; 2] = [
     OutpostDef {
         at: Vec2::from_ints(5120, 8768),
         home: Team::Radiant,
-        name: "Southwest Outpost",
     },
     // "npc_dota_watch_tower_top" (3392, -448) [ENT:193871].
     OutpostDef {
         at: Vec2::from_ints(12608, 8768),
         home: Team::Dire,
-        name: "Northeast Outpost",
     },
 ];
 

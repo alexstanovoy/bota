@@ -4,18 +4,17 @@
 //! instead of matching on the kind, so a new kind is one proto variant and
 //! one row.
 
-use bota_proto::{AbilityId, Team, UnitKind, Vec2};
+use bota_proto::{AbilityId, UnitKind};
 
-use crate::{AttackClass, MapDef, PriorityOrder, TargetClass, barracks_ranged_at, rules};
+use crate::{AttackClass, PriorityOrder, TargetClass, rules};
 
 /// The row of one kind of unit.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct KindDef {
     /// The kind the row is for: its place in [`UNIT_KINDS`].
     pub kind: UnitKind,
-    /// What the kind is called in a panel or a feed, where the game names
-    /// every unit of it alike; see [`unit_name`] for the kinds it names by
-    /// more than the kind.
+    /// The rules' identifier for the kind, for logs and tests; not a
+    /// player-facing label.
     pub name: &'static str,
     /// A building: it stands still and blocks the ground.
     pub structure: bool,
@@ -262,25 +261,4 @@ const fn row(kind: UnitKind) -> usize {
 #[inline]
 pub const fn kind_def(kind: UnitKind) -> &'static KindDef {
     &UNIT_KINDS[row(kind)]
-}
-
-/// What the game calls one unit on a map, from its kind, its side and where
-/// it stands: the barracks that feeds the ranged creeps is the one the map
-/// puts there, each Ancient is its side's own, and each Outpost is named by
-/// its place.
-pub fn unit_name(map: &MapDef, kind: UnitKind, team: Team, pos: Vec2) -> &'static str {
-    match (kind, team) {
-        (UnitKind::Ancient, Team::Radiant) => "Radiant's Ancient",
-        (UnitKind::Ancient, Team::Dire) => "Dire's Ancient",
-        (UnitKind::Barracks, _) if barracks_ranged_at(map, team, pos) == Some(true) => {
-            "Ranged Barracks"
-        }
-        (UnitKind::Barracks, _) => "Melee Barracks",
-        (UnitKind::Outpost, _) => map
-            .outposts
-            .iter()
-            .find(|outpost| outpost.at == pos)
-            .map_or(kind_def(kind).name, |outpost| outpost.name),
-        _ => kind_def(kind).name,
-    }
 }

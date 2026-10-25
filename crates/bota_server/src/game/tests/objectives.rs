@@ -577,16 +577,15 @@ fn the_mid_only_map_stands_no_objective_and_its_heroes_hold_no_hidden_slot() {
             .default_objectives
             .has(ObjectiveKind::Outposts)
     );
-    let names: Vec<&str> = map_of(MapId(0))
+    let holders: Vec<Team> = map_of(MapId(0))
         .outposts
         .iter()
         .map(|outpost| {
             let it = the(&world, UnitKind::Outpost, outpost.at);
-            let team = *world.team.get(it).expect("a side");
-            bota_core::unit_name(map_of(MapId(0)), UnitKind::Outpost, team, outpost.at)
+            *world.team.get(it).expect("a side")
         })
         .collect();
-    assert_eq!(names, ["Southwest Outpost", "Northeast Outpost"]);
+    assert_eq!(holders, [Team::Radiant, Team::Dire], "each holds its home");
     let fiend = shown(&world, Some(Team::Radiant), hero(&world, 0));
     assert_eq!(
         fiend.abilities.len(),

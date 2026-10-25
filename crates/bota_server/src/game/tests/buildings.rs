@@ -1,7 +1,7 @@
 //! The buildings as the game's `npc_units.txt` (client 6957) has them:
 //! health, regeneration, armor and sight, and the names a player reads.
 
-use bota_core::{map_of, rules, unit_name};
+use bota_core::{barracks_ranged_at, map_of, rules};
 use bota_proto::{Fixed, MapId, ModifierSpec, Team, UnitKind};
 
 use crate::game::{ModifierDuration, SpawnModifier, SpawnSelector, SpawnTarget, World};
@@ -39,14 +39,20 @@ fn every_building_stands_as_the_unit_table_has_it() {
         assert_eq!(stats.armor, Fixed::from_int(armor), "{name}");
         assert_eq!(regen, per_second, "{name}");
         let pos = world.transform.get(entity).expect("standing").pos;
-        assert_eq!(unit_name(world.map, kind, team, pos), name);
+        if kind == UnitKind::Barracks {
+            assert_eq!(
+                barracks_ranged_at(world.map, team, pos),
+                Some(hp == 1300),
+                "{name}"
+            );
+        }
         seen += 1;
     }
     assert_eq!(seen, 2 + 12 + 14);
 }
 
 #[test]
-fn a_barracks_is_named_by_where_it_stands_whatever_health_the_match_gives_it() {
+fn a_barracks_is_ranged_by_where_it_stands_whatever_health_the_match_gives_it() {
     let mut world = World::on_map(map_of(MapId(0)));
     world.spawn_modifiers = vec![SpawnModifier {
         select: SpawnSelector {
@@ -62,16 +68,16 @@ fn a_barracks_is_named_by_where_it_stands_whatever_health_the_match_gives_it() {
     world.apply_spawn_modifiers_to_all();
     world.settle();
     let view = world.view(Team::Dire);
-    let mut names: Vec<&str> = view
+    let mut ranged: Vec<Option<bool>> = view
         .units
         .iter()
         .filter(|unit| unit.kind == UnitKind::Barracks)
-        .map(|unit| unit_name(world.map, unit.kind, unit.team, unit.pos))
+        .map(|unit| barracks_ranged_at(world.map, unit.team, unit.pos))
         .collect();
-    names.sort_unstable();
+    ranged.sort_unstable();
     assert_eq!(
-        names,
-        [["Melee Barracks"; 6], ["Ranged Barracks"; 6]].concat(),
+        ranged,
+        [[Some(false); 6], [Some(true); 6]].concat(),
         "both sides' barracks, read off a view"
     );
 }
