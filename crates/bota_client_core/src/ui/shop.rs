@@ -1,9 +1,8 @@
 //! The shop as a player uses it: what a seat holds towards a build, the
-//! groups and the search of the catalog, and the quick-buy item.
+//! groups of the catalog, and the quick-buy item.
 
 use bota_proto::ItemId;
 
-use crate::catalog::{ITEMS, ItemFace};
 use bota_core::missing_parts;
 
 use crate::shop::{held_items, price_for, primary_of, whole_price};
@@ -14,22 +13,35 @@ fn hero_primary(hero: bota_proto::HeroId) -> Option<bota_proto::Attribute> {
 }
 
 /// The groups the shop shows its items in, in order.
-pub const SHOP_GROUPS: [&str; 7] = [
-    "Consumables",
-    "Attributes",
-    "Equipment",
-    "Supports",
-    "Upgrades",
-    "Recipes",
-    "Other",
-];
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum ShopGroup {
+    Consumables,
+    Attributes,
+    Equipment,
+    Supports,
+    Upgrades,
+    Recipes,
+    Other,
+}
 
-/// Which of [`SHOP_GROUPS`] an item is shown in; an item the list does not
-/// know goes last, and a retired one in none: past the last group.
-pub fn group_of(id: u16) -> usize {
-    if bota_core::item_def(ItemId(id)).is_none() {
-        return SHOP_GROUPS.len();
-    }
+impl ShopGroup {
+    /// Every group, in the order the shop lists them.
+    pub const ALL: [ShopGroup; 7] = [
+        ShopGroup::Consumables,
+        ShopGroup::Attributes,
+        ShopGroup::Equipment,
+        ShopGroup::Supports,
+        ShopGroup::Upgrades,
+        ShopGroup::Recipes,
+        ShopGroup::Other,
+    ];
+}
+
+/// Which group an item is shown in; an item the list does not know goes
+/// in [`ShopGroup::Other`], and a retired one is listed by [`shop_groups`]
+/// in none.
+pub fn group_of(id: u16) -> ShopGroup {
+    use ShopGroup as G;
     match ItemId(id) {
         ItemId::CLARITY
         | ItemId::HEALING_SALVE
@@ -39,7 +51,7 @@ pub fn group_of(id: u16) -> usize {
         | ItemId::TANGO
         | ItemId::TOWN_PORTAL_SCROLL
         | ItemId::MANGO
-        | ItemId::BLOOD_GRENADE => 0,
+        | ItemId::BLOOD_GRENADE => G::Consumables,
         ItemId::CIRCLET
         | ItemId::GAUNTLETS
         | ItemId::SLIPPERS
@@ -50,7 +62,7 @@ pub fn group_of(id: u16) -> usize {
         | ItemId::OGRE_AXE
         | ItemId::BLADE_OF_ALACRITY
         | ItemId::STAFF_OF_WIZARDRY
-        | ItemId::EAGLESONG => 1,
+        | ItemId::EAGLESONG => G::Attributes,
         ItemId::GLOVES
         | ItemId::BLADES_OF_ATTACK
         | ItemId::BROADSWORD
@@ -61,7 +73,7 @@ pub fn group_of(id: u16) -> usize {
         | ItemId::TALISMAN_OF_EVASION
         | ItemId::JAVELIN
         | ItemId::DEMON_EDGE
-        | ItemId::BLITZ_KNUCKLES => 2,
+        | ItemId::BLITZ_KNUCKLES => G::Equipment,
         ItemId::BOOTS
         | ItemId::QUELLING_BLADE
         | ItemId::RING_OF_REGEN
@@ -69,7 +81,7 @@ pub fn group_of(id: u16) -> usize {
         | ItemId::VITALITY_BOOSTER
         | ItemId::ENERGY_BOOSTER
         | ItemId::MAGIC_STICK
-        | ItemId::WIND_LACE => 3,
+        | ItemId::WIND_LACE => G::Supports,
         ItemId::POWER_TREADS
         | ItemId::PHASE_BOOTS
         | ItemId::BLINK_DAGGER
@@ -78,46 +90,28 @@ pub fn group_of(id: u16) -> usize {
         | ItemId::NULL_TALISMAN
         | ItemId::MAGIC_WAND
         | ItemId::BUTTERFLY
-        | ItemId::MONKEY_KING_BAR => 4,
+        | ItemId::MONKEY_KING_BAR => G::Upgrades,
         ItemId::RECIPE_BRACER
         | ItemId::RECIPE_WRAITH_BAND
         | ItemId::RECIPE_NULL_TALISMAN
         | ItemId::RECIPE_MAGIC_WAND
-        | ItemId::RECIPE_MONKEY_KING_BAR => 5,
-        _ => 6,
+        | ItemId::RECIPE_MONKEY_KING_BAR => G::Recipes,
+        _ => G::Other,
     }
 }
 
-/// Whether an item answers a search, case aside: by its name, its stats or
-/// its blurb. An empty search takes everything.
-pub fn answers(face: &ItemFace, query: &str) -> bool {
-    let query = query.trim().to_ascii_lowercase();
-    query.is_empty()
-        || [face.name.to_string(), face.stats(), face.blurb()]
-            .iter()
-            .any(|text| text.to_ascii_lowercase().contains(&query))
-}
-
-/// The items a search answers, group by group: each group's index into
-/// [`SHOP_GROUPS`] and its items in id order. Groups with none are left out.
-pub fn shop_groups(query: &str) -> Vec<(usize, Vec<u16>)> {
-    (0..SHOP_GROUPS.len())
+/// The items the shop sells, group by group, each group's items in id
+/// order. Groups with none are left out.
+pub fn shop_groups() -> Vec<(ShopGroup, Vec<u16>)> {
+    ShopGroup::ALL
+        .into_iter()
         .filter_map(|group| {
-            let ids: Vec<u16> = ITEMS
-                .iter()
-                .filter(|face| group_of(face.id) == group && answers(face, query))
-                .map(|face| face.id)
+            let ids: Vec<u16> = (0..bota_core::ITEMS.len() as u16)
+                .filter(|id| bota_core::item_def(ItemId(*id)).is_some() && group_of(*id) == group)
                 .collect();
             (!ids.is_empty()).then_some((group, ids))
         })
         .collect()
-}
-
-/// The first item a search answers, for buying with one key.
-pub fn first_answer(query: &str) -> Option<u16> {
-    shop_groups(query)
-        .into_iter()
-        .find_map(|(_, ids)| ids.first().copied())
 }
 
 impl App {

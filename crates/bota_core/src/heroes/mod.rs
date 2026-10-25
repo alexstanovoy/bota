@@ -24,10 +24,8 @@
 //!    arms, and the end-to-end tests in `game/tests/x.rs`.
 //! 5. Talents also need the `Talent` variants in `talent.rs` and the server
 //!    sites that ask `has_talent`.
-//! 6. For a front end: a short label and blurb for each ability and an
-//!    `EffectFace` for each effect in `bota_client_core/src/catalog.rs`, the
-//!    blurb keys of its numbers in `blurb/keys.rs`, and, in a renderer, the
-//!    ability's row of its art table.
+//! 6. For a front end: the words and the art of each ability and effect are
+//!    the front end's own; bota carries only the ids and the numbers.
 
 pub mod pudge;
 pub mod shadow_fiend;

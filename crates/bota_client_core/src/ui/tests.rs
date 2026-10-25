@@ -52,57 +52,6 @@ fn the_console_turns_a_typed_line_into_a_cheat_order() {
 }
 
 #[test]
-fn every_catalog_entry_is_named_and_found_by_its_own_id() {
-    use crate::catalog::{ABILITIES, EFFECTS, ITEMS, ability, effect, item};
-    let groups: [Vec<(u16, &str, Option<&str>)>; 2] = [
-        ABILITIES
-            .iter()
-            .map(|f| (f.id, f.name, ability(f.id).map(|x| x.name)))
-            .collect(),
-        ITEMS
-            .iter()
-            .map(|f| (f.id, f.name, item(f.id).map(|x| x.name)))
-            .collect(),
-    ];
-    for group in groups {
-        for (index, (id, name, found)) in group.into_iter().enumerate() {
-            assert_eq!(usize::from(id), index, "{name} is in place");
-            assert_eq!(found, Some(name), "{name} is found by its id");
-            assert!(!name.is_empty(), "entry {id} has a name");
-        }
-    }
-    for (index, face) in EFFECTS.iter().enumerate().skip(1) {
-        assert_eq!(usize::from(face.id), index, "{} is in place", face.name());
-        assert_eq!(
-            effect(face.id),
-            Some(face),
-            "{} is found by its id",
-            face.name()
-        );
-        assert!(!face.name().is_empty(), "effect {index} has a name");
-        let rules = bota_core::effect_def(bota_proto::EffectId(face.id)).map(|def| def.name);
-        assert_ne!(
-            face.label,
-            rules,
-            "{} keeps a label only where it differs",
-            face.name()
-        );
-    }
-    assert!(effect(0).is_none(), "the retired effect is gone");
-    // Ids are append-only and lookups go by id: every ability the rules have is
-    // found under its own id, the neutrals' after the heroes' included, and
-    // none past the last is.
-    for id in 0..bota_core::ABILITY_COUNT as u16 {
-        let face = ability(id).unwrap_or_else(|| panic!("ability {id} is found"));
-        assert_eq!(face.id, id, "ability {id} is found by its own id");
-        assert!(!face.name.is_empty(), "ability {id} has a name");
-    }
-    assert!(ability(bota_core::ABILITY_COUNT as u16).is_none());
-    assert!(item(u16::MAX).is_none());
-    assert!(effect(u16::MAX).is_none());
-}
-
-#[test]
 fn a_part_in_hand_comes_off_what_the_shop_asks() {
     use crate::shop::{price_for, whole_price};
     let parts = [ItemId::BOOTS, ItemId::GLOVES, ItemId::BELT];
@@ -873,7 +822,7 @@ fn a_unit_is_drawn_between_two_ticks_and_jumps_are_not_drawn_out() {
 fn the_talent_tree_is_shadow_fiends() {
     for (id, hero) in bota_core::HEROES.iter().enumerate() {
         assert_eq!(
-            crate::catalog::talents(id as u16).is_some(),
+            crate::catalog::has_talents(id as u16),
             hero.name == "Shadow Fiend",
             "{}",
             hero.name
@@ -899,49 +848,6 @@ fn level_attributes_floor_and_a_creep_does_not_split() {
     creep.attack_damage_max = 23;
     let d = crate::catalog::damage_range(&creep);
     assert_eq!((d.min, d.max, d.bonus), (19, 23, 0));
-}
-
-#[test]
-fn every_blurb_takes_its_numbers_from_the_rules() {
-    use crate::catalog::{ABILITIES, EFFECTS, ITEMS, talents};
-    for template in ABILITIES
-        .iter()
-        .map(|f| f.template)
-        .chain(EFFECTS.iter().map(|f| f.template))
-        .chain(ITEMS.iter().flat_map(|f| [f.template, f.stats_template]))
-    {
-        assert!(
-            !template.chars().any(|c| c.is_ascii_digit()),
-            "{template:?} types a number the rules own"
-        );
-    }
-    // Filling panics on a key nothing answers to, so one pass proves them all.
-    for face in ABILITIES {
-        assert!(!face.blurb().contains('{'), "{}", face.name);
-    }
-    for face in ITEMS {
-        assert!(
-            !face.blurb().is_empty() && !face.stats().contains('{'),
-            "{}",
-            face.name
-        );
-    }
-    for face in EFFECTS {
-        assert!(!face.blurb().contains('{'), "{}", face.name());
-    }
-    let tree = talents(bota_proto::HeroId::SHADOW_FIEND.0).expect("Shadow Fiend has a tree");
-    assert!(
-        tree.iter()
-            .all(|t| !t.name.contains('{') && !t.blurb.contains('{'))
-    );
-    // The numbers are the rules': Quelling's bonus and Hook's reach.
-    let quelling = ITEMS[usize::from(ItemId::QUELLING_BLADE.0)];
-    assert_eq!(quelling.stats(), "+8/4 creep", "melee, then ranged");
-    assert!(
-        ABILITIES[usize::from(AbilityId::MEAT_HOOK.0)]
-            .blurb()
-            .contains("range 1300")
-    );
 }
 
 #[test]
@@ -1340,4 +1246,35 @@ fn a_gathered_shrine_is_fed_with_the_seat_that_gathered_it() {
             },
         ]
     );
+}
+
+#[test]
+fn the_shop_lists_every_sold_item_once_in_its_groups_in_order() {
+    use crate::ui::shop::{ShopGroup, group_of, shop_groups};
+    let groups = shop_groups();
+    let order: Vec<ShopGroup> = groups.iter().map(|(group, _)| *group).collect();
+    let mut expected = ShopGroup::ALL.to_vec();
+    expected.retain(|group| order.contains(group));
+    assert_eq!(order, expected, "groups keep their order");
+    let mut listed: Vec<u16> = Vec::new();
+    for (group, ids) in &groups {
+        assert!(ids.is_sorted(), "{group:?} lists its items in id order");
+        assert!(ids.iter().all(|id| group_of(*id) == *group));
+        listed.extend(ids.iter().copied());
+    }
+    listed.sort_unstable();
+    let sold: Vec<u16> = (0..bota_core::ITEMS.len() as u16)
+        .filter(|id| bota_core::item_def(ItemId(*id)).is_some())
+        .collect();
+    assert_eq!(listed, sold);
+}
+
+#[test]
+fn a_front_end_lists_every_effect_but_the_bar_ones() {
+    use bota_proto::EffectId;
+    assert!(crate::catalog::effect_listed(EffectId::MENDING.0));
+    assert!(!crate::catalog::effect_listed(EffectId::TIMED_LIFE.0));
+    assert!(!crate::catalog::effect_listed(EffectId::FOUNTAIN_PASSIVE.0));
+    assert!(!crate::catalog::effect_listed(0), "the retired effect");
+    assert!(!crate::catalog::effect_listed(u16::MAX));
 }
