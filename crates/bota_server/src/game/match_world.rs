@@ -584,12 +584,23 @@ impl World {
         Ok(())
     }
 
-    /// What a seat whose hero lies dead may still do, as in Dota: buy (into
-    /// the stash), and sell back what it bought since the hero fell, which
-    /// waits in the stash. Anything else waits for the hero.
+    /// What a seat whose hero lies dead may still do, as in Dota (checked in
+    /// the Dota 2 client, 7.41, 2026-10-24): buy (into the stash), swap what
+    /// the hero carried between its slots, and sell back what it bought since
+    /// the hero fell, which waits in the stash ("Items cannot be sold while
+    /// dead, unless they were purchased during that death", against buyback
+    /// abuse). Anything else waits for the hero.
     fn check_while_down(&self, seat: &Seat, order: &Order) -> Result<(), RejectReason> {
         match order {
             Order::Buy { item } => self.check_buy(seat, *item),
+            // What the hero carried waits with its seat; it stands at no shop.
+            Order::Swap { from, to } => crate::game::swap_refusal_in(
+                seat.kept.as_ref().map(|kept| &kept.bag),
+                seat,
+                (usize::from(from.0), usize::from(to.0)),
+                false,
+            )
+            .map_or(Ok(()), Err),
             Order::Sell { slot } => self.sale_while_down(seat, usize::from(slot.0)).map(|_| ()),
             Order::Cheat { cheat } => self.check_cheat(seat.slot, None, cheat),
             _ => Err(RejectReason::HeroDead),

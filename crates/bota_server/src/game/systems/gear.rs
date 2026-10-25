@@ -756,6 +756,12 @@ impl World {
         {
             return false;
         }
+        if !in_stash(from) && !in_stash(to) {
+            return self
+                .inventory
+                .get_mut(unit)
+                .is_some_and(|bag| bag.swap_slots(from, to));
+        }
         if in_town_portal(to) {
             return self.stow_scroll(unit, seat, from);
         }
@@ -792,11 +798,9 @@ impl World {
         true
     }
 
-    /// Why two slots may not swap what they hold, or nothing when they may.
-    ///
-    /// The stash takes part only while the unit stands at its own shop. The
-    /// town portal slot takes a scroll stack from another slot, merging it,
-    /// and gives nothing up: Dota's scrolls never leave it but to be read.
+    /// Why two of a unit's slots may not swap what they hold, or nothing when
+    /// they may (see [`swap_refusal_in`]): the stash takes part only while the
+    /// unit stands at its own shop.
     pub(crate) fn swap_refusal(
         &self,
         unit: Entity,
@@ -804,26 +808,12 @@ impl World {
         from: usize,
         to: usize,
     ) -> Option<bota_proto::RejectReason> {
-        use bota_proto::RejectReason;
-        let total = BAG_SLOTS + seat.stash.slots.len();
-        let named = |at: usize| at < total || in_town_portal(at);
-        if from == to || !named(from) || !named(to) {
-            return Some(RejectReason::EmptySlot);
-        }
-        let Some(held) = self.stack_at(unit, seat, from) else {
-            return Some(RejectReason::EmptySlot);
-        };
-        if (in_stash(from) || in_stash(to)) && !self.at_shop(unit) {
-            return Some(RejectReason::NotAtShop);
-        }
-        let has_portal = self
-            .inventory
-            .get(unit)
-            .is_some_and(|bag| bag.town_portal.is_some());
-        if in_town_portal(from) || (in_town_portal(to) && (!has_portal || !held.is_scroll())) {
-            return Some(RejectReason::WrongTargetKind);
-        }
-        None
+        swap_refusal_in(
+            self.inventory.get(unit),
+            seat,
+            (from, to),
+            self.at_shop(unit),
+        )
     }
 
     /// The stack in one of a seat's slots: the unit's bag, then the stash.
@@ -909,9 +899,34 @@ impl World {
             bota_proto::Order::Buy { item } => {
                 self.buy(slot, item, events);
             }
+            bota_proto::Order::Swap { from, to } => self.swap_while_down(slot, from, to),
             bota_proto::Order::Sell { slot: at } => self.sell_while_down(slot, usize::from(at.0)),
             bota_proto::Order::Cheat { cheat } => self.cheat(slot, None, cheat, events),
             _ => {}
+        }
+    }
+
+    /// Swaps two slots of what a dead hero carried, as it could standing away
+    /// from the shop: its bag's, never the stash's.
+    fn swap_while_down(
+        &mut self,
+        slot: SlotId,
+        from: bota_proto::ItemSlot,
+        to: bota_proto::ItemSlot,
+    ) {
+        let Some(seat) = self.seats.iter().position(|s| s.slot == slot) else {
+            return;
+        };
+        let (from, to) = (usize::from(from.0), usize::from(to.0));
+        let seat = &mut self.seats[seat];
+        let Some(kept) = seat.kept.as_ref() else {
+            return;
+        };
+        if swap_refusal_in(Some(&kept.bag), seat, (from, to), false).is_some() {
+            return;
+        }
+        if let Some(kept) = seat.kept.as_mut() {
+            kept.bag.swap_slots(from, to);
         }
     }
 
@@ -1203,4 +1218,39 @@ impl World {
             .get(entity)
             .map_or(0, AbilityBook::points_spent)
     }
+}
+
+/// Why two slots may not swap what they hold, or nothing when they may: of
+/// `bag`, a standing hero's or a dead one's, and of the seat's stash, which
+/// takes part only `at_shop`. The town portal slot takes a scroll stack from
+/// another slot, merging it, and gives nothing up: Dota's scrolls never leave
+/// it but to be read.
+pub(crate) fn swap_refusal_in(
+    bag: Option<&Inventory>,
+    seat: &crate::game::Seat,
+    (from, to): (usize, usize),
+    at_shop: bool,
+) -> Option<bota_proto::RejectReason> {
+    use bota_proto::RejectReason;
+    let total = BAG_SLOTS + seat.stash.slots.len();
+    let named = |at: usize| at < total || in_town_portal(at);
+    if from == to || !named(from) || !named(to) {
+        return Some(RejectReason::EmptySlot);
+    }
+    let held = if in_stash(from) {
+        seat.stash.slots.get(from - BAG_SLOTS).copied().flatten()
+    } else {
+        bag.and_then(|bag| bag.slot(from).copied().flatten())
+    };
+    let Some(held) = held else {
+        return Some(RejectReason::EmptySlot);
+    };
+    if (in_stash(from) || in_stash(to)) && !at_shop {
+        return Some(RejectReason::NotAtShop);
+    }
+    let has_portal = bag.is_some_and(|bag| bag.town_portal.is_some());
+    if in_town_portal(from) || (in_town_portal(to) && (!has_portal || !held.is_scroll())) {
+        return Some(RejectReason::WrongTargetKind);
+    }
+    None
 }

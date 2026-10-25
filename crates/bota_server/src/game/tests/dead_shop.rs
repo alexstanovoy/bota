@@ -147,3 +147,50 @@ fn what_a_body_carried_when_it_fell_sells_back_at_the_full_price_no_more() {
     );
     assert_eq!(kept.fell, world.tick);
 }
+
+/// Checked in the Dota 2 client (7.41, 2026-10-24): a dead hero may swap its
+/// items between its slots; the stash, at a shop it does not stand in, stays
+/// out of reach, and what it carried comes back where it was put.
+#[test]
+fn a_dead_hero_swaps_what_it_carried_between_its_slots_and_reaches_no_stash() {
+    let mut world = fallen_with_boots();
+    let to_backpack = Order::Swap {
+        from: ItemSlot(0),
+        to: ItemSlot(6),
+    };
+    assert_eq!(world.validate_order(SlotId(0), None, &to_backpack), Ok(()));
+    seat_order(&mut world, to_backpack);
+    let kept = |world: &World, at: usize| {
+        world.seats[0]
+            .kept
+            .as_ref()
+            .and_then(|kept| kept.bag.slots[at])
+            .map(|stack| stack.id)
+    };
+    assert_eq!(
+        kept(&world, 6),
+        Some(ItemId::BOOTS),
+        "moved to the backpack"
+    );
+    assert_eq!(kept(&world, 0), None);
+    let to_stash = Order::Swap {
+        from: ItemSlot(6),
+        to: ItemSlot(BAG_SLOTS as u8),
+    };
+    assert_eq!(
+        world.validate_order(SlotId(0), None, &to_stash),
+        Err(RejectReason::NotAtShop)
+    );
+    let back = Order::Swap {
+        from: ItemSlot(6),
+        to: ItemSlot(2),
+    };
+    seat_order(&mut world, back);
+    assert_eq!(kept(&world, 2), Some(ItemId::BOOTS));
+    let hero = back_on_its_feet(&mut world);
+    assert_eq!(
+        slot_of(&world, hero, 2).map(|stack| stack.id),
+        Some(ItemId::BOOTS),
+        "it stands up with its boots where it put them"
+    );
+}

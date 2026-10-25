@@ -16,7 +16,7 @@ struct Pin {
 }
 
 const PIN: Pin = Pin {
-    version: 48,
+    version: 49,
     literals: 0xabea_73a5_e329_ca0b,
     code: 0xff68_9823_6b2f_bd0f,
 };

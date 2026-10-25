@@ -213,6 +213,52 @@ impl Inventory {
         true
     }
 
+    /// Swaps what two of its own slots hold, as an order to swap them does: a
+    /// stack moved onto a like one merges into it as far as it fits, a scroll
+    /// moved to the town portal slot merges there whole or not at all, and a
+    /// stack brought out of the backpack waits
+    /// [`rules::BACKPACK_MUTE_TICKS`] before it may be used. False when
+    /// nothing moved.
+    pub fn swap_slots(&mut self, from: usize, to: usize) -> bool {
+        let Some(mut moved) = self.slot(from).copied().flatten() else {
+            return false;
+        };
+        let Some(displaced) = self.slot(to).copied() else {
+            return false;
+        };
+        if to == rules::TOWN_PORTAL_SLOT {
+            moved.touched = true;
+            if self.receiving_slot(&moved) != Some(rules::TOWN_PORTAL_SLOT) {
+                return false;
+            }
+            *self.slot_mut(from).expect("a slot") = None;
+            return self.receive(moved);
+        }
+        let mute = |stack: &mut ItemStack, origin: usize, landed: usize| {
+            stack.touched = true;
+            if in_backpack(origin) && in_inventory(landed) {
+                stack.mute = stack.mute.max(rules::BACKPACK_MUTE_TICKS);
+            }
+        };
+        if let Some(mut target) = displaced
+            && target.merge_from(&mut moved)
+        {
+            moved.touched = true;
+            mute(&mut target, from, to);
+            *self.slot_mut(to).expect("a slot") = Some(target);
+            *self.slot_mut(from).expect("a slot") = (moved.charges > 0).then_some(moved);
+            return true;
+        }
+        let mut displaced = displaced;
+        mute(&mut moved, from, to);
+        if let Some(stack) = displaced.as_mut() {
+            mute(stack, to, from);
+        }
+        *self.slot_mut(to).expect("a slot") = Some(moved);
+        *self.slot_mut(from).expect("a slot") = displaced;
+        true
+    }
+
     /// Takes a stack handed over whole: a scroll into the town portal slot
     /// when the bag has one, anything else into the first empty slot.
     pub fn stow(&mut self, incoming: ItemStack) -> bool {
