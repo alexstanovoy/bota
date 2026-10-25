@@ -399,3 +399,35 @@ fn a_ward_falls_to_two_hero_attacks_or_ten_of_anything_else() {
         "and its non-hero hit count"
     );
 }
+
+/// A ward's health is two hits (checked in the Dota 2 client, 7.41,
+/// 2026-10-24): a hero's attack takes one of them and anything else's a
+/// fifth (Liquipedia, *Observer Ward*: ten non-hero hits), so one hero
+/// attack and four of a creep leave it standing and a fifth brings it down.
+#[test]
+fn a_wards_two_hits_of_health_lose_one_to_a_hero_and_a_fifth_to_anything_else() {
+    let mut world = World::new();
+    let at = Vec2::from_ints(5000, 5000);
+    let ward = world.spawn_ward(&OBSERVER_WARD, (Team::Dire, at), 10_000, (None, None));
+    world.settle();
+    let view = shown(&world, None, ward);
+    assert_eq!((view.hp, view.max_hp), (2, 2), "two hits of health");
+    let blow = |world: &mut World, striker| {
+        world.push_hit(None, ward, 1, bota_proto::DamageKind::Physical, None);
+        let hit = world.hits.back_mut().expect("just laid");
+        hit.attack = true;
+        hit.striker = Some(striker);
+        world.step();
+    };
+    blow(&mut world, bota_core::Striker::RangedHero);
+    assert_eq!(shown(&world, None, ward).hp, 1, "a hero's attack takes one");
+    for _ in 0..4 {
+        blow(&mut world, bota_core::Striker::Other);
+    }
+    assert!(
+        world.alive(ward),
+        "four fifths of the last hit leave it standing"
+    );
+    blow(&mut world, bota_core::Striker::Other);
+    assert!(!world.alive(ward), "the fifth brings it down");
+}

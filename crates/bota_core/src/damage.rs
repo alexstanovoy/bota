@@ -20,6 +20,18 @@ fn saturate(wide: i64) -> i32 {
     wide.clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32
 }
 
+/// A share of health counted in hits comes off `hp` as [`bite`] takes
+/// damage: at most one past what is left, or down to 1 hp and no further
+/// when `spared`.
+#[inline]
+pub fn bite_share(hp: Fixed, share: Fixed, spared: bool) -> Fixed {
+    if spared {
+        share.min((hp - Fixed::from_int(1)).max(Fixed::ZERO))
+    } else {
+        share.min(hp.max(Fixed::ZERO) + Fixed::from_int(1))
+    }
+}
+
 /// Health `taken` comes off `hp` as: at most one past what is left, or down to
 /// 1 hp and no further when `spared`.
 #[inline]

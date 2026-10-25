@@ -1047,14 +1047,14 @@ const _: () = {
 /// Health a courier stands up with, counted in hits: `npc_dota_courier`'s
 /// StatusHealth.
 pub const COURIER_HP: i32 = 6;
-/// What one attack takes of it: a melee hero's swing all six, a ranged
-/// hero's missile three, a creep's or a building's one. Dota 7.35: "Courier
-/// dies after 1 melee hero attack, 2 ranged hero attacks or 6 creep/tower
-/// attacks".
+/// The attacks that bring a courier down: one melee hero swing, two ranged
+/// hero missiles, six of a creep's or a building's (Dota 7.35: "Courier dies
+/// after 1 melee hero attack, 2 ranged hero attacks or 6 creep/tower
+/// attacks"; Liquipedia, *Courier*, the same in 7.41).
 pub const COURIER_HITS: crate::HitCount = crate::HitCount {
-    melee_hero: 6,
-    ranged_hero: 3,
-    other: 1,
+    melee_hero: 1,
+    ranged_hero: 2,
+    other: 6,
 };
 /// World units a second a courier walks at its owner's first level:
 /// `npc_dota_courier`'s MovementSpeed, on the ground
@@ -1231,29 +1231,23 @@ pub const XP_RADIUS: i32 = 1500;
 /// this percent of its maximum.
 pub const DENY_HP_PCT: i32 = 50;
 
-/// A ward's health: 7.41f's 100, taken off in equal shares by the attacks
-/// that bring it down.
-pub const WARD_HP: i32 = 100;
+/// A ward's health, counted in hits: 2, a hero's attack taking 1 (checked
+/// in the Dota 2 client, 7.41, 2026-10-24).
+pub const WARD_HP: i32 = 2;
 
 /// An allied ward may be attacked when its health is strictly below this
 /// percent of its maximum (Dota 7.41f's ward deny range).
 pub const WARD_DENY_HP_PCT: i32 = 50;
 
-/// Hero attacks that bring a ward down, whatever their damage.
-const WARD_HERO_HITS: i32 = 2;
-
-/// Attacks of anything else (a creep, a tower, an illusion) that bring a
-/// ward down.
-const WARD_OTHER_HITS: i32 = 10;
-
-const _: () = assert!(WARD_HERO_HITS > 0 && WARD_OTHER_HITS > 0);
-
-/// What one attack takes of a ward's health: an equal share, the hero's
-/// when a real hero struck.
+/// The attacks that bring a ward down: two of a hero's, as its health is
+/// counted (the Dota 2 client), and ten of anything else's, a creep's, a
+/// tower's or an illusion's, each a fifth of a hit (Liquipedia, *Observer
+/// Ward*: "Hero Hit Count: 2 Non-Hero Hit Count: 10"; the Sentry Ward's the
+/// same).
 pub const WARD_HITS: crate::HitCount = crate::HitCount {
-    melee_hero: WARD_HP / WARD_HERO_HITS,
-    ranged_hero: WARD_HP / WARD_HERO_HITS,
-    other: WARD_HP / WARD_OTHER_HITS,
+    melee_hero: 2,
+    ranged_hero: 2,
+    other: 10,
 };
 
 /// How much further a melee attacker reaches when it attacks a ward.

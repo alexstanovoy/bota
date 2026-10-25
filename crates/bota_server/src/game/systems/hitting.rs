@@ -1,6 +1,6 @@
 //! Taking blows off the health they landed on.
 
-use bota_core::{ModifierKind, Odds, amplify, bite, kind_def, mitigate, rules};
+use bota_core::{ModifierKind, Odds, amplify, bite, bite_share, kind_def, mitigate, rules};
 use bota_proto::{DamageKind, Fixed, Inflictor, Team, UnitKind, Vec2};
 
 use crate::game::{
@@ -141,19 +141,34 @@ pub fn hitting_system<const AMPLIFIED: bool>(cx: HitCx<'_>) {
             on_it.stack_fountain_damage(blow.source);
         }
         let dealt = stacked_damage(blow, modifiers.get(blow.target));
-        let taken = match stat.hit_count {
-            Some(count) => count.taken(blow.striker),
-            None => damage_taken::<AMPLIFIED>(blow, &stat, modifiers.get_mut(blow.target)),
-        };
-        let Some(pool) = health.get_mut(blow.target) else {
-            continue;
-        };
         let spared = kind.get(blow.target).is_some_and(|k| {
             (immortal_structures && kind_def(*k).structure)
                 || (immortal_heroes && *k == UnitKind::Hero)
         });
-        let applied = bite(pool.hp, taken, spared);
-        pool.hp -= Fixed::from_int(applied);
+        let Some(hp) = health.get(blow.target).map(|pool| pool.hp) else {
+            continue;
+        };
+        // Health counted in hits loses its striker's share, a fraction of a
+        // hit as readily as a whole one; the blow tells the health it took,
+        // a part of one as one.
+        let (lost, applied) = match stat.hit_count {
+            Some(count) => {
+                let lost = bite_share(hp, count.taken(blow.striker, stat.max_hp), spared);
+                (
+                    lost,
+                    (lost.raw + Fixed::from_int(1).raw - 1) >> Fixed::FRAC_BITS,
+                )
+            }
+            None => {
+                let taken = damage_taken::<AMPLIFIED>(blow, &stat, modifiers.get_mut(blow.target));
+                let applied = bite(hp, taken, spared);
+                (Fixed::from_int(applied), applied)
+            }
+        };
+        let Some(pool) = health.get_mut(blow.target) else {
+            continue;
+        };
+        pool.hp -= lost;
         let fatal = pool.hp <= Fixed::ZERO;
         if blow.effect == HitEffect::Dismember {
             heal_source(blow.source, applied, health, stats);

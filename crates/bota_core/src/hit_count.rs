@@ -2,7 +2,7 @@
 //! to kill"): each attack takes a fixed share whatever it deals, by who
 //! swung it, and nothing else takes any.
 
-use bota_proto::UnitKind;
+use bota_proto::{Fixed, UnitKind};
 
 /// Who swung a blow, as health counted in hits tells blows apart.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -26,28 +26,36 @@ impl Striker {
     }
 }
 
-/// Health counted in hits: the health one attack of each striker takes, out
-/// of the unit's maximum. Armor, crits, damage and amplification count for
-/// nothing, and a spell, a burn or what rides with a swing takes none.
+/// Health counted in hits, as Dota's "hits to kill": how many attacks of each
+/// striker bring the unit down from full. Each takes that share of its
+/// maximum whatever it deals; armor, crits, damage and amplification count
+/// for nothing, and a spell, a burn or what rides with a swing takes none.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct HitCount {
-    /// What a hero's melee swing takes.
-    pub melee_hero: i32,
-    /// What a hero's missile takes.
-    pub ranged_hero: i32,
-    /// What anything else's attack takes.
-    pub other: i32,
+    /// Hero melee swings that bring it down.
+    pub melee_hero: u8,
+    /// Hero missiles that bring it down.
+    pub ranged_hero: u8,
+    /// Attacks of anything else (a creep, a building, an illusion) that
+    /// bring it down.
+    pub other: u8,
 }
 
 impl HitCount {
-    /// The health a blow takes: its striker's share for a swing, none for
-    /// anything no swing dealt.
-    pub const fn taken(self, by: Option<Striker>) -> i32 {
-        match by {
+    /// The health a blow takes of a unit with `max_hp`: its striker's share
+    /// for a swing, rounded up so that the counted hits always bring it down
+    /// and one fewer never does, and none for anything no swing dealt.
+    pub const fn taken(self, by: Option<Striker>, max_hp: Fixed) -> Fixed {
+        let hits = match by {
             Some(Striker::MeleeHero) => self.melee_hero,
             Some(Striker::RangedHero) => self.ranged_hero,
             Some(Striker::Other) => self.other,
-            None => 0,
+            None => return Fixed::ZERO,
+        };
+        assert!(hits > 0 && max_hp.raw > 0);
+        let hits = hits as i32;
+        Fixed {
+            raw: (max_hp.raw + hits - 1) / hits,
         }
     }
 }
