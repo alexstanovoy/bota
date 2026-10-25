@@ -280,11 +280,12 @@ impl World {
         }
     }
 
-    /// Wakes every neutral of a camp onto whoever struck one of them.
-    ///
-    /// A camp answers as one: what is struck does not answer alone, and what
-    /// is still blocked from waking is not called back by it. One walking
-    /// home once its block ran out turns back for
+    /// Wakes a struck neutral, and every other camp neutral within
+    /// [`rules::NEUTRAL_AGGRO_SPREAD`] of it, onto whoever struck it: a
+    /// camp standing together answers as one, while a neutral led off from
+    /// it, or the rest of a stack left at home, answers only for what it
+    /// stands near. What is still blocked from waking is not called back.
+    /// One walking home once its block ran out turns back for
     /// [`rules::NEUTRAL_SHORT_WINDOW`] (Liquipedia, *Neutral Creeps*, Losing
     /// Aggro). Approximation: Dota gives the full window again once every
     /// creep of the camp is home; here each creep's own return does. A blow
@@ -292,8 +293,7 @@ impl World {
     /// or not.
     pub fn rouse_camps(&mut self, felt: &[Landed]) {
         for blow in felt {
-            let (Some(by), Some(struck)) = (blow.source, self.camp_home.get(blow.target).copied())
-            else {
+            let (Some(by), Some(_)) = (blow.source, self.camp_home.get(blow.target)) else {
                 continue;
             };
             if self.neutral_ai.get(blow.target).is_none() || !self.alive(by) {
@@ -305,8 +305,11 @@ impl World {
             if !here.within(there, rules::units(rules::NEUTRAL_DAMAGE_AGGRO_RANGE)) {
                 continue;
             }
+            let spread = rules::units(rules::NEUTRAL_AGGRO_SPREAD);
             for beast in self.entities.iter() {
-                if self.camp_home.get(beast).map(|home| home.camp) != Some(struck.camp) {
+                let near = beast == blow.target
+                    || self.pos(beast).is_some_and(|at| at.within(here, spread));
+                if !near || self.camp_home.get(beast).is_none() {
                     continue;
                 }
                 let Some(mut ai) = self.neutral_ai.get(beast).copied() else {

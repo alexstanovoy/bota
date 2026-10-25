@@ -1,8 +1,8 @@
 //! Neutral camps.
 
 use bota_core::{
-    CAMPS, COURIER, CampKind, MELEE_CREEP, NeutralAbility, NeutralKind, OBSERVER_WARD, SENTRY_WARD,
-    SIEGE_CREEP, UnitDef, map_of, rules,
+    CAMPS, COURIER, CampDef, CampKind, MELEE_CREEP, NeutralAbility, NeutralKind, OBSERVER_WARD,
+    SENTRY_WARD, SIEGE_CREEP, UnitDef, map_of, rules,
 };
 
 use crate::game::{Entity, World, wire_id};
@@ -386,22 +386,8 @@ fn a_neutral_slots_only_its_own_abilities_and_grows_with_the_clock_unseen() {
 /// pulled by a scripted hero from the horn on, every step an order of its seat.
 #[test]
 fn a_hero_pulls_its_safe_lane_wave_into_the_small_camp() {
-    let mut cfg = config();
-    cfg.map = MapId(0);
-    cfg.objectives = map_of(MapId(0)).default_objectives;
-    cfg.runes = map_of(MapId(0)).default_runes;
-    let mut world = World::for_match(&cfg, cfg.rng());
-    let hero = world.seats[0].unit.expect("stood up");
-    let index = CAMPS
-        .iter()
-        .position(|c| {
-            c.pullable
-                && c.kind == CampKind::Small
-                && c.pos.x > Fixed::from_int(12_000)
-                && c.pos.y < Fixed::from_int(5_000)
-        })
-        .expect("Radiant's safe lane small camp");
-    let camp = &CAMPS[index];
+    let (mut world, hero) = a_full_map_hero();
+    let (index, camp) = safe_lane_small_camp();
     let wait = Vec2::from_ints(camp.pos.x.to_int(), camp.spawn_box.min.y.to_int() - 250);
     seat_order(
         &mut world,
@@ -485,4 +471,144 @@ fn a_hero_pulls_its_safe_lane_wave_into_the_small_camp() {
         "the neutrals, fought past their guard distance, turn for home"
     );
     assert!(dragged, "and the wave follows them into the camp");
+}
+
+/// A match on the Dota map with one Radiant hero, every step an order of its seat.
+fn a_full_map_hero() -> (World, Entity) {
+    let mut cfg = config();
+    cfg.map = MapId(0);
+    cfg.objectives = map_of(MapId(0)).default_objectives;
+    cfg.runes = map_of(MapId(0)).default_runes;
+    let world = World::for_match(&cfg, cfg.rng());
+    let hero = world.seats[0].unit.expect("stood up");
+    (world, hero)
+}
+
+/// Radiant's safe lane small camp: its index and its definition.
+fn safe_lane_small_camp() -> (usize, &'static CampDef) {
+    let index = CAMPS
+        .iter()
+        .position(|c| {
+            c.pullable
+                && c.kind == CampKind::Small
+                && c.pos.x > Fixed::from_int(12_000)
+                && c.pos.y < Fixed::from_int(5_000)
+        })
+        .expect("Radiant's safe lane small camp");
+    (index, &CAMPS[index])
+}
+
+/// The living neutrals of a camp.
+fn camp_beasts(world: &World, camp: usize) -> Vec<Entity> {
+    world
+        .entities
+        .iter()
+        .filter(|e| {
+            world
+                .camp_home
+                .get(*e)
+                .is_some_and(|h| usize::from(h.camp) == camp)
+        })
+        .collect()
+}
+
+fn pos_of(world: &World, entity: Entity) -> Vec2 {
+    world.transform.get(entity).expect("stands").pos
+}
+
+fn put(world: &mut World, entity: Entity, at: Vec2) {
+    world.transform.get_mut(entity).expect("stands").pos = at;
+}
+
+/// Liquipedia, *Neutral Creeps*, Losing Aggro: a neutral led more than 400 from its spot gives
+/// up five seconds later and walks back, and only coming back within 400 starts those seconds
+/// again. A hero that keeps striking it as it runs (a kite) holds it no longer: the neutral
+/// turns for home five seconds after it passed its guard distance, and stands at home again.
+#[test]
+fn a_kited_neutral_gives_up_five_seconds_past_its_guard_distance() {
+    let (mut world, hero) = a_full_map_hero();
+    let (index, _) = safe_lane_small_camp();
+    while world.tick <= rules::FIRST_NEUTRAL_TICK {
+        world.step();
+    }
+    let beast = camp_beasts(&world, index)[0];
+    let home = world.camp_home.get(beast).expect("a camp's").home;
+    put(&mut world, hero, home + Vec2::from_ints(0, -250));
+    let away = Target::Pos(home + Vec2::from_ints(-3000, -1200));
+    seat_order(&mut world, Order::Move { target: away });
+    let guard = Fixed::from_int(rules::NEUTRAL_GUARD_DISTANCE);
+    let (mut passed, mut gave_up) = (None, None);
+    for _ in 0..20 * rules::TICKS_PER_SECOND {
+        let going_home = world.neutral_ai.get(beast).is_some_and(|ai| ai.going_home);
+        if gave_up.is_none() && world.tick.is_multiple_of(30) {
+            world.push_hit(Some(hero), beast, 1, DamageKind::Physical, None);
+        }
+        world.step();
+        if passed.is_none() && !pos_of(&world, beast).within(home, guard) {
+            passed = Some(world.tick);
+        }
+        if gave_up.is_none()
+            && !going_home
+            && world.neutral_ai.get(beast).is_some_and(|ai| ai.going_home)
+        {
+            gave_up = Some(world.tick);
+        }
+    }
+    let (passed, gave_up) = (passed.expect("it chased"), gave_up.expect("it gave up"));
+    assert_eq!(
+        gave_up - passed,
+        rules::NEUTRAL_AGGRO_WINDOW,
+        "five seconds past 400"
+    );
+    let ai = world.neutral_ai.get(beast).copied().expect("a neutral");
+    assert!(
+        !ai.going_home
+            && pos_of(&world, beast).within(home, Fixed::from_int(rules::NEUTRAL_RETURN)),
+        "home again"
+    );
+    assert!(world.target_of(beast).is_none(), "and nobody's");
+}
+
+/// A blow wakes the neutrals around the one struck, not its whole camp (Liquipedia, *Neutral
+/// Creeps*: "another neutral creep within a 500 radius"): a neutral led far off and struck there
+/// turns on its striker with whatever stands near it, while the rest of its stack stays at home.
+#[test]
+fn a_blow_on_a_neutral_led_far_off_leaves_its_stack_at_home() {
+    let (mut world, hero) = a_full_map_hero();
+    let (index, camp) = safe_lane_small_camp();
+    while world.tick <= rules::FIRST_NEUTRAL_TICK {
+        world.step();
+    }
+    let beasts = camp_beasts(&world, index);
+    assert!(beasts.len() >= 3, "a full small camp");
+    let far = camp.pos + Vec2::from_ints(-1400, -900);
+    put(&mut world, beasts[0], far);
+    put(&mut world, beasts[1], far + Vec2::from_ints(300, 0));
+    put(&mut world, hero, far + Vec2::from_ints(0, -300));
+    world.settle();
+    attack_click(&mut world, beasts[0]);
+    let max_hp = world.stats.get(beasts[0]).expect("a beast").max_hp;
+    while world.health.get(beasts[0]).is_some_and(|h| h.hp >= max_hp) {
+        world.step();
+        assert!(world.tick < rules::FIRST_NEUTRAL_TICK + 300, "never struck");
+    }
+    world.step();
+    world.step();
+    assert_eq!(
+        world.target_of(beasts[0]),
+        Some(hero),
+        "the struck one turns on its striker"
+    );
+    assert_eq!(
+        world.target_of(beasts[1]),
+        Some(hero),
+        "so does one standing by it"
+    );
+    for beast in &beasts[2..] {
+        let ai = world.neutral_ai.get(*beast).copied().expect("a neutral");
+        assert!(
+            !ai.awake && world.target_of(*beast).is_none(),
+            "the stack at home sleeps on"
+        );
+    }
 }

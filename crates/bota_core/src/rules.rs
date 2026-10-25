@@ -284,6 +284,10 @@ pub const NEUTRAL_AGGRO_RANGE: i32 = 240;
 /// A neutral's camp wakes when one of it is struck by something within
 /// this range.
 pub const NEUTRAL_DAMAGE_AGGRO_RANGE: i32 = 1800;
+/// How far around a struck neutral the blow wakes the others (Liquipedia,
+/// *Neutral Creeps*, Losing Aggro: "damaging them or another neutral creep
+/// within a 500 radius"; the flight from an unseen striker reaches as far).
+pub const NEUTRAL_AGGRO_SPREAD: i32 = 500;
 /// How far from its spawn spot a neutral may stand before its aggro window
 /// starts running down.
 pub const NEUTRAL_GUARD_DISTANCE: i32 = 400;
