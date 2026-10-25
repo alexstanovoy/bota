@@ -106,6 +106,7 @@ fn a_stalled_caller_holds_a_bounded_inbox_of_a_flooding_server() {
         slots: vec![slot],
         same_heroes: true,
         pick: bota_proto::PickPhase::Waiting,
+        heroes: Vec::new(),
     })
     .expect("encode");
     let server = thread::spawn(move || {

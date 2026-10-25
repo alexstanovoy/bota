@@ -389,6 +389,7 @@ impl Server {
             slots: self.roster.lobby_slots(),
             same_heroes: self.opts.same_heroes,
             pick: self.pick_clock.phase(Instant::now()),
+            heroes: self.allowed_heroes(),
         }
     }
 
@@ -653,12 +654,14 @@ impl Server {
         if started {
             return Err(RejectReason::NotAdmitted);
         }
+        let forced = self.forced_hero();
         let seat = self
             .roster
             .free_seat_mut()
             .ok_or(RejectReason::NotAdmitted)?;
         seat.hold(id, name, role);
         seat.claim = key;
+        seat.force(forced);
         Ok(seat.slot)
     }
 
@@ -698,12 +701,23 @@ impl Server {
         slot: SlotId,
         name: String,
     ) -> Result<(), RejectReason> {
+        let forced = self.forced_hero();
         let seat = &mut self.roster.seats[usize::from(slot.0)];
         if seat.player.is_some() {
             return Err(RejectReason::SeatHeld);
         }
         seat.hold(id, name, role);
+        seat.force(forced);
         Ok(())
+    }
+
+    /// The hero every seat is given when the pool names one and two seats may hold the same: a
+    /// forced pick, as Dota's modes with one hero make, so nobody chooses.
+    fn forced_hero(&self) -> Option<HeroId> {
+        match self.allowed_heroes().as_slice() {
+            [only] if self.opts.same_heroes => Some(*only),
+            _ => None,
+        }
     }
 
     /// Collects seats and picks until everyone is ready, or until the time

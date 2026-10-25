@@ -45,6 +45,17 @@ impl RosterSeat {
     }
 }
 
+impl RosterSeat {
+    /// Gives the seat the hero a forced pick names, final and ready: nothing is left to choose.
+    pub fn force(&mut self, hero: Option<HeroId>) {
+        if let Some(hero) = hero {
+            self.hero = Some(hero);
+            self.pick_locked = true;
+            self.ready = true;
+        }
+    }
+}
+
 /// A seat held back for whoever presents its key.
 #[derive(Clone, Debug)]
 pub struct ReservedSeat {

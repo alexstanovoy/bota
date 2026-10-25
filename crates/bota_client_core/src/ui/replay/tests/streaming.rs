@@ -171,6 +171,7 @@ fn maximum_payload_record() -> ReplayRecord {
         }],
         same_heroes: true,
         pick: PickPhase::Waiting,
+        heroes: Vec::new(),
     });
     let length = frames(&[record.clone()]).len() - 4;
     let ReplayRecord::Msg(ServerMsg::LobbyState { slots, .. }) = &mut record else {

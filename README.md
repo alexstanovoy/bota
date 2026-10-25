@@ -117,7 +117,7 @@ the plain TCP port stays on loopback) or `--insecure-plaintext`.
 | `--tick-rate N` | `30` | ticks per second | |
 | `--ack-timeout-ticks N` | `150` | lockstep: tick-lengths to wait for a straggler | |
 | `--players N` | `2`, or the seats in `BOTA_SEATS` | seats | |
-| `--heroes ID,...` | all | heroes a seat may pick (and is given without a pick); a pick is final once ready | a ruleset limits heroes |
+| `--heroes ID,...` | all | heroes a seat may pick (and is given without a pick); a pick is final once ready; one hero (with `--same-heroes-allowed`) is a forced pick: each seat is given it, ready, as it is taken, and the lobby tells the pool | a ruleset limits heroes |
 | `--pick-secs N` | `60` | seconds the seats have to pick once all are held, default 60 (Dota's default hero selection time). Past it a seat without a hero loses 2 starting gold per second until it picks, and after 30 more seconds is given a random allowed hero drawn from the match seed; clients are told the time left (`LobbyState.pick`), also those who reconnect | |
 | `--tactical-secs N` | `30` | seconds of tactical phase after every seat has locked in its pick, default 30 (Dota's strategy time); a match of bots alone has none | |
 | `--same-heroes-allowed true\|false` | `true` | whether two seats may pick the same hero, default `true` as in Dota's 1v1 Solo Mid and Mid Only; with `false` a hero some seat holds is refused to the others (and never drawn for them) | |

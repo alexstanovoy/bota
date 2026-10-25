@@ -678,6 +678,7 @@ pub fn all_server_msgs() -> Vec<ServerMsg> {
             slots: vec![lobby_slot()],
             same_heroes: true,
             pick: PickPhase::Selecting { left_ms: 41_500 },
+            heroes: Vec::new(),
         },
         ServerMsg::MatchStart { info: match_info() },
         ServerMsg::Snapshot {

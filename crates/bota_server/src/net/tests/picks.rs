@@ -29,6 +29,9 @@ fn first_seat_until(
 fn a_hero_not_allowed_is_never_picked() {
     let mut opts = realtime(30);
     opts.heroes = Some(vec![HeroId::SHADOW_FIEND]);
+    // One seat that may not share: the pool of one is then left to the seat to pick.
+    opts.players = 1;
+    opts.same_heroes = false;
     let addr = start_server(opts);
     let mut client = TestClient::connect(addr);
     client.hello(Role::Bot, None);
@@ -145,4 +148,35 @@ fn a_seat_without_a_pick_plays_the_maps_default_hero() {
         heroes_given(MapId(2), 33, vec![HeroId::PUDGE]),
         [HeroId::PUDGE; 2]
     );
+}
+
+/// A pool of one hero that two seats may share is a forced pick: the server tells it, and gives
+/// it to each seat as it is taken, ready; nobody chooses, and the match starts once both are held.
+#[test]
+fn a_pool_of_one_is_given_to_every_seat_ready() {
+    let mut opts = realtime(32);
+    opts.map = MapId(2);
+    opts.heroes = Some(vec![HeroId::SHADOW_FIEND]);
+    opts.same_heroes = true;
+    let addr = start_server(opts);
+    let mut seats = [TestClient::connect(addr), TestClient::connect(addr)];
+    for seat in &mut seats {
+        seat.hello(Role::Bot, None);
+        seat.welcome();
+    }
+    // Neither says a word more: the lobby tells the pool and both seats picked and ready.
+    for seat in &mut seats {
+        let (heroes, slots) = seat.recv_until(|msg| match msg {
+            ServerMsg::LobbyState { heroes, slots, .. }
+                if slots.iter().all(|s| s.hero.is_some() && s.ready) =>
+            {
+                Some((heroes, slots))
+            }
+            _ => None,
+        });
+        assert_eq!(heroes, [HeroId::SHADOW_FIEND]);
+        assert!(slots.iter().all(|s| s.hero == Some(HeroId::SHADOW_FIEND)));
+    }
+    let view = seats[0].recv_until(|msg| snapshot(msg).filter(|view| view.tick > 1));
+    assert_eq!(view.players.len(), 2);
 }

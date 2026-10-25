@@ -541,6 +541,7 @@ fn a_lobby_past_its_bounds_breaks_the_stream_and_is_not_kept() {
         slots,
         same_heroes: true,
         pick: bota_proto::PickPhase::Waiting,
+        heroes: Vec::new(),
     };
     let crowded = (0..=crate::MAX_SEATS as u8)
         .map(|slot| row(slot, "seat".to_owned()))
@@ -616,6 +617,7 @@ fn items_chosen_in_the_tactical_phase_are_bought_one_a_tick_once_the_match_begin
         }],
         same_heroes: true,
         pick: bota_proto::PickPhase::Tactical { left_ms: 20_000 },
+        heroes: Vec::new(),
     });
     assert!(app.in_tactical_phase());
     app.act(Intent::Buy(ItemId::MANGO.0));
@@ -1000,6 +1002,7 @@ fn a_replay_through_a_seats_eyes_hides_the_other_sides_team_lines() {
         slots: vec![seat(0, Team::Radiant), seat(1, Team::Dire)],
         same_heroes: true,
         pick: PickPhase::Waiting,
+        heroes: Vec::new(),
     });
     let line = |slot, to, text: &str| {
         ServerMsg::Heard(Heard {

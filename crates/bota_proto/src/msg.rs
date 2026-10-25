@@ -455,9 +455,12 @@ pub enum ServerMsg {
         /// Whether two seats may pick the same hero. When not, a hero some
         /// seat holds is refused to the others.
         same_heroes: bool,
-        /// The state of the selection clock at the moment of sending. Last
-        /// on the wire.
+        /// The state of the selection clock at the moment of sending.
         pick: PickPhase,
+        /// The heroes a seat may pick: the server's pool (every hero when it names none). A pool
+        /// of one is a forced pick: the server gives it to each seat as it is taken, ready.
+        /// Last on the wire.
+        heroes: Vec<HeroId>,
     },
     /// The match has begun.
     MatchStart {

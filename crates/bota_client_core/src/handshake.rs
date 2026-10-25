@@ -79,6 +79,8 @@ pub struct Lobby {
     pub slots: Vec<LobbySlot>,
     /// Whether two seats may pick the same hero.
     pub same_heroes: bool,
+    /// The heroes a seat may pick; one is a forced pick, already made for the seat.
+    pub heroes: Vec<HeroId>,
     /// The selection clock as last told, with the message that told it.
     pub pick: PickPhase,
 }
@@ -102,10 +104,12 @@ impl Lobby {
                 slots,
                 same_heroes,
                 pick,
+                heroes,
             } => {
                 self.slots.clone_from(slots);
                 self.same_heroes = *same_heroes;
                 self.pick = *pick;
+                self.heroes.clone_from(heroes);
             }
             _ => {}
         }
