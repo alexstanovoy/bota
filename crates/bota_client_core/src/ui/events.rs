@@ -3,7 +3,7 @@
 
 use bota_proto::{AbilityId, DamageKind, EntityId, EventKind, SlotId, UnitKind, UnitView};
 
-use crate::ui::app::{App, CueKind, FeedLine, Floater, FloaterKind, MAX_TOLD};
+use crate::ui::app::{App, CueKind, FeedKind, Floater, FloaterKind, Killer, MAX_TOLD, Victim};
 
 /// Health share under which the low-health cue comes.
 const LOW_HP: f32 = 0.25;
@@ -48,7 +48,7 @@ impl App {
             } => self.on_damage(source, target, amount, kind),
             EventKind::Missed { source, target } => {
                 if self.involves_hero(source, target) {
-                    self.float(target, "miss".to_string(), FloaterKind::Miss);
+                    self.float(target, 0, FloaterKind::Miss);
                 }
             }
             EventKind::Died {
@@ -59,11 +59,10 @@ impl App {
                 ..
             } => self.on_death(unit, killer, denied, bounty.unwrap_or(0)),
             EventKind::StructureDestroyed { team, .. } => {
-                self.feed
-                    .push(FeedLine::new(format!("a {team:?} structure has fallen")));
+                self.push_feed(FeedKind::StructureFell { team });
             }
             EventKind::LevelUp { unit, level } => {
-                self.float(unit, format!("level {level}"), FloaterKind::Level);
+                self.float(unit, i32::from(level), FloaterKind::Level);
                 if Some(unit) == self.ears() {
                     self.cue(CueKind::LevelUp, 0.9, None);
                 }
@@ -76,7 +75,7 @@ impl App {
             }
             EventKind::Healed { target, amount, .. } => {
                 if amount > 0 && self.is_hero(target) {
-                    self.float(target, format!("+{amount}"), FloaterKind::Heal);
+                    self.float(target, amount, FloaterKind::Heal);
                 }
             }
             // A teleport's end and a burst are the front end's to sound and
@@ -84,19 +83,14 @@ impl App {
             // numbers.
             EventKind::Teleported { .. } | EventKind::Landed { .. } => {}
             EventKind::Captured { unit, team, .. } => {
-                let text = self.capture_line(unit, team);
-                self.feed.push(FeedLine::new(text));
+                let building = self
+                    .freshest(unit)
+                    .map(|seen| (seen.kind, seen.team, seen.pos));
+                self.push_feed(FeedKind::Captured { building, by: team });
             }
-            // `DOTA_HUD_ActivatedRune` is the player, the rune's icon and
-            // `DOTA_HUD_Rune_XP` ("Shrine of Wisdom (200 XP)"); in text the
-            // icon reads as `DOTA_Chat_Rune_XP`'s "activated".
             EventKind::ShrineActivated { team, xp, by, .. } => {
-                let who = by
-                    .and_then(|hero| self.seat_of_hero(hero))
-                    .map_or_else(|| format!("The {team:?}"), |slot| self.seat_name(slot));
-                self.feed.push(FeedLine::new(format!(
-                    "{who} activated Shrine of Wisdom ({xp} XP)"
-                )));
+                let by = by.and_then(|hero| self.seat_of_hero(hero));
+                self.push_feed(FeedKind::ShrineActivated { by, team, xp });
             }
         }
     }
@@ -117,7 +111,7 @@ impl App {
             DamageKind::Physical => FloaterKind::Damage,
             _ => FloaterKind::Magic,
         };
-        self.float(target, amount.to_string(), look);
+        self.float(target, amount, look);
         let ears = self.ears();
         if source.is_some() && source == ears && kind == DamageKind::Physical {
             self.cue(CueKind::Hit, 0.55, None);
@@ -146,19 +140,19 @@ impl App {
             || self.seat_of_hero(unit).is_some(),
             |(_, _, kind)| kind == UnitKind::Hero,
         );
-        if let Some(text) = self.death_line(unit, killer, gold) {
-            self.feed.push(FeedLine::new(text));
+        if let Some(kind) = self.death_line(unit, killer, gold) {
+            self.push_feed(kind);
         }
         let ears = self.ears();
         let mine = killer.is_some() && killer == ears;
         if denied {
-            self.float(unit, "!".to_string(), FloaterKind::Deny);
+            self.float(unit, 0, FloaterKind::Deny);
             if mine {
                 self.cue(CueKind::Deny, 0.9, None);
             }
         } else if gold > 0 && mine {
             if victim.is_some() {
-                self.float(unit, format!("+{gold}"), FloaterKind::Gold);
+                self.float(unit, gold, FloaterKind::Gold);
             }
             if !hero {
                 self.cue(CueKind::LastHit, 0.95, at);
@@ -246,11 +240,11 @@ impl App {
     }
 
     /// Sets a floater off a unit, if it is still to be found.
-    fn float(&mut self, unit: EntityId, text: String, kind: FloaterKind) {
+    fn float(&mut self, unit: EntityId, amount: i32, kind: FloaterKind) {
         if let Some(world) = self.spot(unit) {
             self.floaters.push(Floater {
-                text,
                 kind,
+                amount,
                 world,
                 unit,
                 age: 0.0,
@@ -259,52 +253,30 @@ impl App {
     }
 
     /// The kill feed line of a death. Only a hero's death has one.
-    fn death_line(&self, unit: EntityId, killer: Option<EntityId>, gold: i32) -> Option<String> {
+    fn death_line(&self, unit: EntityId, killer: Option<EntityId>, gold: i32) -> Option<FeedKind> {
         let victim = match self.freshest(unit) {
             Some(victim) if victim.kind != UnitKind::Hero => return None,
             Some(victim) => match victim.owner {
-                Some(slot) => self.seat_name(slot),
-                None => format!("a {:?} hero", victim.team),
+                Some(slot) => Victim::Seat(slot),
+                None => Victim::Hero(victim.team),
             },
-            None => self.seat_name(self.seat_of_hero(unit)?),
+            None => Victim::Seat(self.seat_of_hero(unit)?),
         };
         // The feed only tells hero deaths, whose gold is public as in Dota;
         // the killer it names may never have been in sight, a hero the feed
         // named, known by its seat.
-        let by = killer.and_then(|k| match self.freshest(k) {
+        let killer = killer.and_then(|k| match self.freshest(k) {
             Some(k) => Some(match (k.kind, k.owner) {
-                (UnitKind::Hero, Some(slot)) => self.seat_name(slot),
-                (UnitKind::Tower, _) => format!("the {:?} tower", k.team),
-                (UnitKind::Fountain, _) => format!("the {:?} fountain", k.team),
-                (kind, _) => format!("a {:?} {}", k.team, bota_core::kind_def(kind).name),
+                (UnitKind::Hero, Some(slot)) => Killer::Seat(slot),
+                (kind, _) => Killer::Unit { kind, team: k.team },
             }),
-            None => self.seat_of_hero(k).map(|slot| self.seat_name(slot)),
+            None => self.seat_of_hero(k).map(Killer::Seat),
         });
-        Some(match by {
-            Some(by) if gold > 0 => format!("{victim} was slain by {by} for {gold} gold"),
-            Some(by) => format!("{victim} was slain by {by}"),
-            None => format!("{victim} died"),
+        Some(FeedKind::HeroDied {
+            victim,
+            killer,
+            gold,
         })
-    }
-
-    /// The feed line of a building changing hands, in Dota's words: the
-    /// capturing side's `DOTA_HUD_OutpostCaptured` ("Your team captured
-    /// ..."), the other side's `DOTA_HUD_OutpostLost` ("The enemy team
-    /// captured ...") and a spectator's `DOTA_HUD_OutpostCaptured_Spectator`
-    /// ("... captured by The Radiant"), the building by the name the map
-    /// gives it.
-    fn capture_line(&self, unit: EntityId, team: bota_proto::Team) -> String {
-        let name = match (self.freshest(unit), self.session()) {
-            (Some(seen), Some(session)) => {
-                bota_core::unit_name(session.map(), seen.kind, seen.team, seen.pos)
-            }
-            _ => "Outpost",
-        };
-        match self.my_team() {
-            Some(mine) if mine == team => format!("Your team captured {name}"),
-            Some(_) => format!("The enemy team captured {name}"),
-            None => format!("{name} captured by The {team:?}"),
-        }
     }
 
     /// The seat whose hero a unit is or was, by the bodies the scoreboard

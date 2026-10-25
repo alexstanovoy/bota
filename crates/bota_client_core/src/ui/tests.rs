@@ -1,6 +1,6 @@
 //! The client core, tested without a window or a socket.
 
-use crate::ui::app::{App, Tap, tap_again};
+use crate::ui::app::{App, FeedKind, Killer, Tap, Victim, tap_again};
 use crate::ui::slots::{Look, Press, Slot, ability_look, decide, item_look, order_for};
 use bota_proto::{
     AbilityId, AbilitySlot, AbilityView, Aim, Angle, Attributes, EntityId, EventKind, Fixed,
@@ -1102,12 +1102,12 @@ fn a_hero_slain_in_the_fog_is_fed_by_its_seat_with_its_killer() {
         }],
     });
     assert_eq!(
-        app.feed.last().map(|line| line.text.clone()),
-        Some(format!(
-            "{} was slain by {} for 200 gold",
-            app.seat_name(SlotId(1)),
-            app.seat_name(SlotId(0))
-        )),
+        app.feed.last().map(|line| line.kind.clone()),
+        Some(FeedKind::HeroDied {
+            victim: Victim::Seat(SlotId(1)),
+            killer: Some(Killer::Seat(SlotId(0))),
+            gold: 200,
+        }),
         "the feed names the hero never in sight by its seat"
     );
 }
@@ -1125,10 +1125,16 @@ fn our_hero_slain_from_the_fog_names_the_hero_the_feed_announced() {
             bounty: Some(200),
         }],
     });
-    let line = app.feed.last().map(|line| line.text.clone()).expect("fed");
+    let line = app.feed.last().map(|line| line.kind.clone()).expect("fed");
     assert!(
-        line.contains(&format!("was slain by {}", app.seat_name(SlotId(1)))),
-        "{line}"
+        matches!(
+            line,
+            FeedKind::HeroDied {
+                killer: Some(Killer::Seat(SlotId(1))),
+                ..
+            }
+        ),
+        "{line:?}"
     );
 }
 
@@ -1245,10 +1251,8 @@ fn a_missile_that_looks_as_something_other_than_what_let_it_go_is_refused() {
 }
 
 #[test]
-fn a_captured_outpost_is_fed_in_dotas_words_and_carries_its_event() {
+fn a_captured_outpost_is_fed_with_its_building_and_carries_its_event() {
     let (mut app, us, theirs) = a_duel_app();
-    // A spot of the test's small terrain: no Outpost of the map stands
-    // there, so it goes by Dota's default name (`DOTA_OutpostName_Default`).
     let mut outpost = owned(5, UnitKind::Outpost, None);
     outpost.pos = bota_proto::Vec2::from_ints(3000, 3000);
     outpost.team = Team::Dire;
@@ -1265,7 +1269,7 @@ fn a_captured_outpost_is_fed_in_dotas_words_and_carries_its_event() {
     assert!(
         app.freshest(outpost.id).is_some(),
         "the outpost is in view: {:?}",
-        app.feed.last().map(|line| line.text.clone())
+        app.feed.last().map(|line| line.kind.clone())
     );
     let told = |team| EventKind::Captured {
         unit: outpost.id,
@@ -1276,23 +1280,64 @@ fn a_captured_outpost_is_fed_in_dotas_words_and_carries_its_event() {
         tick: 11,
         events: vec![told(Team::Radiant), told(Team::Dire)],
     });
-    let lines: Vec<(String, Option<EventKind>)> = app
+    let lines: Vec<(FeedKind, Option<EventKind>)> = app
         .feed
         .iter()
-        .map(|line| (line.text.clone(), line.told.clone()))
+        .map(|line| (line.kind.clone(), line.told.clone()))
         .collect();
     assert_eq!(
         lines,
         [
             (
-                "Your team captured Outpost".to_string(),
+                FeedKind::Captured {
+                    building: Some((UnitKind::Outpost, Team::Dire, outpost.pos)),
+                    by: Team::Radiant,
+                },
                 Some(told(Team::Radiant))
             ),
             (
-                "The enemy team captured Outpost".to_string(),
+                FeedKind::Captured {
+                    building: Some((UnitKind::Outpost, Team::Dire, outpost.pos)),
+                    by: Team::Dire,
+                },
                 Some(told(Team::Dire))
             ),
         ],
         "each line carries the event it tells"
+    );
+}
+
+#[test]
+fn a_gathered_shrine_is_fed_with_the_seat_that_gathered_it() {
+    let (mut app, us, _) = a_duel_app();
+    let shrine = EntityId {
+        idx: 9,
+        generation: 1,
+    };
+    let told = |team, by| EventKind::ShrineActivated {
+        unit: shrine,
+        team,
+        xp: 200,
+        by,
+    };
+    app.handle(bota_proto::ServerMsg::Events {
+        tick: 11,
+        events: vec![told(Team::Radiant, Some(us)), told(Team::Dire, None)],
+    });
+    let kinds: Vec<FeedKind> = app.feed.iter().map(|line| line.kind.clone()).collect();
+    assert_eq!(
+        kinds,
+        [
+            FeedKind::ShrineActivated {
+                by: Some(SlotId(0)),
+                team: Team::Radiant,
+                xp: 200
+            },
+            FeedKind::ShrineActivated {
+                by: None,
+                team: Team::Dire,
+                xp: 200
+            },
+        ]
     );
 }

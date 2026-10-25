@@ -210,7 +210,7 @@ fn stepping_delivers_orders_to_the_app_in_the_same_batch_as_their_events() {
     assert!(
         !app.lost,
         "{:?}",
-        app.feed.iter().map(|l| l.text.clone()).collect::<Vec<_>>()
+        app.feed.iter().map(|l| l.kind.clone()).collect::<Vec<_>>()
     );
     assert_eq!(app.view().unwrap().tick, 1);
     assert_eq!(app.shown_orders.len(), 1);

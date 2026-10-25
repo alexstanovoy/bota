@@ -114,14 +114,6 @@ impl App {
         self.source.send(&ping(at));
     }
 
-    /// What a speaker is called: a seat by its name, a spectator by its own.
-    pub fn speaker_name(&self, from: &Speaker) -> String {
-        match from {
-            Speaker::Seat(slot) => self.seat_name(*slot),
-            Speaker::Spectator(name) => name.clone(),
-        }
-    }
-
     /// Takes a chat message the stream passed in.
     pub(crate) fn note_chat(&mut self, msg: &ServerMsg) {
         match msg {

@@ -164,10 +164,12 @@ pub enum FloaterKind {
     Heal,
 }
 
-/// A number or word floating off a unit.
+/// A number floating off a unit.
 pub struct Floater {
-    pub text: String,
     pub kind: FloaterKind,
+    /// The level for a level gained, the number for health mended, gold won
+    /// or damage dealt; 0 for a miss and a deny.
+    pub amount: i32,
     /// World position it rises from: where its unit stood when it was set
     /// off.
     pub world: (f32, f32),
@@ -248,8 +250,7 @@ pub enum Refused {
 
 /// One line of the kill feed.
 pub struct FeedLine {
-    /// The line in the client's words: Dota's text where it has one.
-    pub text: String,
+    pub kind: FeedKind,
     /// Seconds since it appeared.
     pub age: f32,
     /// The event the line tells, as the side was told it, for a front end
@@ -258,15 +259,55 @@ pub struct FeedLine {
     pub told: Option<EventKind>,
 }
 
-impl FeedLine {
-    /// A fresh line telling no event.
-    pub fn new(text: String) -> FeedLine {
-        FeedLine {
-            text,
-            age: 0.0,
-            told: None,
-        }
-    }
+/// What a kill feed line tells of.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum FeedKind {
+    /// A hero fell, to the killer if one is known, and the gold it paid.
+    HeroDied {
+        victim: Victim,
+        killer: Option<Killer>,
+        gold: i32,
+    },
+    /// A structure of this side fell.
+    StructureFell { team: Team },
+    /// The seat's connection left the match.
+    Disconnected { seat: SlotId },
+    /// The server's stream broke the rules of a match; `why` is the
+    /// validator's developer text.
+    ProtocolBroken { why: String },
+    /// The socket died.
+    ConnectionLost,
+    /// An outpost changed hands: the building as last seen (kind, side and
+    /// place), if it was ever in sight, and the side that took it.
+    Captured {
+        building: Option<(UnitKind, Team, Vec2)>,
+        by: Team,
+    },
+    /// A Shrine of Wisdom was activated by the hero of a seat, if it is
+    /// known, else by a side, for this much experience.
+    ShrineActivated {
+        by: Option<SlotId>,
+        team: Team,
+        xp: i32,
+    },
+}
+
+/// Who fell in a feed line.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Victim {
+    /// The hero of a seat.
+    Seat(SlotId),
+    /// A hero no seat drives, known by its side.
+    Hero(Team),
+}
+
+/// Who struck the blow in a feed line.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Killer {
+    /// The hero of a seat.
+    Seat(SlotId),
+    /// Any other unit, by its kind and side.
+    Unit { kind: UnitKind, team: Team },
 }
 
 /// The whole client.
@@ -518,23 +559,6 @@ impl App {
             .iter()
             .find(|(s, _)| *s == slot)
             .map(|(_, name)| name.as_str())
-    }
-
-    /// The display name of a seat.
-    ///
-    /// A seat that sent no name, as in a replay, is called by its hero and
-    /// its side, and by its number before the match tells either.
-    pub fn seat_name(&self, slot: SlotId) -> String {
-        if let Some((_, name)) = self.names.iter().find(|(s, _)| *s == slot) {
-            return name.clone();
-        }
-        match self
-            .player(slot)
-            .and_then(|p| Some((bota_core::hero_def(p.hero)?, p.team)))
-        {
-            Some((hero, team)) => format!("{} ({team:?})", hero.name),
-            None => format!("seat {}", slot.0),
-        }
     }
 
     /// What is known of a unit: its live state, or the last one seen of it
@@ -800,8 +824,7 @@ impl App {
             ServerMsg::ParticipantLeft {
                 slot: Some(slot), ..
             } => {
-                let text = format!("{} disconnected", self.seat_name(*slot));
-                self.feed.push(FeedLine::new(text));
+                self.push_feed(FeedKind::Disconnected { seat: *slot });
             }
             _ => {}
         }
@@ -839,9 +862,18 @@ impl App {
     /// The server's stream broke the rules of a match: stop listening.
     fn fail(&mut self, why: &str) {
         self.lost = true;
-        self.feed.push(FeedLine::new(format!(
-            "the server broke the protocol: {why}"
-        )));
+        self.push_feed(FeedKind::ProtocolBroken {
+            why: why.to_string(),
+        });
+    }
+
+    /// Adds a line to the kill feed.
+    pub(crate) fn push_feed(&mut self, kind: FeedKind) {
+        self.feed.push(FeedLine {
+            kind,
+            age: 0.0,
+            told: None,
+        });
     }
 
     /// Notices a dead socket once and says so.
@@ -853,8 +885,7 @@ impl App {
             && net.is_closed()
         {
             self.lost = true;
-            self.feed
-                .push(FeedLine::new("connection to the server lost".to_string()));
+            self.push_feed(FeedKind::ConnectionLost);
         }
     }
 
