@@ -559,3 +559,9 @@ field EventKind::TreeFelled 0 at: Vec2
 field EventKind::TreeFelled 1 by: Option<EntityId>
 variant EventKind 13 TreeGrew {}
 field EventKind::TreeGrew 0 at: Vec2
+field DispenserView 0 observers: u8
+field DispenserView 1 sentries: u8
+field DispenserView 2 sentry_active: bool
+field ItemView 11 dispenser: Option<DispenserView>
+variant Order 14 SwitchWard {}
+field Order::SwitchWard 0 slot: ItemSlot

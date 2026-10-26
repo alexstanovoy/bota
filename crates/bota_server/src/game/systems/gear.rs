@@ -160,9 +160,18 @@ impl World {
     /// Builds whatever each hero now holds the parts of.
     ///
     /// Run every tick, so a build follows however the last part arrived: a
-    /// purchase, a slot moved, or a courier setting one down.
+    /// purchase, a slot moved, or a courier setting one down. The wards of a
+    /// hero and of its courier come together into a Ward Dispenser here.
     pub fn assemble_bags(&mut self) {
         for seat in 0..self.seats.len() {
+            for carrier in [self.seats[seat].unit, self.seats[seat].courier]
+                .into_iter()
+                .flatten()
+            {
+                if let Some(bag) = self.inventory.get_mut(carrier) {
+                    bag.combine_wards();
+                }
+            }
             let (slot, Some(unit)) = (self.seats[seat].slot, self.seats[seat].unit) else {
                 continue;
             };
@@ -228,6 +237,8 @@ impl World {
                 owner: slot,
                 for_sale: false,
                 free_charges: 0,
+                sentries: 0,
+                sentry_active: false,
             };
             let Some(bag) = self.inventory.get_mut(unit) else {
                 return false;
@@ -253,7 +264,9 @@ impl World {
             return false;
         };
         let unit = self.seats[index].unit;
-        if !self.in_stock(self.seats[index].team, item) {
+        if !self.in_stock(self.seats[index].team, item)
+            || item_def(item).is_none_or(|d| d.unbuyable)
+        {
             return false;
         }
         if item_def(item).is_some_and(|def| def.stack_limit > 0) {
@@ -275,7 +288,7 @@ impl World {
                     .map(|free| *free = Some(bought))
                     .is_some();
             if !in_hand {
-                assert!(self.seats[index].stash.stow(bought));
+                assert!(self.seats[index].stash.receive(bought));
             }
         }
         self.finish_purchase(index, item, plan.cost, events);
@@ -771,7 +784,7 @@ impl World {
         };
         let displaced = self.take_slot(unit, seat, to);
         if let Some(mut target) = displaced
-            && target.merge_from(&mut moved)
+            && target.merge_from(&mut moved, !in_stash(to))
         {
             target.touched = true;
             moved.touched = true;
@@ -948,11 +961,19 @@ impl World {
         };
         let fresh = !stack.touched
             && self.tick.saturating_sub(stack.bought_tick) <= rules::SELL_REFUND_TICKS;
-        let cost = if def.stack_limit > 0 {
-            assert!(stack.charges <= def.stack_limit);
-            def.cost * i32::from(stack.charges)
-        } else {
-            def.cost
+        let cost = match stack.ward_counts() {
+            // A dispenser is worth the wards it holds, each at its own price.
+            Some((observers, sentries)) => {
+                let price = |ward: ItemId, count: u8| {
+                    item_def(ward).map_or(0, |def| def.cost) * i32::from(count)
+                };
+                price(ItemId::OBSERVER_WARD, observers) + price(ItemId::SENTRY_WARD, sentries)
+            }
+            None if def.stack_limit > 0 => {
+                assert!(stack.charges <= def.stack_limit);
+                def.cost * i32::from(stack.charges)
+            }
+            None => def.cost,
         };
         if fresh {
             cost

@@ -42,6 +42,7 @@ pub fn item_view(slot: u16) -> ItemView {
         for_sale: false,
         owner: SlotId(0),
         selling: Some(false),
+        dispenser: None,
     }
 }
 

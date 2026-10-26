@@ -658,6 +658,8 @@ pub(crate) fn fresh_stack(item: ItemId, charges: u8) -> ItemStack {
         owner: SlotId(0),
         for_sale: false,
         free_charges: 0,
+        sentries: 0,
+        sentry_active: false,
     }
 }
 
@@ -783,6 +785,8 @@ pub(crate) fn a_stack_of(item: ItemId, owner: u8) -> ItemStack {
         owner: SlotId(owner),
         for_sale: false,
         free_charges: 0,
+        sentries: 0,
+        sentry_active: false,
     }
 }
 

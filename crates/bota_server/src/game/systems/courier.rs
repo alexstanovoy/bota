@@ -219,7 +219,7 @@ impl World {
             let Some(bag) = self.inventory.get_mut(courier) else {
                 break;
             };
-            if !bag.stow(stack) {
+            if !bag.receive(stack) {
                 break;
             }
             self.seats[seat].stash.slots[at] = None;
@@ -250,7 +250,7 @@ impl World {
             let Some(stack) = self.held_in_bag(courier, at) else {
                 continue;
             };
-            if !self.seats[seat].stash.stow(stack) {
+            if !self.seats[seat].stash.receive(stack) {
                 break;
             }
             self.take_from_bag(courier, at);
@@ -369,7 +369,7 @@ impl World {
         if !self
             .inventory
             .get_mut(to)
-            .is_some_and(|bag| bag.stow(stack))
+            .is_some_and(|bag| bag.receive(stack))
         {
             return false;
         }

@@ -390,6 +390,17 @@ pub enum Order {
     /// [`RejectReason::OnCooldown`](crate::RejectReason::OnCooldown) while
     /// the Glyph recharges.
     Glyph,
+    /// Switch which kind of ward a Ward Dispenser plants next, an Observer
+    /// Ward or a Sentry Ward: Dota's double tap on the item. It costs no
+    /// charge and starts no wait, and interrupts nothing the body is doing.
+    /// Refused with [`RejectReason::EmptySlot`](crate::RejectReason::EmptySlot)
+    /// for a slot holding nothing and
+    /// [`RejectReason::NotCastable`](crate::RejectReason::NotCastable) for one
+    /// holding anything but a Ward Dispenser.
+    SwitchWard {
+        /// The bag slot holding the dispenser.
+        slot: ItemSlot,
+    },
 }
 
 impl Order {
@@ -423,6 +434,7 @@ impl Order {
             | Order::Cheat { .. }
             | Order::LearnTalent { .. }
             | Order::LearnAttributeBonus
+            | Order::SwitchWard { .. }
             | Order::Glyph => false,
         }
     }
@@ -469,6 +481,7 @@ impl Order {
             | Order::Learn { .. }
             | Order::LearnTalent { .. }
             | Order::LearnAttributeBonus
+            | Order::SwitchWard { .. }
             | Order::Glyph => return,
         };
         if let Target::Unit(id) = target {

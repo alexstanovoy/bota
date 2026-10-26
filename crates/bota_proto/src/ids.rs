@@ -240,6 +240,9 @@ impl ItemId {
     pub const MONKEY_KING_BAR: ItemId = ItemId(51);
     pub const WIND_LACE: ItemId = ItemId(52);
     pub const BLOOD_GRENADE: ItemId = ItemId(53);
+    /// What an Observer Ward and a Sentry Ward held by one seat make together:
+    /// Dota's `item_ward_dispenser`. Never bought.
+    pub const WARD_DISPENSER: ItemId = ItemId(54);
 }
 
 /// What did something: the ability or the item a unit used, as Dota's combat

@@ -28,12 +28,19 @@ pub struct ItemStack {
     /// with and the ones deaths hand out. They are spent first, and while
     /// any is held no shop buys the stack back.
     pub free_charges: u8,
+    /// The Sentry Wards a Ward Dispenser holds beside `charges`, its
+    /// Observer Wards. Zero for any other item.
+    pub sentries: u8,
+    /// Whether a Ward Dispenser plants a Sentry Ward next rather than an
+    /// Observer Ward. False for any other item.
+    pub sentry_active: bool,
 }
 
 impl ItemStack {
     /// An untouched purchase with the catalog's initial charges and mode.
+    /// Nothing for an item no shop sells.
     pub fn bought(id: ItemId, owner: SlotId, tick: u32) -> Option<Self> {
-        let def = item_def(id)?;
+        let def = item_def(id).filter(|def| !def.unbuyable)?;
         if def.stack_limit > 0 {
             assert_eq!(def.charges, 1);
         }
@@ -48,6 +55,8 @@ impl ItemStack {
             owner,
             for_sale: false,
             free_charges: 0,
+            sentries: 0,
+            sentry_active: false,
         })
     }
 
@@ -74,10 +83,73 @@ impl ItemStack {
         assert!(self.free_charges <= self.charges);
     }
 
-    /// Charges another stack may add; ownership, mode, and sale marks must match.
-    pub fn merge_room(&self, source: &Self) -> u8 {
-        if self.id != source.id
-            || self.owner != source.owner
+    /// How many Observer Wards and Sentry Wards a stack of the ward family
+    /// holds: the two wards and the Ward Dispenser they make. Nothing for
+    /// any other item.
+    pub fn ward_counts(&self) -> Option<(u8, u8)> {
+        match self.id {
+            ItemId::OBSERVER_WARD => Some((self.charges, 0)),
+            ItemId::SENTRY_WARD => Some((0, self.charges)),
+            ItemId::WARD_DISPENSER => Some((self.charges, self.sentries)),
+            _ => None,
+        }
+    }
+
+    /// The charges a use would spend: those of the active kind of ward in a
+    /// Ward Dispenser, the stack's own for any other item.
+    pub fn active_charges(&self) -> u8 {
+        if self.id == ItemId::WARD_DISPENSER && self.sentry_active {
+            self.sentries
+        } else {
+            self.charges
+        }
+    }
+
+    /// The ward item a Ward Dispenser plants next.
+    pub fn active_ward(&self) -> ItemId {
+        if self.sentry_active {
+            ItemId::SENTRY_WARD
+        } else {
+            ItemId::OBSERVER_WARD
+        }
+    }
+
+    /// Switches the kind of ward a Ward Dispenser plants next.
+    pub fn switch_ward(&mut self) {
+        assert_eq!(self.id, ItemId::WARD_DISPENSER);
+        self.sentry_active = !self.sentry_active;
+    }
+
+    /// Plants one ward out of a Ward Dispenser. A kind that runs out leaves
+    /// the other as the plain ward it is, as Dota's dispenser does.
+    pub fn spend_ward(&mut self) {
+        assert_eq!(self.id, ItemId::WARD_DISPENSER);
+        if self.sentry_active {
+            self.sentries -= 1;
+        } else {
+            self.charges -= 1;
+        }
+        let (observers, sentries) = (self.charges, self.sentries);
+        let (id, charges) = match (observers, sentries) {
+            (0, sentries) => (ItemId::SENTRY_WARD, sentries),
+            (observers, 0) => (ItemId::OBSERVER_WARD, observers),
+            _ => return,
+        };
+        self.id = id;
+        self.charges = charges;
+        self.sentries = 0;
+        self.sentry_active = false;
+    }
+
+    /// Charges another stack may add; ownership, mode, and sale marks must
+    /// match.
+    ///
+    /// Of one kind that stacks, up to its cap. With `combine`, the two
+    /// wards and the Ward Dispenser also merge into one dispenser, whole or
+    /// not at all, as far as neither count passes a byte: `u8::MAX` when the
+    /// whole of the source fits. A stash builds nothing, so it passes false.
+    pub fn merge_room(&self, source: &Self, combine: bool) -> u8 {
+        if self.owner != source.owner
             || self.mode != source.mode
             || self.for_sale != source.for_sale
             || self.charges == 0
@@ -86,35 +158,59 @@ impl ItemStack {
             return 0;
         }
         let limit = item_def(self.id).map_or(0, |def| def.stack_limit);
-        if limit == 0 {
-            return 0;
+        if self.id == source.id && limit > 0 {
+            assert!(self.charges <= limit);
+            assert!(source.charges <= limit);
+            return limit - self.charges;
         }
-        assert!(self.charges <= limit);
-        assert!(source.charges <= limit);
-        limit - self.charges
+        let (Some((o1, s1)), Some((o2, s2))) = (self.ward_counts(), source.ward_counts()) else {
+            return 0;
+        };
+        let fits = o1.checked_add(o2).is_some() && s1.checked_add(s2).is_some();
+        if combine && fits { u8::MAX } else { 0 }
     }
 
     /// Merges up to the cap, retaining the oldest purchase and strongest restrictions.
     /// A source reduced to zero must be removed from its slot by the caller.
-    pub fn merge_from(&mut self, source: &mut Self) -> bool {
-        let moved = self.merge_room(source).min(source.charges);
-        if moved == 0 {
+    pub fn merge_from(&mut self, source: &mut Self, combine: bool) -> bool {
+        let room = self.merge_room(source, combine);
+        if room == 0 {
             return false;
         }
-        self.charges += moved;
-        source.charges -= moved;
+        if self.id == source.id && item_def(self.id).is_some_and(|def| def.stack_limit > 0) {
+            let moved = room.min(source.charges);
+            self.charges += moved;
+            source.charges -= moved;
+            // Free charges travel with the charges that carry them, and stay
+            // within the charges either side holds.
+            let free = moved.min(source.free_charges);
+            self.free_charges += free;
+            source.free_charges -= free;
+            self.settle(source);
+            assert!(self.free_charges <= self.charges);
+            assert!(source.free_charges <= source.charges);
+            return true;
+        }
+        let (o1, s1) = self.ward_counts().expect("a ward");
+        let (o2, s2) = source.ward_counts().expect("a ward");
+        if self.id != ItemId::WARD_DISPENSER {
+            self.sentry_active = source.sentry_active;
+        }
+        self.id = ItemId::WARD_DISPENSER;
+        self.charges = o1 + o2;
+        self.sentries = s1 + s2;
+        source.charges = 0;
+        source.sentries = 0;
+        self.settle(source);
+        true
+    }
+
+    /// What a merge keeps of two stacks beyond their charges.
+    fn settle(&mut self, source: &Self) {
         self.bought_tick = self.bought_tick.min(source.bought_tick);
         self.cooldown = self.cooldown.max(source.cooldown);
         self.mute = self.mute.max(source.mute);
         self.touched |= source.touched;
-        // Free charges travel with the charges that carry them, and stay
-        // within the charges either side holds.
-        let free = moved.min(source.free_charges);
-        self.free_charges += free;
-        source.free_charges -= free;
-        assert!(self.free_charges <= self.charges);
-        assert!(source.free_charges <= source.charges);
-        true
     }
 }
 
@@ -131,6 +227,9 @@ pub struct Inventory {
     /// none, a courier's or the stash. Kept apart from `slots` so that no
     /// search for a free slot can put anything but a scroll in it.
     pub town_portal: Option<Option<ItemStack>>,
+    /// Whether it is a seat's stash: it holds, and builds nothing, so the
+    /// wards in it never come together into a Ward Dispenser.
+    pub stash: bool,
 }
 
 impl Inventory {
@@ -139,6 +238,15 @@ impl Inventory {
         Inventory {
             slots: vec![None; slots],
             town_portal: None,
+            stash: false,
+        }
+    }
+
+    /// A seat's stash of that many empty slots.
+    pub fn stash(slots: usize) -> Inventory {
+        Inventory {
+            stash: true,
+            ..Inventory::empty(slots)
         }
     }
 
@@ -148,6 +256,7 @@ impl Inventory {
         Inventory {
             slots: vec![None; BAG_SLOTS],
             town_portal: Some(Some(ItemStack::free_scroll(owner, tick))),
+            stash: false,
         }
     }
 
@@ -187,12 +296,12 @@ impl Inventory {
         if incoming.is_scroll()
             && let Some(held) = &self.town_portal
         {
-            let fits = held.is_none_or(|held| held.merge_room(incoming) >= incoming.charges);
+            let fits = held.is_none_or(|held| held.merge_room(incoming, false) >= incoming.charges);
             return fits.then_some(rules::TOWN_PORTAL_SLOT);
         }
         let merge = self.slots.iter().position(|held| {
             held.is_some_and(|held| {
-                incoming.charges > 0 && held.merge_room(incoming) >= incoming.charges
+                incoming.charges > 0 && held.merge_room(incoming, !self.stash) >= incoming.charges
             })
         });
         merge.or_else(|| self.slots.iter().position(Option::is_none))
@@ -203,9 +312,10 @@ impl Inventory {
         let Some(at) = self.receiving_slot(&incoming) else {
             return false;
         };
+        let combine = !self.stash;
         let slot = self.slot_mut(at).expect("a receiving slot exists");
         if let Some(held) = slot.as_mut() {
-            assert!(held.merge_from(&mut incoming));
+            assert!(held.merge_from(&mut incoming, combine));
             assert_eq!(incoming.charges, 0);
         } else {
             *slot = Some(incoming);
@@ -241,7 +351,7 @@ impl Inventory {
             }
         };
         if let Some(mut target) = displaced
-            && target.merge_from(&mut moved)
+            && target.merge_from(&mut moved, !self.stash)
         {
             moved.touched = true;
             mute(&mut target, from, to);
@@ -259,17 +369,29 @@ impl Inventory {
         true
     }
 
-    /// Takes a stack handed over whole: a scroll into the town portal slot
-    /// when the bag has one, anything else into the first empty slot.
-    pub fn stow(&mut self, incoming: ItemStack) -> bool {
-        if incoming.is_scroll() && self.town_portal.is_some() {
-            return self.receive(incoming);
-        }
-        let Some(free) = self.slots.iter_mut().find(|slot| slot.is_none()) else {
+    /// Brings together the wards a bag holds of one seat: an Observer Ward
+    /// and a Sentry Ward make a Ward Dispenser, a dispenser takes in the
+    /// wards and the dispensers beside it, each into the lowest slot of
+    /// them. A stash brings together nothing. True when a slot changed.
+    pub fn combine_wards(&mut self) -> bool {
+        if self.stash {
             return false;
-        };
-        *free = Some(incoming);
-        true
+        }
+        let mut changed = false;
+        for to in 0..self.slots.len() {
+            for from in to + 1..self.slots.len() {
+                let (Some(mut target), Some(mut moved)) = (self.slots[to], self.slots[from]) else {
+                    continue;
+                };
+                if target.ward_counts().is_none() || !target.merge_from(&mut moved, true) {
+                    continue;
+                }
+                self.slots[to] = Some(target);
+                self.slots[from] = (moved.charges > 0).then_some(moved);
+                changed = true;
+            }
+        }
+        changed
     }
 }
 

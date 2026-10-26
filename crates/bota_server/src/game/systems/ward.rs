@@ -1,6 +1,6 @@
 //! Wards: standing them, and taking them away when their time is up.
 
-use bota_core::{UnitDef, rules};
+use bota_core::{UnitDef, UseSpec, item_def, rules};
 use bota_proto::{Inflictor, ItemId, Target};
 
 use crate::game::{Entity, World};
@@ -53,5 +53,43 @@ impl World {
         self.spawn_ward(def, (side, pos), ticks, by);
         self.settle();
         true
+    }
+
+    /// Plants the kind of ward a Ward Dispenser in a slot is switched to, by
+    /// the entry of that ward, and takes one out of the dispenser.
+    pub fn dispense_ward(&mut self, user: Entity, slot: usize, target: Target) -> bool {
+        let Some(stack) = self.held_in_bag(user, slot) else {
+            return false;
+        };
+        let ward = stack.active_ward();
+        let Some(UseSpec::Ward { unit, ticks, range }) = item_def(ward).map(|def| def.effect)
+        else {
+            return false;
+        };
+        if !self.stand_ward(user, target, (ward, unit), ticks, range) {
+            return false;
+        }
+        if let Some(held) = self
+            .inventory
+            .get_mut(user)
+            .and_then(|bag| bag.slot_mut(slot))
+            .and_then(Option::as_mut)
+        {
+            held.spend_ward();
+        }
+        true
+    }
+
+    /// Switches the kind of ward the Ward Dispenser in a slot plants next.
+    pub fn switch_ward(&mut self, user: Entity, slot: usize) {
+        if let Some(held) = self
+            .inventory
+            .get_mut(user)
+            .and_then(|bag| bag.slot_mut(slot))
+            .and_then(Option::as_mut)
+            .filter(|held| held.id == ItemId::WARD_DISPENSER)
+        {
+            held.switch_ward();
+        }
     }
 }

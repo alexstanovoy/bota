@@ -142,6 +142,7 @@ item 50 live Recipe: Monkey King Bar
 item 51 live Monkey King Bar
 item 52 live Wind Lace
 item 53 live Blood Grenade
+item 54 live Ward Dispenser
 
 effect 0 retired Haste
 effect 1 live Mending

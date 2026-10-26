@@ -2,7 +2,7 @@
 //! ([`bota_core::ITEMS`]) turned into the change it makes.
 
 use bota_core::{ItemDef, UseSpec, item_def};
-use bota_proto::{Inflictor, ItemId, ItemView, Target};
+use bota_proto::{DispenserView, Inflictor, ItemId, ItemView, Target};
 
 use crate::game::{Entity, Inventory, ItemStack, World};
 
@@ -26,6 +26,7 @@ impl World {
             UseSpec::Ward { unit, ticks, range } => {
                 self.stand_ward(user, target, (item, unit), ticks, range)
             }
+            UseSpec::Dispense => self.dispense_ward(user, slot, target),
             UseSpec::Teleport => self.begin_teleport(user, target),
             UseSpec::SwitchMode => self.switch_mode(user, slot),
             UseSpec::Phase {
@@ -106,7 +107,7 @@ pub fn item_view(stack: &ItemStack, mana_rate_bp: i32, clocks: &[(ItemId, u32)])
         id: stack.id,
         charges: def
             .filter(|def| def.charges > 0 || def.cast_charges > 0)
-            .map(|_| stack.charges),
+            .map(|_| stack.active_charges()),
         cooldown_left: stack.cooldown.max(owed),
         mute_left: stack.mute,
         mode: stack.mode,
@@ -118,5 +119,10 @@ pub fn item_view(stack: &ItemStack, mana_rate_bp: i32, clocks: &[(ItemId, u32)])
         for_sale: false,
         owner: stack.owner,
         selling: Some(stack.for_sale),
+        dispenser: (stack.id == ItemId::WARD_DISPENSER).then_some(DispenserView {
+            observers: stack.charges,
+            sentries: stack.sentries,
+            sentry_active: stack.sentry_active,
+        }),
     }
 }

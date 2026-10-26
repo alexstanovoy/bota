@@ -752,5 +752,7 @@ fn hash_stack(fnv: &mut Fnv, stack: &ItemStack) {
     fnv.u8(stack.owner.0);
     fnv.some(stack.for_sale);
     fnv.u8(stack.free_charges);
+    fnv.u8(stack.sentries);
+    fnv.u8(u8::from(stack.sentry_active));
     fnv.opt(stack.mode, |fnv, mode| fnv.u8(mode as u8));
 }

@@ -238,6 +238,7 @@ fn an_item(charges: Option<u8>, cooldown: u32, mana_cost: i32, aim: Option<Aim>)
         for_sale: false,
         owner: SlotId(0),
         selling: Some(false),
+        dispenser: None,
     }
 }
 

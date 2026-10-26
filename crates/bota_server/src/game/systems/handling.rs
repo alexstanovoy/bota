@@ -129,7 +129,7 @@ impl World {
         let taken = self
             .inventory
             .get_mut(to)
-            .is_some_and(|bag| bag.stow(handed));
+            .is_some_and(|bag| bag.receive(handed));
         if !taken
             && let Some(held) = self
                 .inventory
@@ -157,7 +157,7 @@ impl World {
             return false;
         }
         let taken = self.inventory.get_mut(unit).is_some_and(|bag| {
-            bag.stow(ItemStack {
+            bag.receive(ItemStack {
                 touched: true,
                 ..stack
             })

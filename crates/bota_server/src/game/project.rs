@@ -423,7 +423,7 @@ impl World {
             item: stack.id,
             charges: def
                 .filter(|def| def.charges > 0 || def.cast_charges > 0)
-                .map(|_| stack.charges),
+                .map(|_| stack.active_charges()),
             seen_by: self.seen_by_sides(viewer, entity, false),
         })
     }

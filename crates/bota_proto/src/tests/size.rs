@@ -26,11 +26,12 @@ const TICK_RATE: usize = 30;
 /// bytes; a side's view spends one on its absence), and of each ability
 /// whether a point could go into it and of each item whether it is marked
 /// for sale (two bytes each, beside the retired byte; one where a side's view
-/// withholds them).
+/// withholds them), and a byte for the dispenser counts of each item, absent
+/// on all but a Ward Dispenser.
 #[test]
-fn a_hero_stays_under_257_bytes() {
+fn a_hero_stays_under_261_bytes() {
     let len = encoded_len(&hero_unit());
-    assert!(len <= 257, "hero unit grew to {len} bytes");
+    assert!(len <= 261, "hero unit grew to {len} bytes");
 }
 
 #[test]

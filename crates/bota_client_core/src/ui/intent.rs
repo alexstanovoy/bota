@@ -193,6 +193,17 @@ impl App {
 
     /// Answers a press of one slot. What a press means is [`press`].
     fn press_slot(&mut self, slot: Slot, ctrl: bool) {
+        // Taken up already, a Ward Dispenser pressed again switches the kind
+        // of ward it plants and stays taken up: Dota's double tap.
+        if self.aiming == Some(slot)
+            && let Slot::Item(at) = slot
+            && self
+                .item_in(at)
+                .is_some_and(|item| item.dispenser.is_some())
+        {
+            self.send_order(Order::SwitchWard { slot: ItemSlot(at) });
+            return;
+        }
         match press(self, slot, ctrl) {
             Press::Send(order) => {
                 self.aiming = None;

@@ -121,6 +121,21 @@ pub struct ItemView {
     /// Whether it is marked to be sold when it next reaches the shop. Absent
     /// on a unit of another side: its owner's plans are its own.
     pub selling: Option<bool>,
+    /// What a Ward Dispenser holds of each kind. Absent for any other item.
+    /// [`charges`](Self::charges) is the count of the kind that is active.
+    pub dispenser: Option<DispenserView>,
+}
+
+/// The two counts a Ward Dispenser keeps in its one slot, and which of the
+/// two kinds a use plants.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct DispenserView {
+    /// Observer Wards held.
+    pub observers: u8,
+    /// Sentry Wards held.
+    pub sentries: u8,
+    /// Whether a use plants a Sentry Ward rather than an Observer Ward.
+    pub sentry_active: bool,
 }
 
 /// An item lying on the ground that the viewing team can see.

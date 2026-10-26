@@ -1,7 +1,7 @@
 //! The surface a match runs a world through: what the game loop asks of it.
 
 use bota_core::{hero_spawn_pos, item_def, map_of, rules};
-use bota_proto::{Aim, MatchStats, Order, RejectReason, SlotId, SlotStats, Target, Team};
+use bota_proto::{Aim, ItemId, MatchStats, Order, RejectReason, SlotId, SlotStats, Target, Team};
 
 use crate::game::{
     ActionPhase, ActionState, BAG_SLOTS, Command, Entity, Event, MatchConfig, MatchRng,
@@ -161,6 +161,7 @@ impl World {
             Order::Buy { item } => {
                 self.buy(seat, item, events);
             }
+            Order::SwitchWard { slot } => self.switch_ward(unit, usize::from(slot.0)),
             Order::Cheat { cheat } => {
                 self.cheat(seat, Some(unit), cheat, events);
             }
@@ -317,6 +318,7 @@ impl World {
             | Order::Glyph
             | Order::Swap { .. }
             | Order::Sell { .. }
+            | Order::SwitchWard { .. }
             | Order::Buy { .. }
             | Order::Cheat { .. } => return,
         };
@@ -402,6 +404,7 @@ impl World {
             Order::Cast { slot, target } => self.check_cast(unit, seat, *slot, target),
             Order::Buy { item } => self.check_buy(seat, *item),
             Order::Sell { slot: named } => self.check_sale(unit, seat, usize::from(named.0)),
+            Order::SwitchWard { slot: named } => self.check_switch(unit, usize::from(named.0)),
             Order::Put {
                 slot: named,
                 target,
@@ -466,7 +469,7 @@ impl World {
     /// for what it lacks of it, room for what it buys, and some left on its
     /// side's shelf.
     fn check_buy(&self, seat: &Seat, item: bota_proto::ItemId) -> Result<(), RejectReason> {
-        if item_def(item).is_none() {
+        if item_def(item).is_none_or(|def| def.unbuyable) {
             return Err(RejectReason::UnknownItem);
         }
         let plan = self
@@ -561,6 +564,23 @@ impl World {
     /// Whether a seat may sell or mark what one of its slots holds. Away
     /// from the shop the order marks rather than sells, so only a stack
     /// that is not the seat's own is refused.
+    /// Whether a bag slot holds the Ward Dispenser an order would switch.
+    fn check_switch(&self, unit: Entity, at: usize) -> Result<(), RejectReason> {
+        if in_stash(at) {
+            return Err(RejectReason::NotInBag);
+        }
+        let held = self
+            .inventory
+            .get(unit)
+            .and_then(|bag| bag.slot(at).copied().flatten())
+            .ok_or(RejectReason::EmptySlot)?;
+        if held.id == ItemId::WARD_DISPENSER {
+            Ok(())
+        } else {
+            Err(RejectReason::NotCastable)
+        }
+    }
+
     fn check_sale(&self, unit: Entity, seat: &Seat, at: usize) -> Result<(), RejectReason> {
         let held = if in_stash(at) {
             seat.stash.slots.get(at - BAG_SLOTS).copied().flatten()

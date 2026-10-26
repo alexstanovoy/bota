@@ -180,6 +180,10 @@ pub enum UseSpec {
         /// How far the user may stand it.
         range: i32,
     },
+    /// Stands the kind of ward the item holds and has switched to: a Ward
+    /// Dispenser plants an Observer Ward or a Sentry Ward by the entries
+    /// of those two items.
+    Dispense,
     /// Reads a teleport to a building. Channels for the entry's `duration`
     /// and is owed one wait per user when the entry's `shared_wait` is set.
     Teleport,
@@ -310,6 +314,8 @@ pub struct ItemDef {
     /// Dota's `DOTA_ABILITY_BEHAVIOR_IGNORE_CHANNEL`. Only an item with no
     /// cast point, backswing or duration may.
     pub ignores_channel: bool,
+    /// Whether no shop sells it: it only ever comes of what a seat holds.
+    pub unbuyable: bool,
     /// What using it does.
     pub effect: UseSpec,
 }
@@ -384,6 +390,7 @@ pub(crate) const PLAIN: ItemDef = ItemDef {
     mana_deficit: false,
     immediate: false,
     ignores_channel: false,
+    unbuyable: false,
     effect: UseSpec::None,
 };
 
@@ -429,7 +436,7 @@ pub fn shop_entries() -> Vec<bota_proto::ShopEntry> {
     ITEMS
         .iter()
         .enumerate()
-        .filter(|(_, def)| !def.retired)
+        .filter(|(_, def)| !def.retired && !def.unbuyable)
         .map(|(index, def)| bota_proto::ShopEntry {
             id: ItemId(index as u16),
             cost: def.cost,

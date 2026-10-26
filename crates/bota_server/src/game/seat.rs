@@ -134,7 +134,7 @@ impl Seat {
             xp: 0,
             level: 1,
             respawn_left: 0,
-            stash: Inventory::empty(stash_slots),
+            stash: Inventory::stash(stash_slots),
             kept: None,
             courier: None,
             courier_left: 0,

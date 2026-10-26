@@ -69,7 +69,7 @@ const MKB_PARTS: [ItemId; 4] = [
 ];
 
 /// The catalog, indexed by [`ItemId`].
-pub const ITEMS: [ItemDef; 54] = [
+pub const ITEMS: [ItemDef; 55] = [
     ItemDef {
         name: "Boots of Speed",
         cost: 500,
@@ -144,6 +144,7 @@ pub const ITEMS: [ItemDef; 54] = [
         name: "Observer Ward",
         cost: 0,
         charges: 1,
+        stack_limit: u8::MAX,
         aim: Some(Aim::Point),
         range: 500,
         spends: Spends::One,
@@ -181,6 +182,7 @@ pub const ITEMS: [ItemDef; 54] = [
         name: "Sentry Ward",
         cost: 50,
         charges: 1,
+        stack_limit: u8::MAX,
         aim: Some(Aim::Point),
         range: 500,
         spends: Spends::One,
@@ -709,6 +711,25 @@ pub const ITEMS: [ItemDef; 54] = [
         spends: Spends::One,
         point: 200,
         effect: UseSpec::Grenade,
+        ..PLAIN
+    },
+    // Ward Dispenser: `item_ward_dispenser` and `item_recipe_ward_dispenser`
+    // of the same file, and Liquipedia's *Observer and Sentry Wards*. It is
+    // made of the wards a seat holds (one Observer and one Sentry Ward are the
+    // recipe; the item keeps the count of each), is never sold, and plants the
+    // kind it is switched to by the entry of that ward. The file gives the
+    // dispenser no cooldown of its own, but Liquipedia's changelog (2017,
+    // "Fixed Plant cooldown not working") has its plant wait, so it keeps the
+    // second the wards wait between plantings.
+    ItemDef {
+        name: "Ward Dispenser",
+        cost: 50,
+        charges: 1,
+        cooldown: 30,
+        aim: Some(Aim::Point),
+        range: 500,
+        unbuyable: true,
+        effect: UseSpec::Dispense,
         ..PLAIN
     },
 ];
