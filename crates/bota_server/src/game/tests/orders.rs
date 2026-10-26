@@ -353,6 +353,36 @@ fn one_of_your_own_worn_down_far_enough_may_be_put_out() {
     assert!(now < was, "and strikes it");
 }
 
+/// Dota: every allied non-hero unit but a courier or an illusion may be denied
+/// once its health falls below half (towers and barracks below a tenth;
+/// Liquipedia, *Denying*), so exactly half is not yet.
+#[test]
+fn a_creep_and_a_ward_go_only_below_half_of_what_they_hold() {
+    let (mut world, hero, own) = hero_and_own_creep();
+    wear_down(&mut world, own, 50);
+    assert!(
+        !world.may_attack_on_order(hero, own),
+        "exactly half is not below half"
+    );
+    wear_down(&mut world, own, 51);
+    assert!(!world.may_attack_on_order(hero, own));
+    wear_down(&mut world, own, 49);
+    assert!(world.may_attack_on_order(hero, own));
+    let (mut world, hero, spot) = a_hero_with_a_ward(ItemId::OBSERVER_WARD);
+    assert!(world.use_item(
+        hero,
+        0,
+        Target::Pos(spot + Vec2::from_ints(200, 0)),
+        &mut Vec::new()
+    ));
+    world.step();
+    let ward = the_ward(&world);
+    wear_down(&mut world, ward, 50);
+    assert!(!world.may_attack_on_order(hero, ward), "a ward likewise");
+    wear_down(&mut world, ward, 49);
+    assert!(world.may_attack_on_order(hero, ward));
+}
+
 #[test]
 fn a_deny_is_given_up_when_the_creep_is_no_longer_worn_down() {
     let (mut world, hero, own) = hero_and_own_creep();

@@ -244,9 +244,11 @@ impl World {
 
     /// Whether one of your own is worn down far enough to be put out.
     ///
-    /// A lane creep goes at [`rules::DENY_HP_PCT`] of what it can hold, a
-    /// building only at [`rules::DENY_BUILDING_HP_PCT`]. Nothing else of your
-    /// own goes at all.
+    /// A lane creep goes below [`rules::DENY_HP_PCT`] of what it can hold, a
+    /// ward below [`rules::WARD_DENY_HP_PCT`], a building below
+    /// [`rules::DENY_BUILDING_HP_PCT`]. Nothing else of your own goes at all
+    /// (Dota lets a hero go below a quarter only under a debuff nothing here
+    /// puts on).
     pub fn deniable(&self, entity: Entity) -> bool {
         let (Some(kind), Some(health), Some(stats)) = (
             self.kind.get(entity).copied(),
