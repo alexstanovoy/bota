@@ -106,7 +106,7 @@ pub struct OrderLedger {
 
 impl OrderLedger {
     /// Whether the order repeats the standing one of its body exactly. Only
-    /// moves and attacks stand; anything else is a one-shot.
+    /// moves (also in a direction) and attacks stand; anything else is a one-shot.
     pub fn repeats(&self, issued: IssuedOrder) -> bool {
         let body = self.body(issued.unit);
         is_standing(issued.order)
@@ -310,7 +310,10 @@ fn unit_alive(unit: &UnitView) -> bool {
 }
 
 const fn is_standing(order: Order) -> bool {
-    matches!(order, Order::Move { .. } | Order::Attack { .. })
+    matches!(
+        order,
+        Order::Move { .. } | Order::MoveDirection { .. } | Order::Attack { .. }
+    )
 }
 
 /// The item a unit holds in a slot, the scroll slot included.

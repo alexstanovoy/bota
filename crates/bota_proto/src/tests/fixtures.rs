@@ -432,6 +432,9 @@ pub fn all_orders() -> Vec<Order> {
             talent: TalentSlot(7),
         },
         Order::LearnAttributeBonus,
+        Order::MoveDirection {
+            toward: Vec2::from_ints(-40, 2500),
+        },
         Order::Glyph,
     ];
     orders.extend(item_orders());

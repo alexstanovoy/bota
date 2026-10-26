@@ -5,7 +5,7 @@ use bota_core::{CellGrid, HEROES, MELEE_CREEP, RANGED_CREEP, isqrt64, map_of, po
 use crate::game::{
     Clearance, Entity, Ground, March, UnitOrder, World, circle_stops, find_path, plan_radius,
 };
-use bota_proto::{Fixed, HeroId, ItemId, MapId, SlotId, Team, Vec2};
+use bota_proto::{Fixed, HeroId, ItemId, MapId, Order, SlotId, Target, Team, Vec2};
 
 use super::support::*;
 
@@ -1034,4 +1034,72 @@ fn a_hero_hemmed_in_by_standing_creeps_and_the_ground_walks_out() {
         took.is_some_and(|t| t <= 6 * rules::TICKS_PER_SECOND),
         "out and to the spot within six seconds, not {took:?}"
     );
+}
+
+#[test]
+fn a_directional_move_walks_on_straight_and_stops_at_a_wall_round_which_a_move_goes() {
+    let far = Vec2::from_ints(1800, 0);
+    let walked = |order: fn(Vec2) -> Order| {
+        let mut world = World::for_match(&config(), config().rng());
+        world.settle();
+        let hero = world.seats[0].unit.expect("stood up");
+        let room = rules::units(60);
+        // Open ground, eighteen hundred units of it due east.
+        let start = (0..40)
+            .flat_map(|row| {
+                (0..40).map(move |col| Vec2::from_ints(1000 + 300 * col, 1000 + 300 * row))
+            })
+            .find(|at| world.clearance.capsule_clear(*at, *at + far, room))
+            .expect("a clear run on the map");
+        stand_a_wall(
+            &mut world,
+            start + Vec2::from_ints(900, 0),
+            rules::units(300),
+        );
+        world.transform.get_mut(hero).expect("standing").pos = start;
+        seat_order(&mut world, order(start + far));
+        let mut widest = 0;
+        for _ in 0..(20 * rules::TICKS_PER_SECOND) {
+            world.step();
+            let now = world.transform.get(hero).expect("standing").pos;
+            widest = widest.max((now.y.raw - start.y.raw).abs());
+        }
+        (
+            start,
+            world.transform.get(hero).expect("standing").pos,
+            widest,
+        )
+    };
+    let (start, end, widest) = walked(|toward| Order::MoveDirection { toward });
+    assert_eq!(widest, 0, "it never turned off its line");
+    assert!(
+        end.x.raw > start.x.raw + rules::units(400).raw
+            && end.x.raw < start.x.raw + rules::units(650).raw,
+        "it walked up to the wall and stood against it: {end:?}"
+    );
+    let (start, end, widest) = walked(|at| Order::Move {
+        target: Target::Pos(at),
+    });
+    assert!(
+        widest > rules::units(150).raw && end.within(start + far, rules::units(50)),
+        "a move goes round the wall and gets there: {end:?}"
+    );
+}
+
+#[test]
+fn a_directional_move_goes_on_past_the_spot_it_named() {
+    let mut world = World::new();
+    let start = Vec2::from_ints(5000, 5000);
+    let hero = seated_hero(&mut world, start, HeroId::SHADOW_FIEND);
+    world.settle();
+    seat_order(
+        &mut world,
+        Order::MoveDirection {
+            toward: Vec2::from_ints(5500, 5000),
+        },
+    );
+    run(&mut world, 5 * rules::TICKS_PER_SECOND);
+    let now = world.transform.get(hero).expect("standing").pos;
+    assert!(now.x.raw > rules::units(6000).raw, "{now:?}");
+    assert_eq!(now.y, start.y);
 }

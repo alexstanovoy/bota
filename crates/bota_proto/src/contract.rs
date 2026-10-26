@@ -172,7 +172,8 @@
 //! (Dota's immediate abilities and items); queued, such a cast or use waits
 //! its turn like any other. A unit is done with
 //!
-//! - a move once it stands at the end of its walk, an attack-move once it
+//! - a move once it stands at the end of its walk (a move in a direction
+//!   has none, see below), an attack-move once it
 //!   does with nobody left to fight, a stop at once;
 //! - an attack or a follow when its target falls, and then takes up what it
 //!   has queued; with nothing queued it carries on to where the target fell;
@@ -180,7 +181,10 @@
 //!   over, or it was dropped; laying an item down or taking one up once that
 //!   is done; a courier's errand once it is over.
 //!
-//! A hold, and an attack or a follow whose target stands, are never done:
+//! A hold, a move in a direction ([`Order::MoveDirection`](crate::Order):
+//! Dota's directional move, a walk along a straight line from where the unit
+//! stands through the spot named, with no route round the ground or the
+//! trees), and an attack or a follow whose target stands, are never done:
 //! what is queued behind them waits for an unqueued order. A stun or a fear
 //! keeps the queue; death empties it. A queue holds at most
 //! `bota_core::rules::MAX_QUEUED_ORDERS`; one more is refused as

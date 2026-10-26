@@ -489,6 +489,13 @@ impl App {
             .unwrap_or(0)
     }
 
+    /// The move or attack the seat's hero stands on, as the orders given and
+    /// the server's answers leave it: nothing once a cast took the body over.
+    pub fn standing_order(&self) -> Option<Order> {
+        let (_, issued) = self.seat.session()?.ledger().standing(None)?;
+        Some(issued.order)
+    }
+
     /// Seconds the cast point of an ability lasts for a unit: the rules'
     /// own, shortened while a feast runs on a unit that learned the talent
     /// for it.

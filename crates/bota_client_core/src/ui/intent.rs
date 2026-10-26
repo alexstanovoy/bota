@@ -27,6 +27,9 @@ pub enum Intent {
     },
     /// Walk to a world point, whatever is there.
     MoveTo((f32, f32)),
+    /// Walk in the direction of a world point without pathfinding (Dota's
+    /// Directional Move).
+    MoveDirection((f32, f32)),
     /// Attack-move to a world point, whatever is there.
     AttackMoveTo((f32, f32)),
     /// Stop.
@@ -101,6 +104,9 @@ impl App {
             Intent::AttackAt { at, unit } => self.attack_at(at, unit),
             Intent::MoveTo(at) => self.send_order(Order::Move {
                 target: Target::Pos(world_vec(at)),
+            }),
+            Intent::MoveDirection(at) => self.send_order(Order::MoveDirection {
+                toward: world_vec(at),
             }),
             Intent::AttackMoveTo(at) => self.send_order(Order::Attack {
                 target: Target::Pos(world_vec(at)),

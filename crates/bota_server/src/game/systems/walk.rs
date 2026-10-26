@@ -51,6 +51,7 @@ impl World {
                 self.stand(entity);
             }
             Goal::Walk(dest, arrive) => self.walk_toward(entity, dest, arrive, scratch),
+            Goal::Straight(dest) => self.walk_straight(entity, dest),
         }
     }
 
@@ -100,11 +101,15 @@ impl World {
             // the spot it was left on.
             Some((at, _)) if holding => Goal::Face(at),
             Some((at, reach)) => Goal::Walk(at, reach),
-            None => self
-                .orders
-                .get(entity)
-                .and_then(|o| destination(&o.current))
-                .map_or(Goal::Stand, |dest| Goal::Walk(dest, Fixed::ZERO)),
+            None => match self.orders.get(entity).map(|o| o.current) {
+                Some(UnitOrder::Direction { by }) => self
+                    .pos(entity)
+                    .map_or(Goal::Stand, |from| Goal::Straight(ahead_along(from, by))),
+                Some(order) => {
+                    destination(&order).map_or(Goal::Stand, |dest| Goal::Walk(dest, Fixed::ZERO))
+                }
+                None => Goal::Stand,
+            },
         }
     }
 
@@ -142,7 +147,7 @@ impl World {
             return false;
         };
         match self.walk_goal(entity) {
-            Goal::Flee(_) => true,
+            Goal::Flee(_) | Goal::Straight(_) => true,
             Goal::Stand | Goal::Face(_) => false,
             Goal::Walk(dest, arrive) => {
                 from != dest
@@ -320,6 +325,34 @@ impl World {
             return;
         }
         self.follow_plan(&leg);
+    }
+
+    /// Walks one entity a step straight at a spot, with no route and no plan,
+    /// as Dota's directional move does: the ground and the bodies in the step
+    /// stop it ([`World::collide`]) and it walks on as soon as they let it.
+    /// What flies goes straight too.
+    fn walk_straight(&mut self, entity: Entity, dest: Vec2) {
+        let Some((from, step)) = self.walking_pace(entity, dest, Fixed::ZERO) else {
+            return;
+        };
+        let collision = self.collision(entity);
+        let leg = Leg {
+            entity,
+            from,
+            dest,
+            arrive: Fixed::ZERO,
+            step,
+            collision,
+            aim: dest,
+            last: true,
+            before_relay: None,
+        };
+        if !self.collide(&leg, dest) {
+            if let Some(plan) = self.plan.get_mut(entity) {
+                plan.clear();
+            }
+            self.stall(entity, dest);
+        }
     }
 
     /// A step a unit takes facing the way it walks, `heading`: it turns
@@ -1178,6 +1211,16 @@ fn relay(
     }
 }
 
+/// The spot a straight walk aims at from `from`: [`rules::FLEE_LOOKAHEAD`]
+/// along the offset `by`, kept on the map.
+fn ahead_along(from: Vec2, by: Vec2) -> Vec2 {
+    clamp_to_map(point_along(
+        from,
+        from + by,
+        Fixed::from_int(rules::FLEE_LOOKAHEAD),
+    ))
+}
+
 /// Where an order sends an entity, if it sends it anywhere.
 fn destination(order: &UnitOrder) -> Option<Vec2> {
     match order {
@@ -1185,6 +1228,7 @@ fn destination(order: &UnitOrder) -> Option<Vec2> {
         UnitOrder::Idle
         | UnitOrder::Stand
         | UnitOrder::Hold
+        | UnitOrder::Direction { .. }
         | UnitOrder::Attack { .. }
         | UnitOrder::Follow { .. } => None,
     }
@@ -1326,4 +1370,6 @@ enum Goal {
     Face(Vec2),
     /// Walk to a spot until within a reach of it.
     Walk(Vec2, Fixed),
+    /// Walk straight at a spot, round nothing, for as long as it is ahead.
+    Straight(Vec2),
 }

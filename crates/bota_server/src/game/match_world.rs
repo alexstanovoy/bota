@@ -1,6 +1,6 @@
 //! The surface a match runs a world through: what the game loop asks of it.
 
-use bota_core::{hero_spawn_pos, item_def, map_of, rules};
+use bota_core::{clamp_to_map, hero_spawn_pos, item_def, map_of, rules};
 use bota_proto::{Aim, ItemId, MatchStats, Order, RejectReason, SlotId, SlotStats, Target, Team};
 
 use crate::game::{
@@ -235,7 +235,10 @@ impl World {
             Order::Attack {
                 target: Target::Unit(named),
             } => named != wire_id(target),
-            Order::Move { .. } | Order::Attack { .. } | Order::Cast { .. } => true,
+            Order::Move { .. }
+            | Order::MoveDirection { .. }
+            | Order::Attack { .. }
+            | Order::Cast { .. } => true,
             _ => false,
         };
         if breaks && let Some(action) = self.action.get_mut(unit) {
@@ -253,6 +256,14 @@ impl World {
             Order::Attack {
                 target: Target::Pos(pos),
             } => UnitOrder::AttackMove { pos },
+            Order::MoveDirection { toward } => {
+                let by = clamp_to_map(toward) - self.pos_of(unit);
+                if by == bota_proto::Vec2::ZERO {
+                    UnitOrder::Stand
+                } else {
+                    UnitOrder::Direction { by }
+                }
+            }
             Order::Move {
                 target: Target::None,
             } => UnitOrder::Stand,

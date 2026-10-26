@@ -174,7 +174,12 @@ impl World {
                     }
                     continue;
                 }
-                Some(UnitOrder::Move { .. } | UnitOrder::Stand | UnitOrder::Follow { .. }) => {
+                Some(
+                    UnitOrder::Move { .. }
+                    | UnitOrder::Direction { .. }
+                    | UnitOrder::Stand
+                    | UnitOrder::Follow { .. },
+                ) => {
                     self.target.remove(entity);
                     continue;
                 }

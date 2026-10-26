@@ -401,6 +401,18 @@ pub enum Order {
         /// The bag slot holding the dispenser.
         slot: ItemSlot,
     },
+    /// Walk in a direction without pathfinding: Dota's
+    /// `DOTA_UNIT_ORDER_MOVE_TO_DIRECTION`, what its Directional Move key
+    /// sends. The unit walks the straight line from where it stands now
+    /// through `toward` and keeps going along it, round nothing: ground or a
+    /// body in the way stops it there, and it goes on until another order
+    /// replaces this one. `toward` is a spot, the cursor's, kept on the map
+    /// and read only for its bearing from the unit; one the unit stands on
+    /// has no bearing, and the unit stands still.
+    MoveDirection {
+        /// A spot on the line to walk along, other than the unit's own.
+        toward: Vec2,
+    },
 }
 
 impl Order {
@@ -426,7 +438,8 @@ impl Order {
             | Order::Cast { .. }
             | Order::Use { .. }
             | Order::Put { .. }
-            | Order::Take { .. } => true,
+            | Order::Take { .. }
+            | Order::MoveDirection { .. } => true,
             Order::Buy { .. }
             | Order::Sell { .. }
             | Order::Swap { .. }
@@ -482,6 +495,7 @@ impl Order {
             | Order::LearnTalent { .. }
             | Order::LearnAttributeBonus
             | Order::SwitchWard { .. }
+            | Order::MoveDirection { .. }
             | Order::Glyph => return,
         };
         if let Target::Unit(id) = target {

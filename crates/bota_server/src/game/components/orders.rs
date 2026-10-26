@@ -22,6 +22,14 @@ pub enum UnitOrder {
         /// Destination.
         pos: Vec2,
     },
+    /// Walk the straight line along an offset from where the order was
+    /// taken, without a route, until another order replaces it
+    /// (`Order::MoveDirection`).
+    Direction {
+        /// The offset whose bearing is walked: from the unit to the spot
+        /// the order named, never zero.
+        by: Vec2,
+    },
     /// Walk to a position, taking on enemies met on the way.
     AttackMove {
         /// Destination.

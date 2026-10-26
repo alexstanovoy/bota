@@ -16,8 +16,8 @@ impl World {
 
     /// Whether a unit is done with the order in hand: no cast waiting, going
     /// off, channelled or in its backswing, no item or courier errand under
-    /// way, and an order that has nothing left to do. A hold, and an attack
-    /// or a follow while the target stands, are never done.
+    /// way, and an order that has nothing left to do. A hold, a walk in a direction, and an
+    /// attack or a follow while the target stands, are never done.
     pub fn order_done(&self, unit: Entity) -> bool {
         let Some(orders) = self.orders.get(unit) else {
             return true;
@@ -44,7 +44,10 @@ impl World {
             UnitOrder::AttackMove { pos } => {
                 self.walked_to(unit, pos) && self.target_of(unit).is_none()
             }
-            UnitOrder::Hold | UnitOrder::Attack { .. } | UnitOrder::Follow { .. } => false,
+            UnitOrder::Hold
+            | UnitOrder::Direction { .. }
+            | UnitOrder::Attack { .. }
+            | UnitOrder::Follow { .. } => false,
         }
     }
 

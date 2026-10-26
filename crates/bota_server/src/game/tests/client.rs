@@ -244,6 +244,34 @@ fn the_ledger_keeps_a_standing_walk_exactly_while_the_server_does() {
     );
 }
 
+#[test]
+fn a_directional_move_replaces_the_walk_standing_in_the_ledger() {
+    let (mut local, mut session) = seated();
+    let hero = local.world().seats[0].unit.expect("a hero");
+    let home = local.world().transform.get(hero).expect("standing").pos;
+    let walk = Order::Move {
+        target: Target::Pos(home + Vec2::from_ints(1_500, 1_500)),
+    };
+    let along = Order::MoveDirection {
+        toward: home + Vec2::from_ints(0, 700),
+    };
+    give(&mut local, &mut session, walk, 3);
+    give(&mut local, &mut session, along, 3);
+    assert!(matches!(
+        local.world().orders.get(hero).expect("orders").current,
+        UnitOrder::Direction { .. }
+    ));
+    let standing = session
+        .ledger()
+        .standing(None)
+        .map(|(_, issued)| issued.order);
+    assert_eq!(standing, Some(along), "the ledger agrees");
+    assert!(
+        !session.ledger().repeats(IssuedOrder::hero(walk)),
+        "the same walk again is a new order, not a repeat"
+    );
+}
+
 /// A map-2 match and a session of seat 0 holding everything it was first sent.
 fn seated() -> (LocalMatch, ClientSession) {
     let cfg = mid_config();
