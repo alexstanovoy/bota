@@ -226,6 +226,8 @@ pub enum CueKind {
     HeroKill,
     /// An order of this seat was turned down, for this reason.
     Refused(bota_proto::RejectReason),
+    /// A click that would attack an ally was turned down, for this reason.
+    Undeniable(Undeniable),
 }
 
 /// A cue: what, how loud from 0 to 1, and where in the world it happens;
@@ -239,11 +241,26 @@ pub struct Cue {
     pub at: Option<(f32, f32)>,
 }
 
+/// Why an ally is no target of a click that attacks allies, which Dota's
+/// "Right-Click Allies" setting turns a right click into.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Undeniable {
+    /// A unit that can be denied, but is not worn down far enough yet.
+    HealthTooHigh,
+    /// A hero.
+    Hero,
+    /// Any other unit nothing denies.
+    Other,
+}
+
 /// Why an order went nowhere.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Refused {
     /// A rule of the game, the server's or one the client checks first.
     Rule(bota_proto::RejectReason),
+    /// An attack on an ally the client did not send, the game not letting it
+    /// be denied.
+    Undeniable(Undeniable),
     /// A line the client could not read (the console's).
     Command(CommandError),
 }
@@ -941,6 +958,13 @@ impl App {
     pub fn refuse(&mut self, reason: bota_proto::RejectReason) {
         self.reject = Some((Refused::Rule(reason), 2.5));
         self.cue(CueKind::Refused(reason), 0.8, None);
+    }
+
+    /// Tells of a click that would attack an ally nothing lets be denied now,
+    /// sent nowhere.
+    pub fn refuse_undeniable(&mut self, why: Undeniable) {
+        self.reject = Some((Refused::Undeniable(why), 2.5));
+        self.cue(CueKind::Undeniable(why), 0.8, None);
     }
 
     pub fn cue(&mut self, kind: CueKind, gain: f32, at: Option<(f32, f32)>) {
