@@ -118,7 +118,7 @@ impl World {
         if cmd.order.queues() && self.immediate_cast(unit, cmd.order).is_none() {
             self.queue.remove(unit);
         }
-        self.carry_out(cmd.slot, unit, cmd.order, events);
+        self.carry_out(cmd.slot, unit, cmd.order, cmd.seq, events);
     }
 
     /// Carries one order out on a unit of the seat that gave it.
@@ -127,6 +127,7 @@ impl World {
         seat: SlotId,
         unit: Entity,
         order: Order,
+        seq: u32,
         events: &mut Vec<Event>,
     ) {
         // Learning, talents, the bag, the shop, cheats and immediate casts interrupt
@@ -168,6 +169,9 @@ impl World {
             order if self.is_channelling(unit) && self.ignores_channel(unit, &order) => {
                 self.take_body_order(unit, order);
             }
+            order if order.queues() && !is_halt(order) && self.is_casting(unit) => {
+                self.wait_for_cast(seat, unit, order, seq);
+            }
             order => {
                 self.interrupt(unit, order);
                 self.take_body_order(unit, order);
@@ -203,9 +207,34 @@ impl World {
         }
     }
 
+    /// Holds an order given in a cast point until the cast has gone off, as
+    /// Dota's pseudo-queue does (Liquipedia, *Turn Rate*: a command given then
+    /// "gets queued up and executed once the spell is cast"; the 2017-05-31
+    /// update lets casts given then go off in turn). Only a stop or a hold
+    /// breaks the cast off. A cast given then waits behind the casts already
+    /// waiting, or replaces the one move, attack or the like waiting; any
+    /// other order replaces whatever waits. Refused when the casts waiting
+    /// fill [`MAX_QUEUED_ORDERS`](bota_core::rules::MAX_QUEUED_ORDERS).
+    fn wait_for_cast(&mut self, seat: SlotId, unit: Entity, order: Order, seq: u32) {
+        let is_cast = |order: &Order| matches!(order, Order::Cast { .. } | Order::Use { .. });
+        let mut waiting = self.waiting.remove(unit).unwrap_or_default();
+        if !is_cast(&order) || !waiting.iter().all(|queued| is_cast(&queued.order)) {
+            waiting = crate::game::OrderQueue::default();
+        }
+        if !waiting.push(crate::game::Queued { order, seq }) {
+            self.refused.push(crate::game::RefusedOrder {
+                slot: seat,
+                seq,
+                reason: RejectReason::QueueFull,
+            });
+        }
+        self.waiting.insert(unit, waiting);
+    }
+
     /// What an order to the body breaks off: the action under way, as an
     /// animation cancel, a held cast, and an errand.
     fn interrupt(&mut self, unit: Entity, order: Order) {
+        self.waiting.remove(unit);
         self.cancel_action(unit);
         self.break_swing_off(unit, order);
         self.handling.remove(unit);
@@ -803,4 +832,17 @@ impl World {
                 .collect(),
         }
     }
+}
+
+/// Whether an order is a stop or a hold: the orders that break a cast off in
+/// its cast point.
+fn is_halt(order: Order) -> bool {
+    matches!(
+        order,
+        Order::Move {
+            target: Target::None
+        } | Order::Attack {
+            target: Target::None
+        }
+    )
 }

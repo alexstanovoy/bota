@@ -143,12 +143,20 @@ impl World {
             fnv.u32(plan.from);
             fnv.u32(plan.laid);
         }
-        if let Some(queue) = self.queue.get(entity).filter(|queue| !queue.is_empty()) {
-            let mut bytes = Vec::new();
-            for queued in queue.iter() {
+        let mut bytes = Vec::new();
+        for (tag, queue) in [(1, self.queue.get(entity)), (2, self.waiting.get(entity))] {
+            for queued in queue
+                .filter(|queue| !queue.is_empty())
+                .into_iter()
+                .flat_map(|queue| queue.iter())
+            {
                 bytes.clear();
                 bota_proto::encode_frame(&queued.order, &mut bytes)
                     .expect("an order always encodes");
+                // A waiting order is not a queued one.
+                if tag == 2 {
+                    fnv.u8(0xFF);
+                }
                 bytes.iter().for_each(|byte| fnv.u8(*byte));
             }
         }

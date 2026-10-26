@@ -15,14 +15,20 @@ impl World {
     }
 
     /// Whether a unit is done with the order in hand: no cast waiting, going
-    /// off, channelled or in its backswing, no item or courier errand under
+    /// off, channelled or in its backswing, no order owed it by a cast point, no item or courier errand under
     /// way, and an order that has nothing left to do. A hold, a walk in a direction, and an
     /// attack or a follow while the target stands, are never done.
     pub fn order_done(&self, unit: Entity) -> bool {
         let Some(orders) = self.orders.get(unit) else {
             return true;
         };
-        if orders.pending.is_some() || orders.immediate.is_some() {
+        if orders.pending.is_some()
+            || orders.immediate.is_some()
+            || self
+                .waiting
+                .get(unit)
+                .is_some_and(|waiting| !waiting.is_empty())
+        {
             return false;
         }
         let casting = matches!(
@@ -110,7 +116,7 @@ impl World {
                     .and_then(|queue| queue.pop())
                     .expect("the queue was just seen to hold an order");
                 match self.validate_order(slot, Some(wire_id(unit)), &next.order) {
-                    Ok(()) => self.carry_out(slot, unit, next.order, events),
+                    Ok(()) => self.carry_out(slot, unit, next.order, next.seq, events),
                     Err(reason) => self.refused.push(RefusedOrder {
                         slot,
                         seq: next.seq,

@@ -44,7 +44,10 @@ impl World {
             if self.target_of(unit) == Some(mark) {
                 self.target.remove(unit);
             }
-            if let Some(queue) = self.queue.get_mut(unit) {
+            for queue in [self.queue.get_mut(unit), self.waiting.get_mut(unit)]
+                .into_iter()
+                .flatten()
+            {
                 queue.drop_aimed_at(named);
             }
         }

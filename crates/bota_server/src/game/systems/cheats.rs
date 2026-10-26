@@ -285,6 +285,7 @@ impl World {
         }
         self.forget_walk(unit);
         self.queue.remove(unit);
+        self.waiting.remove(unit);
         self.set_order(unit, UnitOrder::Idle);
         self.settle();
     }

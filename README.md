@@ -47,9 +47,11 @@ buyback; streams. The
 neutral abilities that only a player commanding a neutral would use (Heal,
 Vex, Mana Burn, Shockwave, Ice Armor, Seed Shot, Fireball, Icefire Bomb, Take
 Off) are shown and never go off, as the neutral AI never casts them.
-Orders: a cast or a use ordered unqueued during another's cast point, or
-while stunned, breaks the first off or is refused, where Dota (since 7.06)
-queues it behind the cast in hand; given queued, it waits as in Dota.
+Orders: in a cast point only a stop or a hold breaks the cast off; any other
+order given then waits and runs once the cast has gone off, as Dota's
+pseudo-queue does (casts given then go off in turn, a move or attack replaces
+what waits). A cast or a use ordered while stunned is refused, where Dota
+queues it; given queued, it waits as in Dota.
 
 The simulation is authoritative on the server. A client receives what its side
 can see and sends orders; it cannot run the game itself.

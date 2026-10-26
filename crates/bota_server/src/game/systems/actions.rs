@@ -19,7 +19,7 @@ use super::hitting::entity_slot;
 
 use crate::game::{
     Action, ActionPhase, ActionState, Entity, Event, Hit, HitEffect, PendingCast, Projectile,
-    PseudoRandom, Purpose, Rolls, Stats, Target, World, ability_hooks, wire_id,
+    PseudoRandom, Purpose, RefusedOrder, Rolls, Stats, Target, World, ability_hooks, wire_id,
 };
 
 /// What one swing deals, rolled when it lands.
@@ -267,6 +267,48 @@ impl World {
             self.come_due(entity, &mut action, &stats, carry, held);
         }
         self.action.insert(entity, action);
+        self.release_waiting(entity);
+    }
+
+    /// Carries out the next order a cast point made an entity wait for, once
+    /// the cast has gone off and nothing holds the body: not another cast in
+    /// its point or running on, none walking into range, not held or
+    /// feared. A stun that broke the cast off lets the orders run when it
+    /// ends. The orders behind it keep waiting.
+    fn release_waiting(&mut self, entity: Entity) {
+        if self
+            .waiting
+            .get(entity)
+            .is_none_or(|waiting| waiting.is_empty())
+        {
+            return;
+        }
+        if matches!(
+            self.cast_phase(entity),
+            Some(ActionPhase::Before { .. } | ActionPhase::During { .. })
+        ) || self.pending_cast(entity).is_some()
+            || self.held(entity)
+            || self.feared(entity)
+        {
+            return;
+        }
+        let Some(mut rest) = self.waiting.remove(entity) else {
+            return;
+        };
+        let (Some(next), Some(&slot)) = (rest.pop(), self.owner.get(entity)) else {
+            return;
+        };
+        match self.validate_order(slot, Some(wire_id(entity)), &next.order) {
+            Ok(()) => self.carry_out(slot, entity, next.order, next.seq, &mut Vec::new()),
+            Err(reason) => self.refused.push(RefusedOrder {
+                slot,
+                seq: next.seq,
+                reason,
+            }),
+        }
+        if !rest.is_empty() {
+            self.waiting.insert(entity, rest);
+        }
     }
 
     /// Carries a swing one tick on, or breaks it off before it lands when

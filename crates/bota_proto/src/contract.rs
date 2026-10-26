@@ -191,6 +191,20 @@
 //! [`QueueFull`](crate::RejectReason::QueueFull). Each unit's queue is told to
 //! its own side in [`UnitView::queue`](crate::UnitView), never to the other.
 //!
+//! In a cast point (an ability or an item not yet gone off) only a stop or a
+//! hold breaks the cast off, with nothing spent, and empties what waits. Any
+//! other unqueued order to the body waits instead, as Dota's pseudo-queue
+//! has it (the update of 2017-05-31; Liquipedia, *Turn Rate*), and runs on
+//! the tick the cast goes off, which cancels a backswing: casts given then go
+//! off in turn, up to `bota_core::rules::MAX_QUEUED_ORDERS` (one more is
+//! refused as [`QueueFull`](crate::RejectReason::QueueFull)); a move, an
+//! attack and the like replace everything waiting, and a cast replaces a
+//! waiting move. A cast an immediate ability or item makes goes off beside
+//! it as before. A disable still breaks the cast off, and what waits runs
+//! when it ends; a cast still walking into range, a backswing and a channel
+//! are broken off by any order. A unit with orders waiting is not done with
+//! the order in hand.
+//!
 //! On one tick a unit takes at most one unqueued order, the last one accepted
 //! for that tick: it replaces, without an answer, the orders for that unit
 //! given before it for the same tick, queued or not. The queued orders given

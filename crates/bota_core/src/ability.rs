@@ -86,7 +86,10 @@ pub struct AbilityDef {
     pub at_an_enemy: bool,
     /// Whether ordering it leaves what the body is doing alone: it goes off
     /// beside a swing or another cast instead of breaking either off. Only
-    /// an ability with no cast point, backswing or duration may be.
+    /// an ability with no cast point, backswing or duration may be. It is
+    /// also what Dota's `DOTA_ABILITY_BEHAVIOR_IGNORE_PSEUDO_QUEUE` asks for:
+    /// every ability of 7.41f that carries that flag is immediate, so no
+    /// flag of its own is kept.
     pub immediate: bool,
     /// Whether ordering it while a channel runs leaves the channel be:
     /// Dota's `DOTA_ABILITY_BEHAVIOR_IGNORE_CHANNEL`. Only an ability with

@@ -183,64 +183,200 @@ fn an_order_to_the_body_in_the_cast_point_breaks_the_raze_off_with_nothing_spent
     assert_eq!(world.mana.get(fiend).expect("a pool").mana, mana);
 }
 
-/// Dota keeps a cast point to the cast: any order to the body given inside
-/// it (a move to a spot or in a direction, an attack-move, a hold) breaks the
-/// cast off, with no mana spent and no cooldown (Liquipedia, *Cast Animation*);
-/// no setting of Dota's client changes that, as its "Require Hold/Stop"
-/// settings concern channels. Given with Shift it waits behind the cast.
+/// Seat 0 gives its hero an order, queued or not, and the world advances one tick.
+fn give(world: &mut World, order: Order, queue: bool) -> Vec<crate::game::Event> {
+    world.advance(&[Command {
+        slot: SlotId(0),
+        unit: None,
+        order,
+        queue,
+        seq: 0,
+    }])
+}
+
+/// The abilities that went off in some events, in order.
+fn went_off(events: &[crate::game::Event]) -> Vec<AbilityId> {
+    events
+        .iter()
+        .filter_map(|event| match event.kind {
+            EventKind::AbilityCast { ability, .. } => Some(ability),
+            _ => None,
+        })
+        .collect()
+}
+
+fn walk_to_the_north() -> Order {
+    Order::Move {
+        target: Target::Pos(Vec2::from_ints(5000, 5400)),
+    }
+}
+
+/// Dota keeps a cast point to the cast: only a stop or a hold, or a disable,
+/// breaks it off. Any other order given inside it waits and runs once the
+/// cast has gone off (Liquipedia, *Turn Rate*, "gets queued up and executed
+/// once the spell is cast"; the Dota update of 2017-05-31), so a move given
+/// right after a raze lets it land and walks from the tick it does, a raze
+/// having no backswing.
 #[test]
-fn a_move_in_the_cast_point_breaks_the_raze_off_unless_it_is_queued() {
+fn a_move_in_the_cast_point_lets_the_raze_land_and_walks_from_that_tick() {
+    // An attack-move stops for the creep in reach, so it lands the raze and
+    // stands to swing.
     let orders = [
-        Order::Move {
-            target: Target::Pos(Vec2::from_ints(5000, 5400)),
-        },
-        Order::MoveDirection {
-            toward: Vec2::from_ints(5000, 5400),
-        },
-        Order::Attack {
-            target: Target::Pos(Vec2::from_ints(5000, 5400)),
-        },
+        (walk_to_the_north(), true),
+        (
+            Order::MoveDirection {
+                toward: Vec2::from_ints(5000, 5400),
+            },
+            true,
+        ),
+        (
+            Order::Attack {
+                target: Target::Pos(Vec2::from_ints(5000, 5400)),
+            },
+            false,
+        ),
+    ];
+    for (order, walks) in orders {
+        for queue in [false, true] {
+            let (mut world, fiend, mark) = fiend_and_a_mark(rules::RAZE_DISTANCE[0]);
+            let (mana, stood) = (
+                world.mana.get(fiend).expect("a pool").mana,
+                world.transform.get(fiend).expect("standing").pos,
+            );
+            cast(&mut world, RAZE_NEAR_SLOT, Target::None);
+            run(&mut world, 5);
+            give(&mut world, order, queue);
+            let mut burnt = Vec::new();
+            let mut walked_by = None;
+            for tick in 0..60 {
+                burnt.extend(burns_on(&world.step(), mark));
+                let at = world.transform.get(fiend).expect("standing").pos;
+                if walked_by.is_none() && at != stood {
+                    walked_by = Some(tick);
+                }
+            }
+            assert_eq!(burnt, vec![rules::RAZE_DAMAGE[0]], "{order:?}: it lands");
+            assert!(
+                cooldown(&world, fiend, RAZE_NEAR_SLOT) > 0,
+                "and is paid for"
+            );
+            assert!(world.mana.get(fiend).expect("a pool").mana <= mana);
+            // The cast point has 17 - 6 ticks left; the order runs on the
+            // tick it ends on, so the first step follows at once.
+            let cast_tick = ticks_of(rules::RAZE_CAST_POINT_MS) - 6;
+            assert!(
+                !walks || walked_by.is_some_and(|tick| tick <= cast_tick + 1),
+                "{order:?} queue {queue}: walked from {walked_by:?}, the cast at {cast_tick}"
+            );
+        }
+    }
+}
+
+#[test]
+fn a_hold_in_the_cast_point_breaks_the_raze_off_with_nothing_spent() {
+    let (mut world, fiend, mark) = fiend_and_a_mark(rules::RAZE_DISTANCE[0]);
+    let mana = world.mana.get(fiend).expect("a pool").mana;
+    cast(&mut world, RAZE_NEAR_SLOT, Target::None);
+    run(&mut world, 5);
+    give(
+        &mut world,
         Order::Attack {
             target: Target::None,
         },
-    ];
-    for order in orders {
-        for queue in [false, true] {
-            let (mut world, fiend, mark) = fiend_and_a_mark(rules::RAZE_DISTANCE[0]);
-            let mana = world.mana.get(fiend).expect("a pool").mana;
-            cast(&mut world, RAZE_NEAR_SLOT, Target::None);
-            run(&mut world, 5);
-            world.advance(&[Command {
-                slot: SlotId(0),
-                unit: None,
-                order,
-                queue,
-                seq: 0,
-            }]);
-            let mut burnt = Vec::new();
-            for _ in 0..60 {
-                burnt.extend(burns_on(&world.step(), mark));
-            }
-            if queue {
-                assert_eq!(
-                    burnt,
-                    vec![rules::RAZE_DAMAGE[0]],
-                    "{order:?} queued: it lands"
-                );
-                assert!(
-                    cooldown(&world, fiend, RAZE_NEAR_SLOT) > 0,
-                    "and is paid for"
-                );
-            } else {
-                assert!(burnt.is_empty(), "{order:?}: the raze never goes off");
-                assert_eq!(cooldown(&world, fiend, RAZE_NEAR_SLOT), 0);
-                assert!(
-                    world.mana.get(fiend).expect("a pool").mana >= mana,
-                    "nothing is spent"
-                );
-            }
-        }
+        false,
+    );
+    let mut burnt = Vec::new();
+    for _ in 0..30 {
+        burnt.extend(burns_on(&world.step(), mark));
     }
+    assert!(burnt.is_empty(), "the raze never goes off");
+    assert_eq!(cooldown(&world, fiend, RAZE_NEAR_SLOT), 0);
+    assert!(world.mana.get(fiend).expect("a pool").mana >= mana);
+}
+
+/// Casts given inside a cast point go off in turn (the 2017 update): Q, W and E
+/// pressed at once give three razes; a move given after them replaces the
+/// ones still waiting, the cast in hand still landing; a cast given after a
+/// move replaces the move.
+#[test]
+fn razes_given_in_a_cast_point_go_off_in_turn_and_a_move_drops_the_waiting_ones() {
+    let razes = [RAZE_NEAR_SLOT, RAZE_MID_SLOT, RAZE_FAR_SLOT];
+    let cast_order = |slot: u8| Order::Cast {
+        slot: bota_proto::AbilitySlot(slot),
+        target: Target::None,
+    };
+    let play = |orders: &[Order]| {
+        let (mut world, fiend, _) = fiend_and_a_mark(rules::RAZE_DISTANCE[0]);
+        world.mana.get_mut(fiend).expect("a pool").mana = Fixed::from_int(2000);
+        cast(&mut world, razes[0], Target::None);
+        for order in orders {
+            give(&mut world, *order, false);
+        }
+        let mut gone = Vec::new();
+        for _ in 0..120 {
+            gone.extend(went_off(&world.step()));
+        }
+        let at = world.transform.get(fiend).expect("standing").pos;
+        (gone, at != Vec2::from_ints(5000, 5000))
+    };
+    let (gone, walked) = play(&[cast_order(razes[1]), cast_order(razes[2])]);
+    assert_eq!(
+        gone,
+        vec![
+            AbilityId::RAZE_NEAR,
+            AbilityId::RAZE_MID,
+            AbilityId::RAZE_FAR
+        ],
+        "the three go off in turn"
+    );
+    assert!(!walked);
+    let (gone, walked) = play(&[cast_order(razes[1]), walk_to_the_north()]);
+    assert_eq!(
+        gone,
+        vec![AbilityId::RAZE_NEAR],
+        "the move replaced the waiting raze, the one in hand landed"
+    );
+    assert!(walked, "and runs after the one in hand");
+    let (gone, walked) = play(&[walk_to_the_north(), cast_order(razes[2])]);
+    assert_eq!(
+        gone,
+        vec![AbilityId::RAZE_NEAR, AbilityId::RAZE_FAR],
+        "a cast replaces the move"
+    );
+    assert!(!walked);
+}
+
+/// A disable breaks the cast off as before; what was given in the cast point
+/// runs when the disable ends.
+#[test]
+fn a_stun_in_the_cast_point_breaks_the_raze_off_and_the_waiting_move_runs_after() {
+    let (mut world, fiend, mark) = fiend_and_a_mark(rules::RAZE_DISTANCE[0]);
+    let (mana, stood) = (
+        world.mana.get(fiend).expect("a pool").mana,
+        world.transform.get(fiend).expect("standing").pos,
+    );
+    cast(&mut world, RAZE_NEAR_SLOT, Target::None);
+    run(&mut world, 3);
+    give(&mut world, walk_to_the_north(), false);
+    put_on(&mut world, fiend, ModifierKind::Stunned, 60);
+    let mut burnt = Vec::new();
+    for _ in 0..50 {
+        burnt.extend(burns_on(&world.step(), mark));
+    }
+    assert!(burnt.is_empty(), "the raze never goes off");
+    assert_eq!(cooldown(&world, fiend, RAZE_NEAR_SLOT), 0);
+    assert!(world.mana.get(fiend).expect("a pool").mana >= mana);
+    assert_eq!(
+        world.transform.get(fiend).expect("standing").pos,
+        stood,
+        "stunned, it has not walked"
+    );
+    run(&mut world, 60);
+    assert_ne!(
+        world.transform.get(fiend).expect("standing").pos,
+        stood,
+        "and walks when the stun is over"
+    );
 }
 
 #[test]

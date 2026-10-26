@@ -189,6 +189,10 @@ pub struct World {
     pub orders: Table<Orders>,
     /// The orders each entity has queued behind the one it follows.
     pub queue: Table<crate::game::OrderQueue>,
+    /// The orders each entity was given in a cast point, to carry out once
+    /// the cast has gone off (Dota's pseudo-queue): the casts given there in
+    /// turn, or the one move, attack or the like that replaced them.
+    pub waiting: Table<crate::game::OrderQueue>,
     /// Who each entity is set on. Absent when it is set on nobody.
     pub target: Table<Target>,
     /// What each entity is doing.
@@ -336,6 +340,7 @@ impl World {
             march: Table::new(),
             orders: Table::new(),
             queue: Table::new(),
+            waiting: Table::new(),
             target: Table::new(),
             action: Table::new(),
             lane_ai: Table::new(),

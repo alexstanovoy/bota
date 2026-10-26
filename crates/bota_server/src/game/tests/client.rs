@@ -214,7 +214,9 @@ fn the_ledger_keeps_a_standing_walk_exactly_while_the_server_does() {
         slot: near,
         target: Target::None,
     };
-    give(&mut local, &mut session, raze, 5);
+    // Long enough for the raze to go off: an order given inside its cast
+    // point waits for it.
+    give(&mut local, &mut session, raze, 20);
     assert_eq!(walks_on(&local, &session), (true, true), "a raze");
     let world = local.world();
     let tower = world
