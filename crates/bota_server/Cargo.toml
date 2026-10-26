@@ -36,7 +36,7 @@ tokio = { version = "1.53.3", default-features = false, features = ["net", "rt",
 tokio-rustls = { version = "0.26.6", default-features = false, features = ["ring"], optional = true }
 tokio-tungstenite = { version = "0.30.0", default-features = false, features = ["handshake"], optional = true }
 # Replays are written as one Zstandard stream; players read them with a pure-Rust decoder.
-zstd = { version = "0.13.3", default-features = false }
+zstd = { version = "0.14.3", default-features = false }
 
 [dev-dependencies]
 bota_client_core = { workspace = true }
