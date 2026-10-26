@@ -166,6 +166,39 @@ fn a_broken_channel_keeps_the_scroll_but_not_the_mana_or_the_wait() {
     );
 }
 
+/// Dota's channels break on any order to the body unless the player set the
+/// client's "Require Hold/Stop" option for them (see the client core); a
+/// move to a spot breaks the scroll as a stop does, and one given with Shift
+/// waits for it to land.
+#[test]
+fn a_move_breaks_the_channel_and_a_queued_one_waits_for_the_landing() {
+    let (mut world, hero) = a_hero_with_a_scroll();
+    let to = beside_own_tower(&world);
+    let walk = Order::Move {
+        target: Target::Pos(Vec2::from_ints(5000, 5000)),
+    };
+    read_at(&mut world, Target::Pos(to));
+    seat_order(&mut world, walk);
+    assert!(!world.is_channelling(hero), "an unqueued move breaks it");
+    assert!(world.owes_wait(hero, ItemId::TOWN_PORTAL_SCROLL));
+    let (mut world, hero) = a_hero_with_a_scroll();
+    read_at(&mut world, Target::Pos(to));
+    world.advance(&[crate::game::Command {
+        slot: SlotId(0),
+        unit: None,
+        order: walk,
+        queue: true,
+        seq: 0,
+    }]);
+    assert!(world.is_channelling(hero), "a queued move leaves it be");
+    run(&mut world, rules::SCROLL_CHANNEL_TICKS + 2);
+    assert!(!world.is_channelling(hero));
+    assert!(
+        scrolls(&world, hero).is_none(),
+        "the scroll was spent: the channel landed"
+    );
+}
+
 #[test]
 fn a_stun_breaks_the_channel() {
     let (mut world, hero) = a_hero_with_a_scroll();

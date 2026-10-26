@@ -1,5 +1,6 @@
 //! The client core, tested without a window or a socket.
 
+use crate::ui::ChannelStops;
 use crate::ui::app::{App, FeedKind, Killer, Tap, Victim, tap_again};
 use crate::ui::slots::{Look, Press, Slot, ability_look, decide, item_look, order_for};
 use bota_proto::{
@@ -644,6 +645,71 @@ fn items_chosen_in_the_tactical_phase_are_bought_one_a_tick_once_the_match_begin
         })
     );
     assert!(app.queued_buys.is_empty());
+}
+
+#[test]
+fn a_channel_that_wants_hold_or_stop_keeps_the_last_order_back_until_it_ends() {
+    use crate::ui::intent::Intent;
+    let channelling = |app: &mut App, tick: u32, on: bool| {
+        let mut hero = owned(1, UnitKind::Hero, Some(SlotId(0)));
+        if on {
+            hero.statuses.bits |= StatusFlags::CHANNELLING;
+        }
+        let id = hero.id;
+        app.handle(snapshot_of(
+            tick,
+            vec![hero],
+            vec![a_seat(SlotId(0), Some(id))],
+        ));
+    };
+    let sent = |app: &App| app.shown_orders.last().map(|shown| shown.order);
+    let walk = |x: f32| Order::Move {
+        target: Target::Pos(Vec2::from_ints(x as i32, 0)),
+    };
+    for (stops, held) in [
+        (ChannelStops::default(), false),
+        (
+            ChannelStops {
+                teleport: false,
+                channels: true,
+            },
+            true,
+        ),
+    ] {
+        let mut app = a_started_app();
+        app.channel_stops = stops;
+        channelling(&mut app, 10, true);
+        app.act(Intent::MoveTo((100.0, 0.0)));
+        app.act(Intent::MoveTo((200.0, 0.0)));
+        assert_eq!(sent(&app), (!held).then(|| walk(200.0)), "{stops:?}");
+        if !held {
+            continue;
+        }
+        channelling(&mut app, 11, false);
+        assert_eq!(
+            sent(&app),
+            Some(walk(200.0)),
+            "only the last one is carried out"
+        );
+        // A stop is never kept back, and takes the kept order with it.
+        channelling(&mut app, 12, true);
+        app.act(Intent::MoveTo((300.0, 0.0)));
+        app.act(Intent::Stop);
+        assert_eq!(
+            sent(&app),
+            Some(Order::Move {
+                target: Target::None
+            })
+        );
+        channelling(&mut app, 13, false);
+        assert_eq!(
+            sent(&app),
+            Some(Order::Move {
+                target: Target::None
+            }),
+            "the move given before the stop is gone"
+        );
+    }
 }
 
 #[test]

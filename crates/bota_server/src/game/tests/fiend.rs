@@ -2,9 +2,9 @@
 
 use bota_core::{MELEE_CREEP, ModifierKind, isqrt64, presence_armor, rules, tower_def};
 
-use crate::game::{ActionState, Entity, UnitOrder, World, wire_id};
+use crate::game::{ActionState, Command, Entity, UnitOrder, World, wire_id};
 use bota_proto::{
-    AbilityId, CastView, EffectId, EventKind, Fixed, HeroId, Inflictor, SlotId, StatusFlags,
+    AbilityId, CastView, EffectId, EventKind, Fixed, HeroId, Inflictor, Order, SlotId, StatusFlags,
     Target, Team, Vec2,
 };
 
@@ -181,6 +181,66 @@ fn an_order_to_the_body_in_the_cast_point_breaks_the_raze_off_with_nothing_spent
     assert!(burnt.is_empty(), "the raze never goes off");
     assert_eq!(cooldown(&world, fiend, RAZE_NEAR_SLOT), 0);
     assert_eq!(world.mana.get(fiend).expect("a pool").mana, mana);
+}
+
+/// Dota keeps a cast point to the cast: any order to the body given inside
+/// it (a move to a spot or in a direction, an attack-move, a hold) breaks the
+/// cast off, with no mana spent and no cooldown (Liquipedia, *Cast Animation*);
+/// no setting of Dota's client changes that, as its "Require Hold/Stop"
+/// settings concern channels. Given with Shift it waits behind the cast.
+#[test]
+fn a_move_in_the_cast_point_breaks_the_raze_off_unless_it_is_queued() {
+    let orders = [
+        Order::Move {
+            target: Target::Pos(Vec2::from_ints(5000, 5400)),
+        },
+        Order::MoveDirection {
+            toward: Vec2::from_ints(5000, 5400),
+        },
+        Order::Attack {
+            target: Target::Pos(Vec2::from_ints(5000, 5400)),
+        },
+        Order::Attack {
+            target: Target::None,
+        },
+    ];
+    for order in orders {
+        for queue in [false, true] {
+            let (mut world, fiend, mark) = fiend_and_a_mark(rules::RAZE_DISTANCE[0]);
+            let mana = world.mana.get(fiend).expect("a pool").mana;
+            cast(&mut world, RAZE_NEAR_SLOT, Target::None);
+            run(&mut world, 5);
+            world.advance(&[Command {
+                slot: SlotId(0),
+                unit: None,
+                order,
+                queue,
+                seq: 0,
+            }]);
+            let mut burnt = Vec::new();
+            for _ in 0..60 {
+                burnt.extend(burns_on(&world.step(), mark));
+            }
+            if queue {
+                assert_eq!(
+                    burnt,
+                    vec![rules::RAZE_DAMAGE[0]],
+                    "{order:?} queued: it lands"
+                );
+                assert!(
+                    cooldown(&world, fiend, RAZE_NEAR_SLOT) > 0,
+                    "and is paid for"
+                );
+            } else {
+                assert!(burnt.is_empty(), "{order:?}: the raze never goes off");
+                assert_eq!(cooldown(&world, fiend, RAZE_NEAR_SLOT), 0);
+                assert!(
+                    world.mana.get(fiend).expect("a pool").mana >= mana,
+                    "nothing is spent"
+                );
+            }
+        }
+    }
 }
 
 #[test]

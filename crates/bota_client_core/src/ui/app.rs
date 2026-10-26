@@ -336,6 +336,11 @@ pub struct App {
     /// Whether the orders given now wait their turn in the unit's queue: the
     /// front end holds it while the player holds Shift, as in Dota.
     pub queueing: bool,
+    /// Which channels keep the orders given to the hero back until they end
+    /// (Dota's "Require Hold/Stop" options).
+    pub channel_stops: crate::ui::ChannelStops,
+    /// The order kept back by a channel, to carry out when it ends.
+    pub(crate) held_order: Option<IssuedOrder>,
     /// The unit picked, if one is. Nothing picked means one's own hero.
     pub selected: Option<EntityId>,
     /// What the camera is pinned to. Nothing means a free camera.
@@ -405,6 +410,8 @@ impl App {
             seat: Seat::watching(SESSION_OPTIONS),
             attack_move_armed: false,
             queueing: false,
+            channel_stops: crate::ui::ChannelStops::default(),
+            held_order: None,
             selected: None,
             pinned: None,
             tapped: None,
@@ -732,6 +739,14 @@ impl App {
             order,
             queue: self.queueing,
         };
+        // Only the last order given while a channel holds them back is carried out.
+        if self.held_by_channel(&issued) {
+            self.held_order = Some(issued);
+            return;
+        }
+        if issued.order.queues() && !issued.queue {
+            self.held_order = None;
+        }
         let Some(Ok(sent)) = self.seat.session_mut().map(|session| session.issue(issued)) else {
             return;
         };
@@ -851,6 +866,7 @@ impl App {
         }
         self.smooth.snapshot();
         self.send_next_queued_buy();
+        self.release_held_order();
         if let Some(view) = self.seat.session().and_then(ClientSession::current) {
             self.derived.snapshot(view);
         }

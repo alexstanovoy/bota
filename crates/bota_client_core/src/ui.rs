@@ -3,6 +3,7 @@
 #![allow(clippy::float_arithmetic)]
 
 mod app;
+mod channel_stop;
 mod chat;
 mod derive;
 mod events;
@@ -16,6 +17,7 @@ mod smooth;
 mod tests;
 
 pub use app::*;
+pub use channel_stop::*;
 pub use chat::*;
 pub use derive::*;
 pub use intent::*;
