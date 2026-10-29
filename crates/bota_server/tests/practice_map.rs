@@ -5,8 +5,8 @@ use std::net::TcpListener;
 use std::thread;
 use std::time::Duration;
 
-use bota_client_core::{Ingested, IssuedOrder, Link, Seat, SessionOptions, Transport};
-use bota_proto::{Cheat, HeroId, MapId, Order, TickMode, UnitKind, Vec2};
+use bota_client_core::{ClientSession, IssuedOrder, Link, Transport};
+use bota_proto::{Cheat, HeroId, MapId, Order, Target, TickMode, UnitKind, Vec2};
 use bota_server::game_loop::{DEFAULT_IDLE_TIMEOUT, DEFAULT_SPECTATORS_PER_SEAT, ServerOpts, run};
 use bota_server::net::DEFAULT_MESSAGES_PER_SEC;
 use bota_server::spectators::Spectators;
@@ -56,6 +56,27 @@ fn near(a: Vec2, b: Vec2) -> i64 {
     dx * dx + dy * dy
 }
 
+/// The one player of a practice match: picks `hero`, skips the horn and walks to `walk_to` when
+/// given.
+fn spawn_player(address: String, hero: HeroId, walk_to: Option<Vec2>) -> thread::JoinHandle<()> {
+    thread::spawn(move || {
+        let mut decisions = 0u32;
+        let _ = Link::play(&address, "practice", hero, move |_: &ClientSession| {
+            decisions += 1;
+            let order = match (decisions, walk_to) {
+                (1, _) => Order::Cheat {
+                    cheat: Cheat::StartGame,
+                },
+                (2, Some(pos)) => Order::Move {
+                    target: Target::Pos(pos),
+                },
+                _ => return Vec::new(),
+            };
+            vec![IssuedOrder::hero(order)]
+        });
+    })
+}
+
 #[test]
 fn a_practice_match_has_waves_on_all_three_lanes_and_stocked_camps() {
     let listener = TcpListener::bind("127.0.0.1:0").expect("a port");
@@ -66,34 +87,7 @@ fn a_practice_match_has_waves_on_all_three_lanes_and_stocked_camps() {
     let server = thread::spawn(move || run(listener, options));
     let map = bota_core::map_of(MapId(0));
 
-    // The one player skips the horn and keeps acknowledging ticks, which a lockstep match waits for.
-    let seat_address = address.clone();
-    let player = thread::spawn(move || {
-        let (mut link, seated) =
-            Link::join(&seat_address, "practice", HeroId::SHADOW_FIEND, None).expect("a seat");
-        let mut seat = Seat::new(seated, SessionOptions::default());
-        let mut started = false;
-        while let Ok(Some(msg)) = link.recv() {
-            let Ok(Ingested::TickComplete { .. }) = seat.ingest(msg, &mut ()) else {
-                continue;
-            };
-            let Some(session) = seat.session_mut() else {
-                continue;
-            };
-            if !started {
-                started = true;
-                let order = Order::Cheat {
-                    cheat: Cheat::StartGame,
-                };
-                if let Ok(outgoing) = session.issue(IssuedOrder::hero(order)) {
-                    let _ = link.send(&outgoing.message());
-                }
-            }
-            if let Some(tick) = session.end_turn() {
-                let _ = link.send(&bota_proto::ClientMsg::Ack { tick });
-            }
-        }
-    });
+    let player = spawn_player(address.clone(), HeroId::SHADOW_FIEND, None);
 
     let mut watcher = Link::connect(&address, Duration::from_secs(30)).expect("a connection");
     watcher
@@ -150,4 +144,49 @@ fn a_practice_match_has_waves_on_all_three_lanes_and_stocked_camps() {
         "waves on top, mid and bottom: {lanes:?}"
     );
     assert!(neutrals > 0, "the camps are stocked");
+}
+
+/// Practice offers every hero: Pudge, picked there, is the hero that stands on the map and
+/// obeys a move order, the scoreboard naming him.
+#[test]
+fn pudge_can_be_picked_and_walks_in_a_practice_match() {
+    let listener = TcpListener::bind("127.0.0.1:0").expect("a port");
+    let address = listener.local_addr().expect("bound").to_string();
+    let mut options = opts();
+    options.spectators = Spectators::Open;
+    let server = thread::spawn(move || run(listener, options));
+    // Four hundred units from where the hero stands.
+    let goal = Vec2::from_ints(2040, 2958);
+    let player = spawn_player(address.clone(), HeroId::PUDGE, Some(goal));
+
+    let mut watcher = Link::connect(&address, Duration::from_secs(30)).expect("a connection");
+    watcher
+        .send(&bota_proto::ClientMsg::hello(
+            bota_proto::Role::Spectator,
+            "looker",
+            None,
+            bota_core::WIRE_FINGERPRINT,
+        ))
+        .expect("hello");
+    let mut seated = None;
+    let mut first = None;
+    let mut moved = 0;
+    while let Ok(Some(msg)) = watcher.recv() {
+        let bota_proto::ServerMsg::Snapshot { view } = msg else {
+            continue;
+        };
+        seated = seated.or(view.players.first().map(|p| p.hero));
+        let Some(pudge) = view.units.iter().find(|u| u.hero == Some(HeroId::PUDGE)) else {
+            continue;
+        };
+        let start = *first.get_or_insert(pudge.pos);
+        moved = near(start, pudge.pos);
+        if moved > 300 * 300 {
+            break;
+        }
+    }
+    drop(watcher);
+    let _ = (player.join(), server.join());
+    assert_eq!(seated, Some(HeroId::PUDGE), "the scoreboard names Pudge");
+    assert!(moved > 300 * 300, "Pudge walked: {moved}");
 }
