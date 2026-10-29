@@ -27,6 +27,22 @@ pub(crate) struct Expect<'a> {
     pub last_event_tick: Option<u32>,
 }
 
+/// What the fold of a snapshot relies on, checked again after an observer
+/// reshaped the snapshot: its bounds, its skipped ticks, its units sorted
+/// and within their bounds, and the units its aggro names. The fold reads
+/// nothing else of the view that it does not check itself, so whatever the
+/// observer did, it holds by construction.
+pub(crate) fn reshaped(expect: &Expect<'_>, view: &WorldView) -> Result<(), SessionError> {
+    snapshot_limits(view)?;
+    skipped_ticks(expect, view)?;
+    units(
+        expect.statics.roster(),
+        expect.statics.metadata().cheats,
+        view,
+    )?;
+    aggro(view)
+}
+
 pub(crate) fn snapshot(expect: &Expect<'_>, view: &WorldView) -> Result<(), SessionError> {
     if let Some(owner) = expect.owner
         && view.viewer != Some(owner.team)

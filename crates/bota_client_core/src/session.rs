@@ -291,9 +291,9 @@ impl ClientSession {
     /// Folds one snapshot in, moving it into the session.
     ///
     /// The fold runs in this order, which the observer's hooks sit in: the
-    /// stream check, validation, `prepare`, the position check,
-    /// `before_snapshot`, the events of each skipped tick (`on_events`, then
-    /// folded), the entities, the remembered bodies, projectiles and loot,
+    /// stream check, validation, `prepare` and the checks again of what it
+    /// left, the position check, `before_snapshot`, the events of each
+    /// skipped tick (`on_events`, then folded), the entities, the remembered bodies, projectiles and loot,
     /// the body-change check on the request ledger, the swap of current and
     /// previous view, and `after_snapshot`.
     pub fn ingest_snapshot<O: Observer>(
@@ -308,7 +308,12 @@ impl ClientSession {
             .into());
         }
         validate::snapshot(&self.expectations(), &view)?;
+        let tick = view.tick;
         obs.prepare(&mut view).map_err(IngestError::Observer)?;
+        if view.tick != tick {
+            return Err(SessionError::Stream("an observer changed the snapshot's tick").into());
+        }
+        validate::reshaped(&self.expectations(), &view)?;
         validate::position_deltas(self.tracks.all(), &view)?;
         obs.before_snapshot(self, &view)
             .map_err(IngestError::Observer)?;

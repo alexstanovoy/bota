@@ -1,14 +1,16 @@
 //! The client library's session folds what a server sends and nothing else.
 
+use core::convert::Infallible;
+
 use bota_client_core::{
-    AckPolicy, ClientSession, Ingested, IssuedOrder, MAX_TRACKED_ENTITIES, MatchStatic,
-    SessionError, SessionOptions,
+    AckPolicy, ClientSession, IngestError, Ingested, IssuedOrder, MAX_TRACKED_ENTITIES,
+    MatchStatic, Observer, SessionError, SessionOptions,
 };
 use bota_core::{ModifierKind, NeutralAbility, map_of, rules};
 use bota_proto::{
-    AbilitySlot, Angle, EntityId, EventKind, Fixed, HeroId, ItemId, ItemSlot, LootView, MatchInfo,
-    Order, OutgoingOrder, ProjectileView, ServerMsg, SkippedTick, SlotId, StockView, Target, Team,
-    UnitKind, Vec2, WorldView,
+    AbilitySlot, AggroView, Angle, EntityId, EventKind, Fixed, HeroId, ItemId, ItemSlot, LootView,
+    MatchInfo, Order, OutgoingOrder, ProjectileView, ServerMsg, SkippedTick, SlotId, StockView,
+    Target, Team, UnitKind, Vec2, WorldView,
 };
 
 use super::local::mid_config;
@@ -566,4 +568,68 @@ fn a_unit_wears_no_more_effects_than_the_contract_bounds_and_the_client_folds_th
     assert_eq!(folded, Ok(()));
     assert_eq!(held, rules::MAX_EFFECTS_PER_UNIT);
     assert_eq!(told, rules::MAX_EFFECTS_PER_UNIT);
+}
+
+/// An observer whose `prepare` reshapes the snapshot the way a client may.
+struct Reshape(fn(&mut WorldView));
+
+impl Observer for Reshape {
+    type Error = Infallible;
+
+    fn prepare(&mut self, view: &mut WorldView) -> Result<(), Infallible> {
+        (self.0)(view);
+        Ok(())
+    }
+}
+
+/// A view in which two units never seen before fight.
+fn fighting(base: &WorldView) -> WorldView {
+    let mut view = crowded(later(base, 1), [10_000, 10_001]);
+    view.aggro = vec![AggroView {
+        unit: entity(10_000),
+        target: Some(entity(10_001)),
+        swing: None,
+        hold_left: 0,
+        chase_left: 0,
+        draw_cooldown: 0,
+        returning: false,
+        held_for: Some(0),
+        chased_for: Some(0),
+        draw_wait: None,
+    }];
+    view
+}
+
+/// Whatever an observer makes of a validated snapshot, the session answers
+/// with an error, never a panic: what the fold relies on is checked after
+/// the observer's edit.
+#[test]
+fn an_observer_cannot_make_a_validated_snapshot_panic_the_fold() {
+    type Edit = fn(&mut WorldView);
+    let edits: [(&str, Edit); 4] = [
+        ("drops the unit an aggro entry names", |view| {
+            view.units.retain(|unit| unit.id != entity(10_001));
+        }),
+        ("adds units past the bound", |view| {
+            let copy = view.units.clone();
+            view.units
+                .extend(copy.into_iter().cycle().take(MAX_TRACKED_ENTITIES));
+        }),
+        ("reverses the units", |view| view.units.reverse()),
+        ("moves the tick back", |view| view.tick = 0),
+    ];
+    for (name, edit) in edits {
+        let (_, mut session) = seated();
+        let base = session.current().expect("a view").clone();
+        let view = fighting(&base);
+        session
+            .ingest(ServerMsg::Snapshot { view: view.clone() }, &mut ())
+            .expect("the unedited view folds");
+        let (_, mut session) = seated();
+        let outcome = session.ingest(ServerMsg::Snapshot { view }, &mut Reshape(edit));
+        assert!(
+            matches!(outcome, Err(IngestError::Session(_))),
+            "an observer that {name}: {outcome:?}"
+        );
+    }
 }

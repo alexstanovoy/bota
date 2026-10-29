@@ -26,7 +26,10 @@ pub trait Observer {
     type Error;
 
     /// The validated snapshot, before anything of it is used: the client may
-    /// reshape it.
+    /// reshape it (drop units and the aggro that names them, reorder or cut
+    /// the loot), but not move its tick. The session checks what the fold
+    /// relies on again after this (the bounds, the sorted units, the units
+    /// the aggro names), and refuses a snapshot the edit left breaking it.
     fn prepare(&mut self, _view: &mut WorldView) -> Result<(), Self::Error> {
         Ok(())
     }
