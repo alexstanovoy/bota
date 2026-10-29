@@ -640,12 +640,6 @@ impl ClientSession {
             .map(|delay| delay.ticks)
     }
 
-    /// The same delay in milliseconds: the server's measure of the round trip.
-    pub fn order_delay_ms(&self) -> Option<u32> {
-        let ticks = self.order_delay()?;
-        Some(ticks.saturating_mul(1000) / u32::from(self.statics.metadata().tick_rate.max(1)))
-    }
-
     /// The tick of the latest events folded in, a skipped tick's included.
     pub const fn last_event_tick(&self) -> Option<u32> {
         self.last_event_tick
