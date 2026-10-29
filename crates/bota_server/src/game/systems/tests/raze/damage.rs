@@ -1,4 +1,5 @@
-use bota_proto::{Angle, Fixed, SlotId, Team};
+use crate::game::{World, wire_id};
+use bota_proto::{Angle, Fixed, HeroId, SlotId, Team};
 
 use super::fixtures::*;
 
@@ -111,4 +112,37 @@ fn raze_stacks_saturate_at_255_not_at_three_and_continue_refreshing() {
             vec![effect((hit + 1).min(255) as u32, 180)]
         );
     }
+}
+
+/// Dota 7.41f's base Shadowraze carries no slow: `movement_speed_debuff` is
+/// `0 0 0 0` and only Aghanim's Shard (not modelled) makes it 12% a stack. The
+/// debuff on the hit hero is the damage stack alone, whatever its count, and
+/// its derived speed stays the unhit hero's.
+#[test]
+fn raze_debuff_is_the_damage_stack_alone_and_leaves_the_hit_hero_at_full_speed() {
+    let mut world = World::new();
+    let caster = world.spawn_hero(Team::Radiant, ORIGIN, SlotId(0), HeroId::SHADOW_FIEND);
+    let target = world.spawn_hero(Team::Dire, TARGET, SlotId(1), HeroId::SHADOW_FIEND);
+    world.transform.get_mut(caster).unwrap().facing = Angle { brads: 0 };
+    world.settle();
+    reveal(&mut world, target);
+    let speed = |world: &World| world.stats.get(target).unwrap().move_speed;
+    // A real hero's health: the three first-level razes (360) leave it standing.
+    let free = speed(&world);
+    assert_eq!(free, Fixed::from_int(305));
+    for reach in 0..3 {
+        assert!(world.cast_raze(caster, 0, reach));
+    }
+    world.step();
+    assert_eq!(effects(&world, target), vec![effect(3, 180)]);
+    let view = world.view_full();
+    let unit = view.units.iter().find(|u| u.id == wire_id(target)).unwrap();
+    let ids: Vec<_> = unit.effects.iter().map(|effect| effect.id).collect();
+    assert_eq!(ids, [RAZE_EFFECT], "no second debuff rides along");
+    assert_eq!(speed(&world), free);
+    for _ in 0..90 {
+        world.step();
+    }
+    assert_eq!(effects(&world, target), vec![effect(3, 90)]);
+    assert_eq!(speed(&world), free);
 }

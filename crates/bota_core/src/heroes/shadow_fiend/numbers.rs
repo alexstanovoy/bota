@@ -24,6 +24,9 @@ pub const RAZE_DAMAGE: [i32; 4] = [85, 150, 215, 280];
 pub const RAZE_DAMAGE_PER_SOUL: i32 = 2;
 /// Additional magical damage per prior same-caster stack, by cast level.
 pub const RAZE_STACK_DAMAGE: [i32; 4] = [35, 50, 65, 80];
+/// The base raze slows nobody: `movement_speed_debuff` is `0 0 0 0` and only
+/// Aghanim's Shard (not modelled; the Shadowmire facet is deprecated) makes it
+/// 12% a stack.
 /// Ticks until all of one caster's stacks expire after its latest damaging hit.
 pub const RAZE_DEBUFF_TICKS: u32 = 6 * TICKS_PER_SECOND;
 /// Maximum stacks held per target and caster.
