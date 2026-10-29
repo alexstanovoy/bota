@@ -1195,6 +1195,33 @@ fn our_kill_of_a_creep_never_in_sight_sounds_its_last_hit() {
     assert!(app.feed.is_empty(), "no hero fell");
 }
 
+#[test]
+fn a_hero_falling_cues_its_death_for_that_hero() {
+    let (mut app, us, theirs) = a_duel_app();
+    app.cues.clear();
+    app.handle(bota_proto::ServerMsg::Events {
+        tick: 10,
+        events: vec![EventKind::Died {
+            unit: theirs,
+            killer: Some(us),
+            denied: false,
+            gold: 0,
+            bounty: Some(200),
+        }],
+    });
+    app.pump(0.0);
+    let cue = app
+        .cues
+        .iter()
+        .find(|cue| cue.kind == crate::ui::app::CueKind::HeroDeath)
+        .expect("a hero fell");
+    assert_eq!(
+        cue.hero,
+        Some(HeroId::SHADOW_FIEND),
+        "the death sound is the fallen hero's own"
+    );
+}
+
 /// A Radiant view of the duel's two seats, the Dire seat's creep score as
 /// given.
 fn a_radiant_view_scoring_dire(score: Option<bota_proto::CreepScore>) -> bota_proto::ServerMsg {

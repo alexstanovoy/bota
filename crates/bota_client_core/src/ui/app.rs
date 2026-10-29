@@ -289,6 +289,9 @@ pub struct Cue {
     pub gain: f32,
     /// World position it comes from.
     pub at: Option<(f32, f32)>,
+    /// The hero a hero's cue is about (the attacker, the one struck for,
+    /// the one fallen): sounds are a hero's own.
+    pub hero: Option<bota_proto::HeroId>,
 }
 
 /// Why an ally is no target of a click that attacks allies, which Dota's
@@ -1018,8 +1021,24 @@ impl App {
     }
 
     pub fn cue(&mut self, kind: CueKind, gain: f32, at: Option<(f32, f32)>) {
+        self.cue_of(None, kind, gain, at);
+    }
+
+    /// A cue about a hero.
+    pub fn cue_of(
+        &mut self,
+        hero: Option<bota_proto::HeroId>,
+        kind: CueKind,
+        gain: f32,
+        at: Option<(f32, f32)>,
+    ) {
         if self.cues.len() < MAX_CUES {
-            self.cues.push(Cue { kind, gain, at });
+            self.cues.push(Cue {
+                kind,
+                gain,
+                at,
+                hero,
+            });
         }
     }
 

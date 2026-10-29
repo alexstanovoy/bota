@@ -118,7 +118,8 @@ impl App {
         self.float(target, amount, look);
         let ears = self.ears();
         if source.is_some() && source == ears && kind == DamageKind::Physical {
-            self.cue(CueKind::Hit, 0.55, None);
+            let hero = source.and_then(|id| self.freshest(id)).and_then(|u| u.hero);
+            self.cue_of(hero, CueKind::Hit, 0.55, None);
         }
         let by_tower = source
             .and_then(|id| self.freshest(id))
@@ -139,6 +140,17 @@ impl App {
         let victim = self
             .freshest(unit)
             .map(|victim| (victim.pos.x.to_f32(), victim.pos.y.to_f32(), victim.kind));
+        let fallen = self
+            .freshest(unit)
+            .and_then(|victim| victim.hero)
+            .or_else(|| {
+                let view = self.view()?;
+                let seat = view
+                    .players
+                    .iter()
+                    .find(|p| self.body_of(p.slot) == Some(unit));
+                seat.map(|p| p.hero)
+            });
         let at = victim.map(|(x, y, _)| (x, y));
         let hero = victim.map_or_else(
             || self.seat_of_hero(unit).is_some(),
@@ -167,7 +179,7 @@ impl App {
                 self.cue(CueKind::HeroKill, 1.0, None);
             }
             let gain = if Some(unit) == ears { 1.0 } else { 0.6 };
-            self.cue(CueKind::HeroDeath, gain, at);
+            self.cue_of(fallen, CueKind::HeroDeath, gain, at);
         }
     }
 
@@ -205,11 +217,11 @@ impl App {
             let thrower = p.source.and_then(|id| view.unit(id));
             if let Some(hero) = thrower.filter(|unit| unit.kind == UnitKind::Hero) {
                 let gain = if Some(hero.id) == ears { 0.7 } else { 0.4 };
-                launched.push((gain, (hero.pos.x.to_f32(), hero.pos.y.to_f32())));
+                launched.push((hero.hero, gain, (hero.pos.x.to_f32(), hero.pos.y.to_f32())));
             }
         }
-        for (gain, at) in launched.into_iter().take(4) {
-            self.cue(CueKind::Attack, gain, Some(at));
+        for (hero, gain, at) in launched.into_iter().take(4) {
+            self.cue_of(hero, CueKind::Attack, gain, Some(at));
         }
     }
 
