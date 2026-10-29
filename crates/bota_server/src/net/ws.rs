@@ -346,13 +346,14 @@ struct WsSink {
 }
 
 impl FrameSink for WsSink {
-    fn send_frames(&mut self, mut frames: Vec<u8>) -> io::Result<()> {
-        while !frames.is_empty() {
-            let rest = frames.split_off(frame_len(&frames));
+    fn send_frames(&mut self, frames: Vec<u8>) -> io::Result<()> {
+        let mut rest = frames.as_slice();
+        while !rest.is_empty() {
+            let (frame, tail) = rest.split_at(frame_len(rest));
             self.outbound
-                .blocking_send(Outbound::Frame(Bytes::from(frames)))
+                .blocking_send(Outbound::Frame(Bytes::copy_from_slice(frame)))
                 .map_err(|_| io::Error::from(io::ErrorKind::BrokenPipe))?;
-            frames = rest;
+            rest = tail;
         }
         Ok(())
     }

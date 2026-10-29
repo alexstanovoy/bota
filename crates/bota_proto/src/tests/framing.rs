@@ -201,3 +201,96 @@ fn a_compressed_part_unpacking_past_its_bound_is_refused() {
     assert!(matches!(refused, CodecError::Unpacked { len } if len > MAX_UNPACKED_PART_LEN));
     assert!(pings * ping.len() <= MAX_UNPACKED_PART_LEN);
 }
+
+/// How long hostile input may take: the work is linear in the bytes, so four
+/// megabytes of pings take milliseconds in a release build and a fraction of
+/// a second in a debug one. A reader that moves its whole buffer for every
+/// frame takes some thirteen seconds (measured before it was fixed).
+const HOSTILE_INPUT_BUDGET: std::time::Duration = std::time::Duration::from_secs(2);
+
+#[test]
+fn a_push_of_tiny_frames_is_read_in_time_linear_in_its_bytes() {
+    let ping = encode_frame_to_vec(&ServerMsg::Ping).unwrap();
+    let wire: Vec<u8> = ping
+        .iter()
+        .copied()
+        .cycle()
+        .take(ping.len() * 800_000)
+        .collect();
+    let mut reader = FrameReader::new();
+    let started = std::time::Instant::now();
+    reader.push(&wire);
+    let mut pings = 0;
+    while let Some(ServerMsg::Ping) = reader.next_message().unwrap() {
+        pings += 1;
+    }
+    assert_eq!(pings, 800_000);
+    assert!(reader.is_empty());
+    assert!(
+        started.elapsed() < HOSTILE_INPUT_BUDGET,
+        "{:?}",
+        started.elapsed()
+    );
+}
+
+/// `plain` as the server packs it: raw DEFLATE, flushed at its end, which
+/// the stream goes on after.
+fn sync_flushed(plain: &[u8]) -> Vec<u8> {
+    use miniz_oxide::deflate::core::{
+        CompressorOxide, TDEFLFlush, TDEFLStatus, compress, create_comp_flags_from_zip_params,
+    };
+    let mut compressor = CompressorOxide::new(create_comp_flags_from_zip_params(9, -15, 0));
+    let mut out = vec![0; plain.len() / 100 + 1024];
+    let (status, used, written) = compress(&mut compressor, plain, &mut out, TDEFLFlush::Sync);
+    assert_eq!((status, used), (TDEFLStatus::Okay, plain.len()));
+    out.truncate(written);
+    out
+}
+
+/// A few KiB of DEFLATE that unpack to the most a part may hold, as pings.
+#[test]
+fn a_compressed_part_of_pings_unpacks_in_time_linear_in_its_bytes() {
+    let ping = encode_frame_to_vec(&ServerMsg::Ping).unwrap();
+    let plain: Vec<u8> = ping
+        .iter()
+        .copied()
+        .cycle()
+        .take(MAX_UNPACKED_PART_LEN / ping.len() * ping.len())
+        .collect();
+    let part = sync_flushed(&plain);
+    let mut unpacker = Unpacker::new();
+    let started = std::time::Instant::now();
+    assert_eq!(unpacker.take(ServerMsg::Compressed(part)), Ok(None));
+    let mut pings = 0;
+    while let Some(ServerMsg::Ping) = unpacker.next_message().unwrap() {
+        pings += 1;
+    }
+    assert_eq!(pings, plain.len() / ping.len());
+    assert!(
+        started.elapsed() < HOSTILE_INPUT_BUDGET,
+        "{:?}",
+        started.elapsed()
+    );
+}
+
+#[test]
+fn frames_taken_in_between_pushes_come_out_whole_and_in_order() {
+    let frames: Vec<Vec<u8>> = (0..300u16)
+        .map(|n| encode_frame_to_vec(&vec![n as u8; usize::from(n % 40)]).unwrap())
+        .collect();
+    let wire = frames.concat();
+    let mut reader = FrameReader::new();
+    let mut got = Vec::new();
+    for chunk in wire.chunks(97) {
+        reader.push(chunk);
+        // Take only some, so the taken prefix and the kept tail both grow.
+        for _ in 0..2 {
+            got.extend(reader.next_frame().unwrap());
+        }
+    }
+    while let Some(frame) = reader.next_frame().unwrap() {
+        got.push(frame);
+    }
+    assert_eq!(got, frames);
+    assert!(reader.is_empty());
+}

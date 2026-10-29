@@ -110,6 +110,10 @@ pub fn decode_payload<T: DeserializeOwned>(payload: &[u8]) -> Result<T, CodecErr
 #[derive(Clone, Debug, Default)]
 pub struct FrameReader {
     buf: Vec<u8>,
+    /// Where the frame at the front starts: the bytes before it were taken.
+    /// Taking a frame only moves this, so a push of many small frames costs
+    /// what its bytes do.
+    start: usize,
 }
 
 impl FrameReader {
@@ -120,7 +124,22 @@ impl FrameReader {
 
     /// Add bytes that just arrived.
     pub fn push(&mut self, bytes: &[u8]) {
+        self.compact();
         self.buf.extend_from_slice(bytes);
+    }
+
+    /// Drops the bytes taken, once they are at least as many as the bytes
+    /// kept: each byte is moved at most once for every byte taken before
+    /// it, so a hostile stream cannot make the moving quadratic, and the
+    /// buffer holds at most twice what waits.
+    fn compact(&mut self) {
+        if self.start == self.buf.len() {
+            self.buf.clear();
+            self.start = 0;
+        } else if self.start >= self.buf.len() - self.start {
+            self.buf.drain(..self.start);
+            self.start = 0;
+        }
     }
 
     /// Take the next complete message, or `None` if one has not fully arrived.
@@ -131,14 +150,14 @@ impl FrameReader {
         let Some(end) = self.frame_end()? else {
             return Ok(None);
         };
-        let msg = decode_payload(&self.buf[LEN_PREFIX..end])?;
-        self.buf.drain(..end);
+        let msg = decode_payload(&self.buf[self.start + LEN_PREFIX..self.start + end])?;
+        self.start += end;
         Ok(Some(msg))
     }
 
     /// Whether no byte waits: every byte pushed belonged to a frame taken.
     pub fn is_empty(&self) -> bool {
-        self.buf.is_empty()
+        self.start == self.buf.len()
     }
 
     /// Take the next complete frame whole, length prefix included and payload
@@ -148,13 +167,15 @@ impl FrameReader {
         let Some(end) = self.frame_end()? else {
             return Ok(None);
         };
-        Ok(Some(self.buf.drain(..end).collect()))
+        let frame = self.buf[self.start..self.start + end].to_vec();
+        self.start += end;
+        Ok(Some(frame))
     }
 
     /// Where the frame at the front ends, once all of it has arrived. Its
     /// length is checked as soon as the prefix is in.
     fn frame_end(&self) -> Result<Option<usize>, CodecError> {
-        let Some(prefix) = self.buf.first_chunk::<LEN_PREFIX>() else {
+        let Some(prefix) = self.buf[self.start..].first_chunk::<LEN_PREFIX>() else {
             return Ok(None);
         };
         let len = u32::from_le_bytes(*prefix) as usize;
@@ -162,6 +183,6 @@ impl FrameReader {
             return Err(CodecError::TooLarge { len });
         }
         let end = LEN_PREFIX + len;
-        Ok((self.buf.len() >= end).then_some(end))
+        Ok((self.buf.len() - self.start >= end).then_some(end))
     }
 }

@@ -26,6 +26,8 @@ const STEP: usize = 16 * 1024;
 #[derive(Default)]
 pub struct Unpacker {
     state: Option<Box<InflateState>>,
+    /// Where the inflater writes, allocated with the state and reused.
+    step: Vec<u8>,
     /// The part being unpacked, and how much of it has been.
     part: Vec<u8>,
     used: usize,
@@ -58,8 +60,10 @@ impl Unpacker {
                 false => Err(CodecError::Malformed),
             };
         };
-        self.state
-            .get_or_insert_with(|| InflateState::new_boxed(DataFormat::Raw));
+        if self.state.is_none() {
+            self.state = Some(InflateState::new_boxed(DataFormat::Raw));
+            self.step = vec![0; STEP];
+        }
         self.part = part;
         self.used = 0;
         self.unpacked = 0;
@@ -70,7 +74,6 @@ impl Unpacker {
     /// The next message the parts taken in hold, unpacking as much as it
     /// takes; none when they hold no whole message more.
     pub fn next_message(&mut self) -> Result<Option<ServerMsg>, CodecError> {
-        let mut step = [0u8; STEP];
         loop {
             match self.frames.next_message::<ServerMsg>()? {
                 Some(ServerMsg::Compressed(_)) => return Err(CodecError::Malformed),
@@ -79,13 +82,18 @@ impl Unpacker {
                 None => {}
             }
             let state = self.state.as_mut().ok_or(CodecError::Malformed)?;
-            let result = inflate(state, &self.part[self.used..], &mut step, MZFlush::None);
+            let result = inflate(
+                state,
+                &self.part[self.used..],
+                &mut self.step,
+                MZFlush::None,
+            );
             self.used += result.bytes_consumed;
             self.unpacked += result.bytes_written;
             if self.unpacked > MAX_UNPACKED_PART_LEN {
                 return Err(CodecError::Unpacked { len: self.unpacked });
             }
-            self.frames.push(&step[..result.bytes_written]);
+            self.frames.push(&self.step[..result.bytes_written]);
             let stuck = result.bytes_written == 0 && result.bytes_consumed == 0;
             self.pending = self.used < self.part.len() || result.bytes_written == STEP;
             // The server's stream never ends, and it flushes at the end of
