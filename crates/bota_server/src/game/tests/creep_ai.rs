@@ -1,6 +1,8 @@
 //! What creeps and towers choose to fight, and what pulls them.
 
-use bota_core::{CAMPS, MELEE_CREEP, NeutralKind, PriorityOrder, SIEGE_CREEP, rules, tower_def};
+use bota_core::{
+    CAMPS, COURIER, MELEE_CREEP, NeutralKind, PriorityOrder, SIEGE_CREEP, rules, tower_def,
+};
 
 use crate::game::{CampHome, Entity, NeutralAi, UnitOrder, World, wire_id};
 use bota_proto::{Fixed, HeroId, SlotId, Target, Team, Vec2};
@@ -269,6 +271,83 @@ fn a_hero_putting_out_its_own_is_taken_on_last() {
         Some(theirs),
         "so the creep it was denying is taken on instead"
     );
+}
+
+/// A creep of side Radiant at 5000, a friend beside it, and a Dire
+/// courier 100 off and Dire hero 300 off.
+fn a_courier_and_a_hero_before_a_creep() -> (World, Entity, Entity, Entity, Entity) {
+    let mut world = World::new();
+    let creep = thinking_creep(&mut world, Vec2::from_ints(5000, 5000));
+    let friend = world.spawn_unit(&MELEE_CREEP, Team::Radiant, Vec2::from_ints(4950, 5000));
+    let courier = world.spawn_unit(&COURIER, Team::Dire, Vec2::from_ints(5100, 5000));
+    let hero = world.spawn_hero(
+        Team::Dire,
+        Vec2::from_ints(5300, 5000),
+        SlotId(0),
+        HeroId::SHADOW_FIEND,
+    );
+    world.settle();
+    (world, creep, friend, courier, hero)
+}
+
+#[test]
+fn a_hero_laying_into_your_side_is_taken_before_a_nearer_courier() {
+    let (mut world, creep, friend, courier, hero) = a_courier_and_a_hero_before_a_creep();
+    world.set_order(
+        hero,
+        UnitOrder::Attack {
+            target: friend,
+            last_seen: Vec2::from_ints(4950, 5000),
+        },
+    );
+    assert_eq!(
+        world.best_valid_in_range(creep, Fixed::from_int(600), &world.candidates()),
+        Some(hero),
+        "a courier threatens nobody, so a hero at work comes first"
+    );
+    assert!(world.alive(courier));
+}
+
+#[test]
+fn an_idle_hero_and_a_courier_go_by_nearness() {
+    let (mut world, creep, _, courier, hero) = a_courier_and_a_hero_before_a_creep();
+    world.set_order(hero, UnitOrder::Stand);
+    assert_eq!(
+        world.best_valid_in_range(creep, Fixed::from_int(600), &world.candidates()),
+        Some(courier),
+        "equally idle, the nearer one"
+    );
+    world.transform.get_mut(hero).expect("standing").pos = Vec2::from_ints(5050, 5000);
+    assert_eq!(
+        world.best_valid_in_range(creep, Fixed::from_int(600), &world.candidates()),
+        Some(hero),
+    );
+}
+
+#[test]
+fn a_tower_takes_a_hero_laying_into_it_before_a_courier() {
+    let mut world = World::new();
+    let tower = world.spawn_unit(tower_def(1), Team::Radiant, Vec2::from_ints(1000, 1000));
+    let courier = world.spawn_unit(&COURIER, Team::Dire, Vec2::from_ints(1200, 1000));
+    let hero = world.spawn_hero(
+        Team::Dire,
+        Vec2::from_ints(1500, 1000),
+        SlotId(0),
+        HeroId::SHADOW_FIEND,
+    );
+    world.settle();
+    world.set_order(
+        hero,
+        UnitOrder::Attack {
+            target: tower,
+            last_seen: Vec2::from_ints(1000, 1000),
+        },
+    );
+    assert_eq!(
+        world.best_valid_in_range(tower, Fixed::from_int(700), &world.candidates()),
+        Some(hero)
+    );
+    assert!(world.alive(courier));
 }
 
 #[test]

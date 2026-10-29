@@ -13,13 +13,16 @@ impl World {
     ///
     /// A hero laying into this side counts for no more than a plain unit. A
     /// hero doing nothing to this side comes after both, and one putting out
-    /// its own comes last.
+    /// its own comes last. A courier never lays into anyone, so it stands
+    /// with the idle.
     pub fn threat_priority(&self, seeker: Entity, candidate: Entity) -> u8 {
         let Some(side) = self.team.get(seeker).copied() else {
             return 1;
         };
-        if self.kind.get(candidate) != Some(&UnitKind::Hero) {
-            return 1;
+        match self.kind.get(candidate) {
+            Some(UnitKind::Hero) => {}
+            Some(UnitKind::Courier) => return 2,
+            _ => return 1,
         }
         // What it is doing is read off its order, what it is holding, and the
         // spell it is in the middle of: a spell at this side is as plain as a
