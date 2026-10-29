@@ -54,8 +54,9 @@ pub const MAX_SKIPPED_TICKS: usize = 900;
 pub const MAX_STATIC_TREES: usize = 4_096;
 /// Maximum number of planted trees in one snapshot.
 pub const MAX_PLANTED_TREES: usize = 4_096;
-/// Maximum number of effects accepted on one unit.
-pub const MAX_EFFECTS_PER_UNIT: usize = 32;
+/// Maximum number of effects accepted on one unit: what the server never
+/// exceeds, which puts at most this many modifiers on a unit.
+pub const MAX_EFFECTS_PER_UNIT: usize = rules::MAX_EFFECTS_PER_UNIT;
 /// Largest accepted manual health or mana restoration report, in whole pool units.
 pub const MAX_RESTORATION_REPORT: i32 = 1_000_000;
 /// Maximum terrain axis accepted from match metadata.

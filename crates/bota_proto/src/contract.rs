@@ -88,6 +88,14 @@
 //! [`ItemBought`]: crate::EventKind::ItemBought
 //! [`ProjectileView::model`]: crate::ProjectileView::model
 //!
+//! # Effects on a unit
+//!
+//! A unit carries at most `bota_core::rules::MAX_EFFECTS_PER_UNIT` modifiers,
+//! hidden ones included, so [`UnitView::effects`](crate::UnitView) never lists
+//! more. A fresh modifier on a full unit displaces the one with the least time
+//! left, and is not put on when all that unit carries are untimed. A client
+//! may refuse a view whose unit lists more.
+//!
 //! # What a side is told of the other side's seats
 //!
 //! What the fog withholds from a side is absent from its view, never a

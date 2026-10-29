@@ -4,7 +4,7 @@ use bota_client_core::{
     AckPolicy, ClientSession, Ingested, IssuedOrder, MAX_TRACKED_ENTITIES, MatchStatic,
     SessionError, SessionOptions,
 };
-use bota_core::{map_of, rules};
+use bota_core::{ModifierKind, NeutralAbility, map_of, rules};
 use bota_proto::{
     AbilitySlot, Angle, EntityId, EventKind, Fixed, HeroId, ItemId, ItemSlot, LootView, MatchInfo,
     Order, OutgoingOrder, ProjectileView, ServerMsg, SkippedTick, SlotId, StockView, Target, Team,
@@ -12,7 +12,7 @@ use bota_proto::{
 };
 
 use super::local::mid_config;
-use crate::game::{OrderDelay, UnitOrder};
+use crate::game::{Modifier, OrderDelay, UnitOrder};
 use crate::local::LocalMatch;
 
 const TICKS: u32 = rules::FIRST_WAVE_TICK + 4000;
@@ -514,3 +514,56 @@ fn a_crowd_evicting_thousands_of_cohorts_folds_in_time_linear_in_them() {
 /// release build, 5 ms in a debug one) and under what shifting or rescanning
 /// them for each one did (13 ms and 73 ms in a release build).
 const FOLD_BUDGET: std::time::Duration = std::time::Duration::from_millis(30);
+
+/// Lays the stacking Dragonhide Aura of `sources` other units on seat 0's hero
+/// and plays a tick on, folding it: the hero's effects as the client then
+/// holds them, and as many as the server holds on it.
+fn crowded_hero(sources: usize) -> (Result<(), SessionError>, usize, usize) {
+    let (mut local, mut session) = seated();
+    let world = local.world_mut();
+    let hero = world.seats[0].unit.expect("a hero");
+    let carriers: Vec<_> = (0..sources).map(|_| world.spawn()).collect();
+    let aura = ModifierKind::Spell {
+        ability: NeutralAbility::DragonhideAura,
+        level: 1,
+        amount: 0,
+    };
+    assert!(NeutralAbility::DragonhideAura.per_source());
+    for carrier in carriers {
+        let modifier = Modifier::new(aura, Some(carrier), None, Some(600));
+        world
+            .modifiers
+            .get_mut(hero)
+            .expect("a hero wears")
+            .put(modifier);
+    }
+    let step = local.step(&[&[], &[]]).expect("a step");
+    let folded = step[0].iter().try_for_each(|message| {
+        session
+            .ingest(message.clone(), &mut ())
+            .map(drop)
+            .map_err(SessionError::from)
+    });
+    let held = local.world().modifiers.get(hero).expect("worn").0.len();
+    let told = session.own_hero().map_or(0, |hero| hero.effects.len());
+    (folded, held, told)
+}
+
+/// More than the 32 effects a client once refused, which a fight with auras
+/// puts on a hero: a legal view the client folds.
+#[test]
+fn a_hero_wearing_forty_effects_is_a_view_the_client_folds() {
+    let (folded, held, told) = crowded_hero(40);
+    assert_eq!(folded, Ok(()));
+    assert!(held >= 40 && told >= 40, "{held} held, {told} told");
+}
+
+/// A unit never wears more than the bound the contract states, however many
+/// units lay an aura on it, and the client takes what is told.
+#[test]
+fn a_unit_wears_no_more_effects_than_the_contract_bounds_and_the_client_folds_them() {
+    let (folded, held, told) = crowded_hero(rules::MAX_EFFECTS_PER_UNIT + 40);
+    assert_eq!(folded, Ok(()));
+    assert_eq!(held, rules::MAX_EFFECTS_PER_UNIT);
+    assert_eq!(told, rules::MAX_EFFECTS_PER_UNIT);
+}

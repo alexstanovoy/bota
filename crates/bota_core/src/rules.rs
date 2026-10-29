@@ -1164,6 +1164,13 @@ pub const MAX_ORDER_DELAY_TICKS: u32 = 30;
 /// Most orders one unit holds queued (Dota's Shift-queue) behind the one it
 /// carries out.
 pub const MAX_QUEUED_ORDERS: usize = 32;
+/// Most modifiers one unit carries at once, hidden and shown. What a hero in
+/// a five-a-side fight bears (its own buffs, its allies' auras, its enemies'
+/// debuffs) is a few dozen. A unit that carries this many takes a fresh
+/// modifier by dropping the one with the least time left, or not at all when
+/// every one it carries is untimed. The effects a view lists on a unit
+/// therefore never exceed it, and a client may refuse a view that does.
+pub const MAX_EFFECTS_PER_UNIT: usize = 128;
 /// Most orders of one seat that may take effect on one tick, its units and
 /// queued orders together.
 pub const MAX_ORDERS_PER_TICK: usize = 64;

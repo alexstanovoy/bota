@@ -244,7 +244,8 @@ pub struct UnitView {
     /// Item slots in slot order: a hero's six inventory and three backpack
     /// slots, a courier's six. Empty for anything else.
     pub items: Vec<Option<ItemView>>,
-    /// Effects currently on the unit, timed and counted alike.
+    /// Effects currently on the unit, timed and counted alike: at most
+    /// `bota_core::rules::MAX_EFFECTS_PER_UNIT`, which the server keeps to.
     pub effects: Vec<EffectView>,
     /// The least damage a swing draws, before the target's armor and attack
     /// class: the base range's floor with every bonus added.

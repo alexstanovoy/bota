@@ -122,6 +122,26 @@ impl Modifiers {
                 self.0.remove(at);
             }
         }
+        self.admit(modifier);
+    }
+
+    /// Adds a modifier to a unit that may be full
+    /// ([`rules::MAX_EFFECTS_PER_UNIT`]): the modifier with the least time
+    /// left, one that ran out first of all, makes room for it. A unit
+    /// carrying nothing but untimed ones takes no more.
+    fn admit(&mut self, modifier: Modifier) {
+        if self.0.len() >= rules::MAX_EFFECTS_PER_UNIT {
+            let soonest = self
+                .0
+                .iter()
+                .enumerate()
+                .filter_map(|(at, held)| held.ticks_left.map(|left| (left, at)))
+                .min();
+            let Some((_, at)) = soonest else {
+                return;
+            };
+            self.0.remove(at);
+        }
         self.0.push(modifier);
     }
 
@@ -173,7 +193,7 @@ impl Modifiers {
             }
             (Some(at), _) => self.0[at].kind = of(count),
             (None, 0) => {}
-            (None, _) => self.0.push(Modifier::new(
+            (None, _) => self.admit(Modifier::new(
                 of(count),
                 Some(bearer),
                 Some(Inflictor::Ability(ability)),
