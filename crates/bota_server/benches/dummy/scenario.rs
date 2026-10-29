@@ -1,7 +1,7 @@
 //! The dummy match the criterion benches play and the fixed inputs of the
 //! micro cases under it.
 
-use bota_core::{MapDef, OBSERVER_WARD, SENTRY_WARD, isqrt64, map_of, rules};
+use bota_core::{MapDef, OBSERVER_WARD, SENTRY_WARD, isqrt64, map_of};
 use bota_proto::{HeroId, MapId, Order, Pick, SlotId, Target, Team, TickMode, Vec2, WorldView};
 
 use crate::game::{Clearance, Command, Entity, Fnv, MatchConfig, World};
@@ -210,7 +210,6 @@ pub(crate) fn two_fiends(match_id: u64, master_key: [u8; 32], map: MapId) -> Mat
         master_key,
         picks: vec![pick(0, Team::Radiant), pick(1, Team::Dire)],
         map,
-        tick_rate: rules::TICKS_PER_SECOND as u16,
         mode: TickMode::Lockstep,
         ack_timeout_ticks: 0,
         cheats: false,

@@ -83,7 +83,8 @@ struct Args {
     /// How ticks advance.
     #[arg(long, value_enum, default_value_t = Mode::Realtime)]
     mode: Mode,
-    /// Ticks per wall-clock second.
+    /// Ticks per wall-clock second: the pace of the match. Game time keeps
+    /// 30 ticks a second, so a higher rate plays the same game faster.
     #[arg(long, default_value_t = 30, value_parser = clap::value_parser!(u16).range(1..))]
     tick_rate: u16,
     /// Seats in the match. Implied by the seat reservations when there are any.
@@ -217,7 +218,6 @@ fn main() -> ExitCode {
         );
         return ExitCode::SUCCESS;
     }
-    let tick_rate = args.tick_rate;
     let keys = secret_env(SEATS_VAR).and_then(|seats| Ok((seats, secret_env(REFEREE_VAR)?)));
     match keys {
         Ok((seats, referee_key)) => {
@@ -235,7 +235,7 @@ fn main() -> ExitCode {
             report,
             left,
         }) => {
-            println!("{}", result_line(winner, &report, tick_rate, left));
+            println!("{}", result_line(winner, &report, left));
             ExitCode::SUCCESS
         }
         Ok(MatchEnd::Abandoned) => ExitCode::from(EXIT_ABANDONED),
@@ -272,18 +272,14 @@ fn secret_env(name: &str) -> Result<Option<String>, String> {
 /// The line a launcher reads the result from: the winning team (0 Radiant,
 /// 1 Dire) or a draw, the game time the match lasted, and the
 /// [`bota_proto::MatchReport`] as hex postcard bytes.
-fn result_line(
-    winner: Team,
-    report: &bota_proto::MatchReport,
-    tick_rate: u16,
-    left: Option<u8>,
-) -> String {
+fn result_line(winner: Team, report: &bota_proto::MatchReport, left: Option<u8>) -> String {
     let winner = match winner {
         Team::Radiant => "0",
         Team::Dire => "1",
         Team::Neutral => "draw",
     };
-    let ms = u64::from(report.stats.duration) * 1000 / u64::from(tick_rate);
+    let ms =
+        u64::from(report.stats.duration) * 1000 / u64::from(bota_core::rules::TICKS_PER_SECOND);
     let duration_ms = u32::try_from(ms).unwrap_or(u32::MAX);
     let frame = encode_frame_to_vec(report).expect("a report encodes");
     let hex: String = frame[bota_proto::LEN_PREFIX..]

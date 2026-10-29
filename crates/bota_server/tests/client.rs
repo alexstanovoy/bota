@@ -132,3 +132,31 @@ fn a_seat_that_leaves_loses_the_match() {
     assert_eq!((winner, left), (Team::Radiant, Some(1)));
     stays.join().expect("the stayer").expect("it saw the end");
 }
+
+/// `--tick-rate` is the wall-clock pace alone: a server paced at 120 ticks a second tells its
+/// clients the game runs 30, so no clock reads half the game time.
+#[test]
+fn a_faster_pace_is_told_as_the_games_own_tick_rate() {
+    let listener = TcpListener::bind("127.0.0.1:0").expect("a port");
+    let address = listener.local_addr().expect("bound").to_string();
+    let mut options = opts();
+    options.mode = TickMode::Realtime;
+    options.tick_rate = 120;
+    thread::spawn(move || run(listener, options));
+    let (mut link, seated) =
+        Link::join(&address, "pace", HeroId::SHADOW_FIEND, None).expect("a seat");
+    assert_eq!(seated.tick_rate, 30, "the welcome");
+    let (mut told, mut ticks) = (None, 0u32);
+    let started = std::time::Instant::now();
+    while started.elapsed() < Duration::from_secs(2) {
+        match link.recv().expect("the server speaks") {
+            Some(ServerMsg::MatchStart { info }) => told = Some(info.tick_rate),
+            Some(ServerMsg::Snapshot { .. }) if told.is_some() => ticks += 1,
+            _ => {}
+        }
+    }
+    assert_eq!(told, Some(30), "the match start");
+    // Two seconds at 30 a second are 60 ticks; at the pace asked for they are 240 (a snapshot
+    // may be skipped for a slow reader, so allow for some).
+    assert!(ticks > 120, "{ticks} ticks in two seconds");
+}

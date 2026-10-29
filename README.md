@@ -114,7 +114,7 @@ the plain TCP port stays on loopback) or `--insecure-plaintext`.
 | `--insecure-plaintext` | off | plain TCP and `ws://` on a non-loopback `--bind`; keys and orders in clear | a network you trust, without a certificate |
 | `--map N` | `0` | `0` the Dota map to the Ancient; `1` a hero demo map; `2` mid only: a side loses on its second hero death or first lost tower, a draw after twenty game minutes | |
 | `--mode realtime\|lockstep` | `realtime` | wall-clock ticks, or wait for every seat's acknowledgement | bots that must not miss a tick |
-| `--tick-rate N` | `30` | ticks per second | |
+| `--tick-rate N` | `30` | ticks per wall-clock second: the pace alone. Game time keeps 30 ticks a second (clients are told so), so a higher rate plays the same game faster | fast bots, tests |
 | `--ack-timeout-ticks N` | `150` | lockstep: tick-lengths to wait for a straggler | |
 | `--players N` | `2`, or the seats in `BOTA_SEATS` | seats, even slots Radiant; at most five a side, as a Dota lobby's team (so at most 10) | |
 | `--heroes ID,...` | all | heroes a seat may pick (and is given without a pick); a pick is final once ready; one hero (with `--same-heroes-allowed`) is a forced pick: each seat is given it, ready, as it is taken, and the lobby tells the pool | a ruleset limits heroes |

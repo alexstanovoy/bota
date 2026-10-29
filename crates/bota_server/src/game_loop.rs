@@ -48,7 +48,9 @@ pub const DEFAULT_SPECTATORS_PER_SEAT: usize = 7;
 pub struct ServerOpts {
     /// How ticks advance.
     pub mode: TickMode,
-    /// Ticks per wall-clock second.
+    /// Ticks per wall-clock second: the pace alone. Game time always runs
+    /// [`rules::TICKS_PER_SECOND`] ticks a second, which is what the welcome and the
+    /// match info tell, so a faster pace plays the same game sooner.
     pub tick_rate: u16,
     /// Seats in the match.
     pub players: u8,
@@ -648,7 +650,7 @@ impl Server {
             conn.send(&ServerMsg::Welcome {
                 player_id: told,
                 slot,
-                tick_rate: self.opts.tick_rate,
+                tick_rate: rules::TICKS_PER_SECOND as u16,
                 mode: self.opts.mode,
             });
             if let Some(cfg) = info {
@@ -972,7 +974,6 @@ impl Server {
             stream: self.secrets.stream,
             picks: self.roster.picks(),
             map: self.opts.map,
-            tick_rate: self.opts.tick_rate,
             mode: self.opts.mode,
             ack_timeout_ticks: self.opts.ack_timeout_ticks,
             cheats: self.opts.cheats,

@@ -630,20 +630,17 @@ fn map2_terminal_step_and_advance_freeze_world_and_ignore_shop_orders() {
 }
 
 #[test]
-fn map2_cap_is_independent_of_wall_clock_tick_rate_and_mode() {
-    for tick_rate in [1, 30, 120] {
-        for mode in [TickMode::Lockstep, TickMode::Realtime] {
-            let mut config = config(MID_MAP);
-            config.tick_rate = tick_rate;
-            config.mode = mode;
-            let mut world = World::for_match(&config, config.rng());
-            world.tick = TICK_CAP - 1;
+fn map2_cap_is_independent_of_mode() {
+    for mode in [TickMode::Lockstep, TickMode::Realtime] {
+        let mut config = config(MID_MAP);
+        config.mode = mode;
+        let mut world = World::for_match(&config, config.rng());
+        world.tick = TICK_CAP - 1;
 
-            world.advance(&[]);
+        world.advance(&[]);
 
-            assert_eq!(world.victor(), Some(Team::Neutral));
-            assert_eq!(world.match_stats().duration, TICK_CAP);
-        }
+        assert_eq!(world.victor(), Some(Team::Neutral));
+        assert_eq!(world.match_stats().duration, TICK_CAP);
     }
 }
 

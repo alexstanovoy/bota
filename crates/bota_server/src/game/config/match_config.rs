@@ -67,12 +67,10 @@ pub struct MatchConfig {
     pub picks: Vec<Pick>,
     /// Which map is being played.
     pub map: MapId,
-    /// Simulation ticks per second of wall-clock time.
-    pub tick_rate: u16,
     /// How the server advances ticks.
     pub mode: TickMode,
     /// In lockstep, how long to wait for an acknowledgement before advancing
-    /// with an empty order, in ticks of wall-clock time at `tick_rate`.
+    /// with an empty order, in ticks of the server's wall-clock pace.
     pub ack_timeout_ticks: u32,
     /// Whether cheat orders are honoured.
     pub cheats: bool,
@@ -138,7 +136,7 @@ impl MatchConfig {
         MatchInfo {
             match_id: self.match_id,
             map: self.map,
-            tick_rate: self.tick_rate,
+            tick_rate: bota_core::rules::TICKS_PER_SECOND as u16,
             pregame_ticks: bota_core::rules::PREGAME_TICKS,
             trees: crate::game::tree_positions(map, terrain),
             terrain_cells: crate::game::TERRAIN_CELLS as u32,

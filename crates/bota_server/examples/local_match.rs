@@ -46,7 +46,6 @@ fn main() {
         stream: 1,
         picks: vec![pick(0, Team::Radiant), pick(1, Team::Dire)],
         map: MAP2_ID,
-        tick_rate: 30,
         mode: TickMode::Lockstep,
         ack_timeout_ticks: 150,
         cheats: false,

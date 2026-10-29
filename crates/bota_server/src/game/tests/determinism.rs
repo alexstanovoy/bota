@@ -167,7 +167,6 @@ fn config(pinned: &Pinned) -> MatchConfig {
             })
             .collect(),
         map: pinned.map,
-        tick_rate: rules::TICKS_PER_SECOND as u16,
         mode: TickMode::Lockstep,
         ack_timeout_ticks: 0,
         cheats: false,
