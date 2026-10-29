@@ -18,7 +18,7 @@ use bota_client_core::{
     Seat, Seated, SessionOptions, Transport, join,
 };
 use bota_core::fountain_pos;
-use bota_proto::{HeroId, MapId, Order, ServerMsg, SlotId, Target, TickMode};
+use bota_proto::{ClientMsg, HeroId, MapId, Order, ServerMsg, SlotId, Target, TickMode};
 use bota_server::game_loop::{DEFAULT_SPECTATORS_PER_SEAT, ServerOpts, run};
 use bota_server::net::{DEFAULT_MESSAGES_PER_SEC, Listeners};
 use bota_server::spectators::Spectators;
@@ -98,6 +98,7 @@ over_every_wire!(
     a_stalled_client_slows_neither_the_tick_nor_the_other_player,
     a_half_open_connection_is_released_and_its_client_comes_back,
     a_threaded_net_plays_through_a_reset_and_comes_back_to_its_seat,
+    a_clients_ping_is_the_lines_round_trip_and_not_a_multiple_of_the_tick,
 );
 
 /// The bot of the `attack_move` example.
@@ -423,4 +424,53 @@ fn a_threaded_net_plays_through_a_reset_and_comes_back_to_its_seat(wire: Wire) {
     assert!(line.accepted() >= 2, "the seat dialed again");
     assert_eq!(threaded.winner, steady.winner);
     assert!(threaded.ticks > 1600, "the seat played on");
+}
+
+/// The smoothed ping a threaded client measures in a running 30 Hz match over a line that adds
+/// `one_way` each way.
+fn ping_over(wire: Wire, one_way: Duration) -> Duration {
+    // One seat and a dummy: the match ticks at its own pace and the client is alone in it.
+    let mut opts = opts(TickMode::Realtime, 30);
+    opts.dummy_seat = true;
+    let server = serve(opts, wire);
+    let line = Proxy::start(server);
+    let slow = Line {
+        latency: one_way,
+        ..Line::default()
+    };
+    line.set_line(Dir::Up, slow);
+    line.set_line(Dir::Down, slow);
+    let mut net = Net::open(endpoint(wire, &line.addr()), Redial::DEFAULT).expect("connect");
+    join(&mut net, "timed", HeroId::SHADOW_FIEND, None).expect("a seat");
+    // Polled at a frame's pace, as an app does; the probes go out and the echoes come back
+    // between the ticks and the frames.
+    let started = Instant::now();
+    while started.elapsed() < Duration::from_millis(4500) {
+        net.poll();
+        thread::sleep(Duration::from_millis(7));
+    }
+    let ping = net.ping().expect("an echo came back");
+    net.send(&ClientMsg::LeaveGame).expect("leave");
+    ping
+}
+
+fn a_clients_ping_is_the_lines_round_trip_and_not_a_multiple_of_the_tick(wire: Wire) {
+    // Neither 50 ms nor 70 ms is a multiple of the 33.3 ms tick: a ping read off ticks would show
+    // 33 or 66 for the first and 66 or 100 for the second, 16 ms or more off one of them.
+    let ms = |ping: Duration| ping.as_secs_f64() * 1000.0;
+    let near = ms(ping_over(wire, Duration::from_millis(25)));
+    let far = ms(ping_over(wire, Duration::from_millis(35)));
+    assert!(
+        (near - 50.0).abs() < 8.0,
+        "a 50 ms line measured {near:.1} ms"
+    );
+    assert!(
+        (far - 70.0).abs() < 8.0,
+        "a 70 ms line measured {far:.1} ms"
+    );
+    assert!(
+        (far - near - 20.0).abs() < 8.0,
+        "20 ms of difference measured as {:.1} ms",
+        far - near
+    );
 }

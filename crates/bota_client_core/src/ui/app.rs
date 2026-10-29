@@ -34,6 +34,11 @@ pub trait LiveLink {
     fn is_redialing(&self) -> bool {
         false
     }
+    /// The smoothed round trip to the server, once measured (see
+    /// [`PingMeter`](crate::PingMeter)); none for a link that does not time it.
+    fn ping(&self) -> Option<std::time::Duration> {
+        None
+    }
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -52,6 +57,10 @@ impl LiveLink for crate::socket::Net {
 
     fn is_redialing(&self) -> bool {
         crate::socket::Net::is_redialing(self)
+    }
+
+    fn ping(&self) -> Option<std::time::Duration> {
+        crate::socket::Net::ping(self)
     }
 }
 
@@ -73,6 +82,14 @@ impl Source {
     /// Whether a live link is being made again after it broke.
     pub fn is_redialing(&self) -> bool {
         matches!(self, Source::Live(net) if net.is_redialing())
+    }
+
+    /// The smoothed round trip of a live link, as the socket timed it.
+    pub fn ping(&self) -> Option<std::time::Duration> {
+        match self {
+            Source::Live(link) => link.ping(),
+            Source::Replay(_) => None,
+        }
     }
 
     /// Sends upstream. A replay swallows everything.

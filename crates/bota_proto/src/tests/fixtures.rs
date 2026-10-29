@@ -648,6 +648,7 @@ pub fn all_client_msgs() -> Vec<ClientMsg> {
         }),
         ClientMsg::Compress(Codec::Deflate),
         ClientMsg::LeaveGame,
+        ClientMsg::Probe { id: 4_000_000_007 },
         ClientMsg::Say(Line {
             to: Audience::Team,
             body: Body::Ping(Ping {
@@ -721,6 +722,7 @@ pub fn all_server_msgs() -> Vec<ServerMsg> {
             reason: SayRefusal::TooFast { retry_in_ms: 700 },
         },
         ServerMsg::Compressed(vec![0, 1, 2, 0xff]),
+        ServerMsg::Echo { id: 4_000_000_007 },
     ]
 }
 
@@ -783,6 +785,7 @@ pub fn client_msg_name(msg: &ClientMsg) -> &'static str {
         ClientMsg::Say(_) => "Say",
         ClientMsg::Compress(_) => "Compress",
         ClientMsg::LeaveGame => "LeaveGame",
+        ClientMsg::Probe { .. } => "Probe",
     }
 }
 
@@ -805,5 +808,6 @@ pub fn server_msg_name(msg: &ServerMsg) -> &'static str {
         ServerMsg::Heard(_) => "Heard",
         ServerMsg::SayRefused { .. } => "SayRefused",
         ServerMsg::Compressed(_) => "Compressed",
+        ServerMsg::Echo { .. } => "Echo",
     }
 }

@@ -14,10 +14,11 @@ use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::mpsc::{Receiver, SyncSender, sync_channel};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use bota_proto::{ClientMsg, ServerMsg};
 
+use crate::ping::PingMeter;
 use crate::redial::{Redial, Rejoin, redial, seat_held};
 use crate::transport::{DEFAULT_IO_TIMEOUT, Transport};
 pub(crate) use frames::FrameSink;
@@ -207,6 +208,10 @@ struct Shared {
     held: Mutex<usize>,
     /// Signalled when the caller takes messages out of the inbox.
     taken: Condvar,
+    /// The clock the meter is stamped on: monotonic, from the connection's start.
+    epoch: Instant,
+    /// The round trip, timed with probes and their echoes.
+    meter: Mutex<PingMeter>,
 }
 
 struct Outgoing {
@@ -280,6 +285,27 @@ impl Shared {
         let _ = self
             .state
             .compare_exchange(REDIALING, UP, Ordering::Relaxed, Ordering::Relaxed);
+    }
+
+    /// Sends a probe when one is due, stamped as the socket takes it.
+    fn probe_if_due(&self) {
+        let due = self
+            .meter
+            .lock()
+            .expect("meter lock")
+            .probe(self.epoch.elapsed());
+        if let Some(probe) = due {
+            let mut out = self.lock();
+            if send_message(&mut *out.sink, &probe).is_err() {
+                out.break_off();
+            }
+        }
+    }
+
+    /// Stamps the echo of probe `id` the moment the reader has it.
+    fn echoed(&self, id: u32) {
+        let now = self.epoch.elapsed();
+        self.meter.lock().expect("meter lock").echoed(id, now);
     }
 
     fn answer_ping(&self) {
@@ -356,6 +382,8 @@ impl Net {
             state: AtomicU8::new(UP),
             held: Mutex::new(0),
             taken: Condvar::new(),
+            epoch: Instant::now(),
+            meter: Mutex::new(PingMeter::default()),
         });
         let thread_shared = Arc::clone(&shared);
         thread::spawn(move || read_on(thread_shared, &endpoint, reader, &tx));
@@ -368,6 +396,7 @@ impl Net {
 
     /// Everything that arrived since the last poll.
     pub fn poll(&mut self) -> Vec<ServerMsg> {
+        self.shared.probe_if_due();
         let mut messages = Vec::new();
         for (next, bytes) in self.inbox.try_iter() {
             self.shared.release(bytes);
@@ -377,6 +406,12 @@ impl Net {
             }
         }
         messages
+    }
+
+    /// The smoothed round trip of the connection, once a probe has come back: timed by the
+    /// socket (see [`PingMeter`]), so it moves in milliseconds, not in ticks or frames.
+    pub fn ping(&self) -> Option<Duration> {
+        self.shared.meter.lock().expect("meter lock").ping()
     }
 
     /// Whether the connection has ended for good.
@@ -408,6 +443,12 @@ fn read_on(
                 shared.heard_from_server();
                 gone = caller_gone(&shared);
                 shared.answer_ping();
+                return !gone;
+            }
+            if let ServerMsg::Echo { id } = msg {
+                shared.echoed(id);
+                shared.heard_from_server();
+                gone = caller_gone(&shared);
                 return !gone;
             }
             held = shared.lock().rejoin.heard(&msg);
@@ -459,6 +500,7 @@ impl Transport for Net {
         if let Some(error) = self.failure.take() {
             return Err(error);
         }
+        self.shared.probe_if_due();
         match self.inbox.recv() {
             Ok((next, bytes)) => {
                 self.shared.release(bytes);

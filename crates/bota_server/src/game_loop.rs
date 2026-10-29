@@ -832,7 +832,8 @@ impl Server {
             | ClientMsg::LeaveGame
             | ClientMsg::Ack { .. }
             | ClientMsg::ViewAs { .. }
-            | ClientMsg::Pong => {}
+            | ClientMsg::Pong
+            | ClientMsg::Probe { .. } => {}
         }
     }
 
@@ -1371,7 +1372,10 @@ impl Server {
                     }
                 }
             }
-            ClientMsg::PickHero { .. } | ClientMsg::SetReady(_) | ClientMsg::Pong => {}
+            ClientMsg::PickHero { .. }
+            | ClientMsg::SetReady(_)
+            | ClientMsg::Pong
+            | ClientMsg::Probe { .. } => {}
         }
     }
 

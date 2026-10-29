@@ -6,6 +6,7 @@
 use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::rc::Rc;
+use std::time::Duration;
 
 use bota_proto::{ClientMsg, ServerMsg, Unpacker, encode_frame_to_vec};
 use js_sys::Uint8Array;
@@ -13,6 +14,7 @@ use wasm_bindgen::JsCast;
 use wasm_bindgen::closure::Closure;
 use web_sys::{BinaryType, CloseEvent, Event, MessageEvent, WebSocket};
 
+use crate::ping::PingMeter;
 use crate::ui::LiveLink;
 use crate::ws_frame::decode;
 
@@ -34,6 +36,16 @@ struct Shared {
     unopened: Vec<Vec<u8>>,
     open: bool,
     closed: bool,
+    /// The round trip, timed with probes and their echoes.
+    meter: PingMeter,
+}
+
+/// The browser's monotonic clock, from the page's start.
+fn now() -> Duration {
+    let millis = web_sys::window()
+        .and_then(|window| window.performance())
+        .map_or(0.0, |performance| performance.now());
+    Duration::from_secs_f64(millis.max(0.0) / 1000.0)
 }
 
 /// A live match over a browser WebSocket (`ws://` or `wss://`).
@@ -132,6 +144,10 @@ impl Shared {
     }
 
     fn hold(&mut self, message: ServerMsg, socket: &WebSocket) -> bool {
+        if let ServerMsg::Echo { id } = message {
+            self.meter.echoed(id, now());
+            return true;
+        }
         if matches!(message, ServerMsg::Ping) {
             let pong = encode_frame_to_vec(&ClientMsg::Pong).unwrap_or_default();
             return socket.send_with_u8_array(&pong).is_ok();
@@ -152,6 +168,11 @@ fn js_error(error: wasm_bindgen::JsValue) -> std::io::Error {
 
 impl LiveLink for WebSocketLink {
     fn poll(&mut self) -> Vec<ServerMsg> {
+        let probe = self.shared.borrow_mut().meter.probe(now());
+        if let Some(probe) = probe {
+            // A failed send marks the link closed, which the app reports.
+            let _ = self.send(&probe);
+        }
         let mut shared = self.shared.borrow_mut();
         shared.held = 0;
         shared.inbox.drain(..).collect()
@@ -178,6 +199,10 @@ impl LiveLink for WebSocketLink {
 
     fn is_closed(&self) -> bool {
         self.shared.borrow().closed
+    }
+
+    fn ping(&self) -> Option<Duration> {
+        self.shared.borrow().meter.ping()
     }
 }
 

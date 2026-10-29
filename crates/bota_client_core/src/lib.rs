@@ -46,6 +46,7 @@ mod limits;
 mod match_static;
 mod observer;
 mod orders;
+mod ping;
 mod play;
 mod readiness;
 #[cfg(not(target_arch = "wasm32"))]
@@ -76,6 +77,7 @@ pub use limits::*;
 pub use match_static::*;
 pub use observer::*;
 pub use orders::*;
+pub use ping::*;
 pub use play::*;
 pub use readiness::*;
 #[cfg(not(target_arch = "wasm32"))]

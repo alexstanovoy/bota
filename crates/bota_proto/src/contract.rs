@@ -340,7 +340,11 @@
 //! second, whatever else it sends, so a client that hears nothing for a few
 //! seconds knows its connection is dead, even in a quiet lobby. A client
 //! answers each with [`ClientMsg::Pong`](crate::ClientMsg::Pong); any message
-//! counts. A connection that sends nothing, or takes in nothing of what it is
+//! counts. A client times its connection with [`ClientMsg::Probe`](crate::ClientMsg::Probe):
+//! the server's network side answers each with [`ServerMsg::Echo`] naming the same id as soon as
+//! it reads it, ahead of whatever else waits to be sent and without waiting for a tick, and the
+//! simulation never sees it, so the round trip a client measures is the line's, whatever the
+//! tick rate. A connection that sends nothing, or takes in nothing of what it is
 //! sent, for the server's idle timeout (five seconds by default) is dropped
 //! as dead, and so is one whose peer closed it or broke it: the seat it held
 //! is free at once. A connection dropped as dead is reset rather than closed:

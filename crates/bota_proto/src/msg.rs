@@ -438,6 +438,12 @@ pub enum ClientMsg {
     /// won by the others, naming the leaver). Once the match is decided it changes nothing.
     /// Ignored in the lobby, where closing the connection frees the seat.
     LeaveGame,
+    /// Asks the server to answer at once with [`ServerMsg::Echo`] naming the same `id`, so the
+    /// sender can time the round trip of the connection. The server's network side answers it
+    /// the moment it reads it, on the connection's own threads: never through the simulation, so
+    /// the answer waits for no tick and nothing of it reaches the match. Allowed on any
+    /// connection, `Hello` or not.
+    Probe { id: u32 },
 }
 
 /// How a connection's stream is compressed.
@@ -569,6 +575,9 @@ pub enum ServerMsg {
     /// stream is flushed at the end of each part, so a part never ends inside
     /// a frame of the next (see the [`contract`](crate::contract)).
     Compressed(Vec<u8>),
+    /// The answer to a [`ClientMsg::Probe`], carrying its `id`. Sent ahead of anything still
+    /// queued for the connection, but behind a frame already going out.
+    Echo { id: u32 },
 }
 
 /// What a replay file is, and which wire recorded it: its first record.

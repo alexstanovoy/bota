@@ -38,6 +38,8 @@ pub struct Outbox {
 
 struct OutboxState {
     queue: VecDeque<Queued>,
+    /// Frames that go out before the queue: answers to probes.
+    urgent: VecDeque<Vec<u8>>,
     /// Drain what is queued, then hang up.
     closed: bool,
     /// Drop what is queued and stop at once: the peer is gone or hopeless.
@@ -74,6 +76,10 @@ struct QueuedTick {
     skipped: Vec<SkippedTick>,
 }
 
+/// Urgent frames held for the writer at most; a probe past them goes unanswered, as a lost
+/// packet would.
+const URGENT_LIMIT: usize = 8;
+
 /// Queued entries past this many close the connection as hopeless.
 const QUEUE_LIMIT: usize = 1024;
 
@@ -83,6 +89,7 @@ impl Outbox {
         Arc::new(Outbox {
             state: Mutex::new(OutboxState {
                 queue: VecDeque::new(),
+                urgent: VecDeque::new(),
                 closed: false,
                 aborted: false,
             }),
@@ -93,6 +100,19 @@ impl Outbox {
     /// Queues a frame that must arrive.
     pub fn push(&self, bytes: Vec<u8>) {
         self.enqueue(Queued::Frame(bytes));
+    }
+
+    /// Queues a frame to go out before everything queued, behind only the frame the writer is
+    /// sending now, and wakes the writer: for what a peer times, which must not wait its turn.
+    /// Dropped when the peer already lags that many.
+    pub fn push_urgent(&self, bytes: Vec<u8>) {
+        let mut state = self.lock();
+        if state.closed || state.aborted || state.urgent.len() >= URGENT_LIMIT {
+            return;
+        }
+        state.urgent.push_back(bytes);
+        drop(state);
+        self.wake.notify_one();
     }
 
     /// Queues a chat frame, which never goes out compressed.
@@ -160,6 +180,7 @@ impl Outbox {
         let mut state = self.lock();
         state.aborted = true;
         state.queue.clear();
+        state.urgent.clear();
         drop(state);
         self.wake.notify_one();
     }
@@ -185,6 +206,9 @@ impl Outbox {
             let now = Instant::now();
             if now >= ping_due {
                 return Step::Ping;
+            }
+            if let Some(bytes) = state.urgent.pop_front() {
+                return Step::Send(Queued::Frame(bytes));
             }
             if let Some(entry) = state.queue.pop_front() {
                 return Step::Send(entry);

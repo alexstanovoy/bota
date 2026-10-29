@@ -65,6 +65,7 @@ impl Connection {
             socket,
         } = stream.split(idle_timeout)?;
         let outbox = Outbox::new();
+        let reader_outbox = Arc::clone(&outbox);
         let writer_outbox = Arc::clone(&outbox);
         let writer = thread::Builder::new().spawn(move || writer_outbox.run_writer(sink))?;
         let ticks_sent = Arc::new(AtomicU32::new(0));
@@ -77,8 +78,8 @@ impl Connection {
             ticks_sent,
             writer: Some(writer),
         };
-        if let Err(error) =
-            thread::Builder::new().spawn(move || read_loop(id, source, events, allowance))
+        if let Err(error) = thread::Builder::new()
+            .spawn(move || read_loop(id, source, events, allowance, &reader_outbox))
         {
             connection.abort();
             return Err(error);
@@ -140,7 +141,9 @@ impl Connection {
 /// Reads the peer's messages until it hangs up, breaks the connection, stays
 /// silent past the idle timeout, breaks the protocol or spends its
 /// allowance. A [`ClientMsg::Pong`] only shows the peer alive, which reading
-/// it did.
+/// it did. A [`ClientMsg::Probe`] is answered here, on the spot, ahead of what
+/// waits in the outbox: the simulation never sees it, so the peer times the
+/// line and not the tick.
 ///
 /// Once the server stops listening, the reader still drains the connection
 /// until the peer hangs up: a socket closed with bytes unread resets the
@@ -151,6 +154,7 @@ fn read_loop(
     mut source: Box<dyn FrameSource>,
     events: Sender<NetEvent>,
     mut allowance: Allowance,
+    outbox: &Outbox,
 ) {
     let mut listened = true;
     let breach = loop {
@@ -167,6 +171,11 @@ fn read_loop(
         }
         match decode_payload::<ClientMsg>(&frame[LEN_PREFIX..]) {
             Ok(ClientMsg::Pong) => {}
+            Ok(ClientMsg::Probe { id }) => {
+                if let Ok(echo) = encode_frame_to_vec(&ServerMsg::Echo { id }) {
+                    outbox.push_urgent(echo);
+                }
+            }
             Ok(msg) => listened = events.send(NetEvent::Msg(id, msg)).is_ok(),
             Err(_) => break Some(Breach::Undecodable),
         }

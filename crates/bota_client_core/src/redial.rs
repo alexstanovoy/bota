@@ -120,6 +120,7 @@ impl Rejoin {
             ClientMsg::Order { .. }
             | ClientMsg::Ack { .. }
             | ClientMsg::Pong
+            | ClientMsg::Probe { .. }
             | ClientMsg::LeaveGame
             | ClientMsg::Say(_) => {
                 return msg;

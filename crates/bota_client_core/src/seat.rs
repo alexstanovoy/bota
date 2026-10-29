@@ -123,6 +123,7 @@ impl Seat {
             }
             other @ (ServerMsg::Orders { .. }
             | ServerMsg::ParticipantLeft { .. }
+            | ServerMsg::Echo { .. }
             | ServerMsg::Ping) => return Ok(Ingested::Passed(Box::new(other))),
         };
         Err(SessionError::Stream(refused).into())
