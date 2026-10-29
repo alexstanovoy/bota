@@ -1,20 +1,39 @@
 //! A bot written against `bota_client_core`, playing a lockstep match
-//! inside this process: two Shadow Fiends, each walking to the other's
-//! fountain, until the match ends.
+//! inside this process: two Shadow Fiends, each walking to the middle of the
+//! map and fighting there, until the match ends.
 //!
 //! ```text
 //! cargo run --release -p bota_server --example local_match
+//! cargo run --release -p bota_server --example local_match -- --replay match.brp
 //! ```
+//!
+//! With `--replay FILE` the match is also written as a replay, the one a
+//! server records of the same match, for a viewer to open.
 
 use bota_client_core::{
     AckPolicy, ClientSession, Ingested, IssuedOrder, MatchStatic, SessionOptions,
 };
 use bota_core::{MAP2_ID, map_of};
-use bota_proto::{HeroId, Order, OutgoingOrder, Pick, ServerMsg, SlotId, Target, Team, TickMode};
+use bota_proto::{
+    HeroId, Order, OutgoingOrder, Pick, ReplayRecord, ServerMsg, SlotId, Target, Team, TickMode,
+    Vec2,
+};
 use bota_server::game::{MatchConfig, OrderDelay};
 use bota_server::local::LocalMatch;
+use bota_server::replay::ReplayWriter;
 
 fn main() {
+    let mut args = std::env::args().skip(1);
+    let mut replay = None;
+    while let Some(arg) = args.next() {
+        match (arg.as_str(), args.next()) {
+            ("--replay", Some(path)) => replay = Some(path),
+            _ => {
+                eprintln!("usage: local_match [--replay FILE]");
+                std::process::exit(2);
+            }
+        }
+    }
     let pick = |slot, team| Pick {
         slot: SlotId(slot),
         team,
@@ -38,7 +57,22 @@ fn main() {
         runes: bota_core::map_of(MAP2_ID).default_runes,
     };
     let map = map_of(cfg.map);
-    let (mut local, opening) = LocalMatch::new(&cfg, &[OrderDelay::NONE]).expect("a valid match");
+    let [a, b] = map.fountains;
+    let middle = Vec2::from_ints(
+        (a.x.to_int() + b.x.to_int()) / 2,
+        (a.y.to_int() + b.y.to_int()) / 2,
+    );
+    let (mut local, opening) = if replay.is_some() {
+        LocalMatch::new_recorded(&cfg, &[OrderDelay::NONE])
+    } else {
+        LocalMatch::new(&cfg, &[OrderDelay::NONE])
+    }
+    .expect("a valid match");
+    let mut writer = replay.map(|path| {
+        let mut writer = ReplayWriter::create(path.as_ref()).expect("a replay file to write");
+        writer.record(&ReplayRecord::Msg(opening[0][0].clone()));
+        writer
+    });
     let mut sessions = sessions(&opening);
     let mut pending = opening;
     loop {
@@ -46,7 +80,7 @@ fn main() {
         // the example's heroes need no more.
         let mut winner = None;
         let mut orders = Vec::new();
-        for (slot, (session, stream)) in sessions.iter_mut().zip(pending).enumerate() {
+        for (session, stream) in sessions.iter_mut().zip(pending) {
             for message in stream {
                 if let ServerMsg::MatchStart { .. } = message {
                     continue; // the session was built from it
@@ -61,17 +95,26 @@ fn main() {
                 orders.push(None);
                 continue;
             };
-            // Walk to the enemy fountain, fighting what is met on the way;
-            // the first tick is enough, the order stands.
+            // Walk to the middle of the map between the fountains, fighting what
+            // is met on the way. The order stands until the hero dies, so it is
+            // given again every twenty seconds: a hero that fell and came back
+            // walks again.
             let order = IssuedOrder::hero(Order::Attack {
-                target: Target::Pos(map.fountains[1 - slot]),
+                target: Target::Pos(middle),
             });
-            let first = view.tick <= 1;
-            let sent = first.then(|| session.issue(order).expect("a snapshot was seen"));
+            let due = view.tick <= 1 || view.tick % 600 == 1;
+            let sent = due.then(|| session.issue(order).expect("a snapshot was seen"));
             orders.push(sent);
+        }
+        if let Some(writer) = writer.as_mut() {
+            local
+                .take_records()
+                .iter()
+                .for_each(|record| writer.record(record));
         }
         if let Some(winner) = winner {
             println!("tick {}: match over, winner {winner:?}", local.tick());
+            writer.into_iter().for_each(ReplayWriter::finish);
             return;
         }
         let given: Vec<&[OutgoingOrder]> = orders.iter().map(Option::as_slice).collect();

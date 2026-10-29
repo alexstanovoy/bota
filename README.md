@@ -363,6 +363,14 @@ cargo check --target wasm32-unknown-unknown -p bota_client_core --features bota_
 cargo bench -p bota_server --bench dummy
 ```
 
+`tools/gate.sh` runs all of these in order (and `cargo deny check`, and the `bota_client_core` tests behind
+its `ui` feature), stops at the first failure and prints `GATE-OK`; `GATE_SKIP="deny bench"` leaves steps out
+while you iterate. The bota_radovid end-to-end tests (`cargo test -p bota_radovid --features e2e`) need a
+radovid checkout beside this one.
+
+`cargo run --release -p bota_server --example local_match -- --replay match.brp` plays the example's two
+heroes against each other and writes the match as a replay, for a viewer's checks to open.
+
 The `phase-profile` feature of `bota_server` times the regions of a tick for profiling.
 
 The `wasm32` check keeps the client crates building for a browser: the socket transports are

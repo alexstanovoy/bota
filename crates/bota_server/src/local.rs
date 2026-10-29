@@ -7,7 +7,7 @@
 
 use core::fmt;
 
-use bota_proto::{OutgoingOrder, ServerMsg, SlotId, Team, WorldView};
+use bota_proto::{OutgoingOrder, ReplayRecord, ServerMsg, SlotId, Team, WorldView};
 
 use crate::game::{
     Command, DelayLine, Entity, Event, Handles, MatchConfig, OrderDelay, RefusedOrder, World,
@@ -53,6 +53,10 @@ pub struct LocalMatch {
     refused: Vec<RefusedOrder>,
     /// What each side calls the entities it is told of.
     handles: Handles,
+    /// The records of every tick so far that a server's replay would hold, until
+    /// [`Self::take_records`]; absent unless the match was made by
+    /// [`Self::new_recorded`].
+    tape: Option<Vec<ReplayRecord>>,
 }
 
 impl LocalMatch {
@@ -62,6 +66,25 @@ impl LocalMatch {
     pub fn new(
         cfg: &MatchConfig,
         delays: &[OrderDelay],
+    ) -> Result<(Self, Vec<Vec<ServerMsg>>), LocalError> {
+        Self::start(cfg, delays, false)
+    }
+
+    /// Like [`Self::new`], and keeps what a server's replay of the match would
+    /// hold after its `MatchStart` (which is in the opening stream): the
+    /// orders applied, the whole map's snapshot and the events of every tick,
+    /// and `MatchOver`. [`Self::take_records`] hands them out.
+    pub fn new_recorded(
+        cfg: &MatchConfig,
+        delays: &[OrderDelay],
+    ) -> Result<(Self, Vec<Vec<ServerMsg>>), LocalError> {
+        Self::start(cfg, delays, true)
+    }
+
+    fn start(
+        cfg: &MatchConfig,
+        delays: &[OrderDelay],
+        recorded: bool,
     ) -> Result<(Self, Vec<Vec<ServerMsg>>), LocalError> {
         let refused = |error: &dyn fmt::Display| LocalError::Config {
             message: error.to_string(),
@@ -78,7 +101,9 @@ impl LocalMatch {
             line,
             refused: Vec::with_capacity(cfg.picks.len()),
             handles,
+            tape: recorded.then(Vec::new),
         };
+        local.record_tick(&[], &events);
         let start = ServerMsg::MatchStart { info: cfg.info() };
         let mut streams = vec![vec![start]; local.seats.len()];
         local.publish(&mut streams, &events);
@@ -127,6 +152,7 @@ impl LocalMatch {
         }
         let commands = self.line.release(&self.world, &mut self.refused);
         let events = self.world.advance(&commands);
+        self.record_tick(&commands, &events);
         self.refused.append(&mut self.world.refused);
         for refusal in self.refused.drain(..) {
             let seat = self
@@ -141,6 +167,12 @@ impl LocalMatch {
         }
         self.publish(&mut streams, &events);
         Ok(streams)
+    }
+
+    /// The replay records kept since the last call, in the order a server
+    /// writes them; empty unless the match was made by [`Self::new_recorded`].
+    pub fn take_records(&mut self) -> Vec<ReplayRecord> {
+        self.tape.as_mut().map(std::mem::take).unwrap_or_default()
     }
 
     /// The number of seats.
@@ -188,6 +220,33 @@ impl LocalMatch {
             self.seats.iter().map(|_| Vec::with_capacity(3)).collect();
         self.publish(&mut streams, &[]);
         streams
+    }
+
+    /// Keeps the finished tick for the replay, as the server's loop records it.
+    fn record_tick(&mut self, commands: &[Command], events: &[Event]) {
+        let Some(tape) = self.tape.as_mut() else {
+            return;
+        };
+        let tick = self.world.tick;
+        tape.push(ReplayRecord::Orders {
+            tick,
+            orders: commands.iter().map(Command::told).collect(),
+        });
+        let mut full = self.world.view_full();
+        full.order_delays = self.line.views(None);
+        tape.push(ReplayRecord::Msg(ServerMsg::Snapshot { view: full }));
+        if !events.is_empty() {
+            tape.push(ReplayRecord::Msg(ServerMsg::Events {
+                tick,
+                events: events.iter().map(|event| event.kind.clone()).collect(),
+            }));
+        }
+        if let Some(winner) = self.world.victor() {
+            tape.push(ReplayRecord::Msg(ServerMsg::MatchOver {
+                winner,
+                stats: self.world.match_stats(),
+            }));
+        }
     }
 
     /// Appends the finished tick as each seat sees it.

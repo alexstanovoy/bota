@@ -1,7 +1,9 @@
 //! An in-process match tells each seat exactly what a server would.
 
 use bota_core::{MAP2_ID, map_of, rules};
-use bota_proto::{EntityId, EventKind, Order, OutgoingOrder, ServerMsg, Target, Team};
+use bota_proto::{
+    EntityId, EventKind, Order, OutgoingOrder, ReplayRecord, ServerMsg, Target, Team,
+};
 
 use crate::game::{MatchConfig, OrderDelay};
 use crate::local::LocalMatch;
@@ -115,4 +117,51 @@ fn a_non_hero_kills_gold_is_hidden_from_the_other_side() {
         }
     }
     assert!(hidden > 0, "no creep kill by the other hero was seen");
+}
+
+/// What `examples/local_match.rs --replay` writes: a viewer reads the records as a server's replay.
+#[test]
+fn a_recorded_match_keeps_the_records_of_a_servers_replay() {
+    let cfg = mid_config();
+    let (mut local, _) = LocalMatch::new_recorded(&cfg, &[OrderDelay::NONE]).expect("a match");
+    let attack = OutgoingOrder {
+        seq: 1,
+        unit: None,
+        order: Order::Attack {
+            target: Target::Pos(map_of(cfg.map).fountains[1]),
+        },
+        seen: 1,
+        queue: false,
+    };
+    local.step(&[&[attack], &[]]).expect("a step");
+    local.step(&[&[], &[]]).expect("a step");
+    let records = local.take_records();
+    let ticks: Vec<u32> = records
+        .iter()
+        .filter_map(|record| match record {
+            ReplayRecord::Orders { tick, .. } => Some(*tick),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        ticks,
+        [1, 2, 3],
+        "one Orders record per tick, from the first"
+    );
+    let snapshots = records
+        .iter()
+        .filter(|record| matches!(record, ReplayRecord::Msg(ServerMsg::Snapshot { view }) if view.viewer.is_none()))
+        .count();
+    assert_eq!(snapshots, 3, "the whole map's snapshot every tick");
+    assert!(
+        records.iter().any(|record| matches!(
+            record,
+            ReplayRecord::Orders { tick: 2, orders } if orders.len() == 1
+        )),
+        "the order is kept on the tick it was applied"
+    );
+    assert!(
+        local.take_records().is_empty(),
+        "the records are handed out once"
+    );
 }
