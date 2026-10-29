@@ -601,9 +601,6 @@ impl World {
         Ok(())
     }
 
-    /// Whether a seat may sell or mark what one of its slots holds. Away
-    /// from the shop the order marks rather than sells, so only a stack
-    /// that is not the seat's own is refused.
     /// Whether a bag slot holds the Ward Dispenser an order would switch.
     fn check_switch(&self, unit: Entity, at: usize) -> Result<(), RejectReason> {
         if in_stash(at) {
@@ -621,6 +618,9 @@ impl World {
         }
     }
 
+    /// Whether a seat may sell or mark what one of its slots holds. Away
+    /// from the shop the order marks rather than sells, so only a stack
+    /// that is not the seat's own is refused.
     fn check_sale(&self, unit: Entity, seat: &Seat, at: usize) -> Result<(), RejectReason> {
         let held = if in_stash(at) {
             seat.stash.slots.get(at - BAG_SLOTS).copied().flatten()

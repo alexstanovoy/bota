@@ -77,6 +77,46 @@ const MKB_PARTS: [ItemId; 4] = [
 ];
 
 /// The catalog, indexed by [`ItemId`].
+///
+/// # Adding an item
+///
+/// Every item:
+///
+/// 1. Register the id: `ItemId::X` in `bota_proto/src/ids.rs` and one line in
+///    `bota_proto/registry/ids.txt` (append-only; tests pin both).
+/// 2. Add its [`ItemDef`] here at the id's index (and grow the array): `name`
+///    equals the registry line, the numbers come from the game's `items.txt`.
+///    A recipe is two rows, the recipe scroll (a cost) and the build (its
+///    `components`).
+/// 3. Bump `RULES_VERSION` in `fingerprint.rs` and renew the digests in
+///    `tests/fingerprint.rs`.
+/// 4. Tests: `item_numbers.rs` in `bota_server` pins numbers; the determinism
+///    pins re-record (the drivers buy by the length of this table) and, for a
+///    stocked item, so do the dummy bench's digests.
+/// 5. `bota_client_core/src/ui/shop.rs`: the shop tab (`group_of`) it sits in.
+///    A front end keys its art and texts by the id (dbota: `src/faces.rs` and
+///    `assets-manifest/ids.txt`).
+///
+/// A passive stat item that uses only the stats [`Carried`] has stops there.
+/// Beyond it:
+///
+/// - A new stat: a [`Carried`] field with its `NOTHING` entry and its arm in
+///   `carried_bonus` (`item.rs`), the server's `systems/stats.rs`, often a
+///   `Stats` field.
+/// - An active: a [`UseSpec`] variant holding its numbers, and its arm in
+///   `use_effect` (`bota_server/src/game/config/item.rs`) with the effect as
+///   an `impl World` function; a channel also needs its `use_goes_on`,
+///   `use_breaks_off` and `use_completes` arms.
+/// - A buff or debuff it applies: an `EffectId` and registry line, a
+///   [`ModifierKind`](crate::ModifierKind) variant with its arms, an
+///   [`EFFECTS`](crate::EFFECTS) row, and the server's `hash.rs`, `stats.rs`
+///   and `systems/modifiers.rs` arms.
+/// - A charge-spending consumable: the `charges`, `stack_limit`, `spends` and
+///   `stock` fields; healing at once or reacting to damage needs a variant and
+///   an arm.
+///
+/// Neutral items are not modelled yet. Every item gets its end-to-end test in
+/// `bota_server/src/game/tests/`.
 pub const ITEMS: [ItemDef; 55] = [
     ItemDef {
         name: "Boots of Speed",

@@ -35,9 +35,9 @@ mid-only ruleset on that map, plus replays.
   gathered by three seconds standing in them, a contest running the countdown
   back (200, 500, 800, ... experience). An attack order at an Outpost or a
   Watcher casts the hero's hidden channel, as a click does in Dota.
-- The shop sells 48 of Dota's items and 5 recipes: consumables, wards, the basic
-  components, boots, the early builds and a few later items. An item with a
-  limited stock (the wards, Clarity, Healing Salve, Tango, Enchanted Mango,
+- The shop sells consumables, wards, the basic components, boots, the early
+  builds and a few later items, and their recipes. An item with a limited
+  stock (the wards, Clarity, Healing Salve, Tango, Enchanted Mango,
   Blood Grenade) is stocked and restocked per side as in Dota.
 
 Not modelled, although a 1v1 mid in Dota uses it: runes of every kind, and with
@@ -265,10 +265,10 @@ Every hero lives in its own module, `crates/bota_core/src/heroes/<hero>/`: its n
 its abilities, its talents and the pure functions clients read. The step-by-step list (registry
 lines, the module, one row in `HEROES` and `ABILITIES`, the server's hook row and system, the
 tests) is the rustdoc of `bota_core::heroes`:
-`cargo doc -p bota_core --open`, module `heroes`. An item is one `ITEMS` row in
-`crates/bota_core/src/item_table.rs` (a `UseSpec` variant picks what using it does; new behaviour
-adds a variant and its arm in the server's `World::use_effect`), and a unit kind is a `UnitKind`
-variant plus its `UNIT_KINDS` row. Ids are append-only (below).
+`cargo doc -p bota_core --open`, module `heroes`. The list for an item is the rustdoc of
+`bota_core::ITEMS` (registry line, table row, rules version, pins, shop tab, and what a new stat,
+active or buff adds), and a unit kind is a `UnitKind` variant plus its `UNIT_KINDS` row. Ids are
+append-only (below).
 
 ## Protocol rule: append-only
 
@@ -305,7 +305,11 @@ platform. The rules that keep it so:
   is denied workspace-wide). Scalars are `Fixed`, Q16.16 in an `i32` with
   multiplication through `i64`; angles are `u16` "brads"; there is no
   trigonometry; distances are compared as squares, with an integer square root
-  where a length is needed. Damage, gold and experience are integers.
+  where a length is needed. Damage, gold and experience are integers. The one
+  float is inside `isqrt64`: it starts from the correctly rounded `f64` root
+  and corrects it with integer steps until it is exact, so its result is the
+  same on every platform; that pattern is safe only where such a correction
+  follows.
 - No wall clock: time is ticks (30 per second).
 - No iteration over hash maps; `HashMap` and `HashSet` are denied by clippy in
   the rule and client crates. Entities are visited by slot; hash maps in the
@@ -321,10 +325,11 @@ platform. The rules that keep it so:
 - Only value-stable external primitives: randomness is `ChaCha8Rng`
   (never `StdRng`), and the state hash is FNV-1a, not `DefaultHasher`.
 - Randomness is split into streams by purpose, so a new draw in one place does
-  not shift the draws elsewhere. Evasion and pierce use exact per-block counts
-  with a hidden order inside each block.
-- `World::hash()` covers the whole state, hidden state included, so a divergence
-  in randomness consumption shows on the tick it happens.
+  not shift the draws elsewhere. Evasion and pierce roll Dota's pseudo-random
+  distribution: each source of chance draws from a stream of its own, and a run
+  of misses raises the chance of the next hit.
+- `World::hash()` folds the hidden state in too (the random streams among it), so a
+  divergence in randomness consumption shows on the tick it happens.
 
 A match is reproducible from `(master_key, stream)` in `MatchConfig`, or from
 `--seed` on the command line. The key comes out of the seed through ChaCha8, and
