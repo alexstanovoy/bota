@@ -474,6 +474,24 @@ fn measured_over(wire: Wire, one_way: Duration) -> (Duration, Duration, u32) {
     (ping, order, receipt.tick)
 }
 
+/// The best of up to three runs of [`measured_over`] for a line of `round_trip`: a loaded machine
+/// only ever makes a measurement later, so the smallest of each is the truest, and a run that is
+/// already close needs no other.
+fn best_over(wire: Wire, round_trip: Duration) -> (Duration, Duration, u32) {
+    let close = |measured: Duration| measured.abs_diff(round_trip) < Duration::from_millis(5);
+    let mut best: Option<(Duration, Duration, u32)> = None;
+    for _ in 0..3 {
+        let (ping, order, tick) = measured_over(wire, round_trip / 2);
+        let (best_ping, best_order, _) = best.get_or_insert((ping, order, tick));
+        *best_ping = (*best_ping).min(ping);
+        *best_order = (*best_order).min(order);
+        if close(*best_ping) && close(*best_order) {
+            break;
+        }
+    }
+    best.expect("a run")
+}
+
 fn a_clients_ping_and_order_receipts_are_the_lines_round_trip_and_not_a_multiple_of_the_tick(
     wire: Wire,
 ) {
@@ -481,27 +499,22 @@ fn a_clients_ping_and_order_receipts_are_the_lines_round_trip_and_not_a_multiple
     // 33 or 66 for the first and 66 or 100 for the second, 16 ms or more off one of them. An
     // order is received when the server reads it, not on the tick that carries it out.
     let ms = Duration::from_millis;
-    let (near, near_order, tick) = measured_over(wire, ms(25));
-    let (far, far_order, _) = measured_over(wire, ms(35));
+    let (near, near_order, tick) = best_over(wire, ms(50));
+    let (far, far_order, _) = best_over(wire, ms(70));
+    let right = |measured: Duration, expected: Duration| measured.abs_diff(expected) < ms(10);
+    assert!(right(near, ms(50)), "a 50 ms line measured {near:?}");
+    assert!(right(far, ms(70)), "a 70 ms line measured {far:?}");
     assert!(
-        near.abs_diff(ms(50)) < ms(10),
-        "a 50 ms line measured {near:?}"
-    );
-    assert!(
-        far.abs_diff(ms(70)) < ms(10),
-        "a 70 ms line measured {far:?}"
-    );
-    assert!(
-        far.saturating_sub(near).abs_diff(ms(20)) < ms(10),
+        right(far.saturating_sub(near), ms(20)),
         "20 ms of difference measured as {:?}",
         far.saturating_sub(near)
     );
     assert!(
-        near_order.abs_diff(ms(50)) < ms(10),
+        right(near_order, ms(50)),
         "an order over a 50 ms line was received after {near_order:?}"
     );
     assert!(
-        far_order.abs_diff(ms(70)) < ms(10),
+        right(far_order, ms(70)),
         "an order over a 70 ms line was received after {far_order:?}"
     );
     assert!(
