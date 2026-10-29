@@ -53,7 +53,8 @@ fn mango_mana_enables_a_validated_raze_without_changing_any_strategy() {
         slot: ItemSlot(0),
         target: Target::None,
     };
-    let consumed = advance_validated(&mut world, None, use_mango);
+    let mut consumed = advance_validated(&mut world, None, use_mango);
+    consumed.retain(|event| !matches!(event.kind, EventKind::ItemUsed { .. }));
     assert_eq!(consumed.len(), 1);
     assert_eq!(
         consumed[0].kind,

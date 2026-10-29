@@ -568,3 +568,7 @@ variant Order 14 SwitchWard {}
 field Order::SwitchWard 0 slot: ItemSlot
 variant Order 15 MoveDirection {}
 field Order::MoveDirection 0 toward: Vec2
+variant EventKind 14 ItemUsed {}
+field EventKind::ItemUsed 0 caster: Option<EntityId>
+field EventKind::ItemUsed 1 item: ItemId
+field EventKind::ItemUsed 2 at: Option<Vec2>

@@ -84,7 +84,8 @@ impl App {
             EventKind::Teleported { .. }
             | EventKind::Landed { .. }
             | EventKind::TreeFelled { .. }
-            | EventKind::TreeGrew { .. } => {}
+            | EventKind::TreeGrew { .. }
+            | EventKind::ItemUsed { .. } => {}
             EventKind::Captured { unit, team, .. } => {
                 let building = self
                     .freshest(unit)

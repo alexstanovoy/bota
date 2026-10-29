@@ -2,15 +2,60 @@
 //! ([`bota_core::ITEMS`]) turned into the change it makes.
 
 use bota_core::{ItemDef, UseSpec, item_def};
-use bota_proto::{DispenserView, Inflictor, ItemId, ItemView, Target};
+use bota_proto::{DispenserView, EventKind, Inflictor, ItemId, ItemView, Target, Team, Vec2};
 
-use crate::game::{Entity, Inventory, ItemStack, World};
+use crate::game::{Entity, Event, EventVisibility, Inventory, ItemStack, World, wire_id};
 
 impl World {
-    /// Uses an item at the moment its cast point lands. `false`: nothing
-    /// happened and nothing is spent. What it does names the item as its
-    /// inflictor.
+    /// Uses an item at the moment its cast point lands, and tells it.
+    /// `false`: nothing happened and nothing is spent. What it does names
+    /// the item as its inflictor.
     pub fn use_effect(
+        &mut self,
+        user: Entity,
+        slot: usize,
+        used: (ItemId, &ItemDef),
+        target: Target,
+    ) -> bool {
+        let before = self.pos(user);
+        if !self.use_effect_of(user, slot, used, target) {
+            return false;
+        }
+        self.tell_item_used(user, used.0, target, before);
+        true
+    }
+
+    /// Tells a use that took effect to the sides that see the user where it stood or where it
+    /// stands now, and to its own.
+    fn tell_item_used(&mut self, user: Entity, item: ItemId, target: Target, before: Option<Vec2>) {
+        let side = self.team.get(user).copied().unwrap_or(Team::Neutral);
+        let after = self.pos(user);
+        let told = |team| {
+            side == team
+                || [before, after]
+                    .into_iter()
+                    .flatten()
+                    .any(|spot| self.can_see_point(team, spot))
+        };
+        let at = match target {
+            Target::None => None,
+            Target::Pos(pos) => Some(pos),
+            Target::Unit(id) => self.of_wire(id).and_then(|aimed| self.pos(aimed)),
+        };
+        self.events.push(Event {
+            kind: EventKind::ItemUsed {
+                caster: Some(wire_id(user)),
+                item,
+                at,
+            },
+            visible_to: EventVisibility::of(told(Team::Radiant), told(Team::Dire)),
+            gold_hidden_from: None,
+            source_told_to: self.who_may_name(Some(user)),
+        });
+    }
+
+    /// What using an item does to the world.
+    fn use_effect_of(
         &mut self,
         user: Entity,
         slot: usize,

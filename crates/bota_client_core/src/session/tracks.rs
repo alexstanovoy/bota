@@ -391,7 +391,8 @@ impl Tracks {
             | EventKind::Captured { .. }
             | EventKind::ShrineActivated { .. }
             | EventKind::TreeFelled { .. }
-            | EventKind::TreeGrew { .. } => {}
+            | EventKind::TreeGrew { .. }
+            | EventKind::ItemUsed { .. } => {}
         }
     }
 

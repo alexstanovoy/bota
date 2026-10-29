@@ -3,8 +3,10 @@
 
 use bota_core::{BLINK_OVERSHOOT_RANGE, ModifierKind, rules};
 
-use crate::game::{Entity, Stats, World};
-use bota_proto::{Attribute, Attributes, Fixed, HeroId, ItemId, SlotId, Target, Vec2};
+use crate::game::{Entity, Stats, World, wire_id};
+use bota_proto::{
+    Attribute, Attributes, EventKind, Fixed, HeroId, ItemId, SlotId, Target, Team, Vec2,
+};
 
 use super::support::*;
 
@@ -237,6 +239,28 @@ fn a_blink_aimed_past_its_range_lands_at_nine_hundred_sixty() {
         carried <= overshoot * overshoot && carried > (overshoot - (64 << 16)).pow(2),
         "it lands {BLINK_OVERSHOOT_RANGE} along the line, give or take a step back off closed ground"
     );
+}
+
+#[test]
+fn a_use_of_an_item_is_told_to_the_sides_that_see_it() {
+    let (mut world, hero) = hero_out_of_fountain(HeroId::SHADOW_FIEND);
+    hand_item(&mut world, hero, ItemId::BLINK_DAGGER, 0);
+    world.step();
+    let from = world.transform.get(hero).expect("standing").pos;
+    let aim = from + Vec2::from_ints(-500, 0);
+    let mut told = Vec::new();
+    assert!(world.use_item(hero, 0, Target::Pos(aim), &mut told));
+    told.retain(|event| matches!(event.kind, EventKind::ItemUsed { .. }));
+    assert_eq!(told.len(), 1, "one use");
+    assert_eq!(
+        told[0].kind,
+        EventKind::ItemUsed {
+            caster: Some(wire_id(hero)),
+            item: ItemId::BLINK_DAGGER,
+            at: Some(aim),
+        }
+    );
+    assert!(told[0].visible_to.tells(Team::Radiant), "its own side");
 }
 
 #[test]

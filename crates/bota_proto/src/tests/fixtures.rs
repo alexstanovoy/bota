@@ -609,6 +609,11 @@ pub fn all_events() -> Vec<EventKind> {
         EventKind::TreeGrew {
             at: Vec2::from_ints(7104, 8576),
         },
+        EventKind::ItemUsed {
+            caster: Some(entity(7)),
+            item: ItemId(31),
+            at: Some(Vec2::from_ints(7904, 8976)),
+        },
     ]
 }
 

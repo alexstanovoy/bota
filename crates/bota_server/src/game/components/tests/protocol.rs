@@ -27,6 +27,8 @@ fn mango_reports_actual_whole_mana_once_per_consumed_charge() {
 
             assert!(world.use_item(hero, 0, target, &mut events));
 
+            events.retain(|event| !matches!(event.kind, EventKind::ItemUsed { .. }));
+
             let restored = deficit.min(Fixed::from_int(100));
             assert_eq!(
                 world.mana.get(hero).unwrap().mana,
@@ -65,6 +67,8 @@ fn subpoint_mango_restoration_consumes_without_a_zero_point_event() {
 
         assert!(world.use_item(hero, 0, Target::None, &mut events));
 
+        events.retain(|event| !matches!(event.kind, EventKind::ItemUsed { .. }));
+
         assert_eq!(world.mana.get(hero).unwrap().mana, maximum);
         assert!(world.inventory.get(hero).unwrap().slots[0].is_none());
         assert!(events.is_empty());
@@ -84,6 +88,8 @@ fn mango_mana_event_uses_upstream_visibility_and_round_trips_on_the_wire() {
         let mut events = Vec::new();
 
         assert!(world.use_item(hero, 0, Target::None, &mut events));
+
+        events.retain(|event| !matches!(event.kind, EventKind::ItemUsed { .. }));
 
         assert_eq!(events.len(), 1);
         assert_eq!(
@@ -112,6 +118,7 @@ fn mango_passive_regeneration_does_not_repeat_its_consumption_event() {
     world.transform.get_mut(hero).unwrap().pos = AWAY;
     let mut events = Vec::new();
     assert!(world.use_item(hero, 0, Target::None, &mut events));
+    events.retain(|event| !matches!(event.kind, EventKind::ItemUsed { .. }));
     assert_eq!(events.len(), 1);
 
     let later = world.step();

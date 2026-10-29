@@ -174,6 +174,19 @@ pub enum EventKind {
         /// [`MatchInfo::trees`](crate::MatchInfo::trees).
         at: Vec2,
     },
+    /// A unit used an item and it took effect, as an
+    /// [`AbilityCast`](EventKind::AbilityCast) tells an ability's: told at the
+    /// moment of effect, to the sides that see the user where it stood or where
+    /// it stands after, and to the user's own. A Blink Dagger is told with
+    /// the user's two places in the views before and after.
+    ItemUsed {
+        /// Who used it, told as a blow's dealer is.
+        caster: Option<EntityId>,
+        item: ItemId,
+        /// The spot the use was aimed at: the point itself, or where the aimed
+        /// unit stood. Absent for a use aimed at nothing.
+        at: Option<Vec2>,
+    },
 }
 
 impl EventKind {
@@ -190,9 +203,9 @@ impl EventKind {
                 visit(unit);
                 killer.iter_mut().for_each(visit);
             }
-            EventKind::Landed { caster, .. } | EventKind::TreeFelled { by: caster, .. } => {
-                caster.iter_mut().for_each(visit)
-            }
+            EventKind::Landed { caster, .. }
+            | EventKind::TreeFelled { by: caster, .. }
+            | EventKind::ItemUsed { caster, .. } => caster.iter_mut().for_each(visit),
             EventKind::Captured { unit, by, .. } | EventKind::ShrineActivated { unit, by, .. } => {
                 visit(unit);
                 by.iter_mut().for_each(visit);
