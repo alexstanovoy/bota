@@ -457,20 +457,20 @@ fn ping_over(wire: Wire, one_way: Duration) -> Duration {
 fn a_clients_ping_is_the_lines_round_trip_and_not_a_multiple_of_the_tick(wire: Wire) {
     // Neither 50 ms nor 70 ms is a multiple of the 33.3 ms tick: a ping read off ticks would show
     // 33 or 66 for the first and 66 or 100 for the second, 16 ms or more off one of them.
-    let ms = |ping: Duration| ping.as_secs_f64() * 1000.0;
-    let near = ms(ping_over(wire, Duration::from_millis(25)));
-    let far = ms(ping_over(wire, Duration::from_millis(35)));
+    let ms = Duration::from_millis;
+    let near = ping_over(wire, ms(25));
+    let far = ping_over(wire, ms(35));
     assert!(
-        (near - 50.0).abs() < 8.0,
-        "a 50 ms line measured {near:.1} ms"
+        near.abs_diff(ms(50)) < ms(8),
+        "a 50 ms line measured {near:?}"
     );
     assert!(
-        (far - 70.0).abs() < 8.0,
-        "a 70 ms line measured {far:.1} ms"
+        far.abs_diff(ms(70)) < ms(8),
+        "a 70 ms line measured {far:?}"
     );
     assert!(
-        (far - near - 20.0).abs() < 8.0,
-        "20 ms of difference measured as {:.1} ms",
-        far - near
+        far.saturating_sub(near).abs_diff(ms(20)) < ms(8),
+        "20 ms of difference measured as {:?}",
+        far.saturating_sub(near)
     );
 }
