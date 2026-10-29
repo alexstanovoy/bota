@@ -1,8 +1,10 @@
 //! The attack cycle and uphill misses.
 
-use bota_core::{MELEE_CREEP, attack_gain, facing_towards, rules};
+use bota_core::{MELEE_CREEP, NeutralKind, attack_gain, facing_towards, rules};
 
-use crate::game::{ActionState, Ground, Health, MatchRng, UnitOrder, World, wire_id};
+use crate::game::{
+    ActionPhase, ActionState, Entity, Ground, Health, MatchRng, UnitOrder, World, wire_id,
+};
 use bota_proto::{Angle, EventKind, Fixed, HeroId, Order, SlotId, Target, Team, Vec2};
 
 use super::support::*;
@@ -380,4 +382,189 @@ fn neither_side_takes_every_kill_of_an_even_race() {
         kills.iter().all(|won| *won >= 10),
         "each side takes a fair share of the kills: {kills:?}"
     );
+}
+
+/// What one tick of an attacker's cycle shows: `B` in the windup, `A` in
+/// the recovery, `.` ready; with `*` when a missile of its left this tick
+/// and `!` when its target lost health.
+fn cycle_marks(world: &mut World, attacker: Entity, mark: Entity, ticks: u32) -> String {
+    let shots = |world: &World| {
+        world
+            .entities
+            .iter()
+            .filter(|e| {
+                world
+                    .projectile
+                    .get(*e)
+                    .is_some_and(|shot| shot.source == Some(attacker))
+            })
+            .count()
+    };
+    let mut marks = String::new();
+    for _ in 0..ticks {
+        let (hp, flying) = (world.health.get(mark).map(|h| h.hp), shots(world));
+        world.step();
+        marks.push(match world.action.get(attacker).map(|a| a.state) {
+            Some(ActionState::Attack {
+                phase: ActionPhase::Before { .. },
+                ..
+            }) => 'B',
+            Some(ActionState::Attack { .. }) => 'A',
+            _ => '.',
+        });
+        if shots(world) > flying {
+            marks.push('*');
+        }
+        if world.health.get(mark).map(|h| h.hp) < hp {
+            marks.push('!');
+        }
+    }
+    marks
+}
+
+/// The first tick in `marks` that carries `mark`, counted from zero.
+fn first_tick_with(marks: &str, mark: char) -> Option<usize> {
+    let at = marks.find(mark)?;
+    Some(marks[..at].matches(['B', 'A', '.']).count() - 1)
+}
+
+/// Each run of one phase in `marks`, as (what, ticks), dropping the shot and
+/// hit marks into the run they fell in.
+fn phase_runs(marks: &str) -> Vec<(char, usize)> {
+    let mut runs: Vec<(char, usize)> = Vec::new();
+    for phase in marks.chars().filter(|c| matches!(c, 'B' | 'A' | '.')) {
+        match runs.last_mut() {
+            Some((last, len)) if *last == phase => *len += 1,
+            _ => runs.push((phase, 1)),
+        }
+    }
+    runs
+}
+
+/// Dota's attack timings, tick for tick at 30 ticks a second: the windup of
+/// the attack point, the hit or the missile at its end, the backswing, and
+/// the attack time between two starts, all at the attacker's attack speed.
+/// Lane creeps (100 attack speed): melee 0.467 + 0.533 every 1 s, ranged
+/// 0.5 + 0.3 every 1 s, siege 0.7 + 1.3 every 3 s. Shadow Fiend at level one
+/// (125 attack speed): 0.5 + 0.54 every 1.6 s, each divided by 1.25. A giant wolf
+/// (likewise 125): 0.33 + 0.64 every 2 s.
+#[test]
+fn the_attack_cycle_keeps_dotas_timings() {
+    use bota_core::{RANGED_CREEP, SIEGE_CREEP, UnitDef};
+    let creep = |def: &'static UnitDef, gap: i32| {
+        let mut world = World::new();
+        let at = Vec2::from_ints(5000, 5000);
+        let attacker = world.spawn_unit(def, Team::Radiant, at);
+        let mark = world.spawn_unit(&SIEGE_CREEP, Team::Dire, at + Vec2::from_ints(gap, 0));
+        world.settle();
+        world.set_target(attacker, mark);
+        let marks = cycle_marks(&mut world, attacker, mark, 181);
+        (
+            marks,
+            world.stats.get(attacker).expect("settled").attack_speed,
+        )
+    };
+    for (def, gap, windup, backswing, every, launch) in [
+        (&MELEE_CREEP, 100, 14, 16, 30, '!'),
+        (&RANGED_CREEP, 400, 15, 9, 30, '*'),
+        (&SIEGE_CREEP, 400, 21, 39, 90, '*'),
+        (NeutralKind::GiantWolf.def(), 100, 8, 16, 48, '!'),
+    ] {
+        let (marks, speed) = creep(def, gap);
+        assert_eq!(speed, def.attack_speed);
+        let runs = phase_runs(&marks);
+        assert_eq!(runs[0], ('B', windup), "{:?} windup: {marks}", def.kind);
+        assert_eq!(
+            runs[1],
+            ('A', backswing),
+            "{:?} backswing: {marks}",
+            def.kind
+        );
+        assert_eq!(
+            first_tick_with(&marks, launch),
+            Some(windup),
+            "{:?} lets go at the point, the windup's ticks after it began: {marks}",
+            def.kind
+        );
+        let starts: Vec<usize> = phase_runs(&marks)
+            .iter()
+            .scan(0, |at, (phase, len)| {
+                let start = *at;
+                *at += len;
+                Some((*phase == 'B').then_some(start))
+            })
+            .flatten()
+            .collect();
+        assert!(
+            starts.windows(2).all(|pair| pair[1] - pair[0] == every),
+            "{:?} attacks every {every} ticks: {marks}",
+            def.kind
+        );
+    }
+    // Shadow Fiend, ordered to deny a creep of his own in reach that he
+    // faces: nothing else draws him, so the order alone starts the swing.
+    let mut world = World::new();
+    let fiend = seated_hero(
+        &mut world,
+        Vec2::from_ints(5000, 5000),
+        HeroId::SHADOW_FIEND,
+    );
+    let mark = world.spawn_unit(&MELEE_CREEP, Team::Radiant, Vec2::from_ints(5400, 5000));
+    world.settle();
+    world.health.insert(
+        mark,
+        Health {
+            hp: Fixed::from_int(250),
+        },
+    );
+    world.step();
+    assert_eq!(swinging(&world, fiend), None, "idle until ordered");
+    attack_click(&mut world, mark);
+    assert!(
+        swinging(&world, fiend).is_some(),
+        "the windup begins on the order's tick"
+    );
+    assert_eq!(world.stats.get(fiend).expect("settled").attack_speed, 125);
+    let marks = cycle_marks(&mut world, fiend, mark, 120);
+    let runs = phase_runs(&marks);
+    assert_eq!(runs[0], ('B', 11), "the rest of a 12-tick windup: {marks}");
+    assert_eq!(
+        first_tick_with(&marks, '*').map(|tick| tick + 1),
+        Some(12),
+        "the missile leaves 12 ticks after the order: {marks}"
+    );
+    assert_eq!(runs[1], ('A', 13), "a 13-tick backswing: {marks}");
+    let cycle: Vec<usize> = runs.iter().map(|(_, len)| *len).collect();
+    // Windup + backswing + idle per swing: 1.28 s is 38.4 ticks, so the
+    // starts come 38 or 39 ticks apart.
+    let periods: Vec<usize> = cycle[1..].chunks(3).map(|c| c.iter().sum()).collect();
+    assert!(
+        periods.iter().take(2).all(|p| *p == 38 || *p == 39),
+        "Shadow Fiend swings every 1.28 s: {marks}"
+    );
+}
+
+/// Pudge swings by hand at Liquipedia's 0.5 + 1.17: the windup and the
+/// backswing, tick for tick at his attack speed, and the strike between them.
+#[test]
+fn pudge_recovers_from_a_swing_for_1_17_seconds() {
+    let mut world = World::new();
+    let pudge = seated_hero(&mut world, Vec2::from_ints(5000, 5000), HeroId::PUDGE);
+    let mark = world.spawn_unit(&MELEE_CREEP, Team::Radiant, Vec2::from_ints(5150, 5000));
+    world.settle();
+    world.health.insert(
+        mark,
+        Health {
+            hp: Fixed::from_int(250),
+        },
+    );
+    world.step();
+    attack_click(&mut world, mark);
+    assert_eq!(world.stats.get(pudge).expect("settled").attack_speed, 113);
+    let marks = cycle_marks(&mut world, pudge, mark, 120);
+    let runs = phase_runs(&marks);
+    // At 113 attack speed: 0.5 s is a 13-tick windup before the blow, 1.17 s
+    // a backswing of 31 ticks from it (it was 400 ms, 11 ticks).
+    assert_eq!(runs[0], ('B', 13), "the windup: {marks}");
+    assert_eq!(runs[1], ('A', 31), "the backswing: {marks}");
 }

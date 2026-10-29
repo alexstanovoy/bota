@@ -13,7 +13,8 @@ use crate::{AbilityDef, Growth, HERO, HeroDef, Pierces, UnitDef, rules};
 
 /// Pudge: heavy, slow, and swings by hand, at the numbers of the game's
 /// `scripts/npc/heroes/npc_dota_hero_pudge.txt` (client 6957): 45 to 51 base
-/// attack damage, a base attack time of 1.7 seconds, 2.5 health a second.
+/// attack damage, a base attack time of 1.7 seconds, 2.5 health a second;
+/// his attack animation is Liquipedia's *Pudge*: 0.5 + 1.17.
 pub const PUDGE: UnitDef = UnitDef {
     attributes: Attributes {
         strength: Fixed::from_int(25),
@@ -29,6 +30,7 @@ pub const PUDGE: UnitDef = UnitDef {
     attack_range: 175,
     attack_time: 1700,
     attack_point: 500,
+    attack_backswing: 1170,
     projectile_speed: None,
     armor: 0,
     move_speed: 280,

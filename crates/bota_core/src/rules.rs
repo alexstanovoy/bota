@@ -553,6 +553,9 @@ pub const MELEE_CREEP_COLLISION: i32 = 36;
 pub const MELEE_CREEP_BOUND: i32 = 16;
 /// Milliseconds from a melee creep's attack start to the hit.
 pub const MELEE_CREEP_ATTACK_POINT: u32 = 466;
+/// Milliseconds a melee creep recovers after the hit (Liquipedia, *Attack
+/// Animation*: 0.467 + 0.533).
+pub const MELEE_CREEP_ATTACK_BACKSWING: u32 = 533;
 pub const MELEE_CREEP_BOUNTY: GoldRange = GoldRange::new(34, 39);
 /// Melee creep experience.
 pub const MELEE_CREEP_XP: i32 = 57;
@@ -577,6 +580,9 @@ pub const RANGED_CREEP_BOUND: i32 = 8;
 /// Milliseconds from a ranged creep's attack start to the projectile
 /// leaving.
 pub const RANGED_CREEP_ATTACK_POINT: u32 = 500;
+/// Milliseconds a ranged creep recovers after the missile leaves
+/// (Liquipedia, *Attack Animation*: 0.5 + 0.3).
+pub const RANGED_CREEP_ATTACK_BACKSWING: u32 = 300;
 /// Ranged creep attack projectile speed, world units per second.
 pub const RANGED_CREEP_PROJECTILE_SPEED: i32 = 900;
 pub const RANGED_CREEP_BOUNTY: GoldRange = GoldRange::new(43, 52);
@@ -606,6 +612,9 @@ pub const SIEGE_CREEP_ATTACK_TIME: u32 = 3000;
 /// Milliseconds from a siege creep's attack start to the projectile
 /// leaving.
 pub const SIEGE_CREEP_ATTACK_POINT: u32 = 700;
+/// Milliseconds a siege creep recovers after the missile leaves
+/// (Liquipedia, *Attack Animation*: 0.7 + 1.3).
+pub const SIEGE_CREEP_ATTACK_BACKSWING: u32 = 1300;
 /// Siege creep attack projectile speed, world units per second.
 pub const SIEGE_CREEP_PROJECTILE_SPEED: i32 = 1100;
 pub const SIEGE_CREEP_BOUNTY: GoldRange = GoldRange::new(59, 72);
@@ -943,8 +952,6 @@ pub const REPATH_DRIFT: i32 = 128;
 pub const SEPARATION_STEP: i32 = 4;
 /// Milliseconds a hero recovers after a swing. Cancelled by any order.
 pub const HERO_ATTACK_BACKSWING: u32 = 400;
-/// Milliseconds a creep recovers after a swing.
-pub const CREEP_ATTACK_BACKSWING: u32 = 500;
 /// Milliseconds a tower recovers after a shot, at [`BASE_ATTACK_SPEED`]:
 /// the rest of its cycle, the next shot cutting the 0.4 s animation short.
 pub const TOWER_ATTACK_BACKSWING: u32 = TOWER_ATTACK_TIME - TOWER_ATTACK_POINT;
