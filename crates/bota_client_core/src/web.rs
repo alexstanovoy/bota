@@ -15,6 +15,7 @@ use wasm_bindgen::closure::Closure;
 use web_sys::{BinaryType, CloseEvent, Event, MessageEvent, WebSocket};
 
 use crate::ping::PingMeter;
+use crate::receipts::OrderReceipts;
 use crate::ui::LiveLink;
 use crate::ws_frame::decode;
 
@@ -38,6 +39,8 @@ struct Shared {
     closed: bool,
     /// The round trip, timed with probes and their echoes.
     meter: PingMeter,
+    /// The orders sent and their receipts.
+    receipts: OrderReceipts,
 }
 
 /// The browser's monotonic clock, from the page's start.
@@ -144,6 +147,10 @@ impl Shared {
     }
 
     fn hold(&mut self, message: ServerMsg, socket: &WebSocket) -> bool {
+        if let ServerMsg::OrderReceived { seq, tick, .. } = message {
+            self.receipts.received(seq, tick, now());
+            return true;
+        }
         if let ServerMsg::Echo { id } = message {
             self.meter.echoed(id, now());
             return true;
@@ -181,6 +188,9 @@ impl LiveLink for WebSocketLink {
     fn send(&mut self, msg: &ClientMsg) -> std::io::Result<()> {
         let frame = encode_frame_to_vec(msg).map_err(std::io::Error::other)?;
         let mut shared = self.shared.borrow_mut();
+        if let ClientMsg::Order { seq, .. } = msg {
+            shared.receipts.sent(*seq, now());
+        }
         if shared.closed {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::BrokenPipe,
@@ -203,6 +213,14 @@ impl LiveLink for WebSocketLink {
 
     fn ping(&self) -> Option<Duration> {
         self.shared.borrow().meter.ping()
+    }
+
+    fn pending_orders(&self) -> usize {
+        self.shared.borrow().receipts.pending()
+    }
+
+    fn order_latency(&self) -> Option<Duration> {
+        self.shared.borrow().receipts.smoothed()
     }
 }
 

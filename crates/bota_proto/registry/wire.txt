@@ -459,6 +459,10 @@ field ServerMsg::SayRefused 0 reason: SayRefusal
 variant ServerMsg 14 Compressed(Vec<u8>)
 variant ServerMsg 15 Echo {}
 field ServerMsg::Echo 0 id: u32
+variant ServerMsg 16 OrderReceived {}
+field ServerMsg::OrderReceived 0 seq: u32
+field ServerMsg::OrderReceived 1 tick: u32
+field ServerMsg::OrderReceived 2 at_us: u64
 variant ReplayRecord 3 Heard(Heard)
 field Line 0 to: Audience
 field Line 1 body: Body

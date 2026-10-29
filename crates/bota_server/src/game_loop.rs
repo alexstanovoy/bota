@@ -2,6 +2,8 @@
 
 use std::num::NonZeroU32;
 use std::path::PathBuf;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender, channel};
 use std::time::{Duration, Instant};
 
@@ -194,6 +196,7 @@ pub fn run(listeners: impl Into<Listeners>, opts: ServerOpts) -> std::io::Result
         started: Instant::now(),
         delayed,
         pick_clock: PickClock::Waiting,
+        world_tick: Arc::new(AtomicU32::new(0)),
     };
     let Some(cfg) = server.lobby_phase() else {
         server.close_all();
@@ -349,6 +352,9 @@ struct Server {
     told: participants::Told,
     /// The ticks held back for late spectators, when they may watch.
     delayed: Option<DelayedFeed>,
+    /// The tick the world stands on, for the connections' network threads to date the orders
+    /// they read. Written by the tick loop and never read by it.
+    world_tick: Arc<AtomicU32>,
     /// The hero selection clock; runs in the lobby phase only.
     pick_clock: PickClock,
     /// What each connection may still say.
@@ -533,6 +539,7 @@ impl Server {
             self.tx.clone(),
             self.opts.idle_timeout,
             self.opts.messages_per_sec,
+            Arc::clone(&self.world_tick),
         );
         match spawned {
             Ok(conn) => self.conns.push(conn),
@@ -1046,6 +1053,7 @@ impl Server {
                 orders: taken.clone(),
             });
             let events = world.advance(&commands);
+            self.world_tick.store(world.tick, Ordering::Relaxed);
             refused.append(&mut world.refused);
             self.refuse(&mut refused);
             let told = Told {

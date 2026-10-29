@@ -39,6 +39,15 @@ pub trait LiveLink {
     fn ping(&self) -> Option<std::time::Duration> {
         None
     }
+    /// Orders sent that the server has not yet said it received (Dota brightens the cursor
+    /// meanwhile).
+    fn pending_orders(&self) -> usize {
+        0
+    }
+    /// The smoothed time from sending an order to hearing it was received, once one was.
+    fn order_latency(&self) -> Option<std::time::Duration> {
+        None
+    }
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -61,6 +70,14 @@ impl LiveLink for crate::socket::Net {
 
     fn ping(&self) -> Option<std::time::Duration> {
         crate::socket::Net::ping(self)
+    }
+
+    fn pending_orders(&self) -> usize {
+        crate::socket::Net::pending_orders(self)
+    }
+
+    fn order_latency(&self) -> Option<std::time::Duration> {
+        crate::socket::Net::order_latency(self)
     }
 }
 
@@ -88,6 +105,22 @@ impl Source {
     pub fn ping(&self) -> Option<std::time::Duration> {
         match self {
             Source::Live(link) => link.ping(),
+            Source::Replay(_) => None,
+        }
+    }
+
+    /// Orders sent that the server has not yet said it received.
+    pub fn pending_orders(&self) -> usize {
+        match self {
+            Source::Live(link) => link.pending_orders(),
+            Source::Replay(_) => 0,
+        }
+    }
+
+    /// The smoothed time from an order sent to its receipt, as the socket timed it.
+    pub fn order_latency(&self) -> Option<std::time::Duration> {
+        match self {
+            Source::Live(link) => link.order_latency(),
             Source::Replay(_) => None,
         }
     }

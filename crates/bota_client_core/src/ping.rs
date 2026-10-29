@@ -57,15 +57,20 @@ impl PingMeter {
         }
         self.in_flight = None;
         let sample = now.saturating_sub(sent);
-        self.smoothed = Some(match self.smoothed {
-            None => sample,
-            Some(average) if sample >= average => average + (sample - average) / SMOOTHING,
-            Some(average) => average - (average - sample) / SMOOTHING,
-        });
+        self.smoothed = Some(smooth(self.smoothed, sample));
     }
 
     /// The smoothed round trip, once an echo has come back.
     pub const fn ping(&self) -> Option<Duration> {
         self.smoothed
+    }
+}
+
+/// The running average moved towards `sample`.
+pub(crate) fn smooth(average: Option<Duration>, sample: Duration) -> Duration {
+    match average {
+        None => sample,
+        Some(average) if sample >= average => average + (sample - average) / SMOOTHING,
+        Some(average) => average - (average - sample) / SMOOTHING,
     }
 }

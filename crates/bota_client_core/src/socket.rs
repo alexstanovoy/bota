@@ -19,6 +19,7 @@ use std::time::{Duration, Instant};
 use bota_proto::{ClientMsg, ServerMsg};
 
 use crate::ping::PingMeter;
+use crate::receipts::{OrderReceipts, Receipt};
 use crate::redial::{Redial, Rejoin, redial, seat_held};
 use crate::transport::{DEFAULT_IO_TIMEOUT, Transport};
 pub(crate) use frames::FrameSink;
@@ -212,6 +213,8 @@ struct Shared {
     epoch: Instant,
     /// The round trip, timed with probes and their echoes.
     meter: Mutex<PingMeter>,
+    /// The orders sent and their receipts.
+    receipts: Mutex<OrderReceipts>,
 }
 
 struct Outgoing {
@@ -302,6 +305,15 @@ impl Shared {
         }
     }
 
+    /// Stamps the receipt of order `seq` the moment the reader has it.
+    fn order_received(&self, seq: u32, tick: u32) {
+        let now = self.epoch.elapsed();
+        self.receipts
+            .lock()
+            .expect("receipts lock")
+            .received(seq, tick, now);
+    }
+
     /// Stamps the echo of probe `id` the moment the reader has it.
     fn echoed(&self, id: u32) {
         let now = self.epoch.elapsed();
@@ -384,6 +396,7 @@ impl Net {
             taken: Condvar::new(),
             epoch: Instant::now(),
             meter: Mutex::new(PingMeter::default()),
+            receipts: Mutex::new(OrderReceipts::default()),
         });
         let thread_shared = Arc::clone(&shared);
         thread::spawn(move || read_on(thread_shared, &endpoint, reader, &tx));
@@ -412,6 +425,29 @@ impl Net {
     /// socket (see [`PingMeter`]), so it moves in milliseconds, not in ticks or frames.
     pub fn ping(&self) -> Option<Duration> {
         self.shared.meter.lock().expect("meter lock").ping()
+    }
+
+    /// Orders sent that the server has not yet said it received.
+    pub fn pending_orders(&self) -> usize {
+        self.shared
+            .receipts
+            .lock()
+            .expect("receipts lock")
+            .pending()
+    }
+
+    /// The smoothed time from sending an order to hearing it was received, once one was.
+    pub fn order_latency(&self) -> Option<Duration> {
+        self.shared
+            .receipts
+            .lock()
+            .expect("receipts lock")
+            .smoothed()
+    }
+
+    /// The latest order receipt.
+    pub fn last_receipt(&self) -> Option<Receipt> {
+        self.shared.receipts.lock().expect("receipts lock").last()
     }
 
     /// Whether the connection has ended for good.
@@ -443,6 +479,12 @@ fn read_on(
                 shared.heard_from_server();
                 gone = caller_gone(&shared);
                 shared.answer_ping();
+                return !gone;
+            }
+            if let ServerMsg::OrderReceived { seq, tick, .. } = msg {
+                shared.order_received(seq, tick);
+                shared.heard_from_server();
+                gone = caller_gone(&shared);
                 return !gone;
             }
             if let ServerMsg::Echo { id } = msg {
@@ -513,6 +555,14 @@ impl Transport for Net {
     /// Sends one message. A failed send the reader will not dial again after
     /// marks the connection closed.
     fn send(&mut self, msg: &ClientMsg) -> std::io::Result<()> {
+        if let ClientMsg::Order { seq, .. } = msg {
+            let now = self.shared.epoch.elapsed();
+            self.shared
+                .receipts
+                .lock()
+                .expect("receipts lock")
+                .sent(*seq, now);
+        }
         self.shared.lock().send(msg).inspect_err(|_| {
             self.shared.state.store(CLOSED, Ordering::Relaxed);
         })

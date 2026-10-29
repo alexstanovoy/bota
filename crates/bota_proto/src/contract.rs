@@ -344,7 +344,10 @@
 //! the server's network side answers each with [`ServerMsg::Echo`] naming the same id as soon as
 //! it reads it, ahead of whatever else waits to be sent and without waiting for a tick, and the
 //! simulation never sees it, so the round trip a client measures is the line's, whatever the
-//! tick rate. A connection that sends nothing, or takes in nothing of what it is
+//! tick rate. Every order read is answered the same way with
+//! [`ServerMsg::OrderReceived`](crate::ServerMsg::OrderReceived), naming its sequence number, the
+//! earliest tick it can take effect on and when it was read, so a client shows that its click
+//! reached the server long before the tick that carries it out. A connection that sends nothing, or takes in nothing of what it is
 //! sent, for the server's idle timeout (five seconds by default) is dropped
 //! as dead, and so is one whose peer closed it or broke it: the seat it held
 //! is free at once. A connection dropped as dead is reset rather than closed:

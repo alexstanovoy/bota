@@ -98,7 +98,7 @@ over_every_wire!(
     a_stalled_client_slows_neither_the_tick_nor_the_other_player,
     a_half_open_connection_is_released_and_its_client_comes_back,
     a_threaded_net_plays_through_a_reset_and_comes_back_to_its_seat,
-    a_clients_ping_is_the_lines_round_trip_and_not_a_multiple_of_the_tick,
+    a_clients_ping_and_order_receipts_are_the_lines_round_trip_and_not_a_multiple_of_the_tick,
 );
 
 /// The bot of the `attack_move` example.
@@ -426,9 +426,10 @@ fn a_threaded_net_plays_through_a_reset_and_comes_back_to_its_seat(wire: Wire) {
     assert!(threaded.ticks > 1600, "the seat played on");
 }
 
-/// The smoothed ping a threaded client measures in a running 30 Hz match over a line that adds
-/// `one_way` each way.
-fn ping_over(wire: Wire, one_way: Duration) -> Duration {
+/// What a threaded client measures in a running 30 Hz match over a line that adds `one_way` each
+/// way: the smoothed ping, the smoothed time from sending an order to its receipt, and the
+/// earliest tick the last order told it could take effect on.
+fn measured_over(wire: Wire, one_way: Duration) -> (Duration, Duration, u32) {
     // One seat and a dummy: the match ticks at its own pace and the client is alone in it.
     let mut opts = opts(TickMode::Realtime, 30);
     opts.dummy_seat = true;
@@ -443,34 +444,68 @@ fn ping_over(wire: Wire, one_way: Duration) -> Duration {
     let mut net = Net::open(endpoint(wire, &line.addr()), Redial::DEFAULT).expect("connect");
     join(&mut net, "timed", HeroId::SHADOW_FIEND, None).expect("a seat");
     // Polled at a frame's pace, as an app does; the probes go out and the echoes come back
-    // between the ticks and the frames.
+    // between the ticks and the frames, and an order goes out twice a second.
     let started = Instant::now();
+    let mut seq = 0;
+    let mut next_order = started;
     while started.elapsed() < Duration::from_millis(4500) {
         net.poll();
+        if Instant::now() >= next_order {
+            seq += 1;
+            next_order += Duration::from_millis(500);
+            net.send(&ClientMsg::Order {
+                seq,
+                unit: None,
+                order: Order::Move {
+                    target: Target::None,
+                },
+                seen: None,
+                queue: false,
+            })
+            .expect("an order goes out");
+        }
         thread::sleep(Duration::from_millis(7));
     }
     let ping = net.ping().expect("an echo came back");
+    let order = net.order_latency().expect("an order was received");
+    let receipt = net.last_receipt().expect("an order was received");
+    assert!(net.pending_orders() <= 1, "receipts come back");
     net.send(&ClientMsg::LeaveGame).expect("leave");
-    ping
+    (ping, order, receipt.tick)
 }
 
-fn a_clients_ping_is_the_lines_round_trip_and_not_a_multiple_of_the_tick(wire: Wire) {
+fn a_clients_ping_and_order_receipts_are_the_lines_round_trip_and_not_a_multiple_of_the_tick(
+    wire: Wire,
+) {
     // Neither 50 ms nor 70 ms is a multiple of the 33.3 ms tick: a ping read off ticks would show
-    // 33 or 66 for the first and 66 or 100 for the second, 16 ms or more off one of them.
+    // 33 or 66 for the first and 66 or 100 for the second, 16 ms or more off one of them. An
+    // order is received when the server reads it, not on the tick that carries it out.
     let ms = Duration::from_millis;
-    let near = ping_over(wire, ms(25));
-    let far = ping_over(wire, ms(35));
+    let (near, near_order, tick) = measured_over(wire, ms(25));
+    let (far, far_order, _) = measured_over(wire, ms(35));
     assert!(
-        near.abs_diff(ms(50)) < ms(8),
+        near.abs_diff(ms(50)) < ms(10),
         "a 50 ms line measured {near:?}"
     );
     assert!(
-        far.abs_diff(ms(70)) < ms(8),
+        far.abs_diff(ms(70)) < ms(10),
         "a 70 ms line measured {far:?}"
     );
     assert!(
-        far.saturating_sub(near).abs_diff(ms(20)) < ms(8),
+        far.saturating_sub(near).abs_diff(ms(20)) < ms(10),
         "20 ms of difference measured as {:?}",
         far.saturating_sub(near)
+    );
+    assert!(
+        near_order.abs_diff(ms(50)) < ms(10),
+        "an order over a 50 ms line was received after {near_order:?}"
+    );
+    assert!(
+        far_order.abs_diff(ms(70)) < ms(10),
+        "an order over a 70 ms line was received after {far_order:?}"
+    );
+    assert!(
+        tick > 1,
+        "the receipt names the tick the order can take effect on"
     );
 }

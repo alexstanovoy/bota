@@ -245,6 +245,7 @@ impl ClientSession {
             | ServerMsg::ParticipantLeft { .. }
             | ServerMsg::SayRefused { .. }
             | ServerMsg::Echo { .. }
+            | ServerMsg::OrderReceived { .. }
             | ServerMsg::Ping) => Ok(Ingested::Passed(Box::new(other))),
         }
     }
@@ -427,7 +428,13 @@ impl ClientSession {
         // Chat flows whatever the match does: a long pause full of it is no
         // broken stream.
         let chat = matches!(msg, ServerMsg::Heard(_) | ServerMsg::SayRefused { .. });
-        if !self.strict() || chat || matches!(msg, ServerMsg::Ping | ServerMsg::Echo { .. }) {
+        if !self.strict()
+            || chat
+            || matches!(
+                msg,
+                ServerMsg::Ping | ServerMsg::Echo { .. } | ServerMsg::OrderReceived { .. }
+            )
+        {
             return Ok(());
         }
         if matches!(msg, ServerMsg::Snapshot { .. }) {

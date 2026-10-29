@@ -49,6 +49,7 @@ mod orders;
 mod ping;
 mod play;
 mod readiness;
+mod receipts;
 #[cfg(not(target_arch = "wasm32"))]
 mod redial;
 mod replay_file;
@@ -80,6 +81,7 @@ pub use orders::*;
 pub use ping::*;
 pub use play::*;
 pub use readiness::*;
+pub use receipts::*;
 #[cfg(not(target_arch = "wasm32"))]
 pub use redial::Redial;
 pub use replay_file::*;

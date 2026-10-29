@@ -578,6 +578,23 @@ pub enum ServerMsg {
     /// The answer to a [`ClientMsg::Probe`], carrying its `id`. Sent ahead of anything still
     /// queued for the connection, but behind a frame already going out.
     Echo { id: u32 },
+    /// Tells that an order was received, the moment the connection's network side read it: before
+    /// the simulation has seen it, so it says nothing of whether the order is valid (a refusal
+    /// follows as [`ServerMsg::OrderRejected`]) and answers a round trip, not a tick. Sent ahead
+    /// of anything still queued, once for every [`ClientMsg::Order`] that passed the
+    /// connection's allowance.
+    OrderReceived {
+        /// The order, by the sequence number it was sent with.
+        seq: u32,
+        /// The earliest tick the order can take effect on: the one after the tick the world stood
+        /// on when the order was read. A server that delays orders on purpose
+        /// (`--order-delay-ticks`) carries it out later still; the first snapshot after it tells
+        /// the measured delay ([`WorldView::order_delays`](crate::WorldView::order_delays)).
+        tick: u32,
+        /// When it was read, in microseconds since the connection opened, on the server's
+        /// monotonic clock.
+        at_us: u64,
+    },
 }
 
 /// What a replay file is, and which wire recorded it: its first record.

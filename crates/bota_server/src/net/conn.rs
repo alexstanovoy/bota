@@ -58,6 +58,7 @@ impl Connection {
         events: Sender<NetEvent>,
         idle_timeout: Option<Duration>,
         messages_per_sec: NonZeroU32,
+        world_tick: Arc<AtomicU32>,
     ) -> std::io::Result<Connection> {
         let Split {
             source,
@@ -70,17 +71,26 @@ impl Connection {
         let writer = thread::Builder::new().spawn(move || writer_outbox.run_writer(sink))?;
         let ticks_sent = Arc::new(AtomicU32::new(0));
         let allowance = Allowance::new(messages_per_sec, Arc::clone(&ticks_sent), Instant::now());
+        let opened = Instant::now();
         let connection = Connection {
             id,
-            opened: Instant::now(),
+            opened,
             socket,
             outbox,
             ticks_sent,
             writer: Some(writer),
         };
-        if let Err(error) = thread::Builder::new()
-            .spawn(move || read_loop(id, source, events, allowance, &reader_outbox))
-        {
+        if let Err(error) = thread::Builder::new().spawn(move || {
+            read_loop(
+                id,
+                source,
+                events,
+                allowance,
+                &reader_outbox,
+                opened,
+                &world_tick,
+            )
+        }) {
             connection.abort();
             return Err(error);
         }
@@ -155,6 +165,8 @@ fn read_loop(
     events: Sender<NetEvent>,
     mut allowance: Allowance,
     outbox: &Outbox,
+    opened: Instant,
+    world_tick: &AtomicU32,
 ) {
     let mut listened = true;
     let breach = loop {
@@ -176,7 +188,19 @@ fn read_loop(
                     outbox.push_urgent(echo);
                 }
             }
-            Ok(msg) => listened = events.send(NetEvent::Msg(id, msg)).is_ok(),
+            Ok(msg) => {
+                if let ClientMsg::Order { seq, .. } = msg {
+                    let received = ServerMsg::OrderReceived {
+                        seq,
+                        tick: world_tick.load(Ordering::Relaxed).saturating_add(1),
+                        at_us: u64::try_from(opened.elapsed().as_micros()).unwrap_or(u64::MAX),
+                    };
+                    if let Ok(frame) = encode_frame_to_vec(&received) {
+                        outbox.push_urgent(frame);
+                    }
+                }
+                listened = events.send(NetEvent::Msg(id, msg)).is_ok();
+            }
             Err(_) => break Some(Breach::Undecodable),
         }
     };

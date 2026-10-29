@@ -723,6 +723,11 @@ pub fn all_server_msgs() -> Vec<ServerMsg> {
         },
         ServerMsg::Compressed(vec![0, 1, 2, 0xff]),
         ServerMsg::Echo { id: 4_000_000_007 },
+        ServerMsg::OrderReceived {
+            seq: 41,
+            tick: 5401,
+            at_us: 9_000_000_123,
+        },
     ]
 }
 
@@ -809,5 +814,6 @@ pub fn server_msg_name(msg: &ServerMsg) -> &'static str {
         ServerMsg::SayRefused { .. } => "SayRefused",
         ServerMsg::Compressed(_) => "Compressed",
         ServerMsg::Echo { .. } => "Echo",
+        ServerMsg::OrderReceived { .. } => "OrderReceived",
     }
 }
