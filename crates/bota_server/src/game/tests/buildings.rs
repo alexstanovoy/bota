@@ -82,6 +82,24 @@ fn a_barracks_is_ranged_by_where_it_stands_whatever_health_the_match_gives_it() 
     );
 }
 
+/// Dota draws the fountain's shots with its own missile (the fountain's
+/// `ProjectileModel`): a view shows each shot as the fountain's, of its side.
+#[test]
+fn the_fountains_shots_are_shown_as_the_fountains_missiles() {
+    let mut world = World::on_map(map_of(MapId(2)));
+    let at = world.map.fountains[0] + bota_proto::Vec2::from_ints(900, 0);
+    world.spawn_unit(&STANDING_TARGET, Team::Dire, at);
+    world.settle();
+    let shot = (0..30)
+        .find_map(|_| {
+            world.step();
+            world.view(Team::Dire).projectiles.first().copied()
+        })
+        .expect("the fountain shoots");
+    assert_eq!(shot.model, Some(bota_proto::ProjectileModel::Fountain));
+    assert_eq!(shot.team, Team::Radiant);
+}
+
 /// A creep that bears no armor and never falls to a few shots.
 static STANDING_TARGET: bota_core::UnitDef = bota_core::UnitDef {
     max_hp: 30_000,
@@ -301,4 +319,19 @@ fn the_fountain_sees_a_hidden_ward_in_its_reach_and_shoots_it_down() {
     }
     assert!(!world.alive(inside), "the fountain shoots it down");
     assert!(world.alive(outside));
+    // Dota's fountain reveals within 1200 (Liquipedia, Fountain): a shade
+    // inside it is found, a shade beyond it hides, out along the diagonal
+    // where its ordinary sight reaches further.
+    let mut world = World::on_map(map_of(MapId(2)));
+    let edge =
+        |far: i32| fountain_at + bota_proto::Vec2::from_ints(far * 707 / 1000, far * 707 / 1000);
+    let (edge_in, edge_out) = (plant(&mut world, edge(1180)), plant(&mut world, edge(1220)));
+    let plain = world.spawn_unit(&STANDING_TARGET, Team::Dire, edge(1240));
+    world.settle();
+    assert!(
+        world.can_see(Team::Radiant, plain),
+        "what does not hide is seen past 1200 there"
+    );
+    assert!(world.can_see(Team::Radiant, edge_in), "inside 1200: found");
+    assert!(!world.can_see(Team::Radiant, edge_out), "beyond: hidden");
 }

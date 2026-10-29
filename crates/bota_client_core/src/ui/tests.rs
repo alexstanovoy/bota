@@ -714,6 +714,47 @@ fn a_channel_that_wants_hold_or_stop_keeps_the_last_order_back_until_it_ends() {
     }
 }
 
+/// Dota keeps the two "Require Hold/Stop" settings apart: a Town Portal's
+/// channel holds orders back by the teleport one alone, any other channel by
+/// the other.
+#[test]
+fn a_teleport_holds_orders_back_by_its_own_option_alone() {
+    use crate::ui::intent::Intent;
+    let teleporting = |app: &mut App| {
+        let mut hero = owned(1, UnitKind::Hero, Some(SlotId(0)));
+        hero.statuses.bits |= StatusFlags::CHANNELLING;
+        let id = hero.id;
+        let mut view = a_tick(10, vec![hero], vec![a_seat(SlotId(0), Some(id))]);
+        view.teleports = vec![bota_proto::TeleportView {
+            slot: SlotId(0),
+            team: Team::Radiant,
+            building: EntityId {
+                idx: 9,
+                generation: 1,
+            },
+            destination: Vec2::ZERO,
+            ticks_left: 30,
+            ticks_total: 90,
+        }];
+        app.handle(bota_proto::ServerMsg::Snapshot { view });
+        assert!(!app.lost, "the stream holds");
+    };
+    let walk = Order::Move {
+        target: Target::Pos(Vec2::from_ints(100, 0)),
+    };
+    for (teleport, channels, held) in [(true, false, true), (false, true, false)] {
+        let mut app = a_started_app();
+        app.channel_stops = ChannelStops { teleport, channels };
+        teleporting(&mut app);
+        app.act(Intent::MoveTo((100.0, 0.0)));
+        assert_eq!(
+            app.shown_orders.last().map(|shown| shown.order),
+            (!held).then_some(walk),
+            "teleport option {teleport}, channels option {channels}"
+        );
+    }
+}
+
 #[test]
 fn a_cast_point_shortens_while_a_feast_runs_on_a_hero_with_the_talent() {
     let mut app = a_started_app();

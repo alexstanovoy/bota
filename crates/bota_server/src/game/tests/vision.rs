@@ -874,13 +874,27 @@ fn a_tango_eats_its_tree_which_grows_back_in_three_minutes_once_nobody_stands_by
     put(&mut world, looker, tree + Vec2::from_ints(240, 0));
     assert!(felled(&world, Some(Team::Dire)), "until it looks");
     put(&mut world, looker, map_of(MapId(0)).fountains[1]);
-    world.tick = eaten_at + rules::TREE_REGROW_TICKS;
-    let events = world.step();
-    assert!(
-        felled(&world, None),
-        "the eater stands by it: it does not grow under him"
-    );
-    assert_eq!(trees_told(&events, Team::Radiant), (vec![], vec![]));
+    let aside = tree + Vec2::from_ints(rules::TREE_REGROW_CLEAR + 40, 0);
+    put(&mut world, eater, aside);
+    // Dota's three minutes, not whatever the rules hold.
+    world.tick = eaten_at + 3 * 60 * rules::TICKS_PER_SECOND - 3;
+    for _ in 0..2 {
+        let events = world.step();
+        assert!(
+            felled(&world, None),
+            "with nobody by it, it is still down a tick short of three minutes"
+        );
+        assert_eq!(trees_told(&events, Team::Radiant), (vec![], vec![]));
+    }
+    put(&mut world, eater, tree + Vec2::from_ints(120, 0));
+    for _ in 0..3 {
+        let events = world.step();
+        assert!(
+            felled(&world, None),
+            "the eater stands by it: it does not grow under him"
+        );
+        assert_eq!(trees_told(&events, Team::Radiant), (vec![], vec![]));
+    }
     put(
         &mut world,
         eater,

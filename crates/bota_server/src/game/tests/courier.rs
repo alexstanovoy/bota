@@ -441,6 +441,46 @@ fn a_courier_falls_to_one_melee_hero_swing_two_ranged_hero_missiles_or_six_other
     }
 }
 
+/// What a side is shown of an enemy courier is its health in hits, the
+/// numbers a front end draws its bar's blocks from: six, and three gone with
+/// each missile of a ranged hero its seat sends at it.
+#[test]
+fn a_courier_a_seat_sends_its_ranged_hero_at_shows_six_hits_and_loses_three_a_missile() {
+    let mut world = World::new();
+    let at = Vec2::from_ints(5000, 5000);
+    let fiend = seated_hero(&mut world, at, HeroId::SHADOW_FIEND);
+    let courier = world.spawn_courier(
+        Team::Dire,
+        at + Vec2::from_ints(300, 0),
+        SlotId(1),
+        Inventory::empty(6),
+    );
+    world.settle();
+    world.fill_pools(fiend);
+    world.step();
+    let health = |world: &World| {
+        let unit = shown(world, Some(Team::Radiant), courier);
+        (unit.hp, unit.max_hp)
+    };
+    let full = rules::COURIER_HP;
+    assert_eq!(health(&world), (full, full), "six hits of health shown");
+    attack_click(&mut world, courier);
+    let mut shown_after = Vec::new();
+    for _ in 0..(10 * rules::TICKS_PER_SECOND) {
+        world.step();
+        if !world.alive(courier) {
+            break;
+        }
+        let (hp, max_hp) = health(&world);
+        assert_eq!(max_hp, full);
+        if hp < full && shown_after.last() != Some(&hp) {
+            shown_after.push(hp);
+        }
+    }
+    assert!(!world.alive(courier), "two missiles bring it down");
+    assert_eq!(shown_after, vec![full - 3], "half of it after the first");
+}
+
 #[test]
 fn a_spell_takes_nothing_of_a_courier_and_neither_does_damage_besides_a_swing() {
     let (mut world, courier, fiend) =
