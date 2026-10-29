@@ -4,7 +4,7 @@
 use bota_core::{MELEE_CREEP, RANGED_CREEP, UnitDef, rules, tower_def};
 
 use crate::game::World;
-use bota_proto::{Fixed, Team, UnitKind, Vec2};
+use bota_proto::{Fixed, Order, Target, Team, UnitKind, Vec2};
 
 use super::support::*;
 
@@ -217,4 +217,39 @@ fn a_tier_one_tower_needs_seven_or_eight_shots_for_a_melee_creep_and_four_for_a_
             def.kind
         );
     }
+}
+
+#[test]
+fn a_tower_drops_a_hero_that_walks_out_of_its_reach() {
+    // A tower does not move, so a target past its attack range is no target:
+    // it chooses again, and with nobody else about it is set on nobody.
+    let mut world = World::new();
+    let tower = world.spawn_unit(tower_def(1), Team::Dire, Vec2::from_ints(5000, 5000));
+    let hero = seat_hero(&mut world, 0, Team::Radiant, Vec2::from_ints(5300, 5000));
+    // A Dire lookout further down the hero's way: the tower's side keeps the
+    // hero in sight after it is out of reach, as Dota's vision would.
+    world.spawn_unit(&TARGET, Team::Dire, Vec2::from_ints(6400, 5000));
+    world.settle();
+    run(&mut world, 2);
+    assert_eq!(world.target_of(tower), Some(hero), "it is set on the hero");
+    seat_order(
+        &mut world,
+        Order::Move {
+            target: Target::Pos(Vec2::from_ints(9000, 5000)),
+        },
+    );
+    let reach = world.stats.get(tower).expect("settled").attack_range;
+    let mut ticks = 0;
+    while world.within_reach(tower, hero, reach) {
+        assert!(ticks < 600, "the hero walks out of reach");
+        world.step();
+        ticks += 1;
+    }
+    world.step();
+    assert!(world.can_see_of(tower, hero), "the hero is still in sight");
+    assert_eq!(
+        world.target_of(tower),
+        None,
+        "the tower lets go the tick after the hero is out of reach"
+    );
 }

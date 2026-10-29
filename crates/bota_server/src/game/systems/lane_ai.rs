@@ -103,7 +103,8 @@ impl World {
     /// chased into the fog for as long. Past that, one within attack range is kept
     /// unless something of a better class is within attack range too; one
     /// out of it gives way to the best within acquisition, and is kept only
-    /// when there is none and its chase has not run out.
+    /// when there is none and its chase has not run out; a building has no
+    /// chase, so it is not kept at all.
     pub fn select_target(&self, seeker: Entity, candidates: &Candidates) -> Option<Entity> {
         let stats = self.stats.get(seeker);
         let acquisition = stats.map_or(Fixed::ZERO, |stats| stats.acquisition);
@@ -135,7 +136,13 @@ impl World {
             });
             return if better { best } else { Some(held) };
         }
-        if ai.is_some_and(|ai| self.tick >= ai.chase_until) {
+        // A building cannot walk after what it held: out of reach, it is no
+        // target.
+        let anchored = self
+            .kind
+            .get(seeker)
+            .is_some_and(|kind| kind_def(*kind).structure);
+        if anchored || ai.is_some_and(|ai| self.tick >= ai.chase_until) {
             return self.best_valid_in_range(seeker, acquisition, candidates);
         }
         self.best_valid_in_range(seeker, acquisition, candidates)
