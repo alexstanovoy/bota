@@ -202,13 +202,8 @@ impl Tracks {
                 None => fresh.push(index),
             }
         }
-        for &index in &fresh {
-            let unit = &view.units[index];
-            let at = self
-                .entities
-                .binary_search_by_key(&unit.id, |entity| entity.id)
-                .expect_err("new entity cannot already exist");
-            self.entities.insert(at, new_entity(view.tick, unit));
+        if !fresh.is_empty() {
+            self.merge_fresh(view.tick, &view.units, &fresh);
         }
         fresh.clear();
         self.fresh = fresh;
@@ -278,29 +273,59 @@ impl Tracks {
         });
     }
 
+    /// Tracks the units at `fresh` (indices into the sorted `units`) in one
+    /// merge with the sorted tracks, so a crowd arriving costs what the
+    /// tracks do, not what moving the ones behind each new track does.
+    fn merge_fresh(&mut self, tick: u32, units: &[UnitView], fresh: &[usize]) {
+        let kept = std::mem::take(&mut self.entities);
+        let mut merged = Vec::with_capacity(kept.len() + fresh.len());
+        let mut kept = kept.into_iter().peekable();
+        for &index in fresh {
+            let unit = &units[index];
+            merged.extend(std::iter::from_fn(|| {
+                kept.next_if(|track| track.id < unit.id)
+            }));
+            merged.push(new_entity(tick, unit));
+        }
+        merged.extend(kept);
+        self.entities = merged;
+    }
+
+    /// Forgets the tracks of units out of view, a snapshot's worth of the
+    /// oldest first and a tick's cohort whole, until the units the snapshot
+    /// brings fit under the bound.
     fn make_entity_room(&mut self, view: &WorldView) {
         let new_count = pair_tracked(&self.entities, &view.units)
             .filter(|(_, _, tracked)| tracked.is_none())
             .count();
-        let mut required = self
+        let required = self
             .entities
             .len()
             .saturating_add(new_count)
             .saturating_sub(MAX_TRACKED_ENTITIES);
-        while required > 0 {
-            let oldest = self
-                .entities
-                .iter()
-                .filter(|track| view.unit(track.id).is_none())
-                .map(|track| track.last_seen_tick)
-                .min()
-                .expect("validated visible-unit bound guarantees an invisible eviction cohort");
-            let before = self.entities.len();
+        if required == 0 {
+            return;
+        }
+        let mut unseen: Vec<u32> = self
+            .entities
+            .iter()
+            .filter(|track| view.unit(track.id).is_none())
+            .map(|track| track.last_seen_tick)
+            .collect();
+        unseen.sort_unstable();
+        // The newest tick whose cohort goes: the validated bound on visible
+        // units leaves enough unseen tracks, and if it somehow did not, all
+        // of them go.
+        let mut evicted = 0;
+        let mut newest = None;
+        while evicted < required && evicted < unseen.len() {
+            let tick = unseen[evicted];
+            evicted = unseen.partition_point(|&seen| seen <= tick);
+            newest = Some(tick);
+        }
+        if let Some(newest) = newest {
             self.entities
-                .retain(|track| track.last_seen_tick != oldest || view.unit(track.id).is_some());
-            let evicted = before - self.entities.len();
-            assert!(evicted > 0);
-            required = required.saturating_sub(evicted);
+                .retain(|track| track.last_seen_tick > newest || view.unit(track.id).is_some());
         }
     }
 

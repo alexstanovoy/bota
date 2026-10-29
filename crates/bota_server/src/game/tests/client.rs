@@ -1,12 +1,14 @@
 //! The client library's session folds what a server sends and nothing else.
 
 use bota_client_core::{
-    AckPolicy, ClientSession, Ingested, IssuedOrder, MatchStatic, SessionOptions,
+    AckPolicy, ClientSession, Ingested, IssuedOrder, MAX_TRACKED_ENTITIES, MatchStatic,
+    SessionError, SessionOptions,
 };
 use bota_core::{map_of, rules};
 use bota_proto::{
-    AbilitySlot, EntityId, EventKind, Fixed, HeroId, ItemId, ItemSlot, MatchInfo, Order,
-    OutgoingOrder, ServerMsg, SkippedTick, SlotId, Target, Team, UnitKind, Vec2,
+    AbilitySlot, Angle, EntityId, EventKind, Fixed, HeroId, ItemId, ItemSlot, LootView, MatchInfo,
+    Order, OutgoingOrder, ProjectileView, ServerMsg, SkippedTick, SlotId, StockView, Target, Team,
+    UnitKind, Vec2, WorldView,
 };
 
 use super::local::mid_config;
@@ -51,6 +53,10 @@ fn session_for(info: &MatchInfo, slot: u8) -> ClientSession {
         ack: AckPolicy::Never,
         ..SessionOptions::default()
     };
+    session_with(info, slot, options)
+}
+
+fn session_with(info: &MatchInfo, slot: u8, options: SessionOptions) -> ClientSession {
     let statics = MatchStatic::new(info).expect("valid terms");
     ClientSession::seat(statics, SlotId(slot), Some(HeroId::SHADOW_FIEND), options).expect("a seat")
 }
@@ -276,9 +282,16 @@ fn a_directional_move_replaces_the_walk_standing_in_the_ledger() {
 
 /// A map-2 match and a session of seat 0 holding everything it was first sent.
 fn seated() -> (LocalMatch, ClientSession) {
+    seated_with(SessionOptions {
+        ack: AckPolicy::Never,
+        ..SessionOptions::default()
+    })
+}
+
+fn seated_with(options: SessionOptions) -> (LocalMatch, ClientSession) {
     let cfg = mid_config();
     let (local, mut seats) = LocalMatch::new(&cfg, &[OrderDelay::NONE]).expect("a match");
-    let mut session = session_for(info_of(&seats[0]), 0);
+    let mut session = session_with(info_of(&seats[0]), 0, options);
     for message in seats[0].drain(1..) {
         session.ingest(message, &mut ()).expect("folds");
     }
@@ -337,3 +350,167 @@ fn a_session_is_told_a_scroll_it_read_was_broken_off() {
     };
     assert!(told(&session, &broken));
 }
+
+/// The session's last view, `ticks` later: what a server sends next.
+fn later(base: &WorldView, ticks: u32) -> WorldView {
+    let mut view = base.clone();
+    view.tick += ticks;
+    view
+}
+
+/// Folds a hostile `view` and the events that complete its tick.
+fn fold_view(session: &mut ClientSession, view: WorldView) -> Result<(), SessionError> {
+    let tick = view.tick;
+    session.ingest(ServerMsg::Snapshot { view }, &mut ())?;
+    session.ingest(
+        ServerMsg::Events {
+            tick,
+            events: Vec::new(),
+        },
+        &mut (),
+    )?;
+    Ok(())
+}
+
+fn entity(idx: u32) -> EntityId {
+    EntityId { idx, generation: 1 }
+}
+
+/// `view` with a copy of one of its plain units at each handle of `idxs`.
+fn crowded(mut view: WorldView, idxs: impl IntoIterator<Item = u32>) -> WorldView {
+    let mut template = view
+        .units
+        .iter()
+        .find(|unit| unit.owner.is_none() && unit.cast.is_none())
+        .expect("a unit nobody owns")
+        .clone();
+    template.effects.clear();
+    for idx in idxs {
+        template.id = entity(idx);
+        view.units.push(template.clone());
+    }
+    view.units.sort_by_key(|unit| unit.id);
+    view
+}
+
+fn missile(idx: u32) -> ProjectileView {
+    ProjectileView {
+        id: entity(idx),
+        pos: Vec2::from_ints(0, 0),
+        facing: Angle::default(),
+        team: Team::Radiant,
+        ability: None,
+        source: None,
+        target: None,
+        inflictor: None,
+        seen_by: None,
+        model: None,
+    }
+}
+
+fn dropped(idx: u32) -> LootView {
+    LootView {
+        id: entity(idx),
+        pos: Vec2::from_ints(0, 0),
+        item: ItemId::HEALING_SALVE,
+        charges: None,
+        seen_by: None,
+    }
+}
+
+/// Handles the contract promises in ascending order are checked to be, in
+/// one pass: a list out of order or repeating is refused, whatever it holds.
+#[test]
+fn projectiles_and_loot_not_strictly_ascending_by_handle_are_refused() {
+    type Fill = fn(&mut WorldView, [u32; 3]);
+    let lists: [(&str, Fill); 2] = [
+        ("projectiles", |view, ids| {
+            view.projectiles = ids.map(missile).to_vec();
+        }),
+        ("loot", |view, ids| view.loot = ids.map(dropped).to_vec()),
+    ];
+    for (name, set) in lists {
+        for ids in [[1, 2, 3], [1, 3, 2], [3, 2, 1], [1, 2, 2]] {
+            let (_, mut session) = seated();
+            let mut view = later(session.current().expect("a view"), 1);
+            set(&mut view, ids);
+            let folded = fold_view(&mut session, view);
+            assert_eq!(
+                folded.is_ok(),
+                ids == [1, 2, 3],
+                "{name} {ids:?}: {folded:?}"
+            );
+        }
+    }
+}
+
+/// A server that lists felled trees or the shop's stock out of order breaks
+/// the contract the same way.
+#[test]
+fn felled_trees_and_stock_out_of_order_are_refused() {
+    let (_, mut session) = seated();
+    let mut view = later(session.current().expect("a view"), 1);
+    view.felled_trees = vec![3, 1];
+    assert!(fold_view(&mut session, view).is_err());
+    let (_, mut session) = seated();
+    let mut view = later(session.current().expect("a view"), 1);
+    let shelf = |team, item| StockView {
+        team,
+        item,
+        left: 1,
+        max: 1,
+        restock_left: 0,
+    };
+    view.stock = vec![
+        shelf(Team::Dire, ItemId::HEALING_SALVE),
+        shelf(Team::Radiant, ItemId::HEALING_SALVE),
+    ];
+    assert!(fold_view(&mut session, view).is_err());
+}
+
+/// Half of the tracked units keep their place and as many new ones appear
+/// between them, the most each snapshot may add: folded in a merge, in a time
+/// that does not grow with every unit shifting the ones behind it.
+#[test]
+fn a_crowd_appearing_between_tracked_units_folds_in_linear_time() {
+    let (_, mut session) = seated();
+    let base = session.current().expect("a view").clone();
+    let crowd = (MAX_TRACKED_ENTITIES - base.units.len()) as u32 / 2;
+    let first = crowded(later(&base, 1), (0..crowd).map(|n| 10_000 + 2 * n));
+    fold_view(&mut session, first).expect("a crowd folds");
+    let second = crowded(later(&base, 2), (0..2 * crowd).map(|n| 10_000 + n));
+    let started = std::time::Instant::now();
+    fold_view(&mut session, second).expect("a crowd folds");
+    assert!(started.elapsed() < FOLD_BUDGET, "{:?}", started.elapsed());
+    assert_eq!(
+        session.entities().len(),
+        base.units.len() + 2 * crowd as usize
+    );
+}
+
+/// Room for a crowd made by forgetting, one tick's cohort at a time, the
+/// thousands of units seen once each.
+#[test]
+fn a_crowd_evicting_thousands_of_cohorts_folds_in_time_linear_in_them() {
+    const SEEN_ONCE: u32 = 2_000;
+    let (_, mut session) = seated_with(SessionOptions {
+        ack: AckPolicy::Never,
+        forget_after_ticks: u32::MAX,
+    });
+    let base = session.current().expect("a view").clone();
+    for n in 0..SEEN_ONCE {
+        let view = crowded(later(&base, 1 + n), [10_000 + n]);
+        fold_view(&mut session, view).expect("a unit passes");
+    }
+    let room = (MAX_TRACKED_ENTITIES - base.units.len()) as u32;
+    let crowd = crowded(later(&base, 1 + SEEN_ONCE), 20_000..20_000 + room);
+    let started = std::time::Instant::now();
+    fold_view(&mut session, crowd).expect("a crowd folds");
+    assert!(started.elapsed() < FOLD_BUDGET, "{:?}", started.elapsed());
+    assert_eq!(session.entities().len(), MAX_TRACKED_ENTITIES);
+}
+
+/// Far over what a linear fold of a few thousand units costs (1 ms in a
+/// release build, 5 ms in a debug one) and under what shifting or rescanning
+/// them for each one did (13 ms and 73 ms in a release build).
+const FOLD_BUDGET: std::time::Duration = std::time::Duration::from_millis(30);

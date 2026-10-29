@@ -2,8 +2,8 @@
 
 use bota_core::rules;
 use bota_proto::{
-    EntityId, EventKind, HeroId, LobbySlot, Pick, PlayerView, ProjectileModel, StatusFlags, Team,
-    UnitKind, WorldView,
+    EntityId, EventKind, HeroId, LobbySlot, Pick, PlayerView, ProjectileModel, StatusFlags,
+    StockView, Team, UnitKind, WorldView,
 };
 
 use crate::limits::{
@@ -55,7 +55,7 @@ pub(crate) fn snapshot(expect: &Expect<'_>, view: &WorldView) -> Result<(), Sess
     casts(view)?;
     effects(view)?;
     projectiles(view)?;
-    unique_dynamic_handles(view)?;
+    dynamic_handles(view)?;
     players(
         expect.statics.roster(),
         expect.statics.metadata().cheats,
@@ -203,22 +203,54 @@ fn skipped_ticks(expect: &Expect<'_>, view: &WorldView) -> Result<(), SessionErr
     Ok(())
 }
 
-fn unique_dynamic_handles(view: &WorldView) -> Result<(), SessionError> {
-    if let Some(id) = first_repeat(&view.projectiles, |p| p.id) {
-        return Err(SessionError::DuplicateProjectile(id));
+/// Projectiles and loot sorted strictly by handle, as the contract says: one
+/// pass, which also rules out a handle told twice. Felled trees and the
+/// shop's stock keep their promised order the same way.
+fn dynamic_handles(view: &WorldView) -> Result<(), SessionError> {
+    ascending(
+        &view.projectiles,
+        |shot| shot.id,
+        SessionError::DuplicateProjectile,
+        SessionError::UnsortedProjectiles,
+    )?;
+    ascending(
+        &view.loot,
+        |item| item.id,
+        SessionError::DuplicateLoot,
+        SessionError::UnsortedLoot,
+    )?;
+    if !view.felled_trees.windows(2).all(|pair| pair[0] < pair[1]) {
+        return Err(SessionError::UnsortedFelledTrees);
     }
-    first_repeat(&view.loot, |l| l.id).map_or(Ok(()), |id| Err(SessionError::DuplicateLoot(id)))
+    let stock_key = |stock: &StockView| (stock.team, stock.item);
+    if !view
+        .stock
+        .windows(2)
+        .all(|pair| stock_key(&pair[0]) < stock_key(&pair[1]))
+    {
+        return Err(SessionError::UnsortedStock);
+    }
+    Ok(())
 }
 
-/// The first id that repeats one listed before it.
-fn first_repeat<T>(items: &[T], id: impl Fn(&T) -> EntityId) -> Option<EntityId> {
-    let mut seen = items.iter().enumerate();
-    seen.find_map(|(at, item)| {
-        items[..at]
-            .iter()
-            .any(|o| id(o) == id(item))
-            .then(|| id(item))
-    })
+/// Handles ascending strictly: `repeated` names the first that repeats its
+/// predecessor, `unsorted` stands for a list that falls.
+fn ascending<T>(
+    items: &[T],
+    id: impl Fn(&T) -> EntityId,
+    repeated: fn(EntityId) -> SessionError,
+    unsorted: SessionError,
+) -> Result<(), SessionError> {
+    for pair in items.windows(2) {
+        let (before, after) = (id(&pair[0]), id(&pair[1]));
+        if before == after {
+            return Err(repeated(after));
+        }
+        if before > after {
+            return Err(unsorted);
+        }
+    }
+    Ok(())
 }
 
 fn snapshot_limits(view: &WorldView) -> Result<(), SessionError> {

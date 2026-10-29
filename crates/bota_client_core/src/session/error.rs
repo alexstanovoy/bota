@@ -89,6 +89,14 @@ pub enum SessionError {
     DuplicateProjectile(EntityId),
     /// A full entity handle occurred more than once in visible loot.
     DuplicateLoot(EntityId),
+    /// Visible projectiles were not sorted by full entity handle.
+    UnsortedProjectiles,
+    /// Visible loot was not sorted by full entity handle.
+    UnsortedLoot,
+    /// Felled trees were not strictly ascending.
+    UnsortedFelledTrees,
+    /// Stock rows were not strictly sorted by team, then item.
+    UnsortedStock,
     /// A full seat handle occurred more than once in scoreboard rows.
     DuplicatePlayer(u8),
     /// Scoreboard rows were not sorted by slot.
@@ -332,6 +340,16 @@ impl SessionError {
             Self::DuplicateUnit(id) => write!(f, "snapshot units repeats {}", Id(*id)),
             Self::DuplicateProjectile(id) => write!(f, "snapshot projectiles repeats {}", Id(*id)),
             Self::DuplicateLoot(id) => write!(f, "snapshot loot repeats {}", Id(*id)),
+            Self::UnsortedProjectiles => {
+                f.write_str("snapshot projectiles are not sorted by full EntityId")
+            }
+            Self::UnsortedLoot => f.write_str("snapshot loot is not sorted by full EntityId"),
+            Self::UnsortedFelledTrees => {
+                f.write_str("snapshot felled trees are not strictly ascending")
+            }
+            Self::UnsortedStock => {
+                f.write_str("snapshot stock is not strictly sorted by team, then item")
+            }
             Self::DuplicatePlayer(slot) => write!(f, "snapshot players repeats SlotId({slot})"),
             Self::UnsortedPlayers => f.write_str("snapshot players are not sorted by SlotId"),
             Self::UnsortedTalents => f.write_str(
