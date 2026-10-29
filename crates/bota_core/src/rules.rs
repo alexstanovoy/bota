@@ -551,6 +551,8 @@ pub const MELEE_CREEP_HP_REGEN: Fixed = Fixed::from_ratio(1, 2 * TICKS_PER_SECON
 
 /// Ranged creep health.
 pub const RANGED_CREEP_HP: i32 = 300;
+/// Ranged creep armor: none (`ArmorPhysical` 0 in `npc_units.txt`).
+pub const RANGED_CREEP_ARMOR: i32 = 0;
 /// Least attack damage of a ranged creep's swing, of 21 to 26.
 pub const RANGED_CREEP_ATTACK_DAMAGE: i32 = 21;
 /// How much more a ranged creep's swing may deal.

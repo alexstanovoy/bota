@@ -1,7 +1,7 @@
 //! Towers at Dota 7.41f: what they are made of, how fast they shoot, what
 //! their fall pays and how often they let go.
 
-use bota_core::{MELEE_CREEP, UnitDef, rules, tower_def};
+use bota_core::{MELEE_CREEP, RANGED_CREEP, UnitDef, rules, tower_def};
 
 use crate::game::World;
 use bota_proto::{Fixed, Team, UnitKind, Vec2};
@@ -163,4 +163,58 @@ fn a_tower_lets_go_of_a_hero_at_most_once_every_two_and_a_half_seconds() {
         Some(own),
         "once the wait has run out, a click sheds it again"
     );
+}
+
+/// Shots a tier-one tower needs to bring a fresh lane creep down.
+fn shots_to_kill(def: &'static UnitDef, upgrades: u32) -> (i32, i32, u32) {
+    let mut world = World::new();
+    let tower = world.spawn_unit(tower_def(1), Team::Radiant, Vec2::from_ints(1500, 1500));
+    // Out of the tower's own protection, which reaches only heroes anyway.
+    let on = world.spawn_unit(def, Team::Dire, Vec2::from_ints(1900, 1500));
+    world.set_upgrades(on, def, upgrades);
+    world.settle();
+    world.fill_pools(on);
+    let stats = world.stats.get(on).expect("settled");
+    let (hp, armor) = (stats.max_hp.to_int(), stats.armor.to_int());
+    world.set_target(tower, on);
+    let mut shots = 0;
+    let mut before = world.health.get(on).expect("standing").hp;
+    while world.alive(on) {
+        world.step();
+        assert!(world.tick < 3_000, "the tower shoots");
+        let now = world.health.get(on).map_or(Fixed::ZERO, |health| health.hp);
+        if now < before {
+            shots += 1;
+        }
+        before = now;
+    }
+    (hp, armor, shots)
+}
+
+#[test]
+fn a_tier_one_tower_needs_seven_or_eight_shots_for_a_melee_creep_and_four_for_a_ranged_one() {
+    // npc_units.txt, 7.41f: the tower shoots 88 to 92 and is Reinforced,
+    // which deals plain damage to anything but Reinforced; Liquipedia's
+    // Lane Creeps: 550 health and armor 2 (melee), 300 and 0 (ranged), +12
+    // health at 7:30 and no armor growth. Armor takes
+    // 0.06 a / (1 + 0.06 a) off a shot. Never three: 270 is not 550.
+    for (def, upgrades, hp, armor) in [
+        (&MELEE_CREEP, 0, 550, 2),
+        (&MELEE_CREEP, 1, 562, 2),
+        (&RANGED_CREEP, 0, 300, 0),
+        (&RANGED_CREEP, 1, 312, 0),
+    ] {
+        // The least a shot takes is 88 and the most 92, floored after armor;
+        // the creep mends about three health in the seconds it takes.
+        let through = |roll: i32| roll * 100 / (100 + 6 * armor);
+        let least = (hp as u32).div_ceil(through(92) as u32);
+        let most = (hp as u32 + 4).div_ceil(through(88) as u32);
+        let (seen_hp, seen_armor, shots) = shots_to_kill(def, upgrades);
+        assert_eq!((seen_hp, seen_armor), (hp, armor), "{:?}", def.kind);
+        assert!(
+            (least..=most).contains(&shots),
+            "{:?} after {upgrades} upgrades fell to {shots} shots, Dota says {least} to {most}",
+            def.kind
+        );
+    }
 }

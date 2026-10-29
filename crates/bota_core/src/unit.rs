@@ -287,6 +287,7 @@ pub const RANGED_CREEP: UnitDef = UnitDef {
     attack_range: rules::RANGED_CREEP_ATTACK_RANGE,
     acquisition: rules::RANGED_CREEP_ACQUISITION,
     attack_point: rules::RANGED_CREEP_ATTACK_POINT,
+    armor: rules::RANGED_CREEP_ARMOR,
     projectile_speed: Some(rules::RANGED_CREEP_PROJECTILE_SPEED),
     collision: rules::RANGED_CREEP_COLLISION,
     bound: rules::RANGED_CREEP_BOUND,
