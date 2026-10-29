@@ -2,7 +2,7 @@
 
 use bota_core::{SHADOW_FIEND, fountain_pos, rules};
 
-use crate::game::{BAG_SLOTS, Entity, ItemStack, Seat, World, wire_id};
+use crate::game::{BAG_SLOTS, Command, Entity, ItemStack, Seat, World, wire_id};
 use bota_proto::{
     EventKind, Fixed, HeroId, ItemId, ItemSlot, Order, RejectReason, SlotId, Target, Team, Vec2,
 };
@@ -645,4 +645,61 @@ fn count_of(world: &World, hero: Entity, item: ItemId) -> usize {
         .held()
         .filter(|stack| stack.id == item)
         .count()
+}
+
+/// Applies an order the way the server does: validated first, and only a
+/// legal one reaches the world.
+fn order_through_validation(world: &mut World, unit: Option<Entity>, order: Order) {
+    let command = Command {
+        slot: SlotId(0),
+        unit: unit.map(wire_id),
+        order,
+        queue: false,
+        seq: 0,
+    };
+    if world.validate_order(command.slot, command.unit, &command.order) == Ok(()) {
+        world.advance(&[command]);
+    } else {
+        world.advance(&[]);
+    }
+}
+
+/// Whatever a client orders of an item of the catalog, or of an id past it,
+/// the server answers or refuses and never panics: bought, built from its
+/// parts, held in each slot, used on nobody and on itself, and sold.
+#[test]
+fn no_order_of_any_catalog_item_panics_the_server() {
+    for id in 0..bota_core::ITEMS.len() as u16 + 3 {
+        let item = ItemId(id);
+        let (mut world, hero) = a_hero_with_gold(100_000);
+        let own = Target::Unit(wire_id(hero));
+        order_through_validation(&mut world, None, Order::Buy { item });
+        for _ in 0..40 {
+            world.advance(&[]);
+        }
+        for slot in (0..rules::TOWN_PORTAL_SLOT + 1).map(|slot| ItemSlot(slot as u8)) {
+            for target in [Target::None, own] {
+                order_through_validation(&mut world, None, Order::Use { slot, target });
+            }
+            order_through_validation(&mut world, None, Order::Sell { slot });
+        }
+        hand_item(&mut world, hero, item, 1);
+        for target in [Target::None, own] {
+            let slot = ItemSlot(0);
+            order_through_validation(&mut world, None, Order::Use { slot, target });
+        }
+        for _ in 0..40 {
+            world.advance(&[]);
+        }
+    }
+}
+
+/// A restoration of no mana is no use of the item: refused, never a panic.
+#[test]
+fn restoring_no_mana_is_refused_not_a_panic() {
+    let (mut world, hero) = match_hero();
+    for mana in [0, -1] {
+        let with = bota_proto::Inflictor::Item(ItemId::MANGO);
+        assert!(!world.replenish_mana(hero, Target::None, mana, with));
+    }
 }

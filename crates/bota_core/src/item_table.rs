@@ -11,9 +11,9 @@ use bota_proto::{Aim, Attribute, Attributes, Fixed, ItemId};
 
 use crate::{
     BLINK_OVERSHOOT_RANGE, BLINK_RANGE, Carried, GRENADE_COOLDOWN, GRENADE_RANGE, ItemDef,
-    MANGO_COST, MANGO_HP_REGEN, MANGO_MANA, MANGO_STACK_MAX, Mend, NOTHING, OBSERVER_WARD, Odds,
-    PLAIN, Pool, Recipe, SALVE_HEAL, SALVE_TICKS, SENTRY_WARD, Spends, Stock, UseSpec,
-    hundredths_per_second, per_second, points, points_with, rules,
+    MANGO_COST, MANGO_HP_REGEN, MANGO_MANA, MANGO_STACK_MAX, MAX_COMPONENTS, Mend, NOTHING,
+    OBSERVER_WARD, Odds, PLAIN, Pool, Recipe, SALVE_HEAL, SALVE_TICKS, SENTRY_WARD, Spends, Stock,
+    UseSpec, hundredths_per_second, per_second, points, points_with, rules,
 };
 
 // Stacking is the file's `ItemStackable` (with `ItemStackableMax` where it
@@ -775,12 +775,54 @@ const _: () = {
             assert!(parts_cost(def.alternatives[other].parts) == parts_cost(def.components));
             other += 1;
         }
+        // What the server relies on whatever a client orders: a recipe has
+        // parts, within the slots an assembly takes, that a shop sells whole;
+        // a stackable is bought in a lot of charges that fits its limit, with
+        // no parts of its own; a cost is a price.
+        assert!(def.components.len() <= MAX_COMPONENTS);
+        assert!(def.cost >= 0);
+        if def.stack_limit > 0 {
+            assert!(def.charges >= 1 && def.charges <= def.stack_limit);
+            assert!(def.components.is_empty() && def.alternatives.is_empty());
+        }
+        if let UseSpec::Replenish { mana } = def.effect {
+            assert!(mana > 0);
+        }
+        let mut part = 0;
+        while part < def.components.len() {
+            assert!(sold_whole(def.components[part]));
+            part += 1;
+        }
+        let mut other = 0;
+        while other < def.alternatives.len() {
+            let parts = def.alternatives[other].parts;
+            assert!(!parts.is_empty() && parts.len() <= MAX_COMPONENTS);
+            let mut part = 0;
+            while part < parts.len() {
+                assert!(sold_whole(parts[part]));
+                part += 1;
+            }
+            other += 1;
+        }
         // A retired entry costs, builds and carries nothing.
         if def.retired {
             assert!(def.cost == 0 && def.components.is_empty() && def.ranged.is_none());
         }
         at += 1;
     }
+};
+
+/// Whether a shop can sell an item as a part of a build: it is one of the
+/// catalog's, a buyer takes it whole and no stock is kept of it.
+const fn sold_whole(item: ItemId) -> bool {
+    let def = &ITEMS[item.0 as usize];
+    !def.unbuyable && def.stack_limit == 0
+}
+
+// The scroll every hero starts with is a one-charge purchase.
+const _: () = {
+    let scroll = &ITEMS[ItemId::TOWN_PORTAL_SCROLL.0 as usize];
+    assert!(scroll.charges == 1 && !scroll.unbuyable);
 };
 
 /// What a set of parts costs together.

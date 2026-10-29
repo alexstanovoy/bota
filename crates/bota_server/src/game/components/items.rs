@@ -41,9 +41,6 @@ impl ItemStack {
     /// Nothing for an item no shop sells.
     pub fn bought(id: ItemId, owner: SlotId, tick: u32) -> Option<Self> {
         let def = item_def(id).filter(|def| !def.unbuyable)?;
-        if def.stack_limit > 0 {
-            assert!(def.charges >= 1 && def.charges <= def.stack_limit);
-        }
         Some(Self {
             id,
             charges: def.charges,
@@ -62,9 +59,9 @@ impl ItemStack {
 
     /// One Town Portal Scroll that came for nothing.
     pub fn free_scroll(owner: SlotId, tick: u32) -> Self {
+        // The catalog's build-time checks prove the scroll is sold, for one charge.
         let mut scroll = Self::bought(ItemId::TOWN_PORTAL_SCROLL, owner, tick)
             .expect("the catalog sells scrolls");
-        assert_eq!(scroll.charges, 1);
         scroll.free_charges = 1;
         scroll
     }
@@ -159,9 +156,8 @@ impl ItemStack {
         }
         let limit = item_def(self.id).map_or(0, |def| def.stack_limit);
         if self.id == source.id && limit > 0 {
-            assert!(self.charges <= limit);
-            assert!(source.charges <= limit);
-            return limit - self.charges;
+            debug_assert!(self.charges <= limit && source.charges <= limit);
+            return limit.saturating_sub(self.charges);
         }
         let (Some((o1, s1)), Some((o2, s2))) = (self.ward_counts(), source.ward_counts()) else {
             return 0;

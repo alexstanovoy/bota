@@ -1,8 +1,8 @@
 //! Items carried and abilities held: what they add, and what they cost.
 
 use bota_core::{
-    Carried, CarriedItem, ITEMS, ItemDef, Mend, ModifierKind, Pool, Spends, clamp_to_map,
-    effect_def, fountain_pos, hero_def, item_def, learn_group, move_towards, rules,
+    Carried, CarriedItem, ITEMS, ItemDef, MAX_COMPONENTS, Mend, ModifierKind, Pool, Spends,
+    clamp_to_map, effect_def, fountain_pos, hero_def, item_def, learn_group, move_towards, rules,
 };
 use bota_proto::{
     AbilityId, Attribute, EventKind, Fixed, HeroId, Inflictor, ItemId, SlotId, Target, Vec2,
@@ -41,14 +41,15 @@ impl Spent {
     }
 }
 
-/// The most parts any build in the catalog asks for.
-const MAX_COMPONENTS: usize = 4;
-
 /// Which of the slots held cover a list of parts, one slot to each part.
 ///
 /// Nothing at all when any part is missing: a build takes every part or none.
+/// A recipe of more parts than [`MAX_COMPONENTS`] builds nothing (the
+/// catalog's build-time checks keep any row from asking for them).
 fn parts_in(held: &[(usize, ItemStack)], parts: &[ItemId]) -> Option<Spent> {
-    assert!(parts.len() <= MAX_COMPONENTS);
+    if parts.len() > MAX_COMPONENTS {
+        return None;
+    }
     let mut spent = Spent {
         slots: [0; MAX_COMPONENTS],
         len: 0,
@@ -105,7 +106,9 @@ fn assemble_once(owner: SlotId, tick: u32, pool: &mut [&mut Inventory]) -> bool 
         else {
             continue;
         };
-        let landing = spent.min().expect("a build has parts");
+        let Some(landing) = spent.min() else {
+            continue;
+        };
         // A build that holds charges takes over whatever its parts held.
         let charges = held
             .iter()
@@ -309,9 +312,16 @@ impl World {
         if self.seats[index].gold < plan.cost || !plan.fits {
             return false;
         }
+        let Some(stacks) = plan
+            .parts
+            .iter()
+            .map(|part| ItemStack::bought(*part, slot, self.tick))
+            .collect::<Option<Vec<_>>>()
+        else {
+            return false;
+        };
         let at_home = self.at_home(unit);
-        for part in plan.parts {
-            let bought = ItemStack::bought(part, slot, self.tick).expect("known catalog component");
+        for bought in stacks {
             let in_hand = at_home
                 && unit
                     .and_then(|unit| self.inventory.get_mut(unit))
@@ -340,13 +350,13 @@ impl World {
         let parts = self.missing_parts(seat, unit, item);
         let cost = parts
             .iter()
-            .map(|part| item_def(*part).expect("known catalog component").cost)
-            .sum();
+            .map(|part| item_def(*part).map(|def| def.cost))
+            .sum::<Option<i32>>()?;
         let fits = if def.stack_limit == 0 {
             self.free_slots(seat, unit) >= parts.len()
         } else {
-            assert!(def.components.is_empty());
-            let bought = ItemStack::bought(item, slot, self.tick).expect("known catalog item");
+            debug_assert!(def.components.is_empty());
+            let bought = ItemStack::bought(item, slot, self.tick)?;
             (self.at_home(unit)
                 && unit
                     .and_then(|unit| self.inventory.get(unit))
@@ -364,12 +374,14 @@ impl World {
         item: ItemId,
         events: &mut Vec<Event>,
     ) -> bool {
-        let def = item_def(item).expect("known catalog item");
         let owner = self.seats[seat].slot;
+        let (Some(def), Some(bought)) = (item_def(item), ItemStack::bought(item, owner, self.tick))
+        else {
+            return false;
+        };
         if self.seats[seat].gold < def.cost || !self.purchase_fits(owner, item) {
             return false;
         }
-        let bought = ItemStack::bought(item, owner, self.tick).expect("known catalog item");
         let in_hand = self.at_home(unit)
             && unit
                 .and_then(|unit| self.inventory.get_mut(unit))
@@ -384,8 +396,7 @@ impl World {
     /// Pays for a completed purchase, takes it off the shelf, and emits its
     /// team-visible event.
     fn finish_purchase(&mut self, seat: usize, item: ItemId, price: i32, events: &mut Vec<Event>) {
-        assert!(price >= 0);
-        assert!(self.seats[seat].gold >= price);
+        debug_assert!(price >= 0 && self.seats[seat].gold >= price);
         self.seats[seat].gold -= price;
         self.take_from_stock(self.seats[seat].team, item);
         events.push(Event {
@@ -563,8 +574,7 @@ impl World {
         amount: i32,
         with: Inflictor,
     ) -> bool {
-        assert!(amount > 0);
-        if !self.can_replenish_mana(user, target) {
+        if amount <= 0 || !self.can_replenish_mana(user, target) {
             return false;
         }
         let maximum = self
@@ -1008,7 +1018,7 @@ impl World {
                 price(ItemId::OBSERVER_WARD, observers) + price(ItemId::SENTRY_WARD, sentries)
             }
             None if def.stack_limit > 0 => {
-                assert!(stack.charges <= def.stack_limit);
+                debug_assert!(stack.charges <= def.stack_limit);
                 // The price is that of the charges a purchase brings.
                 def.cost * i32::from(stack.charges) / i32::from(def.charges)
             }

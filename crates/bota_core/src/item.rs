@@ -241,6 +241,11 @@ pub struct Recipe<'a> {
     pub mode: Option<Attribute>,
 }
 
+/// Most parts one recipe of the catalog asks for: the server assembles a build
+/// from parts held in a fixed set of slots this wide, and the catalog's
+/// build-time checks refuse a row whose recipe asks for more.
+pub const MAX_COMPONENTS: usize = 4;
+
 /// One entry of the catalog.
 #[derive(Clone, Copy, Debug)]
 pub struct ItemDef {
