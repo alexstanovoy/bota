@@ -62,11 +62,15 @@ fn a_seat_whose_hero_lies_dead_buys_into_the_stash_with_what_the_body_carried_co
         treads - boots,
         "the carried boots are not bought again"
     );
-    let bought = stash_items(&world);
-    assert!(
-        !bought.is_empty() && !bought.contains(&ItemId::BOOTS),
-        "{bought:?}"
-    );
+    // The parts bought build with the body's boots at once (Dota: the stash
+    // combines with the inventory of a hero lying dead).
+    let kept = world.seats[0]
+        .kept
+        .as_ref()
+        .expect("the body's bag is kept");
+    let carried: Vec<ItemId> = kept.bag.held().map(|stack| stack.id).collect();
+    assert!(carried.contains(&ItemId::POWER_TREADS), "{carried:?}");
+    assert!(!carried.contains(&ItemId::BOOTS));
     // Quick-buy is buying: a single item whole, too.
     seat_order(
         &mut world,

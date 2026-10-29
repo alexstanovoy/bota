@@ -42,7 +42,7 @@ impl ItemStack {
     pub fn bought(id: ItemId, owner: SlotId, tick: u32) -> Option<Self> {
         let def = item_def(id).filter(|def| !def.unbuyable)?;
         if def.stack_limit > 0 {
-            assert_eq!(def.charges, 1);
+            assert!(def.charges >= 1 && def.charges <= def.stack_limit);
         }
         Some(Self {
             id,

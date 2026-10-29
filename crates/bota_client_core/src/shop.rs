@@ -2,10 +2,11 @@
 //! the core's item table.
 
 use bota_core::{hero_def, item_def, missing_parts};
-use bota_proto::{Attribute, ItemId, PlayerView, WorldView};
+use bota_proto::{Attribute, ItemId, PlayerView, UnitKind, WorldView};
 
-/// Every item in a seat's hero's bag and in its stash that the seat bought
-/// and has not marked for sale, for [`price_for`].
+/// Every item in a seat's hero's bag, in its stash and on its courier that
+/// the seat bought and has not marked for sale, for [`price_for`]: as in
+/// Dota, a purchase counts everything the player owns.
 pub fn held_items(view: &WorldView, p: &PlayerView) -> Vec<ItemId> {
     // While the hero lies dead what it carried counts, as the server buys.
     let bag = p
@@ -14,8 +15,15 @@ pub fn held_items(view: &WorldView, p: &PlayerView) -> Vec<ItemId> {
         .map(|u| u.items.as_slice())
         .or_else(|| p.kit.as_ref().map(|kit| kit.items.as_slice()))
         .unwrap_or_default();
+    let courier = view
+        .units
+        .iter()
+        .find(|unit| unit.kind == UnitKind::Courier && unit.owner == Some(p.slot))
+        .map(|unit| unit.items.as_slice())
+        .unwrap_or_default();
     bag.iter()
         .chain(p.stash.iter().flatten())
+        .chain(courier)
         .flatten()
         .filter(|item| item.owner == p.slot && item.selling != Some(true))
         .map(|item| item.id)

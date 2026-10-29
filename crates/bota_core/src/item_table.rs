@@ -16,6 +16,14 @@ use crate::{
     hundredths_per_second, per_second, points, points_with, rules,
 };
 
+// Stacking is the file's `ItemStackable` (with `ItemStackableMax` where it
+// has one: the Mango 3, the Blood Grenade 2; none: a byte of charges here):
+// Clarity, Healing Salve, Tango, Town Portal Scroll, the wards, Mango and
+// Blood Grenade stack; Iron Branch and every other entry have none, and the
+// Magic Stick and Wand keep their charges in `cast_charges`. Faerie Fire,
+// Smoke of Deceit, Dust of Appearance and the Infused Raindrop are no part of
+// the 1v1 catalog (the first and the Raindrop are `ItemStackable` 0).
+
 /// What Power Treads are built from first, set to strength.
 const TREADS_PARTS: [ItemId; 3] = [ItemId::BOOTS, ItemId::GLOVES, ItemId::BELT];
 /// Power Treads' other recipes, `item_recipe_power_treads` requirements 04
@@ -83,6 +91,7 @@ pub const ITEMS: [ItemDef; 55] = [
         name: "Clarity",
         cost: 60,
         charges: 1,
+        stack_limit: u8::MAX,
         aim: Some(Aim::Unit),
         range: 250,
         spends: Spends::One,
@@ -105,6 +114,7 @@ pub const ITEMS: [ItemDef; 55] = [
         name: "Healing Salve",
         cost: 100,
         charges: 1,
+        stack_limit: u8::MAX,
         aim: Some(Aim::Unit),
         range: 250,
         spends: Spends::One,
@@ -203,6 +213,7 @@ pub const ITEMS: [ItemDef; 55] = [
         name: "Tango",
         cost: 90,
         charges: 3,
+        stack_limit: u8::MAX,
         aim: Some(Aim::Tree),
         range: 165,
         spends: Spends::One,

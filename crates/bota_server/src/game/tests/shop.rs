@@ -202,18 +202,8 @@ fn composite_buy_order_pays_missing_cost_and_assembles_owned_parts() {
                 .count(),
             1
         );
-        if location == BAG_SLOTS {
-            assert_eq!(world.seats[0].stash.slots[0], Some(circlet));
-            assert_eq!(world.inventory.get(hero).expect("bag").held().count(), 2);
-            advance_validated(
-                &mut world,
-                None,
-                Order::Swap {
-                    from: ItemSlot(BAG_SLOTS as u8),
-                    to: ItemSlot(2),
-                },
-            );
-        }
+        // At its shop the hero builds with the stash too: a Circlet left there
+        // is spent on the band at once, with no swap needed.
         let bag = world.inventory.get(hero).expect("bag");
         assert_eq!(bag.held().count(), 1);
         assert_eq!(bag.held().next().map(|stack| stack.id), Some(item));
@@ -250,18 +240,27 @@ fn composite_buy_order_requires_room_for_every_missing_part_before_assembly() {
         advance_validated(&mut world, Some(courier), Order::Buy { item });
 
         assert_eq!(world.seats[0].gold, 155);
-        assert_eq!(
-            world.seats[0].stash.slots[4].map(|stack| stack.id),
-            Some(ItemId::SLIPPERS)
-        );
-        assert_eq!(
-            world.seats[0].stash.slots[5].map(|stack| stack.id),
-            Some(ItemId::RECIPE_WRAITH_BAND)
-        );
-        assert_eq!(
-            slot_of(&world, hero, 0).map(|stack| stack.id),
-            Some(ItemId::CIRCLET)
-        );
+        if remote {
+            assert_eq!(
+                world.seats[0].stash.slots[4].map(|stack| stack.id),
+                Some(ItemId::SLIPPERS)
+            );
+            assert_eq!(
+                world.seats[0].stash.slots[5].map(|stack| stack.id),
+                Some(ItemId::RECIPE_WRAITH_BAND)
+            );
+            assert_eq!(
+                slot_of(&world, hero, 0).map(|stack| stack.id),
+                Some(ItemId::CIRCLET)
+            );
+        } else {
+            // In its shop the parts in the stash build with the hero's Circlet.
+            assert!(world.seats[0].stash.slots[4..].iter().all(Option::is_none));
+            assert_eq!(
+                slot_of(&world, hero, 0).map(|stack| stack.id),
+                Some(ItemId::WRAITH_BAND)
+            );
+        }
     }
 }
 

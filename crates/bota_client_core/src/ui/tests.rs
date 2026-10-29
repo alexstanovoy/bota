@@ -1345,3 +1345,36 @@ fn a_front_end_lists_every_effect_but_the_bar_ones() {
     assert!(!crate::catalog::effect_listed(0), "the retired effect");
     assert!(!crate::catalog::effect_listed(u16::MAX));
 }
+
+/// Owner report: quick buy counted the stash only. What the hero carries and
+/// what its courier carries are owned just as much, and only what is still
+/// missing is listed.
+#[test]
+fn quick_buy_lists_only_what_is_missing_after_the_hero_stash_and_courier() {
+    let mut app = a_started_app();
+    let mut hero = owned(1, UnitKind::Hero, Some(SlotId(0)));
+    hero.items = vec![Some(ItemView {
+        id: ItemId::CIRCLET,
+        ..an_item(None, 0, 0, None)
+    })];
+    let mut courier = owned(2, UnitKind::Courier, Some(SlotId(0)));
+    courier.items = vec![Some(ItemView {
+        id: ItemId::GAUNTLETS,
+        ..an_item(None, 0, 0, None)
+    })];
+    let mut seat = a_seat(SlotId(0), Some(hero.id));
+    seat.stash = Some(vec![None; 6]);
+    app.handle(snapshot_of(10, vec![hero, courier], vec![seat]));
+    app.quick_buy = Some(ItemId::BRACER.0);
+    assert_eq!(
+        app.missing_for(ItemId::BRACER.0),
+        vec![ItemId::RECIPE_BRACER]
+    );
+    assert_eq!(
+        app.price_of(ItemId::BRACER.0).0,
+        bota_core::item_def(ItemId::RECIPE_BRACER)
+            .expect("a recipe")
+            .cost,
+        "the price shown is the recipe alone"
+    );
+}

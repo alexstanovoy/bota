@@ -1,4 +1,4 @@
-use bota_proto::{EventKind, ItemId, SlotId};
+use bota_proto::{EventKind, SlotId};
 
 use crate::game::EventVisibility;
 
@@ -92,16 +92,4 @@ fn purchases_do_not_merge_foreign_owned_or_marked_stacks() {
     assert_eq!(held(&world, hero, 0), foreign);
     assert_eq!(held(&world, hero, 1), marked);
     assert_eq!(held(&world, hero, 2), mango(1));
-}
-
-#[test]
-fn non_mango_consumable_purchases_still_use_separate_slots() {
-    let (mut world, hero) = fixture();
-    let tango = ItemId::TANGO;
-    for _ in 0..2 {
-        assert!(world.buy(OWNER, tango, &mut Vec::new()));
-    }
-    assert_eq!(held(&world, hero, 0).charges, 3);
-    assert_eq!(held(&world, hero, 1).charges, 3);
-    assert_eq!(world.inventory.get(hero).unwrap().held().count(), 2);
 }

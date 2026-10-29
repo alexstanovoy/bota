@@ -8,7 +8,7 @@
 //! is aimed at is in reach.
 
 use bota_core::{
-    BEATS_PER_TICK, ModifierKind, Striker, Talent, ability_def, attack_gain, beats,
+    BEATS_PER_TICK, ModifierKind, Striker, Talent, UseSpec, ability_def, attack_gain, beats,
     carried_pierces, cast_point_ms, cross, facing_gap, facing_towards, kind_def, rules,
 };
 use bota_proto::{
@@ -113,8 +113,9 @@ impl World {
     }
 
     /// How far a pending cast is walked into. Zero for one that is never
-    /// walked into: an ability without a reach, an item at a spot, at a
-    /// building or at its user.
+    /// walked into: an ability without a reach, an item at a building or at
+    /// its user, and a Blink Dagger, which lands short of a spot past its
+    /// range instead of walking to it.
     pub fn cast_reach(&self, entity: Entity, pending: PendingCast) -> i32 {
         match pending {
             PendingCast::Ability { slot, .. } => {
@@ -122,7 +123,10 @@ impl World {
             }
             PendingCast::Item { slot, .. } => self
                 .item_def_in(entity, usize::from(slot.0))
-                .filter(|def| matches!(def.aim, Some(Aim::Unit | Aim::Tree)))
+                .filter(|def| {
+                    matches!(def.aim, Some(Aim::Unit | Aim::Tree | Aim::Point))
+                        && !matches!(def.effect, UseSpec::Blink { .. })
+                })
                 .map_or(0, |def| def.range),
         }
     }

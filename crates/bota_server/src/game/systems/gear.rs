@@ -64,6 +64,83 @@ fn parts_in(held: &[(usize, ItemStack)], parts: &[ItemId]) -> Option<Spent> {
     Some(spent)
 }
 
+/// Largest slot count a container of an assembly pool may have.
+const POOL_STRIDE: usize = 16;
+
+/// Builds whatever a pool of containers holds the parts of, again for as long
+/// as a build hands the next its last part: the first item in the catalog
+/// whose parts they all hold, of the first of its recipes they cover, set to
+/// that recipe's attribute.
+///
+/// A part somebody else bought and a part marked for sale take no part. The
+/// build lands in the lowest slot of the first container any of its parts
+/// came out of, so it stays in the inventory when a part was there.
+fn assemble_pool(owner: SlotId, tick: u32, pool: &mut [&mut Inventory]) {
+    assert!(pool.iter().all(|bag| bag.slots.len() <= POOL_STRIDE));
+    // Each build leaves fewer stacks than it took, so the run ends.
+    for _ in 0..pool.iter().map(|bag| bag.slots.len()).sum::<usize>() {
+        if !assemble_once(owner, tick, pool) {
+            break;
+        }
+    }
+}
+
+/// One build of [`assemble_pool`].
+fn assemble_once(owner: SlotId, tick: u32, pool: &mut [&mut Inventory]) -> bool {
+    let held: Vec<(usize, ItemStack)> = pool
+        .iter()
+        .enumerate()
+        .flat_map(|(at, bag)| {
+            bag.slots
+                .iter()
+                .enumerate()
+                .filter_map(move |(slot, held)| held.map(|stack| (at * POOL_STRIDE + slot, stack)))
+        })
+        .filter(|(_, stack)| stack.owner == owner && !stack.for_sale)
+        .collect();
+    for (index, def) in ITEMS.iter().enumerate() {
+        let Some((spent, mode)) = def
+            .recipes()
+            .find_map(|recipe| parts_in(&held, recipe.parts).map(|spent| (spent, recipe.mode)))
+        else {
+            continue;
+        };
+        let landing = spent.min().expect("a build has parts");
+        // A build that holds charges takes over whatever its parts held.
+        let charges = held
+            .iter()
+            .filter(|(at, _)| spent.contains(*at))
+            .filter(|(_, stack)| item_def(stack.id).is_some_and(|part| part.cast_charges > 0))
+            .map(|(_, stack)| stack.charges)
+            .sum::<u8>()
+            .min(def.cast_charges);
+        let built = ItemStack {
+            id: ItemId(index as u16),
+            charges: if def.cast_charges > 0 {
+                charges
+            } else {
+                def.charges
+            },
+            cooldown: 0,
+            mute: 0,
+            mode,
+            bought_tick: tick,
+            touched: true,
+            owner,
+            for_sale: false,
+            free_charges: 0,
+            sentries: 0,
+            sentry_active: false,
+        };
+        for at in spent.iter() {
+            pool[at / POOL_STRIDE].slots[at % POOL_STRIDE] = None;
+        }
+        pool[landing / POOL_STRIDE].slots[landing % POOL_STRIDE] = Some(built);
+        return true;
+    }
+    false
+}
+
 /// The slots a hero of this kind carries, all unlearned.
 pub fn hero_kit(hero: HeroId) -> AbilityBook {
     let carried = hero_def(hero).map_or(&[] as &[AbilityId], |def| def.abilities);
@@ -157,11 +234,16 @@ impl World {
         self.tick_teleports();
     }
 
-    /// Builds whatever each hero now holds the parts of.
+    /// Builds whatever each seat now holds the parts of, where the parts can
+    /// reach one another.
     ///
     /// Run every tick, so a build follows however the last part arrived: a
-    /// purchase, a slot moved, or a courier setting one down. The wards of a
-    /// hero and of its courier come together into a Ward Dispenser here.
+    /// purchase, a slot moved, or a courier setting one down. As in Dota, the
+    /// parts in the stash build with each other there, and with the hero's
+    /// own while it stands in its shop (or lies dead, its bag kept); those on
+    /// the courier build with each other on it, and join the hero's when the
+    /// courier hands them over. The wards of a hero and of its courier come
+    /// together into a Ward Dispenser here.
     pub fn assemble_bags(&mut self) {
         for seat in 0..self.seats.len() {
             for carrier in [self.seats[seat].unit, self.seats[seat].courier]
@@ -172,84 +254,33 @@ impl World {
                     bag.combine_wards();
                 }
             }
-            let (slot, Some(unit)) = (self.seats[seat].slot, self.seats[seat].unit) else {
-                continue;
+            let (owner, tick) = (self.seats[seat].slot, self.tick);
+            if let Some(bag) = self.seats[seat]
+                .courier
+                .and_then(|courier| self.inventory.get_mut(courier))
+            {
+                assemble_pool(owner, tick, &mut [bag]);
+            }
+            let home = self.at_home(self.seats[seat].unit);
+            let seat_state = &mut self.seats[seat];
+            let stash = &mut seat_state.stash;
+            let hero = match seat_state.unit {
+                Some(unit) => self.inventory.get_mut(unit),
+                None => seat_state.kept.as_mut().map(|kept| &mut kept.bag),
             };
-            // One build may hand the next its last part, and each one leaves
-            // fewer stacks than it took, so the run ends.
-            for _ in 0..BAG_SLOTS {
-                if !self.assemble_once(slot, unit) {
-                    break;
+            match hero {
+                Some(hero) if home || seat_state.unit.is_none() => {
+                    assemble_pool(owner, tick, &mut [hero, stash]);
+                }
+                Some(hero) => {
+                    assemble_pool(owner, tick, &mut [hero]);
+                    assemble_pool(owner, tick, &mut [stash]);
+                }
+                None => {
+                    assemble_pool(owner, tick, &mut [stash]);
                 }
             }
         }
-    }
-
-    /// Builds the first item in the catalog whose parts an entity all holds,
-    /// of the first of its recipes they cover, set to that recipe's
-    /// attribute.
-    ///
-    /// Only what a unit carries itself takes part: the stash is at the shop
-    /// and builds nothing. A part somebody else bought and a part marked for
-    /// sale take no part either. The build lands in the lowest slot any of
-    /// its parts came out of, so it stays in the inventory when a part was
-    /// there.
-    fn assemble_once(&mut self, slot: SlotId, unit: Entity) -> bool {
-        let Some(bag) = self.inventory.get(unit) else {
-            return false;
-        };
-        let held: Vec<(usize, ItemStack)> = bag
-            .slots
-            .iter()
-            .enumerate()
-            .take(BAG_SLOTS)
-            .filter_map(|(at, held)| held.map(|stack| (at, stack)))
-            .filter(|(_, stack)| stack.owner == slot && !stack.for_sale)
-            .collect();
-        for (index, def) in ITEMS.iter().enumerate() {
-            let Some((spent, mode)) = def
-                .recipes()
-                .find_map(|recipe| parts_in(&held, recipe.parts).map(|spent| (spent, recipe.mode)))
-            else {
-                continue;
-            };
-            let landing = spent.min().expect("a build has parts");
-            // A build that holds charges takes over whatever its parts held.
-            let charges = held
-                .iter()
-                .filter(|(at, _)| spent.contains(*at))
-                .filter(|(_, stack)| item_def(stack.id).is_some_and(|part| part.cast_charges > 0))
-                .map(|(_, stack)| stack.charges)
-                .sum::<u8>()
-                .min(def.cast_charges);
-            let built = ItemStack {
-                id: ItemId(index as u16),
-                charges: if def.cast_charges > 0 {
-                    charges
-                } else {
-                    def.charges
-                },
-                cooldown: 0,
-                mute: 0,
-                mode,
-                bought_tick: self.tick,
-                touched: true,
-                owner: slot,
-                for_sale: false,
-                free_charges: 0,
-                sentries: 0,
-                sentry_active: false,
-            };
-            let Some(bag) = self.inventory.get_mut(unit) else {
-                return false;
-            };
-            for at in spent.iter() {
-                bag.slots[at] = None;
-            }
-            bag.slots[landing] = Some(built);
-            return true;
-        }
-        false
     }
 
     /// Buys an item for a seat that can afford it.
@@ -374,7 +405,7 @@ impl World {
     /// asking for a second one buys a second one. One that is built answers
     /// with the parts it lacks, each of those asked the same question in turn,
     /// so a part that is itself built is bought as its own parts. A part
-    /// already waiting in the bag or the stash is spent on the build and so is
+    /// already waiting in the bag, the stash or on the courier is spent on the build and so is
     /// bought no second time. Of several recipes the cheapest is bought, see
     /// [`bota_core::missing_parts`].
     /// While the hero lies dead, what it carried when it fell counts as held,
@@ -388,6 +419,13 @@ impl World {
             .into_iter()
             .flat_map(|bag| bag.slots.iter().take(BAG_SLOTS).flatten())
             .chain(self.seats[seat].stash.slots.iter().flatten())
+            .chain(
+                self.seats[seat]
+                    .courier
+                    .and_then(|courier| self.inventory.get(courier))
+                    .into_iter()
+                    .flat_map(|bag| bag.slots.iter().flatten()),
+            )
             .filter(|stack| stack.owner == self.seats[seat].slot && !stack.for_sale)
             .map(|stack| stack.id)
             .collect();
@@ -971,7 +1009,8 @@ impl World {
             }
             None if def.stack_limit > 0 => {
                 assert!(stack.charges <= def.stack_limit);
-                def.cost * i32::from(stack.charges)
+                // The price is that of the charges a purchase brings.
+                def.cost * i32::from(stack.charges) / i32::from(def.charges)
             }
             None => def.cost,
         };

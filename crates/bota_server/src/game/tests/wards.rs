@@ -3,7 +3,9 @@
 use bota_core::{OBSERVER_WARD, SENTRY_WARD, map_of, rules};
 
 use crate::game::{UnitOrder, World};
-use bota_proto::{EffectId, Fixed, HeroId, ItemId, MapId, SlotId, Target, Team, UnitKind, Vec2};
+use bota_proto::{
+    EffectId, Fixed, HeroId, ItemId, ItemSlot, MapId, Order, SlotId, Target, Team, UnitKind, Vec2,
+};
 
 use super::support::*;
 
@@ -87,6 +89,46 @@ fn a_ward_aimed_out_of_reach_is_not_put_down() {
         world.inventory.get(hero).expect("has a bag").slots[0].is_some(),
         "and nothing was spent on it"
     );
+}
+
+/// Dota walks a hero into cast range of a point-target item and then casts
+/// it (owner report: the order was simply cancelled out of range).
+#[test]
+fn a_ward_ordered_out_of_reach_is_walked_to_and_put_down() {
+    for item in [ItemId::OBSERVER_WARD, ItemId::SENTRY_WARD] {
+        let (mut world, hero, spot) = a_hero_with_a_ward(item);
+        let far = spot + Vec2::from_ints(1200, 0);
+        seat_order(
+            &mut world,
+            Order::Use {
+                slot: ItemSlot(0),
+                target: Target::Pos(far),
+            },
+        );
+        assert_eq!(standing(&world), 0, "not yet: it is still out of reach");
+        run(&mut world, 600);
+        assert_eq!(standing(&world), 1, "it walked in and planted the ward");
+        let ward = the_ward(&world);
+        let at = world.pos(ward).expect("planted");
+        assert_eq!(at, far, "where it was aimed");
+        let from = world.pos(hero).expect("hero");
+        assert!(
+            from.within(far, rules::units(500)) && !spot.within(far, rules::units(500)),
+            "from within the item's 500 cast range, after walking"
+        );
+        assert!(
+            world.inventory.get(hero).expect("bag").slots[0].is_none(),
+            "the charge was spent"
+        );
+    }
+}
+
+fn standing(world: &World) -> usize {
+    world
+        .entities
+        .iter()
+        .filter(|entity| world.kind.get(*entity) == Some(&UnitKind::Ward))
+        .count()
 }
 
 #[test]
