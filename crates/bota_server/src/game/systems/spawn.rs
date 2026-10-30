@@ -201,7 +201,6 @@ impl World {
                 keep_until: 0,
                 roused_by: None,
                 roused_at_own: false,
-                chase_until: 0,
             },
         );
         entity

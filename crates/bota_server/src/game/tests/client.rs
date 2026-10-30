@@ -639,7 +639,7 @@ fn fighting(base: &WorldView) -> WorldView {
         draw_cooldown: 0,
         returning: false,
         held_for: Some(0),
-        chased_for: Some(0),
+        chased_for: None,
         draw_wait: None,
     }];
     view

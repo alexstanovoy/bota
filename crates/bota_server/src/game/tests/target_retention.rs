@@ -77,7 +77,6 @@ fn active_retention_lock_precedes_better_class_replacement() {
             keep_until: world.tick + 1,
             roused_by: None,
             roused_at_own: false,
-            chase_until: 0,
         },
     );
     let before = world.hash();

@@ -303,17 +303,10 @@ impl World {
         };
         let returning = kind == UnitKind::CreepNeutral
             && self.neutral_ai.get(entity).is_some_and(|ai| ai.going_home);
-        // A hold and a chase are on the target: of one the view does not
-        // carry, nothing is told.
+        // A hold is on the target: of one the view does not carry, nothing
+        // is told.
         let target = held.filter(|on| self.carried(viewer, *on)).map(wire_id);
-        let (held_for, chased_for) = match (target, lane) {
-            (None, _) => (None, None),
-            (Some(_), None) => (Some(0), Some(0)),
-            (Some(_), Some(ai)) => (
-                Some(ai.keep_until.saturating_sub(self.tick)),
-                Some(ai.chase_until.saturating_sub(self.tick)),
-            ),
-        };
+        let held_for = target.map(|_| lane.map_or(0, |ai| ai.keep_until.saturating_sub(self.tick)));
         let swing = swing
             .filter(|(on, _)| self.carried(viewer, *on))
             .map(|(on, strike_in)| SwingView {
@@ -333,7 +326,7 @@ impl World {
             draw_cooldown: 0,
             returning,
             held_for,
-            chased_for,
+            chased_for: None,
             draw_wait,
         })
     }

@@ -528,7 +528,7 @@ fn a_view_of_extreme_numbers_is_taken_in_without_overflow() {
         draw_cooldown: 0,
         returning: false,
         held_for: Some(0),
-        chased_for: Some(0),
+        chased_for: None,
         draw_wait: Some(0),
     }];
     app.handle(bota_proto::ServerMsg::Snapshot { view });

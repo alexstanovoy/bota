@@ -102,15 +102,18 @@ impl World {
     /// while its hold lasts, and one held that is merely out of sight is
     /// chased into the fog for as long. Past that, one within attack range is kept
     /// unless something of a better class is within attack range too; one
-    /// out of it gives way to the best within acquisition, and is kept only
-    /// when there is none and its chase has not run out; a building has no
-    /// chase, so it is not kept at all.
+    /// out of it gives way to the best within acquisition, and is chased
+    /// when there is none, however long and far it runs (Liquipedia, *Lane
+    /// Creeps*: "a creep will chase its current attack target indefinitely"); a
+    /// building cannot walk after it, so it is not kept at all.
     pub fn select_target(&self, seeker: Entity, candidates: &Candidates) -> Option<Entity> {
         let stats = self.stats.get(seeker);
         let acquisition = stats.map_or(Fixed::ZERO, |stats| stats.acquisition);
         let reach = stats.map_or(Fixed::ZERO, |stats| stats.attack_range);
-        let ai = self.lane_ai.get(seeker).copied();
-        let keeping = ai.is_some_and(|ai| self.tick < ai.keep_until);
+        let keeping = self
+            .lane_ai
+            .get(seeker)
+            .is_some_and(|ai| self.tick < ai.keep_until);
         let Some(held) = self.target_of(seeker) else {
             return self.best_valid_in_range(seeker, acquisition, candidates);
         };
@@ -142,7 +145,7 @@ impl World {
             .kind
             .get(seeker)
             .is_some_and(|kind| kind_def(*kind).structure);
-        if anchored || ai.is_some_and(|ai| self.tick >= ai.chase_until) {
+        if anchored {
             return self.best_valid_in_range(seeker, acquisition, candidates);
         }
         self.best_valid_in_range(seeker, acquisition, candidates)
@@ -305,26 +308,41 @@ impl World {
             self.lane_ai.insert(entity, ai);
             return taken;
         }
+        if self.leapt_away(entity) {
+            // Liquipedia, *Lane Creeps*: a creep stops chasing at once a
+            // target that teleports further than 1600, hold or not, and goes
+            // back to its lane rather than to where the target stood.
+            self.target.remove(entity);
+            if let Some(mut ai) = self.lane_ai.get(entity).copied() {
+                ai.keep_until = 0;
+                ai.last_seen = None;
+                self.lane_ai.insert(entity, ai);
+            }
+        }
         self.select_target(entity, candidates)
     }
 
-    /// Keeps a creep's marks up to date: how long the chase has left and
-    /// where it last saw what it is after.
+    /// Whether what a lane creep is set on stands further than
+    /// [`rules::CREEP_CHASE_LEAP`] from where the creep saw it the tick
+    /// before: put there in a moment, not walked.
+    fn leapt_away(&self, creep: Entity) -> bool {
+        let (Some(ai), Some(held)) = (self.lane_ai.get(creep), self.target_of(creep)) else {
+            return false;
+        };
+        let (Some(was), Some(now)) = (ai.last_seen, self.pos(held)) else {
+            return false;
+        };
+        !now.within(was, rules::units(rules::CREEP_CHASE_LEAP))
+    }
+
+    /// Keeps where a creep last saw what it is after, and forgets the spot
+    /// once it has walked up to it with nothing found.
     fn mark_chase(&mut self, entity: Entity) {
         let Some(mut ai) = self.lane_ai.get(entity).copied() else {
             return;
         };
-        let reach = self
-            .stats
-            .get(entity)
-            .map_or(Fixed::ZERO, |stats| stats.attack_range);
         match self.target_of(entity) {
-            Some(held) => {
-                ai.last_seen = self.pos(held);
-                if self.reachable(entity, reach, held) {
-                    ai.chase_until = self.tick + rules::CREEP_CHASE_TICKS;
-                }
-            }
+            Some(held) => ai.last_seen = self.pos(held),
             None => {
                 let radius = rules::units(rules::LANE_WAYPOINT_RADIUS);
                 if let Some(at) = self.pos(entity)
@@ -361,7 +379,6 @@ impl World {
         } else {
             self.tick + rules::ORDER_AGGRO_HOLD_TICKS
         };
-        ai.chase_until = self.tick + rules::CREEP_CHASE_TICKS;
         self.lane_ai.insert(creep, ai);
     }
 

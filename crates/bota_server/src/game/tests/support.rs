@@ -405,7 +405,6 @@ pub(crate) fn thinking_creep_of(world: &mut World, team: Team, at: Vec2) -> Enti
             keep_until: 0,
             roused_by: None,
             roused_at_own: false,
-            chase_until: 0,
         },
     );
     creep

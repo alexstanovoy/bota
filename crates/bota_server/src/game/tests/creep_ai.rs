@@ -112,30 +112,67 @@ fn a_building_never_shoots_the_jungle_and_a_creep_only_at_a_pull_camp() {
     );
 }
 
-#[test]
-fn a_creep_gives_up_a_chase_it_cannot_finish() {
+/// A Radiant thinking creep set on a Dire one beside it, and that one.
+fn a_creep_on_its_prey() -> (World, Entity, Entity) {
     let mut world = World::new();
     let creep = thinking_creep(&mut world, Vec2::from_ints(5000, 5000));
     let prey = world.spawn_unit(&MELEE_CREEP, Team::Dire, Vec2::from_ints(5100, 5000));
     world.settle();
     world.step();
     assert_eq!(world.target_of(creep), Some(prey), "it takes it");
-    // Carried out of everything it can see, and the creep held where it was.
-    let away = Vec2::from_ints(5900, 5000);
-    for _ in 0..rules::CREEP_CHASE_TICKS + 2 {
-        if let Some(at) = world.transform.get_mut(prey) {
-            at.pos = away;
-        }
-        if let Some(at) = world.transform.get_mut(creep) {
-            at.pos = Vec2::from_ints(5000, 5000);
-        }
+    (world, creep, prey)
+}
+
+/// Steps the world with the prey kept at a spot and the creep held where it
+/// stood.
+fn prey_held_at(world: &mut World, creep: Entity, prey: Entity, at: Vec2, ticks: u32) {
+    for _ in 0..ticks {
+        world.transform.get_mut(prey).expect("standing").pos = at;
+        world.transform.get_mut(creep).expect("standing").pos = Vec2::from_ints(5000, 5000);
         world.step();
     }
-    assert_eq!(
-        world.target_of(creep),
-        None,
-        "the chase ran out and it let go"
-    );
+}
+
+/// Liquipedia, *Lane Creeps*: "If completely undisturbed by other factors, a creep will chase its
+/// current attack target indefinitely." Out of its acquisition range but in its sight, with
+/// nothing else about, the prey is chased long past the 2.3 seconds an attack order holds a creep.
+#[test]
+fn a_creep_chases_what_it_sees_however_long_it_runs() {
+    let (mut world, creep, prey) = a_creep_on_its_prey();
+    let away = Vec2::from_ints(5700, 5000);
+    prey_held_at(&mut world, creep, prey, away, 10 * rules::TICKS_PER_SECOND);
+    assert_eq!(world.target_of(creep), Some(prey), "it chases on");
+}
+
+/// Liquipedia, *Lane Creeps*: a target that enters the fog is followed to the last spot it was
+/// seen at.
+#[test]
+fn a_creep_walks_to_where_it_lost_its_prey_in_the_fog() {
+    let (mut world, creep, prey) = a_creep_on_its_prey();
+    // Carried out of everything the creep's side sees.
+    let gone = Vec2::from_ints(5900, 5000);
+    prey_held_at(&mut world, creep, prey, gone, 2);
+    assert_eq!(world.target_of(creep), None, "it let go");
+    let ai = world.lane_ai.get(creep).copied().expect("a lane creep");
+    assert_eq!(ai.last_seen, Some(gone), "and makes for where it saw it");
+}
+
+/// Liquipedia, *Lane Creeps*: a creep "stops chasing immediately if its target teleports a
+/// distance greater than 1600", and goes back to its lane, not to where the target stood. A
+/// shorter jump, kept in sight, is chased on.
+#[test]
+fn a_creep_lets_go_of_prey_that_leaps_further_than_1600() {
+    let (mut world, creep, prey) = a_creep_on_its_prey();
+    // The creep's side sees both landing spots.
+    hero_at(&mut world, Vec2::from_ints(6600, 5800));
+    let near = Vec2::from_ints(5100 + 1500, 5000);
+    prey_held_at(&mut world, creep, prey, near, 2);
+    assert_eq!(world.target_of(creep), Some(prey), "1500 is chased on");
+    let far = near + Vec2::from_ints(0, rules::CREEP_CHASE_LEAP + 1);
+    prey_held_at(&mut world, creep, prey, far, 1);
+    assert_eq!(world.target_of(creep), None, "further than 1600 is let go");
+    let ai = world.lane_ai.get(creep).copied().expect("a lane creep");
+    assert_eq!(ai.last_seen, None, "and it heads back to its lane");
 }
 
 #[test]

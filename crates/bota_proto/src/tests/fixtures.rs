@@ -311,7 +311,7 @@ pub fn aggro_view(idx: u32) -> AggroView {
         draw_cooldown: 0,
         returning: false,
         held_for: Some(52),
-        chased_for: Some(69),
+        chased_for: None,
         draw_wait: Some(72),
     }
 }

@@ -7,7 +7,9 @@ use crate::game::Entity;
 /// What a lane creep keeps while it is chasing or coming back.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct LaneAi {
-    /// Where its target was last seen. Absent when it never lost one.
+    /// Where what it is set on stood when it last saw it: kept up while it
+    /// holds a target, and walked to after losing one. Absent once reached,
+    /// and before it ever held one.
     pub last_seen: Option<Vec2>,
     /// The tick until which its target is kept whatever else turns up. What
     /// an attack order puts on it.
@@ -18,9 +20,6 @@ pub struct LaneAi {
     /// Whether that order was aimed at one of the orderer's own, which puts
     /// the orderer last rather than first.
     pub roused_at_own: bool,
-    /// The tick by which the chase is given up unless it lands a blow first.
-    /// Pushed back every time the target comes into reach.
-    pub chase_until: u32,
 }
 
 /// Which camp a neutral belongs to and where in it it stands.

@@ -102,14 +102,12 @@ fn seen_by(view: &WorldView) -> Result<(), SessionError> {
 /// What a side's view withholds from it is absent there, not a default: the
 /// other side's creep score and gold, its Glyph's cooldown, its seats'
 /// open talents, its units' unspent points and sale marks, its heroes' draw
-/// waits, and a hold or a chase on a unit the view does not carry. A view
-/// that tells any of them breaks the contract.
+/// waits, and a hold on a unit the view does not carry. A view that tells
+/// any of them breaks the contract.
 fn withheld(view: &WorldView) -> Result<(), SessionError> {
     for entry in &view.aggro {
-        if entry.target.is_none() && (entry.held_for.is_some() || entry.chased_for.is_some()) {
-            return Err(SessionError::Stream(
-                "a hold or a chase on nobody in view is told",
-            ));
+        if entry.target.is_none() && entry.held_for.is_some() {
+            return Err(SessionError::Stream("a hold on nobody in view is told"));
         }
     }
     let Some(team) = view.viewer else {
@@ -453,7 +451,7 @@ fn aggro(view: &WorldView) -> Result<(), SessionError> {
         if !strikes_in_bounds
             || entry.held_for > Some(rules::ORDER_AGGRO_HOLD_TICKS)
             || entry.draw_wait > Some(rules::ORDER_AGGRO_COOLDOWN_TICKS)
-            || entry.chased_for > Some(rules::CREEP_CHASE_TICKS)
+            || entry.chased_for.is_some()
         {
             return Err(SessionError::AggroOutOfRange(entry.unit));
         }

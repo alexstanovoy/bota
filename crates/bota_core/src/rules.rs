@@ -916,9 +916,10 @@ pub const FREE_AGGRO_TICK: u32 = FIRST_WAVE_TICK + 5 * 60 * TICKS_PER_SECOND;
 /// How close to its own tier-one tower a lane creep may be aggroed before
 /// [`FREE_AGGRO_TICK`].
 pub const EARLY_AGGRO_TOWER_RANGE: i32 = 1500;
-/// Ticks a lane creep keeps a target that left its attack range while
-/// nothing else is in its acquisition range, 2.3 seconds.
-pub const CREEP_CHASE_TICKS: u32 = 69;
+/// A lane creep stops chasing a target that turns up further than this from
+/// where it stood a tick before: a teleport, not a walk (Liquipedia, *Lane
+/// Creeps*).
+pub const CREEP_CHASE_LEAP: i32 = 1600;
 /// Radius of the sight an attack or a spell at a unit shows the side struck,
 /// around where the attacker stood.
 pub const STRIKE_REVEAL_RADIUS: i32 = 150;

@@ -332,7 +332,7 @@ pub struct AggroView {
     pub swing: Option<SwingView>,
     /// Retired: always zero. [`held_for`](Self::held_for) tells it.
     pub hold_left: u32,
-    /// Retired: always zero. [`chased_for`](Self::chased_for) tells it.
+    /// Retired: always zero. A lane creep's chase has no end to tell.
     pub chase_left: u32,
     /// Retired: always zero. [`draw_wait`](Self::draw_wait) tells it.
     pub draw_cooldown: u32,
@@ -343,10 +343,8 @@ pub struct AggroView {
     /// Absent exactly when `target` is: a hold on a unit the view does not
     /// carry is not told.
     pub held_for: Option<u32>,
-    /// Ticks a lane creep keeps chasing its target out of attack range while
-    /// nothing else is within its acquisition range: full while the target
-    /// is within reach, zero for a unit that chases nothing. Absent exactly
-    /// when `target` is.
+    /// Retired: always absent. A lane creep chases its target for as long
+    /// as it sees it and nothing else turns up, so there is no end to tell.
     pub chased_for: Option<u32>,
     /// For a hero: ticks before its attack order at an enemy hero may draw
     /// lane creeps again, absent for a hero of another side (its wait is

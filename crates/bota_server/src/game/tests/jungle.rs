@@ -5,8 +5,8 @@ use bota_core::{
     SENTRY_WARD, SIEGE_CREEP, UnitDef, map_of, rules,
 };
 
-use crate::game::{Entity, World, wire_id};
-use bota_proto::{DamageKind, EffectId, Fixed, ItemId, MapId, Order, Target, Team, Vec2};
+use crate::game::{Def, Entity, World};
+use bota_proto::{DamageKind, EffectId, Fixed, ItemId, MapId, Order, Target, Team, UnitKind, Vec2};
 
 use super::support::*;
 
@@ -379,15 +379,140 @@ fn a_neutral_slots_only_its_own_abilities_and_grows_with_the_clock_unseen() {
     );
 }
 
-/// Liquipedia, *Creep pulling*: a hero strikes a pull camp as its lane wave walks past and runs
-/// back to the wave; the neutrals chase it into the creeps' acquisition range, the creeps take
-/// them on (*Creep aggro*: a lane creep fights the neutrals of a camp it can be pulled to) and
-/// follow them home, and the wave is fought out in the jungle. Radiant's safe lane small camp,
-/// pulled by a scripted hero from the horn on, every step an order of its seat.
+/// Liquipedia, *Creep pulling*: a hero strikes a pull camp as its lane wave comes up and runs out
+/// onto the lane ahead of it; the neutrals chase it into the creeps' acquisition range, the creeps
+/// take them on (*Creep aggro*: a lane creep fights the neutrals of a camp it can be pulled to)
+/// and follow them home (*Lane Creeps*: a creep chases its target indefinitely), and the wave
+/// is fought out in the jungle. Radiant's safe lane small camp, pulled by a scripted hero from
+/// the horn on, every step an order of its seat, with the swings recovering for each kind's own
+/// time and for Dota's.
 #[test]
 fn a_hero_pulls_its_safe_lane_wave_into_the_small_camp() {
+    for recovery in [Recovery::OWN, Recovery::DOTA] {
+        let pulled = pull(&waiting_by_the_camp(recovery), PULL_REACH, true);
+        assert!(pulled.fought, "the wave takes the neutrals on");
+        assert!(
+            pulled.leashed,
+            "the neutrals, fought past their guard distance, turn for home"
+        );
+        assert!(pulled.dragged, "and the wave follows them into the camp");
+    }
+}
+
+/// A pull that leads the neutrals onto the lane ahead of the wave holds whenever in the wave's
+/// approach the hero strikes and however long creeps and neutrals recover from a swing: no tick
+/// of timing decides it.
+#[test]
+fn a_pull_holds_for_any_strike_moment_and_any_recovery() {
+    let recoveries = [
+        Recovery::OWN,
+        Recovery::DOTA,
+        Recovery {
+            melee: Some(700),
+            ranged: Some(700),
+            neutral: Some(|_| 700),
+        },
+        Recovery {
+            melee: Some(300),
+            ranged: Some(300),
+            neutral: Some(|_| 0),
+        },
+    ];
+    for recovery in recoveries {
+        let by = waiting_by_the_camp(recovery);
+        for reach in [1100, 1500, 1900, 2300] {
+            let pulled = pull(&by, reach, true);
+            let all = Pulled {
+                fought: true,
+                leashed: true,
+                dragged: true,
+            };
+            assert_eq!(pulled, all, "struck at {reach} with {recovery:?}");
+        }
+    }
+}
+
+/// A wave nobody pulls walks its lane past the camp: the same hero walking out onto the lane
+/// without striking the camp leaves the neutrals asleep and the wave on its way.
+#[test]
+fn a_wave_nobody_pulls_walks_on_past_the_camp() {
+    let by = waiting_by_the_camp(Recovery::OWN);
+    let pulled = pull(&by, PULL_REACH, false);
+    assert!(!pulled.fought, "the wave leaves the camp be");
+    assert!(!pulled.dragged, "and never sets foot in it");
+}
+
+/// What a scripted pull came to.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct Pulled {
+    /// A creep of the wave swung at one of the camp.
+    fought: bool,
+    /// One of the camp turned for home after the wave took it on.
+    leashed: bool,
+    /// A creep of the wave stood in the camp's spawn box.
+    dragged: bool,
+}
+
+/// How long lane creeps and neutrals recover from a swing in a scripted
+/// pull, in milliseconds: `None` keeps a kind's own.
+#[derive(Clone, Copy, Debug)]
+struct Recovery {
+    melee: Option<u32>,
+    ranged: Option<u32>,
+    neutral: Option<fn(NeutralKind) -> u32>,
+}
+
+impl Recovery {
+    const OWN: Recovery = Recovery {
+        melee: None,
+        ranged: None,
+        neutral: None,
+    };
+
+    /// Liquipedia, *Attack Animation*: melee creeps 0.533 s, ranged 0.3 s,
+    /// neutrals by kind.
+    const DOTA: Recovery = Recovery {
+        melee: Some(533),
+        ranged: Some(300),
+        neutral: Some(dota_neutral_recovery),
+    };
+}
+
+/// Liquipedia, *Attack Animation*: how long each neutral recovers from a
+/// swing; 0.3 s for the kinds the table leaves out.
+fn dota_neutral_recovery(kind: NeutralKind) -> u32 {
+    match kind {
+        NeutralKind::Kobold | NeutralKind::KoboldTunneler | NeutralKind::KoboldTaskmaster => 600,
+        NeutralKind::GiantWolf | NeutralKind::AlphaWolf => 640,
+        NeutralKind::BlackDrake
+        | NeutralKind::BlackDragon
+        | NeutralKind::SmallThunderLizard
+        | NeutralKind::BigThunderLizard => 560,
+        NeutralKind::GraniteGolem => 500,
+        NeutralKind::SkeletonWarrior => 440,
+        _ => 300,
+    }
+}
+
+/// How far off the wave's front creep is when the scripted hero strikes.
+const PULL_REACH: i32 = 1300;
+/// How far down the lane past the camp the scripted hero leads the
+/// neutrals.
+const PULL_AHEAD: i32 = 1500;
+
+/// A match on the Dota map whose Radiant hero waits out of the safe lane
+/// small camp's box, the camp filled and the first wave after its fill on
+/// its way, with a [`Recovery`] on every creep.
+#[derive(Clone)]
+struct ByTheCamp {
+    world: World,
+    hero: Entity,
+    paced: Paced,
+}
+
+fn waiting_by_the_camp(recovery: Recovery) -> ByTheCamp {
     let (mut world, hero) = a_full_map_hero();
-    let (index, camp) = safe_lane_small_camp();
+    let (_, camp) = safe_lane_small_camp();
     let wait = Vec2::from_ints(camp.pos.x.to_int(), camp.spawn_box.min.y.to_int() - 250);
     seat_order(
         &mut world,
@@ -395,82 +520,162 @@ fn a_hero_pulls_its_safe_lane_wave_into_the_small_camp() {
             target: Target::Pos(wait),
         },
     );
-    let ours = |world: &World, e| {
-        world.team.get(e) == Some(&Team::Radiant)
-            && world.march.get(e).is_some()
-            && world
-                .lane
-                .get(e)
-                .is_some_and(|lane| lane.0 == rules::LANE_BOT)
-    };
-    let beasts = |world: &World| -> Vec<Entity> {
-        world
-            .entities
-            .iter()
-            .filter(|e| {
-                world
-                    .camp_home
-                    .get(*e)
-                    .is_some_and(|h| usize::from(h.camp) == index)
-            })
-            .collect()
-    };
-    let at = |world: &World, e| world.transform.get(e).expect("stands").pos;
-    // Waits out of the camp's box for the first wave out after the camp is filled.
+    let mut paced = Paced::new(recovery);
     while world.tick < rules::FIRST_NEUTRAL_TICK + rules::WAVE_PERIOD_TICKS / 2 {
-        world.step();
+        paced.step(&mut world);
     }
-    let lead = loop {
-        world.step();
-        let near = world
-            .entities
-            .iter()
-            .filter(|e| ours(&world, *e))
-            .find(|e| at(&world, *e).within(at(&world, hero), Fixed::from_int(1300)));
-        if let Some(lead) = near {
-            break lead;
+    ByTheCamp { world, hero, paced }
+}
+
+/// Pulls the wave from [`waiting_by_the_camp`]: once the wave's front creep
+/// comes within `reach`, the hero strikes the nearest neutral (unless
+/// `strike` is false) and walks out onto the lane ahead of the wave and on
+/// down it, the neutrals in tow, for the wave to walk into them.
+fn pull(by: &ByTheCamp, reach: i32, strike: bool) -> Pulled {
+    let ByTheCamp {
+        mut world,
+        hero,
+        mut paced,
+    } = by.clone();
+    let (index, camp) = safe_lane_small_camp();
+    let front = loop {
+        paced.step(&mut world);
+        if let Some(front) = front_within(&world, hero, reach) {
+            break pos_of(&world, front);
         }
         assert!(
             world.tick < rules::FIRST_NEUTRAL_TICK + 2 * rules::WAVE_PERIOD_TICKS,
             "no wave came"
         );
     };
-    let beast = *beasts(&world)
-        .iter()
-        .min_by_key(|b| at(&world, **b).distance_squared(at(&world, hero)))
-        .expect("the camp is full");
-    attack_click(&mut world, beast);
-    let max_hp = world.stats.get(beast).expect("a beast").max_hp;
-    while world.health.get(beast).is_some_and(|h| h.hp >= max_hp) {
-        world.step();
-        assert!(
-            world.tick < rules::FIRST_NEUTRAL_TICK + 3 * rules::WAVE_PERIOD_TICKS,
-            "never struck"
-        );
+    if strike {
+        let beast = *camp_beasts(&world, index)
+            .iter()
+            .min_by_key(|b| pos_of(&world, **b).distance_squared(pos_of(&world, hero)))
+            .expect("the camp is full");
+        attack_click(&mut world, beast);
+        let max_hp = world.stats.get(beast).expect("a beast").max_hp;
+        while world.health.get(beast).is_some_and(|h| h.hp >= max_hp) {
+            paced.step(&mut world);
+            assert!(
+                world.tick < rules::FIRST_NEUTRAL_TICK + 3 * rules::WAVE_PERIOD_TICKS,
+                "never struck"
+            );
+        }
     }
-    // Struck: back to the wave, and along with it.
-    let lead = Target::Unit(wire_id(lead));
-    seat_order(&mut world, Order::Move { target: lead });
-    let (mut fought, mut dragged, mut leashed) = (false, false, false);
+    let ahead = Vec2 {
+        x: camp.pos.x + Fixed::from_int(PULL_AHEAD),
+        y: front.y,
+    };
+    seat_order(
+        &mut world,
+        Order::Move {
+            target: Target::Pos(ahead),
+        },
+    );
+    let mut pulled = Pulled {
+        fought: false,
+        leashed: false,
+        dragged: false,
+    };
     for _ in 0..20 * rules::TICKS_PER_SECOND {
-        world.step();
-        let wave: Vec<Entity> = world.entities.iter().filter(|e| ours(&world, *e)).collect();
-        let neutrals = beasts(&world);
-        fought |= wave
+        paced.step(&mut world);
+        let wave = lane_creeps(&world);
+        let neutrals = camp_beasts(&world, index);
+        pulled.fought |= wave
             .iter()
             .any(|c| swinging(&world, *c).is_some_and(|t| neutrals.contains(&t)));
-        dragged |= wave.iter().any(|c| camp.spawn_box.contains(at(&world, *c)));
-        leashed |= fought
+        pulled.dragged |= wave
+            .iter()
+            .any(|c| camp.spawn_box.contains(pos_of(&world, *c)));
+        pulled.leashed |= pulled.fought
             && neutrals
                 .iter()
                 .any(|b| world.neutral_ai.get(*b).is_some_and(|ai| ai.going_home));
     }
-    assert!(fought, "the wave takes the neutrals on");
-    assert!(
-        leashed,
-        "the neutrals, fought past their guard distance, turn for home"
-    );
-    assert!(dragged, "and the wave follows them into the camp");
+    pulled
+}
+
+/// Radiant's safe lane creeps.
+fn lane_creeps(world: &World) -> Vec<Entity> {
+    world
+        .entities
+        .iter()
+        .filter(|e| {
+            world.team.get(*e) == Some(&Team::Radiant)
+                && world.march.get(*e).is_some()
+                && world
+                    .lane
+                    .get(*e)
+                    .is_some_and(|lane| lane.0 == rules::LANE_BOT)
+        })
+        .collect()
+}
+
+/// The wave's front creep, the lane creep nearest the hero, once it is
+/// within `reach` of the hero.
+fn front_within(world: &World, hero: Entity, reach: i32) -> Option<Entity> {
+    let hero_at = pos_of(world, hero);
+    lane_creeps(world)
+        .into_iter()
+        .min_by_key(|c| pos_of(world, *c).distance_squared(hero_at))
+        .filter(|c| pos_of(world, *c).within(hero_at, Fixed::from_int(reach)))
+}
+
+/// Puts a [`Recovery`] on every lane creep and neutral as it comes: its
+/// kind's entry, copied with the recovery asked for.
+#[derive(Clone)]
+struct Paced {
+    recovery: Recovery,
+    copies: Vec<(&'static UnitDef, u32, &'static UnitDef)>,
+}
+
+impl Paced {
+    fn new(recovery: Recovery) -> Paced {
+        Paced {
+            recovery,
+            copies: Vec::new(),
+        }
+    }
+
+    /// Steps the world and paces whatever it brought.
+    fn step(&mut self, world: &mut World) {
+        world.step();
+        let entities: Vec<Entity> = world.entities.iter().collect();
+        for entity in entities {
+            let Some(Def(def)) = world.def.get(entity).copied() else {
+                continue;
+            };
+            let wanted = match (world.kind.get(entity), world.neutral.get(entity)) {
+                (_, Some(kind)) => self.recovery.neutral.map(|of| of(*kind)),
+                (Some(UnitKind::CreepMelee | UnitKind::CreepFlagbearer), _) => self.recovery.melee,
+                (Some(UnitKind::CreepRanged), _) => self.recovery.ranged,
+                _ => None,
+            };
+            if let Some(ms) = wanted.filter(|ms| *ms != def.attack_backswing) {
+                let copy = self.copy(def, ms);
+                world.def.insert(entity, Def(copy));
+            }
+        }
+    }
+
+    /// A kind's entry recovering for `ms`: one copy per entry and time,
+    /// made once for the test's run.
+    fn copy(&mut self, def: &'static UnitDef, ms: u32) -> &'static UnitDef {
+        let made = self
+            .copies
+            .iter()
+            .find(|(of, at, _)| std::ptr::eq(*of, def) && *at == ms);
+        if let Some((_, _, copy)) = made {
+            return copy;
+        }
+        let copy: &'static UnitDef = Box::leak(Box::new(UnitDef {
+            attack_backswing: ms,
+            ..*def
+        }));
+        self.copies.push((def, ms, copy));
+        copy
+    }
 }
 
 /// A match on the Dota map with one Radiant hero, every step an order of its seat.

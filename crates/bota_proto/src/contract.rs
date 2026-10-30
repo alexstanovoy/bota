@@ -117,8 +117,8 @@
 //! [`ItemView::selling`] are absent, and so is an enemy hero's
 //! [`AggroView::draw_wait`]. [`AggroView`] tells nothing of a unit the view
 //! does not carry: neither whom a unit is set on or swings at, nor how long
-//! it holds or chases such a target ([`AggroView::held_for`] and
-//! [`AggroView::chased_for`] are absent exactly when the target is). Of
+//! it holds such a target ([`AggroView::held_for`] is absent exactly when
+//! the target is). Of
 //! another side's seat, [`TalentView::may_learn`] and
 //! [`TalentView::may_learn_attribute_bonus`] are absent, and of a non-hero
 //! kill it earned, [`Died`]'s `bounty`. A client refuses a view that tells
@@ -133,7 +133,6 @@
 //! [`ItemView::selling`]: crate::ItemView::selling
 //! [`AggroView::draw_wait`]: crate::AggroView::draw_wait
 //! [`AggroView::held_for`]: crate::AggroView::held_for
-//! [`AggroView::chased_for`]: crate::AggroView::chased_for
 //! [`AggroView`]: crate::AggroView
 //!
 //! # What a side is told of the forest
