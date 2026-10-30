@@ -7,7 +7,7 @@
 
 use core::fmt;
 
-use bota_proto::{OutgoingOrder, ReplayRecord, ServerMsg, SlotId, Team, WorldView};
+use bota_proto::{EventKind, OutgoingOrder, ReplayRecord, ServerMsg, SlotId, Team, WorldView};
 
 use crate::game::{
     Command, DelayLine, Entity, Event, Handles, MatchConfig, OrderDelay, RefusedOrder, World,
@@ -222,6 +222,17 @@ impl LocalMatch {
         streams
     }
 
+    /// What a side would be told were it told again now, on a copy of the
+    /// names: the check that a repeat tells the same.
+    fn told_again(&self, team: Team, events: &[Event]) -> (WorldView, Vec<EventKind>) {
+        let mut handles = self.handles.clone();
+        let view = side_view(&self.world, &self.line, &mut handles, team);
+        (
+            view,
+            side_events(events, &mut handles, team, self.world.tick),
+        )
+    }
+
     /// Keeps the finished tick for the replay, as the server's loop records it.
     fn record_tick(&mut self, commands: &[Command], events: &[Event]) {
         let Some(tape) = self.tape.as_mut() else {
@@ -250,13 +261,37 @@ impl LocalMatch {
     }
 
     /// Appends the finished tick as each seat sees it.
+    ///
+    /// Every seat of a side is told the same: the side's view and events are
+    /// worked out for its first seat and handed to the others as they are.
+    /// Telling a side again on the same tick names nothing anew, so it
+    /// would give the same.
     fn publish(&mut self, streams: &mut [Vec<ServerMsg>], events: &[Event]) {
-        for (stream, &team) in streams.iter_mut().zip(&self.teams) {
-            let view: WorldView = side_view(&self.world, &self.line, &mut self.handles, team);
+        let tick = self.world.tick;
+        let mut told: Vec<(Team, WorldView, Vec<EventKind>)> = Vec::new();
+        for (seat, stream) in streams.iter_mut().enumerate() {
+            let team = self.teams[seat];
+            let (view, side_told) = match told.iter().find(|(side, ..)| *side == team) {
+                Some((_, view, side_told)) => {
+                    debug_assert!(
+                        self.told_again(team, events) == (view.clone(), side_told.clone()),
+                        "a side told again on a tick is told the same"
+                    );
+                    (view.clone(), side_told.clone())
+                }
+                None => {
+                    let view = side_view(&self.world, &self.line, &mut self.handles, team);
+                    let side_told = side_events(events, &mut self.handles, team, tick);
+                    if self.teams[seat + 1..].contains(&team) {
+                        told.push((team, view.clone(), side_told.clone()));
+                    }
+                    (view, side_told)
+                }
+            };
             stream.push(ServerMsg::Snapshot { view });
             stream.push(ServerMsg::Events {
-                tick: self.world.tick,
-                events: side_events(events, &mut self.handles, team, self.world.tick),
+                tick,
+                events: side_told,
             });
         }
         if let Some(winner) = self.world.victor() {
