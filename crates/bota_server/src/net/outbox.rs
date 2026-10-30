@@ -23,7 +23,10 @@ pub const PING_INTERVAL: Duration = Duration::from_secs(1);
 /// tick, its snapshot and its events, is coalescible: queueing a new one
 /// replaces any older tick still waiting, whose events then ride along in the
 /// new snapshot's [`skipped_ticks`](bota_proto::WorldView::skipped_ticks), so
-/// a slow consumer skips states but no events. Everything else is kept in
+/// a slow consumer skips states but no events. The first tick queued is never
+/// replaced: it is the state the peer starts from, and a peer still reading
+/// the opening when the match moves on would otherwise start further in.
+/// Everything else is kept in
 /// order and never dropped; a queue that overflows, or a peer that skips more
 /// than [`MAX_SKIPPED_TICKS`] in a row, aborts the connection instead.
 ///
@@ -44,6 +47,8 @@ struct OutboxState {
     closed: bool,
     /// Drop what is queued and stop at once: the peer is gone or hopeless.
     aborted: bool,
+    /// Whether a tick was ever queued: the first one is kept whole.
+    ticked: bool,
 }
 
 /// What the writer does next.
@@ -74,6 +79,9 @@ struct QueuedTick {
     events: Vec<EventKind>,
     /// Ticks this one replaced, oldest first.
     skipped: Vec<SkippedTick>,
+    /// Whether it is the first tick the peer is sent, which no later one
+    /// replaces.
+    first: bool,
 }
 
 /// Urgent frames held for the writer at most; a probe past them goes unanswered, as a lost
@@ -92,6 +100,7 @@ impl Outbox {
                 urgent: VecDeque::new(),
                 closed: false,
                 aborted: false,
+                ticked: false,
             }),
             wake: Condvar::new(),
         })
@@ -133,6 +142,7 @@ impl Outbox {
             tick,
             events,
             skipped: Vec::new(),
+            first: false,
         })));
     }
 
@@ -141,11 +151,15 @@ impl Outbox {
         if state.closed || state.aborted {
             return;
         }
+        if let Queued::Tick(newer) = &mut entry {
+            newer.first = !state.ticked;
+            state.ticked = true;
+        }
         if let Queued::Tick(newer) = &mut entry
             && let Some(at) = state
                 .queue
                 .iter()
-                .position(|queued| matches!(queued, Queued::Tick(_)))
+                .position(|queued| matches!(queued, Queued::Tick(tick) if !tick.first))
         {
             let Some(Queued::Tick(older)) = state.queue.remove(at) else {
                 unreachable!("the position holds a tick");

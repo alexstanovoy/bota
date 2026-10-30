@@ -337,3 +337,65 @@ fn a_lone_reserved_seat_plays_on_with_the_other_side_empty() {
         }
     }
 }
+
+/// A watcher holding a seat's key that waits in the lobby is sent the match's first tick, the
+/// state it starts from, however slowly it reads: the opening holds its connection's writer while
+/// the seats play on, and the first tick is never folded into a later one.
+#[test]
+fn a_keyed_watcher_from_the_lobby_is_sent_the_first_tick_however_slowly_it_reads() {
+    let mut opts = reserved(31);
+    opts.mode = TickMode::Lockstep;
+    opts.ack_timeout_ticks = 600; // twenty seconds at 30 a second: only acks move this match
+    let addr = start_server(opts);
+    // A receive window far below the match's opening, set before the connection opens so the
+    // window is never offered wider: the server's writer is held on the opening while the
+    // watcher reads nothing.
+    let socket =
+        socket2::Socket::new(socket2::Domain::IPV4, socket2::Type::STREAM, None).expect("a socket");
+    socket.set_recv_buffer_size(1024).expect("receive buffer");
+    socket.connect(&addr.into()).expect("connect");
+    let stream = TcpStream::from(socket);
+    stream
+        .set_read_timeout(Some(HANG_GUARD))
+        .expect("set timeout");
+    let mut watcher = TestClient {
+        stream,
+        reader: Inbox::default(),
+    };
+    watcher.hello(Role::Spectator, Some(KEYS[0]));
+    assert_eq!(watcher.welcome(), None);
+    let mut seats: Vec<TestClient> = KEYS
+        .iter()
+        .map(|key| {
+            let mut seat = TestClient::connect(addr);
+            seat.hello(Role::Bot, Some(*key));
+            seat.welcome();
+            seat.send(&ClientMsg::PickHero {
+                hero: HeroId::SHADOW_FIEND,
+            });
+            seat.send(&ClientMsg::SetReady(true));
+            seat
+        })
+        .collect();
+    // The seats play five ticks while the watcher still reads nothing.
+    for _ in 0..5 {
+        for seat in &mut seats {
+            let tick = seat.recv_until(snapshot).tick;
+            seat.send(&ClientMsg::Ack { tick });
+        }
+    }
+    let info = watcher.match_start();
+    let opening = encode_frame_to_vec(&ServerMsg::MatchStart { info }).expect("encodes");
+    // The kernel keeps twice the send buffer asked for; past that, and the watcher's least
+    // receive window, the writer was held on the opening.
+    assert!(
+        opening.len() > 2 * crate::net::SEND_BUFFER_BYTES,
+        "the opening outgrows the server's send buffer"
+    );
+    let first = watcher.recv_until(snapshot);
+    assert_eq!(
+        (first.tick, first.skipped_ticks.len()),
+        (1, 0),
+        "the watcher starts from the first tick"
+    );
+}

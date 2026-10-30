@@ -329,7 +329,10 @@
 //! in the newer snapshot's
 //! [`WorldView::skipped_ticks`](crate::WorldView::skipped_ticks), each with
 //! its tick. A slow client therefore jumps from state to state but is told
-//! every tick and every event it may know, in order. A connection more than
+//! every tick and every event it may know, in order. The first tick a
+//! connection is sent is never replaced: it is the state the client starts
+//! from, so one in the lobby when the match begins starts from tick 1 however
+//! long it takes to read the match's opening. A connection more than
 //! 900 ticks behind (thirty seconds at 30 a second), or whose queue of other
 //! messages overflows, is dropped as dead (below).
 //!
