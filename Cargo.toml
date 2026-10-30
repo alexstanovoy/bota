@@ -39,3 +39,17 @@ float_arithmetic = "deny"
 # optimizer see them together (the tick loop runs ~6% faster than with 16).
 [profile.release]
 codegen-units = 1
+
+# What the tests are built with: release's optimisation (a debug build is too slow to test with) and the checks a debug build
+# has, overflow checks and debug assertions, in the crates of this repository. The dependencies stay as release builds them, so
+# the two profiles share their artifacts. The product (`cargo build --release`, the benches) is plain release.
+[profile.test-release]
+inherits = "release"
+debug-assertions = true
+overflow-checks = true
+codegen-units = 16
+
+[profile.test-release.package."*"]
+debug-assertions = false
+overflow-checks = false
+codegen-units = 1

@@ -13,8 +13,8 @@ use crate::game::{Command, Fnv, MatchConfig, MatchSecrets, World};
 const CHECKPOINT_TICKS: u32 = 1_500;
 /// Ticks a match on a map without a cap is played for.
 const UNCAPPED_TICKS: u32 = 18_000;
-/// Ticks a debug build plays: the pinned prefix it can afford.
-const DEBUG_TICKS: u32 = CHECKPOINT_TICKS;
+/// Ticks of the tests that fork a match or compare two plays of its start.
+const FORK_TICKS: u32 = CHECKPOINT_TICKS;
 /// Ticks between two decisions of a seat.
 const DECISION_TICKS: u32 = 3;
 /// Bag slots an order may name, stash included.
@@ -311,23 +311,18 @@ fn match_ticks(map: MapId) -> u32 {
     }
 }
 
-/// Replays the pinned matches on a map and checks them against their pins:
-/// the whole match in release, the prefix it affords in debug.
+/// Replays the pinned matches on a map and checks them against their pins,
+/// the whole match.
 fn check(map: MapId) {
     for pinned in PINS.iter().filter(|pinned| pinned.map == map) {
         assert!(map_of(pinned.map).id == pinned.map, "the map is registered");
         let whole = match_ticks(pinned.map);
-        let horizon = if cfg!(debug_assertions) {
-            DEBUG_TICKS
-        } else {
-            whole
-        };
-        let (checkpoints, last) = replay(pinned, horizon);
+        let (checkpoints, last) = replay(pinned, whole);
         let expected: Vec<_> = pinned
             .checkpoints
             .iter()
             .copied()
-            .filter(|&(tick, _, _)| tick <= horizon)
+            .filter(|&(tick, _, _)| tick <= whole)
             .collect();
         assert_eq!(
             checkpoints, expected,
@@ -415,8 +410,8 @@ fn a_cloned_world_plays_on_as_the_original() {
         .collect();
     let mut digest = Fnv::new();
     let mut fork = None;
-    while world.tick < DEBUG_TICKS && world.victor().is_none() {
-        if world.tick == DEBUG_TICKS / 2 {
+    while world.tick < FORK_TICKS && world.victor().is_none() {
+        if world.tick == FORK_TICKS / 2 {
             fork = Some(world.clone());
         }
         let commands = if world.tick.is_multiple_of(DECISION_TICKS) {
@@ -444,13 +439,8 @@ fn a_cloned_world_plays_on_as_the_original() {
     assert!(fork.is_some(), "the match ran past the fork");
 }
 
-/// Ticks the fog-blind replays run: one checkpoint in debug, four in
-/// release.
-const BLIND_TICKS: u32 = if cfg!(debug_assertions) {
-    CHECKPOINT_TICKS
-} else {
-    4 * CHECKPOINT_TICKS
-};
+/// Ticks the fog-blind replays run: four checkpoints.
+const BLIND_TICKS: u32 = 4 * CHECKPOINT_TICKS;
 
 /// The world hashes of every pinned match played by drivers that see
 /// everything, at each checkpoint within [`BLIND_TICKS`].
