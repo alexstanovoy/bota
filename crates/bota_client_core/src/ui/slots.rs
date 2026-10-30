@@ -122,9 +122,28 @@ impl App {
         }
     }
 
-    /// How one slot is aimed, and nothing for one that cannot be used at all.
+    /// How one slot is aimed, and nothing for one that cannot be used at all. A slot taken up
+    /// for an ally is aimed at a unit.
     pub fn aim_in(&self, slot: Slot) -> Option<Aim> {
-        filled(self, slot).flatten()
+        let aim = filled(self, slot).flatten();
+        if aim.is_some() && self.aiming_ally(slot) {
+            Some(Aim::Unit)
+        } else {
+            aim
+        }
+    }
+
+    /// What an item in a slot does for an allied unit, where Dota lets it (Control held).
+    pub fn ally_use_in(&self, slot: Slot) -> Option<bota_core::AllyUse> {
+        let Slot::Item(at) = slot else {
+            return None;
+        };
+        bota_core::item_def(self.item_in(at)?.id)?.ally
+    }
+
+    /// Whether a slot is taken up for an ally.
+    pub fn aiming_ally(&self, slot: Slot) -> bool {
+        self.aiming == Some(slot) && self.ally_aim == Some(slot)
     }
 
     /// How far one slot reaches, in world units.

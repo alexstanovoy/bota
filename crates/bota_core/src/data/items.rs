@@ -1298,3 +1298,27 @@ pub(crate) const ITEM_WARD_DISPENSER: ItemData = ItemData {
         ("cast_range_sentry", &[Dec::of("500")]),
     ],
 };
+
+pub(crate) const ITEM_TANGO_SINGLE: ItemData = ItemData {
+    id: ItemId(55),
+    key: "item_tango_single",
+    retired: false,
+    cost: 30,
+    behavior: B::UNIT_TARGET,
+    cast_range: 165,
+    cast_point: Ms::secs("0"),
+    channel: Ms::secs("0"),
+    cooldown: Ms::secs("0"),
+    mana: 0,
+    health: 0,
+    charges: 1,
+    stack: 0,
+    stock: None,
+    purchasable: false,
+    builds: &[],
+    values: &[
+        ("health_regen", &[Dec::of("3.5")]),
+        ("buff_duration", &[Dec::of("16")]),
+        ("duration_to_use", &[Dec::of("40")]),
+    ],
+};

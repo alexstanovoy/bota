@@ -391,6 +391,9 @@ pub struct App {
     pub my_slot: Option<SlotId>,
     /// The slot taken up and waiting for a click to aim it, if one is.
     pub aiming: Option<crate::ui::slots::Slot>,
+    /// The slot taken up for an ally, by Control: set with `aiming`, and only meant while
+    /// `aiming` is still that slot (see [`App::aiming_ally`]).
+    pub ally_aim: Option<crate::ui::slots::Slot>,
     /// An item slot picked up and waiting for the destination click.
     pub held_item: Option<u8>,
     /// The lobby as last told: our wire identity once welcomed, and the
@@ -474,6 +477,7 @@ impl App {
             phase: Phase::Lobby,
             my_slot: None,
             aiming: None,
+            ally_aim: None,
             held_item: None,
             lobby: Lobby::default(),
             names: Vec::new(),

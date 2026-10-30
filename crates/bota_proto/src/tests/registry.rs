@@ -478,6 +478,7 @@ const NAMED: &[(IdSpace, u16, &str)] = &[
         ItemId::WARD_DISPENSER.0,
         "item_ward_dispenser",
     ),
+    (IdSpace::Item, ItemId::TANGO_SHARED.0, "item_tango_single"),
     (
         IdSpace::Effect,
         EffectId::MENDING.0,

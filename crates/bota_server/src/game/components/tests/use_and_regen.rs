@@ -18,7 +18,8 @@ fn a_mango_is_sold_and_shown_with_its_charges_aimed_at_its_holder() {
     .unwrap();
     assert_eq!(view.charges, Some(3));
     assert_eq!(view.aim, Some(Aim::Own));
-    assert_eq!(view.range, 0);
+    // Eaten by its holder, and, Control held, by an allied hero within the script's 400.
+    assert_eq!(view.range, 400);
     assert!(
         bota_core::shop_entries(bota_core::Catalogue::FULL)
             .iter()

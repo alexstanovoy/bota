@@ -1,6 +1,6 @@
 //! The surface a match runs a world through: what the game loop asks of it.
 
-use bota_core::{clamp_to_map, hero_spawn_pos, item_def, map_of, rules};
+use bota_core::{AllyUse, ItemDef, clamp_to_map, hero_spawn_pos, item_def, map_of, rules};
 use bota_proto::{Aim, ItemId, MatchStats, Order, RejectReason, SlotId, SlotStats, Target, Team};
 
 use crate::game::{
@@ -772,13 +772,26 @@ impl World {
             return Err(RejectReason::NotReady);
         }
         let aim = def.aim.ok_or(RejectReason::NotCastable)?;
-        if stack.cooldown > 0 || (def.shared_wait && self.owes_wait(unit, stack.id)) {
+        // What is given away waits for nothing and costs nothing; what lands on an ally is a use.
+        let ally = self.ally_use_on(unit, def, target);
+        let gives = ally.is_some_and(|ally| matches!(ally, AllyUse::Give { .. }));
+        if !gives && (stack.cooldown > 0 || (def.shared_wait && self.owes_wait(unit, stack.id))) {
             return Err(RejectReason::OnCooldown);
         }
         if (def.charges > 0 || def.cast_charges > 0) && stack.charges == 0 {
             return Err(RejectReason::NoCharges);
         }
-        let aimed = if def.mana_deficit {
+        // What the side cannot see is refused as a dead target, whatever it is aimed for.
+        if ally.is_some()
+            && let Target::Unit(id) = target
+        {
+            self.seen_by(seat, *id)?;
+        }
+        // An item aimed at a unit already takes any unit (and does nothing for one that is not an
+        // ally); one that is aimed at nothing or the ground takes an ally as a different use.
+        let aimed = if let Some(ally) = ally.filter(|_| aim != Aim::Unit) {
+            matches!(target, Target::Unit(id) if self.takes_ally_use(unit, seat, *id, ally))
+        } else if def.mana_deficit {
             matches!(target, Target::None) || *target == Target::Unit(crate::game::wire_id(unit))
         } else {
             aimed_right(aim, target)
@@ -789,8 +802,9 @@ impl World {
         if let Target::Unit(target) = target {
             self.seen_by(seat, *target)?;
         }
-        if self.mana.get(unit).map_or(0, |pool| pool.mana.to_int())
-            < self.item_mana_cost(unit, stack.id)
+        if !gives
+            && self.mana.get(unit).map_or(0, |pool| pool.mana.to_int())
+                < self.item_mana_cost(unit, stack.id)
         {
             return Err(RejectReason::NotEnoughMana);
         }
@@ -809,6 +823,41 @@ impl World {
             return Err(RejectReason::WrongTargetKind);
         }
         Ok(())
+    }
+
+    /// What a use of `def` aimed at `target` does for an ally, when the target is another unit
+    /// and the item has something to do for one.
+    pub(crate) fn ally_use_on(
+        &self,
+        unit: Entity,
+        def: &ItemDef,
+        target: &Target,
+    ) -> Option<AllyUse> {
+        match (def.ally, target) {
+            (Some(ally), Target::Unit(id)) if *id != crate::game::wire_id(unit) => Some(ally),
+            _ => None,
+        }
+    }
+
+    /// Whether a seen unit is one an ally use of this kind may be aimed at: another unit of the
+    /// user's side, a hero for an effect and any unit with a bag for a give.
+    fn takes_ally_use(
+        &self,
+        unit: Entity,
+        seat: &Seat,
+        id: bota_proto::EntityId,
+        kind: AllyUse,
+    ) -> bool {
+        let Ok(to) = self.seen_by(seat, id) else {
+            return false;
+        };
+        if to == unit || self.team.get(to) != Some(&seat.team) || !self.alive(to) {
+            return false;
+        }
+        match kind {
+            AllyUse::Give { .. } => self.inventory.get(to).is_some(),
+            AllyUse::Effect { .. } => self.kind.get(to) == Some(&bota_proto::UnitKind::Hero),
+        }
     }
 
     /// Whether one of a seat's slots holds anything at all.

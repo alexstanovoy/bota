@@ -352,9 +352,28 @@ pub struct ItemDef {
     pub unbuyable: bool,
     /// What using it does.
     pub effect: UseSpec,
+    /// What a use aimed at an allied unit does, within [`cast_range`](Self::cast_range) of
+    /// the user. Absent for one that cannot be used on an ally.
+    pub ally: Option<AllyUse>,
+    /// Ticks a stack of it lives once it is made, then it is gone from wherever it lies.
+    /// Zero: it lasts.
+    pub lifetime: u32,
     /// When a build of it may be taken apart again: Dota's
     /// `ItemDisassembleRule`.
     pub disassemble: DisassembleRule,
+}
+
+/// What a use of an item aimed at an allied unit does, where Dota lets it: the cast on a hero
+/// ("Hold Control to use on a nearby allied hero") or the give of one charge ("Hold Control to
+/// give one Observer Ward to an allied hero"; a Tango cast on an allied hero).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AllyUse {
+    /// The item's own effect lands on the ally instead of its user, at `percent` of its amount.
+    /// It costs what a use costs.
+    Effect { percent: i32 },
+    /// One charge goes into the ally's bag, as `item` or, absent, as the kind it is. It costs
+    /// no mana, starts no wait and keeps no other use of the stack from going on.
+    Give { item: Option<ItemId> },
 }
 
 /// When a combined item may be taken apart: Dota's `ItemDisassembleRule`
@@ -490,6 +509,8 @@ pub(crate) const PLAIN: ItemDef = ItemDef {
     ignores_channel: false,
     unbuyable: false,
     effect: UseSpec::None,
+    ally: None,
+    lifetime: 0,
     disassemble: DisassembleRule::Window,
 };
 

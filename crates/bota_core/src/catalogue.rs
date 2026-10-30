@@ -7,8 +7,8 @@
 use bota_proto::{Aim, Attribute, Attributes, CataloguePrefix, Fixed, ItemId};
 
 use crate::{
-    Carried, DisassembleRule, ITEM_COUNT, ITEMS, ItemDef, Mend, Odds, Pool, Recipe, Spends, Stock,
-    UseSpec, item_def, sold, sold_items,
+    AllyUse, Carried, DisassembleRule, ITEM_COUNT, ITEMS, ItemDef, Mend, Odds, Pool, Recipe,
+    Spends, Stock, UseSpec, item_def, sold, sold_items,
 };
 
 /// The items a match plays with: the first so many ids of this build's
@@ -150,6 +150,15 @@ impl Fnv {
         match value {
             None => self.u64(0),
             Some(which) => self.u64(1 + which as u64),
+        }
+    }
+
+    const fn ally(self, value: Option<AllyUse>) -> Fnv {
+        match value {
+            None => self.u64(0),
+            Some(AllyUse::Effect { percent }) => self.u64(1).int(percent as i64),
+            Some(AllyUse::Give { item: None }) => self.u64(2),
+            Some(AllyUse::Give { item: Some(item) }) => self.u64(3).u64(item.0 as u64),
         }
     }
 
@@ -353,6 +362,8 @@ const fn item_digest(def: &ItemDef) -> u64 {
         ignores_channel,
         unbuyable,
         effect,
+        ally,
+        lifetime,
         disassemble,
     } = *def;
     let fnv = Fnv::NEW
@@ -401,5 +412,7 @@ const fn item_digest(def: &ItemDef) -> u64 {
         .flag(ignores_channel)
         .flag(unbuyable)
         .effect(effect)
+        .ally(ally)
+        .u64(lifetime as u64)
         .0
 }

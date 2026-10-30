@@ -1,7 +1,7 @@
 //! Items carried and abilities held: what they add, and what they cost.
 
 use bota_core::{
-    Berth, Carried, CarriedItem, DisassembleRule, ITEMS, ItemDef, MAX_COMPONENTS, Mend,
+    AllyUse, Berth, Carried, CarriedItem, DisassembleRule, ITEMS, ItemDef, MAX_COMPONENTS, Mend,
     ModifierKind, Pool, Spends, clamp_to_map, effect_def, fountain_pos, hero_def, item_def,
     learn_group, move_towards, place_purchase, purchase_pool, rules,
 };
@@ -142,6 +142,7 @@ fn assemble_once(owner: SlotId, tick: u32, pool: &mut [&mut Inventory]) -> bool 
                 DisassembleRule::Window => tick + rules::DISASSEMBLY_WINDOW_TICKS,
                 DisassembleRule::Always | DisassembleRule::Never => 0,
             },
+            life: 0,
         };
         for at in spent.iter() {
             pool[at / POOL_STRIDE].slots[at % POOL_STRIDE] = None;
@@ -215,7 +216,12 @@ impl World {
                 stack.cooldown = stack.cooldown.saturating_sub(1);
                 stack.mute = stack.mute.saturating_sub(1);
             }
+            kept.bag.lapse();
         }
+        for seat in self.seats.iter_mut() {
+            seat.stash.lapse();
+        }
+        self.lapse_loot();
         for entity in self.entities.iter() {
             if let Some(book) = self.abilities.get_mut(entity) {
                 for slot in book.slots.iter_mut() {
@@ -227,6 +233,7 @@ impl World {
                     stack.cooldown = stack.cooldown.saturating_sub(1);
                     stack.mute = stack.mute.saturating_sub(1);
                 }
+                bag.lapse();
             }
             if let Some(on_it) = self.modifiers.get_mut(entity) {
                 let mut lapsed = false;
@@ -243,6 +250,25 @@ impl World {
             }
         }
         self.tick_teleports();
+    }
+
+    /// Runs down the life of an item lying on the ground, and takes away one that has run out.
+    fn lapse_loot(&mut self) {
+        let lying: Vec<Entity> = self
+            .entities
+            .iter()
+            .filter(|entity| self.loot.get(*entity).is_some_and(|loot| loot.0.life > 0))
+            .collect();
+        for entity in lying {
+            let gone = self.loot.get_mut(entity).is_some_and(|loot| {
+                loot.0.life -= 1;
+                loot.0.life == 0
+            });
+            if gone {
+                self.loot.remove(entity);
+                self.despawn(entity);
+            }
+        }
     }
 
     /// Builds whatever each seat now holds the parts of, where the parts can
@@ -451,13 +477,19 @@ impl World {
         let Some(Some(stack)) = bag.slot(slot).copied() else {
             return false;
         };
-        if !(in_inventory(slot) || in_town_portal(slot)) || stack.cooldown > 0 || stack.mute > 0 {
-            return false;
-        }
         let Some(def) = item_def(stack.id) else {
             return false;
         };
-        if def.aim.is_none() {
+        if def.aim.is_none() || !(in_inventory(slot) || in_town_portal(slot)) || stack.mute > 0 {
+            return false;
+        }
+        // One charge given to an ally waits for no cooldown and costs nothing.
+        if let Some(AllyUse::Give { item }) = self.ally_use_on(entity, def, &target)
+            && let Target::Unit(to) = target
+        {
+            return self.give_one(entity, slot, to, (def.cast_range, item));
+        }
+        if stack.cooldown > 0 {
             return false;
         }
         if def.shared_wait && self.owes_wait(entity, stack.id) {
@@ -513,41 +545,109 @@ impl World {
         true
     }
 
-    /// Whether self-targeted instant mana restoration has a live user and a positive deficit.
+    /// Who an instant mana restoration aimed at `target` restores: its user for nothing or
+    /// itself, otherwise the allied unit it names.
+    fn mana_receiver(&self, user: Entity, target: Target) -> Option<Entity> {
+        match target {
+            Target::None => Some(user),
+            Target::Unit(id) if id == wire_id(user) => Some(user),
+            Target::Unit(id) => self
+                .of_wire(id)
+                .filter(|to| self.team.get(*to) == self.team.get(user)),
+            Target::Pos(_) => None,
+        }
+    }
+
+    /// Whether an instant mana restoration has a live user and a live receiver with a positive
+    /// deficit.
     pub fn can_replenish_mana(&self, user: Entity, target: Target) -> bool {
-        if !self.alive(user)
-            || !matches!(target, Target::None) && target != Target::Unit(wire_id(user))
-        {
+        let Some(on) = self.mana_receiver(user, target) else {
+            return false;
+        };
+        if !self.alive(user) || !self.alive(on) {
             return false;
         }
-        let (Some(stats), Some(pool)) = (self.stats.get(user), self.mana.get(user)) else {
+        let (Some(stats), Some(pool)) = (self.stats.get(on), self.mana.get(on)) else {
             return false;
         };
         stats.max_mana > Fixed::ZERO && pool.mana >= Fixed::ZERO && pool.mana < stats.max_mana
     }
 
-    /// Restores up to `amount` mana immediately; an ineffective use changes nothing.
+    /// Restores up to `amount` mana immediately, to the user or, `reach` away at most, the
+    /// ally it names; an ineffective use changes nothing.
     pub fn replenish_mana(
         &mut self,
         user: Entity,
         target: Target,
         amount: i32,
-        with: Inflictor,
+        (with, reach): (Inflictor, i32),
     ) -> bool {
         if amount <= 0 || !self.can_replenish_mana(user, target) {
             return false;
         }
+        let on = self
+            .mana_receiver(user, target)
+            .expect("validated mana receiver");
+        if on != user && !self.within_reach(user, on, rules::units(reach)) {
+            return false;
+        }
         let maximum = self
             .stats
-            .get(user)
+            .get(on)
             .expect("validated mana capacity")
             .max_mana;
-        let pool = self.mana.get_mut(user).expect("validated mana pool");
+        let pool = self.mana.get_mut(on).expect("validated mana pool");
         let before = pool.mana;
         pool.mana += (maximum - before).min(Fixed::from_int(amount));
         let restored = (pool.mana - before).to_int();
         if restored > 0 {
-            self.tell_healed((user, with), user, 0, restored);
+            self.tell_healed((user, with), on, 0, restored);
+        }
+        true
+    }
+
+    /// Gives one charge of the stack in a slot to an allied unit within `range`: one ward of a
+    /// stack or of the kind a dispenser is switched to, or the `item` the stack makes (a Tango
+    /// leaves a Tango (Shared)). What the ally's bag cannot take lies at its feet, as in Dota.
+    pub fn give_one(
+        &mut self,
+        user: Entity,
+        slot: usize,
+        to: bota_proto::EntityId,
+        (range, item): (i32, Option<ItemId>),
+    ) -> bool {
+        let Some(to) = self.of_wire(to) else {
+            return false;
+        };
+        if to == user
+            || !self.alive(to)
+            || self.team.get(to) != self.team.get(user)
+            || self.inventory.get(to).is_none()
+            || !self.within_reach(user, to, rules::units(range))
+        {
+            return false;
+        }
+        let Some(mut rest) = self.held_in_bag(user, slot) else {
+            return false;
+        };
+        let Some(one) = rest.part_one(item) else {
+            return false;
+        };
+        let kept = (rest.charges > 0 || item_def(rest.id).is_some_and(|def| def.cast_charges > 0))
+            .then_some(rest);
+        if let Some(place) = self
+            .inventory
+            .get_mut(user)
+            .and_then(|bag| bag.slot_mut(slot))
+        {
+            *place = kept;
+        }
+        let taken = self
+            .inventory
+            .get_mut(to)
+            .is_some_and(|bag| bag.receive(one));
+        if !taken && let Some(spot) = self.pos(to) {
+            self.lay_loot(one, spot);
         }
         true
     }

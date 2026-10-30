@@ -6,7 +6,7 @@ use bota_proto::ItemId;
 
 use crate::data::ITEM_ROWS;
 use crate::table::placed_by_id;
-use crate::{ItemDef, MAX_COMPONENTS, UseSpec};
+use crate::{AllyUse, ItemDef, MAX_COMPONENTS, UseSpec};
 
 /// How many item ids the protocol has ever handed out, retired ones
 /// included: every table indexed by [`ItemId`] is this long.
@@ -109,6 +109,29 @@ const _: () = {
         if let UseSpec::Replenish { mana } = def.effect {
             assert!(mana > 0);
         }
+        // What an ally is given exists and is given out whole; what lands on an ally is an
+        // effect that can land on one.
+        if let Some(ally) = def.ally {
+            assert!(def.cast_range > 0 && def.aim.is_some());
+            match ally {
+                AllyUse::Give { item } => {
+                    assert!(def.charges > 0 || matches!(def.effect, UseSpec::Dispense));
+                    if let Some(item) = item {
+                        assert!(
+                            ITEMS[item.0 as usize].lifetime > 0 && ITEMS[item.0 as usize].unbuyable
+                        );
+                    }
+                }
+                AllyUse::Effect { percent } => {
+                    assert!(percent > 0 && percent <= 100);
+                    assert!(matches!(
+                        def.effect,
+                        UseSpec::Mend(_) | UseSpec::Replenish { .. }
+                    ));
+                }
+            }
+        }
+        assert!(def.lifetime == 0 || def.unbuyable);
         let mut part = 0;
         while part < def.components.len() {
             assert!(sold_whole(def.components[part]));

@@ -121,13 +121,23 @@ impl World {
             PendingCast::Ability { slot, .. } => {
                 ability_def(self.ability_in(entity, slot)).map_or(0, |def| def.range)
             }
-            PendingCast::Item { slot, .. } => self
-                .item_def_in(entity, usize::from(slot.0))
-                .filter(|def| {
-                    matches!(def.aim, Some(Aim::Unit | Aim::Tree | Aim::Point))
-                        && !def.behavior.has(Behavior::OVERSHOOT)
-                })
-                .map_or(0, |def| def.cast_range),
+            PendingCast::Item { slot, target } => {
+                let Some(def) = self.item_def_in(entity, usize::from(slot.0)) else {
+                    return 0;
+                };
+                // Aimed at another unit, a use that has something to do for an ally goes as far
+                // as the item reaches.
+                let at_an_ally = def.ally.is_some()
+                    && matches!(target, bota_proto::Target::Unit(id) if id != crate::game::wire_id(entity));
+                if at_an_ally
+                    || (matches!(def.aim, Some(Aim::Unit | Aim::Tree | Aim::Point))
+                        && !def.behavior.has(Behavior::OVERSHOOT))
+                {
+                    def.cast_range
+                } else {
+                    0
+                }
+            }
         }
     }
 

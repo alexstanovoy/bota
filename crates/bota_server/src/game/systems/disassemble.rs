@@ -169,6 +169,7 @@ impl World {
             sentry_active: false,
             locked: true,
             disassemble_until: 0,
+            life: 0,
         }
     }
 

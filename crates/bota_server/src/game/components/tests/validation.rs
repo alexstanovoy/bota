@@ -239,15 +239,32 @@ fn use_order_rejects_other_units_positions_and_stale_targets_as_wrong_target_kin
     let enemy = world.spawn_hero(Team::Dire, AWAY, SlotId(2), HeroId::SHADOW_FIEND);
     world.settle();
     let own_position = world.transform.get(hero).unwrap().pos;
-    for target in [
-        Target::Unit(wire_id(ally)),
-        Target::Unit(wire_id(enemy)),
-        Target::Pos(own_position),
-        Target::Pos(AWAY),
-        Target::Unit(EntityId {
+    // A Mango may be eaten by an ally within reach (Control-cast), but not by one with a full
+    // pool of mana: there is nothing to restore.
+    let on_ally = Order::Use {
+        slot: ItemSlot(0),
+        target: Target::Unit(wire_id(ally)),
+    };
+    assert_eq!(
+        world.validate_order(OWNER, None, &on_ally),
+        Err(RejectReason::NotReady)
+    );
+    // A unit that is not there is no one to use it on, as for any other use at a unit.
+    let stale = Order::Use {
+        slot: ItemSlot(0),
+        target: Target::Unit(EntityId {
             idx: u32::MAX,
             generation: u32::MAX,
         }),
+    };
+    assert_eq!(
+        world.validate_order(OWNER, None, &stale),
+        Err(RejectReason::UnknownTarget)
+    );
+    for target in [
+        Target::Unit(wire_id(enemy)),
+        Target::Pos(own_position),
+        Target::Pos(AWAY),
     ] {
         let order = Order::Use {
             slot: ItemSlot(0),

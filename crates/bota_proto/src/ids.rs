@@ -243,6 +243,9 @@ impl ItemId {
     /// What an Observer Ward and a Sentry Ward held by one seat make together:
     /// Dota's `item_ward_dispenser`. Never bought.
     pub const WARD_DISPENSER: ItemId = ItemId(54);
+    /// The one Tango a Tango cast on an ally leaves in its bag: Dota's
+    /// `item_tango_single`, "Tango (Shared)". Never bought, gone after a while.
+    pub const TANGO_SHARED: ItemId = ItemId(55);
 }
 
 /// What did something: the ability or the item a unit used, as Dota's combat

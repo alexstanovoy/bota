@@ -152,6 +152,7 @@ item 51 live item_monkey_king_bar
 item 52 live item_wind_lace
 item 53 live item_blood_grenade
 item 54 live item_ward_dispenser
+item 55 live item_tango_single
 
 effect 0 retired bota_haste
 effect 1 live modifier_flask_healing

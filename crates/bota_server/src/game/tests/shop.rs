@@ -700,6 +700,6 @@ fn restoring_no_mana_is_refused_not_a_panic() {
     let (mut world, hero) = match_hero();
     for mana in [0, -1] {
         let with = bota_proto::Inflictor::Item(ItemId::MANGO);
-        assert!(!world.replenish_mana(hero, Target::None, mana, with));
+        assert!(!world.replenish_mana(hero, Target::None, mana, (with, 0)));
     }
 }

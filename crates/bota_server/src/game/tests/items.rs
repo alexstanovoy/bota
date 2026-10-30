@@ -226,7 +226,7 @@ fn a_branch_puts_a_tree_up_and_eating_that_one_feeds_twice_as_long() {
 
 /// Health a hero gains from one Tango beyond what an identical hero gains without it, over a
 /// minute: from a tree of the map's own, or from one an Iron Branch put up.
-fn health_a_tango_gives(planted: bool) -> i32 {
+fn health_a_tango_gives(item: ItemId, planted: bool) -> i32 {
     let hurt = |world: &mut World, hero: Entity| {
         world.health.get_mut(hero).expect("health").hp = Fixed::from_int(100);
     };
@@ -237,7 +237,7 @@ fn health_a_tango_gives(planted: bool) -> i32 {
     assert!(fed.use_item(hero, 0, Target::Pos(spot), &mut Vec::new()));
     assert!(fasting.use_item(other, 0, Target::Pos(spot), &mut Vec::new()));
     let eaten = if planted { spot } else { tree };
-    fed.inventory.get_mut(hero).expect("bag").slots[1] = Some(fresh_stack(ItemId::TANGO, 1));
+    fed.inventory.get_mut(hero).expect("bag").slots[1] = Some(fresh_stack(item, 1));
     hurt(&mut fed, hero);
     hurt(&mut fasting, other);
     assert!(fed.use_item(hero, 1, Target::Pos(eaten), &mut Vec::new()));
@@ -254,11 +254,17 @@ fn health_a_tango_gives(planted: bool) -> i32 {
 /// it, not the share a rate rounded to hundredths of a point leaves (110 and 220).
 #[test]
 fn a_tango_gives_112_off_a_map_tree_and_224_off_a_tree_a_branch_put_up() {
-    for (planted, dota) in [(false, 112), (true, 224)] {
-        let gained = health_a_tango_gives(planted);
+    // The Tango a Tango cast on an ally leaves heals half as fast (7.40: 3.5 a second).
+    for (item, planted, dota) in [
+        (ItemId::TANGO, false, 112),
+        (ItemId::TANGO, true, 224),
+        (ItemId::TANGO_SHARED, false, 56),
+        (ItemId::TANGO_SHARED, true, 112),
+    ] {
+        let gained = health_a_tango_gives(item, planted);
         assert!(
             (dota - 1..=dota).contains(&gained),
-            "{} gave {gained}, Dota gives {dota}",
+            "{item:?} off {} gave {gained}, Dota gives {dota}",
             if planted {
                 "a tree an Iron Branch put up"
             } else {

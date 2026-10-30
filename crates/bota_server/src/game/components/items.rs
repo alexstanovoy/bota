@@ -44,6 +44,9 @@ pub struct ItemStack {
     /// zero once it is used or leaves its owner's hands, and zero for
     /// anything that did not come of a combine.
     pub disassemble_until: u32,
+    /// Ticks left before it is gone, for a stack of an item with a
+    /// [`lifetime`](bota_core::ItemDef::lifetime). Zero for one that lasts.
+    pub life: u32,
 }
 
 impl ItemStack {
@@ -66,6 +69,7 @@ impl ItemStack {
             sentry_active: false,
             locked: false,
             disassemble_until: 0,
+            life: def.lifetime,
         })
     }
 
@@ -158,6 +162,42 @@ impl ItemStack {
         self.charges = charges;
         self.sentries = 0;
         self.sentry_active = false;
+    }
+
+    /// Parts one charge off the stack as a stack of its own, the stack keeping the rest (which may
+    /// be none: the caller clears an empty slot): one ward of the kind a Ward Dispenser is
+    /// switched to, one charge of any other stack. The part is `into` when that names an item,
+    /// which is made fresh and given for nothing, so no shop buys it back. Nothing when the stack
+    /// holds no charge.
+    pub fn part_one(&mut self, into: Option<ItemId>) -> Option<Self> {
+        if self.charges == 0 {
+            return None;
+        }
+        let mut one = Self {
+            charges: 1,
+            free_charges: 0,
+            sentries: 0,
+            sentry_active: false,
+            touched: true,
+            locked: false,
+            disassemble_until: 0,
+            ..*self
+        };
+        if self.id == ItemId::WARD_DISPENSER {
+            one.id = self.active_ward();
+            self.spend_ward();
+        } else {
+            self.spend_one();
+        }
+        self.touched = true;
+        if let Some(made) = into.and_then(|item| item_def(item).map(|def| (item, def))) {
+            one.id = made.0;
+            one.cooldown = 0;
+            one.mode = made.1.mode;
+            one.free_charges = 1;
+            one.life = made.1.lifetime;
+        }
+        Some(one)
     }
 
     /// Charges another stack may add: [`bota_core::merge_room`], the rule a client asks too.
@@ -397,6 +437,23 @@ impl Inventory {
         true
     }
 
+    /// Runs the life of every stack that has one a tick down, and clears the slot of one that
+    /// has run out.
+    pub fn lapse(&mut self) {
+        let run = |slot: &mut Option<ItemStack>| {
+            if let Some(stack) = slot
+                && stack.life > 0
+            {
+                stack.life -= 1;
+                if stack.life == 0 {
+                    *slot = None;
+                }
+            }
+        };
+        self.slots.iter_mut().for_each(run);
+        self.town_portal.iter_mut().for_each(run);
+    }
+
     /// Brings together the wards a bag holds of one seat: an Observer Ward
     /// and a Sentry Ward make a Ward Dispenser, a dispenser takes in the
     /// wards and the dispensers beside it, each into the lowest slot of
@@ -460,7 +517,8 @@ state_hash!(ItemStack {
     sentries,
     sentry_active,
     locked,
-    disassemble_until
+    disassemble_until,
+    life
 });
 state_hash!(Inventory {
     slots,

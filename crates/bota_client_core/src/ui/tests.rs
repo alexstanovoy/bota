@@ -1447,3 +1447,119 @@ fn quick_buy_lists_only_what_is_missing_after_the_hero_stash_and_courier() {
         "the price shown is the recipe alone"
     );
 }
+
+/// An app with our hero holding an item in its first slot, an allied hero and courier, and an
+/// enemy hero.
+fn an_app_with_an_item_and_allies(item: ItemId) -> (App, EntityId, EntityId, EntityId) {
+    let mut app = a_started_app();
+    let mut hero = owned(1, UnitKind::Hero, Some(SlotId(0)));
+    hero.items = vec![Some(ItemView {
+        id: item,
+        aim: bota_core::item_def(item).and_then(|def| def.aim),
+        range: bota_core::item_def(item).map_or(0, |def| def.cast_range),
+        ..an_item(None, 0, 0, None)
+    })];
+    let courier = owned(2, UnitKind::Courier, Some(SlotId(0)));
+    let ally = owned(4, UnitKind::Hero, None);
+    let mut enemy = owned(5, UnitKind::Hero, None);
+    enemy.team = Team::Dire;
+    let (hero_id, courier_id, ally_id) = (hero.id, courier.id, ally.id);
+    app.handle(snapshot_of(
+        10,
+        vec![hero, courier, ally, enemy],
+        vec![a_seat(SlotId(0), Some(hero_id))],
+    ));
+    (
+        app,
+        courier_id,
+        ally_id,
+        EntityId {
+            idx: 5,
+            generation: 1,
+        },
+    )
+}
+
+/// Control on an item that does something for an ally takes it up for one: the ring is the ally
+/// use's reach, the slot is aimed at a unit, and a click on an allied hero uses it on that hero.
+#[test]
+fn control_takes_up_a_mango_for_an_allied_hero_at_its_reach() {
+    use crate::ui::intent::Intent;
+    use crate::ui::slots::Slot;
+    let (mut app, _courier, ally, enemy) = an_app_with_an_item_and_allies(ItemId::MANGO);
+    let slot = Slot::Item(0);
+    assert_eq!(app.aim_in(slot), Some(bota_proto::Aim::Own));
+    app.act(Intent::Press { slot, ctrl: true });
+    assert_eq!(
+        app.aim_in(slot),
+        Some(bota_proto::Aim::Unit),
+        "aimed at a unit now"
+    );
+    assert_eq!(
+        app.reach_of(slot),
+        400,
+        "and its ring is a Mango's ally reach"
+    );
+    let sent = |app: &App| app.shown_orders.last().map(|shown| shown.order);
+    app.act(Intent::Aimed {
+        at: (0.0, 0.0),
+        unit: Some(enemy),
+    });
+    app.act(Intent::Aimed {
+        at: (0.0, 0.0),
+        unit: None,
+    });
+    assert_eq!(
+        sent(&app),
+        None,
+        "an enemy or the ground is no one to use it on"
+    );
+    app.act(Intent::Aimed {
+        at: (0.0, 0.0),
+        unit: Some(ally),
+    });
+    assert_eq!(
+        sent(&app),
+        Some(Order::Use {
+            slot: bota_proto::ItemSlot(0),
+            target: Target::Unit(ally)
+        })
+    );
+    assert_eq!(app.aiming, None);
+    // Pressed plain it is the Mango for its user again.
+    app.act(Intent::Press { slot, ctrl: false });
+    assert_eq!(app.aim_in(slot), Some(bota_proto::Aim::Own));
+}
+
+/// A ward is given to a hero or a courier, a Mango's effect lands on a hero only; neither goes to
+/// an enemy.
+#[test]
+fn using_an_item_on_a_unit_names_only_one_it_does_something_for() {
+    use crate::ui::intent::Intent;
+    for (item, courier_ok) in [(ItemId::OBSERVER_WARD, true), (ItemId::MANGO, false)] {
+        let (mut app, courier, ally, enemy) = an_app_with_an_item_and_allies(item);
+        let sent = |app: &App| app.shown_orders.last().map(|shown| shown.order);
+        app.act(Intent::UseOn {
+            slot: 0,
+            unit: enemy,
+        });
+        assert_eq!(sent(&app), None, "{item:?}: not an enemy");
+        app.act(Intent::UseOn {
+            slot: 0,
+            unit: courier,
+        });
+        assert_eq!(sent(&app).is_some(), courier_ok, "{item:?}: the courier");
+        app.act(Intent::UseOn {
+            slot: 0,
+            unit: ally,
+        });
+        assert_eq!(
+            sent(&app),
+            Some(Order::Use {
+                slot: bota_proto::ItemSlot(0),
+                target: Target::Unit(ally)
+            }),
+            "{item:?}: the allied hero"
+        );
+    }
+}

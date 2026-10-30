@@ -1,4 +1,5 @@
 mod aggro_view;
+mod ally_use;
 mod attack_classes;
 mod attacks;
 mod auras;

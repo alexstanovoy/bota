@@ -1,7 +1,7 @@
 //! What using an item does to a world: each [`UseSpec`] of the catalog
 //! ([`bota_core::ITEMS`]) turned into the change it makes.
 
-use bota_core::{ItemDef, UseSpec, item_def};
+use bota_core::{AllyUse, ItemDef, Mend, UseSpec, item_def};
 use bota_proto::{DispenserView, EventKind, Inflictor, ItemId, ItemView, Target, Team, Vec2};
 
 use crate::game::{Entity, Event, EventVisibility, Inventory, ItemStack, World, wire_id};
@@ -65,7 +65,10 @@ impl World {
         let with = Inflictor::Item(item);
         match def.effect {
             UseSpec::None => false,
-            UseSpec::Mend(drink) => self.mend_with(user, target, (drink, def.cast_range), with),
+            UseSpec::Mend(drink) => {
+                let drink = self.shared_with_ally(user, def, target, drink);
+                self.mend_with(user, target, (drink, def.cast_range), with)
+            }
             UseSpec::PlantTree { ticks } => self.plant_a_tree(user, target, ticks, def.cast_range),
             UseSpec::FellTree => self.fell_a_tree(user, target, def.cast_range),
             UseSpec::Ward { unit, ticks } => {
@@ -95,8 +98,31 @@ impl World {
                 let restores = (charges * hp_per_charge, charges * mana_per_charge);
                 self.restore_with(user, restores, with)
             }
-            UseSpec::Replenish { mana } => self.replenish_mana(user, target, mana, with),
+            UseSpec::Replenish { mana } => {
+                let mana = self.shared_replenish(user, def, target, mana);
+                self.replenish_mana(user, target, mana, (with, def.cast_range))
+            }
             UseSpec::Grenade(_) => self.throw_grenade(user, target, item),
+        }
+    }
+
+    /// The drink an item makes of itself for the unit it is aimed at: whole for its user, the
+    /// share its ally use names for an ally.
+    fn shared_with_ally(&self, user: Entity, def: &ItemDef, target: Target, drink: Mend) -> Mend {
+        match self.ally_use_on(user, def, &target) {
+            Some(AllyUse::Effect { percent }) => Mend {
+                total: drink.total * percent / 100,
+                ..drink
+            },
+            _ => drink,
+        }
+    }
+
+    /// The mana an item restores to the unit it is aimed at.
+    fn shared_replenish(&self, user: Entity, def: &ItemDef, target: Target, mana: i32) -> i32 {
+        match self.ally_use_on(user, def, &target) {
+            Some(AllyUse::Effect { percent }) => mana * percent / 100,
+            _ => mana,
         }
     }
 

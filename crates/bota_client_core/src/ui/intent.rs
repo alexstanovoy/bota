@@ -63,6 +63,10 @@ pub enum Intent {
     },
     /// Hand an item to a seat's hero.
     HandTo { slot: u8, seat: SlotId },
+    /// Use an item on an allied unit under the cursor: Dota's Control-cast. A Mango, Lotus,
+    /// Healing Salve or Clarity lands on an allied hero, one ward or Tango is given to an allied
+    /// hero or courier.
+    UseOn { slot: u8, unit: EntityId },
     /// Buy an item.
     Buy(u16),
     /// Take an item chosen in the tactical phase off the queue again.
@@ -140,6 +144,7 @@ impl App {
             }),
             Intent::PutAt { slot, at, unit } => self.put_at(slot, at, unit),
             Intent::HandTo { slot, seat } => self.hand_to(slot, seat),
+            Intent::UseOn { slot, unit } => self.use_on(slot, unit),
             Intent::Buy(item) if self.in_tactical_phase() => self.queue_buy(item),
             Intent::Unqueue(item) => self.unqueue_buy(item),
             Intent::Buy(item) => self.send_order(Order::Buy { item: ItemId(item) }),
@@ -221,6 +226,13 @@ impl App {
             self.send_order(Order::SwitchWard { slot: ItemSlot(at) });
             return;
         }
+        // Control on an item that has something to do for an ally takes it up for one.
+        if ctrl && matches!(slot, Slot::Item(_)) && self.ally_use_in(slot).is_some() {
+            self.aiming = Some(slot);
+            self.ally_aim = Some(slot);
+            return;
+        }
+        self.ally_aim = None;
         match press(self, slot, ctrl) {
             Press::Send(order) => {
                 self.aiming = None;
@@ -239,6 +251,15 @@ impl App {
         let Some(slot) = self.aiming else {
             return;
         };
+        if self.aiming_ally(slot) {
+            // An ally is named by a unit under the click; none, and it stays taken up.
+            if let Some(id) = unit
+                && self.use_on_slot(slot, id)
+            {
+                self.aiming = None;
+            }
+            return;
+        }
         let target = match self.aim_in(slot) {
             // A tree and a landing spot are both named by the ground under
             // the cursor; which one was meant is the server's to settle.
@@ -330,6 +351,39 @@ impl App {
                 target: Target::Unit(body),
             });
         }
+    }
+
+    /// Uses a bag item on an allied unit other than whoever the panel is about.
+    fn use_on(&mut self, slot: u8, ally: EntityId) {
+        if slot < BAG_SLOTS {
+            self.use_on_slot(Slot::Item(slot), ally);
+        }
+    }
+
+    /// Sends the use of an item slot on an allied unit, if the item does anything for one and
+    /// the unit is one it can: a hero for an effect, a hero or courier for a give. Whether it
+    /// was sent.
+    fn use_on_slot(&mut self, slot: Slot, ally: EntityId) -> bool {
+        let Some(use_on) = self.ally_use_in(slot) else {
+            return false;
+        };
+        let fits = match use_on {
+            bota_core::AllyUse::Give { .. } => self.takes_a_handover(ally),
+            bota_core::AllyUse::Effect { .. } => self.is_allied_hero(ally),
+        };
+        if fits && Some(ally) != self.commanded() {
+            self.aimed_from = Some((self.seq() + 1, slot));
+            self.send_order(order_for(slot, Target::Unit(ally)));
+        }
+        fits && Some(ally) != self.commanded()
+    }
+
+    /// Whether a unit is a hero of this side.
+    fn is_allied_hero(&self, id: EntityId) -> bool {
+        self.view().is_some_and(|view| {
+            view.unit(id)
+                .is_some_and(|u| Some(u.team) == self.my_team() && matches!(u.kind, UnitKind::Hero))
+        })
     }
 
     /// Whether a unit is one an item can be handed to: an allied hero or

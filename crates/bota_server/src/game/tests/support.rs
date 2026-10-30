@@ -661,6 +661,7 @@ pub(crate) fn fresh_stack(item: ItemId, charges: u8) -> ItemStack {
         sentry_active: false,
         locked: false,
         disassemble_until: 0,
+        life: 0,
     }
 }
 
@@ -789,6 +790,7 @@ pub(crate) fn a_stack_of(item: ItemId, owner: u8) -> ItemStack {
         sentry_active: false,
         locked: false,
         disassemble_until: 0,
+        life: 0,
     }
 }
 

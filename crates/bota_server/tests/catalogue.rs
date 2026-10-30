@@ -23,11 +23,11 @@ use bota_server::game_loop::{DEFAULT_SPECTATORS_PER_SEAT, ServerOpts, run};
 use bota_server::net::DEFAULT_MESSAGES_PER_SEC;
 use bota_server::spectators::Spectators;
 
-/// The catalogue of a build made before the last three items were appended:
-/// the Wind Lace, the Blood Grenade (sold from a stock) and the Ward
-/// Dispenser.
+/// The catalogue of a build made before the last four items were appended:
+/// the Wind Lace, the Blood Grenade (sold from a stock), the Ward Dispenser
+/// and the Tango (Shared).
 fn older() -> Catalogue {
-    Catalogue::first(ITEM_COUNT as u16 - 3).expect("a prefix")
+    Catalogue::first(ITEM_COUNT as u16 - 4).expect("a prefix")
 }
 
 /// The client library of another build: it says `told` where this build's

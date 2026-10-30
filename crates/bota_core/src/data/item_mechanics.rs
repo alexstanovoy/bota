@@ -3,13 +3,13 @@
 //! what it does, and which of its values stand for which of bota's stats. Every number comes
 //! from the script by its Dota key; a number written here is bota's own, and says why.
 
-use bota_proto::{Aim, Attribute, Attributes, Fixed};
+use bota_proto::{Aim, Attribute, Attributes, Fixed, ItemId};
 
 use super::items::*;
 use crate::{
-    Carried, Dec, DisassembleRule, Grenade, ItemData, ItemDef, Mend, NOTHING, OBSERVER_WARD, Odds,
-    PLAIN, Pool, Recipe, SENTRY_WARD, Scroll, Spends, Stock, UseSpec, hundredths_per_second,
-    points, points_with, rules,
+    AllyUse, Carried, Dec, DisassembleRule, Grenade, ItemData, ItemDef, Mend, NOTHING,
+    OBSERVER_WARD, Odds, PLAIN, Pool, Recipe, SENTRY_WARD, Scroll, Spends, Stock, UseSpec,
+    hundredths_per_second, points, points_with, rules,
 };
 
 /// The row of an item as its script gives it; a row of the catalog adds what bota does with it.
@@ -149,6 +149,8 @@ pub(crate) const ITEM_ROWS: &[ItemDef] = &[
             "buff_duration",
             false,
         )),
+        // Dota's `ShowGiveIndicatorOnTargetCast` and its unit target: cast on an allied hero the drink is the ally's.
+        ally: Some(AllyUse::Effect { percent: 100 }),
         ..from(&ITEM_CLARITY)
     },
     ItemDef {
@@ -162,6 +164,8 @@ pub(crate) const ITEM_ROWS: &[ItemDef] = &[
             "buff_duration",
             false,
         )),
+        // "Heals for half the amount per second when cast on an ally" (the item's tooltip): bota's own 50.
+        ally: Some(AllyUse::Effect { percent: 50 }),
         ..from(&ITEM_FLASK)
     },
     ItemDef {
@@ -187,6 +191,8 @@ pub(crate) const ITEM_ROWS: &[ItemDef] = &[
             unit: &OBSERVER_WARD,
             ticks: ticks(&ITEM_WARD_OBSERVER, "lifetime"),
         },
+        // "Hold Control to give one Observer Ward to an allied hero".
+        ally: Some(AllyUse::Give { item: None }),
         ..from(&ITEM_WARD_OBSERVER)
     },
     ItemDef {
@@ -211,6 +217,8 @@ pub(crate) const ITEM_ROWS: &[ItemDef] = &[
             unit: &SENTRY_WARD,
             ticks: ticks(&ITEM_WARD_SENTRY, "lifetime"),
         },
+        // "Hold Control to give one Sentry Ward to an allied hero".
+        ally: Some(AllyUse::Give { item: None }),
         ..from(&ITEM_WARD_SENTRY)
     },
     ItemDef {
@@ -224,6 +232,10 @@ pub(crate) const ITEM_ROWS: &[ItemDef] = &[
             "buff_duration",
             true,
         )),
+        // Cast on an allied hero it "gives them one Tango": a Tango (Shared).
+        ally: Some(AllyUse::Give {
+            item: Some(ItemId::TANGO_SHARED),
+        }),
         ..from(&ITEM_TANGO)
     },
     // Town Portal Scroll: also the official patch notes 7.33 to 7.41f and Liquipedia's *Town
@@ -530,10 +542,10 @@ pub(crate) const ITEM_ROWS: &[ItemDef] = &[
             ..NOTHING
         },
         aim: Some(Aim::Own),
-        // Eaten by its carrier only: no reach of its own.
-        cast_range: 0,
         spends: Spends::One,
         mana_deficit: true,
+        // "Hold Control to use on a nearby allied hero", within the script's 400.
+        ally: Some(AllyUse::Effect { percent: 100 }),
         effect: UseSpec::Replenish {
             mana: int(&ITEM_ENCHANTED_MANGO, "replenish_amount"),
         },
@@ -641,8 +653,27 @@ pub(crate) const ITEM_ROWS: &[ItemDef] = &[
         components: &[],
         aim: Some(Aim::Point),
         effect: UseSpec::Dispense,
+        // "Hold Control to give one ward to an allied hero": the kind it is switched to.
+        ally: Some(AllyUse::Give { item: None }),
         disassemble: DisassembleRule::Never,
         ..from(&ITEM_WARD_DISPENSER)
+    },
+    // Tango (Shared): `item_tango_single`, the Tango a Tango cast on an allied hero leaves. Its
+    // 3.5 health a second is 7.40's (Liquipedia's *Tango*), and it is gone `duration_to_use`
+    // after it is made. Never bought, never sold.
+    ItemDef {
+        name: "Tango (Shared)",
+        aim: Some(Aim::Tree),
+        spends: Spends::One,
+        effect: UseSpec::Mend(mend(
+            &ITEM_TANGO_SINGLE,
+            Pool::Health,
+            "health_regen",
+            "buff_duration",
+            true,
+        )),
+        lifetime: ticks(&ITEM_TANGO_SINGLE, "duration_to_use"),
+        ..from(&ITEM_TANGO_SINGLE)
     },
 ];
 
