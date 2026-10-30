@@ -33,6 +33,8 @@ impl World {
         let mut world = World::on_map(map);
         world.rng = rng;
         world.cheats = cfg.cheats;
+        world.catalogue = cfg.catalogue;
+        world.shop_stock = crate::game::fresh_stock(cfg.catalogue);
         world.immortal_structures = cfg.immortal_structures;
         world.immortal_heroes = cfg.immortal_heroes;
         world.spawn_modifiers = cfg.spawn_modifiers.clone();
@@ -509,7 +511,7 @@ impl World {
     /// for what it lacks of it, room for what it buys, and some left on its
     /// side's shelf.
     fn check_buy(&self, seat: &Seat, item: bota_proto::ItemId) -> Result<(), RejectReason> {
-        if item_def(item).is_none_or(|def| def.unbuyable) {
+        if self.catalogue.sold(item).is_none() {
             return Err(RejectReason::UnknownItem);
         }
         let plan = self

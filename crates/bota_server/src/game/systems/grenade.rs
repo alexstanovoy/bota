@@ -2,20 +2,20 @@
 //! it from a stock that refills over time.
 
 use bota_core::{
-    ITEMS, ItemDef, ModifierKind, clamp_to_map, facing_towards, item_def, kind_def, move_towards,
-    per_tick, rules,
+    Catalogue, ITEMS, ItemDef, ModifierKind, clamp_to_map, facing_towards, item_def, kind_def,
+    move_towards, per_tick, rules,
 };
 use bota_proto::{DamageKind, EventKind, Inflictor, ItemId, Target, Team, UnitKind};
 
 use crate::game::{Entity, Event, Grenade, Modifier, ShopStock, World, wire_id};
 
-/// Every side's shop as the match starts: each item sold from a limited
-/// stock at its starting count, by side, then in catalog order.
-pub fn fresh_stock() -> Vec<ShopStock> {
+/// Every side's shop as a match on `catalogue` starts: each item sold from
+/// a limited stock at its starting count, by side, then in catalog order.
+pub fn fresh_stock(catalogue: Catalogue) -> Vec<ShopStock> {
     let mut stock = Vec::new();
     for team in [Team::Radiant, Team::Dire] {
         for (index, def) in ITEMS.iter().enumerate() {
-            let Some(rule) = def.stock else {
+            let Some(rule) = def.stock.filter(|_| catalogue.holds(ItemId(index as u16))) else {
                 continue;
             };
             stock.push(ShopStock {

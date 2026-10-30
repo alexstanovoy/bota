@@ -332,6 +332,10 @@ pub fn match_info() -> MatchInfo {
         cheats: false,
         objectives: ObjectiveSet::of(ObjectiveKind::Outposts).with(ObjectiveKind::Shrines),
         runes: RuneSet::of(RuneKind::Bounty).with(RuneKind::Illusion),
+        catalogue: CataloguePrefix {
+            items: 54,
+            digest: 0x0123_4567_89ab_cdef,
+        },
         shop: vec![
             ShopEntry {
                 id: ItemId(0),
@@ -649,6 +653,10 @@ pub fn all_client_msgs() -> Vec<ClientMsg> {
         ClientMsg::Compress(Codec::Deflate),
         ClientMsg::LeaveGame,
         ClientMsg::Probe { id: 4_000_000_007 },
+        ClientMsg::Catalogue(CataloguePrefix {
+            items: 55,
+            digest: u64::MAX,
+        }),
         ClientMsg::Say(Line {
             to: Audience::Team,
             body: Body::Ping(Ping {
@@ -791,6 +799,7 @@ pub fn client_msg_name(msg: &ClientMsg) -> &'static str {
         ClientMsg::Compress(_) => "Compress",
         ClientMsg::LeaveGame => "LeaveGame",
         ClientMsg::Probe { .. } => "Probe",
+        ClientMsg::Catalogue(_) => "Catalogue",
     }
 }
 

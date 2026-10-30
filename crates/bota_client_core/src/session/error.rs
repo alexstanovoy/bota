@@ -5,7 +5,7 @@ use core::fmt;
 use std::error::Error;
 
 use bota_core::WIRE_FINGERPRINT;
-use bota_proto::{EntityId, HeroId, RejectReason, Team, TickMode};
+use bota_proto::{CataloguePrefix, EntityId, HeroId, ItemId, RejectReason, Team, TickMode};
 
 use crate::limits::{MAX_RESTORATION_REPORT, MAX_SEATS, MAX_TERRAIN_AXIS};
 use crate::match_static::RawExtent;
@@ -175,6 +175,14 @@ pub enum SessionError {
     },
     /// The server refused the connection's `Hello`.
     Refused(RejectReason),
+    /// The match plays items this build does not hold, or holds otherwise: a
+    /// server or a replay of a build whose items differ.
+    OtherCatalogue {
+        /// The match's catalogue, as told.
+        told: CataloguePrefix,
+    },
+    /// The match's shop lists an item past the match's catalogue.
+    ShopPastCatalogue(ItemId),
 }
 
 /// A session input refused by the session or by the observer it called.
@@ -493,6 +501,16 @@ impl SessionError {
                  build both from matching commits"
             ),
             Self::Refused(reason) => write!(f, "the server refused this client: {reason:?}"),
+            Self::OtherCatalogue { told } => write!(
+                f,
+                "the match plays {} items (digest {:016x}) that this build does not hold as told",
+                told.items, told.digest
+            ),
+            Self::ShopPastCatalogue(item) => write!(
+                f,
+                "the match's shop lists item {} past the match's items",
+                item.0
+            ),
             _ => unreachable!("every SessionError variant has a message"),
         }
     }

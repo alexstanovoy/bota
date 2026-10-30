@@ -28,10 +28,12 @@ pub const ITEM_COUNT: usize = ITEM_ROWS.len();
 ///    `ItemDef { name, ..from(&ITEM_X) }` plus what it does, every number read
 ///    by its Dota key. A recipe is two rows, the recipe scroll and the build;
 ///    the build's parts come from the recipe's requirements.
-/// 3. No version to bump: `data/` is the catalogue digest's, which moves the
-///    wire fingerprint by itself. The determinism pins re-record (the drivers
-///    buy by the length of this table), and for a stocked item so do the
-///    dummy bench's digests.
+/// 3. Nothing else moves: the wire fingerprint holds no items, so older
+///    clients and replays keep playing, on the [`Catalogue`](crate::Catalogue)
+///    they hold. The determinism pins of a full catalogue re-record (the
+///    drivers buy by the length of this table), and for a stocked item so do
+///    the dummy bench's digests. A changed number of an item already there
+///    changes that item's digest: builds that differ on it no longer meet.
 /// 4. The shop lists it by itself: [`sold_items`](crate::sold_items) is every
 ///    entry that is neither retired nor `unbuyable`. A front end finds its art
 ///    and texts by its key.

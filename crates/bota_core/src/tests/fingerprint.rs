@@ -3,7 +3,7 @@
 
 use std::path::{Path, PathBuf};
 
-use crate::{CATALOGUE_DIGEST, RULES_VERSION};
+use crate::RULES_VERSION;
 
 /// The rules version and the digests of the code it was set for.
 #[derive(Debug, PartialEq, Eq)]
@@ -16,9 +16,9 @@ struct Pin {
 }
 
 const PIN: Pin = Pin {
-    version: 73,
-    literals: 0x81cb_a366_d02e_f03e,
-    code: 0x65ad_db0b_8dad_50ae,
+    version: 74,
+    literals: 0xacae_678d_5f6d_95af,
+    code: 0xdfd2_7ea0_90f1_0ac0,
 };
 
 /// A changed number or string is a changed rule: the version must move. Any
@@ -39,28 +39,8 @@ fn the_rules_version_moves_with_the_rules() {
     );
 }
 
-/// The catalogue digest covers every file of the game data, so any data
-/// change moves the wire fingerprint with no rules version to bump.
-#[test]
-fn the_catalogue_digest_covers_every_file_of_the_game_data() {
-    let data = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/data");
-    let mut files = Vec::new();
-    walk(&data, &mut files);
-    files.sort();
-    let texts: Vec<Vec<u8>> = files
-        .iter()
-        .map(|path| std::fs::read(path).expect("a data file"))
-        .collect();
-    let parts: Vec<&[u8]> = texts.iter().map(Vec::as_slice).collect();
-    assert_eq!(
-        bota_proto::fnv1a(&parts),
-        CATALOGUE_DIGEST,
-        "CATALOGUE_DIGEST in fingerprint.rs must include_str! every file of src/data, in path order"
-    );
-}
-
 /// The digests of every source of the crate but its tests, its game data
-/// (which the catalogue digest follows) and the file the version itself
+/// (whose items the catalogue digests) and the file the version itself
 /// stands in, in path order.
 fn digests() -> Pin {
     let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");

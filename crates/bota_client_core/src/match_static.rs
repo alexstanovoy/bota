@@ -299,6 +299,13 @@ fn validate_static_inputs(info: &MatchInfo) -> Result<(), SessionError> {
         MAX_OPAQUE_CELLS,
     )?;
     check_limit("MatchInfo.shop", info.shop.len(), MAX_SHOP_ITEMS)?;
+    let catalogue =
+        bota_core::Catalogue::agreeing(info.catalogue).ok_or(SessionError::OtherCatalogue {
+            told: info.catalogue,
+        })?;
+    if let Some(entry) = info.shop.iter().find(|entry| !catalogue.holds(entry.id)) {
+        return Err(SessionError::ShopPastCatalogue(entry.id));
+    }
     for (field, valid, bits) in [
         (
             "MatchInfo.objectives",

@@ -24,6 +24,7 @@ fn info(shop: Vec<ShopEntry>) -> MatchInfo {
         cheats: false,
         objectives: bota_proto::ObjectiveSet::NONE,
         runes: bota_proto::RuneSet::NONE,
+        catalogue: bota_core::Catalogue::FULL.prefix(),
     }
 }
 

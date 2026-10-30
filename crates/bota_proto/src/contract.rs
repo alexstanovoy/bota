@@ -509,8 +509,8 @@
 //! A client sends its build's wire fingerprint in its
 //! [`ClientMsg::Hello`](crate::ClientMsg::Hello): `bota_core::WIRE_FINGERPRINT`,
 //! which folds two numbers into one. The
-//! [`REGISTRY_DIGEST`](crate::REGISTRY_DIGEST) names the wire layout and the
-//! ids; `bota_core::RULES_VERSION` names the rules a client checks its orders
+//! [`REGISTRY_DIGEST`](crate::REGISTRY_DIGEST) names the wire layout;
+//! `bota_core::RULES_VERSION` names the rules a client checks its orders
 //! against and predicts with (the tables and the integer functions of
 //! `bota_core`), bumped with every change to what they decide and held to
 //! that by a test over their code. A server built with another
@@ -519,6 +519,23 @@
 //! balance moved (a new patch's numbers, a changed table) and a client
 //! built before it part at the hello instead of the client failing in
 //! mid-match on an order its stale rules thought legal.
+//!
+//! # Catalogue
+//!
+//! Items are not part of the fingerprint: adding one leaves old clients and
+//! old replays working. Right after its hello a client says which items it
+//! was built with, as [`ClientMsg::Catalogue`](crate::ClientMsg::Catalogue):
+//! the first so many item ids and a digest of what they are
+//! ([`CataloguePrefix`](crate::CataloguePrefix)). The server refuses one whose
+//! items differ from its own ([`RejectReason::CatalogueMismatch`](crate::RejectReason::CatalogueMismatch)),
+//! and plays the match on the shortest prefix its seats hold, told in
+//! [`MatchInfo::catalogue`](crate::MatchInfo::catalogue): no item past it is
+//! sold, held or told, so the match is the one a build of that prefix plays.
+//! A spectator or a seat coming back must hold at least the match's. A
+//! replay's match start carries the same prefix, and a player of a longer
+//! catalogue that agrees on it plays the replay; a changed number of an item
+//! already in a catalogue changes its digest, and is refused as any other
+//! build is.
 //!
 //! The registries only grow, but postcard reads by position: a build reads
 //! only what a build of its own fingerprint wrote. So what builds of

@@ -95,6 +95,8 @@ pub struct MatchConfig {
     /// says otherwise, and never one the map does not
     /// [play](bota_core::MapDef::playable_runes).
     pub runes: RuneSet,
+    /// The items the match plays with: the catalogue every seat holds.
+    pub catalogue: bota_core::Catalogue,
 }
 
 impl MatchConfig {
@@ -144,12 +146,13 @@ impl MatchConfig {
             opaque_cells: crate::game::fow_wall_cells(terrain),
             mode: self.mode,
             picks: self.picks.clone(),
-            shop: bota_core::shop_entries(),
+            shop: bota_core::shop_entries(self.catalogue),
             fountains: map.fountains,
             shop_range: bota_core::rules::SHOP_RANGE,
             cheats: self.cheats,
             objectives: self.objectives,
             runes: self.runes,
+            catalogue: self.catalogue.prefix(),
         }
     }
 }

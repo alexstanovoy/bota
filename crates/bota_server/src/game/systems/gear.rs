@@ -301,9 +301,7 @@ impl World {
             return false;
         };
         let unit = self.seats[index].unit;
-        if !self.in_stock(self.seats[index].team, item)
-            || item_def(item).is_none_or(|d| d.unbuyable)
-        {
+        if !self.in_stock(self.seats[index].team, item) || self.catalogue.sold(item).is_none() {
             return false;
         }
         let Some(plan) = self.purchase_plan(slot, item) else {

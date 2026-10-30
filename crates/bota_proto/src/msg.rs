@@ -164,8 +164,11 @@ pub struct MatchInfo {
     pub cheats: bool,
     /// Which of the map's objectives stand in the match.
     pub objectives: ObjectiveSet,
-    /// Which kinds of rune the match spawns. Last on the wire.
+    /// Which kinds of rune the match spawns.
     pub runes: RuneSet,
+    /// The items the match plays with: the catalogue every seat holds. No
+    /// id past it is sold, held or told in the match. Last on the wire.
+    pub catalogue: CataloguePrefix,
 }
 
 /// Why the server refused an order, or a [`ClientMsg::Hello`].
@@ -233,6 +236,9 @@ pub enum RejectReason {
     /// [`MAX_ORDERS_PER_TICK`](crate::limits::MAX_ORDERS_PER_TICK) orders that would take effect
     /// on one tick.
     QueueFull,
+    /// A [`ClientMsg::Catalogue`] whose items differ from the server's, or
+    /// one shorter than a match under way plays with.
+    CatalogueMismatch,
 }
 
 /// Final numbers for one seat.
@@ -444,6 +450,24 @@ pub enum ClientMsg {
     /// the answer waits for no tick and nothing of it reaches the match. Allowed on any
     /// connection, `Hello` or not.
     Probe { id: u32 },
+    /// The items the sender was built with, said right after the `Hello`:
+    /// the server plays a match on the catalogue every seat holds, so a
+    /// client built before an item was added plays on, and refuses one whose
+    /// items differ from its own with [`RejectReason::CatalogueMismatch`]. A
+    /// client that says nothing is taken to hold the server's own.
+    Catalogue(CataloguePrefix),
+}
+
+/// The first `items` item ids of a build's catalogue and a digest of what
+/// they are: every number and rule a match plays them by. Ids only grow, so
+/// two builds agree on the items of the shorter one's prefix exactly when
+/// the longer one's digest of that prefix equals the shorter one's.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct CataloguePrefix {
+    /// How many item ids, from the first.
+    pub items: u16,
+    /// The digest of those items (`bota_core`'s).
+    pub digest: u64,
 }
 
 /// How a connection's stream is compressed.

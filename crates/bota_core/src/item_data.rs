@@ -109,6 +109,11 @@ impl Behavior {
         Behavior(self.0 | other.0)
     }
 
+    /// The flags as bits, in the order of their constants.
+    pub const fn bits(self) -> u32 {
+        self.0
+    }
+
     /// Whether every flag of `flags` is set.
     pub const fn has(self, flags: Behavior) -> bool {
         self.0 & flags.0 == flags.0

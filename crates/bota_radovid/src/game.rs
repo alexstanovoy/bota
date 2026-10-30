@@ -48,7 +48,8 @@ pub fn seat_name(handoff: &Handoff) -> std::io::Result<String> {
 
 /// The first message to the game server, for a client that sends its own
 /// (the browser's): the handoff's ticket as the key, `role` Player or Bot to
-/// sit and Spectator to watch.
+/// sit and Spectator to watch. The client's catalogue follows it
+/// (`bota_client_core::catalogue`).
 pub fn seat_hello(handoff: &Handoff, role: Role) -> std::io::Result<ClientMsg> {
     check_handoff(handoff)?;
     Ok(ClientMsg::hello(

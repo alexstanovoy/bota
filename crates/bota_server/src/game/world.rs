@@ -33,7 +33,9 @@ world_tables! {
         pub seats: Vec<Seat> = Vec::new();
         /// What each side's shop has left of every item sold from a limited
         /// stock, by side, then in catalog order.
-        pub shop_stock: Vec<crate::game::ShopStock> = crate::game::fresh_stock();
+        pub shop_stock: Vec<crate::game::ShopStock> = crate::game::fresh_stock(bota_core::Catalogue::FULL);
+        /// The items the match plays with: none past it is sold, given or held.
+        pub catalogue: bota_core::Catalogue = bota_core::Catalogue::FULL;
         /// The completed result; `Team::Neutral` denotes a Map2 draw.
         pub winner: Option<Team> = None;
         /// Whether cheat orders are honoured.

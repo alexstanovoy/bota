@@ -2,13 +2,15 @@
 
 use crate::ModifierSpec;
 
-/// FNV-1a over `registry/wire.txt`, then `registry/ids.txt`, then the value of
-/// every [`limits`](crate::limits) bound and of the cheat modifier bounds
+/// FNV-1a over `registry/wire.txt`, then the value of every
+/// [`limits`](crate::limits) bound and of the cheat modifier bounds
 /// ([`ModifierSpec`](crate::ModifierSpec)), each as eight little endian bytes.
 ///
-/// The registries only grow, so two builds with the same digest have
-/// byte-identical registries and with them identical wire layouts and ids,
-/// and the same idea of how much a message may hold. It is one half of the wire fingerprint a [`ClientMsg::Hello`] carries and
+/// Two builds with the same digest have identical wire layouts and the same
+/// idea of how much a message may hold. The ids of `registry/ids.txt` are
+/// left out: they only grow, and a build that holds more of them still
+/// meets one that holds fewer, on the items both hold
+/// ([`ClientMsg::Catalogue`](crate::ClientMsg::Catalogue)). It is one half of the wire fingerprint a [`ClientMsg::Hello`] carries and
 /// a [`ReplayHeader`] names; the other half is the version of the rules a
 /// client checks its orders against, which this crate does not hold (see the
 /// [`contract`](crate::contract)).
@@ -17,10 +19,7 @@ use crate::ModifierSpec;
 /// [`ReplayHeader`]: crate::ReplayHeader
 pub const REGISTRY_DIGEST: u64 = fnv1a_values(
     fnv1a_values(
-        fnv1a(&[
-            include_str!("../registry/wire.txt").as_bytes(),
-            include_str!("../registry/ids.txt").as_bytes(),
-        ]),
+        fnv1a(&[include_str!("../registry/wire.txt").as_bytes()]),
         crate::limits::VALUES,
     ),
     &[

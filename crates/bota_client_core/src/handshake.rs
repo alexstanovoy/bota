@@ -163,6 +163,7 @@ pub fn greet(
         key,
         bota_core::WIRE_FINGERPRINT,
     ))?;
+    transport.send(&catalogue())?;
     let mut lobby = Lobby::default();
     for _ in 0..MAX_MESSAGES_BEFORE_WELCOME {
         let message = transport
@@ -188,6 +189,13 @@ pub fn greet(
     Err(std::io::Error::other(format!(
         "server sent {MAX_MESSAGES_BEFORE_WELCOME} messages without Welcome"
     )))
+}
+
+/// What a client says right after its hello: the items it was built with,
+/// so that a server of more items plays a match on these and one whose items
+/// differ refuses it. A client that says its own hello sends this after it.
+pub fn catalogue() -> ClientMsg {
+    ClientMsg::Catalogue(bota_core::Catalogue::FULL.prefix())
 }
 
 /// A name the server would show as it is (cut to its length): 1 to

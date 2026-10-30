@@ -30,6 +30,7 @@ pub fn match_start(tick_rate: u16) -> ReplayRecord {
             cheats: false,
             objectives: bota_proto::ObjectiveSet::NONE,
             runes: bota_proto::RuneSet::NONE,
+            catalogue: bota_core::Catalogue::FULL.prefix(),
         },
     })
 }

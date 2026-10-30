@@ -31,6 +31,10 @@ pub struct RosterSeat {
     /// The key the holder of an unreserved seat came with, which takes the
     /// seat back after a lost connection, also mid-match.
     pub claim: Option<SeatKey>,
+    /// The items its holder was built with, as it said
+    /// ([`bota_proto::ClientMsg::Catalogue`]); this server's own until it
+    /// says, and for a seat nobody holds.
+    pub catalogue: bota_core::Catalogue,
 }
 
 impl RosterSeat {
@@ -42,6 +46,7 @@ impl RosterSeat {
         self.name = bota_core::clean_name(&name);
         self.role = Some(role);
         self.ready = false;
+        self.catalogue = bota_core::Catalogue::FULL;
     }
 }
 
@@ -104,6 +109,7 @@ impl Roster {
                     late_secs: 0,
                     dummy: false,
                     claim: None,
+                    catalogue: bota_core::Catalogue::FULL,
                 })
                 .collect(),
         };

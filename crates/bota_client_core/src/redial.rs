@@ -70,6 +70,7 @@ const MAX_UNSENT: usize = 64;
 pub(crate) struct Rejoin {
     key: Option<SeatKey>,
     hello: Option<ClientMsg>,
+    catalogue: Option<ClientMsg>,
     pick: Option<ClientMsg>,
     ready: Option<ClientMsg>,
     eyes: Option<ClientMsg>,
@@ -90,6 +91,7 @@ impl Rejoin {
         Rejoin {
             key: getrandom::fill(&mut key).ok().map(|()| SeatKey(key)),
             hello: None,
+            catalogue: None,
             pick: None,
             ready: None,
             eyes: None,
@@ -112,6 +114,7 @@ impl Rejoin {
         }
         let kept = match msg {
             ClientMsg::Hello { .. } => &mut self.hello,
+            ClientMsg::Catalogue(_) => &mut self.catalogue,
             ClientMsg::PickHero { .. } => &mut self.pick,
             ClientMsg::SetReady(_) => &mut self.ready,
             ClientMsg::ViewAs { .. } => &mut self.eyes,
@@ -171,6 +174,7 @@ impl Rejoin {
     pub fn greet(&mut self, stream: &mut dyn FrameSink) -> std::io::Result<()> {
         let greeting = [
             &self.hello,
+            &self.catalogue,
             &self.compress,
             &self.pick,
             &self.ready,

@@ -116,6 +116,13 @@ macro_rules! number {
 }
 number!(u8, u16, u32, u64, i8, i32);
 
+/// The items a match plays with are part of the match: how many ids it holds.
+impl StateHash for bota_core::Catalogue {
+    fn state_hash(&self, fnv: &mut Fnv) {
+        self.items().state_hash(fnv);
+    }
+}
+
 impl StateHash for usize {
     fn state_hash(&self, fnv: &mut Fnv) {
         fnv.u64(*self as u64);
@@ -224,6 +231,16 @@ mod specimens {
 
         fn high() -> Self {
             true
+        }
+    }
+
+    impl Specimen for bota_core::Catalogue {
+        fn low() -> Self {
+            bota_core::Catalogue::first(1).expect("a catalogue of one item")
+        }
+
+        fn high() -> Self {
+            bota_core::Catalogue::first(2).expect("a catalogue of two items")
         }
     }
 

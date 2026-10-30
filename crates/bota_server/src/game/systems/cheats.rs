@@ -153,7 +153,7 @@ impl World {
                 self.cheat_target(unit.ok_or(RejectReason::HeroDead)?, *target)?;
             }
             Cheat::Item { item } => {
-                bota_core::item_def(*item).ok_or(RejectReason::BadCheat)?;
+                self.catalogue.item(*item).ok_or(RejectReason::BadCheat)?;
             }
             Cheat::CreateHero { hero, at, .. } => {
                 hero_def(*hero).ok_or(RejectReason::BadCheat)?;

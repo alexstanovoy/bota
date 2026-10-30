@@ -7,10 +7,11 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender, channel};
 use std::time::{Duration, Instant};
 
-use bota_core::{WIRE_FINGERPRINT, rules};
+use bota_core::{Catalogue, WIRE_FINGERPRINT, rules};
 use bota_proto::{
-    ClientMsg, EventKind, Heard, HeroId, MapId, MatchReport, PlayerId, RejectReason, ReplayRecord,
-    Role, SeatKey, ServerMsg, SlotId, SlotOrder, Team, TickMode, WorldView, encode_frame_to_vec,
+    CataloguePrefix, ClientMsg, EventKind, Heard, HeroId, MapId, MatchReport, PlayerId,
+    RejectReason, ReplayRecord, Role, SeatKey, ServerMsg, SlotId, SlotOrder, Team, TickMode,
+    WorldView, encode_frame_to_vec,
 };
 use rand_chacha::rand_core::Rng as _;
 
@@ -591,6 +592,44 @@ impl Server {
         }
     }
 
+    /// The items a connection was built with, as it said: a seat's holder
+    /// keeps them for the match to start on, the ones its seats share. A peer
+    /// whose items differ from this server's, or one that holds fewer than the
+    /// match under way (`playing`) plays with, is refused and closed.
+    fn hear_catalogue(&mut self, id: PlayerId, told: CataloguePrefix, playing: Option<Catalogue>) {
+        let held = Catalogue::agreeing(told)
+            .filter(|held| playing.is_none_or(|playing| held.items() >= playing.items()));
+        let Some(held) = held else {
+            eprintln!(
+                "bota_server: player {} holds {} items that differ from this server's, or fewer than the match plays; closing its connection",
+                id.0, told.items
+            );
+            if let Some(conn) = self.conn(id) {
+                conn.send(&ServerMsg::Refused {
+                    reason: RejectReason::CatalogueMismatch,
+                });
+            }
+            // The seat it took at its hello opens again; in the lobby its
+            // claim goes too, mid-match the seat waits for its own comeback.
+            let slot = self.roster.seat_of(id).map(|seat| seat.slot);
+            let told = self.told.take(id);
+            if playing.is_none()
+                && let Some(seat) = self.roster.seat_of_mut(id)
+            {
+                seat.claim = None;
+            }
+            self.roster.release(id);
+            self.drop_conn(id);
+            if let Some(told) = told {
+                self.tell_departure(told, slot, playing.is_some());
+            }
+            return;
+        };
+        if let Some(seat) = self.roster.seat_of_mut(id) {
+            seat.catalogue = held;
+        }
+    }
+
     /// Tells a peer built with another wire so, and the operator too, and
     /// closes its connection.
     fn refuse_wire(&mut self, id: PlayerId, theirs: u64) {
@@ -837,6 +876,7 @@ impl Server {
             }
             ClientMsg::Say(line) => self.say(id, line, None),
             ClientMsg::Compress(_) => self.compress(id),
+            ClientMsg::Catalogue(told) => self.hear_catalogue(id, told, None),
             ClientMsg::Order { .. }
             | ClientMsg::LeaveGame
             | ClientMsg::Ack { .. }
@@ -995,6 +1035,13 @@ impl Server {
                 .runes
                 .unwrap_or(bota_core::map_of(self.opts.map).default_runes),
             spawn_modifiers: Vec::new(),
+            catalogue: self
+                .roster
+                .seats
+                .iter()
+                .fold(Catalogue::FULL, |shared, seat| {
+                    shared.shared(seat.catalogue)
+                }),
             starting_gold_lost: self
                 .roster
                 .seats
@@ -1381,6 +1428,7 @@ impl Server {
                     }
                 }
             }
+            ClientMsg::Catalogue(told) => self.hear_catalogue(id, told, Some(cfg.catalogue)),
             ClientMsg::PickHero { .. }
             | ClientMsg::SetReady(_)
             | ClientMsg::Pong

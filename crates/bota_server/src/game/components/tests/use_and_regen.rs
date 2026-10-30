@@ -14,7 +14,7 @@ fn a_mango_is_sold_and_shown_with_its_charges_aimed_at_its_holder() {
     assert_eq!(view.aim, Some(Aim::Own));
     assert_eq!(view.range, 0);
     assert!(
-        bota_core::shop_entries()
+        bota_core::shop_entries(bota_core::Catalogue::FULL)
             .iter()
             .any(|entry| entry.id == MANGO)
     );

@@ -54,6 +54,7 @@ fn main() {
         immortal_heroes: false,
         objectives: bota_core::map_of(MAP2_ID).default_objectives,
         runes: bota_core::map_of(MAP2_ID).default_runes,
+        catalogue: bota_core::Catalogue::FULL,
     };
     let map = map_of(cfg.map);
     let [a, b] = map.fountains;

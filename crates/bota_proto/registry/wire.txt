@@ -594,3 +594,8 @@ variant RuneKind 5 Regeneration
 variant RuneKind 6 Illusion
 variant RuneKind 7 Invisibility
 variant RuneKind 8 Shield
+field CataloguePrefix 0 items: u16
+field CataloguePrefix 1 digest: u64
+variant ClientMsg 11 Catalogue(CataloguePrefix)
+field MatchInfo 16 catalogue: CataloguePrefix
+variant RejectReason 27 CatalogueMismatch

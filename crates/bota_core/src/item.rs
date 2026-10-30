@@ -488,10 +488,12 @@ pub fn item_by_key(key: &str) -> Option<ItemId> {
         .map(|def| def.id)
 }
 
-/// The whole shop as the wire states it, in item id order: what [`sold_items`] lists. The wire
-/// states it for a client that reads the match; one that has this table reads [`sold`] instead.
-pub fn shop_entries() -> Vec<bota_proto::ShopEntry> {
-    crate::sold_items()
+/// The shop of a match on `catalogue` as the wire states it, in item id order: what
+/// [`Catalogue::sold_items`](crate::Catalogue::sold_items) lists. The wire states it for a
+/// client that reads the match; one that has this table reads [`sold`] instead.
+pub fn shop_entries(catalogue: crate::Catalogue) -> Vec<bota_proto::ShopEntry> {
+    catalogue
+        .sold_items()
         .filter_map(|id| crate::sold(id).map(|def| (id, def)))
         .map(|(id, def)| bota_proto::ShopEntry {
             id,

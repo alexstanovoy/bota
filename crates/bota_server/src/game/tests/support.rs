@@ -118,6 +118,7 @@ pub(crate) fn config() -> MatchConfig {
         immortal_heroes: false,
         objectives: bota_core::map_of(MapId(1)).default_objectives,
         runes: bota_core::map_of(MapId(1)).default_runes,
+        catalogue: bota_core::Catalogue::FULL,
     }
 }
 
@@ -1227,6 +1228,7 @@ pub(crate) fn a_match_with_nobody_in_it(match_id: u64, map: MapId) -> World {
         immortal_heroes: false,
         objectives: bota_core::map_of(map).default_objectives,
         runes: bota_core::map_of(map).default_runes,
+        catalogue: bota_core::Catalogue::FULL,
     };
     World::for_match(&config, config.rng())
 }
