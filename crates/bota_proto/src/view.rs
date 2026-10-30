@@ -240,12 +240,19 @@ pub struct UnitView {
     pub level: u8,
     /// Ability slots, in slot order. Empty for anything but a hero or a
     /// courier.
+    #[serde(
+        deserialize_with = "crate::bounded::seq::<_, _, { crate::limits::MAX_ABILITY_SLOTS }>"
+    )]
     pub abilities: Vec<AbilityView>,
     /// Item slots in slot order: a hero's six inventory and three backpack
     /// slots, a courier's six. Empty for anything else.
+    #[serde(deserialize_with = "crate::bounded::seq::<_, _, { crate::limits::HERO_ITEM_SLOTS }>")]
     pub items: Vec<Option<ItemView>>,
     /// Effects currently on the unit, timed and counted alike: at most
     /// [`MAX_EFFECTS_PER_UNIT`](crate::limits::MAX_EFFECTS_PER_UNIT), which the server keeps to.
+    #[serde(
+        deserialize_with = "crate::bounded::seq::<_, _, { crate::limits::MAX_EFFECTS_PER_UNIT }>"
+    )]
     pub effects: Vec<EffectView>,
     /// The least damage a swing draws, before the target's armor and attack
     /// class: the base range's floor with every bonus added.
@@ -272,6 +279,9 @@ pub struct UnitView {
     /// they were given: told to its own side alone, empty for the other
     /// side's units and for a unit with nothing queued. At most
     /// [`MAX_QUEUED_ORDERS`](crate::limits::MAX_QUEUED_ORDERS).
+    #[serde(
+        deserialize_with = "crate::bounded::seq::<_, _, { crate::limits::MAX_QUEUED_ORDERS }>"
+    )]
     pub queue: Vec<Order>,
     /// Status resistance as a fraction: the share taken off the durations
     /// of stuns, fears and slows put on it.
@@ -386,8 +396,12 @@ pub struct ProjectileView {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Kit {
     /// The ability slots, in slot order.
+    #[serde(
+        deserialize_with = "crate::bounded::seq::<_, _, { crate::limits::MAX_ABILITY_SLOTS }>"
+    )]
     pub abilities: Vec<AbilityView>,
     /// The inventory and backpack slots, in slot order.
+    #[serde(deserialize_with = "crate::bounded::seq::<_, _, { crate::limits::HERO_ITEM_SLOTS }>")]
     pub items: Vec<Option<ItemView>>,
     /// What the town portal slot holds. Absent when it is empty.
     pub town_portal: Option<ItemView>,
@@ -419,6 +433,9 @@ pub struct PlayerView {
     pub gold: Option<i32>,
     /// The six stash slots at the home shop, in slot order. Absent for the
     /// opposing team.
+    #[serde(
+        deserialize_with = "crate::bounded::option_seq::<_, _, { crate::limits::STASH_SLOTS }>"
+    )]
     pub stash: Option<Vec<Option<ItemView>>>,
     /// What the dead hero carried. Absent while the hero stands, and for the
     /// opposing team.
@@ -470,6 +487,9 @@ pub struct OrderDelayView {
 pub struct SkippedTick {
     pub tick: u32,
     /// Its events, in the order the simulation produced them.
+    #[serde(
+        deserialize_with = "crate::bounded::seq::<_, _, { crate::limits::MAX_EVENTS_PER_BATCH }>"
+    )]
     pub events: Vec<EventKind>,
 }
 
@@ -578,51 +598,70 @@ pub struct WorldView {
     pub viewer: Option<Team>,
     /// Every unit currently visible and every unit of the viewing team,
     /// sorted by [`EntityId`].
+    #[serde(deserialize_with = "crate::bounded::seq::<_, _, { crate::limits::MAX_VIEW_UNITS }>")]
     pub units: Vec<UnitView>,
     /// Every projectile currently visible and every one the viewing team
     /// launched, sorted by [`EntityId`].
+    #[serde(deserialize_with = "crate::bounded::seq::<_, _, { crate::limits::MAX_PROJECTILES }>")]
     pub projectiles: Vec<ProjectileView>,
     /// The scoreboard, one entry per seat, sorted by [`SlotId`].
+    #[serde(deserialize_with = "crate::bounded::seq::<_, _, { crate::limits::MAX_SEATS }>")]
     pub players: Vec<PlayerView>,
     /// Which of the map's own trees are down, as indices into
     /// [`MatchInfo::trees`](crate::MatchInfo::trees), ascending: as the
     /// viewing side last saw them, or right now in a view of everything.
     /// A tree felled, or grown back, where the side has no sight is told
     /// once it sees that tree's ground again.
+    #[serde(deserialize_with = "crate::bounded::seq::<_, _, { crate::limits::MAX_STATIC_TREES }>")]
     pub felled_trees: Vec<u32>,
     /// Where the trees put up during the match stand, on the same terms:
     /// those the viewing side saw put up and has not seen gone, in the order
     /// it first saw them; every one standing in a view of everything.
+    #[serde(
+        deserialize_with = "crate::bounded::seq::<_, _, { crate::limits::MAX_PLANTED_TREES }>"
+    )]
     pub planted_trees: Vec<Vec2>,
     /// Every item lying on the ground currently visible, sorted by
     /// [`EntityId`].
+    #[serde(
+        deserialize_with = "crate::bounded::seq::<_, _, { crate::limits::MAX_SNAPSHOT_LOOT }>"
+    )]
     pub loot: Vec<LootView>,
     /// Whom the units fight, at most one entry a unit of
     /// [`units`](Self::units), sorted by [`EntityId`].
+    #[serde(deserialize_with = "crate::bounded::seq::<_, _, { crate::limits::MAX_VIEW_UNITS }>")]
     pub aggro: Vec<AggroView>,
     /// The order delay of every seat this view is through whose applied
     /// orders named the view they were given on, sorted by [`SlotId`]. Empty
     /// until such an order takes effect.
+    #[serde(deserialize_with = "crate::bounded::seq::<_, _, { crate::limits::MAX_SEATS }>")]
     pub order_delays: Vec<OrderDelayView>,
     /// Every tick after the previous snapshot the receiver was sent and before
     /// this one, oldest first, each with its events: a receiver too slow for
     /// every snapshot is sent the latest one. Empty when none was skipped.
+    #[serde(
+        deserialize_with = "crate::bounded::seq::<_, _, { crate::limits::MAX_SKIPPED_TICKS }>"
+    )]
     pub skipped_ticks: Vec<SkippedTick>,
     /// What the shop has left of each item sold from a limited stock, for
     /// the viewing side, or for both sides in a view of everything; sorted
     /// by [`Team`], then by [`ItemId`].
+    #[serde(deserialize_with = "crate::bounded::seq::<_, _, { crate::limits::MAX_VIEW_STOCK }>")]
     pub stock: Vec<StockView>,
     /// The talents of every seat of the viewing side whose hero has a tree,
     /// fallen or standing, and of every other seat whose hero is one of
     /// [`units`](Self::units); every seat with a tree in a view of
     /// everything. Sorted by [`SlotId`].
+    #[serde(deserialize_with = "crate::bounded::seq::<_, _, { crate::limits::MAX_SEATS }>")]
     pub talents: Vec<TalentView>,
     /// Every teleport being channelled, whichever side reads it: Dota shows
     /// a teleport's destination to both sides through the fog. Sorted by
     /// [`SlotId`].
+    #[serde(deserialize_with = "crate::bounded::seq::<_, _, { crate::limits::MAX_SEATS }>")]
     pub teleports: Vec<TeleportView>,
     /// The Glyph of Fortification of both sides, sorted by [`Team`]: the
     /// viewing side's in full, the other's without its cooldown.
+    #[serde(deserialize_with = "crate::bounded::seq::<_, _, { crate::limits::MAX_SEATS }>")]
     pub glyphs: Vec<GlyphView>,
     /// How far cheats moved the clocks, absent while they never did. Last on
     /// the wire.

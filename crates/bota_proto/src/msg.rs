@@ -99,9 +99,15 @@ pub struct ShopEntry {
     /// What it costs whole, in gold.
     pub cost: i32,
     /// What it is built from. Empty for one bought whole.
+    #[serde(
+        deserialize_with = "crate::bounded::seq::<_, _, { crate::limits::MAX_SHOP_COMPONENTS }>"
+    )]
     pub components: Vec<ItemId>,
     /// Other sets of parts it is built from as well. Empty for one with a
     /// single recipe.
+    #[serde(
+        deserialize_with = "crate::bounded::seq_of_seq::<_, _, { crate::limits::MAX_SHOP_RECIPES }, { crate::limits::MAX_SHOP_COMPONENTS }>"
+    )]
     pub alternatives: Vec<Vec<ItemId>>,
 }
 
@@ -122,23 +128,28 @@ pub struct MatchInfo {
     /// Every tree the map starts with.
     /// [`WorldView::felled_trees`](crate::WorldView::felled_trees) indexes
     /// into this.
+    #[serde(deserialize_with = "crate::bounded::seq::<_, _, { crate::limits::MAX_STATIC_TREES }>")]
     pub trees: Vec<Vec2>,
     /// Cells per terrain axis.
     pub terrain_cells: u32,
     /// Run-length encoded terrain cells, row-major from the south-west
     /// corner, one byte each: bit 7 walkable ground, bit 6 river water, the
     /// low bits the elevation tier.
+    #[serde(deserialize_with = "crate::bounded::seq::<_, _, { crate::limits::MAX_TERRAIN_RUNS }>")]
     pub terrain_rle: Vec<(u16, u8)>,
     /// `(x, y)` cells of the terrain grid that block sight lines regardless of
     /// elevation: the map's own fog blocker walls. Trees block by elevation
     /// and come and go, so they are not here: a client lays them from
     /// [`MatchInfo::trees`] and the view's felled and planted trees.
+    #[serde(deserialize_with = "crate::bounded::seq::<_, _, { crate::limits::MAX_OPAQUE_CELLS }>")]
     pub opaque_cells: Vec<(u16, u16)>,
     /// How the server advances ticks.
     pub mode: TickMode,
     /// Every seat and its hero, sorted by [`SlotId`].
+    #[serde(deserialize_with = "crate::bounded::seq::<_, _, { crate::limits::MAX_SEATS }>")]
     pub picks: Vec<Pick>,
     /// Everything the shop sells, in item id order.
+    #[serde(deserialize_with = "crate::bounded::seq::<_, _, { crate::limits::MAX_SHOP_ENTRIES }>")]
     pub shop: Vec<ShopEntry>,
     /// Fountain of each team, Radiant then Dire.
     pub fountains: [Vec2; 2],
@@ -249,6 +260,7 @@ pub struct MatchStats {
     /// Length of the match in ticks.
     pub duration: u32,
     /// One entry per seat, sorted by [`SlotId`].
+    #[serde(deserialize_with = "crate::bounded::seq::<_, _, { crate::limits::MAX_SEATS }>")]
     pub slots: Vec<SlotStats>,
 }
 
@@ -257,6 +269,7 @@ pub struct MatchStats {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct MatchReport {
     /// Every seat and the hero it played, sorted by [`SlotId`].
+    #[serde(deserialize_with = "crate::bounded::seq::<_, _, { crate::limits::MAX_SEATS }>")]
     pub picks: Vec<Pick>,
     /// The final numbers, as [`ServerMsg::MatchOver`] told them.
     pub stats: MatchStats,
@@ -451,6 +464,7 @@ pub enum ServerMsg {
     /// The current state of the lobby, resent whenever it changes.
     LobbyState {
         /// Every seat, sorted by [`SlotId`].
+        #[serde(deserialize_with = "crate::bounded::seq::<_, _, { crate::limits::MAX_SEATS }>")]
         slots: Vec<LobbySlot>,
         /// Whether two seats may pick the same hero. When not, a hero some
         /// seat holds is refused to the others.
@@ -478,6 +492,9 @@ pub enum ServerMsg {
     Events {
         tick: u32,
         /// The events, in the order the simulation produced them.
+        #[serde(
+            deserialize_with = "crate::bounded::seq::<_, _, { crate::limits::MAX_EVENTS_PER_BATCH }>"
+        )]
         events: Vec<EventKind>,
     },
     /// An order was not accepted.
@@ -499,6 +516,9 @@ pub enum ServerMsg {
         tick: u32,
         /// The orders, in the order they were applied: by [`SlotId`], then
         /// in the order each seat gave them.
+        #[serde(
+            deserialize_with = "crate::bounded::seq::<_, _, { crate::limits::MAX_ORDERS_TOLD }>"
+        )]
         orders: Vec<SlotOrder>,
     },
     MatchOver {
@@ -602,6 +622,9 @@ pub enum ReplayRecord {
         tick: u32,
         /// The orders, in the order they were applied: by [`SlotId`], then
         /// in the order each seat gave them.
+        #[serde(
+            deserialize_with = "crate::bounded::seq::<_, _, { crate::limits::MAX_ORDERS_TOLD }>"
+        )]
         orders: Vec<SlotOrder>,
     },
     /// The first record of every replay, and of no other place in it.

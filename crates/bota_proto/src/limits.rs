@@ -45,6 +45,12 @@ limits! {
     /// and queued orders together.
     MAX_ORDERS_PER_TICK: usize = 64;
 
+    /// Most bytes of memory a reader may hold for one frame it decodes: twenty
+    /// times the payload at most. A byte of the wire stands for at most about
+    /// thirty bytes of a decoded element, so the collections are bounded by
+    /// both their length and their weight, asserted below for the heaviest.
+    MAX_DECODED_BYTES: usize = 80 * 1024 * 1024;
+
     /// Longest name a seat holder is shown under, in UTF-8 bytes; a longer
     /// one is cut at the last whole character within it.
     MAX_SHOWN_NAME_BYTES: usize = 32;
@@ -98,6 +104,11 @@ limits! {
     MAX_EVENTS_PER_BATCH: usize = MAX_PAYLOAD_LEN / 2;
     /// Most entries in the shop of a match: room for every item there is.
     MAX_SHOP_ENTRIES: usize = 1_024;
+    /// Most shelves of limited stock a view lists: both sides' for every entry
+    /// of the shop.
+    MAX_VIEW_STOCK: usize = 2 * MAX_SHOP_ENTRIES;
+    /// Most orders told as accepted on one tick: every seat's.
+    MAX_ORDERS_TOLD: usize = MAX_SEATS * MAX_ORDERS_PER_TICK;
     /// Most components one shop entry lists.
     MAX_SHOP_COMPONENTS: usize = 16;
     /// Most other recipes one shop entry may list.
@@ -112,6 +123,23 @@ limits! {
 pub const HERO_ITEM_SLOTS: usize = INVENTORY_SLOTS + BACKPACK_SLOTS;
 /// A courier's bag: an inventory, no backpack.
 pub const COURIER_ITEM_SLOTS: usize = INVENTORY_SLOTS;
+
+// What the heaviest collections hold, element sizes included, fits what a frame may make a reader
+// hold: a bound that grows (or an element that does) fails the build, not a reader.
+const _: () = {
+    use core::mem::size_of;
+    let unit = size_of::<crate::UnitView>()
+        + MAX_EFFECTS_PER_UNIT * size_of::<crate::EffectView>()
+        + MAX_QUEUED_ORDERS * size_of::<crate::Order>()
+        + HERO_ITEM_SLOTS * size_of::<Option<crate::ItemView>>()
+        + MAX_ABILITY_SLOTS * size_of::<crate::AbilityView>();
+    assert!(MAX_VIEW_UNITS * unit <= MAX_DECODED_BYTES);
+    assert!(MAX_EVENTS_PER_BATCH * size_of::<crate::EventKind>() <= MAX_DECODED_BYTES);
+    assert!(MAX_SNAPSHOT_LOOT * size_of::<crate::LootView>() <= MAX_DECODED_BYTES);
+    assert!(MAX_PROJECTILES * size_of::<crate::ProjectileView>() <= MAX_DECODED_BYTES);
+    assert!(MAX_SHOP_ENTRIES * size_of::<crate::ShopEntry>() <= MAX_DECODED_BYTES);
+    assert!(MAX_ORDERS_TOLD * size_of::<crate::SlotOrder>() <= MAX_DECODED_BYTES);
+};
 
 const _: () = {
     assert!(MAX_CLIENT_PAYLOAD_LEN <= MAX_PAYLOAD_LEN);

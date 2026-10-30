@@ -82,8 +82,17 @@ pub fn payload_len<T: Serialize + ?Sized>(msg: &T) -> Result<usize, CodecError> 
 }
 
 /// Decode one message from a frame payload, with the length prefix removed.
+///
+/// The payload is the message and nothing else: bytes after it are refused, so
+/// a message has one encoding. A collection past the bound its field names
+/// (see [`limits`](crate::limits)) is refused before it is read.
 pub fn decode_payload<T: DeserializeOwned>(payload: &[u8]) -> Result<T, CodecError> {
-    Ok(postcard::from_bytes(payload)?)
+    let (message, rest) = postcard::take_from_bytes(payload)?;
+    if rest.is_empty() {
+        Ok(message)
+    } else {
+        Err(CodecError::Malformed)
+    }
 }
 
 /// Reassembles messages from a byte stream that arrives in arbitrary pieces.

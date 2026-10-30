@@ -582,17 +582,42 @@ fn a_delayed_order_takes_effect_late_and_its_delay_is_told() {
     }
 }
 
-/// A snapshot of `tick` some 3.5 MB long, more than the socket buffers hold.
+/// A snapshot of `tick` some 200 KB long (every collection that holds no unit at its bound), more
+/// than the socket buffers of the tests that use it hold.
 fn bulky_snapshot(tick: u32) -> Vec<u8> {
+    let spot = Vec2::from_ints(7_000, 7_000);
+    let missile = |idx: u32| bota_proto::ProjectileView {
+        id: bota_proto::EntityId { idx, generation: 1 },
+        pos: spot,
+        facing: bota_proto::Angle::default(),
+        team: Team::Radiant,
+        ability: None,
+        source: None,
+        target: None,
+        inflictor: None,
+        seen_by: None,
+        model: None,
+    };
+    let dropped = |idx: u32| bota_proto::LootView {
+        id: bota_proto::EntityId { idx, generation: 1 },
+        pos: spot,
+        item: bota_proto::ItemId::HEALING_SALVE,
+        charges: None,
+        seen_by: None,
+    };
     let view = WorldView {
         tick,
         viewer: Some(Team::Radiant),
         units: Vec::new(),
-        projectiles: Vec::new(),
+        projectiles: (0..bota_proto::MAX_PROJECTILES as u32)
+            .map(missile)
+            .collect(),
         players: Vec::new(),
         felled_trees: Vec::new(),
-        planted_trees: vec![Vec2::from_ints(7_000, 7_000); 350_000],
-        loot: Vec::new(),
+        planted_trees: vec![spot; bota_proto::MAX_PLANTED_TREES],
+        loot: (0..bota_proto::MAX_SNAPSHOT_LOOT as u32)
+            .map(dropped)
+            .collect(),
         aggro: Vec::new(),
         order_delays: Vec::new(),
         skipped_ticks: Vec::new(),
@@ -616,7 +641,7 @@ fn a_slow_reader_skips_snapshots_but_no_tick_and_no_event() {
         .set_send_buffer_size(crate::net::SEND_BUFFER_BYTES)
         .expect("send buffer");
     socket2::SockRef::from(&client.stream)
-        .set_recv_buffer_size(64 * 1024)
+        .set_recv_buffer_size(8 * 1024)
         .expect("receive buffer");
     // Held open until the end: closed with the client's pongs unread, the
     // socket would reset the connection under the client.

@@ -6,6 +6,7 @@
 //! exchange beyond the types is the [`contract`].
 
 mod attrs;
+mod bounded;
 mod chat;
 mod codec;
 pub mod contract;
