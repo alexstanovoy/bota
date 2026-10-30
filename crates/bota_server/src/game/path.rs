@@ -38,21 +38,39 @@ pub fn plan_radius(collision: Fixed) -> Fixed {
     collision + rules::units(rules::STEER_MARGIN)
 }
 
+/// What a search knows of one node.
+#[derive(Clone, Copy)]
+struct Node {
+    /// The cost got to it at, when stamped with the running search.
+    g: u32,
+    /// The node it was got to from, when stamped with the running search.
+    /// `u32::MAX` for the start.
+    parent: u32,
+    /// The search that last wrote it.
+    stamp: u32,
+}
+
+impl Node {
+    /// A node no search has written.
+    const UNSEEN: Node = Node {
+        g: 0,
+        parent: u32::MAX,
+        stamp: 0,
+    };
+}
+
 /// The scratch an A* search over the lattice works in, kept between
 /// searches so none of them starts by clearing the whole map.
 #[derive(Clone)]
 pub struct Planner {
-    /// The cost got to each node at, for nodes stamped with the epoch.
-    g: Vec<u32>,
-    /// The node each node was got to from, for nodes stamped with the
-    /// epoch. `u32::MAX` for the start.
-    parent: Vec<u32>,
-    /// The search that last wrote each node.
-    stamp: Vec<u32>,
+    /// What the searches know of each node, side by side: a search reads
+    /// and writes a node's cost, parent and stamp together.
+    nodes: Vec<Node>,
     /// The search running.
     epoch: u32,
-    /// The open list: cost plus the estimate left, then the node.
-    heap: BinaryHeap<Reverse<(u32, u32)>>,
+    /// The open list: cost plus the estimate left, then the node, packed by
+    /// [`open_key`] so the least key is the next node to expand.
+    heap: BinaryHeap<Reverse<u64>>,
 }
 
 impl Default for Planner {
@@ -65,9 +83,7 @@ impl Planner {
     /// A planner that has searched nothing.
     pub fn new() -> Planner {
         Planner {
-            g: vec![0; NODES * NODES],
-            parent: vec![u32::MAX; NODES * NODES],
-            stamp: vec![0; NODES * NODES],
+            nodes: vec![Node::UNSEEN; NODES * NODES],
             epoch: 0,
             heap: BinaryHeap::new(),
         }
@@ -190,7 +206,7 @@ impl Planner {
     ) -> (usize, bool) {
         self.epoch = self.epoch.wrapping_add(1);
         if self.epoch == 0 {
-            self.stamp.fill(0);
+            self.nodes.fill(Node::UNSEEN);
             self.epoch = 1;
         }
         let epoch = self.epoch;
@@ -200,22 +216,22 @@ impl Planner {
             let i = idx(seed);
             let leg = isqrt64(from.distance_squared(Clearance::node_center(seed)));
             let g = (leg * i64::from(STRAIGHT) / i64::from(rules::units(NODE_SIZE).raw)) as u32;
-            if self.stamp[i] == epoch && self.g[i] <= g {
+            if self.nodes[i].stamp == epoch && self.nodes[i].g <= g {
                 continue;
             }
-            self.g[i] = g;
-            self.parent[i] = u32::MAX;
-            self.stamp[i] = epoch;
+            self.nodes[i].g = g;
+            self.nodes[i].parent = u32::MAX;
+            self.nodes[i].stamp = epoch;
             self.heap
-                .push(Reverse((g + heuristic(seed, goal), i as u32)));
+                .push(Reverse(open_key(g + heuristic(seed, goal), i)));
             nearest = nearest.min((heuristic(seed, goal), i));
         }
         let mut expanded = 0;
         let mut shut = true;
-        while let Some(Reverse((f, at))) = self.heap.pop() {
-            let at = at as usize;
+        while let Some(Reverse(key)) = self.heap.pop() {
+            let (f, at) = open_entry(key);
             let node = (at % NODES, at / NODES);
-            let g = self.g[at];
+            let g = self.nodes[at].g;
             if f > g + heuristic(node, goal) {
                 continue; // an entry left behind by a better way to the node
             }
@@ -230,7 +246,7 @@ impl Planner {
             }
             self.expand(ob, node, goal, room);
         }
-        if self.stamp[idx(goal)] == epoch && expanded < budget {
+        if self.nodes[idx(goal)].stamp == epoch && expanded < budget {
             (idx(goal), false)
         } else {
             (nearest.1, shut)
@@ -240,7 +256,7 @@ impl Planner {
     /// Opens every neighbour of a node a body of a room fits in, never
     /// cutting a blocked corner, when it is got to cheaper than before.
     fn expand(&mut self, ob: &Obstacles, node: (usize, usize), goal: (usize, usize), room: Fixed) {
-        let (at, g, epoch) = (idx(node), self.g[idx(node)], self.epoch);
+        let (at, g, epoch) = (idx(node), self.nodes[idx(node)].g, self.epoch);
         for (i, (dx, dy)) in NEIGHBOURS.iter().enumerate() {
             let Some(next) = offset_node(node, *dx, *dy).filter(|next| ob.fits(*next, room)) else {
                 continue;
@@ -251,12 +267,12 @@ impl Planner {
             }
             let cost = g + if diagonal { DIAGONAL } else { STRAIGHT };
             let ni = idx(next);
-            if self.stamp[ni] != epoch || cost < self.g[ni] {
-                self.stamp[ni] = epoch;
-                self.g[ni] = cost;
-                self.parent[ni] = at as u32;
+            if self.nodes[ni].stamp != epoch || cost < self.nodes[ni].g {
+                self.nodes[ni].stamp = epoch;
+                self.nodes[ni].g = cost;
+                self.nodes[ni].parent = at as u32;
                 self.heap
-                    .push(Reverse((cost + heuristic(next, goal), ni as u32)));
+                    .push(Reverse(open_key(cost + heuristic(next, goal), ni)));
             }
         }
     }
@@ -268,8 +284,8 @@ impl Planner {
     fn corners(&self, end: usize) -> Vec<(usize, usize)> {
         let mut nodes = vec![(end % NODES, end / NODES)];
         let mut at = end;
-        while self.parent[at] != u32::MAX {
-            at = self.parent[at] as usize;
+        while self.nodes[at].parent != u32::MAX {
+            at = self.nodes[at].parent as usize;
             nodes.push((at % NODES, at / NODES));
         }
         nodes.reverse();
@@ -294,6 +310,17 @@ impl Planner {
 pub fn find_path(field: &Clearance, from: Vec2, to: Vec2, collision: Fixed) -> Vec<Vec2> {
     let ob = Obstacles { field, extra: &[] };
     Planner::new().find_path(&ob, from, to, collision)
+}
+
+/// An open-list entry as one key: the cost plus the estimate in the high
+/// half, the node's index in the low, so keys order as the pair does.
+fn open_key(f: u32, node: usize) -> u64 {
+    (u64::from(f) << 32) | node as u64
+}
+
+/// The cost plus the estimate and the node index an [`open_key`] packs.
+fn open_entry(key: u64) -> (u32, usize) {
+    ((key >> 32) as u32, (key & u64::from(u32::MAX)) as usize)
 }
 
 fn heuristic(a: (usize, usize), b: (usize, usize)) -> u32 {
