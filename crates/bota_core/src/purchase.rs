@@ -230,3 +230,113 @@ pub fn purchase_fits<P: HeldItem>(
 ) -> bool {
     place_purchase(buyer, parts, bag, stash).is_some()
 }
+
+/// A stack's counts: what the rules of stacking move between two stacks. A Ward Dispenser's
+/// Observer Wards are its `charges`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Counts {
+    pub id: ItemId,
+    pub charges: u8,
+    /// The Sentry Wards a Ward Dispenser holds beside its charges. Zero for any other item.
+    pub sentries: u8,
+}
+
+/// What two stacks become when `incoming` merges into `held` by [`merge_room`]'s leave: the
+/// counts of `held` and of what is left of `incoming` (none, for a ward, which goes in whole). The
+/// one arithmetic of stacking, which the server's stacks and a client's picture of a bag share.
+/// `room` is [`merge_room`] of the two, and is not zero.
+pub fn merge_counts(held: Counts, incoming: Counts, room: u8) -> (Counts, Counts) {
+    if held.id == incoming.id && item_def(held.id).is_some_and(|def| def.stack_limit > 0) {
+        let moved = room.min(incoming.charges);
+        return (
+            Counts {
+                charges: held.charges + moved,
+                ..held
+            },
+            Counts {
+                charges: incoming.charges - moved,
+                ..incoming
+            },
+        );
+    }
+    let (o1, s1) = ward_counts(held.id, held.charges, held.sentries).unwrap_or_default();
+    let (o2, s2) =
+        ward_counts(incoming.id, incoming.charges, incoming.sentries).unwrap_or_default();
+    (
+        Counts {
+            id: ItemId::WARD_DISPENSER,
+            charges: o1 + o2,
+            sentries: s1 + s2,
+        },
+        Counts {
+            charges: 0,
+            sentries: 0,
+            ..incoming
+        },
+    )
+}
+
+impl HeldItem for (Counts, SlotId, Option<Attribute>) {
+    fn id(&self) -> ItemId {
+        self.0.id
+    }
+    fn charges(&self) -> u8 {
+        self.0.charges
+    }
+    fn sentries(&self) -> u8 {
+        self.0.sentries
+    }
+    fn owner(&self) -> SlotId {
+        self.1
+    }
+    fn mode(&self) -> Option<Attribute> {
+        self.2
+    }
+    fn for_sale(&self) -> bool {
+        false
+    }
+    fn locked(&self) -> bool {
+        false
+    }
+}
+
+/// The bag a seat will hold when the match has bought `queue` for it one by one, as the strategy
+/// phase shows it: every item bought whole by the same rule of stacking and placing the server
+/// buys by (a consumable or ward joins a compatible stack with room, the two wards make a Ward
+/// Dispenser, anything else takes the first empty slot). Items past the `slots` of the bag are
+/// not shown; the match puts them in the stash.
+pub fn queued_bag(buyer: SlotId, queue: &[ItemId], slots: usize) -> Vec<Option<Counts>> {
+    let mut bag: Vec<Option<(Counts, SlotId, Option<Attribute>)>> = vec![None; slots];
+    for &item in queue {
+        let Some(def) = item_def(item).filter(|def| !def.unbuyable) else {
+            continue;
+        };
+        let bought = (
+            Counts {
+                id: item,
+                charges: def.charges,
+                sentries: 0,
+            },
+            buyer,
+            def.mode,
+        );
+        let shelf = Shelf {
+            slots: &bag,
+            town_portal: None,
+            combines: true,
+        };
+        let Some(at) = shelf.receiving_slot(&bought) else {
+            continue;
+        };
+        match bag[at] {
+            Some(held) => {
+                let room = merge_room(&held, &bought, true);
+                bag[at] = Some((merge_counts(held.0, bought.0, room).0, held.1, held.2));
+            }
+            None => bag[at] = Some(bought),
+        }
+    }
+    bag.into_iter()
+        .map(|slot| slot.map(|(counts, ..)| counts))
+        .collect()
+}

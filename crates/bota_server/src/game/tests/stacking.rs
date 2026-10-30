@@ -80,3 +80,53 @@ fn a_stack_with_a_cap_overflows_into_a_slot_of_its_own() {
     assert_eq!(slot_of(&world, hero, 0).map(|s| s.charges), Some(3));
     assert_eq!(slot_of(&world, hero, 1).map(|s| s.charges), Some(1));
 }
+
+/// The strategy phase queues what the match buys one by one once it begins, and shows the bag
+/// that will result. The picture is the rule the server buys by, not a copy of it: consumables
+/// join a stack, an Observer and a Sentry Ward make a Ward Dispenser, the rest take a slot each.
+/// (Dota stacks none of this in the strategy phase; the owner wants it to, 2026-10-30.)
+#[test]
+fn a_queue_bought_in_the_tactical_phase_fills_the_bag_as_the_strategy_phase_shows_it() {
+    let queue = [
+        ItemId::TANGO,
+        ItemId::OBSERVER_WARD,
+        ItemId::HEALING_SALVE,
+        ItemId::TANGO,
+        ItemId::BOOTS,
+        ItemId::SENTRY_WARD,
+        ItemId::HEALING_SALVE,
+        ItemId::CLARITY,
+        ItemId::MANGO,
+        ItemId::CLARITY,
+        ItemId::MANGO,
+    ];
+    let (mut world, hero) = match_hero();
+    world.seats[0].gold = 10_000;
+    for item in queue {
+        seat_order(&mut world, bota_proto::Order::Buy { item });
+    }
+    let bought: Vec<Option<(ItemId, u8, u8)>> = world
+        .inventory
+        .get(hero)
+        .expect("bag")
+        .slots
+        .iter()
+        .map(|slot| slot.map(|s| (s.id, s.charges, s.sentries)))
+        .collect();
+    let shown = bota_core::queued_bag(bota_proto::SlotId(0), &queue, bought.len());
+    let shown: Vec<Option<(ItemId, u8, u8)>> = shown
+        .into_iter()
+        .map(|slot| slot.map(|c| (c.id, c.charges, c.sentries)))
+        .collect();
+    assert_eq!(shown, bought);
+    // Not one slot each: two Tangos, two Salves, two Clarities and two Mangos are four stacks, and
+    // the wards one dispenser.
+    assert_eq!(bought.iter().flatten().count(), 6);
+    assert!(
+        bought
+            .iter()
+            .flatten()
+            .any(|&(id, charges, sentries)| id == ItemId::WARD_DISPENSER
+                && (charges, sentries) == (1, 1))
+    );
+}

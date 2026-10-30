@@ -212,10 +212,16 @@ impl ItemStack {
         if room == 0 {
             return false;
         }
+        let counts = |stack: &Self| bota_core::Counts {
+            id: stack.id,
+            charges: stack.charges,
+            sentries: stack.sentries,
+        };
+        let (merged, left) = bota_core::merge_counts(counts(self), counts(source), room);
         if self.id == source.id && item_def(self.id).is_some_and(|def| def.stack_limit > 0) {
-            let moved = room.min(source.charges);
-            self.charges += moved;
-            source.charges -= moved;
+            let moved = source.charges - left.charges;
+            self.charges = merged.charges;
+            source.charges = left.charges;
             // Free charges travel with the charges that carry them, and stay
             // within the charges either side holds.
             let free = moved.min(source.free_charges);
@@ -226,16 +232,14 @@ impl ItemStack {
             assert!(source.free_charges <= source.charges);
             return true;
         }
-        let (o1, s1) = self.ward_counts().expect("a ward");
-        let (o2, s2) = source.ward_counts().expect("a ward");
         if self.id != ItemId::WARD_DISPENSER {
             self.sentry_active = source.sentry_active;
         }
-        self.id = ItemId::WARD_DISPENSER;
-        self.charges = o1 + o2;
-        self.sentries = s1 + s2;
-        source.charges = 0;
-        source.sentries = 0;
+        self.id = merged.id;
+        self.charges = merged.charges;
+        self.sentries = merged.sentries;
+        source.charges = left.charges;
+        source.sentries = left.sentries;
         self.settle(source);
         true
     }
