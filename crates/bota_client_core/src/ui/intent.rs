@@ -50,6 +50,10 @@ pub enum Intent {
     Swap { from: u8, to: u8 },
     /// Sell an item, or mark it for sale away from the shop.
     Sell(u8),
+    /// Take a combined item apart (see [`App::can_disassemble`]).
+    Disassemble(u8),
+    /// Lock an item against combining, or unlock it.
+    SetCombineLock { slot: u8, locked: bool },
     /// Put an item out of the bag at a world point: into an allied bag under
     /// it, or onto the ground.
     PutAt {
@@ -126,6 +130,13 @@ impl App {
             }),
             Intent::Sell(slot) => self.send_order(Order::Sell {
                 slot: ItemSlot(slot),
+            }),
+            Intent::Disassemble(slot) => self.send_order(Order::Disassemble {
+                slot: ItemSlot(slot),
+            }),
+            Intent::SetCombineLock { slot, locked } => self.send_order(Order::SetCombineLock {
+                slot: ItemSlot(slot),
+                locked,
             }),
             Intent::PutAt { slot, at, unit } => self.put_at(slot, at, unit),
             Intent::HandTo { slot, seat } => self.hand_to(slot, seat),

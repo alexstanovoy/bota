@@ -599,3 +599,15 @@ field CataloguePrefix 1 digest: u64
 variant ClientMsg 11 Catalogue(CataloguePrefix)
 field MatchInfo 16 catalogue: CataloguePrefix
 variant RejectReason 27 CatalogueMismatch
+variant Disassembly 0 Always
+variant Disassembly 1 Window {}
+field Disassembly::Window 0 ticks_left: u32
+field ItemView 12 locked: Option<bool>
+field ItemView 13 disassembly: Option<Disassembly>
+variant Order 16 Disassemble {}
+field Order::Disassemble 0 slot: ItemSlot
+variant Order 17 SetCombineLock {}
+field Order::SetCombineLock 0 slot: ItemSlot
+field Order::SetCombineLock 1 locked: bool
+variant RejectReason 28 NotDisassemblable
+variant RejectReason 29 CannotLockCombining

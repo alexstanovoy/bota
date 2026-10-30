@@ -151,19 +151,19 @@ impl World {
             // A side is told its own gold, stash and what a fallen body
             // left, nobody else's.
             gold: own.then_some(seat.gold),
-            stash: own.then(|| item_views(&seat.stash, mana_rate, &seat.item_clocks)),
+            stash: own.then(|| item_views(&seat.stash, mana_rate, &seat.item_clocks, self.tick)),
             kit: seat
                 .kept
                 .as_ref()
                 .filter(|_| own)
                 .map(|kept| bota_proto::Kit {
                     abilities: ability_views(&kept.book, mana_rate),
-                    items: item_views(&kept.bag, mana_rate, &seat.item_clocks),
+                    items: item_views(&kept.bag, mana_rate, &seat.item_clocks, self.tick),
                     town_portal: kept
                         .bag
                         .town_portal
                         .flatten()
-                        .map(|stack| item_view(&stack, mana_rate, &seat.item_clocks)),
+                        .map(|stack| item_view(&stack, mana_rate, &seat.item_clocks, self.tick)),
                 }),
             kills: seat.kills,
             deaths: seat.deaths,
@@ -519,11 +519,13 @@ impl World {
                     })
                     .collect()
             }),
-            items: bag.map_or_else(Vec::new, |bag| item_views(bag, mana_rate, clocks)),
+            items: bag.map_or_else(Vec::new, |bag| {
+                item_views(bag, mana_rate, clocks, self.tick)
+            }),
             effects: self.effects_on(viewer, entity),
             town_portal: bag
                 .and_then(|bag| bag.town_portal.flatten())
-                .map(|stack| item_view(&stack, mana_rate, clocks)),
+                .map(|stack| item_view(&stack, mana_rate, clocks, self.tick)),
             neutral: self.neutral.get(entity).map(|kind| kind.id()),
             cast: self.cast_of(entity),
             queue: self.queue.get(entity).map_or_else(Vec::new, |queue| {
@@ -591,6 +593,8 @@ fn keep_to_its_side(unit: &mut UnitView) {
     }
     for item in unit.items.iter_mut().flatten().chain(&mut unit.town_portal) {
         item.selling = None;
+        item.locked = None;
+        item.disassembly = None;
     }
 }
 

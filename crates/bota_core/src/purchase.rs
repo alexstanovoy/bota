@@ -23,6 +23,8 @@ pub trait HeldItem {
     fn mode(&self) -> Option<Attribute>;
     /// Whether it is marked to be sold when it next reaches the shop.
     fn for_sale(&self) -> bool;
+    /// Whether it is locked against combining.
+    fn locked(&self) -> bool;
 }
 
 /// How many Observer Wards and Sentry Wards a stack of the ward family holds: the two wards and
@@ -135,6 +137,10 @@ impl HeldItem for bota_proto::ItemView {
     fn for_sale(&self) -> bool {
         self.selling == Some(true)
     }
+
+    fn locked(&self) -> bool {
+        self.locked == Some(true)
+    }
 }
 
 /// A part as it is when bought: whole, for nobody to sell, set to the attribute its item is set
@@ -163,6 +169,9 @@ impl HeldItem for Bought {
         self.mode
     }
     fn for_sale(&self) -> bool {
+        false
+    }
+    fn locked(&self) -> bool {
         false
     }
 }

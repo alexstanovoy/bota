@@ -122,10 +122,13 @@ impl World {
         let Some(stack) = self.take_from_bag(unit, slot) else {
             return true;
         };
-        let handed = ItemStack {
-            touched: true,
-            ..stack
-        };
+        let handed = self.as_received_by(
+            to,
+            ItemStack {
+                touched: true,
+                ..stack
+            },
+        );
         let taken = self
             .inventory
             .get_mut(to)
@@ -156,18 +159,36 @@ impl World {
         if !self.walk_into_reach(unit, spot, rules::TAKE_ITEM_RANGE) {
             return false;
         }
-        let taken = self.inventory.get_mut(unit).is_some_and(|bag| {
-            bag.receive(ItemStack {
+        let received = self.as_received_by(
+            unit,
+            ItemStack {
                 touched: true,
                 ..stack
-            })
-        });
+            },
+        );
+        let taken = self
+            .inventory
+            .get_mut(unit)
+            .is_some_and(|bag| bag.receive(received));
         if !taken {
             return true;
         }
         self.loot.remove(loot);
         self.despawn(loot);
         true
+    }
+
+    /// A stack as it is once in the bag of `unit`: a build that enters the bag of a
+    /// unit its owner does not drive can no longer be taken apart (Dota ends the
+    /// window there).
+    fn as_received_by(&self, unit: Entity, stack: ItemStack) -> ItemStack {
+        if self.owner.get(unit) == Some(&stack.owner) {
+            return stack;
+        }
+        ItemStack {
+            disassemble_until: 0,
+            ..stack
+        }
     }
 
     /// Whether a unit stands within `range` of a spot, sending it walking

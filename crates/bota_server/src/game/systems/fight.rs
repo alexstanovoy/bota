@@ -260,10 +260,11 @@ impl World {
                 let mut bag = self.inventory.remove(entity).unwrap_or_default();
                 // What a body carried when it fell sells back at the full price
                 // no more (Dota: the sellback timer ends when the carrier dies).
-                bag.slots
-                    .iter_mut()
-                    .flatten()
-                    .for_each(|stack| stack.touched = true);
+                bag.slots.iter_mut().flatten().for_each(|stack| {
+                    stack.touched = true;
+                    // Nor does a build come apart (Dota: the window ends with its carrier).
+                    stack.disassemble_until = 0;
+                });
                 if scroll_due {
                     // A town portal slot full to the byte keeps what it has.
                     bag.receive(ItemStack::free_scroll(self.seats[index].slot, self.tick));
@@ -287,6 +288,7 @@ impl World {
                     .flat_map(|bag| bag.slots.iter_mut().flatten())
                 {
                     stack.touched = true;
+                    stack.disassemble_until = 0;
                 }
                 self.seats[index].courier_kept = carried;
             }

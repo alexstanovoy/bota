@@ -6,6 +6,7 @@ mod bubble;
 mod cast;
 mod cheats;
 mod courier;
+mod disassemble;
 mod econ;
 mod feast;
 mod fiend;

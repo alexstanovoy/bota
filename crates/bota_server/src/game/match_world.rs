@@ -165,6 +165,12 @@ impl World {
                 self.buy(seat, item, events);
             }
             Order::SwitchWard { slot } => self.switch_ward(unit, usize::from(slot.0)),
+            Order::Disassemble { slot: at } => {
+                self.disassemble_item(seat, Some(unit), usize::from(at.0));
+            }
+            Order::SetCombineLock { slot: at, locked } => {
+                self.set_combine_lock(seat, Some(unit), usize::from(at.0), locked);
+            }
             Order::Cheat { cheat } => {
                 self.cheat(seat, Some(unit), cheat, events);
             }
@@ -361,6 +367,8 @@ impl World {
             | Order::Swap { .. }
             | Order::Sell { .. }
             | Order::SwitchWard { .. }
+            | Order::Disassemble { .. }
+            | Order::SetCombineLock { .. }
             | Order::Buy { .. }
             | Order::Cheat { .. } => return,
         };
@@ -447,6 +455,12 @@ impl World {
             Order::Buy { item } => self.check_buy(seat, *item),
             Order::Sell { slot: named } => self.check_sale(unit, seat, usize::from(named.0)),
             Order::SwitchWard { slot: named } => self.check_switch(unit, usize::from(named.0)),
+            Order::Disassemble { slot: named } => {
+                self.disassembly_refusal(Some(unit), seat, usize::from(named.0))
+            }
+            Order::SetCombineLock { slot: named, .. } => {
+                self.lock_refusal(Some(unit), seat, usize::from(named.0))
+            }
             Order::Put {
                 slot: named,
                 target,
@@ -664,6 +678,12 @@ impl World {
             )
             .map_or(Ok(()), Err),
             Order::Sell { slot } => self.sale_while_down(seat, usize::from(slot.0)).map(|_| ()),
+            Order::Disassemble { slot } => {
+                self.disassembly_refusal(None, seat, usize::from(slot.0))
+            }
+            Order::SetCombineLock { slot, .. } => {
+                self.lock_refusal(None, seat, usize::from(slot.0))
+            }
             Order::Cheat { cheat } => self.check_cheat(seat.slot, None, cheat),
             _ => Err(RejectReason::HeroDead),
         }

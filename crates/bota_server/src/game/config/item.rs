@@ -128,20 +128,27 @@ impl World {
 ///
 /// Mana costs carry the holder's mana cost rate; `mana_rate_bp` is
 /// [`bota_core::rules::NOMINAL_BP`] for a bag with no body behind it. `clocks` are the
-/// waits its seat owes on kinds of item, which a stack shows as its own.
+/// waits its seat owes on kinds of item, which a stack shows as its own; `now`
+/// is the tick a window to take a build apart is counted from.
 pub fn item_views(
     bag: &Inventory,
     mana_rate_bp: i32,
     clocks: &[(ItemId, u32)],
+    now: u32,
 ) -> Vec<Option<ItemView>> {
     bag.slots
         .iter()
-        .map(|slot| slot.map(|stack| item_view(&stack, mana_rate_bp, clocks)))
+        .map(|slot| slot.map(|stack| item_view(&stack, mana_rate_bp, clocks, now)))
         .collect()
 }
 
 /// What one stack looks like on the wire, on the terms of [`item_views`].
-pub fn item_view(stack: &ItemStack, mana_rate_bp: i32, clocks: &[(ItemId, u32)]) -> ItemView {
+pub fn item_view(
+    stack: &ItemStack,
+    mana_rate_bp: i32,
+    clocks: &[(ItemId, u32)],
+    now: u32,
+) -> ItemView {
     let def = item_def(stack.id);
     let owed = clocks
         .iter()
@@ -170,5 +177,7 @@ pub fn item_view(stack: &ItemStack, mana_rate_bp: i32, clocks: &[(ItemId, u32)])
             sentries: stack.sentries,
             sentry_active: stack.sentry_active,
         }),
+        locked: Some(stack.locked),
+        disassembly: bota_core::disassembly(stack.id, stack.disassemble_until.saturating_sub(now)),
     }
 }

@@ -9,7 +9,13 @@ use super::fixtures::*;
 fn a_mango_is_sold_and_shown_with_its_charges_aimed_at_its_holder() {
     let (mut world, hero) = fixture();
     put(&mut world, hero, 0, mango(3));
-    let view = item_views(world.inventory.get(hero).unwrap(), rules::NOMINAL_BP, &[])[0].unwrap();
+    let view = item_views(
+        world.inventory.get(hero).unwrap(),
+        rules::NOMINAL_BP,
+        &[],
+        0,
+    )[0]
+    .unwrap();
     assert_eq!(view.charges, Some(3));
     assert_eq!(view.aim, Some(Aim::Own));
     assert_eq!(view.range, 0);

@@ -414,6 +414,35 @@ pub enum Order {
         /// A spot on the line to walk along, other than the unit's own.
         toward: Vec2,
     },
+    /// Take a combined item apart into the parts it was built from, its
+    /// recipe among them, each of which is then locked against combining
+    /// again (see [`SetCombineLock`](Order::SetCombineLock)): Dota's
+    /// `DOTA_UNIT_ORDER_DISASSEMBLE_ITEM`. The parts go where the item was,
+    /// and what does not fit lands on the ground at the unit. Needs no body
+    /// and interrupts nothing the body is doing. Refused with
+    /// [`RejectReason::NotDisassemblable`](crate::RejectReason::NotDisassemblable)
+    /// for an item that cannot be taken apart now: the rules are
+    /// `bota_core::disassembly`'s.
+    Disassemble {
+        /// The slot holding the item. A stash slot takes part only while the
+        /// unit stands in its home shop area (or the hero lies dead).
+        slot: ItemSlot,
+    },
+    /// Lock an item against combining, or unlock it: Dota's
+    /// `DOTA_UNIT_ORDER_SET_ITEM_COMBINE_LOCK`, the right click menu's Lock
+    /// Combining. A locked item is not taken as a part of any build, in
+    /// the assembly of a bag, the stash or the courier or in the count of a
+    /// purchase; it sells and moves as ever. Setting the state it is in is
+    /// no change. Needs no body and interrupts nothing the body is doing.
+    /// Refused with
+    /// [`RejectReason::CannotLockCombining`](crate::RejectReason::CannotLockCombining)
+    /// for an item that is part of no recipe.
+    SetCombineLock {
+        /// The slot holding the item.
+        slot: ItemSlot,
+        /// Whether it is to be locked.
+        locked: bool,
+    },
 }
 
 impl Order {
@@ -468,6 +497,8 @@ impl Order {
             | Order::LearnTalent { .. }
             | Order::LearnAttributeBonus
             | Order::SwitchWard { .. }
+            | Order::Disassemble { .. }
+            | Order::SetCombineLock { .. }
             | Order::Glyph => return,
         };
         if let Target::Pos(spot) = target {
@@ -519,6 +550,8 @@ impl Order {
             | Order::LearnAttributeBonus
             | Order::SwitchWard { .. }
             | Order::MoveDirection { .. }
+            | Order::Disassemble { .. }
+            | Order::SetCombineLock { .. }
             | Order::Glyph => return,
         };
         if let Target::Unit(id) = target {

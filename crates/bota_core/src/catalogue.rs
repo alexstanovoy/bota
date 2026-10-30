@@ -7,8 +7,8 @@
 use bota_proto::{Aim, Attribute, Attributes, CataloguePrefix, Fixed, ItemId};
 
 use crate::{
-    Carried, ITEM_COUNT, ITEMS, ItemDef, Mend, Odds, Pool, Recipe, Spends, Stock, UseSpec,
-    item_def, sold, sold_items,
+    Carried, DisassembleRule, ITEM_COUNT, ITEMS, ItemDef, Mend, Odds, Pool, Recipe, Spends, Stock,
+    UseSpec, item_def, sold, sold_items,
 };
 
 /// The items a match plays with: the first so many ids of this build's
@@ -353,6 +353,7 @@ const fn item_digest(def: &ItemDef) -> u64 {
         ignores_channel,
         unbuyable,
         effect,
+        disassemble,
     } = *def;
     let fnv = Fnv::NEW
         .u64(id.0 as u64)
@@ -372,6 +373,11 @@ const fn item_digest(def: &ItemDef) -> u64 {
         .ids(components)
         .recipes(alternatives)
         .carried(carried);
+    let fnv = fnv.u64(match disassemble {
+        DisassembleRule::Window => 0,
+        DisassembleRule::Always => 1,
+        DisassembleRule::Never => 2,
+    });
     let fnv = match ranged {
         None => fnv.u64(0),
         Some(ranged) => fnv.u64(1).carried(ranged),

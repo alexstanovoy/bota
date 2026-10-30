@@ -14,6 +14,7 @@ mod creep_ai;
 mod dead_shop;
 mod delay;
 mod determinism;
+mod disassembly;
 mod feast;
 mod fiend;
 mod fillers;

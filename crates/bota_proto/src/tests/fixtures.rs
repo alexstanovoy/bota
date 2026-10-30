@@ -43,6 +43,8 @@ pub fn item_view(slot: u16) -> ItemView {
         owner: SlotId(0),
         selling: Some(false),
         dispenser: None,
+        locked: Some(false),
+        disassembly: None,
     }
 }
 
@@ -454,6 +456,11 @@ fn item_orders() -> Vec<Order> {
         },
         Order::Buy { item: ItemId(4) },
         Order::Sell { slot: ItemSlot(5) },
+        Order::Disassemble { slot: ItemSlot(3) },
+        Order::SetCombineLock {
+            slot: ItemSlot(4),
+            locked: true,
+        },
         Order::Swap {
             from: ItemSlot(0),
             to: ItemSlot(7),

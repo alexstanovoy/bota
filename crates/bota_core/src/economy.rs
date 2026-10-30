@@ -135,7 +135,8 @@ pub fn sold_items() -> impl Iterator<Item = ItemId> {
 }
 
 /// Which stacks count toward a purchase, as the items to pass to [`missing_parts`]: the buyer's
-/// own, not marked for sale, among all `held` that the buyer's purchase counts. As in Dota, a
+/// own, not marked for sale and not locked against combining (a locked part is no part of a
+/// build, so the build is bought whole), among all `held` that the buyer's purchase counts. As in Dota, a
 /// purchase counts everything the player owns that it can reach: the hero's bag (its kit while it
 /// lies dead), the stash and the courier, and never the town portal slot. The caller says which
 /// containers by what it passes; the rule of what counts is this one.
@@ -144,7 +145,7 @@ pub fn purchase_pool<'a, P: HeldItem + 'a>(
     held: impl IntoIterator<Item = &'a P>,
 ) -> Vec<ItemId> {
     held.into_iter()
-        .filter(|stack| stack.owner() == buyer && !stack.for_sale())
+        .filter(|stack| stack.owner() == buyer && !stack.for_sale() && !stack.locked())
         .map(HeldItem::id)
         .collect()
 }

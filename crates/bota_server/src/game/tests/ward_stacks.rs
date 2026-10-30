@@ -26,7 +26,7 @@ fn held(world: &World, hero: Entity) -> Vec<ItemStack> {
 
 fn dispenser_view(world: &World, hero: Entity, at: usize) -> Option<DispenserView> {
     let stack = slot_of(world, hero, at)?;
-    crate::game::item_view(&stack, rules::NOMINAL_BP, &[]).dispenser
+    crate::game::item_view(&stack, rules::NOMINAL_BP, &[], 0).dispenser
 }
 
 fn standing(world: &World, kind: UnitKind) -> usize {
@@ -74,7 +74,7 @@ fn both_kinds_bought_share_one_slot_with_a_count_each() {
     let wards = held(&world, hero);
     assert_eq!(wards.len(), 1, "one slot holds the lot");
     assert_eq!(wards[0].id, ItemId::WARD_DISPENSER);
-    let view = crate::game::item_view(&wards[0], rules::NOMINAL_BP, &[]);
+    let view = crate::game::item_view(&wards[0], rules::NOMINAL_BP, &[], 0);
     assert_eq!(
         view.dispenser,
         Some(DispenserView {

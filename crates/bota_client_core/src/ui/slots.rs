@@ -72,6 +72,34 @@ impl App {
         self.view()?.unit(commanded)
     }
 
+    /// Whether a Disassemble of what sits in an item slot would be carried
+    /// out: the item can be taken apart now, and a stash slot is in reach of
+    /// the commanded unit, as the server asks.
+    pub fn can_disassemble(&self, slot: u8) -> bool {
+        let in_reach = slot < BAG_SLOTS
+            || self
+                .slot_unit()
+                .zip(self.my_team())
+                .is_some_and(|(unit, team)| {
+                    self.session()
+                        .is_some_and(|s| bota_core::at_home_shop(s.map(), team, unit.pos))
+                });
+        in_reach
+            && self
+                .item_in(slot)
+                .is_some_and(|item| item.disassembly.is_some())
+    }
+
+    /// Whether what sits in an item slot is locked against combining, when
+    /// it can be locked at all: `None` for an empty slot, an item that is
+    /// part of no recipe, and a unit of another side.
+    pub fn combine_lock_of(&self, slot: u8) -> Option<bool> {
+        let item = self.item_in(slot)?;
+        bota_core::is_part_of_a_recipe(item.id)
+            .then_some(item.locked)
+            .flatten()
+    }
+
     /// What sits in one item slot of the panel.
     ///
     /// The bag slots are the commanded unit's, a courier's as readily as the

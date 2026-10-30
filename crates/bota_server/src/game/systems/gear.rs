@@ -1,9 +1,9 @@
 //! Items carried and abilities held: what they add, and what they cost.
 
 use bota_core::{
-    Berth, Carried, CarriedItem, ITEMS, ItemDef, MAX_COMPONENTS, Mend, ModifierKind, Pool, Spends,
-    clamp_to_map, effect_def, fountain_pos, hero_def, item_def, learn_group, move_towards,
-    place_purchase, purchase_pool, rules,
+    Berth, Carried, CarriedItem, DisassembleRule, ITEMS, ItemDef, MAX_COMPONENTS, Mend,
+    ModifierKind, Pool, Spends, clamp_to_map, effect_def, fountain_pos, hero_def, item_def,
+    learn_group, move_towards, place_purchase, purchase_pool, rules,
 };
 use bota_proto::{
     AbilityId, Attribute, EventKind, Fixed, HeroId, Inflictor, ItemId, SlotId, Target, Vec2,
@@ -75,7 +75,8 @@ const POOL_STRIDE: usize = 16;
 /// whose parts they all hold, of the first of its recipes they cover, set to
 /// that recipe's attribute.
 ///
-/// A part somebody else bought and a part marked for sale take no part. The
+/// A part somebody else bought, a part marked for sale and a part locked against
+/// combining take no part. The
 /// build lands in the lowest slot of the first container any of its parts
 /// came out of, so it stays in the inventory when a part was there.
 fn assemble_pool(owner: SlotId, tick: u32, pool: &mut [&mut Inventory]) {
@@ -99,7 +100,7 @@ fn assemble_once(owner: SlotId, tick: u32, pool: &mut [&mut Inventory]) -> bool 
                 .enumerate()
                 .filter_map(move |(slot, held)| held.map(|stack| (at * POOL_STRIDE + slot, stack)))
         })
-        .filter(|(_, stack)| stack.owner == owner && !stack.for_sale)
+        .filter(|(_, stack)| stack.owner == owner && !stack.for_sale && !stack.locked)
         .collect();
     for (index, def) in ITEMS.iter().enumerate() {
         let Some((spent, mode)) = def
@@ -136,6 +137,11 @@ fn assemble_once(owner: SlotId, tick: u32, pool: &mut [&mut Inventory]) -> bool 
             free_charges: 0,
             sentries: 0,
             sentry_active: false,
+            locked: false,
+            disassemble_until: match def.disassemble {
+                DisassembleRule::Window => tick + rules::DISASSEMBLY_WINDOW_TICKS,
+                DisassembleRule::Always | DisassembleRule::Never => 0,
+            },
         };
         for at in spent.iter() {
             pool[at / POOL_STRIDE].slots[at % POOL_STRIDE] = None;
@@ -492,6 +498,7 @@ impl World {
         {
             stack.cooldown = if def.shared_wait { 0 } else { cooldown };
             stack.touched = true;
+            stack.disassemble_until = 0;
             stack.charges = match def.spends {
                 Spends::Nothing => stack.charges,
                 Spends::One => stack.charges.saturating_sub(1),
@@ -595,6 +602,8 @@ impl World {
         let Some(mode) = stack.mode else {
             return false;
         };
+        // A toggle is a use of the item: it ends the window to take it apart.
+        stack.disassemble_until = 0;
         // Dota's wheel: strength, intelligence, agility.
         stack.mode = Some(match mode {
             Attribute::Strength => Attribute::Intelligence,
@@ -743,6 +752,7 @@ impl World {
             && let Some(stack) = held
         {
             stack.touched = true;
+            stack.disassemble_until = 0;
             stack.spend_one();
             if stack.charges == 0 {
                 *held = None;
@@ -912,6 +922,12 @@ impl World {
             }
             bota_proto::Order::Swap { from, to } => self.swap_while_down(slot, from, to),
             bota_proto::Order::Sell { slot: at } => self.sell_while_down(slot, usize::from(at.0)),
+            bota_proto::Order::Disassemble { slot: at } => {
+                self.disassemble_item(slot, None, usize::from(at.0));
+            }
+            bota_proto::Order::SetCombineLock { slot: at, locked } => {
+                self.set_combine_lock(slot, None, usize::from(at.0), locked);
+            }
             bota_proto::Order::Cheat { cheat } => self.cheat(slot, None, cheat, events),
             _ => {}
         }

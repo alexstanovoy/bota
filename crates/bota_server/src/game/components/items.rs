@@ -36,6 +36,14 @@ pub struct ItemStack {
     /// Whether a Ward Dispenser plants a Sentry Ward next rather than an
     /// Observer Ward. False for any other item.
     pub sentry_active: bool,
+    /// Whether the owner locked it against combining: assembly and purchases
+    /// pass it by as a part.
+    pub locked: bool,
+    /// The tick up to which a build of it may be taken apart, when its rule
+    /// is [`bota_core::DisassembleRule::Window`]: set when it is combined,
+    /// zero once it is used or leaves its owner's hands, and zero for
+    /// anything that did not come of a combine.
+    pub disassemble_until: u32,
 }
 
 impl ItemStack {
@@ -56,7 +64,24 @@ impl ItemStack {
             free_charges: 0,
             sentries: 0,
             sentry_active: false,
+            locked: false,
+            disassemble_until: 0,
         })
+    }
+
+    /// What [`ItemStack::disassemble_until`] reads when nothing has ended the
+    /// window of a build: ten seconds from its being combined, which the tick
+    /// it was bought at (set at the combine) names. Zero for any other stack.
+    pub fn default_window(&self) -> u32 {
+        match item_def(self.id) {
+            Some(def)
+                if !def.components.is_empty()
+                    && def.disassemble == bota_core::DisassembleRule::Window =>
+            {
+                self.bought_tick + bota_core::rules::DISASSEMBLY_WINDOW_TICKS
+            }
+            _ => 0,
+        }
     }
 
     /// One Town Portal Scroll that came for nothing.
@@ -181,6 +206,7 @@ impl ItemStack {
         self.cooldown = self.cooldown.max(source.cooldown);
         self.mute = self.mute.max(source.mute);
         self.touched |= source.touched;
+        self.locked |= source.locked;
     }
 }
 
@@ -207,6 +233,10 @@ impl bota_core::HeldItem for ItemStack {
 
     fn for_sale(&self) -> bool {
         self.for_sale
+    }
+
+    fn locked(&self) -> bool {
+        self.locked
     }
 }
 
@@ -428,7 +458,9 @@ state_hash!(ItemStack {
     for_sale,
     free_charges,
     sentries,
-    sentry_active
+    sentry_active,
+    locked,
+    disassemble_until
 });
 state_hash!(Inventory {
     slots,

@@ -352,6 +352,24 @@ pub struct ItemDef {
     pub unbuyable: bool,
     /// What using it does.
     pub effect: UseSpec,
+    /// When a build of it may be taken apart again: Dota's
+    /// `ItemDisassembleRule`.
+    pub disassemble: DisassembleRule,
+}
+
+/// When a combined item may be taken apart: Dota's `ItemDisassembleRule`
+/// (`DOTA_ITEM_DISASSEMBLE_ALWAYS` and `_NEVER`), and the rule of an item
+/// that names none.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DisassembleRule {
+    /// For [`rules::DISASSEMBLY_WINDOW_TICKS`] after it was combined, until
+    /// it is used or leaves its owner's hands. What an item that names no
+    /// rule gets.
+    Window,
+    /// At any time (`DOTA_ITEM_DISASSEMBLE_ALWAYS`).
+    Always,
+    /// Never (`DOTA_ITEM_DISASSEMBLE_NEVER`).
+    Never,
 }
 
 impl ItemDef {
@@ -472,6 +490,7 @@ pub(crate) const PLAIN: ItemDef = ItemDef {
     ignores_channel: false,
     unbuyable: false,
     effect: UseSpec::None,
+    disassemble: DisassembleRule::Window,
 };
 
 /// What one item is, or nothing if no such item exists or it is retired.

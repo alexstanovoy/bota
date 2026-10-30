@@ -239,6 +239,14 @@ pub enum RejectReason {
     /// A [`ClientMsg::Catalogue`] whose items differ from the server's, or
     /// one shorter than a match under way plays with.
     CatalogueMismatch,
+    /// A [`Disassemble`](crate::Order::Disassemble) of an item that cannot be
+    /// taken apart now: it is built of nothing, its rule is never, or its
+    /// rule allows it only within a while of its being combined and that has
+    /// run out.
+    NotDisassemblable,
+    /// A [`SetCombineLock`](crate::Order::SetCombineLock) on an item that is
+    /// part of no recipe.
+    CannotLockCombining,
 }
 
 /// Final numbers for one seat.

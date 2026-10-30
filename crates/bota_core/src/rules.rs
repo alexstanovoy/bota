@@ -1133,6 +1133,9 @@ pub const SHOP_RANGE: i32 = 1000;
 pub const SELL_PCT: i32 = 50;
 /// Ticks after purchase in which an unused item refunds in full.
 pub const SELL_REFUND_TICKS: u32 = 300;
+/// Ticks after being combined in which an item whose rule is the default may be
+/// taken apart again: the ten seconds Dota's items can be disassembled in.
+pub const DISASSEMBLY_WINDOW_TICKS: u32 = 300;
 /// How far an item may be laid on the ground or handed to another bag, in
 /// world units.
 pub const PUT_ITEM_RANGE: i32 = 400;

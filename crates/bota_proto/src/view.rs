@@ -124,6 +124,24 @@ pub struct ItemView {
     /// What a Ward Dispenser holds of each kind. Absent for any other item.
     /// [`charges`](Self::charges) is the count of the kind that is active.
     pub dispenser: Option<DispenserView>,
+    /// Whether it is locked against combining. Absent on a unit of another
+    /// side: its owner's plans are its own.
+    pub locked: Option<bool>,
+    /// Whether, and until when, a [`Disassemble`](crate::Order::Disassemble)
+    /// of it is allowed: what the order is allowed by, not where it is
+    /// carried (a stash slot out of reach is refused on its own). Absent for
+    /// an item that cannot be taken apart now, and on a unit of another side.
+    pub disassembly: Option<Disassembly>,
+}
+
+/// When an item may be taken apart.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum Disassembly {
+    /// At any time: its rule is always.
+    Always,
+    /// For this many more ticks, from its being combined, unless it is used
+    /// or leaves its owner's hands before then.
+    Window { ticks_left: u32 },
 }
 
 /// The two counts a Ward Dispenser keeps in its one slot, and which of the

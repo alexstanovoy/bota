@@ -7,9 +7,9 @@ use bota_proto::{Aim, Attribute, Attributes, Fixed};
 
 use super::items::*;
 use crate::{
-    Carried, Dec, Grenade, ItemData, ItemDef, Mend, NOTHING, OBSERVER_WARD, Odds, PLAIN, Pool,
-    Recipe, SENTRY_WARD, Scroll, Spends, Stock, UseSpec, hundredths_per_second, points,
-    points_with, rules,
+    Carried, Dec, DisassembleRule, Grenade, ItemData, ItemDef, Mend, NOTHING, OBSERVER_WARD, Odds,
+    PLAIN, Pool, Recipe, SENTRY_WARD, Scroll, Spends, Stock, UseSpec, hundredths_per_second,
+    points, points_with, rules,
 };
 
 /// The row of an item as its script gives it; a row of the catalog adds what bota does with it.
@@ -641,6 +641,7 @@ pub(crate) const ITEM_ROWS: &[ItemDef] = &[
         components: &[],
         aim: Some(Aim::Point),
         effect: UseSpec::Dispense,
+        disassemble: DisassembleRule::Never,
         ..from(&ITEM_WARD_DISPENSER)
     },
 ];
