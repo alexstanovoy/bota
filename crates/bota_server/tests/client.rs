@@ -27,6 +27,8 @@ fn opts() -> ServerOpts {
         players: 2,
         replay: None,
         replay_max_bytes: None,
+        meta: None,
+        meta_trailer: false,
         seed: Some(3),
         match_id: None,
         reserved: Vec::new(),

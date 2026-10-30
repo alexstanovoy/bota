@@ -5,7 +5,7 @@ use std::io::{ErrorKind, Read};
 
 use ruzstd::encoding::{CompressionLevel, compress_to_vec};
 
-use super::{MAX_REPLAY_INFLATION, UnpackedReplay, ZSTD_MAGIC};
+use super::{MAX_REPLAY_INFLATION, MAX_TRAILER_BYTES, UnpackedReplay, ZSTD_MAGIC};
 
 fn unpack(packed: Vec<u8>) -> std::io::Result<Vec<u8>> {
     let mut unpacked = Vec::new();
@@ -44,4 +44,36 @@ fn bytes_after_the_stream_are_refused() {
     packed.push(0);
     let refused = unpack(packed).expect_err("a trailing byte");
     assert!(refused.to_string().contains("after the end"), "{refused}");
+}
+
+/// A skippable frame after the stream (the trailer a replay carries its metadata in) is skipped;
+/// anything else after it is refused.
+#[test]
+fn a_skippable_frame_after_the_stream_is_skipped_and_other_bytes_are_not() {
+    let stream = compress_to_vec(&b"a whole stream"[..], CompressionLevel::Fastest);
+    let skippable = |magic: u32, payload: &[u8]| {
+        let mut frame = magic.to_le_bytes().to_vec();
+        frame.extend((payload.len() as u32).to_le_bytes());
+        frame.extend(payload);
+        frame
+    };
+    let with = |tail: Vec<u8>| [stream.clone(), tail].concat();
+    assert_eq!(
+        unpack(with(skippable(0x184D_2A50, &[1, 2, 3]))).expect("a trailer"),
+        b"a whole stream"
+    );
+    assert_eq!(
+        unpack(with(skippable(0x184D_2A5F, &[]))).expect("an empty one"),
+        b"a whole stream"
+    );
+    for refused in [
+        skippable(0x184D_2A60, &[1]),
+        skippable(0x184D_2A50, &[1])[..7].to_vec(),
+        skippable(0x184D_2A50, &[1, 2])[..9].to_vec(),
+        [skippable(0x184D_2A50, &[1]), vec![0]].concat(),
+        skippable(0x184D_2A50, &vec![0; MAX_TRAILER_BYTES + 1]),
+    ] {
+        let error = unpack(with(refused)).expect_err("not a trailer");
+        assert!(error.to_string().contains("after the end"), "{error}");
+    }
 }

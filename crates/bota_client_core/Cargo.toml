@@ -11,6 +11,7 @@ categories.workspace = true
 [dependencies]
 bota_core = { workspace = true }
 bota_proto = { workspace = true }
+bota_replay = { workspace = true }
 # Replays are Zstandard streams; a pure-Rust decoder reads them in the browser too.
 ruzstd = { version = "0.9.1", default-features = false, features = ["std"] }
 

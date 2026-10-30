@@ -62,6 +62,16 @@ pub struct ServerOpts {
     /// The most bytes the replay file may reach: the replay is closed whole before it grows
     /// past this, and the result says it was cut short. Absent for no cap.
     pub replay_max_bytes: Option<u64>,
+    /// Where to write the match's metadata file (see `bota_replay`), recorded from the same
+    /// records as the replay. Absent writes none (it is recorded whenever a replay is, for the
+    /// replay's trailer).
+    pub meta: Option<PathBuf>,
+    /// Whether the replay carries the metadata file at its end, after its compressed stream.
+    /// A player built before the trailer was understood refuses such a replay at its end, after
+    /// it has played every record, so it is off. It is switched on by default in the same change
+    /// as the next change of the wire fingerprint, because builds from before it refuse a replay
+    /// of the new wire up front: none can then meet a trailer it does not know.
+    pub meta_trailer: bool,
     /// Seed of the match randomness. Drawn from the operating system when
     /// absent, and then never known to anyone.
     pub seed: Option<u64>,
@@ -194,10 +204,12 @@ fn run_inner(
 ) -> std::io::Result<MatchEnd> {
     check_opts(&opts).map_err(std::io::Error::other)?;
     let secrets = draw_secrets(opts.seed, opts.match_id)?;
-    let replay = match &opts.replay {
-        None => ReplayWriter::disabled(),
-        Some(path) => ReplayWriter::create(path, opts.replay_max_bytes)?,
-    };
+    let replay = ReplayWriter::open(
+        opts.replay.as_deref(),
+        opts.replay_max_bytes,
+        opts.meta.as_deref(),
+        opts.meta_trailer,
+    )?;
     let (tx, rx) = channel();
     listeners.into().start(&tx)?;
     let roster = match opts.reserved.len() {
@@ -1370,13 +1382,13 @@ impl Server {
         } = told;
         let mut full = world.view_full();
         full.order_delays = line.views(None);
-        let full_frame = snapshot_frame(full);
+        let (full_frame, full_view) = snapshot_frame_and_view(full);
         let full_events = visible_events(events, None);
         let sides = [Team::Radiant, Team::Dire].map(|team| {
             let frame = snapshot_frame(side_view(world, line, handles, team));
             (team, frame, side_events(events, handles, team, world.tick))
         });
-        replay.record_msg_frame(&full_frame);
+        replay.record_snapshot(&full_view, &full_frame);
         // A connection that has not said Hello is told nothing, a referee no
         // tick, and a late spectator only what the delayed feed shows it.
         let watching = |id: PlayerId| {
@@ -1656,6 +1668,16 @@ fn disguise_level_ups(
         }
     }
     (told, runs)
+}
+
+/// A snapshot as a frame ready to queue, and the view back for whoever reads it too.
+fn snapshot_frame_and_view(view: WorldView) -> (Vec<u8>, WorldView) {
+    let message = ServerMsg::Snapshot { view };
+    let frame = encode_frame_to_vec(&message).expect("a view always encodes");
+    let ServerMsg::Snapshot { view } = message else {
+        unreachable!("a snapshot was built");
+    };
+    (frame, view)
 }
 
 /// A snapshot as a frame ready to queue.

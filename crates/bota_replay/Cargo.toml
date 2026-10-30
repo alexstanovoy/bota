@@ -1,0 +1,20 @@
+[package]
+name = "bota_replay"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "What a bota match leaves to look back on: the match metadata file, the recorder that writes it from a replay's records, and the trailer that carries it inside a replay."
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+bota_core = { workspace = true }
+bota_proto = { workspace = true }
+serde = { version = "1", features = ["derive"] }
+
+[dev-dependencies]
+serde-reflection = "=0.6.0"
+
+[lints]
+workspace = true

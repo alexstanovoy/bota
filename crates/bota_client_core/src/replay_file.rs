@@ -43,6 +43,52 @@ struct Counted {
     unpacked: u64,
 }
 
+/// Most bytes of a trailer a replay may carry after its stream.
+pub const MAX_TRAILER_BYTES: usize = 2 * 1024 * 1024;
+
+impl Counted {
+    /// Whether nothing follows the stream but, at most, skippable frames (RFC 8878: magic
+    /// `0x184D2A50..=0x184D2A5F`, a length, that many bytes), which a decoder ignores. The
+    /// metadata a replay carries is one (see `bota_replay::trailer`).
+    fn only_a_trailer_follows(&mut self) -> io::Result<bool> {
+        loop {
+            let mut head = [0u8; 8];
+            let got = read_up_to(&mut self.file, &mut head)?;
+            if got == 0 {
+                return Ok(true);
+            }
+            let magic = u32::from_le_bytes(head[..4].try_into().expect("four bytes"));
+            if got < head.len() || magic & 0xFFFF_FFF0 != 0x184D_2A50 {
+                return Ok(false);
+            }
+            let size = u64::from(u32::from_le_bytes(
+                head[4..].try_into().expect("four bytes"),
+            ));
+            if size > MAX_TRAILER_BYTES as u64 {
+                return Ok(false);
+            }
+            let skipped = io::copy(&mut (&mut self.file).take(size), &mut io::sink())?;
+            if skipped < size {
+                return Ok(false);
+            }
+        }
+    }
+}
+
+/// Reads until `buf` is full or the reader ends; how many bytes it got.
+fn read_up_to(reader: &mut impl Read, buf: &mut [u8]) -> io::Result<usize> {
+    let mut got = 0;
+    while got < buf.len() {
+        match reader.read(&mut buf[got..]) {
+            Ok(0) => break,
+            Ok(n) => got += n,
+            Err(error) if error.kind() == ErrorKind::Interrupted => {}
+            Err(error) => return Err(error),
+        }
+    }
+    Ok(got)
+}
+
 impl Read for Counted {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         let read = self.file.read(buf)?;
@@ -92,7 +138,7 @@ fn read_open(
             "the replay unpacks past {MAX_REPLAY_INFLATION} times its size: a bomb"
         )));
     }
-    if read == 0 && !buf.is_empty() && counted.read(&mut [0u8; 1])? > 0 {
+    if read == 0 && !buf.is_empty() && !counted.only_a_trailer_follows()? {
         return Err(invalid(
             "bytes after the end of the replay's stream".to_owned(),
         ));

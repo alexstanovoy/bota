@@ -105,6 +105,17 @@ struct Args {
     /// older launcher reads every line, whatever the order the two are updated in.
     #[arg(long, env = "RADOVID_RESULT_VERSION", default_value_t = 1, value_parser = clap::value_parser!(u16).range(1..))]
     result_version: u16,
+    /// Write the match's metadata file to this file: what each seat held and had earned every
+    /// game minute, the kills, purchases, levels, buildings and final items, in a format that
+    /// outlives the build (the `bota_replay` crate). Refused before `READY` if it cannot be
+    /// created.
+    #[arg(long)]
+    meta: Option<PathBuf>,
+    /// Carry the metadata file at the end of the replay, after its compressed stream. Off until
+    /// the next change of the wire fingerprint, from which on no build that refuses such a replay
+    /// at its end can read the replay at all (see `ServerOpts::meta_trailer`).
+    #[arg(long, requires = "replay")]
+    meta_trailer: bool,
     /// Which map to play: 0 Dota, 1 hero demo, 2 mid-only Dota (two lives or first tower, twenty game minutes).
     #[arg(long, default_value_t = 0, value_parser = parse_map)]
     map: u16,
@@ -276,9 +287,12 @@ fn serve(args: Args) -> std::io::Result<MatchEnd> {
     // Contradicting options fail before READY, never after.
     check_opts(&opts).map_err(std::io::Error::other)?;
     // A replay that cannot be written fails before the port is announced.
-    if let Some(path) = &opts.replay {
-        bota_server::replay::ReplayWriter::create(path, opts.replay_max_bytes)?;
-    }
+    bota_server::replay::ReplayWriter::open(
+        opts.replay.as_deref(),
+        opts.replay_max_bytes,
+        opts.meta.as_deref(),
+        false,
+    )?;
     let listeners = listen(&args)?;
     println!("READY");
     run(listeners, opts)
@@ -382,6 +396,8 @@ fn server_opts(args: &Args) -> std::io::Result<ServerOpts> {
         players,
         replay: args.replay.clone(),
         replay_max_bytes: replay_max_bytes(args.replay_max_mib),
+        meta: args.meta.clone(),
+        meta_trailer: args.meta_trailer,
         seed: args.seed,
         match_id: args.match_id,
         reserved,

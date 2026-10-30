@@ -53,6 +53,7 @@ mod receipts;
 #[cfg(not(target_arch = "wasm32"))]
 mod redial;
 mod replay_file;
+mod replay_meta;
 mod seat;
 mod session;
 mod shop;
@@ -85,6 +86,7 @@ pub use receipts::*;
 #[cfg(not(target_arch = "wasm32"))]
 pub use redial::Redial;
 pub use replay_file::*;
+pub use replay_meta::*;
 pub use seat::*;
 pub use session::*;
 pub use shop::*;

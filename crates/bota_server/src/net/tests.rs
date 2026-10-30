@@ -287,6 +287,8 @@ fn realtime(seed: u64) -> ServerOpts {
         players: 2,
         replay: None,
         replay_max_bytes: None,
+        meta: None,
+        meta_trailer: false,
         seed: Some(seed),
         match_id: None,
         reserved: Vec::new(),

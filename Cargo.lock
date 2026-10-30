@@ -190,6 +190,7 @@ version = "0.1.0"
 dependencies = [
  "bota_core",
  "bota_proto",
+ "bota_replay",
  "getrandom 0.4.3",
  "js-sys",
  "rustls",
@@ -233,12 +234,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "bota_replay"
+version = "0.1.0"
+dependencies = [
+ "bota_core",
+ "bota_proto",
+ "serde",
+ "serde-reflection",
+]
+
+[[package]]
 name = "bota_server"
 version = "0.1.0"
 dependencies = [
  "bota_client_core",
  "bota_core",
  "bota_proto",
+ "bota_replay",
  "clap",
  "criterion",
  "futures-util",

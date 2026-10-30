@@ -152,6 +152,8 @@ the plain TCP port stays on loopback) or `--insecure-plaintext`.
 | `--replay FILE` | none | write a replay, one Zstandard stream (refused before `READY` if it cannot be created) | |
 | `--result-version N` | `1` (env `RADOVID_RESULT_VERSION`) | the newest `RESULT` line version the launcher reads; 2 adds `replay=truncated` | a launcher that reads it |
 | `--replay-max-mib N` | `0` (no cap) | the most MiB the replay file may reach (needs `--replay`): it is closed whole just before, the match goes on, and the `RESULT` line says `replay=truncated` (to a launcher that reads version 2). The server also keeps under the process's own file size limit (`ulimit -f`, docker `--ulimit fsize`) and survives SIGXFSZ, so a launcher that limits file sizes needs no flag; a 5v5 replay is some 1.3 MB a minute | a long match under a limit |
+| `--meta FILE` | none | write the match's metadata file (refused before `READY` if it cannot be created): what each seat held and had earned every game minute, the kills, purchases, levels, buildings and final items, in the format of the `bota_replay` crate, which outlives the build that wrote it and only grows. Recorded from the same records as the replay, whether or not `--replay` is given | a launcher keeps a summary of every match |
+| `--meta-trailer` | off | carry the metadata file at the end of the replay, after its compressed stream, as one Zstandard skippable frame (`bota_replay::trailer`); needs `--replay`. A player built before it was understood refuses such a replay at its end, so it stays off until those are gone | |
 | `--chat off\|team\|all` | `all` | what the seats may say: nothing, to their side, to their side and everyone | `off` for bot ladders: chat would be a channel between opponents |
 | `--spectator-chat BOOL` | `true` | whether spectators talk among themselves (no seat ever hears them) | |
 | `--replay-team-chat BOOL` | `true` | whether the replay keeps the sides' team lines (a replay of the whole map then shows both sides') | `false` when replays of the whole map go to players |
@@ -379,6 +381,20 @@ and is not re-simulated, but the player refuses one of another fingerprint at it
 naming both, as Dota's replays go stale with a patch. The player reads a packed replay
 with a pure-Rust decoder (in the browser too) and bounds what a file may make it hold;
 it also plays the frames unpacked. It is in `bota_client_core` behind the `ui` feature.
+
+Beside the replay, which only a build of its own wire plays, a match leaves a metadata file
+(`--meta FILE`), the analogue of Dota's `.meta`: a small log of facts in a format of its own, the
+`bota_replay` crate's, outside the wire fingerprint. Its first record is frozen, its records are
+append-only (`crates/bota_replay/registry/meta.txt` holds the layout a test keeps from changing),
+a reader skips a record it does not know by its length and ignores a statistic it does not know,
+so every later build reads every earlier file. `bota_replay::meta::Recorder` writes it by watching
+the replay's records: the server runs it while the match goes on, and `bota_client_core::meta_of_replay`
+runs it over a replay of the same wire afterwards, to the same bytes. A replay can carry the file
+at its end (`--meta-trailer`): one Zstandard skippable frame after the compressed stream, the file
+byte for byte, then its length and the magic `bota.mtf`, so it is found from the last bytes of the
+replay without unpacking anything. The reader of this build skips such a frame; one before it
+refuses a replay with bytes after the stream, once it has played every record, which is why the
+trailer is off by default.
 
 Chat is beside the match: lines go to everyone, to a side (and the spectators with that
 side's seat keys) or among spectators, never into the simulation or a tick's hash, and a

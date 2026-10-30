@@ -26,6 +26,8 @@ fn opts(map: MapId) -> ServerOpts {
         players: 10,
         replay: None,
         replay_max_bytes: None,
+        meta: None,
+        meta_trailer: false,
         seed: Some(5),
         match_id: None,
         reserved: Vec::new(),

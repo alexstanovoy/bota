@@ -24,6 +24,7 @@ websocket = [
 [dependencies]
 bota_core = { workspace = true }
 bota_proto = { workspace = true }
+bota_replay = { workspace = true }
 rand_chacha = "0.10"
 clap = { version = "4", features = ["derive", "env"] }
 getrandom = "0.4"
@@ -42,7 +43,8 @@ tokio-tungstenite = { version = "0.30.0", default-features = false, features = [
 zstd = { version = "0.14.3", default-features = false }
 
 [dev-dependencies]
-bota_client_core = { workspace = true }
+bota_replay = { workspace = true }
+bota_client_core = { workspace = true, features = ["ui"] }
 criterion = { workspace = true }
 
 [[bench]]

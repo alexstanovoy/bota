@@ -1,0 +1,47 @@
+# The layout of the match metadata file, one line a position postcard encodes. Append only: a released
+# position never changes or moves. A frozen first line is the header.
+field MetaHeader 0 magic: [u8; 8]
+field MetaHeader 1 schema: u16
+field MetaHeader 2 wire_fingerprint: u64
+field MetaHeader 3 rules_version: u32
+field MetaHeader 4 match_id: u64
+field MetaHeader 5 map: u16
+field MetaHeader 6 tick_rate: u16
+field MetaHeader 7 pregame_ticks: u32
+field MetaHeader 8 catalogue_items: u16
+field MetaHeader 9 catalogue_digest: u64
+variant MetaRecord 0 Header(MetaHeader)
+variant MetaRecord 1 Seat {}
+field MetaRecord::Seat 0 slot: u8
+field MetaRecord::Seat 1 team: u8
+field MetaRecord::Seat 2 hero: u16
+variant MetaRecord 2 Sample {}
+field MetaRecord::Sample 0 tick: u32
+field MetaRecord::Sample 1 slot: u8
+field MetaRecord::Sample 2 stats: Vec<(u16, i64)>
+variant MetaRecord 3 Kill {}
+field MetaRecord::Kill 0 tick: u32
+field MetaRecord::Kill 1 victim: Who
+field MetaRecord::Kill 2 killer: Option<Who>
+field MetaRecord::Kill 3 gold: i32
+variant MetaRecord 4 Purchase {}
+field MetaRecord::Purchase 0 tick: u32
+field MetaRecord::Purchase 1 slot: u8
+field MetaRecord::Purchase 2 item: u16
+variant MetaRecord 5 LevelUp {}
+field MetaRecord::LevelUp 0 tick: u32
+field MetaRecord::LevelUp 1 slot: u8
+field MetaRecord::LevelUp 2 level: u8
+variant MetaRecord 6 Structure {}
+field MetaRecord::Structure 0 tick: u32
+field MetaRecord::Structure 1 kind: u8
+field MetaRecord::Structure 2 team: u8
+variant MetaRecord 7 Inventory {}
+field MetaRecord::Inventory 0 tick: u32
+field MetaRecord::Inventory 1 slot: u8
+field MetaRecord::Inventory 2 items: Vec<Option<u16>>
+variant MetaRecord 8 End {}
+field MetaRecord::End 0 tick: u32
+field MetaRecord::End 1 winner: Option<u8>
+variant Who 0 Hero(u8)
+variant Who 1 Other

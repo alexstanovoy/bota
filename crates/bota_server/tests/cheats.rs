@@ -36,6 +36,8 @@ fn opts(cheats: bool, replay: Option<PathBuf>) -> ServerOpts {
         players: 1,
         replay,
         replay_max_bytes: None,
+        meta: None,
+        meta_trailer: false,
         seed: Some(5),
         match_id: None,
         reserved: Vec::new(),

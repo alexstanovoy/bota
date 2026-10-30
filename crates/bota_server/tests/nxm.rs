@@ -42,6 +42,8 @@ fn opts(players: u8, reserved: Vec<ReservedSeat>, replay: Option<PathBuf>) -> Se
         players,
         replay,
         replay_max_bytes: None,
+        meta: None,
+        meta_trailer: false,
         seed: Some(11),
         match_id: None,
         reserved,
