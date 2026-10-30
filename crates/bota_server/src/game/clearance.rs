@@ -181,6 +181,75 @@ impl Clearance {
         }
     }
 
+    /// Whether a test holds for a circle whose centre lies in a box and
+    /// within a pad of a segment: the box's circles, met bucket row by
+    /// bucket row only in the buckets the padded segment crosses, until the
+    /// first that holds.
+    ///
+    /// A centre within the pad of the segment lies within the pad of some
+    /// point of it, in x and in y alike: in a row of buckets, only the part of
+    /// the segment whose y comes within the pad of the row can bring one
+    /// near, and only within the pad of that part's x.
+    fn any_circle_near(
+        &self,
+        from: Vec2,
+        to: Vec2,
+        (lo, hi): (Vec2, Vec2),
+        pad: Fixed,
+        mut holds: impl FnMut(Vec2, Fixed) -> bool,
+    ) -> bool {
+        let (bx0, by0) = bucket_coords(lo);
+        let (bx1, by1) = bucket_coords(hi);
+        let size = i64::from(rules::BUCKET_SIZE) << Fixed::FRAC_BITS;
+        let last = BUCKETS as i64 - 1;
+        let column = |x: i64| x.div_euclid(size).clamp(0, last) as usize;
+        // A whole unit more: the widest radius is kept in whole units,
+        // rounded down.
+        let pad = i64::from(pad.raw) + (1 << Fixed::FRAC_BITS);
+        let (fx, fy) = (i64::from(from.x.raw), i64::from(from.y.raw));
+        let (dx, dy) = (i64::from(to.x.raw) - fx, i64::from(to.y.raw) - fy);
+        let (y_least, y_most) = (fy.min(fy + dy), fy.max(fy + dy));
+        for by in by0..=by1 {
+            // The edge rows hold whatever lies past the map's edge too.
+            let row_lo = if by == 0 {
+                i64::MIN / 4
+            } else {
+                by as i64 * size - pad
+            };
+            let row_hi = if by as i64 == last {
+                i64::MAX / 4
+            } else {
+                (by as i64 + 1) * size + pad
+            };
+            let (ya, yb) = (row_lo.max(y_least), row_hi.min(y_most));
+            if ya > yb {
+                continue;
+            }
+            let (xa, xb) = if dy == 0 {
+                (fx, fx + dx)
+            } else {
+                // Rounded either way by a raw unit at most.
+                let x_at =
+                    |y: i64| fx + (i128::from(dx) * i128::from(y - fy) / i128::from(dy)) as i64;
+                (x_at(ya), x_at(yb))
+            };
+            let cx0 = column(xa.min(xb) - pad - 1).max(bx0);
+            let cx1 = column(xa.max(xb) + pad + 1).min(bx1);
+            for bx in cx0..=cx1 {
+                let b = by * BUCKETS + bx;
+                let (start, end) = (self.bucket_start[b], self.bucket_start[b + 1]);
+                for &index in &self.bucket_items[start as usize..end as usize] {
+                    let (at, theirs) = self.circles[index as usize];
+                    let inside = at.x >= lo.x && at.x <= hi.x && at.y >= lo.y && at.y <= hi.y;
+                    if inside && holds(at, theirs) {
+                        return true;
+                    }
+                }
+            }
+        }
+        false
+    }
+
     /// Calls back with every circle whose centre lies in a box, by index
     /// into [`Clearance::circles`], bucket by bucket.
     fn each_circle_in(&self, lo: Vec2, hi: Vec2, mut each: impl FnMut(usize)) {
@@ -298,12 +367,8 @@ impl Clearance {
             x: from.x.max(to.x) + pad,
             y: from.y.max(to.y) + pad,
         };
-        let mut blocked = false;
-        self.each_circle_in(lo, hi, |index| {
-            let (at, theirs) = self.circles[index];
-            if !blocked && circle_stops(at, theirs, from, to, radius, escape) {
-                blocked = true;
-            }
+        let blocked = self.any_circle_near(from, to, (lo, hi), pad, |at, theirs| {
+            circle_stops(at, theirs, from, to, radius, escape)
         });
         if blocked {
             return false;
