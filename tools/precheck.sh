@@ -87,7 +87,12 @@ PY
 )
 plan=$(sed -n 1p <<< "$plan_out")
 filters=$(sed -n 2p <<< "$plan_out")
-if [ -z "$plan" ]; then echo "precheck: no crate touched"; echo "PRECHECK-OK ($((SECONDS - started)) s)"; exit 0; fi
+if [ -z "$plan" ]; then
+    echo "precheck: no crate touched"
+    stamp_put "$(tree_key)" precheck
+    echo "PRECHECK-OK ($((SECONDS - started)) s)"
+    exit 0
+fi
 echo "precheck: crates $plan"
 pflags=(); for c in $plan; do pflags+=(-p "$c"); done
 
