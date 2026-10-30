@@ -1,6 +1,7 @@
 //! The client library's session folds what a server sends and nothing else.
 
 use core::convert::Infallible;
+use std::time::{Duration, Instant};
 
 use bota_client_core::{
     AckPolicy, ClientSession, IngestError, Ingested, IssuedOrder, MAX_TRACKED_ENTITIES,
@@ -472,7 +473,9 @@ fn felled_trees_and_stock_out_of_order_are_refused() {
 
 /// Half of the tracked units keep their place and as many new ones appear
 /// between them, the most each snapshot may add: folded in a merge, in a time
-/// that does not grow with every unit shifting the ones behind it.
+/// that does not grow with every unit shifting the ones behind it. The same
+/// number of new units arriving behind all the tracked ones shifts nothing, so
+/// a fold that costs about what that one does is linear.
 #[test]
 fn a_crowd_appearing_between_tracked_units_folds_in_linear_time() {
     let (_, mut session) = seated();
@@ -480,10 +483,11 @@ fn a_crowd_appearing_between_tracked_units_folds_in_linear_time() {
     let crowd = (MAX_TRACKED_ENTITIES - base.units.len()) as u32 / 2;
     let first = crowded(later(&base, 1), (0..crowd).map(|n| 10_000 + 2 * n));
     fold_view(&mut session, first).expect("a crowd folds");
-    let second = crowded(later(&base, 2), (0..2 * crowd).map(|n| 10_000 + n));
-    let started = std::time::Instant::now();
-    fold_view(&mut session, second).expect("a crowd folds");
-    assert!(started.elapsed() < FOLD_BUDGET, "{:?}", started.elapsed());
+    let between = crowded(later(&base, 2), (0..2 * crowd).map(|n| 10_000 + n));
+    let behind = crowded(later(&base, 2), (0..2 * crowd).map(|n| 100_000 + n));
+    let (between_cost, behind_cost) = costs(&session, between.clone(), behind);
+    assert_linear(between_cost, behind_cost);
+    fold_view(&mut session, between).expect("a crowd folds");
     assert_eq!(
         session.entities().len(),
         base.units.len() + 2 * crowd as usize
@@ -491,7 +495,8 @@ fn a_crowd_appearing_between_tracked_units_folds_in_linear_time() {
 }
 
 /// Room for a crowd made by forgetting, one tick's cohort at a time, the
-/// thousands of units seen once each.
+/// thousands of units seen once each: as dear as the same crowd arriving where
+/// nothing needs forgetting, give or take the sort of the cohorts.
 #[test]
 fn a_crowd_evicting_thousands_of_cohorts_folds_in_time_linear_in_them() {
     const SEEN_ONCE: u32 = 2_000;
@@ -500,22 +505,64 @@ fn a_crowd_evicting_thousands_of_cohorts_folds_in_time_linear_in_them() {
         forget_after_ticks: u32::MAX,
     });
     let base = session.current().expect("a view").clone();
+    let roomy = session.clone();
     for n in 0..SEEN_ONCE {
         let view = crowded(later(&base, 1 + n), [10_000 + n]);
         fold_view(&mut session, view).expect("a unit passes");
     }
     let room = (MAX_TRACKED_ENTITIES - base.units.len()) as u32;
     let crowd = crowded(later(&base, 1 + SEEN_ONCE), 20_000..20_000 + room);
-    let started = std::time::Instant::now();
+    // The same crowd, folded where the tracks have the room already.
+    let (evicting_cost, roomy_cost) = {
+        let (mut evicting, mut roomy_cost) = (Duration::MAX, Duration::MAX);
+        for _ in 0..FOLD_REPEATS {
+            evicting = evicting.min(cost(&session, crowd.clone()));
+            roomy_cost = roomy_cost.min(cost(&roomy, crowd.clone()));
+        }
+        (evicting, roomy_cost)
+    };
+    assert_linear(evicting_cost, roomy_cost);
     fold_view(&mut session, crowd).expect("a crowd folds");
-    assert!(started.elapsed() < FOLD_BUDGET, "{:?}", started.elapsed());
     assert_eq!(session.entities().len(), MAX_TRACKED_ENTITIES);
 }
 
-/// Far over what a linear fold of a few thousand units costs (1 ms in a
-/// release build, 5 ms in a debug one) and under what shifting or rescanning
-/// them for each one did (13 ms and 73 ms in a release build).
-const FOLD_BUDGET: std::time::Duration = std::time::Duration::from_millis(30);
+/// How often a fold is timed: the dearest runs are a preempted thread's, so
+/// the cheapest stands for what the fold costs.
+const FOLD_REPEATS: usize = 15;
+
+/// How many times a fold may cost what its linear yardstick does. The
+/// quadratic folds this guards against cost over ten times as much (shifting
+/// the tracks behind each new one, rescanning them for each cohort), a linear one
+/// about as much. Both sides of a ratio are timed in turns on the same thread,
+/// so the machine's load is on both.
+const LINEAR_RATIO: u32 = 5;
+
+/// What folding `view` into a copy of `session` costs.
+fn cost(session: &ClientSession, view: WorldView) -> Duration {
+    let mut copy = session.clone();
+    let started = Instant::now();
+    fold_view(&mut copy, view).expect("a crowd folds");
+    started.elapsed()
+}
+
+/// The cheapest of several folds of each of two views into copies of `session`,
+/// taken in turns.
+fn costs(session: &ClientSession, one: WorldView, other: WorldView) -> (Duration, Duration) {
+    let (mut one_cost, mut other_cost) = (Duration::MAX, Duration::MAX);
+    for _ in 0..FOLD_REPEATS {
+        one_cost = one_cost.min(cost(session, one.clone()));
+        other_cost = other_cost.min(cost(session, other.clone()));
+    }
+    (one_cost, other_cost)
+}
+
+#[track_caller]
+fn assert_linear(fold: Duration, yardstick: Duration) {
+    assert!(
+        fold < yardstick * LINEAR_RATIO,
+        "a fold of {fold:?} against {yardstick:?} for the same crowd with no shifting or forgetting"
+    );
+}
 
 /// What a socket does to a message: framed, taken out of the stream and
 /// decoded, as a server sends it and a client reads it.

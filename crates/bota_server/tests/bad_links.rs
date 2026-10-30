@@ -257,16 +257,23 @@ fn read_ticks(link: &mut Link, reading: &Reading) -> Vec<(Instant, u32, usize)> 
     ticks
 }
 
-/// Waits until `done` holds, polling, or panics after `limit`.
+/// Waits until `done` holds, polling, or panics after `limit`: a hang guard, not a measure.
 fn wait_for(limit: Duration, what: &str, mut done: impl FnMut() -> bool) {
     let deadline = Instant::now() + limit;
     while !done() {
         assert!(Instant::now() < deadline, "{what} within {limit:?}");
-        thread::sleep(Duration::from_millis(20));
+        thread::sleep(Duration::from_millis(5));
     }
 }
 
+/// The match's own clock decides how long the stall lasts: ticks, not seconds.
 fn a_stalled_client_slows_neither_the_tick_nor_the_other_player(wire: Wire) {
+    /// Ticks the steady player plays before the stall (its yardstick for the pace), after it
+    /// begins until the line's in-flight data is surely delivered, and while it is held.
+    const BEFORE: u32 = 60;
+    const SETTLE: u32 = 15;
+    const HELD: u32 = 90;
+    let hang_guard = Duration::from_secs(120);
     let server = serve(opts(TickMode::Realtime, 30), wire);
     let line = Proxy::start(server);
     let join = |address: Endpoint, name: &'static str| {
@@ -281,20 +288,27 @@ fn a_stalled_client_slows_neither_the_tick_nor_the_other_player(wire: Wire) {
     let (stalled_reading, stalled) = join(endpoint(wire, &line.addr()), "stalled");
     let (steady_reading, steady) = join(endpoint(wire, &server.to_string()), "steady");
     let tick = |reading: &Reading| reading.last_tick.load(Ordering::SeqCst);
-    wait_for(
-        Duration::from_secs(30),
-        "both clients see the match",
-        || tick(&stalled_reading) > 30 && tick(&steady_reading) > 30,
-    );
+    let steady_reaches = |tick_wanted: u32, what: &str| {
+        wait_for(hang_guard, what, || tick(&steady_reading) >= tick_wanted);
+    };
+    wait_for(hang_guard, "both clients see the match", || {
+        tick(&stalled_reading) > 30 && tick(&steady_reading) > 30
+    });
+    let first = tick(&steady_reading);
+    steady_reaches(first + BEFORE, "the match is played unstalled");
     line.stall(Dir::Down, true);
-    let stall = Instant::now();
-    thread::sleep(Duration::from_secs(3));
-    line.stall(Dir::Down, false);
-    wait_for(
-        Duration::from_secs(30),
-        "the stalled client catches up",
-        || tick(&stalled_reading) + 10 >= tick(&steady_reading),
+    let began = tick(&steady_reading);
+    steady_reaches(began + SETTLE, "the match goes on past the stall");
+    let (settled, frozen) = (Instant::now(), tick(&stalled_reading));
+    steady_reaches(
+        began + SETTLE + HELD,
+        "the match goes on while a client is stalled",
     );
+    let (released, still) = (Instant::now(), tick(&stalled_reading));
+    line.stall(Dir::Down, false);
+    wait_for(hang_guard, "the stalled client catches up", || {
+        tick(&stalled_reading) + 10 >= tick(&steady_reading)
+    });
     for reading in [&stalled_reading, &steady_reading] {
         reading.stop.store(true, Ordering::SeqCst);
     }
@@ -302,31 +316,36 @@ fn a_stalled_client_slows_neither_the_tick_nor_the_other_player(wire: Wire) {
         stalled.join().expect("stalled"),
         steady.join().expect("steady"),
     );
-    let during = |ticks: &[(Instant, u32, usize)]| {
-        let inside: Vec<u32> = ticks
+    assert_eq!(still, frozen, "the stalled client was sent nothing");
+    assert!(
+        stalled
             .iter()
-            .filter(|(at, ..)| *at > stall + Duration::from_millis(500))
-            .filter(|(at, ..)| *at < stall + Duration::from_millis(2_500))
-            .map(|(_, tick, _)| *tick)
-            .collect();
-        (
-            inside.len(),
-            inside.first().copied(),
-            inside.last().copied(),
-        )
+            .all(|(at, ..)| *at <= settled || *at >= released),
+        "the stalled client was sent nothing while the line held"
+    );
+    // The other player was sent the ticks that fell due, at the pace it had before.
+    let sent = steady
+        .iter()
+        .filter(|(at, tick, _)| *at > settled && *at < released && *tick > began)
+        .count();
+    assert!(
+        sent >= HELD as usize / 2,
+        "the other player was sent {sent} of {HELD} ticks"
+    );
+    // Thousandths of a tick a second the steady player had between two ticks, by when they came.
+    let pace = |from: u32, to: u32| {
+        let at = |wanted: u32| steady.iter().find(|(_, tick, _)| *tick >= wanted).copied();
+        let (start, end) = at(from).zip(at(to)).expect("both ticks came");
+        u128::from(end.1 - start.1) * 1_000_000 / end.0.duration_since(start.0).as_micros().max(1)
     };
-    // Sixty ticks are due in those two seconds; a tick held up by the stall would show as few.
-    let (count, first, last) = during(&steady);
-    assert!(
-        count >= 30,
-        "the other player was sent {count} ticks in two seconds"
+    let (before, held) = (
+        pace(first, began),
+        pace(began + SETTLE, began + SETTLE + HELD),
     );
     assert!(
-        last.zip(first)
-            .is_some_and(|(last, first)| last - first >= 30),
-        "the clock kept its pace"
+        held * 4 >= before,
+        "the clock kept its pace: {held} thousandths of a tick a second while a client was stalled, {before} before"
     );
-    assert_eq!(during(&stalled).0, 0, "the stalled client was sent nothing");
     assert!(
         stalled.iter().any(|(.., skipped)| *skipped > 0),
         "the stalled client was skipped ahead, its ticks' events kept"
