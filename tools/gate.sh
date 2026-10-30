@@ -4,7 +4,8 @@
 #   tools/gate.sh
 #
 # Steps: clippy, clippy-ui, wasm, wasm-web, test (profile test-release), test-product (bota_proto as the product builds), test-ui, bench (the dummy bench's digest
-# checks), deny, fmt (last: it changes no code).
+# checks), deny, import (the item importer, tools/import_items: its own checks and, with a Dota 2 install, that the
+# committed item table is what the install gives), then fmt and import-fmt (last: they change no code).
 # Environment:
 #   GATE_STEP_LOG=FILE       append the seconds each step took to FILE (tab separated)
 #   GATE_PRECHECKED=1        start although tools/precheck.sh has not passed this tree
@@ -39,6 +40,14 @@ fi
 skip=" ${GATE_SKIP:-} "
 skipped=0
 
+installs() { # the Dota 2 installs the importer would find, as heatel looks for them
+    local library
+    for library in "$HOME/.var/app/com.valvesoftware.Steam/.local/share/Steam" "$HOME/.steam/steam" \
+        "$HOME/.local/share/Steam"; do
+        [ -f "$library/steamapps/common/dota 2 beta/game/dota/pak01_dir.vpk" ] && echo "$library"
+    done
+}
+
 step() { # name command...
     local name=$1
     shift
@@ -68,8 +77,19 @@ step test-product cargo test -p bota_proto --release
 step test-ui cargo test -p bota_client_core --features ui --profile test-release
 step bench cargo bench -q -p bota_server --bench dummy -- --test
 step deny cargo deny check
+
+# The importer reads the install with heatel, a checkout beside this one.
+importer=(--manifest-path tools/import_items/Cargo.toml)
+step import-clippy cargo clippy "${importer[@]}" --all-targets -- -D warnings
+if [ -n "$(installs)" ] || [ "${GATE_REQUIRE_INSTALL:-0}" = 1 ]; then
+    step import cargo test --release "${importer[@]}" -- --include-ignored
+else
+    echo "== import: no Dota 2 install, the committed table is not checked"
+    step import cargo test --release "${importer[@]}"
+fi
 # Formatting changes no code, so it comes last: a gate that fails only here needs `cargo fmt` and an amend, not a rerun.
 step fmt cargo fmt --all --check
+step import-fmt cargo fmt "${importer[@]}" --check
 
 if [ "$skipped" = 1 ]; then
     echo "GATE-OK (with skipped steps: not a pass)"
