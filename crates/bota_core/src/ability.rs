@@ -72,6 +72,9 @@ pub struct AbilityDef {
     /// The id it answers to on the wire: its line of the protocol's id
     /// registry, which [`ABILITIES`] places it at.
     pub id: AbilityId,
+    /// Dota's internal name of the ability, its line of the id registry:
+    /// what every data file and asset knows it by.
+    pub key: &'static str,
     /// What it is called.
     pub name: &'static str,
     /// How it is aimed.
@@ -138,6 +141,7 @@ pub struct AbilityDef {
 /// Its id is no id: [`ABILITIES`] refuses an entry that names none.
 pub(crate) const BARE_ABILITY: AbilityDef = AbilityDef {
     id: AbilityId(u16::MAX),
+    key: "",
     name: "",
     aim: Aim::Own,
     max_level: 0,
@@ -163,9 +167,15 @@ pub(crate) const BARE_ABILITY: AbilityDef = AbilityDef {
 
 /// A courier's ability: one level, cast for no mana, held from its owner's
 /// first level.
-const fn courier(id: AbilityId, name: &'static str, cooldown: &'static [u32]) -> AbilityDef {
+const fn courier(
+    id: AbilityId,
+    key: &'static str,
+    name: &'static str,
+    cooldown: &'static [u32],
+) -> AbilityDef {
     AbilityDef {
         id,
+        key,
         name,
         max_level: 1,
         passive: false,
@@ -196,6 +206,7 @@ pub const ABILITIES: [AbilityDef; ABILITY_COUNT] = {
         let id = def.id.0 as usize;
         assert!(id < ABILITY_COUNT, "an ability id runs past the table");
         assert!(!placed[id], "two abilities share an id");
+        assert!(!def.key.is_empty(), "an ability has no key");
         placed[id] = true;
         every[id] = def;
         at += 1;
@@ -204,7 +215,7 @@ pub const ABILITIES: [AbilityDef; ABILITY_COUNT] = {
 };
 
 /// The abilities of the heroes and the couriers, each carrying its id.
-const HERO_ABILITIES: [AbilityDef; 20] = [
+const HERO_ABILITIES: &[AbilityDef] = &[
     pudge::MEAT_HOOK,
     pudge::ROT,
     pudge::FLESH_HEAP,
@@ -217,16 +228,37 @@ const HERO_ABILITIES: [AbilityDef; 20] = [
     AbilityDef {
         immediate: true,
         granted_at: Some(rules::COURIER_BURST_LEVEL),
-        ..courier(AbilityId::BURST, "Burst", &[rules::COURIER_BURST_COOLDOWN])
+        ..courier(
+            AbilityId::BURST,
+            "courier_burst",
+            "Burst",
+            &[rules::COURIER_BURST_COOLDOWN],
+        )
     },
-    courier(AbilityId::RETURN_ITEMS, "Return", &[0]),
-    courier(AbilityId::TAKE_STASH, "Take Stash", &[0]),
-    courier(AbilityId::DELIVER, "Deliver", &[0]),
+    courier(
+        AbilityId::RETURN_ITEMS,
+        "courier_return_to_base",
+        "Return",
+        &[0],
+    ),
+    courier(
+        AbilityId::TAKE_STASH,
+        "courier_take_stash_items",
+        "Take Stash",
+        &[0],
+    ),
+    courier(
+        AbilityId::DELIVER,
+        "courier_transfer_items",
+        "Deliver",
+        &[0],
+    ),
     AbilityDef {
         immediate: true,
         granted_at: Some(rules::COURIER_SHIELD_LEVEL),
         ..courier(
             AbilityId::SHIELD,
+            "courier_shield",
             "Shield",
             &[rules::COURIER_SHIELD_COOLDOWN],
         )
@@ -242,6 +274,7 @@ const HERO_ABILITIES: [AbilityDef; 20] = [
     // its item now. Its id is never handed out again.
     AbilityDef {
         id: AbilityId(16),
+        key: "bota_throw_grenade",
         name: "Throw Grenade",
         retired: true,
         ..BARE_ABILITY

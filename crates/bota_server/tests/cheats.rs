@@ -114,6 +114,11 @@ fn creeps(view: &WorldView) -> usize {
         .count()
 }
 
+/// Whether the client's hero carries an item.
+fn carries(view: &WorldView, item: ItemId) -> bool {
+    my_hero(view).is_some_and(|hero| hero.items.iter().flatten().any(|held| held.id == item))
+}
+
 /// Where the test points: open ground a little way from the Radiant
 /// fountain of the demo map.
 fn spot() -> Vec2 {
@@ -133,16 +138,14 @@ fn steps() -> Vec<Step> {
             asked: Typed("dota_dev hero_level 3"),
             holds: |v| me(v).level == 4,
         },
+        // Items by their Dota keys, in the chat's and the console's form.
         Step {
-            asked: Typed("-item Butterfly"),
-            holds: |v| {
-                my_hero(v).is_some_and(|hero| {
-                    hero.items
-                        .iter()
-                        .flatten()
-                        .any(|item| item.id == ItemId::BUTTERFLY)
-                })
-            },
+            asked: Typed("-item item_blink"),
+            holds: |v| carries(v, ItemId::BLINK_DAGGER),
+        },
+        Step {
+            asked: Typed("dota_create_item item_flask"),
+            holds: |v| carries(v, ItemId::HEALING_SALVE),
         },
         Step {
             asked: Typed("-startgame"),

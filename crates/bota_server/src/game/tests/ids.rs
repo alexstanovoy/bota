@@ -1,54 +1,7 @@
-//! The ids the server hands out are the ones the protocol's registry holds.
+//! Every effect the server hands out is shown under its registered id.
 
-use bota_core::{
-    ABILITIES, EFFECTS, HEROES, ITEMS, ModifierKind, NEUTRAL_ABILITIES, NEUTRALS, effect_def,
-    spell_effect,
-};
+use bota_core::{ModifierKind, NEUTRAL_ABILITIES, effect_def, spell_effect};
 use bota_proto::{DamageKind, EffectId, Fixed, IdSpace, RegisteredId, registered};
-
-/// Each id of `space` the server defines, by `names[id]`, is registered under
-/// that name and live, and every live one is defined. A slot left in `names`
-/// for a retired id is its placeholder.
-fn defined_as_registered(space: IdSpace, names: &[Option<&str>]) {
-    let registry: Vec<RegisteredId> = registered(space).collect();
-    for (id, name) in names.iter().enumerate() {
-        let entry = registry
-            .iter()
-            .find(|entry| usize::from(entry.id) == id)
-            .unwrap_or_else(|| panic!("{space:?} {id} is not in registry/ids.txt"));
-        if let Some(name) = name {
-            assert_eq!(*name, entry.name, "{space:?} {id} changed meaning");
-        }
-    }
-    for entry in registry.iter().filter(|entry| !entry.retired) {
-        assert!(
-            usize::from(entry.id) < names.len(),
-            "{space:?} {} {} is live but the server lacks it",
-            entry.id,
-            entry.name
-        );
-    }
-}
-
-#[test]
-fn the_tables_keep_their_registered_ids() {
-    let heroes: Vec<_> = HEROES.iter().map(|hero| Some(hero.name)).collect();
-    defined_as_registered(IdSpace::Hero, &heroes);
-    let abilities: Vec<_> = ABILITIES
-        .iter()
-        .map(|ability| (!ability.retired).then_some(ability.name))
-        .collect();
-    defined_as_registered(IdSpace::Ability, &abilities);
-    let items: Vec<_> = ITEMS
-        .iter()
-        .map(|item| (!item.retired).then_some(item.name))
-        .collect();
-    defined_as_registered(IdSpace::Item, &items);
-    let effects: Vec<_> = EFFECTS.iter().map(|effect| Some(effect.name)).collect();
-    defined_as_registered(IdSpace::Effect, &effects);
-    let neutrals: Vec<_> = NEUTRALS.iter().map(|neutral| Some(neutral.name)).collect();
-    defined_as_registered(IdSpace::Neutral, &neutrals);
-}
 
 /// One modifier of every kind. A kind added to the enum fails to compile in
 /// the match below until it is listed here as well.
@@ -189,7 +142,7 @@ fn every_effect_is_shown_under_its_registered_id() {
         .collect();
     shown.push((EffectId::FORTIFIED.0, "Fortified".to_string()));
     shown.push((EffectId::ILLUSION.0, "Illusion".to_string()));
-    for entry in &NEUTRAL_ABILITIES {
+    for entry in NEUTRAL_ABILITIES {
         let Some(effect) = spell_effect(entry.ability) else {
             continue;
         };
@@ -198,12 +151,15 @@ fn every_effect_is_shown_under_its_registered_id() {
     }
     let registry: Vec<RegisteredId> = registered(IdSpace::Effect).collect();
     for (id, name) in &shown {
-        let entry = registry
-            .iter()
-            .find(|entry| entry.id == *id)
-            .unwrap_or_else(|| panic!("effect {id} ({name}) is not in registry/ids.txt"));
-        assert_eq!(entry.name, name, "effect {id} changed meaning");
-        assert!(!entry.retired, "effect {id} ({name}) is retired");
+        let def = effect_def(EffectId(*id))
+            .unwrap_or_else(|| panic!("effect {id} ({name}) is retired or not in the table"));
+        assert_eq!(def.name, name, "effect {id} changed meaning");
+        assert!(
+            registry
+                .iter()
+                .any(|entry| entry.id == *id && !entry.retired),
+            "effect {id} ({name}) is not live in registry/ids.txt"
+        );
     }
     for entry in registry.iter().filter(|entry| !entry.retired) {
         assert!(

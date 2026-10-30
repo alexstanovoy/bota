@@ -19,6 +19,7 @@
 
 use bota_proto::{Fixed, NeutralId, UnitKind};
 
+use crate::table::placed_by_id;
 use crate::unit::{BARE_UNIT, NO_GROWTH};
 use crate::{GoldRange, Growth, NeutralAbility, UnitDef, rules};
 
@@ -154,7 +155,8 @@ pub struct NeutralDef {
     pub kind: NeutralKind,
     /// What the game calls it.
     pub name: &'static str,
-    /// The game's unit name, which its model and its art are found by.
+    /// Dota's internal name of the unit, its line of the id registry: what
+    /// its model, its art and every data file know it by.
     pub unit: &'static str,
     /// What it can do, in slot order.
     pub abilities: &'static [NeutralAbility],
@@ -173,7 +175,6 @@ const _: () = {
     let mut at = 0;
     while at < NEUTRALS.len() {
         let neutral = &NEUTRALS[at];
-        assert!(neutral.kind as usize == at);
         assert!(neutral.abilities.len() <= MAX_NEUTRAL_ABILITIES);
         assert!(matches!(neutral.def.kind, UnitKind::CreepNeutral));
         at += 1;
@@ -221,8 +222,8 @@ const fn neutral(
     }
 }
 
-/// Every kind, in the order of [`NeutralKind`].
-pub const NEUTRALS: [NeutralDef; 47] = [
+/// Every kind, each carrying its kind; [`NEUTRALS`] places them by it.
+const NEUTRAL_ROWS: &[NeutralDef] = &[
     neutral(
         NeutralKind::Kobold,
         "Kobold",
@@ -1689,3 +1690,10 @@ pub const NEUTRALS: [NeutralDef; 47] = [
         )
     },
 ];
+
+/// How many neutral ids the protocol has ever handed out.
+pub const NEUTRAL_COUNT: usize = NEUTRAL_ROWS.len();
+
+/// Every kind, indexed by [`NeutralKind`]: its [`NeutralId`].
+pub const NEUTRALS: [NeutralDef; NEUTRAL_COUNT] =
+    placed_by_id!(NEUTRAL_ROWS, NEUTRAL_COUNT, |row| row.kind as usize);

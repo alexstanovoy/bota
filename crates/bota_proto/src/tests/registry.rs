@@ -32,7 +32,7 @@ fn every_id_space_is_numbered_densely_once() {
         );
         let mut names = HashSet::new();
         for entry in &entries {
-            assert_eq!(entry.name, entry.name.trim(), "{entry:?}");
+            assert!(is_dota_key(space, entry.name), "{entry:?} is no Dota key");
             assert!(
                 names.insert(entry.name),
                 "{space:?} names {} twice",
@@ -40,6 +40,24 @@ fn every_id_space_is_numbered_densely_once() {
             );
         }
     }
+}
+
+/// Whether a name has the form of Dota's internal names in its space: lower
+/// case words joined by underscores, under the space's prefix. An effect Dota
+/// has no modifier for is bota's own.
+fn is_dota_key(space: IdSpace, name: &str) -> bool {
+    let prefixes: &[&str] = match space {
+        IdSpace::Hero => &["npc_dota_hero_"],
+        IdSpace::Ability => &[""],
+        IdSpace::Item => &["item_"],
+        IdSpace::Effect => &["modifier_", "bota_"],
+        IdSpace::Neutral => &["npc_dota_"],
+    };
+    !name.is_empty()
+        && name
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_')
+        && prefixes.iter().any(|prefix| name.starts_with(prefix))
 }
 
 #[test]
@@ -273,205 +291,337 @@ fn render(format: &Format) -> String {
     }
 }
 
-/// Every named id constant is the registered id of the name the registry
+/// Every named id constant, with the key of its line in `registry/ids.txt`.
+/// Only what code names has a constant: the tables name the rest.
+const NAMED: &[(IdSpace, u16, &str)] = &[
+    (IdSpace::Hero, HeroId::PUDGE.0, "npc_dota_hero_pudge"),
+    (
+        IdSpace::Hero,
+        HeroId::SHADOW_FIEND.0,
+        "npc_dota_hero_nevermore",
+    ),
+    (IdSpace::Ability, AbilityId::MEAT_HOOK.0, "pudge_meat_hook"),
+    (IdSpace::Ability, AbilityId::ROT.0, "pudge_rot"),
+    (
+        IdSpace::Ability,
+        AbilityId::FLESH_HEAP.0,
+        "pudge_innate_graft_flesh",
+    ),
+    (IdSpace::Ability, AbilityId::DISMEMBER.0, "pudge_dismember"),
+    (IdSpace::Ability, AbilityId::BURST.0, "courier_burst"),
+    (
+        IdSpace::Ability,
+        AbilityId::RETURN_ITEMS.0,
+        "courier_return_to_base",
+    ),
+    (
+        IdSpace::Ability,
+        AbilityId::TAKE_STASH.0,
+        "courier_take_stash_items",
+    ),
+    (
+        IdSpace::Ability,
+        AbilityId::DELIVER.0,
+        "courier_transfer_items",
+    ),
+    (IdSpace::Ability, AbilityId::SHIELD.0, "courier_shield"),
+    (
+        IdSpace::Ability,
+        AbilityId::RAZE_NEAR.0,
+        "nevermore_shadowraze1",
+    ),
+    (
+        IdSpace::Ability,
+        AbilityId::RAZE_MID.0,
+        "nevermore_shadowraze2",
+    ),
+    (
+        IdSpace::Ability,
+        AbilityId::RAZE_FAR.0,
+        "nevermore_shadowraze3",
+    ),
+    (IdSpace::Ability, AbilityId::REQUIEM.0, "nevermore_requiem"),
+    (
+        IdSpace::Ability,
+        AbilityId::NECROMASTERY.0,
+        "nevermore_necromastery",
+    ),
+    (
+        IdSpace::Ability,
+        AbilityId::PRESENCE.0,
+        "nevermore_dark_lord",
+    ),
+    (
+        IdSpace::Ability,
+        AbilityId::FEAST_OF_SOULS.0,
+        "nevermore_frenzy",
+    ),
+    (
+        IdSpace::Ability,
+        AbilityId::MEAT_SHIELD.0,
+        "pudge_flesh_heap",
+    ),
+    (IdSpace::Ability, AbilityId::CAPTURE.0, "ability_capture"),
+    (IdSpace::Ability, AbilityId::LAMP_USE.0, "ability_lamp_use"),
+    (IdSpace::Item, ItemId::BOOTS.0, "item_boots"),
+    (IdSpace::Item, ItemId::CLARITY.0, "item_clarity"),
+    (IdSpace::Item, ItemId::HEALING_SALVE.0, "item_flask"),
+    (IdSpace::Item, ItemId::IRON_BRANCH.0, "item_branches"),
+    (IdSpace::Item, ItemId::OBSERVER_WARD.0, "item_ward_observer"),
+    (
+        IdSpace::Item,
+        ItemId::QUELLING_BLADE.0,
+        "item_quelling_blade",
+    ),
+    (IdSpace::Item, ItemId::SENTRY_WARD.0, "item_ward_sentry"),
+    (IdSpace::Item, ItemId::TANGO.0, "item_tango"),
+    (IdSpace::Item, ItemId::TOWN_PORTAL_SCROLL.0, "item_tpscroll"),
+    (IdSpace::Item, ItemId::CIRCLET.0, "item_circlet"),
+    (IdSpace::Item, ItemId::GAUNTLETS.0, "item_gauntlets"),
+    (IdSpace::Item, ItemId::SLIPPERS.0, "item_slippers"),
+    (IdSpace::Item, ItemId::MANTLE.0, "item_mantle"),
+    (IdSpace::Item, ItemId::BELT.0, "item_belt_of_strength"),
+    (IdSpace::Item, ItemId::BAND.0, "item_boots_of_elves"),
+    (IdSpace::Item, ItemId::ROBE.0, "item_robe"),
+    (IdSpace::Item, ItemId::OGRE_AXE.0, "item_ogre_axe"),
+    (
+        IdSpace::Item,
+        ItemId::BLADE_OF_ALACRITY.0,
+        "item_blade_of_alacrity",
+    ),
+    (
+        IdSpace::Item,
+        ItemId::STAFF_OF_WIZARDRY.0,
+        "item_staff_of_wizardry",
+    ),
+    (IdSpace::Item, ItemId::GLOVES.0, "item_gloves"),
+    (
+        IdSpace::Item,
+        ItemId::BLADES_OF_ATTACK.0,
+        "item_blades_of_attack",
+    ),
+    (IdSpace::Item, ItemId::BROADSWORD.0, "item_broadsword"),
+    (IdSpace::Item, ItemId::QUARTERSTAFF.0, "item_quarterstaff"),
+    (
+        IdSpace::Item,
+        ItemId::RING_OF_PROTECTION.0,
+        "item_ring_of_protection",
+    ),
+    (IdSpace::Item, ItemId::CHAINMAIL.0, "item_chainmail"),
+    (IdSpace::Item, ItemId::RING_OF_REGEN.0, "item_ring_of_regen"),
+    (IdSpace::Item, ItemId::SAGES_MASK.0, "item_sobi_mask"),
+    (
+        IdSpace::Item,
+        ItemId::VITALITY_BOOSTER.0,
+        "item_vitality_booster",
+    ),
+    (
+        IdSpace::Item,
+        ItemId::ENERGY_BOOSTER.0,
+        "item_energy_booster",
+    ),
+    (IdSpace::Item, ItemId::POWER_TREADS.0, "item_power_treads"),
+    (IdSpace::Item, ItemId::PHASE_BOOTS.0, "item_phase_boots"),
+    (IdSpace::Item, ItemId::BLINK_DAGGER.0, "item_blink"),
+    (IdSpace::Item, ItemId::BRACER.0, "item_bracer"),
+    (IdSpace::Item, ItemId::WRAITH_BAND.0, "item_wraith_band"),
+    (IdSpace::Item, ItemId::NULL_TALISMAN.0, "item_null_talisman"),
+    (IdSpace::Item, ItemId::MAGIC_STICK.0, "item_magic_stick"),
+    (IdSpace::Item, ItemId::MAGIC_WAND.0, "item_magic_wand"),
+    (IdSpace::Item, ItemId::RECIPE_BRACER.0, "item_recipe_bracer"),
+    (
+        IdSpace::Item,
+        ItemId::RECIPE_WRAITH_BAND.0,
+        "item_recipe_wraith_band",
+    ),
+    (
+        IdSpace::Item,
+        ItemId::RECIPE_NULL_TALISMAN.0,
+        "item_recipe_null_talisman",
+    ),
+    (
+        IdSpace::Item,
+        ItemId::RECIPE_MAGIC_WAND.0,
+        "item_recipe_magic_wand",
+    ),
+    (IdSpace::Item, ItemId::MANGO.0, "item_enchanted_mango"),
+    (IdSpace::Item, ItemId::EAGLESONG.0, "item_eagle"),
+    (IdSpace::Item, ItemId::CLAYMORE.0, "item_claymore"),
+    (
+        IdSpace::Item,
+        ItemId::TALISMAN_OF_EVASION.0,
+        "item_talisman_of_evasion",
+    ),
+    (IdSpace::Item, ItemId::BUTTERFLY.0, "item_butterfly"),
+    (IdSpace::Item, ItemId::JAVELIN.0, "item_javelin"),
+    (IdSpace::Item, ItemId::DEMON_EDGE.0, "item_demon_edge"),
+    (
+        IdSpace::Item,
+        ItemId::BLITZ_KNUCKLES.0,
+        "item_blitz_knuckles",
+    ),
+    (
+        IdSpace::Item,
+        ItemId::RECIPE_MONKEY_KING_BAR.0,
+        "item_recipe_monkey_king_bar",
+    ),
+    (
+        IdSpace::Item,
+        ItemId::MONKEY_KING_BAR.0,
+        "item_monkey_king_bar",
+    ),
+    (IdSpace::Item, ItemId::WIND_LACE.0, "item_wind_lace"),
+    (IdSpace::Item, ItemId::BLOOD_GRENADE.0, "item_blood_grenade"),
+    (
+        IdSpace::Item,
+        ItemId::WARD_DISPENSER.0,
+        "item_ward_dispenser",
+    ),
+    (
+        IdSpace::Effect,
+        EffectId::MENDING.0,
+        "modifier_flask_healing",
+    ),
+    (
+        IdSpace::Effect,
+        EffectId::CLARITY.0,
+        "modifier_clarity_potion",
+    ),
+    (
+        IdSpace::Effect,
+        EffectId::FOUNTAIN.0,
+        "modifier_fountain_aura_buff",
+    ),
+    (IdSpace::Effect, EffectId::STUNNED.0, "modifier_stunned"),
+    (IdSpace::Effect, EffectId::SLOWED.0, "bota_slowed"),
+    (IdSpace::Effect, EffectId::BURNING.0, "bota_burning"),
+    (
+        IdSpace::Effect,
+        EffectId::HASTENED.0,
+        "modifier_courier_burst",
+    ),
+    (
+        IdSpace::Effect,
+        EffectId::SHIELDED.0,
+        "modifier_courier_shield",
+    ),
+    (
+        IdSpace::Effect,
+        EffectId::PHASED.0,
+        "modifier_item_phase_boots_active",
+    ),
+    (
+        IdSpace::Effect,
+        EffectId::FLESH_HEAP.0,
+        "modifier_pudge_innate_graft_flesh",
+    ),
+    (
+        IdSpace::Effect,
+        EffectId::SOULS.0,
+        "modifier_nevermore_necromastery",
+    ),
+    (
+        IdSpace::Effect,
+        EffectId::ARMOR_BROKEN.0,
+        "modifier_nevermore_presence",
+    ),
+    (
+        IdSpace::Effect,
+        EffectId::GUARDED.0,
+        "modifier_tower_armor_bonus",
+    ),
+    (
+        IdSpace::Effect,
+        EffectId::INSPIRED.0,
+        "modifier_flagbearer_creep_aura_effect",
+    ),
+    (
+        IdSpace::Effect,
+        EffectId::SHADOWRAZE.0,
+        "modifier_nevermore_shadowraze_debuff",
+    ),
+    (IdSpace::Effect, EffectId::ROT.0, "modifier_pudge_rot"),
+    (
+        IdSpace::Effect,
+        EffectId::FEARED.0,
+        "modifier_nevermore_requiem_fear",
+    ),
+    (
+        IdSpace::Effect,
+        EffectId::MAGIC_BROKEN.0,
+        "modifier_nevermore_requiem_slow",
+    ),
+    (
+        IdSpace::Effect,
+        EffectId::FEASTING.0,
+        "modifier_nevermore_frenzy",
+    ),
+    (
+        IdSpace::Effect,
+        EffectId::FEAST_LINGER.0,
+        "modifier_nevermore_feast_of_souls_linger",
+    ),
+    (
+        IdSpace::Effect,
+        EffectId::BLOOD_GRENADE.0,
+        "modifier_item_blood_grenade_debuff",
+    ),
+    (IdSpace::Effect, EffectId::ROOTED.0, "modifier_rooted"),
+    (IdSpace::Effect, EffectId::DISARMED.0, "modifier_disarmed"),
+    (IdSpace::Effect, EffectId::BROKEN.0, "modifier_break"),
+    (
+        IdSpace::Effect,
+        EffectId::FORTIFIED.0,
+        "modifier_fountain_glyph",
+    ),
+    (
+        IdSpace::Effect,
+        EffectId::MEAT_SHIELD.0,
+        "modifier_pudge_flesh_heap_block",
+    ),
+    (
+        IdSpace::Effect,
+        EffectId::DISMEMBERED.0,
+        "modifier_pudge_dismember",
+    ),
+    (
+        IdSpace::Effect,
+        EffectId::BACKDOOR_PROTECTION.0,
+        "modifier_backdoor_protection_active",
+    ),
+    (IdSpace::Effect, EffectId::TIMED_LIFE.0, "modifier_kill"),
+    (
+        IdSpace::Effect,
+        EffectId::NEUTRAL_UPGRADE.0,
+        "modifier_neutral_upgrade",
+    ),
+    (
+        IdSpace::Effect,
+        EffectId::VISION_GRANT.0,
+        "modifier_lamp_on",
+    ),
+    (IdSpace::Effect, EffectId::LAMP_OFF.0, "modifier_lamp_off"),
+    (
+        IdSpace::Effect,
+        EffectId::CAPTURE_GUARD.0,
+        "modifier_watch_tower_invulnerable",
+    ),
+    (
+        IdSpace::Effect,
+        EffectId::SHRINE_READY.0,
+        "bota_shrine_ready",
+    ),
+];
+
+/// Every named id constant is the registered id of the key the registry
 /// gives it, so a constant cannot drift off its line in `registry/ids.txt`.
 #[test]
 fn every_named_id_constant_sits_on_its_registry_line() {
-    let named: [(IdSpace, u16, &str); 109] = [
-        (IdSpace::Hero, HeroId::PUDGE.0, "Pudge"),
-        (IdSpace::Hero, HeroId::SHADOW_FIEND.0, "Shadow Fiend"),
-        (IdSpace::Ability, AbilityId::MEAT_HOOK.0, "Meat Hook"),
-        (IdSpace::Ability, AbilityId::ROT.0, "Rot"),
-        (IdSpace::Ability, AbilityId::FLESH_HEAP.0, "Flesh Heap"),
-        (IdSpace::Ability, AbilityId::DISMEMBER.0, "Dismember"),
-        (IdSpace::Ability, AbilityId::BURST.0, "Burst"),
-        (IdSpace::Ability, AbilityId::RETURN_ITEMS.0, "Return"),
-        (IdSpace::Ability, AbilityId::TAKE_STASH.0, "Take Stash"),
-        (IdSpace::Ability, AbilityId::DELIVER.0, "Deliver"),
-        (IdSpace::Ability, AbilityId::SHIELD.0, "Shield"),
-        (
-            IdSpace::Ability,
-            AbilityId::RAZE_NEAR.0,
-            "Shadowraze (Near)",
-        ),
-        (IdSpace::Ability, AbilityId::RAZE_MID.0, "Shadowraze (Mid)"),
-        (IdSpace::Ability, AbilityId::RAZE_FAR.0, "Shadowraze (Far)"),
-        (IdSpace::Ability, AbilityId::REQUIEM.0, "Requiem of Souls"),
-        (IdSpace::Ability, AbilityId::NECROMASTERY.0, "Necromastery"),
-        (
-            IdSpace::Ability,
-            AbilityId::PRESENCE.0,
-            "Presence of the Dark Lord",
-        ),
-        (
-            IdSpace::Ability,
-            AbilityId::FEAST_OF_SOULS.0,
-            "Feast of Souls",
-        ),
-        (IdSpace::Ability, AbilityId::MEAT_SHIELD.0, "Meat Shield"),
-        (IdSpace::Ability, AbilityId::CAPTURE.0, "Capture"),
-        (IdSpace::Ability, AbilityId::LAMP_USE.0, "Lamp Use"),
-        (IdSpace::Item, ItemId::BOOTS.0, "Boots of Speed"),
-        (IdSpace::Item, ItemId::CLARITY.0, "Clarity"),
-        (IdSpace::Item, ItemId::HEALING_SALVE.0, "Healing Salve"),
-        (IdSpace::Item, ItemId::IRON_BRANCH.0, "Iron Branch"),
-        (IdSpace::Item, ItemId::OBSERVER_WARD.0, "Observer Ward"),
-        (IdSpace::Item, ItemId::QUELLING_BLADE.0, "Quelling Blade"),
-        (IdSpace::Item, ItemId::SENTRY_WARD.0, "Sentry Ward"),
-        (IdSpace::Item, ItemId::TANGO.0, "Tango"),
-        (
-            IdSpace::Item,
-            ItemId::TOWN_PORTAL_SCROLL.0,
-            "Town Portal Scroll",
-        ),
-        (IdSpace::Item, ItemId::CIRCLET.0, "Circlet"),
-        (IdSpace::Item, ItemId::GAUNTLETS.0, "Gauntlets of Strength"),
-        (IdSpace::Item, ItemId::SLIPPERS.0, "Slippers of Agility"),
-        (IdSpace::Item, ItemId::MANTLE.0, "Mantle of Intelligence"),
-        (IdSpace::Item, ItemId::BELT.0, "Belt of Strength"),
-        (IdSpace::Item, ItemId::BAND.0, "Band of Elvenskin"),
-        (IdSpace::Item, ItemId::ROBE.0, "Robe of the Magi"),
-        (IdSpace::Item, ItemId::OGRE_AXE.0, "Ogre Axe"),
-        (
-            IdSpace::Item,
-            ItemId::BLADE_OF_ALACRITY.0,
-            "Blade of Alacrity",
-        ),
-        (
-            IdSpace::Item,
-            ItemId::STAFF_OF_WIZARDRY.0,
-            "Staff of Wizardry",
-        ),
-        (IdSpace::Item, ItemId::GLOVES.0, "Gloves of Haste"),
-        (
-            IdSpace::Item,
-            ItemId::BLADES_OF_ATTACK.0,
-            "Blades of Attack",
-        ),
-        (IdSpace::Item, ItemId::BROADSWORD.0, "Broadsword"),
-        (IdSpace::Item, ItemId::QUARTERSTAFF.0, "Quarterstaff"),
-        (
-            IdSpace::Item,
-            ItemId::RING_OF_PROTECTION.0,
-            "Ring of Protection",
-        ),
-        (IdSpace::Item, ItemId::CHAINMAIL.0, "Chainmail"),
-        (IdSpace::Item, ItemId::RING_OF_REGEN.0, "Ring of Regen"),
-        (IdSpace::Item, ItemId::SAGES_MASK.0, "Sage's Mask"),
-        (
-            IdSpace::Item,
-            ItemId::VITALITY_BOOSTER.0,
-            "Vitality Booster",
-        ),
-        (IdSpace::Item, ItemId::ENERGY_BOOSTER.0, "Energy Booster"),
-        (IdSpace::Item, ItemId::POWER_TREADS.0, "Power Treads"),
-        (IdSpace::Item, ItemId::PHASE_BOOTS.0, "Phase Boots"),
-        (IdSpace::Item, ItemId::BLINK_DAGGER.0, "Blink Dagger"),
-        (IdSpace::Item, ItemId::BRACER.0, "Bracer"),
-        (IdSpace::Item, ItemId::WRAITH_BAND.0, "Wraith Band"),
-        (IdSpace::Item, ItemId::NULL_TALISMAN.0, "Null Talisman"),
-        (IdSpace::Item, ItemId::MAGIC_STICK.0, "Magic Stick"),
-        (IdSpace::Item, ItemId::MAGIC_WAND.0, "Magic Wand"),
-        (IdSpace::Item, ItemId::RECIPE_BRACER.0, "Recipe: Bracer"),
-        (
-            IdSpace::Item,
-            ItemId::RECIPE_WRAITH_BAND.0,
-            "Recipe: Wraith Band",
-        ),
-        (
-            IdSpace::Item,
-            ItemId::RECIPE_NULL_TALISMAN.0,
-            "Recipe: Null Talisman",
-        ),
-        (
-            IdSpace::Item,
-            ItemId::RECIPE_MAGIC_WAND.0,
-            "Recipe: Magic Wand",
-        ),
-        (IdSpace::Item, ItemId::MANGO.0, "Enchanted Mango"),
-        (IdSpace::Item, ItemId::EAGLESONG.0, "Eaglesong"),
-        (IdSpace::Item, ItemId::CLAYMORE.0, "Claymore"),
-        (
-            IdSpace::Item,
-            ItemId::TALISMAN_OF_EVASION.0,
-            "Talisman of Evasion",
-        ),
-        (IdSpace::Item, ItemId::BUTTERFLY.0, "Butterfly"),
-        (IdSpace::Item, ItemId::JAVELIN.0, "Javelin"),
-        (IdSpace::Item, ItemId::DEMON_EDGE.0, "Demon Edge"),
-        (IdSpace::Item, ItemId::BLITZ_KNUCKLES.0, "Blitz Knuckles"),
-        (
-            IdSpace::Item,
-            ItemId::RECIPE_MONKEY_KING_BAR.0,
-            "Recipe: Monkey King Bar",
-        ),
-        (IdSpace::Item, ItemId::MONKEY_KING_BAR.0, "Monkey King Bar"),
-        (IdSpace::Item, ItemId::WIND_LACE.0, "Wind Lace"),
-        (IdSpace::Item, ItemId::BLOOD_GRENADE.0, "Blood Grenade"),
-        (IdSpace::Item, ItemId::WARD_DISPENSER.0, "Ward Dispenser"),
-        (IdSpace::Effect, EffectId::MENDING.0, "Mending"),
-        (IdSpace::Effect, EffectId::CLARITY.0, "Clarity"),
-        (IdSpace::Effect, EffectId::FOUNTAIN.0, "Fountain"),
-        (IdSpace::Effect, EffectId::STUNNED.0, "Stunned"),
-        (IdSpace::Effect, EffectId::SLOWED.0, "Slowed"),
-        (IdSpace::Effect, EffectId::BURNING.0, "Burning"),
-        (IdSpace::Effect, EffectId::HASTENED.0, "Hastened"),
-        (IdSpace::Effect, EffectId::SHIELDED.0, "Shielded"),
-        (IdSpace::Effect, EffectId::PHASED.0, "Phased"),
-        (IdSpace::Effect, EffectId::FLESH_HEAP.0, "FleshHeap"),
-        (IdSpace::Effect, EffectId::SOULS.0, "Souls"),
-        (IdSpace::Effect, EffectId::ARMOR_BROKEN.0, "ArmorBroken"),
-        (IdSpace::Effect, EffectId::GUARDED.0, "Guarded"),
-        (IdSpace::Effect, EffectId::INSPIRED.0, "Inspired"),
-        (IdSpace::Effect, EffectId::SHADOWRAZE.0, "Shadowraze"),
-        (IdSpace::Effect, EffectId::ROT.0, "Rot"),
-        (IdSpace::Effect, EffectId::FEARED.0, "Feared"),
-        (IdSpace::Effect, EffectId::MAGIC_BROKEN.0, "MagicBroken"),
-        (IdSpace::Effect, EffectId::FEASTING.0, "Feasting"),
-        (IdSpace::Effect, EffectId::FEAST_LINGER.0, "FeastLinger"),
-        (IdSpace::Effect, EffectId::BLOOD_GRENADE.0, "BloodGrenade"),
-        (IdSpace::Effect, EffectId::ROOTED.0, "Rooted"),
-        (IdSpace::Effect, EffectId::DISARMED.0, "Disarmed"),
-        (IdSpace::Effect, EffectId::BROKEN.0, "Broken"),
-        (IdSpace::Effect, EffectId::FORTIFIED.0, "Fortified"),
-        (IdSpace::Effect, EffectId::MEAT_SHIELD.0, "MeatShield"),
-        (IdSpace::Effect, EffectId::DISMEMBERED.0, "Dismembered"),
-        (
-            IdSpace::Effect,
-            EffectId::BACKDOOR_PROTECTION.0,
-            "BackdoorProtection",
-        ),
-        (IdSpace::Effect, EffectId::TIMED_LIFE.0, "TimedLife"),
-        (
-            IdSpace::Effect,
-            EffectId::NEUTRAL_UPGRADE.0,
-            "NeutralUpgrade",
-        ),
-        (IdSpace::Effect, EffectId::VISION_GRANT.0, "VisionGrant"),
-        (IdSpace::Effect, EffectId::LAMP_OFF.0, "LampOff"),
-        (IdSpace::Effect, EffectId::CAPTURE_GUARD.0, "CaptureGuard"),
-        (IdSpace::Effect, EffectId::SHRINE_READY.0, "ShrineReady"),
-    ];
-    for (space, id, name) in named {
+    for &(space, id, key) in NAMED {
         let entry = registered(space)
             .find(|entry| entry.id == id)
             .unwrap_or_else(|| panic!("{space:?} {id} is not in registry/ids.txt"));
-        assert_eq!(entry.name, name, "{space:?} {id} names another thing");
-        assert!(!entry.retired, "{space:?} {id} ({name}) is retired");
-    }
-    // The neutrals, their abilities and the effects their spells leave are
-    // named by the tables that define them, not by constants here: the
-    // server's registry test holds those tables to the registry.
-    for space in [IdSpace::Hero, IdSpace::Item] {
-        for entry in registered(space).filter(|entry| !entry.retired) {
-            assert!(
-                named
-                    .iter()
-                    .any(|(s, id, _)| *s == space && *id == entry.id),
-                "{space:?} {} {} has no named constant",
-                entry.id,
-                entry.name
-            );
-        }
+        assert_eq!(entry.name, key, "{space:?} {id} names another thing");
+        assert!(!entry.retired, "{space:?} {id} ({key}) is retired");
     }
 }

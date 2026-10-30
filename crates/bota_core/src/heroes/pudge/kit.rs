@@ -1,6 +1,6 @@
 //! What Pudge is made of: his body, his four abilities and the hero row.
 
-use bota_proto::{AbilityId, Aim, Attribute, Attributes, Fixed};
+use bota_proto::{AbilityId, Aim, Attribute, Attributes, Fixed, HeroId};
 
 use super::numbers::{
     DISMEMBER_CAST_POINT_MS, DISMEMBER_COOLDOWN, DISMEMBER_MANA, DISMEMBER_RANGE, DISMEMBER_TICKS,
@@ -47,6 +47,8 @@ pub const PUDGE: UnitDef = UnitDef {
 /// Pudge's hero row: his body and slots, the flesh heap as his innate and no
 /// talents.
 pub const HERO_DEF: HeroDef = HeroDef {
+    id: HeroId::PUDGE,
+    key: "npc_dota_hero_pudge",
     name: "Pudge",
     unit: &PUDGE,
     abilities: &[
@@ -61,6 +63,7 @@ pub const HERO_DEF: HeroDef = HeroDef {
 
 pub const MEAT_HOOK: AbilityDef = AbilityDef {
     id: AbilityId::MEAT_HOOK,
+    key: "pudge_meat_hook",
     name: "Meat Hook",
     aim: Aim::Point,
     max_level: rules::ABILITY_MAX_LEVEL,
@@ -76,6 +79,7 @@ pub const MEAT_HOOK: AbilityDef = AbilityDef {
 
 pub const ROT: AbilityDef = AbilityDef {
     id: AbilityId::ROT,
+    key: "pudge_rot",
     name: "Rot",
     max_level: rules::ABILITY_MAX_LEVEL,
     passive: false,
@@ -90,6 +94,7 @@ pub const ROT: AbilityDef = AbilityDef {
 /// Pudge's innate: it sits in no slot and is never learned.
 pub const FLESH_HEAP: AbilityDef = AbilityDef {
     id: AbilityId::FLESH_HEAP,
+    key: "pudge_innate_graft_flesh",
     name: "Flesh Heap",
     max_level: 1,
     range: FLESH_HEAP_RANGE,
@@ -98,6 +103,7 @@ pub const FLESH_HEAP: AbilityDef = AbilityDef {
 
 pub const MEAT_SHIELD: AbilityDef = AbilityDef {
     id: AbilityId::MEAT_SHIELD,
+    key: "pudge_flesh_heap",
     name: "Meat Shield",
     max_level: rules::ABILITY_MAX_LEVEL,
     passive: false,
@@ -110,6 +116,7 @@ pub const MEAT_SHIELD: AbilityDef = AbilityDef {
 
 pub const DISMEMBER: AbilityDef = AbilityDef {
     id: AbilityId::DISMEMBER,
+    key: "pudge_dismember",
     name: "Dismember",
     aim: Aim::Unit,
     max_level: rules::ULT_MAX_LEVEL,

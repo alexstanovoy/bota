@@ -28,7 +28,10 @@ pub struct RegisteredId {
     pub id: u16,
     /// Whether it was taken out of the game: then nothing may name it again.
     pub retired: bool,
-    /// What it names, for as long as the protocol lives.
+    /// Dota's internal name of what it names, the key every Dota data file
+    /// and asset knows it by (`item_flask`, `npc_dota_hero_nevermore`; an
+    /// effect's modifier, or a `bota_` key where Dota has none). It is never
+    /// renamed.
     pub name: &'static str,
 }
 

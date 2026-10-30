@@ -3,11 +3,17 @@
 use bota_proto::{AbilityId, Attribute, Attributes, Fixed, HeroId};
 
 use crate::heroes::{pudge, shadow_fiend};
+use crate::table::placed_by_id;
 use crate::{TalentTree, UnitDef, rules};
 
 /// One hero: what it is made of and what it can do.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct HeroDef {
+    /// The id it answers to on the wire, which [`HEROES`] places it at.
+    pub id: HeroId,
+    /// Dota's internal name of the hero, its line of the id registry: what
+    /// every data file and asset knows it by.
+    pub key: &'static str,
     /// What it is called.
     pub name: &'static str,
     /// The plain form of its body.
@@ -23,13 +29,25 @@ pub struct HeroDef {
     pub talents: Option<&'static TalentTree>,
 }
 
+/// Every hero, each carrying its id; [`HEROES`] places them by it.
+const HERO_ROWS: &[HeroDef] = &[pudge::HERO_DEF, shadow_fiend::HERO_DEF];
+
+/// How many hero ids the protocol has ever handed out.
+pub const HERO_COUNT: usize = HERO_ROWS.len();
+
 /// Every hero, indexed by [`HeroId`].
-pub const HEROES: [HeroDef; 2] = [pudge::HERO_DEF, shadow_fiend::HERO_DEF];
+pub const HEROES: [HeroDef; HERO_COUNT] =
+    placed_by_id!(HERO_ROWS, HERO_COUNT, |row| row.id.0 as usize);
 
 /// What one hero is, or nothing if no such hero exists.
 #[inline]
 pub fn hero_def(id: HeroId) -> Option<&'static HeroDef> {
     HEROES.get(usize::from(id.0))
+}
+
+/// The hero a Dota key names, if there is one.
+pub fn hero_by_key(key: &str) -> Option<HeroId> {
+    HEROES.iter().find(|def| def.key == key).map(|def| def.id)
 }
 
 /// A hero's attributes at a level, before items, souls, buffs and talents.

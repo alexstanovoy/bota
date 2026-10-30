@@ -7,18 +7,19 @@ use bota_proto::{Cheat, CreepSide, HeroId, ItemId, Order, Vec2};
 
 /// What a command needs of the client beyond its own words.
 pub trait CommandContext {
-    /// The item a name stands for: Dota's internal one (`item_blink`, or a
-    /// part of one, as Dota matches it), or one this client shows.
+    /// The item a name stands for: its Dota key (`item_blink`, or `blink`
+    /// as Dota's chat takes it), or its id.
     fn item(&self, word: &str) -> Option<ItemId>;
-    /// The hero a name stands for, the same way (`npc_dota_hero_pudge`).
+    /// The hero a name stands for, the same way (`npc_dota_hero_pudge`, or
+    /// `pudge`).
     fn hero(&self, word: &str) -> Option<HeroId>;
     /// The spot on the map under the cursor, for what Dota puts there
     /// (`-createhero`, `-teleport`).
     fn cursor(&self) -> Option<Vec2>;
 }
 
-/// The names this crate knows: the rules' items by name or id, the heroes
-/// by name or id; no cursor.
+/// The names this crate knows: the rules' items and heroes by Dota key or
+/// id; no cursor.
 pub struct Plain;
 
 impl CommandContext for Plain {
@@ -26,29 +27,26 @@ impl CommandContext for Plain {
         if let Ok(id) = word.parse::<u16>() {
             return bota_core::item_def(ItemId(id)).map(|_| ItemId(id));
         }
-        let word = word.replace('_', " ");
-        bota_core::ITEMS
-            .iter()
-            .position(|item| !item.retired && item.name.eq_ignore_ascii_case(&word))
-            .and_then(|at| u16::try_from(at).ok())
-            .map(ItemId)
+        by_key(word, "item_", bota_core::item_by_key)
     }
 
     fn hero(&self, word: &str) -> Option<HeroId> {
         if let Ok(id) = word.parse::<u16>() {
             return bota_core::hero_def(HeroId(id)).map(|_| HeroId(id));
         }
-        let word = word.replace('_', " ");
-        bota_core::HEROES
-            .iter()
-            .position(|hero| hero.name.eq_ignore_ascii_case(&word))
-            .and_then(|at| u16::try_from(at).ok())
-            .map(HeroId)
+        by_key(word, "npc_dota_hero_", bota_core::hero_by_key)
     }
 
     fn cursor(&self) -> Option<Vec2> {
         None
     }
+}
+
+/// What a word names as a Dota key, in any case, with or without the
+/// prefix every key of its kind starts with.
+fn by_key<T>(word: &str, prefix: &str, lookup: fn(&str) -> Option<T>) -> Option<T> {
+    let word = word.to_ascii_lowercase();
+    lookup(&word).or_else(|| lookup(&format!("{prefix}{word}")))
 }
 
 /// Why a typed line is no command; the player's own word is kept as data.

@@ -617,6 +617,7 @@ const fn secs(seconds: u32) -> u32 {
 /// One entry, its ability carrying the aura its spell is, if it is one.
 const fn entry(
     id: AbilityId,
+    key: &'static str,
     ability: NeutralAbility,
     def: AbilityDef,
     spell: Spell,
@@ -625,6 +626,7 @@ const fn entry(
         ability,
         def: AbilityDef {
             id,
+            key,
             aura: spell.aura(ability),
             ..def
         },
@@ -674,21 +676,24 @@ const fn hold(family: u8) -> Option<Shared> {
 use NeutralAbility as N;
 
 /// Every neutral ability, in the order of [`NeutralAbility`].
-pub const NEUTRAL_ABILITIES: [NeutralAbilityDef; 60] = [
+pub const NEUTRAL_ABILITIES: &[NeutralAbilityDef] = &[
     entry(
         AbilityId(17),
+        "kobold_tunneler_prospecting",
         N::ProspectingAura,
         passive("Prospecting Aura"),
         Spell::Idle,
     ),
     entry(
         AbilityId(18),
+        "neutral_upgrade",
         N::NeutralUpgrade,
         passive("Neutral Upgrade"),
         Spell::Upgrade,
     ),
     entry(
         AbilityId(19),
+        "kobold_disarm",
         N::StealWeapon,
         passive_cooling("Steal Weapon", &[secs(9)]),
         Spell::Strike(Strike::Disarm {
@@ -699,24 +704,28 @@ pub const NEUTRAL_ABILITIES: [NeutralAbilityDef; 60] = [
     ),
     entry(
         AbilityId(20),
+        "kobold_taskmaster_speed_aura",
         N::SpeedAura,
         passive("Speed Aura"),
         allies(1200, Buff::of(Stat::MovePct, lv(12, 13, 14, 16)), 26),
     ),
     entry(
         AbilityId(21),
+        "berserker_troll_break",
         N::Break,
         passive_cooling("Break", &[secs(10), secs(9), secs(8), secs(6)]),
         Spell::Strike(Strike::Break { ms: 3000 }),
     ),
     entry(
         AbilityId(22),
+        "creep_piercing",
         N::Piercing,
         passive("Piercing"),
         Spell::Piercing,
     ),
     entry(
         AbilityId(23),
+        "forest_troll_high_priest_heal",
         N::Heal,
         cast(
             "Heal",
@@ -732,12 +741,14 @@ pub const NEUTRAL_ABILITIES: [NeutralAbilityDef; 60] = [
     ),
     entry(
         AbilityId(24),
+        "forest_troll_high_priest_heal_amp_aura",
         N::HealAmplificationAura,
         passive("Heal Amplification Aura"),
         Spell::Idle,
     ),
     entry(
         AbilityId(25),
+        "gnoll_assassin_envenomed_weapon",
         N::EnvenomedWeapon,
         passive("Envenomed Weapon"),
         Spell::Strike(Strike::Lay {
@@ -750,6 +761,7 @@ pub const NEUTRAL_ABILITIES: [NeutralAbilityDef; 60] = [
     ),
     entry(
         AbilityId(26),
+        "fel_beast_haunt",
         N::Vex,
         cast(
             "Vex",
@@ -765,6 +777,7 @@ pub const NEUTRAL_ABILITIES: [NeutralAbilityDef; 60] = [
     ),
     entry(
         AbilityId(27),
+        "ghost_frost_attack",
         N::FrostAttack,
         passive("Frost Attack"),
         Spell::Strike(Strike::Lay {
@@ -777,12 +790,14 @@ pub const NEUTRAL_ABILITIES: [NeutralAbilityDef; 60] = [
     ),
     entry(
         AbilityId(28),
+        "harpy_scout_take_off",
         N::TakeOff,
         cast("Take Off", Aim::Own, false, &[20], &[secs(10)], 0, 1500, 0),
         Spell::Uncast,
     ),
     entry(
         AbilityId(29),
+        "harpy_storm_chain_lightning",
         N::ChainLightning,
         cast(
             "Chain Lightning",
@@ -811,6 +826,7 @@ pub const NEUTRAL_ABILITIES: [NeutralAbilityDef; 60] = [
     ),
     entry(
         AbilityId(30),
+        "mudgolem_cloak_aura",
         N::CloakAura,
         passive("Cloak Aura"),
         allies(
@@ -826,6 +842,7 @@ pub const NEUTRAL_ABILITIES: [NeutralAbilityDef; 60] = [
     ),
     entry(
         AbilityId(31),
+        "centaur_khan_war_stomp",
         N::WarStomp,
         cast(
             "War Stomp",
@@ -855,6 +872,7 @@ pub const NEUTRAL_ABILITIES: [NeutralAbilityDef; 60] = [
     ),
     entry(
         AbilityId(32),
+        "giant_wolf_intimidate",
         N::Intimidate,
         cast(
             "Intimidate",
@@ -887,6 +905,7 @@ pub const NEUTRAL_ABILITIES: [NeutralAbilityDef; 60] = [
     ),
     entry(
         AbilityId(33),
+        "alpha_wolf_critical_strike",
         N::CriticalStrike,
         passive("Critical Strike"),
         Spell::Strike(Strike::Crit {
@@ -896,12 +915,14 @@ pub const NEUTRAL_ABILITIES: [NeutralAbilityDef; 60] = [
     ),
     entry(
         AbilityId(34),
+        "alpha_wolf_command_aura",
         N::PackleadersAura,
         passive("Packleader's Aura"),
         allies(1200, Buff::of(Stat::DamagePct, all(20)), 31),
     ),
     entry(
         AbilityId(35),
+        "satyr_trickster_purge",
         N::Purge,
         cast(
             "Purge",
@@ -924,6 +945,7 @@ pub const NEUTRAL_ABILITIES: [NeutralAbilityDef; 60] = [
     ),
     entry(
         AbilityId(36),
+        "satyr_soulstealer_mana_burn",
         N::ManaBurn,
         cast(
             "Mana Burn",
@@ -939,12 +961,14 @@ pub const NEUTRAL_ABILITIES: [NeutralAbilityDef; 60] = [
     ),
     entry(
         AbilityId(37),
+        "forest_troll_high_priest_mana_aura",
         N::ManaAura,
         passive("Mana Aura"),
         allies(1200, Buff::of(Stat::ManaRegen, all(175)), 32),
     ),
     entry(
         AbilityId(38),
+        "satyr_hellcaller_shockwave",
         N::Shockwave,
         cast(
             "Shockwave",
@@ -960,12 +984,14 @@ pub const NEUTRAL_ABILITIES: [NeutralAbilityDef; 60] = [
     ),
     entry(
         AbilityId(39),
+        "satyr_hellcaller_unholy_aura",
         N::UnholyAura,
         passive("Unholy Aura"),
         allies(1200, Buff::of(Stat::HpRegen, lv(30, 50, 70, 110)), 33),
     ),
     entry(
         AbilityId(40),
+        "ogre_bruiser_ogre_smash",
         N::OgreSmash,
         cast(
             "Ogre Smash!",
@@ -994,6 +1020,7 @@ pub const NEUTRAL_ABILITIES: [NeutralAbilityDef; 60] = [
     ),
     entry(
         AbilityId(41),
+        "ogre_magi_frost_armor",
         N::IceArmor,
         cast(
             "Ice Armor",
@@ -1009,6 +1036,7 @@ pub const NEUTRAL_ABILITIES: [NeutralAbilityDef; 60] = [
     ),
     entry(
         AbilityId(42),
+        "mud_golem_hurl_boulder",
         N::HurlBoulder,
         cast(
             "Hurl Boulder",
@@ -1037,6 +1065,7 @@ pub const NEUTRAL_ABILITIES: [NeutralAbilityDef; 60] = [
     ),
     entry(
         AbilityId(43),
+        "mud_golem_rock_destroy",
         N::ShardSplit,
         passive("Shard Split"),
         Spell::Throe(Throe::Split {
@@ -1053,12 +1082,14 @@ pub const NEUTRAL_ABILITIES: [NeutralAbilityDef; 60] = [
     ),
     entry(
         AbilityId(44),
+        "centaur_khan_endurance_aura",
         N::SwiftnessAura,
         passive("Swiftness Aura"),
         allies(1200, Buff::of(Stat::AttackSpeed, lv(15, 18, 21, 27)), 35),
     ),
     entry(
         AbilityId(45),
+        "furbolg_enrage_attack_speed",
         N::DeathThroeRush,
         passive("Death Throe: Rush"),
         Spell::Throe(Throe::Rouse {
@@ -1070,6 +1101,7 @@ pub const NEUTRAL_ABILITIES: [NeutralAbilityDef; 60] = [
     ),
     entry(
         AbilityId(46),
+        "polar_furbolg_ursa_warrior_thunder_clap",
         N::ThunderClap,
         cast(
             "Thunder Clap",
@@ -1102,6 +1134,7 @@ pub const NEUTRAL_ABILITIES: [NeutralAbilityDef; 60] = [
     ),
     entry(
         AbilityId(47),
+        "furbolg_enrage_damage",
         N::DeathThroePower,
         passive("Death Throe: Power"),
         Spell::Throe(Throe::Rouse {
@@ -1113,6 +1146,7 @@ pub const NEUTRAL_ABILITIES: [NeutralAbilityDef; 60] = [
     ),
     entry(
         AbilityId(48),
+        "enraged_wildkin_tornado",
         N::Tornado,
         cast(
             "Tornado",
@@ -1138,6 +1172,7 @@ pub const NEUTRAL_ABILITIES: [NeutralAbilityDef; 60] = [
     ),
     entry(
         AbilityId(49),
+        "enraged_wildkin_hurricane",
         N::Hurricane,
         cast(
             "Hurricane",
@@ -1160,12 +1195,14 @@ pub const NEUTRAL_ABILITIES: [NeutralAbilityDef; 60] = [
     ),
     entry(
         AbilityId(50),
+        "enraged_wildkin_toughness_aura",
         N::ToughnessAura,
         passive("Toughness Aura"),
         allies(1200, Buff::of(Stat::Armor, all(3)), 39),
     ),
     entry(
         AbilityId(51),
+        "dark_troll_warlord_ensnare",
         N::Ensnare,
         cast(
             "Ensnare",
@@ -1191,6 +1228,7 @@ pub const NEUTRAL_ABILITIES: [NeutralAbilityDef; 60] = [
     ),
     entry(
         AbilityId(52),
+        "dark_troll_warlord_raise_dead",
         N::RaiseDead,
         cast(
             "Raise Dead",
@@ -1219,6 +1257,7 @@ pub const NEUTRAL_ABILITIES: [NeutralAbilityDef; 60] = [
     ),
     entry(
         AbilityId(53),
+        "warpine_raider_seed_shot",
         N::SeedShot,
         cast(
             "Seed Shot",
@@ -1234,6 +1273,7 @@ pub const NEUTRAL_ABILITIES: [NeutralAbilityDef; 60] = [
     ),
     entry(
         AbilityId(54),
+        "black_drake_magic_amplification_aura",
         N::MagicAmplificationAura,
         passive("Magic Amplification Aura"),
         Spell::Aura(AuraSpell {
@@ -1248,6 +1288,7 @@ pub const NEUTRAL_ABILITIES: [NeutralAbilityDef; 60] = [
     ),
     entry(
         AbilityId(55),
+        "black_dragon_fireball",
         N::Fireball,
         cast(
             "Fireball",
@@ -1263,6 +1304,7 @@ pub const NEUTRAL_ABILITIES: [NeutralAbilityDef; 60] = [
     ),
     entry(
         AbilityId(56),
+        "black_dragon_splash_attack",
         N::SplashAttack,
         passive("Splash Attack"),
         Spell::Strike(Strike::Splash {
@@ -1272,6 +1314,7 @@ pub const NEUTRAL_ABILITIES: [NeutralAbilityDef; 60] = [
     ),
     entry(
         AbilityId(57),
+        "black_dragon_dragonhide_aura",
         N::DragonhideAura,
         passive("Dragonhide Aura"),
         Spell::Aura(AuraSpell {
@@ -1286,6 +1329,7 @@ pub const NEUTRAL_ABILITIES: [NeutralAbilityDef; 60] = [
     ),
     entry(
         AbilityId(58),
+        "ancient_rock_golem_weakening_aura",
         N::WeakeningAura,
         passive("Weakening Aura"),
         Spell::Aura(AuraSpell {
@@ -1300,6 +1344,7 @@ pub const NEUTRAL_ABILITIES: [NeutralAbilityDef; 60] = [
     ),
     entry(
         AbilityId(59),
+        "granite_golem_hp_aura",
         N::GraniteAura,
         passive("Granite Aura"),
         Spell::Aura(AuraSpell {
@@ -1309,6 +1354,7 @@ pub const NEUTRAL_ABILITIES: [NeutralAbilityDef; 60] = [
     ),
     entry(
         AbilityId(60),
+        "big_thunder_lizard_wardrums_aura",
         N::WarDrumsAura,
         passive("War Drums Aura"),
         allies(
@@ -1324,6 +1370,7 @@ pub const NEUTRAL_ABILITIES: [NeutralAbilityDef; 60] = [
     ),
     entry(
         AbilityId(61),
+        "big_thunder_lizard_slam",
         N::Slam,
         cast("Slam", Aim::Own, false, &[150], &[secs(6)], 0, 300, 430),
         Spell::Cast {
@@ -1347,6 +1394,7 @@ pub const NEUTRAL_ABILITIES: [NeutralAbilityDef; 60] = [
     ),
     entry(
         AbilityId(62),
+        "big_thunder_lizard_frenzy",
         N::Frenzy,
         cast("Frenzy", Aim::Unit, false, &[75], &[secs(8)], 900, 0, 800),
         Spell::Cast {
@@ -1361,12 +1409,14 @@ pub const NEUTRAL_ABILITIES: [NeutralAbilityDef; 60] = [
     ),
     entry(
         AbilityId(63),
+        "frostbitten_golem_time_warp_aura",
         N::TimeWarpAura,
         passive("Time Warp Aura"),
         allies(1200, Buff::of(Stat::CooldownPct, lv(8, 9, 10, 11)), 47),
     ),
     entry(
         AbilityId(64),
+        "ice_shaman_incendiary_bomb",
         N::IcefireBomb,
         cast(
             "Icefire Bomb",
@@ -1382,6 +1432,7 @@ pub const NEUTRAL_ABILITIES: [NeutralAbilityDef; 60] = [
     ),
     entry(
         AbilityId(65),
+        "spawnlord_aura",
         N::ProwlerAura,
         passive("Prowler Aura"),
         allies(
@@ -1397,6 +1448,7 @@ pub const NEUTRAL_ABILITIES: [NeutralAbilityDef; 60] = [
     ),
     entry(
         AbilityId(66),
+        "spawnlord_master_stomp",
         N::Desecrate,
         cast(
             "Desecrate",
@@ -1429,6 +1481,7 @@ pub const NEUTRAL_ABILITIES: [NeutralAbilityDef; 60] = [
     ),
     entry(
         AbilityId(67),
+        "spawnlord_master_freeze",
         N::Petrify,
         passive_cooling("Petrify", &[secs(15)]),
         Spell::Strike(Strike::Petrify {
@@ -1440,6 +1493,7 @@ pub const NEUTRAL_ABILITIES: [NeutralAbilityDef; 60] = [
     ),
     entry(
         AbilityId(68),
+        "frogmen_riverborn_aura",
         N::RiverbornAura,
         passive("Riverborn Aura"),
         Spell::Aura(AuraSpell {
@@ -1459,6 +1513,7 @@ pub const NEUTRAL_ABILITIES: [NeutralAbilityDef; 60] = [
     ),
     entry(
         AbilityId(69),
+        "frogmen_arm_of_the_deep",
         N::ArmOfTheDeep,
         cast(
             "Arm of the Deep",
@@ -1485,6 +1540,7 @@ pub const NEUTRAL_ABILITIES: [NeutralAbilityDef; 60] = [
     ),
     entry(
         AbilityId(70),
+        "frogmen_tendrils_of_the_deep",
         N::TendrilsOfTheDeep,
         cast(
             "Tendrils of the Deep",
@@ -1511,6 +1567,7 @@ pub const NEUTRAL_ABILITIES: [NeutralAbilityDef; 60] = [
     ),
     entry(
         AbilityId(71),
+        "frogmen_congregation_of_the_deep",
         N::CongregationsOfTheDeep,
         cast(
             "Congregations of the Deep",
@@ -1537,6 +1594,7 @@ pub const NEUTRAL_ABILITIES: [NeutralAbilityDef; 60] = [
     ),
     entry(
         AbilityId(72),
+        "frogmen_water_bubble_small",
         N::WaterBubbleSmall,
         cast(
             "Water Bubble (Small)",
@@ -1561,6 +1619,7 @@ pub const NEUTRAL_ABILITIES: [NeutralAbilityDef; 60] = [
     ),
     entry(
         AbilityId(73),
+        "frogmen_water_bubble_medium",
         N::WaterBubbleMedium,
         cast(
             "Water Bubble (Medium)",
@@ -1585,6 +1644,7 @@ pub const NEUTRAL_ABILITIES: [NeutralAbilityDef; 60] = [
     ),
     entry(
         AbilityId(74),
+        "frogmen_water_bubble_large",
         N::WaterBubbleLarge,
         cast(
             "Water Bubble (Large)",
@@ -1609,6 +1669,7 @@ pub const NEUTRAL_ABILITIES: [NeutralAbilityDef; 60] = [
     ),
     entry(
         AbilityId(75),
+        "hill_troll_rally",
         N::Rally,
         passive("Rally"),
         Spell::Aura(AuraSpell {
@@ -1623,6 +1684,7 @@ pub const NEUTRAL_ABILITIES: [NeutralAbilityDef; 60] = [
     ),
     entry(
         AbilityId(76),
+        "tornado_tempest",
         N::Tempest,
         passive("Tempest"),
         Spell::Storm {

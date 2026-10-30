@@ -38,6 +38,7 @@ mod roster;
 pub mod rules;
 mod sight;
 mod standing;
+mod table;
 mod talent;
 mod terrain;
 mod text;

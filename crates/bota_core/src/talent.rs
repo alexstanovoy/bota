@@ -29,6 +29,25 @@ pub enum Talent {
     FeastCastSpeed,
 }
 
+impl Talent {
+    /// Dota's internal name of the talent, the ability its tooltip and icon
+    /// are found by.
+    pub const fn key(self) -> &'static str {
+        match self {
+            Talent::FeastAttackSpeed => "special_bonus_unique_nevermore_4",
+            Talent::RazeStackDamage => "special_bonus_unique_nevermore_7",
+            Talent::FeastSoulsPerHero => {
+                "special_bonus_unique_nevermore_frenzy_max_collection_count"
+            }
+            Talent::PresenceArmor => "special_bonus_unique_nevermore_3",
+            Talent::RequiemFear => "special_bonus_unique_nevermore_6",
+            Talent::NecroSoulCap => "special_bonus_unique_nevermore_1",
+            Talent::RazeAttackDamage => "special_bonus_unique_nevermore_raze_procsattacks",
+            Talent::FeastCastSpeed => "special_bonus_unique_nevermore_frenzy_castspeed",
+        }
+    }
+}
+
 /// A hero's whole tree, indexed by [`TalentSlot`].
 pub type TalentTree = [Talent; TalentSlot::COUNT as usize];
 

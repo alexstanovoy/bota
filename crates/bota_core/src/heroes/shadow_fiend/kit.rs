@@ -1,7 +1,7 @@
 //! What Shadow Fiend is made of: his body, his seven abilities, his talent
 //! tree and the hero row.
 
-use bota_proto::{AbilityId, Attribute, Attributes, Fixed};
+use bota_proto::{AbilityId, Attribute, Attributes, Fixed, HeroId};
 
 use super::numbers::{
     FEAST_COOLDOWN, FEAST_MANA, FEAST_RADIUS, PRESENCE_LINGER_TICKS, PRESENCE_RADIUS,
@@ -74,6 +74,8 @@ const _: () = assert!(SHADOW_FIEND_RAZES.len() == RAZE_DISTANCE.len());
 /// Shadow Fiend's hero row: the one hero at Dota's numbers, with a talent
 /// tree and the necromastery as his innate.
 pub const HERO_DEF: HeroDef = HeroDef {
+    id: HeroId::SHADOW_FIEND,
+    key: "npc_dota_hero_nevermore",
     name: "Shadow Fiend",
     unit: &SHADOW_FIEND,
     abilities: &[
@@ -90,9 +92,10 @@ pub const HERO_DEF: HeroDef = HeroDef {
 
 /// The three razes are one skill worn as three slots, each landing at its
 /// own reach.
-const fn raze(id: AbilityId, name: &'static str, reach: usize) -> AbilityDef {
+const fn raze(id: AbilityId, key: &'static str, name: &'static str, reach: usize) -> AbilityDef {
     AbilityDef {
         id,
+        key,
         name,
         max_level: rules::ABILITY_MAX_LEVEL,
         passive: false,
@@ -104,12 +107,28 @@ const fn raze(id: AbilityId, name: &'static str, reach: usize) -> AbilityDef {
     }
 }
 
-pub const RAZE_NEAR: AbilityDef = raze(AbilityId::RAZE_NEAR, "Shadowraze (Near)", 0);
-pub const RAZE_MID: AbilityDef = raze(AbilityId::RAZE_MID, "Shadowraze (Mid)", 1);
-pub const RAZE_FAR: AbilityDef = raze(AbilityId::RAZE_FAR, "Shadowraze (Far)", 2);
+pub const RAZE_NEAR: AbilityDef = raze(
+    AbilityId::RAZE_NEAR,
+    "nevermore_shadowraze1",
+    "Shadowraze (Near)",
+    0,
+);
+pub const RAZE_MID: AbilityDef = raze(
+    AbilityId::RAZE_MID,
+    "nevermore_shadowraze2",
+    "Shadowraze (Mid)",
+    1,
+);
+pub const RAZE_FAR: AbilityDef = raze(
+    AbilityId::RAZE_FAR,
+    "nevermore_shadowraze3",
+    "Shadowraze (Far)",
+    2,
+);
 
 pub const REQUIEM: AbilityDef = AbilityDef {
     id: AbilityId::REQUIEM,
+    key: "nevermore_requiem",
     name: "Requiem of Souls",
     max_level: rules::ULT_MAX_LEVEL,
     passive: false,
@@ -124,6 +143,7 @@ pub const REQUIEM: AbilityDef = AbilityDef {
 
 pub const NECROMASTERY: AbilityDef = AbilityDef {
     id: AbilityId::NECROMASTERY,
+    key: "nevermore_necromastery",
     name: "Necromastery",
     max_level: 1,
     ..BARE_ABILITY
@@ -134,6 +154,7 @@ pub const NECROMASTERY: AbilityDef = AbilityDef {
 /// ability asks no sight).
 pub const PRESENCE: AbilityDef = AbilityDef {
     id: AbilityId::PRESENCE,
+    key: "nevermore_dark_lord",
     name: "Presence of the Dark Lord",
     max_level: rules::ABILITY_MAX_LEVEL,
     range: PRESENCE_RADIUS,
@@ -153,6 +174,7 @@ pub const PRESENCE: AbilityDef = AbilityDef {
 
 pub const FEAST_OF_SOULS: AbilityDef = AbilityDef {
     id: AbilityId::FEAST_OF_SOULS,
+    key: "nevermore_frenzy",
     name: "Feast of Souls",
     max_level: rules::ABILITY_MAX_LEVEL,
     passive: false,

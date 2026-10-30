@@ -9,6 +9,8 @@
 
 use bota_proto::{Aim, Attribute, Attributes, Fixed, ItemId};
 
+use crate::table::placed_by_id;
+
 use crate::{
     BLINK_OVERSHOOT_RANGE, BLINK_RANGE, Carried, GRENADE_COOLDOWN, GRENADE_RANGE, ItemDef,
     MANGO_COST, MANGO_HP_REGEN, MANGO_MANA, MANGO_STACK_MAX, MAX_COMPONENTS, Mend, NOTHING,
@@ -76,17 +78,803 @@ const MKB_PARTS: [ItemId; 4] = [
     ItemId::RECIPE_MONKEY_KING_BAR,
 ];
 
-/// The catalog, indexed by [`ItemId`].
+/// The catalog's rows, each carrying its id and its key: [`ITEMS`] places
+/// them by id.
+const ITEM_ROWS: &[ItemDef] = &[
+    ItemDef {
+        id: ItemId::BOOTS,
+        key: "item_boots",
+        name: "Boots of Speed",
+        cost: 500,
+        carried: Carried {
+            move_speed: 45,
+            ..NOTHING
+        },
+        ..PLAIN
+    },
+    ItemDef {
+        id: ItemId::CLARITY,
+        key: "item_clarity",
+        name: "Clarity",
+        cost: 60,
+        charges: 1,
+        stack_limit: u8::MAX,
+        aim: Some(Aim::Unit),
+        range: 250,
+        spends: Spends::One,
+        effect: UseSpec::Mend(Mend {
+            pool: Pool::Mana,
+            total: 150,
+            ticks: 750,
+            range: 250,
+            eats_a_tree: false,
+            breaks: true,
+        }),
+        stock: Some(Stock {
+            initial: 5,
+            max: 5,
+            restock_ticks: 120 * rules::TICKS_PER_SECOND,
+        }),
+        ..PLAIN
+    },
+    ItemDef {
+        id: ItemId::HEALING_SALVE,
+        key: "item_flask",
+        name: "Healing Salve",
+        cost: 100,
+        charges: 1,
+        stack_limit: u8::MAX,
+        aim: Some(Aim::Unit),
+        range: 250,
+        spends: Spends::One,
+        effect: UseSpec::Mend(Mend {
+            pool: Pool::Health,
+            total: SALVE_HEAL,
+            ticks: SALVE_TICKS,
+            range: 250,
+            eats_a_tree: false,
+            breaks: true,
+        }),
+        stock: Some(Stock {
+            initial: 5,
+            max: 5,
+            restock_ticks: 120 * rules::TICKS_PER_SECOND,
+        }),
+        ..PLAIN
+    },
+    ItemDef {
+        id: ItemId::IRON_BRANCH,
+        key: "item_branches",
+        name: "Iron Branch",
+        cost: 55,
+        charges: 1,
+        carried: Carried {
+            attributes: Attributes::all(1),
+            ..NOTHING
+        },
+        aim: Some(Aim::Point),
+        range: 400,
+        spends: Spends::One,
+        effect: UseSpec::PlantTree {
+            ticks: rules::PLANTED_TREE_TICKS,
+            range: 400,
+        },
+        ..PLAIN
+    },
+    ItemDef {
+        id: ItemId::OBSERVER_WARD,
+        key: "item_ward_observer",
+        name: "Observer Ward",
+        cost: 0,
+        charges: 1,
+        stack_limit: u8::MAX,
+        aim: Some(Aim::Point),
+        range: 500,
+        spends: Spends::One,
+        effect: UseSpec::Ward {
+            unit: &OBSERVER_WARD,
+            ticks: 10800,
+            range: 500,
+        },
+        cooldown: 30,
+        stock: Some(Stock {
+            initial: 2,
+            max: 4,
+            restock_ticks: 135 * rules::TICKS_PER_SECOND,
+        }),
+        ..PLAIN
+    },
+    ItemDef {
+        id: ItemId::QUELLING_BLADE,
+        key: "item_quelling_blade",
+        name: "Quelling Blade",
+        cost: 100,
+        cooldown: 120,
+        carried: Carried {
+            damage_to_creeps: 8,
+            ..NOTHING
+        },
+        ranged: Some(Carried {
+            damage_to_creeps: 4,
+            ..NOTHING
+        }),
+        aim: Some(Aim::Tree),
+        range: 350,
+        effect: UseSpec::FellTree { range: 350 },
+        ..PLAIN
+    },
+    ItemDef {
+        id: ItemId::SENTRY_WARD,
+        key: "item_ward_sentry",
+        name: "Sentry Ward",
+        cost: 50,
+        charges: 1,
+        stack_limit: u8::MAX,
+        aim: Some(Aim::Point),
+        range: 500,
+        spends: Spends::One,
+        effect: UseSpec::Ward {
+            unit: &SENTRY_WARD,
+            ticks: 12600,
+            range: 500,
+        },
+        cooldown: 30,
+        stock: Some(Stock {
+            initial: 3,
+            max: 8,
+            restock_ticks: 70 * rules::TICKS_PER_SECOND,
+        }),
+        ..PLAIN
+    },
+    ItemDef {
+        id: ItemId::TANGO,
+        key: "item_tango",
+        name: "Tango",
+        cost: 90,
+        charges: 3,
+        stack_limit: u8::MAX,
+        aim: Some(Aim::Tree),
+        range: 165,
+        spends: Spends::One,
+        effect: UseSpec::Mend(Mend {
+            pool: Pool::Health,
+            total: 112,
+            ticks: 16 * rules::TICKS_PER_SECOND,
+            range: 165,
+            eats_a_tree: true,
+            breaks: false,
+        }),
+        stock: Some(Stock {
+            initial: 10,
+            max: 10,
+            restock_ticks: 120 * rules::TICKS_PER_SECOND,
+        }),
+        ..PLAIN
+    },
+    // Town Portal Scroll: Dota 7.41f `item_tpscroll` of the game's
+    // `scripts/npc/items.txt` (client 6957, 2026-10-09), the official patch
+    // notes 7.33 to 7.41f and Liquipedia's *Town Portal Scroll* (read
+    // 2026-10-11). Stacks without limit in Dota; a stack's charges are a byte
+    // here, more than a match buys.
+    ItemDef {
+        id: ItemId::TOWN_PORTAL_SCROLL,
+        key: "item_tpscroll",
+        name: "Town Portal Scroll",
+        cost: 100,
+        charges: 1,
+        stack_limit: u8::MAX,
+        cooldown: rules::SCROLL_WAIT_TICKS,
+        shared_wait: true,
+        mana_cost: rules::SCROLL_MANA,
+        aim: Some(Aim::Building),
+        duration: rules::SCROLL_CHANNEL_TICKS,
+        effect: UseSpec::Teleport,
+        ..PLAIN
+    },
+    ItemDef {
+        id: ItemId::CIRCLET,
+        key: "item_circlet",
+        name: "Circlet",
+        cost: 155,
+        carried: Carried {
+            attributes: Attributes::all(2),
+            ..NOTHING
+        },
+        ..PLAIN
+    },
+    ItemDef {
+        id: ItemId::GAUNTLETS,
+        key: "item_gauntlets",
+        name: "Gauntlets of Strength",
+        cost: 140,
+        carried: Carried {
+            attributes: points(Attribute::Strength, 3),
+            ..NOTHING
+        },
+        ..PLAIN
+    },
+    ItemDef {
+        id: ItemId::SLIPPERS,
+        key: "item_slippers",
+        name: "Slippers of Agility",
+        cost: 140,
+        carried: Carried {
+            attributes: points(Attribute::Agility, 3),
+            ..NOTHING
+        },
+        ..PLAIN
+    },
+    ItemDef {
+        id: ItemId::MANTLE,
+        key: "item_mantle",
+        name: "Mantle of Intelligence",
+        cost: 140,
+        carried: Carried {
+            attributes: points(Attribute::Intelligence, 3),
+            ..NOTHING
+        },
+        ..PLAIN
+    },
+    ItemDef {
+        id: ItemId::BELT,
+        key: "item_belt_of_strength",
+        name: "Belt of Strength",
+        cost: 450,
+        carried: Carried {
+            attributes: points(Attribute::Strength, 6),
+            ..NOTHING
+        },
+        ..PLAIN
+    },
+    ItemDef {
+        id: ItemId::BAND,
+        key: "item_boots_of_elves",
+        name: "Band of Elvenskin",
+        cost: 450,
+        carried: Carried {
+            attributes: points(Attribute::Agility, 6),
+            ..NOTHING
+        },
+        ..PLAIN
+    },
+    ItemDef {
+        id: ItemId::ROBE,
+        key: "item_robe",
+        name: "Robe of the Magi",
+        cost: 450,
+        carried: Carried {
+            attributes: points(Attribute::Intelligence, 6),
+            ..NOTHING
+        },
+        ..PLAIN
+    },
+    ItemDef {
+        id: ItemId::OGRE_AXE,
+        key: "item_ogre_axe",
+        name: "Ogre Axe",
+        cost: 1000,
+        carried: Carried {
+            attributes: points(Attribute::Strength, 10),
+            ..NOTHING
+        },
+        ..PLAIN
+    },
+    ItemDef {
+        id: ItemId::BLADE_OF_ALACRITY,
+        key: "item_blade_of_alacrity",
+        name: "Blade of Alacrity",
+        cost: 1000,
+        carried: Carried {
+            attributes: points(Attribute::Agility, 10),
+            ..NOTHING
+        },
+        ..PLAIN
+    },
+    ItemDef {
+        id: ItemId::STAFF_OF_WIZARDRY,
+        key: "item_staff_of_wizardry",
+        name: "Staff of Wizardry",
+        cost: 1000,
+        carried: Carried {
+            attributes: points(Attribute::Intelligence, 10),
+            ..NOTHING
+        },
+        ..PLAIN
+    },
+    ItemDef {
+        id: ItemId::GLOVES,
+        key: "item_gloves",
+        name: "Gloves of Haste",
+        cost: 450,
+        carried: Carried {
+            attack_speed: 20,
+            ..NOTHING
+        },
+        ..PLAIN
+    },
+    ItemDef {
+        id: ItemId::BLADES_OF_ATTACK,
+        key: "item_blades_of_attack",
+        name: "Blades of Attack",
+        cost: 450,
+        carried: Carried {
+            damage: 9,
+            ..NOTHING
+        },
+        ..PLAIN
+    },
+    ItemDef {
+        id: ItemId::BROADSWORD,
+        key: "item_broadsword",
+        name: "Broadsword",
+        cost: 1000,
+        carried: Carried {
+            damage: 15,
+            ..NOTHING
+        },
+        ..PLAIN
+    },
+    ItemDef {
+        id: ItemId::QUARTERSTAFF,
+        key: "item_quarterstaff",
+        name: "Quarterstaff",
+        cost: 875,
+        carried: Carried {
+            damage: 10,
+            attack_speed: 10,
+            ..NOTHING
+        },
+        ..PLAIN
+    },
+    ItemDef {
+        id: ItemId::RING_OF_PROTECTION,
+        key: "item_ring_of_protection",
+        name: "Ring of Protection",
+        cost: 175,
+        carried: Carried {
+            armor: Fixed::from_int(2),
+            ..NOTHING
+        },
+        ..PLAIN
+    },
+    ItemDef {
+        id: ItemId::CHAINMAIL,
+        key: "item_chainmail",
+        name: "Chainmail",
+        cost: 500,
+        carried: Carried {
+            armor: Fixed::from_int(4),
+            ..NOTHING
+        },
+        ..PLAIN
+    },
+    ItemDef {
+        id: ItemId::RING_OF_REGEN,
+        key: "item_ring_of_regen",
+        name: "Ring of Regen",
+        cost: 175,
+        carried: Carried {
+            hp_regen: hundredths_per_second(125),
+            ..NOTHING
+        },
+        ..PLAIN
+    },
+    ItemDef {
+        id: ItemId::SAGES_MASK,
+        key: "item_sobi_mask",
+        name: "Sage's Mask",
+        cost: 175,
+        carried: Carried {
+            mana_regen: hundredths_per_second(70),
+            ..NOTHING
+        },
+        ..PLAIN
+    },
+    ItemDef {
+        id: ItemId::VITALITY_BOOSTER,
+        key: "item_vitality_booster",
+        name: "Vitality Booster",
+        cost: 1000,
+        carried: Carried { hp: 250, ..NOTHING },
+        ..PLAIN
+    },
+    ItemDef {
+        id: ItemId::ENERGY_BOOSTER,
+        key: "item_energy_booster",
+        name: "Energy Booster",
+        cost: 800,
+        carried: Carried {
+            mana: 250,
+            ..NOTHING
+        },
+        ..PLAIN
+    },
+    ItemDef {
+        id: ItemId::POWER_TREADS,
+        key: "item_power_treads",
+        name: "Power Treads",
+        cost: 1400,
+        mode: Some(Attribute::Strength),
+        mode_bonus: 10,
+        components: &TREADS_PARTS,
+        alternatives: &TREADS_ALTERNATIVES,
+        carried: Carried {
+            move_speed: 55,
+            attack_speed: 25,
+            ..NOTHING
+        },
+        ranged: Some(Carried {
+            move_speed: 45,
+            attack_speed: 25,
+            ..NOTHING
+        }),
+        aim: Some(Aim::Own),
+        immediate: true,
+        effect: UseSpec::SwitchMode,
+        ..PLAIN
+    },
+    ItemDef {
+        id: ItemId::PHASE_BOOTS,
+        key: "item_phase_boots",
+        name: "Phase Boots",
+        cost: 1450,
+        cooldown: 240,
+        components: &PHASE_PARTS,
+        carried: Carried {
+            move_speed: 50,
+            damage: 18,
+            armor: Fixed::from_int(4),
+            ..NOTHING
+        },
+        ranged: Some(Carried {
+            move_speed: 50,
+            damage: 12,
+            armor: Fixed::from_int(4),
+            ..NOTHING
+        }),
+        aim: Some(Aim::Own),
+        ignores_channel: true,
+        effect: UseSpec::Phase {
+            pct: 20,
+            ranged_pct: 10,
+            ticks: 3 * rules::TICKS_PER_SECOND,
+        },
+        ..PLAIN
+    },
+    ItemDef {
+        id: ItemId::BLINK_DAGGER,
+        key: "item_blink",
+        name: "Blink Dagger",
+        cost: 2250,
+        cooldown: 450,
+        breaks_on_damage: 90,
+        aim: Some(Aim::Point),
+        range: 1200,
+        effect: UseSpec::Blink {
+            range: BLINK_RANGE,
+            overshoot: BLINK_OVERSHOOT_RANGE,
+        },
+        ..PLAIN
+    },
+    ItemDef {
+        id: ItemId::BRACER,
+        key: "item_bracer",
+        name: "Bracer",
+        cost: 505,
+        components: &BRACER_PARTS,
+        carried: Carried {
+            attributes: points_with(Attribute::Strength, 5, 2),
+            hp: 50,
+            hp_regen: hundredths_per_second(75),
+            ..NOTHING
+        },
+        ..PLAIN
+    },
+    ItemDef {
+        id: ItemId::WRAITH_BAND,
+        key: "item_wraith_band",
+        name: "Wraith Band",
+        cost: 505,
+        components: &WRAITH_PARTS,
+        carried: Carried {
+            attributes: points_with(Attribute::Agility, 5, 2),
+            attack_speed: 6,
+            armor: Fixed::from_ratio(7, 4),
+            ..NOTHING
+        },
+        ..PLAIN
+    },
+    ItemDef {
+        id: ItemId::NULL_TALISMAN,
+        key: "item_null_talisman",
+        name: "Null Talisman",
+        cost: 505,
+        components: &NULL_PARTS,
+        carried: Carried {
+            attributes: points_with(Attribute::Intelligence, 5, 2),
+            mana_regen: per_second(1),
+            mana_pct: 3,
+            ..NOTHING
+        },
+        ..PLAIN
+    },
+    ItemDef {
+        id: ItemId::MAGIC_STICK,
+        key: "item_magic_stick",
+        name: "Magic Stick",
+        cost: 200,
+        cast_charges: 10,
+        cooldown: 17 * rules::TICKS_PER_SECOND,
+        aim: Some(Aim::Own),
+        spends: Spends::All,
+        effect: UseSpec::Restore {
+            hp_per_charge: 15,
+            mana_per_charge: 15,
+        },
+        ..PLAIN
+    },
+    ItemDef {
+        id: ItemId::MAGIC_WAND,
+        key: "item_magic_wand",
+        name: "Magic Wand",
+        cost: 460,
+        cast_charges: 20,
+        cooldown: 15 * rules::TICKS_PER_SECOND,
+        components: &WAND_PARTS,
+        carried: Carried {
+            attributes: Attributes::all(3),
+            ..NOTHING
+        },
+        aim: Some(Aim::Own),
+        spends: Spends::All,
+        effect: UseSpec::Restore {
+            hp_per_charge: 15,
+            mana_per_charge: 15,
+        },
+        ..PLAIN
+    },
+    // Retired: Phase Boots build of their parts alone since Dota made the
+    // recipe free. The id keeps its place.
+    ItemDef {
+        id: ItemId(37),
+        key: "item_recipe_phase_boots",
+        name: "Recipe: Phase Boots",
+        retired: true,
+        ..PLAIN
+    },
+    ItemDef {
+        id: ItemId::RECIPE_BRACER,
+        key: "item_recipe_bracer",
+        name: "Recipe: Bracer",
+        cost: 210,
+        ..PLAIN
+    },
+    ItemDef {
+        id: ItemId::RECIPE_WRAITH_BAND,
+        key: "item_recipe_wraith_band",
+        name: "Recipe: Wraith Band",
+        cost: 210,
+        ..PLAIN
+    },
+    ItemDef {
+        id: ItemId::RECIPE_NULL_TALISMAN,
+        key: "item_recipe_null_talisman",
+        name: "Recipe: Null Talisman",
+        cost: 210,
+        ..PLAIN
+    },
+    ItemDef {
+        id: ItemId::RECIPE_MAGIC_WAND,
+        key: "item_recipe_magic_wand",
+        name: "Recipe: Magic Wand",
+        cost: 150,
+        ..PLAIN
+    },
+    ItemDef {
+        id: ItemId::MANGO,
+        key: "item_enchanted_mango",
+        name: "Enchanted Mango",
+        cost: MANGO_COST,
+        charges: 1,
+        stack_limit: MANGO_STACK_MAX,
+        carried: Carried {
+            hp_regen: MANGO_HP_REGEN,
+            ..NOTHING
+        },
+        aim: Some(Aim::Own),
+        spends: Spends::One,
+        mana_deficit: true,
+        effect: UseSpec::Replenish { mana: MANGO_MANA },
+        stock: Some(Stock {
+            initial: 4,
+            max: 4,
+            restock_ticks: 120 * rules::TICKS_PER_SECOND,
+        }),
+        ..PLAIN
+    },
+    ItemDef {
+        id: ItemId::EAGLESONG,
+        key: "item_eagle",
+        name: "Eaglesong",
+        cost: 2800,
+        carried: Carried {
+            attributes: points(Attribute::Agility, 25),
+            ..NOTHING
+        },
+        ..PLAIN
+    },
+    ItemDef {
+        id: ItemId::CLAYMORE,
+        key: "item_claymore",
+        name: "Claymore",
+        cost: 1350,
+        carried: Carried {
+            damage: 20,
+            ..NOTHING
+        },
+        ..PLAIN
+    },
+    ItemDef {
+        id: ItemId::TALISMAN_OF_EVASION,
+        key: "item_talisman_of_evasion",
+        name: "Talisman of Evasion",
+        cost: 1300,
+        carried: Carried {
+            evasion: Odds::percent(15),
+            ..NOTHING
+        },
+        ..PLAIN
+    },
+    ItemDef {
+        id: ItemId::BUTTERFLY,
+        key: "item_butterfly",
+        name: "Butterfly",
+        cost: 5450,
+        components: &BUTTERFLY_PARTS,
+        carried: Carried {
+            attributes: points(Attribute::Agility, 30),
+            damage: 30,
+            base_attack_speed_pct: 20,
+            evasion: Odds::percent(35),
+            ..NOTHING
+        },
+        ..PLAIN
+    },
+    ItemDef {
+        id: ItemId::JAVELIN,
+        key: "item_javelin",
+        name: "Javelin",
+        cost: 900,
+        carried: Carried {
+            pierce: Odds::percent(25),
+            pierce_damage: 60,
+            ..NOTHING
+        },
+        ..PLAIN
+    },
+    ItemDef {
+        id: ItemId::DEMON_EDGE,
+        key: "item_demon_edge",
+        name: "Demon Edge",
+        cost: 2200,
+        carried: Carried {
+            damage: 40,
+            ..NOTHING
+        },
+        ..PLAIN
+    },
+    ItemDef {
+        id: ItemId::BLITZ_KNUCKLES,
+        key: "item_blitz_knuckles",
+        name: "Blitz Knuckles",
+        cost: 1000,
+        carried: Carried {
+            attack_speed: 35,
+            ..NOTHING
+        },
+        ..PLAIN
+    },
+    ItemDef {
+        id: ItemId::RECIPE_MONKEY_KING_BAR,
+        key: "item_recipe_monkey_king_bar",
+        name: "Recipe: Monkey King Bar",
+        cost: 900,
+        ..PLAIN
+    },
+    ItemDef {
+        id: ItemId::MONKEY_KING_BAR,
+        key: "item_monkey_king_bar",
+        name: "Monkey King Bar",
+        cost: 5000,
+        components: &MKB_PARTS,
+        carried: Carried {
+            damage: 50,
+            attack_speed: 50,
+            melee_range: 50,
+            pierce: Odds::percent(80),
+            pierce_damage: 70,
+            pierce_unique: true,
+            ..NOTHING
+        },
+        ..PLAIN
+    },
+    // Wind Lace and Blood Grenade: Dota 7.41f's official item data
+    // (dota2.com datafeed, items 244 and 1123), the game's
+    // `scripts/npc/items.txt` (client 6957, 2026-10-09) for stock and stacks,
+    // and Liquipedia's *Blood Grenade* and *Movement Speed*.
+    ItemDef {
+        id: ItemId::WIND_LACE,
+        key: "item_wind_lace",
+        name: "Wind Lace",
+        cost: 225,
+        carried: Carried {
+            lace_speed: 15,
+            ..NOTHING
+        },
+        ..PLAIN
+    },
+    ItemDef {
+        id: ItemId::BLOOD_GRENADE,
+        key: "item_blood_grenade",
+        name: "Blood Grenade",
+        cost: 50,
+        charges: 1,
+        stack_limit: 2,
+        cooldown: GRENADE_COOLDOWN,
+        health_cost: 75,
+        stock: Some(Stock {
+            initial: 2,
+            max: 3,
+            restock_ticks: 180 * rules::TICKS_PER_SECOND,
+        }),
+        carried: Carried { hp: 50, ..NOTHING },
+        aim: Some(Aim::Point),
+        range: GRENADE_RANGE,
+        spends: Spends::One,
+        point: 200,
+        effect: UseSpec::Grenade,
+        ..PLAIN
+    },
+    // Ward Dispenser: `item_ward_dispenser` and `item_recipe_ward_dispenser`
+    // of the same file, and Liquipedia's *Observer and Sentry Wards*. It is
+    // made of the wards a seat holds (one Observer and one Sentry Ward are the
+    // recipe; the item keeps the count of each), is never sold, and plants the
+    // kind it is switched to by the entry of that ward. The file gives the
+    // dispenser no cooldown of its own, but Liquipedia's changelog (2017,
+    // "Fixed Plant cooldown not working") has its plant wait, so it keeps the
+    // second the wards wait between plantings.
+    ItemDef {
+        id: ItemId::WARD_DISPENSER,
+        key: "item_ward_dispenser",
+        name: "Ward Dispenser",
+        cost: 50,
+        charges: 1,
+        cooldown: 30,
+        aim: Some(Aim::Point),
+        range: 500,
+        unbuyable: true,
+        effect: UseSpec::Dispense,
+        ..PLAIN
+    },
+];
+
+/// How many item ids the protocol has ever handed out, retired ones
+/// included: every table indexed by [`ItemId`] is this long.
+pub const ITEM_COUNT: usize = ITEM_ROWS.len();
+
+/// The catalog, indexed by [`ItemId`]: every row of `ITEM_ROWS` at its id.
 ///
 /// # Adding an item
 ///
 /// Every item:
 ///
-/// 1. Register the id: `ItemId::X` in `bota_proto/src/ids.rs` and one line in
-///    `bota_proto/registry/ids.txt` (append-only; tests pin both).
-/// 2. Add its [`ItemDef`] here at the id's index (and grow the array): `name`
-///    equals the registry line, the numbers come from the game's `items.txt`.
-///    A recipe is two rows, the recipe scroll (a cost) and the build (its
+/// 1. Register the id: one line appended to `bota_proto/registry/ids.txt`,
+///    the next number with the item's Dota key (`item_blink`). An
+///    `ItemId::X` constant in `bota_proto/src/ids.rs` only if code names the
+///    item.
+/// 2. Add its [`ItemDef`] row here, anywhere: `id` and `key` equal the
+///    registry line, the numbers come from the game's `items.txt`. A recipe
+///    is two rows, the recipe scroll (a cost) and the build (its
 ///    `components`).
 /// 3. Bump `RULES_VERSION` in `fingerprint.rs` and renew the digests in
 ///    `tests/fingerprint.rs`.
@@ -117,673 +905,11 @@ const MKB_PARTS: [ItemId; 4] = [
 ///
 /// Neutral items are not modelled yet. Every item gets its end-to-end test in
 /// `bota_server/src/game/tests/`.
-pub const ITEMS: [ItemDef; 55] = [
-    ItemDef {
-        name: "Boots of Speed",
-        cost: 500,
-        carried: Carried {
-            move_speed: 45,
-            ..NOTHING
-        },
-        ..PLAIN
-    },
-    ItemDef {
-        name: "Clarity",
-        cost: 60,
-        charges: 1,
-        stack_limit: u8::MAX,
-        aim: Some(Aim::Unit),
-        range: 250,
-        spends: Spends::One,
-        effect: UseSpec::Mend(Mend {
-            pool: Pool::Mana,
-            total: 150,
-            ticks: 750,
-            range: 250,
-            eats_a_tree: false,
-            breaks: true,
-        }),
-        stock: Some(Stock {
-            initial: 5,
-            max: 5,
-            restock_ticks: 120 * rules::TICKS_PER_SECOND,
-        }),
-        ..PLAIN
-    },
-    ItemDef {
-        name: "Healing Salve",
-        cost: 100,
-        charges: 1,
-        stack_limit: u8::MAX,
-        aim: Some(Aim::Unit),
-        range: 250,
-        spends: Spends::One,
-        effect: UseSpec::Mend(Mend {
-            pool: Pool::Health,
-            total: SALVE_HEAL,
-            ticks: SALVE_TICKS,
-            range: 250,
-            eats_a_tree: false,
-            breaks: true,
-        }),
-        stock: Some(Stock {
-            initial: 5,
-            max: 5,
-            restock_ticks: 120 * rules::TICKS_PER_SECOND,
-        }),
-        ..PLAIN
-    },
-    ItemDef {
-        name: "Iron Branch",
-        cost: 55,
-        charges: 1,
-        carried: Carried {
-            attributes: Attributes::all(1),
-            ..NOTHING
-        },
-        aim: Some(Aim::Point),
-        range: 400,
-        spends: Spends::One,
-        effect: UseSpec::PlantTree {
-            ticks: rules::PLANTED_TREE_TICKS,
-            range: 400,
-        },
-        ..PLAIN
-    },
-    ItemDef {
-        name: "Observer Ward",
-        cost: 0,
-        charges: 1,
-        stack_limit: u8::MAX,
-        aim: Some(Aim::Point),
-        range: 500,
-        spends: Spends::One,
-        effect: UseSpec::Ward {
-            unit: &OBSERVER_WARD,
-            ticks: 10800,
-            range: 500,
-        },
-        cooldown: 30,
-        stock: Some(Stock {
-            initial: 2,
-            max: 4,
-            restock_ticks: 135 * rules::TICKS_PER_SECOND,
-        }),
-        ..PLAIN
-    },
-    ItemDef {
-        name: "Quelling Blade",
-        cost: 100,
-        cooldown: 120,
-        carried: Carried {
-            damage_to_creeps: 8,
-            ..NOTHING
-        },
-        ranged: Some(Carried {
-            damage_to_creeps: 4,
-            ..NOTHING
-        }),
-        aim: Some(Aim::Tree),
-        range: 350,
-        effect: UseSpec::FellTree { range: 350 },
-        ..PLAIN
-    },
-    ItemDef {
-        name: "Sentry Ward",
-        cost: 50,
-        charges: 1,
-        stack_limit: u8::MAX,
-        aim: Some(Aim::Point),
-        range: 500,
-        spends: Spends::One,
-        effect: UseSpec::Ward {
-            unit: &SENTRY_WARD,
-            ticks: 12600,
-            range: 500,
-        },
-        cooldown: 30,
-        stock: Some(Stock {
-            initial: 3,
-            max: 8,
-            restock_ticks: 70 * rules::TICKS_PER_SECOND,
-        }),
-        ..PLAIN
-    },
-    ItemDef {
-        name: "Tango",
-        cost: 90,
-        charges: 3,
-        stack_limit: u8::MAX,
-        aim: Some(Aim::Tree),
-        range: 165,
-        spends: Spends::One,
-        effect: UseSpec::Mend(Mend {
-            pool: Pool::Health,
-            total: 112,
-            ticks: 16 * rules::TICKS_PER_SECOND,
-            range: 165,
-            eats_a_tree: true,
-            breaks: false,
-        }),
-        stock: Some(Stock {
-            initial: 10,
-            max: 10,
-            restock_ticks: 120 * rules::TICKS_PER_SECOND,
-        }),
-        ..PLAIN
-    },
-    // Town Portal Scroll: Dota 7.41f `item_tpscroll` of the game's
-    // `scripts/npc/items.txt` (client 6957, 2026-10-09), the official patch
-    // notes 7.33 to 7.41f and Liquipedia's *Town Portal Scroll* (read
-    // 2026-10-11). Stacks without limit in Dota; a stack's charges are a byte
-    // here, more than a match buys.
-    ItemDef {
-        name: "Town Portal Scroll",
-        cost: 100,
-        charges: 1,
-        stack_limit: u8::MAX,
-        cooldown: rules::SCROLL_WAIT_TICKS,
-        shared_wait: true,
-        mana_cost: rules::SCROLL_MANA,
-        aim: Some(Aim::Building),
-        duration: rules::SCROLL_CHANNEL_TICKS,
-        effect: UseSpec::Teleport,
-        ..PLAIN
-    },
-    ItemDef {
-        name: "Circlet",
-        cost: 155,
-        carried: Carried {
-            attributes: Attributes::all(2),
-            ..NOTHING
-        },
-        ..PLAIN
-    },
-    ItemDef {
-        name: "Gauntlets of Strength",
-        cost: 140,
-        carried: Carried {
-            attributes: points(Attribute::Strength, 3),
-            ..NOTHING
-        },
-        ..PLAIN
-    },
-    ItemDef {
-        name: "Slippers of Agility",
-        cost: 140,
-        carried: Carried {
-            attributes: points(Attribute::Agility, 3),
-            ..NOTHING
-        },
-        ..PLAIN
-    },
-    ItemDef {
-        name: "Mantle of Intelligence",
-        cost: 140,
-        carried: Carried {
-            attributes: points(Attribute::Intelligence, 3),
-            ..NOTHING
-        },
-        ..PLAIN
-    },
-    ItemDef {
-        name: "Belt of Strength",
-        cost: 450,
-        carried: Carried {
-            attributes: points(Attribute::Strength, 6),
-            ..NOTHING
-        },
-        ..PLAIN
-    },
-    ItemDef {
-        name: "Band of Elvenskin",
-        cost: 450,
-        carried: Carried {
-            attributes: points(Attribute::Agility, 6),
-            ..NOTHING
-        },
-        ..PLAIN
-    },
-    ItemDef {
-        name: "Robe of the Magi",
-        cost: 450,
-        carried: Carried {
-            attributes: points(Attribute::Intelligence, 6),
-            ..NOTHING
-        },
-        ..PLAIN
-    },
-    ItemDef {
-        name: "Ogre Axe",
-        cost: 1000,
-        carried: Carried {
-            attributes: points(Attribute::Strength, 10),
-            ..NOTHING
-        },
-        ..PLAIN
-    },
-    ItemDef {
-        name: "Blade of Alacrity",
-        cost: 1000,
-        carried: Carried {
-            attributes: points(Attribute::Agility, 10),
-            ..NOTHING
-        },
-        ..PLAIN
-    },
-    ItemDef {
-        name: "Staff of Wizardry",
-        cost: 1000,
-        carried: Carried {
-            attributes: points(Attribute::Intelligence, 10),
-            ..NOTHING
-        },
-        ..PLAIN
-    },
-    ItemDef {
-        name: "Gloves of Haste",
-        cost: 450,
-        carried: Carried {
-            attack_speed: 20,
-            ..NOTHING
-        },
-        ..PLAIN
-    },
-    ItemDef {
-        name: "Blades of Attack",
-        cost: 450,
-        carried: Carried {
-            damage: 9,
-            ..NOTHING
-        },
-        ..PLAIN
-    },
-    ItemDef {
-        name: "Broadsword",
-        cost: 1000,
-        carried: Carried {
-            damage: 15,
-            ..NOTHING
-        },
-        ..PLAIN
-    },
-    ItemDef {
-        name: "Quarterstaff",
-        cost: 875,
-        carried: Carried {
-            damage: 10,
-            attack_speed: 10,
-            ..NOTHING
-        },
-        ..PLAIN
-    },
-    ItemDef {
-        name: "Ring of Protection",
-        cost: 175,
-        carried: Carried {
-            armor: Fixed::from_int(2),
-            ..NOTHING
-        },
-        ..PLAIN
-    },
-    ItemDef {
-        name: "Chainmail",
-        cost: 500,
-        carried: Carried {
-            armor: Fixed::from_int(4),
-            ..NOTHING
-        },
-        ..PLAIN
-    },
-    ItemDef {
-        name: "Ring of Regen",
-        cost: 175,
-        carried: Carried {
-            hp_regen: hundredths_per_second(125),
-            ..NOTHING
-        },
-        ..PLAIN
-    },
-    ItemDef {
-        name: "Sage's Mask",
-        cost: 175,
-        carried: Carried {
-            mana_regen: hundredths_per_second(70),
-            ..NOTHING
-        },
-        ..PLAIN
-    },
-    ItemDef {
-        name: "Vitality Booster",
-        cost: 1000,
-        carried: Carried { hp: 250, ..NOTHING },
-        ..PLAIN
-    },
-    ItemDef {
-        name: "Energy Booster",
-        cost: 800,
-        carried: Carried {
-            mana: 250,
-            ..NOTHING
-        },
-        ..PLAIN
-    },
-    ItemDef {
-        name: "Power Treads",
-        cost: 1400,
-        mode: Some(Attribute::Strength),
-        mode_bonus: 10,
-        components: &TREADS_PARTS,
-        alternatives: &TREADS_ALTERNATIVES,
-        carried: Carried {
-            move_speed: 55,
-            attack_speed: 25,
-            ..NOTHING
-        },
-        ranged: Some(Carried {
-            move_speed: 45,
-            attack_speed: 25,
-            ..NOTHING
-        }),
-        aim: Some(Aim::Own),
-        immediate: true,
-        effect: UseSpec::SwitchMode,
-        ..PLAIN
-    },
-    ItemDef {
-        name: "Phase Boots",
-        cost: 1450,
-        cooldown: 240,
-        components: &PHASE_PARTS,
-        carried: Carried {
-            move_speed: 50,
-            damage: 18,
-            armor: Fixed::from_int(4),
-            ..NOTHING
-        },
-        ranged: Some(Carried {
-            move_speed: 50,
-            damage: 12,
-            armor: Fixed::from_int(4),
-            ..NOTHING
-        }),
-        aim: Some(Aim::Own),
-        ignores_channel: true,
-        effect: UseSpec::Phase {
-            pct: 20,
-            ranged_pct: 10,
-            ticks: 3 * rules::TICKS_PER_SECOND,
-        },
-        ..PLAIN
-    },
-    ItemDef {
-        name: "Blink Dagger",
-        cost: 2250,
-        cooldown: 450,
-        breaks_on_damage: 90,
-        aim: Some(Aim::Point),
-        range: 1200,
-        effect: UseSpec::Blink {
-            range: BLINK_RANGE,
-            overshoot: BLINK_OVERSHOOT_RANGE,
-        },
-        ..PLAIN
-    },
-    ItemDef {
-        name: "Bracer",
-        cost: 505,
-        components: &BRACER_PARTS,
-        carried: Carried {
-            attributes: points_with(Attribute::Strength, 5, 2),
-            hp: 50,
-            hp_regen: hundredths_per_second(75),
-            ..NOTHING
-        },
-        ..PLAIN
-    },
-    ItemDef {
-        name: "Wraith Band",
-        cost: 505,
-        components: &WRAITH_PARTS,
-        carried: Carried {
-            attributes: points_with(Attribute::Agility, 5, 2),
-            attack_speed: 6,
-            armor: Fixed::from_ratio(7, 4),
-            ..NOTHING
-        },
-        ..PLAIN
-    },
-    ItemDef {
-        name: "Null Talisman",
-        cost: 505,
-        components: &NULL_PARTS,
-        carried: Carried {
-            attributes: points_with(Attribute::Intelligence, 5, 2),
-            mana_regen: per_second(1),
-            mana_pct: 3,
-            ..NOTHING
-        },
-        ..PLAIN
-    },
-    ItemDef {
-        name: "Magic Stick",
-        cost: 200,
-        cast_charges: 10,
-        cooldown: 17 * rules::TICKS_PER_SECOND,
-        aim: Some(Aim::Own),
-        spends: Spends::All,
-        effect: UseSpec::Restore {
-            hp_per_charge: 15,
-            mana_per_charge: 15,
-        },
-        ..PLAIN
-    },
-    ItemDef {
-        name: "Magic Wand",
-        cost: 460,
-        cast_charges: 20,
-        cooldown: 15 * rules::TICKS_PER_SECOND,
-        components: &WAND_PARTS,
-        carried: Carried {
-            attributes: Attributes::all(3),
-            ..NOTHING
-        },
-        aim: Some(Aim::Own),
-        spends: Spends::All,
-        effect: UseSpec::Restore {
-            hp_per_charge: 15,
-            mana_per_charge: 15,
-        },
-        ..PLAIN
-    },
-    // Retired: Phase Boots build of their parts alone since Dota made the
-    // recipe free. The id keeps its place.
-    ItemDef {
-        name: "Recipe: Phase Boots",
-        retired: true,
-        ..PLAIN
-    },
-    ItemDef {
-        name: "Recipe: Bracer",
-        cost: 210,
-        ..PLAIN
-    },
-    ItemDef {
-        name: "Recipe: Wraith Band",
-        cost: 210,
-        ..PLAIN
-    },
-    ItemDef {
-        name: "Recipe: Null Talisman",
-        cost: 210,
-        ..PLAIN
-    },
-    ItemDef {
-        name: "Recipe: Magic Wand",
-        cost: 150,
-        ..PLAIN
-    },
-    ItemDef {
-        name: "Enchanted Mango",
-        cost: MANGO_COST,
-        charges: 1,
-        stack_limit: MANGO_STACK_MAX,
-        carried: Carried {
-            hp_regen: MANGO_HP_REGEN,
-            ..NOTHING
-        },
-        aim: Some(Aim::Own),
-        spends: Spends::One,
-        mana_deficit: true,
-        effect: UseSpec::Replenish { mana: MANGO_MANA },
-        stock: Some(Stock {
-            initial: 4,
-            max: 4,
-            restock_ticks: 120 * rules::TICKS_PER_SECOND,
-        }),
-        ..PLAIN
-    },
-    ItemDef {
-        name: "Eaglesong",
-        cost: 2800,
-        carried: Carried {
-            attributes: points(Attribute::Agility, 25),
-            ..NOTHING
-        },
-        ..PLAIN
-    },
-    ItemDef {
-        name: "Claymore",
-        cost: 1350,
-        carried: Carried {
-            damage: 20,
-            ..NOTHING
-        },
-        ..PLAIN
-    },
-    ItemDef {
-        name: "Talisman of Evasion",
-        cost: 1300,
-        carried: Carried {
-            evasion: Odds::percent(15),
-            ..NOTHING
-        },
-        ..PLAIN
-    },
-    ItemDef {
-        name: "Butterfly",
-        cost: 5450,
-        components: &BUTTERFLY_PARTS,
-        carried: Carried {
-            attributes: points(Attribute::Agility, 30),
-            damage: 30,
-            base_attack_speed_pct: 20,
-            evasion: Odds::percent(35),
-            ..NOTHING
-        },
-        ..PLAIN
-    },
-    ItemDef {
-        name: "Javelin",
-        cost: 900,
-        carried: Carried {
-            pierce: Odds::percent(25),
-            pierce_damage: 60,
-            ..NOTHING
-        },
-        ..PLAIN
-    },
-    ItemDef {
-        name: "Demon Edge",
-        cost: 2200,
-        carried: Carried {
-            damage: 40,
-            ..NOTHING
-        },
-        ..PLAIN
-    },
-    ItemDef {
-        name: "Blitz Knuckles",
-        cost: 1000,
-        carried: Carried {
-            attack_speed: 35,
-            ..NOTHING
-        },
-        ..PLAIN
-    },
-    ItemDef {
-        name: "Recipe: Monkey King Bar",
-        cost: 900,
-        ..PLAIN
-    },
-    ItemDef {
-        name: "Monkey King Bar",
-        cost: 5000,
-        components: &MKB_PARTS,
-        carried: Carried {
-            damage: 50,
-            attack_speed: 50,
-            melee_range: 50,
-            pierce: Odds::percent(80),
-            pierce_damage: 70,
-            pierce_unique: true,
-            ..NOTHING
-        },
-        ..PLAIN
-    },
-    // Wind Lace and Blood Grenade: Dota 7.41f's official item data
-    // (dota2.com datafeed, items 244 and 1123), the game's
-    // `scripts/npc/items.txt` (client 6957, 2026-10-09) for stock and stacks,
-    // and Liquipedia's *Blood Grenade* and *Movement Speed*.
-    ItemDef {
-        name: "Wind Lace",
-        cost: 225,
-        carried: Carried {
-            lace_speed: 15,
-            ..NOTHING
-        },
-        ..PLAIN
-    },
-    ItemDef {
-        name: "Blood Grenade",
-        cost: 50,
-        charges: 1,
-        stack_limit: 2,
-        cooldown: GRENADE_COOLDOWN,
-        health_cost: 75,
-        stock: Some(Stock {
-            initial: 2,
-            max: 3,
-            restock_ticks: 180 * rules::TICKS_PER_SECOND,
-        }),
-        carried: Carried { hp: 50, ..NOTHING },
-        aim: Some(Aim::Point),
-        range: GRENADE_RANGE,
-        spends: Spends::One,
-        point: 200,
-        effect: UseSpec::Grenade,
-        ..PLAIN
-    },
-    // Ward Dispenser: `item_ward_dispenser` and `item_recipe_ward_dispenser`
-    // of the same file, and Liquipedia's *Observer and Sentry Wards*. It is
-    // made of the wards a seat holds (one Observer and one Sentry Ward are the
-    // recipe; the item keeps the count of each), is never sold, and plants the
-    // kind it is switched to by the entry of that ward. The file gives the
-    // dispenser no cooldown of its own, but Liquipedia's changelog (2017,
-    // "Fixed Plant cooldown not working") has its plant wait, so it keeps the
-    // second the wards wait between plantings.
-    ItemDef {
-        name: "Ward Dispenser",
-        cost: 50,
-        charges: 1,
-        cooldown: 30,
-        aim: Some(Aim::Point),
-        range: 500,
-        unbuyable: true,
-        effect: UseSpec::Dispense,
-        ..PLAIN
-    },
-];
+// A const, not a static: the client's limits and the catalog checks read it
+// at compile time.
+#[allow(clippy::large_const_arrays)]
+pub const ITEMS: [ItemDef; ITEM_COUNT] =
+    placed_by_id!(ITEM_ROWS, ITEM_COUNT, |row| row.id.0 as usize);
 
 const _: () = {
     // A stocked item is bought whole, and is no part of a build.

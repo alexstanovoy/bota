@@ -30,6 +30,18 @@ fn the_console_turns_a_typed_line_into_a_cheat_order() {
                 item: ItemId::MANGO,
             },
         ),
+        (
+            "-item item_blink",
+            Cheat::Item {
+                item: ItemId::BLINK_DAGGER,
+            },
+        ),
+        (
+            "dota_create_item item_flask",
+            Cheat::Item {
+                item: ItemId::HEALING_SALVE,
+            },
+        ),
     ] {
         assert_eq!(parse(line), Ok(Order::Cheat { cheat }), "{line:?}");
     }

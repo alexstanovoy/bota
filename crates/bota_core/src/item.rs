@@ -249,6 +249,12 @@ pub const MAX_COMPONENTS: usize = 4;
 /// One entry of the catalog.
 #[derive(Clone, Copy, Debug)]
 pub struct ItemDef {
+    /// The id it answers to on the wire, which [`ITEMS`](crate::ITEMS)
+    /// places it at.
+    pub id: ItemId,
+    /// Dota's internal name of the item, its line of the id registry: what
+    /// every data file and asset knows it by.
+    pub key: &'static str,
     /// What it is called.
     pub name: &'static str,
     /// Price in gold.
@@ -368,6 +374,8 @@ impl ItemDef {
 /// An item that costs nothing, carries nothing and does nothing, so an entry
 /// names only what sets it apart.
 pub(crate) const PLAIN: ItemDef = ItemDef {
+    id: ItemId(u16::MAX),
+    key: "",
     name: "",
     cost: 0,
     charges: 0,
@@ -433,6 +441,14 @@ const _: () = {
 #[inline]
 pub fn item_def(id: ItemId) -> Option<&'static ItemDef> {
     ITEMS.get(usize::from(id.0)).filter(|def| !def.retired)
+}
+
+/// The live item a Dota key names, if there is one.
+pub fn item_by_key(key: &str) -> Option<ItemId> {
+    ITEMS
+        .iter()
+        .find(|def| !def.retired && def.key == key)
+        .map(|def| def.id)
 }
 
 /// The whole shop as the wire states it, in item id order: what [`sold_items`] lists. The wire

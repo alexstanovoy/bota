@@ -1,265 +1,274 @@
 # Every id ever assigned on the bota wire: append-only.
 #
-# One line an id: `<space> <id> <live|retired> <name>`. A new id takes the next
-# number of its space and is appended. An id is never renumbered, renamed or
-# reused; one that leaves the game is marked `retired` and stays retired.
+# One line an id: `<space> <id> <live|retired> <key>`. A new id takes the next
+# number of its space and is appended. An id is never renumbered or reused,
+# and never changes what it names; one that leaves the game is marked
+# `retired` and stays retired.
+#
+# The key is Dota's internal name of what the id names, the name every Dota
+# data file and asset knows it by: `item_flask`, `npc_dota_hero_nevermore`,
+# `nevermore_shadowraze1`, `npc_dota_neutral_kobold`, and for an effect the
+# modifier it is (`modifier_flask_healing`). An effect Dota has no modifier
+# for takes a `bota_` key. The keys replaced English display names once
+# (2026-10-30), with every id keeping its meaning: a key is never renamed
+# again.
 
-hero 0 live Pudge
-hero 1 live Shadow Fiend
+hero 0 live npc_dota_hero_pudge
+hero 1 live npc_dota_hero_nevermore
 
-ability 0 live Meat Hook
-ability 1 live Rot
-ability 2 live Flesh Heap
-ability 3 live Dismember
-ability 4 live Burst
-ability 5 live Return
-ability 6 live Take Stash
-ability 7 live Deliver
-ability 8 live Shield
-ability 9 live Shadowraze (Near)
-ability 10 live Shadowraze (Mid)
-ability 11 live Shadowraze (Far)
-ability 12 live Requiem of Souls
-ability 13 live Necromastery
-ability 14 live Presence of the Dark Lord
-ability 15 live Feast of Souls
-ability 16 retired Throw Grenade
-ability 17 live Prospecting Aura
-ability 18 live Neutral Upgrade
-ability 19 live Steal Weapon
-ability 20 live Speed Aura
-ability 21 live Break
-ability 22 live Piercing
-ability 23 live Heal
-ability 24 live Heal Amplification Aura
-ability 25 live Envenomed Weapon
-ability 26 live Vex
-ability 27 live Frost Attack
-ability 28 live Take Off
-ability 29 live Chain Lightning
-ability 30 live Cloak Aura
-ability 31 live War Stomp
-ability 32 live Intimidate
-ability 33 live Critical Strike
-ability 34 live Packleader's Aura
-ability 35 live Purge
-ability 36 live Mana Burn
-ability 37 live Mana Aura
-ability 38 live Shockwave
-ability 39 live Unholy Aura
-ability 40 live Ogre Smash!
-ability 41 live Ice Armor
-ability 42 live Hurl Boulder
-ability 43 live Shard Split
-ability 44 live Swiftness Aura
-ability 45 live Death Throe: Rush
-ability 46 live Thunder Clap
-ability 47 live Death Throe: Power
-ability 48 live Tornado
-ability 49 live Hurricane
-ability 50 live Toughness Aura
-ability 51 live Ensnare
-ability 52 live Raise Dead
-ability 53 live Seed Shot
-ability 54 live Magic Amplification Aura
-ability 55 live Fireball
-ability 56 live Splash Attack
-ability 57 live Dragonhide Aura
-ability 58 live Weakening Aura
-ability 59 live Granite Aura
-ability 60 live War Drums Aura
-ability 61 live Slam
-ability 62 live Frenzy
-ability 63 live Time Warp Aura
-ability 64 live Icefire Bomb
-ability 65 live Prowler Aura
-ability 66 live Desecrate
-ability 67 live Petrify
-ability 68 live Riverborn Aura
-ability 69 live Arm of the Deep
-ability 70 live Tendrils of the Deep
-ability 71 live Congregations of the Deep
-ability 72 live Water Bubble (Small)
-ability 73 live Water Bubble (Medium)
-ability 74 live Water Bubble (Large)
-ability 75 live Rally
-ability 76 live Tempest
-ability 77 live Meat Shield
-ability 78 live Capture
-ability 79 live Lamp Use
+ability 0 live pudge_meat_hook
+ability 1 live pudge_rot
+ability 2 live pudge_innate_graft_flesh
+ability 3 live pudge_dismember
+ability 4 live courier_burst
+ability 5 live courier_return_to_base
+ability 6 live courier_take_stash_items
+ability 7 live courier_transfer_items
+ability 8 live courier_shield
+ability 9 live nevermore_shadowraze1
+ability 10 live nevermore_shadowraze2
+ability 11 live nevermore_shadowraze3
+ability 12 live nevermore_requiem
+ability 13 live nevermore_necromastery
+ability 14 live nevermore_dark_lord
+ability 15 live nevermore_frenzy
+ability 16 retired bota_throw_grenade
+ability 17 live kobold_tunneler_prospecting
+ability 18 live neutral_upgrade
+ability 19 live kobold_disarm
+ability 20 live kobold_taskmaster_speed_aura
+ability 21 live berserker_troll_break
+ability 22 live creep_piercing
+ability 23 live forest_troll_high_priest_heal
+ability 24 live forest_troll_high_priest_heal_amp_aura
+ability 25 live gnoll_assassin_envenomed_weapon
+ability 26 live fel_beast_haunt
+ability 27 live ghost_frost_attack
+ability 28 live harpy_scout_take_off
+ability 29 live harpy_storm_chain_lightning
+ability 30 live mudgolem_cloak_aura
+ability 31 live centaur_khan_war_stomp
+ability 32 live giant_wolf_intimidate
+ability 33 live alpha_wolf_critical_strike
+ability 34 live alpha_wolf_command_aura
+ability 35 live satyr_trickster_purge
+ability 36 live satyr_soulstealer_mana_burn
+ability 37 live forest_troll_high_priest_mana_aura
+ability 38 live satyr_hellcaller_shockwave
+ability 39 live satyr_hellcaller_unholy_aura
+ability 40 live ogre_bruiser_ogre_smash
+ability 41 live ogre_magi_frost_armor
+ability 42 live mud_golem_hurl_boulder
+ability 43 live mud_golem_rock_destroy
+ability 44 live centaur_khan_endurance_aura
+ability 45 live furbolg_enrage_attack_speed
+ability 46 live polar_furbolg_ursa_warrior_thunder_clap
+ability 47 live furbolg_enrage_damage
+ability 48 live enraged_wildkin_tornado
+ability 49 live enraged_wildkin_hurricane
+ability 50 live enraged_wildkin_toughness_aura
+ability 51 live dark_troll_warlord_ensnare
+ability 52 live dark_troll_warlord_raise_dead
+ability 53 live warpine_raider_seed_shot
+ability 54 live black_drake_magic_amplification_aura
+ability 55 live black_dragon_fireball
+ability 56 live black_dragon_splash_attack
+ability 57 live black_dragon_dragonhide_aura
+ability 58 live ancient_rock_golem_weakening_aura
+ability 59 live granite_golem_hp_aura
+ability 60 live big_thunder_lizard_wardrums_aura
+ability 61 live big_thunder_lizard_slam
+ability 62 live big_thunder_lizard_frenzy
+ability 63 live frostbitten_golem_time_warp_aura
+ability 64 live ice_shaman_incendiary_bomb
+ability 65 live spawnlord_aura
+ability 66 live spawnlord_master_stomp
+ability 67 live spawnlord_master_freeze
+ability 68 live frogmen_riverborn_aura
+ability 69 live frogmen_arm_of_the_deep
+ability 70 live frogmen_tendrils_of_the_deep
+ability 71 live frogmen_congregation_of_the_deep
+ability 72 live frogmen_water_bubble_small
+ability 73 live frogmen_water_bubble_medium
+ability 74 live frogmen_water_bubble_large
+ability 75 live hill_troll_rally
+ability 76 live tornado_tempest
+ability 77 live pudge_flesh_heap
+ability 78 live ability_capture
+ability 79 live ability_lamp_use
 
-item 0 live Boots of Speed
-item 1 live Clarity
-item 2 live Healing Salve
-item 3 live Iron Branch
-item 4 live Observer Ward
-item 5 live Quelling Blade
-item 6 live Sentry Ward
-item 7 live Tango
-item 8 live Town Portal Scroll
-item 9 live Circlet
-item 10 live Gauntlets of Strength
-item 11 live Slippers of Agility
-item 12 live Mantle of Intelligence
-item 13 live Belt of Strength
-item 14 live Band of Elvenskin
-item 15 live Robe of the Magi
-item 16 live Ogre Axe
-item 17 live Blade of Alacrity
-item 18 live Staff of Wizardry
-item 19 live Gloves of Haste
-item 20 live Blades of Attack
-item 21 live Broadsword
-item 22 live Quarterstaff
-item 23 live Ring of Protection
-item 24 live Chainmail
-item 25 live Ring of Regen
-item 26 live Sage's Mask
-item 27 live Vitality Booster
-item 28 live Energy Booster
-item 29 live Power Treads
-item 30 live Phase Boots
-item 31 live Blink Dagger
-item 32 live Bracer
-item 33 live Wraith Band
-item 34 live Null Talisman
-item 35 live Magic Stick
-item 36 live Magic Wand
-item 37 retired Recipe: Phase Boots
-item 38 live Recipe: Bracer
-item 39 live Recipe: Wraith Band
-item 40 live Recipe: Null Talisman
-item 41 live Recipe: Magic Wand
-item 42 live Enchanted Mango
-item 43 live Eaglesong
-item 44 live Claymore
-item 45 live Talisman of Evasion
-item 46 live Butterfly
-item 47 live Javelin
-item 48 live Demon Edge
-item 49 live Blitz Knuckles
-item 50 live Recipe: Monkey King Bar
-item 51 live Monkey King Bar
-item 52 live Wind Lace
-item 53 live Blood Grenade
-item 54 live Ward Dispenser
+item 0 live item_boots
+item 1 live item_clarity
+item 2 live item_flask
+item 3 live item_branches
+item 4 live item_ward_observer
+item 5 live item_quelling_blade
+item 6 live item_ward_sentry
+item 7 live item_tango
+item 8 live item_tpscroll
+item 9 live item_circlet
+item 10 live item_gauntlets
+item 11 live item_slippers
+item 12 live item_mantle
+item 13 live item_belt_of_strength
+item 14 live item_boots_of_elves
+item 15 live item_robe
+item 16 live item_ogre_axe
+item 17 live item_blade_of_alacrity
+item 18 live item_staff_of_wizardry
+item 19 live item_gloves
+item 20 live item_blades_of_attack
+item 21 live item_broadsword
+item 22 live item_quarterstaff
+item 23 live item_ring_of_protection
+item 24 live item_chainmail
+item 25 live item_ring_of_regen
+item 26 live item_sobi_mask
+item 27 live item_vitality_booster
+item 28 live item_energy_booster
+item 29 live item_power_treads
+item 30 live item_phase_boots
+item 31 live item_blink
+item 32 live item_bracer
+item 33 live item_wraith_band
+item 34 live item_null_talisman
+item 35 live item_magic_stick
+item 36 live item_magic_wand
+item 37 retired item_recipe_phase_boots
+item 38 live item_recipe_bracer
+item 39 live item_recipe_wraith_band
+item 40 live item_recipe_null_talisman
+item 41 live item_recipe_magic_wand
+item 42 live item_enchanted_mango
+item 43 live item_eagle
+item 44 live item_claymore
+item 45 live item_talisman_of_evasion
+item 46 live item_butterfly
+item 47 live item_javelin
+item 48 live item_demon_edge
+item 49 live item_blitz_knuckles
+item 50 live item_recipe_monkey_king_bar
+item 51 live item_monkey_king_bar
+item 52 live item_wind_lace
+item 53 live item_blood_grenade
+item 54 live item_ward_dispenser
 
-effect 0 retired Haste
-effect 1 live Mending
-effect 2 live Clarity
-effect 3 live Fountain
-effect 4 live Stunned
-effect 5 live Slowed
-effect 6 live Burning
-effect 7 live Hastened
-effect 8 live Shielded
-effect 9 live Phased
-effect 10 live FleshHeap
-effect 11 live Souls
-effect 12 live ArmorBroken
-effect 13 live Guarded
-effect 14 live Inspired
-effect 15 live Shadowraze
-effect 16 live Rot
-effect 17 live Feared
-effect 18 live MagicBroken
-effect 19 live Feasting
-effect 20 live FeastLinger
-effect 21 live BloodGrenade
-effect 22 live Rooted
-effect 23 live Disarmed
-effect 24 live Broken
-effect 25 live StealWeapon
-effect 26 live SpeedAura
-effect 27 live EnvenomedWeapon
-effect 28 live FrostAttack
-effect 29 live CloakAura
-effect 30 live Intimidate
-effect 31 live PackleadersAura
-effect 32 live ManaAura
-effect 33 live UnholyAura
-effect 34 live ShardSplit
-effect 35 live SwiftnessAura
-effect 36 live DeathThroeRush
-effect 37 live ThunderClap
-effect 38 live DeathThroePower
-effect 39 live ToughnessAura
-effect 40 live MagicAmplificationAura
-effect 41 live DragonhideAura
-effect 42 live WeakeningAura
-effect 43 live GraniteAura
-effect 44 live WarDrumsAura
-effect 45 live Slam
-effect 46 live Frenzy
-effect 47 live TimeWarpAura
-effect 48 live ProwlerAura
-effect 49 live Desecrate
-effect 50 live Petrify
-effect 51 live RiverbornAura
-effect 52 live Rally
-effect 53 live Tempest
-effect 54 live WaterBubble
-effect 55 live Purge
-effect 56 live Fortified
-effect 57 live MeatShield
-effect 58 live Dismembered
-effect 59 live BackdoorProtection
-effect 60 live Illusion
-effect 61 live TimedLife
-effect 62 live NeutralUpgrade
-effect 63 live Flying
-effect 64 live FountainInvulnerable
-effect 65 live FountainPassive
-effect 66 live FountainDamage
-effect 67 live VisionGrant
-effect 68 live LampOff
-effect 69 live CaptureGuard
-effect 70 live ShrineReady
+effect 0 retired bota_haste
+effect 1 live modifier_flask_healing
+effect 2 live modifier_clarity_potion
+effect 3 live modifier_fountain_aura_buff
+effect 4 live modifier_stunned
+effect 5 live bota_slowed
+effect 6 live bota_burning
+effect 7 live modifier_courier_burst
+effect 8 live modifier_courier_shield
+effect 9 live modifier_item_phase_boots_active
+effect 10 live modifier_pudge_innate_graft_flesh
+effect 11 live modifier_nevermore_necromastery
+effect 12 live modifier_nevermore_presence
+effect 13 live modifier_tower_armor_bonus
+effect 14 live modifier_flagbearer_creep_aura_effect
+effect 15 live modifier_nevermore_shadowraze_debuff
+effect 16 live modifier_pudge_rot
+effect 17 live modifier_nevermore_requiem_fear
+effect 18 live modifier_nevermore_requiem_slow
+effect 19 live modifier_nevermore_frenzy
+effect 20 live modifier_nevermore_feast_of_souls_linger
+effect 21 live modifier_item_blood_grenade_debuff
+effect 22 live modifier_rooted
+effect 23 live modifier_disarmed
+effect 24 live modifier_break
+effect 25 live modifier_kobold_disarm
+effect 26 live modifier_kobold_taskmaster_speed_aura_bonus
+effect 27 live modifier_gnoll_assassin_envenomed_weapon_poison
+effect 28 live modifier_ghost_frost_attack_slow
+effect 29 live modifier_mudgolem_cloak_aura_bonus
+effect 30 live modifier_giant_wolf_intimidate
+effect 31 live modifier_alpha_wolf_command_aura_bonus
+effect 32 live modifier_forest_troll_high_priest_mana_aura_bonus
+effect 33 live modifier_satyr_hellcaller_unholy_aura_bonus
+effect 34 live modifier_mud_golem_rock_destroy
+effect 35 live modifier_centaur_khan_endurance_aura_bonus
+effect 36 live modifier_furbolg_enrage_attack_speed
+effect 37 live modifier_polar_furbolg_ursa_warrior_thunder_clap
+effect 38 live modifier_furbolg_enrage_damage
+effect 39 live modifier_enraged_wildkin_toughness_aura_bonus
+effect 40 live modifier_black_drake_magic_amplification
+effect 41 live modifier_black_dragon_dragonhide_aura_bonus
+effect 42 live modifier_ancient_rock_golem_weakening
+effect 43 live modifier_granite_golem_hp_aura_bonus
+effect 44 live modifier_big_thunder_lizard_wardrums_aura
+effect 45 live modifier_big_thunder_lizard_slam
+effect 46 live modifier_big_thunder_lizard_frenzy
+effect 47 live modifier_frostbitten_golem_time_warp_aura_bonus
+effect 48 live modifier_spawnlord_aura_bonus
+effect 49 live modifier_spawnlord_master_stomp
+effect 50 live modifier_spawnlord_master_freeze_root
+effect 51 live modifier_frogmen_riverborn_aura_bonus
+effect 52 live modifier_hill_troll_rally
+effect 53 live modifier_tornado_tempest_debuff
+effect 54 live modifier_frogmen_water_bubble
+effect 55 live modifier_satyr_trickster_purge
+effect 56 live modifier_fountain_glyph
+effect 57 live modifier_pudge_flesh_heap_block
+effect 58 live modifier_pudge_dismember
+effect 59 live modifier_backdoor_protection_active
+effect 60 live modifier_illusion
+effect 61 live modifier_kill
+effect 62 live modifier_neutral_upgrade
+effect 63 live modifier_courier_flying
+effect 64 live modifier_fountain_invulnerability
+effect 65 live modifier_fountain_passive
+effect 66 live modifier_fountain_fury_swipes_damage_increase
+effect 67 live modifier_lamp_on
+effect 68 live modifier_lamp_off
+effect 69 live modifier_watch_tower_invulnerable
+effect 70 live bota_shrine_ready
 
-neutral 0 live Kobold
-neutral 1 live Kobold Soldier
-neutral 2 live Kobold Foreman
-neutral 3 live Hill Troll Berserker
-neutral 4 live Hill Troll Priest
-neutral 5 live Vhoul Assassin
-neutral 6 live Fell Spirit
-neutral 7 live Ghost
-neutral 8 live Harpy Scout
-neutral 9 live Harpy Stormcrafter
-neutral 10 live Centaur Courser
-neutral 11 live Centaur Conqueror
-neutral 12 live Giant Wolf
-neutral 13 live Alpha Wolf
-neutral 14 live Satyr Banisher
-neutral 15 live Satyr Mindstealer
-neutral 16 live Satyr Tormenter
-neutral 17 live Ogre Bruiser
-neutral 18 live Ogre Frostmage
-neutral 19 live Mud Golem
-neutral 20 live Shard Golem
-neutral 21 live Hellbear
-neutral 22 live Hellbear Smasher
-neutral 23 live Wildwing
-neutral 24 live Wildwing Ripper
-neutral 25 live Hill Troll
-neutral 26 live Dark Troll Summoner
-neutral 27 live Warpine Raider
-neutral 28 live Ancient Black Drake
-neutral 29 live Ancient Black Dragon
-neutral 30 live Ancient Rock Golem
-neutral 31 live Ancient Granite Golem
-neutral 32 live Ancient Rumblehide
-neutral 33 live Ancient Thunderhide
-neutral 34 live Ancient Frostbitten Golem
-neutral 35 live Ancient Ice Shaman
-neutral 36 live Ancient Prowler Acolyte
-neutral 37 live Ancient Prowler Shaman
-neutral 38 live Pollywog
-neutral 39 live Boglet
-neutral 40 live Croaker
-neutral 41 live Ancient Croaker
-neutral 42 live Marshmage Apprentice
-neutral 43 live Marshmage
-neutral 44 live Ancient Marshmage
-neutral 45 live Skeleton Warrior
-neutral 46 live Tornado
+neutral 0 live npc_dota_neutral_kobold
+neutral 1 live npc_dota_neutral_kobold_tunneler
+neutral 2 live npc_dota_neutral_kobold_taskmaster
+neutral 3 live npc_dota_neutral_forest_troll_berserker
+neutral 4 live npc_dota_neutral_forest_troll_high_priest
+neutral 5 live npc_dota_neutral_gnoll_assassin
+neutral 6 live npc_dota_neutral_fel_beast
+neutral 7 live npc_dota_neutral_ghost
+neutral 8 live npc_dota_neutral_harpy_scout
+neutral 9 live npc_dota_neutral_harpy_storm
+neutral 10 live npc_dota_neutral_centaur_outrunner
+neutral 11 live npc_dota_neutral_centaur_khan
+neutral 12 live npc_dota_neutral_giant_wolf
+neutral 13 live npc_dota_neutral_alpha_wolf
+neutral 14 live npc_dota_neutral_satyr_trickster
+neutral 15 live npc_dota_neutral_satyr_soulstealer
+neutral 16 live npc_dota_neutral_satyr_hellcaller
+neutral 17 live npc_dota_neutral_ogre_mauler
+neutral 18 live npc_dota_neutral_ogre_magi
+neutral 19 live npc_dota_neutral_mud_golem
+neutral 20 live npc_dota_neutral_mud_golem_split
+neutral 21 live npc_dota_neutral_polar_furbolg_champion
+neutral 22 live npc_dota_neutral_polar_furbolg_ursa_warrior
+neutral 23 live npc_dota_neutral_wildkin
+neutral 24 live npc_dota_neutral_enraged_wildkin
+neutral 25 live npc_dota_neutral_dark_troll
+neutral 26 live npc_dota_neutral_dark_troll_warlord
+neutral 27 live npc_dota_neutral_warpine_raider
+neutral 28 live npc_dota_neutral_black_drake
+neutral 29 live npc_dota_neutral_black_dragon
+neutral 30 live npc_dota_neutral_rock_golem
+neutral 31 live npc_dota_neutral_granite_golem
+neutral 32 live npc_dota_neutral_small_thunder_lizard
+neutral 33 live npc_dota_neutral_big_thunder_lizard
+neutral 34 live npc_dota_neutral_frostbitten_golem
+neutral 35 live npc_dota_neutral_ice_shaman
+neutral 36 live npc_dota_neutral_prowler_acolyte
+neutral 37 live npc_dota_neutral_prowler_shaman
+neutral 38 live npc_dota_neutral_tadpole
+neutral 39 live npc_dota_neutral_froglet
+neutral 40 live npc_dota_neutral_grown_frog
+neutral 41 live npc_dota_neutral_ancient_frog
+neutral 42 live npc_dota_neutral_froglet_mage
+neutral 43 live npc_dota_neutral_grown_frog_mage
+neutral 44 live npc_dota_neutral_ancient_frog_mage
+neutral 45 live npc_dota_dark_troll_warlord_skeleton_warrior
+neutral 46 live npc_dota_enraged_wildkin_tornado

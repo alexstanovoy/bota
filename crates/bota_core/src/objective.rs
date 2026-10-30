@@ -108,6 +108,7 @@ pub const OUTPOST: UnitDef = UnitDef {
 /// keeps it from starting.
 pub const CAPTURE: AbilityDef = AbilityDef {
     id: AbilityId::CAPTURE,
+    key: "ability_capture",
     name: "Capture",
     aim: Aim::Unit,
     max_level: 1,
@@ -188,6 +189,7 @@ pub const WATCHER: UnitDef = UnitDef {
 /// it [LIQ Watcher].
 pub const LAMP_USE: AbilityDef = AbilityDef {
     id: AbilityId::LAMP_USE,
+    key: "ability_lamp_use",
     name: "Lamp Use",
     aim: Aim::Unit,
     max_level: 1,
