@@ -517,6 +517,17 @@ fn a_crowd_evicting_thousands_of_cohorts_folds_in_time_linear_in_them() {
 /// them for each one did (13 ms and 73 ms in a release build).
 const FOLD_BUDGET: std::time::Duration = std::time::Duration::from_millis(30);
 
+/// What a socket does to a message: framed, taken out of the stream and
+/// decoded, as a server sends it and a client reads it.
+fn over_the_wire(message: &ServerMsg) -> ServerMsg {
+    let mut reader = bota_proto::FrameReader::new();
+    reader.push(&bota_proto::encode_frame_to_vec(message).expect("a frame"));
+    reader
+        .next_message()
+        .expect("a frame that decodes")
+        .expect("a whole frame")
+}
+
 /// Lays the stacking Dragonhide Aura of `sources` other units on seat 0's hero
 /// and plays a tick on, folding it: the hero's effects as the client then
 /// holds them, and as many as the server holds on it.
@@ -542,7 +553,7 @@ fn crowded_hero(sources: usize) -> (Result<(), SessionError>, usize, usize) {
     let step = local.step(&[&[], &[]]).expect("a step");
     let folded = step[0].iter().try_for_each(|message| {
         session
-            .ingest(message.clone(), &mut ())
+            .ingest(over_the_wire(message), &mut ())
             .map(drop)
             .map_err(SessionError::from)
     });
@@ -558,6 +569,40 @@ fn a_hero_wearing_forty_effects_is_a_view_the_client_folds() {
     let (folded, held, told) = crowded_hero(40);
     assert_eq!(folded, Ok(()));
     assert!(held >= 40 && told >= 40, "{held} held, {told} told");
+}
+
+/// A server that lists one effect more than the contract allows on a unit
+/// breaks it: the session refuses the view, whichever bound it holds.
+#[test]
+fn a_view_listing_more_effects_than_the_bound_is_refused() {
+    let (_, mut session) = seated();
+    let mut view = later(session.current().expect("a view"), 1);
+    let effect = bota_proto::EffectView {
+        id: bota_proto::EffectId(0),
+        ticks_left: None,
+        stacks: None,
+        caster: None,
+        inflictor: None,
+        ticks_total: None,
+    };
+    let hero = view
+        .units
+        .iter_mut()
+        .find(|unit| unit.kind == UnitKind::Hero)
+        .expect("a hero");
+    hero.effects = vec![effect; rules::MAX_EFFECTS_PER_UNIT];
+    assert_eq!(fold_view(&mut session, view.clone()), Ok(()));
+    let mut view = later(&view, 1);
+    view.units
+        .iter_mut()
+        .find(|unit| unit.kind == UnitKind::Hero)
+        .expect("a hero")
+        .effects
+        .push(effect);
+    assert!(matches!(
+        fold_view(&mut session, view),
+        Err(SessionError::LimitExceeded { .. })
+    ));
 }
 
 /// A unit never wears more than the bound the contract states, however many

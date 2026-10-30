@@ -572,3 +572,17 @@ variant EventKind 14 ItemUsed {}
 field EventKind::ItemUsed 0 caster: Option<EntityId>
 field EventKind::ItemUsed 1 item: ItemId
 field EventKind::ItemUsed 2 at: Option<Vec2>
+variant ObjectiveKind 0 Roshan
+variant ObjectiveKind 1 Tormentor
+variant ObjectiveKind 2 Watchers
+variant ObjectiveKind 3 Outposts
+variant ObjectiveKind 4 Shrines
+variant RuneKind 0 Water
+variant RuneKind 1 Bounty
+variant RuneKind 2 Haste
+variant RuneKind 3 AmplifyDamage
+variant RuneKind 4 Arcane
+variant RuneKind 5 Regeneration
+variant RuneKind 6 Illusion
+variant RuneKind 7 Invisibility
+variant RuneKind 8 Shield

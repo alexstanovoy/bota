@@ -90,7 +90,7 @@
 //!
 //! # Effects on a unit
 //!
-//! A unit carries at most `bota_core::rules::MAX_EFFECTS_PER_UNIT` modifiers,
+//! A unit carries at most [`MAX_EFFECTS_PER_UNIT`](crate::limits::MAX_EFFECTS_PER_UNIT) modifiers,
 //! hidden ones included, so [`UnitView::effects`](crate::UnitView) never lists
 //! more. A fresh modifier on a full unit displaces the one with the least time
 //! left, and is not put on when all that unit carries are untimed. A client
@@ -195,7 +195,7 @@
 //! trees), and an attack or a follow whose target stands, are never done:
 //! what is queued behind them waits for an unqueued order. A stun or a fear
 //! keeps the queue; death empties it. A queue holds at most
-//! `bota_core::rules::MAX_QUEUED_ORDERS`; one more is refused as
+//! [`MAX_QUEUED_ORDERS`](crate::limits::MAX_QUEUED_ORDERS); one more is refused as
 //! [`QueueFull`](crate::RejectReason::QueueFull). Each unit's queue is told to
 //! its own side in [`UnitView::queue`](crate::UnitView), never to the other.
 //!
@@ -204,7 +204,7 @@
 //! other unqueued order to the body waits instead, as Dota's pseudo-queue
 //! has it (the update of 2017-05-31; Liquipedia, *Turn Rate*), and runs on
 //! the tick the cast goes off, which cancels a backswing: casts given then go
-//! off in turn, up to `bota_core::rules::MAX_QUEUED_ORDERS` (one more is
+//! off in turn, up to [`MAX_QUEUED_ORDERS`](crate::limits::MAX_QUEUED_ORDERS) (one more is
 //! refused as [`QueueFull`](crate::RejectReason::QueueFull)); a move, an
 //! attack and the like replace everything waiting, and a cast replaces a
 //! waiting move. A cast an immediate ability or item makes goes off beside
@@ -217,7 +217,7 @@
 //! for that tick: it replaces, without an answer, the orders for that unit
 //! given before it for the same tick, queued or not. The queued orders given
 //! after it follow it in the order given. A seat's orders that take effect on
-//! one tick, at most `bota_core::rules::MAX_ORDERS_PER_TICK`, are applied
+//! one tick, at most [`MAX_ORDERS_PER_TICK`](crate::limits::MAX_ORDERS_PER_TICK), are applied
 //! seat by seat in slot order, and each seat's in the order it gave them; the
 //! Glyph, which needs no body, is one more order of the seat, a later Glyph
 //! replacing an earlier one.
@@ -240,7 +240,7 @@
 //! An order given on the view of tick `T` takes effect on tick `T + 1` at the
 //! earliest. A server may hold every order of a seat back a fixed number of
 //! ticks and add a jitter drawn from a hidden stream, together at most
-//! `bota_core::rules::MAX_ORDER_DELAY_TICKS` (thirty, a second), in either
+//! [`MAX_ORDER_DELAY_TICKS`](crate::limits::MAX_ORDER_DELAY_TICKS) (thirty, a second), in either
 //! tick mode. The jitter is drawn once for all the orders a seat gives while
 //! the world stands on one tick, so a burst of them (a hero's and a
 //! courier's, a queue given at once) takes effect together. Orders never
@@ -482,10 +482,10 @@
 //! [`ServerMsg::LobbyState`](crate::ServerMsg::LobbyState) (and a
 //! spectator's in its chat lines) cleaned: every character a chat line may
 //! not hold dropped (see Chat below), stacks of combining marks cut,
-//! trimmed, and cut to `bota_core::rules::MAX_SHOWN_NAME_BYTES` (32) bytes of
+//! trimmed, and cut to [`MAX_SHOWN_NAME_BYTES`](crate::limits::MAX_SHOWN_NAME_BYTES) (32) bytes of
 //! UTF-8 at the last whole character within them; `?` when nothing is left
 //! (`bota_core::clean_name`). The server does not refuse a hello for its
-//! name. The two input bounds are `bota_core::rules::MAX_ANNOUNCED_NAME_BYTES`
+//! name. The two input bounds are [`MAX_ANNOUNCED_NAME_BYTES`](crate::limits::MAX_ANNOUNCED_NAME_BYTES)
 //! (64) with the chat's character rules (`bota_core::name_fault`): the client
 //! library refuses to announce another name, and the server refuses a seat
 //! reservation under one.
@@ -571,8 +571,8 @@
 //!   hears it once its own feed has reached that tick: a late spectator hears
 //!   a seat's line with the tick it was said on, never before.
 //! - Text is one line of Unicode: trimmed, at most
-//!   `bota_core::rules::MAX_CHAT_BYTES` bytes and
-//!   `bota_core::rules::MAX_CHAT_GRAPHEMES` characters as a reader counts
+//!   [`MAX_CHAT_BYTES`](crate::limits::MAX_CHAT_BYTES) bytes and
+//!   [`MAX_CHAT_GRAPHEMES`](crate::limits::MAX_CHAT_GRAPHEMES) characters as a reader counts
 //!   them, and free of control, line-break, bidirectional, invisible, tag,
 //!   private-use and noncharacters and of stacks of more than two combining
 //!   marks (`bota_core::chat_text_fault`). A line that breaks this is

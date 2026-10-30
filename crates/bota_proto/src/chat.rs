@@ -20,8 +20,8 @@ pub enum Audience {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Body {
     /// Plain text: one line of Unicode within
-    /// `bota_core::rules::MAX_CHAT_BYTES` and
-    /// `bota_core::rules::MAX_CHAT_GRAPHEMES`, without control, bidi or
+    /// [`MAX_CHAT_BYTES`](crate::limits::MAX_CHAT_BYTES) and
+    /// [`MAX_CHAT_GRAPHEMES`](crate::limits::MAX_CHAT_GRAPHEMES), without control, bidi or
     /// invisible characters (`bota_core::chat_text_fault`).
     Text(String),
     /// A mark on the map for the speaker's side: said to

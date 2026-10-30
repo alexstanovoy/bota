@@ -6,15 +6,7 @@
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 
-/// Largest payload accepted in one frame, in bytes.
-pub const MAX_PAYLOAD_LEN: usize = 4 * 1024 * 1024;
-
-/// Largest payload a client may send in one frame, in bytes: a `Hello` with
-/// the longest name a client announces is about a tenth of it. A server
-/// closes a connection whose frame announces more, before reading it.
-pub const MAX_CLIENT_PAYLOAD_LEN: usize = 1024;
-
-const _: () = assert!(MAX_CLIENT_PAYLOAD_LEN <= MAX_PAYLOAD_LEN);
+use crate::MAX_PAYLOAD_LEN;
 
 /// Bytes in the length prefix.
 pub const LEN_PREFIX: usize = 4;

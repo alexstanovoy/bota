@@ -5,7 +5,7 @@ use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
 use bota_proto::{
-    EventKind, LEN_PREFIX, ServerMsg, SkippedTick, decode_payload, encode_frame,
+    EventKind, LEN_PREFIX, MAX_SKIPPED_TICKS, ServerMsg, SkippedTick, decode_payload, encode_frame,
     encode_frame_to_vec,
 };
 
@@ -76,10 +76,6 @@ struct QueuedTick {
 
 /// Queued entries past this many close the connection as hopeless.
 const QUEUE_LIMIT: usize = 1024;
-
-/// Ticks one snapshot may carry past before the connection is closed as
-/// hopeless: thirty seconds at 30 ticks a second.
-pub const MAX_SKIPPED_TICKS: usize = 900;
 
 impl Outbox {
     /// An empty, open outbox.

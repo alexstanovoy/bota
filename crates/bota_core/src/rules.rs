@@ -12,6 +12,12 @@ use crate::GoldRange;
 // constant is `rules::NAME` wherever it is kept.
 pub use crate::heroes::pudge::numbers::*;
 pub use crate::heroes::shadow_fiend::numbers::*;
+// The protocol's bounds are `bota_proto::limits`; the rules read them as `rules::NAME` too.
+pub use bota_proto::limits::{
+    BACKPACK_SLOTS, INVENTORY_SLOTS, MAX_ANNOUNCED_NAME_BYTES, MAX_CHAT_BYTES, MAX_CHAT_GRAPHEMES,
+    MAX_EFFECTS_PER_UNIT, MAX_ORDER_DELAY_TICKS, MAX_ORDERS_PER_TICK, MAX_QUEUED_ORDERS,
+    MAX_SHOWN_NAME_BYTES, STASH_SLOTS, TOWN_PORTAL_SLOT,
+};
 
 /// Simulation ticks per second of game time.
 pub const TICKS_PER_SECOND: u32 = 30;
@@ -1148,48 +1154,6 @@ pub const BURN_PERIOD_TICKS: u32 = 3;
 /// The chance a ranged attack thrown at a target on higher ground misses:
 /// one more source of the target's evasion, as Dota counts it.
 pub const UPHILL_MISS: crate::Odds = crate::Odds::percent(25);
-/// Inventory slots, where items work.
-pub const INVENTORY_SLOTS: usize = 6;
-/// Backpack slots, where items are carried inert.
-pub const BACKPACK_SLOTS: usize = 3;
-/// Stash slots at the home shop.
-pub const STASH_SLOTS: usize = 6;
-/// The number of a hero's town portal slot, after the inventory, the
-/// backpack and the stash: [`bota_proto::ItemSlot::TOWN_PORTAL`].
-pub const TOWN_PORTAL_SLOT: usize = 15;
-
-const _: () = {
-    assert!(TOWN_PORTAL_SLOT == INVENTORY_SLOTS + BACKPACK_SLOTS + STASH_SLOTS);
-    assert!(TOWN_PORTAL_SLOT == bota_proto::ItemSlot::TOWN_PORTAL.0 as usize);
-};
-/// Most ticks an order may wait past the earliest tick it could take effect
-/// on, base and jitter together.
-pub const MAX_ORDER_DELAY_TICKS: u32 = 30;
-/// Most orders one unit holds queued (Dota's Shift-queue) behind the one it
-/// carries out.
-pub const MAX_QUEUED_ORDERS: usize = 32;
-/// Most modifiers one unit carries at once, hidden and shown. What a hero in
-/// a five-a-side fight bears (its own buffs, its allies' auras, its enemies'
-/// debuffs) is a few dozen. A unit that carries this many takes a fresh
-/// modifier by dropping the one with the least time left, or not at all when
-/// every one it carries is untimed. The effects a view lists on a unit
-/// therefore never exceed it, and a client may refuse a view that does.
-pub const MAX_EFFECTS_PER_UNIT: usize = 128;
-/// Most orders of one seat that may take effect on one tick, its units and
-/// queued orders together.
-pub const MAX_ORDERS_PER_TICK: usize = 64;
-/// Longest name a seat holder is shown under, in UTF-8 bytes; a longer one is
-/// cut at the last whole character within it.
-pub const MAX_SHOWN_NAME_BYTES: usize = 32;
-/// Longest name, in bytes, the client library announces in a hello and the
-/// server takes a seat reservation under; a longer one is refused there. The
-/// server cuts what it shows to [`MAX_SHOWN_NAME_BYTES`].
-pub const MAX_ANNOUNCED_NAME_BYTES: usize = 64;
-/// Longest chat line, in bytes of UTF-8 (`crate::chat_text_fault`).
-pub const MAX_CHAT_BYTES: usize = 512;
-/// Longest chat line in characters as a reader counts them (extended
-/// grapheme clusters).
-pub const MAX_CHAT_GRAPHEMES: usize = 127;
 /// Ticks an item stays muted after leaving the backpack for the inventory.
 pub const BACKPACK_MUTE_TICKS: u32 = 180;
 /// How close to the home fountain the shop, the stash and selling work.

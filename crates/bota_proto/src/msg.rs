@@ -214,9 +214,9 @@ pub enum RejectReason {
     /// A `Hello` with the right key for a seat a live connection holds. It
     /// may come back once that connection has ended or been found dead.
     SeatHeld,
-    /// The unit's queue holds `bota_core::rules::MAX_QUEUED_ORDERS` orders
+    /// The unit's queue holds [`MAX_QUEUED_ORDERS`](crate::limits::MAX_QUEUED_ORDERS) orders
     /// already, or the seat gave more than
-    /// `bota_core::rules::MAX_ORDERS_PER_TICK` orders that would take effect
+    /// [`MAX_ORDERS_PER_TICK`](crate::limits::MAX_ORDERS_PER_TICK) orders that would take effect
     /// on one tick.
     QueueFull,
 }

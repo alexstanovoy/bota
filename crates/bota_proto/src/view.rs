@@ -245,7 +245,7 @@ pub struct UnitView {
     /// slots, a courier's six. Empty for anything else.
     pub items: Vec<Option<ItemView>>,
     /// Effects currently on the unit, timed and counted alike: at most
-    /// `bota_core::rules::MAX_EFFECTS_PER_UNIT`, which the server keeps to.
+    /// [`MAX_EFFECTS_PER_UNIT`](crate::limits::MAX_EFFECTS_PER_UNIT), which the server keeps to.
     pub effects: Vec<EffectView>,
     /// The least damage a swing draws, before the target's armor and attack
     /// class: the base range's floor with every bonus added.
@@ -271,7 +271,7 @@ pub struct UnitView {
     /// The orders waiting in its queue, the next to be taken up first, as
     /// they were given: told to its own side alone, empty for the other
     /// side's units and for a unit with nothing queued. At most
-    /// `bota_core::rules::MAX_QUEUED_ORDERS`.
+    /// [`MAX_QUEUED_ORDERS`](crate::limits::MAX_QUEUED_ORDERS).
     pub queue: Vec<Order>,
     /// Status resistance as a fraction: the share taken off the durations
     /// of stuns, fears and slows put on it.

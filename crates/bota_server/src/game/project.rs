@@ -72,7 +72,7 @@ impl World {
         let talents = self.project_talents(viewer, &units);
         let disguised = self.disguised();
         let (felled_trees, planted_trees) = self.project_forest(viewer);
-        WorldView {
+        let view = WorldView {
             tick: self.tick,
             viewer,
             units,
@@ -93,7 +93,9 @@ impl World {
             teleports: self.teleport_views(),
             glyphs: self.glyph_views(viewer),
             clock: self.clock_shift(),
-        }
+        };
+        debug_assert!(within_limits(&view), "a view past the protocol's bounds");
+        view
     }
 
     /// Every hero with illusions of it standing.
@@ -541,6 +543,34 @@ impl World {
 /// Puts a hero's sheet on the view of an illusion of it: everything that
 /// says what the hero is and holds, leaving the illusion's own body (where
 /// it stands and faces, its health, statuses, effects, cast and queue).
+/// Whether every collection of the view is within the protocol's bounds
+/// ([`bota_proto::limits`]): what a client refuses a view for.
+fn within_limits(view: &WorldView) -> bool {
+    use bota_proto::limits::*;
+    view.units.len() <= MAX_VIEW_UNITS
+        && view.projectiles.len() <= MAX_PROJECTILES
+        && view.players.len() <= MAX_SEATS
+        && view.loot.len() <= MAX_SNAPSHOT_LOOT
+        && view.felled_trees.len() <= MAX_STATIC_TREES
+        && view.planted_trees.len() <= MAX_PLANTED_TREES
+        && view.stock.len() <= 2 * MAX_SHOP_ENTRIES
+        && view.skipped_ticks.len() <= MAX_SKIPPED_TICKS
+        && [
+            view.order_delays.len(),
+            view.talents.len(),
+            view.teleports.len(),
+            view.glyphs.len(),
+        ]
+        .into_iter()
+        .all(|len| len <= MAX_SEATS)
+        && view.units.iter().all(|unit| {
+            unit.abilities.len() <= MAX_ABILITY_SLOTS
+                && unit.items.len() <= HERO_ITEM_SLOTS
+                && unit.effects.len() <= MAX_EFFECTS_PER_UNIT
+                && unit.queue.len() <= MAX_QUEUED_ORDERS
+        })
+}
+
 fn wear_sheet(illusion: &mut UnitView, hero: UnitView) {
     let body = UnitView {
         id: illusion.id,
