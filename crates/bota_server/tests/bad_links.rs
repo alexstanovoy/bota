@@ -445,13 +445,19 @@ fn a_threaded_net_plays_through_a_reset_and_comes_back_to_its_seat(wire: Wire) {
     assert!(threaded.ticks > 1600, "the seat played on");
 }
 
-/// What a threaded client measures in a running 30 Hz match over a line that adds `one_way` each
-/// way: the smoothed ping, the smoothed time from sending an order to its receipt, and the
-/// earliest tick the last order told it could take effect on.
-fn measured_over(wire: Wire, one_way: Duration) -> (Duration, Duration, u32) {
-    // One seat and a dummy: the match ticks at its own pace and the client is alone in it.
-    let mut opts = opts(TickMode::Realtime, 30);
+/// What a threaded client measures over a line that adds `one_way` each way in a match that
+/// stands still: the smoothed ping, the smoothed time from sending an order to its receipt, the
+/// earliest tick the last order told it could take effect on, and the latest tick it was sent.
+///
+/// The match is in lockstep and the client never acknowledges a tick, so no tick passes (the
+/// acknowledgement timeout is far longer than any test). The server's network side answers a
+/// probe and receives an order all the same: what the client measures is the line, and cannot be
+/// the tick, however the machine is loaded.
+fn measured_over(wire: Wire, one_way: Duration) -> (Duration, Duration, u32, u32) {
+    let hang_guard = Duration::from_secs(120);
+    let mut opts = opts(TickMode::Lockstep, 30);
     opts.dummy_seat = true;
+    opts.ack_timeout_ticks = 1_000_000;
     let server = serve(opts, wire);
     let line = Proxy::start(server);
     let slow = Line {
@@ -462,82 +468,70 @@ fn measured_over(wire: Wire, one_way: Duration) -> (Duration, Duration, u32) {
     line.set_line(Dir::Down, slow);
     let mut net = Net::open(endpoint(wire, &line.addr()), Redial::DEFAULT).expect("connect");
     join(&mut net, "timed", HeroId::SHADOW_FIEND, None).expect("a seat");
-    // Polled at a frame's pace, as an app does; the probes go out and the echoes come back
-    // between the ticks and the frames, and an order goes out twice a second.
-    let started = Instant::now();
-    let mut seq = 0;
-    let mut next_order = started;
-    while started.elapsed() < Duration::from_millis(4500) {
-        net.poll();
-        if Instant::now() >= next_order {
-            seq += 1;
-            next_order += Duration::from_millis(500);
-            net.send(&ClientMsg::Order {
-                seq,
-                unit: None,
-                order: Order::Move {
-                    target: Target::None,
-                },
-                seen: None,
-                queue: false,
-            })
-            .expect("an order goes out");
+    let mut latest = 0;
+    let mut hear = |net: &mut Net| {
+        for message in net.poll() {
+            if let ServerMsg::Snapshot { view } = message {
+                latest = latest.max(view.tick);
+            }
         }
-        thread::sleep(Duration::from_millis(7));
+    };
+    let deadline = Instant::now() + hang_guard;
+    // Several orders, one after the other, so the smoothing has more than a sample to average.
+    for seq in 1..=4 {
+        net.send(&ClientMsg::Order {
+            seq,
+            unit: None,
+            order: Order::Move {
+                target: Target::None,
+            },
+            seen: None,
+            queue: false,
+        })
+        .expect("an order goes out");
+        while net.pending_orders() > 0 {
+            assert!(Instant::now() < deadline, "the order was received");
+            hear(&mut net);
+            thread::sleep(Duration::from_millis(1));
+        }
+    }
+    while net.ping().is_none() {
+        assert!(Instant::now() < deadline, "a probe came back");
+        hear(&mut net);
+        thread::sleep(Duration::from_millis(1));
     }
     let ping = net.ping().expect("an echo came back");
     let order = net.order_latency().expect("an order was received");
     let receipt = net.last_receipt().expect("an order was received");
-    assert!(net.pending_orders() <= 1, "receipts come back");
     net.send(&ClientMsg::LeaveGame).expect("leave");
-    (ping, order, receipt.tick)
-}
-
-/// The best of up to three runs of [`measured_over`] for a line of `round_trip`: a loaded machine
-/// only ever makes a measurement later, so the smallest of each is the truest, and a run that is
-/// already close needs no other.
-fn best_over(wire: Wire, round_trip: Duration) -> (Duration, Duration, u32) {
-    let close = |measured: Duration| measured.abs_diff(round_trip) < Duration::from_millis(5);
-    let mut best: Option<(Duration, Duration, u32)> = None;
-    for _ in 0..3 {
-        let (ping, order, tick) = measured_over(wire, round_trip / 2);
-        let (best_ping, best_order, _) = best.get_or_insert((ping, order, tick));
-        *best_ping = (*best_ping).min(ping);
-        *best_order = (*best_order).min(order);
-        if close(*best_ping) && close(*best_order) {
-            break;
-        }
-    }
-    best.expect("a run")
+    (ping, order, receipt.tick, latest)
 }
 
 fn a_clients_ping_and_order_receipts_are_the_lines_round_trip_and_not_a_multiple_of_the_tick(
     wire: Wire,
 ) {
-    // Neither 50 ms nor 70 ms is a multiple of the 33.3 ms tick: a ping read off ticks would show
-    // 33 or 66 for the first and 66 or 100 for the second, 16 ms or more off one of them. An
-    // order is received when the server reads it, not on the tick that carries it out.
+    // The line adds at least its round trip to a probe and to an order, whatever else a loaded
+    // machine adds, so neither reading is ever less. And with no tick passing, neither can be
+    // read off ticks: the server answers a probe, and receives an order, when it reads them.
     let ms = Duration::from_millis;
-    let (near, near_order, tick) = best_over(wire, ms(50));
-    let (far, far_order, _) = best_over(wire, ms(70));
-    let right = |measured: Duration, expected: Duration| measured.abs_diff(expected) < ms(10);
-    assert!(right(near, ms(50)), "a 50 ms line measured {near:?}");
-    assert!(right(far, ms(70)), "a 70 ms line measured {far:?}");
+    let (near, near_order, near_tick, near_latest) = measured_over(wire, ms(25));
+    let (far, far_order, far_tick, far_latest) = measured_over(wire, ms(35));
+    assert!(near >= ms(50), "a 50 ms line measured {near:?}");
+    assert!(far >= ms(70), "a 70 ms line measured {far:?}");
     assert!(
-        right(far.saturating_sub(near), ms(20)),
-        "20 ms of difference measured as {:?}",
-        far.saturating_sub(near)
-    );
-    assert!(
-        right(near_order, ms(50)),
+        near_order >= ms(50),
         "an order over a 50 ms line was received after {near_order:?}"
     );
     assert!(
-        right(far_order, ms(70)),
+        far_order >= ms(70),
         "an order over a 70 ms line was received after {far_order:?}"
     );
-    assert!(
-        tick > 1,
-        "the receipt names the tick the order can take effect on"
-    );
+    for (tick, latest) in [(near_tick, near_latest), (far_tick, far_latest)] {
+        assert!(latest >= 1, "the match began");
+        assert_eq!(
+            tick,
+            latest + 1,
+            "the receipt names the tick the order can take effect on: the one after the latest sent"
+        );
+    }
 }
