@@ -18,9 +18,7 @@ use bota_proto::{
     Cheat, FrameReader, HeroId, ItemId, MapId, Order, RejectReason, ReplayRecord, ServerMsg,
     SlotId, StatusFlags, TickMode, UnitKind, Vec2, WorldView,
 };
-use bota_server::game_loop::{
-    DEFAULT_IDLE_TIMEOUT, DEFAULT_SPECTATORS_PER_SEAT, ServerOpts, check_opts, run,
-};
+use bota_server::game_loop::{DEFAULT_SPECTATORS_PER_SEAT, ServerOpts, check_opts, run};
 use bota_server::lobby::ReservedSeat;
 use bota_server::net::DEFAULT_MESSAGES_PER_SEC;
 use bota_server::spectators::Spectators;
@@ -50,7 +48,9 @@ fn opts(cheats: bool, replay: Option<PathBuf>) -> ServerOpts {
         runes: None,
         dummy_seat: false,
         ack_timeout_ticks: 150,
-        idle_timeout: Some(DEFAULT_IDLE_TIMEOUT),
+        // A client waits on another or on a slow line, and the machine is busy: nobody is let go
+        // for silence unless the test is about that.
+        idle_timeout: None,
         order_delays: Vec::new(),
         messages_per_sec: DEFAULT_MESSAGES_PER_SEC,
         max_spectators_per_seat: DEFAULT_SPECTATORS_PER_SEAT,
@@ -309,23 +309,15 @@ fn serve(opts: ServerOpts) -> (String, thread::JoinHandle<()>) {
     (address, server)
 }
 
-/// The records of a finished replay, header first.
+/// The records of the replay of a match whose server has ended, header first.
 fn replay_records(path: &std::path::Path) -> Vec<ReplayRecord> {
-    for _ in 0..400 {
-        thread::sleep(Duration::from_millis(50));
-        let Ok(file) = std::fs::File::open(path) else {
-            continue;
-        };
-        let mut bytes = Vec::new();
-        if std::io::Read::read_to_end(&mut UnpackedReplay::new(file), &mut bytes).is_err() {
-            continue;
-        }
-        let mut reader = FrameReader::new();
-        reader.push(&bytes);
-        return std::iter::from_fn(|| reader.next_message::<ReplayRecord>().expect("a record"))
-            .collect();
-    }
-    panic!("the replay was never finished");
+    let file = std::fs::File::open(path).expect("the replay exists");
+    let mut bytes = Vec::new();
+    std::io::Read::read_to_end(&mut UnpackedReplay::new(file), &mut bytes)
+        .expect("the replay is finished");
+    let mut reader = FrameReader::new();
+    reader.push(&bytes);
+    std::iter::from_fn(|| reader.next_message::<ReplayRecord>().expect("a record")).collect()
 }
 
 #[test]

@@ -1,41 +1,10 @@
 //! Who may watch without a seat's key, and which orders a watcher is told:
 //! live ones only through the eyes its key opens.
 
-use std::io::ErrorKind;
-
 use bota_proto::{PlayerId, SeatKey, SlotOrder, Vec2};
 
 use super::*;
 use crate::spectators::Spectators;
-
-/// Everything a client is sent for `wait`, pings answered.
-pub(super) fn drain(client: &mut TestClient, wait: Duration) -> Vec<ServerMsg> {
-    let deadline = Instant::now() + wait;
-    let mut messages = Vec::new();
-    let mut buf = [0u8; 65536];
-    loop {
-        while let Some(msg) = client.reader.next_message().expect("decode") {
-            match msg {
-                ServerMsg::Ping => client.send(&ClientMsg::Pong),
-                msg => messages.push(msg),
-            }
-        }
-        let left = deadline.saturating_duration_since(Instant::now());
-        if left.is_zero() {
-            return messages;
-        }
-        client
-            .stream
-            .set_read_timeout(Some(left))
-            .expect("set timeout");
-        match client.stream.read(&mut buf) {
-            Ok(0) => return messages,
-            Ok(n) => client.reader.push(&buf[..n]),
-            Err(error) if matches!(error.kind(), ErrorKind::WouldBlock | ErrorKind::TimedOut) => {}
-            Err(error) => panic!("read: {error}"),
-        }
-    }
-}
 
 fn orders_told(messages: &[ServerMsg]) -> Vec<SlotOrder> {
     messages
@@ -84,8 +53,28 @@ fn an_open_spectator_borrows_a_sides_fog_but_is_told_no_order() {
     for (seq, client) in [&mut c1, &mut c2].into_iter().enumerate() {
         client.send(&move_order(seq as u32 + 1, 15000, 15000));
     }
-    let told = drain(&mut watcher, Duration::from_millis(500));
-    assert!(told.iter().filter_map(|msg| snapshot(msg.clone())).count() > 5);
+    // A seat's line is taken after its order, and an order is told with the tick it is taken on
+    // or the one after: the watcher has been told every order once it is shown the tick after
+    // the later line.
+    let spoken: Vec<ServerMsg> = [&mut c1, &mut c2]
+        .into_iter()
+        .flat_map(|client| client.say_all_and_hear("go"))
+        .collect();
+    let said_at = spoken
+        .iter()
+        .filter_map(|msg| match msg {
+            ServerMsg::Heard(heard) => heard.tick,
+            _ => None,
+        })
+        .max()
+        .expect("a line said in the match");
+    let told = watcher.collect_through_tick(said_at + 2);
+    assert!(
+        told.iter()
+            .filter_map(|msg| snapshot(msg.clone()))
+            .all(|view| view.viewer == Some(Team::Dire)),
+        "the chosen side's fog throughout"
+    );
     assert_eq!(
         orders_told(&told),
         Vec::new(),
@@ -164,7 +153,10 @@ fn a_late_spectator_is_shown_the_match_that_many_seconds_behind_with_both_seats_
     assert_eq!(watcher.welcome(), None);
 
     let live = play_to(&mut c1, &mut c2, delay + 10);
-    let told = drain(&mut watcher, Duration::from_millis(500));
+    // The match stands waiting for acknowledgements on `live`. A late spectator hears its own
+    // lines as they are said, so a line it says comes after every tick it is shown.
+    watcher.send(&say(Audience::Spectators, "now"));
+    let told = watcher.collect_until(|msg| matches!(msg, ServerMsg::Heard(_)));
     let ticks: Vec<u32> = told
         .iter()
         .filter_map(|msg| snapshot(msg.clone()))
@@ -208,25 +200,29 @@ fn a_seat_is_told_nothing_of_spectators_coming_and_going() {
         })
     };
     assert!(welcomed(&mut early).0 > 2, "a watcher is numbered apart");
-    drop(early);
+    early.leave();
     let mut first = TestClient::connect(addr);
     first.hello(Role::Bot, None);
     assert_eq!(welcomed(&mut first), PlayerId(1), "the first seat is one");
-    drain(&mut first, Duration::from_millis(300));
-    let mut lobby_watcher = TestClient::connect(addr);
-    lobby_watcher.hello(Role::Spectator, None);
-    welcomed(&mut lobby_watcher);
-    drop(lobby_watcher);
-    let told = drain(&mut first, Duration::from_millis(500));
-    assert!(
-        told.is_empty(),
-        "a seat is told nothing of a watcher: {told:?}"
-    );
-
+    // A seat's own pick is told back to it as the lobby; reading to it flushes what it was
+    // told on joining, and the next pick or readiness marks the end of what a watcher's
+    // coming and going could have told it.
     first.send(&ClientMsg::PickHero {
         hero: HeroId::SHADOW_FIEND,
     });
+    first.collect_until(|msg| seat_zero(msg).is_some_and(|seat| seat.hero.is_some()));
+    let mut lobby_watcher = TestClient::connect(addr);
+    lobby_watcher.hello(Role::Spectator, None);
+    welcomed(&mut lobby_watcher);
+    lobby_watcher.leave();
     first.send(&ClientMsg::SetReady(true));
+    let told = first.collect_until(|msg| seat_zero(msg).is_some_and(|seat| seat.ready));
+    assert_eq!(
+        told.len(),
+        1,
+        "a seat is told nothing of a watcher: {told:?}"
+    );
+
     let mut second = TestClient::connect(addr);
     second.hello(Role::Bot, None);
     assert_eq!(welcomed(&mut second), PlayerId(2));
@@ -242,7 +238,7 @@ fn a_seat_is_told_nothing_of_spectators_coming_and_going() {
     let mut leaves = TestClient::connect(addr);
     leaves.hello(Role::Spectator, None);
     let gone = welcomed(&mut leaves);
-    drop(leaves);
+    leaves.leave();
     let left = |messages: &[ServerMsg]| -> Vec<(PlayerId, Option<SlotId>)> {
         messages
             .iter()
@@ -252,19 +248,28 @@ fn a_seat_is_told_nothing_of_spectators_coming_and_going() {
             })
             .collect()
     };
-    assert_eq!(
-        left(&drain(&mut stays, Duration::from_millis(500))),
-        [(gone, None)]
-    );
-    for seat in [&mut first, &mut second] {
-        let told = drain(seat, Duration::from_millis(200));
+    // The seat's line, said once the watcher is gone, comes after anything the departure
+    // queued for the others.
+    const AFTER: &str = "the watcher is gone";
+    let told_first = first.say_all_and_hear(AFTER);
+    let after = |msg: &ServerMsg| matches!(msg, ServerMsg::Heard(heard) if heard.line.body == Body::Text(AFTER.to_owned()));
+    assert_eq!(left(&stays.collect_until(after)), [(gone, None)]);
+    for told in [told_first, second.collect_until(after)] {
         assert!(left(&told).is_empty(), "{:?}", left(&told));
     }
-    drop(second);
-    let told = drain(&mut first, Duration::from_millis(500));
+    second.leave();
+    let told = first.say_all_and_hear("and the other seat");
     assert_eq!(
         left(&told),
         [(PlayerId(2), Some(SlotId(1)))],
         "a seat's leaving is told"
     );
+}
+
+/// What a lobby state says of the first seat.
+fn seat_zero(msg: &ServerMsg) -> Option<&bota_proto::LobbySlot> {
+    match msg {
+        ServerMsg::LobbyState { slots, .. } => slots.first(),
+        _ => None,
+    }
 }

@@ -17,9 +17,6 @@ const REFEREE: SeatKey = SeatKey([9; 32]);
 
 fn reserved(seed: u64) -> ServerOpts {
     let mut opts = realtime(seed);
-    // The clients here sit unread while the test works on another; with wall-clock idleness they
-    // would be let go (and their seats with them) whenever the machine is too busy to get to them.
-    opts.idle_timeout = None;
     opts.reserved = vec![
         ReservedSeat {
             kind: None,
@@ -200,18 +197,18 @@ fn a_spectator_with_a_seat_key_sees_that_seat_only() {
     watcher.send(&ClientMsg::ViewAs {
         seat: Some(SlotId(1)),
     });
-    for seq in 1..=8 {
+    // Both seats give orders; the watcher is told the one seat's alone, each as it is taken.
+    let mut seen = Vec::new();
+    for seq in 1..=3 {
         first.send(&move_order(seq, 1000, 1000 + seq as i32));
         second.send(&move_order(seq, 2000, 2000 + seq as i32));
-        thread::sleep(Duration::from_millis(150));
-    }
-    let mut seen = Vec::new();
-    while seen.len() < 3 {
-        let orders = watcher.recv_until(|msg| match msg {
-            ServerMsg::Orders { orders, .. } => Some(orders),
-            _ => None,
-        });
-        seen.extend(orders);
+        while seen.len() < seq as usize {
+            let orders = watcher.recv_until(|msg| match msg {
+                ServerMsg::Orders { orders, .. } => Some(orders),
+                _ => None,
+            });
+            seen.extend(orders);
+        }
     }
     assert!(seen.iter().all(|given| given.slot == SlotId(0)));
     let view = watcher.recv_until(snapshot);
@@ -242,26 +239,21 @@ fn a_seat_key_admits_only_so_many_spectators_at_once(wire: Wire) {
         "the seat itself is not one"
     );
 
-    drop(first);
-    // The player is told nothing of it: players are not told about
-    // spectators. Once the server has heard the departure, a third watcher
-    // takes the place.
-    let admitted = (0..100).any(|_| {
-        let mut third = watch(KEYS[0]);
-        let welcomed = loop {
-            match third.recv_or_hangup() {
-                Some(ServerMsg::Welcome { .. }) => break true,
-                Some(ServerMsg::Refused { .. }) | None => break false,
-                Some(_) => {}
-            }
-        };
-        if !welcomed {
-            std::thread::sleep(Duration::from_millis(20));
-        }
-        welcomed
+    // Once the server has dealt with the departure, a third watcher takes the place. The
+    // player is told nothing of it: players are not told about spectators.
+    first.leave();
+    let mut third = watch(KEYS[0]);
+    assert_eq!(
+        third.welcome(),
+        None,
+        "the departed watcher's place is taken"
+    );
+    player.send(&ClientMsg::PickHero {
+        hero: HeroId::SHADOW_FIEND,
     });
-    assert!(admitted, "the departed watcher's place is taken");
-    let told = super::spectators::drain(&mut player, Duration::from_millis(300));
+    let told = player.collect_until(
+        |msg| matches!(msg, ServerMsg::LobbyState { slots, .. } if slots[0].hero.is_some()),
+    );
     assert!(
         !told
             .iter()
@@ -278,9 +270,12 @@ fn a_referee_hears_the_lobby_and_the_end_but_no_ticks_of_a_match_nobody_joined()
     opts.start_after = Some(Duration::from_millis(300));
     let addr = start_server(opts);
     let mut referee = TestClient::connect(addr);
+    // A referee is told no tick, so nothing it hears shows the match advancing, and nobody
+    // plays: the server simulates all of Map 2's twenty minutes at the pace of the CPU, a debug
+    // build on a busy machine included.
     referee
         .stream
-        .set_read_timeout(Some(Duration::from_secs(120)))
+        .set_read_timeout(Some(HANG_GUARD * 6))
         .expect("timeout");
     referee.hello(Role::Referee, Some(REFEREE));
     assert_eq!(referee.welcome(), None);

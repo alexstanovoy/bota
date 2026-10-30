@@ -8,10 +8,10 @@ use std::time::Duration;
 
 use bota_client_core::{IssuedOrder, Link, Transport, play};
 use bota_core::fountain_pos;
-use bota_proto::{ClientMsg, Codec, HeroId, ItemId, MapId, Order, SlotId, Target, Team, TickMode};
-use bota_server::game_loop::{
-    DEFAULT_IDLE_TIMEOUT, DEFAULT_SPECTATORS_PER_SEAT, MatchEnd, ServerOpts, run,
+use bota_proto::{
+    ClientMsg, Codec, HeroId, ItemId, MapId, Order, ServerMsg, SlotId, Target, Team, TickMode,
 };
+use bota_server::game_loop::{DEFAULT_SPECTATORS_PER_SEAT, MatchEnd, ServerOpts, run};
 use bota_server::net::DEFAULT_MESSAGES_PER_SEC;
 use bota_server::spectators::Spectators;
 
@@ -40,7 +40,9 @@ fn opts() -> ServerOpts {
         runes: None,
         dummy_seat: true,
         ack_timeout_ticks: 150,
-        idle_timeout: Some(DEFAULT_IDLE_TIMEOUT),
+        // A client waits on another or on a slow line, and the machine is busy: nobody is let go
+        // for silence unless the test is about that.
+        idle_timeout: None,
         order_delays: Vec::new(),
         messages_per_sec: DEFAULT_MESSAGES_PER_SEC,
         max_spectators_per_seat: DEFAULT_SPECTATORS_PER_SEAT,
@@ -116,7 +118,11 @@ fn a_seat_that_leaves_loses_the_match() {
     let (mut leaver, _) =
         Link::join(&address, "leaves", HeroId::SHADOW_FIEND, None).expect("a seat");
     let stays = thread::spawn(move || play(&mut stayer, seated, &mut (), |_| Vec::new()));
-    thread::sleep(Duration::from_secs(4));
+    // The match runs once a snapshot comes.
+    while !matches!(
+        leaver.recv().expect("the link holds"),
+        Some(ServerMsg::Snapshot { .. })
+    ) {}
     leaver.send(&ClientMsg::LeaveGame).expect("sent");
     drop(leaver);
     let end = server.join().expect("the server thread").expect("an end");

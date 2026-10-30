@@ -32,7 +32,7 @@ fn two_bots_queue_accept_play_and_are_rated() {
     let (mut alpha, mut beta) = (env.bot("alpha"), env.bot("beta"));
 
     // Before anything is asked the client knows what it may do.
-    settle(&mut [&mut alpha], 10, |a| a.client.limits(None).is_some());
+    settle(&mut [&mut alpha], |a| a.client.limits(None).is_some());
     let limits = alpha.client.limits(None).expect("limits");
     assert_eq!(
         (limits.games_per_account, limits.decline_cooldown_ms),
@@ -59,7 +59,7 @@ fn two_bots_queue_accept_play_and_are_rated() {
     let (first, second) = (first.join().expect("alpha"), second.join().expect("beta"));
     assert_eq!(first.winner, second.winner);
 
-    settle(&mut [&mut alpha, &mut beta], 30, |a| a.result().is_some());
+    settle(&mut [&mut alpha, &mut beta], |a| a.result().is_some());
     let result = alpha.result().expect("a result");
     assert_eq!(beta.result().expect("a result").match_id, result.match_id);
     assert_eq!(result.reason, EndReason::Decided);
@@ -88,7 +88,7 @@ fn a_decline_returns_the_other_to_its_place_and_costs_the_decliner_the_cooldown(
     beta.client.set_auto_accept(false);
     let first = alpha.queue();
     beta.queue();
-    settle(&mut [&mut alpha, &mut beta], 20, |a| {
+    settle(&mut [&mut alpha, &mut beta], |a| {
         a.client.searches().offers().next().is_some()
     });
     assert_eq!(
@@ -102,7 +102,7 @@ fn a_decline_returns_the_other_to_its_place_and_costs_the_decliner_the_cooldown(
     let proposal = beta.proposal().expect("a proposal").proposal;
     beta.client.decline(proposal).expect("sent");
 
-    settle(&mut [&mut alpha, &mut beta], 20, |a| {
+    settle(&mut [&mut alpha, &mut beta], |a| {
         a.log
             .iter()
             .any(|e| matches!(e, Event::ProposalFailed { .. } | Event::QueueLeft { .. }))
@@ -168,6 +168,6 @@ fn a_ticket_reconnects_mid_match_and_a_spectator_watches_with_it() {
     let back = play_seat(handoff, HeroId::SHADOW_FIEND, tls);
     let (back, other) = (back.join().expect("alpha"), other.join().expect("beta"));
     assert_eq!(back.winner, other.winner);
-    settle(&mut [&mut alpha, &mut beta], 30, |a| a.result().is_some());
+    settle(&mut [&mut alpha, &mut beta], |a| a.result().is_some());
     assert_eq!(alpha.result().expect("result").reason, EndReason::Decided);
 }

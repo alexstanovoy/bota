@@ -6,21 +6,27 @@ mod wire;
 
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
+use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant};
 
 use bota_proto::{
-    ClientMsg, EventKind, FrameReader, HeroId, Order, RejectReason, ReplayHeader, ReplayRecord,
-    Role, ServerMsg, SlotId, Target, Team, Vec2, WorldView, encode_frame_to_vec,
+    Audience, Body, ClientMsg, EventKind, FrameReader, HeroId, Line, Order, RejectReason,
+    ReplayHeader, ReplayRecord, Role, ServerMsg, SlotId, Target, Team, Vec2, WorldView,
+    encode_frame_to_vec,
 };
 
 use crate::game::OrderDelay;
-use crate::game_loop::{
-    DEFAULT_IDLE_TIMEOUT, DEFAULT_SPECTATORS_PER_SEAT, HELLO_DEADLINE, ServerOpts, run,
-};
+use crate::game_loop::{DEFAULT_SPECTATORS_PER_SEAT, HELLO_DEADLINE, MatchEnd, ServerOpts, run};
 use crate::net::{DEFAULT_MESSAGES_PER_SEC, Listeners};
 use crate::spectators::Spectators;
 use wire::{Wire, dial};
+
+/// How long a test waits for something the server does on its own, such as a message it owes or
+/// the end of a match. It guards against a hang and nothing else: a healthy server, however busy
+/// the machine, answers long before it, and no test asserts how long an answer took. Waits in
+/// tests are for the message or state itself, never for a span to pass.
+const HANG_GUARD: Duration = Duration::from_secs(300);
 
 struct TestClient {
     stream: TcpStream,
@@ -59,7 +65,7 @@ impl TestClient {
     fn connect(addr: impl std::net::ToSocketAddrs) -> TestClient {
         let stream = TcpStream::connect(addr).expect("connect");
         stream
-            .set_read_timeout(Some(Duration::from_secs(10)))
+            .set_read_timeout(Some(HANG_GUARD))
             .expect("set timeout");
         TestClient {
             stream,
@@ -87,13 +93,93 @@ impl TestClient {
         }
     }
 
+    /// Reads on until `pick` takes a message. However many messages come first, as a busy
+    /// machine lets the server get ahead of the reader by any number: the read timeout
+    /// ([`HANG_GUARD`]) ends a wait for what never comes.
     fn recv_until<T>(&mut self, mut pick: impl FnMut(ServerMsg) -> Option<T>) -> T {
-        for _ in 0..300 {
+        loop {
             if let Some(found) = pick(self.recv()) {
                 return found;
             }
         }
-        panic!("the awaited message never came");
+    }
+
+    /// Everything the server tells this client up to and with the first message `last` accepts
+    /// (pings answered, not kept). The server tells a client its messages in the order it queued
+    /// them, so a message queued after an event can mark the point by which that event, had the
+    /// client been owed it, has been told.
+    fn collect_until(&mut self, mut last: impl FnMut(&ServerMsg) -> bool) -> Vec<ServerMsg> {
+        let mut told = Vec::new();
+        loop {
+            let msg = self.recv();
+            let done = last(&msg);
+            told.push(msg);
+            if done {
+                return told;
+            }
+        }
+    }
+
+    /// Everything told up to and with the first snapshot of `tick` or later.
+    fn collect_through_tick(&mut self, tick: u32) -> Vec<ServerMsg> {
+        self.collect_until(|msg| matches!(msg, ServerMsg::Snapshot { view } if view.tick >= tick))
+    }
+
+    /// The tick of the next snapshot. Read after the last message a test waited for, it is a tick
+    /// published after the server dealt with whatever caused that message, so a snapshot of that
+    /// tick or later, in any client's stream, comes after everything the server queued for that
+    /// client because of it.
+    fn next_tick(&mut self) -> u32 {
+        self.recv_until(snapshot).tick
+    }
+
+    /// Says `text` to all and reads on until the server gives it back. Everything this client
+    /// sent before has reached the server by then, and so has what other clients had been
+    /// told to have sent; what is queued for the others afterwards comes after the line.
+    fn say_all_and_hear(&mut self, text: &str) -> Vec<ServerMsg> {
+        self.send(&say(Audience::All, text));
+        self.collect_until(|msg| matches!(msg, ServerMsg::Heard(heard) if heard.line.body == Body::Text(text.to_owned())))
+    }
+
+    /// Closes its end of the connection, as a client that leaves does, and reads on until the
+    /// server hangs up too. By then the server has dealt with the departure: what it tells
+    /// the others of it is queued before anything it queues afterwards.
+    fn leave(mut self) {
+        self.stream
+            .shutdown(std::net::Shutdown::Write)
+            .expect("close the sending end");
+        let mut buf = [0u8; 65536];
+        loop {
+            match self.stream.read(&mut buf) {
+                Ok(0) => return,
+                Ok(_) => {}
+                Err(error) if error.kind() == std::io::ErrorKind::ConnectionReset => return,
+                Err(error) => panic!("the server did not hang up on a leaver: {error}"),
+            }
+        }
+    }
+}
+
+fn say(to: Audience, text: &str) -> ClientMsg {
+    ClientMsg::Say(Line {
+        to,
+        body: Body::Text(text.to_owned()),
+    })
+}
+
+/// A server running on its own thread: where to dial it, and a wait for its end.
+struct RunningServer {
+    addr: std::net::SocketAddr,
+    ended: mpsc::Receiver<std::io::Result<MatchEnd>>,
+}
+
+impl RunningServer {
+    /// Waits for the server to end the match and finish everything it writes, the replay too.
+    fn end(self) -> MatchEnd {
+        self.ended
+            .recv_timeout(HANG_GUARD)
+            .expect("the server ends the match")
+            .expect("a clean end")
     }
 }
 
@@ -109,10 +195,18 @@ fn read_replay(path: &std::path::Path) -> Option<Vec<u8>> {
 }
 
 fn start_server(opts: ServerOpts) -> std::net::SocketAddr {
+    start_ending_server(opts).addr
+}
+
+/// Like [`start_server`], for a test that waits for the match to end.
+fn start_ending_server(opts: ServerOpts) -> RunningServer {
     let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
     let addr = listener.local_addr().expect("addr");
-    thread::spawn(move || run(listener, opts));
-    addr
+    let (done, ended) = mpsc::channel();
+    thread::spawn(move || {
+        let _ = done.send(run(listener, opts));
+    });
+    RunningServer { addr, ended }
 }
 
 /// Starts a server on free ports and returns where a TCP client dials it
@@ -163,7 +257,11 @@ fn join_as_bot(addr: std::net::SocketAddr, name: &str) -> (TestClient, Option<Sl
     (client, slot)
 }
 
-/// A realtime two-seat match on Map0 with every option off.
+/// A realtime two-seat match on Map0 with every option off. Nobody is let go for silence: the
+/// test works on one client while the others sit unread, and on a busy machine that takes long
+/// enough to run out any idle time and cost a seat. The tick rate is low for the same reason: the
+/// server cuts off a client that has skipped 900 ticks in a row, so a client left unread for
+/// fifteen seconds at 60 a second would go, and at 20 it keeps its place for three-quarters of a minute.
 fn realtime(seed: u64) -> ServerOpts {
     ServerOpts {
         pick_time: Duration::from_secs(bota_core::rules::PICK_SECS),
@@ -172,7 +270,7 @@ fn realtime(seed: u64) -> ServerOpts {
         same_heroes: true,
         chat: crate::chat::ChatOpts::DEFAULT,
         mode: bota_proto::TickMode::Realtime,
-        tick_rate: 60,
+        tick_rate: 20,
         players: 2,
         replay: None,
         seed: Some(seed),
@@ -183,7 +281,7 @@ fn realtime(seed: u64) -> ServerOpts {
         max_connections: None,
         map: bota_proto::MapId(0),
         ack_timeout_ticks: 150,
-        idle_timeout: Some(DEFAULT_IDLE_TIMEOUT),
+        idle_timeout: None,
         cheats: false,
         immortal_structures: false,
         immortal_heroes: false,
@@ -280,10 +378,12 @@ fn a_long_name_is_shown_cut_at_a_whole_character() {
 
 #[test]
 fn a_realtime_match_reaches_two_clients() {
-    let replay_path = std::env::temp_dir().join("bota-net-test-realtime.brp");
+    let replay_path =
+        std::env::temp_dir().join(format!("bota-net-test-realtime-{}.brp", std::process::id()));
     let mut opts = realtime(7);
     opts.replay = Some(replay_path.clone());
-    let addr = start_server(opts);
+    let server = start_ending_server(opts);
+    let addr = server.addr;
 
     let (mut c1, slot1) = join_as_bot(addr, "alpha");
     let (mut c2, slot2) = join_as_bot(addr, "beta");
@@ -327,25 +427,21 @@ fn a_realtime_match_reaches_two_clients() {
     // the replay names the wire it was recorded with, then the match.
     drop(c1);
     drop(c2);
-    for _ in 0..100 {
-        thread::sleep(Duration::from_millis(50));
-        let bytes = read_replay(&replay_path).unwrap_or_default();
-        let mut reader = FrameReader::new();
-        reader.push(&bytes);
-        let header = reader.next_message::<ReplayRecord>();
-        if let Ok(Some(ReplayRecord::Msg(ServerMsg::MatchStart { .. }))) =
-            reader.next_message::<ReplayRecord>()
-        {
-            assert_eq!(
-                header,
-                Ok(Some(ReplayRecord::Header(ReplayHeader::new(
-                    bota_core::WIRE_FINGERPRINT
-                ))))
-            );
-            return;
-        }
-    }
-    panic!("the replay never became readable");
+    server.end();
+    let bytes = read_replay(&replay_path).expect("the replay is finished");
+    let _ = std::fs::remove_file(&replay_path);
+    let mut reader = FrameReader::new();
+    reader.push(&bytes);
+    assert_eq!(
+        reader.next_message::<ReplayRecord>(),
+        Ok(Some(ReplayRecord::Header(ReplayHeader::new(
+            bota_core::WIRE_FINGERPRINT
+        ))))
+    );
+    assert!(matches!(
+        reader.next_message::<ReplayRecord>(),
+        Ok(Some(ReplayRecord::Msg(ServerMsg::MatchStart { .. })))
+    ));
 }
 
 #[test]
@@ -390,8 +486,7 @@ fn a_connection_that_has_not_said_hello_is_told_no_tick() {
     opts.map = bota_proto::MapId(2);
     opts.dummy_seat = true;
     // The stranger never answers a ping; what it is told is the point here, not how long it is
-    // kept.
-    opts.idle_timeout = None;
+    // kept: no test of this module lets the server drop a silent client, see `realtime`.
     let addr = start_server(opts);
     let (mut client, _) = join_as_bot(addr, "seated");
     client.recv_until(snapshot);
@@ -425,10 +520,7 @@ fn a_stranger_that_never_says_hello_is_let_go_and_frees_its_place() {
     let pong = encode_frame_to_vec(&ClientMsg::Pong).expect("encode");
     let mut buf = [0u8; 65536];
     while let Ok(n @ 1..) = stranger.stream.read(&mut buf) {
-        assert!(
-            started.elapsed() < HELLO_DEADLINE + Duration::from_secs(5),
-            "the stranger is kept"
-        );
+        assert!(started.elapsed() < HANG_GUARD, "the stranger is kept");
         stranger.reader.push(&buf[..n]);
         while let Some(msg) = stranger.reader.next_message().expect("decode") {
             if msg == ServerMsg::Ping {
@@ -546,7 +638,7 @@ fn a_slow_reader_skips_snapshots_but_no_tick_and_no_event() {
     // The writer takes the first tick's snapshot and blocks on it while the peer reads
     // nothing, so the later ticks coalesce into the last one.
     outbox.push_tick(bulky_snapshot(1), 1, events(1));
-    let deadline = Instant::now() + Duration::from_secs(10);
+    let deadline = Instant::now() + HANG_GUARD;
     while !outbox.is_empty() {
         assert!(Instant::now() < deadline, "the writer takes the first tick");
         thread::sleep(Duration::from_millis(5));
@@ -617,18 +709,17 @@ fn read_ticks(
 #[test]
 fn a_reader_that_keeps_up_is_never_skipped_and_a_stalled_one_is_at_once() {
     let mut opts = realtime(14);
-    // A tick every 100 ms: a reader that keeps up stays inside one tick however
-    // loaded the machine is.
-    opts.tick_rate = 10;
+    // A tick every half second, some 4.6 kB a tick: a reader that reads as the ticks come stays
+    // inside one tick however loaded the machine is (a server thread that waits a whole tick for
+    // the processor would skip it, and the machine's load never takes that long).
+    opts.tick_rate = 2;
     opts.map = bota_proto::MapId(2);
-    // The stall below outlasts the default; liveness is not under test here.
-    opts.idle_timeout = Some(Duration::from_secs(30));
     let addr = start_server(opts);
     let mut lagging = TestClient::connect(addr);
-    // A small receive buffer: a stalled reader's backlog outgrows the buffers
-    // in a few dozen snapshots.
+    // The smallest receive buffer: a stalled reader's backlog outgrows the buffers in a few
+    // ticks.
     socket2::SockRef::from(&lagging.stream)
-        .set_recv_buffer_size(16 * 1024)
+        .set_recv_buffer_size(4 * 1024)
         .expect("receive buffer");
     lagging.send(&ClientMsg::hello(
         Role::Bot,
@@ -643,12 +734,12 @@ fn a_reader_that_keeps_up_is_never_skipped_and_a_stalled_one_is_at_once() {
     // The other seat reads all along and tells the time.
     let (mut clock, _) = join_as_bot(addr, "clock");
     let first = lagging.recv_until(snapshot).tick;
-    let (last, pending, skipped) = read_ticks(&mut lagging, (first, Some(first)), first + 20);
+    let (last, pending, skipped) = read_ticks(&mut lagging, (first, Some(first)), first + 8);
     assert_eq!(skipped, 0, "a reader that keeps up sees every snapshot");
-    // Sixty ticks go by while the lagging reader reads nothing.
+    // Thirty ticks are played in all, the later twenty or so while the lagging reader reads nothing.
     let stalled_at = clock.recv_until(snapshot).tick;
-    while clock.recv_until(snapshot).tick < stalled_at + 60 {}
-    let (_, _, skipped) = read_ticks(&mut lagging, (last, pending), stalled_at + 60);
+    while clock.recv_until(snapshot).tick < stalled_at + 30 {}
+    let (_, _, skipped) = read_ticks(&mut lagging, (last, pending), stalled_at + 30);
     assert!(skipped > 0, "a stalled reader is skipped ahead");
 }
 

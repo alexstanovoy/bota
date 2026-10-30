@@ -10,7 +10,7 @@ use std::time::Duration;
 
 use bota_client_core::{IssuedOrder, Link};
 use bota_proto::{Cheat, HeroId, MapId, Order, Target, Team, TickMode};
-use bota_server::game_loop::{DEFAULT_IDLE_TIMEOUT, DEFAULT_SPECTATORS_PER_SEAT, ServerOpts, run};
+use bota_server::game_loop::{DEFAULT_SPECTATORS_PER_SEAT, ServerOpts, run};
 use bota_server::net::DEFAULT_MESSAGES_PER_SEC;
 use bota_server::spectators::Spectators;
 
@@ -39,7 +39,9 @@ fn opts(map: MapId) -> ServerOpts {
         runes: None,
         dummy_seat: false,
         ack_timeout_ticks: 150,
-        idle_timeout: Some(DEFAULT_IDLE_TIMEOUT),
+        // A client waits on another or on a slow line, and the machine is busy: nobody is let go
+        // for silence unless the test is about that.
+        idle_timeout: None,
         order_delays: Vec::new(),
         messages_per_sec: DEFAULT_MESSAGES_PER_SEC,
         max_spectators_per_seat: DEFAULT_SPECTATORS_PER_SEAT,

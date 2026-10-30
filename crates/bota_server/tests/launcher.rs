@@ -14,7 +14,9 @@ use bota_proto::{
     HeroId, MatchReport, Order, SeatKey, ServerMsg, SlotId, Target, Team, decode_payload,
 };
 
-const WAIT: Duration = Duration::from_secs(10);
+/// How long a test waits for the server binary to speak or exit. It guards against a hang
+/// only: starting a process and playing a match take as long as a busy machine makes them.
+const WAIT: Duration = Duration::from_secs(300);
 const KEYS: [SeatKey; 2] = [SeatKey([1; 32]), SeatKey([2; 32])];
 
 /// The running server binary, killed when the test ends.
@@ -165,8 +167,9 @@ fn a_match_played_to_its_end_says_its_result_on_one_line_and_exits_0() {
 fn a_match_nobody_came_to_is_abandoned_with_exit_code_3() {
     let mut server = start(&["--start-after-secs", "1", "--abandon-unjoined"]);
     assert_eq!(server.exit(WAIT).code(), Some(3));
-    assert!(
-        server.stdout.try_recv().is_err(),
+    assert_eq!(
+        server.stdout.recv_timeout(WAIT),
+        Err(mpsc::RecvTimeoutError::Disconnected),
         "no result is said for a match nobody played"
     );
 }
@@ -187,7 +190,11 @@ fn a_match_everyone_left_is_abandoned_once_it_stood_empty_long_enough() {
         "{:?}",
         left.elapsed()
     );
-    assert!(server.stdout.try_recv().is_err(), "no result");
+    assert_eq!(
+        server.stdout.recv_timeout(WAIT),
+        Err(mpsc::RecvTimeoutError::Disconnected),
+        "no result"
+    );
 }
 
 fn link_recv(link: &mut Link) -> ServerMsg {

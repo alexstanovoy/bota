@@ -18,7 +18,9 @@ use bota_proto::{
 };
 use wire::{Wire, dial};
 
-const WAIT: Duration = Duration::from_secs(10);
+/// How long a test waits for the server binary to speak or hang up. It guards against a hang
+/// only: a busy machine makes starting a process and answering slow.
+const WAIT: Duration = Duration::from_secs(300);
 
 /// The running server binary, killed when the test ends.
 struct Server {

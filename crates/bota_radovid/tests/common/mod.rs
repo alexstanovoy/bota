@@ -17,9 +17,33 @@ pub const PASSWORD: &str = "correct horse battery";
 
 static NEXT_DIR: AtomicU32 = AtomicU32::new(0);
 static NEXT_PORTS: AtomicU16 = AtomicU16::new(0);
-/// Host ports per service, and the first of the first service's.
+/// Host ports per service.
 const PORTS: u16 = 4;
-const FIRST_PORT: u16 = 44000;
+/// The blocks of `PORTS` ports services may take, below the range the system hands out to
+/// outgoing connections.
+const BLOCKS: u16 = 12_000 / PORTS;
+const BLOCKS_FROM: u16 = 20_000;
+
+/// The first port of a block of `PORTS` consecutive loopback ports nobody listens on. Test
+/// processes run at once (debug and release, several worktrees), and the service binds its
+/// game ports only when it launches a match: each process starts looking at a block its process
+/// id picks, and a service takes the next block it can bind whole, so processes meet rarely and
+/// never take a block that is in use.
+fn free_ports() -> u16 {
+    let start = std::process::id() % u32::from(BLOCKS);
+    let taken = u32::from(NEXT_PORTS.fetch_add(1, Ordering::Relaxed));
+    for step in 0..u32::from(BLOCKS) {
+        let block = (start + taken + step) % u32::from(BLOCKS);
+        let first = BLOCKS_FROM + PORTS * u16::try_from(block).expect("a block");
+        let held: Result<Vec<_>, _> = (first..first + PORTS)
+            .map(|port| std::net::TcpListener::bind(("127.0.0.1", port)))
+            .collect();
+        if held.is_ok() {
+            return first;
+        }
+    }
+    panic!("no block of {PORTS} free ports");
+}
 
 /// The game server binary, built once per test run with the WebSocket
 /// listener that radovid's handoff URL points to.
@@ -82,7 +106,7 @@ pub fn start() -> Env {
         NEXT_DIR.fetch_add(1, Ordering::Relaxed)
     ));
     std::fs::create_dir_all(&dir).expect("test dir");
-    let first = FIRST_PORT + PORTS * NEXT_PORTS.fetch_add(1, Ordering::Relaxed);
+    let first = free_ports();
     let config = format!(
         r#"
 listen = "127.0.0.1:0"
@@ -194,7 +218,7 @@ impl Account {
 
     /// The answer to the request numbered `seq`.
     pub fn reply(&mut self, seq: u32) -> Result<Reply, Error> {
-        let deadline = Instant::now() + Duration::from_secs(30);
+        let deadline = Instant::now() + HANG_GUARD;
         while Instant::now() < deadline {
             if let Some(result) = self.poll_for(Duration::from_millis(50), Some(seq)) {
                 return result;
@@ -213,14 +237,6 @@ impl Account {
         match self.reply(seq) {
             Ok(Reply::Queued { entry }) => entry,
             other => panic!("queue: {other:?}"),
-        }
-    }
-
-    /// Keeps listening for `secs` seconds.
-    pub fn listen(&mut self, millis: u64) {
-        let deadline = Instant::now() + Duration::from_millis(millis);
-        while Instant::now() < deadline {
-            self.poll_for(Duration::from_millis(20), None);
         }
     }
 
@@ -246,11 +262,15 @@ impl Account {
     }
 }
 
-/// Polls every account until `done` holds for all of them, within `secs`:
-/// automatic answers happen while an account is polled, so accounts that wait
-/// on each other are polled together.
-pub fn settle(accounts: &mut [&mut Account], secs: u64, mut done: impl FnMut(&Account) -> bool) {
-    let deadline = Instant::now() + Duration::from_secs(secs);
+/// How long a test waits for the service or a match to do what it must. It guards against a
+/// hang only: a match is played at the pace of a busy machine, and nothing asserts how long
+/// anything took.
+const HANG_GUARD: Duration = Duration::from_secs(600);
+
+/// Polls every account until `done` holds for all of them: automatic answers happen while an
+/// account is polled, so accounts that wait on each other are polled together.
+pub fn settle(accounts: &mut [&mut Account], mut done: impl FnMut(&Account) -> bool) {
+    let deadline = Instant::now() + HANG_GUARD;
     while !accounts.iter().all(|account| done(account)) {
         assert!(Instant::now() < deadline, "the accounts did not settle");
         for account in accounts.iter_mut() {
@@ -261,7 +281,7 @@ pub fn settle(accounts: &mut [&mut Account], secs: u64, mut done: impl FnMut(&Ac
 
 /// Both bots at the game once a match is found: their handoffs.
 pub fn found(accounts: &mut [&mut Account]) -> Vec<Handoff> {
-    settle(accounts, 40, |account| account.handoff().is_some());
+    settle(accounts, |account| account.handoff().is_some());
     accounts.iter().filter_map(|a| a.handoff()).collect()
 }
 

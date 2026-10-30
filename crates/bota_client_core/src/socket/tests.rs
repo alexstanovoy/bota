@@ -3,8 +3,9 @@
 
 use std::io::{Read, Write};
 use std::net::TcpListener;
+use std::sync::mpsc;
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use bota_proto::{ClientMsg, Role, ServerMsg, encode_frame_to_vec};
 
@@ -35,8 +36,10 @@ fn a_reset_connection_is_an_error() {
     let addr = listener.local_addr().expect("addr").to_string();
     let server = thread::spawn(move || {
         let (peer, _) = listener.accept().expect("accept");
-        // Closing with the hello unread makes the kernel reset the connection.
-        thread::sleep(Duration::from_millis(200));
+        // Closing with the hello unread makes the kernel reset the connection: peeking waits
+        // for it to be there, and leaves it unread.
+        let mut buf = [0u8; 256];
+        assert!(peer.peek(&mut buf).expect("the hello arrives") > 0);
         drop(peer);
     });
     let mut net = Net::connect_with(&addr, Redial::OFF).expect("connect");
@@ -49,26 +52,36 @@ fn a_reset_connection_is_an_error() {
 fn a_redial_lasts_until_the_server_answers_on_the_fresh_connection() {
     let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
     let addr = listener.local_addr().expect("addr").to_string();
+    let (greeted, hello_again) = mpsc::channel();
+    let (answer, go) = mpsc::channel();
     let server = thread::spawn(move || {
         let (first, _) = listener.accept().expect("accept");
-        thread::sleep(Duration::from_millis(200));
+        let mut buf = [0u8; 256];
+        // Dropped with the hello unread, the connection is reset: a break to dial again after.
+        assert!(first.peek(&mut buf).expect("the hello arrives") > 0);
         drop(first);
         let (mut fresh, _) = listener.accept().expect("the client dials again");
-        let mut buf = [0u8; 256];
         let _ = fresh.read(&mut buf).expect("the hello arrives again");
-        // Connected and greeted, but nothing back for a while: a black hole.
-        thread::sleep(Duration::from_millis(500));
+        // Connected and greeted, but nothing back until the test says so: a black hole.
+        greeted.send(()).expect("the test listens");
+        go.recv().expect("the test answers");
         fresh
             .write_all(&encode_frame_to_vec(&ServerMsg::Ping).expect("encode"))
             .expect("ping");
-        thread::sleep(Duration::from_millis(300));
+        // Held open until the client has taken the ping in.
+        go.recv().expect_err("the test is done");
     });
     let mut net = Net::connect(&addr).expect("connect");
     net.send(&hello()).expect("send");
-    thread::sleep(Duration::from_millis(500));
+    hello_again.recv().expect("the fresh connection is greeted");
     assert!(net.is_redialing(), "no word from the fresh connection yet");
-    thread::sleep(Duration::from_millis(500));
-    assert!(!net.is_redialing(), "the server answered");
+    answer.send(()).expect("the server waits");
+    let deadline = Instant::now() + Duration::from_secs(300);
+    while net.is_redialing() {
+        assert!(Instant::now() < deadline, "the server answered");
+        thread::sleep(Duration::from_millis(5));
+    }
+    drop(answer);
     server.join().expect("the server side ends");
 }
 

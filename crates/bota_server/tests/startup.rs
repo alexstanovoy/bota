@@ -14,7 +14,7 @@ fn a_replay_that_cannot_be_written_fails_before_the_port_is_announced() {
         .stderr(Stdio::piped())
         .spawn()
         .expect("the server starts");
-    let deadline = Instant::now() + Duration::from_secs(10);
+    let deadline = Instant::now() + Duration::from_secs(300);
     while child.try_wait().expect("the server is waited on").is_none() {
         if Instant::now() > deadline {
             child.kill().expect("the server is stopped");

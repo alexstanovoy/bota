@@ -9,7 +9,6 @@ use bota_proto::{
     SeatKey, Speaker,
 };
 
-use super::spectators::drain;
 use super::*;
 use crate::chat::{ChatOpts, SeatChat};
 use crate::lobby::ReservedSeat;
@@ -22,13 +21,6 @@ const TEAM_TEXT: &str = "мид мой, 下路 来 한국어 👍";
 const ALL_TEXT: &str = "gg wp — ありがとう";
 const LOBBY_TEXT: &str = "glhf ✌";
 const SPECTATOR_TEXT: &str = "смотрю";
-
-fn say(to: Audience, text: &str) -> ClientMsg {
-    ClientMsg::Say(Line {
-        to,
-        body: Body::Text(text.to_owned()),
-    })
-}
 
 /// The lines among `messages`, by audience and text.
 fn heard(messages: &[ServerMsg]) -> Vec<Heard> {
@@ -115,37 +107,25 @@ fn everyone_in(addr: std::net::SocketAddr) -> [TestClient; 4] {
     all
 }
 
-/// Reads messages into `log` up to and with the first that is `done`.
-fn read_until(
-    client: &mut TestClient,
-    log: &mut Vec<ServerMsg>,
-    done: impl Fn(&ServerMsg) -> bool,
-) {
-    for _ in 0..1000 {
-        let msg = client.recv();
-        let last = done(&msg);
-        log.push(msg);
-        if last {
-            return;
-        }
-    }
-    panic!("the awaited message never came");
+/// The records of the replay of a match that has ended, header first.
+fn replay_records(path: &std::path::Path) -> Vec<ReplayRecord> {
+    let bytes = read_replay(path).expect("the server finished the replay");
+    let mut reader = FrameReader::new();
+    reader.push(&bytes);
+    std::iter::from_fn(|| reader.next_message::<ReplayRecord>().expect("a record")).collect()
 }
 
-/// The records of a finished replay, header first.
-fn replay_records(path: &std::path::Path) -> Vec<ReplayRecord> {
-    for _ in 0..200 {
-        thread::sleep(Duration::from_millis(50));
-        // A stream the server has not finished does not unpack.
-        let Some(bytes) = read_replay(path) else {
-            continue;
-        };
-        let mut reader = FrameReader::new();
-        reader.push(&bytes);
-        return std::iter::from_fn(|| reader.next_message::<ReplayRecord>().expect("a record"))
-            .collect();
-    }
-    panic!("the replay was never finished");
+/// The latest tick any line among `messages` was said on.
+fn latest_said(messages: &[&[ServerMsg]]) -> u32 {
+    messages
+        .iter()
+        .flat_map(|told| told.iter())
+        .filter_map(|msg| match msg {
+            ServerMsg::Heard(heard) => heard.tick,
+            _ => None,
+        })
+        .max()
+        .expect("a line said in the match")
 }
 
 /// A team line reaches its side's seats and the spectators holding its
@@ -156,32 +136,28 @@ fn replay_records(path: &std::path::Path) -> Vec<ReplayRecord> {
 #[test]
 fn a_team_line_reaches_its_side_only_and_the_replay_keeps_every_seat_line() {
     let path = std::env::temp_dir().join(format!("bota-chat-{}.brp", std::process::id()));
-    let addr = start_server(chat_match(61, path.clone()));
-    let [mut radiant, mut dire, mut keyed, mut open] = everyone_in(addr);
+    let server = start_ending_server(chat_match(61, path.clone()));
+    let [mut radiant, mut dire, mut keyed, mut open] = everyone_in(server.addr);
     // Each speaker hears its own line back before the next one speaks, so
     // the lines are said in this order.
     let mut told = [(); 4].map(|()| Vec::new());
     radiant.send(&say(Audience::Team, TEAM_TEXT));
     radiant.send(&say(Audience::Team, "a\u{202E}b"));
-    read_until(&mut radiant, &mut told[0], |msg| {
-        matches!(msg, ServerMsg::SayRefused { .. })
-    });
+    told[0] = radiant.collect_until(|msg| matches!(msg, ServerMsg::SayRefused { .. }));
     dire.send(&say(Audience::All, ALL_TEXT));
-    read_until(&mut dire, &mut told[1], |msg| {
-        matches!(msg, ServerMsg::Heard(_))
-    });
+    told[1] = dire.collect_until(|msg| matches!(msg, ServerMsg::Heard(_)));
     open.send(&say(Audience::Spectators, SPECTATOR_TEXT));
-    read_until(
-        &mut open,
-        &mut told[3],
+    told[3] = open.collect_until(
         |msg| matches!(msg, ServerMsg::Heard(heard) if heard.line.to == Audience::Spectators),
     );
-    let wait = Duration::from_millis(600);
+    // Every line was said by the tick after the latest of them, and is told before the
+    // snapshot of the tick after it.
+    let by = latest_said(&[&told[0], &told[1], &told[3]]) + 1;
     for (client, log) in [&mut radiant, &mut dire, &mut keyed, &mut open]
         .into_iter()
         .zip(&mut told)
     {
-        log.extend(drain(client, wait));
+        log.extend(client.collect_through_tick(by));
     }
     let [told_radiant, told_dire, told_keyed, told_open] = told;
 
@@ -216,6 +192,7 @@ fn a_team_line_reaches_its_side_only_and_the_replay_keeps_every_seat_line() {
     assert_eq!(spectator.from, Speaker::Spectator("ignored".to_owned()));
 
     drop((radiant, dire, keyed, open));
+    server.end();
     let kept: Vec<Heard> = replay_records(&path)
         .into_iter()
         .filter_map(|record| match record {
@@ -262,8 +239,18 @@ fn a_refused_line_reaches_nobody_and_the_speaker_stays() {
                 &format!("line {at}"),
             ));
         }
-        let told = drain(&mut speaker, Duration::from_millis(500));
-        let heard_by_listener = heard(&drain(&mut listener, Duration::from_millis(200)));
+        // Each of the six lines is answered once, by its echo or its refusal. The listener is
+        // read to a tick shown after the speaker was answered to the last.
+        let mut answered = 0;
+        let told = speaker.collect_until(|msg| {
+            answered += usize::from(matches!(
+                msg,
+                ServerMsg::Heard(_) | ServerMsg::SayRefused { .. }
+            ));
+            answered == 6
+        });
+        let after = speaker.next_tick();
+        let heard_by_listener = heard(&listener.collect_through_tick(after));
         // The rate is taken first: five lines of burst, then one a second.
         let too_fast = SayRefusal::TooFast { retry_in_ms: 0 };
         let expected = match allowed {
@@ -290,7 +277,6 @@ fn a_refused_line_reaches_nobody_and_the_speaker_stays() {
         // The two seats play on different sides: only all-chat crosses.
         let crossed = if allowed == Some(Audience::All) { 3 } else { 0 };
         assert_eq!(heard_by_listener.len(), crossed, "{seats}");
-        speaker.recv_until(snapshot);
     }
 }
 
@@ -351,23 +337,35 @@ fn a_compressed_link_carries_the_match_in_parts_and_chat_plainly() {
     plain.recv_until(snapshot);
     plain.send(&say(Audience::All, ALL_TEXT));
 
-    // Read the packed client's wire as it is, frame by frame.
+    // Read the packed client's wire as it is, frame by frame, until the chat line and enough of
+    // the match have come, unpacking the parts as they do.
     let mut outer = Vec::new();
     let mut frames = FrameReader::new();
     let mut buf = [0u8; 65536];
-    let deadline = Instant::now() + Duration::from_secs(2);
-    while Instant::now() < deadline {
+    let mut unpacker = bota_proto::Unpacker::new();
+    let mut views: Vec<WorldView> = Vec::new();
+    let (mut wire_bytes, mut unpacked_bytes) = (0, 0);
+    let (mut parts, mut chatted) = (0, false);
+    while views.len() <= 10 || !chatted {
         let n = packed.stream.read(&mut buf).expect("read");
         assert!(n > 0, "the server hung up");
         frames.push(&buf[..n]);
         while let Some(msg) = frames.next_message::<ServerMsg>().expect("a frame") {
-            outer.push(msg);
+            if let ServerMsg::Compressed(part) = &msg {
+                parts += 1;
+                wire_bytes += part.len();
+            }
+            chatted |= matches!(msg, ServerMsg::Heard(_));
+            outer.push(msg.clone());
+            if let Some(plain) = unpacker.take(msg).expect("a part in order") {
+                views.extend(snapshot(plain));
+            }
+            while let Some(msg) = unpacker.next_message().expect("a whole part") {
+                unpacked_bytes += bota_proto::payload_len(&msg).expect("it encodes");
+                views.extend(snapshot(msg));
+            }
         }
     }
-    let parts = outer
-        .iter()
-        .filter(|msg| matches!(msg, ServerMsg::Compressed(_)))
-        .count();
     assert!(parts > 10, "the match comes in parts");
     assert!(
         !outer
@@ -376,24 +374,6 @@ fn a_compressed_link_carries_the_match_in_parts_and_chat_plainly() {
         "no snapshot goes out plainly once compression was asked for"
     );
     assert_eq!(texts(&heard(&outer)), [ALL_TEXT], "chat goes out plainly");
-
-    let mut unpacker = bota_proto::Unpacker::new();
-    let mut unpacked = Vec::new();
-    let (mut wire_bytes, mut unpacked_bytes) = (0, 0);
-    for msg in outer {
-        if let ServerMsg::Compressed(part) = &msg {
-            wire_bytes += part.len();
-        }
-        if let Some(msg) = unpacker.take(msg).expect("a part in order") {
-            unpacked.push(msg);
-        }
-        while let Some(msg) = unpacker.next_message().expect("a whole part") {
-            unpacked_bytes += bota_proto::payload_len(&msg).expect("it encodes");
-            unpacked.push(msg);
-        }
-    }
-    let views: Vec<WorldView> = unpacked.into_iter().filter_map(snapshot).collect();
-    assert!(views.len() > 10, "{} snapshots", views.len());
     assert!(views.windows(2).all(|pair| pair[0].tick < pair[1].tick));
     assert!(
         unpacked_bytes > 5 * wire_bytes,
@@ -414,8 +394,8 @@ fn ping(kind: PingKind, at: PingAt) -> ClientMsg {
 #[test]
 fn a_ping_reaches_the_speakers_side_at_what_it_sees_and_the_replay_names_it_truly() {
     let path = std::env::temp_dir().join(format!("bota-ping-{}.brp", std::process::id()));
-    let addr = start_server(chat_match(65, path.clone()));
-    let [mut radiant, mut dire, mut keyed, mut open] = everyone_in(addr);
+    let server = start_ending_server(chat_match(65, path.clone()));
+    let [mut radiant, mut dire, mut keyed, mut open] = everyone_in(server.addr);
     let view = radiant.recv_until(snapshot);
     let hero = view.players[0].unit.expect("its hero stands");
     radiant.send(&ping(
@@ -435,25 +415,28 @@ fn a_ping_reaches_the_speakers_side_at_what_it_sees_and_the_replay_names_it_trul
             at: PingAt::Spot(bota_proto::Vec2::from_ints(100, 100)),
         }),
     }));
-    let mut told = Vec::new();
-    read_until(&mut radiant, &mut told, |msg| {
-        matches!(msg, ServerMsg::SayRefused { .. })
+    // Each of the four lines is answered once, by its echo or its refusal.
+    let mut answered = 0;
+    let told = radiant.collect_until(|msg| {
+        answered += usize::from(matches!(
+            msg,
+            ServerMsg::Heard(_) | ServerMsg::SayRefused { .. }
+        ));
+        answered == 4
     });
-    read_until(&mut radiant, &mut told, |msg| {
-        matches!(msg, ServerMsg::SayRefused { .. })
-    });
-    told.extend(drain(&mut radiant, Duration::from_millis(300)));
+    let after = radiant.next_tick();
     let pings = heard(&told);
     assert_eq!(pings.len(), 2, "{told:?}");
     assert_eq!(
         refusals(&told),
         [SayRefusal::NotAllowed, SayRefusal::NotAllowed]
     );
-    assert_eq!(heard(&drain(&mut keyed, Duration::from_millis(300))), pings);
+    assert_eq!(heard(&keyed.collect_through_tick(after)), pings);
     for other in [&mut dire, &mut open] {
-        assert!(heard(&drain(other, Duration::from_millis(300))).is_empty());
+        assert!(heard(&other.collect_through_tick(after)).is_empty());
     }
     drop((radiant, dire, keyed, open));
+    server.end();
     let kept: Vec<Heard> = replay_records(&path)
         .into_iter()
         .filter_map(|record| match record {

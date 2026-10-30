@@ -91,9 +91,11 @@ fn a_seat_picking_late_starts_with_less_gold() {
     punctual.send(&pick);
     punctual.send(&ClientMsg::SetReady(true));
     punctual.recv_until(|msg| lobby(msg).filter(|(slots, _)| slots[0].hero.is_some()));
-    // The clock starts with the second seat; this one picks after it ran out.
+    // The clock starts with the second seat; this one picks after it ran out, a whole second into
+    // the penalty phase.
     let mut tardy = greeted(addr, Role::Bot);
-    thread::sleep(Duration::from_millis(2_300));
+    tardy.recv_until(|msg| matches!(lobby(msg), Some((_, PickPhase::Late { .. }))).then_some(()));
+    thread::sleep(Duration::from_millis(1_100));
     tardy.send(&pick);
     tardy.send(&ClientMsg::SetReady(true));
     let gold = |client: &mut TestClient| {
@@ -105,7 +107,8 @@ fn a_seat_picking_late_starts_with_less_gold() {
     };
     assert_eq!(gold(&mut punctual), Some(bota_core::rules::STARTING_GOLD));
     let lost = bota_core::rules::STARTING_GOLD - gold(&mut tardy).expect("own gold");
-    assert!((2..=8).contains(&lost) && lost % 2 == 0, "lost {lost}");
+    // Two gold a second late, and no more than the penalty phase has seconds.
+    assert!((2..=20).contains(&lost) && lost % 2 == 0, "lost {lost}");
 }
 
 #[test]
@@ -148,13 +151,18 @@ fn the_countdown_reaches_clients_and_a_reconnect_sees_the_time_left() {
 #[test]
 fn two_bots_skip_the_tactical_phase() {
     let mut opts = realtime(81);
-    opts.tactical_time = Duration::from_secs(60);
+    // An hour: a tactical phase that was not skipped is a hang, caught by the guard.
+    opts.tactical_time = Duration::from_secs(3_600);
     let addr = start_server(opts);
-    let started = Instant::now();
     let (mut first, _) = join_as_bot(addr, "a");
     let (_second, _) = join_as_bot(addr, "b");
-    first.recv_until(match_start_picks);
-    assert!(started.elapsed() < Duration::from_secs(5));
+    first.recv_until(|msg| {
+        assert!(
+            !matches!(lobby(msg.clone()), Some((_, PickPhase::Tactical { .. }))),
+            "the tactical phase was announced to two bots"
+        );
+        matches!(msg, ServerMsg::MatchStart { .. }).then_some(())
+    });
 }
 
 #[test]
@@ -164,6 +172,9 @@ fn a_human_seat_waits_out_the_tactical_phase() {
     let addr = start_server(opts);
     let mut human = greeted(addr, Role::Player);
     let (_bot, _) = join_as_bot(addr, "b");
+    // The human's is the last seat to be ready: the tactical phase begins after the server
+    // hears it, so it lasts the tactical time from this moment at the least.
+    let readied = Instant::now();
     for msg in [
         ClientMsg::PickHero {
             hero: HeroId::SHADOW_FIEND,
@@ -172,7 +183,7 @@ fn a_human_seat_waits_out_the_tactical_phase() {
     ] {
         human.send(&msg);
     }
-    let mut tactical_since = None;
+    let mut announced = false;
     human.recv_until(|msg| {
         match &msg {
             ServerMsg::LobbyState {
@@ -180,17 +191,16 @@ fn a_human_seat_waits_out_the_tactical_phase() {
                 ..
             } => {
                 assert!(*left_ms <= 1_500);
-                tactical_since.get_or_insert_with(Instant::now);
+                announced = true;
             }
             ServerMsg::MatchStart { .. } => return Some(()),
             _ => {}
         }
         None
     });
-    let waited = tactical_since
-        .expect("the tactical phase was announced")
-        .elapsed();
-    assert!(waited >= Duration::from_millis(1_000), "{waited:?}");
+    assert!(announced, "the tactical phase was announced");
+    let waited = readied.elapsed();
+    assert!(waited >= Duration::from_millis(1_500), "{waited:?}");
 }
 
 #[test]
