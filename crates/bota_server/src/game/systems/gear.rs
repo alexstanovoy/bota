@@ -926,8 +926,11 @@ impl World {
     }
 
     /// Why two of a unit's slots may not swap what they hold, or nothing when
-    /// they may (see [`swap_refusal_in`]): the stash takes part only while the
-    /// unit stands at its own shop.
+    /// they may: its bag's, a standing hero's or a dead one's, and the seat's
+    /// stash, which takes part only while the unit stands at its own shop (so
+    /// never while it lies dead). The town portal slot takes a scroll stack
+    /// from another slot, merging it, and gives nothing up: Dota's scrolls
+    /// never leave it but to be read.
     pub(crate) fn swap_refusal(
         &self,
         unit: Entity,
@@ -935,12 +938,40 @@ impl World {
         from: usize,
         to: usize,
     ) -> Option<bota_proto::RejectReason> {
-        swap_refusal_in(
-            self.inventory.get(unit),
-            seat,
-            (from, to),
-            self.at_shop(unit),
-        )
+        use bota_proto::RejectReason;
+        let total = BAG_SLOTS + seat.stash.slots.len();
+        let named = |at: usize| at < total || in_town_portal(at);
+        if from == to || !named(from) || !named(to) {
+            return Some(RejectReason::EmptySlot);
+        }
+        let held = if in_stash(from) {
+            seat.stash.slots.get(from - BAG_SLOTS).copied().flatten()
+        } else {
+            self.held_in_bag(unit, from)
+        };
+        let Some(held) = held else {
+            return Some(RejectReason::EmptySlot);
+        };
+        if (in_stash(from) || in_stash(to)) && !self.at_shop(unit) {
+            return Some(RejectReason::NotAtShop);
+        }
+        // A Bottle holding a rune stays among the items in hand, in whichever
+        // slot of them.
+        let leaves_the_hand = |stack: Option<ItemStack>, slot: usize| {
+            stack.is_some_and(|stack| stack.rune.is_some()) && !in_inventory(slot)
+        };
+        if leaves_the_hand(Some(held), to) || leaves_the_hand(self.stack_at(unit, seat, to), from)
+        {
+            return Some(RejectReason::HoldsRune);
+        }
+        let has_portal = self
+            .inventory
+            .get(unit)
+            .is_some_and(|bag| bag.town_portal.is_some());
+        if in_town_portal(from) || (in_town_portal(to) && (!has_portal || !held.is_scroll())) {
+            return Some(RejectReason::WrongTargetKind);
+        }
+        None
     }
 
     /// The stack in one of a seat's slots: the unit's bag, then the stash.
@@ -1026,7 +1057,11 @@ impl World {
             bota_proto::Order::Buy { item } => {
                 self.buy(slot, item, events);
             }
-            bota_proto::Order::Swap { from, to } => self.swap_while_down(slot, from, to),
+            bota_proto::Order::Swap { from, to } => {
+                if let Some(hero) = self.seat(slot).and_then(|seat| seat.unit) {
+                    self.move_item(slot, hero, usize::from(from.0), usize::from(to.0));
+                }
+            }
             bota_proto::Order::Sell { slot: at } => self.sell_while_down(slot, usize::from(at.0)),
             bota_proto::Order::Disassemble { slot: at } => {
                 if let Some(hero) = self.seat(slot).and_then(|seat| seat.unit) {
@@ -1040,30 +1075,6 @@ impl World {
             }
             bota_proto::Order::Cheat { cheat } => self.cheat(slot, None, cheat, events),
             _ => {}
-        }
-    }
-
-    /// Swaps two slots of what a dead hero carried, as it could standing away
-    /// from the shop: its bag's, never the stash's.
-    fn swap_while_down(
-        &mut self,
-        slot: SlotId,
-        from: bota_proto::ItemSlot,
-        to: bota_proto::ItemSlot,
-    ) {
-        let Some(seat) = self.seats.iter().position(|s| s.slot == slot) else {
-            return;
-        };
-        let (from, to) = (usize::from(from.0), usize::from(to.0));
-        let seat = &self.seats[seat];
-        let Some(hero) = seat.unit else {
-            return;
-        };
-        if swap_refusal_in(self.inventory.get(hero), seat, (from, to), false).is_some() {
-            return;
-        }
-        if let Some(bag) = self.inventory.get_mut(hero) {
-            bag.swap_slots(from, to);
         }
     }
 
@@ -1362,54 +1373,4 @@ impl World {
             .get(entity)
             .map_or(0, AbilityBook::points_spent)
     }
-}
-
-/// Why two slots may not swap what they hold, or nothing when they may: of
-/// `bag`, a standing hero's or a dead one's, and of the seat's stash, which
-/// takes part only `at_shop`. The town portal slot takes a scroll stack from
-/// another slot, merging it, and gives nothing up: Dota's scrolls never leave
-/// it but to be read.
-pub(crate) fn swap_refusal_in(
-    bag: Option<&Inventory>,
-    seat: &crate::game::Seat,
-    (from, to): (usize, usize),
-    at_shop: bool,
-) -> Option<bota_proto::RejectReason> {
-    use bota_proto::RejectReason;
-    let total = BAG_SLOTS + seat.stash.slots.len();
-    let named = |at: usize| at < total || in_town_portal(at);
-    if from == to || !named(from) || !named(to) {
-        return Some(RejectReason::EmptySlot);
-    }
-    let held = if in_stash(from) {
-        seat.stash.slots.get(from - BAG_SLOTS).copied().flatten()
-    } else {
-        bag.and_then(|bag| bag.slot(from).copied().flatten())
-    };
-    let Some(held) = held else {
-        return Some(RejectReason::EmptySlot);
-    };
-    if (in_stash(from) || in_stash(to)) && !at_shop {
-        return Some(RejectReason::NotAtShop);
-    }
-    // A Bottle holding a rune stays among the items in hand, in whichever
-    // slot of them.
-    let at = |slot: usize| {
-        if in_stash(slot) {
-            seat.stash.slots.get(slot - BAG_SLOTS).copied().flatten()
-        } else {
-            bag.and_then(|bag| bag.slot(slot).copied().flatten())
-        }
-    };
-    let leaves_the_hand = |stack: Option<ItemStack>, slot: usize| {
-        stack.is_some_and(|stack| stack.rune.is_some()) && !in_inventory(slot)
-    };
-    if leaves_the_hand(Some(held), to) || leaves_the_hand(at(to), from) {
-        return Some(RejectReason::HoldsRune);
-    }
-    let has_portal = bag.is_some_and(|bag| bag.town_portal.is_some());
-    if in_town_portal(from) || (in_town_portal(to) && (!has_portal || !held.is_scroll())) {
-        return Some(RejectReason::WrongTargetKind);
-    }
-    None
 }

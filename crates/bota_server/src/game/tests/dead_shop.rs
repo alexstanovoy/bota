@@ -158,10 +158,11 @@ fn what_a_body_carried_when_it_fell_sells_back_at_the_full_price_no_more() {
 }
 
 /// Checked in the Dota 2 client (7.41, 2026-10-24): a dead hero may swap its
-/// items between its slots; the stash, at a shop it does not stand in, stays
-/// out of reach, and what it carried comes back where it was put.
+/// items between its slots, by its seat's order or by one naming the hero;
+/// the stash, at a shop it does not stand in, stays out of reach, and what it
+/// carries is where it was put when it stands again.
 #[test]
-fn a_dead_hero_swaps_what_it_carried_between_its_slots_and_reaches_no_stash() {
+fn a_dead_hero_swaps_what_it_carries_between_its_slots_and_reaches_no_stash() {
     let mut world = fallen_with_boots();
     let to_backpack = Order::Swap {
         from: ItemSlot(0),
@@ -169,7 +170,7 @@ fn a_dead_hero_swaps_what_it_carried_between_its_slots_and_reaches_no_stash() {
     };
     assert_eq!(world.validate_order(SlotId(0), None, &to_backpack), Ok(()));
     seat_order(&mut world, to_backpack);
-    let kept = |world: &World, at: usize| {
+    let carried = |world: &World, at: usize| {
         world.seats[0]
             .unit
             .and_then(|hero| world.inventory.get(hero))
@@ -177,11 +178,11 @@ fn a_dead_hero_swaps_what_it_carried_between_its_slots_and_reaches_no_stash() {
             .map(|stack| stack.id)
     };
     assert_eq!(
-        kept(&world, 6),
+        carried(&world, 6),
         Some(ItemId::BOOTS),
         "moved to the backpack"
     );
-    assert_eq!(kept(&world, 0), None);
+    assert_eq!(carried(&world, 0), None);
     let to_stash = Order::Swap {
         from: ItemSlot(6),
         to: ItemSlot(BAG_SLOTS as u8),
@@ -194,8 +195,16 @@ fn a_dead_hero_swaps_what_it_carried_between_its_slots_and_reaches_no_stash() {
         from: ItemSlot(6),
         to: ItemSlot(2),
     };
-    seat_order(&mut world, back);
-    assert_eq!(kept(&world, 2), Some(ItemId::BOOTS));
+    let named = world.seats[0].unit.map(crate::game::wire_id);
+    assert_eq!(world.validate_order(SlotId(0), named, &back), Ok(()));
+    world.advance(&[crate::game::Command {
+        slot: SlotId(0),
+        unit: named,
+        order: back,
+        seq: 0,
+        queue: false,
+    }]);
+    assert_eq!(carried(&world, 2), Some(ItemId::BOOTS));
     let hero = back_on_its_feet(&mut world);
     assert_eq!(
         slot_of(&world, hero, 2).map(|stack| stack.id),

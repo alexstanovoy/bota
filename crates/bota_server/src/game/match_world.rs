@@ -735,14 +735,12 @@ impl World {
     fn check_while_down(&self, seat: &Seat, order: &Order) -> Result<(), RejectReason> {
         match order {
             Order::Buy { item } => self.check_buy(seat, *item),
-            // What the hero carried waits with its seat; it stands at no shop.
-            Order::Swap { from, to } => crate::game::swap_refusal_in(
-                seat.unit.and_then(|hero| self.inventory.get(hero)),
-                seat,
-                (usize::from(from.0), usize::from(to.0)),
-                false,
-            )
-            .map_or(Ok(()), Err),
+            // The hero lies at no shop: its own slots alone.
+            Order::Swap { from, to } => {
+                let hero = seat.unit.ok_or(RejectReason::HeroDead)?;
+                let (from, to) = (usize::from(from.0), usize::from(to.0));
+                self.swap_refusal(hero, seat, from, to).map_or(Ok(()), Err)
+            }
             Order::Sell { slot } => self.sale_while_down(seat, usize::from(slot.0)).map(|_| ()),
             Order::Disassemble { slot } => {
                 let hero = seat.unit.ok_or(RejectReason::HeroDead)?;

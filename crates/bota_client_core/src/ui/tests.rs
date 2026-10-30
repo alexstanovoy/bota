@@ -1565,3 +1565,26 @@ fn using_an_item_on_a_unit_names_only_one_it_does_something_for() {
         );
     }
 }
+
+/// A dead hero may swap what it carries, as in Dota: the panel's bag slots
+/// read its kit while it lies dead and is the one commanded.
+#[test]
+fn a_dead_heros_bag_slots_read_its_kit() {
+    let mut app = a_started_app();
+    let hero = EntityId {
+        idx: 7,
+        generation: 1,
+    };
+    let boots = an_item(None, 0, 0, None);
+    let mut dead = a_player();
+    dead.unit = Some(hero);
+    dead.respawn_left = 90;
+    dead.kit = Some(bota_proto::Kit {
+        abilities: Vec::new(),
+        items: vec![Some(boots), None, None, None, None, None, None, None, None],
+        town_portal: None,
+    });
+    app.handle(snapshot_of(1, Vec::new(), vec![dead]));
+    assert_eq!(app.item_in(0), Some(boots), "its kit, while it lies dead");
+    assert_eq!(app.item_in(1), None);
+}

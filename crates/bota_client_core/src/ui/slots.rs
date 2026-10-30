@@ -100,18 +100,35 @@ impl App {
             .flatten()
     }
 
+    /// What one's own hero carries while it lies dead and is the one
+    /// commanded: its kit, as the server tells it.
+    fn dead_kit(&self) -> Option<&bota_proto::Kit> {
+        let player = self.player(self.my_slot?)?;
+        let commanded = self.commanded()?;
+        (player.respawn_left > 0 && player.unit == Some(commanded))
+            .then_some(player.kit.as_ref())
+            .flatten()
+    }
+
     /// What sits in one item slot of the panel.
     ///
     /// The bag slots are the commanded unit's, a courier's as readily as the
-    /// hero's. The stash is the seat's own whatever is commanded, and the
+    /// hero's, a dead hero's from its kit (it may still swap them, as in
+    /// Dota). The stash is the seat's own whatever is commanded, and the
     /// town portal slot is a hero's alone.
     pub fn item_in(&self, slot: u8) -> Option<ItemView> {
         if slot == TOWN_PORTAL_SLOT {
-            return self.slot_unit()?.town_portal;
+            return match self.slot_unit() {
+                Some(unit) => unit.town_portal,
+                None => self.dead_kit()?.town_portal,
+            };
         }
         if slot < BAG_SLOTS {
-            let unit = self.slot_unit()?;
-            unit.items.get(usize::from(slot)).copied().flatten()
+            let items = match self.slot_unit() {
+                Some(unit) => &unit.items,
+                None => &self.dead_kit()?.items,
+            };
+            items.get(usize::from(slot)).copied().flatten()
         } else {
             self.player(self.my_slot?)?
                 .stash
