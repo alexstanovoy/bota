@@ -12,7 +12,8 @@
 //! - the way into the game a [`Handoff`] names: [`take_seat`], [`spectate`],
 //!   [`connect`] and [`connect_net`] natively, [`web_link`] and [`seat_hello`]
 //!   in the browser, all with the handoff's ticket as the seat key;
-//! - [`decode_report`], the picks and numbers of a finished match.
+//! - [`decode_report`], the picks and numbers of a finished match;
+//! - [`is_demo`], the one thing bota's rulesets say in their `info`: a ruleset that is Dota's Demo Hero.
 //!
 //! The whole crate is behind the `radovid` feature (implied by `native` and `web`); without
 //! it the crate is empty and compiles no radovid code.
@@ -36,7 +37,9 @@ mod web;
 pub use client::Client;
 #[cfg(not(target_arch = "wasm32"))]
 pub use connect::{connect, connect_net, spectate, take_seat};
-pub use game::{GAME, check_handoff, fingerprint, seat_hello, seat_key, seat_name};
+pub use game::{
+    GAME, INFO_DEMO, check_handoff, fingerprint, is_demo, seat_hello, seat_key, seat_name,
+};
 pub use radovid_client::proto::{self, *};
 pub use radovid_client::{ClientError, Incoming};
 pub use report::decode_report;

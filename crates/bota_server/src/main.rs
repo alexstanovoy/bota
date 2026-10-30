@@ -180,7 +180,8 @@ struct Args {
     max_spectators_per_seat: usize,
     /// Honour cheat orders (Dota's -gold, -lvlup, -wtf, -refresh, -respawn, -item, -createhero,
     /// -spawncreeps, -startgame, -allvision and the rest, and Demo Hero's panel): for a match
-    /// its host starts for itself. Refused with reserved seats, which a matchmaking service sets.
+    /// its host starts for itself, or for one reserved seat (a service's Demo Hero). Refused with
+    /// several reserved seats, which a matchmaking service sets for people playing each other.
     #[arg(long)]
     cheats: bool,
     /// Structures take damage but never fall: no tower-loss ending, for practice.

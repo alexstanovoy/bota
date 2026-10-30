@@ -2,8 +2,9 @@
 //! console form, through the client library's parser) into a lockstep match
 //! over a real socket, and sees what it did in the views that come back; a
 //! match without cheats refuses every one; the replay records that cheats
-//! were on and every cheat used; and a match of reserved seats (what the
-//! matchmaking service launches) cannot be started with them.
+//! were on and every cheat used; and a match of several reserved seats (what the
+//! matchmaking service launches for people playing each other) cannot be started with them,
+//! while one reserved seat (a service's Demo Hero) can.
 
 use std::net::TcpListener;
 use std::path::PathBuf;
@@ -373,7 +374,7 @@ fn a_match_without_cheats_refuses_every_command() {
 }
 
 #[test]
-fn a_match_of_reserved_seats_cannot_have_cheats() {
+fn a_match_of_several_reserved_seats_cannot_have_cheats() {
     let mut reserved = opts(true, None);
     reserved.players = 2;
     reserved.reserved = (0..2)
@@ -394,6 +395,11 @@ fn a_match_of_reserved_seats_cannot_have_cheats() {
     );
     reserved.cheats = false;
     assert!(check_opts(&reserved).is_ok());
+    // A lone reserved seat has nobody to cheat against: a Demo Hero.
+    let mut demo = opts(true, None);
+    demo.players = 1;
+    demo.reserved = reserved.reserved[..1].to_vec();
+    assert!(check_opts(&demo).is_ok(), "one seat may cheat");
     assert!(
         check_opts(&opts(true, None)).is_ok(),
         "a local match may cheat"

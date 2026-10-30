@@ -268,10 +268,13 @@ pub fn check_opts(opts: &ServerOpts) -> Result<(), String> {
             "a side holds at most {MAX_SIDE_SEATS} seats, as a Dota lobby's team does"
         ));
     }
-    // Reserved seats are what a matchmaking service launches: its matches
-    // never cheat. Cheats are for a match its host starts for itself.
-    if opts.cheats && !opts.reserved.is_empty() {
-        return Err("cheats are for a local match: not with reserved seats".to_owned());
+    // Cheats are for a match with nobody to cheat against: one its host starts for itself, or
+    // one reserved seat (a service's Demo Hero). Two or more reserved seats are what a
+    // matchmaking service launches for people playing each other, whose matches never cheat.
+    if opts.cheats && opts.reserved.len() > 1 {
+        return Err(
+            "cheats are for a local match or one reserved seat: not with several".to_owned(),
+        );
     }
     // Reserved seats are exactly the lineup, and a dummy is a seat nobody holds.
     if opts.seated_start && (!opts.reserved.is_empty() || opts.dummy_seat) {

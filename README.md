@@ -156,7 +156,7 @@ the plain TCP port stays on loopback) or `--insecure-plaintext`.
 | `--spectator-chat BOOL` | `true` | whether spectators talk among themselves (no seat ever hears them) | |
 | `--replay-team-chat BOOL` | `true` | whether the replay keeps the sides' team lines (a replay of the whole map then shows both sides') | `false` when replays of the whole map go to players |
 | `--order-delay-ticks`, `--order-jitter-ticks` | `0` | delay every order (one value, or one per seat); jitter from a hidden stream | rehearse a remote server |
-| `--cheats` | off | honour cheat orders: gold, levels, items, refreshes | practice |
+| `--cheats` | off | honour cheat orders: gold, levels, items, refreshes; refused with two or more reserved seats (`BOTA_SEATS`), allowed for one (a service's Demo Hero) | practice |
 | `--immortal-structures`, `--immortal-heroes` | off | damage taken, nothing falls | practice |
 | `--objectives LIST` | the map's | which of the map's objectives stand: `all`, `none`, or names separated by commas (`roshan`, `tormentor`, `watchers`, `outposts`, `shrines`); one the map does not play is refused before `READY`. Map 2 stands none unless asked | |
 | `--runes LIST` | the map's | which kinds of rune spawn: `all`, `none`, or names (`water`, `bounty`, `haste`, `amplify_damage`, `arcane`, `regeneration`, `illusion`, `invisibility`, `shield`); one the map does not spawn is refused before `READY`. Map 2 spawns none unless asked | |
