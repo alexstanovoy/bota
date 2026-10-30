@@ -761,7 +761,7 @@ impl App {
             self.held_order = Some(issued);
             return;
         }
-        if issued.order.queues() && !issued.queue {
+        if bota_core::order_queues(issued.order) && !issued.queue {
             self.held_order = None;
         }
         let Some(Ok(sent)) = self.seat.session_mut().map(|session| session.issue(issued)) else {

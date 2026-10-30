@@ -155,7 +155,7 @@ fn take_turn<E, I: IntoIterator<Item = IssuedOrder>>(
     let hero_down = session.own_hero().is_none();
     let mut unsent = 0u32;
     for order in decide(session) {
-        if hero_down && order.unit.is_none() && order.order.needs_body() {
+        if hero_down && order.unit.is_none() && bota_core::order_needs_body(order.order) {
             unsent = unsent.saturating_add(1);
             continue;
         }

@@ -416,42 +416,6 @@ pub enum Order {
 }
 
 impl Order {
-    /// Whether the order needs the hero standing when it names no unit: all
-    /// but buying, selling (from the stash), the Glyph and a cheat (as
-    /// Dota's `-respawn`), which a seat whose hero lies dead may still give.
-    pub const fn needs_body(&self) -> bool {
-        !matches!(
-            self,
-            Order::Buy { .. } | Order::Sell { .. } | Order::Glyph | Order::Cheat { .. }
-        )
-    }
-
-    /// Whether the order waits its turn in its unit's queue when it is given
-    /// queued: what the body carries out (a move, an attack, a cast, a use,
-    /// laying an item down or taking one up). Learning, talents, buying,
-    /// selling, swapping, cheats and the Glyph are carried out at once,
-    /// queued or not, and leave the queue as it is.
-    pub const fn queues(&self) -> bool {
-        match self {
-            Order::Move { .. }
-            | Order::Attack { .. }
-            | Order::Cast { .. }
-            | Order::Use { .. }
-            | Order::Put { .. }
-            | Order::Take { .. }
-            | Order::MoveDirection { .. } => true,
-            Order::Buy { .. }
-            | Order::Sell { .. }
-            | Order::Swap { .. }
-            | Order::Learn { .. }
-            | Order::Cheat { .. }
-            | Order::LearnTalent { .. }
-            | Order::LearnAttributeBonus
-            | Order::SwitchWard { .. }
-            | Order::Glyph => false,
-        }
-    }
-
     /// Calls `visit` on the entity handle the order names, if it names one:
     /// the one walk that puts a side's names into an order, and takes them
     /// out again.

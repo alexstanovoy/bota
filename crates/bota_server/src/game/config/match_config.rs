@@ -205,7 +205,7 @@ impl Command {
     /// Whether it goes into its unit's queue rather than replace it: given
     /// queued, and of the orders that queue.
     pub const fn queued(&self) -> bool {
-        self.queue && self.order.queues()
+        self.queue && bota_core::order_queues(self.order)
     }
 }
 

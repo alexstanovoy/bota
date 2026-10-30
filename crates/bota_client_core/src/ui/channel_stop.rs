@@ -44,7 +44,7 @@ impl App {
     /// given unqueued to the body that is neither a stop or a hold nor a cast
     /// or use that leaves a channel be.
     pub(crate) fn held_by_channel(&self, issued: &IssuedOrder) -> bool {
-        if issued.queue || issued.unit.is_some() || !issued.order.queues() {
+        if issued.queue || issued.unit.is_some() || !bota_core::order_queues(issued.order) {
             return false;
         }
         if matches!(

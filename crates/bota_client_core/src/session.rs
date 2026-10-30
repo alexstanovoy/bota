@@ -283,7 +283,9 @@ impl ClientSession {
         let standing = self.ledger.standing_orders();
         standing
             .into_iter()
-            .filter(|order| !(hero_down && order.unit.is_none() && order.order.needs_body()))
+            .filter(|order| {
+                !(hero_down && order.unit.is_none() && bota_core::order_needs_body(order.order))
+            })
             .map(|order| self.issue(order))
             .collect()
     }

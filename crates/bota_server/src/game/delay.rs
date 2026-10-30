@@ -170,7 +170,7 @@ impl DelayLine {
         // once (a purchase, a sale, a swap, learning, a cheat, the Glyph)
         // is no order to a body, and neither replaces nor is replaced:
         // several on a tick all go through, as Dota's purchases do.
-        let body = |order: &Order| order.queues();
+        let body = |order: &Order| bota_core::order_queues(*order);
         if !cmd.queued() && body(&cmd.order) {
             line.held
                 .retain(|held| !(held.due == due && held.key == key && body(&held.cmd.order)));

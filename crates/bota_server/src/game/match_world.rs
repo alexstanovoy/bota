@@ -115,7 +115,7 @@ impl World {
         }
         // An order to the body given unqueued replaces the queue; what goes
         // off beside the body, and what needs no body, leaves it be.
-        if cmd.order.queues() && self.immediate_cast(unit, cmd.order).is_none() {
+        if bota_core::order_queues(cmd.order) && self.immediate_cast(unit, cmd.order).is_none() {
             self.queue.remove(unit);
         }
         self.carry_out(cmd.slot, unit, cmd.order, cmd.seq, events);
@@ -169,7 +169,7 @@ impl World {
             order if self.is_channelling(unit) && self.ignores_channel(unit, &order) => {
                 self.take_body_order(unit, order);
             }
-            order if order.queues() && !is_halt(order) && self.is_casting(unit) => {
+            order if bota_core::order_queues(order) && !is_halt(order) && self.is_casting(unit) => {
                 self.wait_for_cast(seat, unit, order, seq);
             }
             order => {
@@ -479,7 +479,7 @@ impl World {
     ) -> Result<(), RejectReason> {
         self.validate_order(slot, named, order)?;
         let full = queue
-            && order.queues()
+            && bota_core::order_queues(*order)
             && self
                 .driven_by(slot, named)
                 .and_then(|unit| self.queue.get(unit))
