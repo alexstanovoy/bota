@@ -65,11 +65,11 @@ impl World {
         let with = Inflictor::Item(item);
         match def.effect {
             UseSpec::None => false,
-            UseSpec::Mend(drink) => self.mend_with(user, target, drink, with),
-            UseSpec::PlantTree { ticks, range } => self.plant_a_tree(user, target, ticks, range),
-            UseSpec::FellTree { range } => self.fell_a_tree(user, target, range),
-            UseSpec::Ward { unit, ticks, range } => {
-                self.stand_ward(user, target, (item, unit), ticks, range)
+            UseSpec::Mend(drink) => self.mend_with(user, target, (drink, def.cast_range), with),
+            UseSpec::PlantTree { ticks } => self.plant_a_tree(user, target, ticks, def.cast_range),
+            UseSpec::FellTree => self.fell_a_tree(user, target, def.cast_range),
+            UseSpec::Ward { unit, ticks } => {
+                self.stand_ward(user, target, (item, unit), ticks, def.cast_range)
             }
             UseSpec::Dispense => self.dispense_ward(user, slot, target),
             UseSpec::Teleport => self.begin_teleport(user, target),
@@ -159,7 +159,7 @@ pub fn item_view(stack: &ItemStack, mana_rate_bp: i32, clocks: &[(ItemId, u32)])
         mana_cost: def.map_or(0, |def| {
             crate::game::cost_after(def.mana_cost, mana_rate_bp)
         }),
-        range: def.map_or(0, |def| def.range),
+        range: def.map_or(0, |def| def.cast_range),
         aim: def.and_then(|def| def.aim),
         for_sale: false,
         owner: stack.owner,

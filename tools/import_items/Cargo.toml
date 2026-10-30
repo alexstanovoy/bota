@@ -1,0 +1,13 @@
+[package]
+name = "import_items"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+description = "Writes bota_core's item data from the items.txt of a local Dota 2 install: numbers and keys only."
+
+# A tool of its own, outside the bota workspace: building bota never needs it or what it reads with.
+[workspace]
+
+[dependencies]
+heatel = { path = "../../../heatel", default-features = false }

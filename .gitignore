@@ -1,3 +1,4 @@
 /target/
+/tools/import_items/target/
 *.pid
 /temp/

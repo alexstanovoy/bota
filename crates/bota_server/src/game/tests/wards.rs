@@ -1,6 +1,6 @@
 //! Observer and sentry wards, invisibility and true sight.
 
-use bota_core::{OBSERVER_WARD, SENTRY_WARD, map_of, rules};
+use bota_core::{OBSERVER_WARD, SENTRY_WARD, item_def, map_of, rules};
 
 use crate::game::{UnitOrder, World};
 use bota_proto::{
@@ -112,9 +112,10 @@ fn a_ward_ordered_out_of_reach_is_walked_to_and_put_down() {
         let at = world.pos(ward).expect("planted");
         assert_eq!(at, far, "where it was aimed");
         let from = world.pos(hero).expect("hero");
+        let reach = rules::units(item_def(item).expect("sold").cast_range);
         assert!(
-            from.within(far, rules::units(500)) && !spot.within(far, rules::units(500)),
-            "from within the item's 500 cast range, after walking"
+            from.within(far, reach) && !spot.within(far, reach),
+            "from within the item's cast range, after walking"
         );
         assert!(
             world.inventory.get(hero).expect("bag").slots[0].is_none(),

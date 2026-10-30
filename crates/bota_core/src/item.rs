@@ -7,7 +7,7 @@
 
 use bota_proto::{Aim, Attribute, Attributes, Fixed, ItemId};
 
-use crate::{ITEMS, Odds, UnitDef, rules};
+use crate::{Behavior, Dec, ITEMS, Odds, UnitDef, rules};
 
 /// Which pool an item mends.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -114,11 +114,6 @@ pub(crate) const fn points_with(which: Attribute, count: i32, rest: i32) -> Attr
     }
 }
 
-/// Health or mana per tick, from whole points per second.
-pub(crate) const fn per_second(points: i32) -> Fixed {
-    Fixed::from_ratio(points, rules::TICKS_PER_SECOND as i32)
-}
-
 /// Health or mana per tick, from hundredths of a point per second.
 pub(crate) const fn hundredths_per_second(hundredths: i32) -> Fixed {
     Fixed::from_ratio(hundredths, 100 * rules::TICKS_PER_SECOND as i32)
@@ -144,8 +139,6 @@ pub struct Mend {
     pub total: i32,
     /// How long it runs, in ticks.
     pub ticks: u32,
-    /// How far it reaches, in world units.
-    pub range: i32,
     /// Whether it takes a tree down to work.
     pub eats_a_tree: bool,
     /// Whether a blow that [`breaks_regen`](crate::breaks_regen) puts it out.
@@ -164,21 +157,15 @@ pub enum UseSpec {
     PlantTree {
         /// How long the tree stands.
         ticks: u32,
-        /// How far the user may plant it.
-        range: i32,
     },
-    FellTree {
-        /// How far the user may fell it.
-        range: i32,
-    },
+    /// Fells the tree it is aimed at.
+    FellTree,
     /// Stands a ward of a kind.
     Ward {
         /// What the ward is.
         unit: &'static UnitDef,
         /// How long it stands.
         ticks: u32,
-        /// How far the user may stand it.
-        range: i32,
     },
     /// Stands the kind of ward the item holds and has switched to: a Ward
     /// Dispenser plants an Observer Ward or a Sentry Ward by the entries
@@ -303,9 +290,13 @@ pub struct ItemDef {
     pub retired: bool,
     /// How a use of it is aimed. Absent for one that cannot be used.
     pub aim: Option<Aim>,
-    /// How far one use reaches, in world units. Zero for one that reaches
-    /// nowhere of its own.
-    pub range: i32,
+    /// How far one use reaches, in world units: Dota's `AbilityCastRange`.
+    /// Zero for one that reaches nowhere of its own.
+    pub cast_range: i32,
+    /// Dota's `AbilityBehavior` flags.
+    pub behavior: Behavior,
+    /// Dota's `AbilityValues`: each a number a level, by Dota's key.
+    pub values: &'static [(&'static str, &'static [Dec])],
     /// Charges one use costs.
     pub spends: Spends,
     /// Milliseconds of cast point. Zero: the effect lands in the same tick.
@@ -332,6 +323,15 @@ pub struct ItemDef {
 }
 
 impl ItemDef {
+    /// The value Dota keys `key`, one number a level; none for an item
+    /// without it.
+    pub fn value(&self, key: &str) -> Option<&'static [Dec]> {
+        self.values
+            .iter()
+            .find(|(name, _)| *name == key)
+            .map(|(_, levels)| *levels)
+    }
+
     /// What it adds to a carrier, ranged or not.
     pub const fn carried_by(&self, ranged: bool) -> &Carried {
         match &self.ranged {
@@ -395,7 +395,9 @@ pub(crate) const PLAIN: ItemDef = ItemDef {
     ranged: None,
     retired: false,
     aim: None,
-    range: 0,
+    cast_range: 0,
+    behavior: Behavior::NONE,
+    values: &[],
     spends: Spends::Nothing,
     point: 0,
     backswing: 0,

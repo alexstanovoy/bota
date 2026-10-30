@@ -62,7 +62,8 @@ impl World {
             return false;
         };
         let ward = stack.active_ward();
-        let Some(UseSpec::Ward { unit, ticks, range }) = item_def(ward).map(|def| def.effect)
+        let Some((UseSpec::Ward { unit, ticks }, range)) =
+            item_def(ward).map(|def| (def.effect, def.cast_range))
         else {
             return false;
         };

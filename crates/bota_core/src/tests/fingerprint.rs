@@ -3,7 +3,7 @@
 
 use std::path::{Path, PathBuf};
 
-use crate::RULES_VERSION;
+use crate::{CATALOGUE_DIGEST, RULES_VERSION};
 
 /// The rules version and the digests of the code it was set for.
 #[derive(Debug, PartialEq, Eq)]
@@ -16,9 +16,9 @@ struct Pin {
 }
 
 const PIN: Pin = Pin {
-    version: 70,
-    literals: 0xbcfb_4451_e993_4279,
-    code: 0x09b6_2a1d_e1a9_13f4,
+    version: 72,
+    literals: 0xa5fb_c926_db20_ded0,
+    code: 0xef85_69c5_4332_ce92,
 };
 
 /// A changed number or string is a changed rule: the version must move. Any
@@ -39,8 +39,29 @@ fn the_rules_version_moves_with_the_rules() {
     );
 }
 
-/// The digests of every source of the crate but its tests and the file the
-/// version itself stands in, in path order.
+/// The catalogue digest covers every file of the game data, so any data
+/// change moves the wire fingerprint with no rules version to bump.
+#[test]
+fn the_catalogue_digest_covers_every_file_of_the_game_data() {
+    let data = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/data");
+    let mut files = Vec::new();
+    walk(&data, &mut files);
+    files.sort();
+    let texts: Vec<Vec<u8>> = files
+        .iter()
+        .map(|path| std::fs::read(path).expect("a data file"))
+        .collect();
+    let parts: Vec<&[u8]> = texts.iter().map(Vec::as_slice).collect();
+    assert_eq!(
+        bota_proto::fnv1a(&parts),
+        CATALOGUE_DIGEST,
+        "CATALOGUE_DIGEST in fingerprint.rs must include_str! every file of src/data, in path order"
+    );
+}
+
+/// The digests of every source of the crate but its tests, its game data
+/// (which the catalogue digest follows) and the file the version itself
+/// stands in, in path order.
 fn digests() -> Pin {
     let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
     let mut files = Vec::new();
@@ -50,7 +71,7 @@ fn digests() -> Pin {
     for path in files {
         let relative = path.strip_prefix(&src).expect("under src");
         let name = relative.to_str().expect("a UTF-8 path").replace('\\', "/");
-        if name.starts_with("tests/") || name == "fingerprint.rs" {
+        if name.starts_with("tests/") || name.starts_with("data/") || name == "fingerprint.rs" {
             continue;
         }
         code.write(name.as_bytes());

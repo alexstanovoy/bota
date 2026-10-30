@@ -94,7 +94,7 @@ impl World {
             return false;
         };
         let aim = clamp_to_map(aim);
-        let reach = item_def(item).map_or(0, |def| def.range);
+        let reach = item_def(item).map_or(0, |def| def.cast_range);
         if !self.alive(user) || !from.within(aim, rules::units(reach)) {
             return false;
         }

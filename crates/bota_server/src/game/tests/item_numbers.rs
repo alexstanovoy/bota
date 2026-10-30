@@ -1,11 +1,12 @@
 //! The catalog at Dota 7.41f's numbers (`scripts/npc/items.txt`, client
 //! 6957): what the shop charges, what an item carries, and how it builds.
 
-use bota_core::{BLINK_OVERSHOOT_RANGE, ModifierKind, rules};
+use bota_core::{ModifierKind, item_def, rules};
 
 use crate::game::{Entity, Stats, World, wire_id};
 use bota_proto::{
-    Attribute, Attributes, EventKind, Fixed, HeroId, ItemId, SlotId, Target, Team, Vec2,
+    Attribute, Attributes, EventKind, Fixed, HeroId, ItemId, ItemSlot, Order, SlotId, Target, Team,
+    Vec2,
 };
 
 use super::support::*;
@@ -224,20 +225,31 @@ fn power_treads_build_of_any_of_three_parts_set_to_its_attribute() {
     );
 }
 
+/// Dota's Blink Dagger overshoots (`DOTA_ABILITY_BEHAVIOR_OVERSHOOT`): ordered past its cast
+/// range it is not walked in, it lands its `blink_range_clamp` along the line at once.
 #[test]
-fn a_blink_aimed_past_its_range_lands_at_nine_hundred_sixty() {
+fn a_blink_ordered_past_its_range_lands_at_its_clamp_without_walking_in() {
     let (mut world, hero) = hero_out_of_fountain(HeroId::SHADOW_FIEND);
     hand_item(&mut world, hero, ItemId::BLINK_DAGGER, 0);
     world.step();
+    let def = item_def(ItemId::BLINK_DAGGER).expect("sold");
+    let clamp = def.value("blink_range_clamp").expect("a clamp")[0].int();
     let from = world.transform.get(hero).expect("standing").pos;
-    let aim = from + Vec2::from_ints(-1500, 0);
-    assert!(world.use_item(hero, 0, Target::Pos(aim), &mut Vec::new()));
+    let aim = from + Vec2::from_ints(-(def.cast_range + 300), 0);
+    seat_order(
+        &mut world,
+        Order::Use {
+            slot: ItemSlot(0),
+            target: Target::Pos(aim),
+        },
+    );
+    run(&mut world, 3);
     let to = world.transform.get(hero).expect("standing").pos;
     let carried = (to - from).length_squared();
-    let overshoot = i64::from(BLINK_OVERSHOOT_RANGE) << 16;
+    let clamp_raw = i64::from(clamp) << 16;
     assert!(
-        carried <= overshoot * overshoot && carried > (overshoot - (64 << 16)).pow(2),
-        "it lands {BLINK_OVERSHOOT_RANGE} along the line, give or take a step back off closed ground"
+        carried <= clamp_raw * clamp_raw && carried > (clamp_raw - (64 << 16)).pow(2),
+        "it lands {clamp} along the line, give or take a step back off closed ground"
     );
 }
 

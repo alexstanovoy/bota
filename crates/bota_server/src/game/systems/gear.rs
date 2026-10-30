@@ -636,14 +636,13 @@ impl World {
         &mut self,
         user: Entity,
         target: Target,
-        drink: Mend,
+        (drink, range): (Mend, i32),
         with: Inflictor,
     ) -> bool {
         let Mend {
             pool,
             mut total,
             mut ticks,
-            range,
             eats_a_tree,
             breaks,
         } = drink;
