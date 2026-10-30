@@ -62,7 +62,7 @@ fn building(world: &World, kind: UnitKind, team: Team) -> Entity {
 
 /// Ticks a channel begun by an order takes to carry, counted from the tick
 /// the order is taken on.
-const CHANNEL: u32 = rules::SCROLL_CHANNEL_TICKS;
+const CHANNEL: u32 = scroll_def().duration;
 
 #[test]
 fn every_hero_starts_with_one_free_scroll_ready_ten_seconds_past_the_horn() {
@@ -109,7 +109,7 @@ fn a_scroll_spends_mana_and_its_wait_as_it_is_read_and_itself_on_landing() {
     assert!(world.is_channelling(hero), "it stands through the channel");
     let after = world.mana.get(hero).expect("has mana").mana;
     assert!(
-        mana - after >= Fixed::from_int(rules::SCROLL_MANA - 1),
+        mana - after >= Fixed::from_int(scroll_def().mana_cost - 1),
         "75 mana went at once: {mana:?} then {after:?}"
     );
     assert!(
@@ -139,7 +139,7 @@ fn a_scroll_spends_mana_and_its_wait_as_it_is_read_and_itself_on_landing() {
 #[test]
 fn a_scroll_wants_its_mana() {
     let (mut world, hero) = a_hero_with_a_scroll();
-    world.mana.get_mut(hero).expect("has mana").mana = Fixed::from_int(rules::SCROLL_MANA - 1);
+    world.mana.get_mut(hero).expect("has mana").mana = Fixed::from_int(scroll_def().mana_cost - 1);
     assert_eq!(
         refusal(&world, Target::Pos(beside_own_tower(&world))),
         Err(RejectReason::NotEnoughMana)
@@ -191,7 +191,7 @@ fn a_move_breaks_the_channel_and_a_queued_one_waits_for_the_landing() {
         seq: 0,
     }]);
     assert!(world.is_channelling(hero), "a queued move leaves it be");
-    run(&mut world, rules::SCROLL_CHANNEL_TICKS + 2);
+    run(&mut world, scroll_def().duration + 2);
     assert!(!world.is_channelling(hero));
     assert!(
         scrolls(&world, hero).is_none(),
@@ -269,12 +269,12 @@ fn a_spot_carries_to_the_nearest_building_and_lands_within_its_band() {
         .min_by_key(|entity| pos(&world, *entity).distance_squared(aim))
         .expect("buildings stand");
     let (went_to, landing) = world
-        .scroll_destination(hero, Target::Pos(aim))
+        .scroll_destination(hero, Target::Pos(aim), scroll())
         .expect("a spot always has a nearest building");
     assert_eq!(went_to, nearest);
     let from_it = pos(&world, nearest);
-    assert!(landing.within(from_it, rules::units(rules::SCROLL_MAX_DISTANCE + 1)));
-    assert!(!landing.within(from_it, rules::units(rules::SCROLL_MIN_DISTANCE - 1)));
+    assert!(landing.within(from_it, rules::units(scroll().max_distance + 1)));
+    assert!(!landing.within(from_it, rules::units(scroll().min_distance - 1)));
     read_at(&mut world, Target::Pos(aim));
     run(&mut world, CHANNEL);
     assert_eq!(pos(&world, hero), landing);
@@ -293,8 +293,8 @@ fn a_building_named_is_landed_beside_and_an_enemy_one_is_refused() {
     run(&mut world, CHANNEL);
     let at = pos(&world, hero);
     let centre = pos(&world, ours);
-    assert!(at.within(centre, rules::units(rules::SCROLL_MAX_DISTANCE)));
-    assert!(!at.within(centre, rules::units(rules::SCROLL_MIN_DISTANCE - 1)));
+    assert!(at.within(centre, rules::units(scroll().max_distance)));
+    assert!(!at.within(centre, rules::units(scroll().min_distance - 1)));
 }
 
 #[test]
@@ -357,7 +357,7 @@ fn a_scroll_shows_its_side_the_ground_it_lands_on_a_moment_past_the_channel() {
         .map(|(dx, dy)| centre + Vec2::from_ints(dx * 100, dy * 100))
         .find(|spot| {
             world.clearance.stands_clear(*spot)
-                && !spot.within(centre, rules::units(rules::SCROLL_MIN_DISTANCE))
+                && !spot.within(centre, rules::units(scroll().min_distance))
                 && !spot.within(fountain, rules::units(out_of_fountain_reach))
                 && !world.can_see_point(Team::Radiant, *spot)
         });

@@ -15,6 +15,7 @@ use bota_proto::{
 };
 
 use super::local::mid_config;
+use super::support::scroll_def;
 use crate::game::{Modifier, OrderDelay, UnitOrder};
 use crate::local::LocalMatch;
 
@@ -240,12 +241,7 @@ fn the_ledger_keeps_a_standing_walk_exactly_while_the_server_does() {
         slot: ItemSlot::TOWN_PORTAL,
         target: Target::Unit(local.handle_of(0, tower).expect("its own tower")),
     };
-    give(
-        &mut local,
-        &mut session,
-        read,
-        rules::SCROLL_CHANNEL_TICKS + 2,
-    );
+    give(&mut local, &mut session, read, scroll_def().duration + 2);
     let server = local.world().orders.get(hero).expect("orders").current;
     assert_eq!(server, UnitOrder::Idle, "a scroll's landing ends the walk");
     assert_eq!(
@@ -331,7 +327,7 @@ fn read_scroll_and_play(local: &mut LocalMatch, session: &mut ClientSession, tic
 #[test]
 fn a_session_is_told_a_scroll_it_read_landed() {
     let (mut local, mut session) = seated();
-    read_scroll_and_play(&mut local, &mut session, rules::SCROLL_CHANNEL_TICKS + 1);
+    read_scroll_and_play(&mut local, &mut session, scroll_def().duration + 1);
     let landed = EventKind::Teleported {
         slot: SlotId(0),
         landed: true,

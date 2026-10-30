@@ -13,6 +13,8 @@ use crate::game::{
     carried_bonus, disabled_in,
 };
 
+use super::grenade::grenade_of;
+
 /// What working out stats reads and writes.
 pub struct StatsCx<'a> {
     pub entities: &'a EntityAllocator,
@@ -381,7 +383,10 @@ fn add_modifiers<'a>(
                 sums.pace
                     .change(-rules::ROT_SLOW_PCT[usize::from(level)].clamp(0, 100));
             }
-            ModifierKind::BloodGrenade { .. } => sums.pace.change(-rules::GRENADE_SLOW_PCT),
+            ModifierKind::BloodGrenade { .. } => {
+                let slow = grenade_of(held.inflictor).map_or(0, |spec| spec.slow_pct);
+                sums.pace.change(-slow);
+            }
             ModifierKind::Hastened { pct } | ModifierKind::Haste { pct } => {
                 sums.pace.change(pct.max(0));
             }

@@ -286,12 +286,12 @@ fn a_scroll_carries_to_an_outpost_its_side_holds() {
         world.seats[1].item_clocks.clear();
         place(world, dire, home + Vec2::from_ints(-600, -600));
         give(world, &[(1, read)]);
-        run(world, rules::SCROLL_CHANNEL_TICKS + 1);
+        run(world, scroll_def().duration + 1);
         world.transform.get(dire).expect("standing").pos
     };
     let landed = carried(&mut world, dire);
     assert!(
-        !landed.within(at, rules::units(rules::SCROLL_MAX_DISTANCE)),
+        !landed.within(at, rules::units(scroll().max_distance)),
         "Radiant's Outpost takes no Dire scroll"
     );
     place(&mut world, dire, at + Vec2::from_ints(150, 150));
@@ -299,7 +299,7 @@ fn a_scroll_carries_to_an_outpost_its_side_holds() {
     until(&mut world, 2 * CAPTURE_TICKS, is_capture).expect("captured");
     world.seats[1].item_clocks.clear();
     let landed = carried(&mut world, dire);
-    assert!(landed.within(at, rules::units(rules::SCROLL_MAX_DISTANCE)));
+    assert!(landed.within(at, rules::units(scroll().max_distance)));
 }
 
 /// The Watcher of the Radiant jungle above the bounty rune, the Radiant

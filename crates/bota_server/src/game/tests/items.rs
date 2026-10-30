@@ -219,7 +219,7 @@ fn a_branch_puts_a_tree_up_and_eating_that_one_feeds_twice_as_long() {
     let (mut world, hero, tree) = a_hero_by_the_trees(ItemId::IRON_BRANCH, 1);
     let spot = tree + Vec2::from_ints(240, 0);
     assert!(world.use_item(hero, 0, Target::Pos(spot), &mut Vec::new()));
-    run(&mut world, rules::PLANTED_TREE_TICKS + 1);
+    run(&mut world, planted_tree_ticks() + 1);
     assert!(world.trees.planted().is_empty(), "in time it goes");
     assert!(!sight_stopped_at(&world, spot), "and stops nothing");
 }

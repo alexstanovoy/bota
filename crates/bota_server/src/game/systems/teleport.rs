@@ -1,7 +1,7 @@
 //! Teleporting by Town Portal Scroll: where a scroll may carry, the channel
 //! both sides see, how it ends, and carrying.
 
-use bota_core::{clamp_to_map, fountain_pos, hero_spawn_pos, kind_def, point_along, rules};
+use bota_core::{Scroll, clamp_to_map, fountain_pos, hero_spawn_pos, kind_def, point_along, rules};
 use bota_proto::{EventKind, Fixed, Target, Team, UnitKind, Vec2};
 
 use crate::game::{Entity, Event, EventVisibility, Teleport, UnitOrder, World, wire_id};
@@ -11,25 +11,29 @@ use crate::game::{Entity, Event, EventVisibility, Teleport, UnitOrder, World, wi
 const DIAGONAL_RAW: i64 = 46_341;
 
 impl World {
-    /// Where a scroll read by `user` at `target` carries: the building and
+    /// Where `scroll` read by `user` at `target` carries: the building and
     /// the spot it lands on. Nothing when it carries nowhere.
     ///
     /// A spot on the ground carries to the allied building standing nearest
-    /// it, landing on the spot itself when it lies between
-    /// [`rules::SCROLL_MIN_DISTANCE`] and [`rules::SCROLL_MAX_DISTANCE`] of
-    /// the building's centre and on the nearest point of that band when it
+    /// it, landing on the spot itself when it lies between the scroll's
+    /// least and greatest distance of the building's centre and on the nearest point of that band when it
     /// does not. A building aimed at is carried to at the band's inner edge,
     /// on its side's fountain side. Nothing aimed at is Dota's double tap: the
     /// fountain, from [`rules::SCROLL_FOUNTAIN_MIN_DISTANCE`] off it, landing
     /// where heroes come in. Where the landing spot is closed ground the
     /// nearest open ground around it is taken.
-    pub fn scroll_destination(&self, user: Entity, target: Target) -> Option<(Entity, Vec2)> {
+    pub fn scroll_destination(
+        &self,
+        user: Entity,
+        target: Target,
+        scroll: Scroll,
+    ) -> Option<(Entity, Vec2)> {
         let side = self.team.get(user).copied()?;
         let fountain = fountain_pos(self.map, side);
         let (building, aim) = match target {
             Target::Pos(pos) => {
                 let building = self.nearest_scroll_building(side, pos)?;
-                (building, self.scroll_aim(building, pos, fountain)?)
+                (building, self.scroll_aim(building, pos, fountain, scroll)?)
             }
             Target::Unit(id) => {
                 let building = self.of_wire(id)?;
@@ -37,7 +41,7 @@ impl World {
                     return None;
                 }
                 let at = self.pos(building)?;
-                (building, self.scroll_aim(building, at, fountain)?)
+                (building, self.scroll_aim(building, at, fountain, scroll)?)
             }
             Target::None => {
                 let from = self.pos(user)?;
@@ -86,10 +90,16 @@ impl World {
     /// The spot aimed at, brought into the band a scroll lands in around a
     /// building. A spot on the building's very centre is pushed out towards
     /// the fountain.
-    fn scroll_aim(&self, building: Entity, pos: Vec2, fountain: Vec2) -> Option<Vec2> {
+    fn scroll_aim(
+        &self,
+        building: Entity,
+        pos: Vec2,
+        fountain: Vec2,
+        scroll: Scroll,
+    ) -> Option<Vec2> {
         let centre = self.pos(building)?;
-        let near = rules::units(rules::SCROLL_MIN_DISTANCE);
-        let far = rules::units(rules::SCROLL_MAX_DISTANCE);
+        let near = rules::units(scroll.min_distance);
+        let far = rules::units(scroll.max_distance);
         let aim = if !pos.within(centre, far) {
             point_along(centre, pos, far)
         } else if pos.within(centre, near) {
@@ -138,17 +148,23 @@ impl World {
         None
     }
 
-    /// Begins reading a scroll: works out where it carries and shows both
-    /// sides the channel. `false`, with nothing begun, when it carries
-    /// nowhere.
-    pub fn begin_teleport(&mut self, user: Entity, target: Target) -> bool {
-        let Some((building, landing)) = self.scroll_destination(user, target) else {
+    /// Begins reading `scroll`, channelled for `channel` ticks: works out
+    /// where it carries and shows both sides the channel. `false`, with
+    /// nothing begun, when it carries nowhere.
+    pub fn begin_teleport(
+        &mut self,
+        user: Entity,
+        target: Target,
+        scroll: Scroll,
+        channel: u32,
+    ) -> bool {
+        let Some((building, landing)) = self.scroll_destination(user, target, scroll) else {
             return false;
         };
         let Some(seat) = self.seat_of(user) else {
             return false;
         };
-        let lands = self.tick + rules::SCROLL_CHANNEL_TICKS;
+        let lands = self.tick + channel;
         self.seats[seat].teleport = Some(Teleport {
             building,
             landing,
@@ -156,6 +172,7 @@ impl World {
             lands,
             live: true,
             sight_until: lands + rules::SCROLL_SIGHT_LINGER_TICKS,
+            sight_radius: scroll.sight_radius,
         });
         true
     }
@@ -233,11 +250,14 @@ impl World {
     }
 
     /// Every spot a scroll shows its side right now, and which side.
-    pub fn teleport_sights(&self) -> impl Iterator<Item = (Team, Vec2)> + '_ {
+    pub fn teleport_sights(&self) -> impl Iterator<Item = (Team, Vec2, i32)> + '_ {
         self.seats.iter().filter_map(|seat| {
             let teleport = seat.teleport?;
-            (teleport.live || self.tick <= teleport.sight_until)
-                .then_some((seat.team, teleport.landing))
+            (teleport.live || self.tick <= teleport.sight_until).then_some((
+                seat.team,
+                teleport.landing,
+                teleport.sight_radius,
+            ))
         })
     }
 

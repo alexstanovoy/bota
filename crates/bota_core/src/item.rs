@@ -173,7 +173,7 @@ pub enum UseSpec {
     Dispense,
     /// Reads a teleport to a building. Channels for the entry's `duration`
     /// and is owed one wait per user when the entry's `shared_wait` is set.
-    Teleport,
+    Teleport(Scroll),
     /// Switches the attribute the item is set to, round Dota's wheel:
     /// strength, intelligence, agility.
     SwitchMode,
@@ -198,6 +198,9 @@ pub enum UseSpec {
         /// Health per charge.
         hp_per_charge: i32,
         mana_per_charge: i32,
+        /// How near an enemy hero's cast must be for the item to gain a
+        /// charge from it, in world units.
+        charge_radius: i32,
     },
     /// Restores mana to the user or the one it is aimed at.
     Replenish {
@@ -205,7 +208,36 @@ pub enum UseSpec {
         mana: i32,
     },
     /// Throws a Blood Grenade.
-    Grenade,
+    Grenade(Grenade),
+}
+
+/// Where a scroll carries and what it shows on the way.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Scroll {
+    /// The nearest it lands to the centre of the building it carries to.
+    pub min_distance: i32,
+    /// The furthest it lands from that centre.
+    pub max_distance: i32,
+    /// Radius of the flying sight its side has around where it lands while
+    /// it is channelled.
+    pub sight_radius: i32,
+}
+
+/// A thrown grenade: its flight, its blast and the debuff it leaves.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Grenade {
+    /// World units a second it flies.
+    pub speed: i32,
+    /// How far from where it lands it reaches, in world units.
+    pub radius: i32,
+    /// Magical damage it lands on each it reaches.
+    pub impact_damage: i32,
+    /// Magical damage its debuff lands on every whole second.
+    pub damage_per_second: i32,
+    /// Percent its debuff takes off movement speed.
+    pub slow_pct: i32,
+    /// Ticks its debuff lasts.
+    pub debuff_ticks: u32,
 }
 
 /// How a shop keeps an item sold from a limited stock.
@@ -365,7 +397,40 @@ impl ItemDef {
             UseSpec::Restore {
                 hp_per_charge,
                 mana_per_charge,
+                ..
             } => Some((hp_per_charge, mana_per_charge)),
+            _ => None,
+        }
+    }
+
+    /// How far an enemy cast charges it, if it gains charges.
+    pub const fn charge_radius(&self) -> Option<i32> {
+        match self.effect {
+            UseSpec::Restore { charge_radius, .. } => Some(charge_radius),
+            _ => None,
+        }
+    }
+
+    /// The mana a use restores, if it replenishes.
+    pub const fn replenish(&self) -> Option<i32> {
+        match self.effect {
+            UseSpec::Replenish { mana } => Some(mana),
+            _ => None,
+        }
+    }
+
+    /// Where it carries, if it is a scroll.
+    pub const fn scroll(&self) -> Option<Scroll> {
+        match self.effect {
+            UseSpec::Teleport(scroll) => Some(scroll),
+            _ => None,
+        }
+    }
+
+    /// What it does thrown, if it is a grenade.
+    pub const fn grenade(&self) -> Option<Grenade> {
+        match self.effect {
+            UseSpec::Grenade(grenade) => Some(grenade),
             _ => None,
         }
     }
@@ -407,36 +472,6 @@ pub(crate) const PLAIN: ItemDef = ItemDef {
     ignores_channel: false,
     unbuyable: false,
     effect: UseSpec::None,
-};
-
-/// Gold per Mango charge, bought one at a time.
-pub const MANGO_COST: i32 = 65;
-/// Maximum Mango charges in one slot.
-pub const MANGO_STACK_MAX: u8 = 3;
-/// Mana restored by one Mango charge, capped at the user's maximum.
-pub const MANGO_MANA: i32 = 100;
-/// Health a Healing Salve mends: `health_regen` 30 a second for
-/// `buff_duration` 13 seconds.
-pub const SALVE_HEAL: i32 = 390;
-/// Ticks a Healing Salve mends over.
-pub const SALVE_TICKS: u32 = 13 * rules::TICKS_PER_SECOND;
-/// How far a Blink Dagger carries, in world units.
-pub const BLINK_RANGE: i32 = 1200;
-/// Where a Blink Dagger aimed past its range lands instead, along the same
-/// line: `blink_range_clamp` 960.
-pub const BLINK_OVERSHOOT_RANGE: i32 = 960;
-/// Health per tick per Mango charge carried: 0.4 a second, truncated to 873
-/// raw a tick.
-pub const MANGO_HP_REGEN: Fixed = Fixed::from_ratio(2, 5 * rules::TICKS_PER_SECOND as i32);
-
-/// Ticks a Blood Grenade waits between throws.
-pub const GRENADE_COOLDOWN: u32 = 10 * rules::TICKS_PER_SECOND;
-/// How far a Blood Grenade is thrown, in world units.
-pub const GRENADE_RANGE: i32 = 900;
-
-const _: () = {
-    assert!(GRENADE_RANGE > rules::GRENADE_RADIUS);
-    assert!(MANGO_HP_REGEN.raw > 0);
 };
 
 /// What one item is, or nothing if no such item exists or it is retired.

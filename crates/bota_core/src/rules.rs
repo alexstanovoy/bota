@@ -1016,25 +1016,6 @@ pub const TREE_REGROW_TICKS: u32 = 3 * 60 * TICKS_PER_SECOND;
 /// world units: it grows once the unit is out of range, so as not to shut
 /// the unit in (Liquipedia *Trees*, Respawn Time: 150).
 pub const TREE_REGROW_CLEAR: i32 = 150;
-/// Ticks a planted tree stands before it goes on its own: Iron Branch
-/// `tree_duration` 20.
-pub const PLANTED_TREE_TICKS: u32 = 20 * TICKS_PER_SECOND;
-/// Ticks a hero waits between scrolls, whichever scroll it holds: Dota
-/// 7.41f `item_tpscroll` `AbilityCooldown` 80.
-pub const SCROLL_WAIT_TICKS: u32 = 80 * TICKS_PER_SECOND;
-/// Ticks a scroll is channelled before it carries: `AbilityChannelTime` 3.
-pub const SCROLL_CHANNEL_TICKS: u32 = 3 * TICKS_PER_SECOND;
-/// Mana reading a scroll costs: `AbilityManaCost` 75.
-pub const SCROLL_MANA: i32 = 75;
-/// The nearest a scroll lands to the centre of the building it carries to:
-/// `minimum_distance` 70.
-pub const SCROLL_MIN_DISTANCE: i32 = 70;
-/// The furthest a scroll lands from the centre of the building it carries
-/// to: `maximum_distance` 800.
-pub const SCROLL_MAX_DISTANCE: i32 = 800;
-/// Radius of the flying sight a scroll shows its side around where it
-/// lands while it is channelled: `vision_radius` 200.
-pub const SCROLL_SIGHT_RADIUS: i32 = 200;
 /// Ticks that sight outlasts the channel, whether it carried or broke off:
 /// Liquipedia's one-second sight.
 pub const SCROLL_SIGHT_LINGER_TICKS: u32 = TICKS_PER_SECOND;
@@ -1057,25 +1038,9 @@ pub const SCROLL_LANDING_RINGS: i32 = 8;
 pub const SCROLL_LANDING_STEP: i32 = 64;
 
 const _: () = {
-    assert!(SCROLL_MIN_DISTANCE < SCROLL_MAX_DISTANCE);
-    assert!(SCROLL_CHANNEL_TICKS < SCROLL_WAIT_TICKS);
     assert!(100 * TICKS_PER_SECOND > DOTA_PREGAME_TICKS);
     assert!(SCROLL_FIRST_WAIT_TICKS > PREGAME_TICKS);
-    assert!(SCROLL_LANDING_RINGS * SCROLL_LANDING_STEP < SCROLL_MAX_DISTANCE);
 };
-/// World units a second a Blood Grenade flies.
-pub const GRENADE_SPEED: i32 = 1100;
-/// How far from where a Blood Grenade lands it reaches, in world units.
-pub const GRENADE_RADIUS: i32 = 300;
-/// Magical damage a Blood Grenade lands on each it reaches.
-pub const GRENADE_IMPACT_DAMAGE: i32 = 50;
-/// Magical damage its debuff lands on every whole second.
-pub const GRENADE_DAMAGE_PER_SECOND: i32 = 15;
-/// Percent a Blood Grenade's debuff takes off movement speed.
-pub const GRENADE_SLOW_PCT: i32 = 15;
-/// Ticks a Blood Grenade's debuff lasts: five seconds and the tick of its
-/// fifth beat, so the beat lands before it lifts.
-pub const GRENADE_DEBUFF_TICKS: u32 = 5 * TICKS_PER_SECOND + 1;
 
 // The courier.
 
@@ -1154,8 +1119,6 @@ pub const FLEE_LOOKAHEAD: i32 = 600;
 /// Ticks a burst or a ring an ability left is seen on the ground.
 pub const MARK_TICKS: u32 = 15;
 
-const _: () = assert!(GRENADE_SLOW_PCT > 0 && GRENADE_SLOW_PCT < 100);
-
 /// Ticks between the beats of anything that burns over time.
 pub const BURN_PERIOD_TICKS: u32 = 3;
 
@@ -1175,8 +1138,6 @@ pub const SELL_REFUND_TICKS: u32 = 300;
 pub const PUT_ITEM_RANGE: i32 = 400;
 /// How close a unit must be to take an item off the ground, in world units.
 pub const TAKE_ITEM_RANGE: i32 = 150;
-/// How far from an enemy cast an item gains a charge from it.
-pub const MAGIC_CHARGE_RANGE: i32 = 1200;
 /// How far back along its line a blink steps looking for open ground.
 pub const BLINK_STEP_BACK: i32 = 64;
 /// Steps back a blink takes before it gives up on finding open ground.

@@ -935,7 +935,7 @@ fn a_tree_planted_in_the_fog_shows_only_once_the_other_side_looks() {
     put(&mut world, looker, spot + Vec2::from_ints(120, 0));
     assert!(planted(&world, Some(Team::Dire)), "until one looks");
     put(&mut world, looker, map_of(MapId(0)).fountains[1]);
-    run(&mut world, rules::PLANTED_TREE_TICKS + 1);
+    run(&mut world, planted_tree_ticks() + 1);
     assert!(!planted(&world, None), "it went in its time");
     assert!(
         !planted(&world, Some(Team::Radiant)),

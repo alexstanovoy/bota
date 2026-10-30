@@ -5,8 +5,8 @@ use bota_core::{
     RANGED_CREEP, SUPER_MELEE_CREEP, SUPER_RANGED_CREEP, UnitDef, attack_gain, map_of, rules,
 };
 
-use crate::game::{Def, Health, Level, Mana, Stats, UnitOrder, Upgrades, World};
-use bota_proto::{DamageKind, Fixed, ItemId, MapId, Team, UnitKind, Vec2};
+use crate::game::{Def, Health, Level, Mana, Modifier, Stats, UnitOrder, Upgrades, World};
+use bota_proto::{DamageKind, Fixed, Inflictor, ItemId, MapId, Team, UnitKind, Vec2};
 
 use super::support::*;
 
@@ -311,14 +311,17 @@ fn slows_and_hastes_sum_and_a_pace_keeps_within_dota_limits() {
         raw: full.raw * pct / 100,
     };
     put_on(&mut world, creep, ModifierKind::Slowed { pct: 25 }, 90);
-    put_on(
-        &mut world,
+    world.put_modifier(
         creep,
-        ModifierKind::BloodGrenade { since: 0 },
-        90,
+        Modifier::new(
+            ModifierKind::BloodGrenade { since: 0 },
+            None,
+            Some(Inflictor::Item(ItemId::BLOOD_GRENADE)),
+            Some(90),
+        ),
     );
     world.step();
-    let slowed = 100 - 25 - rules::GRENADE_SLOW_PCT;
+    let slowed = 100 - 25 - grenade().slow_pct;
     assert_eq!(pace(&world), share(slowed), "the slows summed");
     put_on(&mut world, creep, ModifierKind::Hastened { pct: 30 }, 90);
     world.step();

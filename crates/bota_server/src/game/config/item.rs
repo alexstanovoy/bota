@@ -72,7 +72,7 @@ impl World {
                 self.stand_ward(user, target, (item, unit), ticks, def.cast_range)
             }
             UseSpec::Dispense => self.dispense_ward(user, slot, target),
-            UseSpec::Teleport => self.begin_teleport(user, target),
+            UseSpec::Teleport(scroll) => self.begin_teleport(user, target, scroll, def.duration),
             UseSpec::SwitchMode => self.switch_mode(user, slot),
             UseSpec::Phase {
                 pct,
@@ -89,34 +89,35 @@ impl World {
             UseSpec::Restore {
                 hp_per_charge,
                 mana_per_charge,
+                ..
             } => {
                 let charges = i32::from(self.charges_in(user, slot));
                 let restores = (charges * hp_per_charge, charges * mana_per_charge);
                 self.restore_with(user, restores, with)
             }
             UseSpec::Replenish { mana } => self.replenish_mana(user, target, mana, with),
-            UseSpec::Grenade => self.throw_grenade(user, target, item),
+            UseSpec::Grenade(_) => self.throw_grenade(user, target, item),
         }
     }
 
     /// Every tick a use runs on. `false`: it breaks off.
     pub fn use_goes_on(&mut self, user: Entity, def: &ItemDef) -> bool {
         match def.effect {
-            UseSpec::Teleport => self.teleport_holds(user),
+            UseSpec::Teleport(_) => self.teleport_holds(user),
             _ => true,
         }
     }
 
     /// Breaks a use off before its end.
     pub fn use_breaks_off(&mut self, user: Entity, def: &ItemDef) {
-        if matches!(def.effect, UseSpec::Teleport) {
+        if matches!(def.effect, UseSpec::Teleport(_)) {
             self.break_teleport(user);
         }
     }
 
     /// Runs a use to the end of its duration.
     pub fn use_completes(&mut self, user: Entity, slot: usize, def: &ItemDef) {
-        if matches!(def.effect, UseSpec::Teleport) {
+        if matches!(def.effect, UseSpec::Teleport(_)) {
             self.teleport_to(user, slot);
         }
     }

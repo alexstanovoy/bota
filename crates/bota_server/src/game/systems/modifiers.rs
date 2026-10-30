@@ -7,6 +7,7 @@ use bota_proto::{AbilityId, DamageKind, Fixed, Inflictor, Team};
 
 use crate::game::{Landed, Modifier, Stats, Table, World, cooldown_after, disabled_in};
 
+use super::grenade::grenade_of;
 use crate::engine::Entity;
 
 /// Whether a modifier is a disable or slow that status resistance shortens.
@@ -216,6 +217,9 @@ impl World {
                         }
                     }
                     ModifierKind::BloodGrenade { since } => {
+                        let Some(spec) = grenade_of(modifier.inflictor) else {
+                            continue;
+                        };
                         let since_then = self.tick.saturating_sub(since);
                         if since_then > 0
                             && since_then.is_multiple_of(rules::TICKS_PER_SECOND)
@@ -224,7 +228,7 @@ impl World {
                             self.push_hit(
                                 modifier.source,
                                 entity,
-                                rules::GRENADE_DAMAGE_PER_SECOND,
+                                spec.damage_per_second,
                                 DamageKind::Magical,
                                 modifier.inflictor,
                             );

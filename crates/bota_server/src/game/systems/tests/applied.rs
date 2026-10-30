@@ -432,7 +432,10 @@ fn a_shared_item_wait_is_scaled_with_the_cooldown_rate() {
     );
     assert_eq!(
         world.seats[0].item_clocks,
-        vec![(ItemId::TOWN_PORTAL_SCROLL, rules::SCROLL_WAIT_TICKS / 2)],
+        vec![(
+            ItemId::TOWN_PORTAL_SCROLL,
+            bota_core::ITEMS[ItemId::TOWN_PORTAL_SCROLL.0 as usize].cooldown / 2
+        )],
         "the wait on the kind of item is halved"
     );
     assert_eq!(

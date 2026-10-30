@@ -19,7 +19,7 @@ pub fn ends_standing_order(order: Order, ability: Option<AbilityId>, item: Optio
             .is_some_and(|def| def.aim != Aim::Own),
         Order::Use { .. } => item
             .and_then(item_def)
-            .is_some_and(|def| matches!(def.effect, UseSpec::Teleport)),
+            .is_some_and(|def| matches!(def.effect, UseSpec::Teleport(_))),
         Order::Put { .. } | Order::Take { .. } => true,
         _ => false,
     }

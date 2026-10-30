@@ -38,6 +38,8 @@ pub struct Teleport {
     /// [`bota_core::rules::SCROLL_SIGHT_LINGER_TICKS`] past `lands`; once
     /// it ended, that long past the end.
     pub sight_until: u32,
+    /// Radius of that sight: the scroll's.
+    pub sight_radius: i32,
 }
 
 /// What a side's scoreboard shows of a seat's hero: as it stood the last
@@ -169,7 +171,8 @@ state_hash!(Teleport {
     started,
     lands,
     live,
-    sight_until
+    sight_until,
+    sight_radius
 });
 state_hash!(Sighting { level, xp, at });
 state_hash!(Seat {

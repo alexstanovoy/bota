@@ -1288,3 +1288,28 @@ pub(crate) fn life_left(world: &World, unit: Entity) -> Option<u32> {
         .find(|held| held.kind == ModifierKind::TimedLife)?
         .ticks_left
 }
+
+/// The Town Portal Scroll's entry.
+pub const fn scroll_def() -> &'static bota_core::ItemDef {
+    &bota_core::ITEMS[ItemId::TOWN_PORTAL_SCROLL.0 as usize]
+}
+
+/// Where the Town Portal Scroll carries.
+pub const fn scroll() -> bota_core::Scroll {
+    scroll_def().scroll().expect("a scroll")
+}
+
+/// What a Blood Grenade does.
+pub const fn grenade() -> bota_core::Grenade {
+    bota_core::ITEMS[ItemId::BLOOD_GRENADE.0 as usize]
+        .grenade()
+        .expect("a grenade")
+}
+
+/// Ticks an Iron Branch's tree stands.
+pub const fn planted_tree_ticks() -> u32 {
+    match bota_core::ITEMS[ItemId::IRON_BRANCH.0 as usize].effect {
+        bota_core::UseSpec::PlantTree { ticks } => ticks,
+        _ => panic!("the branch plants a tree"),
+    }
+}

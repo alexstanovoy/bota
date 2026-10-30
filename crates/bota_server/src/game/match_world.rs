@@ -779,7 +779,11 @@ impl World {
         if def.mana_deficit && !self.can_replenish_mana(unit, *target) {
             return Err(RejectReason::NotReady);
         }
-        if aim == bota_proto::Aim::Building && self.scroll_destination(unit, *target).is_none() {
+        if aim == bota_proto::Aim::Building
+            && def
+                .scroll()
+                .is_none_or(|scroll| self.scroll_destination(unit, *target, scroll).is_none())
+        {
             return Err(RejectReason::WrongTargetKind);
         }
         Ok(())

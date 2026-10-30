@@ -22,7 +22,7 @@ pub struct SightCx<'a> {
     /// Sight strikes showed the sides struck at.
     pub exposure: &'a Table<Exposure>,
     /// Where a Town Portal Scroll shows its side the ground it lands on.
-    pub scroll_sights: &'a [(Team, Vec2)],
+    pub scroll_sights: &'a [(Team, Vec2, i32)],
     /// The tick being worked out, for which of that sight still shows.
     pub tick: u32,
     /// Where the answer goes.
@@ -153,8 +153,7 @@ pub fn visibility_system(cx: SightCx<'_>) {
     sight.judged.clear();
     sight.gather_viewers();
     sight.gather_exposures(exposure, tick, ground);
-    for &(side, at) in scroll_sights {
-        let radius = rules::SCROLL_SIGHT_RADIUS;
+    for &(side, at, radius) in scroll_sights {
         sight.viewers.push(reveal(side, at, radius, true, ground));
     }
     sight.reset_rows();
@@ -472,9 +471,9 @@ impl World {
             let tier = self.ground.tier(cell.at);
             cell.flying || (tier >= target_tier && self.sight_block.clear(cell.at, tier, at))
         });
-        let landing = self.teleport_sights().any(|(side, from)| {
-            side == team && from.within(at, rules::units(rules::SCROLL_SIGHT_RADIUS))
-        });
+        let landing = self
+            .teleport_sights()
+            .any(|(side, from, radius)| side == team && from.within(at, rules::units(radius)));
         exposed
             || landing
             || self.entities.iter().any(|entity| {

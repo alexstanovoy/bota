@@ -2,8 +2,8 @@
 //! it from a stock that refills over time.
 
 use bota_core::{
-    ITEMS, ModifierKind, clamp_to_map, facing_towards, item_def, kind_def, move_towards, per_tick,
-    rules,
+    ITEMS, ItemDef, ModifierKind, clamp_to_map, facing_towards, item_def, kind_def, move_towards,
+    per_tick, rules,
 };
 use bota_proto::{DamageKind, EventKind, Inflictor, ItemId, Target, Team, UnitKind};
 
@@ -119,16 +119,15 @@ impl World {
             let Some(shot) = self.grenade.get(entity).copied() else {
                 continue;
             };
+            let speed = item_def(shot.item)
+                .and_then(ItemDef::grenade)
+                .map_or(0, |spec| spec.speed);
             let Some(at) = self.transform.get_mut(entity) else {
                 self.grenade.remove(entity);
                 self.discard(entity);
                 continue;
             };
-            let next = move_towards(
-                at.pos,
-                shot.aim,
-                per_tick(rules::units(rules::GRENADE_SPEED)),
-            );
+            let next = move_towards(at.pos, shot.aim, per_tick(rules::units(speed)));
             at.pos = next;
             if next == shot.aim {
                 self.burst(entity, &shot);
@@ -159,7 +158,10 @@ impl World {
             gold_hidden_from: None,
             source_told_to: self.who_may_name(Some(shot.owner)),
         });
-        let reach = rules::units(rules::GRENADE_RADIUS);
+        let Some(spec) = item_def(shot.item).and_then(ItemDef::grenade) else {
+            return;
+        };
+        let reach = rules::units(spec.radius);
         let struck: Vec<Entity> = self
             .entities
             .iter()
@@ -183,13 +185,13 @@ impl World {
                     ModifierKind::BloodGrenade { since },
                     Some(shot.owner),
                     Some(with),
-                    Some(rules::GRENADE_DEBUFF_TICKS),
+                    Some(spec.debuff_ticks),
                 ),
             );
             self.push_hit_with_amp(
                 Some(shot.owner),
                 other,
-                rules::GRENADE_IMPACT_DAMAGE,
+                spec.impact_damage,
                 DamageKind::Magical,
                 shot.damage_amp_bp,
                 Some(with),
@@ -207,5 +209,13 @@ impl World {
                 ModifierKind::BloodGrenade { since } => Some(since),
                 _ => None,
             })
+    }
+}
+
+/// What a grenade's debuff does, by the item that put it on.
+pub(crate) fn grenade_of(inflictor: Option<Inflictor>) -> Option<bota_core::Grenade> {
+    match inflictor {
+        Some(Inflictor::Item(item)) => item_def(item).and_then(ItemDef::grenade),
+        _ => None,
     }
 }

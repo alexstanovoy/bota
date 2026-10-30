@@ -13,7 +13,7 @@ use bota_proto::{REGISTRY_DIGEST, fnv1a};
 /// bump. A comment, a reformatting or a refactor that decides nothing
 /// differently renews the pin and leaves the version, so builds that agree on
 /// the rules keep meeting.
-pub const RULES_VERSION: u32 = 72;
+pub const RULES_VERSION: u32 = 73;
 
 /// FNV-1a over every file of `data/`, in path order: the game data, whatever
 /// it holds. A change of it moves the [`WIRE_FINGERPRINT`] by itself, with no

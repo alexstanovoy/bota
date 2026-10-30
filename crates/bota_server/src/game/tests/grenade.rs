@@ -133,7 +133,7 @@ fn a_thrown_grenade_flies_bursts_slows_and_burns_five_times_then_lifts() {
     );
     let mut flew = 0;
     let mut tick_of_blows = Vec::new();
-    for _ in 0..rules::GRENADE_DEBUFF_TICKS + 60 {
+    for _ in 0..grenade().debuff_ticks + 60 {
         let view = world.view(Team::Radiant);
         if view
             .projectiles
@@ -150,7 +150,7 @@ fn a_thrown_grenade_flies_bursts_slows_and_burns_five_times_then_lifts() {
             let them = shown(&world, Some(Team::Radiant), enemy);
             assert_eq!(
                 i64::from(them.move_speed.raw),
-                i64::from(speed.raw) * i64::from(100 - rules::GRENADE_SLOW_PCT) / 100,
+                i64::from(speed.raw) * i64::from(100 - grenade().slow_pct) / 100,
                 "slowed by 15% once it landed"
             );
             assert_ne!(them.statuses.bits & StatusFlags::SLOWED, 0);
@@ -259,7 +259,10 @@ fn a_grenade_names_its_item_in_flight_where_it_lands_in_its_blows_and_on_its_deb
         .expect("the debuff shows");
     assert_eq!(debuff.inflictor, Some(grenade));
     assert_eq!(debuff.caster, Some(wire_id(hero)));
-    assert_eq!(debuff.ticks_total, Some(rules::GRENADE_DEBUFF_TICKS));
+    assert_eq!(
+        debuff.ticks_total,
+        Some(super::support::grenade().debuff_ticks)
+    );
     // Out of the other side's sight, the thrower is no longer named on it;
     // the full view still names him.
     world.transform.get_mut(hero).expect("hero").pos =
@@ -285,7 +288,7 @@ fn a_grenade_never_takes_its_throwers_last_point_and_misses_what_stands_outside(
     // Held where it stands, so it does not walk in to swing at the hero.
     put_on(&mut world, enemy, ModifierKind::Stunned, 300);
     let wide = world.transform.get(enemy).expect("standing").pos
-        - Vec2::from_ints(rules::GRENADE_RADIUS + 60, 0);
+        - Vec2::from_ints(grenade().radius + 60, 0);
     let mut events = advance_validated(
         &mut world,
         None,

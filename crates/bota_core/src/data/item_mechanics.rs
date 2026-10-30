@@ -7,8 +7,9 @@ use bota_proto::{Aim, Attribute, Attributes, Fixed};
 
 use super::items::*;
 use crate::{
-    Carried, Dec, ItemData, ItemDef, Mend, NOTHING, OBSERVER_WARD, Odds, PLAIN, Pool, Recipe,
-    SENTRY_WARD, Spends, Stock, UseSpec, hundredths_per_second, points, points_with,
+    Carried, Dec, Grenade, ItemData, ItemDef, Mend, NOTHING, OBSERVER_WARD, Odds, PLAIN, Pool,
+    Recipe, SENTRY_WARD, Scroll, Spends, Stock, UseSpec, hundredths_per_second, points,
+    points_with, rules,
 };
 
 /// The row of an item as its script gives it; a row of the catalog adds what bota does with it.
@@ -231,7 +232,11 @@ pub(crate) const ITEM_ROWS: &[ItemDef] = &[
         name: "Town Portal Scroll",
         shared_wait: true,
         aim: Some(Aim::Building),
-        effect: UseSpec::Teleport,
+        effect: UseSpec::Teleport(Scroll {
+            min_distance: int(&ITEM_TPSCROLL, "minimum_distance"),
+            max_distance: int(&ITEM_TPSCROLL, "maximum_distance"),
+            sight_radius: int(&ITEM_TPSCROLL, "vision_radius"),
+        }),
         ..from(&ITEM_TPSCROLL)
     },
     ItemDef {
@@ -476,6 +481,7 @@ pub(crate) const ITEM_ROWS: &[ItemDef] = &[
         effect: UseSpec::Restore {
             hp_per_charge: int(&ITEM_MAGIC_STICK, "restore_per_charge"),
             mana_per_charge: int(&ITEM_MAGIC_STICK, "restore_per_charge"),
+            charge_radius: int(&ITEM_MAGIC_STICK, "charge_radius"),
         },
         ..from(&ITEM_MAGIC_STICK)
     },
@@ -491,6 +497,7 @@ pub(crate) const ITEM_ROWS: &[ItemDef] = &[
         effect: UseSpec::Restore {
             hp_per_charge: int(&ITEM_MAGIC_WAND, "restore_per_charge"),
             mana_per_charge: int(&ITEM_MAGIC_WAND, "restore_per_charge"),
+            charge_radius: int(&ITEM_MAGIC_WAND, "charge_radius"),
         },
         ..from(&ITEM_MAGIC_WAND)
     },
@@ -614,7 +621,15 @@ pub(crate) const ITEM_ROWS: &[ItemDef] = &[
         },
         aim: Some(Aim::Point),
         spends: Spends::One,
-        effect: UseSpec::Grenade,
+        effect: UseSpec::Grenade(Grenade {
+            speed: int(&ITEM_BLOOD_GRENADE, "speed"),
+            radius: int(&ITEM_BLOOD_GRENADE, "radius"),
+            impact_damage: int(&ITEM_BLOOD_GRENADE, "impact_damage"),
+            damage_per_second: int(&ITEM_BLOOD_GRENADE, "damage_over_time"),
+            slow_pct: -int(&ITEM_BLOOD_GRENADE, "movespeed_slow"),
+            // And the tick of its last beat, so that beat lands before it lifts.
+            debuff_ticks: ticks(&ITEM_BLOOD_GRENADE, "debuff_duration") + 1,
+        }),
         ..from(&ITEM_BLOOD_GRENADE)
     },
     // Ward Dispenser: also Liquipedia's *Observer and Sentry Wards*. It is made of the wards a
@@ -629,3 +644,18 @@ pub(crate) const ITEM_ROWS: &[ItemDef] = &[
         ..from(&ITEM_WARD_DISPENSER)
     },
 ];
+
+// The server beats a grenade's debuff once a second and reads a scroll's band
+// as a ring around a building: the script must say the same.
+const _: () = {
+    assert!(ITEM_BLOOD_GRENADE.first("tick_rate").0 == 1000);
+    assert!(ITEM_BLOOD_GRENADE.first("movespeed_slow").0 < 0);
+    assert!(ITEM_BLOOD_GRENADE.cast_range > int(&ITEM_BLOOD_GRENADE, "radius"));
+    let (near, far) = (
+        int(&ITEM_TPSCROLL, "minimum_distance"),
+        int(&ITEM_TPSCROLL, "maximum_distance"),
+    );
+    assert!(near < far);
+    assert!(rules::SCROLL_LANDING_RINGS * rules::SCROLL_LANDING_STEP < far);
+    assert!(ITEM_TPSCROLL.channel.ticks() < ITEM_TPSCROLL.cooldown.ticks());
+};

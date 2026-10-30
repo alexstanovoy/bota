@@ -76,8 +76,8 @@ impl World {
 
     /// Gives every enemy item near a cast one charge of what it may hold.
     ///
-    /// Only a cast by a hero is worth a charge, and only a hero standing
-    /// within [`rules::MAGIC_CHARGE_RANGE`] of it takes one.
+    /// Only a cast by a hero is worth a charge, and only an item of a hero
+    /// standing within its charge radius of it takes one.
     fn charge_nearby_items(&mut self, caster: Entity) {
         if self.kind.get(caster).copied() != Some(UnitKind::Hero) {
             return;
@@ -85,14 +85,15 @@ impl World {
         let (Some(at), Some(side)) = (self.pos(caster), self.team.get(caster).copied()) else {
             return;
         };
-        let reach = rules::units(rules::MAGIC_CHARGE_RANGE);
         for other in self.entities.iter() {
             if self.team.get(other).copied() == Some(side)
                 || self.kind.get(other).copied() != Some(UnitKind::Hero)
-                || !self.pos(other).is_some_and(|pos| pos.within(at, reach))
             {
                 continue;
             }
+            let Some(from) = self.pos(other) else {
+                continue;
+            };
             let Some(bag) = self.inventory.get_mut(other) else {
                 continue;
             };
@@ -100,7 +101,8 @@ impl World {
                 let Some(def) = item_def(stack.id) else {
                     continue;
                 };
-                if def.cast_charges > 0 {
+                let reach = def.charge_radius().unwrap_or(0);
+                if def.cast_charges > 0 && from.within(at, rules::units(reach)) {
                     stack.charges = stack.charges.saturating_add(1).min(def.cast_charges);
                 }
             }
