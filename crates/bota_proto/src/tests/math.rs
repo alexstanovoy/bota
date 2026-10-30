@@ -67,6 +67,59 @@ fn rounding_goes_towards_negative_infinity() {
     assert_eq!(-tiny * HALF, Fixed { raw: -1 });
 }
 
+/// Division truncates towards zero, as integer division does: its doc once claimed the floor.
+#[test]
+fn division_rounds_towards_zero_not_negative_infinity() {
+    let tiny = Fixed { raw: 1 };
+    assert_eq!(tiny / Fixed::from_int(2), Fixed::ZERO);
+    assert_eq!(-tiny / Fixed::from_int(2), Fixed::ZERO);
+    assert_eq!(
+        Fixed::from_int(-1) / Fixed::from_int(3),
+        Fixed { raw: -21845 }
+    );
+    assert_eq!(
+        Fixed::from_int(1) / Fixed::from_int(3),
+        Fixed { raw: 21845 }
+    );
+}
+
+#[test]
+fn abs_of_the_smallest_value_is_the_largest() {
+    assert_eq!(Fixed::MIN.abs(), Fixed::MAX);
+    assert_eq!(Fixed::MAX.abs(), Fixed::MAX);
+}
+
+/// A spot far off the map, such as a hostile order names, is farther than any radius and never
+/// overflows: the squares of two raw values 2^32 apart do not fit an `i64`.
+#[test]
+fn squared_distances_are_total_over_every_pair_of_spots() {
+    let far = Vec2 {
+        x: Fixed::MAX,
+        y: Fixed::MAX,
+    };
+    let farther = Vec2 {
+        x: Fixed::MIN,
+        y: Fixed::MIN,
+    };
+    assert_eq!(far.distance_squared(farther), i64::MAX);
+    assert_eq!(farther.distance_squared(far), i64::MAX);
+    assert_eq!(far.length_squared(), 2 * i64::from(i32::MAX).pow(2));
+    assert_eq!(farther.length_squared(), i64::MAX);
+    assert!(!far.within(farther, Fixed::MAX));
+    let x_only = Vec2 {
+        x: Fixed::MIN,
+        y: Fixed::ZERO,
+    };
+    assert_eq!(
+        x_only.distance_squared(Vec2 {
+            x: Fixed::MAX,
+            y: Fixed::ZERO
+        }),
+        i64::MAX
+    );
+    assert_eq!(Vec2::ZERO.distance_squared(Vec2::ZERO), 0);
+}
+
 #[test]
 fn abs_removes_the_sign() {
     assert_eq!(Fixed::from_int(-5).abs(), Fixed::from_int(5));

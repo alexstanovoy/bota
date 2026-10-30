@@ -55,9 +55,12 @@ impl Fixed {
         self.raw >> Self::FRAC_BITS
     }
 
-    /// Distance from zero.
+    /// Distance from zero; the largest value for the smallest, whose
+    /// opposite does not fit.
     pub const fn abs(self) -> Fixed {
-        Fixed::from_i64((self.raw as i64).abs())
+        Fixed {
+            raw: self.raw.saturating_abs(),
+        }
     }
 
     /// The value squared, as a raw Q32.32 integer: the units of
@@ -157,7 +160,8 @@ impl Mul for Fixed {
     }
 }
 
-/// Rounds towards negative infinity. Panics when `rhs` is zero.
+/// Rounds towards zero, as integer division does (`-0.5 / 1` is zero, not
+/// minus one), unlike the product. Panics when `rhs` is zero.
 impl Div for Fixed {
     type Output = Fixed;
     fn div(self, rhs: Fixed) -> Fixed {
@@ -241,22 +245,34 @@ impl Vec2 {
     }
 
     /// The squared length, as a raw Q32.32 integer: the units of
-    /// [`Fixed::squared_raw`].
+    /// [`Fixed::squared_raw`]. Total: past `i64::MAX`, which only spots far
+    /// off the map reach, it saturates, and a squared length is compared and
+    /// never stored, so it still reads as farther than any radius.
     pub const fn length_squared(self) -> i64 {
-        self.x.squared_raw() + self.y.squared_raw()
+        let (x, y) = (self.x.raw as i128, self.y.raw as i128);
+        saturate(x * x + y * y)
     }
 
     /// The squared distance to another position, in the units of
-    /// [`length_squared`](Vec2::length_squared).
+    /// [`length_squared`](Vec2::length_squared), and total in the same way.
     pub const fn distance_squared(self, other: Vec2) -> i64 {
-        let dx = (self.x.raw as i64) - (other.x.raw as i64);
-        let dy = (self.y.raw as i64) - (other.y.raw as i64);
-        dx * dx + dy * dy
+        let dx = (self.x.raw as i128) - (other.x.raw as i128);
+        let dy = (self.y.raw as i128) - (other.y.raw as i128);
+        saturate(dx * dx + dy * dy)
     }
 
     /// Whether `other` is no further away than `radius`.
     pub const fn within(self, other: Vec2, radius: Fixed) -> bool {
         self.distance_squared(other) <= radius.squared_raw()
+    }
+}
+
+/// A wide sum of squares as the `i64` the distance functions answer, saturating.
+const fn saturate(wide: i128) -> i64 {
+    if wide > i64::MAX as i128 {
+        i64::MAX
+    } else {
+        wide as i64
     }
 }
 
