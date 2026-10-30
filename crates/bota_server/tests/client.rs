@@ -39,6 +39,7 @@ fn opts() -> ServerOpts {
         objectives: None,
         runes: None,
         dummy_seat: true,
+        seated_start: false,
         ack_timeout_ticks: 150,
         // A client waits on another or on a slow line, and the machine is busy: nobody is let go
         // for silence unless the test is about that.

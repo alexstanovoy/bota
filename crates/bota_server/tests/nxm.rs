@@ -54,6 +54,7 @@ fn opts(players: u8, reserved: Vec<ReservedSeat>, replay: Option<PathBuf>) -> Se
         objectives: None,
         runes: None,
         dummy_seat: false,
+        seated_start: false,
         ack_timeout_ticks: 900,
         idle_timeout: Some(DEFAULT_IDLE_TIMEOUT),
         order_delays: Vec::new(),

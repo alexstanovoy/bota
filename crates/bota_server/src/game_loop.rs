@@ -91,6 +91,10 @@ pub struct ServerOpts {
     pub runes: Option<bota_proto::RuneSet>,
     /// Whether the last seat is a dummy: a hero that stays put and never acts.
     pub dummy_seat: bool,
+    /// Whether the match starts with the seats held: once somebody holds a seat and every seat
+    /// held is ready (no seat empty below the last held one), the seats after it are dropped, with
+    /// no hero, bot or dummy in their place. Off, the match waits for every seat of `players`.
+    pub seated_start: bool,
     /// Lockstep: how many tick-lengths to wait for a straggler.
     pub ack_timeout_ticks: u32,
     /// How long a connection may send nothing, or take nothing of what is
@@ -263,6 +267,12 @@ pub fn check_opts(opts: &ServerOpts) -> Result<(), String> {
     // never cheat. Cheats are for a match its host starts for itself.
     if opts.cheats && !opts.reserved.is_empty() {
         return Err("cheats are for a local match: not with reserved seats".to_owned());
+    }
+    // Reserved seats are exactly the lineup, and a dummy is a seat nobody holds.
+    if opts.seated_start && (!opts.reserved.is_empty() || opts.dummy_seat) {
+        return Err(
+            "a seated start is for open seats: not with reserved or dummy seats".to_owned(),
+        );
     }
     let map = bota_core::map_of(opts.map);
     crate::game::check_match_rules(
@@ -1004,6 +1014,9 @@ impl Server {
     fn run_pick_clock(&mut self, now: Instant) -> bool {
         let before = self.pick_clock;
         let start = loop {
+            if self.pick_clock == PickClock::Waiting {
+                self.close_to_seated();
+            }
             match self.pick_clock {
                 PickClock::Waiting if self.roster.all_held() => {
                     self.pick_clock = PickClock::start(now, self.opts.pick_time);
@@ -1040,6 +1053,14 @@ impl Server {
             self.broadcast_lobby();
         }
         start
+    }
+
+    /// With a seated start, closes the roster to the players seated once they are all ready; the
+    /// order delays, one per seat, go with the seats dropped.
+    fn close_to_seated(&mut self) {
+        if self.opts.seated_start && self.roster.close_to_seated() {
+            self.opts.order_delays.truncate(self.roster.seats.len());
+        }
     }
 
     /// Every pick is final: the tactical phase begins.

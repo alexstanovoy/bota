@@ -301,6 +301,7 @@ fn realtime(seed: u64) -> ServerOpts {
         objectives: None,
         runes: None,
         dummy_seat: false,
+        seated_start: false,
         order_delays: Vec::new(),
         messages_per_sec: DEFAULT_MESSAGES_PER_SEC,
         max_spectators_per_seat: DEFAULT_SPECTATORS_PER_SEAT,

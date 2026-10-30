@@ -56,6 +56,7 @@ fn opts() -> ServerOpts {
         objectives: None,
         runes: None,
         dummy_seat: false,
+        seated_start: false,
         ack_timeout_ticks: 2,
         idle_timeout: Some(Duration::from_secs(5)),
         order_delays: Vec::new(),

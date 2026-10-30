@@ -190,6 +190,11 @@ struct Args {
     /// Seat a dummy in the last seat: its hero stays put and never acts, so one player can practise alone.
     #[arg(long)]
     dummy_seat: bool,
+    /// Start the match with the seats held: once every seat held is ready, the seats nobody
+    /// holds are dropped, with no hero, bot or dummy in their place (--players is then the most
+    /// seats, 1 to 10). Not with reserved seats or a dummy seat.
+    #[arg(long)]
+    seated_start: bool,
     /// What the seats may say: off (a ladder of bots: chat would be a channel between
     /// opponents), team (to their own side), all (to their side and to everyone).
     #[arg(long, default_value_t = ChatOpts::DEFAULT.seats)]
@@ -338,6 +343,7 @@ fn server_opts(args: &Args) -> std::io::Result<ServerOpts> {
         objectives: args.objectives,
         runes: args.runes,
         dummy_seat: args.dummy_seat,
+        seated_start: args.seated_start,
         order_delays: order_delays(args, players).map_err(std::io::Error::other)?,
         messages_per_sec: args.messages_per_sec,
         max_spectators_per_seat: args.max_spectators_per_seat,

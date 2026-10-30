@@ -141,6 +141,7 @@ the plain TCP port stays on loopback) or `--insecure-plaintext`.
 | `--objectives LIST` | the map's | which of the map's objectives stand: `all`, `none`, or names separated by commas (`roshan`, `tormentor`, `watchers`, `outposts`, `shrines`); one the map does not play is refused before `READY`. Map 2 stands none unless asked | |
 | `--runes LIST` | the map's | which kinds of rune spawn: `all`, `none`, or names (`water`, `bounty`, `haste`, `amplify_damage`, `arcane`, `regeneration`, `illusion`, `invisibility`, `shield`); one the map does not spawn is refused before `READY`. Map 2 spawns none unless asked | |
 | `--dummy-seat` | off | the last seat is a hero that never acts | practice alone |
+| `--seated-start` | off | the match starts once every seat held is ready, whatever the seats left empty: they are dropped, with no hero, bot or dummy in their place (`--players` is then the most seats); not with reserved seats or `--dummy-seat` | a lobby of ten where the players who came play |
 | `--wire-fingerprint` | | print the wire fingerprint (16 hex digits: registries and rules) and exit | a launcher's version probe |
 
 Keys never come from arguments, which every process listing shows; only the environment:

@@ -190,6 +190,21 @@ impl Roster {
         }
     }
 
+    /// Closes the roster to the players seated: when somebody holds a seat, none lies empty below
+    /// the last held one and every held seat is ready, the seats after the last held one are
+    /// dropped (they get no hero) and this answers true.
+    pub fn close_to_seated(&mut self) -> bool {
+        let Some(last) = self.seats.iter().rposition(|s| s.player.is_some()) else {
+            return false;
+        };
+        let held = &self.seats[..=last];
+        if !held.iter().all(|s| s.player.is_some() && s.ready) {
+            return false;
+        }
+        self.seats.truncate(last + 1);
+        true
+    }
+
     /// Whether every seat is held (a dummy needs no holder).
     pub fn all_held(&self) -> bool {
         self.seats.iter().all(|s| s.dummy || s.player.is_some())

@@ -78,6 +78,7 @@ fn seats(replay: PathBuf, players: u8) -> ServerOpts {
         objectives: None,
         runes: None,
         dummy_seat: false,
+        seated_start: false,
         ack_timeout_ticks: 150,
         // The machine is busy: nobody is let go for silence.
         idle_timeout: None,
