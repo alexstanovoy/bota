@@ -171,3 +171,55 @@ fn a_ticket_reconnects_mid_match_and_a_spectator_watches_with_it() {
     settle(&mut [&mut alpha, &mut beta], |a| a.result().is_some());
     assert_eq!(alpha.result().expect("result").reason, EndReason::Decided);
 }
+
+/// A service that keeps replays hands the seats of a finished match the file bota_server
+/// recorded (a Zstandard stream the replay player reads to the match's end); one that does not
+/// (the default) answers "not kept", and the client reads that answer.
+#[test]
+fn a_finished_matchs_replay_is_served_only_by_a_service_that_keeps_replays() {
+    for keeping in [true, false] {
+        let env = start_with(keeping);
+        let (mut alpha, mut beta) = (env.bot("alpha"), env.bot("beta"));
+        alpha.queue();
+        beta.queue();
+        let handoffs = found(&mut [&mut alpha, &mut beta]);
+        let tls = env.tls.clone();
+        let first = play_seat(handoffs[0].clone(), HeroId::SHADOW_FIEND, tls.clone());
+        let second = play_seat(handoffs[1].clone(), HeroId::PUDGE, tls);
+        let _ = (first.join().expect("alpha"), second.join().expect("beta"));
+        settle(&mut [&mut alpha, &mut beta], |a| a.result().is_some());
+        let match_id = alpha.result().expect("a result").match_id;
+        let mut bytes = Vec::new();
+        let fetched = loop {
+            let offset = bytes.len() as u64;
+            let seq = alpha
+                .client
+                .request(bota_radovid::proto::ClientMsg::MatchArtifact { match_id, offset })
+                .expect("sent");
+            match alpha.reply(seq) {
+                Ok(Reply::Artifact { total, data, .. }) => {
+                    bytes.extend_from_slice(&data);
+                    if bytes.len() as u64 >= total || data.is_empty() {
+                        break Ok(());
+                    }
+                }
+                Ok(other) => panic!("{other:?}"),
+                Err(error) => break Err(error),
+            }
+        };
+        if keeping {
+            assert_eq!(fetched, Ok(()));
+            assert_eq!(bytes[..4], [0x28, 0xb5, 0x2f, 0xfd], "a Zstandard stream");
+            // The whole stream unpacks: the server finished the file before the service kept it.
+            let mut frames = Vec::new();
+            std::io::Read::read_to_end(
+                &mut bota_client_core::UnpackedReplay::new(std::io::Cursor::new(bytes)),
+                &mut frames,
+            )
+            .expect("an unbroken stream, ended");
+            assert!(!frames.is_empty());
+        } else {
+            assert_eq!(fetched, Err(Error::ArtifactsNotKept));
+        }
+    }
+}

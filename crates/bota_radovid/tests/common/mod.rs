@@ -99,6 +99,12 @@ pub fn solo() -> RulesetId {
 /// A service with one rated ruleset of two teams of one, played by the real
 /// server in lockstep.
 pub fn start() -> Env {
+    start_with(false)
+}
+
+/// The service with `[artifacts] save_replays` as given: on, the game server is told to record
+/// the match into the file the service keeps for its seats.
+pub fn start_with(replays: bool) -> Env {
     let binary = server_binary().to_owned();
     let dir = std::env::temp_dir().join(format!(
         "bota-radovid-test-{}-{}",
@@ -117,6 +123,8 @@ game_ports = "{first}-{last}"
 [password]
 memory_kib = 1024
 iterations = 1
+[artifacts]
+save_replays = {replays}
 [limits]
 games_per_source = 200
 game_capacity = {PORTS}
@@ -140,8 +148,11 @@ args = ["--map", "2", "--mode", "lockstep", "--ack-timeout-ticks", "900",
         "--ws-port", "{{port}}", "--start-after-secs", "30", "--abandon-unjoined",
         "--empty-after-secs", "60"]
 env = {{ BOTA_SEATS = "{{seats}}" }}
+artifact = "{artifacts}/replay-{{match_id}}.brp"
+artifact_args = ["--replay", "{{artifact}}"]
 "#,
         db = dir.join("radovid.db").display(),
+        artifacts = dir.join("artifacts").display(),
         last = first + PORTS - 1,
         fingerprint = fingerprint(),
         binary = binary.display(),
