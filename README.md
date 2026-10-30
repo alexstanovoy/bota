@@ -268,7 +268,8 @@ tests) is the rustdoc of `bota_core::heroes`:
 `cargo doc -p bota_core --open`, module `heroes`. The list for an item is the rustdoc of
 `bota_core::ITEMS` (registry line, table row, rules version, pins, shop tab, and what a new stat,
 active or buff adds), and a unit kind is a `UnitKind` variant plus its `UNIT_KINDS` row. Ids are
-append-only (below).
+append-only (below), and each registry line names its id by Dota's internal name (`item_blink`,
+`npc_dota_hero_nevermore`), which every table row carries as its `key`.
 
 ## Protocol rule: append-only
 
@@ -281,10 +282,11 @@ every wire struct, because postcard encodes variants and fields by position.
 - Removing something retires its id for good: it is never renumbered or reused,
   and tables indexed by id keep a placeholder.
 - Two committed registries in `crates/bota_proto/registry/` record what has been
-  assigned: `ids.txt` (every id, with name and `live` or `retired`) and
+  assigned: `ids.txt` (every id, with its Dota key and `live` or `retired`) and
   `wire.txt` (every variant index and field position). They only grow. Tests
   fail on a wire position that changed or disappeared, on one not yet registered,
-  and on a hero, ability, item or effect table that disagrees with `ids.txt`.
+  and on a hero, ability, item, effect or neutral table that disagrees with
+  `ids.txt`.
 
 There is no version negotiation and no compatibility between revisions. A
 client sends `bota_core::WIRE_FINGERPRINT` in its `Hello`: a hash of both
