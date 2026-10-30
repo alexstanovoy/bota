@@ -186,7 +186,7 @@ fn a_tango_eats_a_tree_and_without_one_eats_nothing() {
             &world,
             hero,
             ModifierKind::Mending {
-                per_tick: 0,
+                per_tick: Fixed::ZERO,
                 breaks: false
             }
         ),
@@ -222,6 +222,50 @@ fn a_branch_puts_a_tree_up_and_eating_that_one_feeds_twice_as_long() {
     run(&mut world, planted_tree_ticks() + 1);
     assert!(world.trees.planted().is_empty(), "in time it goes");
     assert!(!sight_stopped_at(&world, spot), "and stops nothing");
+}
+
+/// Health a hero gains from one Tango beyond what an identical hero gains without it, over a
+/// minute: from a tree of the map's own, or from one an Iron Branch put up.
+fn health_a_tango_gives(planted: bool) -> i32 {
+    let hurt = |world: &mut World, hero: Entity| {
+        world.health.get_mut(hero).expect("health").hp = Fixed::from_int(100);
+    };
+    let (mut fed, hero, tree) = a_hero_by_the_trees(ItemId::IRON_BRANCH, 1);
+    let (mut fasting, other, _) = a_hero_by_the_trees(ItemId::IRON_BRANCH, 1);
+    // Both put the branch up, so that the two carry the same.
+    let spot = tree + Vec2::from_ints(240, 0);
+    assert!(fed.use_item(hero, 0, Target::Pos(spot), &mut Vec::new()));
+    assert!(fasting.use_item(other, 0, Target::Pos(spot), &mut Vec::new()));
+    let eaten = if planted { spot } else { tree };
+    fed.inventory.get_mut(hero).expect("bag").slots[1] = Some(fresh_stack(ItemId::TANGO, 1));
+    hurt(&mut fed, hero);
+    hurt(&mut fasting, other);
+    assert!(fed.use_item(hero, 1, Target::Pos(eaten), &mut Vec::new()));
+    run(&mut fed, 60 * rules::TICKS_PER_SECOND);
+    run(&mut fasting, 60 * rules::TICKS_PER_SECOND);
+    let hp = |world: &World, who: Entity| world.health.get(who).expect("health").hp;
+    (hp(&fed, hero) - hp(&fasting, other)).to_int()
+}
+
+/// Dota 7.41f `item_tango`: 7 health a second for 16 seconds from a tree of the map, 112 in
+/// all; off a tree an Iron Branch put up the duration is doubled (Liquipedia's *Tango*:
+/// "When cast on an Iron Branch tree the health regen duration is greatly increased", 32
+/// seconds), so 224. The whole of a drink is given: within the health of one tick's mend of
+/// it, not the share a rate rounded to hundredths of a point leaves (110 and 220).
+#[test]
+fn a_tango_gives_112_off_a_map_tree_and_224_off_a_tree_a_branch_put_up() {
+    for (planted, dota) in [(false, 112), (true, 224)] {
+        let gained = health_a_tango_gives(planted);
+        assert!(
+            (dota - 1..=dota).contains(&gained),
+            "{} gave {gained}, Dota gives {dota}",
+            if planted {
+                "a tree an Iron Branch put up"
+            } else {
+                "a tree of the map"
+            }
+        );
+    }
 }
 
 #[test]
@@ -435,11 +479,11 @@ fn drink_up(world: &mut World, hero: Entity) {
 /// Whether a unit mends health and whether it mends mana right now.
 fn drinks(world: &World, unit: Entity) -> (bool, bool) {
     let health = ModifierKind::Mending {
-        per_tick: 0,
+        per_tick: Fixed::ZERO,
         breaks: false,
     };
     let mana = ModifierKind::Clarity {
-        per_tick: 0,
+        per_tick: Fixed::ZERO,
         breaks: false,
     };
     (carries(world, unit, health), carries(world, unit, mana))

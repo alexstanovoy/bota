@@ -9,15 +9,17 @@ use crate::{Act, Buff, NeutralAbility, Spell, Strike, Then, Throe, WATER_BUBBLE_
 pub enum ModifierKind {
     /// Health mends faster.
     Mending {
-        /// Hundredths of a point a tick.
-        per_tick: i32,
+        /// Points a tick, rounded up to the raw unit so a whole drink gives
+        /// the points the item names.
+        per_tick: Fixed,
         /// Whether a blow that [`breaks_regen`](crate::breaks_regen) puts it out.
         breaks: bool,
     },
     /// Mana mends faster.
     Clarity {
-        /// Hundredths of a point a tick.
-        per_tick: i32,
+        /// Points a tick, rounded up to the raw unit so a whole drink gives
+        /// the points the item names.
+        per_tick: Fixed,
         /// Whether a blow that [`breaks_regen`](crate::breaks_regen) puts it out.
         breaks: bool,
     },

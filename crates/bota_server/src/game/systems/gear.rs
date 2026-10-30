@@ -682,7 +682,7 @@ impl World {
             }
             self.fell_tree(tree, user);
         }
-        let per_tick = total * 100 / ticks.max(1) as i32;
+        let per_tick = bota_core::mend_per_tick(total, ticks);
         self.put_modifier(
             on,
             Modifier::new(

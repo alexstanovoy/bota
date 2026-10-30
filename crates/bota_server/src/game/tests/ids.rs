@@ -8,11 +8,11 @@ use bota_proto::{DamageKind, EffectId, Fixed, IdSpace, RegisteredId, registered}
 fn every_modifier() -> Vec<ModifierKind> {
     let every = vec![
         ModifierKind::Mending {
-            per_tick: 0,
+            per_tick: Fixed::ZERO,
             breaks: false,
         },
         ModifierKind::Clarity {
-            per_tick: 0,
+            per_tick: Fixed::ZERO,
             breaks: false,
         },
         ModifierKind::Fountain {

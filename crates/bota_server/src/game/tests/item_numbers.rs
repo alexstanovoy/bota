@@ -287,7 +287,7 @@ fn a_healing_salve_mends_thirty_a_second_for_thirteen_seconds() {
             world,
             hero,
             ModifierKind::Mending {
-                per_tick: 0,
+                per_tick: Fixed::ZERO,
                 breaks: false,
             },
         )

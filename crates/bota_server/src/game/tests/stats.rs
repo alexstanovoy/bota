@@ -202,7 +202,7 @@ fn mending_adds_to_what_a_kind_regenerates() {
     let mut world = World::new();
     let creep = plain_creep(&mut world);
     let mending = ModifierKind::Mending {
-        per_tick: 25,
+        per_tick: Fixed::from_ratio(25, 100),
         breaks: false,
     };
     put_on(&mut world, creep, mending, 5);

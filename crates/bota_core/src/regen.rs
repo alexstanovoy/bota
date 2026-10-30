@@ -22,6 +22,17 @@ impl Regen {
     };
 }
 
+/// What a drink of `total` points over `ticks` ticks mends a tick, rounded up to the raw
+/// unit so that the whole drink gives at least the points the item names.
+#[inline]
+pub fn mend_per_tick(total: i32, ticks: u32) -> Fixed {
+    let wide = i64::from(total.max(0)) << Fixed::FRAC_BITS;
+    let ticks = i64::from(ticks.max(1));
+    Fixed {
+        raw: i32::try_from((wide + ticks - 1) / ticks).unwrap_or(i32::MAX),
+    }
+}
+
 /// What mending `pct` percent of `max` a second comes to a tick, rounded
 /// down to the raw unit.
 #[inline]
@@ -36,8 +47,8 @@ fn share_a_tick(max: Fixed, pct: i32) -> Fixed {
 #[inline]
 fn from_modifier(kind: ModifierKind, max: Regen) -> Regen {
     let (hp, mana) = match kind {
-        ModifierKind::Mending { per_tick, .. } => (Fixed::from_ratio(per_tick, 100), Fixed::ZERO),
-        ModifierKind::Clarity { per_tick, .. } => (Fixed::ZERO, Fixed::from_ratio(per_tick, 100)),
+        ModifierKind::Mending { per_tick, .. } => (per_tick, Fixed::ZERO),
+        ModifierKind::Clarity { per_tick, .. } => (Fixed::ZERO, per_tick),
         ModifierKind::Fountain { hp_pct, mana_pct } => (
             share_a_tick(max.hp, hp_pct),
             share_a_tick(max.mana, mana_pct),

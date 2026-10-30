@@ -131,12 +131,12 @@ impl StateHash for ModifierKind {
             }
             ModifierKind::Mending { per_tick, breaks } => {
                 fnv.u8(1);
-                fnv.i32(per_tick);
+                fnv.i32(per_tick.raw);
                 fnv.some(breaks);
             }
             ModifierKind::Clarity { per_tick, breaks } => {
                 fnv.u8(2);
-                fnv.i32(per_tick);
+                fnv.i32(per_tick.raw);
                 fnv.some(breaks);
             }
             ModifierKind::Fountain { hp_pct, mana_pct } => hash_tagged(fnv, 3, &[hp_pct, mana_pct]),
