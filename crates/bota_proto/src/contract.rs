@@ -213,6 +213,11 @@
 //! are broken off by any order. A unit with orders waiting is not done with
 //! the order in hand.
 //!
+//! A spot an order names (the ground a target points at, the line of a directional move, where a
+//! cheat stands something up) is kept on the map when the order arrives: each coordinate is
+//! clamped into the map (`bota_core::order_on_map`), so ground off the map is the nearest
+//! ground on it and an order is never refused for it.
+//!
 //! On one tick a unit takes at most one unqueued order, the last one accepted
 //! for that tick: it replaces, without an answer, the orders for that unit
 //! given before it for the same tick, queued or not. The queued orders given

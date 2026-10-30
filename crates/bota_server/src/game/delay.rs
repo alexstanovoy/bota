@@ -154,9 +154,11 @@ impl DelayLine {
     pub fn give(
         &mut self,
         world: &World,
-        cmd: Command,
+        mut cmd: Command,
         seen: Option<u32>,
     ) -> Result<(), RejectReason> {
+        // The one door of a seat's orders: no ground off the map goes further.
+        cmd.order = bota_core::order_on_map(cmd.order);
         world.check_order(cmd.slot, cmd.unit, &cmd.order, cmd.queue)?;
         let Some(line) = self.seats.iter_mut().find(|line| line.slot == cmd.slot) else {
             return Err(RejectReason::NotYourUnit);

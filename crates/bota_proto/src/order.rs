@@ -17,7 +17,8 @@ use serde::{Deserialize, Serialize};
 pub enum Target {
     /// At nothing: the order works on the unit itself, or where it stands.
     None,
-    /// At a position on the ground.
+    /// At a position on the ground. A server keeps it on the map (see the
+    /// [`contract`](crate::contract)).
     Pos(Vec2),
     /// At a live entity. Must be visible to the issuing team.
     Unit(EntityId),
@@ -416,6 +417,64 @@ pub enum Order {
 }
 
 impl Order {
+    /// Calls `visit` on every spot of the map the order names: the ground a
+    /// target points at, the line a direction move follows, where a cheat
+    /// stands something up. The one walk that puts every position of an order
+    /// through one check, such as keeping it on the map.
+    pub fn visit_spots(&mut self, visit: &mut dyn FnMut(&mut Vec2)) {
+        let target = match self {
+            Order::Move { target }
+            | Order::Attack { target }
+            | Order::Cast { target, .. }
+            | Order::Use { target, .. }
+            | Order::Put { target, .. }
+            | Order::Take { target }
+            | Order::Cheat {
+                cheat: Cheat::ApplyModifier { target, .. } | Cheat::ClearModifiers { target },
+            } => target,
+            Order::MoveDirection { toward: spot }
+            | Order::Cheat {
+                cheat:
+                    Cheat::CreateHero { at: spot, .. }
+                    | Cheat::Teleport { at: spot }
+                    | Cheat::CreateCreeps { at: spot, .. },
+            } => {
+                visit(spot);
+                return;
+            }
+            Order::Cheat {
+                cheat:
+                    Cheat::Gold { .. }
+                    | Cheat::Levels { .. }
+                    | Cheat::Refresh
+                    | Cheat::Item { .. }
+                    | Cheat::LevelBots { .. }
+                    | Cheat::Wtf { .. }
+                    | Cheat::Respawn
+                    | Cheat::SpawnCreeps
+                    | Cheat::CreepSpawning { .. }
+                    | Cheat::SpawnNeutrals
+                    | Cheat::KillCreeps { .. }
+                    | Cheat::StartGame
+                    | Cheat::AllVision { .. }
+                    | Cheat::Invulnerable { .. }
+                    | Cheat::ResetHero
+                    | Cheat::TimeOfDay { .. },
+            }
+            | Order::Buy { .. }
+            | Order::Sell { .. }
+            | Order::Swap { .. }
+            | Order::Learn { .. }
+            | Order::LearnTalent { .. }
+            | Order::LearnAttributeBonus
+            | Order::SwitchWard { .. }
+            | Order::Glyph => return,
+        };
+        if let Target::Pos(spot) = target {
+            visit(spot);
+        }
+    }
+
     /// Calls `visit` on the entity handle the order names, if it names one:
     /// the one walk that puts a side's names into an order, and takes them
     /// out again.

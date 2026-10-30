@@ -8,7 +8,11 @@ use bota_proto::{
     Target, Team, Vec2,
 };
 
+use super::local::mid_config;
 use super::support::*;
+use crate::game::OrderDelay;
+use crate::local::LocalMatch;
+use bota_proto::OutgoingOrder;
 
 #[test]
 fn an_order_at_something_a_side_cannot_see_is_refused() {
@@ -575,4 +579,65 @@ fn an_attack_order_at_another_breaks_the_windup_off_and_one_at_the_same_lets_it_
         world.health.get(second).expect("standing").hp < second_full,
         "the blow went to the second"
     );
+}
+
+/// Ground off the map, named by any order of a seat, is the nearest ground on the map by the time
+/// the order is anything but a message: squared distances over it overflowed, and a walk to it was
+/// a walk to nowhere.
+#[test]
+fn ground_off_the_map_in_an_order_is_taken_at_the_edge_of_it() {
+    let (mut local, _) = LocalMatch::new(&mid_config(), &[OrderDelay::NONE]).expect("a match");
+    let hero = local.world().seats[0].unit.expect("a hero");
+    let off = Vec2 {
+        x: Fixed::MIN,
+        y: Fixed::MAX,
+    };
+    let edge = Vec2 {
+        x: Fixed::ZERO,
+        y: Fixed::from_int(rules::MAP_SIZE),
+    };
+    let mut seq = 0;
+    let mut give = |local: &mut LocalMatch, order: Order| {
+        seq += 1;
+        let tick = local.tick();
+        let sent = OutgoingOrder {
+            seq,
+            unit: None,
+            order,
+            seen: tick,
+            queue: false,
+        };
+        let step = local.step(&[&[sent], &[]]).expect("a step");
+        let refused = step[0]
+            .iter()
+            .any(|message| matches!(message, bota_proto::ServerMsg::OrderRejected { .. }));
+        assert!(!refused, "{order:?} was refused");
+        local.step(&[&[], &[]]).expect("a step");
+        local.world().orders.get(hero).expect("orders").current
+    };
+    let target = Target::Pos(off);
+    assert_eq!(
+        give(&mut local, Order::Move { target }),
+        UnitOrder::Move { pos: edge }
+    );
+    assert_eq!(
+        give(&mut local, Order::Attack { target }),
+        UnitOrder::AttackMove { pos: edge }
+    );
+    let toward = give(&mut local, Order::MoveDirection { toward: off });
+    let UnitOrder::Direction { by } = toward else {
+        panic!("a direction move stands as one: {toward:?}");
+    };
+    let reach = Fixed::from_int(rules::MAP_SIZE).raw;
+    assert!(
+        by.x.raw.abs() <= reach && by.y.raw.abs() <= reach,
+        "the bearing is a spot of the map's, not the spot named: {by:?}"
+    );
+    for _ in 0..300 {
+        local
+            .step(&[&[], &[]])
+            .expect("a walk off the map is a step");
+    }
+    let now = local.world().transform.get(hero).expect("placed").pos;
+    assert!(now.x.raw >= 0 && now.y.raw <= Fixed::from_int(rules::MAP_SIZE).raw);
 }

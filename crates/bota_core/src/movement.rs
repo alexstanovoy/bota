@@ -1,6 +1,6 @@
 //! Deterministic integer geometry: stepping, turning, distances.
 
-use bota_proto::{Angle, Fixed, Vec2};
+use bota_proto::{Angle, Fixed, Order, Vec2};
 
 use crate::rules;
 
@@ -148,6 +148,14 @@ pub fn clamp_to_map(pos: Vec2) -> Vec2 {
             raw: pos.y.raw.clamp(0, max.raw),
         },
     }
+}
+
+/// An order with every spot it names kept on the map: what a server takes of an order at
+/// receipt, so that no ground off the map ever reaches the simulation. A spot on the map is
+/// as it was.
+pub fn order_on_map(mut order: Order) -> Order {
+    order.visit_spots(&mut |spot| *spot = clamp_to_map(*spot));
+    order
 }
 
 /// The shortest signed rotation from one facing to another, in brads.
