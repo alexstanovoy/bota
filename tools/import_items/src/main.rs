@@ -8,7 +8,8 @@
 //! ```
 //!
 //! `--add` appends a registry line for each new item key first. `--check` writes nothing and
-//! fails when the committed table differs from what the install gives.
+//! fails when the committed table holds other items than the install gives (the client build it
+//! names aside).
 
 mod dec;
 mod emit;
@@ -78,7 +79,7 @@ fn run() -> Result<(), String> {
     let path = table_path();
     if args.check {
         let committed = std::fs::read_to_string(&path).map_err(|e| format!("{path:?}: {e}"))?;
-        if committed != table {
+        if !emit::same_items(&committed, &table) {
             return Err(format!(
                 "{path:?} differs from what the install gives: run import_items"
             ));
@@ -126,9 +127,9 @@ fn main() -> ExitCode {
 
 #[cfg(test)]
 mod tests {
-    /// The committed table is what the install on this machine gives, byte for byte: a new
-    /// client build that changes an item fails here until the table is regenerated, or the
-    /// 7.41f number is kept by an override.
+    /// The committed table is what the install on this machine gives, the build it names aside:
+    /// a new client build that changes an item fails here until the table is regenerated, or
+    /// the 7.41f number is kept by an override.
     #[test]
     #[ignore = "needs a Dota 2 install"]
     fn the_committed_table_is_what_the_install_gives() {
@@ -139,7 +140,7 @@ mod tests {
         let table = crate::rustfmt(&table).expect("rustfmt");
         let committed = std::fs::read_to_string(crate::table_path()).expect("the committed table");
         assert!(
-            committed == table,
+            crate::emit::same_items(&committed, &table),
             "the committed table is stale: run import_items"
         );
     }
