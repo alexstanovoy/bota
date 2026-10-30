@@ -339,8 +339,12 @@ pub struct UnitView {
     pub evasion: Fixed,
     /// Which sides' views hold it: its own side's always, the other's while
     /// it sees it. Told only in a view of the whole map; absent in a side's
-    /// view. Last on the wire.
+    /// view.
     pub seen_by: Option<SeenBy>,
+    /// Its health exactly, for a unit whose health is counted in hits (a
+    /// courier, a ward): a blow may take a share of a hit there, which the
+    /// whole [`hp`](Self::hp) does not tell. Absent for any other unit.
+    pub hit_health: Option<Fixed>,
 }
 
 /// A cast in its cast point.

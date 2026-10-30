@@ -428,6 +428,22 @@ fn a_wards_two_hits_of_health_lose_one_to_a_hero_and_a_fifth_to_anything_else() 
         world.alive(ward),
         "four fifths of the last hit leave it standing"
     );
+    // The whole health shows one hit left; the exact health shows a fifth
+    // of it, what a front end draws the last block's fill from.
+    let fifth = rules::WARD_HITS.taken(Some(bota_core::Striker::Other), Fixed::from_int(2));
+    let left = shown(&world, None, ward);
+    assert_eq!(left.hp, 1);
+    assert_eq!(
+        left.hit_health,
+        Some(Fixed::from_int(1) - fifth - fifth - fifth - fifth)
+    );
+    let hero = world.spawn_hero(Team::Radiant, at, SlotId(0), HeroId::SHADOW_FIEND);
+    world.settle();
+    assert_eq!(
+        shown(&world, None, hero).hit_health,
+        None,
+        "a hero's is damage"
+    );
     blow(&mut world, bota_core::Striker::Other);
     assert!(!world.alive(ward), "the fifth brings it down");
 }

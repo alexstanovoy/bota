@@ -517,6 +517,11 @@ impl World {
             status_resist: Fixed::from_ratio(stats.status_resist_bp, rules::NOMINAL_BP),
             evasion: stats.evasion.fraction(),
             seen_by: self.seen_by_sides(viewer, entity, true),
+            hit_health: self
+                .def
+                .get(entity)
+                .and_then(|def| def.0.hit_count)
+                .map(|_| health.map_or(Fixed::ZERO, |h| h.hp).max(Fixed::ZERO)),
             collision: hull.map_or(Fixed::ZERO, |h| h.collision),
             bound: hull.map_or(Fixed::ZERO, |h| h.bound),
             vision_radius: stats.vision,

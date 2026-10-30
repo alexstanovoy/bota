@@ -111,6 +111,7 @@ pub fn hero_unit() -> UnitView {
         ],
         status_resist: Fixed { raw: 6553 },
         evasion: Fixed { raw: 9830 },
+        hit_health: None,
         seen_by: Some(SeenBy {
             radiant: true,
             dire: true,
@@ -181,6 +182,7 @@ pub fn creep_unit(idx: u32) -> UnitView {
         queue: Vec::new(),
         status_resist: Fixed::ZERO,
         evasion: Fixed::ZERO,
+        hit_health: None,
         seen_by: None,
         attack_range: fixed(100),
         attack_time: 1000,

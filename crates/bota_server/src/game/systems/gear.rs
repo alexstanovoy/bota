@@ -960,8 +960,7 @@ impl World {
         let leaves_the_hand = |stack: Option<ItemStack>, slot: usize| {
             stack.is_some_and(|stack| stack.rune.is_some()) && !in_inventory(slot)
         };
-        if leaves_the_hand(Some(held), to) || leaves_the_hand(self.stack_at(unit, seat, to), from)
-        {
+        if leaves_the_hand(Some(held), to) || leaves_the_hand(self.stack_at(unit, seat, to), from) {
             return Some(RejectReason::HoldsRune);
         }
         let has_portal = self

@@ -641,3 +641,4 @@ field RuneView 4 seen_by: Option<SeenBy>
 field StoredRune 0 kind: RuneKind
 field StoredRune 1 ticks_left: u32
 field WorldView 16 runes: Vec<RuneView>
+field UnitView 41 hit_health: Option<Fixed>

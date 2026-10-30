@@ -27,14 +27,15 @@ const TICK_RATE: usize = 30;
 /// whether a point could go into it and of each item whether it is marked
 /// for sale (two bytes each, beside the retired byte; one where a side's view
 /// withholds them), a byte for the dispenser counts of each item, absent
-/// on all but a Ward Dispenser, and two for whether each item is locked
+/// on all but a Ward Dispenser, two for whether each item is locked
 /// against combining and may be taken apart (a side's view withholds both
-/// behind one byte each), and one for the rune of each, absent in all but a
-/// Bottle.
+/// behind one byte each), one for the rune of each, absent in all but a
+/// Bottle, and a byte for the exact health of a unit whose health counts hits,
+/// absent on a hero.
 #[test]
-fn a_hero_stays_under_277_bytes() {
+fn a_hero_stays_under_278_bytes() {
     let len = encoded_len(&hero_unit());
-    assert!(len <= 277, "hero unit grew to {len} bytes");
+    assert!(len <= 278, "hero unit grew to {len} bytes");
 }
 
 #[test]
