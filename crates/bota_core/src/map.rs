@@ -8,7 +8,8 @@
 use bota_proto::{HeroId, MapId, ObjectiveKind, ObjectiveSet, RuneSet, Vec2};
 
 use crate::{
-    CampDef, CampKind, OutpostDef, Protection, SIMULATED_OBJECTIVES, camp, objective, rules,
+    CampDef, CampKind, DOTA_RUNE_SPOTS, OutpostDef, Protection, RuneSpot, SIMULATED_OBJECTIVES,
+    SIMULATED_RUNES, camp, objective, rules,
 };
 
 /// Full Dota geometry with mid-only waves and bounded hero/tower play.
@@ -20,10 +21,6 @@ pub const MAP2_GAME_TICKS: u32 = 20 * 60 * rules::TICKS_PER_SECOND;
 /// The tick Map2 ends on as a draw when nothing decided it earlier, pregame
 /// included.
 pub const MAP2_TICK_CAP: u32 = rules::PREGAME_TICKS + MAP2_GAME_TICKS;
-
-/// The kinds of rune the simulation spawns and plays: what a match may ask
-/// for. Every other kind is refused until it is simulated.
-pub const SIMULATED_RUNES: RuneSet = RuneSet::NONE;
 
 /// One playable map.
 #[derive(Clone, Copy, Debug)]
@@ -75,6 +72,14 @@ pub struct MapDef {
     pub default_objectives: ObjectiveSet,
     /// The runes a match on this map spawns unless its host says otherwise.
     pub default_runes: RuneSet,
+    /// Where runes appear.
+    pub rune_spots: &'static [RuneSpot],
+    /// Whether the first set of runes, the one the horn brings, appears.
+    /// Dota's 1v1 Solo Mid skips it: its rules say "First rune does not
+    /// spawn" [LOC `dota_play_1v1_rules_html`], and Liquipedia's *Game Modes*
+    /// "First set of runes does not spawn"; which set that is, the game does
+    /// not say, and the horn's is the only one that is a set at the start.
+    pub opening_runes: bool,
     /// The hero a seat that picks none is given, when the match allows it
     /// and no seat it may not share it with holds it. Absent, such a seat is
     /// given a random one of those it may pick, as Dota gives one.
@@ -137,6 +142,8 @@ const DOTA: MapDef = MapDef {
     shrines: &objective::DOTA_SHRINES,
     default_objectives: SIMULATED_OBJECTIVES,
     default_runes: SIMULATED_RUNES,
+    rune_spots: &DOTA_RUNE_SPOTS,
+    opening_runes: true,
     default_hero: None,
 };
 
@@ -171,6 +178,8 @@ const DEMO: MapDef = MapDef {
     shrines: &[],
     default_objectives: ObjectiveSet::NONE,
     default_runes: RuneSet::NONE,
+    rune_spots: &[],
+    opening_runes: true,
     default_hero: None,
 };
 
@@ -191,6 +200,7 @@ const SKIRMISH: MapDef = MapDef {
     tower_ends_it: true,
     default_objectives: ObjectiveSet::NONE,
     default_runes: RuneSet::NONE,
+    opening_runes: false,
     default_hero: Some(HeroId::SHADOW_FIEND),
     ..DOTA
 };
@@ -223,9 +233,31 @@ impl MapDef {
         held
     }
 
-    /// The kinds of rune the map has spots for: none yet.
+    /// The kinds of rune the map has spots for: none on a map without any,
+    /// the water, power and bounty runes where there are river spots, the
+    /// bounty runes alone where there are only jungle ones.
     pub const fn runes_held(&self) -> RuneSet {
-        RuneSet::NONE
+        let mut river = false;
+        let mut jungle = false;
+        let mut at = 0;
+        while at < self.rune_spots.len() {
+            match self.rune_spots[at].kind {
+                crate::RuneSpotKind::River => river = true,
+                crate::RuneSpotKind::Jungle(_) => jungle = true,
+            }
+            at += 1;
+        }
+        let mut held = RuneSet::NONE;
+        if jungle || river {
+            held = held.with(bota_proto::RuneKind::Bounty);
+        }
+        if river {
+            held = RuneSet {
+                bits: held.bits | crate::POWER_RUNES.bits,
+            }
+            .with(bota_proto::RuneKind::Water);
+        }
+        held
     }
 
     /// The objectives a match on this map may stand up: those it holds the

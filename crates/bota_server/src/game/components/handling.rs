@@ -22,10 +22,16 @@ pub enum Handling {
         /// The unit whose bag it goes to.
         to: Entity,
     },
-    /// Taking a ground item into the first free bag slot.
+    /// Taking a ground item into the first free bag slot, or walking to a
+    /// rune until it is taken.
     Take {
-        /// The ground item to take.
+        /// The ground item or the rune to take.
         loot: Entity,
+    },
+    /// Walking into attack range of a rune to destroy it.
+    Deny {
+        /// The rune to destroy.
+        rune: Entity,
     },
 }
 
@@ -45,6 +51,10 @@ impl StateHash for Handling {
             Handling::Take { loot } => {
                 fnv.u8(2);
                 loot.state_hash(fnv);
+            }
+            Handling::Deny { rune } => {
+                fnv.u8(3);
+                rune.state_hash(fnv);
             }
         }
     }

@@ -31,6 +31,7 @@ mod pudge;
 mod queue;
 mod regen;
 mod rouse;
+mod rune;
 mod shrine;
 mod spawn;
 mod spell;

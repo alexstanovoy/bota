@@ -35,13 +35,31 @@ mid-only ruleset on that map, plus replays.
   gathered by three seconds standing in them, a contest running the countdown
   back (200, 500, 800, ... experience). An attack order at an Outpost or a
   Watcher casts the hero's hidden channel, as a click does in Dota.
+- Runes at 7.41f, as a match rule (`--runes`; on the Dota map by default, on
+  the mid-only map only when asked, and then without the horn's first set, as
+  Dota's Solo Mid skips it): Bounty Runes at all four spots with the horn and
+  in the jungles every four minutes (40 gold and 6 more for every four minutes
+  since the horn, fixed when the rune appears, paid to every hero of the side
+  that takes it); Water Runes at 2:00 and 4:00 at both river spots; from 6:00 a
+  power rune every two minutes at a river spot drawn at random, never
+  repeating within a cycle of the seven kinds: Haste (550 speed, 22 s),
+  Amplify Damage (+80 percent base damage, +15 percent spell amplification,
+  45 s), Arcane (cooldowns -25 percent, mana costs -30 percent, 50 s),
+  Regeneration (6 percent of the maximum health and mana a second, damped to 1
+  percent for 3 s by a hero's blow, 30 s), Invisibility (a 2 s fade, 45 s,
+  broken by an attack, a cast or an item), Shield (a barrier of half the
+  maximum health, 75 s) and Illusion (two illusions dealing 35 percent and
+  taking 200 or 300 percent, 75 s). A hero takes a rune by standing within 150
+  of it, or by an order to take it, which walks there; an attack order
+  destroys one. The Bottle (675 gold, three charges of 110 health and 60 mana
+  over 2.7 s, filled at the fountain) keeps the rune its hero takes for 90 s
+  and lets it out when used. Wisdom Runes are the Shrines of Wisdom since 7.38.
 - The shop sells consumables, wards, the basic components, boots, the early
   builds and a few later items, and their recipes. An item with a limited
   stock (the wards, Clarity, Healing Salve, Tango, Enchanted Mango,
   Blood Grenade) is stocked and restocked per side as in Dota.
 
-Not modelled, although a 1v1 mid in Dota uses it: runes of every kind, and with
-them the Bottle; Roshan and the Tormentors; the items the shop does not sell (Faerie Fire, Smoke of
+Not modelled, although a 1v1 mid in Dota uses it: Roshan and the Tormentors; the items the shop does not sell (Faerie Fire, Smoke of
 Deceit, Dust of Appearance, neutral items, ...); Aghanim's Scepter and Shard;
 buyback; streams. The
 neutral abilities that only a player commanding a neutral would use (Heal,

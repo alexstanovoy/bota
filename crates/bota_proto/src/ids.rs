@@ -246,6 +246,9 @@ impl ItemId {
     /// The one Tango a Tango cast on an ally leaves in its bag: Dota's
     /// `item_tango_single`, "Tango (Shared)". Never bought, gone after a while.
     pub const TANGO_SHARED: ItemId = ItemId(55);
+    /// Dota's `item_bottle`: three charges of health and mana, refilled at
+    /// the fountain, and a place to keep a rune.
+    pub const BOTTLE: ItemId = ItemId(56);
 }
 
 /// What did something: the ability or the item a unit used, as Dota's combat
@@ -399,6 +402,27 @@ impl EffectId {
     pub const CAPTURE_GUARD: EffectId = EffectId(69);
     /// A Shrine of Wisdom holding its experience for whoever gathers it.
     pub const SHRINE_READY: EffectId = EffectId(70);
+    /// A Haste Rune (`modifier_rune_haste`): the unit moves at the haste
+    /// speed at least, and no slow takes it below.
+    pub const RUNE_HASTE: EffectId = EffectId(71);
+    /// An Amplify Damage Rune (`modifier_rune_doubledamage`): more base
+    /// attack damage and spell amplification.
+    pub const RUNE_AMPLIFY_DAMAGE: EffectId = EffectId(72);
+    /// An Arcane Rune (`modifier_rune_arcane`): shorter cooldowns, cheaper
+    /// spells.
+    pub const RUNE_ARCANE: EffectId = EffectId(73);
+    /// A Regeneration Rune (`modifier_rune_regen`): a share of the maximum
+    /// health and mana every second, `stacks` the percent now.
+    pub const RUNE_REGENERATION: EffectId = EffectId(74);
+    /// An Invisibility Rune (`modifier_rune_invis`): faded out of the other
+    /// side's sight, until the unit attacks, casts or uses an item.
+    pub const RUNE_INVISIBILITY: EffectId = EffectId(75);
+    /// A Shield Rune (`modifier_rune_shield`): a barrier that takes damage
+    /// before health does, `stacks` what is left of it.
+    pub const RUNE_SHIELD: EffectId = EffectId(76);
+    /// A drink from a Bottle (`modifier_bottle_regeneration`): health and
+    /// mana mended over time, put out by an enemy hero's blow.
+    pub const BOTTLE_REGENERATION: EffectId = EffectId(77);
 }
 
 /// An index into a unit's ability slots, as listed in

@@ -599,12 +599,24 @@ impl World {
     /// The moment a cast goes off: the ability's or item's own work, and its
     /// cost. False when it did not go off, and then nothing was spent.
     fn begin(&mut self, entity: Entity, what: PendingCast) -> bool {
-        match what {
+        // A rune let out of a Bottle breaks nothing, an Invisibility Rune's
+        // own least of all; any other cast or use of an item does.
+        let lets_out = match what {
+            PendingCast::Item { slot, .. } => self
+                .held_in_bag(entity, usize::from(slot.0))
+                .is_some_and(|stack| stack.rune.is_some()),
+            PendingCast::Ability { .. } => false,
+        };
+        let went = match what {
             PendingCast::Ability { slot, target } => self.begin_ability(entity, slot, target),
             PendingCast::Item { slot, target } => {
                 self.begin_item(entity, usize::from(slot.0), target)
             }
+        };
+        if went && !lets_out {
+            self.reveal(entity);
         }
+        went
     }
 
     /// Uses an item now, outside the order flow: it goes off at once, and one
@@ -723,6 +735,7 @@ impl World {
     /// Leaves what a swing that came due turns into.
     fn strike(&mut self, attacker: Entity, on: Entity, stats: &Stats) {
         self.expose(attacker, on);
+        self.reveal(attacker);
         // What is carried against creeps is worth nothing against anything else.
         let damage = stats.damage
             + self.roll_damage(stats.damage_spread)

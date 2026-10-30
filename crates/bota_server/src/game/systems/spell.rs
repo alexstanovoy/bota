@@ -8,8 +8,7 @@
 //! [`spell_call`](super::spell_call).
 
 use bota_core::{
-    Act, ModifierKind, NeutralAbility, Shared, Spell, Then, at_level, effect_def, rules,
-    ticks_of_ms,
+    Act, ModifierKind, NeutralAbility, Shared, Spell, Then, at_level, rules, ticks_of_ms,
 };
 use bota_proto::{Inflictor, Target};
 
@@ -164,11 +163,7 @@ impl World {
         let Some(on) = self.foe_aimed_at(cast, target) else {
             return false;
         };
-        if let Some(on_it) = self.modifiers.get_mut(on) {
-            on_it.0.retain(|held| {
-                !effect_def(held.kind.effect_id()).is_some_and(|def| def.dispellable)
-            });
-        }
+        self.dispel_basic(on);
         self.wear(cast, on, ms, u16::try_from(start_pct).unwrap_or(0))
     }
 

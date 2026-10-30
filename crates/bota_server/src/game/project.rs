@@ -40,6 +40,7 @@ impl World {
         let mut units = Vec::with_capacity(self.entities.len());
         let mut projectiles = Vec::new();
         let mut loot = Vec::new();
+        let mut runes = Vec::new();
         let mut aggro = Vec::new();
         for entity in self.entities.iter() {
             let seen = self.viewer_sees(viewer, entity);
@@ -53,6 +54,7 @@ impl World {
             projectiles.extend(self.project_projectile(viewer, entity));
             if seen {
                 loot.extend(self.project_loot(viewer, entity));
+                runes.extend(self.project_rune(viewer, entity));
             }
         }
         debug_assert!(aggro.iter().all(|entry| {
@@ -93,6 +95,7 @@ impl World {
             teleports: self.teleport_views(),
             glyphs: self.glyph_views(viewer),
             clock: self.clock_shift(),
+            runes,
         };
         debug_assert!(within_limits(&view), "a view past the protocol's bounds");
         view
@@ -423,6 +426,19 @@ impl World {
         })
     }
 
+    /// One rune on the ground, or nothing when the entity is not one.
+    fn project_rune(&self, viewer: Option<Team>, entity: Entity) -> Option<bota_proto::RuneView> {
+        let crate::game::Rune { kind, gold, .. } = *self.rune.get(entity)?;
+        let at = self.transform.get(entity)?;
+        Some(bota_proto::RuneView {
+            id: wire_id(entity),
+            pos: at.pos,
+            kind,
+            gold: (kind == bota_proto::RuneKind::Bounty).then_some(gold),
+            seen_by: self.seen_by_sides(viewer, entity, false),
+        })
+    }
+
     /// The hero an entity shows as: the one it is an illusion of, or
     /// itself.
     fn shows_as(&self, entity: Entity) -> Entity {
@@ -546,6 +562,7 @@ fn within_limits(view: &WorldView) -> bool {
         && view.projectiles.len() <= MAX_PROJECTILES
         && view.players.len() <= MAX_SEATS
         && view.loot.len() <= MAX_SNAPSHOT_LOOT
+        && view.runes.len() <= MAX_SNAPSHOT_RUNES
         && view.felled_trees.len() <= MAX_STATIC_TREES
         && view.planted_trees.len() <= MAX_PLANTED_TREES
         && view.stock.len() <= 2 * MAX_SHOP_ENTRIES
@@ -595,6 +612,7 @@ fn keep_to_its_side(unit: &mut UnitView) {
         item.selling = None;
         item.locked = None;
         item.disassembly = None;
+        item.rune = None;
     }
 }
 

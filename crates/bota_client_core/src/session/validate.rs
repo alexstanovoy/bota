@@ -9,8 +9,8 @@ use bota_proto::{
 use crate::limits::{
     COURIER_ITEM_SLOTS, HERO_ITEM_SLOTS, MAX_ABILITY_SLOTS, MAX_EFFECTS_PER_UNIT,
     MAX_EVENTS_PER_BATCH, MAX_PLANTED_TREES, MAX_PROJECTILES, MAX_RESTORATION_REPORT, MAX_SEATS,
-    MAX_SHOP_ITEMS, MAX_SKIPPED_TICKS, MAX_SNAPSHOT_LOOT, MAX_STATIC_TREES, MAX_TRACKED_ENTITIES,
-    OWN_ITEM_SLOTS, PROJECTILE_MAP_MARGIN, STASH_ITEM_SLOTS,
+    MAX_SHOP_ITEMS, MAX_SKIPPED_TICKS, MAX_SNAPSHOT_LOOT, MAX_SNAPSHOT_RUNES, MAX_STATIC_TREES,
+    MAX_TRACKED_ENTITIES, OWN_ITEM_SLOTS, PROJECTILE_MAP_MARGIN, STASH_ITEM_SLOTS,
 };
 use crate::match_static::{MatchStatic, RawExtent, check_limit, validate_positions};
 use crate::session::SessionError;
@@ -90,7 +90,8 @@ pub(crate) fn snapshot(expect: &Expect<'_>, view: &WorldView) -> Result<(), Sess
 fn seen_by(view: &WorldView) -> Result<(), SessionError> {
     let told = view.units.iter().any(|unit| unit.seen_by.is_some())
         || view.projectiles.iter().any(|shot| shot.seen_by.is_some())
-        || view.loot.iter().any(|item| item.seen_by.is_some());
+        || view.loot.iter().any(|item| item.seen_by.is_some())
+        || view.runes.iter().any(|rune| rune.seen_by.is_some());
     match view.viewer {
         Some(_) if told => Err(SessionError::Stream(
             "a side's view says which sides see what",
@@ -233,6 +234,12 @@ fn dynamic_handles(view: &WorldView) -> Result<(), SessionError> {
         SessionError::DuplicateLoot,
         SessionError::UnsortedLoot,
     )?;
+    ascending(
+        &view.runes,
+        |rune| rune.id,
+        SessionError::DuplicateRune,
+        SessionError::UnsortedRunes,
+    )?;
     if !view.felled_trees.windows(2).all(|pair| pair[0] < pair[1]) {
         return Err(SessionError::UnsortedFelledTrees);
     }
@@ -285,6 +292,7 @@ fn snapshot_limits(view: &WorldView) -> Result<(), SessionError> {
         MAX_SKIPPED_TICKS,
     )?;
     check_limit("WorldView.loot", view.loot.len(), MAX_SNAPSHOT_LOOT)?;
+    check_limit("WorldView.runes", view.runes.len(), MAX_SNAPSHOT_RUNES)?;
     // Two sides' shelves for every item of the shop at most.
     check_limit("WorldView.stock", view.stock.len(), 2 * MAX_SHOP_ITEMS)?;
     check_limit(
@@ -662,6 +670,7 @@ fn snapshot_positions(cells: u32, view: &WorldView) -> Result<(), SessionError> 
         map,
     )?;
     validate_positions("WorldView.loot", view.loot.iter().map(|l| l.pos), map)?;
+    validate_positions("WorldView.runes", view.runes.iter().map(|r| r.pos), map)?;
     validate_positions(
         "WorldView.teleports",
         view.teleports.iter().map(|t| t.destination),

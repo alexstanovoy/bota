@@ -4,7 +4,7 @@
 //! [contract](crate::contract) says: those of the units it sees, and of who
 //! dealt them only a dealer it sees.
 
-use crate::{AbilityId, EntityId, Inflictor, ItemId, SlotId, Team, Vec2};
+use crate::{AbilityId, EntityId, Inflictor, ItemId, RuneKind, SlotId, Team, Vec2};
 use serde::{Deserialize, Serialize};
 
 /// How a chunk of damage is reduced before it is applied.
@@ -187,6 +187,47 @@ pub enum EventKind {
         /// unit stood. Absent for a use aimed at nothing.
         at: Option<Vec2>,
     },
+    /// A rune appeared at a spot of the map. Told to both sides wherever it
+    /// is, as Dota announces a spawn.
+    RuneSpawned {
+        /// Which rune.
+        kind: RuneKind,
+        /// Where it lies.
+        at: Vec2,
+    },
+    /// A hero took a rune and it took effect, at once or out of a Bottle.
+    /// Told to the sides that see the hero, and to its own.
+    RuneActivated {
+        /// The hero.
+        unit: EntityId,
+        /// Which rune.
+        kind: RuneKind,
+        /// Whether it came out of a Bottle.
+        bottled: bool,
+        /// The gold a Bounty Rune paid every hero of the hero's side. Absent
+        /// for any other rune.
+        gold: Option<i32>,
+    },
+    /// A hero took a rune into a Bottle. Told to the sides that see the
+    /// hero, and to its own.
+    RuneBottled {
+        /// The hero.
+        unit: EntityId,
+        /// Which rune.
+        kind: RuneKind,
+    },
+    /// A hero destroyed a rune with an attack order: neither a last hit nor
+    /// a deny. Told to both sides, as Dota announces it.
+    RuneDenied {
+        /// The hero.
+        unit: EntityId,
+        /// Which rune.
+        kind: RuneKind,
+        /// Where it lay.
+        at: Vec2,
+        /// The hero's side.
+        team: Team,
+    },
 }
 
 impl EventKind {
@@ -212,10 +253,14 @@ impl EventKind {
             }
             EventKind::AbilityCast { caster: unit, .. }
             | EventKind::LevelUp { unit, .. }
-            | EventKind::StructureDestroyed { unit, .. } => visit(unit),
+            | EventKind::StructureDestroyed { unit, .. }
+            | EventKind::RuneActivated { unit, .. }
+            | EventKind::RuneBottled { unit, .. }
+            | EventKind::RuneDenied { unit, .. } => visit(unit),
             EventKind::ItemBought { .. }
             | EventKind::Teleported { .. }
-            | EventKind::TreeGrew { .. } => {}
+            | EventKind::TreeGrew { .. }
+            | EventKind::RuneSpawned { .. } => {}
         }
     }
 }

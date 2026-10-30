@@ -57,6 +57,7 @@ pub(crate) fn stats() -> Stats {
         evasion: Odds::NEVER,
         lifesteal_pct: 0,
         magic_taken_pct: 0,
+        damage_taken_bp: rules::NOMINAL_BP,
         accuracy: Odds::NEVER,
     }
 }
@@ -663,6 +664,7 @@ pub(crate) fn fresh_stack(item: ItemId, charges: u8) -> ItemStack {
         locked: false,
         disassemble_until: 0,
         life: 0,
+        rune: None,
     }
 }
 
@@ -792,6 +794,7 @@ pub(crate) fn a_stack_of(item: ItemId, owner: u8) -> ItemStack {
         locked: false,
         disassemble_until: 0,
         life: 0,
+        rune: None,
     }
 }
 

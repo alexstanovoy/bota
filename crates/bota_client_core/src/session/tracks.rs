@@ -392,7 +392,11 @@ impl Tracks {
             | EventKind::ShrineActivated { .. }
             | EventKind::TreeFelled { .. }
             | EventKind::TreeGrew { .. }
-            | EventKind::ItemUsed { .. } => {}
+            | EventKind::ItemUsed { .. }
+            | EventKind::RuneSpawned { .. }
+            | EventKind::RuneActivated { .. }
+            | EventKind::RuneBottled { .. }
+            | EventKind::RuneDenied { .. } => {}
         }
     }
 

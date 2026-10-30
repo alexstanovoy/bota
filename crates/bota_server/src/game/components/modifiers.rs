@@ -75,6 +75,9 @@ fn replaces(fresh: &Modifier, held: &Modifier) -> bool {
             spell_effect(had) == spell_effect(ability)
                 && (!ability.per_source() || held.source == fresh.source)
         }
+        // Each Regeneration Rune taken is an instance of its own
+        // [LIQ Runes].
+        (ModifierKind::RuneRegeneration { .. }, ModifierKind::RuneRegeneration { .. }) => false,
         _ => std::mem::discriminant(&held.kind) == std::mem::discriminant(&fresh.kind),
     }
 }

@@ -1322,3 +1322,35 @@ pub(crate) const ITEM_TANGO_SINGLE: ItemData = ItemData {
         ("duration_to_use", &[Dec::of("40")]),
     ],
 };
+
+pub(crate) const ITEM_BOTTLE: ItemData = ItemData {
+    id: ItemId(56),
+    key: "item_bottle",
+    retired: false,
+    cost: 675,
+    behavior: B::IMMEDIATE
+        .and(B::NO_TARGET)
+        .and(B::OPTIONAL_UNIT_TARGET)
+        .and(B::SUPPRESS_ASSOCIATED_CONSUMABLE),
+    cast_range: 350,
+    cast_point: Ms::secs("0"),
+    channel: Ms::secs("0"),
+    cooldown: Ms::secs("0.5"),
+    mana: 0,
+    health: 0,
+    charges: 3,
+    stack: 0,
+    stock: None,
+    purchasable: true,
+    builds: &[],
+    values: &[
+        ("health_restore", &[Dec::of("110")]),
+        ("mana_restore", &[Dec::of("60")]),
+        ("health_restore_pct", &[Dec::of("0")]),
+        ("mana_restore_pct", &[Dec::of("0")]),
+        ("restore_time", &[Dec::of("2.7")]),
+        ("max_charges", &[Dec::of("3")]),
+        ("break_on_hero_damage", &[Dec::of("1")]),
+        ("rune_expire_time", &[Dec::of("90")]),
+    ],
+};

@@ -29,11 +29,12 @@ const TICK_RATE: usize = 30;
 /// withholds them), a byte for the dispenser counts of each item, absent
 /// on all but a Ward Dispenser, and two for whether each item is locked
 /// against combining and may be taken apart (a side's view withholds both
-/// behind one byte each).
+/// behind one byte each), and one for the rune of each, absent in all but a
+/// Bottle.
 #[test]
-fn a_hero_stays_under_273_bytes() {
+fn a_hero_stays_under_277_bytes() {
     let len = encoded_len(&hero_unit());
-    assert!(len <= 273, "hero unit grew to {len} bytes");
+    assert!(len <= 277, "hero unit grew to {len} bytes");
 }
 
 #[test]
@@ -153,6 +154,7 @@ fn an_empty_view_costs_almost_nothing() {
         view: empty_world_view(),
     };
     let len = encoded_len(&msg);
-    // The clock shift's absence is its one byte.
-    assert!(len <= 21, "an empty snapshot cost {len} bytes");
+    // The clock shift's absence is its one byte, and the runes' list its
+    // length's.
+    assert!(len <= 22, "an empty snapshot cost {len} bytes");
 }

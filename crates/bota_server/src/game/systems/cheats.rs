@@ -92,6 +92,11 @@ impl World {
                     self.create_hero(hero, team, at);
                 }
             }
+            Cheat::SpawnRune { kind, at } => {
+                if let Some(spot) = self.nearest_rune_spot(at) {
+                    self.put_rune(kind, spot);
+                }
+            }
             Cheat::SpawnCreeps => {
                 let wave = bota_core::latest_wave(self.clock()).unwrap_or(1);
                 self.spawn_wave(wave);
@@ -164,6 +169,12 @@ impl World {
             }
             Cheat::CreateCreeps { at, .. } => {
                 self.open_landing(*at).ok_or(RejectReason::ClosedGround)?;
+            }
+            Cheat::SpawnRune { kind, at } => {
+                if self.map.rune_spots.is_empty() || !self.runes.has(*kind) {
+                    return Err(RejectReason::BadCheat);
+                }
+                self.nearest_rune_spot(*at).ok_or(RejectReason::BadCheat)?;
             }
             Cheat::Teleport { at } => {
                 unit.ok_or(RejectReason::HeroDead)?;

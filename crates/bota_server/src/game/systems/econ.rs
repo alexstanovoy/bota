@@ -67,9 +67,14 @@ impl World {
         killer: Option<Entity>,
         events: &mut Vec<Event>,
     ) -> i32 {
-        let Some((bounty, fallen_seat, worths)) = self.price_of_fall(fallen) else {
+        let Some((mut bounty, fallen_seat, worths)) = self.price_of_fall(fallen) else {
             return 0;
         };
+        // An illusion pays its experience for a player's kill alone [LIQ
+        // Runes: "Illusion Bounty"; the experience only for a player kill].
+        if self.wears_illusion(fallen) && !killer.is_some_and(|killer| self.is_hero(killer)) {
+            bounty.xp = 0;
+        }
         let Some(side) = self.team.get(fallen).copied() else {
             return 0;
         };
@@ -205,7 +210,7 @@ impl World {
 
     /// Pays each seat `amount` through its hero's gold income, in order.
     /// Answers what the killer's seat was paid.
-    fn pay_seats(
+    pub(super) fn pay_seats(
         &mut self,
         seats: impl IntoIterator<Item = usize>,
         amount: i32,

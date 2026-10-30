@@ -47,6 +47,8 @@ pub struct ItemStack {
     /// Ticks left before it is gone, for a stack of an item with a
     /// [`lifetime`](bota_core::ItemDef::lifetime). Zero for one that lasts.
     pub life: u32,
+    /// The rune a Bottle holds. None for any other item.
+    pub rune: Option<crate::game::HeldRune>,
 }
 
 impl ItemStack {
@@ -70,6 +72,7 @@ impl ItemStack {
             locked: false,
             disassemble_until: 0,
             life: def.lifetime,
+            rune: None,
         })
     }
 
@@ -522,7 +525,8 @@ state_hash!(ItemStack {
     sentry_active,
     locked,
     disassemble_until,
-    life
+    life,
+    rune
 });
 state_hash!(Inventory {
     slots,

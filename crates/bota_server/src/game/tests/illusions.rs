@@ -47,6 +47,8 @@ fn stand_in_illusion(world: &mut World, hero: Entity, at: Vec2) -> Entity {
         Illusion {
             of: hero,
             made: world.tick,
+            dealt_bp: rules::NOMINAL_BP,
+            taken_bp: rules::NOMINAL_BP,
         },
     );
     world.put_modifier(

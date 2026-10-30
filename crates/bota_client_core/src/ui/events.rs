@@ -1,9 +1,13 @@
 //! What the client makes of the events of a tick: floaters, the kill feed,
 //! and cues for the front end.
 
-use bota_proto::{AbilityId, DamageKind, EntityId, EventKind, SlotId, UnitKind, UnitView};
+use bota_proto::{
+    AbilityId, DamageKind, EntityId, EventKind, RuneKind, SlotId, Team, UnitKind, UnitView,
+};
 
-use crate::ui::app::{App, CueKind, FeedKind, Floater, FloaterKind, Killer, MAX_TOLD, Victim};
+use crate::ui::app::{
+    App, CueKind, FeedKind, Floater, FloaterKind, Killer, MAX_TOLD, RuneAct, Victim,
+};
 
 /// Health share under which the low-health cue comes.
 const LOW_HP: f32 = 0.25;
@@ -96,7 +100,37 @@ impl App {
                 let by = by.and_then(|hero| self.seat_of_hero(hero));
                 self.push_feed(FeedKind::ShrineActivated { by, team, xp });
             }
+            EventKind::RuneActivated {
+                unit, kind, gold, ..
+            } => self.rune_line(unit, None, kind, RuneAct::Activated { gold }),
+            EventKind::RuneBottled { unit, kind } => {
+                self.rune_line(unit, None, kind, RuneAct::Bottled);
+            }
+            EventKind::RuneDenied {
+                unit, kind, team, ..
+            } => self.rune_line(unit, Some(team), kind, RuneAct::Denied),
+            EventKind::RuneSpawned { .. } => {}
         }
+    }
+
+    /// A feed line for a hero and a rune: the hero's seat if it is known, and
+    /// its side, told or read off the hero in the view.
+    fn rune_line(&mut self, hero: EntityId, told: Option<Team>, kind: RuneKind, act: RuneAct) {
+        let team = told.or_else(|| {
+            self.view()
+                .and_then(|view| view.unit(hero))
+                .map(|unit| unit.team)
+        });
+        let Some(team) = team else {
+            return;
+        };
+        let by = self.seat_of_hero(hero);
+        self.push_feed(FeedKind::Rune {
+            by,
+            team,
+            kind,
+            act,
+        });
     }
 
     /// A blow landing: its number when a hero is on either side of it, and

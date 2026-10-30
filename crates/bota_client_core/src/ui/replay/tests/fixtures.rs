@@ -75,6 +75,7 @@ pub fn snapshot(tick: u32) -> ReplayRecord {
             clock: None,
             felled_trees: Vec::new(),
             planted_trees: Vec::new(),
+            runes: Vec::new(),
         },
     })
 }

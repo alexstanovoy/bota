@@ -117,6 +117,12 @@ limits! {
     MAX_TERRAIN_RUNS: usize = 262_144;
     /// Most opaque cells of a map.
     MAX_OPAQUE_CELLS: usize = 262_144;
+    /// Most runes one view lists: a Bounty Rune lies until somebody takes
+    /// it, and a spot holds [`MAX_RUNES_AT_SPOT`] at most.
+    MAX_SNAPSHOT_RUNES: usize = 1_024;
+    /// Most runes that lie at one rune spot together; a spawn that would pass
+    /// it is skipped.
+    MAX_RUNES_AT_SPOT: usize = 16;
 }
 
 /// A hero's bag: the inventory and the backpack.
@@ -136,6 +142,7 @@ const _: () = {
     assert!(MAX_VIEW_UNITS * unit <= MAX_DECODED_BYTES);
     assert!(MAX_EVENTS_PER_BATCH * size_of::<crate::EventKind>() <= MAX_DECODED_BYTES);
     assert!(MAX_SNAPSHOT_LOOT * size_of::<crate::LootView>() <= MAX_DECODED_BYTES);
+    assert!(MAX_SNAPSHOT_RUNES * size_of::<crate::RuneView>() <= MAX_DECODED_BYTES);
     assert!(MAX_PROJECTILES * size_of::<crate::ProjectileView>() <= MAX_DECODED_BYTES);
     assert!(MAX_SHOP_ENTRIES * size_of::<crate::ShopEntry>() <= MAX_DECODED_BYTES);
     assert!(MAX_ORDERS_TOLD * size_of::<crate::SlotOrder>() <= MAX_DECODED_BYTES);

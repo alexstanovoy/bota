@@ -210,6 +210,8 @@ fn an_illusion_feeds_no_feast() {
         crate::game::Illusion {
             of: real,
             made: world.tick,
+            dealt_bp: bota_core::rules::NOMINAL_BP,
+            taken_bp: bota_core::rules::NOMINAL_BP,
         },
     );
     world.put_modifier(

@@ -170,6 +170,7 @@ impl World {
             locked: true,
             disassemble_until: 0,
             life: 0,
+            rune: None,
         }
     }
 

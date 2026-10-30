@@ -90,6 +90,13 @@ world_tables! {
         pub spawn_modifiers: Vec<SpawnModifier> = Vec::new();
         /// Trusted match setup's economic events still to come, in tick order.
         pub economy_events: crate::game::EconomySchedule = crate::game::EconomySchedule::default();
+        /// Which kinds of rune the match spawns.
+        pub runes: bota_proto::RuneSet = bota_proto::RuneSet::NONE;
+        /// What the power runes have spawned in the cycle they are in.
+        pub rune_cycle: bota_core::PowerCycle = bota_core::PowerCycle::default();
+        /// How many river runes have been put out, which keys the draws of the
+        /// next.
+        pub rune_draws: u32 = 0;
     }
 
     tables {
@@ -183,6 +190,8 @@ world_tables! {
         pub hero: HeroId;
         /// Which hero each entity that is an illusion shows as.
         pub illusion: crate::game::Illusion;
+        /// The rune each entity that is one is.
+        pub rune: crate::game::Rune;
         /// What each entity carries.
         pub inventory: Inventory;
         /// What each entity can cast.
@@ -642,8 +651,10 @@ impl World {
     fn step_upkeep(&mut self) {
         self.spawn_waves();
         self.fill_camps();
+        self.tick_runes();
         self.tick_shrines();
         self.tick_gear();
+        self.tick_bottles();
         self.assemble_bags();
         self.passive_gold();
         self.restock_shops();
@@ -658,6 +669,7 @@ impl World {
     /// protection and auras.
     fn step_effects(&mut self) {
         self.tick_modifiers();
+        self.tick_rune_regeneration();
         self.tick_hooks();
         self.tick_requiem_lines();
         self.tick_grenades();
@@ -682,6 +694,7 @@ impl World {
             modifiers: &self.modifiers,
             applied: &self.applied,
             abilities: &self.abilities,
+            illusion: &self.illusion,
             stats: &mut self.stats,
             health: &mut self.health,
             mana: &mut self.mana,
@@ -780,6 +793,7 @@ impl World {
 
     /// Attack orders tended, pools regenerated, actions run, missiles flown; what they told of goes into the tick's events.
     fn step_actions(&mut self, events: &mut Vec<crate::game::Event>) {
+        self.take_runes();
         self.tend_attack_orders();
         regenerate(
             &self.entities,
@@ -831,6 +845,7 @@ impl World {
         }
         self.burst_bubbles();
         self.break_on_blows(&felt);
+        self.damp_rune_regeneration(&felt);
         self.rouse_camps(&felt);
         self.owe_backdoor(&felt);
         self.credit_damage(&felt);

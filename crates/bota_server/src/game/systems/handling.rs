@@ -2,10 +2,11 @@
 //! ground.
 
 use bota_core::rules;
-use bota_proto::{Angle, EntityId, Target, Vec2};
+use bota_proto::{Angle, EntityId, EventKind, Fixed, Target, Team, Vec2};
 
 use crate::game::{
-    BAG_SLOTS, Entity, Handling, ItemStack, Loot, Transform, UnitOrder, Visibility, World,
+    BAG_SLOTS, Entity, Event, EventVisibility, Handling, ItemStack, Loot, Transform, UnitOrder,
+    Visibility, World, wire_id,
 };
 
 impl World {
@@ -15,7 +16,11 @@ impl World {
     /// unit's own feet; aimed at an allied unit with a bag, handed into it.
     /// The walking and the doing live with [`World::tick_handling`].
     pub fn put_item(&mut self, unit: Entity, slot: usize, target: Target) -> bool {
-        if slot >= BAG_SLOTS || self.held_in_bag(unit, slot).is_none() {
+        if slot >= BAG_SLOTS
+            || self
+                .held_in_bag(unit, slot)
+                .is_none_or(|stack| stack.rune.is_some())
+        {
             return false;
         }
         let errand = match target {
@@ -43,12 +48,32 @@ impl World {
         true
     }
 
+    /// Starts walking a hero over to a rune to destroy it: an attack order
+    /// at a rune [LIQ Runes: "Can be destroyed by an attack command"].
+    pub fn deny_rune_order(&mut self, unit: Entity, target: EntityId) -> bool {
+        let Some(mark) = self.of_wire(target) else {
+            return false;
+        };
+        if self.rune.get(mark).is_none() || !self.is_real_hero(unit) {
+            return false;
+        }
+        self.handling.insert(unit, Handling::Deny { rune: mark });
+        true
+    }
+
     /// Starts walking a unit over to a ground item to take it.
     pub fn take_item(&mut self, unit: Entity, target: EntityId) -> bool {
         let Some(mark) = self.of_wire(target) else {
             return false;
         };
-        if self.loot.get(mark).is_none() || self.inventory.get(unit).is_none() {
+        // A rune is walked to, and a hero within reach of it takes it
+        // ([`World::take_runes`]); a ground item goes into a free slot.
+        let takes = if self.rune.get(mark).is_some() {
+            self.is_real_hero(unit)
+        } else {
+            self.loot.get(mark).is_some() && self.inventory.get(unit).is_some()
+        };
+        if !takes {
             return false;
         }
         self.handling.insert(unit, Handling::Take { loot: mark });
@@ -75,6 +100,7 @@ impl World {
                 Handling::PutAt { slot, pos } => self.lay_at(unit, slot, pos),
                 Handling::PutTo { slot, to } => self.hand_to(unit, slot, to),
                 Handling::Take { loot } => self.take_from_ground(unit, loot),
+                Handling::Deny { rune } => self.deny_rune(unit, rune),
             };
             if done {
                 self.handling.remove(unit);
@@ -147,6 +173,9 @@ impl World {
     /// Walks a unit over to a ground item and takes it into the first free
     /// bag slot, a scroll into a hero's town portal slot.
     fn take_from_ground(&mut self, unit: Entity, loot: Entity) -> bool {
+        if self.rune.get(loot).is_some() {
+            return self.walk_to_rune(unit, loot);
+        }
         let Some(Loot(stack)) = self.loot.get(loot).copied() else {
             return true;
         };
@@ -189,6 +218,52 @@ impl World {
             disassemble_until: 0,
             ..stack
         }
+    }
+
+    /// Walks a hero into attack range of a rune and destroys it there. An
+    /// attack on a rune is neither a last hit nor a deny; both sides are
+    /// told. The swing's own time is not spent.
+    fn deny_rune(&mut self, unit: Entity, rune: Entity) -> bool {
+        let (Some(held), Some(spot), Some(from)) =
+            (self.rune.get(rune).copied(), self.pos(rune), self.pos(unit))
+        else {
+            return true;
+        };
+        let reach = self
+            .stats
+            .get(unit)
+            .map_or(Fixed::ZERO, |stats| stats.attack_range);
+        if !from.within(spot, reach) {
+            self.set_order(unit, UnitOrder::Move { pos: spot });
+            return false;
+        }
+        self.rune.remove(rune);
+        self.despawn(rune);
+        self.events.push(Event {
+            kind: EventKind::RuneDenied {
+                unit: wire_id(unit),
+                kind: held.kind,
+                at: spot,
+                team: self.team.get(unit).copied().unwrap_or(Team::Neutral),
+            },
+            visible_to: EventVisibility::Everyone,
+            gold_hidden_from: None,
+            source_told_to: EventVisibility::Everyone,
+        });
+        true
+    }
+
+    /// Walks a hero over to a rune until it is within reach: the rune is
+    /// taken the tick the hero is, by [`World::take_runes`]. An errand ends
+    /// with the rune, taken by anyone or gone with the next spawn.
+    fn walk_to_rune(&mut self, unit: Entity, rune: Entity) -> bool {
+        let Some(spot) = self.pos(rune) else {
+            return true;
+        };
+        if self.pos(unit).is_none() {
+            return true;
+        }
+        self.walk_into_reach(unit, spot, bota_core::RUNE_PICKUP_RANGE)
     }
 
     /// Whether a unit stands within `range` of a spot, sending it walking

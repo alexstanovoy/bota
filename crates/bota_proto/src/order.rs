@@ -5,7 +5,7 @@
 //! [`ClientMsg::Order::queue`](crate::ClientMsg::Order) and the
 //! [`contract`](crate::contract).
 
-use crate::{AbilitySlot, EntityId, HeroId, ItemId, ItemSlot, TalentSlot, Vec2};
+use crate::{AbilitySlot, EntityId, HeroId, ItemId, ItemSlot, RuneKind, TalentSlot, Vec2};
 use serde::{Deserialize, Serialize};
 
 /// Where an order is aimed.
@@ -248,6 +248,16 @@ pub enum Cheat {
         /// Where they stand up.
         at: Vec2,
     },
+    /// A rune of a kind appears at the map's rune spot nearest a spot, as a
+    /// rune of the schedule does (Dota's `dota_spawn_rune`). Refused with
+    /// [`RejectReason::BadCheat`](crate::RejectReason::BadCheat) on a map
+    /// without rune spots and for a kind the match's rules leave out.
+    SpawnRune {
+        /// Which rune.
+        kind: RuneKind,
+        /// The spot the nearest rune spot is found from.
+        at: Vec2,
+    },
 }
 
 /// Whose creeps a [`Cheat::KillCreeps`] takes away.
@@ -466,7 +476,8 @@ impl Order {
                 cheat:
                     Cheat::CreateHero { at: spot, .. }
                     | Cheat::Teleport { at: spot }
-                    | Cheat::CreateCreeps { at: spot, .. },
+                    | Cheat::CreateCreeps { at: spot, .. }
+                    | Cheat::SpawnRune { at: spot, .. },
             } => {
                 visit(spot);
                 return;
@@ -540,7 +551,8 @@ impl Order {
                     | Cheat::Teleport { .. }
                     | Cheat::ResetHero
                     | Cheat::TimeOfDay { .. }
-                    | Cheat::CreateCreeps { .. },
+                    | Cheat::CreateCreeps { .. }
+                    | Cheat::SpawnRune { .. },
             }
             | Order::Buy { .. }
             | Order::Sell { .. }

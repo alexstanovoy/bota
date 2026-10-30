@@ -2,7 +2,9 @@
 //! ([`bota_core::ITEMS`]) turned into the change it makes.
 
 use bota_core::{AllyUse, ItemDef, Mend, UseSpec, item_def};
-use bota_proto::{DispenserView, EventKind, Inflictor, ItemId, ItemView, Target, Team, Vec2};
+use bota_proto::{
+    DispenserView, EventKind, Inflictor, ItemId, ItemView, StoredRune, Target, Team, Vec2,
+};
 
 use crate::game::{Entity, Event, EventVisibility, Inventory, ItemStack, World, wire_id};
 
@@ -103,6 +105,7 @@ impl World {
                 self.replenish_mana(user, target, mana, (with, def.cast_range))
             }
             UseSpec::Grenade(_) => self.throw_grenade(user, target, item),
+            UseSpec::Bottle(drink) => self.use_bottle(user, slot, target, drink),
         }
     }
 
@@ -205,5 +208,9 @@ pub fn item_view(
         }),
         locked: Some(stack.locked),
         disassembly: bota_core::disassembly(stack.id, stack.disassemble_until.saturating_sub(now)),
+        rune: stack.rune.map(|rune| StoredRune {
+            kind: rune.kind,
+            ticks_left: rune.ticks_left,
+        }),
     }
 }

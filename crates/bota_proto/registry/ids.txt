@@ -153,6 +153,7 @@ item 52 live item_wind_lace
 item 53 live item_blood_grenade
 item 54 live item_ward_dispenser
 item 55 live item_tango_single
+item 56 live item_bottle
 
 effect 0 retired bota_haste
 effect 1 live modifier_flask_healing
@@ -225,6 +226,13 @@ effect 67 live modifier_lamp_on
 effect 68 live modifier_lamp_off
 effect 69 live modifier_watch_tower_invulnerable
 effect 70 live bota_shrine_ready
+effect 71 live modifier_rune_haste
+effect 72 live modifier_rune_doubledamage
+effect 73 live modifier_rune_arcane
+effect 74 live modifier_rune_regen
+effect 75 live modifier_rune_invis
+effect 76 live modifier_rune_shield
+effect 77 live modifier_bottle_regeneration
 
 neutral 0 live npc_dota_neutral_kobold
 neutral 1 live npc_dota_neutral_kobold_tunneler

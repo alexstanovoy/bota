@@ -145,6 +145,20 @@ pub struct Mend {
     pub breaks: bool,
 }
 
+/// What one drink of a Bottle does: health and mana mended together over
+/// the same time.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Drink {
+    /// Health it mends over the whole of it.
+    pub health: i32,
+    /// Mana it mends over the whole of it.
+    pub mana: i32,
+    /// How long it runs, in ticks.
+    pub ticks: u32,
+    /// How far it reaches an allied hero, in world units.
+    pub range: i32,
+}
+
 /// What a use of an item does, with the numbers that tune it. The server
 /// turns each variant into the change it makes to the world.
 #[derive(Clone, Copy, Debug)]
@@ -209,6 +223,10 @@ pub enum UseSpec {
     },
     /// Throws a Blood Grenade.
     Grenade(Grenade),
+    /// Drinks a charge, or lets out the rune the item holds instead:
+    /// Dota's `item_bottle`. It also stores the rune its holder takes
+    /// (see [`ItemDef::stores_runes`]).
+    Bottle(Drink),
 }
 
 /// Where a scroll carries and what it shows on the way.
@@ -350,6 +368,13 @@ pub struct ItemDef {
     pub ignores_channel: bool,
     /// Whether no shop sells it: it only ever comes of what a seat holds.
     pub unbuyable: bool,
+    /// Whether a stack that has spent its last charge stays, to be refilled:
+    /// the Bottle's, filled again at the fountain. Any other is gone.
+    pub kept_empty: bool,
+    /// Whether an order may also aim it at an allied hero in reach, besides
+    /// the nothing its [`aim`](ItemDef::aim) names: Dota's
+    /// `DOTA_ABILITY_BEHAVIOR_OPTIONAL_UNIT_TARGET`.
+    pub ally_target: bool,
     /// What using it does.
     pub effect: UseSpec,
     /// What a use aimed at an allied unit does, within [`cast_range`](Self::cast_range) of
@@ -426,6 +451,20 @@ impl ItemDef {
             UseSpec::Mend(mend) => Some(mend),
             _ => None,
         }
+    }
+
+    /// What a drink of it does, if it is a Bottle.
+    pub const fn drink(&self) -> Option<Drink> {
+        match self.effect {
+            UseSpec::Bottle(drink) => Some(drink),
+            _ => None,
+        }
+    }
+
+    /// Whether it keeps the rune its holder takes: a Bottle does, in place of
+    /// letting the rune take effect.
+    pub const fn stores_runes(&self) -> bool {
+        self.drink().is_some()
     }
 
     /// Health and mana restored per charge, if it restores.
@@ -508,6 +547,8 @@ pub(crate) const PLAIN: ItemDef = ItemDef {
     immediate: false,
     ignores_channel: false,
     unbuyable: false,
+    kept_empty: false,
+    ally_target: false,
     effect: UseSpec::None,
     ally: None,
     lifetime: 0,

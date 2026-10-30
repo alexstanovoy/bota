@@ -612,3 +612,32 @@ field Order::SetCombineLock 1 locked: bool
 variant RejectReason 28 NotDisassemblable
 variant RejectReason 29 CannotLockCombining
 field ServerMsg::LobbyState 4 catalogue: CataloguePrefix
+variant Cheat 21 SpawnRune {}
+field Cheat::SpawnRune 0 kind: RuneKind
+field Cheat::SpawnRune 1 at: Vec2
+variant EventKind 15 RuneSpawned {}
+field EventKind::RuneSpawned 0 kind: RuneKind
+field EventKind::RuneSpawned 1 at: Vec2
+variant EventKind 16 RuneActivated {}
+field EventKind::RuneActivated 0 unit: EntityId
+field EventKind::RuneActivated 1 kind: RuneKind
+field EventKind::RuneActivated 2 bottled: bool
+field EventKind::RuneActivated 3 gold: Option<i32>
+variant EventKind 17 RuneBottled {}
+field EventKind::RuneBottled 0 unit: EntityId
+field EventKind::RuneBottled 1 kind: RuneKind
+variant EventKind 18 RuneDenied {}
+field EventKind::RuneDenied 0 unit: EntityId
+field EventKind::RuneDenied 1 kind: RuneKind
+field EventKind::RuneDenied 2 at: Vec2
+field EventKind::RuneDenied 3 team: Team
+field ItemView 14 rune: Option<StoredRune>
+variant RejectReason 30 HoldsRune
+field RuneView 0 id: EntityId
+field RuneView 1 pos: Vec2
+field RuneView 2 kind: RuneKind
+field RuneView 3 gold: Option<i32>
+field RuneView 4 seen_by: Option<SeenBy>
+field StoredRune 0 kind: RuneKind
+field StoredRune 1 ticks_left: u32
+field WorldView 16 runes: Vec<RuneView>

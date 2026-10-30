@@ -45,6 +45,23 @@ pub fn item_view(slot: u16) -> ItemView {
         dispenser: None,
         locked: Some(false),
         disassembly: None,
+        rune: (slot == 55).then_some(StoredRune {
+            kind: RuneKind::Haste,
+            ticks_left: 900,
+        }),
+    }
+}
+
+pub fn rune_view() -> RuneView {
+    RuneView {
+        id: entity(22),
+        pos: Vec2::from_ints(7576, 10328),
+        kind: RuneKind::Bounty,
+        gold: Some(46),
+        seen_by: Some(SeenBy {
+            radiant: true,
+            dire: true,
+        }),
     }
 }
 
@@ -218,7 +235,7 @@ pub fn player_view(slot: u8) -> PlayerView {
         ),
         kit: Some(Kit {
             abilities: vec![ability_view(0)],
-            items: vec![Some(item_view(3)), None],
+            items: vec![Some(item_view(55)), None],
             town_portal: Some(item_view(8)),
         }),
         kills: 3,
@@ -285,6 +302,7 @@ pub fn world_view(creeps: u32) -> WorldView {
             game: 600,
             day: 9000,
         }),
+        runes: vec![rune_view()],
     }
 }
 
@@ -539,6 +557,7 @@ pub fn empty_world_view() -> WorldView {
         teleports: Vec::new(),
         glyphs: Vec::new(),
         clock: None,
+        runes: Vec::new(),
     }
 }
 
@@ -624,6 +643,26 @@ pub fn all_events() -> Vec<EventKind> {
             caster: Some(entity(7)),
             item: ItemId(31),
             at: Some(Vec2::from_ints(7904, 8976)),
+        },
+        EventKind::RuneSpawned {
+            kind: RuneKind::Arcane,
+            at: Vec2::from_ints(7576, 10328),
+        },
+        EventKind::RuneActivated {
+            unit: entity(7),
+            kind: RuneKind::Haste,
+            bottled: true,
+            gold: Some(46),
+        },
+        EventKind::RuneBottled {
+            unit: entity(7),
+            kind: RuneKind::Water,
+        },
+        EventKind::RuneDenied {
+            unit: entity(7),
+            kind: RuneKind::Shield,
+            at: Vec2::from_ints(10396, 8000),
+            team: Team::Dire,
         },
     ]
 }

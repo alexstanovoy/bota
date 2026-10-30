@@ -230,6 +230,48 @@ pub enum ModifierKind {
     /// A Shrine of Wisdom holding the experience of its last activation for
     /// whoever gathers it.
     ShrineReady,
+    /// A Haste Rune (`modifier_rune_haste`): the wearer moves at
+    /// [`HASTE_RUNE_SPEED`](crate::HASTE_RUNE_SPEED) at least, and nothing
+    /// slows it below that.
+    RuneHaste,
+    /// An Amplify Damage Rune (`modifier_rune_doubledamage`): the main
+    /// attack damage grows by [`AMPLIFY_DAMAGE_PCT`](crate::AMPLIFY_DAMAGE_PCT)
+    /// percent and spells deal [`AMPLIFY_SPELL_AMP_BP`](crate::AMPLIFY_SPELL_AMP_BP)
+    /// basis points more.
+    RuneAmplifyDamage,
+    /// An Arcane Rune (`modifier_rune_arcane`): cooldowns are
+    /// [`ARCANE_COOLDOWN_CUT_BP`](crate::ARCANE_COOLDOWN_CUT_BP) shorter and
+    /// mana costs [`ARCANE_MANA_CUT_BP`](crate::ARCANE_MANA_CUT_BP) lower,
+    /// basis points of what they would be.
+    RuneArcane,
+    /// A Regeneration Rune (`modifier_rune_regen`): a share of the maximum
+    /// health and mana mends every second, until both pools are full. Each
+    /// one taken is an instance of its own.
+    RuneRegeneration {
+        /// Ticks the share stays at
+        /// [`REGENERATION_DAMPED_PCT`](crate::REGENERATION_DAMPED_PCT) for a
+        /// blow from a hero: zero while it mends at full rate.
+        damped: u16,
+    },
+    /// An Invisibility Rune (`modifier_rune_invis`): after
+    /// [`INVISIBILITY_FADE_TICKS`](crate::INVISIBILITY_FADE_TICKS) the wearer
+    /// is seen only through true sight, until it attacks, casts or uses an
+    /// item.
+    RuneInvisibility,
+    /// A Shield Rune (`modifier_rune_shield`): a barrier of `left` health
+    /// that takes damage of every kind before health does.
+    RuneShield {
+        /// Damage the barrier still takes.
+        left: i32,
+    },
+    /// A drink of a Bottle (`modifier_bottle_regeneration`): health and mana
+    /// mend over time, until a blow from an enemy hero puts it out.
+    BottleRegeneration {
+        /// Hundredths of a point of health a tick.
+        hp_per_tick: i32,
+        /// Hundredths of a point of mana a tick.
+        mana_per_tick: i32,
+    },
     /// What a neutral's spell left, at the level it was cast at. `amount`
     /// is the spell's own count: the blows a Steal Weapon has counted, the
     /// magical damage a bubble has left to soak.
@@ -287,6 +329,13 @@ impl ModifierKind {
             },
             ModifierKind::Dismembered { .. } => EffectId::DISMEMBERED,
             ModifierKind::MeatShield { .. } => EffectId::MEAT_SHIELD,
+            ModifierKind::RuneHaste => EffectId::RUNE_HASTE,
+            ModifierKind::RuneAmplifyDamage => EffectId::RUNE_AMPLIFY_DAMAGE,
+            ModifierKind::RuneArcane => EffectId::RUNE_ARCANE,
+            ModifierKind::RuneRegeneration { .. } => EffectId::RUNE_REGENERATION,
+            ModifierKind::RuneInvisibility => EffectId::RUNE_INVISIBILITY,
+            ModifierKind::RuneShield { .. } => EffectId::RUNE_SHIELD,
+            ModifierKind::BottleRegeneration { .. } => EffectId::BOTTLE_REGENERATION,
         }
     }
 
@@ -349,6 +398,12 @@ impl ModifierKind {
             ModifierKind::Feasting { souls, .. } | ModifierKind::FeastLinger { souls } => {
                 Some(souls as u32)
             }
+            ModifierKind::RuneShield { left } => Some(if left > 0 { left as u32 } else { 0 }),
+            ModifierKind::RuneRegeneration { damped } => Some(if damped > 0 {
+                crate::REGENERATION_DAMPED_PCT as u32
+            } else {
+                crate::REGENERATION_PCT as u32
+            }),
             _ => None,
         }
     }

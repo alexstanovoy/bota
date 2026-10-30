@@ -2,7 +2,8 @@
 
 use crate::{
     AbilityId, Aim, Angle, Attribute, Attributes, EffectId, EntityId, EventKind, Fixed, HeroId,
-    Inflictor, ItemId, NeutralId, Order, ProjectileModel, SlotId, TalentSlot, Team, UnitKind, Vec2,
+    Inflictor, ItemId, NeutralId, Order, ProjectileModel, RuneKind, SlotId, TalentSlot, Team,
+    UnitKind, Vec2,
 };
 use serde::{Deserialize, Serialize};
 
@@ -132,6 +133,9 @@ pub struct ItemView {
     /// carried (a stash slot out of reach is refused on its own). Absent for
     /// an item that cannot be taken apart now, and on a unit of another side.
     pub disassembly: Option<Disassembly>,
+    /// The rune a Bottle holds. Absent for any other item and for a Bottle
+    /// holding none; told to the Bottle's own side alone. Last on the wire.
+    pub rune: Option<StoredRune>,
 }
 
 /// When an item may be taken apart.
@@ -142,6 +146,33 @@ pub enum Disassembly {
     /// For this many more ticks, from its being combined, unless it is used
     /// or leaves its owner's hands before then.
     Window { ticks_left: u32 },
+}
+
+/// A rune kept in a Bottle (Dota's Store Rune): it takes effect when the
+/// Bottle is used, or by itself when its time runs out.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct StoredRune {
+    /// Which rune it is.
+    pub kind: RuneKind,
+    /// Ticks before it takes effect by itself.
+    pub ticks_left: u32,
+}
+
+/// A rune lying on the ground that the viewing team can see.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct RuneView {
+    /// Stable handle for this rune.
+    pub id: EntityId,
+    /// Where it lies.
+    pub pos: Vec2,
+    /// Which rune it is.
+    pub kind: RuneKind,
+    /// The gold it pays every hero of the side that takes it. Absent for any
+    /// rune but a Bounty Rune: its worth is fixed when it appears.
+    pub gold: Option<i32>,
+    /// Which sides see it. Told only in a view of the whole map; absent in a
+    /// side's view. Last on the wire.
+    pub seen_by: Option<SeenBy>,
 }
 
 /// The two counts a Ward Dispenser keeps in its one slot, and which of the
@@ -679,9 +710,15 @@ pub struct WorldView {
     /// viewing side's in full, the other's without its cooldown.
     #[serde(deserialize_with = "crate::bounded::seq::<_, _, { crate::limits::MAX_SEATS }>")]
     pub glyphs: Vec<GlyphView>,
-    /// How far cheats moved the clocks, absent while they never did. Last on
-    /// the wire.
+    /// How far cheats moved the clocks, absent while they never did.
     pub clock: Option<ClockShift>,
+    /// Every rune lying on the ground currently visible, sorted by
+    /// [`EntityId`]. A client that kept sight of a spot remembers what it
+    /// saw there on its own. Last on the wire.
+    #[serde(
+        deserialize_with = "crate::bounded::seq::<_, _, { crate::limits::MAX_SNAPSHOT_RUNES }>"
+    )]
+    pub runes: Vec<RuneView>,
 }
 
 /// How far cheats moved the clocks of a match: the game clock (`-startgame`)
@@ -733,6 +770,9 @@ impl WorldView {
         }
         for loot in &mut self.loot {
             visit(&mut loot.id);
+        }
+        for rune in &mut self.runes {
+            visit(&mut rune.id);
         }
         for entry in &mut self.aggro {
             visit(&mut entry.unit);

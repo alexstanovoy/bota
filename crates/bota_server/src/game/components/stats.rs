@@ -79,6 +79,10 @@ pub struct Stats {
     pub lifesteal_pct: i32,
     /// Percent more magical damage it takes.
     pub magic_taken_pct: i32,
+    /// Share of the damage that reaches it, after armor and resistance, that
+    /// it takes, in basis points where 10_000 is all of it: an illusion
+    /// takes more than that.
+    pub damage_taken_bp: i32,
     /// Chance an attack of its goes through evasion: every source of it
     /// stacked as Dota stacks accuracy.
     pub accuracy: Odds,

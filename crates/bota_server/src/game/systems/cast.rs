@@ -34,7 +34,9 @@ impl World {
         let Some(def) = ability_def(ability.id) else {
             return false;
         };
-        if def.passive || ability.level == 0 || ability.cooldown > 0 {
+        // An illusion casts nothing, and uses no item.
+        if def.passive || ability.level == 0 || ability.cooldown > 0 || self.wears_illusion(entity)
+        {
             return false;
         }
         let cost = self.ability_mana_cost(entity, ability.id, ability.level);

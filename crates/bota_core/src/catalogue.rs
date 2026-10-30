@@ -305,6 +305,12 @@ impl Fnv {
                 .int(grenade.damage_per_second as i64)
                 .int(grenade.slow_pct as i64)
                 .u64(grenade.debuff_ticks as u64),
+            UseSpec::Bottle(drink) => self
+                .u64(13)
+                .int(drink.health as i64)
+                .int(drink.mana as i64)
+                .u64(drink.ticks as u64)
+                .int(drink.range as i64),
         }
     }
 
@@ -361,6 +367,8 @@ const fn item_digest(def: &ItemDef) -> u64 {
         immediate,
         ignores_channel,
         unbuyable,
+        kept_empty,
+        ally_target,
         effect,
         ally,
         lifetime,
@@ -411,6 +419,8 @@ const fn item_digest(def: &ItemDef) -> u64 {
         .flag(immediate)
         .flag(ignores_channel)
         .flag(unbuyable)
+        .flag(kept_empty)
+        .flag(ally_target)
         .effect(effect)
         .ally(ally)
         .u64(lifetime as u64)

@@ -3,8 +3,8 @@
 use std::sync::Arc;
 
 use bota_proto::{
-    AbilityId, ClientMsg, EntityId, EventKind, MatchStats, Order, PlayerView, ServerMsg, SlotId,
-    StockView, TalentSlot, TalentView, Team, UnitKind, UnitView, Vec2, WorldView,
+    AbilityId, ClientMsg, EntityId, EventKind, MatchStats, Order, PlayerView, RuneKind, ServerMsg,
+    SlotId, StockView, TalentSlot, TalentView, Team, UnitKind, UnitView, Vec2, WorldView,
 };
 
 use crate::commands::CommandError;
@@ -360,6 +360,25 @@ pub enum FeedKind {
         team: Team,
         xp: i32,
     },
+    /// A hero took a rune, bottled one or destroyed one, as Dota's feed
+    /// tells it: the seat of the hero if it is known, and its side.
+    Rune {
+        by: Option<SlotId>,
+        team: Team,
+        kind: RuneKind,
+        act: RuneAct,
+    },
+}
+
+/// What a hero did with a rune in a feed line.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RuneAct {
+    /// The rune took effect; a Bounty Rune names the gold it paid.
+    Activated { gold: Option<i32> },
+    /// The rune went into a Bottle.
+    Bottled,
+    /// An attack destroyed it.
+    Denied,
 }
 
 /// Who fell in a feed line.

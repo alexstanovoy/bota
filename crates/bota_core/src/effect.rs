@@ -232,6 +232,13 @@ const EFFECT_ROWS: &[EffectDef] = &[
     buff(68, "modifier_lamp_off", "LampOff"),
     buff(69, "modifier_watch_tower_invulnerable", "CaptureGuard"),
     buff(70, "bota_shrine_ready", "ShrineReady"),
+    buff(71, "modifier_rune_haste", "RuneHaste"),
+    buff(72, "modifier_rune_doubledamage", "RuneAmplifyDamage"),
+    buff(73, "modifier_rune_arcane", "RuneArcane"),
+    buff(74, "modifier_rune_regen", "RuneRegeneration"),
+    buff(75, "modifier_rune_invis", "RuneInvisibility"),
+    buff(76, "modifier_rune_shield", "RuneShield"),
+    fleeting(77, "modifier_bottle_regeneration", "BottleRegeneration"),
 ];
 
 /// How many effect ids the protocol has ever handed out, retired ones

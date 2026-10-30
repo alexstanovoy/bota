@@ -309,6 +309,7 @@ impl World {
                         held.kind,
                         ModifierKind::Mending { breaks: true, .. }
                             | ModifierKind::Clarity { breaks: true, .. }
+                            | ModifierKind::BottleRegeneration { .. }
                     )
                 });
             }

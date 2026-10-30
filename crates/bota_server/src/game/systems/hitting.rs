@@ -203,7 +203,43 @@ fn damage_taken<const AMPLIFIED: bool>(
             taken = soak(on_it, taken);
         }
     }
-    blocked(taken, on_it.as_deref())
+    let taken = blocked(taken, on_it.as_deref());
+    // What the target takes more or less of than lands on others, as an
+    // illusion takes more.
+    let taken = (i64::from(taken) * i64::from(stat.damage_taken_bp) / i64::from(rules::NOMINAL_BP))
+        .clamp(0, i64::from(i32::MAX)) as i32;
+    match on_it {
+        Some(on_it) => barrier(on_it, taken),
+        None => taken,
+    }
+}
+
+/// What is left of a blow's damage once the barriers on the target have
+/// taken theirs, after armor, resistance and every cut: a Shield Rune's
+/// barrier takes damage of every kind, the first put on first, and is gone
+/// when it is spent [LIQ Runes: "absorbs damage instances (after
+/// reductions)"].
+fn barrier(on_it: &mut Modifiers, mut taken: i32) -> i32 {
+    if taken == 0 {
+        return 0;
+    }
+    for held in on_it.0.iter_mut() {
+        if taken == 0 {
+            break;
+        }
+        if held.ticks_left == Some(0) {
+            continue;
+        }
+        if let ModifierKind::RuneShield { left } = &mut held.kind {
+            let soaked = taken.min((*left).max(0));
+            *left -= soaked;
+            taken -= soaked;
+        }
+    }
+    on_it
+        .0
+        .retain(|held| !matches!(held.kind, ModifierKind::RuneShield { left } if left <= 0));
+    taken
 }
 
 /// Magical damage after the extra a target takes, in percent.

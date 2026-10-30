@@ -1,14 +1,15 @@
 //! Working out what each entity fights by, from scratch, every tick.
 
 use bota_core::{
-    Buff, Carried, Growth, ModifierKind, NeutralAbility, Odds, Regen, Stat, Talent, UnitDef,
-    agility_armor, agility_attack_speed, intelligence_magic_resist_bp, primary_damage, regen,
-    rules, soul_damage, spell_buff,
+    AMPLIFY_DAMAGE_PCT, AMPLIFY_SPELL_AMP_BP, ARCANE_COOLDOWN_CUT_BP, ARCANE_MANA_CUT_BP, Buff,
+    Carried, Growth, HASTE_RUNE_SPEED, INVISIBILITY_FADE_TICKS, ModifierKind, NeutralAbility, Odds,
+    Regen, Stat, Talent, UnitDef, agility_armor, agility_attack_speed,
+    intelligence_magic_resist_bp, primary_damage, regen, rules, soul_damage, spell_buff,
 };
 use bota_proto::{Attributes, Fixed, ModifierSpec};
 
 use crate::game::{
-    AbilityBook, AppliedModifiers, Def, EntityAllocator, Health, Inventory, Level,
+    AbilityBook, AppliedModifiers, Def, EntityAllocator, Health, Illusion, Inventory, Level,
     MAX_COMBINED_MODIFIER_SCALE, Mana, Modifier, Modifiers, StatBonus, Stats, Table, Upgrades,
     carried_bonus, disabled_in,
 };
@@ -35,6 +36,9 @@ pub struct StatsCx<'a> {
     pub health: &'a mut Table<Health>,
     /// Mana, which follows its maximum.
     pub mana: &'a mut Table<Mana>,
+    /// What each illusion is: the share of its hero's damage it deals and
+    /// of the damage dealt to it that lands.
+    pub illusion: &'a Table<Illusion>,
     /// Whether it is night, which every unit sees by.
     pub night: bool,
 }
@@ -60,6 +64,7 @@ pub fn derive_stats(cx: StatsCx<'_>) {
         stats,
         health,
         mana,
+        illusion: illusions,
         night,
     } = cx;
     for entity in entities.iter() {
@@ -151,7 +156,36 @@ pub fn derive_stats(cx: StatsCx<'_>) {
                 kind.unbounded_pace,
             ),
         };
+        // A Haste Rune moves its wearer at the haste speed at least, and
+        // what slows it cannot take it below.
+        if working().any(|held| held.kind == ModifierKind::RuneHaste) {
+            now.move_speed = now
+                .move_speed
+                .max(scaled_bp(Fixed::from_int(HASTE_RUNE_SPEED), pace_scale_bp));
+        }
         attack_damage(&mut now, &sums);
+        // An Arcane Rune shortens what is left once every other source has
+        // had its say: its cut stacks multiplicatively [LIQ Runes].
+        if working().any(|held| held.kind == ModifierKind::RuneArcane) {
+            let cut = |rate: i32, cut_bp: i32| {
+                (i64::from(rate) * i64::from(rules::NOMINAL_BP - cut_bp)
+                    / i64::from(rules::NOMINAL_BP)) as i32
+            };
+            now.cooldown_rate_bp = cut(now.cooldown_rate_bp, ARCANE_COOLDOWN_CUT_BP);
+            now.mana_cost_rate_bp = cut(now.mana_cost_rate_bp, ARCANE_MANA_CUT_BP);
+        }
+        // An illusion deals a share of its hero's damage and takes more of
+        // what is dealt to it.
+        if let Some(illusion) = illusions.get(entity) {
+            let dealt = |amp: i32| {
+                (i64::from(amp) * i64::from(illusion.dealt_bp) / i64::from(rules::NOMINAL_BP))
+                    as i32
+            };
+            now.physical_amp_bp = dealt(now.physical_amp_bp);
+            now.magic_amp_bp = dealt(now.magic_amp_bp);
+            now.pure_amp_bp = dealt(now.pure_amp_bp);
+            now.damage_taken_bp = illusion.taken_bp;
+        }
         let max = Regen {
             hp: now.max_hp,
             mana: now.max_mana,
@@ -425,6 +459,23 @@ fn add_modifiers<'a>(
                 now.accuracy = now.accuracy.or(Odds::percent(rules::FOUNTAIN_ACCURACY_PCT));
             }
             ModifierKind::Fortified => now.glyph = true,
+            // An Amplify Damage Rune: more main attack damage, and spells
+            // that deal more, added to every other source of either.
+            ModifierKind::RuneAmplifyDamage => {
+                sums.damage_pct += kept(wearer.illusion, AMPLIFY_DAMAGE_PCT);
+                now.magic_amp_bp += AMPLIFY_SPELL_AMP_BP;
+                now.pure_amp_bp += AMPLIFY_SPELL_AMP_BP;
+            }
+            // An Invisibility Rune hides its wearer once it has faded.
+            ModifierKind::RuneInvisibility => {
+                let faded = held
+                    .ticks_total
+                    .zip(held.ticks_left)
+                    .is_some_and(|(total, left)| {
+                        total.saturating_sub(left) >= INVISIBILITY_FADE_TICKS
+                    });
+                now.hides |= faded;
+            }
             ModifierKind::VisionGrant { side, day, night } => {
                 let radius = if wearer.night { night } else { day };
                 now.vision_grant = Some((side, Fixed::from_int(radius)));
@@ -453,7 +504,12 @@ fn add_modifiers<'a>(
             | ModifierKind::FleshHeap { .. }
             | ModifierKind::Souls { .. }
             | ModifierKind::Feasting { .. }
-            | ModifierKind::FeastLinger { .. } => {}
+            | ModifierKind::FeastLinger { .. }
+            | ModifierKind::RuneHaste
+            | ModifierKind::RuneArcane
+            | ModifierKind::RuneRegeneration { .. }
+            | ModifierKind::RuneShield { .. }
+            | ModifierKind::BottleRegeneration { .. } => {}
         }
     }
 }
@@ -636,6 +692,7 @@ fn raised(kind: &UnitDef, levels: i32, steps: i32, night: bool) -> Stats {
         evasion: Odds::NEVER,
         lifesteal_pct: 0,
         magic_taken_pct: 0,
+        damage_taken_bp: rules::NOMINAL_BP,
         accuracy: Odds::NEVER,
         move_speed: Fixed::from_int(kind.move_speed + up.move_speed),
         turn_rate: kind.turn_rate,

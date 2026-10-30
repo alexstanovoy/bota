@@ -7,7 +7,8 @@ use bota_proto::{Aim, Attribute, Attributes, Fixed, ItemId};
 
 use super::items::*;
 use crate::{
-    AllyUse, Carried, Dec, DisassembleRule, Grenade, ItemData, ItemDef, Mend, NOTHING,
+    AllyUse, BOTTLE_CHARGES, BOTTLE_COOLDOWN, BOTTLE_COST, BOTTLE_HP, BOTTLE_MANA, BOTTLE_RANGE,
+    BOTTLE_TICKS, Carried, Dec, DisassembleRule, Drink, Grenade, ItemData, ItemDef, Mend, NOTHING,
     OBSERVER_WARD, Odds, PLAIN, Pool, Recipe, SENTRY_WARD, Scroll, Spends, Stock, UseSpec,
     hundredths_per_second, points, points_with, rules,
 };
@@ -675,7 +676,36 @@ pub(crate) const ITEM_ROWS: &[ItemDef] = &[
         lifetime: ticks(&ITEM_TANGO_SINGLE, "duration_to_use"),
         ..from(&ITEM_TANGO_SINGLE)
     },
+    // Bottle: also Liquipedia's *Bottle* and the rune rules of `rune.rs`. Three charges kept (an
+    // empty one stays, to be filled at the fountain), used beside whatever the body is doing, on
+    // its user or an allied hero in reach; it keeps a rune its holder takes.
+    ItemDef {
+        name: "Bottle",
+        aim: Some(Aim::Own),
+        spends: Spends::One,
+        immediate: true,
+        kept_empty: true,
+        ally_target: true,
+        effect: UseSpec::Bottle(Drink {
+            health: int(&ITEM_BOTTLE, "health_restore"),
+            mana: int(&ITEM_BOTTLE, "mana_restore"),
+            ticks: ticks(&ITEM_BOTTLE, "restore_time"),
+            range: ITEM_BOTTLE.cast_range,
+        }),
+        ..from(&ITEM_BOTTLE)
+    },
 ];
+
+// The Bottle's numbers `rune.rs` names for the server are the script's.
+const _: () = {
+    assert!(BOTTLE_COST == ITEM_BOTTLE.cost);
+    assert!(BOTTLE_CHARGES == ITEM_BOTTLE.charges);
+    assert!(BOTTLE_COOLDOWN == ITEM_BOTTLE.cooldown.ticks());
+    assert!(BOTTLE_HP == int(&ITEM_BOTTLE, "health_restore"));
+    assert!(BOTTLE_MANA == int(&ITEM_BOTTLE, "mana_restore"));
+    assert!(BOTTLE_RANGE == ITEM_BOTTLE.cast_range);
+    assert!(BOTTLE_TICKS == ticks(&ITEM_BOTTLE, "restore_time"));
+};
 
 // The server beats a grenade's debuff once a second and reads a scroll's band
 // as a ring around a building: the script must say the same.

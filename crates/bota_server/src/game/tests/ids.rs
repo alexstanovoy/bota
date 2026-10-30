@@ -71,6 +71,16 @@ fn every_modifier() -> Vec<ModifierKind> {
         ModifierKind::LampOff,
         ModifierKind::CaptureGuard,
         ModifierKind::ShrineReady,
+        ModifierKind::RuneHaste,
+        ModifierKind::RuneAmplifyDamage,
+        ModifierKind::RuneArcane,
+        ModifierKind::RuneRegeneration { damped: 0 },
+        ModifierKind::RuneInvisibility,
+        ModifierKind::RuneShield { left: 1 },
+        ModifierKind::BottleRegeneration {
+            hp_per_tick: 1,
+            mana_per_tick: 1,
+        },
     ];
     for kind in &every {
         match kind {
@@ -113,6 +123,13 @@ fn every_modifier() -> Vec<ModifierKind> {
             | ModifierKind::LampOff
             | ModifierKind::CaptureGuard
             | ModifierKind::ShrineReady
+            | ModifierKind::RuneHaste
+            | ModifierKind::RuneAmplifyDamage
+            | ModifierKind::RuneArcane
+            | ModifierKind::RuneRegeneration { .. }
+            | ModifierKind::RuneInvisibility
+            | ModifierKind::RuneShield { .. }
+            | ModifierKind::BottleRegeneration { .. }
             | ModifierKind::Spell { .. } => {}
             ModifierKind::Dismembered { .. } | ModifierKind::MeatShield { .. } => {}
         }

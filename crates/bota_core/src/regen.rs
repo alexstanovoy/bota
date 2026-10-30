@@ -49,6 +49,21 @@ fn from_modifier(kind: ModifierKind, max: Regen) -> Regen {
     let (hp, mana) = match kind {
         ModifierKind::Mending { per_tick, .. } => (per_tick, Fixed::ZERO),
         ModifierKind::Clarity { per_tick, .. } => (Fixed::ZERO, per_tick),
+        ModifierKind::BottleRegeneration {
+            hp_per_tick,
+            mana_per_tick,
+        } => (
+            Fixed::from_ratio(hp_per_tick, 100),
+            Fixed::from_ratio(mana_per_tick, 100),
+        ),
+        ModifierKind::RuneRegeneration { damped } => {
+            let pct = if damped > 0 {
+                crate::REGENERATION_DAMPED_PCT
+            } else {
+                crate::REGENERATION_PCT
+            };
+            (share_a_tick(max.hp, pct), share_a_tick(max.mana, pct))
+        }
         ModifierKind::Fountain { hp_pct, mana_pct } => (
             share_a_tick(max.hp, hp_pct),
             share_a_tick(max.mana, mana_pct),

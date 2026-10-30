@@ -64,6 +64,10 @@ pub enum CommandError {
     NoHeroNamed,
     /// No hero is called so.
     UnknownHero(String),
+    /// `dota_spawn_rune` without the rune.
+    NoRuneNamed,
+    /// No rune is called so.
+    UnknownRune(String),
     /// A hero's side was given as neither ally nor enemy.
     NotAllyOrEnemy(String),
     /// The command wants the spot under the cursor and there is none.
@@ -81,6 +85,7 @@ pub enum CommandError {
 pub enum CursorUse {
     CreateHero,
     Teleport,
+    SpawnRune,
 }
 
 /// Turns one typed line into an order, with this crate's own names. A
@@ -191,6 +196,17 @@ pub fn parse_command(line: &str, cx: &dyn CommandContext) -> Result<Cheat, Comma
                 .cursor()
                 .ok_or(CommandError::NeedsCursor(CursorUse::CreateHero))?;
             Cheat::CreateHero { hero, enemy, at }
+        }
+        "dota_spawn_rune" => {
+            let name = arg.ok_or(CommandError::NoRuneNamed)?;
+            let kind = bota_proto::RuneKind::ALL
+                .into_iter()
+                .find(|kind| kind.name().eq_ignore_ascii_case(name))
+                .ok_or_else(|| CommandError::UnknownRune(name.to_string()))?;
+            let at = cx
+                .cursor()
+                .ok_or(CommandError::NeedsCursor(CursorUse::SpawnRune))?;
+            Cheat::SpawnRune { kind, at }
         }
         "spawncreeps" | "dota_spawn_creeps" => Cheat::SpawnCreeps,
         "disablecreepspawn" => Cheat::CreepSpawning { on: false },

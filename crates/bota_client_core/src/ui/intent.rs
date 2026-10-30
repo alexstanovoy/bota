@@ -306,7 +306,9 @@ impl App {
             } else {
                 Order::Attack { target }
             }
-        } else if let Some(item) = loot_under_cursor(view, at) {
+        } else if let Some(item) =
+            loot_under_cursor(view, at).or_else(|| rune_under_cursor(view, at))
+        {
             Order::Take {
                 target: Target::Unit(item),
             }
@@ -450,6 +452,16 @@ pub fn loot_under_cursor(view: &WorldView, (wx, wy): (f32, f32)) -> Option<Entit
         wx,
         wy,
         view.loot.iter().map(|lying| (lying.id, lying.pos, 35.0)),
+    )
+}
+
+/// The rune nearest a world point, if it is close enough: a click on it walks
+/// the hero to it.
+pub fn rune_under_cursor(view: &WorldView, (wx, wy): (f32, f32)) -> Option<EntityId> {
+    nearest(
+        wx,
+        wy,
+        view.runes.iter().map(|lying| (lying.id, lying.pos, 60.0)),
     )
 }
 

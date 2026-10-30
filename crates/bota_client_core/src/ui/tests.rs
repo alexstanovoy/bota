@@ -255,6 +255,7 @@ fn an_item(charges: Option<u8>, cooldown: u32, mana_cost: i32, aim: Option<Aim>)
         dispenser: None,
         locked: Some(false),
         disassembly: None,
+        rune: None,
     }
 }
 
@@ -393,6 +394,7 @@ fn a_tick(tick: u32, units: Vec<UnitView>, players: Vec<PlayerView>) -> WorldVie
         teleports: Vec::new(),
         glyphs: Vec::new(),
         clock: None,
+        runes: Vec::new(),
     }
 }
 

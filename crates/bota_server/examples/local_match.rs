@@ -5,10 +5,13 @@
 //! ```text
 //! cargo run --release -p bota_server --example local_match
 //! cargo run --release -p bota_server --example local_match -- --replay match.brp
+//! cargo run --release -p bota_server --example local_match -- --runes all
 //! ```
 //!
 //! With `--replay FILE` the match is also written as a replay, the one a
-//! server records of the same match, for a viewer to open.
+//! server records of the same match, for a viewer to open. With `--runes
+//! LIST` (`all`, or kinds by name, as the server takes them) the match
+//! spawns those runes; the map's own default is none.
 
 use bota_client_core::{
     AckPolicy, ClientSession, Ingested, IssuedOrder, MatchStatic, SessionOptions,
@@ -25,11 +28,19 @@ use bota_server::replay::ReplayWriter;
 fn main() {
     let mut args = std::env::args().skip(1);
     let mut replay = None;
+    let mut runes = None;
     while let Some(arg) = args.next() {
         match (arg.as_str(), args.next()) {
             ("--replay", Some(path)) => replay = Some(path),
+            ("--runes", Some(list)) => match bota_proto::RuneSet::parse(&list) {
+                Ok(set) => runes = Some(set),
+                Err(reason) => {
+                    eprintln!("--runes: {reason}");
+                    std::process::exit(2);
+                }
+            },
             _ => {
-                eprintln!("usage: local_match [--replay FILE]");
+                eprintln!("usage: local_match [--replay FILE] [--runes LIST]");
                 std::process::exit(2);
             }
         }
@@ -54,7 +65,7 @@ fn main() {
         immortal_structures: false,
         immortal_heroes: false,
         objectives: bota_core::map_of(MAP2_ID).default_objectives,
-        runes: bota_core::map_of(MAP2_ID).default_runes,
+        runes: runes.unwrap_or(bota_core::map_of(MAP2_ID).default_runes),
         catalogue: bota_core::Catalogue::FULL,
     };
     let map = map_of(cfg.map);

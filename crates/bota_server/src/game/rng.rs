@@ -36,6 +36,9 @@ pub enum Purpose {
     /// Which of the heroes gathering a Shrine of Wisdom it rewards. Drawn
     /// from the Shrine's own stream of each activation only.
     Shrine = 14,
+    /// Which power rune and which river spot a river spawn puts out. Drawn
+    /// from the stream of each spawn alone, keyed by its count.
+    Rune = 15,
 }
 
 /// The purposes with a stream of the match as a whole, whose draws the

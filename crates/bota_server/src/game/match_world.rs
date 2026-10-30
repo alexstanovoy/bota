@@ -44,6 +44,7 @@ impl World {
         events.sort_by_key(|event| event.tick);
         world.economy_events = crate::game::EconomySchedule(events.into());
         world.stand_up_objectives(cfg.objectives);
+        world.stand_up_runes(cfg.runes);
         for pick in &cfg.picks {
             let at = hero_spawn_pos(map, pick.team);
             let hero = world.spawn_hero(pick.team, at, pick.slot, pick.hero);
@@ -336,6 +337,25 @@ impl World {
             Order::Attack {
                 target: Target::None,
             } => UnitOrder::Hold,
+            Order::Attack {
+                target: Target::Unit(target),
+            } if self
+                .of_wire(target)
+                .is_some_and(|mark| self.rune.get(mark).is_some()) =>
+            {
+                self.deny_rune_order(unit, target);
+                return;
+            }
+            // Following a rune is walking to it.
+            Order::Move {
+                target: Target::Unit(target),
+            } if self
+                .of_wire(target)
+                .is_some_and(|mark| self.rune.get(mark).is_some()) =>
+            {
+                self.take_item(unit, target);
+                return;
+            }
             Order::Move {
                 target: Target::Unit(target),
             }
@@ -578,7 +598,13 @@ impl World {
             return Err(RejectReason::WrongTargetKind);
         };
         let mark = self.seen_by(seat, *named)?;
-        if self.loot.get(mark).is_none() || self.inventory.get(unit).is_none() {
+        // A rune is taken by a hero and no other unit.
+        let takes = if self.rune.get(mark).is_some() {
+            self.is_real_hero(unit)
+        } else {
+            self.loot.get(mark).is_some() && self.inventory.get(unit).is_some()
+        };
+        if !takes {
             return Err(RejectReason::WrongTargetKind);
         }
         Ok(())
@@ -614,7 +640,7 @@ impl World {
         let def = bota_core::ability_def(held.id)
             .filter(|def| !def.hidden)
             .ok_or(RejectReason::EmptySlot)?;
-        if def.passive {
+        if def.passive || self.wears_illusion(unit) {
             return Err(RejectReason::NotCastable);
         }
         if held.level == 0 {
@@ -680,6 +706,9 @@ impl World {
         }
         if held.free_charges > 0 {
             return Err(RejectReason::Unsellable);
+        }
+        if held.rune.is_some() {
+            return Err(RejectReason::HoldsRune);
         }
         // Nothing is ever carried out of the town portal slot, so it sells
         // only at the shop and is never marked.
@@ -756,6 +785,9 @@ impl World {
         if !self.holds(unit, seat, at) {
             return Err(RejectReason::EmptySlot);
         }
+        if self.holds_rune_at(unit, at) {
+            return Err(RejectReason::HoldsRune);
+        }
         match target {
             Target::None => Ok(()),
             Target::Pos(pos) => self
@@ -801,13 +833,17 @@ impl World {
             return Err(RejectReason::NotReady);
         }
         let aim = def.aim.ok_or(RejectReason::NotCastable)?;
+        if self.wears_illusion(unit) {
+            return Err(RejectReason::NotCastable);
+        }
         // What is given away waits for nothing and costs nothing; what lands on an ally is a use.
         let ally = self.ally_use_on(unit, def, target);
         let gives = ally.is_some_and(|ally| matches!(ally, AllyUse::Give { .. }));
         if !gives && (stack.cooldown > 0 || (def.shared_wait && self.owes_wait(unit, stack.id))) {
             return Err(RejectReason::OnCooldown);
         }
-        if (def.charges > 0 || def.cast_charges > 0) && stack.charges == 0 {
+        // What holds a rune lets it out, and needs no charge for that.
+        if (def.charges > 0 || def.cast_charges > 0) && stack.charges == 0 && stack.rune.is_none() {
             return Err(RejectReason::NoCharges);
         }
         // What the side cannot see is refused as a dead target, whatever it is aimed for.
@@ -823,7 +859,7 @@ impl World {
         } else if def.mana_deficit {
             matches!(target, Target::None) || *target == Target::Unit(crate::game::wire_id(unit))
         } else {
-            aimed_right(aim, target)
+            aimed_right(aim, target) || (def.ally_target && matches!(target, Target::Unit(_)))
         };
         if !aimed {
             return Err(RejectReason::WrongTargetKind);
@@ -887,6 +923,12 @@ impl World {
             AllyUse::Give { .. } => self.inventory.get(to).is_some(),
             AllyUse::Effect { .. } => self.kind.get(to) == Some(&bota_proto::UnitKind::Hero),
         }
+    }
+
+    /// Whether a bag slot of a unit holds a Bottle with a rune in it.
+    fn holds_rune_at(&self, unit: Entity, at: usize) -> bool {
+        self.held_in_bag(unit, at)
+            .is_some_and(|stack| stack.rune.is_some())
     }
 
     /// Whether one of a seat's slots holds anything at all.

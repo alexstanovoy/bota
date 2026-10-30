@@ -143,6 +143,7 @@ fn assemble_once(owner: SlotId, tick: u32, pool: &mut [&mut Inventory]) -> bool 
                 DisassembleRule::Always | DisassembleRule::Never => 0,
             },
             life: 0,
+            rune: None,
         };
         for at in spent.iter() {
             pool[at / POOL_STRIDE].slots[at % POOL_STRIDE] = None;
@@ -480,7 +481,11 @@ impl World {
         let Some(def) = item_def(stack.id) else {
             return false;
         };
-        if def.aim.is_none() || !(in_inventory(slot) || in_town_portal(slot)) || stack.mute > 0 {
+        if def.aim.is_none()
+            || self.wears_illusion(entity)
+            || !(in_inventory(slot) || in_town_portal(slot))
+            || stack.mute > 0
+        {
             return false;
         }
         // One charge given to an ally waits for no cooldown and costs nothing.
@@ -492,10 +497,12 @@ impl World {
         if stack.cooldown > 0 {
             return false;
         }
+        let letting_out_a_rune = stack.rune.is_some();
         if def.shared_wait && self.owes_wait(entity, stack.id) {
             return false;
         }
-        if (def.charges > 0 || def.cast_charges > 0) && stack.charges == 0 {
+        // What holds a rune lets it out, and needs no charge for that.
+        if (def.charges > 0 || def.cast_charges > 0) && stack.charges == 0 && stack.rune.is_none() {
             return false;
         }
         let cost = self.item_mana_cost(entity, stack.id);
@@ -531,14 +538,24 @@ impl World {
             stack.cooldown = if def.shared_wait { 0 } else { cooldown };
             stack.touched = true;
             stack.disassemble_until = 0;
-            stack.charges = match def.spends {
+            // A use that lets a rune out spent nothing: the rune refilled it.
+            let spends = if letting_out_a_rune {
+                Spends::Nothing
+            } else {
+                def.spends
+            };
+            stack.charges = match spends {
                 Spends::Nothing => stack.charges,
                 Spends::One => stack.charges.saturating_sub(1),
                 Spends::All => 0,
             };
             // What gains charges again is kept when the last one goes;
             // what does not is gone with it.
-            if stack.charges == 0 && def.cast_charges == 0 && def.spends != Spends::Nothing {
+            if stack.charges == 0
+                && def.cast_charges == 0
+                && !def.kept_empty
+                && spends != Spends::Nothing
+            {
                 *held = None;
             }
         }
@@ -657,6 +674,16 @@ impl World {
         if hp <= 0 && mana <= 0 {
             return false;
         }
+        let (restored, refilled) = self.refill_pools(on, hp, mana);
+        if restored > 0 || refilled > 0 {
+            self.tell_healed((on, with), on, restored, refilled);
+        }
+        true
+    }
+
+    /// Adds up to `hp` health and `mana` mana to a unit's pools, never past
+    /// their maxima. Answers what each pool took.
+    pub(crate) fn refill_pools(&mut self, on: Entity, hp: i32, mana: i32) -> (i32, i32) {
         let ceiling = self.stats.get(on).copied();
         let mut restored = 0;
         if let Some(pool) = self.health.get_mut(on)
@@ -674,10 +701,7 @@ impl World {
             pool.mana = (pool.mana + Fixed::from_int(mana)).min(most);
             refilled = (pool.mana - before).to_int();
         }
-        if restored > 0 || refilled > 0 {
-            self.tell_healed((on, with), on, restored, refilled);
-        }
-        true
+        (restored, refilled)
     }
 
     /// Walks whoever used an item faster, and through whatever is in the way.
@@ -982,7 +1006,7 @@ impl World {
         let Some(held) = self.stack_at(unit, &self.seats[seat], at) else {
             return false;
         };
-        if held.owner != slot || held.free_charges > 0 {
+        if held.owner != slot || held.free_charges > 0 || held.rune.is_some() {
             return false;
         }
         if in_town_portal(at) && !self.at_shop(unit) {
@@ -1381,6 +1405,21 @@ pub(crate) fn swap_refusal_in(
     };
     if (in_stash(from) || in_stash(to)) && !at_shop {
         return Some(RejectReason::NotAtShop);
+    }
+    // A Bottle holding a rune stays among the items in hand, in whichever
+    // slot of them.
+    let at = |slot: usize| {
+        if in_stash(slot) {
+            seat.stash.slots.get(slot - BAG_SLOTS).copied().flatten()
+        } else {
+            bag.and_then(|bag| bag.slot(slot).copied().flatten())
+        }
+    };
+    let leaves_the_hand = |stack: Option<ItemStack>, slot: usize| {
+        stack.is_some_and(|stack| stack.rune.is_some()) && !in_inventory(slot)
+    };
+    if leaves_the_hand(Some(held), to) || leaves_the_hand(at(to), from) {
+        return Some(RejectReason::HoldsRune);
     }
     let has_portal = bag.is_some_and(|bag| bag.town_portal.is_some());
     if in_town_portal(from) || (in_town_portal(to) && (!has_portal || !held.is_scroll())) {

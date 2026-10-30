@@ -247,6 +247,10 @@ pub enum RejectReason {
     /// A [`SetCombineLock`](crate::Order::SetCombineLock) on an item that is
     /// part of no recipe.
     CannotLockCombining,
+    /// A Bottle holding a rune cannot be laid down, handed over, sold or put
+    /// away out of the inventory: it stays in hand until the rune takes
+    /// effect.
+    HoldsRune,
 }
 
 /// Final numbers for one seat.

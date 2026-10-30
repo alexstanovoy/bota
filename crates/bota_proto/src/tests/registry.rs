@@ -295,6 +295,42 @@ fn render(format: &Format) -> String {
 /// Every named id constant, with the key of its line in `registry/ids.txt`.
 /// Only what code names has a constant: the tables name the rest.
 const NAMED: &[(IdSpace, u16, &str)] = &[
+    (
+        IdSpace::Effect,
+        EffectId::RUNE_HASTE.0,
+        "modifier_rune_haste",
+    ),
+    (
+        IdSpace::Effect,
+        EffectId::RUNE_AMPLIFY_DAMAGE.0,
+        "modifier_rune_doubledamage",
+    ),
+    (
+        IdSpace::Effect,
+        EffectId::RUNE_ARCANE.0,
+        "modifier_rune_arcane",
+    ),
+    (
+        IdSpace::Effect,
+        EffectId::RUNE_REGENERATION.0,
+        "modifier_rune_regen",
+    ),
+    (
+        IdSpace::Effect,
+        EffectId::RUNE_INVISIBILITY.0,
+        "modifier_rune_invis",
+    ),
+    (
+        IdSpace::Effect,
+        EffectId::RUNE_SHIELD.0,
+        "modifier_rune_shield",
+    ),
+    (
+        IdSpace::Effect,
+        EffectId::BOTTLE_REGENERATION.0,
+        "modifier_bottle_regeneration",
+    ),
+    (IdSpace::Item, ItemId::BOTTLE.0, "item_bottle"),
     (IdSpace::Hero, HeroId::PUDGE.0, "npc_dota_hero_pudge"),
     (
         IdSpace::Hero,

@@ -1,7 +1,8 @@
 //! How the types of other crates go into the world fingerprint, see [`StateHash`]. The types of this
 //! crate say it next to their definitions.
 
-use bota_core::{GoldRange, MapDef, ModifierKind, NeutralKind, Striker};
+use bota_core::{GoldRange, MapDef, ModifierKind, NeutralKind, PowerCycle, Striker};
+use bota_proto::RuneSet;
 use bota_proto::{
     AbilityId, AbilitySlot, Attribute, ClockShift, DamageKind, EntityId, HeroId, Inflictor, ItemId,
     ItemSlot, ModifierSpec, NeutralId, ObjectiveSet, Order, ProjectileModel, RejectReason, SlotId,
@@ -17,6 +18,8 @@ state_hash!(HeroId(0));
 state_hash!(AbilitySlot(0));
 state_hash!(ItemSlot(0));
 state_hash!(Talents { bits });
+state_hash!(RuneSet { bits });
+state_hash!(PowerCycle { spawned, last });
 state_hash!(ClockShift { game, day });
 state_hash!(GoldRange { min, max });
 state_hash!(ModifierSpec {
@@ -234,6 +237,19 @@ impl StateHash for ModifierKind {
             ModifierKind::LampOff => fnv.u8(40),
             ModifierKind::CaptureGuard => fnv.u8(41),
             ModifierKind::ShrineReady => fnv.u8(42),
+            ModifierKind::RuneHaste => fnv.u8(43),
+            ModifierKind::RuneAmplifyDamage => fnv.u8(44),
+            ModifierKind::RuneArcane => fnv.u8(45),
+            ModifierKind::RuneRegeneration { damped } => {
+                fnv.u8(46);
+                damped.state_hash(fnv);
+            }
+            ModifierKind::RuneInvisibility => fnv.u8(47),
+            ModifierKind::RuneShield { left } => hash_tagged(fnv, 48, &[left]),
+            ModifierKind::BottleRegeneration {
+                hp_per_tick,
+                mana_per_tick,
+            } => hash_tagged(fnv, 49, &[hp_per_tick, mana_per_tick]),
         }
     }
 }
