@@ -560,6 +560,13 @@ impl World {
             self.begin(entity, pending);
             return false;
         }
+        // A cast with a cast point starts it only once the caster looks at
+        // its aim (Liquipedia, *Turn Rate*); the walk comes round to it
+        // meanwhile. One with none goes off as it is ordered, as a Blink
+        // Dagger does.
+        if timing.point > 0 && !self.faces(entity, spot) {
+            return false;
+        }
         if matches!(
             self.action.get(entity).map(|action| action.state),
             Some(ActionState::CastAbility { .. } | ActionState::UseItem { .. })
@@ -572,6 +579,20 @@ impl World {
             cast_state(pending, ActionPhase::Before { progress: 0 }),
         );
         true
+    }
+
+    /// Whether an entity looks at a spot within the angle a swing or a cast
+    /// allows. What cannot turn faces every way, and a spot underfoot is
+    /// faced from any side.
+    fn faces(&self, entity: Entity, spot: Option<Vec2>) -> bool {
+        let (Some(spot), Some(at), Some(stats)) =
+            (spot, self.transform.get(entity), self.stats.get(entity))
+        else {
+            return true;
+        };
+        stats.turn_rate == 0
+            || at.pos == spot
+            || facing_gap(at.facing, facing_towards(at.pos, spot)) <= rules::ATTACK_ANGLE_BRADS
     }
 
     /// Sets off the immediate cast an entity was ordered to make this tick,

@@ -61,7 +61,8 @@ impl World {
     /// stands, and so does a disarmed neutral; rooted, it stands too but
     /// comes round to what it is set on, to swing at it. Mid-swing, or
     /// casting, it stands and comes round to what it acts on. A cast aimed
-    /// further off than it reaches walks it in. Past that, what it is set on
+    /// further off than it reaches walks it in, and one in reach comes
+    /// round to its aim before it begins. Past that, what it is set on
     /// decides: in reach it stands and comes round to it, out of reach it
     /// walks at it. Only with nothing to fight does it walk where it was
     /// told.
@@ -88,9 +89,13 @@ impl World {
             && let Some(aim) = self.cast_spot(pending)
         {
             let reach = self.cast_reach(entity, pending);
-            if reach > 0 {
-                return Goal::Walk(aim, rules::units(reach));
-            }
+            // An aim in reach is faced before the cast begins, so a cast
+            // with no reach of its own comes round to it as well.
+            return if reach > 0 {
+                Goal::Walk(aim, rules::units(reach))
+            } else {
+                Goal::Face(aim)
+            };
         }
         let holding = matches!(
             self.orders.get(entity).map(|o| o.current),
