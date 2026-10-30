@@ -3,9 +3,10 @@
 //! and put out.
 
 use bota_core::{
-    AbilityDef, CAPTURE_TICKS, LAMP_LIT_TICKS, LAMP_OFF_TICKS, ModifierKind,
-    OBJECTIVES_OPEN_AFTER_HORN, OUTPOST, SHRINE, SHRINE_COUNTDOWN_TICKS, SHRINE_RADIUS, WATCHER,
-    WATCHER_DAY_VISION, WATCHER_NIGHT_VISION, ability_def, kind_def, objective_unit, rules,
+    AbilityDef, CAPTURE_TICKS, FIRST_PLUCK_TICKS, LAMP_LIT_TICKS, LAMP_OFF_TICKS, LOTUS_POOL,
+    ModifierKind, OBJECTIVES_OPEN_AFTER_HORN, OUTPOST, POOL_RADIUS, SHRINE, SHRINE_COUNTDOWN_TICKS,
+    SHRINE_RADIUS, WATCHER, WATCHER_DAY_VISION, WATCHER_NIGHT_VISION, ability_def, kind_def,
+    objective_unit, rules,
 };
 use bota_proto::{
     AbilityId, AbilitySlot, EntityId, EventKind, Inflictor, ObjectiveKind, ObjectiveSet, Target,
@@ -13,8 +14,8 @@ use bota_proto::{
 };
 
 use crate::game::{
-    ActionPhase, ActionState, Capture, Entity, Event, EventVisibility, Modifier, Outpost, World,
-    Zone, wire_id,
+    ActionPhase, ActionState, Capture, Entity, Event, EventVisibility, LotusPool, Modifier,
+    Outpost, World, Zone, wire_id,
 };
 
 impl World {
@@ -45,6 +46,29 @@ impl World {
                         ticks: SHRINE_COUNTDOWN_TICKS,
                         side: None,
                         progress: 0,
+                    },
+                );
+            }
+        }
+        if objectives.has(ObjectiveKind::LotusPools) {
+            for at in map.lotus_pools {
+                let entity = self.spawn_objective(&LOTUS_POOL, Team::Neutral, *at);
+                self.zone.insert(
+                    entity,
+                    Zone {
+                        radius: rules::units(POOL_RADIUS),
+                        ticks: FIRST_PLUCK_TICKS,
+                        side: None,
+                        progress: 0,
+                    },
+                );
+                self.pool.insert(
+                    entity,
+                    LotusPool {
+                        tier: bota_proto::LotusTier::Healing,
+                        lotuses: 0,
+                        streak: 0,
+                        plucked: 0,
                     },
                 );
             }

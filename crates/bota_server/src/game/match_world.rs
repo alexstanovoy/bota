@@ -847,7 +847,10 @@ impl World {
         // What is given away waits for nothing and costs nothing; what lands on an ally is a use.
         let ally = self.ally_use_on(unit, def, target);
         let gives = ally.is_some_and(|ally| matches!(ally, AllyUse::Give { .. }));
-        if !gives && (stack.cooldown > 0 || (def.shared_wait && self.owes_wait(unit, stack.id))) {
+        if !gives
+            && (stack.cooldown > 0
+                || (def.shared_wait && self.owes_wait(unit, def.wait_key.unwrap_or(stack.id))))
+        {
             return Err(RejectReason::OnCooldown);
         }
         // What holds a rune lets it out, and needs no charge for that.

@@ -192,6 +192,8 @@ world_tables! {
         pub illusion: crate::game::Illusion;
         /// The rune each entity that is one is.
         pub rune: crate::game::Rune;
+        /// What each Lotus Pool holds.
+        pub pool: crate::game::LotusPool;
         /// What each entity carries.
         pub inventory: Inventory;
         /// What each entity can cast.
@@ -654,6 +656,7 @@ impl World {
         self.fill_camps();
         self.tick_runes();
         self.tick_shrines();
+        self.tick_pools();
         self.tick_gear();
         self.tick_bottles();
         self.assemble_bags();

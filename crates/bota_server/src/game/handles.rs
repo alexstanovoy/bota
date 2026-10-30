@@ -148,6 +148,7 @@ impl Handles {
         view.projectiles.sort_unstable_by_key(|shot| shot.id);
         view.loot.sort_unstable_by_key(|loot| loot.id);
         view.runes.sort_unstable_by_key(|rune| rune.id);
+        view.pools.sort_unstable_by_key(|pool| pool.id);
         view.aggro.sort_unstable_by_key(|entry| entry.unit);
     }
 

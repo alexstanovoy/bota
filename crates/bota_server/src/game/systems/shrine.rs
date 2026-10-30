@@ -48,6 +48,16 @@ impl World {
     /// by a side standing there alone once it is back at zero. Answers the
     /// side it ran out for this tick, starting it afresh.
     pub(crate) fn run_zone(&mut self, keeper: Entity) -> Option<Team> {
+        self.run_zone_of(keeper, &|_, _| true)
+    }
+
+    /// [`World::run_zone`] counting only the heroes `counts` answers for: a
+    /// Lotus Pool takes no notice of a hero that could not pluck.
+    pub(crate) fn run_zone_of(
+        &mut self,
+        keeper: Entity,
+        counts: &dyn Fn(&World, Entity) -> bool,
+    ) -> Option<Team> {
         let mut zone = *self.zone.get(keeper)?;
         let at = self.pos(keeper)?;
         let mut present = [false; 2];
@@ -55,6 +65,7 @@ impl World {
             let standing = self.kind.get(unit) == Some(&UnitKind::Hero)
                 && self.illusion.get(unit).is_none()
                 && self.alive(unit)
+                && counts(self, unit)
                 && self
                     .pos(unit)
                     .is_some_and(|pos| pos.within(at, zone.radius));

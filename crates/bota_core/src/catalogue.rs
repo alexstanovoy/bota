@@ -305,6 +305,7 @@ impl Fnv {
                 .int(grenade.damage_per_second as i64)
                 .int(grenade.slow_pct as i64)
                 .u64(grenade.debuff_ticks as u64),
+            UseSpec::Eat { health, mana } => self.u64(14).int(health as i64).int(mana as i64),
             UseSpec::Bottle(drink) => self
                 .u64(13)
                 .int(drink.health as i64)
@@ -369,6 +370,9 @@ const fn item_digest(def: &ItemDef) -> u64 {
         unbuyable,
         kept_empty,
         ally_target,
+        wait_key,
+        charge_recipes,
+        take_range,
         effect,
         ally,
         lifetime,
@@ -423,6 +427,23 @@ const fn item_digest(def: &ItemDef) -> u64 {
         .flag(ally_target)
         .effect(effect)
         .ally(ally)
-        .u64(lifetime as u64)
-        .0
+        .u64(lifetime as u64);
+    // What only a few items have adds to the digest only where it is: an item
+    // without it digests as it did before the field was.
+    let fnv = match wait_key {
+        None => fnv,
+        Some(key) => fnv.u64(0xA1).u64(key.0 as u64),
+    };
+    let fnv = if take_range == 0 {
+        fnv
+    } else {
+        fnv.u64(0xA2).int(take_range as i64)
+    };
+    let mut fnv = fnv;
+    let mut at = 0;
+    while at < charge_recipes.len() {
+        fnv = fnv.u64(0xA3).ids(charge_recipes[at]);
+        at += 1;
+    }
+    fnv.0
 }

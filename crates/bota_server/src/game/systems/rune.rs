@@ -420,7 +420,13 @@ impl World {
 
     /// Tells who may know that a hero was mended by `hp` health and `mana`
     /// mana, by `by` when somebody's hand did it.
-    fn tell_refilled(&mut self, on: Entity, hp: i32, mana: i32, by: Option<(Entity, Inflictor)>) {
+    pub(crate) fn tell_refilled(
+        &mut self,
+        on: Entity,
+        hp: i32,
+        mana: i32,
+        by: Option<(Entity, Inflictor)>,
+    ) {
         if hp <= 0 && mana <= 0 {
             return;
         }

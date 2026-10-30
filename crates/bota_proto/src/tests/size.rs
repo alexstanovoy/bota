@@ -156,6 +156,6 @@ fn an_empty_view_costs_almost_nothing() {
     };
     let len = encoded_len(&msg);
     // The clock shift's absence is its one byte, and the runes' list its
-    // length's.
-    assert!(len <= 22, "an empty snapshot cost {len} bytes");
+    // length's, and the pools' list its.
+    assert!(len <= 23, "an empty snapshot cost {len} bytes");
 }

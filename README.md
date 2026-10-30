@@ -54,6 +54,18 @@ mid-only ruleset on that map, plus replays.
   destroys one. The Bottle (675 gold, three charges of 110 health and 60 mana
   over 2.7 s, filled at the fountain) keeps the rune its hero takes for 90 s
   and lets it out when used. Wisdom Runes are the Shrines of Wisdom since 7.38.
+- The Lotus Pools of 7.41f, the sixth objective (`lotus_pools`; on the Dota map
+  by default): two invulnerable buildings that grow a Healing Lotus every three
+  minutes from 3:00 up to six, Great Healing Lotuses from 35:00 and Greater from
+  60:00 (what they hold is rounded up into the new tier), told to both sides
+  whatever their sight. A hero standing within 350 plucks one in 1.5 s, each next
+  of the row 30% faster down to 0.3 s; an enemy hero in the pool runs the
+  countdown back, one with no room in its bag counts for nothing, and among
+  allies the lotus goes to one at random. A lotus is eaten at once for 125 (400,
+  900) health and mana, on oneself or an allied hero in reach, one wait of five
+  seconds shared by the three kinds; three healing lotuses make a great one,
+  two great ones a greater one, and three greater ones with a Cheese a Royale
+  with Cheese (Block of Cheese), built from the charges the bag holds.
 - The shop sells consumables, wards, the basic components, boots, the early
   builds and a few later items, and their recipes. An item with a limited
   stock (the wards, Clarity, Healing Salve, Tango, Enchanted Mango,

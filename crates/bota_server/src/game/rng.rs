@@ -39,6 +39,9 @@ pub enum Purpose {
     /// Which power rune and which river spot a river spawn puts out. Drawn
     /// from the stream of each spawn alone, keyed by its count.
     Rune = 15,
+    /// Which of the heroes standing in a Lotus Pool is handed the lotus it
+    /// grew, drawn from the stream of each pluck alone.
+    Lotus = 16,
 }
 
 /// The purposes with a stream of the match as a whole, whose draws the

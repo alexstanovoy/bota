@@ -78,7 +78,7 @@ const READ: [&str; 18] = [
 
 /// Keys known and left out: presentation, the shop's suggestions, and rules bota models
 /// elsewhere or not yet (targets, sharing, dispels, the shared cooldown's name).
-const LEFT_OUT: [&str; 34] = [
+const LEFT_OUT: [&str; 35] = [
     "AbilitySharedCooldown",
     "AbilityUnitTargetFlags",
     "AbilityUnitTargetTeam",
@@ -95,6 +95,7 @@ const LEFT_OUT: [&str; 34] = [
     "ItemPermanent",
     "ItemQuality",
     "ItemRecipe",
+    "ItemRecipeConsumesCharges",
     "ItemRequiresCharges",
     "ItemSellable",
     "ItemShareability",

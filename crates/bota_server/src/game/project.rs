@@ -96,6 +96,7 @@ impl World {
             glyphs: self.glyph_views(viewer),
             clock: self.clock_shift(),
             runes,
+            pools: self.project_pools(),
         };
         debug_assert!(within_limits(&view), "a view past the protocol's bounds");
         view

@@ -154,6 +154,11 @@ item 53 live item_blood_grenade
 item 54 live item_ward_dispenser
 item 55 live item_tango_single
 item 56 live item_bottle
+item 57 live item_famango
+item 58 live item_great_famango
+item 59 live item_greater_famango
+item 60 live item_cheese
+item 61 live item_royale_with_cheese
 
 effect 0 retired bota_haste
 effect 1 live modifier_flask_healing

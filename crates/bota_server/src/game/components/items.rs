@@ -91,6 +91,29 @@ impl ItemStack {
         }
     }
 
+    /// `charges` of an item that comes for nothing, as a lotus does: touched, so
+    /// that no purchase window refunds it.
+    pub fn granted(id: ItemId, owner: SlotId, tick: u32, charges: u8) -> Self {
+        Self {
+            id,
+            charges,
+            cooldown: 0,
+            mute: 0,
+            mode: None,
+            bought_tick: tick,
+            touched: true,
+            owner,
+            for_sale: false,
+            free_charges: 0,
+            sentries: 0,
+            sentry_active: false,
+            locked: false,
+            disassemble_until: 0,
+            life: item_def(id).map_or(0, |def| def.lifetime),
+            rune: None,
+        }
+    }
+
     /// One Town Portal Scroll that came for nothing.
     pub fn free_scroll(owner: SlotId, tick: u32) -> Self {
         // The catalog's build-time checks prove the scroll is sold, for one charge.

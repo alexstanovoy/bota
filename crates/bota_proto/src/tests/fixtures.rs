@@ -305,6 +305,12 @@ pub fn world_view(creeps: u32) -> WorldView {
             day: 9000,
         }),
         runes: vec![rune_view()],
+        pools: vec![PoolView {
+            id: entity(23),
+            tier: LotusTier::Great,
+            lotuses: 4,
+            next_in: Some(1200),
+        }],
     }
 }
 
@@ -560,6 +566,7 @@ pub fn empty_world_view() -> WorldView {
         glyphs: Vec::new(),
         clock: None,
         runes: Vec::new(),
+        pools: Vec::new(),
     }
 }
 
@@ -665,6 +672,15 @@ pub fn all_events() -> Vec<EventKind> {
             kind: RuneKind::Shield,
             at: Vec2::from_ints(10396, 8000),
             team: Team::Dire,
+        },
+        EventKind::LotusGrown {
+            pool: entity(23),
+            tier: LotusTier::Healing,
+        },
+        EventKind::LotusPlucked {
+            pool: entity(23),
+            unit: Some(entity(7)),
+            tier: LotusTier::Greater,
         },
     ]
 }

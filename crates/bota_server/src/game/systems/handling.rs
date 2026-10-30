@@ -185,7 +185,9 @@ impl World {
         if self.pos(unit).is_none() {
             return true;
         }
-        if !self.walk_into_reach(unit, spot, rules::TAKE_ITEM_RANGE) {
+        let reach =
+            bota_core::item_def(stack.id).map_or(rules::TAKE_ITEM_RANGE, |def| def.take_reach());
+        if !self.walk_into_reach(unit, spot, reach) {
             return false;
         }
         let received = self.as_received_by(

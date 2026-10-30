@@ -32,6 +32,7 @@ mod item_numbers;
 mod items;
 mod jungle;
 mod local;
+mod lotus;
 mod map2;
 mod match_flow;
 mod movement;

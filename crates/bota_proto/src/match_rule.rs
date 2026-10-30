@@ -124,17 +124,20 @@ pub enum ObjectiveKind {
     Outposts,
     /// The Shrines of Wisdom: experience for the side that gathers one.
     Shrines,
+    /// The Lotus Pools: healing lotuses a hero plucks by standing in a pool.
+    LotusPools,
 }
 
 impl ObjectiveKind {
     /// Every kind, in variant order: bit `n` of an [`ObjectiveSet`] is
     /// `ALL[n]`.
-    pub const ALL: [ObjectiveKind; 5] = [
+    pub const ALL: [ObjectiveKind; 6] = [
         ObjectiveKind::Roshan,
         ObjectiveKind::Tormentor,
         ObjectiveKind::Watchers,
         ObjectiveKind::Outposts,
         ObjectiveKind::Shrines,
+        ObjectiveKind::LotusPools,
     ];
 
     /// What a host calls it.
@@ -145,6 +148,7 @@ impl ObjectiveKind {
             ObjectiveKind::Watchers => "watchers",
             ObjectiveKind::Outposts => "outposts",
             ObjectiveKind::Shrines => "shrines",
+            ObjectiveKind::LotusPools => "lotus_pools",
         }
     }
 }

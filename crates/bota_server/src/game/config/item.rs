@@ -106,6 +106,16 @@ impl World {
             }
             UseSpec::Grenade(_) => self.throw_grenade(user, target, item),
             UseSpec::Bottle(drink) => self.use_bottle(user, slot, target, drink),
+            UseSpec::Eat { health, mana } => {
+                // On an ally the item's own amounts land at the share its ally use names.
+                let (health, mana) = match self.ally_use_on(user, def, &target) {
+                    Some(AllyUse::Effect { percent }) => {
+                        (health * percent / 100, mana * percent / 100)
+                    }
+                    _ => (health, mana),
+                };
+                self.eat_item(user, target, (health, mana), with, def.cast_range)
+            }
         }
     }
 
@@ -179,9 +189,10 @@ pub fn item_view(
     now: u32,
 ) -> ItemView {
     let def = item_def(stack.id);
+    let waits_as = def.and_then(|def| def.wait_key).unwrap_or(stack.id);
     let owed = clocks
         .iter()
-        .filter(|(item, _)| *item == stack.id)
+        .filter(|(item, _)| *item == waits_as)
         .map(|(_, left)| *left)
         .max()
         .unwrap_or(0);

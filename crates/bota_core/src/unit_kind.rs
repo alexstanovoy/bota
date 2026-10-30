@@ -150,7 +150,7 @@ const fn objective(kind: UnitKind, name: &'static str, takes_scrolls: bool) -> K
 }
 
 /// Every kind of unit, indexed by its wire variant.
-pub const UNIT_KINDS: [KindDef; 16] = [
+pub const UNIT_KINDS: [KindDef; 17] = [
     KindDef {
         kind: UnitKind::Hero,
         attack_class: AttackClass::Hero,
@@ -224,6 +224,7 @@ pub const UNIT_KINDS: [KindDef; 16] = [
         ..objective(UnitKind::Watcher, "Watcher", false)
     },
     objective(UnitKind::Shrine, "Shrine of Wisdom", false),
+    objective(UnitKind::LotusPool, "Lotus Pool", false),
 ];
 
 const _: () = {
@@ -253,7 +254,8 @@ const fn row(kind: UnitKind) -> usize {
         | UnitKind::Filler
         | UnitKind::Outpost
         | UnitKind::Watcher
-        | UnitKind::Shrine => kind as usize,
+        | UnitKind::Shrine
+        | UnitKind::LotusPool => kind as usize,
     }
 }
 

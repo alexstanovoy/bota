@@ -4,7 +4,7 @@
 //! [contract](crate::contract) says: those of the units it sees, and of who
 //! dealt them only a dealer it sees.
 
-use crate::{AbilityId, EntityId, Inflictor, ItemId, RuneKind, SlotId, Team, Vec2};
+use crate::{AbilityId, EntityId, Inflictor, ItemId, LotusTier, RuneKind, SlotId, Team, Vec2};
 use serde::{Deserialize, Serialize};
 
 /// How a chunk of damage is reduced before it is applied.
@@ -228,6 +228,23 @@ pub enum EventKind {
         /// The hero's side.
         team: Team,
     },
+    /// A Lotus Pool grew a lotus. Told to both sides.
+    LotusGrown {
+        /// The pool.
+        pool: EntityId,
+        /// Which lotus.
+        tier: LotusTier,
+    },
+    /// A hero plucked a lotus from a pool and has it in its bag. Told to
+    /// both sides.
+    LotusPlucked {
+        /// The pool.
+        pool: EntityId,
+        /// The hero; `None` to a side that does not see it.
+        unit: Option<EntityId>,
+        /// Which lotus.
+        tier: LotusTier,
+    },
 }
 
 impl EventKind {
@@ -257,6 +274,11 @@ impl EventKind {
             | EventKind::RuneActivated { unit, .. }
             | EventKind::RuneBottled { unit, .. }
             | EventKind::RuneDenied { unit, .. } => visit(unit),
+            EventKind::LotusGrown { pool, .. } => visit(pool),
+            EventKind::LotusPlucked { pool, unit, .. } => {
+                visit(pool);
+                unit.iter_mut().for_each(visit);
+            }
             EventKind::ItemBought { .. }
             | EventKind::Teleported { .. }
             | EventKind::TreeGrew { .. }

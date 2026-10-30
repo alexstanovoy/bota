@@ -184,6 +184,7 @@ fn trace_wire() -> Registry {
     trace::<RuneKind>(&mut tracer, &mut enums);
     trace::<ObjectiveKind>(&mut tracer, &mut enums);
     trace::<Disassembly>(&mut tracer, &mut enums);
+    trace::<LotusTier>(&mut tracer, &mut enums);
     let registry = tracer.registry().expect("every wire type traces whole");
     for (name, container) in &registry {
         if matches!(container, ContainerFormat::Enum(_)) {
@@ -331,6 +332,23 @@ const NAMED: &[(IdSpace, u16, &str)] = &[
         "modifier_bottle_regeneration",
     ),
     (IdSpace::Item, ItemId::BOTTLE.0, "item_bottle"),
+    (IdSpace::Item, ItemId::HEALING_LOTUS.0, "item_famango"),
+    (
+        IdSpace::Item,
+        ItemId::GREAT_HEALING_LOTUS.0,
+        "item_great_famango",
+    ),
+    (
+        IdSpace::Item,
+        ItemId::GREATER_HEALING_LOTUS.0,
+        "item_greater_famango",
+    ),
+    (IdSpace::Item, ItemId::CHEESE.0, "item_cheese"),
+    (
+        IdSpace::Item,
+        ItemId::ROYALE_WITH_CHEESE.0,
+        "item_royale_with_cheese",
+    ),
     (IdSpace::Hero, HeroId::PUDGE.0, "npc_dota_hero_pudge"),
     (
         IdSpace::Hero,

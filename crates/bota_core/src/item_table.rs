@@ -126,7 +126,7 @@ const _: () = {
                     assert!(percent > 0 && percent <= 100);
                     assert!(matches!(
                         def.effect,
-                        UseSpec::Mend(_) | UseSpec::Replenish { .. }
+                        UseSpec::Mend(_) | UseSpec::Replenish { .. } | UseSpec::Eat { .. }
                     ));
                 }
             }

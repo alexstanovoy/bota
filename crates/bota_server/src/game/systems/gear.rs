@@ -67,6 +67,125 @@ fn parts_in(held: &[(usize, ItemStack)], parts: &[ItemId]) -> Option<Spent> {
     Some(spent)
 }
 
+/// The charges a build takes: a slot, and how many charges of its stack.
+#[derive(Clone, Copy)]
+struct Taken {
+    from: [(usize, u8); MAX_COMPONENTS],
+    len: usize,
+}
+
+impl Taken {
+    fn iter(&self) -> impl Iterator<Item = (usize, u8)> + '_ {
+        self.from[..self.len].iter().copied()
+    }
+}
+
+/// Which charges of the stacks held cover a list of parts, one charge to each
+/// part, taken from the lowest slots first.
+///
+/// Nothing at all when any part is missing: a build takes every part or none.
+fn charges_in(held: &[(usize, ItemStack)], parts: &[ItemId]) -> Option<Taken> {
+    if parts.len() > MAX_COMPONENTS {
+        return None;
+    }
+    let mut taken = Taken {
+        from: [(0, 0); MAX_COMPONENTS],
+        len: 0,
+    };
+    for part in parts {
+        let (at, _) = held.iter().find(|(at, stack)| {
+            let spent = taken
+                .iter()
+                .find(|(slot, _)| slot == at)
+                .map_or(0, |(_, n)| n);
+            stack.id == *part && stack.charges > spent
+        })?;
+        match taken.from[..taken.len]
+            .iter_mut()
+            .find(|(slot, _)| slot == at)
+        {
+            Some((_, spent)) => *spent += 1,
+            None => {
+                taken.from[taken.len] = (*at, 1);
+                taken.len += 1;
+            }
+        }
+    }
+    Some(taken)
+}
+
+/// Builds one charge of `built` out of the charges the pool holds, by the
+/// first of its recipes by charges they cover (Dota's
+/// `ItemRecipeConsumesCharges`; the lotuses and Royale with Cheese). The
+/// charge joins a stack of `built` that has room, or takes the lowest slot
+/// the build emptied, or else the first free slot of the container the
+/// lowest part sat in; with no room anywhere the build waits. A part that
+/// `assemble_once` left out of `held` (somebody else's, for sale, locked
+/// against combining) takes no part. True when it built.
+fn build_by_charges(
+    owner: SlotId,
+    tick: u32,
+    pool: &mut [&mut Inventory],
+    held: &[(usize, ItemStack)],
+    built: ItemId,
+    def: &ItemDef,
+) -> bool {
+    for &parts in def.charge_recipes {
+        let Some(taken) = charges_in(held, parts) else {
+            continue;
+        };
+        let emptied = |at: usize, count: u8| {
+            held.iter()
+                .any(|(slot, stack)| *slot == at && stack.charges == count)
+        };
+        let joins = held
+            .iter()
+            .find(|(at, stack)| {
+                stack.id == built
+                    && stack.charges < def.stack_limit
+                    && !taken.iter().any(|(slot, _)| slot == *at)
+            })
+            .map(|(at, _)| *at);
+        let freed = taken
+            .iter()
+            .filter(|&(at, count)| emptied(at, count))
+            .map(|(at, _)| at)
+            .min();
+        let lowest = taken
+            .iter()
+            .map(|(at, _)| at)
+            .min()
+            .expect("a build takes a part");
+        let free = || {
+            let bag = &*pool[lowest / POOL_STRIDE];
+            (0..bag.slots.len())
+                .find(|&slot| bag.slots[slot].is_none())
+                .map(|slot| lowest / POOL_STRIDE * POOL_STRIDE + slot)
+        };
+        let Some(landing) = joins.or(freed).or_else(free) else {
+            continue;
+        };
+        for (at, count) in taken.iter() {
+            let cell = &mut pool[at / POOL_STRIDE].slots[at % POOL_STRIDE];
+            if let Some(stack) = cell {
+                stack.charges -= count;
+                if stack.charges == 0 {
+                    *cell = None;
+                }
+            }
+        }
+        let cell = &mut pool[landing / POOL_STRIDE].slots[landing % POOL_STRIDE];
+        match cell {
+            Some(stack) => stack.charges += 1,
+            None => {
+                *cell = Some(ItemStack::granted(built, owner, tick, 1));
+            }
+        }
+        return true;
+    }
+    false
+}
+
 /// Largest slot count a container of an assembly pool may have.
 const POOL_STRIDE: usize = 16;
 
@@ -105,8 +224,12 @@ fn assemble_once(owner: SlotId, tick: u32, pool: &mut [&mut Inventory]) -> bool 
     for (index, def) in ITEMS.iter().enumerate() {
         let Some((spent, mode)) = def
             .recipes()
+            .filter(|recipe| !recipe.by_charges)
             .find_map(|recipe| parts_in(&held, recipe.parts).map(|spent| (spent, recipe.mode)))
         else {
+            if build_by_charges(owner, tick, pool, &held, ItemId(index as u16), def) {
+                return true;
+            }
             continue;
         };
         let Some(landing) = spent.min() else {
@@ -480,7 +603,8 @@ impl World {
             return false;
         }
         let letting_out_a_rune = stack.rune.is_some();
-        if def.shared_wait && self.owes_wait(entity, stack.id) {
+        let wait_on = def.wait_key.unwrap_or(stack.id);
+        if def.shared_wait && self.owes_wait(entity, wait_on) {
             return false;
         }
         // What holds a rune lets it out, and needs no charge for that.
@@ -511,7 +635,7 @@ impl World {
         }
         let cooldown = self.item_cooldown(entity, stack.id);
         if def.shared_wait {
-            self.owe_wait(entity, stack.id, cooldown);
+            self.owe_wait(entity, wait_on, cooldown);
         }
         if let Some(bag) = self.inventory.get_mut(entity)
             && let Some(held) = bag.slot_mut(slot)

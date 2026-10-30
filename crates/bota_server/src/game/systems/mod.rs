@@ -23,6 +23,7 @@ mod hook;
 mod illusion;
 mod jungle;
 mod lane_ai;
+mod lotus;
 mod missile;
 mod modifiers;
 mod neutral_cast;

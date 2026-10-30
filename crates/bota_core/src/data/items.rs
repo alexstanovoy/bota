@@ -1354,3 +1354,125 @@ pub(crate) const ITEM_BOTTLE: ItemData = ItemData {
         ("rune_expire_time", &[Dec::of("90")]),
     ],
 };
+
+pub(crate) const ITEM_FAMANGO: ItemData = ItemData {
+    id: ItemId(57),
+    key: "item_famango",
+    retired: false,
+    cost: 0,
+    behavior: B::IMMEDIATE
+        .and(B::NO_TARGET)
+        .and(B::OPTIONAL_UNIT_TARGET)
+        .and(B::DONT_RESUME_ATTACK)
+        .and(B::SUPPRESS_ASSOCIATED_CONSUMABLE),
+    cast_range: 400,
+    cast_point: Ms::secs("0"),
+    channel: Ms::secs("0"),
+    cooldown: Ms::secs("5"),
+    mana: 0,
+    health: 0,
+    charges: 1,
+    stack: 3,
+    stock: None,
+    purchasable: false,
+    builds: &[],
+    values: &[("replenish_amount", &[Dec::of("125")])],
+};
+
+pub(crate) const ITEM_GREAT_FAMANGO: ItemData = ItemData {
+    id: ItemId(58),
+    key: "item_great_famango",
+    retired: false,
+    cost: 0,
+    behavior: B::IMMEDIATE
+        .and(B::NO_TARGET)
+        .and(B::OPTIONAL_UNIT_TARGET)
+        .and(B::DONT_RESUME_ATTACK)
+        .and(B::SUPPRESS_ASSOCIATED_CONSUMABLE),
+    cast_range: 400,
+    cast_point: Ms::secs("0"),
+    channel: Ms::secs("0"),
+    cooldown: Ms::secs("5"),
+    mana: 0,
+    health: 0,
+    charges: 1,
+    stack: 2,
+    stock: None,
+    purchasable: false,
+    builds: &[&[ItemId(57), ItemId(57), ItemId(57)]],
+    values: &[("replenish_amount", &[Dec::of("400")])],
+};
+
+pub(crate) const ITEM_GREATER_FAMANGO: ItemData = ItemData {
+    id: ItemId(59),
+    key: "item_greater_famango",
+    retired: false,
+    cost: 0,
+    behavior: B::IMMEDIATE
+        .and(B::NO_TARGET)
+        .and(B::OPTIONAL_UNIT_TARGET)
+        .and(B::DONT_RESUME_ATTACK)
+        .and(B::SUPPRESS_ASSOCIATED_CONSUMABLE),
+    cast_range: 400,
+    cast_point: Ms::secs("0"),
+    channel: Ms::secs("0"),
+    cooldown: Ms::secs("5"),
+    mana: 0,
+    health: 0,
+    charges: 1,
+    stack: 3,
+    stock: None,
+    purchasable: false,
+    builds: &[&[ItemId(58), ItemId(58)]],
+    values: &[("replenish_amount", &[Dec::of("900")])],
+};
+
+pub(crate) const ITEM_CHEESE: ItemData = ItemData {
+    id: ItemId(60),
+    key: "item_cheese",
+    retired: false,
+    cost: 1000,
+    behavior: B::IMMEDIATE.and(B::NO_TARGET),
+    cast_range: 0,
+    cast_point: Ms::secs("0"),
+    channel: Ms::secs("0"),
+    cooldown: Ms::secs("40"),
+    mana: 0,
+    health: 0,
+    charges: 1,
+    stack: u8::MAX,
+    stock: None,
+    purchasable: false,
+    builds: &[],
+    values: &[
+        ("health_restore", &[Dec::of("2500")]),
+        ("mana_restore", &[Dec::of("1500")]),
+    ],
+};
+
+pub(crate) const ITEM_ROYALE_WITH_CHEESE: ItemData = ItemData {
+    id: ItemId(61),
+    key: "item_royale_with_cheese",
+    retired: false,
+    cost: 2,
+    behavior: B::IMMEDIATE.and(B::NO_TARGET),
+    cast_range: 0,
+    cast_point: Ms::secs("0"),
+    channel: Ms::secs("0"),
+    cooldown: Ms::secs("40"),
+    mana: 0,
+    health: 0,
+    charges: 1,
+    stack: u8::MAX,
+    stock: None,
+    purchasable: false,
+    builds: &[],
+    values: &[
+        ("shield", &[Dec::of("500")]),
+        ("regen", &[Dec::of("100")]),
+        ("idle", &[Dec::of("5")]),
+        ("duration", &[Dec::of("5")]),
+        ("health_restore", &[Dec::of("3000")]),
+        ("mana_restore", &[Dec::of("2000")]),
+    ],
+};

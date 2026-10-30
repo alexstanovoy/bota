@@ -123,6 +123,8 @@ limits! {
     /// Most runes that lie at one rune spot together; a spawn that would pass
     /// it is skipped.
     MAX_RUNES_AT_SPOT: usize = 16;
+    /// Most Lotus Pools one view lists.
+    MAX_LOTUS_POOLS: usize = 16;
 }
 
 /// A hero's bag: the inventory and the backpack.

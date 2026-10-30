@@ -3,14 +3,15 @@
 //! what it does, and which of its values stand for which of bota's stats. Every number comes
 //! from the script by its Dota key; a number written here is bota's own, and says why.
 
-use bota_proto::{Aim, Attribute, Attributes, Fixed, ItemId};
+use bota_proto::{Aim, Attribute, Attributes, Fixed, ItemId, LotusTier};
 
 use super::items::*;
 use crate::{
     AllyUse, BOTTLE_CHARGES, BOTTLE_COOLDOWN, BOTTLE_COST, BOTTLE_HP, BOTTLE_MANA, BOTTLE_RANGE,
-    BOTTLE_TICKS, Carried, Dec, DisassembleRule, Drink, Grenade, ItemData, ItemDef, Mend, NOTHING,
-    OBSERVER_WARD, Odds, PLAIN, Pool, Recipe, SENTRY_WARD, Scroll, Spends, Stock, UseSpec,
-    hundredths_per_second, points, points_with, rules,
+    BOTTLE_TICKS, Carried, Dec, DisassembleRule, Drink, Grenade, ItemData, ItemDef, LOTUS_COOLDOWN,
+    LOTUS_RANGE, LOTUS_TAKE_RANGE, Mend, NOTHING, OBSERVER_WARD, Odds, PLAIN, Pool, Recipe,
+    SENTRY_WARD, Scroll, Spends, Stock, UseSpec, hundredths_per_second, lotus_replenish, points,
+    points_with, rules,
 };
 
 /// The row of an item as its script gives it; a row of the catalog adds what bota does with it.
@@ -386,10 +387,12 @@ pub(crate) const ITEM_ROWS: &[ItemDef] = &[
         alternatives: &[
             Recipe {
                 parts: ITEM_POWER_TREADS.builds[1],
+                by_charges: false,
                 mode: Some(Attribute::Intelligence),
             },
             Recipe {
                 parts: ITEM_POWER_TREADS.builds[2],
+                by_charges: false,
                 mode: Some(Attribute::Agility),
             },
         ],
@@ -694,7 +697,70 @@ pub(crate) const ITEM_ROWS: &[ItemDef] = &[
         }),
         ..from(&ITEM_BOTTLE)
     },
+    // The lotuses: also Liquipedia's *Healing Lotus* (`lotus.rs` names the sources). A Lotus Pool
+    // grows them; none is sold. Eaten at once beside whatever the body is doing, one charge each,
+    // on the user or on an allied hero in reach, one wait of five seconds shared by the three
+    // kinds. Each is built by charges as the script's recipes say (`ItemRecipeConsumesCharges`):
+    // three Healing Lotuses make a Great one, two Great ones a Greater one.
+    lotus("Healing Lotus", &ITEM_FAMANGO),
+    lotus("Great Healing Lotus", &ITEM_GREAT_FAMANGO),
+    lotus("Greater Healing Lotus", &ITEM_GREATER_FAMANGO),
+    // Cheese: eaten at once by its holder alone. Roshan drops it; where it comes from is not
+    // this table's.
+    ItemDef {
+        name: "Cheese",
+        aim: Some(Aim::Own),
+        spends: Spends::One,
+        immediate: true,
+        effect: UseSpec::Eat {
+            health: int(&ITEM_CHEESE, "health_restore"),
+            mana: int(&ITEM_CHEESE, "mana_restore"),
+        },
+        ..from(&ITEM_CHEESE)
+    },
+    // Royale with Cheese (shown as Block of Cheese): built, with no recipe scroll, when a bag holds
+    // three Greater Healing Lotuses and a Cheese (Liquipedia, *Block of Cheese*, since 7.33; the
+    // script has no recipe for it). Eaten at once by its holder alone. Its damage barrier (shield
+    // 500, regeneration 100 a second) is not modelled yet.
+    ItemDef {
+        name: "Block of Cheese",
+        aim: Some(Aim::Own),
+        spends: Spends::One,
+        immediate: true,
+        charge_recipes: &[&[
+            ItemId::GREATER_HEALING_LOTUS,
+            ItemId::GREATER_HEALING_LOTUS,
+            ItemId::GREATER_HEALING_LOTUS,
+            ItemId::CHEESE,
+        ]],
+        effect: UseSpec::Eat {
+            health: int(&ITEM_ROYALE_WITH_CHEESE, "health_restore"),
+            mana: int(&ITEM_ROYALE_WITH_CHEESE, "mana_restore"),
+        },
+        ..from(&ITEM_ROYALE_WITH_CHEESE)
+    },
 ];
+
+/// One kind of lotus, as its script gives it.
+const fn lotus(name: &'static str, d: &ItemData) -> ItemDef {
+    ItemDef {
+        name,
+        aim: Some(Aim::Own),
+        spends: Spends::One,
+        immediate: true,
+        ally: Some(AllyUse::Effect { percent: 100 }),
+        wait_key: Some(ItemId::HEALING_LOTUS),
+        shared_wait: true,
+        take_range: LOTUS_TAKE_RANGE,
+        components: &[],
+        charge_recipes: d.builds,
+        effect: UseSpec::Eat {
+            health: int(d, "replenish_amount"),
+            mana: int(d, "replenish_amount"),
+        },
+        ..from(d)
+    }
+}
 
 // The Bottle's numbers `rune.rs` names for the server are the script's.
 const _: () = {
@@ -720,4 +786,13 @@ const _: () = {
     assert!(near < far);
     assert!(rules::SCROLL_LANDING_RINGS * rules::SCROLL_LANDING_STEP < far);
     assert!(ITEM_TPSCROLL.channel.ticks() < ITEM_TPSCROLL.cooldown.ticks());
+};
+
+// The lotus numbers `lotus.rs` names for the server are the script's.
+const _: () = {
+    assert!(LOTUS_RANGE == ITEM_FAMANGO.cast_range);
+    assert!(LOTUS_COOLDOWN == ITEM_FAMANGO.cooldown.ticks());
+    assert!(lotus_replenish(LotusTier::Healing) == int(&ITEM_FAMANGO, "replenish_amount"));
+    assert!(lotus_replenish(LotusTier::Great) == int(&ITEM_GREAT_FAMANGO, "replenish_amount"));
+    assert!(lotus_replenish(LotusTier::Greater) == int(&ITEM_GREATER_FAMANGO, "replenish_amount"));
 };

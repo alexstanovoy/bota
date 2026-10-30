@@ -223,6 +223,15 @@ pub enum UseSpec {
     },
     /// Throws a Blood Grenade.
     Grenade(Grenade),
+    /// Eats a charge: mends the user (or, for an item that may be aimed at
+    /// one, an allied hero in reach) by this much health and mana at once:
+    /// Dota's lotuses, Cheese and Royale with Cheese.
+    Eat {
+        /// Health restored.
+        health: i32,
+        /// Mana restored.
+        mana: i32,
+    },
     /// Drinks a charge, or lets out the rune the item holds instead:
     /// Dota's `item_bottle`. It also stores the rune its holder takes
     /// (see [`ItemDef::stores_runes`]).
@@ -274,6 +283,9 @@ pub struct Stock {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Recipe<'a> {
     pub parts: &'a [ItemId],
+    /// Whether each part is one charge of a stack, which the build takes, and
+    /// not a whole item: Dota's `ItemRecipeConsumesCharges`.
+    pub by_charges: bool,
     /// The attribute the built item is set to. Absent for one set to none.
     pub mode: Option<Attribute>,
 }
@@ -375,6 +387,17 @@ pub struct ItemDef {
     /// the nothing its [`aim`](ItemDef::aim) names: Dota's
     /// `DOTA_ABILITY_BEHAVIOR_OPTIONAL_UNIT_TARGET`.
     pub ally_target: bool,
+    /// The item whose wait this one is owed under, when it shares one with
+    /// others: Dota's `AbilitySharedCooldown`. Absent: its own.
+    pub wait_key: Option<ItemId>,
+    /// The sets of parts it is built from by charges, one charge of each
+    /// part listed (the lotuses, Royale with Cheese): the build takes those
+    /// charges wherever the bag holds them, whichever stacks, and is one
+    /// charge of this item. Unlike [`ItemDef::components`] they are not sold.
+    pub charge_recipes: &'static [&'static [ItemId]],
+    /// How near a unit must stand to take it off the ground, in world
+    /// units. Zero for the usual [`rules::TAKE_ITEM_RANGE`].
+    pub take_range: i32,
     /// What using it does.
     pub effect: UseSpec,
     /// What a use aimed at an allied unit does, within [`cast_range`](Self::cast_range) of
@@ -450,9 +473,18 @@ impl ItemDef {
     pub fn recipes(&self) -> impl Iterator<Item = Recipe<'static>> + '_ {
         let first = (!self.components.is_empty()).then_some(Recipe {
             parts: self.components,
+            by_charges: false,
             mode: self.mode,
         });
-        first.into_iter().chain(self.alternatives.iter().copied())
+        let by_charges = self.charge_recipes.iter().map(|&parts| Recipe {
+            parts,
+            by_charges: true,
+            mode: None,
+        });
+        first
+            .into_iter()
+            .chain(self.alternatives.iter().copied())
+            .chain(by_charges)
     }
 
     /// What a drink of it mends, if it is drunk.
@@ -460,6 +492,15 @@ impl ItemDef {
         match self.effect {
             UseSpec::Mend(mend) => Some(mend),
             _ => None,
+        }
+    }
+
+    /// How near a unit must stand to take it off the ground.
+    pub const fn take_reach(&self) -> i32 {
+        if self.take_range > 0 {
+            self.take_range
+        } else {
+            rules::TAKE_ITEM_RANGE
         }
     }
 
@@ -559,6 +600,9 @@ pub(crate) const PLAIN: ItemDef = ItemDef {
     unbuyable: false,
     kept_empty: false,
     ally_target: false,
+    wait_key: None,
+    charge_recipes: &[],
+    take_range: 0,
     effect: UseSpec::None,
     ally: None,
     lifetime: 0,

@@ -158,6 +158,32 @@ pub struct StoredRune {
     pub ticks_left: u32,
 }
 
+/// Which lotus a Lotus Pool grows, by the time of the game.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum LotusTier {
+    /// A Healing Lotus: until 35:00.
+    Healing,
+    /// A Great Healing Lotus: from 35:00.
+    Great,
+    /// A Greater Healing Lotus: from 60:00.
+    Greater,
+}
+
+/// What a Lotus Pool holds. Both sides are told of both pools, wherever the
+/// pools are and whatever their sight.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct PoolView {
+    /// The pool, as the unit of kind [`UnitKind::LotusPool`] in
+    /// [`WorldView::units`].
+    pub id: EntityId,
+    /// What kind of lotus it holds; one kind at a time.
+    pub tier: LotusTier,
+    /// How many lotuses it holds.
+    pub lotuses: u8,
+    /// Ticks before it grows the next, absent when it is full.
+    pub next_in: Option<u32>,
+}
+
 /// A rune lying on the ground that the viewing team can see.
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct RuneView {
@@ -721,11 +747,15 @@ pub struct WorldView {
     pub clock: Option<ClockShift>,
     /// Every rune lying on the ground currently visible, sorted by
     /// [`EntityId`]. A client that kept sight of a spot remembers what it
-    /// saw there on its own. Last on the wire.
+    /// saw there on its own.
     #[serde(
         deserialize_with = "crate::bounded::seq::<_, _, { crate::limits::MAX_SNAPSHOT_RUNES }>"
     )]
     pub runes: Vec<RuneView>,
+    /// Every Lotus Pool and what it holds, sorted by [`EntityId`]. Last on
+    /// the wire.
+    #[serde(deserialize_with = "crate::bounded::seq::<_, _, { crate::limits::MAX_LOTUS_POOLS }>")]
+    pub pools: Vec<PoolView>,
 }
 
 /// How far cheats moved the clocks of a match: the game clock (`-startgame`)
@@ -780,6 +810,9 @@ impl WorldView {
         }
         for rune in &mut self.runes {
             visit(&mut rune.id);
+        }
+        for pool in &mut self.pools {
+            visit(&mut pool.id);
         }
         for entry in &mut self.aggro {
             visit(&mut entry.unit);

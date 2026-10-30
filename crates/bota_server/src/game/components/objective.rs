@@ -1,7 +1,7 @@
 //! What the map's objectives keep: an Outpost's home side and a capture
 //! under way at it, and the standing-zone countdown a Shrine runs.
 
-use bota_proto::{Fixed, Team};
+use bota_proto::{Fixed, LotusTier, Team};
 
 use crate::engine::state_hash;
 
@@ -24,6 +24,20 @@ pub struct Capture {
     pub progress: u32,
 }
 
+/// What a Lotus Pool holds and how its row of plucks goes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct LotusPool {
+    /// Which lotus it holds: one kind at a time.
+    pub tier: LotusTier,
+    /// How many lotuses it holds.
+    pub lotuses: u8,
+    /// Lotuses plucked in a row by heroes that have not left it since: the
+    /// next takes less time for each.
+    pub streak: u8,
+    /// Lotuses ever plucked from it, which keys the draw of who gets the next.
+    pub plucked: u32,
+}
+
 /// A countdown that runs while one side alone stands within `radius` of its
 /// keeper, and back down while it is contested, empty or the other side's
 /// alone (Dota 7.41's Shrines of Wisdom and Lotus Pools: "an enemy hero
@@ -40,6 +54,13 @@ pub struct Zone {
     pub progress: u32,
 }
 
+state_hash!(LotusTier as u8: LotusTier::Healing, LotusTier::Great);
+state_hash!(LotusPool {
+    tier,
+    lotuses,
+    streak,
+    plucked
+});
 state_hash!(Outpost { home });
 state_hash!(Capture { team, progress });
 state_hash!(Zone {

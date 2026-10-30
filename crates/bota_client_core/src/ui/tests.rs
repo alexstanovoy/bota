@@ -396,6 +396,7 @@ fn a_tick(tick: u32, units: Vec<UnitView>, players: Vec<PlayerView>) -> WorldVie
         glyphs: Vec::new(),
         clock: None,
         runes: Vec::new(),
+        pools: Vec::new(),
     }
 }
 

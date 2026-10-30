@@ -109,7 +109,11 @@ impl App {
             EventKind::RuneDenied {
                 unit, kind, team, ..
             } => self.rune_line(unit, Some(team), kind, RuneAct::Denied),
-            EventKind::RuneSpawned { .. } => {}
+            // Dota's feed has no line for a pool growing a lotus or a hero
+            // plucking one; the world shows both.
+            EventKind::RuneSpawned { .. }
+            | EventKind::LotusGrown { .. }
+            | EventKind::LotusPlucked { .. } => {}
         }
     }
 

@@ -67,6 +67,8 @@ pub struct MapDef {
     pub watchers: &'static [Vec2],
     /// Where the Shrines of Wisdom stand.
     pub shrines: &'static [Vec2],
+    /// Where the Lotus Pools stand.
+    pub lotus_pools: &'static [Vec2],
     /// The objectives a match on this map stands up unless its host says
     /// otherwise.
     pub default_objectives: ObjectiveSet,
@@ -144,6 +146,7 @@ const DOTA: MapDef = MapDef {
     outposts: &objective::DOTA_OUTPOSTS,
     watchers: &objective::DOTA_WATCHERS,
     shrines: &objective::DOTA_SHRINES,
+    lotus_pools: &crate::DOTA_LOTUS_POOLS,
     default_objectives: SIMULATED_OBJECTIVES,
     default_runes: SIMULATED_RUNES,
     rune_spots: &DOTA_RUNE_SPOTS,
@@ -181,6 +184,7 @@ const DEMO: MapDef = MapDef {
     outposts: &[],
     watchers: &[],
     shrines: &[],
+    lotus_pools: &[],
     default_objectives: ObjectiveSet::NONE,
     default_runes: RuneSet::NONE,
     rune_spots: &[],
@@ -243,6 +247,9 @@ impl MapDef {
         }
         if !self.shrines.is_empty() {
             held = held.with(ObjectiveKind::Shrines);
+        }
+        if !self.lotus_pools.is_empty() {
+            held = held.with(ObjectiveKind::LotusPools);
         }
         held
     }

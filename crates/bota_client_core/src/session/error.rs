@@ -91,10 +91,14 @@ pub enum SessionError {
     DuplicateLoot(EntityId),
     /// A full entity handle occurred more than once in visible runes.
     DuplicateRune(EntityId),
+    /// A full entity handle occurred more than once in the Lotus Pools.
+    DuplicatePool(EntityId),
     /// Visible projectiles were not sorted by full entity handle.
     UnsortedProjectiles,
     /// Visible runes were not sorted by full entity handle.
     UnsortedRunes,
+    /// The Lotus Pools were not sorted by full entity handle.
+    UnsortedPools,
     /// Visible loot was not sorted by full entity handle.
     UnsortedLoot,
     /// Felled trees were not strictly ascending.
@@ -354,6 +358,8 @@ impl SessionError {
             Self::DuplicateLoot(id) => write!(f, "snapshot loot repeats {}", Id(*id)),
             Self::DuplicateRune(id) => write!(f, "snapshot runes repeats {}", Id(*id)),
             Self::UnsortedRunes => f.write_str("snapshot runes are not sorted by full EntityId"),
+            Self::DuplicatePool(id) => write!(f, "snapshot pools repeats {}", Id(*id)),
+            Self::UnsortedPools => f.write_str("snapshot pools are not sorted by full EntityId"),
             Self::UnsortedProjectiles => {
                 f.write_str("snapshot projectiles are not sorted by full EntityId")
             }

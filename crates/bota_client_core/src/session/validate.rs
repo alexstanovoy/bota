@@ -8,9 +8,10 @@ use bota_proto::{
 
 use crate::limits::{
     COURIER_ITEM_SLOTS, HERO_ITEM_SLOTS, MAX_ABILITY_SLOTS, MAX_EFFECTS_PER_UNIT,
-    MAX_EVENTS_PER_BATCH, MAX_PLANTED_TREES, MAX_PROJECTILES, MAX_RESTORATION_REPORT, MAX_SEATS,
-    MAX_SHOP_ITEMS, MAX_SKIPPED_TICKS, MAX_SNAPSHOT_LOOT, MAX_SNAPSHOT_RUNES, MAX_STATIC_TREES,
-    MAX_TRACKED_ENTITIES, OWN_ITEM_SLOTS, PROJECTILE_MAP_MARGIN, STASH_ITEM_SLOTS,
+    MAX_EVENTS_PER_BATCH, MAX_LOTUS_POOLS, MAX_PLANTED_TREES, MAX_PROJECTILES,
+    MAX_RESTORATION_REPORT, MAX_SEATS, MAX_SHOP_ITEMS, MAX_SKIPPED_TICKS, MAX_SNAPSHOT_LOOT,
+    MAX_SNAPSHOT_RUNES, MAX_STATIC_TREES, MAX_TRACKED_ENTITIES, OWN_ITEM_SLOTS,
+    PROJECTILE_MAP_MARGIN, STASH_ITEM_SLOTS,
 };
 use crate::match_static::{MatchStatic, RawExtent, check_limit, validate_positions};
 use crate::session::SessionError;
@@ -240,6 +241,12 @@ fn dynamic_handles(view: &WorldView) -> Result<(), SessionError> {
         SessionError::DuplicateRune,
         SessionError::UnsortedRunes,
     )?;
+    ascending(
+        &view.pools,
+        |pool| pool.id,
+        SessionError::DuplicatePool,
+        SessionError::UnsortedPools,
+    )?;
     if !view.felled_trees.windows(2).all(|pair| pair[0] < pair[1]) {
         return Err(SessionError::UnsortedFelledTrees);
     }
@@ -293,6 +300,7 @@ fn snapshot_limits(view: &WorldView) -> Result<(), SessionError> {
     )?;
     check_limit("WorldView.loot", view.loot.len(), MAX_SNAPSHOT_LOOT)?;
     check_limit("WorldView.runes", view.runes.len(), MAX_SNAPSHOT_RUNES)?;
+    check_limit("WorldView.pools", view.pools.len(), MAX_LOTUS_POOLS)?;
     // Two sides' shelves for every item of the shop at most.
     check_limit("WorldView.stock", view.stock.len(), 2 * MAX_SHOP_ITEMS)?;
     check_limit(

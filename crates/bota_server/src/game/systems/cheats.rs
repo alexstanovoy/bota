@@ -257,7 +257,12 @@ impl World {
     /// the bag has no room. Told of as a purchase.
     pub(crate) fn hand_out(&mut self, seat: usize, item: ItemId, events: &mut Vec<Event>) {
         let owner = self.seats[seat].slot;
-        let Some(stack) = ItemStack::bought(item, owner, self.tick) else {
+        // An item no shop sells (a lotus, Cheese) comes as it does from a
+        // drop: the cheat hands out anything the catalog knows.
+        let Some(stack) = ItemStack::bought(item, owner, self.tick).or_else(|| {
+            bota_core::item_def(item)
+                .map(|def| ItemStack::granted(item, owner, self.tick, def.charges))
+        }) else {
             return;
         };
         let in_hand = self.seats[seat]

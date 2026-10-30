@@ -249,6 +249,20 @@ impl ItemId {
     /// Dota's `item_bottle`: three charges of health and mana, refilled at
     /// the fountain, and a place to keep a rune.
     pub const BOTTLE: ItemId = ItemId(56);
+    /// Dota's `item_famango`, the Healing Lotus a Lotus Pool grows: eaten, it
+    /// mends 125 health and mana; three combine into a Great Healing Lotus.
+    pub const HEALING_LOTUS: ItemId = ItemId(57);
+    /// Dota's `item_great_famango`: mends 400; two combine into a Greater
+    /// Healing Lotus.
+    pub const GREAT_HEALING_LOTUS: ItemId = ItemId(58);
+    /// Dota's `item_greater_famango`: mends 900.
+    pub const GREATER_HEALING_LOTUS: ItemId = ItemId(59);
+    /// Dota's `item_cheese`: a consumable Roshan drops, eaten for health and
+    /// mana, and half of Royale with Cheese.
+    pub const CHEESE: ItemId = ItemId(60);
+    /// Dota's `item_royale_with_cheese` (public name Block of Cheese): three
+    /// Greater Healing Lotuses and a Cheese combine into it.
+    pub const ROYALE_WITH_CHEESE: ItemId = ItemId(61);
 }
 
 /// What did something: the ability or the item a unit used, as Dota's combat
@@ -511,4 +525,7 @@ pub enum UnitKind {
     /// A Shrine of Wisdom (`npc_dota_xp_fountain`): an invulnerable building
     /// that gives experience to the side whose hero gathers it.
     Shrine,
+    /// A Lotus Pool (`npc_dota_lotus_pool`): an invulnerable building that
+    /// grows healing lotuses for any hero standing in it to pluck.
+    LotusPool,
 }

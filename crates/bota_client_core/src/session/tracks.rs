@@ -401,7 +401,9 @@ impl Tracks {
             | EventKind::RuneSpawned { .. }
             | EventKind::RuneActivated { .. }
             | EventKind::RuneBottled { .. }
-            | EventKind::RuneDenied { .. } => {}
+            | EventKind::RuneDenied { .. }
+            | EventKind::LotusGrown { .. }
+            | EventKind::LotusPlucked { .. } => {}
         }
     }
 
