@@ -1,8 +1,9 @@
 //! Items carried and abilities held: what they add, and what they cost.
 
 use bota_core::{
-    Carried, CarriedItem, ITEMS, ItemDef, MAX_COMPONENTS, Mend, ModifierKind, Pool, Spends,
-    clamp_to_map, effect_def, fountain_pos, hero_def, item_def, learn_group, move_towards, rules,
+    Berth, Carried, CarriedItem, ITEMS, ItemDef, MAX_COMPONENTS, Mend, ModifierKind, Pool, Spends,
+    clamp_to_map, effect_def, fountain_pos, hero_def, item_def, learn_group, move_towards,
+    place_purchase, purchase_pool, rules,
 };
 use bota_proto::{
     AbilityId, Attribute, EventKind, Fixed, HeroId, Inflictor, ItemId, SlotId, Target, Vec2,
@@ -13,11 +14,12 @@ use crate::game::{
     Modifier, Tree, World, in_backpack, in_inventory, in_stash, in_town_portal, wire_id,
 };
 
-/// Missing purchase parts, their total price, and destination capacity.
+/// Missing purchase parts, their total price, and where each goes: no berths when they do not
+/// all fit.
 pub(crate) struct PurchasePlan {
     parts: Vec<ItemId>,
     pub(crate) cost: i32,
-    pub(crate) fits: bool,
+    pub(crate) berths: Option<Vec<Berth>>,
 }
 
 /// The slots held that cover a list of parts, one slot to each part.
@@ -292,7 +294,8 @@ impl World {
     /// At its own shop it goes to the hero's bag, and
     /// to the stash when that bag is full. Anywhere else, and while the hero
     /// lies dead, it goes to the stash and waits there (Dota: what is bought
-    /// away from the fountain goes to the stash).
+    /// away from the fountain goes to the stash). Where each part goes is
+    /// [`bota_core::place_purchase`]'s to say, the rule a client asks too.
     pub fn buy(&mut self, slot: SlotId, item: ItemId, events: &mut Vec<Event>) -> bool {
         let Some(index) = self.seats.iter().position(|s| s.slot == slot) else {
             return false;
@@ -303,13 +306,13 @@ impl World {
         {
             return false;
         }
-        if item_def(item).is_some_and(|def| def.stack_limit > 0) {
-            return self.buy_stackable(index, unit, item, events);
-        }
         let Some(plan) = self.purchase_plan(slot, item) else {
             return false;
         };
-        if self.seats[index].gold < plan.cost || !plan.fits {
+        let Some(berths) = plan.berths else {
+            return false;
+        };
+        if self.seats[index].gold < plan.cost {
             return false;
         }
         let Some(stacks) = plan
@@ -320,16 +323,14 @@ impl World {
         else {
             return false;
         };
-        let at_home = self.at_home(unit);
-        for bought in stacks {
-            let in_hand = at_home
-                && unit
-                    .and_then(|unit| self.inventory.get_mut(unit))
-                    .and_then(|bag| bag.slots.iter_mut().find(|slot| slot.is_none()))
-                    .map(|free| *free = Some(bought))
-                    .is_some();
-            if !in_hand {
-                assert!(self.seats[index].stash.receive(bought));
+        for (bought, berth) in stacks.into_iter().zip(berths) {
+            match berth {
+                Berth::Bag(at) => self
+                    .inventory
+                    .get_mut(unit.expect("a bag berth is the hero's"))
+                    .expect("a bag berth is a bag")
+                    .put_in(at, bought),
+                Berth::Stash(at) => self.seats[index].stash.put_in(at, bought),
             }
         }
         self.finish_purchase(index, item, plan.cost, events);
@@ -338,59 +339,31 @@ impl World {
 
     /// Whether a purchase fits at its current destination, independent of affordability.
     pub fn purchase_fits(&self, slot: SlotId, item: ItemId) -> bool {
-        self.purchase_plan(slot, item).is_some_and(|plan| plan.fits)
+        self.purchase_plan(slot, item)
+            .is_some_and(|plan| plan.berths.is_some())
     }
 
     /// Plans a known item's purchase into the seat hero's bag or stash: the
-    /// stash alone while the hero lies dead.
+    /// stash alone while the hero lies dead or away from its shop.
     pub(crate) fn purchase_plan(&self, slot: SlotId, item: ItemId) -> Option<PurchasePlan> {
         let seat = self.seats.iter().position(|seat| seat.slot == slot)?;
         let unit = self.seats[seat].unit;
-        let def = item_def(item)?;
+        item_def(item)?;
         let parts = self.missing_parts(seat, unit, item);
         let cost = parts
             .iter()
             .map(|part| item_def(*part).map(|def| def.cost))
             .sum::<Option<i32>>()?;
-        let fits = if def.stack_limit == 0 {
-            self.free_slots(seat, unit) >= parts.len()
-        } else {
-            debug_assert!(def.components.is_empty());
-            let bought = ItemStack::bought(item, slot, self.tick)?;
-            (self.at_home(unit)
-                && unit
-                    .and_then(|unit| self.inventory.get(unit))
-                    .is_some_and(|bag| bag.receiving_slot(&bought).is_some()))
-                || self.seats[seat].stash.receiving_slot(&bought).is_some()
-        };
-        Some(PurchasePlan { parts, cost, fits })
-    }
-
-    /// Buys one mergeable charge, with capacity and price checked before mutation.
-    fn buy_stackable(
-        &mut self,
-        seat: usize,
-        unit: Option<Entity>,
-        item: ItemId,
-        events: &mut Vec<Event>,
-    ) -> bool {
-        let owner = self.seats[seat].slot;
-        let (Some(def), Some(bought)) = (item_def(item), ItemStack::bought(item, owner, self.tick))
-        else {
-            return false;
-        };
-        if self.seats[seat].gold < def.cost || !self.purchase_fits(owner, item) {
-            return false;
-        }
-        let in_hand = self.at_home(unit)
-            && unit
-                .and_then(|unit| self.inventory.get_mut(unit))
-                .is_some_and(|bag| bag.receive(bought));
-        if !in_hand {
-            assert!(self.seats[seat].stash.receive(bought));
-        }
-        self.finish_purchase(seat, item, def.cost, events);
-        true
+        let bag = unit
+            .filter(|unit| self.at_home(Some(*unit)))
+            .and_then(|unit| self.inventory.get(unit))
+            .map(Inventory::shelf);
+        let berths = place_purchase(slot, &parts, bag.as_ref(), &self.seats[seat].stash.shelf());
+        Some(PurchasePlan {
+            parts,
+            cost,
+            berths,
+        })
     }
 
     /// Pays for a completed purchase, takes it off the shelf, and emits its
@@ -426,20 +399,19 @@ impl World {
             Some(unit) => self.inventory.get(unit),
             None => self.seats[seat].kept.as_ref().map(|kept| &kept.bag),
         };
-        let held: Vec<ItemId> = bag
-            .into_iter()
-            .flat_map(|bag| bag.slots.iter().take(BAG_SLOTS).flatten())
-            .chain(self.seats[seat].stash.slots.iter().flatten())
-            .chain(
-                self.seats[seat]
-                    .courier
-                    .and_then(|courier| self.inventory.get(courier))
-                    .into_iter()
-                    .flat_map(|bag| bag.slots.iter().flatten()),
-            )
-            .filter(|stack| stack.owner == self.seats[seat].slot && !stack.for_sale)
-            .map(|stack| stack.id)
-            .collect();
+        let held = purchase_pool(
+            self.seats[seat].slot,
+            bag.into_iter()
+                .flat_map(|bag| bag.slots.iter().take(BAG_SLOTS).flatten())
+                .chain(self.seats[seat].stash.slots.iter().flatten())
+                .chain(
+                    self.seats[seat]
+                        .courier
+                        .and_then(|courier| self.inventory.get(courier))
+                        .into_iter()
+                        .flat_map(|bag| bag.slots.iter().flatten()),
+                ),
+        );
         let primary = match unit {
             Some(unit) => self.def.get(unit).and_then(|kind| kind.0.primary),
             None => bota_core::hero_def(self.seats[seat].hero).and_then(|hero| hero.unit.primary),
@@ -451,23 +423,6 @@ impl World {
     /// dead.
     fn at_home(&self, unit: Option<Entity>) -> bool {
         unit.is_some_and(|unit| self.at_shop(unit))
-    }
-
-    /// Slots a seat has free for something bought right now.
-    fn free_slots(&self, seat: usize, unit: Option<Entity>) -> usize {
-        let stash = self.seats[seat]
-            .stash
-            .slots
-            .iter()
-            .filter(|slot| slot.is_none())
-            .count();
-        if !self.at_home(unit) {
-            return stash;
-        }
-        let bag = unit
-            .and_then(|unit| self.inventory.get(unit))
-            .map_or(0, |bag| bag.slots.iter().filter(|s| s.is_none()).count());
-        bag + stash
     }
 
     pub fn item_def_in(&self, entity: Entity, slot: usize) -> Option<&'static ItemDef> {

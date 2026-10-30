@@ -93,9 +93,9 @@ const MKB_PARTS: [ItemId; 4] = [
 /// 4. Tests: `item_numbers.rs` in `bota_server` pins numbers; the determinism
 ///    pins re-record (the drivers buy by the length of this table) and, for a
 ///    stocked item, so do the dummy bench's digests.
-/// 5. `bota_client_core/src/ui/shop.rs`: the shop tab (`group_of`) it sits in.
-///    A front end keys its art and texts by the id (dbota: `src/faces.rs` and
-///    `assets-manifest/ids.txt`).
+/// 5. The shop lists it by itself: [`sold_items`](crate::sold_items) is every
+///    entry that is neither retired nor `unbuyable`. A front end keys its art and
+///    texts by the id (dbota: `src/faces.rs` and `assets-manifest/ids.txt`).
 ///
 /// A passive stat item that uses only the stats [`Carried`] has stops there.
 /// Beyond it:

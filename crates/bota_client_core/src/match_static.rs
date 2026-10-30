@@ -2,10 +2,10 @@
 
 use std::sync::Arc;
 
-use bota_core::{CellGrid, Recipe, cell_tier, missing_parts_with, rules};
+use bota_core::{CellGrid, cell_tier, rules};
 use bota_proto::{
-    Attribute, Fixed, ItemId, MapId, MatchInfo, ObjectiveSet, Pick, RuneSet, ShopEntry, SlotId,
-    Team, TickMode, Vec2,
+    Fixed, ItemId, MapId, MatchInfo, ObjectiveSet, Pick, RuneSet, ShopEntry, SlotId, Team,
+    TickMode, Vec2,
 };
 
 use crate::limits::{
@@ -128,7 +128,8 @@ impl MatchStatic {
         &self.terrain
     }
 
-    /// Everything the shop sells.
+    /// Everything the shop sells, as the match states it: derived from the rules'
+    /// `bota_core::sold_items`, which are what this client prices and places by.
     pub fn shop(&self) -> &[ShopEntry] {
         &self.shop
     }
@@ -136,31 +137,6 @@ impl MatchStatic {
     /// What the shop sells under `id`.
     pub fn entry(&self, id: ItemId) -> Option<&ShopEntry> {
         self.shop.iter().find(|entry| entry.id == id)
-    }
-
-    /// The parts of `item` a seat holding `held` still has to buy at this
-    /// match's shop, by [`missing_parts_with`]: its cheapest recipe, the one
-    /// set to `primary` first among equals.
-    pub fn missing_parts(
-        &self,
-        item: ItemId,
-        held: &[ItemId],
-        primary: Option<Attribute>,
-    ) -> Vec<ItemId> {
-        let recipes_of = |id: ItemId| {
-            let entry = self.entry(id);
-            let first = entry
-                .filter(|entry| !entry.components.is_empty())
-                .map(|entry| &entry.components[..]);
-            let others = entry.into_iter().flat_map(|entry| &entry.alternatives);
-            first
-                .into_iter()
-                .chain(others.map(|parts| &parts[..]))
-                .map(|parts| Recipe { parts, mode: None })
-        };
-        missing_parts_with(item, held, primary, recipes_of, |id| {
-            self.entry(id).map_or(0, |entry| entry.cost)
-        })
     }
 
     /// Fountain of each team, Radiant then Dire.

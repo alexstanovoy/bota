@@ -22,6 +22,5 @@ pub use chat::*;
 pub use derive::*;
 pub use intent::*;
 pub use replay::*;
-pub use shop::*;
 pub use slots::*;
 pub use smooth::*;

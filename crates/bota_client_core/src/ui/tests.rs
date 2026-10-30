@@ -56,7 +56,8 @@ fn the_console_turns_a_typed_line_into_a_cheat_order() {
 fn a_part_in_hand_comes_off_what_the_shop_asks() {
     use crate::shop::{price_for, whole_price};
     let parts = [ItemId::BOOTS, ItemId::GLOVES, ItemId::BELT];
-    let built: i32 = parts.iter().map(|part| whole_price(*part)).sum();
+    let price = |item| whole_price(item).expect("sold");
+    let built: i32 = parts.iter().map(|part| price(*part)).sum();
     assert_eq!(
         price_for(ItemId::POWER_TREADS, &[], None),
         built,
@@ -64,12 +65,12 @@ fn a_part_in_hand_comes_off_what_the_shop_asks() {
     );
     assert_eq!(
         price_for(ItemId::POWER_TREADS, &[ItemId::BOOTS], None),
-        built - whole_price(ItemId::BOOTS),
+        built - price(ItemId::BOOTS),
         "the boots already worn are not asked for twice"
     );
     assert_eq!(
         price_for(ItemId::BOOTS, &[ItemId::BOOTS], None),
-        whole_price(ItemId::BOOTS),
+        price(ItemId::BOOTS),
         "but a second of what is bought whole costs the whole of it"
     );
     assert_eq!(
@@ -1357,27 +1358,6 @@ fn a_gathered_shrine_is_fed_with_the_seat_that_gathered_it() {
             },
         ]
     );
-}
-
-#[test]
-fn the_shop_lists_every_sold_item_once_in_its_groups_in_order() {
-    use crate::ui::shop::{ShopGroup, group_of, shop_groups};
-    let groups = shop_groups();
-    let order: Vec<ShopGroup> = groups.iter().map(|(group, _)| *group).collect();
-    let mut expected = ShopGroup::ALL.to_vec();
-    expected.retain(|group| order.contains(group));
-    assert_eq!(order, expected, "groups keep their order");
-    let mut listed: Vec<u16> = Vec::new();
-    for (group, ids) in &groups {
-        assert!(ids.is_sorted(), "{group:?} lists its items in id order");
-        assert!(ids.iter().all(|id| group_of(*id) == *group));
-        listed.extend(ids.iter().copied());
-    }
-    listed.sort_unstable();
-    let sold: Vec<u16> = (0..bota_core::ITEMS.len() as u16)
-        .filter(|id| bota_core::item_def(ItemId(*id)).is_some())
-        .collect();
-    assert_eq!(listed, sold);
 }
 
 #[test]

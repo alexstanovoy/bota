@@ -435,15 +435,13 @@ pub fn item_def(id: ItemId) -> Option<&'static ItemDef> {
     ITEMS.get(usize::from(id.0)).filter(|def| !def.retired)
 }
 
-/// The whole shop as the wire states it, in item id order, retired entries
-/// left out.
+/// The whole shop as the wire states it, in item id order: what [`sold_items`] lists. The wire
+/// states it for a client that reads the match; one that has this table reads [`sold`] instead.
 pub fn shop_entries() -> Vec<bota_proto::ShopEntry> {
-    ITEMS
-        .iter()
-        .enumerate()
-        .filter(|(_, def)| !def.retired && !def.unbuyable)
-        .map(|(index, def)| bota_proto::ShopEntry {
-            id: ItemId(index as u16),
+    crate::sold_items()
+        .filter_map(|id| crate::sold(id).map(|def| (id, def)))
+        .map(|(id, def)| bota_proto::ShopEntry {
+            id,
             cost: def.cost,
             components: def.components.to_vec(),
             alternatives: def

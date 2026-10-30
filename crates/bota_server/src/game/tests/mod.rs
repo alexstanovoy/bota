@@ -36,6 +36,7 @@ mod neutral_passives;
 mod objectives;
 mod orders;
 mod pudge;
+mod purchase_rules;
 mod queue;
 mod shop;
 mod stacking;

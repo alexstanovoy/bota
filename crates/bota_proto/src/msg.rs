@@ -148,7 +148,10 @@ pub struct MatchInfo {
     /// Every seat and its hero, sorted by [`SlotId`].
     #[serde(deserialize_with = "crate::bounded::seq::<_, _, { crate::limits::MAX_SEATS }>")]
     pub picks: Vec<Pick>,
-    /// Everything the shop sells, in item id order.
+    /// Everything the shop sells, in item id order. Derived: the build's
+    /// rules state the same shop (`bota_core::sold_items`, and the wire
+    /// fingerprint pins the two equal), which a client that has them reads
+    /// instead; this is the statement for a client that has not.
     #[serde(deserialize_with = "crate::bounded::seq::<_, _, { crate::limits::MAX_SHOP_ENTRIES }>")]
     pub shop: Vec<ShopEntry>,
     /// Fountain of each team, Radiant then Dire.

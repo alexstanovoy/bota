@@ -84,12 +84,7 @@ impl ItemStack {
     /// holds: the two wards and the Ward Dispenser they make. Nothing for
     /// any other item.
     pub fn ward_counts(&self) -> Option<(u8, u8)> {
-        match self.id {
-            ItemId::OBSERVER_WARD => Some((self.charges, 0)),
-            ItemId::SENTRY_WARD => Some((0, self.charges)),
-            ItemId::WARD_DISPENSER => Some((self.charges, self.sentries)),
-            _ => None,
-        }
+        bota_core::ward_counts(self.id, self.charges, self.sentries)
     }
 
     /// The charges a use would spend: those of the active kind of ward in a
@@ -138,32 +133,9 @@ impl ItemStack {
         self.sentry_active = false;
     }
 
-    /// Charges another stack may add; ownership, mode, and sale marks must
-    /// match.
-    ///
-    /// Of one kind that stacks, up to its cap. With `combine`, the two
-    /// wards and the Ward Dispenser also merge into one dispenser, whole or
-    /// not at all, as far as neither count passes a byte: `u8::MAX` when the
-    /// whole of the source fits. A stash builds nothing, so it passes false.
+    /// Charges another stack may add: [`bota_core::merge_room`], the rule a client asks too.
     pub fn merge_room(&self, source: &Self, combine: bool) -> u8 {
-        if self.owner != source.owner
-            || self.mode != source.mode
-            || self.for_sale != source.for_sale
-            || self.charges == 0
-            || source.charges == 0
-        {
-            return 0;
-        }
-        let limit = item_def(self.id).map_or(0, |def| def.stack_limit);
-        if self.id == source.id && limit > 0 {
-            debug_assert!(self.charges <= limit && source.charges <= limit);
-            return limit.saturating_sub(self.charges);
-        }
-        let (Some((o1, s1)), Some((o2, s2))) = (self.ward_counts(), source.ward_counts()) else {
-            return 0;
-        };
-        let fits = o1.checked_add(o2).is_some() && s1.checked_add(s2).is_some();
-        if combine && fits { u8::MAX } else { 0 }
+        bota_core::merge_room(self, source, combine)
     }
 
     /// Merges up to the cap, retaining the oldest purchase and strongest restrictions.
@@ -207,6 +179,32 @@ impl ItemStack {
         self.cooldown = self.cooldown.max(source.cooldown);
         self.mute = self.mute.max(source.mute);
         self.touched |= source.touched;
+    }
+}
+
+impl bota_core::HeldItem for ItemStack {
+    fn id(&self) -> ItemId {
+        self.id
+    }
+
+    fn charges(&self) -> u8 {
+        self.charges
+    }
+
+    fn sentries(&self) -> u8 {
+        self.sentries
+    }
+
+    fn owner(&self) -> SlotId {
+        self.owner
+    }
+
+    fn mode(&self) -> Option<Attribute> {
+        self.mode
+    }
+
+    fn for_sale(&self) -> bool {
+        self.for_sale
     }
 }
 
@@ -285,29 +283,32 @@ impl Inventory {
         self.slots.get_mut(at)
     }
 
-    /// Where a whole arriving stack would go: a scroll into the town portal
-    /// slot when the bag has one, to merge or to fill it; anything else into
-    /// the first compatible stack it fits whole, then the first empty slot.
-    pub fn receiving_slot(&self, incoming: &ItemStack) -> Option<usize> {
-        if incoming.is_scroll()
-            && let Some(held) = &self.town_portal
-        {
-            let fits = held.is_none_or(|held| held.merge_room(incoming, false) >= incoming.charges);
-            return fits.then_some(rules::TOWN_PORTAL_SLOT);
+    /// This container as the placing rules read it.
+    pub fn shelf(&self) -> bota_core::Shelf<'_, ItemStack> {
+        bota_core::Shelf {
+            slots: &self.slots,
+            town_portal: self.town_portal.as_ref(),
+            combines: !self.stash,
         }
-        let merge = self.slots.iter().position(|held| {
-            held.is_some_and(|held| {
-                incoming.charges > 0 && held.merge_room(incoming, !self.stash) >= incoming.charges
-            })
-        });
-        merge.or_else(|| self.slots.iter().position(Option::is_none))
+    }
+
+    /// Where a whole arriving stack would go: [`bota_core::Shelf::receiving_slot`].
+    pub fn receiving_slot(&self, incoming: &ItemStack) -> Option<usize> {
+        self.shelf().receiving_slot(incoming)
     }
 
     /// Receives one whole stack or changes nothing; merges only when the entire stack fits.
-    pub fn receive(&mut self, mut incoming: ItemStack) -> bool {
+    pub fn receive(&mut self, incoming: ItemStack) -> bool {
         let Some(at) = self.receiving_slot(&incoming) else {
             return false;
         };
+        self.put_in(at, incoming);
+        true
+    }
+
+    /// Puts a stack into slot `at`, which [`Inventory::receiving_slot`] named for it: merged into
+    /// what is there, or in an empty slot.
+    pub fn put_in(&mut self, at: usize, mut incoming: ItemStack) {
         let combine = !self.stash;
         let slot = self.slot_mut(at).expect("a receiving slot exists");
         if let Some(held) = slot.as_mut() {
@@ -316,7 +317,6 @@ impl Inventory {
         } else {
             *slot = Some(incoming);
         }
-        true
     }
 
     /// Swaps what two of its own slots hold, as an order to swap them does: a

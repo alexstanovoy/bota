@@ -518,7 +518,7 @@ impl World {
         if seat.gold < plan.cost {
             return Err(RejectReason::NotEnoughGold);
         }
-        if !plan.fits {
+        if plan.berths.is_none() {
             return Err(RejectReason::InventoryFull);
         }
         if !self.in_stock(seat.team, item) {

@@ -1,8 +1,8 @@
 //! What a death pays and what may be put out by its own side.
 
-use bota_proto::{Attribute, Fixed, ItemId, UnitKind};
+use bota_proto::{Attribute, Fixed, ItemId, SlotId, UnitKind};
 
-use crate::{ItemDef, Recipe, item_def, kind_def, rules};
+use crate::{HeldItem, ITEMS, ItemDef, item_def, kind_def, rules};
 
 /// Whether one of a side's own units is worn down far enough for that side
 /// to put it out: below its kind's
@@ -119,9 +119,38 @@ pub fn denied_xp(bounty_xp: i32) -> i32 {
     bounty_xp * rules::DENIED_XP_PCT / 100
 }
 
+/// What the shop sells under `id`: the item, unless it is retired or cannot be bought. The one
+/// statement of what is sold, which the server buys by, every client lists by, and the wire's
+/// shop is derived from.
+#[inline]
+pub fn sold(id: ItemId) -> Option<&'static ItemDef> {
+    item_def(id).filter(|def| !def.unbuyable)
+}
+
+/// Every item the shop sells, in id order.
+pub fn sold_items() -> impl Iterator<Item = ItemId> {
+    (0..ITEMS.len() as u16)
+        .map(ItemId)
+        .filter(|id| sold(*id).is_some())
+}
+
+/// Which stacks count toward a purchase, as the items to pass to [`missing_parts`]: the buyer's
+/// own, not marked for sale, among all `held` that the buyer's purchase counts. As in Dota, a
+/// purchase counts everything the player owns that it can reach: the hero's bag (its kit while it
+/// lies dead), the stash and the courier, and never the town portal slot. The caller says which
+/// containers by what it passes; the rule of what counts is this one.
+pub fn purchase_pool<'a, P: HeldItem + 'a>(
+    buyer: SlotId,
+    held: impl IntoIterator<Item = &'a P>,
+) -> Vec<ItemId> {
+    held.into_iter()
+        .filter(|stack| stack.owner() == buyer && !stack.for_sale())
+        .map(HeldItem::id)
+        .collect()
+}
+
 /// What buying `item` still takes, as the items to buy, given what the buyer
-/// holds that counts: which stacks count (the buyer's own, not for sale) is
-/// for the caller to say by passing only those.
+/// holds that counts ([`purchase_pool`] says which stacks do).
 ///
 /// An item without parts is itself the answer, so asking for a second one buys
 /// a second one. One that is built answers with the parts it lacks, each of
@@ -135,29 +164,9 @@ pub fn denied_xp(bounty_xp: i32) -> i32 {
 /// primary attribute" (Liquipedia, *Power Treads*). A part's own parts are
 /// its first recipe's.
 pub fn missing_parts(item: ItemId, held: &[ItemId], primary: Option<Attribute>) -> Vec<ItemId> {
-    missing_parts_with(
-        item,
-        held,
-        primary,
-        |id| item_def(id).into_iter().flat_map(ItemDef::recipes),
-        |id| item_def(id).map_or(0, |def| def.cost),
-    )
-}
-
-/// [`missing_parts`] over another statement of the shop, such as the one a
-/// match describes on the wire: `recipes_of` lists an item's recipes, its
-/// components first and none for one bought whole, and `cost_of` its price.
-pub fn missing_parts_with<'a, R>(
-    item: ItemId,
-    held: &[ItemId],
-    primary: Option<Attribute>,
-    recipes_of: impl Fn(ItemId) -> R,
-    cost_of: impl Fn(ItemId) -> i32,
-) -> Vec<ItemId>
-where
-    R: Iterator<Item = Recipe<'a>>,
-{
+    let recipes_of = |id: ItemId| item_def(id).into_iter().flat_map(ItemDef::recipes);
     let first_parts = |id: ItemId| recipes_of(id).next().map_or(&[][..], |recipe| recipe.parts);
+    let cost_of = |id: ItemId| item_def(id).map_or(0, |def| def.cost);
     let mut best: Option<(i32, bool, Vec<ItemId>)> = None;
     for recipe in recipes_of(item) {
         let mut spare = held.to_vec();
@@ -165,7 +174,6 @@ where
         for part in recipe.parts {
             parts_beyond(*part, &mut spare, &mut wanted, &first_parts);
         }
-        // Saturating: the costs may come from a peer's statement of the shop.
         let cost = wanted
             .iter()
             .fold(0i32, |sum, part| sum.saturating_add(cost_of(*part)));

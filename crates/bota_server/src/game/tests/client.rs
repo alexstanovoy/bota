@@ -283,7 +283,7 @@ fn a_directional_move_replaces_the_walk_standing_in_the_ledger() {
 }
 
 /// A map-2 match and a session of seat 0 holding everything it was first sent.
-fn seated() -> (LocalMatch, ClientSession) {
+pub(super) fn seated() -> (LocalMatch, ClientSession) {
     seated_with(SessionOptions {
         ack: AckPolicy::Never,
         ..SessionOptions::default()
