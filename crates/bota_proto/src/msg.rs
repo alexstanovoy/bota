@@ -514,8 +514,11 @@ pub enum ServerMsg {
         pick: PickPhase,
         /// The heroes a seat may pick: the server's pool (every hero when it names none). A pool
         /// of one is a forced pick: the server gives it to each seat as it is taken, ready.
-        /// Last on the wire.
         heroes: Vec<HeroId>,
+        /// The items the match would play with if it started now: the catalogue its seats share
+        /// ([`MatchInfo::catalogue`] once it starts), what a shop open before the start offers.
+        /// Last on the wire.
+        catalogue: CataloguePrefix,
     },
     /// The match has begun.
     MatchStart {

@@ -4,7 +4,7 @@
 #[cfg(not(target_arch = "wasm32"))]
 use std::time::Duration;
 
-use bota_core::rules;
+use bota_core::{Catalogue, rules};
 
 use bota_proto::{
     ClientMsg, HeroId, LobbySlot, MatchInfo, PickPhase, PlayerId, Role, SeatKey, ServerMsg, SlotId,
@@ -83,6 +83,9 @@ pub struct Lobby {
     pub heroes: Vec<HeroId>,
     /// The selection clock as last told, with the message that told it.
     pub pick: PickPhase,
+    /// The items a match started now would play with, as last told; none until told, or when
+    /// this build does not hold them as told (a server of other items refuses it then).
+    pub catalogue: Option<Catalogue>,
 }
 
 impl Lobby {
@@ -105,11 +108,13 @@ impl Lobby {
                 same_heroes,
                 pick,
                 heroes,
+                catalogue,
             } => {
                 self.slots.clone_from(slots);
                 self.same_heroes = *same_heroes;
                 self.pick = *pick;
                 self.heroes.clone_from(heroes);
+                self.catalogue = Catalogue::agreeing(*catalogue);
             }
             _ => {}
         }

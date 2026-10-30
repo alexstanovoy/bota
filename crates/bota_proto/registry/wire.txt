@@ -611,3 +611,4 @@ field Order::SetCombineLock 0 slot: ItemSlot
 field Order::SetCombineLock 1 locked: bool
 variant RejectReason 28 NotDisassemblable
 variant RejectReason 29 CannotLockCombining
+field ServerMsg::LobbyState 4 catalogue: CataloguePrefix

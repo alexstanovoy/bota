@@ -700,6 +700,10 @@ pub fn all_server_msgs() -> Vec<ServerMsg> {
             same_heroes: true,
             pick: PickPhase::Selecting { left_ms: 41_500 },
             heroes: Vec::new(),
+            catalogue: CataloguePrefix {
+                items: 53,
+                digest: 0xfedc_ba98_7654_3210,
+            },
         },
         ServerMsg::MatchStart { info: match_info() },
         ServerMsg::Snapshot {

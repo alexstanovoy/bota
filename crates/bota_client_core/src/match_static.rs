@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use bota_core::{CellGrid, cell_tier, rules};
+use bota_core::{Catalogue, CellGrid, cell_tier, rules};
 use bota_proto::{
     Fixed, ItemId, MapId, MatchInfo, ObjectiveSet, Pick, RuneSet, ShopEntry, SlotId, Team,
     TickMode, Vec2,
@@ -47,6 +47,8 @@ pub struct MatchStatic {
     shop: Vec<ShopEntry>,
     fountains: [Vec2; 2],
     shop_range: i32,
+    /// The items the match plays with.
+    catalogue: Catalogue,
 }
 
 impl MatchStatic {
@@ -59,7 +61,7 @@ impl MatchStatic {
             return Err(SessionError::SeatCount(info.picks.len()));
         }
         validate_picks(&info.picks)?;
-        validate_static_inputs(info)?;
+        let catalogue = validate_static_inputs(info)?;
         let mut roster = info.picks.clone();
         roster.sort_by_key(|pick| pick.slot);
         Ok(Arc::new(Self {
@@ -82,6 +84,7 @@ impl MatchStatic {
             shop: info.shop.clone(),
             fountains: info.fountains,
             shop_range: info.shop_range,
+            catalogue,
         }))
     }
 
@@ -129,9 +132,15 @@ impl MatchStatic {
     }
 
     /// Everything the shop sells, as the match states it: derived from the rules'
-    /// `bota_core::sold_items`, which are what this client prices and places by.
+    /// `bota_core::Catalogue::sold_items` of the match's catalogue, which are what this client
+    /// prices and places by.
     pub fn shop(&self) -> &[ShopEntry] {
         &self.shop
+    }
+
+    /// The items the match plays with: no item past it is sold or offered.
+    pub const fn catalogue(&self) -> Catalogue {
+        self.catalogue
     }
 
     /// What the shop sells under `id`.
@@ -286,7 +295,7 @@ fn validate_picks(picks: &[Pick]) -> Result<(), SessionError> {
     Ok(())
 }
 
-fn validate_static_inputs(info: &MatchInfo) -> Result<(), SessionError> {
+fn validate_static_inputs(info: &MatchInfo) -> Result<Catalogue, SessionError> {
     check_limit("MatchInfo.trees", info.trees.len(), MAX_STATIC_TREES)?;
     check_limit(
         "MatchInfo.terrain_rle",
@@ -365,7 +374,8 @@ fn validate_static_inputs(info: &MatchInfo) -> Result<(), SessionError> {
             )?;
         }
     }
-    validate_recipes(&info.shop)
+    validate_recipes(&info.shop)?;
+    Ok(catalogue)
 }
 
 /// Every item once, every part of a recipe sold, no item built from itself,

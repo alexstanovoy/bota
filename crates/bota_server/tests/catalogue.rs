@@ -51,6 +51,10 @@ impl Transport for OtherBuild {
 }
 
 fn opts(replay: PathBuf) -> ServerOpts {
+    seats(replay, 1)
+}
+
+fn seats(replay: PathBuf, players: u8) -> ServerOpts {
     ServerOpts {
         pick_time: Duration::from_secs(bota_core::rules::PICK_SECS),
         pick_penalty_time: Duration::from_secs(bota_core::rules::PICK_PENALTY_SECS),
@@ -59,7 +63,7 @@ fn opts(replay: PathBuf) -> ServerOpts {
         chat: bota_server::chat::ChatOpts::DEFAULT,
         mode: TickMode::Lockstep,
         tick_rate: 30,
-        players: 1,
+        players,
         replay: Some(replay),
         seed: Some(11),
         match_id: None,
@@ -282,5 +286,60 @@ fn a_client_whose_items_differ_is_refused() {
     let (mut client, _) = other_build(&address, older().prefix()).expect("seated");
     client.send(&ClientMsg::LeaveGame).expect("left");
     server.join().expect("the server ends");
+    let _ = std::fs::remove_file(&path);
+}
+
+/// A client of this build sitting down with one of an older build: before the start its lobby
+/// is told the older catalogue the two share, and the match it plays is on that catalogue, so
+/// its shop offers no item past it, neither while the shop is open before the start nor after.
+#[test]
+fn a_client_sharing_a_match_with_an_older_one_offers_only_the_items_both_hold() {
+    let path = std::env::temp_dir().join(format!("bota-catalogue-s-{}.brp", std::process::id()));
+    let (address, server) = serve(seats(path.clone(), 2));
+    let (mut link, seated) =
+        Link::join(&address, "newer", HeroId::SHADOW_FIEND, None).expect("seated");
+    let mut lobby = bota_client_core::Lobby::default();
+    let (mut older_client, older_seated) = {
+        let link = Link::connect(&address, Duration::from_secs(60)).expect("connected");
+        let mut client = OtherBuild {
+            link,
+            told: older().prefix(),
+        };
+        let seated = join(&mut client, "elder", HeroId::PUDGE, None).expect("seated");
+        (client, seated)
+    };
+    let elder = thread::spawn(move || {
+        let _ = bota_client_core::play(&mut older_client, older_seated, &mut (), |_| Vec::new());
+    });
+    let mut seat = Seat::new(seated, SessionOptions::default());
+    let mut ticks = 0;
+    while ticks < 30 {
+        let msg = link.recv().expect("the link").expect("open");
+        lobby.observe(&msg);
+        if let ServerMsg::MatchStart { info } = &msg {
+            assert_eq!(
+                lobby.catalogue,
+                Some(older()),
+                "before the start the lobby tells the items both seats hold"
+            );
+            assert_eq!(info.catalogue, older().prefix());
+        }
+        if let Ingested::TickComplete { .. } = seat.ingest(msg, &mut ()).expect("a sound stream") {
+            ticks += 1;
+            let session = seat.session_mut().expect("started");
+            let catalogue = session.statics().catalogue();
+            assert_eq!(catalogue, older(), "the match plays the items both hold");
+            assert!(
+                bota_client_core::sold_items(catalogue).all(|item| older().holds(item)),
+                "the shop offers no item past them"
+            );
+            if let Some(tick) = session.end_turn() {
+                link.send(&ClientMsg::Ack { tick }).expect("acked");
+            }
+        }
+    }
+    link.send(&ClientMsg::LeaveGame).expect("left");
+    server.join().expect("the server ends");
+    elder.join().expect("the older client ends");
     let _ = std::fs::remove_file(&path);
 }

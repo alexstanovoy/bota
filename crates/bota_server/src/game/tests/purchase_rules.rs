@@ -150,7 +150,9 @@ fn what_the_client_says_fits_is_what_the_server_accepts_for_every_item_in_every_
 #[test]
 fn the_items_a_client_lists_are_exactly_the_items_the_server_sells() {
     let (local, session) = arranged(&STATES[0]);
-    let listed: BTreeSet<u16> = sold_items().map(|item| item.0).collect();
+    let listed: BTreeSet<u16> = sold_items(bota_core::Catalogue::FULL)
+        .map(|item| item.0)
+        .collect();
     let accepted: BTreeSet<u16> = (0..ITEMS.len() as u16)
         .filter(|id| server_accepts(local.world(), ItemId(*id)))
         .collect();

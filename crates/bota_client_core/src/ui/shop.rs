@@ -1,6 +1,7 @@
 //! The shop as a player uses it: what a seat holds towards a build, and the
 //! quick-buy item.
 
+use bota_core::Catalogue;
 use bota_proto::ItemId;
 
 use crate::shop::{held_items, missing_for, price_for, primary_of, whole_price};
@@ -51,9 +52,27 @@ impl App {
         bota_core::rules::STARTING_GOLD - spent
     }
 
-    /// Chooses an item to buy once the match begins, if the starting gold
-    /// still covers it after the others.
+    /// The items the shop offers: the match's once it began, the lobby's before (what a match
+    /// started now plays with), this build's whole catalogue until either told.
+    pub fn catalogue(&self) -> Catalogue {
+        self.statics()
+            .map(|statics| statics.catalogue())
+            .or(self.lobby.catalogue)
+            .unwrap_or(Catalogue::FULL)
+    }
+
+    /// Whether the shop offers an item: one sold, in the match's catalogue.
+    pub fn offers(&self, item: u16) -> bool {
+        self.catalogue().sold(ItemId(item)).is_some()
+    }
+
+    /// Chooses an item to buy once the match begins, if the shop offers it and the starting
+    /// gold still covers it after the others.
     pub fn queue_buy(&mut self, item: u16) {
+        if !self.offers(item) {
+            self.refuse(bota_proto::RejectReason::UnknownItem);
+            return;
+        }
         if self.price_of(item).0 > self.gold_after_queue() {
             self.refuse(bota_proto::RejectReason::NotEnoughGold);
             return;
@@ -97,14 +116,16 @@ impl App {
     /// What the quick-buy intent buys now: the quick-buy item whole when the
     /// gold covers it, else its first missing part the gold covers.
     pub fn quick_buy_next(&self) -> Option<u16> {
-        let target = self.quick_buy?;
+        let target = self.quick_buy.filter(|item| self.offers(*item))?;
         let gold = self.player(self.my_slot?)?.gold.unwrap_or(0);
         if gold >= self.price_of(target).0 {
             return Some(target);
         }
         self.missing_for(target)
             .into_iter()
-            .find(|part| whole_price(*part).is_some_and(|price| price <= gold))
+            .find(|part| {
+                self.offers(part.0) && whole_price(*part).is_some_and(|price| price <= gold)
+            })
             .map(|part| part.0)
     }
 }

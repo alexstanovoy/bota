@@ -107,6 +107,7 @@ fn a_stalled_caller_holds_a_bounded_inbox_of_a_flooding_server() {
         same_heroes: true,
         pick: bota_proto::PickPhase::Waiting,
         heroes: Vec::new(),
+        catalogue: bota_core::Catalogue::FULL.prefix(),
     })
     .expect("encode");
     let server = thread::spawn(move || {

@@ -450,7 +450,18 @@ impl Server {
             same_heroes: self.opts.same_heroes,
             pick: self.pick_clock.phase(Instant::now()),
             heroes: self.allowed_heroes(),
+            catalogue: self.shared_catalogue().prefix(),
         }
+    }
+
+    /// The items every seat holds: what a match started now plays with.
+    fn shared_catalogue(&self) -> Catalogue {
+        self.roster
+            .seats
+            .iter()
+            .fold(Catalogue::FULL, |shared, seat| {
+                shared.shared(seat.catalogue)
+            })
     }
 
     /// Ends a connection the server is done with: what is queued still goes
@@ -655,8 +666,13 @@ impl Server {
             }
             return;
         };
-        if let Some(seat) = self.roster.seat_of_mut(id) {
-            seat.catalogue = held;
+        let Some(seat) = self.roster.seat_of_mut(id) else {
+            return;
+        };
+        seat.catalogue = held;
+        // The lobby tells every seat what a match started now plays with.
+        if playing.is_none() {
+            self.broadcast_lobby();
         }
     }
 
@@ -1095,13 +1111,7 @@ impl Server {
                 .runes
                 .unwrap_or(bota_core::map_of(self.opts.map).default_runes),
             spawn_modifiers: Vec::new(),
-            catalogue: self
-                .roster
-                .seats
-                .iter()
-                .fold(Catalogue::FULL, |shared, seat| {
-                    shared.shared(seat.catalogue)
-                }),
+            catalogue: self.shared_catalogue(),
             starting_gold_lost: self
                 .roster
                 .seats

@@ -7,9 +7,10 @@ use bota_core::{
 };
 use bota_proto::{Attribute, ItemId, PlayerView, UnitKind, WorldView};
 
-/// Every item the shop sells, in id order: neither retired nor unbuyable.
-pub fn sold_items() -> impl Iterator<Item = ItemId> {
-    bota_core::sold_items()
+/// Every item the shop of a match on `catalogue` sells, in id order: neither retired nor
+/// unbuyable, and in the catalogue ([`MatchStatic::catalogue`](crate::MatchStatic::catalogue)).
+pub fn sold_items(catalogue: bota_core::Catalogue) -> impl Iterator<Item = ItemId> {
+    catalogue.sold_items()
 }
 
 /// Every item that counts toward a seat's purchase, for [`price_for`]: the seat's own stacks,
