@@ -1207,13 +1207,13 @@ impl Server {
         } = told;
         let mut full = world.view_full();
         full.order_delays = line.views(None);
-        let full_frame = snapshot_frame(full.clone());
+        let full_frame = snapshot_frame(full);
         let full_events = visible_events(events, None);
         let sides = [Team::Radiant, Team::Dire].map(|team| {
             let frame = snapshot_frame(side_view(world, line, handles, team));
             (team, frame, side_events(events, handles, team, world.tick))
         });
-        replay.record(&ReplayRecord::Msg(ServerMsg::Snapshot { view: full }));
+        replay.record_msg_frame(&full_frame);
         // A connection that has not said Hello is told nothing, a referee no
         // tick, and a late spectator only what the delayed feed shows it.
         let watching = |id: PlayerId| {
