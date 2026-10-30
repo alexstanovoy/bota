@@ -65,6 +65,7 @@ fn seats(replay: PathBuf, players: u8) -> ServerOpts {
         tick_rate: 30,
         players,
         replay: Some(replay),
+        replay_max_bytes: None,
         seed: Some(11),
         match_id: None,
         reserved: Vec::new(),

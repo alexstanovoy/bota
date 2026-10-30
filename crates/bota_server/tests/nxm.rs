@@ -41,6 +41,7 @@ fn opts(players: u8, reserved: Vec<ReservedSeat>, replay: Option<PathBuf>) -> Se
         tick_rate: 30,
         players,
         replay,
+        replay_max_bytes: None,
         seed: Some(11),
         match_id: None,
         reserved,

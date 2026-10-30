@@ -59,6 +59,9 @@ pub struct ServerOpts {
     pub players: u8,
     /// Where to write the replay. Absent records nothing.
     pub replay: Option<PathBuf>,
+    /// The most bytes the replay file may reach: the replay is closed whole before it grows
+    /// past this, and the result says it was cut short. Absent for no cap.
+    pub replay_max_bytes: Option<u64>,
     /// Seed of the match randomness. Drawn from the operating system when
     /// absent, and then never known to anyone.
     pub seed: Option<u64>,
@@ -152,6 +155,8 @@ pub enum MatchEnd {
         /// The slot of a player whose leaving gave the match away; the winner is then
         /// the other team.
         left: Option<u8>,
+        /// The replay was closed short of the match's end (its size cap, a failed write).
+        replay_truncated: bool,
     },
     /// Nobody played it: no seat was held when the lobby ran out of time, or
     /// every seat was empty for good or for longer than allowed. There is no
@@ -191,7 +196,7 @@ fn run_inner(
     let secrets = draw_secrets(opts.seed, opts.match_id)?;
     let replay = match &opts.replay {
         None => ReplayWriter::disabled(),
-        Some(path) => ReplayWriter::create(path)?,
+        Some(path) => ReplayWriter::create(path, opts.replay_max_bytes)?,
     };
     let (tx, rx) = channel();
     listeners.into().start(&tx)?;
@@ -1221,12 +1226,26 @@ impl Server {
                     winner,
                     report: MatchReport { picks, stats },
                     left: left.map(|slot: SlotId| slot.0),
+                    replay_truncated: false,
                 };
             }
         };
-        replay.finish();
+        let replay_truncated = replay.finish();
         self.close_all();
-        end
+        match end {
+            MatchEnd::Over {
+                winner,
+                report,
+                left,
+                ..
+            } => MatchEnd::Over {
+                winner,
+                report,
+                left,
+                replay_truncated,
+            },
+            abandoned => abandoned,
+        }
     }
 
     /// A team whose seats, all those held at the start, have left the match for good

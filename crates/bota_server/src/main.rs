@@ -93,6 +93,18 @@ struct Args {
     /// Write a replay to this file.
     #[arg(long)]
     replay: Option<PathBuf>,
+    /// The most MiB the replay file may reach (0: no cap but the process's own file size limit).
+    /// The replay is closed whole before it grows past this, the match goes on, and the result
+    /// line says `replay=truncated`. Whoever limits file sizes (docker `--ulimit fsize`) sets this
+    /// below the limit; the server also keeps under its own limit.
+    #[arg(long, default_value_t = 0, requires = "replay", value_parser = clap::value_parser!(u32).range(..=1 << 20))]
+    replay_max_mib: u32,
+    /// The newest version of the `RESULT` line the launcher reads (a launcher says so with this
+    /// flag or the variable). Version 1 is the line of the first servers; fields added later
+    /// (`replay=truncated`, version 2) are printed only for a launcher that knows them, so an
+    /// older launcher reads every line, whatever the order the two are updated in.
+    #[arg(long, env = "RADOVID_RESULT_VERSION", default_value_t = 1, value_parser = clap::value_parser!(u16).range(1..))]
+    result_version: u16,
     /// Which map to play: 0 Dota, 1 hero demo, 2 mid-only Dota (two lives or first tower, twenty game minutes).
     #[arg(long, default_value_t = 0, value_parser = parse_map)]
     map: u16,
@@ -215,6 +227,7 @@ struct Args {
 }
 
 fn main() -> ExitCode {
+    survive_file_size_limit();
     let mut args = Args::parse();
     if args.wire_fingerprint {
         println!(
@@ -234,13 +247,18 @@ fn main() -> ExitCode {
             return ExitCode::FAILURE;
         }
     }
+    let result_version = args.result_version;
     match serve(args) {
         Ok(MatchEnd::Over {
             winner,
             report,
             left,
+            replay_truncated,
         }) => {
-            println!("{}", result_line(winner, &report, left));
+            println!(
+                "{}",
+                result_line(winner, &report, left, replay_truncated, result_version)
+            );
             ExitCode::SUCCESS
         }
         Ok(MatchEnd::Abandoned) => ExitCode::from(EXIT_ABANDONED),
@@ -258,7 +276,7 @@ fn serve(args: Args) -> std::io::Result<MatchEnd> {
     check_opts(&opts).map_err(std::io::Error::other)?;
     // A replay that cannot be written fails before the port is announced.
     if let Some(path) = &opts.replay {
-        bota_server::replay::ReplayWriter::create(path)?;
+        bota_server::replay::ReplayWriter::create(path, opts.replay_max_bytes)?;
     }
     let listeners = listen(&args)?;
     println!("READY");
@@ -277,7 +295,13 @@ fn secret_env(name: &str) -> Result<Option<String>, String> {
 /// The line a launcher reads the result from: the winning team (0 Radiant,
 /// 1 Dire) or a draw, the game time the match lasted, and the
 /// [`bota_proto::MatchReport`] as hex postcard bytes.
-fn result_line(winner: Team, report: &bota_proto::MatchReport, left: Option<u8>) -> String {
+fn result_line(
+    winner: Team,
+    report: &bota_proto::MatchReport,
+    left: Option<u8>,
+    replay_truncated: bool,
+    result_version: u16,
+) -> String {
     let winner = match winner {
         Team::Radiant => "0",
         Team::Dire => "1",
@@ -292,7 +316,36 @@ fn result_line(winner: Team, report: &bota_proto::MatchReport, left: Option<u8>)
         .map(|byte| format!("{byte:02x}"))
         .collect();
     let left = left.map_or_else(String::new, |slot| format!(" left={slot}"));
-    format!("RESULT winner={winner} duration_ms={duration_ms} report={hex}{left}")
+    let truncated = if replay_truncated && result_version >= 2 {
+        " replay=truncated"
+    } else {
+        ""
+    };
+    format!("RESULT winner={winner} duration_ms={duration_ms} report={hex}{left}{truncated}")
+}
+
+/// The replay's size cap in bytes: the smaller of `--replay-max-mib` (0: none) and the process's
+/// own file size limit, so the replay is closed whole before the kernel refuses a write.
+fn replay_max_bytes(mib: u32) -> Option<u64> {
+    let asked = (mib > 0).then(|| u64::from(mib) << 20);
+    let limit = rustix::process::getrlimit(rustix::process::Resource::Fsize).current;
+    match (asked, limit) {
+        (Some(asked), Some(limit)) => Some(asked.min(limit)),
+        (asked, limit) => asked.or(limit),
+    }
+}
+
+/// Makes a write past the file size limit fail with `EFBIG` instead of ending the process with
+/// SIGXFSZ, so the replay's writer stops and the match is played on.
+fn survive_file_size_limit() {
+    static SEEN: std::sync::OnceLock<std::sync::Arc<std::sync::atomic::AtomicBool>> =
+        std::sync::OnceLock::new();
+    let flag = SEEN.get_or_init(Default::default);
+    if let Err(error) =
+        signal_hook::flag::register(signal_hook::consts::SIGXFSZ, std::sync::Arc::clone(flag))
+    {
+        eprintln!("bota_server: SIGXFSZ is not handled ({error})");
+    }
 }
 
 /// The server's options from the command line.
@@ -327,6 +380,7 @@ fn server_opts(args: &Args) -> std::io::Result<ServerOpts> {
         tick_rate: args.tick_rate,
         players,
         replay: args.replay.clone(),
+        replay_max_bytes: replay_max_bytes(args.replay_max_mib),
         seed: args.seed,
         match_id: args.match_id,
         reserved,

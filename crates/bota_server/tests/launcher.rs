@@ -8,10 +8,11 @@ use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant};
 
-use bota_client_core::{ClientSession, IssuedOrder, Link, Outcome};
+use bota_client_core::{ClientSession, IssuedOrder, Link, Outcome, UnpackedReplay};
 use bota_core::fountain_pos;
 use bota_proto::{
-    HeroId, MatchReport, Order, SeatKey, ServerMsg, SlotId, Target, Team, decode_payload,
+    FrameReader, HeroId, MatchReport, Order, ReplayRecord, SeatKey, ServerMsg, SlotId, Target,
+    Team, decode_payload,
 };
 
 /// How long a test waits for the server binary to speak or exit. It guards against a hang
@@ -70,8 +71,25 @@ fn lines_of(pipe: impl Read + Send + 'static) -> mpsc::Receiver<String> {
 /// Starts the binary on a loopback port with both seats reserved, slot 0 on
 /// Dire and slot 1 on Radiant, and waits for `READY`.
 fn start(args: &[&str]) -> Server {
+    start_limited(args, None)
+}
+
+/// As [`start`], under a file size limit of `fsize_kib` KiB (what `docker --ulimit fsize` sets),
+/// when given.
+fn start_limited(args: &[&str], fsize_kib: Option<u32>) -> Server {
     let seats = format!("{}:1:first,{}:0:second", KEYS[0].to_hex(), KEYS[1].to_hex());
-    let mut child = Command::new(env!("CARGO_BIN_EXE_bota_server"))
+    let mut command = match fsize_kib {
+        None => Command::new(env!("CARGO_BIN_EXE_bota_server")),
+        Some(kib) => {
+            let mut command = Command::new("bash");
+            command
+                .args(["-c", "ulimit -f \"$0\" && exec \"$@\""])
+                .arg(kib.to_string())
+                .arg(env!("CARGO_BIN_EXE_bota_server"));
+            command
+        }
+    };
+    let mut child = command
         .args(["--bind", "127.0.0.1", "--port", "0", "--map", "2"])
         .args(args)
         .env("BOTA_SEATS", seats)
@@ -160,6 +178,101 @@ fn a_match_played_to_its_end_says_its_result_on_one_line_and_exits_0() {
     // Game time at 30 ticks a second.
     let ms = u64::from(report.stats.duration) * 1000 / 30;
     assert_eq!(duration, format!("duration_ms={ms}"));
+    assert!(server.exit(WAIT).success());
+}
+
+/// The frames of a replay, unpacked to the end of its stream: a stream cut off mid-way fails.
+fn replay_records(path: &std::path::Path) -> Vec<ReplayRecord> {
+    let mut bytes = Vec::new();
+    UnpackedReplay::new(std::fs::File::open(path).expect("the replay"))
+        .read_to_end(&mut bytes)
+        .expect("the replay's stream is closed whole");
+    let mut reader = FrameReader::new();
+    reader.push(&bytes);
+    let mut records = Vec::new();
+    while let Some(record) = reader.next_message().expect("a whole record") {
+        records.push(record);
+    }
+    records
+}
+
+/// The long match behind the docker `--ulimit fsize` bug: a replay growing past the process's file
+/// size limit. The server keeps under the limit, closes the replay whole and plays the match to
+/// its end. A launcher that reads result line version 2 is told the replay was cut short; one
+/// that does not (any older one) gets the line of the first servers, exactly.
+#[test]
+fn a_replay_under_a_file_size_limit_is_closed_whole_and_the_match_goes_on() {
+    for version in ["1", "2"] {
+        truncated_replay_under_limit(version);
+    }
+}
+
+fn truncated_replay_under_limit(version: &str) {
+    let path = std::env::temp_dir().join(format!("bota-fsize-{}.brp", std::process::id()));
+    let replay = path.to_str().expect("a path");
+    let limit_kib = 64;
+    let mut server = start_limited(
+        &[
+            "--mode",
+            "lockstep",
+            "--ack-timeout-ticks",
+            "900",
+            "--replay",
+            replay,
+            "--result-version",
+            version,
+        ],
+        Some(limit_kib),
+    );
+    let first = play(server.addr.clone(), KEYS[0], HeroId::PUDGE);
+    let second = play(server.addr.clone(), KEYS[1], HeroId::SHADOW_FIEND);
+    first.join().expect("the first seat plays to the end");
+    second.join().expect("the second seat plays to the end");
+
+    let result = server.line(WAIT);
+    assert!(result.starts_with("RESULT winner="), "{result}");
+    if version == "1" {
+        assert_eq!(
+            result.split(' ').count(),
+            4,
+            "the first line's fields only: {result}"
+        );
+        assert!(!result.contains("replay="), "{result}");
+    } else {
+        assert!(
+            result.ends_with(" replay=truncated"),
+            "the result says the replay was cut short: {result}"
+        );
+    }
+    assert!(server.exit(WAIT).success());
+    let size = std::fs::metadata(&path).expect("the replay").len();
+    assert!(size <= u64::from(limit_kib) << 10, "{size} bytes");
+    let records = replay_records(&path);
+    let _ = std::fs::remove_file(&path);
+    assert!(matches!(records[0], ReplayRecord::Header(_)));
+    assert!(
+        !records
+            .iter()
+            .any(|record| matches!(record, ReplayRecord::Msg(ServerMsg::MatchOver { .. }))),
+        "the replay ends before the match did"
+    );
+}
+
+/// A write past the limit that the server could not foresee must not end the process either:
+/// SIGXFSZ is survived (its default action kills).
+#[test]
+fn a_file_size_signal_does_not_end_the_server() {
+    let mut server = start(&["--mode", "lockstep", "--ack-timeout-ticks", "900"]);
+    let sent = Command::new("kill")
+        .args(["-s", "XFSZ", &server.child.id().to_string()])
+        .status()
+        .expect("kill runs");
+    assert!(sent.success());
+    let first = play(server.addr.clone(), KEYS[0], HeroId::PUDGE);
+    let second = play(server.addr.clone(), KEYS[1], HeroId::SHADOW_FIEND);
+    first.join().expect("the first seat plays to the end");
+    second.join().expect("the second seat plays to the end");
+    assert!(server.line(WAIT).starts_with("RESULT winner="));
     assert!(server.exit(WAIT).success());
 }
 

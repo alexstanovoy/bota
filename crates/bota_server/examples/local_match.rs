@@ -69,7 +69,7 @@ fn main() {
     }
     .expect("a valid match");
     let mut writer = replay.map(|path| {
-        let mut writer = ReplayWriter::create(path.as_ref()).expect("a replay file to write");
+        let mut writer = ReplayWriter::create(path.as_ref(), None).expect("a replay file to write");
         writer.record(&ReplayRecord::Msg(opening[0][0].clone()));
         writer
     });
@@ -114,7 +114,9 @@ fn main() {
         }
         if let Some(winner) = winner {
             println!("tick {}: match over, winner {winner:?}", local.tick());
-            writer.into_iter().for_each(ReplayWriter::finish);
+            writer.into_iter().for_each(|writer| {
+                writer.finish();
+            });
             return;
         }
         let given: Vec<&[OutgoingOrder]> = orders.iter().map(Option::as_slice).collect();

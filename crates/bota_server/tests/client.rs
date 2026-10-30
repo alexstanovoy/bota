@@ -26,6 +26,7 @@ fn opts() -> ServerOpts {
         tick_rate: 30,
         players: 2,
         replay: None,
+        replay_max_bytes: None,
         seed: Some(3),
         match_id: None,
         reserved: Vec::new(),

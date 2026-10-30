@@ -246,7 +246,9 @@ dependencies = [
  "miniz_oxide",
  "rand_chacha",
  "rustc-hash",
+ "rustix",
  "rustls",
+ "signal-hook",
  "socket2",
  "tokio",
  "tokio-rustls",
@@ -788,6 +790,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "linux-raw-sys"
+version = "0.12.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "32a66949e030da00e8c7d4434b251670a91556f4144941d37452769c25d58a53"
+
+[[package]]
 name = "log"
 version = "0.4.34"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1166,6 +1174,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustix"
+version = "1.1.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e5e76742e5294153d4dde1207dbec5bdd81eef6fabdc0d2118babadabfd858aa"
+dependencies = [
+ "bitflags",
+ "errno",
+ "libc",
+ "linux-raw-sys",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
 name = "rustls"
 version = "0.23.46"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1313,6 +1334,16 @@ name = "shlex"
 version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f8fadd59c855ef2080decdef8ff161eb6661b86933c9d82e5ba29dc602a55aba"
+
+[[package]]
+name = "signal-hook"
+version = "0.3.18"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d881a16cf4426aa584979d30bd82cb33429027e42122b169753d6ef1085ed6e2"
+dependencies = [
+ "libc",
+ "signal-hook-registry",
+]
 
 [[package]]
 name = "signal-hook-registry"

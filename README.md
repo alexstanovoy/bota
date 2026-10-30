@@ -132,6 +132,8 @@ the plain TCP port stays on loopback) or `--insecure-plaintext`.
 | `--seed N` | drawn, known to no one | match randomness; the same seed and orders replay the same match | reproducible tests only: a published seed predicts the match |
 | `--match-id N` | drawn | public label in the start message and replay; no randomness comes from it | under a launcher |
 | `--replay FILE` | none | write a replay, one Zstandard stream (refused before `READY` if it cannot be created) | |
+| `--result-version N` | `1` (env `RADOVID_RESULT_VERSION`) | the newest `RESULT` line version the launcher reads; 2 adds `replay=truncated` | a launcher that reads it |
+| `--replay-max-mib N` | `0` (no cap) | the most MiB the replay file may reach (needs `--replay`): it is closed whole just before, the match goes on, and the `RESULT` line says `replay=truncated` (to a launcher that reads version 2). The server also keeps under the process's own file size limit (`ulimit -f`, docker `--ulimit fsize`) and survives SIGXFSZ, so a launcher that limits file sizes needs no flag; a 5v5 replay is some 1.3 MB a minute | a long match under a limit |
 | `--chat off\|team\|all` | `all` | what the seats may say: nothing, to their side, to their side and everyone | `off` for bot ladders: chat would be a channel between opponents |
 | `--spectator-chat BOOL` | `true` | whether spectators talk among themselves (no seat ever hears them) | |
 | `--replay-team-chat BOOL` | `true` | whether the replay keeps the sides' team lines (a replay of the whole map then shows both sides') | `false` when replays of the whole map go to players |
@@ -161,9 +163,14 @@ For a service that starts one server per match:
 
 - stdout: the `bota_server listening on ...` lines, then `READY` once players may connect;
   at the end of a played match one line
-  `RESULT winner=0|1|draw duration_ms=N report=HEX [left=SLOT]` (`HEX` is a
+  `RESULT winner=0|1|draw duration_ms=N report=HEX [left=SLOT] [replay=truncated]` (`HEX` is a
   `bota_proto::MatchReport` in postcard) and exit code 0. `left=SLOT` names the seat whose
   player left for good (`LeaveGame`); the other team won. A disconnected seat is waited for.
+  `replay=truncated`: the replay was closed before the match's end (its size cap or the file
+  size limit); it plays up to there. It is printed only to a launcher that reads result line
+  version 2 (`--result-version 2`, or the variable `RADOVID_RESULT_VERSION` radovid sets); without
+  that the line is the first servers' exactly, so updates go in any order. Fields after `report`
+  are `key=value`, and a reader skips keys it does not know.
 - Exit code 3, no `RESULT`: nobody played (`--abandon-unjoined`, `--empty-after-secs`, or
   every seat empty with none to come back). Any other exit is a failure; a refused command
   line exits before `READY`.

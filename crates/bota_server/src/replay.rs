@@ -3,6 +3,8 @@
 use std::fs::File;
 use std::io::{BufWriter, Write};
 use std::path::Path;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use bota_proto::{LEN_PREFIX, MAX_PAYLOAD_LEN, ReplayHeader, ReplayRecord, encode_frame_to_vec};
 use zstd::stream::write::Encoder;
@@ -15,24 +17,63 @@ const LEVEL: i32 = 3;
 /// stream of unknown length, well inside what a player accepts.
 const WINDOW_LOG: u32 = 21;
 
+/// The room left for the stream's end when a size cap closes the replay: what the
+/// compressor still holds (one block) and the end of the frame. A cap under four times this
+/// keeps a quarter of itself.
+const CLOSE_MARGIN: u64 = 256 << 10;
+
+/// The file under the encoder, counting the bytes that reached it.
+struct Counted {
+    file: File,
+    written: Arc<AtomicU64>,
+}
+
+impl Write for Counted {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        let n = self.file.write(buf)?;
+        self.written.fetch_add(n as u64, Ordering::Relaxed);
+        Ok(n)
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.file.flush()
+    }
+}
+
 /// Appends [`ReplayRecord`] frames to a `.brp` file, as one Zstandard stream.
 ///
-/// A write error poisons the writer: recording stops with a line on stderr,
-/// the match goes on.
+/// Recording stops, with a line on stderr, when a write fails or the file nears its size cap;
+/// the match goes on. At the cap the stream is closed whole, so the replay plays up to the
+/// last record it holds. [`ReplayWriter::truncated`] tells that records were left out.
 pub struct ReplayWriter {
-    out: Option<Encoder<'static, BufWriter<File>>>,
+    out: Option<Encoder<'static, BufWriter<Counted>>>,
+    written: Arc<AtomicU64>,
+    /// The file's size cap in bytes; absent for none.
+    max_bytes: Option<u64>,
+    truncated: bool,
 }
 
 impl ReplayWriter {
     /// Creates or truncates the file and starts it with this build's
-    /// [`ReplayHeader`]; an error names the path.
-    pub fn create(path: &Path) -> std::io::Result<ReplayWriter> {
+    /// [`ReplayHeader`]; an error names the path. The file is closed before it grows past
+    /// `max_bytes`, when given.
+    pub fn create(path: &Path, max_bytes: Option<u64>) -> std::io::Result<ReplayWriter> {
         let file = File::create(path).map_err(|error| {
             std::io::Error::new(error.kind(), format!("replay {}: {error}", path.display()))
         })?;
-        let mut encoder = Encoder::new(BufWriter::new(file), LEVEL)?;
+        let written = Arc::new(AtomicU64::new(0));
+        let counted = Counted {
+            file,
+            written: Arc::clone(&written),
+        };
+        let mut encoder = Encoder::new(BufWriter::new(counted), LEVEL)?;
         encoder.window_log(WINDOW_LOG)?;
-        let mut writer = ReplayWriter { out: Some(encoder) };
+        let mut writer = ReplayWriter {
+            out: Some(encoder),
+            written,
+            max_bytes,
+            truncated: false,
+        };
         writer.record(&ReplayRecord::Header(ReplayHeader::new(
             bota_core::WIRE_FINGERPRINT,
         )));
@@ -41,7 +82,17 @@ impl ReplayWriter {
 
     /// A writer that records nothing.
     pub fn disabled() -> ReplayWriter {
-        ReplayWriter { out: None }
+        ReplayWriter {
+            out: None,
+            written: Arc::new(AtomicU64::new(0)),
+            max_bytes: None,
+            truncated: false,
+        }
+    }
+
+    /// Whether records were left out of the file: a write failed or the size cap was reached.
+    pub fn truncated(&self) -> bool {
+        self.truncated
     }
 
     /// Appends one record.
@@ -52,10 +103,7 @@ impl ReplayWriter {
         let written = encode_frame_to_vec(record)
             .map_err(|error| error.to_string())
             .and_then(|frame| out.write_all(&frame).map_err(|error| error.to_string()));
-        if let Err(error) = written {
-            eprintln!("bota_server: the replay stops here ({error})");
-            self.out = None;
-        }
+        self.after_write(written);
     }
 
     /// Appends the [`ReplayRecord::Msg`] carrying the server message an
@@ -72,15 +120,33 @@ impl ReplayWriter {
                 .map_err(|error| error.to_string()),
             None => Err(format!("a frame of {} bytes holds no record", frame.len())),
         };
+        self.after_write(written);
+    }
+
+    /// Stops recording when a write failed (the stream cannot be closed then) and closes the
+    /// stream whole when the file is near its cap.
+    fn after_write(&mut self, written: Result<(), String>) {
         if let Err(error) = written {
             eprintln!("bota_server: the replay stops here ({error})");
             self.out = None;
+            self.truncated = true;
+            return;
+        }
+        let Some(max) = self.max_bytes else {
+            return;
+        };
+        let margin = CLOSE_MARGIN.min(max / 4);
+        if self.written.load(Ordering::Relaxed) + margin >= max {
+            eprintln!("bota_server: the replay is closed here, at its size cap of {max} bytes");
+            self.end();
+            self.truncated = true;
         }
     }
 
-    /// Ends the stream and flushes everything to disk.
-    pub fn finish(mut self) {
+    /// Ends the stream and flushes everything to disk; whether records were left out.
+    pub fn finish(mut self) -> bool {
         self.end();
+        self.truncated
     }
 
     fn end(&mut self) {
