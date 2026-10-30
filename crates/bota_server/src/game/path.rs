@@ -68,9 +68,8 @@ pub struct Planner {
     nodes: Vec<Node>,
     /// The search running.
     epoch: u32,
-    /// The open list: cost plus the estimate left, then the node, packed by
-    /// [`open_key`] so the least key is the next node to expand.
-    heap: BinaryHeap<Reverse<u64>>,
+    /// The open list.
+    open: OpenList,
 }
 
 impl Default for Planner {
@@ -85,7 +84,7 @@ impl Planner {
         Planner {
             nodes: vec![Node::UNSEEN; NODES * NODES],
             epoch: 0,
-            heap: BinaryHeap::new(),
+            open: OpenList::new(),
         }
     }
 
@@ -210,7 +209,7 @@ impl Planner {
             self.epoch = 1;
         }
         let epoch = self.epoch;
-        self.heap.clear();
+        self.open.clear();
         let mut nearest = (u32::MAX, idx(seeds[0]));
         for &seed in seeds {
             let i = idx(seed);
@@ -222,14 +221,12 @@ impl Planner {
             self.nodes[i].g = g;
             self.nodes[i].parent = u32::MAX;
             self.nodes[i].stamp = epoch;
-            self.heap
-                .push(Reverse(open_key(g + heuristic(seed, goal), i)));
+            self.open.push(g + heuristic(seed, goal), i);
             nearest = nearest.min((heuristic(seed, goal), i));
         }
         let mut expanded = 0;
         let mut shut = true;
-        while let Some(Reverse(key)) = self.heap.pop() {
-            let (f, at) = open_entry(key);
+        while let Some((f, at)) = self.open.pop() {
             let node = (at % NODES, at / NODES);
             let g = self.nodes[at].g;
             if f > g + heuristic(node, goal) {
@@ -271,8 +268,7 @@ impl Planner {
                 self.nodes[ni].stamp = epoch;
                 self.nodes[ni].g = cost;
                 self.nodes[ni].parent = at as u32;
-                self.heap
-                    .push(Reverse(open_key(cost + heuristic(next, goal), ni)));
+                self.open.push(cost + heuristic(next, goal), ni);
             }
         }
     }
@@ -312,15 +308,127 @@ pub fn find_path(field: &Clearance, from: Vec2, to: Vec2, collision: Fixed) -> V
     Planner::new().find_path(&ob, from, to, collision)
 }
 
-/// An open-list entry as one key: the cost plus the estimate in the high
-/// half, the node's index in the low, so keys order as the pair does.
-fn open_key(f: u32, node: usize) -> u64 {
-    (u64::from(f) << 32) | node as u64
+/// Costs plus estimates the open list holds apart beyond the one it is
+/// taking: above the most a step raises one, a diagonal's cost plus the
+/// most its estimate can fall by, twice [`DIAGONAL`].
+const OPEN_SPAN: u32 = 512;
+
+const _: () = assert!(2 * DIAGONAL < OPEN_SPAN);
+
+/// The open list of a search, handing out its entries least cost plus
+/// estimate first, then least node index: the order of a binary heap of the
+/// pairs, so every search expands the same nodes in the same order.
+///
+/// The estimate is consistent (a step never lowers the cost plus the
+/// estimate), so nothing put on the list once it is being taken from comes
+/// below the cost plus estimate being taken, or [`OPEN_SPAN`] or more above
+/// it. Each cost plus estimate within the span keeps its nodes unsorted in a
+/// bucket of its own and only the one being taken is kept as a heap. The
+/// seeds, put on before anything is taken, may lie further apart: those
+/// beyond the span wait in a heap of their own until it reaches them.
+#[derive(Clone)]
+struct OpenList {
+    /// The nodes of each cost plus estimate within the span above the one
+    /// being taken, by its remainder over [`OPEN_SPAN`].
+    ahead: Vec<Vec<u32>>,
+    /// The nodes at the cost plus estimate being taken, least first.
+    taking: BinaryHeap<Reverse<u32>>,
+    /// The entries put on before anything was taken.
+    seeds: Vec<(u32, u32)>,
+    /// The seeds beyond the span, least first.
+    beyond: BinaryHeap<Reverse<(u32, u32)>>,
+    /// The cost plus estimate being taken.
+    at: u32,
+    /// Entries held in `ahead` and `taking`.
+    held: usize,
+    /// Whether anything has been taken since the list was last cleared.
+    taken: bool,
 }
 
-/// The cost plus the estimate and the node index an [`open_key`] packs.
-fn open_entry(key: u64) -> (u32, usize) {
-    ((key >> 32) as u32, (key & u64::from(u32::MAX)) as usize)
+impl OpenList {
+    /// An empty list.
+    fn new() -> OpenList {
+        OpenList {
+            ahead: vec![Vec::new(); OPEN_SPAN as usize],
+            taking: BinaryHeap::new(),
+            seeds: Vec::new(),
+            beyond: BinaryHeap::new(),
+            at: 0,
+            held: 0,
+            taken: false,
+        }
+    }
+
+    /// Forgets every entry, keeping the room.
+    fn clear(&mut self) {
+        if self.held > 0 {
+            self.ahead.iter_mut().for_each(Vec::clear);
+            self.taking.clear();
+        }
+        self.seeds.clear();
+        self.beyond.clear();
+        (self.at, self.held, self.taken) = (0, 0, false);
+    }
+
+    /// Puts a node on at a cost plus estimate.
+    fn push(&mut self, f: u32, node: usize) {
+        let node = u32::try_from(node).expect("a lattice index fits u32");
+        if !self.taken {
+            self.seeds.push((f, node));
+            return;
+        }
+        assert!(
+            f >= self.at && f - self.at < OPEN_SPAN,
+            "an A* step moved the cost plus estimate out of the open list's span"
+        );
+        self.hold(f, node);
+    }
+
+    /// Keeps a node within the span.
+    fn hold(&mut self, f: u32, node: u32) {
+        if f == self.at {
+            self.taking.push(Reverse(node));
+        } else {
+            self.ahead[(f % OPEN_SPAN) as usize].push(node);
+        }
+        self.held += 1;
+    }
+
+    /// Takes the entry of least cost plus estimate, the least node of those.
+    fn pop(&mut self) -> Option<(u32, usize)> {
+        if !self.taken {
+            self.taken = true;
+            self.at = self.seeds.iter().map(|&(f, _)| f).min()?;
+            for (f, node) in std::mem::take(&mut self.seeds) {
+                if f - self.at < OPEN_SPAN {
+                    self.hold(f, node);
+                } else {
+                    self.beyond.push(Reverse((f, node)));
+                }
+            }
+        }
+        loop {
+            if let Some(Reverse(node)) = self.taking.pop() {
+                self.held -= 1;
+                return Some((self.at, node as usize));
+            }
+            if self.held == 0 && self.beyond.is_empty() {
+                return None;
+            }
+            let bucket = &mut self.ahead[(self.at % OPEN_SPAN) as usize];
+            if !bucket.is_empty() {
+                self.taking.extend(bucket.drain(..).map(Reverse));
+                continue;
+            }
+            self.at += 1;
+            while let Some(&Reverse((f, node))) = self.beyond.peek()
+                && f - self.at < OPEN_SPAN
+            {
+                self.beyond.pop();
+                self.hold(f, node);
+            }
+        }
+    }
 }
 
 fn heuristic(a: (usize, usize), b: (usize, usize)) -> u32 {
@@ -503,4 +611,47 @@ fn bisector(prev: Vec2, corner: Vec2, next: Vec2) -> Option<Vec2> {
         x: Fixed { raw: bx as i32 },
         y: Fixed { raw: by as i32 },
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use std::cmp::Reverse;
+    use std::collections::BinaryHeap;
+
+    use super::{DIAGONAL, OPEN_SPAN, OpenList};
+
+    /// The open list hands its entries out in the order a binary heap of the
+    /// pairs would, whatever the seeds' spread, as A* puts them on: steps
+    /// never below what is being taken and within twice a diagonal above it.
+    #[test]
+    fn the_open_list_hands_out_what_a_heap_of_the_pairs_would() {
+        let mut state = 0x9e37_79b9_7f4a_7c15_u64;
+        let mut draw = |below: u32| {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            (state % u64::from(below)) as u32
+        };
+        let mut open = OpenList::new();
+        for _ in 0..50 {
+            open.clear();
+            let mut heap = BinaryHeap::new();
+            for _ in 0..1 + draw(12) {
+                let (f, node) = (1_000 + draw(4 * OPEN_SPAN), draw(64));
+                open.push(f, node as usize);
+                heap.push(Reverse((f, node)));
+            }
+            for _ in 0..400 {
+                let Some(Reverse((f, node))) = heap.pop() else {
+                    break;
+                };
+                assert_eq!(open.pop(), Some((f, node as usize)));
+                for _ in 0..draw(4) {
+                    let (step, next) = (f + draw(2 * DIAGONAL + 1), draw(64));
+                    open.push(step, next as usize);
+                    heap.push(Reverse((step, next)));
+                }
+            }
+        }
+    }
 }
