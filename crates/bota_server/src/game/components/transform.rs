@@ -2,6 +2,8 @@
 
 use bota_proto::{Angle, Fixed, Vec2};
 
+use crate::engine::state_hash;
+
 /// Where an entity is and which way it looks.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Transform {
@@ -24,3 +26,6 @@ pub struct Hull {
     /// areas, in world units.
     pub bound: Fixed,
 }
+
+state_hash!(Transform { pos, facing });
+state_hash!(Hull { collision, bound });

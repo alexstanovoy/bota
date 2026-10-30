@@ -2,6 +2,7 @@ use bota_core::rules;
 use bota_proto::{Fixed, Vec2};
 
 use crate::engine::Entity;
+use crate::engine::state_hash;
 
 /// A hook thrown out and on its way somewhere.
 ///
@@ -30,3 +31,16 @@ pub struct Hook {
     /// the hook.
     pub links: [Entity; rules::HOOK_LINKS],
 }
+
+state_hash!(Hook {
+    owner,
+    aim,
+    speed,
+    reach_left,
+    radius,
+    damage,
+    damage_amp_bp,
+    caught,
+    returning,
+    links
+});

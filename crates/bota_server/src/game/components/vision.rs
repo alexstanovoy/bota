@@ -2,6 +2,8 @@
 
 use bota_proto::{Team, Vec2};
 
+use crate::engine::state_hash;
+
 /// Which sides see an entity right now, one bit a side. Worked out afresh by
 /// [`visibility_system`](crate::game::visibility_system); a value put in by
 /// hand is gone the next time it runs.
@@ -52,3 +54,7 @@ pub struct ExposureCell {
 /// side shown. At most one circle a side.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Exposure(pub [Option<ExposureCell>; 3]);
+
+state_hash!(Visibility(0));
+state_hash!(ExposureCell { at, until, flying });
+state_hash!(Exposure(0));

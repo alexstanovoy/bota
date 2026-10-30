@@ -3,6 +3,7 @@
 use bota_proto::{Fixed, Vec2};
 
 use crate::engine::Entity;
+use crate::engine::state_hash;
 
 /// The route an entity walks: the corners of a way found round what stands
 /// still, to the goal it was laid for.
@@ -138,3 +139,35 @@ impl Plan {
         self.at = 0;
     }
 }
+
+state_hash!(Route {
+    corners,
+    goal,
+    end,
+    done,
+    round
+});
+state_hash!(March { next });
+state_hash!(Motion {
+    delta,
+    stalled,
+    still,
+    blocked,
+    trace
+});
+state_hash!(Trace {
+    side,
+    goal,
+    hit,
+    left_hit
+});
+state_hash!(Blocked { by, until, tier });
+state_hash!(Plan {
+    steps,
+    from,
+    at,
+    goal,
+    step,
+    laid,
+    last
+});

@@ -1,6 +1,7 @@
 use bota_proto::{Fixed, Inflictor, Vec2};
 
 use crate::engine::Entity;
+use crate::engine::state_hash;
 
 /// A chain of damage leaping from one enemy to the next, a beat apart.
 ///
@@ -31,3 +32,16 @@ pub struct Chain {
     /// Ticks before the next leap.
     pub wait: u32,
 }
+
+state_hash!(Chain {
+    source,
+    inflictor,
+    at,
+    struck,
+    leaps_left,
+    damage,
+    keep_pct,
+    radius,
+    delay,
+    wait
+});

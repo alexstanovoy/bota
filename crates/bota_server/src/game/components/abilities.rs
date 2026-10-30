@@ -5,6 +5,8 @@ use bota_core::{
 };
 use bota_proto::{AbilityId, Talents};
 
+use crate::engine::{Fnv, StateHash, state_hash};
+
 /// One ability in a slot.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct AbilityState {
@@ -117,6 +119,48 @@ impl AbilityBook {
     pub fn auto_attribute_bonus(&mut self, hero_level: u8) {
         if !(0..self.slots.len()).any(|slot| self.can_raise(slot, hero_level)) {
             self.learn_attribute_bonus(hero_level);
+        }
+    }
+}
+
+state_hash!(AbilityState {
+    id,
+    level,
+    cooldown
+});
+
+/// The talent tree is the hero's own and never changes, so only what has been learned goes in.
+impl StateHash for AbilityBook {
+    fn state_hash(&self, fnv: &mut Fnv) {
+        let AbilityBook {
+            slots,
+            tree: _,
+            talents,
+            attribute_bonus,
+        } = self;
+        slots.state_hash(fnv);
+        talents.state_hash(fnv);
+        attribute_bonus.state_hash(fnv);
+    }
+}
+
+#[cfg(test)]
+impl crate::engine::Specimen for AbilityBook {
+    fn low() -> Self {
+        AbilityBook {
+            slots: crate::engine::Specimen::low(),
+            tree: None,
+            talents: crate::engine::Specimen::low(),
+            attribute_bonus: crate::engine::Specimen::low(),
+        }
+    }
+
+    fn high() -> Self {
+        AbilityBook {
+            slots: crate::engine::Specimen::high(),
+            tree: None,
+            talents: crate::engine::Specimen::high(),
+            attribute_bonus: crate::engine::Specimen::high(),
         }
     }
 }

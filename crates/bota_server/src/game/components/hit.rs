@@ -2,6 +2,7 @@
 
 use bota_proto::{DamageKind, Inflictor};
 
+use crate::engine::{Fnv, StateHash, state_hash};
 use crate::game::Entity;
 
 /// Damage that has been dealt and not yet taken off anybody, queued on
@@ -83,4 +84,63 @@ pub struct Fear {
     pub line: u32,
     /// The most ticks the hold reaches.
     pub most: u32,
+}
+
+state_hash!(Hit {
+    source,
+    inflictor,
+    target,
+    amount,
+    kind,
+    damage_amp_bp,
+    attack,
+    striker,
+    pierces,
+    uphill,
+    effect
+});
+state_hash!(Fear { line, most });
+
+impl StateHash for HitEffect {
+    fn state_hash(&self, fnv: &mut Fnv) {
+        match self {
+            HitEffect::None => fnv.u8(0),
+            HitEffect::Shadowraze { stack_damage } => {
+                fnv.u8(1);
+                stack_damage.state_hash(fnv);
+            }
+            HitEffect::Requiem { level, fear } => {
+                fnv.u8(2);
+                level.state_hash(fnv);
+                fear.state_hash(fnv);
+            }
+            HitEffect::Stun { ticks } => {
+                fnv.u8(3);
+                ticks.state_hash(fnv);
+            }
+            HitEffect::Root { ticks } => {
+                fnv.u8(4);
+                ticks.state_hash(fnv);
+            }
+            HitEffect::Dismember => fnv.u8(5),
+            HitEffect::FountainDamage { stack_damage } => {
+                fnv.u8(6);
+                stack_damage.state_hash(fnv);
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+impl crate::engine::Specimen for HitEffect {
+    fn low() -> Self {
+        HitEffect::None
+    }
+
+    fn high() -> Self {
+        HitEffect::Requiem {
+            level: crate::engine::Specimen::high(),
+            fear: crate::engine::Specimen::high(),
+        }
+    }
 }

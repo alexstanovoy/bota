@@ -2,6 +2,8 @@
 
 use bota_proto::Fixed;
 
+use crate::engine::state_hash;
+
 /// Health an entity has left, held finer than a whole point. The maximum
 /// is in [`Stats`].
 ///
@@ -17,3 +19,6 @@ pub struct Health {
 pub struct Mana {
     pub mana: Fixed,
 }
+
+state_hash!(Health { hp });
+state_hash!(Mana { mana });

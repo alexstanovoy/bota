@@ -1,6 +1,7 @@
 use bota_proto::{Fixed, Inflictor, Vec2};
 
 use crate::engine::Entity;
+use crate::engine::state_hash;
 
 /// A unit being carried to a spot, as a gust carries it.
 ///
@@ -18,3 +19,11 @@ pub struct Push {
     /// The last spot on its way where a body may stand.
     pub clear: Vec2,
 }
+
+state_hash!(Push {
+    source,
+    inflictor,
+    aim,
+    speed,
+    clear
+});

@@ -17,6 +17,7 @@ mod stretch;
 mod systems;
 mod vision;
 mod world;
+mod world_tables;
 
 pub use crate::engine::{Entity, EntityAllocator, Fnv, Generation, Index, Table};
 

@@ -2,6 +2,8 @@
 
 use std::num::NonZeroU32;
 
+use crate::engine::{Fnv, StateHash};
+
 /// The slot an entity holds. Component tables are indexed by it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(transparent)]
@@ -161,5 +163,46 @@ impl EntityAllocator {
 impl Default for EntityAllocator {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+/// Every slot with its tenant, and the order free slots are handed out in: which entity the next one
+/// is depends on both.
+impl StateHash for EntityAllocator {
+    fn state_hash(&self, fnv: &mut Fnv) {
+        let EntityAllocator {
+            entities,
+            free,
+            len,
+        } = self;
+        fnv.u64(entities.len() as u64);
+        for meta in entities {
+            let EntityMeta {
+                generation,
+                free: vacant,
+            } = meta;
+            fnv.u32(generation.0.get());
+            fnv.some(*vacant);
+        }
+        fnv.u64(free.len() as u64);
+        for index in free {
+            fnv.u32(index.0);
+        }
+        len.state_hash(fnv);
+    }
+}
+
+#[cfg(test)]
+impl crate::engine::Specimen for EntityAllocator {
+    fn low() -> Self {
+        EntityAllocator::new()
+    }
+
+    fn high() -> Self {
+        let mut entities = EntityAllocator::new();
+        let first = entities.alloc();
+        entities.alloc();
+        entities.free(first);
+        entities
     }
 }

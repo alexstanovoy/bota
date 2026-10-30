@@ -2,6 +2,8 @@
 
 use bota_core::GoldRange;
 
+use crate::engine::state_hash;
+
 /// A hero's level, from one up, and a courier's, its owner's.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Level(pub u8);
@@ -62,3 +64,17 @@ pub struct Bounty {
     /// Experience shared among those near the kill.
     pub xp: i32,
 }
+
+state_hash!(Level(0));
+state_hash!(Upgrades(0));
+state_hash!(StatBonus { max_hp, damage });
+state_hash!(Tier(0));
+state_hash!(Lane(0));
+state_hash!(Rax { ranged });
+state_hash!(Backdoor { quiet_ticks, owed });
+state_hash!(Bounty {
+    gold,
+    bonus,
+    team,
+    xp
+});

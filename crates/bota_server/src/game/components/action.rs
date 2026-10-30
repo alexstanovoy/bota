@@ -2,6 +2,7 @@
 
 use bota_proto::{AbilitySlot, ItemSlot, Target};
 
+use crate::engine::{Fnv, StateHash, state_hash};
 use crate::game::Entity;
 
 /// What a body is doing. One thing at a time.
@@ -43,4 +44,84 @@ pub enum ActionPhase {
     During { progress: u32 },
     /// Backswing. Cancelled at no cost.
     After { progress: u32 },
+}
+
+state_hash!(Action {
+    state,
+    attack_cooldown
+});
+
+impl StateHash for ActionState {
+    fn state_hash(&self, fnv: &mut Fnv) {
+        match self {
+            ActionState::Ready => fnv.u8(0),
+            ActionState::Attack { target, phase } => {
+                fnv.u8(1);
+                target.state_hash(fnv);
+                phase.state_hash(fnv);
+            }
+            ActionState::CastAbility {
+                target,
+                slot,
+                phase,
+            } => {
+                fnv.u8(2);
+                target.state_hash(fnv);
+                slot.state_hash(fnv);
+                phase.state_hash(fnv);
+            }
+            ActionState::UseItem {
+                target,
+                slot,
+                phase,
+            } => {
+                fnv.u8(3);
+                target.state_hash(fnv);
+                slot.state_hash(fnv);
+                phase.state_hash(fnv);
+            }
+        }
+    }
+}
+
+impl StateHash for ActionPhase {
+    fn state_hash(&self, fnv: &mut Fnv) {
+        let (tag, progress) = match self {
+            ActionPhase::Before { progress } => (0, progress),
+            ActionPhase::During { progress } => (1, progress),
+            ActionPhase::After { progress } => (2, progress),
+        };
+        fnv.u8(tag);
+        progress.state_hash(fnv);
+    }
+}
+
+#[cfg(test)]
+mod specimens {
+    use super::*;
+    use crate::engine::Specimen;
+
+    impl Specimen for ActionState {
+        fn low() -> Self {
+            ActionState::Ready
+        }
+
+        fn high() -> Self {
+            ActionState::CastAbility {
+                target: Specimen::high(),
+                slot: Specimen::high(),
+                phase: Specimen::high(),
+            }
+        }
+    }
+
+    impl Specimen for ActionPhase {
+        fn low() -> Self {
+            ActionPhase::Before { progress: 1 }
+        }
+
+        fn high() -> Self {
+            ActionPhase::After { progress: 2 }
+        }
+    }
 }

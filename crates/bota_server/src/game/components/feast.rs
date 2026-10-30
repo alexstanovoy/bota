@@ -3,6 +3,7 @@
 //! while it runs and `ModifierKind::FeastLinger` once it is over.
 
 use crate::engine::Entity;
+use crate::engine::state_hash;
 
 /// Which of its two modifiers a feast is on, so that its end is acted on
 /// when that modifier lifts, however it lifts.
@@ -39,3 +40,7 @@ impl Feast {
         self.fed.iter().map(|fed| fed.souls).sum()
     }
 }
+
+state_hash!(FeastPhase as u8: FeastPhase::Feasting, FeastPhase::Lingering);
+state_hash!(Fed { from, souls });
+state_hash!(Feast { phase, fed });

@@ -3,6 +3,8 @@
 
 use bota_proto::{Fixed, Team};
 
+use crate::engine::state_hash;
+
 /// An Outpost of the map.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Outpost {
@@ -37,3 +39,12 @@ pub struct Zone {
     /// Ticks run so far.
     pub progress: u32,
 }
+
+state_hash!(Outpost { home });
+state_hash!(Capture { team, progress });
+state_hash!(Zone {
+    radius,
+    ticks,
+    side,
+    progress
+});

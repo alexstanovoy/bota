@@ -1,5 +1,7 @@
 //! A side's Glyph of Fortification.
 
+use crate::engine::state_hash;
+
 /// The first tier one tower of the side has fallen and refreshed the Glyph.
 pub const GLYPH_TIER_ONE: u8 = 1;
 /// The first tier two tower of the side has fallen and refreshed the Glyph.
@@ -30,3 +32,9 @@ impl Glyph {
         }
     }
 }
+
+state_hash!(Glyph {
+    ready_at,
+    structures_until,
+    refreshed
+});

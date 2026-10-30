@@ -4,6 +4,7 @@
 use bota_proto::{ItemId, Team, Vec2};
 
 use crate::engine::Entity;
+use crate::engine::state_hash;
 
 /// A Blood Grenade on its way to the spot it was thrown at.
 ///
@@ -32,3 +33,16 @@ pub struct ShopStock {
     /// Ticks until it gains one more. Zero while it holds its most.
     pub restock_left: u32,
 }
+
+state_hash!(Grenade {
+    owner,
+    item,
+    aim,
+    damage_amp_bp
+});
+state_hash!(ShopStock {
+    team,
+    item,
+    left,
+    restock_left
+});

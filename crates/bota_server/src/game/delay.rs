@@ -5,6 +5,7 @@ use std::collections::VecDeque;
 use bota_core::rules::{MAX_ORDER_DELAY_TICKS, MAX_ORDERS_PER_TICK};
 use bota_proto::{EntityId, Order, OrderDelayView, RejectReason, SlotId, Team};
 
+use crate::engine::state_hash;
 use crate::game::{Command, MatchConfig, Stream, World};
 
 /// How late one seat's orders take effect, in ticks past the earliest tick
@@ -258,3 +259,5 @@ impl SeatLine {
             .map_or(earliest, |last| earliest.max(last.due))
     }
 }
+
+state_hash!(RefusedOrder { slot, seq, reason });

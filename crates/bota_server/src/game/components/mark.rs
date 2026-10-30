@@ -1,6 +1,7 @@
 use bota_proto::AbilityId;
 
 use crate::engine::Entity;
+use crate::engine::state_hash;
 
 /// Something an ability leaves in the world to be seen: a burst where a
 /// raze landed, the rot about its caster, a hold on what a dismember eats,
@@ -10,3 +11,5 @@ pub struct Mark {
     pub ability: AbilityId,
     pub owner: Entity,
 }
+
+state_hash!(Mark { ability, owner });

@@ -4,6 +4,7 @@
 use bota_core::{ModifierKind, NeutralAbility, rules, spell_effect};
 use bota_proto::{AbilityId, Inflictor};
 
+use crate::engine::state_hash;
 use crate::engine::{Entity, Table};
 
 /// One modifier on an entity.
@@ -286,3 +287,13 @@ impl Modifiers {
         ));
     }
 }
+
+state_hash!(Modifier {
+    kind,
+    source,
+    inflictor,
+    ticks_left,
+    ticks_total,
+    breakable
+});
+state_hash!(Modifiers(0));

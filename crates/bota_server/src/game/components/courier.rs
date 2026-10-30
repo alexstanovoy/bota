@@ -1,3 +1,5 @@
+use crate::engine::state_hash;
+
 /// The errand a courier is on.
 ///
 /// An errand outlives the tick it was given in: the courier keeps at it until
@@ -16,3 +18,5 @@ pub enum Errand {
     /// Going home and staying there.
     GoingHome,
 }
+
+state_hash!(Errand as u8: Errand::None, Errand::ToOwner);

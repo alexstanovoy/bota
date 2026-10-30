@@ -1,5 +1,6 @@
 use bota_proto::{DamageKind, Inflictor, ItemId, ProjectileModel};
 
+use crate::engine::state_hash;
 use crate::game::{Entity, HitEffect};
 
 /// A missile on its way to somebody.
@@ -41,3 +42,21 @@ pub struct Projectile {
     /// absent for a spell's.
     pub striker: Option<bota_core::Striker>,
 }
+
+state_hash!(Projectile {
+    speed,
+    source,
+    inflictor,
+    model,
+    target,
+    damage,
+    kind,
+    damage_amp_bp,
+    launch_tier,
+    can_miss_uphill,
+    pierces,
+    pierced,
+    pierce_amp_bp,
+    effect,
+    striker
+});

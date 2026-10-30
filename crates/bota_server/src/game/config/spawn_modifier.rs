@@ -3,6 +3,8 @@
 use bota_core::{kind_def, rules};
 use bota_proto::{ModifierSpec, Team, UnitKind, modifier_ticks_bounded};
 
+use crate::engine::{Fnv, StateHash, state_hash};
+
 /// The most rules one match setup may carry.
 pub const MAX_SPAWN_MODIFIERS: usize = 64;
 /// The most exact kinds and categories one selector may walk.
@@ -159,4 +161,65 @@ pub fn check_spawn_modifier(rule: &SpawnModifier) -> Result<(), SpawnModifierErr
         return Err(SpawnModifierError::BadDuration);
     }
     Ok(())
+}
+
+state_hash!(SpawnModifier {
+    select,
+    spec,
+    duration
+});
+state_hash!(SpawnSelector { team, targets });
+state_hash!(SpawnCategory as u8: SpawnCategory::Hero, SpawnCategory::LaneCreep);
+
+impl StateHash for SpawnTarget {
+    fn state_hash(&self, fnv: &mut Fnv) {
+        match self {
+            SpawnTarget::Kind(kind) => {
+                fnv.u8(0);
+                kind.state_hash(fnv);
+            }
+            SpawnTarget::Category(category) => {
+                fnv.u8(1);
+                category.state_hash(fnv);
+            }
+        }
+    }
+}
+
+impl StateHash for ModifierDuration {
+    fn state_hash(&self, fnv: &mut Fnv) {
+        match self {
+            ModifierDuration::MatchLong => fnv.u8(0),
+            ModifierDuration::Ticks(ticks) => {
+                fnv.u8(1);
+                ticks.state_hash(fnv);
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod specimens {
+    use super::*;
+    use crate::engine::Specimen;
+
+    impl Specimen for SpawnTarget {
+        fn low() -> Self {
+            SpawnTarget::Kind(UnitKind::Hero)
+        }
+
+        fn high() -> Self {
+            SpawnTarget::Category(SpawnCategory::LaneCreep)
+        }
+    }
+
+    impl Specimen for ModifierDuration {
+        fn low() -> Self {
+            ModifierDuration::MatchLong
+        }
+
+        fn high() -> Self {
+            ModifierDuration::Ticks(2)
+        }
+    }
 }

@@ -1,5 +1,6 @@
 use bota_proto::Vec2;
 
+use crate::engine::{Fnv, StateHash};
 use crate::game::Entity;
 
 /// An item errand a unit carries out once it is close enough.
@@ -26,4 +27,41 @@ pub enum Handling {
         /// The ground item to take.
         loot: Entity,
     },
+}
+
+impl StateHash for Handling {
+    fn state_hash(&self, fnv: &mut Fnv) {
+        match self {
+            Handling::PutAt { slot, pos } => {
+                fnv.u8(0);
+                slot.state_hash(fnv);
+                pos.state_hash(fnv);
+            }
+            Handling::PutTo { slot, to } => {
+                fnv.u8(1);
+                slot.state_hash(fnv);
+                to.state_hash(fnv);
+            }
+            Handling::Take { loot } => {
+                fnv.u8(2);
+                loot.state_hash(fnv);
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+impl crate::engine::Specimen for Handling {
+    fn low() -> Self {
+        Handling::Take {
+            loot: crate::engine::Specimen::low(),
+        }
+    }
+
+    fn high() -> Self {
+        Handling::PutTo {
+            slot: crate::engine::Specimen::high(),
+            to: crate::engine::Specimen::high(),
+        }
+    }
 }

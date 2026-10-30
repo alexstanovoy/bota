@@ -15,6 +15,8 @@ use std::sync::Arc;
 use bota_core::rules;
 use bota_proto::{Team, Vec2};
 
+use crate::engine::{Fnv, StateHash, state_hash};
+
 /// One tree, whichever kind it is.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Tree {
@@ -256,4 +258,41 @@ fn differing<'a>(truth: &'a [u32], known: &'a [u32]) -> impl Iterator<Item = (u3
             }
         }
     })
+}
+
+state_hash!(Planted { at, until });
+state_hash!(KnownForest { down, planted });
+
+/// The map's own trees stand where the map has them, whatever happens, so their places are left out.
+impl StateHash for Forest {
+    fn state_hash(&self, fnv: &mut Fnv) {
+        let Forest {
+            spots: _,
+            back,
+            down,
+            planted,
+            known,
+        } = self;
+        back.state_hash(fnv);
+        down.state_hash(fnv);
+        planted.state_hash(fnv);
+        known.state_hash(fnv);
+    }
+}
+
+#[cfg(test)]
+impl crate::engine::Specimen for Forest {
+    fn low() -> Self {
+        Forest::default()
+    }
+
+    fn high() -> Self {
+        Forest {
+            spots: Arc::default(),
+            back: crate::engine::Specimen::high(),
+            down: crate::engine::Specimen::high(),
+            planted: crate::engine::Specimen::high(),
+            known: crate::engine::Specimen::high(),
+        }
+    }
 }

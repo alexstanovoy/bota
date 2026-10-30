@@ -2,6 +2,7 @@
 
 use bota_proto::Vec2;
 
+use crate::engine::state_hash;
 use crate::game::Entity;
 
 /// What a lane creep keeps while it is chasing or coming back.
@@ -44,3 +45,18 @@ pub struct NeutralAi {
     /// Whether it is awake. Asleep it takes nothing on, however near.
     pub awake: bool,
 }
+
+state_hash!(LaneAi {
+    last_seen,
+    keep_until,
+    roused_by,
+    roused_at_own
+});
+state_hash!(CampHome { camp, home });
+state_hash!(NeutralAi {
+    leash_left,
+    reaggro_block,
+    going_home,
+    roused_by,
+    awake
+});

@@ -5,6 +5,8 @@ use bota_proto::{EntityId, SlotId, Team};
 use rand_chacha::ChaCha8Rng;
 use rand_chacha::rand_core::{Rng as _, SeedableRng};
 
+use crate::engine::{Fnv, StateHash, state_hash};
+
 /// What a stream feeds. Each purpose draws from a stream of its own.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(u16)]
@@ -219,5 +221,82 @@ impl Rolls {
     /// Every source opened, by place.
     pub fn sources(&self) -> &[Option<PseudoRandom>] {
         &self.0
+    }
+}
+
+/// The key is where every stream comes from, and a stream's place is its draw count.
+impl StateHash for MatchRng {
+    fn state_hash(&self, fnv: &mut Fnv) {
+        let MatchRng { seed, global } = self;
+        seed.state_hash(fnv);
+        global.state_hash(fnv);
+    }
+}
+
+/// The generator of a stream is fixed by the seed, the stream's number and the draws made from it.
+impl StateHash for Stream {
+    fn state_hash(&self, fnv: &mut Fnv) {
+        let Stream { inner: _, draws } = self;
+        draws.state_hash(fnv);
+    }
+}
+
+/// The step is the chance last rolled worked out, and follows from it.
+impl StateHash for PseudoRandom {
+    fn state_hash(&self, fnv: &mut Fnv) {
+        let PseudoRandom {
+            stream,
+            misses,
+            step: _,
+        } = self;
+        stream.state_hash(fnv);
+        misses.state_hash(fnv);
+    }
+}
+
+state_hash!(Rolls(0));
+
+#[cfg(test)]
+mod specimens {
+    use super::*;
+    use crate::engine::Specimen;
+
+    impl Specimen for Stream {
+        fn low() -> Self {
+            open_stream([0; 32], 1)
+        }
+
+        fn high() -> Self {
+            Stream {
+                draws: 5,
+                ..open_stream([0; 32], 1)
+            }
+        }
+    }
+
+    impl Specimen for PseudoRandom {
+        fn low() -> Self {
+            PseudoRandom::new(Stream::low())
+        }
+
+        fn high() -> Self {
+            PseudoRandom {
+                stream: Stream::high(),
+                misses: 3,
+                step: (Odds::NEVER, 0),
+            }
+        }
+    }
+
+    impl Specimen for MatchRng {
+        fn low() -> Self {
+            MatchRng::new(&[0; 32], 0)
+        }
+
+        fn high() -> Self {
+            let mut rng = MatchRng::new(&[1; 32], 1);
+            rng.global(Purpose::Wave).next_u32();
+            rng
+        }
     }
 }

@@ -1,5 +1,6 @@
 //! What makes a unit an illusion of a hero.
 
+use crate::engine::state_hash;
 use crate::game::Entity;
 
 /// What makes an entity an illusion: the hero it is an illusion of, and when
@@ -11,3 +12,5 @@ pub struct Illusion {
     /// The tick it was made on.
     pub made: u32,
 }
+
+state_hash!(Illusion { of, made });

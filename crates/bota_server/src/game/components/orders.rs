@@ -5,6 +5,7 @@ use std::collections::VecDeque;
 use bota_core::rules::MAX_QUEUED_ORDERS;
 use bota_proto::{EntityId, Order, Vec2};
 
+use crate::engine::{Fnv, StateHash, state_hash};
 use crate::game::{Entity, PendingCast};
 
 /// The standing order an entity is following.
@@ -129,5 +130,61 @@ impl OrderQueue {
             order.visit_ids(&mut |id| named |= *id == target);
             !named
         });
+    }
+}
+
+impl StateHash for UnitOrder {
+    fn state_hash(&self, fnv: &mut Fnv) {
+        match self {
+            UnitOrder::Idle => fnv.u8(0),
+            UnitOrder::Stand => fnv.u8(1),
+            UnitOrder::Hold => fnv.u8(2),
+            UnitOrder::Move { pos } => {
+                fnv.u8(3);
+                pos.state_hash(fnv);
+            }
+            UnitOrder::Direction { by } => {
+                fnv.u8(4);
+                by.state_hash(fnv);
+            }
+            UnitOrder::AttackMove { pos } => {
+                fnv.u8(5);
+                pos.state_hash(fnv);
+            }
+            UnitOrder::Attack { target, last_seen } => {
+                fnv.u8(6);
+                target.state_hash(fnv);
+                last_seen.state_hash(fnv);
+            }
+            UnitOrder::Follow { target, last_seen } => {
+                fnv.u8(7);
+                target.state_hash(fnv);
+                last_seen.state_hash(fnv);
+            }
+        }
+    }
+}
+
+state_hash!(Orders {
+    current,
+    cooldown,
+    release_cooldown,
+    pending,
+    immediate
+});
+state_hash!(Queued { order, seq });
+state_hash!(OrderQueue { waiting });
+
+#[cfg(test)]
+impl crate::engine::Specimen for UnitOrder {
+    fn low() -> Self {
+        UnitOrder::Idle
+    }
+
+    fn high() -> Self {
+        UnitOrder::Attack {
+            target: crate::engine::Specimen::high(),
+            last_seen: crate::engine::Specimen::high(),
+        }
     }
 }

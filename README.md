@@ -330,8 +330,12 @@ platform. The rules that keep it so:
   not shift the draws elsewhere. Evasion and pierce roll Dota's pseudo-random
   distribution: each source of chance draws from a stream of its own, and a run
   of misses raises the chance of the next hit.
-- `World::hash()` folds the hidden state in too (the random streams among it), so a
-  divergence in randomness consumption shows on the tick it happens.
+- `World::hash()` covers the whole state, hidden state included (the random streams, orders in
+  hand, ability and item clocks, creep minds): `world_tables!` declares every field of the
+  world once as state, a hashed table, a derived table or scratch, and what is hashed
+  implements `StateHash` field by field, so a divergence shows on the tick it happens and a
+  new component cannot be left out. A test changes each hashed part in turn and checks that
+  the hash moves.
 
 A match is reproducible from `(master_key, stream)` in `MatchConfig`, or from
 `--seed` on the command line. The key comes out of the seed through ChaCha8, and

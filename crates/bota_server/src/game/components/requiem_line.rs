@@ -1,6 +1,7 @@
 use bota_proto::{Fixed, Vec2};
 
 use crate::engine::Entity;
+use crate::engine::state_hash;
 use crate::game::Fear;
 
 /// A soul let go by a requiem, flying straight out of its caster and
@@ -33,3 +34,17 @@ pub struct RequiemLine {
     /// What it has crossed already, never crossed twice.
     pub struck: Vec<Entity>,
 }
+
+state_hash!(RequiemLine {
+    owner,
+    aim,
+    speed,
+    travelled,
+    distance,
+    damage,
+    damage_amp_bp,
+    level,
+    frightens,
+    fear,
+    struck
+});

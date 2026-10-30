@@ -3,6 +3,8 @@
 use bota_core::{item_def, rules};
 use bota_proto::{Attribute, ItemId, SlotId};
 
+use crate::engine::state_hash;
+
 /// One item in a slot.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ItemStack {
@@ -413,3 +415,23 @@ pub fn in_stash(slot: usize) -> bool {
 pub fn in_town_portal(slot: usize) -> bool {
     slot == bota_core::rules::TOWN_PORTAL_SLOT
 }
+
+state_hash!(ItemStack {
+    id,
+    charges,
+    cooldown,
+    mute,
+    mode,
+    bought_tick,
+    touched,
+    owner,
+    for_sale,
+    free_charges,
+    sentries,
+    sentry_active
+});
+state_hash!(Inventory {
+    slots,
+    town_portal,
+    stash
+});

@@ -4,249 +4,254 @@ use std::collections::VecDeque;
 
 use bota_proto::{HeroId, Inflictor, SlotId, Team, UnitKind, Vec2};
 
+use crate::game::world_tables::world_tables;
 use crate::game::{
     AbilityBook, Action, AppliedModifiers, AuraScratch, Backdoor, Bounty, CampHome, Candidates,
     Def, Entity, EntityAllocator, Errand, Expiry, Exposure, Forest, Glyph, Handling, Health, Hit,
     HitCx, Hook, Hull, Inventory, Landed, Lane, LaneAi, Level, Loot, Mana, March, Mark, Missed,
     MissileCx, Modifier, Modifiers, Motion, NeutralAi, Orders, Place, Plan, Projectile, Purpose,
     Rax, RequiemLine, Route, Seat, SightCx, SightScratch, SpawnModifier, Spots, Stats, StatsCx,
-    Table, Target, Tier, Transform, UnitOrder, Upgrades, Visibility, derive_stats, hitting_system,
+    Target, Tier, Transform, UnitOrder, Upgrades, Visibility, derive_stats, hitting_system,
     missile_system, regenerate, visibility_system,
 };
 use crate::profile::{Phase, ScopeGuard};
 
-/// Everything a match is made of.
-///
-/// Every component lives in a table of its own, and a table is absent for an
-/// entity the component does not apply to. A system takes the tables it needs
-/// and nothing else; [`World::step`] is the one place the order of a tick is
-/// written down.
-#[derive(Clone)]
-pub struct World {
-    /// Ticks since the match began.
-    pub tick: u32,
-    /// A place per player.
-    pub seats: Vec<Seat>,
-    /// What each side's shop has left of every item sold from a limited
-    /// stock, by side, then in catalog order.
-    pub shop_stock: Vec<crate::game::ShopStock>,
-    /// The completed result; `Team::Neutral` denotes a Map2 draw.
-    pub winner: Option<Team>,
-    /// Whether cheat orders are honoured.
-    pub cheats: bool,
-    /// Whether abilities and items cost no mana and leave no cooldown, for
-    /// every unit (the `-wtf` cheat).
-    pub wtf: bool,
-    /// Whether lane waves and neutral camps keep from spawning on their
-    /// clocks (the `-disablecreepspawn` cheat).
-    pub creeps_halted: bool,
-    /// Whether each side sees what either sees (the `-allvision` cheat).
-    pub all_vision: bool,
-    /// How far cheats moved the game clock and the time of day ahead of the
-    /// tick (`-startgame`, the night toggle).
-    pub clock_shift: bota_proto::ClockShift,
-    /// Whether structures keep at least 1 hp and never fall.
-    pub immortal_structures: bool,
-    /// Whether heroes keep at least 1 hp and never die.
-    pub immortal_heroes: bool,
-    /// The map it is played on.
-    pub map: &'static bota_core::MapDef,
-    /// The forest and the ground of [`World::map`].
-    pub terrain: &'static crate::game::MapTerrain,
-    /// Where every roll of the dice comes from.
-    pub rng: crate::game::MatchRng,
-    /// The ground as bodies meet it: what stands where, and the room a body
-    /// has anywhere.
-    pub clearance: crate::game::Clearance,
-    /// The scratch routes are searched in.
-    pub planner: crate::game::Planner,
-    /// Evasion sequences, an uphill miss among their sources, indexed by
-    /// target's entity slot.
-    pub evasion: Vec<Option<crate::game::PseudoRandom>>,
-    /// Accuracy sequences, indexed by attacker's entity slot.
-    pub accuracy: Vec<Option<crate::game::PseudoRandom>>,
-    /// Pierce sequences, indexed by attacker's entity slot, by the slot of
-    /// the item that pierces.
-    pub pierce: Vec<Option<crate::game::Rolls>>,
-    /// Critical strike sequences, indexed by attacker's entity slot, by the
-    /// slot of the ability that strikes.
-    pub crit: Vec<Option<crate::game::Rolls>>,
-    /// Which roster each camp put out last, so it never draws twice running.
-    pub camp_last: Vec<u8>,
-    /// The height of the ground everywhere.
-    pub ground: crate::game::Ground,
-    /// Which cells stop a sight line: high ground, trees and the map's own
-    /// walls.
-    pub sight_block: bota_core::SightBlock,
-    /// The forest as it stands: what is down, and what has been put up.
-    pub trees: Forest,
-    /// Blows dealt and not yet felt. Filled and emptied inside one tick.
-    pub hits: VecDeque<Hit>,
-    /// Blows felt this tick, for whatever answers to them.
-    pub landed: VecDeque<Landed>,
-    /// Attacks that missed this tick, for whatever answers to them.
-    pub missed: VecDeque<Missed>,
-    /// What abilities and items told of this tick. Drained by the tick.
-    pub events: Vec<crate::game::Event>,
-    /// The orders refused in the last [`World::advance`]: a queued order
-    /// with no room left in its unit's queue, or one that no longer held
-    /// when its unit took it up. Emptied as the next one begins.
-    pub refused: Vec<crate::game::RefusedOrder>,
-    /// The walked route of every lane, by team then lane, on the ground as
-    /// it stood when laid. None since the ground last changed.
-    pub lane_routes: Option<[[Vec<bota_proto::Vec2>; 3]; 2]>,
-    /// Which entities exist.
-    pub entities: EntityAllocator,
-    /// Reused stable entity snapshot for systems that mutate other world tables.
-    pub(crate) entity_scratch: Vec<Entity>,
-    /// Whether this tick's systems take the entities from the last slot
-    /// down rather than from the first up. Drawn afresh every tick.
-    pub(crate) backwards: bool,
-    /// Reused active-modifier buffer for systems that edit modifiers while
-    /// reading them.
-    pub(crate) modifier_scratch: Vec<Modifier>,
-    /// Units whose timed life ran out this tick, for the expiry pass to take
-    /// away. Filled and emptied inside one tick.
-    pub(crate) lapsed_lives: Vec<Entity>,
-    /// Reused buffers the sight system reads the world into.
-    pub(crate) sight_scratch: SightScratch,
-    /// Reused room targets are chosen among.
-    pub(crate) candidates: Candidates,
-    /// Reused room auras are handed out in.
-    pub(crate) aura_scratch: AuraScratch,
-    /// Reused room sleeping neutrals look for what wakes them in.
-    pub(crate) jungle_spots: Spots<Entity>,
+world_tables! {
+    /// Everything a match is made of.
+    ///
+    /// Every component lives in a table of its own, and a table is absent for an
+    /// entity the component does not apply to. A system takes the tables it needs
+    /// and nothing else; [`World::step`] is the one place the order of a tick is
+    /// written down.
+    #[derive(Clone)]
+    pub struct World;
 
-    /// Where each entity stands.
-    pub transform: Table<Transform>,
-    /// The room each entity takes.
-    pub hull: Table<Hull>,
-    /// What kind of thing each entity is.
-    pub kind: Table<UnitKind>,
-    /// Which side each entity is on.
-    pub team: Table<Team>,
+    state {
+        /// Ticks since the match began.
+        pub tick: u32 = 0;
+        /// A place per player.
+        pub seats: Vec<Seat> = Vec::new();
+        /// What each side's shop has left of every item sold from a limited
+        /// stock, by side, then in catalog order.
+        pub shop_stock: Vec<crate::game::ShopStock> = crate::game::fresh_stock();
+        /// The completed result; `Team::Neutral` denotes a Map2 draw.
+        pub winner: Option<Team> = None;
+        /// Whether cheat orders are honoured.
+        pub cheats: bool = false;
+        /// Whether abilities and items cost no mana and leave no cooldown, for
+        /// every unit (the `-wtf` cheat).
+        pub wtf: bool = false;
+        /// Whether lane waves and neutral camps keep from spawning on their
+        /// clocks (the `-disablecreepspawn` cheat).
+        pub creeps_halted: bool = false;
+        /// Whether each side sees what either sees (the `-allvision` cheat).
+        pub all_vision: bool = false;
+        /// How far cheats moved the game clock and the time of day ahead of the
+        /// tick (`-startgame`, the night toggle).
+        pub clock_shift: bota_proto::ClockShift = bota_proto::ClockShift::default();
+        /// Whether structures keep at least 1 hp and never fall.
+        pub immortal_structures: bool = false;
+        /// Whether heroes keep at least 1 hp and never die.
+        pub immortal_heroes: bool = false;
+        /// The map it is played on.
+        pub map: &'static bota_core::MapDef = bota_core::map_of(bota_proto::MapId(0));
+        /// Where every roll of the dice comes from.
+        pub rng: crate::game::MatchRng = crate::game::MatchRng::new(&[0; 32], 0);
+        /// Evasion sequences, an uphill miss among their sources, indexed by
+        /// target's entity slot.
+        pub evasion: Vec<Option<crate::game::PseudoRandom>> = Vec::new();
+        /// Accuracy sequences, indexed by attacker's entity slot.
+        pub accuracy: Vec<Option<crate::game::PseudoRandom>> = Vec::new();
+        /// Pierce sequences, indexed by attacker's entity slot, by the slot of
+        /// the item that pierces.
+        pub pierce: Vec<Option<crate::game::Rolls>> = Vec::new();
+        /// Critical strike sequences, indexed by attacker's entity slot, by the
+        /// slot of the ability that strikes.
+        pub crit: Vec<Option<crate::game::Rolls>> = Vec::new();
+        /// Which roster each camp put out last, so it never draws twice running.
+        pub camp_last: Vec<u8> = Vec::new();
+        /// The forest as it stands: what is down, and what has been put up.
+        pub trees: Forest = Forest::default();
+        /// Blows dealt and not yet felt. Filled and emptied inside one tick.
+        pub hits: VecDeque<Hit> = VecDeque::new();
+        /// The orders refused in the last [`World::advance`]: a queued order
+        /// with no room left in its unit's queue, or one that no longer held
+        /// when its unit took it up. Emptied as the next one begins.
+        pub refused: Vec<crate::game::RefusedOrder> = Vec::new();
+        /// Which entities exist.
+        pub entities: EntityAllocator = EntityAllocator::new();
+        /// Each side's Glyph of Fortification: Radiant's, then Dire's.
+        pub glyphs: [Glyph; 2] = [Glyph::fresh(); 2];
+        /// Which of the map's objectives the match stands up.
+        pub objectives: bota_proto::ObjectiveSet = bota_proto::ObjectiveSet::NONE;
+        /// Trusted match setup's modifiers, put on each unit as it is stood up.
+        pub spawn_modifiers: Vec<SpawnModifier> = Vec::new();
+    }
 
-    /// Health, for whatever can be hurt.
-    pub health: Table<Health>,
-    /// Mana, for whatever spends it.
-    pub mana: Table<Mana>,
+    tables {
+        /// Where each entity stands.
+        pub transform: Transform;
+        /// The room each entity takes.
+        pub hull: Hull;
+        /// What kind of thing each entity is.
+        pub kind: UnitKind;
+        /// Which side each entity is on.
+        pub team: Team;
+        /// Health, for whatever can be hurt.
+        pub health: Health;
+        /// Mana, for whatever spends it.
+        pub mana: Mana;
+        /// Hero levels.
+        pub level: Level;
+        /// Upgrade intervals a creep spawned after.
+        pub upgrades: Upgrades;
+        /// What a creep was raised with at its spawn beyond its kind.
+        pub stat_bonus: crate::game::StatBonus;
+        /// Building tiers.
+        pub tier: Tier;
+        /// What is on each entity.
+        pub modifiers: Modifiers;
+        /// Applied stat changes on each entity.
+        pub applied: AppliedModifiers;
+        /// The hook each entity that is one is flying.
+        pub hook: Hook;
+        /// What each entity that is an ability's mark shows.
+        pub mark: Mark;
+        /// The line of a requiem each entity that is one is flying.
+        pub requiem_line: RequiemLine;
+        /// The chain of damage each entity that is one is leaping along.
+        pub chain: crate::game::Chain;
+        /// The push each entity being carried is under.
+        pub push: crate::game::Push;
+        /// The Blood Grenade each entity that is one is flying.
+        pub grenade: crate::game::Grenade;
+        /// The feast of souls each entity that cast one has on it.
+        pub feast: crate::game::Feast;
+        /// The errand each courier is on.
+        pub errand: Errand;
+        /// How long each entity that stands for a time has left.
+        pub expiry: Expiry;
+        /// The route each walker is on.
+        pub route: Route;
+        /// The next stretch of each walker's walk.
+        pub plan: Plan;
+        /// How each walker has been moving.
+        pub motion: Motion;
+        /// What a creep keeps while marching its lane.
+        pub march: March;
+        /// The order each entity is following.
+        pub orders: Orders;
+        /// The orders each entity has queued behind the one it follows.
+        pub queue: crate::game::OrderQueue;
+        /// The orders each entity was given in a cast point, to carry out once
+        /// the cast has gone off (Dota's pseudo-queue): the casts given there in
+        /// turn, or the one move, attack or the like that replaced them.
+        pub waiting: crate::game::OrderQueue;
+        /// Who each entity is set on. Absent when it is set on nobody.
+        pub target: Target;
+        /// What each entity is doing.
+        pub action: Action;
+        /// What a lane creep keeps about the fight it is in.
+        pub lane_ai: LaneAi;
+        /// What a neutral keeps about being drawn away.
+        pub neutral_ai: NeutralAi;
+        /// Which camp a neutral belongs to.
+        pub camp_home: CampHome;
+        /// Which kind of neutral each neutral is.
+        pub neutral: bota_core::NeutralKind;
+        /// Which lane an entity belongs to.
+        pub lane: Lane;
+        /// Which of its lane's two barracks a building is.
+        pub rax: Rax;
+        /// Backdoor protection of the structures that have it.
+        pub backdoor: Backdoor;
+        /// What killing an entity pays.
+        pub bounty: Bounty;
+        /// Each Outpost's home side.
+        pub outpost: crate::game::Outpost;
+        /// The capture under way at each Outpost being captured.
+        pub capture: crate::game::Capture;
+        /// The standing-zone countdown of each entity that keeps one.
+        pub zone: crate::game::Zone;
+        /// Which seat owns an entity.
+        pub owner: SlotId;
+        /// Which hero a hero entity is.
+        pub hero: HeroId;
+        /// Which hero each entity that is an illusion shows as.
+        pub illusion: crate::game::Illusion;
+        /// What each entity carries.
+        pub inventory: Inventory;
+        /// What each entity can cast.
+        pub abilities: AbilityBook;
+        /// The stack each entity that is a ground item holds.
+        pub loot: Loot;
+        /// The item errand each entity is walking to carry out.
+        pub handling: Handling;
+        /// Which sides see each entity, worked out afresh every tick.
+        pub visibility: Visibility;
+        /// Sight each entity showed the sides it struck at.
+        pub exposure: Exposure;
+        /// Missiles in flight.
+        pub projectile: Projectile;
+    }
 
-    /// Which kind of unit each entity is.
-    pub def: Table<Def>,
-    /// Hero levels.
-    pub level: Table<Level>,
-    /// Upgrade intervals a creep spawned after.
-    pub upgrades: Table<Upgrades>,
-    /// What a creep was raised with at its spawn beyond its kind.
-    pub stat_bonus: Table<crate::game::StatBonus>,
-    /// Building tiers.
-    pub tier: Table<Tier>,
-    /// The numbers each entity fights by, worked out afresh every tick.
-    pub stats: Table<Stats>,
-    /// What is on each entity.
-    pub modifiers: Table<Modifiers>,
-    /// Applied stat changes on each entity.
-    pub applied: Table<AppliedModifiers>,
-    /// Trusted match setup's modifiers, put on each unit as it is stood up.
-    pub spawn_modifiers: Vec<SpawnModifier>,
-    /// The hook each entity that is one is flying.
-    pub hook: Table<Hook>,
-    /// What each entity that is an ability's mark shows.
-    pub mark: Table<Mark>,
-    /// The line of a requiem each entity that is one is flying.
-    pub requiem_line: Table<RequiemLine>,
-    /// The chain of damage each entity that is one is leaping along.
-    pub chain: Table<crate::game::Chain>,
-    /// The push each entity being carried is under.
-    pub push: Table<crate::game::Push>,
-    /// The Blood Grenade each entity that is one is flying.
-    pub grenade: Table<crate::game::Grenade>,
-    /// The feast of souls each entity that cast one has on it.
-    pub feast: Table<crate::game::Feast>,
-    /// The errand each courier is on.
-    pub errand: Table<Errand>,
-    /// How long each entity that stands for a time has left.
-    pub expiry: Table<Expiry>,
+    derived {
+        /// The numbers each entity fights by, worked out afresh every tick.
+        pub stats: Stats;
+        /// Which kind of unit each entity is.
+        pub def: Def;
+    }
 
-    /// The route each walker is on.
-    pub route: Table<Route>,
-    /// The next stretch of each walker's walk.
-    pub plan: Table<Plan>,
-    /// How each walker has been moving.
-    pub motion: Table<Motion>,
-    /// What a creep keeps while marching its lane.
-    pub march: Table<March>,
-    /// Where every body stood at the start of this tick's walking.
-    pub bodies: crate::game::BodyIndex,
-    /// The scratch local plans are searched in.
-    pub local_scratch: crate::game::LocalScratch,
-    /// Reused room for the bodies the index is laid from.
-    pub(crate) body_scratch: Vec<crate::game::Body>,
-    /// Reused room for the circles a stalled walker routes round.
-    pub(crate) extra_scratch: Vec<(bota_proto::Vec2, bota_proto::Fixed)>,
-
-    /// The order each entity is following.
-    pub orders: Table<Orders>,
-    /// The orders each entity has queued behind the one it follows.
-    pub queue: Table<crate::game::OrderQueue>,
-    /// The orders each entity was given in a cast point, to carry out once
-    /// the cast has gone off (Dota's pseudo-queue): the casts given there in
-    /// turn, or the one move, attack or the like that replaced them.
-    pub waiting: Table<crate::game::OrderQueue>,
-    /// Who each entity is set on. Absent when it is set on nobody.
-    pub target: Table<Target>,
-    /// What each entity is doing.
-    pub action: Table<Action>,
-
-    /// What a lane creep keeps about the fight it is in.
-    pub lane_ai: Table<LaneAi>,
-    /// What a neutral keeps about being drawn away.
-    pub neutral_ai: Table<NeutralAi>,
-    /// Which camp a neutral belongs to.
-    pub camp_home: Table<CampHome>,
-    /// Which kind of neutral each neutral is.
-    pub neutral: Table<bota_core::NeutralKind>,
-
-    /// Which lane an entity belongs to.
-    pub lane: Table<Lane>,
-    /// Which of its lane's two barracks a building is.
-    pub rax: Table<Rax>,
-    /// Each side's Glyph of Fortification: Radiant's, then Dire's.
-    pub glyphs: [Glyph; 2],
-    /// Backdoor protection of the structures that have it.
-    pub backdoor: Table<Backdoor>,
-    /// What killing an entity pays.
-    pub bounty: Table<Bounty>,
-    /// Which of the map's objectives the match stands up.
-    pub objectives: bota_proto::ObjectiveSet,
-    /// Each Outpost's home side.
-    pub outpost: Table<crate::game::Outpost>,
-    /// The capture under way at each Outpost being captured.
-    pub capture: Table<crate::game::Capture>,
-    /// The standing-zone countdown of each entity that keeps one.
-    pub zone: Table<crate::game::Zone>,
-    /// Which seat owns an entity.
-    pub owner: Table<SlotId>,
-    /// Which hero a hero entity is.
-    pub hero: Table<HeroId>,
-    /// Which hero each entity that is an illusion shows as.
-    pub illusion: Table<crate::game::Illusion>,
-    /// What each entity carries.
-    pub inventory: Table<Inventory>,
-    /// What each entity can cast.
-    pub abilities: Table<AbilityBook>,
-    /// The stack each entity that is a ground item holds.
-    pub loot: Table<Loot>,
-    /// The item errand each entity is walking to carry out.
-    pub handling: Table<Handling>,
-
-    /// Which sides see each entity, worked out afresh every tick.
-    pub visibility: Table<Visibility>,
-    /// Sight each entity showed the sides it struck at.
-    pub exposure: Table<Exposure>,
-
-    /// Missiles in flight.
-    pub projectile: Table<Projectile>,
+    scratch {
+        /// The forest and the ground of [`World::map`].
+        pub terrain: &'static crate::game::MapTerrain = crate::game::terrain_of(bota_core::map_of(bota_proto::MapId(0)));
+        /// The ground as bodies meet it: what stands where, and the room a body
+        /// has anywhere.
+        pub clearance: crate::game::Clearance = crate::game::Clearance::open();
+        /// The scratch routes are searched in.
+        pub planner: crate::game::Planner = crate::game::Planner::new();
+        /// The height of the ground everywhere.
+        pub ground: crate::game::Ground = crate::game::Ground::of(crate::game::terrain_of(bota_core::map_of(bota_proto::MapId(0))));
+        /// Which cells stop a sight line: high ground, trees and the map's own
+        /// walls.
+        pub sight_block: bota_core::SightBlock = bota_core::SightBlock::of_ground(&|at| ground.tier(at));
+        /// Blows felt this tick, for whatever answers to them.
+        pub landed: VecDeque<Landed> = VecDeque::new();
+        /// Attacks that missed this tick, for whatever answers to them.
+        pub missed: VecDeque<Missed> = VecDeque::new();
+        /// What abilities and items told of this tick. Drained by the tick.
+        pub events: Vec<crate::game::Event> = Vec::new();
+        /// The walked route of every lane, by team then lane, on the ground as
+        /// it stood when laid. None since the ground last changed.
+        pub lane_routes: Option<[[Vec<bota_proto::Vec2>; 3]; 2]> = None;
+        /// Reused stable entity snapshot for systems that mutate other world tables.
+        pub(crate) entity_scratch: Vec<Entity> = Vec::new();
+        /// Whether this tick's systems take the entities from the last slot
+        /// down rather than from the first up. Drawn afresh every tick.
+        pub(crate) backwards: bool = false;
+        /// Reused active-modifier buffer for systems that edit modifiers while
+        /// reading them.
+        pub(crate) modifier_scratch: Vec<Modifier> = Vec::new();
+        /// Units whose timed life ran out this tick, for the expiry pass to take
+        /// away. Filled and emptied inside one tick.
+        pub(crate) lapsed_lives: Vec<Entity> = Vec::new();
+        /// Reused buffers the sight system reads the world into.
+        pub(crate) sight_scratch: SightScratch = SightScratch::new();
+        /// Reused room targets are chosen among.
+        pub(crate) candidates: Candidates = Candidates::default();
+        /// Reused room auras are handed out in.
+        pub(crate) aura_scratch: AuraScratch = AuraScratch::default();
+        /// Reused room sleeping neutrals look for what wakes them in.
+        pub(crate) jungle_spots: Spots<Entity> = Spots::default();
+        /// Where every body stood at the start of this tick's walking.
+        pub bodies: crate::game::BodyIndex = crate::game::BodyIndex::empty();
+        /// The scratch local plans are searched in.
+        pub local_scratch: crate::game::LocalScratch = crate::game::LocalScratch::new();
+        /// Reused room for the bodies the index is laid from.
+        pub(crate) body_scratch: Vec<crate::game::Body> = Vec::new();
+        /// Reused room for the circles a stalled walker routes round.
+        pub(crate) extra_scratch: Vec<(bota_proto::Vec2, bota_proto::Fixed)> = Vec::new();
+    }
 }
 
 impl Default for World {
@@ -256,115 +261,6 @@ impl Default for World {
 }
 
 impl World {
-    /// A world at tick zero with nothing in it, on the Dota map.
-    pub fn new() -> World {
-        let ground = crate::game::Ground::of(crate::game::terrain_of(bota_core::map_of(
-            bota_proto::MapId(0),
-        )));
-        let sight_block = bota_core::SightBlock::of_ground(&|at| ground.tier(at));
-        World {
-            tick: 0,
-            seats: Vec::new(),
-            shop_stock: crate::game::fresh_stock(),
-            winner: None,
-            cheats: false,
-            wtf: false,
-            creeps_halted: false,
-            all_vision: false,
-            clock_shift: bota_proto::ClockShift::default(),
-            immortal_structures: false,
-            immortal_heroes: false,
-            map: bota_core::map_of(bota_proto::MapId(0)),
-            terrain: crate::game::terrain_of(bota_core::map_of(bota_proto::MapId(0))),
-            rng: crate::game::MatchRng::new(&[0; 32], 0),
-            clearance: crate::game::Clearance::open(),
-            planner: crate::game::Planner::new(),
-            evasion: Vec::new(),
-            accuracy: Vec::new(),
-            pierce: Vec::new(),
-            crit: Vec::new(),
-            camp_last: Vec::new(),
-            ground,
-            sight_block,
-            trees: Forest::default(),
-            hits: VecDeque::new(),
-            landed: VecDeque::new(),
-            missed: VecDeque::new(),
-            events: Vec::new(),
-            refused: Vec::new(),
-            lane_routes: None,
-            entities: EntityAllocator::new(),
-            entity_scratch: Vec::new(),
-            backwards: false,
-            modifier_scratch: Vec::new(),
-            lapsed_lives: Vec::new(),
-            sight_scratch: SightScratch::new(),
-            candidates: Candidates::default(),
-            aura_scratch: AuraScratch::default(),
-            jungle_spots: Spots::default(),
-            transform: Table::new(),
-            hull: Table::new(),
-            kind: Table::new(),
-            team: Table::new(),
-            health: Table::new(),
-            mana: Table::new(),
-            def: Table::new(),
-            level: Table::new(),
-            upgrades: Table::new(),
-            stat_bonus: Table::new(),
-            tier: Table::new(),
-            stats: Table::new(),
-            modifiers: Table::new(),
-            applied: Table::new(),
-            spawn_modifiers: Vec::new(),
-            hook: Table::new(),
-            mark: Table::new(),
-            requiem_line: Table::new(),
-            chain: Table::new(),
-            push: Table::new(),
-            grenade: Table::new(),
-            feast: Table::new(),
-            objectives: bota_proto::ObjectiveSet::NONE,
-            outpost: Table::new(),
-            capture: Table::new(),
-            zone: Table::new(),
-            errand: Table::new(),
-            expiry: Table::new(),
-            route: Table::new(),
-            plan: Table::new(),
-            motion: Table::new(),
-            bodies: crate::game::BodyIndex::empty(),
-            local_scratch: crate::game::LocalScratch::new(),
-            body_scratch: Vec::new(),
-            extra_scratch: Vec::new(),
-            march: Table::new(),
-            orders: Table::new(),
-            queue: Table::new(),
-            waiting: Table::new(),
-            target: Table::new(),
-            action: Table::new(),
-            lane_ai: Table::new(),
-            neutral_ai: Table::new(),
-            camp_home: Table::new(),
-            neutral: Table::new(),
-            lane: Table::new(),
-            rax: Table::new(),
-            glyphs: [Glyph::fresh(); 2],
-            backdoor: Table::new(),
-            bounty: Table::new(),
-            owner: Table::new(),
-            hero: Table::new(),
-            illusion: Table::new(),
-            inventory: Table::new(),
-            abilities: Table::new(),
-            loot: Table::new(),
-            handling: Table::new(),
-            visibility: Table::new(),
-            exposure: Table::new(),
-            projectile: Table::new(),
-        }
-    }
-
     /// Starts timing a region of the tick, for the phase profile.
     pub(crate) fn scope(&self, phase: Phase) -> ScopeGuard {
         ScopeGuard::new(phase, self.tick, self.entities.len())

@@ -2,6 +2,7 @@
 
 use bota_proto::ModifierSpec;
 
+use crate::engine::state_hash;
 use crate::game::MAX_APPLIED_MODIFIERS_PER_UNIT;
 
 /// One applied stat change and how long it has left.
@@ -65,3 +66,11 @@ impl AppliedModifiers {
         self.0.is_empty()
     }
 }
+
+state_hash!(AppliedModifier {
+    spec,
+    ticks_left,
+    origin
+});
+state_hash!(AppliedOrigin as u8: AppliedOrigin::Setup, AppliedOrigin::Cheat);
+state_hash!(AppliedModifiers(0));

@@ -2,6 +2,7 @@
 
 use bota_proto::{HeroId, ItemId, SlotId, Team, Vec2};
 
+use crate::engine::state_hash;
 use crate::game::{AbilityBook, Entity, Inventory, Modifiers};
 
 /// What a fallen hero leaves behind until it stands up again.
@@ -155,3 +156,48 @@ impl Seat {
         }
     }
 }
+
+state_hash!(Kept {
+    book,
+    bag,
+    modifiers,
+    fell
+});
+state_hash!(Teleport {
+    building,
+    landing,
+    started,
+    lands,
+    live,
+    sight_until
+});
+state_hash!(Sighting { level, xp, at });
+state_hash!(Seat {
+    slot,
+    team,
+    hero,
+    unit,
+    gold,
+    net_worth,
+    xp,
+    level,
+    respawn_left,
+    stash,
+    kept,
+    courier,
+    courier_left,
+    courier_kept,
+    item_clocks,
+    kills,
+    streak,
+    deaths,
+    assists,
+    last_hits,
+    denies,
+    hero_damage,
+    structure_damage,
+    teleport,
+    sighted,
+    created,
+    invulnerable
+});

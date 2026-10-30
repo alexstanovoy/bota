@@ -1,3 +1,4 @@
+use crate::engine::state_hash;
 use crate::game::ItemStack;
 
 /// The stack an entity that is a ground item holds, whole but marked
@@ -5,3 +6,5 @@ use crate::game::ItemStack;
 /// until somebody takes it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Loot(pub ItemStack);
+
+state_hash!(Loot(0));
