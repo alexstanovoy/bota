@@ -103,12 +103,15 @@ fn heroes_given(map: MapId, seed: u64, allowed: Vec<HeroId>) -> Vec<HeroId> {
         })
         .collect();
     opts.referee_key = Some(SeatKey([9; 32]));
+    // The lobby ends this long after the referee has been welcomed: the clock is held until then.
     opts.start_after = Some(Duration::from_millis(300));
     opts.map = map;
     opts.heroes = Some(allowed);
-    let addr = start_server(opts);
+    let (addr, start) = start_gated_server(opts);
     let mut referee = TestClient::connect(addr);
     referee.hello(Role::Referee, Some(SeatKey([9; 32])));
+    referee.welcome();
+    start.send(()).expect("the server runs");
     referee
         .match_start()
         .picks

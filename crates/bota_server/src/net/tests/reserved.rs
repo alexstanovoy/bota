@@ -267,8 +267,9 @@ fn a_referee_hears_the_lobby_and_the_end_but_no_ticks_of_a_match_nobody_joined()
     let mut opts = reserved(8);
     opts.mode = TickMode::Lockstep;
     opts.map = MapId(2);
+    // The lobby ends this long after the referee has been welcomed: the clock is held until then.
     opts.start_after = Some(Duration::from_millis(300));
-    let addr = start_server(opts);
+    let (addr, start) = start_gated_server(opts);
     let mut referee = TestClient::connect(addr);
     // A referee is told no tick, so nothing it hears shows the match advancing, and nobody
     // plays: the server simulates all of Map 2's twenty minutes at the pace of the CPU, a debug
@@ -279,6 +280,7 @@ fn a_referee_hears_the_lobby_and_the_end_but_no_ticks_of_a_match_nobody_joined()
         .expect("timeout");
     referee.hello(Role::Referee, Some(REFEREE));
     assert_eq!(referee.welcome(), None);
+    start.send(()).expect("the server runs");
 
     let mut started = false;
     let (winner, stats) = loop {

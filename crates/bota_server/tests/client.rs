@@ -135,28 +135,79 @@ fn a_seat_that_leaves_loses_the_match() {
 
 /// `--tick-rate` is the wall-clock pace alone: a server paced at 120 ticks a second tells its
 /// clients the game runs 30, so no clock reads half the game time.
+///
+/// Two servers play at once, one paced at 120 and one at 30, and each client reports the ticks it
+/// is sent. However slowly a loaded machine runs them, the one paced at 120 is the first to reach
+/// a tick the other needs four times as long for; and neither runs faster than its pace.
 #[test]
 fn a_faster_pace_is_told_as_the_games_own_tick_rate() {
-    let listener = TcpListener::bind("127.0.0.1:0").expect("a port");
-    let address = listener.local_addr().expect("bound").to_string();
-    let mut options = opts();
-    options.mode = TickMode::Realtime;
-    options.tick_rate = 120;
-    thread::spawn(move || run(listener, options));
-    let (mut link, seated) =
-        Link::join(&address, "pace", HeroId::SHADOW_FIEND, None).expect("a seat");
-    assert_eq!(seated.tick_rate, 30, "the welcome");
-    let (mut told, mut ticks) = (None, 0u32);
-    let started = std::time::Instant::now();
-    while started.elapsed() < Duration::from_secs(2) {
-        match link.recv().expect("the server speaks") {
-            Some(ServerMsg::MatchStart { info }) => told = Some(info.tick_rate),
-            Some(ServerMsg::Snapshot { .. }) if told.is_some() => ticks += 1,
-            _ => {}
-        }
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+    use std::time::Instant;
+
+    const TARGET: u32 = 240;
+    struct Watched {
+        tick: Arc<AtomicU32>,
+        stop: Arc<AtomicBool>,
+        told: thread::JoinHandle<(Option<u16>, Instant)>,
     }
+    let watch = |tick_rate: u16| {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("a port");
+        let address = listener.local_addr().expect("bound").to_string();
+        let mut options = opts();
+        options.mode = TickMode::Realtime;
+        options.tick_rate = tick_rate;
+        thread::spawn(move || run(listener, options));
+        let (tick, stop) = (
+            Arc::new(AtomicU32::new(0)),
+            Arc::new(AtomicBool::new(false)),
+        );
+        let (seen, halt) = (Arc::clone(&tick), Arc::clone(&stop));
+        let told = thread::spawn(move || {
+            let (mut link, seated) =
+                Link::join(&address, "pace", HeroId::SHADOW_FIEND, None).expect("a seat");
+            assert_eq!(seated.tick_rate, 30, "the welcome");
+            let (mut told, mut began) = (None, Instant::now());
+            while !halt.load(Ordering::SeqCst) {
+                match link.recv().expect("the server speaks") {
+                    Some(ServerMsg::MatchStart { info }) => {
+                        told = Some(info.tick_rate);
+                        began = Instant::now();
+                    }
+                    Some(ServerMsg::Snapshot { view }) if told.is_some() => {
+                        seen.store(view.tick, Ordering::SeqCst);
+                    }
+                    _ => {}
+                }
+            }
+            (told, began)
+        });
+        Watched { tick, stop, told }
+    };
+    let (fast, slow) = (watch(120), watch(30));
+    let deadline = Instant::now() + Duration::from_secs(300);
+    while fast.tick.load(Ordering::SeqCst) < TARGET {
+        assert!(
+            Instant::now() < deadline,
+            "the faster server reached tick {TARGET}"
+        );
+        thread::sleep(Duration::from_millis(5));
+    }
+    let reached = Instant::now();
+    let behind = slow.tick.load(Ordering::SeqCst);
+    for watched in [&fast, &slow] {
+        watched.stop.store(true, Ordering::SeqCst);
+    }
+    // The second client may be waiting for a tick that never comes now: it ends with its server.
+    let (told, began) = fast.told.join().expect("the fast client");
     assert_eq!(told, Some(30), "the match start");
-    // Two seconds at 30 a second are 60 ticks; at the pace asked for they are 240 (a snapshot
-    // may be skipped for a slow reader, so allow for some).
-    assert!(ticks > 120, "{ticks} ticks in two seconds");
+    // Tick 240 is two seconds of the pace asked for: never sooner.
+    assert!(
+        reached.duration_since(began) >= Duration::from_millis(1_900),
+        "{TARGET} ticks in {:?}",
+        reached.duration_since(began)
+    );
+    // The server paced at 30 needs eight seconds for it: it was not there when the other was.
+    assert!(behind < TARGET, "the slower pace was at tick {behind}");
+    drop(slow.told);
 }

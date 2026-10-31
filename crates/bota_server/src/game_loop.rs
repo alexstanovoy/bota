@@ -159,6 +159,30 @@ pub enum MatchEnd {
 /// Fails before the lobby opens when the options contradict themselves, the
 /// replay file cannot be created or the listeners cannot be started.
 pub fn run(listeners: impl Into<Listeners>, opts: ServerOpts) -> std::io::Result<MatchEnd> {
+    run_inner(
+        listeners,
+        opts,
+        #[cfg(test)]
+        None,
+    )
+}
+
+/// [`run`] with the lobby's clock held until `gate` is sent to: a test admits the connections it
+/// is about before the time the lobby has to start the match begins to run.
+#[cfg(test)]
+pub(crate) fn run_gated(
+    listeners: impl Into<Listeners>,
+    opts: ServerOpts,
+    gate: Receiver<()>,
+) -> std::io::Result<MatchEnd> {
+    run_inner(listeners, opts, Some(gate))
+}
+
+fn run_inner(
+    listeners: impl Into<Listeners>,
+    opts: ServerOpts,
+    #[cfg(test)] start_gate: Option<Receiver<()>>,
+) -> std::io::Result<MatchEnd> {
     check_opts(&opts).map_err(std::io::Error::other)?;
     let secrets = draw_secrets(opts.seed, opts.match_id)?;
     let replay = match &opts.replay {
@@ -198,6 +222,8 @@ pub fn run(listeners: impl Into<Listeners>, opts: ServerOpts) -> std::io::Result
         delayed,
         pick_clock: PickClock::Waiting,
         world_tick: Arc::new(AtomicU32::new(0)),
+        #[cfg(test)]
+        start_gate,
     };
     let Some(cfg) = server.lobby_phase() else {
         server.close_all();
@@ -341,6 +367,10 @@ struct Server {
     opts: ServerOpts,
     secrets: MatchSecrets,
     started: Instant,
+    /// Tests only: the lobby's clock (the time to start the match, the time to give up on
+    /// nobody coming) does not run until this is sent to.
+    #[cfg(test)]
+    start_gate: Option<Receiver<()>>,
     referees: Vec<PlayerId>,
     rx: Receiver<NetEvent>,
     /// Cloned into every connection's reader thread; keeps `rx` open.
@@ -795,14 +825,34 @@ impl Server {
     fn lobby_phase(&mut self) -> Option<MatchConfig> {
         // A wait too long to reach is no deadline at all.
         let started = self.started;
-        let start_by = self
+        #[cfg(test)]
+        let mut gated = self.start_gate.take();
+        #[allow(unused_mut)] // the gate (tests) moves it
+        let mut start_by = self
             .opts
             .start_after
             .and_then(|after| started.checked_add(after));
+        #[allow(unused_mut)]
         let mut abandon_by = (self.opts.abandon_unjoined)
             .then(|| self.opts.start_after.unwrap_or(UNJOINED_AFTER))
             .and_then(|after| started.checked_add(after));
         loop {
+            #[cfg(test)]
+            let polled = {
+                if gated.as_ref().is_some_and(|gate| gate.try_recv().is_ok()) {
+                    gated = None;
+                    let opened = Instant::now();
+                    start_by = self.opts.start_after.and_then(|a| opened.checked_add(a));
+                    abandon_by = (self.opts.abandon_unjoined)
+                        .then(|| self.opts.start_after.unwrap_or(UNJOINED_AFTER))
+                        .and_then(|after| opened.checked_add(after));
+                }
+                // Held: no deadline of the lobby's own, only a look at the gate now and then.
+                gated.as_ref().map(|_| {
+                    (start_by, abandon_by) = (None, None);
+                    Instant::now() + Duration::from_millis(5)
+                })
+            };
             if self.run_pick_clock(Instant::now()) {
                 return Some(self.build_config());
             }
@@ -810,6 +860,16 @@ impl Server {
                 .into_iter()
                 .chain(abandon_by)
                 .chain(self.pick_clock.due())
+                .chain({
+                    #[cfg(test)]
+                    {
+                        polled
+                    }
+                    #[cfg(not(test))]
+                    {
+                        None
+                    }
+                })
                 .min();
             let Some(event) = self.lobby_event(deadline) else {
                 let now = Instant::now();

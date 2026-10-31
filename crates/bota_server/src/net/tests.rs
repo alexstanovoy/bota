@@ -198,6 +198,19 @@ fn start_server(opts: ServerOpts) -> std::net::SocketAddr {
     start_ending_server(opts).addr
 }
 
+/// Like [`start_server`], but the lobby's clock ([`ServerOpts::start_after`]) runs only once the
+/// returned sender is sent to: the test sends it when the connections it is about have been
+/// admitted, so the lobby cannot end before they are in.
+fn start_gated_server(opts: ServerOpts) -> (std::net::SocketAddr, mpsc::Sender<()>) {
+    let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
+    let addr = listener.local_addr().expect("addr");
+    let (open, gate) = mpsc::channel();
+    thread::spawn(move || {
+        let _ = crate::game_loop::run_gated(listener, opts, gate);
+    });
+    (addr, open)
+}
+
 /// Like [`start_server`], for a test that waits for the match to end.
 fn start_ending_server(opts: ServerOpts) -> RunningServer {
     let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
