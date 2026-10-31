@@ -4,6 +4,7 @@ mod aura;
 mod backdoor;
 mod bubble;
 mod cast;
+mod cast_rule;
 mod cheats;
 mod courier;
 mod disassemble;

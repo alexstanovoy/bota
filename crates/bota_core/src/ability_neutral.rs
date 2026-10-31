@@ -18,7 +18,8 @@
 use bota_proto::{AbilityId, Aim, DamageKind, EffectId};
 
 use crate::{
-    ABILITY_COUNT, AbilityDef, Aura, AuraModifier, BARE_ABILITY, NeutralKind, Reach, Whom, rules,
+    ABILITY_COUNT, AbilityDef, Among, Aura, AuraModifier, BARE_ABILITY, CastRule, Mark, Need,
+    NeutralKind, Pick, Reach, When, Whom, Within, rules,
 };
 
 /// One neutral ability. Its place is its entry's in [`NEUTRAL_ABILITIES`];
@@ -417,39 +418,6 @@ pub enum Then {
     Wear { buff: Buff, effect: EffectId },
 }
 
-/// When the neutral AI casts a spell, besides its being off cooldown and
-/// paid for, and its caster awake, set on somebody, and neither stunned nor
-/// disarmed.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum When {
-    /// At least `at_least` enemies stand within `radius`.
-    Crowd { radius: i32, at_least: u8 },
-    /// While it swings, at least `at_least` enemies within `radius` are set
-    /// on it.
-    Beset { radius: i32, at_least: u8 },
-    /// Below `below_pct` of its health, with an enemy within `radius` (any
-    /// distance for zero).
-    Hurt { below_pct: i32, radius: i32 },
-    /// At an enemy in reach with less than `below_hp` health; `attacker`:
-    /// only one set on the caster.
-    Weak { below_hp: i32, attacker: bool },
-    /// At itself, whenever it fights.
-    Fighting,
-    /// At an ally in reach below `below_pct` of its health.
-    AllyHurt { below_pct: i32 },
-    /// At the hero it is set on, while a hero of the other side stands near.
-    Duel { radius: i32 },
-    /// At a hero set on it that chases another hero within `radius`.
-    Chaser { radius: i32 },
-    /// At an enemy hero within `radius` wearing a buff a purge takes off.
-    Buffed { radius: i32 },
-    /// At the enemy it is set on, once in reach.
-    Target,
-    /// A `chance_pct` chance as a neutral of `kind` of its camp dies, at
-    /// whoever killed it.
-    Avenge { kind: NeutralKind, chance_pct: i32 },
-}
-
 /// A cast's hold on the others: once it goes off, every neutral within
 /// `radius` carrying one of the same family waits `ms` before casting its
 /// own.
@@ -817,10 +785,12 @@ pub const NEUTRAL_ABILITIES: &[NeutralAbilityDef] = &[
                 delay_ms: 250,
                 keep_pct: lv(75, 80, 85, 90),
             },
-            when: When::Weak {
-                below_hp: 330,
-                attacker: true,
-            },
+            when: When::Think(CastRule {
+                among: Among::Foes(Within::CastRange),
+                needs: &[],
+                marks: &[Mark::HpBelow { hp: 330 }, Mark::AttacksCaster],
+                pick: Pick::LeastHp,
+            }),
             shared: None,
         },
     ),
@@ -863,10 +833,12 @@ pub const NEUTRAL_ABILITIES: &[NeutralAbilityDef] = &[
                 other_ms: all(3000),
                 then: Then::Stun,
             },
-            when: When::Crowd {
+            when: When::Think(CastRule::on_itself(&[Need::Crowd {
                 radius: 250,
                 at_least: 3,
-            },
+                heroes: 0,
+                on_it: false,
+            }])),
             shared: None,
         },
     ),
@@ -896,10 +868,12 @@ pub const NEUTRAL_ABILITIES: &[NeutralAbilityDef] = &[
                     effect: EffectId(30),
                 },
             },
-            when: When::Hurt {
-                below_pct: 51,
-                radius: 300,
-            },
+            when: When::Think(CastRule {
+                among: Among::Foes(Within::Radius(300)),
+                needs: &[Need::HurtBelow { pct: 51 }],
+                marks: &[],
+                pick: Pick::Nearest,
+            }),
             shared: None,
         },
     ),
@@ -939,7 +913,12 @@ pub const NEUTRAL_ABILITIES: &[NeutralAbilityDef] = &[
                 start_pct: 50,
                 ms: 5000,
             },
-            when: When::Buffed { radius: 500 },
+            when: When::Think(CastRule {
+                among: Among::Foes(Within::Radius(500)),
+                needs: &[],
+                marks: &[Mark::Hero, Mark::Buffed, Mark::InCastRange],
+                pick: Pick::Nearest,
+            }),
             shared: None,
         },
     ),
@@ -1011,10 +990,12 @@ pub const NEUTRAL_ABILITIES: &[NeutralAbilityDef] = &[
                 current_pct: 8,
                 ms: 2400,
             },
-            when: When::Hurt {
-                below_pct: 70,
-                radius: 400,
-            },
+            when: When::Think(CastRule {
+                among: Among::Foes(Within::Radius(400)),
+                needs: &[Need::HurtBelow { pct: 70 }],
+                marks: &[],
+                pick: Pick::Nearest,
+            }),
             shared: hold(OGRE_SMASH),
         },
     ),
@@ -1056,10 +1037,12 @@ pub const NEUTRAL_ABILITIES: &[NeutralAbilityDef] = &[
                 ms: 500,
                 root: false,
             },
-            when: When::Weak {
-                below_hp: 300,
-                attacker: false,
-            },
+            when: When::Think(CastRule {
+                among: Among::Foes(Within::CastRange),
+                needs: &[],
+                marks: &[Mark::HpBelow { hp: 300 }],
+                pick: Pick::LeastHp,
+            }),
             shared: hold(GOLEM_BOULDER),
         },
     ),
@@ -1125,10 +1108,12 @@ pub const NEUTRAL_ABILITIES: &[NeutralAbilityDef] = &[
                     effect: EffectId(37),
                 },
             },
-            when: When::Crowd {
+            when: When::Think(CastRule::on_itself(&[Need::Crowd {
                 radius: 300,
                 at_least: 2,
-            },
+                heroes: 0,
+                on_it: false,
+            }])),
             shared: None,
         },
     ),
@@ -1163,7 +1148,7 @@ pub const NEUTRAL_ABILITIES: &[NeutralAbilityDef] = &[
                 kind: NeutralKind::WildkinTornado,
                 life_ms: 15_000,
             },
-            when: When::Avenge {
+            when: When::MateFalls {
                 kind: NeutralKind::EnragedWildkin,
                 chance_pct: 33,
             },
@@ -1189,7 +1174,11 @@ pub const NEUTRAL_ABILITIES: &[NeutralAbilityDef] = &[
                 distance: 400,
                 speed: 800,
             },
-            when: When::Chaser { radius: 1200 },
+            when: When::Think(CastRule::on_held(&[
+                Mark::Hero,
+                Mark::InCastRange,
+                Mark::Chasing { radius: 1200 },
+            ])),
             shared: None,
         },
     ),
@@ -1222,7 +1211,11 @@ pub const NEUTRAL_ABILITIES: &[NeutralAbilityDef] = &[
                 ms: 1750,
                 root: true,
             },
-            when: When::Duel { radius: 1200 },
+            when: When::Think(CastRule::on_held(&[
+                Mark::Hero,
+                Mark::InCastRange,
+                Mark::RivalNear { radius: 1200 },
+            ])),
             shared: None,
         },
     ),
@@ -1248,10 +1241,12 @@ pub const NEUTRAL_ABILITIES: &[NeutralAbilityDef] = &[
                 damage: lv(12, 15, 18, 21),
                 life_ms: 35_000,
             },
-            when: When::Hurt {
-                below_pct: 50,
-                radius: 0,
-            },
+            when: When::Think(CastRule {
+                among: Among::Held,
+                needs: &[Need::HurtBelow { pct: 50 }],
+                marks: &[],
+                pick: Pick::First,
+            }),
             shared: None,
         },
     ),
@@ -1385,10 +1380,15 @@ pub const NEUTRAL_ABILITIES: &[NeutralAbilityDef] = &[
                     effect: EffectId(45),
                 },
             },
-            when: When::Beset {
-                radius: 350,
-                at_least: 3,
-            },
+            when: When::Think(CastRule::on_itself(&[
+                Need::Swinging,
+                Need::Crowd {
+                    radius: 350,
+                    at_least: 3,
+                    heroes: 0,
+                    on_it: true,
+                },
+            ])),
             shared: None,
         },
     ),
@@ -1403,7 +1403,7 @@ pub const NEUTRAL_ABILITIES: &[NeutralAbilityDef] = &[
                 effect: EffectId(46),
                 ms: 8000,
             },
-            when: When::Fighting,
+            when: When::Think(CastRule::on_itself(&[Need::Fighting])),
             shared: None,
         },
     ),
@@ -1472,10 +1472,12 @@ pub const NEUTRAL_ABILITIES: &[NeutralAbilityDef] = &[
                     effect: EffectId(49),
                 },
             },
-            when: When::Crowd {
+            when: When::Think(CastRule::on_itself(&[Need::Crowd {
                 radius: 300,
                 at_least: 3,
-            },
+                heroes: 0,
+                on_it: false,
+            }])),
             shared: None,
         },
     ),
@@ -1534,7 +1536,7 @@ pub const NEUTRAL_ABILITIES: &[NeutralAbilityDef] = &[
                 damage: lv(80, 100, 120, 140),
                 ms: 800,
             },
-            when: When::Target,
+            when: When::Think(CastRule::on_held(&[Mark::InCastRange])),
             shared: hold(FROG_SPIKES),
         },
     ),
@@ -1561,7 +1563,7 @@ pub const NEUTRAL_ABILITIES: &[NeutralAbilityDef] = &[
                 damage: lv(120, 140, 160, 180),
                 ms: 1200,
             },
-            when: When::Target,
+            when: When::Think(CastRule::on_held(&[Mark::InCastRange])),
             shared: hold(FROG_SPIKES),
         },
     ),
@@ -1588,7 +1590,7 @@ pub const NEUTRAL_ABILITIES: &[NeutralAbilityDef] = &[
                 damage: lv(250, 275, 300, 325),
                 ms: 1400,
             },
-            when: When::Target,
+            when: When::Think(CastRule::on_held(&[Mark::InCastRange])),
             shared: hold(FROG_SPIKES),
         },
     ),
@@ -1613,7 +1615,12 @@ pub const NEUTRAL_ABILITIES: &[NeutralAbilityDef] = &[
                 heal_pct: 0,
                 radius: 0,
             },
-            when: When::AllyHurt { below_pct: 50 },
+            when: When::Think(CastRule {
+                among: Among::Allies(Within::CastRange),
+                needs: &[],
+                marks: &[Mark::HurtBelow { pct: 50 }, Mark::Unmarked],
+                pick: Pick::LeastHealthPct,
+            }),
             shared: None,
         },
     ),
@@ -1638,7 +1645,12 @@ pub const NEUTRAL_ABILITIES: &[NeutralAbilityDef] = &[
                 heal_pct: 50,
                 radius: 0,
             },
-            when: When::AllyHurt { below_pct: 50 },
+            when: When::Think(CastRule {
+                among: Among::Allies(Within::CastRange),
+                needs: &[],
+                marks: &[Mark::HurtBelow { pct: 50 }, Mark::Unmarked],
+                pick: Pick::LeastHealthPct,
+            }),
             shared: None,
         },
     ),
@@ -1663,7 +1675,12 @@ pub const NEUTRAL_ABILITIES: &[NeutralAbilityDef] = &[
                 heal_pct: 50,
                 radius: 675,
             },
-            when: When::AllyHurt { below_pct: 50 },
+            when: When::Think(CastRule {
+                among: Among::Allies(Within::CastRange),
+                needs: &[],
+                marks: &[Mark::HurtBelow { pct: 50 }, Mark::Unmarked],
+                pick: Pick::LeastHealthPct,
+            }),
             shared: None,
         },
     ),
