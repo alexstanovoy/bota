@@ -71,11 +71,9 @@ fn every_hero_starts_with_one_free_scroll_ready_ten_seconds_past_the_horn() {
     assert_eq!(scroll.id, ItemId::TOWN_PORTAL_SCROLL);
     assert_eq!(scroll.charges, 1);
     assert_eq!(scroll.free_charges, 1, "and that one came for nothing");
-    assert_eq!(
-        rules::SCROLL_FIRST_WAIT_TICKS,
-        rules::PREGAME_TICKS + 10 * rules::TICKS_PER_SECOND
-    );
-    run(&mut world, rules::SCROLL_FIRST_WAIT_TICKS - 1);
+    let ready = world.schedule().scroll_first_ready();
+    assert_eq!(ready, world.schedule().horn + 10 * rules::TICKS_PER_SECOND);
+    run(&mut world, ready - 1);
     let far = Vec2::from_ints(9000, 9000);
     assert_eq!(
         refusal(&world, Target::Pos(far)),

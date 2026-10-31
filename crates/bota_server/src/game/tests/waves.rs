@@ -10,7 +10,7 @@ use super::support::*;
 /// Runs a match past its first waves and half a minute on: how many came
 /// out, and each still standing with its spawner's spot and its own.
 fn the_first_waves_half_a_minute_on(world: &mut World) -> (usize, Vec<(Entity, Vec2, Vec2)>) {
-    for _ in 0..=rules::FIRST_WAVE_TICK {
+    for _ in 0..=world.schedule().first_wave() {
         world.advance(&[]);
     }
     let first: Vec<(Entity, Vec2)> = world
@@ -44,7 +44,7 @@ fn the_first_waves_half_a_minute_on(world: &mut World) -> (usize, Vec<(Entity, V
 fn a_wave_carries_one_flag_from_the_fifth_wave_on() {
     let map = map_of(MapId(1));
     let mut world = World::on_map(map);
-    let fifth = rules::FIRST_WAVE_TICK + 4 * rules::WAVE_PERIOD_TICKS;
+    let fifth = map.schedule().first_wave() + 4 * rules::WAVE_PERIOD_TICKS;
     while world.tick < fifth {
         world.step();
     }
@@ -152,7 +152,7 @@ fn a_wave_walks_over_where_its_tower_stood_once_it_has_fallen() {
         world.walked_lanes()[0][0].contains(&tower),
         "fallen, the route runs over its ground"
     );
-    for _ in 0..=rules::FIRST_WAVE_TICK {
+    for _ in 0..=world.schedule().first_wave() {
         world.advance(&[]);
     }
     let mut nearest = i64::MAX;

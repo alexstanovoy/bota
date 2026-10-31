@@ -23,10 +23,11 @@ pub struct Glyph {
 }
 
 impl Glyph {
-    /// A Glyph not yet used, ready from the first moment Dota allows.
-    pub const fn fresh() -> Glyph {
+    /// A Glyph not yet used, ready from the first moment Dota allows on a
+    /// match with schedule `schedule`.
+    pub const fn fresh(schedule: bota_core::rules::Schedule) -> Glyph {
         Glyph {
-            ready_at: bota_core::rules::GLYPH_FIRST_USE_TICKS,
+            ready_at: schedule.glyph_first_use(),
             structures_until: 0,
             refreshed: 0,
         }

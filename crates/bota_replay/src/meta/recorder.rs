@@ -58,7 +58,7 @@ impl Default for Recorder {
     fn default() -> Self {
         Recorder {
             out: Writer::default(),
-            pregame: bota_core::rules::PREGAME_TICKS,
+            pregame: bota_core::rules::DOTA_PREGAME_TICKS,
             seats: Vec::new(),
             tallies: Vec::new(),
             bodies: HashMap::new(),

@@ -165,7 +165,7 @@ impl MatchConfig {
             match_id: self.match_id,
             map: self.map,
             tick_rate: bota_core::rules::TICKS_PER_SECOND as u16,
-            pregame_ticks: bota_core::rules::PREGAME_TICKS,
+            pregame_ticks: map.pregame_ticks,
             trees: crate::game::tree_positions(map, terrain),
             terrain_cells: crate::game::TERRAIN_CELLS as u32,
             terrain_rle: crate::game::Ground::wire_rle(terrain),

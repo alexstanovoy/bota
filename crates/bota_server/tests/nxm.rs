@@ -148,7 +148,8 @@ fn play_lineup(radiant: u8, dire: u8) {
         .collect();
     let (address, server) = serve(opts(0, reserved, None));
     let leaver = if dire > 0 { Team::Dire } else { Team::Radiant };
-    let seen_at = rules::FIRST_WAVE_TICK + rules::TICKS_PER_SECOND;
+    let seen_at =
+        rules::Schedule::of(rules::DOTA_PREGAME_TICKS).first_wave() + rules::TICKS_PER_SECOND;
     let seats: Vec<_> = teams
         .iter()
         .zip(keys)

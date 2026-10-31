@@ -63,7 +63,10 @@ fn the_glyph_protects_structures_seven_seconds_and_creeps_three_then_recharges()
     // On its wait from the first second, pregame included: three minutes
     // past the horn, as the Dota 2 client shows it (4:30 from its 90 s
     // pregame).
-    assert_eq!(rules::GLYPH_FIRST_USE_TICKS, rules::tick_at_game_minute(3));
+    assert_eq!(
+        world.schedule().glyph_first_use(),
+        world.schedule().at_minute(3)
+    );
     let own_wait = |world: &World| {
         world
             .glyph_views(Some(Team::Radiant))
@@ -71,20 +74,22 @@ fn the_glyph_protects_structures_seven_seconds_and_creeps_three_then_recharges()
             .find(|glyph| glyph.team == Team::Radiant)
             .and_then(|glyph| glyph.ready_after)
     };
-    assert_eq!(own_wait(&world), Some(rules::GLYPH_FIRST_USE_TICKS));
+    assert_eq!(own_wait(&world), Some(world.schedule().glyph_first_use()));
     assert_eq!(
         world.validate_order(SlotId(0), None, &order),
         Err(RejectReason::OnCooldown),
         "not in the pregame"
     );
-    run_to(&mut world, rules::GLYPH_FIRST_USE_TICKS - 1);
+    let ready = world.schedule().glyph_first_use();
+    run_to(&mut world, ready - 1);
     assert_eq!(
         world.validate_order(SlotId(0), None, &order),
         Err(RejectReason::OnCooldown),
         "not before three minutes past the horn"
     );
     assert_eq!(own_wait(&world), Some(1));
-    run_to(&mut world, rules::GLYPH_FIRST_USE_TICKS);
+    let ready = world.schedule().glyph_first_use();
+    run_to(&mut world, ready);
     assert_eq!(world.validate_order(SlotId(0), None, &order), Ok(()));
     assert_eq!(pure_blow(&mut world, enemy, tower), 100);
     assert_eq!(pure_blow(&mut world, hero, creep), 100);
@@ -145,7 +150,8 @@ fn the_glyph_protects_structures_seven_seconds_and_creeps_three_then_recharges()
 fn the_first_tier_one_tower_tier_two_tower_and_melee_barracks_to_fall_refresh_it() {
     let mut world = World::on_map(map_of(MapId(0)));
     seat_hero(&mut world, 0, Team::Radiant, Vec2::from_ints(3000, 3000));
-    run_to(&mut world, rules::GLYPH_FIRST_USE_TICKS);
+    let ready = world.schedule().glyph_first_use();
+    run_to(&mut world, ready);
     let order = Order::Glyph;
     let fall = |world: &mut World, at: Vec2| {
         let it = structure_at(world, at);
@@ -315,7 +321,8 @@ fn the_enemy_sees_a_glyph_on_what_it_sees_and_nothing_on_what_the_fog_hides() {
     let hidden = world.spawn_unit(&TARGET, Team::Radiant, Vec2::from_ints(1000, 1000));
     let seen = world.spawn_unit(&TARGET, Team::Radiant, near(1450));
     world.settle();
-    run_to(&mut world, rules::GLYPH_FIRST_USE_TICKS);
+    let ready = world.schedule().glyph_first_use();
+    run_to(&mut world, ready);
     // The buff's remaining ticks on a unit the Dire view holds: nothing for
     // a unit it is not told of.
     let buff = |world: &World, entity: Entity| {
@@ -373,14 +380,15 @@ fn a_creep_that_spawns_after_the_glyph_does_not_get_it() {
     let enemy = seat_hero(&mut world, 1, Team::Dire, Vec2::from_ints(9000, 9000));
     let before = world.spawn_unit(&TARGET, Team::Radiant, Vec2::from_ints(3300, 3300));
     world.settle();
-    run_to(&mut world, rules::GLYPH_FIRST_USE_TICKS);
+    let ready = world.schedule().glyph_first_use();
+    run_to(&mut world, ready);
     seat_order(&mut world, Order::Glyph);
     let later = world.tick + rules::TICKS_PER_SECOND;
     run_to(&mut world, later);
     let after = world.spawn_unit(&TARGET, Team::Radiant, Vec2::from_ints(3400, 3300));
     world.settle();
     assert!(
-        world.tick < rules::GLYPH_FIRST_USE_TICKS + rules::GLYPH_CREEP_TICKS,
+        world.tick < world.schedule().glyph_first_use() + rules::GLYPH_CREEP_TICKS,
         "the wave comes inside the creeps' three seconds"
     );
     assert_eq!(

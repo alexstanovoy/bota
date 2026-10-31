@@ -3,9 +3,9 @@
 //! and put out.
 
 use bota_core::{
-    AbilityDef, CAPTURE_TICKS, LAMP_LIT_TICKS, LAMP_OFF_TICKS, ModifierKind, OBJECTIVES_OPEN_TICK,
-    OUTPOST, SHRINE, SHRINE_COUNTDOWN_TICKS, SHRINE_RADIUS, WATCHER, WATCHER_DAY_VISION,
-    WATCHER_NIGHT_VISION, ability_def, kind_def, objective_unit, rules,
+    AbilityDef, CAPTURE_TICKS, LAMP_LIT_TICKS, LAMP_OFF_TICKS, ModifierKind,
+    OBJECTIVES_OPEN_AFTER_HORN, OUTPOST, SHRINE, SHRINE_COUNTDOWN_TICKS, SHRINE_RADIUS, WATCHER,
+    WATCHER_DAY_VISION, WATCHER_NIGHT_VISION, ability_def, kind_def, objective_unit, rules,
 };
 use bota_proto::{
     AbilityId, AbilitySlot, EntityId, EventKind, Inflictor, ObjectiveKind, ObjectiveSet, Target,
@@ -124,7 +124,7 @@ impl World {
         let Some(side) = self.team.get(caster).copied() else {
             return false;
         };
-        self.clock() >= OBJECTIVES_OPEN_TICK
+        self.clock() >= self.schedule().horn + OBJECTIVES_OPEN_AFTER_HORN
             && self.outpost.get(outpost).is_some()
             && self.team.get(outpost) != Some(&side)
             && !self.wears(outpost, ModifierKind::CaptureGuard)
@@ -235,7 +235,7 @@ impl World {
         let Some(watcher) = self.channel_mark(target) else {
             return false;
         };
-        self.clock() >= OBJECTIVES_OPEN_TICK
+        self.clock() >= self.schedule().horn + OBJECTIVES_OPEN_AFTER_HORN
             && self.kind.get(watcher) == Some(&UnitKind::Watcher)
             && !self.wears(watcher, ModifierKind::LampOff)
             && self.lit_for(watcher) != self.team.get(caster).copied()

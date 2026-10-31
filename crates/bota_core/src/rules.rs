@@ -341,8 +341,8 @@ pub const NEUTRAL_UPGRADE_XP: i32 = 5;
 pub const WAVE_FACING_LOOKAHEAD: i32 = 200;
 /// World units between neighbours in a camp when it spawns.
 pub const CAMP_SPAWN_SPACING: i32 = 64;
-/// Tick of the first neutral spawn, one minute past the horn.
-pub const FIRST_NEUTRAL_TICK: u32 = PREGAME_TICKS + 60 * TICKS_PER_SECOND;
+/// Ticks from the horn to the first neutral spawn: one minute.
+pub const FIRST_NEUTRAL_AFTER_HORN: u32 = 60 * TICKS_PER_SECOND;
 /// Ticks between neutral spawn checks.
 pub const NEUTRAL_SPAWN_PERIOD_TICKS: u32 = 60 * TICKS_PER_SECOND;
 /// Neutral creep collision size, the hero hull's.
@@ -355,16 +355,58 @@ pub const NEUTRAL_VISION: i32 = 800;
 
 // Creep waves.
 
-/// Ticks of pregame: the game clock counts up from minus this, thirty
-/// seconds, and reaches zero when the first wave walks out.
-pub const PREGAME_TICKS: u32 = 30 * TICKS_PER_SECOND;
-/// The tick a game minute begins at, counted from the horn.
-pub const fn tick_at_game_minute(minutes: u32) -> u32 {
-    PREGAME_TICKS + minutes * 60 * TICKS_PER_SECOND
+/// Ticks of Solo Mid's pregame: thirty seconds from the heroes coming in to
+/// the horn (Dota's 1v1 Solo Mid; its full game has [`DOTA_PREGAME_TICKS`]).
+pub const SOLO_MID_PREGAME_TICKS: u32 = 30 * TICKS_PER_SECOND;
+
+/// A match's clock: the tick its game clock reads 0:00 at, the horn, which
+/// its map's pregame puts off ([`crate::MapDef::pregame_ticks`]), and every
+/// rule timed from the horn. The game clock counts up from minus the
+/// pregame, and the first wave walks out at zero.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct Schedule {
+    /// The tick of the horn: the pregame's ticks.
+    pub horn: u32,
 }
 
-/// Tick of the first creep wave.
-pub const FIRST_WAVE_TICK: u32 = PREGAME_TICKS;
+impl Schedule {
+    /// The schedule of a match whose pregame lasts `pregame_ticks`.
+    pub const fn of(pregame_ticks: u32) -> Self {
+        Self {
+            horn: pregame_ticks,
+        }
+    }
+
+    /// The tick a game minute begins at, counted from the horn.
+    pub const fn at_minute(self, minutes: u32) -> u32 {
+        self.horn + minutes * 60 * TICKS_PER_SECOND
+    }
+
+    /// The tick of the first creep wave: the horn.
+    pub const fn first_wave(self) -> u32 {
+        self.horn
+    }
+
+    /// The tick of the first neutral spawn.
+    pub const fn first_neutral(self) -> u32 {
+        self.horn + FIRST_NEUTRAL_AFTER_HORN
+    }
+
+    /// The tick from which an attack order may draw any lane creep.
+    pub const fn free_aggro(self) -> u32 {
+        self.first_wave() + FREE_AGGRO_AFTER_FIRST_WAVE
+    }
+
+    /// The tick a side may first use its Glyph of Fortification.
+    pub const fn glyph_first_use(self) -> u32 {
+        self.horn + GLYPH_FIRST_USE_AFTER_HORN
+    }
+
+    /// The tick the scroll every hero starts with is first ready.
+    pub const fn scroll_first_ready(self) -> u32 {
+        self.horn + SCROLL_FIRST_READY_AFTER_HORN
+    }
+}
 /// Ticks a daytime or a nighttime lasts: five minutes each, so a whole day
 /// is ten (Liquipedia, Time of Day, since 7.20). The pregame is night and the
 /// first day breaks at the horn (since 7.28).
@@ -761,16 +803,16 @@ pub const BACKDOOR_TOWER_RADIUS: i32 = 900;
 /// tier three and four, barracks and filler of its side, and itself.
 pub const BACKDOOR_BASE_RADIUS: i32 = 4000;
 
-/// The tick a side may first use its Glyph of Fortification. Dota puts it
-/// on its cooldown from the very first second of the match, pregame
-/// included, showing 4:30 then (checked in the Dota 2 client, 7.41,
-/// 2026-10-24), so it cannot be pressed before then: 270 seconds from the
-/// heroes coming in, which is three minutes past the horn (Liquipedia,
-/// *Glyph of Fortification*: "cannot be used until the 3:00 minute mark").
-/// Dota's heroes come in [`DOTA_PREGAME_TICKS`] before the horn and ours
-/// [`PREGAME_TICKS`] before it, so the wait is laid on the game clock, as
+/// Ticks from the horn until a side may first use its Glyph of
+/// Fortification. Dota puts it on its cooldown from the very first second
+/// of the match, pregame included, showing 4:30 then (checked in the Dota 2
+/// client, 7.41, 2026-10-24), so it cannot be pressed before then: 270
+/// seconds from the heroes coming in, which is three minutes past the horn
+/// (Liquipedia, *Glyph of Fortification*: "cannot be used until the 3:00
+/// minute mark"). Dota's heroes come in [`DOTA_PREGAME_TICKS`] before the
+/// horn; a map with a shorter pregame lays the wait on the game clock, as
 /// the first scroll's is.
-pub const GLYPH_FIRST_USE_TICKS: u32 = PREGAME_TICKS + 270 * TICKS_PER_SECOND - DOTA_PREGAME_TICKS;
+pub const GLYPH_FIRST_USE_AFTER_HORN: u32 = 270 * TICKS_PER_SECOND - DOTA_PREGAME_TICKS;
 /// Cooldown of a Glyph of Fortification, shared by a whole side: 300 seconds.
 pub const GLYPH_COOLDOWN_TICKS: u32 = 300 * TICKS_PER_SECOND;
 /// How long a Glyph keeps a side's structures from taking damage: 7 seconds
@@ -920,10 +962,10 @@ pub const ORDER_AGGRO_HOLD_TICKS: u32 = 69;
 /// How near a hero must stand to a lane creep for its attack order or its
 /// swing at a hero to draw the creep.
 pub const HERO_AGGRO_RANGE: i32 = 500;
-/// Tick from which an attack order may draw any lane creep.
-pub const FREE_AGGRO_TICK: u32 = FIRST_WAVE_TICK + 5 * 60 * TICKS_PER_SECOND;
+/// Ticks from the first wave until an attack order may draw any lane creep.
+pub const FREE_AGGRO_AFTER_FIRST_WAVE: u32 = 5 * 60 * TICKS_PER_SECOND;
 /// How close to its own tier-one tower a lane creep may be aggroed before
-/// [`FREE_AGGRO_TICK`].
+/// [`Schedule::free_aggro`].
 pub const EARLY_AGGRO_TOWER_RANGE: i32 = 1500;
 /// A lane creep stops chasing a target that turns up further than this from
 /// where it stood a tick before: a teleport, not a walk (Liquipedia, *Lane
@@ -1024,13 +1066,12 @@ pub const SCROLL_SIGHT_LINGER_TICKS: u32 = TICKS_PER_SECOND;
 pub const SCROLL_FOUNTAIN_MIN_DISTANCE: i32 = 1500;
 /// Dota's pregame, from the heroes coming in to the horn: ninety seconds.
 pub const DOTA_PREGAME_TICKS: u32 = 90 * TICKS_PER_SECOND;
-/// The wait the scroll every hero starts with comes with: 100 seconds from
-/// the heroes coming in (Liquipedia, Town Portal Scroll: initial cooldown
-/// 100). Dota's heroes come in 90 s before the horn and ours
-/// [`PREGAME_TICKS`] before it, so the wait is laid on the game clock: the
-/// first scroll is ready ten seconds past the horn, as in Dota.
-pub const SCROLL_FIRST_WAIT_TICKS: u32 =
-    PREGAME_TICKS + 100 * TICKS_PER_SECOND - DOTA_PREGAME_TICKS;
+/// Ticks from the horn until the scroll every hero starts with is ready: it
+/// comes with a wait of 100 seconds from the heroes coming in (Liquipedia,
+/// Town Portal Scroll: initial cooldown 100), and Dota's heroes come in 90 s
+/// before the horn, so it is ready ten seconds past the horn; a map with a
+/// shorter pregame lays the wait on the game clock, as in Dota.
+pub const SCROLL_FIRST_READY_AFTER_HORN: u32 = 100 * TICKS_PER_SECOND - DOTA_PREGAME_TICKS;
 /// Steps out from where a scroll was aimed it looks for open ground, a
 /// ring of eight spots to a step.
 pub const SCROLL_LANDING_RINGS: i32 = 8;
@@ -1039,7 +1080,7 @@ pub const SCROLL_LANDING_STEP: i32 = 64;
 
 const _: () = {
     assert!(100 * TICKS_PER_SECOND > DOTA_PREGAME_TICKS);
-    assert!(SCROLL_FIRST_WAIT_TICKS > PREGAME_TICKS);
+    assert!(270 * TICKS_PER_SECOND > DOTA_PREGAME_TICKS);
 };
 
 // The courier.

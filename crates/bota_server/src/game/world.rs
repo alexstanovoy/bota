@@ -83,7 +83,7 @@ world_tables! {
         /// Which entities exist.
         pub entities: EntityAllocator = EntityAllocator::new();
         /// Each side's Glyph of Fortification: Radiant's, then Dire's.
-        pub glyphs: [Glyph; 2] = [Glyph::fresh(); 2];
+        pub glyphs: [Glyph; 2] = [Glyph::fresh(bota_core::map_of(bota_proto::MapId(0)).schedule()); 2];
         /// Which of the map's objectives the match stands up.
         pub objectives: bota_proto::ObjectiveSet = bota_proto::ObjectiveSet::NONE;
         /// Trusted match setup's modifiers, put on each unit as it is stood up.
@@ -453,6 +453,7 @@ impl World {
     ) -> World {
         let mut world = World::new();
         world.map = map;
+        world.glyphs = [Glyph::fresh(map.schedule()); 2];
         world.terrain = terrain;
         world.clearance = crate::game::Clearance::of_map(map);
         world.ground = crate::game::Ground::of(terrain);
@@ -713,9 +714,18 @@ impl World {
         self.tick.saturating_add(self.clock_shift.game)
     }
 
+    /// The match's clock: the horn after its map's pregame, and what is timed
+    /// from it.
+    pub fn schedule(&self) -> bota_core::rules::Schedule {
+        self.map.schedule()
+    }
+
     /// The time of day now, moved on by the night toggle.
     pub fn time_of_day(&self) -> bota_core::TimeOfDay {
-        bota_core::time_of_day(self.clock().saturating_add(self.clock_shift.day))
+        bota_core::time_of_day(
+            self.clock().saturating_add(self.clock_shift.day),
+            self.schedule(),
+        )
     }
 
     /// Who sees what, from where everything stands.

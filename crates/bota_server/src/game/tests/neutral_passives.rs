@@ -16,7 +16,7 @@ fn at(dx: i32) -> Vec2 {
 /// A world in the first minutes of the day whose heroes do not fall.
 fn day() -> World {
     let mut world = World::new();
-    world.tick = rules::PREGAME_TICKS;
+    world.tick = world.schedule().horn;
     world.immortal_heroes = true;
     world
 }
@@ -752,7 +752,7 @@ fn a_prowler_shaman_below_ninety_percent_roots_and_burns_its_target() {
 #[test]
 fn a_gnoll_poison_ticks_every_second_and_cuts_regeneration() {
     let mut world = day();
-    world.tick = rules::tick_at_game_minute(20);
+    world.tick = world.schedule().at_minute(20);
     world.immortal_heroes = true;
     let hero = passive_hero(&mut world, at(0));
     let gnoll = awake(&mut world, NeutralKind::GnollAssassin, at(300));
@@ -868,13 +868,13 @@ fn piercing_neutrals_hit_creeps_hard_and_heroes_soft() {
 fn accuracy_lets_blows_through_evasion() {
     let misses = |lizard: NeutralKind| {
         let mut world = day();
-        world.tick = rules::PREGAME_TICKS;
+        world.tick = world.schedule().horn;
         let hero = passive_hero(&mut world, at(0));
         hand_item(&mut world, hero, ItemId::BUTTERFLY, 1);
         let beast = awake(&mut world, lizard, at(300));
         world.settle();
         let (mut hit, mut missed) = (0, 0);
-        while hit + missed < 120 && world.tick < rules::PREGAME_TICKS + 20_000 {
+        while hit + missed < 120 && world.tick < world.schedule().horn + 20_000 {
             for event in world.step() {
                 match event.kind {
                     EventKind::Damaged {

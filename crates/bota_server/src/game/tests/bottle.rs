@@ -1,7 +1,6 @@
 //! The Bottle at Dota 7.41f: bought, drunk, refilled at the fountain, and the
 //! place a hero keeps the rune it takes.
 
-use bota_core::rules::tick_at_game_minute;
 use bota_core::{
     BOTTLE_CHARGES, BOTTLE_COOLDOWN, BOTTLE_COST, BOTTLE_RUNE_TICKS, ModifierKind, rules,
 };
@@ -11,7 +10,7 @@ use bota_proto::{
 
 use crate::game::{Entity, ItemStack, World, wire_id};
 
-use super::runes::{fraction, hero, lying, place, rune_match, rune_under_hero, step_at};
+use super::runes::{fraction, hero, lying, place, rune_match, rune_under_hero, step_at_minute};
 use super::support::*;
 
 const RIVER_TOP: usize = 0;
@@ -364,7 +363,7 @@ fn a_stored_bounty_rune_pays_what_it_was_worth_when_it_appeared() {
     let mut world = rune_match(&[Team::Radiant, Team::Dire]);
     let taker = hero(&world, 0);
     bottled(&mut world, taker, BOTTLE_CHARGES);
-    step_at(&mut world, tick_at_game_minute(4));
+    step_at_minute(&mut world, 4, 0);
     let jungle = world.map.rune_spots[3].at;
     place(&mut world, taker, jungle);
     let events = world.step();
@@ -377,7 +376,7 @@ fn a_stored_bounty_rune_pays_what_it_was_worth_when_it_appeared() {
     )));
     let before = world.seats[0].gold;
     // Used at 6:00, long after the rune appeared at 4:00: paid 46, not 40.
-    world.tick = tick_at_game_minute(6) - 1;
+    world.tick = world.schedule().at_minute(6) - 1;
     let dire_before = world.seats[1].gold;
     advance_validated(&mut world, None, drink());
     let dire_gain = world.seats[1].gold - dire_before;

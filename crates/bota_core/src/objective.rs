@@ -31,10 +31,11 @@ pub const fn objective_unit(objective: ObjectiveKind) -> Option<UnitKind> {
     }
 }
 
-/// The tick the Outposts and the Watchers may first be worked, the horn:
-/// the Outposts' entities are `vulnerableoncreepspawn 1` [ENT:193780,
-/// ENT:193871], and a Watcher "cannot be activated before the horn" [PN 7.39].
-pub const OBJECTIVES_OPEN_TICK: u32 = rules::tick_at_game_minute(0);
+/// Ticks past the horn the Outposts and the Watchers may first be worked:
+/// none, the horn itself: the Outposts' entities are `vulnerableoncreepspawn
+/// 1` [ENT:193780, ENT:193871], and a Watcher "cannot be activated before the
+/// horn" [PN 7.39].
+pub const OBJECTIVES_OPEN_AFTER_HORN: u32 = 0;
 
 // Outposts (`npc_dota_watch_tower`) and `ability_capture` [A:142-163].
 
@@ -215,8 +216,9 @@ pub const SHRINE_RADIUS: i32 = 300;
 /// Ticks a side's heroes must stand in a Shrine's radius to gather it:
 /// `countdown_time` 3 [PN 7.38].
 pub const SHRINE_COUNTDOWN_TICKS: u32 = 3 * rules::TICKS_PER_SECOND;
-/// The tick a Shrine first holds experience: 7:00 [LIQ Shrine of Wisdom].
-pub const SHRINE_FIRST_TICK: u32 = rules::tick_at_game_minute(7);
+/// Ticks past the horn a Shrine first holds experience: 7:00 [LIQ Shrine of
+/// Wisdom].
+pub const SHRINE_FIRST_AFTER_HORN: u32 = 7 * 60 * rules::TICKS_PER_SECOND;
 /// Ticks between two activations: `dota_xp_fountain_activation_interval`
 /// 420 [BIN], bound to the game clock, not to the last gathering [PN 7.38].
 pub const SHRINE_PERIOD_TICKS: u32 = 420 * rules::TICKS_PER_SECOND;
@@ -247,11 +249,12 @@ pub const SHRINE: UnitDef = UnitDef {
 
 /// The activations of the Shrines the game clock has passed by `clock`,
 /// counted from one; zero before the first.
-pub const fn shrine_activations(clock: u32) -> u32 {
-    if clock < SHRINE_FIRST_TICK {
+pub const fn shrine_activations(clock: u32, schedule: rules::Schedule) -> u32 {
+    let first = schedule.horn + SHRINE_FIRST_AFTER_HORN;
+    if clock < first {
         0
     } else {
-        (clock - SHRINE_FIRST_TICK) / SHRINE_PERIOD_TICKS + 1
+        (clock - first) / SHRINE_PERIOD_TICKS + 1
     }
 }
 

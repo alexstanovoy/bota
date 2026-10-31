@@ -27,10 +27,11 @@ impl World {
     /// Hands out the gold that arrives on its own, to every seat: what
     /// [`passive_gold_by`] owes for this tick of the clock.
     pub fn passive_gold(&mut self) {
-        if self.clock() <= rules::PREGAME_TICKS {
+        let horn = self.schedule().horn;
+        if self.clock() <= horn {
             return;
         }
-        let since = self.clock() - rules::PREGAME_TICKS;
+        let since = self.clock() - horn;
         let due = passive_gold_by(since) - passive_gold_by(since - 1);
         if due == 0 {
             return;

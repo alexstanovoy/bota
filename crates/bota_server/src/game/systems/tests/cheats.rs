@@ -449,7 +449,7 @@ fn gold_income_leaves_starting_passive_and_refunded_gold_alone() {
     cheat_modifier(&mut world, spec(|s| s.gold_income = 20_000), 1_000);
     assert_eq!(world.seats[0].gold, before, "no gold arrives with it");
     // 90 a minute: the first gold comes two thirds of a second after the horn.
-    world.tick = rules::PREGAME_TICKS + 2 * rules::TICKS_PER_SECOND / 3;
+    world.tick = world.schedule().horn + 2 * rules::TICKS_PER_SECOND / 3;
     world.passive_gold();
     assert_eq!(
         world.seats[0].gold,

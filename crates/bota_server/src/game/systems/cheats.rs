@@ -98,7 +98,7 @@ impl World {
                 }
             }
             Cheat::SpawnCreeps => {
-                let wave = bota_core::latest_wave(self.clock()).unwrap_or(1);
+                let wave = bota_core::latest_wave(self.clock(), self.schedule()).unwrap_or(1);
                 self.spawn_wave(wave);
             }
             Cheat::CreepSpawning { on } => self.creeps_halted = !on,
@@ -359,10 +359,11 @@ impl World {
     /// Glyph's first use, the seats' first scroll) moved on with it.
     fn start_game(&mut self) {
         let next = self.clock().saturating_add(1);
-        if next >= rules::PREGAME_TICKS {
+        let horn = self.schedule().horn;
+        if next >= horn {
             return;
         }
-        let ahead = rules::PREGAME_TICKS - next;
+        let ahead = horn - next;
         self.clock_shift.game = self.clock_shift.game.saturating_add(ahead);
         for glyph in &mut self.glyphs {
             glyph.ready_at = glyph.ready_at.saturating_sub(ahead);

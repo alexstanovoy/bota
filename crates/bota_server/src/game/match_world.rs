@@ -59,7 +59,7 @@ impl World {
             // The scroll every hero starts with comes on a wait.
             seat.item_clocks.push((
                 bota_proto::ItemId::TOWN_PORTAL_SCROLL,
-                rules::SCROLL_FIRST_WAIT_TICKS,
+                world.schedule().scroll_first_ready(),
             ));
             world.seats.push(seat);
         }

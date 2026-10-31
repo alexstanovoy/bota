@@ -16,7 +16,7 @@ impl World {
         if self.creeps_halted {
             return;
         }
-        let Some(wave) = wave_at(self.clock()) else {
+        let Some(wave) = wave_at(self.clock(), self.schedule()) else {
             return;
         };
         self.spawn_wave(wave);
@@ -69,7 +69,7 @@ impl World {
         };
         let route = &self.walked_lanes()[side][usize::from(lane)];
         let forward = route.get(index + 1).map_or(Vec2::ZERO, |next| *next - at);
-        let plan = wave_plan(latest_wave(self.clock()).unwrap_or(1));
+        let plan = wave_plan(latest_wave(self.clock(), self.schedule()).unwrap_or(1));
         let offsets = spawn_offsets(&plan, forward);
         let flag_slot = self.flag_slot(plan.melee);
         let ranks = self.wave_creep_ranks(team, lane);

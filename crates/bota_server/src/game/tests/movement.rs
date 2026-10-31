@@ -504,7 +504,7 @@ fn a_hero_among_trees_too_close_for_the_route_margin_still_walks_home() {
 /// `at` along the lane, with the route and the lead creep.
 fn map2_wave_led_to(at: i64) -> (World, Vec<Vec2>, Entity) {
     let mut world = World::on_map(map_of(MapId(2)));
-    while world.tick < rules::FIRST_WAVE_TICK {
+    while world.tick < world.schedule().first_wave() {
         world.step();
     }
     let route = world.walked_lanes()[0][0].clone();

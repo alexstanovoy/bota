@@ -18,7 +18,7 @@ impl World {
     /// A camp with a unit standing in its box puts nothing out.
     pub fn fill_camps(&mut self) {
         self.raise_neutrals();
-        if self.creeps_halted || !neutral_spawn_due(self.clock()) {
+        if self.creeps_halted || !neutral_spawn_due(self.clock(), self.schedule()) {
             return;
         }
         self.fill_camps_now();
@@ -26,7 +26,7 @@ impl World {
 
     /// Fills every camp with nothing in its spawn box, now.
     pub(crate) fn fill_camps_now(&mut self) {
-        let upgrades = jungle_upgrades(self.clock());
+        let upgrades = jungle_upgrades(self.clock(), self.schedule());
         for (index, camp) in self.map.camps.iter().enumerate() {
             let index = u8::try_from(index).expect("a map holds fewer than 256 camps");
             if camp.flooded && self.evolves_now(camp) {
@@ -77,7 +77,8 @@ impl World {
     /// Whether this tick evolves a flooded camp.
     fn evolves_now(&self, camp: &CampDef) -> bool {
         self.tick > 0
-            && flooded_evolutions(camp, self.tick) != flooded_evolutions(camp, self.tick - 1)
+            && flooded_evolutions(camp, self.tick, self.schedule())
+                != flooded_evolutions(camp, self.tick - 1, self.schedule())
     }
 
     /// Takes a flooded camp's creeps off the map for its evolution, unless
@@ -113,7 +114,7 @@ impl World {
     /// evolved, save that a creep evolved part way through a size is not
     /// put out again while the one already out still stands.
     fn flooded_spawn(&self, camp: u8, def: &CampDef) -> [NeutralKind; FLOODED_CREEPS] {
-        let done = flooded_evolutions(def, self.tick);
+        let done = flooded_evolutions(def, self.tick, self.schedule());
         let mut creeps = flooded_creeps(def, done);
         let whole = flooded_creeps(def, done - done % FLOODED_CREEPS as u32);
         let mut standing: Vec<NeutralKind> = self
@@ -143,8 +144,8 @@ impl World {
     /// Raises every neutral standing to the upgrades the clock has reached:
     /// Dota's upgrades reach the living, not only those spawned after.
     fn raise_neutrals(&mut self) {
-        let now = jungle_upgrades(self.clock());
-        if self.tick == 0 || now == jungle_upgrades(self.tick - 1) {
+        let now = jungle_upgrades(self.clock(), self.schedule());
+        if self.tick == 0 || now == jungle_upgrades(self.tick - 1, self.schedule()) {
             return;
         }
         let entities = self.take_entity_snapshot();

@@ -107,17 +107,18 @@ pub struct Neighbour {
 /// Whether a lane creep of `side` standing at `at`, looking `reach` far, may
 /// be called on by an attack order at `tick`.
 ///
-/// Free from [`rules::FREE_AGGRO_TICK`]. Before it, only a creep that already
+/// Free from the match's [`rules::Schedule::free_aggro`]. Before it, only a creep that already
 /// has an enemy lane creep or a neutral within its acquisition, or that
 /// stands near one of its own tier-one towers.
 pub fn aggroable_yet(
     tick: u32,
+    schedule: rules::Schedule,
     side: Team,
     at: Vec2,
     reach: Fixed,
     neighbours: impl Iterator<Item = Neighbour>,
 ) -> bool {
-    if tick >= rules::FREE_AGGRO_TICK {
+    if tick >= schedule.free_aggro() {
         return true;
     }
     let near_home = rules::units(rules::EARLY_AGGRO_TOWER_RANGE);

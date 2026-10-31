@@ -117,7 +117,7 @@ fn a_wave_coming_out_does_not_mend_what_already_stands() {
         .find(|e| world.kind.get(*e) == Some(&UnitKind::Tower))
         .expect("the map has towers");
     world.health.insert(hurt, health(100));
-    while world.tick <= rules::FIRST_WAVE_TICK {
+    while world.tick <= world.schedule().first_wave() {
         world.step();
     }
     assert!(

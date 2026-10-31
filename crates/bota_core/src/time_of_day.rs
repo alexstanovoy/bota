@@ -1,4 +1,4 @@
-//! Day and night, read off the tick alone.
+//! Day and night, read off the tick and the match's horn.
 //!
 //! Dota's cycle (Liquipedia, Time of Day): the pregame is night, the first
 //! day breaks at the horn, and day and night then take turns of five minutes
@@ -16,16 +16,16 @@ pub struct TimeOfDay {
     pub ticks_left: u32,
 }
 
-/// The time of day on a tick.
+/// The time of day on a tick of a match with schedule `schedule`.
 ///
-/// A pure function of the tick, the same in every match and for every
+/// A pure function of the tick and the match's horn, the same for every
 /// viewer, so it is no state of the world and crosses no wire: a client and
-/// a replay read it off a view's tick.
-pub const fn time_of_day(tick: u32) -> TimeOfDay {
-    let Some(since_horn) = tick.checked_sub(rules::PREGAME_TICKS) else {
+/// a replay read it off a view's tick and the match's pregame.
+pub const fn time_of_day(tick: u32, schedule: rules::Schedule) -> TimeOfDay {
+    let Some(since_horn) = tick.checked_sub(schedule.horn) else {
         return TimeOfDay {
             night: true,
-            ticks_left: rules::PREGAME_TICKS - tick,
+            ticks_left: schedule.horn - tick,
         };
     };
     TimeOfDay {

@@ -185,7 +185,7 @@ fn an_exact_kind_selector_takes_only_that_kind() {
 fn lane_creeps_are_seeded_on_every_wave() {
     let (mut world, _hero) = a_match(false, vec![hp_rule(20_000)]);
     for wave in 1..=2u32 {
-        world.tick = rules::FIRST_WAVE_TICK + (wave - 1) * rules::WAVE_PERIOD_TICKS;
+        world.tick = world.schedule().first_wave() + (wave - 1) * rules::WAVE_PERIOD_TICKS;
         world.spawn_waves();
         doubled(&world, UnitKind::CreepMelee, &format!("wave {wave}"));
     }
@@ -194,7 +194,7 @@ fn lane_creeps_are_seeded_on_every_wave() {
 #[test]
 fn camp_creeps_are_seeded_on_every_fill() {
     let (mut world, _hero) = a_match(false, vec![hp_rule(20_000)]);
-    world.tick = rules::FIRST_NEUTRAL_TICK;
+    world.tick = world.schedule().first_neutral();
     world.fill_camps();
     let first = doubled(&world, UnitKind::CreepNeutral, "the first fill");
     // A golem falls into shards, which fall in their turn.
@@ -213,7 +213,7 @@ fn camp_creeps_are_seeded_on_every_fill() {
             .all(|entity| world.kind.get(entity).copied() != Some(UnitKind::CreepNeutral)),
         "the camp is cleared"
     );
-    world.tick = rules::FIRST_NEUTRAL_TICK + rules::NEUTRAL_SPAWN_PERIOD_TICKS;
+    world.tick = world.schedule().first_neutral() + rules::NEUTRAL_SPAWN_PERIOD_TICKS;
     world.fill_camps();
     let refilled = doubled(&world, UnitKind::CreepNeutral, "the refill");
     assert!(

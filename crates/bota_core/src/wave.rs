@@ -5,7 +5,8 @@
 
 use bota_proto::Vec2;
 
-use crate::{isqrt64, rules};
+use crate::isqrt64;
+use crate::rules::{self, Schedule};
 
 /// How strong one kind of a side's lane creeps is, by which enemy barracks
 /// have fallen. Always [`Normal`](CreepRank::Normal) on a map with no
@@ -46,25 +47,25 @@ impl WavePlan {
 
 /// The wave due at a tick, counting from one, if a wave is due at all.
 #[inline]
-pub fn wave_at(tick: u32) -> Option<u32> {
-    latest_wave(tick)
-        .filter(|_| (tick - rules::FIRST_WAVE_TICK).is_multiple_of(rules::WAVE_PERIOD_TICKS))
+pub fn wave_at(tick: u32, schedule: Schedule) -> Option<u32> {
+    latest_wave(tick, schedule)
+        .filter(|_| (tick - schedule.first_wave()).is_multiple_of(rules::WAVE_PERIOD_TICKS))
 }
 
 /// The latest wave due at or before a tick, counting from one; none before
 /// the first.
 #[inline]
-pub const fn latest_wave(tick: u32) -> Option<u32> {
-    if tick < rules::FIRST_WAVE_TICK {
+pub const fn latest_wave(tick: u32, schedule: Schedule) -> Option<u32> {
+    if tick < schedule.first_wave() {
         return None;
     }
-    Some((tick - rules::FIRST_WAVE_TICK) / rules::WAVE_PERIOD_TICKS + 1)
+    Some((tick - schedule.first_wave()) / rules::WAVE_PERIOD_TICKS + 1)
 }
 
 /// The tick the given wave, counting from one, walks out at.
 #[inline]
-pub const fn wave_spawn_tick(wave: u32) -> u32 {
-    rules::FIRST_WAVE_TICK + (wave - 1) * rules::WAVE_PERIOD_TICKS
+pub const fn wave_spawn_tick(wave: u32, schedule: Schedule) -> u32 {
+    schedule.first_wave() + (wave - 1) * rules::WAVE_PERIOD_TICKS
 }
 
 /// Upgrades a wave's creeps carry: one per [`rules::WAVE_UPGRADE_PERIOD`]
@@ -140,31 +141,32 @@ pub fn spawn_offsets(plan: &WavePlan, forward: Vec2) -> Vec<Vec2> {
 
 /// Whether the camps fill at a tick: on the minute mark from the first one.
 #[inline]
-pub fn neutral_spawn_due(tick: u32) -> bool {
-    tick >= rules::FIRST_NEUTRAL_TICK
-        && (tick - rules::FIRST_NEUTRAL_TICK).is_multiple_of(rules::NEUTRAL_SPAWN_PERIOD_TICKS)
+pub fn neutral_spawn_due(tick: u32, schedule: Schedule) -> bool {
+    tick >= schedule.first_neutral()
+        && (tick - schedule.first_neutral()).is_multiple_of(rules::NEUTRAL_SPAWN_PERIOD_TICKS)
 }
 
 /// How many neutral spawns have happened at or before a tick.
 #[inline]
-pub const fn neutral_spawns_through(tick: u32) -> u32 {
-    if tick < rules::FIRST_NEUTRAL_TICK {
+pub const fn neutral_spawns_through(tick: u32, schedule: Schedule) -> u32 {
+    if tick < schedule.first_neutral() {
         0
     } else {
-        (tick - rules::FIRST_NEUTRAL_TICK) / rules::NEUTRAL_SPAWN_PERIOD_TICKS + 1
+        (tick - schedule.first_neutral()) / rules::NEUTRAL_SPAWN_PERIOD_TICKS + 1
     }
 }
 
 /// The first neutral spawn after a tick.
 #[inline]
-pub const fn next_neutral_spawn(tick: u32) -> u32 {
-    rules::FIRST_NEUTRAL_TICK + neutral_spawns_through(tick) * rules::NEUTRAL_SPAWN_PERIOD_TICKS
+pub const fn next_neutral_spawn(tick: u32, schedule: Schedule) -> u32 {
+    schedule.first_neutral()
+        + neutral_spawns_through(tick, schedule) * rules::NEUTRAL_SPAWN_PERIOD_TICKS
 }
 
 /// How many upgrade intervals the jungle carries by a tick, capped.
 #[inline]
-pub fn jungle_upgrades(tick: u32) -> u32 {
-    let since = tick.saturating_sub(rules::tick_at_game_minute(0));
+pub fn jungle_upgrades(tick: u32, schedule: Schedule) -> u32 {
+    let since = tick.saturating_sub(schedule.horn);
     (since / rules::NEUTRAL_UPGRADE_PERIOD_TICKS).min(rules::NEUTRAL_UPGRADE_CAP as u32)
 }
 
@@ -174,11 +176,15 @@ mod tests {
 
     #[test]
     fn the_latest_wave_is_the_last_one_due() {
-        assert_eq!(latest_wave(rules::FIRST_WAVE_TICK - 1), None);
-        for tick in rules::FIRST_WAVE_TICK..rules::FIRST_WAVE_TICK + 5 * rules::WAVE_PERIOD_TICKS {
-            let latest = latest_wave(tick).unwrap();
-            let due = (rules::FIRST_WAVE_TICK..=tick).rev().find_map(wave_at);
-            assert_eq!(Some(latest), due);
+        for map in crate::MAPS {
+            let schedule = map.schedule();
+            let first = schedule.first_wave();
+            assert_eq!(latest_wave(first - 1, schedule), None);
+            for tick in first..first + 5 * rules::WAVE_PERIOD_TICKS {
+                let latest = latest_wave(tick, schedule).unwrap();
+                let due = (first..=tick).rev().find_map(|t| wave_at(t, schedule));
+                assert_eq!(Some(latest), due);
+            }
         }
     }
 }

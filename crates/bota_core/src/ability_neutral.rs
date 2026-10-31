@@ -152,8 +152,8 @@ pub const fn ticks_of_ms(ms: i32) -> u32 {
 /// The level a neutral spawned at `tick` holds its abilities at: one until
 /// 15:00, two until 30:00, three from then on. Level four is only ever given
 /// by taking a neutral over, which nothing in bota does.
-pub const fn neutral_ability_level(tick: u32) -> u8 {
-    let since = tick.saturating_sub(rules::tick_at_game_minute(0));
+pub const fn neutral_ability_level(tick: u32, schedule: rules::Schedule) -> u8 {
+    let since = tick.saturating_sub(schedule.horn);
     let steps = since / rules::NEUTRAL_ABILITY_LEVEL_PERIOD_TICKS;
     1 + if steps > 2 { 2 } else { steps as u8 }
 }

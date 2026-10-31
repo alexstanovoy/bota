@@ -4,7 +4,7 @@
 
 use bota_core::{
     CAPTURE_TICKS, LAMP_CHANNEL_TICKS, LAMP_LIT_TICKS, LAMP_OFF_TICKS, MELEE_CREEP, ModifierKind,
-    NeutralKind, OBJECTIVES_OPEN_TICK, SHRINE_COUNTDOWN_TICKS, SHRINE_FIRST_TICK,
+    NeutralKind, OBJECTIVES_OPEN_AFTER_HORN, SHRINE_COUNTDOWN_TICKS, SHRINE_FIRST_AFTER_HORN,
     SHRINE_PERIOD_TICKS, WATCHER, WATCHER_DAY_VISION, WATCHER_NIGHT_VISION, map_of, rules,
 };
 use bota_proto::{
@@ -33,7 +33,7 @@ fn objectives_match(sides: &[Team]) -> World {
         })
         .collect();
     let mut world = World::for_match(&cfg, cfg.rng());
-    world.clock_shift.game = OBJECTIVES_OPEN_TICK;
+    world.clock_shift.game = world.schedule().horn + OBJECTIVES_OPEN_AFTER_HORN;
     world
 }
 
@@ -416,7 +416,8 @@ fn the_shrine_before(activation: u32, ahead: u32, sides: &[Team]) -> (World, Ent
     let mut world = objectives_match(sides);
     let at = map_of(MapId(0)).shrines[0];
     let shrine = the(&world, UnitKind::Shrine, at);
-    let due = SHRINE_FIRST_TICK + (activation - 1) * SHRINE_PERIOD_TICKS;
+    let due =
+        world.schedule().horn + SHRINE_FIRST_AFTER_HORN + (activation - 1) * SHRINE_PERIOD_TICKS;
     world.clock_shift.game = due - world.tick - ahead - 1;
     world.step();
     assert_eq!(world.clock() + ahead, due);
@@ -604,7 +605,7 @@ fn a_watcher_by_a_lane_creep_opens_no_early_aggro_as_a_neutral_creep_does() {
         let creep = thinking_creep_of(&mut world, Team::Radiant, at);
         beside(&mut world, at + Vec2::from_ints(0, 150));
         world.settle();
-        assert!(world.clock() < rules::FREE_AGGRO_TICK);
+        assert!(world.clock() < world.schedule().free_aggro());
         world.aggroable_yet(creep)
     };
     assert!(!aggroable(|_, _| {}), "alone");

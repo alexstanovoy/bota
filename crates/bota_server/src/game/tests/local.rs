@@ -1,6 +1,6 @@
 //! An in-process match tells each seat exactly what a server would.
 
-use bota_core::{MAP2_ID, map_of, rules};
+use bota_core::{MAP2_ID, map_of};
 use bota_proto::{
     EntityId, EventKind, Order, OutgoingOrder, ReplayRecord, ServerMsg, Target, Team,
 };
@@ -85,7 +85,7 @@ fn a_non_hero_kills_gold_is_hidden_from_the_other_side() {
     let mut hidden = 0;
     let mut ordered = false;
     let mut seen = [Seen::default(), Seen::default()];
-    for _ in 0..rules::FIRST_WAVE_TICK + 4000 {
+    for _ in 0..map.schedule().first_wave() + 4000 {
         for (stream, seen) in streams.iter().zip(&mut seen) {
             for gold in enemy_kills_told(stream, seen) {
                 assert_eq!(gold, None, "a side was told the other's creep gold");

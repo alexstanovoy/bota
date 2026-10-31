@@ -273,7 +273,7 @@ fn creeps_spawn_now_hold_off_and_come_back_and_are_taken_away_by_side() {
         },
     );
     cheat(&mut world, Cheat::CreepSpawning { on: false });
-    let to_first_wave = rules::FIRST_WAVE_TICK + 5 - world.tick;
+    let to_first_wave = world.schedule().first_wave() + 5 - world.tick;
     run(&mut world, to_first_wave);
     assert_eq!(
         count(&world, |kind, _| lane_creep(kind)),
@@ -313,13 +313,13 @@ fn start_game_moves_the_game_clock_to_the_horn_and_the_first_wave_comes() {
         "nothing moved yet"
     );
     cheat(&mut world, Cheat::StartGame);
-    assert_eq!(world.clock(), rules::PREGAME_TICKS, "the horn, this tick");
+    assert_eq!(world.clock(), world.schedule().horn, "the horn, this tick");
     assert!(
         count(&world, |kind, _| lane_creep(kind)) > 0,
         "and the first wave with it"
     );
     let view = world.view(Team::Radiant);
-    assert_eq!(view.game_tick(), rules::PREGAME_TICKS);
+    assert_eq!(view.game_tick(), world.schedule().horn);
     assert!(!world.time_of_day().night, "day breaks at the horn");
     let shift = world.clock_shift.game;
     cheat(&mut world, Cheat::StartGame);

@@ -110,7 +110,9 @@ fn a_practice_match_has_waves_on_all_three_lanes_and_stocked_camps() {
         };
         // Half a minute after the horn the first wave still stands near its spawn on every
         // lane, from both sides; a minute and a half in, the camps are stocked.
-        let game = view.tick.saturating_sub(bota_core::rules::PREGAME_TICKS);
+        let game = view
+            .tick
+            .saturating_sub(bota_core::map_of(MapId(0)).pregame_ticks);
         if game >= 25 * 30 && lanes == [0; 3] {
             for unit in &view.units {
                 if matches!(

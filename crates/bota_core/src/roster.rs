@@ -267,8 +267,8 @@ const FLOODED_LINES: [[NeutralKind; 4]; FLOODED_CREEPS] = [
 /// How many creeps of a flooded camp have evolved by `tick`: one every
 /// [`rules::FLOODED_EVOLUTION_PERIOD_TICKS`] from the horn, three to each
 /// whole size it may grow by.
-pub const fn flooded_evolutions(camp: &CampDef, tick: u32) -> u32 {
-    let since = tick.saturating_sub(rules::tick_at_game_minute(0));
+pub const fn flooded_evolutions(camp: &CampDef, tick: u32, schedule: rules::Schedule) -> u32 {
+    let since = tick.saturating_sub(schedule.horn);
     let done = since / rules::FLOODED_EVOLUTION_PERIOD_TICKS;
     let most = camp.evolutions as u32 * FLOODED_CREEPS as u32;
     if done < most { done } else { most }

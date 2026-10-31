@@ -154,7 +154,7 @@ fn steps() -> Vec<Step> {
         },
         Step {
             asked: Typed("-startgame"),
-            holds: |v| v.game_tick() >= bota_core::rules::PREGAME_TICKS,
+            holds: |v| v.game_tick() >= bota_core::map_of(MapId(1)).pregame_ticks,
         },
         Step {
             asked: Typed("-createhero pudge enemy"),

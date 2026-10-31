@@ -5,7 +5,6 @@
 //! and ticks, and reads what a side's view tells. The game clock is moved
 //! to the minute a test needs with [`step_at`].
 
-use bota_core::rules::tick_at_game_minute;
 use bota_core::{
     AMPLIFY_DAMAGE_PCT, AMPLIFY_SPELL_AMP_BP, ARCANE_COOLDOWN_CUT_BP, ARCANE_MANA_CUT_BP,
     HASTE_RUNE_SPEED, ILLUSION_DEALT_BP, ILLUSION_RANGED_TAKEN_BP, ModifierKind, POWER_RUNES,
@@ -53,6 +52,15 @@ pub(super) fn fraction(pool: Fixed, num: i32, den: i32) -> Fixed {
 }
 
 /// Steps the one tick whose game clock is `clock`, whatever came before it.
+/// [`step_at`] the game clock's minute `minute` of the world's match, `off` ticks from it.
+pub(super) fn step_at_minute(world: &mut World, minute: u32, off: i32) -> Vec<Event> {
+    let clock = world
+        .schedule()
+        .at_minute(minute)
+        .saturating_add_signed(off);
+    step_at(world, clock)
+}
+
 pub(super) fn step_at(world: &mut World, clock: u32) -> Vec<Event> {
     world.tick = clock - 1 - world.clock_shift.game;
     world.step()
@@ -131,7 +139,7 @@ fn radiant_and_dire() -> [Team; 2] {
 fn the_horn_brings_a_bounty_rune_to_each_of_the_four_spots() {
     // Owner-confirmed current Dota: runes appear at all 4 spots at 0:00.
     let mut world = rune_match(&radiant_and_dire());
-    let horn = tick_at_game_minute(0);
+    let horn = world.schedule().at_minute(0);
     assert!(
         spawned(&step_at(&mut world, horn - 1)).is_empty(),
         "nothing before the horn"
@@ -154,9 +162,9 @@ fn water_comes_at_two_and_four_minutes_to_both_river_spots_and_goes_with_the_nex
     let mut world = rune_match(&radiant_and_dire());
     let river = [spots()[RIVER_TOP], spots()[RIVER_BOT]];
     for minute in [2, 4] {
-        let before = tick_at_game_minute(minute) - 1;
+        let before = world.schedule().at_minute(minute) - 1;
         assert!(spawned(&step_at(&mut world, before)).is_empty());
-        let events = step_at(&mut world, tick_at_game_minute(minute));
+        let events = step_at_minute(&mut world, minute, 0);
         let water: Vec<Vec2> = spawned(&events)
             .into_iter()
             .filter(|(kind, _)| *kind == RuneKind::Water)
@@ -176,7 +184,7 @@ fn water_comes_at_two_and_four_minutes_to_both_river_spots_and_goes_with_the_nex
         "the Water Runes of 2:00 went with those of 4:00"
     );
     // At 6:00 the river turns over again, to a power rune, and no more Water.
-    let events = step_at(&mut world, tick_at_game_minute(6));
+    let events = step_at_minute(&mut world, 6, 0);
     assert!(
         lying(&world)
             .iter()
@@ -193,10 +201,10 @@ fn water_comes_at_two_and_four_minutes_to_both_river_spots_and_goes_with_the_nex
 #[test]
 fn bounty_runes_come_to_the_jungles_every_four_minutes_worth_six_more_each_time_and_never_go() {
     let mut world = rune_match(&radiant_and_dire());
-    step_at(&mut world, tick_at_game_minute(0));
+    step_at_minute(&mut world, 0, 0);
     let jungle = [spots()[DIRE_JUNGLE], spots()[RADIANT_JUNGLE]];
     for (minute, gold) in [(4, 46), (8, 52), (12, 58)] {
-        let events = step_at(&mut world, tick_at_game_minute(minute));
+        let events = step_at_minute(&mut world, minute, 0);
         let mut got: Vec<Vec2> = spawned(&events)
             .into_iter()
             .filter(|(kind, _)| *kind == RuneKind::Bounty)
@@ -233,12 +241,12 @@ fn a_power_rune_comes_every_two_minutes_from_six_to_a_river_spot_and_never_repea
     let mut world = rune_match(&radiant_and_dire());
     let river = [spots()[RIVER_TOP], spots()[RIVER_BOT]];
     assert!(
-        spawned(&step_at(&mut world, tick_at_game_minute(6) - 1)).is_empty(),
+        spawned(&step_at_minute(&mut world, 6, -1)).is_empty(),
         "none before six minutes"
     );
     let mut kinds = Vec::new();
     for round in 0..14 {
-        let events = step_at(&mut world, tick_at_game_minute(6 + 2 * round));
+        let events = step_at_minute(&mut world, 6 + 2 * round, 0);
         let power: Vec<(RuneKind, Vec2)> = spawned(&events)
             .into_iter()
             .filter(|(kind, _)| kind.is_power())
@@ -268,7 +276,7 @@ fn both_river_spots_get_power_runes_over_a_match() {
     let mut world = rune_match(&radiant_and_dire());
     let mut at_spots = std::collections::HashSet::new();
     for round in 0..14 {
-        let events = step_at(&mut world, tick_at_game_minute(6 + 2 * round));
+        let events = step_at_minute(&mut world, 6 + 2 * round, 0);
         at_spots.extend(
             spawned(&events)
                 .into_iter()
@@ -286,9 +294,9 @@ fn solo_mid_asked_for_runes_skips_the_first_set_and_plays_the_rest() {
     cfg.runes = RuneSet::ALL;
     cfg.objectives = ObjectiveSet::NONE;
     let mut world = World::for_match(&cfg, cfg.rng());
-    let horn = spawned(&step_at(&mut world, tick_at_game_minute(0)));
+    let horn = spawned(&step_at_minute(&mut world, 0, 0));
     assert!(horn.is_empty(), "\"First rune does not spawn\"");
-    let water = spawned(&step_at(&mut world, tick_at_game_minute(2)));
+    let water = spawned(&step_at_minute(&mut world, 2, 0));
     assert_eq!(water.len(), 2, "the water of 2:00 comes");
     assert_eq!(map_of(MapId(2)).default_runes, RuneSet::NONE);
     assert!(
@@ -459,7 +467,7 @@ fn a_water_rune_mends_forty_health_and_eighty_mana_at_once() {
 fn a_bounty_rune_pays_every_hero_of_the_side_that_takes_it_and_nobody_else() {
     let sides = [Team::Radiant, Team::Radiant, Team::Dire];
     let mut world = rune_match(&sides);
-    step_at(&mut world, tick_at_game_minute(8));
+    step_at_minute(&mut world, 8, 0);
     // The jungle rune of 8:00 is worth 52; the opening ones are 40.
     let before: Vec<i32> = world.seats.iter().map(|seat| seat.gold).collect();
     let nw: Vec<i32> = world.seats.iter().map(|seat| seat.net_worth).collect();
@@ -841,12 +849,9 @@ fn a_rune_does_not_spawn_when_the_match_does_not_ask_for_its_kind() {
     cfg.objectives = ObjectiveSet::NONE;
     cfg.runes = RuneSet::of(RuneKind::Water);
     let mut world = World::for_match(&cfg, cfg.rng());
-    assert!(spawned(&step_at(&mut world, tick_at_game_minute(0))).is_empty());
-    assert_eq!(
-        spawned(&step_at(&mut world, tick_at_game_minute(2))).len(),
-        2
-    );
-    assert!(spawned(&step_at(&mut world, tick_at_game_minute(6))).is_empty());
+    assert!(spawned(&step_at_minute(&mut world, 0, 0)).is_empty());
+    assert_eq!(spawned(&step_at_minute(&mut world, 2, 0)).len(), 2);
+    assert!(spawned(&step_at_minute(&mut world, 6, 0)).is_empty());
 }
 
 #[test]

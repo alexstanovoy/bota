@@ -17,8 +17,10 @@ use bota_proto::{
 use super::support::{self, advance_validated, fiend_against_fiend};
 
 const MID_MAP: MapId = MAP2_ID;
+/// Map2's clock: Solo Mid's pregame.
+const SCHEDULE: rules::Schedule = rules::Schedule::of(rules::SOLO_MID_PREGAME_TICKS);
 const TICK_CAP: u32 = MAP2_TICK_CAP;
-const FINAL_WAVE: u32 = (TICK_CAP - rules::FIRST_WAVE_TICK) / rules::WAVE_PERIOD_TICKS + 1;
+const FINAL_WAVE: u32 = (TICK_CAP - SCHEDULE.first_wave()) / rules::WAVE_PERIOD_TICKS + 1;
 
 fn config(map: MapId) -> MatchConfig {
     MatchConfig {
@@ -175,17 +177,28 @@ fn map0_and_map2_passability_terrain_and_sight_match_in_every_cell() {
 fn map0_and_map2_initial_worlds_have_identical_buildings_heroes_and_shops() {
     let full = match_world(MapId(0));
     let mid = match_world(MID_MAP);
-    // The one difference: Map2's side tier ones stand invulnerable.
+    // The two differences: Map2's side tier ones stand invulnerable, and its
+    // pregame is Solo Mid's, shorter, so the waits laid on the game clock (the
+    // first scroll's, the Glyph's) end that much sooner.
     let side_tier_ones: Vec<_> = [Team::Radiant, Team::Dire]
         .into_iter()
         .flat_map(|team| {
             [rules::LANE_TOP, rules::LANE_BOT].map(|lane| wire_id(tower(&mid, team, lane)))
         })
         .collect();
+    let longer = full.schedule().horn - mid.schedule().horn;
     let mortal = |mut view: bota_proto::WorldView| {
         for unit in &mut view.units {
             if side_tier_ones.contains(&unit.id) {
                 unit.statuses.bits &= !bota_proto::StatusFlags::INVULNERABLE;
+            }
+            if let Some(scroll) = unit.town_portal.as_mut() {
+                scroll.cooldown_left += longer;
+            }
+        }
+        for glyph in &mut view.glyphs {
+            if let Some(after) = glyph.ready_after.as_mut() {
+                *after += longer;
             }
         }
         view
@@ -212,7 +225,7 @@ fn map2_spawns_only_mid_waves_for_both_sides_through_the_cap() {
     let map = map_of(MID_MAP);
     for wave in 1..=FINAL_WAVE {
         let mut world = World::on_map(map);
-        world.tick = rules::FIRST_WAVE_TICK + (wave - 1) * rules::WAVE_PERIOD_TICKS;
+        world.tick = world.schedule().first_wave() + (wave - 1) * rules::WAVE_PERIOD_TICKS;
         let plan = wave_plan(wave);
         let per_side = (plan.melee + plan.ranged + plan.siege) as usize;
 
@@ -239,7 +252,7 @@ fn map2_spawns_only_mid_waves_for_both_sides_through_the_cap() {
 
 #[test]
 fn map2_pregame_and_between_wave_ticks_spawn_no_lane_creeps() {
-    for tick in [0, rules::FIRST_WAVE_TICK - 1, rules::FIRST_WAVE_TICK + 1] {
+    for tick in [0, SCHEDULE.first_wave() - 1, SCHEDULE.first_wave() + 1] {
         let mut world = World::on_map(map_of(MID_MAP));
         world.tick = tick;
 
@@ -485,7 +498,7 @@ fn map2_cap_draws_at_twenty_game_minutes_plus_unchanged_pregame() {
     world.advance(&[]);
     assert_eq!(
         world.tick,
-        rules::PREGAME_TICKS + 20 * 60 * rules::TICKS_PER_SECOND
+        SCHEDULE.horn + 20 * 60 * rules::TICKS_PER_SECOND
     );
     assert_eq!(world.victor(), Some(Team::Neutral));
     assert_eq!(world.match_stats().duration, TICK_CAP);
@@ -536,7 +549,7 @@ fn map2_cap_tick_completes_orders_gold_waves_and_tower_death_before_drawing() {
             .any(|stack| stack.id == boots)
     );
     // The cap tick's passive gold, and the fallen tower's team bounty.
-    let since = TICK_CAP - rules::PREGAME_TICKS;
+    let since = TICK_CAP - SCHEDULE.horn;
     let passive = passive_gold_by(since) - passive_gold_by(since - 1);
     assert_eq!(
         world.seats[0].gold,
@@ -649,7 +662,7 @@ fn map2_cap_is_independent_of_mode() {
 fn map0_spawns_waves_on_three_lanes_and_map1_on_one() {
     for (map, count) in [(MapId(0), 3), (MapId(1), 1)] {
         let mut world = World::on_map(map_of(map));
-        world.tick = rules::FIRST_WAVE_TICK;
+        world.tick = world.schedule().first_wave();
         let plan = wave_plan(1);
 
         world.spawn_waves();

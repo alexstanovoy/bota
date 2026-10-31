@@ -14,7 +14,7 @@
 
 use bota_proto::{MAX_RUNES_AT_SPOT, MAX_SNAPSHOT_RUNES, RuneKind, RuneSet, Team, Vec2};
 
-use crate::rules::{self, TICKS_PER_SECOND, tick_at_game_minute};
+use crate::rules::{self, Schedule, TICKS_PER_SECOND};
 
 /// The kinds of rune the simulation spawns and plays: what a match may ask
 /// for. The Wisdom Rune is no kind: 7.38 replaced it with the Shrines of
@@ -72,22 +72,24 @@ pub const DOTA_RUNE_SPOTS: [RuneSpot; 4] = [
 ];
 
 /// A schedule that fires once every `period` ticks of the game clock from
-/// `first` on.
+/// `first` ticks past the horn on.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Cadence {
-    /// The tick of the first firing.
+    /// Ticks from the horn to the first firing.
     pub first: u32,
     /// Ticks between two firings; not zero.
     pub period: u32,
 }
 
 impl Cadence {
-    /// Which firing falls on `clock`, counted from zero, if one does.
-    pub const fn firing_at(self, clock: u32) -> Option<u32> {
-        if clock < self.first || !(clock - self.first).is_multiple_of(self.period) {
+    /// Which firing falls on `clock` of a match with schedule `schedule`,
+    /// counted from zero, if one does.
+    pub const fn firing_at(self, clock: u32, schedule: Schedule) -> Option<u32> {
+        let first = schedule.horn + self.first;
+        if clock < first || !(clock - first).is_multiple_of(self.period) {
             return None;
         }
-        Some((clock - self.first) / self.period)
+        Some((clock - first) / self.period)
     }
 }
 
@@ -95,13 +97,14 @@ impl Cadence {
 /// river's pair and the jungles': owner-confirmed current Dota ("Runes appear
 /// at all 4 spots at 0:00", 2026-10-30). Liquipedia's *Runes* names only the
 /// river pair [LIQ Runes: "The first pair ... spawn at the river Power Rune
-/// spots"]; the owner's word on the current game settles it.
-pub const OPENING_BOUNTY_TICK: u32 = tick_at_game_minute(0);
+/// spots"]; the owner's word on the current game settles it. Ticks past the
+/// horn.
+pub const OPENING_BOUNTY_AFTER_HORN: u32 = 0;
 
 /// Bounty Runes in the jungles: `dota_bounty_rune_spawn_time` 240 [BIN],
 /// 4:00 since 7.38 [PN 7.38].
 pub const BOUNTY_RUNES: Cadence = Cadence {
-    first: tick_at_game_minute(4),
+    first: 4 * 60 * TICKS_PER_SECOND,
     period: 240 * TICKS_PER_SECOND,
 };
 
@@ -110,7 +113,7 @@ pub const BOUNTY_RUNES: Cadence = Cadence {
 /// only at the following in-game intervals, they are no longer created
 /// after"].
 pub const WATER_RUNES: Cadence = Cadence {
-    first: tick_at_game_minute(2),
+    first: 2 * 60 * TICKS_PER_SECOND,
     period: 120 * TICKS_PER_SECOND,
 };
 /// How many times the Water Runes appear.
@@ -120,7 +123,7 @@ pub const WATER_RUNE_SPAWNS: u32 = 2;
 /// `dota_powerup_rune_spawn_time` 120 [BIN]; [LIQ Runes] "1st Spawn Interval:
 /// 360, Subsequent Spawn Interval: 120".
 pub const POWER_RUNES_CADENCE: Cadence = Cadence {
-    first: tick_at_game_minute(6),
+    first: 6 * 60 * TICKS_PER_SECOND,
     period: 120 * TICKS_PER_SECOND,
 };
 
@@ -151,16 +154,16 @@ impl RunesDue {
     }
 }
 
-/// What the schedule puts out on `clock`.
-pub const fn runes_due(clock: u32) -> RunesDue {
+/// What the schedule puts out on `clock` of a match with schedule `schedule`.
+pub const fn runes_due(clock: u32, schedule: Schedule) -> RunesDue {
     RunesDue {
-        opening_bounty: clock == OPENING_BOUNTY_TICK,
-        jungle_bounty: BOUNTY_RUNES.firing_at(clock).is_some(),
-        water: match WATER_RUNES.firing_at(clock) {
+        opening_bounty: clock == schedule.horn + OPENING_BOUNTY_AFTER_HORN,
+        jungle_bounty: BOUNTY_RUNES.firing_at(clock, schedule).is_some(),
+        water: match WATER_RUNES.firing_at(clock, schedule) {
             Some(n) => n < WATER_RUNE_SPAWNS,
             None => false,
         },
-        power: POWER_RUNES_CADENCE.firing_at(clock).is_some(),
+        power: POWER_RUNES_CADENCE.firing_at(clock, schedule).is_some(),
     }
 }
 
@@ -173,8 +176,8 @@ pub const RUNE_PICKUP_RANGE: i32 = 150;
 /// the horn [PN 7.38: "Gold provided ... rescaled from 36 + (9 per 5
 /// minutes) to 40 + (6 per 4 minutes)"]. Liquipedia's `40 + 6 * floor(t / 5)`
 /// is the formula before 7.38.
-pub const fn bounty_rune_gold(created: u32) -> i32 {
-    let since = created.saturating_sub(tick_at_game_minute(0));
+pub const fn bounty_rune_gold(created: u32, schedule: Schedule) -> i32 {
+    let since = created.saturating_sub(schedule.horn);
     let intervals = since / (240 * TICKS_PER_SECOND);
     40 + 6 * intervals as i32
 }
@@ -322,5 +325,5 @@ const _: () = {
     assert!(REGENERATION_DAMPED_PCT < REGENERATION_PCT);
     assert!(DOTA_RUNE_SPOTS.len() * MAX_RUNES_AT_SPOT <= MAX_SNAPSHOT_RUNES);
     assert!(SIMULATED_RUNES.bits == RuneSet::ALL.bits);
-    assert!(rules::PREGAME_TICKS > 0);
+    assert!(rules::SOLO_MID_PREGAME_TICKS > 0 && rules::DOTA_PREGAME_TICKS > 0);
 };

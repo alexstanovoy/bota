@@ -1,14 +1,14 @@
 //! The Shrines of Wisdom, and the standing-zone countdown they run: Dota
 //! 7.41's `ability_xp_fountain` and its contested countdown.
 
-use bota_core::{ModifierKind, SHRINE_FIRST_TICK, shrine_activations, shrine_xp, side_index};
+use bota_core::{ModifierKind, SHRINE_FIRST_AFTER_HORN, shrine_activations, shrine_xp, side_index};
 use bota_proto::{EventKind, ObjectiveKind, Team, UnitKind};
 
 use crate::game::{Entity, Event, EventVisibility, Modifier, Purpose, World, wire_id};
 
 impl World {
     /// Charges every Shrine on each activation of the game clock, from
-    /// [`SHRINE_FIRST_TICK`] on, and runs each charged Shrine's countdown;
+    /// [`SHRINE_FIRST_AFTER_HORN`] past the horn on, and runs each charged Shrine's countdown;
     /// one a side runs out is gathered by that side. A charge waits for its
     /// side however long it takes: one charge at most, never two.
     pub(crate) fn tick_shrines(&mut self) {
@@ -16,8 +16,9 @@ impl World {
             return;
         }
         let clock = self.clock();
-        let activated = clock >= SHRINE_FIRST_TICK
-            && shrine_activations(clock) != shrine_activations(clock - 1);
+        let schedule = self.schedule();
+        let activated = clock >= schedule.horn + SHRINE_FIRST_AFTER_HORN
+            && shrine_activations(clock, schedule) != shrine_activations(clock - 1, schedule);
         let shrines: Vec<Entity> = self
             .entities
             .iter()
@@ -98,7 +99,7 @@ impl World {
     /// sides are told.
     fn gather_shrine(&mut self, shrine: Entity, side: Team) {
         self.take_modifier(shrine, ModifierKind::ShrineReady, None);
-        let activation = shrine_activations(self.clock());
+        let activation = shrine_activations(self.clock(), self.schedule());
         let xp = shrine_xp(activation);
         let Some(zone) = self.zone.get(shrine).copied() else {
             return;

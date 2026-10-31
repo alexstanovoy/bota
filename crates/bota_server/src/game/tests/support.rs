@@ -1247,7 +1247,7 @@ pub(crate) fn a_match_with_nobody_in_it(match_id: u64, map: MapId) -> World {
 /// The demo map stepped to the tick its first waves come out.
 pub(crate) fn the_demo_lane_at_its_first_wave() -> World {
     let mut world = World::on_map(map_of(MapId(1)));
-    while world.tick < rules::FIRST_WAVE_TICK {
+    while world.tick < world.schedule().first_wave() {
         world.step();
     }
     world

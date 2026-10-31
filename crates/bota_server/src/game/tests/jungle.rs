@@ -14,7 +14,7 @@ use super::support::*;
 fn camps_fill_on_the_minute_and_stay_full() {
     let map = map_of(MapId(1));
     let mut world = World::on_map(map);
-    while world.tick < rules::FIRST_NEUTRAL_TICK {
+    while world.tick < world.schedule().first_neutral() {
         world.step();
     }
     let neutrals = |world: &World| {
@@ -38,7 +38,7 @@ fn camps_fill_on_the_minute_and_stay_full() {
 fn a_neutral_led_too_far_gives_up_and_walks_home() {
     let map = map_of(MapId(1));
     let mut world = World::on_map(map);
-    while world.tick < rules::FIRST_NEUTRAL_TICK {
+    while world.tick < world.schedule().first_neutral() {
         world.step();
     }
     let beast = world
@@ -83,7 +83,7 @@ fn first_fill_with(put: impl FnOnce(&mut World)) -> usize {
     let mut world = World::on_map(map);
     put(&mut world);
     world.settle();
-    while world.tick < rules::FIRST_NEUTRAL_TICK + 1 {
+    while world.tick < world.schedule().first_neutral() + 1 {
         world.step();
     }
     beasts_of(&world, CAMP)
@@ -197,7 +197,7 @@ fn a_ward_blocks_to_the_edge_of_the_box_and_not_past_it() {
 fn pulling_a_camp_out_of_its_box_before_the_minute_stacks_it() {
     let map = map_of(MapId(0));
     let mut world = World::on_map(map);
-    while world.tick < rules::FIRST_NEUTRAL_TICK + 1 {
+    while world.tick < world.schedule().first_neutral() + 1 {
         world.step();
     }
     let first = beasts_of(&world, CAMP);
@@ -218,7 +218,7 @@ fn pulling_a_camp_out_of_its_box_before_the_minute_stacks_it() {
     for beast in &mine[1..] {
         world.transform.get_mut(*beast).expect("stands").pos = out;
     }
-    while world.tick < rules::FIRST_NEUTRAL_TICK + rules::NEUTRAL_SPAWN_PERIOD_TICKS {
+    while world.tick < world.schedule().first_neutral() + rules::NEUTRAL_SPAWN_PERIOD_TICKS {
         world.step();
         for beast in &mine[1..] {
             world.transform.get_mut(*beast).expect("stands").pos = out;
@@ -227,7 +227,7 @@ fn pulling_a_camp_out_of_its_box_before_the_minute_stacks_it() {
     assert_eq!(beasts_of(&world, CAMP), first, "one left inside blocks it");
     // All of them out, the next minute puts a second camp beside them.
     world.transform.get_mut(mine[0]).expect("stands").pos = out;
-    while world.tick < rules::FIRST_NEUTRAL_TICK + 2 * rules::NEUTRAL_SPAWN_PERIOD_TICKS {
+    while world.tick < world.schedule().first_neutral() + 2 * rules::NEUTRAL_SPAWN_PERIOD_TICKS {
         world.step();
         for beast in &mine {
             world.transform.get_mut(*beast).expect("stands").pos = out;
@@ -244,7 +244,7 @@ fn a_neutral_sleeps_until_something_comes_right_up_to_it() {
         (rules::NEUTRAL_AGGRO_RANGE - 60, true),
     ] {
         let mut world = World::new();
-        world.tick = rules::PREGAME_TICKS;
+        world.tick = world.schedule().horn;
         let beasts = a_camp_at(&mut world, camp);
         let hero = hero_at(&mut world, camp + Vec2::from_ints(apart, 0));
         world.settle();
@@ -261,8 +261,8 @@ fn a_neutral_sleeps_until_something_comes_right_up_to_it() {
 #[test]
 fn a_neutral_sleeps_through_the_night_with_an_enemy_at_its_side_and_wakes_at_dawn() {
     let camp = Vec2::from_ints(5000, 5000);
-    let dawn = rules::PREGAME_TICKS + 2 * rules::HALF_DAY_TICKS;
     let mut world = World::new();
+    let dawn = world.schedule().horn + 2 * rules::HALF_DAY_TICKS;
     world.tick = dawn - 40;
     let beasts = a_camp_at(&mut world, camp);
     // An onlooker that never swings: an idle hero swings at what stands in
@@ -341,7 +341,7 @@ fn a_neutral_slots_only_its_own_abilities_and_grows_with_the_clock_unseen() {
     // shows, and its modifier is hidden: a neutral's slots hold its own
     // abilities, and the clock's upgrades show only in its stats.
     let mut world = World::new();
-    let horn = rules::tick_at_game_minute(0);
+    let horn = world.schedule().horn;
     world.tick = horn + rules::NEUTRAL_UPGRADE_PERIOD_TICKS - 2;
     let troll = world.spawn_neutral(
         NeutralKind::ForestTrollBerserker,
@@ -521,7 +521,7 @@ fn waiting_by_the_camp(recovery: Recovery) -> ByTheCamp {
         },
     );
     let mut paced = Paced::new(recovery);
-    while world.tick < rules::FIRST_NEUTRAL_TICK + rules::WAVE_PERIOD_TICKS / 2 {
+    while world.tick < world.schedule().first_neutral() + rules::WAVE_PERIOD_TICKS / 2 {
         paced.step(&mut world);
     }
     ByTheCamp { world, hero, paced }
@@ -544,7 +544,7 @@ fn pull(by: &ByTheCamp, reach: i32, strike: bool) -> Pulled {
             break pos_of(&world, front);
         }
         assert!(
-            world.tick < rules::FIRST_NEUTRAL_TICK + 2 * rules::WAVE_PERIOD_TICKS,
+            world.tick < world.schedule().first_neutral() + 2 * rules::WAVE_PERIOD_TICKS,
             "no wave came"
         );
     };
@@ -558,7 +558,7 @@ fn pull(by: &ByTheCamp, reach: i32, strike: bool) -> Pulled {
         while world.health.get(beast).is_some_and(|h| h.hp >= max_hp) {
             paced.step(&mut world);
             assert!(
-                world.tick < rules::FIRST_NEUTRAL_TICK + 3 * rules::WAVE_PERIOD_TICKS,
+                world.tick < world.schedule().first_neutral() + 3 * rules::WAVE_PERIOD_TICKS,
                 "never struck"
             );
         }
@@ -733,7 +733,7 @@ fn put(world: &mut World, entity: Entity, at: Vec2) {
 fn a_kited_neutral_gives_up_five_seconds_past_its_guard_distance() {
     let (mut world, hero) = a_full_map_hero();
     let (index, _) = safe_lane_small_camp();
-    while world.tick <= rules::FIRST_NEUTRAL_TICK {
+    while world.tick <= world.schedule().first_neutral() {
         world.step();
     }
     let beast = camp_beasts(&world, index)[0];
@@ -781,7 +781,7 @@ fn a_kited_neutral_gives_up_five_seconds_past_its_guard_distance() {
 fn a_blow_on_a_neutral_led_far_off_leaves_its_stack_at_home() {
     let (mut world, hero) = a_full_map_hero();
     let (index, camp) = safe_lane_small_camp();
-    while world.tick <= rules::FIRST_NEUTRAL_TICK {
+    while world.tick <= world.schedule().first_neutral() {
         world.step();
     }
     let beasts = camp_beasts(&world, index);
@@ -795,7 +795,10 @@ fn a_blow_on_a_neutral_led_far_off_leaves_its_stack_at_home() {
     let max_hp = world.stats.get(beasts[0]).expect("a beast").max_hp;
     while world.health.get(beasts[0]).is_some_and(|h| h.hp >= max_hp) {
         world.step();
-        assert!(world.tick < rules::FIRST_NEUTRAL_TICK + 300, "never struck");
+        assert!(
+            world.tick < world.schedule().first_neutral() + 300,
+            "never struck"
+        );
     }
     world.step();
     world.step();

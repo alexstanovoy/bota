@@ -188,11 +188,11 @@ impl World {
 
     /// Whether a lane creep may be called on by an attack order yet.
     ///
-    /// Free from [`rules::FREE_AGGRO_TICK`]. Before it, only a creep that
+    /// Free from the match's [`rules::Schedule::free_aggro`]. Before it, only a creep that
     /// already has an enemy lane creep or a neutral within its acquisition, or
     /// that stands near one of its own tier-one towers.
     pub(crate) fn aggroable_yet(&self, creep: Entity) -> bool {
-        if self.clock() >= rules::FREE_AGGRO_TICK {
+        if self.clock() >= self.schedule().free_aggro() {
             return true;
         }
         let (Some(side), Some(at), Some(reach)) = (
@@ -209,6 +209,6 @@ impl World {
             pos: self.pos(other),
             alive: self.alive(other),
         });
-        bota_core::aggroable_yet(self.tick, side, at, reach, neighbours)
+        bota_core::aggroable_yet(self.tick, self.schedule(), side, at, reach, neighbours)
     }
 }

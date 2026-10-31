@@ -15,7 +15,7 @@ const CAMP: Vec2 = Vec2::from_ints(5000, 5000);
 /// A world in daylight where heroes never die.
 fn day() -> World {
     let mut world = World::new();
-    world.tick = rules::PREGAME_TICKS;
+    world.tick = world.schedule().horn;
     world.immortal_heroes = true;
     world
 }
@@ -125,7 +125,7 @@ fn the_conqueror_stomps_when_three_enemies_stand_within_250_and_not_for_two() {
 #[test]
 fn a_sleeping_camp_casts_nothing_and_a_roused_one_only_as_often_as_its_cooldown_lets_it() {
     let mut world = day();
-    world.tick = rules::PREGAME_TICKS + rules::HALF_DAY_TICKS + 30 * rules::TICKS_PER_SECOND;
+    world.tick = world.schedule().horn + rules::HALF_DAY_TICKS + 30 * rules::TICKS_PER_SECOND;
     let khan = world.spawn_neutral(NeutralKind::CentaurKhan, CAMP, 1, 0);
     let heroes: Vec<Entity> = (0..3)
         .map(|at| bystander(&mut world, CAMP + Vec2::from_ints(120, 60 * at - 60)))

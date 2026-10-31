@@ -652,7 +652,7 @@ fn a_cliff(world: &World) -> (Vec2, Vec2, Vec2, Vec2) {
 /// the early-aggro rule and one tick run.
 fn a_lane_under_a_cliff() -> (World, Entity, Entity, Entity, Entity) {
     let mut world = World::new();
-    world.tick = rules::FREE_AGGRO_TICK;
+    world.tick = world.schedule().free_aggro();
     let (low, high, near, back) = a_cliff(&world);
     let hero = seated_hero(&mut world, high, HeroId::SHADOW_FIEND);
     world.set_order(hero, UnitOrder::Stand);

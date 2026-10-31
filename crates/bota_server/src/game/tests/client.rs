@@ -19,7 +19,8 @@ use super::support::scroll_def;
 use crate::game::{Modifier, OrderDelay, UnitOrder};
 use crate::local::LocalMatch;
 
-const TICKS: u32 = rules::FIRST_WAVE_TICK + 4000;
+/// Ticks played: past the first wave of the longest pregame.
+const TICKS: u32 = rules::Schedule::of(rules::DOTA_PREGAME_TICKS).first_wave() + 4000;
 
 /// A two-seat map-2 match with both heroes attack-moving at the other's
 /// fountain: every message each seat was sent, in order.
@@ -185,12 +186,8 @@ fn the_ledger_keeps_a_standing_walk_exactly_while_the_server_does() {
     let idle = Order::Move {
         target: Target::None,
     };
-    give(
-        &mut local,
-        &mut session,
-        idle,
-        rules::SCROLL_FIRST_WAIT_TICKS,
-    );
+    let ready = local.world().schedule().scroll_first_ready();
+    give(&mut local, &mut session, idle, ready);
     super::support::hand_item(local.world_mut(), hero, ItemId::HEALING_SALVE, 1);
     local.world_mut().health.get_mut(hero).expect("health").hp = Fixed::from_int(300);
     let home = local.world().transform.get(hero).expect("standing").pos;

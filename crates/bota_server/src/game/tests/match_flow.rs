@@ -203,7 +203,8 @@ fn passive_gold_is_ninety_a_minute_from_the_horn_and_more_from_twelve() {
     let cfg = config();
     let mut world = World::for_match(&cfg, cfg.rng());
     let start = world.seats[0].gold;
-    run(&mut world, rules::PREGAME_TICKS);
+    let horn = world.schedule().horn;
+    run(&mut world, horn);
     assert_eq!(world.seats[0].gold, start, "nothing before the horn");
     run(&mut world, 60 * rules::TICKS_PER_SECOND);
     assert_eq!(

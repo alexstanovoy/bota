@@ -18,9 +18,9 @@ pub const MAP2_ID: MapId = MapId(2);
 pub const MAP2_DEATH_LIMIT: u16 = 2;
 /// Map2 gameplay duration in simulation ticks, excluding pregame.
 pub const MAP2_GAME_TICKS: u32 = 20 * 60 * rules::TICKS_PER_SECOND;
-/// The tick Map2 ends on as a draw when nothing decided it earlier, pregame
-/// included.
-pub const MAP2_TICK_CAP: u32 = rules::PREGAME_TICKS + MAP2_GAME_TICKS;
+/// The tick Map2 ends on as a draw when nothing decided it earlier, its
+/// pregame (Solo Mid's) included.
+pub const MAP2_TICK_CAP: u32 = rules::SOLO_MID_PREGAME_TICKS + MAP2_GAME_TICKS;
 
 /// One playable map.
 #[derive(Clone, Copy, Debug)]
@@ -80,6 +80,10 @@ pub struct MapDef {
     /// "First set of runes does not spawn"; which set that is, the game does
     /// not say, and the horn's is the only one that is a set at the start.
     pub opening_runes: bool,
+    /// Ticks from the heroes coming in to the horn: the game clock counts up
+    /// from minus this. Dota's full game has ninety seconds, its 1v1 Solo Mid
+    /// thirty.
+    pub pregame_ticks: u32,
     /// The hero a seat that picks none is given, when the match allows it
     /// and no seat it may not share it with holds it. Absent, such a seat is
     /// given a random one of those it may pick, as Dota gives one.
@@ -144,6 +148,7 @@ const DOTA: MapDef = MapDef {
     default_runes: SIMULATED_RUNES,
     rune_spots: &DOTA_RUNE_SPOTS,
     opening_runes: true,
+    pregame_ticks: rules::DOTA_PREGAME_TICKS,
     default_hero: None,
 };
 
@@ -180,11 +185,12 @@ const DEMO: MapDef = MapDef {
     default_runes: RuneSet::NONE,
     rune_spots: &[],
     opening_runes: true,
+    pregame_ticks: rules::SOLO_MID_PREGAME_TICKS,
     default_hero: None,
 };
 
 /// Full Dota geometry with mid-only waves and a hero/tower finish bounded by
-/// [`MAP2_TICK_CAP`]; the side tier ones stand invulnerable as in Dota's
+/// [`MAP2_GAME_TICKS`] past the horn; the side tier ones stand invulnerable as in Dota's
 /// "1v1 Solo Mid", so only a mid tower can end it.
 ///
 /// It holds every objective of the Dota map, but stands none and spawns no
@@ -201,9 +207,12 @@ const SKIRMISH: MapDef = MapDef {
     default_objectives: ObjectiveSet::NONE,
     default_runes: RuneSet::NONE,
     opening_runes: false,
+    pregame_ticks: rules::SOLO_MID_PREGAME_TICKS,
     default_hero: Some(HeroId::SHADOW_FIEND),
     ..DOTA
 };
+
+const _: () = assert!(MAP2_TICK_CAP == SKIRMISH.pregame_ticks + MAP2_GAME_TICKS);
 
 /// The map a match is played on. An unknown id falls back on the Dota map.
 #[inline]
@@ -212,6 +221,11 @@ pub fn map_of(id: MapId) -> &'static MapDef {
 }
 
 impl MapDef {
+    /// The clock of a match on this map: its horn after its pregame.
+    pub const fn schedule(&self) -> rules::Schedule {
+        rules::Schedule::of(self.pregame_ticks)
+    }
+
     /// Every geometric lane, including lanes without creep waves.
     pub fn lanes(&self) -> impl Iterator<Item = u8> {
         0..self.lanes

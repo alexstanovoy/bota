@@ -334,7 +334,7 @@ fn the_dire_mid_tier_two_tower_does_not_see_into_the_camp_behind_its_trees() {
     let map = map_of(MapId(0));
     let mut world = World::on_map(map);
     // By day, when the tower sees furthest.
-    world.tick = rules::PREGAME_TICKS;
+    world.tick = world.schedule().horn;
     world.settle();
     let tower = map
         .dire_towers
@@ -540,9 +540,9 @@ fn a_heros_sight_is_night_vision_through_the_pregame_and_the_night_and_day_visio
     );
     world.settle();
     let mut seen = Vec::new();
-    while world.tick < rules::PREGAME_TICKS + 2 * rules::HALF_DAY_TICKS {
+    while world.tick < world.schedule().horn + 2 * rules::HALF_DAY_TICKS {
         let (told, sight) = told_and_hero_sight(&world, mark);
-        let night = bota_core::time_of_day(world.tick).night;
+        let night = bota_core::time_of_day(world.tick, world.schedule()).night;
         let sees = if night {
             rules::HERO_NIGHT_VISION
         } else {
@@ -559,7 +559,7 @@ fn a_heros_sight_is_night_vision_through_the_pregame_and_the_night_and_day_visio
         [true, false, true],
         "the pregame is night, the horn breaks the first day, the night falls five minutes on"
     );
-    let dawn = rules::PREGAME_TICKS + 2 * rules::HALF_DAY_TICKS;
+    let dawn = world.schedule().horn + 2 * rules::HALF_DAY_TICKS;
     assert_eq!(world.tick, dawn);
     assert!(
         told_and_hero_sight(&world, mark).0,
@@ -570,7 +570,7 @@ fn a_heros_sight_is_night_vision_through_the_pregame_and_the_night_and_day_visio
 #[test]
 fn a_tier_one_tower_sees_less_far_by_night_than_the_towers_behind_it() {
     let mut world = World::on_map(map_of(MapId(0)));
-    world.tick = rules::PREGAME_TICKS + rules::HALF_DAY_TICKS;
+    world.tick = world.schedule().horn + rules::HALF_DAY_TICKS;
     world.settle();
     let view = world.view_full();
     let sight_of = |tier: u8| {

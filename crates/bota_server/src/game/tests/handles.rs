@@ -10,7 +10,7 @@ use crate::local::LocalMatch;
 
 /// Ticks played: past the first creeps' clash, whose missiles and deaths
 /// come and go in the radiant seat's sight.
-const TICKS: u32 = rules::FIRST_WAVE_TICK + 1500;
+const TICKS: u32 = rules::Schedule::of(rules::DOTA_PREGAME_TICKS).first_wave() + 1500;
 
 /// Ticks between the dire hero's casts.
 const CAST_EVERY: u32 = 20;
@@ -38,6 +38,7 @@ fn play(busy: bool) -> Seen {
         raw: Vec::new(),
     };
     let near = AbilitySlot(0);
+    let first_wave = local.world().schedule().first_wave();
     while local.tick() < TICKS {
         let mut told = Fnv::new();
         for msg in &streams[0] {
@@ -59,7 +60,7 @@ fn play(busy: bool) -> Seen {
         let tick = local.tick();
         let order = match tick {
             1 => Some(Order::Learn { slot: near }),
-            _ if busy && tick < rules::FIRST_WAVE_TICK && tick.is_multiple_of(CAST_EVERY) => {
+            _ if busy && tick < first_wave && tick.is_multiple_of(CAST_EVERY) => {
                 Some(Order::Cast {
                     slot: near,
                     target: Target::None,

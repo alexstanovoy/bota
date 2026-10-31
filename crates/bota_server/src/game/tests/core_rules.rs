@@ -106,17 +106,21 @@ fn the_tower_of_a_team_at_a_position_has_the_tier_the_core_names() {
 fn every_wave_has_the_number_upgrades_and_bodies_the_core_names() {
     let map = map_of(MapId(1));
     let mut world = World::on_map(map);
-    assert_eq!(latest_wave(0), None);
-    let last = rules::FIRST_WAVE_TICK + 15 * rules::WAVE_PERIOD_TICKS;
+    let schedule = map.schedule();
+    assert_eq!(latest_wave(0, schedule), None);
+    let last = schedule.first_wave() + 15 * rules::WAVE_PERIOD_TICKS;
     let mut known = Vec::new();
     let mut waves = 0;
     let mut last_upgrades = 0;
     while world.tick < last + 2 {
         world.step();
-        if wave_at(world.tick).is_some() {
+        if wave_at(world.tick, schedule).is_some() {
             waves += 1;
         }
-        assert_eq!(latest_wave(world.tick), (waves > 0).then_some(waves));
+        assert_eq!(
+            latest_wave(world.tick, schedule),
+            (waves > 0).then_some(waves)
+        );
         for creep in world
             .entities
             .iter()
