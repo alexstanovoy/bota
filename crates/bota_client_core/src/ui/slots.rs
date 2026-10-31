@@ -157,6 +157,20 @@ impl App {
             Slot::Item(at) => self.item_in(at).map_or(0, |item| item.range),
         }
     }
+
+    /// The radius of the area one slot's use at a point takes in, in world units; zero for
+    /// one that takes in none. No ability aimed at a point takes in an area yet: an
+    /// ability's area joins its data when one does.
+    pub fn area_of(&self, slot: Slot) -> i32 {
+        match slot {
+            Slot::Ability(_) => 0,
+            Slot::Item(at) => self
+                .item_in(at)
+                .and_then(|item| bota_core::item_def(item.id))
+                .and_then(bota_core::ItemDef::radius)
+                .unwrap_or(0),
+        }
+    }
 }
 
 /// Which order pressing a slot means.

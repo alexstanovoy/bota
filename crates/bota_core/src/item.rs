@@ -417,6 +417,16 @@ pub enum DisassembleRule {
 }
 
 impl ItemDef {
+    /// The radius of the area a use at a point takes in, in world units:
+    /// Dota's `AbilityAOERadius`. Absent for one that takes in no area round
+    /// its point.
+    pub const fn radius(&self) -> Option<i32> {
+        match self.effect {
+            UseSpec::Grenade(grenade) => Some(grenade.radius),
+            _ => None,
+        }
+    }
+
     /// The value Dota keys `key`, one number a level; none for an item
     /// without it.
     pub fn value(&self, key: &str) -> Option<&'static [Dec]> {
