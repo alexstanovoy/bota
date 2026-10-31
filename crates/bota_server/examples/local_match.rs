@@ -41,6 +41,7 @@ fn main() {
     };
     let cfg = MatchConfig {
         starting_gold_lost: Vec::new(),
+        economy_events: Vec::new(),
         match_id: 1,
         master_key: [7; 32],
         stream: 1,

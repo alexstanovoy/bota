@@ -149,6 +149,7 @@ fn config(pinned: &Pinned) -> MatchConfig {
     master_key[..8].copy_from_slice(&pinned.seed.to_le_bytes());
     MatchConfig {
         starting_gold_lost: Vec::new(),
+        economy_events: Vec::new(),
         match_id: pinned.seed,
         stream: pinned.seed,
         master_key,

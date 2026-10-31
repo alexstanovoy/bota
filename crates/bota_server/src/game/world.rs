@@ -88,6 +88,8 @@ world_tables! {
         pub objectives: bota_proto::ObjectiveSet = bota_proto::ObjectiveSet::NONE;
         /// Trusted match setup's modifiers, put on each unit as it is stood up.
         pub spawn_modifiers: Vec<SpawnModifier> = Vec::new();
+        /// Trusted match setup's economic events still to come, in tick order.
+        pub economy_events: crate::game::EconomySchedule = crate::game::EconomySchedule::default();
     }
 
     tables {

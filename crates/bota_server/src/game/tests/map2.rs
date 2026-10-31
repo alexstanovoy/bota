@@ -23,6 +23,7 @@ const FINAL_WAVE: u32 = (TICK_CAP - rules::FIRST_WAVE_TICK) / rules::WAVE_PERIOD
 fn config(map: MapId) -> MatchConfig {
     MatchConfig {
         starting_gold_lost: Vec::new(),
+        economy_events: Vec::new(),
         match_id: 23,
         stream: 23,
         master_key: [17; 32],

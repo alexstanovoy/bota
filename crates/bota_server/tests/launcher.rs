@@ -316,3 +316,34 @@ fn link_recv(link: &mut Link) -> ServerMsg {
         .expect("the link holds")
         .expect("the server speaks")
 }
+
+/// Economic events are trusted local setup (`MatchConfig::economy_events`, for in-process
+/// matches only): nothing a launcher or a matchmaking service sets, no argument and no
+/// environment variable, can name one, so a match of reserved seats never carries one.
+#[test]
+fn a_launched_match_cannot_carry_economic_events() {
+    let help = Command::new(env!("CARGO_BIN_EXE_bota_server"))
+        .arg("--help")
+        .output()
+        .expect("the server binary runs");
+    assert!(help.status.success());
+    let options = String::from_utf8_lossy(&help.stdout).to_lowercase();
+    assert!(options.contains("--map"), "the help lists the options");
+    assert!(
+        !options.contains("econom"),
+        "no option or environment variable names an economic event"
+    );
+    let seats = format!("{}:1:first,{}:0:second", KEYS[0].to_hex(), KEYS[1].to_hex());
+    let refused = Command::new(env!("CARGO_BIN_EXE_bota_server"))
+        .args(["--bind", "127.0.0.1", "--port", "0", "--map", "2"])
+        .args(["--economy-events", "0:60:1000:0"])
+        .env("BOTA_SEATS", seats)
+        .stdin(Stdio::null())
+        .output()
+        .expect("the server binary runs");
+    assert!(!refused.status.success(), "an unknown option is refused");
+    assert!(
+        !String::from_utf8_lossy(&refused.stdout).contains("READY"),
+        "and no match is offered"
+    );
+}

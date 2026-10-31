@@ -1,5 +1,6 @@
 pub mod ability;
 mod blockers;
+mod economy_event;
 mod item;
 mod map_terrain;
 mod match_config;
@@ -11,6 +12,7 @@ mod trees;
 
 pub use ability::*;
 pub use blockers::*;
+pub use economy_event::*;
 pub use item::*;
 pub use map_terrain::*;
 pub use match_config::*;

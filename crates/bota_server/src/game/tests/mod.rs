@@ -16,6 +16,7 @@ mod dead_shop;
 mod delay;
 mod determinism;
 mod disassembly;
+mod economy_events;
 mod feast;
 mod fiend;
 mod fillers;

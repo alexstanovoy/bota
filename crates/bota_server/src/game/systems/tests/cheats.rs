@@ -14,6 +14,7 @@ use bota_proto::{
 fn config(cheats: bool) -> MatchConfig {
     MatchConfig {
         starting_gold_lost: Vec::new(),
+        economy_events: Vec::new(),
         cheats,
         ..support::config()
     }
@@ -405,6 +406,7 @@ fn a_fallen_hero_takes_its_modifier_with_it_and_respawns_clean() {
 fn gold_income_scales_the_bounty_a_kill_pays() {
     let cfg = MatchConfig {
         starting_gold_lost: Vec::new(),
+        economy_events: Vec::new(),
         picks: fiend_against_fiend(),
         ..config(true)
     };

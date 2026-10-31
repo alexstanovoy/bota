@@ -15,6 +15,7 @@ use crate::game::{Entity, Event, MatchConfig, World};
 fn world_on(map: u16, cheats: bool) -> World {
     let cfg = MatchConfig {
         starting_gold_lost: Vec::new(),
+        economy_events: Vec::new(),
         cheats,
         map: MapId(map),
         ..support::config()

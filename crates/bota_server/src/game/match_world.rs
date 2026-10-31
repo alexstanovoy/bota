@@ -39,6 +39,10 @@ impl World {
         world.immortal_heroes = cfg.immortal_heroes;
         world.spawn_modifiers = cfg.spawn_modifiers.clone();
         world.apply_spawn_modifiers_to_all();
+        // In tick order; events of one tick keep the order the setup gave.
+        let mut events = cfg.economy_events.clone();
+        events.sort_by_key(|event| event.tick);
+        world.economy_events = crate::game::EconomySchedule(events.into());
         world.stand_up_objectives(cfg.objectives);
         for pick in &cfg.picks {
             let at = hero_spawn_pos(map, pick.team);
@@ -74,11 +78,36 @@ impl World {
             return Vec::new();
         }
         let mut events = Vec::new();
+        self.economy_events_due(&mut events);
         for cmd in cmds {
             self.take_order(cmd, &mut events);
         }
         events.extend(self.step());
         events
+    }
+
+    /// Carries out the setup's economic events due this tick, before its
+    /// orders: gold into or out of the seat's hand, never below nothing, and
+    /// items handed out as the shop would deliver them.
+    fn economy_events_due(&mut self, events: &mut Vec<Event>) {
+        while self
+            .economy_events
+            .0
+            .front()
+            .is_some_and(|event| event.tick <= self.tick)
+        {
+            let Some(event) = self.economy_events.0.pop_front() else {
+                break;
+            };
+            let Some(seat) = self.seats.iter().position(|seat| seat.slot == event.slot) else {
+                continue;
+            };
+            let gold = &mut self.seats[seat].gold;
+            *gold = gold.saturating_add(event.gold).max(0);
+            for item in event.items {
+                self.hand_out(seat, item, events);
+            }
+        }
     }
 
     /// Hands one order to the unit it is for: into its queue when it is

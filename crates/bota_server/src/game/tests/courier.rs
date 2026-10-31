@@ -796,6 +796,7 @@ fn a_fallen_courier_pays_every_enemy_25_and_5_a_level_and_waits_45_s_and_5_a_lev
     for (level, bounty, wait) in [(1, 25, 50), (10, 70, 95)] {
         let cfg = MatchConfig {
             starting_gold_lost: Vec::new(),
+            economy_events: Vec::new(),
             picks: fiend_against_fiend(),
             ..config()
         };

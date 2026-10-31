@@ -30,6 +30,7 @@ fn a_rule(spec: ModifierSpec) -> SpawnModifier {
 fn config(cheats: bool, rules: Vec<SpawnModifier>) -> MatchConfig {
     MatchConfig {
         starting_gold_lost: Vec::new(),
+        economy_events: Vec::new(),
         map: MapId(0),
         cheats,
         spawn_modifiers: rules,

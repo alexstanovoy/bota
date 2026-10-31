@@ -244,7 +244,7 @@ impl World {
 
     /// Puts an item into the hero's bag for nothing, or into the stash when
     /// the bag has no room. Told of as a purchase.
-    fn hand_out(&mut self, seat: usize, item: ItemId, events: &mut Vec<Event>) {
+    pub(crate) fn hand_out(&mut self, seat: usize, item: ItemId, events: &mut Vec<Event>) {
         let owner = self.seats[seat].slot;
         let Some(stack) = ItemStack::bought(item, owner, self.tick) else {
             return;

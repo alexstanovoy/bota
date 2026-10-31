@@ -1137,6 +1137,9 @@ impl Server {
                 .runes
                 .unwrap_or(bota_core::map_of(self.opts.map).default_runes),
             spawn_modifiers: Vec::new(),
+            // Trusted local setup only: a served match, a launcher's or a
+            // matchmaking service's, never carries an economic event.
+            economy_events: Vec::new(),
             catalogue: self.shared_catalogue(),
             starting_gold_lost: self
                 .roster

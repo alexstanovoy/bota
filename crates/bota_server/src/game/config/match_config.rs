@@ -3,7 +3,8 @@
 use bota_proto::{EventKind, MapId, MatchInfo, ObjectiveSet, Pick, RuneSet, Team, TickMode};
 
 use crate::game::{
-    MAX_SPAWN_MODIFIERS, MatchRng, SpawnModifier, SpawnModifierError, check_spawn_modifier,
+    EconomyEvent, EconomyEventError, MAX_ECONOMY_EVENTS, MAX_SPAWN_MODIFIERS, MatchRng,
+    SpawnModifier, SpawnModifierError, check_economy_event, check_spawn_modifier,
 };
 
 /// Why a match description was refused.
@@ -20,6 +21,10 @@ pub enum MatchConfigError {
     Objectives { refused: ObjectiveSet, map: MapId },
     /// Runes the map has no spots for or the simulation does not play.
     Runes { refused: RuneSet, map: MapId },
+    /// More economic events than a match may carry.
+    TooManyEconomyEvents { count: usize },
+    /// One economic event is not one a match may carry.
+    EconomyEvent { at: usize, error: EconomyEventError },
 }
 
 impl core::fmt::Display for MatchConfigError {
@@ -44,6 +49,13 @@ impl core::fmt::Display for MatchConfigError {
                 map.0,
                 bota_core::map_of(*map).playable_runes()
             ),
+            MatchConfigError::TooManyEconomyEvents { count } => write!(
+                f,
+                "{count} economic events exceed the {MAX_ECONOMY_EVENTS} a match may carry"
+            ),
+            MatchConfigError::EconomyEvent { at, error } => {
+                write!(f, "economic event {at} is refused: {error}")
+            }
         }
     }
 }
@@ -97,6 +109,10 @@ pub struct MatchConfig {
     pub runes: RuneSet,
     /// The items the match plays with: the catalogue every seat holds.
     pub catalogue: bota_core::Catalogue,
+    /// Trusted local setup's economic events, `MAX_ECONOMY_EVENTS` at most.
+    /// A served match never carries one: its setup cannot name one, and
+    /// [`MatchConfig::info`] tells of none.
+    pub economy_events: Vec<EconomyEvent>,
 }
 
 impl MatchConfig {
@@ -114,9 +130,9 @@ impl MatchConfig {
             .sum()
     }
 
-    /// Whether the description may build a match. The spawn modifiers must
-    /// fit the bound and every one of them must be valid, and the map must
-    /// play every objective and rune asked for.
+    /// Whether the description may build a match. The spawn modifiers and
+    /// the economic events must fit their bounds and every one of them must
+    /// be valid, and the map must play every objective and rune asked for.
     pub fn validate(&self) -> Result<(), MatchConfigError> {
         if self.spawn_modifiers.len() > MAX_SPAWN_MODIFIERS {
             return Err(MatchConfigError::TooManySpawnModifiers {
@@ -126,6 +142,16 @@ impl MatchConfig {
         for (at, rule) in self.spawn_modifiers.iter().enumerate() {
             check_spawn_modifier(rule)
                 .map_err(|error| MatchConfigError::SpawnModifier { at, error })?;
+        }
+        if self.economy_events.len() > MAX_ECONOMY_EVENTS {
+            return Err(MatchConfigError::TooManyEconomyEvents {
+                count: self.economy_events.len(),
+            });
+        }
+        let slots = self.picks.iter().map(|pick| pick.slot).collect::<Vec<_>>();
+        for (at, event) in self.economy_events.iter().enumerate() {
+            check_economy_event(event, &slots, self.catalogue)
+                .map_err(|error| MatchConfigError::EconomyEvent { at, error })?;
         }
         check_match_rules(self.map, self.objectives, self.runes)?;
         Ok(())

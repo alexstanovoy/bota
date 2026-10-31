@@ -18,6 +18,7 @@ const BASE_SPEED: i32 = 305;
 fn two_fiends(apart: i32) -> (World, Entity, Entity) {
     let cfg = MatchConfig {
         starting_gold_lost: Vec::new(),
+        economy_events: Vec::new(),
         picks: fiend_against_fiend(),
         ..config()
     };
