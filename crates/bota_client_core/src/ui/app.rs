@@ -101,6 +101,11 @@ impl Source {
         matches!(self, Source::Live(net) if net.is_redialing())
     }
 
+    /// Whether a live link has ended for good.
+    pub fn is_closed(&self) -> bool {
+        matches!(self, Source::Live(net) if net.is_closed())
+    }
+
     /// The smoothed round trip of a live link, as the socket timed it.
     pub fn ping(&self) -> Option<std::time::Duration> {
         match self {
@@ -1017,11 +1022,18 @@ impl App {
     pub fn pump(&mut self, dt: f32) {
         self.told.clear();
         self.smooth.advance(dt);
+        // A link marks itself closed after it has handed over its last message, so a link seen
+        // closed before the poll has had everything polled out of it by the end of it. Seen
+        // closed only after the poll, it may have handed over the end of the match in between,
+        // and the match would be reported lost with its end still unread.
+        let closed = self.source.is_closed();
         let msgs = self.source.poll(dt);
         for msg in msgs {
             self.handle(msg);
         }
-        self.check_connection();
+        if closed {
+            self.check_connection();
+        }
         self.tick_effects(dt);
         self.heartbeat_cue(dt);
         if let Some(view) = self.seat.session().and_then(ClientSession::current) {

@@ -452,7 +452,9 @@ impl Net {
 
     /// Whether the connection has ended for good.
     pub fn is_closed(&self) -> bool {
-        self.shared.state.load(Ordering::Relaxed) == CLOSED
+        // Acquire: a closed link has handed over every message it will, and they are in the
+        // inbox by now (the store of `CLOSED` releases them).
+        self.shared.state.load(Ordering::Acquire) == CLOSED
     }
 
     /// Whether the connection broke and is not yet back: being dialed again,
@@ -518,7 +520,7 @@ fn read_on(
             }
         }
     }
-    shared.state.store(CLOSED, Ordering::Relaxed);
+    shared.state.store(CLOSED, Ordering::Release);
 }
 
 /// Hands every message read to `take` until the server closes cleanly or

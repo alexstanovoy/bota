@@ -1590,3 +1590,49 @@ fn a_dead_heros_bag_slots_read_its_kit() {
     assert_eq!(app.item_in(0), Some(boots), "its kit, while it lies dead");
     assert_eq!(app.item_in(1), None);
 }
+
+/// A link that is closed from its first poll on, and hands over the end of the match only at its
+/// second: the end of the match sent just before the server hung up, still on its way when the
+/// client polled.
+#[derive(Default)]
+struct HangingUp {
+    polls: u32,
+}
+
+impl crate::ui::app::LiveLink for HangingUp {
+    fn poll(&mut self) -> Vec<bota_proto::ServerMsg> {
+        self.polls += 1;
+        match self.polls {
+            1 => Vec::new(),
+            _ => vec![bota_proto::ServerMsg::MatchOver {
+                winner: Team::Radiant,
+                stats: bota_proto::MatchStats {
+                    duration: 10,
+                    slots: Vec::new(),
+                },
+            }],
+        }
+    }
+
+    fn send(&mut self, _: &bota_proto::ClientMsg) -> std::io::Result<()> {
+        Ok(())
+    }
+
+    fn is_closed(&self) -> bool {
+        self.polls >= 1
+    }
+}
+
+#[test]
+fn a_match_whose_end_is_still_on_the_way_when_the_link_closes_is_not_lost() {
+    let mut app = App::new(crate::ui::app::Source::Live(Box::new(HangingUp::default())));
+    app.my_slot = Some(SlotId(0));
+    app.handle(a_match_start());
+
+    app.pump(0.016);
+    assert!(!app.lost, "the end of the match was not read yet");
+
+    app.pump(0.016);
+    assert!(app.over.is_some(), "the end of the match came");
+    assert!(!app.lost, "a match that ended is not a lost connection");
+}
