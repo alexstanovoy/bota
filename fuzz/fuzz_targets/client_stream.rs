@@ -11,7 +11,7 @@ use libfuzzer_sys::fuzz_target;
 fn read_back(session: &ClientSession) {
     let _ = session.own_hero();
     let _ = session.own_courier();
-    let _ = session.order_delay_ms();
+    let _ = session.order_delay();
     for track in session.entities() {
         let _ = session.talents_of(track.id);
         let _ = session.known(track.id);
@@ -22,7 +22,7 @@ fn read_back(session: &ClientSession) {
     let statics = session.statics();
     if let Some(entry) = statics.shop().first() {
         let held: Vec<ItemId> = statics.shop().iter().take(6).map(|e| e.id).collect();
-        let _ = statics.missing_parts(entry.id, &held, None);
+        let _ = bota_client_core::missing_for(entry.id, &held, None);
     }
     if let Some(view) = session.current() {
         for unit in &view.units {

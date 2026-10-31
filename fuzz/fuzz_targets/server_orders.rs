@@ -39,7 +39,6 @@ fn config(knobs: u8) -> MatchConfig {
             pick(1, Team::Dire, second),
         ],
         map: MapId(if knobs & 1 == 0 { 2 } else { 0 }),
-        tick_rate: 30,
         mode: TickMode::Lockstep,
         ack_timeout_ticks: 1,
         cheats: knobs & 2 != 0,
@@ -49,6 +48,8 @@ fn config(knobs: u8) -> MatchConfig {
         immortal_heroes: false,
         objectives: bota_core::map_of(MapId(if knobs & 1 == 0 { 2 } else { 0 })).default_objectives,
         runes: bota_core::map_of(MapId(if knobs & 1 == 0 { 2 } else { 0 })).default_runes,
+        catalogue: bota_core::Catalogue::FULL,
+        economy_events: Vec::new(),
     }
 }
 

@@ -39,12 +39,26 @@ fn main() {
         })
     };
     let script = [
-        (0, ClientMsg::hello(Role::Player, "one", None)),
-        (1, ClientMsg::hello(Role::Bot, "two", None)),
-        (2, ClientMsg::hello(Role::Spectator, "eyes", None)),
+        (
+            0,
+            ClientMsg::hello(Role::Player, "one", None, bota_core::WIRE_FINGERPRINT),
+        ),
+        (
+            1,
+            ClientMsg::hello(Role::Bot, "two", None, bota_core::WIRE_FINGERPRINT),
+        ),
+        (
+            2,
+            ClientMsg::hello(Role::Spectator, "eyes", None, bota_core::WIRE_FINGERPRINT),
+        ),
         (
             3,
-            ClientMsg::hello(Role::Referee, "ref", Some(SeatKey([7; 32]))),
+            ClientMsg::hello(
+                Role::Referee,
+                "ref",
+                Some(SeatKey([7; 32])),
+                bota_core::WIRE_FINGERPRINT,
+            ),
         ),
         (
             0,
