@@ -469,6 +469,17 @@ fn measured_over(wire: Wire, one_way: Duration) -> (Duration, Duration, u32, u32
     let mut net = Net::open(endpoint(wire, &line.addr()), Redial::DEFAULT).expect("connect");
     join(&mut net, "timed", HeroId::SHADOW_FIEND, None).expect("a seat");
     let mut latest = 0;
+    // The orders are timed in the match: its first tick is seen before the first goes out.
+    let started = Instant::now() + hang_guard;
+    while latest == 0 {
+        assert!(Instant::now() < started, "the match began");
+        for message in net.poll() {
+            if let ServerMsg::Snapshot { view } = message {
+                latest = latest.max(view.tick);
+            }
+        }
+        thread::sleep(Duration::from_millis(1));
+    }
     let mut hear = |net: &mut Net| {
         for message in net.poll() {
             if let ServerMsg::Snapshot { view } = message {
