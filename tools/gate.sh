@@ -30,38 +30,43 @@ mkdir -p "$logs"
 # shellcheck source=tools/stamp.sh
 . "$here/tools/stamp.sh"
 base=${GATE_BASE:-$(default_base)}
-if [ "${GATE_FULL:-0}" = 1 ]; then mode=gate-full what=full scope=--all; else mode=gate what=affected scope="--base $base"; fi
-# The gate confirms; the precheck finds. It starts only on a tree tools/precheck.sh has passed, and not again on a tree that
-# already passed (formatting is left out of both; a full pass stands for an affected one too). GATE_PRECHECKED=1 and
-# GATE_AGAIN=1 skip the two checks, for a head that is gated on behalf of something else (a merge, a consumer check) and was
-# checked elsewhere.
+if [ "${GATE_FULL:-0}" = 1 ]; then mode=gate-full what=full selection=--all; else mode=gate what=affected selection="--base $base"; fi
+# shellcheck disable=SC2086
+if ! plan=$(python3 tools/test_groups.py plan $selection); then
+    echo "GATE-FAIL plan (tools/test_groups.py plan $selection)" >&2
+    exit 2
+fi
+groups=$(sed -n 's/^groups *//p' <<< "$plan")
+crates=$(sed -n 's/^crates *//p' <<< "$plan")
+fuzz=$(sed -n 's/^fuzz //p' <<< "$plan")
+scope=$(sed -n 's/^scope //p' <<< "$plan")
+# The gate confirms; the precheck finds. It starts only on a tree tools/precheck.sh has passed with the same selection (or
+# in full), and not again on a tree that already passed (formatting is left out of both; a full pass stands for an
+# affected one too). A stamp names the tree and the selection: what it was compared with and what that selected.
+# GATE_PRECHECKED=1 and GATE_AGAIN=1 skip the two checks, for a head that is gated on behalf of something else (a merge,
+# a consumer check) and was checked elsewhere.
 tree=$(tree_key)
-if [ "${GATE_PRECHECKED:-0}" != 1 ] && [ -z "$(stamp_has "$tree" precheck)" ]; then
-    echo "gate: no passing precheck for this tree. Run tools/precheck.sh first (it checks what the change touches, in minutes; this gate is the confirmation, not the place to find errors)." >&2
+key=$tree-$scope
+if [ "${GATE_PRECHECKED:-0}" != 1 ] && [ -z "$(stamp_has "$key" precheck)$(stamp_has "$tree-full" precheck)" ]; then
+    echo "gate: no passing precheck for this tree and selection ($what). Run tools/precheck.sh first (it checks what the change touches, in minutes; this gate is the confirmation, not the place to find errors)." >&2
     exit 3
 fi
-passed=$(stamp_has "$tree" gate-full)
-[ "$mode" = gate-full ] || passed=${passed:-$(stamp_has "$tree" gate)}
+passed=$(stamp_has "$tree-full" gate-full)
+[ "$mode" = gate-full ] || passed=${passed:-$(stamp_has "$key" gate)}
 if [ "${GATE_AGAIN:-0}" != 1 ] && [ -n "$passed" ]; then
     echo "gate: this tree already passed the gate ($passed). GATE_AGAIN=1 runs it again." >&2
     exit 3
 fi
 if [ "$mode" = gate ] && only_docs_changed "$base"; then
     echo "GATE-OK (documents only: nothing to confirm)"
-    stamp_put "$tree" "$mode"
+    stamp_put "$key" "$mode"
     exit 0
 fi
-# shellcheck disable=SC2086
-if ! plan=$(python3 tools/test_groups.py plan $scope); then
-    echo "GATE-FAIL plan (tools/test_groups.py plan $scope)"
-    exit 1
-fi
-groups=$(sed -n 's/^groups *//p' <<< "$plan")
-crates=$(sed -n 's/^crates *//p' <<< "$plan")
-fuzz=$(sed -n 's/^fuzz //p' <<< "$plan")
-echo "gate: $what ($scope): groups ${groups:-none}; crates ${crates:-none}"
+echo "gate: $what ($selection): groups ${groups:-none}; crates ${crates:-none}"
 skip=" ${GATE_SKIP:-} "
+# leaving anything out, even a step this change does not run or one that does not exist, is not a pass
 skipped=0
+[ -z "${skip// /}" ] || skipped=1
 
 installs() { # the Dota 2 installs the importer would find, as heatel looks for them
     local library
@@ -102,7 +107,7 @@ step_if() { # condition reason name command...: the step when the condition hold
 
 step ignored-audit tools/ignored_audit.sh
 # shellcheck disable=SC2086
-step test-groups python3 tools/test_groups.py check $scope
+step test-groups python3 tools/test_groups.py check $selection
 step_if '[ "$fuzz" = 1 ]' "no crate and no fuzz target changed" fuzz-check fuzz/fuzz.sh check
 lint=(); for c in $crates; do [ "$c" = bota_radovid ] || lint+=(-p "$c"); done
 step_if '[ ${#lint[@]} -gt 0 ]' "no crate changed" clippy cargo clippy "${lint[@]}" --all-targets -- -D warnings
@@ -130,5 +135,11 @@ if [ "$skipped" = 1 ]; then
     echo "GATE-FAIL steps were skipped (GATE_SKIP): that is not a pass"
     exit 1
 fi
+# What passed is what was checked: a tree changed by a step or by hand meanwhile gets no stamp.
+if [ "$(tree_key)" != "$tree" ]; then
+    echo "GATE-FAIL the tree changed while the gate ran (git status --short):"
+    git status --short
+    exit 1
+fi
 echo "GATE-OK ($what: $(wc -w <<< "$groups") groups)"
-stamp_put "$tree" "$mode"
+stamp_put "$key" "$mode"

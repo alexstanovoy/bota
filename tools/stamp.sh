@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
 # Stamps of what has been checked, kept per tree (sourced by precheck.sh and gate.sh; not run on its own).
 #
-# A stamp names a tree by the hash of its content with formatting left out: the files that are not Rust sources as they are
-# (the tracked and the not ignored new ones; a file marked skip-worktree counts as the commit has it), the Rust sources as
-# `cargo fmt` writes them. So a change that only formats keeps the stamp, and the same content in another checkout of this
-# repository has the same stamp. Stamps live in the repository's common git directory, one file per tree:
+# A stamp names a tree by the hash of its content with formatting left out: the files that are not Rust sources of the
+# workspace crates as they are (the tracked and the not ignored new ones; a file marked skip-worktree counts as the commit
+# has it), the Rust sources of the crates as `cargo fmt --all` writes them. The scripts add the selection to the name
+# (tools/test_groups.py plan's `scope`: `full`, or what the change was compared with and what that selected). So a change
+# that only formats keeps the stamp, and the same content in another checkout of this repository has the same stamp.
+# Stamps live in the repository's common git directory, one file per tree and selection:
 #   precheck ok <time>        tools/precheck.sh passed
 #   gate ok <time>            tools/gate.sh passed what the change affects
 #   gate-full ok <time>       tools/gate.sh passed in full (GATE_FULL=1)
@@ -24,7 +26,8 @@ tree_key() {
                     git update-index --add --cacheinfo "$(git ls-tree HEAD -- "$f" | cut -d' ' -f1),$h,$f"
                 fi
             done
-            git ls-files -s | grep -v '\.rs$'
+            # the Rust of the workspace crates as `cargo fmt --all` writes it below; the rest (fuzz/, the importer) as stored
+            git ls-files -s | grep -vE $'\tcrates/.*\\.rs$'
         )
         cargo fmt --all -- --emit stdout 2> /dev/null
     } | sha256sum | cut -c1-32

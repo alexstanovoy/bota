@@ -13,6 +13,7 @@ invocation ran exactly as many tests as its groups select, so this selection and
 """
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -26,6 +27,8 @@ from pathlib import Path
 ROOT = Path(subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True, check=True).stdout.strip())
 CONFIG = ROOT / "tools/test_groups.toml"
 PROFILE = "test-release"
+# A unittest suite is a build of its own: its directory stands where a crate's name does.
+UNITTEST = "unittest"
 # At most this many groups: few enough to know each by name, enough to follow the code's crates and subsystems.
 MAX_GROUPS = 30
 
@@ -76,6 +79,7 @@ class Crate:
     dependents: set[str] = field(default_factory=set)  # direct, by Cargo (development dependencies too)
     launchers: set[str] = field(default_factory=set)  # direct, declared: crates whose tests run this one's binary
     harnessless: set[str] = field(default_factory=set)  # test targets with `harness = false`
+    benches: set[str] = field(default_factory=set)
 
 
 @dataclass
@@ -142,6 +146,7 @@ def load_crates(config: dict) -> dict[str, Crate]:
             feature_table=table,
             launchers=set(settings.get("dependents", [])),
             harnessless={t["name"] for t in manifest_toml.get("test", []) if t.get("harness") is False},
+            benches={t["name"] for t in package["targets"] if "bench" in t["kind"]},
         )
     members = {p["name"]: p for p in workspace["packages"]}
     for name, package in members.items():
@@ -164,6 +169,10 @@ def load() -> tuple[dict[str, Crate], list[Group], list[tuple[list[str], list[st
 def load_group(entry: dict, crates: dict[str, Crate]) -> Group:
     selectors = []
     for test in entry.get("tests", []):
+        if "unittest" in test:  # Python tests: every test_*.py under the directory
+            build = Build(test["unittest"], UNITTEST, ())
+            selectors.append(Selector(build, UNITTEST, (), (), (), ()))
+            continue
         crate = crates.get(test["crate"])
         if crate is None:
             raise Failure(f"test_groups.toml: group {entry['name']} names crate {test['crate']}, which has no [crate] table")
@@ -237,6 +246,8 @@ class Router:
                 everything |= "*" in targets
                 for token in targets:
                     groups |= self.expand(token)
+        if named and not groups and not everything:
+            return set(), False  # a route that runs nothing (documents), in a crate too
         crate = self.crate_of(path)
         if crate is not None and not crate.routed:
             groups |= self.crate_wide(crate.name)
@@ -251,13 +262,14 @@ def files() -> list[str]:
     return sorted(set(git("ls-files").splitlines()) | set(git("ls-files", "--others", "--exclude-standard").splitlines()))
 
 
-def changed(base: str) -> list[str]:
+def changed(base: str) -> tuple[str, list[str]]:
+    """The merge-base with `base` and the paths changed since, committed or not; a moved file counts at both its paths."""
     found = subprocess.run(["git", "merge-base", "HEAD", base], cwd=ROOT, capture_output=True, text=True)
     if found.returncode != 0:
         raise Failure(f"no merge-base of HEAD and {base}: {found.stderr.strip()}")
     merge_base = found.stdout.strip()
-    diff = git("diff", "--name-only", merge_base).splitlines()
-    return sorted(set(diff) | set(git("ls-files", "--others", "--exclude-standard").splitlines()))
+    diff = git("diff", "--name-only", "--no-renames", merge_base).splitlines()
+    return merge_base, sorted(set(diff) | set(git("ls-files", "--others", "--exclude-standard").splitlines()))
 
 
 def default_base() -> str:
@@ -278,12 +290,20 @@ def plan(router: Router, paths: list[str] | None) -> tuple[set[str], set[str], b
             return set(router.names), workspace, True
         groups |= routed[0]
         crate = router.crate_of(path)
-        if crate is not None and crate.manifest is None:
+        if routed[0] and crate is not None and crate.manifest is None:
             touched.add(crate.name)
     crates: set[str] = set()
     for crate in touched:
         crates |= router.above(crate, launched=False) & workspace
     return groups, crates, bool(crates) or any(p.startswith("fuzz/") for p in paths)
+
+
+def scope_of(merge_base: str | None, groups: list[str], crates: list[str], fuzz: bool) -> str:
+    """What a stamp of a check covers besides the tree: `full`, or what was compared with and what that selected."""
+    if merge_base is None:
+        return "full"
+    selection = json.dumps([merge_base, groups, crates, fuzz])
+    return "affected-" + hashlib.sha256(selection.encode()).hexdigest()[:16]
 
 
 def cargo_test(crates: dict[str, Crate], build: Build) -> list[str]:
@@ -306,6 +326,8 @@ def target_name(target: dict) -> str:
 
 def list_build(crates: dict[str, Crate], build: Build) -> Listed:
     """Builds the test targets of `build` and asks each for its tests (libtest's `--list`), the doc tests too."""
+    if build.profile == UNITTEST:
+        return list_unittest(build.crate)
     crate = crates[build.crate]
     command = cargo_test(crates, build) + ["--no-run", "--message-format=json-render-diagnostics"]
     built = subprocess.run(command, cwd=ROOT, stdout=subprocess.PIPE, text=True)
@@ -337,6 +359,28 @@ def list_build(crates: dict[str, Crate], build: Build) -> Listed:
     return listed
 
 
+def unittest_command(directory: str) -> list[str]:
+    return [sys.executable, "-B", "-m", "unittest", "discover", "-s", directory, "-t", directory, "-p", "test_*.py"]
+
+
+def list_unittest(directory: str) -> Listed:
+    """The ids of the unittest tests under `directory`, as `python3 -m unittest discover` finds them."""
+    walk = (
+        "import sys, unittest\n"
+        "def walk(suite):\n"
+        "    for test in suite:\n"
+        "        yield from walk(test) if isinstance(test, unittest.TestSuite) else [test]\n"
+        "for test in walk(unittest.defaultTestLoader.discover(sys.argv[1], 'test_*.py', sys.argv[1])):\n"
+        "    print(test.id())\n"
+    )
+    found = subprocess.run([sys.executable, "-B", "-c", walk, directory], cwd=ROOT, capture_output=True, text=True)
+    names = found.stdout.split()
+    broken = [n for n in names if n.startswith("unittest.loader.")]
+    if found.returncode != 0 or broken:
+        raise Failure(f"discovering the Python tests under {directory} failed: {broken or found.stderr[-2000:]}")
+    return Listed({UNITTEST: names}, {UNITTEST: ROOT / directory})
+
+
 def tests_of(listing: str) -> list[str]:
     return [line[: -len(": test")] for line in listing.splitlines() if line.endswith(": test")]
 
@@ -352,6 +396,8 @@ def test_file(listed: Listed, target: str, name: str) -> Path:
     """The file a test is written in: its module path walked down from the target's root, as rustc finds module files."""
     if target == "doc":
         return ROOT / name.split(" - ", 1)[0]
+    if target == UNITTEST:
+        return listed.roots[target] / (name.split(".", 1)[0] + ".py")
     file = listed.roots[target]
     directory = file.parent
     for segment in name.split("::")[:-1]:
@@ -367,6 +413,7 @@ def check(crates: dict[str, Crate], groups: list[Group], router: Router, paths: 
     every_file = files()
     problems += check_patterns(groups, router, every_file)
     problems += [f"{path}: no group and no route names it (tools/test_groups.toml)" for path in every_file if router.route(path) is None]
+    problems += check_harnesses(crates, groups, every_file)
     scope = set(crates) if paths is None else set()
     for path in paths or []:
         routed = router.route(path)
@@ -377,6 +424,28 @@ def check(crates: dict[str, Crate], groups: list[Group], router: Router, paths: 
         if crate is not None:
             scope |= router.above(crate.name)
     return problems + check_tests(crates, groups, router, scope)
+
+
+def check_harnesses(crates: dict[str, Crate], groups: list[Group], every_file: list[str]) -> list[str]:
+    """libtest lists what the groups hold; a target with a harness of its own cannot be listed. A bench (always its own
+    harness) must be run by a group's command, any other such target is refused."""
+    problems = []
+    for path in (f for f in every_file if f.endswith("Cargo.toml") and (ROOT / f).is_file()):
+        manifest = tomllib.loads((ROOT / path).read_text())
+        for kind in ("lib", "bin", "test", "example"):
+            entries = manifest.get(kind, [])
+            for target in [entries] if isinstance(entries, dict) else entries:
+                if target.get("harness") is False and target.get("test", kind == "test") is not False:
+                    problems.append(f"{path}: {kind} {target.get('name', '')} has a harness of its own, which no group can list")
+    benched = set()
+    for group in groups:
+        for command in group.commands:
+            if "--bench" in command and "-p" in command:
+                benched.add((command[command.index("-p") + 1], command[command.index("--bench") + 1]))
+    for crate in (c for c in crates.values() if c.manifest is None):
+        for bench in crate.benches - {b for c, b in benched if c == crate.name}:
+            problems.append(f"{crate.name}: bench {bench} is run by no group's command (tools/test_groups.toml)")
+    return problems
 
 
 def check_names(groups: list[Group], router: Router) -> list[str]:
@@ -406,7 +475,7 @@ def check_patterns(groups: list[Group], router: Router, every_file: list[str]) -
 def check_tests(crates: dict[str, Crate], groups: list[Group], router: Router, scope: set[str]) -> list[str]:
     """Every test of the crates in `scope`, in every build a group uses and with all features, is in exactly one group, and a
     change to the file it is written in runs that group."""
-    builds = {s.build for g in groups for s in g.selectors if s.build.crate in scope}
+    builds = {s.build for g in groups for s in g.selectors if s.build.crate in scope or s.build.profile == UNITTEST}
     builds |= {Build(c, crates[c].profile, crates[c].all_features) for c in scope}
     owners: dict[tuple[str, str, str], set[str]] = {}
     files_of: dict[tuple[str, str, str], Path] = {}
@@ -465,6 +534,10 @@ def invocations(crates: dict[str, Crate], chosen: list[Group]) -> list[Invocatio
     runs = []
     for (build, args, env), targets in keyed.items():
         listed = list_build(crates, build)
+        if build.profile == UNITTEST:
+            owners = {o for _, owned in targets.values() for o in owned}
+            runs.append(Invocation(unittest_command(build.crate), {}, len(listed.tests[UNITTEST]), owners))
+            continue
         if "*" in targets:  # the whole crate
             filters, owners = targets.pop("*")
             targets = {t: (None, owners | targets.get(t, (None, set()))[1]) for t in listed.tests}
@@ -533,6 +606,9 @@ def execute(command: list[str], env: dict[str, str], expected: int | None, group
         found = re.match(r"test result: \w+\. (\d+) passed; (\d+) failed; (\d+) ignored; (\d+) measured", line)
         if found:
             ran += sum(int(n) for n in found.groups())
+        found = re.match(r"Ran (\d+) tests? in ", line)  # unittest
+        if found:
+            ran += int(found.group(1))
     status = process.wait()
     seconds = time.monotonic() - began
     problem = None
@@ -568,12 +644,14 @@ def main() -> int:
             if unknown:
                 raise Failure(f"no such group: {' '.join(unknown)} (groups: {' '.join(router.names)})")
             return 0 if run(crates, [g for g in groups if g.name in options.groups], options.record) else 1
-        paths = None if options.all else changed(options.base or default_base())
+        merge_base, paths = (None, None) if options.all else changed(options.base or default_base())
         if options.action == "plan":
             chosen, lint, fuzz = plan(router, paths)
-            print("groups", *[n for n in router.names if n in chosen])
+            ordered = [n for n in router.names if n in chosen]
+            print("groups", *ordered)
             print("crates", *sorted(lint))
             print("fuzz", int(fuzz))
+            print("scope", scope_of(merge_base, ordered, sorted(lint), fuzz))
             return 0
         problems = check(crates, groups, router, paths)
         for problem in problems:

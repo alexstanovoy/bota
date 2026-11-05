@@ -1,17 +1,19 @@
 # The test groups of this repository, read by tools/test_groups.py (its header says how they are used).
 #
 # Every test (unit, integration, doc and ignored) is in exactly one group: a group selects tests by crate, build (profile and
-# features), target and libtest name filters (substrings, as libtest matches them). Every file of the repository says which
-# groups a change to it runs:
+# features), target and libtest name filters (substrings, as libtest matches them), or holds a directory's Python unittest
+# tests (`unittest = DIR`: its test_*.py files, as `python3 -m unittest discover` finds them). Every file of the repository
+# says which groups a change to it runs:
 #   - a file a group's `paths` names runs that group, and a `[[route]]` names further groups for files several groups read;
 #     a group's `also_paths` add it to the groups of files something else names;
 #   - a file of a crate not marked `routed` runs every group of the crate and of every crate depending on it (Cargo's
 #     dependencies, development ones too, and the crate's `dependents`); so does a file of a routed crate that a route sends
 #     to "@<crate>";
 #   - a file of a routed crate (bota_server) must be named by a group or a route: `check` fails on one that is not;
-#   - a file outside the crates must be named too: "*" runs every group, an empty list none.
+#   - a file outside the crates must be named too: "*" runs every group, an empty list none (documents in a crate too).
 # Group names in a route may end in "*" (every group of that prefix). `check` fails on a pattern that names no file, a
-# filter that selects no test, a test in no group or in two, a group with no test and more than 30 groups.
+# filter that selects no test, a test in no group or in two, a group with no test, more than 30 groups, a test target with
+# a harness of its own and a bench no group's command runs.
 
 [crate.bota_proto]
 [crate.bota_core]
@@ -78,8 +80,15 @@ tests = [{ crate = "bota_radovid", env = { BOTA_SERVER_BIN = "{target_dir}/relea
 [[group]]
 name = "import_items"
 about = "the item importer: its own checks, and that the committed item table is what a Dota 2 install gives"
-paths = ["crates/bota_core/src/data/items.rs"]
+# the files it reads: the item table it writes and checks, and the ids it registers items under
+also_paths = ["crates/bota_core/src/data/items.rs", "crates/bota_proto/registry/ids.txt"]
 tests = [{ crate = "import_items", args = ["--include-ignored"] }]
+
+[[group]]
+name = "tooling"
+about = "the gate's own machinery: test groups, routing, stamps and the gate and precheck flow (Python unittest)"
+paths = ["tools/test_*.py"]
+tests = [{ unittest = "tools" }]
 
 # bota_server: the simulation (game_*) and the server around it (server_*). A file of one game system runs its group and
 # game_determinism (the pins and the bench digests, which catch any change of the simulation); what the whole world is

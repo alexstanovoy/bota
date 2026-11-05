@@ -2,3 +2,4 @@
 /tools/import_items/target/
 *.pid
 /temp/
+__pycache__/

@@ -20,7 +20,7 @@ cd -- "$(git rev-parse --show-toplevel)" || exit 2
 # shellcheck source=tools/stamp.sh
 . "$(dirname -- "${BASH_SOURCE[0]}")/stamp.sh"
 base=${1:-${PRECHECK_BASE:-$(default_base)}}
-if [ "${PRECHECK_ALL:-0}" = 1 ]; then scope=--all; else scope="--base $base"; fi
+if [ "${PRECHECK_ALL:-0}" = 1 ]; then selection=--all; else selection="--base $base"; fi
 
 record=$(git rev-parse --git-path precheck-failed)
 started=$SECONDS
@@ -28,12 +28,15 @@ step() { local name=$1 t=$SECONDS; shift; echo "== $name"; "$@" || { echo "PRECH
 has() { case " $1 " in *" $2 "*) return 0 ;; esac; return 1; }
 
 # shellcheck disable=SC2086
-plan=$(python3 tools/test_groups.py plan $scope) || { echo "PRECHECK-FAIL plan"; exit 1; }
+plan=$(python3 tools/test_groups.py plan $selection) || { echo "PRECHECK-FAIL plan" >&2; exit 2; }
 groups=$(sed -n 's/^groups *//p' <<< "$plan")
 crates=$(sed -n 's/^crates *//p' <<< "$plan")
+scope=$(sed -n 's/^scope //p' <<< "$plan")
+# the stamp names the tree checked and the selection it was checked with (tools/stamp.sh)
+tree=$(tree_key)
 if [ -z "$groups" ] && [ -z "$crates" ]; then
     echo "precheck: no crate and no test group touched"
-    stamp_put "$(tree_key)" precheck
+    stamp_put "$tree-$scope" precheck
     echo "PRECHECK-OK ($((SECONDS - started)) s)"
     exit 0
 fi
@@ -48,7 +51,7 @@ if has "$crates" bota_client_core; then
     step "clippy (bota_client_core ui)" cargo clippy -p bota_client_core --all-targets --features ui -- -D warnings || exit 1
 fi
 # shellcheck disable=SC2086
-step test-groups python3 tools/test_groups.py check $scope || exit 1
+step test-groups python3 tools/test_groups.py check $selection || exit 1
 
 run_groups() { # the groups that failed last time first, then the rest
     local first=() rest=() g
@@ -71,5 +74,10 @@ fi
 if has "$crates" bota_radovid; then
     step "wasm (bota_radovid)" cargo check --target wasm32-unknown-unknown -p bota_radovid --features web || exit 1
 fi
-stamp_put "$(tree_key)" precheck
+if [ "$(tree_key)" != "$tree" ]; then
+    echo "PRECHECK-FAIL the tree changed while the precheck ran (git status --short):"
+    git status --short
+    exit 1
+fi
+stamp_put "$tree-$scope" precheck
 echo "PRECHECK-OK ($((SECONDS - started)) s)"
