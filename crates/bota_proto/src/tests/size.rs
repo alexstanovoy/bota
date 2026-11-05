@@ -31,11 +31,12 @@ const TICK_RATE: usize = 30;
 /// against combining and may be taken apart (a side's view withholds both
 /// behind one byte each), one for the rune of each, absent in all but a
 /// Bottle, and a byte for the exact health of a unit whose health counts hits,
-/// absent on a hero.
+/// absent on a hero. The absent vision grant adds its one-byte option tag,
+/// raising this budget from 278 to 279 bytes.
 #[test]
-fn a_hero_stays_under_278_bytes() {
+fn a_hero_stays_under_279_bytes() {
     let len = encoded_len(&hero_unit());
-    assert!(len <= 278, "hero unit grew to {len} bytes");
+    assert!(len <= 279, "hero unit grew to {len} bytes");
 }
 
 #[test]
