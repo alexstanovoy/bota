@@ -1,8 +1,11 @@
 """tools/test_groups.py's routing, selection and guards, on this repository's own groups (tools/test_groups.toml)."""
 
+import os
+import signal
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import unittest
 from pathlib import Path
@@ -136,44 +139,142 @@ class Partition(unittest.TestCase):
 
 
 class Running(unittest.TestCase):
-    def pool(self, *runs, jobs=2):
+    def setUp(self):
         scratch = tempfile.TemporaryDirectory()
         self.addCleanup(scratch.cleanup)
-        record = Path(scratch.name) / "failed"
-        pool = test_groups.Pool(jobs, record)
-        with open(Path(scratch.name) / "out", "w") as out:
+        self.scratch = Path(scratch.name)
+        self.record = self.scratch / "failed"
+
+    def pool(self, jobs=2):
+        return test_groups.Pool(jobs, self.record, self.scratch / "logs")
+
+    def run_pool(self, *runs, jobs=2):
+        with open(self.scratch / "out", "w") as out:
             stdout, sys.stdout = sys.stdout, out
             try:
-                passed = pool.run(list(runs))
+                passed = self.pool(jobs).run(list(runs))
             finally:
                 sys.stdout = stdout
-        return passed, record.read_text() if record.exists() else "", (Path(scratch.name) / "out").read_text()
+        return passed, (self.scratch / "out").read_text()
 
     def python(self, group, code, expected=None):
-        return test_groups.Invocation(group, [sys.executable, "-c", code], Path.cwd(), {}, expected, {group})
+        return test_groups.Invocation(group, [sys.executable, "-c", code], self.scratch, {}, expected, {group})
+
+    def recorded(self):
+        return self.record.read_text() if self.record.exists() else ""
 
     def test_a_run_of_fewer_tests_than_its_groups_select_fails_and_is_recorded(self):
         result = "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out"
-        passed, record, out = self.pool(self.python("core", f"print({result!r})", expected=2))
+        passed, out = self.run_pool(self.python("core", f"print({result!r})", expected=2))
         self.assertFalse(passed)
-        self.assertEqual(record, "core\n")
+        self.assertEqual(self.recorded(), "core\n")
         self.assertIn("it ran 1 tests where its groups select 2", out)
 
-    def test_the_first_failure_stops_the_runs_in_flight_and_the_rest(self):
-        began = time.monotonic()
-        passed, record, _ = self.pool(
-            self.python("slow", "import time; time.sleep(60)"),
-            self.python("broken", "raise SystemExit(3)"),
-            self.python("never", "import time; time.sleep(60)"),
-        )
+    def test_a_binary_that_cannot_start_fails_its_groups(self):
+        missing = test_groups.Invocation("gone", [str(self.scratch / "no-such-binary")], self.scratch, {}, 1, {"core"})
+        passed, out = self.run_pool(missing)
         self.assertFalse(passed)
-        self.assertEqual(record, "broken\n")
-        self.assertLess(time.monotonic() - began, 30)
+        self.assertEqual(self.recorded(), "core\n")
+        self.assertIn("(the runner: FileNotFoundError", out)
 
-    def test_runs_at_once_pass_together(self):
-        passed, _, out = self.pool(*[self.python(f"g{n}", "import time; time.sleep(1)") for n in range(4)], jobs=4)
-        self.assertTrue(passed)
-        self.assertEqual(out.count("test-groups: 1 s"), 4)
+    def test_output_that_is_not_utf8_is_told_and_counted(self):
+        code = "import sys; sys.stdout.buffer.write(b'\\xff\\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured\\n')"
+        passed, out = self.run_pool(self.python("core", code, expected=1))
+        self.assertTrue(passed, out)
+
+    def test_runs_at_once_meet_at_a_barrier(self):
+        # each run marks its arrival and waits for the others: only runs in flight together can all pass
+        wait = (
+            "import pathlib, sys, time\n"
+            "here = pathlib.Path(sys.argv[1]); (here / sys.argv[2]).touch()\n"
+            "deadline = time.monotonic() + 120\n"
+            "while len(list(here.glob('arrived-*'))) < 3:\n"
+            "    if time.monotonic() > deadline: sys.exit('the others never came')\n"
+            "    time.sleep(0.05)\n"
+        )
+        runs = [test_groups.Invocation(f"g{n}", [sys.executable, "-c", wait, str(self.scratch), f"arrived-{n}"], self.scratch, {}, None, {f"g{n}"})
+                for n in range(3)]
+        passed, out = self.run_pool(*runs, jobs=3)
+        self.assertTrue(passed, out)
+
+    def test_the_first_failure_stops_the_runs_in_flight_and_the_rest(self):
+        finished = self.scratch / "finished"
+        slow = f"import time; time.sleep(60); open({str(finished)!r}, 'w')"
+        passed, _ = self.run_pool(self.python("slow", slow), self.python("broken", "raise SystemExit(3)"), self.python("never", slow))
+        self.assertFalse(passed)
+        self.assertEqual(self.recorded(), "broken\n")
+        self.assertFalse(finished.exists())
+
+    def test_the_first_failure_is_told_last(self):
+        passed, out = self.run_pool(self.python("fine", "pass"), self.python("broken", "raise SystemExit(3)"), jobs=1)
+        self.assertFalse(passed)
+        self.assertTrue(out.rstrip().splitlines()[-1].startswith("test-groups: FAILED after"), out)
+        self.assertIn("groups broken", out.rstrip().splitlines()[-1])
+
+    def test_only_the_first_failure_is_recorded(self):
+        pool = self.pool()
+        with open(self.scratch / "out", "w") as out:
+            stdout, sys.stdout = sys.stdout, out
+            try:
+                with pool.lock:
+                    pool.fail("first", {"core"})
+                    pool.fail("second", {"server_net"})
+            finally:
+                sys.stdout = stdout
+        self.assertEqual((pool.failure, self.recorded()), ("first", "core\n"))
+
+    def test_a_run_that_would_start_after_a_failure_does_not_start(self):
+        started = self.scratch / "started"
+        pool = self.pool()
+        pool.failure = "an earlier failure"
+        pool.slots.acquire()
+        pool.execute(self.python("late", f"open({str(started)!r}, 'w')"), self.scratch / "late.log")
+        self.assertFalse(started.exists())
+
+    def test_sigterm_stops_every_binary_and_what_it_started(self):
+        child = self.scratch / "child"
+        code = (
+            "import subprocess, sys, time\n"
+            "server = subprocess.Popen(['sleep', '300'])\n"
+            f"open({str(child)!r}, 'w').write(str(server.pid))\n"
+            "time.sleep(300)\n"
+        )
+
+        def terminate_once_started():
+            deadline = time.monotonic() + 120
+            while not (child.exists() and child.read_text()) and time.monotonic() < deadline:
+                time.sleep(0.05)
+            os.kill(os.getpid(), signal.SIGTERM)
+
+        threading.Thread(target=terminate_once_started, daemon=True).start()
+        with self.assertRaises(SystemExit) as stopped:
+            self.run_pool(self.python("server", code))
+        self.assertEqual(stopped.exception.code, 128 + signal.SIGTERM)
+        self.assertEqual(self.recorded(), "")
+        deadline = time.monotonic() + 30  # a hang guard: the kill is sent before run returns
+        while Path(f"/proc/{child.read_text()}").exists() and "Z" not in Path(f"/proc/{child.read_text()}/stat").read_text().split()[2]:
+            self.assertLess(time.monotonic(), deadline, "the server a binary started outlived the run")
+            time.sleep(0.05)
+
+
+class Share(unittest.TestCase):
+    def test_the_share_is_split_into_binaries_and_their_test_threads(self):
+        self.assertEqual(test_groups.split_share(32, None, None), (4, 8))
+        self.assertEqual(test_groups.split_share(6, None, None), (1, 6))
+        self.assertEqual(test_groups.split_share(32, 8, None), (8, 4))
+        self.assertEqual(test_groups.split_share(32, 2, 12), (2, 12))
+
+    def test_heavy_cpus_bounds_the_share(self):
+        environment = os.environ.get("HEAVY_CPUS")
+        self.addCleanup(lambda: os.environ.__setitem__("HEAVY_CPUS", environment) if environment else os.environ.pop("HEAVY_CPUS", None))
+        os.environ["HEAVY_CPUS"] = "2"
+        self.assertLessEqual(test_groups.cpu_share(), 2)
+
+    def test_a_job_count_that_is_no_number_is_refused(self):
+        result = subprocess.run([sys.executable, "-B", str(test_groups.ROOT / "tools/test_groups.py"), "run", "core"],
+                                env=os.environ | {"TEST_GROUPS_JOBS": "four"}, capture_output=True, text=True)
+        self.assertEqual(result.returncode, 2, result.stderr)
+        self.assertIn("TEST_GROUPS_JOBS 'four': a whole number of at least one", result.stderr)
 
 
 class Guards(unittest.TestCase):

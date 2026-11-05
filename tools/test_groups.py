@@ -4,8 +4,8 @@
     tools/test_groups.py check [--base REV | --all]   every test in exactly one group, every file routed, at most 30 groups
     tools/test_groups.py plan [--base REV | --all]    the groups and crates the change since the merge-base with REV affects
     tools/test_groups.py run [--record FILE] [--jobs N] GROUP...
-                                                      the groups' tests and commands, N at a time (default 4,
-                                                      TEST_GROUPS_JOBS), stopping at the first failure
+                                                      the groups' tests and commands, N at a time (TEST_GROUPS_JOBS;
+                                                      default: from the CPU share), stopping at the first failure
 
 REV defaults to origin/main (main where there is no origin). `check` lists the tests of the crates the change can touch
 (every crate with --all) by building their test targets in each build the groups use and with all their features; a crate
@@ -561,10 +561,37 @@ def unused_filters(group: Group, selector: Selector, hits: list[tuple[str, str]]
     return [f"group {group.name}: the filter {f} selects no test" for f in selector.filters if not any(f in n for _, n in hits)]
 
 
-# How many test binaries run at once unless --jobs or TEST_GROUPS_JOBS says otherwise (each runs its tests on libtest's own
-# threads, RUST_TEST_THREADS). Measured on the full run (32 threads, RUST_TEST_THREADS=16): 1 at a time 209 s, 2 93 s, 4 59 s,
-# 6 60 s, 8 70 s; at 4 the run waits on its longest binary (tests/malformed.rs), and the processes peak under 1.1 GB.
-JOBS = 4
+# A run's CPU share: the CPUs this process may use, under the cgroup's quota and heavy.sh's HEAVY_CPUS when they are set.
+# The share is split into binaries at once and test threads each (RUST_TEST_THREADS, set per binary); a binary gets at
+# least THREADS_PER_BINARY threads, because the largest one (bota_server's ~1000 unit tests) has to end in the shadow of
+# the longest serial binary, and no more than an inherited RUST_TEST_THREADS (heavy.sh caps it: a test thread may play a
+# game, and games take memory).
+THREADS_PER_BINARY = 8
+# A hang guard: a test binary or command still running after this long is stopped and fails its groups.
+TIMEOUT_SECONDS = 1800
+
+
+def cpu_share() -> int:
+    """The CPUs a run may use: its affinity, under the cgroup's cpu.max quota and HEAVY_CPUS."""
+    share = len(os.sched_getaffinity(0))
+    try:
+        cgroup = Path("/proc/self/cgroup").read_text().splitlines()[0].split(":", 2)[2]
+        quota, period = (Path("/sys/fs/cgroup") / cgroup.lstrip("/") / "cpu.max").read_text().split()
+        if quota != "max":
+            share = min(share, max(1, -(-int(quota) // int(period))))
+    except (OSError, ValueError, IndexError):
+        pass  # no cgroup v2 here: the affinity stands
+    heavy = os.environ.get("HEAVY_CPUS", "")
+    if heavy.isdigit() and int(heavy) > 0:
+        share = min(share, int(heavy))
+    return share
+
+
+def split_share(share: int, jobs: int | None, cap: int | None) -> tuple[int, int]:
+    """Binaries at once and test threads each: `jobs` when asked for, else as many as the share gives THREADS_PER_BINARY."""
+    jobs = jobs or max(1, share // THREADS_PER_BINARY)
+    threads = max(1, share // jobs)
+    return jobs, min(threads, cap) if cap else threads
 
 
 @dataclass
@@ -579,7 +606,18 @@ class Invocation:
     groups: set[str]
 
 
-def invocations(crates: dict[str, Crate], chosen: list[Group]) -> list[Invocation]:
+@dataclass(frozen=True)
+class Target:
+    """A target of one build, run with the union of its groups' filters, and what it is given."""
+
+    build: Build
+    name: str
+    filters: tuple[str, ...]
+    args: tuple[str, ...]
+    env: tuple[tuple[str, str], ...]
+
+
+def invocations(crates: dict[str, Crate], chosen: list[Group], places: dict[str, str]) -> list[Invocation]:
     """The processes of the chosen groups: per build, environment and extra arguments, each test binary once with the union of
     its groups' filters (none when a group takes it whole), the doc tests through cargo, the unittest suites through Python."""
     keyed: dict[tuple, dict[str, tuple[set[str] | None, set[str]]]] = {}
@@ -598,23 +636,28 @@ def invocations(crates: dict[str, Crate], chosen: list[Group]) -> list[Invocatio
             runs.append(Invocation(f"unittest {build.crate}", unittest_command(build.crate), ROOT, {}, len(listed.tests[UNITTEST]), owners))
             continue
         if "*" in targets:  # the whole crate
-            _, owners = targets.pop("*")
+            filters, owners = targets.pop("*")
+            assert filters is None, "load_group refuses filters without a target"
             targets = {t: (None, owners | targets.get(t, (None, set()))[1]) for t in listed.tests}
-        for target, (filters, owners) in sorted(targets.items()):
-            runs.append(invocation(crates, build, args, dict(env), listed, target, sorted(filters or ()), owners))
+        for name, (filters, owners) in sorted(targets.items()):
+            target = Target(build, name, tuple(sorted(filters or ())), args, env)
+            runs.append(invocation(crates, listed, target, owners, places))
     return runs
 
 
-def invocation(crates, build, args, env, listed, target, filters, owners) -> Invocation:
-    selector = Selector(build, None, tuple(filters), (), (), ())
-    expected = sum(1 for n in listed.tests.get(target, []) if selects(selector, target, n))
-    key = " ".join([build.crate, build.profile, ",".join(build.features), target, *filters, *args])
-    if target == "doc":  # rustdoc builds and runs them: only cargo can
-        return Invocation(key, cargo_test(crates, build) + ["--doc", "--", *filters, *args], ROOT, env, expected, owners)
+def invocation(crates: dict[str, Crate], listed: Listed, target: Target, owners: set[str], places: dict[str, str]) -> Invocation:
+    selector = Selector(target.build, None, target.filters, (), (), ())
+    expected = sum(1 for n in listed.tests.get(target.name, []) if selects(selector, target.name, n))
+    build = target.build
+    key = " ".join([build.crate, build.profile, ",".join(build.features), target.name, *target.filters, *target.args])
+    env = {k: v.format(**places) for k, v in target.env}
+    if target.name == "doc":  # rustdoc builds and runs them: only cargo can
+        command = cargo_test(crates, build) + ["--doc", "--", *target.filters, *target.args]
+        return Invocation(key, command, ROOT, env, expected, owners)
     crate = crates[build.crate]
     # as `cargo test` runs a test binary: from its crate's directory, told where that is
     env |= {"CARGO_MANIFEST_DIR": str(ROOT / crate.directory), "CARGO_PKG_NAME": crate.name}
-    command = [str(listed.executables[target]), *filters, *args]
+    command = [str(listed.executables[target.name]), *target.filters, *target.args]
     return Invocation(key, command, ROOT / crate.directory, env, expected, owners)
 
 
@@ -622,19 +665,26 @@ def target_directory() -> str:
     return metadata(None)["target_directory"]
 
 
-def run(crates: dict[str, Crate], chosen: list[Group], record: Path | None, jobs: int) -> bool:
+def run(crates: dict[str, Crate], chosen: list[Group], record: Path | None, jobs: int | None) -> bool:
     """Runs the chosen groups: their `before` commands one after another, then their test binaries, doc tests and commands
-    `jobs` at a time, the longest of the last run first, stopping at the first failure; `record` gets the failed groups."""
+    a few at a time (`jobs`, else from the CPU share), the longest of the last run first, stopping at the first failure;
+    `record` gets the groups of the first failure."""
     began = time.monotonic()
     places = {"target_dir": target_directory()}
-    befores = {command: group.name for group in reversed(chosen) for s in group.selectors for command in s.before}
+    cap = os.environ.get("RUST_TEST_THREADS", "")
+    jobs, threads = split_share(cpu_share(), jobs, int(cap) if cap.isdigit() and int(cap) > 0 else None)
+    logs = Path(places["target_dir"]) / "test-groups-logs"
+    befores: dict[tuple[str, ...], str] = {}  # each command once, for the first group that asks for it
+    for group in chosen:
+        for selector in group.selectors:
+            for command in selector.before:
+                befores.setdefault(command, group.name)
     for command, name in befores.items():
-        if not Pool(1, record).run([Invocation(" ".join(command), list(command), ROOT, {}, None, {name})]):
+        if not Pool(1, record, logs).run([Invocation(" ".join(command), list(command), ROOT, {}, None, {name})]):
             return False
-    runs = [
-        Invocation(each.key, each.command, each.cwd, {k: v.format(**places) for k, v in each.env.items()}, each.expected, each.groups)
-        for each in invocations(crates, chosen)
-    ]
+    runs = invocations(crates, chosen, places)
+    for each in runs:
+        each.env["RUST_TEST_THREADS"] = str(threads)
     runs += [Invocation(" ".join(c), c, ROOT, {}, None, {group.name}) for group in chosen for c in group.commands]
     history = Path(places["target_dir"]) / "test-groups-seconds.json"
     try:
@@ -642,88 +692,158 @@ def run(crates: dict[str, Crate], chosen: list[Group], record: Path | None, jobs
     except (OSError, ValueError):
         seconds = {}
     runs.sort(key=lambda each: -seconds.get(each.key, float("inf")))
-    pool = Pool(jobs, record)
+    pool = Pool(jobs, record, logs)
     passed = pool.run(runs)
     history.write_text(json.dumps(seconds | pool.seconds, indent=0, sort_keys=True))
     if passed:
-        print(f"test-groups: {len(chosen)} groups passed in {time.monotonic() - began:.0f} s ({jobs} at a time): {' '.join(g.name for g in chosen)}")
+        names = " ".join(g.name for g in chosen)
+        print(f"test-groups: {len(chosen)} groups passed in {time.monotonic() - began:.0f} s ({jobs} at a time, {threads} test threads each): {names}")
     return passed
 
 
 class Pool:
-    """Runs invocations a few at a time, each in a process group of its own; the first failure stops the rest."""
+    """Runs invocations a few at a time, each in a process group of its own with its output in a file. The first failure
+    (a test, a wrong count, a timeout, the runner itself, SIGINT or SIGTERM) stops the rest and is reported last."""
 
-    def __init__(self, jobs: int, record: Path | None):
+    def __init__(self, jobs: int, record: Path | None, logs: Path):
         self.slots = threading.Semaphore(jobs)
         self.record = record
+        self.logs = logs
         self.lock = threading.Lock()
         self.running: dict[int, subprocess.Popen] = {}
-        self.failed = False
+        self.failure: str | None = None  # the first failure's summary
         self.seconds: dict[str, float] = {}
 
     def run(self, runs: list[Invocation]) -> bool:
-        threads = []
-        for each in runs:
-            self.slots.acquire()
-            if self.failed:
-                self.slots.release()
-                break
-            thread = threading.Thread(target=self.execute, args=(each,))
-            thread.start()
-            threads.append(thread)
-        for thread in threads:
-            thread.join()
-        return not self.failed
+        self.logs.mkdir(parents=True, exist_ok=True)
+        interrupted: list[int] = []
 
-    def execute(self, each: Invocation) -> None:
+        def interrupt(number, _frame):
+            interrupted.append(number)
+            with self.lock:
+                self.fail(f"test-groups: interrupted by {signal.Signals(number).name}", set())
+
+        handlers = {number: signal.signal(number, interrupt) for number in (signal.SIGINT, signal.SIGTERM)}
+        threads = []
+        try:
+            for index, each in enumerate(runs):
+                self.slots.acquire()
+                if self.failure is not None:
+                    self.slots.release()
+                    break
+                thread = threading.Thread(target=self.execute, args=(each, self.logs / f"{index}.log"))
+                thread.start()
+                threads.append(thread)
+        finally:
+            for thread in threads:
+                thread.join()
+            for number, handler in handlers.items():
+                signal.signal(number, handler)
+        if self.failure is not None:
+            print(self.failure, flush=True)  # last, where a tail of the output finds it
+        if interrupted:
+            raise KeyboardInterrupt if interrupted[0] == signal.SIGINT else SystemExit(128 + interrupted[0])
+        return self.failure is None
+
+    def execute(self, each: Invocation, log: Path) -> None:
+        began = time.monotonic()
         try:
             shown = " ".join(f"{k}={v}" for k, v in each.env.items() if not k.startswith("CARGO_")) + " " + " ".join(each.command)
             print(f"test-groups: [{' '.join(sorted(each.groups))}] {shown.strip()}", flush=True)
-            began = time.monotonic()
-            process = subprocess.Popen(each.command, cwd=each.cwd, env=os.environ | each.env, stdout=subprocess.PIPE,
-                                       stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, text=True, start_new_session=True)
+            status = self.spawn(each, log)
             with self.lock:
-                self.running[process.pid] = process
-            output, _ = process.communicate()
+                if self.failure is not None and status != 0:
+                    return  # stopped because another one failed
+                self.report(each, log, status, time.monotonic() - began)
+        except BaseException as error:  # the runner itself failed: never a pass
+            groups = " ".join(sorted(each.groups))
             with self.lock:
-                del self.running[process.pid]
-                self.report(each, output, process.returncode, time.monotonic() - began)
+                self.fail(f"test-groups: FAILED after {time.monotonic() - began:.0f} s (the runner: {error!r}): groups {groups}", each.groups)
         finally:
             self.slots.release()
 
-    def report(self, each: Invocation, output: str, status: int, seconds: float) -> None:
-        """Under the lock: the invocation's output whole, its verdict, and on a failure the others stopped."""
-        if self.failed and status != 0:
-            return  # stopped because another one failed
-        sys.stdout.write(output)
-        problem = problem_of(output, status, each.expected)
+    def spawn(self, each: Invocation, log: Path) -> int:
+        """Runs one invocation to its end or the timeout, its output into `log`; leaves nothing of its process group behind."""
+        with open(log, "wb") as out:
+            with self.lock:
+                if self.failure is not None:
+                    return -signal.SIGKILL  # stopped before it started
+                process = subprocess.Popen(each.command, cwd=each.cwd, env=os.environ | each.env, stdout=out,
+                                           stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, start_new_session=True)
+                self.running[process.pid] = process
+            timed_out = not wait_unreaped(process.pid, TIMEOUT_SECONDS)
+            # The binary is a zombie now, so its process group's id cannot be anyone else's yet: what it left running
+            # (servers it started) goes with it.
+            kill_group(process.pid)
+            status = process.wait()
+            with self.lock:
+                del self.running[process.pid]
+            if timed_out:
+                with open(log, "ab") as tail:
+                    tail.write(f"\ntest-groups: stopped after {TIMEOUT_SECONDS} s\n".encode())
+                return -signal.SIGKILL
+            return status
+
+    def report(self, each: Invocation, log: Path, status: int, seconds: float) -> None:
+        """Under the lock: the invocation's output, its verdict, and on a failure the others stopped."""
+        if self.failure is None:  # after the first failure only that one is told
+            with open(log, "rb") as output:
+                for line in output:
+                    sys.stdout.write(line.decode(errors="replace"))
+        problem = problem_of(log, status, each.expected)
+        groups = " ".join(sorted(each.groups))
         if problem is None:
             self.seconds[each.key] = round(seconds, 1)
-            print(f"test-groups: {seconds:.0f} s [{' '.join(sorted(each.groups))}]", flush=True)
+            if self.failure is None:
+                print(f"test-groups: {seconds:.0f} s [{groups}]", flush=True)
             return
-        print(f"test-groups: FAILED after {seconds:.0f} s ({problem}): groups {' '.join(sorted(each.groups))}", flush=True)
-        self.failed = True
-        if self.record is not None:
-            self.record.write_text("\n".join(sorted(each.groups)) + "\n")
-        for process in self.running.values():
-            try:
-                os.killpg(process.pid, signal.SIGKILL)
-            except ProcessLookupError:
-                pass
+        self.fail(f"test-groups: FAILED after {seconds:.0f} s ({problem}): groups {groups}", each.groups)
+
+    def fail(self, summary: str, groups: set[str]) -> None:
+        """Under the lock: the first failure is kept, recorded and told; every failure stops what still runs."""
+        if self.failure is None:
+            self.failure = summary
+            print(summary, flush=True)
+            if self.record is not None and groups:
+                self.record.write_text("\n".join(sorted(groups)) + "\n")
+        self.stop_others()
+
+    def stop_others(self) -> None:
+        """Under the lock: every process group still running is killed."""
+        for pid in self.running:
+            kill_group(pid)
 
 
-def problem_of(output: str, status: int, expected: int | None) -> str | None:
+def wait_unreaped(pid: int, seconds: float) -> bool:
+    """Waits for a child to end without reaping it; False when it still runs after `seconds`."""
+    deadline = time.monotonic() + seconds
+    while os.waitid(os.P_PID, pid, os.WEXITED | os.WNOWAIT | os.WNOHANG) is None:
+        if time.monotonic() > deadline:
+            return False
+        time.sleep(0.1)
+    return True
+
+
+def kill_group(pid: int) -> None:
+    try:
+        os.killpg(pid, signal.SIGKILL)
+    except (ProcessLookupError, PermissionError):
+        pass
+
+
+def problem_of(log: Path, status: int, expected: int | None) -> str | None:
     """Why a finished invocation failed, None when it passed: its exit code, or a count of tests other than its groups'."""
     if status != 0:
         return f"exit code {status}"
     ran = 0
-    for line in output.splitlines():
-        found = re.match(r"test result: \w+\. (\d+) passed; (\d+) failed; (\d+) ignored; (\d+) measured", line)
-        if found:
-            ran += sum(int(n) for n in found.groups())
-        found = re.match(r"Ran (\d+) tests? in ", line)  # unittest
-        if found:
-            ran += int(found.group(1))
+    with open(log, "rb") as output:
+        for line in (raw.decode(errors="replace") for raw in output):
+            found = re.match(r"test result: \w+\. (\d+) passed; (\d+) failed; (\d+) ignored; (\d+) measured", line)
+            if found:
+                ran += sum(int(n) for n in found.groups())
+            found = re.match(r"Ran (\d+) tests? in ", line)  # unittest
+            if found:
+                ran += int(found.group(1))
     if expected is not None and ran != expected:
         return f"it ran {ran} tests where its groups select {expected} (the selection and libtest's disagree)"
     return None
@@ -738,8 +858,8 @@ def main() -> int:
         each.add_argument("--all", action="store_true", help="everything, whatever changed")
     running = sub.add_parser("run")
     running.add_argument("--record", type=Path, help="write the names of the groups that failed here")
-    running.add_argument("--jobs", type=int, default=int(os.environ.get("TEST_GROUPS_JOBS", JOBS)),
-                         help=f"test binaries at once (default TEST_GROUPS_JOBS, else {JOBS})")
+    running.add_argument("--jobs", default=os.environ.get("TEST_GROUPS_JOBS"),
+                         help="test binaries at once (default TEST_GROUPS_JOBS, else one per THREADS_PER_BINARY CPUs of the share)")
     running.add_argument("groups", nargs="+")
     options = parser.parse_args()
     try:
@@ -749,9 +869,10 @@ def main() -> int:
             unknown = [n for n in options.groups if n not in router.names]
             if unknown:
                 raise Failure(f"no such group: {' '.join(unknown)} (groups: {' '.join(router.names)})")
-            if options.jobs < 1:
-                raise Failure(f"--jobs {options.jobs}: at least one")
-            return 0 if run(crates, [g for g in groups if g.name in options.groups], options.record, options.jobs) else 1
+            jobs = None if options.jobs is None else options.jobs.strip()
+            if jobs is not None and (not jobs.isdigit() or int(jobs) < 1):
+                raise Failure(f"--jobs or TEST_GROUPS_JOBS {options.jobs!r}: a whole number of at least one")
+            return 0 if run(crates, [g for g in groups if g.name in options.groups], options.record, int(jobs) if jobs else None) else 1
         merge_base, paths = (None, None) if options.all else changed(options.base or default_base())
         if options.action == "plan":
             print("\n".join(plan_report(router, merge_base, paths)))
@@ -764,6 +885,8 @@ def main() -> int:
     except Failure as failure:
         print(f"test-groups: {failure}", file=sys.stderr)
         return 2
+    except KeyboardInterrupt:
+        return 128 + signal.SIGINT
 
 
 if __name__ == "__main__":
