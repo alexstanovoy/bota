@@ -836,27 +836,11 @@ impl World {
             .flatten()
             .ok_or(RejectReason::EmptySlot)?;
         let def = item_def(stack.id).ok_or(RejectReason::EmptySlot)?;
-        // A stack just out of the backpack does nothing until it has woken up.
-        if stack.mute > 0 {
-            return Err(RejectReason::NotReady);
-        }
-        let aim = def.aim.ok_or(RejectReason::NotCastable)?;
-        if self.wears_illusion(unit) {
-            return Err(RejectReason::NotCastable);
-        }
+        let aim = self.usable(unit, &stack, def)?;
         // What is given away waits for nothing and costs nothing; what lands on an ally is a use.
         let ally = self.ally_use_on(unit, def, target);
         let gives = ally.is_some_and(|ally| matches!(ally, AllyUse::Give { .. }));
-        if !gives
-            && (stack.cooldown > 0
-                || (def.shared_wait && self.owes_wait(unit, def.wait_key.unwrap_or(stack.id))))
-        {
-            return Err(RejectReason::OnCooldown);
-        }
-        // What holds a rune lets it out, and needs no charge for that.
-        if (def.charges > 0 || def.cast_charges > 0) && stack.charges == 0 && stack.rune.is_none() {
-            return Err(RejectReason::NoCharges);
-        }
+        self.ready(unit, &stack, def, gives)?;
         // What the side cannot see is refused as a dead target, whatever it is aimed for.
         if ally.is_some()
             && let Target::Unit(id) = target
@@ -878,10 +862,7 @@ impl World {
         if let Target::Unit(target) = target {
             self.seen_by(seat, *target)?;
         }
-        if !gives
-            && self.mana.get(unit).map_or(0, |pool| pool.mana.to_int())
-                < self.item_mana_cost(unit, stack.id)
-        {
+        if !gives && self.short_of_mana_for(unit, stack.id) {
             return Err(RejectReason::NotEnoughMana);
         }
         // A channel is no bar: the order breaks it off, as in Dota.

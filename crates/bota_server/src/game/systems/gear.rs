@@ -6,7 +6,8 @@ use bota_core::{
     learn_group, move_towards, place_purchase, purchase_pool, rules,
 };
 use bota_proto::{
-    AbilityId, Attribute, EventKind, Fixed, HeroId, Inflictor, ItemId, SlotId, Target, Vec2,
+    AbilityId, Aim, Attribute, EventKind, Fixed, HeroId, Inflictor, ItemId, RejectReason, SlotId,
+    Target, Vec2,
 };
 
 use crate::game::{
@@ -580,10 +581,8 @@ impl World {
         let Some(def) = item_def(stack.id) else {
             return false;
         };
-        if def.aim.is_none()
-            || self.wears_illusion(entity)
-            || !(in_inventory(slot) || in_town_portal(slot))
-            || stack.mute > 0
+        if !(in_inventory(slot) || in_town_portal(slot))
+            || self.usable(entity, &stack, def).is_err()
         {
             return false;
         }
@@ -593,27 +592,14 @@ impl World {
         {
             return self.give_one(entity, slot, to, (def.cast_range, item));
         }
-        if stack.cooldown > 0 {
+        if self.ready(entity, &stack, def, false).is_err()
+            || self.short_of_mana_for(entity, stack.id)
+        {
             return false;
         }
         let letting_out_a_rune = stack.rune.is_some();
         let wait_on = def.wait_key.unwrap_or(stack.id);
-        if def.shared_wait && self.owes_wait(entity, wait_on) {
-            return false;
-        }
-        // What holds a rune lets it out, and needs no charge for that.
-        if (def.charges > 0 || def.cast_charges > 0) && stack.charges == 0 && stack.rune.is_none() {
-            return false;
-        }
         let cost = self.item_mana_cost(entity, stack.id);
-        if cost > 0
-            && self
-                .mana
-                .get(entity)
-                .is_none_or(|pool| pool.mana < Fixed::from_int(cost))
-        {
-            return false;
-        }
         if !self.use_effect(entity, slot, (stack.id, def), target) {
             return false;
         }
@@ -660,6 +646,58 @@ impl World {
             }
         }
         true
+    }
+
+    /// Whether a unit may use a stack at all: one just out of the backpack
+    /// does nothing until it has woken up, a passive has no use, and an
+    /// illusion uses nothing. The aim of its use when it may. The order's
+    /// check and the use itself both read this, and [`World::ready`].
+    pub(crate) fn usable(
+        &self,
+        unit: Entity,
+        stack: &ItemStack,
+        def: &ItemDef,
+    ) -> Result<Aim, RejectReason> {
+        if stack.mute > 0 {
+            return Err(RejectReason::NotReady);
+        }
+        let aim = def.aim.ok_or(RejectReason::NotCastable)?;
+        if self.wears_illusion(unit) {
+            return Err(RejectReason::NotCastable);
+        }
+        Ok(aim)
+    }
+
+    /// Whether a usable stack is ready: its cooldown and any wait it shares
+    /// are over, unless it is given away, which waits for nothing, and it
+    /// holds a charge, unless it holds a rune, which it lets out for none.
+    pub(crate) fn ready(
+        &self,
+        unit: Entity,
+        stack: &ItemStack,
+        def: &ItemDef,
+        gives: bool,
+    ) -> Result<(), RejectReason> {
+        if !gives
+            && (stack.cooldown > 0
+                || (def.shared_wait && self.owes_wait(unit, def.wait_key.unwrap_or(stack.id))))
+        {
+            return Err(RejectReason::OnCooldown);
+        }
+        if (def.charges > 0 || def.cast_charges > 0) && stack.charges == 0 && stack.rune.is_none() {
+            return Err(RejectReason::NoCharges);
+        }
+        Ok(())
+    }
+
+    /// Whether a unit holds less mana than a use of the item costs it.
+    pub(crate) fn short_of_mana_for(&self, unit: Entity, id: ItemId) -> bool {
+        let cost = self.item_mana_cost(unit, id);
+        cost > 0
+            && self
+                .mana
+                .get(unit)
+                .is_none_or(|pool| pool.mana < Fixed::from_int(cost))
     }
 
     /// Who an instant mana restoration aimed at `target` restores: its user for nothing or
