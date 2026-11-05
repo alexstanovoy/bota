@@ -3,7 +3,8 @@
 #
 #   tools/gate.sh
 #
-# Steps: ignored-audit (every #[ignore]d test has a step that runs it), fuzz-check (the fuzz targets compile), clippy, clippy-radovid, clippy-ui, wasm, wasm-radovid, wasm-web, test (profile test-release), test-product (bota_proto as the product builds), test-ui, build-server and test-radovid (bota_radovid's end-to-end tests), bench (the dummy bench's digest
+# Steps: ignored-audit (every #[ignore]d test has a step that runs it), gate-docs (this gate's documents-only path, in a
+# disposable repository), fuzz-check (the fuzz targets compile), clippy, clippy-radovid, clippy-ui, wasm, wasm-radovid, wasm-web, test (profile test-release), test-product (bota_proto as the product builds), test-ui, build-server and test-radovid (bota_radovid's end-to-end tests), bench (the dummy bench's digest
 # checks), deny, import (the item importer, tools/import_items: its own checks and, with a Dota 2 install, that the
 # committed item table is what the install gives; no install fails the gate), then fmt and import-fmt (last: they change no code).
 # Environment:
@@ -67,6 +68,7 @@ step() { # name command...
 }
 
 step ignored-audit tools/ignored_audit.sh
+step gate-docs tools/gate_docs_test.sh
 step fuzz-check fuzz/fuzz.sh check
 step clippy cargo clippy --all-targets -- -D warnings
 step clippy-radovid cargo clippy -p bota_radovid --all-targets --features e2e -- -D warnings
