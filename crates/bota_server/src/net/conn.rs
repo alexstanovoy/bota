@@ -3,7 +3,7 @@
 use std::net::{Shutdown, TcpStream};
 use std::num::NonZeroU32;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::{AtomicU32, AtomicUsize, Ordering};
 use std::sync::mpsc::Sender;
 use std::thread;
 use std::time::{Duration, Instant};
@@ -41,8 +41,38 @@ pub struct Connection {
     ticks_sent: Arc<AtomicU32>,
 }
 
+/// How many connections hold threads: one counts from its adoption until its
+/// reader and its writer have both ended, so a peer let go still counts while
+/// its connection is read on.
+#[derive(Clone, Default)]
+pub struct LiveConnections(Arc<AtomicUsize>);
+
+impl LiveConnections {
+    /// How many connections hold threads now.
+    pub fn count(&self) -> usize {
+        self.0.load(Ordering::Acquire)
+    }
+
+    /// Counts one more connection until the [`Hold`] is dropped.
+    fn hold(&self) -> Hold {
+        self.0.fetch_add(1, Ordering::AcqRel);
+        Hold(Arc::clone(&self.0))
+    }
+}
+
+/// One connection's place among the live ones, given back when the last of
+/// its threads lets go of it.
+struct Hold(Arc<AtomicUsize>);
+
+impl Drop for Hold {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, Ordering::AcqRel);
+    }
+}
+
 impl Connection {
-    /// Adopts a connected peer: spawns its reader and writer threads. Fails
+    /// Adopts a connected peer: spawns its reader and writer threads, which
+    /// count among the `live` connections until both have ended. Fails
     /// when the system has no socket handle or thread left for it; the reader
     /// is spawned last, so a failed connection never reports an event.
     ///
@@ -57,7 +87,10 @@ impl Connection {
         idle_timeout: Option<Duration>,
         messages_per_sec: NonZeroU32,
         world_tick: Arc<AtomicU32>,
+        live: &LiveConnections,
     ) -> std::io::Result<Connection> {
+        let reader_hold = Arc::new(live.hold());
+        let writer_hold = Arc::clone(&reader_hold);
         let Split {
             source,
             sink,
@@ -66,7 +99,10 @@ impl Connection {
         let outbox = Outbox::new();
         let reader_outbox = Arc::clone(&outbox);
         let writer_outbox = Arc::clone(&outbox);
-        thread::Builder::new().spawn(move || writer_outbox.run_writer(sink))?;
+        thread::Builder::new().spawn(move || {
+            let _held = writer_hold;
+            writer_outbox.run_writer(sink);
+        })?;
         let ticks_sent = Arc::new(AtomicU32::new(0));
         let allowance = Allowance::new(messages_per_sec, Arc::clone(&ticks_sent), Instant::now());
         let opened = Instant::now();
@@ -78,6 +114,7 @@ impl Connection {
             ticks_sent,
         };
         if let Err(error) = thread::Builder::new().spawn(move || {
+            let _held = reader_hold;
             read_loop(
                 id,
                 source,

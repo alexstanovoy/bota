@@ -251,8 +251,28 @@ fn serve_over(opts: ServerOpts, wire: Wire) -> String {
     dial(wire, &addr.to_string())
 }
 
+/// A connection the server takes, dialled again until the server tells it anything (its first
+/// ping): a server that holds as many connections as it may takes the next once one is freed.
+fn admitted(addr: std::net::SocketAddr) -> TestClient {
+    let started = Instant::now();
+    loop {
+        assert!(started.elapsed() < HANG_GUARD, "no place is freed");
+        let mut client = TestClient::connect(addr);
+        let mut buf = [0u8; 4096];
+        if let Ok(n @ 1..) = client.stream.read(&mut buf) {
+            client.reader.push(&buf[..n]);
+            return client;
+        }
+        thread::sleep(Duration::from_millis(20));
+    }
+}
+
 fn join_as_bot(addr: std::net::SocketAddr, name: &str) -> (TestClient, Option<SlotId>) {
-    let mut client = TestClient::connect(addr);
+    hello_as_bot(TestClient::connect(addr), name)
+}
+
+/// Says Hello as a bot on `client`, picks and readies.
+fn hello_as_bot(mut client: TestClient, name: &str) -> (TestClient, Option<SlotId>) {
     client.send(&ClientMsg::hello(
         Role::Bot,
         name,
@@ -546,7 +566,9 @@ fn a_stranger_that_never_says_hello_is_let_go_and_frees_its_place() {
         }
     }
     assert!(started.elapsed() >= HELLO_DEADLINE - Duration::from_secs(1));
-    let (_seated, slot) = join_as_bot(addr, "late");
+    // Let go, it hangs up too, as a client does, and its place is free.
+    drop(stranger);
+    let (_seated, slot) = hello_as_bot(admitted(addr), "late");
     assert_eq!(slot, Some(SlotId(0)));
 }
 
@@ -578,6 +600,109 @@ fn a_stranger_let_go_that_talks_on_is_cut_off() {
         );
         thread::sleep(Duration::from_millis(100));
     }
+}
+
+/// What a writer did to its sink after the hang-up, and when.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum SinkCall {
+    HangUp,
+    ShutRead,
+}
+
+/// A sink that takes every frame and tells what else the writer did to it.
+struct RecordingSink(mpsc::Sender<(SinkCall, Instant)>);
+
+impl crate::net::FrameSink for RecordingSink {
+    fn send_frames(&mut self, _frames: Vec<u8>) -> std::io::Result<()> {
+        Ok(())
+    }
+
+    fn hang_up(&mut self) {
+        let _ = self.0.send((SinkCall::HangUp, Instant::now()));
+    }
+
+    fn shut_read(&mut self) {
+        let _ = self.0.send((SinkCall::ShutRead, Instant::now()));
+    }
+}
+
+/// Runs the writer of an outbox closed with `parting` to its end, the reader having ended
+/// already or never ending, and answers what it did to its sink.
+fn part(
+    linger: Duration,
+    parting: crate::net::Parting,
+    reader_ended: bool,
+) -> Vec<(SinkCall, Instant)> {
+    let outbox = crate::net::Outbox::lingering(linger);
+    outbox.close(parting);
+    if reader_ended {
+        outbox.reader_ended();
+    }
+    let (calls, told) = mpsc::channel();
+    let (done, ended) = mpsc::channel();
+    thread::spawn(move || {
+        outbox.run_writer(Box::new(RecordingSink(calls)));
+        let _ = done.send(());
+    });
+    ended.recv_timeout(HANG_GUARD).expect("the writer ends");
+    told.try_iter().collect()
+}
+
+#[test]
+fn a_peer_let_go_is_read_on_for_the_linger_then_its_reading_side_is_shut() {
+    let linger = Duration::from_millis(200);
+    let calls = part(linger, crate::net::Parting::LetGo, false);
+    let kinds: Vec<SinkCall> = calls.iter().map(|(call, _)| *call).collect();
+    assert_eq!(kinds, [SinkCall::HangUp, SinkCall::ShutRead]);
+    assert!(
+        calls[1].1.duration_since(calls[0].1) >= linger,
+        "not cut off before its linger"
+    );
+}
+
+#[test]
+fn a_peer_let_go_that_hangs_up_is_not_waited_for() {
+    let calls = part(HANG_GUARD * 2, crate::net::Parting::LetGo, true);
+    let kinds: Vec<SinkCall> = calls.iter().map(|(call, _)| *call).collect();
+    assert_eq!(kinds, [SinkCall::HangUp, SinkCall::ShutRead]);
+}
+
+/// At the match's end the server takes no one after: the peer is read until it hangs up, however
+/// long its line takes to deliver the end, and never past a linger.
+#[test]
+fn at_the_match_end_a_peer_is_read_on_until_it_hangs_up() {
+    let calls = part(Duration::ZERO, crate::net::Parting::MatchOver, false);
+    let kinds: Vec<SinkCall> = calls.iter().map(|(call, _)| *call).collect();
+    assert_eq!(kinds, [SinkCall::HangUp], "the reading side stays open");
+}
+
+/// A peer refused at its Hello still counts towards `max_connections` while its connection is
+/// read on, so refused peers that talk on and dial again cannot hold more than the bound.
+#[test]
+fn a_refused_peer_that_talks_on_holds_its_place_until_it_hangs_up() {
+    let mut opts = realtime(15);
+    opts.max_connections = Some(1);
+    let addr = start_server(opts);
+    let mut refused = TestClient::connect(addr);
+    refused.send(&ClientMsg::hello(
+        Role::Bot,
+        "old build",
+        None,
+        !bota_core::WIRE_FINGERPRINT,
+    ));
+    refused.recv_until(|msg| matches!(msg, ServerMsg::WireMismatch { .. }).then_some(()));
+    refused.send(&ClientMsg::Pong);
+    let mut again = TcpStream::connect(addr).expect("connect");
+    again
+        .set_read_timeout(Some(HANG_GUARD))
+        .expect("set timeout");
+    let mut buf = [0u8; 64];
+    assert!(
+        matches!(again.read(&mut buf), Ok(0) | Err(_)),
+        "a second connection was taken while the refused one is read on"
+    );
+    drop(refused);
+    admitted(addr);
 }
 
 /// Order delays are options like any other: a library caller's that do not fit the seats are

@@ -55,6 +55,8 @@ pub struct Outbox {
     wake: Condvar,
     /// Wakes whoever waits for the writer to be done sending or for the reader to end.
     parting: Condvar,
+    /// How long a peer let go is read on: [`LINGER`], shorter in tests.
+    linger: Duration,
 }
 
 struct OutboxState {
@@ -116,6 +118,11 @@ const QUEUE_LIMIT: usize = 1024;
 impl Outbox {
     /// An empty, open outbox.
     pub fn new() -> Arc<Outbox> {
+        Outbox::lingering(LINGER)
+    }
+
+    /// An empty, open outbox whose peer, let go, is read on for `linger`.
+    pub(crate) fn lingering(linger: Duration) -> Arc<Outbox> {
         Arc::new(Outbox {
             state: Mutex::new(OutboxState {
                 queue: VecDeque::new(),
@@ -128,6 +135,7 @@ impl Outbox {
             }),
             wake: Condvar::new(),
             parting: Condvar::new(),
+            linger,
         })
     }
 
@@ -288,9 +296,9 @@ impl Outbox {
         self.parting.notify_all();
     }
 
-    /// Waits after a hang-up for the reader to end, at most [`LINGER`].
+    /// Waits after a hang-up for the reader to end, at most its linger.
     fn linger(&self) {
-        let until = Instant::now() + LINGER;
+        let until = Instant::now() + self.linger;
         let mut state = self.lock();
         while !state.reader_ended {
             let Some(left) = until.checked_duration_since(Instant::now()) else {

@@ -20,7 +20,7 @@ use crate::game::{
     Command, DelayLine, Event, Handles, MatchConfig, MatchSecrets, OrderDelay, RefusedOrder, World,
 };
 use crate::lobby::{ReservedSeat, Roster};
-use crate::net::{Connection, FrameStream, Listeners, NetEvent};
+use crate::net::{Connection, FrameStream, Listeners, LiveConnections, NetEvent};
 use crate::pick_clock::PickClock;
 use crate::replay::ReplayWriter;
 use crate::spectators::{DelayedFeed, HeldTick, MAX_DELAYED_TICKS, Spectators, sight};
@@ -88,7 +88,8 @@ pub struct ServerOpts {
     /// starts listening at the latest; a seat still without a pick then gets the
     /// map's default hero or a random one.
     pub start_after: Option<Duration>,
-    /// Most connections held at once. Absent for no bound.
+    /// Most connections held at once, a peer let go counted until its
+    /// connection's threads have ended. Absent for no bound.
     pub max_connections: Option<usize>,
     /// Which map to play.
     pub map: MapId,
@@ -234,6 +235,7 @@ fn run_inner(
         rx,
         tx,
         conns: Vec::new(),
+        live: LiveConnections::default(),
         spectators: Vec::new(),
         referees: Vec::new(),
         roster,
@@ -408,6 +410,8 @@ struct Server {
     /// Cloned into every connection's reader thread; keeps `rx` open.
     tx: Sender<NetEvent>,
     conns: Vec<Connection>,
+    /// Connections that still hold threads, those let go among them.
+    live: LiveConnections,
     spectators: Vec<Watcher>,
     roster: Roster,
     next_player: u32,
@@ -601,7 +605,7 @@ impl Server {
         if self
             .opts
             .max_connections
-            .is_some_and(|most| self.conns.len() >= most)
+            .is_some_and(|most| self.conns.len().max(self.live.count()) >= most)
         {
             return;
         }
@@ -614,6 +618,7 @@ impl Server {
             self.opts.idle_timeout,
             self.opts.messages_per_sec,
             Arc::clone(&self.world_tick),
+            &self.live,
         );
         match spawned {
             Ok(conn) => self.conns.push(conn),
