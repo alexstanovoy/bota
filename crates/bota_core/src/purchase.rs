@@ -7,7 +7,7 @@
 
 use bota_proto::{Attribute, ItemId, SlotId};
 
-use crate::{item_def, rules};
+use crate::{item_def, rules, sold};
 
 /// What the rules of stacking and placing ask of a stack, wherever it is kept.
 pub trait HeldItem {
@@ -191,7 +191,7 @@ pub fn place_purchase<P: HeldItem>(
 ) -> Option<Vec<Berth>> {
     let mut berths: Vec<Berth> = Vec::with_capacity(parts.len());
     for part in parts {
-        let def = item_def(*part).filter(|def| !def.unbuyable)?;
+        let def = sold(*part)?;
         let berth = if def.stack_limit > 0 {
             debug_assert_eq!(parts.len(), 1, "a part that merges is bought alone");
             let bought = Bought {
@@ -298,7 +298,7 @@ impl HeldItem for (Counts, SlotId, Option<Attribute>) {
 pub fn queued_bag(buyer: SlotId, queue: &[ItemId], slots: usize) -> Vec<Option<Counts>> {
     let mut bag: Vec<Option<(Counts, SlotId, Option<Attribute>)>> = vec![None; slots];
     for &item in queue {
-        let Some(def) = item_def(item).filter(|def| !def.unbuyable) else {
+        let Some(def) = sold(item) else {
             continue;
         };
         let bought = (
