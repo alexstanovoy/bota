@@ -227,6 +227,9 @@ class Router:
             return {name for name in self.names if name.startswith(token[:-1])}
         return {token} if token in self.names else set()
 
+    def workspace(self) -> set[str]:
+        return {name for name, crate in self.crates.items() if crate.manifest is None}
+
     def crate_of(self, path: str) -> Crate | None:
         inside = [c for c in self.crates.values() if path.startswith(c.directory + "/")]
         return max(inside, key=lambda c: len(c.directory), default=None)
@@ -279,7 +282,7 @@ def default_base() -> str:
 
 def plan(router: Router, paths: list[str] | None) -> tuple[set[str], set[str], bool]:
     """Groups to run, workspace crates to lint and whether the fuzz targets are to be checked; `paths` None: everything."""
-    workspace = {name for name, crate in router.crates.items() if crate.manifest is None}
+    workspace = router.workspace()
     if paths is None:
         return set(router.names), workspace, True
     groups: set[str] = set()
@@ -298,8 +301,18 @@ def plan(router: Router, paths: list[str] | None) -> tuple[set[str], set[str], b
     return groups, crates, bool(crates) or any(p.startswith("fuzz/") for p in paths)
 
 
+def plan_report(router: Router, merge_base: str | None, paths: list[str] | None) -> list[str]:
+    """`plan`'s lines: the groups, the crates to lint, whether to check the fuzz targets, and the scope of the stamps."""
+    chosen, lint, fuzz = plan(router, paths)
+    ordered = [n for n in router.names if n in chosen]
+    everything = (set(router.names), router.workspace(), True) == (chosen, lint, fuzz)
+    scope = scope_of(None if everything else merge_base, ordered, sorted(lint), fuzz)
+    return [" ".join(["groups", *ordered]), " ".join(["crates", *sorted(lint)]), f"fuzz {int(fuzz)}", f"scope {scope}"]
+
+
 def scope_of(merge_base: str | None, groups: list[str], crates: list[str], fuzz: bool) -> str:
-    """What a stamp of a check covers besides the tree: `full`, or what was compared with and what that selected."""
+    """What a stamp of a check covers besides the tree: `full` (everything, also when a change selects it all), or what was
+    compared with and what that selected."""
     if merge_base is None:
         return "full"
     selection = json.dumps([merge_base, groups, crates, fuzz])
@@ -646,12 +659,7 @@ def main() -> int:
             return 0 if run(crates, [g for g in groups if g.name in options.groups], options.record) else 1
         merge_base, paths = (None, None) if options.all else changed(options.base or default_base())
         if options.action == "plan":
-            chosen, lint, fuzz = plan(router, paths)
-            ordered = [n for n in router.names if n in chosen]
-            print("groups", *ordered)
-            print("crates", *sorted(lint))
-            print("fuzz", int(fuzz))
-            print("scope", scope_of(merge_base, ordered, sorted(lint), fuzz))
+            print("\n".join(plan_report(router, merge_base, paths)))
             return 0
         problems = check(crates, groups, router, paths)
         for problem in problems:

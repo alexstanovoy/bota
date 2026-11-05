@@ -40,7 +40,7 @@ class Routing(unittest.TestCase):
         self.assertEqual(groups_of("somewhere/new.txt"), set(ROUTER.names))
 
     def test_the_gate_machinery_runs_everything(self):
-        self.assertEqual(groups_of("tools/gate.sh"), set(ROUTER.names))
+        self.assertEqual(test_groups.plan(ROUTER, ["tools/gate.sh"]), (set(ROUTER.names), ROUTER.workspace(), True))
 
     def test_documents_run_nothing_and_lint_nothing(self):
         self.assertEqual(test_groups.plan(ROUTER, ["DEVELOPMENT.md", "crates/bota_server/README.md"]), (set(), set(), False))
@@ -73,6 +73,10 @@ class Selection(unittest.TestCase):
         self.assertNotEqual(one, test_groups.scope_of("b" * 40, ["core"], ["bota_core"], True))
         self.assertNotEqual(one, test_groups.scope_of("a" * 40, ["core", "proto"], ["bota_core"], True))
         self.assertEqual(test_groups.scope_of(None, ["core"], [], False), "full")
+
+    def test_a_change_that_selects_everything_is_stamped_as_full(self):
+        self.assertEqual(test_groups.plan_report(ROUTER, "a" * 40, ["tools/gate.sh"])[-1], "scope full")
+        self.assertTrue(test_groups.plan_report(ROUTER, "a" * 40, [f"{SERVER}/net/conn.rs"])[-1].startswith("scope affected-"))
 
 
 class Guards(unittest.TestCase):

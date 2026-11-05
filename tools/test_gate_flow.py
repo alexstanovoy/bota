@@ -35,6 +35,7 @@ if arguments[0] == "plan":
             sys.exit(found.stderr)
         groups = os.environ.get("FLOW_GROUPS", "core")
         scope = "affected-" + hashlib.sha256((found.stdout + groups).encode()).hexdigest()[:16]
+        scope = os.environ.get("FLOW_SCOPE", scope)  # the real plan says full when a change selects everything
     print("groups", os.environ.get("FLOW_GROUPS", "core"))
     print("crates")
     print("fuzz 0")
@@ -120,6 +121,10 @@ class GateFlow(unittest.TestCase):
         self.passes("precheck", PRECHECK_ALL="1")
         self.assertIn("GATE-OK (full: 1 groups)", self.passes("gate", GATE_FULL="1").stdout)
         self.refused("gate", 3, "already passed")
+
+    def test_a_change_that_selects_everything_is_a_full_check(self):
+        self.passes("precheck", FLOW_SCOPE="full")
+        self.passes("gate", GATE_FULL="1")
 
     def test_a_precheck_of_another_selection_does_not_admit_the_gate(self):
         self.passes("precheck")
