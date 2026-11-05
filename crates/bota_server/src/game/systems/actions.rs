@@ -235,8 +235,8 @@ impl World {
 
     /// Runs every action one tick on.
     ///
-    /// A pending cast goes off the moment its target is in reach; one that
-    /// holds the body takes it over first. A swing that comes due leaves
+    /// A pending cast goes off the moment its target is in reach and its
+    /// caster faces it; one that holds the body takes it over first. A swing that comes due leaves
     /// something behind: a blow where the target stands, or a missile on its
     /// way to it.
     pub fn run_actions(&mut self) {
@@ -528,7 +528,8 @@ impl World {
         true
     }
 
-    /// Starts the cast an entity was ordered to make, once it is in reach.
+    /// Starts the cast an entity was ordered to make, once it is in reach
+    /// and the caster faces its aim.
     ///
     /// One that holds the body for no time at all goes off from any state
     /// and leaves the body to what it was doing; one that does takes the
@@ -555,16 +556,17 @@ impl World {
             self.order_cast_off(entity);
             return false;
         };
+        // A cast at a spot or a unit goes off, or starts its cast point,
+        // only once the caster looks at its aim (Liquipedia, *Turn Rate*);
+        // the walk comes round to it meanwhile. That holds for one with no
+        // cast point too: a Blink Dagger turns its hero first. Only an
+        // immediate cast, which never waits here, goes off unturned.
+        if !self.faces(entity, spot) {
+            return false;
+        }
         if timing.instant() {
             self.order_cast_off(entity);
             self.begin(entity, pending);
-            return false;
-        }
-        // A cast with a cast point starts it only once the caster looks at
-        // its aim (Liquipedia, *Turn Rate*); the walk comes round to it
-        // meanwhile. One with none goes off as it is ordered, as a Blink
-        // Dagger does.
-        if timing.point > 0 && !self.faces(entity, spot) {
             return false;
         }
         if matches!(
@@ -582,8 +584,9 @@ impl World {
     }
 
     /// Whether an entity looks at a spot within the angle a swing or a cast
-    /// allows. What cannot turn faces every way, and a spot underfoot is
-    /// faced from any side.
+    /// allows: one angle for both, as Dota has it (Liquipedia, *Turn Rate*:
+    /// 11.5 degrees before an attack or a cast). What cannot turn faces
+    /// every way, and a spot underfoot is faced from any side.
     fn faces(&self, entity: Entity, spot: Option<Vec2>) -> bool {
         let (Some(spot), Some(at), Some(stats)) =
             (spot, self.transform.get(entity), self.stats.get(entity))

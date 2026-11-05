@@ -313,10 +313,26 @@ fn a_watcher_and_its_lighter() -> (World, Entity) {
     (world, watcher)
 }
 
-/// Lights a Watcher by seat `slot`'s attack order and the channel run out.
-fn light(world: &mut World, slot: usize, watcher: Entity) {
+/// Lights a Watcher by seat `slot`'s attack order, once its hero has come
+/// round to the Watcher, and the channel run out; answers whether the hero
+/// began the channel, so a light refused is never taken for one done.
+#[must_use]
+fn light(world: &mut World, slot: usize, watcher: Entity) -> bool {
     give(world, &[(slot, attack(watcher))]);
+    let hero = world.seats[slot].unit.expect("the seat has a hero");
+    for _ in 0..rules::TICKS_PER_SECOND {
+        if world.pending_cast(hero).is_none() {
+            break;
+        }
+        world.step();
+    }
+    assert!(
+        world.pending_cast(hero).is_none(),
+        "the hero never came round to the Watcher"
+    );
+    let began = world.is_channelling(hero);
     run(world, LAMP_CHANNEL_TICKS + 1);
+    began
 }
 
 /// The side a Watcher is lit for.
@@ -335,7 +351,7 @@ fn lit_for(world: &World, watcher: Entity) -> Option<Team> {
 fn a_lit_watcher_sees_for_its_side_by_day_and_night_for_seven_minutes() {
     let (mut world, watcher) = a_watcher_and_its_lighter();
     let at = world.transform.get(watcher).expect("standing").pos;
-    light(&mut world, 0, watcher);
+    assert!(light(&mut world, 0, watcher), "seat 0 began to light it");
     assert_eq!(lit_for(&world, watcher), Some(Team::Radiant));
     let shown = shown(&world, Some(Team::Dire), watcher);
     let lit = shown
@@ -390,12 +406,15 @@ fn a_lit_watcher_sees_for_its_side_by_day_and_night_for_seven_minutes() {
 fn the_other_side_puts_a_lit_watcher_out_for_two_minutes() {
     let (mut world, watcher) = a_watcher_and_its_lighter();
     let at = world.transform.get(watcher).expect("standing").pos;
-    light(&mut world, 0, watcher);
+    assert!(light(&mut world, 0, watcher), "seat 0 began to light it");
     place_hero(&mut world, 1, at + Vec2::from_ints(-100, 0));
-    light(&mut world, 1, watcher);
+    assert!(light(&mut world, 1, watcher), "seat 1 began to light it");
     assert_eq!(lit_for(&world, watcher), None, "out");
     assert!(world.wears(watcher, ModifierKind::LampOff));
-    light(&mut world, 0, watcher);
+    assert!(
+        !light(&mut world, 0, watcher),
+        "nobody begins to light it while it is out"
+    );
     assert_eq!(
         lit_for(&world, watcher),
         None,
@@ -406,7 +425,7 @@ fn the_other_side_puts_a_lit_watcher_out_for_two_minutes() {
         !world.wears(watcher, ModifierKind::LampOff),
         "at rest again"
     );
-    light(&mut world, 1, watcher);
+    assert!(light(&mut world, 1, watcher), "seat 1 began to light it");
     assert_eq!(lit_for(&world, watcher), Some(Team::Dire));
 }
 

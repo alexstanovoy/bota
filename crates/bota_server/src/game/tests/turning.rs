@@ -1,9 +1,9 @@
 //! Turning: a body comes round at its hero's turn rate, whatever orders arrive while it does.
 
-use bota_core::{angle_delta, facing_gap, rules};
+use bota_core::{ModifierKind, angle_delta, facing_gap, rules};
 
 use crate::game::{Entity, World};
-use bota_proto::{HeroId, Order, Target, Vec2};
+use bota_proto::{HeroId, ItemId, ItemSlot, Order, Target, Team, UnitKind, Vec2};
 
 use super::support::*;
 
@@ -20,6 +20,13 @@ fn facing_of(world: &World, hero: Entity) -> u16 {
 fn spot_beside(world: &World, hero: Entity, dx: i32, dy: i32) -> Target {
     let at = world.transform.get(hero).expect("alive").pos;
     Target::Pos(at + Vec2::from_ints(dx, dy))
+}
+
+/// Ticks a body turning at `rate` brads a tick takes to come round from
+/// facing straight away to within the angle a swing or a cast allows.
+fn half_turn_ticks(rate: i32) -> u32 {
+    let to_turn = 32768 - i32::from(rules::ATTACK_ANGLE_BRADS);
+    (to_turn as u32).div_ceil(rate as u32)
 }
 
 /// Tens of orders, sides alternating every `period` ticks: no tick turns the
@@ -179,9 +186,8 @@ fn a_cast_aimed_behind_the_caster_begins_once_it_has_come_round() {
             gap <= rules::ATTACK_ANGLE_BRADS,
             "{hero:?} began its cast {gap} brads off its aim"
         );
-        let half_turn = 32768 - i32::from(rules::ATTACK_ANGLE_BRADS);
         assert!(
-            ticks as i32 >= half_turn / rate,
+            ticks >= half_turn_ticks(rate),
             "{hero:?} began its cast after {ticks} ticks, before it could have come round"
         );
     }
@@ -215,5 +221,148 @@ fn attack_orders_on_creeps_either_side_never_snap_the_facing() {
             assert!(step <= rate, "{hero_id:?}: tick {tick} turned {step}");
             before = now;
         }
+    }
+}
+
+/// Steps the world until `done` holds, and answers the ticks that took,
+/// counting the tick an order was given in as the first; no tick on the
+/// way turns the hero by more than its rate.
+fn ticks_turning_until(world: &mut World, hero: Entity, done: impl Fn(&World) -> bool) -> u32 {
+    let rate = rate_of(world, hero);
+    let mut before = facing_of(world, hero);
+    let mut ticks = 1;
+    loop {
+        let now = facing_of(world, hero);
+        let step = angle_delta(
+            bota_proto::Angle { brads: before },
+            bota_proto::Angle { brads: now },
+        )
+        .abs();
+        assert!(
+            step <= rate,
+            "tick {ticks} turned {step} brads, more than the rate {rate}"
+        );
+        before = now;
+        if done(world) {
+            return ticks;
+        }
+        world.step();
+        ticks += 1;
+        assert!(ticks < 60, "never done");
+    }
+}
+
+#[test]
+fn an_attack_ordered_from_behind_in_reach_swings_only_once_come_round_at_the_rate() {
+    // Liquipedia, *Turn Rate*: a unit attacking a target first turns until
+    // it faces it within 11.5 degrees, then begins its attack point.
+    for hero_id in [HeroId::SHADOW_FIEND, HeroId::PUDGE] {
+        let mut world = World::new();
+        let hero = seated_hero(&mut world, Vec2::from_ints(6000, 6000), hero_id);
+        let enemy = seat_hero(&mut world, 1, Team::Dire, Vec2::from_ints(5880, 6000));
+        world.settle();
+        let away = facing_gap(
+            world.transform.get(hero).expect("alive").facing,
+            bota_core::facing_towards(
+                world.pos(hero).expect("alive"),
+                world.pos(enemy).expect("alive"),
+            ),
+        );
+        assert_eq!(away, 32768, "{hero_id:?} starts with its back to the enemy");
+        let rate = rate_of(&world, hero);
+        attack_click(&mut world, enemy);
+        let ticks = ticks_turning_until(&mut world, hero, |world| swinging(world, hero).is_some());
+        assert_eq!(
+            ticks,
+            half_turn_ticks(rate),
+            "{hero_id:?} began its attack point after {ticks} ticks; its turn rate takes {}",
+            half_turn_ticks(rate)
+        );
+        let gap = facing_gap(
+            world.transform.get(hero).expect("alive").facing,
+            bota_core::facing_towards(
+                world.pos(hero).expect("alive"),
+                world.pos(enemy).expect("alive"),
+            ),
+        );
+        assert!(
+            gap <= rules::ATTACK_ANGLE_BRADS,
+            "{hero_id:?} swung {gap} brads off its target"
+        );
+    }
+}
+
+#[test]
+fn a_blink_aimed_behind_goes_off_only_once_the_hero_has_come_round() {
+    // Dota turns a hero to the blink's direction before it blinks (Blink
+    // Dagger changelog, 18 Jan 2011: "Heroes using the item's ability now
+    // turn to face the blink direction"), though Blink has no cast point;
+    // only an immediate item (a Healing Salve, a Clarity) goes off unturned.
+    for hero_id in [HeroId::SHADOW_FIEND, HeroId::PUDGE] {
+        let mut world = World::new();
+        let hero = seated_hero(&mut world, Vec2::from_ints(6000, 6000), hero_id);
+        hand_item(&mut world, hero, ItemId::BLINK_DAGGER, 0);
+        world.settle();
+        let start = world.pos(hero).expect("alive");
+        let aim = start - Vec2::from_ints(600, 0);
+        let rate = rate_of(&world, hero);
+        seat_order(
+            &mut world,
+            Order::Use {
+                slot: ItemSlot(0),
+                target: Target::Pos(aim),
+            },
+        );
+        let ticks = ticks_turning_until(&mut world, hero, |world| world.pos(hero) != Some(start));
+        assert_eq!(
+            ticks,
+            half_turn_ticks(rate),
+            "{hero_id:?} blinked after {ticks} ticks; its turn rate takes {}",
+            half_turn_ticks(rate)
+        );
+        let gap = facing_gap(
+            world.transform.get(hero).expect("alive").facing,
+            bota_core::facing_towards(start, aim),
+        );
+        assert!(
+            gap <= rules::ATTACK_ANGLE_BRADS,
+            "{hero_id:?} blinked {gap} brads off its aim"
+        );
+    }
+}
+
+#[test]
+fn a_rooted_hero_comes_round_to_a_ward_placed_behind_and_places_it() {
+    // A root stops the walk, not the turn: the hero turns where it stands
+    // and the ward goes down once it faces the spot.
+    for hero_id in [HeroId::SHADOW_FIEND, HeroId::PUDGE] {
+        let mut world = World::new();
+        let hero = seated_hero(&mut world, Vec2::from_ints(6000, 6000), hero_id);
+        hand_item(&mut world, hero, ItemId::OBSERVER_WARD, 1);
+        world.settle();
+        put_on(&mut world, hero, ModifierKind::Rooted, 300);
+        let spot = world.pos(hero).expect("alive") - Vec2::from_ints(300, 0);
+        let rate = rate_of(&world, hero);
+        seat_order(
+            &mut world,
+            Order::Use {
+                slot: ItemSlot(0),
+                target: Target::Pos(spot),
+            },
+        );
+        let ward_stands = |world: &World| {
+            world
+                .entities
+                .iter()
+                .any(|entity| world.kind.get(entity) == Some(&UnitKind::Ward))
+        };
+        let ticks = ticks_turning_until(&mut world, hero, ward_stands);
+        assert_eq!(
+            ticks,
+            half_turn_ticks(rate),
+            "{hero_id:?} placed its ward after {ticks} ticks; its turn rate takes {}",
+            half_turn_ticks(rate)
+        );
+        assert!(world.rooted(hero), "{hero_id:?} was rooted all the while");
     }
 }

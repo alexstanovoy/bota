@@ -59,7 +59,8 @@ impl World {
     ///
     /// Feared, it runs from whoever put the fear on. Held or channelling it
     /// stands, and so does a disarmed neutral; rooted, it stands too but
-    /// comes round to what it is set on, to swing at it. Mid-swing, or
+    /// comes round to the aim of a cast it was ordered to make, or else to
+    /// what it is set on, to swing at it. Mid-swing, or
     /// casting, it stands and comes round to what it acts on. A cast aimed
     /// further off than it reaches walks it in, and one in reach comes
     /// round to its aim before it begins. Past that, what it is set on
@@ -78,7 +79,13 @@ impl World {
         }
         let set_on = || self.target_of(entity).and_then(|on| self.pos(on));
         if self.rooted(entity) {
-            return set_on().map_or(Goal::Stand, Goal::Face);
+            // A root stops the walk, not the turn: a cast it was ordered to
+            // make comes first between actions, as it would unrooted.
+            let aim = self
+                .pending_cast(entity)
+                .filter(|_| self.acting_on(entity).is_none())
+                .and_then(|pending| self.cast_spot(pending));
+            return aim.or_else(set_on).map_or(Goal::Stand, Goal::Face);
         }
         if let Some(face) = self.acting_on(entity) {
             return face

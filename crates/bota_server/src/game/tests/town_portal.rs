@@ -21,7 +21,9 @@ fn scrolls(world: &World, hero: Entity) -> Option<crate::game::ItemStack> {
         .expect("a hero has a town portal slot")
 }
 
-/// Seat 0 reads its scroll at a target, the way a player does.
+/// Seat 0 reads its scroll at a target, the way a player does, and waits
+/// while its hero comes round to the target: a scroll read at a spot or a
+/// building turns the hero first, as every cast at a spot does.
 fn read_at(world: &mut World, target: Target) {
     advance_validated(
         world,
@@ -31,6 +33,15 @@ fn read_at(world: &mut World, target: Target) {
             target,
         },
     );
+    let hero = world.seats[0].unit.expect("seat 0 has a hero");
+    for _ in 0..rules::TICKS_PER_SECOND {
+        if world.pending_cast(hero).is_none() {
+            assert!(world.is_channelling(hero), "the scroll was read");
+            return;
+        }
+        world.step();
+    }
+    panic!("the hero never came round to read its scroll");
 }
 
 /// Why seat 0 may not read its scroll at a target, if it may not.
