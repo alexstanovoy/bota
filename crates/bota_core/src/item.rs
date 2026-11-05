@@ -2,7 +2,7 @@
 //! it does.
 //!
 //! Every entry answers to an [`ItemId`], which is its place in
-//! [`ITEMS`](crate::ITEMS). What a use of an item does to a world is the
+//! [`ITEMS`]. What a use of an item does to a world is the
 //! server's, found by the entry's [`UseSpec`].
 
 use bota_proto::{Aim, Attribute, Attributes, Fixed, ItemId};
@@ -298,7 +298,7 @@ pub const MAX_COMPONENTS: usize = 4;
 /// One entry of the catalog.
 #[derive(Clone, Copy, Debug)]
 pub struct ItemDef {
-    /// The id it answers to on the wire, which [`ITEMS`](crate::ITEMS)
+    /// The id it answers to on the wire, which [`ITEMS`]
     /// places it at.
     pub id: ItemId,
     /// Dota's internal name of the item, its line of the id registry: what
@@ -315,8 +315,8 @@ pub struct ItemDef {
     pub charges: u8,
     /// Maximum merged charges; zero disables merging and per-charge value and regeneration.
     pub stack_limit: u8,
-    /// Charges it may hold, each one gained from an enemy cast within
-    /// [`rules::MAGIC_CHARGE_RANGE`]. Zero for one that gains none.
+    /// Charges it may hold, each one gained from an enemy cast within its
+    /// [`charge_radius`](ItemDef::charge_radius). Zero for one that gains none.
     pub cast_charges: u8,
     /// Ticks before it may be used again.
     pub cooldown: u32,
@@ -625,7 +625,7 @@ pub fn item_by_key(key: &str) -> Option<ItemId> {
 
 /// The shop of a match on `catalogue` as the wire states it, in item id order: what
 /// [`Catalogue::sold_items`](crate::Catalogue::sold_items) lists. The wire states it for a
-/// client that reads the match; one that has this table reads [`sold`] instead.
+/// client that reads the match; one that has this table reads [`sold`](crate::sold) instead.
 pub fn shop_entries(catalogue: crate::Catalogue) -> Vec<bota_proto::ShopEntry> {
     catalogue
         .sold_items()

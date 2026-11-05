@@ -419,7 +419,7 @@ pub enum ClientMsg {
         seen: Option<u32>,
         /// Whether the order waits its turn behind what the unit does and has
         /// queued, as Dota's Shift-queue; unqueued, an order that
-        /// [`queues`](Order::queues) replaces the unit's queue. Last on the
+        /// queues (`bota_core::order_queues`) replaces the unit's queue. Last on the
         /// wire.
         queue: bool,
     },

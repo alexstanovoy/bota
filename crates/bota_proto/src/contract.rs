@@ -180,7 +180,7 @@
 //! the unit takes it up once it is done with the order in hand and with
 //! every order queued before it, and a unit with nothing in hand and nothing
 //! queued takes it up at once. An order given unqueued replaces the order in
-//! hand and empties the queue. What [`Order::queues`](crate::Order::queues)
+//! hand and empties the queue. What `bota_core::order_queues`
 //! says is carried out at once (learning, talents, the shop, the bag,
 //! cheats, the Glyph) is never queued and leaves the queue be, and so does an
 //! unqueued cast or use of what goes off beside whatever the body does
@@ -351,7 +351,7 @@
 //! seconds knows its connection is dead, even in a quiet lobby. A client
 //! answers each with [`ClientMsg::Pong`](crate::ClientMsg::Pong); any message
 //! counts. A client times its connection with [`ClientMsg::Probe`](crate::ClientMsg::Probe):
-//! the server's network side answers each with [`ServerMsg::Echo`] naming the same id as soon as
+//! the server's network side answers each with [`ServerMsg::Echo`](crate::ServerMsg::Echo) naming the same id as soon as
 //! it reads it, ahead of whatever else waits to be sent and without waiting for a tick, and the
 //! simulation never sees it, so the round trip a client measures is the line's, whatever the
 //! tick rate. Every order read is answered the same way with

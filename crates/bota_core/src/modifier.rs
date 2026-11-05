@@ -147,9 +147,9 @@ pub enum ModifierKind {
     /// Runs from whoever put it on, and neither swings nor casts, until it
     /// lifts.
     Feared,
-    /// Walks slower by [`rules::GRENADE_SLOW_PCT`] percent, and takes
-    /// [`rules::GRENADE_DAMAGE_PER_SECOND`] magical damage from whoever put it
-    /// on every whole second after `since`.
+    /// Walks slower by its grenade's [`slow_pct`](crate::Grenade::slow_pct)
+    /// percent, and takes its [`damage_per_second`](crate::Grenade::damage_per_second)
+    /// magical damage from whoever put it on every whole second after `since`.
     BloodGrenade {
         /// The tick the first Blood Grenade of the run landed.
         since: u32,

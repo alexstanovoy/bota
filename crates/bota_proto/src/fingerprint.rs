@@ -4,7 +4,7 @@ use crate::ModifierSpec;
 
 /// FNV-1a over `registry/wire.txt`, then the value of every
 /// [`limits`](crate::limits) bound and of the cheat modifier bounds
-/// ([`ModifierSpec`](crate::ModifierSpec)), each as eight little endian bytes.
+/// ([`ModifierSpec`]), each as eight little endian bytes.
 ///
 /// Two builds with the same digest have identical wire layouts and the same
 /// idea of how much a message may hold. The ids of `registry/ids.txt` are

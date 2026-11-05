@@ -184,7 +184,7 @@ impl crate::socket::Link {
         Self::play_at(crate::socket::Endpoint::parse(address)?, name, hero, decide)
     }
 
-    /// Connects to `endpoint` and plays, as [`Link::play`] does.
+    /// Connects to `endpoint` and plays, as [`Link::play`](crate::socket::Link::play) does.
     pub fn play_at<I: IntoIterator<Item = IssuedOrder>>(
         endpoint: crate::socket::Endpoint,
         name: &str,

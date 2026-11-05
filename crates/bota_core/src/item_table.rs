@@ -38,10 +38,10 @@ pub const ITEM_COUNT: usize = ITEM_ROWS.len();
 ///    entry that is neither retired nor `unbuyable`. A front end finds its art
 ///    and texts by its key.
 ///
-/// A passive stat item that uses only the stats [`Carried`] has stops there.
+/// A passive stat item that uses only the stats [`Carried`](crate::Carried) has stops there.
 /// Beyond it:
 ///
-/// - A new stat: a [`Carried`] field with its `NOTHING` entry and its arm in
+/// - A new stat: a [`Carried`](crate::Carried) field with its `NOTHING` entry and its arm in
 ///   `carried_bonus` (`item.rs`), the server's `systems/stats.rs`, often a
 ///   `Stats` field.
 /// - An active: a [`UseSpec`] variant holding its numbers, and its arm in

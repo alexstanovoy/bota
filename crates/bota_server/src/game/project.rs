@@ -763,8 +763,8 @@ impl World {
     }
 
     /// The [`StatusFlags`] bits of a unit: what each of its modifiers does to
-    /// it ([`ModifierKind::statuses`]), and whether it hides, cannot be hurt
-    /// or channels.
+    /// it ([`ModifierKind::statuses`](bota_core::ModifierKind::statuses)),
+    /// and whether it hides, cannot be hurt or channels.
     fn statuses_of(&self, entity: Entity, stats: &crate::game::Stats) -> u16 {
         let mut bits = 0;
         for held in self

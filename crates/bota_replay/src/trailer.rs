@@ -17,7 +17,7 @@ pub const FRAME_MAGIC: u32 = 0x184D_2A50;
 pub const MAGIC: [u8; 8] = *b"bota.mtf";
 /// Bytes after the file inside the frame: its length, then the magic.
 const TAIL: usize = 4 + MAGIC.len();
-/// Bytes a trailer takes beyond its file: the frame's magic and length, then [`TAIL`].
+/// Bytes a trailer takes beyond its file: the frame's magic and length, then the file's length and [`MAGIC`].
 pub const OVERHEAD: usize = 8 + TAIL;
 
 /// The trailer for a metadata file, to be written right after a replay's compressed stream.
