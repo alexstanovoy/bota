@@ -5,8 +5,8 @@ use bota_core::rules;
 use bota_proto::{Angle, EntityId, EventKind, Fixed, Target, Team, Vec2};
 
 use crate::game::{
-    BAG_SLOTS, Entity, Event, EventVisibility, Handling, ItemStack, Loot, Transform, UnitOrder,
-    Visibility, World, wire_id,
+    BAG_SLOTS, Entity, Event, Handling, ItemStack, Loot, Transform, UnitOrder, Visibility, World,
+    wire_id,
 };
 
 impl World {
@@ -223,8 +223,8 @@ impl World {
     }
 
     /// Walks a hero into attack range of a rune and destroys it there. An
-    /// attack on a rune is neither a last hit nor a deny; both sides are
-    /// told. The swing's own time is not spent.
+    /// attack on a rune is neither a last hit nor a deny. Only the attacker's
+    /// side and sides seeing both the spot and attacker are told. The swing's own time is not spent.
     fn deny_rune(&mut self, unit: Entity, rune: Entity) -> bool {
         let (Some(held), Some(spot), Some(from)) =
             (self.rune.get(rune).copied(), self.pos(rune), self.pos(unit))
@@ -241,16 +241,20 @@ impl World {
         }
         self.rune.remove(rune);
         self.despawn(rune);
+        let side = self.team.get(unit).copied().unwrap_or(Team::Neutral);
+        let spot_seen = self.who_sees_spot(spot, side);
+        let knows = |team| team == side || spot_seen.tells(team) && self.sees_now(team, unit);
+        let told = crate::game::EventVisibility::of(knows(Team::Radiant), knows(Team::Dire));
         self.events.push(Event {
             kind: EventKind::RuneDenied {
                 unit: wire_id(unit),
                 kind: held.kind,
                 at: spot,
-                team: self.team.get(unit).copied().unwrap_or(Team::Neutral),
+                team: side,
             },
-            visible_to: EventVisibility::Everyone,
+            visible_to: told,
             gold_hidden_from: None,
-            source_told_to: EventVisibility::Everyone,
+            source_told_to: told,
         });
         true
     }

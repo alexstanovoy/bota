@@ -20,6 +20,56 @@ fn sides() -> [Team; 2] {
     [Team::Radiant, Team::Dire]
 }
 
+#[test]
+fn a_bottled_runes_kind_is_private_even_when_the_enemy_sees_the_hero() {
+    for side in [Team::Radiant, Team::Dire] {
+        let other = if side == Team::Radiant {
+            Team::Dire
+        } else {
+            Team::Radiant
+        };
+        let (mut world, taker) = rune_under_hero(&[side, other], RuneKind::Haste);
+        let watcher = hero(&world, 1);
+        let at = world.pos(taker).unwrap();
+        place(&mut world, watcher, at + Vec2::from_ints(400, 0));
+        bottled(&mut world, taker, 1);
+        let events = world.step();
+        let enemy = world.view(other);
+        let seen = enemy
+            .unit(wire_id(taker))
+            .expect("the enemy sees the bottling hero");
+        assert!(
+            seen.items[0].expect("the bottle is public").rune.is_none(),
+            "its contents are private"
+        );
+        let bottled = |event: &EventKind| {
+            matches!(
+                event,
+                EventKind::RuneBottled {
+                    kind: RuneKind::Haste,
+                    ..
+                }
+            )
+        };
+        assert!(
+            crate::game_loop::visible_events(&events, Some(side))
+                .iter()
+                .any(bottled)
+        );
+        assert!(
+            crate::game_loop::visible_events(&events, None)
+                .iter()
+                .any(bottled)
+        );
+        assert!(
+            !crate::game_loop::visible_events(&events, Some(other))
+                .iter()
+                .any(bottled),
+            "seeing the hero must not disclose what is in its bottle"
+        );
+    }
+}
+
 /// A bottle in the hero's first slot, `charges` full.
 fn bottled(world: &mut World, taker: Entity, charges: u8) {
     hand_item(world, taker, ItemId::BOTTLE, charges);

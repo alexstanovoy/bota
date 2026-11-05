@@ -106,6 +106,205 @@ const RIVER_BOT: usize = 1;
 const DIRE_JUNGLE: usize = 2;
 const RADIANT_JUNGLE: usize = 3;
 
+/// A rune's event must disclose no more than its snapshot, for either side and either schedule.
+#[test]
+fn rune_spawn_events_follow_the_same_vision_as_rune_snapshots() {
+    for team in [Team::Radiant, Team::Dire] {
+        for (kind, spot, minute) in [
+            (RuneKind::Water, RIVER_TOP, 2),
+            (RuneKind::Bounty, RADIANT_JUNGLE, 4),
+        ] {
+            assert_spawn_audience(team, kind, spot, minute);
+        }
+    }
+}
+
+fn assert_spawn_audience(team: Team, kind: RuneKind, spot: usize, minute: u32) {
+    let mut world = rune_match(&[team]);
+    let spot = if kind == RuneKind::Bounty && team == Team::Dire {
+        DIRE_JUNGLE
+    } else {
+        spot
+    };
+    let at = spots()[spot];
+    let viewer = hero(&world, 0);
+    place(&mut world, viewer, at + Vec2::from_ints(200, 0));
+    let other = if team == Team::Radiant {
+        Team::Dire
+    } else {
+        Team::Radiant
+    };
+    assert!(
+        world.can_see_point(team, at),
+        "the watcher sees the rune spot"
+    );
+    assert!(
+        !world.can_see_point(other, at),
+        "the other side has no eyes there"
+    );
+    let events = step_at_minute(&mut world, minute, 0);
+    let names_rune = |event: &EventKind| matches!(event, EventKind::RuneSpawned { kind: got, at: where_ } if *got == kind && *where_ == at);
+    assert!(
+        world
+            .view(team)
+            .runes
+            .iter()
+            .any(|rune| rune.kind == kind && rune.pos == at)
+    );
+    assert!(
+        !world.view(other).runes.iter().any(|rune| rune.pos == at),
+        "snapshot keeps the hidden rune private"
+    );
+    assert!(
+        crate::game_loop::visible_events(&events, Some(team))
+            .iter()
+            .any(names_rune),
+        "the side with vision hears the spawn"
+    );
+    assert!(
+        !crate::game_loop::visible_events(&events, Some(other))
+            .iter()
+            .any(names_rune),
+        "a hidden rune's kind and position must not leak in its spawn event"
+    );
+    assert!(
+        crate::game_loop::visible_events(&events, None)
+            .iter()
+            .any(names_rune),
+        "the omniscient replay keeps the event"
+    );
+}
+
+#[test]
+fn a_watcher_leaving_vision_on_the_spawn_tick_gets_no_hidden_rune_event() {
+    let mut world = rune_match(&[Team::Radiant]);
+    let viewer = hero(&world, 0);
+    let at = spots()[RIVER_TOP];
+    world.tick = world.schedule().at_minute(2) - 1;
+    // Find the actual terrain's edge of sight rather than assuming an unobstructed circle.
+    let mut last_seen = None;
+    for distance in (300..2400).step_by(4) {
+        let from = at + Vec2::from_ints(distance, 0);
+        place(&mut world, viewer, from);
+        if world.can_see_point(Team::Radiant, at) {
+            last_seen = Some(from);
+        } else if last_seen.is_some() {
+            break;
+        }
+    }
+    let from = last_seen.expect("an edge of the rune spot's vision");
+    place(&mut world, viewer, from);
+    assert!(world.can_see_point(Team::Radiant, at));
+    let events = advance_validated(
+        &mut world,
+        None,
+        Order::Move {
+            target: Target::Pos(from + Vec2::from_ints(500, 0)),
+        },
+    );
+    assert!(
+        world.pos(viewer).unwrap().x > from.x,
+        "the real move order took a step"
+    );
+    assert!(
+        !world
+            .view(Team::Radiant)
+            .runes
+            .iter()
+            .any(|rune| rune.pos == at),
+        "the post-movement snapshot hides this spawn"
+    );
+    let spawned_here =
+        |event: &EventKind| matches!(event, EventKind::RuneSpawned { at: spot, .. } if *spot == at);
+    assert!(
+        crate::game_loop::visible_events(&events, None)
+            .iter()
+            .any(spawned_here),
+        "the rune really spawned on this tick"
+    );
+    assert!(
+        !crate::game_loop::visible_events(&events, Some(Team::Radiant))
+            .iter()
+            .any(spawned_here),
+        "the event must use the snapshot's post-movement sight"
+    );
+}
+
+#[test]
+fn rune_denial_audience_follows_the_spot_and_always_tells_the_attacker() {
+    for side in [Team::Radiant, Team::Dire] {
+        let other = if side == Team::Radiant {
+            Team::Dire
+        } else {
+            Team::Radiant
+        };
+        for (spot_seen, attacker_seen) in [(false, false), (true, true), (true, false)] {
+            let mut world = rune_match(&[side, other]);
+            let attacker = hero(&world, 0);
+            let watcher = hero(&world, 1);
+            let at = spots()[RIVER_TOP];
+            place(&mut world, attacker, at + Vec2::from_ints(-400, 0));
+            if spot_seen {
+                let distance = if attacker_seen { 400 } else { 600 };
+                place(&mut world, watcher, at + Vec2::from_ints(distance, 0));
+            }
+            if spot_seen && !attacker_seen {
+                world.cheats = true;
+                advance_validated(
+                    &mut world,
+                    None,
+                    Order::Cheat {
+                        cheat: bota_proto::Cheat::TimeOfDay { night: true },
+                    },
+                );
+            }
+            world.put_rune(RuneKind::Haste, RIVER_TOP);
+            world.settle();
+            assert_eq!(!world.view(other).runes.is_empty(), spot_seen);
+            assert_eq!(
+                world.sees_now(other, attacker),
+                attacker_seen,
+                "the fixture distinguishes the rune spot from its attacker"
+            );
+            let id = lying(&world)[0].id;
+            let events = advance_validated(
+                &mut world,
+                None,
+                Order::Attack {
+                    target: Target::Unit(id),
+                },
+            );
+            let denied = |event: &EventKind| {
+                matches!(
+                    event,
+                    EventKind::RuneDenied {
+                        kind: RuneKind::Haste,
+                        ..
+                    }
+                )
+            };
+            assert!(lying(&world).is_empty(), "the attack destroyed the rune");
+            assert!(
+                crate::game_loop::visible_events(&events, Some(side))
+                    .iter()
+                    .any(denied)
+            );
+            assert_eq!(
+                crate::game_loop::visible_events(&events, Some(other))
+                    .iter()
+                    .any(denied),
+                spot_seen && attacker_seen,
+                "a side must see both the spot and attacker before learning its identity"
+            );
+            assert!(
+                crate::game_loop::visible_events(&events, None)
+                    .iter()
+                    .any(denied)
+            );
+        }
+    }
+}
+
 /// A match whose first seat's hero stands at the river spot with a rune of a
 /// kind lying under it, one tick before it is taken.
 pub(super) fn rune_under_hero(sides: &[Team], kind: RuneKind) -> (World, Entity) {

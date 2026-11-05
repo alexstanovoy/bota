@@ -187,8 +187,8 @@ pub enum EventKind {
         /// unit stood. Absent for a use aimed at nothing.
         at: Option<Vec2>,
     },
-    /// A rune appeared at a spot of the map. Told to both sides wherever it
-    /// is, as Dota announces a spawn.
+    /// A rune appeared at a spot of the map. Told only to sides whose
+    /// completed-tick snapshot shows it.
     RuneSpawned {
         /// Which rune.
         kind: RuneKind,
@@ -208,8 +208,7 @@ pub enum EventKind {
         /// for any other rune.
         gold: Option<i32>,
     },
-    /// A hero took a rune into a Bottle. Told to the sides that see the
-    /// hero, and to its own.
+    /// A hero took a rune into a Bottle. Its contents are told only to its own side.
     RuneBottled {
         /// The hero.
         unit: EntityId,
@@ -217,7 +216,8 @@ pub enum EventKind {
         kind: RuneKind,
     },
     /// A hero destroyed a rune with an attack order: neither a last hit nor
-    /// a deny. Told to both sides, as Dota announces it.
+    /// a deny. Told to the attacker's side, and to other sides only when
+    /// they see both the spot and the attacker.
     RuneDenied {
         /// The hero.
         unit: EntityId,

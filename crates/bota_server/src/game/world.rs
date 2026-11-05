@@ -639,6 +639,7 @@ impl World {
         self.timed(Phase::Actions, |world| world.step_actions(&mut events));
         self.timed(Phase::Damage, |world| world.step_damage(&mut events));
         self.note_what_is_shown();
+        self.note_rune_spawns(&mut events);
         self.tick_applied();
         events
     }

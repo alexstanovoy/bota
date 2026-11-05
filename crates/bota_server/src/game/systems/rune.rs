@@ -147,10 +147,28 @@ impl World {
         );
         self.events.push(Event {
             kind: EventKind::RuneSpawned { kind, at },
-            visible_to: EventVisibility::Everyone,
+            // Finalized with the snapshot's sight after movement and actions.
+            visible_to: EventVisibility::Nobody,
             gold_hidden_from: None,
             source_told_to: EventVisibility::Everyone,
         });
+    }
+
+    /// A spawn discloses exactly the rune that the completed tick's snapshot shows.
+    pub(crate) fn note_rune_spawns(&self, events: &mut [Event]) {
+        for event in events {
+            let EventKind::RuneSpawned { kind, at } = event.kind else {
+                continue;
+            };
+            let rune = self.entities.iter().find(|&entity| {
+                self.rune.get(entity).is_some_and(|rune| rune.kind == kind)
+                    && self.pos(entity) == Some(at)
+            });
+            let shown = |team| rune.is_some_and(|entity| self.shows(team, entity));
+            let told = EventVisibility::of(shown(Team::Radiant), shown(Team::Dire));
+            event.visible_to = told;
+            event.source_told_to = told;
+        }
     }
 
     /// Hands every rune within reach of a hero to the hero, the first hero of
@@ -203,7 +221,11 @@ impl World {
                 gold,
                 was_full: stack.charges >= full_charges(stack.id),
             });
-            let told = self.who_may_know(hero, self.team.get(hero).copied());
+            let told = self
+                .team
+                .get(hero)
+                .copied()
+                .map_or(EventVisibility::Nobody, EventVisibility::OneTeam);
             self.events.push(Event {
                 kind: EventKind::RuneBottled {
                     unit: wire_id(hero),
