@@ -20,7 +20,7 @@ use crate::game::{
     Command, DelayLine, Event, Handles, MatchConfig, MatchSecrets, OrderDelay, RefusedOrder, World,
 };
 use crate::lobby::{ReservedSeat, Roster};
-use crate::net::{Connection, FrameStream, Listeners, LiveConnections, NetEvent};
+use crate::net::{Connection, FrameStream, Linger, Listeners, LiveConnections, NetEvent, Terms};
 use crate::pick_clock::PickClock;
 use crate::replay::ReplayWriter;
 use crate::spectators::{DelayedFeed, HeldTick, MAX_DELAYED_TICKS, Spectators, sight};
@@ -183,25 +183,35 @@ pub fn run(listeners: impl Into<Listeners>, opts: ServerOpts) -> std::io::Result
         listeners,
         opts,
         #[cfg(test)]
-        None,
+        TestHooks::default(),
     )
 }
 
-/// [`run`] with the lobby's clock held until `gate` is sent to: a test admits the connections it
-/// is about before the time the lobby has to start the match begins to run.
+/// What a test holds of a server's clocks.
 #[cfg(test)]
-pub(crate) fn run_gated(
+#[derive(Default)]
+pub(crate) struct TestHooks {
+    /// The lobby's clock (the time to start the match, the time to give up on nobody coming)
+    /// runs only once this is sent to: a test admits the connections it is about first.
+    pub start_gate: Option<Receiver<()>>,
+    /// A peer let go is read on until this fires, not for [`Linger::SERVED`]'s span.
+    pub linger: Option<crate::net::LingerSwitch>,
+}
+
+/// [`run`] with clocks a test holds.
+#[cfg(test)]
+pub(crate) fn run_hooked(
     listeners: impl Into<Listeners>,
     opts: ServerOpts,
-    gate: Receiver<()>,
+    hooks: TestHooks,
 ) -> std::io::Result<MatchEnd> {
-    run_inner(listeners, opts, Some(gate))
+    run_inner(listeners, opts, hooks)
 }
 
 fn run_inner(
     listeners: impl Into<Listeners>,
     opts: ServerOpts,
-    #[cfg(test)] start_gate: Option<Receiver<()>>,
+    #[cfg(test)] hooks: TestHooks,
 ) -> std::io::Result<MatchEnd> {
     check_opts(&opts).map_err(std::io::Error::other)?;
     let secrets = draw_secrets(opts.seed, opts.match_id)?;
@@ -236,6 +246,10 @@ fn run_inner(
         tx,
         conns: Vec::new(),
         live: LiveConnections::default(),
+        #[cfg(not(test))]
+        linger: Linger::SERVED,
+        #[cfg(test)]
+        linger: hooks.linger.map_or(Linger::SERVED, Linger::Held),
         spectators: Vec::new(),
         referees: Vec::new(),
         roster,
@@ -246,7 +260,7 @@ fn run_inner(
         pick_clock: PickClock::Waiting,
         world_tick: Arc::new(AtomicU32::new(0)),
         #[cfg(test)]
-        start_gate,
+        start_gate: hooks.start_gate,
     };
     let Some(cfg) = server.lobby_phase() else {
         server.close_all();
@@ -412,6 +426,8 @@ struct Server {
     conns: Vec<Connection>,
     /// Connections that still hold threads, those let go among them.
     live: LiveConnections,
+    /// How long a peer let go is read on.
+    linger: Linger,
     spectators: Vec<Watcher>,
     roster: Roster,
     next_player: u32,
@@ -611,15 +627,15 @@ impl Server {
         }
         let id = PlayerId(self.next_player);
         self.next_player += 1;
-        let spawned = Connection::spawn(
-            id,
-            stream,
-            self.tx.clone(),
-            self.opts.idle_timeout,
-            self.opts.messages_per_sec,
-            Arc::clone(&self.world_tick),
-            &self.live,
-        );
+        let terms = Terms {
+            events: &self.tx,
+            idle_timeout: self.opts.idle_timeout,
+            messages_per_sec: self.opts.messages_per_sec,
+            world_tick: &self.world_tick,
+            live: &self.live,
+            linger: &self.linger,
+        };
+        let spawned = Connection::spawn(id, stream, &terms);
         match spawned {
             Ok(conn) => self.conns.push(conn),
             Err(error) => eprintln!("bota_server: could not take a connection ({error})"),

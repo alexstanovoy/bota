@@ -21,10 +21,43 @@ pub const PING_INTERVAL: Duration = Duration::from_secs(1);
 /// go cannot keep its connection (and its thread) by talking on.
 const LINGER: Duration = Duration::from_secs(10);
 
+/// When a peer let go stops being read, after the writer's hang-up.
+#[derive(Clone)]
+pub enum Linger {
+    /// Once this long has passed.
+    For(Duration),
+    /// Only once the test holding the switch fires it: a test decides when a linger runs out,
+    /// whatever the machine's pace.
+    #[cfg(test)]
+    Held(LingerSwitch),
+}
+
+impl Linger {
+    /// A server's: [`LINGER`].
+    pub const SERVED: Linger = Linger::For(LINGER);
+}
+
+/// The expiry of the lingers held under it, which the test holding it fires.
+#[cfg(test)]
+#[derive(Clone, Default)]
+pub struct LingerSwitch(Arc<Mutex<Vec<std::sync::Weak<Outbox>>>>);
+
+#[cfg(test)]
+impl LingerSwitch {
+    /// Ends the linger of every outbox held under it.
+    pub fn fire(&self) {
+        let held = self.0.lock().expect("switch lock");
+        for outbox in held.iter().filter_map(std::sync::Weak::upgrade) {
+            outbox.lock().linger_over = true;
+            outbox.parting.notify_all();
+        }
+    }
+}
+
 /// How a connection the server closes parts, once what is queued has gone out.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Parting {
-    /// A peer let go while the server runs on: read on for at most [`LINGER`].
+    /// A peer let go while the server runs on: read on for its [`Linger`] at most.
     LetGo,
     /// The end of the match: read on until the peer hangs up, however long its line takes to
     /// deliver the end. The server takes no one after it, so nothing piles up.
@@ -55,8 +88,8 @@ pub struct Outbox {
     wake: Condvar,
     /// Wakes whoever waits for the writer to be done sending or for the reader to end.
     parting: Condvar,
-    /// How long a peer let go is read on: [`LINGER`], shorter in tests.
-    linger: Duration,
+    /// How long a peer let go is read on: absent for as long as a test holds it.
+    linger: Option<Duration>,
 }
 
 struct OutboxState {
@@ -73,6 +106,8 @@ struct OutboxState {
     sent: bool,
     /// The connection's reader has ended.
     reader_ended: bool,
+    /// A held linger was ended by its switch.
+    linger_over: bool,
 }
 
 /// What the writer does next.
@@ -116,14 +151,9 @@ const URGENT_LIMIT: usize = 8;
 const QUEUE_LIMIT: usize = 1024;
 
 impl Outbox {
-    /// An empty, open outbox.
-    pub fn new() -> Arc<Outbox> {
-        Outbox::lingering(LINGER)
-    }
-
-    /// An empty, open outbox whose peer, let go, is read on for `linger`.
-    pub(crate) fn lingering(linger: Duration) -> Arc<Outbox> {
-        Arc::new(Outbox {
+    /// An empty, open outbox whose peer, let go, is read on as `linger` says.
+    pub fn new(linger: &Linger) -> Arc<Outbox> {
+        let outbox = Arc::new(Outbox {
             state: Mutex::new(OutboxState {
                 queue: VecDeque::new(),
                 urgent: VecDeque::new(),
@@ -132,11 +162,25 @@ impl Outbox {
                 ticked: false,
                 sent: false,
                 reader_ended: false,
+                linger_over: false,
             }),
             wake: Condvar::new(),
             parting: Condvar::new(),
-            linger,
-        })
+            linger: match linger {
+                Linger::For(span) => Some(*span),
+                #[cfg(test)]
+                Linger::Held(_) => None,
+            },
+        });
+        #[cfg(test)]
+        if let Linger::Held(switch) = linger {
+            switch
+                .0
+                .lock()
+                .expect("switch lock")
+                .push(Arc::downgrade(&outbox));
+        }
+        outbox
     }
 
     /// Queues a frame that must arrive.
@@ -298,17 +342,21 @@ impl Outbox {
 
     /// Waits after a hang-up for the reader to end, at most its linger.
     fn linger(&self) {
-        let until = Instant::now() + self.linger;
+        let until = self.linger.map(|span| Instant::now() + span);
         let mut state = self.lock();
-        while !state.reader_ended {
-            let Some(left) = until.checked_duration_since(Instant::now()) else {
-                return;
+        while !state.reader_ended && !state.linger_over {
+            state = match until {
+                Some(until) => {
+                    let Some(left) = until.checked_duration_since(Instant::now()) else {
+                        return;
+                    };
+                    self.parting
+                        .wait_timeout(state, left)
+                        .expect("outbox lock")
+                        .0
+                }
+                None => self.parting.wait(state).expect("outbox lock"),
             };
-            state = self
-                .parting
-                .wait_timeout(state, left)
-                .expect("outbox lock")
-                .0;
         }
     }
 

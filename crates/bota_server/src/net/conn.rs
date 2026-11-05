@@ -12,7 +12,9 @@ use bota_proto::{
     ClientMsg, EventKind, LEN_PREFIX, PlayerId, ServerMsg, decode_payload, encode_frame_to_vec,
 };
 
-use crate::net::{Allowance, Breach, FrameSource, FrameStream, Outbox, Parting, ReadEnd, Split};
+use crate::net::{
+    Allowance, Breach, FrameSource, FrameStream, Linger, Outbox, Parting, ReadEnd, Split,
+};
 
 /// Everything that reaches the server thread from the network.
 pub enum NetEvent {
@@ -70,33 +72,42 @@ impl Drop for Hold {
     }
 }
 
+/// What every connection of a server is held to, and where it reports.
+pub struct Terms<'a> {
+    pub events: &'a Sender<NetEvent>,
+    /// A peer that sends nothing for this long, or takes nothing of what is
+    /// sent for this long, is reported gone.
+    pub idle_timeout: Option<Duration>,
+    /// A peer that sends more than this many messages a second (see
+    /// [`Allowance`]) is reported as a [`Breach::Flood`].
+    pub messages_per_sec: NonZeroU32,
+    /// The tick the world is at, which the receipts of orders tell.
+    pub world_tick: &'a Arc<AtomicU32>,
+    /// The connections that hold threads.
+    pub live: &'a LiveConnections,
+    /// How long a peer let go is read on.
+    pub linger: &'a Linger,
+}
+
 impl Connection {
-    /// Adopts a connected peer: spawns its reader and writer threads, which
-    /// count among the `live` connections until both have ended. Fails
-    /// when the system has no socket handle or thread left for it; the reader
-    /// is spawned last, so a failed connection never reports an event.
-    ///
-    /// With an `idle_timeout`, a peer that sends nothing for that long, or
-    /// takes nothing of what is sent for that long, is reported gone. A peer
-    /// that sends more than `messages_per_sec` (see [`Allowance`]) is
-    /// reported as a [`Breach::Flood`].
+    /// Adopts a connected peer on the server's `terms`: spawns its reader and
+    /// writer threads, which count among the live connections until both
+    /// have ended. Fails when the system has no socket handle or thread left
+    /// for it; the reader is spawned last, so a failed connection never
+    /// reports an event.
     pub fn spawn(
         id: PlayerId,
         stream: Box<dyn FrameStream>,
-        events: Sender<NetEvent>,
-        idle_timeout: Option<Duration>,
-        messages_per_sec: NonZeroU32,
-        world_tick: Arc<AtomicU32>,
-        live: &LiveConnections,
+        terms: &Terms<'_>,
     ) -> std::io::Result<Connection> {
-        let reader_hold = Arc::new(live.hold());
+        let reader_hold = Arc::new(terms.live.hold());
         let writer_hold = Arc::clone(&reader_hold);
         let Split {
             source,
             sink,
             socket,
-        } = stream.split(idle_timeout)?;
-        let outbox = Outbox::new();
+        } = stream.split(terms.idle_timeout)?;
+        let outbox = Outbox::new(terms.linger);
         let reader_outbox = Arc::clone(&outbox);
         let writer_outbox = Arc::clone(&outbox);
         thread::Builder::new().spawn(move || {
@@ -104,7 +115,12 @@ impl Connection {
             writer_outbox.run_writer(sink);
         })?;
         let ticks_sent = Arc::new(AtomicU32::new(0));
-        let allowance = Allowance::new(messages_per_sec, Arc::clone(&ticks_sent), Instant::now());
+        let allowance = Allowance::new(
+            terms.messages_per_sec,
+            Arc::clone(&ticks_sent),
+            Instant::now(),
+        );
+        let (events, world_tick) = (terms.events.clone(), Arc::clone(terms.world_tick));
         let opened = Instant::now();
         let connection = Connection {
             id,
