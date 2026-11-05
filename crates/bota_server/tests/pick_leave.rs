@@ -109,7 +109,9 @@ fn a_seat_that_leaves_during_the_picks_cancels_the_match() {
                 panic!("a match began after a seat left during the picks")
             }
             Ok(Some(_)) => {}
-            Ok(None) | Err(_) => break,
+            // The server closed it: the match is over for it too.
+            Ok(None) => break,
+            Err(error) => panic!("the seat that stayed was not let go: {error}"),
         }
     }
 }

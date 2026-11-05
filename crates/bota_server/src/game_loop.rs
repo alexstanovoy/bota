@@ -156,6 +156,10 @@ pub struct ServerOpts {
 /// The longest pick time that can be asked for.
 pub const MAX_PICK_TIME: Duration = Duration::from_secs(24 * 60 * 60);
 
+/// Events already queued that the closing lobby hears at most (see `close_lobby`): far more than
+/// a lobby's seats say between two looks.
+const MAX_LOBBY_DRAIN: usize = 4096;
+
 /// How a match ended.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum MatchEnd {
@@ -197,6 +201,17 @@ pub(crate) struct TestHooks {
     pub start_gate: Option<Receiver<()>>,
     /// A peer let go is read on until this fires, not for [`Linger::SERVED`]'s span.
     pub linger: Option<crate::net::LingerSwitch>,
+    /// The lobby reads no event while this is held: a test queues several before it hears any.
+    pub hold: Option<std::sync::Arc<Hold>>,
+}
+
+/// The lobby's hold ([`TestHooks::hold`]): the test sets `held`, and the lobby says it stopped
+/// reading by setting `holding`, until `held` is let go.
+#[cfg(test)]
+#[derive(Default)]
+pub(crate) struct Hold {
+    pub held: std::sync::atomic::AtomicBool,
+    pub holding: std::sync::atomic::AtomicBool,
 }
 
 /// [`run`] with clocks a test holds.
@@ -278,6 +293,8 @@ fn run_inner(
         world_tick: Arc::new(AtomicU32::new(0)),
         #[cfg(test)]
         start_gate: hooks.start_gate,
+        #[cfg(test)]
+        hold: hooks.hold,
     };
     let Some(cfg) = server.lobby_phase() else {
         server.close_all();
@@ -438,6 +455,9 @@ struct Server {
     /// nobody coming) does not run until this is sent to.
     #[cfg(test)]
     start_gate: Option<Receiver<()>>,
+    /// Tests only: the lobby reads no event while this is held.
+    #[cfg(test)]
+    hold: Option<std::sync::Arc<Hold>>,
     referees: Vec<PlayerId>,
     rx: Receiver<NetEvent>,
     /// Cloned into every connection's reader thread; keeps `rx` open.
@@ -935,19 +955,37 @@ impl Server {
         let (mut start_by, mut abandon_by) = self.lobby_deadlines(self.started);
         loop {
             #[cfg(test)]
+            if let Some(hold) = &self.hold {
+                use std::sync::atomic::Ordering::SeqCst;
+                let held = hold.held.load(SeqCst);
+                hold.holding.store(held, SeqCst);
+                if held {
+                    std::thread::sleep(Duration::from_millis(1));
+                    continue;
+                }
+            }
+            #[cfg(test)]
             let polled = {
                 if gated.as_ref().is_some_and(|gate| gate.try_recv().is_ok()) {
                     gated = None;
                     (start_by, abandon_by) = self.lobby_deadlines(Instant::now());
                 }
                 // Held: no deadline of the lobby's own, only a look at the gate now and then.
-                gated.as_ref().map(|_| {
-                    (start_by, abandon_by) = (None, None);
-                    Instant::now() + Duration::from_millis(5)
-                })
+                gated
+                    .as_ref()
+                    .map(|_| {
+                        (start_by, abandon_by) = (None, None);
+                        Instant::now() + Duration::from_millis(5)
+                    })
+                    // A hold is looked at as often: no wait for an event outlasts it.
+                    .or_else(|| {
+                        self.hold
+                            .as_ref()
+                            .map(|_| Instant::now() + Duration::from_millis(5))
+                    })
             };
             if self.run_pick_clock(Instant::now()) {
-                return Some(self.build_config());
+                return self.close_lobby();
             }
             let deadline = start_by
                 .into_iter()
@@ -975,24 +1013,53 @@ impl Server {
                 }
                 if start_by.is_some_and(|by| now >= by) {
                     self.draw_missing_picks(self.pick_clock.late_secs(now));
-                    return Some(self.build_config());
+                    return self.close_lobby();
                 }
                 continue;
             };
-            if let Some((id, msg)) = self.hear(event, false) {
-                self.lobby_message(id, msg);
-                let mut replay = std::mem::replace(&mut self.replay, ReplayWriter::disabled());
-                self.record_heard(&mut replay);
-                self.replay = replay;
-            }
-            if let Some(slot) = self.left_in_lobby {
-                eprintln!(
-                    "bota_server: seat {} left for good during the picks; the match is cancelled",
-                    slot.0
-                );
+            self.hear_in_lobby(event);
+            if self.left_during_picks() {
                 return None;
             }
         }
+    }
+
+    /// One event of the lobby, heard and recorded.
+    fn hear_in_lobby(&mut self, event: NetEvent) {
+        if let Some((id, msg)) = self.hear(event, false) {
+            self.lobby_message(id, msg);
+            let mut replay = std::mem::replace(&mut self.replay, ReplayWriter::disabled());
+            self.record_heard(&mut replay);
+            self.replay = replay;
+        }
+    }
+
+    /// Whether a seat left for good during the picks: the match is cancelled.
+    fn left_during_picks(&self) -> bool {
+        let Some(slot) = self.left_in_lobby else {
+            return false;
+        };
+        eprintln!(
+            "bota_server: seat {} left for good during the picks; the match is cancelled",
+            slot.0
+        );
+        true
+    }
+
+    /// The lobby closes: what was already said in it is heard in it first, so a LeaveGame
+    /// queued behind the last readiness cancels the match instead of forfeiting one that never
+    /// began. Then the match's configuration, or none when a seat left.
+    fn close_lobby(&mut self) -> Option<MatchConfig> {
+        for _ in 0..MAX_LOBBY_DRAIN {
+            let Ok(event) = self.rx.try_recv() else {
+                break;
+            };
+            self.hear_in_lobby(event);
+            if self.left_during_picks() {
+                return None;
+            }
+        }
+        Some(self.build_config())
     }
 
     /// One message in the lobby.

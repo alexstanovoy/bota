@@ -36,7 +36,7 @@ mod web;
 
 pub use client::Client;
 #[cfg(not(target_arch = "wasm32"))]
-pub use connect::{connect, connect_net, spectate, take_seat};
+pub use connect::{connect, connect_net, connect_within, spectate, take_seat};
 pub use game::{
     GAME, INFO_DEMO, check_handoff, fingerprint, is_demo, seat_hello, seat_key, seat_name,
 };
