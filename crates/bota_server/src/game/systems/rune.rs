@@ -605,7 +605,8 @@ pub(crate) fn stores_runes(id: ItemId) -> bool {
     bota_core::item_def(id).is_some_and(|def| def.stores_runes())
 }
 
-/// The charges an item holds full: those it is bought with.
+/// The charges an item holds full: those it is bought with, which for a
+/// Bottle its row asserts are its `max_charges`.
 fn full_charges(id: ItemId) -> u8 {
     bota_core::item_def(id).map_or(0, |def| def.charges)
 }

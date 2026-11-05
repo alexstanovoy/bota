@@ -774,3 +774,7 @@ const _: () = {
     assert!(rules::SCROLL_LANDING_RINGS * rules::SCROLL_LANDING_STEP < far);
     assert!(ITEM_TPSCROLL.channel.ticks() < ITEM_TPSCROLL.cooldown.ticks());
 };
+
+// A Bottle is bought full: the charges it is bought with are all it holds, and the server fills
+// one to them.
+const _: () = assert!(ITEM_BOTTLE.charges as i32 == int(&ITEM_BOTTLE, "max_charges"));

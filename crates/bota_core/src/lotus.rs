@@ -125,7 +125,26 @@ pub const fn rounded_up(held: u8, from: LotusTier, to: LotusTier) -> u8 {
 /// of all other items"].
 pub const LOTUS_TAKE_RANGE: i32 = 275;
 
+/// Whether a tier's lotus is built by one recipe of lotuses of the tier
+/// below alone, as [`rounded_up`] reads it.
+const fn built_of(tier: LotusTier, below: LotusTier) -> bool {
+    let recipes = ITEMS[lotus_item(tier).0 as usize].charge_recipes;
+    if recipes.len() != 1 || recipes[0].is_empty() || recipes[0].len() > u8::MAX as usize {
+        return false;
+    }
+    let mut at = 0;
+    while at < recipes[0].len() {
+        if recipes[0][at].0 != lotus_item(below).0 {
+            return false;
+        }
+        at += 1;
+    }
+    true
+}
+
 const _: () = {
+    assert!(built_of(LotusTier::Great, LotusTier::Healing));
+    assert!(built_of(LotusTier::Greater, LotusTier::Great));
     assert!(PLUCK_TICKS[PLUCK_TICKS.len() - 1] > 0);
     assert!(GREAT_AFTER_HORN < GREATER_AFTER_HORN);
     assert!(DOTA_LOTUS_POOLS.len() <= bota_proto::MAX_LOTUS_POOLS);
