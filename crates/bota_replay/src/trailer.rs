@@ -17,6 +17,8 @@ pub const FRAME_MAGIC: u32 = 0x184D_2A50;
 pub const MAGIC: [u8; 8] = *b"bota.mtf";
 /// Bytes after the file inside the frame: its length, then the magic.
 const TAIL: usize = 4 + MAGIC.len();
+/// Bytes a trailer takes beyond its file: the frame's magic and length, then [`TAIL`].
+pub const OVERHEAD: usize = 8 + TAIL;
 
 /// The trailer for a metadata file, to be written right after a replay's compressed stream.
 /// None when the file is longer than a trailer may carry.
@@ -25,7 +27,7 @@ pub fn frame(meta: &[u8]) -> Option<Vec<u8>> {
         return None;
     }
     let payload = u32::try_from(meta.len() + TAIL).ok()?;
-    let mut out = Vec::with_capacity(8 + meta.len() + TAIL);
+    let mut out = Vec::with_capacity(meta.len() + OVERHEAD);
     out.extend(FRAME_MAGIC.to_le_bytes());
     out.extend(payload.to_le_bytes());
     out.extend(meta);
@@ -38,7 +40,7 @@ pub fn frame(meta: &[u8]) -> Option<Vec<u8>> {
 /// without a trailer, or with one that does not hold together, gives none.
 pub fn find(replay: &mut (impl Read + Seek)) -> std::io::Result<Option<Vec<u8>>> {
     let end = replay.seek(SeekFrom::End(0))?;
-    if end < (8 + TAIL) as u64 {
+    if end < OVERHEAD as u64 {
         return Ok(None);
     }
     replay.seek(SeekFrom::Start(end - TAIL as u64))?;

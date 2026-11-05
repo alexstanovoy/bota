@@ -50,8 +50,9 @@ struct Meta {
 }
 
 /// What a replay's trailer may take at most, set aside under a size cap.
-const TRAILER_RESERVE: u64 =
-    (bota_replay::limits::MAX_META_BYTES + bota_replay::limits::END_RESERVE_BYTES) as u64 + 16;
+const TRAILER_RESERVE: u64 = (bota_replay::limits::MAX_META_BYTES
+    + bota_replay::limits::END_RESERVE_BYTES
+    + bota_replay::trailer::OVERHEAD) as u64;
 
 /// Appends [`ReplayRecord`] frames to a `.brp` file, as one Zstandard stream, and runs the
 /// metadata recorder over the same records: its file is written at the end to `--meta`, and

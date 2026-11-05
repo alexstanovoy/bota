@@ -275,7 +275,7 @@ fn the_trailer_carries_the_file_whole_and_a_replay_without_one_gives_none() {
     let found = trailer::find(&mut Cursor::new(replay.clone())).expect("reads");
     assert_eq!(found.as_deref(), Some(&meta[..]), "byte for byte");
     // It is one skippable frame.
-    let at = replay.len() - meta.len() - 12 - 8;
+    let at = replay.len() - meta.len() - trailer::OVERHEAD;
     assert_eq!(replay[at..at + 4], 0x184D_2A50u32.to_le_bytes());
     assert_eq!(
         trailer::find(&mut Cursor::new(
